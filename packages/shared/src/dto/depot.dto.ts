@@ -312,3 +312,86 @@ export interface DepotExportPreviewDto {
   missionCount: number;
   estimatedBytes: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. Le partage — lot A4
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Les trois durees d'A4 § 4. Pas de duree libre : un champ « minutes » finirait a
+ *  43 200 le jour ou quelqu'un voudra « un lien pour le mois ». */
+export type ShareDurationDto = 'MIN_15' | 'HOUR_1' | 'UNTIL_MISSION_END';
+
+/** Nombre maximal de liens ACTIFS par mission (A4 § 3). Au-dela : revoquer d'abord. */
+export const SHARE_MAX_ACTIFS_PAR_MISSION = 3;
+
+/**
+ * ┌─ LE CONTRAT LE PLUS IMPORTANT DU LOT A4 ──────────────────────────────────┐
+ * │ Ce que le lien PUBLIC expose. Tout champ absent d'ici NE DOIT PAS quitter   │
+ * │ le serveur. Le destinataire n'est ni authentifie, ni connu, ni consentant : │
+ * │ c'est un numero de telephone a qui on a envoye une URL.                     │
+ * └────────────────────────────────────────────────────────────────────────────┘
+ *
+ * Ce qu'il ne porte PAS, et pourquoi (A4 § 2) :
+ *   - la plaque              → identifie un vehicule et son proprietaire
+ *   - le nom du conducteur   → donnee personnelle, aucun motif
+ *   - le telephone           → idem
+ *   - la reference de mission→ permet de deviner le volume d'activite du depot
+ *   - l'adresse exacte       → la ville suffit a confirmer « c'est ma livraison »
+ *   - l'origine              → revele l'implantation du depot
+ *   - le TRACE parcouru      → le piege classique : « d'ou vient le camion » revele
+ *                              les points de livraison precedents, donc les AUTRES
+ *                              clients. Le lien montre UN POINT, jamais une ligne.
+ */
+export interface PublicTrackingDto {
+  /**
+   * `DONE` et `CANCELLED` sont servis pendant une COURTE fenetre apres la cloture —
+   * sans aucune position (A4 § 8). Le destinataire qui regardait lit l'issue de son
+   * attente (« livraison effectuee a 11:34 », « cette livraison a ete annulee »)
+   * plutot que de tomber sur un ecran de lien mort au moment ou elle aboutit.
+   */
+  status: 'PLANNED' | 'IN_PROGRESS' | 'LATE' | 'DONE' | 'CANCELLED';
+  /** Un point, jamais une ligne. Null avant le depart ou si le boitier s'est tu. */
+  position: { lat: number; lng: number } | null;
+  /** ISO 8601. Heure d'arrivee estimee — ce que le destinataire vient chercher. */
+  etaAt: string | null;
+  /** La VILLE (« Muret »), pas l'adresse exacte. */
+  destinationLabel: string;
+  /** Le transporteur assume sa livraison, et c'est sa vitrine. */
+  carrierName: string;
+  expiresAt: string;
+  /** ISO 8601 — l'heure de la POSITION SERVIE. Null des qu'aucun point n'est servi. */
+  lastUpdateAt: string | null;
+  /**
+   * Minutes ecoulees depuis la derniere position connue, quand elle existe mais est
+   * TROP VIEILLE pour etre servie : « position indisponible depuis 6 min » (A4 § 8).
+   *
+   * ⚠️ Null quand le suivi est suspendu (vehicule en mode vie privee) : une duree
+   * apprendrait au destinataire QUAND le conducteur est passe en prive. Meme regle
+   * qu'en A3 — on dit l'absence, jamais sa raison ni son debut.
+   */
+  positionUnavailableSince: number | null;
+  /** ISO 8601 — le debut annonce, pour « le suivi demarrera a 08:15 » (A4 § 8). */
+  startAt: string;
+}
+
+/** Un lien tel que son CREATEUR le voit — avec son usage, pour revoquer en connaissance
+ *  de cause. Le token n'y figure qu'a la creation : la liste sert a revoquer, pas a
+ *  re-copier un lien qu'on aurait laisse filer. */
+export interface MissionShareLinkDto {
+  id: string;
+  duration: ShareDurationDto;
+  expiresAt: string;
+  createdAt: string;
+  /** « ouvert 3 fois, derniere il y a 4 min » (A4 § 4). */
+  openCount: number;
+  lastOpenedAt: string | null;
+  /** Vrai tant qu'il n'est ni expire ni revoque. */
+  active: boolean;
+}
+
+/** Le retour de la CREATION — le seul moment ou le token transite. */
+export interface MissionShareCreatedDto extends MissionShareLinkDto {
+  token: string;
+  /** L'URL complete, prete a coller dans un SMS. */
+  url: string;
+}

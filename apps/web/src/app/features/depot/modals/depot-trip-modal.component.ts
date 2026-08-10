@@ -111,7 +111,7 @@ import { DepotModalComponent } from './depot-modal.component';
         <button type="button" class="dtm-btn" (click)="signalerIncident()" [disabled]="!trip()">
           <lucide-icon [img]="AlertTriangle" [size]="15" aria-hidden="true" />Signaler un incident
         </button>
-        <button type="button" class="dtm-btn dtm-btn--accent" (click)="partager()">
+        <button type="button" class="dtm-btn dtm-btn--accent" (click)="demanderPartage()">
           <lucide-icon [img]="Share2" [size]="15" aria-hidden="true" />Partager le suivi
         </button>
       </footer>
@@ -202,6 +202,9 @@ export class DepotTripModalComponent implements OnInit {
   readonly fermer = output<void>();
   /** Émet l'identifiant de mission : le parent enchaîne sur la modale d'incident. */
   readonly signaler = output<string>();
+  /** Idem pour le partage : la modale de trajet ne connaît pas la mission complète,
+   *  c'est l'écran qui la porte — il ouvre donc la modale de partage lui-même. */
+  readonly partager = output<string>();
 
   private readonly api = inject(DepotApiService);
   private readonly toast = inject(ToastService);
@@ -277,12 +280,9 @@ export class DepotTripModalComponent implements OnInit {
     if (t) this.signaler.emit(t.missionId);
   }
 
-  protected partager(): void {
-    this.toast.show({
-      kind: 'info',
-      title: 'Le partage arrive au prochain lot',
-      message: 'Le lien public temporaire est en cours de livraison.',
-    });
+  protected demanderPartage(): void {
+    const t = this.trip();
+    if (t) this.partager.emit(t.missionId);
   }
 
   private telecharger(blob: Blob, nom: string): void {

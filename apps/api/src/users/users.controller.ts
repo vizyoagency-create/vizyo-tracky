@@ -17,6 +17,7 @@ import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
+import { MissionShareService } from '../depot/mission-share.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from './default-permissions';
 // Espace dépôt (2026-08) — importé directement de la source de vérité, comme le
@@ -50,6 +51,8 @@ export class UsersController {
     private readonly emailService: EmailService,
     private readonly config: ConfigService<Env, true>,
     private readonly ownerVis: OwnerVisibilityService,
+    // Lot A4 — archiver un compte ferme aussi les liens publics qu'il a distribues.
+    private readonly missionShare: MissionShareService,
   ) {}
 
   /**
@@ -644,6 +647,17 @@ export class UsersController {
       where: { id },
       data: { isActive: false },
     });
+
+    // 4. Espace dépôt (2026-08), lot A4 — FERMER LES LIENS PUBLICS QU'IL A OUVERTS.
+    //
+    // Retirer l'accès au compte ne suffit pas : ce compte a distribué des URL qui,
+    // elles, fonctionnent sans lui. Un dépôt archivé dont les liens restent actifs
+    // continue de faire suivre les camions du transporteur par des tiers qu'il a
+    // choisis — c'est exactement l'accès qu'on vient de retirer, par une autre porte.
+    const fermes = await this.missionShare.fermerLiensDuCompte(id);
+    if (fermes > 0) {
+      this.logger.log(`${fermes} lien(s) de partage ferme(s) — compte ${user.email} archive`);
+    }
 
     return { ok: true };
   }

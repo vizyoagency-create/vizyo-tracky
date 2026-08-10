@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { MissionStatus, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /**
@@ -42,6 +43,7 @@ export class MissionStatusService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
+    private readonly partage: MissionShareService,
   ) {}
 
   @Interval(CADENCE_MS)
@@ -148,6 +150,11 @@ export class MissionStatusService {
       // Emis APRES la bascule, jamais avant : un evenement « terminee » suivi d'une
       // position serait pire que pas d'evenement du tout.
       this.gateway.emitDepotMissionEnded(m.id, m.ref);
+      // Lot A4 — la fin de mission ferme ses liens publics. Sans cela, un lien « fin
+      // de mission + 30 min » suivrait le camion sur sa TOURNEE SUIVANTE, chez un
+      // autre client. La fermeture laisse cinq minutes sans position, le temps que le
+      // destinataire lise l'issue de son attente (cf. `fermerLiensDeMission`).
+      await this.partage.fermerLiensDeMission(m.id, 'DONE');
     }
   }
 

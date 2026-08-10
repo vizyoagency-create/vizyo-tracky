@@ -18,7 +18,11 @@
 #         ts-node prisma/gen-test-token.ts seed-depot-b > /tmp/tok_b.txt
 #
 #  USAGE   bash prisma/verif-depot-http.sh
-#  Attendu : 44 reussites, 0 echec.
+#  Attendu : 65 reussites, 0 echec.
+#
+#  ⚠️ La section A4 CREE puis REVOQUE un lien de partage a chaque passage : elle laisse
+#     une ligne revoquee derriere elle. C'est voulu — la purge quotidienne les retire
+#     au bout de 30 jours, et l'audit doit pouvoir les relire d'ici la.
 #
 #  ⚠️ Ne pas lancer PENDANT `pnpm test` : la suite Jest sature le processeur, l'API
 #     repond au-dela du delai, et des echecs FANTOMES apparaissent (constate le
@@ -38,6 +42,8 @@ verif() { # libelle, attendu, obtenu
 
 code() { curl -s -o /dev/null -w "%{http_code}" --max-time 25 -H "Authorization: Bearer $1" "$API$2"; }
 corps() { curl -s --max-time 25 -H "Authorization: Bearer $1" "$API$2"; }
+# Lot A4 — la route publique n'a pas de jeton : c'est le point, pas un oubli.
+corps_public() { curl -s --max-time 25 "$API/public/track/$1"; }
 
 echo "═══ ROUTES DE LA FLOTTE : toutes fermees au depot ═══════════"
 verif "GET /vehicles"                403 "$(code "$A" /vehicles)"
@@ -135,6 +141,68 @@ for interdit in maxSpeed avgSpeed fuel score cost consumption; do
     echo " ECHEC le champ $interdit FUIT dans l'historique"; ko=$((ko+1));
   else echo " OK   $interdit absent de l'historique"; ok=$((ok+1)); fi
 done
+
+echo ""
+echo "═══ LOT A4 : LE LIEN PUBLIC ════════════════════════════════"
+# Le lot le plus sensible : une URL sans authentification, qui circule par SMS. Ce
+# qu'on verifie ici ne se voit PAS a l'ecran — un lien qui fuit affiche la meme carte
+# qu'un lien correct.
+# ⚠️ Une mission EN COURS, pas la premiere venue : une livraison terminee ne se
+# partage plus (A4 § 7, regle 3), et le jeu d'essai en contient plusieurs.
+M_A=$(corps "$A" /depot/live \
+  | tr '}' '\n' \
+  | grep -E '"status":"(IN_PROGRESS|LATE|PLANNED)"' \
+  | grep -oE '"id":"[^"]+' | head -1 | cut -d'"' -f4)
+CREE=$(curl -s --max-time 25 -X POST -H "Authorization: Bearer $A" -H "Content-Type: application/json" \
+  -d '{"duration":"MIN_15"}' "$API/depot/missions/$M_A/share")
+TOKEN=$(echo "$CREE" | grep -oE '"token":"[^"]+' | cut -d'"' -f4)
+LIEN_ID=$(echo "$CREE" | grep -oE '"id":"[^"]+' | head -1 | cut -d'"' -f4)
+
+if [ -z "$TOKEN" ]; then
+  echo " ECHEC aucun lien cree (reponse : $(echo "$CREE" | head -c 120))"; ko=$((ko+1))
+else
+  verif "le token fait 22 caracteres base62" 22 "$(printf %s "$TOKEN" | wc -c | tr -d ' ')"
+  verif "le lien public repond"              200 "$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$API/public/track/$TOKEN")"
+
+  # Les trois en-tetes. Sans `X-Robots-Tag`, un lien colle dans un message public
+  # finit indexe — et le suivi devient consultable par quiconque cherche le nom du
+  # transporteur.
+  ENTETES=$(curl -s -D - -o /dev/null --max-time 25 "$API/public/track/$TOKEN")
+  for entete in "Cache-Control: no-store" "X-Robots-Tag: noindex, nofollow" "Referrer-Policy: no-referrer"; do
+    if echo "$ENTETES" | grep -qi "$entete"; then echo " OK   en-tete $entete"; ok=$((ok+1));
+    else echo " ECHEC en-tete MANQUANT : $entete"; ko=$((ko+1)); fi
+  done
+
+  # Le contrat de fuite, cle par cle.
+  PUB=$(corps_public "$TOKEN")
+  for interdit in plate driver phone ref origin polyline missionId trackerId vehicleId carrierId; do
+    if echo "$PUB" | grep -q "\"$interdit\""; then
+      echo " ECHEC le champ $interdit FUIT dans la reponse publique"; ko=$((ko+1));
+    else echo " OK   $interdit absent du DTO public"; ok=$((ok+1)); fi
+  done
+
+  # Le depot B ne revoque pas un lien du depot A.
+  verif "revocation par un autre depot -> 403" 403 \
+    "$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 -X DELETE -H "Authorization: Bearer $B" "$API/depot/shares/$LIEN_ID")"
+
+  # Revocation, puis indiscernabilite avec un token invente.
+  curl -s -o /dev/null --max-time 25 -X DELETE -H "Authorization: Bearer $A" "$API/depot/shares/$LIEN_ID"
+  C_REVOQUE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$API/public/track/$TOKEN")
+  C_INVENTE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$API/public/track/AAAAAAAAAAAAAAAAAAAAAA")
+  verif "lien revoque -> 410"                410 "$C_REVOQUE"
+  verif "token invente -> 410"               410 "$C_INVENTE"
+  verif "revoque et invente indiscernables"  "$C_REVOQUE" "$C_INVENTE"
+
+  # Les corps aussi doivent etre identiques : un message different suffirait a
+  # distinguer un token ferme d'un token inexistant.
+  B_REVOQUE=$(curl -s --max-time 25 "$API/public/track/$TOKEN" | grep -oE '"message":"[^"]+')
+  B_INVENTE=$(curl -s --max-time 25 "$API/public/track/AAAAAAAAAAAAAAAAAAAAAA" | grep -oE '"message":"[^"]+')
+  verif "les deux corps sont identiques" "$B_REVOQUE" "$B_INVENTE"
+fi
+
+# La route publique n'exige AUCUNE authentification — et n'en accepte pas davantage.
+verif "la route publique repond sans jeton" 410 \
+  "$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$API/public/track/ZZZZZZZZZZZZZZZZZZZZZZ")"
 
 echo ""
 echo "════════════════════════════════════════════════════════════"

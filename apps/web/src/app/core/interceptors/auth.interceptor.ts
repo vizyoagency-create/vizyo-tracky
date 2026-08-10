@@ -10,6 +10,7 @@ import { RealtimeService } from '../services/realtime.service';
 import { httpFailureMessage } from '../services/http-failure';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { getOrCreateDeviceId } from '../utils/device-id';
+import { estPagePublique } from '../utils/page-publique';
 
 /**
  * V1.10 (Sprint 5 stabilite) — toast d'information lors d'un logout force
@@ -95,7 +96,15 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // Sécurité — identifiant d'appareil (vérification e-mail des nouveaux appareils).
   // Même origine → pas de preflight CORS, coût nul. Le gate serveur lit cet entête
   // pour reconnaître un appareil de confiance.
-  req = req.clone({ setHeaders: { 'X-Device-Id': getOrCreateDeviceId() } });
+  //
+  // ⚠️ SAUF SUR LA PAGE PUBLIQUE DE SUIVI (lot A4). `getOrCreateDeviceId()` ne fait pas
+  // que lire : il ÉCRIT un identifiant stable dans le localStorage. Sur `/s/:token`,
+  // cela poserait un identifiant persistant sur le téléphone d'un destinataire qui
+  // n'a ni compte ni consentement — précisément le pistage qu'A4 § 6 interdit. Et il
+  // ne sert à rien : la route publique n'a aucun gate d'appareil de confiance.
+  if (!estPagePublique()) {
+    req = req.clone({ setHeaders: { 'X-Device-Id': getOrCreateDeviceId() } });
+  }
 
   // Contexte d'activité (page + session client) : attaché en headers pour que le
   // backend puisse relier une erreur serveur à « où » et « chez qui ». Même

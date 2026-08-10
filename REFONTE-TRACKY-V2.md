@@ -15,13 +15,13 @@
 | **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟢 **livré** | 93 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | 🟢 **livré** | 38 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | 🟢 **livré** | 97 / 98 |
-| **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
+| **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | ⬜ à faire | 0 / 19 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🔴 bloqué¹ | 0 / 28 |
 | **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🔴 bloqué¹ | 0 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | 🔴 bloqué¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **323 / 595** |
+| | | | **Total** | **420 / 595** |
 
 ¹ **Bloqué en attente des 27 maquettes `.dc.html`** — cf. « Écart 1 » ci-dessous. Le bloc A ne
 dépend d'aucune maquette : ses documents sont auto-suffisants. B0′ n'en dépend pas non plus
@@ -105,7 +105,7 @@ véhicule portée par `VehicleEvent.blocksVehicle` + `reservations.service.ts`
 ## Reprise de session — à lire en premier
 
 > Écrit le 2026-08-09, à la fin de la session qui a livré Étape 0, A1, A2 et A5.
-> **Prochain lot : A4.** Branche `feat/refonte-tracky-v2`, poussée sur `origin`.
+> **Prochain lot : B0′** (reliquat de socle, non bloqué). Branche `feat/refonte-tracky-v2`, poussée sur `origin`.
 
 ### Où en est le travail
 
@@ -113,7 +113,7 @@ véhicule portée par `VehicleEvent.blocksVehicle` + `reservations.service.ts`
 |---|---|
 | Étape 0, A1, A2, A5 | 🟢 livrés, vérifiés, poussés (19 commits) |
 | **A3 — l'espace dépôt** | 🟢 livré |
-| **A4 — le partage** | ⬜ **prochain** |
+| **A4 — le partage** | 🟢 livré |
 | Bloc B | 🔴 en attente des 27 `.dc.html` dans `design/maquettes/` |
 
 ### Remonter l'environnement (5 minutes)
@@ -945,144 +945,146 @@ exposent coûts, scores, conducteur hors mission, groupe.
 
 ### A4.1 — Le modèle
 
-- [ ] `MissionShareLink` créé conforme à A4 § 1, calqué sur `ReservationBookingLink`
-- [ ] `enum ShareDuration` : `MIN_15`, `HOUR_1`, `UNTIL_MISSION_END`
-- [ ] `@@index([missionId, createdAt])`, `@@index([expiresAt])`
-- [ ] `lastOpenedFrom` = empreinte **tronquée**, jamais l'IP complète (RGPD)
-- [ ] Migration générée, relue, appliquée
+- [x] `MissionShareLink` créé conforme à A4 § 1, calqué sur `ReservationBookingLink`
+- [x] `enum ShareDuration` : `MIN_15`, `HOUR_1`, `UNTIL_MISSION_END`
+- [x] `@@index([missionId, createdAt])`, `@@index([expiresAt])`
+- [x] `lastOpenedFrom` = empreinte **tronquée**, jamais l'IP complète (RGPD)
+- [x] Migration générée, relue, appliquée
 
 ### A4.2 — Le token
 
-- [ ] 22 caractères base62, tirés de `crypto.randomBytes` — pas d'uuid, pas de compteur
-- [ ] **Jamais dérivé de l'identifiant de mission** : un token prévisible donne accès à toutes les missions
-- [ ] Non réutilisable : un nouveau partage crée un nouveau lien. Régénérer le même token permettrait à un ancien destinataire de revenir
-- [ ] Test : 10 000 tokens générés, aucune collision, distribution uniforme
+- [x] 22 caractères base62, tirés de `crypto.randomBytes` — pas d'uuid, pas de compteur
+- [x] **Jamais dérivé de l'identifiant de mission** : un token prévisible donne accès à toutes les missions
+- [x] Non réutilisable : un nouveau partage crée un nouveau lien. Régénérer le même token permettrait à un ancien destinataire de revenir
+- [x] Test : 10 000 tokens générés, aucune collision, distribution uniforme
 
 ### A4.3 — Le DTO public — la spécification la plus importante du lot
 
 `PublicTrackingDto`. **Tout champ absent de la liste ne doit pas quitter le serveur.**
 
-- [ ] Exposé : `status`, `position { lat, lng } | null`, `etaAt`, `destinationLabel` (la **ville**, pas l'adresse exacte), `carrierName`, `expiresAt`, `lastUpdateAt`
-- [ ] **Jamais** : plaque (identifie un véhicule et son propriétaire)
-- [ ] **Jamais** : nom du conducteur, téléphone (données personnelles, aucun motif)
-- [ ] **Jamais** : référence de mission (permet de deviner le volume d'activité)
-- [ ] **Jamais** : adresse exacte, origine (révèle l'implantation du dépôt)
-- [ ] **Jamais de tracé parcouru** — le piège classique : « d'où vient le camion » révèle les points de livraison précédents, donc les autres clients du dépôt. Le lien montre **un point**, pas une ligne
-- [ ] **Jamais** : historique
-- [ ] Test d'assertion sur les clés exactes de la réponse
+- [x] Exposé : `status`, `position { lat, lng } | null`, `etaAt`, `destinationLabel` (la **ville**, pas l'adresse exacte), `carrierName`, `expiresAt`, `lastUpdateAt`
+- [x] **Jamais** : plaque (identifie un véhicule et son propriétaire)
+- [x] **Jamais** : nom du conducteur, téléphone (données personnelles, aucun motif)
+- [x] **Jamais** : référence de mission (permet de deviner le volume d'activité)
+- [x] **Jamais** : adresse exacte, origine (révèle l'implantation du dépôt)
+- [x] **Jamais de tracé parcouru** — le piège classique : « d'où vient le camion » révèle les points de livraison précédents, donc les autres clients du dépôt. Le lien montre **un point**, pas une ligne
+- [x] **Jamais** : historique
+- [x] Test d'assertion sur les clés exactes de la réponse
 
 ### A4.4 — Les endpoints
 
 **Côté dépôt (authentifié)** — `apps/api/src/depot/mission-share.controller.ts`
-- [ ] `POST /depot/missions/:id/share { duration }` → `{ token, url, expiresAt }`
-- [ ] `GET /depot/missions/:id/shares` → liens actifs + usage
-- [ ] `DELETE /depot/shares/:id` → révocation immédiate
-- [ ] Gardes : `DepotScopeGuard` + `mission_share`
-- [ ] Limite : 3 liens actifs maximum par mission
-- [ ] Limite : 20 créations par heure et par compte (`@Throttle`)
+- [x] `POST /depot/missions/:id/share { duration }` → `{ token, url, expiresAt }`
+- [x] `GET /depot/missions/:id/shares` → liens actifs + usage
+- [x] `DELETE /depot/shares/:id` → révocation immédiate
+- [x] Gardes : `DepotScopeGuard` + `mission_share`
+- [x] Limite : 3 liens actifs maximum par mission
+- [x] Limite : 20 créations par heure et par compte (`@Throttle`)
 
 **Côté public (sans authentification)** — `public-mission-share.controller.ts`
-- [ ] `GET /public/track/:token` → `PublicTrackingDto`
-- [ ] Aucun `JwtAuthGuard`, sur le modèle de `PublicReservationBookingController`
-- [ ] `@Throttle({ default: { ttl: 60_000, limit: 30 } })`
-- [ ] **Pas de WebSocket** sur le lien public — un socket non authentifié est une surface d'attaque disproportionnée pour un point sur une carte. Polling 20 s côté client
-- [ ] En-tête `Cache-Control: no-store`
-- [ ] En-tête `X-Robots-Tag: noindex, nofollow` — **indispensable** : sans lui, un lien collé dans un message public finit indexé
-- [ ] En-tête `Referrer-Policy: no-referrer`
+- [x] `GET /public/track/:token` → `PublicTrackingDto`
+- [x] Aucun `JwtAuthGuard`, sur le modèle de `PublicReservationBookingController`
+- [x] `@Throttle({ default: { ttl: 60_000, limit: 30 } })`
+- [x] **Pas de WebSocket** sur le lien public — un socket non authentifié est une surface d'attaque disproportionnée pour un point sur une carte. Polling 20 s côté client
+- [x] En-tête `Cache-Control: no-store`
+- [x] En-tête `X-Robots-Tag: noindex, nofollow` — **indispensable** : sans lui, un lien collé dans un message public finit indexé
+- [x] En-tête `Referrer-Policy: no-referrer`
 
 ### A4.5 — L'expiration
 
-- [ ] `MIN_15` → `now + 15 min`
-- [ ] `HOUR_1` → `now + 1 h`
-- [ ] `UNTIL_MISSION_END` → `mission.endAt + 30 min` (la marge couvre le retard : un lien qui expire pile à l'heure prévue meurt au moment où le client en a le plus besoin)
-- [ ] **Non prolongeable** : aucun endpoint ne repousse `expiresAt`. Pour prolonger, on crée un nouveau lien, sciemment
-- [ ] Vérifiée à chaque requête, à l'heure serveur
-- [ ] **La fin de mission ferme tous les liens**, quelle que soit leur durée : suivre un camion après sa livraison, c'est suivre sa tournée suivante
-- [ ] Tâche de purge quotidienne : suppression des liens expirés depuis plus de 30 jours (30 jours gardés pour l'audit)
-- [ ] Tâche enregistrée dans l'inventaire `/admin/background-tasks`
+- [x] `MIN_15` → `now + 15 min`
+- [x] `HOUR_1` → `now + 1 h`
+- [x] `UNTIL_MISSION_END` → `mission.endAt + 30 min` (la marge couvre le retard : un lien qui expire pile à l'heure prévue meurt au moment où le client en a le plus besoin)
+- [x] **Non prolongeable** : aucun endpoint ne repousse `expiresAt`. Pour prolonger, on crée un nouveau lien, sciemment
+- [x] Vérifiée à chaque requête, à l'heure serveur
+- [x] **La fin de mission ferme tous les liens**, quelle que soit leur durée : suivre un camion après sa livraison, c'est suivre sa tournée suivante
+- [x] Tâche de purge quotidienne : suppression des liens expirés depuis plus de 30 jours (30 jours gardés pour l'audit)
+- [x] Tâche enregistrée dans l'inventaire `/admin/background-tasks`
 
 ### A4.6 — La révocation et l'audit
 
-- [ ] Bouton « Révoquer » par lien actif, avec le nombre d'ouvertures : « ouvert 3 fois, dernière il y a 4 min »
-- [ ] Effet immédiat, aucun cache
-- [ ] Le transporteur peut révoquer **n'importe quel** lien de sa flotte, y compris ceux créés par un dépôt — c'est lui qui porte la responsabilité des données
-- [ ] Dépôt désactivé → ses liens actifs sont révoqués automatiquement
-- [ ] Toute création et toute révocation journalisées : qui, quand, quelle mission, quelle durée
+- [x] Bouton « Révoquer » par lien actif, avec le nombre d'ouvertures : « ouvert 3 fois, dernière il y a 4 min »
+- [x] Effet immédiat, aucun cache
+- [x] Le transporteur peut révoquer **n'importe quel** lien de sa flotte, y compris ceux créés par un dépôt — c'est lui qui porte la responsabilité des données
+- [x] Dépôt désactivé → ses liens actifs sont révoqués automatiquement
+- [x] Toute création et toute révocation journalisées : qui, quand, quelle mission, quelle durée
 
 ### A4.7 — La modale de partage
 
 `features/depot/share-dialog/`
 
-- [ ] La mission concernée, en lecture seule
-- [ ] 3 puces de durée : `15 min` (défaut) · `1 h` · `Fin de mission`
-- [ ] Lien généré + bouton Copier
-- [ ] Encart ambré avec **compte à rebours réel** : « Expire dans 14:52 · révocable à tout moment »
-- [ ] **Phrase de périmètre** sous le titre : « Un lien public à envoyer à votre client final. Il n'affiche que la position et l'heure d'arrivée du camion de cette mission, et expire automatiquement. » Le dépôt doit savoir ce qu'il transmet avant de l'envoyer
-- [ ] iOS : feuille basse, bouton pleine largeur « Copier et envoyer » qui ouvre la feuille de partage native
-- [ ] Android : FAB « Partager », snackbar « Lien copié » avec action **ANNULER qui révoque** — la sortie du geste raté, dans les 5 secondes, sans ouvrir de menu
+- [x] La mission concernée, en lecture seule
+- [x] 3 puces de durée : `15 min` (défaut) · `1 h` · `Fin de mission`
+- [x] Lien généré + bouton Copier
+- [x] Encart ambré avec **compte à rebours réel** : « Expire dans 14:52 · révocable à tout moment »
+- [x] **Phrase de périmètre** sous le titre : « Un lien public à envoyer à votre client final. Il n'affiche que la position et l'heure d'arrivée du camion de cette mission, et expire automatiquement. » Le dépôt doit savoir ce qu'il transmet avant de l'envoyer
+- [x] iOS : feuille basse, bouton pleine largeur « Copier et envoyer » qui ouvre la feuille de partage native
+- [x] Android : FAB « Partager », snackbar « Lien copié » avec action **ANNULER qui révoque** — la sortie du geste raté, dans les 5 secondes, sans ouvrir de menu
 
 ### A4.8 — La page publique `/s/:token`
 
 `features/public-tracking/` — mobile d'abord : elle s'ouvre depuis un SMS ou WhatsApp dans 90 % des cas.
 
-- [ ] Route `/s/:token` ajoutée à `app.routes.ts`, **hors** du shell authentifié (`auth-layout` ne s'applique pas)
-- [ ] Nom du transporteur en tête, discret
-- [ ] Carte plein écran, camion centré, halo pulsé
-- [ ] Bandeau bas : « Arrivée estimée **11:34** » + statut (« en route », « en retard de 22 min »)
-- [ ] Mention d'expiration : « Ce lien expire à 12:05 »
-- [ ] **Aucune navigation, aucun lien vers l'application, aucun formulaire**
-- [ ] **Pas de compte, pas de cookie, pas d'analytics tiers.** La page ne pose rien sur l'appareil du destinataire
-- [ ] Compte à rebours réel
+- [x] Route `/s/:token` ajoutée à `app.routes.ts`, **hors** du shell authentifié (`auth-layout` ne s'applique pas)
+- [x] Nom du transporteur en tête, discret
+- [x] Carte plein écran, camion centré, halo pulsé
+- [x] Bandeau bas : « Arrivée estimée **11:34** » + statut (« en route », « en retard de 22 min »)
+- [x] Mention d'expiration : « Ce lien expire à 12:05 »
+- [x] **Aucune navigation, aucun lien vers l'application, aucun formulaire**
+- [x] **Pas de compte, pas de cookie, pas d'analytics tiers.** La page ne pose rien sur l'appareil du destinataire
+- [x] Compte à rebours réel
 
 **Les 4 états**
-- [ ] Actif → carte + arrivée estimée
-- [ ] Expiré → « Ce lien de suivi a expiré » + « Demandez-en un nouveau à votre expéditeur ». **Pas** de bouton de renouvellement : le destinataire n'a pas ce droit
-- [ ] Révoqué → **écran identique**. Dire « révoqué » indiquerait qu'il a existé et que quelqu'un l'a fermé
-- [ ] Introuvable → **écran identique encore**
-- [ ] Les trois derniers partagent le **même code HTTP `410 Gone`** — uniformité délibérée : elle empêche de distinguer un token inexistant d'un token fermé, donc d'énumérer
+- [x] Actif → carte + arrivée estimée
+- [x] Expiré → « Ce lien de suivi a expiré » + « Demandez-en un nouveau à votre expéditeur ». **Pas** de bouton de renouvellement : le destinataire n'a pas ce droit
+- [x] Révoqué → **écran identique**. Dire « révoqué » indiquerait qu'il a existé et que quelqu'un l'a fermé
+- [x] Introuvable → **écran identique encore**
+- [x] Les trois derniers partagent le **même code HTTP `410 Gone`** — uniformité délibérée : elle empêche de distinguer un token inexistant d'un token fermé, donc d'énumérer
 
 ### A4.9 — États et cas particuliers
 
-- [ ] Lien ouvert avant `startAt` → carte centrée sur la destination, « Le suivi démarrera à 08:15 », puis bascule seul
-- [ ] Position indisponible → dernier point grisé + « position indisponible depuis 6 min ». Jamais un point périmé présenté comme actuel
-- [ ] Mission terminée pendant la consultation → « Livraison effectuée à 11:34 », carte figée 30 s, puis écran de fin
-- [ ] Mission annulée pendant la consultation → « Cette livraison a été annulée. Contactez votre expéditeur. »
-- [ ] Mission `PLANNED` **peut** être partagée · `DONE` ou `CANCELLED` ne peut plus l'être, et ses liens existants sont fermés
-- [ ] Le lien ne donne accès qu'à **une** mission. Jamais un lien « toutes mes livraisons »
-- [ ] Véhicule changé sur la mission → le lien suit la mission, transparent pour le destinataire
-- [ ] 4ᵉ lien sur une mission → refus avec message clair
+- [x] Lien ouvert avant `startAt` → carte centrée sur la destination, « Le suivi démarrera à 08:15 », puis bascule seul
+- [x] Position indisponible → dernier point grisé + « position indisponible depuis 6 min ». Jamais un point périmé présenté comme actuel
+- [x] Mission terminée pendant la consultation → « Livraison effectuée à 11:34 », carte figée 30 s, puis écran de fin
+- [x] Mission annulée pendant la consultation → « Cette livraison a été annulée. Contactez votre expéditeur. »
+- [x] Mission `PLANNED` **peut** être partagée · `DONE` ou `CANCELLED` ne peut plus l'être, et ses liens existants sont fermés
+- [x] Le lien ne donne accès qu'à **une** mission. Jamais un lien « toutes mes livraisons »
+- [x] Véhicule changé sur la mission → le lien suit la mission, transparent pour le destinataire
+- [x] 4ᵉ lien sur une mission → refus avec message clair
 
 ### A4.10 — La liste de contrôle sécurité
 
-- [ ] Token cryptographique, 22 caractères, non dérivé d'un identifiant
-- [ ] `expiresAt` vérifié côté serveur à chaque requête
-- [ ] `410` uniforme pour expiré / révoqué / introuvable
-- [ ] `X-Robots-Tag: noindex, nofollow`
-- [ ] `Cache-Control: no-store`
-- [ ] `Referrer-Policy: no-referrer`
-- [ ] Débit borné sur la route publique
-- [ ] Aucune donnée personnelle dans le DTO public
-- [ ] Aucun tracé, un point seulement
-- [ ] Fermeture automatique à la fin de mission
-- [ ] Journal d'audit complet
-- [ ] IP tronquée, jamais complète
+- [x] Token cryptographique, 22 caractères, non dérivé d'un identifiant
+- [x] `expiresAt` vérifié côté serveur à chaque requête
+- [x] `410` uniforme pour expiré / révoqué / introuvable
+- [x] `X-Robots-Tag: noindex, nofollow`
+- [x] `Cache-Control: no-store`
+- [x] `Referrer-Policy: no-referrer`
+- [x] Débit borné sur la route publique
+- [x] Aucune donnée personnelle dans le DTO public
+- [x] Aucun tracé, un point seulement
+- [x] Fermeture automatique à la fin de mission
+- [x] Journal d'audit complet
+- [x] IP tronquée, jamais complète
 
 ### Recette A4 — les 12 critères
 
-- [ ] 1 — générer un lien 15 min, l'ouvrir → carte + arrivée estimée
-- [ ] 2 — **attendre 16 minutes réelles**, rouvrir → `410` + écran « expiré ». *Attendre, pas simuler*
-- [ ] 3 — révoquer, rouvrir → écran identique à l'expiré, même code
-- [ ] 4 — token inventé → écran identique encore
-- [ ] 5 — **inspecter la réponse publique** → aucune plaque, aucun nom, aucun tracé
-- [ ] 6 — terminer la mission → tous les liens fermés immédiatement
-- [ ] 7 — générer 4 liens sur une mission → le 4ᵉ refusé avec un message clair
-- [ ] 8 — 40 créations en une heure → débit borné
-- [ ] 9 — vérifier les en-têtes → `noindex`, `no-store`, `no-referrer`
-- [ ] 10 — lien ouvert sur mobile 360 px → carte lisible, arrivée estimée visible sans défilement
-- [ ] 11 — dépôt désactivé → ses liens actifs deviennent inopérants
-- [ ] 12 — journal d'audit → création et révocation tracées avec leur auteur
+- [x] 1 — générer un lien 15 min, l'ouvrir → carte + arrivée estimée
+- [x] 2 — **attendre 16 minutes réelles**, rouvrir → `410` + écran « expiré ». *Attendre, pas simuler*
+- [x] 3 — révoquer, rouvrir → écran identique à l'expiré, même code
+- [x] 4 — token inventé → écran identique encore
+- [x] 5 — **inspecter la réponse publique** → aucune plaque, aucun nom, aucun tracé
+- [x] 6 — terminer la mission → tous les liens fermés immédiatement
+- [x] 7 — générer 4 liens sur une mission → le 4ᵉ refusé avec un message clair
+- [x] 8 — 40 créations en une heure → débit borné
+- [x] 9 — vérifier les en-têtes → `noindex`, `no-store`, `no-referrer`
+- [x] 10 — lien ouvert sur mobile 360 px → carte lisible, arrivée estimée visible sans défilement
+- [x] 11 — dépôt désactivé → ses liens actifs deviennent inopérants
+- [x] 12 — journal d'audit → création et révocation tracées avec leur auteur
 
-- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16/16 couples ≥ 4,5:1**
+- [x] Vérification — **le périmètre du § 5, pas `pnpm verify`** (qui ne se termine jamais, cf. piège 1) :
+      typecheck 3/3 · smoke 5/5 · **1885 tests API** (134 suites) · 277 tests partagés · build web vert ·
+      isolation HTTP **65/65** (dont 21 contrôles A4) · 36 tests dédiés au partage (token + service)
 - [x] **Commit** `feat(depot): lien public temporaire de suivi de mission`
 - [ ] ⏸️ **Point de contrôle client** — le partage complet
 

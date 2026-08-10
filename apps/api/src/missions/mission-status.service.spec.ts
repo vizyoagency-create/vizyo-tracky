@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { MissionStatus, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MissionStatusService, STATUT_EVENEMENT } from './mission-status.service';
 
@@ -45,6 +46,9 @@ describe('MissionStatusService', () => {
         // Lot A3 — la cloture previent les depots par le salon `depot:mission:<id>`.
         // Un espion suffit : ce qui est teste ici est la BASCULE, pas la diffusion.
         { provide: RealtimeGateway, useValue: { emitDepotMissionEnded: jest.fn() } },
+        // Lot A4 — la cloture ferme les liens publics de la mission. Un espion suffit :
+        // ce qui est teste ici est la BASCULE, pas la fermeture (qui a ses propres tests).
+        { provide: MissionShareService, useValue: { fermerLiensDeMission: jest.fn().mockResolvedValue(0) } },
       ],
     }).compile();
     service = moduleRef.get(MissionStatusService);

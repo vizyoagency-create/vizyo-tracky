@@ -9,6 +9,9 @@ import type {
   DepotIncidentReason,
   DepotLiveDto,
   DepotTripDto,
+  MissionShareCreatedDto,
+  MissionShareLinkDto,
+  ShareDurationDto,
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 
@@ -103,6 +106,24 @@ export class DepotApiService {
     return firstValueFrom(
       this.http.post<DepotIncidentDto>('/api/depot/incidents', { missionId, reason, message }),
     );
+  }
+
+  // ─── Lot A4 — le partage ────────────────────────────────────────────────────
+
+  /** Crée un lien public. Le token ne transite QU'ICI : la liste ne le renvoie pas. */
+  creerPartage(missionId: string, duration: ShareDurationDto): Promise<MissionShareCreatedDto> {
+    return firstValueFrom(
+      this.http.post<MissionShareCreatedDto>(`/api/depot/missions/${missionId}/share`, { duration }),
+    );
+  }
+
+  /** Les liens d'une mission et leur usage — pour révoquer en connaissance de cause. */
+  partages(missionId: string): Promise<MissionShareLinkDto[]> {
+    return this.lire<MissionShareLinkDto[]>(`/api/depot/missions/${missionId}/shares`);
+  }
+
+  revoquerPartage(lienId: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(`/api/depot/shares/${lienId}`));
   }
 
   /**

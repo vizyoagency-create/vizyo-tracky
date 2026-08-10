@@ -201,6 +201,8 @@ const PERIODES = [
     </section>
 
     @if (tripOuvert()) {
+      <!-- Pas de (partager) ici : l'historique ne montre que des missions TERMINÉES,
+           et une livraison close ne se partage plus (A4 § 7, règle 3). -->
       <app-depot-trip-modal [tripId]="tripOuvert()" (fermer)="tripOuvert.set(null)" />
     }
     @if (exportOuvert()) { <app-depot-export-modal (fermer)="exportOuvert.set(false)" /> }

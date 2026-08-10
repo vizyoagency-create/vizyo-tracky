@@ -18,6 +18,7 @@ import { DepotMissionCardComponent } from './depot-mission-card.component';
 import { DepotExportModalComponent } from './modals/depot-export-modal.component';
 import { DepotIncidentModalComponent } from './modals/depot-incident-modal.component';
 import { DepotOnboardingModalComponent } from './modals/depot-onboarding-modal.component';
+import { DepotShareModalComponent } from './modals/depot-share-modal.component';
 import { DepotTripModalComponent } from './modals/depot-trip-modal.component';
 import { DepotTruckModalComponent } from './modals/depot-truck-modal.component';
 
@@ -66,6 +67,7 @@ const CLEF_ONBOARDING = 'vizyo-depot-onboarding-vu';
     DepotIncidentModalComponent,
     DepotExportModalComponent,
     DepotOnboardingModalComponent,
+    DepotShareModalComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -257,6 +259,9 @@ const CLEF_ONBOARDING = 'vizyo-depot-onboarding-vu';
         (fermer)="fermerOnboarding()"
       />
     }
+    @if (partageOuvert(); as m) {
+      <app-depot-share-modal [mission]="m" (fermer)="partageOuvert.set(null)" />
+    }
     @if (camionOuvert() && missionSelectionnee(); as m) {
       <app-depot-truck-modal [mission]="m" (fermer)="camionOuvert.set(false)" />
     }
@@ -265,6 +270,7 @@ const CLEF_ONBOARDING = 'vizyo-depot-onboarding-vu';
         [missionId]="tripOuvert()"
         (fermer)="tripOuvert.set(null)"
         (signaler)="depuisTrajetVersIncident($event)"
+        (partager)="depuisTrajetVersPartage($event)"
       />
     }
   `,
@@ -470,6 +476,7 @@ export class DepotLiveComponent implements OnInit, OnDestroy {
   protected readonly exportOuvert = signal(false);
   protected readonly onboardingOuvert = signal(false);
   protected readonly camionOuvert = signal(false);
+  protected readonly partageOuvert = signal<DepotMissionDto | null>(null);
   protected readonly tripOuvert = signal<string | null>(null);
 
   protected readonly missionsFiltrees = computed(() => {
@@ -579,6 +586,14 @@ export class DepotLiveComponent implements OnInit, OnDestroy {
     this.incidentOuvert.set(true);
   }
 
+  /** Depuis la modale de trajet : on ferme le trajet et on ouvre le partage. Deux
+   *  modales empilees rendraient l'echappement clavier ambigu. */
+  protected depuisTrajetVersPartage(missionId: string): void {
+    const m = this.store.missions().find((x) => x.id === missionId);
+    this.tripOuvert.set(null);
+    if (m) this.partageOuvert.set(m);
+  }
+
   protected depuisTrajetVersIncident(missionId: string): void {
     this.tripOuvert.set(null);
     this.selection.set(missionId);
@@ -599,15 +614,32 @@ export class DepotLiveComponent implements OnInit, OnDestroy {
     this.tripOuvert.set(m.id);
   }
 
+  /**
+   * Ouvre la modale de partage (lot A4).
+   *
+   * Un lien porte UNE mission, jamais « toutes mes livraisons » (A4 § 7, règle 4) :
+   * sans sélection, on ne devine pas — on demande laquelle. Le repli prend la première
+   * mission de la liste, triée retards en tête, celle qu'on partage le plus souvent.
+   */
   protected partager(): void {
-    // Le lien public temporaire relève du lot A4 : la spec le décrit comme « le lot
-    // le plus sensible » (un lien qui n'expire pas est une fuite permanente). On ne
-    // livre pas un demi-mécanisme de partage — on annonce la suite honnêtement.
-    this.toast.show({
-      kind: 'info',
-      title: 'Le partage arrive au prochain lot',
-      message: 'Le lien public temporaire est en cours de livraison.',
-    });
+    const m = this.missionSelectionnee() ?? this.missionsFiltrees()[0] ?? null;
+    if (!m) {
+      this.toast.show({
+        kind: 'info',
+        title: 'Aucune mission à partager',
+        message: 'Le lien de suivi porte sur une livraison précise.',
+      });
+      return;
+    }
+    if (m.status === 'DONE' || m.status === 'CANCELLED') {
+      this.toast.show({
+        kind: 'info',
+        title: 'Cette livraison est terminée',
+        message: 'Un lien de suivi ne se partage que sur une livraison à venir ou en cours.',
+      });
+      return;
+    }
+    this.partageOuvert.set(m);
   }
 
   protected async appeler(m: DepotMissionDto): Promise<void> {

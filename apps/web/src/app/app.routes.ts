@@ -14,6 +14,26 @@ export const routes: Routes = [
     pathMatch: 'full',
     redirectTo: 'login',
   },
+  /**
+   * Espace dépôt (2026-08), lot A4 — LE SUIVI PUBLIC.
+   *
+   * ┌─ LA SEULE ROUTE DE L'APPLICATION SANS AUCUN GARDE ────────────────────────┐
+   * │ Ni `authGuard`, ni `auth-layout`, ni shell : le destinataire n'a pas de    │
+   * │ compte et ne doit voir aucune marque Tracky imposée, aucun menu, aucun     │
+   * │ lien vers l'application (A4 § 6).                                          │
+   * │                                                                            │
+   * │ Déclarée AVANT les routes authentifiées, et volontairement en tête de      │
+   * │ fichier : c'est une exception, elle se lit comme telle.                    │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  {
+    path: 's/:token',
+    loadComponent: () =>
+      import('./features/public-tracking/public-tracking.component').then(
+        (m) => m.PublicTrackingComponent,
+      ),
+    data: { title: 'Suivi de livraison' },
+  },
   {
     path: 'login',
     loadComponent: () =>

@@ -8,6 +8,7 @@ import { DepotLiveStore } from './depot-live.store';
 import { DepotMissionCardComponent } from './depot-mission-card.component';
 import { DepotIncidentModalComponent } from './modals/depot-incident-modal.component';
 import { DepotOnboardingModalComponent } from './modals/depot-onboarding-modal.component';
+import { DepotShareModalComponent } from './modals/depot-share-modal.component';
 import { DepotTripModalComponent } from './modals/depot-trip-modal.component';
 
 /**
@@ -34,6 +35,7 @@ import { DepotTripModalComponent } from './modals/depot-trip-modal.component';
     DepotTripModalComponent,
     DepotIncidentModalComponent,
     DepotOnboardingModalComponent,
+    DepotShareModalComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -82,6 +84,9 @@ import { DepotTripModalComponent } from './modals/depot-trip-modal.component';
               <div class="dms-actions">
                 <button type="button" class="dms-btn" (click)="tripOuvert.set(m.id)">Voir le trajet</button>
                 <button type="button" class="dms-btn" (click)="incidentPour.set(m.id)">Signaler un incident</button>
+                @if (m.status !== 'DONE' && m.status !== 'CANCELLED') {
+                  <button type="button" class="dms-btn" (click)="partageOuvert.set(m)">Partager le suivi</button>
+                }
               </div>
             }
           }
@@ -106,6 +111,7 @@ import { DepotTripModalComponent } from './modals/depot-trip-modal.component';
         [missionId]="tripOuvert()"
         (fermer)="tripOuvert.set(null)"
         (signaler)="incidentPour.set($event); tripOuvert.set(null)"
+        (partager)="depuisTrajetVersPartage($event)"
       />
     }
     @if (incidentPour()) {
@@ -114,6 +120,9 @@ import { DepotTripModalComponent } from './modals/depot-trip-modal.component';
         [missionInitiale]="incidentPour()"
         (fermer)="incidentPour.set(null)"
       />
+    }
+    @if (partageOuvert(); as m) {
+      <app-depot-share-modal [mission]="m" (fermer)="partageOuvert.set(null)" />
     }
     @if (onboardingOuvert()) {
       <app-depot-onboarding-modal [carrierName]="store.carrierName()" (fermer)="onboardingOuvert.set(false)" />
@@ -182,6 +191,7 @@ export class DepotMissionsComponent implements OnInit, OnDestroy {
   protected readonly tripOuvert = signal<string | null>(null);
   protected readonly incidentPour = signal<string | null>(null);
   protected readonly onboardingOuvert = signal(false);
+  protected readonly partageOuvert = signal<DepotMissionDto | null>(null);
 
   /**
    * Le tri d'A3 § 2 : en cours d'abord, LES RETARDS EN TÊTE, puis les planifiées par
@@ -207,6 +217,13 @@ export class DepotMissionsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.store.arreter();
+  }
+
+  /** Depuis la modale de trajet : on ferme le trajet et on ouvre le partage. */
+  protected depuisTrajetVersPartage(missionId: string): void {
+    const m = this.store.missions().find((x) => x.id === missionId);
+    this.tripOuvert.set(null);
+    if (m) this.partageOuvert.set(m);
   }
 
   protected basculer(m: DepotMissionDto): void {

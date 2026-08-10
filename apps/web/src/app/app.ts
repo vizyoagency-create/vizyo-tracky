@@ -9,6 +9,7 @@ import { PwaUpdateService } from './core/services/pwa-update.service';
 import { RealtimeService } from './core/services/realtime.service';
 import { ThemeService } from './core/theme/theme.service';
 import { ToastContainerComponent } from './shared/ui/toast/toast-container.component';
+import { estPagePublique } from './core/utils/page-publique';
 import { appliquerPlateforme } from './shared/utils/platform';
 import { UpdateRequiredModalComponent } from './shared/ui/update-required-modal/update-required-modal.component';
 
@@ -54,9 +55,18 @@ export class App implements OnInit {
 
     // Services transverses PWA/network : init avant la connexion realtime
     // pour qu'on dispose de l'etat de connectivite des le depart.
+    //
+    // ⚠️ RIEN DE TOUT CELA SUR LA PAGE PUBLIQUE DE SUIVI (lot A4). `installPrompt`
+    // compte les visites dans le localStorage et propose d'installer l'application ;
+    // `pwaUpdate` enregistre un service worker. Chez un destinataire anonyme, ce sont
+    // deux traces posées sur son appareil et une proposition qui n'a aucun sens — il
+    // ne vient pas installer une application de gestion de flotte, il regarde arriver
+    // son colis (A4 § 6). Le réseau, lui, reste utile : il ne pose rien.
     this.network.init();
-    this.installPrompt.init();
-    this.pwaUpdate.init();
+    if (!estPagePublique()) {
+      this.installPrompt.init();
+      this.pwaUpdate.init();
+    }
 
     const token = this.auth.token;
     // ⚠️ Espace dépôt (2026-08), lot A3 — PAS de socket de flotte pour un DEPOT.

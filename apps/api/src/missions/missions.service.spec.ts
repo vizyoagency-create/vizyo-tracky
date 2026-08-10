@@ -10,6 +10,7 @@ import {
 import type { AuthUser } from '../auth/types/auth-user';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MissionsService } from './missions.service';
 
@@ -95,6 +96,9 @@ describe('MissionsService — creation', () => {
         { provide: ConfigService, useValue: { get: () => 'https://app.exemple.fr' } },
         // Lot A3 — l'annulation previent les depots par le salon `depot:mission:<id>`.
         { provide: RealtimeGateway, useValue: { emitDepotMissionEnded: jest.fn() } },
+        // Lot A4 — la cloture ferme les liens publics de la mission. Un espion suffit :
+        // ce qui est teste ici est la BASCULE, pas la fermeture (qui a ses propres tests).
+        { provide: MissionShareService, useValue: { fermerLiensDeMission: jest.fn().mockResolvedValue(0) } },
       ],
     }).compile();
     service = moduleRef.get(MissionsService);

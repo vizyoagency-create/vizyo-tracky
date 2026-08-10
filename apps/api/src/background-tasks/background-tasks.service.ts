@@ -132,6 +132,13 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
+    id: 'mission-share-purge', label: 'Purge des liens de partage expirés', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:15', criticality: 'basse', antiOverlap: true,
+    note: 'Purge REELLE. Les 30 jours de conservation servent l\'audit : qui a ouvert cet accès, quand, combien de fois.',
+    purpose: 'Supprime les liens publics de suivi de mission expirés depuis plus de 30 jours (avec leurs empreintes d\'ouverture tronquées).',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 15 },
+  },
+  {
     id: 'trips-retention', label: 'Rétention des trajets (RGPD)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:45', criticality: 'moyenne', antiOverlap: false,
     note: 'Purge REELLE et irreversible. Pour stopper : TRIPS_RETENTION_MONTHS=0.',
