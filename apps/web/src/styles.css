@@ -168,6 +168,32 @@ body.plat-android {
   --texte-inactif: var(--text-secondary);
 }
 
+/* ─── Cibles tactiles : 44 px au doigt (lot B-pages) ────────────────────────
+ *
+ * Critère de recette commun à chaque page : « iPhone 390 px : cibles ≥ 44 px ».
+ * La sonde de recette a mesuré 36 à 39 px sur TOUTES les barres d'onglets de
+ * l'application — Véhicules, Groupes, Capacités, Mode privé, Géofences, Règles,
+ * Critiques… Aucune n'était fausse à la lecture : 36 px est une hauteur
+ * raisonnable à la souris, et c'est en la mesurant au doigt qu'elle devient
+ * fausse.
+ *
+ * La règle est GLOBALE et non par composant : ces barres sont une douzaine,
+ * écrites par autant d'écrans, et la prochaine sera écrite pareil. Une règle
+ * globale traverse l'encapsulation des composants et rattrape aussi celles à
+ * venir. Elle ne s'applique QUE sous 768 px : à la souris, 36 px suffisent et
+ * gardent les écrans denses lisibles.
+ */
+@media (max-width: 768px) {
+  .tab-btn,
+  .main-tab,
+  .bn-tab,
+  .vdx-tab,
+  .vdx-famille,
+  .sm-day-btn {
+    min-height: 44px;
+  }
+}
+
 /* ─── Espace dépôt (2026-08), lot A3 ─────────────────────────────────────────
  *
  * Le dépôt avait mesuré le problème en premier et s'était donné ses propres

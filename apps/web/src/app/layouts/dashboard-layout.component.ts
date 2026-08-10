@@ -882,8 +882,15 @@ interface NavGroup {
       /* Mobile : touch targets 44x44 minimum (Apple HIG iOS, materiel design Android).
          Sur l'ancien 36x36 le user reportait "trop petit pour mon doigt" + clics
          rates 2-3 fois (cible too small, finger covers the icon entirely). */
+      /* ⚠️ flex: none — mesuré, pas supposé. Le bouton DÉCLARAIT déjà 44 × 44, et il
+         n'en faisait que 18 de large sur un écran de 375 px : la barre du haut est une
+         rangée flex, le sélecteur de société y prend 156 px, et le burger — seul élément
+         sans flex-shrink: 0 — cédait tout le reste. Un CSS parfaitement correct à la
+         lecture, et la porte de toute la navigation mobile réduite à un trait.
+         C'est la sonde de recette qui l'a vu (critère : cibles ≥ 44 px). */
       .mobile-burger {
-        display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        flex: none; width: 44px; min-width: 44px; height: 44px; border-radius: 10px;
         background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
       }
       .mobile-burger:hover { background: var(--bg-tertiary) }

@@ -1283,6 +1283,29 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] Shell hors session — panneau droit conservé tel quel. Un seul changement : l'accroche passe de « Suivez et sécurisez votre flotte » à « Vous savez où sont vos véhicules. Et pourquoi ils s'arrêtent. »
 - [ ] **Décisions de plateforme, à ne pas revisiter** : iOS 5 onglets en bas, **pas de hamburger** (il concurrence le geste de retour) · Android tiroir M3, **pas de barre d'onglets** (les 3 boutons système occupent déjà le bas)
 
+**La sonde de recette — les critères mesurables, mesurés**
+
+> Posée au navigateur (lot B-pages, 2026-08-10). Elle vérifie ce que l'œil ne compte pas :
+> `scrollHeight === clientHeight` sur les colonnes `overflow:hidden`, les libellés tronqués
+> **sans recours** (ni `title` ni `aria-label`), les cibles sous 44 px à 375 px, et le
+> débordement horizontal. Les éléments décoratifs (`aria-hidden`, `sr-only`,
+> `pointer-events: none`) en sont exclus — sans quoi les faux positifs noient les vrais.
+
+- [x] **Le bouton de navigation mobile faisait 18 px de large.** Il DÉCLARAIT 44 × 44 ; la
+      barre du haut est une rangée flex, le sélecteur de société y prend 156 px, et le
+      burger — seul élément sans `flex-shrink: 0` — cédait tout le reste. Un CSS correct à
+      la lecture, et la porte de toute la navigation mobile réduite à un trait
+- [x] **Le nom de société tronqué n'était récupérable nulle part** : « CDEF 31 — Centre Dép.
+      de l'Enfant et de la Famille » perdait 117 px, sans `title` ni `aria-label`. Une
+      ellipse cache une information ; sans recours, elle la supprime
+- [x] **Toutes les barres d'onglets étaient à 36 px** — Véhicules, Groupes, Capacités, Mode
+      privé, Géofences, Règles… Règle globale sous 768 px : elles traversent l'encapsulation
+      des composants, et rattrapent aussi celles à venir. Vérifié : 44 px sur les cinq
+      onglets de `/vehicles`
+- [ ] **Reste, mesuré page par page** : tableau de bord 5 cibles sous 44 · alertes 19 ·
+      rapports 232 (tableau dense, boutons par ligne). Plus le shell : avatar 40 px, logo
+      36 px, « Personnaliser » 37 px. Et `/login` : « Afficher le mot de passe » 26 × 36
+
 **Critères de recette, à passer sur chaque page**
 - [ ] Aucun style en ligne recopié d'une maquette
 - [ ] Icônes issues de `design/ICONS.md`, aucune inventée
