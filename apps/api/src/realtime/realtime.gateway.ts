@@ -79,7 +79,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       scope = [...accessible].sort().join(',');
     } else {
       this.logger.warn(
-        `[ws] perimetre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
+        `[ws] périmètre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
       );
       scope = 'INCONNU';
     }
@@ -109,7 +109,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return (explicit ? { ...defaults, ...explicit } : defaults).alerts_view === true;
     } catch (err) {
       this.logger.warn(
-        `[ws] verification alerts_view impossible pour ${user.id.slice(0, 8)} — salon d'alerte refuse: ${err instanceof Error ? err.message : err}`,
+        `[ws] vérification alerts_view impossible pour ${user.id.slice(0, 8)} — salon d'alerte refusé : ${err instanceof Error ? err.message : err}`,
       );
       return false;
     }
@@ -159,7 +159,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return await this.vehicleAccess.getAccessibleVehicleIds(user as never);
     } catch (err) {
       this.logger.warn(
-        `[ws] perimetre vehicule illisible pour ${user.id.slice(0, 8)} — aucun live: ${err instanceof Error ? err.message : err}`,
+        `[ws] périmètre véhicule illisible pour ${user.id.slice(0, 8)} — aucun live: ${err instanceof Error ? err.message : err}`,
       );
       return [];
     }
@@ -355,7 +355,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * handshake : un user SUSPENDU (isActive=false) ou SUPPRIME continuait de recevoir
    * le live de sa flotte tant que sa socket tenait. Toutes les 60s on coupe les
    * sockets dont l'user n'est plus actif (1 requete DB sur les userIds connectes,
-   * en local a cette instance).
+   * en local à cette instance).
    *
    * Choix delibere : on NE deconnecte PAS sur simple expiration du token. L'user
    * reste legitime ; le forcer a se reconnecter a chaque TTL creerait du churn et
@@ -393,7 +393,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       for (const [userId, userSockets] of byUser) {
         if (!stillActive.has(userId)) {
           for (const socket of userSockets) {
-            this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
+            this.logger.warn(`Revalidation WS: déconnexion ${socket.id} (user ${userId} inactif/supprimé)`);
             socket.disconnect();
           }
           continue;
@@ -420,7 +420,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           // On ne coupe PAS sur une erreur de calcul : deconnecter sur un doute
           // transformerait un incident de lecture en interruption de service.
           this.logger.warn(
-            `[ws] empreinte de perimetre incalculable pour ${userId.slice(0, 8)} — socket conservee: ${err instanceof Error ? err.message : err}`,
+            `[ws] empreinte de périmètre incalculable pour ${userId.slice(0, 8)} — socket conservee: ${err instanceof Error ? err.message : err}`,
           );
           continue;
         }
@@ -431,7 +431,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           // laisse vivre plutot que de deconnecter tout le monde au premier deploiement.
           if (previous === undefined || previous === key) continue;
           this.logger.warn(
-            `Revalidation WS: deconnexion ${socket.id} (perimetre modifie pour ${userId}) — le client se reconnectera sur les bons salons`,
+            `Revalidation WS: déconnexion ${socket.id} (périmètre modifie pour ${userId}) — le client se reconnectera sur les bons salons`,
           );
           socket.disconnect();
         }
@@ -508,7 +508,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       }
     } catch (err) {
       this.logger.warn(
-        `[ws] aiguillage depot ignore (${err instanceof Error ? err.message : err})`,
+        `[ws] aiguillage dépôt ignoré (${err instanceof Error ? err.message : err})`,
       );
     }
   }

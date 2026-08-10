@@ -191,13 +191,13 @@ export class MissionShareService {
       },
     });
     // Inconnu et hors perimetre donnent le MEME refus (regle d'A1 § 3).
-    if (!lien) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!lien) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const estDepot = utilisateur.role === UserRole.DEPOT;
     const autorise = estDepot
       ? lien.mission.depotUserId === utilisateur.id
       : lien.mission.fleetId === utilisateur.fleetId;
-    if (!autorise) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!autorise) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     // Idempotent : revoquer deux fois n'est pas une erreur, c'est le meme resultat.
     if (lien.revokedAt) return;
@@ -427,7 +427,7 @@ export class MissionShareService {
       },
       select: { id: true, ref: true, fleetId: true, endAt: true, status: true },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
     return mission;
   }
 

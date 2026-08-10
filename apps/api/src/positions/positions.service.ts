@@ -104,7 +104,7 @@ export class PositionsService {
     // physiquement connecte (Tracker.accConnected = false). Sans signal ACC,
     // on infere ignition depuis la vitesse GPS : >3 km/h => moteur forcement ON.
     // Le seuil 3 km/h s'aligne sur PositionSamplingService.MOVING_SPEED_KMH
-    // pour rester coherent avec la classification d'etat.
+    // pour rester coherent avec la classification d'état.
     //
     // A vitesse <= 3 : on garde l'etat precedent (lastKnownIgnition). Le passage
     // a OFF se fera via le cron IgnitionInferredCleanupService (P3) qui tournera
@@ -154,7 +154,7 @@ export class PositionsService {
     // les trips et les rapports de distance.
     //
     // On les detecte ICI (avant toute denormalisation) et on les traite comme NON
-    // AUTORITAIRES : seule la liveness (lastSeenAt/status) est mise a jour. Pas de
+    // AUTORITAIRES : seule la liveness (lastSeenAt/status) est mise à jour. Pas de
     // denorm position (sinon le fantome empoisonne la baseline du prochain calcul
     // de distance), pas de sampling, pas de trip, pas de broadcast — et surtout
     // pas de maj ignition (un fantome ignition=false declencherait un faux
@@ -245,7 +245,7 @@ export class PositionsService {
     }
 
     // V1.4 (Sprint 1 — hydratation au login) : denormalisation derniere position
-    // connue. Mise a jour seulement quand la trame GPS est valide pour ne pas
+    // connue. Mise à jour seulement quand la trame GPS est valide pour ne pas
     // ecraser une position fraiche par un fix degrade.
     if (frame.valid) {
       trackerUpdate.lastLat = frame.latitude;
@@ -618,7 +618,7 @@ export class PositionsService {
       // pour ne pas leak l'existence du vehicule.
       const vehicleWhere: Prisma.VehicleWhereInput = { id: filters.vehicleId };
       if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-        if (!requestedBy.fleetId) throw new NotFoundException('Vehicule introuvable');
+        if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
         vehicleWhere.fleetId = requestedBy.fleetId;
       }
       if (scopedIds) vehicleWhere.id = { in: scopedIds.includes(filters.vehicleId) ? [filters.vehicleId] : [] };
@@ -626,7 +626,7 @@ export class PositionsService {
         where: vehicleWhere,
         include: { tracker: true },
       });
-      if (!vehicle) throw new NotFoundException('Vehicule introuvable');
+      if (!vehicle) throw new NotFoundException('Véhicule introuvable');
       if (!vehicle.tracker) return { items: [], nextCursor: null };
       trackerId = vehicle.tracker.id;
     }

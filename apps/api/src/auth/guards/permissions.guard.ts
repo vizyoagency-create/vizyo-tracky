@@ -64,7 +64,7 @@ export class PermissionsGuard implements CanActivate {
     // Bypass total pour les admins (cf. doc service).
     if (user.role === UserRole.SUPER_ADMIN || user.role === UserRole.FLEET_ADMIN) return true;
 
-    // 1) Verifier les permissions per-vehicle si present.
+    // 1) Vérifier les permissions per-vehicle si present.
     if (requiredVehicle) {
       const vehicleId = await this.extractVehicleId(req, requiredVehicle.paramName);
       for (const key of requiredVehicle.keys) {
@@ -75,7 +75,7 @@ export class PermissionsGuard implements CanActivate {
       }
     }
 
-    // 2) Verifier les permissions globales si present.
+    // 2) Vérifier les permissions globales si present.
     if (required && required.length > 0) {
       for (const key of required) {
         const ok = await this.resolver.canGlobally(user, key);
@@ -106,7 +106,7 @@ export class PermissionsGuard implements CanActivate {
 
     if (!raw) {
       throw new BadRequestException(
-        `Parametre ${paramName} requis pour verifier la permission`,
+        `Paramètre ${paramName} requis pour vérifier la permission`,
       );
     }
 

@@ -75,7 +75,7 @@ export class DepotTripService {
         trips: { select: { id: true }, orderBy: { startedAt: 'desc' }, take: 1 },
       },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const trajet = mission.trips[0];
     if (trajet) return this.trip(userId, trajet.id);
@@ -148,7 +148,7 @@ export class DepotTripService {
       },
     });
     // Inconnu et hors perimetre donnent le MEME refus (A1 § 3).
-    if (!trip?.mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!trip?.mission) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const m = trip.mission;
     const debut = trip.startedAt;

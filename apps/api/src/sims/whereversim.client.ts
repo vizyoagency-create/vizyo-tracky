@@ -137,7 +137,7 @@ export class WhereverSimClient {
       throw new ServiceUnavailableException(`WhereverSIM HTTP ${res.status}`);
     }
     if (!body) {
-      throw new ServiceUnavailableException('WhereverSIM : reponse non-JSON');
+      throw new ServiceUnavailableException('WhereverSIM : réponse non-JSON');
     }
     if (body.errors && body.errors.length > 0) {
       const msg = body.errors.map((e) => e.message ?? 'erreur').join('; ');
@@ -145,7 +145,7 @@ export class WhereverSimClient {
       throw new ServiceUnavailableException(`WhereverSIM : ${msg}`);
     }
     if (body.data === undefined) {
-      throw new ServiceUnavailableException('WhereverSIM : reponse vide');
+      throw new ServiceUnavailableException('WhereverSIM : réponse vide');
     }
     return body.data;
   }

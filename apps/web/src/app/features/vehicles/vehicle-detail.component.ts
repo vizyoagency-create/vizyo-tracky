@@ -769,7 +769,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
             </div>
 
             @if (orphanTrackers().length === 0) {
-              <p class="text-xs text-fg-tertiary text-center py-3">Aucun tracker orphelin — saisissez l'IMEI ci-dessus pour en creer un.</p>
+              <p class="text-xs text-fg-tertiary text-center py-3">Aucun tracker orphelin — saisissez l'IMEI ci-dessus pour en créer un.</p>
             } @else {
               <p class="text-xs text-fg-tertiary mb-2">Ou assigner un tracker existant :</p>
               <div class="flex flex-col gap-2 max-h-60 overflow-y-auto">
@@ -954,10 +954,12 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-stat-coord { font-family: var(--font-mono, monospace); font-size: .66rem; color: var(--fg-tertiary); margin-top: 2px; }
     .vdx-stat-live { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .68rem; font-weight: 700; color: var(--fg-tertiary); }
     .vdx-stat-live--on { color: var(--tracky-light); }
-    /* DORMANCE — ambre brûlé, identique au badge « Dormant » (source unique : connectivityMeta).
-       Le liseré ambre sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ». */
-    .vdx-stat-live--dormant { color: #d97706; }
-    .vdx-stat--stale { border-color: rgba(217,119,6,.35); }
+    /* DORMANCE — violet, identique au badge « Dormant » (source unique : connectivityMeta).
+       Le liseré sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ».
+       La valeur SUIT le badge : les deux se lisent côte à côte sur la même fiche, une
+       divergence de teinte s'y verrait comme deux états différents. */
+    .vdx-stat-live--dormant { color: var(--texte-violet); }
+    .vdx-stat--stale { border-color: color-mix(in srgb, var(--texte-violet) 35%, transparent); }
     .vdx-stale-v { color: var(--fg-tertiary); font-weight: 700; }
     .vdx-stat-stale { margin-top: 4px; font-size: .64rem; line-height: 1.35; color: var(--fg-tertiary); font-style: italic; }
     .vdx-live-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
@@ -1792,7 +1794,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly imeiCopied = signal(false);
   /**
    * Copie l'IMEI complet dans le presse-papier et affiche un check pendant 1.5s.
-   * `navigator.clipboard.writeText` echoue parfois (NotAllowedError sans interaction
+   * `navigator.clipboard.writeText` échoué parfois (NotAllowedError sans interaction
    * utilisateur consideree "trustworthy", contextes HTTP non secure, focus perdu) :
    * fallback sur la technique `document.execCommand('copy')` via textarea cache.
    */
@@ -2632,13 +2634,13 @@ export class VehicleDetailComponent implements OnInit {
       );
       this.editingNoteTripId.set(null);
       this.editingNoteText = '';
-      this.toast.success('Note enregistree');
+      this.toast.success('Note enregistrée');
     } catch (err) {
       swallow('vehicle-detail:saveTripNote', err);
       const msg = err instanceof HttpErrorResponse
         ? err.error?.message ?? 'Erreur inconnue'
         : err instanceof Error ? err.message : 'Erreur inconnue';
-      this.toast.error('Echec enregistrement note', msg);
+      this.toast.error('Échec enregistrement note', msg);
     } finally {
       this.savingNote.set(false);
     }
@@ -2779,7 +2781,7 @@ export class VehicleDetailComponent implements OnInit {
 
   /**
    * Callback du picker. driver=null => retire l'assignation. Sinon affecte
-   * et met a jour le signal vehicle local pour refleter l'etat sans re-fetch.
+   * et met a jour le signal vehicle local pour refleter l'état sans re-fetch.
    */
   protected async onDriverPicked(driver: DriverDto | null): Promise<void> {
     const v = this.vehicle();
@@ -2800,7 +2802,7 @@ export class VehicleDetailComponent implements OnInit {
       );
     } catch (err) {
       swallow('vehicle-detail:onDriverPicked', err);
-      this.toast.error('Echec assignation', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec assignation', err instanceof HttpErrorResponse ? err.error?.message : '');
     } finally {
       this.assigningDriver.set(false);
     }

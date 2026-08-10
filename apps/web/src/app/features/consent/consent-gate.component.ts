@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { LucideAngularModule, ShieldCheck } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { ConsentService } from '../../core/services/consent.service';
+import { PortesAccesService } from '../../core/services/portes-acces.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { LogoComponent } from '../../shared/ui/logo/logo.component';
@@ -28,7 +29,10 @@ const LEGAL_URL = 'https://tracky.vizyoagency.com/mentions-legales.html';
             <span class="cg-badge"><lucide-icon [img]="ShieldCheck" [size]="22"></lucide-icon></span>
             <div>
               <h1 id="cg-title" class="cg-title">Bienvenue sur Vizyo Tracky</h1>
-              <p class="cg-sub">Un instant avant de démarrer</p>
+              <p class="cg-sub">
+                @if (portes.libelle('consentement'); as rang) { {{ rang }} · }
+                Un instant avant de démarrer
+              </p>
             </div>
             <app-logo variant="icon" [size]="26" class="cg-logo" />
           </div>
@@ -116,6 +120,8 @@ const LEGAL_URL = 'https://tracky.vizyoagency.com/mentions-legales.html';
 })
 export class ConsentGateComponent {
   readonly consent = inject(ConsentService);
+  /** Le rang de cette porte dans la file — calculé, jamais écrit (lot B0′). */
+  readonly portes = inject(PortesAccesService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly realtime = inject(RealtimeService);

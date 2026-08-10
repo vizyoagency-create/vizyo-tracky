@@ -115,8 +115,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <div class="flex-1 min-w-[200px]">
           <div class="text-sm font-semibold text-fg-primary">Mode verbose (debugging)</div>
           <div class="text-xs text-fg-tertiary mt-0.5">
-            Force la persistance de chaque trame entrante pendant la duree choisie. Utile pour
-            diagnostiquer un boitier qui semble mal sample.
+            Force la persistance de chaque trame entrante pendant la durée choisie. Utile pour
+            diagnostiquer un boîtier qui semble mal sample.
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -138,7 +138,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       <!-- Repartition par etat -->
       @if (stats() && stats()!.byState.length > 0) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <h2 class="text-sm font-semibold text-fg-primary mb-3">Repartition par etat</h2>
+          <h2 class="text-sm font-semibold text-fg-primary mb-3">Repartition par état</h2>
           <div class="flex flex-col gap-2">
             @for (row of stats()!.byState; track row.state) {
               <div class="flex items-center gap-3 text-sm">
@@ -161,7 +161,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       <!-- Histogramme par heure -->
       @if (histogram().length > 0) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <h2 class="text-sm font-semibold text-fg-primary mb-3">Activite par heure (7 derniers jours)</h2>
+          <h2 class="text-sm font-semibold text-fg-primary mb-3">Activité par heure (7 derniers jours)</h2>
           <div class="flex items-end gap-0.5 h-32 overflow-x-auto">
             @for (b of histogram(); track b.hour) {
               <div class="flex flex-col gap-0.5 min-w-[6px]" [title]="bucketTooltip(b)">
@@ -231,7 +231,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       } @else if (!loading()) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8 text-center text-sm text-fg-tertiary">
           <lucide-icon [img]="Clock" [size]="32" class="mx-auto mb-2 opacity-40"></lucide-icon>
-          Aucune decision de sampling enregistree pour ce tracker dans la fenetre.
+          Aucune décision de sampling enregistrée pour ce tracker dans la fenêtre.
         </div>
       }
     </div>
@@ -291,7 +291,7 @@ export class AdminSamplingComponent implements OnInit {
       this.recentDecisions.set(recent.items);
     } catch (err: unknown) {
       swallow('admin-sampling:reload', err);
-      this.toast.error('Echec du chargement des stats sampling');
+      this.toast.error('Échec du chargement des stats sampling');
     } finally {
       this.loading.set(false);
     }
@@ -307,11 +307,11 @@ export class AdminSamplingComponent implements OnInit {
           `Mode verbose actif jusqu'a ${new Date(result.verboseUntil).toLocaleString('fr-FR')}`,
         );
       } else {
-        this.toast.success('Mode verbose desactive');
+        this.toast.success('Mode verbose désactivé');
       }
     } catch (err) {
       swallow('admin-sampling:applyVerbose', err);
-      this.toast.error('Echec de la mise a jour du mode verbose');
+      this.toast.error('Échec de la mise à jour du mode verbose');
     }
   }
 

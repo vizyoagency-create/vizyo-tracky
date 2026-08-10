@@ -26,7 +26,7 @@ export class LogCleanupService {
     try {
       await this.cleanupLogs();
     } catch (err) {
-      this.logger.error(`Log cleanup a echoue: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`Log cleanup a échoué: ${err instanceof Error ? err.message : String(err)}`);
       this.errorLogger?.recordBackground(err instanceof Error ? err : new Error(String(err)), 'cron:log-cleanup');
     }
   }

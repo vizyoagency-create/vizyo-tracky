@@ -61,12 +61,12 @@ const AUTO_APPLY_DELAY_MS = 5000;
                 id="update-modal-title"
                 class="text-lg sm:text-xl font-display font-semibold text-fg-primary"
               >
-                Mise a jour disponible
+                Mise à jour disponible
               </h2>
               <p id="update-modal-desc" class="text-sm text-fg-secondary mt-1.5 leading-relaxed">
-                Une nouvelle version de Vizyo Tracky est prete. Pour continuer
+                Une nouvelle version de Vizyo Tracky est prête. Pour continuer
                 avec les dernieres ameliorations et correctifs, l'application
-                doit etre rafraichie.
+                doit être rafraichie.
               </p>
             </div>
           </div>
@@ -86,7 +86,7 @@ const AUTO_APPLY_DELAY_MS = 5000;
                 class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
                 aria-hidden="true"
               ></span>
-              Mise a jour en cours...
+              Mise à jour en cours...
             } @else {
               <lucide-icon [img]="Download" [size]="18" aria-hidden="true"></lucide-icon>
               Mettre a jour maintenant
@@ -97,7 +97,7 @@ const AUTO_APPLY_DELAY_MS = 5000;
                L'utilisateur peut cliquer le bouton pour zapper l'attente. -->
           @if (!loading() && countdownSec() > 0) {
             <p class="text-xs text-fg-tertiary text-center mt-3">
-              Mise a jour automatique dans {{ countdownSec() }}s
+              Mise à jour automatique dans {{ countdownSec() }}s
             </p>
             <div class="mt-2 h-1 rounded-full bg-bg-tertiary overflow-hidden">
               <div

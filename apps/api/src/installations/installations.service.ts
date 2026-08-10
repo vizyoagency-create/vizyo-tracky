@@ -263,7 +263,7 @@ export class InstallationsService {
         provisioned = true;
       } catch (err) {
         provisionError = err instanceof Error ? err.message : 'Provisioning échoué';
-        this.logger.warn(`Provisioning tache ${taskId} echoue: ${provisionError}`);
+        this.logger.warn(`Provisioning tâche ${taskId} échoué: ${provisionError}`);
       }
     }
 

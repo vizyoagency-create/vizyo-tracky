@@ -57,7 +57,7 @@ export class MissionStatusService {
     } catch (err) {
       // Une tache de fond qui leve tue l'ordonnanceur pour toutes les suivantes.
       this.logger.error(
-        `Bascule des statuts de mission en echec : ${err instanceof Error ? err.message : err}`,
+        `Bascule des statuts de mission en échec : ${err instanceof Error ? err.message : err}`,
       );
     } finally {
       this.enCours = false;

@@ -944,8 +944,8 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
           <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled">
             <p class="nc-block-title">Quelles familles de notifications ?</p>
             <p class="nc-block-desc">
-              Le reglage le plus large : il decide des grandes familles. Les reglages
-              suivants n'affinent que les alertes vehicule.
+              Le réglage le plus large : il decide des grandes familles. Les réglages
+              suivants n'affinent que les alertes véhicule.
             </p>
             @for (c of categories(); track c.key) {
               <div class="nc-row">

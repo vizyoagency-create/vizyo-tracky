@@ -95,7 +95,7 @@ export class PartnerOutboxService {
       });
       // WARN et pas ERROR : le partenaire injoignable est un cas NORMAL que les
       // deux autres chemins de révocation couvrent déjà.
-      this.logger.warn(`Webhook ${event.type} en echec (tentative ${attempts}/${MAX_ATTEMPTS})`);
+      this.logger.warn(`Webhook ${event.type} en échec (tentative ${attempts}/${MAX_ATTEMPTS})`);
     }
   }
 }

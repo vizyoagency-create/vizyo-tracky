@@ -116,7 +116,7 @@ export class DepotDocumentsService {
       where: { id: userId },
       select: { preferences: true },
     });
-    if (!compte) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!compte) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -139,13 +139,13 @@ export class DepotDocumentsService {
    */
   async missionDuBon(userId: string, documentId: string): Promise<{ id: string; ref: string }> {
     const missionId = documentId.startsWith('note:') ? documentId.slice(5) : null;
-    if (!missionId) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!missionId) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const mission = await this.prisma.mission.findFirst({
       where: { id: missionId, depotUserId: userId, status: MissionStatus.DONE },
       select: { id: true, ref: true },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
     return mission;
   }
 

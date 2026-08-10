@@ -6,7 +6,7 @@ import { MeProfile, UsersApiService } from './users.service';
  *
  * Active automatiquement au premier login si `User.onboardingCompletedAt = null`.
  * Le DashboardLayoutComponent consomme `shouldShow` et rend le wizard en
- * overlay plein ecran. Skippable : le user peut fermer le wizard a tout moment,
+ * overlay plein ecran. Skippable : le user peut fermer le wizard à tout moment,
  * mais la signal `shouldShow` repassera a true au prochain login tant que
  * `markComplete()` n'a pas ete appele.
  */

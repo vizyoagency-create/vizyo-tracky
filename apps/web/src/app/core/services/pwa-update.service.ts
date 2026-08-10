@@ -29,7 +29,7 @@ export class PwaUpdateService {
 
   /** Signal lu par la modale bloquante au root. */
   readonly updateAvailable = signal(false);
-  /** Vrai pendant l'activation/reload, pour afficher l'etat "Mise a jour en cours". */
+  /** Vrai pendant l'activation/reload, pour afficher l'etat "Mise à jour en cours". */
   readonly applying = signal(false);
 
   init(): void {
@@ -47,7 +47,7 @@ export class PwaUpdateService {
       this.sw.checkForUpdate().catch(() => { /* silent */ });
     }, CHECK_INTERVAL_MS);
 
-    // Verifier au premier focus apres lancement
+    // Vérifier au premier focus apres lancement
     this.sw.checkForUpdate().catch(() => { /* silent */ });
 
     // Re-verifier des que l'utilisateur revient sur l'app (PWA mobile :

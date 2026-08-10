@@ -174,7 +174,7 @@ export class AuthClientService {
       // masque pendant des mois le 403 « publicId dans le chemin » — l'ecran
       // affichait « aucun utilisateur » au lieu de signaler une erreur.
       this.logger.error(
-        `listAppUsers a echoue — retour d'une liste VIDE (ce n'est PAS « aucun utilisateur »): ${
+        `listAppUsers a échoué — retour d'une liste VIDE (ce n'est PAS « aucun utilisateur »): ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

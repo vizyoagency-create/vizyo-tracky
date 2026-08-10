@@ -57,7 +57,7 @@ export class DepotScopeGuard implements CanActivate {
     // Default-deny volontaire — l'oubli d'un decorateur ne doit pas ouvrir la route.
     // C'est la difference entre « je n'ai pas pense a ce cas » et « j'ai ouvert ce cas ».
     if (!spec) {
-      throw new ForbiddenException('Ressource hors de votre perimetre');
+      throw new ForbiddenException('Ressource hors de votre périmètre');
     }
 
     if (spec.kind === 'none') return true;
@@ -65,12 +65,12 @@ export class DepotScopeGuard implements CanActivate {
     const id = this.extraireParametre(req, spec.paramName);
     if (!id) {
       // Parametre absent : on refuse, sans distinguer du hors-perimetre.
-      throw new ForbiddenException('Ressource hors de votre perimetre');
+      throw new ForbiddenException('Ressource hors de votre périmètre');
     }
 
     const autorise = await this.verifier(spec.kind, user.id, id);
     if (!autorise) {
-      throw new ForbiddenException('Ressource hors de votre perimetre');
+      throw new ForbiddenException('Ressource hors de votre périmètre');
     }
 
     return true;

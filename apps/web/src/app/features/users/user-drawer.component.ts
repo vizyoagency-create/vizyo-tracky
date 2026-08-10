@@ -89,7 +89,7 @@ export interface UserDrawerResult {
               <section>
                 <h3 class="section-title">Inviter un utilisateur</h3>
                 <p class="text-xs text-fg-tertiary mb-3">
-                  Un email d'invitation sera envoye. L'utilisateur pourra creer son mot de passe et renseigner ses informations.
+                  Un email d'invitation sera envoyé. L'utilisateur pourra créer son mot de passe et renseigner ses informations.
                 </p>
                 <div class="space-y-3">
                   <div>

@@ -99,7 +99,7 @@ export class UsersController {
     @Body() dto: { uiMode?: 'tracky' | 'baanool' },
   ) {
     if (dto.uiMode !== undefined && dto.uiMode !== 'tracky' && dto.uiMode !== 'baanool') {
-      throw new BadRequestException('uiMode doit etre "tracky" ou "baanool"');
+      throw new BadRequestException('uiMode doit être "tracky" ou "baanool"');
     }
     const current = await this.prisma.user.findUnique({
       where: { id: req.user.id },
@@ -122,7 +122,7 @@ export class UsersController {
     @Body() dto: { firstName?: string; lastName?: string; phone?: string | null; escalationContactUserId?: string | null },
   ) {
     if (dto.phone && !/^\+\d{6,15}$/.test(dto.phone)) {
-      throw new BadRequestException('Numero de telephone doit etre au format E.164 (ex: +33612345678)');
+      throw new BadRequestException('Numéro de téléphone doit être au format E.164 (ex: +33612345678)');
     }
     if (dto.escalationContactUserId) {
       const target = await this.prisma.user.findUnique({
@@ -131,10 +131,10 @@ export class UsersController {
       });
       if (!target) throw new NotFoundException('Contact d\'escalade introuvable');
       if (req.user.role !== UserRole.SUPER_ADMIN && target.fleetId !== req.user.fleetId) {
-        throw new ForbiddenException('Le contact d\'escalade doit etre dans la meme flotte');
+        throw new ForbiddenException('Le contact d\'escalade doit être dans la même flotte');
       }
       if (target.id === req.user.id) {
-        throw new BadRequestException('Le contact d\'escalade ne peut pas etre vous-meme');
+        throw new BadRequestException('Le contact d\'escalade ne peut pas être vous-même');
       }
     }
     return this.prisma.user.update({
@@ -627,7 +627,7 @@ export class UsersController {
 
     // Impossible de s'archiver soi-meme
     if (user.id === req.user.id) {
-      throw new ForbiddenException('Impossible de s\'archiver soi-meme');
+      throw new ForbiddenException('Impossible de s\'archiver soi-même');
     }
 
     // 1. Suspendre dans Vizyo Auth (plus de login possible)
@@ -809,7 +809,7 @@ export class UsersController {
 
     if (entries.length === 0) {
       throw new BadRequestException(
-        'Au moins une entree d\'acces requise (ALL, GROUP, ou VEHICLE)',
+        'Au moins une entrée d\'accès requise (ALL, GROUP, ou VEHICLE)',
       );
     }
 
@@ -869,7 +869,7 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
   ) {
     await this.assertTargetVisible(userId, req);
-    // 1. Verifier que l'user cible est dans la fleet du caller (defense en profondeur)
+    // 1. Vérifier que l'user cible est dans la fleet du caller (defense en profondeur)
     const userWhere: Prisma.UserWhereInput = { id: userId };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
       if (!req.user.fleetId) throw new NotFoundException('User not found');
@@ -878,7 +878,7 @@ export class UsersController {
     const targetUser = await this.prisma.user.findFirst({ where: userWhere });
     if (!targetUser) throw new NotFoundException('User not found');
 
-    // 2. Verifier que la ligne d'acces appartient bien a ce user
+    // 2. Vérifier que la ligne d'acces appartient bien a ce user
     const entry = await this.prisma.userVehicleAccess.findFirst({
       where: { id: accessId, userId },
     });
@@ -926,7 +926,7 @@ export class UsersController {
     const totalEntries = await this.prisma.userVehicleAccess.count({ where: { userId } });
     if (totalEntries <= 1) {
       throw new BadRequestException(
-        'Impossible de supprimer la derniere entree d\'acces. Utilisez d\'abord PUT /users/:id/access pour reconfigurer.',
+        'Impossible de supprimer la dernière entrée d\'accès. Utilisez d\'abord PUT /users/:id/access pour reconfigurer.',
       );
     }
 
@@ -963,10 +963,10 @@ export class UsersController {
     // Validation structurelle : GROUP requiert groupId, VEHICLE requiert vehicleId
     for (const entry of entries) {
       if (entry.type === 'GROUP' && !entry.groupId) {
-        throw new BadRequestException('groupId requis pour une entree type GROUP');
+        throw new BadRequestException('groupId requis pour une entrée type GROUP');
       }
       if (entry.type === 'VEHICLE' && !entry.vehicleId) {
-        throw new BadRequestException('vehicleId requis pour une entree type VEHICLE');
+        throw new BadRequestException('vehicleId requis pour une entrée type VEHICLE');
       }
     }
 
@@ -998,7 +998,7 @@ export class UsersController {
       });
       if (found.length !== vehicleIds.length) {
         throw new BadRequestException(
-          'Un ou plusieurs vehicules n\'appartiennent pas a la flotte de cet utilisateur',
+          'Un ou plusieurs véhicules n\'appartiennent pas a la flotte de cet utilisateur',
         );
       }
     }
@@ -1152,7 +1152,7 @@ export class UsersController {
     const ok = await this.accountSync.applyStatus(user.authUserId, user.isActive, `realign:${user.email}`);
     if (!ok) {
       throw new BadRequestException(
-        'Vizyo Auth a refuse la mise a jour. Le detail est dans le centre d\'alerte.',
+        'Vizyo Auth a refusé la mise à jour. Le détail est dans le centre d\'alerte.',
       );
     }
     return { ok: true, applied: user.isActive ? 'active' : 'suspended' };

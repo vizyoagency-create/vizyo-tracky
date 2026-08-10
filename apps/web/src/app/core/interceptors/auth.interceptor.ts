@@ -53,7 +53,7 @@ export function shouldAnnounce(status: number): boolean {
 function notifySessionExpired(toast: ToastService): void {
   if (sessionExpiredToastShown) return;
   sessionExpiredToastShown = true;
-  toast.error('Session expiree', 'Reconnectez-vous pour continuer.');
+  toast.error('Session expirée', 'Reconnectez-vous pour continuer.');
   // Reset apres 5s (au cas ou le user revient sans recharger, ex: redirection retardee).
   setTimeout(() => { sessionExpiredToastShown = false; }, 5_000);
 }

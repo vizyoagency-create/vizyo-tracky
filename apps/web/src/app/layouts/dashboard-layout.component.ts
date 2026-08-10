@@ -82,7 +82,7 @@ interface NavGroup {
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
-          Hors-ligne — les donnees affichees datent de votre derniere session
+          Hors-ligne — les données affichees datent de votre dernière session
         </div>
       }
 
@@ -918,7 +918,7 @@ export class DashboardLayoutComponent {
   protected readonly isBaanoolMode = computed(() =>
     this.auth.user()?.preferences?.uiMode === 'baanool',
   );
-  /** URL courante (mise a jour via NavigationEnd) — utilisee pour ne montrer
+  /** URL courante (mise à jour via NavigationEnd) — utilisee pour ne montrer
    *  l'overlay Baanool QUE sur la page /map. */
   protected readonly currentUrl = signal('');
   protected readonly isBaanoolMapPage = computed(() =>
@@ -1214,7 +1214,7 @@ export class DashboardLayoutComponent {
       // ⚠️ ECRAN SANS CHEMIN DE RETOUR (audit du 2026-08-03).
       //
       // Le client consent au partage partenaire depuis un lien d'e-mail, sur un ecran qui
-      // promet « vous pouvez le couper a tout moment ». La route existait et etait gardee,
+      // promet « vous pouvez le couper à tout moment ». La route existait et etait gardee,
       // mais AUCUN lien de l'application n'y menait : passe le mail, la seule facon d'y
       // revenir etait de connaitre l'URL. Une promesse de reversibilite sans porte de
       // sortie n'est pas une promesse.

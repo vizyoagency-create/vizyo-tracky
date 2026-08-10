@@ -1787,7 +1787,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return agg ? agg.speeds : this.trips().map((t) => this.clampSpeed(t.maxSpeed));
   });
 
-  /** Matrice 7×24 (lun→dim, 0h→23h) du nombre de trajets demarres a cette case horaire. */
+  /** Matrice 7×24 (lun→dim, 0h→23h) du nombre de trajets demarres à cette case horaire. */
   protected readonly heatmapData = computed<number[][]>(() => {
     const agg = this.periodCharts();
     if (agg) return agg.heatmap;
@@ -1913,7 +1913,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Resout la plaque d'un vehicule a partir de son id, via la liste deja
+   * Resout la plaque d'un vehicule à partir de son id, via la liste deja
    * chargee `vehicles()`. Retourne `null` si non trouve (vehicule pas encore
    * charge ou supprime). Affiche dans le tableau sous la date de depart.
    */
@@ -2330,7 +2330,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   /**
    * Reaffectation du conducteur sur un trip. driver=null => retire.
-   * Met a jour la ligne dans la table sans re-fetch + le replay si meme trip.
+   * Met a jour la ligne dans la table sans re-fetch + le replay si même trip.
    */
   protected async onDriverPickedForTrip(driver: DriverDto | null): Promise<void> {
     const trip = this.driverPickerTrip();
@@ -2349,7 +2349,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       );
     } catch (err) {
       swallow('reports:onDriverPickedForTrip', err);
-      this.toast.error('Echec affectation', err instanceof Error ? err.message : '');
+      this.toast.error('Échec affectation', err instanceof Error ? err.message : '');
     }
   }
 

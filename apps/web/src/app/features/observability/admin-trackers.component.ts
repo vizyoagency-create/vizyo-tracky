@@ -211,7 +211,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
                           Detacher
                         </button>
                       } @else {
-                        <button (click)="startAssign(t)" title="Assigner a un vehicule"
+                        <button (click)="startAssign(t)" title="Assigner a un véhicule"
                                 class="text-xs text-tracky-light hover:text-emerald-300 flex items-center gap-1">
                           <lucide-icon [img]="LinkIcon" [size]="12"></lucide-icon>
                           Assigner
@@ -250,7 +250,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
               </button>
             </div>
             <div class="relative mb-4">
-              <input type="text" placeholder="Rechercher un vehicule (plaque)..."
+              <input type="text" placeholder="Rechercher un véhicule (plaque)..."
                      [(ngModel)]="vehicleSearch"
                      class="w-full px-3 py-2 text-sm bg-bg-tertiary border border-border-subtle rounded-lg text-fg-primary placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
             </div>
@@ -264,7 +264,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
                   }
                 </button>
               } @empty {
-                <p class="text-sm text-fg-tertiary text-center py-4">Aucun vehicule sans tracker.</p>
+                <p class="text-sm text-fg-tertiary text-center py-4">Aucun véhicule sans tracker.</p>
               }
             </div>
           </div>
@@ -376,7 +376,7 @@ export class AdminTrackersComponent implements OnInit {
       this.trackers.set(data);
     } catch (err) {
       swallow('admin-trackers:reload', err);
-      this.toast.error('Echec du chargement des trackers');
+      this.toast.error('Échec du chargement des trackers');
     } finally {
       this.loading.set(false);
     }
@@ -399,12 +399,12 @@ export class AdminTrackersComponent implements OnInit {
       await firstValueFrom(
         this.trackersApi.update(t.id, { simPhoneNumber: val || '' }),
       );
-      this.toast.success('SIM mise a jour');
+      this.toast.success('SIM mise à jour');
       this.editingSimId.set(null);
       this.reload();
     } catch (e: any) {
       swallow('admin-trackers:saveSim', e);
-      this.toast.error(e?.error?.message ?? 'Echec de la mise a jour SIM');
+      this.toast.error(e?.error?.message ?? 'Echec de la mise à jour SIM');
     }
   }
 
@@ -418,7 +418,7 @@ export class AdminTrackersComponent implements OnInit {
       this.reload();
     } catch (err) {
       swallow('admin-trackers:unassign', err);
-      this.toast.error('Echec du detachement');
+      this.toast.error('Échec du detachement');
     }
   }
 
@@ -436,7 +436,7 @@ export class AdminTrackersComponent implements OnInit {
       }));
     } catch (err) {
       swallow('admin-trackers:startAssign', err);
-      this.toast.error('Echec du chargement des vehicules');
+      this.toast.error('Échec du chargement des véhicules');
       this.assigningTracker.set(null);
     }
   }

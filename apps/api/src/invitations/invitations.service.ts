@@ -200,7 +200,7 @@ export class InvitationsService {
 
     if (!sent.ok) {
       this.logger.warn(
-        `Invitation ${invitation.id} cree mais email echoue : ${sent.error ?? 'no error message'}`,
+        `Invitation ${invitation.id} créé mais e-mail en échec : ${sent.error ?? 'no error message'}`,
       );
     }
 
@@ -225,10 +225,10 @@ export class InvitationsService {
    */
   async accept(jwtToken: string, password: string, displayName: string): Promise<AcceptInvitationResult> {
     if (!password || password.length < 12) {
-      throw new BadRequestException('Le mot de passe doit faire au moins 12 caracteres');
+      throw new BadRequestException('Le mot de passe doit faire au moins 12 caractères');
     }
     if (!displayName || displayName.trim().length < 2) {
-      throw new BadRequestException('Nom complet requis (2 caracteres minimum)');
+      throw new BadRequestException('Nom complet requis (2 caractères minimum)');
     }
 
     let payload: { invitationId: string; token: string };
@@ -239,10 +239,10 @@ export class InvitationsService {
     } catch (err) {
       if (err instanceof jwt.TokenExpiredError) {
         throw new BadRequestException(
-          'Ce lien d\'invitation a expire. Veuillez demander a votre administrateur de renvoyer une invitation.',
+          'Ce lien d\'invitation a expiré. Veuillez demander à votre administrateur de renvoyer une invitation.',
         );
       }
-      throw new BadRequestException('Lien d\'invitation invalide. Verifiez que vous avez copie le lien complet.');
+      throw new BadRequestException('Lien d\'invitation invalide. Vérifiez que vous avez copié le lien complet.');
     }
 
     const invitation = await this.prisma.invitation.findUnique({
@@ -250,14 +250,14 @@ export class InvitationsService {
     });
     if (!invitation) throw new NotFoundException('Invitation introuvable');
     if (invitation.status !== 'PENDING') {
-      throw new BadRequestException(`Invitation deja ${invitation.status.toLowerCase()}`);
+      throw new BadRequestException(`Invitation déjà ${invitation.status.toLowerCase()}`);
     }
     if (invitation.expiresAt.getTime() < Date.now()) {
       await this.prisma.invitation.update({
         where: { id: invitation.id },
         data: { status: 'EXPIRED' },
       });
-      throw new BadRequestException('Invitation expiree');
+      throw new BadRequestException('Invitation expirée');
     }
     if (invitation.tokenHash !== this.hashToken(payload.token)) {
       throw new BadRequestException('Token invalide');
@@ -270,7 +270,7 @@ export class InvitationsService {
     });
     if (existingUser) {
       throw new ConflictException(
-        'Votre compte est deja active. Connectez-vous avec vos identifiants.',
+        'Votre compte est déjà activé. Connectez-vous avec vos identifiants.',
       );
     }
 
@@ -284,7 +284,7 @@ export class InvitationsService {
       if (msg.includes('409') || msg.includes('already registered')) {
         this.logger.warn({ email: invitation.email }, 'User already in Vizyo Auth — continuing accept flow');
       } else if (msg.includes('400') || msg.includes('Password must be')) {
-        throw new BadRequestException('Le mot de passe doit faire au moins 12 caracteres.');
+        throw new BadRequestException('Le mot de passe doit faire au moins 12 caractères.');
       } else {
         throw err;
       }
@@ -440,7 +440,7 @@ export class InvitationsService {
     const original = await this.prisma.invitation.findFirst({ where });
     if (!original) throw new NotFoundException('Invitation introuvable');
     if (original.status === 'ACCEPTED') {
-      throw new BadRequestException('Cette invitation a deja ete acceptee');
+      throw new BadRequestException('Cette invitation a déjà été acceptée');
     }
     return this.create({
       email: original.email,
@@ -639,7 +639,7 @@ export class InvitationsService {
         throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
       }
       if (targetRole === UserRole.SUPER_ADMIN) {
-        throw new ForbiddenException('Un FLEET_ADMIN ne peut pas creer un SUPER_ADMIN');
+        throw new ForbiddenException('Un FLEET_ADMIN ne peut pas créer un SUPER_ADMIN');
       }
       return;
     }

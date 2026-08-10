@@ -32,7 +32,7 @@ function installProcessSafetyNet(errorLogger: ErrorLogger, log: Logger): void {
 }
 
 async function bootstrap() {
-  // rawBody: true => req.rawBody dispo pour verifier la signature HMAC du webhook
+  // rawBody: true => req.rawBody dispo pour vérifier la signature HMAC du webhook
   // entrant vizyo-texto (X-Vizyo-Signature) sans dependre du re-serialize du JSON.
   // Typé `NestExpressApplication` pour accéder à `app.set(...)` — nécessaire au réglage
   // « trust proxy » ci-dessous. Aucun changement de comportement : c'est du typage.

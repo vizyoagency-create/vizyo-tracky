@@ -6,19 +6,41 @@ import { formatSilenceLabel, type VehiclePresenceState } from '@vizyo/tracky-sha
  * Métadonnées d'affichage d'un état de présence véhicule. Source unique de
  * vérité visuelle (label + couleurs + icône) réutilisée partout : badge de liste,
  * détail, popup carte. Les couleurs distinguent les causes de non-suivi :
- *  - AWAITING_GPS (sky)     : connecté mais sans fix GPS — vivant, cherche les satellites.
+ *  - AWAITING_GPS (bleu)    : connecté mais sans fix GPS — vivant, cherche les satellites.
  *  - GPS_LOST (rouge)       : vivant mais a PERDU son fix GPS (antenne/ciel) — action requise.
  *  - OFFLINE (ambre)        : débranché / hors-ligne — il fonctionnait, à traiter.
- *  - DORMANT (ambre brûlé)  : muet depuis des SEMAINES — plus rien à en tirer en direct.
- *  - NOT_CONFIGURED (gris)  : pas (ou mal) installé — neutre, à équiper.
+ *  - DORMANT (violet)       : muet depuis des SEMAINES — plus rien à en tirer en direct.
+ *  - NOT_CONFIGURED (gris tireté) : pas (ou mal) installé — neutre, à équiper.
+ *
+ * ⚠️ `color` et `bg` sont des `var()` / `color-mix()`, PAS des hexadécimaux : ils
+ * suivent le thème. Ils ne peuvent donc pas être passés à MapLibre, qui ne résout
+ * aucune variable CSS — une couche de carte lit ses couleurs via `getComputedStyle`.
+ * Aujourd'hui rien ne le fait : hors de ce composant, seul `.label` est consommé.
  */
 export interface ConnectivityMeta {
   label: string;
-  /** Couleur d'accent (texte + pastille). */
+  /** Couleur d'accent (texte + icône + pastille) — jeton de petit texte. */
   color: string;
-  /** Fond du chip. */
+  /** Fond du chip : lavis de 12 % de `color`, motif établi de `styles.css`. */
   bg: string;
+  /** Bordure : le même lavis à 28 %. */
+  border: string;
+  /**
+   * Tireté pour le SEUL `NOT_CONFIGURED`. Un contour plein dit « voilà son état » ;
+   * un contour tireté dit « il n'y a rien à observer ». C'est la différence entre un
+   * boîtier qui se tait et un véhicule qu'on n'a jamais équipé — deux lignes de la
+   * liste qui appellent deux gestes opposés (aller voir / commander un boîtier).
+   */
+  borderStyle: 'solid' | 'dashed';
   icon: typeof Wifi;
+}
+
+/** Le lavis d'accent de `styles.css` : 12 % pour un fond, 28 % pour une bordure. */
+const lavis = (jeton: string, part: number) => `color-mix(in srgb, ${jeton} ${part}%, transparent)`;
+
+/** Fabrique un jeu de couleurs cohérent à partir d'un seul jeton de petit texte. */
+function teintes(jeton: string): Pick<ConnectivityMeta, 'color' | 'bg' | 'border'> {
+  return { color: `var(${jeton})`, bg: lavis(`var(${jeton})`, 12), border: lavis(`var(${jeton})`, 28) };
 }
 
 /**
@@ -30,34 +52,37 @@ export interface ConnectivityMeta {
 export function connectivityMeta(state: VehiclePresenceState, silenceLabel?: string | null): ConnectivityMeta {
   switch (state) {
     case 'ONLINE':
-      return { label: 'En ligne', color: '#10b981', bg: 'rgba(16,185,129,.12)', icon: Wifi };
+      return { label: 'En ligne', ...teintes('--texte-succes'), borderStyle: 'solid', icon: Wifi };
     case 'AWAITING_GPS':
-      // Connecté sans fix GPS : sky-blue « acquisition » — distinct du vert (suivi) et de
-      // l'ambre (hors-ligne). Le boîtier est vivant, il cherche les satellites.
-      return { label: 'Recherche GPS', color: '#0ea5e9', bg: 'rgba(14,165,233,.13)', icon: Satellite };
+      // Connecté sans fix GPS : BLEU = information — distinct du vert (suivi) et de
+      // l'ambre (hors-ligne). Le boîtier est vivant, il cherche les satellites : il n'y
+      // a rien à faire, seulement à savoir.
+      return { label: 'Recherche GPS', ...teintes('--texte-info'), borderStyle: 'solid', icon: Satellite };
     case 'GPS_LOST':
       // GPS PERDU : le boîtier émet encore mais a perdu son lock satellite (antenne /
       // ciel bouché). Rouge = action requise (aller vérifier l'antenne), distinct du
-      // sky-blue « acquisition » (démarrage à froid, transitoire).
-      return { label: 'GPS perdu', color: '#ef4444', bg: 'rgba(239,68,68,.12)', icon: SatelliteDish };
+      // bleu « acquisition » (démarrage à froid, transitoire).
+      return { label: 'GPS perdu', ...teintes('--texte-alerte'), borderStyle: 'solid', icon: SatelliteDish };
     case 'PARKED':
-      // Garé en veille : neutre/calme (slate), pas alarmant — comportement normal.
-      return { label: 'Stationné', color: '#64748b', bg: 'rgba(100,116,139,.14)', icon: Moon };
+      // Garé en veille : gris = inactif, pas alarmant — comportement normal.
+      return { label: 'Stationné', ...teintes('--texte-inactif'), borderStyle: 'solid', icon: Moon };
     case 'OFFLINE':
-      return { label: 'Hors ligne', color: '#f59e0b', bg: 'rgba(245,158,11,.13)', icon: WifiOff };
+      return { label: 'Hors ligne', ...teintes('--texte-attente'), borderStyle: 'solid', icon: WifiOff };
     case 'DORMANT':
       // DORMANT : le boîtier parlait, puis s'est tu depuis des SEMAINES (prod : FV-941-LZ à
-      // 89 j, FL-787-KV à 52 j). Ambre BRÛLÉ (#d97706) volontairement PLUS SOUTENU que l'ambre
-      // « Hors ligne » (#f59e0b) : les deux disent « il ne parle pas », mais un hors-ligne se
-      // règle dans l'heure alors qu'un dormant est un dossier (batterie, SIM, boîtier déposé).
+      // 89 j, FL-787-KV à 52 j). VIOLET, et non plus un ambre plus soutenu que celui de
+      // « Hors ligne » : deux ambres voisins se lisent comme deux nuances du même problème,
+      // alors qu'un hors-ligne se règle dans l'heure et qu'un dormant est un dossier
+      // (batterie, SIM, boîtier déposé). Deux problèmes ne partagent pas une couleur
+      // (design/B0-SOCLE.md § « Couleurs en dur »).
       // Icône `Unplug` — jamais `Moon`, déjà pris par « Stationné » : en mode compact seule
       // l'icône reste visible, deux lunes = deux états confondus.
       // Le libellé PORTE l'ancienneté (« Dormant · 89 j ») : sans elle, l'exploitant ne peut pas
       // distinguer un congé d'un boîtier arraché il y a trois mois.
       return {
         label: silenceLabel ? `Dormant · ${silenceLabel}` : 'Dormant',
-        color: '#d97706',
-        bg: 'rgba(217,119,6,.16)',
+        ...teintes('--texte-violet'),
+        borderStyle: 'solid',
         icon: Unplug,
       };
     case 'NOT_CONFIGURED':
@@ -66,7 +91,10 @@ export function connectivityMeta(state: VehiclePresenceState, silenceLabel?: str
       // moindre erreur de compilation. Un état ajouté à `VehiclePresenceState` et oublié ici
       // s'afficherait « Non configuré » en silence — c'est-à-dire « jamais installé », le
       // contraire exact d'un boîtier qui s'est tu. Tout nouvel état doit avoir son `case`.
-      return { label: 'Non configuré', color: '#9ca3af', bg: 'rgba(156,163,175,.14)', icon: AlertTriangle };
+      // Même gris que « Stationné », mais TIRETÉ : les deux sont calmes, un seul est un
+      // état de terrain. Le contour porte la distinction, pas une seconde nuance de gris —
+      // #64748b et #9ca3af, les deux valeurs d'avant, étaient indiscernables à 10 px.
+      return { label: 'Non configuré', ...teintes('--texte-inactif'), borderStyle: 'dashed', icon: AlertTriangle };
   }
 }
 
@@ -119,7 +147,8 @@ export function connectivityTitle(state: VehiclePresenceState, silenceLabel?: st
         [class.conn-badge--compact]="compact()"
         [style.color]="meta().color"
         [style.background]="meta().bg"
-        [style.border-color]="meta().color + '40'"
+        [style.border-color]="meta().border"
+        [style.border-style]="meta().borderStyle"
         [attr.title]="title()"
       >
         <lucide-icon [img]="meta().icon" [size]="compact() ? 12 : 11" aria-hidden="true"></lucide-icon>

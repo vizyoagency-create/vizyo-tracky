@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
  * ┌─ TROIS PROPRIETES, ET AUCUNE N'EST NEGOCIABLE ────────────────────────────┐
  * │                                                                            │
  * │ 1. CRYPTOGRAPHIQUE. `randomBytes`, jamais `Math.random` : ce dernier est    │
- * │    predictible a partir de quelques sorties observees, et le lien est       │
+ * │    predictible à partir de quelques sorties observees, et le lien est       │
  * │    justement fait pour etre observe par un tiers.                           │
  * │                                                                            │
  * │ 2. NON DERIVE. Le token ne contient RIEN de la mission — ni son uuid, ni sa │

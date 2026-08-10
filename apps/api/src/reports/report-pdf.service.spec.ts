@@ -109,7 +109,7 @@ describe('ReportPdfService — mention « parc exploité »', () => {
   it('affiche la distance moyenne — le chiffre que la mention explique', async () => {
     const { text } = await renderedText(REPORT_AVEC_DORMANTS);
 
-    expect(text).toContain('DISTANCE MOY./VEHICULE');
+    expect(text).toContain('DISTANCE MOY./VÉHICULE');
     expect(text).toContain('60.0 km');
     // Le total contractuel du parc reste affiché tel quel (3 actifs / 5 au parc).
     expect(text).toContain('3 / 5');

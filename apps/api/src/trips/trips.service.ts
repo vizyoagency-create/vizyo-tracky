@@ -276,7 +276,7 @@ export class TripsService implements OnModuleInit {
           await this.finalizeTrip(state, state.lastTimestamp, 'timeout');
         } catch (err) {
           this.logger.error(
-            `finalizeTrip (timeout) a echoue pour tracker ${trackerId}: ${err instanceof Error ? err.message : err}`,
+            `finalizeTrip (timeout) a échoué pour tracker ${trackerId}: ${err instanceof Error ? err.message : err}`,
           );
           this.errorLogger?.recordBackground(
             err instanceof Error ? err : new Error(String(err)),
@@ -628,7 +628,7 @@ export class TripsService implements OnModuleInit {
     if (!trip) throw new NotFoundException('Trajet introuvable');
 
     if (requestedBy.role !== UserRole.SUPER_ADMIN && trip.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+      throw new ForbiddenException('Accès refusé');
     }
     // Acces granulaire : si l'utilisateur a un access scope (groupes/vehicules),
     // il faut que le vehicule du trajet soit dans son scope.
@@ -637,7 +637,7 @@ export class TripsService implements OnModuleInit {
       requestedBy.accessibleVehicleIds !== 'ALL' &&
       !requestedBy.accessibleVehicleIds.includes(trip.vehicleId)
     ) {
-      throw new ForbiddenException('Acces refuse au vehicule de ce trajet');
+      throw new ForbiddenException('Accès refusé au véhicule de ce trajet');
     }
 
     const trimmed = notes?.trim() ?? '';
@@ -807,11 +807,11 @@ export class TripsService implements OnModuleInit {
       where: { id: dto.vehicleId },
       include: { tracker: true },
     });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
     if (requestedBy.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+      throw new ForbiddenException('Accès refusé');
     }
-    if (!vehicle.tracker) throw new BadRequestException('Vehicule sans tracker');
+    if (!vehicle.tracker) throw new BadRequestException('Véhicule sans tracker');
 
     const fromDate = new Date(dto.from);
     const toDate = new Date(dto.to) > tenMinAgo ? tenMinAgo : new Date(dto.to);
@@ -921,7 +921,7 @@ export class TripsService implements OnModuleInit {
         });
         this.logger.log(`Map-matching OK pour trip ${tripId} (${points.length} -> ${matched.length} points)`);
       } catch (err) {
-        this.logger.warn(`Map-matching async echec trip ${tripId} : ${err instanceof Error ? err.message : err}`);
+        this.logger.warn(`Map-matching async échec trip ${tripId} : ${err instanceof Error ? err.message : err}`);
       }
     })();
   }

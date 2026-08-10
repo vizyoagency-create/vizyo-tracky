@@ -788,7 +788,7 @@ export class UsersListComponent implements OnInit {
           fleetId: result.fleetId,
           accessScopes: result.accessScopes,
         });
-        this.toast.success(`Invitation envoyee a ${result.email}`);
+        this.toast.success(`Invitation envoyée a ${result.email}`);
       } else if (mode === 'edit-invitation') {
         const invId = this.drawerData()?.invitation?.id;
         if (invId) {
@@ -797,7 +797,7 @@ export class UsersListComponent implements OnInit {
             role: result.role,
             accessScopes: result.accessScopes,
           });
-          this.toast.success('Invitation mise a jour');
+          this.toast.success('Invitation mise à jour');
         }
       } else {
         const userId = this.drawerData()?.user?.id;
@@ -870,7 +870,7 @@ export class UsersListComponent implements OnInit {
   async onResetPassword(user: TrackyUser): Promise<void> {
     try {
       await this.usersService.resetPassword(user.id);
-      this.toast.success(`Un email de reinitialisation a ete envoye a ${user.email}.`);
+      this.toast.success(`Un email de reinitialisation a été envoyé a ${user.email}.`);
     } catch {
       this.toast.error('Erreur lors de l\'envoi du lien de reinitialisation.');
     }
@@ -891,7 +891,7 @@ export class UsersListComponent implements OnInit {
     this.sendingAudioInfo.set(true);
     try {
       await firstValueFrom(this.audioApi.sendAudioInfoMail(user.id));
-      this.toast.success(`Mail envoye a ${user.email}`);
+      this.toast.success(`Mail envoyé a ${user.email}`);
       this.showAudioInfoModal.set(false);
       this.audioInfoTarget.set(null);
     } catch (err) {

@@ -201,7 +201,7 @@ export class MissionsService {
     });
     // Hors flotte → 403, et le meme message qu'un vehicule inexistant : sinon on
     // permet de tester l'appartenance d'un identifiant a une flotte.
-    if (!vehicule) throw new ForbiddenException('Vehicule hors de votre flotte');
+    if (!vehicule) throw new ForbiddenException('Véhicule hors de votre flotte');
 
     await this.validerDepot(entree.depotUserId, fleetId);
     await this.validerConducteur(entree.driverId, fleetId);
@@ -505,7 +505,7 @@ export class MissionsService {
   }
 
   /**
-   * Le prochain instant ou CE vehicule est libre pendant `dureeMs`, a partir de `depuis`.
+   * Le prochain instant ou CE vehicule est libre pendant `dureeMs`, à partir de `depuis`.
    *
    * On avance de mission en mission : chaque fois que le creneau candidat chevauche une
    * mission, on le repousse a la fin de celle-ci. La premiere position qui tient est la
@@ -644,7 +644,7 @@ export class MissionsService {
         where: { id: modifs.vehicleId, fleetId },
         select: { id: true, plate: true },
       });
-      if (!v) throw new ForbiddenException('Vehicule hors de votre flotte');
+      if (!v) throw new ForbiddenException('Véhicule hors de votre flotte');
       await this.refuserSiCreneauOccupe(v.id, v.plate, nouveauDebut, nouvelleFin, mission.id);
     }
     if (modifs.depotUserId !== undefined) await this.validerDepot(modifs.depotUserId, fleetId);
@@ -665,7 +665,7 @@ export class MissionsService {
         },
       });
 
-      // L'evenement d'agenda suit le creneau ET le vehicule. Sans cette mise a jour,
+      // L'evenement d'agenda suit le creneau ET le vehicule. Sans cette mise à jour,
       // le camion resterait immobilise sur l'ANCIEN creneau — et libre sur le nouveau.
       if (creneauBouge || modifs.vehicleId) {
         await tx.vehicleEvent.updateMany({
@@ -728,7 +728,7 @@ export class MissionsService {
     });
     if (!mission) throw new ForbiddenException('Mission hors de votre flotte');
     if (mission.status === MissionStatus.DONE || mission.status === MissionStatus.CANCELLED) {
-      throw new BadRequestException('Cette mission est deja terminee ou annulee');
+      throw new BadRequestException('Cette mission est déjà terminée ou annulée');
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -740,7 +740,7 @@ export class MissionsService {
           cancelReason: propre,
         },
       });
-      // Libere le vehicule : sans cette mise a jour, l'evenement resterait immobilisant
+      // Libere le vehicule : sans cette mise à jour, l'evenement resterait immobilisant
       // et le camion demeurerait inreservable jusqu'a la fin du creneau annule.
       await tx.vehicleEvent.updateMany({
         where: {
@@ -867,7 +867,7 @@ export class MissionsService {
       });
     } catch (err) {
       this.logger.warn(
-        `Notification depot echouee pour la mission ${mission.ref} : ${err instanceof Error ? err.message : err}`,
+        `Notification dépôt échouée pour la mission ${mission.ref} : ${err instanceof Error ? err.message : err}`,
       );
     }
   }
@@ -962,7 +962,7 @@ export class MissionsService {
       select: { id: true },
     });
     if (!depot) {
-      throw new BadRequestException('Le destinataire doit etre un compte depot de votre flotte');
+      throw new BadRequestException('Le destinataire doit être un compte dépôt de votre flotte');
     }
   }
 
@@ -976,7 +976,7 @@ export class MissionsService {
   }
 
   private fleetDe(user: AuthUser): string {
-    if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
+    if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
     return user.fleetId;
   }
 }

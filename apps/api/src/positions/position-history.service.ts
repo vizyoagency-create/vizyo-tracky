@@ -72,7 +72,7 @@ export class PositionHistoryService {
     const from = new Date(params.from);
     const to = new Date(params.to);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException('from / to doivent etre des ISO datetime valides');
+      throw new BadRequestException('from / to doivent être des ISO datetime valides');
     }
 
     let trackerId = params.trackerId;
@@ -91,17 +91,17 @@ export class PositionHistoryService {
     if (!trackerId && vehicleId) {
       const vehicleWhere: Prisma.VehicleWhereInput = { id: vehicleId };
       if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-        if (!requestedBy.fleetId) throw new NotFoundException('Vehicule introuvable');
+        if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
         vehicleWhere.fleetId = requestedBy.fleetId;
       }
       if (scopedIds && !scopedIds.includes(vehicleId)) {
-        throw new NotFoundException('Vehicule introuvable');
+        throw new NotFoundException('Véhicule introuvable');
       }
       const v = await this.prisma.vehicle.findFirst({
         where: vehicleWhere,
         include: { tracker: true },
       });
-      if (!v) throw new NotFoundException('Vehicule introuvable');
+      if (!v) throw new NotFoundException('Véhicule introuvable');
       privacyOn = v.privacyModeEnabled;
       trackerId = v.tracker?.id;
       if (!trackerId) {

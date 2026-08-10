@@ -107,7 +107,7 @@ interface EffectivePushPreference {
  * et une constante recopiee ici a DEJA diverge une fois : l'ecran annoncait un seuil
  * `warning` pendant que le dispatch appliquait `critical`. Consequence concrete, et
  * invisible de tous les tests : le super-admin sans ligne de preference (les 4 comptes de
- * production sont dans ce cas) lisait « a partir de : avertissement », testait une batterie
+ * production sont dans ce cas) lisait « à partir de : avertissement », testait une batterie
  * faible — WARNING, 4 par AN, precisement l'alerte qu'on veut voir arriver — et ne recevait
  * rien. C'est le bug d'origine remis a l'endroit inverse : un ecran qui promet une
  * livraison que le serveur refuse.

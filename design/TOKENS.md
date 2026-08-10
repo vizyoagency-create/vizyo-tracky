@@ -119,6 +119,37 @@ Pas de jeton dédié : le gris est porté par les surfaces et les textes seconda
 tertiaires. Un élément inactif prend `--surface-tertiary` en fond et `--text-tertiary` en
 texte — motif `.vt-status--offline` (`styles.css:1088`).
 
+### Petit texte — la famille `--texte-*` *(ajoutée au lot B0′)*
+
+Une couleur sémantique lisible à 16 px ne l'est pas à 11. C'est le point ouvert **O2**
+ci-dessous, tranché : les valeurs d'alerte de l'application ne bougent pas, une seconde
+famille porte la version assez foncée pour être lue.
+
+| Rôle | Jeton | Sombre | Clair |
+|---|---|---|---|
+| vert lisible | `--texte-succes` | `--color-tracky-light` | `color-mix(--color-tracky-light 72 %, #000)` |
+| rouge lisible | `--texte-alerte` | `--danger` | `color-mix(--danger 78 %, #000)` |
+| ambre lisible | `--texte-attente` | `--warning` | `color-mix(--warning 68 %, #000)` |
+| bleu lisible | `--texte-info` | `--blue` | `--blue` |
+| violet lisible | `--texte-violet` | `--violet` | `--violet` |
+| gris lisible | `--texte-inactif` | `--text-secondary` | `--text-secondary` |
+
+**Quand employer laquelle.** `--danger` reste le rouge des barres, des liserés, des grandes
+icônes et des aplats — tout ce qui n'est pas du texte. `--texte-alerte` est le rouge des
+chips, des libellés, des compteurs : dès que la couleur porte des caractères sous 14 px.
+
+Les pourcentages ne sont pas choisis à l'œil : chacun est **le plus clair qui passe encore
+4,6:1** sur le pire fond clair de l'application (un lavis de 12 % de la couleur elle-même
+sur `--surface-tertiary`). Un point de plus et le couple tombe sous le seuil. `pnpm
+verif:contraste` recalcule les 46 couples réellement employés, dans les deux thèmes.
+
+En thème sombre, rien n'est corrigé : un texte clair sur fond noir passe déjà de 5,5 à
+8,5:1. Assombrir y nuirait.
+
+`.layout--depot` n'est plus qu'un jeu d'alias sur cette famille : les quatre jetons
+`--depot-*` d'A3 ont été absorbés, il n'y a plus qu'une définition de « le rouge qui se
+lit » pour les 30 écrans.
+
 ### Squelettes de chargement
 
 | Rôle | Variable | Sombre | Clair |
@@ -221,13 +252,29 @@ Aucun écran du bloc A n'en a besoin. **Décision différée** : le jeton ne ser
 une maquette du bloc B prouve son usage — créer un niveau d'élévation que personne n'emploie
 est du bruit. En attendant, `--surface3` se lit comme `--surface-tertiary`.
 
-**O2 — `--danger` et `--warning` en thème clair sont sous 4,5:1.** Mesurés sur
-`--surface-secondary` clair : `--danger` `#D9544E` → **3,94:1**, `--warning` `#C98708` →
-**3,02:1**. Tous deux passent le seuil 3:1 des composants d'interface mais échouent celui du
-texte. B0 ne les mentionne pas, et les corriger déplacerait la palette d'alerte de toute
-l'application — hors périmètre de l'étape 0. **À trancher au lot B-kit**, quand les
-maquettes diront quelles valeurs elles portent.
+**O2 — `--danger` et `--warning` en thème clair sont sous 4,5:1.** ✅ **Tranché au lot B0′.**
+Mesurés sur `--surface-secondary` clair : `--danger` `#D9544E` → **3,94:1**, `--warning`
+`#C98708` → **3,02:1**. Tous deux passent le seuil 3:1 des composants d'interface mais
+échouent celui du texte.
 
-**O3 — `#3b82f6` en dur dans `.tk-popup-btn--info`** (`styles.css:888`). C'est le seul bleu
-du dépôt aujourd'hui, hors jeton. À basculer sur `--blue` au lot B0′, avec les autres
-couleurs en dur.
+Ni l'un ni l'autre n'a bougé : ce sont les bonnes couleurs pour un liseré, une barre ou une
+grande icône, et les déplacer aurait touché toute la palette d'alerte. La famille
+`--texte-*` a été créée à côté (§ « Petit texte »), et **seuls les usages textuels y
+basculent**. La règle est donc « une couleur = une signification », pas « une couleur = une
+valeur exacte » : le rouge reste rouge, il descend d'un cran là où il porte des caractères.
+
+**O3 — `#3b82f6` en dur dans `.tk-popup-btn--info`.** ✅ **Fait au lot B0′.** Les cinq
+boutons de bulle ont basculé, pas seulement l'information : chacun portait sa paire de
+valeurs et sa propre surcharge `[data-theme='dark']` — `#059669`/`#10E0A0`,
+`#dc2626`/`#f87171`, `#3b82f6`. Les quatre règles de thème ont disparu avec les hex. Le
+lavis de survol du bouton principal est passé de 22 % à 18 % au passage : calibré sur un
+vert vif, il donnait 4,30:1 sous une encre foncée.
+
+**O4 — les couleurs de COUCHE DE CARTE ne suivent pas le thème, volontairement.**
+`shared/utils/couleurs-carte.ts` garde quatre valeurs explicites (tracé, arrêt, excès,
+contour). Elles se posent sur le fond de carte, qui est un choix séparé de l'utilisateur
+(`MapStyleService` : clair, sombre, satellite, terrain) — quelqu'un en thème clair peut
+afficher un fond satellite, où un vert assombri deviendrait illisible. Accessoirement,
+MapLibre ne résout aucune variable CSS : un `var(--x)` y donne une couche invisible, sans
+erreur. **Reste ouvert** : `map.component.ts` porte une dizaine d'autres valeurs de couche,
+à reprendre au lot B-pages avec la page `/map`.

@@ -58,7 +58,7 @@ export class PartnerSignatureGuard implements CanActivate {
       this.logger.error(
         `Route partenaire sans @PartnerOp : ${context.getClass().name}.${context.getHandler().name}`,
       );
-      throw new UnauthorizedException('Partner operation not declared');
+      throw new UnauthorizedException('Partner opération not declared');
     }
 
     try {

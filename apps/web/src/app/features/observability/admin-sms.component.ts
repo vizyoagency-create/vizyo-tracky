@@ -71,8 +71,8 @@ interface PrefillItem {
           </a>
           <h1 class="text-2xl font-display font-bold text-fg-primary">SMS &amp; Backup admin</h1>
           <p class="text-sm text-fg-tertiary">
-            Outils SUPER_ADMIN : configuration des boitiers GPS via SMS (avec
-            confirmation par la reponse du boitier), audit des envois, et
+            Outils SUPER_ADMIN : configuration des boîtiers GPS via SMS (avec
+            confirmation par la reponse du boîtier), audit des envois, et
             monitoring des backups Postgres.
           </p>
         </div>
@@ -178,7 +178,7 @@ interface PrefillItem {
             Preuve de vie SMS (heartbeat)
           </div>
           <p class="text-xs text-fg-tertiary">
-            Envoie un SMS de test aux numeros <code>SMS_HEARTBEAT_RECIPIENTS</code> via la gateway
+            Envoie un SMS de test aux numéros <code>SMS_HEARTBEAT_RECIPIENTS</code> via la gateway
             active. Le cron automatique tourne chaque lundi 09h00 (Europe/Paris) ; si la chaine SMS
             est cassee (SIM down), un ErrorLog CRITICAL est cree.
           </p>
@@ -197,7 +197,7 @@ interface PrefillItem {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
           <div class="flex items-center gap-2 text-sm font-semibold">
             <lucide-icon [img]="Phone" [size]="16" class="text-tracky-light"></lucide-icon>
-            Configurer un boitier GPS par SMS
+            Configurer un boîtier GPS par SMS
           </div>
           <p class="text-xs text-fg-tertiary -mt-1">
             Chaque commande part via vizyo-texto ; on attend la reponse du boitier
@@ -213,7 +213,7 @@ interface PrefillItem {
               <input [(ngModel)]="prefillSearch"
                      (focus)="onPrefillFocus()"
                      (input)="onPrefillInput()"
-                     placeholder="Rechercher par IMEI, plaque, numero SIM, flotte..."
+                     placeholder="Rechercher par IMEI, plaque, numéro SIM, flotte..."
                      class="w-full bg-bg-tertiary border border-border-subtle rounded-lg pl-9 pr-3 py-2 text-sm text-fg-primary" />
             </div>
             @if (prefillOpen()) {
@@ -232,7 +232,7 @@ interface PrefillItem {
                         {{ item.type === 'sim' ? 'SIM' : 'Vehicule' }}
                       </span>
                       @if (item.configured) {
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">Deja configure</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">Déjà configuré</span>
                       } @else {
                         <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">Non configure</span>
                       }
@@ -262,7 +262,7 @@ interface PrefillItem {
                      class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
             </label>
             <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
-              Numero SIM (E.164)
+              Numéro SIM (E.164)
               <input [(ngModel)]="provPhone" placeholder="+33612345678"
                      class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
             </label>
@@ -272,8 +272,8 @@ interface PrefillItem {
                      class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm normal-case text-fg-primary" />
             </label>
             <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
-              Numero admin / SOS
-              <input [(ngModel)]="provAdminNumber" placeholder="defaut : numero SIM"
+              Numéro admin / SOS
+              <input [(ngModel)]="provAdminNumber" placeholder="defaut : numéro SIM"
                      class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
             </label>
             <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
@@ -540,8 +540,8 @@ interface PrefillItem {
             </button>
           </div>
           <p class="text-xs text-fg-tertiary">
-            Seuls les numeros de cette liste peuvent recevoir un SMS. "Synchroniser" pousse les SIM
-            des trackers ET les numeros (phone) des utilisateurs actifs — requis pour les notifications
+            Seuls les numéros de cette liste peuvent recevoir un SMS. "Synchroniser" pousse les SIM
+            des trackers ET les numéros (phone) des utilisateurs actifs — requis pour les notifications
             SMS d'alerte (source <code>synced</code>) ; les numeros ajoutes a la main (<code>manual</code>)
             sont preserves au resync.
           </p>
@@ -634,7 +634,7 @@ interface PrefillItem {
           </div>
         } @else {
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8 text-center text-fg-tertiary text-sm">
-            Aucun numero dans l'allowlist. Ajoute-en un, ou clique "Sync trackers".
+            Aucun numéro dans l'allowlist. Ajoute-en un, ou clique "Sync trackers".
           </div>
         }
 
@@ -648,7 +648,7 @@ interface PrefillItem {
               <lucide-icon [img]="AlertTriangle" [size]="20" class="text-rose-400"></lucide-icon>
               <div>
                 <div class="font-semibold text-rose-400">Backup en retard</div>
-                <div class="text-xs text-fg-tertiary">Aucun backup reussi dans les 30 dernieres heures.</div>
+                <div class="text-xs text-fg-tertiary">Aucun backup réussi dans les 30 dernières heures.</div>
               </div>
             </div>
           }
@@ -756,7 +756,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   provLowBatPhone = '';
   readonly showAdvanced = signal(false);
 
-  // ─── Pre-remplissage depuis SIM / vehicule ─────────────────────────────────
+  // ─── Pre-remplissage depuis SIM / véhicule ─────────────────────────────────
   prefillSearch = '';
   readonly prefillOpen = signal(false);
   readonly prefillLoading = signal(false);
@@ -854,7 +854,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     if (item.apn) this.provApn = item.apn;
     this.prefillOpen.set(false);
     this.prefillSearch = '';
-    this.toast.success(`Pre-rempli depuis ${item.type === 'sim' ? 'SIM' : 'vehicule'} ${item.plate || item.imei}`);
+    this.toast.success(`Pre-rempli depuis ${item.type === 'sim' ? 'SIM' : 'véhicule'} ${item.plate || item.imei}`);
   }
 
   readonly selectedProvId = signal<string | null>(null);
@@ -948,7 +948,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       if (this.shouldKeepPolling(provs.items)) this.startPolling();
     } catch (err) {
       swallow('admin-sms:reload', err);
-      this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
+      this.toast.error('Échec du chargement (accès SUPER_ADMIN requis)');
     }
     await this.loadAllowlist();
   }
@@ -957,7 +957,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     try {
       const result = await firstValueFrom(this.api.send(this.adhocTo, this.adhocBody));
       if (result.ok) {
-        this.toast.success('SMS envoye');
+        this.toast.success('SMS envoyé');
         this.adhocBody = '';
         this.reload();
       } else {
@@ -965,7 +965,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       }
     } catch (err) {
       swallow('admin-sms:sendAdhoc', err);
-      this.toast.error('Echec d\'envoi SMS');
+      this.toast.error('Échec d\'envoi SMS');
     }
   }
 
@@ -975,16 +975,16 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     try {
       const r = await firstValueFrom(this.api.runHeartbeat());
       if (r.skipped) {
-        this.toast.error('Heartbeat ignore — aucun numero (SMS_HEARTBEAT_RECIPIENTS vide)');
+        this.toast.error('Heartbeat ignoré — aucun numéro (SMS_HEARTBEAT_RECIPIENTS vide)');
       } else if (r.failed === 0) {
         this.toast.success(`Heartbeat OK — ${r.sent}/${r.recipients} SMS via ${r.provider}`);
       } else {
-        this.toast.error(`Heartbeat : ${r.failed}/${r.recipients} echec(s) via ${r.provider} — voir ErrorLogs`);
+        this.toast.error(`Heartbeat : ${r.failed}/${r.recipients} échec(s) via ${r.provider} — voir ErrorLogs`);
       }
       this.reload();
     } catch (err) {
       swallow('admin-sms:runHeartbeat', err);
-      this.toast.error('Echec du heartbeat (acces SUPER_ADMIN requis)');
+      this.toast.error('Échec du heartbeat (accès SUPER_ADMIN requis)');
     } finally {
       this.heartbeatRunning.set(false);
     }
@@ -1025,11 +1025,11 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   async cancelProv(id: string): Promise<void> {
     try {
       await firstValueFrom(this.api.cancelProvisioning(id));
-      this.toast.success('Sequence annulee');
+      this.toast.success('Sequence annulée');
       this.reload();
     } catch (err) {
       swallow('admin-sms:cancelProv', err);
-      this.toast.error('Echec annulation');
+      this.toast.error('Échec annulation');
     }
   }
 
@@ -1055,7 +1055,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       await firstValueFrom(
         this.api.addAllowlist(this.newPhone.trim(), this.newLabel.trim() || undefined),
       );
-      this.toast.success('Numero ajoute a l\'allowlist');
+      this.toast.success('Numéro ajoute a l\'allowlist');
       this.newPhone = '';
       this.newLabel = '';
       await this.loadAllowlist();
@@ -1068,11 +1068,11 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   async removeNumber(phone: string): Promise<void> {
     try {
       await firstValueFrom(this.api.removeAllowlist(phone));
-      this.toast.success('Numero retire');
+      this.toast.success('Numéro retire');
       await this.loadAllowlist();
     } catch (err) {
       swallow('admin-sms:removeNumber', err);
-      this.toast.error('Echec suppression');
+      this.toast.error('Échec suppression');
     }
   }
 

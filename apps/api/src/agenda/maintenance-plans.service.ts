@@ -31,7 +31,7 @@ export class MaintenancePlansService {
   async list(user: AuthUser, vehicleId?: string): Promise<MaintenancePlanDto[]> {
     const where: Prisma.MaintenancePlanWhereInput = {};
     if (user.role !== UserRole.SUPER_ADMIN) {
-      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
+      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
       where.fleetId = user.fleetId;
     }
     if (vehicleId) {

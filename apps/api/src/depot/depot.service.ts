@@ -55,7 +55,7 @@ export class DepotService {
       select: this.selectionMission(),
     });
     // Inconnu et hors perimetre donnent le MEME refus — sinon on permet d'enumerer.
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
     return this.versDto(mission, peutVoirConducteur);
   }
 
@@ -77,10 +77,10 @@ export class DepotService {
       where: { id: missionId, depotUserId: userId },
       select: { vehicleId: true },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const autorise = await this.scope.canSeeLivePosition(userId, mission.vehicleId);
-    if (!autorise) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!autorise) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const vehicule = await this.prisma.vehicle.findUnique({
       where: { id: mission.vehicleId },
@@ -154,7 +154,7 @@ export class DepotService {
         driver: { select: { firstName: true, lastName: true, phone: true } },
       },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const maintenant = new Date();
     const suiviActif =
@@ -164,7 +164,7 @@ export class DepotService {
     // Hors fenetre : meme refus que hors perimetre. Un message different apprendrait
     // qu'il y a bien un conducteur, et qu'il suffit d'attendre le bon creneau.
     if (!suiviActif || !mission.driver?.phone) {
-      throw new ForbiddenException('Ressource hors de votre perimetre');
+      throw new ForbiddenException('Ressource hors de votre périmètre');
     }
 
     // ⚠️ JOURNALISE AVANT de servir. Ecrire apres laisserait une lecture non tracee

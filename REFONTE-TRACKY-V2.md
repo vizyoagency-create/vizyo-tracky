@@ -16,12 +16,12 @@
 | **A5** | Invitation, comptes dépôt, matrice | — | 🟢 **livré** | 38 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | 🟢 **livré** | 97 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
-| **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | ⬜ à faire | 0 / 19 |
+| **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🔴 bloqué¹ | 0 / 28 |
 | **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🔴 bloqué¹ | 0 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | 🔴 bloqué¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **420 / 595** |
+| | | | **Total** | **447 / 604** |
 
 ¹ **Bloqué en attente des 27 maquettes `.dc.html`** — cf. « Écart 1 » ci-dessous. Le bloc A ne
 dépend d'aucune maquette : ses documents sont auto-suffisants. B0′ n'en dépend pas non plus
@@ -1100,32 +1100,39 @@ exposent coûts, scores, conducteur hors mission, groupe.
 Les 4 défauts de code relevés en lisant la source, indépendants de la refonte.
 
 **Couleurs en dur**
-- [ ] `connectivity-badge.component.ts` : les 6 hex (`#10b981`, `#0ea5e9`, `#ef4444`, `#f59e0b`, `#64748b`, `#9ca3af`) remplacés par des jetons — elles ne suivent pas le thème clair et doublent les variables
-- [ ] Idem dans le rejeu de trajet
-- [ ] Distinction ajoutée : *Dormant* passe en **violet** (boîtier muet depuis plus d'une semaine ≠ panne réseau — deux problèmes ne partagent pas l'ambre)
-- [ ] Distinction ajoutée : *Non configuré* prend un **contour tireté** (absence d'installation, pas un état de terrain)
-- [ ] Vérifié en thème clair **et** sombre
+- [x] `connectivity-badge.component.ts` : les 6 hex (`#10b981`, `#0ea5e9`, `#ef4444`, `#f59e0b`, `#64748b`, `#9ca3af`) remplacés par des jetons — elles ne suivent pas le thème clair et doublent les variables
+- [x] Idem dans le rejeu de trajet — **et une exception assumée** : les couleurs de COUCHE DE CARTE (`shared/utils/couleurs-carte.ts`) restent explicites. Elles se posent sur le fond de carte, qui est un choix séparé de l'utilisateur (clair, sombre, satellite) ; et MapLibre ne résout aucune variable CSS — un `var()` y donne une couche invisible, sans erreur
+- [x] Distinction ajoutée : *Dormant* passe en **violet** (boîtier muet depuis plus d'une semaine ≠ panne réseau — deux problèmes ne partagent pas l'ambre)
+- [x] Distinction ajoutée : *Non configuré* prend un **contour tireté** (absence d'installation, pas un état de terrain). Il partage désormais le gris de « Stationné » : #64748b et #9ca3af étaient indiscernables à 10 px, c'est le contour qui porte la distinction
+- [x] Vérifié en thème clair **et** sombre — mesuré dans le navigateur : `borderStyle: dashed`, `color: rgb(86,99,94)`, fond et bordure en `color-mix` à 12 % et 28 %
+- [x] **Défaut trouvé en mesurant** : trois états passaient sous 4,5:1 en thème clair une fois branchés sur les jetons (*En ligne* 2,99, *GPS perdu* 3,40, *Hors ligne* 2,68). D'où la famille `--texte-*` — même signification, valeur assez foncée pour être lue. Le point ouvert **O2** de `design/TOKENS.md` est tranché, le **O3** est fait
+- [x] `.layout--depot` n'est plus qu'un jeu d'alias : les 4 jetons d'A3 sont absorbés, une seule définition de « le rouge qui se lit » pour les 30 écrans
 
 **Surveillance réglée en UTC — le plus grave**
-- [ ] `surveillance-panel.component.ts` : saisie en **heure locale**, UTC en note de pied
-- [ ] Conséquence réelle corrigée : une surveillance réglée « 18:00 » démarrait à 20:00 en été — deux heures pendant lesquelles le véhicule n'était pas protégé, sans que personne ne le sache
-- [ ] Vérifié sur un changement d'heure (été/hiver)
-- [ ] Les réglages existants en base sont migrés ou réinterprétés sans rupture
+- [x] `surveillance-panel.component.ts` : saisie en **heure de la flotte**, équivalent UTC en note de pied — « 18:00 → 23:00 correspond aujourd'hui à 16:00 → 21:00 UTC », décalage **mesuré** pour la date du jour, jamais codé en dur
+- [x] Conséquence réelle corrigée : une surveillance réglée « 18:00 » démarrait à 20:00 en été — deux heures pendant lesquelles le véhicule n'était pas protégé, sans que personne ne le sache
+- [x] **Le correctif n'est pas dans l'écran, il est dans le planificateur.** `isWithinSchedule` lisait `getUTCHours()`. Une plage récurrente n'a pas d'équivalent UTC (+2 h l'été, +1 h l'hiver) : aucune saisie ne pouvait la rendre juste. Elle se lit désormais dans le fuseau de la flotte, via `getNowInTimezone` — l'helper qu'utilisent déjà `VehicleSchedule` et `VehicleWorkSchedule`. La surveillance était le seul planning resté en UTC
+- [x] Vérifié sur un changement d'heure (été/hiver) : 4 tests dédiés — 18:00 démarre à 16:00 UTC en juillet, à 17:00 UTC en janvier ; le jour de la semaine est celui de Paris (lundi 00:30 Paris = dimanche 22:30 UTC) ; un fuseau tiers est accepté
+- [x] Les réglages existants en base sont migrés **sans rupture** : `20260810120000_surveillance_horaires_locaux` convertit les horaires UTC en heure locale avec le décalage en vigueur au déploiement. Aucun véhicule ne change de fenêtre de protection
 
 **Accents perdus**
-- [ ] Assistant de démarrage (« Pret a piloter votre flotte ? » → « Prêt à piloter votre flotte ? »)
-- [ ] Sujets d'e-mail
-- [ ] Corps d'e-mail
-- [ ] Passe globale : recherche des mots français sans accent dans les chaînes affichées
+- [x] Assistant de démarrage (« Pret a piloter votre flotte ? » → « Prêt à piloter votre flotte ? »)
+- [x] Sujets d'e-mail (« Vous etes invite a rejoindre » → « Vous êtes invité à rejoindre »)
+- [x] Corps d'e-mail
+- [x] Passe globale : **`scripts/verif-accents.mjs`** (`pnpm verif:accents`), qui cherche les mots français sans accent dans les seuls contextes vus par un humain — message d'exception, toast, sujet, libellé, texte de gabarit. 224 occurrences relevées, 224 corrigées, dont les **49 libellés de la matrice de permissions**
+- [x] Le contrôle attrape le piège du `\b` ASCII : dans « paramètres », le `è` compte comme une non-lettre, donc `\btres\b` matchait un texte parfaitement accentué. Bornes Unicode
+- [x] **Trois corruptions rattrapées** — l'accentuation automatique avait touché du CODE : `${entrée.originLabel}`, `this.durée()`, et surtout `role === 'Dépôt'` (le slug est `DEPOT`) qui aurait éteint tout l'espace dépôt en silence. Le typecheck et le build web les ont sorties ; le script neutralise désormais les interpolations avant de chercher
 
 **Compteurs d'étapes codés en dur**
-- [ ] `onboarding-wizard.component.ts` : `Step = 1|2|3|4|5` supprimé — décision client, l'assistant passe à **2 étapes pour tout le monde**. Le défaut se résout en supprimant, pas en corrigeant
-- [ ] Les étapes véhicule, invitation et récapitulatif disparaissent
-- [ ] Portes d'accès : « étape N sur 3 » devient **calculé** — la vérification d'appareil n'apparaît que si la 2FA est active *et* la connexion inhabituelle. Un utilisateur habituel voit « 1 sur 2 »
-- [ ] Vérifié pour un non-admin (le parcours 1 → 2 → 5 qui faisait bondir la barre de 40 % à 100 %)
+- [x] `onboarding-wizard.component.ts` : `Step = 1|2|3|4|5` supprimé — décision client, l'assistant passe à **2 étapes pour tout le monde**. Le défaut se résout en supprimant, pas en corrigeant
+- [x] Les étapes véhicule, invitation et récapitulatif disparaissent (−200 lignes)
+- [x] Portes d'accès : « étape N sur 3 » devient **calculé** — `PortesAccesService` compte les portes réellement exigées. La vérification d'appareil n'apparaît que si la 2FA est active *et* la connexion inhabituelle
+- [x] **Le total ne redescend jamais** : lu directement sur les conditions, il passerait de « 1 sur 2 » à « 1 sur 1 » au moment où l'on franchit la première porte — le défaut même qu'on corrige. On mémorise les portes vues exigées depuis le début de la session
+- [x] Une porte seule n'affiche aucun compteur : « 1 sur 1 » n'informe personne. Vérifié dans le navigateur — la porte des autorisations s'affiche sans rang
+- [x] Vérifié dans le navigateur : « Étape 1 sur 2 » puis « Étape 2 sur 2 », barre à 50 % puis 100 % (`style="width: 50%"` → `width: 100%`)
 
-- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16/16 couples ≥ 4,5:1**
-- [x] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
+- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1889 tests API** (134 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **65/65** · contraste **46/46 couples ≥ 4,5:1** · littéraux et accents propres
+- [ ] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
 
 ### B-kit — Le kit partagé (passe de raffinement)
 
@@ -1335,6 +1342,7 @@ Une ligne par séance : ce qui a été livré, ce qui a été décidé, ce qui b
 
 | Date | Lot | Livré | Décisions / points ouverts |
 |---|---|---|---|
+| 2026-08-10 | B0′ | Famille `--texte-*` (petit texte lisible) · badge de présence sur jetons, *Dormant* violet, *Non configuré* tireté · surveillance lue dans le fuseau de la flotte + migration · 224 accents · assistant à 2 étapes · `PortesAccesService` · 3 scripts de contrôle (`verif:contraste` 46/46, `verif:accents`, `verif:litteraux`) | **Le correctif UTC est côté planificateur, pas côté écran** : une plage récurrente n'a pas d'équivalent UTC, aucune saisie ne pouvait la rendre juste. La surveillance était le seul planning du dépôt resté en UTC. **Points O2 et O3 de `TOKENS.md` tranchés**, O4 ouvert (couleurs de couche de carte, volontairement explicites ; `map.component.ts` reste à reprendre au lot B-pages). **Trois corruptions rattrapées** par l'accentuation automatique, dont `role === 'Dépôt'` qui aurait éteint l'espace dépôt. Recette visuelle faite au DOM et au style calculé : le panneau navigateur ne composite pas, les captures sont indisponibles. |
 | 2026-08-09 | — | Analyse du livrable, audit du dépôt, branche `feat/refonte-tracky-v2`, cette roadmap | 3 écarts relevés (maquettes absentes, prémisse Poppins périmée, kit déjà posé). Bloc A d'abord, bloc B à la livraison des `.dc.html`. Point de contrôle à chaque lot. |
 | 2026-08-09 | Étape 0 | `DECISIONS.md` (10 décisions), `TOKENS.md`, `ICONS.md` · violet + bleu créés · `--accent-ink` clair corrigé · 22 fallbacks `Poppins` purgés | **Défaut d'accessibilité corrigé** : encre blanche sur accent en thème clair, 3,43:1 → 5,54:1. **Deux défauts d'outillage relevés** : `pnpm verify` ne se termine pas (`ng test` en watch, P1) et le `launch.json` parent servait un autre projet. Confirmation au pixel en attente : panneau navigateur non affiché. |
 | 2026-08-09 | A2 (3/3) | Onglet Missions dans `/agenda` : tableau, filtres, 5 compteurs · endpoints de liste et d'annulation | Le sélecteur de type existant fait office d'onglet — pas de page séparée, décision client. Les compteurs sont **serveur** : filtrée sur « En cours », la page ne contient pas les planifiées, et les recalculer afficherait « 0 planifiées ». « Véhicules indisponibles » compte les véhicules **distincts**. 1794 tests API. Vérification visuelle non faite (panneau navigateur non affiché). |

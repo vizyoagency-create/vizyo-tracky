@@ -62,7 +62,7 @@ export class PartnerWritebackService {
       where: { id: input.vehicleId, fleetId: input.fleetId },
       select: { id: true, plate: true, brand: true, model: true, year: true, energy: true },
     });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable dans cette flotte');
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable dans cette flotte');
 
     const current = vehicle[field] ?? null;
 
@@ -124,13 +124,13 @@ function castValue(field: WritableField, raw: unknown): string | number | Instal
     }
     case 'year': {
       if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1900 || raw > 2100) {
-        throw new BadRequestException('Annee invalide');
+        throw new BadRequestException('Année invalide');
       }
       return raw;
     }
     case 'energy': {
       if (typeof raw !== 'string' || !(raw in InstallationEnergy)) {
-        throw new BadRequestException('Energie inconnue');
+        throw new BadRequestException('Énergie inconnue');
       }
       return raw as InstallationEnergy;
     }

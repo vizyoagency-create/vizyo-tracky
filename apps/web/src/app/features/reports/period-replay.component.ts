@@ -56,6 +56,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
+import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
 import { clampSpeed, formatDuration, max0 } from './reports.utils';
 
 interface TripSegment {
@@ -664,7 +665,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
         const w = el.clientWidth, h = el.clientHeight;
         this.mapError.set(
           `La carte n'a pas pu se charger (delai 3s depasse) — ` +
-          `conteneur ${w}x${h}px, style "${styleId}". Verifiez le reseau (tuiles).`,
+          `conteneur ${w}x${h}px, style "${styleId}". Vérifiez le reseau (tuiles).`,
         );
       }
     }, 3000);
@@ -711,7 +712,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
           type: 'line',
           source: srcId,
           paint: {
-            'line-color': '#10E0A0',
+            'line-color': COULEURS_CARTE.trace,
             'line-width': 3,
             'line-opacity': 0.55,
           },

@@ -17,14 +17,14 @@ import { PrismaService } from '../prisma/prisma.service';
  *
  * - **Actions per-vehicle** (couper moteur, modifier ce vehicule precis) :
  *   on resout VEHICLE > GROUP > ALL → "specifique gagne". Si `engine_control=true`
- *   sur ALL et `=false` sur ce vehicule, le vehicule l'emporte → refus.
+ *   sur ALL et `=false` sur ce véhicule, le véhicule l'emporte → refus.
  *
- * - **Actions globales** (creer un vehicule, voir la liste des conducteurs,
+ * - **Actions globales** (créer un véhicule, voir la liste des conducteurs,
  *   acceder a /reports) : on resout l'union de tous les scopes. Le user peut
  *   l'action s'il peut sur AU MOINS un scope (sinon on cacherait un bouton
- *   "Creer" alors qu'il pourrait creer dans un de ses groupes).
+ *   "Créer" alors qu'il pourrait créer dans un de ses groupes).
  *
- * Fallback : si une ligne d'acces a `permissions IS NULL` (legacy / oubli UI),
+ * Fallback : si une ligne d'accès a `permissions IS NULL` (legacy / oubli UI),
  * on tombe sur `User.permissions`. Si toujours null, sur `getDefaultPermissions(role)`.
  *
  * Memoization request-scoped sur l'objet `user` (1 query par requete HTTP).
@@ -32,7 +32,7 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 const ADMIN_ROLES: UserRole[] = [UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN];
 
-/** Tri des lignes d'acces : la plus specifique gagne en cas de conflit. */
+/** Tri des lignes d'accès : la plus specifique gagne en cas de conflit. */
 const ACCESS_TYPE_PRIORITY: Record<AccessType, number> = {
   VEHICLE: 3,
   GROUP: 2,
@@ -50,9 +50,9 @@ export class PermissionsResolverService {
 
   /**
    * Resout les permissions du user pour un vehicule precis. Regle "specifique
-   * gagne" : VEHICLE > GROUP > ALL. Retourne `null` si aucune ligne d'acces ne
-   * couvre ce vehicleId (= le user n'y a pas acces du tout — different de
-   * "acces mais permissions a false").
+   * gagne" : VEHICLE > GROUP > ALL. Retourne `null` si aucune ligne d'accès ne
+   * couvre ce vehicleId (= le user n'y a pas accès du tout — different de
+   * "accès mais permissions a false").
    */
   async resolveForVehicle(user: AuthUser, vehicleId: string): Promise<UserPermissions | null> {
     if (this.isAdmin(user)) return getDefaultPermissions(user.role as UserRoleSlug);

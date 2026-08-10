@@ -291,7 +291,7 @@ const TIMEZONES = [
               <div class="vsched-adv-section">
                 <h4>Jours feries</h4>
                 <p class="vsched-adv-desc">
-                  Le vehicule est automatiquement coupe les jours feries du pays selectionne.
+                  Le véhicule est automatiquement coupe les jours feries du pays sélectionné.
                 </p>
                 <select [value]="countryCode()" (change)="onCountryChange($any($event.target).value)"
                         [disabled]="readonly()" class="vsched-adv-select">
@@ -305,7 +305,7 @@ const TIMEZONES = [
               <div class="vsched-adv-section">
                 <h4>Dates speciales</h4>
                 <p class="vsched-adv-desc">
-                  Override ponctuel pour une date precise (ex: ferme le 24/12 a 16:00, ferme toute la journee, ...).
+                  Override ponctuel pour une date precise (ex: ferme le 24/12 a 16:00, ferme toute la journée, ...).
                 </p>
                 @for (cd of customDates(); track $index; let i = $index) {
                   <div class="vsched-adv-cdate">
@@ -314,7 +314,7 @@ const TIMEZONES = [
                     <label class="vsched-adv-checkbox">
                       <input type="checkbox" [checked]="cd.closed" [disabled]="readonly()"
                              (change)="updateCustomDate(i, { closed: $any($event.target).checked })" />
-                      Ferme toute la journee
+                      Ferme toute la journée
                     </label>
                     @if (!cd.closed) {
                       <input type="time" [value]="cd.start ?? '08:00'" [disabled]="readonly()"
@@ -918,7 +918,7 @@ export class VehicleScheduleComponent {
     const dayPayload = (key: string) => {
       const row = get(key);
       const dayExtras = extras[key] ?? [];
-      // Reconstitue les slots a partir de start/end + extras.
+      // Reconstitue les slots à partir de start/end + extras.
       const slots = row.enabled && row.start && row.end
         ? [{ start: row.start, end: row.end }, ...dayExtras.filter((s) => s.start && s.end)]
         : [];

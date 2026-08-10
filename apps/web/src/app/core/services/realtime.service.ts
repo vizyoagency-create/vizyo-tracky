@@ -434,7 +434,7 @@ export class RealtimeService {
    */
   private acknowledgeAlertInline(alertId: string): void {
     void firstValueFrom(this.http.post(`/api/alerts/${alertId}/acknowledge`, {})).catch(() => {
-      this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
+      this.toast.error('Échec de l\'acquittement', 'Reessayer depuis la liste des alertes');
     });
   }
 

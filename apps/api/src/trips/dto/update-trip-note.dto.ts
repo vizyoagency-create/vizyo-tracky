@@ -1,7 +1,7 @@
 import { IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 /**
- * PATCH /trips/:id — mise a jour de la note libre.
+ * PATCH /trips/:id — mise à jour de la note libre.
  *
  * - `notes = null` ou chaine vide => effacer la note (et reset auteur).
  * - `notes` non vide => persister apres trim, max 500 chars.
@@ -13,6 +13,6 @@ export class UpdateTripNoteDto {
   @ValidateIf((_, v) => v !== null)
   @IsOptional()
   @IsString()
-  @MaxLength(500, { message: 'La note est limitee a 500 caracteres.' })
+  @MaxLength(500, { message: 'La note est limitee a 500 caractères.' })
   notes!: string | null;
 }

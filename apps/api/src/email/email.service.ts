@@ -496,7 +496,7 @@ export class EmailService {
 
     const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
     const expiresLabel = formatFleetDateTime(opts.expiresAt);
-    const subject = `[Vizyo Tracky] Vous etes invite a rejoindre ${opts.fleetName}`;
+    const subject = `[Vizyo Tracky] Vous êtes invité à rejoindre ${opts.fleetName}`;
 
     const html = this.shell({
       eyebrow: 'Accès · Invitation',
@@ -517,7 +517,7 @@ export class EmailService {
 
     const text = `${greeting}
 
-${opts.inviterName} vous a invite a rejoindre la flotte ${opts.fleetName} sur Vizyo Tracky en tant que ${opts.role}.
+${opts.inviterName} vous a invité à rejoindre la flotte ${opts.fleetName} sur Vizyo Tracky en tant que ${opts.role}.
 
 Acceptez l'invitation en visitant ce lien :
 ${opts.acceptUrl}

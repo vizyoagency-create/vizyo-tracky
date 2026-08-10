@@ -220,7 +220,7 @@ export class DepotScopeService {
     const count = await this.prisma.userVehicleAccess.count({ where: { userId } });
     if (count > 0) {
       throw new Error(
-        `Invariant viole : le compte DEPOT ${userId} porte ${count} ligne(s) UserVehicleAccess. ` +
+        `Invariant viole : le compte Dépôt ${userId} porte ${count} ligne(s) UserVehicleAccess. ` +
           'Le perimetre d\'un depot se calcule depuis ses missions, jamais depuis un scope vehicule.',
       );
     }

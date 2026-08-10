@@ -178,7 +178,7 @@ export class PartnerAdminService {
       const remote = await this.client.purgePreview(linkId);
       return { ...local, partnerReachable: true, remote };
     } catch {
-      this.logger.warn(`Apercu de coupure : partenaire injoignable pour le lien ${linkId}`);
+      this.logger.warn(`Aperçu de coupure : partenaire injoignable pour le lien ${linkId}`);
       return { ...local, partnerReachable: false, remote: null };
     }
   }

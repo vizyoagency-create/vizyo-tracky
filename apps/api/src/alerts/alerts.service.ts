@@ -114,7 +114,7 @@ export class AlertsService {
         })
         .catch((err) => {
           this.logger.error(
-            `surveillanceEvent.create a echoue pour l'alerte ${alert.id} (broadcast/dispatch maintenus): ${err instanceof Error ? err.message : err}`,
+            `surveillanceEvent.create a échoué pour l'alerte ${alert.id} (broadcast/dispatch maintenus): ${err instanceof Error ? err.message : err}`,
           );
         });
     }

@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { LucideAngularModule, ShieldCheck } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { ConsentService } from '../../core/services/consent.service';
+import { PortesAccesService } from '../../core/services/portes-acces.service';
 import { SecurityService } from '../../core/services/security.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -28,7 +29,10 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
             <span class="dv-badge"><lucide-icon [img]="ShieldCheck" [size]="22"></lucide-icon></span>
             <div>
               <h1 id="dv-title" class="dv-title">Confirmez cette connexion</h1>
-              <p class="dv-sub">Connexion inhabituelle détectée</p>
+              <p class="dv-sub">
+                @if (portes.libelle('verification'); as rang) { {{ rang }} · }
+                Connexion inhabituelle détectée
+              </p>
             </div>
             <app-logo variant="icon" [size]="26" class="dv-logo" />
           </div>
@@ -117,6 +121,8 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
 export class DeviceVerificationGateComponent {
   readonly security = inject(SecurityService);
   readonly consent = inject(ConsentService);
+  /** Le rang de cette porte dans la file — calculé, jamais écrit (lot B0′). */
+  readonly portes = inject(PortesAccesService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly realtime = inject(RealtimeService);

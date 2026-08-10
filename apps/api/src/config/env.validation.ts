@@ -129,12 +129,12 @@ const envSchema = z.object({
   // SAMPLING_DECISIONS_RETENTION_DAYS : audit-trail du sampling. Defaut 7j. 0 => desactive.
   // --- Retention des positions GPS — CIBLE CNIL 60 JOURS (lot 1, 21/07/2026) ---
   // POSITIONS_RETENTION_DAYS : fenetre ACTIVE (jours). Defaut 60 (recommandation CNIL ~2 mois
-  //   pour la geolocalisation fine). 0 => retention infinie = TOUT desactive (ni snapshot ni
-  //   suppression) : c'est l'ARRET D'URGENCE, y compris en production.
+  //   pour la geolocalisation fine). 0 => retention infinie = TOUT désactivé (ni snapshot ni
+  //   suppression) : c'est l'Arrêt D'URGENCE, y compris en production.
   // POSITIONS_ARCHIVE_DAYS : preavis/archive recuperable AU-DELA de la fenetre active, avant
   //   suppression. Defaut 0 : on garde 60 jours, au-dela c'est supprime (decision 21/07).
-  // POSITIONS_PURGE_ENABLED : armement de la SUPPRESSION REELLE (par lots de 10k bornes).
-  //   Defaut 'true'. EN PRODUCTION le drapeau ne peut PAS desactiver la purge (cf.
+  // POSITIONS_PURGE_ENABLED : armement de la SUPPRESSION Réelle (par lots de 10k bornes).
+  //   Defaut 'true'. EN PRODUCTION le drapeau ne peut PAS désactiver la purge (cf.
   //   resolvePurgeArmed) : desactivable en developpement/test uniquement.
   // Garde-fou commun : toute fenetre effective < 30 j fait ECHOUER le job (retention-guard.ts).
   SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),

@@ -77,7 +77,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                 <span class="text-rose-400 font-semibold">FAILING — {{ s.fixCommandFailureCount }} trames non conformes</span>
               } @else if (pendingDelta()) {
                 <lucide-icon [img]="Clock" [size]="20" class="text-amber-400"></lucide-icon>
-                <span class="text-amber-400 font-semibold">PENDING — boitier n'a pas encore confirme</span>
+                <span class="text-amber-400 font-semibold">PENDING — boîtier n'a pas encore confirme</span>
               } @else {
                 <lucide-icon [img]="CheckCircle" [size]="20" class="text-emerald-400"></lucide-icon>
                 <span class="text-emerald-400 font-semibold">OK — fix interval honore</span>
@@ -94,19 +94,19 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               <div class="font-mono font-bold">{{ s.desiredFixIntervalS }}s</div>
             </div>
             <div>
-              <div class="text-xs text-fg-tertiary uppercase">Reel observe</div>
+              <div class="text-xs text-fg-tertiary uppercase">Réel observe</div>
               <div class="font-mono font-bold">
                 {{ s.currentFixIntervalS ?? '—' }}{{ s.currentFixIntervalS != null ? 's' : '' }}
               </div>
             </div>
             <div>
-              <div class="text-xs text-fg-tertiary uppercase">Derniere sync</div>
+              <div class="text-xs text-fg-tertiary uppercase">Dernière sync</div>
               <div class="text-xs font-mono">
                 {{ s.lastFixIntervalSyncAt ? (s.lastFixIntervalSyncAt | date: 'dd/MM HH:mm') : '—' }}
               </div>
             </div>
             <div>
-              <div class="text-xs text-fg-tertiary uppercase">Etat sampling</div>
+              <div class="text-xs text-fg-tertiary uppercase">État sampling</div>
               <div class="text-xs font-mono">{{ s.lastSampledState ?? '—' }}</div>
             </div>
           </div>
@@ -143,7 +143,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           }
           @if (!s.adaptiveFixModeEnabled) {
             <div class="text-xs text-fg-tertiary bg-bg-tertiary rounded px-2 py-1">
-              Le pilotage adaptatif est desactive sur cette flotte (mode tracage continu).
+              Le pilotage adaptatif est désactivé sur cette flotte (mode tracage continu).
             </div>
           }
         </div>
@@ -154,7 +154,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <div class="flex-1 min-w-[180px]">
           <div class="text-sm font-semibold text-fg-primary">Override manuel</div>
           <div class="text-xs text-fg-tertiary">
-            Force un intervalle pour la duree choisie. Bloque les transitions automatiques.
+            Force un intervalle pour la durée choisie. Bloque les transitions automatiques.
           </div>
         </div>
         <div class="flex flex-col gap-1">
@@ -273,7 +273,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       } @else if (!loading()) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8 text-center">
           <lucide-icon [img]="Zap" [size]="32" class="mx-auto mb-2 opacity-40"></lucide-icon>
-          <p class="text-sm text-fg-tertiary">Aucune commande fix mode dans la fenetre.</p>
+          <p class="text-sm text-fg-tertiary">Aucune commande fix mode dans la fenêtre.</p>
         </div>
       }
     </div>
@@ -356,7 +356,7 @@ export class AdminFixModeComponent implements OnInit {
     if (!silence) return null;
     if (!this.pushesCommand()) return null;
     return `Boitier muet depuis ${silence} — la commande sera tentee par SMS, sans garantie ` +
-      `d'arrivee ni de confirmation. Verifier alimentation, SIM ou presence du boitier.`;
+      `d'arrivee ni de confirmation. Vérifier alimentation, SIM ou presence du boitier.`;
   }
 
   ngOnInit(): void {
@@ -384,7 +384,7 @@ export class AdminFixModeComponent implements OnInit {
       this.timeline.set(timeline.items);
     } catch (err) {
       swallow('admin-fix-mode:reload', err);
-      this.toast.error('Echec du chargement');
+      this.toast.error('Échec du chargement');
     } finally {
       this.loading.set(false);
     }
@@ -398,7 +398,7 @@ export class AdminFixModeComponent implements OnInit {
       this.timeline.set(t.items);
     } catch (err) {
       swallow('admin-fix-mode:reloadTimeline', err);
-      this.toast.error('Echec du chargement de la timeline');
+      this.toast.error('Échec du chargement de la timeline');
     }
   }
 
@@ -429,7 +429,7 @@ export class AdminFixModeComponent implements OnInit {
       this.reload();
     } catch (err) {
       swallow('admin-fix-mode:applyOverride', err);
-      this.toast.error('Echec de l\'override');
+      this.toast.error('Échec de l\'override');
     }
   }
 

@@ -120,37 +120,62 @@ body.plat-android {
   --densite-liste: 56px;
 }
 
-/* ─── Espace dépôt (2026-08), lot A3 — lisibilité du petit texte ─────────────
+/* ─── Jetons de PETIT TEXTE (refonte v2, lot B0′) ────────────────────────────
  *
- * MESURÉ DANS LE NAVIGATEUR, pas supposé : sur fond clair, `--text-tertiary`
- * (#8A938F) donne 3,07:1 et `--danger` (#D9544E) 3,94:1 — tous deux SOUS le seuil
- * WCAG de 4,5:1 exigé par le critère de recette n° 10. Or l'espace dépôt s'appuie
- * beaucoup sur du texte de 11 à 12,5 px : créneaux, encarts, compteur de fraîcheur.
+ * Une couleur sémantique lisible à 16 px ne l'est pas à 11. `--danger` (#D9544E)
+ * sur blanc donne 3,94:1, `--warning` (#C98708) 2,68:1 sur son propre lavis :
+ * sous le seuil WCAG de 4,5:1 exigé sur le texte. Le défaut ne se voit pas en
+ * relisant le code — la couleur est « la bonne », c'est sa VALEUR qui est trop
+ * claire pour la taille à laquelle on l'emploie.
  *
- * Les jetons GLOBAUX ne bougent pas — ils habillent 29 autres pages, et leur reprise
- * est le chantier du bloc B. L'espace dépôt définit donc les siens, une seule fois
- * ici : les variables CSS traversent l'encapsulation des composants, il serait absurde
- * de les redéclarer dans chacun des dix fichiers de la fonctionnalité.
+ * D'où cette famille : la même signification, une valeur assez foncée pour être
+ * lue. `--danger` reste le rouge des barres, des liserés et des grandes icônes ;
+ * `--texte-alerte` est le rouge des chips, des libellés et des compteurs.
  *
- * En thème sombre les deux jetons passent largement le seuil (6,8:1 et 7,1:1) : on
- * les reprend tels quels plutôt que d'assombrir un texte déjà clair sur fond noir.
+ * ASSOMBRISSEMENTS MESURÉS, pas choisis à l'œil (`pnpm verif:contraste`) : chaque
+ * pourcentage est le PLUS CLAIR qui passe encore 4,6:1 sur le pire fond clair de
+ * l'application, un lavis de 12 % de la couleur elle-même posé sur
+ * `--surface-tertiary`. Un point de plus et le couple tombe sous le seuil.
+ *
+ * En thème sombre, rien à corriger : un texte clair sur fond noir passe largement
+ * (5,5 à 8,5:1). Les jetons y sont repris tels quels — assombrir un texte déjà
+ * clair sur un fond déjà noir le rendrait moins lisible, pas plus.
+ */
+:root,
+[data-theme='dark'] {
+  --texte-succes: var(--color-tracky-light);
+  --texte-alerte: var(--danger);
+  --texte-attente: var(--warning);
+  --texte-info: var(--blue);
+  --texte-violet: var(--violet);
+  --texte-inactif: var(--text-secondary);
+}
+[data-theme='light'] {
+  --texte-succes: color-mix(in srgb, var(--color-tracky-light) 72%, #000);
+  --texte-alerte: color-mix(in srgb, var(--danger) 78%, #000);
+  --texte-attente: color-mix(in srgb, var(--warning) 68%, #000);
+  /* Bleu, violet et gris passent tels quels (4,71 · 4,65 · 5,03:1) : les
+     assombrir n'ajouterait rien et éloignerait de la couleur de la maquette. */
+  --texte-info: var(--blue);
+  --texte-violet: var(--violet);
+  --texte-inactif: var(--text-secondary);
+}
+
+/* ─── Espace dépôt (2026-08), lot A3 ─────────────────────────────────────────
+ *
+ * Le dépôt avait mesuré le problème en premier et s'était donné ses propres
+ * valeurs, en notant que « les jetons globaux ne bougent pas — leur reprise est
+ * le chantier du bloc B ». C'est ce lot : les quatre jetons ne sont plus que des
+ * alias. Une seule définition de « le rouge qui se lit », pour les 30 écrans.
+ *
+ * Les noms `--depot-*` restent : les dix composants de la fonctionnalité les
+ * consomment, et un alias coûte moins qu'une passe de renommage sans objet.
  */
 .layout--depot {
-  --depot-attenue: var(--text-secondary);
-  --depot-alerte: color-mix(in srgb, var(--danger) 82%, #000);
-  --depot-succes: color-mix(in srgb, var(--color-tracky-light) 72%, #000);
-  --depot-attente: color-mix(in srgb, var(--warning) 75%, #000);
-}
-[data-theme='dark'] .layout--depot {
-  /* MESURÉ aussi en sombre : --text-tertiary (#69736E) sur --surface-secondary
-     (#101514) donne 3,82:1 — sous le seuil, comme en clair. Le texte atténué du
-     dépôt est donc --text-secondary dans LES DEUX thèmes (7,36:1 en sombre).
-     Les couleurs sémantiques, elles, passent largement en sombre : on les reprend
-     telles quelles, sans les assombrir sur un fond déjà noir. */
-  --depot-attenue: var(--text-secondary);
-  --depot-alerte: var(--danger);
-  --depot-succes: var(--color-tracky-light);
-  --depot-attente: var(--warning);
+  --depot-attenue: var(--texte-inactif);
+  --depot-alerte: var(--texte-alerte);
+  --depot-succes: var(--texte-succes);
+  --depot-attente: var(--texte-attente);
 }
 
 /* ─── Pastilles de statut, version dépôt ─────────────────────────────────────
@@ -959,17 +984,25 @@ textarea:focus-visible,
   min-height: 38px;
 }
 .tk-popup-btn:active { transform: scale(0.97); }
-.tk-popup-btn--primary {
-  background: rgba(16, 224, 160, 0.14);
-  color: #059669;
-  border-color: rgba(16, 224, 160, 0.32);
+/* Les boutons de bulle portaient chacun leur paire de valeurs et leur propre
+   surcharge `[data-theme='dark']` : #059669/#10E0A0 pour le vert, #dc2626/#f87171
+   pour le rouge, #3b82f6 pour le bleu — trois doublons des jetons, plus quatre
+   règles de thème à maintenir. La famille `--texte-*` bascule seule : les
+   surcharges disparaissent, et le point ouvert O3 de design/TOKENS.md avec elles. */
+.tk-popup-btn--primary,
+.tk-popup-btn--success {
+  background: color-mix(in srgb, var(--texte-succes) 14%, transparent);
+  color: var(--texte-succes);
+  border-color: color-mix(in srgb, var(--texte-succes) 32%, transparent);
 }
-[data-theme='dark'] .tk-popup-btn--primary {
-  color: #10E0A0;
-}
-.tk-popup-btn--primary:hover {
-  background: rgba(16, 224, 160, 0.22);
-  border-color: rgba(16, 224, 160, 0.48);
+/* Survol à 18 % et non plus 22 % : un lavis calibré sur un vert VIF (#10E0A0) est
+   trop appuyé sous une encre foncée — 4,30:1, sous le seuil, précisément au moment
+   où l'utilisateur regarde le bouton. Les trois boutons partagent maintenant la même
+   valeur, qu'ils n'avaient d'ailleurs aucune raison de faire diverger. */
+.tk-popup-btn--primary:hover,
+.tk-popup-btn--success:hover {
+  background: color-mix(in srgb, var(--texte-succes) 18%, transparent);
+  border-color: color-mix(in srgb, var(--texte-succes) 48%, transparent);
 }
 .tk-popup-btn--ghost {
   background: var(--surface-tertiary);
@@ -981,36 +1014,21 @@ textarea:focus-visible,
   border-color: var(--border-strong-color);
 }
 .tk-popup-btn--info {
-  background: rgba(59, 130, 246, 0.10);
-  color: #3b82f6;
-  border-color: rgba(59, 130, 246, 0.30);
+  background: color-mix(in srgb, var(--texte-info) 10%, transparent);
+  color: var(--texte-info);
+  border-color: color-mix(in srgb, var(--texte-info) 30%, transparent);
 }
 .tk-popup-btn--info:hover {
-  background: rgba(59, 130, 246, 0.18);
+  background: color-mix(in srgb, var(--texte-info) 18%, transparent);
 }
 .tk-popup-btn--danger {
-  background: rgba(239, 68, 68, 0.10);
-  color: #dc2626;
-  border-color: rgba(239, 68, 68, 0.30);
-}
-[data-theme='dark'] .tk-popup-btn--danger {
-  color: #f87171;
+  background: color-mix(in srgb, var(--texte-alerte) 10%, transparent);
+  color: var(--texte-alerte);
+  border-color: color-mix(in srgb, var(--texte-alerte) 30%, transparent);
 }
 .tk-popup-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.48);
-}
-.tk-popup-btn--success {
-  background: rgba(16, 224, 160, 0.14);
-  color: #059669;
-  border-color: rgba(16, 224, 160, 0.32);
-}
-[data-theme='dark'] .tk-popup-btn--success {
-  color: #10E0A0;
-}
-.tk-popup-btn--success:hover {
-  background: rgba(16, 224, 160, 0.22);
-  border-color: rgba(16, 224, 160, 0.48);
+  background: color-mix(in srgb, var(--texte-alerte) 18%, transparent);
+  border-color: color-mix(in srgb, var(--texte-alerte) 48%, transparent);
 }
 
 /* ───────────────────────────────────────────────────────────────────────────

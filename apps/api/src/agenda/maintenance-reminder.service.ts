@@ -37,14 +37,14 @@ export class MaintenanceReminderService {
   @Cron('0 0 7 * * *')
   async run(): Promise<void> {
     if (this.running) {
-      this.logger.warn('[maintenance] run precedent encore en cours — skip');
+      this.logger.warn('[maintenance] run précédent encore en cours — skip');
       return;
     }
     this.running = true;
     try {
       await this.runOnce();
     } catch (err) {
-      this.logger.error(`[maintenance] run a echoue: ${err instanceof Error ? err.message : err}`);
+      this.logger.error(`[maintenance] run a échoué: ${err instanceof Error ? err.message : err}`);
       this.errorLogger.recordBackground(err instanceof Error ? err : new Error(String(err)), 'cron:maintenance-reminder');
     } finally {
       this.running = false;
@@ -141,7 +141,7 @@ export class MaintenanceReminderService {
     }
     if (notified > 0) this.logger.log(`[maintenance] ${notified} rappel(s) d'echeance notifie(s)`);
     if (unevaluable > 0) {
-      this.logger.warn(`[maintenance] ${unevaluable} echeance(s) au km non evaluable(s) (vehicule muet)`);
+      this.logger.warn(`[maintenance] ${unevaluable} échéance(s) au km non evaluable(s) (véhicule muet)`);
     }
   }
 

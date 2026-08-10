@@ -35,7 +35,7 @@ import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
 //     pour reduire la charge DB. Le WS broadcast push les updates temps reel
 //     en parallele du polling — l'utilisateur voit l'evenement immediatement.
 //   - STATS_TTL_MS : KPIs agreges (count vehicules, alertes critiques), 60s
-//     suffit largement (rythme de mise a jour business = minute).
+//     suffit largement (rythme de mise à jour business = minute).
 const SNAPSHOT_TTL_MS = 15_000;
 const STATS_TTL_MS = 60_000;
 

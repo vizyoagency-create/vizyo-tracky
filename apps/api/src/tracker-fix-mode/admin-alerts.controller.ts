@@ -454,7 +454,7 @@ export class AdminAlertsController {
     if (!command) throw new NotFoundException('Commande introuvable');
     if (req.user.role !== UserRole.SUPER_ADMIN) {
       const fleetId = command.tracker.vehicle?.fleetId;
-      if (fleetId !== req.user.fleetId) throw new ForbiddenException('Acces refuse');
+      if (fleetId !== req.user.fleetId) throw new ForbiddenException('Accès refusé');
     }
 
     return this.prisma.trackerCommand.update({
@@ -483,7 +483,7 @@ export class AdminAlertsController {
     });
     if (!tracker) throw new NotFoundException('Tracker introuvable');
     if (req.user.role !== UserRole.SUPER_ADMIN) {
-      if (tracker.vehicle?.fleetId !== req.user.fleetId) throw new ForbiddenException('Acces refuse');
+      if (tracker.vehicle?.fleetId !== req.user.fleetId) throw new ForbiddenException('Accès refusé');
     }
     await this.prisma.tracker.update({
       where: { id: trackerId },

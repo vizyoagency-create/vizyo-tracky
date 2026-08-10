@@ -141,7 +141,7 @@ export class PartnerPairingService {
       // sans compensation, il afficherait « connecté » alors que rien ne
       // fonctionnerait (aucune demande de bail n'aboutirait).
       this.logger.error(
-        `Ecriture du lien ${linkId} ECHOUEE apres acquittement du partenaire — compensation`,
+        `Ecriture du lien ${linkId} Échouée après acquittement du partenaire — compensation`,
       );
       await this.client.abortPairing(code, linkId);
       throw err;
@@ -220,14 +220,14 @@ export class PartnerPairingService {
     });
     if (suspended) {
       throw new ForbiddenException(
-        'Votre acces a l\'integration a ete suspendu. Contactez Tracky.',
+        'Votre accès a l\'integration a été suspendu. Contactez Tracky.',
       );
     }
 
     const live = await this.prisma.partnerLink.findFirst({
       where: { fleetId, partner: PARTNER, liveKey: { not: null } },
     });
-    if (live) throw new ConflictException('Cette flotte est deja connectee a Maestroo');
+    if (live) throw new ConflictException('Cette flotte est déjà connectee a Maestroo');
   }
 }
 

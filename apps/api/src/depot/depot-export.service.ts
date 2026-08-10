@@ -140,7 +140,7 @@ export class DepotExportService {
         fleet: { select: { name: true } },
       },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const compte = await this.prisma.user.findUnique({
       where: { id: userId },

@@ -67,7 +67,7 @@ export interface UserPermissions {
   /** Assigner / detacher une carte SIM a un tracker. */
   sims_assign: boolean;
   /**
-   * Sprint 4 — Declencher l'ecoute audio a distance du vehicule (micro). Capacite
+   * Sprint 4 — Déclencher l'ecoute audio à distance du vehicule (micro). Capacite
    * LEGALEMENT SENSIBLE : OFF par defaut PARTOUT sauf admin, gate env supplementaire
    * (desactivee en production sans flag explicite, cf. AudioMonitoringGuard).
    */
@@ -145,7 +145,7 @@ export interface UserPermissions {
   /**
    * Integration partenaire (Tracky x Maestroo) — connecter la flotte a une application
    * partenaire, choisir les CATEGORIES de donnees partagees, et COUPER le partage (en
-   * totalite ou categorie par categorie) a tout moment. C'est un acte a consequence :
+   * totalite ou categorie par categorie) à tout moment. C'est un acte a consequence :
    * il expose des donnees de la flotte a une application tierce. Reserve au fleet-admin
    * par defaut ; accordable, jamais implicite.
    */
@@ -656,53 +656,53 @@ export interface PermissionLabel {
  * Toute nouvelle permission DOIT etre ajoutee ici sinon TS rale (Record exhaustif).
  */
 export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> = {
-  vehicles_view: { group: 'Vehicules', label: 'Voir les vehicules' },
-  vehicles_create: { group: 'Vehicules', label: 'Ajouter un vehicule' },
-  vehicles_edit: { group: 'Vehicules', label: 'Modifier un vehicule' },
-  vehicles_delete: { group: 'Vehicules', label: 'Supprimer un vehicule' },
+  vehicles_view: { group: 'Véhicules', label: 'Voir les véhicules' },
+  vehicles_create: { group: 'Véhicules', label: 'Ajouter un véhicule' },
+  vehicles_edit: { group: 'Véhicules', label: 'Modifier un véhicule' },
+  vehicles_delete: { group: 'Véhicules', label: 'Supprimer un véhicule' },
   engine_control: {
-    group: 'Vehicules',
-    label: 'Couper / redemarrer le moteur',
-    description: 'Action sensible. Soumise aux contraintes metier (vitesse, fix GPS).',
+    group: 'Véhicules',
+    label: 'Couper / redémarrer le moteur',
+    description: 'Action sensible. Soumise aux contraintes métier (vitesse, fix GPS).',
   },
   privacy_manage: {
-    group: 'Vehicules',
-    label: 'Gerer le mode vie privee',
-    description: 'Activer/desactiver la pause de collecte des positions d\'un vehicule (aucune position enregistree pendant le mode prive).',
+    group: 'Véhicules',
+    label: 'Gérer le mode vie privée',
+    description: 'Activer/désactiver la pause de collecte des positions d\'un véhicule (aucune position enregistrée pendant le mode privé).',
   },
 
   schedules_manage: {
     group: 'Horaires',
-    label: 'Gerer les horaires marche/coupure',
-    description: 'Definir les plages horaires d\'allumage/coupure automatique d\'un vehicule.',
+    label: 'Gérer les horaires marche/coupure',
+    description: 'Définir les plages horaires d\'allumage/coupure automatique d\'un véhicule.',
   },
-  groups_view: { group: 'Groupes', label: 'Voir les groupes de vehicules' },
-  groups_manage: { group: 'Groupes', label: 'Gerer les groupes (creer, renommer, supprimer)' },
+  groups_view: { group: 'Groupes', label: 'Voir les groupes de véhicules' },
+  groups_manage: { group: 'Groupes', label: 'Gérer les groupes (créer, renommer, supprimer)' },
   geofences_view: { group: 'Geofences', label: 'Voir les geofences' },
-  geofences_manage: { group: 'Geofences', label: 'Gerer les geofences' },
+  geofences_manage: { group: 'Geofences', label: 'Gérer les geofences' },
   alerts_view: { group: 'Alertes', label: 'Voir les alertes' },
   alerts_acknowledge: { group: 'Alertes', label: 'Acquitter les alertes' },
-  alerts_configure: { group: 'Alertes', label: 'Configurer les regles d\'alertes', description: 'Creer, modifier et supprimer les regles de notification et seuils par vehicule.' },
+  alerts_configure: { group: 'Alertes', label: 'Configurer les règles d\'alertes', description: 'Créer, modifier et supprimer les règles de notification et seuils par véhicule.' },
   reports_view: { group: 'Rapports', label: 'Voir les rapports' },
   reports_export: {
     group: 'Rapports',
     label: 'Exporter les rapports (PDF / Excel / CSV)',
-    description: 'Telecharger les rapports et exports de donnees. Separe de la simple lecture pour eviter l\'exfiltration de l\'historique GPS.',
+    description: 'Télécharger les rapports et exports de données. Séparé de la simple lecture pour éviter l\'exfiltration de l\'historique GPS.',
   },
   trips_view: {
     group: 'Trajets & analyse',
     label: 'Voir l\'analyse des trajets & les scores',
-    description: 'Tracabilite fine : arrets, exces de vitesse (limites OSM), eco-conduite, conso/CO2, scores de conduite / classement et suivi carburant.',
+    description: 'Traçabilité fine : arrêts, excès de vitesse (limites OSM), éco-conduite, conso/CO2, scores de conduite / classement et suivi carburant.',
   },
   fuel_manage: {
     group: 'Trajets & analyse',
     label: 'Renseigner les pleins (calibration carburant)',
-    description: 'Saisir / modifier / supprimer les pleins (methode du plein) pour calibrer la consommation reelle et les couts.',
+    description: 'Saisir / modifier / supprimer les pleins (méthode du plein) pour calibrer la consommation réelle et les coûts.',
   },
   users_view: { group: 'Utilisateurs', label: 'Voir les utilisateurs' },
-  users_manage: { group: 'Utilisateurs', label: 'Gerer les utilisateurs (inviter, editer)' },
+  users_manage: { group: 'Utilisateurs', label: 'Gérer les utilisateurs (inviter, éditer)' },
   drivers_view: { group: 'Conducteurs', label: 'Voir les conducteurs' },
-  drivers_manage: { group: 'Conducteurs', label: 'Gerer les conducteurs' },
+  drivers_manage: { group: 'Conducteurs', label: 'Gérer les conducteurs' },
   sims_view: {
     group: 'Cartes SIM',
     label: 'Voir les cartes SIM',
@@ -710,122 +710,122 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
   },
   sims_assign: {
     group: 'Cartes SIM',
-    label: 'Assigner une carte SIM a un tracker',
-    description: 'Poser / detacher une SIM sur un boitier de la flotte.',
+    label: 'Assigner une carte SIM à un tracker',
+    description: 'Poser / détacher une SIM sur un boîtier de la flotte.',
   },
   audio_monitoring: {
     group: 'Audio',
     label: 'Écouter l\'audio du véhicule',
     description:
-      'Capacite legalement sensible (micro embarque). Desactivee en production sans flag dedie, attestation flotte requise. OFF par defaut.',
+      'Capacité légalement sensible (micro embarqué). Désactivée en production sans flag dédié, attestation flotte requise. OFF par défaut.',
   },
   agenda_view: {
     group: 'Agenda',
     label: 'Voir l\'agenda + signaler un incident',
     description:
-      'Calendrier maintenance/incidents. Permet aussi de signaler un incident sur un vehicule accessible.',
+      'Calendrier maintenance/incidents. Permet aussi de signaler un incident sur un véhicule accessible.',
   },
   agenda_manage: {
     group: 'Agenda',
-    label: 'Gerer la maintenance (evenements, plans, echeances)',
+    label: 'Gérer la maintenance (événements, plans, échéances)',
     description:
-      'Creer/editer/resoudre les evenements de maintenance et les plans recurrents (CT, vidange...).',
+      'Créer/éditer/résoudre les événements de maintenance et les plans récurrents (CT, vidange...).',
   },
   reservations_view: {
-    group: 'Reservations',
-    label: 'Voir les reservations & disponibilites',
+    group: 'Réservations',
+    label: 'Voir les réservations & disponibilités',
     description:
-      'Voir les reservations de vehicules et les creneaux de disponibilite (activite reelle, dashboard d\'optimisation).',
+      'Voir les réservations de véhicules et les créneaux de disponibilité (activité réelle, dashboard d\'optimisation).',
   },
   reservations_request: {
-    group: 'Reservations',
-    label: 'Demander une reservation',
+    group: 'Réservations',
+    label: 'Demander une réservation',
     description:
-      'Deposer une demande de reservation (creneau + criteres) sur un vehicule accessible ; validee ensuite par un gestionnaire.',
+      'Déposer une demande de réservation (créneau + critères) sur un véhicule accessible ; validée ensuite par un gestionnaire.',
   },
   reservations_manage: {
-    group: 'Reservations',
-    label: 'Gerer les reservations',
+    group: 'Réservations',
+    label: 'Gérer les réservations',
     description:
-      'Valider / refuser / editer / annuler / supprimer les reservations et auto-affecter un vehicule libre.',
+      'Valider / refuser / éditer / annuler / supprimer les réservations et auto-affecter un véhicule libre.',
   },
   ai_optimize: {
     group: 'Intelligence artificielle',
     label: 'Lancer les propositions IA (optimisation agenda)',
     description:
-      'Demander a l\'IA des propositions (capacite du parc, placement optimise). L\'IA propose ; l\'application reutilise vehicles_edit / reservations_*.',
+      'Demander à l\'IA des propositions (capacité du parc, placement optimisé). L\'IA propose ; l\'application réutilise vehicles_edit / reservations_*.',
   },
   ai_narrate: {
     group: 'Intelligence artificielle',
-    label: 'Generer les recits IA de trajet',
+    label: 'Générer les récits IA de trajet',
     description:
-      'Produire le recit IA d\'un trajet (resume vulgarise + Trust Score + conseils). Chaque generation est un appel LLM facture.',
+      'Produire le récit IA d\'un trajet (résumé vulgarisé + Trust Score + conseils). Chaque génération est un appel LLM facturé.',
   },
   ai_configure: {
     group: 'Intelligence artificielle',
     label: 'Configurer l\'IA de la flotte',
     description:
-      'Couper ou activer l\'assistance IA pour toute la societe (interrupteur maitre).',
+      'Couper ou activer l\'assistance IA pour toute la société (interrupteur maître).',
   },
   billing_manage: {
     group: 'Facturation',
     label: 'Facturation & options',
     description:
-      'Voir les informations d\'abonnement / facturation et (a terme) gerer le moyen de paiement. Reserve aux admins par defaut, accordable par utilisateur.',
+      'Voir les informations d\'abonnement / facturation et (à terme) gérer le moyen de paiement. Réservé aux admins par défaut, accordable par utilisateur.',
   },
   qr_manage: {
-    group: 'Vehicules',
-    label: 'Generer / imprimer les QR de deverrouillage',
+    group: 'Véhicules',
+    label: 'Générer / imprimer les QR de déverrouillage',
     description:
-      'Generer et imprimer les QR codes de deverrouillage des vehicules (fiche, liste, feuille « tous les QR »). Reserve aux admins par defaut, accordable.',
+      'Générer et imprimer les QR codes de déverrouillage des véhicules (fiche, liste, feuille « tous les QR »). Réservé aux admins par défaut, accordable.',
   },
   places_view: {
-    group: 'Lieux cles',
-    label: 'Voir les lieux cles',
+    group: 'Lieux clés',
+    label: 'Voir les lieux clés',
     description:
-      'Consulter les stations-service frequentees (passages detectes avec arret reel) et les parkings / stationnements recurrents de la flotte.',
+      'Consulter les stations-service fréquentées (passages détectés avec arrêt réel) et les parkings / stationnements récurrents de la flotte.',
   },
   places_manage: {
-    group: 'Lieux cles',
-    label: 'Gerer les lieux cles',
+    group: 'Lieux clés',
+    label: 'Gérer les lieux clés',
     description:
-      'Valider une station-service detectee (elle devient une station de la flotte sur la carte), creer / modifier / supprimer un parking ou un stationnement recurrent. Accorde aux managers par defaut.',
+      'Valider une station-service détectée (elle devient une station de la flotte sur la carte), créer / modifier / supprimer un parking ou un stationnement récurrent. Accordé aux managers par défaut.',
   },
   places_analyze: {
-    group: 'Lieux cles',
+    group: 'Lieux clés',
     label: 'Lancer une analyse IA d\'un lieu',
     description:
-      'Declencher l\'analyse IA d\'un lieu (enrichissement OSM + synthese). CONSOMME DES TOKENS (cout reel) : reserve aux admins par defaut, accordable. Reste soumis a l\'interrupteur IA de la societe et au kill-switch global.',
+      'Déclencher l\'analyse IA d\'un lieu (enrichissement OSM + synthèse). CONSOMME DES TOKENS (coût réel) : réservé aux admins par défaut, accordable. Reste soumis à l\'interrupteur IA de la société et au kill-switch global.',
   },
   integrations_manage: {
     group: 'Integrations',
-    label: 'Gerer les integrations partenaires',
+    label: 'Gérer les intégrations partenaires',
     description:
-      'Connecter la flotte a une application partenaire (Maestroo), choisir les categories de donnees partagees, et couper le partage a tout moment. Acte a consequence : expose des donnees de la flotte a une application tierce. Reserve au fleet-admin par defaut.',
+      'Connecter la flotte à une application partenaire (Maestroo), choisir les catégories de données partagées, et couper le partage à tout moment. Acte à conséquence : expose des données de la flotte à une application tierce. Réservé au fleet-admin par défaut.',
   },
   missions_view: {
-    group: 'Missions & depots',
+    group: 'Missions & dépôts',
     label: 'Voir les missions',
     description:
-      'Consulter les missions (trajet planifie avec creneau, vehicule et depot destinataire). Pour un compte DEPOT, limite a SES propres missions et a leur fenetre horaire.',
+      'Consulter les missions (trajet planifié avec créneau, véhicule et dépôt destinataire). Pour un compte Dépôt, limité à SES propres missions et à leur fenêtre horaire.',
   },
   missions_manage: {
-    group: 'Missions & depots',
-    label: 'Creer / modifier une mission',
+    group: 'Missions & dépôts',
+    label: 'Créer / modifier une mission',
     description:
-      'Creer, modifier et annuler une mission, et designer son depot destinataire. Acte a consequence : ouvre a un tiers la position du vehicule pendant le creneau, et rend le vehicule indisponible a la reservation.',
+      'Créer, modifier et annuler une mission, et désigner son dépôt destinataire. Acte à conséquence : ouvre à un tiers la position du véhicule pendant le créneau, et rend le véhicule indisponible à la réservation.',
   },
   mission_share: {
-    group: 'Missions & depots',
+    group: 'Missions & dépôts',
     label: 'Partager un suivi (lien 15 min)',
     description:
-      'Generer un lien public temporaire vers un client final. Le lien n\'affiche que la position et l\'heure d\'arrivee estimee, expire automatiquement et reste revocable.',
+      'Générer un lien public temporaire vers un client final. Le lien n\'affiche que la position et l\'heure d\'arrivée estimée, expire automatiquement et reste révocable.',
   },
   driver_contact_view: {
-    group: 'Missions & depots',
+    group: 'Missions & dépôts',
     label: 'Contacter le conducteur d\'une mission',
     description:
-      'Voir le nom et le telephone du conducteur d\'une mission dont on est destinataire. Le numero est masque cote serveur ; l\'appel passe par un endpoint qui journalise l\'acces.',
+      'Voir le nom et le téléphone du conducteur d\'une mission dont on est destinataire. Le numéro est masqué côté serveur ; l\'appel passe par un endpoint qui journalise l\'accès.',
   },
 };
 

@@ -443,7 +443,7 @@ export class NotificationsApiService {
       this.toast.success('Alerte acquittee');
     } catch (err) {
       swallow('notifications:acknowledgeAlertFromSw', err);
-      this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
+      this.toast.error('Échec de l\'acquittement', 'Reessayer depuis la liste des alertes');
     }
   }
 

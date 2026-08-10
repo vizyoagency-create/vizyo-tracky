@@ -142,7 +142,7 @@ export class ReportsStatsService {
   ): Promise<FleetStatsReport> {
     if (requestedBy && requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (requestedBy.fleetId !== fleetId) {
-        throw new ForbiddenException('Acces refuse a cette flotte');
+        throw new ForbiddenException('Accès refusé à cette flotte');
       }
     }
 

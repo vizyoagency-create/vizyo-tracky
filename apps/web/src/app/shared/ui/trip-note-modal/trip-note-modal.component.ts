@@ -163,14 +163,14 @@ export class TripNoteModalComponent {
         this.tripsApi.updateNote(t.id, this.text.trim() || null),
       );
       this.saved.emit(updated);
-      this.toast.success('Note enregistree');
+      this.toast.success('Note enregistrée');
       this.closed.emit();
     } catch (err) {
       swallow('trip-note-modal:onSave', err);
       const msg = err instanceof HttpErrorResponse
         ? err.error?.message ?? 'Erreur inconnue'
         : err instanceof Error ? err.message : 'Erreur inconnue';
-      this.toast.error('Echec enregistrement note', msg);
+      this.toast.error('Échec enregistrement note', msg);
     } finally {
       this.saving.set(false);
     }
@@ -184,14 +184,14 @@ export class TripNoteModalComponent {
     try {
       const updated = await firstValueFrom(this.tripsApi.updateNote(t.id, null));
       this.saved.emit(updated);
-      this.toast.success('Note supprimee');
+      this.toast.success('Note supprimée');
       this.closed.emit();
     } catch (err) {
       swallow('trip-note-modal:onClear', err);
       const msg = err instanceof HttpErrorResponse
         ? err.error?.message ?? 'Erreur inconnue'
         : err instanceof Error ? err.message : 'Erreur inconnue';
-      this.toast.error('Echec suppression note', msg);
+      this.toast.error('Échec suppression note', msg);
     } finally {
       this.saving.set(false);
     }

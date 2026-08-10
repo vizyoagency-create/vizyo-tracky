@@ -913,7 +913,7 @@ describe('MissionsService — creation', () => {
 
     it('refuse une mission deja terminee', async () => {
       prisma.mission.findFirst.mockResolvedValue({ id: 'm-1', ref: 'M', status: MissionStatus.DONE });
-      await expect(service.annuler(GESTIONNAIRE, 'm-1', 'trop tard')).rejects.toThrow(/deja terminee/);
+      await expect(service.annuler(GESTIONNAIRE, 'm-1', 'trop tard')).rejects.toThrow(/déjà terminée/);
     });
 
     it('refuse une mission hors flotte', async () => {

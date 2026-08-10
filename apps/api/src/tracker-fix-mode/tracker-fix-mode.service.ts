@@ -184,7 +184,7 @@ export class TrackerFixModeService {
         ? Math.round((now.getTime() - input.lastSeenAt.getTime()) / 60000)
         : null;
       if (lastSeenMin === null) {
-        return 'Tracker jamais vu. Verifier alimentation principale + carte SIM data + couverture GPRS.';
+        return 'Tracker jamais vu. Vérifier alimentation principale + carte SIM data + couverture GPRS.';
       }
       if (lastSeenMin > 60) {
         return `Tracker offline depuis ${lastSeenMin}min. Probable coupure GPRS prolongee — verifier la couverture sur la zone de stationnement, ou la carte SIM.`;
@@ -204,7 +204,7 @@ export class TrackerFixModeService {
     if (input.lastValidFrameAt) {
       const lastValidMin = Math.round((now.getTime() - input.lastValidFrameAt.getTime()) / 60000);
       if (lastValidMin > 30) {
-        return `Pas de trame GPS valide depuis ${lastValidMin}min alors que la socket est ouverte. Verifier antenne GPS / occlusion (parking souterrain, garage).`;
+        return `Pas de trame GPS valide depuis ${lastValidMin}min alors que la socket est ouverte. Vérifier antenne GPS / occlusion (parking souterrain, garage).`;
       }
     }
 
@@ -522,7 +522,7 @@ export class TrackerFixModeService {
     // V1.6 — Cooldown apres FAILING : si le tracker est marque FAILING, on
     // arrete de tenter de nouvelles commandes jusqu'a ce qu'un admin l'acquitte
     // via /admin/alerts/trackers/:id/clear-failing OU jusqu'a ce qu'on observe
-    // a nouveau l'intervalle attendu (reconcile remet failureCount a 0).
+    // à nouveau l'intervalle attendu (reconcile remet failureCount a 0).
     // V1.14 — Le parametre `force` permet a un override admin de passer outre.
     if (tracker.fixCommandFailing && !force) {
       return null;

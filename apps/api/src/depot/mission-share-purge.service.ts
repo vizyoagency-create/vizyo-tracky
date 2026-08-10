@@ -41,7 +41,7 @@ export class MissionSharePurgeService {
     } catch (err) {
       // Une tache de fond qui leve tue l'ordonnanceur pour toutes les suivantes.
       this.logger.error(
-        `Purge des liens de partage en echec : ${err instanceof Error ? err.message : err}`,
+        `Purge des liens de partage en échec : ${err instanceof Error ? err.message : err}`,
       );
     } finally {
       this.enCours = false;

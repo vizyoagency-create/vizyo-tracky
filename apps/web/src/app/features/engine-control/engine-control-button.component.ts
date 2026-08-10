@@ -178,8 +178,8 @@ export class EngineControlButtonComponent implements OnInit {
 
   /**
    * V1.11 Phase 1 — VehicleId effectif : prend l'input si fourni, sinon resout
-   * via le snapshot realtime (compat avec usages historiques). Necessaire pour
-   * la verification de permission per-vehicle (engine_control).
+   * via le snapshot realtime (compat avec usages historiques). Nécessaire pour
+   * la vérification de permission per-vehicle (engine_control).
    */
   protected readonly effectiveVehicleId = computed<string | undefined>(() => {
     const direct = this.vehicleId();

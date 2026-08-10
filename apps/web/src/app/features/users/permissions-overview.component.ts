@@ -159,7 +159,7 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
                       }
                     }
                     @if (u.vehicleAccess.length === 0) {
-                      <span class="po-scope-pill none">Aucun acces</span>
+                      <span class="po-scope-pill none">Aucun accès</span>
                     }
                   </div>
                   <lucide-icon [img]="expandedUserId() === u.id ? ChevronDown : ChevronRight" [size]="16" class="po-chevron"></lucide-icon>
@@ -199,7 +199,7 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
                         </div>
                       }
                       @if (u.vehicleAccess.length === 0) {
-                        <p class="po-empty">Aucun scope d'acces configure.</p>
+                        <p class="po-empty">Aucun scope d'accès configuré.</p>
                       }
                     }
                   </div>

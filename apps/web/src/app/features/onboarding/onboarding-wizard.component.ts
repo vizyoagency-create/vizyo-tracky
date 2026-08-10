@@ -7,38 +7,51 @@ import {
   Check,
   Compass,
   LucideAngularModule,
-  Mail,
   Moon,
-  PartyPopper,
   Sun,
-  Truck,
   UserCircle2,
   X,
 } from 'lucide-angular';
-import { firstValueFrom } from 'rxjs';
-import { AuthService } from '../../core/services/auth.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
 import { UsersApiService } from '../../core/services/users.service';
-import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ThemeService } from '../../core/theme/theme.service';
 import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
-type Step = 1 | 2 | 3 | 4 | 5;
+type Step = 1 | 2;
 
 /**
- * V1.5 (Sprint J) — Wizard d'onboarding 5 etapes pour le premier login.
+ * Assistant de démarrage du premier login — DEUX étapes, pour tout le monde.
  *
- * Design : drawer plein ecran mobile-first avec wave glassy en header
- * (reutilise les keyframes `tracky-nav-wave-1/2` du dashboard-layout).
- * Toutes les etapes sont skippables sauf la derniere (Termine).
+ * ┌───────────────────────────────────────────────────────────────────────────┐
+ * │ POURQUOI CE FICHIER A MAIGRI (lot B0′)                                     │
+ * │                                                                            │
+ * │ Il déclarait `Step = 1|2|3|4|5` alors que le parcours réel dépendait du     │
+ * │ rôle : un non-admin faisait 1 → 2 → 5, et la barre de progression bondissait│
+ * │ de 40 % à 100 %. Deux systèmes coexistaient — un numéro d'étape figé et un  │
+ * │ index calculé — et c'est le figé qui pilotait l'affichage.                  │
+ * │                                                                            │
+ * │ Le défaut se résout en SUPPRIMANT, pas en corrigeant (design/B0-SOCLE.md    │
+ * │ § « Compteurs d'étapes codés en dur », décision client) :                   │
+ * │                                                                            │
+ * │  · « Premier véhicule » et « Premier collègue » disparaissent. Les deux     │
+ * │    écrans existent ailleurs, mieux faits, sans se faire passer pour une     │
+ * │    formalité d'inscription — et un compte neuf n'a de toute façon ni        │
+ * │    boîtier à associer ni collègue à inviter dans la minute.                 │
+ * │  · Le récapitulatif disparaît avec eux : « 0 véhicule ajouté, 0 invitation  │
+ * │    envoyée » n'est pas un bilan, c'est un reproche.                         │
+ * │                                                                            │
+ * │ Reste ce qu'un premier login doit vraiment faire : dire ce qu'est le        │
+ * │ produit, et demander comment s'appelle la personne. Deux étapes. Le         │
+ * │ compteur n'a plus rien à calculer, donc plus rien à contredire.             │
+ * └───────────────────────────────────────────────────────────────────────────┘
  *
- * Etapes :
- *   1. Bienvenue          — presentation produit + bouton "Commencer"
- *   2. Profil             — firstName, lastName, phone (E.164)
- *   3. Premier vehicule   — plate, type, marque/modele (optionnel)
- *   4. Premier collegue   — email + role (envoie une invitation, optionnel)
- *   5. Termine            — CTA "Aller au tableau de bord"
+ * Design : drawer plein écran mobile-first avec vague glacée en en-tête
+ * (réutilise les keyframes `tracky-nav-wave-1/2` du dashboard-layout).
+ *
+ * Étapes :
+ *   1. Bienvenue — présentation produit + bouton « Commencer »
+ *   2. Profil    — prénom, nom, téléphone (E.164), puis le tableau de bord
  */
 @Component({
   selector: 'app-onboarding-wizard',
@@ -57,7 +70,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
                 <app-logo variant="icon" [size]="26" />
                 <div class="header-title-block">
                   <h1 id="onboarding-title" class="header-title">Bienvenue sur Tracky</h1>
-                  <p class="header-step">Étape {{ stepIndex() }} sur {{ totalSteps() }}</p>
+                  <p class="header-step">Étape {{ stepIndex() }} sur {{ totalSteps }}</p>
                 </div>
               </div>
               <div class="header-actions">
@@ -70,7 +83,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
               </div>
             </div>
             <div class="progress-bar">
-              <div class="progress-fill" [style.width.%]="(stepIndex() / totalSteps()) * 100"></div>
+              <div class="progress-fill" [style.width.%]="(stepIndex() / totalSteps) * 100"></div>
             </div>
           </header>
 
@@ -79,10 +92,10 @@ type Step = 1 | 2 | 3 | 4 | 5;
             @switch (step()) {
               @case (1) {
                 <div class="step-icon"><lucide-icon [img]="Compass" [size]="56"></lucide-icon></div>
-                <h2 class="step-title">Pret a piloter votre flotte ?</h2>
+                <h2 class="step-title">Prêt à piloter votre flotte ?</h2>
                 <p class="step-lead">
-                  Vizyo Tracky vous donne une vue temps reel sur tous vos vehicules.
-                  Configurons ensemble votre compte en quelques minutes.
+                  Vizyo Tracky vous donne une vue en temps réel sur tous vos véhicules.
+                  Une seule question avant de commencer, et le tableau de bord s'ouvre.
                 </p>
                 <ul class="step-bullets">
                   <li><span class="bullet-chip"><lucide-icon [img]="Check" [size]="14"></lucide-icon></span> Suivi GPS en direct</li>
@@ -93,10 +106,10 @@ type Step = 1 | 2 | 3 | 4 | 5;
               @case (2) {
                 <div class="step-icon"><lucide-icon [img]="UserCircle2" [size]="48"></lucide-icon></div>
                 <h2 class="step-title">Votre profil</h2>
-                <p class="step-lead">Quelques infos pour personnaliser votre experience.</p>
+                <p class="step-lead">Quelques informations pour personnaliser votre expérience.</p>
                 <div class="form-grid">
                   <div class="field">
-                    <label>Prenom</label>
+                    <label>Prénom</label>
                     <input [(ngModel)]="firstName" placeholder="Votre prénom" autocomplete="given-name" />
                   </div>
                   <div class="field">
@@ -104,77 +117,13 @@ type Step = 1 | 2 | 3 | 4 | 5;
                     <input [(ngModel)]="lastName" placeholder="Votre nom" autocomplete="family-name" />
                   </div>
                   <div class="field field--full">
-                    <label>Telephone (optionnel)</label>
+                    <label>Téléphone (optionnel)</label>
                     <input [(ngModel)]="phone" placeholder="+33612345678" type="tel" autocomplete="tel" />
-                    <small>Format international (E.164). Utilise pour les notifications WhatsApp.</small>
+                    <small>Format international (E.164). Utilisé pour les notifications WhatsApp.</small>
                   </div>
                 </div>
-              }
-              @case (3) {
-                <div class="step-icon"><lucide-icon [img]="Truck" [size]="48"></lucide-icon></div>
-                <h2 class="step-title">Votre premier vehicule</h2>
-                <p class="step-lead">Vous pouvez l'ajouter maintenant ou plus tard depuis "Vehicules".</p>
-                <div class="form-grid">
-                  <div class="field">
-                    <label>Plaque</label>
-                    <input [(ngModel)]="plate" placeholder="AB-123-CD" />
-                  </div>
-                  <div class="field">
-                    <label>Type</label>
-                    <select [(ngModel)]="vehicleType">
-                      <option value="CAR">Voiture</option>
-                      <option value="TRUCK">Camion</option>
-                      <option value="VAN">Utilitaire</option>
-                      <option value="MOTORCYCLE">Moto</option>
-                      <option value="BUS">Bus</option>
-                      <option value="OTHER">Autre</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label>Marque (optionnel)</label>
-                    <input [(ngModel)]="brand" placeholder="Renault" />
-                  </div>
-                  <div class="field">
-                    <label>Modele (optionnel)</label>
-                    <input [(ngModel)]="model" placeholder="Trafic" />
-                  </div>
-                </div>
-                <p class="hint">Le tracker pourra etre associe ulterieurement depuis la fiche vehicule.</p>
-              }
-              @case (4) {
-                <div class="step-icon"><lucide-icon [img]="Mail" [size]="48"></lucide-icon></div>
-                <h2 class="step-title">Inviter un collegue</h2>
-                <p class="step-lead">Optionnel — un email d'invitation sera envoye automatiquement.</p>
-                <div class="form-grid">
-                  <div class="field field--full">
-                    <label>Email</label>
-                    <input [(ngModel)]="inviteEmail" placeholder="collegue@example.com" type="email" autocomplete="email" />
-                  </div>
-                  <div class="field field--full">
-                    <label>Role</label>
-                    <select [(ngModel)]="inviteRole">
-                      <option value="FLEET_MANAGER">Gestionnaire (gere les vehicules / commandes)</option>
-                      <option value="VIEWER">Lecteur (consultation seule)</option>
-                    </select>
-                  </div>
-                </div>
-              }
-              @case (5) {
-                <div class="step-icon"><lucide-icon [img]="PartyPopper" [size]="56"></lucide-icon></div>
-                <h2 class="step-title">Tout est prêt !</h2>
-                <p class="step-lead">
-                  Votre compte est configuré. Le tableau de bord va s'ouvrir avec vos véhicules,
-                  vos alertes et la carte en temps réel.
-                </p>
-                @if (isAdmin()) {
-                  <div class="recap">
-                    <div class="recap-card"><div class="recap-n">{{ plate.trim() ? '1' : '0' }}</div><div class="recap-l">Véhicule ajouté</div></div>
-                    <div class="recap-card"><div class="recap-n">{{ inviteEmail.trim() ? '1' : '0' }}</div><div class="recap-l">Invitation envoyée</div></div>
-                    <div class="recap-card"><div class="recap-n recap-n--ok"><lucide-icon [img]="Check" [size]="18"></lucide-icon></div><div class="recap-l">Profil complété</div></div>
-                  </div>
-                }
                 <p class="hint">
-                  Vous pouvez modifier vos préférences à tout moment depuis « Mon compte ».
+                  Vous pouvez modifier ces informations à tout moment depuis « Mon compte ».
                 </p>
               }
             }
@@ -188,16 +137,17 @@ type Step = 1 | 2 | 3 | 4 | 5;
               </button>
             }
             <span class="footer-spacer"></span>
-            @if (step() < 5) {
-              @if (step() > 1) {
-                <button (click)="next()" class="btn btn-ghost">Passer</button>
-              }
-              <button (click)="continueStep()" class="btn btn-primary" [disabled]="loading()">
-                {{ continueLabel() }}
+            @if (step() === 1) {
+              <button (click)="next()" class="btn btn-primary" [disabled]="loading()">
+                Commencer
                 <lucide-icon [img]="ArrowRight" [size]="14"></lucide-icon>
               </button>
             } @else {
-              <button (click)="finish()" class="btn btn-primary" [disabled]="loading()">
+              <!-- « Passer » reste : le profil est facultatif, et l'assistant ne doit
+                   enfermer personne. Il n'y a plus d'étape suivante à atteindre, donc
+                   il termine — c'est la même sortie, dite honnêtement. -->
+              <button (click)="finish()" class="btn btn-ghost" [disabled]="loading()">Passer</button>
+              <button (click)="continueStep()" class="btn btn-primary" [disabled]="loading()">
                 Aller au tableau de bord
                 <lucide-icon [img]="ArrowRight" [size]="14"></lucide-icon>
               </button>
@@ -338,11 +288,6 @@ type Step = 1 | 2 | 3 | 4 | 5;
     }
     .step-bullets lucide-icon { color: var(--tracky-light, #10E0A0); }
     .bullet-chip { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 12%, transparent); color: var(--tracky-light, #10E0A0); flex-shrink: 0; }
-    .recap { display: flex; gap: 10px; width: 100%; margin-top: 2px; }
-    .recap-card { flex: 1; padding: 13px 14px; border-radius: 13px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
-    .recap-n { font-size: 1.35rem; font-weight: 800; color: var(--tracky-light, #10E0A0); line-height: 1; }
-    .recap-n--ok { color: var(--fg-primary); display: inline-flex; }
-    .recap-l { font-size: .8rem; color: var(--fg-secondary); margin-top: 3px; }
     .form-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -416,9 +361,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 export class OnboardingWizardComponent {
   protected readonly onboarding = inject(OnboardingService);
   protected readonly theme = inject(ThemeService);
-  private readonly auth = inject(AuthService);
   private readonly usersApi = inject(UsersApiService);
-  private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
 
@@ -426,9 +369,6 @@ export class OnboardingWizardComponent {
   protected readonly ArrowRight = ArrowRight;
   protected readonly Check = Check;
   protected readonly Compass = Compass;
-  protected readonly Mail = Mail;
-  protected readonly PartyPopper = PartyPopper;
-  protected readonly Truck = Truck;
   protected readonly UserCircle2 = UserCircle2;
   protected readonly X = X;
   protected readonly MoonIcon = Moon;
@@ -452,98 +392,46 @@ export class OnboardingWizardComponent {
     }
   });
 
-  // Step 3 — vehicule
-  plate = '';
-  vehicleType: 'CAR' | 'TRUCK' | 'VAN' | 'MOTORCYCLE' | 'BUS' | 'OTHER' = 'CAR';
-  brand = '';
-  model = '';
+  /**
+   * Deux étapes, pour tout le monde. Ce n'est plus un calcul : c'est le nombre
+   * d'écrans que l'assistant contient.
+   *
+   * L'ancienne version dérivait ce total du rôle ET du profil déjà rempli, sans que
+   * `step()` — le numéro qui pilotait réellement l'affichage — en tienne compte. Un
+   * compteur qui se calcule pendant qu'un autre décide finit toujours par mentir ;
+   * ici, il n'y a plus de second système à contredire.
+   */
+  readonly totalSteps = 2;
 
-  // Step 4 — invitation
-  inviteEmail = '';
-  inviteRole: 'FLEET_MANAGER' | 'VIEWER' = 'FLEET_MANAGER';
-
-  /** Steps 3 et 4 uniquement pour FLEET_ADMIN (le reste voit 1→2→5). */
-  protected isAdmin(): boolean {
-    const role = this.auth.user()?.role;
-    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
-  }
-
-  /** True si le profil est déjà rempli (nom saisi à l'invitation). */
-  private profileAlreadyFilled(): boolean {
-    const p = this.onboarding.profile();
-    return !!(p?.firstName && p?.lastName);
-  }
-
-  /** Total de steps visibles pour cet user. */
-  readonly totalSteps = computed(() => {
-    const base = this.isAdmin() ? 5 : 3;
-    return this.profileAlreadyFilled() ? base - 1 : base;
-  });
-
-  /** Index courant par rapport aux steps visibles. */
-  readonly stepIndex = computed(() => {
-    const s = this.step();
-    const skipProfile = this.profileAlreadyFilled();
-    if (this.isAdmin()) {
-      // Admin : 1, (2), 3, 4, 5
-      if (skipProfile) return s <= 1 ? 1 : s - 1;
-      return s;
-    }
-    // Non-admin : 1, (2), 5
-    if (skipProfile) return s <= 1 ? 1 : 2;
-    if (s <= 2) return s;
-    return 3;
-  });
-
-  readonly continueLabel = computed(() => {
-    switch (this.step()) {
-      case 1: return 'Commencer';
-      case 2: return 'Continuer';
-      case 3: return 'Continuer';
-      case 4: return 'Continuer';
-      default: return 'Continuer';
-    }
-  });
+  /**
+   * L'index affiché EST le numéro d'étape. Ils étaient deux, ils n'en font plus qu'un.
+   * La barre de progression avance donc de 50 % puis de 50 % — jamais de 40 % à 100 %.
+   */
+  readonly stepIndex = computed(() => this.step());
 
   back(): void {
-    const s = this.step();
-    if (s === 5 && !this.isAdmin()) {
-      this.step.set(this.profileAlreadyFilled() ? 1 : 2);
-    } else if (s === 3 && this.profileAlreadyFilled()) {
-      this.step.set(1);
-    } else if (s > 1) {
-      this.step.update((v) => (v - 1) as Step);
-    }
+    if (this.step() > 1) this.step.update((v) => (v - 1) as Step);
   }
 
   next(): void {
-    const s = this.step();
-    const skipProfile = this.profileAlreadyFilled();
-    if (s === 1 && skipProfile) {
-      // Skip step 2 — aller à 3 (admin) ou 5 (non-admin)
-      this.step.set(this.isAdmin() ? 3 : 5);
-    } else if (!this.isAdmin() && s === 2) {
-      this.step.set(5);
-    } else if (s < 5) {
-      this.step.update((v) => (v + 1) as Step);
-    }
+    if (this.step() < 2) this.step.update((v) => (v + 1) as Step);
   }
 
+  /** Étape 2 : on enregistre le profil, puis on ouvre le tableau de bord. */
   async continueStep(): Promise<void> {
     this.loading.set(true);
     try {
-      switch (this.step()) {
-        case 2: await this.saveProfile(); break;
-        case 3: await this.saveVehicle(); break;
-        case 4: await this.sendInvitation(); break;
-      }
-      this.next();
+      await this.saveProfile();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erreur lors de l\'enregistrement';
       this.toast.error(message);
-    } finally {
       this.loading.set(false);
+      return;
     }
+    // `finish()` reprend la main sur `loading` — et surtout, il n'est PAS appelé si
+    // l'enregistrement a échoué : sortir de l'assistant sur une erreur perdrait la
+    // saisie sans le dire.
+    await this.finish();
   }
 
   private async saveProfile(): Promise<void> {
@@ -553,28 +441,6 @@ export class OnboardingWizardComponent {
     if (this.phone.trim()) data.phone = this.phone.trim();
     if (Object.keys(data).length === 0) return;
     await this.usersApi.updateMe(data);
-  }
-
-  private async saveVehicle(): Promise<void> {
-    if (!this.plate.trim()) return;
-    await firstValueFrom(
-      this.vehiclesApi.create({
-        plate: this.plate.trim().toUpperCase(),
-        type: this.vehicleType,
-        brand: this.brand.trim() || undefined,
-        model: this.model.trim() || undefined,
-      }),
-    );
-    this.toast.success('Vehicule cree');
-  }
-
-  private async sendInvitation(): Promise<void> {
-    if (!this.inviteEmail.trim()) return;
-    await this.usersApi.invite({
-      email: this.inviteEmail.trim().toLowerCase(),
-      role: this.inviteRole,
-    });
-    this.toast.success(`Invitation envoyee a ${this.inviteEmail}`);
   }
 
   async finish(): Promise<void> {

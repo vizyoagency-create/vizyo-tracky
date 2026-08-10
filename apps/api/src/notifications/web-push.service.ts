@@ -288,7 +288,7 @@ export class WebPushService {
    * successful deliveries. Subscriptions returning 410 Gone are pruned.
    *
    * `expectedFleetId` (optionnel) : si fourni, on verifie en DB que l'user
-   * appartient bien a cette flotte avant d'envoyer. Defense en profondeur
+   * appartient bien à cette flotte avant d'envoyer. Defense en profondeur
    * contre les bugs de routing cross-tenant : meme si le caller donne par
    * erreur un userId d'une autre flotte, l'envoi est refuse.
    *

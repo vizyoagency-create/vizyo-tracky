@@ -76,7 +76,7 @@ export class AllowlistService {
         await this.syncFromTrackers();
       } while (this.syncPending);
     } catch (err) {
-      this.logger.warn(`auto-sync allowlist echoue: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(`auto-sync allowlist échoué: ${err instanceof Error ? err.message : err}`);
       // A6 — persiste l'echec dans ErrorLog pour visibilite.
       this.errorLogger.record(
         err instanceof Error ? err : new Error(String(err)),
@@ -120,7 +120,7 @@ export class AllowlistService {
         );
       }
     } catch (err) {
-      this.logger.warn(`reconciliation allowlist echouee: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(`reconciliation allowlist échouée: ${err instanceof Error ? err.message : err}`);
       this.errorLogger.recordBackground(
         err instanceof Error ? err : new Error(String(err)),
         'sms-allowlist',
@@ -243,7 +243,7 @@ export class AllowlistService {
     ]);
     const allowed = new Set(entries.map((e) => e.phone));
     const trackerPhones = new Set(trackers.map((t) => t.simPhoneNumber as string));
-    // V1.15 — les User.phone actifs sont aussi des numeros legitimes (notifs SMS
+    // V1.15 — les User.phone actifs sont aussi des numéros legitimes (notifs SMS
     // d'alerte) synces par syncFromTrackers() : on les considere "connus" pour ne
     // pas les remonter comme orphelins (sinon un admin les supprimerait a tort).
     const knownPhones = new Set<string>([

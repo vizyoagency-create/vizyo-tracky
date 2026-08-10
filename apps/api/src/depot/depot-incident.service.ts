@@ -60,7 +60,7 @@ export class DepotIncidentService {
         vehicle: { select: { plate: true } },
       },
     });
-    if (!mission) throw new ForbiddenException('Ressource hors de votre perimetre');
+    if (!mission) throw new ForbiddenException('Ressource hors de votre périmètre');
 
     const depot = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -163,7 +163,7 @@ export class DepotIncidentService {
       }
     } catch (err) {
       this.logger.warn(
-        `Notification d'incident echouee pour ${opts.missionRef} : ${err instanceof Error ? err.message : err}`,
+        `Notification d'incident échouée pour ${opts.missionRef} : ${err instanceof Error ? err.message : err}`,
       );
     }
   }

@@ -55,7 +55,7 @@ export function resolveReportVehicleScope(
     const outside = requestedNorm.filter((id) => !allowed.has(id));
     if (outside.length > 0) {
       throw new ForbiddenException(
-        'Acces refuse a un ou plusieurs vehicules hors de votre perimetre',
+        'Accès refusé à un ou plusieurs véhicules hors de votre périmètre',
       );
     }
     return requestedNorm;

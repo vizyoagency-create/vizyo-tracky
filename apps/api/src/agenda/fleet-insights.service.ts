@@ -128,7 +128,7 @@ export class FleetInsightsService {
   ): Promise<ResolvedScope | null> {
     let fleetId: string | undefined;
     if (user.role !== UserRole.SUPER_ADMIN) {
-      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
+      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
       fleetId = user.fleetId;
     } else if (filter?.fleetId) {
       fleetId = filter.fleetId; // filtre société global (SUPER_ADMIN)
