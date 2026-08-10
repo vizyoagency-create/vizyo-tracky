@@ -294,6 +294,13 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
 
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : le menu d'actions de chaque ligne (15 lignes, 15 cibles) et les
+       trois onglets étaient sous le seuil. Sur une liste, la cible par ligne est celle
+       qu'on vise le plus souvent et la plus facile à rater — les lignes sont serrées. */
+    @media (max-width: 768px) {
+      .u-menu-btn, .u-tab, .btn-primary { min-width: 44px; min-height: 44px }
+    }
     .upage { position: relative; min-height: 100%; max-width: 1240px; margin: 0 auto }
 
     /* ─── Header ─── */

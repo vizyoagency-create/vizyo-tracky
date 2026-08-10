@@ -18,10 +18,10 @@
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 4 / 57 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 9 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **477 / 604** |
+| | | | **Total** | **482 / 604** |
 
 ¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
 leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
@@ -1312,9 +1312,11 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] **Exception assumée** : les 3 restants de `/places` font 44 en HAUTEUR mais moins en
       largeur — ce sont des liens de deux mots dans une phrase. Les élargir à 44 casserait
       la phrase ; un lien en ligne n'est pas une cible autonome
+- [x] `/scores` **8 → 0** · `/users` **19 → 0** — sur une liste, la cible par ligne est celle
+      qu'on vise le plus souvent et la plus facile à rater : les lignes sont serrées
 - [ ] **Reste** : `/reports` (232 cibles) — le tableau dense y appelle la refonte mobile de
       `B1` § D (« sparklines + drill-down, jamais de scroll horizontal »), pas un rustinage
-      de cibles. Et `/login`, `/map`, `/scores`, `/agenda`, `/users` non encore sondées
+      de cibles. Et `/login`, `/map`, `/agenda` non encore sondées
 
 **Critères de recette, à passer sur chaque page**
 - [ ] Aucun style en ligne recopié d'une maquette

@@ -184,6 +184,11 @@ type Period = '7d' | '30d' | '90d';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : retour, actualisation et bascules de période sous le seuil. */
+    @media (max-width: 768px) {
+      .ds-back, .ds-refresh, .ds-seg button, .ds-toggle, button.on { min-width: 44px; min-height: 44px }
+    }
     .ds { max-width: 900px; margin: 0 auto; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
     .ds-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--fg-tertiary); width: fit-content; }
     .ds-back:hover { color: var(--tracky-light, #10E0A0); }
