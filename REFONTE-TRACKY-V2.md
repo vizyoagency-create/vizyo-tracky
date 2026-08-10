@@ -17,15 +17,17 @@
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | 🟢 **livré** | 97 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
-| **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🔴 bloqué¹ | 0 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🔴 bloqué¹ | 0 / 57 |
-| **B-mails** | 19 gabarits d'e-mail | — | 🔴 bloqué¹ | 0 / 12 |
+| **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | ⬜ **débloqué**¹ | 0 / 28 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | ⬜ **débloqué**¹ | 0 / 57 |
+| **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
 | | | | **Total** | **447 / 604** |
 
-¹ **Bloqué en attente des 27 maquettes `.dc.html`** — cf. « Écart 1 » ci-dessous. Le bloc A ne
-dépend d'aucune maquette : ses documents sont auto-suffisants. B0′ n'en dépend pas non plus
-et peut être fait dès maintenant.
+¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
+leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
+négociable (`B1-PAGES.md` § « Ordre d'implémentation ») : **le kit avant les pages, le shell
+en dernier** — le brancher trop tôt force à trancher la navigation avant d'avoir vu les pages
+vivre.
 
 **Légende d'état** : ⬜ à faire · 🟡 en cours · 🟢 livré et vérifié · 🔴 bloqué · ⏸️ en attente de validation
 
@@ -36,7 +38,23 @@ et peut être fait dès maintenant.
 À lire avant toute implémentation. Ces trois points modifient le livrable ; ils sont
 tranchés ici une fois pour toutes.
 
-### Écart 1 — Les 27 maquettes ne sont pas dans le livrable
+### Écart 1 — ~~Les 27 maquettes ne sont pas dans le livrable~~ ✅ **résorbé le 2026-08-10**
+
+> **Les planches sont arrivées.** `design/maquettes/` contient 28 `.dc.html`, leur
+> `support.js` et `brands/` (7 logos), copiés à l'octet près. `00-INDEX.md` donne la
+> correspondance planche → routes.
+>
+> Trois écarts relevés à la réception :
+> **28 planches et non 27** — `Loaders-Splash` et `Vehicules Refonte` s'ajoutent à la
+> liste de `B1-PAGES.md` · **`Video Depot.dc.html` manque**, mais elle était notée
+> « support commercial, pas une spec » : rien n'en dépend · **le piège n° 1 de l'index
+> est périmé** — il demande de traduire Manrope → Poppins, or c'est l'inverse qui s'est
+> produit (cf. Écart 2 ci-dessous), l'application tourne déjà en Manrope.
+>
+> **B-kit, B-pages et B-mails sont débloqués.** Ordre non négociable de `B1-PAGES.md`
+> § « Ordre d'implémentation » : le kit d'abord, les pages ensuite, le shell en dernier.
+
+Le texte ci-dessous est conservé tel qu'écrit le 2026-08-09, pour mémoire.
 
 `00-LISEZ-MOI.md` et `PROMPT-CLAUDE-CODE.md` § 0 les listent comme à copier dans
 `design/maquettes/`. Le livrable reçu ne contient que les 10 `.md`. Or `B1-PAGES.md` dit
@@ -47,7 +65,8 @@ portent modèles Prisma, DTO exacts, endpoints, règles métier et critères de 
 dépendance visuelle. Le bloc B attend la livraison des `.dc.html` dans `design/maquettes/`.
 Ses tâches sont écrites intégralement ci-dessous mais restent **bloquées**.
 
-- [ ] Les 27 fichiers `.dc.html` sont présents dans `design/maquettes/` → débloque le bloc B
+- [x] Les fichiers `.dc.html` sont présents dans `design/maquettes/` → **débloque le bloc B**
+      (28 planches livrées le 2026-08-10, plus `support.js` et `brands/`)
 
 ### Écart 2 — La prémisse « Poppins » de B0 est périmée
 
@@ -1092,8 +1111,19 @@ exposent coûts, scores, conducteur hors mission, groupe.
 
 ## Bloc B — La refonte de l'interface
 
-> 🔴 **Bloqué** jusqu'à la livraison des 27 `.dc.html` dans `design/maquettes/`, sauf B0′ qui
-> ne dépend d'aucune maquette et peut être fait dès maintenant.
+> ✅ **Débloqué le 2026-08-10.** Les 28 planches sont dans `design/maquettes/`, avec leur
+> `support.js` et `brands/`. `00-INDEX.md` donne la correspondance planche → routes.
+>
+> **Comment lire une planche** : ce sont des Design Components (`<x-dc>` + styles en ligne).
+> Le contenu se lit dans un éditeur, en clair ; le rendu s'obtient en ouvrant le `.dc.html`
+> dans un navigateur. Chaque planche montre le même écran en `01` PC · `02` PC 2ᵉ état ou
+> modales · `03` iPhone 390 × 844 · `04` Android 412 × 915.
+>
+> ⚠️ **Le piège n° 1 de `00-INDEX.md` est périmé** : il annonce une traduction Manrope →
+> Poppins. C'est l'inverse — l'application tourne DÉJÀ en Manrope (Écart 2). Il n'y a pas de
+> planche de contrôle à mesurer, ni de risque de débordement. Les deux autres pièges tiennent :
+> variables CSS → `TOKENS.md`, `<symbol>` SVG → `ICONS.md`, à l'exception des pastilles de
+> véhicule de `Carte Refonte`, à reprendre telles quelles en SVG.
 
 ### B0′ — Le reliquat du socle (débloqué)
 
@@ -1342,6 +1372,7 @@ Une ligne par séance : ce qui a été livré, ce qui a été décidé, ce qui b
 
 | Date | Lot | Livré | Décisions / points ouverts |
 |---|---|---|---|
+| 2026-08-10 | — | **Les 28 planches `.dc.html` reçues** et rangées dans `design/maquettes/` avec `support.js` et `brands/` (7 logos) — copie vérifiée à l'octet près, 37 fichiers, 3 449 921 o. Bloc B débloqué. | **28 planches et non 27** : `Loaders-Splash` et `Vehicules Refonte` s'ajoutent à la liste de `B1-PAGES.md`. **`Video Depot.dc.html` absente** — notée « support commercial, pas une spec », rien n'en dépend. **Le piège n° 1 de `00-INDEX.md` est périmé** : il demande de traduire Manrope → Poppins alors que l'application tourne déjà en Manrope (Écart 2, tranché à l'étape 0). Les planches référencent `./support.js` et `brands/*.png` en relatif : la structure du dossier ne doit pas être aplatie. |
 | 2026-08-10 | B0′ | Famille `--texte-*` (petit texte lisible) · badge de présence sur jetons, *Dormant* violet, *Non configuré* tireté · surveillance lue dans le fuseau de la flotte + migration · 224 accents · assistant à 2 étapes · `PortesAccesService` · 3 scripts de contrôle (`verif:contraste` 46/46, `verif:accents`, `verif:litteraux`) | **Le correctif UTC est côté planificateur, pas côté écran** : une plage récurrente n'a pas d'équivalent UTC, aucune saisie ne pouvait la rendre juste. La surveillance était le seul planning du dépôt resté en UTC. **Points O2 et O3 de `TOKENS.md` tranchés**, O4 ouvert (couleurs de couche de carte, volontairement explicites ; `map.component.ts` reste à reprendre au lot B-pages). **Trois corruptions rattrapées** par l'accentuation automatique, dont `role === 'Dépôt'` qui aurait éteint l'espace dépôt. Recette visuelle faite au DOM et au style calculé : le panneau navigateur ne composite pas, les captures sont indisponibles. |
 | 2026-08-09 | — | Analyse du livrable, audit du dépôt, branche `feat/refonte-tracky-v2`, cette roadmap | 3 écarts relevés (maquettes absentes, prémisse Poppins périmée, kit déjà posé). Bloc A d'abord, bloc B à la livraison des `.dc.html`. Point de contrôle à chaque lot. |
 | 2026-08-09 | Étape 0 | `DECISIONS.md` (10 décisions), `TOKENS.md`, `ICONS.md` · violet + bleu créés · `--accent-ink` clair corrigé · 22 fallbacks `Poppins` purgés | **Défaut d'accessibilité corrigé** : encre blanche sur accent en thème clair, 3,43:1 → 5,54:1. **Deux défauts d'outillage relevés** : `pnpm verify` ne se termine pas (`ng test` en watch, P1) et le `launch.json` parent servait un autre projet. Confirmation au pixel en attente : panneau navigateur non affiché. |

@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#101514}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.pcfrm{width:1600px;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--border2);box-shadow:0 44px 84px -34px rgba(0,0,0,.6)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.plq{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;background:var(--surface3);border:1px solid var(--border2);font-family:'JetBrains Mono',monospace;font-size:.735rem;font-weight:600;white-space:nowrap}
+.sw{position:relative;width:40px;height:23px;border-radius:999px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0}
+.sw i{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:var(--tx3)}
+.sw.on{background:var(--accent);border-color:var(--accent)}
+.sw.on i{left:19px;background:#fff}
+.wrong{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--red) 34%,transparent);background:var(--red-soft);padding:14px}
+.right{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);background:var(--accent-soft);padding:14px}
+.lbl{position:absolute;top:-8px;left:11px;padding:1px 7px;border-radius:6px;font-size:.6rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.spd{display:flex;align-items:center;justify-content:center;height:28px;min-width:38px;padding:0 9px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.74rem;font-weight:600;color:var(--tx3)}
+.spd.on{background:var(--accent-soft);color:var(--accent)}
+.rd{display:flex;flex-direction:column;gap:3px;padding:9px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);min-width:0}
+.rd b{font-family:'JetBrains Mono',monospace;font-size:1.02rem;font-weight:600;letter-spacing:-.01em;line-height:1}
+.rd span{font-size:.63rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.map{position:relative;border-radius:16px;overflow:hidden;background:var(--bg2);border:1px solid var(--border)}
+.tiles{position:absolute;inset:0;display:grid;filter:saturate(.92)}
+.tiles img{display:block;width:100%;height:100%}
+[data-theme="dark"] .tl-light{display:none}
+[data-theme="light"] .tl-dark{display:none}
+.veil{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 22%,transparent);pointer-events:none}
+.bl{position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:999px;background:#fff;border:2px solid var(--ring);overflow:hidden}
+.bl img{width:80%;height:80%;object-fit:contain}
+.pin{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:999px;border:2px solid var(--ring)}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-chevl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></symbol>
+<symbol id="ic-pause" viewBox="0 0 24 24"><g fill="currentColor"><rect x="7" y="5" width="3.4" height="14" rx="1"/><rect x="13.6" y="5" width="3.4" height="14" rx="1"/></g></symbol>
+<symbol id="ic-back" viewBox="0 0 24 24"><g fill="currentColor"><path d="M11 6v12L3 12z"/><path d="M20 6v12l-8-6z"/></g></symbol>
+<symbol id="ic-fwd" viewBox="0 0 24 24"><g fill="currentColor"><path d="M13 6v12l8-6z"/><path d="M4 6v12l8-6z"/></g></symbol>
+<symbol id="ic-van" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h9.5l4 5H21a1 1 0 0 1 1 1v4h-3"/><path d="M2 7v10h3M9 17h7"/><circle cx="7" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></g></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></g></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2"/></g></symbol>
+<symbol id="ic-gauge" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><path d="m12 13 4-3.5"/><circle cx="12" cy="14.5" r="1.6"/></g></symbol>
+<symbol id="ic-route" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="18.5" r="2.6"/><circle cx="18.5" cy="5.5" r="2.6"/><path d="M8 18.5h6a4 4 0 0 0 0-8H10a4 4 0 0 1 0-8h6"/></g></symbol>
+<symbol id="ic-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4M12 2v13"/></g></symbol>
+<symbol id="ic-cal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></g></symbol>
+<symbol id="ic-stop" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · planche ③ · F9 + F10</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Rejeu d'un trajet &amp; rejeu d'une période</h1>
+<p style="margin:8px 0 0;max-width:930px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Deux composants qui font la même chose à deux échelles — un trajet, ou plusieurs jours. Ils ont pourtant <b style="color:var(--tx)">deux modèles de vitesse incompatibles</b>, et l'incertitude sur les limites de vitesse est cachée dans un attribut invisible au doigt.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>00</i>Les 3 défauts — deux modèles de vitesse, une incertitude cachée, des couleurs en dur</div>
+<div class="dash" style="padding:24px 26px;background:var(--bg2);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px">
+
+<div>
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 1 · deux vitesses</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Le rejeu de trajet propose des <b style="color:var(--tx)">multiplicateurs</b> ; celui de période un <b style="color:var(--tx)">facteur en secondes</b>. Deux façons de penser le temps dans deux écrans voisins.</p>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="padding:11px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border)">
+<div class="mono" style="font-size:.66rem;color:var(--tx3);margin-bottom:7px">trip-replay · speeds = [1, 2, 4, 8]</div>
+<div style="display:flex;gap:6px"><span class="spd on">1×</span><span class="spd">2×</span><span class="spd">4×</span><span class="spd">8×</span></div>
+</div>
+<div style="padding:11px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border)">
+<div class="mono" style="font-size:.66rem;color:var(--tx3);margin-bottom:7px">period-replay · speedFactor = 600</div>
+<div style="font-size:.775rem;color:var(--tx2)">« 10 min par seconde » — plus <span class="mono" style="font-size:.7rem">autoSpeed</span>, qui l'ajuste sans le dire.</div>
+</div>
+</div>
+<p style="margin:11px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Un seul vocabulaire : des multiplicateurs partout, l'équivalent en durée réelle affiché à côté.</p>
+</div>
+</div>
+
+<div>
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 2 · incertitude cachée</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Quand la limite de vitesse d'une route est inconnue, le code est <b style="color:var(--tx)">honnête</b> — mais seulement dans un <span class="mono" style="font-size:.7rem">title</span>, invisible au doigt.</p>
+<div style="padding:11px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px">
+<div class="mono" style="font-size:.66rem;color:var(--tx3);margin-bottom:7px">Ce qu'on voit</div>
+<span class="tag" style="background:var(--red-soft);color:var(--red)">⚠ 3 excès</span>
+<div class="mono" style="font-size:.66rem;color:var(--tx3);margin:10px 0 6px">Ce qui est dans le <span style="color:var(--red)">title</span></div>
+<div style="font-size:.74rem;line-height:1.42;color:var(--red)">« 3 pointe(s) de vitesse (limites non résolues — excès probable) »</div>
+</div>
+<p style="margin:0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Deux pastilles distinctes : <b>excès confirmés</b> (limite connue) et <b>pointes à vérifier</b> (limite inconnue). Ambre, pas rouge.</p>
+</div>
+</div>
+
+<div>
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 3 · couleurs en dur</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Le CSS du composant écrit <span class="mono" style="font-size:.7rem">#EF4444</span> pour les excès. <b style="color:var(--tx)">Même défaut que <span class="mono" style="font-size:.72rem">connectivity-badge</span></b> — c'est un motif du projet, pas un accident.</p>
+<div style="display:flex;flex-direction:column;gap:0">
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="width:22px;height:22px;border-radius:7px;background:#EF4444;flex-shrink:0;border:1px solid var(--border2)"></span><span class="mono" style="font-size:.7rem;color:var(--tx2)">#EF4444</span><span style="font-size:.73rem;color:var(--tx3);margin-left:auto">excès</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0"><span style="width:22px;height:22px;border-radius:7px;background:var(--red);flex-shrink:0;border:1px solid var(--border2)"></span><span class="mono" style="font-size:.7rem;color:var(--accent)">var(--red)</span><span style="font-size:.73rem;color:var(--tx3);margin-left:auto">suit le thème</span></div>
+</div>
+<p style="margin:11px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ À corriger avec <span class="mono" style="font-size:.7rem">connectivity-badge</span> : même passe, mêmes tokens.</p>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>PC · F9 rejeu d'un trajet — la frise porte l'analyse</div>
+<div class="pcfrm" data-screen-label="Rejeu trajet PC">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;height:58px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:12px;min-width:0">
+<span style="display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="16" height="16"><use href="#ic-route"/></svg></span>
+<div style="min-width:0"><div style="font-size:.94rem;font-weight:800;letter-spacing:-.015em">Rejeu du trajet</div><div style="display:flex;align-items:center;gap:9px;margin-top:2px"><span style="position:relative;display:flex;flex-shrink:0"><svg width="18" height="18" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl"><img src="brands/iveco.png" alt=""></span></span><span class="plq" style="font-size:.68rem">TR-771-QS</span><span class="mono" style="font-size:.71rem;color:var(--tx3)">29/07 · 14:12 → 15:48</span></div></div>
+</div>
+<div style="display:flex;align-items:center;gap:9px">
+<span class="chip"><svg width="12" height="12"><use href="#ic-share"/></svg>Partager</span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface);border:1px solid var(--border2);color:var(--tx3)"><svg width="14" height="14"><use href="#ic-x"/></svg></span>
+</div>
+</div>
+
+<div style="display:flex;gap:16px;padding:18px 20px;background:var(--bg)">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+<div class="map" style="height:398px">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(6,300px);grid-auto-rows:300px;left:-40px;top:-90px;right:auto;bottom:auto;width:1800px;height:600px"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4129/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4130/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4131/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4132/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4129/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4130/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4131/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4132/2991@2x.png" alt=""></div><div class="tiles tl-light" style="grid-template-columns:repeat(6,300px);grid-auto-rows:300px;left:-40px;top:-90px;right:auto;bottom:auto;width:1800px;height:600px"><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4129/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4130/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4131/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4132/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4129/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4130/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4131/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4132/2991@2x.png" alt=""></div><div class="veil"></div>
+<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 1000 398" preserveAspectRatio="none" aria-hidden="true">
+<defs><linearGradient id="sp" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#10E0A0"/><stop offset=".36" stop-color="#10E0A0"/><stop offset=".44" stop-color="#F5B33D"/><stop offset=".56" stop-color="#F2706B"/><stop offset=".68" stop-color="#F5B33D"/><stop offset=".8" stop-color="#10E0A0"/><stop offset="1" stop-color="#10E0A0"/></linearGradient></defs>
+<path d="M70 330 Q200 290 300 296 T520 210 T700 120 T940 70" fill="none" stroke="url(#sp)" stroke-width="4.5" stroke-linecap="round"/>
+</svg>
+<span class="pin" style="left:56px;bottom:52px;width:15px;height:15px;background:var(--accent)"></span>
+<span class="pin" style="right:52px;top:56px;width:15px;height:15px;background:var(--tx2)"></span>
+<span class="pin" style="left:290px;top:284px;width:13px;height:13px;background:var(--blue)"></span>
+<span class="pin" style="left:512px;top:198px;width:13px;height:13px;background:var(--red)"></span>
+<span class="pin" style="left:684px;top:108px;width:13px;height:13px;background:var(--amber)"></span>
+<span class="pin" style="left:404px;top:238px;width:26px;height:26px;background:var(--accent);color:var(--accent-ink);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 26%,transparent)"><svg width="14" height="14"><use href="#ic-van"/></svg></span>
+<div style="position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-radius:13px;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--border2);backdrop-filter:blur(8px)">
+<div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:var(--blue)"></span><span style="font-size:.72rem;font-weight:700;color:var(--tx2)">Arrêt</span></div>
+<div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:var(--red)"></span><span style="font-size:.72rem;font-weight:700;color:var(--tx2)">Excès confirmé</span></div>
+<div style="display:flex;align-items:center;gap:8px"><span style="width:9px;height:9px;border-radius:50%;background:var(--amber)"></span><span style="font-size:.72rem;font-weight:700;color:var(--tx2)">Pointe à vérifier</span></div>
+</div>
+<div style="position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:10px;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--border2);backdrop-filter:blur(8px)">
+<span style="font-size:.68rem;font-weight:700;color:var(--tx3)">Couleur du tracé</span>
+<span style="width:70px;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--amber),var(--red))"></span>
+<span class="mono" style="font-size:.66rem;color:var(--tx3)">0 → 130</span>
+</div>
+</div>
+
+<div class="card" style="padding:14px 16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px">
+<div style="display:flex;align-items:center;gap:11px">
+<span style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;background:var(--accent);color:var(--accent-ink)"><svg width="18" height="18"><use href="#ic-pause"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="14" height="14"><use href="#ic-back"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="14" height="14"><use href="#ic-fwd"/></svg></span>
+</div>
+<div style="display:flex;align-items:center;gap:11px">
+<div style="display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<span class="spd">1×</span><span class="spd on">4×</span><span class="spd">8×</span><span class="spd">16×</span>
+</div>
+<span style="font-size:.72rem;color:var(--tx3);white-space:nowrap">soit 24 s pour 1 h 36</span>
+</div>
+</div>
+
+<div style="position:relative;height:38px;margin-bottom:9px">
+<div style="position:absolute;left:0;right:0;top:15px;height:8px;border-radius:4px;background:var(--surface3);overflow:hidden">
+<span style="position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent);border-radius:4px"></span>
+</div>
+<span style="position:absolute;left:20.4%;top:9px;width:5px;height:20px;border-radius:3px;background:var(--blue)"></span>
+<span style="position:absolute;left:47%;top:9px;width:5px;height:20px;border-radius:3px;background:var(--red)"></span>
+<span style="position:absolute;left:52%;top:9px;width:5px;height:20px;border-radius:3px;background:var(--red)"></span>
+<span style="position:absolute;left:66%;top:9px;width:5px;height:20px;border-radius:3px;background:var(--amber)"></span>
+<span style="position:absolute;left:74.5%;top:9px;width:5px;height:20px;border-radius:3px;background:var(--blue)"></span>
+<span style="position:absolute;left:38%;top:2px;bottom:2px;width:3px;border-radius:2px;background:var(--tx);box-shadow:0 0 0 3px color-mix(in srgb,var(--tx) 18%,transparent)"></span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span class="mono" style="font-size:.71rem;color:var(--tx3)">14:12</span>
+<span style="font-size:.72rem;color:var(--tx2)">Les repères de la frise sont <b style="color:var(--tx)">cliquables</b> — on saute à l'événement</span>
+<span class="mono" style="font-size:.71rem;color:var(--tx3)">15:48</span>
+</div>
+</div>
+
+</div>
+
+<div style="flex:0 0 372px;display:flex;flex-direction:column;gap:14px">
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="rd"><b>78 <span style="font-size:.68rem;font-weight:700;color:var(--tx3)">km/h</span></b><span>Vitesse à l'instant</span></div>
+<div class="rd"><b>42,8 <span style="font-size:.68rem;font-weight:700;color:var(--tx3)">km</span></b><span>Parcouru</span></div>
+<div class="rd"><b>36 <span style="font-size:.68rem;font-weight:700;color:var(--tx3)">min</span></b><span>Écoulé</span></div>
+<div class="rd"><b style="color:var(--red)">128 <span style="font-size:.68rem;font-weight:700;color:var(--tx3)">km/h</span></b><span>Pointe du trajet</span></div>
+</div>
+
+<div class="card" style="overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;padding:13px 15px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:10px;background:var(--surface3);color:var(--tx2)"><svg width="15" height="15"><use href="#ic-clock"/></svg></span>
+<div class="crdt" style="font-size:.86rem">Ce qui s'est passé</div>
+<span class="chip" style="margin-left:auto;font-size:.65rem">5 événements</span>
+</div>
+<div style="display:flex;gap:11px;padding:11px 15px;border-bottom:1px solid var(--border);background:var(--blue-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:38px;flex-shrink:0">14:32</span>
+<span style="width:9px;height:9px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:4px"></span>
+<div style="min-width:0;flex:1"><div style="font-size:.775rem;font-weight:700">Arrêt de 8 min</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Station Total, D820 — lieu reconnu</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:11px 15px;border-bottom:1px solid var(--border);background:var(--red-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:38px;flex-shrink:0">15:03</span>
+<span style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:4px"></span>
+<div style="min-width:0;flex:1"><div style="font-size:.775rem;font-weight:700;color:var(--red)">Excès confirmé · 128 km/h</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Limite 90 · dépassement <b style="color:var(--red)">+38</b> pendant 1 min 20 s</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:11px 15px;border-bottom:1px solid var(--border);background:var(--red-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:38px;flex-shrink:0">15:09</span>
+<span style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:4px"></span>
+<div style="min-width:0;flex:1"><div style="font-size:.775rem;font-weight:700;color:var(--red)">Excès confirmé · 104 km/h</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Limite 90 · dépassement <b style="color:var(--red)">+14</b></div></div>
+</div>
+<div style="display:flex;gap:11px;padding:11px 15px;border-bottom:1px solid var(--border);background:var(--amber-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:38px;flex-shrink:0">15:24</span>
+<span style="width:9px;height:9px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:4px"></span>
+<div style="min-width:0;flex:1"><div style="font-size:.775rem;font-weight:700;color:var(--amber)">Pointe à vérifier · 96 km/h</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px"><b style="color:var(--amber)">Limite inconnue</b> sur ce tronçon — excès probable, non confirmé</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:11px 15px">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:38px;flex-shrink:0">15:38</span>
+<span style="width:9px;height:9px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:4px"></span>
+<div style="min-width:0;flex:1"><div style="font-size:.775rem;font-weight:700">Arrêt de 3 min</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Zone industrielle des Peupliers</div></div>
+</div>
+</div>
+
+<div style="display:flex;gap:10px;padding:12px 14px;border-radius:13px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 26%,transparent)">
+<svg width="15" height="15" style="color:var(--amber);flex-shrink:0;margin-top:1px"><use href="#ic-info"/></svg>
+<p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><b style="color:var(--amber)">2 excès confirmés, 1 pointe à vérifier.</b> Les pointes n'entrent pas dans le score de conduite : on ne sanctionne pas sur une limite qu'on ignore.</p>
+</div>
+
+</div>
+</div>
+</div>
+<div style="display:flex;gap:22px;margin-top:14px;flex-wrap:wrap">
+<p class="hint" style="flex:1;min-width:340px;margin:0"><b style="color:var(--tx2)">La frise porte l'analyse.</b> Les arrêts et excès existaient déjà sur la carte mais pas sur la barre de lecture — on ne savait pas <i>quand</i> chercher. Les repères sont cliquables.</p>
+<p class="hint" style="flex:1;min-width:340px;margin:0"><b style="color:var(--tx2)">« soit 24 s pour 1 h 36 »</b> : le multiplicateur seul ne dit pas combien de temps on va rester devant l'écran. L'échelle 16× est ajoutée — 8× reste long sur un trajet de 3 h.</p>
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>PC · F10 rejeu d'une période — plusieurs jours, plusieurs trajets, un seul curseur</div>
+<div class="pcfrm" data-screen-label="Rejeu periode PC">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;height:58px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:12px;min-width:0">
+<span style="display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="16" height="16"><use href="#ic-cal"/></svg></span>
+<div style="min-width:0"><div style="font-size:.94rem;font-weight:800;letter-spacing:-.015em">Rejeu de la période</div><div style="display:flex;align-items:center;gap:9px;margin-top:2px"><span style="position:relative;display:flex;flex-shrink:0"><svg width="18" height="18" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl"><img src="brands/iveco.png" alt=""></span></span><span class="plq" style="font-size:.68rem">TR-771-QS</span><span class="mono" style="font-size:.71rem;color:var(--tx3)">27 → 29 juillet · 3 jours · 11 trajets</span></div></div>
+</div>
+<div style="display:flex;align-items:center;gap:9px">
+<span class="chip"><svg width="12" height="12"><use href="#ic-share"/></svg>Partager</span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface);border:1px solid var(--border2);color:var(--tx3)"><svg width="14" height="14"><use href="#ic-x"/></svg></span>
+</div>
+</div>
+
+<div style="display:flex;gap:16px;padding:18px 20px;background:var(--bg)">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+<div class="map" style="height:372px">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(6,300px);grid-auto-rows:300px;left:-40px;top:-110px;right:auto;bottom:auto;width:1800px;height:600px"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4129/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4130/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4131/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4132/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4129/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4130/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4131/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4132/2991@2x.png" alt=""></div><div class="tiles tl-light" style="grid-template-columns:repeat(6,300px);grid-auto-rows:300px;left:-40px;top:-110px;right:auto;bottom:auto;width:1800px;height:600px"><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4129/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4130/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4131/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4132/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4129/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4130/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4131/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4132/2991@2x.png" alt=""></div><div class="veil"></div>
+<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 1000 372" preserveAspectRatio="none" aria-hidden="true">
+<path d="M80 300 Q220 262 330 268 T560 190" fill="none" stroke="var(--accent)" stroke-opacity=".28" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M560 190 Q680 150 760 132 T930 76" fill="none" stroke="var(--accent)" stroke-opacity=".28" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M80 300 Q220 262 330 268 T470 216" fill="none" stroke="var(--accent)" stroke-width="4.5" stroke-linecap="round"/>
+</svg>
+<span class="pin" style="left:66px;bottom:56px;width:14px;height:14px;background:var(--accent)"></span>
+<span class="pin" style="left:322px;top:256px;width:12px;height:12px;background:var(--blue)"></span>
+<span class="pin" style="left:552px;top:178px;width:12px;height:12px;background:var(--violet)"></span>
+<span class="pin" style="right:64px;top:62px;width:14px;height:14px;background:var(--tx2)"></span>
+<span class="pin" style="left:460px;top:204px;width:26px;height:26px;background:var(--accent);color:var(--accent-ink);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 26%,transparent)"><svg width="14" height="14"><use href="#ic-van"/></svg></span>
+<div style="position:absolute;left:14px;top:14px;padding:10px 12px;border-radius:13px;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--border2);backdrop-filter:blur(8px)">
+<div class="kpil" style="margin-bottom:6px">Trajet en cours</div>
+<div style="font-size:.79rem;font-weight:800">4 sur 11</div>
+<div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Toulouse → Carcassonne</span>
+</div>
+<div style="position:absolute;right:14px;top:14px;display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:10px;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--border2);backdrop-filter:blur(8px)">
+<span style="width:16px;height:3px;border-radius:2px;background:var(--accent)"></span><span style="font-size:.68rem;font-weight:700;color:var(--tx2)">parcouru</span>
+<span style="width:16px;height:3px;border-radius:2px;background:var(--accent);opacity:.28;margin-left:5px"></span><span style="font-size:.68rem;font-weight:700;color:var(--tx3)">à venir</span>
+</div>
+</div>
+
+<div class="card" style="padding:14px 16px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:13px">
+<div style="display:flex;align-items:center;gap:11px">
+<span style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;background:var(--accent);color:var(--accent-ink)"><svg width="18" height="18"><use href="#ic-pause"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="14" height="14"><use href="#ic-back"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="14" height="14"><use href="#ic-fwd"/></svg></span>
+<span style="font-size:.72rem;color:var(--tx3);white-space:nowrap;margin-left:3px">◀ ▶ sautent au trajet suivant</span>
+</div>
+<div style="display:flex;align-items:center;gap:11px">
+<div style="display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<span class="spd">60×</span><span class="spd on">600×</span><span class="spd">1800×</span>
+</div>
+<span style="font-size:.72rem;color:var(--tx3);white-space:nowrap">10 min / s · 3 jours en 7 min</span>
+<div style="display:flex;align-items:center;gap:8px;padding:0 0 0 11px;border-left:1px solid var(--border)">
+<span style="font-size:.72rem;font-weight:700;color:var(--accent)">Auto</span><span class="sw on"><i></i></span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+<div style="display:flex;gap:3px">
+<div style="flex:1;position:relative;height:26px;border-radius:7px 0 0 7px;background:var(--surface3);overflow:hidden">
+<span style="position:absolute;left:12%;width:14%;top:0;bottom:0;background:var(--accent);opacity:.55"></span>
+<span style="position:absolute;left:34%;width:19%;top:0;bottom:0;background:var(--accent);opacity:.55"></span>
+<span style="position:absolute;left:62%;width:11%;top:0;bottom:0;background:var(--accent);opacity:.55"></span>
+<span style="position:absolute;left:46%;width:3px;top:0;bottom:0;background:var(--red)"></span>
+</div>
+<div style="flex:1;position:relative;height:26px;background:var(--surface3);overflow:hidden">
+<span style="position:absolute;left:16%;width:22%;top:0;bottom:0;background:var(--accent);opacity:.55"></span>
+<span style="position:absolute;left:44%;width:16%;top:0;bottom:0;background:var(--accent)"></span>
+<span style="position:absolute;left:66%;width:9%;top:0;bottom:0;background:var(--accent);opacity:.28"></span>
+<span style="position:absolute;left:52%;width:3px;top:0;bottom:0;background:var(--tx);box-shadow:0 0 0 3px color-mix(in srgb,var(--tx) 20%,transparent)"></span>
+</div>
+<div style="flex:1;position:relative;height:26px;border-radius:0 7px 7px 0;background:var(--surface3);overflow:hidden">
+<span style="position:absolute;left:14%;width:18%;top:0;bottom:0;background:var(--accent);opacity:.28"></span>
+<span style="position:absolute;left:40%;width:24%;top:0;bottom:0;background:var(--accent);opacity:.28"></span>
+<span style="position:absolute;left:58%;width:4px;top:0;bottom:0;background:var(--amber)"></span>
+</div>
+</div>
+<div style="display:flex;gap:3px">
+<span style="flex:1;font-size:.7rem;font-weight:700;color:var(--tx3);text-align:center">sam. 27 · 4 trajets</span>
+<span style="flex:1;font-size:.7rem;font-weight:800;color:var(--accent);text-align:center">dim. 28 · 3 trajets</span>
+<span style="flex:1;font-size:.7rem;font-weight:700;color:var(--tx3);text-align:center">lun. 29 · 4 trajets</span>
+</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid var(--border)">
+<span style="font-size:.72rem;color:var(--tx2)">Une barre par jour : les <b style="color:var(--tx)">creux</b> sont les périodes à l'arrêt, les <b style="color:var(--red)">traits rouges</b> les excès</span>
+<span class="mono" style="font-size:.71rem;color:var(--tx3)">dim. 28 · 11:24</span>
+</div>
+</div>
+
+</div>
+
+<div style="flex:0 0 372px;display:flex;flex-direction:column;gap:14px">
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<div class="rd"><b>64 <span style="font-size:.68rem;font-weight:700;color:var(--tx3)">km/h</span></b><span>Vitesse à l'instant</span></div>
+<div class="rd"><b>218 <span style="font-size:.68rem;font-weight:700;color:var(--tx3)">km</span></b><span>Parcouru</span></div>
+<div class="rd"><b>1 j 21 h</b><span>Écoulé</span></div>
+<div class="rd"><b style="color:var(--blue)">4 / 11</b><span>Trajet en cours</span></div>
+</div>
+
+<div class="card" style="overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;padding:13px 15px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:10px;background:var(--surface3);color:var(--tx2)"><svg width="15" height="15"><use href="#ic-route"/></svg></span>
+<div class="crdt" style="font-size:.86rem">Les 11 trajets</div>
+<span class="chip" style="margin-left:auto;font-size:.65rem">cliquables</span>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 15px;border-bottom:1px solid var(--border)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:52px;flex-shrink:0">sam. 08:12</span>
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/renault.png" alt=""></span></span><div style="min-width:0;flex:1"><div style="font-size:.765rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Dépôt → Blagnac</div></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);flex-shrink:0">18 km</span>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 15px;border-bottom:1px solid var(--border);background:var(--red-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:52px;flex-shrink:0">sam. 14:40</span>
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/iveco.png" alt=""></span></span><div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:.765rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Blagnac → Muret</span><span class="tag" style="background:var(--red);color:#fff;font-size:.62rem">1 excès</span></div></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);flex-shrink:0">31 km</span>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 15px;border-bottom:1px solid var(--border)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:52px;flex-shrink:0">dim. 09:05</span>
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/renault.png" alt=""></span></span><div style="min-width:0;flex:1"><div style="font-size:.765rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Muret → Toulouse</div></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);flex-shrink:0">24 km</span>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 15px;border-bottom:1px solid var(--border);background:var(--accent-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--accent);width:52px;flex-shrink:0">dim. 11:02</span>
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/iveco.png" alt=""></span></span><div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:.765rem;font-weight:800;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Toulouse → Carcassonne</span><span class="tag" style="background:var(--accent);color:var(--accent-ink);font-size:.62rem">en cours</span></div></div>
+<span class="mono" style="font-size:.7rem;color:var(--accent);flex-shrink:0">92 km</span>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 15px;border-bottom:1px solid var(--border);background:var(--amber-soft)">
+<span class="mono" style="font-size:.69rem;color:var(--tx3);width:52px;flex-shrink:0">lun. 07:48</span>
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/iveco.png" alt=""></span></span><div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:.765rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Carcassonne → Narbonne</span><span class="tag" style="background:var(--amber-soft);color:var(--amber);font-size:.62rem">1 pointe</span></div></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);flex-shrink:0">62 km</span>
+</div>
+<div style="padding:10px 15px;font-size:.735rem;color:var(--tx3)">+ 6 autres trajets</div>
+</div>
+
+<div style="display:flex;gap:10px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px dashed var(--border2)">
+<svg width="15" height="15" style="color:var(--accent);flex-shrink:0;margin-top:1px"><use href="#ic-info"/></svg>
+<p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><b style="color:var(--tx)">Auto</b> ajuste la vitesse pour tenir la période en ~7 min, et <b style="color:var(--tx)">ralentit sur les trajets</b> tout en accélérant les longues pauses. Le réglage manuel reste possible.</p>
+</div>
+
+</div>
+</div>
+</div>
+<div style="display:flex;gap:22px;margin-top:14px;flex-wrap:wrap">
+<p class="hint" style="flex:1;min-width:340px;margin:0"><b style="color:var(--tx2)">Une barre par jour</b> plutôt qu'une frise continue de 3 jours : on voit immédiatement quel jour a eu de l'activité, et les nuits ne mangent pas 60 % de la barre.</p>
+<p class="hint" style="flex:1;min-width:340px;margin:0"><b style="color:var(--tx2)">Le facteur devient un multiplicateur</b> (60× / 600× / 1800×) comme sur le rejeu de trajet, avec sa traduction en clair. <span class="mono" style="font-size:.68rem">autoSpeed</span> devient un interrupteur <b style="color:var(--tx2)">visible</b> — aujourd'hui il agit sans le dire.</p>
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>iPhone &amp; Android · la carte prend tout, les commandes flottent</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>iPhone · rejeu de trajet — commandes en feuille basse</p>
+<div class="mfrm" data-screen-label="Rejeu trajet iPhone">
+<div class="mstat" style="color:#fff"><span class="mono" style="font-size:.78rem;font-weight:600">15:03</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;inset:0;overflow:hidden;background:var(--bg2)">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;left:-105px;top:-40px;right:auto;bottom:auto;width:600px;height:900px"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2992@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2992@2x.png" alt=""></div><div class="tiles tl-light" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;left:-105px;top:-40px;right:auto;bottom:auto;width:600px;height:900px"><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2992@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2992@2x.png" alt=""></div><div class="veil"></div>
+<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 390 844" preserveAspectRatio="none" aria-hidden="true">
+<defs><linearGradient id="sp2" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#10E0A0"/><stop offset=".4" stop-color="#10E0A0"/><stop offset=".52" stop-color="#F5B33D"/><stop offset=".64" stop-color="#F2706B"/><stop offset=".8" stop-color="#10E0A0"/></linearGradient></defs>
+<path d="M60 660 Q140 580 190 540 T250 400 T330 250" fill="none" stroke="url(#sp2)" stroke-width="5" stroke-linecap="round"/>
+</svg>
+<span class="pin" style="left:52px;top:652px;width:14px;height:14px;background:var(--accent);border-color:#0C1210"></span>
+<span class="pin" style="left:184px;top:532px;width:13px;height:13px;background:var(--blue);border-color:#0C1210"></span>
+<span class="pin" style="left:244px;top:392px;width:13px;height:13px;background:var(--red);border-color:#0C1210"></span>
+<span class="pin" style="left:216px;top:452px;width:28px;height:28px;background:var(--accent);color:var(--accent-ink);border-color:#0C1210;box-shadow:0 0 0 6px rgba(16,224,160,.24)"><svg width="15" height="15"><use href="#ic-van"/></svg></span>
+</div>
+
+<div style="position:absolute;top:58px;left:14px;right:14px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;background:rgba(16,21,20,.86);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(12px);z-index:60">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:rgba(255,255,255,.1);color:#EAEFED;flex-shrink:0"><svg width="14" height="14"><use href="#ic-chevl"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.8rem;font-weight:800;color:#EAEFED">Rejeu du trajet</div><div class="mono" style="font-size:.68rem;color:#9BA5A1;margin-top:1px">TR-771-QS · 14:12 → 15:48</div></div>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:rgba(255,255,255,.1);color:#EAEFED;flex-shrink:0"><svg width="14" height="14"><use href="#ic-share"/></svg></span>
+</div>
+
+<div style="position:absolute;left:14px;right:14px;bottom:0;border-radius:20px 20px 0 0;background:color-mix(in srgb,var(--bg2) 94%,transparent);border:1px solid var(--border);border-bottom:none;backdrop-filter:blur(14px);padding:9px 16px 30px;z-index:70">
+<div style="display:flex;justify-content:center;padding-bottom:12px"><span style="width:36px;height:5px;border-radius:3px;background:var(--border2)"></span></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+<div class="rd" style="padding:8px 10px"><b style="font-size:.92rem">78<span style="font-size:.6rem;font-weight:700;color:var(--tx3)"> km/h</span></b><span style="font-size:.58rem">Vitesse</span></div>
+<div class="rd" style="padding:8px 10px"><b style="font-size:.92rem">42,8<span style="font-size:.6rem;font-weight:700;color:var(--tx3)"> km</span></b><span style="font-size:.58rem">Parcouru</span></div>
+<div class="rd" style="padding:8px 10px"><b style="font-size:.92rem">36<span style="font-size:.6rem;font-weight:700;color:var(--tx3)"> min</span></b><span style="font-size:.58rem">Écoulé</span></div>
+</div>
+
+<div style="position:relative;height:34px;margin-bottom:12px">
+<div style="position:absolute;left:0;right:0;top:13px;height:8px;border-radius:4px;background:var(--surface3);overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent);border-radius:4px"></span></div>
+<span style="position:absolute;left:20.4%;top:7px;width:5px;height:20px;border-radius:3px;background:var(--blue)"></span>
+<span style="position:absolute;left:47%;top:7px;width:5px;height:20px;border-radius:3px;background:var(--red)"></span>
+<span style="position:absolute;left:52%;top:7px;width:5px;height:20px;border-radius:3px;background:var(--red)"></span>
+<span style="position:absolute;left:66%;top:7px;width:5px;height:20px;border-radius:3px;background:var(--amber)"></span>
+<span style="position:absolute;left:38%;top:2px;bottom:2px;width:16px;margin-left:-8px;border-radius:7px;background:var(--tx);box-shadow:0 2px 6px rgba(0,0,0,.4)"></span>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px">
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">14:12</span>
+<div style="display:flex;align-items:center;gap:11px">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="16" height="16"><use href="#ic-back"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:999px;background:var(--accent);color:var(--accent-ink)"><svg width="22" height="22"><use href="#ic-pause"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="16" height="16"><use href="#ic-fwd"/></svg></span>
+</div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">15:48</span>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:8px">
+<div style="display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<span class="spd" style="height:32px;min-width:44px">1×</span><span class="spd on" style="height:32px;min-width:44px">4×</span><span class="spd" style="height:32px;min-width:44px">8×</span><span class="spd" style="height:32px;min-width:44px">16×</span>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:13px;background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 26%,transparent)">
+<span style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0"></span>
+<span style="flex:1;min-width:0;font-size:.755rem;line-height:1.4;color:var(--tx2)"><b style="color:var(--red)">Excès à 15:03</b> · 128 km/h, limite 90</span>
+<svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+<p class="hint" style="margin-top:14px">La carte va <b style="color:var(--tx2)">bord à bord</b> derrière le titre translucide. Bouton de lecture à 52 px, poignée de frise à 16 px de large : deux cibles confortables au pouce.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>iPhone · rejeu de période — une barre par jour</p>
+<div class="mfrm" data-screen-label="Rejeu periode iPhone">
+<div class="mstat" style="color:#fff"><span class="mono" style="font-size:.78rem;font-weight:600">11:24</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;inset:0;overflow:hidden;background:var(--bg2)">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;left:-105px;top:-40px;right:auto;bottom:auto;width:600px;height:900px"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2992@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2992@2x.png" alt=""></div><div class="tiles tl-light" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;left:-105px;top:-40px;right:auto;bottom:auto;width:600px;height:900px"><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2992@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2992@2x.png" alt=""></div><div class="veil"></div>
+<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 390 844" preserveAspectRatio="none" aria-hidden="true">
+<path d="M60 700 Q130 620 180 590 T260 470" fill="none" stroke="#10E0A0" stroke-opacity=".26" stroke-width="4" stroke-linecap="round"/>
+<path d="M260 470 Q300 400 320 340 T340 210" fill="none" stroke="#10E0A0" stroke-opacity=".26" stroke-width="4" stroke-linecap="round"/>
+<path d="M60 700 Q130 620 180 590 T236 512" fill="none" stroke="#10E0A0" stroke-width="5" stroke-linecap="round"/>
+</svg>
+<span class="pin" style="left:52px;top:692px;width:14px;height:14px;background:var(--accent);border-color:#0C1210"></span>
+<span class="pin" style="left:174px;top:582px;width:12px;height:12px;background:var(--blue);border-color:#0C1210"></span>
+<span class="pin" style="left:252px;top:462px;width:12px;height:12px;background:var(--violet);border-color:#0C1210"></span>
+<span class="pin" style="left:224px;top:500px;width:28px;height:28px;background:var(--accent);color:var(--accent-ink);border-color:#0C1210;box-shadow:0 0 0 6px rgba(16,224,160,.24)"><svg width="15" height="15"><use href="#ic-van"/></svg></span>
+</div>
+
+<div style="position:absolute;top:58px;left:14px;right:14px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:13px;background:rgba(16,21,20,.86);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(12px);z-index:60">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:rgba(255,255,255,.1);color:#EAEFED;flex-shrink:0"><svg width="14" height="14"><use href="#ic-chevl"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.8rem;font-weight:800;color:#EAEFED">Rejeu de la période</div><div class="mono" style="font-size:.68rem;color:#9BA5A1;margin-top:1px">27 → 29 juil. · 11 trajets</div></div>
+</div>
+
+<div style="position:absolute;top:112px;left:14px;padding:9px 11px;border-radius:13px;background:rgba(16,21,20,.86);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(10px);z-index:60">
+<div class="kpil" style="margin-bottom:4px;color:#69736E">Trajet</div>
+<div style="font-size:.78rem;font-weight:800;color:#EAEFED">4 sur 11</div>
+<div style="font-size:.69rem;color:#9BA5A1;margin-top:1px">Toulouse → Carcassonne</span>
+</div>
+
+<div style="position:absolute;left:14px;right:14px;bottom:0;border-radius:20px 20px 0 0;background:color-mix(in srgb,var(--bg2) 94%,transparent);border:1px solid var(--border);border-bottom:none;backdrop-filter:blur(14px);padding:9px 16px 30px;z-index:70">
+<div style="display:flex;justify-content:center;padding-bottom:12px"><span style="width:36px;height:5px;border-radius:3px;background:var(--border2)"></span></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+<div class="rd" style="padding:8px 10px"><b style="font-size:.92rem">64<span style="font-size:.6rem;font-weight:700;color:var(--tx3)"> km/h</span></b><span style="font-size:.58rem">Vitesse</span></div>
+<div class="rd" style="padding:8px 10px"><b style="font-size:.92rem">218<span style="font-size:.6rem;font-weight:700;color:var(--tx3)"> km</span></b><span style="font-size:.58rem">Parcouru</span></div>
+<div class="rd" style="padding:8px 10px"><b style="font-size:.92rem">1j 21h</b><span style="font-size:.58rem">Écoulé</span></div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:13px">
+<div style="display:flex;gap:3px">
+<div style="flex:1;position:relative;height:24px;border-radius:7px 0 0 7px;background:var(--surface3);overflow:hidden"><span style="position:absolute;left:12%;width:16%;top:0;bottom:0;background:var(--accent);opacity:.5"></span><span style="position:absolute;left:38%;width:20%;top:0;bottom:0;background:var(--accent);opacity:.5"></span><span style="position:absolute;left:46%;width:3px;top:0;bottom:0;background:var(--red)"></span></div>
+<div style="flex:1;position:relative;height:24px;background:var(--surface3);overflow:hidden"><span style="position:absolute;left:16%;width:24%;top:0;bottom:0;background:var(--accent);opacity:.5"></span><span style="position:absolute;left:44%;width:18%;top:0;bottom:0;background:var(--accent)"></span><span style="position:absolute;left:52%;top:-2px;bottom:-2px;width:14px;margin-left:-7px;border-radius:7px;background:var(--tx);box-shadow:0 2px 6px rgba(0,0,0,.4)"></span></div>
+<div style="flex:1;position:relative;height:24px;border-radius:0 7px 7px 0;background:var(--surface3);overflow:hidden"><span style="position:absolute;left:14%;width:20%;top:0;bottom:0;background:var(--accent);opacity:.26"></span><span style="position:absolute;left:44%;width:22%;top:0;bottom:0;background:var(--accent);opacity:.26"></span><span style="position:absolute;left:58%;width:4px;top:0;bottom:0;background:var(--amber)"></span></div>
+</div>
+<div style="display:flex;gap:3px">
+<span style="flex:1;font-size:.66rem;font-weight:700;color:var(--tx3);text-align:center">sam.</span>
+<span style="flex:1;font-size:.66rem;font-weight:800;color:var(--accent);text-align:center">dim. 28</span>
+<span style="flex:1;font-size:.66rem;font-weight:700;color:var(--tx3);text-align:center">lun.</span>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:13px">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="16" height="16"><use href="#ic-back"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:999px;background:var(--accent);color:var(--accent-ink)"><svg width="22" height="22"><use href="#ic-pause"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="16" height="16"><use href="#ic-fwd"/></svg></span>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="font-size:.755rem;font-weight:700;color:var(--accent);flex-shrink:0">Auto</span>
+<span class="sw on" style="flex-shrink:0"><i></i></span>
+<span style="flex:1;min-width:0;font-size:.72rem;line-height:1.35;color:var(--tx3)">3 jours en 7 min · ralentit sur les trajets</span>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Les 3 barres tiennent en 358 px. Sur une frise continue, les deux nuits mangeraient <b style="color:var(--tx2)">60 % de la largeur</b> pour ne rien montrer.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Android · rejeu de trajet — commandes M3, la croix à gauche</p>
+<div class="afrm" data-screen-label="Rejeu trajet Android">
+<div class="astat" style="color:#fff"><span class="mono" style="font-size:.72rem;font-weight:600">15:03</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg2)">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;left:-94px;top:-30px;right:auto;bottom:auto;width:600px;height:900px"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2992@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2992@2x.png" alt=""></div><div class="tiles tl-light" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;left:-94px;top:-30px;right:auto;bottom:auto;width:600px;height:900px"><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2992@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2992@2x.png" alt=""></div><div class="veil"></div>
+<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 412 833" preserveAspectRatio="none" aria-hidden="true">
+<defs><linearGradient id="sp3" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#10E0A0"/><stop offset=".42" stop-color="#10E0A0"/><stop offset=".54" stop-color="#F5B33D"/><stop offset=".66" stop-color="#F2706B"/><stop offset=".82" stop-color="#10E0A0"/></linearGradient></defs>
+<path d="M64 660 Q150 576 200 534 T268 388 T350 236" fill="none" stroke="url(#sp3)" stroke-width="5" stroke-linecap="round"/>
+</svg>
+<span class="pin" style="left:56px;top:652px;width:14px;height:14px;background:var(--accent);border-color:#0C1210"></span>
+<span class="pin" style="left:194px;top:526px;width:13px;height:13px;background:var(--blue);border-color:#0C1210"></span>
+<span class="pin" style="left:262px;top:380px;width:13px;height:13px;background:var(--red);border-color:#0C1210"></span>
+<span class="pin" style="left:230px;top:446px;width:28px;height:28px;background:var(--accent);color:var(--accent-ink);border-color:#0C1210;box-shadow:0 0 0 6px rgba(16,224,160,.24)"><svg width="15" height="15"><use href="#ic-van"/></svg></span>
+
+<div style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:16px;height:56px;padding:0 16px;background:linear-gradient(180deg,rgba(12,18,16,.9),transparent)">
+<svg width="20" height="20" style="color:#EAEFED"><use href="#ic-x"/></svg>
+<div style="flex:1;min-width:0"><div style="font-size:1.02rem;font-weight:600;color:#EAEFED">Rejeu du trajet</div><div class="mono" style="font-size:.7rem;color:#9BA5A1">TR-771-QS · 14:12 → 15:48</div></div>
+<svg width="19" height="19" style="color:#EAEFED"><use href="#ic-share"/></svg>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;border-radius:22px 22px 0 0;background:var(--bg2);border-top:1px solid var(--border);padding:20px 16px 18px">
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:16px">
+<div class="rd" style="padding:10px 12px;border-radius:13px"><b style="font-size:1rem">78<span style="font-size:.62rem;font-weight:700;color:var(--tx3)"> km/h</span></b><span style="font-size:.6rem">Vitesse</span></div>
+<div class="rd" style="padding:10px 12px;border-radius:13px"><b style="font-size:1rem">42,8<span style="font-size:.62rem;font-weight:700;color:var(--tx3)"> km</span></b><span style="font-size:.6rem">Parcouru</span></div>
+<div class="rd" style="padding:10px 12px;border-radius:13px"><b style="font-size:1rem">36<span style="font-size:.62rem;font-weight:700;color:var(--tx3)"> min</span></b><span style="font-size:.6rem">Écoulé</span></div>
+</div>
+
+<div style="position:relative;height:36px;margin-bottom:12px">
+<div style="position:absolute;left:0;right:0;top:14px;height:8px;border-radius:4px;background:var(--surface3);overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:38%;background:var(--accent);border-radius:4px"></span></div>
+<span style="position:absolute;left:20.4%;top:8px;width:5px;height:20px;border-radius:3px;background:var(--blue)"></span>
+<span style="position:absolute;left:47%;top:8px;width:5px;height:20px;border-radius:3px;background:var(--red)"></span>
+<span style="position:absolute;left:52%;top:8px;width:5px;height:20px;border-radius:3px;background:var(--red)"></span>
+<span style="position:absolute;left:66%;top:8px;width:5px;height:20px;border-radius:3px;background:var(--amber)"></span>
+<span style="position:absolute;left:38%;top:6px;width:18px;height:24px;margin-left:-9px;border-radius:10px;background:var(--accent)"></span>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px">
+<span class="mono" style="font-size:.73rem;color:var(--tx3)">14:12</span>
+<div style="display:flex;align-items:center;gap:13px">
+<span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="17" height="17"><use href="#ic-back"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);box-shadow:0 8px 20px -4px rgba(0,0,0,.5)"><svg width="24" height="24"><use href="#ic-pause"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2)"><svg width="17" height="17"><use href="#ic-fwd"/></svg></span>
+</div>
+<span class="mono" style="font-size:.73rem;color:var(--tx3)">15:48</span>
+</div>
+
+<div style="display:flex;gap:9px;justify-content:center;margin-bottom:14px">
+<span style="display:inline-flex;align-items:center;height:34px;padding:0 15px;border-radius:7px;border:1px solid var(--border2);font-size:.79rem;font-weight:600;color:var(--tx2)">1×</span>
+<span style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 15px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:.79rem;font-weight:700"><svg width="13" height="13"><use href="#ic-check"/></svg>4×</span>
+<span style="display:inline-flex;align-items:center;height:34px;padding:0 15px;border-radius:7px;border:1px solid var(--border2);font-size:.79rem;font-weight:600;color:var(--tx2)">8×</span>
+<span style="display:inline-flex;align-items:center;height:34px;padding:0 15px;border-radius:7px;border:1px solid var(--border2);font-size:.79rem;font-weight:600;color:var(--tx2)">16×</span>
+</div>
+
+<div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:16px;background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 26%,transparent)">
+<span style="width:10px;height:10px;border-radius:50%;background:var(--red);flex-shrink:0"></span>
+<span style="flex:1;min-width:0;font-size:.79rem;line-height:1.4;color:var(--tx2)"><b style="color:var(--red)">Excès à 15:03</b> · 128 km/h, limite 90</span>
+<svg width="15" height="15" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+</div>
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">Poignée de frise <b style="color:var(--tx2)">rectangulaire verte</b> et boutons carrés arrondis : la convention M3. La croix passe à gauche dans la barre superposée.</p>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

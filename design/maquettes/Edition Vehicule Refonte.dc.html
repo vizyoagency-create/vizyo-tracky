@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#101514}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.plq{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;background:var(--surface3);border:1px solid var(--border2);font-family:'JetBrains Mono',monospace;font-size:.735rem;font-weight:600;white-space:nowrap}
+.bl{position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:999px;background:#fff;border:2px solid var(--ring);overflow:hidden}
+.bl img{width:80%;height:80%;object-fit:contain}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fld b{font-size:.71rem;font-weight:700;color:var(--tx3)}
+.fin{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);font-size:.84rem}
+.sec{font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);margin:0 0 10px}
+.sw{position:relative;width:40px;height:23px;border-radius:999px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0}
+.sw i{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:var(--tx3)}
+.sw.on{background:var(--accent);border-color:var(--accent)}
+.sw.on i{left:19px;background:#fff}
+.iosw{position:relative;width:51px;height:31px;border-radius:16px;background:var(--surface3);flex-shrink:0}
+.iosw i{position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.28)}
+.iosw.on{background:#30D158}
+.iosw.on i{left:22px}
+.m3fld{position:relative;padding:17px 14px 9px;border-radius:6px 6px 0 0;background:var(--surface2);border-bottom:1px solid var(--border2)}
+.m3fld b{position:absolute;top:6px;left:14px;font-size:.66rem;font-weight:600;color:var(--tx3)}
+.m3fld.on{border-bottom:2px solid var(--accent)}
+.m3fld.on b{color:var(--accent)}
+.wrong{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--red) 34%,transparent);background:var(--red-soft);padding:14px}
+.lbl{position:absolute;top:-8px;left:11px;padding:1px 7px;border-radius:6px;font-size:.6rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.stp{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;flex-shrink:0}
+.dayr{display:grid;grid-template-columns:150px 1fr 1fr;gap:11px;align-items:center;padding:9px 0;border-top:1px solid var(--border)}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-chevl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
+<symbol id="ic-chevd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 9 7 7 7-7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-van" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h9.5l4 5H21a1 1 0 0 1 1 1v4h-3"/><path d="M2 7v10h3M9 17h7"/><circle cx="7" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></g></symbol>
+<symbol id="ic-chip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="1.6"/><path d="M4 10h3M4 14h3M17 10h3M17 14h3M10 4v3M14 4v3M10 17v3M14 17v3"/></g></symbol>
+<symbol id="ic-qr" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M20 20v.01"/></g></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2"/></g></symbol>
+<symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10.5" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></g></symbol>
+<symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+<symbol id="ic-print" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></g></symbol>
+<symbol id="ic-dl" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5M12 3v12"/></g></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16.5 3.1a4 4 0 0 1 0 7.8"/></g></symbol>
+<symbol id="ic-eyeoff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 5.2A9.6 9.6 0 0 1 12 5c6 0 10 7 10 7a15 15 0 0 1-2.4 3.2M6.6 6.7A15 15 0 0 0 2 12s4 7 10 7a9.8 9.8 0 0 0 4-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><line x1="2" y1="2" x2="22" y2="22"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · planche ④ · F11 + F12 + F8 · dernière</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Créer un véhicule · horaires · QR</h1>
+<p style="margin:8px 0 0;max-width:930px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Les trois surfaces d'édition d'un véhicule. Deux défauts : la création <b style="color:var(--tx)">exige un boîtier</b> à l'étape 2, et la protection vie privée <b style="color:var(--tx)">dépend d'un second interrupteur</b> dont le lien n'est expliqué qu'en prose.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>00</i>Les 2 défauts</div>
+<div class="dash" style="padding:24px 26px;background:var(--bg2);display:grid;grid-template-columns:1fr 1fr;gap:26px">
+
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 1 · le boîtier obligatoire</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">L'assistant de création a deux étapes — <b style="color:var(--tx)">Véhicule</b> puis <b style="color:var(--tx)">Tracker</b> — et le bouton final est bloqué tant que <span class="mono" style="font-size:.7rem">imei.length !== 15</span>. Or un client qui saisit sa flotte n'a pas encore ses boîtiers : ils arrivent à l'installation.</p>
+<div style="display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--red) 26%,transparent)">
+<span class="stp" style="background:var(--accent);color:var(--accent-ink)">1</span>
+<span style="font-size:.78rem;font-weight:700">Véhicule</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="stp" style="background:var(--red);color:#fff">2</span>
+<span style="font-size:.78rem;font-weight:700;color:var(--red)">Tracker · bloquant</span>
+</div>
+<p style="margin:11px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ L'étape 2 devient <b>facultative</b> et déclarée telle. Sans boîtier, le véhicule entre dans le suivi d'installation.</p>
+</div>
+
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 2 · dépendance en prose</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">L'éditeur d'horaires a deux interrupteurs indépendants à l'écran, mais liés dans les faits. Le texte le dit — en fin de paragraphe.</p>
+<div style="padding:11px 13px;border-radius:10px;background:var(--surface);border:1px solid var(--border);margin-bottom:10px">
+<p style="margin:0;font-size:.745rem;line-height:1.5;color:var(--tx2);font-style:italic">« Hors des plages déclarées ci-dessous, <b style="color:var(--tx)">aucune position n'est enregistrée</b> — <span style="color:var(--red)">à condition que l'usage mixte soit activé ci-dessus</span>. »</p>
+</div>
+<p style="margin:0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Les horaires deviennent un <b>bloc imbriqué</b> dans l'usage mixte : impossible de les régler en croyant protéger quelqu'un alors que rien n'est protégé.</p>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>PC · F11 créer un véhicule — étape 1, puis un boîtier facultatif</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:1.35fr minmax(0,1fr) minmax(0,1fr);gap:22px;background:var(--bg2)">
+
+<div data-screen-label="Creer vehicule etape 1">
+<p class="frmlbl"><span class="plat pc">PC</span>Étape 1 · le véhicule</p>
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-van"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:800">Nouveau véhicule</div><div style="font-size:.71rem;color:var(--tx3);margin-top:1px">Étape 1 sur 2 · informations</div></div>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="13" height="13"><use href="#ic-x"/></svg></span>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:12px 18px;background:var(--surface2);border-bottom:1px solid var(--border)">
+<span class="stp" style="background:var(--accent);color:var(--accent-ink)">1</span>
+<span style="font-size:.775rem;font-weight:800">Véhicule</span>
+<span style="flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--border2) 0 4px,transparent 4px 8px)"></span>
+<span class="stp" style="background:var(--surface3);color:var(--tx3)">2</span>
+<span style="font-size:.775rem;font-weight:600;color:var(--tx3)">Boîtier</span>
+<span class="tag" style="background:var(--surface3);color:var(--tx3)">facultatif</span>
+</div>
+
+<div style="padding:17px 18px;display:flex;flex-direction:column;gap:17px">
+<div>
+<p class="sec">Identification</p>
+<div style="display:grid;grid-template-columns:1.1fr 1fr;gap:12px">
+<div class="fld"><b>Plaque d'immatriculation <span style="color:var(--accent)">*</span></b><div class="fin mono" style="border-color:var(--accent);font-weight:600">AB-231-CD</div></div>
+<div class="fld"><b>Flotte <span style="color:var(--accent)">*</span></b><div class="fin" style="justify-content:space-between">Transports Duchamp<svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+</div>
+</div>
+
+<div>
+<p class="sec">Type</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<span class="chip" style="height:34px;padding:0 13px;background:var(--accent-soft);color:var(--accent);font-size:.775rem"><svg width="13" height="13"><use href="#ic-check"/></svg>Utilitaire</span>
+<span class="chip" style="height:34px;padding:0 13px;background:transparent;border:1px solid var(--border2);font-size:.775rem">Voiture</span>
+<span class="chip" style="height:34px;padding:0 13px;background:transparent;border:1px solid var(--border2);font-size:.775rem">Camion</span>
+<span class="chip" style="height:34px;padding:0 13px;background:transparent;border:1px solid var(--border2);font-size:.775rem">Autre</span>
+</div>
+</div>
+
+<div>
+<p class="sec">Détails <span style="color:var(--tx3);font-weight:600;letter-spacing:0;text-transform:none">· tous optionnels</span></p>
+<div style="display:grid;grid-template-columns:1fr 1fr 76px;gap:12px;margin-bottom:12px">
+<div class="fld"><b>Marque</b><div class="fin" style="justify-content:space-between"><span style="display:flex;align-items:center;gap:8px"><span style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:999px;background:#fff;overflow:hidden;flex-shrink:0"><img src="brands/renault.png" alt="" style="width:80%;height:80%;object-fit:contain"></span>Renault</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+<div class="fld"><b>Modèle</b><div class="fin">Master</div></div>
+<div class="fld"><b>Année</b><div class="fin mono" style="font-size:.8rem">2021</div></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 76px 96px;gap:12px">
+<div class="fld"><b>Énergie</b><div class="fin" style="justify-content:space-between">Diesel<svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+<div class="fld"><b>Places</b><div class="fin mono" style="font-size:.8rem">3</div></div>
+<div class="fld"><b>Sièges enfants</b><div class="fin mono" style="font-size:.8rem">0</div></div>
+</div>
+</div>
+
+<div>
+<p class="sec">Équipements</p>
+<div style="display:flex;gap:7px;flex-wrap:wrap">
+<span class="chip" style="background:var(--accent-soft);color:var(--accent)"><svg width="11" height="11"><use href="#ic-check"/></svg>Hayon</span>
+<span class="chip" style="background:transparent;border:1px solid var(--border2)">Frigorifique</span>
+<span class="chip" style="background:transparent;border:1px solid var(--border2)">Attelage</span>
+<span class="chip" style="background:transparent;border:1px solid var(--border2)">Galerie</span>
+<span class="chip" style="background:transparent;border:1px dashed var(--border2)">+ autre</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-top:1px solid var(--border)">
+<span style="font-size:.735rem;color:var(--tx3)">2 champs requis sur 11</span>
+<div style="display:flex;gap:9px"><button class="btns">Annuler</button><button class="btnp">Continuer<svg width="14" height="14"><use href="#ic-chev"/></svg></button></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Le type passe en <b style="color:var(--tx2)">pastilles</b> plutôt qu'une liste déroulante (4 choix, autant les montrer), et « 2 champs requis sur 11 » dit d'emblée que le reste peut attendre.</p>
+</div>
+
+<div data-screen-label="Creer vehicule etape 2">
+<p class="frmlbl"><span class="plat pc">PC</span>Étape 2 · le boîtier, ou pas</p>
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="17" height="17"><use href="#ic-chip"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:800">Associer un boîtier</div><div style="font-size:.71rem;color:var(--tx3);margin-top:1px">Étape 2 sur 2 · facultative</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:12px 18px;background:var(--surface2);border-bottom:1px solid var(--border)">
+<span class="stp" style="background:var(--accent);color:var(--accent-ink)"><svg width="13" height="13"><use href="#ic-check"/></svg></span>
+<span style="font-size:.775rem;font-weight:600;color:var(--tx2)">Véhicule</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="stp" style="background:var(--accent);color:var(--accent-ink)">2</span>
+<span style="font-size:.775rem;font-weight:800">Boîtier</span>
+</div>
+
+<div style="padding:17px 18px;display:flex;flex-direction:column;gap:15px">
+<div style="display:flex;gap:10px;padding:12px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<svg width="15" height="15" style="color:var(--accent);flex-shrink:0;margin-top:1px"><use href="#ic-info"/></svg>
+<p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><b style="color:var(--accent)">Le boîtier n'est pas encore posé ?</b> Passez cette étape. <span class="plq" style="font-size:.68rem">AB-231-CD</span> entrera dans le <b style="color:var(--tx)">suivi d'installation</b> et apparaîtra sur la carte dès la pose.</p>
+</div>
+
+<div class="fld"><b>IMEI du boîtier</b>
+<div class="fin mono" style="border-color:var(--accent);justify-content:space-between;font-weight:600">861234037582910<span style="font-size:.7rem;font-weight:600;color:var(--accent)">15 / 15</span></div>
+<p class="hint" style="margin:0">15 chiffres, imprimés sous le code-barres du boîtier.</p>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+<div class="fld"><b>Modèle <span style="color:var(--tx3);font-weight:600">· optionnel</span></b><div class="fin" style="justify-content:space-between">Teltonika FMB920<svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+<div class="fld"><b>N° SIM <span style="color:var(--tx3);font-weight:600">· optionnel</span></b><div class="fin mono" style="font-size:.78rem">8933 1240 0987</div></div>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-lock"/></svg>
+<span style="font-size:.74rem;color:var(--tx2)">Sans n° SIM, aucune position n'arrivera — même boîtier posé.</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:9px;padding:15px 18px;border-top:1px solid var(--border)">
+<button class="btnp" style="width:100%">Créer le véhicule</button>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<button class="btns" style="border:none;background:transparent;padding:0 4px"><svg width="14" height="14"><use href="#ic-chevl"/></svg>Retour</button>
+<button class="btns" style="border:none;background:transparent;padding:0 4px">Sans boîtier pour l'instant</button>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Le compteur <b style="color:var(--tx2)">15 / 15</b> remplace un bouton grisé sans explication. Et « Sans boîtier pour l'instant » est une <b style="color:var(--tx2)">sortie nommée</b>, pas un abandon.</p>
+</div>
+
+<div data-screen-label="QR vehicule">
+<p class="frmlbl"><span class="plat pc">PC</span>F8 · QR du véhicule — à coller dans la cabine</p>
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="17" height="17"><use href="#ic-qr"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:800">QR du véhicule</div><div style="display:flex;align-items:center;gap:8px;margin-top:2px"><span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/renault.png" alt=""></span></span><span class="plq" style="font-size:.68rem">AB-231-CD</span></div></div>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="13" height="13"><use href="#ic-x"/></svg></span>
+</div>
+
+<div style="padding:20px 18px;display:flex;flex-direction:column;align-items:center;gap:15px">
+<div style="width:186px;height:186px;border-radius:13px;background:#fff;padding:13px;display:flex;align-items:center;justify-content:center">
+<svg width="100%" height="100%" viewBox="0 0 29 29" shape-rendering="crispEdges" aria-label="QR de démonstration">
+<rect width="29" height="29" fill="#fff"/>
+<g fill="#0A1311">
+<rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+<rect x="22" y="0" width="7" height="7"/><rect x="23" y="1" width="5" height="5" fill="#fff"/><rect x="24" y="2" width="3" height="3"/>
+<rect x="0" y="22" width="7" height="7"/><rect x="1" y="23" width="5" height="5" fill="#fff"/><rect x="2" y="24" width="3" height="3"/>
+<rect x="9" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="13" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/>
+<rect x="8" y="2" width="1" height="1"/><rect x="10" y="2" width="2" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="17" y="2" width="2" height="1"/>
+<rect x="9" y="4" width="1" height="1"/><rect x="12" y="4" width="1" height="1"/><rect x="15" y="4" width="2" height="1"/><rect x="19" y="4" width="1" height="1"/>
+<rect x="8" y="6" width="2" height="1"/><rect x="11" y="6" width="1" height="1"/><rect x="14" y="6" width="1" height="1"/><rect x="18" y="6" width="1" height="1"/>
+<rect x="0" y="9" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="4" y="9" width="2" height="1"/><rect x="8" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="13" y="9" width="2" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="20" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/><rect x="26" y="9" width="2" height="1"/>
+<rect x="1" y="11" width="1" height="1"/><rect x="3" y="11" width="1" height="1"/><rect x="6" y="11" width="1" height="1"/><rect x="9" y="11" width="2" height="1"/><rect x="12" y="11" width="1" height="1"/><rect x="16" y="11" width="1" height="1"/><rect x="19" y="11" width="2" height="1"/><rect x="22" y="11" width="1" height="1"/><rect x="25" y="11" width="1" height="1"/><rect x="28" y="11" width="1" height="1"/>
+<rect x="0" y="13" width="2" height="1"/><rect x="4" y="13" width="1" height="1"/><rect x="7" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/><rect x="14" y="13" width="2" height="1"/><rect x="18" y="13" width="1" height="1"/><rect x="21" y="13" width="1" height="1"/><rect x="24" y="13" width="2" height="1"/><rect x="27" y="13" width="1" height="1"/>
+<rect x="2" y="15" width="1" height="1"/><rect x="5" y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/><rect x="12" y="15" width="2" height="1"/><rect x="16" y="15" width="1" height="1"/><rect x="20" y="15" width="1" height="1"/><rect x="23" y="15" width="1" height="1"/><rect x="26" y="15" width="1" height="1"/>
+<rect x="1" y="17" width="1" height="1"/><rect x="3" y="17" width="2" height="1"/><rect x="6" y="17" width="1" height="1"/><rect x="10" y="17" width="1" height="1"/><rect x="13" y="17" width="1" height="1"/><rect x="17" y="17" width="2" height="1"/><rect x="21" y="17" width="1" height="1"/><rect x="25" y="17" width="2" height="1"/>
+<rect x="0" y="19" width="1" height="1"/><rect x="4" y="19" width="1" height="1"/><rect x="7" y="19" width="2" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="15" y="19" width="1" height="1"/><rect x="19" y="19" width="1" height="1"/><rect x="22" y="19" width="2" height="1"/><rect x="27" y="19" width="1" height="1"/>
+<rect x="9" y="22" width="1" height="1"/><rect x="12" y="22" width="2" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="19" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/><rect x="25" y="22" width="1" height="1"/><rect x="28" y="22" width="1" height="1"/>
+<rect x="10" y="24" width="1" height="1"/><rect x="13" y="24" width="1" height="1"/><rect x="15" y="24" width="2" height="1"/><rect x="20" y="24" width="1" height="1"/><rect x="23" y="24" width="2" height="1"/><rect x="27" y="24" width="1" height="1"/>
+<rect x="9" y="26" width="2" height="1"/><rect x="12" y="26" width="1" height="1"/><rect x="17" y="26" width="1" height="1"/><rect x="21" y="26" width="1" height="1"/><rect x="24" y="26" width="1" height="1"/><rect x="26" y="26" width="2" height="1"/>
+<rect x="8" y="28" width="1" height="1"/><rect x="11" y="28" width="2" height="1"/><rect x="14" y="28" width="1" height="1"/><rect x="18" y="28" width="1" height="1"/><rect x="22" y="28" width="1" height="1"/><rect x="25" y="28" width="1" height="1"/>
+</g>
+</svg>
+</div>
+<div style="text-align:center">
+<div class="mono" style="font-size:1rem;font-weight:600;letter-spacing:.04em">AB-231-CD</div>
+<p style="margin:7px 0 0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Le conducteur scanne pour <b style="color:var(--tx)">déverrouiller le véhicule</b>. La localisation vérifie qu'il est bien à côté.</p>
+</div>
+</div>
+
+<div style="padding:0 18px 17px">
+<div style="display:flex;gap:9px">
+<button class="btnp" style="flex:1"><svg width="15" height="15"><use href="#ic-print"/></svg>Imprimer</button>
+<button class="btns" style="flex:1"><svg width="14" height="14"><use href="#ic-dl"/></svg>Télécharger</button>
+</div>
+<div style="display:flex;align-items:center;gap:9px;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-info"/></svg>
+<span style="font-size:.74rem;line-height:1.4;color:var(--tx2)">Format autocollant 60 × 90 mm, à coller côté conducteur.</span>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px"><b style="color:var(--tx2)">Ajouté :</b> à quoi sert ce QR et le format d'impression. Aujourd'hui le dialogue affiche le code et deux boutons — sans dire où le coller ni pourquoi.</p>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>PC · F12 l'éditeur d'horaires — les plages n'existent que dans l'usage mixte</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:1.5fr 1fr;gap:22px;background:var(--bg2)">
+
+<div data-screen-label="Horaires vehicule PC">
+<p class="frmlbl"><span class="plat pc">PC</span>Usage mixte activé — les plages s'appliquent</p>
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-clock"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:800">Cadre de temps de travail</div><div style="display:flex;align-items:center;gap:8px;margin-top:2px"><span style="position:relative;display:flex;flex-shrink:0"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:12px;height:12px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/renault.png" alt=""></span></span><span class="plq" style="font-size:.68rem">AB-231-CD</span></div></div>
+<span class="tag" style="background:var(--accent-soft);color:var(--accent)"><svg width="10" height="10"><use href="#ic-shield"/></svg>Protégé hors travail</span>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="13" height="13"><use href="#ic-x"/></svg></span>
+</div>
+
+<div style="padding:17px 18px">
+<div style="display:flex;align-items:flex-start;gap:12px;padding:14px 15px;border-radius:13px;background:var(--accent-soft);border:1px solid var(--accent)">
+<span class="sw on" style="margin-top:2px"><i></i></span>
+<div style="min-width:0;flex:1">
+<div style="font-size:.87rem;font-weight:800">Véhicule à usage mixte</div>
+<p style="margin:4px 0 0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Le conducteur le ramène chez lui. C'est <b style="color:var(--tx)">cet interrupteur</b> qui autorise la protection de sa vie privée — les plages ci-dessous ne servent à rien sans lui.</p>
+</div>
+</div>
+
+<div style="margin-left:22px;padding:16px 0 0 20px;border-left:2px solid color-mix(in srgb,var(--accent) 34%,transparent)">
+<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">
+<span class="sw on" style="margin-top:2px"><i></i></span>
+<div style="min-width:0;flex:1">
+<div style="font-size:.85rem;font-weight:800">Plages de travail déclarées</div>
+<p style="margin:4px 0 0;font-size:.765rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">En dehors — et les jours fériés — <b style="color:var(--tx)">aucune position n'est enregistrée</b>. Le conducteur voit ce cadre depuis son espace.</p>
+</div>
+</div>
+
+<div style="display:grid;grid-template-columns:150px 1fr 1fr;gap:11px;padding-bottom:7px">
+<span class="kpil">Jour</span><span class="kpil">Début</span><span class="kpil">Fin</span>
+</div>
+<div class="dayr" style="border-top:none">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw on"><i></i></span><span style="font-size:.815rem;font-weight:700">Lundi</span></label>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">08:00</div>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">18:00</div>
+</div>
+<div class="dayr">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw on"><i></i></span><span style="font-size:.815rem;font-weight:700">Mardi</span></label>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">08:00</div>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">18:00</div>
+</div>
+<div class="dayr">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw on"><i></i></span><span style="font-size:.815rem;font-weight:700">Mercredi</span></label>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">08:00</div>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">18:00</div>
+</div>
+<div class="dayr">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw on"><i></i></span><span style="font-size:.815rem;font-weight:700">Jeudi</span></label>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">08:00</div>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">18:00</div>
+</div>
+<div class="dayr">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw on"><i></i></span><span style="font-size:.815rem;font-weight:700">Vendredi</span></label>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">08:00</div>
+<div class="fin mono" style="height:36px;font-size:.82rem;font-weight:600">17:00</div>
+</div>
+<div class="dayr" style="opacity:.5">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw"><i></i></span><span style="font-size:.815rem;font-weight:700;color:var(--tx2)">Samedi</span></label>
+<div class="fin" style="height:36px;color:var(--tx3);font-size:.78rem">Non travaillé</div>
+<div></div>
+</div>
+<div class="dayr" style="opacity:.5">
+<label style="display:flex;align-items:center;gap:10px"><span class="sw"><i></i></span><span style="font-size:.815rem;font-weight:700;color:var(--tx2)">Dimanche</span></label>
+<div class="fin" style="height:36px;color:var(--tx3);font-size:.78rem">Non travaillé</div>
+<div></div>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;margin-top:13px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-eyeoff"/></svg>
+<span style="flex:1;min-width:0;font-size:.745rem;line-height:1.4;color:var(--tx2)">Soit <b style="color:var(--tx)">122 h sur 168</b> sans aucune collecte — nuits, week-ends et fériés compris.</span>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 18px;border-top:1px solid var(--border)">
+<span style="display:inline-flex;align-items:center;gap:7px;font-size:.735rem;color:var(--tx3)"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-check"/></svg>Enregistré à l'instant</span>
+<button class="btns">Fermer</button>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Les plages sont <b style="color:var(--tx2)">imbriquées</b> derrière un filet vert : on ne peut plus les régler en croyant protéger quelqu'un alors que l'usage mixte est éteint. Le calcul « 122 h sur 168 » rend la protection tangible.</p>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:20px">
+
+<div data-screen-label="Horaires usage pro">
+<p class="frmlbl"><span class="plat pc">PC</span>Usage professionnel — les plages disparaissent</p>
+<div class="card" style="overflow:hidden">
+<div style="padding:16px 18px">
+<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2)">
+<span class="sw" style="margin-top:2px"><i></i></span>
+<div style="min-width:0;flex:1">
+<div style="font-size:.86rem;font-weight:800;color:var(--tx2)">Véhicule à usage mixte</div>
+<p style="margin:4px 0 0;font-size:.765rem;line-height:1.5;color:var(--tx3);text-wrap:pretty">Éteint : ce véhicule est <b style="color:var(--tx2)">purement professionnel</b>.</p>
+</div>
+</div>
+
+<div style="margin-top:14px;padding:14px 15px;border-radius:13px;background:var(--blue-soft);border:1px solid color-mix(in srgb,var(--blue) 26%,transparent)">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--blue)"><use href="#ic-info"/></svg><b style="font-size:.83rem">Ce que cela implique</b></div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Suivi <b style="color:var(--tx)">24 h / 24</b>, y compris la nuit et le week-end.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">L'<b style="color:var(--tx)">antivol fonctionne</b> la nuit et le week-end — c'est le bénéfice.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Les plages horaires <b style="color:var(--tx)">n'ont aucun effet</b> : elles sont masquées, pas grisées.</span></div>
+</div>
+</div>
+
+<div style="margin-top:13px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px dashed var(--border2)">
+<p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Reste correct tant que le véhicule <b style="color:var(--tx)">ne rentre pas au domicile</b>. S'il y rentre, la loi impose l'usage mixte.</p>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Masquer plutôt que griser : un champ grisé invite à chercher comment l'activer. Ici on explique <b style="color:var(--tx2)">pourquoi il n'est pas là</b>.</p>
+</div>
+
+<div data-screen-label="Etat actuel">
+<p class="frmlbl"><span class="plat pc">PC</span>L'état effectif, en tête</p>
+<div class="card" style="overflow:hidden">
+<div style="padding:15px 17px">
+<div class="kpil" style="margin-bottom:11px">État actuel de ce véhicule</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent)">
+<svg width="16" height="16" style="color:var(--accent);flex-shrink:0"><use href="#ic-shield"/></svg>
+<div style="min-width:0;flex:1"><div style="font-size:.805rem;font-weight:800;color:var(--accent)">Protégé hors temps de travail</div><div style="font-size:.72rem;color:var(--tx2);margin-top:2px">Usage mixte + plages actives</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:13px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 28%,transparent)">
+<svg width="16" height="16" style="color:var(--amber);flex-shrink:0"><use href="#ic-warn"/></svg>
+<div style="min-width:0;flex:1"><div style="font-size:.805rem;font-weight:800;color:var(--amber)">Mixte sans cadre</div><div style="font-size:.72rem;color:var(--tx2);margin-top:2px">Usage mixte seul — <b style="color:var(--tx)">rien n'est protégé</b></div></div>
+</div>
+<div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-eyeoff"/></svg>
+<div style="min-width:0;flex:1"><div style="font-size:.805rem;font-weight:800;color:var(--tx2)">Suivi en permanence</div><div style="font-size:.72rem;color:var(--tx3);margin-top:2px">Usage professionnel</div></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Les 3 états possibles, en clair et à la même place que dans <b style="color:var(--tx2)">Couverture vie privée</b> — mêmes mots, mêmes couleurs.</p>
+</div>
+</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>iPhone &amp; Android · saisie à une main, QR plein écran</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>iPhone · créer un véhicule — champs empilés</p>
+<div class="mfrm" data-screen-label="Creer vehicule iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px 12px">
+<span style="font-size:.86rem;font-weight:600;color:var(--accent)">Annuler</span>
+<span style="font-size:.9rem;font-weight:800">Nouveau véhicule</span>
+<span style="font-size:.86rem;font-weight:600;color:var(--tx3)">Suivant</span>
+</div>
+<div style="padding:0 16px 12px">
+<div style="display:flex;align-items:center;gap:9px">
+<span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);white-space:nowrap">1 / 2</span>
+</div>
+</div>
+<div style="padding:6px 16px 0;display:flex;flex-direction:column;gap:14px">
+<div>
+<div style="font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 3px 7px">Identification</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<div class="fld"><b>Plaque <span style="color:var(--accent)">*</span></b><div class="fin mono" style="height:48px;border-radius:13px;background:var(--surface);border-color:var(--accent);font-weight:600;font-size:.92rem">AB-231-CD</div></div>
+<div class="fld"><b>Flotte <span style="color:var(--accent)">*</span></b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface);justify-content:space-between">Transports Duchamp<svg width="14" height="14" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+</div>
+</div>
+<div>
+<div style="font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 3px 7px">Type</div>
+<div style="display:flex;gap:7px;flex-wrap:wrap">
+<span class="chip" style="height:38px;padding:0 14px;background:var(--accent-soft);color:var(--accent);font-size:.8rem"><svg width="13" height="13"><use href="#ic-check"/></svg>Utilitaire</span>
+<span class="chip" style="height:38px;padding:0 14px;background:var(--surface);border:1px solid var(--border2);font-size:.8rem">Voiture</span>
+<span class="chip" style="height:38px;padding:0 14px;background:var(--surface);border:1px solid var(--border2);font-size:.8rem">Camion</span>
+</div>
+</div>
+<div>
+<div style="font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 3px 7px">Détails · optionnels</div>
+<div style="display:flex;flex-direction:column;gap:11px">
+<div class="fld"><b>Marque</b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface);justify-content:space-between"><span style="display:flex;align-items:center;gap:9px"><span style="display:flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:999px;background:#fff;overflow:hidden;flex-shrink:0"><img src="brands/renault.png" alt="" style="width:80%;height:80%;object-fit:contain"></span>Renault</span><svg width="14" height="14" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+<div class="fld"><b>Énergie</b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface);justify-content:space-between">Diesel<svg width="14" height="14" style="color:var(--tx3)"><use href="#ic-chevd"/></svg></div></div>
+</div>
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;padding:13px 16px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:50px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:800">Continuer<svg width="16" height="16"><use href="#ic-chev"/></svg></div>
+<p style="margin:9px 0 0;font-size:.71rem;color:var(--tx3);text-align:center">2 champs requis sur 11 — le reste peut attendre</p>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Le type reste en <b style="color:var(--tx2)">pastilles de 38 px</b> : trois choix visibles valent mieux qu'une liste déroulante qui masque tout.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>iPhone · horaires — les plages imbriquées</p>
+<div class="mfrm" data-screen-label="Horaires iPhone vehicule">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+<div style="display:flex;align-items:center;gap:6px;padding:4px 16px 2px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-chevl"/></svg><span style="font-size:.86rem;font-weight:600;color:var(--accent)">AB-231-CD</span></div>
+<div style="padding:2px 16px 14px"><h1 style="margin:0;font-size:1.4rem;font-weight:800;letter-spacing:-.035em">Temps de travail</h1><div style="display:flex;align-items:center;gap:7px;margin-top:5px"><span class="tag" style="background:var(--accent-soft);color:var(--accent)"><svg width="10" height="10"><use href="#ic-shield"/></svg>Protégé hors travail</span></div></div>
+
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:13px">
+<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border-radius:16px;background:var(--accent-soft);border:1px solid var(--accent)">
+<div style="min-width:0;flex:1"><div style="font-size:.845rem;font-weight:800">Usage mixte</div><p style="margin:3px 0 0;font-size:.75rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Ramené au domicile. C'est cet interrupteur qui autorise la protection.</p></div>
+<span class="iosw on" style="flex-shrink:0;margin-top:2px"><i></i></span>
+</div>
+
+<div style="margin-left:12px;padding-left:14px;border-left:2px solid color-mix(in srgb,var(--accent) 34%,transparent);display:flex;flex-direction:column;gap:11px">
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div style="min-width:0;flex:1"><div style="font-size:.83rem;font-weight:800">Plages déclarées</div><p style="margin:3px 0 0;font-size:.74rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Hors de ces heures, aucune position n'est enregistrée.</p></div>
+<span class="iosw on" style="flex-shrink:0;margin-top:2px"><i></i></span>
+</div>
+
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px"><span class="iosw on" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px;left:19px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600">Lundi</span><span class="mono" style="font-size:.79rem;color:var(--tx2)">08:00 – 18:00</span></div>
+<div style="height:1px;background:var(--border);margin-left:14px"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px"><span class="iosw on" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px;left:19px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600">Mardi</span><span class="mono" style="font-size:.79rem;color:var(--tx2)">08:00 – 18:00</span></div>
+<div style="height:1px;background:var(--border);margin-left:14px"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px"><span class="iosw on" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px;left:19px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600">Mercredi</span><span class="mono" style="font-size:.79rem;color:var(--tx2)">08:00 – 18:00</span></div>
+<div style="height:1px;background:var(--border);margin-left:14px"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px"><span class="iosw on" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px;left:19px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600">Jeudi</span><span class="mono" style="font-size:.79rem;color:var(--tx2)">08:00 – 18:00</span></div>
+<div style="height:1px;background:var(--border);margin-left:14px"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px"><span class="iosw on" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px;left:19px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600">Vendredi</span><span class="mono" style="font-size:.79rem;color:var(--tx2)">08:00 – 17:00</span></div>
+<div style="height:1px;background:var(--border);margin-left:14px"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px;opacity:.5"><span class="iosw" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600;color:var(--tx2)">Samedi</span><span style="font-size:.75rem;color:var(--tx3)">Non travaillé</span></div>
+<div style="height:1px;background:var(--border);margin-left:14px"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:9px 14px;min-height:44px;opacity:.5"><span class="iosw" style="width:44px;height:27px;flex-shrink:0"><i style="width:23px;height:23px"></i></span><span style="flex:1;font-size:.82rem;font-weight:600;color:var(--tx2)">Dimanche</span><span style="font-size:.75rem;color:var(--tx3)">Non travaillé</span></div>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:13px;background:var(--surface);border:1px solid var(--border)">
+<svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-eyeoff"/></svg>
+<span style="flex:1;min-width:0;font-size:.735rem;line-height:1.4;color:var(--tx2)"><b style="color:var(--tx)">122 h sur 168</b> sans collecte</span>
+</div>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Le filet vert descend le long des 7 jours : la dépendance est <b style="color:var(--tx2)">visible sur toute la hauteur</b>, pas seulement en tête.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Android · QR plein écran, boutons M3</p>
+<div class="afrm" data-screen-label="QR Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-x"/></svg>
+<span style="flex:1;font-size:1.18rem;font-weight:600;letter-spacing:-.01em">QR du véhicule</span>
+</div>
+
+<div style="padding:8px 16px 0;display:flex;flex-direction:column;align-items:center;gap:18px">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="19" height="19" style="color:var(--tx3)"><use href="#ic-van"/></svg><span class="bl" style="width:13px;height:13px;bottom:-3px;right:-3px;border-width:1.5px"><img src="brands/renault.png" alt=""></span></span>
+<span class="plq" style="font-size:.78rem">AB-231-CD</span>
+<span style="font-size:.78rem;color:var(--tx3)">Renault Master</span>
+</div>
+
+<div style="width:262px;height:262px;border-radius:20px;background:#fff;padding:18px;display:flex;align-items:center;justify-content:center">
+<svg width="100%" height="100%" viewBox="0 0 29 29" shape-rendering="crispEdges" aria-label="QR de démonstration">
+<rect width="29" height="29" fill="#fff"/>
+<g fill="#0A1311">
+<rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/>
+<rect x="22" y="0" width="7" height="7"/><rect x="23" y="1" width="5" height="5" fill="#fff"/><rect x="24" y="2" width="3" height="3"/>
+<rect x="0" y="22" width="7" height="7"/><rect x="1" y="23" width="5" height="5" fill="#fff"/><rect x="2" y="24" width="3" height="3"/>
+<rect x="9" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="13" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/>
+<rect x="8" y="2" width="1" height="1"/><rect x="10" y="2" width="2" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="17" y="2" width="2" height="1"/>
+<rect x="9" y="4" width="1" height="1"/><rect x="12" y="4" width="1" height="1"/><rect x="15" y="4" width="2" height="1"/><rect x="19" y="4" width="1" height="1"/>
+<rect x="8" y="6" width="2" height="1"/><rect x="11" y="6" width="1" height="1"/><rect x="14" y="6" width="1" height="1"/><rect x="18" y="6" width="1" height="1"/>
+<rect x="0" y="9" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="4" y="9" width="2" height="1"/><rect x="8" y="9" width="1" height="1"/><rect x="10" y="9" width="1" height="1"/><rect x="13" y="9" width="2" height="1"/><rect x="17" y="9" width="1" height="1"/><rect x="20" y="9" width="1" height="1"/><rect x="23" y="9" width="1" height="1"/><rect x="26" y="9" width="2" height="1"/>
+<rect x="1" y="11" width="1" height="1"/><rect x="3" y="11" width="1" height="1"/><rect x="6" y="11" width="1" height="1"/><rect x="9" y="11" width="2" height="1"/><rect x="12" y="11" width="1" height="1"/><rect x="16" y="11" width="1" height="1"/><rect x="19" y="11" width="2" height="1"/><rect x="22" y="11" width="1" height="1"/><rect x="25" y="11" width="1" height="1"/><rect x="28" y="11" width="1" height="1"/>
+<rect x="0" y="13" width="2" height="1"/><rect x="4" y="13" width="1" height="1"/><rect x="7" y="13" width="1" height="1"/><rect x="11" y="13" width="1" height="1"/><rect x="14" y="13" width="2" height="1"/><rect x="18" y="13" width="1" height="1"/><rect x="21" y="13" width="1" height="1"/><rect x="24" y="13" width="2" height="1"/><rect x="27" y="13" width="1" height="1"/>
+<rect x="2" y="15" width="1" height="1"/><rect x="5" y="15" width="1" height="1"/><rect x="8" y="15" width="1" height="1"/><rect x="12" y="15" width="2" height="1"/><rect x="16" y="15" width="1" height="1"/><rect x="20" y="15" width="1" height="1"/><rect x="23" y="15" width="1" height="1"/><rect x="26" y="15" width="1" height="1"/>
+<rect x="1" y="17" width="1" height="1"/><rect x="3" y="17" width="2" height="1"/><rect x="6" y="17" width="1" height="1"/><rect x="10" y="17" width="1" height="1"/><rect x="13" y="17" width="1" height="1"/><rect x="17" y="17" width="2" height="1"/><rect x="21" y="17" width="1" height="1"/><rect x="25" y="17" width="2" height="1"/>
+<rect x="0" y="19" width="1" height="1"/><rect x="4" y="19" width="1" height="1"/><rect x="7" y="19" width="2" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="15" y="19" width="1" height="1"/><rect x="19" y="19" width="1" height="1"/><rect x="22" y="19" width="2" height="1"/><rect x="27" y="19" width="1" height="1"/>
+<rect x="9" y="22" width="1" height="1"/><rect x="12" y="22" width="2" height="1"/><rect x="16" y="22" width="1" height="1"/><rect x="19" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/><rect x="25" y="22" width="1" height="1"/><rect x="28" y="22" width="1" height="1"/>
+<rect x="10" y="24" width="1" height="1"/><rect x="13" y="24" width="1" height="1"/><rect x="15" y="24" width="2" height="1"/><rect x="20" y="24" width="1" height="1"/><rect x="23" y="24" width="2" height="1"/><rect x="27" y="24" width="1" height="1"/>
+<rect x="9" y="26" width="2" height="1"/><rect x="12" y="26" width="1" height="1"/><rect x="17" y="26" width="1" height="1"/><rect x="21" y="26" width="1" height="1"/><rect x="24" y="26" width="1" height="1"/><rect x="26" y="26" width="2" height="1"/>
+<rect x="8" y="28" width="1" height="1"/><rect x="11" y="28" width="2" height="1"/><rect x="14" y="28" width="1" height="1"/><rect x="18" y="28" width="1" height="1"/><rect x="22" y="28" width="1" height="1"/><rect x="25" y="28" width="1" height="1"/>
+</g>
+</svg>
+</div>
+
+<div style="text-align:center;padding:0 8px">
+<p style="margin:0;font-size:.84rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Le conducteur scanne pour <b style="color:var(--tx)">déverrouiller le véhicule</b>. La localisation vérifie qu'il est bien à côté.</p>
+</div>
+
+<div style="width:100%;display:flex;align-items:center;gap:11px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-info"/></svg>
+<span style="flex:1;min-width:0;font-size:.79rem;line-height:1.42;color:var(--tx2)">Format autocollant 60 × 90 mm, à coller côté conducteur.</span>
+</div>
+</div>
+
+<div style="position:absolute;left:16px;right:16px;bottom:18px;display:flex;gap:10px">
+<div style="flex:1;display:flex;align-items:center;justify-content:center;gap:9px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);font-size:.88rem;font-weight:700;box-shadow:0 8px 20px -4px rgba(0,0,0,.5)"><svg width="18" height="18"><use href="#ic-print"/></svg>Imprimer</div>
+<div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:18px;border:1px solid var(--border2);color:var(--tx2)"><svg width="19" height="19"><use href="#ic-dl"/></svg></div>
+</div>
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">Le QR passe à <b style="color:var(--tx2)">262 px</b> : on scanne souvent l'écran d'un collègue plutôt que l'autocollant. Impression en action principale, téléchargement en icône.</p>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13)}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12)}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.desk{padding:26px;border-radius:16px;background:#E7EAE8}
+.desk-d{padding:26px;border-radius:16px;background:#0A0D0C}
+.mail{width:600px;max-width:100%;margin:0 auto;border-radius:10px;overflow:hidden;box-shadow:0 10px 28px -10px rgba(0,0,0,.22)}
+.mail-d{width:600px;max-width:100%;margin:0 auto;border-radius:10px;overflow:hidden;box-shadow:0 10px 28px -10px rgba(0,0,0,.5)}
+.eh{font-family:'Manrope',system-ui,sans-serif}
+.em{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace}
+.wrong{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--red) 34%,transparent);background:var(--red-soft);padding:14px}
+.right{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);background:var(--accent-soft);padding:14px}
+.lbl{position:absolute;top:-8px;left:11px;padding:1px 7px;border-radius:6px;font-size:.6rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.prob{display:flex;gap:11px;padding:12px 0;border-top:1px solid var(--border)}
+.probn{display:flex;align-items:center;justify-content:center;width:21px;height:21px;border-radius:7px;background:var(--red);color:#fff;font-family:'JetBrains Mono',monospace;font-size:.66rem;font-weight:600;flex-shrink:0}
+.inbox{border-radius:13px;overflow:hidden;border:1px solid var(--border)}
+.irow{display:grid;grid-template-columns:34px 152px 1fr 62px;gap:11px;align-items:center;padding:11px 13px;border-bottom:1px solid var(--border);background:var(--surface)}
+.irow:last-child{border-bottom:none}
+.iav{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;font-size:.7rem;font-weight:800;flex-shrink:0}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-mail" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.4"/><path d="m3 6.5 9 6.5 9-6.5"/></g></symbol>
+<symbol id="ic-spam" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="4" y1="3" x2="20" y2="20"/></g></symbol>
+<symbol id="ic-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+<symbol id="ic-type" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V4h16v2M12 4v16M8.5 20h7"/></g></symbol>
+<symbol id="ic-star" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></symbol>
+<symbol id="ic-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · I · surface oubliée</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">E-mails transactionnels — les 19 gabarits</h1>
+<p style="margin:8px 0 0;max-width:920px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Tous produits par <span class="mono" style="font-size:.78rem;color:var(--tx3)">email.service.ts</span> à travers une seule fonction <span class="mono" style="font-size:.78rem;color:var(--tx3)">shell()</span>. Le problème est là : elle force <b style="color:var(--tx)">un fond noir et un liseré vert</b> dans une boîte de réception blanche. Ce n'est pas un problème de goût — c'est un problème de délivrabilité.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>00</i>Le même e-mail, avant et après — code de connexion 2FA</div>
+<div class="dash" style="padding:26px;background:var(--bg2);display:grid;grid-template-columns:1fr 1fr;gap:26px">
+
+<div>
+<div class="wrong" style="margin-bottom:16px">
+<span class="lbl" style="background:var(--red);color:#fff">Aujourd'hui</span>
+<p style="margin:4px 0 0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Fond <span class="mono" style="font-size:.7rem">#060807</span>, liseré vert 3 px, code géant vert, emoji cadenas, sujet entre crochets. Sept signaux qui poussent vers l'onglet Promotions.</p>
+</div>
+<div class="desk-d">
+<div class="mail-d" style="background:#101514;border:1px solid rgba(255,255,255,.08);border-radius:18px">
+<div style="height:3px;background:#10E0A0"></div>
+<div style="padding:26px 32px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="23" height="23" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span class="eh" style="font-size:15px;font-weight:700;color:#EAEFED">Vizyo <span style="color:#10E0A0">Tracky</span></span>
+</div>
+<span class="em" style="font-size:9.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#10E0A0">Sécurité · Nouvel appareil</span>
+</div>
+<div style="padding:24px 32px 30px">
+<div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:16px">🔐</div>
+<h1 class="eh" style="margin:0 0 11px;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-.025em;color:#EAEFED">Votre code de connexion</h1>
+<p class="eh" style="margin:0 0 6px;font-size:14.5px;line-height:1.65;color:#9BA5A1">Bonjour Amélie,</p>
+<p class="eh" style="margin:0 0 18px;font-size:14.5px;line-height:1.65;color:#9BA5A1">Une connexion à votre compte a été demandée depuis un <span style="color:#EAEFED;font-weight:600">nouvel appareil</span>. Saisissez ce code pour la confirmer :</p>
+<div style="background:#161D1B;border:1px solid rgba(16,224,160,.25);border-radius:13px;padding:20px 18px;text-align:center">
+<div class="em" style="font-size:34px;font-weight:600;letter-spacing:.12em;color:#10E0A0">4 7 2 8 1 9</div>
+</div>
+<div style="margin:20px 0 0;padding:13px 15px;background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:11px">
+<p class="eh" style="margin:0;font-size:12.5px;line-height:1.6;color:#9BA5A1">Ce code est valide <span class="em" style="color:#10E0A0">10 min</span>. Vous n'êtes pas à l'origine de cette connexion ? <span style="color:#EAEFED">Ignorez cet e-mail</span>.</p>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.07);margin:22px 0 14px"></div>
+<p class="em" style="margin:0;font-size:10px;line-height:1.7;letter-spacing:.03em;color:#565f5b">VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.</p>
+</div>
+</div>
+</div>
+</div>
+
+<div>
+<div class="right" style="margin-bottom:16px">
+<span class="lbl" style="background:var(--accent);color:var(--accent-ink)">Après</span>
+<p style="margin:4px 0 0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Clair par défaut, une seule touche de couleur, code en noir sur gris, pas d'emoji, sujet sans crochets. <b style="color:var(--tx)">Contenu plus détaillé</b>, pas moins.</p>
+</div>
+<div class="desk">
+<div class="mail" style="background:#FFFFFF;border:1px solid #DFE4E1">
+<div style="padding:22px 32px 18px;border-bottom:1px solid #EDF0EE;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#0A9E6C"/></svg>
+<span class="eh" style="font-size:15px;font-weight:700;color:#12201B">Vizyo Tracky</span>
+</div>
+<span class="eh" style="font-size:11.5px;font-weight:600;color:#7A857F">Sécurité du compte</span>
+</div>
+<div style="padding:26px 32px 0">
+<h1 class="eh" style="margin:0 0 12px;font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.02em;color:#12201B">Confirmez cette connexion</h1>
+<p class="eh" style="margin:0 0 8px;font-size:14.5px;line-height:1.7;color:#414D48">Bonjour Amélie,</p>
+<p class="eh" style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#414D48">Quelqu'un vient de se connecter à votre compte Vizyo Tracky depuis un appareil que nous ne reconnaissons pas. Saisissez ce code pour confirmer que c'est bien vous.</p>
+<div style="background:#F5F7F6;border:1px solid #E2E7E4;border-radius:10px;padding:18px;text-align:center">
+<div class="eh" style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7A857F;margin-bottom:9px">Votre code</div>
+<div class="em" style="font-size:32px;font-weight:600;letter-spacing:.22em;color:#12201B">472819</div>
+<div class="eh" style="font-size:12.5px;color:#7A857F;margin-top:9px">Valide 10 minutes</div>
+</div>
+</div>
+<div style="padding:20px 32px 0">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #E2E7E4;border-radius:10px;border-collapse:separate;overflow:hidden">
+<tr><td class="eh" style="padding:10px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE;width:38%">Appareil</td><td class="eh" style="padding:10px 14px;font-size:12.5px;font-weight:600;color:#12201B;border-bottom:1px solid #EDF0EE">Chrome · Windows 11</td></tr>
+<tr><td class="eh" style="padding:10px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE">Lieu approximatif</td><td class="eh" style="padding:10px 14px;font-size:12.5px;font-weight:600;color:#12201B;border-bottom:1px solid #EDF0EE">Toulouse, France</td></tr>
+<tr><td class="eh" style="padding:10px 14px;font-size:12.5px;color:#7A857F">Heure</td><td class="em" style="padding:10px 14px;font-size:12.5px;font-weight:600;color:#12201B">29/07/2026 à 09:41</td></tr>
+</table>
+</div>
+<div style="padding:18px 32px 0">
+<div style="padding:13px 15px;background:#FDF6E8;border-left:3px solid #C98708;border-radius:0 8px 8px 0">
+<p class="eh" style="margin:0;font-size:13px;line-height:1.6;color:#5C4A22"><b style="color:#3D3116">Ce n'était pas vous ?</b> Ignorez ce code — sans lui la connexion échoue. Puis changez votre mot de passe depuis <span style="color:#0A7C55;font-weight:600">Mon compte → Sécurité</span>.</p>
+</div>
+</div>
+<div style="padding:22px 32px 26px">
+<div style="height:1px;background:#EDF0EE;margin-bottom:15px"></div>
+<p class="eh" style="margin:0 0 7px;font-size:11.5px;line-height:1.65;color:#8B958F">Vizyo Tracky · Suivi de flotte GPS · Occitanie, France</p>
+<p class="eh" style="margin:0;font-size:11.5px;line-height:1.65;color:#8B958F">E-mail de sécurité envoyé automatiquement à <span style="color:#5C6862">a•••@duchamp.fr</span>. Vous ne pouvez pas vous désinscrire de ces messages : ils protègent votre compte.</p>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>Les 7 problèmes du gabarit actuel — et le correctif de chacun</div>
+<div class="dash" style="padding:24px 26px;background:var(--bg2);display:grid;grid-template-columns:1fr 1fr;gap:26px">
+
+<div>
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><svg width="15" height="15" style="color:var(--red)"><use href="#ic-spam"/></svg><b style="font-size:.86rem;color:var(--red)">Signaux qui poussent vers Promotions ou Spam</b></div>
+
+<div class="prob" style="border-top:none">
+<span class="probn">1</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Fond sombre forcé</div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><span class="mono" style="font-size:.7rem">background:#060807</span> + <span class="mono" style="font-size:.7rem">color-scheme: dark</span>. Un e-mail noir au milieu d'une boîte blanche : c'est précisément ce qui « fait bizarre ».</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Clair par défaut, sombre uniquement via <span class="mono" style="font-size:.7rem">prefers-color-scheme</span>.</p>
+</div>
+</div>
+
+<div class="prob">
+<span class="probn">2</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Vert en aplats</div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Liseré 3 px, titre vert, code 38 px vert, bouton vert. Le vert saturé en grande surface est un marqueur d'e-mail promotionnel.</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Le vert <b>uniquement</b> sur le bouton et le logo. Le reste en noir sur blanc.</p>
+</div>
+</div>
+
+<div class="prob">
+<span class="probn">3</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Emoji dans le corps</div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">🔐 dans un bloc de 46 px. Les emoji dans un e-mail de sécurité sont un signal négatif mesuré par les filtres.</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Supprimé. La hiérarchie typographique suffit.</p>
+</div>
+</div>
+
+<div class="prob">
+<span class="probn">4</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Sujet entre crochets</div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><span class="mono" style="font-size:.7rem">[Vizyo Tracky] Votre code…</span> — les crochets en tête sont un motif spam classique, et ils mangent 16 caractères sur l'aperçu mobile.</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Le nom d'expéditeur porte la marque. Sujet : <span class="mono" style="font-size:.7rem">Votre code de connexion : 472819</span>.</p>
+</div>
+</div>
+
+</div>
+
+<div>
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><svg width="15" height="15" style="color:var(--amber)"><use href="#ic-warn"/></svg><b style="font-size:.86rem;color:var(--amber)">Problèmes techniques qui cassent le rendu</b></div>
+
+<div class="prob" style="border-top:none">
+<span class="probn" style="background:var(--amber);color:#0A1311">5</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Google Fonts par <span class="mono" style="font-size:.75rem">&lt;link&gt;</span></div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Gmail, Outlook et Yahoo suppriment les feuilles externes. Manrope ne se charge donc <b style="color:var(--tx)">jamais</b> : la police retombe sur un système non contrôlé, et la mise en page bouge.</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Piles de polices système inline, testées : <span class="mono" style="font-size:.68rem">-apple-system, 'Segoe UI', Roboto, Helvetica, Arial</span>.</p>
+</div>
+</div>
+
+<div class="prob">
+<span class="probn" style="background:var(--amber);color:#0A1311">6</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Aucun texte d'aperçu</div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">La ligne grise sous le sujet affiche le premier texte trouvé — ici « Vizyo Tracky Sécurité · Nouvel appareil ». Inutile, et répétitif sur les 19 e-mails.</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Un <span class="mono" style="font-size:.68rem">preheader</span> caché de 90 caractères, écrit par gabarit.</p>
+</div>
+</div>
+
+<div class="prob">
+<span class="probn" style="background:var(--amber);color:#0A1311">7</span>
+<div style="min-width:0">
+<div style="font-size:.82rem;font-weight:800">Accents perdus dans les sujets et le texte brut</div>
+<p style="margin:3px 0 0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><span class="mono" style="font-size:.7rem">Vous etes invite a rejoindre</span>, <span class="mono" style="font-size:.7rem">— L'equipe Vizyo</span>. Le HTML est accentué mais pas le reste : ça donne un air de message mal traduit.</p>
+<p style="margin:6px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ UTF-8 partout, accents rétablis dans les 19 sujets et versions texte.</p>
+</div>
+</div>
+
+<div style="margin-top:18px;padding:14px 15px;border-radius:13px;background:var(--surface);border:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.82rem">Ce qui est bon et qu'on garde</b></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Structure en <b style="color:var(--tx)">tables</b> — obligatoire pour Outlook, déjà correcte.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Version <b style="color:var(--tx)">texte brut</b> fournie pour chaque e-mail.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)"><span class="mono" style="font-size:.7rem">noOpenTracking</span> sur les 3 e-mails de sécurité — bonne pratique, à conserver.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Une seule fonction <span class="mono" style="font-size:.7rem">shell()</span> : corriger là corrige les 19.</span></div>
+</div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>Le nouveau gabarit — clair par défaut, sombre si le client le demande</div>
+<div class="dash" style="padding:26px;background:var(--bg2);display:grid;grid-template-columns:1fr 1fr;gap:26px">
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Mode clair — ce que 80 % des destinataires verront</p>
+<div class="desk" data-screen-label="Email invitation clair">
+<div class="mail" style="background:#FFFFFF;border:1px solid #DFE4E1">
+<div style="padding:22px 32px 18px;border-bottom:1px solid #EDF0EE;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#0A9E6C"/></svg>
+<span class="eh" style="font-size:15px;font-weight:700;color:#12201B">Vizyo Tracky</span>
+</div>
+<span class="eh" style="font-size:11.5px;font-weight:600;color:#7A857F">Accès</span>
+</div>
+<div style="padding:26px 32px 0">
+<h1 class="eh" style="margin:0 0 12px;font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.02em;color:#12201B">Rejoignez la flotte Transports Duchamp</h1>
+<p class="eh" style="margin:0 0 8px;font-size:14.5px;line-height:1.7;color:#414D48">Bonjour Karim,</p>
+<p class="eh" style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#414D48"><b style="color:#12201B">Amélie Duchamp</b> vous invite à rejoindre sa flotte sur Vizyo Tracky en tant que <b style="color:#12201B">Gestionnaire</b>. Créez votre mot de passe pour accéder à votre espace.</p>
+</div>
+<div style="padding:0 32px">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #E2E7E4;border-radius:10px;border-collapse:separate;overflow:hidden">
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE;width:40%">Ce que vous pourrez faire</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B;border-bottom:1px solid #EDF0EE">Voir la carte, gérer les véhicules, valider les lieux</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE">Périmètre</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B;border-bottom:1px solid #EDF0EE">Groupe Chantier Nord · 9 véhicules</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F">Lien valable jusqu'au</td><td class="em" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B">05/08/2026 à 09:41</td></tr>
+</table>
+</div>
+<div style="padding:22px 32px 0">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:#0A9E6C">
+<span class="eh" style="display:inline-block;padding:14px 28px;font-size:14.5px;font-weight:700;color:#FFFFFF">Accepter l'invitation</span>
+</td></tr></table>
+<p class="eh" style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:#7A857F">Le bouton ne fonctionne pas ? Copiez ce lien :<br><span class="em" style="font-size:11.5px;color:#0A7C55;word-break:break-all">app.vizyotracky.fr/accept-invite?token=8f2a…</span></p>
+</div>
+<div style="padding:22px 32px 26px">
+<div style="height:1px;background:#EDF0EE;margin-bottom:15px"></div>
+<p class="eh" style="margin:0 0 7px;font-size:11.5px;line-height:1.65;color:#8B958F">Vizyo Tracky · Suivi de flotte GPS · Occitanie, France</p>
+<p class="eh" style="margin:0;font-size:11.5px;line-height:1.65;color:#8B958F">Vous recevez cet e-mail parce qu'Amélie Duchamp vous a invité. Vous n'aviez rien demandé ? Ignorez-le, aucun compte n'a été créé.</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:14px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)"><b style="color:var(--tx)">Contenu ajouté :</b> ce que le rôle permet, le périmètre exact, le lien en clair. On répond aux questions avant qu'elles se posent.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Le pied de page dit <b style="color:var(--tx)">pourquoi</b> on reçoit ce message — exigence RGPD et bon signal de délivrabilité.</span></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Mode sombre — <span class="mono" style="font-size:.68rem">@media (prefers-color-scheme: dark)</span>, pas forcé</p>
+<div class="desk-d" data-screen-label="Email invitation sombre">
+<div class="mail-d" style="background:#151A18;border:1px solid #272E2B">
+<div style="padding:22px 32px 18px;border-bottom:1px solid #262D2A;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span class="eh" style="font-size:15px;font-weight:700;color:#E8EDEB">Vizyo Tracky</span>
+</div>
+<span class="eh" style="font-size:11.5px;font-weight:600;color:#8B958F">Accès</span>
+</div>
+<div style="padding:26px 32px 0">
+<h1 class="eh" style="margin:0 0 12px;font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.02em;color:#E8EDEB">Rejoignez la flotte Transports Duchamp</h1>
+<p class="eh" style="margin:0 0 8px;font-size:14.5px;line-height:1.7;color:#A6B0AB">Bonjour Karim,</p>
+<p class="eh" style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#A6B0AB"><b style="color:#E8EDEB">Amélie Duchamp</b> vous invite à rejoindre sa flotte sur Vizyo Tracky en tant que <b style="color:#E8EDEB">Gestionnaire</b>. Créez votre mot de passe pour accéder à votre espace.</p>
+</div>
+<div style="padding:0 32px">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #2B332F;border-radius:10px;border-collapse:separate;overflow:hidden">
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#8B958F;border-bottom:1px solid #262D2A;width:40%">Ce que vous pourrez faire</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#E8EDEB;border-bottom:1px solid #262D2A">Voir la carte, gérer les véhicules, valider les lieux</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#8B958F;border-bottom:1px solid #262D2A">Périmètre</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#E8EDEB;border-bottom:1px solid #262D2A">Groupe Chantier Nord · 9 véhicules</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#8B958F">Lien valable jusqu'au</td><td class="em" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#E8EDEB">05/08/2026 à 09:41</td></tr>
+</table>
+</div>
+<div style="padding:22px 32px 0">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:#10E0A0">
+<span class="eh" style="display:inline-block;padding:14px 28px;font-size:14.5px;font-weight:700;color:#04130D">Accepter l'invitation</span>
+</td></tr></table>
+<p class="eh" style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:#8B958F">Le bouton ne fonctionne pas ? Copiez ce lien :<br><span class="em" style="font-size:11.5px;color:#10E0A0;word-break:break-all">app.vizyotracky.fr/accept-invite?token=8f2a…</span></p>
+</div>
+<div style="padding:22px 32px 26px">
+<div style="height:1px;background:#262D2A;margin-bottom:15px"></div>
+<p class="eh" style="margin:0 0 7px;font-size:11.5px;line-height:1.65;color:#78827D">Vizyo Tracky · Suivi de flotte GPS · Occitanie, France</p>
+<p class="eh" style="margin:0;font-size:11.5px;line-height:1.65;color:#78827D">Vous recevez cet e-mail parce qu'Amélie Duchamp vous a invité. Vous n'aviez rien demandé ? Ignorez-le, aucun compte n'a été créé.</p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:14px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Fond <span class="mono" style="font-size:.7rem">#151A18</span> et non <span class="mono" style="font-size:.7rem">#060807</span> : un noir pur crée du halo sur les textes fins en mode sombre.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Outlook Windows ignore <span class="mono" style="font-size:.68rem">prefers-color-scheme</span> : il affichera <b style="color:var(--tx)">toujours</b> la version claire. C'est voulu.</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>Les e-mails de contenu — alerte véhicule et rapport hebdomadaire</div>
+<div class="dash" style="padding:26px;background:var(--bg2);display:grid;grid-template-columns:1fr 1fr;gap:26px">
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Alerte véhicule — l'information avant le bouton</p>
+<div class="desk" data-screen-label="Email alerte vehicule">
+<div class="mail" style="background:#FFFFFF;border:1px solid #DFE4E1">
+<div style="padding:22px 32px 18px;border-bottom:1px solid #EDF0EE;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#0A9E6C"/></svg>
+<span class="eh" style="font-size:15px;font-weight:700;color:#12201B">Vizyo Tracky</span>
+</div>
+<span class="eh" style="font-size:11.5px;font-weight:600;color:#7A857F">Alerte véhicule</span>
+</div>
+<div style="padding:24px 32px 0">
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:14px"><tr><td style="border-radius:6px;background:#FBE9E8;padding:5px 11px">
+<span class="eh" style="font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#A8332D">Excès de vitesse</span>
+</td></tr></table>
+<h1 class="eh" style="margin:0 0 12px;font-size:22px;line-height:1.3;font-weight:700;letter-spacing:-.02em;color:#12201B">128 km/h relevés sur une route limitée à 90</h1>
+<p class="eh" style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#414D48">Le véhicule <b style="color:#12201B">TR-771-QS</b> (Iveco Daily) a dépassé la limite de 38 km/h pendant 1 min 20 s.</p>
+</div>
+<div style="padding:0 32px">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #E2E7E4;border-radius:10px;border-collapse:separate;overflow:hidden">
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE;width:40%">Conducteur</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B;border-bottom:1px solid #EDF0EE">Ludovic Peyre</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE">Groupe</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B;border-bottom:1px solid #EDF0EE">Chantier Nord</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F;border-bottom:1px solid #EDF0EE">Quand</td><td class="em" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B">29/07/2026 à 09:34</td></tr>
+<tr><td class="eh" style="padding:11px 14px;font-size:12.5px;color:#7A857F">Où</td><td class="eh" style="padding:11px 14px;font-size:12.5px;font-weight:600;color:#12201B">D820, près de Grisolles (31)</td></tr>
+</table>
+</div>
+<div style="padding:18px 32px 0">
+<div style="height:118px;border-radius:10px;border:1px solid #E2E7E4;background:#EEF1EF;position:relative;overflow:hidden">
+<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 536 118" preserveAspectRatio="none"><path d="M30 96 Q140 74 232 64 T400 30 L506 18" fill="none" stroke="#0A9E6C" stroke-width="2.6" stroke-linecap="round"/><circle cx="30" cy="96" r="5" fill="#0A9E6C"/><circle cx="400" cy="30" r="6" fill="#D9544E"/></svg>
+<span class="eh" style="position:absolute;left:12px;bottom:10px;font-size:10.5px;font-weight:700;color:#5C6862;background:rgba(255,255,255,.9);padding:3px 8px;border-radius:5px">Trajet · point rouge = infraction</span>
+</div>
+<p class="eh" style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#8B958F">Image statique. Les images bloquées ? Le texte ci-dessus suffit à comprendre.</p>
+</div>
+<div style="padding:20px 32px 0">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td style="border-radius:8px;background:#0A9E6C"><span class="eh" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#FFFFFF">Voir le trajet</span></td>
+<td style="width:10px"></td>
+<td style="border-radius:8px;border:1px solid #D5DBD8"><span class="eh" style="display:inline-block;padding:12px 20px;font-size:14px;font-weight:600;color:#414D48">Régler mes alertes</span></td>
+</tr></table>
+</div>
+<div style="padding:22px 32px 26px">
+<div style="height:1px;background:#EDF0EE;margin-bottom:15px"></div>
+<p class="eh" style="margin:0 0 7px;font-size:11.5px;line-height:1.65;color:#8B958F">Vizyo Tracky · Suivi de flotte GPS · Occitanie, France</p>
+<p class="eh" style="margin:0;font-size:11.5px;line-height:1.65;color:#8B958F">Vous recevez cette alerte car vous suivez le groupe Chantier Nord. <span style="color:#0A7C55;font-weight:600">Modifier mes notifications</span> · <span style="color:#0A7C55;font-weight:600">Ne plus recevoir les excès de vitesse</span></p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:14px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Le titre <b style="color:var(--tx)">est</b> l'information : « 128 km/h sur une route limitée à 90 ». Pas « Alerte détectée ».</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Deux désinscriptions <b style="color:var(--tx)">granulaires</b> en pied : toutes les notifications, ou juste ce type. Réduit fortement les signalements en spam.</span></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Rapport hebdomadaire — le seul e-mail périodique</p>
+<div class="desk" data-screen-label="Email rapport hebdo">
+<div class="mail" style="background:#FFFFFF;border:1px solid #DFE4E1">
+<div style="padding:22px 32px 18px;border-bottom:1px solid #EDF0EE;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:8px">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#0A9E6C"/></svg>
+<span class="eh" style="font-size:15px;font-weight:700;color:#12201B">Vizyo Tracky</span>
+</div>
+<span class="eh" style="font-size:11.5px;font-weight:600;color:#7A857F">Rapport · semaine 31</span>
+</div>
+<div style="padding:24px 32px 0">
+<h1 class="eh" style="margin:0 0 8px;font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.02em;color:#12201B">Votre semaine en 5 chiffres</h1>
+<p class="eh" style="margin:0 0 20px;font-size:14.5px;line-height:1.7;color:#414D48">Transports Duchamp · du 21 au 27 juillet · 42 véhicules</p>
+</div>
+<div style="padding:0 32px">
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:separate;border-spacing:9px 9px;margin:-9px">
+<tr>
+<td width="50%" style="background:#F5F7F6;border:1px solid #E2E7E4;border-radius:10px;padding:14px 15px;vertical-align:top">
+<div class="eh" style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7A857F;margin-bottom:6px">Distance</div>
+<div class="eh" style="font-size:24px;font-weight:800;letter-spacing:-.03em;color:#12201B;line-height:1">4 218 <span style="font-size:13px;font-weight:700;color:#7A857F">km</span></div>
+<div class="eh" style="font-size:12px;color:#0A7C55;font-weight:700;margin-top:6px">+12 % vs sem. 30</div>
+</td>
+<td width="50%" style="background:#F5F7F6;border:1px solid #E2E7E4;border-radius:10px;padding:14px 15px;vertical-align:top">
+<div class="eh" style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7A857F;margin-bottom:6px">Temps de conduite</div>
+<div class="eh" style="font-size:24px;font-weight:800;letter-spacing:-.03em;color:#12201B;line-height:1">186 <span style="font-size:13px;font-weight:700;color:#7A857F">h</span></div>
+<div class="eh" style="font-size:12px;color:#7A857F;margin-top:6px">4 h 26 / véhicule / jour</div>
+</td>
+</tr>
+<tr>
+<td style="background:#FBE9E8;border:1px solid #F0D5D3;border-radius:10px;padding:14px 15px;vertical-align:top">
+<div class="eh" style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#A8332D;margin-bottom:6px">Alertes</div>
+<div class="eh" style="font-size:24px;font-weight:800;letter-spacing:-.03em;color:#A8332D;line-height:1">31</div>
+<div class="eh" style="font-size:12px;color:#8A4A46;margin-top:6px">dont 12 excès de vitesse</div>
+</td>
+<td style="background:#F5F7F6;border:1px solid #E2E7E4;border-radius:10px;padding:14px 15px;vertical-align:top">
+<div class="eh" style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7A857F;margin-bottom:6px">Éco-score moyen</div>
+<div class="eh" style="font-size:24px;font-weight:800;letter-spacing:-.03em;color:#12201B;line-height:1">78 <span style="font-size:13px;font-weight:700;color:#7A857F">/ 100</span></div>
+<div class="eh" style="font-size:12px;color:#0A7C55;font-weight:700;margin-top:6px">+3 pts</div>
+</td>
+</tr>
+</table>
+</div>
+<div style="padding:20px 32px 0">
+<div class="eh" style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7A857F;margin-bottom:10px">À regarder cette semaine</div>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #E2E7E4;border-radius:10px;border-collapse:separate;overflow:hidden">
+<tr><td style="padding:11px 14px;border-bottom:1px solid #EDF0EE;border-left:3px solid #D9544E"><span class="eh" style="font-size:13px;font-weight:600;color:#12201B">3 véhicules roulent après leur heure de coupe</span><br><span class="eh" style="font-size:12px;color:#7A857F">TR-771-QS · GH-204-LP · VF-889-KD</span></td></tr>
+<tr><td style="padding:11px 14px;border-bottom:1px solid #EDF0EE;border-left:3px solid #C98708"><span class="eh" style="font-size:13px;font-weight:600;color:#12201B">2 entretiens arrivent à échéance</span><br><span class="eh" style="font-size:12px;color:#7A857F">Vidange AB-231-CD · Contrôle technique EF-445-GH</span></td></tr>
+<tr><td style="padding:11px 14px;border-left:3px solid #0A9E6C"><span class="eh" style="font-size:13px;font-weight:600;color:#12201B">1 nouveau lieu détecté à valider</span><br><span class="eh" style="font-size:12px;color:#7A857F">Station-service · 9 passages ce mois</span></td></tr>
+</table>
+</div>
+<div style="padding:20px 32px 0">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:8px;background:#0A9E6C">
+<span class="eh" style="display:inline-block;padding:13px 26px;font-size:14px;font-weight:700;color:#FFFFFF">Ouvrir le rapport complet</span>
+</td></tr></table>
+<p class="eh" style="margin:12px 0 0;font-size:12px;line-height:1.6;color:#8B958F">Un PDF de 4 pages est joint à cet e-mail.</p>
+</div>
+<div style="padding:22px 32px 26px">
+<div style="height:1px;background:#EDF0EE;margin-bottom:15px"></div>
+<p class="eh" style="margin:0 0 7px;font-size:11.5px;line-height:1.65;color:#8B958F">Vizyo Tracky · Suivi de flotte GPS · Occitanie, France</p>
+<p class="eh" style="margin:0;font-size:11.5px;line-height:1.65;color:#8B958F">Rapport envoyé chaque lundi à 08:00. <span style="color:#0A7C55;font-weight:600">Passer en mensuel</span> · <span style="color:#0A7C55;font-weight:600">Me désinscrire du rapport</span></p>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:14px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Grille 2 × 2 en <span class="mono" style="font-size:.7rem">border-spacing</span> : la seule technique de grille fiable dans Outlook.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)"><b style="color:var(--tx)">« À regarder cette semaine »</b> : trois lignes actionnables au lieu de chiffres seuls. C'est ce qui fait ouvrir le rapport suivant.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)"><b style="color:var(--tx)">« Passer en mensuel »</b> avant « me désinscrire » : baisser la fréquence retient un abonné que la désinscription perdrait.</span></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>04</i>La boîte de réception, les animations, et les 8 règles</div>
+<div style="display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start">
+
+<div style="flex:1;min-width:600px;display:flex;flex-direction:column;gap:22px">
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Ce que le destinataire voit <b style="color:var(--tx2)">avant</b> d'ouvrir — sujet + expéditeur + aperçu</p>
+<div data-screen-label="Emails boite de reception"><div class="wrong" style="margin-bottom:14px">
+<span class="lbl" style="background:var(--red);color:#fff">Aujourd'hui</span>
+<div class="inbox" style="margin-top:6px">
+<div class="irow" style="background:var(--surface2)">
+<span class="iav" style="background:var(--surface3);color:var(--tx3)">V</span>
+<span style="font-size:.79rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Vizyo Tracky</span>
+<span style="min-width:0;font-size:.775rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>[Vizyo Tracky] Votre code de connexion : 472819</b> <span style="color:var(--tx3)">— Vizyo Tracky Sécurité · Nouvel appareil 🔐 Votre code de conn…</span></span>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);text-align:right">09:41</span>
+</div>
+<div class="irow" style="background:var(--surface2)">
+<span class="iav" style="background:var(--surface3);color:var(--tx3)">V</span>
+<span style="font-size:.79rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Vizyo Tracky</span>
+<span style="min-width:0;font-size:.775rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>[Vizyo Tracky] Rapport hebdomadaire — Transports Du…</b> <span style="color:var(--tx3)">— Vizyo Tracky Rapport · Semaine Votre semaine en ch…</span></span>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);text-align:right">lun.</span>
+</div>
+</div>
+<p style="margin:11px 0 0;font-size:.755rem;line-height:1.5;color:var(--red);font-weight:700">Les crochets mangent l'espace, l'aperçu répète la marque et l'eyebrow, l'emoji apparaît dans la liste. Deux e-mails qui se ressemblent.</p>
+</div>
+<div class="right">
+<span class="lbl" style="background:var(--accent);color:var(--accent-ink)">Après</span>
+<div class="inbox" style="margin-top:6px">
+<div class="irow">
+<span class="iav" style="background:var(--accent-soft);color:var(--accent)">VT</span>
+<span style="font-size:.79rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Vizyo Tracky<br><span style="font-size:.68rem;font-weight:600;color:var(--tx3)">Sécurité</span></span>
+<span style="min-width:0;font-size:.775rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>Votre code de connexion : 472819</b> <span style="color:var(--tx3)">— Valide 10 min. Connexion depuis Chrome sur Windows, à Toulouse.</span></span>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);text-align:right">09:41</span>
+</div>
+<div class="irow">
+<span class="iav" style="background:var(--accent-soft);color:var(--accent)">VT</span>
+<span style="font-size:.79rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Vizyo Tracky<br><span style="font-size:.68rem;font-weight:600;color:var(--tx3)">Rapports</span></span>
+<span style="min-width:0;font-size:.775rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b>Semaine 31 : 4 218 km, 31 alertes, éco-score 78</b> <span style="color:var(--tx3)">— 3 véhicules roulent après leur heure de coupe.</span></span>
+<span class="mono" style="font-size:.7rem;color:var(--tx3);text-align:right">lun.</span>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:13px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--accent) 22%,transparent)">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)"><b style="color:var(--tx)">Sous-nom d'expéditeur</b> par catégorie : Sécurité, Rapports, Alertes, Accès. Le destinataire trie sans lire.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Le sujet du rapport <b style="color:var(--tx)">porte les chiffres</b> : on sait si ça vaut la peine d'ouvrir.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Le preheader <b style="color:var(--tx)">complète</b> le sujet, ne le répète pas.</span></div>
+</div>
+</div>
+</div>
+
+<div class="card" style="overflow:hidden">
+<div style="padding:14px 17px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+<svg width="16" height="16" style="color:var(--violet)"><use href="#ic-play"/></svg>
+<div><div class="crdt">Les animations dans un e-mail — la vérité</div><div style="font-size:.71rem;color:var(--tx3);margin-top:1px">Vous m'avez demandé des animations : voici ce qui marche réellement</div></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
+<div style="padding:14px 16px;background:var(--surface)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="13" height="13" style="color:var(--red)"><use href="#ic-x"/></svg><b style="font-size:.79rem;color:var(--red)">CSS <span class="mono" style="font-size:.7rem">@keyframes</span></b></div>
+<p style="margin:0;font-size:.75rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Ne fonctionne que dans Apple Mail. Gmail, Outlook et Yahoo suppriment les animations — soit 85 % de vos destinataires.</p>
+</div>
+<div style="padding:14px 16px;background:var(--surface)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="13" height="13" style="color:var(--amber)"><use href="#ic-warn"/></svg><b style="font-size:.79rem;color:var(--amber)">GIF animé</b></div>
+<p style="margin:0;font-size:.75rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Marche partout, mais Outlook n'affiche que <b style="color:var(--tx)">la première image</b>. Et un GIF lourd dans un e-mail de sécurité fait promotionnel.</p>
+</div>
+<div style="padding:14px 16px;background:var(--surface)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.79rem;color:var(--accent)">Ce qu'on fait</b></div>
+<p style="margin:0;font-size:.75rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><b style="color:var(--tx)">Rien qui bouge.</b> Le mouvement est remplacé par de la hiérarchie : liseré de couleur, tableaux, blocs colorés. C'est ce qui distingue le transactionnel du marketing.</p>
+</div>
+</div>
+<div style="padding:14px 17px;background:var(--surface2)">
+<p style="margin:0;font-size:.775rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Le seul mouvement acceptable : un <b style="color:var(--tx)">survol de bouton</b> (<span class="mono" style="font-size:.7rem">:hover</span> sur la couleur de fond) — ignoré partout où il ne marche pas, sans conséquence. Si vous voulez du mouvement, il a sa place dans l'application, pas dans la boîte mail : c'est là qu'il ne coûte pas de délivrabilité.</p>
+</div>
+</div>
+
+</div>
+
+<div style="width:400px;display:flex;flex-direction:column;gap:16px">
+<p class="frmlbl" style="margin:0 0 -4px 6px">Les 8 règles du nouveau gabarit</p>
+<div class="card" style="overflow:hidden">
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">1</span><b style="font-size:.82rem">Clair par défaut</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">Fond blanc, texte noir. Le sombre uniquement en <span class="mono" style="font-size:.68rem">prefers-color-scheme</span>.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">2</span><b style="font-size:.82rem">Une seule couleur, sur le bouton</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">Plus de liseré vert, de titre vert ni de code vert. Le vert signale l'action, rien d'autre.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">3</span><b style="font-size:.82rem">Sujet sans crochets, avec le fait</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">« Semaine 31 : 4 218 km, 31 alertes » plutôt que « Rapport hebdomadaire ».</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">4</span><b style="font-size:.82rem">Un preheader écrit</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">90 caractères qui complètent le sujet. Un par gabarit, jamais généré au hasard.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">5</span><b style="font-size:.82rem">Polices système, pas de <span class="mono" style="font-size:.72rem">&lt;link&gt;</span></b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">Manrope n'arrive jamais dans une boîte mail. Piles inline, testées Outlook.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">6</span><b style="font-size:.82rem">Ni emoji, ni majuscules, ni « ! »</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">Les trois signaux spam les plus faciles à éviter. Aucun n'apporte de sens.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">7</span><b style="font-size:.82rem">Le pied dit pourquoi on reçoit</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">Et propose une désinscription <b style="color:var(--tx)">granulaire</b> — sauf sur les 3 e-mails de sécurité, qui n'en ont pas.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:13px 16px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:7px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font-size:.66rem;font-weight:600;flex-shrink:0">8</span><b style="font-size:.82rem">Lisible images bloquées</b></div><p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2)">Aucune information portée uniquement par une image. La carte du trajet est un complément.</p></div>
+</div>
+
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--violet) 26%,transparent)">
+<div style="padding:14px 17px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><svg width="15" height="15" style="color:var(--violet)"><use href="#ic-info"/></svg><b style="font-size:.84rem">Un seul endroit à corriger</b></div>
+<p style="margin:0 0 10px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Les 19 e-mails passent par <span class="mono" style="font-size:.7rem">shell()</span>. Corriger cette fonction corrige les 19 d'un coup — c'est le meilleur rapport effort / résultat de toute la refonte.</p>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="font-size:.68rem;color:var(--tx3);width:20px;flex-shrink:0">1.</span><span style="font-size:.755rem;color:var(--tx2);flex:1"><span class="mono" style="font-size:.7rem">shell()</span> — fond, polices, pied</span></div>
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="font-size:.68rem;color:var(--tx3);width:20px;flex-shrink:0">2.</span><span style="font-size:.755rem;color:var(--tx2);flex:1">Les 19 sujets + preheaders</span></div>
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="font-size:.68rem;color:var(--tx3);width:20px;flex-shrink:0">3.</span><span style="font-size:.755rem;color:var(--tx2);flex:1">Les 3 e-mails de sécurité (code, MDP, 2FA)</span></div>
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="font-size:.68rem;color:var(--tx3);width:20px;flex-shrink:0">4.</span><span style="font-size:.755rem;color:var(--tx2);flex:1">Alerte + rapport hebdo (les plus envoyés)</span></div>
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="font-size:.68rem;color:var(--tx3);width:20px;flex-shrink:0">5.</span><span style="font-size:.755rem;color:var(--tx2);flex:1">Les 14 autres, un par un</span></div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

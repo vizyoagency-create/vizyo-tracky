@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#0B0F0E;--veil:rgba(6,10,9,.24);--sat:.92}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF;--veil:rgba(255,255,255,.20);--sat:.94}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .tl-light{display:none}
+[data-theme="light"] .tl-dark{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.achip{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2);font-family:inherit;font-size:.775rem;font-weight:600;white-space:nowrap}
+.asheet{position:absolute;left:0;right:0;background:var(--surface);border-radius:28px 28px 0 0;box-shadow:0 -16px 44px rgba(0,0,0,.32);z-index:180;display:flex;flex-direction:column;overflow:hidden}
+.agrab{width:32px;height:4px;border-radius:2px;background:var(--tx3);opacity:.55;margin:12px auto 0;flex-shrink:0}
+.navlink{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:13px;color:var(--tx2);font-size:.85rem;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.vcard{display:flex;align-items:center;gap:13px;padding:14px 15px;border-radius:18px;background:var(--surface);border:1px solid var(--border)}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.bl{position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;background:#fff;border:2px solid var(--surface);overflow:hidden}
+.bl.dk{background:#1a1d21}
+.bl img{width:80%;height:80%;object-fit:contain}
+.tiles{position:absolute;inset:0;display:grid;filter:saturate(var(--sat))}
+.tiles img{display:block;width:100%;height:100%}
+.mk{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;border-radius:50%;border:2.5px solid var(--ring);box-shadow:0 5px 14px rgba(0,0,0,.4)}
+.msheet{position:absolute;left:0;right:0;background:var(--surface);border-radius:16px 16px 0 0;border-top:1px solid var(--border2);box-shadow:0 -16px 44px rgba(0,0,0,.34);z-index:180;display:flex;flex-direction:column;overflow:hidden}
+.mgrab{width:38px;height:4px;border-radius:2px;background:var(--border2);margin:9px auto 2px;flex-shrink:0}
+@keyframes vt-blink{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes vt-ping{0%{transform:scale(.7);opacity:.4}80%,100%{transform:scale(2.3);opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-car" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M2.3 15.1c0-1.05.55-1.75 1.55-2.05l1.45-.44 2.3-2.9c.6-.75 1.3-1.11 2.2-1.11h4.4c.9 0 1.6.36 2.2 1.11l2.3 2.9 1.45.44c1 .3 1.55 1 1.55 2.05v1.1c0 .5-.4.9-.9.9h-1.2a2.65 2.65 0 0 0-5.3 0H9.7a2.65 2.65 0 0 0-5.3 0H3.2c-.5 0-.9-.4-.9-.9zM9.6 10.3l-1.7 2.15h3.35V10.3zm3.15 0v2.15h3.35L14.4 10.3z"/><circle fill="currentColor" cx="7.05" cy="16.65" r="1.75"/><circle fill="currentColor" cx="16.95" cy="16.65" r="1.75"/></symbol>
+<symbol id="ic-van" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M2.6 15.35V9.3c0-1.1.75-1.85 1.85-1.85h8.05c.82 0 1.48.31 1.99.93l3.06 3.72c.48.58.7 1.17.7 1.9v1.35c0 .5-.4.9-.9.9h-1.13a2.65 2.65 0 0 0-5.3 0H9.16a2.65 2.65 0 0 0-5.3 0H3.5c-.5 0-.9-.4-.9-.9zM4.9 9.55v2.9h3.6v-2.9zm5.55 0v2.9h3.72l-2.38-2.9z"/><circle fill="currentColor" cx="6.51" cy="16.7" r="1.75"/><circle fill="currentColor" cx="15.79" cy="16.7" r="1.75"/></symbol>
+<symbol id="ic-truck" viewBox="0 0 24 24"><path fill="currentColor" d="M1.9 8.15c0-.72.58-1.3 1.3-1.3h7.9c.72 0 1.3.58 1.3 1.3v7.65H1.9z"/><path fill="currentColor" fill-rule="evenodd" d="M13.55 9.45h2.72c.8 0 1.44.31 1.96.94l2.06 2.5c.42.51.62 1.02.62 1.68v1.03c0 .5-.4.9-.9.9h-.9a2.65 2.65 0 0 0-5.3 0h-.26zm1.75 1.6v2.4h3.4l-1.97-2.4z"/><circle fill="currentColor" cx="6.25" cy="16.7" r="1.8"/><circle fill="currentColor" cx="16.85" cy="16.7" r="1.8"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-unlock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></g></symbol>
+<symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+<symbol id="ic-qr" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 20h1M17 20h1M20 14h1"/></g></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></g></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></g></symbol>
+</defs></svg>
+
+<div style="display:flex;flex-direction:column;gap:64px;width:max-content;padding:56px;background:var(--bg)">
+
+<div>
+<div class="scrlbl"><i>01</i>iPhone · Espace conducteur — 390 × 844, aucun onglet, gros boutons pouce</div>
+<div style="display:flex;gap:44px;align-items:flex-start">
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Mes véhicules</div>
+<div class="mfrm" data-screen-label="Conducteur — mes véhicules">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:12</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="15" height="11" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:12px;padding:8px 16px 14px;border-bottom:1px solid var(--border);flex-shrink:0">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="21" height="21"><use href="#ic-car"/></svg></span>
+<div style="flex:1;min-width:0"><div style="font-size:1.02rem;font-weight:800;letter-spacing:-.02em;white-space:nowrap">Mes véhicules</div><div style="font-size:.72rem;color:var(--tx3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">m.sarr@vizyo-transport.fr</div></div>
+<span style="display:flex;align-items:center;gap:5px;font-size:.755rem;font-weight:700;color:var(--tx3);white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Déconnexion</span>
+</div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:16px 14px 0;display:flex;flex-direction:column;gap:12px">
+<p style="margin:0;font-size:.8rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Choisissez un véhicule pour le déverrouiller — vous devez être à proximité — ou scannez son QR.</p>
+<div class="vcard" style="flex-direction:column;align-items:stretch;gap:12px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:16px;background:var(--surface3);flex-shrink:0"><svg width="25" height="25" style="color:var(--tx2)"><use href="#ic-van"/></svg><span class="bl"><img src="brands/peugeot.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">FT-108-XR</div><div style="font-size:.76rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Peugeot Partner</div></div>
+</div>
+<div style="display:flex;gap:9px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2);flex-shrink:0"><svg width="20" height="20"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.88rem;font-weight:800;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div><div class="vcard" style="flex-direction:column;align-items:stretch;gap:12px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:16px;background:var(--surface3);flex-shrink:0"><svg width="25" height="25" style="color:var(--tx2)"><use href="#ic-truck"/></svg><span class="bl"><img src="brands/renault.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">MC-902-TR</div><div style="font-size:.76rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Renault Master</div></div>
+</div>
+<div style="display:flex;gap:9px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2);flex-shrink:0"><svg width="20" height="20"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.88rem;font-weight:800;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div><div class="vcard" style="flex-direction:column;align-items:stretch;gap:12px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:16px;background:var(--surface3);flex-shrink:0"><svg width="25" height="25" style="color:var(--tx2)"><use href="#ic-car"/></svg><span class="bl"><img src="brands/renault.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">GJ-241-AB</div><div style="font-size:.76rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Renault Clio IV</div></div>
+</div>
+<div style="display:flex;gap:9px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2);flex-shrink:0"><svg width="20" height="20"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.88rem;font-weight:800;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div>
+</div>
+<div style="padding:14px 14px;flex-shrink:0">
+<span style="display:flex;align-items:center;justify-content:center;gap:10px;height:58px;border-radius:18px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx);font-size:.92rem;font-weight:800;white-space:nowrap"><svg width="21" height="21"><use href="#ic-qr"/></svg>Scanner le QR du véhicule</span>
+</div>
+</div>
+<span class="mhome"></span>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Déverrouillage · contrôle de proximité</div>
+<div class="mfrm" data-screen-label="Conducteur — déverrouillage">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:13</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="15" height="11" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:12px;padding:8px 16px 14px;flex-shrink:0"><span style="display:flex;align-items:center;gap:5px;font-size:.9rem;font-weight:600;color:var(--accent);white-space:nowrap"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>Mes véhicules</span></div>
+<div style="position:relative;height:230px;margin:0 14px;border-radius:20px;overflow:hidden;border:1px solid var(--border);flex-shrink:0">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;width:600px;height:600px;left:-140px;top:-200px;right:auto;bottom:auto"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""></div>
+<div class="tiles tl-light" style="grid-template-columns:repeat(2,300px);grid-auto-rows:300px;width:600px;height:600px;left:-140px;top:-200px;right:auto;bottom:auto"><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4128/2991@2x.png" alt=""></div>
+<div style="position:absolute;inset:0;background:var(--veil)"></div>
+<span style="position:absolute;left:38%;top:63%;width:96px;height:96px;margin:-48px 0 0 -48px;border-radius:50%;background:color-mix(in srgb,var(--blue) 16%,transparent);border:1.5px solid color-mix(in srgb,var(--blue) 42%,transparent)"></span>
+<span style="position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:var(--accent);opacity:.3;animation:vt-ping 2.6s ease-out infinite"></span>
+<span class="mk" style="left:50%;top:50%;width:44px;height:44px;background:var(--accent);z-index:2"><svg width="23" height="23" style="color:#04130D"><use href="#ic-van"/></svg><span class="bl" style="border-color:var(--accent)"><img src="brands/peugeot.png" alt=""></span></span>
+<span style="position:absolute;left:38%;top:63%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--blue);border:3px solid var(--ring);box-shadow:0 0 0 6px color-mix(in srgb,var(--blue) 22%,transparent)"></span>
+<span class="mono" style="position:absolute;left:12px;bottom:12px;padding:5px 10px;border-radius:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--border2);font-size:.7rem;font-weight:600;color:var(--tx2);z-index:3;white-space:nowrap">Précision GPS ±8 m</span>
+</div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:16px 14px 0;display:flex;flex-direction:column;gap:14px">
+<div style="text-align:center"><div class="mono" style="font-size:1.3rem;font-weight:600;letter-spacing:.01em;white-space:nowrap">FT-108-XR</div><div style="font-size:.79rem;color:var(--tx2);margin-top:3px;white-space:nowrap">Peugeot Partner · Groupe Sud</div></div>
+<div style="display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:18px;background:var(--surface);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:999px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="22" height="22"><use href="#ic-pin"/></svg></span>
+<div style="flex:1;min-width:0"><div style="font-size:.87rem;font-weight:800;white-space:nowrap">Vous devez être à proximité</div><div style="font-size:.75rem;color:var(--tx2);margin-top:2px;white-space:nowrap">La distance est vérifiée par le serveur</div></div>
+</div>
+</div>
+<div style="padding:14px 14px;flex-shrink:0;display:flex;flex-direction:column;gap:10px">
+<span style="display:flex;align-items:center;justify-content:center;gap:11px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:1.02rem;font-weight:800;white-space:nowrap;box-shadow:0 10px 26px -10px color-mix(in srgb,var(--accent) 80%,transparent)"><svg width="24" height="24"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+<p style="margin:0;text-align:center;font-size:.735rem;color:var(--tx3);white-space:nowrap">Localisation puis déverrouillage · action tracée</p>
+</div>
+</div>
+<span class="mhome"></span>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Déverrouillé · confirmation</div>
+<div class="mfrm" data-screen-label="Conducteur — déverrouillé">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:13</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="15" height="11" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 26px;gap:0">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:112px;height:112px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><span style="position:absolute;inset:0;border-radius:50%;background:var(--accent);opacity:.28;animation:vt-ping 2.8s ease-out infinite"></span><svg width="52" height="52"><use href="#ic-check"/></svg></span>
+<h1 style="margin:26px 0 0;font-size:1.5rem;font-weight:800;letter-spacing:-.03em;text-align:center;white-space:nowrap">Véhicule déverrouillé</h1>
+<p style="margin:10px 0 0;font-size:.87rem;color:var(--tx2);text-align:center;text-wrap:pretty">Vous pouvez monter à bord. Le contact reste sous votre responsabilité.</p>
+<div style="display:flex;align-items:center;gap:13px;width:100%;margin-top:26px;padding:14px 15px;border-radius:18px;background:var(--surface);border:1px solid var(--border)">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:13px;background:var(--surface3);flex-shrink:0"><svg width="24" height="24" style="color:var(--tx2)"><use href="#ic-van"/></svg><span class="bl"><img src="brands/peugeot.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:.95rem;font-weight:600;white-space:nowrap">FT-108-XR</div><div class="mono" style="font-size:.73rem;color:var(--tx3);margin-top:2px;white-space:nowrap">Ouvert à 08:13</div></div>
+<span class="tag" style="background:var(--accent-soft);color:var(--accent)"><svg width="10" height="10"><use href="#ic-check"/></svg>Tracé</span>
+</div>
+<span style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:58px;margin-top:14px;border-radius:18px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx);font-size:.9rem;font-weight:800;white-space:nowrap">Retour à mes véhicules</span>
+</div>
+<span class="mhome"></span>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Vie privée &amp; horaires · feuille</div>
+<div class="mfrm" data-screen-label="Conducteur — vie privée">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:12</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="15" height="11" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column;opacity:.4;padding:0 14px">
+<div style="height:62px;flex-shrink:0"></div>
+<div class="vcard" style="margin-bottom:12px"><span style="width:46px;height:46px;border-radius:16px;background:var(--surface3);flex-shrink:0"></span><div style="flex:1"><div class="mono" style="font-size:1rem;font-weight:600">FT-108-XR</div></div></div>
+</div>
+<div style="position:absolute;inset:0;background:rgba(4,8,7,.46);z-index:150"></div>
+<div class="msheet" style="bottom:0;height:560px"><span class="mgrab"></span>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 16px 14px"><span style="flex:1;text-align:center;font-size:.94rem;font-weight:800;white-space:nowrap">Vie privée &amp; horaires</span><span style="font-size:.9rem;font-weight:800;color:var(--accent);white-space:nowrap">Terminé</span></div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:12px">
+
+<div style="display:flex;align-items:center;gap:9px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2)">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+<span style="font-size:.85rem;font-weight:700;white-space:nowrap">Suivi — temps de travail</span>
+</div>
+
+<div style="padding:13px 14px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:7px;margin-bottom:9px"><span style="color:var(--tx3);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 14v3l2 1"/></svg></span><span style="font-size:.755rem;font-weight:700;color:var(--tx2);line-height:1.3">Votre temps de travail (défini par l'employeur)</span></div>
+<div style="display:flex;flex-wrap:wrap;gap:5px"><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx);white-space:nowrap">Lun</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--accent);white-space:nowrap">07:00–19:00</span></div><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx);white-space:nowrap">Mar</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--accent);white-space:nowrap">07:00–19:00</span></div><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx);white-space:nowrap">Mer</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--accent);white-space:nowrap">07:00–19:00</span></div><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx);white-space:nowrap">Jeu</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--accent);white-space:nowrap">07:00–19:00</span></div><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx);white-space:nowrap">Ven</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--accent);white-space:nowrap">07:00–19:00</span></div><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx3);white-space:nowrap">Sam</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--tx3);white-space:nowrap">privé</span></div><div style="flex:1 1 76px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 5px;border-radius:10px;background:var(--surface3);min-width:0"><span style="font-size:.7rem;font-weight:700;color:var(--tx3);white-space:nowrap">Dim</span><span class="mono" style="font-size:.62rem;font-weight:600;color:var(--tx3);white-space:nowrap">privé</span></div></div>
+<p style="margin:10px 0 0;font-size:.735rem;line-height:1.5;color:var(--tx3);text-wrap:pretty">Hors de ces plages (et jours fériés), votre position <strong style="color:var(--tx2)">n'est pas enregistrée</strong>.</p>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px dashed var(--border2);color:var(--tx3)">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+<span style="font-size:.79rem;line-height:1.4">Temps de travail : suivi actif (non désactivable).</span>
+</div>
+
+<div style="margin-top:4px">
+<div class="kpil" style="margin-bottom:4px">Historique</div>
+<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)"><span style="color:var(--tx3);flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span><span style="flex:1;min-width:0;font-size:.79rem;color:var(--tx2);white-space:nowrap">Suivi repris</span><span class="mono" style="font-size:.7rem;color:var(--tx3);white-space:nowrap">12/03 07:02</span></div><div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)"><span style="color:var(--tx3);flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></span><span style="flex:1;min-width:0;font-size:.79rem;color:var(--tx2);white-space:nowrap">Passé en privé</span><span class="mono" style="font-size:.7rem;color:var(--tx3);white-space:nowrap">11/03 19:14</span></div><div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)"><span style="color:var(--tx3);flex-shrink:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span><span style="flex:1;min-width:0;font-size:.79rem;color:var(--tx2);white-space:nowrap">Suivi repris</span><span class="mono" style="font-size:.7rem;color:var(--tx3);white-space:nowrap">11/03 06:58</span></div>
+</div>
+
+</div></div>
+<span class="mhome"></span>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>Android · Espace conducteur — 412 × 915, nav système 3 boutons, FAB étendu, dialogue M3</div>
+<div style="display:flex;gap:44px;align-items:flex-start"><div><div class="frmlbl"><span class="plat and">Android</span>Mes véhicules</div><div class="afrm" data-screen-label="Conducteur Android — mes véhicules"><div class="astat"><span style="font-size:.78rem;font-weight:700">08:12</span><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor"><path d="M16.5 0v11h-3.4V0zM11.4 3v8H8V3zM6.3 5.6V11H2.9V5.6z"/></svg><svg width="14" height="10" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="11" height="15" viewBox="0 0 12 17" fill="none"><rect x="3.4" y=".7" width="5.2" height="2" rx="1" fill="currentColor"/><rect x=".8" y="2.4" width="10.4" height="13.8" rx="2.4" stroke="currentColor" stroke-opacity=".5" stroke-width="1.3"/><rect x="2.3" y="6" width="7.4" height="8.7" rx="1.4" fill="currentColor"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:34px;bottom:48px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:14px;height:66px;padding:0 16px;flex-shrink:0"><span style="display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:999px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="22" height="22"><use href="#ic-car"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:1.18rem;font-weight:800;letter-spacing:-.02em;white-space:nowrap">Mes véhicules</div><div style="font-size:.72rem;color:var(--tx3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">m.sarr@vizyo-transport.fr</div></div><span style="color:var(--tx2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg></span></div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:6px 14px 0;display:flex;flex-direction:column;gap:12px">
+<p style="margin:0;font-size:.82rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Choisissez un véhicule pour le déverrouiller — vous devez être à proximité — ou scannez son QR.</p>
+<div class="vcard" style="border-radius:20px;padding:15px 16px;flex-direction:column;align-items:stretch;gap:13px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface3);flex-shrink:0"><svg width="26" height="26" style="color:var(--tx2)"><use href="#ic-van"/></svg><span class="bl"><img src="brands/peugeot.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">FT-108-XR</div><div style="font-size:.77rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Peugeot Partner</div></div>
+</div>
+<div style="display:flex;gap:10px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2);flex-shrink:0"><svg width="21" height="21"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:9px;height:48px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:800;letter-spacing:.02em;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div>
+<div class="vcard" style="border-radius:20px;padding:15px 16px;flex-direction:column;align-items:stretch;gap:13px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface3);flex-shrink:0"><svg width="26" height="26" style="color:var(--tx2)"><use href="#ic-truck"/></svg><span class="bl"><img src="brands/renault.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">MC-902-TR</div><div style="font-size:.77rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Renault Master</div></div>
+</div>
+<div style="display:flex;gap:10px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2);flex-shrink:0"><svg width="21" height="21"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:9px;height:48px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:800;letter-spacing:.02em;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div>
+<div class="vcard" style="border-radius:20px;padding:15px 16px;flex-direction:column;align-items:stretch;gap:13px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface3);flex-shrink:0"><svg width="26" height="26" style="color:var(--tx2)"><use href="#ic-car"/></svg><span class="bl"><img src="brands/renault.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">GJ-241-AB</div><div style="font-size:.77rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Renault Clio IV</div></div>
+</div>
+<div style="display:flex;gap:10px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2);flex-shrink:0"><svg width="21" height="21"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:9px;height:48px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:800;letter-spacing:.02em;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div>
+</div>
+</div>
+<div style="position:absolute;right:14px;bottom:64px;z-index:178"><span style="display:inline-flex;align-items:center;gap:11px;height:56px;padding:0 21px;border-radius:18px;background:var(--accent);color:var(--accent-ink);font-size:.885rem;font-weight:800;box-shadow:0 10px 24px -8px rgba(0,0,0,.55);white-space:nowrap"><svg width="21" height="21"><use href="#ic-qr"/></svg>Scanner le QR</span></div>
+<div class="anav"><span><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 3.2v17.6L3.4 12z"/></svg></span><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9.2"/></svg></span><span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="2.6"/></svg></span></div></div></div><div><div class="frmlbl"><span class="plat and">Android</span>Déverrouillage</div><div class="afrm" data-screen-label="Conducteur Android — déverrouillage"><div class="astat"><span style="font-size:.78rem;font-weight:700">08:12</span><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor"><path d="M16.5 0v11h-3.4V0zM11.4 3v8H8V3zM6.3 5.6V11H2.9V5.6z"/></svg><svg width="14" height="10" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="11" height="15" viewBox="0 0 12 17" fill="none"><rect x="3.4" y=".7" width="5.2" height="2" rx="1" fill="currentColor"/><rect x=".8" y="2.4" width="10.4" height="13.8" rx="2.4" stroke="currentColor" stroke-opacity=".5" stroke-width="1.3"/><rect x="2.3" y="6" width="7.4" height="8.7" rx="1.4" fill="currentColor"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:34px;bottom:48px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:16px;height:64px;padding:0 16px;flex-shrink:0"><span style="color:var(--tx2)"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg></span><span class="mono" style="flex:1;font-size:1.08rem;font-weight:600;letter-spacing:.01em;white-space:nowrap">FT-108-XR</span></div>
+<div style="position:relative;height:250px;overflow:hidden;flex-shrink:0">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(2,320px);grid-auto-rows:320px;width:640px;height:640px;left:-120px;top:-210px;right:auto;bottom:auto"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""></div>
+<div class="tiles tl-light" style="grid-template-columns:repeat(2,320px);grid-auto-rows:320px;width:640px;height:640px;left:-120px;top:-210px;right:auto;bottom:auto"><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/rastertiles/voyager/13/4128/2991@2x.png" alt=""></div>
+<div style="position:absolute;inset:0;background:var(--veil)"></div>
+<span style="position:absolute;left:39%;top:64%;width:104px;height:104px;margin:-52px 0 0 -52px;border-radius:50%;background:color-mix(in srgb,var(--blue) 16%,transparent);border:1.5px solid color-mix(in srgb,var(--blue) 42%,transparent)"></span>
+<span class="mk" style="left:50%;top:50%;width:46px;height:46px;background:var(--accent);z-index:2"><svg width="24" height="24" style="color:#04130D"><use href="#ic-van"/></svg><span class="bl" style="border-color:var(--accent)"><img src="brands/peugeot.png" alt=""></span></span>
+<span style="position:absolute;left:39%;top:64%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--blue);border:3px solid var(--ring);box-shadow:0 0 0 6px color-mix(in srgb,var(--blue) 22%,transparent)"></span>
+</div>
+<div style="flex:1;min-height:0;overflow:hidden;padding:18px 16px 0;display:flex;flex-direction:column;gap:14px">
+<div><div style="font-size:1.32rem;font-weight:800;letter-spacing:-.03em;white-space:nowrap">Déverrouiller le véhicule</div><div style="font-size:.8rem;color:var(--tx2);margin-top:4px;white-space:nowrap">Peugeot Partner · Groupe Sud</div></div>
+<div style="display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:20px;background:var(--surface2)"><span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="23" height="23"><use href="#ic-pin"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.885rem;font-weight:800;white-space:nowrap">Vous devez être à proximité</div><div style="font-size:.76rem;color:var(--tx2);margin-top:2px;white-space:nowrap">Précision GPS ±8 m · vérifié par le serveur</div></div></div>
+</div>
+<div style="padding:16px;flex-shrink:0;display:flex;flex-direction:column;gap:11px">
+<span style="display:flex;align-items:center;justify-content:center;gap:11px;height:60px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:1rem;font-weight:800;white-space:nowrap;box-shadow:0 10px 26px -10px rgba(0,0,0,.6)"><svg width="24" height="24"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+<p style="margin:0;text-align:center;font-size:.75rem;color:var(--tx3);white-space:nowrap">Localisation puis déverrouillage · action tracée</p>
+</div>
+</div><div class="anav"><span><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 3.2v17.6L3.4 12z"/></svg></span><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9.2"/></svg></span><span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="2.6"/></svg></span></div></div></div><div><div class="frmlbl"><span class="plat and">Android</span>Refus · dialogue</div><div class="afrm" data-screen-label="Conducteur Android — refus"><div class="astat"><span style="font-size:.78rem;font-weight:700">08:12</span><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor"><path d="M16.5 0v11h-3.4V0zM11.4 3v8H8V3zM6.3 5.6V11H2.9V5.6z"/></svg><svg width="14" height="10" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="11" height="15" viewBox="0 0 12 17" fill="none"><rect x="3.4" y=".7" width="5.2" height="2" rx="1" fill="currentColor"/><rect x=".8" y="2.4" width="10.4" height="13.8" rx="2.4" stroke="currentColor" stroke-opacity=".5" stroke-width="1.3"/><rect x="2.3" y="6" width="7.4" height="8.7" rx="1.4" fill="currentColor"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:34px;bottom:48px;display:flex;flex-direction:column;opacity:.35;padding:0 14px"><div style="height:64px;flex-shrink:0"></div><div class="vcard" style="border-radius:20px;padding:15px 16px;flex-direction:column;align-items:stretch;gap:13px">
+<div style="display:flex;align-items:center;gap:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface3);flex-shrink:0"><svg width="26" height="26" style="color:var(--tx2)"><use href="#ic-van"/></svg><span class="bl"><img src="brands/peugeot.png" alt=""></span></span>
+<div style="flex:1;min-width:0"><div class="mono" style="font-size:1rem;font-weight:600;white-space:nowrap">FT-108-XR</div><div style="font-size:.77rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Peugeot Partner</div></div>
+</div>
+<div style="display:flex;gap:10px">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2);flex-shrink:0"><svg width="21" height="21"><use href="#ic-shield"/></svg></span>
+<span style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:9px;height:48px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:800;letter-spacing:.02em;white-space:nowrap"><svg width="18" height="18"><use href="#ic-unlock"/></svg>Déverrouiller</span>
+</div>
+</div></div>
+<div style="position:absolute;inset:0;background:rgba(4,8,7,.6);z-index:150"></div>
+<div style="position:absolute;left:24px;right:24px;top:50%;transform:translateY(-50%);z-index:190;background:var(--surface3);border-radius:28px;padding:24px 24px 18px;box-shadow:0 30px 60px -20px rgba(0,0,0,.7)">
+<span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:var(--red-soft);color:var(--red);margin-bottom:16px"><svg width="24" height="24"><use href="#ic-warn"/></svg></span>
+<h3 style="margin:0;font-size:1.28rem;font-weight:700;letter-spacing:-.02em">Déverrouillage impossible</h3>
+<p style="margin:12px 0 0;font-size:.86rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Autorisez la géolocalisation : elle sert au contrôle de proximité.</p>
+<div style="display:flex;align-items:center;gap:10px;margin-top:18px;padding:12px 14px;border-radius:13px;background:var(--amber-soft)"><span style="color:var(--amber);flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="11"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span><span style="font-size:.79rem;font-weight:600;color:var(--tx2);line-height:1.4">Sans position, le serveur ne peut pas vérifier que vous êtes près du véhicule.</span></div>
+<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px"><span style="display:inline-flex;align-items:center;height:44px;padding:0 18px;border-radius:999px;color:var(--tx2);font-size:.87rem;font-weight:700;white-space:nowrap">Fermer</span><span style="display:inline-flex;align-items:center;height:44px;padding:0 22px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.87rem;font-weight:800;white-space:nowrap">Réessayer</span></div>
+</div><div class="anav"><span><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 3.2v17.6L3.4 12z"/></svg></span><span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="12" cy="12" r="9.2"/></svg></span><span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="2.6"/></svg></span></div></div></div></div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'&quot;,&quot;section&quot;:&quot;Apparence&quot;},&quot;etatSuivi&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;WORK_HOURS&quot;,&quot;OUT_OF_HOURS&quot;,&quot;MANUAL&quot;,&quot;NO_SCHEDULE&quot;],&quot;default&quot;:&quot;WORK_HOURS&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Vie privée&quot;},&quot;afficherHistorique&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Vie privée&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

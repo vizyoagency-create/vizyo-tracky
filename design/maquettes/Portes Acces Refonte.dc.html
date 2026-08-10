@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#101514}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.sico{display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;flex-shrink:0}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.gate{width:100%;border-radius:16px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 30px 74px -22px rgba(0,0,0,.6);overflow:hidden}
+.gbadge{display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:13px;flex-shrink:0}
+.gstep{display:flex;align-items:center;gap:8px;padding:9px 20px;background:var(--surface2);border-bottom:1px solid var(--border)}
+.gdot{width:7px;height:7px;border-radius:50%;background:var(--surface3);flex-shrink:0}
+.gdot.on{background:var(--accent)}
+.gdot.done{background:color-mix(in srgb,var(--accent) 45%,transparent)}
+.cbx{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;border:2px solid var(--border2);flex-shrink:0}
+.cbx.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.otp{display:flex;align-items:center;justify-content:center;width:46px;height:56px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2);font-family:'JetBrains Mono',monospace;font-size:1.5rem;font-weight:600}
+.otp.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent-soft) 40%,var(--surface2))}
+.prow{display:flex;align-items:flex-start;gap:13px;padding:14px 0;border-top:1px solid var(--border)}
+.pico{display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;flex-shrink:0}
+.ann{position:absolute;display:flex;align-items:center;gap:7px;padding:4px 9px;border-radius:7px;background:var(--violet);color:#fff;font-size:.65rem;font-weight:800;white-space:nowrap;z-index:60;box-shadow:0 6px 16px -4px rgba(0,0,0,.5)}
+.zpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;padding:2px 7px;border-radius:6px;background:var(--surface3);color:var(--tx3);white-space:nowrap}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+<symbol id="ic-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></g></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></g></symbol>
+<symbol id="ic-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22M16.7 11.1A6 6 0 0 1 20 13M5 13a10 10 0 0 1 4-2.4M2 8.8A15 15 0 0 1 8 6M12.5 6.1c3.4.1 6.7 1.1 9.5 3M12 20h.01"/></g></symbol>
+<symbol id="ic-mail" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.4"/><path d="m3 6.5 9 6.5 9-6.5"/></g></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-out" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></g></symbol>
+<symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10.5" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></g></symbol>
+<symbol id="ic-qr" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><path d="M14 14h3v3h-3zM20 14v.01M14 20v.01M20 20v.01"/></g></symbol>
+<symbol id="ic-dl" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5M12 3v12"/></g></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16.5 3.1a4 4 0 0 1 0 7.8"/></g></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-refresh" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · F1 – F4 · les portes</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Les 4 portes d'entrée</h1>
+<p style="margin:8px 0 0;max-width:900px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Consentement, vérification d'appareil, autorisations, proposition 2FA. Elles s'affichent <b style="color:var(--tx)">avant</b> l'application, en plein écran, l'une après l'autre — et aujourd'hui rien ne dit à l'utilisateur combien il en reste. Un nouvel arrivant peut enchaîner trois blocages sans jamais voir de progression.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>00</i>La chaîne réelle — l'ordre est déjà écrit dans le code, il n'était juste pas montré</div>
+<div class="dash" style="padding:24px 26px;background:var(--bg2)">
+<div style="display:flex;align-items:stretch;gap:0;flex-wrap:wrap">
+
+<div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:9px;padding:0 18px 0 0">
+<div style="display:flex;align-items:center;gap:9px"><span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;font-size:.73rem;font-weight:800">1</span><b style="font-size:.86rem">Consentement</b></div>
+<span class="zpil" style="align-self:flex-start">z-index 4000</span>
+<p style="margin:0;font-size:.755rem;line-height:1.45;color:var(--tx2);text-wrap:pretty"><b style="color:var(--red)">Bloque tout.</b> Les 3 autres portes vérifient <span class="mono" style="font-size:.68rem">!consent.mustAccept()</span> : rien ne s'affiche avant.</p>
+<div style="margin-top:auto;padding:8px 10px;border-radius:10px;background:var(--red-soft);font-size:.71rem;font-weight:700;color:var(--red)">Sortie : refuser = déconnexion</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:0 4px"><svg width="18" height="18" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+
+<div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:9px;padding:0 18px">
+<div style="display:flex;align-items:center;gap:9px"><span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--amber);color:#0A1311;font-size:.73rem;font-weight:800">2</span><b style="font-size:.86rem">Vérification d'appareil</b></div>
+<span class="zpil" style="align-self:flex-start">z-index 3950</span>
+<p style="margin:0;font-size:.755rem;line-height:1.45;color:var(--tx2);text-wrap:pretty"><b style="color:var(--amber)">Bloque</b>, mais seulement si la 2FA est active <i>et</i> la connexion inhabituelle. Code à 6 chiffres par e-mail.</p>
+<div style="margin-top:auto;padding:8px 10px;border-radius:10px;background:var(--amber-soft);font-size:.71rem;font-weight:700;color:var(--amber)">Sortie : se déconnecter</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:0 4px"><svg width="18" height="18" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+
+<div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:9px;padding:0 18px">
+<div style="display:flex;align-items:center;gap:9px"><span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--amber);color:#0A1311;font-size:.73rem;font-weight:800">3</span><b style="font-size:.86rem">Autorisations</b></div>
+<span class="zpil" style="align-self:flex-start">z-index 3900</span>
+<p style="margin:0;font-size:.755rem;line-height:1.45;color:var(--tx2);text-wrap:pretty"><b style="color:var(--amber)">Bloque</b> tant que la localisation n'est pas accordée. Une seule fois par appareil.</p>
+<div style="margin-top:auto;padding:8px 10px;border-radius:10px;background:var(--amber-soft);font-size:.71rem;font-weight:700;color:var(--amber)">Sortie : aucune — c'est le problème</div>
+</div>
+
+<div style="display:flex;align-items:center;padding:0 4px"><svg width="18" height="18" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+
+<div style="flex:1;min-width:210px;display:flex;flex-direction:column;gap:9px;padding:0 0 0 18px">
+<div style="display:flex;align-items:center;gap:9px"><span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:.73rem;font-weight:800">4</span><b style="font-size:.86rem">Proposition 2FA</b></div>
+<span class="zpil" style="align-self:flex-start">z-index 3800</span>
+<p style="margin:0;font-size:.755rem;line-height:1.45;color:var(--tx2);text-wrap:pretty"><b style="color:var(--accent)">Ne bloque pas.</b> Cliquer le voile ferme. C'est une invitation, pas une porte — et ça doit se voir.</p>
+<div style="margin-top:auto;padding:8px 10px;border-radius:10px;background:var(--accent-soft);font-size:.71rem;font-weight:700;color:var(--accent)">Sorties : activer · plus tard · jamais</div>
+</div>
+
+</div>
+
+<div style="display:flex;gap:22px;margin-top:22px;padding-top:20px;border-top:1px solid var(--border);flex-wrap:wrap">
+<div style="flex:1;min-width:300px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="14" height="14" style="color:var(--red)"><use href="#ic-warn"/></svg><b style="font-size:.8rem;color:var(--red)">Ce qui ne va pas aujourd'hui</b></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:baseline;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Aucune indication de séquence : chaque porte semble être la dernière</span></div>
+<div style="display:flex;align-items:baseline;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Les 4 se ressemblent visuellement, alors qu'une seule est facultative</span></div>
+<div style="display:flex;align-items:baseline;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Localisation refusée = impasse totale, aucun moyen d'avancer</span></div>
+</div>
+</div>
+<div style="flex:1;min-width:300px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.8rem;color:var(--accent)">Ce que la refonte fait</b></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:baseline;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Une frise de progression <b style="color:var(--tx)">« étape 1 sur 3 »</b> en tête de chaque porte bloquante</span></div>
+<div style="display:flex;align-items:baseline;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">La 2FA sort de la pile : carte flottante, pas de voile opaque, 3 sorties visibles</span></div>
+<div style="display:flex;align-items:baseline;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Localisation refusée : marche à suivre navigateur <b style="color:var(--tx)">et</b> accès en mode réduit</span></div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>PC · les 3 portes bloquantes, dans l'ordre où on les rencontre</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:1fr 1fr 1.06fr;gap:22px;background:var(--bg2)">
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>1 · Consentement — la première chose vue de Tracky</p>
+<div class="gate" data-screen-label="Consentement PC">
+<div class="gstep">
+<span class="gdot on"></span><span class="gdot"></span><span class="gdot"></span>
+<span style="font-size:.7rem;font-weight:700;color:var(--tx2)">Étape 1 sur 3</span>
+<span style="margin-left:auto;font-size:.7rem;color:var(--tx3)">Mise en route</span>
+</div>
+<div style="padding:22px 24px 20px">
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+<span class="gbadge" style="background:var(--accent-soft);color:var(--accent)"><svg width="22" height="22"><use href="#ic-shield"/></svg></span>
+<div style="min-width:0">
+<h1 style="margin:0;font-size:1.28rem;font-weight:800;letter-spacing:-.025em">Bienvenue sur Tracky</h1>
+<p style="margin:3px 0 0;font-size:.82rem;color:var(--tx3)">Un instant avant de démarrer</p>
+</div>
+<svg width="24" height="24" viewBox="0 0 283 290" fill="none" style="margin-left:auto;flex-shrink:0;opacity:.9"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+</div>
+
+<p style="margin:0 0 15px;font-size:.87rem;line-height:1.6;color:var(--tx2);text-wrap:pretty">Merci de confirmer que vous acceptez nos conditions d'utilisation.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+<div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span style="font-size:.755rem;font-weight:700">Hébergé en France</span></div>
+<div style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0"><use href="#ic-dl"/></svg><span style="font-size:.755rem;font-weight:700">Vos données restent à vous</span></div>
+</div>
+
+<div style="display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--border)">
+<span class="cbx on"><svg width="12" height="12"><use href="#ic-check"/></svg></span>
+<span style="font-size:.85rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">J'ai lu et j'accepte les <a href="#01">conditions d'utilisation et la politique de confidentialité</a>.</span>
+</div>
+
+<div style="display:flex;gap:10px;padding:12px 13px;border-radius:13px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 26%,transparent);margin-top:4px">
+<svg width="15" height="15" style="color:var(--amber);flex-shrink:0;margin-top:2px"><use href="#ic-users"/></svg>
+<div style="min-width:0">
+<div style="font-size:.79rem;font-weight:800;color:var(--amber)">Vous devez informer vos conducteurs</div>
+<p style="margin:3px 0 0;font-size:.75rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">La géolocalisation d'un salarié doit être annoncée avant la mise en service. Nous vous fournissons le modèle de note.</p>
+<span style="display:inline-flex;align-items:center;gap:6px;margin-top:9px;height:29px;padding:0 11px;border-radius:10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);color:var(--amber);font-size:.72rem;font-weight:800"><svg width="12" height="12"><use href="#ic-dl"/></svg>Télécharger le modèle</span>
+</div>
+</div>
+
+<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+<button class="btns" style="height:42px">Refuser et me déconnecter</button>
+<button class="btnp" style="height:42px">Accepter et continuer</button>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Ajouté : la frise, les 2 garanties en pastilles (au lieu d'une phrase noyée), et la note d'information conducteurs <b style="color:var(--tx2)">téléchargeable</b> — aujourd'hui c'est une ligne grise sans suite.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>2 · Vérification d'appareil — connexion inhabituelle</p>
+<div class="gate" data-screen-label="Verification PC">
+<div class="gstep">
+<span class="gdot done"></span><span class="gdot on"></span><span class="gdot"></span>
+<span style="font-size:.7rem;font-weight:700;color:var(--tx2)">Étape 2 sur 3</span>
+<span style="margin-left:auto;font-size:.7rem;color:var(--tx3)">Sécurité</span>
+</div>
+<div style="padding:22px 24px 20px">
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+<span class="gbadge" style="background:var(--amber-soft);color:var(--amber)"><svg width="22" height="22"><use href="#ic-shield"/></svg></span>
+<div style="min-width:0">
+<h1 style="margin:0;font-size:1.24rem;font-weight:800;letter-spacing:-.025em">Confirmez cette connexion</h1>
+<p style="margin:3px 0 0;font-size:.8rem;color:var(--tx3)">Connexion inhabituelle détectée</p>
+</div>
+</div>
+
+<p style="margin:0 0 14px;font-size:.87rem;line-height:1.6;color:var(--tx2);text-wrap:pretty">Un code vient d'être envoyé à <b style="color:var(--tx)">a•••@duchamp.fr</b>. Saisissez-le pour continuer.</p>
+
+<div style="display:flex;gap:9px;margin-bottom:6px">
+<span class="otp on">4</span><span class="otp on">7</span><span class="otp on">2</span><span class="otp">·</span><span class="otp">·</span><span class="otp">·</span>
+</div>
+<p class="hint" style="margin:9px 0 0">Six cases séparées : on voit combien il en reste, et le collage depuis l'e-mail les remplit d'un coup.</p>
+
+<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);margin-top:15px">
+<svg width="15" height="15" style="color:var(--tx3);flex-shrink:0"><use href="#ic-mail"/></svg>
+<span style="flex:1;min-width:0;font-size:.755rem;line-height:1.4;color:var(--tx2)">Rien reçu ? Vérifiez vos indésirables.</span>
+<span style="font-size:.735rem;font-weight:800;color:var(--tx3);white-space:nowrap">Renvoyer (24 s)</span>
+</div>
+
+<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+<button class="btns" style="height:42px"><svg width="14" height="14"><use href="#ic-out"/></svg>Se déconnecter</button>
+<button class="btnp" style="height:42px;opacity:.5">Vérifier</button>
+</div>
+
+<div style="display:flex;gap:9px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px dashed var(--border2);margin-top:14px">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0;margin-top:2px"><use href="#ic-info"/></svg>
+<p style="margin:0;font-size:.74rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Cette porte n'apparaît que si vous avez activé la vérification en 2 étapes <b style="color:var(--tx2)">et</b> que la connexion sort de vos habitudes.</p>
+</div>
+</div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>3 · Autorisations — et le cas refusé, qui n'était pas traité</p>
+<div style="display:flex;flex-direction:column;gap:18px">
+
+<div class="gate" data-screen-label="Autorisations PC">
+<div class="gstep">
+<span class="gdot done"></span><span class="gdot done"></span><span class="gdot on"></span>
+<span style="font-size:.7rem;font-weight:700;color:var(--tx2)">Étape 3 sur 3 · dernière</span>
+<span style="margin-left:auto;font-size:.7rem;color:var(--tx3)">Cet appareil</span>
+</div>
+<div style="padding:20px 24px 18px">
+<h1 style="margin:0 0 5px;font-size:1.24rem;font-weight:800;letter-spacing:-.025em">Activez votre application</h1>
+<p style="margin:0 0 4px;font-size:.85rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Deux accès à autoriser sur cet appareil. Modifiables à tout moment depuis votre compte.</p>
+
+<div class="prow" style="margin-top:10px">
+<span class="pico" style="background:var(--accent-soft);color:var(--accent)"><svg width="19" height="19"><use href="#ic-bell"/></svg></span>
+<div style="flex:1;min-width:0">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:.92rem;font-weight:700">Notifications</span></div>
+<p style="margin:3px 0 0;font-size:.79rem;line-height:1.48;color:var(--tx3);text-wrap:pretty">SOS, excès de vitesse, sortie de zone, batterie — même application fermée.</p>
+</div>
+<span style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 13px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:.755rem;font-weight:800;white-space:nowrap;flex-shrink:0"><svg width="13" height="13"><use href="#ic-check"/></svg>Autorisé</span>
+</div>
+
+<div class="prow">
+<span class="pico" style="background:var(--amber-soft);color:var(--amber)"><svg width="19" height="19"><use href="#ic-pin"/></svg></span>
+<div style="flex:1;min-width:0">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:.92rem;font-weight:700">Localisation</span><span class="tag" style="background:var(--amber);color:#0A1311">requis</span></div>
+<p style="margin:3px 0 0;font-size:.79rem;line-height:1.48;color:var(--tx3);text-wrap:pretty">Uniquement au moment où vous scannez un QR pour déverrouiller un véhicule : on vérifie que vous êtes bien à côté. <b style="color:var(--tx2)">Jamais en continu.</b></p>
+<div style="display:flex;align-items:center;gap:8px;margin-top:9px;padding:8px 10px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)"><svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-qr"/></svg><span style="font-size:.73rem;color:var(--tx2)">Sans elle, le déverrouillage par QR ne fonctionne pas.</span></div>
+</div>
+<span class="btnp" style="height:34px;font-size:.755rem;flex-shrink:0">Autoriser</span>
+</div>
+
+<div class="prow" style="opacity:.8">
+<span class="pico" style="background:var(--surface3);color:var(--tx2)"><svg width="19" height="19"><use href="#ic-off"/></svg></span>
+<div style="flex:1;min-width:0">
+<div style="font-size:.92rem;font-weight:700">Mode hors-ligne</div>
+<p style="margin:3px 0 0;font-size:.79rem;line-height:1.48;color:var(--tx3);text-wrap:pretty">Installez Tracky sur votre écran d'accueil pour un accès plus rapide et une meilleure résistance réseau.</p>
+</div>
+<span class="chip" style="flex-shrink:0">Facultatif</span>
+</div>
+
+<button class="btnp" style="height:44px;width:100%;margin-top:16px;opacity:.5">Continuer vers l'application</button>
+<p class="hint" style="text-align:center">Autorisez la localisation ci-dessus pour continuer.</p>
+</div>
+</div>
+
+<div class="gate" style="border-color:color-mix(in srgb,var(--red) 30%,transparent);box-shadow:0 20px 44px -22px rgba(0,0,0,.5)" data-screen-label="Localisation refusee PC">
+<div style="padding:18px 22px">
+<div style="display:flex;gap:12px">
+<span class="gbadge" style="width:38px;height:38px;border-radius:10px;background:var(--red-soft);color:var(--red)"><svg width="18" height="18"><use href="#ic-pin"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:.95rem;font-weight:800;color:var(--red)">Localisation bloquée par le navigateur</div>
+<p style="margin:4px 0 0;font-size:.79rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Nous ne pouvons pas la redemander : seul le navigateur peut débloquer.</p>
+<div style="display:flex;flex-direction:column;gap:7px;margin:12px 0 0">
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--surface3);font-size:.66rem;font-weight:600;flex-shrink:0">1</span><span style="font-size:.775rem;color:var(--tx2)">Cliquez le <b style="color:var(--tx)">cadenas</b> dans la barre d'adresse</span></div>
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--surface3);font-size:.66rem;font-weight:600;flex-shrink:0">2</span><span style="font-size:.775rem;color:var(--tx2)">Localisation → <b style="color:var(--tx)">Autoriser</b></span></div>
+<div style="display:flex;align-items:center;gap:9px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--surface3);font-size:.66rem;font-weight:600;flex-shrink:0">3</span><span style="font-size:.775rem;color:var(--tx2)">Revenez ici et réessayez</span></div>
+</div>
+<div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
+<span class="btnp" style="height:36px;font-size:.765rem"><svg width="13" height="13"><use href="#ic-refresh"/></svg>Réessayer</span>
+<span class="btns" style="height:36px;font-size:.755rem">Continuer sans déverrouillage QR</span>
+</div>
+<p class="hint" style="margin-top:14px">La deuxième sortie est nouvelle : vous entrez dans l'application, seul le déverrouillage par QR reste indisponible. <b style="color:var(--tx2)">Plus d'impasse.</b></p>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>La 4<sup>e</sup> porte n'est pas une porte — proposition 2FA, sur les 3 plateformes</div>
+<div style="display:flex;gap:26px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div style="width:430px">
+<p class="frmlbl"><span class="plat pc">PC</span>PC · carte flottante, voile léger, on peut cliquer à côté</p>
+<div style="position:relative;padding:26px;border-radius:16px;background:linear-gradient(155deg,var(--surface2),var(--bg2));border:1px solid var(--border2)" data-screen-label="2FA PC">
+<div style="position:absolute;inset:0;border-radius:16px;background:rgba(0,0,0,.22)"></div>
+<div style="position:relative;border-radius:16px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 26px 54px -20px rgba(0,0,0,.55);padding:22px;text-align:center">
+<span class="gbadge" style="width:50px;height:50px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin:0 auto 14px"><svg width="24" height="24"><use href="#ic-shield"/></svg></span>
+<h1 style="margin:0 0 9px;font-size:1.2rem;font-weight:800;letter-spacing:-.025em">Sécurisez votre compte</h1>
+<p style="margin:0 0 8px;font-size:.845rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Connexion depuis un appareil inhabituel. Activez la <b style="color:var(--tx)">vérification en 2 étapes</b> : un code par e-mail, uniquement lors des connexions inhabituelles.</p>
+<div style="display:flex;align-items:center;gap:8px;justify-content:center;padding:9px 11px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);margin:14px 0 16px">
+<svg width="13" height="13" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg>
+<span style="font-size:.74rem;color:var(--tx2)">Aucun code au quotidien sur vos appareils habituels</span>
+</div>
+<button class="btnp" style="height:44px;width:100%;font-size:.87rem">Activer la vérification</button>
+<div style="display:flex;align-items:center;justify-content:center;gap:18px;margin-top:13px">
+<span style="font-size:.79rem;font-weight:700;color:var(--tx2)">Plus tard</span>
+<span style="font-size:.79rem;font-weight:600;color:var(--tx3)">Ne plus me proposer</span>
+</div>
+</div>
+<span class="ann" style="top:8px;left:8px">Voile à 22 % — on voit l'app derrière, donc ça ne bloque pas</span>
+</div>
+<p class="hint" style="margin-top:14px">Différences volontaires avec les 3 portes : <b style="color:var(--tx2)">pas de frise</b> (ce n'est pas une étape), voile léger au lieu d'un flou opaque, et les 3 sorties toutes visibles d'un coup.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>iPhone · feuille basse, pas plein écran</p>
+<div class="mfrm" data-screen-label="2FA iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+<div style="padding:6px 16px 12px;opacity:.72">
+<h1 style="margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.035em">Tableau de bord</h1>
+<div style="font-size:.735rem;color:var(--tx3);margin-top:2px">Transports Duchamp · 42 véhicules</div>
+</div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:11px;opacity:.5">
+<div style="height:110px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="display:flex;gap:9px"><div style="flex:1;height:70px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"></div><div style="flex:1;height:70px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"></div><div style="flex:1;height:70px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"></div></div>
+</div>
+<div style="position:absolute;inset:0;background:rgba(0,0,0,.34)"></div>
+<div style="position:absolute;left:0;right:0;bottom:0;border-radius:22px 22px 0 0;background:var(--bg2);box-shadow:0 -18px 40px -10px rgba(0,0,0,.5);padding:9px 20px 32px">
+<div style="display:flex;justify-content:center;padding-bottom:14px"><span style="width:36px;height:5px;border-radius:3px;background:var(--border2)"></span></div>
+<span class="gbadge" style="width:52px;height:52px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin:0 auto 15px"><svg width="25" height="25"><use href="#ic-shield"/></svg></span>
+<h1 style="margin:0 0 10px;font-size:1.28rem;font-weight:800;letter-spacing:-.03em;text-align:center">Sécurisez votre compte</h1>
+<p style="margin:0;font-size:.83rem;line-height:1.55;color:var(--tx2);text-align:center;text-wrap:pretty">Connexion depuis un appareil inhabituel. Un code par e-mail vous protégera — <b style="color:var(--tx)">uniquement</b> dans ce cas.</p>
+<div style="display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border);margin:16px 0 18px">
+<svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg>
+<span style="font-size:.765rem;line-height:1.4;color:var(--tx2)">Aucun code au quotidien sur cet iPhone</span>
+</div>
+<div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:800">Activer la vérification</div>
+<div style="display:flex;align-items:center;justify-content:center;height:46px;margin-top:8px;font-size:.87rem;font-weight:700;color:var(--accent)">Plus tard</div>
+<div style="display:flex;align-items:center;justify-content:center;height:40px;font-size:.8rem;font-weight:600;color:var(--tx3)">Ne plus me proposer</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Android · dialogue M3, actions alignées à droite</p>
+<div class="afrm" data-screen-label="2FA Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px;opacity:.6">
+<span style="font-size:1.32rem;font-weight:600;letter-spacing:-.01em">Tableau de bord</span>
+</div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:12px;opacity:.42">
+<div style="height:130px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="display:flex;gap:10px"><div style="flex:1;height:78px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div><div style="flex:1;height:78px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div></div>
+</div>
+<div style="position:absolute;inset:0;background:rgba(0,0,0,.42)"></div>
+<div style="position:absolute;left:22px;right:22px;top:186px;border-radius:28px;background:var(--surface2);padding:24px;box-shadow:0 22px 44px -10px rgba(0,0,0,.6)">
+<span class="gbadge" style="width:50px;height:50px;border-radius:50%;background:var(--accent-soft);color:var(--accent);margin:0 auto 15px"><svg width="24" height="24"><use href="#ic-shield"/></svg></span>
+<div style="font-size:1.3rem;font-weight:600;text-align:center;letter-spacing:-.01em">Sécurisez votre compte</div>
+<p style="margin:11px 0 0;font-size:.845rem;line-height:1.55;color:var(--tx2);text-align:center;text-wrap:pretty">Connexion depuis un appareil inhabituel. Un code par e-mail vous protégera — uniquement dans ce cas.</p>
+<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:13px;background:var(--surface3);margin-top:17px">
+<svg width="15" height="15" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg>
+<span style="font-size:.79rem;line-height:1.4;color:var(--tx2)">Aucun code au quotidien sur cet appareil</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px;margin-top:20px">
+<div style="display:flex;justify-content:flex-end;gap:8px">
+<span style="display:inline-flex;align-items:center;height:42px;padding:0 17px;border-radius:21px;color:var(--tx2);font-size:.86rem;font-weight:600">Plus tard</span>
+<span style="display:inline-flex;align-items:center;height:42px;padding:0 22px;border-radius:21px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:700">Activer</span>
+</div>
+<div style="display:flex;justify-content:flex-end"><span style="display:inline-flex;align-items:center;height:36px;padding:0 12px;font-size:.79rem;font-weight:600;color:var(--tx3)">Ne plus me proposer</span></div>
+</div>
+</div>
+</div>
+<div class="anav" style="z-index:200"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>iPhone · les 3 portes bloquantes prennent tout l'écran — action principale sous le pouce</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>1 · Consentement</p>
+<div class="mfrm" data-screen-label="Consentement iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;gap:8px;padding:8px 20px 16px">
+<span class="gdot on"></span><span class="gdot"></span><span class="gdot"></span>
+<span style="font-size:.72rem;font-weight:700;color:var(--tx2)">Étape 1 sur 3</span>
+<svg width="21" height="21" viewBox="0 0 283 290" fill="none" style="margin-left:auto"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+</div>
+
+<div style="padding:0 20px">
+<span class="gbadge" style="width:52px;height:52px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin-bottom:15px"><svg width="25" height="25"><use href="#ic-shield"/></svg></span>
+<h1 style="margin:0;font-size:1.46rem;font-weight:800;letter-spacing:-.035em;line-height:1.2">Bienvenue sur Tracky</h1>
+<p style="margin:9px 0 0;font-size:.85rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Merci de confirmer que vous acceptez nos conditions d'utilisation.</p>
+</div>
+
+<div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span style="font-size:.79rem;font-weight:700">Hébergé en France</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0"><use href="#ic-dl"/></svg><span style="font-size:.79rem;font-weight:700">Vos données restent à vous</span></div>
+</div>
+
+<div style="padding:16px 20px 0">
+<div style="display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--border)">
+<span class="cbx on"><svg width="12" height="12"><use href="#ic-check"/></svg></span>
+<span style="font-size:.82rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">J'ai lu et j'accepte les <a href="#03">conditions et la politique de confidentialité</a>.</span>
+</div>
+</div>
+
+<div style="padding:2px 20px 0">
+<div style="display:flex;gap:10px;padding:12px 13px;border-radius:13px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 26%,transparent)">
+<svg width="15" height="15" style="color:var(--amber);flex-shrink:0;margin-top:1px"><use href="#ic-users"/></svg>
+<div style="min-width:0">
+<div style="font-size:.79rem;font-weight:800;color:var(--amber)">Informez vos conducteurs</div>
+<p style="margin:3px 0 0;font-size:.74rem;line-height:1.42;color:var(--tx2);text-wrap:pretty">Obligatoire avant la mise en service. Modèle de note fourni.</p>
+<span style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:.735rem;font-weight:800;color:var(--amber)"><svg width="12" height="12"><use href="#ic-dl"/></svg>Télécharger</span>
+</div>
+</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:13px 20px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:800">Accepter et continuer</div>
+<div style="display:flex;align-items:center;justify-content:center;height:44px;margin-top:5px;font-size:.82rem;font-weight:600;color:var(--tx3)">Refuser et me déconnecter</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>2 · Vérification — pavé numérique, 6 cases</p>
+<div class="mfrm" data-screen-label="Verification iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;gap:8px;padding:8px 20px 16px">
+<span class="gdot done"></span><span class="gdot on"></span><span class="gdot"></span>
+<span style="font-size:.72rem;font-weight:700;color:var(--tx2)">Étape 2 sur 3</span>
+</div>
+
+<div style="padding:0 20px">
+<span class="gbadge" style="width:52px;height:52px;border-radius:16px;background:var(--amber-soft);color:var(--amber);margin-bottom:15px"><svg width="25" height="25"><use href="#ic-shield"/></svg></span>
+<h1 style="margin:0;font-size:1.42rem;font-weight:800;letter-spacing:-.035em;line-height:1.2">Confirmez cette connexion</h1>
+<p style="margin:9px 0 0;font-size:.85rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Code envoyé à <b style="color:var(--tx)">a•••@duchamp.fr</b></p>
+</div>
+
+<div style="padding:22px 20px 0">
+<div style="display:flex;gap:8px;justify-content:space-between">
+<span class="otp on" style="width:48px;height:58px">4</span><span class="otp on" style="width:48px;height:58px">7</span><span class="otp on" style="width:48px;height:58px">2</span><span class="otp" style="width:48px;height:58px;border-color:var(--accent)"><span style="width:2px;height:22px;background:var(--accent);animation:vt-pulse .9s steps(2) infinite"></span></span><span class="otp" style="width:48px;height:58px"></span><span class="otp" style="width:48px;height:58px"></span>
+</div>
+<div style="display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border);margin-top:16px">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-mail"/></svg>
+<span style="flex:1;min-width:0;font-size:.755rem;color:var(--tx2)">Rien reçu ? Voir les indésirables.</span>
+<span style="font-size:.73rem;font-weight:800;color:var(--tx3);white-space:nowrap">24 s</span>
+</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:298px;padding:0 20px 12px">
+<div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:13px;background:var(--surface3);color:var(--tx3);font-size:.9rem;font-weight:800">Vérifier</div>
+<div style="display:flex;align-items:center;justify-content:center;height:42px;font-size:.82rem;font-weight:600;color:var(--tx3)">Se déconnecter</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;height:292px;background:var(--surface2);border-top:1px solid var(--border2);padding:8px 5px 30px;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;gap:6px;flex:1">
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">1</span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">2</span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">3</span>
+</div>
+<div style="display:flex;gap:6px;flex:1">
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">4</span>
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">5</span>
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">6</span>
+</div>
+<div style="display:flex;gap:6px;flex:1">
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">7</span>
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">8</span>
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">9</span>
+</div>
+<div style="display:flex;gap:6px;flex:1">
+<span style="flex:1"></span>
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;background:var(--surface);font-size:1.5rem;font-weight:500">0</span>
+<span style="flex:1;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--tx2)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 5H9L3 12l6 7h12z"/><path d="m17 9-6 6M11 9l6 6"/></svg></span>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>3 · Autorisations — la localisation expliquée par son usage</p>
+<div class="mfrm" data-screen-label="Autorisations iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;gap:8px;padding:8px 20px 15px">
+<span class="gdot done"></span><span class="gdot done"></span><span class="gdot on"></span>
+<span style="font-size:.72rem;font-weight:700;color:var(--tx2)">Étape 3 sur 3 · dernière</span>
+</div>
+
+<div style="padding:0 20px 4px">
+<h1 style="margin:0;font-size:1.42rem;font-weight:800;letter-spacing:-.035em;line-height:1.2">Activez votre application</h1>
+<p style="margin:8px 0 0;font-size:.83rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Deux accès à autoriser sur cet iPhone. Modifiables depuis votre compte.</p>
+</div>
+
+<div style="padding:14px 20px 0;display:flex;flex-direction:column;gap:11px">
+
+<div style="padding:13px 14px;border-radius:16px;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<div style="display:flex;align-items:center;gap:11px">
+<span class="pico" style="width:36px;height:36px;background:var(--accent-soft);color:var(--accent)"><svg width="17" height="17"><use href="#ic-bell"/></svg></span>
+<span style="flex:1;font-size:.89rem;font-weight:700">Notifications</span>
+<span class="tag" style="background:var(--accent-soft);color:var(--accent)"><svg width="10" height="10"><use href="#ic-check"/></svg>Autorisé</span>
+</div>
+<p style="margin:9px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">SOS, excès de vitesse, sortie de zone — même app fermée.</p>
+</div>
+
+<div style="padding:13px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--amber);box-shadow:0 0 0 3px var(--amber-soft)">
+<div style="display:flex;align-items:center;gap:11px">
+<span class="pico" style="width:36px;height:36px;background:var(--amber-soft);color:var(--amber)"><svg width="17" height="17"><use href="#ic-pin"/></svg></span>
+<span style="flex:1;font-size:.89rem;font-weight:700">Localisation</span>
+<span class="tag" style="background:var(--amber);color:#0A1311">requis</span>
+</div>
+<p style="margin:9px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Uniquement quand vous scannez un QR pour déverrouiller un véhicule : on vérifie que vous êtes à côté. <b style="color:var(--tx2)">Jamais en continu.</b></p>
+<div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:9px 11px;border-radius:10px;background:var(--surface2)"><svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-qr"/></svg><span style="font-size:.72rem;color:var(--tx2)">Sans elle, pas de déverrouillage par QR.</span></div>
+<div style="display:flex;align-items:center;justify-content:center;height:44px;margin-top:11px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.85rem;font-weight:800">Autoriser la localisation</div>
+</div>
+
+<div style="padding:13px 14px;border-radius:16px;background:var(--surface2);border:1px solid var(--border);opacity:.85">
+<div style="display:flex;align-items:center;gap:11px">
+<span class="pico" style="width:36px;height:36px;background:var(--surface3);color:var(--tx2)"><svg width="17" height="17"><use href="#ic-off"/></svg></span>
+<span style="flex:1;font-size:.89rem;font-weight:700">Mode hors-ligne</span>
+<span class="chip">Facultatif</span>
+</div>
+<p style="margin:9px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Ajoutez Tracky à votre écran d'accueil : Partager → « Sur l'écran d'accueil ».</p>
+</div>
+
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:13px 20px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:13px;background:var(--surface3);color:var(--tx3);font-size:.9rem;font-weight:800">Continuer vers l'application</div>
+<p style="margin:9px 0 0;font-size:.72rem;color:var(--tx3);text-align:center">Autorisez la localisation pour continuer.</p>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>04</i>Android · mêmes portes, contrôles M3 — et le repli quand la localisation est refusée</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>1 · Consentement — case M3, actions en pied</p>
+<div class="afrm" data-screen-label="Consentement Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+
+<div style="display:flex;align-items:center;gap:10px;padding:16px 20px 0">
+<span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+<span style="font-size:.735rem;font-weight:700;color:var(--tx3);white-space:nowrap">1 / 3</span>
+</div>
+
+<div style="padding:22px 20px 0">
+<span class="gbadge" style="width:56px;height:56px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin-bottom:17px"><svg width="27" height="27"><use href="#ic-shield"/></svg></span>
+<h1 style="margin:0;font-size:1.55rem;font-weight:600;letter-spacing:-.02em;line-height:1.22">Bienvenue sur Tracky</h1>
+<p style="margin:11px 0 0;font-size:.88rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Merci de confirmer que vous acceptez nos conditions d'utilisation.</p>
+</div>
+
+<div style="padding:20px 20px 0;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:11px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"><svg width="16" height="16" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span style="font-size:.83rem;font-weight:600">Hébergé en France</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"><svg width="16" height="16" style="color:var(--accent);flex-shrink:0"><use href="#ic-dl"/></svg><span style="font-size:.83rem;font-weight:600">Vos données restent à vous</span></div>
+</div>
+
+<div style="padding:18px 20px 0">
+<div style="display:flex;gap:14px;align-items:flex-start">
+<span class="cbx on" style="width:22px;height:22px;border-radius:4px"><svg width="13" height="13"><use href="#ic-check"/></svg></span>
+<span style="font-size:.85rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">J'accepte les <a href="#04">conditions et la politique de confidentialité</a>.</span>
+</div>
+</div>
+
+<div style="padding:18px 20px 0">
+<div style="display:flex;gap:11px;padding:13px 15px;border-radius:16px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 26%,transparent)">
+<svg width="17" height="17" style="color:var(--amber);flex-shrink:0;margin-top:1px"><use href="#ic-users"/></svg>
+<div style="min-width:0">
+<div style="font-size:.83rem;font-weight:700;color:var(--amber)">Informez vos conducteurs</div>
+<p style="margin:4px 0 0;font-size:.775rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Obligatoire avant la mise en service. Modèle fourni.</p>
+<span style="display:inline-flex;align-items:center;gap:7px;margin-top:10px;height:34px;padding:0 14px;border-radius:7px;border:1px solid var(--amber);color:var(--amber);font-size:.775rem;font-weight:700"><svg width="13" height="13"><use href="#ic-dl"/></svg>Télécharger</span>
+</div>
+</div>
+</div>
+
+<div style="position:absolute;left:20px;right:20px;bottom:18px;display:flex;justify-content:flex-end;gap:9px">
+<span style="display:inline-flex;align-items:center;height:48px;padding:0 18px;border-radius:24px;color:var(--tx2);font-size:.86rem;font-weight:600">Refuser</span>
+<span style="display:inline-flex;align-items:center;height:48px;padding:0 26px;border-radius:24px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:700">Accepter et continuer</span>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>3 · Autorisations — champs M3, bouton étendu</p>
+<div class="afrm" data-screen-label="Autorisations Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+
+<div style="display:flex;align-items:center;gap:10px;padding:16px 20px 0">
+<span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span>
+<span style="font-size:.735rem;font-weight:700;color:var(--tx3);white-space:nowrap">3 / 3</span>
+</div>
+
+<div style="padding:20px 20px 0">
+<h1 style="margin:0;font-size:1.5rem;font-weight:600;letter-spacing:-.02em;line-height:1.22">Activez votre application</h1>
+<p style="margin:10px 0 0;font-size:.86rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Deux accès à autoriser sur cet appareil.</p>
+</div>
+
+<div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:12px">
+
+<div style="padding:15px 16px;border-radius:16px;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<div style="display:flex;align-items:center;gap:13px">
+<span class="pico" style="width:40px;height:40px;background:var(--accent-soft);color:var(--accent)"><svg width="19" height="19"><use href="#ic-bell"/></svg></span>
+<span style="flex:1;font-size:.93rem;font-weight:600">Notifications</span>
+<svg width="18" height="18" style="color:var(--accent)"><use href="#ic-check"/></svg>
+</div>
+<p style="margin:10px 0 0;font-size:.79rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">SOS, excès de vitesse, sortie de zone — même app fermée.</p>
+</div>
+
+<div style="padding:15px 16px;border-radius:16px;background:var(--surface);border:1px solid var(--red)">
+<div style="display:flex;align-items:center;gap:13px">
+<span class="pico" style="width:40px;height:40px;background:var(--red-soft);color:var(--red)"><svg width="19" height="19"><use href="#ic-pin"/></svg></span>
+<span style="flex:1;font-size:.93rem;font-weight:600">Localisation</span>
+<span class="tag" style="background:var(--red);color:#fff">refusé</span>
+</div>
+<p style="margin:10px 0 0;font-size:.79rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Bloquée par le navigateur. Nous ne pouvons pas la redemander — seul Android peut débloquer.</p>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+<div style="display:flex;align-items:center;gap:10px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:var(--surface3);font-size:.68rem;font-weight:600;flex-shrink:0">1</span><span style="font-size:.785rem;color:var(--tx2)">Icône <b style="color:var(--tx)">⋮</b> ou cadenas dans la barre d'adresse</span></div>
+<div style="display:flex;align-items:center;gap:10px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:var(--surface3);font-size:.68rem;font-weight:600;flex-shrink:0">2</span><span style="font-size:.785rem;color:var(--tx2)">Autorisations → Localisation → <b style="color:var(--tx)">Autoriser</b></span></div>
+</div>
+<div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
+<span style="display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 16px;border-radius:20px;background:var(--accent);color:var(--accent-ink);font-size:.8rem;font-weight:700"><svg width="14" height="14"><use href="#ic-refresh"/></svg>Réessayer</span>
+<span style="display:inline-flex;align-items:center;height:40px;padding:0 16px;border-radius:20px;border:1px solid var(--border2);color:var(--tx2);font-size:.79rem;font-weight:600">Continuer sans QR</span>
+</div>
+</div>
+
+<div style="padding:15px 16px;border-radius:16px;background:var(--surface2);border:1px solid var(--border);opacity:.85">
+<div style="display:flex;align-items:center;gap:13px">
+<span class="pico" style="width:40px;height:40px;background:var(--surface3);color:var(--tx2)"><svg width="19" height="19"><use href="#ic-off"/></svg></span>
+<span style="flex:1;font-size:.93rem;font-weight:600">Mode hors-ligne</span>
+<span class="chip">Facultatif</span>
+</div>
+<p style="margin:10px 0 0;font-size:.79rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Menu ⋮ → « Installer l'application » pour un accès plus rapide.</p>
+</div>
+
+</div>
+
+<div style="position:absolute;left:20px;right:20px;bottom:18px">
+<div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:18px;background:var(--surface3);color:var(--tx3);font-size:.88rem;font-weight:700">Continuer vers l'application</div>
+<p style="margin:10px 0 0;font-size:.755rem;color:var(--tx3);text-align:center;text-wrap:pretty">Réessayez la localisation, ou continuez sans le déverrouillage par QR.</p>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+<div style="width:400px;display:flex;flex-direction:column;gap:16px">
+<p class="frmlbl" style="margin:0 0 -4px 6px">Les décisions prises</p>
+
+<div class="card" style="overflow:hidden">
+<div style="padding:15px 18px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.85rem">La séquence est visible</b></div><p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Frise « étape N sur 3 » sur les 3 portes bloquantes — pastilles sur iOS, barre segmentée sur Android. Le nouvel arrivant sait où il en est.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:15px 18px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.85rem">La localisation est justifiée</b></div><p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">« Uniquement quand vous scannez un QR », « jamais en continu », et la conséquence du refus dite d'avance. Une permission exigée sans motif se fait refuser.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:15px 18px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.85rem">Plus d'impasse</b></div><p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">« Continuer sans déverrouillage QR » : on entre dans l'app avec une seule fonction en moins. Aujourd'hui un refus de localisation bloque définitivement.</p></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:15px 18px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.85rem">La 2FA ne ressemble plus à une porte</b></div><p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Pas de frise, voile léger, 3 sorties visibles. Feuille basse sur iOS, dialogue M3 sur Android — les conventions de « demande facultative » de chaque plateforme.</p></div>
+</div>
+
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--violet) 26%,transparent)">
+<div style="padding:15px 18px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--violet)"><use href="#ic-info"/></svg><b style="font-size:.85rem">Note d'implémentation</b></div>
+<p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Les compteurs d'étapes doivent être <b style="color:var(--tx)">calculés</b>, pas codés en dur : la vérification d'appareil n'apparaît que si la 2FA est active et la connexion inhabituelle. Un utilisateur habituel voit « 1 sur 2 », pas « 1 sur 3 ».</p>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

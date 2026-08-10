@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#0B0F0E;--veil:rgba(6,10,9,.42);--sat:.92}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF;--veil:rgba(255,255,255,.34);--sat:.94}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .tl-light{display:none}
+[data-theme="light"] .tl-dark{display:none}
+[data-kbd="off"] .kbd{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.pcw{position:relative;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--border2);box-shadow:0 44px 84px -34px rgba(0,0,0,.6)}
+.pctb{height:42px;display:flex;align-items:center;gap:16px;padding:0 15px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0}
+.dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.urlp{display:flex;align-items:center;gap:8px;height:27px;padding:0 12px;border-radius:10px;background:var(--surface3);border:1px solid var(--border);font-size:.73rem;color:var(--tx2);max-width:440px;flex:1}
+.gridbg{position:absolute;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:46px 46px;mask-image:radial-gradient(120% 100% at 20% 0%,#000 12%,transparent 72%);pointer-events:none}
+.glow{position:absolute;border-radius:50%;filter:blur(70px);pointer-events:none}
+.lbl{display:block;font-size:.78rem;font-weight:600;color:var(--tx2);margin-bottom:7px}
+.fw{position:relative;display:flex;align-items:center}
+.fw>.fic{position:absolute;left:14px;display:flex;color:var(--tx3);pointer-events:none}
+.in{display:flex;align-items:center;width:100%;height:48px;padding:0 14px 0 42px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2);font-size:.9rem;color:var(--tx)}
+.in.ph{color:var(--tx3)}
+.pbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:52px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.94rem;font-weight:800;letter-spacing:-.01em;box-shadow:0 10px 24px -12px color-mix(in srgb,var(--accent) 70%,transparent)}
+.sbtn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;height:48px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx);font-size:.87rem;font-weight:700}
+.eyb{font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.stp{display:flex;align-items:flex-start;gap:11px;font-size:.83rem;color:var(--tx2);line-height:1.45}
+.stpn{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:600;flex-shrink:0;margin-top:1px}
+.tiles{position:absolute;display:grid;filter:saturate(var(--sat))}
+.tiles img{display:block;width:100%;height:100%}
+.mk{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;border-radius:50%;border:2.5px solid var(--ring);box-shadow:0 5px 14px rgba(0,0,0,.4)}
+.bl{position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;background:#fff;border:2px solid var(--ring);overflow:hidden}
+.bl img{width:80%;height:80%;object-fit:contain}
+.kbd{position:absolute;left:0;right:0;bottom:0;z-index:190}
+.krow{display:flex;justify-content:center;gap:6px}
+.k{display:flex;align-items:center;justify-content:center;width:32px;height:42px;border-radius:6px;background:var(--surface);box-shadow:0 1px 0 rgba(0,0,0,.28);font-size:1rem;font-weight:400;color:var(--tx)}
+.gk{display:flex;align-items:center;justify-content:center;width:34px;height:40px;font-size:1rem;font-weight:400;color:var(--tx)}
+.msheet{position:absolute;left:0;right:0;background:var(--surface);border-radius:16px 16px 0 0;border-top:1px solid var(--border2);box-shadow:0 -16px 44px rgba(0,0,0,.34);z-index:180;display:flex;flex-direction:column;overflow:hidden}
+.mgrab{width:38px;height:4px;border-radius:2px;background:var(--border2);margin:9px auto 2px;flex-shrink:0}
+.mfield{display:flex;align-items:center;height:52px;padding:0 15px;background:var(--surface);border-bottom:1px solid var(--border);font-size:.94rem}
+.aof{position:relative;height:56px;border-radius:5px 5px 0 0;background:var(--surface2);border-bottom:1.5px solid var(--border2);display:flex;align-items:flex-end;padding:0 16px 9px}
+.aoflb{position:absolute;top:8px;left:16px;font-size:.72rem;font-weight:600;color:var(--tx3)}
+@keyframes vt-blink{0%,100%{opacity:1}50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-mail" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="m3 7 8.1 5.6a1.6 1.6 0 0 0 1.8 0L21 7"/></g></symbol>
+<symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10.5" rx="2.4"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></g></symbol>
+<symbol id="ic-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></g></symbol>
+<symbol id="ic-eyeoff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 6.1A9.6 9.6 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-2.4 3.2M6.6 8.2C4 10 2 12 2 12s3.6 6.5 10 6.5c1.2 0 2.3-.2 3.3-.5"/><path d="M9.5 10.4a3 3 0 0 0 4.2 4.2"/></g></symbol>
+<symbol id="ic-arr" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></g></symbol>
+<symbol id="ic-back" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></g></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M12 11v5.4M12 7.7h.01"/></g></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></g></symbol>
+<symbol id="ic-dl" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></g></symbol>
+<symbol id="ic-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m8 7 4-4 4 4"/><path d="M6 12H4.6A1.6 1.6 0 0 0 3 13.6v6.8A1.6 1.6 0 0 0 4.6 22h14.8a1.6 1.6 0 0 0 1.6-1.6v-6.8A1.6 1.6 0 0 0 19.4 12H18"/></g></symbol>
+<symbol id="ic-plusq" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></g></symbol>
+<symbol id="ic-phone" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M11 18.6h2"/></g></symbol>
+<symbol id="ic-mon" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="13" rx="2.4"/><path d="M8.5 21h7M12 16.5V21"/></g></symbol>
+<symbol id="ic-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15V10a6 6 0 0 0-12 0v5l-1.6 2.4A.6.6 0 0 0 4.9 18h14.2a.6.6 0 0 0 .5-1z"/><path d="M9.6 21a2.6 2.6 0 0 0 4.8 0"/></g></symbol>
+<symbol id="ic-bolt" viewBox="0 0 24 24"><path fill="currentColor" d="M13.5 2 5 13.4h5.2L9.6 22 19 10.2h-5.4z"/></symbol>
+<symbol id="ic-max" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5.6A1.6 1.6 0 0 1 5.6 4H9M15 4h3.4A1.6 1.6 0 0 1 20 5.6V9M20 15v3.4a1.6 1.6 0 0 1-1.6 1.6H15M9 20H5.6A1.6 1.6 0 0 1 4 18.4V15"/></g></symbol>
+<symbol id="ic-face" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5V6a2 2 0 0 1 2-2h2.5M15.5 4H18a2 2 0 0 1 2 2v2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M8.5 20H6a2 2 0 0 1-2-2v-2.5"/><path d="M9 10v1.6M15 10v1.6M12 10v3.4h-.9M9.4 16.2a4 4 0 0 0 5.2 0"/></g></symbol>
+<symbol id="ic-fp" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5a8.5 8.5 0 0 0-8.5 8.5"/><path d="M20.5 12A8.5 8.5 0 0 0 12 3.5"/><path d="M7 12a5 5 0 0 1 10 0v3.5"/><path d="M9.8 12a2.2 2.2 0 0 1 4.4 0v5.5"/><path d="M12 20.5v-1"/><path d="M4.8 16.5A8.5 8.5 0 0 0 7 19.6"/></g></symbol>
+<symbol id="ic-car" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M2.3 15.1c0-1.05.55-1.75 1.55-2.05l1.45-.44 2.3-2.9c.6-.75 1.3-1.11 2.2-1.11h4.4c.9 0 1.6.36 2.2 1.11l2.3 2.9 1.45.44c1 .3 1.55 1 1.55 2.05v1.1c0 .5-.4.9-.9.9h-1.2a2.65 2.65 0 0 0-5.3 0H9.7a2.65 2.65 0 0 0-5.3 0H3.2c-.5 0-.9-.4-.9-.9zM9.6 10.3l-1.7 2.15h3.35V10.3zm3.15 0v2.15h3.35L14.4 10.3z"/><circle fill="currentColor" cx="7.05" cy="16.65" r="1.75"/><circle fill="currentColor" cx="16.95" cy="16.65" r="1.75"/></symbol>
+<symbol id="ic-van" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M2.6 15.35V9.3c0-1.1.75-1.85 1.85-1.85h8.05c.82 0 1.48.31 1.99.93l3.06 3.72c.48.58.7 1.17.7 1.9v1.35c0 .5-.4.9-.9.9h-1.13a2.65 2.65 0 0 0-5.3 0H9.16a2.65 2.65 0 0 0-5.3 0H3.5c-.5 0-.9-.4-.9-.9zM4.9 9.55v2.9h3.6v-2.9zm5.55 0v2.9h3.72l-2.38-2.9z"/><circle fill="currentColor" cx="6.51" cy="16.7" r="1.75"/><circle fill="currentColor" cx="15.79" cy="16.7" r="1.75"/></symbol>
+<symbol id="ic-truck" viewBox="0 0 24 24"><path fill="currentColor" d="M1.9 8.15c0-.72.58-1.3 1.3-1.3h7.9c.72 0 1.3.58 1.3 1.3v7.65H1.9z"/><path fill="currentColor" fill-rule="evenodd" d="M13.55 9.45h2.72c.8 0 1.44.31 1.96.94l2.06 2.5c.42.51.62 1.02.62 1.68v1.03c0 .5-.4.9-.9.9h-.9a2.65 2.65 0 0 0-5.3 0h-.26zm1.75 1.6v2.4h3.4l-1.97-2.4z"/><circle fill="currentColor" cx="6.25" cy="16.7" r="1.8"/><circle fill="currentColor" cx="16.85" cy="16.7" r="1.8"/></symbol>
+<symbol id="ic-qr" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><path d="M14 14h3.2v3.2H14zM20.5 20.5h.01M17.4 20.6h.01M20.6 17.4h.01"/></g></symbol>
+<symbol id="ic-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/></g></symbol>
+<symbol id="ic-user" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></g></symbol>
+<symbol id="ic-dots" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></g></symbol>
+<symbol id="ic-globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3.2 9.5h17.6M3.2 14.5h17.6M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></g></symbol>
+<symbol id="ic-del" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5.5H9.6L3 12l6.6 6.5H20a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 20 5.5z"/><path d="m12.5 9.5 5 5M17.5 9.5l-5 5"/></g></symbol>
+<symbol id="ic-shift" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M12 3.5 3.5 12H8v7.5h8V12h4.5z"/></symbol>
+</defs></svg>
+
+<div style="display:flex;flex-direction:column;gap:66px;width:max-content;padding:56px;background:var(--bg)" data-kbd="{{ kbdAttr }}">
+
+<div>
+<div class="scrlbl"><i>01</i>PC · Connexion — écran scindé, la marque à droite, l'action à gauche</div>
+<div style="display:flex;gap:40px;align-items:flex-start">
+
+<div>
+<div class="frmlbl"><span class="plat pc">PC</span>Connexion · état par défaut</div>
+<div class="pcw" style="width:1240px" data-screen-label="Connexion PC">
+<div class="pctb"><span style="display:flex;gap:7px"><span class="dot" style="background:#F2706B"></span><span class="dot" style="background:#F5B33D"></span><span class="dot" style="background:#3FCB7E"></span></span><span class="urlp"><svg width="12" height="12" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span class="mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">app.vizyo-tracky.fr/login</span></span><span style="flex:1"></span></div>
+<div style="position:relative;height:734px;display:flex">
+
+<div style="position:relative;flex:1 1 0;min-width:0;display:flex;flex-direction:column;padding:38px 62px 30px;overflow:hidden">
+<div class="gridbg"></div>
+<div class="glow" style="width:340px;height:340px;left:-130px;top:-140px;background:color-mix(in srgb,var(--accent) 16%,transparent)"></div>
+
+<div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-shrink:0">
+<span style="display:flex;align-items:center;gap:11px"><span style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--accent-ink)"><svg width="21" height="21"><use href="#ic-car"/></svg></span><span style="font-size:.98rem;font-weight:800;letter-spacing:-.02em;white-space:nowrap">Vizyo <span style="color:var(--accent)">Tracky</span></span></span>
+<span style="display:flex;align-items:center;gap:8px">
+<span style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);font-size:.73rem;font-weight:700;color:var(--tx2);white-space:nowrap"><svg width="13" height="13"><use href="#ic-globe"/></svg>FR</span>
+<span onClick="{{ toggleTheme }}" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2);cursor:pointer"><svg width="15" height="15"><use href="#ic-sun"/></svg></span>
+</span>
+</div>
+
+<div style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;max-width:404px;margin:0 auto;width:100%">
+<span class="eyb">Espace pro</span>
+<h1 style="margin:11px 0 0;font-size:2.15rem;font-weight:800;letter-spacing:-.035em;line-height:1.06">Bon retour.</h1>
+<p style="margin:11px 0 0;font-size:1rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Connectez-vous à votre tableau de bord Vizyo&nbsp;Tracky.</p>
+
+<div style="display:flex;flex-direction:column;gap:15px;margin-top:26px">
+<div><span class="lbl">Adresse e-mail</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-mail"/></svg></span><span class="in">m.sarr@vizyo-transport.fr</span></span></div>
+<div><span class="lbl">Mot de passe</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-lock"/></svg></span><span class="in" style="padding-right:46px;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);letter-spacing:.22em">••••••••••</span><span style="position:absolute;right:6px;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;color:var(--tx3)"><svg width="17" height="17"><use href="#ic-eye"/></svg></span></span>
+<span style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:.74rem;font-weight:600;color:var(--amber)"><svg width="13" height="13"><use href="#ic-shift"/></svg>Verr. Maj est activé sur votre clavier</span></div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:2px">
+<span style="display:flex;align-items:center;gap:9px;font-size:.82rem;font-weight:600;color:var(--tx2);white-space:nowrap"><span style="position:relative;width:38px;height:22px;border-radius:999px;background:var(--accent);flex-shrink:0"><span style="position:absolute;top:2px;left:18px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></span>Rester connecté</span>
+<a href="#02" style="font-size:.82rem;font-weight:700;white-space:nowrap">Mot de passe oublié&nbsp;?</a>
+</div>
+
+<span class="pbtn" style="margin-top:6px">Se connecter<svg width="17" height="17"><use href="#ic-arr"/></svg></span>
+
+<div style="display:flex;align-items:center;gap:12px;margin-top:4px"><span style="flex:1;height:1px;background:var(--border)"></span><span class="mono" style="font-size:.63rem;font-weight:600;letter-spacing:.1em;color:var(--tx3);white-space:nowrap">CONDUCTEUR</span><span style="flex:1;height:1px;background:var(--border)"></span></div>
+<span class="sbtn"><svg width="17" height="17" style="color:var(--tx2)"><use href="#ic-qr"/></svg>J'ai un QR de véhicule à scanner</span>
+</div>
+</div>
+
+<div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:7px;flex-shrink:0">
+<span style="display:inline-flex;align-items:center;gap:7px;font-size:.72rem;color:var(--tx3);white-space:nowrap"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-shield"/></svg>Connexion chiffrée par <strong style="color:var(--tx2);font-weight:700">Vizyo&nbsp;Auth</strong></span>
+<span style="font-size:.67rem;color:var(--tx3);opacity:.75;white-space:nowrap">Données hébergées en France · Conforme RGPD</span>
+</div>
+</div>
+
+<div style="position:relative;width:512px;flex-shrink:0;overflow:hidden;background:var(--bg2)">
+<div class="tiles tl-dark" style="grid-template-columns:repeat(2,512px);grid-auto-rows:512px;left:0;top:-140px;width:1024px;height:1024px"><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/dark_all/13/4128/2991@2x.png" alt=""></div>
+<div class="tiles tl-light" style="grid-template-columns:repeat(2,512px);grid-auto-rows:512px;left:0;top:-140px;width:1024px;height:1024px"><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2990@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4127/2991@2x.png" alt=""><img src="https://a.basemaps.cartocdn.com/light_all/13/4128/2991@2x.png" alt=""></div>
+<div style="position:absolute;inset:0;background:linear-gradient(200deg,var(--veil) 0%,color-mix(in srgb,var(--bg) 78%,transparent) 62%,var(--bg) 100%)"></div>
+
+<span class="mk" style="left:150px;top:196px;width:38px;height:38px;background:var(--accent);color:var(--accent-ink)"><svg width="22" height="22"><use href="#ic-van"/></svg><span class="bl"><img src="brands/peugeot.png" alt=""></span></span>
+<span class="mk" style="left:322px;top:132px;width:36px;height:36px;background:var(--accent);color:var(--accent-ink)"><svg width="21" height="21"><use href="#ic-truck"/></svg><span class="bl"><img src="brands/renault.png" alt=""></span></span>
+<span class="mk" style="left:244px;top:296px;width:34px;height:34px;background:var(--surface3);color:var(--tx2)"><svg width="20" height="20"><use href="#ic-car"/></svg><span class="bl"><img src="brands/citroen.png" alt=""></span></span>
+<span class="mk" style="left:398px;top:252px;width:32px;height:32px;background:var(--amber);color:#1B1204"><svg width="18" height="18"><use href="#ic-car"/></svg></span>
+<span style="position:absolute;left:150px;top:196px;width:64px;height:64px;margin:-32px 0 0 -32px;border-radius:50%;background:color-mix(in srgb,var(--accent) 28%,transparent);animation:vt-blink 2.6s ease-in-out infinite"></span>
+
+<div style="position:absolute;left:38px;right:38px;bottom:38px;display:flex;flex-direction:column;gap:18px">
+<div>
+<span style="display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);font-size:.68rem;font-weight:800;color:var(--accent);white-space:nowrap"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);animation:vt-blink 1.6s ease-in-out infinite"></span>TEMPS RÉEL</span>
+<h2 style="margin:14px 0 0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em;line-height:1.12;max-width:340px;text-wrap:pretty">Toute la flotte,<br>en un seul regard.</h2>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px">
+<div style="padding:13px 14px;border-radius:16px;background:color-mix(in srgb,var(--surface) 74%,transparent);border:1px solid var(--border);backdrop-filter:blur(10px)"><div class="mono" style="font-size:1.24rem;font-weight:600;letter-spacing:-.03em">1 284</div><div style="font-size:.68rem;color:var(--tx3);margin-top:3px;white-space:nowrap">véhicules suivis</div></div>
+<div style="padding:13px 14px;border-radius:16px;background:color-mix(in srgb,var(--surface) 74%,transparent);border:1px solid var(--border);backdrop-filter:blur(10px)"><div class="mono" style="font-size:1.24rem;font-weight:600;letter-spacing:-.03em">12 s</div><div style="font-size:.68rem;color:var(--tx3);margin-top:3px;white-space:nowrap">fraîcheur GPS</div></div>
+<div style="padding:13px 14px;border-radius:16px;background:color-mix(in srgb,var(--surface) 74%,transparent);border:1px solid var(--border);backdrop-filter:blur(10px)"><div class="mono" style="font-size:1.24rem;font-weight:600;letter-spacing:-.03em">99,9 %</div><div style="font-size:.68rem;color:var(--tx3);margin-top:3px;white-space:nowrap">disponibilité</div></div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:22px;width:392px;flex-shrink:0">
+<div>
+<div class="frmlbl"><span class="plat pc">PC</span>Échec de connexion</div>
+<div style="padding:22px 24px;border-radius:20px;background:var(--surface);border:1px solid var(--border)">
+<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:13px;background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 32%,transparent)">
+<svg width="17" height="17" style="color:var(--red);flex-shrink:0;margin-top:1px"><use href="#ic-warn"/></svg>
+<div style="min-width:0"><div style="font-size:.85rem;font-weight:800;color:var(--red)">Identifiants invalides</div><div style="font-size:.78rem;color:var(--tx2);margin-top:3px;line-height:1.45;text-wrap:pretty">Vérifiez votre adresse e-mail et votre mot de passe. 2 essais restants avant blocage temporaire.</div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:15px;margin-top:15px">
+<div><span class="lbl">Adresse e-mail</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-mail"/></svg></span><span class="in" style="border-color:color-mix(in srgb,var(--red) 55%,transparent)">m.sarr@vizyo-transport.fr</span></span></div>
+<span class="pbtn">Se connecter<svg width="17" height="17"><use href="#ic-arr"/></svg></span>
+</div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat pc">PC</span>Compte bloqué · 10 min</div>
+<div style="padding:22px 24px;border-radius:20px;background:var(--surface);border:1px solid var(--border);text-align:center">
+<span style="display:inline-flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:16px;background:var(--amber-soft);color:var(--amber)"><svg width="26" height="26"><use href="#ic-lock"/></svg></span>
+<div style="font-size:1.02rem;font-weight:800;letter-spacing:-.02em;margin-top:13px">Trop de tentatives</div>
+<p style="margin:7px 0 0;font-size:.81rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Par sécurité, la connexion est suspendue. Réessayez dans <strong class="mono" style="color:var(--tx)">09:41</strong> ou réinitialisez votre mot de passe.</p>
+<a href="#02" style="display:block;margin-top:14px;font-size:.83rem;font-weight:700">Réinitialiser mon mot de passe</a>
+</div>
+</div>
+
+<div>
+<div class="frmlbl">Ce qui change</div>
+<div style="display:flex;flex-direction:column;gap:9px;padding:18px 20px;border-radius:20px;background:var(--surface);border:1px solid var(--border);font-size:.8rem;line-height:1.5;color:var(--tx2)">
+<span style="display:flex;gap:9px"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0;margin-top:2px"><use href="#ic-check"/></svg><span><strong style="color:var(--tx)">Erreur explicite</strong> — le nombre d'essais restants évite l'effet « mur ».</span></span>
+<span style="display:flex;gap:9px"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0;margin-top:2px"><use href="#ic-check"/></svg><span><strong style="color:var(--tx)">Verr. Maj détecté</strong> — première cause d'échec réelle sur le terrain.</span></span>
+<span style="display:flex;gap:9px"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0;margin-top:2px"><use href="#ic-check"/></svg><span><strong style="color:var(--tx)">Entrée conducteur</strong> — le QR véhicule sans passer par un compte.</span></span>
+<span style="display:flex;gap:9px"><svg width="15" height="15" style="color:var(--accent);flex-shrink:0;margin-top:2px"><use href="#ic-check"/></svg><span><strong style="color:var(--tx)">Preuve visuelle</strong> — la carte à droite dit le produit en une seconde.</span></span>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id="02">
+<div class="scrlbl"><i>02</i>PC · Mot de passe oublié · Invitation · Installer</div>
+<div style="display:flex;gap:40px;align-items:flex-start">
+
+<div>
+<div class="frmlbl"><span class="plat pc">PC</span>Mot de passe oublié — saisie puis lien envoyé</div>
+<div class="pcw" style="width:1000px" data-screen-label="Mot de passe oublié PC">
+<div class="pctb"><span style="display:flex;gap:7px"><span class="dot" style="background:#F2706B"></span><span class="dot" style="background:#F5B33D"></span><span class="dot" style="background:#3FCB7E"></span></span><span class="urlp"><svg width="12" height="12" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span class="mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">app.vizyo-tracky.fr/forgot-password</span></span><span style="flex:1"></span></div>
+<div style="position:relative;height:700px;display:flex;overflow:hidden">
+<div class="gridbg"></div>
+<div class="glow" style="width:300px;height:300px;right:-90px;bottom:-110px;background:color-mix(in srgb,var(--accent) 13%,transparent)"></div>
+
+<div style="position:relative;flex:1;display:flex;flex-direction:column;justify-content:center;padding:34px 56px;border-right:1px solid var(--border)">
+<a href="#01" style="display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;color:var(--tx2);margin-bottom:20px;width:max-content"><svg width="15" height="15"><use href="#ic-back"/></svg>Retour à la connexion</a>
+<span class="eyb">Espace pro</span>
+<h1 style="margin:10px 0 0;font-size:1.66rem;font-weight:800;letter-spacing:-.032em;line-height:1.14">Mot de passe oublié&nbsp;?</h1>
+<p style="margin:10px 0 0;font-size:.92rem;line-height:1.5;color:var(--tx2);text-wrap:pretty;max-width:330px">Saisissez votre adresse e-mail&nbsp;: nous vous envoyons un lien pour le réinitialiser.</p>
+<div style="margin-top:22px;max-width:344px"><span class="lbl">Adresse e-mail</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-mail"/></svg></span><span class="in ph">vous@societe.fr</span></span>
+<span class="pbtn" style="margin-top:14px">Envoyer le lien<svg width="17" height="17"><use href="#ic-arr"/></svg></span></div>
+</div>
+
+<div style="position:relative;width:432px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:34px 44px;background:var(--bg2)">
+<span class="mono" style="position:absolute;top:20px;left:24px;font-size:.6rem;font-weight:600;letter-spacing:.12em;color:var(--tx3)">APRÈS ENVOI</span>
+<span style="display:inline-flex;align-items:center;justify-content:center;width:62px;height:62px;border-radius:20px;background:var(--accent-soft);color:var(--accent)"><svg width="30" height="30"><use href="#ic-mail"/></svg></span>
+<div style="font-size:1.28rem;font-weight:800;letter-spacing:-.028em;margin-top:16px">Vérifiez votre boîte mail</div>
+<p style="margin:9px 0 0;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Un lien de réinitialisation vient d'être envoyé à <strong style="color:var(--tx)">m.sarr@vizyo-transport.fr</strong>.</p>
+<div style="display:flex;align-items:flex-start;gap:10px;margin-top:18px;padding:12px 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border);text-align:left"><svg width="16" height="16" style="color:var(--tx3);flex-shrink:0;margin-top:1px"><use href="#ic-info"/></svg><span style="font-size:.78rem;line-height:1.5;color:var(--tx2)">Le lien expire dans <strong style="color:var(--tx)">60 minutes</strong>. Pensez à vérifier vos courriers indésirables.</span></div>
+<span class="sbtn" style="margin-top:14px;width:auto;padding:0 18px">Renvoyer dans <span class="mono" style="font-weight:600">0:42</span></span>
+</div>
+</div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat pc">PC</span>Invitation — activation du compte</div>
+<div class="pcw" style="width:1000px" data-screen-label="Invitation PC">
+<div class="pctb"><span style="display:flex;gap:7px"><span class="dot" style="background:#F2706B"></span><span class="dot" style="background:#F5B33D"></span><span class="dot" style="background:#3FCB7E"></span></span><span class="urlp"><svg width="12" height="12" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span class="mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">app.vizyo-tracky.fr/accept-invite?token=…</span></span><span style="flex:1"></span></div>
+<div style="position:relative;height:624px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg2)">
+<div class="gridbg"></div>
+<div class="glow" style="width:360px;height:360px;left:50%;top:-160px;margin-left:-180px;background:color-mix(in srgb,var(--accent) 14%,transparent)"></div>
+
+<div style="position:relative;width:472px;padding:30px 34px;border-radius:24px;background:var(--surface);border:1px solid var(--border);box-shadow:0 30px 60px -34px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;gap:12px">
+<span style="display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:16px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="24" height="24"><use href="#ic-user"/></svg></span>
+<div style="min-width:0"><span class="eyb">Invitation</span><div style="font-size:1.16rem;font-weight:800;letter-spacing:-.028em;margin-top:3px">Activez votre accès.</div></div>
+</div>
+<p style="margin:12px 0 0;font-size:.87rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Créez votre mot de passe pour rejoindre la flotte <strong style="color:var(--tx)">Vizyo Transport</strong> en tant que <strong style="color:var(--tx)">Gestionnaire</strong>.</p>
+
+<div style="display:flex;flex-direction:column;gap:14px;margin-top:20px">
+<div><span class="lbl">Nom affiché</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-user"/></svg></span><span class="in">Moussa Sarr</span></span></div>
+<div><span class="lbl">Mot de passe</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-lock"/></svg></span><span class="in" style="padding-right:46px;letter-spacing:.22em;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)">••••••••••••••</span><span style="position:absolute;right:6px;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;color:var(--tx3)"><svg width="17" height="17"><use href="#ic-eyeoff"/></svg></span></span>
+<div style="display:flex;align-items:center;gap:10px;margin-top:9px"><span style="flex:1;display:flex;gap:4px"><span style="flex:1;height:5px;border-radius:3px;background:var(--accent)"></span><span style="flex:1;height:5px;border-radius:3px;background:var(--accent)"></span><span style="flex:1;height:5px;border-radius:3px;background:var(--accent)"></span><span style="flex:1;height:5px;border-radius:3px;background:var(--surface3)"></span></span><span style="font-size:.72rem;font-weight:800;color:var(--accent);white-space:nowrap">Robuste</span></div>
+<div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:9px">
+<span style="display:inline-flex;align-items:center;gap:5px;font-size:.73rem;color:var(--accent);white-space:nowrap"><svg width="12" height="12"><use href="#ic-check"/></svg>12 caractères</span>
+<span style="display:inline-flex;align-items:center;gap:5px;font-size:.73rem;color:var(--accent);white-space:nowrap"><svg width="12" height="12"><use href="#ic-check"/></svg>1 majuscule</span>
+<span style="display:inline-flex;align-items:center;gap:5px;font-size:.73rem;color:var(--accent);white-space:nowrap"><svg width="12" height="12"><use href="#ic-check"/></svg>1 chiffre</span>
+<span style="display:inline-flex;align-items:center;gap:5px;font-size:.73rem;color:var(--tx3);white-space:nowrap"><svg width="12" height="12"><use href="#ic-info"/></svg>1 symbole conseillé</span>
+</div></div>
+<div><span class="lbl">Confirmer le mot de passe</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-lock"/></svg></span><span class="in" style="letter-spacing:.22em">••••••••••••••</span><span style="position:absolute;right:14px;display:flex;color:var(--accent)"><svg width="17" height="17"><use href="#ic-check"/></svg></span></span></div>
+<span class="pbtn">Activer mon compte<svg width="17" height="17"><use href="#ic-arr"/></svg></span>
+</div>
+<p style="margin:14px 0 0;font-size:.7rem;line-height:1.5;color:var(--tx3);text-align:center;text-wrap:pretty">En activant votre compte, vous acceptez les conditions d'utilisation de Vizyo Tracky.</p>
+</div>
+</div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat pc">PC</span>Installer l'application — onglet Ordinateur</div>
+<div class="pcw" style="width:1000px" data-screen-label="Installer PC">
+<div class="pctb"><span style="display:flex;gap:7px"><span class="dot" style="background:#F2706B"></span><span class="dot" style="background:#F5B33D"></span><span class="dot" style="background:#3FCB7E"></span></span><span class="urlp"><svg width="12" height="12" style="color:var(--accent);flex-shrink:0"><use href="#ic-lock"/></svg><span class="mono" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">app.vizyo-tracky.fr/install</span></span><span style="flex:1"></span></div>
+<div style="position:relative;height:700px;overflow:hidden;background:var(--bg2);padding:34px 44px;display:flex;flex-direction:column;align-items:center">
+<div class="gridbg"></div>
+<div class="glow" style="width:320px;height:320px;left:50%;top:-150px;margin-left:-160px;background:color-mix(in srgb,var(--accent) 13%,transparent)"></div>
+
+<div style="position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;flex-shrink:0">
+<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:16px;background:var(--accent);color:var(--accent-ink)"><svg width="26" height="26"><use href="#ic-car"/></svg></span>
+<h1 style="margin:13px 0 0;font-size:1.42rem;font-weight:800;letter-spacing:-.03em;line-height:1.15;white-space:nowrap">Installer Vizyo Tracky</h1>
+<p style="margin:8px 0 0;font-size:.86rem;color:var(--tx2);max-width:420px;line-height:1.5;text-wrap:pretty">Accès rapide, plein écran, notifications en temps réel — comme une vraie application.</p>
+<div style="display:flex;gap:6px;margin-top:16px;padding:4px;border-radius:13px;background:var(--surface);border:1px solid var(--border)">
+<span style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 15px;border-radius:10px;color:var(--tx2);font-size:.79rem;font-weight:700;white-space:nowrap"><svg width="14" height="14"><use href="#ic-phone"/></svg>Android</span>
+<span style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 15px;border-radius:10px;color:var(--tx2);font-size:.79rem;font-weight:700;white-space:nowrap"><svg width="14" height="14"><use href="#ic-phone"/></svg>iPhone</span>
+<span style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap"><svg width="14" height="14"><use href="#ic-mon"/></svg>Ordinateur</span>
+</div>
+</div>
+
+<div style="position:relative;display:flex;gap:16px;margin-top:22px;width:100%;max-width:812px">
+<div style="flex:1 1 0;min-width:0;padding:20px 22px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:11px"><span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2);flex-shrink:0"><svg width="21" height="21"><use href="#ic-mon"/></svg></span><div style="min-width:0"><div style="font-size:.94rem;font-weight:800;letter-spacing:-.02em">Cet ordinateur</div><div style="font-size:.74rem;color:var(--tx3);margin-top:1px">Chrome · Windows 11</div></div></div>
+<span class="pbtn" style="margin-top:16px;height:48px"><svg width="17" height="17"><use href="#ic-dl"/></svg>Installer Tracky</span>
+<div style="margin-top:16px;padding-top:15px;border-top:1px solid var(--border)">
+<div class="mono" style="font-size:.6rem;font-weight:600;letter-spacing:.11em;color:var(--tx3);margin-bottom:11px">OU MANUELLEMENT</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<span class="stp"><span class="stpn">1</span><span>Cliquez sur l'icône <strong style="color:var(--tx)">Installer</strong> dans la barre d'adresse</span></span>
+<span class="stp"><span class="stpn">2</span><span>Ou menu <strong style="color:var(--tx)">⋮</strong> → <strong style="color:var(--tx)">Installer Vizyo Tracky…</strong></span></span>
+<span class="stp"><span class="stpn">3</span><span>Confirmez <strong style="color:var(--tx)">Installer</strong> dans la fenêtre du navigateur</span></span>
+</div>
+</div>
+</div>
+
+<div style="width:280px;flex-shrink:0;padding:20px 22px;border-radius:20px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;text-align:center">
+<div style="display:flex;align-items:center;gap:8px;align-self:stretch"><svg width="16" height="16" style="color:var(--tx3)"><use href="#ic-phone"/></svg><span style="font-size:.82rem;font-weight:800">Plutôt sur le téléphone&nbsp;?</span></div>
+<span style="display:flex;align-items:center;justify-content:center;width:118px;height:118px;border-radius:16px;background:#fff;color:#0A1311;margin-top:14px"><svg width="86" height="86"><use href="#ic-qr"/></svg></span>
+<p style="margin:12px 0 0;font-size:.76rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Scannez ce code pour ouvrir la page d'installation sur votre mobile.</p>
+</div>
+</div>
+
+<div style="position:relative;display:flex;gap:12px;margin-top:20px;width:100%;max-width:812px">
+<span style="flex:1;display:inline-flex;align-items:center;gap:9px;padding:11px 14px;border-radius:13px;background:var(--surface);border:1px solid var(--border);font-size:.78rem;font-weight:700;white-space:nowrap"><svg width="16" height="16" style="color:var(--accent)"><use href="#ic-bolt"/></svg>Léger — 2 Mo</span>
+<span style="flex:1;display:inline-flex;align-items:center;gap:9px;padding:11px 14px;border-radius:13px;background:var(--surface);border:1px solid var(--border);font-size:.78rem;font-weight:700;white-space:nowrap"><svg width="16" height="16" style="color:var(--accent)"><use href="#ic-max"/></svg>Plein écran</span>
+<span style="flex:1;display:inline-flex;align-items:center;gap:9px;padding:11px 14px;border-radius:13px;background:var(--surface);border:1px solid var(--border);font-size:.78rem;font-weight:700;white-space:nowrap"><svg width="16" height="16" style="color:var(--accent)"><use href="#ic-bell"/></svg>Alertes push</span>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>iPhone · 390 × 844 — clavier AZERTY, action au-dessus du clavier, Face ID</div>
+<div style="display:flex;gap:44px;align-items:flex-start">
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Connexion · champ actif</div>
+<div class="mfrm" data-screen-label="Connexion iPhone">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:12</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="15" height="11" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+
+<div style="position:absolute;left:0;right:0;top:0;bottom:0;overflow:hidden">
+<div class="gridbg" style="mask-image:radial-gradient(90% 60% at 50% 0%,#000 10%,transparent 70%)"></div>
+<div class="glow" style="width:280px;height:280px;left:-70px;top:-110px;background:color-mix(in srgb,var(--accent) 15%,transparent)"></div>
+</div>
+
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 18px 0;flex-shrink:0">
+<span style="display:flex;align-items:center;gap:9px"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--accent);color:var(--accent-ink)"><svg width="19" height="19"><use href="#ic-car"/></svg></span><span style="font-size:.9rem;font-weight:800;letter-spacing:-.02em">Vizyo <span style="color:var(--accent)">Tracky</span></span></span>
+<span onClick="{{ toggleTheme }}" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--tx2)"><svg width="15" height="15"><use href="#ic-sun"/></svg></span>
+</div>
+
+<div style="padding:22px 18px 0;flex-shrink:0">
+<span class="eyb">Espace pro</span>
+<h1 style="margin:9px 0 0;font-size:1.86rem;font-weight:800;letter-spacing:-.035em;line-height:1.05">Bon retour.</h1>
+<p style="margin:8px 0 0;font-size:.86rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Connectez-vous à votre flotte.</p>
+</div>
+
+<div style="padding:20px 18px 0;display:flex;flex-direction:column;gap:13px;flex-shrink:0">
+<div><span class="lbl">Adresse e-mail</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-mail"/></svg></span><span class="in" style="height:50px;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)">m.sarr@vizyo-transport.fr<span style="width:2px;height:19px;background:var(--accent);margin-left:2px;animation:vt-blink 1.1s steps(1) infinite"></span></span></span></div>
+<div><span class="lbl">Mot de passe</span><span class="fw"><span class="fic"><svg width="17" height="17"><use href="#ic-lock"/></svg></span><span class="in ph" style="height:50px;padding-right:46px">Votre mot de passe</span><span style="position:absolute;right:7px;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;color:var(--tx3)"><svg width="18" height="18"><use href="#ic-eye"/></svg></span></span></div>
+</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:224px;padding:10px 14px;background:color-mix(in srgb,var(--surface) 92%,transparent);border-top:1px solid var(--border);backdrop-filter:blur(14px);z-index:195">
+<span class="pbtn" style="height:50px;border-radius:16px">Se connecter<svg width="17" height="17"><use href="#ic-arr"/></svg></span>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:9px">
+<span style="display:inline-flex;align-items:center;gap:7px;font-size:.79rem;font-weight:700;color:var(--tx2);white-space:nowrap"><svg width="17" height="17" style="color:var(--accent)"><use href="#ic-face"/></svg>Face ID</span>
+<a href="#03" style="font-size:.79rem;font-weight:700;white-space:nowrap">Mot de passe oublié&nbsp;?</a>
+</div>
+</div>
+
+<div class="kbd" style="height:224px;background:var(--surface2);border-top:1px solid var(--border);padding:9px 3px 0;display:flex;flex-direction:column;gap:9px">
+<div class="krow"><span class="k">a</span><span class="k">z</span><span class="k">e</span><span class="k">r</span><span class="k">t</span><span class="k">y</span><span class="k">u</span><span class="k">i</span><span class="k">o</span><span class="k">p</span></div>
+<div class="krow"><span class="k">q</span><span class="k">s</span><span class="k">d</span><span class="k">f</span><span class="k">g</span><span class="k">h</span><span class="k">j</span><span class="k">k</span><span class="k">l</span><span class="k">m</span></div>
+<div class="krow"><span class="k" style="width:42px;background:var(--surface3);box-shadow:none;color:var(--tx2)"><svg width="17" height="17"><use href="#ic-shift"/></svg></span><span class="k">w</span><span class="k">x</span><span class="k">c</span><span class="k">v</span><span class="k">b</span><span class="k">n</span><span class="k">'</span><span class="k" style="width:42px;background:var(--surface3);box-shadow:none;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-del"/></svg></span></div>
+<div class="krow"><span class="k" style="width:40px;background:var(--surface3);box-shadow:none;font-size:.76rem;font-weight:600;color:var(--tx2)">123</span><span class="k" style="width:36px;background:var(--surface3);box-shadow:none;color:var(--tx2)"><svg width="17" height="17"><use href="#ic-globe"/></svg></span><span class="k" style="width:34px;font-size:.95rem">@</span><span class="k" style="width:96px;font-size:.82rem;font-weight:600;color:var(--tx2)">espace</span><span class="k" style="width:30px">.</span><span class="k" style="width:64px;background:var(--accent);color:var(--accent-ink);box-shadow:none;font-size:.78rem;font-weight:700">aller</span></div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Mot de passe oublié · lien envoyé</div>
+<div class="mfrm" data-screen-label="Lien envoyé iPhone">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:13</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column;overflow:hidden">
+<div style="display:flex;align-items:center;height:44px;padding:0 12px;flex-shrink:0"><span style="display:inline-flex;align-items:center;gap:3px;font-size:.94rem;font-weight:600;color:var(--accent)"><svg width="19" height="19"><use href="#ic-back"/></svg>Connexion</span></div>
+
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;text-align:center;padding:30px 26px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:76px;height:76px;border-radius:28px;background:var(--accent-soft);color:var(--accent)"><svg width="36" height="36"><use href="#ic-mail"/></svg></span>
+<div style="font-size:1.34rem;font-weight:800;letter-spacing:-.03em;margin-top:18px;line-height:1.15">Vérifiez votre<br>boîte mail</div>
+<p style="margin:11px 0 0;font-size:.88rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Nous avons envoyé un lien de réinitialisation à<br><strong style="color:var(--tx)">m.sarr@vizyo-transport.fr</strong></p>
+<div style="display:flex;align-items:flex-start;gap:10px;margin-top:20px;padding:13px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border);text-align:left"><svg width="17" height="17" style="color:var(--tx3);flex-shrink:0;margin-top:1px"><use href="#ic-info"/></svg><span style="font-size:.79rem;line-height:1.5;color:var(--tx2)">Le lien expire dans <strong style="color:var(--tx)">60 minutes</strong>. Regardez aussi dans les courriers indésirables.</span></div>
+</div>
+
+<div style="padding:0 18px;display:flex;flex-direction:column;gap:10px;flex-shrink:0;padding-bottom:34px">
+<span class="pbtn" style="height:50px;border-radius:16px"><svg width="17" height="17"><use href="#ic-mail"/></svg>Ouvrir Mail</span>
+<span class="sbtn" style="height:48px;border-radius:16px;color:var(--tx2)">Renvoyer dans <span class="mono" style="font-weight:600;margin-left:4px">0:42</span></span>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat ios">iOS</span>Installer · iOS détecté (Safari)</div>
+<div class="mfrm" data-screen-label="Installer iPhone">
+<div class="mstat"><span class="mono" style="font-size:.84rem;font-weight:600">08:15</span><span style="display:flex;align-items:center;gap:6px"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="3.2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="15" height="7.4" rx="1.8" fill="currentColor"/><path d="M23.2 4.3v3.4a2 2 0 0 0 0-3.4z" fill="currentColor" fill-opacity=".5"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:50px;bottom:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg2)">
+
+<div style="flex:1;min-height:0;padding:16px 18px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+<span style="display:flex;align-items:center;justify-content:center;width:60px;height:60px;border-radius:20px;background:var(--accent);color:var(--accent-ink);box-shadow:0 12px 28px -12px color-mix(in srgb,var(--accent) 80%,transparent)"><svg width="32" height="32"><use href="#ic-car"/></svg></span>
+<h1 style="margin:14px 0 0;font-size:1.2rem;font-weight:800;letter-spacing:-.03em;line-height:1.2;white-space:nowrap">Installer Vizyo Tracky</h1>
+<p style="margin:7px 0 0;font-size:.82rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Plein écran, accès rapide et alertes en temps réel.</p>
+
+<div style="display:flex;align-items:center;gap:9px;align-self:stretch;margin-top:16px;padding:11px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);text-align:left"><svg width="17" height="17" style="color:var(--accent);flex-shrink:0"><use href="#ic-phone"/></svg><span style="font-size:.79rem;font-weight:700;line-height:1.4">iPhone détecté — 3 étapes dans Safari.</span></div>
+
+<div style="align-self:stretch;margin-top:14px;padding:17px 17px;border-radius:20px;background:var(--surface);border:1px solid var(--border);text-align:left;display:flex;flex-direction:column;gap:13px">
+<span class="stp" style="font-size:.86rem"><span class="stpn">1</span><span>Touchez <span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;background:var(--surface2);border:1px solid var(--border2);color:var(--blue);vertical-align:-6px;margin:0 2px"><svg width="14" height="14"><use href="#ic-share"/></svg></span> <strong style="color:var(--tx)">Partager</strong> en bas de Safari</span></span>
+<span class="stp" style="font-size:.86rem"><span class="stpn">2</span><span>Faites défiler puis choisissez <strong style="color:var(--tx)">Sur l'écran d'accueil</strong></span></span>
+<span class="stp" style="font-size:.86rem"><span class="stpn">3</span><span>Touchez <strong style="color:var(--tx)">Ajouter</strong> en haut à droite</span></span>
+</div>
+
+<div style="align-self:stretch;display:flex;gap:8px;margin-top:12px">
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><svg width="17" height="17" style="color:var(--accent)"><use href="#ic-bolt"/></svg><span style="font-size:.68rem;font-weight:700;color:var(--tx2);white-space:nowrap">2 Mo</span></span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><svg width="17" height="17" style="color:var(--accent)"><use href="#ic-max"/></svg><span style="font-size:.68rem;font-weight:700;color:var(--tx2);white-space:nowrap">Plein écran</span></span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 6px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><svg width="17" height="17" style="color:var(--accent)"><use href="#ic-bell"/></svg><span style="font-size:.68rem;font-weight:700;color:var(--tx2);white-space:nowrap">Alertes</span></span>
+</div>
+<a href="#04" style="margin-top:13px;font-size:.79rem;font-weight:700">Voir pour Android ou ordinateur</a>
+</div>
+
+<div class="msheet" style="bottom:0;padding-bottom:26px">
+<div class="mgrab"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 16px 12px;border-bottom:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="21" height="21"><use href="#ic-car"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.87rem;font-weight:700;white-space:nowrap">Vizyo Tracky</div><div class="mono" style="font-size:.7rem;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">app.vizyo-tracky.fr</div></div><span style="font-size:.83rem;font-weight:600;color:var(--accent);white-space:nowrap">Options ›</span></div>
+<div class="mfield" style="opacity:.5;background:transparent"><svg width="19" height="19" style="color:var(--tx2);margin-right:12px"><use href="#ic-plusq"/></svg>Ajouter aux favoris</div>
+<div class="mfield" style="background:var(--accent-soft);border-bottom-color:color-mix(in srgb,var(--accent) 30%,transparent)"><svg width="19" height="19" style="color:var(--accent);margin-right:12px"><use href="#ic-plusq"/></svg><span style="font-weight:700">Sur l'écran d'accueil</span><span style="flex:1"></span><svg width="17" height="17" style="color:var(--accent)"><use href="#ic-check"/></svg></div>
+<div class="mfield" style="opacity:.5;border-bottom:none;background:transparent"><svg width="19" height="19" style="color:var(--tx2);margin-right:12px"><use href="#ic-share"/></svg>Copier le lien</div>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id="04">
+<div class="scrlbl"><i>04</i>Android · 412 × 915 — Material 3, aucune barre d'onglets, dialogue d'installation natif</div>
+<div style="display:flex;gap:44px;align-items:flex-start">
+
+<div>
+<div class="frmlbl"><span class="plat and">Android</span>Connexion · champs outlined M3</div>
+<div class="afrm" data-screen-label="Connexion Android">
+<div class="astat"><span class="mono" style="font-size:.76rem;font-weight:600">8:12</span><span style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 6.2a15 15 0 0 1 20 0"/><path d="M6 10.4a9.4 9.4 0 0 1 12 0"/><circle cx="12" cy="15.2" r="1.4" fill="currentColor" stroke="none"/></svg><svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="22" height="11" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="2.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="16" height="7.4" rx="1.2" fill="currentColor"/></svg></span></div>
+
+<div style="position:absolute;left:0;right:0;top:34px;bottom:48px;overflow:hidden;display:flex;flex-direction:column">
+<div class="gridbg" style="mask-image:radial-gradient(90% 55% at 50% 0%,#000 8%,transparent 68%)"></div>
+<div class="glow" style="width:300px;height:300px;right:-90px;top:-120px;background:color-mix(in srgb,var(--accent) 14%,transparent)"></div>
+
+<div style="position:relative;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 12px 0 18px;flex-shrink:0">
+<span style="display:flex;align-items:center;gap:10px"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:var(--accent);color:var(--accent-ink)"><svg width="20" height="20"><use href="#ic-car"/></svg></span><span style="font-size:1.02rem;font-weight:700;letter-spacing:-.01em">Vizyo Tracky</span></span>
+<span onClick="{{ toggleTheme }}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;color:var(--tx2)"><svg width="20" height="20"><use href="#ic-sun"/></svg></span>
+</div>
+
+<div style="position:relative;flex:1;min-height:0;padding:14px 18px 0;display:flex;flex-direction:column">
+<h1 style="margin:0;font-size:1.66rem;font-weight:700;letter-spacing:-.02em;line-height:1.14">Connexion</h1>
+<p style="margin:8px 0 0;font-size:.88rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Accédez au tableau de bord de votre flotte.</p>
+
+<div style="display:flex;flex-direction:column;gap:14px;margin-top:24px">
+<div class="aof"><span class="aoflb">Adresse e-mail</span><span style="font-size:.94rem">m.sarr@vizyo-transport.fr</span></div>
+<div>
+<div class="aof" style="border-bottom:2px solid var(--accent);background:var(--accent-soft)"><span class="aoflb" style="color:var(--accent)">Mot de passe</span><span style="font-size:.94rem;letter-spacing:.2em">••••••••••</span><span style="position:absolute;right:12px;bottom:8px;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:999px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-eye"/></svg></span></div>
+<div style="display:flex;justify-content:flex-end;padding:8px 4px 0"><a href="#04" style="font-size:.83rem;font-weight:600">Mot de passe oublié ?</a></div>
+</div>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:2px 2px 0">
+<span style="font-size:.88rem;color:var(--tx2);white-space:nowrap">Rester connecté</span>
+<span style="position:relative;width:52px;height:32px;border-radius:999px;background:var(--accent);flex-shrink:0"><span style="position:absolute;top:4px;left:24px;width:24px;height:24px;border-radius:50%;background:var(--accent-ink);opacity:.92"></span></span>
+</div>
+
+<span class="pbtn" style="height:54px;border-radius:999px;font-size:.95rem;margin-top:6px">Se connecter</span>
+<span class="sbtn" style="height:52px;border-radius:999px;color:var(--tx)"><svg width="19" height="19" style="color:var(--accent)"><use href="#ic-fp"/></svg>Utiliser l'empreinte</span>
+</div>
+
+<div style="flex:1"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:0 0 4px"><span style="flex:1;height:1px;background:var(--border)"></span><span class="mono" style="font-size:.62rem;font-weight:600;letter-spacing:.1em;color:var(--tx3);white-space:nowrap">CONDUCTEUR</span><span style="flex:1;height:1px;background:var(--border)"></span></div>
+<span class="sbtn" style="height:52px;border-radius:999px;color:var(--tx);margin-bottom:14px"><svg width="19" height="19" style="color:var(--tx2)"><use href="#ic-qr"/></svg>Scanner le QR d'un véhicule</span>
+<div style="display:flex;align-items:center;justify-content:center;gap:7px;padding-bottom:16px;font-size:.7rem;color:var(--tx3);white-space:nowrap"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-shield"/></svg>Vizyo Auth · Données en France</div>
+</div>
+</div>
+<div class="anav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat and">Android</span>Invitation · Gboard, jauge de robustesse</div>
+<div class="afrm" data-screen-label="Invitation Android">
+<div class="astat"><span class="mono" style="font-size:.76rem;font-weight:600">8:14</span><span style="display:flex;align-items:center;gap:5px"><svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="22" height="11" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="2.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="16" height="7.4" rx="1.2" fill="currentColor"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:34px;bottom:48px;overflow:hidden;display:flex;flex-direction:column;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;gap:14px;height:60px;padding:0 8px 0 14px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border)"><span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;color:var(--tx2)"><svg width="21" height="21"><use href="#ic-back"/></svg></span><span style="font-size:1.06rem;font-weight:600">Activer mon accès</span></div>
+
+<div style="flex:1;min-height:0;padding:16px 16px 0;display:flex;flex-direction:column;gap:14px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:20px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="23" height="23"><use href="#ic-user"/></svg></span>
+<div style="min-width:0"><div style="font-size:.94rem;font-weight:700;white-space:nowrap">Vizyo Transport</div><div style="font-size:.78rem;color:var(--tx2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Invité comme <strong>Gestionnaire</strong></div></div>
+</div>
+
+<div class="aof" style="border-radius:16px;border:1.5px solid var(--border2);background:transparent;height:58px;padding:0 16px;align-items:center"><span class="aoflb" style="top:-8px;left:12px;padding:0 6px;background:var(--bg2)">Nom affiché</span><span style="font-size:.94rem">Moussa Sarr</span></div>
+
+<div>
+<div class="aof" style="border-radius:16px;border:2px solid var(--accent);background:transparent;height:58px;padding:0 16px;align-items:center"><span class="aoflb" style="top:-8px;left:12px;padding:0 6px;background:var(--bg2);color:var(--accent)">Mot de passe</span><span style="font-size:.94rem;letter-spacing:.2em">•••••••••••••</span><span style="position:absolute;right:10px;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-eyeoff"/></svg></span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 4px 0"><span style="flex:1;display:flex;gap:4px"><span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span></span><span style="font-size:.74rem;font-weight:700;color:var(--accent);white-space:nowrap">Robuste</span></div>
+<div style="font-size:.75rem;color:var(--tx3);padding:7px 4px 0">12 caractères minimum · majuscule et chiffre présents</div>
+</div>
+
+<div class="aof" style="border-radius:16px;border:1.5px solid var(--border2);background:transparent;height:58px;padding:0 16px;align-items:center"><span class="aoflb" style="top:-8px;left:12px;padding:0 6px;background:var(--bg2)">Confirmer</span><span style="font-size:.94rem;letter-spacing:.2em">•••••••••••••</span><span style="position:absolute;right:16px;display:flex;color:var(--accent)"><svg width="19" height="19"><use href="#ic-check"/></svg></span></div>
+
+<span class="pbtn" style="height:54px;border-radius:999px;font-size:.95rem">Activer mon compte</span>
+</div>
+
+<div class="kbd" style="background:var(--surface2);border-top:1px solid var(--border);padding:0 4px 8px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;justify-content:space-around;height:42px;font-size:.8rem;color:var(--tx2);flex-shrink:0"><span style="opacity:.75">Trajet2026</span><span style="width:1px;height:16px;background:var(--border)"></span><span style="font-weight:700;color:var(--tx)">Tracky2026!</span><span style="width:1px;height:16px;background:var(--border)"></span><span style="opacity:.75">Flotte2026</span></div>
+<div style="display:flex;flex-direction:column;gap:8px;padding-top:2px">
+<div class="krow" style="gap:2px"><span class="gk">a</span><span class="gk">z</span><span class="gk">e</span><span class="gk">r</span><span class="gk">t</span><span class="gk">y</span><span class="gk">u</span><span class="gk">i</span><span class="gk">o</span><span class="gk">p</span></div>
+<div class="krow" style="gap:2px"><span class="gk">q</span><span class="gk">s</span><span class="gk">d</span><span class="gk">f</span><span class="gk">g</span><span class="gk">h</span><span class="gk">j</span><span class="gk">k</span><span class="gk">l</span><span class="gk">m</span></div>
+<div class="krow" style="gap:2px"><span class="gk" style="width:40px;color:var(--tx2)"><svg width="17" height="17"><use href="#ic-shift"/></svg></span><span class="gk">w</span><span class="gk">x</span><span class="gk">c</span><span class="gk">v</span><span class="gk">b</span><span class="gk">n</span><span class="gk">'</span><span class="gk" style="width:40px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-del"/></svg></span></div>
+<div class="krow" style="gap:2px"><span class="gk" style="width:38px;font-size:.78rem;color:var(--tx2)">?123</span><span class="gk" style="width:30px">,</span><span class="gk" style="width:150px;background:var(--surface3);border-radius:7px"></span><span class="gk" style="width:30px">.</span><span class="gk" style="width:52px;background:var(--accent);color:var(--accent-ink);border-radius:7px"><svg width="18" height="18"><use href="#ic-check"/></svg></span></div>
+</div>
+</div>
+</div>
+<div class="anav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></div>
+</div>
+</div>
+
+<div>
+<div class="frmlbl"><span class="plat and">Android</span>Installer · dialogue natif Chrome</div>
+<div class="afrm" data-screen-label="Installer Android">
+<div class="astat"><span class="mono" style="font-size:.76rem;font-weight:600">8:16</span><span style="display:flex;align-items:center;gap:5px"><svg width="15" height="10" viewBox="0 0 17 11" fill="currentColor"><rect y="7.5" width="3" height="3.5" rx="1"/><rect x="4.6" y="5.5" width="3" height="5.5" rx="1"/><rect x="9.2" y="3" width="3" height="8" rx="1"/><rect x="13.8" width="3" height="11" rx="1"/></svg><svg width="22" height="11" viewBox="0 0 25 12" fill="none"><rect x=".6" y=".6" width="21" height="10.8" rx="2.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.3" y="2.3" width="16" height="7.4" rx="1.2" fill="currentColor"/></svg></span></div>
+<div style="position:absolute;left:0;right:0;top:34px;bottom:48px;overflow:hidden;display:flex;flex-direction:column;background:var(--bg2)">
+<div class="gridbg" style="mask-image:radial-gradient(90% 55% at 50% 0%,#000 8%,transparent 68%)"></div>
+
+<div style="position:relative;flex:1;min-height:0;padding:22px 18px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+<span style="display:flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink);box-shadow:0 14px 30px -14px color-mix(in srgb,var(--accent) 80%,transparent)"><svg width="34" height="34"><use href="#ic-car"/></svg></span>
+<h1 style="margin:16px 0 0;font-size:1.28rem;font-weight:700;letter-spacing:-.02em;line-height:1.2;white-space:nowrap">Installer Vizyo Tracky</h1>
+<p style="margin:8px 0 0;font-size:.86rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Plein écran, ouverture instantanée et alertes push.</p>
+
+<div style="display:flex;align-items:center;gap:9px;align-self:stretch;margin-top:18px;padding:12px 14px;border-radius:16px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);text-align:left"><svg width="18" height="18" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg><span style="font-size:.81rem;font-weight:700;line-height:1.4">Android + Chrome détectés — installation en un geste.</span></div>
+
+<div style="align-self:stretch;display:flex;gap:8px;margin-top:14px">
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 6px;border-radius:18px;background:var(--surface);border:1px solid var(--border)"><svg width="19" height="19" style="color:var(--accent)"><use href="#ic-bolt"/></svg><span style="font-size:.7rem;font-weight:600;color:var(--tx2);white-space:nowrap">2 Mo</span></span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 6px;border-radius:18px;background:var(--surface);border:1px solid var(--border)"><svg width="19" height="19" style="color:var(--accent)"><use href="#ic-max"/></svg><span style="font-size:.7rem;font-weight:600;color:var(--tx2);white-space:nowrap">Plein écran</span></span>
+<span style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 6px;border-radius:18px;background:var(--surface);border:1px solid var(--border)"><svg width="19" height="19" style="color:var(--accent)"><use href="#ic-bell"/></svg><span style="font-size:.7rem;font-weight:600;color:var(--tx2);white-space:nowrap">Alertes</span></span>
+</div>
+
+<div style="align-self:stretch;margin-top:14px;padding:16px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border);text-align:left;display:flex;flex-direction:column;gap:12px">
+<div class="mono" style="font-size:.6rem;font-weight:600;letter-spacing:.11em;color:var(--tx3)">SI LE BOUTON N'APPARAÎT PAS</div>
+<span class="stp"><span class="stpn">1</span><span>Ouvrez cette page dans <strong style="color:var(--tx)">Chrome</strong></span></span>
+<span class="stp"><span class="stpn">2</span><span>Menu <span style="display:inline-flex;vertical-align:-4px;color:var(--tx)"><svg width="15" height="15"><use href="#ic-dots"/></svg></span> en haut à droite</span></span>
+<span class="stp"><span class="stpn">3</span><span>Touchez <strong style="color:var(--tx)">Installer l'application</strong></span></span>
+</div>
+</div>
+
+<div style="position:relative;padding:0 16px 14px;flex-shrink:0"><span class="pbtn" style="height:54px;border-radius:999px;font-size:.95rem"><svg width="19" height="19"><use href="#ic-dl"/></svg>Installer l'application</span></div>
+
+<div style="position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:170"></div>
+<div style="position:absolute;left:0;right:0;bottom:0;z-index:180;background:var(--surface);border-radius:28px 28px 0 0;box-shadow:0 -16px 44px rgba(0,0,0,.34);padding:20px 22px 22px">
+<div style="width:32px;height:4px;border-radius:2px;background:var(--tx3);opacity:.5;margin:0 auto 16px"></div>
+<div style="display:flex;align-items:center;gap:13px"><span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:13px;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="28" height="28"><use href="#ic-car"/></svg></span><div style="min-width:0"><div style="font-size:1.02rem;font-weight:700;white-space:nowrap">Vizyo Tracky</div><div class="mono" style="font-size:.73rem;color:var(--tx3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">app.vizyo-tracky.fr</div></div></div>
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:22px"><span style="display:inline-flex;align-items:center;height:44px;padding:0 20px;border-radius:999px;font-size:.88rem;font-weight:700;color:var(--tx2);white-space:nowrap">Annuler</span><span style="display:inline-flex;align-items:center;height:44px;padding:0 24px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.88rem;font-weight:800;white-space:nowrap">Installer</span></div>
+</div>
+</div>
+<div class="anav"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'&quot;,&quot;section&quot;:&quot;Apparence&quot;},&quot;showKeyboards&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Maquettes mobiles&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') this.applyTheme(t);
+  }
+  componentDidUpdate(prev) {
+    const t = this.props.theme;
+    if (t !== prev.theme && (t === 'dark' || t === 'light')) this.applyTheme(t);
+  }
+  applyTheme(t) {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('vt-theme', t); } catch (e) {}
+  }
+  toggleTheme = () => {
+    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    this.applyTheme(next);
+  };
+  renderVals() {
+    return {
+      toggleTheme: this.toggleTheme,
+      kbdAttr: (this.props.showKeyboards ?? true) ? 'on' : 'off',
+    };
+  }
+}
+</script>
+</body>
+</html>

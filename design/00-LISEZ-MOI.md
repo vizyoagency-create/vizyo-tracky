@@ -39,6 +39,18 @@ Deux blocs indépendants, à traiter dans cet ordre :
 
 ## Les maquettes de référence
 
+> ✅ **Livrées le 2026-08-10** dans `design/maquettes/` — 28 planches `.dc.html`, leur
+> `support.js` et le dossier `brands/` (7 logos). Le sommaire des planches et leur
+> correspondance route par route sont dans `design/maquettes/00-INDEX.md`.
+>
+> Trois écarts avec ce que cette page annonçait, relevés à la réception :
+> **28 planches et non 26** (`Loaders-Splash` et `Vehicules Refonte` s'ajoutent à la
+> liste de `B1-PAGES.md`) · **`Video Depot.dc.html` n'est pas livrée** — elle était
+> notée « support commercial, pas une spec », son absence ne bloque rien ·
+> **le piège n° 1 de l'index est périmé** : il annonce une traduction Manrope → Poppins,
+> or l'application tourne déjà en Manrope. Cf. « Écart 2 » de `REFONTE-TRACKY-V2.md`,
+> tranché à l'étape 0. Il n'y a pas de risque de débordement à mesurer.
+
 Toutes dans le projet de design, à copier dans `design/` du dépôt avant de commencer.
 
 **Bloc A :**

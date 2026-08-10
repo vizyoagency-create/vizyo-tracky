@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13)}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12)}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.pcfrm{display:flex;width:1600px;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--border2);box-shadow:0 44px 84px -34px rgba(0,0,0,.6)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.wrong{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--red) 34%,transparent);background:var(--red-soft);padding:14px}
+.right{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);background:var(--accent-soft);padding:14px}
+.lbl{position:absolute;top:-8px;left:11px;padding:1px 7px;border-radius:6px;font-size:.6rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fld b{font-size:.71rem;font-weight:700;color:var(--tx3)}
+.fin{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);font-size:.84rem}
+.m3fld{position:relative;padding:17px 14px 9px;border-radius:6px 6px 0 0;background:var(--surface2);border-bottom:1px solid var(--border2)}
+.m3fld b{position:absolute;top:6px;left:14px;font-size:.66rem;font-weight:600;color:var(--tx3)}
+.m3fld.on{border-bottom:2px solid var(--accent)}
+.m3fld.on b{color:var(--accent)}
+.stp{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)}
+.stpn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.68rem;font-weight:600;flex-shrink:0}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-chevl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
+<symbol id="ic-chevd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 9 7 7 7-7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-truck" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v11H1z"/><path d="M12 8h4.5l3.5 3.5V16H12z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="16.5" cy="18.5" r="2"/></g></symbol>
+<symbol id="ic-van" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h9.5l4 5H21a1 1 0 0 1 1 1v4h-3"/><path d="M2 7v10h3M9 17h7"/><circle cx="7" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></g></symbol>
+<symbol id="ic-car" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16.5V13l2-5h12l2 5v3.5h-2.5"/><path d="M8.5 16.5h7M4 13h16"/><circle cx="6.5" cy="17" r="1.8"/><circle cx="17.5" cy="17" r="1.8"/></g></symbol>
+<symbol id="ic-user" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16.5 3.1a4 4 0 0 1 0 7.8"/></g></symbol>
+<symbol id="ic-map" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></g></symbol>
+<symbol id="ic-mail" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.4"/><path d="m3 6.5 9 6.5 9-6.5"/></g></symbol>
+<symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10.5" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></g></symbol>
+<symbol id="ic-compass" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="m15.5 8.5-2 5.5-5.5 2 2-5.5z"/></g></symbol>
+<symbol id="ic-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></g></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2"/></g></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></g></symbol>
+<symbol id="ic-skip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4l10 8-10 8z"/><line x1="19" y1="4" x2="19" y2="20"/></g></symbol>
+<symbol id="ic-type" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V4h16v2M12 4v16M8.5 20h7"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · planche ① · F5 + G2</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Assistant de démarrage &amp; shell hors session</h1>
+<p style="margin:8px 0 0;max-width:900px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Les deux premières choses qu'un nouveau client voit : le cadre des pages de connexion, puis l'assistant qui s'ouvre au premier login. Deux défauts trouvés dans la source : l'assistant impose <b style="color:var(--tx)">5 étapes dont 3 de trop</b> — il passe à 2 — et les libellés ont <b style="color:var(--tx)">perdu leurs accents</b>.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>00</i>Les 2 défauts trouvés dans <span class="mono" style="font-weight:600">onboarding-wizard.component.ts</span></div>
+<div class="dash" style="padding:24px 26px;background:var(--bg2);display:grid;grid-template-columns:1fr 1fr;gap:26px">
+
+<div>
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 1 · 5 étapes, dont 3 de trop</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Le type est <span class="mono" style="font-size:.7rem">Step = 1|2|3|4|5</span>, mais les étapes 3 et 4 sont réservées aux administrateurs de flotte. Un gestionnaire fait <b style="color:var(--tx)">1 → 2 → 5</b>.</p>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="padding:11px 13px;border-radius:10px;background:var(--surface);border:1px solid var(--border)">
+<div style="font-size:.72rem;font-weight:800;color:var(--tx3);margin-bottom:7px">Admin de flotte · 5 étapes</div>
+<div style="display:flex;align-items:center;gap:5px">
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">1</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">2</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">3</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">4</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">5</span>
+</div>
+</div>
+<div style="padding:11px 13px;border-radius:10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--red) 30%,transparent)">
+<div style="font-size:.72rem;font-weight:800;color:var(--red);margin-bottom:7px">Gestionnaire ou lecteur · 3 étapes réelles</div>
+<div style="display:flex;align-items:center;gap:5px">
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">1</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">2</span>
+<span style="flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--border2) 0 4px,transparent 4px 8px)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--surface3);color:var(--tx3);font-size:.7rem;font-weight:600;opacity:.4;text-decoration:line-through">3</span>
+<span style="flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--border2) 0 4px,transparent 4px 8px)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--surface3);color:var(--tx3);font-size:.7rem;font-weight:600;opacity:.4;text-decoration:line-through">4</span>
+<span style="flex:1;height:2px;background:repeating-linear-gradient(90deg,var(--border2) 0 4px,transparent 4px 8px)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.7rem;font-weight:600">5</span>
+</div>
+</div>
+</div>
+<p style="margin:11px 0 0;font-size:.75rem;line-height:1.45;color:var(--red);font-weight:700">La barre bondit de 40 % à 100 % au clic — on croit avoir sauté du contenu. Et surtout : <b>on demande à quelqu'un qui découvre l'outil de saisir une plaque et d'inviter un collègue</b> avant même d'avoir vu la carte.</p>
+<div style="margin-top:13px;padding:12px 13px;border-radius:10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.79rem;color:var(--accent)">Décision : 2 étapes pour tout le monde</b></div>
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.75rem;font-weight:600">1</span>
+<span style="flex:1;height:2px;background:var(--accent)"></span>
+<span class="mono" style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--accent);color:var(--accent-ink);font-size:.75rem;font-weight:600">2</span>
+<span style="flex:1;max-width:44px;height:2px;background:repeating-linear-gradient(90deg,var(--border2) 0 4px,transparent 4px 8px)"></span>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;background:var(--surface3);color:var(--tx3);flex-shrink:0"><svg width="15" height="15"><use href="#ic-map"/></svg></span>
+</div>
+<p style="margin:0;font-size:.755rem;line-height:1.48;color:var(--tx2);text-wrap:pretty"><b style="color:var(--tx)">Bienvenue</b>, puis <b style="color:var(--tx)">votre profil</b>, puis la carte. Les étapes véhicule et invitation <b style="color:var(--tx)">disparaissent</b> : elles ont déjà leurs pages dédiées, et un premier véhicule saisi à la main n'a pas de boîtier — donc rien à montrer.</p>
+</div>
+<p style="margin:11px 0 0;font-size:.75rem;line-height:1.45;color:var(--accent);font-weight:700">→ Effet de bord : plus de ramification par rôle, donc <b>plus de compteur faux</b>. Le défaut se résout en supprimant, pas en corrigeant.</p>
+</div>
+</div>
+
+<div>
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Défaut 2 · accents perdus</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Les étapes 1 à 4 sont écrites sans accents, l'étape 5 les a. Le même défaut que dans les e-mails : ça donne un air de logiciel mal traduit.</p>
+<div style="display:flex;flex-direction:column;gap:0">
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border)"><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--red)">Pret a piloter votre flotte ?</span><svg width="12" height="12" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--accent)">Prêt à piloter votre flotte ?</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border)"><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--red)">Votre premier vehicule</span><svg width="12" height="12" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--accent)">Votre premier véhicule</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border)"><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--red)">Inviter un collegue</span><svg width="12" height="12" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--accent)">Inviter un collègue</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border)"><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--red)">personnaliser votre experience</span><svg width="12" height="12" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--accent)">personnaliser votre expérience</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0;border-bottom:1px solid var(--border)"><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--red)">Prenom · Telephone · Modele</span><svg width="12" height="12" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--accent)">Prénom · Téléphone · Modèle</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:8px 0"><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--red)">gere les vehicules / commandes</span><svg width="12" height="12" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg><span class="mono" style="flex:1;min-width:0;font-size:.735rem;color:var(--accent)">gère les véhicules et les ordres</span></div>
+</div>
+</div>
+
+<div style="margin-top:18px;padding:14px 15px;border-radius:13px;background:var(--surface);border:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.82rem">Ce qui est bon et qu'on garde</b></div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">L'assistant est <b style="color:var(--tx)">refermable</b> à tout moment (croix + « Passer »).</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">L'étape profil est <b style="color:var(--tx)">sautée</b> si les champs sont déjà remplis (<span class="mono" style="font-size:.7rem">profileAlreadyFilled</span>).</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">L'écran final <b style="color:var(--tx)">récapitule</b> ce qui a été fait (véhicule, invitation, profil).</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">La bascule de thème est accessible <b style="color:var(--tx)">depuis l'assistant</b> — bon réflexe, à conserver.</span></div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>PC · G2 shell hors session — le cadre des pages de connexion</div>
+<div class="pcfrm" data-screen-label="Shell auth PC">
+<div style="flex:0 0 520px;position:relative;display:flex;flex-direction:column;padding:38px 52px;background:var(--bg);overflow:hidden">
+<div style="position:absolute;inset:0;opacity:.06;pointer-events:none;background-image:radial-gradient(var(--accent) 1px,transparent 1px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 80% 60% at 30% 20%,#000,transparent 75%);mask-image:radial-gradient(ellipse 80% 60% at 30% 20%,#000,transparent 75%)"></div>
+<div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 50% at 100% 100%,color-mix(in srgb,var(--accent) 7%,transparent) 0%,transparent 60%)"></div>
+
+<div style="position:relative;display:flex;align-items:center;gap:11px;margin-bottom:auto">
+<svg width="27" height="27" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:800;font-size:1rem;letter-spacing:-.01em;white-space:nowrap">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</div>
+
+<div style="position:relative;padding:34px 0">
+<div class="kpil" style="margin-bottom:11px">Emplacement du formulaire</div>
+<div class="dash" style="padding:26px;display:flex;flex-direction:column;align-items:center;gap:9px;background:var(--surface2)">
+<svg width="26" height="26" style="color:var(--tx3)"><use href="#ic-lock"/></svg>
+<span class="mono" style="font-size:.74rem;color:var(--tx3)">&lt;router-outlet&gt;</span>
+<span style="font-size:.735rem;color:var(--tx3);text-align:center;text-wrap:pretty">Connexion · Mot de passe oublié · Invitation · Installer</span>
+</div>
+<p class="hint" style="margin-top:14px">Les 4 pages qui vivent dans ce cadre sont déjà refondues — c'est <b style="color:var(--tx2)">le cadre</b> qui manquait.</p>
+</div>
+
+<div style="position:relative;margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<span style="font-size:.735rem;color:var(--tx3)">© 2026 Vizyo · Occitanie</span>
+<div style="display:flex;align-items:center;gap:9px">
+<span style="font-size:.735rem;color:var(--tx3)">Aide</span>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface);border:1px solid var(--border2);color:var(--tx2)"><svg width="15" height="15"><use href="#ic-moon"/></svg></span>
+</div>
+</div>
+</div>
+
+<div style="flex:1;position:relative;min-width:0;background:var(--bg2);overflow:hidden;display:flex;flex-direction:column;justify-content:center;padding:52px 56px">
+<svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.5;pointer-events:none" viewBox="0 0 1080 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+<defs><linearGradient id="rt" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#10E0A0" stop-opacity=".05"/><stop offset=".55" stop-color="#10E0A0" stop-opacity=".5"/><stop offset="1" stop-color="#10E0A0" stop-opacity=".05"/></linearGradient></defs>
+<path d="M-40 610 Q210 520 380 540 T650 420 T900 300 T1120 150" fill="none" stroke="url(#rt)" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M-40 680 Q240 600 420 620 T700 500 T960 380 T1120 240" fill="none" stroke="#10E0A0" stroke-opacity=".12" stroke-width="1.6"/>
+<circle cx="380" cy="540" r="4" fill="#10E0A0" fill-opacity=".55"/>
+<circle cx="650" cy="420" r="4" fill="#10E0A0" fill-opacity=".55"/>
+<circle cx="900" cy="300" r="4" fill="#10E0A0" fill-opacity=".55"/>
+</svg>
+<div style="position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 75% 25%,color-mix(in srgb,var(--accent) 9%,transparent) 0%,transparent 65%);pointer-events:none"></div>
+
+<div style="position:relative;max-width:520px;display:flex;flex-direction:column;height:100%;justify-content:space-between">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:vt-pulse 2s ease-in-out infinite;flex-shrink:0"></span>
+<span class="kpil" style="color:var(--tx2)">Plateforme temps réel</span>
+</div>
+
+<div style="padding:38px 0">
+<h2 style="margin:0;font-size:2.05rem;font-weight:800;letter-spacing:-.04em;line-height:1.16">Vous savez où sont vos véhicules.<br>Et pourquoi ils s'arrêtent.</h2>
+<p style="margin:15px 0 0;font-size:.92rem;line-height:1.6;color:var(--tx2);text-wrap:pretty">Position en direct, lieux reconnus automatiquement, coupure moteur hors horaires — sans surveiller vos salariés en permanence.</p>
+</div>
+
+<div>
+<div style="padding:18px 20px;border-radius:16px;background:color-mix(in srgb,var(--surface) 72%,transparent);border:1px solid var(--border2);backdrop-filter:blur(10px)">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px">
+<span class="kpil">Suivi temps réel</span>
+<span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:.7rem;font-weight:800"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span>En ligne</span>
+</div>
+<div style="display:flex;align-items:baseline;gap:9px;margin-bottom:16px"><span style="font-size:2.1rem;font-weight:800;letter-spacing:-.04em;line-height:1">14</span><span style="font-size:.82rem;font-weight:700;color:var(--tx3)">véhicules actifs</span></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
+<div style="padding:11px 13px 2px;background:transparent"><span style="display:block;font-size:.71rem;color:var(--tx3);margin-bottom:4px">Roulage</span><b style="font-size:1.15rem;font-weight:800;letter-spacing:-.02em;color:var(--accent)">9</b></div>
+<div style="padding:11px 13px 2px;background:transparent"><span style="display:block;font-size:.71rem;color:var(--tx3);margin-bottom:4px">Arrêt</span><b style="font-size:1.15rem;font-weight:800;letter-spacing:-.02em">5</b></div>
+<div style="padding:11px 13px 2px;background:transparent"><span style="display:block;font-size:.71rem;color:var(--tx3);margin-bottom:4px">Alertes</span><b style="font-size:1.15rem;font-weight:800;letter-spacing:-.02em;color:var(--amber)">2</b></div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:16px;margin-top:20px;flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:8px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><span style="font-size:.755rem;font-weight:700;color:var(--tx2)">Hébergé en France</span></div>
+<div style="display:flex;align-items:center;gap:8px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><span style="font-size:.755rem;font-weight:700;color:var(--tx2)">Conforme RGPD</span></div>
+<div style="display:flex;align-items:center;gap:8px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-check"/></svg><span style="font-size:.755rem;font-weight:700;color:var(--tx2)">Support à Toulouse</span></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div style="display:flex;gap:22px;margin-top:14px;flex-wrap:wrap">
+<p class="hint" style="flex:1;min-width:320px;margin:0">Le panneau droit est <b style="color:var(--tx2)">conservé tel quel</b> : grille de points masquée, halo, tracé SVG, la carte « Suivi temps réel » en verre (14 véhicules · 9 / 5 / 2) et la ligne de confiance — tout existe déjà dans <span class="mono" style="font-size:.68rem">auth-layout</span>. Un seul changement : le titre <span class="mono" style="font-size:.68rem">brand-h2</span> passe de « Suivez et sécurisez votre flotte, en temps réel. » à <b style="color:var(--tx2)">« Vous savez où sont vos véhicules. Et pourquoi ils s'arrêtent. »</b> — le premier décrit l'outil, le second ce qu'on y gagne. L'accroche gagne une ligne sur la vie privée.</p>
+<p class="hint" style="flex:1;min-width:320px;margin:0">Sous 1024 px le panneau droit disparaît et le formulaire prend toute la largeur (<span class="mono" style="font-size:.68rem">@media (max-width:1023px)</span> dans la source, zone de sécurité PWA iOS préservée) — c'est la section <a href="#03">03</a> qui le dessine.</p>
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>PC · F5 l'assistant — 2 étapes, identiques pour tous les rôles</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;background:var(--bg2)">
+
+<div data-screen-label="Wizard etape 1">
+<p class="frmlbl"><span class="plat pc">PC</span>Étape 1 · ce que Tracky va faire pour vous</p>
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--border)">
+<svg width="24" height="24" viewBox="0 0 283 290" fill="none" style="flex-shrink:0"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:800">Bienvenue sur Tracky</div><div class="mono" style="font-size:.71rem;color:var(--tx3);margin-top:2px">Étape 1 sur 2</div></div>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="14" height="14"><use href="#ic-moon"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="13" height="13"><use href="#ic-x"/></svg></span>
+</div>
+<div style="height:3px;background:var(--surface3)"><span style="display:block;width:50%;height:100%;background:var(--accent)"></span></div>
+<div style="padding:26px 26px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:54px;height:54px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin-bottom:17px"><svg width="27" height="27"><use href="#ic-compass"/></svg></span>
+<h2 style="margin:0 0 10px;font-size:1.32rem;font-weight:800;letter-spacing:-.028em">Prêt à piloter votre flotte ?</h2>
+<p style="margin:0 0 20px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Une minute, et vous êtes sur la carte. Tout le reste se règle plus tard, quand vous en aurez besoin.</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 18px">
+<div style="display:flex;gap:12px"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="16" height="16"><use href="#ic-map"/></svg></span><div style="min-width:0"><div style="font-size:.85rem;font-weight:700">Voir vos véhicules en direct</div><p class="hint" style="margin:3px 0 0">Position, vitesse, arrêts — rafraîchi en continu.</p></div></div>
+<div style="display:flex;gap:12px"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="16" height="16"><use href="#ic-pin"/></svg></span><div style="min-width:0"><div style="font-size:.85rem;font-weight:700">Reconnaître vos lieux habituels</div><p class="hint" style="margin:3px 0 0">Stations, dépôts, chantiers : détectés puis validés par vous.</p></div></div>
+<div style="display:flex;gap:12px"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="16" height="16"><use href="#ic-clock"/></svg></span><div style="min-width:0"><div style="font-size:.85rem;font-weight:700">Couper le moteur hors horaires</div><p class="hint" style="margin:3px 0 0">Jamais en roulant — la coupure attend l'arrêt.</p></div></div>
+<div style="display:flex;gap:12px"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="16" height="16"><use href="#ic-lock"/></svg></span><div style="min-width:0"><div style="font-size:.85rem;font-weight:700">Protéger la vie privée de vos salariés</div><p class="hint" style="margin:3px 0 0">Hors temps de travail, aucune position n'est enregistrée.</p></div></div>
+</div>
+</div>
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:20px 26px;margin-top:24px;border-top:1px solid var(--border)">
+<button class="btnp" style="height:42px">C'est parti<svg width="14" height="14"><use href="#ic-chev"/></svg></button>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Aujourd'hui cette étape dit « Tracky vous aide à piloter ». Là elle annonce <b style="color:var(--tx2)">4 promesses vérifiables</b> — dont la vie privée, qui rassure le décideur. Et elle promet <b style="color:var(--tx2)">une minute</b>, ce qui est désormais vrai.</p>
+</div>
+
+<div data-screen-label="Wizard etape 2">
+<p class="frmlbl"><span class="plat pc">PC</span>Étape 2 · votre profil — puis la carte, et c'est tout</p>
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5);border-color:color-mix(in srgb,var(--accent) 30%,transparent)">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--border)">
+<svg width="24" height="24" viewBox="0 0 283 290" fill="none" style="flex-shrink:0"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:800">Bienvenue sur Tracky</div><div class="mono" style="font-size:.71rem;color:var(--accent);margin-top:2px">Étape 2 sur 2 · dernière</div></div>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="13" height="13"><use href="#ic-x"/></svg></span>
+</div>
+<div style="height:3px;background:var(--accent)"></div>
+<div style="padding:26px 26px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:54px;height:54px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin-bottom:17px"><svg width="27" height="27"><use href="#ic-user"/></svg></span>
+<h2 style="margin:0 0 10px;font-size:1.32rem;font-weight:800;letter-spacing:-.028em">Votre profil</h2>
+<p style="margin:0 0 18px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Pour que vos collègues sachent qui a validé un lieu ou coupé un moteur.</p>
+<div style="display:flex;flex-direction:column;gap:13px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+<div class="fld"><b>Prénom</b><div class="fin" style="height:42px;border-color:var(--accent)">Amélie</div></div>
+<div class="fld"><b>Nom</b><div class="fin" style="height:42px">Duchamp</div></div>
+</div>
+<div class="fld"><b>Téléphone <span style="color:var(--tx3);font-weight:600">· optionnel, pour les alertes SOS</span></b><div class="fin mono" style="height:42px;font-size:.82rem">06 42 18 77 03</div></div>
+</div>
+</div>
+<div style="padding:20px 26px 0">
+<div class="kpil" style="margin-bottom:11px">Et ensuite, à votre rythme</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="15" height="15"><use href="#ic-clock"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.82rem;font-weight:700">Poser vos horaires de flotte</div><p class="hint" style="margin:1px 0 0">Active la coupure moteur et la protection vie privée.</p></div>
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="15" height="15"><use href="#ic-users"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.82rem;font-weight:700">Informer vos conducteurs</div><p class="hint" style="margin:1px 0 0">Obligatoire avant la mise en service. Modèle fourni.</p></div>
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="15" height="15"><use href="#ic-van"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.82rem;font-weight:700">Ajouter vos véhicules</div><p class="hint" style="margin:1px 0 0">Un par un, ou toute la flotte depuis un fichier.</p></div>
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Trois liens, pas trois étapes. On <b style="color:var(--tx2)">montre</b> ce qui reste à faire sans l'imposer maintenant.</p>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:9px;padding:20px 26px;margin-top:20px;border-top:1px solid var(--border)">
+<button class="btns" style="height:42px"><svg width="14" height="14"><use href="#ic-chevl"/></svg>Retour</button>
+<button class="btnp" style="height:42px">Terminer et ouvrir la carte</button>
+</div>
+</div>
+<div class="wrong" style="margin-top:12px">
+<span class="lbl" style="background:var(--red);color:#fff">Ce qui disparaît</span>
+<div style="display:flex;gap:9px;margin-top:5px;flex-wrap:wrap">
+<span class="chip" style="background:var(--surface);color:var(--red);text-decoration:line-through">Étape 3 · Votre premier véhicule</span>
+<span class="chip" style="background:var(--surface);color:var(--red);text-decoration:line-through">Étape 4 · Inviter un collègue</span>
+<span class="chip" style="background:var(--surface);color:var(--red);text-decoration:line-through">Étape 5 · Récapitulatif</span>
+</div>
+<p style="margin:10px 0 0;font-size:.75rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Les deux premières ont déjà leurs pages dédiées, mieux faites. La troisième récapitulait un parcours devenu trop court pour mériter un résumé. <b style="color:var(--tx)">De 5 écrans à 2</b> — et l'assistant tient sa promesse d'une minute.</p>
+</div>
+</div>
+
+</div>
+</div>
+
+<div id="03">
+<div class="scrlbl"><i>03</i>iPhone 390 × 844 · l'assistant s'ouvre au premier login — donc sur téléphone pour 80 % des clients</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Connexion — le panneau de marque disparaît, le formulaire prend tout</p>
+<div class="mfrm" data-screen-label="Shell auth iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg)">
+<div style="position:absolute;inset:0;opacity:.06;pointer-events:none;background-image:radial-gradient(var(--accent) 1px,transparent 1px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 80% 60% at 30% 20%,#000,transparent 75%);mask-image:radial-gradient(ellipse 80% 60% at 30% 20%,#000,transparent 75%)"></div>
+<div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 50% at 100% 100%,color-mix(in srgb,var(--accent) 7%,transparent) 0%,transparent 60%)"></div>
+
+<div style="position:relative;padding:14px 22px 0;display:flex;align-items:center;justify-content:space-between;gap:12px">
+<div style="display:flex;align-items:center;gap:9px">
+<svg width="23" height="23" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:800;font-size:.92rem;letter-spacing:-.01em;white-space:nowrap">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</div>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface);border:1px solid var(--border2);color:var(--tx2)"><svg width="15" height="15"><use href="#ic-moon"/></svg></span>
+</div>
+
+<div style="position:relative;padding:40px 22px 0">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:13px"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);animation:vt-pulse 2s ease-in-out infinite"></span><span class="kpil" style="color:var(--tx2)">Plateforme temps réel</span></div>
+<h1 style="margin:0;font-size:1.6rem;font-weight:800;letter-spacing:-.038em;line-height:1.16">Vous savez où sont vos véhicules</h1>
+<p style="margin:10px 0 0;font-size:.845rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Connectez-vous pour accéder à votre espace.</p>
+</div>
+
+<div style="position:relative;padding:26px 22px 0;display:flex;flex-direction:column;gap:13px">
+<div class="fld"><b>Adresse e-mail</b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface);border-color:var(--accent)">amelie.duchamp@duchamp.fr</div></div>
+<div class="fld"><b>Mot de passe</b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface);justify-content:space-between"><span class="mono">••••••••••</span><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-lock"/></svg></div></div>
+<div style="display:flex;align-items:center;justify-content:flex-end"><span style="font-size:.79rem;font-weight:600;color:var(--accent)">Mot de passe oublié ?</span></div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 22px 30px;background:color-mix(in srgb,var(--bg) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:800">Se connecter</div>
+<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:13px;flex-wrap:wrap">
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.71rem;font-weight:700;color:var(--tx3)"><svg width="12" height="12" style="color:var(--accent)"><use href="#ic-check"/></svg>France</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.71rem;font-weight:700;color:var(--tx3)"><svg width="12" height="12" style="color:var(--accent)"><use href="#ic-check"/></svg>RGPD</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.71rem;font-weight:700;color:var(--tx3)"><svg width="12" height="12" style="color:var(--accent)"><use href="#ic-check"/></svg>Support à Toulouse</span>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">La grille de points et le halo <b style="color:var(--tx2)">restent</b> — c'est la signature de marque, elle survit à la disparition du panneau droit. La ligne de confiance se replie en trois pastilles au-dessus de la zone de sécurité.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Assistant · étape 1 — plein écran, pas une modale flottante</p>
+<div class="mfrm" data-screen-label="Wizard iPhone e1">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:42</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 14px">
+<div style="min-width:0;flex:1">
+<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">
+<span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+<span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span>
+</div>
+<div class="mono" style="font-size:.7rem;color:var(--tx3)">Étape 1 sur 5</div>
+</div>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;background:var(--surface);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="14" height="14"><use href="#ic-x"/></svg></span>
+</div>
+
+<div style="padding:14px 22px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:58px;height:58px;border-radius:18px;background:var(--accent-soft);color:var(--accent);margin-bottom:18px"><svg width="29" height="29"><use href="#ic-compass"/></svg></span>
+<h1 style="margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.035em;line-height:1.18">Prêt à piloter votre flotte ?</h1>
+<p style="margin:10px 0 0;font-size:.85rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Trois minutes pour tout mettre en route. Vous pourrez tout modifier ensuite.</p>
+</div>
+
+<div style="padding:22px 22px 0;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:12px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-map"/></svg></span><div style="min-width:0"><div style="font-size:.86rem;font-weight:700">Voir vos véhicules en direct</div><p style="margin:3px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Position, vitesse, arrêts — rafraîchi en continu.</p></div></div>
+<div style="display:flex;gap:12px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="17" height="17"><use href="#ic-pin"/></svg></span><div style="min-width:0"><div style="font-size:.86rem;font-weight:700">Reconnaître vos lieux habituels</div><p style="margin:3px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Stations, dépôts, chantiers : détectés puis validés par vous.</p></div></div>
+<div style="display:flex;gap:12px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="17" height="17"><use href="#ic-clock"/></svg></span><div style="min-width:0"><div style="font-size:.86rem;font-weight:700">Couper le moteur hors horaires</div><p style="margin:3px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Jamais en roulant — la coupure attend l'arrêt.</p></div></div>
+<div style="display:flex;gap:12px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-lock"/></svg></span><div style="min-width:0"><div style="font-size:.86rem;font-weight:700">Protéger la vie privée de vos salariés</div><p style="margin:3px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Hors temps de travail, aucune position n'est enregistrée.</p></div></div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:13px 22px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:50px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:800">C'est parti<svg width="16" height="16"><use href="#ic-chev"/></svg></div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Sur téléphone la modale devient <b style="color:var(--tx2)">plein écran</b> — une carte flottante à 390 px ne laisse pas de marge utile. Progression en 5 segments, plus lisible qu'une barre continue.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Assistant · étape 2 — profil, puis la carte</p>
+<div class="mfrm" data-screen-label="Wizard iPhone e2">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:43</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+<div style="display:flex;align-items:center;gap:12px;padding:10px 18px 14px">
+<div style="min-width:0;flex:1">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span></div>
+<div class="mono" style="font-size:.7rem;color:var(--accent)">Étape 2 sur 2 · dernière</div>
+</div>
+<span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:999px;background:var(--surface);border:1px solid var(--border2);color:var(--tx3);flex-shrink:0"><svg width="14" height="14"><use href="#ic-x"/></svg></span>
+</div>
+<div style="padding:8px 22px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:16px;background:var(--accent-soft);color:var(--accent);margin-bottom:16px"><svg width="26" height="26"><use href="#ic-user"/></svg></span>
+<h1 style="margin:0;font-size:1.45rem;font-weight:800;letter-spacing:-.035em;line-height:1.2">Votre profil</h1>
+<p style="margin:10px 0 0;font-size:.84rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Pour que vos collègues sachent qui a validé un lieu ou coupé un moteur.</p>
+</div>
+<div style="padding:24px 22px 0;display:flex;flex-direction:column;gap:12px">
+<div class="fld"><b>Prénom</b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface);border-color:var(--accent)">Amélie</div></div>
+<div class="fld"><b>Nom</b><div class="fin" style="height:48px;border-radius:13px;background:var(--surface)">Duchamp</div></div>
+<div class="fld"><b>Téléphone <span style="color:var(--tx3);font-weight:600">· optionnel, pour les SOS</span></b><div class="fin mono" style="height:48px;border-radius:13px;background:var(--surface);font-size:.88rem">06 42 18 77 03</div></div>
+</div>
+<div style="padding:22px 22px 0">
+<div class="kpil" style="margin-bottom:10px">Et ensuite, à votre rythme</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="15" height="15"><use href="#ic-clock"/></svg></span><span style="flex:1;font-size:.815rem;font-weight:700">Poser vos horaires</span><svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg></div>
+<div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="15" height="15"><use href="#ic-users"/></svg></span><span style="flex:1;font-size:.815rem;font-weight:700">Informer vos conducteurs</span><svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg></div>
+<div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="15" height="15"><use href="#ic-van"/></svg></span><span style="flex:1;font-size:.815rem;font-weight:700">Ajouter vos véhicules</span><svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg></div>
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;padding:13px 22px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;height:50px;border-radius:13px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:800">Terminer et ouvrir la carte</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Les 3 champs sont <b style="color:var(--tx2)">empilés</b> : à 390 px une grille 2 colonnes donne des champs de 160 px, impraticables au pouce. Les 3 suites sont des <b style="color:var(--tx2)">liens, pas des étapes</b>.</p>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>04</i>Android 412 × 915 · champs Material 3, boutons M3, nav système à 3 boutons</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Connexion — champs remplis M3</p>
+<div class="afrm" data-screen-label="Shell auth Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="position:absolute;inset:0;opacity:.06;pointer-events:none;background-image:radial-gradient(var(--accent) 1px,transparent 1px);background-size:24px 24px;-webkit-mask-image:radial-gradient(ellipse 80% 60% at 30% 20%,#000,transparent 75%);mask-image:radial-gradient(ellipse 80% 60% at 30% 20%,#000,transparent 75%)"></div>
+<div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 70% 50% at 100% 100%,color-mix(in srgb,var(--accent) 7%,transparent) 0%,transparent 60%)"></div>
+
+<div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;height:56px;padding:0 16px">
+<div style="display:flex;align-items:center;gap:10px">
+<svg width="24" height="24" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:700;font-size:1.02rem;white-space:nowrap">Vizyo Tracky</span>
+</div>
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-moon"/></svg>
+</div>
+
+<div style="position:relative;padding:34px 16px 0">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:vt-pulse 2s ease-in-out infinite"></span><span class="kpil" style="color:var(--tx2)">Plateforme temps réel</span></div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:600;letter-spacing:-.025em;line-height:1.2">Vous savez où sont vos véhicules</h1>
+<p style="margin:11px 0 0;font-size:.88rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Connectez-vous pour accéder à votre espace.</p>
+</div>
+
+<div style="position:relative;padding:28px 16px 0;display:flex;flex-direction:column;gap:13px">
+<div class="m3fld on" style="padding:19px 14px 11px"><b>Adresse e-mail</b><span style="font-size:.9rem">amelie.duchamp@duchamp.fr</span></div>
+<div class="m3fld" style="padding:19px 14px 11px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px"><b>Mot de passe</b><span class="mono" style="font-size:.9rem">••••••••••</span><svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-lock"/></svg></div>
+<div style="display:flex;justify-content:flex-end"><span style="display:inline-flex;align-items:center;height:40px;padding:0 12px;font-size:.83rem;font-weight:600;color:var(--accent)">Mot de passe oublié ?</span></div>
+</div>
+
+<div style="position:absolute;left:16px;right:16px;bottom:18px">
+<div style="display:flex;align-items:center;justify-content:center;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:700;box-shadow:0 8px 20px -4px rgba(0,0,0,.5)">Se connecter</div>
+<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:15px;flex-wrap:wrap">
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.735rem;font-weight:600;color:var(--tx3)"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-check"/></svg>France</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.735rem;font-weight:600;color:var(--tx3)"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-check"/></svg>RGPD</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.735rem;font-weight:600;color:var(--tx3)"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-check"/></svg>Support à Toulouse</span>
+</div>
+</div>
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">Champs remplis M3 (libellé flottant, soulignement 2 px à la saisie) plutôt que des champs encadrés — la convention Material.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Assistant · étape 1 — bouton étendu M3</p>
+<div class="afrm" data-screen-label="Wizard Android e1">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:43</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-x"/></svg>
+<span style="flex:1;font-size:1.18rem;font-weight:600;letter-spacing:-.01em">Mise en route</span>
+<span class="mono" style="font-size:.79rem;font-weight:600;color:var(--tx3)">1 / 2</span>
+</div>
+<div style="padding:0 16px 4px"><div style="display:flex;align-items:center;gap:8px"><span style="flex:1;height:4px;border-radius:2px;background:var(--accent)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--surface3)"></span></div></div>
+<div style="padding:28px 16px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:58px;height:58px;border-radius:18px;background:var(--accent-soft);color:var(--accent);margin-bottom:18px"><svg width="29" height="29"><use href="#ic-compass"/></svg></span>
+<h1 style="margin:0;font-size:1.6rem;font-weight:600;letter-spacing:-.022em;line-height:1.22">Prêt à piloter votre flotte ?</h1>
+<p style="margin:11px 0 0;font-size:.88rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Une minute, et vous êtes sur la carte. Tout le reste se règle plus tard.</p>
+</div>
+<div style="padding:26px 16px 0"><div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;gap:14px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-map"/></svg></span><div style="min-width:0"><div style="font-size:.9rem;font-weight:600">Voir vos véhicules en direct</div><p style="margin:3px 0 0;font-size:.765rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Position, vitesse, arrêts — rafraîchi en continu.</p></div></div>
+<div style="display:flex;gap:14px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="17" height="17"><use href="#ic-pin"/></svg></span><div style="min-width:0"><div style="font-size:.9rem;font-weight:600">Reconnaître vos lieux habituels</div><p style="margin:3px 0 0;font-size:.765rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Stations, dépôts, chantiers : détectés puis validés par vous.</p></div></div>
+<div style="display:flex;gap:14px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="17" height="17"><use href="#ic-clock"/></svg></span><div style="min-width:0"><div style="font-size:.9rem;font-weight:600">Couper le moteur hors horaires</div><p style="margin:3px 0 0;font-size:.765rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Jamais en roulant — la coupure attend l'arrêt.</p></div></div>
+<div style="display:flex;gap:14px;align-items:flex-start"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-lock"/></svg></span><div style="min-width:0"><div style="font-size:.9rem;font-weight:600">Protéger la vie privée de vos salariés</div><p style="margin:3px 0 0;font-size:.765rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Hors temps de travail, aucune position n'est enregistrée.</p></div></div>
+</div></div>
+<div style="position:absolute;left:16px;right:16px;bottom:18px">
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;height:56px;border-radius:18px;background:var(--accent);color:var(--accent-ink);font-size:.9rem;font-weight:700;box-shadow:0 8px 20px -4px rgba(0,0,0,.5)">C'est parti<svg width="18" height="18"><use href="#ic-chev"/></svg></div>
+</div>
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">La croix est <b style="color:var(--tx2)">à gauche</b> dans la barre d'app : convention Android pour abandonner un flux.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Assistant · étape 2 — champs M3, puis la carte</p>
+<div class="afrm" data-screen-label="Wizard Android e2">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:43</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-chevl"/></svg>
+<span style="flex:1;font-size:1.18rem;font-weight:600;letter-spacing:-.01em">Mise en route</span>
+<span class="mono" style="font-size:.79rem;font-weight:600;color:var(--accent)">2 / 2</span>
+</div>
+<div style="padding:0 16px 4px"><div style="height:4px;border-radius:2px;background:var(--accent)"></div></div>
+<div style="padding:28px 16px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:18px;background:var(--accent-soft);color:var(--accent);margin-bottom:17px"><svg width="28" height="28"><use href="#ic-user"/></svg></span>
+<h1 style="margin:0;font-size:1.58rem;font-weight:600;letter-spacing:-.022em;line-height:1.22">Votre profil</h1>
+<p style="margin:11px 0 0;font-size:.86rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Pour que vos collègues sachent qui a validé un lieu ou coupé un moteur.</p>
+</div>
+<div style="padding:26px 16px 0;display:flex;flex-direction:column;gap:12px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div class="m3fld on" style="padding:19px 14px 11px"><b>Prénom</b><span style="font-size:.9rem">Amélie</span></div>
+<div class="m3fld" style="padding:19px 14px 11px"><b>Nom</b><span style="font-size:.9rem">Duchamp</span></div>
+</div>
+<div class="m3fld" style="padding:19px 14px 11px"><b>Téléphone · optionnel, pour les SOS</b><span class="mono" style="font-size:.9rem">06 42 18 77 03</span></div>
+</div>
+<div style="padding:24px 16px 0">
+<div class="kpil" style="margin-bottom:11px;color:var(--accent)">Et ensuite, à votre rythme</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="16" height="16"><use href="#ic-clock"/></svg></span><span style="flex:1;font-size:.855rem;font-weight:600">Poser vos horaires</span><svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg></div>
+<div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--violet-soft);color:var(--violet);flex-shrink:0"><svg width="16" height="16"><use href="#ic-users"/></svg></span><span style="flex:1;font-size:.855rem;font-weight:600">Informer vos conducteurs</span><svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg></div>
+<div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="16" height="16"><use href="#ic-van"/></svg></span><span style="flex:1;font-size:.855rem;font-weight:600">Ajouter vos véhicules</span><svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg></div>
+</div>
+</div>
+<div style="position:absolute;left:16px;right:16px;bottom:18px;display:flex;justify-content:flex-end;gap:9px">
+<span style="display:inline-flex;align-items:center;height:48px;padding:0 18px;border-radius:24px;color:var(--tx2);font-size:.86rem;font-weight:600">Retour</span>
+<span style="display:inline-flex;align-items:center;height:48px;padding:0 24px;border-radius:24px;background:var(--accent);color:var(--accent-ink);font-size:.86rem;font-weight:700">Terminer</span>
+</div>
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">412 px autorise <b style="color:var(--tx2)">Prénom et Nom côte à côte</b> (2 champs courts). Actions M3 alignées à droite.</p>
+</div></div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>
