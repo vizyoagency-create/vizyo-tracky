@@ -142,7 +142,7 @@ interface DayCell {
       transition: border-color .15s, box-shadow .15s;
     }
     .dtr-field:hover { border-color: var(--tracky-light); }
-    .dtr-field--open { border-color: var(--tracky-light); box-shadow: 0 0 0 3px rgba(16,224,160,.14); }
+    .dtr-field--open { border-color: var(--tracky-light); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tracky-light) 14%, transparent); }
     .dtr-field-ic { color: var(--tracky-light); flex-shrink: 0; }
     .dtr-field-txt { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dtr-field-txt--ph { color: var(--fg-tertiary); font-weight: 500; }

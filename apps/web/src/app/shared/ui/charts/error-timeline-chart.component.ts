@@ -167,6 +167,6 @@ function readColors() {
     fgPrimary: get('--fg-primary', '#F0FDF9'),
     fgSecondary: get('--fg-secondary', '#A7C7BC'),
     fgTertiary: get('--fg-tertiary', '#5C746C'),
-    borderSubtle: get('--border-subtle', 'rgba(16,224,160,0.08)'),
+    borderSubtle: get('--border-subtle', 'color-mix(in srgb, var(--color-tracky-light) 8%, transparent)'),
   };
 }

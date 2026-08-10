@@ -58,7 +58,7 @@ interface HoverInfo {
                 type="button"
                 class="hm-cell"
                 [style.background]="cellColor(count)"
-                [style.--hm-cell-border]="count > 0 ? 'rgba(16,224,160,.20)' : 'transparent'"
+                [style.--hm-cell-border]="count > 0 ? 'color-mix(in srgb, var(--color-tracky-light) 20%, transparent)' : 'transparent'"
                 [attr.aria-label]="ariaLabelCell(dayIdx, hourIdx, count)"
                 (pointerenter)="onCellHover($event, dayIdx, hourIdx, count)"
                 (focus)="onCellHover($event, dayIdx, hourIdx, count)"

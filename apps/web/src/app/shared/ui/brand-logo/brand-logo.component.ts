@@ -2,7 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 import { brandLogoUrl, findBrand } from '../../utils/vehicle-brands';
 
 /**
- * Logo de marque véhicule. Affiche le PNG `public/logos/brands/<slug>.png`
+ * Logo du CONSTRUCTEUR d'un véhicule — Renault, Volvo, Peugeot…
+ *
+ * ⚠️ NE PAS CONFONDRE AVEC `app-logo`, qui affiche le logo de Vizyo Tracky. Le kit
+ * signale les deux comme « deux composants que leur nom fait confondre »
+ * (`Kit Partage Refonte`). Le test qui tranche : si l'image change d'un véhicule à
+ * l'autre, c'est celui-ci ; si elle est la même partout, c'est `app-logo`.
+ *
+ * Affiche le PNG `public/logos/brands/<slug>.png`
  * correspondant au texte de marque (tolérant casse/accents), ou RIEN si la
  * marque est inconnue ou si le fichier n'existe pas (gestion `(error)`).
  *

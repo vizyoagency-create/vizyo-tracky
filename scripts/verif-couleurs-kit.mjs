@@ -38,6 +38,22 @@ const PALETTE = new RegExp(`\\b(?:text|bg|border|from|to|via|ring|fill|stroke|de
 const HEX = /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g;
 
 /**
+ * `rgba()` TEINTÉ — la troisième forme, et celle qui a échappé au premier passage :
+ * `rgba(16, 224, 160, .35)` est le vert de marque écrit autrement. Elle ne ressemble
+ * pas à une couleur en dur parce qu'elle n'a pas de `#`.
+ *
+ * Le noir et le blanc en sont EXCLUS : `rgba(0,0,0,.5)` est un voile, pas une couleur
+ * de marque — il assombrit ce qu'il y a dessous, quel que soit le thème, et c'est
+ * précisément son rôle.
+ */
+const RGBA_TEINTE = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,[^)]*)?\)/g;
+function estTeinte(m) {
+  const [r, v, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const gris = r === v && v === b;
+  return !gris;
+}
+
+/**
  * Exceptions assumées, avec leur raison. Une exception se justifie ; une exception
  * muette redevient une couleur en dur au premier copier-coller.
  */
@@ -81,6 +97,10 @@ for (const f of fichiers) {
     if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return;
     for (const m of [...(ligne.match(PALETTE) ?? []), ...(ligne.match(HEX) ?? [])]) {
       anomalies.push({ rel, l: i + 1, quoi: m, extrait: t.slice(0, 90) });
+    }
+    RGBA_TEINTE.lastIndex = 0;
+    for (const m of ligne.matchAll(RGBA_TEINTE)) {
+      if (estTeinte(m)) anomalies.push({ rel, l: i + 1, quoi: m[0], extrait: t.slice(0, 90) });
     }
   });
 }

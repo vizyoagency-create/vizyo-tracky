@@ -17,11 +17,11 @@
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | 🟢 **livré** | 97 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
-| **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | ⬜ **débloqué**¹ | 0 / 28 |
+| **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
 | **B-pages** | 29 pages refondues × 3 déclinaisons | — | ⬜ **débloqué**¹ | 0 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **447 / 604** |
+| | | | **Total** | **473 / 604** |
 
 ¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
 leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
@@ -1193,7 +1193,11 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 - [x] `alerts-bell` — le SOS garde son fond rouge et sa pulsation, sur jetons
 - [x] `mini-map` — l'état vide DIT pourquoi : « une mini-carte grise sans explication ressemble à un bug de chargement »
 - [x] `trip-note-modal` · `pdf-export-modal` · `plan-upsell` · `push-prompt` · `driver-picker` · `install-banner` · `install-review-badge` · `brand-logo` · `charts` — passe couleurs
-- [ ] `update-required-modal` · `date-range-picker` · `datetime-range` · `super-admin-context` · `logo` · `theme-toggle` — passe de raffinement (règles propres à chacun)
+- [x] `date-range-picker` — **les 4 raccourcis AVANT la grille** (« dans 9 cas sur 10 on veut 7 jours, pas un calendrier ») et **le total de la sélection affiché** (« on évite les *du 1er au 31* involontaires »). La semaine commençait déjà au lundi
+- [x] `theme-toggle` — **libellé dans les réglages, pictogramme seul dans les barres**. Le libellé dit l'ÉTAT (« Thème sombre »), l'action reste dans l'`aria-label`. La pulsation ne subsiste que sur la version barre : dans une liste de réglages, la ligne est déjà libellée
+- [x] `logo` / `brand-logo` — **les deux composants que leur nom fait confondre** portent maintenant le test qui tranche : si l'image change d'un véhicule à l'autre c'est le constructeur, si elle est la même partout c'est la marque Vizyo
+- [x] `datetime-range` · `super-admin-context` · `install-*` · `pdf-export-modal` — passe couleurs (**27 `rgba()` teintés convertis** : `rgba(16,224,160,.35)` est le vert de marque écrit autrement, et il n'a pas de `#` pour se dénoncer)
+- [ ] `update-required-modal` + `push-prompt` + `trip-note-modal` — « trois usages, un seul squelette ». **Reporté à B-pages, volontairement** : les trois surfaces ont des rôles différents (bandeau non bloquant, modale bloquante, saisie de texte) et les fondre est une décision d'écran. Leurs couleurs sont sur jetons ; c'est la géométrie qui reste à unifier
 
 **Les 6 états obligatoires sur chacun** : `chargement` · `rempli` · `vide` · `erreur` ·
 `partiel` · `interdit`. C'est le manque le plus fréquent du code actuel : beaucoup de
@@ -1203,7 +1207,7 @@ composants ne gèrent que « rempli » et « chargement ».
 - [x] Les 5 règles du kit, portées par le kit lui-même : aucune couleur en dur · squelette et non rond · une erreur porte un recours · nommer ce qui est perdu (`pnpm verif:confirmations`) · modale sur PC, feuille sur mobile
 - [x] Un composant démontre ses 6 états — **8 tests sur `app-zone`**, qui valent mieux qu'une page de démonstration : une page se regarde une fois, un test se relance
 - [x] **P1 CORRIGÉ — `pnpm verify` se termine.** Il pendait indéfiniment (`ng test` sans `--watch=false`, 25 min à CPU nul, 29 Chrome vivants). Et sous ce blocage s'en cachait un second : la suite web ne COMPILAIT plus depuis le lot A2 — `platform.spec.ts` utilisait l'API Jest (`it.each`, `jest.fn()`) dans un runner Jasmine. **311 tests web tournent maintenant**, pour la première fois. `pnpm verify` complet : 40 s
-- [ ] **Commit** `refactor(ui): kit partage — les 6 etats sur les 24 composants`
+- [x] **Commits** `refactor(ui): kit partage` ×3 — la confirmation qui nomme ce qui est perdu · les 6 états et le toast en haut · la couleur qui vient du système
 
 ### B-pages — Les 29 pages
 

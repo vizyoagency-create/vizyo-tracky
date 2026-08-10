@@ -24,7 +24,7 @@ import { PlanService } from '../../../core/services/plan.service';
     }
   `,
   styles: [`
-    .pu { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px; border-radius:11px; background:rgba(245,179,61,.08); border:1px solid rgba(245,179,61,.3); font-size:12.5px; color:var(--fg-secondary); }
+    .pu { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px; border-radius:11px; background:color-mix(in srgb, var(--texte-attente) 8%, transparent); border:1px solid color-mix(in srgb, var(--texte-attente) 30%, transparent); font-size:12.5px; color:var(--fg-secondary); }
     .pu-ic { color:var(--texte-attente); flex:none; }
     .pu-t { flex:1 1 260px; line-height:1.5; }
     .pu-t strong { color:var(--texte-attente); }

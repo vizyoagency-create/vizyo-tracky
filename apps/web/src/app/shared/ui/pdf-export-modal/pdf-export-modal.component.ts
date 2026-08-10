@@ -367,8 +367,8 @@ type Scope = 'all' | 'selected';
     }
     .pem-pill:hover { color: var(--fg-primary) }
     .pem-pill--active {
-      background: rgba(16, 224, 160, .12);
-      border-color: rgba(16, 224, 160, .35);
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 35%, transparent);
       color: var(--tracky-light);
     }
     .pem-pill-label { font-weight: 600 }
@@ -381,7 +381,7 @@ type Scope = 'all' | 'selected';
       color: var(--fg-tertiary);
     }
     .pem-pill--active .pem-pill-count {
-      background: rgba(16, 224, 160, .18);
+      background: color-mix(in srgb, var(--color-tracky-light) 18%, transparent);
       color: var(--tracky-light);
     }
 
@@ -402,8 +402,8 @@ type Scope = 'all' | 'selected';
       border-radius: 12px;
     }
     .pem-row--option:has(input:checked) {
-      background: rgba(16, 224, 160, .06);
-      border-color: rgba(16, 224, 160, .25);
+      background: color-mix(in srgb, var(--color-tracky-light) 6%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 25%, transparent);
     }
 
     /* Checkbox custom — touch-friendly */
