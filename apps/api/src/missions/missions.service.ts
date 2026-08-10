@@ -17,6 +17,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /**
  * Espace depot (2026-08) — les missions. Cf. design/A2-MISSIONS.md.
@@ -185,6 +186,7 @@ export class MissionsService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
+    private readonly gateway: RealtimeGateway,
   ) {}
 
   async creer(user: AuthUser, entree: CreerMissionEntree): Promise<ResultatCreation> {
@@ -746,6 +748,10 @@ export class MissionsService {
         data: { status: VehicleEventStatus.CANCELLED },
       });
     });
+
+    // Lot A3 — le depot regarde peut-etre sa carte a cet instant. Le marqueur va
+    // disparaitre : on le lui DIT, plutot que de le laisser conclure a une panne.
+    this.gateway.emitDepotMissionEnded(mission.id, mission.ref);
 
     this.logger.log(`Mission ${mission.ref} annulee par ${user.id} — motif : ${propre}`);
   }

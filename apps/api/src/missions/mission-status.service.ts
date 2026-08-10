@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { MissionStatus, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /**
  * Espace depot (2026-08) — la bascule des statuts de mission. Cf. design/A2-MISSIONS.md § 2.
@@ -38,7 +39,10 @@ export class MissionStatusService {
   /** Verrou anti-chevauchement : un tick lent ne doit pas en croiser un autre. */
   private enCours = false;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: RealtimeGateway,
+  ) {}
 
   @Interval(CADENCE_MS)
   async tick(): Promise<void> {
@@ -135,6 +139,15 @@ export class MissionStatusService {
     for (const m of abandonnees) {
       await this.basculer(m.id, MissionStatus.DONE, {});
       this.logger.log(`Mission ${m.ref} close sans deplacement detecte`);
+      // Lot A3 — la mission se termine PENDANT que le depot regarde sa carte.
+      //
+      // Sans cet avertissement, le marqueur disparait au rafraichissement suivant et
+      // le depot croit avoir perdu le suivi : il appelle. Avec lui, l'interface
+      // retire le marqueur en transition et explique — critere de recette n° 4.
+      //
+      // Emis APRES la bascule, jamais avant : un evenement « terminee » suivi d'une
+      // position serait pire que pas d'evenement du tout.
+      this.gateway.emitDepotMissionEnded(m.id, m.ref);
     }
   }
 

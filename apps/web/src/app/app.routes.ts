@@ -100,7 +100,10 @@ export const routes: Routes = [
         path: 'depot',
         canActivate: [depotRoleGuard],
         loadChildren: () => import('./features/depot/depot.routes').then((m) => m.DEPOT_ROUTES),
-        data: { title: 'Mes missions' },
+        // Lot A3 — le titre est porté par CHAQUE onglet (Carte live · Mes missions ·
+        // Historique · Documents). Le shell lit `route.firstChild`, donc cette entrée :
+        // le laisser à « Mes missions » afficherait ce titre sur les quatre écrans.
+        data: { title: 'Suivi de livraison' },
       },
       {
         path: 'dashboard',

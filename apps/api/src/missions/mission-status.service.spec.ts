@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { MissionStatus, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MissionStatusService, STATUT_EVENEMENT } from './mission-status.service';
 
 /**
@@ -38,7 +39,13 @@ describe('MissionStatusService', () => {
     prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma));
 
     const moduleRef = await Test.createTestingModule({
-      providers: [MissionStatusService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        MissionStatusService,
+        { provide: PrismaService, useValue: prisma },
+        // Lot A3 — la cloture previent les depots par le salon `depot:mission:<id>`.
+        // Un espion suffit : ce qui est teste ici est la BASCULE, pas la diffusion.
+        { provide: RealtimeGateway, useValue: { emitDepotMissionEnded: jest.fn() } },
+      ],
     }).compile();
     service = moduleRef.get(MissionStatusService);
   });

@@ -35,8 +35,15 @@ import { PrismaService } from '../prisma/prisma.service';
 /** Statuts pour lesquels la position LIVE est servie a un depot. */
 const STATUTS_SUIVI_ACTIF: MissionStatus[] = [MissionStatus.IN_PROGRESS, MissionStatus.LATE];
 
+/** Duree de vie de l'index d'aiguillage des salons socket (lot A3). */
+const INDEX_TTL_MS = 15_000;
+
 @Injectable()
 export class DepotScopeService {
+  /** Index d'AIGUILLAGE (`vehicleId` → missions actives), jamais d'autorisation. */
+  private indexCache: Map<string, string[]> | null = null;
+  private indexCacheAt = 0;
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -138,6 +145,66 @@ export class DepotScopeService {
       select: { id: true },
     });
     return missions.map((m) => m.id);
+  }
+
+  /**
+   * Lot A3 — l'index qui permet A LA PASSERELLE de router une position vers les
+   * salons `depot:mission:<id>` concernes : `vehicleId` → missions au suivi actif.
+   *
+   * ┌─ POURQUOI UN INDEX, ET POURQUOI UN CACHE ─────────────────────────────────┐
+   * │ Les positions arrivent par lots, une fois par seconde. Interroger la base a │
+   * │ chaque lot pour savoir si un vehicule est sur une mission ferait une        │
+   * │ requete par seconde et par flotte, pour un resultat qui ne change qu'aux    │
+   * │ bascules de statut — quelques fois par jour.                               │
+   * │                                                                            │
+   * │ Le cache est volontairement COURT (15 s) : au pire, un depot voit un        │
+   * │ marqueur bouger quinze secondes de trop apres la cloture de sa mission.     │
+   * │ ⚠️ Ce n'est PAS le mecanisme d'isolation — c'est un cache d'aiguillage. Le   │
+   * │ verrou reste la revalidation de socket (A1) qui coupe le raccordement des   │
+   * │ qu'une mission entre ou sort de la fenetre, et le refus HTTP qui, lui, relit │
+   * │ toujours la base. Un cache d'aiguillage ne doit jamais devenir un cache      │
+   * │ d'autorisation : c'est pourquoi il ne sert QU'A choisir un salon.           │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  async missionsActivesParVehicule(): Promise<Map<string, string[]>> {
+    const maintenant = Date.now();
+    if (this.indexCache && maintenant - this.indexCacheAt < INDEX_TTL_MS) {
+      return this.indexCache;
+    }
+
+    const now = new Date();
+    const missions = await this.prisma.mission.findMany({
+      where: {
+        // Une mission sans depot destinataire n'a aucun salon : l'exclure ici evite
+        // de construire un index qui contiendrait les missions internes du transporteur.
+        depotUserId: { not: null },
+        startAt: { lte: now },
+        OR: [
+          { status: MissionStatus.IN_PROGRESS, endAt: { gte: now } },
+          { status: MissionStatus.LATE },
+        ],
+      },
+      select: { id: true, vehicleId: true },
+    });
+
+    const index = new Map<string, string[]>();
+    for (const m of missions) {
+      const deja = index.get(m.vehicleId);
+      // Un vehicule peut porter deux missions actives (deux depots sur la meme
+      // tournee) : chacune a son salon, chacune recoit la position.
+      if (deja) deja.push(m.id);
+      else index.set(m.vehicleId, [m.id]);
+    }
+
+    this.indexCache = index;
+    this.indexCacheAt = maintenant;
+    return index;
+  }
+
+  /** Invalide l'index d'aiguillage. Appele aux bascules de statut de mission, pour
+   *  que la fin d'une mission coupe le direct sans attendre l'expiration du cache. */
+  invaliderIndex(): void {
+    this.indexCache = null;
   }
 
   /**

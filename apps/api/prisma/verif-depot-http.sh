@@ -11,14 +11,14 @@
 #    1. docker compose up -d           (postgres + redis)
 #    2. prisma migrate deploy
 #    3. ts-node prisma/seed.ts         (flotte de demonstration)
-#    4. ts-node prisma/seed-depot.ts   (7 camions, 2 depots, 6 missions)
+#    4. ts-node prisma/seed-depot.ts   (7 camions, 3 depots, 12 missions, 6 trajets)
 #    5. pnpm --filter @vizyo/tracky-api dev
 #    6. Generer les deux jetons (les variables VIZYO_AUTH_* viennent du .env) :
 #         ts-node prisma/gen-test-token.ts seed-depot-a > /tmp/tok_a.txt
 #         ts-node prisma/gen-test-token.ts seed-depot-b > /tmp/tok_b.txt
 #
 #  USAGE   bash prisma/verif-depot-http.sh
-#  Attendu : 31 reussites, 0 echec.
+#  Attendu : 44 reussites, 0 echec.
 #
 #  ⚠️ Ne pas lancer PENDANT `pnpm test` : la suite Jest sature le processeur, l'API
 #     repond au-dela du delai, et des echecs FANTOMES apparaissent (constate le
@@ -63,10 +63,17 @@ verif "GET /users/me"                200 "$(code "$A" /users/me)"
 
 echo ""
 echo "═══ CE QU'IL VOIT REELLEMENT ════════════════════════════════"
-N_A=$(corps "$A" /depot/missions | grep -o '"ref"' | wc -l | tr -d ' ')
-N_B=$(corps "$B" /depot/missions | grep -o '"ref"' | wc -l | tr -d ' ')
-verif "le depot A voit 4 missions" 4 "$N_A"
+# Lot A3 — le jeu d'essai porte 4 missions DU JOUR plus 6 missions terminees, sans
+# quoi l'historique et ses KPI ne seraient jamais exerces. On mesure donc ce qui est
+# BORNE (les missions du jour, et l'absence de celles d'autrui), pas un total.
+N_A=$(corps "$A" /depot/live | grep -o '"ref"' | wc -l | tr -d ' ')
+N_B=$(corps "$B" /depot/live | grep -o '"ref"' | wc -l | tr -d ' ')
+verif "le depot A voit 4 missions du jour" 4 "$N_A"
 verif "le depot B voit 1 mission"  1 "$N_B"
+
+# L'encart qui nomme ce qui est absent : 7 camions - 4 sur mes missions = 3.
+AUTRES_A=$(corps "$A" /depot/live | grep -o '"otherVehiclesCount":[0-9]*' | grep -o '[0-9]*$')
+verif "l'encart annonce 3 autres camions" 3 "$AUTRES_A"
 
 echo ""
 echo "═══ AUCUNE FUITE DANS LA REPONSE ════════════════════════════"
@@ -96,6 +103,38 @@ C2=$(code "$A" "/depot/missions/$M_B")
 verif "identifiant inconnu -> 403"        403 "$C1"
 verif "mission d'un autre depot -> 403"   403 "$C2"
 verif "les deux codes sont identiques" "$C1" "$C2"
+
+echo ""
+echo "═══ LOT A3 : LA SURFACE NEUVE EST BORNEE AUSSI ══════════════"
+# Les cinq endpoints ajoutes par A3 ouvrent autant de chemins nouveaux. Chacun doit
+# etre borne comme les trois d'A1 — c'est ce que verifie cette section.
+verif "GET /depot/history"            200 "$(code "$A" /depot/history)"
+verif "GET /depot/documents"          200 "$(code "$A" /depot/documents)"
+
+# Le trajet d'une mission du depot A, vu par le depot B : refus.
+TRIP_A=$(corps "$A" /depot/history | grep -oE '"tripId":"[^"]+' | head -1 | cut -d'"' -f4)
+if [ -n "$TRIP_A" ]; then
+  verif "trajet de A lu par A"          200 "$(code "$A" "/depot/trips/$TRIP_A")"
+  verif "trajet de A lu par B -> 403"   403 "$(code "$B" "/depot/trips/$TRIP_A")"
+else
+  echo " ECHEC aucun trajet dans l'historique de A (jeu d'essai incomplet)"; ko=$((ko+1))
+fi
+
+# Le bon de livraison d'une mission de A, telecharge par B : refus.
+MISSION_DONE=$(corps "$A" /depot/history | grep -oE '"missionId":"[^"]+' | head -1 | cut -d'"' -f4)
+verif "bon de livraison de A par B -> 403" 403 "$(code "$B" "/depot/documents/note:$MISSION_DONE/download")"
+
+# L'historique de B ne contient aucune mission de A.
+if corps "$B" /depot/history | grep -qE 'M-000[1234]|M-001'; then
+  echo " ECHEC une mission du depot A fuit dans l'historique de B"; ko=$((ko+1))
+else echo " OK   l'historique de B ne contient aucune mission de A"; ok=$((ok+1)); fi
+
+# Aucune donnee d'exploitation dans l'historique ni dans les documents.
+for interdit in maxSpeed avgSpeed fuel score cost consumption; do
+  if corps "$A" /depot/history | grep -q "\"$interdit\""; then
+    echo " ECHEC le champ $interdit FUIT dans l'historique"; ko=$((ko+1));
+  else echo " OK   $interdit absent de l'historique"; ok=$((ok+1)); fi
+done
 
 echo ""
 echo "════════════════════════════════════════════════════════════"

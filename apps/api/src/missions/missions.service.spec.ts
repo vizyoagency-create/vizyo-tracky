@@ -10,6 +10,7 @@ import {
 import type { AuthUser } from '../auth/types/auth-user';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MissionsService } from './missions.service';
 
 /**
@@ -92,6 +93,8 @@ describe('MissionsService — creation', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: email },
         { provide: ConfigService, useValue: { get: () => 'https://app.exemple.fr' } },
+        // Lot A3 — l'annulation previent les depots par le salon `depot:mission:<id>`.
+        { provide: RealtimeGateway, useValue: { emitDepotMissionEnded: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(MissionsService);

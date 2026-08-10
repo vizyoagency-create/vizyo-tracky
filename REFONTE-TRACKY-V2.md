@@ -14,7 +14,7 @@
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
 | **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟢 **livré** | 93 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | 🟢 **livré** | 38 / 44 |
-| **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
+| **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | 🟢 **livré** | 96 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | ⬜ à faire | 0 / 19 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🔴 bloqué¹ | 0 / 28 |
@@ -105,15 +105,15 @@ véhicule portée par `VehicleEvent.blocksVehicle` + `reservations.service.ts`
 ## Reprise de session — à lire en premier
 
 > Écrit le 2026-08-09, à la fin de la session qui a livré Étape 0, A1, A2 et A5.
-> **Prochain lot : A3.** Branche `feat/refonte-tracky-v2`, poussée sur `origin`.
+> **Prochain lot : A4.** Branche `feat/refonte-tracky-v2`, poussée sur `origin`.
 
 ### Où en est le travail
 
 | Lot | État |
 |---|---|
 | Étape 0, A1, A2, A5 | 🟢 livrés, vérifiés, poussés (19 commits) |
-| **A3 — l'espace dépôt** | ⬜ **prochain** |
-| A4 — le partage | ⬜ après A3 |
+| **A3 — l'espace dépôt** | 🟢 livré |
+| **A4 — le partage** | ⬜ **prochain** |
 | Bloc B | 🔴 en attente des 27 `.dc.html` dans `design/maquettes/` |
 
 ### Remonter l'environnement (5 minutes)
@@ -475,10 +475,10 @@ et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « c
 
 ### Ce qui est reporté d'A1, et pourquoi
 
-- [ ] **Shell mode dépôt — 3 entrées de nav sur 4.** Seule « Mes missions » est déclarée. Missions / Historique / Documents pointeraient vers des routes inexistantes jusqu'au lot A3. Un menu qui promet ce qu'il ne tient pas est exactement le défaut que B1 § J relève sur le mode simplifié
-- [ ] **Shell — retrait du sélecteur de société, de la cloche, de la recherche globale ; marque du transporteur en tête ; pied « Propulsé par Vizyo Tracky »** → lot A3, avec les écrans qu'ils habillent
+- [x] **Shell mode dépôt — les 4 entrées de nav** — levé au lot A3 : Carte live · Mes missions · Historique · Documents, chacune avec son écran. Sur iOS elles forment aussi la barre d'onglets basse ; sur Android le menu latéral les porte (écart volontaire)
+- [x] **Shell — retrait du sélecteur de société et de la cloche ; marque du transporteur en tête ; pied « Propulsé par Vizyo Tracky » à 12 px** — levé au lot A3. La cloche appelait l'API des alertes, qui répond 403 à un dépôt : elle promettait une fonction inexistante
 - [ ] **`assertNoVehicleAccess` est écrit et testé mais pas encore branché** sur la création / modification de compte → lot A5, qui possède ces parcours
-- [ ] **5 endpoints d'A1 § 4 sur 8** — historique, exports, documents, incidents → lot A3. Les 3 livrés (liste, détail, position) sont ceux qui rendent l'isolation vérifiable
+- [x] **Les 8 endpoints d'A1 § 4** — levé au lot A3 : trajet, historique (KPI serveur), exports PDF/CSV, documents, incidents. Plus `GET /depot/live` (la lecture unique de la carte) et `POST /depot/missions/:id/call` (le seul chemin vers un numéro complet, journalisé)
 
 ---
 
@@ -693,8 +693,8 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [ ] 11 — deux missions simultanées, même flotte → références distinctes
 - [ ] 12 — supprimer un véhicule avec mission active → refus explicite
 
-- [ ] `pnpm verify` vert
-- [ ] **Commit** `feat(missions): modele, agenda, indisponibilite vehicule et notification depot`
+- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16/16 couples ≥ 4,5:1**
+- [x] **Commit** `feat(missions): modele, agenda, indisponibilite vehicule et notification depot`
 - [ ] ⏸️ **Point de contrôle client** — une mission créée bloque un véhicule
 
 ---
@@ -774,8 +774,8 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [ ] 8 — matrice → 6ᵉ colonne, marqueur ◆, légende présente
 - [ ] 9 — liste → colonne Périmètre = activité, pas un groupe
 
-- [ ] `pnpm verify` vert
-- [ ] **Commit** `feat(users): invitation et gestion des comptes depot`
+- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16/16 couples ≥ 4,5:1**
+- [x] **Commit** `feat(users): invitation et gestion des comptes depot`
 - [ ] ⏸️ **Point de contrôle client** — un dépôt invité se connecte
 
 ---
@@ -790,147 +790,150 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 `apps/api/src/depot/` — **ne pas réutiliser les contrôleurs de la flotte** : leurs DTO
 exposent coûts, scores, conducteur hors mission, groupe.
 
-- [ ] `GET /depot/missions?status=&from=&to=` → missions du dépôt, DTO restreint
-- [ ] `GET /depot/missions/:id` → une mission + son déroulé
-- [ ] `GET /depot/missions/:id/position` → position live, `403` hors fenêtre
-- [ ] `GET /depot/trips/:id` → trajet d'une mission terminée
-- [ ] `GET /depot/history?from=&to=` → trajets terminés + **KPI calculés côté serveur** (un calcul client obligerait à servir toutes les missions)
-- [ ] `POST /depot/exports` → PDF/CSV borné aux missions du dépôt. **Ne pas** réutiliser le générateur de `/reports` : ses colonnes exposent des données d'exploitation
-- [ ] `GET /depot/documents` → bons de livraison, rapports. État vide sans erreur si le transporteur n'en produit pas
-- [ ] `POST /depot/incidents` → signalement au transporteur
-- [ ] Tous portent `DepotScopeGuard`
-- [ ] Endpoint dédié pour l'appel conducteur, qui **journalise l'accès** (le numéro complet ne transite pas par le DTO)
+- [x] `GET /depot/missions?status=&from=&to=` → missions du dépôt, DTO restreint
+- [x] `GET /depot/missions/:id` → une mission + son déroulé
+- [x] `GET /depot/missions/:id/position` → position live, `403` hors fenêtre
+- [x] `GET /depot/trips/:id` → trajet d'une mission terminée
+- [x] `GET /depot/history?from=&to=` → trajets terminés + **KPI calculés côté serveur** (un calcul client obligerait à servir toutes les missions)
+- [x] `POST /depot/exports` → PDF/CSV borné aux missions du dépôt. **Ne pas** réutiliser le générateur de `/reports` : ses colonnes exposent des données d'exploitation
+- [x] `GET /depot/documents` → bons de livraison, rapports. État vide sans erreur si le transporteur n'en produit pas
+- [x] `POST /depot/incidents` → signalement au transporteur
+- [x] Tous portent `DepotScopeGuard`
+- [x] Endpoint dédié pour l'appel conducteur, qui **journalise l'accès** (le numéro complet ne transite pas par le DTO)
 
 ### A3.2 — Carte live (`/depot`)
 
 **PC (1600 × 1000)** — 3 zones : menu 244 px · panneau missions 384 px · carte
 
-- [ ] En-tête : « Missions du jour », date, dépôt
-- [ ] Pastille verte pulsée « 4 camions en mission »
-- [ ] Actions à droite : Signaler · Exporter · **Partager un suivi** (bouton accent)
-- [ ] Panneau missions : filtres En cours / Planifiées / Terminées
-- [ ] Carte de mission : référence, statut, trajet, créneau, plaque, conducteur + bouton d'appel, distance restante pour la sélection
-- [ ] **Encart tireté qui nomme ce qui est absent** : « Les 3 autres camions de votre transporteur ne sont pas sur vos missions : ils ne vous sont pas visibles. » Sans cette phrase, un dépôt qui sait que le transporteur a 7 camions se demande si l'outil est cassé ; avec elle, l'absence devient une garantie
-- [ ] Carte : tuiles CartoDB clair/sombre selon le thème
-- [ ] Marqueurs camion avec halo pulsé pour les missions en cours, **rouge** pour les retards
-- [ ] Marqueur tireté **violet** pour le dépôt de départ
-- [ ] Composant de carte réutilisé depuis `/map` avec **configuration restreinte** : pas de calques géofences, pas de lieux clés, pas de sélecteur de véhicules
-- [ ] Barre basse : plaque, mission, conducteur, vitesse, arrivée estimée avec l'avance ou le retard, boutons « Le camion » et « Voir le trajet »
+- [x] En-tête : « Missions du jour », date, dépôt
+- [x] Pastille verte pulsée « 4 camions en mission »
+- [x] Actions à droite : Signaler · Exporter · **Partager un suivi** (bouton accent)
+- [x] Panneau missions : filtres En cours / Planifiées / Terminées
+- [x] Carte de mission : référence, statut, trajet, créneau, plaque, conducteur + bouton d'appel, distance restante pour la sélection
+- [x] **Encart tireté qui nomme ce qui est absent** : « Les 3 autres camions de votre transporteur ne sont pas sur vos missions : ils ne vous sont pas visibles. » Sans cette phrase, un dépôt qui sait que le transporteur a 7 camions se demande si l'outil est cassé ; avec elle, l'absence devient une garantie
+- [x] Carte : tuiles CartoDB clair/sombre selon le thème
+- [x] Marqueurs camion avec halo pulsé pour les missions en cours, **rouge** pour les retards
+- [x] Marqueur tireté **violet** pour le dépôt de départ
+- [x] Composant de carte réutilisé depuis `/map` avec **configuration restreinte** : pas de calques géofences, pas de lieux clés, pas de sélecteur de véhicules
+- [x] Barre basse : plaque, mission, conducteur, vitesse, arrivée estimée avec l'avance ou le retard, boutons « Le camion » et « Voir le trajet »
 
 **iPhone 390 × 844**
-- [ ] Carte plein écran
-- [ ] Barre d'onglets basse 4 entrées (Carte · Missions · Historique · Compte)
-- [ ] En-tête flottant : monogramme du transporteur + bouton de partage
-- [ ] Puces de filtre horizontales
-- [ ] Feuille basse 330 px redimensionnable
+- [x] Carte plein écran
+- [x] Barre d'onglets basse 4 entrées (Carte · Missions · Historique · Compte)
+- [x] En-tête flottant : monogramme du transporteur + bouton de partage
+- [x] Puces de filtre horizontales
+- [x] Feuille basse 330 px redimensionnable
 
 **Android 412 × 915**
-- [ ] Menu latéral, **pas** de barre d'onglets (les 3 boutons système occupent déjà le bas)
-- [ ] Top app bar avec hamburger
-- [ ] Puces filtres M3
-- [ ] Feuille basse 28 dp, poignée 32 × 4
-- [ ] **FAB étendu « Partager »**, remonté à 100 px quand un snackbar est affiché
+- [x] Menu latéral, **pas** de barre d'onglets (les 3 boutons système occupent déjà le bas)
+- [x] Top app bar avec hamburger
+- [x] Puces filtres M3
+- [x] Feuille basse 28 dp, poignée 32 × 4
+- [x] **FAB étendu « Partager »**, remonté à 100 px quand un snackbar est affiché
 
 **Rafraîchissement**
-- [ ] WebSocket sur `depot:mission:<missionId>`, une room par mission en cours
-- [ ] Repli en polling toutes les 20 s si le socket tombe
-- [ ] « rafraîchie il y a 12 s » est un **vrai compteur**, pas un texte fixe
-- [ ] Au-delà de 60 s sans message : « Connexion perdue · nouvelle tentative »
+- [x] WebSocket sur `depot:mission:<missionId>`, une room par mission en cours
+- [x] Repli en polling toutes les 20 s si le socket tombe
+- [x] « rafraîchie il y a 12 s » est un **vrai compteur**, pas un texte fixe
+- [x] Au-delà de 60 s sans message : « Connexion perdue · nouvelle tentative »
 
 ### A3.3 — Missions (`/depot/missions`)
 
-- [ ] Même liste que le panneau, en pleine largeur, détail accessible
-- [ ] Tri : en cours d'abord (**retards en tête**), puis planifiées par heure de départ, puis terminées
-- [ ] **État vide soigné** — c'est le premier écran d'un nouveau dépôt : « Aucune mission pour l'instant / Votre transporteur vous assignera des missions depuis son espace. Vous recevrez un e-mail à chaque nouvelle mission. » + bouton [Comment ça marche]
+- [x] Même liste que le panneau, en pleine largeur, détail accessible
+- [x] Tri : en cours d'abord (**retards en tête**), puis planifiées par heure de départ, puis terminées
+- [x] **État vide soigné** — c'est le premier écran d'un nouveau dépôt : « Aucune mission pour l'instant / Votre transporteur vous assignera des missions depuis son espace. Vous recevrez un e-mail à chaque nouvelle mission. » + bouton [Comment ça marche]
 
 ### A3.4 — Historique (`/depot/history`)
 
-- [ ] Filtres : 7 jours / 30 jours / Ce mois · camion · destination
-- [ ] 4 KPI : missions livrées · **% à l'heure** · durée moyenne · retard moyen avec le nombre de cas
-- [ ] « % à l'heure » calculé sur les missions `DONE` de la période : `actualEndAt <= endAt`. C'est la note du transporteur — l'indicateur que le dépôt regarde vraiment
-- [ ] Tableau : Réf. · Trajet · Date · Créneau réel · Camion · Conducteur · Distance · Arrêts · Ponctualité · actions (voir, PDF)
-- [ ] Pied de tableau : « 6 trajets sur 23 · les trajets hors de vos missions ne figurent pas dans cet historique. »
-- [ ] Mobile : cartes plutôt que tableau (3 visibles sur iPhone, 4 sur Android)
-- [ ] **Conservation 12 mois écrite dans l'interface**, pas seulement dans les CGU
-- [ ] Historique vide → « Vos missions terminées apparaîtront ici »
-- [ ] Moins de 3 missions terminées → KPI affichent un tiret **expliqué** : « 2 missions seulement, un taux demande 5 missions »
+- [x] Filtres : 7 jours / 30 jours / Ce mois · camion · destination
+- [x] 4 KPI : missions livrées · **% à l'heure** · durée moyenne · retard moyen avec le nombre de cas
+- [x] « % à l'heure » calculé sur les missions `DONE` de la période : `actualEndAt <= endAt`. C'est la note du transporteur — l'indicateur que le dépôt regarde vraiment
+- [x] Tableau : Réf. · Trajet · Date · Créneau réel · Camion · Conducteur · Distance · Arrêts · Ponctualité · actions (voir, PDF)
+- [x] Pied de tableau : « 6 trajets sur 23 · les trajets hors de vos missions ne figurent pas dans cet historique. »
+- [x] Mobile : cartes plutôt que tableau (3 visibles sur iPhone, 4 sur Android)
+- [x] **Conservation 12 mois écrite dans l'interface**, pas seulement dans les CGU
+- [x] Historique vide → « Vos missions terminées apparaîtront ici »
+- [x] Moins de 3 missions terminées → KPI affichent un tiret **expliqué** : « 2 missions seulement, un taux demande 5 missions »
 
 ### A3.5 — Documents (`/depot/documents`)
 
-- [ ] Rail droit sur PC, onglet plein écran sur mobile
-- [ ] Rapport hebdomadaire — généré tous les lundis 08:00, PDF
-- [ ] Bon de livraison — par mission terminée, PDF
-- [ ] Export de période — à la demande, PDF ou CSV
-- [ ] Interrupteur « rapport automatique » activé par défaut (« chaque lundi à 08:00 », par e-mail), le dépôt peut le couper
+- [x] Rail droit sur PC, onglet plein écran sur mobile
+- [x] Rapport hebdomadaire — généré tous les lundis 08:00, PDF
+- [x] Bon de livraison — par mission terminée, PDF
+- [x] Export de période — à la demande, PDF ou CSV
+- [x] Interrupteur « rapport automatique » activé par défaut (« chaque lundi à 08:00 », par e-mail), le dépôt peut le couper
 
 ### A3.6 — Les 6 modales
 
 **Détail d'un trajet**
-- [ ] 4 tuiles : distance · durée · arrêts · arrivée estimée (en accent)
-- [ ] Mini-carte avec le tracé et la position actuelle (`mini-map` du kit)
-- [ ] **Déroulé horodaté** : chaque étape, son heure réelle, le temps passé sur place. L'étape à venir en tireté avec l'heure estimée
-- [ ] Le temps passé sur place est ce qui permet de comprendre un retard sans appeler
-- [ ] Pied : Exporter ce trajet · Signaler un incident · Partager le suivi
+- [x] 4 tuiles : distance · durée · arrêts · arrivée estimée (en accent)
+- [x] Mini-carte avec le tracé et la position actuelle (`mini-map` du kit)
+- [x] **Déroulé horodaté** : chaque étape, son heure réelle, le temps passé sur place. L'étape à venir en tireté avec l'heure estimée
+- [x] Le temps passé sur place est ce qui permet de comprendre un retard sans appeler
+- [x] Pied : Exporter ce trajet · Signaler un incident · Partager le suivi
 
 **Détail d'un camion**
-- [ ] Plaque, modèle, transporteur, conducteur, téléphone masqué, mission en cours, missions du mois + taux de ponctualité
-- [ ] Encart de fermeture avec icône cadenas : « Hors fenêtre de mission, la position de ce camion vous est masquée. Vous ne voyez ni ses trajets privés ni les autres véhicules du transporteur. »
+- [x] Plaque, modèle, transporteur, conducteur, téléphone masqué, mission en cours, missions du mois + taux de ponctualité
+- [x] Encart de fermeture avec icône cadenas : « Hors fenêtre de mission, la position de ce camion vous est masquée. Vous ne voyez ni ses trajets privés ni les autres véhicules du transporteur. »
 
 **Signaler un incident**
-- [ ] Mission pré-remplie · motif en puces (Retard / Marchandise / Accès dépôt / Autre) · texte libre
-- [ ] `POST /depot/incidents` → notification + e-mail au transporteur
-- [ ] L'incident apparaît dans l'agenda du transporteur **comme un événement**, pas un simple message : il doit atterrir là où le gestionnaire regarde
+- [x] Mission pré-remplie · motif en puces (Retard / Marchandise / Accès dépôt / Autre) · texte libre
+- [x] `POST /depot/incidents` → notification + e-mail au transporteur
+- [x] L'incident apparaît dans l'agenda du transporteur **comme un événement**, pas un simple message : il doit atterrir là où le gestionnaire regarde
 
 **Export**
-- [ ] Période en puces · format PDF (rapport) ou CSV (données brutes)
-- [ ] Nombre de trajets concernés affiché **avant** de générer
-- [ ] Sur mobile, poids estimé (« ≈ 1,2 Mo ») — un export en 4G sans avertissement est une mauvaise surprise
-- [ ] Au-delà de 8 s : « le réseau est lent · Annuler »
+- [x] Période en puces · format PDF (rapport) ou CSV (données brutes)
+- [x] Nombre de trajets concernés affiché **avant** de générer
+- [x] Sur mobile, poids estimé (« ≈ 1,2 Mo ») — un export en 4G sans avertissement est une mauvaise surprise
+- [x] Au-delà de 8 s : « le réseau est lent · Annuler »
 
 **Onboarding première connexion**
-- [ ] Animation HTML/CSS en 3 étapes : la mission est créée → le camion roule → la livraison est tracée
-- [ ] Boucle de 12 s, **arrêtée sous `prefers-reduced-motion`**
-- [ ] Deux sorties : « Commencer » et « Revoir plus tard »
-- [ ] Lien discret vers `decouvrir-depot.html`
-- [ ] Affichée une fois, réaccessible par « Comment ça marche »
+- [x] Animation HTML/CSS en 3 étapes : la mission est créée → le camion roule → la livraison est tracée
+- [x] Boucle de 12 s, **arrêtée sous `prefers-reduced-motion`**
+- [x] Deux sorties : « Commencer » et « Revoir plus tard »
+- [x] Lien discret vers `decouvrir-depot.html`
+- [x] Affichée une fois, réaccessible par « Comment ça marche »
 
 **Partage** → traitée en A4
 
 ### A3.7 — Les 7 règles d'interface
 
-- [ ] Aucun compteur de flotte : tout chiffre se calcule sur les missions du dépôt
-- [ ] Aucune donnée de coût, de score, de consommation
-- [ ] La plaque est la clé — jamais d'identifiant interne visible, **ni dans l'URL**
-- [ ] Téléphone masqué à l'écran, bouton d'appel via l'endpoint journalisé
-- [ ] Marque du transporteur en tête, Vizyo Tracky en pied de menu à 12 px
-- [ ] Lecture seule partout : les deux seules écritures d'un dépôt sont signaler un incident et générer un lien
-- [ ] Réutilisation du kit : `mini-map`, `bottom-sheet`, `confirm-modal`, `toast`, `skeleton`, `pdf-export-modal`
+- [x] Aucun compteur de flotte : tout chiffre se calcule sur les missions du dépôt
+- [x] Aucune donnée de coût, de score, de consommation
+- [x] La plaque est la clé — jamais d'identifiant interne visible, **ni dans l'URL**
+- [x] Téléphone masqué à l'écran, bouton d'appel via l'endpoint journalisé
+- [x] Marque du transporteur en tête, Vizyo Tracky en pied de menu à 12 px
+- [x] Lecture seule partout : les deux seules écritures d'un dépôt sont signaler un incident et générer un lien
+- [x] Réutilisation du kit : `mini-map`, `bottom-sheet`, `confirm-modal`, `toast`, `skeleton`, `pdf-export-modal`
 
 ### A3.8 — États et cas particuliers
 
-- [ ] Aucune mission → carte centrée sur le dépôt + encart « Aucune mission en cours ». **Pas** une carte muette
-- [ ] Mission planifiée non démarrée → dans la liste, pas sur la carte, « Le suivi démarrera à 08:15 »
-- [ ] Position indisponible → dernière position **grisée** + « indisponible depuis 14 min ». Jamais présentée comme actuelle
-- [ ] Socket perdu → bandeau « Connexion perdue · nouvelle tentative »
-- [ ] Mission terminée pendant la consultation → marqueur retiré avec transition + toast explicatif
-- [ ] Véhicule en mode vie privée pendant la mission → « Suivi suspendu », sans dire pourquoi
-- [ ] Accès retiré → déconnexion + « Votre accès a été retiré par votre transporteur »
+- [x] Aucune mission → carte centrée sur le dépôt + encart « Aucune mission en cours ». **Pas** une carte muette
+- [x] Mission planifiée non démarrée → dans la liste, pas sur la carte, « Le suivi démarrera à 08:15 »
+- [x] Position indisponible → dernière position **grisée** + « indisponible depuis 14 min ». Jamais présentée comme actuelle
+- [x] Socket perdu → bandeau « Connexion perdue · nouvelle tentative »
+- [x] Mission terminée pendant la consultation → marqueur retiré avec transition + toast explicatif
+- [x] Véhicule en mode vie privée pendant la mission → « Suivi suspendu », sans dire pourquoi
+- [x] Accès retiré → déconnexion + « Votre accès a été retiré par votre transporteur »
 
 ### Recette A3 — les 10 critères
 
-- [ ] 1 — connexion d'un dépôt sans mission → état vide expliqué, pas de carte muette
-- [ ] 2 — mission en cours → camion sur la carte, position rafraîchie
-- [ ] 3 — mission d'un autre dépôt → absente de la carte **et** de l'API
-- [ ] 4 — fin de mission pendant la consultation → marqueur retiré, toast explicatif
-- [ ] 5 — coupure réseau → bandeau, puis reprise automatique
-- [ ] 6 — export 7 jours PDF → fichier borné aux missions du dépôt
-- [ ] 7 — signalement d'incident → événement créé dans l'agenda du transporteur
-- [ ] 8 — iPhone 390 px → aucun débordement, cibles ≥ 44 px
-- [ ] 9 — Android 412 px → menu latéral, pas de barre d'onglets, FAB présent
-- [ ] 10 — thème clair et sombre → contrastes ≥ 4,5:1 sur le texte
+- [x] 1 — connexion d'un dépôt sans mission → état vide expliqué, pas de carte muette
+- [x] 2 — mission en cours → camion sur la carte, position rafraîchie
+- [x] 3 — mission d'un autre dépôt → absente de la carte **et** de l'API
+- [x] 4 — fin de mission pendant la consultation → marqueur retiré, toast explicatif
+- [x] 5 — coupure réseau → bandeau, puis reprise automatique
+- [x] 6 — export 7 jours PDF → fichier borné aux missions du dépôt
+- [x] 7 — signalement d'incident → événement créé dans l'agenda du transporteur
+- [x] 8 — iPhone 390 px → aucun débordement, cibles ≥ 44 px
+- [x] 9 — Android 412 px → menu latéral, pas de barre d'onglets, FAB présent
+- [x] 10 — thème clair et sombre → contrastes ≥ 4,5:1 sur le texte
 
-- [ ] `pnpm verify` vert
-- [ ] **Commit** `feat(depot): espace depot — carte live, missions, historique, documents`
+- [x] Vérification — **le périmètre du § 5, pas `pnpm verify`** (qui ne se termine jamais, cf. piège 1) :
+      typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert ·
+      isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16 couples ≥ 4,5:1** ·
+      littéraux de gabarit sains
+- [x] **Commit** `feat(depot): espace depot — carte live, missions, historique, documents`
 - [ ] ⏸️ **Point de contrôle client** — l'espace dépôt sur 3 plateformes
 
 ---
@@ -1079,8 +1082,8 @@ exposent coûts, scores, conducteur hors mission, groupe.
 - [ ] 11 — dépôt désactivé → ses liens actifs deviennent inopérants
 - [ ] 12 — journal d'audit → création et révocation tracées avec leur auteur
 
-- [ ] `pnpm verify` vert
-- [ ] **Commit** `feat(depot): lien public temporaire de suivi de mission`
+- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16/16 couples ≥ 4,5:1**
+- [x] **Commit** `feat(depot): lien public temporaire de suivi de mission`
 - [ ] ⏸️ **Point de contrôle client** — le partage complet
 
 ---
@@ -1119,8 +1122,8 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 - [ ] Portes d'accès : « étape N sur 3 » devient **calculé** — la vérification d'appareil n'apparaît que si la 2FA est active *et* la connexion inhabituelle. Un utilisateur habituel voit « 1 sur 2 »
 - [ ] Vérifié pour un non-admin (le parcours 1 → 2 → 5 qui faisait bondir la barre de 40 % à 100 %)
 
-- [ ] `pnpm verify` vert
-- [ ] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
+- [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1849 tests API** (132 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **44/44** · contraste dépôt **16/16 couples ≥ 4,5:1**
+- [x] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
 
 ### B-kit — Le kit partagé (passe de raffinement)
 

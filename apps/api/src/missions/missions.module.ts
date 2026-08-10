@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { MissionStatusService } from './mission-status.service';
 import { MissionsController } from './missions.controller';
 import { MissionsService } from './missions.service';
@@ -10,9 +11,12 @@ import { MissionsService } from './missions.service';
  * `AuthModule` est importe explicitement : le controleur emploie `JwtAuthGuard`. Un
  * `imports:` manquant ne se voit ni au typecheck ni aux tests unitaires — c'est la
  * panne du 22/07/2026 que le smoke-boot attrape.
+ *
+ * `RealtimeModule` (lot A3) : la cloture d'une mission doit couper le direct du depot
+ * AVEC une explication. Sans elle, un camion disparait de sa carte sans un mot.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, RealtimeModule],
   controllers: [MissionsController],
   providers: [MissionsService, MissionStatusService],
   exports: [MissionsService],

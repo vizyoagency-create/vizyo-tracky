@@ -692,6 +692,18 @@ export class RealtimeService {
    * les valeurs hydratees (meme cle = trackerId).
    */
   private async hydrate(): Promise<void> {
+    // ⚠️ Espace dépôt (2026-08), lot A3 — un DEPOT n'a pas `vehicles_view` : ce
+    // `GET /api/vehicles/snapshot` lui répond 403, et l'intercepteur global en fait
+    // un bandeau rouge « Action impossible » à CHAQUE chargement de sa carte.
+    //
+    // Le refus est correct — c'est l'appel qui ne l'est pas. Deux dégâts : le dépôt
+    // croit l'outil cassé, et surtout le journal se remplit de 403 LÉGITIMES, ceux-là
+    // mêmes par lesquels on vérifie l'isolation. On ne noie pas le signal qui sert à
+    // prouver la propriété qu'on tient à prouver.
+    //
+    // Le dépôt a son propre canal : `DepotLiveStore` lit `/depot/live` et rejoint les
+    // salons `depot:mission:<id>`.
+    if (this.auth.isDepot()) return;
     try {
       // Sprint 3 (revue C1) — capture de l'état coupe AVANT le fetch snapshot. Le snapshot
       // peut être antérieur à un event WS arrivé pendant le round-trip ; on ré-appliquera
@@ -769,6 +781,9 @@ export class RealtimeService {
   }
 
   private async loadInitialAlerts(): Promise<void> {
+    // Même raison que `hydrate()` : un DEPOT n'a pas `alerts_view`. Les alertes sont
+    // l'outil du transporteur, jamais celui du tiers en lecture (A1 § 2).
+    if (this.auth.isDepot()) return;
     try {
       const res = await firstValueFrom(
         this.http.get<{ items: AlertEvent[] }>('/api/alerts', {

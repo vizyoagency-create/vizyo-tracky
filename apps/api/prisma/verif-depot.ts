@@ -34,7 +34,20 @@ async function main(): Promise<void> {
   console.log('\n═══ PÉRIMÈTRE DES MISSIONS ═══════════════════════════════════');
   const misA = await scope.missionsFor(depotA.id);
   const misB = await scope.missionsFor(depotB.id);
-  verifier('le dépôt A voit ses 4 missions', misA.length, 4);
+  // Lot A3 — le jeu d'essai porte désormais 4 missions du jour PLUS 6 missions
+  // terminées, sans quoi l'historique et ses KPI ne seraient jamais exercés. Ce qui
+  // compte ici n'est pas le nombre total mais la BORNE : le dépôt A voit exactement
+  // ses missions du jour, et rien de ce qui appartient au dépôt B.
+  verifier(
+    'le dépôt A voit ses 4 missions du jour',
+    misA.filter((m) => ['M-0001', 'M-0002', 'M-0003', 'M-0004'].includes(m.ref)).length,
+    4,
+  );
+  verifier(
+    'aucune mission d\'un autre dépôt dans le périmètre de A',
+    misA.every((m) => m.ref !== 'M-0005' && m.ref !== 'M-0006'),
+    true,
+  );
   verifier('le dépôt B voit sa mission', misB.length, 1);
   verifier(
     'aucune mission du dépôt B ne fuit vers A',

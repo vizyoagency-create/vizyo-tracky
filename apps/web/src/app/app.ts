@@ -59,7 +59,14 @@ export class App implements OnInit {
     this.pwaUpdate.init();
 
     const token = this.auth.token;
-    if (token) {
+    // ⚠️ Espace dépôt (2026-08), lot A3 — PAS de socket de flotte pour un DEPOT.
+    //
+    // `RealtimeService` est le canal de la FLOTTE : positions de tous les véhicules,
+    // alertes, statuts de boîtier. Un dépôt n'en reçoit rien (le serveur ne le met
+    // dans aucun salon de flotte, A1 § 3) — il ouvrait donc un second raccordement
+    // permanent qui n'écoute rien, en plus de celui de `DepotLiveStore`. Deux sockets
+    // par dépôt, deux fois la revalidation périodique, pour zéro message utile.
+    if (token && !this.auth.isDepot()) {
       this.realtime.connect(token);
     }
   }

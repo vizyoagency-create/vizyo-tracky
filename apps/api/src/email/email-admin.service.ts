@@ -39,6 +39,7 @@ export const TEMPLATE_META: {
   { id: 'ai_invoice_request', label: 'Facture physique — Option IA', category: 'Facturation', subject: 'Facture physique — Option IA · {société}', trigger: 'Un fleet-admin demande une facture physique pour l\'option IA' },
   { id: 'partner_consent_invitation', label: 'Invitation à consentir', category: 'Intégration', subject: 'Autoriser le partage avec {partenaire}', trigger: 'Un super-admin invite un fleet-admin à autoriser le partage vers une application partenaire' },
   { id: 'mission_assigned', label: 'Livraison assignée', category: 'Espace dépôt', subject: 'Livraison prévue {jour} {début} → {fin}', trigger: 'Un gestionnaire crée une mission en désignant un compte dépôt destinataire' },
+  { id: 'depot_incident', label: 'Signalement dépôt', category: 'Espace dépôt', subject: 'Signalement {dépôt} · {motif} · mission {réf}', trigger: 'Un dépôt signale un incident sur l\'une de ses missions — le seul e-mail de l\'espace dépôt qui remonte vers le transporteur' },
 ];
 const TEMPLATE_IDS = new Set(TEMPLATE_META.map((t) => t.id));
 const TEMPLATE_LABELS = new Map(TEMPLATE_META.map((t) => [t.id as string, t.label]));

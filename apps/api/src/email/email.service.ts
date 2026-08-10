@@ -30,7 +30,10 @@ export type EmailTemplateId =
   | 'ai_invoice_request'
   | 'partner_consent_invitation'
   // Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
-  | 'mission_assigned';
+  | 'mission_assigned'
+  // Lot A3 — un dépôt signale un incident : le seul e-mail de l'espace dépôt qui
+  // remonte vers le transporteur, et non l'inverse.
+  | 'depot_incident';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -401,6 +404,72 @@ export class EmailService {
       `Suivre la livraison : ${opts.depotUrl}`,
       '',
       `Le suivi est actif de ${h(opts.startAt)} à ${h(opts.endAt)} uniquement.`,
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
+  /**
+   * Espace dépôt (2026-08) — un dépôt signale un incident sur l'une de ses missions.
+   * Cf. design/A3-ESPACE-DEPOT.md § 5.
+   *
+   * ⚠️ **LE SENS DE LECTURE EST INVERSÉ** par rapport aux autres e-mails de l'espace
+   * dépôt : ici le destinataire est le GESTIONNAIRE, pas le dépôt. C'est donc la
+   * marque Tracky qui parle — le gestionnaire la connaît, il travaille dedans — et
+   * c'est le nom du DÉPÔT qui est mis en avant, puisque c'est l'information neuve.
+   *
+   * Le sujet porte le motif et la référence : un gestionnaire qui reçoit trois
+   * signalements dans la journée doit pouvoir les trier sans en ouvrir un seul.
+   */
+  buildDepotIncidentEmail(opts: {
+    missionRef: string;
+    trajet: string;
+    plate: string;
+    motif: string;
+    message: string;
+    nomDepot: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `Signalement ${opts.nomDepot} · ${opts.motif} · mission ${opts.missionRef}`;
+
+    const ligne = (libelle: string, valeur: string) => `
+      <tr>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13px;color:#69736E;width:120px;">${libelle}</td>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:600;color:#EAEFED;">${valeur}</td>
+      </tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Signalement dépôt',
+      footer: 'Vizyo Tracky · E-mail automatique, ne pas répondre.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${this.escapeHtml(opts.nomDepot)} a signalé un incident</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Le signalement a été ajouté à votre agenda comme événement ouvert. Il n'immobilise pas le camion.</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${ligne('Motif', this.escapeHtml(opts.motif))}
+            ${ligne('Mission', this.escapeHtml(opts.missionRef))}
+            ${ligne('Trajet', this.escapeHtml(opts.trajet))}
+            ${ligne('Camion', this.escapeHtml(opts.plate))}
+          </table>
+        </td></tr>
+        ${
+          opts.message
+            ? `<tr><td style="padding:20px 36px 0;">
+          <p style="margin:0;padding:14px 16px;border-radius:12px;background:#101514;border:1px solid rgba(255,255,255,0.08);font-family:'Manrope',system-ui,sans-serif;font-size:14px;line-height:1.6;color:#EAEFED;">${this.escapeHtml(opts.message)}</p>
+        </td></tr>`
+            : ''
+        }`,
+    });
+
+    const text = [
+      `${opts.nomDepot} a signalé un incident.`,
+      '',
+      `Motif   : ${opts.motif}`,
+      `Mission : ${opts.missionRef}`,
+      `Trajet  : ${opts.trajet}`,
+      `Camion  : ${opts.plate}`,
+      ...(opts.message ? ['', opts.message] : []),
+      '',
+      "Le signalement a été ajouté à votre agenda comme événement ouvert. Il n'immobilise pas le camion.",
     ].join('\n');
 
     return { subject, html, text };
@@ -1396,6 +1465,15 @@ ${this.commercialSignatureText()}`;
           plate: 'FR-482-BX',
           carrierName: fleetName,
           depotUrl: `${appBase}/depot`,
+        });
+      case 'depot_incident':
+        return this.buildDepotIncidentEmail({
+          missionRef: 'M-2481',
+          trajet: 'Fenouillet → Muret',
+          plate: 'FR-482-BX',
+          motif: 'Retard',
+          message: "Le camion n'est pas arrivé sur le créneau annoncé. Le quai est bloqué à partir de 12 h.",
+          nomDepot: 'Dépôt Fenouillet',
         });
       case 'password_reset':
         return this.buildPasswordResetEmail({

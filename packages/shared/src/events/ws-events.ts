@@ -17,6 +17,14 @@ export const WS_EVENTS = {
   // `ops:fleet:*`. Le veilleur de nuit ne reçoit AUCUNE position ; ce flag lui permet de
   // griser le bouton « Couper » sur un véhicule en marche (le serveur reste seul juge).
   VEHICLE_MOVEMENT: 'vehicle:movement',
+  // Espace dépôt (2026-08) — la position d'un camion sur UNE mission, émise vers le
+  // salon `depot:mission:<id>` et vers lui seul. Payload volontairement distinct de
+  // `POSITION_UPDATE` : il ne porte ni trackerId, ni vehicleId, ni fleetId. Réutiliser
+  // l'event de flotte aurait servi ces trois identifiants à un tiers (A3 § 7, règle 3).
+  DEPOT_MISSION_POSITION: 'depot:mission:position',
+  // La mission s'est terminée pendant la consultation : le marqueur doit disparaître
+  // AVEC une explication, sinon le dépôt croit avoir perdu le camion (A3 § 6).
+  DEPOT_MISSION_ENDED: 'depot:mission:ended',
 } as const;
 
 export interface PositionsBatchEvent {
@@ -35,6 +43,29 @@ export interface PositionUpdateEvent {
   timestamp: string;
   ignition: boolean;
   valid: boolean;
+}
+
+/**
+ * Espace dépôt (2026-08) — ce qu'un dépôt reçoit en direct, et rien de plus.
+ *
+ * ⚠️ CONTRAT DE FUITE, au même titre que `DepotMissionDto`. Comparez-le à
+ * `PositionUpdateEvent` : `trackerId`, `vehicleId` et `fleetId` en sont ABSENTS.
+ * La mission est la seule clé — c'est par elle que le dépôt a le droit de voir ce
+ * point, et elle suffit à le rattacher à un marqueur sur sa carte.
+ */
+export interface DepotMissionPositionEvent {
+  missionId: string;
+  lat: number;
+  lng: number;
+  speedKmh: number;
+  /** ISO 8601 — l'heure de la POSITION, pas celle de l'émission. */
+  timestamp: string;
+}
+
+/** La mission s'est terminée : le suivi s'arrête ici. */
+export interface DepotMissionEndedEvent {
+  missionId: string;
+  missionRef: string;
 }
 
 export interface AlertEvent {

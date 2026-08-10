@@ -9,7 +9,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { AlertEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent, VehicleMovementEvent } from '@vizyo/tracky-shared';
+import type { AlertEvent, DepotMissionEndedEvent, DepotMissionPositionEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent, VehicleMovementEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
@@ -193,6 +193,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       .to(`pos:fleet:${fleetId}`)
       .to('pos:fleet:*')
       .emit(WS_EVENTS.POSITIONS_BATCH, { fleetId, positions });
+
+    // Espace dépôt (2026-08) — le lot part AUSSI vers les salons par mission, dans un
+    // payload restreint. Cf. `emitVersDepots` : un dépôt ne reçoit ni trackerId, ni
+    // vehicleId, ni fleetId, et ne partage aucun salon avec un compte de la flotte.
+    void this.emitVersDepots(positions as Array<{ vehicleId?: string | null }>);
 
     const byFleet = this.restrictedByFleet.get(fleetId);
     if (!byFleet || byFleet.size === 0) return;
@@ -449,6 +454,79 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       `pos:fleet:${fleetId}`,
       'pos:fleet:*',
     ]);
+    void this.emitVersDepots([payload]);
+  }
+
+  /**
+   * ══ ESPACE DÉPÔT (2026-08), lot A3 — LE CÔTÉ ÉMISSION DES SALONS PAR MISSION ══
+   *
+   * A1 a construit la moitié JOINDRE : un compte DEPOT rejoint `depot:mission:<id>`,
+   * une par mission dont le suivi est actif, et aucun salon de flotte. Personne
+   * n'émettait vers ces salons — un dépôt était donc connecté à des salons muets, et
+   * sa carte ne bougeait que par le repli en polling.
+   *
+   * Trois propriétés tenues ici, chacune délibérée :
+   *
+   *  1. **Un payload DISTINCT.** `DepotMissionPositionEvent` ne porte ni `trackerId`,
+   *     ni `vehicleId`, ni `fleetId`. Réutiliser `PositionUpdateEvent` aurait servi
+   *     ces trois identifiants internes à un tiers — précisément ce que le DTO
+   *     restreint d'A1 s'interdit, contourné par le canal temps réel.
+   *
+   *  2. **Un salon par MISSION, pas par véhicule.** Deux dépôts sur la même tournée
+   *     reçoivent chacun la position, dans leur propre salon. Aucun des deux
+   *     n'apprend l'existence de l'autre.
+   *
+   *  3. **L'index d'aiguillage ne décide d'AUCUN accès.** Il ne fait que choisir un
+   *     salon. Ce qui autorise un dépôt à être DANS ce salon reste la revalidation de
+   *     socket d'A1, qui relit la base et coupe le raccordement à la bascule.
+   *
+   * Silencieux en cas d'échec : une position non routée est un marqueur qui ne bouge
+   * pas pendant une seconde, jamais une fuite.
+   */
+  private async emitVersDepots(
+    positions: Array<{ vehicleId?: string | null; lat?: number; lng?: number; speedKmh?: number; timestamp?: string }>,
+  ): Promise<void> {
+    if (!this.server || positions.length === 0) return;
+    try {
+      const index = await this.depotScope.missionsActivesParVehicule();
+      if (index.size === 0) return;
+
+      for (const p of positions) {
+        if (!p.vehicleId) continue;
+        const missionIds = index.get(p.vehicleId);
+        if (!missionIds) continue;
+        for (const missionId of missionIds) {
+          const charge: DepotMissionPositionEvent = {
+            missionId,
+            lat: p.lat ?? 0,
+            lng: p.lng ?? 0,
+            speedKmh: p.speedKmh ?? 0,
+            timestamp: p.timestamp ?? new Date().toISOString(),
+          };
+          this.server.to(`depot:mission:${missionId}`).emit(WS_EVENTS.DEPOT_MISSION_POSITION, charge);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[ws] aiguillage depot ignore (${err instanceof Error ? err.message : err})`,
+      );
+    }
+  }
+
+  /**
+   * La mission s'est terminée pendant la consultation.
+   *
+   * Le marqueur va disparaître : sans cet événement, le dépôt voit un camion
+   * s'évanouir de sa carte et croit avoir perdu le suivi. Avec lui, l'interface
+   * retire le marqueur en transition ET explique pourquoi (A3 § 6).
+   */
+  emitDepotMissionEnded(missionId: string, missionRef: string): void {
+    if (!this.server) return;
+    const charge: DepotMissionEndedEvent = { missionId, missionRef };
+    this.server.to(`depot:mission:${missionId}`).emit(WS_EVENTS.DEPOT_MISSION_ENDED, charge);
+    // L'index d'aiguillage porte encore cette mission : on le vide pour que la
+    // position suivante ne reparte pas vers un salon qu'on vient de clore.
+    this.depotScope.invaliderIndex();
   }
 
   /**

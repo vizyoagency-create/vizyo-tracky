@@ -120,6 +120,59 @@ body.plat-android {
   --densite-liste: 56px;
 }
 
+/* ─── Espace dépôt (2026-08), lot A3 — lisibilité du petit texte ─────────────
+ *
+ * MESURÉ DANS LE NAVIGATEUR, pas supposé : sur fond clair, `--text-tertiary`
+ * (#8A938F) donne 3,07:1 et `--danger` (#D9544E) 3,94:1 — tous deux SOUS le seuil
+ * WCAG de 4,5:1 exigé par le critère de recette n° 10. Or l'espace dépôt s'appuie
+ * beaucoup sur du texte de 11 à 12,5 px : créneaux, encarts, compteur de fraîcheur.
+ *
+ * Les jetons GLOBAUX ne bougent pas — ils habillent 29 autres pages, et leur reprise
+ * est le chantier du bloc B. L'espace dépôt définit donc les siens, une seule fois
+ * ici : les variables CSS traversent l'encapsulation des composants, il serait absurde
+ * de les redéclarer dans chacun des dix fichiers de la fonctionnalité.
+ *
+ * En thème sombre les deux jetons passent largement le seuil (6,8:1 et 7,1:1) : on
+ * les reprend tels quels plutôt que d'assombrir un texte déjà clair sur fond noir.
+ */
+.layout--depot {
+  --depot-attenue: var(--text-secondary);
+  --depot-alerte: color-mix(in srgb, var(--danger) 82%, #000);
+  --depot-succes: color-mix(in srgb, var(--color-tracky-light) 72%, #000);
+  --depot-attente: color-mix(in srgb, var(--warning) 75%, #000);
+}
+[data-theme='dark'] .layout--depot {
+  /* MESURÉ aussi en sombre : --text-tertiary (#69736E) sur --surface-secondary
+     (#101514) donne 3,82:1 — sous le seuil, comme en clair. Le texte atténué du
+     dépôt est donc --text-secondary dans LES DEUX thèmes (7,36:1 en sombre).
+     Les couleurs sémantiques, elles, passent largement en sombre : on les reprend
+     telles quelles, sans les assombrir sur un fond déjà noir. */
+  --depot-attenue: var(--text-secondary);
+  --depot-alerte: var(--danger);
+  --depot-succes: var(--color-tracky-light);
+  --depot-attente: var(--warning);
+}
+
+/* ─── Pastilles de statut, version dépôt ─────────────────────────────────────
+ *
+ * `.vt-status--on/--danger/--offline` posent une couleur SÉMANTIQUE sur un fond
+ * teinté de la même couleur. Le résultat est joli et lisible à 16 px ; à 12 px sur
+ * fond clair il tombe entre 2,98 et 3,40:1 — sous le seuil du critère n° 10.
+ *
+ * On ne retouche pas la classe globale : elle habille 29 autres pages, et leur
+ * reprise est le chantier du bloc B. On la RESSERRE dans l'espace dépôt, où le
+ * critère s'applique — la teinte et donc la signification restent les mêmes, seule
+ * la valeur descend assez pour être lue. « Une couleur = une signification » n'est
+ * pas « une couleur = une valeur exacte ».
+ */
+.layout--depot .vt-status--on { color: var(--depot-succes) }
+.layout--depot .vt-status--danger { color: var(--depot-alerte) }
+.layout--depot .vt-status--warning { color: var(--depot-attente) }
+.layout--depot .vt-status--offline { color: var(--depot-attenue) }
+/* L'entrée de menu active : même cas, accent sur fond teinté d'accent (3,24:1). */
+.layout--depot .sidebar-link.active,
+.layout--depot .bottom-item.active { color: var(--depot-succes) }
+
 /* Aliases — bare names used directly in component styles (without --color- prefix). */
 :root {
   --bg-primary: var(--surface-primary);
