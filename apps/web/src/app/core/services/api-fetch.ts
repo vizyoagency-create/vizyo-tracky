@@ -77,6 +77,47 @@ function shouldReportNetworkFailure(): boolean {
 }
 
 /**
+ * Échecs de transport CONSÉCUTIFS, remis à zéro dès qu'une requête aboutit.
+ *
+ * ⚠️ Confirmer avant de crier (constat du 2026-08-10). Les deux gardes ci-dessus ne
+ * couvrent pas le cas le plus fréquent en mobilité : un réseau qui hoquette *une* fois —
+ * tunnel, changement de cellule, bascule wifi/4G — page bien au premier plan et
+ * `navigator.onLine` à `true`. Le symptôme est identique à celui d'une API réellement
+ * tombée, et il produisait une ligne ERREUR au centre d'alerte pour un incident qui n'a
+ * duré pour personne. Observé encore le 10/08 sur `/map` depuis un iPhone.
+ *
+ * Un seul échec ne prouve rien ; deux d'affilée, si. Une panne réelle en produit
+ * immédiatement des dizaines (carte, temps réel, listes), donc elle reste signalée en
+ * quelques secondes — et le canal temps réel a par ailleurs son propre détecteur
+ * indépendant. Ce qui disparaît, c'est uniquement le hoquet isolé.
+ */
+const CONFIRM_AFTER_FAILURES = 2;
+let consecutiveTransportFailures = 0;
+
+/** Une requête a abouti : le transport va bien, on repart de zéro. */
+function noteTransportSuccess(): void {
+  consecutiveTransportFailures = 0;
+}
+
+/**
+ * Enregistre un échec de transport et dit s'il faut le remonter.
+ *
+ * `silent` (appelant qui va réessayer) n'empêche PAS le comptage : c'est bien un échec, et
+ * si le second essai échoue aussi, la panne est confirmée et doit être signalée.
+ */
+function noteTransportFailure(silent: boolean): boolean {
+  consecutiveTransportFailures += 1;
+  if (silent) return false;
+  if (consecutiveTransportFailures < CONFIRM_AFTER_FAILURES) return false;
+  return shouldReportNetworkFailure();
+}
+
+/** Réservé aux tests : remet le compteur de confirmation à zéro. */
+export function __resetTransportFailureCount(): void {
+  consecutiveTransportFailures = 0;
+}
+
+/**
  * Exécute un `fetch` et transforme tout échec en {@link HttpFailure} portant son statut.
  *
  * @param input  URL ou Request, comme `fetch`.
@@ -95,14 +136,16 @@ export async function apiFetch(
   let res: Response;
   try {
     res = await fetch(input, init);
+    noteTransportSuccess();
   } catch (err) {
     // La requête n'a pas abouti : réseau coupé, DNS, CORS, API injoignable. C'est le seul
     // cas que PERSONNE d'autre ne peut voir — le serveur n'a rien reçu, donc il n'a rien
     // pu journaliser. Sans cette ligne, l'incident n'existe nulle part.
     //
-    // Voir `shouldReportNetworkFailure` : on écarte le hors-ligne et la page cachée, qui
-    // rempliraient le centre d'alerte d'incidents que personne ne peut corriger.
-    if (shouldReportNetworkFailure()) {
+    // Voir `noteTransportFailure` : on écarte le hors-ligne, la page cachée, et le hoquet
+    // ISOLÉ — trois situations qui rempliraient le centre d'alerte d'incidents que
+    // personne ne peut corriger.
+    if (noteTransportFailure(false)) {
       reportClientError('api-fetch', new Error(`${label} — API injoignable : ${describe(err)}`));
     }
     throw new HttpFailure(0, label);
@@ -143,9 +186,11 @@ export async function apiFetchRaw(
   opts?: { silentNetworkFailure?: boolean },
 ): Promise<Response> {
   try {
-    return await fetch(input, init);
+    const res = await fetch(input, init);
+    noteTransportSuccess();
+    return res;
   } catch (err) {
-    if (!opts?.silentNetworkFailure && shouldReportNetworkFailure()) {
+    if (noteTransportFailure(opts?.silentNetworkFailure === true)) {
       reportClientError('api-fetch', new Error(`${label} — API injoignable : ${describe(err)}`));
     }
     throw new HttpFailure(0, label);
@@ -167,8 +212,9 @@ export async function apiFetchJson<T>(
   let res: Response;
   try {
     res = await fetch(input, init);
+    noteTransportSuccess();
   } catch (err) {
-    if (shouldReportNetworkFailure()) {
+    if (noteTransportFailure(false)) {
       reportClientError('api-fetch', new Error(`${label} — API injoignable : ${describe(err)}`));
     }
     throw new HttpFailure(0, label);

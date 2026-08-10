@@ -22,7 +22,12 @@ describe('GpsIntegrityService', () => {
   });
 
   const build = (recordLossResult: unknown = null) => {
-    const prisma = { tracker: { findMany: jest.fn() } } as any;
+    const prisma = {
+      tracker: { findMany: jest.fn() },
+      // Backoff des rappels (2026-08-10) : `null` = aucune ligne récente pour ce boîtier,
+      // donc le rappel part. Les tests dédiés ci-dessous couvrent le cas inverse.
+      errorLog: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as any;
     const alerts = { createGpsLostAlert: jest.fn() } as any;
     const deadZones = {
       minOccurrences: 3,
@@ -239,5 +244,77 @@ describe('GpsIntegrityService', () => {
     expect(recurrence).toMatchObject({ suspect: true });
     expect(errorLogger.record).toHaveBeenCalledTimes(1);
     expect(String(errorLogger.record.mock.calls[0][0])).toContain('SUSPECTE');
+  });
+
+  /**
+   * Espacement des rappels (2026-08-10). FZ-862-VY, antenne morte depuis le 07/08, écrivait
+   * une ligne d'erreur PAR JOUR pour un fait strictement inchangé. Un état stable qui dure
+   * se consulte ; il ne se re-notifie pas quotidiennement.
+   *
+   * ⚠️ Le test qui compte vraiment est le DERNIER : le rappel doit s'espacer, jamais
+   * s'éteindre. C'est le trou de TRK-011 qu'on ne veut surtout pas rouvrir.
+   */
+  describe('rappels espacés pour un épisode qui dure', () => {
+    const DAY = 24 * 3600_000;
+
+    it('un épisode RÉCENT (< 24 h) alerte sans consulter le backoff', async () => {
+      const { svc, prisma, alerts, errorLogger } = build();
+      prisma.tracker.findMany.mockResolvedValue([
+        makeTracker({ lastPositionAt: new Date(Date.now() - 3 * 3600_000) }),
+      ]);
+      alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+      await svc.tick();
+
+      // Un épisode NEUF ne doit jamais être étouffé par la trace d'un épisode précédent.
+      expect(prisma.errorLog.findFirst).not.toHaveBeenCalled();
+      expect(errorLogger.record).toHaveBeenCalledTimes(1);
+    });
+
+    it('ne réécrit PAS de ligne quand un rappel récent existe déjà', async () => {
+      const { svc, prisma, alerts, errorLogger } = build();
+      prisma.tracker.findMany.mockResolvedValue([
+        makeTracker({ lastPositionAt: new Date(Date.now() - 3 * DAY) }),
+      ]);
+      alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+      prisma.errorLog.findFirst.mockResolvedValue({ id: 'e1' }); // déjà signalé
+
+      await svc.tick();
+
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('cherche le rappel précédent sur une fenêtre de 7 j à partir du 3ᵉ jour', async () => {
+      const { svc, prisma, alerts } = build();
+      prisma.tracker.findMany.mockResolvedValue([
+        makeTracker({ lastPositionAt: new Date(Date.now() - 3 * DAY) }),
+      ]);
+      alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+      await svc.tick();
+
+      const where = prisma.errorLog.findFirst.mock.calls[0][0].where;
+      const windowMs = Date.now() - (where.createdAt.gte as Date).getTime();
+      expect(Math.round(windowMs / DAY)).toBe(7);
+      // Filtré sur le texte : les échecs techniques du détecteur partagent la source
+      // `gps-integrity` et ne doivent pas faire taire un rappel légitime.
+      expect(where.message).toMatchObject({ contains: 'GPS perdu' });
+      expect(where.imei).toBe('864035054757027');
+    });
+
+    it("ne devient JAMAIS muet : un épisode d'un an rappelle encore chaque mois", async () => {
+      const { svc, prisma, alerts, errorLogger } = build();
+      prisma.tracker.findMany.mockResolvedValue([
+        makeTracker({ lastPositionAt: new Date(Date.now() - 365 * DAY) }),
+      ]);
+      alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+      await svc.tick();
+
+      const where = prisma.errorLog.findFirst.mock.calls[0][0].where;
+      const windowMs = Date.now() - (where.createdAt.gte as Date).getTime();
+      expect(Math.round(windowMs / DAY)).toBe(30); // borné, mais fini
+      expect(errorLogger.record).toHaveBeenCalledTimes(1);
+    });
   });
 });
