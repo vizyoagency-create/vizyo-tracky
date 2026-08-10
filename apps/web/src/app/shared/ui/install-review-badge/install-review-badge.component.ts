@@ -38,7 +38,7 @@ import { AlertTriangle, LucideAngularModule } from 'lucide-angular';
       letter-spacing: .01em;
       white-space: nowrap;
       background: rgba(239, 68, 68, .14);
-      color: #ef4444;
+      color: var(--texte-alerte);
       border: 1px solid rgba(239, 68, 68, .35);
     }
     .ir-badge--compact { padding: 3px; }

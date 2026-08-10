@@ -285,8 +285,8 @@ type Scope = 'all' | 'selected';
       position: relative;
       width: 100%;
       max-width: 100%;
-      background: var(--bg-secondary, #1a1d21);
-      border-top: 1px solid var(--border-subtle, #2a2f36);
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border-subtle);
       border-left: 0;
       border-right: 0;
       border-bottom: 0;
@@ -302,7 +302,7 @@ type Scope = 'all' | 'selected';
       .pem-container {
         max-width: 42rem;
         margin: auto 1rem;
-        border: 1px solid var(--border-subtle, #2a2f36);
+        border: 1px solid var(--border-subtle);
         border-radius: var(--radius-card, 16px);
         max-height: 85dvh;
         box-shadow: 0 24px 48px rgba(0, 0, 0, .45);
@@ -323,7 +323,7 @@ type Scope = 'all' | 'selected';
       align-items: flex-start;
       gap: 12px;
       padding: 18px 20px 12px;
-      border-bottom: 1px solid var(--border-subtle, #2a2f36);
+      border-bottom: 1px solid var(--border-subtle);
       flex-shrink: 0;
     }
     .pem-body {
@@ -343,8 +343,8 @@ type Scope = 'all' | 'selected';
       flex-wrap: wrap;
       padding: 12px 20px;
       padding-bottom: max(12px, env(safe-area-inset-bottom));
-      border-top: 1px solid var(--border-subtle, #2a2f36);
-      background: var(--bg-secondary, #1a1d21);
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-secondary);
       flex-shrink: 0;
     }
 
@@ -357,19 +357,19 @@ type Scope = 'all' | 'selected';
       padding: 12px 14px;
       min-height: 44px;
       border-radius: 12px;
-      background: var(--bg-tertiary, #22262d);
-      border: 1px solid var(--border-subtle, #2a2f36);
-      color: var(--fg-secondary, #c9d1d9);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary);
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       transition: background-color .15s, border-color .15s, color .15s;
     }
-    .pem-pill:hover { color: var(--fg-primary, #fff) }
+    .pem-pill:hover { color: var(--fg-primary) }
     .pem-pill--active {
       background: rgba(16, 224, 160, .12);
       border-color: rgba(16, 224, 160, .35);
-      color: var(--tracky-light, #5af0c4);
+      color: var(--tracky-light);
     }
     .pem-pill-label { font-weight: 600 }
     .pem-pill-count {
@@ -378,11 +378,11 @@ type Scope = 'all' | 'selected';
       padding: 2px 7px;
       border-radius: 999px;
       background: rgba(255, 255, 255, .06);
-      color: var(--fg-tertiary, #8b95a4);
+      color: var(--fg-tertiary);
     }
     .pem-pill--active .pem-pill-count {
       background: rgba(16, 224, 160, .18);
-      color: var(--tracky-light, #5af0c4);
+      color: var(--tracky-light);
     }
 
     /* Lignes vehicule + lignes option */
@@ -396,9 +396,9 @@ type Scope = 'all' | 'selected';
       cursor: pointer;
       transition: background-color .12s;
     }
-    .pem-row:hover { background: var(--bg-tertiary, #22262d) }
+    .pem-row:hover { background: var(--bg-tertiary) }
     .pem-row--option {
-      border: 1px solid var(--border-subtle, #2a2f36);
+      border: 1px solid var(--border-subtle);
       border-radius: 12px;
     }
     .pem-row--option:has(input:checked) {
@@ -412,7 +412,7 @@ type Scope = 'all' | 'selected';
       width: 18px;
       height: 18px;
       border-radius: 5px;
-      accent-color: #10E0A0;
+      accent-color: var(--color-tracky-light);
       cursor: pointer;
     }
 
@@ -427,7 +427,7 @@ type Scope = 'all' | 'selected';
     .pem-suboption label { white-space: nowrap; min-width: 96px }
     .pem-range {
       flex: 1;
-      accent-color: #10E0A0;
+      accent-color: var(--color-tracky-light);
       cursor: pointer;
     }
   `],

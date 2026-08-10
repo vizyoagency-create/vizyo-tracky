@@ -35,11 +35,14 @@ interface BellCluster {
         aria-haspopup="true"
       >
         <lucide-icon [img]="Bell" [size]="18" aria-hidden="true"></lucide-icon>
+        <!-- « Un SOS ne se contente pas d'incrémenter le compteur : fond rouge et
+             pulsation. Sinon il se noie dans les 6 autres alertes. » (Kit Partage)
+             La pastille passe sur les jetons : les classes de palette Tailwind ont la
+             syntaxe du système sans en faire partie — valeur figée, identique en clair
+             et en sombre, et doublon d'un jeton qui existe déjà. -->
         @if (clusters().length > 0) {
-          <span class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1
-                       rounded-full text-[10px] font-bold text-white
-                       flex items-center justify-center"
-                [class]="hasCriticalCluster() ? 'bg-red-500 animate-pulse' : 'bg-amber-500'"
+          <span class="ab-pastille"
+                [class.ab-pastille--sos]="hasCriticalCluster()"
                 aria-hidden="true">
             {{ clusters().length }}
           </span>
@@ -79,9 +82,9 @@ interface BellCluster {
                 <div class="flex items-start gap-3 px-4 py-3 border-b border-border-subtle
                             hover:bg-bg-tertiary/50 transition-colors">
                   @if (c.severity === 'CRITICAL') {
-                    <lucide-icon [img]="AlertTriangle" [size]="16" class="text-red-400 shrink-0 mt-0.5"></lucide-icon>
+                    <lucide-icon [img]="AlertTriangle" [size]="16" class="ab-ic ab-ic--alerte shrink-0 mt-0.5"></lucide-icon>
                   } @else {
-                    <lucide-icon [img]="Info" [size]="16" class="text-amber-400 shrink-0 mt-0.5"></lucide-icon>
+                    <lucide-icon [img]="Info" [size]="16" class="ab-ic ab-ic--attente shrink-0 mt-0.5"></lucide-icon>
                   }
                   <div class="flex-1 min-w-0">
                     <p class="text-xs font-semibold text-fg-primary">
@@ -116,6 +119,31 @@ interface BellCluster {
       }
     </div>
   `,
+  styles: [`
+    .ab-pastille {
+      position: absolute; top: -4px; right: -4px;
+      min-width: 18px; height: 18px; padding: 0 4px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 9999px;
+      font-size: 10px; font-weight: 700;
+      background: var(--texte-attente); color: var(--accent-ink);
+    }
+    /* Le SOS : fond rouge ET pulsation. Le compteur seul se noie dans les autres. */
+    .ab-pastille--sos {
+      background: var(--texte-alerte);
+      animation: ab-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes ab-pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--texte-alerte) 55%, transparent) }
+      50% { transform: scale(1.12); box-shadow: 0 0 0 5px color-mix(in srgb, var(--texte-alerte) 0%, transparent) }
+    }
+    /* La pulsation attire l'œil ; coupée, le rouge doit suffire — d'où le fond, qui
+       ne dépend pas de l'animation. */
+    @media (prefers-reduced-motion: reduce) { .ab-pastille--sos { animation: none } }
+
+    .ab-ic--alerte { color: var(--texte-alerte) }
+    .ab-ic--attente { color: var(--texte-attente) }
+  `],
 })
 export class AlertsBellComponent {
   protected readonly realtime = inject(RealtimeService);

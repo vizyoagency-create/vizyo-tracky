@@ -108,14 +108,14 @@ const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surpre
     .prompt-icon {
       width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, #f59e0b 0%, #dc2626 100%);
-      color: #fff;
+      background: linear-gradient(135deg, var(--texte-attente) 0%, var(--texte-alerte) 100%);
+      color: var(--accent-ink);
     }
     .prompt-icon--ios {
       /* Vert Tracky pour le hint iOS — different visuellement du prompt
          "activer" (gradient ambre/rouge urgent). C'est un onboarding pas
          une alerte. */
-      background: linear-gradient(135deg, #10E0A0 0%, #059669 100%);
+      background: linear-gradient(135deg, var(--color-tracky-light) 0%, var(--color-tracky-dark) 100%);
     }
     .prompt-content { flex: 1; min-width: 0; }
     .prompt-title {
@@ -129,8 +129,8 @@ const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surpre
     }
     .prompt-cta {
       padding: 8px 14px; border-radius: 10px; border: none;
-      background: var(--tracky-light, #10E0A0);
-      color: var(--bg-primary, #0b0f12);
+      background: var(--tracky-light);
+      color: var(--bg-primary);
       font-size: 12px; font-weight: 700; cursor: pointer;
       transition: transform 80ms, opacity 80ms, filter 120ms;
     }

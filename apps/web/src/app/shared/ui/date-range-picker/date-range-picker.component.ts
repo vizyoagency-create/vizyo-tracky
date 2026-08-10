@@ -117,7 +117,7 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
       border-color: var(--border-subtle);
     }
     .drp-nav:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
+      outline: 2px solid color-mix(in srgb, var(--tracky-light) 60%, transparent);
       outline-offset: 1px;
     }
     .drp-nav-spacer { width: 24px; height: 24px; }
@@ -149,23 +149,23 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
       color: var(--fg-primary);
     }
     .drp-cell:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 70%, transparent);
+      outline: 2px solid color-mix(in srgb, var(--tracky-light) 70%, transparent);
       outline-offset: 1px;
       z-index: 1;
     }
     .drp-cell--outside { color: var(--fg-tertiary); opacity: .55; }
     .drp-cell--today {
-      border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
+      border-color: color-mix(in srgb, var(--tracky-light) 60%, transparent);
     }
     .drp-cell--in-range,
     .drp-cell--preview {
-      background: color-mix(in srgb, var(--tracky, #10E0A0) 15%, transparent);
+      background: color-mix(in srgb, var(--tracky) 15%, transparent);
       color: var(--fg-primary);
       border-radius: 0;
     }
-    .drp-cell--preview { background: color-mix(in srgb, var(--tracky, #10E0A0) 8%, transparent); }
+    .drp-cell--preview { background: color-mix(in srgb, var(--tracky) 8%, transparent); }
     .drp-cell--start, .drp-cell--end {
-      background: var(--tracky, #10E0A0);
+      background: var(--tracky);
       color: white !important;
       font-weight: 700;
       border-color: transparent;

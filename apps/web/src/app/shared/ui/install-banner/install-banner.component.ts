@@ -77,8 +77,8 @@ import { InstallPromptService } from '../../../core/services/install-prompt.serv
     .banner-icon {
       width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(135deg, #10e0a0 0%, #047857 100%);
-      color: #042F2A;
+      background: linear-gradient(135deg, var(--color-tracky-light) 0%, var(--color-tracky-dark) 100%);
+      color: var(--accent-ink);
     }
     .banner-content { flex: 1; min-width: 0; }
     .banner-title {

@@ -1183,26 +1183,17 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 - [x] `skeleton` + `spinner` — primitives déjà propres, désormais consommées par `app-zone` selon la règle « page → squelette, action → rond dans le bouton »
 - [x] `bottom-sheet` (11 pages) — **géométrie de plateforme** (rayon et poignée depuis les jetons d'A3 ; la feuille était figée à 20 px et 44 × 4, ni iOS ni Android), **hauteur annonçable** (les six feuilles de la maquette sont dimensionnées : 44 à 72 %), **variante sans voile** pour les feuilles posées sur la carte
 - [ ] `bottom-sheet` — les 6 états
-- [ ] `trip-note-modal`
-- [ ] `pdf-export-modal`
-- [ ] `update-required-modal`
-- [ ] `plan-upsell`
-- [ ] `push-prompt`
-- [ ] `date-range-picker`
-- [ ] `datetime-range`
-- [ ] `driver-picker`
-- [ ] `spinner`
-- [ ] `alerts-bell`
-- [ ] `group-badge`
-- [ ] `install-banner`
-- [ ] `install-review-badge`
-- [ ] `super-admin-context`
-- [ ] `charts`
-- [ ] `mini-map`
-- [ ] `metric-card`
-- [ ] `brand-logo`
-- [ ] `logo`
-- [ ] `theme-toggle`
+**Règle n° 1 — aucune couleur en dur** *(faite sur le kit entier)*
+- [x] `scripts/verif-couleurs-kit.mjs` (`pnpm verif:couleurs-kit`) — **76 couleurs en dur relevées, 76 traitées**. Le contrôle attrape les deux formes : l'hexadécimal écrit à la main, et la classe de PALETTE Tailwind (`text-red-400`, `bg-amber-500`) qui a la syntaxe du système sans en faire partie
+- [x] **34 replis morts purgés** — `var(--x, #hex)` : la variable est toujours définie, la valeur de repli n'est jamais atteinte. Même défaut que les 22 fallbacks `Poppins` de l'étape 0
+- [x] Trois exceptions assumées et documentées dans le contrôle : les couches MapLibre (qui ne résolvent aucune variable CSS), les graphiques (canvas, couleurs lues par `getComputedStyle`), et la plaque de logo constructeur (support d'image — un logo noir sur une surface sombre disparaîtrait)
+
+- [x] `group-badge` — **la couleur vient de l'identifiant, pas du rang.** « Chantier Nord reste rouge sur la carte, dans les listes et dans les rapports. » Le badge était monochrome ; une couleur tirée du rang aurait changé au premier tri. 5 tests verrouillent la stabilité
+- [x] `metric-card` — **« mieux vaut un tiret expliqué qu'un 0 faux »**, le manque le plus courant sur les cartes chiffrées. `null`, `undefined` et `NaN` deviennent « — » plutôt que « null » en gros et en gras
+- [x] `alerts-bell` — le SOS garde son fond rouge et sa pulsation, sur jetons
+- [x] `mini-map` — l'état vide DIT pourquoi : « une mini-carte grise sans explication ressemble à un bug de chargement »
+- [x] `trip-note-modal` · `pdf-export-modal` · `plan-upsell` · `push-prompt` · `driver-picker` · `install-banner` · `install-review-badge` · `brand-logo` · `charts` — passe couleurs
+- [ ] `update-required-modal` · `date-range-picker` · `datetime-range` · `super-admin-context` · `logo` · `theme-toggle` — passe de raffinement (règles propres à chacun)
 
 **Les 6 états obligatoires sur chacun** : `chargement` · `rempli` · `vide` · `erreur` ·
 `partiel` · `interdit`. C'est le manque le plus fréquent du code actuel : beaucoup de

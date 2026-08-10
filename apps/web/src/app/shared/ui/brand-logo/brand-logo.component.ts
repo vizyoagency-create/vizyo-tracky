@@ -40,6 +40,13 @@ import { brandLogoUrl, findBrand } from '../../utils/vehicle-brands';
       vertical-align: middle;
       flex-shrink: 0;
     }
+    /* ⚠️ EXCEPTION ASSUMÉE — ces deux fonds ne suivent PAS le thème, et c'est voulu.
+       Ce sont les plaques sur lesquelles se pose un logo CONSTRUCTEUR (Renault, Volvo,
+       Peugeot…), fourni en PNG avec ses propres couleurs et souvent sans transparence.
+       Le blanc et le gris très sombre sont les deux fonds sur lesquels ces logos ont
+       été dessinés ; les remplacer par une surface du thème rendrait certains d'entre
+       eux invisibles — un logo noir sur une surface sombre disparaît. La plaque est un
+       support d'image, pas une surface d'interface. */
     .brand-logo--chip {
       background: #fff;
       border-radius: 6px;

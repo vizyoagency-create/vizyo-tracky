@@ -29,14 +29,31 @@ import {
       <div #mapContainer class="w-full rounded-[--radius-card] overflow-hidden border border-border-subtle"
            [style.height]="height()"></div>
     } @else {
-      <div class="w-full rounded-[--radius-card] border border-border-subtle bg-bg-secondary
-                  flex items-center justify-center text-fg-tertiary text-sm"
-           [style.height]="height()">
-        Aucune position connue
+      <!-- « Une mini-carte grise sans explication ressemble à un bug de chargement »
+           (Kit Partage). Le vide DIT donc pourquoi il est vide : sans raison, le
+           lecteur attend, recharge, puis ouvre un ticket. Le contour tireté distingue
+           l'absence d'une carte qui n'a pas fini de charger. -->
+      <div class="mm-vide"
+           [style.height]="height()"
+           role="status">
+        <p class="mm-vide-t">Aucune position connue</p>
+        <p class="mm-vide-d">{{ raisonVide() }}</p>
       </div>
     }
   `,
-  styles: [`:host { display: block; }`],
+  styles: [`
+    :host { display: block; }
+    .mm-vide {
+      width: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; padding: 12px; text-align: center;
+      background: var(--bg-secondary);
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-card, 16px);
+    }
+    .mm-vide-t { margin: 0; font-size: .84rem; font-weight: 600; color: var(--fg-secondary) }
+    .mm-vide-d { margin: 0; max-width: 34ch; font-size: .74rem; line-height: 1.4; color: var(--fg-tertiary) }
+  `],
 })
 export class MiniMapComponent implements AfterViewInit, OnDestroy {
   readonly center = input<{ lat: number; lng: number } | null>(null);
@@ -50,6 +67,14 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
   readonly height = input('300px');
   /** Sprint 3 — false = carte figée (pan/zoom/rotation désactivés), pour le veilleur de nuit. */
   readonly interactive = input(true);
+  /**
+   * Pourquoi il n'y a pas de position. L'appelant le sait — boîtier absent, mode privé,
+   * véhicule muet depuis des semaines — et c'est la seule chose qui distingue une carte
+   * vide d'une carte cassée.
+   */
+  readonly raisonVide = input<string>(
+    'Le boîtier n\'a encore transmis aucune position, ou le véhicule est en mode vie privée.',
+  );
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly mapSvc = inject(MapService);

@@ -145,7 +145,7 @@ interface HoverInfo {
     .hm-cell:hover,
     .hm-cell:focus-visible {
       transform: scale(1.18);
-      outline: 2px solid var(--tracky-light, #10E0A0);
+      outline: 2px solid var(--tracky-light);
       outline-offset: 1px;
       z-index: 5;
       position: relative;
@@ -165,8 +165,8 @@ interface HoverInfo {
     .hm-tooltip {
       position: absolute;
       transform: translate(-50%, calc(-100% - 10px));
-      background: var(--bg-secondary, #0F1714);
-      border: 1px solid var(--border-subtle, rgba(16,224,160,.08));
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 6px 10px;
       pointer-events: none;
@@ -177,8 +177,8 @@ interface HoverInfo {
       z-index: 10;
       white-space: nowrap;
     }
-    .hm-tooltip strong { font-size: 12px; color: var(--fg-primary, #F0FDF9); font-weight: 700; }
-    .hm-tooltip span { font-size: 11px; color: var(--fg-secondary, #A7C7BC); }
+    .hm-tooltip strong { font-size: 12px; color: var(--fg-primary); font-weight: 700; }
+    .hm-tooltip span { font-size: 11px; color: var(--fg-secondary); }
     .sr-only {
       position: absolute; width: 1px; height: 1px;
       padding: 0; margin: -1px; overflow: hidden;

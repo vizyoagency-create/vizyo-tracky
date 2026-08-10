@@ -19,6 +19,7 @@
     "verif:contraste": "node scripts/verif-contraste.mjs",
     "verif:accents": "node scripts/verif-accents.mjs",
     "verif:confirmations": "node scripts/verif-confirmations.mjs",
+    "verif:couleurs-kit": "node scripts/verif-couleurs-kit.mjs",
     "verify": "pnpm typecheck && pnpm smoke && pnpm test"
   },
   "devDependencies": {
