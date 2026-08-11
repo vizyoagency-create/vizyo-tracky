@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **26/57** |
+| **B-pages** | 🟡 **en cours** | **27/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -81,13 +81,31 @@ principal — bouton 112 px), `/driver/unlock`. Elles demandent un jeton pour ê
 
 **Bloc B (1).** `/driver` — usage 100 % téléphone.
 
-**Contenu propre de D et E.** `/integrations`, `/privacy-coverage`.
-*(`/fleet-admin/activity`, `/admin/ai-usage` et `/settings` sont livrées.)*
+**Contenu propre de D et E.** `/privacy-coverage` seulement.
+*(`/fleet-admin/activity`, `/admin/ai-usage`, `/settings` et `/integrations` sont livrées.)*
 
-**État de départ mesuré des 2 pages restantes de D+E** (sonde, 375 px, avant modification) :
-`/integrations` **0 cible** (mais un état d'erreur « Impossible de charger l'état de
-l'intégration » à brancher sur `app-zone`) · `/privacy-coverage` **0**. Aucune coupe, aucun
-débordement.
+**État de départ mesuré** (sonde, 375 px) : `/privacy-coverage` **0 cible**, aucune coupe,
+aucun débordement.
+
+> 🔑 **Pour ouvrir `/integrations`, il faut un FLEET-ADMIN.** Toutes ses routes exigent le rôle
+> *et* la permission `integrations_manage` : un super-admin n'y voit que l'état d'erreur. Jeton
+> utilisable : `authUserId` **`cmnusapj5000f07s7ipjkdcf4`** (`tracky1@gmail.com`). ⚠️ L'identifiant
+> de seed `cdef31-admin` **ne marche pas** — `/api/auth/me` répond 500, ce n'est pas un vrai id
+> Vizyo Auth. Prendre un `authUserId` en forme de cuid.
+
+### 🟠 Ce qui bute sur un contrat d'API — trois fois, jamais touché
+
+Trois lignes de planche demandent une donnée qu'**aucun DTO ne porte**. Aucune n'a été
+bricolée, aucun contrat n'a bougé :
+
+| Page | Ce que la planche demande | Ce qui manque |
+|---|---|---|
+| `/admin/ai-usage` | « 418 trajets analysés ce mois » sous chaque fonction | `AiUsageBreakdownRowDto` n'a que `calls`, `tokens`, `costEur` — **aucun compteur de résultat** |
+| `/integrations` | Le volume par catégorie (« 3 412 trajets », « 186 pleins ») | Ni `PartnerLinkStatus` ni `PartnerScopeOption` ne le portent ; le reconstituer = un appel par catégorie |
+| `/admin/ai-usage` | Le ratio consommation / forfait (« 45 % ») | Calculable, mais **expose la marge** — décision commerciale, pas technique |
+
+Sur `/integrations`, ce qui EST affiché est ce qu'on sait avec certitude : **« Rien n'est
+transmis »** quand la catégorie est éteinte. C'est la moitié qui compte.
 
 ### 🟠 Trois décisions en attente sur `/admin/ai-usage`
 
