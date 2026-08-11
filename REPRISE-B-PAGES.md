@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **35/57** |
+| **B-pages** | 🟡 **en cours** | **36/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -85,13 +85,23 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > pratique d'atteindre les portes d'accès : elles sont décidées au boot, et un rechargement
 > efface toute fixture XHR posée après coup.
 
-**Bloc F — surfaces bloquantes (8 restantes sur 12).** Le gros morceau.
-*(Livrées : consentement RGPD, autorisations navigateur, vérification d'appareil, et la
-**variante critique** de la coupure moteur. Assistant de démarrage livré en B0′.)*
+**Bloc F — surfaces bloquantes (7 restantes sur 12).** Le gros morceau.
+*(Livrées : consentement RGPD, autorisations navigateur, vérification d'appareil,
+proposition 2FA, et la **variante critique** de la coupure moteur. Assistant de démarrage
+livré en B0′.)*
 
-Restent : **proposition 2FA**, **coupure moteur (le reste)**, **panneau surveillance**,
-**QR véhicule**, **rejeu de trajet**, **rejeu de période**, **créer/éditer un véhicule**,
-**éditeur d'horaires**.
+Restent : **coupure moteur (le reste)**, **panneau surveillance**, **QR véhicule**,
+**rejeu de trajet**, **rejeu de période**, **créer/éditer un véhicule**, **éditeur d'horaires**.
+
+> ⚠️ **NE JAMAIS réécrire un fichier source via PowerShell `Set-Content`.** Le 2026-08-11,
+> un aller-retour `Get-Content -Raw` / `Set-Content -Encoding utf8` a **corrompu l'encodage**
+> de `two-factor-proposal.component.ts` : 47 accents transformés en mojibake, puis une
+> tentative de réparation Latin-1 → UTF-8 y a laissé un caractère de remplacement en tête
+> (`ef bf bd`) — Angular a répondu « File appears to be binary ». Le fichier a dû être
+> restauré par `git checkout --` et les modifications refaites.
+> **Utiliser l'outil d'édition, ou Node (`fs.writeFileSync(p, t, 'utf8')`).** PowerShell
+> traite en plus l'accent grave comme caractère d'échappement : un test de mutation écrit
+> avec lui n'insère pas ce qu'on croit.
 
 > ⚠️ **La coupure moteur n'est faite qu'à moitié.** Seule la variante critique est branchée
 > (plaque à retaper sur la coupure). Le reste de sa ligne B1 est intact : **compte à rebours
@@ -305,7 +315,7 @@ pnpm verif:litteraux && pnpm verif:contraste && pnpm verif:accents && pnpm verif
 
 | | |
 |---|---|
-| `verif:litteraux` | un accent grave dans un commentaire de `template:`/`styles:` **ferme le littéral** — `tsc` passe, Angular échoue sans nommer le fichier, et le serveur sert un bundle périmé. M'a rattrapé 4 fois cette séance |
+| `verif:litteraux` | un accent grave dans un commentaire de `template:`/`styles:` **ferme le littéral** — `tsc` passe, Angular échoue sans nommer le fichier, et le serveur sert un bundle périmé. ⚠️ **Angle mort corrigé le 2026-08-11** : il ne voyait que `styles: [` suivi IMMÉDIATEMENT de l'accent grave. La forme `styles: [` + saut de ligne (plusieurs composants, dont les portes d'accès) était **entièrement ignorée**. Vérifié par mutation : le piège réintroduit est maintenant attrapé |
 | `verif:contraste` | 46 couples dans les deux thèmes |
 | `verif:accents` | mots français sans accent dans les chaînes affichées, bornes Unicode (le `\b` ASCII casse sur « paramètres ») |
 | `verif:confirmations` | une modale de danger sans `[consequences]` |

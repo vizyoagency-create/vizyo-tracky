@@ -27,8 +27,26 @@ import { join, relative } from 'node:path';
 const RACINE = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const SOURCES = join(RACINE, 'apps', 'web', 'src');
 
-/** Les deux propriétés dont la valeur est un littéral gabarit contenant du balisage. */
-const PROPRIETES = ['template: `', 'styles: [`'];
+/**
+ * Les deux propriétés dont la valeur est un littéral gabarit contenant du balisage.
+ *
+ * ⚠️ EN EXPRESSION RÉGULIÈRE, ET NON EN CHAÎNE LITTÉRALE — angle mort trouvé le 2026-08-11.
+ * La version précédente cherchait les chaînes exactes `template: \`` et `styles: [\``, donc
+ * uniquement quand l'accent grave suit IMMÉDIATEMENT. Or Angular accepte tout aussi bien :
+ *
+ *     styles: [
+ *       ` … `,
+ *     ],
+ *
+ * et cette forme — utilisée par plusieurs composants du dépôt, dont les portes d'accès —
+ * était **entièrement ignorée par le contrôle**. Un accent grave dans un commentaire y
+ * cassait le build sans que `pnpm verif:litteraux` ne bronche : le garde ne voyait pas le
+ * fichier où le piège se trouvait. Le saut de ligne et l'indentation sont désormais admis.
+ */
+const PROPRIETES = [
+  { nom: 'template', ouvre: /template:\s*`/g, ferme: /^`\s*,/ },
+  { nom: 'styles', ouvre: /styles:\s*\[\s*`/g, ferme: /^`\s*[,\]]/ },
+];
 
 function fichiers(dossier) {
   const sortie = [];
@@ -45,15 +63,16 @@ const fautes = [];
 for (const chemin of fichiers(SOURCES)) {
   const source = readFileSync(chemin, 'utf8');
   for (const propriete of PROPRIETES) {
-    let debut = source.indexOf(propriete);
-    while (debut >= 0) {
-      const ouverture = debut + propriete.length;
+    propriete.ouvre.lastIndex = 0;
+    let m;
+    while ((m = propriete.ouvre.exec(source)) !== null) {
+      // `ouverture` = juste APRÈS l'accent grave ouvrant, quelle que soit l'indentation.
+      const ouverture = m.index + m[0].length;
       const fermeture = source.indexOf('`', ouverture);
       if (fermeture < 0) break;
       // Ce qui SUIT la fermeture dit si le littéral s'est terminé là où il devait.
       const apres = source.slice(fermeture, fermeture + 4);
-      const attendu = propriete.startsWith('template') ? /^`\s*,/ : /^`\s*\]/;
-      if (!attendu.test(apres)) {
+      if (!propriete.ferme.test(apres)) {
         const ligne = source.slice(0, fermeture).split('\n').length;
         fautes.push({
           fichier: relative(RACINE, chemin),
@@ -61,7 +80,7 @@ for (const chemin of fichiers(SOURCES)) {
           extrait: source.slice(fermeture, fermeture + 60).split('\n')[0],
         });
       }
-      debut = source.indexOf(propriete, fermeture + 1);
+      propriete.ouvre.lastIndex = fermeture + 1;
     }
   }
 }

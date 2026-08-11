@@ -1389,7 +1389,16 @@ composants ne gèrent que « rempli » et « chargement ».
       n'est atteignable que si ses **deux** dimensions le sont ; l'espacement cède sous 420 px,
       les cases passent à **47 × 56**. 9 textes ≥ 4,5:1 dans les deux thèmes, 5 couleurs en dur
       purgées
-- [ ] Proposition 2FA — sort de la pile : voile à 22 %, 3 sorties visibles, feuille iOS, dialogue M3
+- [x] Proposition 2FA — **elle sort de la pile.** Ce n'est PAS une porte : c'est une proposition
+      refusable. Elle portait pourtant le **voile à 78 %** du consentement et de la vérification
+      d'appareil — donc le même poids à l'œil, alors qu'elle ne bloque rien : on lisait « vous ne
+      passerez pas » avant même le titre. **Voile à 22 %** (mesuré `/ 0.22`), l'application reste
+      visible derrière. **3 sorties visibles** : « Ne plus me proposer » — le refus le plus
+      engageant — était en `--fg-tertiary`, donc **le moins lisible des trois** ; les deux refus
+      prennent la même couleur, ce qui les distingue est leur libellé. **Feuille sous 640 px**,
+      même géométrie que la confirmation du kit : mesuré collée en bas, rayon **28 px** et poignée
+      **32 × 4** — les jetons Android, donc les 3 écarts de plateforme volontaires sont respectés.
+      6 textes ≥ 4,5:1 dans les deux thèmes (pire 5,54 / 7,28), 0 cible < 44 px
 - [ ] Assistant de démarrage — *livré en B0′*
 - [ ] Coupure moteur — **compte à rebours pendant les 90 s**, la raison du refus sort du `title`, l'état non confirmé a 3 sorties, avertissement boîtier muet en 3 étapes numérotées
   - [x] ✅ **Variante critique branchée — décision client du 2026-08-11 : plaque à retaper sur la
