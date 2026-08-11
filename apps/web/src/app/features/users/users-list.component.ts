@@ -359,7 +359,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-row-menu { position: relative; display: flex; justify-content: flex-end }
     .u-menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--fg-tertiary); cursor: pointer; transition: all .15s }
     .u-menu-btn:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .u-menu { position: absolute; top: 34px; right: 0; z-index: 51; min-width: 208px; padding: 6px; border-radius: 12px; background: var(--surface, var(--bg-secondary)); border: 1px solid var(--border-strong, var(--border-subtle)); box-shadow: 0 18px 44px -14px rgba(0,0,0,.5) }
+    .u-menu { position: absolute; top: 34px; right: 0; z-index: 51; min-width: 208px; padding: 6px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border-strong); box-shadow: 0 18px 44px -14px rgba(0,0,0,.5) }
     .u-menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border-radius: 8px; border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; transition: background .12s, color .12s; white-space: nowrap }
     .u-menu-item:hover:not(.disabled) { background: var(--bg-tertiary); color: var(--fg-primary) }
     .u-menu-item.danger:hover:not(.disabled) { color: var(--danger) }

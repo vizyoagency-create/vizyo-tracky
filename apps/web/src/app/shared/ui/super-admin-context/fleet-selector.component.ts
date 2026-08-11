@@ -90,7 +90,7 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
       position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
       min-width: 210px; max-width: 260px; padding: 6px;
       border-radius: 12px;
-      background: var(--surface, var(--bg-secondary));
+      background: var(--bg-secondary);
       border: 1px solid var(--border-strong, var(--border-subtle));
       box-shadow: 0 18px 44px -14px rgba(0,0,0,.5);
       max-height: 320px; overflow-y: auto;

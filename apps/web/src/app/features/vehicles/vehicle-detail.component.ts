@@ -1398,35 +1398,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
     .vd-driver-card-btn:disabled { opacity: 0.5; cursor: wait; }
 
-    /* ─── Pill conducteur dans une trip card ─── */
-    .vd-trip-driver {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-      padding: 4px 9px;
-      background: color-mix(in srgb, var(--driver-color, #10E0A0) 12%, transparent);
-      border: 1px solid color-mix(in srgb, var(--driver-color, #10E0A0) 30%, transparent);
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--fg-primary);
-      width: fit-content;
-    }
-    .vd-trip-driver-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--driver-color, #10E0A0);
-      flex-shrink: 0;
-    }
-    .vd-trip-driver-source {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--fg-tertiary);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
+    /* La pastille conducteur (.vd-trip-driver) vivait ici sans qu'aucun element du
+       gabarit ne porte la classe : regles mortes, supprimees. Le rendu reel est
+       dans vehicle-reports-tab, qui pose bien --driver-color via [style]. */
 
     /* ─── Trajets : note libre (lecture / edition / ajout) ─── */
     .vd-trip-note {

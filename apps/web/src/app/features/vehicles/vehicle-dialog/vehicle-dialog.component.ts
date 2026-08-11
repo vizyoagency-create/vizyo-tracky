@@ -333,7 +333,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     .vd-chip-x:hover { color: #EF4444; background: rgba(239,68,68,.12) }
     .vd-chip-input { flex: 1; min-width: 90px; background: transparent; border: none; outline: none; color: var(--fg-primary); font-size: 13px }
     .vd-chip-input::placeholder { color: var(--fg-tertiary) }
-    .vd-hint { font-size: 10.5px; color: var(--fg-muted); margin-top: 5px }
+    .vd-hint { font-size: 10.5px; color: var(--fg-secondary); margin-top: 5px }
     select.field-input {
       appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");

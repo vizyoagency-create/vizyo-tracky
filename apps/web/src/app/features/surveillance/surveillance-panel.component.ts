@@ -499,39 +499,36 @@ const ROLE_LABELS: Record<string, string> = {
       padding: 1rem;
     }
     .sm-card--armed {
-      border-color: rgba(16, 224, 160, 0.4);
-      background: linear-gradient(180deg, rgba(16, 224, 160, 0.06), transparent 60%), var(--bg-secondary);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 40%, transparent);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--color-tracky-light) 6%, transparent), transparent 60%), var(--bg-secondary);
     }
     .sm-status-icon {
       width: 36px; height: 36px;
       border-radius: 10px;
-      background: rgba(148, 163, 184, 0.12);
-      color: rgb(148, 163, 184);
+      background: var(--bg-quaternary);
+      color: var(--fg-secondary);
       display: inline-flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
     .sm-status-icon--armed {
-      background: rgba(16, 224, 160, 0.15);
-      color: rgb(16, 224, 160);
+      background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent);
+      color: var(--texte-succes);
     }
     /* Protection non vérifiable : ambre (doute), jamais vert (fausse assurance),
        jamais rouge non plus — on ne sait pas, on ne prétend pas savoir. */
     .sm-card--doubt {
-      border-color: rgba(251, 191, 36, 0.45);
-      background: linear-gradient(180deg, rgba(251, 191, 36, 0.06), transparent 60%), var(--bg-secondary);
+      border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--warning) 6%, transparent), transparent 60%), var(--bg-secondary);
     }
     .sm-status-icon--doubt {
-      background: rgba(251, 191, 36, 0.15);
-      color: rgb(251, 191, 36);
+      background: color-mix(in srgb, var(--warning) 15%, transparent);
+      color: var(--texte-attente);
     }
     .sm-doubt {
       font-size: 0.75rem;
       line-height: 1.35;
-      color: rgb(251, 191, 36);
+      color: var(--texte-attente);
     }
-    /* Note de pied du réglage horaire. Le reste des couleurs de ce panneau est en dur ;
-       leur reprise appartient au lot B-pages § F « Panneau surveillance », qui attend
-       les maquettes. On n'en ajoute pas une de plus au passage. */
     .sm-note {
       font-size: 0.72rem;
       line-height: 1.4;
@@ -549,16 +546,17 @@ const ROLE_LABELS: Record<string, string> = {
     }
     .sm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .sm-btn:hover:not(:disabled) { filter: brightness(1.1); }
-    .sm-btn--primary { background: rgb(16, 224, 160); color: #0b0f12; }
+    /* Encre FONCEE sur l'accent — regle B0-SOCLE. Le blanc y mesure 2,54:1. */
+    .sm-btn--primary { background: var(--color-tracky-light); color: var(--accent-ink); }
     .sm-btn--danger {
-      background: rgba(239, 68, 68, 0.15);
-      color: rgb(248, 113, 113);
-      border-color: rgba(239, 68, 68, 0.4);
+      background: color-mix(in srgb, var(--danger) 15%, transparent);
+      color: var(--texte-alerte);
+      border-color: color-mix(in srgb, var(--danger) 40%, transparent);
     }
     .sm-btn--ghost {
       background: transparent;
-      color: var(--color-fg-secondary);
-      border-color: var(--color-border-subtle);
+      color: var(--fg-secondary);
+      border-color: var(--border-subtle);
     }
     .sm-grid {
       display: grid;
@@ -591,9 +589,9 @@ const ROLE_LABELS: Record<string, string> = {
       transition: all 0.15s;
     }
     .sm-day-btn--active {
-      background: rgba(16, 224, 160, 0.15);
-      border-color: rgba(16, 224, 160, 0.4);
-      color: rgb(16, 224, 160);
+      background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 40%, transparent);
+      color: var(--texte-succes);
     }
     .sm-check {
       display: inline-flex; align-items: center; gap: 0.5rem;
@@ -601,17 +599,19 @@ const ROLE_LABELS: Record<string, string> = {
       color: var(--fg-primary);
       cursor: pointer;
     }
-    .sm-check input { width: 16px; height: 16px; accent-color: rgb(16, 224, 160); }
+    .sm-check input { width: 16px; height: 16px; accent-color: var(--color-tracky-light); }
     .sm-event {
       padding: 0.75rem;
       background: var(--bg-tertiary);
       border: 1px solid var(--border-subtle);
       border-radius: 10px;
     }
-    .sm-event--pending { border-left: 3px solid rgb(251, 191, 36); }
-    .sm-event--confirmed_theft { border-left: 3px solid rgb(239, 68, 68); }
-    .sm-event--false_alarm { border-left: 3px solid rgb(148, 163, 184); opacity: 0.7; }
-    .sm-event--acknowledged { border-left: 3px solid rgb(96, 165, 250); }
+    /* Le liseré gauche redit la pastille pour qui ne distingue pas les teintes :
+       il donne la position dans la liste, la pastille donne le mot. */
+    .sm-event--pending { border-left: 3px solid var(--warning); }
+    .sm-event--confirmed_theft { border-left: 3px solid var(--danger); }
+    .sm-event--false_alarm { border-left: 3px solid var(--fg-tertiary); opacity: 0.7; }
+    .sm-event--acknowledged { border-left: 3px solid var(--blue); }
     .sm-badge {
       padding: 0.125rem 0.5rem;
       border-radius: 999px;

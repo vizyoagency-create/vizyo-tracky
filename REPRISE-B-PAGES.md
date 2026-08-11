@@ -102,11 +102,24 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > aucun thème, et les badges de statut tombaient à **1,47:1 en clair**.
 >
 > `verif:couleurs-kit` ne les voit pas (il ne couvre que `shared/ui` et `shared/components`).
-> Le motif à chercher dans une page reprise :
 >
-> ```bash
-> grep -o "var(--color-[a-z-]*" <fichier>   # les vraies sont --fg-* / --bg-* / --border-*
-> ```
+> ✅ **Balayé et fermé le 2026-08-11.** Un audit sur tout `apps/web/src` a sorti **9 noms
+> fantômes, 29 occurrences, dont 18 sans le moindre repli** — corrigés. Et le nouveau contrôle
+> **`pnpm verif:variables`** couvre désormais tout `apps/web/src` et refuse les quatre formes :
+>
+> | Forme écrite | Ce que fait le navigateur |
+> |---|---|
+> | `var(--surface)` | la déclaration entière est **jetée** — un `border: 1px solid var(--border)` retombe sur `border-style: none`, la bordure **disparaît** |
+> | `var(--x, #94a3b8)` | l'hexadécimal gagne **toujours** — la couleur ne suit plus aucun thème |
+> | `var(--surface, var(--bg-secondary))` | s'affiche juste, mais le nom de tête est mort : le prochain copier-coller le propagera **sans** son repli |
+> | `var(--color-fg-tertiary)` | déclaré dans `@theme inline`, donc **non émis dans `:root`** — cf. `design/TOKENS.md` § « Les noms de la couche 2 » |
+>
+> La quatrième est la plus retorse : `var(--color-border-subtle)` **résout** aujourd'hui et
+> `var(--color-fg-tertiary)` **non**, alors que les deux sont dans le même bloc. Tailwind
+> n'émet le nom que tant qu'une classe utilitaire correspondante subsiste dans un gabarit.
+>
+> Distinguer les faux positifs : `--pill`, `--u`, `--driver-color`, `--chart-height` **ne sont
+> pas** des fantômes — elles sont posées au rendu par `[style.--x]` ou `setProperty()`.
 >
 > Même famille que les `--tk-*` déjà relevés sur `/integrations`.
 
@@ -278,9 +291,9 @@ window.__recette = function (nom) {
 };
 ```
 
-### ⚠️ La sonde de CONTRASTE — trois pièges, tous corrigés le 2026-08-11
+### ⚠️ La sonde de CONTRASTE — cinq pièges, tous corrigés le 2026-08-11
 
-Mesurer un contraste au navigateur est plus fragile qu'il n'y paraît. Trois défauts m'ont
+Mesurer un contraste au navigateur est plus fragile qu'il n'y paraît. Cinq défauts m'ont
 donné des verdicts faux **dans les deux sens** :
 
 1. **`color-mix()` se calcule en `color(srgb 0.95 0.98 0.97)`** — des flottants **0-1**, pas
@@ -291,10 +304,27 @@ donné des verdicts faux **dans les deux sens** :
 3. **`body` a une transition de 300 ms sur son fond**, et le panneau **ne composite aucune
    frame**. La transition n'avance donc jamais : en sombre, on mesure du texte clair sur un
    fond resté clair, d'où des ratios à ~1,05 sur des pages correctes.
+4. **L'alpha de `color(srgb … / 0.16)` doit être lu, et les fonds COMPOSÉS.** Sauter les
+   ancêtres non opaques pour chercher plus haut ne suffit pas : une pastille au fond
+   `color-mix(… var(--color-tracky-light) 16%, transparent)` était prise pour du vert
+   **plein**. Faux échecs relevés sur `/settings` : `.rule-state.on` à « 1,74 » et deux
+   paragraphes de `.note` à « 1,48 » — tous corrects une fois l'alpha composé. Il faut
+   empiler les fonds jusqu'au premier opaque et les composer un à un vers le bas.
+5. **Un élément créé en JS ne reçoit AUCUN style de composant Angular.** L'encapsulation de
+   vue préfixe chaque règle d'un attribut `_ngcontent-ng-cXXXX` ; un `document.createElement`
+   ne le porte pas. Symptôme reconnaissable : **toutes** les classes testées rendent le même
+   ratio et la même taille de police. Vu ici sur les 10 états du panneau de surveillance,
+   tous à « 18,85 ». Remède : lire l'attribut sur un élément existant du composant et le
+   poser sur l'élément injecté.
 
 **Le remède** : injecter `*{transition:none!important;animation:none!important}` avant toute
-bascule de thème, lire le fond réel via `getComputedStyle(document.body)`, et gérer
-`color(srgb …)` dans le parseur.
+bascule de thème, lire le fond réel via `getComputedStyle(document.body)`, gérer
+`color(srgb …)` **avec son alpha** dans le parseur, composer la pile de fonds, et recopier
+l'attribut d'encapsulation sur tout élément injecté.
+
+> **Le réflexe qui rattrape les cinq :** un relevé où plusieurs lignes portent la **même**
+> valeur, ou une valeur ronde comme 1,00, mesure la sonde et non la page. Vérifier d'abord
+> que la sonde avait de la matière (`elementsInspectes`) et que les valeurs **varient**.
 
 **Et surtout : balayer TOUT le texte, pas une liste de sélecteurs.** La liste ne trouve que ce
 qu'on a pensé à y mettre — le balayage générique a sorti à lui seul 2 échecs de
@@ -335,7 +365,7 @@ Six cibles restent signalées pour ces deux raisons. Aucune n'appelle une correc
 ## Les cinq contrôles qui tournent
 
 ```bash
-pnpm verif:litteraux && pnpm verif:contraste && pnpm verif:accents && pnpm verif:confirmations && pnpm verif:couleurs-kit
+pnpm verif:litteraux && pnpm verif:contraste && pnpm verif:accents && pnpm verif:confirmations && pnpm verif:couleurs-kit && pnpm verif:variables
 ```
 
 | | |
@@ -345,6 +375,7 @@ pnpm verif:litteraux && pnpm verif:contraste && pnpm verif:accents && pnpm verif
 | `verif:accents` | mots français sans accent dans les chaînes affichées, bornes Unicode (le `\b` ASCII casse sur « paramètres ») |
 | `verif:confirmations` | une modale de danger sans `[consequences]` |
 | `verif:couleurs-kit` | hex, classes de palette Tailwind **et `rgba()` teintés** dans `shared/ui` et `shared/components` |
+| `verif:variables` | **ajouté le 2026-08-11** — les `var()` pointant sur un nom que rien ne définit, sur **tout `apps/web/src`** : c'est le trou que `verif:couleurs-kit` laisse. Refuse aussi le vocabulaire `@theme inline`, non émis dans `:root`. Vérifié par mutation sur les quatre formes |
 
 **`pnpm verify` se termine maintenant** (~40 s) : typecheck · smoke · 277 partagés · 328 web ·
 1900 API. Le P1 de la feuille de route est corrigé.

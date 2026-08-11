@@ -514,7 +514,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       background: var(--bg-tertiary);
       border-radius: 10px;
     }
-    .info-box lucide-icon { color: var(--accent-warning, #f59e0b); flex-shrink: 0; }
+    .info-box lucide-icon { color: var(--warning); flex-shrink: 0; }
     .info-box strong { color: var(--fg-primary); display: block; margin-bottom: 4px; }
     .info-box p { margin: 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.5; }
 

@@ -26,6 +26,37 @@ Une même couleur est donc atteignable de trois façons : la classe utilitaire
 (`var(--fg-secondary)`). **Préférer la classe utilitaire** dans les templates, la variable
 dans les blocs `styles:` des composants.
 
+### Les noms de la couche 2 ne s'écrivent JAMAIS dans un `var()`
+
+`--color-bg-primary` et ses voisins sont des noms de **classes utilitaires**, pas des jetons
+lisibles à l'exécution. Le mot-clé `inline` demande précisément à Tailwind d'injecter la
+valeur dans l'utilitaire à la compilation, **au lieu** d'émettre la variable dans `:root`.
+
+Mesuré dans le navigateur sur cette application :
+
+```js
+getComputedStyle(document.documentElement).getPropertyValue('--color-fg-tertiary')
+// → ""   (vide)
+getComputedStyle(document.documentElement).getPropertyValue('--color-border-subtle')
+// → "rgba(255, 255, 255, 0.08)"
+```
+
+Deux noms du même bloc, deux résultats — et c'est le piège. Tailwind finit par émettre celui
+dont la classe utilitaire est encore employée quelque part dans un gabarit. Autrement dit
+`var(--color-border-subtle)` fonctionne **tant que** quelqu'un écrit encore `border-subtle`
+dans un gabarit, et devient vide le jour où le dernier disparaît — dans un fichier sans
+rapport, sans erreur, sans avertissement.
+
+Écrire `var(--color-x)` revient donc à parier sur le contenu d'autres gabarits. Employer
+l'alias court de la couche 3 : `var(--fg-tertiary)`, `var(--border-subtle)`.
+
+**Exception, et une seule :** le bloc `@theme` **sans** `inline` (l'accent de marque, les
+polices) est bien émis dans `:root`. `var(--color-tracky-light)` vaut `#10e0a0` à
+l'exécution — ses 147 emplois sont légitimes.
+
+`pnpm verif:variables` refuse tout le vocabulaire de la couche 2, ainsi que tout `var()`
+pointant sur un nom que rien ne définit.
+
 ---
 
 ## La table de correspondance

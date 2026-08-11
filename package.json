@@ -20,6 +20,7 @@
     "verif:accents": "node scripts/verif-accents.mjs",
     "verif:confirmations": "node scripts/verif-confirmations.mjs",
     "verif:couleurs-kit": "node scripts/verif-couleurs-kit.mjs",
+    "verif:variables": "node scripts/verif-variables.mjs",
     "verify": "pnpm typecheck && pnpm smoke && pnpm test"
   },
   "devDependencies": {

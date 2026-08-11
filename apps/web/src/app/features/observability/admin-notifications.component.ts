@@ -1128,7 +1128,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-pk--bad { background: rgba(239,68,68,.13); color: #f87171; }
 
     /* ── Filtres ── */
-    .nc-cat { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2, #f1f5f9); color: var(--text-2, #475569); }
+    .nc-cat { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg-quaternary); color: var(--fg-secondary); }
     .nc-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .nc-field { display: flex; flex-direction: column; gap: 4px; }
     .nc-field--grow { flex: 1 1 220px; }
