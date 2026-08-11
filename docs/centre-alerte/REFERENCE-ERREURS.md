@@ -17,6 +17,42 @@
 
 ---
 
+## 🎯 2026-08-11 *(2ᵉ passage, 09:22 UTC)* — le boîtier n'a jamais été muet : on lui parlait dans la mauvaise langue
+
+Le test daté de [TRK-014](#trk-014), relu sur 13 h au lieu de 5, confirme sa deuxième ligne sur
+3,4× plus de données : `total = 47`, `avec_ack = 0`, `silences_traces = 47`, et **zéro** commande
+close par le chemin de l'ACK. Mais le chiffre n'était pas la découverte — **la comparaison l'était**.
+
+Sur la même socket, la même fenêtre, les mêmes boîtiers, deux familles de commandes coexistent :
+
+| Famille | Format | Trames | Réponses |
+|---|---|---|---|
+| moteur — `**,imei:<IMEI>,K;` | enveloppe TCP | 36 | **33**, en ~2,6 s |
+| cadence — `fix005m***n123456` | texte SMS | 47 | **0** |
+
+`fix_continuous` envoie la forme **SMS** de la commande sur la socket **TCP**, qui attend
+`**,imei:<IMEI>,C,05m;`. Le boîtier reçoit la trame, ne sait pas la lire, ne l'applique pas et ne
+répond rien. **Quatre mois, 4 120 commandes, aucune réponse — et la réponse était dans le dépôt** :
+`docs/03-protocol-coban-gps403d.md` §4.2.1 donne le format TCP depuis l'origine. Voir
+[TRK-012](#trk-012).
+
+> Les deux hypothèses que la table de décision laissait en lice — « la commande n'arrive pas » et
+> « le mot de passe est refusé » — sont **toutes les deux fausses**. La trame arrive, et le mot de
+> passe n'a jamais été lu. *Une table de décision bien construite peut être exhaustive sur les
+> réponses qu'elle envisage et passer à côté de la bonne.*
+
+**Et une affirmation de fiche vieille de quatre jours tombe.** Les trames `jt`/`kt`, écartées le
+07/08 comme « des rapports de minuterie qui ne répondent à aucune commande », sont **33 sur 33**
+corrélées à une commande moteur dans les 15 s, avec écho exact de la lettre. C'étaient de vrais
+accusés de réception — donc la preuve, disponible depuis le 07/08, que le canal descendant
+fonctionnait. *Un compteur qu'on a disqualifié une fois ne se re-vérifie plus jamais.*
+
+**Rien n'a été codé** : la cause est établie, mais changer la trame émise change ce que reçoivent
+43 boîtiers en service. Le test de validation tient en une trame sur un boîtier, sans SMS, sans
+allowlist, non destructif — il est écrit dans [TRK-012](#trk-012), et il attend un accord.
+
+---
+
 ## 🔎 2026-08-11 — le silence du boîtier est PROUVÉ, et le repli SMS n'a jamais eu de preuve de remise
 
 Première nuit complète après les correctifs du 10/08 au soir. **Zéro ligne `error_logs` en six
@@ -305,8 +341,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-017](#trk-017) | `sms-allowlist` | Une 2ᵉ instance de Tracky, hors VPS, efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(appelant nommé le 10/08 ; toujours actif, y compris la nuit)* | 2026-08-09 | 2026-08-11 |
 | [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ | 2026-08-09 | 2026-08-11 |
 | [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ | 2026-08-08 | 2026-08-11 |
-| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence désormais **PROUVÉ** (écoute armée le 10/08) | 🔴 NON CORRIGÉ *(correctif #1 livré et vérifié ; #2 et #3 ouverts)* | 2026-08-07 | 2026-08-11 |
-| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée, redemandée 2×/jour | 🔴 NON CORRIGÉ *(correctif **suspendu** au test SMS)* | 2026-08-05 | 2026-08-11 |
+| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(correctif #1 livré et vérifié ; #2 ouvert, #3 requalifié ; Constat 2 rectifié)* | 2026-08-07 | 2026-08-11 |
+| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord)* | 2026-08-05 | 2026-08-11 |
 | [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ | 2026-08-06 | 2026-08-11 |
 | [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(espacement des rappels livré le 10/08)* | 2026-07-28 | 2026-08-11 |
 | [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🟢 CORRIGÉ *(confirmation à 2 échecs livrée le 10/08 — test daté au 18/08)* | 2026-07-29 | 2026-08-10 |
@@ -1319,6 +1355,109 @@ le boîtier reçoive et refuse d'appliquer.
 > n'est pas une preuve d'envoi. **Trois fiches se rejoignent sur le même geste, et aucune ne peut
 > le remplacer.**
 
+### 🎯 2026-08-11 (2ᵉ passage, 09:22 UTC) — CAUSE RACINE TROUVÉE : la trame est au mauvais format
+
+**Le test SMS n'est plus nécessaire.** La question qu'il devait trancher est tranchée par les
+données de production et par la référence de protocole du dépôt. Et la réponse n'est **aucune des
+deux hypothèses** que la table de décision de [TRK-014](#trk-014) laissait en lice.
+
+`fix_continuous` envoie sur la **socket TCP** un payload au **format SMS** :
+
+```
+fix005m***n123456          ← ce qui part, depuis le 2026-04-27
+**,imei:<IMEI>,C,05m;      ← ce que le parseur TCP du Coban attend
+```
+
+Le boîtier reçoit bien la trame — la socket est la même que celle qui marche. Il ne sait pas la
+lire, donc il ne l'applique pas et ne répond rien. **Une trame illisible n'a pas de réponse : elle
+n'a même pas d'erreur.** C'est exactement la signature observée depuis quatre mois.
+
+#### La preuve — deux familles de commandes sur la MÊME socket, résultats opposés
+
+Sur la fenêtre 10/08 20:03 → 11/08 09:22 (13 h), `wire_logs` :
+
+| Famille | Format émis | Mot de passe | Trames | Réponses | Latence |
+|---|---|---|---|---|---|
+| **A** — moteur (`engine_control`) | `**,imei:<IMEI>,K;` / `,J;` | **non** | 36 | **33** | **~2,6 s** |
+| **B** — cadence (`fix_continuous`) | `fix005m***n123456` | oui (`123456`) | 47 | **0** | — |
+
+Les 33 réponses de la famille A ne sont pas des coïncidences : **33 sur 33** se corrèlent à une
+trame sortante du même IMEI dans les 15 s, latence moyenne 2,60 s, et la lettre de la réponse
+**écho celle de la commande** (`K;` → `kt`, `J;` → `jt`). Sur la même période, `IN` contient
+**92 439 trames** dont **zéro** portant « fix », « ok », « error » ou « password ».
+
+Et le contraste tient sur toute l'histoire, pas seulement sur 13 h :
+
+| Depuis l'origine | Commandes | Acquittées |
+|---|---|---|
+| Famille A — `engine_control_commands` (depuis le 01/08) | 780 | **713** |
+| Famille B — `tracker_commands`, **tous templates confondus** | **4 120** | **0** |
+
+**Les 4 120 commandes émises depuis avril portent toutes le format texte.** `fix_continuous`,
+`sensitivity`, `shock_on` : les trois seuls templates jamais utilisés, et les trois construisent
+un payload SMS. **La commande TCP `,C,` n'a jamais été émise une seule fois** — `wire_logs` en
+compte **0** depuis l'origine. L'hypothèse n'avait donc jamais pu être contredite : le cas
+témoin n'existait pas.
+
+#### La référence était dans le dépôt depuis le début
+
+[`docs/03-protocol-coban-gps403d.md`](../03-protocol-coban-gps403d.md) §4.2.1, table extraite de
+`Gps103ProtocolEncoder.java` de Traccar :
+
+| Fonction | Payload TCP |
+|---|---|
+| Tracking périodique | `**,imei:<IMEI>,C,<XX><s\|m\|h>` |
+
+Et §4.1 : *« Préfixe obligatoire : `**,` — envoi sur la socket existante du boîtier. »* Le format
+texte `fixNNNm***n<pass>` est la forme **SMS** de la même commande. Le catalogue
+(`coban.catalog.ts:176`) déclare `availableVia: ['sms','tcp']` mais n'a **qu'un seul
+`buildPayload`** — donc un seul format pour deux canaux qui n'ont pas la même grammaire. *Le
+défaut n'est pas dans la valeur envoyée, il est dans l'enveloppe.*
+
+⚠️ **Détail qui compte pour le correctif :** Traccar formate la fréquence sur **deux** chiffres
+(`String.format("%02dm", …)`), donc 300 s → **`05m`**, pas `005m`. Le catalogue utilise la forme
+SMS à trois chiffres (`005m`, `010s`, `002m`…). Reprendre la forme du catalogue telle quelle dans
+l'enveloppe TCP reproduirait le défaut sous une autre forme.
+
+#### Ce que ça change pour les correctifs de cette fiche
+
+Le correctif **#1** (cesser de réémettre après N échecs) **devient sans objet** : il traitait le
+symptôme d'une consigne jamais honorée. Si la consigne est honorée, il n'y a plus rien à taire.
+Le **#3** (mot de passe Coban) **tombe** : le mot de passe n'a jamais été lu, faute d'enveloppe.
+
+> **Le correctif est désormais : émettre la bonne trame.** `**,imei:<IMEI>,C,05m;` sur le chemin
+> TCP, la forme texte restant réservée au canal SMS. Ce n'est plus « faire taire 72 échecs par
+> jour » — c'est **obtenir enfin la cadence de 300 s**, et avec elle l'économie de batterie et de
+> forfait 2G que la cible existe pour produire, sur 36 boîtiers.
+
+#### Ce qui reste à vérifier avant de généraliser — et pourquoi rien n'est codé ici
+
+Le faisceau est solide mais il **n'a pas encore été vérifié sur un boîtier**. La discipline de
+cette fiche depuis le 05/08 — *vérifier avant d'écrire du code* — s'applique à ce constat comme
+elle s'appliquait aux précédents. Le test de validation est devenu **beaucoup plus simple que le
+test SMS** qu'il remplace : il ne demande ni SMS, ni allowlist, ni preuve de remise, et il est
+non destructif.
+
+**Marche à suivre — un boîtier, une trame, dix minutes :**
+
+1. Choisir **un** boîtier en ligne et à l'arrêt (cadence réelle observée 19–30 s).
+2. Lui envoyer **une seule** trame `**,imei:<IMEI>,C,05m;` sur sa socket existante.
+3. Observer `wire_logs IN` pendant 10 min : l'intervalle entre deux trames `position` doit passer
+   de ~20 s à ~300 s.
+4. **La preuve est l'intervalle, pas la réponse.** Le manuel Coban ne garantit aucun écho sur
+   `,C,` ; l'absence d'ACK ne vaudrait donc pas échec ici — seule la cadence tranche.
+5. Contrôle négatif, gratuit : les 35 autres boîtiers restent à ~20 s sur la même fenêtre.
+
+⚠️ **Le piège du motif d'ACK, à ne pas reproduire.** Les motifs `status` et `position_single`
+(`/imei:\d{15},(tracker|[A-Z])/i`, insensible à la casse) **matchent les trames `jt` / `kt`** des
+commandes moteur. Un test qui conclurait sur ce motif compterait un ACK moteur pour une réponse de
+cadence. Corréler sur le **temps** et sur l'**IMEI**, jamais sur le motif seul.
+
+> **Aucune ligne de code n'est écrite ici, et c'est délibéré** — pour la deuxième fois sur cette
+> fiche, mais pas pour la même raison qu'hier. Hier il manquait la preuve. Aujourd'hui elle est
+> là, et ce qui manque est un **accord** : changer la trame émise change ce que reçoivent
+> 43 boîtiers en service. C'est une décision humaine (§8 de la procédure).
+
 ---
 
 ## TRK-013
@@ -1716,6 +1855,57 @@ en production sur des données réelles — pas seulement par le test unitaire q
 exception, 30 acquittements manuels d'administrateur. Le zéro d'`ackResponse` n'a plus le même sens
 qu'hier : il est maintenant **accompagné de 14 silences tracés**, ce qui le transforme d'ignorance
 en constat.
+
+### 🎯 2026-08-11 (2ᵉ passage, 09:22 UTC) — le silence est confirmé sur 3,4× plus de données, et il a une CAUSE
+
+Fenêtre élargie 10/08 20:03 → 11/08 09:22 (13 h au lieu de 5) :
+
+```
+avec_ack = 0   ·   silences_traces = 47   ·   total = 47
+```
+
+`total = 47` — le piège du troisième cas reste écarté. Les 47 sont des `fix005m` sur **25 boîtiers**,
+toutes porteuses du même `diagnosticHint`. La deuxième ligne de la table de décision est donc
+**confirmée sur un dénominateur 3,4 fois plus grand**, et la garde tient toujours : **0** commande
+close par le chemin de l'ACK (0 `lastError`, 0 `outcomeReason` mentionnant un ACK).
+
+**Et la cause du silence est maintenant connue** — voir [TRK-012](#trk-012) : le payload
+`fix005m***n123456` est la forme **SMS** de la commande, émise sur la socket **TCP**, qui attend
+`**,imei:<IMEI>,C,05m;`. Le boîtier ne répond pas parce qu'il ne peut pas lire la trame. *Le
+guetteur d'ACK écoutait la bonne socket au bon moment — il attendait la réponse d'une question
+jamais posée dans la langue du destinataire.*
+
+> Ce que le correctif #1 de cette fiche a réellement produit n'est donc pas « la preuve que le
+> boîtier est muet » : c'est **l'écart mesurable** entre deux familles de commandes, qui a désigné
+> la cause. Un instrument vaut moins par le chiffre qu'il affiche que par la comparaison qu'il rend
+> possible.
+
+### ⚠️ Rectification du Constat 2 — les trames `jt` / `kt` SONT des accusés de réception
+
+La fiche affirmait, le 07/08 : *« Les 281 trames classées `ack` ne sont pas des accusés de
+réception. Ce sont des rapports de minuterie Coban […] qui ne répondent à aucune commande. »*
+**C'est faux, et la mesure le montre.**
+
+Sur les 33 trames `IN`/`ack` de la fenêtre de 13 h :
+
+| Vérification | Résultat |
+|---|---|
+| Corrélées à une trame `OUT` du même IMEI dans les 15 s | **33 / 33** |
+| Latence moyenne | **2,60 s** (`kt`) · **1,67 s** (`jt`) |
+| Lettre de la réponse vs lettre de la commande | `K;` → `kt`, `J;` → `jt` — **écho exact** |
+
+Ce sont les réponses des commandes moteur d'[TRK-018](#trk-018). L'horaire « 18:00 et 03:00 chaque
+jour », lu à l'époque comme la signature d'une minuterie, est en réalité **l'horaire des coupures
+et restaurations programmées**. La coïncidence de dates avait été prise pour un mécanisme — le
+piège que [TRK-018](#trk-018) nomme lui-même trois semaines plus tard.
+
+> La leçon écrite alors — *« un compteur d'ACK non nul peut ne contenir aucun ACK »* — reste vraie
+> en général, et **elle était fausse ici**. Sa réciproque mérite d'être écrite à côté : *un
+> compteur qu'on a disqualifié une fois ne se re-vérifie plus jamais.* Ces 281 trames étaient la
+> preuve, disponible dès le 07/08, que le canal descendant fonctionnait parfaitement.
+
+Cela **ne change pas** le diagnostic du correctif #1 : `fix.*ok` n'est jamais revenu, et les
+47 silences sont réels. Cela change **ce qu'on croyait savoir du canal** : il n'a jamais été muet.
 
 ### Mise à jour du 2026-08-10 — inchangé, quatrième jour
 
@@ -2718,6 +2908,7 @@ ferait re-crier la zone à chaque perte aurait annulé la fonctionnalité.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-11 *(2ᵉ passage, 09:22 UTC)* | — *(passage ciblé : vérification d'ACK, pas d'audit complet)* | **Cause racine de TRK-012 trouvée** (format SMS émis sur socket TCP) ; test daté de TRK-014 reconfirmé sur 13 h (47/0/47) ; **Constat 2 de TRK-014 rectifié** (les `jt`/`kt` sont de vrais ACK) | 0 | tâche `trk012-ack-et-correctif` |
 | 2026-08-11 | 31 (8 sur 24 h — **toutes antérieures aux correctifs du soir** ; **0 ligne** sur les 6 h qui les suivent) | 17 revues ; **TRK-014 tranché** (silence PROUVÉ, garde ACK vérifiée), 3 correctifs confirmés en prod, 2 en-têtes recalés sur `main` | 1 (TRK-018) | agent d'audit |
 | 2026-08-10 *(2ᵉ passage, 17:12 UTC)* | 31 (10 sur 24 h — dont **6 fois la même** ligne `sms-allowlist`) | 17 revues ; **TRK-017 requalifié** (test daté tranché : lecture B), TRK-012 revoit un boîtier FAILING | 0 | agent d'audit *(passage supplémentaire demandé)* |
 | 2026-08-10 | 23 (3 sur 24 h — 2 d'une signature inédite, 1 rappel GPS attendu) | 16 revues ; TRK-015 confirmé en rafale sur un 2ᵉ véhicule | 1 (TRK-017) | agent d'audit |
