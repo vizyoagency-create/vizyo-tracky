@@ -1139,7 +1139,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-head-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light); }
       .nc-head-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .nc-title { font-size: 13px; font-weight: 700; color: var(--fg-primary); }
-      .nc-sub { font-size: 11px; color: var(--fg-tertiary); }
+      .nc-sub { font-size: 11px; color: var(--fg-secondary); }
       .nc-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 
       /* Etat de l'appareil */
@@ -1147,7 +1147,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-state lucide-icon { flex-shrink: 0; margin-top: 1px; }
       .nc-state-text { min-width: 0; }
       .nc-state-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); margin: 0 0 2px; }
-      .nc-state-desc { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 0; }
+      .nc-state-desc { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
       .nc-state-on { border-color: color-mix(in srgb, var(--tracky) 35%, var(--border-subtle)); }
       .nc-state-on lucide-icon { color: var(--tracky-light); }
       .nc-state-warn { border-color: color-mix(in srgb, #f59e0b 35%, var(--border-subtle)); }
@@ -1159,16 +1159,16 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-ios-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); margin: 0 0 8px; }
       .nc-ios-steps { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
       .nc-ios-steps li { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; }
-      .nc-ios-note { font-size: 11px; color: var(--fg-tertiary); line-height: 1.5; margin: 10px 0 0; }
+      .nc-ios-note { font-size: 11px; color: var(--fg-secondary); line-height: 1.5; margin: 10px 0 0; }
 
-      .nc-notice { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 0; }
+      .nc-notice { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
       .nc-notice lucide-icon { flex-shrink: 0; margin-top: 2px; }
       .nc-notice-warn { color: #f59e0b; }
 
       /* Blocs */
       .nc-block { border-top: 1px solid var(--border-subtle); padding-top: 14px; }
       .nc-block-title { font-size: 12px; font-weight: 700; color: var(--fg-primary); margin: 0 0 4px; }
-      .nc-block-desc { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 0 0 10px; }
+      .nc-block-desc { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 0 0 10px; }
       /* Volontairement pas de champs desactives : l'interrupteur maitre coupe l'envoi,
          il ne doit pas empecher de preparer ses reglages. On attenue seulement. */
       .nc-dimmed { opacity: .55; }
@@ -1176,14 +1176,16 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       /* Recapitulatif « ce que vous recevrez » — encadre, jamais une ligne de plus.
          C'est la reponse a la question que l'utilisateur se pose vraiment. */
       .nc-forecast { padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--tracky) 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--tracky) 28%, var(--border-subtle)); }
-      .nc-forecast-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--tracky-light); margin: 0 0 5px; }
+      /* 11 px : c'est du PETIT TEXTE, donc la famille --texte-* et non la couleur de marque
+         brute (TOKENS.md § « Petit texte »). Mesure : 2,97:1 en theme clair. */
+      .nc-forecast-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--texte-succes); margin: 0 0 5px; }
       .nc-forecast-main { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); line-height: 1.5; margin: 0; }
-      .nc-forecast-note { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 7px 0 0; }
+      .nc-forecast-note { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 7px 0 0; }
       /* Aucun envoi : on retire l'accent positif, sinon l'encadre felicite d'un silence. */
       .nc-forecast-off { background: var(--bg-tertiary); border-color: var(--border-subtle); }
-      .nc-forecast-off .nc-forecast-title { color: var(--fg-tertiary); }
+      .nc-forecast-off .nc-forecast-title { color: var(--fg-secondary); }
       .nc-forecast-loud { background: color-mix(in srgb, #f59e0b 10%, var(--bg-tertiary)); border-color: color-mix(in srgb, #f59e0b 38%, var(--border-subtle)); }
-      .nc-forecast-loud .nc-forecast-title { color: #f59e0b; }
+      .nc-forecast-loud .nc-forecast-title { color: var(--texte-attente); }
 
       /* Lignes a interrupteur — 48px minimum de hauteur tactile */
       .nc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 6px 0; }
@@ -1191,16 +1193,16 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
          l'interrupteur ne flotte pas au milieu d'un paragraphe. */
       .nc-row-type { align-items: flex-start; padding: 8px 0; }
       .nc-row-type .nc-toggle { margin-top: -2px; }
-      .nc-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; margin-left: 6px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); white-space: nowrap; }
-      .nc-freq { color: var(--fg-tertiary); }
+      .nc-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; margin-left: 6px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); white-space: nowrap; }
+      .nc-freq { color: var(--fg-secondary); }
       /* Au-dela d'une par jour, la frequence n'est plus un detail : elle doit sauter aux yeux. */
       .nc-freq.loud { color: #f59e0b; font-weight: 700; }
       .nc-blocked { color: #f59e0b; margin-left: 4px; }
-      .nc-row-note { font-size: 11px; color: var(--fg-tertiary); line-height: 1.45; margin: 4px 0 0; }
+      .nc-row-note { font-size: 11px; color: var(--fg-secondary); line-height: 1.45; margin: 4px 0 0; }
       .nc-row-master { padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); }
       .nc-row-text { flex: 1; min-width: 0; }
       .nc-row-title { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); margin: 0; }
-      .nc-row-desc { font-size: 11px; color: var(--fg-tertiary); margin: 2px 0 0; line-height: 1.45; }
+      .nc-row-desc { font-size: 11px; color: var(--fg-secondary); margin: 2px 0 0; line-height: 1.45; }
 
       .nc-toggle { position: relative; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; width: 52px; height: 44px; }
       .nc-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
@@ -1220,7 +1222,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-sev-opt.active .nc-sev-mark { background: var(--tracky); border-color: var(--tracky); }
       .nc-sev-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
       .nc-sev-label { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
-      .nc-sev-hint { font-size: 11px; color: var(--fg-tertiary); line-height: 1.45; }
+      .nc-sev-hint { font-size: 11px; color: var(--fg-secondary); line-height: 1.45; }
 
       /* Familles de types */
       .nc-group { border-top: 1px solid var(--border-subtle); }
@@ -1228,11 +1230,11 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-group-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 10px 0; background: transparent; border: none; cursor: pointer; text-align: left; }
       .nc-group-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .nc-group-label { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
-      .nc-group-count { font-size: 11px; color: var(--tracky-light); }
-      .nc-group-count.off { color: var(--fg-tertiary); }
-      .nc-chevron { color: var(--fg-tertiary); display: inline-flex; transition: transform .18s; }
+      .nc-group-count { font-size: 11px; color: var(--texte-succes); }
+      .nc-group-count.off { color: var(--fg-secondary); }
+      .nc-chevron { color: var(--fg-secondary); display: inline-flex; transition: transform .18s; }
       .nc-chevron.open { transform: rotate(180deg); }
-      .nc-group-hint { font-size: 11px; color: var(--fg-tertiary); line-height: 1.45; margin: 0 0 8px; }
+      .nc-group-hint { font-size: 11px; color: var(--fg-secondary); line-height: 1.45; margin: 0 0 8px; }
       .nc-group-all { min-height: 44px; padding: 0 14px; margin-bottom: 4px; border-radius: 10px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-secondary); font-size: 12px; font-weight: 700; cursor: pointer; }
       .nc-group-all:disabled { opacity: .55; cursor: default; }
 
@@ -1242,9 +1244,9 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-device-icon { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); color: var(--fg-tertiary); }
       .nc-device-text { flex: 1; min-width: 0; }
       .nc-device-name { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-      .nc-device-meta { font-size: 10.5px; color: var(--fg-tertiary); margin: 2px 0 0; overflow-wrap: anywhere; }
+      .nc-device-meta { font-size: 10.5px; color: var(--fg-secondary); margin: 2px 0 0; overflow-wrap: anywhere; }
       .nc-badge { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tracky) 16%, transparent); color: var(--tracky-light); }
-      .nc-empty { font-size: 11.5px; color: var(--fg-tertiary); margin: 0; }
+      .nc-empty { font-size: 11.5px; color: var(--fg-secondary); margin: 0; }
       .nc-icon-btn { width: 44px; height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-tertiary); cursor: pointer; }
       .nc-icon-btn:disabled { opacity: .5; cursor: default; }
 

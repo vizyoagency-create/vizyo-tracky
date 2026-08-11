@@ -296,7 +296,7 @@ const EMPTY_FORM: RuleForm = {
     .rule-type { font-weight: 600; font-size: .9rem; }
     .rule-state { font-size: .74rem; padding: .1rem .45rem; border-radius: 999px;
       background: var(--border); color: var(--text-muted); }
-    .rule-state.on { background: rgba(16,185,129,.16); color: #059669; }
+    .rule-state.on { background: color-mix(in srgb, var(--color-tracky-light) 16%, transparent); color: var(--texte-succes); }
     .rule-meta { grid-column: 1 / -1; display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
     .chip { font-size: .74rem; padding: .12rem .48rem; border-radius: 999px; border: 1px solid var(--border); }
     .chip-muted { color: var(--text-muted); }
@@ -305,10 +305,12 @@ const EMPTY_FORM: RuleForm = {
     .btn-icon { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center;
       justify-content: center; border: 1px solid var(--border); border-radius: 10px;
       background: transparent; color: inherit; cursor: pointer; }
-    .btn-icon.danger { color: #dc2626; }
+    .btn-icon.danger { color: var(--texte-alerte); }
     .btn-primary, .btn-ghost { min-height: 44px; padding: 0 .95rem; border-radius: 10px;
       font-size: .88rem; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; }
-    .btn-primary { background: var(--accent, #10b981); color: #fff; border: none; }
+    /* Encre FONCEE sur l'accent — regle non negociable de B0-SOCLE. Le blanc mesurait
+       2,54:1 ici. Le repli hexadecimal etait mort : la variable est toujours definie. */
+    .btn-primary { background: var(--color-tracky-light); color: var(--accent-ink); border: none; }
     .btn-primary[disabled] { opacity: .6; cursor: default; }
     .btn-ghost { background: transparent; border: 1px solid var(--border); color: inherit; }
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60;

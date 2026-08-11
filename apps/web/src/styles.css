@@ -1137,12 +1137,18 @@ textarea:focus-visible,
    Réf. maquettes app/*.dc.html (.card / .chip / .kpi / eyebrow).
    ════════════════════════════════════════════════════════════ */
 
-/* Eyebrow — sur-titre mono MAJUSCULE accent (au-dessus d'un titre de section) */
+/* Eyebrow — sur-titre mono MAJUSCULE accent (au-dessus d'un titre de section)
+ *
+ * `--texte-succes` et non `--color-tracky-light` : c'est du TEXTE à 11 px, donc pile le cas
+ * que la famille `--texte-*` a été créée pour traiter (TOKENS.md § « Petit texte » : « dès
+ * que la couleur porte des caractères sous 14 px »). Mesuré au lot B-pages (2026-08-11) :
+ * le vert de marque donnait 3,34:1 en thème clair. En thème SOMBRE rien ne change, les deux
+ * jetons y portent la même valeur. */
 .vt-eyebrow {
   font-family: var(--font-mono);
   font-size: 11px; font-weight: 600;
   letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--color-tracky-light);
+  color: var(--texte-succes);
 }
 
 /* Plaque / ligne cliquable → fiche véhicule (directive [vehicleLink]).

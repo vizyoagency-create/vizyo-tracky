@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **25/57** |
+| **B-pages** | 🟡 **en cours** | **26/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -81,14 +81,13 @@ principal — bouton 112 px), `/driver/unlock`. Elles demandent un jeton pour ê
 
 **Bloc B (1).** `/driver` — usage 100 % téléphone.
 
-**Contenu propre de D et E.** `/settings` (navigation à deux niveaux avec recherche),
-`/integrations`, `/privacy-coverage`. *(`/fleet-admin/activity` et `/admin/ai-usage` sont
-livrées.)*
+**Contenu propre de D et E.** `/integrations`, `/privacy-coverage`.
+*(`/fleet-admin/activity`, `/admin/ai-usage` et `/settings` sont livrées.)*
 
-**État de départ mesuré des 3 pages restantes de D+E** (sonde, 375 px, avant modification) :
-`/settings` **1 cible** (« Coûts IA », exception assumée) · `/integrations` **0** (mais un état
-d'erreur « Impossible de charger l'état de l'intégration » à brancher sur `app-zone`) ·
-`/privacy-coverage` **0**. Aucune coupe, aucun débordement.
+**État de départ mesuré des 2 pages restantes de D+E** (sonde, 375 px, avant modification) :
+`/integrations` **0 cible** (mais un état d'erreur « Impossible de charger l'état de
+l'intégration » à brancher sur `app-zone`) · `/privacy-coverage` **0**. Aucune coupe, aucun
+débordement.
 
 ### 🟠 Trois décisions en attente sur `/admin/ai-usage`
 
@@ -153,6 +152,31 @@ window.__recette = function (nom) {
   return res;
 };
 ```
+
+### ⚠️ La sonde de CONTRASTE — trois pièges, tous corrigés le 2026-08-11
+
+Mesurer un contraste au navigateur est plus fragile qu'il n'y paraît. Trois défauts m'ont
+donné des verdicts faux **dans les deux sens** :
+
+1. **`color-mix()` se calcule en `color(srgb 0.95 0.98 0.97)`** — des flottants **0-1**, pas
+   du 0-255 comme `rgb()`. Les lire tels quels donne un quasi-noir : un texte mesuré à
+   **17,81:1 était rapporté à 1,11**. Toute la palette du dépôt passe par `color-mix`.
+2. **Le repli quand aucun ancêtre n'est opaque.** Retomber sur du blanc en dur est
+   fortuitement juste en thème clair et **faux partout en sombre**.
+3. **`body` a une transition de 300 ms sur son fond**, et le panneau **ne composite aucune
+   frame**. La transition n'avance donc jamais : en sombre, on mesure du texte clair sur un
+   fond resté clair, d'où des ratios à ~1,05 sur des pages correctes.
+
+**Le remède** : injecter `*{transition:none!important;animation:none!important}` avant toute
+bascule de thème, lire le fond réel via `getComputedStyle(document.body)`, et gérer
+`color(srgb …)` dans le parseur.
+
+**Et surtout : balayer TOUT le texte, pas une liste de sélecteurs.** La liste ne trouve que ce
+qu'on a pensé à y mettre — le balayage générique a sorti à lui seul 2 échecs de
+`/admin/ai-usage` qu'elle avait manqués.
+
+> ⚠️ **`pnpm verif:contraste` ne remplace pas cette mesure** : il vérifie les 46 couples
+> **déclarés**, pas les usages réels d'un jeton dans les gabarits (cf. O5).
 
 **Une limite du PANNEAU, découverte le 2026-08-11.** Le panneau navigateur **n'émule pas
 `pointer: coarse`** : la règle `@media (max-width: 768px) and (pointer: coarse)` de `styles.css`

@@ -1,9 +1,13 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { PlanService } from '../../core/services/plan.service';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Ear, Zap, Sparkles } from 'lucide-angular';
+import {
+  LucideAngularModule, LogOut, User, Moon, Sun, Bell, Map, MapPin, RotateCcw, Palette,
+  Navigation, Route, ArrowRight, Ear, Zap, Sparkles,
+  Search, Check, ShieldCheck, CreditCard, SlidersHorizontal, Database,
+} from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -18,7 +22,31 @@ import { AlertRulesCardComponent } from './alert-rules-card.component';
 import { NotificationsCardComponent } from './notifications-card.component';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
-type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
+/**
+ * Les 9 sections de la page, reparties en deux groupes (B1 § E). Remplace les 4 onglets
+ * plats — dont « Organisation », qui melangeait reglages personnels et reglages de societe.
+ */
+type Section =
+  | 'apparence' | 'carte' | 'notifications' | 'compte' | 'securite'
+  | 'abonnement' | 'regles' | 'donnees' | 'assistance';
+
+interface SectionDef {
+  cle: Section;
+  titre: string;
+  /** Icone lucide de la section. `lucide-angular` n'exporte pas de nom de type public :
+   *  on prend celui d'une icone reelle, elles le partagent toutes. */
+  icone: typeof Palette;
+  /** Phrase d'en-tete : ce que la section fait, et sur QUI elle agit. */
+  sousTitre: string;
+  /** Termes cherches par l'utilisateur — on cherche un REGLAGE, pas un nom de section. */
+  motsCles: string;
+}
+
+interface GroupeSection {
+  cle: 'moi' | 'flotte';
+  titre: string;
+  sections: SectionDef[];
+}
 
 @Component({
   selector: 'app-settings',
@@ -26,24 +54,72 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
   imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent, Security2faCardComponent, AiBillingCardComponent, NotificationsCardComponent, AlertRulesCardComponent],
   template: `
     <div class="settings-page">
-      <div class="settings-header">
-        <span class="vt-eyebrow">Compte</span>
-        <h1 class="settings-title">Paramètres &amp; facturation</h1>
-        <p class="settings-sub">Personnalisez votre expérience et gérez vos options.</p>
-      </div>
-
-      <!-- Onglets (réf. maquette Parametres.dc.html) -->
-      <div class="s-tabs">
-        @if (canBilling()) {
-          <button class="s-tab" [class.active]="tab() === 'billing'" (click)="tab.set('billing')" data-track="Onglet Facturation">Facturation &amp; options</button>
+      <div class="s-top">
+        <div class="settings-header">
+          <span class="vt-eyebrow">Compte</span>
+          <h1 class="settings-title">Paramètres</h1>
+          <p class="settings-sub">Personnalisez votre expérience et gérez vos options.</p>
+        </div>
+        @if (enregistreLe()) {
+          <span class="s-saved" role="status"><lucide-icon [img]="CheckIcon" [size]="13" /> Enregistré · {{ ilYA() }}</span>
         }
-        <button class="s-tab" [class.active]="tab() === 'appearance'" (click)="tab.set('appearance')" data-track="Onglet Apparence">Apparence</button>
-        <button class="s-tab" [class.active]="tab() === 'notifications'" (click)="tab.set('notifications')" data-track="Onglet Notifications">Notifications</button>
-        <button class="s-tab" [class.active]="tab() === 'organization'" (click)="tab.set('organization')" data-track="Onglet Organisation">Organisation</button>
       </div>
 
-      <!-- ═══════════════ FACTURATION & OPTIONS (gated billing_manage) ═══════════════ -->
-      @if (tab() === 'billing' && canBilling()) {
+      <!--
+        Navigation a DEUX NIVEAUX (B1 § E). Une rangee plate d'onglets ne repond pas a la
+        question la plus posee : « est-ce que ca ne change que pour moi, ou pour tout le
+        monde ? ». Les groupes y repondent AVANT le clic, et la note du bas le dit en toutes
+        lettres. « Organisation » melangeait justement les deux (Compte et Securite d'un cote,
+        Retention et Mode assistance de l'autre).
+      -->
+      <div class="s-layout">
+        <nav class="s-rail" aria-label="Sections des paramètres">
+          <div class="s-search">
+            <lucide-icon [img]="SearchIcon" [size]="14" />
+            <input
+              type="search"
+              [value]="recherche()"
+              (input)="recherche.set($any($event.target).value)"
+              placeholder="Rechercher un réglage…"
+              aria-label="Rechercher un réglage" />
+          </div>
+
+          @for (g of groupesFiltres(); track g.cle) {
+            <span class="s-rail-grp">{{ g.titre }}</span>
+            @for (s of g.sections; track s.cle) {
+              <button
+                type="button"
+                class="s-nav"
+                [class.on]="section() === s.cle"
+                (click)="allerA(s.cle)"
+                [attr.aria-current]="section() === s.cle ? 'true' : null">
+                <lucide-icon [img]="s.icone" [size]="16" />
+                <span class="s-nav-txt">{{ s.titre }}</span>
+                @if (estModifiee(s.cle)) {
+                  <span class="s-dot" [attr.aria-label]="'Modifié'" title="Modifié par rapport aux valeurs par défaut"></span>
+                }
+              </button>
+            }
+          } @empty {
+            <p class="s-rail-vide">Aucun réglage ne correspond à « {{ recherche() }} ».</p>
+          }
+
+          <p class="s-rail-note">
+            Les réglages <strong>Mon espace</strong> ne concernent que vous.
+            Ceux de <strong>Ma flotte</strong> s'appliquent à toute la société.
+          </p>
+        </nav>
+
+        <div class="s-contenu">
+          <div class="s-sec-tete">
+            <div>
+              <h2>{{ titreSection() }}</h2>
+              <p>{{ sousTitreSection() }}</p>
+            </div>
+          </div>
+
+      <!-- ═══════════════ ABONNEMENT & OPTIONS (gated billing_manage) ═══════════════ -->
+      @if (section() === 'abonnement' && canBilling()) {
         <!-- Plan — honnête : compteur réel + facturation gérée hors app (pas de faux moyen de paiement). -->
         <div class="s-plan">
           <div class="s-plan-glow"></div>
@@ -51,7 +127,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
             <div class="s-plan-info">
               <span class="vt-eyebrow">Votre abonnement</span>
               <div class="s-plan-count">{{ activeVehicleCount() }} véhicule{{ activeVehicleCount() > 1 ? 's' : '' }} suivi{{ activeVehicleCount() > 1 ? 's' : '' }}</div>
-              @if (planLabel()) { <div class="s-plan-note" style="color:var(--tracky-light,#3EEBB8);font-weight:600">Votre offre : {{ planLabel() }}</div> }
+              @if (planLabel()) { <div class="s-plan-note s-plan-offre">Votre offre : {{ planLabel() }}</div> }
               <div class="s-plan-note">La facturation est gérée par votre conseiller Vizyo. Contactez-le pour changer d'offre, ajouter des véhicules ou activer une option.</div>
             </div>
             <a href="mailto:contact@vizyoagency.com" class="s-plan-btn">Contacter mon conseiller</a>
@@ -60,7 +136,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 
         <!-- Option IA payante : carte réelle (statut, coût /mois + /voiture, activer/annuler). -->
         @if (isSuperAdmin()) {
-          <div class="s-plan-note" style="margin:14px 0 0;">L'option IA se gère <strong>par société</strong> depuis l'espace <a routerLink="/admin/ai-usage" style="color:var(--tracky-light,#10E0A0);">Coûts IA</a> (activation offerte ou suivi des abonnements).</div>
+          <div class="s-plan-note s-plan-note--sa">L'option IA se gère <strong>par société</strong> depuis l'espace <a routerLink="/admin/ai-usage" class="s-lien-accent">Coûts IA</a> (activation offerte ou suivi des abonnements).</div>
         } @else {
           <app-ai-billing-card></app-ai-billing-card>
         }
@@ -121,7 +197,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
       }
 
       <!-- ═══════════════ APPARENCE ═══════════════ -->
-      @if (tab() === 'appearance') {
+      @if (section() === 'apparence') {
         <div class="settings-grid">
           <div class="settings-col">
             <!-- APPARENCE -->
@@ -151,13 +227,11 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
                 </div>
 
                 <!-- V1.12 — Mode interface : Tracky (riche) vs Baanool (simplifie) -->
-                <div class="ui-mode-section" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-subtle)">
-                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-                    <div style="flex:1;min-width:0">
-                      <div style="font-size:13px;font-weight:600;color:var(--fg-primary);margin-bottom:4px">
-                        Mode interface simplifiée
-                      </div>
-                      <p style="font-size:11px;color:var(--fg-tertiary);margin:0;line-height:1.4">
+                <div class="ui-mode-section">
+                  <div class="ui-mode-row">
+                    <div class="ui-mode-txt">
+                      <div class="ui-mode-title">Mode interface simplifiée</div>
+                      <p class="ui-mode-desc">
                         Connexion directe à la carte, rails de navigation masqués, menu
                         au bouton. Toutes les pages restent accessibles — le menu les
                         garde toutes, et « Paramètres » y reste détaché pour revenir en
@@ -166,13 +240,13 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
                     </div>
                     <button
                       type="button"
+                      class="ui-mode-sw"
                       (click)="toggleBaanoolMode()"
+                      [class.on]="isBaanoolMode()"
                       [attr.aria-pressed]="isBaanoolMode()"
                       [disabled]="savingUiMode()"
-                      style="flex-shrink:0;width:44px;height:24px;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background 200ms"
-                      [style.background]="isBaanoolMode() ? 'var(--tracky)' : 'var(--bg-tertiary)'">
-                      <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:white;transition:left 200ms"
-                            [style.left]="isBaanoolMode() ? '22px' : '2px'"></span>
+                      aria-label="Mode interface simplifiée">
+                      <span class="ui-mode-knob"></span>
                     </button>
                   </div>
                 </div>
@@ -180,6 +254,12 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
             </div>
           </div>
 
+        </div>
+      }
+
+      <!-- ═══════════════ CARTE ═══════════════ -->
+      @if (section() === 'carte') {
+        <div class="settings-grid">
           <div class="settings-col">
             <!-- CARTE -->
             @if (perms.can('vehicles_view')) {
@@ -198,7 +278,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
                   <div class="map-row-right">
                     <input type="number" step="0.001" [ngModel]="prefs().map.centerLat" (ngModelChange)="setMapPref('centerLat', $event)" class="coord-input" />
                     <input type="number" step="0.001" [ngModel]="prefs().map.centerLng" (ngModelChange)="setMapPref('centerLng', $event)" class="coord-input" />
-                    <button (click)="useMyPosition()" class="geo-btn" title="Ma position">
+                    <button type="button" (click)="useMyPosition()" class="geo-btn" title="Ma position" aria-label="Centrer sur ma position">
                       <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
                     </button>
                   </div>
@@ -239,7 +319,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
       }
 
       <!-- ═══════════════ NOTIFICATIONS ═══════════════ -->
-      @if (tab() === 'notifications') {
+      @if (section() === 'notifications') {
         <div class="settings-grid">
           <div class="settings-col">
             <!-- PUSH NOTIFICATIONS — carte dédiée, adossée aux préférences SERVEUR.
@@ -294,19 +374,33 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
               </div>
             </div>
 
-            <!-- Ce que la FLOTTE envoie (e-mail / WhatsApp), juste sous les réglages
-                 personnels : on lit d'abord « ce que je reçois », puis « ce que la
-                 flotte envoie ». Ces règles vivaient auparavant dans une page séparée
-                 ET dans un onglet de la page Alertes — deux formulaires identiques,
-                 donc deux fois les mêmes bugs. Il n'en reste qu'un. -->
-            <app-alert-rules-card />
             }
           </div>
         </div>
       }
 
-      <!-- ═══════════════ ORGANISATION ═══════════════ -->
-      @if (tab() === 'organization') {
+      <!-- ═══════════════ RÈGLES D'ALERTE ═══════════════ -->
+      <!--
+        Ce que la FLOTTE envoie (e-mail / WhatsApp). Ces regles vivaient dans une page separee
+        ET dans un onglet de la page Alertes — deux formulaires identiques, donc deux fois les
+        memes bugs. Il n'en reste qu'un.
+
+        Passe de « Notifications » a « Ma flotte » au lot B-pages : elles etaient cote a cote
+        avec les reglages PERSONNELS de notification, ce qui laissait croire qu'on reglait ce
+        qu'ON recoit. On regle ce que la SOCIETE envoie, a tout le monde.
+      -->
+      @if (section() === 'regles') {
+        <div class="settings-grid">
+          <div class="settings-col">
+            @if (perms.can('alerts_view')) {
+              <app-alert-rules-card />
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ═══════════════ MON COMPTE ═══════════════ -->
+      @if (section() === 'compte') {
         <div class="settings-grid">
           <div class="settings-col">
             <!-- COMPTE -->
@@ -336,6 +430,37 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
               </div>
             </div>
 
+          </div>
+        </div>
+      }
+
+      <!-- ═══════════════ SÉCURITÉ ═══════════════ -->
+      @if (section() === 'securite') {
+        <div class="settings-grid">
+          <div class="settings-col">
+            <!-- Sécurité du compte — vérification en 2 étapes (2FA), opt-in PAR
+                 UTILISATEUR (tout le monde peut sécuriser son propre compte). -->
+            <app-security-2fa-card />
+          </div>
+        </div>
+      }
+
+      <!-- ═══════════════ DONNÉES & RÉTENTION ═══════════════ -->
+      @if (section() === 'donnees') {
+        <div class="settings-grid">
+          <div class="settings-col">
+            <!-- Sprint 6 — Rétention des données de la flotte (lecture seule, FLEET_ADMIN). -->
+            @if (user()?.role === 'FLEET_ADMIN') {
+              <app-retention-fleet-card />
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ═══════════════ MODE ASSISTANCE ═══════════════ -->
+      @if (section() === 'assistance') {
+        <div class="settings-grid">
+          <div class="settings-col">
             <!-- AUDIO N2 — Mode assistance (fleet-admin éligible). -->
             @if (user()?.role === 'FLEET_ADMIN' && perms.can('audio_monitoring') && audioEligible()) {
             <div class="s-card">
@@ -356,29 +481,126 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
             </div>
             }
           </div>
-
-          <div class="settings-col">
-            <!-- Sécurité du compte — vérification en 2 étapes (2FA), opt-in PAR
-                 UTILISATEUR (tout le monde peut sécuriser son propre compte). -->
-            <app-security-2fa-card />
-            <!-- Sprint 6 — Rétention des données de la flotte (lecture seule, FLEET_ADMIN). -->
-            @if (user()?.role === 'FLEET_ADMIN') {
-              <app-retention-fleet-card />
-            }
-          </div>
         </div>
-
-        <!-- RESET -->
-        <button (click)="resetAll()" class="reset-btn">
-          <lucide-icon [img]="ResetIcon" [size]="14"></lucide-icon>
-          Réinitialiser tous les paramètres
-        </button>
       }
+
+          <!--
+            Reinitialisation — action GLOBALE et non « par section ». La planche montre un
+            « Retablir les valeurs par defaut » dans l'en-tete de chaque section ; ici le
+            geste remet TOUTES les preferences a zero. Le libelle dit donc ce qu'il fait, et
+            le bouton n'apparait que sur les sections de preferences personnelles, la ou il a
+            un sens — pas sous « Mode assistance », ou il s'etait retrouve par heritage de
+            l'ancien onglet « Organisation ».
+          -->
+          @if (sectionPersonnelle()) {
+            <button (click)="resetAll()" class="reset-btn">
+              <lucide-icon [img]="ResetIcon" [size]="14"></lucide-icon>
+              Réinitialiser tous les paramètres
+            </button>
+          }
+        </div>
+      </div>
     </div>
   `,
   styles: [`
+    /* ── Navigation a deux niveaux (B1 § E) ───────────────────────────────── */
+    .s-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    .s-saved {
+      display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 12px;
+      border-radius: 10px; white-space: nowrap; font-size: 12px; font-weight: 700;
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+      color: var(--texte-succes);
+    }
+    .s-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 18px; }
+    .s-rail {
+      display: flex; flex-direction: column; gap: 3px; padding: 12px 10px;
+      border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-secondary);
+      position: sticky; top: 12px;
+    }
+    .s-search {
+      display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 11px;
+      border-radius: 10px; background: var(--bg-primary); border: 1px solid var(--border-strong);
+      margin-bottom: 9px; color: var(--fg-secondary);
+    }
+    .s-search input {
+      flex: 1; min-width: 0; border: 0; background: transparent; color: var(--fg-primary);
+      font-size: 13px; font-family: inherit; outline: none;
+    }
+    .s-search input::placeholder { color: var(--fg-secondary); }
+    .s-rail-grp {
+      font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--fg-secondary); padding: 12px 11px 4px;
+    }
+    .s-rail-grp:first-of-type { padding-top: 4px; }
+    .s-nav {
+      display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 11px;
+      border-radius: 10px; border: 1px solid transparent; background: transparent;
+      color: var(--fg-secondary); font-size: 13.5px; font-weight: 600; font-family: inherit;
+      cursor: pointer; text-align: left; width: 100%;
+    }
+    .s-nav:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+    .s-nav.on {
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 28%, transparent);
+      color: var(--texte-succes);
+    }
+    .s-nav-txt { min-width: 0; flex: 1; }
+    .s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-tracky-light); flex-shrink: 0; }
+    .s-rail-vide { margin: 8px 11px; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
+    .s-rail-note {
+      margin: 14px 0 0; padding: 12px 11px 2px; border-top: 1px solid var(--border-subtle);
+      font-size: 11.5px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty;
+    }
+    .s-rail-note strong { color: var(--fg-primary); }
+    .s-contenu { min-width: 0; }
+
+    /*
+     * Mode interface simplifiee — etait ecrit en STYLES EN LIGNE, avec un blanc en dur sur le
+     * curseur (critere de recette n° 1 « aucun style en ligne », et la regle « aucune couleur
+     * en dur »). Ce blanc ne suivait aucun theme.
+     *
+     * L'interrupteur mesure 44 px de haut au TOUCHER (zone cliquable) tout en gardant sa
+     * piste de 24 px a l'oeil : c'est la zone qui doit faire 44, pas le dessin.
+     */
+    .ui-mode-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+    .ui-mode-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .ui-mode-txt { flex: 1; min-width: 0; }
+    .ui-mode-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); margin-bottom: 4px; }
+    .ui-mode-desc { font-size: 11.5px; color: var(--fg-secondary); margin: 0; line-height: 1.45; text-wrap: pretty; }
+    .ui-mode-sw {
+      flex-shrink: 0; width: 44px; min-height: 44px; border: none; background: transparent;
+      cursor: pointer; position: relative; display: flex; align-items: center; padding: 0;
+    }
+    .ui-mode-sw::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+      height: 24px; border-radius: 9999px; background: var(--bg-tertiary); transition: background .2s;
+    }
+    .ui-mode-sw.on::before { background: var(--color-tracky-light); }
+    .ui-mode-sw:disabled { opacity: .55; cursor: default; }
+    .ui-mode-knob {
+      position: absolute; top: 50%; left: 2px; transform: translateY(-50%);
+      width: 20px; height: 20px; border-radius: 50%; background: var(--accent-ink);
+      transition: left .2s; z-index: 1;
+    }
+    .ui-mode-sw:not(.on) .ui-mode-knob { background: var(--fg-secondary); }
+    .ui-mode-sw.on .ui-mode-knob { left: 22px; }
+    .s-sec-tete { margin-bottom: 16px; }
+    .s-sec-tete h2 { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -.025em; color: var(--fg-primary); }
+    .s-sec-tete p { margin: 4px 0 0; font-size: 12.5px; color: var(--fg-secondary); text-wrap: pretty; }
+
+    /*
+     * Sous 900 px, le rail passe AU-DESSUS du contenu et defile horizontalement : une colonne
+     * de 248 px sur un telephone ne laisse plus rien au reglage lui-meme. Les deux groupes
+     * restent nommes — c'est la reponse a « ca change pour moi ou pour tout le monde ? », et
+     * elle ne doit pas disparaitre avec la largeur.
+     */
+    @media (max-width: 900px) {
+      .s-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+      .s-rail { position: static; }
+    }
+
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
-       Mesuré à 375 px : les quatre onglets de section, le bouton d'offre et les liens
+       Mesuré à 375 px : les onglets de section, le bouton d'offre et les liens
        d'option étaient sous le seuil. Une page de réglages se parcourt au pouce. */
     @media (max-width: 768px) {
       .s-tab, .s-plan-btn, .s-opt-link { min-height: 44px }
@@ -386,13 +608,13 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     .settings-page { max-width: 1080px; margin: 0 auto }
     .settings-header { margin-bottom: 18px }
     .settings-title { font-size: 26px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.03em; margin-top: 6px }
-    .settings-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 3px }
+    .settings-sub { font-size: 13px; color: var(--fg-secondary); margin-top: 3px }
     .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start }
     .settings-col { display: flex; flex-direction: column; gap: 16px }
 
     /* Tabs */
     .s-tabs { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap }
-    .s-tab { padding: 8px 15px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--fg-tertiary); cursor: pointer; border: 1px solid transparent; background: transparent; white-space: nowrap; transition: color .15s, background .15s, border-color .15s }
+    .s-tab { padding: 8px 15px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--fg-secondary); cursor: pointer; border: 1px solid transparent; background: transparent; white-space: nowrap; transition: color .15s, background .15s, border-color .15s }
     .s-tab:hover { color: var(--fg-secondary) }
     .s-tab.active { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong, var(--border-subtle)) }
 
@@ -408,20 +630,26 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     /* Options premium */
     .s-opt-head { margin-bottom: 12px }
     .s-opt-head h3 { font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; color: var(--fg-primary) }
-    .s-opt-head p { margin-top: 5px; font-size: .86rem; color: var(--fg-tertiary) }
+    .s-opt-head p { margin-top: 5px; font-size: .86rem; color: var(--fg-secondary) }
     .s-opt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px }
     .s-opt { padding: 18px 19px; border-radius: 16px; border: 1px solid var(--border-subtle); background: var(--bg-secondary); transition: transform .2s, border-color .2s }
     .s-opt:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--tracky) 40%, transparent) }
     .s-opt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px }
     .s-opt-ico { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: var(--bg-tertiary); color: var(--fg-tertiary) }
+    /* Deux styles en ligne portaient un repli mort — var(--tracky-light, #3EEBB8) et
+       var(--tracky-light, #10E0A0). La variable est TOUJOURS definie : la valeur de repli
+       n'est jamais atteinte, elle ne fait que figer une couleur hors systeme. */
+    .s-plan-offre { color: var(--texte-succes); font-weight: 600 }
+    .s-plan-note--sa { margin: 14px 0 0 }
+    .s-lien-accent { color: var(--texte-succes) }
     .s-opt-ico.on { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light) }
-    .s-opt-status { padding: 3px 10px; border-radius: 999px; font-size: .68rem; font-weight: 800; background: var(--bg-tertiary); color: var(--fg-tertiary) }
-    .s-opt-status.on { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    .s-opt-status { padding: 3px 10px; border-radius: 999px; font-size: .68rem; font-weight: 800; background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .s-opt-status.on { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--texte-succes) }
     .s-opt h4 { margin: 14px 0 0; font-size: 1rem; font-weight: 700; color: var(--fg-primary) }
     .s-opt p { margin: 6px 0 0; font-size: .82rem; color: var(--fg-secondary); line-height: 1.5 }
-    .s-opt-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; font-size: .8rem; font-weight: 700; color: var(--tracky-light) }
+    .s-opt-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; font-size: .8rem; font-weight: 700; color: var(--texte-succes) }
     .s-opt-link:hover { text-decoration: underline }
-    .s-opt-hint { display: block; margin-top: 12px; font-size: .76rem; color: var(--fg-tertiary) }
+    .s-opt-hint { display: block; margin-top: 12px; font-size: .76rem; color: var(--fg-secondary) }
 
     /* Card */
     .s-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden }
@@ -440,15 +668,18 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--tracky); color: var(--accent-ink); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
     .account-email { font-size: 14px; font-weight: 600; color: var(--fg-primary) }
     .role-badge { display: inline-block; margin-top: 3px; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em }
-    .role-badge.admin { background: rgba(16,224,160,.15); color: var(--tracky-light) }
-    .role-badge.viewer { background: var(--bg-secondary); color: var(--fg-tertiary) }
+    /* rgba(16,224,160,.15) etait le vert de marque ecrit autrement — il n'a pas de « # »
+       pour se denoncer, mais c'est bien une couleur en dur. Meme chose pour le rouge du
+       survol de deconnexion. */
+    .role-badge.admin { background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent); color: var(--texte-succes) }
+    .role-badge.viewer { background: var(--bg-secondary); color: var(--fg-secondary) }
     .logout-btn {
-      display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
-      background: color-mix(in srgb, var(--danger) 9%, transparent); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent); cursor: pointer; transition: all .2s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
+      background: color-mix(in srgb, var(--danger) 9%, transparent); color: var(--texte-alerte); border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent); cursor: pointer; transition: all .2s;
     }
-    .logout-btn:hover { background: rgba(239,68,68,.15) }
+    .logout-btn:hover { background: color-mix(in srgb, var(--danger) 15%, transparent) }
     .account-link {
-      display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
       background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle);
       text-decoration: none; transition: all .2s; margin-right: 8px;
     }
@@ -463,7 +694,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 
     /* Note : les styles du push (statut, bouton, liste des types) vivent desormais
        dans <app-notifications-card> — ils n'ont plus de porteur ici. */
-    .section-desc { font-size: 11px; color: var(--fg-tertiary); margin: 0 0 12px }
+    .section-desc { font-size: 11px; color: var(--fg-secondary); margin: 0 0 12px }
 
     /* Theme picker */
     .theme-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
@@ -482,7 +713,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     .dark-preview .tp-line { background: #1e293b }
     .light-preview .tp-line { background: #cbd5e1 }
     .theme-label { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px; font-size: 12px; font-weight: 600; color: var(--fg-secondary) }
-    .theme-option.active .theme-label { color: var(--tracky-light) }
+    .theme-option.active .theme-label { color: var(--texte-succes) }
 
     /* Notifications */
     .notif-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-subtle) }
@@ -494,8 +725,8 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     .notif-dot.amber { background: var(--warning) }
     .notif-dot.blue { background: var(--fg-tertiary) }
     .notif-name { font-size: 13px; font-weight: 600; color: var(--fg-primary) }
-    .notif-desc { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
-    .permanent-badge { font-size: 11px; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
+    .notif-desc { font-size: 10px; color: var(--fg-secondary); margin-top: 1px }
+    .permanent-badge { font-size: 11px; color: var(--fg-secondary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
     .duration-select {
       padding: 4px 24px 4px 10px; border-radius: 9999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
       color: var(--fg-secondary); font-size: 11px; font-weight: 700; outline: none; cursor: pointer;
@@ -519,7 +750,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
       color: var(--fg-primary); font-size: 11px; font-family: var(--font-mono, monospace); text-align: center; outline: none;
     }
     .coord-input:focus { border-color: var(--tracky) }
-    .geo-btn { padding: 6px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer; transition: all .2s }
+    .geo-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 6px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer; transition: all .2s }
     .geo-btn:hover { color: var(--tracky-light); border-color: var(--tracky) }
     .zoom-value { font-size: 12px; font-weight: 700; color: var(--fg-secondary); font-family: var(--font-mono, monospace); min-width: 30px; text-align: right }
     .range-styled { accent-color: var(--tracky); cursor: pointer }
@@ -535,8 +766,8 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 
     /* Reset */
     .reset-btn {
-      display: inline-flex; align-items: center; gap: 7px; margin-top: 20px; padding: 10px 18px; border-radius: 10px;
-      font-size: 12px; font-weight: 600; background: var(--bg-secondary); color: var(--fg-tertiary);
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 20px; min-height: 44px; padding: 10px 18px; border-radius: 10px;
+      font-size: 12px; font-weight: 600; background: var(--bg-secondary); color: var(--fg-secondary);
       border: 1px solid var(--border-subtle); cursor: pointer; transition: all .2s;
     }
     .reset-btn:hover { color: var(--fg-secondary); border-color: var(--border-strong) }
@@ -549,7 +780,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     }
   `],
 })
-export class SettingsComponent implements OnInit {
+export class SettingsComponent implements OnInit, OnDestroy {
   private readonly planSvc = inject(PlanService);
   protected planLabel(): string | null { this.planSvc.ensureLoaded(); return this.planSvc.label(); }
 
@@ -566,16 +797,155 @@ export class SettingsComponent implements OnInit {
   protected readonly prefs = this.preferencesService.prefs;
 
   /** Onglet actif (réf. maquette : Facturation / Apparence / Notifications / Organisation). */
-  protected readonly tab = signal<SettingsTab>('billing');
+  protected readonly section = signal<Section>('apparence');
   /** Facturation & options : réservé aux admins par défaut (perm billing_manage). */
   protected readonly canBilling = computed(() => this.perms.can('billing_manage'));
+
+  /** Saisie de la recherche de réglage. */
+  protected readonly recherche = signal('');
+  /** Horodatage du dernier enregistrement local, pour l'indicateur « Enregistré ». */
+  protected readonly enregistreLe = signal<number | null>(null);
+  /** Re-evalue « il y a N s » sans dependre d'un rendu declenche par autre chose. */
+  private readonly tic = signal(0);
+
+  /**
+   * Les 9 sections, rangees en DEUX groupes. C'est le coeur de B1 § E : « Mon espace » ne
+   * concerne que moi, « Ma flotte » s'applique a toute la societe — la question la plus
+   * posee, a laquelle une rangee plate d'onglets ne repondait pas. L'ancien onglet
+   * « Organisation » melangeait precisement les deux (Compte et Securite d'un cote,
+   * Retention et Mode assistance de l'autre).
+   *
+   * `motsCles` sert la recherche : on cherche un REGLAGE (« thème », « traînées », « 2FA »),
+   * pas un nom de section — personne ne sait que la retention vit dans « Organisation ».
+   */
+  protected readonly groupes: GroupeSection[] = [
+    {
+      cle: 'moi', titre: 'Mon espace', sections: [
+        { cle: 'apparence', titre: 'Apparence', icone: Palette, sousTitre: 'Appliqué immédiatement, sur cet appareil comme sur votre téléphone.', motsCles: 'thème sombre clair interface densité affichage couleur' },
+        { cle: 'carte', titre: 'Carte', icone: Map, sousTitre: 'Le point de départ de votre carte, et ce qu\'elle affiche.', motsCles: 'centre zoom traînées trails position gps latitude longitude' },
+        { cle: 'notifications', titre: 'Notifications', icone: Bell, sousTitre: 'Ce que VOUS recevez, sur cet appareil et par notification push.', motsCles: 'push alertes toast durée critique avertissement information son' },
+        { cle: 'compte', titre: 'Mon compte', icone: User, sousTitre: 'Votre profil et votre session.', motsCles: 'profil email rôle déconnexion mot de passe identité' },
+        { cle: 'securite', titre: 'Sécurité', icone: ShieldCheck, sousTitre: 'La protection de votre compte.', motsCles: '2fa double authentification vérification deux étapes code sécurité' },
+      ],
+    },
+    {
+      cle: 'flotte', titre: 'Ma flotte', sections: [
+        { cle: 'abonnement', titre: 'Abonnement & options', icone: CreditCard, sousTitre: 'Votre offre, et les options activables sur la flotte.', motsCles: 'facturation offre plan prix option ia premium véhicules abonnement' },
+        { cle: 'regles', titre: 'Règles d\'alerte', icone: SlidersHorizontal, sousTitre: 'Ce que la SOCIÉTÉ envoie — e-mail et WhatsApp, à tout le monde.', motsCles: 'alerte email whatsapp destinataire règle envoi seuil notification flotte' },
+        { cle: 'donnees', titre: 'Données & rétention', icone: Database, sousTitre: 'Combien de temps vos données sont conservées.', motsCles: 'rétention conservation purge historique rgpd suppression données' },
+        { cle: 'assistance', titre: 'Mode assistance', icone: Ear, sousTitre: 'Écoute d\'habitacle sous cadre légal, en cas d\'accident.', motsCles: 'audio micro écoute habitacle accident litige assistance' },
+      ],
+    },
+  ];
+
+  /** Sections réellement accessibles — une section vide ne doit pas figurer au menu. */
+  private readonly groupesVisibles = computed<GroupeSection[]>(() =>
+    this.groupes
+      .map((g) => ({ ...g, sections: g.sections.filter((s) => this.sectionAccessible(s.cle)) }))
+      .filter((g) => g.sections.length > 0),
+  );
+
+  /** Le rail filtré par la recherche : sur le titre ET sur les mots-clés de réglage. */
+  protected readonly groupesFiltres = computed<GroupeSection[]>(() => {
+    const q = this.normalise(this.recherche());
+    if (!q) return this.groupesVisibles();
+    return this.groupesVisibles()
+      .map((g) => ({
+        ...g,
+        sections: g.sections.filter((s) =>
+          this.normalise(`${s.titre} ${g.titre} ${s.motsCles}`).includes(q),
+        ),
+      }))
+      .filter((g) => g.sections.length > 0);
+  });
+
+  private sectionCourante(): SectionDef | null {
+    for (const g of this.groupes) {
+      const s = g.sections.find((x) => x.cle === this.section());
+      if (s) return s;
+    }
+    return null;
+  }
+  protected titreSection = computed(() => { this.section(); return this.sectionCourante()?.titre ?? ''; });
+  protected sousTitreSection = computed(() => { this.section(); return this.sectionCourante()?.sousTitre ?? ''; });
+
+  /** Le bouton de reinitialisation ne s'affiche que la ou il a un sens. */
+  protected readonly sectionPersonnelle = computed(
+    () => this.section() === 'apparence' || this.section() === 'carte' || this.section() === 'notifications',
+  );
+
+  protected allerA(cle: Section): void {
+    this.section.set(cle);
+  }
+
+  /** Recherche insensible aux accents : « themes » doit trouver « Thème ». */
+  private normalise(s: string): string {
+    return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  private sectionAccessible(cle: Section): boolean {
+    switch (cle) {
+      case 'abonnement': return this.canBilling();
+      case 'carte': return this.perms.can('vehicles_view');
+      case 'notifications':
+      case 'regles': return this.perms.can('alerts_view');
+      case 'donnees': return this.user()?.role === 'FLEET_ADMIN';
+      case 'assistance':
+        return this.user()?.role === 'FLEET_ADMIN' && this.perms.can('audio_monitoring') && this.audioEligible();
+      default: return true;
+    }
+  }
+
+  /**
+   * La pastille « modifie » — calculee, jamais decorative.
+   *
+   * ⚠️ Elle n'est posee QUE sur les sections dont on peut REELLEMENT comparer l'etat aux
+   * valeurs par defaut, c'est-a-dire les preferences locales (`getDefaults()`). Les sections
+   * adossees au serveur (regles d'alerte, retention, abonnement) n'ont pas de reference a
+   * comparer : y afficher une pastille serait une decoration qui ment. La planche montre la
+   * pastille sur « Carte » — une preference locale, precisement.
+   */
+  protected estModifiee(cle: Section): boolean {
+    const d = this.preferencesService.getDefaults();
+    const p = this.prefs();
+    if (cle === 'apparence') return p.theme !== d.theme;
+    if (cle === 'carte') return JSON.stringify(p.map) !== JSON.stringify(d.map);
+    if (cle === 'notifications') return JSON.stringify(p.notifications) !== JSON.stringify(d.notifications);
+    return false;
+  }
+
+  /**
+   * « Enregistré · il y a 2 s ». Les preferences sont ecrites a CHAQUE changement, sans
+   * bouton : l'enregistrement automatique doit donc SE VOIR, sinon rien ne distingue
+   * « c'est pris en compte » de « je viens de perdre ma saisie ».
+   *
+   * Declare en CHAMP et non dans `ngOnInit` : `effect()` exige un contexte d'injection, que
+   * l'initialisation de champ fournit et que `ngOnInit` n'a plus.
+   */
+  private premierRendu = true;
+  private readonly suiviEnregistrement = effect(() => {
+    this.prefs();
+    if (this.premierRendu) { this.premierRendu = false; return; }
+    this.enregistreLe.set(Date.now());
+  });
+
+  /** « il y a 2 s » — relatif, recalcule a chaque tic. */
+  protected ilYA(): string {
+    this.tic();
+    const t = this.enregistreLe();
+    if (!t) return '';
+    const sec = Math.round((Date.now() - t) / 1000);
+    if (sec < 5) return "à l'instant";
+    if (sec < 60) return `il y a ${sec} s`;
+    if (sec < 3600) return `il y a ${Math.round(sec / 60)} min`;
+    return `il y a ${Math.round(sec / 3600)} h`;
+  }
   /** Super-admin : pas de flotte propre → l'option IA se gère par société depuis Coûts IA, pas ici. */
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
-  constructor() {
-    // Non-admin sans droit de facturation : on démarre sur « Apparence » (pas de flash de l'onglet caché).
-    if (!this.perms.can('billing_manage')) this.tab.set('appearance');
-  }
+  // La section de depart est desormais choisie dans `ngOnInit` a partir des sections
+  // REELLEMENT accessibles (`groupesVisibles()`), ce qui couvre la facturation comme les
+  // autres permissions — l'ancien constructeur ne traitait que le cas `billing_manage`.
 
   /** Nb de véhicules réellement suivis (snapshot flotte) — pour l'encart abonnement honnête. */
   protected readonly activeVehicleCount = computed(() => this.realtime.snapshot().length);
@@ -595,6 +965,8 @@ export class SettingsComponent implements OnInit {
   protected readonly EarIcon = Ear;
   protected readonly ZapIcon = Zap;
   protected readonly SparklesIcon = Sparkles;
+  protected readonly SearchIcon = Search;
+  protected readonly CheckIcon = Check;
 
   // Sprint 4 — AUDIO N1 : la flotte est-elle ÉLIGIBLE au Mode assistance (le prestataire
   // l'a-t-il autorisée, `superAdminEnabled`) ? Gate l'affichage de la carte N2 du fleet-admin.
@@ -634,18 +1006,41 @@ export class SettingsComponent implements OnInit {
   ];
 
   async ngOnInit(): Promise<void> {
+    // On atterrit sur la premiere section REELLEMENT accessible. Sans ca, un observateur
+    // sans `billing_manage` arrivait sur une page vide : l'onglet par defaut etait
+    // « Facturation », que sa permission lui interdit.
+    const premiere = this.groupesVisibles()[0]?.sections[0]?.cle;
+    if (premiere) this.section.set(premiere);
+
+    // Le libelle est RELATIF : sans battement, « il y a 2 s » resterait affiche une heure.
+    this.horloge = setInterval(() => this.tic.update((n) => n + 1), 10_000);
+
     // Sprint 4 — éligibilité audio (N1) : un FLEET_ADMIN ne voit la carte « Mode assistance »
     // que si le prestataire a rendu sa flotte éligible. Un seul fetch, mis en cache dans un
     // signal. Fail-closed : pas de fleetId ou fetch en échec → la carte reste masquée.
     const u = this.user();
     if (u?.role === 'FLEET_ADMIN' && u.fleetId) {
       firstValueFrom(this.audioApi.getFleetAudioConfig(u.fleetId))
-        .then((cfg) => this.audioEligible.set(cfg.superAdminEnabled === true))
+        .then((cfg) => {
+          this.audioEligible.set(cfg.superAdminEnabled === true);
+          // L'eligibilite arrive APRES le premier rendu : si la section courante vient de
+          // devenir invisible (ou l'inverse), on se recale sur une section qui existe.
+          if (!this.sectionAccessible(this.section())) {
+            const repli = this.groupesVisibles()[0]?.sections[0]?.cle;
+            if (repli) this.section.set(repli);
+          }
+        })
         .catch(() => {
           // Échec silencieux → fail-closed : la carte reste cachée (default false).
         });
     }
   }
+
+  ngOnDestroy(): void {
+    if (this.horloge) clearInterval(this.horloge);
+  }
+
+  private horloge: ReturnType<typeof setInterval> | null = null;
 
   protected initials(): string {
     const email = this.user()?.email ?? '';

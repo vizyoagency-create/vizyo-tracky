@@ -89,7 +89,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       .s2-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
       .s2-text { flex: 1; min-width: 0; }
       .s2-name { font-size: 13px; font-weight: 600; color: var(--fg-primary); margin: 0 0 3px; }
-      .s2-sub { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 0; }
+      /* --fg-tertiary est un jeton a 3:1 : lisible a 16 px, pas a 11,5. Mesure au lot
+         B-pages, 3,16:1 en theme clair. Cf. point ouvert O5 de design/TOKENS.md. */
+      .s2-sub { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
       .s2-sub b { color: var(--fg-secondary); }
       .s2-note { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--tracky-light); margin: 12px 0 0; }
       .s2-toggle { position: relative; display: inline-flex; cursor: pointer; flex-shrink: 0; margin-top: 2px; }

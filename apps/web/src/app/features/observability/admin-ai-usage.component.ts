@@ -448,7 +448,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-feat--owner { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 30%, transparent); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 5%, var(--bg-tertiary)); }
     .au-feat-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .au-feat-lbl { font-size: 13px; font-weight: 700; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 7px; }
-    .au-feat-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 999px; background: rgba(16,224,160,.16); color: var(--tracky-light, #10E0A0); }
+    .au-feat-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--color-tracky-light) 16%, transparent); color: var(--texte-succes); }
     .au-feat-desc { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.4; }
 
     /* Moteur IA (switch Claude ↔ GPT) */
@@ -466,8 +466,8 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-prov.on:disabled { opacity: 1; }
     .au-prov-top { display: flex; align-items: center; gap: 8px; }
     .au-prov-name { font-size: 13.5px; font-weight: 800; color: var(--fg-primary); }
-    .au-prov-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 18%, transparent); color: var(--tracky-light, #10E0A0); }
-    .au-prov-badge--off { background: color-mix(in srgb, var(--danger, #EF4444) 14%, transparent); color: var(--danger, #EF4444); }
+    .au-prov-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); color: var(--texte-succes); }
+    .au-prov-badge--off { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
     .au-prov-hint { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.35; }
     .au-prov-warn { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.4; color: var(--danger, #EF4444); background: color-mix(in srgb, var(--danger, #EF4444) 9%, transparent); border-radius: 9px; padding: 8px 10px; }
 

@@ -374,6 +374,13 @@ const FENETRE_MS = FENETRE_JOURS * 24 * 60 * 60 * 1000;
     .fa-act { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; padding: 2px 8px; border-radius: 7px; font-size: 11.5px; }
     .fa-act[data-a='CUT'] { color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 12%, transparent); }
     .fa-act[data-a='RESTORE'] { color: var(--texte-succes); background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); }
+    /*
+     * Sur une ligne « a verifier », le lavis de la PUCE (12 %) se posait sur le lavis de la
+     * LIGNE (12 %) : les deux teintes s'additionnent, le fond fonce, et le contraste tombe a
+     * 4,37 — mesure en theme clair. La puce reprend donc la surface de la carte : la couleur
+     * du texte et l'icone portent deja la distinction coupure / rallumage.
+     */
+    .fa-ligne[data-ton] .fa-act { background: var(--bg-secondary); }
     .fa-when { margin-left: auto; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
     /* Le resultat : un mot, puis ce qui s'est reellement passe. */
