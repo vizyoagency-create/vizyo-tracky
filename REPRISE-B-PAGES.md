@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **28/57** |
+| **B-pages** | 🟡 **en cours** | **31/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -76,10 +76,29 @@ d'appareil (6 cases séparées, collage depuis l'e-mail), QR véhicule, rejeu de
 période, création/édition de véhicule (« le boîtier devient facultatif »), éditeur d'horaires
 (« bloc imbriqué derrière un filet vert »).
 
-**Bloc A restant (3).** `/book/:token`, `/reserve/:token` (la dictée devient le chemin
-principal — bouton 112 px), `/driver/unlock`. Elles demandent un jeton pour être ouvertes.
+**Bloc A.** ✅ **Terminé** — `/book/:token`, `/reserve/:token` et `/driver/unlock` sont livrées.
 
 **Bloc B (1).** `/driver` — usage 100 % téléphone.
+
+> ### 🔑 Ouvrir les pages à jeton — ce qui marche vraiment
+>
+> Pas besoin de simuler : **l'API crée de vrais liens**, avec le jeton fleet-admin.
+>
+> ```
+> POST /api/reservation-booking-links   {"label":"Demander un vehicule"}   → token
+> POST /api/installation-bookings/links                                    → token
+> ```
+>
+> `/driver/unlock` n'a besoin d'aucun jeton valide pour vérifier l'écran d'accueil
+> (`?token=` quelconque) : l'appel ne part qu'au clic. Et pour `/book`, un **jeton bidon
+> suffit** à obtenir l'écran « lien introuvable » — c'est justement le cul-de-sac à vérifier.
+
+> ### 📏 La taille d'une cible se décide par le CONTEXTE
+>
+> Les 44 px sont un **plancher pour une commande ordinaire**, pas une cible pour le geste
+> central d'un écran utilisé dehors, debout, ganté. Les planches le disaient déjà :
+> **micro de `/reserve` : 112 px** · **déverrouillage de `/driver/unlock` : 128 px**.
+> Les deux sont **mesurés** au navigateur, pas déclarés.
 
 **Contenu propre de D et E.** ✅ **Terminé** — `/fleet-admin/activity`, `/admin/ai-usage`,
 `/settings`, `/integrations` et `/privacy-coverage` sont livrées et mesurées.
@@ -115,6 +134,7 @@ bricolée, aucun contrat n'a bougé :
 | `/admin/ai-usage` | « 418 trajets analysés ce mois » sous chaque fonction | `AiUsageBreakdownRowDto` n'a que `calls`, `tokens`, `costEur` — **aucun compteur de résultat** |
 | `/integrations` | Le volume par catégorie (« 3 412 trajets », « 186 pleins ») | Ni `PartnerLinkStatus` ni `PartnerScopeOption` ne le portent ; le reconstituer = un appel par catégorie |
 | `/admin/ai-usage` | Le ratio consommation / forfait (« 45 % ») | Calculable, mais **expose la marge** — décision commerciale, pas technique |
+| `/book/:token` | 3 sorties : « être prévenu », « appeler », « redemander un lien » | `PublicBookingLinkDto` n'a **ni téléphone de société ni endpoint d'abonnement**. Seule « redemander un lien » est livrée (mailto pré-rempli) |
 
 Sur `/integrations`, ce qui EST affiché est ce qu'on sait avec certitude : **« Rien n'est
 transmis »** quand la catégorie est éteinte. C'est la moitié qui compte.
