@@ -15,8 +15,8 @@ licenseNumber   String?
 
 Personne ne vérifie que le conducteur à qui on confie un véhicule est bien celui qu'il
 prétend, ni que son permis est valide. Vizyo Verify sait déjà lire une pièce d'identité et
-un **permis de conduire** (`PERMIS_CARTE`, `PERMIS_ROSE`, `CNI_ANCIENNE`, `CNI_2021`,
-`PASSEPORT`), avec lecture de la bande MRZ et contrôle des clés.
+un titre d'identite avec lecture de la bande MRZ et controle des cles. La **carte
+nationale d'identite marocaine** et les **passeports** sont en cours d'ajout de mon cote.
 
 L'objectif : qu'un gestionnaire de flotte puisse demander une vérification depuis la fiche
 conducteur, que le conducteur la fasse depuis son téléphone, et que Tracky affiche un
@@ -59,9 +59,13 @@ Content-Type: application/json
   "firstName": "Karim",
   "lastName": "Bennani",
   "phone": "+212612345678",
-  "docCategories": ["IDENTITE", "PERMIS"]
+  "docCategories": ["IDENTITE"]
 }
 ```
+
+**Périmètre v1 : l'identité seule** — carte nationale d'identité marocaine ou passeport.
+La vérification du **permis de conduire** viendra ensuite ; le champ `docCategories` est un
+tableau précisément pour qu'ajouter `"PERMIS"` plus tard ne casse rien.
 
 ```json
 {
@@ -116,7 +120,8 @@ Ajoute sur `Driver` :
 | `identityPersonId` | `String?` | identifiant côté Verify |
 | `identityRequestId` | `String?` | dernière demande ouverte |
 | `identityVerifiedAt` | `DateTime?` | |
-| `licenseExpiresAt` | `DateTime?` | **lu sur le permis**, pas saisi |
+| `identityDocType` | `String?` | `CIN_MA` ou `PASSEPORT`, tel que rendu par Verify |
+| `identityExpiresAt` | `DateTime?` | **lu sur le document**, pas saisi |
 | `identityCheckedAt` | `DateTime?` | dernière synchronisation |
 
 ⚠️ **Ne touche pas à `licenseNumber`.** Il reste la saisie interne libre. Le champ vérifié
@@ -180,12 +185,12 @@ pas côté navigateur.
 `apps/web/src/app/features/drivers/`.
 
 - Sur la fiche conducteur : une **pastille d'état** (non vérifié / en cours / vérifié /
-  refusé) et la date d'expiration du permis quand elle est connue.
+  refusé) et la date d'expiration de la piece quand elle est connue.
 - Bouton **« Vérifier l'identité »** → ouvre la demande, affiche le lien, et propose de
   **l'envoyer par SMS** au conducteur (le module `apps/api/src/sms/` existe déjà, ne monte
   pas un second chemin d'envoi).
 - Sur la liste des conducteurs : un filtre « non vérifiés ».
-- Quand le permis expire dans moins de 30 jours, dis-le sur la fiche.
+- Quand la piece d'identite expire dans moins de 30 jours, dis-le sur la fiche.
 
 ⚠️ Le lien Verify donne accès au parcours d'envoi de pièces d'identité : **ne l'affiche
 jamais dans un journal, une alerte ou un e-mail non ciblé.**
@@ -195,7 +200,7 @@ jamais dans un journal, une alerte ou un e-mail non ciblé.**
 ## Ce qui n'est PAS dans ton périmètre
 
 - L'API d'intégration côté Verify et son webhook — je m'en occupe.
-- La lecture de la CIN marocaine et des passeports côté Verify — en cours.
+- La lecture de la CIN marocaine et des passeports cote Verify — en cours.
 - Toute décision d'ordre RGPD sur la conservation des documents : les pièces restent
   **chez Verify**, Tracky ne stocke qu'un verdict et des dates. Ne rapatrie aucune image.
 
