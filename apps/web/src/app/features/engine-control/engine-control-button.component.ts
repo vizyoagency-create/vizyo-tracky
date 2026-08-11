@@ -81,6 +81,16 @@ const CONFIRM_WINDOW_MS = 90_000;
         </span>
       }
 
+      <!--
+        NIVEAU CRITIQUE, ET SEULEMENT SUR LA COUPURE (decision du 2026-08-11).
+        Couper IMMOBILISE un bien, parfois avec quelqu'un dedans, et se trompe de vehicule
+        en un clic depuis une liste. Rallumer ne fait que deblocker : c'est reversible, et
+        ca reste une confirmation standard. C'est la meme asymetrie que le mode veilleur,
+        qui peut rallumer mais pas couper.
+        La plaque a retaper n'est pas une formalite : elle force a LIRE quelle ligne on a
+        ouverte. Le kit compare sans casse ni espaces — on verifie qu'on a lu, pas qu'on
+        sait taper.
+      -->
       <app-confirm-modal
         [open]="isOpen() === 'cut'"
         title="Couper le moteur ?"
@@ -89,6 +99,9 @@ const CONFIRM_WINDOW_MS = 90_000;
         confirmLabel="Couper le moteur"
         cancelLabel="Annuler"
         [danger]="true"
+        [critique]="true"
+        [etat]="etatVehicule()"
+        [confirmationAttendue]="vehiclePlate()"
         [loading]="loading()"
         (confirmed)="onConfirm('CUT')"
         (cancelled)="isOpen.set(null)"
@@ -439,12 +452,34 @@ export class EngineControlButtonComponent implements OnInit {
     );
   });
 
+  /**
+   * L'ETAT DE L'OBJET, rappele dans la confirmation (marqueur n° 2 du niveau critique).
+   *
+   * On ne demande pas « etes-vous sur ? » dans le vide : on redit ce que le vehicule fait
+   * A CET INSTANT. « Roule a 74 km/h » n'est pas la meme decision que « a l'arret ». Les
+   * trois faits qui changent le sens du geste, dans l'ordre de gravite : il roule, son
+   * boitier est muet, le contact est coupe.
+   */
+  protected readonly etatVehicule = computed<string>(() => {
+    const bouts: string[] = [];
+    const v = this.currentSpeedKmh();
+    if (v != null && v > 0) bouts.push(`roule à ${Math.round(v)} km/h`);
+    else if (this.ignition()) bouts.push("à l'arrêt, contact mis");
+    else bouts.push('contact coupé');
+
+    const muet = this.dormantWarning();
+    if (muet) bouts.push(`boîtier muet depuis ${muet.silence}`);
+    else if (!this.validFix()) bouts.push('position non confirmée');
+
+    return `${this.vehiclePlate()} — ${bouts.join(' · ')}`;
+  });
+
   protected readonly cutDescription = computed(
     () =>
       `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
       `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
       `jusqu'à réactivation manuelle.<br><br>` +
-      `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
+      `<span class="text-fg-secondary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
       this.dormantConfirmNotice(),
   );
 
@@ -471,7 +506,7 @@ export class EngineControlButtonComponent implements OnInit {
     if (this.scheduleEnabled()) {
       return (
         base +
-        `<br><br><span class="text-fg-tertiary text-xs">Le mode horaire reste actif : cette action ` +
+        `<br><br><span class="text-fg-secondary text-xs">Le mode horaire reste actif : cette action ` +
         `tient jusqu'à la prochaine bascule, puis le planning reprend automatiquement.</span>` +
         this.dormantConfirmNotice()
       );

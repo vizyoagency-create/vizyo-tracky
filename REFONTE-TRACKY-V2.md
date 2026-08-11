@@ -1372,6 +1372,15 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] Proposition 2FA — sort de la pile : voile à 22 %, 3 sorties visibles, feuille iOS, dialogue M3
 - [ ] Assistant de démarrage — *livré en B0′*
 - [ ] Coupure moteur — **compte à rebours pendant les 90 s**, la raison du refus sort du `title`, l'état non confirmé a 3 sorties, avertissement boîtier muet en 3 étapes numérotées
+  - [x] ✅ **Variante critique branchée — décision client du 2026-08-11 : plaque à retaper sur la
+        COUPURE seulement.** Couper immobilise un bien, parfois avec quelqu'un dedans, et se trompe
+        de véhicule en un clic depuis une liste ; rallumer ne fait que débloquer. C'est la même
+        asymétrie que le mode veilleur, qui peut rallumer mais pas couper. Le point ouvert de
+        B-kit est clos. Vérifié au navigateur : liseré rouge, **état réel du véhicule rappelé**
+        (« TE002ST — roule à 29 km/h », construit depuis la vitesse, la dormance du boîtier et le
+        contact), bouton bloqué au départ, **toujours bloqué avec une mauvaise plaque**, débloqué
+        avec la bonne **en minuscules** — le kit compare sans casse : on vérifie qu'on a lu, pas
+        qu'on sait taper
 - [ ] Panneau surveillance — week-end en surveillance permanente, dénouement de chaque déclenchement *(l'heure locale est livrée en B0′)*
 - [ ] QR véhicule — explique son usage et son format d'impression (60 × 90 mm), 262 px sur Android
 - [ ] Rejeu de trajet — **multiplicateurs partout avec la durée réelle à côté**, excès confirmé vs pointe à vérifier, la frise porte l'analyse
