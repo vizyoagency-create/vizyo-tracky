@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **32/57** |
+| **B-pages** | 🟡 **en cours** | **33/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -70,7 +70,23 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 
 ### Ce qui reste — 33 lignes
 
-**Bloc F — surfaces bloquantes (12).** Le gros morceau. Coupure moteur (compte à rebours
+> ### 🔓 Ouvrir une SURFACE BLOQUANTE pour la vérifier
+>
+> Ces écrans ne s'affichent que sur anomalie — impossible à provoquer par l'interface. En
+> build de dev, **`window.ng` donne accès aux services** :
+>
+> ```js
+> const c = ng.getComponent(document.querySelector('app-dashboard-layout'));
+> c.security.maskedEmail.set('a•••@duchamp.fr');
+> c.security.mustVerify.set(true);      // → la porte de vérification s'affiche
+> ```
+>
+> `app-dashboard-layout` expose `security` (42 champs au total). C'est la seule façon
+> pratique d'atteindre les portes d'accès : elles sont décidées au boot, et un rechargement
+> efface toute fixture XHR posée après coup.
+
+**Bloc F — surfaces bloquantes (11 restantes sur 12).** Le gros morceau.
+*(Vérification d'appareil livrée ; assistant de démarrage livré en B0′.)* Coupure moteur (compte à rebours
 pendant les 90 s, la raison du refus sort du `title`), consentement RGPD, vérification
 d'appareil (6 cases séparées, collage depuis l'e-mail), QR véhicule, rejeu de trajet et de
 période, création/édition de véhicule (« le boîtier devient facultatif »), éditeur d'horaires

@@ -1358,7 +1358,17 @@ composants ne gèrent que « rempli » et « chargement ».
 **F — Surfaces bloquantes (12)**
 - [ ] Consentement RGPD — **la séquence devient visible** (« étape N sur 3 », calculée), note conducteurs actionnable avec modèle téléchargeable
 - [ ] Autorisations navigateur — localisation justifiée par son usage, **fin de l'impasse** : « Continuer sans déverrouillage QR »
-- [ ] Vérification d'appareil — code à 6 cases séparées, collage depuis l'e-mail
+- [x] Vérification d'appareil — **6 cases séparées, collage depuis l'e-mail.** Le champ unique se
+      contentait d'un **interlettrage qui imitait des cases** : on ne voyait pas combien de
+      chiffres restaient, et le collage — le geste le plus naturel quand le code arrive par mail —
+      n'avait aucun traitement. Les six cases avancent toutes seules, le retour arrière remonte
+      d'une case, les flèches naviguent, et **coller « Votre code : 472913 (valable 10 min) »
+      remplit les six d'un coup** (vérifié : seuls les chiffres sont retenus). Le code complet
+      déclenche la vérification sans demander un tap de plus. **Défaut trouvé à la mesure** :
+      l'espacement de 9 px ramenait chaque case à **41 px de large** pour 56 de haut — une cible
+      n'est atteignable que si ses **deux** dimensions le sont ; l'espacement cède sous 420 px,
+      les cases passent à **47 × 56**. 9 textes ≥ 4,5:1 dans les deux thèmes, 5 couleurs en dur
+      purgées
 - [ ] Proposition 2FA — sort de la pile : voile à 22 %, 3 sorties visibles, feuille iOS, dialogue M3
 - [ ] Assistant de démarrage — *livré en B0′*
 - [ ] Coupure moteur — **compte à rebours pendant les 90 s**, la raison du refus sort du `title`, l'état non confirmé a 3 sorties, avertissement boîtier muet en 3 étapes numérotées
