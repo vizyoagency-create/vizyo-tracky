@@ -85,7 +85,13 @@ export const ETATS_VIE_PRIVEE: Record<EtatViePrivee, {
   MIXTE_SANS_CADRE: {
     court: 'Mixte sans cadre',
     long: 'Usage mixte déclaré, aucun cadre actif',
-    sens: "En l'état le véhicule serait privé en permanence — donc invisible pour vous, y compris en journée.",
+    // ⚠️ Cette phrase disait l'INVERSE de ce que fait le système : « le véhicule serait
+    // privé en permanence — donc invisible pour vous ». C'est faux, et dangereusement :
+    // `resolveEffectivePrivacy` renvoie `NO_SCHEDULE` → `isPrivate: false` quand l'usage
+    // mixte est déclaré sans cadre actif (cf. la précédence n° 4 : « aucun cadre → TRACÉ,
+    // on ne coupe jamais le suivi sans cadre défini »). Le véhicule est donc suivi 24/7,
+    // domicile compris — et l'écran laissait croire au gestionnaire qu'il était protégé.
+    sens: "Déclarer l'usage mixte ne protège rien à lui seul : sans plages déclarées, le véhicule reste suivi en permanence, domicile compris.",
   },
   NON_COUVERT: {
     court: 'Suivi en permanence',

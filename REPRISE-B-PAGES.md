@@ -326,6 +326,17 @@ l'attribut d'encapsulation sur tout élément injecté.
 > valeur, ou une valeur ronde comme 1,00, mesure la sonde et non la page. Vérifier d'abord
 > que la sonde avait de la matière (`elementsInspectes`) et que les valeurs **varient**.
 
+### ⚠️ La sonde de CIBLES mesure parfois le mauvais élément
+
+Une case à cocher **enveloppée dans son `<label>`** se signale à 18 × 36 px alors que la
+cible réelle est le libellé — 337 × 44 sur l'éditeur d'horaires, et cliquer dessus bascule
+bien la case (vérifié : `true → false`). Mesurer l'`<input>` seul produit un faux échec.
+
+**Le remède** : quand un `input` est signalé, remonter à son `closest('label')` et mesurer
+CELUI-LÀ ; puis prouver le lien en cliquant le libellé et en relisant `checked`. Même
+principe pour un bouton dont la zone de visée est un parent (cf. les repères de la frise
+du rejeu de trajet, où la cible de 44 px enveloppe un trait de 3 px).
+
 **Et surtout : balayer TOUT le texte, pas une liste de sélecteurs.** La liste ne trouve que ce
 qu'on a pensé à y mettre — le balayage générique a sorti à lui seul 2 échecs de
 `/admin/ai-usage` qu'elle avait manqués.

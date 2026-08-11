@@ -233,7 +233,11 @@ export class WorkScheduleService {
       const hasSchedule = !!v.workSchedule;
       const scheduleEnabled = !!v.workSchedule?.enabled;
       // PROTEGE = usage mixte déclaré ET cadre actif (les deux conditions du gate d'ingestion).
-      // MIXTE_SANS_CADRE = usage mixte déclaré mais aucun cadre actif → serait privé en permanence.
+      // MIXTE_SANS_CADRE = usage mixte déclaré mais aucun cadre actif → le véhicule reste
+      // TRACÉ 24/7. Ce commentaire disait « serait privé en permanence » : c'est l'inverse.
+      // Cf. resolveEffectivePrivacy, précédence n° 4 — sans cadre, on ne coupe jamais le
+      // suivi, donc rien n'est protégé. La distinction compte : un cadre ACTIF mais vide
+      // (enabled=true, aucun jour) rend bien le véhicule privé en permanence, lui.
       const status: 'PROTEGE' | 'MIXTE_SANS_CADRE' | 'NON_COUVERT' = v.mixedUseEnabled
         ? scheduleEnabled ? 'PROTEGE' : 'MIXTE_SANS_CADRE'
         : 'NON_COUVERT';
