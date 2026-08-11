@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **37/57** |
+| **B-pages** | 🟡 **en cours** | **44/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -123,13 +123,45 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 >
 > Même famille que les `--tk-*` déjà relevés sur `/integrations`.
 
-**Bloc F — surfaces bloquantes (6 restantes sur 12).** Le gros morceau.
-*(Livrées : consentement RGPD, autorisations navigateur, vérification d'appareil,
-proposition 2FA, et la **coupure moteur en entier** — variante critique + les 4 points de B1.
-Assistant de démarrage livré en B0′.)*
+**Bloc F — surfaces bloquantes.** ✅ **CLOS — 12/12** (séance du 2026-08-11).
 
-Restent : **panneau surveillance (moitié week-end seulement)**, **QR véhicule**, **rejeu de
-trajet**, **rejeu de période**, **créer/éditer un véhicule**, **éditeur d'horaires**.
+| Surface | Ce qui a été trouvé en mesurant |
+|---|---|
+| Assistant de démarrage | l'action principale **repliée sur 2 lignes** à 375 px (133 × 85) |
+| QR véhicule | la carte **débordait de 38 px de chaque côté** ; format 60 × 90 mm réellement imprimé |
+| Rejeu de trajet | une branche de code **inatteignable** ; « 1× » ne multipliait rien |
+| Rejeu de période | la nuit occupait **58 % et 71 %** d'une barre ; curseur invisible à 0 % |
+| Créer un véhicule | `bg-tracky text-white` (règle B0-SOCLE) ; compteur 15/15 ; « 2 champs requis sur 11 » calculé |
+| Éditeur d'horaires | une phrase partagée **disait l'inverse du système** — cf. ci-dessous |
+
+> ### ⚠️ `MIXTE_SANS_CADRE` : la phrase disait l'inverse du code
+>
+> `ETATS_VIE_PRIVEE.MIXTE_SANS_CADRE.sens` annonçait « le véhicule serait **privé en
+> permanence** — donc invisible pour vous ». C'est faux : `resolveEffectivePrivacy`
+> (précédence n° 4 — « aucun cadre → TRACÉ, on ne coupe jamais le suivi sans cadre
+> défini ») renvoie `isPrivate: false`. Le véhicule est **suivi 24/7, domicile compris**,
+> et `/privacy-coverage` — l'écran qui sert de preuve — annonçait le contraire.
+> Corrigé aux deux endroits (la source est partagée), plus le commentaire de l'API.
+>
+> La distinction qui manquait : un cadre **actif mais vide** (`enabled=true`, aucun jour)
+> rend bien le véhicule privé en permanence, lui.
+
+**Bloc C — supervision (1 restante livrée sur 5).** `/dashboard` fait ; restent `/map`,
+`/vehicles`, `/places`, `/alerts`. *(`/vehicles/:id` livré plus tôt.)*
+
+> ### ⚠️ Le `catchError` en FIN DE TUYAU tue le sondage
+>
+> Trouvé sur `/dashboard` en écrivant le message honnête « nouvelle tentative dans moins
+> d'une minute » — puis en vérifiant que c'était vrai. Ça ne l'était pas :
+>
+> ```ts
+> switchMap(() => this.vehiclesApi.stats(...)),
+> catchError(() => of(null)),          // ← remplace le flux ENTIER
+> ```
+>
+> `of(null)` se termine, donc le flux se termine : **au premier échec réseau, le sondage
+> de 30 s s'arrêtait définitivement**. Le `catchError` doit être DANS le `switchMap`.
+> C'est le pendant technique du « catch qui ment » déjà relevé cinq fois.
 
 > ⚠️ **NE JAMAIS réécrire un fichier source via PowerShell `Set-Content`.** Le 2026-08-11,
 > un aller-retour `Get-Content -Raw` / `Set-Content -Encoding utf8` a **corrompu l'encodage**
@@ -325,6 +357,27 @@ l'attribut d'encapsulation sur tout élément injecté.
 > **Le réflexe qui rattrape les cinq :** un relevé où plusieurs lignes portent la **même**
 > valeur, ou une valeur ronde comme 1,00, mesure la sonde et non la page. Vérifier d'abord
 > que la sonde avait de la matière (`elementsInspectes`) et que les valeurs **varient**.
+
+### ⚠️ Après un rechargement à CHAUD, les styles de composant peuvent ne plus s'appliquer
+
+Relevé le 2026-08-11 sur `/dashboard` : un bouton mesurait **36 px** alors que sa règle
+`min-height: 44px` était bien présente dans la feuille, avec la bonne spécificité
+(`.widget-relance[_ngcontent-ng-c1600520906]`). Le HMR avait remplacé la feuille avec un
+NOUVEL identifiant d'encapsulation, mais le DOM rendu portait encore l'ancien : plus aucune
+règle du composant ne s'appliquait. Après un rechargement complet : **92 × 44**.
+
+**Ne jamais conclure sur une mesure de cible ou de style après une série de rechargements à
+chaud.** Recharger la page d'abord.
+
+### ⚠️ Deux autres relevés jetés le même jour
+
+- **Le mauvais écran.** L'onglet avait dérivé vers « Centre d'alertes » ; la sonde a rapporté
+  86 échecs qui n'étaient pas ceux de `/dashboard`. **Toujours relire `document.title` et
+  `location.pathname` dans le relevé lui-même.**
+- **Des éléments injectés en JS.** Créés pour éprouver un état d'échec, ils ne portaient pas
+  l'attribut d'encapsulation : mesurés **sans aucun style de composant**. Un état ne se
+  mesure que rendu par Angular — ici en coupant réellement les requêtes (`XMLHttpRequest`
+  détourné), pas en fabriquant le DOM à la main.
 
 ### ⚠️ La sonde de CIBLES mesure parfois le mauvais élément
 
