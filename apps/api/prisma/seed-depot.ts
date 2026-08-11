@@ -299,7 +299,21 @@ async function semerHistorique(
 
     const mission = await prisma.mission.upsert({
       where: { fleetId_ref: { fleetId, ref: t.ref } },
-      update: { status: MissionStatus.DONE, actualStartAt: debut, actualEndAt: finReelle },
+      // ⚠️ Le PRÉVU doit être rejoué comme le RÉALISÉ.
+      //
+      // Les créneaux sont relatifs au jour du lancement (`passe(t.jours, …)`). Cette
+      // mise à jour ne touchait que `actualStartAt`/`actualEndAt` : relancer le seed
+      // un autre jour recalculait le réalisé en laissant le prévu sur ses anciennes
+      // dates. Chaque mission terminée se retrouvait alors livrée EXACTEMENT 24 h
+      // après l'heure prévue, et l'historique du dépôt annonçait « 14 % à l'heure »
+      // avec un retard moyen de 1448 min — pour un jeu d'essai censé en montrer 2 sur 7.
+      update: {
+        status: MissionStatus.DONE,
+        startAt: debut,
+        endAt: fin,
+        actualStartAt: debut,
+        actualEndAt: finReelle,
+      },
       create: {
         ref: t.ref,
         fleetId,
