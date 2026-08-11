@@ -177,11 +177,18 @@ body.plat-android {
  * raisonnable à la souris, et c'est en la mesurant au doigt qu'elle devient
  * fausse.
  *
- * La règle est GLOBALE et non par composant : ces barres sont une douzaine,
- * écrites par autant d'écrans, et la prochaine sera écrite pareil. Une règle
- * globale traverse l'encapsulation des composants et rattrape aussi celles à
- * venir. Elle ne s'applique QUE sous 768 px : à la souris, 36 px suffisent et
- * gardent les écrans denses lisibles.
+ * La règle vit ici et non dans chaque composant : ces barres sont une douzaine,
+ * écrites par autant d'écrans, et une règle de feuille globale traverse
+ * l'encapsulation Angular qui les sépare. Elle ne s'applique QUE sous 768 px :
+ * à la souris, 36 px suffisent et gardent les écrans denses lisibles.
+ *
+ * ⚠️ CE N'EST PAS UNE RÈGLE UNIVERSELLE, C'EST UNE LISTE DE NOMS. Le sélecteur
+ * énumère les classes existantes : il ne peut PAS rattraper une barre à venir
+ * qui s'appellerait autrement. Constat mesuré au lot B-pages (2026-08-11) :
+ * `/fleet-admin/activity` écrivait `.fa-tabs button` et sortait à 37 px, sous
+ * une règle censée « rattraper celles à venir ». Toute nouvelle barre d'onglets
+ * DOIT donc porter `.tab-btn` — c'est la convention, et c'est ce qui la fait
+ * entrer dans cette garantie. La mesure au doigt reste le seul juge.
  */
 @media (max-width: 768px) {
   .tab-btn,
@@ -775,7 +782,23 @@ textarea:focus-visible,
   border: 0;
 }
 
-/* Touch targets : garantir minimum 44px sur tous les éléments interactifs en mobile */
+/*
+ * Plancher tactile générique : 36 px, PAS 44.
+ *
+ * ⚠️ Le commentaire d'origine annonçait « garantir minimum 44px » alors que la
+ * déclaration pose 36 px — relevé au lot B-pages (2026-08-11). Un commentaire
+ * qui promet une garantie que le code ne tient pas est pire que pas de
+ * commentaire : il fait sauter la vérification. La valeur est laissée à 36 px
+ * et c'est le texte qui est corrigé, pour deux raisons :
+ *
+ *  · monter `a` à 44 px casserait les liens EN LIGNE dans une phrase — c'est
+ *    l'exception déjà assumée sur `/places` et `/settings` (« Coûts IA ») ;
+ *  · le critère de recette (≥ 44 px) est tenu ÉCRAN PAR ÉCRAN et mesuré au
+ *    navigateur, pas par un plancher global qu'aucune sonde ne peut vérifier
+ *    ici (le panneau n'émule pas `pointer: coarse`).
+ *
+ * Ce plancher n'est donc qu'un filet, jamais la preuve. La preuve est la mesure.
+ */
 @media (max-width: 768px) and (pointer: coarse) {
   button, a, input[type='checkbox'], input[type='radio'] {
     min-height: 36px;

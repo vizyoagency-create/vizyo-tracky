@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **23/57** |
+| **B-pages** | 🟡 **en cours** | **24/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -51,8 +51,24 @@
 - **Carte de chaleur de `/reports`** — drill-down par jour. Ses 168 cellules ne se lisaient
   qu'au survol, inexistant au doigt.
 - **Passe de cibles tactiles sur 15 pages**, mesurée avant/après à 375 px.
+- **`/fleet-admin/activity`** — le résultat avant l'événement. `lastError` était **déjà en base**
+  et affiché nulle part ; les échecs passent en tête (« À vérifier · N ») ; la présence devient
+  un panneau permanent au-delà de 1024 px ; et un 500 ne s'affiche plus comme une liste vide.
+  Cibles 4 → 0, contraste 47/47 dans les deux thèmes.
 
-### Ce qui reste — 34 lignes
+### ⚠️ Deux commentaires de `styles.css` qui promettaient plus que leur code
+
+Corrigés cette séance, mais à connaître — **ils font sauter la vérification** :
+
+1. La règle « GLOBALE … rattrape aussi celles à venir » (`styles.css`, cibles tactiles) est en
+   réalité une **liste de six noms de classes**. Elle ne peut rattraper aucune barre nouvelle :
+   `/fleet-admin/activity` écrivait `.fa-tabs button` et sortait à **37 px**. Toute nouvelle
+   barre d'onglets doit porter `.tab-btn` pour entrer dans la garantie.
+2. `/* Touch targets : garantir minimum 44px */` déclarait `min-height: 36px`. La valeur est
+   laissée à 36 (monter `a` casserait les liens en ligne — exception déjà assumée) et c'est le
+   **texte** qui a été corrigé. Ce plancher est un filet, jamais la preuve.
+
+### Ce qui reste — 33 lignes
 
 **Bloc F — surfaces bloquantes (12).** Le gros morceau. Coupure moteur (compte à rebours
 pendant les 90 s, la raison du refus sort du `title`), consentement RGPD, vérification
@@ -65,9 +81,21 @@ principal — bouton 112 px), `/driver/unlock`. Elles demandent un jeton pour ê
 
 **Bloc B (1).** `/driver` — usage 100 % téléphone.
 
-**Contenu propre de D et E.** `/fleet-admin/activity` (« le résultat avant l'événement »),
-`/admin/ai-usage`, `/settings` (navigation à deux niveaux avec recherche), `/integrations`,
-`/privacy-coverage`.
+**Contenu propre de D et E.** `/admin/ai-usage`, `/settings` (navigation à deux niveaux avec
+recherche), `/integrations`, `/privacy-coverage`. *(`/fleet-admin/activity` est livrée.)*
+
+> **`/admin/ai-usage` — repéré, pas encore corrigé.** Pour un fleet-admin, la page affiche
+> `spentThisMonthEur` sous le libellé « Coûts IA de votre société (ce mois) » : la
+> **consommation présentée comme si c'était la facture**, exactement ce que la planche corrige
+> (« le forfait d'abord, la consommation ensuite… rien ne se coupe et rien n'est facturé en
+> plus »). Le forfait est **déjà servi** par `BillingSubscriptionDto` (`monthlyEurCents`,
+> `vehicleCount`, `unitAmountEurCents`, `pricingUnit`, `perVehicleEurCents`), lisible par un
+> fleet-admin : **aucun changement de contrat n'est nécessaire**. Reste aussi 13 cibles à 36 px.
+
+**État de départ mesuré des 4 pages restantes de D+E** (sonde, 375 px, avant modification) :
+`/admin/ai-usage` **13 cibles < 44 px** · `/settings` **1** (« Coûts IA », exception assumée) ·
+`/integrations` **0** (mais un état d'erreur « Impossible de charger l'état de l'intégration »
+à brancher sur `app-zone`) · `/privacy-coverage` **0**. Aucune coupe, aucun débordement.
 
 **Bloc G — le shell, EN DERNIER.** Ordre non négociable de `B1-PAGES.md`.
 
@@ -112,6 +140,14 @@ window.__recette = function (nom) {
   return res;
 };
 ```
+
+**Une limite du PANNEAU, découverte le 2026-08-11.** Le panneau navigateur **n'émule pas
+`pointer: coarse`** : la règle `@media (max-width: 768px) and (pointer: coarse)` de `styles.css`
+n'est donc **jamais** appliquée dans nos mesures, alors qu'elle l'est sur un vrai téléphone. Ce
+que la sonde mesure est le cas SANS ce plancher — c'est le cas défavorable, donc la mesure reste
+valable, mais ne pas conclure de l'inverse. Idem pour `matchMedia` : le redimensionnement du
+panneau (CDP) **n'émet pas d'événement `change`**, donc une bascule de point de rupture ne se
+teste qu'en **rechargeant** à la largeur voulue, pas en redimensionnant.
 
 **Deux limites connues, à ne pas « corriger » :**
 
