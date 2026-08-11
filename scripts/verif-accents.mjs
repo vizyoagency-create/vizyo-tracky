@@ -85,6 +85,9 @@ const CONTEXTES = [
 const TOLERES = new Set([
   'apps/api/src/permissions/permissions-resolver.service.ts|requete',
   'apps/web/src/app/features/depot/depot-documents.component.ts|donnees',
+  // Signal `evenements()` du rejeu de trajet : un identifiant, jamais affiche.
+  // Le commentaire francais qui le suit, lui, est bien accentue.
+  'apps/web/src/app/features/reports/trip-replay.component.ts|evenements',
 ]);
 
 const fichiers = [];
