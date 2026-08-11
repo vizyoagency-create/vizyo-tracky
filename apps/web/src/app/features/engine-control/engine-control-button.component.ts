@@ -2,6 +2,7 @@ import { swallow } from '../../core/error/swallow';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Power, PowerOff } from 'lucide-angular';
 import {
   DORMANT_STOP_ACTING_MS,
@@ -26,9 +27,10 @@ const CONFIRM_WINDOW_MS = 90_000;
 @Component({
   selector: 'app-engine-control-button',
   standalone: true,
-  imports: [LucideAngularModule, ConfirmModalComponent, FormsModule],
+  imports: [LucideAngularModule, ConfirmModalComponent, FormsModule, RouterLink],
   template: `
-    <div class="inline-flex items-center shrink-0" (click)="$event.stopPropagation()">
+    <div class="ec-hote" (click)="$event.stopPropagation()">
+     <div class="inline-flex items-center shrink-0">
       @if (canCut().allowed || canRestore()) {
         @if (isCutActive()) {
           <button
@@ -52,7 +54,7 @@ const CONFIRM_WINDOW_MS = 90_000;
                    transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             [class]="canCut().allowed
               ? 'bg-red-600/20 text-red-400 border border-red-600/30 hover:bg-red-600/30'
-              : 'bg-bg-tertiary text-fg-tertiary border border-border-subtle'"
+              : 'bg-bg-tertiary text-fg-secondary border border-border-subtle'"
           >
             <lucide-icon [img]="PowerOff" [size]="14"></lucide-icon>
             <span class="hidden sm:inline">Couper le moteur</span>
@@ -65,11 +67,58 @@ const CONFIRM_WINDOW_MS = 90_000;
              infobulle ne suffit pas : elle n'existe pas au doigt, et le mobile est
              l'usage principal (cas réel FV-941-LZ, 89 j de silence). -->
         @if (dormantWarning(); as d) {
-          <span class="ml-2 text-[11px] font-medium text-amber-400 leading-tight"
-                [title]="d.title">
-            Boîtier muet depuis {{ d.silence }} — envoi non garanti
-          </span>
+          <span class="ec-muet-court">Boîtier muet depuis {{ d.silence }}</span>
         }
+      }
+     </div>
+
+      <!--
+        LA RAISON DU REFUS SORT DE L'INFOBULLE. Elle n'y existait pas au doigt : sur un
+        telephone, un bouton grise sans explication est un mur. Et c'est exactement la
+        situation ou l'operateur a besoin de savoir POURQUOI — vehicule en mouvement,
+        position trop ancienne, regle du veilleur.
+      -->
+      @if (!canCut().allowed && !isCutActive() && canCut().reason; as motif) {
+        <p class="ec-refus">{{ motif }}</p>
+      }
+
+      <!--
+        BOITIER MUET, EN TROIS ETAPES NUMEROTEES. La phrase unique disait le fait sans dire
+        quoi faire : l'operateur restait avec « envoi non garanti » et aucune suite.
+      -->
+      @if (dormantWarning(); as d) {
+        <div class="ec-muet">
+          <div class="ec-muet-t">Boîtier muet depuis {{ d.silence }} — l'envoi n'est pas garanti</div>
+          <ol class="ec-etapes">
+            <li><span class="ec-num">1</span> Envoyez quand même : le serveur tente le repli SMS.</li>
+            <li><span class="ec-num">2</span> Attendez la confirmation du boîtier — {{ fenetreSecondes }} s.</li>
+            <li><span class="ec-num">3</span> Sans confirmation, <strong>vérifiez le véhicule sur place</strong> : rien ne prouve la coupure.</li>
+          </ol>
+        </div>
+      }
+
+      <!--
+        L'ETAT NON CONFIRME A TROIS SORTIES. C'etait un constat rouge, definitif, sans
+        aucune suite : « Non confirmee » et rien d'autre — sur l'ecran ou l'on vient de
+        tenter d'immobiliser un vehicule.
+      -->
+      @if (nonConfirmee() && !verifieSurPlace()) {
+        <div class="ec-nc">
+          <div class="ec-nc-t">Le boîtier n'a pas confirmé</div>
+          <p class="ec-nc-p">
+            La commande est partie, mais rien ne prouve qu'elle a été appliquée.
+            Ne considérez pas le véhicule comme immobilisé tant que ce n'est pas vérifié.
+          </p>
+          <div class="ec-nc-sorties">
+            <button type="button" class="ec-sortie" (click)="renvoyer()" [disabled]="loading()">
+              {{ loading() ? 'Envoi…' : 'Renvoyer la commande' }}
+            </button>
+            <a class="ec-sortie" routerLink="/fleet-admin/activity">Voir l'historique</a>
+            <button type="button" class="ec-sortie" (click)="verifieSurPlace.set(true)">
+              J'ai vérifié sur place
+            </button>
+          </div>
+        </div>
       }
 
       <!-- Sprint 2 — etat honnete de la derniere commande (jamais de faux succes). -->
@@ -146,6 +195,67 @@ const CONFIRM_WINDOW_MS = 90_000;
       />
     </div>
   `,
+  styles: [
+    `
+    /* Le bouton d action sortait a 36 px : c est LA commande de l ecran, elle se touche. */
+    @media (max-width: 768px) { .ec-hote button, .ec-hote a[href] { min-height: 44px; } }
+    .ec-hote { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+
+    /* Etats de la derniere commande — jetons, jamais de classe de palette Tailwind. */
+    .ec-succes { color: var(--texte-succes); }
+    .ec-alerte { color: var(--texte-alerte); }
+    .ec-attente { color: var(--texte-attente); }
+    .ec-neutre { color: var(--fg-secondary); }
+    .ec-point-succes { background: var(--color-tracky-light); }
+    .ec-point-alerte { background: var(--danger); }
+    .ec-point-attente { background: var(--warning); animation: ec-pulse 1.4s ease-in-out infinite; }
+    .ec-point-neutre { background: var(--fg-secondary); }
+    @keyframes ec-pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+    @media (prefers-reduced-motion: reduce) { .ec-point-attente { animation: none; } }
+
+    .ec-muet-court { margin-left: 8px; font-size: 11.5px; font-weight: 600; color: var(--texte-attente); line-height: 1.3; }
+
+    /* La raison du refus, en clair sous le bouton. */
+    .ec-refus {
+      margin: 0; max-width: 320px; font-size: 11.5px; line-height: 1.45;
+      color: var(--fg-secondary); text-wrap: pretty;
+    }
+
+    /* Boitier muet : trois etapes numerotees, pas une phrase. */
+    .ec-muet {
+      max-width: 340px; padding: 9px 11px; border-radius: 11px;
+      background: color-mix(in srgb, var(--warning) 11%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    }
+    .ec-muet-t { font-size: 11.5px; font-weight: 800; color: var(--texte-attente); text-wrap: pretty; }
+    .ec-etapes { list-style: none; margin: 7px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+    .ec-etapes li { display: flex; gap: 7px; font-size: 11.5px; line-height: 1.45; color: var(--fg-secondary); text-wrap: pretty; }
+    .ec-etapes strong { color: var(--fg-primary); }
+    .ec-num {
+      flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+      width: 17px; height: 17px; border-radius: 6px; margin-top: 1px;
+      background: var(--warning); color: var(--accent-ink); font-size: 10px; font-weight: 800;
+    }
+
+    /* Les trois sorties de l'etat non confirme. */
+    .ec-nc {
+      max-width: 340px; padding: 10px 12px; border-radius: 11px;
+      background: color-mix(in srgb, var(--danger) 11%, transparent);
+      border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    }
+    .ec-nc-t { font-size: 12px; font-weight: 800; color: var(--texte-alerte); }
+    .ec-nc-p { margin: 4px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--fg-secondary); text-wrap: pretty; }
+    .ec-nc-sorties { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
+    .ec-sortie {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 44px; padding: 0 12px; border-radius: 10px;
+      background: var(--bg-secondary); border: 1px solid var(--border-strong);
+      color: var(--fg-primary); font: inherit; font-size: 12px; font-weight: 700;
+      text-decoration: none; cursor: pointer;
+    }
+    .ec-sortie:disabled { opacity: .55; cursor: wait; }
+    `,
+  ],
 })
 export class EngineControlButtonComponent implements OnInit {
   readonly trackerId = input.required<string>();
@@ -239,10 +349,43 @@ export class EngineControlButtonComponent implements OnInit {
   // Sprint 2 — tick 5s : fait basculer l'affichage "en attente" -> "non confirmee"
   // au depassement de la fenetre, sans refetch.
   private readonly _now = signal(Date.now());
+  /**
+   * Tick ADAPTATIF : 1 s pendant la fenêtre de confirmation, 5 s le reste du temps.
+   *
+   * Le compte à rebours des 90 s exige la seconde — à 5 s il sauterait de 5 en 5, ce qui se
+   * lit comme un bug plutôt que comme une attente. Mais battre la seconde en permanence sur
+   * chaque ligne d'une liste de véhicules serait du gaspillage pur : la cadence suit donc
+   * l'état, et redescend d'elle-même dès que plus rien n'est en attente.
+   */
   constructor() {
-    const id = setInterval(() => this._now.set(Date.now()), 5000);
-    inject(DestroyRef).onDestroy(() => clearInterval(id));
+    let rapide = false;
+    let id: ReturnType<typeof setInterval> | null = null;
+    const armer = (ms: number) => {
+      if (id) clearInterval(id);
+      id = setInterval(() => {
+        this._now.set(Date.now());
+        const doitEtreRapide = this.attenteEnCours();
+        if (doitEtreRapide !== rapide) { rapide = doitEtreRapide; armer(rapide ? 1000 : 5000); }
+      }, ms);
+    };
+    armer(5000);
+    inject(DestroyRef).onDestroy(() => { if (id) clearInterval(id); });
   }
+
+  /** Une commande attend-elle encore sa confirmation ? Pilote la cadence du tick. */
+  private attenteEnCours(): boolean {
+    const c = this.lastAppCommand();
+    if (!c || c.status !== 'SENT' || c.confirmationExpected === false) return false;
+    return this._now() - new Date(c.sentAt ?? c.createdAt).getTime() < CONFIRM_WINDOW_MS;
+  }
+
+  /** Secondes restantes dans la fenêtre de confirmation, ou null hors fenêtre. */
+  protected readonly secondesRestantes = computed<number | null>(() => {
+    const c = this.lastAppCommand();
+    if (!c || c.status !== 'SENT' || c.confirmationExpected === false) return null;
+    const reste = CONFIRM_WINDOW_MS - (this._now() - new Date(c.sentAt ?? c.createdAt).getTime());
+    return reste > 0 ? Math.ceil(reste / 1000) : null;
+  });
 
   /** Sprint 2 — derniere commande APP (hors DEVICE_OBSERVED) = l'action en cours. */
   private readonly lastAppCommand = computed<EngineControlCommandDto | null>(() => {
@@ -283,16 +426,16 @@ export class EngineControlButtonComponent implements OnInit {
       return {
         short: c.action === 'CUT' ? 'Coupure confirmée' : 'Rallumage confirmé',
         label: `${verb} confirmé(e) par le boîtier (chute d'ignition).`,
-        textClass: 'text-tracky-light',
-        dotClass: 'bg-tracky-light',
+        textClass: 'ec-succes',
+        dotClass: 'ec-point-succes',
       };
     }
     if (c.status === 'FAILED') {
       return {
         short: 'Échec d\'envoi',
         label: c.lastError ?? 'La commande n\'a pas pu être envoyée au boîtier.',
-        textClass: 'text-red-400',
-        dotClass: 'bg-red-500',
+        textClass: 'ec-alerte',
+        dotClass: 'ec-point-alerte',
       };
     }
     // status === 'SENT'
@@ -300,26 +443,54 @@ export class EngineControlButtonComponent implements OnInit {
       return {
         short: 'Envoyée',
         label: `${verb} envoyée — confirmation par ignition indisponible (véhicule à l'arrêt). À vérifier physiquement.`,
-        textClass: 'text-fg-tertiary',
-        dotClass: 'bg-fg-tertiary',
+        textClass: 'ec-neutre',
+        dotClass: 'ec-point-neutre',
       };
     }
     const ageMs = this._now() - new Date(c.sentAt ?? c.createdAt).getTime();
     if (ageMs < CONFIRM_WINDOW_MS) {
+      // COMPTE A REBOURS : « En attente… » sans duree laisse croire que ca peut durer
+      // indefiniment. Le boitier a 90 s pour repondre — autant le dire.
+      const s = this.secondesRestantes();
       return {
-        short: 'En attente…',
-        label: `${verb} envoyée — en attente de confirmation du boîtier…`,
-        textClass: 'text-amber-400',
-        dotClass: 'bg-amber-400 animate-pulse',
+        short: s != null ? `En attente… ${s} s` : 'En attente…',
+        label: `${verb} envoyée — le boîtier a ${s ?? 90} s pour confirmer.`,
+        textClass: 'ec-attente',
+        dotClass: 'ec-point-attente',
       };
     }
     return {
       short: 'Non confirmée',
       label: `${verb} envoyée mais NON confirmée par le boîtier — à vérifier.`,
-      textClass: 'text-red-400',
-      dotClass: 'bg-red-500',
+      textClass: 'ec-alerte',
+      dotClass: 'ec-point-alerte',
     };
   });
+
+  /** L'etat NON CONFIRME est-il a l'ecran ? Il ouvre alors ses trois sorties. */
+  protected readonly nonConfirmee = computed<boolean>(
+    () => this.commandState()?.short === 'Non confirmée',
+  );
+  /**
+   * Sortie n° 3 : « j'ai verifie sur place ».
+   *
+   * ⚠️ Elle masque le bandeau et RIEN D'AUTRE : elle n'ecrit aucun etat, ne confirme rien
+   * cote serveur, et ne fait pas passer le bouton en « coupe ». L'application n'a pas vu le
+   * vehicule ; seul l'operateur l'a vu. Lui faire dire « confirme » ici recreerait le faux
+   * succes que tout cet ecran existe pour eviter.
+   */
+  protected readonly verifieSurPlace = signal(false);
+
+  /** La fenetre de confirmation, en secondes — pour l'etape 2 de l'avertissement. */
+  protected readonly fenetreSecondes = CONFIRM_WINDOW_MS / 1000;
+
+  /** Sortie n° 1 : rejouer exactement la meme commande, sans repasser par la confirmation. */
+  protected renvoyer(): void {
+    const c = this.lastAppCommand();
+    if (!c || this.loading()) return;
+    this.verifieSurPlace.set(false);
+    void this.onConfirm(c.action);
+  }
 
   /**
    * Dernier signal du boîtier, résolu : input explicite d'abord, snapshot realtime ensuite.

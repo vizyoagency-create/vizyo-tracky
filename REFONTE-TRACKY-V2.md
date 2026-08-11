@@ -1400,7 +1400,21 @@ composants ne gèrent que « rempli » et « chargement ».
       **32 × 4** — les jetons Android, donc les 3 écarts de plateforme volontaires sont respectés.
       6 textes ≥ 4,5:1 dans les deux thèmes (pire 5,54 / 7,28), 0 cible < 44 px
 - [ ] Assistant de démarrage — *livré en B0′*
-- [ ] Coupure moteur — **compte à rebours pendant les 90 s**, la raison du refus sort du `title`, l'état non confirmé a 3 sorties, avertissement boîtier muet en 3 étapes numérotées
+- [x] Coupure moteur — **les quatre points livrés et mesurés.**
+      **Compte à rebours** : « En attente… » sans durée laissait croire que ça pouvait durer
+      indéfiniment ; le boîtier a 90 s, et ça se voit — vérifié descendant de 73 s à 68 s. Le tick
+      passe à **1 s pendant la fenêtre, 5 s sinon** : à 5 s le compte sautait de 5 en 5 (ça se lit
+      comme un bug), et battre la seconde en permanence sur chaque ligne d'une liste serait du
+      gaspillage. **La raison du refus sort de l'infobulle** : elle n'existait pas au doigt — sur
+      un téléphone, un bouton grisé sans explication est un mur. Vérifié : « Vitesse trop élevée
+      (63.6 km/h) » s'affiche sous le bouton. **L'état non confirmé a 3 sorties** — c'était un
+      constat rouge et définitif : Renvoyer la commande · Voir l'historique · J'ai vérifié sur
+      place *(cette dernière masque le bandeau et RIEN d'autre : elle n'écrit aucun état et ne fait
+      pas passer le bouton en « coupé » — l'application n'a pas vu le véhicule)*.
+      **Boîtier muet en 3 étapes numérotées** au lieu d'une phrase sans suite.
+      Mesuré sur l'état le plus chargé (muet ET non confirmé) : 17 textes ≥ 4,5:1 dans les deux
+      thèmes (pire 5,06 / 6,12), 0 cible < 44 px, et 8 classes de palette Tailwind remplacées
+  - [x] ✅ **Variante critique branchée — décision client du 2026-08-11 : plaque à retaper sur la
   - [x] ✅ **Variante critique branchée — décision client du 2026-08-11 : plaque à retaper sur la
         COUPURE seulement.** Couper immobilise un bien, parfois avec quelqu'un dedans, et se trompe
         de véhicule en un clic depuis une liste ; rallumer ne fait que débloquer. C'est la même

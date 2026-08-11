@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **36/57** |
+| **B-pages** | 🟡 **en cours** | **37/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -85,13 +85,13 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > pratique d'atteindre les portes d'accès : elles sont décidées au boot, et un rechargement
 > efface toute fixture XHR posée après coup.
 
-**Bloc F — surfaces bloquantes (7 restantes sur 12).** Le gros morceau.
+**Bloc F — surfaces bloquantes (6 restantes sur 12).** Le gros morceau.
 *(Livrées : consentement RGPD, autorisations navigateur, vérification d'appareil,
-proposition 2FA, et la **variante critique** de la coupure moteur. Assistant de démarrage
-livré en B0′.)*
+proposition 2FA, et la **coupure moteur en entier** — variante critique + les 4 points de B1.
+Assistant de démarrage livré en B0′.)*
 
-Restent : **coupure moteur (le reste)**, **panneau surveillance**, **QR véhicule**,
-**rejeu de trajet**, **rejeu de période**, **créer/éditer un véhicule**, **éditeur d'horaires**.
+Restent : **panneau surveillance**, **QR véhicule**, **rejeu de trajet**, **rejeu de
+période**, **créer/éditer un véhicule**, **éditeur d'horaires**.
 
 > ⚠️ **NE JAMAIS réécrire un fichier source via PowerShell `Set-Content`.** Le 2026-08-11,
 > un aller-retour `Get-Content -Raw` / `Set-Content -Encoding utf8` a **corrompu l'encodage**
