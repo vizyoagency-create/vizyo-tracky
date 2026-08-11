@@ -86,7 +86,7 @@ const ROLE_LABELS: Record<string, string> = {
     <div class="flex flex-col gap-4">
       <!-- ─── Statut courant + Arm/Disarm ─────────────────────────── -->
       @if (loading()) {
-        <div class="sm-card flex items-center justify-center py-8 text-fg-tertiary">
+        <div class="sm-card flex items-center justify-center py-8 text-fg-secondary">
           <span class="w-5 h-5 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
         </div>
       } @else if (profile(); as p) {
@@ -115,7 +115,7 @@ const ROLE_LABELS: Record<string, string> = {
                   @else if (p.currentlyArmed) { Véhicule sous surveillance }
                   @else { Surveillance désactivée }
                 </h3>
-                <p class="text-xs text-fg-tertiary mt-0.5">
+                <p class="text-xs text-fg-secondary mt-0.5">
                   @if (p.currentlyArmed && p.lastArmedAt) {
                     Armé {{ relativeTime(p.lastArmedAt) }}
                   } @else if (!p.currentlyArmed && p.lastDisarmedAt) {
@@ -189,7 +189,7 @@ const ROLE_LABELS: Record<string, string> = {
             <lucide-icon [img]="Activity" [size]="16" class="text-tracky-light"></lucide-icon>
             <h3 class="text-sm font-semibold text-fg-primary">Configuration</h3>
             @if (saving()) {
-              <span class="text-xs text-fg-tertiary">Enregistrement…</span>
+              <span class="text-xs text-fg-secondary">Enregistrement…</span>
             } @else if (savedAt()) {
               <span class="text-xs text-tracky-light">✓ Enregistré</span>
             }
@@ -208,7 +208,7 @@ const ROLE_LABELS: Record<string, string> = {
                 <option value="SCHEDULED">Plage horaire</option>
               </select>
               @if (form().mode === 'OFF') {
-                <p class="text-xs text-fg-tertiary mt-0.5">
+                <p class="text-xs text-fg-secondary mt-0.5">
                   Utilisez le bouton "Armer maintenant" pour activer ponctuellement.
                 </p>
               }
@@ -274,7 +274,7 @@ const ROLE_LABELS: Record<string, string> = {
                   </button>
                 }
               </div>
-              <p class="text-xs text-fg-tertiary mt-1">
+              <p class="text-xs text-fg-secondary mt-1">
                 Aucun jour sélectionné = tous les jours.
               </p>
             </div>
@@ -290,7 +290,7 @@ const ROLE_LABELS: Record<string, string> = {
                   [checked]="form().triggerVibration"
                   (change)="updateField('triggerVibration', $any($event.target).checked)" />
                 <span>Vibration / choc</span>
-                <span class="text-xs text-fg-tertiary">(capteur accélération)</span>
+                <span class="text-xs text-fg-secondary">(capteur accélération)</span>
               </label>
               <label class="sm-check">
                 <input
@@ -298,7 +298,7 @@ const ROLE_LABELS: Record<string, string> = {
                   [checked]="form().triggerMovement"
                   (change)="updateField('triggerMovement', $any($event.target).checked)" />
                 <span>Mouvement du véhicule</span>
-                <span class="text-xs text-fg-tertiary">(déplacement &gt; 200 m)</span>
+                <span class="text-xs text-fg-secondary">(déplacement &gt; 200 m)</span>
               </label>
               <label class="sm-check">
                 <input
@@ -306,7 +306,7 @@ const ROLE_LABELS: Record<string, string> = {
                   [checked]="form().triggerDoor"
                   (change)="updateField('triggerDoor', $any($event.target).checked)" />
                 <span>Ouverture portière</span>
-                <span class="text-xs text-fg-tertiary">(fil porte connecté)</span>
+                <span class="text-xs text-fg-secondary">(fil porte connecté)</span>
               </label>
             </div>
           </div>
@@ -314,7 +314,7 @@ const ROLE_LABELS: Record<string, string> = {
           <!-- Destinataires des notifications de déclenchement -->
           <div class="mt-4 pt-3 border-t border-border-subtle">
             <label class="sm-label mb-1">Destinataires des alertes</label>
-            <p class="text-xs text-fg-tertiary">
+            <p class="text-xs text-fg-secondary">
               Les destinataires d'alertes de la flotte sont prévenus par défaut. Ajoutez ici
               les personnes à prévenir <strong class="text-fg-secondary">en plus</strong>, pour
               ce véhicule uniquement.
@@ -328,7 +328,7 @@ const ROLE_LABELS: Record<string, string> = {
               fonctionnalite etait inatteignable, pas inutilisee.
             -->
             @if (notifyCandidates().length === 0) {
-              <p class="text-xs text-fg-tertiary italic mt-2">
+              <p class="text-xs text-fg-secondary italic mt-2">
                 Aucun autre utilisateur dans cette flotte.
               </p>
             } @else {
@@ -350,7 +350,7 @@ const ROLE_LABELS: Record<string, string> = {
                 }
               </ul>
               @if (notifiedCount() > 0) {
-                <p class="text-xs text-fg-tertiary mt-1">
+                <p class="text-xs text-fg-secondary mt-1">
                   {{ notifiedCount() }} contact(s) additionnel(s) — prévenus uniquement pour
                   les déclenchements de CE véhicule.
                 </p>
@@ -365,16 +365,16 @@ const ROLE_LABELS: Record<string, string> = {
             <lucide-icon [img]="Bell" [size]="16" class="text-tracky-light"></lucide-icon>
             <h3 class="text-sm font-semibold text-fg-primary">Historique des déclenchements</h3>
             @if (events().length > 0) {
-              <span class="text-xs text-fg-tertiary">({{ events().length }})</span>
+              <span class="text-xs text-fg-secondary">({{ events().length }})</span>
             }
           </div>
 
           @if (eventsLoading()) {
-            <div class="flex items-center justify-center py-6 text-fg-tertiary">
+            <div class="flex items-center justify-center py-6 text-fg-secondary">
               <span class="w-4 h-4 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
             </div>
           } @else if (events().length === 0) {
-            <div class="text-center py-8 text-fg-tertiary text-sm">
+            <div class="text-center py-8 text-fg-secondary text-sm">
               Aucun déclenchement enregistré pour ce véhicule.
             </div>
           } @else {
@@ -387,7 +387,7 @@ const ROLE_LABELS: Record<string, string> = {
                         <lucide-icon [img]="AlertTriangle" [size]="14" class="text-amber-400"></lucide-icon>
                         Déclenchement {{ triggerLabel(ev.trigger) }}
                       </div>
-                      <p class="text-xs text-fg-tertiary mt-0.5">
+                      <p class="text-xs text-fg-secondary mt-0.5">
                         {{ ev.triggeredAt | date:'dd/MM/yyyy HH:mm:ss' }}
                         · {{ relativeTime(ev.triggeredAt) }}
                       </p>
@@ -400,9 +400,17 @@ const ROLE_LABELS: Record<string, string> = {
                           }
                         </p>
                       }
-                      @if (ev.notes) {
-                        <p class="text-xs text-fg-secondary mt-1 italic">{{ ev.notes }}</p>
-                      }
+                      <!--
+                        LE DENOUEMENT, en clair. L'historique listait des evenements sans
+                        jamais dire ce qu'ils etaient DEVENUS : « choc leger » ne dit rien,
+                        « sans suite · probable coup de vent » dit tout. Les notes vivaient a
+                        part, en italique, comme un commentaire facultatif.
+                      -->
+                      <p class="sm-denouement"
+                         [class.sm-denouement--ouvert]="!denouement(ev).resolu"
+                         [class.sm-denouement--grave]="denouement(ev).grave">
+                        {{ denouement(ev).texte }}
+                      </p>
                     </div>
 
                     <div class="flex items-center gap-1.5">
@@ -443,6 +451,15 @@ const ROLE_LABELS: Record<string, string> = {
                 </div>
               }
             </div>
+
+            <!--
+              LE CONSEIL DEDUIT DU MOTIF — pas un conseil generique. Il ne sort que si le
+              motif est reellement la : plusieurs fausses alarmes rapprochees, sur une
+              sensibilite qui peut encore descendre.
+            -->
+            @if (conseilMotif(); as conseil) {
+              <p class="sm-conseil">{{ conseil }}</p>
+            }
           }
         </div>
       } @else if (loadError()) {
@@ -454,6 +471,21 @@ const ROLE_LABELS: Record<string, string> = {
     </div>
   `,
   styles: [`
+    /* Le denouement : ce que l'evenement est DEVENU, en une phrase lisible. */
+    .sm-denouement {
+      margin: .35rem 0 0; font-size: .74rem; line-height: 1.45;
+      color: var(--fg-secondary); text-wrap: pretty;
+    }
+    .sm-denouement--ouvert { color: var(--texte-attente); font-weight: 600; }
+    .sm-denouement--grave { color: var(--texte-alerte); font-weight: 700; }
+
+    .sm-conseil {
+      margin: .7rem 0 0; padding: .6rem .75rem; border-radius: 11px;
+      background: color-mix(in srgb, var(--warning) 11%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
+      font-size: .74rem; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty;
+    }
+
     /* 44 px : cible tactile minimale — le panneau est utilise au telephone. */
     .sm-notify-row { display: flex; gap: .55rem; align-items: center; min-height: 44px; cursor: pointer; }
     .sm-notify-row input { width: 20px; height: 20px; flex: none; }
@@ -461,14 +493,14 @@ const ROLE_LABELS: Record<string, string> = {
     .sm-notify-name { font-size: .85rem; }
     .sm-notify-role { font-size: .72rem; opacity: .65; }
     .sm-card {
-      background: var(--color-bg-secondary, #0e1417);
-      border: 1px solid var(--color-border-subtle, #1f2a30);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius-card, 14px);
       padding: 1rem;
     }
     .sm-card--armed {
       border-color: rgba(16, 224, 160, 0.4);
-      background: linear-gradient(180deg, rgba(16, 224, 160, 0.06), transparent 60%), var(--color-bg-secondary, #0e1417);
+      background: linear-gradient(180deg, rgba(16, 224, 160, 0.06), transparent 60%), var(--bg-secondary);
     }
     .sm-status-icon {
       width: 36px; height: 36px;
@@ -486,7 +518,7 @@ const ROLE_LABELS: Record<string, string> = {
        jamais rouge non plus — on ne sait pas, on ne prétend pas savoir. */
     .sm-card--doubt {
       border-color: rgba(251, 191, 36, 0.45);
-      background: linear-gradient(180deg, rgba(251, 191, 36, 0.06), transparent 60%), var(--color-bg-secondary, #0e1417);
+      background: linear-gradient(180deg, rgba(251, 191, 36, 0.06), transparent 60%), var(--bg-secondary);
     }
     .sm-status-icon--doubt {
       background: rgba(251, 191, 36, 0.15);
@@ -503,9 +535,9 @@ const ROLE_LABELS: Record<string, string> = {
     .sm-note {
       font-size: 0.72rem;
       line-height: 1.4;
-      color: var(--fg-tertiary);
+      color: var(--fg-secondary);
     }
-    .sm-btn {
+    .sm-btn { min-height: 44px;
       display: inline-flex; align-items: center; gap: 0.375rem;
       padding: 0.5rem 0.875rem;
       border-radius: 10px;
@@ -536,15 +568,15 @@ const ROLE_LABELS: Record<string, string> = {
     .sm-field { display: flex; flex-direction: column; gap: 0.25rem; }
     .sm-label {
       font-size: 0.75rem;
-      color: var(--color-fg-tertiary, #94a3b8);
+      color: var(--fg-secondary);
       font-weight: 500;
     }
     .sm-select, .sm-input {
-      background: var(--color-bg-tertiary, #0a0f12);
-      border: 1px solid var(--color-border-subtle, #1f2a30);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 0.5rem 0.75rem;
-      color: var(--color-fg-primary, #e5e7eb);
+      color: var(--fg-primary);
       font-size: 0.875rem;
     }
     .sm-day-btn {
@@ -552,9 +584,9 @@ const ROLE_LABELS: Record<string, string> = {
       border-radius: 8px;
       font-size: 0.75rem;
       font-weight: 500;
-      background: var(--color-bg-tertiary, #0a0f12);
-      border: 1px solid var(--color-border-subtle, #1f2a30);
-      color: var(--color-fg-tertiary, #94a3b8);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary);
       cursor: pointer;
       transition: all 0.15s;
     }
@@ -566,14 +598,14 @@ const ROLE_LABELS: Record<string, string> = {
     .sm-check {
       display: inline-flex; align-items: center; gap: 0.5rem;
       font-size: 0.875rem;
-      color: var(--color-fg-primary, #e5e7eb);
+      color: var(--fg-primary);
       cursor: pointer;
     }
     .sm-check input { width: 16px; height: 16px; accent-color: rgb(16, 224, 160); }
     .sm-event {
       padding: 0.75rem;
-      background: var(--color-bg-tertiary, #0a0f12);
-      border: 1px solid var(--color-border-subtle, #1f2a30);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
       border-radius: 10px;
     }
     .sm-event--pending { border-left: 3px solid rgb(251, 191, 36); }
@@ -588,10 +620,10 @@ const ROLE_LABELS: Record<string, string> = {
       text-transform: uppercase;
       letter-spacing: 0.025em;
     }
-    .sm-badge--pending { background: rgba(251, 191, 36, 0.15); color: rgb(251, 191, 36); }
-    .sm-badge--confirmed_theft { background: rgba(239, 68, 68, 0.15); color: rgb(248, 113, 113); }
-    .sm-badge--false_alarm { background: rgba(148, 163, 184, 0.15); color: rgb(148, 163, 184); }
-    .sm-badge--acknowledged { background: rgba(96, 165, 250, 0.15); color: rgb(96, 165, 250); }
+    .sm-badge--pending { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--texte-attente); }
+    .sm-badge--confirmed_theft { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--texte-alerte); }
+    .sm-badge--false_alarm { background: var(--surface-quaternary); color: var(--fg-secondary); }
+    .sm-badge--acknowledged { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--texte-info); }
     .sm-event-btn {
       display: inline-flex; align-items: center; gap: 0.25rem;
       padding: 0.3125rem 0.625rem;
@@ -605,14 +637,14 @@ const ROLE_LABELS: Record<string, string> = {
     .sm-event-btn:hover:not(:disabled) { filter: brightness(1.1); }
     .sm-event-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .sm-event-btn--danger {
-      background: rgba(239, 68, 68, 0.15);
-      color: rgb(248, 113, 113);
-      border-color: rgba(239, 68, 68, 0.3);
+      background: color-mix(in srgb, var(--danger) 15%, transparent);
+      color: var(--texte-alerte);
+      border-color: color-mix(in srgb, var(--danger) 30%, transparent);
     }
     .sm-event-btn--neutral {
-      background: var(--color-bg-secondary, #0e1417);
-      color: var(--color-fg-secondary, #cbd5e1);
-      border-color: var(--color-border-subtle, #1f2a30);
+      background: var(--bg-secondary);
+      color: var(--fg-secondary);
+      border-color: var(--border-subtle);
     }
   `],
 })
@@ -1023,6 +1055,61 @@ export class SurveillancePanelComponent implements OnInit {
   formatDays(days: string[]): string {
     return days.map((d) => DAY_LABELS[d] ?? d).join(', ');
   }
+
+  /**
+   * LE DÉNOUEMENT D'UN DÉCLENCHEMENT (B1 § F).
+   *
+   * L'historique listait des événements sans jamais dire ce qu'ils étaient DEVENUS : un badge
+   * de statut à droite, et les notes en italique ailleurs. Or c'est le dénouement qui fait la
+   * valeur de l'historique — « choc léger » ne dit rien, « sans suite » dit tout.
+   *
+   * ⚠️ Aucun champ nouveau : `status`, `acknowledgedAt` et `notes` étaient déjà servis. Même
+   * constat que sur l'activité de flotte — la donnée existait, personne ne l'affichait.
+   */
+  denouement(ev: SurveillanceEventDto): { texte: string; resolu: boolean; grave: boolean } {
+    const heure = ev.acknowledgedAt
+      ? new Date(ev.acknowledgedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+    const note = ev.notes?.trim() || null;
+
+    if (ev.status === 'CONFIRMED_THEFT') {
+      return {
+        texte: ['Vol confirmé', heure ? `à ${heure}` : null, note].filter(Boolean).join(' · '),
+        resolu: true, grave: true,
+      };
+    }
+    if (ev.status === 'FALSE_ALARM') {
+      return { texte: ['Sans suite', note].filter(Boolean).join(' · '), resolu: true, grave: false };
+    }
+    if (ev.status === 'ACKNOWLEDGED') {
+      return {
+        texte: ['Vu', heure ? `à ${heure}` : null, note].filter(Boolean).join(' · '),
+        resolu: true, grave: false,
+      };
+    }
+    // PENDING — c'est justement le cas ou l'absence de denouement est l'information.
+    return { texte: "Sans dénouement — personne ne l'a encore qualifié", resolu: false, grave: false };
+  }
+
+  /**
+   * LE CONSEIL DÉDUIT DU MOTIF. Pas un conseil générique : il ne sort que si le motif est
+   * réellement là — plusieurs fausses alarmes rapprochées, sur une sensibilité qui peut
+   * encore descendre. « Un antivol qui crie pour rien finit par être ignoré. »
+   *
+   * Calculé sur les événements déjà chargés, sans appel supplémentaire.
+   */
+  readonly conseilMotif = computed<string | null>(() => {
+    const evs = this.events();
+    const p = this.profile();
+    if (!p || p.sensitivity === 'LOW') return null;
+    const sansSuite = evs.filter((e) => e.status === 'FALSE_ALARM');
+    if (sansSuite.length < 2) return null;
+    const dates = sansSuite.map((e) => new Date(e.triggeredAt).getTime()).sort((a, b) => a - b);
+    const jours = Math.max(1, Math.round((dates[dates.length - 1] - dates[0]) / 86_400_000));
+    return `${sansSuite.length} déclenchements sans suite en ${jours} jour${jours > 1 ? 's' : ''}. `
+      + 'Si le motif se répète, passez la sensibilité en « Faible » — un antivol qui crie pour '
+      + 'rien finit par être ignoré.';
+  });
 
   triggerLabel(t: string): string {
     return TRIGGER_LABELS[t] ?? t;

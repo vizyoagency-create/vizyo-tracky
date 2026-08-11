@@ -1424,7 +1424,23 @@ composants ne gèrent que « rempli » et « chargement ».
         contact), bouton bloqué au départ, **toujours bloqué avec une mauvaise plaque**, débloqué
         avec la bonne **en minuscules** — le kit compare sans casse : on vérifie qu'on a lu, pas
         qu'on sait taper
-- [ ] Panneau surveillance — week-end en surveillance permanente, dénouement de chaque déclenchement *(l'heure locale est livrée en B0′)*
+- [x] Panneau surveillance — **le dénouement de chaque déclenchement.** L'historique listait des
+      événements sans jamais dire ce qu'ils étaient DEVENUS : un badge de statut à droite, les
+      notes en italique ailleurs. Or c'est le dénouement qui fait la valeur de l'historique —
+      « choc léger » ne dit rien, « sans suite · coup de vent » dit tout. **Aucun champ nouveau** :
+      `status`, `acknowledgedAt` et `notes` étaient déjà servis — même constat que sur l'activité
+      de flotte. Vérifié sur les 4 statuts : « Vol confirmé · à 08:13 · retrouvé au parking nord » ·
+      « Sans suite · probable coup de vent » · « Sans suite » · « **Sans dénouement — personne ne
+      l'a encore qualifié** » (le cas où l'absence EST l'information). **Conseil déduit du motif**,
+      calculé sur les événements déjà chargés : « 2 déclenchements sans suite en 8 jours… un
+      antivol qui crie pour rien finit par être ignoré » — il ne sort que si le motif est
+      réellement là et que la sensibilité peut encore descendre.
+      ⚠️ **17 variables `--color-*` QUI N'EXISTENT PAS** dans le système (les vraies sont `--fg-*`,
+      `--bg-*`, `--border-*`) : le repli hexadécimal gagnait donc **toujours**, et ces couleurs ne
+      suivaient aucun thème. Les badges de statut tombaient à **1,47:1 en thème clair** — le
+      statut, sur l'écran d'un antivol. Mesuré après : 51 textes ≥ 4,5:1 dans les deux thèmes
+      (pire 4,68 / 4,82), 0 cible < 44 px
+      ⚠️ **Le week-end en surveillance permanente n'est PAS fait** — cf. fiche de reprise
 - [ ] QR véhicule — explique son usage et son format d'impression (60 × 90 mm), 262 px sur Android
 - [ ] Rejeu de trajet — **multiplicateurs partout avec la durée réelle à côté**, excès confirmé vs pointe à vérifier, la frise porte l'analyse
 - [ ] Rejeu de période — **une barre par jour**, trajets listés et cliquables, échelle 16× ajoutée

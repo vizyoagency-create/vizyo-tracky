@@ -85,13 +85,38 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > pratique d'atteindre les portes d'accès : elles sont décidées au boot, et un rechargement
 > efface toute fixture XHR posée après coup.
 
+> ### ⚠️ Reste sur le panneau surveillance : le WEEK-END EN SURVEILLANCE PERMANENTE
+>
+> Le dénouement et le conseil sont livrés ; **la moitié « week-end » de la ligne B1 ne l'est
+> pas**. La planche est explicite : « Samedi et dimanche en violet : la surveillance y est
+> **permanente**, pas seulement nocturne. Un week-end n'a pas d'heures ouvrées. » Cela touche
+> `scheduleDays` / `scheduleStartTime` / `scheduleEndTime` et **la logique d'armement côté
+> serveur**, pas seulement l'affichage — d'où l'arrêt : c'est une décision de comportement,
+> pas de mise en page.
+
+> ### 🔎 Chercher les variables CSS QUI N'EXISTENT PAS
+>
+> Trouvé le 2026-08-11 sur le panneau surveillance : **17 occurrences de `var(--color-fg-*)`,
+> `var(--color-bg-*)`, `var(--color-border-*)`** — des noms qui ne sont définis **nulle part**
+> dans `styles.css`. Le repli hexadécimal gagnait donc **toujours** : ces couleurs ne suivaient
+> aucun thème, et les badges de statut tombaient à **1,47:1 en clair**.
+>
+> `verif:couleurs-kit` ne les voit pas (il ne couvre que `shared/ui` et `shared/components`).
+> Le motif à chercher dans une page reprise :
+>
+> ```bash
+> grep -o "var(--color-[a-z-]*" <fichier>   # les vraies sont --fg-* / --bg-* / --border-*
+> ```
+>
+> Même famille que les `--tk-*` déjà relevés sur `/integrations`.
+
 **Bloc F — surfaces bloquantes (6 restantes sur 12).** Le gros morceau.
 *(Livrées : consentement RGPD, autorisations navigateur, vérification d'appareil,
 proposition 2FA, et la **coupure moteur en entier** — variante critique + les 4 points de B1.
 Assistant de démarrage livré en B0′.)*
 
-Restent : **panneau surveillance**, **QR véhicule**, **rejeu de trajet**, **rejeu de
-période**, **créer/éditer un véhicule**, **éditeur d'horaires**.
+Restent : **panneau surveillance (moitié week-end seulement)**, **QR véhicule**, **rejeu de
+trajet**, **rejeu de période**, **créer/éditer un véhicule**, **éditeur d'horaires**.
 
 > ⚠️ **NE JAMAIS réécrire un fichier source via PowerShell `Set-Content`.** Le 2026-08-11,
 > un aller-retour `Get-Content -Raw` / `Set-Content -Encoding utf8` a **corrompu l'encodage**
