@@ -10,6 +10,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import type {
   AiFeatureFlagsDto, AiFeatureKey, AiProviderMode, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
+  BillingStatusDto,
 } from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
@@ -89,20 +90,55 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
           }
         }
 
-        <!-- ── BUDGET ── -->
+        <!-- ── LE FORFAIT D'ABORD (B1 § D) ── -->
+        @if (forfaitVisible() && facturation(); as b) {
+          <section class="au-forfait" [attr.data-ton]="forfait(b).ton">
+            <div class="au-f-tete">
+              <span class="au-f-kpil"><lucide-icon [img]="WalletIcon" [size]="13"></lucide-icon> Votre option IA · ce mois</span>
+              <span class="au-f-tag" [attr.data-ton]="forfait(b).ton">{{ forfait(b).etiquette }}</span>
+            </div>
+            @if (forfait(b).montant; as m) {
+              <div class="au-f-montant">{{ m }} <span class="au-f-ht">HT</span></div>
+            } @else {
+              <div class="au-f-montant au-f-montant--nul">Rien à payer</div>
+            }
+            @if (forfait(b).base; as base) {
+              <div class="au-f-base">{{ base }}</div>
+            }
+            <p class="au-f-note">{{ forfait(b).note }}</p>
+          </section>
+        }
+
+        <!-- ── BUDGET / CONSOMMATION ── -->
         <section class="au-budget" [attr.data-status]="s.budget.status">
           <div class="au-budget-head">
             <div>
-              <span class="au-budget-label"><lucide-icon [img]="WalletIcon" [size]="14"></lucide-icon> {{ isSuperAdmin() ? 'Budget du mois' : 'Coûts IA de votre société (ce mois)' }}</span>
+              <span class="au-budget-label"><lucide-icon [img]="WalletIcon" [size]="14"></lucide-icon> {{ isSuperAdmin() ? 'Budget du mois' : 'Consommation réelle sur le mois' }}</span>
               <div class="au-budget-spent">
                 {{ eur(s.budget.spentThisMonthEur) }}
                 @if (s.budget.monthlyBudgetEur > 0) { <span class="au-budget-of">/ {{ eur(s.budget.monthlyBudgetEur) }}</span> }
               </div>
             </div>
-            <span class="au-budget-badge" [attr.data-status]="s.budget.status">{{ budgetBadge(s.budget.status) }}</span>
+            @if (isSuperAdmin()) {
+              <span class="au-budget-badge" [attr.data-status]="s.budget.status">{{ budgetBadge(s.budget.status) }}</span>
+            }
           </div>
-          @if (s.budget.monthlyBudgetEur > 0) {
+          <!--
+            Le plafond mensuel est un garde-fou INTERNE Vizyo (ce que nous payons au moteur IA),
+            pas un montant qui concerne la societe. Le montrer a un fleet-admin lui ferait lire
+            « Depasse » comme un probleme pour lui, et contredirait la phrase juste en dessous.
+            Barre et badge restent donc cote super-admin.
+          -->
+          @if (isSuperAdmin() && s.budget.monthlyBudgetEur > 0) {
             <div class="au-bar"><div class="au-bar-fill" [attr.data-status]="s.budget.status" [style.width.%]="budgetPct(s)"></div></div>
+          }
+          @if (!isSuperAdmin()) {
+            <p class="au-budget-note">
+              Ce chiffre est le coût de calcul réellement consommé. Il est là pour la
+              <strong>transparence</strong>, pas pour la facture : en cas de dépassement,
+              <strong>rien ne se coupe et rien ne vous est facturé en plus</strong> — nous vous
+              appelons pour ajuster.
+            </p>
           }
           @if (isSuperAdmin()) {
             <div class="au-budget-edit">
@@ -331,23 +367,23 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
   `,
   styles: [`
     .au { max-width: 1000px; display: flex; flex-direction: column; gap: 16px; }
-    .au-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--fg-tertiary); text-decoration: none; width: fit-content; }
+    .au-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--fg-secondary); text-decoration: none; width: fit-content; }
     .au-back:hover { color: var(--fg-secondary); }
     .au-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
     .au-title { display: flex; align-items: center; gap: 12px; }
     .au-ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(245,158,11,.12); color: #fbbf24; flex-shrink: 0; }
     .au-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0; }
-    .au-head p { font-size: 12.5px; color: var(--fg-tertiary); margin: 3px 0 0; }
+    .au-head p { font-size: 12.5px; color: var(--fg-secondary); margin: 3px 0 0; }
     .au-actions { display: flex; align-items: center; gap: 8px; }
     .au-seg { display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 3px; gap: 2px; }
-    .au-seg button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--fg-tertiary); background: transparent; }
+    .au-seg button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--fg-secondary); background: transparent; }
     .au-seg button.on { background: var(--bg-tertiary); color: var(--fg-primary); }
     .au-seg--sm button { padding: 5px 10px; font-size: 12px; }
-    .au-refresh { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
+    .au-refresh { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
     .au-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: rgba(239,68,68,.1); color: #EF4444; font-size: 13px; }
 
     /* Filtre JOUR précis */
-    .au-day { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); }
+    .au-day { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
     .au-day--on { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 45%, transparent); color: var(--fg-secondary); }
     .au-day input { border: 0; background: transparent; color: var(--fg-primary); font-size: 12.5px; font-family: inherit; padding: 0; }
 
@@ -355,21 +391,22 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-ai { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 18px; border-radius: 16px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); }
     .au-ai[data-on="true"] { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 42%, transparent); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 6%, var(--bg-secondary)); }
     .au-ai-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    /* Pictogramme, pas du texte : le seuil qui s'applique est 3:1, que --fg-tertiary tient. */
     .au-ai-ico { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); color: var(--fg-tertiary); flex-shrink: 0; }
     .au-ai-ico[data-on="true"] { background: rgba(16,224,160,.14); color: var(--tracky-light, #10E0A0); }
     .au-ai-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .au-ai-title { font-size: 14.5px; font-weight: 800; color: var(--fg-primary); }
-    .au-ai-sub { font-size: 12px; color: var(--fg-tertiary); line-height: 1.4; }
+    .au-ai-sub { font-size: 12px; color: var(--fg-secondary); line-height: 1.4; }
     .au-ai-sub strong { color: var(--fg-secondary); }
     /* Interrupteur */
     .au-ai-sw { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; flex-shrink: 0; }
     .au-ai-sw input { position: absolute; opacity: 0; width: 0; height: 0; }
     .au-ai-sw-track { width: 46px; height: 26px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); position: relative; transition: background .18s; }
     .au-ai-sw-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--fg-tertiary); transition: transform .18s, background .18s; }
-    .au-ai-sw input:checked + .au-ai-sw-track { background: var(--tracky, #10B981); border-color: transparent; }
-    .au-ai-sw input:checked + .au-ai-sw-track .au-ai-sw-knob { transform: translateX(20px); background: #fff; }
+    .au-ai-sw input:checked + .au-ai-sw-track { background: var(--tracky-light); border-color: transparent; }
+    .au-ai-sw input:checked + .au-ai-sw-track .au-ai-sw-knob { transform: translateX(20px); background: var(--accent-ink); }
     .au-ai-sw--busy { opacity: .6; pointer-events: none; }
-    .au-ai-hint { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: 12px; background: var(--bg-secondary); border: 1px dashed var(--border-subtle); color: var(--fg-tertiary); font-size: 12.5px; }
+    .au-ai-hint { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: 12px; background: var(--bg-secondary); border: 1px dashed var(--border-subtle); color: var(--fg-secondary); font-size: 12.5px; }
     .au-ai-hint strong { color: var(--fg-secondary); }
 
     /* Budget */
@@ -377,12 +414,12 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-budget[data-status="warn"] { border-color: rgba(245,158,11,.4); }
     .au-budget[data-status="over"] { border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.04); }
     .au-budget-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .au-budget-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .03em; }
+    .au-budget-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--fg-secondary); text-transform: uppercase; letter-spacing: .03em; }
     .au-budget-spent { font-family: var(--font-display); font-size: 30px; font-weight: 800; color: var(--fg-primary); margin-top: 4px; }
-    .au-budget[data-status="over"] .au-budget-spent, .au-budget[data-status="warn"] .au-budget-spent { color: #f87171; }
-    .au-budget[data-status="warn"] .au-budget-spent { color: #fbbf24; }
-    .au-budget-of { font-size: 16px; font-weight: 600; color: var(--fg-tertiary); }
-    .au-budget-badge { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 999px; height: fit-content; background: var(--bg-tertiary); color: var(--fg-tertiary); }
+    .au-budget[data-status="over"] .au-budget-spent { color: var(--texte-alerte); }
+    .au-budget[data-status="warn"] .au-budget-spent { color: var(--texte-attente); }
+    .au-budget-of { font-size: 16px; font-weight: 600; color: var(--fg-secondary); }
+    .au-budget-badge { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 999px; height: fit-content; background: var(--bg-tertiary); color: var(--fg-secondary); }
     .au-budget-badge[data-status="ok"] { background: rgba(16,224,160,.14); color: var(--tracky-light); }
     .au-budget-badge[data-status="warn"] { background: rgba(245,158,11,.16); color: #fbbf24; }
     .au-budget-badge[data-status="over"] { background: rgba(239,68,68,.16); color: #f87171; }
@@ -393,10 +430,15 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-bar-fill[data-status="over"] { background: #f87171; }
     .au-bar-fill--accent { background: linear-gradient(90deg, #38bdf8, #22d3ee); }
     .au-budget-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .au-budget-edit label { font-size: 12px; color: var(--fg-tertiary); }
+    .au-budget-edit label { font-size: 12px; color: var(--fg-secondary); }
     .au-budget-edit input { width: 110px; padding: 8px 10px; border-radius: 9px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 16px; }
-    .au-budget-hint { font-size: 11px; color: var(--fg-tertiary); flex-basis: 100%; }
-    .au-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
+    .au-budget-hint { font-size: 11px; color: var(--fg-secondary); flex-basis: 100%; }
+    /*
+     * Encre FONCEE sur l'accent — regle non negociable de B0-SOCLE (« sur un fond accent,
+     * l'encre doit etre foncee, jamais blanche »). Le blanc donnait 3,43:1 en theme clair.
+     * Le repli hexadecimal etait mort : la variable d'accent est toujours definie.
+     */
+    .au-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 700; background: var(--tracky-light); color: var(--accent-ink); }
     .au-btn:disabled { opacity: .5; }
     .au-price-unit { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--fg-secondary); }
     .au-price-select { padding: 6px 8px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 12.5px; font-family: inherit; }
@@ -407,12 +449,12 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-feat-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .au-feat-lbl { font-size: 13px; font-weight: 700; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 7px; }
     .au-feat-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 999px; background: rgba(16,224,160,.16); color: var(--tracky-light, #10E0A0); }
-    .au-feat-desc { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.4; }
+    .au-feat-desc { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.4; }
 
     /* Moteur IA (switch Claude ↔ GPT) */
     .au-prov-panel { padding: 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
     .au-prov-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .au-prov-note { font-size: 11.5px; color: var(--fg-tertiary); }
+    .au-prov-note { font-size: 11.5px; color: var(--fg-secondary); }
     .au-prov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     @media (max-width: 720px) { .au-prov-grid { grid-template-columns: 1fr; } }
     .au-prov--mixte.on { border-color: #A78BFA; background: color-mix(in srgb, #A78BFA 9%, var(--bg-tertiary)); }
@@ -434,39 +476,81 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     @media (max-width: 640px) { .au-kpis { grid-template-columns: 1fr 1fr; } }
     .au-kpi { padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 3px; }
     .au-kpi-n { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--fg-primary); }
-    .au-kpi-l { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); font-weight: 600; }
-    .au-kpi-sub { font-size: 11px; color: var(--fg-tertiary); }
+    .au-kpi-l { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-secondary); font-weight: 600; }
+    .au-kpi-sub { font-size: 11px; color: var(--fg-secondary); }
 
     /* Panels */
     .au-panel { padding: 16px 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
     .au-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .au-panel-head h2 { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: var(--fg-primary); margin: 0; }
-    .au-empty-sm { font-size: 12.5px; color: var(--fg-tertiary); padding: 10px 0; text-align: center; }
+    .au-empty-sm { font-size: 12.5px; color: var(--fg-secondary); padding: 10px 0; text-align: center; }
 
     .au-bars { display: flex; flex-direction: column; gap: 12px; }
     .au-brow { display: flex; flex-direction: column; gap: 5px; }
     .au-brow-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
     .au-brow-label { font-size: 13px; color: var(--fg-secondary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .au-brow-cost { font-size: 13px; font-weight: 800; color: var(--fg-primary); font-variant-numeric: tabular-nums; }
-    .au-brow-sub { font-size: 11px; color: var(--fg-tertiary); }
+    .au-brow-sub { font-size: 11px; color: var(--fg-secondary); }
 
     /* Trend */
     .au-trend { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px; }
     .au-trend-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; min-width: 0; }
     .au-trend-bar { width: 100%; max-width: 26px; min-height: 2px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #38bdf8, #0ea5e9); }
-    .au-trend-x { font-size: 9px; color: var(--fg-tertiary); }
+    .au-trend-x { font-size: 9px; color: var(--fg-secondary); }
 
     /* Table */
     .au-table-wrap { overflow-x: auto; }
     .au-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-    .au-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+    .au-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-secondary); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
     .au-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); white-space: nowrap; }
     .au-table th.r, .au-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
     .au-td-ell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
     .au-cost { font-weight: 800; color: var(--fg-primary); }
-    .au-dim { color: var(--fg-tertiary); }
+    .au-dim { color: var(--fg-secondary); }
     .au-row-ko { opacity: .6; }
-    .au-more { align-self: center; padding: 8px 16px; border-radius: 9px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+    .au-more { align-self: center; min-height: 44px; padding: 8px 16px; border-radius: 9px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+
+    /* ── Le forfait d'abord (B1 § D) ─────────────────────────────────────────
+     * Ce que la societe PAIE, avant ce qu'elle consomme. L'ecran menait avec la
+     * consommation sous un libelle « Couts IA de votre societe » : un fleet-admin
+     * lisait sa depense de calcul comme si c'etait sa facture.
+     */
+    .au-forfait {
+      display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 14px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .au-forfait[data-ton='succes'] { border-color: color-mix(in srgb, var(--color-tracky-light) 30%, transparent); }
+    .au-forfait[data-ton='attente'] { border-color: color-mix(in srgb, var(--warning) 32%, transparent); }
+    .au-forfait[data-ton='alerte'] { border-color: color-mix(in srgb, var(--danger) 32%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+    .au-f-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .au-f-kpil { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--fg-secondary); text-transform: uppercase; letter-spacing: .03em; }
+    .au-f-tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 7px; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+    .au-f-tag[data-ton='succes'] { color: var(--texte-succes); background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); }
+    .au-f-tag[data-ton='attente'] { color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 12%, transparent); }
+    .au-f-tag[data-ton='alerte'] { color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+    .au-f-tag[data-ton='inactif'] { color: var(--texte-inactif); background: var(--surface-quaternary); }
+    .au-f-montant { font-family: var(--font-display); font-size: 32px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; color: var(--fg-primary); margin-top: 2px; }
+    .au-f-montant--nul { font-size: 24px; color: var(--fg-secondary); }
+    .au-f-ht { font-size: 13px; font-weight: 700; color: var(--fg-secondary); }
+    .au-f-base { font-size: 12.5px; color: var(--fg-secondary); margin-top: 2px; }
+    .au-f-note { margin: 9px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
+    .au-budget-note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
+    .au-budget-note strong { color: var(--fg-primary); }
+
+    /*
+     * Cibles tactiles au doigt. Le selecteur de periode, le filtre jour et le bouton
+     * « Charger plus » sortaient a 36 px — mesure a 375 px, 13 cibles sous le seuil.
+     * Sous 768 px uniquement : a la souris, 36 px gardent l'ecran dense lisible.
+     */
+    @media (max-width: 768px) {
+      /* min-WIDTH autant que min-height : « 7 j » sortait a 36 px de large pour 44 de haut.
+         Une cible n'est atteignable que si ses DEUX dimensions le sont. */
+      .au-seg button { min-height: 44px; min-width: 44px; }
+      .au-day { min-height: 44px; }
+      /* Le fil d'Ariane est une commande de navigation a part entiere, pas un lien dans une
+         phrase : l'exception « lien en ligne » ne s'y applique pas. */
+      .au-back { min-height: 44px; align-items: center; }
+    }
 
     .au-skel { height: 120px; border-radius: 16px; background: linear-gradient(90deg, var(--bg-secondary), var(--bg-tertiary), var(--bg-secondary)); background-size: 200% 100%; animation: au-sh 1.3s infinite; }
     @keyframes au-sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
@@ -518,6 +602,12 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly budgetInput = signal<string>('');
   protected readonly savingBudget = signal(false);
+  /**
+   * Etat de facturation de la societe SCOPEE — la source du forfait (lot B-pages, B1 § D
+   * « le forfait d'abord, la consommation ensuite »). `null` tant qu'aucune societe n'est
+   * determinee : voir `forfaitVisible()`.
+   */
+  protected readonly facturation = signal<BillingStatusDto | null>(null);
   /** Bascule de l'interrupteur maître IA de la société scopée. */
   protected readonly savingAi = signal(false);
   /** Prix configurable de l'option IA (super-admin). `priceInput` en EUROS (converti en centimes). */
@@ -632,6 +722,7 @@ export class AdminAiUsageComponent implements OnInit {
         this.budgetInput.set(String(s.budget.monthlyBudgetEur));
       }
       await this.loadLogs(true);
+      await this.loadFacturation();
       // Moteur IA + prix de l'option IA (super-admin uniquement ; endpoints gardés). Non bloquant.
       if (this.isSuperAdmin()) {
         try {
@@ -661,6 +752,87 @@ export class AdminAiUsageComponent implements OnInit {
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  /**
+   * Le forfait n'existe que pour UNE societe. Deux pieges evites ici, tous deux verifies dans
+   * le code du back (`BillingService.resolveFleet`) :
+   *
+   *  · en vue « toutes les societes », un super-admin n'a AUCUN forfait a montrer — et
+   *    `resolveFleet` retomberait sur SA PROPRE `fleetId`, donc afficherait le forfait de la
+   *    flotte du super-admin comme si c'etait celui de la vue. Un chiffre juste au mauvais
+   *    endroit reste un chiffre faux ;
+   *  · sans flotte determinable, l'endpoint repond **400** — l'appeler pour rien ferait une
+   *    erreur reseau visible en console a chaque chargement.
+   *
+   * Un fleet-admin, lui, est toujours borne a sa societe : le back resout sans `fleetId`.
+   */
+  protected readonly forfaitVisible = computed(
+    () => !this.isSuperAdmin() || !!this.summary()?.scopedFleet,
+  );
+
+  private async loadFacturation(): Promise<void> {
+    if (!this.forfaitVisible()) { this.facturation.set(null); return; }
+    const cible = this.isSuperAdmin() ? (this.selectedFleetId() ?? undefined) : undefined;
+    try {
+      this.facturation.set(await firstValueFrom(this.billing.status(cible)));
+    } catch (err) {
+      // Non bloquant : la consommation reste lisible sans le forfait. On ne montre pas une
+      // carte « forfait » vide, on n'en montre pas du tout.
+      swallow('admin-ai-usage:loadFacturation', err);
+      this.facturation.set(null);
+    }
+  }
+
+  /**
+   * Ce que la societe paie REELLEMENT ce mois-ci, en toutes lettres.
+   *
+   * ⚠️ Les 6 statuts ne se resument pas a un montant. `COMP` = IA OFFERTE : afficher le prix
+   * catalogue a une societe qui ne paie rien serait faux, et c'est l'erreur la plus facile a
+   * commettre ici (le back renvoie `monthlyEurCents` calcule dans TOUS les cas, y compris
+   * quand rien n'est du). Le montant n'est donc affiche que la ou il est effectivement facture.
+   */
+  protected forfait(b: BillingStatusDto): {
+    montant: string | null; etiquette: string; ton: string; base: string | null; note: string;
+  } {
+    const mensuel = this.eur(b.monthlyEurCents / 100);
+    const base = b.pricingUnit === 'per_vehicle'
+      ? `${this.eur(b.unitAmountEurCents / 100)} / véhicule × ${this.num(b.vehicleCount)} véhicule${b.vehicleCount > 1 ? 's' : ''}`
+      : 'Forfait société, quel que soit le nombre de véhicules';
+    switch (b.status) {
+      case 'COMP':
+        return {
+          montant: null, etiquette: 'Offerte', ton: 'succes', base: null,
+          note: "L'IA est offerte à votre société : rien ne vous est facturé, quelle que soit la consommation ci-dessous.",
+        };
+      case 'ACTIVE':
+        return {
+          montant: mensuel, etiquette: b.pricingUnit === 'flat' ? 'Forfait fixe' : 'Forfait mensuel', ton: 'succes', base,
+          note: 'Ce montant ne bouge pas avec votre consommation. Les chiffres ci-dessous sont là pour la transparence, pas pour la facture.',
+        };
+      case 'INVOICE_PENDING':
+        return {
+          montant: mensuel, etiquette: 'Facture demandée', ton: 'attente', base,
+          note: "Votre demande de facture est en cours de traitement. L'IA reste active pendant ce temps.",
+        };
+      case 'PAST_DUE':
+        return {
+          montant: mensuel, etiquette: 'Paiement en retard', ton: 'alerte', base,
+          note: "Le dernier paiement n'a pas abouti. L'IA reste active — nous vous contactons avant toute coupure.",
+        };
+      case 'CANCELED':
+        return {
+          montant: null, etiquette: 'Résiliée', ton: 'inactif', base: null,
+          note: b.currentPeriodEnd
+            ? "L'option est résiliée. Elle reste utilisable jusqu'à la fin de la période en cours."
+            : "L'option est résiliée : plus rien ne vous est facturé.",
+        };
+      default:
+        return {
+          montant: null, etiquette: 'Non activée', ton: 'inactif', base: null,
+          note: "L'assistance IA n'est pas activée pour votre société : rien ne vous est facturé.",
+        };
     }
   }
 
@@ -794,12 +966,22 @@ export class AdminAiUsageComponent implements OnInit {
   }
 
   // ─── Helpers d'affichage ───
+  /**
+   * Montants en convention FRANCAISE — virgule decimale, espace insecable avant le symbole.
+   * `toFixed()` produisait « 42.00 € » sur un ecran entierement en francais, jusque dans le
+   * montant que la societe paie. Affichage seulement : les champs de saisie (budget, prix)
+   * gardent leur valeur brute, ils ne passent pas par ici.
+   */
+  private montant(v: number, devise: string): string {
+    const dec = Math.abs(v) >= 1 || v === 0 ? 2 : 4;
+    const n = v.toLocaleString('fr-FR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    return `${n} ${devise}`;
+  }
   protected eur(v: number): string {
-    const n = Math.abs(v) >= 1 || v === 0 ? v.toFixed(2) : v.toFixed(4);
-    return `${n} €`;
+    return this.montant(v, '€');
   }
   protected usd(v: number): string {
-    return `${(Math.abs(v) >= 1 || v === 0 ? v.toFixed(2) : v.toFixed(4))} $`;
+    return this.montant(v, '$');
   }
   protected num(v: number): string {
     return v.toLocaleString('fr-FR');

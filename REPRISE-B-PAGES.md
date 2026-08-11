@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **24/57** |
+| **B-pages** | 🟡 **en cours** | **25/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -81,21 +81,34 @@ principal — bouton 112 px), `/driver/unlock`. Elles demandent un jeton pour ê
 
 **Bloc B (1).** `/driver` — usage 100 % téléphone.
 
-**Contenu propre de D et E.** `/admin/ai-usage`, `/settings` (navigation à deux niveaux avec
-recherche), `/integrations`, `/privacy-coverage`. *(`/fleet-admin/activity` est livrée.)*
+**Contenu propre de D et E.** `/settings` (navigation à deux niveaux avec recherche),
+`/integrations`, `/privacy-coverage`. *(`/fleet-admin/activity` et `/admin/ai-usage` sont
+livrées.)*
 
-> **`/admin/ai-usage` — repéré, pas encore corrigé.** Pour un fleet-admin, la page affiche
-> `spentThisMonthEur` sous le libellé « Coûts IA de votre société (ce mois) » : la
-> **consommation présentée comme si c'était la facture**, exactement ce que la planche corrige
-> (« le forfait d'abord, la consommation ensuite… rien ne se coupe et rien n'est facturé en
-> plus »). Le forfait est **déjà servi** par `BillingSubscriptionDto` (`monthlyEurCents`,
-> `vehicleCount`, `unitAmountEurCents`, `pricingUnit`, `perVehicleEurCents`), lisible par un
-> fleet-admin : **aucun changement de contrat n'est nécessaire**. Reste aussi 13 cibles à 36 px.
+**État de départ mesuré des 3 pages restantes de D+E** (sonde, 375 px, avant modification) :
+`/settings` **1 cible** (« Coûts IA », exception assumée) · `/integrations` **0** (mais un état
+d'erreur « Impossible de charger l'état de l'intégration » à brancher sur `app-zone`) ·
+`/privacy-coverage` **0**. Aucune coupe, aucun débordement.
 
-**État de départ mesuré des 4 pages restantes de D+E** (sonde, 375 px, avant modification) :
-`/admin/ai-usage` **13 cibles < 44 px** · `/settings` **1** (« Coûts IA », exception assumée) ·
-`/integrations` **0** (mais un état d'erreur « Impossible de charger l'état de l'intégration »
-à brancher sur `app-zone`) · `/privacy-coverage` **0**. Aucune coupe, aucun débordement.
+### 🟠 Trois décisions en attente sur `/admin/ai-usage`
+
+La page est livrée et vérifiée, mais **trois choses ont été volontairement laissées de côté** :
+
+1. **Le ratio consommation / forfait.** La planche affiche « 45 % de votre forfait » et une
+   barre — donc, en clair, **elle expose la marge** au client (18,74 € de calcul pour 42 € de
+   forfait). J'ai livré le forfait ET la consommation, mais **pas le rapport entre les deux** :
+   c'est une décision commerciale, pas une décision d'écran, et elle part en recette sur le
+   VPS. Une fois affichée, elle ne se reprend pas.
+2. **« Chaque euro rattaché à un résultat. »** La planche écrit « 418 trajets analysés ce
+   mois » sous chaque fonction. `AiUsageBreakdownRowDto` porte `calls`, `tokens`, `costEur` —
+   **aucun compteur de résultat**. C'est le seul point de la page qui demanderait un
+   **changement de contrat d'API** ; non fait, conformément à la consigne.
+3. **O5 — `--text-tertiary` sous 4,5:1 dans les deux thèmes** (cf. `design/TOKENS.md`).
+   Corrigé sur cette page et sur `/fleet-admin/activity` ; la reprise globale touche 29 écrans.
+
+> ⚠️ **`verif:contraste` ne verra jamais O5** : il vérifie les 46 couples **déclarés**, pas les
+> usages réels d'un jeton dans les gabarits. Sur cette page, 24 textes échouaient sans qu'aucun
+> contrôle ne bronche. **La mesure au navigateur reste le seul juge.**
 
 **Bloc G — le shell, EN DERNIER.** Ordre non négociable de `B1-PAGES.md`.
 

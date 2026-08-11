@@ -294,6 +294,41 @@ valeurs et sa propre surcharge `[data-theme='dark']` — `#059669`/`#10E0A0`,
 lavis de survol du bouton principal est passé de 22 % à 18 % au passage : calibré sur un
 vert vif, il donnait 4,30:1 sous une encre foncée.
 
+**O5 — `--text-tertiary` est sous 4,5:1 dans LES DEUX thèmes.** ⚠️ **Ouvert, mesuré au lot
+B-pages (2026-08-11).** Ce n'est pas un défaut d'écran : c'est un jeton à **3:1** employé
+partout comme couleur de **texte**.
+
+| Thème | Valeur | Sur `--surface-secondary` | Verdict sur du texte < 18 px |
+|---|---|---|:-:|
+| Clair | `#8A938F` | **3,07:1** | ❌ |
+| Sombre | `#69736E` | **3,75:1** | ❌ |
+
+C'est le **même problème que O2**, mais sur le neutre au lieu des couleurs d'alerte — et il
+est passé au travers parce que `verif:contraste` vérifie les **46 couples déclarés**, pas les
+usages réels d'un jeton dans les gabarits. Mesuré au navigateur : 24 textes en échec sur la
+seule page `/admin/ai-usage` (libellés de KPI, en-têtes de tableau, fil d'Ariane, états vides).
+
+⚠️ **Noter que le thème SOMBRE échoue aussi.** La phrase du § « Petit texte » (« en thème
+sombre, rien n'est corrigé : un texte clair sur fond noir passe déjà de 5,5 à 8,5:1 ») vaut
+pour les couleurs d'alerte, **pas** pour ce gris : à 3,75:1 il est sous le seuil des deux côtés.
+
+**Traité localement, pas globalement** : sur `/fleet-admin/activity` et `/admin/ai-usage`, les
+usages TEXTUELS passent à `--text-secondary` (4,65 à 6,12:1 mesurés) ; les usages
+**graphiques** (pictogramme, curseur d'interrupteur, filet) gardent `--text-tertiary`, où 3:1
+est le bon seuil.
+
+**Décision à prendre — trois options, aucune gratuite :**
+
+1. **Assombrir `--text-tertiary`** jusqu'à 4,5:1 dans les deux thèmes. Un seul endroit, mais
+   la hiérarchie à trois niveaux de texte s'aplatit : le tertiaire se rapproche du secondaire.
+2. **Créer `--texte-discret`** sur le modèle de la famille `--texte-*` — même geste qu'au lot
+   B0′, et les usages graphiques gardent le jeton d'origine. Coût : une passe sur les écrans.
+3. **Reprendre page par page**, comme fait ici. Sûr et vérifiable, mais lent et réversible par
+   inadvertance au premier écran écrit à l'ancienne.
+
+Tant que ce n'est pas tranché, **la mesure au navigateur reste le seul juge** : `verif:contraste`
+ne verra pas ce défaut, par construction.
+
 **O4 — les couleurs de COUCHE DE CARTE ne suivent pas le thème, volontairement.**
 `shared/utils/couleurs-carte.ts` garde quatre valeurs explicites (tracé, arrêt, excès,
 contour). Elles se posent sur le fond de carte, qui est un choix séparé de l'utilisateur
