@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **31/57** |
+| **B-pages** | 🟡 **en cours** | **32/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -78,7 +78,15 @@ période, création/édition de véhicule (« le boîtier devient facultatif »)
 
 **Bloc A.** ✅ **Terminé** — `/book/:token`, `/reserve/:token` et `/driver/unlock` sont livrées.
 
-**Bloc B (1).** `/driver` — usage 100 % téléphone.
+**Bloc B.** ✅ **Terminé** — `/driver` est livrée.
+
+> ### ⚠️ Aucun compte DRIVER en base de développement
+>
+> `SELECT role, count(*) FROM users` : 4 FLEET_ADMIN, 3 DEPOT, 3 SUPER_ADMIN, 2 FLEET_MANAGER,
+> 1 VIEWER — **zéro DRIVER**. La route `/driver` n'exige que `authGuard` (c'est
+> `driverAwayFromDashboardGuard` qui y REDIRIGE les conducteurs), donc elle s'ouvre avec un
+> compte fleet-admin et la liste reste bornée côté serveur. Suffisant pour mesurer la mise en
+> page, les cibles et le contraste — **pas** pour vérifier le périmètre réel d'un conducteur.
 
 > ### 🔑 Ouvrir les pages à jeton — ce qui marche vraiment
 >
@@ -112,6 +120,12 @@ période, création/édition de véhicule (« le boîtier devient facultatif »)
 > | `/fleet-admin/activity` | « Aucune action moteur sur cette flotte » |
 > | `/privacy-coverage` | « 0 véhicule » — donc « rien à corriger » |
 > | `/integrations` | un constat muet, sans aucun recours |
+> | `/driver` | « Aucun véhicule ne vous est attribué » — soit « on ne vous a rien confié » |
+>
+> **Quatre écrans sans aucun rapport entre eux.** Ce n'est pas une négligence locale, c'est un
+> réflexe d'écriture : `error: () => this.loading.set(false)` se tape plus vite que la
+> distinction. Le pire des quatre est `/driver` — un conducteur debout devant son camion, à qui
+> l'écran dit qu'il n'est affecté à rien, et qui n'a personne à qui demander.
 >
 > À chaque fois, **le mensonge est rassurant** et tombe sur l'écran qui sert précisément à
 > vérifier que tout va bien. C'est le premier réflexe à avoir en reprenant une page : chercher
