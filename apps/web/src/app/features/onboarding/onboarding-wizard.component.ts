@@ -93,9 +93,13 @@ type Step = 1 | 2;
               @case (1) {
                 <div class="step-icon"><lucide-icon [img]="Compass" [size]="56"></lucide-icon></div>
                 <h2 class="step-title">Prêt à piloter votre flotte ?</h2>
+                <!-- La phrase annonçait « une seule question » devant un écran qui en pose
+                     trois. Un assistant qui commence par sous-estimer ce qu'il demande
+                     n'inspire pas confiance sur le reste. Elle dit maintenant ce qu'il en
+                     est vraiment : un écran, facultatif, et c'est fini. -->
                 <p class="step-lead">
                   Vizyo Tracky vous donne une vue en temps réel sur tous vos véhicules.
-                  Une seule question avant de commencer, et le tableau de bord s'ouvre.
+                  Un écran de profil — facultatif — et le tableau de bord s'ouvre.
                 </p>
                 <ul class="step-bullets">
                   <li><span class="bullet-chip"><lucide-icon [img]="Check" [size]="14"></lucide-icon></span> Suivi GPS en direct</li>
@@ -234,12 +238,17 @@ type Step = 1 | 2;
       gap: 12px;
     }
     .header-title { margin: 0; font-size: 18px; font-weight: 700; color: var(--fg-primary); }
-    .header-step { margin: 4px 0 0; font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+    /* --fg-tertiary est un jeton a 3:1 : 3,16 en clair et 3,75 en sombre sur du
+       texte de 12 px, sous le seuil des DEUX cotes. Cf. point ouvert O5 de
+       design/TOKENS.md — traite localement, comme sur les autres pages reprises. */
+    .header-step { margin: 4px 0 0; font-size: 12px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+    /* 44 px : ces deux boutons mesuraient 36 x 36. C'est le premier ecran qu'un
+       compte neuf voit, et il est vu au telephone. */
     .header-close {
       background: transparent;
       border: 1px solid var(--border-subtle);
       color: var(--fg-secondary);
-      width: 36px; height: 36px;
+      width: 44px; height: 44px;
       border-radius: 10px;
       display: grid; place-items: center;
       cursor: pointer;
@@ -286,8 +295,11 @@ type Step = 1 | 2;
       display: flex; align-items: center; gap: 8px;
       font-size: 14px;
     }
-    .step-bullets lucide-icon { color: var(--tracky-light, #10E0A0); }
-    .bullet-chip { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 12%, transparent); color: var(--tracky-light, #10E0A0); flex-shrink: 0; }
+    /* La coche mesurait 2,99 en clair sur son propre lavis — le lavis eclaircit le
+       fond vers le vert et mange le peu de contraste qui restait. --texte-succes
+       est la valeur assombrie prevue pour ca. */
+    .step-bullets lucide-icon { color: var(--texte-succes); }
+    .bullet-chip { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes); flex-shrink: 0; }
     .form-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -301,7 +313,7 @@ type Step = 1 | 2;
     .field--full { grid-column: 1 / -1 }
     .field label {
       font-size: 12px;
-      color: var(--fg-tertiary);
+      color: var(--fg-secondary);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
@@ -309,6 +321,7 @@ type Step = 1 | 2;
       background: var(--bg-tertiary);
       border: 1px solid var(--border-strong);
       border-radius: 10px;
+      min-height: 44px;
       padding: 10px 12px;
       font-size: 14px;
       color: var(--fg-primary);
@@ -318,8 +331,8 @@ type Step = 1 | 2;
       outline-offset: 1px;
       border-color: var(--tracky-light, #10E0A0);
     }
-    .field small { font-size: 11px; color: var(--fg-tertiary); }
-    .hint { font-size: 12px; color: var(--fg-tertiary); margin: 4px 0 0; }
+    .field small { font-size: 11px; color: var(--fg-secondary); }
+    .hint { font-size: 12px; color: var(--fg-secondary); margin: 4px 0 0; }
     .wizard-footer {
       flex-shrink: 0;
       padding: 16px 20px;
@@ -333,8 +346,10 @@ type Step = 1 | 2;
       .wizard-footer { padding: 16px 32px; }
     }
     .footer-spacer { flex: 1 }
+    /* 44 px : le remplissage donnait 43. Un pixel manquant reste un echec. */
     .btn {
-      display: inline-flex; align-items: center; gap: 6px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 44px;
       padding: 10px 16px;
       border-radius: 10px;
       font-size: 14px;
@@ -344,9 +359,13 @@ type Step = 1 | 2;
       transition: background 120ms ease, opacity 120ms ease;
     }
     .btn[disabled] { opacity: 0.6; cursor: not-allowed }
+    /* Encre FONCEE sur l'accent — regle non negociable de B0-SOCLE. Ici la couleur
+       etait --bg-primary, qui vaut #080B0A en sombre (juste) mais #FBFCFB en clair :
+       du quasi-blanc sur du vert menthe, mesure a 3,34:1. Le jeton --accent-ink
+       existe precisement pour ne pas dependre du theme. */
     .btn-primary {
-      background: var(--tracky-light, #10E0A0);
-      color: var(--bg-primary);
+      background: var(--tracky-light);
+      color: var(--accent-ink);
       font-weight: 600;
     }
     .btn-primary:hover:not([disabled]) { filter: brightness(1.05); }
@@ -356,6 +375,17 @@ type Step = 1 | 2;
       color: var(--fg-secondary);
     }
     .btn-ghost:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+    /* A 375 px, les trois boutons du pied ne tiennent pas sur une ligne : l'action
+       PRINCIPALE se faisait ecraser a 133 px et repliait son libelle sur deux
+       lignes, coincee entre deux boutons secondaires qui, eux, tenaient. Sous
+       480 px elle prend donc toute la largeur, en premier, et les deux sorties se
+       partagent la ligne du dessous. */
+    @media (max-width: 480px) {
+      .wizard-footer { flex-wrap: wrap; row-gap: 10px; }
+      .footer-spacer { display: none; }
+      .btn-primary { order: -1; width: 100%; }
+      .wizard-footer .btn-ghost { flex: 1 1 0; min-width: 0; }
+    }
   `],
 })
 export class OnboardingWizardComponent {
