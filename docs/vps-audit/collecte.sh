@@ -32,6 +32,14 @@ export LC_ALL=C
 # section. Un budget qu'on impose sans l'instrumenter ne se diagnostique pas : il se constate.
 # Chaque en-tete de section porte donc desormais le temps ecoule depuis le debut.
 T_DEBUT=$(date +%s)
+# ⚠️ AJOUTE LE 2026-08-11 (VPS-M27) — LE BUDGET MESURAIT LA FIN SANS JAMAIS MESURER LE DEBUT.
+# Le bloc BUDGET pose la veille affichait la charge de la machine A LA FIN de la collecte, avec
+# la consigne « relire la charge avant d'accuser le script ». Sans la charge de DEPART, cette
+# ligne se lit toujours dans le sens rassurant : « la machine etait chargee, ce n'est pas nous ».
+# Le 2026-08-11 elle valait 0,35 au demarrage et 4,20 a l'arrivee — l'audit avait donc, a lui
+# seul, double la limite de 2 que cette procedure impose. Huit passages sans que ce soit visible.
+# C'est la famille de VPS-M21 : un defaut qui RASSURE n'a aucun plaignant. On capture les deux.
+CHARGE_DEBUT=$(cut -d' ' -f1 /proc/loadavg)
 section() { printf '\n\n═════ %s ═════   [t+%ss]\n' "$1" "$(( $(date +%s) - T_DEBUT ))"; }
 sub()     { printf '\n── %s ──\n' "$1"; }
 have()    { command -v "$1" >/dev/null 2>&1; }
@@ -260,12 +268,55 @@ sub "Repartition hors Docker"
 # lourd, ce qui laisse la place aux onze autres sections.
 # ⚠️ Le message d'abandon reste explicite (VPS-M02) : une mesure absente ne doit jamais se lire
 # comme une mesure nulle. Il dit desormais aussi ce qu'il faut en conclure.
-for chemin in /var/log /opt /root /home /var/backups; do
+#
+# ⚠️⚠️ CORRIGE LE 2026-08-11 (VPS-M26) — LE DELAI DE GARDE D'HIER GARANTISSAIT LA PERTE.
+# Ramener le delai de 90 a 40 s etait juste sur le principe et faux dans les faits : `du /opt`
+# a ete abandonne DEUX passages de suite, dont celui du 2026-08-11 sur une machine a 0,35 de
+# charge. Autrement dit le garde-fou ne rattrapait plus un accident, il supprimait la mesure
+# TOUS LES JOURS — tout en consommant quand meme ses 40 s. Et le message d'abandon AFFIRMAIT
+# une cause (« machine chargee ») que personne n'avait mesuree : ce jour-la elle etait fausse.
+# Un message d'abandon doit constater un FAIT, jamais expliquer.
+# → /opt est desormais parcouru SOUS-DOSSIER PAR SOUS-DOSSIER : chaque enfant a son propre
+#   petit delai, un depassement n'emporte que lui, et ce qui a ete mesure est CONSERVE.
+#   Le benefice n'est PAS la vitesse (une mesure prise apres un abandon lit un cache tiede —
+#   VPS-M18, on ne le reclamera donc pas) : c'est qu'une mesure partielle vaut infiniment mieux
+#   qu'une absence, et que le cout par sous-dossier est exactement ce que VPS-018 demande.
+for chemin in /var/log /root /home /var/backups; do
   T0=$(date +%s%N)
   out=$(timeout 40 $LOW du -sh --exclude=/var/lib/docker --exclude=/root/.local --exclude=/root/.npm \
         --exclude=/root/.cache --exclude=/root/.claude "$chemin" 2>/dev/null)
-  printf '  %-28s %8s ms\n' "${out:-(ABANDONNEE apres 40 s — machine chargee, PAS un dossier vide)	$chemin}" "$(ms "$T0")"
+  printf '  %-28s %8s ms\n' "${out:-(SANS RESULTAT apres 40 s — mesure NON FAITE, pas un dossier vide)	$chemin}" "$(ms "$T0")"
 done
+
+sub "/opt sous-dossier par sous-dossier (le poste le plus lourd — VPS-M26/VPS-018)"
+T_OPT=$(date +%s); OPT_KO=0; OPT_N=0; OPT_TOT=0; OPT_RESTE=""
+for d in /opt/*/; do
+  OPT_TOT=$((OPT_TOT+1)); x=${d%/}
+  # Plafond GLOBAL : au-dela, on n'entame pas un enfant de plus. Le budget de la section est
+  # ainsi borne par construction, au lieu de dependre du nombre de dossiers presents.
+  if [ $(( $(date +%s) - T_OPT )) -ge 45 ]; then OPT_RESTE="$OPT_RESTE ${x##*/}"; continue; fi
+  T0=$(date +%s%N)
+  k=$(timeout 12 $LOW du -sk "$d" 2>/dev/null | awk '{print $1}')
+  if [ -n "$k" ]; then
+    OPT_KO=$((OPT_KO+k)); OPT_N=$((OPT_N+1))
+    printf '  %8s  %-36s %6s ms\n' \
+      "$(awk -v k="$k" 'BEGIN{ if (k>=1048576) printf "%.1fG", k/1048576;
+                               else if (k>=1024) printf "%.0fM", k/1024;
+                               else printf "%dK", k }')" \
+      "$x" "$(ms "$T0")"
+  else
+    printf '  %8s  %-36s %6s ms\n' "(>12s)" "$x" "$(ms "$T0")"
+    OPT_RESTE="$OPT_RESTE ${x##*/}"
+  fi
+done
+# Le denominateur est affiche a cote du numerateur (lecon VPS-M08/VPS-M22) : une somme partielle
+# qui n'annonce pas combien d'elements elle couvre ne peut pas signaler qu'il en manque.
+awk -v k="$OPT_KO" -v n="$OPT_N" -v t="$OPT_TOT" -v s="$(( $(date +%s) - T_OPT ))" 'BEGIN{
+  printf "  → /opt = %.1f Go, mesures sur %d / %d sous-dossiers, en %d s\n", k/1048576, n, t, s }'
+[ -n "$OPT_RESTE" ] && echo "  ⚠️ NON MESURE (delai depasse — mesure NON FAITE, PAS un dossier vide) :$OPT_RESTE"
+echo "  ⚠️ Le cout suit les INODES, pas les octets : au 2026-08-11, /opt/maalem (1,6 Go) coute"
+echo "     ~1 s quand /opt/vizyo-leads (823 Mo, pile SUPPRIMEE le 2026-08-04) en coute ~6 —"
+echo "     soit ~25 % de ce parcours pour du code qui ne tourne plus (VPS-018)."
 echo "  (+ ~4,5 Go d outillage de dev exclus du parcours : /root/.local, .npm, .cache, .claude —"
 echo "     mesures le 2026-08-06, ~155 000 inodes. Voir VPS-017 : ils n'ont rien a faire ici.)"
 # ⚠️ /opt est le PREMIER POSTE de la collecte, et il faut le dire ici plutot que de le
@@ -1459,9 +1510,26 @@ UPH=$(awk '{printf "%.1f", $1/3600}' /proc/uptime)
 # script × la machine × le moment : accuser le script sans citer la charge, c'est refaire
 # l'erreur du 2026-08-06.
 DUREE=$(( $(date +%s) - T_DEBUT ))
+CHARGE_FIN=$(cut -d' ' -f1 /proc/loadavg)
 printf '\n\n═════ BUDGET DE LA COLLECTE ═════\n'
 printf '  duree totale : %s s   (budget impose : %s s)\n' "$DUREE" "${BUDGET:-90}"
-printf '  charge de la machine a la fin : %s\n' "$(cut -d' ' -f1-3 /proc/loadavg)"
+printf '  charge 1 min : %s au DEBUT  →  %s a la FIN   (limite imposee : 2.0 sur 2 coeurs)\n' \
+       "$CHARGE_DEBUT" "$CHARGE_FIN"
+# ⚠️ VPS-M27 : c'est le DELTA qui arbitre, pas la valeur finale. Une charge finale elevee peut
+# venir de la machine (l'audit est victime) ou de l'audit lui-meme (l'audit est coupable), et
+# les deux lectures menent a des actions opposees. Sans la charge de depart, le lecteur choisit
+# spontanement la lecture rassurante. On tranche donc ici, chiffres en main.
+awk -v d0="$CHARGE_DEBUT" -v d1="$CHARGE_FIN" 'BEGIN{
+  delta = d1 - d0
+  if (d1 > 2.0 && d0 < 1.0)
+    printf "  🔴 C EST L AUDIT : la machine etait a %.2f, elle finit a %.2f (+%.2f). Rien d autre\n     n a tourne. La limite de 2 imposee par la procedure est depassee PAR LA COLLECTE.\n", d0, d1, delta
+  else if (d1 > 2.0 && d0 >= 1.0)
+    printf "  🟠 CHARGE PARTAGEE : la machine etait DEJA a %.2f avant la collecte, elle finit a %.2f\n     (+%.2f). L audit n est pas seul en cause — mais il n a pas aide.\n", d0, d1, delta
+  else if (delta > 1.0)
+    printf "  🟠 l audit a ajoute %.2f de charge (%.2f → %.2f), sous la limite de 2.\n", delta, d0, d1
+  else
+    printf "  ✅ charge maitrisee : %.2f → %.2f (%+.2f).\n", d0, d1, delta
+}'
 awk -v d="$DUREE" -v b="${BUDGET:-90}" 'BEGIN{
   if (d <= b) print "  ✅ DANS LE BUDGET."
   else {
