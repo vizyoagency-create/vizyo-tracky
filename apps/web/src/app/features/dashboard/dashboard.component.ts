@@ -9,7 +9,7 @@ import {
   Settings2, X, Check, ArrowRight, WifiOff,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
-import { filter, interval, startWith, switchMap, catchError, of, combineLatest } from 'rxjs';
+import { filter, interval, startWith, switchMap, catchError, of, combineLatest, tap } from 'rxjs';
 import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -17,6 +17,7 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { MapBridgeService } from '../../core/services/map-bridge.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
+import type { AlertEvent } from '@vizyo/tracky-shared';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
@@ -137,6 +138,15 @@ interface WidgetMeta {
 
       <!-- KPIs compactes (2x2 mobile, 4x1 desktop) -->
       @if (isWidgetEnabled('kpis')) {
+        @if (statsEnEchec()) {
+          <!-- Sans cette ligne, les quatre compteurs affichaient « — » et rien d'autre :
+               impossible de distinguer une flotte vide d'une requete tombee. Le flux
+               reinterroge toutes les 30 s, donc l'attente est dite, pas subie. -->
+          <p class="dash-echec">
+            <lucide-icon [img]="WifiOff" [size]="14"></lucide-icon>
+            Compteurs indisponibles — nouvelle tentative dans moins d'une minute.
+          </p>
+        }
         <div class="metrics-grid">
           <a routerLink="/vehicles" class="metric-card metric-card--link">
             <div class="vt-icon-tile">
@@ -345,7 +355,15 @@ interface WidgetMeta {
               <lucide-icon [img]="ChevronRight" [size]="14"></lucide-icon>
             </a>
           </div>
-          @if (recentAlerts().length === 0) {
+          @if (alertesEnEchec() && recentAlerts().length === 0) {
+            <!-- Un echec n'est pas un calme : « Aucune alerte en cours » se disait
+                 aussi quand la requete avait echoue. -->
+            <div class="widget-empty widget-empty--echec">
+              <lucide-icon [img]="WifiOff" [size]="24"></lucide-icon>
+              <p>Alertes non chargées</p>
+              <button type="button" class="widget-relance" (click)="relancerAlertes()">Réessayer</button>
+            </div>
+          } @else if (recentAlerts().length === 0) {
             <div class="widget-empty">
               <lucide-icon [img]="Bell" [size]="24" style="opacity:.3"></lucide-icon>
               <p>Aucune alerte en cours</p>
@@ -470,7 +488,7 @@ interface WidgetMeta {
     .dash-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 18px }
     .dash-title { font-size: 22px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.03em; margin-top: 8px; line-height: 1.1 }
     .dash-header-text { min-width: 0 }
-    .dash-sub { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px }
+    .dash-sub { font-size: 12px; color: var(--fg-secondary); margin-top: 2px }
     .dash-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end }
     .dash-customize-btn {
       display: inline-flex; align-items: center; gap: 5px;
@@ -486,7 +504,7 @@ interface WidgetMeta {
     .dash-status { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); flex-shrink: 0 }
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-tertiary); animation: pulse 2s ease infinite }
     .status-dot.online { background: var(--tracky-light) }
-    .status-text { font-size: 10px; font-weight: 600; color: var(--fg-tertiary) }
+    .status-text { font-size: 10px; font-weight: 600; color: var(--fg-secondary) }
     .status-text.online { color: var(--tracky-light) }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
@@ -501,7 +519,7 @@ interface WidgetMeta {
     .dash-review-banner:hover { border-color: color-mix(in srgb, var(--danger) 55%, transparent) }
     .dash-review-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0 }
     .dash-review-text strong { font-size: 13px; font-weight: 800 }
-    .dash-review-text span { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
+    .dash-review-text span { font-size: 11px; color: var(--fg-secondary); font-weight: 500 }
     .dash-review-arrow { color: var(--fg-tertiary); flex-shrink: 0 }
     .metric-card {
       position: relative; display: flex; align-items: center; gap: 12px;
@@ -518,7 +536,7 @@ interface WidgetMeta {
     .metric-value { font-size: 24px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display); letter-spacing: -.02em; line-height: 1 }
     .metric-value--danger { color: var(--danger) }
     /* Label complet sans tronquer : on autorise le wrap sur 2 lignes */
-    .metric-label { font-size: 11px; font-weight: 500; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.2 }
+    .metric-label { font-size: 11px; font-weight: 500; color: var(--fg-secondary); margin-top: 3px; line-height: 1.2 }
     .metric-arrow { color: var(--fg-tertiary); flex-shrink: 0; opacity: 0; transition: opacity .2s, transform .2s }
     .metric-card:hover .metric-arrow, .metric-card--link:active .metric-arrow { opacity: 1; transform: translateX(2px) }
 
@@ -590,7 +608,7 @@ interface WidgetMeta {
     }
     .widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
     .widget-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--fg-primary) }
-    .widget-action { display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--tracky-light); text-decoration: none }
+    .widget-action { display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--texte-succes); text-decoration: none }
 
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
        Mesuré à 375 px : « Personnaliser » 37 × 36, les raccourcis 39, les liens de
@@ -606,8 +624,23 @@ interface WidgetMeta {
     .widget-action lucide-icon { transition: transform .2s }
     .widget-action:hover lucide-icon { transform: translateX(2px) }
 
-    .widget-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px 0; color: var(--fg-tertiary); font-size: 12px }
+    .widget-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px 0; color: var(--fg-secondary); font-size: 12px }
     .widget-empty--map { padding: 40px 0 }
+    /* Un echec se distingue d'un vide : couleur d'alerte, et une sortie. */
+    .widget-empty--echec { color: var(--texte-attente) }
+    .widget-relance {
+      min-height: 44px; padding: 0 14px; border-radius: 10px; cursor: pointer;
+      font-size: 12.5px; font-weight: 600;
+      background: transparent; color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+    }
+    .widget-relance:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
+    .dash-echec {
+      display: flex; align-items: center; gap: 7px;
+      margin: 0 0 10px; padding: 9px 12px; border-radius: 10px;
+      font-size: 12.5px; line-height: 1.45; color: var(--texte-attente);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+    }
 
     /* Widget map */
     .widget--map { padding: 14px; position: relative; display: flex; flex-direction: column }
@@ -637,7 +670,9 @@ interface WidgetMeta {
       backdrop-filter: blur(8px); box-shadow: 0 4px 12px rgba(0,0,0,.08);
       font-size: 11px; color: var(--fg-secondary);
     }
-    .widget-map-stat strong { font-size: 14px; color: var(--tracky-light); font-weight: 800 }
+    /* Le compte des vehicules actifs, sur le voile de la mini-carte : --tracky-light
+       y mesurait 3,43 en theme clair. --texte-succes est la valeur assombrie. */
+    .widget-map-stat strong { font-size: 14px; color: var(--texte-succes); font-weight: 800 }
 
     /* Widget list */
     .widget-list { display: flex; flex-direction: column; gap: 4px }
@@ -652,13 +687,13 @@ interface WidgetMeta {
     .widget-row-info { flex: 1; min-width: 0 }
     .widget-row-title { font-size: 13px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace) }
     .widget-row-title--small { font-size: 12px; font-family: var(--font-sans, sans-serif); font-weight: 600 }
-    .widget-row-sub { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
+    .widget-row-sub { font-size: 10px; color: var(--fg-secondary); margin-top: 1px }
     .widget-row-speed { font-size: 16px; font-weight: 800; font-family: var(--font-display); letter-spacing: -.02em }
-    .widget-row-speed.fast { color: var(--danger) }
-    .widget-row-speed.medium { color: var(--warning) }
-    .widget-row-speed.slow { color: var(--tracky-light) }
-    .widget-row-speed.stopped { color: var(--fg-tertiary) }
-    .speed-unit { font-size: 9px; font-weight: 500; opacity: .65; margin-left: 2px }
+    .widget-row-speed.fast { color: var(--texte-alerte) }
+    .widget-row-speed.medium { color: var(--texte-attente) }
+    .widget-row-speed.slow { color: var(--texte-succes) }
+    .widget-row-speed.stopped { color: var(--fg-secondary) }
+    .speed-unit { font-size: 9px; font-weight: 500; color: var(--fg-secondary); margin-left: 2px }
     .widget-row-chevron { color: var(--fg-tertiary); opacity: .5; flex-shrink: 0 }
 
     /* Alert severity */
@@ -682,7 +717,7 @@ interface WidgetMeta {
     }
     .widget-schedule-info { flex: 1; min-width: 0 }
     .widget-schedule-title { font-size: 12px; font-weight: 700; color: var(--fg-primary); line-height: 1.3 }
-    .widget-schedule-sub { font-size: 11px; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.4 }
+    .widget-schedule-sub { font-size: 11px; color: var(--fg-secondary); margin-top: 3px; line-height: 1.4 }
     .widget-schedule-presets { display: flex; gap: 8px; flex-wrap: wrap }
     .widget-schedule-preset {
       display: inline-flex; align-items: center; gap: 6px;
@@ -701,7 +736,7 @@ interface WidgetMeta {
       gap: 10px; padding: 40px 20px;
       background: var(--bg-secondary); border: 1px dashed var(--border-subtle);
       border-radius: 14px;
-      color: var(--fg-tertiary); font-size: 13px;
+      color: var(--fg-secondary); font-size: 13px;
     }
     .dash-empty-btn {
       padding: 8px 16px; border-radius: 9999px;
@@ -735,7 +770,7 @@ interface WidgetMeta {
       background: var(--bg-tertiary); border: 0; color: var(--fg-secondary);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
-    .dash-customizer-sub { font-size: 12px; color: var(--fg-tertiary); margin-bottom: 14px }
+    .dash-customizer-sub { font-size: 12px; color: var(--fg-secondary); margin-bottom: 14px }
     .dash-customizer-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px }
     .dash-customizer-item {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -745,7 +780,7 @@ interface WidgetMeta {
     }
     .dash-customizer-item-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 }
     .dash-customizer-item-label { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
-    .dash-customizer-item-desc { font-size: 11px; color: var(--fg-tertiary); line-height: 1.3 }
+    .dash-customizer-item-desc { font-size: 11px; color: var(--fg-secondary); line-height: 1.3 }
     .dash-customizer-toggle {
       position: relative; flex-shrink: 0;
       width: 38px; height: 22px; border-radius: 9999px;
@@ -885,8 +920,14 @@ export class DashboardComponent implements OnInit {
       toObservable(this.fleetFilter.selectedFleetId),
     ]).pipe(
       filter(() => typeof document === 'undefined' || !document.hidden),
-      switchMap(() => this.vehiclesApi.stats(this.fleetFilter.selectedFleetId())),
-      catchError(() => of(null)),
+      // ⚠️ Le catchError doit être DANS le switchMap. Placé à la fin du tuyau, il
+      // remplaçait le flux ENTIER par un `of(null)` qui se termine : au premier
+      // échec réseau, le sondage de 30 s s'arrêtait définitivement, et les
+      // compteurs restaient morts jusqu'au rechargement de la page. Ici, seule la
+      // requête fautive est neutralisée — le cycle suivant retente.
+      switchMap(() =>
+        this.vehiclesApi.stats(this.fleetFilter.selectedFleetId()).pipe(catchError(() => of(null))),
+      ),
     ),
   );
 
@@ -989,13 +1030,47 @@ export class DashboardComponent implements OnInit {
   // polling 60s. Le WS RealtimeService.alerts pousse les nouveautes en temps
   // reel ; le polling etait redondant et tirait 1 requete/min/dashboard meme
   // quand aucune nouvelle alerte. `of(0)` declenche le switchMap une seule fois.
+  /**
+   * ⚠️ UN ÉCHEC NE DOIT PAS S'AFFICHER COMME « aucune alerte ».
+   *
+   * Le `catchError` renvoyait une liste vide, et le gabarit rend alors « Aucune alerte
+   * en cours » — une phrase rassurante là où la requête a simplement échoué. Sur un
+   * tableau de bord de supervision, c'est le pire endroit pour taire une panne.
+   *
+   * L'échec est donc mémorisé à part. Et comme ce chargement est un COUP UNIQUE
+   * (`of(0)` — le temps réel prend le relais ensuite), un échec durait jusqu'au
+   * rechargement de la page : d'où la relance manuelle.
+   */
+  protected readonly alertesEnEchec = signal(false);
+  private readonly relanceAlertes = signal(0);
+  /** Le repli est TYPÉ : sans annotation, l'union s'effondre en `{}` et `items` disparaît. */
+  private static readonly ALERTES_VIDES: { items: AlertEvent[]; nextCursor: string | null } = {
+    items: [], nextCursor: null,
+  };
   private readonly fetchedAlerts = toSignal(
-    of(0).pipe(
-      switchMap(() => this.alertsApi.list({ limit: '3', acknowledged: 'false' })),
-      catchError(() => of({ items: [], nextCursor: null })),
+    toObservable(this.relanceAlertes).pipe(
+      switchMap(() =>
+        this.alertsApi.list({ limit: '3', acknowledged: 'false' }).pipe(
+          tap(() => this.alertesEnEchec.set(false)),
+          // Le catchError est INTERNE : sans cela, l'erreur terminerait le flux
+          // extérieur et la relance n'aurait plus rien à relancer.
+          catchError(() => { this.alertesEnEchec.set(true); return of(DashboardComponent.ALERTES_VIDES); }),
+        ),
+      ),
     ),
-    { initialValue: { items: [], nextCursor: null } },
+    { initialValue: DashboardComponent.ALERTES_VIDES },
   );
+
+  protected relancerAlertes(): void {
+    this.relanceAlertes.update((n) => n + 1);
+  }
+
+  /**
+   * `stats` vaut `undefined` tant que rien n'est revenu, et `null` quand la requête a
+   * échoué (cf. le `catchError` du flux). La distinction existait déjà ; elle n'était
+   * simplement affichée nulle part — les compteurs tombaient à « — » sans un mot.
+   */
+  protected readonly statsEnEchec = computed(() => this.stats() === null);
   protected readonly recentAlerts = computed(() => {
     // Live = scopedAlerts (source centralisée) ; le fetch initial (HTTP one-shot) est filtré réactivement.
     const live = this.realtime.scopedAlerts();
