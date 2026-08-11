@@ -1356,7 +1356,17 @@ composants ne gèrent que « rempli » et « chargement ».
       d'information restent celles d'A2 — la mention passe à `--texte-violet`)*
 
 **F — Surfaces bloquantes (12)**
-- [ ] Consentement RGPD — **la séquence devient visible** (« étape N sur 3 », calculée), note conducteurs actionnable avec modèle téléchargeable
+- [x] Consentement RGPD — **la note conducteurs devient actionnable.** C'était « Pensez à informer
+      vos conducteurs » : une ligne grise, au conditionnel, **sans aucune suite** — alors que c'est
+      une obligation légale et que celui qui la lit vient d'accepter les conditions. Elle devient
+      « **Vous devez informer vos conducteurs** », en ambre, avec le **modèle téléchargeable**.
+      Le modèle est **généré côté client** (pas d'endpoint, pas de fichier à déployer) et porte en
+      tête, en toutes lettres, qu'il est **à adapter et ne constitue pas un conseil juridique** ;
+      il reprend les mentions attendues d'une information préalable (finalité, données, plages,
+      durée, destinataires, droits) avec des champs entre crochets. Vérifié au navigateur : 1 840
+      caractères produits, `note-information-conducteurs-modele.txt`, `text/plain;charset=utf-8`.
+      *(« Étape N sur 3 » était déjà calculée par `PortesAccesService` au lot B0′.)*
+      11 textes ≥ 4,5:1 dans les deux thèmes, 6 couleurs en dur purgées
 - [ ] Autorisations navigateur — localisation justifiée par son usage, **fin de l'impasse** : « Continuer sans déverrouillage QR »
 - [x] Vérification d'appareil — **6 cases séparées, collage depuis l'e-mail.** Le champ unique se
       contentait d'un **interlettrage qui imitait des cases** : on ne voyait pas combien de

@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **33/57** |
+| **B-pages** | 🟡 **en cours** | **34/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -85,8 +85,14 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > pratique d'atteindre les portes d'accès : elles sont décidées au boot, et un rechargement
 > efface toute fixture XHR posée après coup.
 
-**Bloc F — surfaces bloquantes (11 restantes sur 12).** Le gros morceau.
-*(Vérification d'appareil livrée ; assistant de démarrage livré en B0′.)* Coupure moteur (compte à rebours
+**Bloc F — surfaces bloquantes (9 restantes sur 12).** Le gros morceau.
+*(Livrées : consentement RGPD, vérification d'appareil, et la **variante critique** de la
+coupure moteur. Assistant de démarrage livré en B0′.)*
+
+> ⚠️ **La coupure moteur n'est faite qu'à moitié.** Seule la variante critique est branchée
+> (plaque à retaper sur la coupure). Le reste de sa ligne B1 est intact : **compte à rebours
+> pendant les 90 s**, raison du refus hors du `title`, 3 sorties sur l'état non confirmé,
+> avertissement boîtier muet en 3 étapes numérotées. Coupure moteur (compte à rebours
 pendant les 90 s, la raison du refus sort du `title`), consentement RGPD, vérification
 d'appareil (6 cases séparées, collage depuis l'e-mail), QR véhicule, rejeu de trajet et de
 période, création/édition de véhicule (« le boîtier devient facultatif »), éditeur d'horaires
