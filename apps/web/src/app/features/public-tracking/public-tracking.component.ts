@@ -142,16 +142,21 @@ type Etat = 'chargement' | 'actif' | 'ferme';
       margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
       color: var(--text-secondary);
     }
-    .pt-statut--route { color: var(--depot-succes, var(--color-tracky-light)) }
-    .pt-statut--retard { color: var(--depot-alerte, var(--danger)) }
+    /* ⚠️ Les alias --depot-* sont definis SOUS .layout--depot, et cette page est
+       PUBLIQUE : elle vit hors du shell, donc sans cette classe. Les variables y
+       etaient vides et le repli gagnait — mesure a 3,43:1 et 3,02:1 en theme
+       clair, sur le seul ecran que voit le destinataire du lien. On emploie donc
+       les jetons GLOBAUX, qui existent partout. */
+    .pt-statut--route { color: var(--texte-succes) }
+    .pt-statut--retard { color: var(--texte-alerte) }
     .pt-arrivee {
       margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 800;
       letter-spacing: -.02em; line-height: 1.2; color: var(--text-primary);
     }
-    .pt-arrivee strong { color: var(--depot-succes, var(--color-tracky-light)) }
+    .pt-arrivee strong { color: var(--texte-succes) }
     .pt-arrivee--annule { font-size: 16px; font-weight: 700 }
     .pt-destination { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary) }
-    .pt-perime { margin: 4px 0 0; font-size: 12.5px; font-weight: 600; color: var(--depot-attente, var(--warning)) }
+    .pt-perime { margin: 4px 0 0; font-size: 12.5px; font-weight: 600; color: var(--texte-attente) }
     .pt-expire { margin: 6px 0 0; font-size: 11.5px; color: var(--text-secondary) }
 
     .pt-centre {
