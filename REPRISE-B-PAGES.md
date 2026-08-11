@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **27/57** |
+| **B-pages** | 🟡 **en cours** | **28/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -81,11 +81,23 @@ principal — bouton 112 px), `/driver/unlock`. Elles demandent un jeton pour ê
 
 **Bloc B (1).** `/driver` — usage 100 % téléphone.
 
-**Contenu propre de D et E.** `/privacy-coverage` seulement.
-*(`/fleet-admin/activity`, `/admin/ai-usage`, `/settings` et `/integrations` sont livrées.)*
+**Contenu propre de D et E.** ✅ **Terminé** — `/fleet-admin/activity`, `/admin/ai-usage`,
+`/settings`, `/integrations` et `/privacy-coverage` sont livrées et mesurées.
 
-**État de départ mesuré** (sonde, 375 px) : `/privacy-coverage` **0 cible**, aucune coupe,
-aucun débordement.
+> ### ⚠️ Le motif le plus répandu de cette base : le `catch` qui pose un tableau vide
+>
+> Trouvé **trois fois** dans la même séance, sur trois écrans sans rapport :
+>
+> | Écran | Ce qu'une panne affichait |
+> |---|---|
+> | `/fleet-admin/activity` | « Aucune action moteur sur cette flotte » |
+> | `/privacy-coverage` | « 0 véhicule » — donc « rien à corriger » |
+> | `/integrations` | un constat muet, sans aucun recours |
+>
+> À chaque fois, **le mensonge est rassurant** et tombe sur l'écran qui sert précisément à
+> vérifier que tout va bien. C'est le premier réflexe à avoir en reprenant une page : chercher
+> le `catch` et regarder ce qu'il pose. `app-zone` existe pour ça — `erreur`, `vide` et
+> `interdit` sont trois états, pas un.
 
 > 🔑 **Pour ouvrir `/integrations`, il faut un FLEET-ADMIN.** Toutes ses routes exigent le rôle
 > *et* la permission `integrations_manage` : un super-admin n'y voit que l'état d'erreur. Jeton
@@ -195,6 +207,16 @@ qu'on a pensé à y mettre — le balayage générique a sorti à lui seul 2 éc
 
 > ⚠️ **`pnpm verif:contraste` ne remplace pas cette mesure** : il vérifie les 46 couples
 > **déclarés**, pas les usages réels d'un jeton dans les gabarits (cf. O5).
+
+**⚠️ Le navigateur peut mentir sur une chaîne de `packages/shared`.** Constaté le 2026-08-11
+sur `/privacy-coverage` : l'état `interdit` affichait « **Gerer le mode vie privee** » sans
+accents, alors que `packages/shared/src/permissions/permissions.ts:670` porte bien « Gérer le
+mode vie privée » et que `pnpm verif:accents` est vert. Vérifié au code de caractère
+(`e` = 101, pas `é` = 233) : ce n'est pas un artefact de lecture. **La source est juste ; c'est
+le serveur de dev qui sert un chunk périmé du paquet partagé.** HMR recompile les fichiers de
+`apps/web` mais pas forcément la dépendance. Conséquence de méthode : pour tout ce qui vient
+de `packages/shared`, **la source fait foi, pas l'écran** — et il faut redémarrer `ng serve`
+avant de conclure à un défaut de libellé.
 
 **Une limite du PANNEAU, découverte le 2026-08-11.** Le panneau navigateur **n'émule pas
 `pointer: coarse`** : la règle `@media (max-width: 768px) and (pointer: coarse)` de `styles.css`

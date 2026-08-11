@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { CalendarClock, Eye, EyeOff, LoaderCircle, LucideAngularModule, X } from 'lucide-angular';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { WorkScheduleApiService } from '../../core/services/work-schedule.service';
+import { ETATS_VIE_PRIVEE, WorkScheduleApiService } from '../../core/services/work-schedule.service';
 
 interface DayRow { key: string; label: string; enabled: boolean; start: string; end: string }
 
@@ -18,8 +18,18 @@ const DAY_DEFS: { key: string; label: string; work: boolean }[] = [
   { key: 'sunday', label: 'Dimanche', work: false },
 ];
 
+/**
+ * ⚠️ Les deux raisons qui correspondent a un ETAT de `/privacy-coverage` sont lues depuis la
+ * source partagee `ETATS_VIE_PRIVEE`, pas recopiees ici. B1 § E exige que les deux ecrans
+ * emploient les MEMES MOTS ; deux chaines ecrites a deux endroits divergent a la premiere
+ * reformulation, et personne ne s'en apercoit — sur un ecran qui sert de preuve en cas de
+ * controle, c'est le genre de derive qui coute cher.
+ *
+ * Les quatre autres raisons sont propres a l'editeur (etats INSTANTANES du vehicule, pas des
+ * etats de couverture) : elles restent ici.
+ */
 const REASON_LABEL: Record<string, string> = {
-  NOT_MIXED_USE: 'suivi en permanence (véhicule professionnel)',
+  NOT_MIXED_USE: ETATS_VIE_PRIVEE.NON_COUVERT.long,
   MANUAL: 'Privé — mode manuel',
   WORK_OVERRIDE: 'Tracé — exception « je travaille »',
   OUT_OF_HOURS: 'Privé — hors temps de travail',
