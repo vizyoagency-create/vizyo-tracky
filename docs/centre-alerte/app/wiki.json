@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-08-04",
+  "updatedAt": "2026-08-11",
   "title": "Centre d'alerte — documentation & audits",
   "intro": "Tout ce qui a été observé, diagnostiqué et corrigé sur le centre d'alerte. Le référentiel garde la mémoire des erreurs au-delà de la purge de 30 jours ; les rapports gardent la trace de chaque passage.",
   "_comment": "Fichier LU PAR L'APPLICATION (GET /api/admin/alerts/wiki). Les documents sont découverts automatiquement sur le disque : ce manifeste ne fait qu'ajouter titres, ordre et descriptions. Un fichier absent d'ici apparaît quand même — il ne disparaît jamais faute de déclaration. En revanche `fiches` et `passages` sont tenus à la main par l'agent d'audit : l'état d'un défaut et ce qu'il faut en faire ne se devinent pas d'une liste de fichiers.",
@@ -43,33 +43,145 @@
   ],
   "fiches": [
     {
+      "id": "TRK-018",
+      "titre": "Le repli SMS du coupe-circuit : 112 commandes moteur, zero confirmee, et aucune preuve de remise nulle part",
+      "source": "coupe-circuit",
+      "statut": "NON_CORRIGE",
+      "gravite": 1,
+      "vuPremiere": "2026-08-11",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 112,
+      "occurrencesLibelle": "112 commandes moteur reparties en SMS depuis le 3 juin, aucune acquittee — et aucun des 310 messages sortants de la passerelle n'a jamais depasse l'etat en attente",
+      "quoi": "Quand le canal TCP est indisponible, une commande de coupure ou de redemarrage moteur repart par SMS. Ce repli est le DERNIER recours du coupe-circuit. Mesure des deux cotes de la passerelle : 112 commandes moteur sont parties par cette voie depuis le 3 juin, et AUCUNE n'a jamais ete acquittee ; elles restent au statut envoye, definitivement. Cote passerelle, les 112 messages correspondants sont encore en file d'attente — et sur les 310 messages sortants ecrits depuis l'origine, AUCUN n'a jamais depasse cet etat. Les seuls etats terminaux jamais enregistres sont 29 echecs, tous le meme jour de juin. Le fournisseur a bien recu les messages, un identifiant lui est attribue, mais aucun accuse de remise n'est jamais revenu. CE QUI EST DEMONTRE : aucune des deux couches ne porte de preuve de remise. CE QUI NE L'EST PAS : que les SMS n'arrivent pas. C'est une CECITE, pas une panne — et c'est exactement ce qui l'a laissee passer dix semaines, parce qu'un canal muet et un canal sain se ressemblent quand rien ne les mesure. Le cas le plus net est EY-613-MF : ce vehicule est coupe chaque soir et redemarre chaque matin par SMS, soit 14 immobilisations par semaine sans aucune confirmation, parce que son boitier n'emet qu'une trame par heure a l'arret et que le TCP est donc indisponible. Deux defauts aggravants. Le champ qui porte l'information de routage est le champ d'ERREUR : il contient envoye via SMS, TCP indisponible, ce qui n'est pas une erreur — un lecteur qui trie sur ce champ compte 112 echecs qui n'en sont pas. Et une commande moteur n'a AUCUNE fin de vie : 49 commandes sur 7 jours restent au statut envoye sans acquittement, 218 depuis avril, exactement comme les commandes de cadence avant TRK-007. Note de coherence : sur la fenetre de 7 jours, les deux comptages concordent — 24 cote Tracky, 24 cote passerelle — donc aucun SMS n'a ete perdu avant la passerelle, et le trou d'allowlist de TRK-017 n'a rien avale ici. Piege ecarte : le canal entrant de la passerelle est silencieux depuis le 13 juillet, mais c'est le jour ou s'est terminee la campagne de provisionnement dont les 230 entrants etaient les reponses. Une coincidence de dates n'est pas un mecanisme.",
+      "quoiFaire": "D'abord faire remonter l'accuse de remise du fournisseur : tant qu'un message reste en file d'attente a vie, aucune autre question n'est decidable. Si le fournisseur n'expose aucun retour, l'ecrire noir sur blanc et cesser de presenter la remise comme acquise. Ensuite donner une fin de vie aux commandes moteur : une echeance PUREMENT TEMPORELLE de 30 minutes, close dans un etat distinct de l'echec — nul ne sait et a echoue ne sont pas la meme information, c'est la lecon de TRK-013. Sortir aussi l'information de routage du champ d'erreur, avec un champ canal qui vaut TCP ou SMS. Enfin rendre l'etat lisible : un compteur des commandes moteur restees envoyees depuis plus de 24 heures, par vehicule — l'information existe en base et n'apparait sur aucun ecran. Verification : au moins un message porte un etat posterieur a la file d'attente, OU le journal montre des echecs de remise dates ; ET le nombre de commandes moteur en attente depuis plus de 24 h tend vers zero SANS que le nombre de coupures demandees ait baisse.",
+      "aNePasFaire": "Ne pas marquer ces commandes acquittees d'office a l'envoi. Cela ferait disparaitre les 112 lignes et supprimerait la seule trace de la question : le coupe-circuit est une garde de securite, et une garde qu'on croit armee sans preuve est plus dangereuse qu'une garde qu'on sait muette. Ne pas non plus conclure que le repli SMS est mort : rien ici ne le montre. Trois canaux se cumulent pour rendre le coupe-circuit invérifiable — le TCP sans accuse de reception, l'allowlist qui refusait sans trace, et l'absence d'accuse de remise — mais aucun des trois ne prouve qu'une coupure n'a pas eu lieu. Ce qui est etabli est qu'aucun d'eux ne peut prouver qu'elle a eu lieu.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-018"
+    },
+    {
+      "id": "TRK-017",
+      "titre": "Une seconde instance de Tracky, hors serveur, efface 25 numeros de l'allowlist SMS a chaque heure — avec la cle de production",
+      "source": "sms-allowlist",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-09",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 8,
+      "occurrencesLibelle": "garde posee le 10/08 a 19h15 : 5 tentatives d'effacement retenues en 6 h, dont 4 en pleine nuit — la cle d'API n'a PAS ete rotationnee",
+      "quoi": "La passerelle SMS n'accepte d'envoyer qu'aux numeros inscrits dans son allowlist, et ce mode est ACTIF pour Tracky. Un refus ne laisse AUCUNE trace : il est leve avant la creation de la ligne de message cote passerelle, donc il n'apparait ni dans le journal des envois, ni au centre d'alerte. Ce qui est en jeu n'est pas un canal secondaire : c'est le repli du coupe-circuit moteur, celui qu'on utilise precisement quand le boitier ne repond pas en TCP — et la fiche TRK-014 a etabli qu'aucun boitier n'a JAMAIS accuse reception d'une commande. Sur ces 24 boitiers, les deux voies sont donc muettes en meme temps. REQUALIFIE LE 10/08 AU SECOND PASSAGE. La fiche decrivait d'abord un trou historique de treize jours rattrape une fois. Le test date l'a renverse : la reconciliation horaire tourne parfaitement, elle a tourne six fois de plus le 10/08 en rapportant chaque fois exactement 25 numeros retablis et zero supprime. Ce ne sont pas les numeros qui manquaient depuis treize jours, ce sont les entrees qui sont EFFACEES EN BLOC puis recreees a la reconciliation suivante. La suppression est mesuree et non deduite : la base de la passerelle montre 25 lignes mortes pour un dernier nettoyage automatique date de 13h25, soit exactement le lot cree a 13h25 et efface avant celui de 14h25. Elle ne touche jamais les 17 entrees ajoutees a la main. QUI EFFACE : inconnu, et c'est la le vrai defaut. Six pistes ont ete fermees — la synchro de Tracky qui n'a jamais rapporte la moindre suppression, la route d'administration dont aucune suppression n'apparait au journal des mutations, une seconde instance de Tracky qui n'existe pas, l'outil vizyo-manager qui ne contient aucun code client, un menage programme cote passerelle qui n'existe pas, et un tenant concurrent alors qu'il n'y en a qu'un. Il ne reste aucun instrument capable de nommer l'appelant : le reverse proxy tourne sans journal d'acces, la passerelle n'a pas de table de requetes, les journaux du relais ne repondent pas sur cet hote, et le point d'entree est expose publiquement donc l'appelant peut etre hors du serveur.",
+      "quoiFaire": "LA SEULE CHOSE A FAIRE EST HUMAINE : revoquer et rotationner la cle d'API de la passerelle SMS, puis donner a l'environnement de developpement son propre tenant ou aucune cle. Elle n'a PAS ete faite au 11/08. Les correctifs techniques, eux, sont deployes depuis le 10/08 et verifies : cote passerelle un journal des appels (une ligne par appel, meme a diff vide), une garde anti-suppression de masse et la conservation de l'adresse source reelle ; cote Tracky une trace d'execution inconditionnelle et une alerte par EPISODE. MESURE DU 11/08 : la garde tient six passages d'affilee, les 25 entrees n'ont pas bouge depuis le 10/08 a 14h25, et la reconciliation trace son execution chaque heure meme a zero. Mais l'appelant n'a pas cesse — 5 tentatives d'effacement de masse retenues en six heures, toutes depuis la meme adresse hors serveur, avec le meme prefixe de cle. NOUVEAU FAIT QUI RENVERSE UNE HYPOTHESE : il a frappe a 21h25, 22h25, 23h25 et 00h25 UTC, donc la machine tourne LA NUIT. L'hypothese d'un poste de developpement actif aux heures ouvrees, posee la veille comme unique discriminant, est ecartee. DEFAUT RESIDUEL A CORRIGER : ces cinq blocages ne sont visibles NULLE PART depuis Tracky — ils n'existent que dans le journal de la passerelle, qu'aucun ecran ne lit. La remontee livree le 10/08 ne se declenche que sur la reponse a l'appel de Tracky, et Tracky n'est jamais bloque puisqu'il est la victime. Faire porter a la reponse de synchronisation le nombre de blocages survenus depuis le dernier appel, et en faire une ligne d'alerte.",
+      "aNePasFaire": "Ne pas desactiver le mode allowlist. Cela ferait disparaitre les refus en une ligne et ouvrirait l'envoi de SMS a n'importe quel numero sur une passerelle facturee a l'envoi : c'est une garde de depense et d'abus, elle fait son travail. Ce qui manque est la synchro, pas la serrure. Ne pas retirer la garde anti-suppression au motif que le calme est revenu : c'est elle qui produit le calme. Ne pas conclure d'une absence de ligne que le trou dure : c'est l'erreur exacte du premier passage. Et surtout, NE PLUS COMPTER LES LIGNES d'alerte comme mesure — cet instrument s'est perime le 10/08 au soir : un zero a desormais deux explications qui se superposent, la garde qui empeche le trou et l'alerte passee par episode. Un zero a deux causes n'est pas une mesure. Lire le journal des appels de la passerelle, et rien d'autre.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-017"
+    },
+    {
+      "id": "TRK-016",
+      "titre": "Le recalage cartographique echoue sur 9 trajets sur 10, depuis avril",
+      "source": "trajets",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-09",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 10285,
+      "occurrencesLibelle": "90,4 pour cent des trajets du 10/08 sans polyligne recalee (141 sur 156) — huitieme jour consecutif au-dessus de 89 pour cent",
+      "quoi": "La trace d'un trajet est censee etre recalee sur le reseau routier avant affichage. Quand ce recalage echoue, l'interface montre la trace GPS brute, avec son bruit, ses angles droits et ses allers-retours de stationnement. Mesure en base : 149 trajets sur 166 le 08/08, soit 89,8 pour cent, et 10055 sur 12462 depuis la mise en service en avril. Trois defauts se composent. Un, le trajet est decoupe en troncons de 100 points et le premier troncon en echec annule TOUT le trajet. Deux, le resultat n'est jamais reessaye : un echec passager devient definitif. Trois, le fournisseur est l'instance de demonstration publique et gratuite du service de routage, valeur par defaut du code, aucune instance dediee n'etant configuree — le commentaire du fichier l'assume comme un provisoire, et ce provisoire tient depuis quatre mois. Sur la fenetre de journaux mesuree de 7,9 heures : 79 reponses HTTP 400 pour 79 replis en trace brute, soit un pour un, ce qui confirme que c'est le premier troncon qui echoue.",
+      "quoiFaire": "D'abord journaliser le code d'erreur contenu dans le corps de la reponse, et pas seulement le statut HTTP : aujourd'hui le code jette l'information qui permettrait de conclure. Une ligne, et le compteur muet devient un diagnostic. C'est le prealable a tout le reste. Ensuite, ne plus annuler tout le trajet pour un troncon : conserver les troncons recales et ne retomber en brut que sur celui qui echoue. Enfin, trancher le provisoire : soit heberger une instance dediee (la variable d'environnement est deja prevue, il suffit de la poser), soit retirer la promesse de l'interface. Verifie en direct avec les parametres exacts du code, sur des coordonnees synthetiques : une trace de 4 points passe, une trace de 2 points est refusee, et elargir le rayon de recherche a 50 metres est refuse par le serveur lui-meme avec le message rayon trop grand. Le correctif qui vient spontanement a l'esprit est donc ferme d'avance. Ce n'est pas non plus une limitation de debit : le serveur repond 429 dans ce cas, pas 400. Verification : la part de trajets sans polyligne recalee doit passer sous 20 pour cent sur une journee pleine, ET les echecs restants doivent porter un code lisible dans les journaux.",
+      "aNePasFaire": "Ne pas cacher le repli. La trace brute est un repli honnete : elle affiche une verite bruitee plutot qu'une jolie ligne inventee. Le defaut n'est pas le repli, c'est qu'il soit devenu le cas normal sans que rien ne le dise. Et ne pas conclure sur la cause exacte du refus : lequel des codes domine en production n'est pas etabli, et le savoir suppose de journaliser le corps de la reponse. A NOTER au 11/08 : c'est la seule des cinq fiches ouvertes dont le correctif ne depend d'AUCUNE autre — ni d'un test SMS, ni d'une rotation de cle, ni d'un accuse de remise. Une ligne de journalisation la ferait avancer aujourd'hui.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-016"
+    },
+    {
+      "id": "TRK-015",
+      "titre": "Des positions reelles sont effacees par le garde-fou anti-teleportation",
+      "source": "ingestion",
+      "statut": "NON_CORRIGE",
+      "gravite": 1,
+      "vuPremiere": "2026-08-08",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 616,
+      "occurrencesLibelle": "1855 trames ecartees sur 24 h (1,27 pour cent du flux), dont 616 sans jumelle en base — aucune rafale ce jour",
+      "quoi": "MESURE DU 11/08 : 1855 trames ecartees sur 24 heures, dont 616 sans aucune position a moins de soixante secondes — ce sont des trous. Repartition : 334 doublons exacts (1 trou), 94 retours de moins d'une minute (46 trous), 1412 retours de 1 a 60 minutes (569 trous), et 15 retours de plus d'une heure avec ZERO trou. Boitiers les plus touches : EP-047-TY avec 616 rejets, FG-669-DQ avec 385, KSR370 avec 239. AUCUNE RAFALE ce jour, contre 1646 trames le 08/08 et 60 le 09/08 : les deux episodes documentes n'ont pas de troisieme. ATTENTION A NE PAS SUR-INTERPRETER : le taux de trous passe de 84,4 a 33,2 pour cent, mais deux points ne font pas une tendance et une explication mecanique existe sans qu'aucun defaut n'ait change — le taux global est domine par les classes de rafale, absentes aujourd'hui. Le fait mesure est 616 positions reelles ecartees en 24 heures ; l'histoire la perte diminue n'est pas mesuree. La classe des retours de moins d'une minute prend un quatrieme point et un quatrieme profil (48,9 pour cent de trous, apres 37,7 puis 14,6 puis 18,4) : elle n'a PAS un mecanisme unique et la fondre dans cette fiche serait faux. MESURE DU 09/08 : la perte n'est pas seulement diffuse, elle est aussi EN RAFALE. Une classe de rejet absente des trois jours precedents est apparue le 08/08, le retour arriere de plus de soixante minutes : 1646 trames, dont 1643 sur un SEUL boitier, HD-779-MA. Leurs horodatages s'etalent en continu du 07/08 22h58 au 08/08 05h16. La base confirme le trou : derniere position a 22h59 a 87 km/h, plus AUCUNE position pendant 6 h 17, premiere position suivante a 05h16 a 127 km/h, a 15,7 kilometres de la. Le boitier a tamponne ses positions pendant une coupure reseau, les a rejouees a la reconnexion, et la totalite a ete ecartee. Un correctif devra donc encaisser 1600 trames d'un coup. A noter : HD-779-MA est le boitier meme dont l'incident de teleportation de juin a motive l'ecriture du garde-fou — le materiel qui justifie la garde est celui qui lui coute le plus cher. Reserve d'honnetete : les coordonnees des trames rejetees ne sont pas conservees, donc leur coherence geographique n'est pas prouvee ; ce qui est prouve c'est le trou, la continuite temporelle des trames qui le comblent exactement, et le fait que le vehicule roulait en y entrant comme en en sortant. DESCRIPTION DE FOND : un garde-fou refuse toute trame dont l'horodatage boitier n'est pas strictement posterieur au dernier connu. Il a ete ecrit pour empecher la teleportation en carte et les distances negatives, et sur ce point il fonctionne. Le probleme est qu'il ne sait pas distinguer deux choses opposees qui arrivent de la meme facon. Un boitier Coban qui met ses positions en tampon pendant une coupure 2G les rejoue apres la trame temps reel : elles sont donc plus anciennes, et elles sont ecartees exactement comme un rejeu fantome. La donnee tranche : sur 4 jours, 3837 trames ecartees ont bien leur jumelle deja en base, mais 3466 n'ont aucune position a moins de soixante secondes. Ce sont des trous. Ceux de la classe qui compte sont en moyenne a 3688 metres de la derniere position connue, jusqu'a 47 kilometres, et la moitie arrivent avec une vitesse rapportee, donc vehicule en mouvement. Sur EP-047-TY c'est 22 pour cent de ses trames, avec un trou moyen de 3 kilometres. Rien ne le signale nulle part : ce n'est pas une erreur, c'est une decision, donc aucune ligne au centre d'alerte et aucun compteur a l'ecran.",
+      "quoiFaire": "Le test qui manque tient en une requete. Avant d'ecarter une trame trop ancienne, verifier s'il existe deja une position pour ce boitier a cet horodatage exact. Si oui, c'est un fantome et on l'ecarte comme aujourd'hui. Si non, ecrire la ligne de position en trame NON autoritaire : on recupere l'historique, mais sans toucher a la derniere position memorisee du boitier, ni a l'ignition, ni a la diffusion temps reel. C'est cette derniere position memorisee, et elle seule, que l'incident de juin avait empoisonnee. Ajouter ensuite un compteur par boitier des trames ecartees sans jumelle en base : un boitier a 22 pour cent de rejet est aussi un signal de couverture reseau. Verification : le nombre de rejets sans aucune position a soixante secondes doit tomber vers zero PENDANT QUE le nombre de rejets ayant leur jumelle reste autour de 2000 par quatre jours. Second test, sur la consequence metier : la distance parcourue par EP-047-TY et FG-669-DQ sur une semaine doit augmenter.",
+      "aNePasFaire": "Ne pas accepter les trames anterieures comme faisant autorite. Cela rouvrirait exactement l'incident que ce garde-fou ferme : position memorisee empoisonnee, donc teleportation en direct, distances negatives dans les rapports et traces triangulaires en rejeu. Le meme controle existe a trois autres etages, les relacher ensemble ferait revenir le bug de double trace. Le correctif porte sur ce qu'on conserve, pas sur ce qui fait autorite : ce sont deux decisions distinctes que le code prend aujourd'hui en une seule. Et si les deux compteurs tombent a zero, le garde-fou a ete supprime, pas repare.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-015"
+    },
+    {
+      "id": "TRK-014",
+      "titre": "Aucun boitier n'a jamais accuse reception d'une commande",
+      "source": "commandes",
+      "statut": "NON_CORRIGE",
+      "gravite": 3,
+      "vuPremiere": "2026-08-07",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 4087,
+      "occurrencesLibelle": "TEST TRANCHE le 11/08 : 14 commandes emises apres l'armement, 14 silences traces, zero reponse — le mutisme du boitier est desormais PROUVE",
+      "quoi": "VERDICT DU TEST DATE, 11/08. Sur la fenetre allant de l'armement de l'ecoute a la collecte, cinq heures : 14 commandes emises, 0 accuse de reception, 14 silences traces. Le premier chiffre est celui qu'il fallait lire d'abord — des commandes SONT parties, donc le piege du compteur a zero faute d'emission est ecarte. Les quatorze portent le meme indice de diagnostic : aucune reponse du boitier en 15 secondes. Le boitier NE REPOND JAMAIS, et ce n'est plus une supposition mais une mesure. Consequence pour TRK-012 : l'hypothese du firmware qui accepte sans appliquer n'est PAS confirmee ; restent la commande qui n'arrive pas et la commande rejetee en silence pour cause de mot de passe, et le test SMS sur un boitier redevient le seul discriminant. LA GARDE LA PLUS FRAGILE A TENU : les 14 commandes sont en echec, mais AUCUNE par le chemin de l'accuse de reception — 13 par la reconciliation et 1 par l'echeance temporelle. L'accuse informe, l'echeance decide. C'etait le point ou la recidive etait la plus probable, et il est verifie sur des donnees reelles et pas seulement par le test unitaire qui le verrouille. Mesure du 09/08 : 3943 commandes, soit 72 de plus que la veille, et toujours zero accuse de reception. Trois passages, trois fois le meme zero sur un denominateur qui grossit d'environ 72 par jour. Deux faits independants. D'abord, le pilotage automatique de cadence envoie la commande puis passe a la suite : il n'arme jamais l'attente d'accuse de reception, alors que le chemin generique le fait et que le catalogue definit bien le motif de reponse attendu. Resultat, la colonne d'accuse de reception est vide sur les 3797 commandes emises depuis le 27 avril, quel que soit le type de commande. Ensuite, meme en ecoutant il n'y aurait rien a entendre : sur 4 jours de journal de trames, 275 commandes de cadence envoyees a 35 boitiers, et pas une seule trame entrante contenant ok, fix, error ou password. Attention, le compteur de trames dites ack affiche 281 : ce sont des rapports de minuterie quotidiens attrapes par un motif generique, pas des reponses a des commandes.",
+      "quoiFaire": "Le correctif numero 1 est deploye depuis le 10/08 a 20h03 et VERIFIE le 11/08 : le pilotage automatique inscrit un guetteur d'accuse de reception apres chaque envoi, et il trace le silence. Deux correctifs restent ouverts, d'ou le statut a traiter. Le numero 2 : distinguer sans reponse de en echec — une commande a laquelle le boitier n'a rien repondu n'est pas dans le meme etat qu'une commande explicitement rejetee, et aujourd'hui les deux s'ecrivent en echec, meme famille de defaut que TRK-013. Le numero 3, faible priorite : aligner le catalogue sur ce que l'automate emet reellement. Et la suite operationnelle est ailleurs : puisque le silence est prouve, le seul geste qui fasse encore avancer TRK-012 est le test SMS sur UN boitier — en verifiant d'abord que son numero est dans l'allowlist (TRK-017), sans quoi un refus de la passerelle passerait pour un boitier muet, et en sachant qu'un SMS reste en file d'attente n'est pas une preuve d'envoi (TRK-018).",
+      "aNePasFaire": "Ne pas reconditionner la cloture des commandes a cet accuse de reception. C'est la lecon de TRK-007 : un boitier muet laisserait de nouveau des commandes ouvertes a vie. L'echeance reste purement temporelle ; l'accuse de reception ajoute une information quand elle existe, il ne decide de rien. Et ne pas croire que la valeur d'intervalle est la cause : 020s n'est effectivement pas dans la liste du catalogue, mais 005m y est, il est valide, et il echoue 435 fois sur 7 jours.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-014"
+    },
+    {
+      "id": "TRK-013",
+      "titre": "Commandes closes en echec alors que la cadence demandee est atteinte",
+      "source": "commandes",
+      "statut": "NON_CORRIGE",
+      "gravite": 3,
+      "vuPremiere": "2026-08-06",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 11,
+      "occurrencesLibelle": "11 clotures defectueuses sur 33 (5 fausses, 6 cibles mal citees) — troisieme passage ou le numerateur ne bouge pas et ou seul le denominateur grandit",
+      "quoi": "MESURE DU 11/08 : 33 clotures par echeance contre 31 la veille. Les deux nouvelles sont JUSTES (110 s pour 20 s demandes sur EY-613-MF, 3602 s pour 300 s sur FZ-731-YF). Le decompte defectueux est INCHANGE a 5 fausses et 6 cibles mal citees, soit 11 sur 33 — le taux tombe de 35,5 a 33,3 pour cent sans que rien ne s'ameliore. C'est le troisieme passage consecutif ou seul le denominateur grandit : un ratio qui decroit par dilution raconte le contraire de ce qui se passe, et c'est pourquoi cette fiche compte les deux defauts en valeur absolue. Les parametres de la commande ne sont toujours pas charges dans la requete du balayage : les deux clotures justes le sont par construction, parce que la cible courante coincidait. Le defaut de code est intact. Mesure du 09/08 : 28 clotures, 5 fausses et 6 mal citees, soit 11 defectueuses sur 28 — le taux ne baisse pas (39 pour cent contre 37,5 la veille), seul le denominateur grandit avec l'efficacite du balayage. Les deux nouveaux cas sont sur FS-253-HR le 08/08 a cinq minutes d'intervalle, exactement la meme paire que le 07/08 sur le meme vehicule : ce n'est pas un hasard, deux commandes emises a quelques minutes d'ecart sont closes par le meme balayage et la seconde herite d'une cible reecrite entre-temps. C'est le scenario que le correctif doit couvrir en priorite, et charger params suffit a traiter les deux cas d'un coup. Le balayage qui solde les commandes de cadence les clot TOUTES en echec, sans jamais comparer. Certaines annoncent « sans effet constate : cadence reelle 20 s pour une cible de 20 s » — l'intervalle demande est exactement celui observe, et la ligne est archivee comme un echec. Second defaut dans la meme requete : la cible citee dans le message est celle du boitier au moment du balayage, pas celle que la commande avait demandee. Ces lignes gonflent le compteur d'echecs qui sert justement a juger TRK-012. Mesure du 08/08 : 24 clotures, 4 fausses et 5 mal citees, un cas de plus dans chaque colonne, les deux sur FS-253-HR le 07/08 a cinq minutes d'intervalle. Precision de critere : la nouvelle fausse cloture affiche 21 s pour une cible de 20 s, elle n'est fausse qu'au sens de la bande de tolerance de plus ou moins 20 pour cent — celle-la meme dont le module se sert pour juger. Comptee a l'egalite stricte, elle passerait pour juste alors que le boitier honore sa consigne.",
+      "quoiFaire": "Charger params dans la requete du balayage, comparer, puis conclure. Si la cadence reelle tombe dans la bande de tolerance de l'intervalle DEMANDE PAR LA COMMANDE, clore en succes avec « cible atteinte, sans accuse de reception ». Sinon garder l'echec, mais citer l'intervalle demande par la commande et jamais la cible courante du boitier. Verification : plus aucune cloture n'annonce une cadence reelle egale a l'intervalle demande tout en portant FAILED, ET les vraies non-conformites (3600 s pour une cible de 300 s) sortent toujours en echec.",
+      "aNePasFaire": "Ne pas allonger l'echeance a la place. Le delai n'est pas le sujet : l'echeance doit rester purement temporelle, c'est la lecon de TRK-007 — la conditionner a un etat du boitier laisserait de nouveau des commandes ouvertes a vie. Ce qui manque est la comparaison, pas la patience.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-013"
+    },
+    {
+      "id": "TRK-012",
+      "titre": "Cadence d'arrêt de 300 s jamais appliquée — et redemandée deux fois par jour",
+      "source": "commandes",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-05",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 447,
+      "occurrencesLibelle": "447 echecs sur 496 en 7 jours, 36 boitiers, zero acquittee — ratio 2,00 commande par boitier DIX jours de suite",
+      "quoi": "MESURE DU 11/08 : 447 echecs sur 496, soit 90,1 pour cent, sur 36 boitiers, toujours zero acquittee. La fenetre de nuit strictement comparable donne 13 echecs, neuvieme point, plat. Et le ratio commandes par boitier atteint DIX jours consecutifs a exactement 2,00, sans un centieme d'ecart : le plafond anti-flapping est sature tous les jours. LE CORRECTIF EST SUSPENDU, et c'est une decision, pas un oubli. Le test date de TRK-014 est tombe le 11/08 : 14 commandes emises apres l'armement de l'ecoute, 14 silences traces, zero reponse. Ce resultat ECARTE l'hypothese du firmware qui accepte sans appliquer, et laisse en lice la commande qui n'arrive pas et la commande rejetee en silence. Or le correctif principal de cette fiche — cesser de reemettre apres N echecs — suppose que le boitier recoive et refuse d'appliquer. L'ecrire maintenant serait exactement l'erreur que cette fiche interdit depuis le 5 aout, celle qui a coute le faux diagnostic de TRK-008. Quand un véhicule est garé, on demande au boîtier d'espacer ses trames à 300 s pour économiser batterie et forfait 2G. Le Coban ne l'applique jamais : il reste à 19-30 s. Le système le compte en échec, puis renvoie la même consigne au prochain ajustement d'état, jusqu'au plafond de 2 commandes par jour et par boîtier. 452 tentatives en 7 jours sur 36 boîtiers, pas une seule honorée. C'est 90 pour cent de tous les échecs de commandes, et ce n'est PAS la cause décrite par TRK-008. Mesure du 06/08 : le volume est plat sur quatre nuits comparables (14, 14, 14, 15 sur la fenêtre 21h30-01h10). Le motif MOVING_TO_STOPPED demande la même consigne au même matériel : il rejoint cette fiche. Mesure du 07/08 : cinquième point sur la fenêtre comparable (14, 14, 14, 15, 13) — toujours plat. Le compteur de boîtiers en échec repasse de 1 à 0, ce qui confirme qu'il ne fallait rien conclure de la mesure unique de la veille. Mesure du 08/08 : sixième point sur la même fenêtre (14, 14, 14, 15, 13, 13), toujours plat. Le total quotidien remonte à 74 le 07/08 sur 37 boîtiers — le rapport de 2 échecs par boîtier est constant, c'est le plafond anti-flapping, et l'écart quotidien suit le nombre de boîtiers actifs, pas une tendance. Mesure du 09/08 : septième point sur la même fenêtre (14, 14, 14, 15, 13, 13, 13), toujours plat. Et l'invariant est désormais mesuré sur huit jours pleins : le ratio commandes par boîtier vaut exactement 2,00 chaque jour (72/36, 72/36, 74/37, 70/35, 68/34, 68/34, 74/37, 72/36). Conséquence pratique : le chiffre à surveiller après correctif n'est pas le total quotidien mais ce ratio, qui doit décrocher de 2,00.",
+      "quoiFaire": "LE PROCHAIN GESTE EST UN TEST SMS SUR UN SEUL BOITIER, pas une ligne de code. L'ecoute de l'accuse de reception a ete armee le 10/08 et a rendu son verdict le 11/08 : le boitier ne repond jamais, c'est prouve, et il ne reste que deux causes possibles — la commande n'arrive pas, ou elle est rejetee en silence parce que le mot de passe du boitier n'est pas celui par defaut. Un SMS de test les separe. Deux precautions avant de l'envoyer : verifier que le numero de ce boitier est bien dans l'allowlist de la passerelle (TRK-017), sans quoi un refus de la passerelle passerait pour un boitier muet ; et savoir qu'un message reste en file d'attente cote passerelle n'est pas une preuve d'envoi (TRK-018). Corriger aussi TRK-013, dont les fausses clotures gonflent le compteur qui sert a mesurer cette fiche. ENSUITE SEULEMENT, si le boitier recoit : cesser de reemettre une consigne jamais honoree, apres 5 echecs consecutifs sur le meme intervalle, en posant un etat explicite affiche dans une section dediee. Verification : les echecs par jour doivent tomber sous 15 et le ratio commandes par boitier decrocher de 2,00, SANS que la cible de 300 s soit abandonnee.",
+      "aNePasFaire": "Ne pas étendre à l'arrêt l'exemption « émettre plus vite que demandé ». Cela ferait disparaître les 454 lignes en une ligne de code et annulerait silencieusement l'économie de batterie et de données que la cible de 300 s existe pour obtenir. Trois tests du module verrouillent ce comportement, à raison.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-012"
+    },
+    {
       "id": "TRK-011",
       "titre": "Zone confirmée bénigne — le GPS perdu ne dit plus rien, sans limite de durée",
       "source": "gps-integrity",
       "statut": "CORRIGE",
       "gravite": 101,
       "vuPremiere": "2026-08-04",
-      "vuDerniere": "2026-08-04",
-      "occurrences": 2,
-      "occurrencesLibelle": "2 véhicules définitivement muets à cet endroit",
+      "vuDerniere": "2026-08-10",
+      "occurrences": 5,
+      "occurrencesLibelle": "5 alertes — et le test daté du 08/08 est passé, sur un épisode neuf",
       "quoi": "Une zone confirmée bénigne éteignait l'alerte GPS sans aucune borne de durée : la confirmation porte sur un LIEU, jamais sur une DURÉE. Une antenne morte sur un véhicule garé dans son parking habituel était indistinguable d'un stationnement normal.",
-      "quoiFaire": "Corrigé : plafond de silence de 24 h (GPS_DEADZONE_MAX_SILENCE_H), au-delà duquel on alerte malgré la zone, avec un message qui explique pourquoi il parle. À surveiller : une perte dépassant le plafond doit produire une ligne — ET un stationnement de nuit ordinaire ne doit toujours en produire aucune. Le second point est le vrai test.",
+      "quoiFaire": "VÉRIFICATION DU 09/08 : le test daté posé la veille est passé. L'épisode ouvert sur FZ-862-VY le 07/08 à 09:07 devait franchir le plafond de 24 h vers le 08/08 09:07 et produire une alerte malgré sa zone confirmée bénigne, faute de quoi ce serait une régression. L'alerte est arrivée à 09:10:15, au premier tick de détection suivant l'échéance. C'est la première vérification du plafond sur un épisode NEUF, et non sur les deux véhicules suivis depuis cinq jours : le mécanisme tient sur un cas indépendant. Corrigé ET vérifié en production le 05/08 : le plafond de 24 h a produit ses deux premières alertes, sur FZ-862-VY (26 h) et FS-253-HR (24 h) — deux véhicules qui n'étaient détectables par rien d'autre. Et l'autre moitié du test passe aussi : une perte ordinaire de 2 h (FW-298-WV) continue d'alerter normalement. RECTIFICATION du 06/08, à savoir avant d'enquêter : la déduplication est par 24 HEURES, pas par épisode comme l'annonçait cette fiche. Un épisode qui dure produit donc une ligne PAR JOUR — les 2 lignes des dernières 24 h sont les rappels des 2 premières, pas des doublons ni des épisodes neufs. Reste un détail rédactionnel : le message écrit « 1 épisodes » et « pas au-delà de 1 j ».",
       "aNePasFaire": "Ne pas retirer la suppression : c'est le coeur des zones mortes (ne plus re-signaler un parking habituel). Corriger la borne, pas la garde.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-011"
     },
     {
       "id": "TRK-008",
-      "titre": "Boucle fix_continuous — 72 échecs par jour, invisibles",
+      "titre": "Cible de cadence sous le minimum matériel — corrigé, mais le diagnostic était trop large",
       "source": "commandes",
       "statut": "CORRIGE",
       "gravite": 102,
       "vuPremiere": "2026-08-03",
-      "vuDerniere": "2026-08-04",
-      "occurrences": 507,
-      "occurrencesLibelle": "507 échecs sur 7 jours · 14 boîtiers sous le minimum matériel",
-      "quoi": "L'auto-alignement écrivait la cadence observée brute dans la cible, jusqu'à 1 s — sous le minimum matériel du Coban (20 s). Le boîtier ne pouvait alors plus jamais converger : 72 commandes par jour, 100 % en échec, pendant des mois, sans qu'aucun écran ne le montre.",
-      "quoiFaire": "Corrigé : la cible est clampée à la lecture (les valeurs héritées sont neutralisées sans migration), émettre plus vite que demandé EN MOUVEMENT n'est plus une faute, le plancher d'auto-alignement est remonté au minimum matériel, et un balayage ramène les cibles stockées dans la plage. À surveiller : le nombre d'échecs de commandes par jour doit s'effondrer, et cadenceSousMinimum tomber à 0.",
+      "vuDerniere": "2026-08-07",
+      "occurrences": 50,
+      "occurrencesLibelle": "close · réserve levée le 07/08 · 90 pour cent du volume venait d'ailleurs",
+      "quoi": "L'auto-alignement écrivait la cadence observée brute dans la cible, jusqu'à 1 s — sous le minimum matériel du Coban (20 s). Le boîtier ne pouvait alors plus jamais converger. Cette cause est réelle et elle est corrigée. En revanche la fiche lui attribuait AUSSI les 295 échecs à 20 s observés : vérification faite sur les paramètres des commandes, 281 d'entre eux demandaient 300 s, pas une cible sous-minimum. Voir TRK-012.",
+      "quoiFaire": "Rien. Fiche close, et la dernière réserve est levée le 07/08. Elle disait que le chemin d'écriture restait non borné avec un plancher à 1 s : c'est faux, le plancher est au minimum matériel (20 s) depuis la livraison du 04/08, et la cible auto-alignée n'est écrite que si l'observé tombe entre 20 et 300 s. La garantie est donc dans le code, pas seulement dans le comportement. Ce qui avait induit cette fausse réserve est toujours en place : un commentaire périmé, six lignes au-dessus de la constante, qui annonce encore le comportement d'avant le correctif. Le volume d'échecs restant appartient à TRK-012. Deux leçons : une cause racine se vérifie sur la donnée de la commande, et un commentaire périmé fabrique un faux constat aussi sûrement qu'un bug.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-008"
     },
@@ -80,11 +192,11 @@
       "statut": "CORRIGE",
       "gravite": 103,
       "vuPremiere": "2026-08-03",
-      "vuDerniere": "2026-08-04",
+      "vuDerniere": "2026-08-07",
       "occurrences": 3,
-      "occurrencesLibelle": "3 commandes · 2 boîtiers · la plus vieille a 13 h 40",
-      "quoi": "Aucun chemin automatique ne soldait une commande de cadence : le Coban n'acquitte pas, et la seule fermeture automatique dépendait d'une transition FAILING que la garde « véhicule garé » empêche à jamais sur un boîtier immobile. La plus ancienne traînait depuis 13 h 40.",
-      "quoiFaire": "Corrigé : échéance purement temporelle (30 min, FIX_COMMAND_EXPIRY_MIN). La conditionner à un état du boîtier l'aurait fait retomber dans le même piège. À surveiller : aucune commande ne doit dépasser l'échéance, et observedResult doit porter la cadence réellement constatée.",
+      "occurrencesLibelle": "0 commande en attente, 3e jour — mais le balayage produit TRK-013",
+      "quoi": "Aucun chemin automatique ne soldait une commande de cadence : le Coban n'acquitte pas, et la seule fermeture automatique dépendait d'une transition FAILING que la garde « véhicule garé » empêche à jamais sur un boîtier immobile. La plus ancienne traînait depuis 13 h 40. RECTIFICATION du 07/08 : cette fiche affirmait qu'aucun motif de réponse n'était défini pour la commande de cadence. C'est faux, le catalogue en définit un. Ce qui manque n'est pas le motif mais l'appel — voir TRK-014.",
+      "quoiFaire": "Corrigé ET vérifié : 0 commande en attente les 05, 06 et 07/08, avec 6 puis 8 puis 19 clôtures observées au total. ATTENTION : ce correctif a créé TRK-013 — le balayage clôt TOUT en échec sans jamais comparer, y compris des commandes dont la cadence demandée est atteinte. Corriger cela sans toucher à l'échéance elle-même, qui doit rester purement temporelle. Et si l'écoute de l'accusé de réception est armée (TRK-014), ne surtout pas y reconditionner la clôture : c'est exactement le piège que l'échéance temporelle a été écrite pour éviter.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-007"
     },
@@ -95,10 +207,11 @@
       "statut": "CORRIGE",
       "gravite": 104,
       "vuPremiere": "2026-07-29",
-      "vuDerniere": "2026-08-04",
-      "occurrences": 2,
+      "vuDerniere": "2026-08-10",
+      "occurrences": 3,
+      "occurrencesLibelle": "3 lignes au total, la derniere le 10/08 a 09h58 sur la carte depuis un iPhone — soit AVANT le correctif du meme soir",
       "quoi": "Le rafraîchissement proactif est un minuteur gelé quand l'appareil dort, puis tiré AU RÉVEIL — avant que la connectivité soit rétablie. La garde navigator.onLine ne filtrait rien : elle dit « une interface est active », pas « Internet est joignable ».",
-      "quoiFaire": "Corrigé : garde de visibilité (celle que le service temps réel applique déjà) plus un réessai silencieux à 3 s. À surveiller : une panne réellement vécue, page au premier plan, doit toujours remonter — un correctif qui supprimerait les deux cas rendrait le module inutile.",
+      "quoiFaire": "CORRECTIF DEPLOYE ET EN LIGNE depuis le 10/08 a 19h39 — la fiche l'annoncait encore comme ecrit mais non deploye, c'etait perime le soir meme, verifie sur la branche de production et non sur la note du passage precedent. Un echec de transport isole ne remonte plus : il en faut deux consecutifs, et le compteur retombe a zero des qu'une requete aboutit. Vise le hoquet mobile en tunnel ou lors d'une bascule wifi vers 4G, que l'indicateur de connexion du navigateur ne voit pas. Une panne reelle enchaine des dizaines d'echecs en une fraction de seconde, elle reste donc signalee en quelques secondes. TEST DATE AU 18/08 : zero ligne de cette signature sur sept jours ALORS QU'UNE VRAIE COUPURE, un redeploiement par exemple, continue d'en produire. Le second point est le vrai test — si aucune ligne n'apparait jamais, y compris pendant un redeploiement, le correctif a supprime le signal et pas le bruit, et le module est devenu inutile.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-002"
     },
@@ -177,13 +290,13 @@
       "titre": "GPS perdu — boîtier vivant mais sans position",
       "source": "gps-integrity",
       "statut": "TERRAIN",
-      "gravite": 10,
+      "gravite": 4,
       "vuPremiere": "2026-07-28",
-      "vuDerniere": "2026-08-04",
-      "occurrences": 5,
-      "occurrencesLibelle": "5 alertes · 3 véhicules · FZ-862-VY toujours en cours (7,4 h)",
-      "quoi": "Le boîtier parle mais n'a plus de verrou GPS : la position reste figée. Le détecteur fait son travail et il est déjà bien borné (zone confirmée bénigne = silence, dédup par épisode).",
-      "quoiFaire": "Vérifier l'antenne de FZ-862-VY — épisode TOUJOURS EN COURS (7,4 h sans fix le 04/08, contre 3 h la veille). KSR370 récidive (3 épisodes en 3 jours) : même contrôle. Attention : la zone de FZ-862-VY ayant été confirmée bénigne le 03/08, ce véhicule ne produira plus d'alerte à cet endroit (voir TRK-011).",
+      "vuDerniere": "2026-08-11",
+      "occurrences": 15,
+      "occurrencesLibelle": "FZ-862-VY a 88,1 h sans position, cinquieme journee du meme episode — et FS-253-HR en rouvre un, silencieux a raison sous le plafond de 24 h",
+      "quoi": "Le boîtier parle mais n'a plus de verrou GPS : la position reste figée. Le détecteur fait son travail et il est déjà bien borné (zone confirmée bénigne = silence sous 24 h, puis un rappel dont la cadence s'espace avec l'age de l'episode). Au 11/08, deux boitiers : FZ-862-VY sans position depuis 88,1 heures, episode ouvert le 07/08 a 09h07 et qui a bien produit son alerte de plafond ; et FS-253-HR qui a rouvert un episode le 10/08 a 15h03, soit 10,1 heures, silencieux A RAISON puisque sous le plafond. FS-253-HR rouvre ainsi un quatrieme cycle en une semaine : le profil d'antenne intermittente decrit le 08/08 se confirme. A NOTER : ces deux vehicules sont aussi ceux dont les commandes de coupure moteur restent sans confirmation possible, car sans position GPS la chute d'ignition qui sert d'accuse de reception n'est pas observable — voir TRK-018, meme cause materielle vue depuis une autre table.",
+      "quoiFaire": "CORRECTIF DEPLOYE ET EN LIGNE depuis le 10/08 a 19h39 — la fiche l'annoncait encore comme ecrit mais non deploye, c'etait perime le soir meme. Les rappels au centre d'alerte s'espacent avec l'age de l'episode : quotidiens les deux premiers jours, puis hebdomadaires, puis mensuels. Ils ne deviennent JAMAIS muets, un episode d'un an produit encore une ligne par mois. L'alerte destinee a l'exploitant garde sa cadence quotidienne. Premiere mesure au 11/08 : aucune ligne depuis le 10/08 a 09h20 alors que l'episode dure toujours, l'espacement s'applique. TEST DATE AU 12/08 : l'episode ayant plus de quatre jours, la cadence doit etre hebdomadaire, donc AUCUNE ligne attendue le 11/08 vers 09h20 ; si un rappel quotidien reapparait, l'espacement n'a pas pris. RESTE L'ACTION TERRAIN, et c'est elle qui manque : verifier l'antenne de FZ-862-VY, signalee depuis le 3 aout et toujours pas touchee.",
       "aNePasFaire": "Ne pas silencier ce détecteur : c'est le seul signal qui rende visible une antenne morte. Corriger un message n'est pas affaiblir une garde.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-001"
@@ -262,18 +375,316 @@
       "slug": "rapports/2026-08-03-reference-manuelle.md",
       "title": "2026-08-03 — Référence manuelle (étalon)",
       "section": "rapports",
-      "order": 2,
+      "order": 8,
       "description": "Audit fondateur fait à la main. Sert d'étalon pour mesurer l'agent automatique."
+    },
+    {
+      "slug": "rapports/2026-08-11.md",
+      "title": "2026-08-11 — Audit quotidien",
+      "section": "rapports",
+      "order": -1,
+      "description": "Zéro erreur depuis les correctifs du soir, le mutisme des boîtiers est enfin PROUVÉ — et un angle mort neuf : le repli SMS du coupe-circuit part depuis dix semaines sans qu'aucune couche puisse dire s'il arrive."
+    },
+    {
+      "slug": "rapports/2026-08-10.md",
+      "title": "2026-08-10 — Audit quotidien",
+      "section": "rapports",
+      "order": 1,
+      "description": "Deux lignes inédites révèlent que 24 des 43 SIM du parc ne pouvaient pas recevoir de SMS : le repli du coupe-circuit était mort, et un refus de ce type ne laisse aucune trace."
+    },
+    {
+      "slug": "rapports/2026-08-09.md",
+      "title": "2026-08-09 — Audit quotidien",
+      "section": "rapports",
+      "order": 2,
+      "description": "Le test daté de la veille passe — l'alerte de plafond GPS est arrivée à l'heure — mais 9 trajets sur 10 s'affichent en trace brute depuis avril, et une coupure réseau de 6 h a fait effacer 1643 positions d'un seul bloc."
+    },
+    {
+      "slug": "rapports/2026-08-08.md",
+      "title": "2026-08-08 — Audit quotidien",
+      "section": "rapports",
+      "order": 3,
+      "description": "Zéro nouvelle ligne au centre d'alerte pour la première fois — et pendant ce temps le garde-fou d'ingestion écarte 3466 positions réelles en 4 jours, dont des sauts de 22 km."
+    },
+    {
+      "slug": "rapports/2026-08-07.md",
+      "title": "2026-08-07 — Audit quotidien",
+      "section": "rapports",
+      "order": 4,
+      "description": "3797 commandes envoyées aux boîtiers depuis avril, pas un seul accusé de réception — et le pilotage automatique n'écoute même pas la réponse qu'il a pourtant définie."
+    },
+    {
+      "slug": "rapports/2026-08-06.md",
+      "title": "2026-08-06 — Audit quotidien",
+      "section": "rapports",
+      "order": 5,
+      "description": "Première journée pleine sans redémarrage : tout tient. Mais le balayage qui solde les commandes déclare « sans effet » sans jamais comparer — trois commandes closes en échec affichaient la cadence demandée."
+    },
+    {
+      "slug": "rapports/2026-08-05.md",
+      "title": "2026-08-05 — Audit quotidien",
+      "section": "rapports",
+      "order": 6,
+      "description": "Les correctifs de la veille tiennent tous — mais le volume d'échecs n'a pas bougé, parce que 90 % d'entre eux n'avaient pas la cause qu'on leur prêtait."
     },
     {
       "slug": "rapports/2026-08-04.md",
       "title": "2026-08-04 — Audit quotidien",
       "section": "rapports",
-      "order": 1,
+      "order": 7,
       "description": "Premier passage automatique. Aucune erreur nouvelle, mais deux angles morts qui se creusent — dont une perte GPS de 12 h que personne ne voit."
+    },
+    {
+      "slug": "rapports/2026-08-10-passe-2.md",
+      "title": "2026-08-10 (2e passage) — Le test date tranche : lecture B",
+      "section": "rapports",
+      "order": 0,
+      "description": "Passage supplementaire a 17h12 UTC. Le test date prevu pour le 11/08 est execute avec 16 h d'avance et renverse la lecture : l'allowlist SMS est effacee en boucle, pas absente depuis treize jours."
     }
   ],
   "passages": [
+    {
+      "date": "2026-08-11",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-11.md",
+      "verdict": "Zéro ligne d'erreur depuis les correctifs de 19 h — le test daté de TRK-014 prouve que le boîtier ne répond jamais (14 silences tracés, 0 accusé), et la garde de TRK-017 a retenu cinq nouvelles tentatives d'effacement dont quatre en pleine nuit ; mais un angle mort neuf apparaît : le repli SMS du coupe-circuit part depuis dix semaines et aucune couche ne peut dire s'il arrive (112 commandes moteur, 0 confirmée).",
+      "chiffres": {
+        "erreurs": 31,
+        "critical": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 71,
+        "cadenceSousMinimum": 0,
+        "lignesDepuisCorrectifs6h": 0,
+        "commandesEmisesDepuisEcouteAck": 14,
+        "accusesRecus": 0,
+        "silencesTraces": 14,
+        "repliSmsSansConfirmation": 112,
+        "blocagesAllowlistRetenus6h": 5,
+        "positionsEcarteesIngestion24h": 1855,
+        "trousReelsIngestion24h": 616,
+        "trajetsSansRecalagePct": 90.4,
+        "boitiersSansFixGps": 2
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 8
+      },
+      "aTraiter": [
+        "TRK-018",
+        "TRK-017",
+        "TRK-016",
+        "TRK-015",
+        "TRK-012",
+        "TRK-014",
+        "TRK-013",
+        "TRK-001"
+      ],
+      "note": "Trois correctifs déployés la veille au soir sont vérifiés sur des mesures et non sur leur intention. TRK-014 : 14 commandes émises après l'armement, 14 silences tracés, 0 accusé — le premier chiffre est celui qu'il fallait lire d'abord, il écarte le cas où rien n'est parti. La garde la plus fragile a tenu : aucune des 14 n'est passée en échec par le chemin de l'accusé. TRK-017 : les 25 entrées n'ont pas bougé depuis le 10/08 14:25, et le journal d'appels montre 5 tentatives retenues en 6 h depuis la même adresse hors serveur — dont 4 entre 21:25 et 00:25 UTC, ce qui ÉCARTE l'hypothèse d'un poste actif aux heures ouvrées posée la veille. La clé d'API n'a PAS été rotationnée : c'est la seule chose à faire en premier. Deux en-têtes de fiche disaient faux (TRK-001 et TRK-002 annoncés non déployés) : recalés sur la branche de production, pas sur la note du passage précédent. Deux grandeurs bougent sans qu'on les interprète : le taux de trous d'ingestion passe de 84,4 à 33,2 pour cent, mais une explication mécanique existe sans qu'aucun défaut n'ait changé (aucune rafale ce jour) ; et la classe de rejet à moins de 60 s prend un quatrième point et un quatrième profil, ce qui confirme qu'elle n'a pas un mécanisme unique. Aucune conclusion de ce passage ne s'appuie sur des journaux de conteneur."
+    },
+    {
+      "date": "2026-08-10",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-10-passe-2.md",
+      "verdict": "Le test daté posé ce matin pour le 11/08 est tranché seize heures plus tôt que prévu, et dans l'autre sens — les 25 numéros ne manquaient pas depuis treize jours, ils sont effacés et recréés plusieurs fois par jour ; le repli SMS du coupe-circuit s'est rouvert au moins six fois aujourd'hui, et l'auteur des suppressions n'est identifiable par aucun instrument en place.",
+      "chiffres": {
+        "erreurs": 31,
+        "critical": 0,
+        "trackersFailing": 1,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 71,
+        "cadenceSousMinimum": 0,
+        "reouverturesAllowlist24h": 6,
+        "numerosHorsAllowlist": 25,
+        "simBoitiersHorsAllowlist": 24,
+        "positionsEcarteesIngestion24h": 2789,
+        "trajetsSansRecalagePct": 89,
+        "boitiersSansFixGps": 2
+      },
+      "fiches": {
+        "nouvelles": 0,
+        "misesAJour": 7
+      },
+      "aTraiter": [
+        "TRK-017",
+        "TRK-012",
+        "TRK-014",
+        "TRK-015",
+        "TRK-016"
+      ],
+      "note": "2e passage du même jour, demandé par le propriétaire (collecte 17:12 UTC). Aucune signature inédite : les 6 lignes neuves des 24 h sont la MÊME alerte allowlist répétée d'heure en heure. Deux réserves de lecture : le ratio commandes/boîtier du jour (1,93) et le taux de recalage (89,0 %) portent sur une journée NON TERMINÉE, et les 2789 rejets d'ingestion partagent les deux tiers de leur fenêtre avec la mesure du matin — aucun des trois n'est comparable en l'état."
+    },
+    {
+      "date": "2026-08-10",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-10.md",
+      "verdict": "3 lignes sur 24 h, dont 2 d'une signature inédite qui prouve que 24 des 43 SIM du parc ne pouvaient pas recevoir de SMS — le repli du coupe-circuit était mort pour elles, en silence, et rien d'autre ne l'aurait dit.",
+      "chiffres": {
+        "erreurs": 23,
+        "critical": 0,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 71,
+        "cadenceSousMinimum": 0,
+        "numerosHorsAllowlist": 25,
+        "simBoitiersHorsAllowlist": 24,
+        "positionsEcarteesIngestion24h": 2246,
+        "trousReelsIngestion24h": 1895,
+        "trajetsSansRecalagePct": 92.7
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 7
+      },
+      "aTraiter": [
+        "TRK-017",
+        "TRK-014",
+        "TRK-015",
+        "TRK-016",
+        "TRK-012",
+        "TRK-013",
+        "TRK-001"
+      ],
+      "note": "Sixième jour sans redémarrage (conteneurs du 04/08 21:32 UTC, restarts=0) : mesures comparables. La nouvelle fiche TRK-017 porte un TEST DATÉ pour le 11/08 — relire la date de création des entrées d'allowlist dans la base de la passerelle sépare les deux lectures possibles sans écrire une ligne de code ; ne pas lancer de synchro manuelle d'ici là, elle effacerait la mesure. Deuxième rafale de TRK-015 confirmée sur un AUTRE véhicule que celui du 08/08 : GS-014-NY perd 21 minutes de trajet, entrée à 15 km/h et sortie à 130 km/h, 60 trames tamponnées écartées — le mécanisme n'était pas propre à HD-779-MA. Chiffres d'ingestion mesurés sur 24 h ici, contre 4 jours les 08 et 09/08 : ils ne se comparent pas aux précédents, seule la proportion de trous se compare (95,8 pour cent dans la classe 1-60 min). Le taux de clôtures défectueuses de TRK-013 baisse de 39 à 35,5 pour cent, mais le numérateur n'a pas bougé : seul le dénominateur grandit, le défaut de code est intact. Piège d'outillage : docker logs texto-relay ne rend jamais la main sur cet hôte (deux essais, sortie vide) — aucune conclusion de ce passage ne s'appuie sur des journaux de conteneur."
+    },
+    {
+      "date": "2026-08-09",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-09.md",
+      "verdict": "Une seule ligne au centre d'alerte en 24 h, et c'est la bonne — l'alerte de plafond annoncée hier est arrivée à l'heure, TRK-011 ne régresse pas ; mais deux pertes silencieuses se sont révélées derrière ce calme : une coupure réseau de 6 h sur HD-779-MA a fait rejeter 1643 positions tamponnées d'un seul bloc, trou prouvé en base, et 9 trajets sur 10 sont affichés en trace brute parce que le recalage cartographique échoue depuis avril.",
+      "chiffres": {
+        "erreurs": 20,
+        "critical": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 71,
+        "cadenceSousMinimum": 0,
+        "positionsEcarteesIngestion4j": 9527,
+        "trousReelsIngestion4j": 5577,
+        "trajetsSansRecalagePct": 89.8
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 6
+      },
+      "aTraiter": [
+        "TRK-014",
+        "TRK-016",
+        "TRK-015",
+        "TRK-012",
+        "TRK-013",
+        "TRK-001"
+      ],
+      "note": "100 h sans redémarrage, aucun déploiement depuis le 04/08 : mesures comparables. Le test daté posé la veille est passé — l'alerte de plafond GPS de FZ-862-VY est arrivée le 08/08 à 09:10:15, première vérification de TRK-011 sur un épisode NEUF. Le calme du centre d'alerte a été vérifié avant d'être cru : 96 ticks du détecteur GPS, 72 commandes créées et closes le 08/08, zéro ligne de niveau error ou fatal. Chiffre à ne pas sur-interpréter : le compteur hors ligne repasse de 7 à 6 — HD-779-MA n'était pas en panne, c'était la coupure réseau de 6 h, et la prudence d'hier était donc justifiée. Deux points sur la classe de rejet à moins de 60 s de TRK-015 donnent deux profils opposés : rien à conclure, il en faut un troisième. Piège d'outillage rectifié : le remède écrit le 08/08 (utiliser docker logs --tail N) est FAUX pour N grand — --tail 200000 rend 3714 lignes s'arrêtant 79 min avant l'heure courante, quand --tail 3 donne la seconde. Les chiffres de journaux de ce rapport portent sur une fenêtre mesurée de 7,9 h (08/08 16:04 → 09/08 00:00 UTC), qui ne va pas jusqu'à l'heure de collecte."
+    },
+    {
+      "date": "2026-08-08",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-08.md",
+      "verdict": "Zéro nouvelle ligne au centre d'alerte en 24 h — une première, et elle s'explique : les deux pertes GPS ouvertes depuis quatre nuits se sont refermées — mais pendant ce temps le garde-fou d'ingestion a écarté 3466 positions réelles en 4 jours, dont des sauts allant jusqu'à 22 km, sans qu'aucun écran ne le dise.",
+      "chiffres": {
+        "erreurs": 19,
+        "critical": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 7,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 71,
+        "cadenceSousMinimum": 0,
+        "positionsEcarteesIngestion4j": 8360,
+        "trousReelsIngestion4j": 3466
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 5
+      },
+      "aTraiter": [
+        "TRK-014",
+        "TRK-015",
+        "TRK-012",
+        "TRK-013",
+        "TRK-001"
+      ],
+      "note": "76 h sans redémarrage, aucun déploiement depuis le 04/08 : mesures comparables. Le zéro du jour a été vérifié avant d'être cru — le détecteur GPS tourne toutes les 5 min, il a enregistré deux nouveaux épisodes le 07/08, et 74 commandes ont été créées et closes. Il n'y avait simplement plus de rappel quotidien à produire. Chiffre à ne pas sur-interpréter : le compteur hors ligne passe de 6 à 7 (HD-779-MA, muet depuis 2,2 h à 1 h du matin) — un seul point, rien à conclure. Un test tombe le 08/08 : l'épisode GPS en cours de FZ-862-VY franchit le plafond de 24 h vers 09:07 UTC et doit produire une alerte ; s'il ne la produit pas, c'est une régression de TRK-011. Piège d'outillage à retenir : docker logs --since renvoie une tranche périmée sur ce conteneur (205 lignes se terminant 25 h plus tôt, alors que --tail 5 donnait la minute courante) — les chiffres de journaux de ce rapport portent sur une fenêtre mesurée de 10,4 h, et c'est écrit comme tel."
+    },
+    {
+      "date": "2026-08-07",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-07.md",
+      "verdict": "Rien de neuf ne crie — les deux seules lignes des 24 h sont les rappels quotidiens de deux pertes GPS ouvertes depuis quatre nuits — mais le journal des trames tranche la question que TRK-012 laissait ouverte : en 4 jours, 275 commandes de cadence envoyées, zéro réponse du boîtier, et le chemin adaptatif n'écoute même pas l'accusé de réception qu'il a pourtant défini ; sur 3797 commandes depuis le 27 avril, aucun boîtier n'en a jamais accusé une seule.",
+      "chiffres": {
+        "erreurs": 19,
+        "critical": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 71,
+        "cadenceSousMinimum": 0
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 5
+      },
+      "aTraiter": [
+        "TRK-014",
+        "TRK-012",
+        "TRK-013",
+        "TRK-001"
+      ],
+      "note": "52 h sans redémarrage, aucun déploiement depuis le 04/08 : les mesures sont comparables. Deux fiches ont été rectifiées SUR LE CODE et non recopiées. TRK-007 affirmait qu'aucun motif de réponse n'existait pour la commande de cadence : il en existe un. TRK-008 portait une réserve sur un chemin d'écriture non borné : il est borné depuis le 04/08, et ce qui a fabriqué cette fausse réserve est un commentaire périmé laissé six lignes au-dessus de la constante. Deux chiffres à ne pas sur-interpréter : le compteur de boîtiers en échec repasse de 1 à 0, ce qui confirme qu'il ne fallait rien conclure de la mesure unique de la veille ; et le volume quotidien passe de 72 à 68, mais sur 34 boîtiers au lieu de 36 — écart de périmètre, pas tendance. La fenêtre strictement comparable donne 14, 14, 14, 15, 13 sur cinq nuits : plat."
+    },
+    {
+      "date": "2026-08-06",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-06.md",
+      "verdict": "Aucune erreur applicative nouvelle — les deux seules lignes des 24 h sont les rappels à 24 h de deux pertes GPS déjà connues — et les correctifs tiennent tous sur une journée pleine ; mais TRK-012 est intact (452 des 502 échecs de commandes, 90 %, toujours zéro succès), et le balayage qui solde les commandes déclare « sans effet constaté » sans jamais comparer : trois commandes closes en échec affichaient exactement la cadence demandée.",
+      "chiffres": {
+        "erreurs": 17,
+        "critical": 1,
+        "trackersFailing": 1,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 72,
+        "cadenceSousMinimum": 0
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 5
+      },
+      "aTraiter": [
+        "TRK-013",
+        "TRK-012",
+        "TRK-001"
+      ],
+      "note": "Première fenêtre de 28 h sans redémarrage depuis le correctif (restarts=0 depuis le 04/08 21:32 UTC) : la comparaison porte enfin sur une journée pleine. Le « 0 cible sous le minimum » est cette fois vérifié sur le comportement et non sur un instantané — 62 auto-alignements dans les journaux de 24 h, aucun sous 20 s. Deux points à ne pas sur-interpréter : trackersFailing passe de 0 à 1, ce qui n'est pas une régression mais TRK-012 qui devient partiellement visible (un boîtier, une mesure) ; et le chiffre echecsCommandesParJour vaut 71,7 sur 7 jours, avec 68 le 05/08 — la fenêtre strictement comparable de 21h30 à 01h10 donne 14, 14, 14, 15 sur quatre nuits, c'est-à-dire plat. Six en-têtes de fiche du référentiel annonçaient encore un statut périmé par la livraison du 04/08 : recalés sur l'index."
+    },
+    {
+      "date": "2026-08-05",
+      "origine": "agent",
+      "rapport": "rapports/2026-08-05.md",
+      "verdict": "Les correctifs de la nuit tiennent tous — plus aucune cible de cadence sous le minimum matériel, plus aucune commande en attente, et le plafond de silence GPS a produit ses deux premières alertes — mais le volume d'échecs de commandes n'a pas bougé d'une ligne, parce que 90 % de ces échecs n'avaient pas la cause que TRK-008 leur prêtait : ce sont des boîtiers garés à qui l'on redemande 300 s deux fois par jour depuis des mois, et qui ne l'appliquent jamais.",
+      "chiffres": {
+        "erreurs": 15,
+        "critical": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 0,
+        "echecsCommandesParJour": 72,
+        "cadenceSousMinimum": 0
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 4
+      },
+      "aTraiter": [
+        "TRK-012",
+        "TRK-001"
+      ],
+      "note": "Neuf fiches confirmées corrigées EN PRODUCTION, pas seulement en test. La mesure du jour est une fenêtre strictement comparable : conteneur recréé à 21:30 UTC, puis 14 échecs entre 21:30 et 01:10 — exactement comme la veille sur la même fenêtre, mêmes six boîtiers, horodatages superposés à 9 millisecondes près. Le chiffre trackersHorsLigne reste le comptage brut (6) pour rester comparable aux passages précédents ; l'écran, lui, en affiche 3 depuis que les boîtiers jamais mis en service sont exclus."
+    },
     {
       "date": "2026-08-04",
       "origine": "agent",
