@@ -131,7 +131,7 @@ import { DepotModalComponent } from './depot-modal.component';
     }
     .dob-num {
       flex: 0 0 auto; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
-      background: color-mix(in srgb, var(--violet) 16%, transparent); color: var(--violet);
+      background: color-mix(in srgb, var(--violet) 16%, transparent); color: var(--texte-violet);
       font-family: var(--font-mono); font-size: 12.5px; font-weight: 800;
     }
     .dob-titre { margin: 0 0 3px; font-size: 14px; font-weight: 700; color: var(--text-primary) }

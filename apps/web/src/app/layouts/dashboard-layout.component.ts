@@ -578,6 +578,10 @@ interface NavGroup {
     .top-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; position: relative; z-index: 1 }
     .top-bar-brand {
       display: none;
+      /* 44 x 44 : en mobile le libelle est masque, il ne reste que l icone. */
+      min-width: 44px;
+      min-height: 44px;
+      justify-content: center;
       align-items: center;
       gap: 8px;
       text-decoration: none;
@@ -616,6 +620,9 @@ interface NavGroup {
       transition: border-color .2s;
     }
     .user-menu-trigger:hover { border-color: var(--tracky-light) }
+    /* 44 px sur le DECLENCHEUR : la pastille garde ses 36 px visuels, c est le
+       bouton qui porte la cible. Mesure a 39 x 39 avant. */
+    .user-menu-trigger { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
     .user-avatar {
       width: 36px; height: 36px; border-radius: 9999px;
       background: var(--color-tracky-light); color: var(--accent-ink);

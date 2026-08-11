@@ -233,7 +233,7 @@ async function main(): Promise<void> {
   console.log(`  ${PLAQUES[6]} : AUCUNE mission — invisible de tout dépôt, c'est le témoin`);
   console.log(`  Véhicules indisponibles attendus dans l'onglet Missions : 5 (M-0003 est terminée)`);
   console.log(`  Historique du dépôt A : 7 missions terminées, dont 2 en retard → taux affiché`);
-  console.log(`  M-0011 : arrêts intermédiaires posés → « 14 min sur place » dans le déroulé`);
+  console.log(`  M-0011 : arrêts intermédiaires posés → « 18 min sur place » dans le déroulé`);
 }
 
 /**

@@ -353,9 +353,9 @@ const CLEF_ONBOARDING = 'vizyo-depot-onboarding-vu';
     .dl-vide-titre { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-primary) }
     .dl-vide-txt { margin: 0; font-size: 13px; line-height: 1.6; color: var(--depot-attenue) }
     .dl-vide-lien {
-      margin-top: 4px; min-height: 36px; padding: 8px 16px; border-radius: 10px;
+      margin-top: 4px; min-height: 44px; padding: 8px 16px; border-radius: 10px;
       border: 1px solid var(--border-color); background: transparent;
-      color: var(--violet); font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+      color: var(--texte-violet); font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
     }
 
     /* L'encart tireté : la bordure en tirets dit « ceci n'est pas une donnée, c'est
@@ -437,7 +437,9 @@ const CLEF_ONBOARDING = 'vizyo-depot-onboarding-vu';
       }
       .dl-poignee {
         display: flex; align-items: center; justify-content: center;
-        width: 100%; height: 26px; padding: 0; border: none; background: transparent;
+        /* 44 px : la poignee est la cible qui redimensionne la feuille au doigt.
+           Sa hauteur VUE reste fine — le reste est de la surface de visee. */
+        width: 100%; height: 44px; padding: 0; border: none; background: transparent;
         cursor: grab; touch-action: none; flex: 0 0 auto;
       }
       .dl-poignee span {
