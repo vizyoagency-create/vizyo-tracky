@@ -15,7 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
@@ -89,6 +89,21 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
+
+/**
+ * « Lieux sur la carte » — le tri-état de la planche Carte, § Calques & lisibilité.
+ *
+ * Il REMPLACE trois cases éparses (stations détectées, zones mortes, lieux de la
+ * flotte) qui posaient la même question trois fois sans jamais la poser en entier :
+ * « combien de lieux je veux voir ? ». Il ne double pas ces calques — il les pilote.
+ */
+type AffichageLieux = 'masques' | 'discrets' | 'tous';
+
+/** Géométrie d'un repère de lieu selon le mode. En discret, il cède le pas. */
+const GEOMETRIE_LIEU: Record<'discrets' | 'tous', { taille: number; z: number; police: number }> = {
+  tous: { taille: 26, z: 880, police: 12 },
+  discrets: { taille: 17, z: 700, police: 9 },
+};
 
 interface MarkerEntry {
   marker: MlMarker;
@@ -233,7 +248,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -269,6 +284,97 @@ const RESYNC_RADIUS_M = 150;
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </button>
     </div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         CALQUES & LISIBILITÉ — contenu UNIQUE, rendu à deux endroits.
+         Le panneau desktop et la feuille mobile portaient deux copies
+         identiques de cette liste : corriger l'une laissait l'autre mentir
+         (le piège du « jumeau » déjà payé sur installation-editor).
+         ════════════════════════════════════════════════════════════ -->
+    <ng-template #calquesContenu>
+      <div class="flex flex-col gap-1.5">
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="filters().moving" (change)="toggleFilter('moving')" />
+          <span class="cl-cle cl-cle--mouvement"></span>
+          <span>En mouvement</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="filters().idle" (change)="toggleFilter('idle')" />
+          <span class="cl-cle cl-cle--arret"></span>
+          <span>Arrêt moteur ON</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="filters().off" (change)="toggleFilter('off')" />
+          <span class="cl-cle cl-cle--eteint"></span>
+          <span>Éteint</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
+          <span class="cl-cle cl-cle--hors-ligne"></span>
+          <span>Hors-ligne (>15min)</span>
+        </label>
+        <hr class="my-1 border-border-subtle" />
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="showGeofences()" (change)="toggleGeofences()" />
+          <span>Géofences</span>
+        </label>
+        <!-- Noms de la planche : « Traces » et « Plaques » ne disaient ni de quoi
+             ni de quand. -->
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="showTrails()" (change)="toggleTrails()" />
+          <span>Trajets du jour</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
+          <span>Étiquettes plaques</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
+          <span>Arrêts > 5min (24h)</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
+          <span>Heatmap densité (24h)</span>
+        </label>
+        <label class="tracky-sheet-checkbox">
+          <input type="checkbox" [checked]="compactMarkers()" (change)="toggleCompactMarkers()" />
+          <span>Mode compact (zoom faible)</span>
+        </label>
+      </div>
+
+      <!-- ─── LIEUX SUR LA CARTE — le tri-état de la planche ─── -->
+      <div class="cl-bloc">
+        <p class="tracky-sheet-title">Lieux sur la carte</p>
+        <div class="cl-triple" role="radiogroup" aria-label="Lieux sur la carte">
+          @for (m of MODES_LIEUX; track m.id) {
+            <button type="button" role="radio" class="cl-triple-btn"
+                    [class.cl-triple-btn--actif]="lieuxAffichage() === m.id"
+                    [attr.aria-checked]="lieuxAffichage() === m.id"
+                    (click)="reglerAffichageLieux(m.id)">{{ m.label }}</button>
+          }
+        </div>
+        <!-- Cette phrase décrit ce que le code FAIT, pas ce qu'on aimerait qu'il fasse :
+             les repères rétrécissent et repassent derrière les véhicules. Le
+             regroupement des plus proches n'est pas livré (cf. journal). -->
+        <p class="cl-note">
+          « Discrets » réduit les lieux et les fait passer derrière : les véhicules
+          restent toujours au premier plan.
+        </p>
+      </div>
+
+      <!-- ─── CYCLE DE VIE D'UN LIEU ─── -->
+      <div class="cl-bloc">
+        <p class="tracky-sheet-title">Cycle de vie d'un lieu</p>
+        <ul class="cl-cycle">
+          <li><span class="cl-cle cl-cle--detecte"></span>
+            <span><strong>Détecté</strong> — l'anneau se remplit à chaque passage</span></li>
+          <li><span class="cl-cle cl-cle--seuil"></span>
+            <span><strong>Seuil atteint</strong> — à confirmer</span></li>
+          <li><span class="cl-cle cl-cle--valide"></span>
+            <span><strong>Validé</strong> — nommé et typé par le client</span></li>
+        </ul>
+      </div>
+    </ng-template>
 
     <!-- ════════════════════════════════════════════════════════════
          FEUILLE FLOTTE — « Carte + flotte » de la planche.
@@ -611,67 +717,7 @@ const RESYNC_RADIUS_M = 150;
         <div class="tracky-calques-inline tracky-desktop-only mt-2
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
                     rounded-[--radius-card] p-3 min-w-[220px]">
-          <div class="flex flex-col gap-1.5">
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().moving" (change)="toggleFilter('moving')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#10E0A0"></span>
-              <span>En mouvement</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().idle" (change)="toggleFilter('idle')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#5C746C"></span>
-              <span>Arrêt moteur ON</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().off" (change)="toggleFilter('off')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#6b7280"></span>
-              <span>Éteint</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#9ca3af"></span>
-              <span>Hors-ligne (>15min)</span>
-            </label>
-            <hr class="my-1 border-border-subtle" />
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showGeofences()" (change)="toggleGeofences()" />
-              <span>Géofences</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showTrails()" (change)="toggleTrails()" />
-              <span>Traces</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
-              <span>Plaques</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
-              <span>Arrêts > 5min (24h)</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showFuelStations()" (change)="toggleFuelStations()" />
-              <span>Stations-service (passages)</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
-              <span>Parkings souterrains / zones mortes</span>
-            </label>
-            @if (canViewPlaces()) {
-              <label class="tracky-sheet-checkbox">
-                <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
-                <span>Lieux de la flotte (stations validées, parkings)</span>
-              </label>
-            }
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
-              <span>Heatmap densité (24h)</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="compactMarkers()" (change)="toggleCompactMarkers()" />
-              <span>Mode compact (zoom faible)</span>
-            </label>
-          </div>
+          <ng-container [ngTemplateOutlet]="calquesContenu"></ng-container>
         </div>
       }
     </div>
@@ -904,70 +950,10 @@ const RESYNC_RADIUS_M = 150;
           }
         </div>
 
-        <!-- ─── CALQUES (always visible) ─── -->
+        <!-- ─── CALQUES & LISIBILITÉ (always visible) ─── -->
         <div class="tracky-sheet-section">
-          <p class="tracky-sheet-title">Calques</p>
-          <div class="flex flex-col gap-1.5">
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().moving" (change)="toggleFilter('moving')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#10E0A0"></span>
-              <span>En mouvement</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().idle" (change)="toggleFilter('idle')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#5C746C"></span>
-              <span>Arrêt moteur ON</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().off" (change)="toggleFilter('off')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#6b7280"></span>
-              <span>Éteint</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#9ca3af"></span>
-              <span>Hors-ligne (>15min)</span>
-            </label>
-            <hr class="my-1 border-border-subtle" />
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showGeofences()" (change)="toggleGeofences()" />
-              <span>Géofences</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showTrails()" (change)="toggleTrails()" />
-              <span>Traces</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
-              <span>Plaques</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
-              <span>Arrêts > 5min (24h)</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showFuelStations()" (change)="toggleFuelStations()" />
-              <span>Stations-service (passages)</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
-              <span>Parkings souterrains / zones mortes</span>
-            </label>
-            @if (canViewPlaces()) {
-              <label class="tracky-sheet-checkbox">
-                <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
-                <span>Lieux de la flotte (stations validées, parkings)</span>
-              </label>
-            }
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
-              <span>Heatmap densité (24h)</span>
-            </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="compactMarkers()" (change)="toggleCompactMarkers()" />
-              <span>Mode compact (zoom faible)</span>
-            </label>
-          </div>
+          <p class="tracky-sheet-title">Calques &amp; lisibilité</p>
+          <ng-container [ngTemplateOutlet]="calquesContenu"></ng-container>
         </div>
 
         <!-- ─── LÉGENDE VITESSE (mobile only) ─── -->
@@ -1464,6 +1450,80 @@ const RESYNC_RADIUS_M = 150;
 
     /* ─── User position marker — styles inline car MapLibre injecte
          les markers hors du composant Angular (pas d'encapsulation) ─── */
+
+    /* ═══ CALQUES & LISIBILITÉ ═══════════════════════════════════════════════
+       Les clés de légende étaient écrites en hexadécimal dans le gabarit, à deux
+       endroits jumeaux. Elles sont maintenant des classes, définies une fois. Ce
+       sont des CLÉS : leur couleur doit rester celle du marqueur qu'elles
+       désignent, sinon la légende ment. */
+    .cl-cle {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+    .cl-cle--mouvement { background: var(--tracky); }
+    .cl-cle--arret { background: var(--fg-secondary); }
+    .cl-cle--eteint { background: var(--fg-tertiary); }
+    .cl-cle--hors-ligne { background: var(--texte-inactif); }
+    .cl-cle--detecte { background: var(--violet); }
+    .cl-cle--seuil { background: var(--warning); }
+    .cl-cle--valide { background: var(--tracky); }
+
+    .cl-bloc {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .cl-triple {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .cl-triple-btn {
+      flex: 1;
+      min-height: 44px;
+      padding: 8px 6px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .cl-triple-btn--actif {
+      background: color-mix(in srgb, var(--tracky) 15%, transparent);
+      border-color: color-mix(in srgb, var(--tracky) 40%, transparent);
+      color: var(--texte-succes);
+    }
+    .cl-note {
+      margin-top: 8px;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--fg-secondary);
+    }
+    .cl-cycle {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--fg-secondary);
+    }
+    .cl-cycle li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      min-width: 0;
+    }
+    .cl-cycle li .cl-cle { margin-top: 3px; }
+    .cl-cycle strong { color: var(--fg-primary); font-weight: 700; }
 
     /* ═══ FEUILLE FLOTTE ═════════════════════════════════════════════════════
        Aucune valeur de couleur ici : la feuille se pose sur une carte dont on ne
@@ -2858,12 +2918,62 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /**
    * Lieux clés (2026-07) — stations VALIDÉES par la flotte + parkings/stationnements posés à la
-   * main. Marqueurs HTML (comme les parkings détectés) pour passer devant les véhicules.
+   * main. Marqueurs HTML, comme les parkings détectés.
+   *
+   * ⚠️ 2026-08-12 — ils passaient DEVANT les véhicules, et c'était assumé ici. La planche
+   * Carte tranche l'inverse : « les véhicules restent toujours au premier plan ». Sur une
+   * carte de supervision, ce qu'on surveille prime sur le décor. Cf. `AffichageLieux`.
    */
   /** Calque « Lieux de la flotte » (stations validées + parkings posés). Défaut ON. */
   protected readonly showFleetPlaces = signal(true);
   protected readonly fleetPlaces = signal<FleetPlaceDto[]>([]);
   private fleetPlaceMarkers = new Map<string, maplibregl.Marker>();
+
+  /* ═══ « LIEUX SUR LA CARTE » — le tri-état de la planche ═══════════════════
+     Trois cases séparées (stations détectées, zones mortes, lieux de la flotte)
+     posaient trois fois la même question sans jamais la poser en entier. La
+     planche la pose une fois : combien de lieux voulez-vous voir ?
+
+     Ce signal ne DOUBLE pas les trois calques — il les PILOTE. Ils restent la
+     source de vérité pour le rendu, le chargement et le comptage de filtres
+     actifs ; sans quoi un état sur deux finirait par mentir à l'autre. */
+  protected readonly lieuxAffichage = signal<AffichageLieux>('tous');
+  protected readonly MODES_LIEUX: ReadonlyArray<{ id: AffichageLieux; label: string }> = [
+    { id: 'masques', label: 'Masqués' },
+    { id: 'discrets', label: 'Discrets' },
+    { id: 'tous', label: 'Tous' },
+  ];
+
+  protected reglerAffichageLieux(mode: AffichageLieux): void {
+    if (this.lieuxAffichage() === mode) return;
+    this.lieuxAffichage.set(mode);
+    const visible = mode !== 'masques';
+    // On passe par les bascules existantes : elles portent le chargement des données,
+    // la visibilité des couches MapLibre et la fermeture des cards devenues orphelines.
+    if (this.showFuelStations() !== visible) this.toggleFuelStations();
+    if (this.showDeadZones() !== visible) this.toggleDeadZones();
+    if (this.canViewPlaces() && this.showFleetPlaces() !== visible) this.toggleFleetPlaces();
+    // Les repères sont dimensionnés à la CONSTRUCTION (style inline) : changer de
+    // mode impose de les redessiner, sinon la discrétion ne s'applique qu'aux
+    // repères créés après coup.
+    if (visible) {
+      this.renderFleetPlaceMarkers();
+      this.renderDeadZoneMarkers();
+      this.appliquerDiscretionStations();
+    }
+  }
+
+  /**
+   * Les stations détectées sont une COUCHE MapLibre, pas du DOM : leur taille se règle
+   * en propriété de peinture, pas en CSS.
+   */
+  private appliquerDiscretionStations(): void {
+    if (!this.map || !this.map.getLayer('fuel-stations-circle')) return;
+    const discret = this.lieuxAffichage() === 'discrets';
+    this.map.setPaintProperty('fuel-stations-circle', 'circle-radius', discret
+      ? ['interpolate', ['linear'], ['get', 'visits'], 1, 6, 5, 9, 15, 13]
+      : ['interpolate', ['linear'], ['get', 'visits'], 1, 9, 5, 15, 15, 22]);
+  }
   /** Mode « poser un lieu » : le prochain clic carte capture le point. */
   protected readonly placeMode = signal(false);
   /** Point capturé en attente de nom/nature (petit panneau de confirmation). */
@@ -4934,17 +5044,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  /** Élément DOM d'un pin de zone morte. z-index élevé → passe DEVANT le marqueur véhicule. */
+  /**
+   * Élément DOM d'un pin de zone morte.
+   *
+   * ⚠️ Il portait `z-index:900` pour passer DEVANT le marqueur véhicule. La planche
+   * Carte tranche l'inverse — « les véhicules restent toujours au premier plan » — et
+   * les véhicules sont désormais à 950 (cf. `attachVehicleMarker`).
+   */
   private buildDeadZoneEl(z: GpsDeadZoneMapDto): HTMLElement {
     const suspect = z.status === 'SUSPECT';
     const confirmed = z.status === 'CONFIRMED_BENIGN';
     const color = suspect ? '#ef4444' : confirmed ? '#0ea5e9' : '#f59e0b';
+    const g = GEOMETRIE_LIEU[this.lieuxAffichage() === 'discrets' ? 'discrets' : 'tous'];
     const el = document.createElement('div');
     el.className = 'tracky-deadzone-marker';
     el.style.cssText =
-      `z-index:900;width:26px;height:26px;border-radius:50%;background:${color};` +
+      `z-index:${g.z};width:${g.taille}px;height:${g.taille}px;border-radius:50%;background:${color};` +
       'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;' +
-      'justify-content:center;color:#fff;font-weight:800;font-size:13px;line-height:1;cursor:pointer';
+      `justify-content:center;color:#fff;font-weight:800;font-size:${g.police + 1}px;line-height:1;cursor:pointer`;
     el.textContent = suspect ? '!' : 'P';
     el.setAttribute('aria-label', suspect ? 'Zone GPS suspecte' : 'Parking souterrain');
     el.title = `${z.plate ?? 'Véhicule'} — ${deadZoneNatureLabel(z)}`;
@@ -5061,12 +5178,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   /** Élément DOM d'un lieu de la flotte (couleur + glyphe par nature). */
   private buildFleetPlaceEl(p: FleetPlaceDto): HTMLElement {
     const { color, glyph } = fleetPlaceStyle(p.kind);
+    const g = GEOMETRIE_LIEU[this.lieuxAffichage() === 'discrets' ? 'discrets' : 'tous'];
     const el = document.createElement('div');
     el.className = 'tracky-place-marker';
     el.style.cssText =
-      `z-index:880;width:26px;height:26px;border-radius:8px;background:${color};` +
+      `z-index:${g.z};width:${g.taille}px;height:${g.taille}px;border-radius:8px;background:${color};` +
       'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;' +
-      'justify-content:center;color:#fff;font-weight:800;font-size:12px;line-height:1;cursor:pointer';
+      `justify-content:center;color:#fff;font-weight:800;font-size:${g.police}px;line-height:1;cursor:pointer`;
     el.textContent = glyph;
     el.setAttribute('aria-label', p.name);
     el.title = this.canManagePlaces() ? `${p.name} — glissez pour déplacer` : p.name;

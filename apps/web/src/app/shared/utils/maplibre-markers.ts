@@ -252,7 +252,14 @@ export function attachVehicleMarker(
   const wrapper = document.createElement('div');
   // Le wrapper hérite naturellement de la taille du child (.tracky-marker = 56x56),
   // ce qui permet a anchor:'center' (translate -50%, -50%) de centrer correctement.
-  wrapper.style.cssText = 'will-change:transform';
+  //
+  // z-index 950 — « les véhicules restent toujours au premier plan » (planche Carte,
+  // § Calques & lisibilité). Les repères de lieux montaient jusqu'à 900 et passaient
+  // donc DEVANT le véhicule : sur une carte de supervision, ce qu'on surveille prime
+  // sur le décor. C'est le WRAPPER qui doit le porter, pas `.tracky-marker` : MapLibre
+  // positionne le wrapper, et un z-index posé sur l'enfant ne joue que dans le
+  // contexte d'empilement de celui-ci.
+  wrapper.style.cssText = 'will-change:transform;z-index:950';
   wrapper.appendChild(el);
   return new maplibregl.Marker({
     element: wrapper,

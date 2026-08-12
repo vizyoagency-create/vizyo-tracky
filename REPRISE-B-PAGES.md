@@ -250,6 +250,61 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > **Observation kit (non corrigée)** : la poignée `.bs-handle-wrap` d'`app-bottom-sheet`
 > mesure **375 × 36** — sous 44 px en hauteur, mais pleine largeur. Elle est partagée
 > par toutes les feuilles de l'app : à trancher au niveau du kit, pas ici.
+>
+> ### ✅ CALQUES & LISIBILITÉ — livré le 2026-08-12
+>
+> **Le tri-état « Lieux sur la carte : Masqués · Discrets · Tous »** remplace trois
+> cases éparses (*Stations-service*, *Parkings souterrains / zones mortes*, *Lieux de
+> la flotte*) qui posaient trois fois la même question sans jamais la poser en entier :
+> « combien de lieux je veux voir ? ». Il ne double pas ces calques, **il les pilote** —
+> ils restent la source de vérité du rendu, du chargement et du comptage de filtres
+> actifs, sinon un état sur deux finirait par mentir à l'autre.
+>
+> Vérifié au navigateur, en lisant l'état réel du composant :
+>
+> | Mode | Trois calques | Couche MapLibre | Rayon des stations |
+> |---|---|---|---|
+> | Masqués | `false` | `visibility: none` | — |
+> | Discrets | `true` | visible | `1→6 · 5→9 · 15→13` |
+> | Tous | `true` | visible | `1→9 · 5→15 · 15→22` |
+>
+> Et la géométrie des repères DOM, lue sur la chaîne de style que le constructeur écrit :
+> **26 px / z 880** en « Tous », **17 px / z 700** en « Discrets ».
+>
+> ⚠️ **RENVERSEMENT ASSUMÉ : les véhicules passent devant les lieux.** Les repères de
+> lieux portaient `z-index: 880` et les zones mortes `900`, avec un commentaire qui
+> l'assumait (« pour passer devant les véhicules ») — pendant que le wrapper du marqueur
+> véhicule n'avait **aucun** z-index. La planche tranche l'inverse : « les véhicules
+> restent toujours au premier plan ». Sur une carte de supervision, ce qu'on surveille
+> prime sur le décor. Les véhicules sont désormais à **950**, et les deux commentaires
+> qui affirmaient le contraire ont été corrigés — un commentaire faux coûte plus cher
+> qu'un code faux.
+>
+> ⚠️ **La phrase de la planche a été RÉÉCRITE pour dire ce que le code fait.** La planche
+> écrit : « *Discrets réduit les lieux et **regroupe les plus proches*** ». Le
+> regroupement n'est **pas** livré : les lieux de la flotte et les zones mortes sont des
+> marqueurs DOM, qui ne se regroupent pas nativement — il faudrait les convertir en
+> couches GeoJSON, avec leurs gestionnaires de clic. La phrase affichée est donc :
+> « **réduit les lieux et les fait passer derrière** : les véhicules restent toujours au
+> premier plan » — exactement ce qui est implémenté et mesuré. C'est la leçon de
+> `MIXTE_SANS_CADRE` : une phrase qui promet plus que son code est un défaut, pas un
+> raccourci.
+>
+> **Le jumeau est mort.** Le panneau desktop et la feuille mobile portaient **deux copies
+> identiques** de la liste des calques : corriger l'une laissait l'autre mentir. Elles
+> partagent maintenant un `ng-template` unique, rendu par `ngTemplateOutlet` aux deux
+> endroits — vérifié aux deux largeurs (375 et 1280), même contenu, 0 débordement.
+>
+> Ajouté aussi : la légende **« Cycle de vie d'un lieu »** (Détecté → Seuil atteint →
+> Validé), et les noms de la planche — « Traces » devient **« Trajets du jour »**,
+> « Plaques » devient **« Étiquettes plaques »** (ni l'un ni l'autre ne disait de quoi
+> ni de quand). Les clés de légende hexadécimales du gabarit sont devenues des classes.
+>
+> **Mesure à 375 px, les deux thèmes** : 55 éléments, 7 ratios distincts, **0 cible sous
+> 44 px** (le tri-état fait 110 × 44), **0 débordement**. Mes blocs : phrase 6,28 / 7,28 ·
+> tri-état actif 5,03 / 7,94 · inactif 5,93 / 6,76 · cycle 6,28 / 7,28. Les 11 échecs
+> restants du panneau sont **tous** préexistants : les libellés O5 (3,16 / 3,75) et les
+> glyphes de légende.
 
 > ### ⚠️ Le `catchError` en FIN DE TUYAU tue le sondage
 >
