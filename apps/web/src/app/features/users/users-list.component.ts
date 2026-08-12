@@ -401,6 +401,31 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
       .u-col-scope, .u-col-last { display: none !important }
       .m-grid { grid-template-columns: minmax(140px,1.6fr) repeat(5,1fr) }
     }
+
+    /* ═══ TÉLÉPHONE : le rôle passe SOUS le nom ═══════════════════════════════
+       À 1000 px la ligne reste à trois colonnes : 160 + 140 + 44, plus deux
+       gouttières de 14 et 36 de padding — 408 px de plancher. Sur un écran de
+       375 px il en manque donc 48, et la carte les masquait (overflow: hidden)
+       au lieu de les résoudre : l'en-tête « UTILISATEUR » était coupé à gauche et
+       le menu « … », ancré au bord droit de la ligne, se retrouvait rogné hors de
+       l'écran. Relevé le 2026-08-12 : ligne de 390 px dans un conteneur de 342.
+
+       Deux colonnes suffisent : identité et menu. Le rôle et le badge de société
+       reviennent en dessous, où ils ont toute la largeur. */
+    @media (max-width: 560px) {
+      .u-thead { display: none }
+      .u-row {
+        grid-template-columns: minmax(0,1fr) 44px;
+        gap: 6px 10px;
+        padding: 12px 14px;
+      }
+      .u-cell-user { grid-column: 1; grid-row: 1 }
+      .u-cell-role { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap;
+                     align-items: center; gap: 6px; padding-left: 45px }
+      .u-row-menu { grid-column: 2; grid-row: 1 / span 2; align-self: start }
+      /* Le menu ne dépasse jamais l'écran, quelle que soit la longueur des libellés. */
+      .u-menu { max-width: calc(100vw - 28px) }
+    }
   `],
 })
 export class UsersListComponent implements OnInit {

@@ -95,14 +95,20 @@ type Period = '24h' | '7d' | '30d';
       </div>
 
       <!-- Filtre multi-utilisateurs (le compte owner est décoché par défaut) — partagé Live + Historique. -->
-      <ng-template #userFilter>
+      <!-- aligne : de quel côté le panneau se déplie. Il n'y a pas de réponse unique —
+           sur l'onglet Live le filtre est collé à DROITE (justify-end), sur Historique il
+           ouvre une rangée à GAUCHE. Un right-0 unique convenait au premier et jetait le
+           second hors de l'écran : 256 px de panneau ancrés sur un déclencheur large de
+           150 px placé au bord gauche donnent une marge de −82 px. Relevé le 2026-08-12. -->
+      <ng-template #userFilter let-aligne="aligne">
         <details class="relative">
           <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-2 bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary hover:border-tracky">
             <lucide-icon [img]="Users" [size]="14" class="text-fg-tertiary"></lucide-icon>
             Utilisateurs
             <span class="text-xs text-fg-tertiary tabular-nums">{{ shownUserCount() }}/{{ filterUsers().length }}</span>
           </summary>
-          <div class="absolute right-0 z-30 mt-1 w-64 max-h-72 overflow-y-auto bg-bg-secondary border border-border-subtle rounded-lg shadow-xl p-2 flex flex-col gap-0.5">
+          <div class="absolute z-30 mt-1 w-64 max-w-[calc(100vw-2rem)] max-h-72 overflow-y-auto bg-bg-secondary border border-border-subtle rounded-lg shadow-xl p-2 flex flex-col gap-0.5"
+               [class.left-0]="aligne === 'gauche'" [class.right-0]="aligne !== 'gauche'">
             <div class="flex gap-3 px-1 pb-2 mb-1 border-b border-border-subtle/50">
               <button type="button" (click)="selectAllUsers()" class="text-xs text-tracky-light hover:underline">Tout cocher</button>
               <button type="button" (click)="clearUsers()" class="text-xs text-fg-tertiary hover:underline">Tout décocher</button>
@@ -122,7 +128,7 @@ type Period = '24h' | '7d' | '30d';
       <!-- ─────────── LIVE ─────────── -->
       @if (tab() === 'live') {
         <div class="flex items-center justify-end mb-3">
-          <ng-container [ngTemplateOutlet]="userFilter"></ng-container>
+          <ng-container [ngTemplateOutlet]="userFilter" [ngTemplateOutletContext]="{ aligne: 'droite' }"></ng-container>
         </div>
         <div class="grid lg:grid-cols-2 gap-4">
           <!-- Online users -->
@@ -184,7 +190,7 @@ type Period = '24h' | '7d' | '30d';
         <div class="flex flex-wrap items-end gap-3">
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Utilisateurs</label>
-            <ng-container [ngTemplateOutlet]="userFilter"></ng-container>
+            <ng-container [ngTemplateOutlet]="userFilter" [ngTemplateOutletContext]="{ aligne: 'gauche' }"></ng-container>
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Type</label>

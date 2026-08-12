@@ -241,7 +241,8 @@ interface ConflitMission {
   styles: [`
     .md-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 60; }
     .md-panel { position: fixed; z-index: 61; top: 50%; left: 50%; transform: translate(-50%,-50%);
-                width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 64px);
+                width: min(620px, calc(100vw - 32px));
+                max-height: calc(100vh - 64px); max-height: calc(100dvh - 64px);
                 display: flex; flex-direction: column;
                 background: var(--surface-secondary); border: 1px solid var(--border-color);
                 border-radius: 18px; overflow: hidden; }
@@ -251,10 +252,20 @@ interface ConflitMission {
                   font-family: var(--font-display); font-size: 17px; font-weight: 800;
                   color: var(--text-primary); }
     .md-x { background: none; border: 0; color: var(--text-tertiary); cursor: pointer; padding: 4px; }
-    .md-corps { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-    .md-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .md-corps { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+                /* Le corps ne défile QUE verticalement : un débordement latéral dans une
+                   feuille mobile emmène l'en-tête et son bouton de fermeture hors du champ. */
+                overflow-x: hidden; }
+    .md-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; min-width: 0; }
     .md-col2 { grid-column: 1 / -1; }
-    .md-champ { display: flex; flex-direction: column; gap: 5px; }
+    /* ⚠️ min-width: 0 sur les enfants de grille et de flex. Leur valeur par défaut est
+       auto : ils REFUSENT de descendre sous la largeur de leur contenu, et un libellé
+       de véhicule un peu long élargit alors toute la modale — d'où le défilement
+       horizontal relevé le 2026-08-12 sur téléphone. Rien ne le montre sur un écran
+       large, où la place ne manque jamais. */
+    .md-grid > * { min-width: 0; }
+    .md-champ { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .md-champ select, .md-champ input, .md-champ textarea { max-width: 100%; }
     .md-champ > span { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
     .md-champ > span em { font-style: normal; font-weight: 500; color: var(--text-tertiary); }
     .md-champ input, .md-champ select, .md-champ textarea {
@@ -339,7 +350,15 @@ interface ConflitMission {
         max-width: none;
         /* Rayon de la plateforme : 22 px sur iOS, 28 px sur Android. */
         border-radius: var(--feuille-rayon) var(--feuille-rayon) 0 0;
+        /* ⚠️ dvh EN PLUS de vh, comme partout ailleurs dans le kit — cette feuille était
+           la seule à l'oublier. 92vh se mesure sur le viewport LARGE (barre d'URL
+           rétractée) : la feuille dépassait donc le haut de l'écran, emportant sa poignée,
+           son titre ET son bouton de fermeture. « On ne peut pas la fermer », 2026-08-12. */
         max-height: 92vh;
+        max-height: 92dvh;
+        /* Une feuille ne déborde jamais latéralement. */
+        max-width: 100%;
+        overflow-x: hidden;
         /* Le pouce doit atteindre le pied de feuille sans masquer le contenu. */
         padding-bottom: env(safe-area-inset-bottom);
       }
@@ -372,10 +391,15 @@ interface ConflitMission {
     @media (max-width: 767px) {
       :host-context(body.plat-ios) .md-head { justify-content: space-between; }
       :host-context(body.plat-ios) .md-ios-annuler {
-        display: inline-block;
-        background: none; border: 0; padding: 0;
+        display: inline-flex; align-items: center;
+        background: none; border: 0;
         font-family: inherit; font-size: 15px; color: var(--color-tracky-light);
         cursor: pointer;
+        /* ⚠️ Sur iOS la croix est masquée : CE BOUTON EST LE SEUL MOYEN DE FERMER la
+           feuille. Il mesurait 54 × 36 — sous le seuil de 44 px du critère 7 de B1,
+           et donc difficile à atteindre au pouce. Mesuré le 2026-08-12. Le retrait
+           négatif garde l'alignement optique du texte sur le bord de l'en-tête. */
+        min-height: 44px; min-width: 44px; padding: 0 8px; margin-left: -8px;
       }
       :host-context(body.plat-ios) .md-head h2 { font-size: 15px; }
       :host-context(body.plat-ios) .md-x { display: none; }
