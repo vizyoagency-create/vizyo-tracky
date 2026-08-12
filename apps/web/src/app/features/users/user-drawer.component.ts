@@ -26,12 +26,44 @@ export interface UserDrawerData {
   };
   isSuperAdmin?: boolean;
   fleets?: FleetSummary[];
+  /**
+   * La liste des flottes n'a pas pu être chargée. Distingué d'une liste vide : sans
+   * cette information, le sélecteur disparaissait en silence et un SUPER_ADMIN créait
+   * des comptes sans flotte sans jamais savoir pourquoi le choix ne lui était pas offert.
+   */
+  fleetsEnEchec?: boolean;
   /** Véhicules/groupes de la flotte (pour les scopes GROUP/VEHICLE de la matrice). */
   groups?: VehicleGroup[];
   vehicles?: VehicleDetailDto[];
   audioEligible?: boolean;
   /** Mode edit — scopes d'accès existants de l'utilisateur (UserVehicleAccess), pour amorcer la matrice. */
   accessEntries?: DrawerAccessScope[];
+}
+
+/**
+ * Le motif de refus AVANT envoi, ou `null` si le formulaire peut partir.
+ *
+ * Fonction pure et exportée pour être vérifiable sans monter le composant — la
+ * règle qui compte ici est celle du dépôt, et elle protège d'un compte INERTE :
+ * l'invitation d'un dépôt sans flotte part sans erreur, le compte se crée, puis
+ * `validerDepot` (missions.service) ne le proposera jamais comme destinataire,
+ * puisqu'il exige un dépôt appartenant à la flotte de la mission. L'échec se
+ * manifeste alors dans l'agenda, loin de l'écran qui l'a causé.
+ */
+export function motifDeRefus(champs: {
+  mode: 'create' | 'edit' | 'edit-invitation';
+  email: string;
+  role: string;
+  isSuperAdmin: boolean;
+  fleetId: string;
+}): string | null {
+  if (champs.mode === 'create' && !champs.email) return 'Email requis';
+  // Hors SUPER_ADMIN, la flotte n'est pas saisie : le serveur impose celle de
+  // l'inviteur. Exiger un choix qui n'est pas affiché bloquerait sans issue.
+  if (champs.role === 'DEPOT' && champs.isSuperAdmin && !champs.fleetId) {
+    return 'Choisissez la flotte de ce dépôt : sans elle, aucune mission ne pourra lui être affectée.';
+  }
+  return null;
 }
 
 export interface UserDrawerResult {
@@ -108,11 +140,40 @@ export interface UserDrawerResult {
                     Flotte
                   </h3>
                   <select [(ngModel)]="selectedFleetId" class="field-input field-select">
-                    <option value="">-- Aucune flotte --</option>
+                    <option value="">{{ role === 'DEPOT' ? '-- Choisir la flotte --' : '-- Aucune flotte --' }}</option>
                     @for (f of data()!.fleets!; track f.id) {
                       <option [value]="f.id">{{ f.name }}</option>
                     }
                   </select>
+                  <!-- Espace dépôt — la flotte n'est pas un confort ici, c'est ce qui rend le
+                       compte utilisable. validerDepot (missions.service) exige un dépôt
+                       APPARTENANT à la flotte de la mission : sans flotte, aucune mission ne
+                       pourra jamais lui être affectée. Le serveur accepte pourtant l'invitation
+                       sans flotte — on le refuse ici plutôt que de livrer un compte inerte. -->
+                  @if (role === 'DEPOT') {
+                    <p class="text-xs text-fg-tertiary mt-2">
+                      Obligatoire pour un dépôt : sans flotte, aucune mission ne pourra lui
+                      être affectée.
+                    </p>
+                  }
+                </section>
+              }
+
+              <!-- Le sélecteur manque alors qu'il devrait être là : on le DIT. -->
+              @if (data()?.isSuperAdmin && !data()?.fleets?.length) {
+                <section>
+                  <h3 class="section-title">
+                    <lucide-icon [img]="MapIcon" [size]="12" class="inline-block mr-1 text-tracky-light"></lucide-icon>
+                    Flotte
+                  </h3>
+                  <p class="text-xs text-fg-tertiary">
+                    @if (data()?.fleetsEnEchec) {
+                      La liste des flottes n'a pas pu être chargée. Fermez et rouvrez cette
+                      fenêtre : sans elle, le compte sera créé sans flotte.
+                    } @else {
+                      Aucune flotte n'existe encore. Créez-en une avant d'inviter un dépôt.
+                    }
+                  </p>
                 </section>
               }
             }
@@ -472,8 +533,15 @@ export class UserDrawerComponent {
   }
 
   onSave(): void {
-    if (this.data()?.mode === 'create' && !this.email) {
-      this.error.set('Email requis');
+    const refus = motifDeRefus({
+      mode: this.data()?.mode ?? 'create',
+      email: this.email,
+      role: this.role,
+      isSuperAdmin: !!this.data()?.isSuperAdmin,
+      fleetId: this.selectedFleetId,
+    });
+    if (refus) {
+      this.error.set(refus);
       return;
     }
     const isCreate = this.data()?.mode === 'create';

@@ -587,6 +587,8 @@ export class UsersListComponent implements OnInit {
   protected readonly perms = inject(PermissionsService);
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   private fleets: FleetSummary[] = [];
+  /** Vrai si `/api/fleets` a echoue : distingue « pas de flotte » de « on ne sait pas ». */
+  private fleetsEnEchec = false;
 
   protected userInitials(u: TrackyUser): string {
     if (u.firstName && u.lastName) return (u.firstName[0] + u.lastName[0]).toUpperCase();
@@ -665,7 +667,16 @@ export class UsersListComponent implements OnInit {
       .then((a) => this.missionsEnCours.set(a ?? {}))
       .catch((err) => swallow('users-list:depotActivity', err));
     if (this.isSuperAdmin()) {
-      this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);
+      // ⚠️ C'ETAIT UN `.catch(() => [])` MUET. En cas de panne, le selecteur de flotte
+      // du drawer DISPARAISSAIT — sa condition d'affichage est `fleets?.length` — et un
+      // SUPER_ADMIN creait alors des comptes sans flotte sans qu'aucun ecran ne l'indique.
+      // Pour un compte DEPOT, cela produit un compte inerte : `validerDepot` (API) exige
+      // un depot de la flotte de la mission. On retient donc l'echec pour le dire.
+      this.fleets = await firstValueFrom(this.fleetsApi.list()).catch((err) => {
+        swallow('users-list:fleets', err);
+        this.fleetsEnEchec = true;
+        return [] as FleetSummary[];
+      });
       // FAIL-CLOSED : on construit l'ensemble des flottes éligibles (N1). En cas d'erreur,
       // le set reste vide → tous les boutons « Info Mode assistance » restent désactivés.
       await firstValueFrom(this.audioApi.getFleetsWithAudio())
@@ -726,6 +737,7 @@ export class UsersListComponent implements OnInit {
       mode: 'create',
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      fleetsEnEchec: this.fleetsEnEchec,
       groups,
       vehicles,
       // Audio hors invitation (accordable après acceptation via la matrice, garde d'éligibilité).
@@ -752,6 +764,7 @@ export class UsersListComponent implements OnInit {
       user,
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      fleetsEnEchec: this.fleetsEnEchec,
       groups,
       vehicles,
       audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
@@ -777,6 +790,7 @@ export class UsersListComponent implements OnInit {
       },
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      fleetsEnEchec: this.fleetsEnEchec,
       groups,
       vehicles,
       audioEligible: !!inv.fleetId && this.eligibleFleetIds().has(inv.fleetId),
