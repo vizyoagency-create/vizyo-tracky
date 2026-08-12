@@ -33,7 +33,7 @@ export interface DriverDrawerResult {
   imports: [FormsModule, LucideAngularModule, DrivingScoreCardComponent],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <div class="fixed inset-0 h-[100dvh] z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
         <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl

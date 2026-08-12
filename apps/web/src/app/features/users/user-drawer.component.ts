@@ -87,7 +87,13 @@ export interface UserDrawerResult {
   imports: [FormsModule, LucideAngularModule, AccessMatrixEditorComponent],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <!-- ⚠️ h-[100dvh] EN PLUS de inset-0, et ce n'est pas redondant. bottom: 0 se
+           résout sur le viewport SMALL (barre d'URL affichée) : quand elle se rétracte au
+           défilement, la zone visible grandit mais le panneau garde son ancienne hauteur,
+           et un bandeau vide apparaît sous le pied — c'est le « gros espace blanc en bas »
+           relevé le 2026-08-12 sur Android. dvh suit le viewport dynamique. Sur un
+           élément positionné, top + height l'emportent et bottom est ignoré. -->
+      <div class="fixed inset-0 h-[100dvh] z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
         <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
