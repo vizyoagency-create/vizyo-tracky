@@ -31,6 +31,7 @@ import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService, type EngineControlCommandDto } from '../../core/services/engine-control.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PositionsApiService, type PositionDto } from '../../core/services/positions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -1688,6 +1689,8 @@ export class VehicleDetailComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly http = inject(HttpClient);
+  /** Un SUPER_ADMIN n'a pas de flotte : le bandeau « en mission » a besoin de la sienne. */
+  private readonly fleetFilter = inject(FleetFilterService);
   private readonly positionsApi = inject(PositionsApiService);
   private readonly alertsApi = inject(AlertsApiService);
   private readonly engineControlApi = inject(EngineControlService);
@@ -2435,7 +2438,7 @@ export class VehicleDetailComponent implements OnInit {
   private async chargerMissionEnCours(vehicleId: string): Promise<void> {
     try {
       const m = await firstValueFrom(
-        this.http.get<MissionEnCours | null>(`/api/missions/vehicle/${vehicleId}/current`),
+        this.http.get<MissionEnCours | null>(`/api/missions/vehicle/${vehicleId}/current${this.fleetFilter.selectedFleetId() ? '?fleetId=' + encodeURIComponent(this.fleetFilter.selectedFleetId()!) : ''}`),
       );
       this.missionEnCours.set(m ?? null);
     } catch (err) {

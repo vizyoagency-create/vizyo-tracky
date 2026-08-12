@@ -1,8 +1,9 @@
 import { HttpClient } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LucideAngularModule, Plus, Route, Truck, Warehouse } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { MissionDialogComponent } from './mission-dialog/mission-dialog.component';
 
@@ -271,6 +272,13 @@ export class MissionsPanelComponent implements OnInit {
   protected readonly Plus = Plus;
 
   protected readonly modaleOuverte = signal(false);
+  private readonly fleetFilter = inject(FleetFilterService);
+  /** Le sélecteur de société change → on recharge dans la nouvelle société. */
+  private readonly effetSociete = effect(() => {
+    this.fleetFilter.selectedFleetId();
+    this.charger();
+  });
+
   protected readonly chargement = signal(true);
   /** Motif de panne du dernier chargement, ou `null`. Distinct d'une liste vide. */
   protected readonly erreur = signal<string | null>(null);
@@ -298,7 +306,13 @@ export class MissionsPanelComponent implements OnInit {
   protected charger(): void {
     this.chargement.set(true);
     this.erreur.set(null);
-    const params = this.filtre() ? `?status=${this.filtre()}` : '';
+    // Un SUPER_ADMIN n'a pas de flotte : sans ce paramètre, le serveur ne sait pas
+    // dans quelle société lire, et répondait « Aucune flotte associée ».
+    const q = new URLSearchParams();
+    if (this.filtre()) q.set('status', this.filtre());
+    const societe = this.fleetFilter.selectedFleetId();
+    if (societe) q.set('fleetId', societe);
+    const params = q.toString() ? `?${q}` : '';
     this.http
       .get<{ missions: MissionLigne[]; compteurs: Compteurs }>(`/api/missions${params}`)
       .pipe(takeUntilDestroyed(this.destroyRef))

@@ -663,7 +663,12 @@ export class UsersListComponent implements OnInit {
     await this.loadUsers();
     // Espace dépôt — l'activité des dépôts, détachée : un échec laisse « Missions… »
     // et n'empêche pas la liste de s'afficher.
-    void firstValueFrom(this.http.get<Record<string, number>>('/api/missions/depot-activity'))
+    const societe = this.fleetFilter.selectedFleetId();
+    void firstValueFrom(
+      this.http.get<Record<string, number>>(
+        `/api/missions/depot-activity${societe ? '?fleetId=' + encodeURIComponent(societe) : ''}`,
+      ),
+    )
       .then((a) => this.missionsEnCours.set(a ?? {}))
       .catch((err) => swallow('users-list:depotActivity', err));
     if (this.isSuperAdmin()) {

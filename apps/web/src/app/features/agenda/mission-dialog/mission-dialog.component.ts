@@ -12,6 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { AlertTriangle, LucideAngularModule, Route, Warehouse, X } from 'lucide-angular';
 import { swallow } from '../../../core/error/swallow';
+import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 
 /**
  * Espace dépôt (2026-08) — la modale de création d'une mission. Cf. design/A2-MISSIONS.md § 5.
@@ -387,6 +388,19 @@ interface ConflitMission {
 export class MissionDialogComponent {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly fleetFilter = inject(FleetFilterService);
+
+  /**
+   * `&fleetId=…` ou `?fleetId=…`, ou rien.
+   *
+   * Un SUPER_ADMIN n'appartient a aucune societe : sans ce parametre, le serveur ne
+   * sait ni ou chercher les vehicules disponibles, ni quels comptes depot proposer.
+   * Vide pour les autres roles, dont la flotte est imposee cote serveur.
+   */
+  private paramSociete(prefixe: '?' | '&'): string {
+    const id = this.fleetFilter.selectedFleetId();
+    return id ? `${prefixe}fleetId=${encodeURIComponent(id)}` : '';
+  }
 
   readonly fermer = output<void>();
   readonly creee = output<void>();
@@ -527,7 +541,7 @@ export class MissionDialogComponent {
 
     this.http
       .get<VehiculeDispo[]>(
-        `/api/missions/vehicle-availability?startAt=${encodeURIComponent(debut)}&endAt=${encodeURIComponent(fin)}`,
+        `/api/missions/vehicle-availability?startAt=${encodeURIComponent(debut)}&endAt=${encodeURIComponent(fin)}${this.paramSociete("&")}`,
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -548,7 +562,7 @@ export class MissionDialogComponent {
 
   private chargerDepots(): void {
     this.http
-      .get<Depot[]>('/api/missions/depots')
+      .get<Depot[]>(`/api/missions/depots${this.paramSociete("?")}`)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (d) => this.depots.set(d ?? []),
@@ -580,6 +594,7 @@ export class MissionDialogComponent {
 
     this.http
       .post<{ mission: { ref: string }; avertissements: string[] }>('/api/missions', {
+        fleetId: this.fleetFilter.selectedFleetId(),
         originLabel: this.origine().trim(),
         destLabel: this.destination().trim(),
         startAt: debut,

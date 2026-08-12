@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import type { AuthUser } from '../auth/types/auth-user';
+import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -41,6 +42,12 @@ const STATUTS_OCCUPANTS: MissionStatus[] = [
 ];
 
 export interface CreerMissionEntree {
+  /**
+   * La societe dans laquelle creer la mission. N'a de sens que pour un SUPER_ADMIN,
+   * qui n'appartient a aucune flotte et choisit la sienne dans le selecteur global.
+   * Ignore pour tout autre role : le serveur impose alors la flotte du compte.
+   */
+  fleetId?: string | null;
   originLabel: string;
   destLabel: string;
   originPlaceId?: string | null;
@@ -192,7 +199,7 @@ export class MissionsService {
   ) {}
 
   async creer(user: AuthUser, entree: CreerMissionEntree): Promise<ResultatCreation> {
-    const fleetId = this.fleetDe(user);
+    const fleetId = this.porteeEcriture(user, entree.fleetId);
     const { start, end } = this.validerCreneau(entree.startAt, entree.endAt);
 
     const vehicule = await this.prisma.vehicle.findFirst({
@@ -294,13 +301,20 @@ export class MissionsService {
    */
   async lister(
     user: AuthUser,
-    filtres: { status?: MissionStatus; depotUserId?: string; from?: Date; to?: Date },
+    filtres: {
+      status?: MissionStatus;
+      depotUserId?: string;
+      from?: Date;
+      to?: Date;
+      fleetId?: string;
+    },
   ): Promise<{ missions: MissionListeDto[]; compteurs: CompteursMissions }> {
-    const fleetId = this.fleetDe(user);
+    // `undefined` = SUPER_ADMIN sur « Toutes les sociétés » : aucune borne de flotte.
+    const fleetId = this.porteeLecture(user, filtres.fleetId);
 
     const lignes = await this.prisma.mission.findMany({
       where: {
-        fleetId,
+        ...(fleetId ? { fleetId } : {}),
         ...(filtres.status ? { status: filtres.status } : {}),
         ...(filtres.depotUserId ? { depotUserId: filtres.depotUserId } : {}),
         ...(filtres.from ? { startAt: { gte: filtres.from } } : {}),
@@ -350,12 +364,16 @@ export class MissionsService {
    * ou changer un horaire doit savoir qu'un tiers regarde ce camion en ce moment.
    * Sans cette mention, il agit a l'aveugle sur un vehicule sous observation.
    */
-  async missionEnCours(user: AuthUser, vehicleId: string): Promise<MissionEnCoursDto | null> {
-    const fleetId = this.fleetDe(user);
+  async missionEnCours(
+    user: AuthUser,
+    vehicleId: string,
+    fleetIdDemande?: string,
+  ): Promise<MissionEnCoursDto | null> {
+    const fleetId = this.porteeLecture(user, fleetIdDemande);
     const maintenant = new Date();
     const m = await this.prisma.mission.findFirst({
       where: {
-        fleetId,
+        ...(fleetId ? { fleetId } : {}),
         vehicleId,
         status: { in: [MissionStatus.IN_PROGRESS, MissionStatus.LATE] },
         startAt: { lte: maintenant },
@@ -392,13 +410,16 @@ export class MissionsService {
    * Un `groupBy` plutot qu'une requete par depot : la liste peut porter dix comptes,
    * et dix requetes pour dix nombres est exactement le N+1 que ce VPS ne pardonne pas.
    */
-  async activiteDesDepots(user: AuthUser): Promise<Record<string, number>> {
-    const fleetId = this.fleetDe(user);
+  async activiteDesDepots(
+    user: AuthUser,
+    fleetIdDemande?: string,
+  ): Promise<Record<string, number>> {
+    const fleetId = this.porteeLecture(user, fleetIdDemande);
     const maintenant = new Date();
     const lignes = await this.prisma.mission.groupBy({
       by: ['depotUserId'],
       where: {
-        fleetId,
+        ...(fleetId ? { fleetId } : {}),
         depotUserId: { not: null },
         status: { in: [MissionStatus.IN_PROGRESS, MissionStatus.LATE] },
         startAt: { lte: maintenant },
@@ -413,9 +434,20 @@ export class MissionsService {
     return out;
   }
 
-  /** Les comptes DEPOT de la flotte, pour le selecteur de destinataire. */
-  async listerDepots(user: AuthUser): Promise<Array<{ id: string; nom: string }>> {
-    const fleetId = this.fleetDe(user);
+  /**
+   * Les comptes DEPOT de la flotte, pour le selecteur de destinataire.
+   *
+   * Portee d'ECRITURE, bien que ce soit une lecture : ce selecteur alimente un
+   * formulaire de creation. Servir les depots de toutes les societes a un
+   * SUPER_ADMIN sans selection lui ferait choisir un destinataire que
+   * `validerDepot` refusera ensuite — « le destinataire doit etre un compte depot
+   * de votre flotte ». Autant le dire tout de suite, et au bon endroit.
+   */
+  async listerDepots(
+    user: AuthUser,
+    fleetIdDemande?: string,
+  ): Promise<Array<{ id: string; nom: string }>> {
+    const fleetId = this.porteeEcriture(user, fleetIdDemande);
     const depots = await this.prisma.user.findMany({
       where: { fleetId, role: UserRole.DEPOT, isActive: true },
       select: { id: true, firstName: true, lastName: true, email: true },
@@ -443,8 +475,11 @@ export class MissionsService {
     user: AuthUser,
     startAt: Date,
     endAt: Date,
+    fleetIdDemande?: string,
   ): Promise<VehiculeDisponibiliteDto[]> {
-    const fleetId = this.fleetDe(user);
+    // Portee d'ECRITURE : ce sont les vehicules PROPOSES a la creation. Melanger
+    // ceux de plusieurs societes produirait un choix que `creer` refuserait.
+    const fleetId = this.porteeEcriture(user, fleetIdDemande);
 
     const [vehicules, missionsOccupantes] = await Promise.all([
       this.prisma.vehicle.findMany({
@@ -598,16 +633,27 @@ export class MissionsService {
     user: AuthUser,
     missionId: string,
     modifs: ModifierMissionEntree,
+    // ⚠️ PARAMETRE, et non un champ de `ModifierMissionEntree` : `ChampModifiable`
+    // derive de cette interface, et le controle des champs autorises par statut
+    // rejetterait `fleetId` comme une modification interdite. Ce n'est pas une
+    // valeur qu'on modifie, c'est la societe dans laquelle on cherche la mission.
+    fleetIdDemande?: string,
   ): Promise<{ impactFenetre: ImpactFenetre | null }> {
-    const fleetId = this.fleetDe(user);
+    const portee = this.porteeLecture(user, fleetIdDemande);
     const mission = await this.prisma.mission.findFirst({
-      where: { id: missionId, fleetId },
+      where: { id: missionId, ...(portee ? { fleetId: portee } : {}) },
       select: {
-        id: true, ref: true, status: true, startAt: true, endAt: true,
+        id: true, ref: true, status: true, startAt: true, endAt: true, fleetId: true,
         vehicleId: true, depotUserId: true, vehicle: { select: { plate: true } },
       },
     });
     if (!mission) throw new ForbiddenException('Mission hors de votre flotte');
+    // ⚠️ A partir d'ici, la flotte de reference est CELLE DE LA MISSION — jamais la
+    // portee, qui peut valoir `undefined` pour un super-admin sans societe choisie.
+    // Un `fleetId: undefined` dans un `where` Prisma SUPPRIME le filtre : les trois
+    // validations qui suivent (vehicule, depot, conducteur) accepteraient alors des
+    // ressources d'une AUTRE societe. C'est le fail-open que tenant-scope.ts decrit.
+    const fleetId = mission.fleetId;
 
     const autorises = CHAMPS_MODIFIABLES[mission.status];
     const demandes = Object.keys(modifs).filter(
@@ -713,8 +759,13 @@ export class MissionsService {
    * historique avec la mention « Annulee par le transporteur », et l'evenement
    * d'agenda passe en CANCELLED — sans quoi le vehicule resterait bloque.
    */
-  async annuler(user: AuthUser, missionId: string, motif: string): Promise<void> {
-    const fleetId = this.fleetDe(user);
+  async annuler(
+    user: AuthUser,
+    missionId: string,
+    motif: string,
+    fleetIdDemande?: string,
+  ): Promise<void> {
+    const portee = this.porteeLecture(user, fleetIdDemande);
     const propre = (motif ?? '').trim();
     if (propre.length < 3) {
       // Un motif vide rendrait la mention « Annulee par le transporteur » muette pour
@@ -723,7 +774,7 @@ export class MissionsService {
     }
 
     const mission = await this.prisma.mission.findFirst({
-      where: { id: missionId, fleetId },
+      where: { id: missionId, ...(portee ? { fleetId: portee } : {}) },
       select: { id: true, ref: true, status: true },
     });
     if (!mission) throw new ForbiddenException('Mission hors de votre flotte');
@@ -975,8 +1026,46 @@ export class MissionsService {
     if (!conducteur) throw new BadRequestException('Conducteur hors de votre flotte');
   }
 
-  private fleetDe(user: AuthUser): string {
-    if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
-    return user.fleetId;
+  /**
+   * La flotte a laquelle BORNER une lecture. `undefined` = aucune borne.
+   *
+   * ── Pourquoi ceci a remplace `fleetDe` (2026-08-12) ─────────────────────────────
+   * `fleetDe` levait « Aucune flotte associee » des que `user.fleetId` etait nul. Or
+   * un SUPER_ADMIN a `fleetId = null` PAR CONSTRUCTION : il n'appartient a aucune
+   * societe et choisit la sienne dans le selecteur global (FleetFilterService). Les
+   * quatre comptes super-admin de production recevaient donc un 403 sur HUIT des
+   * neuf methodes de ce service : l'onglet Missions, le selecteur de depot, le choix
+   * du vehicule, la creation, la modification, l'annulation, le bandeau de la fiche
+   * vehicule et la colonne « Perimetre » de /users. Toute la fonctionnalite depot
+   * leur etait fermee.
+   *
+   * `requiredFleetScope` est la regle deja appliquee par TOUS les autres endpoints
+   * de /agenda ; missions en etait le seul absent. Elle est fail-closed : un
+   * non-super-admin sans flotte recoit `NO_FLEET`, une flotte impossible qui ne
+   * matche aucune ligne — jamais l'absence de filtre, qui ouvrirait tout.
+   */
+  private porteeLecture(user: AuthUser, fleetIdDemande?: string): string | undefined {
+    return requiredFleetScope(user, fleetIdDemande);
+  }
+
+  /**
+   * La flotte dans laquelle ECRIRE — ou dont on liste les ressources d'un formulaire
+   * de creation (vehicules disponibles, comptes depot).
+   *
+   * Une ecriture ne peut jamais porter sur « toutes les societes » : il faut une
+   * flotte, et une seule. Un SUPER_ADMIN qui n'en a choisi aucune est donc arrete
+   * ici, avec le message a suivre — et non par un echec obscur plus loin.
+   */
+  private porteeEcriture(user: AuthUser, fleetIdDemande?: string | null): string {
+    const id = requiredFleetScope(user, fleetIdDemande ?? undefined);
+    if (!id) {
+      throw new BadRequestException(
+        'Sélectionnez une société avant de créer ou modifier une mission.',
+      );
+    }
+    // Non-super-admin sans flotte : le compte est mal provisionné. Le dire tel quel
+    // plutôt que de laisser NO_FLEET produire un « véhicule hors de votre flotte ».
+    if (id === NO_FLEET) throw new ForbiddenException('Aucune flotte associée à votre compte.');
+    return id;
   }
 }
