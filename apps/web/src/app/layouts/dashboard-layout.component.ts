@@ -708,8 +708,15 @@ interface NavGroup {
      * le porte pas — et la règle échouerait EN SILENCE.
      * (Aucun accent grave ici : il terminerait le littéral de styles.)
      * ════════════════════════════════════════════════════════ */
-    :host-context(body.plat-android) .layout--depot .bottom-bar { display: none !important; }
-    :host-context(body.plat-android) .layout--depot .content { padding-bottom: 0 }
+    /* ⚠️ CETTE REGLE MASQUAIT LA BARRE D'ONGLETS DU DEPOT SUR ANDROID.
+       Elle appliquait A3 § 1 : les trois boutons systeme occupent deja le bas, une
+       barre de plus y serait illisible, le menu lateral prenant le relais. Le relais
+       existe bien — le burger reste affiche pour un depot — mais a l'usage le compte
+       depot se retrouvait SANS ONGLETS, et cherchait une navigation qu'aucun repere
+       ne signalait. Retire le 2026-08-12 sur retour d'usage.
+       L'argument d'illisibilite ne tient plus : la barre porte deja
+       padding-bottom: calc(env(safe-area-inset-bottom) + 6px), qui la place au-dessus
+       des boutons systeme comme de la barre de gestes. */
 
     /* Vizyo Tracky en pied de menu, à 12 px : l'espace appartient visuellement au
        transporteur (A3 § 7, règle 5). */

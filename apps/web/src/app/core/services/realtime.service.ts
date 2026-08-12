@@ -112,6 +112,20 @@ export class RealtimeService {
   private static readonly INCIDENT_REPEAT_MS = 30 * 60_000;
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
+
+  /**
+   * Rattrape le chargement des alertes quand la socket s'est connectée AVANT que
+   * l'on sache qui est connecté.
+   *
+   * Sans cela, la garde renforcée de `loadInitialAlerts` transformerait la pluie de
+   * 403 en une liste d'alertes vide au premier chargement — on aurait troqué un
+   * défaut bruyant contre un défaut silencieux, ce qui est pire. L'appel est
+   * idempotent : il remplace la liste, il ne l'accumule pas.
+   */
+  private readonly alertesDesQueUtilisateurConnu = effect(() => {
+    const u = this.auth.user();
+    if (u && u.role !== 'DEPOT' && this.connected()) void this.loadInitialAlerts();
+  });
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
   private readonly visibility = inject(VisibilityService);
@@ -783,7 +797,20 @@ export class RealtimeService {
   private async loadInitialAlerts(): Promise<void> {
     // Même raison que `hydrate()` : un DEPOT n'a pas `alerts_view`. Les alertes sont
     // l'outil du transporteur, jamais celui du tiers en lecture (A1 § 2).
-    if (this.auth.isDepot()) return;
+    //
+    // ⚠️ ON TESTE L'ABSENCE D'UTILISATEUR, PAS SEULEMENT LE RÔLE DÉPÔT.
+    // `isDepot()` lit l'utilisateur COURANT, qui vaut `null` tant que `/api/auth/me`
+    // n'a pas répondu. Or cette méthode est appelée sur l'événement `connect` de la
+    // socket, laquelle s'établit AVANT cette réponse au chargement de la page : la
+    // garde laissait donc passer, et un compte DEPOT recevait un 403 « Permission
+    // requise : alerts_view ». Rejouée à chaque reconnexion, elle en a produit 25 en
+    // une seule session — jusqu'au 429 du limiteur de débit (production, 2026-08-12).
+    //
+    // Tant qu'on ignore QUI est connecté, on ne demande rien. L'effet ci-dessous
+    // rejoue l'appel dès que l'utilisateur est connu, donc rien n'est perdu pour un
+    // compte légitime dont la socket se serait connectée trop tôt.
+    const utilisateur = this.auth.user();
+    if (!utilisateur || utilisateur.role === 'DEPOT') return;
     try {
       const res = await firstValueFrom(
         this.http.get<{ items: AlertEvent[] }>('/api/alerts', {
