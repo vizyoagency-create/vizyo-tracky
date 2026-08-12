@@ -192,23 +192,95 @@ echo "     donc rester allume des semaines apres la fin de l incident : c est 'm
 # 🔴/🟠. Sur une machine saine, cette section ne s'execute pas du tout.
 if [ "${EMB_PID:-}" ]; then
   sub "Signature de boucle — des read() sans octets, c'est une attente, pas du travail (VPS-016)"
-  IO0=$(awk '/^syscr:/{c=$2} /^read_bytes:/{b=$2} END{print c" "b}' /proc/$EMB_PID/io 2>/dev/null)
+  # ⚠️⚠️ CORRIGE LE 2026-08-12 (VPS-M28) — CE BLOC N'A JAMAIS PRODUIT UNE SEULE LIGNE.
+  #
+  # Le programme awk etait SYNTAXIQUEMENT INVALIDE : `if (c) print A; print B; else …` — en awk,
+  # un `if` sans accolades ne prend QU'UNE instruction, donc le `print` suivant termine le `if`
+  # et le `else` devient une erreur de syntaxe. awk refusait de compiler, ecrivait
+  # « syntax error » sur stderr — que la collecte jette — et ne rendait RIEN sur stdout.
+  #
+  # Le bloc a ete ajoute le 2026-08-10 pour etre LA mesure qui tranche entre « il travaille »
+  # (un build) et « il tourne en rond » (VPS-016). Il ne s'execute que quand le verdict est deja
+  # 🔴, donc il n'a eu qu'une seule occasion de tourner : le 2026-08-12, TROISIEME occurrence de
+  # la boucle. Ce jour-la il a affiche son titre, puis son avertissement, et rien entre les deux.
+  # Sans la valeur, la sortie ressemblait a « rien a signaler » — le defaut VPS-M02 exactement,
+  # sur le detecteur le plus important du collecteur.
+  #
+  # La lecon depasse l'accolade manquante : un code qui ne s'execute QUE pendant une panne n'est
+  # jamais teste par les passages normaux. Il faut donc l'essayer a la main a l'ecriture, ou le
+  # rendre executable a froid. Les accolades sont posees, et un garde dit desormais la
+  # difference entre « aucun appel » et « mesure non faite ».
+  #
+  # ⚠️⚠️ ET LE BLOC ETAIT CASSE DEUX FOIS — le second defaut n'est apparu qu'en essayant le
+  # premier correctif sur la machine en panne, ce qui est precisement pourquoi VPS-M13 impose de
+  # relire la sortie d'un controle neuf ligne a ligne. Le verdict testait `db == 0`, une egalite
+  # STRICTE sur les octets lus du disque, ecrite d'apres une seule observation ou `read_bytes`
+  # etait identique a l'octet pres. Le 2026-08-12 la mesure a donne 1 208 307 read()/s pour
+  # 1 022 octets/s — soit 0,0008 octet par appel, une boucle qui ne fait aucun doute — et le
+  # verdict a repondu « 🟠 le disque repond, ne pas conclure a la boucle ». Il suffit qu'un
+  # journal de conteneur s'ecrive pendant la fenetre pour que le detecteur innocente la panne.
+  #
+  # ⚠️ Autrement dit : REPARER LA SYNTAXE SEULE aurait transforme un silence en FAUSSE
+  # RASSURANCE, ce qui est strictement pire (VPS-M21 : un defaut qui rassure n'a aucun
+  # plaignant). La grandeur qui tranche n'est pas le debit, c'est le nombre d'OCTETS PAR APPEL :
+  # un `read()` utile ramene une page, un `read()` qui tourne en rond ramene zero.
+  IO0=$(awk '/^syscr:/{c=$2} /^read_bytes:/{b=$2} END{print c+0" "b+0}' /proc/$EMB_PID/io 2>/dev/null)
+  N0=$(date +%s%N)
   sleep 4
-  IO1=$(awk '/^syscr:/{c=$2} /^read_bytes:/{b=$2} END{print c" "b}' /proc/$EMB_PID/io 2>/dev/null)
-  echo "$IO0 $IO1" | awk -v n="$EMB_NOM" '{
-    dc=($3-$1)/4; db=($4-$2)/4
-    printf "  %-14s %.0f read()/s   %.0f octets/s lus du disque\n", n, dc, db
-    if (dc > 100000 && db == 0)
-      print  "  🔴 BOUCLE D ATTENTE CONFIRMEE : des centaines de milliers d appels par seconde qui"
-      print  "     ne ramenent AUCUN octet. Ce n est pas un build, c est un descripteur qui tourne."
-    else if (dc > 100000)
-      print  "  🟠 beaucoup d appels MAIS le disque repond : c est probablement du travail reel"
-      print  "     (build, export d image). Ne pas conclure a la boucle."
-    else
-      print  "  ✅ pas de rafale d appels : le CPU va ailleurs (calcul, compression) — pas une boucle."
-  }'
+  IO1=$(awk '/^syscr:/{c=$2} /^read_bytes:/{b=$2} END{print c+0" "b+0}' /proc/$EMB_PID/io 2>/dev/null)
+  N1=$(date +%s%N)
+  if [ -z "$IO0" ] || [ -z "$IO1" ] || [ "$IO0" = "0 0" ]; then
+    echo "  🔴 MESURE NON FAITE : /proc/$EMB_PID/io illisible ou vide (le processus a-t-il disparu ?)."
+    echo "     Ce n est PAS « aucun appel » — c est l ABSENCE de mesure (lecon VPS-M02)."
+  else
+    printf '%s %s %s\n' "$IO0" "$IO1" \
+      "$(awk -v a="$N0" -v b="$N1" 'BEGIN{printf "%.3f", (b-a)/1000000000}')" \
+    | awk -v n="$EMB_NOM" '{
+        dt = $5 + 0; if (dt <= 0) dt = 4
+        dc = ($3-$1)/dt; db = ($4-$2)/dt
+        oa = (dc > 0 ? db/dc : 0)          # octets RAMENES PAR APPEL — la grandeur qui tranche
+        printf "  %-14s %.0f read()/s   %.0f octets/s lus du disque   = %.4f octet par appel   (fenetre %.1f s)\n", n, dc, db, oa, dt
+        # ⚠️ LE SEUIL PORTE SUR LES OCTETS PAR APPEL, PAS SUR LE DEBIT. Voir le commentaire
+        # ci-dessus : `db == 0` a rendu un verdict FAUX des sa premiere execution reelle.
+        if (dc > 100000 && oa < 16) {
+          print "  🔴 RAFALE D APPELS QUI NE RAMENENT RIEN DU DISQUE — signature de VPS-016."
+          print "     Un read() utile ramene une page ; ici il ramene un millieme d octet."
+          print "     ⚠️ CE QUE CETTE LIGNE NE PROUVE PAS, ET IL FAUT LE LIRE : `read_bytes` ne compte"
+          print "        que les octets venus du DISQUE. Un build qui relit des fichiers deja en cache"
+          print "        de pages produirait exactement la meme signature. Les deux mesures qui"
+          print "        tranchent sont ailleurs, et elles sont juste au-dessus et juste en dessous :"
+          print "        le CUMUL / uptime (une boucle dure des heures, un build des minutes) et le"
+          print "        WCHAN des threads chauds (futex = ordonnanceur bloque, pas une E/S)."
+          print "        Croiser enfin avec « dernier build » de la section 4."
+        } else if (dc > 100000) {
+          print "  🟠 rafale d appels ET le disque repond vraiment : c est du travail reel"
+          print "     (build, export d image) qui lit hors cache. Ne pas conclure a la boucle."
+        } else {
+          print "  ✅ pas de rafale d appels : le CPU va ailleurs (calcul, compression) — pas une boucle."
+        }
+      }'
+  fi
+  # ⚠️ AJOUTE LE 2026-08-12 — la mesure qui a NOMME la panne deux fois, et qui vivait jusqu'ici
+  # dans les verifications manuelles. Un thread bloque en `futex_wait_queue` avec des heures de
+  # CPU cumule, c'est un emballement de l'ORDONNANCEUR Go, pas une socket morte ni une E/S.
+  # Le 2026-08-10 comme le 2026-08-12, ce sont LES MEMES tid (837313, 156485) sur le MEME
+  # processus jamais redemarre : c'est ce qui etablit qu'il s'agit du meme etat qui revient, et
+  # non de trois pannes distinctes. Cout : cinq lectures de /proc, aucune ecriture, aucun fork
+  # par thread (un seul awk). Ne s'execute que sous verdict 🔴.
+  echo "  ── les 3 threads les plus chauds : OU sont-ils bloques ? ──"
+  for t in /proc/$EMB_PID/task/*; do
+    awk -v hz="$HZ" -v d="${t##*/}" '{s=$0; sub(/^[0-9]+ \(.*\) /,"",s); split(s,f," ");
+      print (f[12]+f[13])/hz, d}' "$t/stat" 2>/dev/null
+  done | sort -rn | head -3 | while read -r cpu tid; do
+    printf '     tid=%-9s %7.0f s CPU cumule   bloque dans : %s\n' \
+      "$tid" "$cpu" "$(cat /proc/$EMB_PID/task/$tid/wchan 2>/dev/null || echo 'espace utilisateur (running)')"
+  done
+  printf '     threads du demon : %s   (le runtime Go en cree de nouveaux quand les anciens sont coinces)\n' \
+    "$(ls /proc/$EMB_PID/task 2>/dev/null | wc -l)"
   echo "     ⚠️ Le vidage des goroutines (kill -USR1) trancherait la CAUSE — c est une ECRITURE,"
   echo "        donc hors de cet audit. Il n est possible que PENDANT la boucle : voir VPS-016."
+  echo "        ⚠️ 'Debug Mode' de dockerd vaut false : il n y a AUCUN pprof a interroger en"
+  echo "           lecture seule. Le signal est le seul chemin, et il a deja ete perdu 2 fois."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -377,10 +449,35 @@ else
   AUJ=$(date +%Y%m%d)
   AGE=$(( ( $(date -d "$AUJ" +%s) - $(date -d "$DERN" +%s) ) / 86400 ))
   echo "  journees concernees : $NBJ — la plus recente : $DERN (il y a $AGE j)"
-  if [ "$AGE" -ge 1 ]; then
-    echo "  ✅ HISTORIQUE — plus aucun doublon depuis $AGE jour(s). Ces fichiers partiront a la retention."
+  # ⚠️⚠️ CORRIGE LE 2026-08-12 (VPS-M31) — CE VERDICT A AFFIRME UNE CHOSE FAUSSE.
+  # Le 2026-08-12 il annoncait « ✅ HISTORIQUE — plus aucun doublon depuis 1 jour » alors qu un
+  # second dump du 2026-08-11 avait ete ecrit SEPT HEURES plus tot (22 h 20). La comparaison se
+  # faisait en JOURS CALENDAIRES : tout ce qui date d hier soir se lit « historique ».
+  # Le garde avait ete pose pour une bonne raison — eviter un faux positif quotidien sur les 25
+  # journees en double heritees d avant le correctif VPS-003 — et, ce faisant, il masquait
+  # desormais l evenement qu il existe pour voir. C est la famille VPS-M10 / VPS-M25 : un
+  # garde-fou qui cache un defaut est plus dangereux qu un garde-fou absent.
+  #
+  # ⚠️ ET LE VRAI CRITERE N EST PAS L AGE, C EST L ECART ENTRE LES DEUX COPIES. VPS-003 etait
+  # « deux planificateurs a deux minutes d intervalle ». Une sauvegarde de pre-deploiement lancee
+  # a la main en pleine soiree est un doublon LEGITIME, et le confondre avec une rechute de
+  # VPS-003 ferait chercher un second planificateur qui n existe pas. On affiche donc les HEURES.
+  HEURES=$(find /var/backups/vizyo-tracky -name "*_${DERN}-*.sql.gz" -printf "%f\n" 2>/dev/null \
+           | sed -E 's/.*-([0-9]{2})([0-9]{2})([0-9]{2})\..*/\1h\2/' | sort | paste -sd' + ')
+  NB_DERN=$(find /var/backups/vizyo-tracky -name "*_${DERN}-*.sql.gz" 2>/dev/null | wc -l)
+  ECART_MIN=$(find /var/backups/vizyo-tracky -name "*_${DERN}-*.sql.gz" -printf "%T@\n" 2>/dev/null \
+              | sort -n | awk 'NR==1{a=$1} END{printf "%d", ($1-a)/60}')
+  printf '  le %s porte %s copies, a %s — soit %s min d ecart\n' "$DERN" "$NB_DERN" "${HEURES:-?}" "$ECART_MIN"
+  if [ "${ECART_MIN:-0}" -le 30 ]; then
+    echo "  🔴 DEUX PLANIFICATEURS : moins de 30 min separent les copies — c est la signature de"
+    echo "     VPS-003, qui doit alors etre rouvert. Verifier crontab -l ET les timers systemd."
+  elif [ "$AGE" -le 1 ]; then
+    echo "  🟠 DOUBLON RECENT mais les copies sont TRES ESPACEES : ce n est pas VPS-003 (deux"
+    echo "     planificateurs seraient a quelques minutes). Signature d une sauvegarde lancee a la"
+    echo "     main, typiquement avant un deploiement. A confirmer par journalctl -u tracky-backup :"
+    echo "     une copie qui n y figure PAS n a pas ete produite par le timer."
   else
-    echo "  🔴 DOUBLON ENCORE ACTIF aujourd'hui — deux planificateurs tournent toujours (cf. VPS-003)"
+    echo "  ✅ HISTORIQUE — le dernier doublon a $AGE jours. Ces fichiers partiront a la retention."
   fi
 fi
 
@@ -454,14 +551,34 @@ sub "Conteneurs actifs : sante, redemarrages, limites"
 #     execution — SEPT conteneurs de DEUX applications sans rapport partagent le projet
 #     « deploy », parce que compose derive le nom du projet du nom du DOSSIER et que les deux
 #     depots ont un dossier `deploy/`.
-NB_PS=$(docker ps -q 2>/dev/null | wc -l); NB_RENDUS=0
-PROJETS=""
-for c in $(docker ps -q 2>/dev/null); do
-  ligne=$(docker inspect --format '  {{.Name}} | redem={{.RestartCount}} | sante={{with .State.Health}}{{.Status}}{{else}}aucune sonde{{end}} | memlimit={{.HostConfig.Memory}} | redem_pol={{.HostConfig.RestartPolicy.Name}} | projet={{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{else}}aucun{{end}}' "$c" 2>/dev/null)
-  [ -n "$ligne" ] && { echo "$ligne"; NB_RENDUS=$((NB_RENDUS+1))
-    PROJETS="$PROJETS$(echo "$ligne" | sed -n 's/.*projet=\(.*\)/\1/p')|$(echo "$ligne" | sed -n 's/^  \/\([^ ]*\) .*/\1/p')
-"; }
-done
+# ⚠️⚠️ CORRIGE LE 2026-08-12 (VPS-M30) — LA SECTION 4 LANCAIT ~160 `docker inspect` SEPARES.
+# Mesure du 2026-08-12 : la section 4 a coute 78 s sur 236, soit le PREMIER poste de la
+# collecte — devant la section 5 (26 s), que l'angle mort n° 3 de la veille designait comme
+# « le poste le plus rentable » sur la foi des 54 s du 2026-08-11. La designation etait bonne
+# le jour ou elle a ete faite ; elle ne l'etait plus le lendemain, et c'est la lecon : un
+# classement de couts se refait a chaque passage, il ne se recopie pas.
+#
+# Le compte : la table ci-dessous 32 appels, les limites CPU 32, les sondes de la section 7
+# deux boucles de 32, le levier 3 encore 32, plus DEUX inspect complets pour jq. Chacun ouvre
+# une connexion au socket du demon — sur une machine dont ce demon tourne justement en boucle.
+# `docker inspect` accepte N identifiants et applique le gabarit a chacun : 32 appels → 1.
+#
+# ⚠️ PIEGE VPS-M08 NON RE-TENDU, ET C'EST DELIBERE : `{{.HostConfig.NanoCpus}}` reste dans un
+# gabarit SEPARE. Sa presence fait basculer `docker inspect` sur la representation en map, ou
+# `.State.Health` absent devient une ERREUR qui vide la ligne entiere. Les deux champs ne
+# doivent jamais se retrouver dans le meme gabarit — c'est ce qui avait fait disparaitre sept
+# conteneurs en silence, dont deux de production.
+# ⚠️ Le controle « compte attendu vs compte obtenu » est CONSERVE tel quel : c'est lui le vrai
+# correctif de VPS-M08, pas le gabarit. Il vaut exactement autant en un appel qu'en trente-deux.
+IDS=$(docker ps -q 2>/dev/null)
+NB_PS=$(printf '%s\n' "$IDS" | grep -c .)
+INSPECT=$(printf '%s\n' "$IDS" | xargs -r docker inspect --format '{{.Name}}|{{.RestartCount}}|{{with .State.Health}}{{.Status}}{{else}}aucune sonde{{end}}|{{.HostConfig.Memory}}|{{.HostConfig.RestartPolicy.Name}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{else}}aucun{{end}}' 2>/dev/null)
+NB_RENDUS=$(printf '%s\n' "$INSPECT" | grep -c '|')
+printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=6 { sub(/^\//,"",$1)
+  printf "  %s | redem=%s | sante=%s | memlimit=%s | redem_pol=%s | projet=%s\n", $1,$2,$3,$4,$5,$6 }'
+# Le couple « projet | conteneur » est derive du MEME texte, par un seul awk — la version
+# precedente lancait deux `sed` par conteneur, soit 64 forks pour reformater ce qu'on avait deja.
+PROJETS=$(printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=6 { sub(/^\//,"",$1); print $6"|"$1 }')
 # ⚠️ CE CONTROLE EST LE VRAI CORRECTIF. Le gabarit peut re-casser a la prochaine montee de
 # version de Docker ; ce qui ne doit plus JAMAIS arriver, c'est qu'il casse en SILENCE.
 if [ "$NB_RENDUS" -eq "$NB_PS" ]; then
@@ -471,19 +588,19 @@ else
   echo "     Le gabarit docker inspect a echoue en silence. Ne pas lire cette liste comme complete."
 fi
 printf '  limites CPU : %s conteneur(s) sur %s en ont une\n' \
-  "$(for c in $(docker ps -q 2>/dev/null); do docker inspect --format '{{.HostConfig.NanoCpus}}' "$c" 2>/dev/null; done | grep -vc '^0$')" "$NB_PS"
+  "$(printf '%s\n' "$IDS" | xargs -r docker inspect --format '{{.HostConfig.NanoCpus}}' 2>/dev/null | grep -vc '^0$')" "$NB_PS"
 
 # ── Le prerequis du redemarrage, verifie au lieu d'etre suppose ──
 # Le plan d'action « redemarrer pour activer le noyau » repose entierement sur cette ligne :
 # un conteneur qui n'est pas en `unless-stopped` (ou `always`) NE REVIENT PAS, et on ne
 # l'apprend qu'apres. Elle etait tapee a la main a chaque passage — donc oubliable.
-NB_OK=$(docker ps -q 2>/dev/null | xargs -r docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' 2>/dev/null | grep -cE '^(unless-stopped|always)$')
+NB_OK=$(printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=6 && ($5=="unless-stopped" || $5=="always")' | grep -c .)
 if [ "$NB_OK" = "$NB_PS" ]; then
   echo "  ✅ redemarrage machine : $NB_OK / $NB_PS conteneurs remonteront seuls (unless-stopped/always)"
 else
   echo "  🔴 redemarrage machine : $NB_OK / $NB_PS seulement remonteront seuls — les autres resteront ETEINTS :"
-  docker ps -q 2>/dev/null | xargs -r docker inspect --format '{{.Name}} {{.HostConfig.RestartPolicy.Name}}' 2>/dev/null \
-    | grep -vE ' (unless-stopped|always)$' | sed 's/^/     /'
+  printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=6 && $5!="unless-stopped" && $5!="always" {
+    sub(/^\//,"",$1); printf "     %s %s\n", $1, $5 }'
 fi
 
 # ── Collision de nom de projet compose (VPS-020) ──
@@ -515,9 +632,13 @@ echo "     defaut : voir VPS-020. Le nom vient du dossier, pas du contenu."
 #      lignes rendues. Un « 0 route / 19 etiquetes » est alors un DEFAUT VISIBLE, pas un silence.
 sub "Qui sert quel domaine (etiquettes de routage Traefik)"
 if have jq; then
-  NB_ETIQ=$(docker ps -q 2>/dev/null | xargs -r docker inspect 2>/dev/null \
+  # ⚠️ VPS-M30 : UN SEUL `docker inspect` complet, reutilise par les deux requetes jq. La version
+  # precedente en lancait deux — c'est-a-dire qu'elle serialisait DEUX FOIS l'etat complet des
+  # 32 conteneurs (plusieurs Mo de JSON) pour repondre a deux questions sur le meme objet.
+  INSPECT_JSON=$(printf '%s\n' "$IDS" | xargs -r docker inspect 2>/dev/null)
+  NB_ETIQ=$(printf '%s' "$INSPECT_JSON" \
     | jq -r '[.[] | select([.Config.Labels // {} | keys[] | select(startswith("traefik."))] | length > 0)] | length')
-  ROUTES=$(docker ps -q 2>/dev/null | xargs -r docker inspect 2>/dev/null | jq -r '.[]
+  ROUTES=$(printf '%s' "$INSPECT_JSON" | jq -r '.[]
     | . as $x
     | ($x.Config.Labels["com.docker.compose.project"] // "-") as $p
     | ($x.Config.Labels // {}) | to_entries[]
@@ -809,14 +930,55 @@ sub "Mises a jour"
 # en retard » pour cette raison, et le lendemain il y en avait 59 : la machine n'avait rien
 # installe entre-temps, c'est la MESURE qui avait menti.
 # Un compte de paquets sans la date de son cache n'est donc pas un chiffre exploitable.
-printf '  cache apt rafraichi le : %s\n' \
-  "$(stat -c '%y' /var/lib/apt/periodic/update-success-stamp 2>/dev/null | cut -c1-19 \
-     || stat -c '%y' /var/lib/apt/lists 2>/dev/null | cut -c1-19 || echo 'inconnu')"
-apt list --upgradable 2>/dev/null | grep -c '/' | xargs echo "  paquets en retard :"
-apt list --upgradable 2>/dev/null | grep -icE "security" | xargs echo "  dont estampilles securite :"
-echo "     (un 0 ici n'est PAS une garantie : Ubuntu publie beaucoup de correctifs par"
-echo "      'noble-updates', qui ne porte pas le mot 'security'. Ex. du 2026-08-05 :"
-echo "      apparmor, coreutils et cloud-init attendaient, avec 'securite = 0'.)"
+# ⚠️⚠️ CORRIGE LE 2026-08-12 (VPS-M29) — ANGLE MORT N° 1 DU RAPPORT DU 2026-08-11, ET IL A
+# COUTE HUIT PASSAGES. VPS-M11 avait pose la date du cache a cote du chiffre, et le texte
+# rappelait a chaque fois qu'« un 0 ici n'est pas une garantie ». Ca n'a servi a rien : pendant
+# sept passages le collecteur a annonce « 0 paquet de securite » sur un cache de 12 a 25 h, et
+# personne n'a applique l'avertissement. Le 2026-08-11, par hasard, `apt-daily.timer` a tire son
+# delai aleatoire UNE MINUTE avant la mesure : le chiffre est passe a 11. Le 2026-08-12, cache
+# de 27 h, il est retombe a 0.
+#
+# Trois lectures du meme collecteur en trois jours — 0, puis 11, puis 0 — sans qu'une seule
+# ligne ne distingue « il n'y en a pas » de « on ne peut pas savoir ». Un chiffre affiche est un
+# chiffre CRU : la contre-mesure n'est pas de mieux l'annoter, c'est de REFUSER de le publier.
+# Au-dela de 6 h de cache, le chiffre est degrade au rang d'indicatif et le verdict devient
+# « NON MESURABLE ». C'est la lecon de VPS-M24 (instrumenter n'est pas arbitrer) appliquee ici.
+#
+# ⚠️ On ne peut PAS forcer la mesure : `apt update` est une ecriture, interdite par cet audit.
+# ⚠️ UN SEUL `apt list --upgradable` au lieu de deux (defaut VPS-M05 n° 3, enieme recidive) :
+#    la commande deroule tout le cache, et on la lancait deux fois pour deux comptages.
+APT_STAMP=$(stat -c '%Y' /var/lib/apt/periodic/update-success-stamp 2>/dev/null \
+            || stat -c '%Y' /var/lib/apt/lists 2>/dev/null || echo 0)
+APT_AGE_H=$(( ( $(date +%s) - ${APT_STAMP:-0} ) / 3600 ))
+printf '  cache apt rafraichi le : %s  (il y a %s h)\n' \
+  "$(date -d "@${APT_STAMP:-0}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo inconnu)" "$APT_AGE_H"
+APT_LIST=$(apt list --upgradable 2>/dev/null)
+NB_UPG=$(printf '%s\n' "$APT_LIST" | grep -c '/')
+NB_SEC=$(printf '%s\n' "$APT_LIST" | grep -icE "security")
+if [ "${APT_STAMP:-0}" -gt 0 ] && [ "$APT_AGE_H" -le 6 ]; then
+  printf '  paquets en retard : %s\n' "$NB_UPG"
+  printf '  dont estampilles securite : %s   ✅ cache de %s h — MESURE VALIDE\n' "$NB_SEC" "$APT_AGE_H"
+else
+  printf '  🟠 NON MESURABLE — le cache apt a %s h (seuil de validite : 6 h).\n' "$APT_AGE_H"
+  printf '     Ce que le cache PERIME affiche, a titre indicatif SEULEMENT : %s paquets en retard,\n' "$NB_UPG"
+  printf '     dont %s estampilles securite. NE PAS reporter ces deux nombres comme une mesure.\n' "$NB_SEC"
+  echo  "     Un 0 sur cache perime ne dit pas « il n y en a pas », il dit « on ne sait pas » —"
+  echo  "     et c est exactement l ecart qui a masque 11 correctifs de securite (VPS-010)."
+fi
+echo "     (et meme sur cache frais, un 0 n'est PAS une garantie : Ubuntu publie beaucoup de"
+echo "      correctifs par 'noble-updates', qui ne porte pas le mot 'security'.)"
+# ⚠️ Ce que le compte de paquets ne dira JAMAIS : si un paquet a ete INSTALLE, les demons qui
+# le chargeaient tournent encore sur l'ancienne version jusqu'a leur redemarrage. Le 2026-08-11
+# a 06h19, unattended-upgrades a installe 11 paquets systemd/udev — le compte est retombe de 70
+# a 59 et « securite » de 11 a 0, ce qui se lit « c'est regle ». Ca ne l'est pas tant que les
+# services n'ont pas redemarre. La ligne ci-dessous le dit, et elle est gratuite.
+if have needrestart; then
+  printf '  services tournant sur une bibliotheque REMPLACEE : %s\n' \
+    "$(needrestart -b 2>/dev/null | grep -c '^NEEDRESTART-SVC' || echo '?')"
+else
+  printf '  paquets installes recemment (24 h) : %s  — un paquet installe n est pas un service redemarre\n' \
+    "$(grep -c '^Start-Date' /var/log/apt/history.log 2>/dev/null || echo '?') dans tout l historique ; derniere installation : $(grep '^Start-Date' /var/log/apt/history.log 2>/dev/null | tail -1 | cut -d' ' -f2-)"
+fi
 [ -f /var/run/reboot-required ] && { echo "  !! REDEMARRAGE REQUIS :"; cat /var/run/reboot-required.pkgs 2>/dev/null | sed 's/^/    /'; } || echo "  redemarrage requis : non"
 # ⚠️ AJOUTE LE 2026-08-06 — angle mort n° 1, REPORTE TROIS FOIS (rapports du 08-04 et 08-05).
 # Si le VPS mettait deux secondes a joindre Vizyo Auth ou la passerelle SMS, rien ici ne le
@@ -950,14 +1112,19 @@ systemctl --failed --no-pager 2>/dev/null | head -8 | sed 's/^/  /'
 # complete (runc -> PARENT -> CHILD -> INIT -> la commande), soit ~5 processus, et ceux qui
 # interrogent une base ouvrent EN PLUS un backend PostgreSQL.
 sub "Healthchecks : la charge de fond non planifiee"
-for c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
-  docker inspect --format '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Interval}}|{{$.Name}}{{end}}' "$c" 2>/dev/null
-done | grep . | sed 's|/||' | sort | awk -F'|' '{iv[$1]++} END {for (i in iv) printf "  %3d conteneurs toutes les %s\n", iv[i], i}'
-docker ps --format '{{.Names}}' 2>/dev/null | while read c; do
-  docker inspect --format '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Interval}}{{end}}' "$c" 2>/dev/null
-done | grep . | awk '
+# ⚠️ VPS-M30 (2026-08-12) : cette section faisait DEUX boucles de 32 `docker inspect` — 64 appels
+# au socket du demon — pour lire le meme champ deux fois. Un seul appel, deux lectures du texte.
+CADENCES=$(printf '%s\n' "$IDS" | xargs -r docker inspect \
+  --format '{{with .Config.Healthcheck}}{{.Interval}}{{end}}' 2>/dev/null | grep .)
+# ⚠️ Le denominateur est affiche (lecon VPS-M08/M22) : sans lui, un gabarit qui casse rendrait
+# « 0 invocation/min » — c'est-a-dire l'image d'une machine sans aucune sonde — en silence.
+printf '%s\n' "$CADENCES" | sort | uniq -c \
+  | awk '{printf "  %3d conteneurs toutes les %s\n", $1, $2}'
+printf '%s\n' "$CADENCES" | awk -v tot="$NB_PS" '
   /^10s$/ {n+=6} /^30s$/ {n+=2} /^1m0s$/ {n+=1} /^5s$/ {n+=12}
-  END {printf "  → %d invocations/min, soit ~%d/jour (chacune ~5 processus via runc)\n", n, n*1440}'
+  { s++ }
+  END {printf "  → %d invocations/min, soit ~%d/jour (chacune ~5 processus via runc)\n", n, n*1440
+       printf "     %d conteneurs sondes sur %d ; %d SANS AUCUNE SONDE (leur panne est invisible a Docker)\n", s, tot, tot-s}'
 
 sub "Creations de processus par minute (mesure de 10 s)"
 # Le compteur `processes` de /proc/stat est cumulatif depuis le demarrage : la difference sur
@@ -975,7 +1142,16 @@ sub "Crons INTERNES aux conteneurs (verifier que crond ne tourne pas)"
 # /etc/periodic/*`. Il ressemble a une tache planifiee cachee, mais `crond` n'est PAS lance
 # dans ces conteneurs et /etc/periodic est vide : c'est inerte. Ne pas le signaler comme un
 # constat sans avoir verifie ces deux points (cf. VPS-M04).
-for c in $(docker ps --format '{{.Names}}' 2>/dev/null | head -6); do
+# ⚠️ CORRIGE LE 2026-08-12 — `docker ps | head -N` COUPE LE CLIENT DOCKER EN COURS DE ROUTE.
+# `head` ferme le tube des la N-ieme ligne ; le client Docker meurt d'un SIGPIPE au milieu de sa
+# requete, et le demon ecrit `error reading preface from client @: read unix /run/docker.sock`.
+# C'est exactement la derniere trace laissee par dockerd avant la premiere boucle de VPS-016 —
+# on ne sait pas si c'est la cause, mais on cesse de la produire. Recense au rapport du 08-11
+# (§9a) comme « premier point du prochain passage » ; ici et au levier 4, les deux seules
+# occurrences. La sortie est lue ENTIEREMENT dans une variable, puis decoupee : `head` coupe
+# alors un `printf` interne au shell, ce qui ne coute rien a personne.
+NOMS_CT=$(docker ps --format '{{.Names}}' 2>/dev/null)
+for c in $(printf '%s\n' "$NOMS_CT" | head -6); do
   # Une seule invocation `docker exec` : deux appels separes coutaient deux chaines runc, et
   # leurs sorties se melangeaient sur des lignes differentes (illisible).
   out=$(docker exec "$c" sh -c 'printf "%s/%s" "$(ps ax 2>/dev/null | grep -c "[c]rond")" "$(find /etc/periodic -type f 2>/dev/null | wc -l)"' 2>/dev/null)
@@ -1446,11 +1622,10 @@ SWU=$(free -m | awk 'NR==3{print $3}')
   || verdict "swap utilise" "${SWU} Mo (uptime $(awk '{printf "%.1f", $1/3600}' /proc/uptime) h)" "< 200 Mo" ko "revient apres chaque build — juger a la pression PSI, pas au volume"
 
 sub "Levier 3 — limites des conteneurs (confinement des pannes)"
-SANS=0; TOT=0
-for c in $(docker ps -q 2>/dev/null); do
-  TOT=$((TOT+1))
-  [ "$(docker inspect --format '{{.HostConfig.Memory}}' "$c" 2>/dev/null)" = "0" ] && SANS=$((SANS+1))
-done
+# ⚠️ VPS-M30 (2026-08-12) : 32 `docker inspect` de plus pour un champ deja lu par la section 4.
+# On reutilise son texte : aucun appel au demon, et les deux sections ne peuvent plus diverger.
+TOT=$(printf '%s\n' "$INSPECT" | grep -c '|')
+SANS=$(printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=6 && $4=="0"' | grep -c .)
 [ "$SANS" -eq 0 ] && verdict "conteneurs sans limite" "0 / $TOT" "0" ok "" \
   || verdict "conteneurs sans limite" "$SANS / $TOT" "0" ko "une fuite peut emporter un voisin (VPS-005)"
 
@@ -1458,7 +1633,9 @@ sub "Levier 4 — reglages PostgreSQL"
 # ⚠️ UN SEUL `docker exec` par conteneur : chacun coute une chaine `runc` complete. La
 # premiere version en faisait trois, et portait la collecte a 91 s — au-dessus du budget
 # de 90 s que cette procedure impose (meme defaut que VPS-M05, deuxieme recidive).
-for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|postgis" | head -3); do
+# ⚠️ 2026-08-12 : `| head -3` en bout de tube `docker ps` tuait le client Docker par SIGPIPE, a
+# 8 secondes de la fin de la collecte (voir la note de la section 7). On decoupe une variable.
+for pg in $(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | grep -E "postgres|postgis" | head -3); do
   RPC=$(docker exec "$pg" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SHOW random_page_cost;"' 2>/dev/null | tr -d '
 ')
   [ -z "$RPC" ] && continue
