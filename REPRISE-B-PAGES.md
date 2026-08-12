@@ -210,11 +210,46 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > proches : les véhicules restent toujours au premier plan ») et la légende « Cycle
 > de vie d'un lieu ». Aujourd'hui l'écran offre à la place **quatre cases éparses**.
 >
-> ⚠️ **Et le plus gros écart à la planche : sur mobile, `/map` n'a AUCUNE liste de
-> véhicules.** L'écran principal de la planche est « Carte + flotte » — onglets
-> « Véhicules 14 / Lieux 37 », filtres « Tous / En route / Arrêt / Hors ligne », et
-> les véhicules en lignes. La feuille actuelle (« Menu carte ») empile ACTIONS,
-> STYLE DE CARTE, MODE CAMÉRA, CALQUES et LÉGENDE — des réglages, pas la flotte.
+> ### ✅ La FEUILLE FLOTTE — livrée le 2026-08-12
+>
+> C'était le plus gros écart à la planche : **sur mobile, `/map` n'avait aucune liste
+> de véhicules**. Pire, la pastille « N actif(s) » — le seul élément qui NOMME la
+> flotte — ouvrait une feuille de **réglages** (actions, style, caméra, calques,
+> légende). L'élément qui nomme la flotte n'ouvrait pas la flotte.
+>
+> Livré : onglets « Véhicules N / Lieux N », les quatre puces de la planche
+> (Tous · En route · Arrêt · Hors ligne) avec leurs compteurs, et la liste. Tap sur
+> une ligne → la feuille se ferme, la carte centre, la fiche s'ouvre (vérifié :
+> `TE001ST` → fiche `TE001ST`). Le kit fait le travail : `app-bottom-sheet` en
+> variante **`sansVoile`** (la carte doit rester lisible SOUS la feuille) et
+> `app-zone` pour les états.
+>
+> **Mesure à 375 px : 18 éléments, 6 ratios distincts, 0 échec de contraste dans les
+> deux thèmes, 0 cible sous 44 px, 0 débordement.**
+>
+> ⚠️ **La règle que ce code existe pour tenir** — extraite en fonction pure
+> `features/map/flotte-lignes.ts`, **11 tests** :
+>
+> > **Une vitesse ne s'affiche que si le boîtier est `ONLINE`.**
+>
+> C'est l'incident FS-253 transposé à une liste : hors direct, la vitesse est un
+> SOUVENIR. Un véhicule muet depuis cinq jours ne doit pas afficher « 88 km/h » —
+> on nomme l'état et depuis quand. L'état vient de `getVehicleConnectivityState`,
+> **la même dérivation que les marqueurs** : sans cela la liste annoncerait
+> « 72 km/h » là où la carte affiche une pastille grise. `PARKED` est un **arrêt**,
+> pas une panne.
+>
+> Et le filtre à zéro ne ment pas : « Aucun véhicule à l'arrêt » **+ la sortie**
+> (« Voir les 2 véhicules »), au lieu d'une flotte annoncée vide.
+>
+> **Ce que la planche demande et que je n'ai PAS mis** : le libellé de lieu
+> (« Renault Clio · **A61 sortie 17** »). Aucun DTO ne le porte — ni `VehicleSnapshotDto`
+> ni les positions. Non bricolé, conformément à la consigne. La ligne affiche
+> `marque · modèle`, et « Modèle non renseigné » quand les deux manquent.
+>
+> **Observation kit (non corrigée)** : la poignée `.bs-handle-wrap` d'`app-bottom-sheet`
+> mesure **375 × 36** — sous 44 px en hauteur, mais pleine largeur. Elle est partagée
+> par toutes les feuilles de l'app : à trancher au niveau du kit, pas ici.
 
 > ### ⚠️ Le `catchError` en FIN DE TUYAU tue le sondage
 >

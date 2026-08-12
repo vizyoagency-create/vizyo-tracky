@@ -76,6 +76,15 @@ import {
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
+import {
+  compteursFlotte,
+  construireLignesFlotte,
+  filtrerFlotte,
+  type FiltreFlotte,
+  type LigneFlotte,
+} from './flotte-lignes';
+import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
@@ -224,7 +233,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective],
+  imports: [DecimalPipe, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -236,7 +245,8 @@ const RESYNC_RADIUS_M = 150;
       <!-- Chip statut compacte -->
       <button
         type="button"
-        (click)="mobileSheetOpen.set(true)"
+        (click)="flotteOuverte.set(true)"
+        aria-label="Voir la flotte"
         class="tracky-mobile-status-chip">
         @if (realtime.connected()) {
           <span class="tracky-status-dot tracky-status-dot--on"></span>
@@ -259,6 +269,92 @@ const RESYNC_RADIUS_M = 150;
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
       </button>
     </div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         FEUILLE FLOTTE — « Carte + flotte » de la planche.
+         sansVoile : la carte doit rester lisible SOUS la feuille, c'est tout
+         l'intérêt de l'écran. La géométrie (rayon, poignée, densité) vient des
+         jetons de plateforme du kit, pas de valeurs réécrites ici.
+         ════════════════════════════════════════════════════════════ -->
+    <app-bottom-sheet
+      [open]="flotteOuverte()"
+      (closed)="flotteOuverte.set(false)"
+      ariaLabel="Flotte"
+      [sansVoile]="true">
+      <div class="fl-onglets" role="tablist">
+        <button type="button" role="tab" class="fl-onglet"
+                [class.fl-onglet--actif]="flotteOnglet() === 'vehicules'"
+                [attr.aria-selected]="flotteOnglet() === 'vehicules'"
+                (click)="flotteOnglet.set('vehicules')">
+          Véhicules <span class="fl-onglet-n">{{ flotteCompteurs().tous }}</span>
+        </button>
+        <button type="button" role="tab" class="fl-onglet"
+                [class.fl-onglet--actif]="flotteOnglet() === 'lieux'"
+                [attr.aria-selected]="flotteOnglet() === 'lieux'"
+                (click)="flotteOnglet.set('lieux')">
+          Lieux <span class="fl-onglet-n">{{ fleetPlaces().length }}</span>
+        </button>
+      </div>
+
+      @if (flotteOnglet() === 'vehicules') {
+        <!-- Les compteurs portent sur la flotte ENTIÈRE : une puce à 0 dit qu'il
+             n'y en a aucun, elle ne disparaît pas. -->
+        <div class="fl-puces">
+          @for (p of FILTRES_FLOTTE; track p.id) {
+            <button type="button" class="fl-puce"
+                    [class.fl-puce--active]="flotteFiltre() === p.id"
+                    [attr.aria-pressed]="flotteFiltre() === p.id"
+                    (click)="flotteFiltre.set(p.id)">
+              {{ p.label }} <span class="fl-puce-n">{{ flotteCompteurs()[p.id] }}</span>
+            </button>
+          }
+        </div>
+
+        <app-zone [etat]="flotteEtat()" quoi="La flotte"
+                  vide="Aucun véhicule dans cette société"
+                  videDetail="Ajoutez un véhicule, ou changez de société si vous en supervisez plusieurs.">
+          <ul class="fl-liste">
+            @for (v of flotteVisibles(); track v.vehicleId) {
+              <li>
+                <button type="button" class="fl-ligne" (click)="ouvrirDepuisFlotte(v)">
+                  <span class="fl-pastille" [class]="'fl-pastille--' + v.etat"></span>
+                  <span class="fl-ligne-texte">
+                    <span class="fl-plaque">{{ v.plate }}</span>
+                    <span class="fl-modele">{{ v.modele }}</span>
+                  </span>
+                  <span class="fl-etat" [class]="'fl-etat--' + v.etat">{{ ligneEtatLabel(v) }}</span>
+                </button>
+              </li>
+            } @empty {
+              <!-- Un filtre qui ne renvoie rien n'est PAS une flotte vide : on le
+                   dit, et on offre la sortie (revenir à « Tous »). -->
+              <li class="fl-filtre-vide">
+                <p>Aucun véhicule {{ libelleFiltreCourant() }}.</p>
+                <button type="button" class="fl-filtre-vide-action" (click)="flotteFiltre.set('tous')">
+                  Voir les {{ flotteCompteurs().tous }} véhicules
+                </button>
+              </li>
+            }
+          </ul>
+        </app-zone>
+      } @else {
+        <app-zone [etat]="canViewPlaces() ? 'rempli' : 'interdit'" permission="places_view">
+          <ul class="fl-liste">
+            @for (p of fleetPlaces(); track p.id) {
+              <li class="fl-ligne fl-ligne--lieu">
+                <span class="fl-pastille fl-pastille--lieu"></span>
+                <span class="fl-ligne-texte">
+                  <span class="fl-plaque">{{ p.name }}</span>
+                  <span class="fl-modele">{{ placeKindLabel(p.kind) }}</span>
+                </span>
+              </li>
+            } @empty {
+              <li class="fl-filtre-vide"><p>Aucun lieu enregistré pour cette flotte.</p></li>
+            }
+          </ul>
+        </app-zone>
+      }
+    </app-bottom-sheet>
 
     <!-- Banner Mesure (mobile + visible quand le mode mesure est actif) -->
     @if (measureMode()) {
@@ -1368,6 +1464,169 @@ const RESYNC_RADIUS_M = 150;
 
     /* ─── User position marker — styles inline car MapLibre injecte
          les markers hors du composant Angular (pas d'encapsulation) ─── */
+
+    /* ═══ FEUILLE FLOTTE ═════════════════════════════════════════════════════
+       Aucune valeur de couleur ici : la feuille se pose sur une carte dont on ne
+       maîtrise pas la teinte, donc tout passe par les jetons de thème. La densité
+       de ligne vient du jeton de plateforme du kit (--densite-liste), qui vaut 44
+       sur iOS et 56 sur Android — c'est lui qui porte la cible tactile. */
+    .fl-onglets {
+      display: flex;
+      gap: 4px;
+      padding: 0 4px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .fl-onglet {
+      flex: 1;
+      min-height: 44px;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--fg-secondary);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .fl-onglet--actif {
+      background: color-mix(in srgb, var(--tracky) 12%, transparent);
+      color: var(--texte-succes);
+    }
+    .fl-onglet-n {
+      font-variant-numeric: tabular-nums;
+      opacity: .75;
+      font-size: 13px;
+    }
+
+    .fl-puces {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 12px 4px;
+      /* Le rail défile, mais la PAGE ne doit jamais partir en largeur. */
+      min-width: 0;
+      scrollbar-width: none;
+    }
+    .fl-puces::-webkit-scrollbar { display: none; }
+    .fl-puce {
+      flex: 0 0 auto;
+      min-height: 44px;
+      padding: 8px 14px;
+      border-radius: 9999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .fl-puce--active {
+      background: color-mix(in srgb, var(--tracky) 15%, transparent);
+      border-color: color-mix(in srgb, var(--tracky) 40%, transparent);
+      color: var(--texte-succes);
+    }
+    .fl-puce-n {
+      font-variant-numeric: tabular-nums;
+      margin-left: 4px;
+      opacity: .8;
+    }
+
+    .fl-liste {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .fl-ligne {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: var(--densite-liste, 56px);
+      padding: 10px 4px;
+      border: none;
+      background: transparent;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+      cursor: pointer;
+      /* Sans min-width:0 un modèle un peu long refuse de descendre sous sa
+         largeur de contenu et pousse toute la feuille en défilement latéral. */
+      min-width: 0;
+    }
+    .fl-ligne:active { background: color-mix(in srgb, var(--fg-secondary) 10%, transparent); }
+    .fl-ligne--lieu { cursor: default; }
+    .fl-pastille {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--fg-tertiary);
+    }
+    .fl-pastille--route { background: var(--tracky); }
+    .fl-pastille--arret { background: var(--fg-secondary); }
+    .fl-pastille--hors-ligne { background: var(--texte-alerte); }
+    .fl-pastille--lieu { background: var(--texte-violet); }
+    .fl-ligne-texte {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+    .fl-plaque {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--fg-primary);
+      letter-spacing: -0.01em;
+    }
+    .fl-modele {
+      font-size: 12px;
+      color: var(--fg-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .fl-etat {
+      flex-shrink: 0;
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--fg-secondary);
+      text-align: right;
+    }
+    .fl-etat--route { color: var(--texte-succes); }
+    .fl-etat--hors-ligne {
+      color: var(--texte-alerte);
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .fl-filtre-vide {
+      padding: 24px 8px;
+      text-align: center;
+      color: var(--fg-secondary);
+      font-size: 13px;
+    }
+    .fl-filtre-vide-action {
+      margin-top: 10px;
+      min-height: 44px;
+      padding: 10px 18px;
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--tracky) 40%, transparent);
+      background: color-mix(in srgb, var(--tracky) 12%, transparent);
+      color: var(--texte-succes);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
 
     /* ─── Compass button (desktop = bottom-right, mobile = top-right) ─── */
     .tracky-compass-btn {
@@ -2743,6 +3002,87 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly cameraPickerLiveCount = computed(
     () => this.cameraPickerVehicles().filter((v) => !v.dormant).length,
   );
+
+  /* ═══ FEUILLE FLOTTE — l'écran « Carte + flotte » de la planche ═══════════
+     Sur téléphone, la carte n'avait AUCUNE liste de véhicules : la pastille
+     « N actif(s) » ouvrait une feuille de RÉGLAGES (actions, style, caméra,
+     calques, légende). L'élément qui nomme la flotte n'ouvrait pas la flotte. */
+  protected readonly flotteOuverte = signal(false);
+  protected readonly flotteOnglet = signal<'vehicules' | 'lieux'>('vehicules');
+  protected readonly flotteFiltre = signal<FiltreFlotte>('tous');
+  protected readonly FILTRES_FLOTTE: ReadonlyArray<{ id: FiltreFlotte; label: string }> = [
+    { id: 'tous', label: 'Tous' },
+    { id: 'route', label: 'En route' },
+    { id: 'arret', label: 'Arrêt' },
+    { id: 'hors-ligne', label: 'Hors ligne' },
+  ];
+
+  /** Pour la phrase du filtre vide : « Aucun véhicule en route. » */
+  protected libelleFiltreCourant(): string {
+    switch (this.flotteFiltre()) {
+      case 'route': return 'en route';
+      case 'arret': return 'à l’arrêt';
+      case 'hors-ligne': return 'hors ligne';
+      default: return '';
+    }
+  }
+
+  /**
+   * Les lignes de la feuille flotte.
+   *
+   * L'état vient de `getVehicleConnectivityState` — la MÊME dérivation que les
+   * marqueurs et que `app-connectivity-badge`. Sans cela la liste dirait « 72 km/h »
+   * là où la carte affiche une pastille grise, et c'est précisément l'incident
+   * FS-253 : une vitesse vieille de cinq jours lue comme du direct.
+   *
+   * D'où la règle tenue ici : **une vitesse n'est affichée que si le boîtier est
+   * ONLINE**. Hors direct, on nomme l'état (et depuis quand) au lieu de recopier
+   * un souvenir.
+   */
+  protected readonly flotteLignes = computed<LigneFlotte[]>(() => {
+    const positions = this.realtime.positions();
+    return construireLignesFlotte(this.scopedSnapshot(), (t) => positions.get(t)?.speedKmh);
+  });
+
+  /** Compteurs des puces. Calculés sur la liste ENTIÈRE, jamais sur la vue filtrée. */
+  protected readonly flotteCompteurs = computed(() => compteursFlotte(this.flotteLignes()));
+
+  protected readonly flotteVisibles = computed(() =>
+    filtrerFlotte(this.flotteLignes(), this.flotteFiltre()),
+  );
+
+  /**
+   * L'état de la zone. `realtime.hydrated()` distingue « on n'a pas encore reçu le
+   * snapshot » d'« il n'y a réellement aucun véhicule » — sans quoi une flotte en
+   * cours de chargement s'annoncerait vide, le mensonge rassurant déjà relevé
+   * quatre fois dans cette base.
+   */
+  protected readonly flotteEtat = computed<EtatZone>(() => {
+    if (!this.realtime.hydrated()) return 'chargement';
+    return this.flotteLignes().length === 0 ? 'vide' : 'rempli';
+  });
+
+  /** Libellé d'état d'une ligne — ce qu'on affiche à droite de la plaque. */
+  protected ligneEtatLabel(v: LigneFlotte): string {
+    if (v.etat === 'route') return `${v.vitesse} km/h`;
+    if (v.etat === 'arret') return 'À l’arrêt';
+    switch (v.connectivite) {
+      case 'GPS_LOST': return 'GPS perdu';
+      case 'AWAITING_GPS': return 'En attente du GPS';
+      case 'NOT_CONFIGURED': return 'Sans boîtier';
+      default: return v.silence ? `Hors ligne · ${v.silence}` : 'Hors ligne';
+    }
+  }
+
+  /** Tap sur une ligne : on ferme la feuille, on centre, on ouvre la fiche. */
+  protected ouvrirDepuisFlotte(v: LigneFlotte): void {
+    this.flotteOuverte.set(false);
+    if (!v.trackerId) return;
+    const pos = this.realtime.positions().get(v.trackerId);
+    if (pos && this.map) this.map.flyTo({ center: [pos.lng, pos.lat], zoom: Math.max(this.map.getZoom(), 14) });
+    const el = document.querySelector<HTMLElement>(`.tracky-marker[data-tracker-id="${v.trackerId}"]`);
+    el?.click();
+  }
   /** Drag-to-dismiss sheet (offset Y en cours). */
   protected readonly sheetDragY = signal(0);
   private sheetTouchStartY = 0;
