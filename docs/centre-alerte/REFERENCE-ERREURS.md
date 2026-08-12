@@ -11,9 +11,51 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-11**
+- Dernière mise à jour : **2026-08-12**
 
 ---
+
+---
+
+## 🔴 2026-08-12 — un déploiement a effacé quatre correctifs, et rien ne l'a dit
+
+Le centre d'alerte affiche zéro depuis 14 h. C'est vrai, c'est mesuré, et ça ne veut rien dire :
+le déploiement du **11/08 à 22:37 UTC** a reconstruit la production depuis
+**`feat/depot-partage`**, une branche de fonctionnalité qui a divergé de `main` le **07/08** —
+donc **avant** les correctifs du 10/08 au soir.
+
+Les commits `d5e5fb1` et `73440d8` sont absents de `HEAD` sur le serveur, et surtout leurs
+marqueurs sont absents des **artefacts servis** — chaque `grep` accompagné d'une chaîne témoin,
+parce qu'un `grep` vide peut vouloir dire « mauvais chemin » :
+
+| Fiche | Marqueur cherché | Témoin (même fichier) | Verdict |
+|---|---|---|---|
+| TRK-002 | `consecutiveTransportFailures` | « Rafraichissement de session » ✅ | **ABSENT** du bundle servi |
+| TRK-001 | `reminderIntervalMs` | « ANORMALEMENT LONG » ✅ | **ABSENT** |
+| TRK-017 | `episodeOpenedAt` | « Allowlist SMS » ✅ | **ABSENT** |
+| TRK-014 | `armAckListener` | `ack-waiter.service.js` présent ✅ | **ABSENT** |
+
+`f7896d9` (les neuf correctifs du 04/08) est bien présent : seule la soirée du 10/08 est perdue.
+Voir [TRK-019](#trk-019).
+
+> **Ce que l'épisode apprend sur la méthode.** Les trois derniers rapports concluaient « les
+> correctifs tiennent, vérifiés sur des mesures ». Ils avaient raison — le jour où ils l'ont
+> écrit. Un correctif n'est pas un état acquis : c'est un état à **re-mesurer**. Et le seul
+> instrument qui pouvait voir ça n'est pas dans l'application, il est dans la comparaison entre la
+> branche déployée et `main`.
+
+**Et le test daté de [TRK-001](#trk-001) est PASSÉ — treize heures avant d'être effacé.** Le 11/08,
+l'alerte flotte de FZ-862-VY est sortie à 09:25 (cadence quotidienne, inchangée par le correctif)
+pendant qu'**aucune** ligne admin n'était écrite (cadence espacée). Deux canaux indépendants, dont
+un qui devait parler et un qui devait se taire : un détecteur éteint les aurait tus tous les deux.
+*Un test qui prédit un silence ET un bruit conclut ; un test qui ne prédit qu'un silence, non.*
+
+**Un second défaut, d'instrumentation cette fois.** `tracker_commands` porte **deux** colonnes
+d'acquittement, et `collecte.sql` lit celle qui ne vient pas du boîtier : `ackedAt` (le boîtier,
+**0 sur 4176**) et `acknowledgedAt` (humain / de masse, **30**). Les 30 ne sont pas 30 réponses —
+27 partagent le même horodatage à la milliseconde et aucune ne porte de `ackResponse`. Aucune
+conclusion passée n'est fausse (les deux valent zéro sur la fenêtre courante), mais le compteur est
+prêt à mentir. Voir [TRK-020](#trk-020).
 
 ---
 
@@ -337,6 +379,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🔴 NON CORRIGÉ | 2026-08-12 | 2026-08-12 |
+| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ | 2026-08-12 | 2026-08-12 |
 | [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : 112 commandes moteur, **0 confirmée**, aucun message jamais sorti de `queued` | 🔴 NON CORRIGÉ | 2026-08-11 | 2026-08-11 |
 | [TRK-017](#trk-017) | `sms-allowlist` | Une 2ᵉ instance de Tracky, hors VPS, efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(appelant nommé le 10/08 ; toujours actif, y compris la nuit)* | 2026-08-09 | 2026-08-11 |
 | [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ | 2026-08-09 | 2026-08-11 |
@@ -345,7 +389,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord)* | 2026-08-05 | 2026-08-11 |
 | [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ | 2026-08-06 | 2026-08-11 |
 | [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(espacement des rappels livré le 10/08)* | 2026-07-28 | 2026-08-11 |
-| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🟢 CORRIGÉ *(confirmation à 2 échecs livrée le 10/08 — test daté au 18/08)* | 2026-07-29 | 2026-08-10 |
+| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 **RÉGRESSION** *(correctif RETIRÉ de la prod le 11/08 22:37 par le déploiement — voir [TRK-019](#trk-019))* | 2026-07-29 | 2026-08-12 |
 | [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ | 2026-07-31 | 2026-07-31 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟢 CORRIGÉ | 2026-07-28 | 2026-07-28 |
@@ -480,6 +524,41 @@ troisième rappel consécutif. Prochain rappel attendu vers le **10/08 09:15**.
 03/08 et n'a toujours pas été touchée. Ce que la plateforme sait faire, elle le fait ; ce qui manque
 est une intervention.
 
+### 2026-08-12 — le test daté PASSE, puis l'espacement est retiré de la production
+
+**Le test posé pour aujourd'hui est concluant**, et sur deux canaux indépendants :
+
+| Canal | 2026-08-11 | Attendu | |
+|---|---|---|---|
+| Alerte **flotte** (cadence quotidienne, non touchée par le correctif) | `GPS_LOST` à **09:25:15**, « sans position depuis 4 j » | présente | ✅ |
+| Ligne **admin** `error_logs` (cadence espacée, épisode > 4 j) | **aucune** | absente | ✅ |
+
+Un détecteur simplement éteint aurait fait taire les deux. *Un test qui prédit à la fois un
+silence et un bruit conclut ; un test qui ne prédit qu'un silence, non.*
+
+⚠️ **Et l'espacement a été retiré treize heures plus tard** : `reminderIntervalMs` est absent du
+build servi (témoin « ANORMALEMENT LONG » présent dans le même fichier). Le rappel quotidien sans
+fin revient. Voir [TRK-019](#trk-019).
+
+🗓️ **Nouveau test daté, ~09:25 UTC le 12/08 :** une ligne `error_logs` doit **réapparaître** pour
+FZ-862-VY, en même temps que son alerte flotte. *Condition d'échec : si elle n'apparaît pas, la
+lecture de la régression est fausse et l'analyse est à reprendre.*
+
+### Mise à jour du 2026-08-12 — deux véhicules NEUFS entrent dans la famille
+
+| IMEI | Plaque | Dernière position | Zone morte | État ce matin |
+|---|---|---|---|---|
+| `864035054757902` | **AL-927-QM** | 11/08 12:44:46 | 1ʳᵉ occurrence | reparti |
+| `864035054756698` | **GS-928-NX** | 11/08 12:43:52 | 1ʳᵉ occurrence | reparti |
+
+Les deux ont alerté à 14:45:15 et perdu leur fix **à 54 secondes d'intervalle**, même flotte, zones
+mortes distinctes. ⚠️ **Fait noté, pas interprété.** Deux pertes quasi simultanées peuvent être
+deux véhicules au même endroit au même moment comme tout autre chose : une occurrence ne fait pas
+un mécanisme. *À re-regarder si le couple se reproduit.*
+
+Et les deux épisodes suivis continuent : **FZ-862-VY 116,5 h** (5ᵉ jour, ouvert le 07/08 09:07) et
+**FS-253-HR 38,6 h** (ouvert le 10/08 15:03).
+
 ### Action
 **Terrain, pas code.** Antennes GPS à vérifier sur **FS-253-HR** et **FZ-862-VY** — les deux longs
 épisodes se sont refermés au bout de ~4 jours, mais les deux véhicules **reperdent leur fix dans
@@ -586,6 +665,20 @@ Aucune nouvelle ligne de cette signature sur 7 jours, **alors qu'une vraie coupu
 supprime les deux cas a rendu le module inutile.
 
 ---
+
+### 🔴 2026-08-12 — RÉGRESSION : le correctif n'est plus en production
+
+Il n'a pas cassé, il a été **retiré**. Le déploiement du 11/08 à 22:37 UTC reconstruit la
+production depuis `feat/depot-partage`, branche forkée de `main` le 07/08 — soit trois jours avant
+`d5e5fb1`. Vérifié sur le **bundle servi** et pas sur le commit :
+`consecutiveTransportFailures` est **absent** de `/usr/share/nginx/html/`, alors que le témoin
+« Rafraichissement de session » s'y trouve bien (`chunk-TJGA5ATM.js`). Voir [TRK-019](#trk-019).
+
+⚠️ **Le test daté du 18/08 devient illisible et doit être réarmé après remise en ligne.** Il
+attendait zéro ligne sur 7 jours *alors qu'un redéploiement continue d'en produire* ; avec le
+correctif absent, un zéro comme une ligne sont tous deux compatibles avec n'importe quelle
+hypothèse. *Un test daté ne survit pas au retrait de ce qu'il teste — encore faut-il s'en
+apercevoir avant de lire son résultat.*
 
 ### ✅ 2026-08-10 19:39 UTC — correctif DÉPLOYÉ *(la note ci-dessous disait « non déployé » : périmée le soir même)*
 
@@ -2904,10 +2997,143 @@ ferait re-crier la zone à chaque perte aurait annulé la fonctionnalité.
 
 ---
 
+## TRK-019
+
+**Signature** — `livraison | (aucune ligne) | Un correctif vérifié en production disparaît d'un déploiement construit depuis une branche forkée avant lui`
+**Statut : 🔴 NON CORRIGÉ** · 4 correctifs perdus · 2026-08-12
+
+### Ce qui a été mesuré
+
+| | |
+|---|---|
+| Images reconstruites | `tracky-api` 11/08 **22:34** · `tracky-web` 11/08 **22:31** UTC |
+| Conteneurs recréés | 11/08 **22:37** UTC, `restarts=0` |
+| Branche déployée | **`feat/depot-partage`** @ `36009cd` |
+| Fork avec `main` | **`c3c2704`** — 2026-08-07 |
+| Commits perdus | `d5e5fb1` et `73440d8` — 2026-08-10 au soir |
+
+### Cause racine
+La production n'est pas construite depuis `main` mais depuis la branche de fonctionnalité en
+cours. Celle-ci a divergé le 07/08 : tout correctif livré sur `main` après cette date est
+**absent de l'image**, et le redevient à chaque reconstruction. Ce n'est pas un `revert` — rien
+n'a été annulé. C'est une branche qui n'a jamais eu le correctif, et qu'on déploie par-dessus une
+image qui l'avait.
+
+### Pourquoi rien ne l'a vu
+Aucune des trois couches de surveillance ne peut voir ça :
+- **`error_logs`** ne journalise que ce que le code émet ; un code absent n'émet rien ;
+- **les compteurs** (commandes, trackers, cadence) mesurent le comportement des boîtiers, pas la
+  version du logiciel ;
+- **le `git log` local** montre `main`, où les correctifs sont bien présents.
+
+Le défaut n'est visible que dans l'écart entre **ce qui est commité** et **ce qui est servi** —
+et cet écart n'était vérifié nulle part de façon systématique.
+
+### Portée — ce que chaque perte coûte
+| Fiche | Ce qui n'est plus en ligne | Conséquence |
+|---|---|---|
+| **TRK-002** | confirmation à 2 échecs consécutifs | 🔴 régression : un hoquet mobile isolé re-produit une ligne. Test daté du 18/08 **illisible** |
+| **TRK-001** | espacement des rappels admin | le rappel quotidien sans fin revient |
+| **TRK-014** | `armAckListener` — le guetteur d'ACK | l'instrument qui prouvait le silence est **éteint** : `ackedAt` = 0 par absence de mesure, plus par mesure d'une absence |
+| **TRK-017** | trace inconditionnelle + alerte par épisode | garde côté Tracky perdue. ⚠️ **La garde côté passerelle SMS est un autre service et tient** (39 h sans ligne) |
+
+`f7896d9` (les neuf correctifs du 04/08) est **présent** : ils sont antérieurs au fork.
+
+### Correctif proposé
+1. **Reporter `d5e5fb1` et `73440d8` sur la branche en ligne** (`cherry-pick`, ou fusionner `main`
+   dans `feat/depot-partage`), puis reconstruire. Les deux commits ne touchent que
+   `gps-integrity`, `sms/allowlist`, `api-fetch` et `tracker-fix-mode` — aucun recouvrement avec
+   le travail « espace dépôt » de la branche.
+2. **Décider ce que la production suit.** Déployer une branche de fonctionnalité est un choix
+   possible ; le faire sans rebaser sur `main` en fait un piège permanent.
+
+### Vérification — sur les artefacts SERVIS, avec témoin
+Un `grep` vide peut vouloir dire « absent » ou « mauvais chemin ». Chaque marqueur se cherche avec
+une chaîne dont on sait qu'elle **doit** être là :
+
+```bash
+docker exec tracky-web sh -c 'grep -rl consecutiveTransportFailures /usr/share/nginx/html/'   # TRK-002
+docker exec tracky-web sh -c 'grep -rl "Rafraichissement de session" /usr/share/nginx/html/'  # témoin
+docker exec tracky-api sh -c 'grep -rl reminderIntervalMs /app/apps/api/dist'                 # TRK-001
+docker exec tracky-api sh -c 'grep -rl "ANORMALEMENT LONG" /app/apps/api/dist'                # témoin
+docker exec tracky-api sh -c 'grep -rl episodeOpenedAt /app/apps/api/dist'                    # TRK-017
+docker exec tracky-api sh -c 'grep -rl armAckListener /app/apps/api/dist'                     # TRK-014
+```
+
+🗓️ **Test daté au 2026-08-12, ~09:25 UTC.** Sous le code restauré (dédup 24 h), une ligne
+`error_logs` doit **réapparaître** pour FZ-862-VY en même temps que son alerte flotte quotidienne.
+*Condition d'échec : si aucune ligne admin n'apparaît, la régression n'est pas celle décrite ici et
+l'analyse est à reprendre.*
+
+### ⚠️ Ne pas conclure trop vite
+Un centre d'alerte vide **ne prouve pas** que les correctifs tiennent : ce passage montre le cas
+exact où le zéro et le retrait du correctif coexistent. Et ne pas « corriger » en re-déployant
+`main` par-dessus : cela effacerait le travail de la branche en cours, qui est en ligne
+volontairement. Le geste est un report de commits, pas un changement de branche.
+
+---
+
+## TRK-020
+
+**Signature** — `outillage | (aucune ligne) | Le compteur « acquittées » de la collecte quotidienne lit acknowledgedAt (humain) et non ackedAt (boîtier)`
+**Statut : 🟠 CORRECTIF PROPOSÉ** · 2026-08-12
+
+### Ce qui a été mesuré
+`tracker_commands` porte **deux** colonnes d'acquittement, de sens opposés :
+
+| Colonne | Ce qu'elle porte | Valeur au 12/08 |
+|---|---|---|
+| `ackedAt` + `ackResponse` | l'accusé de réception **du boîtier** | **0** sur 4176 |
+| `acknowledgedAt` + `acknowledgedBy` | un acquittement **humain / de masse** | **30** |
+
+`collecte.sql` compte `acknowledgedAt` dans `commandes_sante_7j` (`count("acknowledgedAt")`) et
+filtre dessus dans `commandes_en_attente`.
+
+### Cause racine
+Deux notions distinctes portent presque le même nom, et la requête a pris la première venue. Rien
+dans le résultat ne signale laquelle est lue : la colonne s'affiche sous l'étiquette
+« acquittees », qui décrit exactement ce que le lecteur croit voir.
+
+### Pourquoi c'est encore inoffensif — et pourquoi ça ne le restera pas
+Sur la fenêtre de 7 jours, les deux colonnes valent zéro : **aucune conclusion d'aucun rapport
+passé n'est fausse**. Les 30 lignes non nulles sont toutes antérieures au 08/07, donc hors fenêtre.
+
+Mais ces 30 lignes montrent le risque en clair : **27 partagent le même horodatage à la
+milliseconde** (`2026-06-04 15:39:18.788`), aucune ne porte de `ackResponse`, et toutes sont au
+statut `FAILED`. Ce ne sont pas 30 réponses de boîtier, c'est **une écriture en masse**. Le jour
+où un opérateur en refait une, le rapport lira « N acquittées » et écrira que le boîtier a répondu
+— contredisant TRK-014 sur la foi d'un compteur qui ne mesure pas ça.
+
+> C'est la leçon de [TRK-014](#trk-014) qui revient sur une autre colonne : *un compteur
+> d'acquittement non nul peut ne contenir aucun acquittement.* Elle avait été écrite pour les
+> trames `ack` du journal ; elle vaut aussi pour la base.
+
+### Correctif proposé — **non appliqué, et c'est délibéré**
+Dans `collecte.sql`, lire `ackedAt` pour l'ACK boîtier, et exposer les deux séparément :
+
+```sql
+count("ackedAt")         AS acquittees_boitier,
+count("acknowledgedAt")  AS acquittees_humain,
+```
+
+⚠️ **Ce changement n'a pas été fait.** Il modifie la définition d'une grandeur suivie depuis neuf
+passages, et la procédure (§4 bis) interdit de changer une définition entre deux mesures sans le
+dire. À appliquer en une fois, en notant la date de bascule dans le journal des passages — les
+deux séries valant zéro aujourd'hui, la bascule est indolore **maintenant** et ne le sera plus
+après la première écriture en masse.
+
+### Vérification
+Après correctif, `acquittees_boitier` doit valoir 0 (cohérent avec TRK-014) **et**
+`acquittees_humain` doit pouvoir bouger sans que le premier ne bouge. Si les deux restent
+solidaires, la requête lit encore la même colonne deux fois.
+
+---
+
 ## Journal des passages
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-12 | 34 (3 sur 24 h, **0 depuis le redéploiement de 22:37**) | 18 revues ; **TRK-002 repasse en 🔴 RÉGRESSION** (correctif retiré de la prod) ; test daté de TRK-001 **passé** sur 2 canaux avant retrait ; TRK-013 voit son numérateur bouger (7 fausses / 38) | 2 (TRK-019, TRK-020) | agent d'audit |
 | 2026-08-11 *(2ᵉ passage, 09:22 UTC)* | — *(passage ciblé : vérification d'ACK, pas d'audit complet)* | **Cause racine de TRK-012 trouvée** (format SMS émis sur socket TCP) ; test daté de TRK-014 reconfirmé sur 13 h (47/0/47) ; **Constat 2 de TRK-014 rectifié** (les `jt`/`kt` sont de vrais ACK) | 0 | tâche `trk012-ack-et-correctif` |
 | 2026-08-11 | 31 (8 sur 24 h — **toutes antérieures aux correctifs du soir** ; **0 ligne** sur les 6 h qui les suivent) | 17 revues ; **TRK-014 tranché** (silence PROUVÉ, garde ACK vérifiée), 3 correctifs confirmés en prod, 2 en-têtes recalés sur `main` | 1 (TRK-018) | agent d'audit |
 | 2026-08-10 *(2ᵉ passage, 17:12 UTC)* | 31 (10 sur 24 h — dont **6 fois la même** ligne `sms-allowlist`) | 17 revues ; **TRK-017 requalifié** (test daté tranché : lecture B), TRK-012 revoit un boîtier FAILING | 0 | agent d'audit *(passage supplémentaire demandé)* |
