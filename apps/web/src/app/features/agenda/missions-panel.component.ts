@@ -3,7 +3,23 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LucideAngularModule, Plus, Route, Truck, Warehouse } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { httpFailureMessage } from '../../core/services/http-failure';
 import { MissionDialogComponent } from './mission-dialog/mission-dialog.component';
+
+/**
+ * Le message a afficher pour une panne de chargement des missions.
+ *
+ * Le message du SERVEUR passe en premier quand il existe : c'est lui qui porte la
+ * cause. « Aucune flotte associée » dit quoi corriger ; « Vous n'avez pas
+ * l'autorisation », derive du seul statut 403, serait ici FAUX — un super-admin a
+ * bien le droit, il n'a simplement aucune societe rattachee. Le repli generique ne
+ * sert que lorsque la reponse ne dit rien.
+ */
+export function messageDePanne(err: unknown): string {
+  const brut = (err as { error?: { message?: unknown } } | null)?.error?.message;
+  const duServeur = typeof brut === 'string' ? brut.trim() : '';
+  return duServeur || httpFailureMessage(err, 'les missions');
+}
 
 /**
  * Espace dépôt (2026-08) — l'onglet Missions de `/agenda`. Cf. design/A2-MISSIONS.md § 6.
@@ -93,6 +109,14 @@ const FILTRES = [
     @if (chargement()) {
       <div class="mp-sk">
         @for (i of [1,2,3,4]; track i) { <div class="sk mp-sk-ligne"></div> }
+      </div>
+    } @else if (erreur()) {
+      <!-- Une panne se DIT, et se distingue d'une liste vide. Le message du serveur
+           passe en premier quand il existe : « Aucune flotte associée » indique la
+           cause, là où « impossible de charger » ne fait que constater. -->
+      <div class="mp-panne">
+        <p class="mp-panne-txt">{{ erreur() }}</p>
+        <button type="button" class="mp-panne-btn" (click)="charger()">Réessayer</button>
       </div>
     } @else if (missions().length === 0) {
       <p class="mp-vide">
@@ -225,6 +249,13 @@ const FILTRES = [
     .mp-carte-creneau { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); }
 
     .mp-vide { padding: 40px 0; text-align: center; font-size: 13.5px; color: var(--text-tertiary); }
+    .mp-panne { padding: 32px 16px; text-align: center; display: flex; flex-direction: column;
+                align-items: center; gap: 12px; }
+    .mp-panne-txt { font-size: 13.5px; color: var(--texte-alerte); max-width: 34ch; margin: 0; }
+    .mp-panne-btn { min-height: 44px; padding: 0 18px; border-radius: 10px; cursor: pointer;
+                    font-size: 13.5px; font-weight: 600; color: var(--fg-primary);
+                    background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
+    .mp-panne-btn:hover { background: var(--bg-tertiary); }
     .mp-sk { display: flex; flex-direction: column; gap: 8px; }
     .mp-sk-ligne { height: 46px; border-radius: 12px; }
   `],
@@ -241,6 +272,8 @@ export class MissionsPanelComponent implements OnInit {
 
   protected readonly modaleOuverte = signal(false);
   protected readonly chargement = signal(true);
+  /** Motif de panne du dernier chargement, ou `null`. Distinct d'une liste vide. */
+  protected readonly erreur = signal<string | null>(null);
   protected readonly missions = signal<MissionLigne[]>([]);
   protected readonly filtre = signal<string>('');
   protected readonly compteurs = signal<Compteurs>({
@@ -264,6 +297,7 @@ export class MissionsPanelComponent implements OnInit {
   /** Public : la modale la rappelle après une création réussie. */
   protected charger(): void {
     this.chargement.set(true);
+    this.erreur.set(null);
     const params = this.filtre() ? `?status=${this.filtre()}` : '';
     this.http
       .get<{ missions: MissionLigne[]; compteurs: Compteurs }>(`/api/missions${params}`)
@@ -279,6 +313,14 @@ export class MissionsPanelComponent implements OnInit {
         },
         error: (err) => {
           swallow('missions-panel:charger', err);
+          // ⚠️ C'ETAIT UN ECHEC MUET. La liste restait vide et l'ecran affichait
+          // « Aucune mission créée pour l'instant » — LA REPONSE METIER D'UNE FLOTTE
+          // SANS MISSION — pour un 403, une session expiree ou une panne serveur.
+          // Cas reel (2026-08-12) : un SUPER_ADMIN a `fleetId = null`, le serveur
+          // repondait « Aucune flotte associée », et l'onglet annonçait sereinement
+          // qu'aucune mission n'existait tout en faisant surgir un toast d'erreur.
+          // Deux messages contradictoires, dont aucun n'indiquait quoi faire.
+          this.erreur.set(messageDePanne(err));
           this.chargement.set(false);
         },
       });
