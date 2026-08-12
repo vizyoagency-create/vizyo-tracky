@@ -56,12 +56,14 @@ export class MissionsController {
     @Query('depotUserId') depotUserId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
   ) {
     return this.missions.lister(req.user, {
       status: this.statutValide(status),
       depotUserId: depotUserId || undefined,
       from: this.dateValide(from),
       to: this.dateValide(to),
+      fleetId: fleetId || undefined,
     });
   }
 
@@ -74,8 +76,12 @@ export class MissionsController {
    */
   @Get('vehicle/:vehicleId/current')
   @RequirePermissions('missions_view')
-  missionEnCours(@Req() req: AuthenticatedRequest, @Param('vehicleId') vehicleId: string) {
-    return this.missions.missionEnCours(req.user, vehicleId);
+  missionEnCours(
+    @Req() req: AuthenticatedRequest,
+    @Param('vehicleId') vehicleId: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.missions.missionEnCours(req.user, vehicleId, fleetId || undefined);
   }
 
   /**
@@ -86,15 +92,15 @@ export class MissionsController {
    */
   @Get('depot-activity')
   @RequirePermissions('missions_view')
-  activiteDesDepots(@Req() req: AuthenticatedRequest) {
-    return this.missions.activiteDesDepots(req.user);
+  activiteDesDepots(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.missions.activiteDesDepots(req.user, fleetId || undefined);
   }
 
   /** Les comptes dépôt de la flotte — alimente le sélecteur de destinataire. */
   @Get('depots')
   @RequirePermissions('missions_manage')
-  depots(@Req() req: AuthenticatedRequest) {
-    return this.missions.listerDepots(req.user);
+  depots(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.missions.listerDepots(req.user, fleetId || undefined);
   }
 
   /**
@@ -110,11 +116,12 @@ export class MissionsController {
     @Req() req: AuthenticatedRequest,
     @Query('startAt') startAt: string,
     @Query('endAt') endAt: string,
+    @Query('fleetId') fleetId?: string,
   ) {
     const debut = this.dateValide(startAt);
     const fin = this.dateValide(endAt);
     if (!debut || !fin) throw new BadRequestException('Créneau invalide');
-    return this.missions.disponibiliteVehicules(req.user, debut, fin);
+    return this.missions.disponibiliteVehicules(req.user, debut, fin, fleetId || undefined);
   }
 
   /**
@@ -135,8 +142,9 @@ export class MissionsController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: ModifierMissionEntree,
+    @Query('fleetId') fleetId?: string,
   ) {
-    return this.missions.modifier(req.user, id, dto);
+    return this.missions.modifier(req.user, id, dto, fleetId || undefined);
   }
 
   /**
@@ -150,8 +158,9 @@ export class MissionsController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() dto: { reason?: string },
+    @Query('fleetId') fleetId?: string,
   ) {
-    return this.missions.annuler(req.user, id, dto?.reason ?? '');
+    return this.missions.annuler(req.user, id, dto?.reason ?? '', fleetId || undefined);
   }
 
   /**
