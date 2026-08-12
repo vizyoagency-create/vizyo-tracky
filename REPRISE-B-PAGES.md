@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **44/57** |
+| **B-pages** | 🟡 **en cours** | **45/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
@@ -146,8 +146,75 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > La distinction qui manquait : un cadre **actif mais vide** (`enabled=true`, aucun jour)
 > rend bien le véhicule privé en permanence, lui.
 
-**Bloc C — supervision (1 restante livrée sur 5).** `/dashboard` fait ; restent `/map`,
+**Bloc C — supervision (2 livrées sur 5).** `/dashboard` et **`/map`** faits ; restent
 `/vehicles`, `/places`, `/alerts`. *(`/vehicles/:id` livré plus tôt.)*
+
+> ### ⚠️ `/map` — LA FEUILLE DE POSITION ÉTAIT UNE SURFACE CLAIRE EN DUR
+>
+> Séance du 2026-08-12. `.bn-vcard` — la « feuille de position » de la ligne B1 —
+> était écrite **entièrement pour le thème clair** : `background: rgba(255,255,255,.92)`,
+> plaque en `#111`, libellés en `#888` / `#555` / `#ccc`, et **onze couleurs en dur en
+> style inline** dans le gabarit.
+>
+> En clair, elle est juste — c'est le thème dans lequel l'app est développée. En
+> **sombre**, le fond restait blanc alors que le texte hérité passait à `--fg-primary`
+> (`#EAEFED`) : **du blanc cassé sur du blanc**. Mesuré à 375 px :
+>
+> | Élément | Sombre, avant | Après |
+> |---|---:|---:|
+> | « Contact ON » | **1,36:1** | 6,97 |
+> | « Jour » (groupe) | **1,46:1** | passe |
+> | vitesse `2 km/h` | **2,40:1** | 9,00 |
+> | « Couper » | 3,69:1 | 4,56 |
+> | pastille active du menu (`--tracky` en texte) | 1,56:1 **en clair** | 4,65 |
+>
+> **Bilan : 16 échecs → 12 en clair, 16 → 11 en sombre.** Les 11 restants sont hors
+> de ce que je pouvais trancher (cf. ci-dessous).
+>
+> La correction reprend la **décision** de la planche (feuille translucide floutée
+> au-dessus de la carte, vitesse lue à sa couleur de régime) et non ses **valeurs** :
+> `--surface-quaternary` pour la surface posée sur la carte, et la famille
+> `--texte-*` pour tout le petit texte. Le tableau des couples a été mesuré dans les
+> **deux** thèmes avant d'écrire une ligne — `--tracky` donne 6,97 en sombre mais
+> **2,83 en clair**, et `--tracky-dark` l'inverse (2,19 / 4,53) : aucun des deux ne
+> convient, seul `--texte-succes` tient les deux (6,97 / 4,65).
+>
+> Deux pièges du journal se sont vérifiés à la lettre :
+> 1. **La fiche mesurée à `translateY(181,7px)` pour 182 px de haut**, stable sur 4 s :
+>    elle semblait s'ouvrir hors de l'écran. C'était le panneau qui ne composite
+>    aucune frame, donc une `transition: all` qui n'avance jamais. Après injection de
+>    `*{transition:none!important}` : 630→812, **entièrement visible**. Faux défaut évité.
+> 2. **`--texte-alerte` rapporté « absent » en clair** : il y vaut un `color-mix()`,
+>    que `getPropertyValue` rend **non résolu**. Il faut faire résoudre la valeur par
+>    le navigateur (poser l'expression sur un élément et relire `getComputedStyle`),
+>    jamais lire le jeton brut.
+>
+> **Cible corrigée** : la croix de la feuille mesurait **30 × 36**. La règle de 44 px
+> de `map.component.ts` est — comme celle de `styles.css` — une **liste de noms de
+> classes** ; `.bn-vcard-close` n'y était pas. Or sur iOS c'est le seul moyen de
+> refermer la fiche. Désormais **44 × 44**, 0 cible sous le seuil, 0 débordement.
+>
+> ### 🟠 `/map` — ce qui reste, et pourquoi je n'y ai pas touché
+>
+> | Ce qui échoue | Mesure | Pourquoi c'est resté |
+> |---|---:|---|
+> | 10 libellés de légende | 3,16 clair / 3,75 sombre | C'est **O5** — `--text-tertiary`, jeton 3:1 employé comme couleur de texte. Point en attente d'arbitrage |
+> | Glyphes « P » et « ! » | 2,77 et 3,76 | 7 px de blanc dans une pastille de 10 px. Ce sont des **clés de légende** qui doivent rester synchronisées avec `speedColor()` de `maplibre-markers.ts` : les changer seules ferait mentir la légende |
+> | `group-badge-name` « Jour » | 4,38 en clair | Composant du **kit partagé** (`shared/ui/group-badge/`), hors `/map`. À reprendre avec le kit, pas ici |
+>
+> **Restent aussi les deux autres tiers de la ligne B1 `/map`** — non faits, non
+> bricolés : les **pastilles de véhicule à reprendre en SVG** (leurs couleurs vivent
+> dans `speedColor()`, et la légende en dépend), et la **feuille « Calques &
+> lisibilité »** de la planche : le tri-état « Lieux sur la carte : Masqués /
+> Discrets / Tous » avec sa phrase (« Discrets réduit les lieux et regroupe les plus
+> proches : les véhicules restent toujours au premier plan ») et la légende « Cycle
+> de vie d'un lieu ». Aujourd'hui l'écran offre à la place **quatre cases éparses**.
+>
+> ⚠️ **Et le plus gros écart à la planche : sur mobile, `/map` n'a AUCUNE liste de
+> véhicules.** L'écran principal de la planche est « Carte + flotte » — onglets
+> « Véhicules 14 / Lieux 37 », filtres « Tous / En route / Arrêt / Hors ligne », et
+> les véhicules en lignes. La feuille actuelle (« Menu carte ») empile ACTIONS,
+> STYLE DE CARTE, MODE CAMÉRA, CALQUES et LÉGENDE — des réglages, pas la flotte.
 
 > ### ⚠️ Le `catchError` en FIN DE TUYAU tue le sondage
 >

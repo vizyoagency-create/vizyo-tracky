@@ -1029,19 +1029,19 @@ const RESYNC_RADIUS_M = 150;
 
             <div class="bn-vcard-badges">
               @if (pc.type === 'station') {
-                <span class="bn-vcard-badge" style="color:#A78BFA">
-                  <span class="bn-vcard-badge-dot" style="background:#A78BFA"></span>
+                <span class="bn-vcard-badge bn-vcard-badge--violet">
+                  <span class="bn-vcard-badge-dot"></span>
                   Station détectée
                 </span>
                 @if (placeCardStationValidated()) {
-                  <span class="bn-vcard-badge" style="color:#10E0A0">
-                    <span class="bn-vcard-badge-dot" style="background:#10E0A0"></span>
+                  <span class="bn-vcard-badge bn-vcard-badge--succes">
+                    <span class="bn-vcard-badge-dot"></span>
                     Lieu de la flotte
                   </span>
                 }
               } @else {
-                <span class="bn-vcard-badge" style="color:#10E0A0">
-                  <span class="bn-vcard-badge-dot" style="background:#10E0A0"></span>
+                <span class="bn-vcard-badge bn-vcard-badge--succes">
+                  <span class="bn-vcard-badge-dot"></span>
                   {{ placeKindLabel(pc.place.kind) }}
                 </span>
               }
@@ -1208,16 +1208,18 @@ const RESYNC_RADIUS_M = 150;
                   {{ baanoolCard()!.ignition ? 'Contact ON' : 'Contact OFF' }}
                 </span>
                 <span class="bn-vcard-speed-badge"
-                      [style.color]="baanoolCard()!.speedKmh > 90 ? '#ef4444' : baanoolCard()!.speedKmh > 50 ? '#f59e0b' : baanoolCard()!.speedKmh > 0 ? '#10E0A0' : '#999'">
+                      [class.bn-vcard-speed-badge--excessif]="baanoolCard()!.speedKmh > 90"
+                      [class.bn-vcard-speed-badge--soutenu]="baanoolCard()!.speedKmh > 50 && baanoolCard()!.speedKmh <= 90"
+                      [class.bn-vcard-speed-badge--roule]="baanoolCard()!.speedKmh > 0 && baanoolCard()!.speedKmh <= 50">
                   {{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h
                 </span>
               } @else if (cardLastFixLabel(); as ago) {
                 <!-- Incident FS-253 — boîtier pas en suivi direct (GPS perdu / hors ligne /
                      garé) : on n'affiche PAS la vitesse figée comme du live. On montre
                      l'âge de la dernière position GPS à la place, pour ne pas tromper. -->
-                <span class="bn-vcard-badge" style="color:#94a3b8"
+                <span class="bn-vcard-badge bn-vcard-badge--inactif"
                       [attr.title]="'Dernière position GPS reçue ' + ago + ' — la vitesse affichée n’est pas en direct'">
-                  <span class="bn-vcard-badge-dot" style="background:#94a3b8"></span>
+                  <span class="bn-vcard-badge-dot"></span>
                   Dernière position {{ ago }}
                 </span>
               }
@@ -1236,36 +1238,36 @@ const RESYNC_RADIUS_M = 150;
                 @if (dz.benign) {
                   <!-- Bleu « parking » et NON vert : le vert se lit comme « actif/en ligne » et prêtait
                        à confusion (le véhicule est à l'arrêt, pas en train de rouler). -->
-                  <span class="bn-vcard-badge" style="color:#0ea5e9"
+                  <span class="bn-vcard-badge bn-vcard-badge--info"
                         [attr.title]="'Parking souterrain confirmé — perte GPS normale ici, véhicule à l’arrêt'">
-                    <span class="bn-vcard-badge-dot" style="background:#0ea5e9"></span>
+                    <span class="bn-vcard-badge-dot"></span>
                     À l'arrêt · parking souterrain
                   </span>
                 } @else {
-                  <span class="bn-vcard-badge" style="color:#0ea5e9"
+                  <span class="bn-vcard-badge bn-vcard-badge--info"
                         [attr.title]="'Endroit où ce véhicule perd régulièrement le GPS (probablement pas une panne)'">
-                    <span class="bn-vcard-badge-dot" style="background:#0ea5e9"></span>
+                    <span class="bn-vcard-badge-dot"></span>
                     Zone morte GPS · {{ dz.label }}
                   </span>
                 }
               }
               <!-- Mode vie privée : position figée, collecte en pause. -->
               @if (baanoolCard()!.privacyModeEnabled) {
-                <span class="bn-vcard-badge" style="color:#38bdf8">
-                  <span class="bn-vcard-badge-dot" style="background:#38bdf8"></span>
+                <span class="bn-vcard-badge bn-vcard-badge--info">
+                  <span class="bn-vcard-badge-dot"></span>
                   Mode privé (position figée)
                 </span>
               }
               <!-- Sprint 2 (revue #2) — état coupe TRI-ÉTAT (badge statut, distinct du bouton d'action). -->
               @if (baanoolCard()!.cutActive) {
-                <span class="bn-vcard-badge" style="color:#ef4444">
-                  <span class="bn-vcard-badge-dot" style="background:#ef4444"></span>
+                <span class="bn-vcard-badge bn-vcard-badge--alerte">
+                  <span class="bn-vcard-badge-dot"></span>
                   Moteur coupé
                 </span>
               } @else if (baanoolCard()!.cutPending) {
-                <span class="bn-vcard-badge" style="color:#f59e0b"
+                <span class="bn-vcard-badge bn-vcard-badge--attente"
                       [attr.title]="'Commande de coupure envoyée au boîtier, en attente de confirmation (chute du contact). Sans position GPS, la confirmation peut être impossible.'">
-                  <span class="bn-vcard-badge-dot" style="background:#f59e0b"></span>
+                  <span class="bn-vcard-badge-dot"></span>
                   Coupure envoyée (non confirmée)
                 </span>
               }
@@ -1346,9 +1348,15 @@ const RESYNC_RADIUS_M = 150;
        fermeture, le compteur d'actifs et les deux boutons flottants. La carte est
        l'écran le plus utilisé au doigt de toute l'application — c'est le dernier
        endroit où viser doit demander de la précision. */
+    /* ⚠️ Cette règle est une LISTE DE NOMS, pas une garantie : elle ne rattrape que
+       ce qu'on pense à y inscrire. La croix de la feuille de position en était
+       absente et mesurait 30 × 36 à 375 px (relevé du 2026-08-12) — or sur iOS
+       c'est le seul moyen de refermer la fiche. Toute commande ajoutée à cet écran
+       doit être inscrite ici. */
     @media (max-width: 768px) {
       .tracky-mobile-fab-main, .tracky-mobile-fab-sm,
-      .tracky-sheet-close-btn, .tracky-sheet-pill { min-width: 44px; min-height: 44px }
+      .tracky-sheet-close-btn, .tracky-sheet-pill,
+      .bn-vcard-close { min-width: 44px; min-height: 44px }
     }
     :host {
       display: block;
@@ -1753,10 +1761,13 @@ const RESYNC_RADIUS_M = 150;
       transition: all .2s;
     }
     .tracky-sheet-pill:active { transform: scale(.96); }
+    /* La pastille active reste reconnaissable au vert de marque (décision de la
+       planche), mais son LIBELLÉ prend le jeton de petit texte : #10E0A0 sur son
+       propre lavis donne 1,56:1 en thème clair — mesuré à 375 px le 2026-08-12. */
     .tracky-sheet-pill--active {
-      background: rgba(16,224,160,.15);
-      border-color: rgba(16,224,160,.4);
-      color: #10E0A0;
+      background: color-mix(in srgb, var(--tracky) 15%, transparent);
+      border-color: color-mix(in srgb, var(--tracky) 40%, transparent);
+      color: var(--texte-succes);
     }
 
     .tracky-sheet-info {
@@ -2184,6 +2195,16 @@ const RESYNC_RADIUS_M = 150;
       from { transform: translateY(100%); }
       to { transform: translateY(0); }
     }
+    /* ═══ La feuille de position SUIT LE THÈME ══════════════════════════════
+       Elle était écrite en dur pour le clair — blanc à 92 %, plaque en #111,
+       libellés en #888/#555. En thème sombre le fond restait blanc alors que
+       le texte hérité passait à --fg-primary (#EAEFED) : du blanc cassé sur du
+       blanc. Mesuré le 2026-08-12 à 375 px : « Contact ON » à 1,36:1,
+       « Jour » à 1,46:1, la vitesse à 2,40:1.
+
+       --surface-quaternary est le jeton de ce qui se pose SUR une carte. On
+       garde la DÉCISION de la planche (une feuille translucide et floutée
+       au-dessus de la carte) en reprenant sa valeur au thème. */
     .bn-vcard {
       position: fixed;
       bottom: 0;
@@ -2191,7 +2212,7 @@ const RESYNC_RADIUS_M = 150;
       right: 0;
       z-index: 1801;
       animation: bn-vcard-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1);
-      background: rgba(255, 255, 255, 0.92);
+      background: color-mix(in srgb, var(--surface-quaternary) 92%, transparent);
       backdrop-filter: blur(20px) saturate(1.4);
       -webkit-backdrop-filter: blur(20px) saturate(1.4);
       border-radius: 20px 20px 0 0;
@@ -2207,7 +2228,7 @@ const RESYNC_RADIUS_M = 150;
       width: 36px;
       height: 4px;
       border-radius: 2px;
-      background: rgba(0, 0, 0, 0.12);
+      background: color-mix(in srgb, var(--fg-secondary) 28%, transparent);
       margin: 10px 0 2px;
       cursor: pointer;
       touch-action: manipulation;
@@ -2228,7 +2249,7 @@ const RESYNC_RADIUS_M = 150;
       font-family: var(--font-display);
       font-weight: 700;
       font-size: 17px;
-      color: #111;
+      color: var(--fg-primary);
       letter-spacing: -0.02em;
       line-height: 1.1;
     }
@@ -2246,36 +2267,73 @@ const RESYNC_RADIUS_M = 150;
       border-radius: 9999px;
       font-size: 11px;
       font-weight: 600;
-      background: rgba(156, 163, 175, 0.12);
-      color: #888;
+      background: color-mix(in srgb, var(--fg-secondary) 12%, transparent);
+      color: var(--fg-secondary);
     }
+    /* --texte-succes et non --tracky : le vert de marque vaut 6,97:1 en sombre
+       mais 2,83:1 en clair. Le jeton de PETIT TEXTE tient les deux (6,97 / 4,65). */
     .bn-vcard-badge.on {
-      background: rgba(16, 224, 160, 0.12);
-      color: var(--tracky);
+      background: color-mix(in srgb, var(--tracky) 12%, transparent);
+      color: var(--texte-succes);
     }
+    /* La pastille suit la couleur du libellé : une seule source, et plus aucun
+       background en ligne à tenir en phase avec son texte. */
     .bn-vcard-badge-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #ccc;
+      background: currentColor;
+    }
+    /* Variantes de badge — remplacent les styles en ligne (règle B0 : aucune
+       couleur en dur dans un gabarit). Chaque jeton est celui de PETIT TEXTE,
+       mesuré au-dessus de 4,5:1 dans les deux thèmes. */
+    .bn-vcard-badge--info {
+      color: var(--texte-info);
+      background: color-mix(in srgb, var(--texte-info) 12%, transparent);
+    }
+    .bn-vcard-badge--alerte {
+      color: var(--texte-alerte);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+    }
+    .bn-vcard-badge--attente {
+      color: var(--texte-attente);
+      background: color-mix(in srgb, var(--texte-attente) 12%, transparent);
+    }
+    .bn-vcard-badge--inactif { color: var(--texte-inactif); }
+    /* Cycle de vie d'un lieu (planche Carte) : détecté, puis validé par le client. */
+    .bn-vcard-badge--violet {
+      color: var(--texte-violet);
+      background: color-mix(in srgb, var(--violet) 12%, transparent);
+    }
+    .bn-vcard-badge--succes {
+      color: var(--texte-succes);
+      background: color-mix(in srgb, var(--tracky) 12%, transparent);
     }
     .bn-vcard-badge.on .bn-vcard-badge-dot {
-      background: #10E0A0;
-      box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.3);
+      background: var(--tracky);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tracky) 30%, transparent);
     }
+    /* La vitesse garde la DÉCISION de la planche — elle se lit à sa couleur de
+       régime — mais pas la valeur des marqueurs : #10E0A0 sur la feuille donne
+       1,72:1 en clair, et #999 donne 2,40:1 en sombre. Les jetons de petit texte
+       portent la même sémantique en restant lisibles dans les deux thèmes. */
     .bn-vcard-speed-badge {
       font-family: var(--font-display);
       font-size: 13px;
       font-weight: 700;
       letter-spacing: -0.01em;
+      color: var(--texte-inactif);
     }
+    .bn-vcard-speed-badge--roule { color: var(--texte-succes); }
+    .bn-vcard-speed-badge--soutenu { color: var(--texte-attente); }
+    .bn-vcard-speed-badge--excessif { color: var(--texte-alerte); }
     .bn-vcard-close {
       width: 30px;
       height: 30px;
       border-radius: 50%;
       border: none;
-      background: rgba(0, 0, 0, 0.06);
-      color: #888;
+      background: color-mix(in srgb, var(--fg-secondary) 10%, transparent);
+      color: var(--fg-secondary);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2285,7 +2343,7 @@ const RESYNC_RADIUS_M = 150;
       touch-action: manipulation;
       margin-top: 2px;
     }
-    .bn-vcard-close:active { background: rgba(0, 0, 0, 0.12); color: #333; }
+    .bn-vcard-close:active { background: color-mix(in srgb, var(--fg-secondary) 20%, transparent); color: var(--fg-primary); }
     .bn-vcard-actions {
       display: flex;
       gap: 8px;
@@ -2300,8 +2358,8 @@ const RESYNC_RADIUS_M = 150;
       padding: 12px 4px 10px;
       border-radius: 14px;
       border: none;
-      background: rgba(0, 0, 0, 0.04);
-      color: #555;
+      background: color-mix(in srgb, var(--fg-secondary) 10%, transparent);
+      color: var(--fg-secondary);
       font-size: 10px;
       font-weight: 600;
       letter-spacing: 0.01em;
@@ -2310,29 +2368,31 @@ const RESYNC_RADIUS_M = 150;
       white-space: nowrap;
       touch-action: manipulation;
     }
-    .bn-vcard-act:active { transform: scale(0.94); background: rgba(0, 0, 0, 0.08); }
+    .bn-vcard-act:active { transform: scale(0.94); background: color-mix(in srgb, var(--fg-secondary) 18%, transparent); }
     .bn-vcard-act--primary {
-      background: rgba(16, 224, 160, 0.12);
-      color: var(--tracky-dark);
+      background: color-mix(in srgb, var(--tracky) 12%, transparent);
+      color: var(--texte-succes);
     }
-    .bn-vcard-act--primary:active { background: rgba(16, 224, 160, 0.22); }
+    .bn-vcard-act--primary:active { background: color-mix(in srgb, var(--tracky) 22%, transparent); }
     .bn-vcard-act--danger {
-      color: #dc2626;
-      background: rgba(239, 68, 68, 0.08);
+      color: var(--texte-alerte);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
     }
-    .bn-vcard-act--danger:active { background: rgba(239, 68, 68, 0.16); }
-    /* Analyse IA — même violet que les autres surfaces IA de l'app. */
-    .bn-vcard-act--ai { color: #7C3AED; background: rgba(167, 139, 250, 0.12); }
-    .bn-vcard-act--ai:active { background: rgba(167, 139, 250, 0.22); }
+    .bn-vcard-act--danger:active { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+    /* Analyse IA — même violet que les autres surfaces IA de l'app. Le #7C3AED
+       écrit en dur tombait à 2,25:1 en sombre ; --texte-violet est le jeton
+       prévu pour ce violet à taille de libellé. */
+    .bn-vcard-act--ai { color: var(--texte-violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+    .bn-vcard-act--ai:active { background: color-mix(in srgb, var(--violet) 22%, transparent); }
     .bn-vcard-act--restore {
-      color: var(--tracky);
-      background: rgba(16, 224, 160, 0.10);
+      color: var(--texte-succes);
+      background: color-mix(in srgb, var(--tracky) 10%, transparent);
     }
-    .bn-vcard-act--restore:active { background: rgba(16, 224, 160, 0.18); }
+    .bn-vcard-act--restore:active { background: color-mix(in srgb, var(--tracky) 18%, transparent); }
     /* Fix cohérence coupe-circuit — bouton « Couper » grisé quand la coupe est
        interdite (véhicule en mouvement / fix invalide), aligné sur le garde backend. */
     .bn-vcard-act:disabled { opacity: 0.4; cursor: not-allowed; }
-    .bn-vcard-act:disabled:active { transform: none; background: rgba(239, 68, 68, 0.08); }
+    .bn-vcard-act:disabled:active { transform: none; background: color-mix(in srgb, var(--danger) 12%, transparent); }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
