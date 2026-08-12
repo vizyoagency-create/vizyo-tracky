@@ -146,6 +146,84 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > La distinction qui manquait : un cadre **actif mais vide** (`enabled=true`, aucun jour)
 > rend bien le véhicule privé en permanence, lui.
 
+> ### ✅ PASTILLES VÉHICULE EN SVG — livré le 2026-08-12, ligne B1 `/map` CLOSE
+>
+> La pastille était une pile de quatre `div` aux formes dessinées en CSS : anneau en
+> `border`, flèche en triangle de `border-*`, cœur en `box-shadow`. C'est **un SVG**
+> (`buildVehicleMarkerEl`) : anneau, flèche de cap, cœur, contact et icône y sont des
+> formes. Net à toute densité, et décrit au même endroit.
+>
+> Trois décisions de la planche, reprises — pas ses valeurs :
+>
+> 1. **La couleur est portée UNE FOIS** par le conteneur ; toutes les formes la
+>    reprennent en `currentColor`. Avant, elle était recopiée dans un style en ligne du
+>    cœur *et* dans le triangle CSS — un oubli laissait la pastille d'une couleur et sa
+>    flèche d'une autre.
+> 2. **L'icône passe en encre sombre** sur le fond vif.
+> 3. **Pas de flèche de cap sur une position figée** : un véhicule hors ligne n'a pas de
+>    direction à montrer.
+>
+> Et l'étiquette porte **`plaque · vitesse`** (`FT-108-XR · 48`), avec
+> **« hors ligne »** au lieu d'un chiffre dès que la télémétrie est périmée — la planche
+> l'écrit elle-même (`AZ-330-PB · hors ligne`).
+>
+> ⚠️ **L'ENCRE NE PEUT PAS ÊTRE FIXE — ce que la planche ne pouvait pas voir.** Elle ne
+> montre que des véhicules **en mouvement**, donc des fonds vifs. Mesuré sur toute la
+> palette :
+>
+> | Bande | Blanc (avant) | Encre sombre |
+> |---|---:|---:|
+> | 0 km/h `#5C746C` | 5,04 | **3,85** ← régression |
+> | 1-50 `#10E0A0` | 1,72 | **10,43** |
+> | 51-90 `#F59E0B` | 2,15 | **8,53** |
+> | 91+ `#EF4444` | 3,76 | **5,12** |
+> | hors ligne `#9ca3af` | 2,54 | **7,26** |
+>
+> Une teinte sombre fixe **régresse** sur la couleur « à l'arrêt », déjà sombre. D'où
+> `markerInk()` : le choix se fait **par luminance du fond** — teinte sombre sur fond
+> clair, blanc sur fond sombre. **6 tests** vérifient que les six couleurs de la palette
+> passent 4,5:1. C'est la leçon : *une décision de planche se vérifie sur toute la
+> donnée, pas sur les cas qu'elle illustre.*
+>
+> ### ⚠️ DEUX FOIS, LE MÊME MARQUEUR DISAIT DEUX CHOSES
+>
+> Les deux trouvés **en mesurant**, aucun visible en relisant le code :
+>
+> 1. Une pastille **ROUGE** portait « TE002ST · **18** ». La teinte lisait
+>    `colorSpeedKmh` (vitesse robuste dérivée du déplacement) et le chiffre `speedKmh`
+>    (brute du boîtier).
+> 2. Une pastille **VERTE** portait « TE001ST · **0** ». À 0,4 km/h, `speedColor`
+>    répond « en mouvement » (> 0) pendant que l'étiquette arrondit à 0.
+>
+> Corrigés par `vitesseAffichee()` : **un seul nombre, arrondi AVANT de choisir la
+> couleur**, pour la teinte comme pour le chiffre. Deux tests le verrouillent.
+>
+> ### ⚠️ Trois règles CSS devenues MORTES par le renommage
+>
+> `.tracky-marker--mini .tracky-marker__heading-ring`, et
+> `.tracky-marker--hydrated/--offline .tracky-marker__core` visaient des classes qui
+> n'existaient plus. Elles ne signalent rien — elles cessent simplement de s'appliquer.
+> **Après tout renommage de classe dans une feuille GLOBALE, balayer les sélecteurs
+> composés** : `grep` sur l'ancien nom, pas seulement sur le fichier modifié.
+>
+> ### ⚠️ `verif:variables` a refusé mon `var(--tracky-ink, #000)` — à raison
+>
+> Deux fois de suite : d'abord le **repli en dur** (l'hexadécimal gagne toujours), puis
+> **« sans repli, la déclaration est jetée »**. La bonne forme était déjà sous mes yeux :
+> `--tracky-color` passe parce qu'elle est **déclarée par défaut sur `.tracky-marker`**.
+> Une variable posée au rendu doit avoir son **défaut déclaré dans la feuille**, pas un
+> repli en ligne.
+>
+> **Portée** : `buildVehicleMarkerEl` sert **cinq surfaces** — `/map`, `mini-map` du kit,
+> rejeu de trajet, rejeu de période. `/map` est vérifiée au navigateur ; les quatre
+> autres le sont par le build et les **364 tests**, pas à l'œil. À regarder si vous
+> passez dessus.
+>
+> **Reste ouvert** : la planche masque l'étiquette de plaque sur téléphone
+> (`.mfrm .vk-plate { display: none }`). Non appliqué : `showPlates` est une préférence
+> **persistée** de l'utilisateur, et en changer le défaut se ferait contre son choix
+> stocké. À trancher.
+
 **Bloc C — supervision (2 livrées sur 5).** `/dashboard` et **`/map`** faits ; restent
 `/vehicles`, `/places`, `/alerts`. *(`/vehicles/:id` livré plus tôt.)*
 

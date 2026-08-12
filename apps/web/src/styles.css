@@ -588,6 +588,15 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
 
 /* ----- Vehicle marker ----- */
 
+/* ═══ PASTILLE VÉHICULE — reprise en SVG le 2026-08-12 ══════════════════════════
+   Ligne B1 « pastilles de véhicule redessinées (à reprendre en SVG) ». C'était une
+   pile de quatre div dont les formes étaient dessinées en CSS : un anneau en
+   `border`, une flèche en `border-*` de triangle, un cœur en `box-shadow`. Tout est
+   maintenant UN SVG (cf. `buildVehicleMarkerEl`) — net à toute densité d'écran.
+
+   ⚠️ Ces marqueurs sont injectés par MapLibre HORS d'Angular : ils ne portent aucun
+   attribut d'encapsulation, donc AUCUN style de composant ne les atteint. Cette
+   feuille globale est le seul endroit d'où on peut les styler. */
 .tracky-marker {
   position: relative;
   width: 56px;
@@ -595,17 +604,25 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   cursor: pointer;
   pointer-events: auto;
   --tracky-color: #10e0a0;
+  /* Encre de l'icône. Défaut DÉCLARÉ ici (comme --tracky-color) et non repli en
+     ligne : `buildVehicleMarkerEl` la recalcule à chaque rendu selon la luminance
+     du fond — cf. `markerInk`. */
+  --tracky-ink: #ffffff;
   --tracky-heading: 0deg;
+  /* La couleur est portée UNE FOIS ici ; toutes les formes la reprennent en
+     currentColor (décision de la planche : un seul point de vérité). */
+  color: var(--tracky-color);
   will-change: transform;
+}
+.tracky-marker__pastille {
+  display: block;
+  overflow: visible;
 }
 
 /* Halo de pulsation : visible sur le vehicule actif (suivi) ou pour signaler la mise a jour */
 .tracky-marker__pulse {
-  position: absolute;
-  inset: 8px;
-  border-radius: 9999px;
-  background: var(--tracky-color);
   opacity: 0;
+  transform-origin: center;
 }
 .tracky-marker--active .tracky-marker__pulse {
   opacity: 0.45;
@@ -616,68 +633,64 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   75%, 100% { transform: scale(2); opacity: 0; }
 }
 
-/* Anneau exterieur tournant selon le heading — sert de fleche directionnelle */
-.tracky-marker__heading-ring {
-  position: absolute;
-  inset: 4px;
-  border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.45);
+/* Flèche de cap : c'est le GROUPE qui tourne, autour du centre de la pastille. */
+.tracky-marker__cap {
   transform: rotate(var(--tracky-heading));
+  transform-origin: 28px 28px;
   transition: transform 600ms cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
 }
-.tracky-marker__heading-ring::before {
-  content: '';
-  position: absolute;
-  top: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 9px solid var(--tracky-color);
+.tracky-marker__fleche {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
+/* Position FIGÉE (hors ligne, GPS perdu, garé sous terre) : aucune direction à
+   montrer. La planche omet le repère directionnel sur « AZ-330-PB · hors ligne » —
+   une flèche y affirmerait un cap que plus personne ne mesure. */
+.tracky-marker--offline .tracky-marker__cap { display: none; }
 
-/* Cercle central : couleur vitesse + icone vehicule */
-.tracky-marker__core {
-  position: absolute;
-  inset: 12px;
-  border-radius: 9999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: background 200ms ease, transform 200ms ease;
+.tracky-marker__anneau {
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 2;
 }
-.tracky-marker:hover .tracky-marker__core {
-  transform: scale(1.08);
+
+.tracky-marker__coeur {
+  stroke: #fff;
+  stroke-width: 2;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+  transition: transform 200ms ease;
+  transform-origin: 28px 28px;
 }
-.tracky-marker--active .tracky-marker__core {
-  border-color: #fff5e0;
-  box-shadow:
-    0 0 0 2px rgba(255, 245, 224, 0.5),
-    0 4px 16px rgba(0, 0, 0, 0.5);
+.tracky-marker:hover .tracky-marker__coeur { transform: scale(1.08); }
+.tracky-marker--active .tracky-marker__coeur {
+  stroke: #fff5e0;
+  filter: drop-shadow(0 0 2px rgba(255, 245, 224, 0.8)) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+
+/* L'icône passe en ENCRE SOMBRE sur le fond vif — décision de la planche, qui pose
+   #04130D sur le vert et #1A1204 sur l'ambre : du blanc sur #10E0A0 donne 1,72:1,
+   l'encre sombre 10,44:1.
+
+   ⚠️ L'encre est calculée en JS (`markerInk`) et NON en `color-mix` ici : une teinte
+   sombre fixe régresse sur `#5C746C`, la couleur « à l'arrêt », déjà sombre (3,85
+   contre 5,04 au blanc). Le choix se fait donc par LUMINANCE du fond, et un test
+   vérifie que les six couleurs de la palette passent 4,5:1. */
+.tracky-marker__icone {
+  /* Sans repli : `--tracky-ink` est TOUJOURS posée par `buildVehicleMarkerEl`, comme
+     `--tracky-color`. Un repli en dur ici gagnerait toujours si la pose disparaissait,
+     et masquerait la panne au lieu de la montrer (cf. `pnpm verif:variables`). */
+  stroke: var(--tracky-ink);
 }
 
 /* Indicateur ACC ON/OFF */
 .tracky-marker__acc {
-  position: absolute;
-  bottom: 9px;
-  right: 9px;
-  width: 11px;
-  height: 11px;
-  border-radius: 9999px;
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  stroke: #fff;
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
-.tracky-acc--on { background: #10e0a0; }
-.tracky-acc--off { background: #6b7280; }
+.tracky-acc--on { fill: #10e0a0; }
+.tracky-acc--off { fill: #6b7280; }
 /* Contact INCONNU (télémétrie périmée : hors-ligne, GPS perdu, garé sous terre). Creux et pâle :
    visuellement « on ne sait pas », à ne pas confondre avec le gris plein « contact coupé ». */
-.tracky-acc--unknown { background: transparent; border-color: rgba(255, 255, 255, 0.55); box-shadow: none; }
+.tracky-acc--unknown { fill: transparent; stroke: rgba(255, 255, 255, 0.55); filter: none; }
 
 /* Badge logo de marque (haut-gauche, pastille blanche pour rester lisible) */
 .tracky-marker__brand {
@@ -840,7 +853,8 @@ textarea:focus-visible,
   opacity: 0.5;
 }
 .tracky-marker--mini .tracky-marker__pulse,
-.tracky-marker--mini .tracky-marker__heading-ring,
+.tracky-marker--mini .tracky-marker__cap,
+.tracky-marker--mini .tracky-marker__anneau,
 .tracky-marker--mini .tracky-marker__acc,
 .tracky-marker--mini .tracky-marker__brand,
 .tracky-marker--mini .tracky-marker__plate {
@@ -848,13 +862,13 @@ textarea:focus-visible,
 }
 
 /* Hydrate (cache REST, pas live) — opacite reduite jusqu'au prochain WS */
-.tracky-marker--hydrated .tracky-marker__core {
+.tracky-marker--hydrated .tracky-marker__coeur {
   opacity: 0.85;
 }
 
 /* Boîtier hors-ligne : marqueur grisé + estompé à sa dernière position connue.
    On coupe aussi le pulse pour qu'il ne « respire » plus comme un véhicule actif. */
-.tracky-marker--offline .tracky-marker__core {
+.tracky-marker--offline .tracky-marker__coeur {
   opacity: 0.5;
 }
 .tracky-marker--offline .tracky-marker__pulse {

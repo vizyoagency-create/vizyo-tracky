@@ -10,6 +10,47 @@ export function speedColor(speed: number): string {
   return '#EF4444';
 }
 
+function canalLineaire(v: number): number {
+  const c = v / 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+/** Luminance relative WCAG d'un hexadécimal `#rrggbb`. */
+function luminance(hex: string): number {
+  const h = hex.replace('#', '');
+  const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const r = parseInt(n.slice(0, 2), 16);
+  const g = parseInt(n.slice(2, 4), 16);
+  const b = parseInt(n.slice(4, 6), 16);
+  return 0.2126 * canalLineaire(r) + 0.7152 * canalLineaire(g) + 0.0722 * canalLineaire(b);
+}
+
+/**
+ * L'ENCRE de l'icône, posée sur le fond coloré de la pastille.
+ *
+ * La planche pose une encre très sombre sur ses fonds vifs (`#04130D` sur le vert,
+ * `#1A1204` sur l'ambre) — et elle a raison : du blanc sur `#10E0A0` donne **1,72:1**,
+ * l'encre sombre **10,44:1**. Mesuré au navigateur le 2026-08-12.
+ *
+ * ⚠️ Mais une encre sombre FIXE ne convient pas à toute la palette : sur `#5C746C`
+ * (la couleur « à l'arrêt », déjà sombre), elle retombe à **3,85** alors que le blanc
+ * y donnait **5,04**. C'est une RÉGRESSION que la planche ne pouvait pas voir — elle
+ * ne montre que des véhicules en mouvement.
+ *
+ * D'où le choix par LUMINANCE, et non par principe : la teinte sombre sur les fonds
+ * clairs, le blanc sur les fonds sombres. `marker-ink.spec` vérifie que les six
+ * couleurs de la palette passent 4,5:1.
+ */
+export function markerInk(color: string): string {
+  const l = luminance(color);
+  if (l < 0.18) return '#FFFFFF';
+  // Teinte très sombre de la couleur ELLE-MÊME (12 %), comme la planche.
+  const h = color.replace('#', '');
+  const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const mix = (i: number) => Math.round(parseInt(n.slice(i, i + 2), 16) * 0.12).toString(16).padStart(2, '0');
+  return `#${mix(0)}${mix(2)}${mix(4)}`;
+}
+
 /** Couleur d'un marqueur hors-ligne (cf. légende carte « Hors-ligne »). */
 export const OFFLINE_MARKER_COLOR = '#9ca3af';
 /** Incident FS-253 — couleur « GPS perdu » (boîtier vivant mais sans position fraîche). Rouge
@@ -49,10 +90,22 @@ function accState(data: VehicleMarkerData): 'on' | 'off' | 'unknown' {
   return data.ignition ? 'on' : 'off';
 }
 
+/**
+ * La vitesse AFFICHÉE du marqueur — arrondie, et unique.
+ *
+ * ⚠️ Elle sert à la fois à la COULEUR et à l'ÉTIQUETTE. Relevé au navigateur le
+ * 2026-08-12 : une pastille VERTE portait « TE001ST · 0 ». À 0,4 km/h, `speedColor`
+ * répond « en mouvement » (> 0) alors que l'étiquette arrondit à « 0 » — le même
+ * marqueur disait deux choses. On arrondit donc AVANT de choisir la couleur.
+ */
+function vitesseAffichee(data: VehicleMarkerData): number {
+  return Math.round(data.colorSpeedKmh ?? data.speedKmh ?? 0);
+}
+
 function markerColor(data: VehicleMarkerData): string {
   if (data.parkedDeadZone) return OFFLINE_MARKER_COLOR;
   if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
-  return data.offline ? OFFLINE_MARKER_COLOR : speedColor(data.colorSpeedKmh ?? data.speedKmh);
+  return data.offline ? OFFLINE_MARKER_COLOR : speedColor(vitesseAffichee(data));
 }
 
 export interface VehicleMarkerData {
@@ -95,16 +148,45 @@ export interface VehicleMarkerData {
 }
 
 /**
- * Cree l'element HTML d'un marker vehicule.
+ * Ce que dit l'étiquette sous la pastille : « FT-108-XR · 48 » (planche Carte).
  *
- * Architecture en deux couches :
- * - couche externe (`.tracky-marker`) : tournee selon le heading via `transform`.
- * - couche interne (icone vehicule) : compense la rotation pour rester droite,
- *   sauf pour le type OTHER (fleche) qui DOIT pivoter.
+ * ⚠️ Hors direct, la vitesse est un SOUVENIR — c'est l'incident FS-253. La planche
+ * l'écrit elle-même : « AZ-330-PB · **hors ligne** », pas « AZ-330-PB · 88 ». On ne
+ * met donc un chiffre que quand la télémétrie est fraîche.
+ */
+export function plateLabel(data: VehicleMarkerData): string {
+  if (!data.plate) return '';
+  if (isStale(data)) return `${data.plate} · hors ligne`;
+  // ⚠️ LA MÊME vitesse que celle qui donne la COULEUR — cf. `vitesseAffichee`.
+  // Relevé au navigateur le 2026-08-12 : une pastille ROUGE portait « TE002ST · 18 »
+  // parce que la teinte lisait `colorSpeedKmh` et le chiffre `speedKmh`.
+  return `${data.plate} · ${vitesseAffichee(data)}`;
+}
+
+/**
+ * Cree l'element d'un marker vehicule.
  *
- * Pulse anime en CSS pour le vehicule actif (suivi).
- * Indicateur ACC ON/OFF en bas a droite.
- * Plaque flottante en dessous (masquable par CSS .tracky-marker--no-plate).
+ * ⚠️ REPRIS EN SVG le 2026-08-12 (ligne B1 « pastilles de véhicule redessinées »).
+ * La pastille était une pile de quatre div aux formes dessinées en CSS (bordures,
+ * triangle en `border-*`, `box-shadow`). Elle est maintenant UN SVG : anneau,
+ * flèche de cap, cœur, indicateur de contact et icône y sont des formes, nettes à
+ * toute densité d'écran et décrites au même endroit.
+ *
+ * Trois décisions de la planche, et non ses valeurs :
+ *
+ * 1. **La couleur est portée UNE FOIS** par le conteneur (`--tracky-color` →
+ *    `color`), et toutes les formes la reprennent en `currentColor`. Avant, elle
+ *    était recopiée dans un style en ligne du cœur ET dans le triangle CSS.
+ * 2. **L'icône passe en ENCRE SOMBRE** sur le fond vif, au lieu du blanc. Du blanc
+ *    sur `#10E0A0` est illisible ; la planche pose `#04130D` sur le vert et
+ *    `#1A1204` sur l'ambre — une teinte très sombre de la couleur elle-même, ce que
+ *    la feuille reproduit en `color-mix`.
+ * 3. **Pas de flèche de cap quand la position est figée** : un véhicule hors ligne
+ *    ou GPS perdu n'a pas de direction à montrer. La planche omet le repère
+ *    directionnel sur `AZ-330-PB · hors ligne`.
+ *
+ * L'étiquette (texte) et le logo de marque (image) restent en HTML : ils ne gagnent
+ * rien à passer en SVG et y perdraient le rendu de police et l'ellipse.
  */
 export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const color = markerColor(data);
@@ -119,10 +201,9 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const logoUrl = brandInfo ? `logos/brands/${brandInfo.slug}.png` : null;
   const brandDarkClass = brandInfo?.darkBg ? ' tracky-marker__brand--dark' : '';
 
-  // Pour les types vehicule (CAR, TRUCK, etc.), l'icone reste droite : on pivote
-  // uniquement la fleche externe (.tracky-marker__heading-ring). Pour OTHER,
-  // l'icone interne pivote aussi pour que la fleche pointe le sens de marche.
-  const iconRotate = isArrow ? `rotate(${headingDeg}deg)` : 'none';
+  // Pour les types vehicule (CAR, TRUCK, etc.), l'icone reste droite : seule la
+  // fleche de cap pivote. Pour OTHER, l'icone EST la fleche et doit pivoter aussi.
+  const iconRotate = isArrow ? `rotate(${headingDeg} 12 12)` : '';
 
   const el = document.createElement('div');
   el.className = `tracky-marker ${activeClass} ${hydClass} ${offlineClass}`.replace(/\s+/g, ' ').trim();
@@ -134,20 +215,25 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   // redessiner l'icône. Cf. le bug corrigé dans cette fonction de mise à jour.
   el.setAttribute('data-vehicle-type', data.type ?? '');
   el.style.setProperty('--tracky-color', color);
+  el.style.setProperty('--tracky-ink', markerInk(color));
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);
   el.innerHTML = `
-    <div class="tracky-marker__pulse"></div>
-    <div class="tracky-marker__heading-ring"></div>
-    <div class="tracky-marker__core" style="background:${color}">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-           stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
-           style="transform:${iconRotate};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3))">
-        ${svgContent}
-      </svg>
-    </div>
-    <div class="tracky-marker__acc ${ignClass}"></div>
+    <svg class="tracky-marker__pastille" viewBox="0 0 56 56" width="56" height="56"
+         aria-hidden="true" focusable="false">
+      <circle class="tracky-marker__pulse" cx="28" cy="28" r="18" fill="currentColor" />
+      <g class="tracky-marker__cap">
+        <path class="tracky-marker__fleche" d="M28 2.5 L33.4 13 L22.6 13 Z" fill="currentColor" />
+      </g>
+      <circle class="tracky-marker__anneau" cx="28" cy="28" r="23" fill="none" />
+      <circle class="tracky-marker__coeur" cx="28" cy="28" r="15" fill="currentColor" />
+      <g class="tracky-marker__icone" transform="translate(18 18) scale(0.8333)">
+        <g transform="${iconRotate}" fill="none" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round">${svgContent}</g>
+      </g>
+      <circle class="tracky-marker__acc ${ignClass}" cx="40.5" cy="40.5" r="5" />
+    </svg>
     ${logoUrl ? `<div class="tracky-marker__brand${brandDarkClass}"><img src="${escapeHtml(logoUrl)}" alt="" /></div>` : ''}
-    ${data.plate ? `<div class="tracky-marker__plate">${escapeHtml(data.plate)}</div>` : ''}
+    ${data.plate ? `<div class="tracky-marker__plate">${escapeHtml(plateLabel(data))}</div>` : ''}
   `;
   // Si le PNG du logo n'existe pas (pas encore exporté), on retire le badge au
   // lieu d'afficher une image cassée. Pas de handler inline (compat CSP).
@@ -163,7 +249,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
 /**
  * Met a jour un marker existant sans le recreer (preserve l'animation pulse,
  * la reference DOM, les listeners) :
- * - couleur (fond `tracky-marker__core`)
+ * - couleur (une seule écriture : `--tracky-color` sur le conteneur)
  * - rotation heading (var CSS `--tracky-heading`)
  * - indicateur ACC
  * - active/hydrated flags
@@ -177,38 +263,44 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
 export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData): void {
   const color = markerColor(data);
   const headingDeg = Math.round(data.heading || 0);
+  // Une SEULE écriture de couleur : toutes les formes du SVG la reprennent en
+  // currentColor. Avant, il fallait aussi repeindre le fond du cœur à la main —
+  // et un oubli laissait la pastille d'une couleur et sa flèche d'une autre.
   el.style.setProperty('--tracky-color', color);
+  el.style.setProperty('--tracky-ink', markerInk(color));
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);
 
-  const core = el.querySelector<HTMLElement>('.tracky-marker__core');
-  if (core) core.style.background = color;
-
-  // Pour OTHER, on pivote aussi l'icone interne. Pour les autres, on garde droite.
+  // Pour OTHER, l'icone EST la fleche : elle pivote. Pour les autres, elle reste droite.
   const isArrow = data.type === 'OTHER';
-  const svg = el.querySelector<SVGElement>('.tracky-marker__core svg');
-  if (svg) {
+  const icone = el.querySelector<SVGGElement>('.tracky-marker__icone > g');
+  if (icone) {
     // Le type a-t-il changé depuis le dernier rendu ? (typiquement : OTHER → CAR/VAN/TRUCK)
     const rendered = el.getAttribute('data-vehicle-type') ?? '';
     const current = data.type ?? '';
     if (rendered !== current) {
-      svg.innerHTML = getVehicleSvg(current);
+      icone.innerHTML = getVehicleSvg(current);
       el.setAttribute('data-vehicle-type', current);
     }
-    (svg as unknown as HTMLElement).style.transform = isArrow ? `rotate(${headingDeg}deg)` : 'none';
+    if (isArrow) icone.setAttribute('transform', `rotate(${headingDeg} 12 12)`);
+    else icone.removeAttribute('transform');
   }
 
   // La plaque aussi peut arriver après coup (même course WebSocket/HTTP). Elle peut même être
   // ABSENTE du DOM si le marqueur a été créé sans plaque → on la crée alors.
   if (data.plate) {
+    const libelle = plateLabel(data);
     const plateEl = el.querySelector<HTMLElement>('.tracky-marker__plate');
     if (!plateEl) {
       const created = document.createElement('div');
       created.className = 'tracky-marker__plate';
-      created.textContent = data.plate;
+      created.textContent = libelle;
       el.appendChild(created);
-      el.setAttribute('aria-label', `Vehicule ${data.plate}`);
-    } else if (plateEl.textContent !== data.plate) {
-      plateEl.textContent = data.plate;
+    } else if (plateEl.textContent !== libelle) {
+      plateEl.textContent = libelle;
+    }
+    // L'étiquette porte la vitesse, qui change à chaque trame ; le nom accessible ne
+    // doit PAS la suivre, sinon un lecteur d'écran réannonce le marqueur en boucle.
+    if (el.getAttribute('aria-label') !== `Vehicule ${data.plate}`) {
       el.setAttribute('aria-label', `Vehicule ${data.plate}`);
     }
   }
