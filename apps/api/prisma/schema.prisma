@@ -1407,13 +1407,31 @@ model MissionQuoteRound {
   /// Null pour un tour SYSTEM : personne ne l'a écrit.
   authorUserId String? @db.Uuid
 
-  amountCents Int
-  /// Le détail du calcul, figé. Pour un tour automatique : la grille appliquée,
-  /// ligne par ligne. Pour un tour humain : vide. Figé et non recalculé — une
-  /// grille modifiée demain ne doit pas réécrire un devis déjà lu.
-  breakdown   Json?
+  /// NULL = « sur devis » : la distance dépasse la dernière tranche chiffrée, aucun
+  /// montant n'est calculable. Le tour existe quand même — il porte les conditions.
+  amountCents Int?
+
+  /// ┌─ UN TOUR PORTE SES CONDITIONS, PAS SEULEMENT UN PRIX ─────────────────────┐
+  /// │ Une contre-proposition peut changer les adresses, le créneau et la         │
+  /// │ distance retenue, pas uniquement le montant (arbitrage I, 2026-08-13).     │
+  /// │                                                                            │
+  /// │ Chaque tour fige donc l'INTÉGRALITÉ de ce qu'il propose : arrêts, fenêtre, │
+  /// │ distance. Accepter, c'est accepter UNE VERSION PRÉCISE — un accord sur un  │
+  /// │ prix dont les conditions ont bougé entre-temps n'est pas un accord.        │
+  /// │                                                                            │
+  /// │ Snapshot COMPLET et non différentiel : quelques centaines d'octets contre  │
+  /// │ une reconstitution par accumulation de diffs, qui se lit mal et se trompe. │
+  /// └────────────────────────────────────────────────────────────────────────────┘
+  terms Json
+
+  /// Le détail du calcul, figé. Pour un tour automatique : la tranche appliquée,
+  /// le HT, la TVA, le TTC. Pour un tour humain ajusté : le calcul de départ ET
+  /// l'écart consenti. Jamais recalculé — une grille modifiée demain ne doit pas
+  /// réécrire un devis déjà lu.
+  breakdown Json?
+
   /// Le mot qui accompagne l'offre. C'est souvent lui qui débloque la négociation.
-  message     String?
+  message String?
 
   createdAt DateTime @default(now())
 

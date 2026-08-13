@@ -41,6 +41,10 @@ schéma lors de la tranche 1.
 | **D** | Le devis est proposé **dès la demande**, puis la demande part au fleet admin qui accepte ou contre-propose. | Le tour 0 est automatique et figé ; l'e-mail au transporteur part à l'envoi. |
 | **E** | Les kilomètres sont **saisis par le dépôt ET estimés depuis les adresses**. | On garde les deux, plus celui retenu pour le devis. Cf. § 5. |
 | **F** | **Bien expliquer les étapes dans les modales.** | La modale de demande est un parcours en étapes nommées, pas un formulaire à vingt champs. |
+| **G** | **Une seule prestation** : transport de marchandise. La distance est la **somme de tous les segments**. | Une seule catégorie de tranches. Le modèle garde les catégories : elles ne coûtent rien et évitent une migration le jour où une seconde prestation arrive. |
+| **H** | **Le retour n'est compté que si le dépôt l'ajoute** comme dernière adresse. | Aucun segment fantôme. Le dépôt voit exactement ce qu'il paie, et l'écran le lui dit : « ajoutez l'adresse de chargement en dernière livraison pour facturer le retour ». |
+| **I** | Une contre-proposition change **le prix ET les conditions** — adresses, créneau, distance. Le prix est **recalculé**, puis **ajustable**. | Chaque tour porte les conditions proposées. L'accord porte sur une **version précise**, jamais sur un montant flottant. |
+| **J** | **Grille absente = alerte au centre d'alertes, PAS de blocage.** Les missions restent créables ; seule la tarification disparaît. | Le risque du § 7 s'éteint. |
 
 ---
 
@@ -187,20 +191,78 @@ DRAFT ──envoi──► SUBMITTED ──┬─► NEGOTIATING ◄──┐
 
 ---
 
-## 7. Le risque de l'arbitrage C, à traiter avant de livrer
+## 7. Grille absente : alerter, jamais bloquer (arbitrage J)
 
-> **Couper la création de mission quand la grille est absente CASSERAIT l'existant.**
->
-> Aujourd'hui les missions se créent sans aucune tarification, et **mh cars n'a
-> aucune grille**. Déployer la règle telle quelle rendrait `/agenda` inopérant pour
-> le client en pleine recette.
->
-> **Mitigation retenue** : la règle ne s'applique qu'après qu'une grille par défaut
-> a été **écrite pour chaque flotte existante** par la migration (données du § 3).
-> À défaut, prévoir un état « grille absente » qui bloque la **demande** mais laisse
-> la **création directe** au transporteur, et faire trancher le client.
->
-> ➜ *Point ouvert. Ne pas livrer l'arbitrage C sans l'avoir posé au client.*
+Le risque signalé plus tôt — couper la création de mission sans grille aurait rendu
+`/agenda` inopérant pour un client en pleine recette — est **écarté par la décision
+du client**. On alerte, on ne bloque pas.
+
+| Sans grille remplie et activée | |
+|---|---|
+| Création de mission | **reste ouverte**. Aucun devis proposé, aucun montant affiché. |
+| Centre d'alertes | **une alerte est levée**, à destination de l'administration. |
+| Demande côté dépôt | **fermée**, avec le motif à l'écran. |
+
+La distinction tient en une phrase : **une mission sans prix reste une mission ; une
+demande sans prix n'a pas d'objet.**
+
+---
+
+## 7bis. La tarification vue des deux côtés
+
+> Conception demandée par le client le 2026-08-13 : « imagine comment mettre en place
+> ce système avec le détail côté dépôt et côté fleet admin ».
+
+### Le calcul, en une passe
+
+```
+1. distance = somme des segments entre arrêts consécutifs, dans l'ordre saisi
+              (le retour n'est un segment QUE si le dépôt a ajouté l'adresse
+               de chargement en dernière position — arbitrage H)
+2. tranche  = la tranche dont [fromKm, toKm] contient la distance
+3. si tranche.priceCents est NULL  ─►  « SUR DEVIS », on s'arrête ici
+4. total HT = tranche.priceCents  (+ suppléments, à zéro chez ce client)
+5. TVA      = total HT × vatPct / 100
+6. TTC      = HT + TVA
+```
+
+**Les arrondis se font une seule fois, à la fin**, sur des entiers de centimes. Un
+arrondi par ligne produit des totaux qui ne retombent pas sur leurs composantes —
+le genre d'écart d'un centime qu'un comptable remonte et que personne ne sait
+expliquer six mois plus tard.
+
+### Côté dépôt — le client de notre client
+
+Il ne connaît pas la grille et n'a pas à l'apprendre. Ce qu'il doit comprendre :
+**combien, et pourquoi.**
+
+| Moment | Ce qu'il voit |
+|---|---|
+| Il ajoute ses adresses | La distance cumulée se met à jour à chaque ajout, segment par segment : « Fenouillet → Blagnac 12 km · Blagnac → Muret 31 km · **total 43 km** ». |
+| Dès la 1re livraison | Le montant estimé, en **TTC** et en **HT**, avec la tranche atteinte nommée : « tranche 0–50 km ». |
+| Il approche d'une borne | Un avertissement discret : « 3 km de plus font passer à la tranche suivante, 169 € au lieu de 79 € ». **C'est ce qui évite l'appel** « pourquoi ai-je payé le double pour 2 km ? ». |
+| Au-delà de 400 km | « **Sur devis** — le transporteur vous répondra avec un prix. » Affiché **avant** l'envoi, pas après. |
+| Il veut le retour facturé | Une aide explicite : « ajoutez votre adresse de chargement comme dernière livraison ». Jamais fait d'office (arbitrage H). |
+| Après envoi | Le devis figé, sa date de validité, et le fil de négociation. |
+
+### Côté fleet admin — notre client
+
+Il connaît sa grille. Ce qu'il doit pouvoir faire : **vérifier, corriger, décider.**
+
+| Moment | Ce qu'il voit |
+|---|---|
+| À la réception | La demande, le devis calculé, et **le détail ligne à ligne** : distance retenue, tranche appliquée, HT, TVA, TTC. |
+| Il doute de la distance | Les **trois** valeurs côte à côte — déclarée par le dépôt, estimée par le serveur, retenue. Il change la retenue ; **le prix se recalcule** et reste **ajustable** (arbitrage I). |
+| Il corrige une adresse ou le créneau | Même chose : recalcul, puis ajustement libre. |
+| Il envoie sa réponse | Un tour de plus dans le fil, avec ses conditions et son message. |
+| Dans les Paramètres | L'éditeur de tranches, avec contrôle des trous et des recouvrements, et un **simulateur** : « pour 87 km → 169 € HT ». Une grille qu'on ne peut pas essayer est une grille qu'on règle à l'aveugle. |
+
+### Ce que la négociation doit garder
+
+Chaque tour porte **les conditions complètes proposées**, pas seulement un montant.
+Accepter, c'est accepter **une version précise** — adresses, créneau, distance et
+prix ensemble. Un accord sur un prix dont les conditions ont bougé entre-temps n'est
+pas un accord.
 
 ---
 
@@ -282,12 +344,21 @@ qu'après contrôles verts.
 
 ## 9. Questions ouvertes
 
+| # | Question | Réponse du client — 2026-08-13 |
+|---|---|---|
+| Q1 | Les autres prestations de la grille ? | **Une seule** : transport de marchandise. Distance = somme des segments. ➜ arbitrage G |
+| Q2 | Couper la création de mission sans grille ? | **Non.** Alerte au centre d'alertes, tarification masquée, missions intactes. ➜ arbitrage J |
+| Q4 | Supplément par arrêt ? | **Non**, les tranches couvrent tout. Mais la contre-proposition doit pouvoir modifier la demande. ➜ arbitrage I |
+| — | Le retour est-il toujours compté ? | **Non** — seulement si le dépôt l'ajoute. ➜ arbitrage H |
+| — | Que peut modifier une contre-proposition ? | **Prix et conditions.** ➜ arbitrage I |
+| — | Le prix se recalcule-t-il après correction ? | **Oui, puis ajustable.** ➜ arbitrage I |
+
+**Reste ouvert :**
+
 | # | Question | Bloque |
 |---|---|---|
-| Q1 | Les sections **1 et 3+** de la grille tarifaire — quelles prestations ? | T3 |
-| Q2 | Arbitrage C : couper aussi la **création directe** de mission sans grille ? Cf. § 7. | T3 |
-| Q3 | Un service de **géocodage** existe-t-il et est-il utilisable pour estimer les distances ? | T4 |
-| Q4 | Le **supplément par arrêt** existe-t-il chez le client, ou les tranches couvrent-elles tout ? | T4 |
+| Q3 | Un service de **géocodage** existe-t-il et est-il utilisable pour estimer les distances entre arrêts ? À vérifier dans le code avant T4 — c'est une vérification, pas une question au client. | T4 |
+| Q5 | Qui valide côté transporteur : le fleet admin seul, ou toute personne portant `missions_manage` ? **Défaut retenu faute de réponse** : `missions_manage`, cohérent avec la création de mission. | T6 |
 
 ---
 
