@@ -125,22 +125,53 @@ export class MissionStatusService {
   }
 
   /**
-   * PLANNED → DONE, 4 h apres la fin prevue, sans qu'aucune position ne soit arrivee.
+   * PLANNED ou LATE → DONE, 4 h apres la fin prevue.
    *
-   * `actualStartAt` reste `null` : c'est ce qui distingue « livree » de « jamais
-   * partie », et l'historique du depot doit pouvoir le dire. Sans cette bascule, une
-   * mission fantome bloquerait le vehicule indefiniment.
+   * Deux situations, une meme conclusion : au-dela d'un tel depassement, la mission
+   * n'a plus de sens ouvert. Elle est close, son vehicule libere, ses liens publics
+   * fermes.
+   *
+   * `actualStartAt` reste `null` pour une mission jamais partie : c'est ce qui
+   * distingue « livree » de « jamais partie », et l'historique du depot doit pouvoir
+   * le dire. Une mission qui a roule recoit en revanche un `actualEndAt`, pris sur sa
+   * derniere position connue — la seule heure d'arrivee dont on dispose.
    */
   private async cloreCellesSansMouvement(): Promise<void> {
     const limite = new Date(Date.now() - ABANDON_APRES_FIN_MS);
     const abandonnees = await this.prisma.mission.findMany({
-      where: { status: MissionStatus.PLANNED, endAt: { lt: limite } },
-      select: { id: true, ref: true },
+      // ⚠️ LATE AUTANT QUE PLANNED.
+      //
+      // Cette methode ne visait que les missions JAMAIS PARTIES. Une mission qui a
+      // roule et depasse son heure passe en LATE — et rien ne la refermait ensuite :
+      // `marquerLesRetards` fait IN_PROGRESS → LATE, personne ne fait LATE → DONE.
+      //
+      // Elle restait donc en retard indefiniment, avec deux consequences reelles,
+      // constatees en production le 2026-08-13 sur six missions de la veille :
+      // le vehicule restait IMMOBILISE dans l'agenda et les reservations (l'evenement
+      // suit le statut, et LATE se mappe sur IN_PROGRESS), et le depot continuait de
+      // voir sa position — la fenetre censee se refermer ne se refermait jamais.
+      //
+      // Le seuil reste celui d'ABANDON_APRES_FIN_MS : 4 h de depassement, bien
+      // au-dela d'un simple retard de livraison. On ne coupe pas un camion en route.
+      where: {
+        status: { in: [MissionStatus.PLANNED, MissionStatus.LATE] },
+        endAt: { lt: limite },
+      },
+      select: { id: true, ref: true, status: true, vehicle: { select: { tracker: { select: { lastPositionAt: true } } } } },
       take: 200,
     });
     for (const m of abandonnees) {
-      await this.basculer(m.id, MissionStatus.DONE, {});
-      this.logger.log(`Mission ${m.ref} close sans deplacement detecte`);
+      // `actualEndAt` n'est renseigne que pour une mission qui a REELLEMENT roule :
+      // sur une mission jamais partie il resterait faux, et l'historique du depot
+      // doit pouvoir distinguer « livree » de « jamais partie ».
+      const aRoule = m.status === MissionStatus.LATE;
+      const finReelle = aRoule ? (m.vehicle.tracker?.lastPositionAt ?? new Date()) : undefined;
+      await this.basculer(m.id, MissionStatus.DONE, finReelle ? { actualEndAt: finReelle } : {});
+      this.logger.log(
+        aRoule
+          ? `Mission ${m.ref} close apres depassement prolonge (etait en retard)`
+          : `Mission ${m.ref} close sans deplacement detecte`,
+      );
       // Lot A3 — la mission se termine PENDANT que le depot regarde sa carte.
       //
       // Sans cet avertissement, le marqueur disparait au rafraichissement suivant et

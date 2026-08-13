@@ -40,10 +40,45 @@ const CENTRE_PAR_DEFAUT = { lat: 43.6045, lng: 1.4442 };
   selector: 'app-public-tracking-map',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<div #carte class="ptm" role="application" aria-label="Position du camion"></div>`,
+  template: `
+    <div #carte class="ptm" role="application" aria-label="Position du camion"></div>
+    <!-- ⚠️ UN VOILE D'ATTENTE, PAS UNE COQUETTERIE.
+         Le fond de carte met plusieurs secondes a arriver (29 tuiles distantes), et
+         la page restait ENTIEREMENT BLANCHE pendant ce temps. Le destinataire est
+         ici un client final sans compte, qui vient de recevoir un lien par message :
+         une page blanche, il la lit comme un lien casse et il rappelle — exactement
+         l'appel que cette fonctionnalite doit supprimer. Releve en recette le
+         2026-08-13.
+         Le voile disparait sur l'evenement idle de MapLibre, c'est-a-dire quand la
+         carte a fini de peindre — pas a sa creation, qui precede les tuiles. -->
+    @if (!peinte()) {
+      <div class="ptm-attente" aria-live="polite">
+        <span class="ptm-attente-rond" aria-hidden="true"></span>
+        <p>Chargement de la carte…</p>
+      </div>
+    }
+  `,
   styles: [`
     :host { display: block; position: relative }
     .ptm { width: 100%; height: 100% }
+
+    .ptm-attente {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      background: var(--bg-secondary); color: var(--fg-secondary);
+    }
+    .ptm-attente p { margin: 0; font-size: 13.5px }
+    .ptm-attente-rond {
+      width: 26px; height: 26px; border-radius: 9999px;
+      border: 2.5px solid var(--border-subtle);
+      border-top-color: var(--color-tracky-light);
+      animation: ptm-tourne .9s linear infinite;
+    }
+    @keyframes ptm-tourne { to { transform: rotate(360deg) } }
+    /* Respecte le reglage systeme : une animation qui tourne peut gener. */
+    @media (prefers-reduced-motion: reduce) {
+      .ptm-attente-rond { animation: none }
+    }
 
     :host ::ng-deep .ptm-pin {
       position: relative; width: 34px; height: 34px; border-radius: 50%;
@@ -82,6 +117,14 @@ export class PublicTrackingMapComponent implements AfterViewInit, OnDestroy {
   private element: HTMLElement | null = null;
   private observateur: ResizeObserver | null = null;
   private readonly prete = signal(false);
+  /**
+   * La carte a fini de PEINDRE, pas seulement d'etre creee.
+   *
+   * `prete` bascule des la creation de l'instance MapLibre, donc bien avant que la
+   * moindre tuile soit arrivee : s'en servir pour retirer le voile d'attente
+   * laisserait reapparaitre la page blanche qu'il corrige.
+   */
+  protected readonly peinte = signal(false);
 
   private readonly majEffect = effect(() => {
     const p = this.position();
@@ -137,6 +180,14 @@ export class PublicTrackingMapComponent implements AfterViewInit, OnDestroy {
       withGeolocateControl: false,
       withScaleControl: false,
     });
+
+    // `idle` = plus rien a charger ni a dessiner. `load` arriverait trop tot : le
+    // style serait pret, les tuiles pas encore, et le voile tomberait sur du blanc.
+    this.map.once('idle', () => this.peinte.set(true));
+    // Filet : si les tuiles n'arrivent jamais (reseau du destinataire coupe), on ne
+    // laisse pas un voile tourner indefiniment — la carte vide reste plus honnete
+    // qu'une attente sans fin, et le bandeau du bas porte deja l'essentiel.
+    setTimeout(() => this.peinte.set(true), 8000);
 
     this.observateur = new ResizeObserver(() => this.map?.resize());
     this.observateur.observe(el);

@@ -14,6 +14,7 @@ import { MissionStatusService, STATUT_EVENEMENT } from './mission-status.service
  */
 describe('MissionStatusService', () => {
   let service: MissionStatusService;
+  let partage: { fermerLiensDeMission: jest.Mock };
   let prisma: {
     mission: { findMany: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     vehicleEvent: { updateMany: jest.Mock };
@@ -38,6 +39,7 @@ describe('MissionStatusService', () => {
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma));
+    partage = { fermerLiensDeMission: jest.fn().mockResolvedValue(0) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -48,7 +50,7 @@ describe('MissionStatusService', () => {
         { provide: RealtimeGateway, useValue: { emitDepotMissionEnded: jest.fn() } },
         // Lot A4 — la cloture ferme les liens publics de la mission. Un espion suffit :
         // ce qui est teste ici est la BASCULE, pas la fermeture (qui a ses propres tests).
-        { provide: MissionShareService, useValue: { fermerLiensDeMission: jest.fn().mockResolvedValue(0) } },
+        { provide: MissionShareService, useValue: partage },
       ],
     }).compile();
     service = moduleRef.get(MissionStatusService);
@@ -146,6 +148,56 @@ describe('MissionStatusService', () => {
       await service.tick();
       expect(prisma.vehicleEvent.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: VehicleEventStatus.DONE } }),
+      );
+    });
+  });
+
+  // ═══ LA MISSION QUI A ROULE ET N'EST JAMAIS REVENUE ════════════════════════
+  //
+  // `marquerLesRetards` fait IN_PROGRESS → LATE. Personne ne faisait LATE → DONE :
+  // une mission qui avait roule et depasse son heure restait en retard
+  // INDEFINIMENT. Constate en production le 2026-08-13 sur six missions de la
+  // veille, avec deux consequences reelles — le vehicule restait immobilise dans
+  // l'agenda et les reservations, et le depot continuait de voir sa position, la
+  // fenetre censee se refermer ne se refermant jamais.
+  describe('la mission en retard qui ne revient pas', () => {
+    const enRetard = {
+      id: 'm-3',
+      ref: 'M-0003',
+      status: MissionStatus.LATE,
+      vehicle: { tracker: { lastPositionAt: new Date('2026-08-12T20:30:00Z') } },
+    };
+
+    it('est close apres un depassement prolonge', async () => {
+      prisma.mission.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([enRetard]);
+      await service.tick();
+      expect(prisma.mission.update.mock.calls[0][0].data.status).toBe(MissionStatus.DONE);
+    });
+
+    it('recoit une heure d\'arrivee — sa derniere position connue', async () => {
+      // C'est la seule heure d'arrivee dont on dispose. La laisser vide rendrait
+      // l'historique du depot muet sur une mission qui a pourtant bien roule.
+      prisma.mission.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([enRetard]);
+      await service.tick();
+      expect(prisma.mission.update.mock.calls[0][0].data.actualEndAt)
+        .toEqual(enRetard.vehicle.tracker.lastPositionAt);
+    });
+
+    it('libere le vehicule et ferme les liens publics', async () => {
+      prisma.mission.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([enRetard]);
+      await service.tick();
+      expect(prisma.vehicleEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: VehicleEventStatus.DONE } }),
+      );
+      expect(partage.fermerLiensDeMission).toHaveBeenCalledWith('m-3', 'DONE');
+    });
+
+    it('cherche bien les DEUX statuts, pas seulement les missions jamais parties', async () => {
+      prisma.mission.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      await service.tick();
+      const where = prisma.mission.findMany.mock.calls[1][0].where;
+      expect(where.status.in).toEqual(
+        expect.arrayContaining([MissionStatus.PLANNED, MissionStatus.LATE]),
       );
     });
   });
