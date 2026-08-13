@@ -284,10 +284,20 @@ interface NavGroup {
                     <lucide-icon [img]="UserCircle2Icon" [size]="16"></lucide-icon>
                     Mon profil
                   </a>
-                  <a routerLink="/settings" class="user-menu-item" (click)="userMenuOpen.set(false)">
-                    <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
-                    Paramètres
-                  </a>
+                  <!-- ⚠️ PAS POUR UN DEPOT. /settings est l'ecran de reglages de la
+                       FLOTTE — regles d'alerte, integrations, horaires. Un depot n'y a
+                       aucune permission : le garde de route le renvoyait au tableau de
+                       bord, qui lui est ferme aussi. Le lien promettait donc une page
+                       qu'il n'ouvrira jamais. Releve en recette le 2026-08-13.
+                       Meme traitement que le veilleur, plus haut. « Mon profil » reste :
+                       /account fonctionne pour un depot et porte son profil, ses
+                       notifications et sa securite. -->
+                  @if (!auth.isDepot()) {
+                    <a routerLink="/settings" class="user-menu-item" (click)="userMenuOpen.set(false)">
+                      <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
+                      Paramètres
+                    </a>
+                  }
                   @if (isSuperAdmin()) {
                     <a routerLink="/admin" class="user-menu-item" (click)="userMenuOpen.set(false)">
                       <lucide-icon [img]="TerminalIcon" [size]="16"></lucide-icon>

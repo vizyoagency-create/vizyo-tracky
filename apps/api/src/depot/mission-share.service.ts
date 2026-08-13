@@ -431,13 +431,33 @@ export class MissionShareService {
     return mission;
   }
 
-  /** A4 § 4. `UNTIL_MISSION_END` porte une marge de 30 min pour couvrir le retard. */
+  /**
+   * A4 § 4. `UNTIL_MISSION_END` porte une marge de 30 min pour couvrir le retard.
+   *
+   * ⚠️ AUCUNE DUREE NE PEUT DEPASSER CE PLAFOND.
+   *
+   * `MIN_15` et `HOUR_1` calculaient `maintenant + duree` SANS REGARDER `endAt`.
+   * Choisir « 1 h » sur une mission qui se terminait 48 minutes plus tard produisait
+   * donc un lien public vivant 12 minutes APRES la fenetre — constate en recette le
+   * 2026-08-13 : mission 18:00→19:00, lien cree a 18:18, expiration annoncee 19:18.
+   *
+   * Ce n'est pas un detail d'affichage. La promesse du dossier est que la fenetre
+   * horaire borne l'acces, et le destinataire d'un lien public n'a NI COMPTE NI
+   * PERMISSION : le temps est le seul verrou (cf. l'encadre en tete de ce service).
+   * Un lien qui survit a la mission remet une position live a un tiers alors que le
+   * transporteur a referme son creneau.
+   *
+   * Le plafond retenu est exactement celui de `UNTIL_MISSION_END` — l'option la plus
+   * longue — pour qu'aucun autre choix ne puisse offrir davantage.
+   */
   private calculerExpiration(duree: ShareDuration, finMission: Date): Date {
+    const plafond = this.plafondDeMission(finMission);
+    const borner = (echeance: number) => new Date(Math.min(echeance, plafond));
     switch (duree) {
       case ShareDuration.MIN_15:
-        return new Date(Date.now() + 15 * 60_000);
+        return borner(Date.now() + 15 * 60_000);
       case ShareDuration.HOUR_1:
-        return new Date(Date.now() + 60 * 60_000);
+        return borner(Date.now() + 60 * 60_000);
       case ShareDuration.UNTIL_MISSION_END: {
         // ⚠️ `max(endAt, maintenant)`, et pas `endAt` seul.
         //
@@ -448,10 +468,22 @@ export class MissionShareService {
         //
         // La marge de 30 minutes court donc a partir du plus tardif des deux : la fin
         // annoncee si elle est a venir, l'instant present si elle est passee.
-        const base = Math.max(finMission.getTime(), Date.now());
-        return new Date(base + MARGE_FIN_MISSION_MS);
+        return new Date(this.plafondDeMission(finMission));
       }
     }
+  }
+
+  /**
+   * L'instant au-dela duquel AUCUN lien de cette mission ne peut vivre.
+   *
+   * `max(endAt, maintenant)`, et pas `endAt` seul : une mission EN RETARD a deja
+   * depasse son `endAt`, et le calcul litteral produirait un plafond dans le passe —
+   * donc un lien mort-ne, cree et deja expire. Or c'est precisement sur une mission
+   * en retard qu'un depot partage le suivi : son client s'impatiente, c'est la raison
+   * meme du lien. La marge court donc a partir du plus tardif des deux.
+   */
+  private plafondDeMission(finMission: Date): number {
+    return Math.max(finMission.getTime(), Date.now()) + MARGE_FIN_MISSION_MS;
   }
 
   /** Une duree inconnue retombe sur la plus COURTE : par defaut on protege. */

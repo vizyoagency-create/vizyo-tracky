@@ -259,6 +259,42 @@ describe('MissionShareService — le lien public', () => {
       const ms = await capturerExpiration('UNTIL_MISSION_END', new Date(Date.now() - 3 * 3600_000));
       expect(ms).toBeGreaterThan(29 * 60_000);
     });
+
+    // ═══ AUCUNE DUREE NE SURVIT A LA MISSION ═════════════════════════════════
+    //
+    // Constate en recette le 2026-08-13 : mission 18:00→19:00, lien « 1 h » cree a
+    // 18:18, expiration annoncee 19:18. `MIN_15` et `HOUR_1` calculaient
+    // `maintenant + duree` sans jamais regarder `endAt`.
+    //
+    // Ce n'est pas un arrondi d'affichage. Le destinataire d'un lien public n'a ni
+    // compte ni permission : le TEMPS est le seul verrou. Un lien qui survit a la
+    // mission remet une position live a un tiers alors que le transporteur a referme
+    // son creneau — l'inverse exact de ce que la fenetre horaire promet.
+
+    it('HOUR_1 ne depasse pas la fin de mission quand elle arrive avant', async () => {
+      // Mission qui se termine dans 20 min : « 1 h » doit etre ramene au plafond,
+      // soit 20 min + les 30 min de marge — jamais 60.
+      const ms = await capturerExpiration('HOUR_1', new Date(Date.now() + 20 * 60_000));
+      expect(ms).toBeLessThanOrEqual(50 * 60_000 + 1000);
+      expect(ms).toBeGreaterThan(49 * 60_000);
+    });
+
+    it('MIN_15 est borne lui aussi — sur une mission qui finit dans 5 minutes', async () => {
+      const ms = await capturerExpiration('MIN_15', new Date(Date.now() + 5 * 60_000));
+      // 5 min restantes + 30 de marge = 35 : le quart d'heure passe donc entier,
+      // mais le plafond existe et se verifie sur le cas serre ci-dessous.
+      expect(ms).toBeLessThanOrEqual(35 * 60_000 + 1000);
+    });
+
+    it('aucune duree ne peut offrir PLUS que « fin de mission »', async () => {
+      // L'invariant, enonce simplement : le plafond est celui de l'option la plus
+      // longue. Si un jour une duree le depassait, c'est ici que ca se verrait.
+      const fin = new Date(Date.now() + 10 * 60_000);
+      const plafond = await capturerExpiration('UNTIL_MISSION_END', fin);
+      for (const duree of ['MIN_15', 'HOUR_1'] as const) {
+        expect(await capturerExpiration(duree, fin)).toBeLessThanOrEqual(plafond + 1000);
+      }
+    });
   });
 
   // ═══ LES LIMITES ═══════════════════════════════════════════════════════════
