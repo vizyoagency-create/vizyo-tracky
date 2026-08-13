@@ -36,7 +36,7 @@
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **45/57** |
+| **B-pages** | 🟡 **en cours** | **46/57** |
 | **B-mails** | ⬜ à faire | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
