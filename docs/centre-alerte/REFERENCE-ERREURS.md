@@ -11,9 +11,52 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-12**
+- Dernière mise à jour : **2026-08-13**
 
 ---
+
+---
+
+## 🔴 2026-08-13 — la perte est réimposée à chaque image, et trois défauts neufs sortent des angles morts
+
+Le rapport du 12/08 prédisait que la perte des quatre correctifs « redevient effective à chaque
+reconstruction ». **C'est mesuré** : deux reconstructions de plus le 12/08 (`tracky-api` 07:08,
+`tracky-web` 14:15), la branche a avancé d'un commit — et `merge-base` avec `main` est **toujours**
+le `c3c2704` du 07/08. Les quatre marqueurs restent absents des artefacts servis.
+
+**Et cette fois la perte se mesure aussi dans la donnée.** Sur les **77 commandes** émises depuis le
+redéploiement du 11/08 22:37, **zéro** porte un `diagnosticHint` « Aucune réponse… » ; le compteur
+de silences tracés est figé à 81. *Un marqueur absent du binaire dit qu'un correctif n'est pas là ;
+un instrument qui n'écrit plus rien le prouve.* Voir [TRK-019](#trk-019).
+
+**La régression de [TRK-002](#trk-002) n'est plus une déduction** : deux lignes le 12/08 (09:20 et
+14:40), aucune pendant les 27 h où le correctif était en ligne, trois lignes avant. Le contraste
+porte sur trois périodes, pas sur deux mesures — et aucune des deux lignes ne tombe dans une fenêtre
+de redéploiement.
+
+**Trois défauts neufs, aucun visible au centre d'alerte :**
+
+| Fiche | Ce que c'est |
+|---|---|
+| [TRK-021](#trk-021) | **19 des 23 commandes du catalogue sont déclarées SMS-only et partent en TCP.** `availableVia` n'est lu **nulle part** — ni côté API (une seule occurrence : l'exposer au front), ni côté web. 6 `ACK timeout` en base, **6 sur 6** sur des templates SMS-only. |
+| [TRK-022](#trk-022) | **La survitesse ne peut alerter que sur 1 boîtier sur 43** — un seul émet des trames `,speed,` — et y produit **1317 alertes en un jour**, une par trame, sans aucune déduplication. |
+| [TRK-023](#trk-023) | **L'accusé de réception d'une coupure moteur** (`jk`) échappe au dictionnaire de décodage, devient une alerte « Alarme inconnue » **sans message** pour l'exploitant. Chaîne prouvée de bout en bout en 4 secondes. |
+
+> **Ce que l'épisode apprend sur la méthode — un test daté ne survit pas au changement de son
+> sujet.** Le test posé pour le 12/08 attendait une ligne `error_logs` sur FZ-862-VY, dont l'épisode
+> durait depuis cinq jours. Aucune ligne n'est venue. Sa condition d'échec disait « la lecture de la
+> régression est fausse » — **et il ne fallait surtout pas l'appliquer** : l'épisode s'était refermé
+> le 12/08 à 08:50, 35 minutes avant l'heure du test. La variable choisie comme la plus stable du
+> tableau est celle qui a bougé. *Avant de lire un zéro comme un échec, relire l'état que le test
+> supposait.* Test réarmé au 13/08, avec sa condition de nullité écrite.
+
+> **Et une rectification d'outillage qui a coûté une mesure.** Le 12/08 avait conclu que
+> `position_sampling_decisions` « n'existe pas ». Elle existe : ses colonnes sont `decision · state ·
+> reason · speedKmh · ignition · distanceM · receivedAt`, sans `createdAt` ni `deviceTime` — les deux
+> horodatages qui classent un rejet sont **dans le texte de `reason`**, et la table de jumelage est
+> `positions."timestamp"`. *Une erreur de nom de colonne et une table absente rendent le même
+> message ; `information_schema` les sépare en une requête.* La série de [TRK-015](#trk-015) reprend,
+> avec un trou d'un jour.
 
 ---
 
@@ -379,17 +422,20 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🔴 NON CORRIGÉ | 2026-08-12 | 2026-08-12 |
-| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ | 2026-08-12 | 2026-08-12 |
-| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : 112 commandes moteur, **0 confirmée**, aucun message jamais sorti de `queued` | 🔴 NON CORRIGÉ | 2026-08-11 | 2026-08-11 |
-| [TRK-017](#trk-017) | `sms-allowlist` | Une 2ᵉ instance de Tracky, hors VPS, efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(appelant nommé le 10/08 ; toujours actif, y compris la nuit)* | 2026-08-09 | 2026-08-11 |
-| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ | 2026-08-09 | 2026-08-11 |
-| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ | 2026-08-08 | 2026-08-11 |
-| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(correctif #1 livré et vérifié ; #2 ouvert, #3 requalifié ; Constat 2 rectifié)* | 2026-08-07 | 2026-08-11 |
-| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord)* | 2026-08-05 | 2026-08-11 |
-| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ | 2026-08-06 | 2026-08-11 |
-| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(espacement des rappels livré le 10/08)* | 2026-07-28 | 2026-08-11 |
-| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 **RÉGRESSION** *(correctif RETIRÉ de la prod le 11/08 22:37 par le déploiement — voir [TRK-019](#trk-019))* | 2026-07-29 | 2026-08-12 |
+| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal — **réimposé par 2 reconstructions de plus** | 🔴 NON CORRIGÉ | 2026-08-12 | 2026-08-13 |
+| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ | 2026-08-13 | 2026-08-13 |
+| [TRK-022](#trk-022) | *alertes* | Survitesse : **1 boîtier sur 43 peut alerter**, et il produit **1317 alertes en un jour** (une par trame) | 🔴 NON CORRIGÉ | 2026-08-13 | 2026-08-13 |
+| [TRK-023](#trk-023) | *alertes* | L'**accusé de réception d'une coupure moteur** devient une « Alarme inconnue » **sans message** | 🔴 NON CORRIGÉ | 2026-08-13 | 2026-08-13 |
+| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ | 2026-08-12 | 2026-08-13 |
+| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : 116 commandes moteur, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté du 12/08 **passé** : 219 → 224)* | 2026-08-11 | 2026-08-13 |
+| [TRK-017](#trk-017) | `sms-allowlist` | Une 2ᵉ instance de Tracky, hors VPS, efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé inchangée au 13/08 ; appelant muet depuis le 12/08 18:25 — machine éteinte ≠ clé révoquée)* | 2026-08-09 | 2026-08-13 |
+| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(10ᵉ jour > 89 %)* | 2026-08-09 | 2026-08-13 |
+| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ | 2026-08-08 | 2026-08-13 |
+| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(⚠️ **l'instrument est désarmé depuis le 11/08 22:37** : 0 silence tracé sur 77 commandes)* | 2026-08-07 | 2026-08-13 |
+| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord ; renfort [TRK-021](#trk-021) le 13/08)* | 2026-08-05 | 2026-08-13 |
+| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(4 numérateurs figés, 4ᵉ passage — seul le dénominateur grandit)* | 2026-08-06 | 2026-08-13 |
+| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(espacement des rappels **retiré de la prod** ; 2 épisodes NEUFS le 12/08)* | 2026-07-28 | 2026-08-13 |
+| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 **RÉGRESSION CONFIRMÉE** *(2 lignes réelles le 12/08, 0 pendant les 27 h où le correctif était en ligne — voir [TRK-019](#trk-019))* | 2026-07-29 | 2026-08-13 |
 | [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ | 2026-07-31 | 2026-07-31 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟢 CORRIGÉ | 2026-07-28 | 2026-07-28 |
@@ -559,6 +605,59 @@ un mécanisme. *À re-regarder si le couple se reproduit.*
 Et les deux épisodes suivis continuent : **FZ-862-VY 116,5 h** (5ᵉ jour, ouvert le 07/08 09:07) et
 **FS-253-HR 38,6 h** (ouvert le 10/08 15:03).
 
+### 🗓️ 2026-08-13 — le test daté est SANS OBJET : son sujet a changé d'état
+
+Le test posé pour le 12/08 attendait une ligne `error_logs` sur FZ-862-VY vers 09:25, et écrivait
+sa condition d'échec : *« si elle n'apparaît pas, la lecture de la régression est fausse et
+l'analyse est à reprendre. »*
+
+**Aucune ligne `gps-integrity` n'est apparue** — ni le 12/08, ni le 13/08. **Et il ne faut pas
+appliquer la condition d'échec**, parce que la prémisse du test est tombée :
+
+| Véhicule | `lastPositionAt` | Ce que ça veut dire |
+|---|---|---|
+| **FZ-862-VY** | **12/08 08:50:11** | L'épisode du 07/08 09:07 — **cinq jours** — est **CLOS**. Un **nouvel** épisode s'est ouvert derrière : 16,3 h à la collecte. |
+| **FS-253-HR** | **12/08 15:20:59** | Épisode du 10/08 15:03 clos lui aussi. Nouvel épisode : 9,8 h. |
+
+À 09:25 le 12/08, FZ-862-VY avait une position vieille de **35 minutes**. Il n'y avait rien à
+signaler. Le silence est le comportement voulu, et les deux épisodes en cours sont **sous le
+plafond de 24 h** — silencieux à raison, comme un stationnement de nuit. L'alerte flotte confirme
+d'ailleurs le même état : dernière `GPS_LOST` le **11/08 15:05**, aucune depuis.
+
+> **La leçon.** Un test daté suppose que son sujet ne bouge pas. Celui-ci a été posé sur l'épisode
+> le plus stable du tableau — ouvert depuis cinq jours, `lastPositionAt` figé depuis le 07/08 — et
+> c'est précisément lui qui a changé. Lire son zéro comme un échec aurait accusé le bon coupable
+> ([TRK-019](#trk-019) est bien réel) **pour la mauvaise raison**, et fait « reprendre l'analyse »
+> d'une régression pourtant confirmée par ailleurs. *Avant de lire un zéro comme un échec, relire
+> l'état que le test supposait — un test daté doit désormais porter sa condition de nullité autant
+> que sa condition d'échec.*
+
+🗓️ **Test réarmé — deux échéances le 13/08, et le volet décisif le 14/08 :**
+
+1. L'épisode de **FZ-862-VY** franchit 24 h vers le **13/08 08:50 UTC** → une alerte flotte
+   `GPS_LOST` **et** une ligne `error_logs` doivent apparaître dans les 5 min qui suivent. Le
+   plafond de 24 h, lui, **est** dans le build servi (témoin « ANORMALEMENT LONG » trouvé dans
+   `gps-integrity.service.js`).
+2. **FS-253-HR** franchit 24 h vers le **13/08 15:20 UTC** — même attente.
+3. **Le volet qui teste la régression est au 14/08** : l'espacement étant absent de la production,
+   un **second** rappel doit tomber ~24 h après le premier. Avec le correctif restauré, la cadence
+   passerait à l'hebdomadaire au 3ᵉ jour. *C'est ce volet-là, et lui seul, qui distingue les deux
+   codes.*
+
+**Condition de nullité (écrite exprès) :** avant de conclure d'une absence de ligne, **relire
+`lastPositionAt`**. Si l'épisode s'est refermé entre-temps, le test est de nouveau sans objet —
+pas en échec.
+
+### Mise à jour du 2026-08-13 — cinquième cycle, et les deux véhicules reperdent leur fix le jour même
+
+Les deux longs épisodes se sont refermés le 12/08 — puis **les deux se sont rouverts dans la
+journée**, à 08:50 pour FZ-862-VY et à 15:20 pour FS-253-HR. C'est le quatrième et le cinquième
+cycle du profil « antenne intermittente » décrit le 08/08, et pour la première fois **les deux
+véhicules le font le même jour**.
+
+⚠️ Un épisode clos ne vaut toujours pas antenne réparée — et cette fois la démonstration tient en
+quelques heures au lieu de quelques jours.
+
 ### Action
 **Terrain, pas code.** Antennes GPS à vérifier sur **FS-253-HR** et **FZ-862-VY** — les deux longs
 épisodes se sont refermés au bout de ~4 jours, mais les deux véhicules **reperdent leur fix dans
@@ -665,6 +764,30 @@ Aucune nouvelle ligne de cette signature sur 7 jours, **alors qu'une vraie coupu
 supprime les deux cas a rendu le module inutile.
 
 ---
+
+### 🔴 2026-08-13 — la régression PRODUIT des lignes : le contraste porte sur trois périodes
+
+Hier, la régression était une déduction (un marqueur absent d'un bundle). Aujourd'hui elle est
+mesurée dans `error_logs` :
+
+| Période | Correctif | Lignes de la signature |
+|---|---|---|
+| 29/07 → 10/08 19:39 | absent | **3** (29/07, 03/08 ×2, 10/08) |
+| **10/08 19:39 → 11/08 22:37** *(27 h)* | **EN LIGNE** | **0** |
+| **11/08 22:37 → 13/08 01:11** *(26 h)* | retiré | **2** — 12/08 09:20:29 et 14:40:47 |
+
+Les deux lignes : même utilisateur, iPhone iOS 18.7, `TypeError: Load failed`, sur
+`/vehicles/…` puis `/settings`. **Aucune ne tombe dans une fenêtre de redéploiement** — les
+conteneurs ont été recréés à 07:09 et 14:15, soit +2 h 11 et +25 min. Ce sont des hoquets isolés :
+exactement ce que la confirmation à deux échecs consécutifs faisait taire.
+
+⚠️ **Deux lignes ne font pas une tendance (§4 bis), et ce n'est pas ce qui est affirmé ici.** Ce qui
+conclut est le **zéro intercalaire** : la seule fenêtre sans ligne depuis le 29/07 est exactement
+celle où le correctif était en ligne. *Un contraste sur trois périodes vaut ce qu'une série de deux
+points ne vaudra jamais.*
+
+⚠️ **Le test daté du 18/08 reste illisible** tant que le correctif n'est pas remis en ligne — la
+même raison qu'hier. Il devra être réarmé à partir de la date de remise, pas de sa date d'origine.
 
 ### 🔴 2026-08-12 — RÉGRESSION : le correctif n'est plus en production
 
@@ -1551,6 +1674,41 @@ cadence. Corréler sur le **temps** et sur l'**IMEI**, jamais sur le motif seul.
 > là, et ce qui manque est un **accord** : changer la trame émise change ce que reçoivent
 > 43 boîtiers en service. C'est une décision humaine (§8 de la procédure).
 
+### Mise à jour du 2026-08-13 — dixième point plat, et un renfort venu d'une autre fiche
+
+**449 échecs « 300 s à l'arrêt » sur 500 (89,8 %)**, 36 boîtiers, `acquittees = 0`. Répartition :
+`STOPPED_INTERVAL_ADJUSTED` 436 + `MOVING_TO_STOPPED` 13, tous à `005m`, plus 8
+`STOPPED_INTERVAL_ADJUSTED` à `030s`.
+
+| Nuit | 04→05 | 05→06 | 06→07 | 07→08 | 08→09 | 09→10 | 10→11 | 11→12 | 12→13 |
+|---|---|---|---|---|---|---|---|---|---|
+| Échecs (21:30 → 01:10) | 14 | 15 | 13 | 13 | 13 | 13 | 13 | 13 | **13** |
+
+Dix points, même définition : **plat**.
+
+⚠️ **Et le ratio commandes/boîtier sort de 2,00 pour la première fois en onze jours : 2,03 le
+12/08** (73 / 36). L'écart n'est **pas** une dérive du plafond anti-flapping — il a un nom :
+**FM-772-JH a reçu 4 commandes**, dont deux manuelles à 06:10, celles de [TRK-021](#trk-021). Sur le
+périmètre que le plafond gouverne, l'invariant tient. *Un invariant qui bouge se vérifie avant
+d'être raconté : celui-ci a été brisé par un humain, pas par un automate.*
+
+### 🔗 Mise à jour du 2026-08-13 — deux cas indépendants renforcent la cause racine
+
+[TRK-021](#trk-021) apporte à cette fiche deux témoins qu'elle n'avait pas : les commandes
+`sensitivity` et `shock_on` envoyées manuellement le 12/08 à 06:10 portent des payloads au **format
+SMS** (`sensitivity123456 2`, `shock123456`, suffixe `123456` = mot de passe Coban par défaut),
+partent sur le canal **TCP**, et obtiennent **zéro réponse** — sur un boîtier `ONLINE`, avec un
+guetteur d'ACK bien armé (chemin générique).
+
+**Trois templates, trois utilisateurs de code différents, un seul et même symptôme.** Le faisceau
+gagne deux cas indépendants sans qu'aucun test n'ait été lancé sur un boîtier. Le test de
+validation de cette fiche (une trame `**,imei:<IMEI>,C,05m;`) reste **en attente d'accord** : il
+n'est pas remplacé par ces observations, il est renforcé.
+
+⚠️ Les deux fiches restent distinctes : ici « bon canal, mauvaise enveloppe » ; là « mauvais canal,
+alors que la donnée qui dit lequel choisir est déjà dans le catalogue ». Deux gestes, deux
+correctifs.
+
 ---
 
 ## TRK-013
@@ -1736,6 +1894,36 @@ dilution raconte le contraire de ce qui se passe.
 `params` n'est toujours pas chargé dans le `select` (vérifié : les deux nouvelles clôtures citent
 juste parce que la cible courante coïncidait, comme les cinq précédentes). Le défaut de code est
 intact.
+
+### Mise à jour du 2026-08-13 — les quatre numérateurs sont figés, et le taux baisse encore
+
+**40 clôtures** par échéance (38 la veille). Les deux nouvelles sont **justes** :
+
+| Commande | Demandé (`params`) | Cadence réelle | Message | Verdict |
+|---|---|---|---|---|
+| HD-779-MA · 12/08 18:50 | `030s` | 20 s | « cadence réelle 20s pour une cible de 30s » | ✅ juste — et la cible est **bien citée** |
+| FZ-731-YF · 13/08 00:06 | `005m` | 3601 s | « … pour une cible de 300s » | ✅ juste |
+
+**Les quatre compteurs, sur trois définitions, sur trois passages :**
+
+| Compteur | Définition | 11/08 | 12/08 | **13/08** |
+|---|---|---|---|---|
+| Message auto-contradictoire | le texte dit « réelle X s pour une cible de X s » | 7 | 7 | **7** |
+| Réel dans la bande de la cible **annoncée** | ±20 % | 10 | 10 | **10** |
+| **Fausses** — bande ±20 % de l'intervalle **demandé** *(le critère du correctif)* | | 5 | 5 | **5** |
+| **Cibles mal citées** — annoncée ≠ `params.interval` | | 6 | 6 | **6** |
+| Dénominateur | clôtures par échéance | 33 | 38 | **40** |
+
+**Aucun numérateur ne bouge ; seul le dénominateur grandit.** Le taux « défectueuses » (fausses +
+mal citées) tombe de 33,3 % à **27,5 %** sans qu'une ligne de code ait changé — quatrième passage
+consécutif où la dilution raconte le contraire de ce qui se passe. `params` n'est toujours pas
+chargé dans le `select`.
+
+⚠️ **Trois définitions coexistent dans cette fiche, et il faut les garder toutes les trois.** La
+première se lit sur le message seul (7), la deuxième juge sur la cible annoncée (10), la troisième
+sur l'intervalle réellement demandé (5 + 6). Seule la troisième mesure le défaut ; les deux autres
+sont ce qu'un lecteur pressé compterait. *Publier un seul chiffre sans dire lequel, c'est
+fabriquer une divergence entre deux passages qui mesuraient la même chose.*
 
 ---
 
@@ -1999,6 +2187,41 @@ piège que [TRK-018](#trk-018) nomme lui-même trois semaines plus tard.
 
 Cela **ne change pas** le diagnostic du correctif #1 : `fix.*ok` n'est jamais revenu, et les
 47 silences sont réels. Cela change **ce qu'on croyait savoir du canal** : il n'a jamais été muet.
+
+### 🔴 Mise à jour du 2026-08-13 — l'instrument est désarmé, et c'est MESURÉ
+
+Hier, le désarmement se déduisait d'un marqueur absent du binaire. Aujourd'hui il se lit dans la
+base :
+
+| Mesure | Valeur |
+|---|---|
+| Commandes émises depuis le redéploiement (11/08 22:37) | **77** |
+| …portant un `diagnosticHint` « Aucune réponse du boîtier… » | **0** |
+| Compteur cumulé de silences tracés | **81** — figé au total du 11/08 |
+| `ackedAt` / `ackResponse` | **0 sur 4231** |
+
+Avant le redéploiement, **chaque** commande produisait un silence tracé (14 en 5 h, puis 47 en
+13 h). Soixante-dix-sept commandes de suite sans une seule trace ne peuvent pas être un boîtier
+plus bavard : c'est le guetteur qui n'est plus inscrit.
+
+> **Le zéro d'`ackedAt` a donc changé de nature une seconde fois.** Il est passé d'ignorance
+> (avant le 10/08) à constat (10-11/08), et il revient à l'ignorance. *Un instrument retiré ne
+> laisse pas de trou visible dans la série — il laisse un zéro qui ressemble exactement au
+> précédent.* Voir [TRK-019](#trk-019).
+
+⚠️ **Ne pas comparer ce zéro aux précédents** dans un futur passage sans rappeler cette date de
+rupture.
+
+### 🔗 Mise à jour du 2026-08-13 — le chemin GÉNÉRIQUE, lui, écoute toujours
+
+Deux commandes manuelles du 12/08 (`sensitivity`, `shock_on`) portent un
+`lastError = "ACK timeout: ACK timeout after 15000ms"`. Le guetteur du chemin **générique** est
+donc bien armé et fonctionne — ce qui a été désarmé est l'inscription posée le 10/08 sur le chemin
+**adaptatif** (`tracker-fix-mode`). Les deux chemins sont distincts, et un seul est touché.
+
+Ces deux commandes portent le décompte d'`ACK timeout` de **4 à 6**, toujours **6 sur 6 sur des
+templates SMS-only** envoyés en TCP — voir [TRK-021](#trk-021), qui explique pourquoi aucune ne
+pouvait aboutir.
 
 ### Mise à jour du 2026-08-10 — inchangé, quatrième jour
 
@@ -2276,6 +2499,52 @@ trames dont 46 sans jumeau (**48,9 %**), après 37,7 % / 14,6 % / 18,4 %. Quatre
 sur toute la plage — la conclusion du 10/08 se renforce : **cette classe n'a pas un mécanisme
 unique**. La fondre dans cette fiche serait faux ; l'instruire séparément quand le reste sera traité.
 
+### 🔧 Mise à jour du 2026-08-13 — la série reprend, après une rectification d'outillage
+
+Le passage du 12/08 n'a **pas** mesuré cette fiche, ayant conclu que `position_sampling_decisions`
+« n'existe pas ». **La table existe.** Ses colonnes sont `decision · state · reason · speedKmh ·
+ignition · distanceM · receivedAt` : il n'y a **ni `createdAt`, ni `deviceTime`**. Les deux
+horodatages qui classent un rejet sont **dans le texte de `reason`** —
+
+```
+garde-fou ingestion (stale_devicetime) : deviceTime 2026-08-12T07:09:26.000Z vs dernier 2026-08-12T07:10:26.000Z
+```
+
+— et la table de jumelage est `positions."timestamp"`, pas `"deviceTime"`.
+
+> *Une erreur de nom de colonne et une table absente produisent le même message d'erreur ; elles se
+> distinguent en interrogeant `information_schema`.* Trois requêtes ont suffi. La série reprend
+> avec un trou d'un jour au 12/08 — un trou dans la mesure, pas dans le défaut.
+
+**Mesure sur 24 h**, même définition qu'aux passages précédents :
+
+| Classe | Trames | Sans jumeau à ± 60 s | Part de trous |
+|---|---|---|---|
+| Doublon exact (Δt = 0) | 504 | **0** | 0 % |
+| Retour ≤ 60 s | 119 | 50 | 42,0 % |
+| Retour 1-60 min | **1405** | **906** | **64,5 %** |
+| **Retour > 60 min** | **0** | — | — |
+| **Total `stale_devicetime`** | **2028** | **956** | 47,1 % |
+
+*(Le total `SKIPPED_REPLAY` relevé quelques minutes plus tôt donne 2022 : l'écart de 6 est celui de
+la fenêtre glissante, pas une incohérence.)*
+
+Les rejets pèsent **1,38 % du flux** (2022 sur 146 831 décisions d'échantillonnage) — proportion
+stable depuis le 08/08 (1,4 · 1,55 · 1,27 %). Boîtiers les plus touchés : FG-669-DQ (355),
+KSR370 (252), GS-014-NY (165), EP-047-TY (144).
+
+⚠️ **Aucune rafale, deuxième jour de mesure consécutif sans** : la classe « retour > 60 min » est à
+zéro, contre 1646 le 08/08 et 60 le 09/08. Le fait mesuré est **956 positions réelles écartées en
+24 h**.
+
+**La question ouverte prend un cinquième point, et un cinquième profil.** « Retour ≤ 60 s » : 119
+trames dont 50 sans jumeau (**42,0 %**), après 37,7 / 14,6 / 18,4 / 48,9 %. Cinq mesures dispersées
+sur toute la plage : **cette classe n'a décidément pas un mécanisme unique**.
+
+*(Détail incident : une partie des rejets du 12/08 se concentre autour de 07:09-07:10 — l'heure
+exacte de la recréation du conteneur `tracky-api`. Un redémarrage provoque des rejeux de tampon,
+donc des rejets. Noté, pas instruit : c'est un mécanisme connu de cette fiche, pas un fait neuf.)*
+
 ---
 
 ## TRK-016
@@ -2387,6 +2656,17 @@ et #3 (décider du provisoire) n'ont pas bougé.
 ⚠️ Cette fiche est la seule des cinq ouvertes dont le correctif **ne dépend d'aucune autre** : ni
 d'un test SMS, ni d'une rotation de clé, ni d'un accusé de remise. Une ligne de journalisation la
 ferait avancer aujourd'hui.
+
+### Mise à jour du 2026-08-13 — dixième jour consécutif
+
+**91,7 % des trajets du 12/08** sans polyligne recalée (189 sur 206). Dix jours entre 89,8 % et
+93,9 %, sur des volumes quotidiens de 92 à 207 trajets. `OSRM_BASE_URL` reste non défini ; les
+correctifs #1 (journaliser le `code` du corps de la réponse) et #3 (décider du provisoire) n'ont
+pas bougé.
+
+⚠️ Cette fiche reste la seule dont le correctif ne dépend d'aucune autre — et c'est le troisième
+passage consécutif où on l'écrit. *Une indépendance qu'on signale sans l'utiliser cesse d'être une
+information.*
 
 ---
 
@@ -2712,6 +2992,38 @@ garde travaille.
 **Condition d'échec écrite** : recompter les blocages sans dire si la clé a changé n'apprendrait
 rien de plus que ce passage.
 
+### ✅ 2026-08-13 — VERDICT DU TEST DATÉ : la clé n'a PAS été rotationnée
+
+`allowlist_audit_logs`, cumul depuis la mise en ligne du journal (10/08 19:25) :
+
+| Appelant | Préfixe de clé | Résultat | Appels | Dernier |
+|---|---|---|---|---|
+| `172.18.0.1` — Tracky, sur le VPS | **`vtx_48fe`** | `ok` | **55** | 13/08 00:25 |
+| `82.67.153.51` — hors VPS | **`vtx_48fe`** | 🛑 `removals_blocked` | **22** | **12/08 18:25** |
+
+**Le préfixe est identique dans les deux colonnes.** La cause est intacte ; seule la garde
+travaille — et elle travaille bien : les 25 entrées `synced` portent toujours
+`createdAt = 2026-08-10 14:25:00.78`, soit **62 heures sans une seule suppression**.
+
+### ⚠️ Un fait nouveau qu'il ne faut PAS lire comme une bonne nouvelle
+
+L'appelant extérieur **n'a plus frappé depuis le 12/08 18:25** — six créneaux h:25 d'affilée sans
+lui, dont toute la nuit. Tentant d'y voir un arrêt.
+
+**Trois raisons de ne pas le conclure.** Il s'était déjà tu entre 19:25 et 21:25 le 10/08 ; le
+11/08 a établi qu'il tourne *aussi* la nuit (21:25, 22:25, 23:25, 00:25 UTC), donc l'irrégularité
+n'a pas d'horaire ; et surtout la clé qu'il porte est toujours valide. **Une machine éteinte n'est
+pas une clé révoquée** — elle se rallume, la clé pas.
+
+> Le seul geste qui ferme ce sujet reste humain et inchangé depuis le 10/08 : **révoquer et
+> rotationner `vtx_48fe`**, puis donner à l'environnement de développement son propre tenant. La
+> garde empêche le dégât ; elle n'a jamais prétendu supprimer la cause.
+
+🗓️ **Test daté au 2026-08-14 :** relire le préfixe de clé dans `allowlist_audit_logs`. S'il a
+changé, la cause est fermée et la garde devient une ceinture de sécurité. S'il n'a pas changé,
+**ne pas se contenter de recompter les blocages** : compter aussi le nombre de jours écoulés depuis
+que le geste est écrit — c'est ce chiffre-là qui mesure le risque, pas le compteur de la garde.
+
 ---
 
 ## TRK-018
@@ -2836,6 +3148,37 @@ Compter les `engine_control_commands` restées `SENT` au-delà de 24 h. Le chiff
 ou croissant** tant qu'aucune fin de vie n'existe. **Condition d'échec :** s'il baisse sans qu'aucun
 correctif ait été livré, c'est qu'un autre chemin les efface — et il faut le trouver **avant** tout
 le reste, parce qu'il rendrait toute mesure ultérieure fausse.
+
+### ✅ 2026-08-13 — VERDICT DU TEST DATÉ : PASSÉ
+
+| Mesure | 12/08 | **13/08** |
+|---|---|---|
+| Commandes moteur `SENT` (total) | 225 | **230** |
+| …de plus de 24 h | 219 | **224** |
+| …acquittées | 0 | **0** |
+| `SENT` sur 7 jours | — | **40** |
+
+**Croissant.** Aucun chemin caché n'efface ces lignes ; la condition d'échec n'est pas déclenchée,
+et les mesures futures de cette fiche restent comparables. C'est un résultat modeste et il vaut
+d'être écrit : *un compteur dont on a vérifié qu'il ne fuit pas est un compteur sur lequel on peut
+bâtir.*
+
+**Le second volet tient aussi, côté passerelle :**
+
+| Mesure | 11/08 | **13/08** |
+|---|---|---|
+| Messages `queued` | 307 | **314** |
+| Messages ayant dépassé `queued` | 0 | **0** |
+| Seuls états terminaux jamais écrits | 29 `failed` (09/06) | **29 `failed` (09/06)** |
+
+Le message le plus récent, parti le **12/08 à 18:00**, est encore `queued`. **Toujours aucun accusé
+de remise, pour aucun message, depuis la création de la table.** Le repli SMS du coupe-circuit
+compte désormais **116** commandes moteur (112 le 11/08), dont **15 sur les 7 derniers jours**,
+**0 acquittée**.
+
+🗓️ **Test daté reconduit au 2026-08-14 :** même mesure, même condition d'échec. Et un second volet,
+gratuit : si un message quitte enfin `queued`, la question nº 1 de cette fiche est décidable — et
+c'est la seule qui débloque les trois suivantes.
 
 ---
 
@@ -3071,6 +3414,40 @@ exact où le zéro et le retrait du correctif coexistent. Et ne pas « corriger 
 `main` par-dessus : cela effacerait le travail de la branche en cours, qui est en ligne
 volontairement. Le geste est un report de commits, pas un changement de branche.
 
+### 🔴 Mise à jour du 2026-08-13 — la perte est RÉIMPOSÉE à chaque image, et elle se mesure aussi dans la donnée
+
+La fiche annonçait que la perte « redevient effective à chaque reconstruction ». **Deux
+reconstructions de plus l'ont vérifiée en une journée :**
+
+| | 12/08 |
+|---|---|
+| Images reconstruites | `tracky-api` **07:08** · `tracky-web` **14:15** UTC |
+| Conteneurs recréés | 07:09 et 14:15, `restarts=0`, API `healthy` |
+| Branche déployée | `feat/depot-partage` @ **`b3b3fac`** *(hier `36009cd`)* |
+| `merge-base` avec `main` | **`c3c2704`** — 07/08, **inchangé** |
+| `d5e5fb1` / `73440d8` dans `HEAD` | **NON** / **NON** |
+
+La branche **avance** (un commit de plus, qui corrige une pluie de 403 sur `/api/alerts` pour le
+compte dépôt) mais elle n'est **pas rebasée**. Les quatre marqueurs sont de nouveau absents des
+artefacts servis, chacun re-vérifié avec son témoin.
+
+**Fait nouveau : un second témoin, indépendant du binaire.** Le marqueur absent prouvait que le
+code n'était pas là ; l'instrument le prouve maintenant par son silence.
+
+| Mesure | Valeur |
+|---|---|
+| Commandes émises depuis le 11/08 22:37 | **77** |
+| …portant un `diagnosticHint` « Aucune réponse… » | **0** |
+| Compteur cumulé de silences tracés | **figé à 81** (le total du 11/08) |
+
+Avant le redéploiement, **chaque** commande en produisait un. *Un marqueur absent dit qu'un
+correctif n'est pas là ; un instrument qui n'écrit plus rien le prouve.* Voir
+[TRK-014](#trk-014).
+
+🗓️ **Le test daté du 12/08 est SANS OBJET, pas en échec** — et c'est une leçon à part entière :
+voir la mise à jour du 13/08 de [TRK-001](#trk-001). Réarmé au 13/08 avec sa condition de nullité
+écrite.
+
 ---
 
 ## TRK-020
@@ -3127,12 +3504,344 @@ Après correctif, `acquittees_boitier` doit valoir 0 (cohérent avec TRK-014) **
 `acquittees_humain` doit pouvoir bouger sans que le premier ne bouge. Si les deux restent
 solidaires, la requête lit encore la même colonne deux fois.
 
+### Mise à jour du 2026-08-13 — la bascule est toujours indolore
+Les deux colonnes valent encore **0** sur la fenêtre de 7 jours (les 30 acquittements humains
+datent tous d'avant le 08/07). Le correctif reste **non appliqué, délibérément** : le changer
+maintenant coûte zéro, le changer après une écriture de masse fabriquerait une fausse variation.
+
+---
+
+## TRK-021
+
+**Signature** — `tracker_commands | FAILED | lastError = "ACK timeout: ACK timeout after <DURÉE>ms"`
+sur un template dont le catalogue déclare `availableVia: ['sms']`, émis avec `channel = TCP`
+**Statut : 🔴 NON CORRIGÉ** · **19 templates sur 23 concernés · 6 essais manuels depuis mai, 6 échecs**
+· découvert 2026-08-13
+
+> ### Le catalogue dit quel canal utiliser. Personne ne le lit — ni l'API, ni le front.
+
+### Comment on est tombé dessus
+
+Deux commandes créées le **12/08 à 06:10:00**, à **34 millisecondes d'écart**, par un utilisateur
+réel depuis la console. Ce sont les **premières commandes non-`fix_continuous` depuis le 24/05**.
+Elles sortaient du lot de l'audit parce qu'elles n'avaient ni `outcomeReason`, ni
+`params.interval`, ni `observedResult` — les trois colonnes que remplit l'automate de cadence.
+
+| | `sensitivity` | `shock_on` |
+|---|---|---|
+| Créée | 12/08 06:10:00.433 | 12/08 06:10:00.467 |
+| `channel` | **TCP** | **TCP** |
+| `payload` | `sensitivity123456 2` | `shock123456` |
+| `lastError` | `ACK timeout: ACK timeout after 15000ms` | idem |
+| Boîtier | FM-772-JH — **`ONLINE`** | idem |
+
+Le boîtier était en ligne, la socket ouverte, le guetteur d'ACK armé (c'est le chemin générique,
+qui l'arme bien — cf. [TRK-014](#trk-014) Constat 1). Il n'a rien répondu.
+
+### Cause racine — la déclaration existe, et elle n'est branchée sur rien
+
+`coban.catalog.ts:268-271` est explicite, et le commentaire précède la donnée :
+
+```
+// Templates dédiés au module SurveillanceMax. Envoyés via SMS car les
+// commandes shock/sensitivity/noshock ne sont pas supportées sur le canal
+// TCP descendant de la famille GPS103/403 — les ACK reviennent par SMS.
+```
+```ts
+availableVia: ['sms'],
+```
+
+**`availableVia` n'apparaît qu'une seule fois dans tout le code de l'API** — à
+`tracker-commands.service.ts:396`, pour être *recopiée* dans la réponse du catalogue destinée au
+front. Côté web, elle n'est qu'une ligne de type (`tracker-commands.service.ts:41`), **consultée
+nulle part**. Et `dispatch()` annonce son intention sans détour dans son propre en-tête :
+
+> *« Envoie une commande au tracker via TCP. »*
+
+Il vérifie que le boîtier est en ligne, refuse si non, écrit `SENT`, journalise la trame — et ne
+regarde jamais le template. Un template SMS-only part donc en TCP, où il ne peut que expirer.
+
+### La routine manquante est écrite dans le dépôt depuis l'origine
+
+`docs/07-sms-gateway.md:206-209` décrit exactement l'aiguillage attendu :
+
+```ts
+if (online && template.availableVia.includes('tcp')) { … envoi TCP … }
+if (template.availableVia.includes('sms') && command.tracker.phoneNumber) { … repli SMS … }
+```
+
+Ce n'est donc pas une conception manquante : c'est une conception **écrite, documentée, et non
+câblée**. Le chemin du coupe-circuit moteur, lui, sait le faire (`engine_control_commands` porte un
+repli SMS documenté par [TRK-018](#trk-018)) — la capacité existe dans le produit, elle n'a jamais
+été reliée au catalogue.
+
+### Portée
+
+| Déclaration | Templates |
+|---|---|
+| `['tcp','sms']` | **4** |
+| `['sms']` seulement | **19** |
+
+**19 commandes sur 23 sont proposées dans la console et ne peuvent aboutir.** Et le compteur le
+confirme sur toute l'histoire de la base : **6 lignes portent un `ACK timeout`, 6 sur 6 sur des
+templates SMS-only** — 4 le 24/05 (`sensitivity`, `shock_on`), 2 le 12/08 (les mêmes). Aucune
+tentative n'a jamais abouti, et aucune ne le pouvait.
+
+### Famille — **mensonger**, au sens du §7
+
+Le message rendu à l'opérateur est « le boîtier n'a pas accusé réception ». C'est vrai et c'est
+trompeur : le boîtier n'a jamais été interrogé sur le canal qu'il comprend. Le message envoie
+enquêter sur le matériel alors que la faute est dans l'aiguillage. *Même famille que
+[TRK-013](#trk-013) et [TRK-018](#trk-018) — un champ qui dit vrai sur le mauvais sujet.*
+
+### Ce que ça change pour [TRK-012](#trk-012)
+
+Rien de son diagnostic, **et un renfort de sa preuve**. TRK-012 établit que `fix_continuous` part
+au format SMS sur une socket TCP. Ici, deux **autres** templates, un **autre** utilisateur, une
+**autre** date : mêmes payloads au format SMS (`shock123456`, `sensitivity123456 2` — suffixe
+`123456`, le mot de passe Coban par défaut), même canal TCP, même silence total. Le faisceau de
+TRK-012 gagne deux cas indépendants sans qu'aucun test n'ait eu à être lancé.
+
+⚠️ **Les deux fiches restent distinctes** (§5 : dans le doute, signatures distinctes). TRK-012 est
+« bon canal, mauvaise enveloppe » et se corrige en réécrivant la trame. TRK-021 est « mauvais canal,
+alors que la donnée qui dit lequel choisir est déjà là » et se corrige en branchant l'aiguillage.
+Fusionner les deux masquerait l'un des deux gestes.
+
+### Correctifs proposés
+
+1. **Brancher `availableVia` dans `dispatch()`** — l'aiguillage du §206 de `07-sms-gateway.md`,
+   tel qu'il est écrit. Un template sans `tcp` part par SMS si le boîtier a un numéro ; sinon la
+   commande est **refusée à la création**, avec un motif lisible.
+2. **Refuser tôt plutôt qu'expirer tard.** Une commande impossible ne doit pas passer 15 s à
+   attendre puis s'écrire `FAILED` : elle doit être rejetée à la création, avec « cette commande
+   n'existe pas sur le canal TCP de ce boîtier ». Un échec de 15 s ressemble à une panne matérielle ;
+   un refus immédiat ressemble à ce que c'est.
+3. **Ne pas proposer dans la console ce qui ne peut pas partir.** Le front reçoit déjà
+   `availableVia` : il lui suffit de griser un template SMS-only quand le boîtier n'a pas de
+   numéro de SIM. *(Cosmétique — le nº 1 est le vrai correctif ; sans lui, l'API resterait
+   contournable.)*
+
+### ⚠️ Ne pas « corriger » en retirant les templates SMS-only du catalogue
+
+Ils décrivent de vraies fonctions du boîtier (capteur de choc, sensibilité, geofence), et le module
+Surveillance Max s'appuie dessus. Les retirer supprimerait la fonctionnalité au lieu de la brancher.
+*Le témoin n'est pas le défaut.*
+
+### ⚠️ Ne pas non plus déclarer `tcp` sur ces templates pour faire passer l'aiguillage
+
+Le commentaire du catalogue dit **pourquoi** ils sont SMS-only : le boîtier ne les supporte pas sur
+le canal descendant. Élargir la déclaration ferait disparaître le refus sans rien faire marcher —
+et rendrait le catalogue faux, c'est-à-dire inutilisable comme source de vérité pour le correctif
+suivant.
+
+### Vérification après correctif
+
+Une commande SMS-only émise depuis la console **part par SMS** (ligne `messages` créée côté
+passerelle) **ou** est refusée à la création avec un motif explicite — et **plus aucune** ligne
+`tracker_commands` ne porte à la fois `channel = TCP` et un template sans `tcp` dans
+`availableVia`. Ce second point est le vrai test : un correctif qui se contenterait de griser le
+bouton laisserait l'API émettre.
+
+⚠️ Vérifier aussi que les 4 templates TCP-capables continuent de partir en TCP. Si tout bascule en
+SMS, on a remplacé un aiguillage absent par un aiguillage inversé — et on facture des SMS pour ce
+qui passait gratuitement.
+
+---
+
+## TRK-022
+
+**Signature** — `alerts | OVERSPEED | une alerte par trame `,speed,`, sans déduplication` — **et un
+seul boîtier du parc peut en produire**
+**Statut : 🔴 NON CORRIGÉ** · **1317 alertes en un jour sur 1 véhicule · 42 véhicules sur 43 ne
+peuvent PAS alerter** · découvert 2026-08-13
+
+> ### Le détecteur de survitesse est éteint sur 42 véhicules, et sur le 43ᵉ il parle toutes les 24 secondes.
+
+### Constat — deux défauts opposés, mesurés dans la même table
+
+`error_logs` ne dit rien de la table `alerts` : c'est un canal séparé, celui de l'exploitant. En
+l'ouvrant sur 14 jours :
+
+| Jour | Alertes `OVERSPEED` | Véhicules distincts |
+|---|---|---|
+| 12/08 | **1317** | **1** — FG-669-DQ |
+| 11/08 | 0 | — |
+| 10/08 | 258 | 1 — FG-669-DQ |
+| 08/08 | 28 | 1 — FG-669-DQ |
+| 05/08 | 4 | 1 — FG-669-DQ |
+| 03/08 | 32 | 1 — FG-669-DQ |
+| 31/07 | 595 | 1 — FG-669-DQ |
+| 30/07 | 27 | 1 — FG-669-DQ |
+
+**100 % des alertes de survitesse de la fenêtre portent la même plaque.**
+
+### Défaut 1 — 42 boîtiers sur 43 ne peuvent pas alerter
+
+Ce n'est pas une flotte prudente, et ce n'est pas une hypothèse : le journal de trames tranche. Sur
+3 jours, **un seul IMEI** (`864035053277662`) émet des trames `,speed,` — **1575** — et **aucun des
+36 autres boîtiers actifs n'en émet une seule**.
+
+L'alarme de survitesse Coban est un **réglage embarqué** (`speed` + seuil, posé par commande SMS).
+Il est configuré sur un boîtier. Tracky ne fait que traduire la trame reçue : il n'existe **aucune
+règle serveur** qui comparerait la vitesse d'une position à une limite. Donc **la détection de
+survitesse est absente sur 42 véhicules**, et rien à l'écran ne le dit — la flotte a l'air
+irréprochable.
+
+> C'est exactement la question la plus rentable de la procédure (§3) : *qu'est-ce qui casse sans
+> crier ?* Un compteur de survitesse à zéro sur 42 véhicules ressemble trait pour trait à
+> 42 conducteurs exemplaires.
+
+### Défaut 2 — sur le seul qui en produit, une alerte par trame
+
+`alerts.service.ts:44-90` (`createFromCobanAlarm`) crée une ligne par trame d'alarme. **Aucune
+déduplication, aucune notion d'épisode, aucun seuil de répétition.** Résultat mesuré le 12/08 :
+**1317 alertes entre 05:52 et 14:32**, soit une toutes les **24 secondes** en moyenne.
+
+Le contraste est **dans le même fichier** : `createGpsLostAlert` (ligne 152) prend un
+`dedupWindowMs = 24 h` et son commentaire explique longuement pourquoi il ne filtre pas sur
+l'acquittement. Le chemin des alarmes Coban n'a rien de tel — il n'a même pas de fenêtre.
+
+*(Effet de bord : chaque trame déclenche aussi un `findUnique` sur `surveillanceProfile`, soit
+1317 allers-retours en base pour un seul véhicule sur une journée.)*
+
+### ⚠️ Les vitesses sont réelles — vérifié, pas supposé
+
+Tentant de conclure à un bruit GPS. **Faux.** Les payloads donnent 135–168 km/h, et l'écart entre
+deux positions consécutives les confirme : 4331.57969 N → 4331.51802 N en 3 s = **114 m**, soit
+137 km/h — exactement la vitesse rapportée. Le véhicule roule vraiment à cette allure.
+
+> **Il y a donc un vrai signal à remonter — une fois, pas 1317.** *Corriger le cri, pas le
+> garde-fou.* Un correctif qui supprimerait l'alerte de survitesse aurait effacé la seule
+> information de sécurité que ce parc produise.
+
+### Correctifs proposés
+
+1. **Dédupliquer par épisode**, comme le fait déjà `createGpsLostAlert` dans le même service. Un
+   épisode de survitesse = une alerte, enrichie du **maximum atteint** et de la **durée**. Fenêtre
+   de reprise à définir (proposition : nouvel épisode après 5 min sous le seuil).
+2. **Rendre visible que 42 véhicules ne sont pas surveillés.** Une section « boîtiers sans alarme
+   de survitesse configurée », dérivée de l'absence de trames `,speed,` sur 30 jours. C'est une
+   information d'inventaire, comme les boîtiers en stock de [TRK-009](#trk-009) — et aujourd'hui
+   rien ne la porte.
+3. **Décider si la survitesse doit dépendre du boîtier.** Soit on provisionne le seuil embarqué sur
+   tout le parc (commande SMS — et [TRK-021](#trk-021) doit être corrigé avant, sans quoi elle
+   partira en TCP et expirera), soit on ajoute une règle serveur sur la vitesse des positions
+   reçues. Le choix est métier ; ne pas le trancher laisse la fonctionnalité à 1/43.
+
+### ⚠️ Ne pas « corriger » en montant le seuil du seul boîtier configuré
+
+Cela ferait tomber le compteur à zéro et rendrait le parc entièrement muet sur la survitesse, ce
+qui *ressemblerait* à un succès. Le volume vient de l'absence de déduplication, pas du seuil.
+
+### Vérification après correctif
+
+Le nombre d'alertes `OVERSPEED` d'une journée doit tomber à l'ordre de la **dizaine** pour
+FG-669-DQ, **et** chacune doit porter une durée et une vitesse maximale — **pendant que** le nombre
+d'**épisodes** distincts reste le même qu'aujourd'hui. Si le compte d'épisodes baisse aussi, on a
+supprimé des signaux et pas des doublons.
+
+Second test, sur l'autre moitié du défaut : au moins un second véhicule doit pouvoir produire une
+alerte de survitesse. Tant qu'un seul en produit, seul le bruit aura été traité.
+
+---
+
+## TRK-023
+
+**Signature** — `alerts | UNKNOWN | title = "Alarme inconnue" | message = NULL` — déclenchée par
+l'**accusé de réception** d'une commande de coupure moteur
+**Statut : 🔴 NON CORRIGÉ** · **1 occurrence (la seule de toute la table) · mécanisme prouvé de bout
+en bout** · découvert 2026-08-13
+
+> ### La réponse « j'ai bien coupé le moteur » remonte à l'exploitant comme une alarme inconnue, sans une ligne de texte.
+
+### La chaîne, à la seconde près
+
+| Heure (13/08) | Sens | Ce qui se passe |
+|---|---|---|
+| 00:04:22.065 | — | Commande moteur **CUT** manuelle (`source = MANUAL`, motif « depuis carte ») sur KSR370 |
+| 00:04:22.075 | OUT | `**,imei:864035053277480,J;` — l'enveloppe TCP correcte |
+| 00:04:26.079 | IN | `imei:864035053277480,jk,260813000425,100%,F,…` |
+| 00:04:26.091 | — | La commande passe **`ACKNOWLEDGED`** — latence **4,0 s** |
+| 00:04:26.117 | — | **Une alerte « Alarme inconnue » est créée pour l'exploitant** |
+
+La **même** trame fait donc deux choses opposées : elle solde correctement la commande moteur *et*
+elle produit une alarme au client.
+
+### Cause racine — trois maillons, tous justes séparément
+
+1. **`decodeAlarm` ne connaît pas `jk`.** `coban.parser.ts:27-61` décode `jt` (acc_off), `kt`
+   (acc_on), `it` (idle), `dt` (tamper), `et` (batterie faible) — et retombe sur `'unknown'` pour
+   tout le reste (`return 'unknown'`, ligne 60). Le repli est raisonnable **pour une alarme**.
+2. **Le mapping transforme `unknown` en alerte.** `alert-mapping.ts:44` :
+   `unknown: { type: 'UNKNOWN', severity: 'INFO', title: 'Alarme inconnue' }`. C'est le seul code
+   du tableau qui produit une alerte sans savoir de quoi il parle — `acc_on` et `acc_off`, eux,
+   sont mappés sur `null` et ne créent rien.
+3. **Le message est vide par construction.** `buildAlertMessage` (`alerts.service.ts:353-371`) ne
+   traite que 6 types ; son `default: return null` s'applique à `UNKNOWN`. L'alerte arrive donc avec
+   un titre, aucune explication, et la trame brute reléguée dans `payload` — que l'écran ne montre
+   pas.
+
+> **En une phrase :** un code de réponse absent du dictionnaire devient une alarme, et une alarme
+> sans traduction devient une carte vide.
+
+### Ce que la mesure dit — et ce qu'elle ne dit pas
+
+**Dit :** le mécanisme, de bout en bout. La commande sortante, la réponse 4,0 s plus tard sur le
+même IMEI, l'`ackedAt` écrit par le guetteur, et l'alerte créée 26 ms après. Trois tables
+concordantes, plus le code.
+
+**Ne dit pas :** la fréquence. Sur 3 jours, `wire_logs` compte **202 `jt`** (34 boîtiers) et
+**209 `kt`** (33 boîtiers) — contre **2 lignes `jk`**, qui sont **la même trame** journalisée deux
+fois (une fois en `position`, une fois en `ack`), sur **un** boîtier. Et la table `alerts` n'a
+jamais contenu qu'**une seule** ligne `UNKNOWN` depuis l'origine.
+
+⚠️ *Une occurrence ne fait pas un volume.* Ce qui justifie la fiche n'est pas le nombre, c'est que
+le chemin soit ouvert : **tout code de réponse non répertorié** produira la même alerte vide, et le
+parc en reçoit des centaines par jour dont on ne connaît le sens que par recoupement.
+
+### Lien avec [TRK-014](#trk-014)
+
+Cette fiche prolonge la rectification du 11/08, qui avait établi que `jt`/`kt` sont de **vrais
+accusés de réception** des commandes moteur (`K;` → `kt`, `J;` → `jt`). `jk` est un troisième code
+de la même famille, arrivé en réponse à un `J;`. **Il est correctement reconnu par le guetteur
+d'ACK** — le motif générique est insensible à la casse — donc la commande est bien soldée ; il
+n'est pas reconnu par le décodeur d'**alarmes**, qui est un chemin distinct. *Deux lecteurs de la
+même trame, deux dictionnaires, un seul tenu à jour.*
+
+### Correctifs proposés
+
+1. **Ne pas transformer une réponse de commande en alarme.** Le chemin d'alarme doit ignorer les
+   trames corrélées à une commande sortante récente — l'information existe déjà : le guetteur d'ACK
+   les identifie dans la même seconde. À défaut, ajouter `jk` (et tout code à deux lettres de la
+   famille des échos) au dictionnaire, mappé sur `null` comme `jt` et `kt`.
+2. **Une alerte sans message ne doit pas partir.** Si `buildAlertMessage` retourne `null` pour un
+   type dont le titre ne se suffit pas, composer un message à partir de la trame plutôt que de
+   laisser un vide : « code d'alarme non reconnu (`jk`) — trame conservée pour analyse ». Un
+   opérateur ne peut rien faire de « Alarme inconnue » tout court.
+3. **Rendre les codes inconnus comptables.** Un compteur des codes tombés dans le repli `unknown`,
+   par code et par boîtier, sur 30 jours. C'est ce qui permettra de savoir si `jk` est un cas isolé
+   ou la partie visible d'un dictionnaire en retard sur le firmware.
+
+### ⚠️ Ne pas « corriger » en supprimant le mapping `unknown`
+
+Le rendre `null` ferait disparaître l'alerte vide **et** toute trace d'un code non reconnu — donc
+la seule chance de découvrir une alarme réelle que le parseur ne sait pas encore lire. *On corrige
+le message, pas le garde-fou.* Ce mapping est un filet ; il lui manque un texte, pas une
+suppression.
+
+### Vérification après correctif
+
+Plus aucune alerte `UNKNOWN` n'est créée à la suite immédiate d'une commande sortante vers le même
+IMEI — **et** le compteur de codes tombés dans `unknown` continue de se remplir dans les journaux.
+Si ce compteur tombe à zéro en même temps, on a fermé les yeux au lieu de trier.
+
 ---
 
 ## Journal des passages
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-13 | 36 (2 sur 24 h — **les deux de la signature TRK-002**, régression désormais confirmée par la donnée) | 20 revues ; TRK-019 **réimposé** par 2 reconstructions et mesuré dans la donnée (0 silence tracé sur 77 commandes) ; test daté TRK-018 **passé** ; test daté TRK-001 **sans objet** (son épisode s'est refermé) et réarmé ; clé de TRK-017 **non rotationnée** | 3 (TRK-021, TRK-022, TRK-023) | agent d'audit |
 | 2026-08-12 | 34 (3 sur 24 h, **0 depuis le redéploiement de 22:37**) | 18 revues ; **TRK-002 repasse en 🔴 RÉGRESSION** (correctif retiré de la prod) ; test daté de TRK-001 **passé** sur 2 canaux avant retrait ; TRK-013 voit son numérateur bouger (7 fausses / 38) | 2 (TRK-019, TRK-020) | agent d'audit |
 | 2026-08-11 *(2ᵉ passage, 09:22 UTC)* | — *(passage ciblé : vérification d'ACK, pas d'audit complet)* | **Cause racine de TRK-012 trouvée** (format SMS émis sur socket TCP) ; test daté de TRK-014 reconfirmé sur 13 h (47/0/47) ; **Constat 2 de TRK-014 rectifié** (les `jt`/`kt` sont de vrais ACK) | 0 | tâche `trk012-ack-et-correctif` |
 | 2026-08-11 | 31 (8 sur 24 h — **toutes antérieures aux correctifs du soir** ; **0 ligne** sur les 6 h qui les suivent) | 17 revues ; **TRK-014 tranché** (silence PROUVÉ, garde ACK vérifiée), 3 correctifs confirmés en prod, 2 en-têtes recalés sur `main` | 1 (TRK-018) | agent d'audit |
