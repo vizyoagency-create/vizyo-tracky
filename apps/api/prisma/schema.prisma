@@ -1096,6 +1096,8 @@ model Mission {
   shareLinks      MissionShareLink[]
   /// La demande dont cette mission est nee, quand elle vient d une negociation.
   request         MissionRequest?    @relation("MissionFromRequest")
+  /// Les arrets de la tournee. originLabel/destLabel en sont le resume derive.
+  stops           MissionStop[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -1276,8 +1278,8 @@ model MissionRequest {
 
   status MissionRequestStatus @default(DRAFT)
 
-  /// Le trajet, en une ou plusieurs adresses (cf. `MissionRequestStop`).
-  stops MissionRequestStop[]
+  /// Le trajet, en une ou plusieurs adresses (cf. MissionStop).
+  stops MissionStop[]
 
   /// La fenêtre SOUHAITÉE. Le transporteur peut la contester en contre-proposant :
   /// c'est une demande, pas une réservation.
@@ -1333,17 +1335,35 @@ model MissionRequest {
   @@map("mission_requests")
 }
 
-/// Une adresse d'une demande. C'est ce qui rend la tournée multi-arrêts possible.
+/// Une adresse d'une tournée — d'une DEMANDE ou d'une MISSION.
 ///
-/// ⚠️ Le modèle `Mission` reste POINT À POINT (`originLabel` → `destLabel`). Les
-/// arrêts n'existent que sur la demande : à la conversion, le service compose les
-/// deux libellés de la mission depuis le premier et le dernier arrêt. Ouvrir les
-/// arrêts multiples sur `Mission` toucherait le suivi, l'agenda et l'espace dépôt
-/// — un autre chantier, à décider séparément.
-model MissionRequestStop {
-  id        String         @id @default(uuid()) @db.Uuid
-  requestId String         @db.Uuid
-  request   MissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+/// ┌─ POURQUOI PARTOUT, ET PAS SEULEMENT SUR LA DEMANDE ───────────────────────┐
+/// │ « C'est rare, les missions avec une seule adresse » (client, 2026-08-13).  │
+/// │ Cantonner les arrêts à la demande aurait produit une mission APPAUVRIE dès │
+/// │ sa création : le transporteur aurait perdu, en convertissant, l'essentiel  │
+/// │ de ce que le dépôt avait décrit.                                          │
+/// └────────────────────────────────────────────────────────────────────────────┘
+///
+/// ⚠️ `Mission.originLabel` et `Mission.destLabel` RESTENT, et deviennent DÉRIVÉS :
+/// premier et dernier arrêt. Les conserver évite de toucher `MissionListeDto`,
+/// `MissionEnCoursDto`, l'espace dépôt, les liens publics et l'agenda — soit tout ce
+/// que le client teste en ce moment. Les arrêts sont la source de vérité, les deux
+/// libellés en sont le résumé, recalculé à chaque écriture.
+///
+/// Composition, volontairement SOUPLE (client, 2026-08-13) : un seul `PICKUP`, en
+/// position 0 — l'adresse de chargement, elle ne bouge pas. Au moins un `DROPOFF`,
+/// sans maximum. Le retour au dépôt est un `DROPOFF` COMME UN AUTRE, jamais ajouté
+/// d'office : « le retour n'est pas obligatoire ».
+model MissionStop {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// L'un OU l'autre, jamais les deux — garde posée côté service, Prisma ne sait
+  /// pas exprimer un « exactement un parmi deux » (contrainte CHECK ajoutée par la
+  /// migration).
+  requestId String?         @db.Uuid
+  request   MissionRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  missionId String?         @db.Uuid
+  mission   Mission?        @relation(fields: [missionId], references: [id], onDelete: Cascade)
 
   /// Rang dans la tournée, à partir de 0. C'est l'ordre de passage demandé.
   position Int
@@ -1366,8 +1386,10 @@ model MissionRequestStop {
   createdAt DateTime @default(now())
 
   @@unique([requestId, position])
+  @@unique([missionId, position])
   @@index([requestId])
-  @@map("mission_request_stops")
+  @@index([missionId])
+  @@map("mission_stops")
 }
 
 /// UN tour de négociation. Immuable une fois écrit.
@@ -1418,28 +1440,20 @@ model MissionPricingSettings {
   /// sans effacer les tarifs — utile le temps de les revoir.
   enabled Boolean @default(false)
 
-  /// Prise en charge, appliquée une fois par mission.
-  baseFeeCents      Int @default(0)
-  /// Le prix au kilomètre. Le cœur du calcul.
-  pricePerKmCents   Int @default(0)
-  /// Facturation plancher : en dessous, on facture ce montant.
-  minimumFareCents  Int @default(0)
-  /// Chaque arrêt au-delà du premier enlèvement et de la première livraison.
-  pricePerStopCents Int @default(0)
+  /// ── LES TRANCHES SONT LE CŒUR DU CALCUL ──────────────────────────────────────
+  /// La grille réelle du client n'est PAS un prix au kilomètre : c'est un forfait
+  /// par tranche de distance (79 € de 0 à 50 km, 169 € de 51 à 100…). Un modèle
+  /// unitaire aurait produit des montants faux à chaque borne.
+  tiers MissionPricingTier[]
+
+  /// ── SUPPLÉMENTS, TOUS OPTIONNELS ─────────────────────────────────────────────
+  /// À zéro par défaut : « modulable et non stricte » (client, 2026-08-13). Une
+  /// flotte dont les tranches couvrent tout les laisse à zéro et ils disparaissent
+  /// du devis.
+  /// Chaque livraison au-delà de la première.
+  extraStopCents   Int @default(0)
   /// Attente sur site, à l'heure entamée.
-  waitingHourCents  Int @default(0)
-
-  /// Majorations, en pourcentage entier. 20 = +20 %.
-  nightSurchargePct   Int @default(0)
-  weekendSurchargePct Int @default(0)
-  /// Plage de nuit, en heures locales de la flotte (22 → 6 par défaut).
-  nightStartHour      Int @default(22)
-  nightEndHour        Int @default(6)
-
-  /// Coefficients par type de véhicule, en pourcentage : 100 = tarif de base,
-  /// 130 = +30 %. En JSON parce que la liste des types évolue avec le parc, et
-  /// qu'une colonne par type imposerait une migration à chaque ajout.
-  vehicleTypeMultipliers Json?
+  waitingHourCents Int @default(0)
 
   /// TVA en pourcentage entier appliqué au total HT. 20 = 20 %.
   vatPct Int @default(20)
@@ -1455,6 +1469,47 @@ model MissionPricingSettings {
   updatedAt       DateTime @updatedAt
 
   @@map("mission_pricing_settings")
+}
+
+/// Une tranche de distance et son forfait.
+///
+/// ┌─ « SUR DEVIS » EST UN ÉTAT, PAS UN PRIX ───────────────────────────────────┐
+/// │ La grille du client s'arrête à 400 km : au-delà, « Sur devis ». On le      │
+/// │ représente par `priceCents = NULL`, et cela se propage jusqu'au bout :     │
+/// │ aucun tour 0 automatique n'est écrit, la demande part SANS montant, et le  │
+/// │ transporteur chiffre lui-même.                                            │
+/// │                                                                            │
+/// │ Mettre zéro à la place aurait produit un devis à 0 € — une offre           │
+/// │ commerciale fausse, envoyée à un client final.                            │
+/// └────────────────────────────────────────────────────────────────────────────┘
+model MissionPricingTier {
+  id         String                 @id @default(uuid()) @db.Uuid
+  settingsId String                 @db.Uuid
+  settings   MissionPricingSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  /// La prestation. Libellé libre : la grille du client est numérotée
+  /// (« 2. Courses Express »), donc d'autres suivront, et une énumération figée
+  /// imposerait une migration à chaque ajout.
+  category String
+
+  /// Rang d'affichage et d'évaluation, à partir de 0.
+  position Int
+
+  /// Bornes en KILOMÈTRES, toutes deux INCLUSES. `toKm` nul = pas de limite haute.
+  /// Le service refuse les trous et les recouvrements : une distance doit tomber
+  /// dans une tranche et une seule.
+  fromKm Int
+  toKm   Int?
+
+  /// Forfait HT en centimes. NULL = « sur devis » (cf. l'encadré).
+  priceCents Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([settingsId, category, position])
+  @@index([settingsId, category, fromKm])
+  @@map("mission_pricing_tiers")
 }
 
 /// Conducteur — variante "hybride" (Phase 2).
@@ -1669,7 +1724,7 @@ model FleetPlace {
 
   /// Arrets de demandes de mission qui pointent sur ce lieu. SetNull cote arret :
   /// supprimer un lieu cle ne doit pas effacer une demande deja negociee.
-  requestStops MissionRequestStop[]
+  requestStops MissionStop[]
 
   @@unique([fleetId, stationId])
   @@index([fleetId])
