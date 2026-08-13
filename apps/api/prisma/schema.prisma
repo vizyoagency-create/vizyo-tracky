@@ -285,6 +285,8 @@ model Fleet {
   partnerInvitations       PartnerInvitation[]
   // Espace dépôt (2026-08) — les missions de la flotte (séquence `ref` par flotte).
   missions                 Mission[]
+  missionRequests          MissionRequest[]
+  missionPricingSettings   MissionPricingSettings?
 
   @@map("fleets")
 }
@@ -511,6 +513,7 @@ model User {
   /// N'est peuplé que pour les comptes de rôle DEPOT. C'est la SEULE source de son
   /// périmètre : un DEPOT n'a jamais de ligne UserVehicleAccess (A1 § 7).
   depotMissions          Mission[]               @relation("MissionDepot")
+  missionRequests        MissionRequest[]        @relation("MissionRequestDepot")
   /// Lot A4 — les liens publics de suivi générés par ce compte. Un dépôt comme un
   /// gestionnaire peut en créer ; c'est par cette relation qu'on révoque les liens
   /// d'un compte désactivé (A4 § 8).
@@ -1091,6 +1094,8 @@ model Mission {
   /// Lot A4 — les liens publics de suivi ouverts sur cette mission. Cascade : la mission
   /// disparaît, ses liens aussi. Un lien orphelin serait un accès sans objet ni contrôle.
   shareLinks      MissionShareLink[]
+  /// La demande dont cette mission est nee, quand elle vient d une negociation.
+  request         MissionRequest?    @relation("MissionFromRequest")
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -1185,6 +1190,271 @@ enum MissionStatus {
   DONE
   /// Annulation explicite avec motif. Reste dans l'historique du dépôt.
   CANCELLED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  DEMANDES DE MISSION ET DEVIS  (2026-08)
+//
+//  Jusqu'ici le dépôt était un TIERS EN LECTURE SEULE : il recevait des missions,
+//  il n'en demandait aucune. Ce bloc lui ouvre le droit de DEMANDER — pas de créer.
+//  La distinction porte tout le reste : une demande n'immobilise aucun véhicule,
+//  n'ouvre aucun accès à une position, et ne devient une `Mission` qu'au moment où
+//  le transporteur affecte un camion. Tant que les deux parties n'ont pas signé,
+//  rien n'existe côté exploitation.
+//
+//  Trois décisions structurantes, écrites ici parce qu'elles ne se devinent pas :
+//
+//  1. LA NÉGOCIATION EST UN FIL, PAS DEUX CHAMPS. Chaque proposition est une ligne
+//     de `MissionQuoteRound`. Écraser un « prix courant » ferait perdre qui a
+//     proposé quoi et quand — et une négociation commerciale sans trace est un
+//     litige en puissance.
+//
+//  2. LES DISTANCES SONT EN MÈTRES, ENTIERS. Le devis est un calcul d'argent : les
+//     kilomètres flottants introduisent une dérive d'arrondi qui finit par une
+//     facture contestée. On stocke des mètres, on affiche des kilomètres.
+//
+//  3. LES MONTANTS SONT EN CENTIMES, ENTIERS — même convention que
+//     `AiSubscription.unitAmountEurCents`, pour la même raison.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Le cycle d'une demande. Les transitions sont gardées côté service ; cet enum ne
+/// fait que les nommer.
+enum MissionRequestStatus {
+  /// Le dépôt saisit. Rien n'est parti, rien n'est visible du transporteur.
+  DRAFT
+  /// Envoyée. Le devis automatique est calculé À CET INSTANT et figé dans le
+  /// premier tour : un tarif modifié après coup ne doit pas réécrire une offre
+  /// déjà lue par le dépôt.
+  SUBMITTED
+  /// Une contre-proposition est sur la table, en attente de l'autre partie.
+  /// L'auteur du dernier tour dit qui doit répondre.
+  NEGOTIATING
+  /// Les deux parties sont d'accord sur un montant. Reste à affecter.
+  ACCEPTED
+  /// Camion et conducteur affectés : la `Mission` existe. Fin du cycle.
+  CONVERTED
+  /// Refusée par l'une des deux parties, avec motif.
+  REJECTED
+  /// Personne n'a répondu avant l'échéance du devis.
+  EXPIRED
+}
+
+/// Ce qu'on vient faire à une adresse. Une tournée mélange les deux.
+enum MissionStopKind {
+  PICKUP
+  DROPOFF
+}
+
+/// Qui a émis un tour de négociation. Le rôle, pas la personne : c'est la POSITION
+/// dans la négociation qui compte, et elle survit au départ d'un salarié.
+enum QuoteRoundAuthor {
+  /// Proposé par le système au dépôt de la grille tarifaire du transporteur.
+  SYSTEM
+  DEPOT
+  CARRIER
+}
+
+/// Une DEMANDE de mission émise par un compte dépôt.
+///
+/// ⚠️ Ce n'est PAS une `Mission`. Aucun véhicule n'est réservé, aucun événement
+/// d'agenda n'est posé, aucune position n'est servie. La `Mission` naît à
+/// l'affectation, par `MissionsService.creer` — le chemin existant, avec ses sept
+/// validations et ses quatre effets de bord.
+model MissionRequest {
+  id      String @id @default(uuid()) @db.Uuid
+  /// Référence lisible, séquence par flotte : « D-0142 ». Distincte de celle des
+  /// missions : un dépôt qui appelle doit pouvoir dire « ma demande D-0142 » sans
+  /// qu'on la confonde avec la mission M-0142 d'un autre client.
+  ref     String
+  fleetId String @db.Uuid
+  fleet   Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  /// L'auteur. Cascade : le compte disparaît, ses demandes aussi — contrairement
+  /// aux missions, qui survivent parce qu'elles ont eu lieu.
+  depotUserId String @db.Uuid
+  depotUser   User   @relation("MissionRequestDepot", fields: [depotUserId], references: [id], onDelete: Cascade)
+
+  status MissionRequestStatus @default(DRAFT)
+
+  /// Le trajet, en une ou plusieurs adresses (cf. `MissionRequestStop`).
+  stops MissionRequestStop[]
+
+  /// La fenêtre SOUHAITÉE. Le transporteur peut la contester en contre-proposant :
+  /// c'est une demande, pas une réservation.
+  wantedStartAt DateTime
+  wantedEndAt   DateTime
+
+  /// Ce que le dépôt fait transporter. Texte libre : normaliser une nomenclature
+  /// de marchandises serait un chantier à soi seul, et personne ne la remplirait.
+  goodsDescription String?
+  weightKg         Int?
+  /// Type de véhicule souhaité — sert le coefficient tarifaire.
+  vehicleType      VehicleType?
+
+  /// ── LES TROIS DISTANCES, ET POURQUOI ELLES SONT TROIS ────────────────────────
+  /// `declared` : ce que le dépôt a saisi. `estimated` : ce que le serveur calcule
+  /// depuis les adresses. Elles divergent souvent, et aucune des deux n'a raison
+  /// d'office — le dépôt connaît ses contraintes de tournée, le calcul ignore les
+  /// interdictions de tonnage. `used` est celle RETENUE pour le devis, choisie par
+  /// le transporteur. Garder les trois permet de dire « vous aviez annoncé 40 km,
+  /// nous en comptons 47 » plutôt que d'imposer un chiffre sans explication.
+  declaredDistanceM  Int?
+  estimatedDistanceM Int?
+  usedDistanceM      Int?
+
+  /// Les tours de négociation, du plus ancien au plus récent.
+  rounds MissionQuoteRound[]
+
+  /// Le montant sur lequel les deux parties se sont accordées, en centimes.
+  agreedAmountCents Int?
+  agreedAt          DateTime?
+  /// Échéance du devis courant. Passée, la demande bascule EXPIRED.
+  quoteExpiresAt    DateTime?
+
+  /// Motif de refus — obligatoire côté service. Sans lui, l'autre partie ne sait
+  /// pas quoi corriger et repose la même demande.
+  rejectedAt     DateTime?
+  rejectedReason String?
+  rejectedBy     QuoteRoundAuthor?
+
+  /// La mission née de cette demande. SetNull : la mission peut être supprimée
+  /// sans effacer la trace de la négociation qui l'a produite.
+  missionId String?  @unique @db.Uuid
+  mission   Mission? @relation("MissionFromRequest", fields: [missionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fleetId, ref])
+  /// Le tableau du transporteur : ses demandes en attente, les plus récentes d'abord.
+  @@index([fleetId, status, createdAt])
+  /// L'écran du dépôt : les siennes.
+  @@index([depotUserId, createdAt])
+  @@map("mission_requests")
+}
+
+/// Une adresse d'une demande. C'est ce qui rend la tournée multi-arrêts possible.
+///
+/// ⚠️ Le modèle `Mission` reste POINT À POINT (`originLabel` → `destLabel`). Les
+/// arrêts n'existent que sur la demande : à la conversion, le service compose les
+/// deux libellés de la mission depuis le premier et le dernier arrêt. Ouvrir les
+/// arrêts multiples sur `Mission` toucherait le suivi, l'agenda et l'espace dépôt
+/// — un autre chantier, à décider séparément.
+model MissionRequestStop {
+  id        String         @id @default(uuid()) @db.Uuid
+  requestId String         @db.Uuid
+  request   MissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Rang dans la tournée, à partir de 0. C'est l'ordre de passage demandé.
+  position Int
+  kind     MissionStopKind @default(DROPOFF)
+
+  /// Adresse libre, ou lieu clé de la flotte quand il est connu.
+  label   String
+  placeId String?     @db.Uuid
+  place   FleetPlace? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  /// Coordonnées, quand le géocodage a abouti. Nulles = distance non estimable
+  /// sur ce segment, et l'écran doit le dire plutôt que d'afficher un zéro.
+  lat Float?
+  lng Float?
+
+  /// Créneau souhaité sur cet arrêt précis, quand il y en a un.
+  wantedAt DateTime?
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, position])
+  @@index([requestId])
+  @@map("mission_request_stops")
+}
+
+/// UN tour de négociation. Immuable une fois écrit.
+///
+/// Le montant courant d'une demande, c'est le dernier tour — jamais un champ tenu
+/// à jour en parallèle, qui finirait par diverger de son propre historique.
+model MissionQuoteRound {
+  id        String         @id @default(uuid()) @db.Uuid
+  requestId String         @db.Uuid
+  request   MissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Rang du tour, à partir de 0. Le tour 0 est le devis automatique.
+  position Int
+  author   QuoteRoundAuthor
+  /// Null pour un tour SYSTEM : personne ne l'a écrit.
+  authorUserId String? @db.Uuid
+
+  amountCents Int
+  /// Le détail du calcul, figé. Pour un tour automatique : la grille appliquée,
+  /// ligne par ligne. Pour un tour humain : vide. Figé et non recalculé — une
+  /// grille modifiée demain ne doit pas réécrire un devis déjà lu.
+  breakdown   Json?
+  /// Le mot qui accompagne l'offre. C'est souvent lui qui débloque la négociation.
+  message     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, position])
+  @@index([requestId, position])
+  @@map("mission_quote_rounds")
+}
+
+/// La grille tarifaire d'une flotte — ce qui permet de calculer un devis.
+///
+/// Par flotte, comme `AgendaAgentSettings`, et NON un singleton : `PricingSettings`
+/// (plus haut) est le prix de vente de Tracky lui-même, un autre domaine.
+///
+/// ⚠️ TANT QU'AUCUNE LIGNE N'EXISTE POUR UNE FLOTTE, LA DEMANDE DE MISSION EST
+/// FERMÉE À SES DÉPÔTS. Un devis calculé sur une grille vide vaudrait zéro euro et
+/// partirait quand même : mieux vaut une fonctionnalité indisponible qu'une offre
+/// commerciale fausse.
+model MissionPricingSettings {
+  id      String @id @default(uuid()) @db.Uuid
+  fleetId String @unique @db.Uuid
+  fleet   Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  /// Interrupteur explicite. Une grille remplie mais désactivée ferme la demande
+  /// sans effacer les tarifs — utile le temps de les revoir.
+  enabled Boolean @default(false)
+
+  /// Prise en charge, appliquée une fois par mission.
+  baseFeeCents      Int @default(0)
+  /// Le prix au kilomètre. Le cœur du calcul.
+  pricePerKmCents   Int @default(0)
+  /// Facturation plancher : en dessous, on facture ce montant.
+  minimumFareCents  Int @default(0)
+  /// Chaque arrêt au-delà du premier enlèvement et de la première livraison.
+  pricePerStopCents Int @default(0)
+  /// Attente sur site, à l'heure entamée.
+  waitingHourCents  Int @default(0)
+
+  /// Majorations, en pourcentage entier. 20 = +20 %.
+  nightSurchargePct   Int @default(0)
+  weekendSurchargePct Int @default(0)
+  /// Plage de nuit, en heures locales de la flotte (22 → 6 par défaut).
+  nightStartHour      Int @default(22)
+  nightEndHour        Int @default(6)
+
+  /// Coefficients par type de véhicule, en pourcentage : 100 = tarif de base,
+  /// 130 = +30 %. En JSON parce que la liste des types évolue avec le parc, et
+  /// qu'une colonne par type imposerait une migration à chaque ajout.
+  vehicleTypeMultipliers Json?
+
+  /// TVA en pourcentage entier appliqué au total HT. 20 = 20 %.
+  vatPct Int @default(20)
+
+  /// Durée de validité d'un devis, en heures. Au-delà, la demande expire.
+  quoteValidityHours Int @default(48)
+
+  /// Mot affiché au dépôt sous le devis — conditions, délais de paiement.
+  quoteFooterNote String?
+
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("mission_pricing_settings")
 }
 
 /// Conducteur — variante "hybride" (Phase 2).
@@ -1396,6 +1666,10 @@ model FleetPlace {
   createdById String?        @db.Uuid
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+
+  /// Arrets de demandes de mission qui pointent sur ce lieu. SetNull cote arret :
+  /// supprimer un lieu cle ne doit pas effacer une demande deja negociee.
+  requestStops MissionRequestStop[]
 
   @@unique([fleetId, stationId])
   @@index([fleetId])
