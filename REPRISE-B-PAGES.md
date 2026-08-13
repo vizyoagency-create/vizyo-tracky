@@ -224,8 +224,58 @@ Corrigés cette séance, mais à connaître — **ils font sauter la vérificati
 > **persistée** de l'utilisateur, et en changer le défaut se ferait contre son choix
 > stocké. À trancher.
 
-**Bloc C — supervision (2 livrées sur 5).** `/dashboard` et **`/map`** faits ; restent
-`/vehicles`, `/places`, `/alerts`. *(`/vehicles/:id` livré plus tôt.)*
+**Bloc C — supervision (3 livrées sur 5).** `/dashboard`, **`/map`** et **`/vehicles`**
+faits ; restent `/places` et `/alerts`. *(`/vehicles/:id` livré plus tôt.)*
+
+> ### ✅ `/vehicles` — livré le 2026-08-12
+>
+> ⚠️ **LE `catch` QUI POSE UN TABLEAU VIDE — UNE CINQUIÈME FOIS.**
+>
+> ```ts
+> } catch (err) {
+>   swallow('vehicles-list:loadVehicles', err);
+>   this.vehicles.set([]);          // ← ici
+> }
+> ```
+>
+> Sur une panne d'API, `/vehicles` annonçait « **Aucun véhicule dans votre flotte** »
+> **avec le bouton « Ajouter votre premier véhicule »** — à un gestionnaire dont la
+> flotte existe. Cinquième écran, sans aucun rapport avec les quatre autres
+> (`activity`, `privacy-coverage`, `integrations`, `driver`). Ce n'est décidément pas
+> une négligence locale.
+>
+> Remplacé par `<app-zone>` : `erreur` nomme la panne et porte un recours ; si une
+> liste précédente existait, l'état devient `partiel` (le contenu reste, un bandeau dit
+> ce qui manque). Le **rond de chargement devient un squelette** (règle 2 du kit), et
+> « aucun résultat de filtre » cesse d'être confondu avec « flotte vide ».
+>
+> **Filtres en feuille** (ligne B1 « sur mobile : cartes + filtres en feuille »). La
+> barre d'outils mettait à 375 px un champ de recherche de **294 × 20** et un `select`
+> de **122 × 20** — moins de la moitié du plancher tactile. Sous 768 px elle cède la
+> place à la feuille de la planche : puces **Statut** (Tous · En roulage · À l'arrêt ·
+> Hors ligne · Pas de boîtier) avec compteurs, puces **Groupe**, recherche, et le pied
+> qui annonce le résultat **avant** de fermer (« Voir 2 véhicules »).
+>
+> ⚠️ **« On ne sait pas encore » n'est pas « à l'arrêt ».** Premier jet : les puces
+> comptaient `liveStatus(v.id)?.kind === 'moving'`. Or `liveStatus` vaut **null** tant
+> qu'aucune position live n'est arrivée — au premier rendu, les deux véhicules étaient
+> comptés « à l'arrêt » alors que leurs cartes affichaient une vitesse. Repli sur le
+> drapeau `moving` de la charge REST, la même source que `seedMovingState`. Le relevé
+> est passé de « À l'arrêt 2 » à « **En roulage 2** ». Même famille que l'ACC `unknown`
+> des marqueurs : **un état inconnu ne se range pas dans un état connu.**
+>
+> Les puces partent de `connectivity()` et `liveStatus()` — **les mêmes sources que les
+> lignes**. Une puce qui compterait autrement afficherait « En roulage 6 » au-dessus
+> d'une liste qui n'en montre que 4.
+>
+> **Mesure à 375 px, les deux thèmes** : 18 éléments, 4 ratios distincts, **0 échec de
+> contraste**, **0 cible sous 44 px**, **0 débordement**.
+>
+> **Non fait, à reprendre** : la **liste groupée par groupe avec en-têtes**
+> (« Groupe Sud · 5 véhicules ») que la planche montre sur les trois plateformes — le
+> mode `grouped` existe mais reste une option du sélecteur de vue, pas le rendu par
+> défaut. Et les états particuliers de la planche : « Dormant · 89 j », « Pose à
+> vérifier », « Pas de boîtier → Assigner un boîtier ».
 
 > ### ⚠️ `/map` — LA FEUILLE DE POSITION ÉTAIT UNE SURFACE CLAIRE EN DUR
 >

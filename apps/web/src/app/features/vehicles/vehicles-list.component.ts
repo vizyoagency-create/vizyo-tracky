@@ -29,6 +29,8 @@ import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/c
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
+import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
 import {
   formatSilenceLabel,
   getVehicleConnectivityState,
@@ -39,11 +41,14 @@ import {
   type VehiclePresenceState,
 } from '@vizyo/tracky-shared';
 
+/** Les puces de statut de la planche Véhicules. */
+type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier';
+
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent, BottomSheetComponent, ZoneComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -235,6 +240,14 @@ import {
               </div>
             }
             <span class="vlist-count">{{ filteredVehicles().length }} / {{ vehicles().length }}</span>
+            <!-- Entrée MOBILE des filtres : sur téléphone la barre d'outils ci-dessus
+                 est masquée (ses commandes tombaient à 20 px de haut). -->
+            <button type="button" class="vf-declencheur" (click)="filtresOuverts.set(true)"
+                    [attr.aria-label]="'Filtrer — ' + filteredVehicles().length + ' véhicules affichés'">
+              <lucide-icon [img]="LayersIcon" [size]="15"></lucide-icon>
+              Filtrer
+              @if (filtresActifs()) { <span class="vf-pastille" aria-hidden="true"></span> }
+            </button>
             <div class="view-switch">
               <button (click)="setViewMode('cards')" class="view-btn" [class.active]="viewMode() === 'cards'"
                       title="Vue cartes" aria-label="Vue cartes">
@@ -251,25 +264,33 @@ import {
             </div>
           </div>
         }
-        @if (loading()) {
-          <div class="vlist-loading">
-            <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
-          </div>
-        } @else if (vehicles().length === 0) {
-          <div class="vlist-empty">
-            <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
-            <p class="empty-text">Aucun véhicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
-            @if (perms.can('vehicles_create')) {
-              <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="empty-cta">Ajouter votre premier véhicule</button>
-            }
-          </div>
-        } @else if (filteredVehicles().length === 0) {
-          <div class="vlist-empty">
-            <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
-            <p class="empty-text">Aucun véhicule ne correspond à votre recherche</p>
-            <button (click)="search.set('')" class="empty-cta">Réinitialiser la recherche</button>
-          </div>
-        } @else if (viewMode() === 'table') {
+        <!-- Les six états du kit, rendus une fois. Le rond de chargement devient un
+             squelette (règle 2 du kit), et « vide » cesse d'absorber « erreur » :
+             une API tombée annonçait « Aucun véhicule dans votre flotte ». -->
+        @if (etatZone() !== 'rempli' && etatZone() !== 'partiel') {
+          <app-zone [etat]="etatZone()" quoi="Vos véhicules"
+                    vide="Aucun véhicule dans votre flotte"
+                    videDetail="Ajoutez un véhicule pour commencer à le suivre."
+                    erreur="Impossible de charger vos véhicules"
+                    erreurDetail="Votre flotte n'est pas vide : c'est la liste qui n'a pas pu être récupérée."
+                    (reessayer)="loadVehicles()" />
+        } @else {
+          @if (etatZone() === 'partiel') {
+            <app-zone [etat]="'partiel'"
+                      partiel="Liste peut-être incomplète — le dernier rafraîchissement a échoué."
+                      (reessayer)="loadVehicles()" />
+          }
+          @if (filteredVehicles().length === 0) {
+            <!-- Un filtre qui ne renvoie rien n'est PAS une flotte vide : on le dit,
+                 et on offre la sortie. -->
+            <div class="vlist-empty">
+              <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
+              <p class="empty-text">Aucun véhicule ne correspond à vos filtres</p>
+              <button (click)="reinitialiserFiltres()" class="empty-cta">
+                Voir les {{ vehicles().length }} véhicules
+              </button>
+            </div>
+          } @else if (viewMode() === 'table') {
           <div class="v-table-wrap">
             <table class="v-table">
               <thead>
@@ -521,7 +542,54 @@ import {
               </a>
             }
           </div>
+          }
         }
+
+        <!-- ═══ FILTRES EN FEUILLE (planche Véhicules) ═══════════════════════
+             Le pied annonce le résultat AVANT de fermer : on sait ce qu'on
+             obtient sans avoir à refermer pour aller voir. -->
+        <app-bottom-sheet [open]="filtresOuverts()" (closed)="filtresOuverts.set(false)" ariaLabel="Filtrer les véhicules">
+          <div class="vf-bloc">
+            <p class="vf-titre">Statut</p>
+            <div class="vf-puces">
+              @for (f of FILTRES_STATUT; track f.id) {
+                <button type="button" class="vf-puce"
+                        [class.vf-puce--active]="statutFiltre() === f.id"
+                        [attr.aria-pressed]="statutFiltre() === f.id"
+                        (click)="statutFiltre.set(f.id)">
+                  {{ f.label }} <span class="vf-puce-n">{{ compteursStatut()[f.id] }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          @if (groupOptions().length > 0) {
+            <div class="vf-bloc">
+              <p class="vf-titre">Groupe</p>
+              <div class="vf-puces">
+                <button type="button" class="vf-puce" [class.vf-puce--active]="groupFilter() === ''"
+                        [attr.aria-pressed]="groupFilter() === ''" (click)="groupFilter.set('')">Tous</button>
+                @for (g of groupOptions(); track g.id) {
+                  <button type="button" class="vf-puce" [class.vf-puce--active]="groupFilter() === g.id"
+                          [attr.aria-pressed]="groupFilter() === g.id" (click)="groupFilter.set(g.id)">{{ g.name }}</button>
+                }
+              </div>
+            </div>
+          }
+
+          <div class="vf-bloc">
+            <p class="vf-titre">Rechercher</p>
+            <input type="text" class="vf-recherche" [ngModel]="search()" (ngModelChange)="search.set($event)"
+                   placeholder="Plaque, marque, modèle, IMEI…" aria-label="Rechercher un véhicule" />
+          </div>
+
+          <div class="vf-pied">
+            <button type="button" class="vf-reinit" (click)="reinitialiserFiltres()">Réinitialiser</button>
+            <button type="button" class="vf-voir" (click)="filtresOuverts.set(false)">
+              Voir {{ filteredVehicles().length }} véhicule{{ filteredVehicles().length > 1 ? 's' : '' }}
+            </button>
+          </div>
+        </app-bottom-sheet>
 
         <app-vehicle-dialog
           [open]="showAddDialog() || showEditDialog()"
@@ -747,6 +815,99 @@ import {
       background: var(--tracky-light); color: var(--accent-ink); border: none; cursor: pointer; box-shadow: var(--shadow-tracky-glow); transition: filter .15s;
     }
     .add-btn:hover { filter: brightness(1.05) }
+
+    /* ═══ FILTRES EN FEUILLE ══════════════════════════════════════════════════
+       Toutes les commandes à 44 px : la barre d'outils du haut mettait un champ de
+       recherche de 20 px de haut et un select de 20 px — mesuré à 375 px le
+       2026-08-12, soit moins de la moitié du plancher tactile. */
+    .vf-declencheur {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      min-height: 44px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .vf-pastille {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--tracky);
+      flex-shrink: 0;
+    }
+    .vf-bloc { margin-bottom: 18px; }
+    .vf-titre {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--fg-secondary);
+      margin: 0 0 8px;
+    }
+    .vf-puces { display: flex; flex-wrap: wrap; gap: 8px; }
+    .vf-puce {
+      min-height: 44px;
+      padding: 8px 14px;
+      border-radius: 9999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .vf-puce--active {
+      background: color-mix(in srgb, var(--tracky) 15%, transparent);
+      border-color: color-mix(in srgb, var(--tracky) 40%, transparent);
+      color: var(--texte-succes);
+    }
+    .vf-puce-n { font-variant-numeric: tabular-nums; margin-left: 4px; opacity: .8; }
+    .vf-recherche {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+      color: var(--fg-primary);
+      font-size: 14px;
+      /* Sans min-width:0 un champ en boîte flexible refuse de descendre sous la
+         largeur de son placeholder et fait déborder la feuille. */
+      min-width: 0;
+    }
+    .vf-pied {
+      display: flex;
+      gap: 10px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .vf-reinit, .vf-voir {
+      flex: 1;
+      min-height: 48px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid var(--border-subtle);
+    }
+    .vf-reinit { background: transparent; color: var(--fg-secondary); }
+    .vf-voir {
+      background: var(--tracky);
+      border-color: var(--tracky);
+      color: var(--accent-ink);
+    }
+    /* Sous 768 px la barre d'outils cède la place à la feuille : ses commandes y
+       tombaient à 20 px, et la planche les sort dans une feuille. */
+    @media (max-width: 768px) {
+      .vf-declencheur { display: inline-flex; }
+      .vlist-search, .vlist-group-filter { display: none; }
+    }
 
     /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB).
        Doit se poser AU-DESSUS de la bottom-bar (60-72px selon iOS PWA bump
@@ -1060,8 +1221,15 @@ export class VehiclesListComponent implements OnInit {
         (v.tracker?.imei ?? '').toLowerCase().includes(q),
       );
     }
+    const st = this.statutFiltre();
+    if (st !== 'tous') list = list.filter((v) => this.statutDe(v) === st);
     return list;
   });
+
+  /** Y a-t-il au moins un filtre posé ? Sert à distinguer « rien ne correspond » de « flotte vide ». */
+  protected readonly filtresActifs = computed(
+    () => !!this.search().trim() || !!this.groupFilter() || this.statutFiltre() !== 'tous',
+  );
 
   /**
    * Sprint 1 (Fondation Groupes) — véhicules (filtrés) regroupés par groupe pour
@@ -1092,6 +1260,74 @@ export class VehiclesListComponent implements OnInit {
   protected readonly showEditDialog = signal(false);
   protected readonly editVehicleId = signal('');
   protected readonly activeTab = signal<'vehicles' | 'groups' | 'capacity' | 'privacy'>('vehicles');
+
+  /** Le dernier chargement a-t-il échoué ? Distinct de « la flotte est vide ». */
+  protected readonly chargementEnErreur = signal(false);
+
+  /**
+   * L'état de la zone — les six états du kit rendus une fois, au lieu d'un rond de
+   * chargement et de deux blocs « vide » écrits à la main (dont un mentait).
+   *
+   * L'ORDRE compte : une erreur prime sur un vide. Sans quoi une API tombée
+   * s'afficherait comme une flotte vide, ce qui était exactement le défaut.
+   */
+  protected readonly etatZone = computed<EtatZone>(() => {
+    if (this.loading()) return 'chargement';
+    if (this.chargementEnErreur()) return this.vehicles().length > 0 ? 'partiel' : 'erreur';
+    return this.vehicles().length === 0 ? 'vide' : 'rempli';
+  });
+
+  /* ═══ FILTRES EN FEUILLE (planche Véhicules, écran « Filtres · feuille ») ═══
+     Sur téléphone, les filtres tenaient dans une barre d'outils : un champ de
+     recherche de 20 px de haut et un `select` de 20 px — moitié du plancher tactile.
+     La planche les sort dans une feuille, avec un pied qui annonce le résultat
+     (« Voir 14 véhicules ») pour qu'on sache ce qu'on obtient AVANT de fermer. */
+  protected readonly filtresOuverts = signal(false);
+  protected readonly statutFiltre = signal<FiltreStatut>('tous');
+  protected readonly FILTRES_STATUT: ReadonlyArray<{ id: FiltreStatut; label: string }> = [
+    { id: 'tous', label: 'Tous' },
+    { id: 'roulage', label: 'En roulage' },
+    { id: 'arret', label: 'À l’arrêt' },
+    { id: 'hors-ligne', label: 'Hors ligne' },
+    { id: 'sans-boitier', label: 'Pas de boîtier' },
+  ];
+
+  /**
+   * Le statut d'un véhicule pour les puces.
+   *
+   * ⚠️ Il part de `connectivity()` et de `liveStatus()` — LES MÊMES sources que les
+   * lignes de la liste. Une puce qui compterait autrement afficherait « En roulage 6 »
+   * au-dessus d'une liste qui n'en montre que 4 : deux vérités sur le même écran.
+   */
+  protected statutDe(v: VehicleDetailDto): FiltreStatut {
+    const c = this.connectivity(v);
+    if (c === 'NOT_CONFIGURED') return 'sans-boitier';
+    if (c !== 'ONLINE') return 'hors-ligne';
+    // ⚠️ `liveStatus` vaut null tant qu'aucune position live n'est arrivée — c'est
+    // « on ne sait pas encore », PAS « à l'arrêt ». Relevé au navigateur le
+    // 2026-08-12 : au premier rendu les deux véhicules étaient comptés à l'arrêt
+    // alors que leurs cartes affichaient une vitesse. On retombe alors sur le
+    // drapeau `moving` de la charge REST — la même source que `seedMovingState`.
+    const live = this.liveStatus(v.id);
+    if (live) return live.kind === 'moving' ? 'roulage' : 'arret';
+    return v.moving ? 'roulage' : 'arret';
+  }
+
+  /** Compteurs des puces — sur la flotte ENTIÈRE, jamais sur la vue déjà filtrée. */
+  protected readonly compteursStatut = computed(() => {
+    const tous = this.vehicles();
+    const n: Record<FiltreStatut, number> = {
+      tous: tous.length, roulage: 0, arret: 0, 'hors-ligne': 0, 'sans-boitier': 0,
+    };
+    for (const v of tous) n[this.statutDe(v)]++;
+    return n;
+  });
+
+  protected reinitialiserFiltres(): void {
+    this.search.set('');
+    this.groupFilter.set('');
+    this.statutFiltre.set('tous');
+  }
   /** feat/comptes-conducteurs (4a) — véhicule dont on affiche le QR (null = modale fermée). */
   protected readonly qrVehicle = signal<VehicleDetailDto | null>(null);
 
@@ -1453,6 +1689,7 @@ export class VehiclesListComponent implements OnInit {
 
   protected async loadVehicles(): Promise<void> {
     this.loading.set(true);
+    this.chargementEnErreur.set(false);
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
@@ -1467,7 +1704,18 @@ export class VehiclesListComponent implements OnInit {
       this.scrollToPendingGroup();
     } catch (err) {
       swallow('vehicles-list:loadVehicles', err);
-      this.vehicles.set([]);
+      // ⚠️ NE PAS poser un tableau vide ici. C'est le motif le plus répandu de cette
+      // base — relevé une 5ᵉ fois le 2026-08-12, sur un 5ᵉ écran sans rapport avec
+      // les quatre autres (activity, privacy-coverage, integrations, driver).
+      //
+      // `vehicles.set([])` faisait dire à la page « Aucun véhicule dans votre flotte »
+      // AVEC le bouton « Ajouter votre premier véhicule » — à un gestionnaire dont la
+      // flotte existe et dont l'API vient de tomber. Le mensonge est rassurant, et il
+      // tombe sur l'écran qui sert précisément à vérifier que la flotte va bien.
+      //
+      // « vide » et « erreur » sont deux états, pas un : on garde la liste précédente
+      // si on en avait une, et on nomme la panne.
+      this.chargementEnErreur.set(true);
     } finally {
       this.loading.set(false);
     }
