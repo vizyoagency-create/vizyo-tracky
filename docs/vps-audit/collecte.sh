@@ -27,6 +27,29 @@
 set -uo pipefail   # pas de `-e` : une section qui échoue ne doit pas décapiter le rapport
 export LC_ALL=C
 
+# ⚠️ AJOUTE LE 2026-08-13 (VPS-M33) — LE COLLECTEUR JETAIT SES PROPRES MESSAGES D'ERREUR.
+# Angle mort n° 2 du rapport du 2026-08-12, et il avait deja coute VPS-M28 : le detecteur de
+# boucle de `dockerd` — LE bloc ecrit pour trancher le constat le plus lourd du dispositif —
+# etait un programme `awk` invalide. Il n'a jamais rendu une ligne. `awk` refusait de compiler,
+# ecrivait son erreur sur stderr, et stderr partait dans le neant (la collecte se lance
+# `... > /tmp/collecte.txt`, sans rien faire du canal 2). Le defaut n'a ete vu que parce que ce
+# matin-la stderr avait ete redirige vers un fichier separe, PAR HABITUDE.
+#
+# Un bloc qui echoue ne rend pas une erreur : il rend du VIDE. Et un vide se lit exactement
+# comme « rien a signaler ». C'est la famille VPS-M02 / VPS-M08 / VPS-M21 — un defaut qui
+# RASSURE n'a aucun plaignant — appliquee non plus a une mesure, mais au collecteur lui-meme.
+#
+# On capture donc stderr dans un tampon, et on le PUBLIE en fin de collecte, dans stdout,
+# c'est-a-dire dans le rapport. Fichier a chemin FIXE, tronque a chaque passage : aucun `rm`
+# (garde-fou de lecture seule), aucune accumulation, et `systemd-tmpfiles-clean` s'en occupe.
+#
+# ⚠️ PORTEE, ecrite ici pour qu'on ne la surestime pas : ce tampon ne voit que ce qui n'est PAS
+# deja tu par un `2>/dev/null` local, et le script en pose une centaine — volontairement, pour
+# des erreurs ATTENDUES. Un zero ne dit donc pas « aucune erreur », il dit « aucune erreur
+# INATTENDUE ». C'est exactement la classe a laquelle appartenait VPS-M28.
+ERRBUF=/tmp/audit-vps-stderr.log
+exec 2>"$ERRBUF"
+
 # ⚠️ AJOUTE LE 2026-08-06. La collecte a mis 136 s ce jour-la (budget : 90 s) et RIEN dans la
 # sortie ne disait ou le temps etait passe — il a fallu re-mesurer a la main, section par
 # section. Un budget qu'on impose sans l'instrumenter ne se diagnostique pas : il se constate.
@@ -685,7 +708,25 @@ fi
 sub "Consommation live"
 docker stats --no-stream --format '  {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.PIDs}}' 2>/dev/null | sort -t$'\t' -k3 -h -r | head -15
 sub "Images (les plus lourdes)"
-docker images --format '  {{.Size}}\t{{.Repository}}:{{.Tag}}\t{{.CreatedSince}}' 2>/dev/null | sort -rh | head -12
+# ⚠️ AJOUTE LE 2026-08-13 — LE JOUR OU LE DISQUE A PRIS 23 Go SANS QU'ON PUISSE LES ATTRIBUER.
+# `docker system df` a annonce Images 25,16 → 50,13 Go en 24 h. La somme des tailles des 27
+# images, elle, vaut 16,80 Go. Un facteur 3, et il a VARIE (1,8× la veille) : ces deux nombres
+# ne mesurent pas la meme chose. La somme compte les couches PARTAGEES autant de fois qu'il y a
+# d'images ; `docker system df`, avec le magasin containerd, compte en plus les blobs
+# compresses du content store. Aucun des deux n'est l'espace occupe sur le disque.
+# On affiche donc la somme A COTE, pour que la divergence soit VISIBLE au lieu d'etre subie —
+# et parce qu'un chiffre affiche est un chiffre cru (VPS-M29).
+IMGS=$(docker images --format '{{.Size}}\t{{.Repository}}:{{.Tag}}\t{{.CreatedSince}}' 2>/dev/null)
+printf '%s\n' "$IMGS" | sort -rh | head -12 | sed 's/^/  /'
+printf '%s\n' "$IMGS" | awk -F'\t' 'NF>1 {
+    v=$1; gsub(/ /,"",v); u=v; sub(/^[0-9.]+/,"",u); sub(/[A-Za-z]+$/,"",v)
+    m=(u=="GB")?1e9:(u=="MB")?1e6:(u=="kB")?1e3:(u=="B")?1:0
+    t+=v*m; n++ }
+  END { printf "  → %d images, somme des tailles annoncees = %.2f Go\n", n, t/1e9 }'
+echo "     ⚠️ Cette somme et le poste « Images » de docker system df divergent fortement et le"
+echo "        rapport VARIE d un jour a l autre : ni l une ni l autre n est l espace occupe sur"
+echo "        le disque. Seul \`df\` (section 3) l est. Ne reporter aucun des deux comme"
+echo "        « espace recuperable » — voir la section 10, qui porte deja cet avertissement."
 sub "Volumes orphelins (aucun conteneur ne les monte)"
 # ⚠️ « orphelin » ne veut PAS dire « jetable » : un volume Postgres detache reste une base.
 # Toujours afficher la TAILLE pour qu'un humain juge avant de supprimer.
@@ -727,14 +768,29 @@ printf '  dernier build (declencheur du ramasse-miettes) : %s\n' "${DERNIER_BUIL
 printf '  cache.db de BuildKit modifie le                : %s\n' "${CACHE_DB:-absent}"
 if [ -n "$DERNIER_BUILD" ] && [ -n "$CACHE_DB" ]; then
   DB=$(date -d "$DERNIER_BUILD" +%s 2>/dev/null); DC=$(date -d "$CACHE_DB" +%s 2>/dev/null)
-  ECART=$(( ${DC:-0} - ${DB:-0} )); [ "$ECART" -lt 0 ] && ECART=$(( -ECART ))
+  # ⚠️ CORRIGE LE 2026-08-13 (VPS-M32) — LE VERDICT ETAIT AVEUGLE AU SIGNE DE L'ECART.
+  # La ligne precedente prenait la valeur ABSOLUE, puis affirmait « un build a eu lieu SANS que
+  # le ramasse-miettes s'execute ». Or les deux sens disent des choses OPPOSEES :
+  #   cache.db PLUS ANCIEN que le build  → le mecanisme n'a pas tourne. C'est le defaut.
+  #   cache.db PLUS RECENT que le build  → le mecanisme a tourne APRES. C'est le contraire.
+  # Le 2026-08-13 le detecteur a rendu 🔴 sur un ecart de +3894 s — cache.db ecrit 65 min APRES
+  # le dernier build — donc sur un ramasse-miettes qui venait precisement de travailler, et que
+  # la decomposition du levier 1 confirmait a l'octet pres (Private 10,37 → 10,39 Go en 24 h,
+  # sur un plafond de 10 Go). Le detecteur designait le seul mecanisme sain de la journee.
+  ECART=$(( ${DC:-0} - ${DB:-0} ))     # SIGNE conserve : positif = cache.db plus RECENT
+  AECART=$ECART; [ "$AECART" -lt 0 ] && AECART=$(( -AECART ))
   AGE_H=$(( ( $(date +%s) - ${DB:-0} ) / 3600 ))
-  if [ "$ECART" -le 600 ]; then
-    echo "  ✅ les deux coincident (ecart ${ECART}s) : le ramasse-miettes a bien tourne au dernier build."
+  if [ "$AECART" -le 600 ]; then
+    echo "  ✅ les deux coincident (ecart ${AECART}s) : le ramasse-miettes a bien tourne au dernier build."
     echo "     Le cache est FIGE parce qu'aucun build n'a eu lieu depuis ${AGE_H} h — pas parce qu'il est casse."
+  elif [ "$ECART" -gt 0 ]; then
+    echo "  ✅ cache.db a ete ecrit ${AECART}s APRES le dernier build : le ramasse-miettes a tourne"
+    echo "     DEPUIS. Le mecanisme n'est donc pas silencieux."
+    echo "     ⚠️ S'il reste du volume malgre ca, la cause est AILLEURS et pas ici : keepStorage ne"
+    echo "        gouverne que 'Private'. Lire la decomposition Private/Shared du levier 1 (VPS-M25)."
   else
-    echo "  🔴 ecart de ${ECART}s entre le dernier build et la derniere ecriture de cache.db :"
-    echo "     un build a eu lieu SANS que le ramasse-miettes s'execute. La borne ne tient plus."
+    echo "  🔴 cache.db date de ${AECART}s AVANT le dernier build : un build a eu lieu SANS que le"
+    echo "     ramasse-miettes s'execute. La borne ne tient plus."
   fi
 fi
 echo "  ⚠️ Regle generale : une valeur identique a la decimale pres n'est ni 'stable' ni 'gelee'"
@@ -1635,10 +1691,30 @@ sub "Levier 4 — reglages PostgreSQL"
 # de 90 s que cette procedure impose (meme defaut que VPS-M05, deuxieme recidive).
 # ⚠️ 2026-08-12 : `| head -3` en bout de tube `docker ps` tuait le client Docker par SIGPIPE, a
 # 8 secondes de la fin de la collecte (voir la note de la section 7). On decoupe une variable.
-for pg in $(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | grep -E "postgres|postgis" | head -3); do
+# ⚠️ CORRIGE LE 2026-08-13 (VPS-M34) — CE LEVIER N'A JAMAIS EXAMINE QUE LA MOITIE DES BASES,
+# ET LA MOITIE AFFICHEE CHANGEAIT D'UN JOUR A L'AUTRE. Le `head -3` ne gardait que les trois
+# premiers conteneurs dans l'ordre — arbitraire — de `docker ps`. Il y en a SIX. Du 08-08 au
+# 08-12 la liste montrait tracky / maestroo-dev / maalem-dev ; le 08-13, apres une recreation
+# de conteneurs, elle montrait vizyo-verify / tracky / maestroo-dev. Rien n'a jamais signale
+# qu'il en manquait trois, ni que ce n'etaient pas les memes.
+#
+# CE QUE CA A COUTE, et ce n'est pas theorique : `vizyo-verify-postgres` est une base de
+# PRODUCTION (pieces d'identite) et elle est a `random_page_cost = 4`. VPS-007 a ete clos en
+# `APPLIQUE` le 2026-08-04 sur la phrase « reste a 4 sur maalem-dev et maestroo-dev : bases de
+# DEVELOPPEMENT, aucun enjeu ». Cette phrase a ete ecrite en lisant une liste qui n'a jamais
+# contenu vizyo-verify. Un constat ferme sur un denominateur tronque.
+#
+# C'est VPS-M08 / VPS-M22 a l'identique — « toute extraction conditionnelle doit annoncer son
+# denominateur » — et la regle etait ecrite. Le `head -3` lui est anterieur, et il a meme ete
+# EDITE la veille (SIGPIPE) sans que personne ne demande pourquoi il etait la.
+PG_TOUS=$(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | grep -E "postgres|postgis")
+PG_NB=$(printf '%s\n' "$PG_TOUS" | grep -c .)
+PG_VUS=0
+for pg in $PG_TOUS; do
   RPC=$(docker exec "$pg" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SHOW random_page_cost;"' 2>/dev/null | tr -d '
 ')
   [ -z "$RPC" ] && continue
+  PG_VUS=$(( PG_VUS + 1 ))
   # 4 = valeur pour disque MECANIQUE. Sur SSD, le planificateur surestime le cout des acces
   # aleatoires et prefere des parcours de table la ou un index serait plus rapide.
   case "$RPC" in
@@ -1646,6 +1722,16 @@ for pg in $(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | gre
     *)             verdict "$pg random_page_cost" "$RPC" "1.1" ko "valeur pour disque a plateaux" ;;
   esac
 done
+# Le denominateur, affiche DANS TOUS LES CAS — c'est lui le vrai correctif de VPS-M34, pas la
+# suppression du `head`. Une liste qui n'annonce pas combien d'elements elle devrait contenir
+# ne peut pas signaler qu'il en manque (VPS-M08).
+if [ "${PG_VUS:-0}" -eq "${PG_NB:-0}" ]; then
+  printf '  ✅ %s / %s bases PostgreSQL examinees\n' "$PG_VUS" "$PG_NB"
+else
+  printf '  🔴 %s / %s bases PostgreSQL examinees — %s N ONT PAS REPONDU.\n' \
+    "$PG_VUS" "$PG_NB" "$(( ${PG_NB:-0} - ${PG_VUS:-0} ))"
+  echo "     Ne PAS lire l absence d une base comme « elle est bien reglee » : c est VPS-M34."
+fi
 
 sub "Levier 5 — Redis borne ?"
 for r in $(docker ps --format '{{.Names}}' 2>/dev/null | grep redis); do
@@ -1716,4 +1802,29 @@ awk -v d="$DUREE" -v b="${BUDGET:-90}" 'BEGIN{
     print  "     (VPS-M16). Le depassement est un SYMPTOME tant que la cause n est pas nommee."
   }
 }'
+# ⚠️ AJOUTE LE 2026-08-13 (VPS-M33) — voir le commentaire en tete du fichier.
+# Ce bloc est la CONTREPARTIE de la capture de stderr : capturer sans publier reviendrait a
+# remplacer un silence par un autre. Il est place AVANT « FIN DE COLLECTE » a dessein — si le
+# script meurt en route, le marqueur de fin manque et la procedure impose de relancer.
+printf '\n\n═════ ERREURS PENDANT LA COLLECTE (stderr) ═════\n'
+# ⚠️ `grep -c` sort en STATUT 1 quand il ne compte rien, tout en ecrivant « 0 » sur stdout.
+# Un `|| echo 0` ajoute donc une SECONDE ligne, et `[ "0\n0" -eq 0 ]` devient « integer
+# expression expected » : le cas SAIN — c'est-a-dire le cas de tous les jours — s'affichait en
+# 🔴 avec un compte absurde. Attrape a l'essai des trois branches sur la machine, AVANT
+# publication (discipline VPS-M13). On ne teste donc pas le statut, on assainit la valeur.
+NB_ERR=$(grep -c . "$ERRBUF" 2>/dev/null)
+case "${NB_ERR:-}" in ''|*[!0-9]*) NB_ERR=0 ;; esac
+if [ "$NB_ERR" -eq 0 ]; then
+  echo "  ✅ aucun message d erreur : les programmes awk, les gabarits Go et les filtres jq ont"
+  echo "     tous compile et tourne. Aucun bloc n a rendu du vide pour cause de panne interne."
+else
+  echo "  🔴 ${NB_ERR} ligne(s) d erreur pendant la collecte. Les 8 premieres :"
+  grep . "$ERRBUF" 2>/dev/null | head -8 | sed 's/^/     /'
+  echo "     ⚠️ A TRAITER AVANT LE RESTE DU RAPPORT. Un bloc qui echoue ne rend pas une erreur,"
+  echo "        il rend du VIDE — et un vide se lit comme « rien a signaler ». C est ainsi que"
+  echo "        VPS-M28 a survecu deux jours sur le detecteur le plus important du dispositif."
+fi
+echo "  ⚠️ PORTEE : ce compteur ne voit QUE ce qui n est pas deja tu par un \`2>/dev/null\` local,"
+echo "     et le script en pose une centaine, volontairement, pour des erreurs ATTENDUES."
+echo "     Un zero ne dit donc pas « aucune erreur », il dit « aucune erreur INATTENDUE »."
 printf '\n\nFIN DE COLLECTE — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
