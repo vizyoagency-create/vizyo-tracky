@@ -1020,9 +1020,14 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
     /* DORMANCE — la valeur reste lisible (on ne masque jamais un véhicule) mais elle est
        visiblement DÉCLASSÉE : ce n'est plus du direct, c'est un dernier souvenir. */
     .v-trow-stale { color: var(--fg-tertiary); font-style: italic }
+    /* ⚠️ Ces libellés font 10-11 px : ils prennent la famille --texte-*, pas la
+       couleur sémantique. Mesuré à 375 px le 2026-08-12 en thème CLAIR :
+       #10E0A0 en texte donne 1,57:1 et --warning (#C98708) 2,65:1 sur son propre
+       lavis. C'est exactement ce pour quoi --texte-succes / --texte-attente
+       existent (cf. styles.css § « Jetons de PETIT TEXTE »). */
     .v-dormant-age {
       font-size: 10px; font-weight: 700; white-space: nowrap;
-      color: #d97706; /* même ambre brûlé que le badge « Dormant » */
+      color: var(--texte-attente); /* même ambre que le badge « Dormant » */
     }
     .v-trow-chev { color: var(--fg-tertiary); justify-self: end; flex-shrink: 0 }
     @media (max-width: 960px) {
@@ -1119,11 +1124,12 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
     }
     .v-live-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0 }
     .v-live-pill--moving {
-      color: #10E0A0; background: rgba(16,224,160,.12); border-color: rgba(16,224,160,.25);
+      color: var(--texte-succes); background: color-mix(in srgb, var(--tracky) 12%, transparent); border-color: color-mix(in srgb, var(--tracky) 25%, transparent);
     }
-    .v-live-pill--moving .v-live-dot { background: #10E0A0; box-shadow: 0 0 6px rgba(16,224,160,.6) }
+    /* La pastille garde le vert de MARQUE — c'est une forme, pas du texte. */
+    .v-live-pill--moving .v-live-dot { background: var(--tracky); box-shadow: 0 0 6px color-mix(in srgb, var(--tracky) 60%, transparent) }
     .v-live-pill--idle {
-      color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 24%, transparent);
+      color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 24%, transparent);
     }
     .v-live-pill--idle .v-live-dot { background: var(--warning) }
     .v-live-pill--stopped {
@@ -1133,8 +1139,8 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
 
     /* V1.15 — badge installation (derive IMEI + SIM) */
     .v-inst { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 9999px; line-height: 1.4 }
-    .v-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
-    .v-inst--no-sim { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent) }
+    .v-inst--installed { color: var(--texte-succes); background: color-mix(in srgb, var(--tracky) 12%, transparent); border: 1px solid color-mix(in srgb, var(--tracky) 22%, transparent) }
+    .v-inst--no-sim { color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent) }
 
     .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
     .v-tracker-info { flex: 1; min-width: 0 }

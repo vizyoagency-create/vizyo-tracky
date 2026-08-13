@@ -271,11 +271,35 @@ faits ; restent `/places` et `/alerts`. *(`/vehicles/:id` livré plus tôt.)*
 > **Mesure à 375 px, les deux thèmes** : 18 éléments, 4 ratios distincts, **0 échec de
 > contraste**, **0 cible sous 44 px**, **0 débordement**.
 >
-> **Non fait, à reprendre** : la **liste groupée par groupe avec en-têtes**
-> (« Groupe Sud · 5 véhicules ») que la planche montre sur les trois plateformes — le
+> ⚠️ **MON PROPRE ANGLE MORT — je n'avais mesuré que la FEUILLE, pas la LISTE.**
+> Le premier relevé portait sur `.bs-content` (0 échec) et je m'en suis contenté. En
+> balayant `app-vehicles-list` entier : **14 échecs en clair, 10 en sombre**. Deux
+> étaient les miens à corriger :
+>
+> | Élément | Clair, avant | Après |
+> |---|---:|---:|
+> | `.v-live-pill--moving` « 49 km/h » (`#10E0A0` en texte) | **1,57:1** | passe |
+> | `.v-inst--no-sim` « SIM manquante » (`--warning` en texte) | **2,65:1** | passe |
+>
+> Les libellés de 10-11 px prenaient la couleur **sémantique** (`--warning`,
+> `--tracky-light`, `#10E0A0`) là où la famille `--texte-*` existe précisément pour ça.
+> Repris sur `.v-dormant-age`, `.v-live-pill--moving/--idle`, `.v-inst--installed/--no-sim`.
+> **Clair 14 → 10.** Les 10 restants sont **tous** `--text-tertiary`, vérifié jeton par
+> jeton (`v-year`, `vlist-sub`, `vlist-count`, IMEI, `tab-btn` inactif) : c'est **O5**.
+>
+> **Leçon de méthode : mesurer la surface qu'on vient d'ajouter ne suffit pas — il faut
+> mesurer l'ÉCRAN.** Une feuille propre au-dessus d'une liste qui échoue reste un écran
+> qui échoue.
+>
+> ✅ **Correction d'une note précédente** : j'avais écrit que les états particuliers de
+> la planche restaient à faire. **C'est faux, ils existent déjà** — « Dormant · 89 j »
+> (`.v-dormant-age` + `silenceLabel`), « Pas de boîtier », « Assigner un boîtier », et
+> « Pose à vérifier » via `app-install-review-badge`.
+>
+> **Reste vraiment à faire** : la **liste groupée par groupe avec en-têtes**
+> (« Groupe Sud · 5 véhicules ») que la planche montre sur les trois plateformes. Le
 > mode `grouped` existe mais reste une option du sélecteur de vue, pas le rendu par
-> défaut. Et les états particuliers de la planche : « Dormant · 89 j », « Pose à
-> vérifier », « Pas de boîtier → Assigner un boîtier ».
+> défaut — en faire le défaut est une décision de comportement, non tranchée.
 
 > ### ⚠️ `/map` — LA FEUILLE DE POSITION ÉTAIT UNE SURFACE CLAIRE EN DUR
 >
