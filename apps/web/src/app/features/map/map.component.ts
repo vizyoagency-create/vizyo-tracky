@@ -362,16 +362,21 @@ const RESYNC_RADIUS_M = 150;
         </p>
       </div>
 
-      <!-- ─── CYCLE DE VIE D'UN LIEU ─── -->
+      <!-- ─── CYCLE DE VIE D'UN LIEU ─────────────────────────────────────────
+           ⚠️ DEUX états, pas trois. La planche en montre un troisième — « Seuil
+           atteint · 8/8 » — mais AUCUN DTO ne porte ce seuil et aucune constante
+           partagée ne le définit (vérifié le 2026-08-12 : StationGroupDto porte
+           passages, sans seuil ni statut). Une légende ne nomme que ce que la
+           carte montre : la pastille GROSSIT avec les passages (rayon interpolé
+           sur visits), elle n'a pas d'anneau qui se remplit. Cf. le journal,
+           § lieux — bloqué par un contrat d'API. -->
       <div class="cl-bloc">
         <p class="tracky-sheet-title">Cycle de vie d'un lieu</p>
         <ul class="cl-cycle">
           <li><span class="cl-cle cl-cle--detecte"></span>
-            <span><strong>Détecté</strong> — l'anneau se remplit à chaque passage</span></li>
-          <li><span class="cl-cle cl-cle--seuil"></span>
-            <span><strong>Seuil atteint</strong> — à confirmer</span></li>
+            <span><strong>Détecté</strong> — la pastille grossit à chaque passage</span></li>
           <li><span class="cl-cle cl-cle--valide"></span>
-            <span><strong>Validé</strong> — nommé et typé par le client</span></li>
+            <span><strong>Validé</strong> — nommé et typé par vous</span></li>
         </ul>
       </div>
     </ng-template>
@@ -1468,7 +1473,6 @@ const RESYNC_RADIUS_M = 150;
     .cl-cle--eteint { background: var(--fg-tertiary); }
     .cl-cle--hors-ligne { background: var(--texte-inactif); }
     .cl-cle--detecte { background: var(--violet); }
-    .cl-cle--seuil { background: var(--warning); }
     .cl-cle--valide { background: var(--tracky); }
 
     .cl-bloc {

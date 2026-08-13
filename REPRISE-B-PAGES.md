@@ -553,6 +553,35 @@ période, création/édition de véhicule (« le boîtier devient facultatif »)
 > de seed `cdef31-admin` **ne marche pas** — `/api/auth/me` répond 500, ce n'est pas un vrai id
 > Vizyo Auth. Prendre un `authUserId` en forme de cuid.
 
+> ### ⚠️ J'AI ÉCRIT UNE LÉGENDE QUI PROMETTAIT PLUS QUE SON CODE — corrigé le jour même
+>
+> La légende « Cycle de vie d'un lieu » que j'ai livrée sur `/map` le 2026-08-12
+> annonçait **trois** états, repris de la planche :
+>
+> > Détecté — **l'anneau se remplit** à chaque passage · **Seuil atteint** — à
+> > confirmer · Validé — nommé et typé par le client
+>
+> En préparant `/places`, deux vérifications ont montré que **deux tiers de cette
+> phrase étaient faux** :
+>
+> 1. **Il n'y a pas d'anneau qui se remplit.** La pastille d'une station détectée
+>    GROSSIT (`circle-radius` interpolé sur `visits`) — c'est tout autre chose.
+> 2. **« Seuil atteint » n'existe nulle part.** `StationGroupDto` porte `passages`,
+>    `distinctVehicles`, `avgStopMin`, `lastPriceEur` — **ni seuil, ni statut**. Et
+>    aucune constante partagée ne définit le « 8 » de la planche (`Seuil : 8 passages`).
+>    Inventer ce 8 côté client, c'est poser un nombre qui doit rester d'accord avec la
+>    règle de détection du serveur : il dériverait en silence.
+>
+> Légende ramenée à **deux** états, qui décrivent ce que la carte fait vraiment. C'est
+> exactement `MIXTE_SANS_CADRE`, et je l'ai réintroduit moi-même en traduisant une
+> planche sans vérifier que la donnée suivait. **Une décision de planche ne s'écrit pas
+> avant d'avoir vérifié que le code peut la tenir.**
+>
+> ⚠️ Et le correctif lui-même a rebuté sur le piège n° 1 : mon commentaire d'explication
+> contenait des **accents graves** (`StationGroupDto`, `circle-radius`) dans un
+> commentaire de `template:` — **build cassé**, quatre erreurs dont un `NG1002`
+> incompréhensible. `pnpm verif:litteraux` l'a nommé tout de suite. **Quatrième fois.**
+
 ### 🟠 Ce qui bute sur un contrat d'API — trois fois, jamais touché
 
 Trois lignes de planche demandent une donnée qu'**aucun DTO ne porte**. Aucune n'a été
