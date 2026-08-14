@@ -279,10 +279,24 @@ qu'après contrôles verts.
 - [x] `prisma validate` vert
 - [ ] Reste à T2 : la contrainte CHECK « requestId XOR missionId »
 
-### T2 — Migration et grille par défaut
-- [ ] Migration additive (aucune colonne existante modifiée)
-- [ ] Amorce : la grille « Courses Express » du § 3 pour chaque flotte existante
-- [ ] Vérifier sur une copie de la base de production **avant** tout déploiement
+### T2 — Migration et grille par défaut ✅
+- [x] Migration `20260813180000_mission_requests_and_quotes`, **purement additive**
+- [x] SQL généré **puis filtré** : le diff embarquait 4 `ALTER TABLE` sans rapport
+      — dérive préexistante de la base locale — qui auraient altéré des tables de
+      production. Aucune colonne existante n'est touchée.
+- [x] Contrainte CHECK « un arrêt appartient à une demande **ou** à une mission »,
+      testée dans les deux sens (orphelin et double parent : refusés)
+- [x] Grille par défaut écrite pour chaque flotte, `enabled = true`
+- [x] Appliquée en local : 5 tables, 9 tranches par flotte, valeurs conformes au § 3
+- [ ] ⚠️ **Pas encore déployée en production.** Attendre que T3/T4 rendent la
+      fonctionnalité utile — livrer des tables mortes pendant la recette du client
+      n'apporte rien et ajoute du risque.
+
+> **Règle de sélection d'une tranche**, écrite dans la migration et à respecter dans
+> le moteur : la tranche retenue est **la première, par ordre croissant, dont `toKm`
+> est supérieur ou égal à la distance** — ou dont `toKm` est nul. Et **non** un
+> encadrement `[fromKm, toKm]` : la grille saute de « 0 à 50 » à « 51 à 100 », ce qui
+> laisserait 50,4 km sans tranche. `fromKm` sert l'affichage, `toKm` la décision.
 
 ### T3 — Tarification : API + onglet Paramètres
 - [ ] `MissionPricingService` : lecture, écriture, validation des tranches
