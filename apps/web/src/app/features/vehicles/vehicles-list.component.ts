@@ -1413,7 +1413,33 @@ export class VehiclesListComponent implements OnInit {
 
   protected setViewMode(mode: 'cards' | 'table' | 'grouped'): void {
     this.viewMode.set(mode);
+    this.vueImposee = true;
     this.preferences.update({ vehiclesView: mode });
+  }
+
+  /** Vrai dès que l'utilisateur a touché au sélecteur pendant cette visite. */
+  private vueImposee = false;
+
+  /**
+   * La vue GROUPÉE par défaut — mais seulement quand elle apporte quelque chose.
+   *
+   * La planche montre la liste groupée par groupe sur les trois plateformes.
+   * L'imposer partout serait pourtant faux : une flotte sans groupe, ou avec un
+   * seul, n'y gagne qu'un en-tête inutile au-dessus de la même liste.
+   *
+   * D'où la règle : groupée dès qu'il y a PLUSIEURS groupes, plate sinon — et
+   * jamais si l'utilisateur a lui-même choisi une vue. `aChoisi()` distingue son
+   * clic d'un défaut jamais touché ; sans cette distinction, on écraserait à
+   * chaque chargement le choix de quelqu'un qui préfère les cartes.
+   *
+   * Le veilleur garde son cas à part (il démarre toujours groupé, son périmètre
+   * EST ses groupes), traité à l'initialisation de `viewMode`.
+   */
+  private appliquerVueParDefaut(): void {
+    if (this.vueImposee || this.auth.isWatchman()) return;
+    if (this.preferences.aChoisi('vehiclesView')) return;
+    const plusieursGroupes = this.groupOptions().length > 1;
+    this.viewMode.set(plusieursGroupes ? 'grouped' : 'cards');
   }
 
   /** Sprint 1 — replie/déplie une section de groupe (clé = groupId ou '__none__'). */
@@ -1699,6 +1725,7 @@ export class VehiclesListComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
+      this.appliquerVueParDefaut();
       // Fix veilleur — amorce l'état « en mouvement » (le veilleur ne reçoit aucune
       // position en live) pour griser le bouton « Couper » dès le chargement. Les
       // transitions WS `VEHICLE_MOVEMENT` prennent ensuite le relais.

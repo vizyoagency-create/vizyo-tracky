@@ -122,10 +122,17 @@ import {
       animation: bs-slide-down 220ms cubic-bezier(0.4, 0, 1, 1) both;
     }
 
+    /* La poignee est une CIBLE : c'est elle qu'on attrape pour tirer la feuille.
+       Mesuree a 375x36, elle passait sous le plancher de 44 px en hauteur — sa
+       pleine largeur la rendait attrapable, mais un geste de glissement demande
+       de la marge dans le sens ou l'on tire, c'est-a-dire en hauteur.
+       Elle est partagee par TOUTES les feuilles de l'app : une seule regle ici
+       les corrige toutes. Le trait visible ne change pas de taille, seule sa
+       zone de prise s'agrandit. */
     .bs-handle-wrap {
       flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      width: 100%; height: 28px;
+      width: 100%; min-height: 44px;
       background: transparent; border: none;
       cursor: grab; touch-action: none;
     }

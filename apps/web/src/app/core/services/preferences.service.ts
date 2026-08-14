@@ -103,6 +103,21 @@ export class PreferencesService {
   private readonly _prefs = signal<UserPreferences>(structuredClone(DEFAULTS));
   readonly prefs = this._prefs.asReadonly();
 
+  /**
+   * Les clés que l'utilisateur a EXPLICITEMENT choisies.
+   *
+   * `prefs()` ne permet pas de les distinguer d'un défaut jamais touché : une
+   * valeur `'cards'` peut venir d'un clic ou de `DEFAULTS`. Un écran qui veut
+   * proposer un défaut plus malin (par exemple grouper la liste quand la flotte a
+   * plusieurs groupes) a besoin de la différence — sinon il écrase un choix.
+   */
+  private readonly _choisies = signal<ReadonlySet<keyof UserPreferences>>(new Set());
+
+  /** Vrai si l'utilisateur a lui-même posé cette préférence. */
+  aChoisi(cle: keyof UserPreferences): boolean {
+    return this._choisies().has(cle);
+  }
+
   /** Charger les préférences depuis localStorage pour un user */
   load(userId: string): void {
     this.userId = userId;
@@ -112,11 +127,14 @@ export class PreferencesService {
         const saved = JSON.parse(raw) as Partial<UserPreferences>;
         // Merge avec les defaults pour les clés manquantes
         this._prefs.set(this.mergeWithDefaults(saved));
+        this._choisies.set(new Set(Object.keys(saved) as (keyof UserPreferences)[]));
       } else {
         this._prefs.set(structuredClone(DEFAULTS));
+        this._choisies.set(new Set());
       }
     } catch {
       this._prefs.set(structuredClone(DEFAULTS));
+      this._choisies.set(new Set());
     }
   }
 
@@ -124,6 +142,8 @@ export class PreferencesService {
   update(partial: Partial<UserPreferences>): void {
     const current = this._prefs();
     const merged = { ...current, ...partial };
+    // Tout ce qui passe par ici est un choix de l'utilisateur, par construction.
+    this._choisies.update((s) => new Set([...s, ...(Object.keys(partial) as (keyof UserPreferences)[])]));
 
     // Deep merge pour les objets imbriqués
     if (partial.notifications) {

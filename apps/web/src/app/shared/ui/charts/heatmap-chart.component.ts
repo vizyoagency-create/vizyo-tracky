@@ -11,6 +11,25 @@ import {
  * ce jour de la semaine, à cette heure.
  *
  * Ordre des jours : lundi en haut → dimanche en bas (norme FR/ISO).
+ *
+ * ─── LES 168 CELLULES DE 10 × 11 PX SONT UNE EXCEPTION ASSUMÉE ──────────────
+ *
+ * Le critère de recette impose des cibles ≥ 44 px au doigt. Les cellules de
+ * cette grille mesurent 10 × 11 et la sonde les signale, à raison : ce sont des
+ * `<button>`.
+ *
+ * **Décision client du 2026-08-14 : on les laisse.** Une cellule à 44 px donnerait
+ * une grille de 7 392 px de large — la vue d'ensemble sur 24 h × 7 j, qui est
+ * toute la raison d'être de l'objet, disparaîtrait derrière un défilement.
+ *
+ * Ce n'est pas un renoncement, parce que **le doigt a déjà un chemin** : chaque
+ * étiquette de jour (`.hm-day-label`) est une cible de 24 × 44 qui ouvre le détail
+ * du jour. Les cellules servent au SURVOL et au focus clavier — elles portent
+ * chacune un `aria-label` complet (« Lun 15h, 6 trajets »), donc le contenu reste
+ * accessible au lecteur d'écran et à la navigation clavier.
+ *
+ * ⚠️ Si un jour cette grille devient le SEUL accès à une information, la décision
+ * est à revoir : elle tient parce qu'un autre chemin existe.
  */
 export type HeatmapMatrix = number[][];
 
