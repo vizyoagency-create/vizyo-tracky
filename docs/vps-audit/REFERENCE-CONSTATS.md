@@ -22,7 +22,7 @@ déjà vu ça ? »* — et de reconnaître une rechute.
 ## VPS-001 — Le cache de build Docker n'est jamais purgé
 
 - **Domaine** : disque · **Gravité** : 1 · **Statut** : `APPLIQUE` (2026-08-04, 17 h 40)
-- **Vu** : 2026-08-13 · **Mesure du jour** : total `docker system df` **36,42 Go / 182 entrees** — mais la seule grandeur que `keepStorage` gouverne, `Private`, vaut **10,39 Go** contre 10,37 la veille : **+0,02 Go en 24 h sur un plafond de 10 Go**. Les 26,03 Go de `Shared` sont les couches des **huit images construites le 08-12**, partagees avec des images VIVANTES et hors de portee du ramasse-miettes par construction. ⚠️ **C'est le jour ou ce constat a montre sa limite** : le mecanisme a tenu sa borne a 0,2 % pres pendant que le disque perdait 23 Go — voir **VPS-025**. **NE PAS purger** : `buildx prune -af` ne rendrait que les 10,39 Go de `Private`, qui reviennent au prochain build. *(mesure du 2026-08-12, conservee : total `docker system df` 10,39 Go / 77 entrees* — `Private` **10,37 Go** (plafond 10 Go, 4 % au-dessus) + `Shared` **23 Mo** (contre 1,68 Go la veille). Le disque a rendu 2 points de plus (53 % -> 51 %) sans qu'aucune commande n'ait ete lancee, troisieme passage consecutif. Dernier build : `tracky-api:latest` le 2026-08-11 a 22 h 34 min 12, `cache.db` de BuildKit modifie 5 min plus tard — le mecanisme se declenche bien AVEC les builds. **NE PAS purger.** *(mesure du 2026-08-11, conservee : total `docker system df` 12,19 Go / 99 entrees* — en BAISSE de 1,63 Go sans qu'aucune commande n'ait ete lancee ; decomposition `docker buildx du` : **Private 10,51 Go** (la seule grandeur que `keepStorage` gouverne, plafond 10 Go — 5 % au-dessus) + **Shared 1,68 Go** (contre 3,39 la veille). Le ramasse-miettes travaille : c'est lui qui a rendu 2 points de disque (55 % → 53 %). **NE PAS purger.**)*
+- **Vu** : 2026-08-14 · **Mesure du jour** : `Private` **11,31 Go** (plafond 10 Go, 13 % au-dessus) + `Shared` **2,26 Go**. ⚠️ **C'est le jour ou ce mecanisme a rendu 23,8 Go de `Shared` et fait mentir VPS-025** : le build du 08-13 a 17 h 18 a dereference les couches de l'image qu'il remplacait, `cache.db` a ete ecrit 341 s plus tard, et le disque est passe de 76 % a 59 %. **`Private` a valu 11,31 Go sur QUATRE lectures** prises entre 04 h 10 et 04 h 25 pendant qu'un build tournait, alors que le total de `docker system df` variait de **5,5 Go** (18,92 → 13,38 → 17,35 → 16,57) et que les entrees actives passaient de 0 a 33. **C'est `Private` la grandeur de tendance, pas le total.** **NE PAS purger.** *(mesure du 2026-08-13, conservee : total `docker system df` 36,42 Go / 182 entrees, `Private` 10,39 Go, `Shared` 26,03 Go.)*
 - **Mesure à la découverte (2026-08-04)** : 33,59 Go, 250 entrées, **0 active**
 
 > ### ✅ Corrigé le 2026-08-04 — la preuve
@@ -314,7 +314,7 @@ journalise proprement et survit mieux aux redémarrages.
 ## VPS-005 — Aucune limite mémoire sur aucun conteneur
 
 - **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE` (Tracky partiellement traité le 2026-08-04)
-- **Vu** : 2026-08-13 · **Mesure** : **30/33 sans limite memoire, 33/33 sans limite CPU** (un conteneur de plus, `dronely-devis`, arrive sans limite ni sonde) ; **0 OOM en 30 j**, memoire 32 %, PSI `full` = 0 sur les trois ressources — seuil de reescalade non atteint pour le **10e passage**. ⚠️ VPS-016 en est a sa 4e journee consecutive et n'a fait tomber AUCUN conteneur : c'est le processeur qui manque, pas la memoire. La limite **CPU**, absente sur 33/33, n'a toujours jamais ete posee. *(mesure du 2026-08-12, conservee : **29/32 sans limite mémoire, 32/32 sans limite CPU** (un conteneur de plus, `dronely-presentation`, arrive sans limite ni sonde) ; 0 OOM en 30 j, mémoire 36 %, PSI `full` = 0 — seuil de réescalade non atteint pour le 9e passage. ⚠️ VPS-016 en est a sa 3e occurrence et n'a fait tomber AUCUN conteneur : c'est le processeur qui manque, pas la memoire. La limite **CPU**, absente sur 32/32, n'a toujours jamais ete posee. *(mesure du 2026-08-11, conservee : 28/31 sans limite mémoire, 31/31 sans limite CPU* ; 0 OOM en 30 j — inchangé (mémoire 36 %, PSI `full` = 0 sur les trois ressources, seuil de réescalade non atteint pour le 8e passage). ⚠️ Ce passage en donne la meilleure illustration : `dockerd` a confisqué 1,7 cœur sur 2 pendant des heures (VPS-016) **sans qu'aucun conteneur ne tombe** — parce que c'est le processeur qui manquait, pas la mémoire. Une limite mémoire n'aurait rien changé ici ; c'est la limite **CPU**, absente sur 31/31, qui n'a jamais été posée.)*
+- **Vu** : 2026-08-14 · **Mesure** : **30/33 sans limite memoire, 33/33 sans limite CPU** — inchange ; **0 OOM en 30 j**, memoire 36 %, PSI `full` = 0 sur les trois ressources — seuil de reescalade non atteint pour le **11e passage**. ⚠️ VPS-016 en est a sa 5e journee (55 h) et n'a fait tomber AUCUN conteneur : c'est le processeur qui manque, pas la memoire. *(mesure du 2026-08-13, conservee : 30/33 sans limite memoire, 33/33 sans limite CPU, 0 OOM, memoire 32 %.)*
 
 > ### ⚠️ Précision apportée le 2026-08-05 — « Tracky traité » était trop généreux
 >
@@ -417,7 +417,7 @@ sorti en **137** (tué) — s'il doit revivre, le sortir de la liste.
 ## VPS-007 — `random_page_cost` réglé pour un disque mécanique
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `A_TRAITER` — ⚠️ **ROUVERT le 2026-08-13 : il avait été fermé sur un dénominateur tronqué**
-- **Vu** : 2026-08-13 · **Mesure du jour** : **5 bases sur 6 sont à `4`, dont TROIS de production** — `vizyo-verify-postgres` (pièces d'identité), `vizyo-manager-postgres` (Stripe, factures, clients) et `texto-postgres` (passerelle SMS). Seule `tracky-postgres` est à 1.1.
+- **Vu** : 2026-08-14 · **Mesure du jour** : **5 bases sur 6 sont a `4`, dont TROIS de production** — `vizyo-verify-postgres`, `vizyo-manager-postgres` et `texto-postgres`. Seule `tracky-postgres` est a 1.1. Inchange ; le levier corrige affiche `✅ 6 / 6 bases examinees` pour son premier passage complet.
 - **Mesure à la découverte (2026-08-04)** : `random_page_cost = 4`
 
 > ### 🔄 2026-08-13 — ce constat était clos depuis neuf passages, sur une phrase fausse
@@ -481,7 +481,7 @@ Réversible instantanément.
 ## VPS-008 — ~~`position_sampling_decisions` pèse 55 % de `positions`~~ → **RÉFUTÉ : elle a une rétention**
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `ACCEPTE` (réfuté le 2026-08-10)
-- **Vu** : 2026-08-13 · **Mesure** : **206 Mo — a l'octet pres le meme qu'hier** — sur une fenetre glissante de **5 jours** (2026-08-09 → 2026-08-13). Le `min` n'a pas avance pendant que le `max` avancait : lu seul, ca ressemble a une purge qui n'a pas tourne. **La taille dit le contraire** — elle n'a pas bouge d'un Mo alors que l'estime de lignes monte de 29 % : la table reutilise les pages liberees. La fenetre oscille entre 4 et 5 jours selon l'heure de la purge relativement a celle de l'audit. *(mesure du 2026-08-12, conservee : 206 Mo sur une **fenêtre glissante de 4 jours** (2026-08-09 → 2026-08-12) — la fenêtre a glissé d'un jour exactement, comme `wire_logs`
+- **Vu** : 2026-08-14 · **Mesure** : **206 Mo — a l'octet pres le meme qu'hier** — sur une fenetre glissante de **4 jours** (2026-08-11 → 2026-08-14). Le `min` a AVANCE de deux jours : la purge a tourne, exactement comme `wire_logs`. Rien a recuperer, rien a surveiller. *(mesure du 2026-08-13, conservee : 206 Mo, fenetre de 5 jours.)*
 
 > ### ❌ 2026-08-10 — ce constat reposait sur une hypothèse fausse, et une requête suffisait
 >
@@ -559,7 +559,7 @@ une rétention à 7 jours rendrait ~180 Mo et allégerait chaque `pg_dump`.
 ## VPS-009 — Volumes Docker orphelins contenant des données
 
 - **Domaine** : docker · **Gravité** : 4 · **Statut** : `ACCEPTE`
-- **Vu** : 2026-08-13 · **Mesure** : **13 volumes, 421,5 Mo — stabilise pour le 9e passage**. ⚠️ **Le seuil de reexamen de ce constat est a 4 points** : il dit « reexaminer si le disque repasse au-dessus de 80 % apres les nettoyages », et le disque est passe a **76 %** en 24 h (VPS-025). La decision ne change pas pour autant — 421 Mo de bases non reconstituables contre 23 Go libres, ce n'est pas la que se joue le disque. *(mesure du 2026-08-12, conservee : **13 volumes, 421,5 Mo — stabilisé pour le 8e passage** (08-10 → 08-05 : 13 / 421 Mo · 08-04 : 5 / 204 Mo)
+- **Vu** : 2026-08-14 · **Mesure** : **13 volumes, 421,5 Mo — stabilise pour le 10e passage**. ✅ **Le seuil de reexamen de ce constat s'ELOIGNE** : il dit « reexaminer si le disque repasse au-dessus de 80 % », et le disque est retombe de 76 % a **59 %** (VPS-025 refute). Il en est desormais a **21 points**, contre 4 la veille. La decision ne change pas : 421 Mo de bases non reconstituables contre 40 Go libres. *(mesure du 2026-08-13, conservee : 13 volumes, 421,5 Mo, disque a 76 %.)*
 
 > ### 📈 Plus que doublé le 2026-08-05 — et c'est prévisible, pas inquiétant
 >
@@ -597,7 +597,7 @@ cache jetable et une base de données.
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` — **désaggravé le 2026-08-12 sur le volet paquets, toujours ouvert sur le noyau**
-- **Vu** : 2026-08-13 · **Mesure du jour** : tourne sur 6.8.0-**136**, 6.8.0-**137** installe · compte de paquets **NON MESURABLE** (cache apt de **10 h**, seuil 6 h — VPS-M29 refuse de publier pour la 2e fois ; a titre indicatif : 59 en retard, 0 securite) · **4 services tournent sur une bibliotheque REMPLACEE** · **33/33 en `unless-stopped` — verifie par le collecteur**. *(mesure du 2026-08-12, conservee : tourne sur 6.8.0-**136**, 6.8.0-**137** installé · compte de paquets **NON MESURABLE** (cache apt de 27 h — c'est le correctif VPS-M29 qui refuse désormais de le publier ; à titre indicatif : 59 en retard, 0 sécurité) · **32/32 en `unless-stopped` — vérifié par le collecteur**.
+- **Vu** : 2026-08-14 · **Mesure du jour** : tourne sur 6.8.0-**136**, 6.8.0-**137** installe · compte de paquets **NON MESURABLE** (cache apt de **13 h**, seuil 6 h — **VPS-M29 refuse de publier pour la 3e fois** ; a titre indicatif : 64 en retard, 0 securite) · **4 services tournent sur une bibliotheque REMPLACEE** · **33/33 en `unless-stopped` — verifie par le collecteur**. *(mesure du 2026-08-13, conservee : 6.8.0-136 actif, 6.8.0-137 installe, cache apt 10 h, indicatif 59/0, 4 services, 33/33.)*
 
 > ### ✅ 2026-08-12 — les 11 correctifs de sécurité d'hier ont bien été INSTALLÉS
 >
@@ -747,7 +747,7 @@ d'un coup : le noyau, les 1,1 Go de mémoire résidente de `dockerd`, et le swap
 ## VPS-011 — Les healthchecks sont la première charge de fond, et personne ne les voit
 
 - **Domaine** : docker · **Gravité** : 3 · **Statut** : `SURVEILLANCE` (partiellement appliqué le 2026-08-04)
-- **Vu** : 2026-08-13 · **Mesure** : **65 invocations/min** (93 600/jour), inchangee depuis le 2026-08-04 — **10e passage**. Denominateur affiche par le collecteur : **24 sondes sur 33 conteneurs, 9 SANS AUCUNE SONDE** (8/32 hier — `dronely-devis` arrive sans sonde). Taux de creation de processus : **1 302/min**, contre 1 404 hier et 1 758 le 08-09 — la machine perd un coeur depuis 29 h : **une baisse pendant une panne ne mesure pas une amelioration**. *(mesure du 2026-08-12, conservee : **65 invocations/min** (93 600/jour), inchangée depuis le 2026-08-04 — **9e passage**. Le collecteur affiche desormais son denominateur de lui-meme : **24 sondes sur 32 conteneurs, 8 SANS AUCUNE SONDE** (7/31 hier — `dronely-presentation` arrive sans sonde). Taux de creation de processus : **1 404/min**, contre 1 494 hier — la baisse est du meme ordre que la variance, et la machine est en boucle : ne rien en conclure. *(mesure du 2026-08-11, conservee : 65 invocations/min, 8e passage.* Le taux de creation de processus est remonte a **1 494/min** (1 098 pendant la boucle du 08-10, 1 758 le 08-09) : la baisse d'hier etait bien un symptome, pas un gain. ⚠️ Le taux de création de processus, lui, est tombé à **1 098/min** (1 758 la veille) : ce n'est **pas** un gain, c'est le symptôme de VPS-016 — une machine dont un cœur est confisqué crée moins de processus parce qu'elle n'y arrive plus. Même chute qu'au 2026-08-06 (1 332 → 966). *Un compteur qui baisse pendant une panne ne mesure pas une amélioration.*)*
+- **Vu** : 2026-08-14 · **Mesure** : **65 invocations/min** (93 600/jour), inchangee depuis le 2026-08-04 — **11e passage**. Denominateur affiche : **24 sondes sur 33 conteneurs, 9 SANS AUCUNE SONDE**. ⚠️ Taux de creation de processus : **1 866/min — le plus HAUT jamais mesure** (1 302 la veille, 1 758 le 08-09 sur machine saine). **Ce chiffre demolit l'heuristique posee le 08-10** (« une machine dont un coeur est confisque cree moins de processus ») : la boucle dure depuis 55 h et le taux est au maximum. Ce compteur ne mesurait donc ni un gain ni un symptome fiable — il faut cesser de l'interpreter dans un sens ou dans l'autre. *(mesure du 2026-08-13, conservee : 65 invocations/min, 24/33 sondes, 1 302 processus/min.)*
 - **Mesure à la découverte (2026-08-04)** : 88 invocations/min = **126 720/jour**
 
 > ### ✅ Appliqué le 2026-08-04 sur 5 sondes — et ce que ça a VRAIMENT donné
@@ -902,7 +902,7 @@ découvre au pire moment.
 ## VPS-013 — Trois bases de production n'ont aucune sauvegarde exploitable
 
 - **Domaine** : sauvegardes · **Gravité** : 1 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-13 · **Mesure** : 3 bases de production sur 7 moteurs en service ; `vizyo-manager` a **120 jours** (2 879 h) ; **cout total d'y remedier : 17,5 Mo/jour** (`texto` 8,7 Mo · `vizyo-manager` 8,4 Mo · `capcom6` 0,4 Mo) — **10e passage sans action**. *(mesure du 2026-08-12, conservee : 3 bases de production sur 7 moteurs en service ; `vizyo-manager` à **119 jours** ; **coût total d'y remédier : 17,5 Mo/jour** (`texto` 8,7 Mo · `vizyo-manager` 8,4 Mo · `capcom6` 0,4 Mo). *(mesure du 2026-08-11, conservee : `vizyo-manager` à 117 jours, coût total 17,4 Mo/jour* (`texto` 8,6 Mo · `vizyo-manager` 8,4 Mo · `capcom6` 0,4 Mo))*
+- **Vu** : 2026-08-14 · **Mesure** : 3 bases de production sur 7 moteurs en service ; `vizyo-manager` a **121 jours** ; **cout total d'y remedier : 17,4 Mo/jour** (`texto` 8,7 Mo · `vizyo-manager` 8,4 Mo · `capcom6` 0,4 Mo) — **11e passage sans action**. *(mesure du 2026-08-13, conservee : `vizyo-manager` a 120 jours, cout total 17,5 Mo/jour.)*
 - ✅ **2026-08-09 — la question « faut-il accepter la perte ? » est CLOSE, et elle ne l'était que faute d'un chiffre.** Quatre passages durant, le référentiel a répété « `texto` et `capcom6` n'ont aucune sauvegarde » sans jamais dire ce que la corriger coûterait. Mesuré : `texto-postgres` **8,5 Mo**, `vizyo-manager-postgres` **8,4 Mo**, `capcom6-mysql` **0,4 Mo** — **17,3 Mo au total**, moins de 3 Mo compressés par jour. Soit **1/2 300** de ce que `/var/backups/vizyo-tracky` occupe déjà (6,8 Go), et 0,006 % du disque libre. Il n'y avait pas d'arbitrage à rendre : il y avait une mesure à prendre. **Leçon de méthode** : un constat qui propose « corriger **ou** accepter » sans chiffrer le coût de la correction ne propose rien — il reporte. Le collecteur affiche désormais cette taille sous chaque ligne en défaut (hors développement).
 - ⚠️ **2026-08-08 — VPS-020 multiplie ce constat** : `vizyo-manager-postgres` partage le projet compose `deploy` avec Maestroo. Un `--remove-orphans` lancé depuis l'autre dépôt supprimerait la base **et** elle n'a pas de sauvegarde depuis 114 jours. Les deux défauts sont individuellement de gravité 2 et 1 ; ensemble, ils font une perte définitive à une commande de distance.
 
@@ -996,8 +996,58 @@ passage suivant — c'est la raison d'être des `chiffres` du manifeste.
 
 ## VPS-015 — La sauvegarde de Vizyo Verify n'a jamais tourné toute seule
 
-- **Domaine** : sauvegardes · **Gravité** : **2** (était 1) · **Statut** : `A_TRAITER` — **volet SYMPTÔME fermé le 2026-08-12, volet CAUSE intact**
-- **Vu** : 2026-08-13 · **Mesure du jour** : **une archive existe enfin** (2026-08-12 07 h 10 min 31, chiffrée, relue, 19 h) — **mais produite par un redéploiement, pas par le correctif du plan, et le timer n'a toujours JAMAIS réussi** (dernière exécution du timer : 2026-08-12 03 h 30 min 56, `203/EXEC`).
+- **Domaine** : sauvegardes · **Gravité** : **2** · **Statut** : `A_TRAITER` — **volet SYMPTÔME `APPLIQUE` le 2026-08-14 (prouvé par le TIMER, deux nuits), volet CAUSE toujours intact**
+- **Vu** : 2026-08-14 · **Mesure du jour** : **le timer a produit la sauvegarde deux nuits de suite** — 08-13 à 03 h 31 min 47 et 08-14 à 03 h 31 min 27, avec `LastTriggerUSec` coïncidant à la seconde. 10 archives, 10 chiffrées / 0 en clair, dossier `700`, copie hors-site à 23 h dont le contenu est daté de 0 h. **Mais `backup.sh` est toujours un `-rwxrwxr-x` daté du 08-12, et `ExecStart` pointe toujours le script directement.**
+
+> ### ✅ 2026-08-14 — le test écrit d'avance est tranché, et dans le BON sens
+>
+> Le rapport du 2026-08-13 posait le critère avant d'avoir la réponse : *« si `journalctl` montre
+> une réussite à 03 h 30 → le chemin automatique est prouvé pour la première fois, et VPS-015
+> passe en `APPLIQUE` sur son volet symptôme ; s'il montre un `203/EXEC` → on est revenu au
+> jour 1. »*
+>
+> ```
+> Aug 13 03:31:47  Starting vizyo-verify-backup.service...
+> Aug 13 03:31:53  OK — base 12K + 13 fichiers 5.3M, verifiees (5s)
+> Aug 14 03:31:27  Starting vizyo-verify-backup.service...
+> Aug 14 03:31:35  OK — base 12K + 13 fichiers 5.3M, verifiees (8s)
+> ```
+>
+> ```
+> LastTriggerUSec = Fri 2026-08-14 03:31:27 UTC     ← le TIMER, a la seconde du demarrage
+> ```
+>
+> **C'est bien le timer, et pas une main** : `LastTriggerUSec` coïncide à la seconde avec le
+> `Starting` du service. **Deux nuits consécutives.** Le chemin automatique est prouvé pour la
+> première fois depuis la création de l'unité. Volet symptôme → `APPLIQUE`.
+>
+> ⚠️ **Et la réussite du 08-13 avait déjà eu lieu quand le rapport du 08-13 a écrit « le timer
+> n'a JAMAIS réussi ».** L'échéance était à 03 h 31 min 47 et la collecte à 02 h 21 : le rapport
+> a été écrit **70 minutes trop tôt** pour la voir. Il n'a rien affirmé de faux — il a
+> explicitement daté son critère à *« 1 h 05 après cette collecte »* — mais c'est un rappel utile :
+> **une échéance qui tombe après la collecte n'est pas dans la collecte.**
+>
+> ### ⚠️ Le volet CAUSE n'a pas bougé d'un octet, et c'est tout ce qui reste
+>
+> ```
+> -rwxrwxr-x 1 root root  /opt/vizyo-verify/deploy/vps/backup.sh   contenu = 2026-08-12 07:10:16
+> ```
+>
+> Le bit d'exécution vient du **redéploiement du 08-12**, pas d'un correctif. Le point 3 —
+> `ExecStart=/bin/bash …`, qui retire au bit d'exécution son statut de condition de survie —
+> **n'a pas été appliqué**. Le prochain `scp -r` sans `-p` reproduira le 5 août à l'identique.
+>
+> **Ce que ces deux nuits prouvent exactement** : que le chemin automatique fonctionne **quand le
+> bit est là**. Elles ne prouvent rien sur ce qui arrive quand il ne l'est pas — et c'est
+> précisément l'événement dont on sait qu'il se produit. *Fermer un symptôme n'est pas fermer sa
+> cause*, et cette fiche est désormais le cas d'école : son symptôme s'est refermé deux fois par
+> accident, jamais par correction.
+>
+> ### Mesure du 2026-08-13, conservée
+>
+> **Une archive existe enfin** (2026-08-12 07 h 10 min 31, chiffrée, relue, 19 h) — **mais produite
+> par un redéploiement, pas par le correctif du plan, et le timer n'avait à cette date JAMAIS
+> réussi** (dernière exécution connue du timer : 2026-08-12 03 h 30 min 56, `203/EXEC`).
 
 > ### ⚠️ 2026-08-13 — la sauvegarde a réussi, et presque rien de ce qu'on en conclurait n'est vrai
 >
@@ -1140,8 +1190,66 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` — **3e occurrence, TOUJOURS EN COURS au 2026-08-13 : 4e journée, la plus longue jamais mesurée**
-- **Vu** : 2026-08-13 · **Mesure du jour** : `dockerd` à **100,3 %** d'un cœur, **1 292 236 `read()`/s pour 0,0000 octet ramené par appel**, charge machine **2,18**, PID **913 inchangé** (`ps` : 8 j 04 h 56 d'ancienneté, jamais redémarré depuis le 2026-08-04). Cumul **87,3 h / 196,8 h = 44,3 %**. **37 threads** (47 le 08-12, 27 le 08-10), les plus chauds en `futex_wait_queue`, dont **`tid=156485`, déjà identifié le 08-10 ET le 08-12**.
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `A_TRAITER` — **3e occurrence, TOUJOURS EN COURS au 2026-08-14 : 5e journée, ≥ 55 heures d'affilée**
+- **Vu** : 2026-08-14 · **Mesure du jour** : `dockerd` à **99,7 %** d'un cœur, **1 236 156 `read()`/s pour 0,0000 octet ramené par appel**, PID **913 inchangé** (`ps` : **9 j 06 h 42** d'ancienneté, jamais redémarré depuis le 2026-08-04). Cumul **113,0 h / 222,6 h = 50,8 %**. **33 threads** (37 le 08-13, 47 le 08-12, 27 le 08-10), dont **`tid=156485` pour la QUATRIÈME fois** (08-10, 08-12, 08-13, 08-14).
+
+> ### 🔴 2026-08-14 — cinquième journée, 55 heures, et le `kill -USR1` perdu une QUATRIÈME fois
+>
+> **113,0 − 87,3 = 25,7 heures de processeur consommées en 25,8 heures écoulées.** Troisième
+> passage consécutif où l'arithmétique seule établit la continuité, sans le moindre creux.
+> Début daté entre 21 h 00 et 21 h 10 UTC le 2026-08-11 : **≥ 55 h 05 au moment de la collecte.**
+>
+> | Occurrence | Début | Fin | Durée |
+> |---|---|---|---|
+> | 1 — 2026-08-05 | ~02 h 23 | 2026-08-06 ~13 h 00 | 34 h 40 |
+> | 2 — 2026-08-10 | ~01 h 15 | 2026-08-10 ~14 h 45 | ~13 h 30 |
+> | **3 — 2026-08-11** | **~21 h 05** | **toujours en cours** | **≥ 55 h 05** |
+>
+> `sar` le confirme indépendamment : de 02 h 30 à 04 h 10 ce matin, **21,x % user / 31,x % système
+> sans une variation**, exactement le profil des journées du 08-12 (22,27 / 30,89) et du 08-13
+> (21,79 / 30,81).
+>
+> ### ⚠️ FAIT NEUF — le `wchan` du même thread donne DEUX réponses en six minutes
+>
+> | Échantillon | `tid=156485` |
+> |---|---|
+> | 04:09 (collecte) | **`wait_for_partner`** |
+> | 04:15 (vérification) | `futex_wait_queue` |
+> | 04:22 (vérification) | `futex_wait_queue` |
+>
+> Répartition des 33 threads au troisième échantillon : **23 `futex_wait_queue`, 6 `do_wait`,
+> 2 « 0 », 1 `folio_wait_bit_common`, 1 `ep_poll`.**
+>
+> **Le collecteur ne prend qu'UN échantillon.** La conclusion « emballement de l'ordonnanceur Go »
+> n'est pas remise en cause — 23 threads sur 33 en `futex_wait_queue` la portent largement — mais
+> elle tenait jusqu'ici sur **trois lignes** qui pouvaient chacune être un tirage malheureux.
+> C'est **VPS-M36**.
+>
+> ### ⚠️ La collecte reproduit, à chaque passage, la ligne de VPS-M12
+>
+> ```
+> Aug 14 04:13:54  dockerd[913]: http2: server: error reading preface from client @:
+>                  read unix /run/docker.sock->@: read: connection reset by peer
+> ```
+>
+> **La collecte a tourné de 04 h 08 min 51 à 04 h 14 min 07.** C'est la ligne exacte qui précédait
+> le premier emballement du 2026-08-05, et c'est un `timeout` du collecteur qui coupe un client
+> Docker en cours de requête. VPS-M12 l'interdit depuis le 2026-08-06 ; **aucun `timeout` du
+> script n'a été revu depuis**. Ce n'est pas une cause établie ici — la boucle tournait déjà
+> depuis 55 h — mais c'est une règle écrite que le code ne respecte pas, et elle rejoint les
+> angles morts.
+>
+> ### Ce que ça ne coûte PAS, et il faut le dire
+>
+> La production répond : app-tracky **200 en 108 ms**, `/api/health` **200 en 42 ms**,
+> `tracky.vizyoagency.com` **200 en 54 ms**, app-verify **302 en 249 ms**. Aucun conteneur n'est
+> tombé, 0 OOM, PSI `full` = 0. C'est le **processeur** qui manque, pas la mémoire — et `sar`
+> montre que la machine garde **34 à 40 % d'inactivité** malgré la boucle.
+>
+> ### Mesure du 2026-08-13, conservée
+>
+> `dockerd` à **100,3 %**, **1 292 236 `read()`/s pour 0,0000 octet**, charge machine **2,18**,
+> cumul **87,3 h / 196,8 h = 44,3 %**, **37 threads**.
 
 > ### 🔴 2026-08-13 — elle n'a pas cessé une seconde, et l'unique trait commun connu est RÉFUTÉ
 >
@@ -1579,7 +1687,7 @@ l'utilisateur, pas seulement du cache. Regarder avant, dossier par dossier.
 ## VPS-018 — Un dépôt de code supprimé est parcouru chaque nuit par l'audit
 
 - **Domaine** : disque · **Gravité** : 4 · **Statut** : `A_TRAITER` — **PORTÉE RÉDUITE DE MOITIÉ le 2026-08-08**
-- **Vu** : 2026-08-13 · **Mesure** : ⚠️ **NON COMPARABLE, et pire qu'hier — 11 / 18 sous-dossiers**, en 46 s (plafond global de 45 s atteint). Sept manquants, tous nommes par le collecteur : `maalem vizyo-auth vizyo-leads vizyo-manager vizyo-texto vizyo-tracky vizyo-verify`. Le total affiche (0,6 Go) ne vaut **rien** : la machine perd un coeur depuis 29 h (VPS-016). Nouveaute : `/opt/dg-epaviste-depannage` coute **7 130 ms** pour 253 Mo — il rejoint `vizyo-leads` au rang des dossiers chers en inodes. Le decoupage de VPS-M26 fait exactement ce pour quoi il a ete ecrit : **rendre ce qui a pu etre mesure et NOMMER ce qui manque**. *(mesure du 2026-08-12, conservee : ⚠️ **NON COMPARABLE ce passage — 14 / 18 sous-dossiers seulement** (plafond global de 45 s atteint, `/opt/maalem` abandonne apres 12 s la ou il coutait **975 ms** hier). Le total affiche, 2,8 Go, ne vaut RIEN face aux 6,0 Go de la veille : ce n'est pas le disque qui a change, c'est la machine amputee d'un coeur par VPS-016. Le decoupage de VPS-M26 fait exactement ce pour quoi il a ete ecrit — rendre ce qui a pu etre mesure et NOMMER ce qui manque (`maalem vizyo-texto vizyo-tracky vizyo-verify`). **Un sous-dossier de plus** : `/opt/dronely-presentation` (3 Mo, 40 ms). *(mesure du 2026-08-11, conservee : `/opt` = 6,0 Go, 17/17 sous-dossiers* (remesuré après deux passages sans chiffre) · **437 345 inodes** · `/opt/vizyo-leads` **823 Mo, et 6,4 s sur les 25 s du parcours — soit ~25 % du coût, pour du code qui ne tourne plus** · `/opt/foodsqan` **291 Mo — À NE PAS TOUCHER, voir ci-dessous**.)*
+- **Vu** : 2026-08-14 · **Mesure** : ⚠️ **NON COMPARABLE — 13 / 18 sous-dossiers**, en 51 s (plafond global atteint). Cinq manquants, tous nommes : `maalem vizyo-leads vizyo-texto vizyo-tracky vizyo-verify`. Le total affiche (2,0 Go) ne vaut **rien** face aux 6,0 Go du 08-11. ⚠️ **TROISIEME passage consecutif sans mesure complete** (11/18, 13/18, 13/18) : le delai de 12 s par sous-dossier a ete calibre sur une machine saine, et elle ne l'est plus depuis le 08-11. `/opt/dg-epaviste-depannage` coute **3 971 ms** pour 253 Mo, `/opt/vizyo-auth` **10 165 ms** pour 440 Mo, `/opt/vizyo-manager` **10 655 ms** pour 1004 Mo. *(mesure du 2026-08-13, conservee : 11/18 sous-dossiers en 46 s, total 0,6 Go, sans valeur.)*
 
 > ### ✅ 2026-08-11 — le coût par sous-dossier est enfin MESURÉ, et il confirme la thèse
 >
@@ -1702,7 +1810,7 @@ serveur dont le second poste disque n'est plus surveillé est un serveur qu'on d
 ## VPS-019 — `wire_logs` pèse 242 Mo — elle a bien une rétention
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `ACCEPTE` — **DIAGNOSTIC CORRIGÉ le 2026-08-08**
-- **Vu** : 2026-08-13 · **Mesure** : **241 Mo — a l'octet pres le meme qu'hier — ~710 951 lignes (estime)** sur une fenetre glissante de **5 jours** (2026-08-09 → 2026-08-13), 24 % de `tracky_prod`. L'estime de lignes bondit de 34 % pendant que la **taille ne bouge pas d'un Mo** : c'est la signature d'une fenetre glissante qui reutilise ses pages liberees, pas d'une accumulation. *(mesure du 2026-08-12, conservee : **241 Mo, ~528 846 lignes (estimé)** sur une **fenêtre glissante de 4 jours** (2026-08-09 → 2026-08-12) — 24 % de `tracky_prod`.)*
+- **Vu** : 2026-08-14 · **Mesure** : **241 Mo — a l'octet pres le meme qu'hier — ~523 268 lignes (estime)** sur une fenetre glissante de **4 jours** (2026-08-11 → 2026-08-14), 24 % de `tracky_prod`. Le `min` a **avance de deux jours** ce passage : la purge a tourne, et la fenetre oscille entre 4 et 5 jours selon l'heure de la purge relativement a celle de l'audit. ⚠️ **L'estime de lignes BAISSE de 26 %** (710 951 → 523 268) a taille strictement identique — apres avoir bondi de 34 % la veille : c'est du bruit de recalage (VPS-M20), et cette table en donne le meilleur exemple du referentiel. *(mesure du 2026-08-13, conservee : 241 Mo, ~710 951 lignes estimees, fenetre de 5 jours (2026-08-09 → 08-13).)*
 
 > ### ❌ 2026-08-08 — « jamais purgée, sans rétention » était FAUX. Elle a une rétention.
 >
@@ -1769,7 +1877,7 @@ ne justifient pas de supprimer une donnée qu'on n'a pas fini de comprendre — 
 ## VPS-020 — Deux applications sans rapport partagent le projet compose `deploy`
 
 - **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE`
-- **Vu** : 2026-08-13 · **Mesure** : **7 conteneurs, 2 applications, 1 seul projet compose** — inchange, **7e passage** (`deploy` : 4 Maestroo dev + 3 Vizyo Manager prod). *(mesure du 2026-08-12, conservee : **7 conteneurs, 2 applications, 1 seul projet compose** — inchangé, 6e passage (`deploy` : 4 Maestroo dev + 3 Vizyo Manager prod)
+- **Vu** : 2026-08-14 · **Mesure** : **7 conteneurs, 2 applications, 1 seul projet compose** — inchange, **8e passage** (`deploy` : 4 Maestroo dev + 3 Vizyo Manager prod). ⚠️ Le risque se multiplie toujours avec VPS-013 : `vizyo-manager-postgres` est dans ce projet et sa derniere sauvegarde a **121 jours**.
 
 **Quoi.** `docker compose ls` le dit sans détour :
 
@@ -1832,7 +1940,7 @@ que les noms ne sont pas séparés. C'est exactement la commande que Compose pro
 ## VPS-021 — La porte d'entrée HTTP/HTTPS de toute la production appartient à une pile déclarée morte
 
 - **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE`
-- **Vu** : 2026-08-13 · **Mesure** : **1 seul conteneur tient les ports 80 et 443**, et il en sert desormais **25** (24 hier ; `dronely-devis` s'ajoute sur le meme domaine). Bout-en-bout du 2026-08-13 : app-tracky **200 en 47 ms**, `/api/health` **200 en 38 ms**, `tracky.vizyoagency.com` **200 en 45 ms**, app-verify **302 en 68 ms** — pendant que la machine perd un coeur depuis 29 h (VPS-016), et **plus vite qu'hier**. ⚠️ Il n'a toujours AUCUNE sonde de sante, et ils sont maintenant **9 sur 33** dans ce cas. *(mesure du 2026-08-12, conservee : **1 seul conteneur tient les ports 80 et 443** — et il en sert desormais **24** (23 hier : `dronely.vizyoagency.com` s'y ajoute). Bout-en-bout du 2026-08-12 : app-tracky **200 en 49 ms**, `/api/health` **200 en 86 ms**, pendant que la machine perd un coeur (VPS-016). ⚠️ Il n'a toujours AUCUNE sonde de sante, et ils sont maintenant **8 sur 32** dans ce cas., et il s'appelle `foodsqan-traefik` — inchangé, et confirmé par la table de routage à chaque passage (23 domaines, 19 conteneurs étiquetés). Le bout-en-bout du 2026-08-11 le retraverse : app-tracky **200 en 220 ms**, `/api/health` **200 en 214 ms**. ⚠️ **2026-08-10 — le bout-en-bout HTTP le prouve désormais autrement que par les étiquettes** : `app-tracky.vizyoagency.com` répond **200 en 133 ms** et `/api/health` **200 en 52 ms**, à travers ce conteneur, pendant que la machine tourne à 140 % de charge. Le jour où il tombera, ce sont ces quatre lignes qui le diront — et non pas `docker ps`, puisqu'il n'a **aucune sonde de santé**.
+- **Vu** : 2026-08-14 · **Mesure** : **1 seul conteneur tient les ports 80 et 443**, `foodsqan-traefik`, et il sert **25 domaines** portes par 21 conteneurs etiquetes. Bout-en-bout du 2026-08-14 : app-tracky **200 en 108 ms**, `/api/health` **200 en 42 ms**, `tracky.vizyoagency.com` **200 en 54 ms**, app-verify **302 en 249 ms** — pendant que la machine perd un coeur depuis 55 h. ⚠️ Il n'a toujours AUCUNE sonde de sante, et ils sont **9 sur 33** dans ce cas. *(mesure du 2026-08-13, conservee : 25 domaines, bout-en-bout 47/38/45/68 ms.)*
 
 **Quoi.**
 
@@ -1901,7 +2009,7 @@ porte les certificats de tous les domaines publics.
 ## VPS-022 — Trois jetons GitHub en clair dans `/opt`, lisibles par tous
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-13 · **Mesure** : **3 fichiers**, dont deux en mode **644** — inchange, **6e passage sans action**. Le correctif (`chmod 600`) coûte 10 secondes et n'a aucun effet de bord.
+- **Vu** : 2026-08-14 · **Mesure** : **3 fichiers**, dont deux en mode **644** — inchange, **7e passage sans action**. Le correctif (`chmod 600`) coute 10 secondes et n'a aucun effet de bord.
 
 **Quoi.** `/opt/foodsqan/.git/config` contient une URL de dépôt de la forme
 `https://ghp_…@github.com/vizyoagency-create/foodsqan.git` — un **jeton d'accès personnel
@@ -1941,7 +2049,7 @@ l'aveugle. Et ne pas chercher les jetons avec un `grep -r` sur `/opt` sans exclu
 ## VPS-023 — 16 certificats TLS sur 35 ne servent plus aucun conteneur
 
 - **Domaine** : docker · **Gravité** : 4 · **Statut** : `ACCEPTE`
-- **Vu** : 2026-08-13 · **Mesure** : **36 certificats**, **25 domaines** routes par un conteneur vivant, **16 orphelins — inchange**. ✅ **La prediction ecrite le 2026-08-11 s'est verifiee au jour pres** : cette fiche annoncait que les deux certificats Tracky, expirant le 11 septembre, seraient renouveles « vers le 12 aout » (30 j avant). `acme.json` a ete reecrit le **2026-08-12 a 21 h 33**, et les deux expirent desormais le **10 novembre 2026**. Le renouvellement automatique est prouve **par l'evenement**, pas par la lecture d'une configuration. *(mesure du 2026-08-12, conservee : **36 certificats** dans le volume ACME (+1 : `dronely.vizyoagency.com`, verifie **servi et valide** — emetteur Let's Encrypt, expire le 9 novembre), **24 domaines** routés par un conteneur vivant, **16 orphelins — inchangé**. `acme.json` modifie le **2026-08-11 a 20 h 10**, ce qui prouve que le mecanisme d'emission fonctionne : le nettoyage automatique n'a rien a faire tant qu'aucun certificat n'approche son renouvellement. *(mesure du 2026-08-11, conservee : 35 certificats, 23 domaines, 16 orphelins* (`acme.json` toujours modifié le 2026-08-04 à 09 h 05). Les deux certificats Tracky servis expirent le **11 septembre 2026** : le renouvellement (30 j avant) tombe donc vers le 12 août. Le nettoyage automatique n'a rien à faire tant qu'aucun certificat n'approche son renouvellement.)*
+- **Vu** : 2026-08-14 · **Mesure** : **36 certificats**, **25 domaines** routes par un conteneur vivant, **16 orphelins — inchange**. `acme.json` toujours date du **2026-08-12 a 21 h 33**, et les deux certificats Tracky servis expirent le **10 novembre 2026** — la prediction du 2026-08-11 reste verifiee, le renouvellement automatique n'a rien a faire avant le 11 octobre. *(mesure du 2026-08-13, conservee : 36 certificats, 25 domaines, 16 orphelins.)*
 
 **Quoi.** Le volume `foodsqan-letsencrypt` (441 Ko, `acme.json` modifié le 2026-08-04 à 09 h 05)
 détient les certificats de 35 domaines. La table de routage dérivée des étiquettes
@@ -1983,7 +2091,7 @@ supprimer le volume au motif qu'il porte un nom `foodsqan-*` : c'est VPS-021 à 
 ## VPS-024 — ~~`positions` accumule 63 jours~~ → **RÉFUTÉ : elle a une rétention de ~62 jours**
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `ACCEPTE` (fermé le 2026-08-11)
-- **Vu** : 2026-08-13 · **Mesure** : **386 Mo — inchange a l'octet pres** — du **2026-06-13 au 2026-08-13**, soit **62 jours**. Le `min` n'a pas bouge ce passage pendant que le `max` avancait : l'horizon **oscille entre 61 et 63 jours** au lieu de converger, ce qui est le comportement attendu d'une purge dont l'heure ne coincide pas avec celle de l'audit. Rien ne derive : la taille est identique alors que l'estime de lignes monte de 8,7 %. *(mesure du 2026-08-12, conservee : 386 Mo, du **2026-06-13 au 2026-08-12** — **61 jours**. `min` a **de nouveau** avancé de deux jours pendant que `max` avançait d'un : **deuxieme confirmation consecutive**, la retention converge vers ~60 jours. `wire_logs` et `position_sampling_decisions` passent a **4 jours** (5 la veille), meme mecanisme.
+- **Vu** : 2026-08-14 · **Mesure** : **387 Mo (+1 Mo)** — du **2026-06-15 au 2026-08-14**, soit **61 jours**. Le `min` a avance de **deux jours** pendant que le `max` avancait d'un : la retention tourne, et l'horizon oscille entre 61 et 63 jours. Rien ne derive. *(mesure du 2026-08-13, conservee : 386 Mo, 2026-06-13 → 08-13, 62 jours.)*
 
 > ### ✅ 2026-08-11 — fermé au passage suivant, par la mesure écrite d'avance
 >
@@ -2059,10 +2167,86 @@ réfutait. Et un `DELETE` massif sans `VACUUM FULL` ne rend d'ailleurs rien au d
 
 ---
 
-## VPS-025 — Le disque a pris 23 Go en 24 heures, et le mécanisme censé le borner a parfaitement tenu
+## VPS-025 — ~~Le disque a pris 23 Go en 24 heures, non récupérables~~ → **RÉFUTÉ : le ramasse-miettes les a rendus en 24 h**
 
-- **Domaine** : disque · **Gravité** : 2 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-13 · **Mesure à la découverte** : 50 Go (52 %) → **73 Go (76 %)** en 24 h, **23 Go libres** ; inodes 14 % → **26 %**
+- **Domaine** : disque · **Gravité** : 4 (était 2) · **Statut** : `ACCEPTE` — **la thèse centrale est réfutée le 2026-08-14, au passage suivant son ouverture**
+- **Vu** : 2026-08-14 · **Mesure du jour** : **57 Go (59 %), 40 Go libres** — le disque a rendu **16 Go en 24 h sans qu'aucune commande soit lancée**. `Shared` est passé de **26,03 à 2,26 Go** ; `Private` de 10,39 à **11,31 Go** ; les **27 images et leur somme de 16,80 Go sont identiques à l'octet près**. Inodes 26 % → **18 %**.
+- **Mesure à la découverte (2026-08-13)** : 50 Go (52 %) → 73 Go (76 %) en 24 h, 23 Go libres ; inodes 14 % → 26 %
+
+> ### ❌ 2026-08-14 — « ces 23 Go ne sont PAS récupérables » était FAUX, et le démenti a mis 24 heures
+>
+> Ce constat affirmait, en gras, ce qui faisait tout son sérieux :
+>
+> > *« Ces 23 Go ne sont PAS récupérables. […] 26 des 36 Go sont `Shared` avec des images en
+> > service : le ramasse-miettes ne peut pas les libérer et n'a jamais prétendu le faire. »*
+>
+> Le ramasse-miettes les a libérés.
+>
+> | Mesure | 2026-08-13 | 2026-08-14 | Δ |
+> |---|---:|---:|---:|
+> | Disque utilisé | 73 Go (76 %) | **57 Go (59 %)** | **−16 Go** |
+> | Espace libre | 23 Go | **40 Go** | **+17 Go** |
+> | Cache de build — **`Shared`** | **26,03 Go** | **2,26 Go** | **−23,77 Go** |
+> | Cache de build — `Private` | 10,39 Go | 11,31 Go | +0,92 Go |
+> | Images / somme des tailles | 27 / 16,80 Go | **27 / 16,80 Go** | **0** |
+>
+> ### La cause, et elle est datée
+>
+> ```
+> dernier build : tracky-api:latest   2026-08-13 17:18:50
+>                 tracky-web:latest   2026-08-13 17:17:33
+> cache.db de BuildKit modifie le     2026-08-13 17:24:31   ← 341 s apres
+> ```
+>
+> Le build a produit un nouveau `tracky-api:latest` ; les couches de l'ancien ont cessé d'être
+> référencées par une image vivante, sont devenues collectables, et le ramasse-miettes les a
+> prises. `sysstat` confirme **373 blocs/s écrits le 08-13** contre 23 les jours calmes : **un**
+> build, pas huit.
+>
+> ### L'erreur de raisonnement, nommée
+>
+> **`Shared` n'est pas une catégorie de couches, c'est un état à un instant donné.** Une couche
+> est `Shared` *tant qu'une image vivante la référence* — c'est une **relation**, et une relation
+> change quand l'une des deux parties change. Le constat a lu une répartition instantanée comme
+> une propriété permanente.
+>
+> **Et la règle qui l'aurait évité était déjà écrite, dans la fiche voisine.** VPS-001 porte
+> depuis le 2026-08-07 : *« pour lire une valeur qui ne bouge pas, il faut trois choses — la
+> valeur, la fraîcheur de son producteur, et la fraîcheur de **ce qui déclenche** le
+> producteur. »* Le déclencheur du ramasse-miettes est un **build** ; le 08-13, le dernier build
+> de `tracky-api` remontait au 08-11. Les 26 Go de `Shared` n'avaient **encore rencontré aucun
+> déclencheur**. Conclure « hors de portée » à ce moment-là, c'était lire une absence de
+> déclenchement comme une impossibilité — l'exact miroir de l'erreur du 2026-08-06 sur VPS-001,
+> où un mécanisme sain avait été lu comme arrêté.
+>
+> ### Ce qui exclut une intervention humaine
+>
+> | Commande hypothétique | Ce qu'elle aurait laissé | Ce qu'on observe |
+> |---|---|---|
+> | `docker buildx prune -af` | `Private` ≈ 0, cache vidé | **`Private` = 11,31 Go**, 99 à 142 entrées |
+> | `docker image prune -af` | des images en moins | **27 images, somme inchangée** |
+>
+> Le ménage nocturne a bien tourné le 08-14 à 00 h 40 min 01, en 4 s, et n'a laissé **0 image
+> pendante**. La seule cause compatible avec les trois chiffres est le ramasse-miettes de
+> BuildKit.
+>
+> ### Ce qui reste vrai de ce constat, et qu'on garde
+>
+> 1. **Le pic est réel et il revient à chaque journée de build.** 76 % a été atteint ; le disque
+>    n'a pas de marge pour deux journées comme le 08-12 rapprochées.
+> 2. **L'arbitrage humain est intact** : dix conteneurs de développement (`maalem-dev-*` : 6,
+>    `maestroo-dev-*` : 4) et leurs builds vivent sur la machine qui héberge sept bases de
+>    production.
+> 3. **Le total durable récupérable reste ~3,5 Go** — mais pour **40 Go libres**, ce qui retire
+>    l'urgence.
+>
+> **Seuil de réescalade, réécrit** : repasser en `A_TRAITER` (gravité 2) si le disque franchit
+> **80 %** *et* qu'aucun build n'a eu lieu depuis 48 h — c'est-à-dire si le volume tient **sans**
+> que le ramasse-miettes ait eu son déclencheur. Le seuil de 85 % / 10 Go libres de la version
+> initiale ne distinguait pas ces deux situations.
+>
+> **À ne pas faire, et c'est inchangé** : lancer `docker buildx prune -af`. Les 11,31 Go de
+> `Private` reviennent au prochain build, au prix d'un premier build 2 à 4× plus long.
 
 **Quoi.**
 
@@ -2134,8 +2318,44 @@ Un facteur **3** entre les deux nombres Docker, et **ce facteur a varié** (1,8�
 
 ## VPS-026 — La sauvegarde de Vizyo Verify télécharge une image depuis Docker Hub pour s'exécuter
 
-- **Domaine** : sauvegardes · **Gravité** : 4 · **Statut** : `SURVEILLANCE`
-- **Vu** : 2026-08-13 · **Mesure à la découverte** : 5 des 7 secondes de la sauvegarde du 2026-08-12 sont un `docker pull`
+- **Domaine** : sauvegardes · **Gravité** : **3** (était 4) · **Statut** : `A_TRAITER` — ⚠️ **le seuil de réescalade écrit dans cette fiche a été FRANCHI le 2026-08-14**
+- **Vu** : 2026-08-14 · **Mesure du jour** : `alpine:latest` **de nouveau absent**, retéléchargé à 03 h 31 min 28 — **3 des 8 secondes** de la sauvegarde. La dépendance a joué **2 fois sur 3 exécutions connues**.
+- **Mesure à la découverte (2026-08-13)** : 5 des 7 secondes de la sauvegarde du 2026-08-12 sont un `docker pull`
+
+> ### 🔴 2026-08-14 — le seuil que cette fiche s'était écrit est franchi
+>
+> La fiche disait : *« passer en `A_TRAITER` si `alpine:latest` est constaté **absent** à un
+> passage — la dépendance deviendrait alors active à chaque exécution. »*
+>
+> ```
+> Aug 14 03:31:28  backup.sh: Unable to find image 'alpine:latest' locally
+> Aug 14 03:31:29  backup.sh: latest: Pulling from library/alpine
+> Aug 14 03:31:30  backup.sh: Status: Downloaded newer image for alpine:latest
+> ```
+>
+> | Exécution | `alpine` présent ? | Tirage ? |
+> |---|---|---|
+> | 2026-08-12 07 h 10 | non | **oui**, 5 s sur 7 |
+> | 2026-08-13 03 h 31 | **oui** | non |
+> | **2026-08-14 03 h 31** | **non** | **oui**, 3 s sur 8 |
+>
+> **La dépendance réseau est réelle et récurrente : 2 fois sur 3.** Le seul dispositif de
+> sauvegarde de **pièces d'identité** de la machine dépend, à 03 h 30, que `registry-1.docker.io`
+> réponde. Il répond aujourd'hui (401 en 245 ms) ; une limite de débit sur les tirages anonymes
+> suffirait, dans un chemin qui vient de passer huit jours en échec silencieux (VPS-015).
+>
+> ### ⚠️ Et la cause de la disparition n'est TOUJOURS pas établie — résister à la conclusion évidente
+>
+> Le prune nocturne a tourné **le 08-13 comme le 08-14**, à 00 h 40 min 01, vérifié dans les deux
+> cas. **L'image a survécu à l'un et pas à l'autre.** Le prune seul n'explique donc pas le
+> phénomène, ou pas à tous les coups. C'est la deuxième fois que l'hypothèse évidente est mise à
+> l'épreuve sur ce constat et qu'elle ne passe pas — la première était le 2026-08-13, où elle
+> avait été réfutée frontalement.
+>
+> **Le constat reste donc borné à ce qui est mesuré** : *le chemin de sauvegarde contient une
+> dépendance réseau, et elle est active deux fois sur trois.* C'est suffisant pour agir : le
+> correctif (épingler par empreinte et pré-tirer hors fenêtre) ne demande pas de connaître la
+> cause de la disparition.
 
 **Quoi.** Le journal de la première exécution réussie de `vizyo-verify-backup.service` :
 
@@ -2185,6 +2405,141 @@ que c'est lui, et le constat ci-dessus explique pourquoi cette certitude-là ét
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M35 — Le verdict de charge de l'audit est démenti par `sar`, et il l'accuse à tort
+
+- **Vu** : 2026-08-14 · **Statut** : `A_TRAITER` (identifié et chiffré, **pas encore corrigé** — délibéré)
+
+Le bloc BUDGET a rendu :
+
+```
+charge 1 min : 2.43 au DEBUT  →  14.70 a la FIN
+🟠 CHARGE PARTAGEE : […] elle finit a 14.70 (+12.27).
+```
+
+**Sur une machine à 2 cœurs, « +12,27 » se lit comme une catastrophe.** `sar` dit autre chose,
+sur exactement la même fenêtre :
+
+| Tranche UTC | %user | **%nice** | %system | %iowait | %steal | **%idle** |
+|---|---:|---:|---:|---:|---:|---:|
+| 04:00:27 (avant la collecte) | 21,88 | **0,01** | 31,42 | 0,20 | 7,85 | **38,63** |
+| 04:10:13 (contient la collecte) | 21,60 | **0,04** | 34,88 | 1,16 | 7,64 | **34,68** |
+
+**La machine a perdu 3,95 points d'inactivité — ~0,08 cœur sur 2 — pendant que la charge annoncée
+montait de 12,27.** Et `%nice`, dont VPS-M27 a établi que c'est la signature propre de l'audit
+(seul lui tourne en `nice -n 19`), passe de 0,01 à **0,04**.
+
+**La cause est mécanique.** La moyenne de charge de Linux compte les processus *runnable* **et**
+ceux en sommeil **ininterruptible** (état `D`). Sur cette machine, chaque `docker …` — du
+collecteur comme des **65 sondes de santé par minute** — attend sur le socket d'un démon qui
+tourne en boucle depuis 55 heures (VPS-016). Ils s'empilent dans la file **sans consommer un
+cycle**. La charge mesure ici la **longueur d'une file d'attente sur un démon bloqué**, pas une
+consommation de processeur.
+
+**Ce que ça coûte, et ça vaut rétroactivement.** Les verdicts `🔴 C EST L AUDIT` /
+`🟠 CHARGE PARTAGEE` posés par VPS-M27 reposent tous sur `loadavg`. Sur une machine saine c'est un
+bon indicateur ; sur celle-ci, depuis le 2026-08-11, il est dominé par VPS-016. **Les valeurs
+`chargeApresCollecte` de la série (4,20 · 5,02 · 3,22 · 14,70) ne mesurent donc pas toutes la même
+chose**, et le 14,70 d'aujourd'hui n'est pas trois fois pire que le 5,02 du 08-12.
+
+**Correctif proposé, pas encore posé.** Ce n'est **pas** d'abandonner `loadavg` — il est juste sur
+une machine saine — mais de lui adjoindre le discriminant, qui est **déjà collecté** : `%idle` et
+`%nice` de la tranche `sar` qui contient la collecte (section 9). Deux `awk` sur une sortie déjà
+en mémoire, coût nul.
+
+⚠️ **Pourquoi il n'est pas posé ce passage** : deux correctifs ont déjà été écrits et essayés
+branche par branche ce matin, et **VPS-M28 enseigne qu'un troisième écrit dans la foulée est
+celui qu'on n'essaie pas**. Il est en tête des angles morts du rapport.
+
+**Leçon générale.** C'est VPS-M27 poussé d'un cran : cette fiche avait établi qu'*« une mesure de
+fin sans mesure de début est un niveau, pas un delta »*, et le delta a bien été ajouté. Il
+manquait la marche suivante : **un delta sans le discriminant de sa cause reste un delta sans
+responsable.** Et le mode d'échec est celui de VPS-M21 dans l'autre sens — non pas un défaut qui
+rassure, mais un défaut qui **accuse** : l'audit se dénonce chaque matin pour une charge qu'il n'a
+pas produite, et un lecteur qui vérifie une fois cesse de lire la ligne.
+
+### VPS-M36 — Le `wchan` est un échantillon, et il sert de preuve sur le constat le plus lourd
+
+- **Vu** : 2026-08-14 · **Statut** : `APPLIQUE` sur son volet lisibilité (corrigé le jour même), `A_TRAITER` sur son volet échantillonnage
+
+Deux défauts distincts, trouvés le même matin sur la même ligne.
+
+**1. La valeur `0` n'était pas traduite** — angle mort n° 5 du rapport du 2026-08-13. Le repli
+`|| echo 'espace utilisateur (running)'` ne traitait que le cas où le **fichier** est illisible.
+Or le noyau écrit littéralement `0` dans `/proc/<pid>/task/<tid>/wchan` quand le thread s'exécute
+en espace utilisateur : `cat` **réussit**, le repli n'est pas pris, et la ligne affichait
+`bloque dans : 0`.
+
+**Correctif appliqué**, trois cas explicitement séparés : nom symbolique → le thread dort dans
+cette fonction du noyau ; `0` → *« espace utilisateur (running) — AUCUNE attente noyau »* ;
+fichier absent → *« thread disparu entre le classement et la lecture »*. **Les trois branches
+essayées sur la machine**, en valeurs forcées **et** réelles : `dockerd` compte en ce moment
+**2 threads dont le `wchan` vaut littéralement « 0 »** — la branche n'était pas hypothétique.
+
+**2. Et le vrai défaut est plus profond : c'est UN SEUL échantillon.**
+
+| Échantillon | `tid=156485` |
+|---|---|
+| 04:09 (collecte) | **`wait_for_partner`** |
+| 04:15 (vérification) | `futex_wait_queue` |
+| 04:22 (vérification) | `futex_wait_queue` |
+
+**Le même thread, deux réponses en six minutes.** C'est la ligne censée distinguer un `futex`
+d'une E/S sur VPS-016 — le constat le plus lourd du dispositif — et elle repose sur un instantané
+d'une valeur qui change plusieurs fois par seconde.
+
+**Ce que ça ne remet PAS en cause** : la conclusion « emballement de l'ordonnanceur Go » tient, et
+elle tient mieux qu'avant, parce qu'on dispose maintenant d'une **répartition** au lieu de trois
+lignes — **23 des 33 threads en `futex_wait_queue`**. Mais jusqu'à ce matin, cette conclusion
+reposait sur trois tirages dont chacun pouvait être malheureux, et **rien dans la sortie ne le
+disait**.
+
+**Correctif proposé, non posé** : échantillonner le `wchan` des threads chauds **3 fois** à une
+seconde d'intervalle et afficher la **répartition** plutôt qu'une valeur, ou afficher directement
+le décompte par `wchan` sur l'ensemble des threads. Coût : trois lectures de `/proc` de plus,
+aucun fork.
+
+**Leçon générale.** *Une mesure qui sert de preuve doit porter le nombre d'observations sur
+lequel elle repose.* C'est la famille VPS-M20 (*une valeur estimée ne doit jamais être présentée
+sous un nom qui promet un comptage*), appliquée non plus à un estimé mais à un **échantillon
+unique présenté comme un état**.
+
+### VPS-M37 — Un filtre `journald` a failli faire publier qu'une tâche planifiée ne tournait plus
+
+- **Vu** : 2026-08-14 · **Statut** : `APPLIQUE` (règle de vérification, comme VPS-M12)
+
+En cherchant si le ménage nocturne avait tourné, la commande lancée en marge était :
+
+```bash
+journalctl _COMM=cron --since "2026-08-13 00:00" | grep "docker image prune"
+```
+
+**Une seule ligne, datée du 08-13. Rien pour le 08-14.** La phrase *« le prune nocturne ne tourne
+plus »* était à un mot d'être écrite : un constat neuf, spectaculaire, et **faux** — qui aurait en
+outre réorienté toute l'analyse du disque de la journée.
+
+La vérification, en fenêtre serrée et **sans le filtre `_COMM`** :
+
+```
+Aug 14 00:40:01  CRON[944302]: (root) CMD (docker image prune -af --filter "until=24h" …)
+Aug 14 00:40:05  CRON[944301]: pam_unix(cron:session): session closed for user root
+```
+
+**Il a tourné, en 4 secondes**, et `systemctl show cron` confirme `NRestarts=0` depuis le
+2026-08-04. Le filtre `_COMM=cron` ne ramène pas toutes les lignes émises par `cron` : il en a
+retenu **5 sur 7 jours** là où il y en a une par jour.
+
+**Ce qui a rattrapé le coup** : avoir demandé la **fenêtre** avant de conclure sur l'**absence**.
+
+**Leçon générale, et c'est la famille VPS-M08 / M22 / M34 sur un troisième objet** : *un filtre
+qui sélectionne sans annoncer son dénominateur produit une absence, et une absence se lit comme un
+fait.* La différence avec les précédents est que celui-ci n'était pas dans le collecteur — il
+était dans une **vérification en marge**, exactement comme VPS-M12, et les vérifications en marge
+sont précisément celles qui explorent l'inhabituel.
+
+**Règle applicable telle quelle** : toute affirmation de la forme *« X n'a pas tourné »* doit être
+établie par une **fenêtre temporelle sans filtre de champ**, jamais par l'absence d'un motif dans
+une requête filtrée. Une présence prouve ; une absence dans un sous-ensemble ne prouve rien.
 
 ### VPS-M33 — Le collecteur jetait ses propres messages d'erreur, et c'est ainsi que VPS-M28 a survécu
 

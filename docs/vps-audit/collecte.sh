@@ -295,8 +295,22 @@ if [ "${EMB_PID:-}" ]; then
     awk -v hz="$HZ" -v d="${t##*/}" '{s=$0; sub(/^[0-9]+ \(.*\) /,"",s); split(s,f," ");
       print (f[12]+f[13])/hz, d}' "$t/stat" 2>/dev/null
   done | sort -rn | head -3 | while read -r cpu tid; do
-    printf '     tid=%-9s %7.0f s CPU cumule   bloque dans : %s\n' \
-      "$tid" "$cpu" "$(cat /proc/$EMB_PID/task/$tid/wchan 2>/dev/null || echo 'espace utilisateur (running)')"
+    # ⚠️ CORRIGE LE 2026-08-14 — ANGLE MORT N° 5 DU RAPPORT DU 2026-08-13.
+    # Le repli `|| echo ...` ne traitait que le cas ou le FICHIER est illisible. Or le noyau
+    # ecrit litteralement « 0 » dans /proc/<pid>/task/<tid>/wchan quand le thread s'execute en
+    # espace utilisateur : `cat` REUSSIT, le repli n'est pas pris, et la ligne affichait
+    # « bloque dans : 0 » — ce qui ne veut rien dire. C'est la ligne qui sert a distinguer un
+    # futex d'une E/S sur le constat le plus lourd du dispositif (VPS-016) : une valeur qu'on
+    # ne sait pas lire y vaut une mesure perdue. Trois cas, et ils sont maintenant distincts :
+    #   nom symbolique → le thread DORT dans cette fonction du noyau ;
+    #   « 0 »          → le thread TOURNE, en espace utilisateur (aucune attente noyau) ;
+    #   fichier absent → le thread a disparu entre le classement et la lecture.
+    W=$(cat "/proc/$EMB_PID/task/$tid/wchan" 2>/dev/null)
+    case "$W" in
+      0)  W="espace utilisateur (running) — AUCUNE attente noyau" ;;
+      "") W="thread disparu entre le classement et la lecture" ;;
+    esac
+    printf '     tid=%-9s %7.0f s CPU cumule   bloque dans : %s\n' "$tid" "$cpu" "$W"
   done
   printf '     threads du demon : %s   (le runtime Go en cree de nouveaux quand les anciens sont coinces)\n' \
     "$(ls /proc/$EMB_PID/task 2>/dev/null | wc -l)"
@@ -716,8 +730,8 @@ sub "Images (les plus lourdes)"
 # compresses du content store. Aucun des deux n'est l'espace occupe sur le disque.
 # On affiche donc la somme A COTE, pour que la divergence soit VISIBLE au lieu d'etre subie —
 # et parce qu'un chiffre affiche est un chiffre cru (VPS-M29).
-IMGS=$(docker images --format '{{.Size}}\t{{.Repository}}:{{.Tag}}\t{{.CreatedSince}}' 2>/dev/null)
-printf '%s\n' "$IMGS" | sort -rh | head -12 | sed 's/^/  /'
+IMGS=$(docker images --format '{{.Size}}\t{{.Repository}}:{{.Tag}}\t{{.CreatedSince}}\t{{.CreatedAt}}' 2>/dev/null)
+printf '%s\n' "$IMGS" | cut -f1-3 | sort -rh | head -12 | sed 's/^/  /'
 printf '%s\n' "$IMGS" | awk -F'\t' 'NF>1 {
     v=$1; gsub(/ /,"",v); u=v; sub(/^[0-9.]+/,"",u); sub(/[A-Za-z]+$/,"",v)
     m=(u=="GB")?1e9:(u=="MB")?1e6:(u=="kB")?1e3:(u=="B")?1:0
@@ -727,6 +741,55 @@ echo "     ⚠️ Cette somme et le poste « Images » de docker system df diver
 echo "        rapport VARIE d un jour a l autre : ni l une ni l autre n est l espace occupe sur"
 echo "        le disque. Seul \`df\` (section 3) l est. Ne reporter aucun des deux comme"
 echo "        « espace recuperable » — voir la section 10, qui porte deja cet avertissement."
+# ⚠️⚠️ AJOUTE LE 2026-08-14 — ANGLE MORT N° 2 DU RAPPORT DU 2026-08-13, ET LE PLUS CHER.
+#
+# Le 2026-08-13, le disque a pris 23 Go en 24 h et la SEULE attribution possible a ete faite par
+# ELIMINATION : tout le reste avait ete mesure et n'avait pas bouge. Il a fallu relancer a la main
+# `docker images` avec les dates pour dater la journee de build. L'exclusion de
+# /var/lib/docker/rootfs et overlay2 reste juste (plusieurs minutes d'E/S) — mais elle n'oblige
+# pas a rester aveugle : la date de creation de chaque image est DEJA dans la sortie ci-dessus.
+#
+# Ce bloc ne parcourt AUCUN inode, n'appelle PAS Docker une fois de plus, et repond a la seule
+# question que le disque pose vraiment : « ce qui a grossi cette nuit, d'ou vient-il ? »
+#
+# ⚠️ CE QU'IL NE MESURE PAS, et c'est ecrit dans sa sortie pour qu'on ne le surestime pas :
+#   - la somme des tailles ANNONCEES recompte les couches partagees (voir l'avertissement
+#     ci-dessus) : c'est un ordre de grandeur d'attribution, pas un delta de `df` ;
+#   - `{{.CreatedAt}}` est la date de creation de l'IMAGE, pas de sa construction LOCALE : une
+#     image TIREE d'un registre porte la date de publication de son editeur (limite deja ecrite
+#     plus bas pour « dernier build »). Les noms sont donc affiches : si la ligne designe
+#     `postgres:17-alpine`, c'est un PULL et pas un build.
+sub "Images creees dans les dernieres 24 h — d'ou vient ce que le disque a pris"
+if [ -n "$IMGS" ]; then
+  # ⚠️ Comparaison LEXICOGRAPHIQUE sur « AAAA-MM-JJ hh:mm:ss », pas de conversion en epoch :
+  # un `date -d` par image, ce serait 27 forks POUR DATER DES IMAGES — exactement le piege que
+  # VPS-M14 a paye (~1 800 forks pour mesurer une consommation de processeur). Le format de
+  # `{{.CreatedAt}}` est trie par construction, et la machine est en UTC comme le seuil.
+  SEUIL_24H=$(date -u -d '24 hours ago' '+%Y-%m-%d %H:%M:%S' 2>/dev/null)
+  printf '%s\n' "$IMGS" | awk -F'\t' -v seuil="$SEUIL_24H" '
+    NF>3 {
+      tot++
+      d=substr($4,1,19)
+      if (seuil=="" || d !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2} /) { illisible++; next }
+      v=$1; gsub(/ /,"",v); u=v; sub(/^[0-9.]+/,"",u); sub(/[A-Za-z]+$/,"",v)
+      m=(u=="GB")?1e9:(u=="MB")?1e6:(u=="kB")?1e3:(u=="B")?1:0
+      if (d >= seuil) { n++; t+=v*m; printf "  %10s  %s  %s\n", $1, d, $2 }
+    }
+    END {
+      if (illisible>0) printf "  ⚠️ %d image(s) sur %d : date ILLISIBLE — mesure NON FAITE sur elles (VPS-M02).\n", illisible, tot
+      if (n>0) printf "  → %d image(s) sur %d creee(s) depuis %s, %.2f Go de tailles annoncees\n", n, tot, seuil, t/1e9
+      # ⚠️ La phrase rassurante « la cause est AILLEURS » est CONDITIONNEE a ce qu au moins une
+      # date ait ete lue. Sans ce garde, un seuil incalculable (`date -u` absent) rendait
+      # 27 lignes illisibles PUIS « 0 image creee : la cause est ailleurs » — c est-a-dire une
+      # conclusion tiree de zero mesure. Attrape a l essai de la branche (d), avant publication :
+      # exactement le mode d echec de VPS-M28 (« reparer un silence en FAUSSE RASSURANCE est
+      # strictement pire que le silence »), et exactement la discipline VPS-M13 qui l attrape.
+      else if (tot>0 && illisible<tot) printf "  ✅ 0 image sur %d creee depuis %s : si le disque a grossi, la cause est AILLEURS.\n", tot, seuil
+      else if (tot>0) printf "  🔴 AUCUNE date exploitable sur %d images : ce bloc NE CONCLUT RIEN ce passage.\n", tot
+    }'
+else
+  echo "  ⚠️ liste d images VIDE — mesure NON FAITE, PAS « aucune image » (VPS-M02)."
+fi
 sub "Volumes orphelins (aucun conteneur ne les monte)"
 # ⚠️ « orphelin » ne veut PAS dire « jetable » : un volume Postgres detache reste une base.
 # Toujours afficher la TAILLE pour qu'un humain juge avant de supprimer.
