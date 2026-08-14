@@ -735,6 +735,94 @@ rien ne le signale côté navigateur, sinon des 500 partout.
 
 ---
 
+## 6septies. 🚦 AUDIT PRÉ-PROD — la liste complète, vérifiée point par point
+
+> Passe demandée « sans rien laisser en suspens ». Chaque ligne a été **exécutée**, pas
+> supposée. La checklist de référence est celle de `REFONTE-TRACKY-V2.md` § Mise en
+> production, et `docs/VERIFIER-AVANT-DE-DEPLOYER.md` a été relu et appliqué.
+
+### 6septies.1 ✅ Ce qui est vert — « avant le push », les 10 points
+
+| Point de la checklist | Résultat |
+|---|---|
+| `pnpm typecheck` | 🟢 les 3 paquets |
+| `pnpm smoke` | 🟢 5 tests — *celui qui manquait le 22/07/2026* |
+| `pnpm test` (API) | 🟢 **1918 tests, 136 suites** |
+| `ng build` web + karma | 🟢 **`TOTAL: 364 SUCCESS`** |
+| **`ng build --configuration production`** | 🟢 — **jamais lancé avant le 2026-08-14** |
+| Les 12 tests d'isolation A1 | 🟢 **99 tests** sur 7 suites `depot`/`isolation` |
+| Migrations Prisma relues | 🟢 voir 6septies.2 |
+| `VERIFIER-AVANT-DE-DEPLOYER.md` appliqué | 🟢 |
+| Aucun secret / clé / URL de dev dans le diff | 🟢 voir 6septies.3 |
+| `git diff origin/main...HEAD` relu | 🟢 384 fichiers, **0 supprimé**, 0 TODO/FIXME ajouté |
+
+**Fusion sans conflit** : `git merge-tree` renvoie **0 conflit réel de contenu**. `main` a
+2 commits d'avance (`allowlist`, `tracker-fix-mode`) qui fusionnent automatiquement.
+
+### 6septies.2 Les 4 migrations de la branche — **additives**
+
+`add_depot_role_and_missions` · `add_mission_event_type` · `add_mission_share_links` ·
+`surveillance_horaires_locaux`.
+
+Aucune destruction : tous les `DELETE` repérés sont des clauses **`ON DELETE`** de clés
+étrangères, pas des suppressions. Aucun `ALTER COLUMN … SET NOT NULL` sur une table
+peuplée.
+
+> ⚠️ **`surveillance_horaires_locaux` TRANSFORME des données** (conversion UTC → heure
+> locale des profils `SCHEDULED`). Elle est bornée par un `WHERE` et une regex de format,
+> et documentée en tête. **C'est elle qui justifie la ligne « sauvegarde de la base
+> vérifiée récente » de la checklist** — elle n'est pas rejouable.
+
+### 6septies.3 Secrets, environnement
+
+Aucun `.env` commité · aucune URL `localhost` ajoutée dans `apps/*/src` · un seul motif
+suspect dans le diff : `token: 'SECRET_QUI_NE_DOIT_PAS'` — c'est un **test** qui vérifie
+qu'un jeton n'est PAS exposé dans une réponse. Bonne pratique, pas une fuite.
+
+### 6septies.4 ✅ Les 28 routes de `B1-PAGES.md` sont mesurées — les 4 dernières aujourd'hui
+
+`/driver` · `/driver/unlock` · `/reserve/:token` · `/book/:token` avaient été livrées le
+**2026-08-11**, donc **avant O5**, et jamais remesurées depuis. **Vérifiées : 0/0** dans
+les deux thèmes, sans cible hors seuil ni débordement.
+
+> C'est la même question que pour `/vehicles/:id` (§ 6sexies.2), posée à toutes les pages
+> livrées avant un changement de socle. Ici la réponse est bonne — mais **elle ne l'était
+> pas pour `/vehicles/:id`**, et rien ne permettait de le savoir sans mesurer.
+
+`/book/:token` est mesuré sur son état **« lien invalide »** (aucun lien en base) : état
+légitime, et son message porte un recours.
+
+**Les ~28 routes `/admin/*` ne sont PAS dans le périmètre** de la refonte — `B1-PAGES.md`
+n'en cite qu'une, `/admin/ai-usage`. Voir 6septies.6.
+
+### 6septies.5 ✅ Le retrait des surcharges dépôt est neutre — **prouvé**
+
+Les quatre `.layout--depot .vt-status--*` ont été retirées (§ 6sexies.3). Vérifié en
+rendant les 4 variantes **dans** et **hors** du contexte dépôt, dans les deux thèmes :
+**couleurs calculées identiques**, huit comparaisons sur huit.
+
+### 6septies.6 🔴 CE QUI RESTE — trois constats, aucun bloquant technique
+
+**1. `verif:accents` sera ROUGE une fois la branche fusionnée.**
+Les 3 fichiers `apps/api/src/tracker-fix-mode/` sont en modifications locales **non
+commitées** (travail d'un tiers, consigne : ne pas y toucher). Or ces modifications sont
+**uniquement des accents** — la version d'`origin/main` contient **3 « Verifier » sans
+accent**, et `verifier` figure dans la liste de la garde.
+
+> Autrement dit : **la garde est verte ici parce qu'elle lit le disque, pas `main`.**
+> Après fusion, elle échouera tant que ces 3 accents ne seront pas commités. **Décision à
+> prendre par le propriétaire de ces fichiers** — je n'y touche pas.
+
+**2. `pnpm lint` est cassé, et l'a toujours été** (§ 6sexies.1). Sans impact aujourd'hui,
+bloquant le jour où une CI l'appelle.
+
+**3. Les pages `/admin/*` gardent des défauts préexistants.** Mesuré sur
+`/admin/observability` : 3 échecs de contraste et 6 cibles hors seuil sur **527 éléments**.
+**Ce n'est pas une régression** : aucun commit de la séance ne touche ces fichiers, et
+elles sont hors périmètre. À traiter dans un lot dédié si le client le souhaite.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -1025,14 +1113,25 @@ doit rester en modifications locales non commitées.
       deux points, tous deux nommés : le **mode veilleur** non mesuré faute de compte
       (§ 6quater.4) et la **forme de l'écran simplifié** (§ 6quater.5), qui est une
       décision d'écran.
-- [ ] **9. PROD** — 0/28, jamais commencé : push, déploiement, recette production.
-      ⚠️ Le VPS porte **la production** — consigne permanente : ne rien déployer sans
-      demande explicite.
-      **C'est le SEUL lot restant.** Tout le contenu est livré ET vérifié (§ 6sexies).
-      **Prêt côté code** : build production vert, 22 surfaces + 21 e-mails à 0 échec,
-      1918 tests API, 364 tests web, six gardes vertes.
-      **Deux choses à savoir avant de lancer** : `pnpm lint` est cassé depuis toujours
-      (§ 6sexies.1), et **35 commits ne sont pas poussés**.
+- [ ] **9. PROD** — le SEUL lot restant. **Audit pré-prod complet au § 6septies.**
+      ⚠️ Le VPS porte **la production** — ne rien déployer sans demande explicite.
+
+      🟢 **Les 10 points « avant le push » sont verts**, y compris le build PRODUCTION
+      et les 99 tests d'isolation. **Fusion sans conflit** (`merge-tree` : 0).
+      Les 28 routes de la spec sont mesurées, les 21 gabarits d'e-mail aussi.
+
+      Ce qui reste tient en **quatre gestes, tous côté client** :
+      - [ ] **Décider** : fusion dans `main`, ou déploiement de la branche pour recette
+      - [ ] **Pousser** les **35 commits** (rien n'est poussé aujourd'hui)
+      - [ ] **Sauvegarder la base** avant migrations — `surveillance_horaires_locaux`
+            transforme des données et n'est pas rejouable (§ 6septies.2)
+      - [ ] Dérouler le déploiement et la recette (`REFONTE-TRACKY-V2.md` § Mise en
+            production, 7 + 13 points)
+
+      ⚠️ **Trois choses à savoir avant** (§ 6septies.6) : `verif:accents` sera **rouge
+      après fusion** (3 accents non commités dans `tracker-fix-mode`), `pnpm lint` est
+      cassé depuis toujours, et les pages `/admin/*` — hors périmètre — gardent des
+      défauts préexistants.
 
 **Décisions encore à demander — la liste COMPLÈTE, rien d'autre n'est en suspens :**
 
