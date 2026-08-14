@@ -11,9 +11,69 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-13**
+- Dernière mise à jour : **2026-08-14**
 
 ---
+
+---
+
+## 🔴 2026-08-14 — le défaut trouvé hier sur UNE alerte en vaut 42 038, dont 41 507 CRITICAL et 3 SOS
+
+Troisième reconstruction depuis `feat/depot-partage` (13/08 17:18 UTC), **même point de fork**
+(`c3c2704`, 07/08), **mêmes quatre marqueurs absents** des artefacts servis. [TRK-019](#trk-019)
+n'est plus une découverte, c'est une cadence.
+
+Ce que ce passage apporte tient à une seule décision de méthode : **ouvrir la colonne au lieu de
+compter la ligne.** [TRK-023](#trk-023) avait été écrite hier sur **une** occurrence — une alerte
+`UNKNOWN` sans message. En comptant les messages vides sur toute la table :
+
+| Type | Total | Sans message | |
+|---|---|---|---|
+| **POWER_CUT** | 41 507 | **41 507** | **CRITICAL** |
+| OVERSPEED | 9 399 | 486 | |
+| VIBRATION | 37 | **37** | |
+| **SOS** | 3 | **3** | |
+| LOW_BATTERY | 6 | 4 | |
+| UNKNOWN | 1 | **1** | |
+| **Total** | **51 524** | **42 038 — 81,6 %** | |
+
+La cause est une ligne : `buildAlertMessage` connaît 7 types et **tout le reste tombe sur
+`default: return null`**. Et un second verrou la double — le pourcentage de batterie que la trame
+porte (`,ac alarm,…,100%,`) n'existe dans **aucun champ** de `CobanPositionFrame` : même avec le
+`case` manquant, il n'y aurait rien à écrire.
+
+**Et cette nuit le défaut a rencontré un incident réel.** KSR370 a perdu son alimentation à 20:44,
+vidé sa batterie de secours (**5 %** à 00:57, **0 %** à 01:12) et cessé d'émettre à **02:05**. La
+plateforme a tout vu ; ce qu'elle a montré à l'exploitant, ce sont **deux cartes rouges vides**.
+
+> **Ce que l'épisode apprend sur la méthode — une fiche écrite sur une occurrence n'a pas de
+> portée, seulement un exemple.** TRK-023 était juste dès hier, et son « une occurrence, la
+> fréquence n'est pas prouvée » était une prudence correcte. Mais la question posée était
+> « combien de fois ce **code** d'alarme revient-il ? », alors que le défaut ne portait pas sur le
+> code : il portait sur le **`default`**. *Compter les occurrences de l'exemple mesure l'exemple ;
+> pour mesurer un défaut, il faut compter ce que sa cause gouverne.*
+
+**Un défaut neuf, à sens unique :** [TRK-024](#trk-024) — **5 boîtiers sur 43 portent `OFFLINE`
+alors qu'ils émettaient il y a moins de 5 minutes**, et **aucun** ne porte `ONLINE` à tort. Rien ne
+casse aujourd'hui (les commandes passent par la socket vivante, l'écran refiltre sur `lastSeenAt`) —
+ce qui casse, c'est le prochain lecteur.
+
+> **Et une mise en garde d'hier a été payée en un jour.** TRK-017 notait que l'appelant extérieur
+> s'était tu depuis six créneaux, en refusant d'y lire une clé révoquée. **Il a refrappé deux fois
+> le 13/08** (22:24 et 23:24). *Le silence d'un attaquant se lit comme une absence de mesure, pas
+> comme une absence de menace.*
+
+> **Piège d'outillage, payé et documenté :** le premier `grep` des marqueurs a visé
+> `dist/src/trackers/` et rendu **0 partout, témoin compris**. Le vrai chemin est
+> `dist/gps-integrity/`. *Un zéro sur le témoin ne dit pas « correctif absent », il dit « mauvais
+> chemin » — c'est toute la raison d'être du témoin, encore fallait-il le regarder avant la
+> conclusion.*
+
+> **Une limite structurelle de l'outil « test daté », découverte ce jour.** Le volet décisif de
+> [TRK-001](#trk-001) échoit à **08:50 UTC** ; l'audit collecte vers **04:10 UTC**. Aucun passage
+> de ce jour ne pouvait le lire, et le lire quand même aurait produit un faux « il ne s'est rien
+> passé ». *Un test daté doit échoir AVANT l'heure de collecte, sinon il est reporté d'un jour par
+> construction — et cette contrainte appartient à l'énoncé du test, pas à sa lecture.*
 
 ---
 
@@ -422,20 +482,21 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal — **réimposé par 2 reconstructions de plus** | 🔴 NON CORRIGÉ | 2026-08-12 | 2026-08-13 |
-| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ | 2026-08-13 | 2026-08-13 |
-| [TRK-022](#trk-022) | *alertes* | Survitesse : **1 boîtier sur 43 peut alerter**, et il produit **1317 alertes en un jour** (une par trame) | 🔴 NON CORRIGÉ | 2026-08-13 | 2026-08-13 |
-| [TRK-023](#trk-023) | *alertes* | L'**accusé de réception d'une coupure moteur** devient une « Alarme inconnue » **sans message** | 🔴 NON CORRIGÉ | 2026-08-13 | 2026-08-13 |
+| [TRK-023](#trk-023) | *alertes* | **42 038 alertes sur 51 524 (81,6 %) partent sans message** — dont **41 507 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🔴 NON CORRIGÉ *(**élargi le 14/08** : de 1 occurrence à 42 038)* | 2026-08-13 | 2026-08-14 |
+| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🔴 NON CORRIGÉ *(**3ᵉ reconstruction** le 13/08 17:18, point de fork inchangé)* | 2026-08-12 | 2026-08-14 |
+| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ *(6 `ACK timeout`, inchangé)* | 2026-08-13 | 2026-08-14 |
+| [TRK-022](#trk-022) | *alertes* | Aucune déduplication des alarmes Coban : **1317 survitesses en un jour**, et **41 479 `POWER_CUT` en 15 jours** | 🔴 NON CORRIGÉ *(**renforcé le 14/08** sur un 2ᵉ type d'alarme)* | 2026-08-13 | 2026-08-14 |
+| [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : 5 boîtiers sur 43 marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🔴 NON CORRIGÉ *(erreur à sens unique ; sans conséquence visible à ce jour)* | 2026-08-14 | 2026-08-14 |
 | [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ | 2026-08-12 | 2026-08-13 |
-| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : 116 commandes moteur, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté du 12/08 **passé** : 219 → 224)* | 2026-08-11 | 2026-08-13 |
-| [TRK-017](#trk-017) | `sms-allowlist` | Une 2ᵉ instance de Tracky, hors VPS, efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé inchangée au 13/08 ; appelant muet depuis le 12/08 18:25 — machine éteinte ≠ clé révoquée)* | 2026-08-09 | 2026-08-13 |
-| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(10ᵉ jour > 89 %)* | 2026-08-09 | 2026-08-13 |
-| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ | 2026-08-08 | 2026-08-13 |
-| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(⚠️ **l'instrument est désarmé depuis le 11/08 22:37** : 0 silence tracé sur 77 commandes)* | 2026-08-07 | 2026-08-13 |
-| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord ; renfort [TRK-021](#trk-021) le 13/08)* | 2026-08-05 | 2026-08-13 |
-| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(4 numérateurs figés, 4ᵉ passage — seul le dénominateur grandit)* | 2026-08-06 | 2026-08-13 |
-| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(espacement des rappels **retiré de la prod** ; 2 épisodes NEUFS le 12/08)* | 2026-07-28 | 2026-08-13 |
-| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 **RÉGRESSION CONFIRMÉE** *(2 lignes réelles le 12/08, 0 pendant les 27 h où le correctif était en ligne — voir [TRK-019](#trk-019))* | 2026-07-29 | 2026-08-13 |
+| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : 237 commandes moteur `SENT`, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté **passé** 3 fois : 219 → 224 → 231)* | 2026-08-11 | 2026-08-14 |
+| [TRK-017](#trk-017) | `sms-allowlist` | Une 2ᵉ instance de Tracky, hors VPS, efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(⚠️ **l'appelant est REVENU** le 13/08 à 22:24 et 23:24 — 24 blocages cumulés ; clé `vtx_48fe` toujours pas rotationnée)* | 2026-08-09 | 2026-08-14 |
+| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(11ᵉ jour > 89 % — 90,2 % le 13/08)* | 2026-08-09 | 2026-08-14 |
+| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ *(928 trous sur 24 h, aucune rafale)* | 2026-08-08 | 2026-08-14 |
+| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(⚠️ **l'instrument est désarmé depuis le 11/08 22:37** : silences tracés figés à 81, 0 sur 28 commandes depuis la 3ᵉ reconstruction)* | 2026-08-07 | 2026-08-14 |
+| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord ; renfort [TRK-021](#trk-021) le 13/08)* | 2026-08-05 | 2026-08-14 |
+| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(4 numérateurs figés, **5ᵉ passage** — seul le dénominateur grandit : 40 → 45)* | 2026-08-06 | 2026-08-14 |
+| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(volets 1-2 du test daté **PASSÉS** le 13/08 ; volet décisif **non échu**, réarmé au 15/08)* | 2026-07-28 | 2026-08-14 |
+| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 **RÉGRESSION CONFIRMÉE** *(1 ligne de plus le 13/08 à 14:19, hors fenêtre de redéploiement ; le zéro intercalaire des 27 h reste la preuve — voir [TRK-019](#trk-019))* | 2026-07-29 | 2026-08-14 |
 | [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ | 2026-07-31 | 2026-07-31 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟢 CORRIGÉ | 2026-07-28 | 2026-07-28 |
@@ -657,6 +718,30 @@ véhicules le font le même jour**.
 
 ⚠️ Un épisode clos ne vaut toujours pas antenne réparée — et cette fois la démonstration tient en
 quelques heures au lieu de quelques jours.
+
+### 🗓️ 2026-08-14 — volets 1 et 2 ✅ PASSÉS ; le volet décisif n'était pas échu à l'heure de la collecte
+
+| Volet | Attendu | Constaté | |
+|---|---|---|---|
+| 1 — FZ-862-VY franchit 24 h le 13/08 ~08:50 | ligne `error_logs` + alerte flotte | ligne à **08:50:15** (+4 s), alerte flotte présente | ✅ |
+| 2 — FS-253-HR franchit 24 h le 13/08 ~15:20 | idem | ligne à **15:25:15** (tick suivant), alerte flotte présente | ✅ |
+| 3 — **2ᵉ rappel ~24 h après le premier** | 14/08 **08:50** et **15:20** | **échéance postérieure à la collecte (04:16)** | ⏳ |
+
+**Le volet décisif ne pouvait pas être lu, et c'est structurel.** L'audit collecte vers
+**04:10 UTC** ; le test échoit à **08:50 UTC**. *Un test daté doit échoir AVANT l'heure de collecte,
+sinon il est reporté d'un jour par construction — cette contrainte appartient à l'énoncé du test,
+pas à sa lecture.* Le lire à l'heure de l'audit aurait produit un faux « il ne s'est rien passé »,
+symétrique exact du piège du 13/08.
+
+> **Le volet 3 est cependant déjà répondu par la voie directe :** `reminderIntervalMs` est **absent
+> du build servi** (témoin « ANORMALEMENT LONG » = 1 dans le même fichier). L'espacement n'est pas
+> en production. Le volet comportemental devient une **confirmation**, plus un discriminant.
+
+🗓️ **Réarmé au 15/08**, où les deux points seront lisibles ensemble : le 2ᵉ rappel (48 h) **et** le
+3ᵉ (72 h). Sous le code régressé : **deux lignes de plus** par véhicule. Avec le correctif restauré :
+cadence hebdomadaire dès le 3ᵉ jour, donc **une seule**.
+**Condition de nullité :** relire `lastPositionAt` d'abord. Ces deux épisodes se sont déjà refermés
+puis rouverts le 12/08 ; si l'un se referme à nouveau, son volet est **sans objet**, pas en échec.
 
 ### Action
 **Terrain, pas code.** Antennes GPS à vérifier sur **FS-253-HR** et **FZ-862-VY** — les deux longs
@@ -3024,6 +3109,29 @@ changé, la cause est fermée et la garde devient une ceinture de sécurité. S'
 **ne pas se contenter de recompter les blocages** : compter aussi le nombre de jours écoulés depuis
 que le geste est écrit — c'est ce chiffre-là qui mesure le risque, pas le compteur de la garde.
 
+### 🔴 2026-08-14 — VERDICT : la clé n'a pas changé, **et l'appelant est REVENU**
+
+| Mesure | 13/08 | **14/08** |
+|---|---|---|
+| Préfixe de clé, appelant VPS (`172.18.0.1`) | `vtx_48fe` | **`vtx_48fe`** |
+| Préfixe de clé, appelant extérieur (`82.67.153.51`) | `vtx_48fe` | **`vtx_48fe`** — identique |
+| Appels `ok` cumulés | 55 | **82** |
+| Tentatives d'effacement de masse **retenues** | 22 | **24** |
+| Dernière frappe de l'appelant extérieur | 12/08 18:25 | **13/08 23:24:58** |
+| Ancienneté des 25 entrées (`createdAt` inchangé) | 62 h | **86 h** |
+
+**La mise en garde d'hier était juste, et elle a été payée en un jour.** Le silence de six créneaux
+n'était pas un arrêt : l'appelant a refrappé **deux fois le 13/08**, à 22:24:59 et 23:24:58, avec
+la même clé et le même motif (`25 suppression(s) au-delà du plafond de 5`).
+
+> *Le silence d'un attaquant se lit comme une absence de mesure, jamais comme une absence de
+> menace. Le compteur de la garde ne mesure pas le risque — il mesure combien de fois le risque
+> s'est présenté.*
+
+**Le chiffre qui mesure le risque, comme demandé par le test :** le geste est écrit depuis le
+**10/08**. Cela fait **4 jours** qu'une clé de production compromise est valide, sur une machine
+extérieure qui frappe encore.
+
 ---
 
 ## TRK-018
@@ -3745,14 +3853,197 @@ alerte de survitesse. Tant qu'un seul en produit, seul le bruit aura été trait
 
 ---
 
+### 🔴 Mise à jour du 2026-08-14 — le défaut n'est pas propre à la survitesse, et son pire cas date de juin
+
+La fiche d'hier tenait sur un seul type d'alarme. **Il vaut pour toute la famille** — c'est
+`createFromCobanFrame` qui n'a aucune déduplication, pas le chemin de la survitesse.
+
+**Preuve du jour, sur `POWER_CUT` :** les 4 alertes du 13/08 sont **deux événements comptés
+deux fois**.
+
+| Véhicule | Alertes | Écart | Position |
+|---|---|---|---|
+| DZ-034-CA | 09:00:04 et 09:00:09 | **5 s** | identique |
+| KSR370 | 20:44:45 et 20:44:52 | **7 s** | identique |
+
+**Et l'historique donne un ordre de grandeur que la survitesse ne montrait pas :**
+
+| Période | Alertes `POWER_CUT` | Véhicules | Pic journalier |
+|---|---|---|---|
+| 17/06 → 01/07 | **41 479** | **1 à 2** | **3 596** le 20/06 |
+
+Quinze jours, un ou deux véhicules, plus de quarante mille cartes. Le mécanisme est identique et il
+est antérieur de deux mois à la découverte de la fiche.
+
+> *Le volume de la survitesse n'était pas le plafond du défaut, il en était un échantillon. Une
+> fiche ouverte sur le symptôme le plus visible sous-estime presque toujours sa propre portée —
+> la question qui la calibre n'est pas « combien de fois ce symptôme ? » mais « qu'est-ce que sa
+> cause gouverne d'autre ? ».*
+
+⚠️ **La survitesse est retombée à 5 alertes le 13/08** (contre 1317 le 12/08). Série complète :
+27 · 595 · 32 · 4 · 28 · 258 · **1317** · **5**. **Ce n'est pas une amélioration** — c'est une
+grandeur qui suit la conduite d'un seul chauffeur (§4 bis de la procédure). Le fait qui compte n'a
+pas bougé : **un seul véhicule sur 43 peut alerter**.
+
+**Le correctif proposé ne change pas, mais son périmètre s'étend :** la déduplication doit être
+posée dans `createFromCobanFrame`, **par (véhicule, type d'alarme, fenêtre)**, et non sur le seul
+chemin `OVERSPEED`.
+
+---
+
+## TRK-024
+
+**Signature** — `trackers | status = 'OFFLINE'` alors que `lastSeenAt` a moins de 5 minutes
+**Statut : 🔴 NON CORRIGÉ** · **5 boîtiers sur 43** · découvert 2026-08-14
+
+> ### Cinq boîtiers sont marqués hors ligne pendant qu'ils émettent — et jamais l'inverse.
+
+### Ce que la mesure dit
+
+| `status` | Boîtiers | Vus < 5 min | Vus < 1 h |
+|---|---|---|---|
+| ONLINE | 29 | 28 | 29 |
+| **OFFLINE** | **14** | **5** | **6** |
+
+**L'erreur est à sens unique.** Cinq boîtiers vivants portent `OFFLINE`, et **aucun** boîtier muet
+ne porte `ONLINE` — vérifié : `status='ONLINE' AND lastSeenAt < now()-1h` rend **0**.
+*Une erreur qui ne se produit que dans un sens n'est pas du bruit : c'est une course perdue toujours
+du même côté.*
+
+### Cause racine
+
+`markOffline` (`tcp-server.service.ts:192-206`) se garde en consultant le **registre de sockets** —
+`if (this.registry.has(imei)) return;` — et non la **fraîcheur de `lastSeenAt`**. Or `status:
+'ONLINE'` est aussi écrit par `positions.service.ts` (lignes 83, 136, 181, 229) **à chaque trame de
+position**, sur un chemin que le registre de sockets ne connaît pas : seule une trame de **login**
+appelle `registry.register`.
+
+Une écriture `OFFLINE` différée peut donc écraser un `ONLINE` plus récent qu'elle. Le code nomme
+lui-même le risque — le commentaire dit « Garde anti-TOCTOU (#11) » — mais la garde **rétrécit** la
+fenêtre sans la fermer : le `UPDATE` final n'est conditionné par rien.
+
+### Ce que ça ne casse pas — vérifié, et c'est ce qui fixe la gravité
+
+| Chemin | Lit-il `tracker.status` ? | Conséquence |
+|---|---|---|
+| Envoi de commande (`dispatch`) | **Non** — `registry.send()`, la socket vivante (`tracker-commands.service.ts:181`) | Les commandes partent normalement |
+| Compteur « hors ligne » de `/admin/alerts` | Oui, **mais refiltré** sur `lastSeenAt` (`admin-alerts.controller.ts:346`) | Le compteur est juste — 8 à l'écran contre 14 en base |
+| Liste des véhicules (API) | Exposé brut sous `trackerStatus` (`vehicles.service.ts:1025`) | **Aucun consommateur ne le lit** — la connectivité affichée est dérivée de `lastSeenAt` |
+
+**Donc : rien ne casse aujourd'hui.** Ce qui casse, c'est le prochain lecteur. `status` est le nom
+le plus évident pour « le boîtier est-il joignable », et il ment une fois sur huit. *Un champ faux
+que personne ne lit est une dette, pas un incident — mais c'est une dette qui se règle en une ligne
+aujourd'hui et en une enquête plus tard.*
+
+### Correctif proposé
+
+Rendre l'écriture **conditionnelle** plutôt que renforcer la garde :
+
+```ts
+await this.prisma.tracker.updateMany({
+  where: { id: tracker.id, lastSeenAt: { lt: seuilOffline } },
+  data: { status: TrackerStatus.OFFLINE },
+});
+```
+
+La condition passe alors dans la même instruction que l'écriture ; aucune fenêtre ne subsiste, et
+le garde-fou anti-TOCTOU existant peut rester tel quel — il devient une optimisation, plus une
+protection.
+
+### ⚠️ Ne pas « corriger » en supprimant le passage OFFLINE différé
+
+L'anti-flapping qu'il porte est délibéré et documenté (`cancelPendingOffline`) : le supprimer
+ferait clignoter le statut à chaque reconnexion. *On corrige la condition d'écriture, pas le
+mécanisme.*
+
+### Vérification après correctif
+
+`SELECT count(*) FROM trackers WHERE status='OFFLINE' AND "lastSeenAt" > now() - interval '5
+minutes'` doit valoir **0** — **pendant que** le nombre de boîtiers réellement hors ligne
+(`lastSeenAt < now()-1h`) reste **inchangé** à 6. Si les deux tombent ensemble, on a cessé d'écrire
+`OFFLINE` du tout.
+
+---
+
 ## TRK-023
 
 **Signature** — `alerts | UNKNOWN | title = "Alarme inconnue" | message = NULL` — déclenchée par
 l'**accusé de réception** d'une commande de coupure moteur
-**Statut : 🔴 NON CORRIGÉ** · **1 occurrence (la seule de toute la table) · mécanisme prouvé de bout
-en bout** · découvert 2026-08-13
+**Statut : 🔴 NON CORRIGÉ** · **42 038 alertes sur 51 524 (81,6 %)** · découvert 2026-08-13 sur
+1 occurrence, **élargi le 2026-08-14**
 
-> ### La réponse « j'ai bien coupé le moteur » remonte à l'exploitant comme une alarme inconnue, sans une ligne de texte.
+> ### 42 038 alertes partent sans une ligne de texte — dont 41 507 « Alimentation coupée » en CRITICAL et 3 SOS.
+
+---
+
+### 🔴 Mise à jour du 2026-08-14 — la portée réelle, et pourquoi elle avait été sous-estimée
+
+La fiche d'hier décrivait deux défauts : (1) une réponse de commande transformée en alarme, et
+(2) **une alerte sans message**. Le premier est bien resté à **une** occurrence. Le second n'a
+jamais été à une occurrence — il n'avait simplement pas été compté sur la bonne colonne.
+
+| Type | Total | Sans message | Sévérité |
+|---|---|---|---|
+| **POWER_CUT** | 41 507 | **41 507 (100 %)** | **CRITICAL** |
+| OVERSPEED | 9 399 | 486 | WARNING |
+| VIBRATION | 37 | **37 (100 %)** | — |
+| **SOS** | 3 | **3 (100 %)** | — |
+| LOW_BATTERY | 6 | 4 | WARNING |
+| UNKNOWN | 1 | **1 (100 %)** | INFO |
+| GEOFENCE_ENTER / GEOFENCE_EXIT / GPS_LOST | 571 | **0** | — |
+| **Total** | **51 524** | **42 038 (81,6 %)** | |
+
+**Cause racine, en une phrase :** `buildAlertMessage` (`alerts.service.ts:353-371`) traite
+7 types — `OVERSPEED`, les trois `HARSH_*`, `LOW_BATTERY`, `GPS_LOST`, `MOVEMENT_IDLE` — et **tout
+le reste tombe sur `default: return null`**. `POWER_CUT`, `SOS`, `VIBRATION`, `UNKNOWN` et
+`SURVEILLANCE_TRIGGERED` n'y figurent pas. Le `null` est écrit tel quel dans `alerts.message`
+(ligne 81), et la carte arrive vide chez l'exploitant.
+
+⚠️ **`SOS` est le cas qui décide de la gravité.** Trois alertes de détresse, trois messages vides.
+Le volume est dérisoire ; ce qu'il coûte ne l'est pas.
+
+**Un second verrou, qu'un `case` de plus ne lèverait pas.** La trame porte le niveau de batterie —
+`imei:864035053277480,ac alarm,260813204451,100%,F,…` — et `coban.types.d.ts:38` documente même la
+position du champ (`"imei:...,tracker,<date>,<batt>%,L,..."`). Mais **`CobanPositionFrame` n'a
+aucun champ batterie** : la valeur n'est jamais décodée, seulement recopiée dans `payload.raw`.
+Écrire « Alimentation coupée » sans dire s'il reste 100 % ou 5 % d'autonomie n'apporterait presque
+rien.
+
+### Le cas concret du 2026-08-14 — ce que l'exploitant a vu d'un boîtier en train de mourir
+
+| Heure (UTC) | Fait | Ce qui est remonté |
+|---|---|---|
+| 13/08 20:44:45 **et** 20:44:52 | alimentation coupée sur KSR370, batterie **100 %** | 2 cartes `CRITICAL` **vides** |
+| 14/08 00:57:41 | batterie **5 %** | « Niveau de batterie faible détecté par le tracker » |
+| 14/08 01:12:42 | batterie **0 %** | **le même texte**, sans le chiffre |
+| 14/08 02:05:24 | **dernière trame**, boîtier muet | *(rien — une absence n'est pas un événement)* |
+
+Les deux avertissements de batterie portent le **même texte** alors que l'un annonce 5 % et l'autre
+0 % : le seul champ qui distinguait une alerte d'un arrêt imminent est celui qui n'est pas décodé.
+
+### Correctif proposé (deux temps — le second est le vrai)
+
+1. **Rendre l'alerte sans texte impossible.** Ajouter les cas manquants — au minimum `POWER_CUT`,
+   `SOS`, `VIBRATION`, `SURVEILLANCE_TRIGGERED` — **et** remplacer `default: return null` par un
+   repli explicite : « Alarme *`<code>`* remontée par le boîtier ». Un `null` doit cesser d'être
+   une valeur atteignable pour ce champ.
+2. **Décoder le pourcentage de batterie** dans `CobanPositionFrame` et le porter dans le message :
+   « Alimentation coupée — le boîtier passe sur batterie interne (**100 %**) », puis
+   « Batterie interne à **5 %** — le boîtier va cesser d'émettre ».
+
+### Vérification après correctif
+
+`count(*) FILTER (WHERE message IS NULL OR message = '')` doit valoir **0 pour les alertes créées
+après la livraison** — les 42 038 historiques restent, on ne réécrit pas la donnée passée.
+⚠️ **Le test porte sur la colonne, pas sur l'écran.** Un front qui afficherait le titre à la place
+du message vide masquerait le défaut sans le corriger.
+
+⚠️ **Et il ne suffit pas.** Un second test doit vérifier qu'un `POWER_CUT` neuf porte un **niveau
+de batterie**, sinon on aura remplacé un vide par une phrase creuse.
+
+---
+
+### Le défaut d'origine — la réponse « j'ai bien coupé le moteur » devient une alarme inconnue
 
 ### La chaîne, à la seconde près
 
@@ -3841,6 +4132,7 @@ Si ce compteur tombe à zéro en même temps, on a fermé les yeux au lieu de tr
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-14 | 39 (3 sur 24 h — 2 rappels GPS **attendus**, 1 ligne TRK-002) | 21 revues ; **TRK-023 élargi de 1 à 42 038 alertes** (dont 41 507 CRITICAL et 3 SOS) ; **TRK-022 renforcé** sur `POWER_CUT` (41 479 en 15 jours de juin) ; TRK-019 **3ᵉ reconstruction**, point de fork inchangé ; **TRK-017 : l'appelant est REVENU**, clé toujours valide ; tests datés TRK-018 **passé**, TRK-001 volets 1-2 **passés** et volet 3 **non échu** | 1 (TRK-024) | agent d'audit |
 | 2026-08-13 | 36 (2 sur 24 h — **les deux de la signature TRK-002**, régression désormais confirmée par la donnée) | 20 revues ; TRK-019 **réimposé** par 2 reconstructions et mesuré dans la donnée (0 silence tracé sur 77 commandes) ; test daté TRK-018 **passé** ; test daté TRK-001 **sans objet** (son épisode s'est refermé) et réarmé ; clé de TRK-017 **non rotationnée** | 3 (TRK-021, TRK-022, TRK-023) | agent d'audit |
 | 2026-08-12 | 34 (3 sur 24 h, **0 depuis le redéploiement de 22:37**) | 18 revues ; **TRK-002 repasse en 🔴 RÉGRESSION** (correctif retiré de la prod) ; test daté de TRK-001 **passé** sur 2 canaux avant retrait ; TRK-013 voit son numérateur bouger (7 fausses / 38) | 2 (TRK-019, TRK-020) | agent d'audit |
 | 2026-08-11 *(2ᵉ passage, 09:22 UTC)* | — *(passage ciblé : vérification d'ACK, pas d'audit complet)* | **Cause racine de TRK-012 trouvée** (format SMS émis sur socket TCP) ; test daté de TRK-014 reconfirmé sur 13 h (47/0/47) ; **Constat 2 de TRK-014 rectifié** (les `jt`/`kt` sont de vrais ACK) | 0 | tâche `trk012-ack-et-correctif` |
