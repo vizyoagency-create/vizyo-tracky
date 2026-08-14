@@ -71,6 +71,7 @@ import { MapStyleService, type MapStyleId } from '../../core/services/map-style.
 import {
   attachVehicleMarker,
   buildVehicleMarkerEl,
+  markerInk,
   speedColor,
   updateVehicleMarkerEl,
   type VehicleMarkerData,
@@ -1003,11 +1004,13 @@ const RESYNC_RADIUS_M = 150;
               }
               @if (showDeadZones()) {
                 <div class="tracky-sheet-legend-item">
-                  <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#0ea5e9">P</span>
+                  <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold"
+                        [style.background]="COULEUR_PARKING" [style.color]="encreMarqueur(COULEUR_PARKING)">P</span>
                   <span>Parking souterrain</span>
                 </div>
                 <div class="tracky-sheet-legend-item">
-                  <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#ef4444">!</span>
+                  <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold"
+                        [style.background]="COULEUR_ZONE_SUSPECTE" [style.color]="encreMarqueur(COULEUR_ZONE_SUSPECTE)">!</span>
                   <span>Zone GPS suspecte</span>
                 </div>
               }
@@ -1075,7 +1078,8 @@ const RESYNC_RADIUS_M = 150;
             }
             @if (showDeadZones()) {
               <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#0ea5e9">P</span>
+                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold"
+                        [style.background]="COULEUR_PARKING" [style.color]="encreMarqueur(COULEUR_PARKING)">P</span>
                 <span class="text-[10px] text-fg-tertiary">Parking souterrain / couvert</span>
               </div>
               <div class="flex items-center gap-2">
@@ -1083,7 +1087,8 @@ const RESYNC_RADIUS_M = 150;
                 <span class="text-[10px] text-fg-tertiary">Zone GPS récurrente</span>
               </div>
               <div class="flex items-center gap-2">
-                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#ef4444">!</span>
+                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold"
+                        [style.background]="COULEUR_ZONE_SUSPECTE" [style.color]="encreMarqueur(COULEUR_ZONE_SUSPECTE)">!</span>
                 <span class="text-[10px] text-fg-tertiary">Zone GPS suspecte (brouilleur ?)</span>
               </div>
             }
@@ -2719,6 +2724,25 @@ const RESYNC_RADIUS_M = 150;
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
+  /**
+   * ─── La legende des reperes de carte ──────────────────────────────────────
+   *
+   * Les deux pastilles « P » (parking souterrain) et « ! » (zone suspecte)
+   * posaient `text-white` en dur : 2,77:1 et 3,76:1. Or `markerInk()` existe
+   * depuis le 2026-08-12, il est teste sur les six couleurs de la palette, et
+   * c'est lui qui encre les VRAIS marqueurs de la carte.
+   *
+   * La legende ne l'utilisait pas : elle ne ressemblait donc meme pas au
+   * marqueur qu'elle decrit. C'est le « jumeau » du § 8.7 — une regle corrigee
+   * d'un cote seulement. Et le jumeau etait double : la meme legende est rendue
+   * DEUX fois (feuille mobile + panneau bureau), les deux sont alignees ici.
+   *
+   * Mesure apres correctif : 6,81:1 sur le bleu, 5,13:1 sur le rouge.
+   */
+  protected readonly COULEUR_PARKING = '#0ea5e9';
+  protected readonly COULEUR_ZONE_SUSPECTE = '#ef4444';
+  protected encreMarqueur(couleur: string): string { return markerInk(couleur); }
+
   protected readonly realtime = inject(RealtimeService);
   /** Filtre société global (sélecteur super-admin). matches() = true pour un non-super. */
   private readonly fleetFilter = inject(FleetFilterService);

@@ -86,7 +86,7 @@ interface NavGroup {
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, DeviceVerificationGateComponent, TwoFactorProposalComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
-    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()" [class.layout--depot]="auth.isDepot()">
+    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()" [class.layout--depot]="auth.isDepot()" [class.layout--hors-ligne]="!network.online()">
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
@@ -388,7 +388,20 @@ interface NavGroup {
       position: relative;
     }
 
-    /* ─── OFFLINE BANNER ─── */
+    /* ─── BANDEAU HORS LIGNE ───
+     *
+     * B1-PAGES § G distingue deux comportements, et les oppose exprès :
+     * le bandeau hors ligne POUSSE le contenu, la barre de progression SE
+     * SUPERPOSE. Le bandeau etait en position absolue : il se superposait, donc
+     * il masquait les 28 px hauts de l'ecran — la top-bar et son titre.
+     *
+     * Il RESTE absolu (il doit couvrir toute la largeur, sidebar comprise, et
+     * gerer l'encoche) ; c'est le layout qui lui cede la place. Le contenu est
+     * donc bien pousse, sans un niveau de DOM en plus et sans toucher au flex
+     * horizontal qui porte la sidebar.
+     */
+    .layout--hors-ligne { padding-top: calc(28px + env(safe-area-inset-top)) }
+
     .offline-banner {
       position: absolute;
       top: 0; left: 0; right: 0;
@@ -458,7 +471,11 @@ interface NavGroup {
       border: 1px solid transparent; transition: all .2s;
     }
     .sidebar-link:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
+    /* Bloc G — l'entree ACTIVE de navigation, dans les deux barres. C'est le
+       motif deja tranche au kit (styles.css) : le vert de MARQUE ne porte pas de
+       texte. Mesure a 375 px : l'entree active de la barre du bas rendait 3,24:1
+       en clair, sur les 9 pages internes a la fois. */
+    .sidebar-link.active { background: var(--bg-tertiary); color: var(--texte-succes); border-color: var(--border-strong) }
     /* Espace dépôt — l'accent sur fond teinté donne 3,24:1 à 13,5 px, sous le seuil
        du critère n° 10. La règle vit ICI et non dans styles.css : l'encapsulation
        émulée ajoute un attribut au sélecteur du composant, ce qui le rend plus
@@ -524,8 +541,12 @@ interface NavGroup {
     .route-progress {
       position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
       z-index: 3; pointer-events: none; border-radius: 0 2px 2px 0;
-      background: linear-gradient(90deg, var(--tracky, #0A9E6C), var(--tracky-light, #10E0A0));
-      box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light, #10E0A0) 55%, transparent);
+      /* Les replis #0A9E6C / #10E0A0 sautent : les deux noms de tete sont bien
+         declares, donc ils ne servaient jamais — mais un hexadecimal en repli
+         gagne des que le nom manque, et ceux-la auraient fige les valeurs d'UN
+         theme sur les deux. */
+      background: linear-gradient(90deg, var(--tracky), var(--tracky-light));
+      box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light) 55%, transparent);
       animation: vt-route 900ms ease-out both;
     }
     @media (prefers-reduced-motion: reduce) {
@@ -603,7 +624,10 @@ interface NavGroup {
       line-height: 1;
     }
     .top-bar-brand-name { color: var(--fg-primary) }
-    .top-bar-brand-name--accent { color: var(--tracky-light) }
+    /* Le logotype est du TEXTE. 3,18:1 en clair — dernier echec restant sur
+       CHACUNE des pages mesurees, parce qu'il est dans le shell. Les 4 pages
+       d'authentification portaient le meme et ont ete reprises avec ce jeton. */
+    .top-bar-brand-name--accent { color: var(--texte-succes) }
 
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
@@ -876,7 +900,7 @@ interface NavGroup {
         min-height: 48px;
       }
       .bottom-item:hover { background: var(--bg-tertiary) }
-      .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
+      .bottom-item.active { color: var(--texte-succes); background: var(--bg-tertiary) }
       .bottom-item lucide-icon { display: block }
 
       /* Mobile : touch targets 44x44 minimum (Apple HIG iOS, materiel design Android).
