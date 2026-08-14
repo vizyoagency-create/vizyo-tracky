@@ -168,7 +168,7 @@ commits de refonte.
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
 | **B-pages** | 🟢 **livré** — blocs A→G | **57/57** |
 | **Bloc J** — interfaces alternatives | 🟡 **2 modes sur 3** *(2026-08-14)* | 2/3 |
-| **B-mails** | ⬜ à faire — **le prochain lot** | 0/12 *(⚠️ la spec § I dit **19 gabarits**)* |
+| **B-mails** | 🟢 **livré** *(2026-08-14)* | **21/21** *(le compteur « 12 » était faux : 21 gabarits réels)* |
 | **PROD** | ⬜ à faire — push, déploiement, recette | 0/28 |
 
 > ⚠️ **`B1-PAGES.md` a DIX blocs (A→J), ce tableau n'en suivait que sept.** Les blocs
@@ -609,6 +609,55 @@ langage d'application, pas du langage courant. La planche montre des boutons **l
 
 ---
 
+## 6quinquies. B-mails — les 7 défauts corrigés à la source (2026-08-14) — `a355164`
+
+**21 gabarits réels**, pas 12 (le compteur du § 5.1) ni 19 (la spec § I). La planche
+disait l'essentiel : *« une seule fonction `shell()` : corriger là corrige les 19 »*.
+
+| # | Défaut | Correctif |
+|---|---|---|
+| 1 | Fond sombre **forcé** | Clair par défaut, sombre **seulement** si le client le demande |
+| 2 | Vert en aplats | Réservé au filet, au bouton et au logo |
+| 3 | **Emoji** (9, dont 3 en e-mail de sécurité) | Supprimés |
+| 4 | **15 sujets** en `[Vizyo Tracky] …` | Retirés |
+| 5 | Google Fonts par `<link>` | Piles système inline |
+| 6 | **2 preheaders sur 19** | 17 ajoutés, un par gabarit |
+| 7 | Accents perdus (**texte brut**) | Rétablis |
+
+**Mesuré, pas lu** : les 21 gabarits rendus par la route de prévisualisation
+(`/api/admin/emails/templates/:id/preview`, SUPER_ADMIN), sonde de contraste passée sur
+le HTML réel → **0 échec**. Avant : `weekly_report` 8, `audio_activation` 6,
+`lead_welcome` 6, `quote_client` 5, `alert` 4…
+
+> 💡 **La route de prévisualisation rend les e-mails mesurables.** Injecter le HTML dans
+> la page et lui passer la sonde donne un vrai relevé. C'est la seule façon de vérifier un
+> e-mail sans l'envoyer.
+
+### ⚠️ Ce qui a été vérifié AVANT d'agir
+
+Retirer `[Vizyo Tracky]` du sujet ne perd la marque que si l'expéditeur la porte.
+**Vérifié** : `RESEND_FROM = "Vizyo Tracky <contact@vizyoagency.com>"`. La décision tient.
+
+**Les SMS et les notifications push GARDENT leur préfixe** : leur expéditeur n'a pas de
+nom, le préfixe y identifie la source — et deux tests l'exigent. La règle de la planche
+vise les **sujets d'e-mail**. `[ESCALADE]` reste aussi : ce n'est pas de la marque, c'est
+une information.
+
+### ⚠️ Deux pièges payés, tous deux le même
+
+1. **J'ai basculé les couleurs avec une liste écrite de tête.** Elle a laissé passer
+   `#C7CFCB` (**1,59:1**, 9 usages) et un fond `#0C110F`. Corrigé en **énumérant toutes
+   les couleurs et en laissant le calcul trancher**. C'est le § 8.8, une troisième fois :
+   *une liste ne rattrape que ce qu'on y inscrit.*
+2. **Une variable `accent` servait de filet ET de couleur de texte** — « CRITICAL » à
+   2,71:1. Exactement le défaut de `/fleet-schedules` (§ 6bis.2) : **deux jetons par
+   couleur**. D'où `EMAIL_TEXTE_ALERTE / ATTENTE / SECOND` et `EMAIL_ACCENT_TEXTE`.
+
+`leads.service.ts` **réutilise `shell()`** mais écrivait ses corps en palette sombre :
+gabarit clair, contenu sombre, 1,59:1. Le « jumeau » du § 8.7, aligné dans la foulée.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -882,9 +931,8 @@ doit rester en modifications locales non commitées.
 - [ ] **5. `/vehicles`** — la liste groupée par groupe avec en-têtes. **Bloqué** : c'est
       une décision de comportement, non tranchée (§ 7.2). Le mode `grouped` existe déjà
       comme option du sélecteur de vue ; seul son passage en **défaut** est en attente.
-- [ ] **7. B-mails** — 12 lignes, **0 faite**. Planche `Emails Refonte.dc.html`,
-      spec `B1-PAGES.md § I` (**19 gabarits** — le compteur 12 est à revoir).
-      **C'est le prochain lot.**
+- [x] ~~**7. B-mails**~~ — **livré le 2026-08-14** (§ 6quinquies). 21 gabarits, les
+      7 défauts de la planche corrigés, 0 échec de contraste mesuré.
 - [x] ~~**8. Le mode Baanool**~~ — mesuré et repris le 2026-08-14 (§ 6quater). Restent
       deux points, tous deux nommés : le **mode veilleur** non mesuré faute de compte
       (§ 6quater.4) et la **forme de l'écran simplifié** (§ 6quater.5), qui est une
@@ -892,6 +940,8 @@ doit rester en modifications locales non commitées.
 - [ ] **9. PROD** — 0/28, jamais commencé : push, déploiement, recette production.
       ⚠️ Le VPS porte **la production** — consigne permanente : ne rien déployer sans
       demande explicite.
+      **C'est désormais le SEUL lot restant** : tout le contenu de la refonte est livré
+      (voir § 5.1). Les 29 commits en attente en sont le préalable.
 
 **Décisions encore à demander — la liste COMPLÈTE, rien d'autre n'est en suspens :**
 
@@ -917,7 +967,8 @@ doit rester en modifications locales non commitées.
     livrées **sans avoir jamais été vues à l'écran**. Un compte de chaque réglerait les
     deux d'un coup.
 
-**Et un rappel qui ne coûte rien** : **26 commits ne sont pas poussés.**
+**Et un rappel qui ne coûte plus rien du tout** : **33 commits ne sont pas poussés**, et
+c'est maintenant le seul obstacle entre le travail fait et la recette.
 
 ---
 

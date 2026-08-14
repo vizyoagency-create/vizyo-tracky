@@ -772,6 +772,38 @@ compilation** (mon accent grave, 6ᵉ fois) **et continuait de servir le bundle 
 
 ---
 
+## B-mails — ce que le dernier lot a appris
+
+> Détail au § 6quinquies de `SUIVI-REFONTE.md`. Ici, les trois leçons.
+
+### Un e-mail se mesure, comme une page
+
+La route `/api/admin/emails/templates/:id/preview` rend le HTML réel. Injecté dans la page
+et passé à la sonde de contraste, il donne un **relevé**, pas une impression. Les 21
+gabarits sont passés de dizaines d'échecs à zéro, et aucun de ces échecs n'aurait été vu
+en relisant le code : `#C7CFCB` sur blanc « a l'air » gris clair, il rend **1,59:1**.
+
+### Une liste écrite de tête ne rattrape que ce qu'on y a pensé — troisième fois
+
+J'ai basculé la palette avec une liste de couleurs que j'avais dressée moi-même. Elle a
+laissé passer deux valeurs, dont un **fond** que je n'avais même pas pensé à auditer. Le
+correctif n'a pas été d'allonger la liste : c'est d'**énumérer toutes les couleurs du
+fichier et de laisser le calcul de contraste trancher**.
+
+> C'est la même leçon que `verif:accents` vert sur « oublie », et que la règle des 44 px
+> qui est une liste de classes. **Quand un contrôle repose sur une énumération écrite à la
+> main, la question n'est pas s'il va rater quelque chose, mais quand.**
+
+### Deux jetons par couleur — le motif se répète d'un bout à l'autre du dépôt
+
+Une variable `accent` servait de liseré **et** de couleur de texte : « CRITICAL » à
+2,71:1. C'est mot pour mot le défaut de `/fleet-schedules` (bouton primaire à 1,48:1) et
+celui de l'onglet actif trouvé sur huit écrans. **Une couleur qui remplit une surface et
+une couleur qui porte du texte ne peuvent pas être la même valeur** — dès qu'un nom sert
+aux deux, l'un des deux usages échoue.
+
+---
+
 ## La sonde de recette — à reposer au début de chaque séance
 
 Les critères de recette de `B1-PAGES.md` se **mesurent**, ils ne se jugent pas. Coller ceci
