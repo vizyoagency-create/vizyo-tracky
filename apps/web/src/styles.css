@@ -50,7 +50,14 @@
   --surface-rail: #0B0F0E; /* bg sidebar / top-bar (DS bg-2) */
   --text-primary: #EAEFED;
   --text-secondary: #9BA5A1;
-  --text-tertiary: #69736E;
+  /* Refonte v2, point O5 — était #69736E, un jeton 3:1 employé comme COULEUR DE
+     TEXTE sur ~29 écrans : à lui seul la source de ~85 % des échecs de contraste
+     du lot B-pages. `verif:contraste` ne pouvait pas le voir (il vérifie les 46
+     couples déclarés, pas les usages). Recalculé sur le fond le plus défavorable
+     du thème — --surface-quaternary (#1D2624), pas le fond nominal : 4,63:1 là,
+     5,51:1 sur --surface-secondary. --text-secondary reste à 6,12:1, donc les
+     trois niveaux gardent leur hiérarchie. */
+  --text-tertiary: #848F8A;
   --border-color: rgba(255, 255, 255, 0.08);
   --border-strong-color: rgba(255, 255, 255, 0.14);
   --accent-ink: #04130D; /* texte SUR l'accent */
@@ -75,7 +82,11 @@
   --surface-rail: #F2F5F3; /* bg sidebar / top-bar */
   --text-primary: #0A1311;
   --text-secondary: #56635E;
-  --text-tertiary: #8A938F;
+  /* Point O5, pendant clair — était #8A938F, soit 3,16:1 sur blanc. Même calcul
+     sur le fond clair le plus défavorable, --surface-quaternary (#EDF2EF) :
+     4,61:1 là, 5,22:1 sur --surface-secondary (#FFFFFF). --text-secondary reste
+     à 6,28:1. */
+  --text-tertiary: #656F68;
   --border-color: rgba(10, 25, 18, 0.09);
   --border-strong-color: rgba(10, 25, 18, 0.16);
   /* Refonte v2 — était #FFFFFF, soit 3,43:1 sur l'accent clair #0A9E6C : sous le seuil
