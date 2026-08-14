@@ -35,6 +35,13 @@
   --color-fg-tertiary: var(--text-tertiary);
   --color-border-subtle: var(--border-color);
   --color-border-strong: var(--border-strong-color);
+  /* La famille `--texte-*` n'existait qu'en CSS : un gabarit Tailwind qui voulait
+     du vert lisible n'avait que `text-tracky-light`, la couleur de MARQUE — d'où
+     l'échec de /reports (3,34:1). `text-texte-succes` est son pendant utilitaire.
+     ⚠️ Déclaré ici, il n'est PAS émis dans `:root` : s'en servir en
+     `var(--color-texte-succes)` ne marcherait pas (forme refusée n° 4,
+     cf. `verif:variables`). C'est un utilitaire Tailwind, rien d'autre. */
+  --color-texte-succes: var(--texte-succes);
 }
 
 :root,
@@ -178,6 +185,36 @@ body.plat-android {
   --texte-violet: var(--violet);
   --texte-inactif: var(--text-secondary);
 }
+
+/* ─── L'ÉTAT ACTIF d'un sélecteur segmenté ──────────────────────────────────
+ *
+ * Cinq écrans écrivaient le même défaut, chacun dans son coin : l'onglet ACTIF
+ * se peignait en `var(--tracky-light)` (ou `text-tracky-light` en Tailwind),
+ * c'est-à-dire le vert de MARQUE employé comme couleur de TEXTE.
+ *
+ *   /install « Android »      .ip-seg-btn.on        3,43:1
+ *   /scores  « 90 j »         .ds-seg button.on     3,43:1
+ *   /agenda  « Tous »         .ag-seg-btn--active   3,43:1
+ *   /account « Profil »       .tab.active           3,34:1
+ *   /reports « 7 jours »      text-tracky-light     3,34:1
+ *
+ * C'est la règle du kit — un libellé prend un jeton `--texte-*`, jamais la
+ * couleur de marque — réintroduite cinq fois parce qu'aucune classe ne la
+ * portait. Celle-ci la porte : les cinq pointent ici, plus personne ne
+ * redécide la valeur dans son coin.
+ *
+ * Mesure sur les fonds réels (clair, le seul thème où ça échouait) :
+ *   sur --bg-secondary        3,43 -> 5,97:1
+ *   sur un lavis 20 % accent  2,72 -> 4,74:1
+ *   sur un lavis 10 % accent  3,06 -> 5,33:1
+ * En sombre `--texte-succes` VAUT `--color-tracky-light` : rien ne bouge.
+ *
+ * Pas de classe partagée ici : chaque sélecteur porte aussi SON fond et SON
+ * ombre, et une classe qui ne poserait que la couleur ferait doublon — c'est
+ * le JETON qui est le point unique, comme pour `.tk-popup-btn--*`.
+ * ⇒ CONVENTION : l'état actif d'un segment prend `var(--texte-succes)`,
+ *   jamais `var(--tracky-light)` ni `text-tracky-light`.
+ */
 
 /* ─── Cibles tactiles : 44 px au doigt (lot B-pages) ────────────────────────
  *

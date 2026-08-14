@@ -169,7 +169,9 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     .ip-seg { display: flex; gap: 4px; padding: 4px; border-radius: 13px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); margin-bottom: 16px; }
     .ip-seg-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 6px; border-radius: 10px; border: none; background: transparent; color: var(--fg-tertiary); font-family: inherit; font-size: .84rem; font-weight: 700; cursor: pointer; transition: color .18s, background .18s; }
     .ip-seg-btn:hover { color: var(--fg-secondary); }
-    .ip-seg-btn.on { background: var(--bg-secondary); color: var(--tracky-light); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, pas
+       le vert de marque. Sur --bg-secondary clair : 3,43 -> 5,97:1. */
+    .ip-seg-btn.on { background: var(--bg-secondary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
 
     .ip-card { padding: 22px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); box-shadow: 0 1px 2px rgba(0,0,0,.35), 0 30px 70px -22px rgba(0,0,0,.5); animation: ip-fade .3s cubic-bezier(.16,1,.3,1); }
     @keyframes ip-fade { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }

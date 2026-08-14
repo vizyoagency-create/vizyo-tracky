@@ -379,9 +379,12 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       white-space: nowrap;
       flex: 0 0 auto;
     }
+    /* Convention du kit (styles.css) : le LIBELLE actif prend --texte-succes.
+       Le LISERE, lui, reste en --tracky-light : ce n'est pas du texte, il n'est
+       pas soumis au 4,5:1, et c'est lui qui porte la marque sur cette barre. */
     .tab.active {
-      color: var(--tracky-light, #10E0A0);
-      border-bottom-color: var(--tracky-light, #10E0A0);
+      color: var(--texte-succes);
+      border-bottom-color: var(--tracky-light);
     }
     .tab:hover:not(.active) { color: var(--fg-secondary); }
     /* Mobile : tabs plus compactes pour limiter le risque de troncature. */

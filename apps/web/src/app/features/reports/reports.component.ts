@@ -190,7 +190,7 @@ import {
           <button (click)="setPeriod(p.from, p.to); customRangeOpen.set(false)"
                   class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
                   [class]="periodFrom === p.from && periodTo === p.to && !isCustomRange()
-                    ? 'bg-tracky/20 text-tracky-light border-tracky/30'
+                    ? 'bg-tracky/20 text-texte-succes border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
             {{ p.label }}
           </button>
@@ -202,7 +202,7 @@ import {
                   (click)="customRangeOpen.set(!customRangeOpen())"
                   class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
                   [class]="isCustomRange()
-                    ? 'bg-tracky/20 text-tracky-light border-tracky/30'
+                    ? 'bg-tracky/20 text-texte-succes border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
             <lucide-icon [img]="CalendarIcon" [size]="12"></lucide-icon>
             @if (isCustomRange()) { {{ customRangeLabel() }} } @else { Personnalisé }
@@ -274,7 +274,7 @@ import {
                 [title]="canPeriodReplay() ? 'Replay de tous les trajets de la période'
                                             : 'Sélectionne un véhicule avec des trajets sur la période'"
                 class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-tracky/30
-                       bg-tracky/10 text-tracky-light hover:bg-tracky/20
+                       bg-tracky/10 text-texte-succes hover:bg-tracky/20
                        transition-colors cursor-pointer disabled:opacity-40
                        inline-flex items-center gap-1.5">
           <lucide-icon [img]="Play" [size]="12"></lucide-icon>

@@ -212,7 +212,12 @@ type Period = '7d' | '30d' | '90d';
     .ds-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .ds-seg { display: inline-flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 12px; }
     .ds-seg button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: var(--fg-tertiary); }
-    .ds-seg button.on { background: var(--bg-secondary); color: var(--tracky-light, #10E0A0); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+    /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, pas
+       le vert de marque. Sur --bg-secondary clair : 3,43 -> 5,97:1.
+       Le repli #10E0A0 saute au passage : --tracky-light est bien declaree, donc
+       il ne servait jamais — mais un hexadecimal en repli gagne des que le nom
+       de tete manque, et il aurait fige le theme sombre sur les deux themes. */
+    .ds-seg button.on { background: var(--bg-secondary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
     .ds-seg--sm button { padding: 6px 11px; font-size: 12px; }
     .ds-alert { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 10px; background: color-mix(in srgb, #EF4444 12%, transparent); color: #EF4444; font-size: 12.5px; }
     .ds-overall { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }

@@ -793,7 +793,9 @@ interface GroupOption {
       font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap;
     }
     .ag-seg-btn:hover { color: var(--fg-secondary); }
-    .ag-seg-btn--active { background: var(--bg-secondary); color: var(--tracky-light); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+    /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, pas
+       le vert de marque. Sur --bg-secondary clair : 3,43 -> 5,97:1. */
+    .ag-seg-btn--active { background: var(--bg-secondary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 
     /* Navigation mois */
     .ag-month-nav {
