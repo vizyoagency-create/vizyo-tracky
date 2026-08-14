@@ -109,6 +109,26 @@ export class MissionRequestsController {
     return this.demandes.refuser(req.user, id, dto?.reason ?? '');
   }
 
+  /**
+   * Affecter un camion et un conducteur : la demande DEVIENT une mission.
+   *
+   * C'est ici, et seulement ici, que l'exploitation commence — vehicule immobilise,
+   * evenement d'agenda, acces du depot a la position.
+   *
+   * Gardee par `missions_manage`, et NON `missions_request` : engager son parc n'est
+   * pas negocier. Un depot porte la seconde, jamais la premiere — et le service le
+   * verifie une deuxieme fois, avant toute ecriture.
+   */
+  @Post(':id/assign')
+  @RequirePermissions('missions_manage')
+  affecter(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: { vehicleId: string; driverId?: string | null; notes?: string | null },
+  ) {
+    return this.demandes.affecter(req.user, id, dto);
+  }
+
   /** Un statut inconnu est ignore, jamais transforme en erreur : c'est un filtre. */
   private statutValide(valeur?: string): MissionRequestStatus | undefined {
     if (!valeur) return undefined;

@@ -10,6 +10,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionPricingService, type ResultatTarif } from './mission-pricing.service';
+import { MissionsService } from './missions.service';
 
 /**
  * Espace depot, lot A6 — les demandes de mission et leur negociation.
@@ -82,6 +83,8 @@ export class MissionRequestsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricing: MissionPricingService,
+    /** La conversion passe par le chemin EXISTANT, jamais par un mission.create maison. */
+    private readonly missions: MissionsService,
   ) {}
 
   // ═══ CREATION ═══════════════════════════════════════════════════════════════
@@ -327,6 +330,98 @@ export class MissionRequestsService {
       },
     });
     return this.detailComplet(requestId);
+  }
+
+  // ═══ AFFECTATION ET CONVERSION (T7) ═════════════════════════════════════════
+
+  /**
+   * Affecter un camion et un conducteur : la demande devient une MISSION.
+   *
+   * ┌─ C'EST ICI, ET SEULEMENT ICI, QUE L'EXPLOITATION COMMENCE ────────────────┐
+   * │ Jusqu'a cet appel, rien n'existait cote flotte. A partir de lui : le      │
+   * │ vehicule est immobilise, un evenement d'agenda est pose, le depot recoit  │
+   * │ un acces a la position pendant la fenetre. Les quatre effets de bord de   │
+   * │ `MissionsService.creer`.                                                  │
+   * │                                                                            │
+   * │ On passe par CE service-la, jamais par un `mission.create` maison : ses    │
+   * │ sept validations (creneau, chevauchement, depot de la flotte, conducteur   │
+   * │ de la flotte…) sont exactement celles qu'une demande negociee doit encore  │
+   * │ franchir. Une demande acceptee n'est pas une mission valide — le camion    │
+   * │ choisi peut avoir ete pris entre-temps.                                    │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * Reserve au TRANSPORTEUR : c'est lui qui engage son parc. Un depot qui
+   * tenterait l'appel est arrete ici, avant toute ecriture.
+   */
+  async affecter(
+    user: AuthUser,
+    requestId: string,
+    entree: { vehicleId: string; driverId?: string | null; notes?: string | null },
+  ) {
+    if (user.role === UserRole.DEPOT) {
+      throw new ForbiddenException(
+        'Seul le transporteur affecte un véhicule : c\'est son parc qu\'il engage.',
+      );
+    }
+    const demande = await this.chargerAccessible(user, requestId);
+    if (demande.status !== MissionRequestStatus.ACCEPTED) {
+      throw new BadRequestException(
+        `Cette demande est ${this.libelleStatut(demande.status)} : elle ne peut pas être affectée tant que les deux parties ne se sont pas accordées.`,
+      );
+    }
+    if (demande.missionId) {
+      throw new BadRequestException('Cette demande a déjà donné lieu à une mission.');
+    }
+    if (!entree?.vehicleId) {
+      throw new BadRequestException('Choisissez un véhicule.');
+    }
+
+    // Les deux libelles de la mission se composent depuis le PREMIER et le DERNIER
+    // arret. `Mission` reste point a point ; les arrets, eux, sont reportes tels
+    // quels juste apres, et deviennent la source de verite du trajet.
+    const arrets = [...demande.stops].sort((a, b) => a.position - b.position);
+    const depart = arrets[0];
+    const arrivee = arrets[arrets.length - 1];
+
+    const { mission, avertissements } = await this.missions.creer(user, {
+      fleetId: demande.fleetId,
+      vehicleId: entree.vehicleId,
+      driverId: entree.driverId ?? null,
+      depotUserId: demande.depotUserId,
+      originLabel: depart.label,
+      destLabel: arrivee.label,
+      startAt: demande.wantedStartAt.toISOString(),
+      endAt: demande.wantedEndAt.toISOString(),
+      notes: entree.notes ?? null,
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      // Les arrets sont COPIES sur la mission, pas deplaces : la demande garde les
+      // siens, sans quoi son historique de negociation deviendrait illisible — on ne
+      // saurait plus sur quel trajet les parties se sont accordees.
+      await tx.missionStop.createMany({
+        data: arrets.map((a) => ({
+          missionId: mission.id,
+          position: a.position,
+          kind: a.kind,
+          label: a.label,
+          placeId: a.placeId,
+          lat: a.lat,
+          lng: a.lng,
+          wantedAt: a.wantedAt,
+          note: a.note,
+        })),
+      });
+      await tx.missionRequest.update({
+        where: { id: requestId },
+        data: { status: MissionRequestStatus.CONVERTED, missionId: mission.id },
+      });
+    });
+
+    this.logger.log(
+      `Demande ${demande.ref} convertie en mission ${mission.ref} — ${arrets.length} arret(s)`,
+    );
+    return { mission, avertissements, request: await this.detailComplet(requestId) };
   }
 
   // ═══ LECTURE ════════════════════════════════════════════════════════════════

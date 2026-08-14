@@ -5,6 +5,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionPricingService } from './mission-pricing.service';
 import { MissionRequestsService } from './mission-requests.service';
+import { MissionsService } from './missions.service';
 
 /**
  * Espace depot, lot A6 — les demandes de mission et leur negociation.
@@ -30,6 +31,7 @@ describe('MissionRequestsService', () => {
     $transaction: jest.Mock;
   };
   let pricing: { tarifPour: jest.Mock };
+  let missions: { creer: jest.Mock };
 
   const DEPOT = { id: 'depot-1', fleetId: 'f-1', role: UserRole.DEPOT } as AuthUser;
   const AUTRE_DEPOT = { id: 'depot-2', fleetId: 'f-1', role: UserRole.DEPOT } as AuthUser;
@@ -104,11 +106,22 @@ describe('MissionRequestsService', () => {
       }),
     };
 
+    // ⚠️ La conversion passe par le service des MISSIONS, jamais par un
+    // `mission.create` maison : ses sept validations sont exactement celles qu'une
+    // demande negociee doit encore franchir. L'espion sert a le prouver.
+    missions = {
+      creer: jest.fn().mockResolvedValue({
+        mission: { id: 'm-9', ref: 'M-0042' },
+        avertissements: [],
+      }),
+    };
+
     const moduleRef = await Test.createTestingModule({
       providers: [
         MissionRequestsService,
         { provide: PrismaService, useValue: prisma },
         { provide: MissionPricingService, useValue: pricing },
+        { provide: MissionsService, useValue: missions },
       ],
     }).compile();
     service = moduleRef.get(MissionRequestsService);
@@ -356,6 +369,99 @@ describe('MissionRequestsService', () => {
         status: MissionRequestStatus.REJECTED,
         rejectedBy: QuoteRoundAuthor.CARRIER,
       });
+    });
+  });
+
+  // ═══ AFFECTATION ET CONVERSION (T7) ══════════════════════════════════════════
+
+  describe('affecter — c\'est ici que l\'exploitation commence', () => {
+    const ACCEPTEE = () => demandeEn({ status: MissionRequestStatus.ACCEPTED, agreedAmountCents: 7900 });
+
+    it('passe par MissionsService.creer, jamais par un mission.create maison', async () => {
+      // Ses sept validations sont exactement celles qu'une demande négociée doit
+      // encore franchir : le camion choisi peut avoir été pris entre-temps.
+      prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+      await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1', driverId: 'd-1' });
+      expect(missions.creer).toHaveBeenCalled();
+      expect(prisma.mission.create).not.toHaveBeenCalled();
+    });
+
+    it('compose les deux libellés depuis le PREMIER et le DERNIER arrêt', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(
+        demandeEn({
+          status: MissionRequestStatus.ACCEPTED,
+          stops: [
+            { position: 0, kind: 'PICKUP', label: 'Entrepôt', wantedAt: null, note: null },
+            { position: 1, kind: 'DROPOFF', label: 'Client A', wantedAt: null, note: null },
+            { position: 2, kind: 'DROPOFF', label: 'Client B', wantedAt: null, note: null },
+          ],
+        }),
+      );
+      await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+      expect(missions.creer.mock.calls[0][1]).toMatchObject({
+        originLabel: 'Entrepôt',
+        destLabel: 'Client B',
+      });
+    });
+
+    it('COPIE les arrêts sur la mission — la demande garde les siens', async () => {
+      // Les déplacer rendrait l'historique de négociation illisible : on ne saurait
+      // plus sur quel trajet les parties se sont accordées.
+      prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+      await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+      const copies = prisma.missionStop.createMany.mock.calls[0][0].data;
+      expect(copies).toHaveLength(2);
+      expect(copies[0].missionId).toBe('m-9');
+      expect(prisma.missionStop.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('marque la demande CONVERTED et la relie à sa mission', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+      await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+      expect(prisma.missionRequest.update.mock.calls[0][0].data).toMatchObject({
+        status: MissionRequestStatus.CONVERTED,
+        missionId: 'm-9',
+      });
+    });
+
+    it('un DÉPÔT ne peut pas affecter — ce n\'est pas son parc', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+      await expect(
+        service.affecter(DEPOT, 'r-1', { vehicleId: 'v-1' }),
+      ).rejects.toThrow(/transporteur/);
+      expect(missions.creer).not.toHaveBeenCalled();
+    });
+
+    it('refuse d\'affecter une demande non acceptée', async () => {
+      // Tant que les deux parties ne se sont pas accordées, rien ne doit exister
+      // côté exploitation.
+      prisma.missionRequest.findFirst.mockResolvedValue(demandeEn({ status: MissionRequestStatus.NEGOTIATING }));
+      await expect(service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' })).rejects.toThrow(
+        /accordées/,
+      );
+      expect(missions.creer).not.toHaveBeenCalled();
+    });
+
+    it('refuse une deuxième conversion', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(
+        demandeEn({ status: MissionRequestStatus.ACCEPTED, missionId: 'm-1' }),
+      );
+      await expect(service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' })).rejects.toThrow(
+        /déjà donné lieu/,
+      );
+    });
+
+    it('exige un véhicule', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+      await expect(
+        service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: '' }),
+      ).rejects.toThrow(/véhicule/);
+    });
+
+    it('transmet le dépôt destinataire à la mission — c\'est lui qui verra le camion', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+      await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+      expect(missions.creer.mock.calls[0][1]).toMatchObject({ depotUserId: 'depot-1' });
     });
   });
 
