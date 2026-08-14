@@ -687,6 +687,41 @@ Rattrapé par le seul réflexe qui pouvait le faire : **lire `location.pathname`
 relevé**. Sans ça, la séance produisait des chiffres faux sur 9 pages. La parade est
 maintenant au § 3 du suivi.
 
+Et il a resservi **trois fois** dans la même séance : l'API redémarre en `--watch`, la
+session saute, et la page mesurée redevient `/login` sans prévenir. Une fois, le relevé
+annonçait « `/fleet-schedules` : 2 échecs » — c'était `/login`. **Sur une session longue,
+ce n'est pas un incident, c'est la norme.**
+
+### La page qui ne suivait pas le thème
+
+`/fleet-schedules` portait sa propre palette et basculait sur
+`@media (prefers-color-scheme: dark)` — **l'OS**, pas `data-theme`. Sur une machine dont
+l'OS est sombre et l'app en clair, elle affichait du blanc cassé sur du blanc : 1,14:1.
+
+Ce qui rend ce défaut coûteux, c'est qu'il **ne se voit pas** tant que l'OS et l'app sont
+d'accord — et qu'il est invisible à la lecture du code si on ne connaît pas la
+distinction. Le `grep prefers-color-scheme` qui l'aurait trouvé prend une seconde.
+
+Deux règles en sont sorties, valables partout :
+
+- **Deux jetons par couleur** : celui qui *porte du texte*, celui qui *remplit une
+  surface*. Les confondre donnait le bouton primaire à 1,48:1.
+- **L'encre sur un fond coloré se choisit par mesure.** Sur l'accent vert, le blanc échoue
+  (1,72) et l'encre foncée passe. Sur un gris moyen, **c'est l'inverse** : 4,76 contre
+  3,99. « L'encre est foncée sur fond accent » vaut pour l'accent, pas pour tout fond.
+
+### Le plancher hors couche qui bat Tailwind
+
+`min-h-[44px]` posé sur un `<a>` n'a **aucun effet** : le plancher global de `styles.css`
+(`button, a { min-height: 36px }`) est écrit **hors couche**, et une règle sans couche bat
+toujours `@layer utilities`, quelle que soit la spécificité. La classe est dans le DOM,
+`getComputedStyle` renvoie `36px`, et rien ne le signale.
+
+Découvert en corrigeant une cible de 343×36 — et il a fallu passer par une règle de
+composant. **Corollaire** : le § 8.10 du suivi affirmait que le panneau n'émule pas
+`pointer: coarse`. **C'est faux** — `resize_window` sous 768 px active l'émulation mobile
+complète, donc ce plancher s'applique bel et bien dans nos mesures. Corrigé dans le suivi.
+
 ---
 
 ## La sonde de recette — à reposer au début de chaque séance

@@ -21,10 +21,12 @@
 > à la main de séance en séance. **Il donne un ordre de grandeur, pas une preuve.** La
 > seule preuve est le § 5.2 ci-dessous, et la mesure au navigateur.
 >
-> Il est **laissé à 46/57 exprès** au 2026-08-14 : les 13 pages « présumées » ont été
-> mesurées, mais **mesurée ≠ finie** — elles gardent les reliquats du § 6bis, dont
-> `/fleet-schedules` qui est un chantier entier. Le monter ferait exactement ce que ce
-> fichier reproche au compteur de `REFONTE-TRACKY-V2.md`.
+> Il est **laissé à 46/57** au 2026-08-14. Les 13 pages « présumées » sont pourtant
+> mesurées ET closes (§ 6bis) — mais ce compteur compte des **lignes de spec**, et la
+> correspondance ligne ↔ page n'est écrite nulle part. Le monter « à vue » referait
+> exactement ce que ce fichier reproche au compteur de `REFONTE-TRACKY-V2.md`.
+> **La preuve est le tableau du § 5.2, pas ce nombre.** Il reste `/places`, `/alerts` et
+> le bloc G.
 
 ---
 
@@ -172,26 +174,33 @@ commits de refonte.
 
 ### 5.2 B-pages, bloc par bloc — **l'ordre est imposé par `B1-PAGES.md`**
 
-⚠️ **Lire d'abord cette mise en garde.** Le journal note « Bloc A ✅ terminé » en ne
-citant que **3 pages sur les 7** que `B1-PAGES.md` liste au bloc A, et « contenu propre
-de D et E ✅ terminé » en n'en citant que **5 sur 14**. Le tableau ci-dessous distingue
-donc ce qui est **nommément confirmé livré et mesuré** de ce qui est **présumé** — et il
-ne faut pas traiter un « présumé » comme fait sans l'avoir rouvert au navigateur.
+⚠️ **La mise en garde qui a produit ce tableau, gardée parce qu'elle resservira.** Le
+journal notait « Bloc A ✅ terminé » en ne citant que **3 pages sur les 7** que
+`B1-PAGES.md` liste au bloc A, et « contenu propre de D et E ✅ terminé » en n'en citant
+que **5 sur 14**. Le tableau a donc séparé le **nommément livré et mesuré** du **présumé**.
+
+Les 13 « présumées » ont été rouvertes le 2026-08-14 : **aucune n'était propre**, et deux
+cachaient un défaut de fond (une page qui ignorait le thème, un `catch` qui mentait).
+**La leçon vaut au-delà de ce tableau : un bloc coché sans que ses pages soient nommées
+n'est pas un bloc fini.** À réappliquer tel quel à B-mails et à PROD.
 
 | Bloc | Nommément livré et mesuré | Reste à faire |
 |---|---|---|
-| **A** — Entrée & conducteur (7) | `/book/:token` · `/reserve/:token` · `/driver/unlock` · **`/login`** · **`/forgot-password`** · **`/accept-invite`** · **`/install`** — les 4 dernières **mesurées le 2026-08-14** | — *(reliquats nommés au § 6bis)* |
+| **A** — Entrée & conducteur (7) | 🟢 **7/7** — `/book/:token` · `/reserve/:token` · `/driver/unlock` · **`/login`** · **`/forgot-password`** · **`/accept-invite`** · **`/install`** *(les 4 dernières mesurées ET closes le 2026-08-14, à **0 échec**)* | — |
 | **B** — Espace conducteur (1) | `/driver` 🟢 | — *(⚠️ mesuré avec un compte fleet-admin : aucun compte DRIVER en base, le périmètre réel d'un conducteur n'a **pas** été vérifié)* |
 | **C** — Supervision (6) | `/dashboard` · `/vehicles/:id` · **`/map`** · **`/vehicles`** | **`/places` 🟠 partiellement bloqué** · **`/alerts` ⬜ pas commencé** |
-| **D** — Analyse (5) | `/fleet-admin/activity` · `/admin/ai-usage` · **`/reports`** · **`/scores`** · **`/agenda`** — les 3 dernières **mesurées le 2026-08-14** | — *(reliquats § 6bis)* |
-| **E** — Administration (9) | `/settings` · `/integrations` · `/privacy-coverage` · **`/users`** · **`/users/overview`** · **`/installations`** · **`/fleet-schedules`** · **`/settings/audio-monitoring`** · **`/account`** — les 6 dernières **mesurées le 2026-08-14** | 🔴 **`/fleet-schedules` est un chantier entier**, pas un reliquat (§ 6bis) |
+| **D** — Analyse (5) | 🟢 **5/5** — `/fleet-admin/activity` · `/admin/ai-usage` · **`/reports`** · **`/scores`** · **`/agenda`** *(les 3 dernières mesurées ET closes le 2026-08-14)* | — |
+| **E** — Administration (9) | 🟢 **9/9** — `/settings` · `/integrations` · `/privacy-coverage` · **`/users`** · **`/users/overview`** · **`/installations`** · **`/fleet-schedules`** · **`/settings/audio-monitoring`** · **`/account`** *(les 6 dernières mesurées ET closes le 2026-08-14)* | — |
 | **F** — Surfaces bloquantes (12) | 🟢 **clos 12/12**, séance du 2026-08-11 | — |
 | **G** — Le shell (2) | — | ⬜ **EN DERNIER**, ordre non négociable |
 
-> ✅ **La colonne « présumé » est vidée.** Les 13 pages (le § disait « 11 » : le compte
-> était faux, les colonnes en listaient 13) ont été rouvertes le **2026-08-14** avec les
-> deux sondes, à 375 px, dans les deux thèmes. **Aucune n'était propre.** Le détail des
-> relevés — avant / après — est au § 6bis.
+> ✅ **La colonne « présumé » est vidée, et les 13 pages sont closes.** (Le § annonçait
+> « 11 » : le compte était faux, ses colonnes en listaient 13.) Rouvertes le
+> **2026-08-14** avec les deux sondes, à 375 px, dans les deux thèmes : **aucune n'était
+> propre**. Toutes sont maintenant à **0 échec**, hors le logotype de la top-bar — un
+> élément unique, partagé, qui relève du **bloc G**. Détail au § 6bis.
+>
+> **Il ne reste donc que `/places`, `/alerts` et le bloc G** avant B-mails.
 
 ### 5.3 Ce qui reste, dans l'ordre
 
@@ -285,49 +294,77 @@ pastille *grossit*), et « Seuil atteint » n'existe nulle part dans les donnée
 **2 commits.** Les deux décisions bloquantes O5 et « onglet actif » ont été **tranchées
 par le client** et livrées dans la foulée.
 
-### 6bis.1 Le relevé — aucune des 13 n'était propre
+### 6bis.1 Le relevé — aucune des 13 n'était propre, toutes les 13 sont closes
 
 Sonde de contraste + sonde de recette, 375 px, deux thèmes, **écran entier** (§ 8.2).
 
-| Page | Avant (clair / sombre) | Après les 2 correctifs | Ce qui reste |
-|---|---:|---:|---|
-| `/reports` | **104 / 99** | **3 / 0** | « Excel » 1,64 · « PDF » 3,17 |
-| `/agenda` | 33 / 27 | 6 / 1 | ● 2,08 · ~ 2,65 · `cal-cell-day` 3,24 · « Événement » 3,43 clair **1,72 sombre** · `ag-stat-value` 3,94 |
-| `/users` | 25 / 17 | 8 / 0 | `u-role-pill admin` 2,92 · `u-avatar pending` 3,02 ×3 · `u-role-pill expired` 3,31 ×3 |
-| `/account` | 18 / 16 | **1 / 0** | shell |
-| `/users/overview` | 20 / 17 | 4 / 1 | `po-role-badge viewer` **2,19** · `po-role-badge admin` 3,17 · `po-user-avatar admin` 3,43 clair **1,72 sombre** |
-| `/scores` | 16 / 13 | **1 / 0** | shell |
-| `/fleet-schedules` | 12 / 6 | **7 / 1** | 🔴 rien n'a bougé — voir 6bis.2 |
-| `/installations` | 8 / 7 | **1 / 0** | shell — mais le `catch` ment (6bis.3) |
-| `/settings/audio-monitoring` | 7 / 6 | **1 / 0** | shell · 1 cible 343×36 |
-| `/install` | 6 / 4 | **1 / 0** | « Se connecter » 3,34 + cible **80×18** |
-| `/login` | 5 / 3 | **1 / 0** | logotype `text-tracky-light` 3,34 · **« oublie » sans accent** (6bis.4) |
-| `/forgot-password` | 3 / 2 | **1 / 0** | logotype 3,34 |
-| `/accept-invite` | 3 / 2 | **1 / 0** | logotype 3,34 · cible 38×38 |
+| Page | Avant | Après O5 + onglet actif | **Fin de séance** |
+|---|---:|---:|---:|
+| `/reports` | **104 / 99** | 3 / 0 | **1 / 0** |
+| `/agenda` | 33 / 27 | 6 / 1 | **1 / 0** |
+| `/users` | 25 / 17 | 8 / 0 | **1 / 0** |
+| `/users/overview` | 20 / 17 | 4 / 1 | **1 / 0** |
+| `/account` | 18 / 16 | 1 / 0 | **1 / 0** |
+| `/scores` | 16 / 13 | 1 / 0 | **1 / 0** |
+| `/fleet-schedules` | 12 / 6 | 7 / 1 🔴 | **1 / 0** |
+| `/installations` | 8 / 7 | 1 / 0 | **1 / 0** |
+| `/settings/audio-monitoring` | 7 / 6 | 1 / 0 | **1 / 0** |
+| `/install` | 6 / 4 | 1 / 0 | **0 / 0** |
+| `/login` | 5 / 3 | 1 / 0 | **0 / 0** |
+| `/forgot-password` | 3 / 2 | 1 / 0 | **0 / 0** |
+| `/accept-invite` | 3 / 2 | 1 / 0 | **0 / 0** |
 
-Recette : **aucun débordement horizontal, aucune coupe verticale** sur les 13. Deux
-troncatures sans `title` (`/reports` « 24h18 », `/users` un e-mail). `/reports` porte
-**168 cellules de carte de chaleur à 10×11** + 7 étiquettes de jour à 24×44.
+> **Le « 1 » qui reste partout est le MÊME élément** : le logotype de la top-bar
+> (`top-bar-brand-name`, 3,18:1). Il appartient au shell → **bloc G**. Les 4 pages sans
+> shell sont donc à **zéro**.
+
+Recette : **aucun débordement horizontal, aucune coupe verticale** sur les 13. Les deux
+troncatures sans `title` et les deux cibles sous 44 px sont corrigées. **Plus aucune
+cible sous 44 px** sur ces écrans, à l'exception documentée des **168 cellules de carte
+de chaleur à 10×11** de `/reports` — décision en attente (§ 12).
+
+**Non-régression** sur les écrans déjà livrés, remesurés après O5 : `/map` 12/11 → **2/2**,
+`/vehicles` 10 → **2**, `/dashboard` 6 → **2**.
 
 > ⚠️ **Le shell pèse 6 échecs en clair sur CHACUNE des 9 pages internes** — soit ~54
 > occurrences qui ne sont qu'**un seul** défaut, à traiter au bloc G. Les compter par
 > page gonfle les totaux d'un facteur 9. Les relevés ci-dessus les isolent.
 
-### 6bis.2 🔴 `/fleet-schedules` n'a jamais été reprise
+### 6bis.2 ⭐ `/fleet-schedules` ne suivait pas le thème de l'application — `7acade4`
 
-Le journal la comptait couverte. Elle ne l'est pas : ses classes (`btn primary`,
-`muted small`, `sub`) sont d'avant la refonte, **aucun de ses échecs n'était O5**, et
-les deux correctifs de la séance ne l'ont pas touchée.
+Le journal la comptait couverte. Le titre H1 rendait **1,14:1** et « Aperçu & appliquer »
+**1,48:1 dans les DEUX thèmes**. Ce n'était pas un défaut de contraste à retoucher :
 
-| Élément | Ratio |
-|---|---:|
-| « Horaires de la flotte » (titre, 20 px) | **1,14:1** |
-| « Rafraîchir » (`btn ghost`) | **1,14:1** |
-| « Aperçu & appliquer » (`btn primary`) | **1,48:1** *(dans les DEUX thèmes)* |
-| « Coupe & reprise moteur automatiques… » | 2,40:1 |
-| « Mis à jour à l'instant » | 2,40:1 |
+**La page portait sa PROPRE palette `--fs-*`, qui basculait sur
+`@media (prefers-color-scheme: dark)` — la préférence de l'OS.** Or l'application ne pilote
+pas son thème par l'OS : c'est `data-theme` sur `<html>` qui commande. **Les deux sont
+indépendants.** Mesuré, sur une machine dont l'OS est en sombre et l'app en clair :
 
-C'est un **chantier de page**, pas un reliquat. À traiter comme tel dans le planning.
+```
+--fs-text = #e8efec  en data-theme=light   ← la variante SOMBRE
+--fs-text = #e8efec  en data-theme=dark
+fond du body        = clair
+```
+
+Un blanc cassé sur du blanc. **Un utilisateur en thème clair avec un OS sombre ne pouvait
+pas lire la page.**
+
+> ⚠️ **À chercher ailleurs** : tout composant qui contient `prefers-color-scheme` est
+> suspect du même défaut. C'est un `grep` d'une seconde et ça ne se voit pas autrement —
+> la page paraît normale tant que l'OS et l'app sont d'accord.
+
+Corrigé en faisant des `--fs-*` des **alias des jetons du kit**. Deux leçons transférables :
+
+- **DEUX jetons par couleur, pas un** : celui qui *porte du texte* (`--texte-*`) et celui
+  qui *remplit une surface* (la couleur pleine). Les confondre est exactement ce qui
+  donnait le bouton primaire à 1,48:1.
+- **L'encre sur un fond de couleur se choisit par MESURE, pas par règle.** Sur l'accent
+  vert, le blanc échoue et `--accent-ink` passe. Sur les gris moyens des avatars, c'est
+  **l'inverse** : blanc 4,76:1 contre 3,99 pour l'encre foncée. La règle « l'encre est
+  foncée sur un fond accent » vaut pour l'accent, pas pour tout fond coloré.
+
+Résultat : **12 / 6 → 1 / 0**, et `--fs-text` vaut enfin `#0A1311` en clair, `#EAEFED` en
+sombre.
 
 ### 6bis.3 Le `catch` qui pose un tableau vide — **6ᵉ occurrence, 6ᵉ écran sans rapport**
 
@@ -336,12 +373,25 @@ n'écrase pas un tableau, il laisse `plans` à sa valeur initiale `[]` et ne pos
 état** — juste un `toast.error` **éphémère**.
 
 Vérifié au navigateur, pas sur lecture de code : en faisant échouer `api.list()`, la page
-affiche « **Aucun planning d'installation publié pour le moment.** » pendant que le toast
-passe et disparaît. **Le mensonge rassurant reste seul à l'écran.**
+affichait « **Aucun planning d'installation publié pour le moment.** » pendant que le toast
+passait et disparaissait. **Le mensonge rassurant restait seul à l'écran.**
 
 > Corollaire pour la suite : chercher le `catch` **ne suffit pas** — il faut regarder si
 > un état d'erreur est **posé**, pas seulement si l'erreur est *signalée*. Un toast n'est
 > pas un état. `/scores` fait bien `error.set()` et l'affiche (vérifié) ; `/places` aussi.
+
+✅ **Corrigé — `9325d49`.** `<app-zone>` rend les trois états ; l'ordre compte, une erreur
+n'est pas un vide et prime sur lui. Vérifié après coup, au navigateur :
+
+| Situation | Ce que la page dit |
+|---|---|
+| API en panne | « Impossible de charger votre planning » + **Réessayer** — « Aucun planning » **absent** |
+| API saine, 0 plan | « Aucun planning d'installation publié » — le message d'origine, intact |
+
+> ⚠️ **Le premier test n'a rien prouvé et a failli passer pour une preuve** : patcher
+> `window.fetch` a intercepté **0 appel** — le client API ne passe pas par là. Seul le
+> compteur `appelsBloques: 0` l'a signalé. **Une sonde qui n'inspecte rien ne dit rien** ;
+> il a fallu remplacer `api.list()` sur l'instance du composant.
 
 ### 6bis.4 `verif:accents` est verte et le défaut est à l'écran
 
@@ -354,17 +404,38 @@ car « il oublie » est un verbe valide sans accent. C'est le **§ 8.8 appliqué
 garde** : *une garde-liste ne rattrape que ce qu'on y inscrit.* Ne pas conclure d'un
 `verif:accents` vert que les accents sont bons — c'est un filet, pas une preuve.
 
+✅ Corrigé (`4ac4b5a`). **La liste n'a PAS été enrichie** : y ajouter `oublie` signalerait
+tous les « il oublie » légitimes, et une garde qui crie à tort finit ignorée.
+
 ### 6bis.5 Deux motifs transverses que seul un relevé groupé fait apparaître
 
 Aucun n'est visible en regardant une page à la fois :
 
 - **Le logotype « Tracky »** en `text-tracky-light` : 3,34:1 sur les 4 pages auth et
-  3,18:1 dans la top-bar du shell. **Un seul motif, 5 écrans.** *(Non corrigé : la
-  top-bar relève du bloc G, et traiter les 4 pages auth sans elle recréerait un jumeau —
-  cf. § 8.7. À faire d'un bloc au G.)*
+  3,18:1 dans la top-bar du shell. **Un seul motif, 5 écrans.** ✅ Les 4 pages auth sont
+  corrigées (`4ac4b5a`) ; **la top-bar reste au bloc G**, avec le même jeton.
 - **Les pastilles de rôle et avatars** de `/users` + `/users/overview` : 2,19 à 3,43 en
-  clair, et `po-user-avatar admin` tombe à **1,72 en sombre**. Deux pages, même famille
-  de composants, à reprendre ensemble.
+  clair, et `po-user-avatar admin` tombait à **1,72 en sombre**. ✅ Les deux pages
+  reprises **ensemble** (`4ac4b5a`) — même famille, mêmes jetons.
+
+### 6bis.6 ⭐ Deux pièges neufs, payés le 2026-08-14
+
+**1. `min-h-[44px]` ne remonte PAS une cible.** Le plancher global de `styles.css`
+(`button, a { min-height: 36px }` sous `pointer: coarse`) est écrit **hors couche**, et
+une règle sans couche bat **toujours** une règle placée dans `@layer utilities` — *quelle
+que soit la spécificité*. La classe est bien dans le DOM, `getComputedStyle` renvoie
+`36px`, et rien ne le signale. **Pour remonter une cible, écrire la règle dans le
+composant**, jamais avec un utilitaire Tailwind.
+
+**2. Le panneau ÉMULE `pointer: coarse` à 375 px** — le § 8.10 dit l'inverse et il a été
+corrigé. `resize_window` sous 768 px active l'émulation mobile complète (agent Android,
+5 points tactiles). **Conséquence directe** : le plancher de 36 px ci-dessus *s'applique*
+dans nos mesures, alors qu'on le croyait inerte. C'est lui qui écrasait la classe.
+
+**3. L'accent grave a été payé une 5ᵉ fois** — par moi, dans mes propres commentaires
+d'explication, en 5 endroits d'un coup. `pnpm verif:litteraux` les a tous nommés en une
+seconde. Le réflexe du § 8.3 fonctionne : **au premier `NG1002`, lancer la garde avant de
+chercher quoi que ce soit d'autre.**
 
 ---
 
@@ -430,7 +501,7 @@ Sur `/vehicles`, j'ai mesuré la feuille de filtres (0 échec) et je m'en suis c
 L'écran entier en avait **14**. Une feuille propre au-dessus d'une liste qui échoue reste
 un écran qui échoue.
 
-### 8.3 Les accents graves cassent le build — **4 fois**
+### 8.3 Les accents graves cassent le build — **5 fois**
 
 Un accent grave dans un commentaire de `template:` ou `styles:` **ferme le littéral**.
 `tsc` passe, Angular échoue avec un `NG1002` incompréhensible, et le serveur sert un
@@ -514,9 +585,13 @@ corriger la source** — un `ng-template` unique rendu par `ngTemplateOutlet`.
 - **Feuilles mobiles : toujours `max-height: Xvh; max-height: Xdvh;`.**
 - **Le navigateur peut servir un chunk périmé de `packages/shared`** : pour tout ce qui
   vient du paquet partagé, **la source fait foi**, redémarrer `ng serve` avant de conclure.
-- **Le panneau n'émule pas `pointer: coarse`** — la règle
-  `@media (max-width: 768px) and (pointer: coarse)` n'est jamais appliquée dans nos
-  mesures. C'est le cas défavorable, donc la mesure reste valable.
+- ⚠️ **CORRIGÉ le 2026-08-14 — le panneau ÉMULE BIEN `pointer: coarse`.** `resize_window`
+  sous 768 px active l'émulation mobile complète. La règle
+  `@media (max-width: 768px) and (pointer: coarse)` **s'applique donc** dans nos mesures.
+  Conséquence : le plancher `button, a { min-height: 36px }` de `styles.css` est actif, et
+  comme il est écrit **hors couche**, il **écrase les utilitaires Tailwind** (`@layer
+  utilities`) quelle que soit leur spécificité. `min-h-[44px]` sur un `<a>` est donc sans
+  effet — il faut une règle de composant.
 - **Un changement de point de rupture ne se teste qu'en RECHARGEANT** à la largeur voulue
   (le redimensionnement CDP n'émet pas d'événement `change`).
 
@@ -621,17 +696,10 @@ doit rester en modifications locales non commitées.
 
 - [x] ~~**0. Se remettre en état**~~ · ~~**1. Rouvrir les 13 pages « présumées »**~~ —
       fait le 2026-08-14 (§ 6bis). ⚠️ Le § 3 a gagné **le piège du jeton sans rôle**.
-- [ ] **2. Les reliquats du § 6bis**, dans cet ordre de gravité :
-      - [ ] 🔴 **`/fleet-schedules`** — chantier de page entier (titre à **1,14:1**).
-      - [ ] 🔴 **`/installations`** — le `catch` qui ment (6ᵉ occurrence) → `<app-zone>`.
-      - [ ] **`/reports`** — « Excel » **1,64** et « PDF » 3,17 ; les 168 cellules de
-            carte de chaleur à 10×11 (décision : une grille de données est-elle soumise
-            au plancher de 44 px ?) ; « 24h18 » tronqué sans `title`.
-      - [ ] **`/agenda`** — « Événement » à **1,72 en sombre**, ● 2,08, ~ 2,65.
-      - [ ] **`/users` + `/users/overview`** — pastilles de rôle et avatars, **ensemble**
-            (même famille, `po-user-avatar admin` à **1,72 en sombre**).
-      - [ ] **`/login`** — « oublie » sans accent (6bis.4).
-      - [ ] **`/install`** — « Se connecter » 3,34 et sa cible **80×18**.
+- [x] ~~**2. Les reliquats du § 6bis**~~ — **tous faits** le 2026-08-14, en 3 commits
+      (`7acade4` `/fleet-schedules` · `9325d49` `/installations` · `4ac4b5a` les 9 autres).
+      **Les 13 pages sont à 0 échec**, hors le logotype de la top-bar qui relève du bloc G.
+      Seule exception laissée en décision : les 168 cellules de carte de chaleur (§ 12.5).
 - [ ] **3. `/places`** — la partie faisable sans toucher à l'API : onglets
       *À valider / Lieux validés / Zones GPS*, `<app-zone>`, mesure des deux thèmes.
       ⚠️ La file d'attente avec seuil est **bloquée** (§ 7.1) — ne pas inventer le « 8 ».
@@ -655,7 +723,7 @@ doit rester en modifications locales non commitées.
    de données dense tombe-t-elle sous le plancher de 44 px ? Les élargir détruirait la
    lecture d'ensemble, qui est tout l'intérêt de l'objet.
 
-**Et un rappel qui ne coûte rien** : **18 commits ne sont pas poussés.**
+**Et un rappel qui ne coûte rien** : **21 commits ne sont pas poussés.**
 
 ---
 
