@@ -658,6 +658,83 @@ gabarit clair, contenu sombre, 1,59:1. Le « jumeau » du § 8.7, aligné dans l
 
 ---
 
+## 6sexies. ✅ VÉRIFICATION AVANT PROD (2026-08-14) — l'état réel, mesuré
+
+> Passe demandée avant tout déploiement. **Elle a trouvé une page entière qui se
+> déclarait livrée et ne l'était pas** — c'est la justification de l'exercice.
+
+### 6sexies.1 Les contrôles qui n'avaient JAMAIS été lancés
+
+| Contrôle | Résultat |
+|---|---|
+| **`ng build --configuration production`** | 🟢 **passe** — jamais testé de la refonte, seul `development` l'était |
+| `nest build` (API, production) | 🟢 passe |
+| `pnpm typecheck` (les 3 paquets) | 🟢 passe |
+| `pnpm smoke` | 🟢 5 tests |
+| `pnpm lint` | 🔴 **CASSÉ — et depuis toujours** |
+
+> 🔴 **`pnpm lint` ne peut pas tourner.** `apps/api` déclare un script `lint` qui
+> appelle `eslint`, mais **eslint n'est ni installé ni déclaré** ; `apps/web` n'a
+> **pas de script `lint` du tout**. Ce n'est pas une régression de la refonte — ça
+> n'a jamais fonctionné. **Sans impact aujourd'hui** (aucune CI dans le dépôt), mais
+> toute CI qui appellerait `pnpm lint` échouerait au premier coup.
+
+**Trois budgets CSS dépassés** au build production (`vehicle-detail` +3,6 ko,
+`vehicles-list` +1,3 ko, `map` +6,5 ko). **Préexistants** : vérifié, les deux premiers
+fichiers sont identiques à leur état d'avant la séance, et mes ajouts sur `map` sont
+dans le gabarit, pas dans `styles:`. Ce sont des *warnings*, le build passe.
+
+### 6sexies.2 ⚠️ `/vehicles/:id` se déclarait « livrée et mesurée »
+
+Le § 5.2 la classe en **nommément livré et mesuré** (bloc C). Elle n'avait jamais été
+rouverte depuis O5 : **7 échecs et 7 cibles sous 44 px**, jusqu'à 2,73:1.
+
+> **C'est exactement le défaut que le § 5.2 dénonçait pour les autres blocs**, sur une
+> page qui, elle, était nommée. **« Nommément livré » ne veut pas dire « encore
+> propre »** : un correctif transverse (O5) change l'état de pages déjà closes.
+> **Après un changement de socle, remesurer TOUT — pas seulement ce qu'on a touché.**
+
+Corrigée (`38d3092`) → **0/0**, plus aucune cible hors seuil.
+
+### 6sexies.3 ⭐ Une dette levée parce que sa condition était enfin remplie
+
+`styles.css` portait, mot pour mot : *« On ne retouche pas la classe globale
+`.vt-status` : elle habille 29 autres pages, et leur reprise est le chantier du bloc
+B. On la RESSERRE dans l'espace dépôt. »*
+
+**Le bloc B est fini.** La règle est remontée dans la classe elle-même, et les quatre
+surcharges `.layout--depot` sont parties — elles pointaient sur `--depot-succes`, un
+**alias** de `--texte-succes` : elles ne changeaient plus rien.
+
+> **Une dette écrite avec sa condition de levée est une dette qui se solde.** Celle-ci
+> le disait : « quand le bloc B sera fini ». Sans cette phrase, la surcharge dépôt
+> serait restée pour toujours, et personne n'aurait su pourquoi.
+
+### 6sexies.4 Le relevé complet — 22 surfaces, deux thèmes, 375 px
+
+**Toutes à 0 échec de contraste, 0 cible sous 44 px, 0 débordement, 0 coupe :**
+
+`/dashboard` · `/map` · `/vehicles` · **`/vehicles/:id`** · `/places` · `/alerts` ·
+`/reports` · `/scores` · `/agenda` · `/users` · `/users/overview` · `/installations` ·
+`/fleet-schedules` · `/settings` · `/settings/audio-monitoring` · `/account` ·
+`/integrations` · `/privacy-coverage` · `/fleet-admin/activity` · `/admin/ai-usage` ·
+`/login` · `/install` · `/forgot-password` · `/accept-invite` — plus les **21 gabarits
+d'e-mail** et les **2 écrans du mode simplifié**.
+
+Seule exception connue et documentée : les **168 cellules 10×11** de la carte de
+chaleur `/reports` (§ 12, décision en attente).
+
+### 6sexies.5 ⚠️ Piège d'environnement neuf
+
+**`nest build` casse le `nest start --watch` en cours.** Il réécrit `dist/`, le watch
+perd son point d'entrée et l'API meurt sur `Cannot find module dist/main` — sans que
+rien ne le signale côté navigateur, sinon des 500 partout.
+
+> Après un `nest build` manuel : **redémarrer l'API**. Et si `/api/health` ne répond
+> plus alors que le code compile, c'est la première chose à regarder.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -874,7 +951,18 @@ pnpm --filter @vizyo/tracky-web exec ng test --watch=false --browsers=ChromeHead
 pnpm verif:litteraux && pnpm verif:accents && pnpm verif:variables && pnpm verif:couleurs-kit && pnpm verif:confirmations && pnpm verif:contraste
 ```
 
-**Références au 2026-08-13** : build vert · **`TOTAL: 364 SUCCESS`** · les six gardes vertes.
+**Références au 2026-08-14** : build **développement ET production** verts ·
+**`TOTAL: 364 SUCCESS`** (web) · **1918 tests API, 136 suites** · les six gardes vertes.
+
+⚠️ **`pnpm lint` est cassé et l'a toujours été** (§ 6sexies.1) : `eslint` n'est pas
+installé côté API, et le web n'a pas de script `lint`. Ne pas l'ajouter à un
+enchaînement de contrôles sans le réparer d'abord.
+
+⚠️ **Le build PRODUCTION n'avait jamais été lancé** avant le 2026-08-14. Il passe. Le
+lancer **avant chaque déploiement** : `development` ne prouve rien sur les budgets, les
+optimisations ni l'AOT strict.
+
+⚠️ **`nest build` tue le `nest start --watch` en cours** — redémarrer l'API après.
 
 ⚠️ Un `verify` vert ne prouve rien si la suite web n'affiche pas `TOTAL: <n> SUCCESS`.
 ⚠️ `api-fetch.spec` est **instable** (état de visibilité du document en headless) :
@@ -940,8 +1028,11 @@ doit rester en modifications locales non commitées.
 - [ ] **9. PROD** — 0/28, jamais commencé : push, déploiement, recette production.
       ⚠️ Le VPS porte **la production** — consigne permanente : ne rien déployer sans
       demande explicite.
-      **C'est désormais le SEUL lot restant** : tout le contenu de la refonte est livré
-      (voir § 5.1). Les 29 commits en attente en sont le préalable.
+      **C'est le SEUL lot restant.** Tout le contenu est livré ET vérifié (§ 6sexies).
+      **Prêt côté code** : build production vert, 22 surfaces + 21 e-mails à 0 échec,
+      1918 tests API, 364 tests web, six gardes vertes.
+      **Deux choses à savoir avant de lancer** : `pnpm lint` est cassé depuis toujours
+      (§ 6sexies.1), et **35 commits ne sont pas poussés**.
 
 **Décisions encore à demander — la liste COMPLÈTE, rien d'autre n'est en suspens :**
 
@@ -967,8 +1058,8 @@ doit rester en modifications locales non commitées.
     livrées **sans avoir jamais été vues à l'écran**. Un compte de chaque réglerait les
     deux d'un coup.
 
-**Et un rappel qui ne coûte plus rien du tout** : **33 commits ne sont pas poussés**, et
-c'est maintenant le seul obstacle entre le travail fait et la recette.
+**Et le rappel qui compte maintenant** : **35 commits ne sont pas poussés.** C'est le
+seul obstacle entre le travail fait, vérifié, et la recette.
 
 ---
 
