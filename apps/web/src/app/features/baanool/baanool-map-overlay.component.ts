@@ -155,22 +155,22 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: white;
+      background: var(--bg-secondary);
       border: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      color: #333;
+      color: var(--fg-primary);
       position: relative;
       transition: transform 120ms;
     }
     .bn-circle:active { transform: scale(0.92); }
     .bn-circle.active { box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.4), 0 4px 12px rgba(0, 0, 0, 0.15); }
-    .bn-circle--empty { background: rgba(255, 255, 255, 0.95); }
-    .bn-color-blue { background: #4285f4; color: white; }
-    .bn-color-red { background: #ea4335; color: white; }
+    .bn-circle--empty { background: var(--bg-secondary); }
+    .bn-color-blue { background: var(--blue); color: var(--accent-ink); }
+    .bn-color-red { background: var(--danger); color: var(--accent-ink); }
 
     /* Badge alerte non lue, accroche en haut a droite du cercle. */
     .bn-badge {
@@ -179,8 +179,8 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       min-width: 18px; height: 18px;
       padding: 0 4px;
       border-radius: 9999px;
-      background: #f59e0b;
-      color: white;
+      background: var(--warning);
+      color: var(--accent-ink);
       font-size: 10px;
       font-weight: 700;
       display: flex;
@@ -226,7 +226,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       left: 12px;
       right: 70px; /* laisse la place pour la bn-top-right */
       max-width: 480px;
-      background: white;
+      background: var(--bg-secondary);
       border-radius: 12px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
       overflow: hidden;
@@ -251,11 +251,11 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      color: #999;
+      color: var(--fg-tertiary);
       z-index: 1;
       transition: background-color 120ms, color 120ms;
     }
-    .bn-panel-close:hover { background: #f5f5f5; color: #333; }
+    .bn-panel-close:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
     .bn-panel-close:active { transform: scale(0.9); }
     .bn-panel-search {
       display: flex;
@@ -263,7 +263,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       gap: 10px;
       padding: 12px 44px 12px 14px; /* +30px right pour ne pas chevaucher le X */
       border-bottom: 1px solid #eee;
-      color: #999;
+      color: var(--fg-tertiary);
     }
     .bn-panel-search input {
       flex: 1;
@@ -271,7 +271,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       outline: none;
       font-size: 14px;
       background: transparent;
-      color: #333;
+      color: var(--fg-primary);
       min-width: 0;
     }
     .bn-panel-tabs {
@@ -287,13 +287,13 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       border: none;
       border-bottom: 2px solid transparent;
       font-size: 13px;
-      color: #666;
+      color: var(--fg-secondary);
       cursor: pointer;
       transition: color 120ms, border-color 120ms;
     }
     .bn-tab.active {
-      color: #00c896;
-      border-bottom-color: #00c896;
+      color: var(--texte-succes);
+      border-bottom-color: var(--tracky-light);
       font-weight: 600;
     }
     .bn-panel-vehicles {
@@ -308,36 +308,40 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       align-items: center;
       gap: 10px;
       padding: 12px 16px;
-      background: white;
+      background: var(--bg-secondary);
       border: none;
       cursor: pointer;
-      color: #333;
+      color: var(--fg-primary);
       font-size: 14px;
       border-bottom: 1px solid #f5f5f5;
       text-align: left;
     }
-    .bn-vehicle-row:hover { background: #f8f8f8; }
+    .bn-vehicle-row:hover { background: var(--bg-tertiary); }
     .bn-vehicle-row:last-child { border-bottom: none; }
     .bn-vehicle-dot {
       width: 10px; height: 10px; border-radius: 50%;
-      background: #ccc; flex-shrink: 0;
+      background: var(--fg-tertiary); flex-shrink: 0;
     }
-    .bn-vehicle-dot.online { background: #00c896; box-shadow: 0 0 0 3px rgba(0, 200, 150, 0.2); }
+    .bn-vehicle-dot.online { background: var(--tracky); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tracky) 20%, transparent); }
     /* Muet de longue date : pastille CREUSE (le signal ne revient plus) plutot
        qu'un simple gris, et ligne estompee. Le vehicule reste dans la liste et
        reste cliquable — il est signale, jamais masque. */
-    .bn-vehicle-dot.dormant { background: #e5e7eb; box-shadow: inset 0 0 0 2px #9ca3af; }
+    .bn-vehicle-dot.dormant { background: var(--bg-quaternary); box-shadow: inset 0 0 0 2px var(--fg-tertiary); }
     .bn-vehicle-row--dormant { opacity: 0.72; }
     .bn-vehicle-main { flex: 1; min-width: 0; }
-    .bn-vehicle-plate { font-weight: 600; font-size: 14px; color: #333; }
-    .bn-vehicle-meta { font-size: 12px; color: #999; margin-top: 2px; }
+    .bn-vehicle-plate { font-weight: 600; font-size: 14px; color: var(--fg-primary); }
+    .bn-vehicle-meta { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px; }
     .bn-vehicle-empty {
-      padding: 32px 16px; text-align: center; color: #999; font-size: 13px;
+      padding: 32px 16px; text-align: center; color: var(--fg-tertiary); font-size: 13px;
     }
 
-    /* Mobile : compress les espacements et reduce panel padding. */
+    /* Mobile : compress les espacements et reduce panel padding.
+       ⚠️ Cette regle RAMENAIT les boutons a 40x40 — sous le plancher de 44 px, et
+       precisement sur mobile, la ou le doigt en a le plus besoin. C'est l'inverse
+       du critere de recette « iPhone 390 px : cibles >= 44 px », et sur le mode
+       destine aux utilisateurs qui ont le moins de marge d'erreur. Les
+       espacements se compressent, la CIBLE non. */
     @media (max-width: 480px) {
-      .bn-circle { width: 40px; height: 40px; }
       .bn-right { gap: 10px; }
       .bn-panel { right: 60px; }
     }
