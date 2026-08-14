@@ -4,28 +4,51 @@
 > de référence** : on le suit, on coche, et on y consigne les décisions au fur et à
 > mesure. Toute session qui reprend le chantier commence ici.
 >
-> **État au 2026-08-14** — **T1, T2 et T3 terminées.** Le modèle de domaine est
-> arrêté, la migration est écrite et vérifiée en local, la tarification est
-> fonctionnelle de bout en bout : service, endpoints, écran. Les dix arbitrages du
-> client sont consignés. **Rien n'est déployé en production.**
+> **État au 2026-08-14** — **TOUTE L'API EST ÉCRITE ET TESTÉE.** Modèle, migration,
+> tarification, demande, négociation, affectation, e-mails : 1993 tests API passent.
+> **Il reste l'interface**, et elle seule. **Rien n'est déployé en production.**
 >
-> **Reprendre ici :** § 8, tranche **T5** (demande côté dépôt). Le moteur de devis de
-> T4 est en réalité déjà écrit — `MissionPricingService.tarifPour` — il reste à le
-> brancher sur la création d'une demande. Lisez ce fichier en entier avant d'écrire
-> une ligne, en particulier le § 2 (arbitrages), le § 7bis (conception des deux
-> côtés) et le § 10 (pièges déjà payés sur ce dépôt).
+> | Tranche | État |
+> |---|---|
+> | T1 modèle de domaine | ✅ |
+> | T2 migration + grille par défaut | ✅ vérifiée en local |
+> | T3 tarification (API + écran) | ✅ écran **non vérifié au navigateur** |
+> | T4 moteur de devis | ✅ — c'est `MissionPricingService.tarifPour` |
+> | T5 demande côté dépôt — **API** | ✅ permission, service, endpoints, 40 tests |
+> | T6 négociation — **API** | ✅ même service |
+> | T7 affectation et conversion | ✅ passe par `MissionsService.creer` |
+> | T9 e-mails | ✅ dépôt→transporteur et retour |
+> | **T5/T6 — l'INTERFACE** | ❌ **rien d'écrit** |
+> | **T8 multi-arrêts dans l'agenda** | ❌ |
+> | **T10 recette** | ❌ |
 >
-> **Commits :** `63e1749` (modèle), `17465f9` (plan + révision), `6becc27`
-> (arbitrages + conception), `04a5284` (migration), `9561265` (service de
-> tarification), `5eab130` (page /missions), `99d8ffc` (Q3).
+> **Reprendre ici :** l'interface. Deux écrans à écrire, tous deux branchés sur des
+> endpoints qui existent et sont testés :
+> 1. **Côté dépôt** — la modale de demande en étapes (arbitrage F), avec saisie
+>    multi-arrêts et devis affiché en direct. Endpoints : `POST /mission-requests`,
+>    `GET /mission-requests`, `/:id`, `/:id/counter`, `/:id/accept`, `/:id/reject`.
+> 2. **Côté transporteur** — l'onglet **Demandes** de `/missions` : file d'attente,
+>    fil de négociation, correction de la distance, puis `/:id/assign`.
 >
-> ⚠️ **Deux dettes connues, à solder avant tout déploiement :**
+> Le § 7bis décrit précisément ce que chaque côté doit voir. Lisez ce fichier en
+> entier avant d'écrire une ligne, en particulier le § 2 (arbitrages) et le § 10
+> (pièges déjà payés sur ce dépôt).
+>
+> **Commits :** `63e1749` `17465f9` `6becc27` `04a5284` `9561265` `5eab130`
+> `99d8ffc` `a16c453` `e386825` `6f49011` `7e1c083`.
+>
+> ⚠️ **Quatre dettes connues, à solder avant tout déploiement :**
 > 1. L'onglet Paramètres **n'a pas été vérifié dans le navigateur** — ni à 375 px, ni
 >    sur les contrastes. La première des trois règles non négociables du chantier
 >    n'est donc pas honorée sur cet écran.
 > 2. L'alerte au centre d'alertes quand la grille manque (arbitrage J) n'est pas
 >    branchée : le service répond `PAS_DE_GRILLE`, mais rien ne remonte côté
 >    administration.
+> 3. **L'expiration automatique** d'un devis n'est pas branchée. `quoteExpiresAt` est
+>    écrit, mais aucune tâche ne fait passer les demandes en `EXPIRED` — à ajouter
+>    dans `MissionStatusService`, qui tourne déjà toutes les minutes.
+> 4. Deux e-mails manquent : **accord conclu** et **mission affectée**. Les deux
+>    moments les plus attendus des deux côtés.
 
 ---
 
