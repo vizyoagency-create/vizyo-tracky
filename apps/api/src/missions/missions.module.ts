@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { MissionPricingService } from './mission-pricing.service';
+import { MissionRequestsController } from './mission-requests.controller';
+import { MissionRequestsService } from './mission-requests.service';
 import { MissionStatusService } from './mission-status.service';
 import { MissionsController } from './missions.controller';
 import { MissionsService } from './missions.service';
@@ -18,8 +20,8 @@ import { MissionsService } from './missions.service';
  */
 @Module({
   imports: [AuthModule, RealtimeModule],
-  controllers: [MissionsController],
-  providers: [MissionsService, MissionStatusService, MissionPricingService],
-  exports: [MissionsService, MissionPricingService],
+  controllers: [MissionsController, MissionRequestsController],
+  providers: [MissionsService, MissionStatusService, MissionPricingService, MissionRequestsService],
+  exports: [MissionsService, MissionPricingService, MissionRequestsService],
 })
 export class MissionsModule {}
