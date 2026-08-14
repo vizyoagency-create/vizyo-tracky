@@ -65,6 +65,37 @@ export class MissionRequestsController {
     return this.demandes.lister(req.user, fleetId || undefined, this.statutValide(status));
   }
 
+  /**
+   * La grille tarifaire applicable au depot, en LECTURE SEULE.
+   *
+   * ┌─ POURQUOI CETTE ROUTE EXISTE ─────────────────────────────────────────────┐
+   * │ Le § 7bis exige un devis EN DIRECT pendant la saisie : distance cumulee,   │
+   * │ tranche nommee, et surtout l'avertissement de borne — « 3 km de plus font  │
+   * │ passer a 169 € au lieu de 79 ». Ce dernier ne se calcule pas depuis un     │
+   * │ montant : il faut connaitre LES TRANCHES, celle qu'on occupe et la         │
+   * │ suivante.                                                                  │
+   * │                                                                            │
+   * │ `GET /missions/pricing` porte deja cette lecture, mais son controleur est  │
+   * │ FERME AU DEPOT par construction (`DepotScopeGuard`, default-deny) — et il  │
+   * │ doit le rester : c'est celui qui cree des missions. D'ou cette route-ci,   │
+   * │ sur le controleur deja ouvert au depot et deja borne par le service.       │
+   * │                                                                            │
+   * │ ⚠️ LECTURE SEULE, ET LE DEVIS RESTE CELUI DU SERVEUR. Ce que l'ecran       │
+   * │ calcule est un APERCU. Le montant qui engage est celui que `creer` fige    │
+   * │ dans le tour 0, recalcule ici a partir de la meme grille. Un ecran qui     │
+   * │ annoncerait un prix que le serveur ne confirmerait pas serait pire que pas │
+   * │ d'apercu du tout — c'est pourquoi les deux lisent la MEME source.          │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠️ DECLAREE AVANT `@Get(':id')`, et ce n'est pas cosmetique : Nest resout les
+   * routes dans l'ordre de declaration, et `:id` avalerait « pricing ».
+   */
+  @Get('pricing')
+  @RequirePermissions('missions_request')
+  grille(@Req() req: AuthenticatedRequest) {
+    return this.demandes.grilleApplicable(req.user);
+  }
+
   /** Le detail d'une demande, avec son fil de negociation complet. */
   @Get(':id')
   @RequirePermissions('missions_view')

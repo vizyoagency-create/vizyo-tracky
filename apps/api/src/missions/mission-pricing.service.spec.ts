@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
+import { AlertsService } from '../alerts/alerts.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { NO_FLEET } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +26,7 @@ describe('MissionPricingService', () => {
     missionPricingTier: { deleteMany: jest.Mock; createMany: jest.Mock };
     $transaction: jest.Mock;
   };
+  let alerts: { createPricingGridMissingAlert: jest.Mock };
 
   const ADMIN = { id: 'u-1', fleetId: 'f-1', role: UserRole.FLEET_ADMIN } as AuthUser;
   const SA = { id: 'sa-1', fleetId: null, role: UserRole.SUPER_ADMIN } as unknown as AuthUser;
@@ -81,8 +83,16 @@ describe('MissionPricingService', () => {
     };
     prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma));
 
+    alerts = { createPricingGridMissingAlert: jest.fn().mockResolvedValue(null) };
+
     const moduleRef = await Test.createTestingModule({
-      providers: [MissionPricingService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        MissionPricingService,
+        { provide: PrismaService, useValue: prisma },
+        // Arbitrage J — un espion suffit : ce qui est teste ici est la REMONTEE, pas
+        // la fabrication de l'alerte, qui a ses propres tests dans `AlertsService`.
+        { provide: AlertsService, useValue: alerts },
+      ],
     }).compile();
     service = moduleRef.get(MissionPricingService);
   });
@@ -208,6 +218,57 @@ describe('MissionPricingService', () => {
       const r = await service.tarifPour('f-1', 10_000);
       expect(r).not.toHaveProperty('htCents');
       expect(r).not.toHaveProperty('ttcCents');
+    });
+
+    /**
+     * Arbitrage J — « grille absente = alerte au centre d'alertes, PAS de blocage ».
+     *
+     * Le service repondait deja PAS_DE_GRILLE ; personne ne l'entendait. Un transporteur
+     * dont la grille n'est pas publiee voyait ses depots se heurter a un refus sans
+     * jamais apprendre pourquoi, ni qu'il lui suffisait d'ouvrir Missions > Parametres.
+     */
+    describe('la remontée au centre d\'alertes', () => {
+      it('lève une alerte quand aucune grille n\'existe', async () => {
+        prisma.missionPricingSettings.findUnique.mockResolvedValue(null);
+        await service.tarifPour('f-1', 10_000);
+        expect(alerts.createPricingGridMissingAlert).toHaveBeenCalledWith(
+          'f-1',
+          expect.stringContaining('Aucune grille'),
+        );
+      });
+
+      it('lève une alerte quand la grille est désactivée, avec le motif qui convient', async () => {
+        prisma.missionPricingSettings.findUnique.mockResolvedValue(
+          grilleEn(GRILLE_CLIENT, { enabled: false }),
+        );
+        await service.tarifPour('f-1', 10_000);
+        // Deux gestes différents pour la corriger : en créer une, ou rallumer celle
+        // qui existe. Le motif doit dire lequel.
+        expect(alerts.createPricingGridMissingAlert).toHaveBeenCalledWith(
+          'f-1',
+          expect.stringContaining('désactivée'),
+        );
+      });
+
+      it('ne lève RIEN quand la grille répond', async () => {
+        await service.tarifPour('f-1', 10_000);
+        expect(alerts.createPricingGridMissingAlert).not.toHaveBeenCalled();
+      });
+
+      it('ne lève rien non plus sur un « sur devis » : la grille est là, elle a répondu', async () => {
+        await service.tarifPour('f-1', 450_000);
+        expect(alerts.createPricingGridMissingAlert).not.toHaveBeenCalled();
+      });
+
+      it('NE BLOQUE RIEN : une alerte en échec ne fait pas échouer le calcul', async () => {
+        // Ce service est sur un chemin d'écran. Répondre « erreur serveur » parce que
+        // la table des alertes était indisponible n'apprendrait rien à personne, là où
+        // « le transporteur n'a pas publié ses tarifs » est une réponse claire.
+        prisma.missionPricingSettings.findUnique.mockResolvedValue(null);
+        alerts.createPricingGridMissingAlert.mockRejectedValue(new Error('base indisponible'));
+        const r = await service.tarifPour('f-1', 10_000);
+        expect(r.statut).toBe('PAS_DE_GRILLE');
+      });
     });
   });
 

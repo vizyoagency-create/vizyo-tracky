@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AlertsModule } from '../alerts/alerts.module';
 import { AuthModule } from '../auth/auth.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { MissionPricingService } from './mission-pricing.service';
@@ -17,9 +18,14 @@ import { MissionsService } from './missions.service';
  *
  * `RealtimeModule` (lot A3) : la cloture d'une mission doit couper le direct du depot
  * AVEC une explication. Sans elle, un camion disparait de sa carte sans un mot.
+ *
+ * `AlertsModule` (lot A6, arbitrage J) : une flotte sans grille tarifaire le signale au
+ * centre d'alertes plutot que de couper quoi que ce soit. Le sens de la dependance
+ * compte — `AlertsModule` n'importe pas les missions, il n'y a donc pas de cycle et
+ * aucun `forwardRef` a poser.
  */
 @Module({
-  imports: [AuthModule, RealtimeModule],
+  imports: [AuthModule, RealtimeModule, AlertsModule],
   controllers: [MissionsController, MissionRequestsController],
   providers: [MissionsService, MissionStatusService, MissionPricingService, MissionRequestsService],
   exports: [MissionsService, MissionPricingService, MissionRequestsService],

@@ -2,49 +2,63 @@ import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@ang
 import { ActivatedRoute, Router } from '@angular/router';
 import { LucideAngularModule, Route, Settings, Inbox } from 'lucide-angular';
 import { MissionPricingTabComponent } from './mission-pricing-tab.component';
+import { MissionRequestsTabComponent } from './mission-requests-tab.component';
 
 /**
- * A6 / T3 — la page `/missions` du transporteur, a trois onglets.
+ * A6 — la page `/missions` du transporteur.
  *
- * `Demandes` et `Missions` arrivent avec T5 et T6 : les declarer maintenant
- * pointerait vers du vide. Un onglet qui promet ce qu'il ne tient pas est le defaut
- * que B1 § J releve sur le mode simplifie — on les ajoute AVEC leurs ecrans.
+ * `Demandes` est arrivé avec T6 : il n'était déclaré qu'en « bientôt » tant qu'il
+ * pointait vers du vide — un onglet qui promet ce qu'il ne tient pas est le défaut que
+ * B1 § J relève sur le mode simplifié. `Missions` reste dans cet état : son écran
+ * n'existe pas encore, et l'agenda le porte pour l'instant.
  *
  * L'onglet actif vit dans l'URL (`?tab=`) : un gestionnaire qui envoie le lien de sa
- * grille a un collegue doit ouvrir la grille, pas la page d'accueil.
+ * grille à un collègue doit ouvrir la grille, pas la page d'accueil. Et l'e-mail de
+ * demande pointe sur `/missions?demande=<id>` — cf. `MissionRequestsService.notifier`.
  */
-type Onglet = 'parametres';
+type Onglet = 'demandes' | 'parametres';
+
+const ONGLETS: Onglet[] = ['demandes', 'parametres'];
 
 @Component({
   selector: 'app-missions-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, MissionPricingTabComponent],
+  imports: [LucideAngularModule, MissionPricingTabComponent, MissionRequestsTabComponent],
   template: `
     <div class="mpage">
       <header class="mp-tete">
         <span class="vt-eyebrow">Exploitation</span>
         <h1 class="mp-titre">Missions</h1>
         <p class="mp-sous">
-          Vos tarifs, et bientôt les demandes de vos dépôts.
+          Les demandes de vos dépôts, et la grille tarifaire qui les chiffre.
         </p>
       </header>
 
       <nav class="mp-onglets" role="tablist" aria-label="Sections des missions">
-        <button type="button" role="tab" class="mp-onglet active"
-                [attr.aria-selected]="true">
+        <button type="button" role="tab" class="mp-onglet"
+                [class.active]="onglet() === 'demandes'"
+                [attr.aria-selected]="onglet() === 'demandes'"
+                (click)="allerA('demandes')">
+          <lucide-icon [img]="Inbox" [size]="15" /> Demandes
+        </button>
+        <button type="button" role="tab" class="mp-onglet"
+                [class.active]="onglet() === 'parametres'"
+                [attr.aria-selected]="onglet() === 'parametres'"
+                (click)="allerA('parametres')">
           <lucide-icon [img]="Settings" [size]="15" /> Paramètres
         </button>
-        <span class="mp-onglet mp-onglet--futur" aria-disabled="true" title="Disponible prochainement">
-          <lucide-icon [img]="Inbox" [size]="15" /> Demandes
-        </span>
         <span class="mp-onglet mp-onglet--futur" aria-disabled="true" title="Disponible prochainement">
           <lucide-icon [img]="Route" [size]="15" /> Missions
         </span>
       </nav>
 
       <section role="tabpanel">
-        <app-mission-pricing-tab />
+        @if (onglet() === 'demandes') {
+          <app-mission-requests-tab />
+        } @else {
+          <app-mission-pricing-tab />
+        }
       </section>
     </div>
   `,
@@ -54,7 +68,7 @@ type Onglet = 'parametres';
     .mp-tete { display: flex; flex-direction: column; gap: 2px }
     .mp-titre { margin: 0; font-family: var(--font-display); font-size: 26px;
                 font-weight: 800; color: var(--fg-primary) }
-    .mp-sous { margin: 0; font-size: 13.5px; color: var(--fg-tertiary) }
+    .mp-sous { margin: 0; font-size: 13.5px; color: var(--fg-secondary) }
 
     .mp-onglets { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none;
                   border-bottom: 1px solid var(--border-subtle) }
@@ -63,7 +77,7 @@ type Onglet = 'parametres';
                  min-height: 44px; padding: 0 14px; margin-bottom: -1px;
                  border: 0; border-bottom: 2px solid transparent; background: none;
                  font-family: inherit; font-size: 13.5px; font-weight: 600;
-                 color: var(--fg-tertiary); cursor: pointer; white-space: nowrap }
+                 color: var(--fg-secondary); cursor: pointer; white-space: nowrap }
     .mp-onglet.active { color: var(--fg-primary); border-bottom-color: var(--color-tracky-light) }
     /* Un onglet a venir se voit mais ne se clique pas — et il le dit. */
     .mp-onglet--futur { opacity: .45; cursor: not-allowed }
@@ -77,13 +91,31 @@ export class MissionsPageComponent implements OnInit {
   protected readonly Route = Route;
   protected readonly Inbox = Inbox;
 
-  protected readonly onglet = signal<Onglet>('parametres');
+  /**
+   * Les demandes par défaut, et non les paramètres.
+   *
+   * C'est ce que le gestionnaire vient voir : une grille se règle une fois, des
+   * demandes arrivent tous les jours. L'e-mail de notification pointe d'ailleurs ici.
+   */
+  protected readonly onglet = signal<Onglet>('demandes');
 
   ngOnInit(): void {
-    // Un seul onglet pour l'instant : on normalise l'URL plutot que de laisser
-    // trainer un `?tab=` qui ne correspond a rien.
-    if (this.route.snapshot.queryParamMap.get('tab')) {
-      void this.router.navigate([], { queryParams: {}, replaceUrl: true });
+    const demande = this.route.snapshot.queryParamMap.get('tab');
+    if (demande && (ONGLETS as string[]).includes(demande)) {
+      this.onglet.set(demande as Onglet);
+      return;
     }
+    // Un `?tab=` inconnu est normalisé plutôt que laissé traîner : il désignerait un
+    // onglet qui n'existe pas, et le lien partagé n'ouvrirait rien.
+    if (demande) void this.router.navigate([], { queryParams: {}, replaceUrl: true });
+  }
+
+  protected allerA(o: Onglet): void {
+    this.onglet.set(o);
+    void this.router.navigate([], {
+      queryParams: { tab: o },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 }

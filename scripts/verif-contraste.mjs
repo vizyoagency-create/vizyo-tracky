@@ -159,11 +159,138 @@ function couplesBulle(t, nomTheme) {
   ];
 }
 
+/**
+ * Lot A6 — la modale de demande de mission et l'onglet Paramètres de `/missions`.
+ *
+ * Deux écrans qui affichent de l'ARGENT. Un montant qu'on lit mal se relit de travers,
+ * et un devis mal relu se conteste — c'est exactement le litige que ces écrans
+ * existent pour éviter. L'avertissement de borne en particulier — « 3 km de plus font
+ * passer à 169 € » — est un texte de 12,5 px sur un lavis d'ambre : s'il y a un couple
+ * à mesurer plutôt qu'à supposer sur ce lot, c'est celui-là.
+ *
+ * ⚠️ La modale vit sur `--surface-secondary` (la coque `depot-modal`) et ses encarts
+ * sur `--surface-tertiary`. On mesure sur les DEUX quand le composant apparaît sur les
+ * deux, et on retient la pire — jamais la plus flatteuse.
+ */
+function couplesDemande(t, nomTheme) {
+  const fond = t['--surface-secondary'];
+  const fondTertiaire = t['--surface-tertiary'] ?? fond;
+  const vert = t['--color-tracky-light'];
+  const succes = texte(t, nomTheme, '--texte-succes');
+  const attente = texte(t, nomTheme, '--texte-attente');
+  const alerte = texte(t, nomTheme, '--texte-alerte');
+  const attenue = texte(t, nomTheme, '--texte-inactif');
+  const secondaire = hex(t['--text-secondary']);
+  const principal = hex(t['--text-primary']);
+  /** Le pire des deux fonds sur lesquels l'élément peut se poser. */
+  const pire = (couleur, part) =>
+    [melange(couleur, fond, part), melange(couleur, fondTertiaire, part)].reduce((a, b) =>
+      ratio(couleur, a) <= ratio(couleur, b) ? a : b,
+    );
+  return [
+    // La pastille « Chargement ». Le fond est un lavis du vert de MARQUE, le texte le
+    // jeton --texte-succes : le vert brut y tombait a 2,71:1 en theme clair, et c'est
+    // exactement le genre d'ecart qu'on ne voit pas a l'œil sur un ecran de bureau.
+    ['demande · pastille « Chargement » (succès sur teinte 16 %)', succes, pire(hex(vert), 0.16)],
+    ['demande · pastille de livraison (secondaire sur surface secondaire)', secondaire, hex(fond)],
+    ['demande · nom de l\'étape courante', principal, hex(fond)],
+    ['demande · nom des étapes à venir', attenue, hex(fond)],
+    ['demande · libellé de segment (secondaire sur tertiaire)', secondaire, hex(fondTertiaire)],
+    // L'AVERTISSEMENT DE BORNE : la phrase qui evite l'appel « pourquoi le double ».
+    ['demande · avertissement de borne (attente sur teinte 12 %)', attente, pire(attente, 0.12)],
+    ['demande · montant TTC du devis', principal, melange(hex(vert), fond, 0.1)],
+    ['demande · détail HT et TVA du devis', secondaire, melange(hex(vert), fond, 0.1)],
+    ['demande · bandeau permanent (secondaire sur teinte 9 %)', secondaire, melange(hex(vert), fond, 0.09)],
+    ['demande · demande fermée, faute de grille', attente, melange(attente, fond, 0.1)],
+    ['demande · créneau incohérent', alerte, hex(fond)],
+    ['demande · aide sur le retour au dépôt', attenue, hex(fond)],
+  ];
+}
+
+/**
+ * L'onglet Paramètres de `/missions` — l'éditeur de tranches et son simulateur.
+ *
+ * Il vit sur `--bg-secondary` / `--fg-*`, la famille de l'espace TRANSPORTEUR, et non
+ * sur les jetons du dépôt. Ses couples n'avaient jamais été mesurés : c'est la dette
+ * n° 1 du lot A6, ouverte depuis la tranche T3.
+ */
+function couplesTarifs(t) {
+  const fond = t['--bg-secondary'] ?? t['--surface-secondary'];
+  const fondPrimaire = t['--bg-primary'] ?? t['--surface-primary'] ?? fond;
+  const secondaire = hex(t['--fg-secondary'] ?? t['--text-secondary']);
+  return [
+    ['tarifs · titre de bloc', hex(t['--fg-primary'] ?? t['--text-primary']), hex(fond)],
+    // Ces deux-la passaient en --fg-tertiary : 3,16:1 en clair, 3,75:1 en sombre. Ils
+    // sont repasses en --fg-secondary. Les laisser mesures ici est le seul moyen qu'un
+    // futur allegement du jeton ne les fasse pas retomber en silence.
+    ['tarifs · texte d\'aide', secondaire, hex(fond)],
+    ['tarifs · en-tête de colonne', secondaire, hex(fond)],
+    ['tarifs · unité du simulateur', secondaire, hex(fond)],
+    ['tarifs · mention « facultatif »', secondaire, hex(fond)],
+    ['tarifs · libellé de champ', secondaire, hex(fond)],
+    // Les champs de saisie posent leur propre fond, plus sombre que le bloc.
+    ['tarifs · valeur saisie dans une tranche', hex(t['--fg-primary'] ?? t['--text-primary']), hex(fondPrimaire)],
+  ];
+}
+
+/**
+ * Lot A6 — LE FIL DE NÉGOCIATION, et la file d'attente du transporteur.
+ *
+ * ⚠️ Le fil est le SEUL composant du produit rendu dans les DEUX espaces : celui du
+ * dépôt (`--surface-*`) et celui du transporteur (`--bg-*`). Comme les seconds sont des
+ * alias des premiers, une seule mesure vaut pour les deux — mais c'est précisément
+ * pourquoi ce composant ne doit consommer AUCUN jeton `--depot-*` : ceux-là sont
+ * définis sous `.layout--depot` et n'existent pas côté transporteur. Une variable
+ * absente ne casse rien de visible : la couleur retombe sur l'héritage, et ce script
+ * continuerait de mesurer un jeton que l'écran n'applique pas.
+ */
+function couplesNegociation(t, nomTheme) {
+  const fond = t['--surface-secondary'];
+  const fondTertiaire = t['--surface-tertiary'] ?? fond;
+  const vert = t['--color-tracky-light'];
+  const succes = texte(t, nomTheme, '--texte-succes');
+  const attente = texte(t, nomTheme, '--texte-attente');
+  const alerte = texte(t, nomTheme, '--texte-alerte');
+  const attenue = texte(t, nomTheme, '--texte-inactif');
+  const secondaire = hex(t['--text-secondary']);
+  const principal = hex(t['--text-primary']);
+  return [
+    // Les trois bandeaux d'etat : le badge se pose sur un lavis a 10 % de sa teinte.
+    ['fil · état « accord conclu »', succes, melange(hex(vert), fond, 0.1)],
+    ['fil · état « en négociation »', attente, melange(attente, fond, 0.1)],
+    ['fil · état « refusée ou expirée »', alerte, melange(alerte, fond, 0.1)],
+    ['fil · phrase d\'état', secondaire, melange(attente, fond, 0.1)],
+    // Le fil lui-meme.
+    ['fil · auteur d\'un tour', secondaire, hex(fond)],
+    ['fil · horodatage d\'un tour', attenue, hex(fond)],
+    ['fil · montant d\'un tour', principal, hex(fond)],
+    ['fil · message d\'un tour', secondaire, hex(fond)],
+    // Le devis fige, sur son lavis vert.
+    ['fil · intitulé du devis figé', attenue, melange(hex(vert), fond, 0.08)],
+    ['fil · total TTC du devis figé', principal, melange(hex(vert), fond, 0.08)],
+    ['fil · libellés du devis figé', principal, melange(hex(vert), fond, 0.08)],
+    // Les gestes.
+    ['fil · bouton « Refuser »', alerte, hex(fondTertiaire)],
+    ['fil · « la balle est dans l\'autre camp »', attente, melange(attente, fond, 0.1)],
+    ['fil · aide de contre-proposition', secondaire, hex(fond)],
+    // La file du transporteur : memes jetons, fond --bg-* (alias de --surface-*).
+    ['file · badge « en négociation »', attente, hex(fondTertiaire)],
+    ['file · badge « accord conclu »', succes, hex(fondTertiaire)],
+    ['file · badge « refusée »', alerte, hex(fondTertiaire)],
+    ['file · ancienneté d\'une demande', secondaire, hex(fond)],
+    ['file · dépôt et créneau', secondaire, hex(fond)],
+    ['file · pastille « en attente de vous »', attente, melange(attente, fond, 0.14)],
+  ];
+}
+
 const SECTIONS = [
   ['Espace dépôt', couplesDepot],
   ['Badge de présence', couplesBadge],
   ['Rejeu de trajet', couplesRejeu],
   ['Bulles de carte', couplesBulle],
+  ['Demande de mission (A6)', couplesDemande],
+  ['Négociation (A6)', couplesNegociation],
+  ['Grille tarifaire (A6)', couplesTarifs],
 ];
 
 let echecs = 0;

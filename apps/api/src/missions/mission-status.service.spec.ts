@@ -1,5 +1,10 @@
 import { Test } from '@nestjs/testing';
-import { MissionStatus, VehicleEventStatus, VehicleEventType } from '@prisma/client';
+import {
+  MissionRequestStatus,
+  MissionStatus,
+  VehicleEventStatus,
+  VehicleEventType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -17,6 +22,7 @@ describe('MissionStatusService', () => {
   let partage: { fermerLiensDeMission: jest.Mock };
   let prisma: {
     mission: { findMany: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
+    missionRequest: { findMany: jest.Mock; updateMany: jest.Mock };
     vehicleEvent: { updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -33,6 +39,10 @@ describe('MissionStatusService', () => {
       mission: {
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      missionRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       vehicleEvent: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -228,6 +238,70 @@ describe('MissionStatusService', () => {
       for (const s of Object.values(MissionStatus)) {
         expect(STATUT_EVENEMENT[s]).toBeDefined();
       }
+    });
+  });
+
+  /**
+   * A6 § 6 — l'echeance du devis.
+   *
+   * Ce qui est protege : un devis perime ne reste pas ouvert. `quoteExpiresAt` etait
+   * ecrit a la creation et personne ne le lisait — le depot voyait une date de validite
+   * qui n'arrivait jamais, et pouvait accepter des semaines plus tard un prix calcule
+   * sur une grille entre-temps revue.
+   */
+  describe('SUBMITTED ou NEGOTIATING → EXPIRED : l\'echeance du devis', () => {
+    const echue = (id: string, ref: string) => ({ id, ref });
+
+    it('fait expirer les demandes dont l\'echeance est passee', async () => {
+      prisma.missionRequest.findMany.mockResolvedValueOnce([echue('r-1', 'D-0001')]);
+      prisma.missionRequest.updateMany.mockResolvedValueOnce({ count: 1 });
+      await service.tick();
+      expect(prisma.missionRequest.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: MissionRequestStatus.EXPIRED },
+        }),
+      );
+    });
+
+    it('ne regarde que les demandes ENCORE VIVANTES', async () => {
+      await service.tick();
+      const where = prisma.missionRequest.findMany.mock.calls[0][0].where;
+      // ACCEPTED a fige son montant, CONVERTED est une mission, REJECTED est close :
+      // les faire expirer reecrirait une histoire deja terminee.
+      expect(where.status).toEqual({
+        in: [MissionRequestStatus.SUBMITTED, MissionRequestStatus.NEGOTIATING],
+      });
+    });
+
+    it('ne selectionne que les echeances DEPASSEES', async () => {
+      await service.tick();
+      const where = prisma.missionRequest.findMany.mock.calls[0][0].where;
+      expect(where.quoteExpiresAt.lt).toBeInstanceOf(Date);
+      // Une demande sans echeance — grille absente a la creation — n'est pas perimee :
+      // en SQL, `quoteExpiresAt < maintenant` est faux pour un NULL, et c'est voulu.
+      expect(where.quoteExpiresAt).not.toHaveProperty('not');
+    });
+
+    it('repete le filtre de statut a l\'ECRITURE, contre l\'accord conclu entre-temps', async () => {
+      prisma.missionRequest.findMany.mockResolvedValueOnce([echue('r-1', 'D-0001')]);
+      await service.tick();
+      const where = prisma.missionRequest.updateMany.mock.calls[0][0].where;
+      // Entre la lecture et la mise a jour, une partie a pu accepter. Sans cette
+      // garde, le tick ecraserait un accord conclu une seconde plus tot.
+      expect(where.status).toEqual({
+        in: [MissionRequestStatus.SUBMITTED, MissionRequestStatus.NEGOTIATING],
+      });
+      expect(where.id).toEqual({ in: ['r-1'] });
+    });
+
+    it('n\'ecrit rien quand aucune demande n\'est echue', async () => {
+      await service.tick();
+      expect(prisma.missionRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('borne le lot : un retard d\'ordonnanceur ne doit pas charger la base', async () => {
+      await service.tick();
+      expect(prisma.missionRequest.findMany.mock.calls[0][0].take).toBe(200);
     });
   });
 

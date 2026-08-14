@@ -4,23 +4,77 @@
 > de référence** : on le suit, on coche, et on y consigne les décisions au fur et à
 > mesure. Toute session qui reprend le chantier commence ici.
 >
-> **État au 2026-08-14** — **TOUTE L'API EST ÉCRITE ET TESTÉE.** Modèle, migration,
-> tarification, demande, négociation, affectation, e-mails : 1993 tests API passent.
-> **Il reste l'interface**, et elle seule. **Rien n'est déployé en production.**
+> **État au 2026-08-14 (soir)** — **LES QUATRE DETTES SONT SOLDÉES** et **la modale de
+> demande côté dépôt est écrite**. 2025 tests API passent. **Rien n'est déployé.**
 >
 > | Tranche | État |
 > |---|---|
 > | T1 modèle de domaine | ✅ |
 > | T2 migration + grille par défaut | ✅ vérifiée en local |
-> | T3 tarification (API + écran) | ✅ écran **non vérifié au navigateur** |
+> | T3 tarification (API + écran) | ✅ — contrastes corrigés, cf. ci-dessous |
 > | T4 moteur de devis | ✅ — c'est `MissionPricingService.tarifPour` |
-> | T5 demande côté dépôt — **API** | ✅ permission, service, endpoints, 40 tests |
+> | T5 demande côté dépôt — **API** | ✅ permission, service, endpoints, 56 tests |
+> | T5 demande côté dépôt — **INTERFACE** | ✅ modale en 5 étapes, devis en direct |
 > | T6 négociation — **API** | ✅ même service |
-> | T7 affectation et conversion | ✅ passe par `MissionsService.creer` |
-> | T9 e-mails | ✅ dépôt→transporteur et retour |
-> | **T5/T6 — l'INTERFACE** | ❌ **rien d'écrit** |
+> | T6 négociation — **INTERFACE** | ✅ **un seul fil, les deux camps** |
+> | T7 affectation et conversion | ✅ API + écran (véhicule, conducteur, consignes) |
+> | T9 e-mails | ✅ **les quatre** : demande, contre-proposition, accord, affectation |
 > | **T8 multi-arrêts dans l'agenda** | ❌ |
-> | **T10 recette** | ❌ |
+> | **T10 recette** | ⏳ recette navigateur en attente d'une session |
+>
+> **Le fil de négociation est UN SEUL composant, partagé par les deux camps**
+> (`shared/components/mission-request-thread`). Les deux parties y accèdent tant que
+> l'accord n'est pas conclu des deux côtés ; `ACCEPTED` ferme la négociation mais
+> laisse le fil consultable — le dépôt doit pouvoir relire ce sur quoi il s'est engagé.
+> Ce qui change d'un camp à l'autre n'est pas la structure, ce sont les MOTS, décidés
+> au seul endroit `nomDe()`. La coque est `depot-modal`, réutilisée telle quelle côté
+> transporteur : en écrire une seconde est exactement ce qui avait cassé
+> `mission-dialog` (§ 10).
+>
+> **Les quatre dettes de l'en-tête, soldées le 2026-08-14 :**
+>
+> 1. **Expiration des devis** — `MissionStatusService.expirerLesDevis()`, dans le tick
+>    d'une minute qui existait déjà. Filtre sur `SUBMITTED` et `NEGOTIATING` seuls, et
+>    le statut est **répété dans le `where` de l'écriture** : entre la lecture et la
+>    mise à jour, une partie a pu accepter. Une demande `EXPIRED` n'est plus ni
+>    négociable, ni acceptable, ni refusable, ni affectable — 5 tests le verrouillent.
+> 2. **Alerte grille absente (arbitrage J)** — nouveau type `PRICING_GRID_MISSING`,
+>    migration **purement additive** (`ALTER TYPE … ADD VALUE`). Levée depuis
+>    `tarifPour`, **fire-and-forget** : ce service est sur un chemin d'écran, une alerte
+>    en échec ne doit pas faire échouer un calcul. Dédupliquée 24 h par flotte,
+>    acquittée ou non. **Aucun dispatch externe** : légitime pour un SOS, absurde pour
+>    un tarif non publié. Seule alerte du catalogue **sans véhicule**.
+> 3. **Les deux e-mails manquants** — accord conclu (**aux deux parties**, le seul avis
+>    du lot dans ce cas) et mission affectée (au dépôt). Un seul gabarit,
+>    `buildMissionQuoteEmail` ; **seul le lien change** d'un camp à l'autre.
+>    ⚠️ L'avis générique de `MissionsService.creer` est **coupé** sur le chemin de
+>    conversion (`{ notifierDepot: false }`, hors DTO) : sans cela le dépôt recevait
+>    deux e-mails dans la même seconde, dont un qui ignore tout de la négociation.
+> **⚠️ UN TROU GRAVE, TROUVÉ EN BRANCHANT LES ÉCRANS LE 2026-08-14.**
+>
+> Le tour 0 porte l'auteur `SYSTEM`. Or `awaiting` et les gardes de `accepter` /
+> `contreProposer` comparaient cet auteur aux deux camps — et `SYSTEM` n'est égal à
+> aucun des deux. Deux conséquences :
+>
+> 1. `awaiting` valait `DEPOT` juste après l'envoi : **la file du transporteur n'aurait
+>    jamais montré une demande neuve** dans « à traiter ».
+> 2. Bien pire : **le dépôt pouvait accepter son propre devis automatique** dans la
+>    seconde suivant l'envoi. La demande passait en `ACCEPTED` avec un montant convenu
+>    sans que le transporteur ait rien dit — un accord à une seule signature, ce que la
+>    garde était précisément censée empêcher.
+>
+> Corrigé par `campDuTour()` : **`SYSTEM` appartient au camp du DÉPÔT**. Le devis
+> automatique est calculé à la demande du dépôt, sur les conditions qu'il vient de
+> saisir (arbitrage D) — c'est son offre, et c'est au transporteur d'y répondre.
+> 5 tests le verrouillent.
+>
+> 4. **Contrastes de l'onglet Paramètres** — la garde `verif:contraste` a été étendue
+>    aux deux écrans du lot (**84 couples**, contre 46). Elle a trouvé **trois textes
+>    sous le seuil** : le texte d'aide et les en-têtes de colonne de l'éditeur de
+>    tranches (`--fg-tertiary` → **3,16:1** en clair, **3,75:1** en sombre, sous le
+>    seuil dans les DEUX thèmes), et la pastille « Chargement » de la modale de demande
+>    (vert de marque brut → **2,71:1** en clair). Corrigés en `--fg-secondary` et
+>    `--texte-succes`. Les 84 couples passent.
 >
 > **Reprendre ici :** l'interface. Deux écrans à écrire, tous deux branchés sur des
 > endpoints qui existent et sont testés :

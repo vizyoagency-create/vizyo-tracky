@@ -198,7 +198,21 @@ export class MissionsService {
     private readonly partage: MissionShareService,
   ) {}
 
-  async creer(user: AuthUser, entree: CreerMissionEntree): Promise<ResultatCreation> {
+  async creer(
+    user: AuthUser,
+    entree: CreerMissionEntree,
+    /**
+     * Reglages d'appel, HORS du DTO d'entree — et c'est important : `CreerMissionEntree`
+     * est le corps de `POST /missions`. Y glisser un interrupteur de notification
+     * laisserait un client couper l'e-mail du depot depuis l'exterieur.
+     *
+     * Seul l'appelant INTERNE s'en sert : `MissionRequestsService.affecter` envoie son
+     * propre avis, qui nomme la demande negociee (« D-0142 est devenue M-2481 »). Sans
+     * ce reglage, le depot recevrait deux e-mails dans la meme seconde pour un seul
+     * evenement — celui-ci et l'avis generique, qui ignore tout de la negociation.
+     */
+    reglages: { notifierDepot?: boolean } = {},
+  ): Promise<ResultatCreation> {
     const fleetId = this.porteeEcriture(user, entree.fleetId);
     const { start, end } = this.validerCreneau(entree.startAt, entree.endAt);
 
@@ -278,7 +292,7 @@ export class MissionsService {
     // EFFET 3 — le depot est notifie. HORS transaction, et volontairement : un e-mail
     // qui echoue ne doit pas annuler une mission deja ecrite. Le gestionnaire a valide,
     // le vehicule est bloque, le depot verra la mission en se connectant de toute facon.
-    if (entree.depotUserId) {
+    if (entree.depotUserId && reglages.notifierDepot !== false) {
       void this.notifierDepot(entree.depotUserId, {
         ref: mission.ref,
         origin: entree.originLabel,

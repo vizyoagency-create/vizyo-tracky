@@ -64,6 +64,7 @@ describe('AlertsService', () => {
     surveillanceEvent: { create: jest.Mock };
   };
   let gateway: { broadcastAlert: jest.Mock; broadcastAlertAcknowledged: jest.Mock };
+  let dispatch: { dispatchAlert: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -87,13 +88,14 @@ describe('AlertsService', () => {
       },
     };
     gateway = { broadcastAlert: jest.fn(), broadcastAlertAcknowledged: jest.fn() };
+    dispatch = { dispatchAlert: jest.fn().mockResolvedValue({ channels: [] }) };
 
     const module = await Test.createTestingModule({
       providers: [
         AlertsService,
         { provide: PrismaService, useValue: prisma },
         { provide: RealtimeGateway, useValue: gateway },
-        { provide: NotificationDispatchService, useValue: { dispatchAlert: jest.fn().mockResolvedValue({ channels: [] }) } },
+        { provide: NotificationDispatchService, useValue: dispatch },
       ],
     }).compile();
 
@@ -253,5 +255,67 @@ describe('AlertsService', () => {
     const where = prisma.alert.findFirst.mock.calls[0][0].where;
     expect(where).not.toHaveProperty('acknowledgedAt');
     expect(where).toMatchObject({ vehicleId: VEHICLE_ID, type: 'GPS_LOST' });
+  });
+
+  /**
+   * A6 arbitrage J — « grille absente = alerte au centre d'alertes, PAS de blocage ».
+   *
+   * La seule alerte de ce catalogue qui ne vienne pas d'un boitier : elle decrit un
+   * REGLAGE de la societe, pas un evenement du terrain.
+   */
+  describe('createPricingGridMissingAlert — la grille tarifaire manquante', () => {
+    beforeEach(() => {
+      // Aucune alerte recente : la fenetre de dedup est libre.
+      prisma.alert.findFirst.mockResolvedValue(null);
+    });
+
+    it('cree une alerte WARNING, de flotte, SANS vehicule', async () => {
+      const result = await service.createPricingGridMissingAlert(FLEET_ID, 'Aucune grille.');
+      expect(result).not.toBeNull();
+      const data = prisma.alert.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        fleetId: FLEET_ID,
+        type: 'PRICING_GRID_MISSING',
+        severity: 'WARNING',
+      });
+      // Toutes les autres alertes portent une plaque. Celle-ci n'en a pas, et le
+      // centre d'alertes sait deja ne rien afficher dans ce cas.
+      expect(data.vehicleId).toBeUndefined();
+      expect(data.trackerId).toBeUndefined();
+    });
+
+    it('reprend le motif du service de tarification et dit quoi faire', async () => {
+      await service.createPricingGridMissingAlert(FLEET_ID, 'La grille est désactivée.');
+      const data = prisma.alert.create.mock.calls[0][0].data;
+      expect(data.message).toContain('La grille est désactivée.');
+      expect(data.message).toContain('Paramètres');
+    });
+
+    it('diffuse en direct pour que le compteur du centre bouge sans rechargement', async () => {
+      await service.createPricingGridMissingAlert(FLEET_ID, 'Aucune grille.');
+      expect(gateway.broadcastAlert).toHaveBeenCalled();
+    });
+
+    it('déduplique sur la flotte, ACQUITTÉE OU NON', async () => {
+      prisma.alert.findFirst.mockResolvedValue(
+        alertRecord({ type: 'PRICING_GRID_MISSING', acknowledgedAt: new Date() }),
+      );
+      const result = await service.createPricingGridMissingAlert(FLEET_ID, 'Aucune grille.');
+      expect(result).toBeNull();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+      // La cause persiste tant que personne n'a publié de grille, et chaque calcul de
+      // devis repasse ici : acquitter doit faire taire pour la fenêtre, pas relancer.
+      const where = prisma.alert.findFirst.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('acknowledgedAt');
+      expect(where).toMatchObject({ fleetId: FLEET_ID, type: 'PRICING_GRID_MISSING' });
+      expect(where).not.toHaveProperty('vehicleId');
+    });
+
+    it('ne réveille AUCUN téléphone : pas de dispatch externe', async () => {
+      await service.createPricingGridMissingAlert(FLEET_ID, 'Aucune grille.');
+      // Légitime pour un SOS, absurde pour un tarif non publié — qui attend très bien
+      // l'ouverture du navigateur.
+      expect(dispatch.dispatchAlert).not.toHaveBeenCalled();
+    });
   });
 });

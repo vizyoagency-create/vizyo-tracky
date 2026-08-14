@@ -27,6 +27,15 @@ import { firstValueFrom } from 'rxjs';
  * │ Concentrer les appels ici rend cette règle VÉRIFIABLE : il suffit de lire  │
  * │ ce fichier pour connaître l'intégralité de la surface réseau du dépôt.     │
  * └────────────────────────────────────────────────────────────────────────────┘
+ *
+ * ⚠️ UNE SEULE EXCEPTION, NOMMÉE ICI POUR QUE LA RÈGLE RESTE VÉRIFIABLE : lot A6,
+ * `/api/mission-requests`, servi par `MissionRequestsApi` (core/services). Ce n'est pas
+ * une route de la flotte empruntée par commodité — c'est le seul contrôleur ouvert AUX
+ * DEUX camps par construction, borné à `depotUserId = user.id` à chaque requête. Il
+ * vit hors de ce fichier parce que le transporteur l'appelle aussi, et qu'un fil de
+ * négociation lu différemment de chaque côté ne serait pas un fil.
+ *
+ * La surface réseau du dépôt se lit donc dans DEUX fichiers, et seulement deux.
  */
 @Injectable({ providedIn: 'root' })
 export class DepotApiService {

@@ -64,6 +64,10 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'VIBRATION', label: 'Vibration', severity: 'info' },
   { value: 'GPS_LOST', label: 'Perte signal GPS', severity: 'info' },
   { value: 'IDLE_TIME', label: 'Arrêt prolonge', severity: 'info' },
+  // A6 arbitrage J — la seule entrée de cette liste qui ne vienne pas d'un boîtier :
+  // elle décrit un réglage de la société, pas un événement du terrain. Elle est donc
+  // sans plaque, et le filtre par véhicule ne la fait jamais apparaître — c'est voulu.
+  { value: 'PRICING_GRID_MISSING', label: 'Grille tarifaire absente', severity: 'warning' },
 ];
 
 const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS'; label: string; icon: typeof Bell }[] = [
@@ -837,6 +841,8 @@ export class AlertsComponent implements OnInit {
     GPS_LOST: 'Perte du signal GPS',
     IDLE_TIME: 'Temps d\'arrêt prolongé',
     SURVEILLANCE_TRIGGERED: 'Surveillance déclenchée',
+    MAINTENANCE_DUE: 'Entretien à échéance',
+    PRICING_GRID_MISSING: 'Grille tarifaire absente',
     UNKNOWN: 'Alerte inconnue',
   };
 

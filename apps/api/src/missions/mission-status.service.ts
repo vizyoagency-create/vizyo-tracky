@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
-import { MissionStatus, VehicleEventStatus, VehicleEventType } from '@prisma/client';
+import {
+  MissionRequestStatus,
+  MissionStatus,
+  VehicleEventStatus,
+  VehicleEventType,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -54,6 +59,7 @@ export class MissionStatusService {
       await this.demarrerCellesQuiRoulent();
       await this.marquerLesRetards();
       await this.cloreCellesSansMouvement();
+      await this.expirerLesDevis();
     } catch (err) {
       // Une tache de fond qui leve tue l'ordonnanceur pour toutes les suivantes.
       this.logger.error(
@@ -186,6 +192,60 @@ export class MissionStatusService {
       // autre client. La fermeture laisse cinq minutes sans position, le temps que le
       // destinataire lise l'issue de son attente (cf. `fermerLiensDeMission`).
       await this.partage.fermerLiensDeMission(m.id, 'DONE');
+    }
+  }
+
+  /**
+   * SUBMITTED ou NEGOTIATING → EXPIRED, a l'echeance du devis (A6 § 6).
+   *
+   * ┌─ UN DEVIS QUI NE PERIME PAS N'EST PAS UN DEVIS ───────────────────────────┐
+   * │ `quoteExpiresAt` etait ecrit a la creation et personne ne le lisait. Un    │
+   * │ depot pouvait donc accepter en octobre un prix calcule en aout, sur une    │
+   * │ grille entre-temps revue — et le transporteur se retrouvait engage sur un  │
+   * │ tarif qu'il ne pratique plus. La date affichee au depot annoncait une      │
+   * │ echeance qui n'arrivait jamais : pire qu'une absence de date.              │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠️ SEULES LES DEMANDES ENCORE VIVANTES EXPIRENT. `ACCEPTED` a fige son
+   * montant, `CONVERTED` est devenue une mission, `REJECTED` est close : les
+   * faire expirer reecrirait une histoire deja terminee. Le filtre porte donc
+   * sur les deux seuls statuts en attente de reponse, exactement ceux que
+   * `MissionRequestsService` considere comme negociables.
+   *
+   * Les demandes sans echeance — grille absente au moment de la creation — ne
+   * sont jamais touchees : en SQL, `quoteExpiresAt < maintenant` est faux pour
+   * un NULL, et c'est le comportement voulu. Une demande sans date de validite
+   * n'est pas une demande perimee.
+   */
+  private async expirerLesDevis(): Promise<void> {
+    const maintenant = new Date();
+    // On lit AVANT d'ecrire pour pouvoir nommer les demandes dans le journal : une
+    // demande qui disparait de la file du transporteur sans laisser de trace est
+    // exactement le genre d'evenement qu'on cherche a reconstituer six mois plus tard.
+    const echues = await this.prisma.missionRequest.findMany({
+      where: {
+        status: { in: [MissionRequestStatus.SUBMITTED, MissionRequestStatus.NEGOTIATING] },
+        quoteExpiresAt: { lt: maintenant },
+      },
+      select: { id: true, ref: true },
+      take: 200,
+    });
+    if (echues.length === 0) return;
+
+    const { count } = await this.prisma.missionRequest.updateMany({
+      // Le statut est REPETE dans le where de l'ecriture : entre la lecture et la
+      // mise a jour, une des deux parties a pu accepter. Sans cette garde, le tick
+      // ecraserait un accord conclu une seconde plus tot.
+      where: {
+        id: { in: echues.map((d) => d.id) },
+        status: { in: [MissionRequestStatus.SUBMITTED, MissionRequestStatus.NEGOTIATING] },
+      },
+      data: { status: MissionRequestStatus.EXPIRED },
+    });
+    if (count > 0) {
+      this.logger.log(
+        `${count} demande(s) de mission expiree(s) : ${echues.map((d) => d.ref).join(', ')}`,
+      );
     }
   }
 

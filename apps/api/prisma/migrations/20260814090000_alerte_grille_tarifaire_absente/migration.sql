@@ -1,0 +1,18 @@
+-- A6 arbitrage J — « grille absente = alerte au centre d'alertes, PAS de blocage ».
+--
+-- Migration PUREMENT ADDITIVE : une valeur de plus dans un enum, rien d'autre. Aucune
+-- table, aucune colonne, aucune ligne existante n'est touchée. Le diff a été écrit à la
+-- main plutôt que généré : le générateur embarque sur ce dépôt des ALTER TABLE sans
+-- rapport, dérive préexistante de la base locale (cf. docs/A6 § 8, tranche T2).
+--
+-- `BEFORE 'UNKNOWN'` aligne l'ordre du type PostgreSQL sur celui du schéma Prisma. Sans
+-- lui la valeur s'ajouterait en queue, et le prochain `migrate diff` verrait un écart
+-- d'ordre qu'aucune migration n'expliquerait.
+--
+-- `IF NOT EXISTS` rend la migration rejouable : sur une base où la valeur existe déjà
+-- (schéma poussé à la main pendant la mise au point), elle passe sans lever.
+--
+-- ⚠️ Aucune INSERTION n'utilise cette valeur dans la même transaction : PostgreSQL
+-- refuserait d'employer une étiquette d'enum ajoutée par la transaction en cours.
+-- AlterEnum
+ALTER TYPE "AlertType" ADD VALUE IF NOT EXISTS 'PRICING_GRID_MISSING' BEFORE 'UNKNOWN';

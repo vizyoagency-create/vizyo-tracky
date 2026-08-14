@@ -73,6 +73,15 @@ export interface TourEntree {
   usedDistanceKm?: number | null;
 }
 
+/**
+ * Qui doit recevoir l'avis.
+ *
+ * `LES_DEUX` n'est pas un raccourci : l'accord conclu est le seul moment ou les deux
+ * cotes de la table apprennent la MEME chose au MEME instant. Prevenir une seule
+ * partie ferait attendre l'autre sans qu'elle sache qu'on l'attend.
+ */
+type Destinataire = 'DEPOT' | 'CARRIER' | 'LES_DEUX';
+
 /** Statuts ou une demande est encore VIVANTE : elle attend une reponse. */
 const EN_COURS: MissionRequestStatus[] = [
   MissionRequestStatus.SUBMITTED,
@@ -170,9 +179,9 @@ export class MissionRequestsService {
     this.logger.log(
       `Demande ${demande.ref} creee par ${user.id} — ${arrets.length} arret(s), ${tarif.statut}`,
     );
-    void this.notifier(demande.id, QuoteRoundAuthor.DEPOT,
+    void this.notifier(demande.id, 'CARRIER',
       'Nouvelle demande de mission',
-      'Un de vos depots vous adresse une demande. Le devis ci-dessous a ete calcule sur votre grille tarifaire.',
+      'Un de vos dépôts vous adresse une demande. Le devis ci-dessous a été calculé sur votre grille tarifaire.',
       'Ouvrir la demande');
     return this.detailComplet(demande.id);
   }
@@ -200,7 +209,10 @@ export class MissionRequestsService {
 
     const roleDansLaNegociation = this.camp(user, demande);
     const dernier = demande.rounds[demande.rounds.length - 1];
-    if (dernier && dernier.author === roleDansLaNegociation) {
+    // Meme regle qu'a l'acceptation : le tour 0 (SYSTEM) est l'offre du depot. Sans
+    // `campDuTour`, il pouvait enchainer une contre-proposition sur son propre devis
+    // avant meme que le transporteur l'ait lu — un monologue, pas une negociation.
+    if (dernier && this.campDuTour(dernier.author) === roleDansLaNegociation) {
       throw new BadRequestException(
         'Vous avez déjà la main : attendez la réponse de l\'autre partie.',
       );
@@ -277,7 +289,8 @@ export class MissionRequestsService {
     );
     void this.notifier(
       requestId,
-      roleDansLaNegociation,
+      // L'AUTRE camp que celui qui vient de jouer : c'est lui qui doit repondre.
+      roleDansLaNegociation === QuoteRoundAuthor.DEPOT ? 'CARRIER' : 'DEPOT',
       'Nouvelle proposition',
       "L'autre partie vous a répondu. Voici sa proposition.",
       'Voir la proposition',
@@ -303,7 +316,10 @@ export class MissionRequestsService {
     if (!dernier) throw new BadRequestException('Cette demande ne porte aucune offre.');
 
     const camp = this.camp(user, demande);
-    if (dernier.author === camp) {
+    // ⚠️ `campDuTour`, et NON `dernier.author` : sans lui, le depot acceptait son
+    // propre devis automatique (auteur SYSTEM) dans la seconde suivant l'envoi, et la
+    // demande passait en ACCEPTED sans que le transporteur ait rien dit.
+    if (this.campDuTour(dernier.author) === camp) {
       throw new BadRequestException(
         'Vous ne pouvez pas accepter votre propre proposition : elle attend l\'autre partie.',
       );
@@ -323,6 +339,20 @@ export class MissionRequestsService {
       },
     });
     this.logger.log(`Demande ${demande.ref} acceptee par ${camp} — ${dernier.amountCents} centimes`);
+    // ⚠️ AUX DEUX PARTIES, et c'est le seul avis du lot dans ce cas.
+    //
+    // Les trois autres previennent celui qui doit repondre. Ici plus personne ne doit
+    // repondre : l'un vient de signer, l'autre ne sait pas encore qu'on a signe. Ne
+    // prevenir que le transporteur laisserait le depot devant une demande « en
+    // negociation » qui ne bouge plus, sans comprendre qu'elle est conclue et qu'il
+    // n'attend plus qu'un camion.
+    void this.notifier(
+      requestId,
+      'LES_DEUX',
+      'Accord conclu',
+      'Les deux parties se sont accordées sur le montant ci-dessous. Le transporteur affecte à présent un véhicule et un conducteur.',
+      'Voir la demande',
+    );
     return this.detailComplet(requestId);
   }
 
@@ -401,17 +431,25 @@ export class MissionRequestsService {
     const depart = arrets[0];
     const arrivee = arrets[arrets.length - 1];
 
-    const { mission, avertissements } = await this.missions.creer(user, {
-      fleetId: demande.fleetId,
-      vehicleId: entree.vehicleId,
-      driverId: entree.driverId ?? null,
-      depotUserId: demande.depotUserId,
-      originLabel: depart.label,
-      destLabel: arrivee.label,
-      startAt: demande.wantedStartAt.toISOString(),
-      endAt: demande.wantedEndAt.toISOString(),
-      notes: entree.notes ?? null,
-    });
+    const { mission, avertissements } = await this.missions.creer(
+      user,
+      {
+        fleetId: demande.fleetId,
+        vehicleId: entree.vehicleId,
+        driverId: entree.driverId ?? null,
+        depotUserId: demande.depotUserId,
+        originLabel: depart.label,
+        destLabel: arrivee.label,
+        startAt: demande.wantedStartAt.toISOString(),
+        endAt: demande.wantedEndAt.toISOString(),
+        notes: entree.notes ?? null,
+      },
+      // L'avis generique de creation de mission est COUPE ici, et remplace juste apres
+      // par celui qui nomme la demande negociee. Les deux partiraient dans la meme
+      // seconde pour un seul evenement, et le premier ignore tout de la negociation :
+      // le depot lirait « mission M-2481 » sans jamais retrouver sa demande D-0142.
+      { notifierDepot: false },
+    );
 
     await this.prisma.$transaction(async (tx) => {
       // Les arrets sont COPIES sur la mission, pas deplaces : la demande garde les
@@ -438,6 +476,16 @@ export class MissionRequestsService {
 
     this.logger.log(
       `Demande ${demande.ref} convertie en mission ${mission.ref} — ${arrets.length} arret(s)`,
+    );
+    // Le moment que le depot attend depuis sa premiere saisie. L'avis nomme LES DEUX
+    // references : sans la sienne, il lit « mission M-2481 » sans pouvoir la relier a
+    // la demande qu'il a negociee, et sans savoir si son autre demande est passee.
+    void this.notifier(
+      requestId,
+      'DEPOT',
+      'Votre demande est confirmée',
+      `Un véhicule est affecté : votre demande devient la mission ${mission.ref}. Vous suivrez sa position depuis votre espace le jour venu.`,
+      'Suivre la mission',
     );
     return { mission, avertissements, request: await this.detailComplet(requestId) };
   }
@@ -466,6 +514,21 @@ export class MissionRequestsService {
       take: 200,
     });
     return demandes.map((d) => this.versDto(d));
+  }
+
+  /**
+   * La grille tarifaire de la societe du depot, pour l'apercu de saisie.
+   *
+   * Un depot n'a AUCUNE portee choisie : c'est celle de son compte, jamais une
+   * demandee. `porteeEcriture` porte deja cette regle — on la reutilise plutot que
+   * de la recopier, parce qu'une portee recopiee finit par diverger.
+   *
+   * `null` quand aucune grille n'existe : un cas NORMAL, que l'ecran traduit en
+   * « le transporteur n'a pas publie ses tarifs » plutot qu'en panne.
+   */
+  async grilleApplicable(user: AuthUser) {
+    const fleetId = this.porteeEcriture(user);
+    return this.pricing.lire(user, fleetId);
   }
 
   /**
@@ -504,13 +567,23 @@ export class MissionRequestsService {
    * │ `MissionsService.notifierDepot`.                                          │
    * └────────────────────────────────────────────────────────────────────────────┘
    *
-   * Le destinataire est calcule depuis le CAMP qui vient de jouer : le depot a
-   * repondu, on previent le transporteur, et inversement. On ne se previent jamais
-   * soi-meme.
+   * Pendant la negociation, le destinataire est L'AUTRE CAMP : le depot a repondu, on
+   * previent le transporteur, et inversement. On ne se previent jamais soi-meme. A
+   * l'accord, `LES_DEUX` : c'est le seul moment ou les deux cotes apprennent la meme
+   * chose au meme instant.
+   *
+   * ┌─ UN SEUL GABARIT POUR LES DEUX SENS, ET C'EST DELIBERE ───────────────────┐
+   * │ `buildMissionQuoteEmail` sert les quatre avis du lot — demande, contre-    │
+   * │ proposition, accord, affectation. Ce qui change d'un cote a l'autre, c'est │
+   * │ le LIEN : le depot ouvre sa demande dans son espace, le transporteur       │
+   * │ l'ouvre dans sa file. Deux gabarits auraient diverge des la premiere        │
+   * │ retouche, et le depot aurait fini par recevoir une mise en page differente │
+   * │ selon l'expediteur du meme fil de discussion.                              │
+   * └────────────────────────────────────────────────────────────────────────────┘
    */
   private async notifier(
     requestId: string,
-    campQuiVientDeJouer: QuoteRoundAuthor,
+    cible: Destinataire,
     titre: string,
     intro: string,
     libelleAction: string,
@@ -527,54 +600,64 @@ export class MissionRequestsService {
       });
       if (!d) return;
 
-      // Vers le DEPOT : une seule adresse. Vers le TRANSPORTEUR : tous ceux qui
-      // gerent les missions de la societe — un seul destinataire nomme se serait
-      // trouve en conges le jour ou une demande arrive.
-      const versDepot = campQuiVientDeJouer !== QuoteRoundAuthor.DEPOT;
-      const destinataires = versDepot
-        ? [d.depotUser.email]
-        : (
-            await this.prisma.user.findMany({
-              where: { fleetId: d.fleetId, isActive: true, role: { in: [UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER] } },
-              select: { email: true },
-            })
-          ).map((u) => u.email);
-      if (destinataires.length === 0) return;
-
       const base = this.config.get('APP_BASE_URL', { infer: true }) ?? '';
-      const dernier = d.rounds[0];
-      const tpl = this.email.buildMissionQuoteEmail({
-        ref: d.ref,
-        titre,
-        intro,
-        origin: d.stops[0]?.label ?? '',
-        destination: d.stops[d.stops.length - 1]?.label ?? '',
-        nbArrets: d.stops.length,
-        startAt: d.wantedStartAt,
-        endAt: d.wantedEndAt,
-        amountCents: dernier?.amountCents ?? null,
-        message: dernier?.message ?? null,
-        // Le nom du TRANSPORTEUR, pas Tracky : c'est de lui que le depot attend un
-        // e-mail (A0 § Marque).
-        carrierName: d.fleet?.name ?? 'Votre transporteur',
-        url: versDepot ? `${base}/depot/requests/${d.id}` : `${base}/missions?demande=${d.id}`,
-        libelleAction,
-      });
 
-      for (const to of destinataires) {
-        await this.email.send({
-          to,
-          subject: tpl.subject,
-          html: tpl.html,
-          text: tpl.text,
-          template: 'mission_request',
-          context: { requestId: d.id, fleetId: d.fleetId },
+      // Chaque cote a SES adresses et SON lien. Vers le DEPOT : une seule adresse.
+      // Vers le TRANSPORTEUR : tous ceux qui gerent les missions de la societe — un
+      // seul destinataire nomme se serait trouve en conges le jour ou une demande
+      // arrive.
+      const cotes: Array<{ emails: string[]; url: string }> = [];
+      if (cible === 'DEPOT' || cible === 'LES_DEUX') {
+        cotes.push({ emails: [d.depotUser.email], url: `${base}/depot/requests/${d.id}` });
+      }
+      if (cible === 'CARRIER' || cible === 'LES_DEUX') {
+        const gestionnaires = await this.prisma.user.findMany({
+          where: {
+            fleetId: d.fleetId,
+            isActive: true,
+            role: { in: [UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER] },
+          },
+          select: { email: true },
         });
+        cotes.push({ emails: gestionnaires.map((u) => u.email), url: `${base}/missions?demande=${d.id}` });
+      }
+
+      const dernier = d.rounds[0];
+      for (const cote of cotes) {
+        if (cote.emails.length === 0) continue;
+        const tpl = this.email.buildMissionQuoteEmail({
+          ref: d.ref,
+          titre,
+          intro,
+          origin: d.stops[0]?.label ?? '',
+          destination: d.stops[d.stops.length - 1]?.label ?? '',
+          nbArrets: d.stops.length,
+          startAt: d.wantedStartAt,
+          endAt: d.wantedEndAt,
+          amountCents: dernier?.amountCents ?? null,
+          message: dernier?.message ?? null,
+          // Le nom du TRANSPORTEUR, pas Tracky : c'est de lui que le depot attend un
+          // e-mail (A0 § Marque).
+          carrierName: d.fleet?.name ?? 'Votre transporteur',
+          url: cote.url,
+          libelleAction,
+        });
+
+        for (const to of cote.emails) {
+          await this.email.send({
+            to,
+            subject: tpl.subject,
+            html: tpl.html,
+            text: tpl.text,
+            template: 'mission_request',
+            context: { requestId: d.id, fleetId: d.fleetId },
+          });
+        }
       }
     } catch (err) {
       // Journalise et continue : la negociation est ecrite, elle ne doit pas
       // dependre d'un serveur de messagerie.
-      this.logger.warn(`Notification de la demande ${requestId} en echec : ${String(err)}`);
+      this.logger.warn(`Notification de la demande ${requestId} en échec : ${String(err)}`);
     }
   }
 
@@ -606,6 +689,36 @@ export class MissionRequestsService {
     return user.role === UserRole.DEPOT && user.id === demande.depotUserId
       ? QuoteRoundAuthor.DEPOT
       : QuoteRoundAuthor.CARRIER;
+  }
+
+  /**
+   * A QUEL CAMP APPARTIENT UN TOUR — et `SYSTEM` appartient au DEPOT.
+   *
+   * ┌─ LE TOUR 0 EST L'OFFRE DU DEPOT, PAS UN TIERS NEUTRE ─────────────────────┐
+   * │ Le devis automatique est calcule A LA DEMANDE DU DEPOT, sur les conditions │
+   * │ qu'il vient de saisir (arbitrage D). Il porte l'auteur `SYSTEM` parce que  │
+   * │ personne ne l'a tape — mais il est du COTE du depot : c'est ce que celui-ci│
+   * │ propose, et c'est au transporteur d'y repondre.                            │
+   * │                                                                            │
+   * │ Le traiter comme un camp a part avait deux consequences, decouvertes en    │
+   * │ branchant les ecrans le 2026-08-14 :                                       │
+   * │                                                                            │
+   * │  1. `awaiting` valait `DEPOT` juste apres l'envoi. La file du transporteur │
+   * │     n'aurait donc JAMAIS montre une demande neuve dans « a traiter » —     │
+   * │     l'ecran entier serait passe a cote de son objet.                       │
+   * │                                                                            │
+   * │  2. Bien pire : `accepter` compare l'auteur du dernier tour au camp de     │
+   * │     l'appelant. `SYSTEM` n'etant egal a aucun des deux, LE DEPOT POUVAIT   │
+   * │     ACCEPTER SON PROPRE DEVIS AUTOMATIQUE dans la seconde qui suivait      │
+   * │     l'envoi. La demande passait en `ACCEPTED` avec un montant convenu,     │
+   * │     sans que le transporteur ait rien dit — un accord a une seule          │
+   * │     signature, exactement ce que la garde etait censee empecher.           │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  private campDuTour(auteur: QuoteRoundAuthor): QuoteRoundAuthor {
+    return auteur === QuoteRoundAuthor.CARRIER
+      ? QuoteRoundAuthor.CARRIER
+      : QuoteRoundAuthor.DEPOT;
   }
 
   /**
@@ -762,9 +875,16 @@ export class MissionRequestsService {
       rejectedReason: d.rejectedReason,
       missionId: d.missionId,
       createdAt: d.createdAt.toISOString(),
-      /** Qui doit répondre : l'autre camp que l'auteur du dernier tour. */
+      /**
+       * Qui doit répondre : l'autre camp que celui du dernier tour.
+       *
+       * ⚠️ `SYSTEM` compte pour le DÉPÔT (cf. `campDuTour`) : le devis automatique est
+       * l'offre du dépôt, et c'est au transporteur d'y répondre. Une demande tout juste
+       * envoyée attend donc le TRANSPORTEUR — sans quoi elle n'apparaîtrait jamais
+       * dans sa file « à traiter ».
+       */
       awaiting: dernier
-        ? dernier.author === QuoteRoundAuthor.DEPOT
+        ? this.campDuTour(dernier.author) === QuoteRoundAuthor.DEPOT
           ? 'CARRIER'
           : 'DEPOT'
         : null,

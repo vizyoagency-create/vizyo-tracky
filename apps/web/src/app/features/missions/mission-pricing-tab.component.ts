@@ -221,7 +221,12 @@ type Simulation =
                background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
     .mp-titre { display: flex; align-items: center; gap: 7px; margin: 0 0 6px;
                 font-size: 14px; font-weight: 700; color: var(--fg-primary) }
-    .mp-aide { margin: 0 0 12px; font-size: 12.5px; line-height: 1.55; color: var(--fg-tertiary) }
+    /* ⚠️ --fg-secondary, et NON --fg-tertiary. Ce texte explique la regle de selection
+       d'une tranche — il se LIT, il ne decore pas. Sur --bg-secondary, le jeton
+       tertiaire donne 3,16:1 en clair et 3,75:1 en sombre : sous le seuil dans les DEUX
+       themes. Cet ecran n'avait jamais ete mesure ; c'est ce que la garde a trouve en
+       premier. Mesure dans scripts/verif-contraste.mjs, section « Grille tarifaire ». */
+    .mp-aide { margin: 0 0 12px; font-size: 12.5px; line-height: 1.55; color: var(--fg-secondary) }
 
     .mp-bascule { display: flex; align-items: flex-start; gap: 11px; cursor: pointer }
     .mp-bascule input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0 }
@@ -233,8 +238,11 @@ type Simulation =
     .mp-tr { display: grid; grid-template-columns: 1fr 1fr 1.2fr 44px; gap: 8px;
              align-items: center; min-width: 0 }
     .mp-tr > * { min-width: 0 }
+    /* Meme raison : « De (km) », « A (km) », « Tarif HT » nomment les colonnes d'une
+       grille de PRIX. A 11 px en majuscules, le jeton tertiaire etait le pire couple
+       de l'ecran. */
     .mp-tr--tete span { font-size: 11px; font-weight: 700; text-transform: uppercase;
-                        letter-spacing: .06em; color: var(--fg-tertiary) }
+                        letter-spacing: .06em; color: var(--fg-secondary) }
     .mp-tr input, .mp-champ input, .mp-champ textarea {
       width: 100%; min-height: 44px; padding: 8px 11px; border-radius: 10px;
       font-size: 14px; font-family: inherit;
@@ -262,7 +270,7 @@ type Simulation =
     .mp-simu input { width: 120px; min-height: 44px; padding: 8px 11px; border-radius: 10px;
                      font-size: 14px; font-family: inherit; background: var(--bg-primary);
                      border: 1px solid var(--border-subtle); color: var(--fg-primary) }
-    .mp-simu-u { padding-bottom: 12px; font-size: 13px; color: var(--fg-tertiary) }
+    .mp-simu-u { padding-bottom: 12px; font-size: 13px; color: var(--fg-secondary) }
     .mp-resu { margin: 12px 0 0; padding: 11px 13px; border-radius: 10px; font-size: 13px;
                line-height: 1.6; color: var(--texte-succes);
                background: color-mix(in srgb, var(--tracky-light) 10%, transparent) }
@@ -273,7 +281,7 @@ type Simulation =
     .mp-champ { display: flex; flex-direction: column; gap: 5px; min-width: 0 }
     .mp-champ--large { margin-top: 12px }
     .mp-champ > span { font-size: 12px; font-weight: 600; color: var(--fg-secondary) }
-    .mp-champ > span em { font-style: normal; font-weight: 500; color: var(--fg-tertiary) }
+    .mp-champ > span em { font-style: normal; font-weight: 500; color: var(--fg-secondary) }
 
     .mp-alerte { margin: 12px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--texte-alerte) }
     .mp-pied { display: flex; align-items: center; justify-content: flex-end; gap: 14px;

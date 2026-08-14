@@ -33,8 +33,16 @@ describe('MissionRequestsService', () => {
     mission: { create: jest.Mock };
     $transaction: jest.Mock;
   };
-  let pricing: { tarifPour: jest.Mock };
+  let pricing: { tarifPour: jest.Mock; lire?: jest.Mock };
   let missions: { creer: jest.Mock };
+  let email: { buildMissionQuoteEmail: jest.Mock; send: jest.Mock };
+
+  /**
+   * Les avis partent en FIRE-AND-FORGET — un e-mail qui echoue ne doit pas annuler une
+   * negociation deja ecrite. Il faut donc laisser passer la file des microtaches avant
+   * d'observer l'espion, sinon on l'interroge avant qu'il ait servi.
+   */
+  const laisserPartirLesAvis = () => new Promise((r) => setImmediate(r));
 
   const DEPOT = { id: 'depot-1', fleetId: 'f-1', role: UserRole.DEPOT } as AuthUser;
   const AUTRE_DEPOT = { id: 'depot-2', fleetId: 'f-1', role: UserRole.DEPOT } as AuthUser;
@@ -120,6 +128,10 @@ describe('MissionRequestsService', () => {
         avertissements: [],
       }),
     };
+    email = {
+      buildMissionQuoteEmail: jest.fn().mockReturnValue({ subject: 's', html: 'h', text: 't' }),
+      send: jest.fn().mockResolvedValue({ ok: true }),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -129,7 +141,7 @@ describe('MissionRequestsService', () => {
         { provide: MissionsService, useValue: missions },
         // Les notifications sont HORS transaction : un e-mail qui echoue ne doit pas
         // annuler une negociation deja ecrite. L'espion suffit ici.
-        { provide: EmailService, useValue: { buildMissionQuoteEmail: jest.fn().mockReturnValue({ subject: 's', html: 'h', text: 't' }), send: jest.fn().mockResolvedValue({ ok: true }) } },
+        { provide: EmailService, useValue: email },
         { provide: ConfigService, useValue: { get: () => 'https://app.exemple.fr' } },
       ],
     }).compile();
@@ -381,6 +393,59 @@ describe('MissionRequestsService', () => {
     });
   });
 
+  /**
+   * A6 § 6 — l'echeance du devis, cote service.
+   *
+   * `MissionStatusService.expirerLesDevis` fait la bascule ; ce qui suit verifie que
+   * la bascule SERT A QUELQUE CHOSE. Un statut EXPIRED qu'aucune garde ne lit
+   * laisserait accepter, des semaines plus tard, un prix calcule sur une grille
+   * entre-temps revue — le transporteur se retrouverait engage sur un tarif qu'il
+   * ne pratique plus.
+   */
+  describe('une demande EXPIREE n\'est plus negociable', () => {
+    const EXPIREE = () => demandeEn({ status: MissionRequestStatus.EXPIRED });
+
+    it('ne se contre-propose plus', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(EXPIREE());
+      await expect(service.contreProposer(DEPOT, 'r-1', { amountCents: 5000 })).rejects.toThrow(
+        /expirée/,
+      );
+    });
+
+    it('ne s\'accepte plus — ni par le dépôt, ni par le transporteur', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(EXPIREE());
+      await expect(service.accepter(TRANSPORTEUR, 'r-1')).rejects.toThrow(/expirée/);
+      await expect(service.accepter(DEPOT, 'r-1')).rejects.toThrow(/expirée/);
+    });
+
+    it('ne se refuse plus : elle est déjà close', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(EXPIREE());
+      await expect(
+        service.refuser(TRANSPORTEUR, 'r-1', 'Trop tard, le camion est parti.'),
+      ).rejects.toThrow(/expirée/);
+    });
+
+    it('ne s\'affecte pas : seul un accord mène à une mission', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(EXPIREE());
+      await expect(service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' })).rejects.toThrow(
+        /expirée/,
+      );
+      // L'invariant du lot : aucune écriture côté exploitation.
+      expect(missions.creer).not.toHaveBeenCalled();
+    });
+
+    it('aucune de ces tentatives n\'écrit quoi que ce soit', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(EXPIREE());
+      await Promise.allSettled([
+        service.contreProposer(DEPOT, 'r-1', { amountCents: 5000 }),
+        service.accepter(DEPOT, 'r-1'),
+        service.refuser(DEPOT, 'r-1', 'Un motif suffisamment long.'),
+      ]);
+      expect(prisma.missionRequest.update).not.toHaveBeenCalled();
+      expect(prisma.missionQuoteRound.create).not.toHaveBeenCalled();
+    });
+  });
+
   // ═══ AFFECTATION ET CONVERSION (T7) ══════════════════════════════════════════
 
   describe('affecter — c\'est ici que l\'exploitation commence', () => {
@@ -502,6 +567,237 @@ describe('MissionRequestsService', () => {
     it('rend les distances en kilomètres — les mètres restent en base', async () => {
       const dto = await service.detailComplet('r-1');
       expect(dto.declaredDistanceKm).toBe(43);
+    });
+  });
+
+  /**
+   * A6 § 6 — LE TOUR 0 EST L'OFFRE DU DEPOT, PAS CELLE D'UN TIERS NEUTRE.
+   *
+   * Decouvert le 2026-08-14 en branchant les ecrans. Le devis automatique porte
+   * l'auteur `SYSTEM` parce que personne ne l'a tape — mais il est calcule A LA DEMANDE
+   * DU DEPOT, sur les conditions qu'il vient de saisir. Le traiter comme un camp a part
+   * cassait deux choses a la fois, et la seconde etait grave.
+   */
+  describe('le devis automatique appartient au camp du dépôt', () => {
+    const TOUR_SYSTEME = () =>
+      demandeEn({
+        rounds: [
+          { position: 0, author: QuoteRoundAuthor.SYSTEM, amountCents: 7900, breakdown: {}, message: null, createdAt: new Date() },
+        ],
+      });
+
+    it('une demande tout juste envoyée attend le TRANSPORTEUR', async () => {
+      // Sans cela, la file « à traiter » du transporteur n'aurait jamais montré une
+      // demande neuve : l'écran entier serait passé à côté de son objet.
+      prisma.missionRequest.findUniqueOrThrow.mockResolvedValue(TOUR_SYSTEME());
+      expect((await service.detailComplet('r-1')).awaiting).toBe('CARRIER');
+    });
+
+    it('LE DÉPÔT NE PEUT PAS ACCEPTER SON PROPRE DEVIS AUTOMATIQUE', async () => {
+      // Le trou : `SYSTEM` n'étant égal ni à DEPOT ni à CARRIER, la garde laissait
+      // passer. La demande passait en ACCEPTED avec un montant convenu, dans la
+      // seconde suivant l'envoi, sans que le transporteur ait rien dit — un accord à
+      // une seule signature.
+      prisma.missionRequest.findFirst.mockResolvedValue(TOUR_SYSTEME());
+      await expect(service.accepter(DEPOT, 'r-1')).rejects.toThrow(/votre propre/);
+      expect(prisma.missionRequest.update).not.toHaveBeenCalled();
+    });
+
+    it('le TRANSPORTEUR, lui, accepte bien ce devis : c\'est à lui de répondre', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(TOUR_SYSTEME());
+      await service.accepter(TRANSPORTEUR, 'r-1');
+      expect(prisma.missionRequest.update.mock.calls[0][0].data).toMatchObject({
+        status: MissionRequestStatus.ACCEPTED,
+        agreedAmountCents: 7900,
+      });
+    });
+
+    it('le dépôt ne contre-propose pas non plus sur son propre devis', async () => {
+      // Sinon il enchaînerait sur son offre avant même que le transporteur l'ait lue :
+      // un monologue, pas une négociation.
+      prisma.missionRequest.findFirst.mockResolvedValue(TOUR_SYSTEME());
+      await expect(service.contreProposer(DEPOT, 'r-1', { amountCents: 7000 })).rejects.toThrow(
+        /déjà la main/,
+      );
+    });
+
+    it('le transporteur contre-propose sur le devis automatique', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(TOUR_SYSTEME());
+      await service.contreProposer(TRANSPORTEUR, 'r-1', { amountCents: 9000 });
+      expect(prisma.missionQuoteRound.create.mock.calls[0][0].data).toMatchObject({
+        author: QuoteRoundAuthor.CARRIER,
+        amountCents: 9000,
+      });
+    });
+  });
+
+  /**
+   * A6 § 7bis — la grille lue par le depot, pour l'apercu en direct.
+   *
+   * Ce qui est protege : un depot lit la grille de SA societe, jamais une demandee.
+   * `GET /missions/pricing` reste ferme au role DEPOT — c'est le controleur qui cree
+   * des missions ; celui-ci passe par la portee du service.
+   */
+  describe('la grille lue par le dépôt', () => {
+    it('rend la grille de SA société, sans qu\'il ait à la nommer', async () => {
+      pricing.lire = jest.fn().mockResolvedValue({ fleetId: 'f-1', enabled: true, tiers: [] });
+      await service.grilleApplicable(DEPOT);
+      // La portée d'un dépôt est celle de son compte : `f-1`, pas un identifiant reçu.
+      expect(pricing.lire).toHaveBeenCalledWith(DEPOT, 'f-1');
+    });
+
+    it('un dépôt sans société est refusé, jamais servi à vide', async () => {
+      pricing.lire = jest.fn();
+      const orphelin = { id: 'depot-9', fleetId: null, role: UserRole.DEPOT } as unknown as AuthUser;
+      await expect(service.grilleApplicable(orphelin)).rejects.toThrow(/rattaché/);
+      expect(pricing.lire).not.toHaveBeenCalled();
+    });
+
+    it('rend `null` quand aucune grille n\'existe — un état normal, pas une panne', async () => {
+      pricing.lire = jest.fn().mockResolvedValue(null);
+      await expect(service.grilleApplicable(DEPOT)).resolves.toBeNull();
+    });
+  });
+
+  // ═══ LES AVIS PAR E-MAIL (T9) ════════════════════════════════════════════════
+
+  /**
+   * A6 § T9. Ce qui est protege : le bon camp est prevenu au bon moment, et UNE SEULE
+   * FOIS. Un avis manquant laisse une partie attendre sans savoir qu'on l'attend ; un
+   * avis en double dans la meme seconde apprend a se mefier de la boite de reception.
+   */
+  describe('qui est prévenu, et quand', () => {
+    /** La demande telle que `notifier` la relit, avec ses deux bouts de table. */
+    const AVEC_LES_DEUX_PARTIES = (over: Record<string, unknown> = {}) => ({
+      ...demandeEn(over),
+      depotUser: { email: 'depot@exemple.fr' },
+      fleet: { name: 'MH Cars' },
+    });
+
+    /** Les liens de chaque camp : c'est LE seul écart entre les deux envois. */
+    const liens = () =>
+      email.buildMissionQuoteEmail.mock.calls.map((c: [{ url: string }]) => c[0].url);
+
+    beforeEach(() => {
+      prisma.missionRequest.findUnique.mockResolvedValue(AVEC_LES_DEUX_PARTIES());
+      prisma.user.findMany.mockResolvedValue([
+        { email: 'admin@mhcars.fr' },
+        { email: 'exploitation@mhcars.fr' },
+      ]);
+    });
+
+    it('une demande déposée prévient le TRANSPORTEUR, et tous ses gestionnaires', async () => {
+      await service.creer(DEPOT, ENTREE);
+      await laisserPartirLesAvis();
+      // Un seul destinataire nommé se serait trouvé en congés le jour où une demande
+      // arrive.
+      expect(email.send.mock.calls.map((c: [{ to: string }]) => c[0].to)).toEqual([
+        'admin@mhcars.fr',
+        'exploitation@mhcars.fr',
+      ]);
+      expect(liens()).toEqual(['https://app.exemple.fr/missions?demande=r-1']);
+    });
+
+    it('une contre-proposition prévient L\'AUTRE camp, jamais son auteur', async () => {
+      prisma.missionRequest.findFirst.mockResolvedValue(
+        demandeEn({
+          rounds: [{ position: 0, author: QuoteRoundAuthor.CARRIER, amountCents: 8000, breakdown: {}, message: null, createdAt: new Date() }],
+        }),
+      );
+      // Le dépôt répond au transporteur : c'est le transporteur qu'on prévient.
+      await service.contreProposer(DEPOT, 'r-1', { amountCents: 7000 });
+      await laisserPartirLesAvis();
+      expect(email.send.mock.calls.map((c: [{ to: string }]) => c[0].to)).not.toContain(
+        'depot@exemple.fr',
+      );
+      expect(liens()).toEqual(['https://app.exemple.fr/missions?demande=r-1']);
+    });
+
+    /**
+     * L'accord est le SEUL avis qui parte des deux cotes. Les trois autres previennent
+     * celui qui doit repondre ; ici plus personne ne doit repondre. Ne prevenir que le
+     * transporteur laisserait le depot devant une demande « en negociation » qui ne
+     * bouge plus, sans comprendre qu'elle est conclue.
+     */
+    describe('accord conclu — AUX DEUX PARTIES', () => {
+      const OFFRE_DU_DEPOT = () =>
+        demandeEn({
+          rounds: [{ position: 0, author: QuoteRoundAuthor.DEPOT, amountCents: 7000, breakdown: {}, message: null, createdAt: new Date() }],
+        });
+
+      it('écrit aux deux côtés de la table', async () => {
+        prisma.missionRequest.findFirst.mockResolvedValue(OFFRE_DU_DEPOT());
+        await service.accepter(TRANSPORTEUR, 'r-1');
+        await laisserPartirLesAvis();
+        expect(email.send.mock.calls.map((c: [{ to: string }]) => c[0].to)).toEqual([
+          'depot@exemple.fr',
+          'admin@mhcars.fr',
+          'exploitation@mhcars.fr',
+        ]);
+      });
+
+      it('un seul gabarit, mais le lien de CHAQUE camp', async () => {
+        prisma.missionRequest.findFirst.mockResolvedValue(OFFRE_DU_DEPOT());
+        await service.accepter(TRANSPORTEUR, 'r-1');
+        await laisserPartirLesAvis();
+        // Le dépôt ouvre sa demande dans son espace, le transporteur dans sa file.
+        // C'est le seul écart entre les deux envois — cf. `buildMissionQuoteEmail`.
+        expect(liens()).toEqual([
+          'https://app.exemple.fr/depot/requests/r-1',
+          'https://app.exemple.fr/missions?demande=r-1',
+        ]);
+      });
+
+      it('dit ce qui se passe ensuite : un camion à affecter', async () => {
+        prisma.missionRequest.findFirst.mockResolvedValue(OFFRE_DU_DEPOT());
+        await service.accepter(TRANSPORTEUR, 'r-1');
+        await laisserPartirLesAvis();
+        expect(email.buildMissionQuoteEmail.mock.calls[0][0].titre).toBe('Accord conclu');
+        expect(email.buildMissionQuoteEmail.mock.calls[0][0].intro).toContain('affecte');
+      });
+    });
+
+    /**
+     * L'affectation est le moment que le depot attend depuis sa premiere saisie.
+     * `MissionsService.creer` envoie deja un avis generique de creation de mission :
+     * il est COUPE ici, sans quoi le depot recevrait deux e-mails dans la meme seconde
+     * pour un seul evenement — et le premier ignore tout de la negociation.
+     */
+    describe('mission affectée — au dépôt seul', () => {
+      const ACCEPTEE = () => demandeEn({ status: MissionRequestStatus.ACCEPTED, agreedAmountCents: 7900 });
+
+      it('prévient le dépôt, et nomme LES DEUX références', async () => {
+        prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+        await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+        await laisserPartirLesAvis();
+        expect(email.send.mock.calls.map((c: [{ to: string }]) => c[0].to)).toEqual([
+          'depot@exemple.fr',
+        ]);
+        const avis = email.buildMissionQuoteEmail.mock.calls[0][0];
+        // Sans sa propre référence, le dépôt lit « mission M-0042 » sans pouvoir la
+        // relier à la demande qu'il a négociée.
+        expect(avis.ref).toBe('D-0001');
+        expect(avis.intro).toContain('M-0042');
+      });
+
+      it('coupe l\'avis générique de création de mission — pas deux e-mails pour un événement', async () => {
+        prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+        await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+        expect(missions.creer.mock.calls[0][2]).toEqual({ notifierDepot: false });
+      });
+    });
+
+    it('un serveur de messagerie en panne n\'annule aucune négociation', async () => {
+      // La négociation est écrite ; elle ne doit pas dépendre d'un serveur SMTP.
+      email.send.mockRejectedValue(new Error('smtp injoignable'));
+      prisma.missionRequest.findFirst.mockResolvedValue(
+        demandeEn({
+          rounds: [{ position: 0, author: QuoteRoundAuthor.DEPOT, amountCents: 7000, breakdown: {}, message: null, createdAt: new Date() }],
+        }),
+      );
+      await expect(service.accepter(TRANSPORTEUR, 'r-1')).resolves.toBeDefined();
+      await laisserPartirLesAvis();
+      expect(prisma.missionRequest.update).toHaveBeenCalled();
     });
   });
 });

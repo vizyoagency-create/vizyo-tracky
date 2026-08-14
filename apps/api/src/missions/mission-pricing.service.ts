@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { AlertsService } from '../alerts/alerts.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -82,7 +83,11 @@ const CATEGORIE_DEFAUT = 'Transport de marchandise';
 export class MissionPricingService {
   private readonly logger = new Logger(MissionPricingService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** Arbitrage J : l'absence de grille remonte au centre d'alertes, sans rien bloquer. */
+    private readonly alerts: AlertsService,
+  ) {}
 
   /**
    * La grille d'une societe. `null` quand aucune n'existe — un cas NORMAL, pas une
@@ -178,12 +183,22 @@ export class MissionPricingService {
     });
 
     if (!grille || !grille.enabled || grille.tiers.length === 0) {
-      return {
-        statut: 'PAS_DE_GRILLE',
-        motif: grille && !grille.enabled
+      const motif =
+        grille && !grille.enabled
           ? 'La grille tarifaire de cette société est désactivée.'
-          : 'Aucune grille tarifaire n\'est définie pour cette société.',
-      };
+          : 'Aucune grille tarifaire n\'est définie pour cette société.';
+      // Arbitrage J — la remontee au centre d'alertes. FIRE-AND-FORGET, et pour deux
+      // raisons : ce service calcule de l'argent sur un chemin d'ecran, il ne doit ni
+      // ralentir pour ecrire une alerte, ni ECHOUER parce qu'une alerte a echoue. Une
+      // demande refusee faute de tarif est une reponse claire ; une demande refusee
+      // avec « erreur serveur » parce que la table des alertes etait indisponible
+      // n'apprend rien a personne. L'alerte est deduplicee cote AlertsService.
+      void this.alerts.createPricingGridMissingAlert(fleetId, motif).catch((err) => {
+        this.logger.warn(
+          `Alerte « grille absente » non levee pour la flotte ${fleetId} : ${err instanceof Error ? err.message : err}`,
+        );
+      });
+      return { statut: 'PAS_DE_GRILLE', motif };
     }
 
     // Kilometres arrondis au SUPERIEUR : 50 001 m sont 51 km a facturer. Arrondir au

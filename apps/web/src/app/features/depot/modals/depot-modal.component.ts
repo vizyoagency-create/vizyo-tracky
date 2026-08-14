@@ -59,7 +59,11 @@ import { LucideAngularModule, X } from 'lucide-angular';
       margin: 0; font-family: var(--font-display); font-size: 17px; font-weight: 800;
       letter-spacing: -.015em; color: var(--text-primary);
     }
-    .dmo-tete p { margin: 4px 0 0; font-size: 12.5px; color: var(--depot-attenue) }
+    /* --texte-inactif, et non --depot-attenue : depuis le lot A6 cette coque sert AUSSI
+       a l'espace transporteur (modale de negociation), ou les jetons --depot-* n'existent
+       pas. Les deux ont la meme valeur — --depot-attenue en est un alias — donc l'espace
+       depot ne bouge pas d'un pixel. */
+    .dmo-tete p { margin: 4px 0 0; font-size: 12.5px; color: var(--texte-inactif) }
     .dmo-fermer {
       flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px;
       border-radius: 10px; border: 1px solid var(--border-color);

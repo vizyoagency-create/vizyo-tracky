@@ -70,6 +70,11 @@ enum AlertType {
   IDLE_TIME
   SURVEILLANCE_TRIGGERED
   MAINTENANCE_DUE
+  /// A6 arbitrage J — la flotte n'a pas de grille tarifaire active. Seule alerte de
+  /// ce catalogue qui ne vienne PAS d'un boîtier : elle porte donc un `vehicleId`
+  /// nul, ce que le centre d'alertes sait déjà afficher. Elle n'immobilise rien —
+  /// les missions restent créables, c'est la tarification qui disparaît.
+  PRICING_GRID_MISSING
   UNKNOWN
 }
 

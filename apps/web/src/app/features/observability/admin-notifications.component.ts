@@ -65,6 +65,10 @@ export const ALERT_TYPE_LABELS_FR: Record<string, string> = {
   IDLE_TIME: 'Temps d\'arrêt prolongé',
   SURVEILLANCE_TRIGGERED: 'Surveillance déclenchée',
   MAINTENANCE_DUE: 'Entretien à échéance',
+  // A6 arbitrage J. Ce type n'est VOLONTAIREMENT pas dispatché — il n'apparaîtra donc
+  // pas dans ce journal de livraisons. Le libellé est là pour que le jour où quelqu'un
+  // le branche, l'écran ne retombe pas sur « Pricing grid missing ».
+  PRICING_GRID_MISSING: 'Grille tarifaire absente',
   UNKNOWN: 'Alerte inconnue',
 };
 
