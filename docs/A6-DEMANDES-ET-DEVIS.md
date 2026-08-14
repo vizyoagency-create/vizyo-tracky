@@ -4,18 +4,20 @@
 > de référence** : on le suit, on coche, et on y consigne les décisions au fur et à
 > mesure. Toute session qui reprend le chantier commence ici.
 >
-> **État au 2026-08-13, fin de session** — **T1 et T2 terminées.** Le modèle de
+> **État au 2026-08-14** — **T1, T2 et T3 terminées.** Le modèle de
 > domaine est arrêté, la migration est écrite, appliquée en local et vérifiée. Les
 > dix arbitrages du client sont consignés. **Aucun code applicatif n'est branché**,
 > et **rien n'est déployé en production**.
 >
-> **Reprendre ici :** § 8, tranche **T3** (service de tarification + onglet
-> Paramètres). Tout ce qu'il faut savoir est dans ce fichier — lisez-le en entier
+> **Reprendre ici :** § 8, tranche **T4/T5**. T1, T2 et T3 sont faites. Tout ce qu'il faut savoir est dans ce fichier — lisez-le en entier
 > avant d'écrire une ligne, en particulier le § 2 (arbitrages), le § 7bis
 > (conception des deux côtés) et le § 10 (pièges déjà payés sur ce dépôt).
 >
 > **Commits du chantier :** `63e1749` (modèle), `17465f9` (plan + révision),
-> `6becc27` (arbitrages + conception), `04a5284` (migration).
+> `6becc27` (arbitrages + conception), `04a5284` (migration), `9561265` (service de
+> tarification), `5eab130` (page /missions).
+>
+> ⚠️ **Dette connue :** l onglet Paramètres n a PAS été vérifié dans le navigateur.
 
 ---
 
@@ -387,7 +389,7 @@ qu'après contrôles verts.
 
 | # | Question | Bloque |
 |---|---|---|
-| Q3 | Un service de **géocodage** existe-t-il et est-il utilisable pour estimer les distances entre arrêts ? À vérifier dans le code avant T4 — c'est une vérification, pas une question au client. | T4 |
+| ~~Q3~~ | **Vérifié le 2026-08-14. Réponse : non, pas en l'état.** `geocode/` ne fait que du géocodage **inverse** (lat/lng → adresse) via Nominatim ; il ne sait pas transformer une adresse en coordonnées, et encore moins calculer un itinéraire. Des fonctions de distance à vol d'oiseau existent (`security.util`, `trip-stop-detector`, `driver-unlock`) mais **un vol d'oiseau n'est pas une distance routière** — l'écart courant est de 20 à 40 %, ce qui ferait changer de tranche et donc de prix. <br><br>**Décision** : `estimatedDistanceM` reste nul tant qu'un service de routage n'est pas branché, et l'écran le dit. Le dépôt saisit sa distance, le transporteur la corrige. C'est exactement ce que l'arbitrage E prévoit, et cela ne bloque rien. Un routage (OSRM, ORS) reste possible plus tard : le champ existe déjà. | — |
 | Q5 | Qui valide côté transporteur : le fleet admin seul, ou toute personne portant `missions_manage` ? **Défaut retenu faute de réponse** : `missions_manage`, cohérent avec la création de mission. | T6 |
 
 ---
