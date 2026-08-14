@@ -160,6 +160,22 @@ export interface UserPermissions {
   missions_view: boolean;
   /** Creer / modifier / annuler une mission et designer son depot destinataire. */
   missions_manage: boolean;
+  /**
+   * Espace depot, lot A6 (2026-08) — DEMANDER une mission, et negocier son devis.
+   *
+   * ⚠️ NE PAS CONFONDRE AVEC `missions_manage`. Demander n'est pas creer : une
+   * demande n'immobilise aucun vehicule, ne pose aucun evenement d'agenda et n'ouvre
+   * aucun acces a une position. Elle ne devient une `Mission` qu'au moment ou le
+   * TRANSPORTEUR affecte un camion — c'est lui, et lui seul, qui cree.
+   *
+   * C'est la premiere capacite d'ECRITURE jamais accordee au role DEPOT, jusqu'ici
+   * strictement en lecture. Elle reste bornee a SES PROPRES demandes, verifiees a
+   * chaque requete comme le reste de son perimetre.
+   *
+   * ON pour DEPOT et pour les roles qui gerent deja les missions — un gestionnaire
+   * peut avoir a saisir une demande pour un depot qui l'appelle au telephone.
+   */
+  missions_request: boolean;
   /** Generer un lien public temporaire de suivi vers un client final (15 min par defaut). */
   mission_share: boolean;
   /**
@@ -214,6 +230,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   // rien et n'accede pas aux coordonnees des conducteurs.
   missions_view: true,
   missions_manage: false,
+  missions_request: false,
   mission_share: false,
   driver_contact_view: false,
 };
@@ -264,6 +281,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   // depot destinataire et partage un suivi.
   missions_view: true,
   missions_manage: true,
+  missions_request: true,
   mission_share: true,
   driver_contact_view: true,
 };
@@ -310,6 +328,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   integrations_manage: true,
   missions_view: true,
   missions_manage: true,
+  missions_request: true,
   mission_share: true,
   driver_contact_view: true,
 };
@@ -365,6 +384,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   // sont diurnes, et il travaille sans aucune donnee de conducteur (A1 § 2).
   missions_view: false,
   missions_manage: false,
+  missions_request: false,
   mission_share: false,
   driver_contact_view: false,
 };
@@ -421,6 +441,7 @@ const DRIVER_DEFAULTS: UserPermissions = {
   // `driver_contact_view` n'a pas de sens pour lui : c'est son propre numero.
   missions_view: true,
   missions_manage: false,
+  missions_request: false,
   mission_share: false,
   driver_contact_view: false,
 };
@@ -455,6 +476,7 @@ const DEPOT_DEFAULTS: UserPermissions = {
 
   // — Tout le reste est ferme —
   missions_manage: false,
+  missions_request: true,
   vehicles_view: false,
   vehicles_create: false,
   vehicles_edit: false,
@@ -814,6 +836,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     label: 'Créer / modifier une mission',
     description:
       'Créer, modifier et annuler une mission, et désigner son dépôt destinataire. Acte à conséquence : ouvre à un tiers la position du véhicule pendant le créneau, et rend le véhicule indisponible à la réservation.',
+  },
+  missions_request: {
+    group: 'Missions & dépôts',
+    label: 'Demander une mission',
+    description:
+      'Déposer une demande de mission et en négocier le devis. Demander n\'est pas créer : une demande n\'immobilise aucun véhicule et n\'ouvre aucun accès à une position. Elle ne devient une mission qu\'au moment où le transporteur affecte un camion. Pour un compte Dépôt, limité à SES propres demandes.',
   },
   mission_share: {
     group: 'Missions & dépôts',

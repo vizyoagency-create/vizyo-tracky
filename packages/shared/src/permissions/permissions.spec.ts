@@ -139,14 +139,29 @@ describe('permissions — complétude (garde-fou ajout de permissions)', () => {
 // que le rôle PEUT en théorie, là-bas ce que le serveur SERT réellement.
 // ---------------------------------------------------------------------------
 describe('permissions — rôle DEPOT', () => {
+  // ⚠️ CETTE LISTE EST PASSÉE DE 4 À 5 LE 2026-08-14, ET C'EST UNE DÉCISION.
+  //
+  // `missions_request` est la PREMIÈRE capacité d'écriture jamais accordée à ce rôle,
+  // jusque-là strictement en lecture (lot A6, à la demande du client). L'invariant
+  // « aucune écriture pour un dépôt » n'existe donc plus tel quel.
+  //
+  // Ce qui le remplace, et qui doit rester vrai : DEMANDER N'EST PAS CRÉER. Une
+  // demande n'immobilise aucun véhicule, ne pose aucun événement d'agenda, n'ouvre
+  // aucun accès à une position. Elle ne devient une `Mission` qu'au moment où le
+  // TRANSPORTEUR affecte un camion — `missions_manage` reste fermée, et les tests
+  // ci-dessous le vérifient.
+  //
+  // Si cette liste devait grandir encore, s'arrêter et se demander si le rôle est
+  // toujours « un tiers en lecture bornée par ses missions ».
   const OUVERTES: (keyof UserPermissions)[] = [
     'missions_view',
+    'missions_request',
     'trips_view',
     'mission_share',
     'driver_contact_view',
   ];
 
-  it('exactement 4 permissions ouvertes, toutes les autres fermées', () => {
+  it('exactement 5 permissions ouvertes, toutes les autres fermées', () => {
     const perms = getDefaultPermissions('DEPOT');
     const ouvertes = PERMISSION_KEYS.filter((k) => perms[k] === true).sort();
     expect(ouvertes).toEqual([...OUVERTES].sort());
@@ -255,16 +270,21 @@ describe('permissions — rôle DEPOT', () => {
 
   it('DEPOT n\'est pas un rang : ses permissions ne sont pas un sous-ensemble de VIEWER', () => {
     // L'invariant de D3. Si DEPOT était « sous VIEWER », toute permission ouverte au
-    // dépôt serait aussi ouverte au lecteur. Ce n'est pas le cas — mission_share et
-    // driver_contact_view sont fermées au VIEWER et ouvertes au DEPOT. Un test qui
-    // casse ici signale qu'on a glissé DEPOT dans une hiérarchie.
+    // dépôt serait aussi ouverte au lecteur. Ce n'est pas le cas — mission_share,
+    // driver_contact_view et, depuis A6, missions_request sont fermées au VIEWER et
+    // ouvertes au DEPOT. Un test qui casse ici signale qu'on a glissé DEPOT dans une
+    // hiérarchie.
+    //
+    // `missions_request` renforce d'ailleurs l'invariant plutôt qu'elle ne l'affaiblit :
+    // un lecteur ne demande pas de mission, un dépôt si. Les deux rôles s'écartent
+    // davantage, ils ne se rapprochent pas.
     const depot = getDefaultPermissions('DEPOT');
     const viewer = getDefaultPermissions('VIEWER');
     const ouvertesAuDepotFermeesAuViewer = PERMISSION_KEYS.filter(
       (k) => depot[k] && !viewer[k],
     );
     expect(ouvertesAuDepotFermeesAuViewer.sort()).toEqual(
-      ['driver_contact_view', 'mission_share'].sort(),
+      ['driver_contact_view', 'mission_share', 'missions_request'].sort(),
     );
   });
 });
