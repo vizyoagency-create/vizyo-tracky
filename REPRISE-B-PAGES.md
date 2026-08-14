@@ -617,7 +617,8 @@ La page est livrée et vérifiée, mais **trois choses ont été volontairement 
 > usages réels d'un jeton dans les gabarits. Sur cette page, 24 textes échouaient sans qu'aucun
 > contrôle ne bronche. **La mesure au navigateur reste le seul juge.**
 
-**Bloc G — le shell, EN DERNIER.** Ordre non négociable de `B1-PAGES.md`.
+**Bloc G — le shell.** ✅ Livré le 2026-08-14, en dernier comme l'imposait `B1-PAGES.md`.
+**B-pages est clos.**
 
 ---
 
@@ -721,6 +722,53 @@ Découvert en corrigeant une cible de 343×36 — et il a fallu passer par une r
 composant. **Corollaire** : le § 8.10 du suivi affirmait que le panneau n'émule pas
 `pointer: coarse`. **C'est faux** — `resize_window` sous 768 px active l'émulation mobile
 complète, donc ce plancher s'applique bel et bien dans nos mesures. Corrigé dans le suivi.
+
+---
+
+## Fin de séance — `/places`, `/alerts`, bloc G : B-pages est clos
+
+> Le détail est dans `SUIVI-REFONTE.md § 6ter`. Ici, ce que la fin du lot a appris.
+
+### Le motif qui revient est un motif de kit, pas une série de bugs
+
+L'onglet actif en vert de marque a été trouvé **7 fois** : 5 au relevé groupé, une sur
+`/alerts`, une dans le shell. Chaque occurrence se lit comme un détail local ; ensemble
+elles disent qu'**il manquait une convention**, pas sept correctifs. Depuis qu'elle est
+écrite dans `styles.css`, les trois dernières occurrences se sont corrigées en une ligne
+chacune, sans réfléchir à la valeur.
+
+Même chose pour le `catch` menteur, désormais à **7 occurrences**. La 7ᵉ (`geofences`)
+est la pire : sur un écran de **sécurité**, faire croire qu'aucune zone ne surveille la
+flotte est le mauvais sens d'erreur. La règle a été élargie deux fois dans la séance —
+« chercher le `catch` » ne suffit pas, il faut regarder si un **état est posé**, et un
+**toast n'est pas un état**.
+
+### Une classe peut être là et ne rien faire
+
+`.rs-note`, `.rs-link`, `.rs-off` sur `/alerts` : posées dans le gabarit, **aucune règle
+nulle part** dans le dépôt. `.rs-off` devait montrer qu'une règle d'alerte est
+*désactivée* — elle ne montrait rien, et personne ne pouvait le voir en lisant le
+gabarit. C'est le § 8.8 dans sa forme la plus discrète.
+
+> Le réflexe qui l'attrape : quand une classe porte un NOM QUI PROMET quelque chose
+> (`--off`, `--active`, `--danger`), la chercher dans les feuilles de style, pas seulement
+> dans le gabarit.
+
+### La spec dit parfois le contraire de ce qu'on suppose
+
+`B1-PAGES § G` oppose exprès deux comportements : le bandeau hors ligne **POUSSE**, la
+barre de progression **SE SUPERPOSE**. Sans lire la phrase jusqu'au bout, les deux
+semblent interchangeables — et le bandeau masquait la top-bar depuis le début.
+
+### Le piège du jour : un serveur en échec qui sert l'ancien CSS
+
+Une règle CSS ajoutée restait absente du navigateur. Tout indiquait un problème de
+cascade — j'ai cherché de ce côté. En réalité **`ng serve` était tombé en échec de
+compilation** (mon accent grave, 6ᵉ fois) **et continuait de servir le bundle d'avant**.
+
+> **Une règle qu'on vient d'écrire et que le navigateur ignore : lire les logs du serveur
+> AVANT de raisonner sur la cascade.** Le symptôme ne ressemble pas à un échec de build,
+> et c'en est un.
 
 ---
 

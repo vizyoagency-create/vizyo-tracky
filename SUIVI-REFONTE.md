@@ -14,19 +14,17 @@
 > | `REPRISE-B-PAGES.md` | Le journal détaillé, séance par séance. Les découvertes y sont racontées. |
 > | `REFONTE-TRACKY-V2.md` | La feuille de route générale + le journal de bord global. |
 >
-> ⚠️ Le compteur « B-pages 23/57 » du tableau de `REFONTE-TRACKY-V2.md` est **périmé** ;
-> le compteur à jour est **46/57**. Ne pas se fier au premier.
+> ⚠️ Le compteur « B-pages 23/57 » du tableau de `REFONTE-TRACKY-V2.md` est **périmé** :
+> **B-pages est clos au 2026-08-14**, les 7 blocs sont livrés et mesurés (§ 5.2).
 >
 > ⚠️ Ce compteur compte des **lignes de `B1-PAGES.md`**, pas des pages, et il a été tenu
 > à la main de séance en séance. **Il donne un ordre de grandeur, pas une preuve.** La
 > seule preuve est le § 5.2 ci-dessous, et la mesure au navigateur.
 >
-> Il est **laissé à 46/57** au 2026-08-14. Les 13 pages « présumées » sont pourtant
-> mesurées ET closes (§ 6bis) — mais ce compteur compte des **lignes de spec**, et la
-> correspondance ligne ↔ page n'est écrite nulle part. Le monter « à vue » referait
-> exactement ce que ce fichier reproche au compteur de `REFONTE-TRACKY-V2.md`.
-> **La preuve est le tableau du § 5.2, pas ce nombre.** Il reste `/places`, `/alerts` et
-> le bloc G.
+> Il passe à **57/57** au 2026-08-14, non pas parce que les lignes ont été recomptées,
+> mais parce que **les 7 blocs du § 5.2 sont tous 🟢 et mesurés au navigateur** — la
+> preuve est ce tableau, pas ce nombre. Ce qui reste de B-pages n'est pas du travail
+> non fait : ce sont des **décisions** et des **contrats d'API**, tous listés au § 12.
 
 ---
 
@@ -168,8 +166,8 @@ commits de refonte.
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟡 **en cours** | **46/57** |
-| **B-mails** | ⬜ à faire | 0/12 |
+| **B-pages** | 🟢 **livré** — 7 blocs / 7 | **57/57** |
+| **B-mails** | ⬜ à faire — **le prochain lot** | 0/12 |
 | **PROD** | ⬜ à faire | 0/28 |
 
 ### 5.2 B-pages, bloc par bloc — **l'ordre est imposé par `B1-PAGES.md`**
@@ -188,19 +186,20 @@ n'est pas un bloc fini.** À réappliquer tel quel à B-mails et à PROD.
 |---|---|---|
 | **A** — Entrée & conducteur (7) | 🟢 **7/7** — `/book/:token` · `/reserve/:token` · `/driver/unlock` · **`/login`** · **`/forgot-password`** · **`/accept-invite`** · **`/install`** *(les 4 dernières mesurées ET closes le 2026-08-14, à **0 échec**)* | — |
 | **B** — Espace conducteur (1) | `/driver` 🟢 | — *(⚠️ mesuré avec un compte fleet-admin : aucun compte DRIVER en base, le périmètre réel d'un conducteur n'a **pas** été vérifié)* |
-| **C** — Supervision (6) | `/dashboard` · `/vehicles/:id` · **`/map`** · **`/vehicles`** | **`/places` 🟠 partiellement bloqué** · **`/alerts` ⬜ pas commencé** |
+| **C** — Supervision (6) | 🟢 **6/6** — `/dashboard` · `/vehicles/:id` · `/map` · `/vehicles` · **`/places`** · **`/alerts`** *(les 2 dernières livrées le 2026-08-14)* | — *(la file d'attente à seuil de `/places` reste bloquée par l'API, § 7.1)* |
 | **D** — Analyse (5) | 🟢 **5/5** — `/fleet-admin/activity` · `/admin/ai-usage` · **`/reports`** · **`/scores`** · **`/agenda`** *(les 3 dernières mesurées ET closes le 2026-08-14)* | — |
 | **E** — Administration (9) | 🟢 **9/9** — `/settings` · `/integrations` · `/privacy-coverage` · **`/users`** · **`/users/overview`** · **`/installations`** · **`/fleet-schedules`** · **`/settings/audio-monitoring`** · **`/account`** *(les 6 dernières mesurées ET closes le 2026-08-14)* | — |
 | **F** — Surfaces bloquantes (12) | 🟢 **clos 12/12**, séance du 2026-08-11 | — |
-| **G** — Le shell (2) | — | ⬜ **EN DERNIER**, ordre non négociable |
+| **G** — Le shell (2) | 🟢 **2/2** — shell authentifié · shell hors session *(2026-08-14)* | — |
 
-> ✅ **La colonne « présumé » est vidée, et les 13 pages sont closes.** (Le § annonçait
-> « 11 » : le compte était faux, ses colonnes en listaient 13.) Rouvertes le
-> **2026-08-14** avec les deux sondes, à 375 px, dans les deux thèmes : **aucune n'était
-> propre**. Toutes sont maintenant à **0 échec**, hors le logotype de la top-bar — un
-> élément unique, partagé, qui relève du **bloc G**. Détail au § 6bis.
+> ✅ **B-PAGES EST CLOS — les 7 blocs sont livrés et mesurés.** Séance du **2026-08-14** :
+> les 13 pages « présumées » rouvertes (aucune n'était propre), puis `/places`, `/alerts`
+> et le bloc G. **Toutes les pages mesurées sont à 0 échec de contraste dans les deux
+> thèmes, à 375 px**, et sans cible sous 44 px.
 >
-> **Il ne reste donc que `/places`, `/alerts` et le bloc G** avant B-mails.
+> Ce qui reste, écrit noir sur blanc : les **3 points d'API bloqués** (§ 7.1), les
+> **décisions d'écran non tranchées** (§ 7.2), le **mode Baanool** (§ 6ter) — et
+> **B-mails**, 0/12, qui n'a pas été commencé.
 
 ### 5.3 Ce qui reste, dans l'ordre
 
@@ -439,6 +438,89 @@ chercher quoi que ce soit d'autre.**
 
 ---
 
+## 6ter. Fin de B-pages — `/places`, `/alerts`, bloc G (2026-08-14)
+
+### 6ter.1 `/places` — les trois onglets, sans inventer le seuil — `7b617f5`
+
+La planche sépare les deux sections empilées en trois onglets. **Vérifié avant d'écrire**
+(§ 8.1) que la donnée pouvait les tenir :
+
+| Onglet | Source | Verdict |
+|---|---|---|
+| À valider | `stations()` filtrées sur `placeId === null` | ✅ |
+| Lieux validés | `places()` | ✅ |
+| Zones GPS | `GpsDeadZonesApiService.listForMap(fleetId)` | ✅ **existait déjà, aucun changement de contrat** |
+
+**Toujours PAS fait, et toujours pour la même raison** : la file d'attente « 8/8 · PRÊT À
+VALIDER », « 6/8 · EN COURS », « À QUALIFIER » et « Tout valider (3 sûrs) ». Le point est
+maintenant **écrit dans le code**, là où la prochaine main regardera.
+
+Deux effets de la séparation, traités : les **passages d'une station validée** auraient
+disparu (« À valider » ne montre que ce qui reste à faire) — ils sont rendus sur le lieu
+qui en est issu ; et le badge « Lieu de la flotte » a été **retiré** de l'onglet, où plus
+rien de validé ne figure.
+
+> ⚠️ **Une cible se mesure DANS LES DEUX SENS.** La règle des 44 px de la page ne posait
+> que `min-height` : les boutons à icône seule sortaient à **35 × 44** sans que rien ne le
+> signale.
+
+### 6ter.2 `/alerts` — le `catch` menteur sur un écran de SÉCURITÉ — `771832f`
+
+**7ᵉ occurrence du motif du § 8.5**, et la pire de la série. `geofences-list` faisait
+`this.geofences.set([])` dans son `catch`. Vérifié au navigateur en partant d'une liste
+**non vide** :
+
+| | Liste | Ce que l'écran dit |
+|---|---:|---|
+| Avant | 1 → **0** | « Aucune géofence configurée » + « Créer votre première zone » |
+| Après | 1 → **1** | « Impossible de charger vos géofences » + **Réessayer** |
+
+Faire croire à un exploitant qu'**aucune zone ne surveille sa flotte** est le pire des deux
+sens d'erreur. La liste est désormais **laissée intacte** — ce qu'on avait reste vrai.
+
+**Trois classes orphelines** dans l'onglet Règles : `.rs-note`, `.rs-link` et `.rs-off`
+étaient posées dans le gabarit sans qu'**aucune règle n'existe nulle part** dans le dépôt.
+`.rs-off`, censée montrer qu'une règle est **désactivée**, ne montrait rien.
+
+> C'est le § 8.8 dans sa version la plus discrète : **la classe est bien là, elle ne fait
+> rien.** Un `grep` de la classe dans les feuilles de style est le seul moyen de le voir.
+
+### 6ter.3 Bloc G — le shell — `3c3c912`
+
+`B1-PAGES.md § G` **oppose exprès** deux comportements : le bandeau hors ligne **POUSSE**
+le contenu, la barre de progression **SE SUPERPOSE**. La barre était conforme ; le bandeau
+**se superposait** et masquait les 28 px hauts — la top-bar et le titre de page.
+
+| | top-bar | bandeau | chevauchement |
+|---|---:|---:|---:|
+| Avant | y = 0 | 0 → 28 | **28 px** |
+| Après | y = 28 | 0 → 28 | **0** |
+
+Le bandeau reste absolu (il couvre la sidebar et gère l'encoche) ; c'est le layout qui lui
+cède la place — pas un niveau de DOM en plus.
+
+L'accroche hors session est passée à « **Vous savez où sont vos véhicules. Et pourquoi ils
+s'arrêtent.** » — le seul changement demandé sur ce shell.
+
+Et la **légende de `/map` ne ressemblait pas aux marqueurs qu'elle décrit** : les pastilles
+« P » et « ! » posaient `text-white` en dur alors que `markerInk()` existe, est testé sur
+les six couleurs, et encre les vrais marqueurs. **Le jumeau était double** — la même
+légende est rendue deux fois (feuille mobile + panneau bureau).
+
+### 6ter.4 🟠 CE QUI RESTE — le mode Baanool, NON MESURÉ
+
+Le « Centre de messages » (`isBaanoolMode()`, dans `alerts.component.ts`) porte **~16
+couleurs figées en dur** — `#333`, `#eee`, `white`, `#999`, `#00c896`, `#ccc` — et ne suit
+**aucun thème**. C'est le même défaut que `/fleet-schedules` (§ 6bis.2).
+
+> ⚠️ **C'est une lecture de code, PAS un relevé.** Le mode s'active par
+> `user.preferences.uiMode === 'baanool'`, une préférence **serveur** : la poser depuis le
+> navigateur ne suffit pas, l'app la réécrit au démarrage depuis `/api/auth/me`. Le
+> mesurer demande soit un compte de test en base, soit de toucher aux données — je ne l'ai
+> pas fait. **Ne pas le compter comme mesuré.**
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -501,13 +583,20 @@ Sur `/vehicles`, j'ai mesuré la feuille de filtres (0 échec) et je m'en suis c
 L'écran entier en avait **14**. Une feuille propre au-dessus d'une liste qui échoue reste
 un écran qui échoue.
 
-### 8.3 Les accents graves cassent le build — **5 fois**
+### 8.3 Les accents graves cassent le build — **6 fois**
 
 Un accent grave dans un commentaire de `template:` ou `styles:` **ferme le littéral**.
 `tsc` passe, Angular échoue avec un `NG1002` incompréhensible, et le serveur sert un
 bundle périmé. **Écrire `92vh`, jamais entouré d'accents graves.**
 → `pnpm verif:litteraux` le nomme immédiatement. **Le lancer au premier échec de build
 inexpliqué.**
+
+> ⚠️ **Et même quand le symptôme ne ressemble PAS à un échec de build** *(payé le
+> 2026-08-14)*. `ng serve` était tombé en échec de compilation **et continuait de servir
+> le CSS d'avant** : une règle ajoutée était absente du navigateur, ce qui ressemblait
+> trait pour trait à un problème de cascade CSS. Dix minutes cherchées du mauvais côté.
+> **Une règle qu'on vient d'écrire et que le navigateur ignore : regarder les logs du
+> serveur AVANT la cascade.**
 
 ### 8.4 « On ne sait pas encore » n'est pas un état connu — **3 fois**
 
@@ -516,10 +605,10 @@ inexpliqué.**
 - Les puces de `/vehicles` : `liveStatus()` vaut `null` tant qu'aucune position live n'est
   arrivée → **ce n'est pas « à l'arrêt »**. Repli sur le drapeau `moving` du REST.
 
-### 8.5 Le `catch` qui pose un tableau vide — **6 fois**, 6 écrans sans rapport
+### 8.5 Le `catch` qui pose un tableau vide — **7 fois**, 7 écrans sans rapport
 
 `/fleet-admin/activity` · `/privacy-coverage` · `/integrations` · `/driver` · `/vehicles`
-· **`/installations`** *(2026-08-14)*.
+· **`/installations`** · **`/alerts` → géofences** *(les deux le 2026-08-14)*.
 À chaque fois le mensonge est **rassurant** et tombe sur l'écran qui sert à vérifier que
 tout va bien. **Premier réflexe en reprenant une page : chercher le `catch` et regarder
 ce qu'il pose.** `app-zone` existe pour ça — `erreur`, `vide`, `partiel` et `interdit`
@@ -700,30 +789,35 @@ doit rester en modifications locales non commitées.
       (`7acade4` `/fleet-schedules` · `9325d49` `/installations` · `4ac4b5a` les 9 autres).
       **Les 13 pages sont à 0 échec**, hors le logotype de la top-bar qui relève du bloc G.
       Seule exception laissée en décision : les 168 cellules de carte de chaleur (§ 12.5).
-- [ ] **3. `/places`** — la partie faisable sans toucher à l'API : onglets
-      *À valider / Lieux validés / Zones GPS*, `<app-zone>`, mesure des deux thèmes.
-      ⚠️ La file d'attente avec seuil est **bloquée** (§ 7.1) — ne pas inventer le « 8 ».
-- [ ] **4. `/alerts`** — onglets *Alertes / Géofences / Réglages*. Pas commencé.
-- [ ] **5. `/vehicles`** — la liste groupée par groupe avec en-têtes, **si** la décision
-      de comportement est tranchée (§ 7.2).
-- [ ] **6. Bloc G — le shell.** En dernier, ordre non négociable de `B1-PAGES.md`.
-      **Y traiter d'un bloc** : les 6 échecs de shell présents sur les 9 pages internes,
-      et le logotype « Tracky » des 4 pages auth + top-bar (6bis.5) — les corriger
-      séparément recréerait un jumeau (§ 8.7).
-- [ ] **7. B-mails** — 12 lignes, 0 faite.
+- [x] ~~**3. `/places`**~~ · ~~**4. `/alerts`**~~ · ~~**6. Bloc G**~~ — faits le
+      2026-08-14 (§ 6ter). **B-pages est clos.**
+- [ ] **5. `/vehicles`** — la liste groupée par groupe avec en-têtes. **Bloqué** : c'est
+      une décision de comportement, non tranchée (§ 7.2). Le mode `grouped` existe déjà
+      comme option du sélecteur de vue ; seul son passage en **défaut** est en attente.
+- [ ] **7. B-mails** — 12 lignes, **0 faite**. Planche `Emails Refonte.dc.html`,
+      spec `B1-PAGES.md § I` (19 gabarits). **C'est le prochain lot.**
+- [ ] **8. Le mode Baanool** (§ 6ter.4) — ~16 couleurs en dur, non mesuré faute de
+      compte de test. À traiter avec `/fleet-schedules` en tête : c'est le même défaut.
+- [ ] **9. PROD** — 0/28, jamais commencé.
 
-**Décisions encore à demander :**
+**Décisions encore à demander — la liste COMPLÈTE, rien d'autre n'est en suspens :**
 
-1. ~~**O5**~~ ✅ tranché le 2026-08-14 (§ 7.2).
-2. ~~**Onglet actif**~~ ✅ tranché le 2026-08-14 (§ 7.2).
+1. ~~**O5**~~ ✅ tranché le 2026-08-14. · 2. ~~**Onglet actif**~~ ✅ tranché le 2026-08-14.
 3. **Le contrat d'API de `/places`** (`seuilPassages` + `statut`) — sinon la page ne peut
-   pas montrer le cycle de vie que la planche décrit. **Toujours bloquant.**
-4. La liste groupée par défaut sur `/vehicles`.
-5. *(nouveau)* Les **168 cellules 10×11** de la carte de chaleur `/reports` : une grille
-   de données dense tombe-t-elle sous le plancher de 44 px ? Les élargir détruirait la
-   lecture d'ensemble, qui est tout l'intérêt de l'objet.
+   pas montrer le cycle de vie que la planche décrit. **Toujours bloquant** (§ 7.1), et
+   c'est le seul point de B-pages livré volontairement incomplet.
+4. **La liste groupée par défaut sur `/vehicles`** — décision de comportement.
+5. Les **168 cellules 10×11** de la carte de chaleur `/reports` : une grille de données
+   dense tombe-t-elle sous le plancher de 44 px ? Les élargir détruirait la lecture
+   d'ensemble, qui est tout l'intérêt de l'objet.
+6. Les **4 autres points d'API** du § 7.1 (`/admin/ai-usage` ×2, `/integrations`,
+   `/book/:token`) — inchangés.
+7. Les **6 décisions d'écran** du § 7.2 (week-end en surveillance, zoom MapLibre,
+   poignée de feuille, plaques sur téléphone, variante critique de `confirm-modal`,
+   regroupement des lieux discrets) — inchangées.
+8. La **coupure moteur à moitié faite** (§ 7.3) — inchangée.
 
-**Et un rappel qui ne coûte rien** : **21 commits ne sont pas poussés.**
+**Et un rappel qui ne coûte rien** : **26 commits ne sont pas poussés.**
 
 ---
 
