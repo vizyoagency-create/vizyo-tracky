@@ -38,6 +38,18 @@ import { LucideAngularModule, Phone, Truck } from 'lucide-angular';
 
       <p class="dmc-trajet">{{ mission().origin }} <span aria-hidden="true">→</span> {{ mission().destination }}</p>
 
+      <!-- A6 / T8 — la tournee, quand il y en a une. Le depot doit savoir que son
+           camion passe ailleurs avant chez lui : c'est ce qui explique une heure
+           d'arrivee tardive sans qu'il ait a telephoner pour la comprendre. Absent
+           sur une mission point a point, donc invisible pour tout l'existant. -->
+      @if (etapesIntermediaires().length > 0) {
+        <ol class="dmc-etapes">
+          @for (e of etapesIntermediaires(); track $index) {
+            <li>{{ e }}</li>
+          }
+        </ol>
+      }
+
       <div class="dmc-creneau">
         <span>{{ jour() }} · {{ heure(mission().startAt) }} → {{ heure(mission().endAt) }}</span>
         @if (mission().delayMinutes !== null && mission().delayMinutes! > 0) {
@@ -100,6 +112,11 @@ import { LucideAngularModule, Phone, Truck } from 'lucide-angular';
     .dmc-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px }
     .dmc-ref { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-primary) }
     .dmc-trajet { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35; color: var(--text-primary) }
+    .dmc-etapes { margin: 6px 0 0; padding: 0 0 0 15px; list-style: none;
+                  display: flex; flex-direction: column; gap: 3px;
+                  border-left: 2px dotted var(--border-strong-color) }
+    .dmc-etapes li { font-size: 12.5px; line-height: 1.45; color: var(--text-secondary);
+                     overflow-wrap: anywhere }
     .dmc-creneau {
       display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
       font-family: var(--font-mono); font-size: 11.5px; color: var(--depot-attenue);
@@ -176,6 +193,18 @@ export class DepotMissionCardComponent {
   protected readonly jour = computed(() =>
     new Date(this.mission().startAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
   );
+
+  /**
+   * A6 / T8 — les arrêts INTERMÉDIAIRES seuls.
+   *
+   * Le premier et le dernier sont déjà lus juste au-dessus, dans `origin → destination` :
+   * les répéter ferait lire trois fois la même adresse sur une carte de six lignes.
+   * On ne montre donc que ce que la ligne de trajet ne dit pas.
+   */
+  protected readonly etapesIntermediaires = computed(() => {
+    const s = this.mission().stops ?? [];
+    return s.length > 2 ? s.slice(1, -1) : [];
+  });
 
   protected heure(iso: string): string {
     return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });

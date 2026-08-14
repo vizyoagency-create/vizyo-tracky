@@ -87,6 +87,46 @@ interface ConflitMission {
             <input type="text" [(ngModel)]="destination" placeholder="Muret" />
           </label>
 
+          <!-- ═══ LES LIVRAISONS INTERMÉDIAIRES (A6 / T8) ═══════════════════════
+               « C'est rare, les missions avec une seule adresse » (arbitrage A). Le
+               bloc reste REPLIÉ tant qu'on n'en ajoute pas : le trajet point à point
+               reste le chemin le plus court, et l'écran ne change pas pour ceux qui
+               n'en ont pas besoin. -->
+          <div class="md-etapes md-col2">
+            @for (e of etapes(); track $index; let i = $index) {
+              <div class="md-etape">
+                <span class="md-etape-n">{{ i + 1 }}</span>
+                <input
+                  type="text"
+                  [ngModel]="e"
+                  (ngModelChange)="majEtape(i, $event)"
+                  placeholder="Adresse de livraison"
+                  [attr.aria-label]="'Livraison intermédiaire ' + (i + 1)"
+                />
+                <button type="button" class="md-etape-b"
+                        [disabled]="i === 0"
+                        (click)="monterEtape(i)"
+                        [attr.aria-label]="'Remonter la livraison ' + (i + 1)">↑</button>
+                <button type="button" class="md-etape-b"
+                        [disabled]="i === etapes().length - 1"
+                        (click)="descendreEtape(i)"
+                        [attr.aria-label]="'Descendre la livraison ' + (i + 1)">↓</button>
+                <button type="button" class="md-etape-b md-etape-b--x"
+                        (click)="retirerEtape(i)"
+                        [attr.aria-label]="'Retirer la livraison ' + (i + 1)">×</button>
+              </div>
+            }
+            <button type="button" class="md-etape-ajout" (click)="ajouterEtape()">
+              + Ajouter une livraison intermédiaire
+            </button>
+            @if (etapes().length > 0) {
+              <p class="md-etape-aide">
+                Le camion passera dans cet ordre : départ, puis ces livraisons, puis la
+                destination. Le dépôt destinataire verra la tournée complète.
+              </p>
+            }
+          </div>
+
           <label class="md-champ">
             <span>Date</span>
             <input type="date" [(ngModel)]="date" (ngModelChange)="rechargerDisponibilite()" />
@@ -105,7 +145,14 @@ interface ConflitMission {
 
           <label class="md-champ md-col2">
             <span>Véhicule</span>
-            <select [(ngModel)]="vehiculeId">
+            <!-- ⚠️ aria-label EXPLICITE, alors que le libellé est déjà visible juste
+                 au-dessus. Ce n'est pas une redondance : ce label ENVELOPPE le select,
+                 donc le nom accessible calculé est le texte de TOUT le label — options
+                 comprises. Sans cet attribut, un lecteur d'écran annonce « Véhicule
+                 Choisir un véhicule FR-119-TD Iveco Daily FR-207-QM Renault… », soit
+                 la flotte entière à chaque prise de focus. Trouvé le 2026-08-14 en
+                 mesurant les noms accessibles pendant la recette de T8. -->
+            <select aria-label="Véhicule" [(ngModel)]="vehiculeId">
               <option value="">Choisir un véhicule…</option>
               @for (v of vehicules(); track v.id) {
                 <!-- Occupé = visible et désactivé, avec son motif. Le masquer ferait
@@ -160,7 +207,9 @@ interface ConflitMission {
 
           <label class="md-champ md-col2">
             <span>Dépôt destinataire <em>facultatif</em></span>
-            <select [(ngModel)]="depotId">
+            <!-- Meme raison que pour le vehicule : le label enveloppe le select, donc
+                 le nom accessible avalerait la liste des depots. -->
+            <select aria-label="Dépôt destinataire" [(ngModel)]="depotId">
               <option value="">Aucun — mission interne</option>
               @for (d of depots(); track d.id) {
                 <option [value]="d.id">{{ d.nom }}</option>
@@ -239,8 +288,20 @@ interface ConflitMission {
     </div>
   `,
   styles: [`
-    .md-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 60; }
-    .md-panel { position: fixed; z-index: 61; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    /* ⚠️ 9000 / 9001, ET PAS 60 / 61. La barre de navigation basse est en z-index 7000
+       et reste FIXE en bas de l'ecran sous 768 px. Avec l'ancien plan, elle passait
+       PAR-DESSUS la feuille : son pied — donc le bouton « Creer la mission » — se
+       retrouvait couvert, et un appui a cet endroit ouvrait « Alertes » au lieu de
+       valider. Autrement dit, on ne pouvait pas creer de mission depuis un telephone.
+
+       Trouve le 2026-08-14 par la recette de T8 : Playwright a refuse le clic en
+       signalant que la barre du bas interceptait les evenements de pointeur.
+
+       Les valeurs sont celles de la coque depot-modal (voile 9000, panneau 9001), que
+       les sept modales du depot partagent et qui, elle, passe au-dessus. C'est le
+       § 10 une fois de plus : cette modale porte ses propres styles et a derive. */
+    .md-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 9000; }
+    .md-panel { position: fixed; z-index: 9001; top: 50%; left: 50%; transform: translate(-50%,-50%);
                 width: min(620px, calc(100vw - 32px));
                 max-height: calc(100vh - 64px); max-height: calc(100dvh - 64px);
                 display: flex; flex-direction: column;
@@ -273,6 +334,30 @@ interface ConflitMission {
       background: var(--surface-tertiary); border: 1px solid var(--border-color);
       color: var(--text-primary); width: 100%; }
     .md-champ--accent input { border-left: 3px solid var(--color-tracky-light); }
+
+    /* ─── Livraisons intermediaires (A6 / T8) ──────────────────────────────── */
+    .md-etapes { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .md-etape { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .md-etape-n {
+      flex: 0 0 auto; display: grid; place-items: center; width: 26px; height: 26px;
+      border-radius: 9999px; font-size: 11.5px; font-weight: 700;
+      background: var(--surface-tertiary); color: var(--text-secondary); }
+    .md-etape input {
+      flex: 1 1 auto; min-width: 0; padding: 9px 11px; border-radius: 10px;
+      font-size: 13.5px; font-family: inherit; background: var(--surface-tertiary);
+      border: 1px solid var(--border-color); color: var(--text-primary); }
+    .md-etape-b {
+      flex: 0 0 auto; width: 32px; height: 32px; border-radius: 9px; cursor: pointer;
+      background: var(--surface-tertiary); border: 1px solid var(--border-color);
+      color: var(--text-secondary); font-size: 15px; line-height: 1; font-family: inherit; }
+    .md-etape-b:disabled { opacity: .35; cursor: not-allowed; }
+    .md-etape-b--x { color: var(--texte-alerte); }
+    .md-etape-ajout {
+      align-self: flex-start; min-height: 36px; padding: 8px 13px; border-radius: 10px;
+      cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600;
+      background: transparent; border: 1px dashed var(--border-strong-color);
+      color: var(--text-secondary); }
+    .md-etape-aide { margin: 0; font-size: 12px; line-height: 1.55; color: var(--text-secondary); }
     .md-champ select option:disabled { color: var(--text-tertiary); }
 
     .md-perimetre { display: flex; align-items: flex-start; gap: 8px; margin: 0;
@@ -342,6 +427,24 @@ interface ConflitMission {
        ferme par un geste que personne ne trouve. */
     @media (max-width: 767px) {
       .md-grid { grid-template-columns: 1fr; }
+
+      /* ⚠️ LA CROIX DE FERMETURE FAISAIT 26 px. Trouvee par la recette navigateur du
+         2026-08-14, en mesurant la modale rendue a 375 px.
+
+         Le correctif de 44 px pose le 2026-08-12 n'avait ete applique qu'au bouton
+         « Annuler » d'iOS — la croix, elle, est masquee sur iOS et reste donc LE SEUL
+         moyen de fermer sur Android et sur navigateur mobile. C'est exactement le
+         piege du § 10 : la coque depot-modal porte la geometrie conforme (44 x 44
+         sous 767 px) et les sept modales du depot en heritent ; celle-ci porte ses
+         propres styles, et a derive sans que rien ne le signale. */
+      .md-x { width: 44px; height: 44px; display: grid; place-items: center; padding: 0; }
+
+      /* Les trois boutons d'une etape passent a 44 px : sous 375 px, ils sont colles
+         a un champ de saisie, et une cible de 32 px voisine d'un champ se rate une
+         fois sur trois — on efface alors une adresse en croyant la reordonner. */
+      .md-etape-b { width: 44px; height: 44px; }
+      .md-etape input { min-height: 44px; }
+      .md-etape-ajout { min-height: 44px; }
 
       .md-panel {
         top: auto; left: 0; right: 0; bottom: 0;
@@ -437,6 +540,15 @@ export class MissionDialogComponent {
   // Défauts d'A2 § 5 : aujourd'hui, 08:00, +3 h.
   protected readonly origine = signal('');
   protected readonly destination = signal('');
+  /**
+   * A6 / T8 — les livraisons INTERMÉDIAIRES, entre le départ et la destination.
+   *
+   * Elles vivent à part plutôt que dans un tableau unique départ+arrêts+destination :
+   * les deux champs existants sont ceux que remplissent 90 % des missions, et les
+   * fondre dans une liste générique aurait rallongé le cas courant pour servir le cas
+   * rare. Le tableau complet est recomposé à l'envoi, une seule fois, dans `enregistrer`.
+   */
+  protected readonly etapes = signal<string[]>([]);
   protected readonly date = signal(new Date().toISOString().slice(0, 10));
   protected readonly heureDebut = signal('08:00');
   protected readonly heureFin = signal('11:00');
@@ -461,8 +573,57 @@ export class MissionDialogComponent {
     () => this.depots().find((d) => d.id === this.depotId())?.nom ?? null,
   );
   protected readonly valide = computed(
-    () => !!this.origine().trim() && !!this.destination().trim() && !!this.vehiculeId(),
+    () =>
+      !!this.origine().trim() &&
+      !!this.destination().trim() &&
+      !!this.vehiculeId() &&
+      // Une livraison intermédiaire vide est une saisie commencée puis abandonnée. La
+      // laisser passer créerait un arrêt sans adresse dans la tournée du dépôt — on
+      // bloque la validation plutôt que de la supprimer en silence, parce qu'un champ
+      // qu'on efface à la place de l'utilisateur est un champ qu'il croit avoir rempli.
+      this.etapes().every((e) => !!e.trim()),
   );
+
+  /** Les arrêts complets, dans l'ordre de passage. `undefined` = mission point à point. */
+  private arretsComplets(): Array<{ label: string }> | undefined {
+    const intermediaires = this.etapes().map((e) => e.trim()).filter(Boolean);
+    if (intermediaires.length === 0) return undefined;
+    return [
+      { label: this.origine().trim() },
+      ...intermediaires.map((label) => ({ label })),
+      { label: this.destination().trim() },
+    ];
+  }
+
+  protected majEtape(i: number, valeur: string): void {
+    this.etapes.update((liste) => liste.map((e, j) => (j === i ? valeur : e)));
+  }
+
+  protected ajouterEtape(): void {
+    this.etapes.update((liste) => [...liste, '']);
+  }
+
+  protected retirerEtape(i: number): void {
+    this.etapes.update((liste) => liste.filter((_, j) => j !== i));
+  }
+
+  protected monterEtape(i: number): void {
+    if (i <= 0) return;
+    this.echangerEtapes(i, i - 1);
+  }
+
+  protected descendreEtape(i: number): void {
+    if (i >= this.etapes().length - 1) return;
+    this.echangerEtapes(i, i + 1);
+  }
+
+  private echangerEtapes(a: number, b: number): void {
+    this.etapes.update((liste) => {
+      const copie = [...liste];
+      [copie[a], copie[b]] = [copie[b], copie[a]];
+      return copie;
+    });
+  }
 
   /** Niveau 2 du conflit : la flotte entière est prise sur ce créneau. */
   protected readonly aucunLibre = computed(
@@ -626,6 +787,9 @@ export class MissionDialogComponent {
         vehicleId: this.vehiculeId(),
         depotUserId: this.depotId() || null,
         notes: this.notes().trim() || null,
+        // ABSENT quand la mission est point à point : le serveur ne reçoit alors
+        // exactement rien de plus qu'avant T8, et écrit exactement la même mission.
+        stops: this.arretsComplets(),
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({

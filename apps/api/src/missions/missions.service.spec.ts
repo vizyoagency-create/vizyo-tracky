@@ -29,6 +29,8 @@ describe('MissionsService — creation', () => {
     driver: { findFirst: jest.Mock };
     mission: { findFirst: jest.Mock; create: jest.Mock; findMany: jest.Mock; update: jest.Mock };
     vehicleEvent: { create: jest.Mock; updateMany: jest.Mock };
+    /** A6 / T8 — les arrets de la tournee. */
+    missionStop: { createMany: jest.Mock };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
   };
@@ -72,6 +74,8 @@ describe('MissionsService — creation', () => {
         create: jest.fn().mockResolvedValue({ id: 'ev-1' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      // A6 / T8 — les arrets, ecrits dans la MEME transaction que la mission.
+      missionStop: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(),
     };
@@ -102,6 +106,101 @@ describe('MissionsService — creation', () => {
       ],
     }).compile();
     service = moduleRef.get(MissionsService);
+  });
+
+  /**
+   * A6 / T8 — les arrets multiples sur la mission (arbitrage A).
+   *
+   * ┌─ CE QUI EST PROTEGE ICI ──────────────────────────────────────────────────┐
+   * │ 1. LE CHAMP EST OPTIONNEL, ET SON ABSENCE NE CHANGE RIEN. C'est ce qui     │
+   * │    rend T8 deployable sans reprendre les cinq chemins de lecture           │
+   * │    existants — API publique, scripts, agenda d'avant cette version.        │
+   * │ 2. LES DEUX LIBELLES SUIVENT LES ARRETS, jamais l'inverse. Les arrets sont │
+   * │    la source de verite, `originLabel`/`destLabel` en sont le resume (§ 4.1)│
+   * │ 3. LES ARRETS SONT ECRITS DANS LA TRANSACTION DE LA MISSION. Une mission   │
+   * │    sans ses arrets serait un trajet ampute que rien ne rattraperait.       │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  describe('les arrets multiples (T8)', () => {
+    const TOURNEE = [
+      { label: 'Entrepot Fenouillet' },
+      { label: 'Client Blagnac' },
+      { label: 'Client Muret' },
+    ];
+
+    it('sans `stops`, RIEN ne change : aucun arret ecrit', async () => {
+      await service.creer(GESTIONNAIRE, ENTREE);
+      expect(prisma.missionStop.createMany).not.toHaveBeenCalled();
+      expect(prisma.mission.create.mock.calls[0][0].data).toMatchObject({
+        originLabel: 'Fenouillet',
+        destLabel: 'Muret',
+      });
+    });
+
+    it('ecrit les arrets dans l\'ordre, le premier en PICKUP', async () => {
+      await service.creer(GESTIONNAIRE, { ...ENTREE, stops: TOURNEE });
+      const data = prisma.missionStop.createMany.mock.calls[0][0].data;
+      expect(data).toHaveLength(3);
+      expect(data[0]).toMatchObject({ position: 0, kind: 'PICKUP', label: 'Entrepot Fenouillet' });
+      expect(data[1]).toMatchObject({ position: 1, kind: 'DROPOFF', label: 'Client Blagnac' });
+      expect(data[2]).toMatchObject({ position: 2, kind: 'DROPOFF', label: 'Client Muret' });
+    });
+
+    it('RECALCULE les deux libelles depuis le premier et le dernier arret', async () => {
+      // Les libelles envoyes sont volontairement FAUX : ce sont les arrets qui font foi.
+      await service.creer(GESTIONNAIRE, {
+        ...ENTREE,
+        originLabel: 'Perime',
+        destLabel: 'Perime aussi',
+        stops: TOURNEE,
+      });
+      expect(prisma.mission.create.mock.calls[0][0].data).toMatchObject({
+        originLabel: 'Entrepot Fenouillet',
+        destLabel: 'Client Muret',
+      });
+    });
+
+    it('le titre de l\'evenement d\'agenda suit les libelles derives', async () => {
+      // Sinon l'agenda afficherait un trajet que la fiche mission dement.
+      await service.creer(GESTIONNAIRE, {
+        ...ENTREE,
+        originLabel: 'Perime',
+        stops: TOURNEE,
+      });
+      expect(prisma.vehicleEvent.create.mock.calls[0][0].data.title).toContain('Entrepot Fenouillet');
+      expect(prisma.vehicleEvent.create.mock.calls[0][0].data.title).not.toContain('Perime');
+    });
+
+    it('refuse un trajet a un seul arret : ce n\'est pas un trajet', async () => {
+      await expect(
+        service.creer(GESTIONNAIRE, { ...ENTREE, stops: [{ label: 'Fenouillet' }] }),
+      ).rejects.toThrow(/au moins une adresse de chargement/);
+      expect(prisma.mission.create).not.toHaveBeenCalled();
+    });
+
+    it('refuse un tableau vide : c\'est une saisie perdue, pas une intention', async () => {
+      await expect(service.creer(GESTIONNAIRE, { ...ENTREE, stops: [] })).rejects.toThrow(
+        /au moins une adresse de chargement/,
+      );
+    });
+
+    it('refuse un arret sans libelle, en le NOMMANT', async () => {
+      await expect(
+        service.creer(GESTIONNAIRE, {
+          ...ENTREE,
+          stops: [{ label: 'Fenouillet' }, { label: '  ' }, { label: 'Muret' }],
+        }),
+      ).rejects.toThrow(/Arrêt 2/);
+      expect(prisma.mission.create).not.toHaveBeenCalled();
+    });
+
+    it('valide AVANT toute ecriture — aucune mission orpheline', async () => {
+      await expect(
+        service.creer(GESTIONNAIRE, { ...ENTREE, stops: [{ label: 'seul' }] }),
+      ).rejects.toThrow();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.vehicleEvent.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('les effets de bord', () => {
@@ -467,6 +566,10 @@ describe('MissionsService — creation', () => {
       id: 'm-1', ref: 'M-0001', originLabel: 'A', destLabel: 'B',
       startAt: new Date(), endAt: new Date(), status: MissionStatus.IN_PROGRESS,
       vehicleId: 'v-1', vehicle: { plate: 'FR-1' }, driver: null, depotUser: null,
+      // A6 / T8 — la selection charge TOUJOURS les arrets, meme vides. La ligne
+      // simulee doit donc porter le tableau : le contraire ferait passer un test sur
+      // une forme que Prisma ne rend jamais.
+      stops: [],
       ...over,
     });
 

@@ -54,6 +54,10 @@ describe('DepotMissionDto — le contrat de fuite', () => {
       ref: 'M-2481',
       origin: 'Fenouillet',
       destination: 'Muret',
+      // A6 / T8 — les arrets de la tournee, LIBELLES SEULS. Le test des cles
+      // interdites ci-dessous couvre aussi ce champ : c'est un tableau de chaines,
+      // il ne peut donc porter ni `placeId`, ni coordonnees, ni note interne.
+      stops: ['Fenouillet', 'Blagnac', 'Muret'],
       startAt: '2026-08-09T08:15:00.000Z',
       endAt: '2026-08-09T11:40:00.000Z',
       status: 'IN_PROGRESS',
@@ -84,6 +88,25 @@ describe('DepotMissionDto — le contrat de fuite', () => {
     for (const interdit of INTERDITS) {
       expect(cles).not.toContain(interdit);
     }
+  });
+
+  /**
+   * A6 / T8 — les arrets sont des CHAINES, et le rester est le contrat.
+   *
+   * Servir des objets `MissionStop` complets aurait livre au tiers le `placeId` et les
+   * coordonnees des lieux cles de son transporteur, plus les notes internes laissees
+   * sur des arrets qui ne le concernent pas. Le type l'interdit ; ce test le dit.
+   */
+  it('les arrets sont des libelles, jamais des objets', () => {
+    const arrets: DepotMissionDto['stops'] = ['Fenouillet', 'Blagnac', 'Muret'];
+    for (const a of arrets) {
+      expect(typeof a).toBe('string');
+    }
+  });
+
+  it('une mission point a point n\'a pas d\'arrets — et l\'ecran retombe sur origin/destination', () => {
+    const pointAPoint: Pick<DepotMissionDto, 'stops'> = { stops: [] };
+    expect(pointAPoint.stops).toEqual([]);
   });
 
   it('le vehicule porte la plaque, jamais un identifiant', () => {

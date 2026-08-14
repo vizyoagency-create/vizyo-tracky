@@ -54,6 +54,22 @@ export interface DepotMissionDto {
   /** Libelle seul, jamais un `FleetPlace` complet (qui porterait des coordonnees). */
   origin: string;
   destination: string;
+  /**
+   * A6 / T8 — les arrets de la tournee, dans l'ordre de passage. LIBELLES SEULS, pour
+   * la meme raison qu'`origin` et `destination` : un `FleetPlace` complet livrerait au
+   * tiers les coordonnees des lieux cles de son transporteur, dont il n'a que faire.
+   *
+   * VIDE pour une mission point a point — l'ecran retombe alors sur
+   * `origin -> destination`, exactement comme avant T8. C'est ce qui rend ce champ
+   * additif sans reprendre aucun affichage existant.
+   *
+   * ⚠️ NE PAS CONFONDRE AVEC `DepotTripDto.stops`, qui compte les ARRETS DETECTES par
+   * le boitier pendant le trajet. Ceux-la sont subis et constates ; ceux-ci sont
+   * planifies. Les deux coexistent sur le meme ecran et ne veulent pas dire la meme
+   * chose : « 3 arrets » sur la fiche trajet peut parfaitement accompagner une tournee
+   * a 4 arrets prevus.
+   */
+  stops: string[];
   /** ISO 8601. La fenetre annoncee au depot. */
   startAt: string;
   endAt: string;

@@ -218,6 +218,11 @@ export class DepotService {
       vehicle: { select: { plate: true, brand: true, model: true } },
       driver: { select: { firstName: true, lastName: true, phone: true } },
       fleet: { select: { name: true } },
+      // A6 / T8 — les arrets de la tournee. LE LIBELLE SEUL : ni `placeId`, ni
+      // `lat`/`lng`, ni `note`. Un depot doit savoir ou passe son camion, pas obtenir
+      // les coordonnees des lieux cles de son transporteur ni les consignes internes
+      // laissees sur un arret qui ne le concerne pas.
+      stops: { select: { label: true }, orderBy: { position: 'asc' } },
       // Volontairement ABSENTS : vehicleId, driverId, depotUserId, notes,
       // originPlaceId, destPlaceId, createdByUserId, fleetId.
     } as const;
@@ -229,6 +234,8 @@ export class DepotService {
       ref: m.ref,
       origin: m.originLabel,
       destination: m.destLabel,
+      // Vide sur une mission point a point : l'ecran retombe sur `origin -> destination`.
+      stops: m.stops.map((s) => s.label),
       startAt: m.startAt.toISOString(),
       endAt: m.endAt.toISOString(),
       status: m.status as MissionStatusDto,
@@ -288,4 +295,6 @@ type MissionSelectionnee = {
   vehicle: { plate: string; brand: string | null; model: string | null };
   driver: { firstName: string; lastName: string; phone: string | null } | null;
   fleet: { name: string };
+  /** A6 / T8 — les arrets de la tournee. Le LIBELLE seul, cf. `selectionMission`. */
+  stops: Array<{ label: string }>;
 };

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   MissionStatus,
+  MissionStopKind,
   Prisma,
   UserRole,
   VehicleEventStatus,
@@ -58,6 +59,37 @@ export interface CreerMissionEntree {
   driverId?: string | null;
   depotUserId?: string | null;
   notes?: string | null;
+  /**
+   * A6 / T8 — les arrêts, quand la mission en compte plus de deux (arbitrage A :
+   * « c'est rare, les missions avec une seule adresse »).
+   *
+   * ┌─ OPTIONNEL, ET IL DOIT LE RESTER ─────────────────────────────────────────┐
+   * │ `originLabel` et `destLabel` restent OBLIGATOIRES et restent la source     │
+   * │ affichée par tout l'existant : liste des missions, espace dépôt, liens     │
+   * │ publics, agenda, e-mails. Les arrêts s'ajoutent À CÔTÉ, ils ne remplacent  │
+   * │ rien.                                                                      │
+   * │                                                                            │
+   * │ Concrètement : un appelant qui ne les envoie pas — l'API publique, un      │
+   * │ script, l'agenda avant cette version — crée exactement la mission qu'il    │
+   * │ créait hier. C'est ce qui rend T8 déployable sans reprendre les cinq       │
+   * │ chemins de lecture qui existent déjà.                                      │
+   * │                                                                            │
+   * │ Quand ils SONT envoyés, les deux libellés sont RECALCULÉS depuis le        │
+   * │ premier et le dernier arrêt : deux vérités sur le même trajet finiraient   │
+   * │ par diverger, et c'est le résumé qui doit suivre la source, jamais         │
+   * │ l'inverse (§ 4.1).                                                          │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  stops?: ArretMissionEntree[];
+}
+
+/** Un arrêt saisi. Le premier est le chargement, les suivants des livraisons. */
+export interface ArretMissionEntree {
+  label: string;
+  placeId?: string | null;
+  /** Créneau souhaité SUR CET ARRÊT — distinct de la fenêtre de la mission. */
+  wantedAt?: string | null;
+  note?: string | null;
 }
 
 /** Une ligne du tableau des missions, cote transporteur (A2 § 6). */
@@ -73,6 +105,14 @@ export interface MissionListeDto {
   driverName: string | null;
   depotId: string | null;
   depotName: string | null;
+  /**
+   * A6 / T8 — les arrêts, dans l'ordre de passage. Libellés seuls.
+   *
+   * VIDE pour une mission point à point, et pour toutes celles créées avant T8 :
+   * l'écran retombe alors sur `origin → destination`. C'est ce qui permet d'ajouter
+   * ce champ sans reprendre aucun des affichages existants.
+   */
+  stops: string[];
 }
 
 /** Un vehicule et sa disponibilite sur le creneau demande (A2 § 4, niveau 1). */
@@ -228,6 +268,13 @@ export class MissionsService {
     await this.validerConducteur(entree.driverId, fleetId);
     await this.refuserSiCreneauOccupe(entree.vehicleId, vehicule.plate, start, end);
 
+    // Les arrêts, VALIDÉS AVANT toute écriture — et les deux libellés recalculés
+    // depuis eux quand ils sont là (§ 4.1 : les arrêts sont la source de vérité, les
+    // libellés en sont le résumé).
+    const arrets = this.validerArretsMission(entree.stops);
+    const originLabel = arrets ? arrets[0].label : entree.originLabel;
+    const destLabel = arrets ? arrets[arrets.length - 1].label : entree.destLabel;
+
     const avertissements: string[] = [];
     if (!vehicule.tracker) {
       // Avertissement plutot que refus : on peut planifier une mission avant
@@ -243,8 +290,8 @@ export class MissionsService {
         data: {
           ref,
           fleetId,
-          originLabel: entree.originLabel,
-          destLabel: entree.destLabel,
+          originLabel,
+          destLabel,
           originPlaceId: entree.originPlaceId ?? null,
           destPlaceId: entree.destPlaceId ?? null,
           startAt: start,
@@ -259,6 +306,25 @@ export class MissionsService {
         select: { id: true, ref: true },
       });
 
+      // A6 / T8 — les arrêts, DANS LA MÊME TRANSACTION que la mission. Une mission
+      // écrite sans ses arrêts serait un trajet amputé que rien ne rattraperait : le
+      // dépôt lirait « Fenouillet → Muret » sur une tournée à quatre points.
+      if (arrets) {
+        await tx.missionStop.createMany({
+          data: arrets.map((a, i) => ({
+            missionId: creee.id,
+            position: i,
+            // Exactement UN chargement, en position 0 (arbitrage B). Le reste est
+            // livraison, y compris un retour au dépôt — jamais ajouté d'office.
+            kind: i === 0 ? MissionStopKind.PICKUP : MissionStopKind.DROPOFF,
+            label: a.label,
+            placeId: a.placeId ?? null,
+            wantedAt: a.wantedAt ? new Date(a.wantedAt) : null,
+            note: a.note ?? null,
+          })),
+        });
+      }
+
       // EFFET 1 — l'evenement d'agenda. Dans la MEME transaction : une mission sans
       // son evenement laisserait le vehicule reservable pendant son creneau.
       await tx.vehicleEvent.create({
@@ -267,7 +333,7 @@ export class MissionsService {
           vehicleId: entree.vehicleId,
           type: VehicleEventType.MISSION,
           status: VehicleEventStatus.PLANNED,
-          title: `Mission ${ref} · ${entree.originLabel} → ${entree.destLabel}`,
+          title: `Mission ${ref} · ${originLabel} → ${destLabel}`,
           startAt: start,
           endAt: end,
           allDay: false,
@@ -295,8 +361,8 @@ export class MissionsService {
     if (entree.depotUserId && reglages.notifierDepot !== false) {
       void this.notifierDepot(entree.depotUserId, {
         ref: mission.ref,
-        origin: entree.originLabel,
-        destination: entree.destLabel,
+        origin: originLabel,
+        destination: destLabel,
         startAt: start,
         endAt: end,
         plate: vehicule.plate,
@@ -346,6 +412,10 @@ export class MissionsService {
         vehicle: { select: { plate: true } },
         driver: { select: { firstName: true, lastName: true } },
         depotUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+        // A6 / T8 — LES LIBELLÉS SEULS, jamais les coordonnées. Cette liste alimente un
+        // tableau, pas une carte : servir des lat/lng ici les exposerait sur un chemin
+        // qui n'en a aucun usage.
+        stops: { select: { label: true }, orderBy: { position: 'asc' } },
       },
       orderBy: [{ startAt: 'desc' }],
       take: 500,
@@ -356,6 +426,9 @@ export class MissionsService {
       ref: m.ref,
       origin: m.originLabel,
       destination: m.destLabel,
+      // Vide pour toute mission créée avant T8, et pour toute mission point à point :
+      // l'écran retombe alors sur `origin → destination`, exactement comme avant.
+      stops: m.stops.map((s) => s.label),
       startAt: m.startAt.toISOString(),
       endAt: m.endAt.toISOString(),
       status: m.status,
@@ -997,6 +1070,42 @@ export class MissionsService {
   }
 
   /** Les cinq validations de creneau d'A2 § 4, dans l'ordre ou elles se lisent. */
+  /**
+   * A6 / T8 — les arrêts d'une mission, vérifiés.
+   *
+   * `undefined` en entrée → `null` en sortie : la mission reste point à point, et
+   * absolument rien ne change. C'est le cas de TOUS les appelants qui existaient avant
+   * cette version, et il doit rester le chemin le plus court.
+   *
+   * ⚠️ DEUX ARRÊTS AU MINIMUM, MÊME RÈGLE QUE LA DEMANDE. Un tableau à un seul élément
+   * n'est pas un trajet : le laisser passer produirait une mission dont le départ et
+   * l'arrivée sont la même adresse, sans que personne l'ait voulu. Un tableau VIDE est
+   * refusé pour la même raison — il signale une saisie perdue, pas une intention.
+   *
+   * Le retour au dépôt est une livraison COMME UNE AUTRE, jamais ajoutée d'office
+   * (arbitrage H) : ce service ne complète rien, il vérifie.
+   */
+  private validerArretsMission(
+    stops: ArretMissionEntree[] | undefined,
+  ): ArretMissionEntree[] | null {
+    if (stops === undefined) return null;
+    if (!Array.isArray(stops) || stops.length < 2) {
+      throw new BadRequestException(
+        'Une mission à arrêts multiples comporte au moins une adresse de chargement et une adresse de livraison.',
+      );
+    }
+    return stops.map((a, i) => {
+      const label = (a?.label ?? '').trim();
+      if (!label) {
+        throw new BadRequestException(`Arrêt ${i + 1} : le libellé est obligatoire.`);
+      }
+      if (a.wantedAt && Number.isNaN(new Date(a.wantedAt).getTime())) {
+        throw new BadRequestException(`Arrêt ${i + 1} : l'horaire souhaité est invalide.`);
+      }
+      return { ...a, label };
+    });
+  }
+
   private validerCreneau(startAt: string, endAt: string): { start: Date; end: Date } {
     const start = new Date(startAt);
     const end = new Date(endAt);

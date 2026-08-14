@@ -40,6 +40,11 @@ interface MissionLigne {
   ref: string;
   origin: string;
   destination: string;
+  /**
+   * A6 / T8 — les arrêts, dans l'ordre de passage. VIDE ou absent sur une mission
+   * point à point, et sur toutes celles créées avant T8.
+   */
+  stops?: string[];
   startAt: string;
   endAt: string;
   status: 'PLANNED' | 'IN_PROGRESS' | 'LATE' | 'DONE' | 'CANCELLED';
@@ -137,7 +142,7 @@ const FILTRES = [
                 <span class="vt-status__dot"></span>{{ libelleStatut(m.status) }}
               </span>
             </div>
-            <p class="mp-carte-trajet">{{ m.origin }} → {{ m.destination }}</p>
+            <p class="mp-carte-trajet">{{ trajet(m) }}</p>
             <div class="mp-carte-pied">
               <span class="mp-plate">{{ m.plate }}</span>
               <span class="mp-carte-creneau">{{ jour(m.startAt) }} · {{ heure(m.startAt) }} → {{ heure(m.endAt) }}</span>
@@ -164,7 +169,7 @@ const FILTRES = [
               <tr>
                 <td class="mp-ref">{{ m.ref }}</td>
                 <td>
-                  <span class="mp-trajet">{{ m.origin }} → {{ m.destination }}</span>
+                  <span class="mp-trajet">{{ trajet(m) }}</span>
                   @if (m.driverName) { <span class="mp-driver">{{ m.driverName }}</span> }
                 </td>
                 <td class="mp-creneau">{{ jour(m.startAt) }}<span>{{ heure(m.startAt) }} → {{ heure(m.endAt) }}</span></td>
@@ -338,6 +343,26 @@ export class MissionsPanelComponent implements OnInit {
           this.chargement.set(false);
         },
       });
+  }
+
+  /**
+   * A6 / T8 — le trajet, en une ligne, qu'il ait deux points ou six.
+   *
+   * ┌─ ON NE DÉROULE PAS LA TOURNÉE ICI ────────────────────────────────────────┐
+   * │ Cette liste sert à retrouver une mission, pas à préparer une feuille de    │
+   * │ route. Six adresses sur une ligne de tableau la rendent illisible, et sur  │
+   * │ une carte mobile elle passe sur quatre lignes. On garde donc les deux      │
+   * │ bouts — les seuls que le gestionnaire cherche des yeux — et on ANNONCE le  │
+   * │ nombre de livraisons, qui est l'information réellement nouvelle.            │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * Deux arrêts ou moins → exactement la chaîne d'avant T8. C'est ce qui garantit
+   * qu'aucune mission existante ne change d'apparence.
+   */
+  protected trajet(m: MissionLigne): string {
+    const base = `${m.origin} → ${m.destination}`;
+    const n = m.stops?.length ?? 0;
+    return n > 2 ? `${base} (${n - 1} livraisons)` : base;
   }
 
   protected jour(iso: string): string {

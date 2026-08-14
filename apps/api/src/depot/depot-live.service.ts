@@ -266,6 +266,12 @@ export class DepotLiveService {
       vehicle: { select: { plate: true, brand: true, model: true } },
       driver: { select: { firstName: true, lastName: true, phone: true } },
       fleet: { select: { name: true } },
+      // A6 / T8 — la tournee, LIBELLES SEULS. Cette selection nourrit `versDtoPublic`,
+      // qui est le contrat du depot : y omettre les arrets aurait fait de la carte
+      // live le seul ecran du depot ou une tournee a quatre points se lit encore
+      // « Fenouillet -> Muret ». Le typage l'a d'ailleurs refuse, et c'est exactement
+      // ce que la selection partagee est censee provoquer.
+      stops: { select: { label: true }, orderBy: { position: 'asc' } },
     } as const;
   }
 }

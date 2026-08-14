@@ -65,11 +65,27 @@ const ADRESSE_CHARGEMENT = `Entrepôt Fenouillet ${EMPREINTE}`;
  */
 const HEURE_DEPART = 5 + (new Date().getMinutes() % 12);
 
-function creneau(decalageHeures: number): string {
-  const d = new Date(Date.now() + 3 * 24 * 3600_000);
+function creneau(decalageHeures: number, joursDAvance = 3): string {
+  const d = new Date(Date.now() + joursDAvance * 24 * 3600_000);
   d.setHours(HEURE_DEPART + decalageHeures, 0, 0, 0);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * ⚠️ LA MISSION DE T8 EST CREEE AUJOURD'HUI, et ce n'est pas un detail.
+ *
+ * L'ecran « Mes missions » du depot est une vue DU JOUR : `DepotLiveService` ne rend
+ * que les missions dont la fenetre croise la journee en cours, plus celles restees
+ * ouvertes. Une mission planifiee dans trois jours n'y apparait pas — ce qui est le
+ * comportement voulu, mais rendait l'etape 5ter faussement rouge.
+ *
+ * Le serveur accepte un creneau passe (seul l'horizon de 90 jours a venir est borne),
+ * on peut donc viser une heure fixe de la journee sans dependre de l'heure a laquelle
+ * la recette tourne.
+ */
+function creneauDuJour(decalageHeures: number): string {
+  return creneau(decalageHeures, 0);
 }
 
 /**
@@ -78,7 +94,7 @@ function creneau(decalageHeures: number): string {
  * Regroupés parce qu'ils vont toujours ensemble : un écran qui passe l'un et rate
  * l'autre n'est pas « à moitié conforme », il est à refaire.
  */
-async function controlesDeBase(page: Page, ecran: string): Promise<void> {
+async function controlesDeBase(page: Page, ecran: string, racine = 'body'): Promise<void> {
   expect(await deborde(page), `${ecran} : la page déborde horizontalement à 375 px`).toBe(false);
 
   // Toute cible tactile visible fait au moins 44 px de haut. Le seuil vient d'A3 § 5
@@ -89,8 +105,15 @@ async function controlesDeBase(page: Page, ecran: string): Promise<void> {
   // 18 px enveloppée dans un `<label>` se coche sur toute la ligne du libellé : la
   // signaler serait un faux positif, et un faux positif dans un contrôle qu'on lit
   // à chaque recette finit par faire ignorer les vrais.
-  const trop = await page.evaluate(() =>
-    [...document.querySelectorAll('button, a[href], select, input, textarea')]
+  //
+  // ⚠️ LA PORTÉE COMPTE. Une modale se superpose à un écran qu'elle ne possède pas :
+  // mesurer toute la page reviendrait à imputer à ce lot les cibles de l'agenda ou du
+  // tableau de bord qui vivent derrière le voile. Constaté le 2026-08-14 — la recette
+  // de T8 a signalé sept boutons de l'agenda existant, tous hors sujet ET tous
+  // réellement sous le seuil. Ils sont consignés dans la revue plutôt que noyés ici :
+  // un contrôle qui accuse le mauvais écran finit par être désactivé.
+  const trop = await page.evaluate((sel) =>
+    [...(document.querySelector(sel) ?? document.body).querySelectorAll('button, a[href], select, input, textarea')]
       .filter((el) => {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) return false;
@@ -111,6 +134,7 @@ async function controlesDeBase(page: Page, ecran: string): Promise<void> {
         const h = Math.round(el.getBoundingClientRect().height);
         return `${el.tagName.toLowerCase()}.${classe} (${h}px)`;
       }),
+    racine,
   );
   expect(trop, `${ecran} : cibles tactiles sous 44 px`).toEqual([]);
 }
@@ -341,6 +365,111 @@ test.describe('A6 — demandes de mission et négociation, à 375 px', () => {
     await expect(modale).toContainText('Devenue mission', { timeout: 20_000 });
     await expect(modale).toContainText('devenue une mission');
     await capture(page, 'e2e-captures/5b-mission-creee-375.png', true);
+  });
+
+  // ═══ 5bis. T8 — LES ARRÊTS MULTIPLES DEPUIS L'AGENDA ════════════════════
+
+  /**
+   * A6 / T8, arbitrage A : « c'est rare, les missions avec une seule adresse ».
+   *
+   * Le chemin éprouvé ici n'est PAS celui d'une demande convertie — celui-là copie les
+   * arrêts d'une négociation. C'est la création DIRECTE par le gestionnaire, dans son
+   * agenda, sans demande en amont : le cas le plus courant, et le seul où il saisit la
+   * tournée lui-même.
+   *
+   * ⚠️ Le test vérifie les DEUX bouts de la chaîne. Écrire les arrêts sans que le dépôt
+   * les voie n'aurait servi à rien : il continuerait de lire « Fenouillet → Muret » sur
+   * une tournée à quatre points, et d'appeler pour comprendre pourquoi son camion
+   * arrive en retard.
+   */
+  test('5bis — agenda : une mission à plusieurs livraisons, et ce que le dépôt en voit', async ({ page }) => {
+    await ouvrirSession(page, 'CARRIER');
+    await page.goto('/agenda');
+
+    // L'onglet Mission de l'agenda porte la liste ET le bouton de création.
+    await page.getByRole('button', { name: 'Mission', exact: true }).click();
+    await page.getByRole('button', { name: /Nouvelle mission/i }).click();
+
+    const modale = page.getByRole('dialog');
+    await expect(modale).toBeVisible({ timeout: 15_000 });
+    await modale.getByLabel('Point de départ').fill(`Dépôt ${EMPREINTE}`);
+    await modale.getByLabel('Destination', { exact: true }).fill('Client Muret');
+
+    // Le bloc reste REPLIÉ tant qu'on n'ajoute rien : le point à point ne s'allonge pas.
+    await expect(modale.getByLabel(/Livraison intermédiaire/)).toHaveCount(0);
+    await modale.getByRole('button', { name: /Ajouter une livraison intermédiaire/i }).click();
+    await modale.getByLabel('Livraison intermédiaire 1').fill('Client Blagnac');
+    await modale.getByRole('button', { name: /Ajouter une livraison intermédiaire/i }).click();
+    await modale.getByLabel('Livraison intermédiaire 2').fill('Client Colomiers');
+
+    // Réordonner : Colomiers doit passer avant Blagnac.
+    await modale.getByRole('button', { name: 'Remonter la livraison 2' }).click();
+    await expect(modale.getByLabel('Livraison intermédiaire 1')).toHaveValue('Client Colomiers');
+
+    // La MODALE seule : l'agenda derrière elle porte ses propres cibles sous 44 px,
+    // antérieures à ce lot et consignées dans la revue.
+    await controlesDeBase(page, 'Agenda · mission multi-arrêts', '[role="dialog"]');
+    await capture(page, 'e2e-captures/5c-agenda-multi-arrets-375.png');
+
+    // Le créneau — AUJOURD'HUI, pour que le dépôt le voie à l'étape suivante — et le
+    // véhicule, le premier libre, comme à l'affectation.
+    await modale.getByLabel('Date').fill(creneauDuJour(0).slice(0, 10));
+    await modale.getByLabel('Heure de départ').fill(creneauDuJour(0).slice(11, 16));
+    await modale.getByLabel('Heure de fin').fill(creneauDuJour(3).slice(11, 16));
+    // ⚠️ ON ATTEND LA RÉPONSE DE DISPONIBILITÉ. Chaque frappe sur la date ou l'heure
+    // relance une requête, et la modale se protège même des réponses arrivées dans le
+    // désordre. Lire la liste dans la foulée du dernier `fill` la trouve donc vide —
+    // non parce que la flotte est prise, mais parce qu'elle n'est pas encore revenue.
+    const choix = modale.getByLabel('Véhicule', { exact: true });
+    const libresDe = () =>
+      choix.locator('option:not([disabled])').evaluateAll((options) =>
+        options.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ''),
+      );
+    await expect
+      .poll(async () => (await libresDe()).length, {
+        message: 'aucun véhicule libre pour la mission multi-arrêts',
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+    await choix.selectOption((await libresDe())[0]);
+
+    // Le dépôt destinataire : sans lui, personne ne verrait la tournée.
+    const depots = modale.getByLabel('Dépôt destinataire', { exact: true });
+    const optionsDepot = await depots.locator('option').evaluateAll((options) =>
+      options.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ''),
+    );
+    expect(optionsDepot.length, 'aucun dépôt à qui adresser la mission').toBeGreaterThan(0);
+    await depots.selectOption(optionsDepot[0]);
+
+    await modale.getByRole('button', { name: /Créer la mission|Créer|Enregistrer/i }).first().click();
+
+    // Côté transporteur : la liste ANNONCE le nombre de livraisons, sans dérouler la
+    // tournée — une liste sert à retrouver une mission, pas à préparer une feuille
+    // de route.
+    await expect(page.locator('.mp-trajet, .mp-carte-trajet').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText(/\(3 livraisons\)/).first()).toBeVisible({ timeout: 15_000 });
+    await capture(page, 'e2e-captures/5d-liste-multi-arrets-375.png', true);
+  });
+
+  test('5ter — dépôt : il voit la tournée complète, pas seulement les deux bouts', async ({ page }) => {
+    await ouvrirSession(page, 'DEPOT');
+    await page.goto('/depot/missions');
+
+    const carte = page.locator('.dmc', { hasText: EMPREINTE }).first();
+    await expect(carte).toBeVisible({ timeout: 15_000 });
+    // Les arrêts INTERMÉDIAIRES seuls : le départ et la destination sont déjà lus
+    // au-dessus, les répéter ferait lire trois fois la même adresse.
+    await expect(carte.locator('.dmc-etapes li')).toHaveCount(2);
+    await expect(carte.locator('.dmc-etapes')).toContainText('Client Colomiers');
+    await expect(carte.locator('.dmc-etapes')).toContainText('Client Blagnac');
+
+    await controlesDeBase(page, 'Dépôt · tournée');
+    // La CARTE seule : l'espace dépôt fait défiler un conteneur interne, et un
+    // `fullPage` n'y capture que le haut de l'écran — donc jamais la mission.
+    await carte.scrollIntoViewIfNeeded();
+    await carte.screenshot({ path: 'e2e-captures/5e-depot-tournee-375.png' });
   });
 
   // ═══ 6. LE MÊME PARCOURS, EN GRAND ══════════════════════════════════════
