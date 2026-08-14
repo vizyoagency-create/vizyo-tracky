@@ -239,6 +239,19 @@ export const routes: Routes = [
         // `missions_manage: true` et `agenda_view: false` PAR DÉFAUT : sans cette
         // permission ici, le rôle qui possède les missions ne pouvait pas atteindre son
         // propre écran. Trouvé en testant l'écran, invisible en test unitaire.
+        // A6 (2026-08) — la page des missions du transporteur. Pour l'instant elle
+        // ne porte que l'onglet Paramètres, c'est-à-dire la grille tarifaire ; les
+        // Demandes et les Missions y arrivent avec T5 et T6.
+        //
+        // Gardée par `missions_view` : lire ses tarifs n'est pas les modifier, et
+        // l'écriture est de toute façon refusée au serveur sans `missions_manage`.
+        path: 'missions',
+        canActivate: [anyPermissionGuard('missions_view')],
+        loadComponent: () =>
+          import('./features/missions/missions-page.component').then((m) => m.MissionsPageComponent),
+        data: { title: 'Missions' },
+      },
+      {
         path: 'agenda',
         canActivate: [anyPermissionGuard('agenda_view', 'reservations_view', 'reservations_request', 'ai_optimize', 'missions_view')],
         loadComponent: () =>

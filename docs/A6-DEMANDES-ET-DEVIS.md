@@ -308,13 +308,19 @@ qu'après contrôles verts.
 > encadrement `[fromKm, toKm]` : la grille saute de « 0 à 50 » à « 51 à 100 », ce qui
 > laisserait 50,4 km sans tranche. `fromKm` sert l'affichage, `toKm` la décision.
 
-### T3 — Tarification : API + onglet Paramètres
-- [ ] `MissionPricingService` : lecture, écriture, validation des tranches
-      (pas de trou, pas de recouvrement, bornes croissantes)
-- [ ] Endpoints `GET`/`PUT /missions/pricing`, portée `requiredFleetScope`
-      → le super-admin passe par le sélecteur de la barre (déjà en place)
-- [ ] Page `/missions`, onglet **Paramètres** : éditeur de tranches
-- [ ] Tests : calcul de tranche, bornes, « sur devis », TVA
+### T3 — Tarification : API + onglet Paramètres ✅ *(sous réserve, cf. ci-dessous)*
+- [x] `MissionPricingService` : lecture, écriture, validation des tranches
+- [x] Endpoints `GET` / `PUT /missions/pricing` + `GET /missions/pricing/simulate`,
+      portée `requiredFleetScope` — le super-admin passe par le sélecteur de la barre
+- [x] Page `/missions`, onglet **Paramètres** : éditeur de tranches + simulateur
+- [x] 43 tests sur le service : chaque borne de la grille réelle, le trou de 50,4 km,
+      l'arrondi au supérieur, « sur devis », grille absente ou désactivée, portée
+- [x] Build web vert, 315 tests web, gardes littéraux et accents vertes
+- [ ] ⚠️ **NON VÉRIFIÉ DANS LE NAVIGATEUR.** Ni à 375 px, ni sur les contrastes, ni
+      sur le comportement réel de l'éditeur. La règle des trois non négociables n'est
+      donc PAS honorée sur cet écran. **À faire avant tout déploiement.**
+- [ ] L'alerte au centre d'alertes quand la grille manque (arbitrage J) — le service
+      répond `PAS_DE_GRILLE`, mais rien ne lève encore d'alerte côté administration.
 
 ### T4 — Moteur de devis
 - [ ] `QuoteEngine` : distance → tranche → montant HT → suppléments → TVA
