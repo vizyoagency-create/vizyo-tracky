@@ -4,8 +4,8 @@
 > dans une nouvelle session, sans rien réapprendre et sans repayer un piège déjà payé.
 > Il remplace la lecture de tout l'historique.
 >
-> Écrit le **2026-08-13**, branche `feat/refonte-tracky-v2`, worktree
-> `D:\www\vizyo-agency\vizyo-tracky\vizyo-tracky`.
+> Écrit le **2026-08-13**, mis à jour le **2026-08-14**, branche
+> `feat/refonte-tracky-v2`, worktree `D:\www\vizyo-agency\vizyo-tracky\vizyo-tracky`.
 >
 > **Les trois autres fichiers à connaître :**
 > | Fichier | Rôle |
@@ -20,6 +20,11 @@
 > ⚠️ Ce compteur compte des **lignes de `B1-PAGES.md`**, pas des pages, et il a été tenu
 > à la main de séance en séance. **Il donne un ordre de grandeur, pas une preuve.** La
 > seule preuve est le § 5.2 ci-dessous, et la mesure au navigateur.
+>
+> Il est **laissé à 46/57 exprès** au 2026-08-14 : les 13 pages « présumées » ont été
+> mesurées, mais **mesurée ≠ finie** — elles gardent les reliquats du § 6bis, dont
+> `/fleet-schedules` qui est un chantier entier. Le monter ferait exactement ce que ce
+> fichier reproche au compteur de `REFONTE-TRACKY-V2.md`.
 
 ---
 
@@ -90,8 +95,26 @@ localStorage.setItem('tracky.perms.onboarded', '1');                        // s
 |---|---|---|
 | `cmnusapj5000f07s7ipjkdcf4` | `tracky1@gmail.com`, FLEET_ADMIN | Le seul qui ouvre `/integrations`. |
 
+⚠️ **LE JETON SEUL NE SUFFIT PAS** *(payé le 2026-08-14)*. `gen-test-token.ts` ne met que
+`{sub, aud, typ, appId}` dans le JWT — **ni `role`, ni `permissions`**. Or `AuthService`
+retombe sur `decodeJwt()` quand `vizyo-tracky-user` est absent, et `PermissionsService.can()`
+ne bypasse que sur `role === 'FLEET_ADMIN' | 'SUPER_ADMIN'`. Sans rôle : **toutes les pages
+gardées redirigent vers `/dashboard`** — silencieusement. Poser aussi :
+
+```js
+const me = await (await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + JETON } })).json();
+localStorage.setItem('vizyo-tracky-user', JSON.stringify(
+  { sub: me.id, email: me.email, role: me.role, fleetId: me.fleetId, permissions: null, preferences: null }));
+```
+
+> Sans ça, on mesure `/dashboard` en croyant mesurer `/reports`. **C'est exactement ce que
+> le réflexe « lire `location.pathname` DANS le relevé » (§ 9.3) a rattrapé** — sinon
+> 6 échecs du shell étaient attribués à `/reports`.
+
 ⚠️ L'identifiant de seed `cdef31-admin` **ne marche pas** (`/api/auth/me` répond 500) —
 prendre un `authUserId` en forme de cuid.
+⚠️ `POST /api/auth/logout` répond **500** mais **fait bien le travail** (il efface le
+cookie qui prime sur le Bearer). Ne pas s'y arrêter : vérifier `/api/auth/me` ensuite.
 ⚠️ **Aucun compte DRIVER en base de dev** (4 FLEET_ADMIN, 3 DEPOT, 3 SUPER_ADMIN,
 2 FLEET_MANAGER, 1 VIEWER, **0 DRIVER**).
 
@@ -155,21 +178,20 @@ de D et E ✅ terminé » en n'en citant que **5 sur 14**. Le tableau ci-dessous
 donc ce qui est **nommément confirmé livré et mesuré** de ce qui est **présumé** — et il
 ne faut pas traiter un « présumé » comme fait sans l'avoir rouvert au navigateur.
 
-| Bloc | Nommément livré et mesuré | Présumé / à re-vérifier |
+| Bloc | Nommément livré et mesuré | Reste à faire |
 |---|---|---|
-| **A** — Entrée & conducteur (7) | `/book/:token` · `/reserve/:token` · `/driver/unlock` | `/login` · `/forgot-password` · `/accept-invite` · `/install` — le journal les dit couvertes mais ne les nomme pas |
+| **A** — Entrée & conducteur (7) | `/book/:token` · `/reserve/:token` · `/driver/unlock` · **`/login`** · **`/forgot-password`** · **`/accept-invite`** · **`/install`** — les 4 dernières **mesurées le 2026-08-14** | — *(reliquats nommés au § 6bis)* |
 | **B** — Espace conducteur (1) | `/driver` 🟢 | — *(⚠️ mesuré avec un compte fleet-admin : aucun compte DRIVER en base, le périmètre réel d'un conducteur n'a **pas** été vérifié)* |
 | **C** — Supervision (6) | `/dashboard` · `/vehicles/:id` · **`/map`** · **`/vehicles`** | **`/places` 🟠 partiellement bloqué** · **`/alerts` ⬜ pas commencé** |
-| **D** — Analyse (5) | `/fleet-admin/activity` · `/admin/ai-usage` | `/reports` *(seule la carte de chaleur est citée)* · `/scores` · `/agenda` |
-| **E** — Administration (9) | `/settings` · `/integrations` · `/privacy-coverage` | `/users` · `/users/overview` · `/installations` · `/fleet-schedules` · `/settings/audio-monitoring` · `/account` |
+| **D** — Analyse (5) | `/fleet-admin/activity` · `/admin/ai-usage` · **`/reports`** · **`/scores`** · **`/agenda`** — les 3 dernières **mesurées le 2026-08-14** | — *(reliquats § 6bis)* |
+| **E** — Administration (9) | `/settings` · `/integrations` · `/privacy-coverage` · **`/users`** · **`/users/overview`** · **`/installations`** · **`/fleet-schedules`** · **`/settings/audio-monitoring`** · **`/account`** — les 6 dernières **mesurées le 2026-08-14** | 🔴 **`/fleet-schedules` est un chantier entier**, pas un reliquat (§ 6bis) |
 | **F** — Surfaces bloquantes (12) | 🟢 **clos 12/12**, séance du 2026-08-11 | — |
 | **G** — Le shell (2) | — | ⬜ **EN DERNIER**, ordre non négociable |
 
-> **Première chose à faire dans la nouvelle session** : passer la sonde de recette et la
-> sonde de contraste sur les **11 pages de la colonne « présumé »**, à 375 px dans les
-> deux thèmes. C'est rapide (une page ≈ 2 min) et ça transforme une incertitude en fait.
-> Vu le taux de trouvailles des séances précédentes — O5 touche ~29 écrans et le `catch`
-> menteur a été trouvé 5 fois — il est **peu probable** qu'elles soient toutes propres.
+> ✅ **La colonne « présumé » est vidée.** Les 13 pages (le § disait « 11 » : le compte
+> était faux, les colonnes en listaient 13) ont été rouvertes le **2026-08-14** avec les
+> deux sondes, à 375 px, dans les deux thèmes. **Aucune n'était propre.** Le détail des
+> relevés — avant / après — est au § 6bis.
 
 ### 5.3 Ce qui reste, dans l'ordre
 
@@ -258,6 +280,94 @@ pastille *grossit*), et « Seuil atteint » n'existe nulle part dans les donnée
 
 ---
 
+## 6bis. Séance du 2026-08-14 — les 13 pages « présumées » rouvertes
+
+**2 commits.** Les deux décisions bloquantes O5 et « onglet actif » ont été **tranchées
+par le client** et livrées dans la foulée.
+
+### 6bis.1 Le relevé — aucune des 13 n'était propre
+
+Sonde de contraste + sonde de recette, 375 px, deux thèmes, **écran entier** (§ 8.2).
+
+| Page | Avant (clair / sombre) | Après les 2 correctifs | Ce qui reste |
+|---|---:|---:|---|
+| `/reports` | **104 / 99** | **3 / 0** | « Excel » 1,64 · « PDF » 3,17 |
+| `/agenda` | 33 / 27 | 6 / 1 | ● 2,08 · ~ 2,65 · `cal-cell-day` 3,24 · « Événement » 3,43 clair **1,72 sombre** · `ag-stat-value` 3,94 |
+| `/users` | 25 / 17 | 8 / 0 | `u-role-pill admin` 2,92 · `u-avatar pending` 3,02 ×3 · `u-role-pill expired` 3,31 ×3 |
+| `/account` | 18 / 16 | **1 / 0** | shell |
+| `/users/overview` | 20 / 17 | 4 / 1 | `po-role-badge viewer` **2,19** · `po-role-badge admin` 3,17 · `po-user-avatar admin` 3,43 clair **1,72 sombre** |
+| `/scores` | 16 / 13 | **1 / 0** | shell |
+| `/fleet-schedules` | 12 / 6 | **7 / 1** | 🔴 rien n'a bougé — voir 6bis.2 |
+| `/installations` | 8 / 7 | **1 / 0** | shell — mais le `catch` ment (6bis.3) |
+| `/settings/audio-monitoring` | 7 / 6 | **1 / 0** | shell · 1 cible 343×36 |
+| `/install` | 6 / 4 | **1 / 0** | « Se connecter » 3,34 + cible **80×18** |
+| `/login` | 5 / 3 | **1 / 0** | logotype `text-tracky-light` 3,34 · **« oublie » sans accent** (6bis.4) |
+| `/forgot-password` | 3 / 2 | **1 / 0** | logotype 3,34 |
+| `/accept-invite` | 3 / 2 | **1 / 0** | logotype 3,34 · cible 38×38 |
+
+Recette : **aucun débordement horizontal, aucune coupe verticale** sur les 13. Deux
+troncatures sans `title` (`/reports` « 24h18 », `/users` un e-mail). `/reports` porte
+**168 cellules de carte de chaleur à 10×11** + 7 étiquettes de jour à 24×44.
+
+> ⚠️ **Le shell pèse 6 échecs en clair sur CHACUNE des 9 pages internes** — soit ~54
+> occurrences qui ne sont qu'**un seul** défaut, à traiter au bloc G. Les compter par
+> page gonfle les totaux d'un facteur 9. Les relevés ci-dessus les isolent.
+
+### 6bis.2 🔴 `/fleet-schedules` n'a jamais été reprise
+
+Le journal la comptait couverte. Elle ne l'est pas : ses classes (`btn primary`,
+`muted small`, `sub`) sont d'avant la refonte, **aucun de ses échecs n'était O5**, et
+les deux correctifs de la séance ne l'ont pas touchée.
+
+| Élément | Ratio |
+|---|---:|
+| « Horaires de la flotte » (titre, 20 px) | **1,14:1** |
+| « Rafraîchir » (`btn ghost`) | **1,14:1** |
+| « Aperçu & appliquer » (`btn primary`) | **1,48:1** *(dans les DEUX thèmes)* |
+| « Coupe & reprise moteur automatiques… » | 2,40:1 |
+| « Mis à jour à l'instant » | 2,40:1 |
+
+C'est un **chantier de page**, pas un reliquat. À traiter comme tel dans le planning.
+
+### 6bis.3 Le `catch` qui pose un tableau vide — **6ᵉ occurrence, 6ᵉ écran sans rapport**
+
+`/installations` s'ajoute à la liste du § 8.5, avec une **variante inédite** : le `catch`
+n'écrase pas un tableau, il laisse `plans` à sa valeur initiale `[]` et ne pose **aucun
+état** — juste un `toast.error` **éphémère**.
+
+Vérifié au navigateur, pas sur lecture de code : en faisant échouer `api.list()`, la page
+affiche « **Aucun planning d'installation publié pour le moment.** » pendant que le toast
+passe et disparaît. **Le mensonge rassurant reste seul à l'écran.**
+
+> Corollaire pour la suite : chercher le `catch` **ne suffit pas** — il faut regarder si
+> un état d'erreur est **posé**, pas seulement si l'erreur est *signalée*. Un toast n'est
+> pas un état. `/scores` fait bien `error.set()` et l'affiche (vérifié) ; `/places` aussi.
+
+### 6bis.4 `verif:accents` est verte et le défaut est à l'écran
+
+[`login.component.ts:126`](apps/web/src/app/features/auth/login.component.ts) écrit
+« Mot de passe **oublie** ? » — sans accent — alors que `forgot-password.component.ts:62`
+écrit « oublié » correctement, à deux écrans d'écart.
+
+La garde ne le voit pas : `oublie` n'est pas dans sa liste `MOTS`, et **volontairement**,
+car « il oublie » est un verbe valide sans accent. C'est le **§ 8.8 appliqué à une autre
+garde** : *une garde-liste ne rattrape que ce qu'on y inscrit.* Ne pas conclure d'un
+`verif:accents` vert que les accents sont bons — c'est un filet, pas une preuve.
+
+### 6bis.5 Deux motifs transverses que seul un relevé groupé fait apparaître
+
+Aucun n'est visible en regardant une page à la fois :
+
+- **Le logotype « Tracky »** en `text-tracky-light` : 3,34:1 sur les 4 pages auth et
+  3,18:1 dans la top-bar du shell. **Un seul motif, 5 écrans.** *(Non corrigé : la
+  top-bar relève du bloc G, et traiter les 4 pages auth sans elle recréerait un jumeau —
+  cf. § 8.7. À faire d'un bloc au G.)*
+- **Les pastilles de rôle et avatars** de `/users` + `/users/overview` : 2,19 à 3,43 en
+  clair, et `po-user-avatar admin` tombe à **1,72 en sombre**. Deux pages, même famille
+  de composants, à reprendre ensemble.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -279,7 +389,8 @@ pastille *grossit*), et « Seuil atteint » n'existe nulle part dans les donnée
 
 | Point | Détail |
 |---|---|
-| **O5 — `--text-tertiary`** | Jeton **3:1** employé comme couleur de texte. C'est **la source de la quasi-totalité des échecs de contraste restants** (3,16 en clair / 3,75 en sombre). Touche ~29 écrans. `verif:contraste` ne le verra jamais : il vérifie les 46 couples **déclarés**, pas les usages. |
+| ~~**O5 — `--text-tertiary`**~~ | ✅ **TRANCHÉ le 2026-08-14** — *relever le jeton à 4,5:1*. Livré (`8a7c611`). `#8A938F → #656F68` en clair, `#69736E → #848F8A` en sombre, **calculés sur `--surface-quaternary`** (le fond le plus défavorable), pas sur le fond nominal. Gain mesuré : `/reports` 104→5, `/map` 12→2, `/vehicles` 10→2, **zéro échec en sombre sur 11 des 13 pages**. Aucune régression sur les écrans déjà livrés. |
+| ~~**Onglet actif**~~ | ✅ **TRANCHÉ le 2026-08-14** — *correctif unique au kit*. Livré (`aa0630a`). Les 5 sélecteurs segmentés pointent sur `--texte-succes`. Convention écrite dans `styles.css`. |
 | **Week-end en surveillance permanente** | Moitié de la ligne B1 du panneau surveillance. Touche `scheduleDays`/`scheduleStartTime`/`scheduleEndTime` **et l'armement serveur** — comportement, pas mise en page. |
 | **Contrôles de zoom MapLibre** | 29 × 29 px, sous le plancher de 44. |
 | **Poignée `.bs-handle-wrap`** | 375 × 36 — sous 44 px en hauteur, mais pleine largeur. Partagée par **toutes** les feuilles de l'app : à trancher au niveau du kit. |
@@ -334,15 +445,21 @@ inexpliqué.**
 - Les puces de `/vehicles` : `liveStatus()` vaut `null` tant qu'aucune position live n'est
   arrivée → **ce n'est pas « à l'arrêt »**. Repli sur le drapeau `moving` du REST.
 
-### 8.5 Le `catch` qui pose un tableau vide — **5 fois**, 5 écrans sans rapport
+### 8.5 Le `catch` qui pose un tableau vide — **6 fois**, 6 écrans sans rapport
 
-`/fleet-admin/activity` · `/privacy-coverage` · `/integrations` · `/driver` · **`/vehicles`**.
+`/fleet-admin/activity` · `/privacy-coverage` · `/integrations` · `/driver` · `/vehicles`
+· **`/installations`** *(2026-08-14)*.
 À chaque fois le mensonge est **rassurant** et tombe sur l'écran qui sert à vérifier que
 tout va bien. **Premier réflexe en reprenant une page : chercher le `catch` et regarder
 ce qu'il pose.** `app-zone` existe pour ça — `erreur`, `vide`, `partiel` et `interdit`
 sont des états distincts.
 
-> `/places` est le **seul** écran qui le gère correctement (`this.error.set(...)`).
+> ⚠️ **Chercher le `catch` ne suffit pas — regarder si un ÉTAT est POSÉ.** `/installations`
+> ne pose rien du tout : il laisse `plans` à `[]` et signale par un `toast.error`
+> **éphémère**. L'erreur est donc *signalée* et l'écran ment quand même, dès que le toast
+> s'efface. **Un toast n'est pas un état.**
+
+> `/places` et `/scores` gèrent correctement (`this.error.set(...)`, vérifié à l'écran).
 
 ### 8.6 Le même élément qui dit deux choses — **2 fois sur le même marqueur**
 
@@ -502,30 +619,43 @@ doit rester en modifications locales non commitées.
 
 ## 12. Prochaines actions, dans l'ordre
 
-- [ ] **0. Se remettre en état** — `git log --oneline -5` (la branche bouge, § 4) ·
-      `docker compose up -d` · `preview_start` × 2 · frapper un jeton · poser les deux
-      clés de `localStorage`.
-- [ ] **1. Rouvrir les 11 pages « présumées »** du § 5.2 avec les deux sondes, à 375 px,
-      dans les deux thèmes. **Ne rien corriger d'abord — relever.** Puis décider.
-- [ ] **2. `/places`** — la partie faisable sans toucher à l'API : onglets
+- [x] ~~**0. Se remettre en état**~~ · ~~**1. Rouvrir les 13 pages « présumées »**~~ —
+      fait le 2026-08-14 (§ 6bis). ⚠️ Le § 3 a gagné **le piège du jeton sans rôle**.
+- [ ] **2. Les reliquats du § 6bis**, dans cet ordre de gravité :
+      - [ ] 🔴 **`/fleet-schedules`** — chantier de page entier (titre à **1,14:1**).
+      - [ ] 🔴 **`/installations`** — le `catch` qui ment (6ᵉ occurrence) → `<app-zone>`.
+      - [ ] **`/reports`** — « Excel » **1,64** et « PDF » 3,17 ; les 168 cellules de
+            carte de chaleur à 10×11 (décision : une grille de données est-elle soumise
+            au plancher de 44 px ?) ; « 24h18 » tronqué sans `title`.
+      - [ ] **`/agenda`** — « Événement » à **1,72 en sombre**, ● 2,08, ~ 2,65.
+      - [ ] **`/users` + `/users/overview`** — pastilles de rôle et avatars, **ensemble**
+            (même famille, `po-user-avatar admin` à **1,72 en sombre**).
+      - [ ] **`/login`** — « oublie » sans accent (6bis.4).
+      - [ ] **`/install`** — « Se connecter » 3,34 et sa cible **80×18**.
+- [ ] **3. `/places`** — la partie faisable sans toucher à l'API : onglets
       *À valider / Lieux validés / Zones GPS*, `<app-zone>`, mesure des deux thèmes.
       ⚠️ La file d'attente avec seuil est **bloquée** (§ 7.1) — ne pas inventer le « 8 ».
-- [ ] **3. `/alerts`** — onglets *Alertes / Géofences / Réglages*. Pas commencé.
-- [ ] **4. `/vehicles`** — la liste groupée par groupe avec en-têtes, **si** la décision
+- [ ] **4. `/alerts`** — onglets *Alertes / Géofences / Réglages*. Pas commencé.
+- [ ] **5. `/vehicles`** — la liste groupée par groupe avec en-têtes, **si** la décision
       de comportement est tranchée (§ 7.2).
-- [ ] **5. Bloc G — le shell.** En dernier, ordre non négociable de `B1-PAGES.md`.
-- [ ] **6. B-mails** — 12 lignes, 0 faite.
+- [ ] **6. Bloc G — le shell.** En dernier, ordre non négociable de `B1-PAGES.md`.
+      **Y traiter d'un bloc** : les 6 échecs de shell présents sur les 9 pages internes,
+      et le logotype « Tracky » des 4 pages auth + top-bar (6bis.5) — les corriger
+      séparément recréerait un jumeau (§ 8.7).
+- [ ] **7. B-mails** — 12 lignes, 0 faite.
 
-**Décisions à demander avant de reprendre** — elles débloquent le reste :
+**Décisions encore à demander :**
 
-1. **O5** (`--text-tertiary` employé comme couleur de texte). C'est la source de la
-   quasi-totalité des échecs de contraste restants sur toutes les pages mesurées.
-   **Tant qu'il n'est pas tranché, chaque page livrée gardera ses 8 à 10 échecs.**
-2. **Le contrat d'API de `/places`** (`seuilPassages` + `statut`) — sinon la page ne peut
-   pas montrer le cycle de vie que la planche décrit.
-3. La liste groupée par défaut sur `/vehicles`.
+1. ~~**O5**~~ ✅ tranché le 2026-08-14 (§ 7.2).
+2. ~~**Onglet actif**~~ ✅ tranché le 2026-08-14 (§ 7.2).
+3. **Le contrat d'API de `/places`** (`seuilPassages` + `statut`) — sinon la page ne peut
+   pas montrer le cycle de vie que la planche décrit. **Toujours bloquant.**
+4. La liste groupée par défaut sur `/vehicles`.
+5. *(nouveau)* Les **168 cellules 10×11** de la carte de chaleur `/reports` : une grille
+   de données dense tombe-t-elle sous le plancher de 44 px ? Les élargir détruirait la
+   lecture d'ensemble, qui est tout l'intérêt de l'objet.
 
-**Et un rappel qui ne coûte rien** : **15 commits ne sont pas poussés.**
+**Et un rappel qui ne coûte rien** : **18 commits ne sont pas poussés.**
 
 ---
 

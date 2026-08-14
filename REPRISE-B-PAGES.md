@@ -621,6 +621,74 @@ La page est livrée et vérifiée, mais **trois choses ont été volontairement 
 
 ---
 
+## Séance du 2026-08-14 — les 13 pages « présumées », et O5 enfin tranché
+
+> Le détail chiffré page par page est dans **`SUIVI-REFONTE.md` § 6bis**. Ici, ce que la
+> séance a appris — ce qui ne se déduit d'aucun tableau.
+
+### O5 est mort, et il valait bien ce qu'on en disait
+
+Tranché par le client : **relever le jeton**, pas reprendre les usages. Livré en
+**deux lignes de `styles.css`** (`8a7c611`).
+
+Ce qui compte pour la suite, c'est **comment la valeur a été choisie**. Le réflexe naturel
+est de viser 4,5:1 sur le fond nominal — `--surface-secondary`, blanc en clair. Ça donne
+`#6B7570`… qui rend **4,31:1 sur `--surface-rail`** et échoue. Un jeton de texte se calcule
+sur le fond **le plus défavorable** où il peut atterrir : ici `--surface-quaternary`. C'est
+le même piège que `markerInk()` (§ 8.1 du suivi) sous un autre déguisement : **une valeur
+juste sur les cas qu'on regarde régresse sur ceux qu'on ne regarde pas.**
+
+Le gain est allé bien au-delà des 13 pages : `/map` **12 → 2**, `/vehicles` **10 → 2**,
+`/dashboard` **6 → 2**. **Onze des treize pages tombent à zéro échec en thème sombre.**
+
+### Le relevé groupé voit ce qu'une page seule ne montre pas
+
+Trois motifs ne sont apparus que parce que les 13 pages ont été mesurées **d'affilée** :
+
+1. **L'onglet ACTIF** en vert de marque — 5 écrans, 5 implémentations, un seul défaut.
+   Tranché « correctif unique au kit », livré (`aa0630a`).
+2. **Le logotype « Tracky »** — 3,34:1 sur 4 pages auth + 3,18:1 en top-bar.
+3. **Les pastilles de rôle** — `/users` et `/users/overview`, même famille, jusqu'à
+   **1,72:1 en sombre**.
+
+Aucun des trois n'aurait été vu en reprenant une page à la fois : chacun se lit comme un
+détail isolé sur sa page, et comme un motif quand on les met côte à côte.
+
+### Un toast n'est pas un état
+
+`/installations` porte le `catch` menteur pour la **6ᵉ fois** — mais en variante : il ne
+pose pas de tableau vide, il **ne pose rien** et signale par un `toast.error` éphémère.
+L'erreur est donc bien *signalée*, et l'écran ment quand même dès que le toast s'efface.
+
+> Le réflexe du § 8.5 doit être élargi : **chercher le `catch` ne suffit plus, il faut
+> regarder si un ÉTAT est POSÉ.** « L'erreur est signalée » et « l'écran dit la vérité »
+> sont deux choses différentes.
+
+Vérifié **au navigateur** en faisant échouer `api.list()` — pas sur lecture de code. Et le
+premier essai n'a rien prouvé : patcher `window.fetch` a intercepté **0 appel** (le client
+API ne passe pas par là). Une sonde qui n'inspecte rien ne dit rien — `appelsBloques: 0`
+était le seul indice que le test était vide.
+
+### Une garde verte n'est pas une preuve
+
+`verif:accents` est **verte** pendant que `/login` affiche « Mot de passe **oublie** ? ».
+Le mot n'est pas dans sa liste, et c'est volontaire — « il oublie » est un verbe valide.
+C'est le **§ 8.8 transposé à une autre garde** : *une garde-liste ne rattrape que ce qu'on
+y inscrit.* Trois gardes du dépôt sont des listes (44 px, accents, couples de contraste) —
+aucune ne prouve l'absence de défaut, toutes prouvent l'absence **des défauts listés**.
+
+### Le piège qui a failli coûter la séance
+
+Première navigation vers `/reports` : le relevé a rapporté **`chemin: "/dashboard"`**.
+Le jeton de test ne porte ni `role` ni `permissions`, donc pas de bypass FLEET_ADMIN, donc
+redirection **silencieuse** — et 6 échecs du shell prêts à être attribués à `/reports`.
+
+Rattrapé par le seul réflexe qui pouvait le faire : **lire `location.pathname` DANS le
+relevé**. Sans ça, la séance produisait des chiffres faux sur 9 pages. La parade est
+maintenant au § 3 du suivi.
+
+---
+
 ## La sonde de recette — à reposer au début de chaque séance
 
 Les critères de recette de `B1-PAGES.md` se **mesurent**, ils ne se jugent pas. Coller ceci
