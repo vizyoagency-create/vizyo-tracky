@@ -40,6 +40,7 @@ export const TEMPLATE_META: {
   { id: 'partner_consent_invitation', label: 'Invitation à consentir', category: 'Intégration', subject: 'Autoriser le partage avec {partenaire}', trigger: 'Un super-admin invite un fleet-admin à autoriser le partage vers une application partenaire' },
   { id: 'mission_assigned', label: 'Livraison assignée', category: 'Espace dépôt', subject: 'Livraison prévue {jour} {début} → {fin}', trigger: 'Un gestionnaire crée une mission en désignant un compte dépôt destinataire' },
   { id: 'depot_incident', label: 'Signalement dépôt', category: 'Espace dépôt', subject: 'Signalement {dépôt} · {motif} · mission {réf}', trigger: 'Un dépôt signale un incident sur l\'une de ses missions — le seul e-mail de l\'espace dépôt qui remonte vers le transporteur' },
+  { id: 'mission_request', label: 'Demande de mission', category: 'Espace dépôt', subject: '{titre} — {réf}', trigger: 'Une demande de mission est déposée, ou une partie répond à l\'autre. Un seul modèle pour les deux sens : c\'est le même objet, « quelqu\'un vous a répondu, voici son offre »' },
 ];
 const TEMPLATE_IDS = new Set(TEMPLATE_META.map((t) => t.id));
 const TEMPLATE_LABELS = new Map(TEMPLATE_META.map((t) => [t.id as string, t.label]));

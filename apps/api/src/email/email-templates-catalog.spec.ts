@@ -13,6 +13,7 @@ import { TEMPLATE_META } from './email-admin.service';
  * ainsi une vue exhaustive de TOUS les e-mails envoyés depuis Tracky.
  */
 const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
+  mission_request: true,
   invitation: true,
   password_reset: true,
   device_verification: true,

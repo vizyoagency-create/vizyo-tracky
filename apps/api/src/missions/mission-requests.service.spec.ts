@@ -5,6 +5,8 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionPricingService } from './mission-pricing.service';
 import { MissionRequestsService } from './mission-requests.service';
+import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../email/email.service';
 import { MissionsService } from './missions.service';
 
 /**
@@ -22,7 +24,8 @@ import { MissionsService } from './missions.service';
 describe('MissionRequestsService', () => {
   let service: MissionRequestsService;
   let prisma: {
-    missionRequest: { create: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; findUniqueOrThrow: jest.Mock; update: jest.Mock };
+    missionRequest: { create: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findUniqueOrThrow: jest.Mock; update: jest.Mock };
+    user: { findMany: jest.Mock };
     missionQuoteRound: { create: jest.Mock };
     missionStop: { deleteMany: jest.Mock; createMany: jest.Mock };
     missionPricingSettings: { findUnique: jest.Mock };
@@ -86,6 +89,7 @@ describe('MissionRequestsService', () => {
         create: jest.fn().mockResolvedValue(demandeEn()),
         findFirst: jest.fn().mockResolvedValue(demandeEn()),
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn().mockResolvedValue(demandeEn()),
         update: jest.fn().mockResolvedValue(demandeEn()),
       },
@@ -95,6 +99,7 @@ describe('MissionRequestsService', () => {
       // Presents UNIQUEMENT pour prouver qu'on n'y touche pas.
       vehicleEvent: { create: jest.fn(), updateMany: jest.fn() },
       mission: { create: jest.fn() },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma));
@@ -122,6 +127,10 @@ describe('MissionRequestsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: MissionPricingService, useValue: pricing },
         { provide: MissionsService, useValue: missions },
+        // Les notifications sont HORS transaction : un e-mail qui echoue ne doit pas
+        // annuler une negociation deja ecrite. L'espion suffit ici.
+        { provide: EmailService, useValue: { buildMissionQuoteEmail: jest.fn().mockReturnValue({ subject: 's', html: 'h', text: 't' }), send: jest.fn().mockResolvedValue({ ok: true }) } },
+        { provide: ConfigService, useValue: { get: () => 'https://app.exemple.fr' } },
       ],
     }).compile();
     service = moduleRef.get(MissionRequestsService);

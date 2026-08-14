@@ -10,6 +10,12 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
 
 /** Identifiant de modèle e-mail (journalisé dans EmailLog.template). */
 export type EmailTemplateId =
+  /**
+   * A6 — un tour de negociation d'une demande de mission. Un seul identifiant pour
+   * les deux sens (depot vers transporteur et l'inverse) : c'est le meme objet, et
+   * le journal des envois doit pouvoir les compter ensemble.
+   */
+  | 'mission_request'
   | 'invitation'
   | 'password_reset'
   | 'device_verification'
@@ -342,6 +348,108 @@ export class EmailService {
    * Le nom du TRANSPORTEUR est mis en avant, pas Tracky : c'est de lui que le dépôt
    * attend un e-mail, il ne connaît pas notre marque (A5 § 6, même principe).
    */
+  /**
+   * A6 — un tour de negociation vient d'arriver chez l'autre partie.
+   *
+   * ┌─ UN SEUL GABARIT POUR LES DEUX SENS, ET C'EST DELIBERE ───────────────────┐
+   * │ Depot vers transporteur, transporteur vers depot : c'est le meme objet —  │
+   * │ « quelqu'un vous a repondu, voici son offre ». Deux gabarits auraient      │
+   * │ diverge des la premiere retouche, et l'un des deux serait devenu le        │
+   * │ parent pauvre de l'autre.                                                 │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * `amountCents` nul = « sur devis » : on ne remplace JAMAIS par zero. Un e-mail
+   * annoncant « 0,00 EUR » a un client final est pire qu'un e-mail sans montant.
+   */
+  buildMissionQuoteEmail(opts: {
+    ref: string;
+    /** Ce que le destinataire doit comprendre en une ligne. */
+    titre: string;
+    intro: string;
+    origin: string;
+    destination: string;
+    nbArrets: number;
+    startAt: Date;
+    endAt: Date;
+    amountCents: number | null;
+    message: string | null;
+    carrierName: string;
+    url: string;
+    libelleAction: string;
+  }): { subject: string; html: string; text: string } {
+    const jour = new Date(opts.startAt).toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+    const h = (d: Date) =>
+      new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const creneau = `${h(opts.startAt)} → ${h(opts.endAt)}`;
+    const montant =
+      opts.amountCents === null
+        ? 'Sur devis'
+        : `${(opts.amountCents / 100).toFixed(2).replace('.', ',')} € HT`;
+
+    // Pas de crochets dans le sujet (B1 § I). La reference y figure : c'est elle
+    // qu'on cherche dans une boite pleine.
+    const subject = `${opts.titre} — ${opts.ref}`;
+
+    const ligne = (libelle: string, valeur: string) => `
+      <tr>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13px;color:#69736E;width:120px;">${libelle}</td>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:600;color:#EAEFED;">${valeur}</td>
+      </tr>`;
+
+    const trajet =
+      opts.nbArrets > 2
+        ? `${this.escapeHtml(opts.origin)} → ${this.escapeHtml(opts.destination)} (${opts.nbArrets - 1} livraisons)`
+        : `${this.escapeHtml(opts.origin)} → ${this.escapeHtml(opts.destination)}`;
+
+    const html = this.shell({
+      eyebrow: 'Demande de mission',
+      footer: `${this.escapeHtml(opts.carrierName)}<br>Propulsé par Vizyo Tracky. E-mail automatique, ne pas répondre.`,
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${this.escapeHtml(opts.titre)}</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${this.escapeHtml(opts.intro)}</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${ligne('Référence', this.escapeHtml(opts.ref))}
+            ${ligne('Trajet', trajet)}
+            ${ligne('Créneau', `${jour}, ${creneau}`)}
+            ${ligne('Montant', this.escapeHtml(montant))}
+          </table>
+        </td></tr>
+        ${
+          opts.message
+            ? `<tr><td style="padding:18px 36px 0;">
+                 <p style="margin:0;padding:13px 15px;border-radius:11px;background:#12201B;font-family:'Manrope',system-ui,sans-serif;font-size:14px;line-height:1.6;color:#EAEFED;">« ${this.escapeHtml(opts.message)} »</p>
+               </td></tr>`
+            : ''
+        }
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.url}" style="display:inline-block;padding:13px 26px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">${this.escapeHtml(opts.libelleAction)}</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
+
+    const text = [
+      opts.titre,
+      '',
+      opts.intro,
+      '',
+      `Référence : ${opts.ref}`,
+      `Trajet    : ${opts.origin} → ${opts.destination}`,
+      `Créneau   : ${jour}, ${creneau}`,
+      `Montant   : ${montant}`,
+      ...(opts.message ? ['', `« ${opts.message} »`] : []),
+      '',
+      opts.url,
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
   buildMissionAssignedEmail(opts: {
     ref: string;
     origin: string;
@@ -1465,6 +1573,23 @@ ${this.commercialSignatureText()}`;
           plate: 'FR-482-BX',
           carrierName: fleetName,
           depotUrl: `${appBase}/depot`,
+        });
+      case 'mission_request':
+        return this.buildMissionQuoteEmail({
+          ref: 'D-0142',
+          titre: 'Nouvelle demande de mission',
+          intro:
+            'Un de vos dépôts vous adresse une demande. Le devis ci-dessous a été calculé sur votre grille tarifaire.',
+          origin: 'Entrepôt Toulouse',
+          destination: 'Client Blagnac',
+          nbArrets: 3,
+          startAt: new Date('2026-09-02T08:00:00Z'),
+          endAt: new Date('2026-09-02T12:00:00Z'),
+          amountCents: 16900,
+          message: 'Livraison fragile, merci de prévoir des sangles.',
+          carrierName: 'MH Cars',
+          url: `${appBase}/missions`,
+          libelleAction: 'Ouvrir la demande',
         });
       case 'depot_incident':
         return this.buildDepotIncidentEmail({

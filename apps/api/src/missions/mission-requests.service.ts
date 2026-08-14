@@ -8,6 +8,9 @@ import {
 import { MissionRequestStatus, MissionStopKind, Prisma, QuoteRoundAuthor, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
 import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
+import { ConfigService } from '@nestjs/config';
+import type { Env } from '../config/env.validation';
+import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionPricingService, type ResultatTarif } from './mission-pricing.service';
 import { MissionsService } from './missions.service';
@@ -85,6 +88,8 @@ export class MissionRequestsService {
     private readonly pricing: MissionPricingService,
     /** La conversion passe par le chemin EXISTANT, jamais par un mission.create maison. */
     private readonly missions: MissionsService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   // ═══ CREATION ═══════════════════════════════════════════════════════════════
@@ -165,6 +170,10 @@ export class MissionRequestsService {
     this.logger.log(
       `Demande ${demande.ref} creee par ${user.id} — ${arrets.length} arret(s), ${tarif.statut}`,
     );
+    void this.notifier(demande.id, QuoteRoundAuthor.DEPOT,
+      'Nouvelle demande de mission',
+      'Un de vos depots vous adresse une demande. Le devis ci-dessous a ete calcule sur votre grille tarifaire.',
+      'Ouvrir la demande');
     return this.detailComplet(demande.id);
   }
 
@@ -263,7 +272,16 @@ export class MissionRequestsService {
       });
     });
 
-    this.logger.log(`Demande ${demande.ref} — tour ${demande.rounds.length} par ${roleDansLaNegociation}`);
+    this.logger.log(
+      `Demande ${demande.ref} — tour ${demande.rounds.length} par ${roleDansLaNegociation}`,
+    );
+    void this.notifier(
+      requestId,
+      roleDansLaNegociation,
+      'Nouvelle proposition',
+      "L'autre partie vous a répondu. Voici sa proposition.",
+      'Voir la proposition',
+    );
     return this.detailComplet(requestId);
   }
 
@@ -472,6 +490,92 @@ export class MissionRequestsService {
       },
     });
     return this.versDto(d);
+  }
+
+  // ═══ NOTIFICATIONS ══════════════════════════════════════════════════════════
+
+  /**
+   * Prevenir l'autre partie qu'une offre l'attend.
+   *
+   * ┌─ HORS TRANSACTION, ET VOLONTAIREMENT ─────────────────────────────────────┐
+   * │ Un e-mail qui echoue ne doit pas annuler une negociation deja ecrite. Les  │
+   * │ deux parties verront la demande en se connectant de toute facon ; l'e-mail │
+   * │ est un rappel, pas le canal de verite. Meme raisonnement que               │
+   * │ `MissionsService.notifierDepot`.                                          │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * Le destinataire est calcule depuis le CAMP qui vient de jouer : le depot a
+   * repondu, on previent le transporteur, et inversement. On ne se previent jamais
+   * soi-meme.
+   */
+  private async notifier(
+    requestId: string,
+    campQuiVientDeJouer: QuoteRoundAuthor,
+    titre: string,
+    intro: string,
+    libelleAction: string,
+  ): Promise<void> {
+    try {
+      const d = await this.prisma.missionRequest.findUnique({
+        where: { id: requestId },
+        include: {
+          stops: { orderBy: { position: 'asc' } },
+          rounds: { orderBy: { position: 'desc' }, take: 1 },
+          depotUser: { select: { email: true } },
+          fleet: { select: { name: true } },
+        },
+      });
+      if (!d) return;
+
+      // Vers le DEPOT : une seule adresse. Vers le TRANSPORTEUR : tous ceux qui
+      // gerent les missions de la societe — un seul destinataire nomme se serait
+      // trouve en conges le jour ou une demande arrive.
+      const versDepot = campQuiVientDeJouer !== QuoteRoundAuthor.DEPOT;
+      const destinataires = versDepot
+        ? [d.depotUser.email]
+        : (
+            await this.prisma.user.findMany({
+              where: { fleetId: d.fleetId, isActive: true, role: { in: [UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER] } },
+              select: { email: true },
+            })
+          ).map((u) => u.email);
+      if (destinataires.length === 0) return;
+
+      const base = this.config.get('APP_BASE_URL', { infer: true }) ?? '';
+      const dernier = d.rounds[0];
+      const tpl = this.email.buildMissionQuoteEmail({
+        ref: d.ref,
+        titre,
+        intro,
+        origin: d.stops[0]?.label ?? '',
+        destination: d.stops[d.stops.length - 1]?.label ?? '',
+        nbArrets: d.stops.length,
+        startAt: d.wantedStartAt,
+        endAt: d.wantedEndAt,
+        amountCents: dernier?.amountCents ?? null,
+        message: dernier?.message ?? null,
+        // Le nom du TRANSPORTEUR, pas Tracky : c'est de lui que le depot attend un
+        // e-mail (A0 § Marque).
+        carrierName: d.fleet?.name ?? 'Votre transporteur',
+        url: versDepot ? `${base}/depot/requests/${d.id}` : `${base}/missions?demande=${d.id}`,
+        libelleAction,
+      });
+
+      for (const to of destinataires) {
+        await this.email.send({
+          to,
+          subject: tpl.subject,
+          html: tpl.html,
+          text: tpl.text,
+          template: 'mission_request',
+          context: { requestId: d.id, fleetId: d.fleetId },
+        });
+      }
+    } catch (err) {
+      // Journalise et continue : la negociation est ecrite, elle ne doit pas
+      // dependre d'un serveur de messagerie.
+      this.logger.warn(`Notification de la demande ${requestId} en echec : ${String(err)}`);
+    }
   }
 
   // ═══ OUTILS ═════════════════════════════════════════════════════════════════
