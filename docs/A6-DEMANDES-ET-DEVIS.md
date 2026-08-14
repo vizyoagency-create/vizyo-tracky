@@ -4,8 +4,18 @@
 > de référence** : on le suit, on coche, et on y consigne les décisions au fur et à
 > mesure. Toute session qui reprend le chantier commence ici.
 >
-> **État au 2026-08-13** — tranche 1 (modèle de domaine) écrite, à réviser suite aux
-> arbitrages du 2026-08-13 ci-dessous. Aucune migration générée, aucun code branché.
+> **État au 2026-08-13, fin de session** — **T1 et T2 terminées.** Le modèle de
+> domaine est arrêté, la migration est écrite, appliquée en local et vérifiée. Les
+> dix arbitrages du client sont consignés. **Aucun code applicatif n'est branché**,
+> et **rien n'est déployé en production**.
+>
+> **Reprendre ici :** § 8, tranche **T3** (service de tarification + onglet
+> Paramètres). Tout ce qu'il faut savoir est dans ce fichier — lisez-le en entier
+> avant d'écrire une ligne, en particulier le § 2 (arbitrages), le § 7bis
+> (conception des deux côtés) et le § 10 (pièges déjà payés sur ce dépôt).
+>
+> **Commits du chantier :** `63e1749` (modèle), `17465f9` (plan + révision),
+> `6becc27` (arbitrages + conception), `04a5284` (migration).
 
 ---
 
