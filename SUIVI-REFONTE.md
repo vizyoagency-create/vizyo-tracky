@@ -166,9 +166,15 @@ commits de refonte.
 | Étape 0 · A1 · A2 · A5 · A3 · A4 | 🟢 livrés | — |
 | **B0′** — reliquat du socle | 🟢 livré | 27/28 |
 | **B-kit** — kit partagé | 🟢 livré | 26/28 |
-| **B-pages** | 🟢 **livré** — 7 blocs / 7 | **57/57** |
-| **B-mails** | ⬜ à faire — **le prochain lot** | 0/12 |
-| **PROD** | ⬜ à faire | 0/28 |
+| **B-pages** | 🟢 **livré** — blocs A→G | **57/57** |
+| **Bloc J** — interfaces alternatives | 🟡 **2 modes sur 3** *(2026-08-14)* | 2/3 |
+| **B-mails** | ⬜ à faire — **le prochain lot** | 0/12 *(⚠️ la spec § I dit **19 gabarits**)* |
+| **PROD** | ⬜ à faire — push, déploiement, recette | 0/28 |
+
+> ⚠️ **`B1-PAGES.md` a DIX blocs (A→J), ce tableau n'en suivait que sept.** Les blocs
+> **H** (kit partagé, 23 composants → couvert par le lot B-kit) et surtout **J**
+> (interfaces alternatives) n'apparaissaient nulle part. Le bloc J a été mesuré et repris
+> le 2026-08-14 (§ 6quater) — **il portait deux écrans qui ignoraient le thème**.
 
 ### 5.2 B-pages, bloc par bloc — **l'ordre est imposé par `B1-PAGES.md`**
 
@@ -192,14 +198,15 @@ n'est pas un bloc fini.** À réappliquer tel quel à B-mails et à PROD.
 | **F** — Surfaces bloquantes (12) | 🟢 **clos 12/12**, séance du 2026-08-11 | — |
 | **G** — Le shell (2) | 🟢 **2/2** — shell authentifié · shell hors session *(2026-08-14)* | — |
 
-> ✅ **B-PAGES EST CLOS — les 7 blocs sont livrés et mesurés.** Séance du **2026-08-14** :
-> les 13 pages « présumées » rouvertes (aucune n'était propre), puis `/places`, `/alerts`
-> et le bloc G. **Toutes les pages mesurées sont à 0 échec de contraste dans les deux
-> thèmes, à 375 px**, et sans cible sous 44 px.
+> ✅ **B-PAGES EST CLOS** — blocs A→G livrés et mesurés. Séance du **2026-08-14** : les 13
+> pages « présumées » rouvertes (aucune n'était propre), puis `/places`, `/alerts`, le
+> bloc G, et enfin le **bloc J** qui ne figurait dans aucun tableau. **Toutes les surfaces
+> mesurées sont à 0 échec de contraste dans les deux thèmes, à 375 px**, sans cible sous
+> 44 px.
 >
-> Ce qui reste, écrit noir sur blanc : les **3 points d'API bloqués** (§ 7.1), les
-> **décisions d'écran non tranchées** (§ 7.2), le **mode Baanool** (§ 6ter) — et
-> **B-mails**, 0/12, qui n'a pas été commencé.
+> ⚠️ **Deux interfaces restent livrées SANS AVOIR ÉTÉ VUES** : `/driver` et le mode
+> veilleur — aucun compte `DRIVER` ni `NIGHT_WATCHMAN` en base de dev. Ce n'est pas une
+> décision, c'est une dette d'environnement (§ 12, point 10).
 
 ### 5.3 Ce qui reste, dans l'ordre
 
@@ -507,17 +514,98 @@ Et la **légende de `/map` ne ressemblait pas aux marqueurs qu'elle décrit** : 
 les six couleurs, et encre les vrais marqueurs. **Le jumeau était double** — la même
 légende est rendue deux fois (feuille mobile + panneau bureau).
 
-### 6ter.4 🟠 CE QUI RESTE — le mode Baanool, NON MESURÉ
+### 6ter.4 ~~Le mode Baanool, NON MESURÉ~~ — ❌ **ce paragraphe était FAUX**
 
-Le « Centre de messages » (`isBaanoolMode()`, dans `alerts.component.ts`) porte **~16
-couleurs figées en dur** — `#333`, `#eee`, `white`, `#999`, `#00c896`, `#ccc` — et ne suit
-**aucun thème**. C'est le même défaut que `/fleet-schedules` (§ 6bis.2).
+> J'ai écrit ici que le mode « dépend d'une préférence **serveur** que le navigateur ne
+> peut pas poser » et je l'ai classé non mesurable. **C'est faux.** Le réglage est un
+> bouton dans **`/settings` → Apparence → « Mode interface simplifiée »**. C'est un usage
+> normal de l'app, réversible par le même bouton.
+>
+> **La leçon vaut plus que l'erreur** : « je ne peux pas le mesurer » est une conclusion
+> qui se vérifie, exactement comme une mesure. J'avais lu le `computed` qui lit
+> `preferences.uiMode` et je me suis arrêté là, sans chercher **qui écrit** cette
+> préférence — un `grep uiMode` de dix secondes donnait la réponse.
 
-> ⚠️ **C'est une lecture de code, PAS un relevé.** Le mode s'active par
-> `user.preferences.uiMode === 'baanool'`, une préférence **serveur** : la poser depuis le
-> navigateur ne suffit pas, l'app la réécrit au démarrage depuis `/api/auth/me`. Le
-> mesurer demande soit un compte de test en base, soit de toucher aux données — je ne l'ai
-> pas fait. **Ne pas le compter comme mesuré.**
+✅ Mesuré et repris le 2026-08-14 → **§ 6quater**.
+
+---
+
+## 6quater. Bloc J — les interfaces alternatives (2026-08-14) — `6b9a72b`
+
+**Ce bloc n'était dans aucun tableau du suivi.** `B1-PAGES.md § J` couvre trois
+interfaces : le **mode veilleur**, le **mode simplifié**, et le menu qui les accompagne.
+
+### 6quater.1 Deux écrans qui ignoraient le thème — corrigés
+
+Même défaut que `/fleet-schedules`, et **même signature au relevé** : des ratios
+**identiques en clair et en sombre**, parce qu'une palette figée ne bouge pas avec
+`data-theme`.
+
+| Écran | Élément | Avant *(les deux thèmes)* | Après |
+|---|---|---:|---:|
+| Centre de messages | « Message d'alarme » (onglet actif) | **2,16:1** | ✅ |
+| | « Notification » · « Aucune donnée » | 2,85:1 | ✅ |
+| Panneau véhicules | « Total(2) » (onglet actif) | **2,16:1** | ✅ |
+| | « 53 km/h » | 2,85:1 | ✅ |
+
+**~30 valeurs en dur** reprises sur les jetons. Bilan : **3/3 → 0/0** sur les deux écrans.
+
+> **Le relevé le confirme autrement** : les *ratios distincts* passaient de **5/5**
+> (identiques) à **4/4 et 5/6**. Quand les deux thèmes donnent le même nombre de valeurs
+> distinctes, c'est déjà un signe — la page ne suit pas le thème.
+
+### 6quater.2 ⭐ Une règle qui faisait l'INVERSE du critère
+
+Les boutons de la carte simplifiée sont déclarés à **44 × 44**… puis un
+`@media (max-width: 480px)` les ramenait à **40 × 40**. Sous le plancher, **sur mobile**,
+et sur le mode destiné aux utilisateurs qui ont le moins de marge d'erreur.
+
+> **Une règle responsive qui RÉDUIT une cible est un défaut, pas une adaptation.** Les
+> espacements se compressent, la cible non. À chercher ailleurs : `grep -n "@media" ` puis
+> lire ce que la règle *retire*, pas seulement ce qu'elle ajoute.
+
+Idem « acquitter une alerte » (32 × 32) et les deux boutons d'en-tête (36 × 36).
+
+### 6quater.3 Vérifié conforme — le défaut que la spec nommait est bien corrigé
+
+`B1-PAGES § J` relève : « le réglage promet *toutes les pages restent accessibles*, mais
+`dashboard-layout` filtre le menu à 5 entrées ». **Mesuré au navigateur** : le menu garde
+**tout** — Tableau de bord, Rapports, Scores et Agenda sont là — et « Paramètres · Revenir
+en interface complète » est bien détaché, comme l'exige la règle non négociable.
+
+C'est `groupesComplets()` qui le garantit : le mode simplifié **réutilise la même liste**,
+il n'en tient pas une seconde. Une page ajoutée ne peut plus disparaître du mode simplifié.
+
+### 6quater.4 🟠 NON MESURÉ — le mode veilleur
+
+Aucun compte `NIGHT_WATCHMAN` dans la flotte de dev (**1 VIEWER, 1 FLEET_MANAGER, 1
+FLEET_ADMIN**, vérifié par `GET /api/users`). Même limite que le rôle DRIVER pour
+`/driver` (§ 5.2). Le code est là (`navItems()` réduit la navigation à Véhicules), il n'a
+**jamais été vu à l'écran**.
+
+> Pour le mesurer, il faut **un compte veilleur en base**. C'est la même dette que pour le
+> conducteur, et elle se réglerait une fois pour les deux.
+
+### 6quater.5 🟠 NON FAIT — l'écran simplifié n'a pas la forme de la planche
+
+La planche `Veilleur et Mode Simplifie Refonte` pose quatre règles pour cet écran :
+
+1. **« Jamais plus de 3 boutons »** — *« une quatrième fonction entre DERRIÈRE l'une des
+   trois, jamais à côté »*.
+2. **Du langage courant** — *« Où est mon véhicule ? », pas « Carte ». « Anti-vol », pas
+   « Surveillance ».*
+3. Les garde-fous restent · 4. la sortie vers l'interface complète est toujours visible.
+
+**Mesuré : l'écran porte SEPT boutons ronds**, étiquetés « Menu », « Recentrer »,
+« Alertes », « Mon compte », « Véhicules », « Ma position », « Vue satellite » — du
+langage d'application, pas du langage courant. La planche montre des boutons **larges
+(62-66 px) portant un libellé**, pas des ronds d'icônes.
+
+> ⚠️ **Non fait volontairement : c'est une décision d'écran, pas une correction.** Passer
+> de 7 commandes à 3 + une feuille change ce que ces utilisateurs peuvent faire d'un
+> geste, et il faut choisir LESQUELLES trois. La planche n'en nomme que deux
+> explicitement. **À trancher** (§ 12). Les cibles et les couleurs, elles, étaient
+> objectives et sont faites.
 
 ---
 
@@ -795,10 +883,15 @@ doit rester en modifications locales non commitées.
       une décision de comportement, non tranchée (§ 7.2). Le mode `grouped` existe déjà
       comme option du sélecteur de vue ; seul son passage en **défaut** est en attente.
 - [ ] **7. B-mails** — 12 lignes, **0 faite**. Planche `Emails Refonte.dc.html`,
-      spec `B1-PAGES.md § I` (19 gabarits). **C'est le prochain lot.**
-- [ ] **8. Le mode Baanool** (§ 6ter.4) — ~16 couleurs en dur, non mesuré faute de
-      compte de test. À traiter avec `/fleet-schedules` en tête : c'est le même défaut.
-- [ ] **9. PROD** — 0/28, jamais commencé.
+      spec `B1-PAGES.md § I` (**19 gabarits** — le compteur 12 est à revoir).
+      **C'est le prochain lot.**
+- [x] ~~**8. Le mode Baanool**~~ — mesuré et repris le 2026-08-14 (§ 6quater). Restent
+      deux points, tous deux nommés : le **mode veilleur** non mesuré faute de compte
+      (§ 6quater.4) et la **forme de l'écran simplifié** (§ 6quater.5), qui est une
+      décision d'écran.
+- [ ] **9. PROD** — 0/28, jamais commencé : push, déploiement, recette production.
+      ⚠️ Le VPS porte **la production** — consigne permanente : ne rien déployer sans
+      demande explicite.
 
 **Décisions encore à demander — la liste COMPLÈTE, rien d'autre n'est en suspens :**
 
@@ -816,6 +909,13 @@ doit rester en modifications locales non commitées.
    poignée de feuille, plaques sur téléphone, variante critique de `confirm-modal`,
    regroupement des lieux discrets) — inchangées.
 8. La **coupure moteur à moitié faite** (§ 7.3) — inchangée.
+9. *(nouveau)* **La forme de l'écran simplifié** (§ 6quater.5) : la planche impose
+   « jamais plus de 3 boutons » en langage courant, l'écran en porte **sept** en langage
+   d'application. Quelles trois commandes garder — et lesquelles passent derrière ?
+10. *(dette d'environnement, pas une décision)* **Aucun compte `NIGHT_WATCHMAN` ni
+    `DRIVER`** en base de dev : deux interfaces entières (`/driver`, mode veilleur) sont
+    livrées **sans avoir jamais été vues à l'écran**. Un compte de chaque réglerait les
+    deux d'un coup.
 
 **Et un rappel qui ne coûte rien** : **26 commits ne sont pas poussés.**
 
