@@ -4,20 +4,28 @@
 > de référence** : on le suit, on coche, et on y consigne les décisions au fur et à
 > mesure. Toute session qui reprend le chantier commence ici.
 >
-> **État au 2026-08-14** — **T1, T2 et T3 terminées.** Le modèle de
-> domaine est arrêté, la migration est écrite, appliquée en local et vérifiée. Les
-> dix arbitrages du client sont consignés. **Aucun code applicatif n'est branché**,
-> et **rien n'est déployé en production**.
+> **État au 2026-08-14** — **T1, T2 et T3 terminées.** Le modèle de domaine est
+> arrêté, la migration est écrite et vérifiée en local, la tarification est
+> fonctionnelle de bout en bout : service, endpoints, écran. Les dix arbitrages du
+> client sont consignés. **Rien n'est déployé en production.**
 >
-> **Reprendre ici :** § 8, tranche **T4/T5**. T1, T2 et T3 sont faites. Tout ce qu'il faut savoir est dans ce fichier — lisez-le en entier
-> avant d'écrire une ligne, en particulier le § 2 (arbitrages), le § 7bis
-> (conception des deux côtés) et le § 10 (pièges déjà payés sur ce dépôt).
+> **Reprendre ici :** § 8, tranche **T5** (demande côté dépôt). Le moteur de devis de
+> T4 est en réalité déjà écrit — `MissionPricingService.tarifPour` — il reste à le
+> brancher sur la création d'une demande. Lisez ce fichier en entier avant d'écrire
+> une ligne, en particulier le § 2 (arbitrages), le § 7bis (conception des deux
+> côtés) et le § 10 (pièges déjà payés sur ce dépôt).
 >
-> **Commits du chantier :** `63e1749` (modèle), `17465f9` (plan + révision),
-> `6becc27` (arbitrages + conception), `04a5284` (migration), `9561265` (service de
-> tarification), `5eab130` (page /missions).
+> **Commits :** `63e1749` (modèle), `17465f9` (plan + révision), `6becc27`
+> (arbitrages + conception), `04a5284` (migration), `9561265` (service de
+> tarification), `5eab130` (page /missions), `99d8ffc` (Q3).
 >
-> ⚠️ **Dette connue :** l onglet Paramètres n a PAS été vérifié dans le navigateur.
+> ⚠️ **Deux dettes connues, à solder avant tout déploiement :**
+> 1. L'onglet Paramètres **n'a pas été vérifié dans le navigateur** — ni à 375 px, ni
+>    sur les contrastes. La première des trois règles non négociables du chantier
+>    n'est donc pas honorée sur cet écran.
+> 2. L'alerte au centre d'alertes quand la grille manque (arbitrage J) n'est pas
+>    branchée : le service répond `PAS_DE_GRILLE`, mais rien ne remonte côté
+>    administration.
 
 ---
 
