@@ -438,15 +438,30 @@ export class MissionRequestThreadComponent implements OnInit {
     return !!d && d.statut === 'TARIF' && m !== null && d.htCents !== m;
   });
 
-  /** Ce que la grille donnerait sur la distance en cours de saisie. */
-  protected readonly tarifRecalcule = computed(() => {
+  /**
+   * Ce que la grille donnerait sur la distance en cours de saisie.
+   *
+   * ⚠️ UNE MÉTHODE, PAS UN `computed()`, ET LA RECETTE A MONTRÉ POURQUOI.
+   *
+   * `distance` est un champ simple lié par `ngModel`, pas un signal. Un `computed()`
+   * ne suit que les signaux qu'il lit : il avait mémorisé le résultat calculé sur la
+   * distance d'origine et ne le révisait plus jamais. Constaté au navigateur le
+   * 2026-08-14 — le transporteur corrigeait 48 km en 62 et l'écran affichait
+   * « Sur 62 km, votre grille donne 79,00 € HT (tranche 0 à 50 km) ». Le nombre venait
+   * de la nouvelle saisie, le prix de l'ancienne : un montant faux, sur le seul écran
+   * où l'on discute d'argent, et parfaitement invisible en relecture de code.
+   *
+   * Une méthode est réévaluée à chaque cycle de détection, et chaque frappe en
+   * déclenche un — y compris sous `OnPush`.
+   */
+  protected tarifRecalcule(): string | null {
     const g = this.grille();
     if (!g || this.distance === null) return null;
     const d = calculerDevis(this.distance, g);
     if (d.statut === 'TARIF') return `${montantEuros(d.htCents)} HT (tranche ${d.trancheLibelle})`;
     if (d.statut === 'SUR_DEVIS') return 'un tarif sur devis';
     return null;
-  });
+  }
 
   // ═══ LES MOTS DE CHAQUE CAMP ═══════════════════════════════════════════════
 

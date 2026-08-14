@@ -157,9 +157,9 @@ type Simulation =
                 @case ('TARIF') {
                   <p class="mp-resu">
                     <strong>{{ s.distanceKm }} km</strong> — tranche {{ s.trancheLibelle }} :
-                    <strong>{{ euros(s.htCents) }} € HT</strong>,
-                    TVA {{ euros(s.tvaCents) }} €,
-                    <strong>{{ euros(s.ttcCents) }} € TTC</strong>
+                    <strong>{{ montant(s.htCents) }} HT</strong>,
+                    TVA {{ montant(s.tvaCents) }},
+                    <strong>{{ montant(s.ttcCents) }} TTC</strong>
                   </p>
                 }
                 @case ('SUR_DEVIS') {
@@ -456,8 +456,37 @@ export class MissionPricingTabComponent implements OnInit {
     );
   }
 
+  /**
+   * Centimes → euros, pour la LIAISON d'un champ de saisie.
+   *
+   * Renvoie un NOMBRE, parce qu'`<input type="number">` en attend un. Ne jamais s'en
+   * servir pour afficher : cf. `montant()` juste en dessous.
+   */
   protected euros(cents: number | null): number | null {
     return cents === null ? null : Math.round(cents) / 100;
+  }
+
+  /**
+   * Centimes → « 202,80 € », pour l'AFFICHAGE.
+   *
+   * ┌─ POURQUOI DEUX FONCTIONS PLUTÔT QU'UNE ───────────────────────────────────┐
+   * │ Le simulateur affichait le résultat d'`euros()` — un nombre brut. Angular  │
+   * │ le rendait donc « 202.8 € » : point décimal anglais, décimale manquante,   │
+   * │ sur le seul écran du produit dont l'objet est de faire relire un PRIX.     │
+   * │ Constaté à la recette navigateur du 2026-08-14, invisible de tous les      │
+   * │ tests parce qu'aucun ne regardait la chaîne rendue.                        │
+   * │                                                                            │
+   * │ Le champ de saisie, lui, a toujours besoin d'un nombre : les deux usages   │
+   * │ sont réellement différents, et les séparer est la seule façon de ne pas    │
+   * │ les reconfondre.                                                            │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  protected montant(cents: number | null): string {
+    if (cents === null) return 'Sur devis';
+    return `${(cents / 100).toLocaleString('fr-FR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} €`;
   }
 
   protected simuler(): void {

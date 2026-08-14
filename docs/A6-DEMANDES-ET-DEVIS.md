@@ -20,7 +20,46 @@
 > | T7 affectation et conversion | ✅ API + écran (véhicule, conducteur, consignes) |
 > | T9 e-mails | ✅ **les quatre** : demande, contre-proposition, accord, affectation |
 > | **T8 multi-arrêts dans l'agenda** | ❌ |
-> | **T10 recette** | ⏳ recette navigateur en attente d'une session |
+> | **T10 recette** | ✅ **navigateur, 375 px, cycle complet — 6 scénarios** |
+>
+> **La recette navigateur est AUTOMATISÉE** :
+> `apps/web/e2e/a6-demandes-et-negociation.spec.ts`. Elle joue le cycle entier à
+> 375 px — le transporteur règle sa grille, le dépôt dépose, le transporteur
+> contre-propose, le dépôt accepte, le transporteur affecte — puis rejoue les deux
+> écrans en 1280 px. Chaque étape mesure **dans le DOM rendu** : contraste réel,
+> débordement horizontal, cibles tactiles ≥ 44 px. Elle est rejouable (empreinte et
+> créneau propres à chaque exécution) et se lance ainsi :
+>
+> ```
+> $env:A6_TOKEN_CARRIER = '<jwt>'   # cf. TEST_PLAN T04, jeton signé localement
+> $env:A6_TOKEN_DEPOT   = '<jwt>'
+> $env:E2E_BASE_URL = 'http://localhost:4211'; $env:E2E_SKIP_DEV_SERVER = '1'
+> pnpm --filter @vizyo/tracky-web exec playwright test a6-demandes
+> ```
+>
+> **Ce que la recette a trouvé, et qu'aucun autre contrôle ne voyait :**
+>
+> 1. **Le simulateur affichait « 202.8 € »** — point décimal anglais, décimale
+>    manquante, sur le seul écran dont l'objet est de faire relire un prix. La
+>    fonction `euros()` renvoie un NOMBRE pour la liaison d'un `<input type="number">`,
+>    et servait aussi à l'affichage. Séparée en `euros()` / `montant()`.
+> 2. **Le recalcul de la contre-proposition mentait.** Le transporteur corrigeait
+>    48 km en 62 et lisait « Sur 62 km, votre grille donne 79,00 € HT (tranche 0 à
+>    50 km) » : le nombre venait de la nouvelle saisie, le prix de l'ancienne. Cause :
+>    un `computed()` lisant un champ lié par `ngModel` — un signal ne suit pas une
+>    propriété simple, le calcul était figé au premier rendu. **Même piège que dans la
+>    modale de demande**, où il avait été attrapé à la relecture ; ici il fallait le
+>    navigateur.
+> 3. **Le portail `<app-permissions-gate>` intercepte tous les clics** au premier
+>    lancement. Sans le neutraliser, aucun parcours automatisé n'est possible — et le
+>    message d'erreur ne le nomme jamais.
+>
+> ⚠️ **Un piège pour la mise en production** : les comptes dépôt créés AVANT la
+> permission `missions_request` portent un JSON de permissions où la clé est
+> **absente**. Le résolveur teste `perms[clé] === true` : clé absente = refus. Les
+> trois comptes de démonstration étaient dans ce cas. L'écran l'annonçait mal — il
+> accusait le transporteur de ne pas avoir publié ses tarifs ; il distingue désormais
+> le 403 de l'absence de grille.
 >
 > **Le fil de négociation est UN SEUL composant, partagé par les deux camps**
 > (`shared/components/mission-request-thread`). Les deux parties y accèdent tant que
