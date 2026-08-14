@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { MissionStatus } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DepotScopeGuard } from '../depot/depot-scope.guard';
+import { MissionPricingService, type GrilleEntree } from './mission-pricing.service';
 import {
   MissionsService,
   type CreerMissionEntree,
@@ -25,7 +26,10 @@ import {
 @Controller('missions')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, DepotScopeGuard)
 export class MissionsController {
-  constructor(private readonly missions: MissionsService) {}
+  constructor(
+    private readonly missions: MissionsService,
+    private readonly pricing: MissionPricingService,
+  ) {}
 
   /**
    * Creer une mission.
@@ -94,6 +98,61 @@ export class MissionsController {
   @RequirePermissions('missions_view')
   activiteDesDepots(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
     return this.missions.activiteDesDepots(req.user, fleetId || undefined);
+  }
+
+  /**
+   * La grille tarifaire de la société — onglet Paramètres de `/missions` (A6, T3).
+   *
+   * `null` quand aucune grille n'existe : c'est un cas NORMAL, pas une erreur.
+   * L'écran affiche alors « aucune grille » et propose d'en créer une — et côté
+   * dépôt, la demande de mission reste fermée faute de tarif à présenter.
+   *
+   * Gardée par `missions_view` : lire ses tarifs n'est pas les modifier.
+   */
+  @Get('pricing')
+  @RequirePermissions('missions_view')
+  grille(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.pricing.lire(req.user, fleetId || undefined);
+  }
+
+  /**
+   * Enregistre la grille. Remplacement COMPLET des tranches — une grille se lit
+   * comme un tout, et une fusion ligne à ligne laisserait des tranches orphelines.
+   *
+   * Gardée par `missions_manage` : c'est le prix que le transporteur facture.
+   */
+  @Put('pricing')
+  @RequirePermissions('missions_manage')
+  enregistrerGrille(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: GrilleEntree,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.pricing.enregistrer(req.user, dto, fleetId || undefined);
+  }
+
+  /**
+   * Le simulateur de l'onglet Paramètres : « pour 87 km, combien ? ».
+   *
+   * Une grille qu'on ne peut pas essayer se règle à l'aveugle — et une erreur de
+   * borne ne se découvre alors que sur un devis déjà parti chez un client final.
+   */
+  @Get('pricing/simulate')
+  @RequirePermissions('missions_view')
+  async simuler(
+    @Req() req: AuthenticatedRequest,
+    @Query('km') km: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    const distanceKm = Number(km);
+    if (!Number.isFinite(distanceKm) || distanceKm < 0) {
+      throw new BadRequestException('Distance invalide');
+    }
+    const grille = await this.pricing.lire(req.user, fleetId || undefined);
+    if (!grille) {
+      return { statut: 'PAS_DE_GRILLE', motif: 'Aucune grille pour cette société.' };
+    }
+    return this.pricing.tarifPour(grille.fleetId, Math.round(distanceKm * 1000));
   }
 
   /** Les comptes dépôt de la flotte — alimente le sélecteur de destinataire. */
