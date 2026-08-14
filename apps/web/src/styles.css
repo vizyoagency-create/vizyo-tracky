@@ -266,22 +266,27 @@ body.plat-android {
   --depot-attente: var(--texte-attente);
 }
 
-/* ─── Pastilles de statut, version dépôt ─────────────────────────────────────
+/* ─── Pastilles de statut ────────────────────────────────────────────────────
  *
- * `.vt-status--on/--danger/--offline` posent une couleur SÉMANTIQUE sur un fond
- * teinté de la même couleur. Le résultat est joli et lisible à 16 px ; à 12 px sur
- * fond clair il tombe entre 2,98 et 3,40:1 — sous le seuil du critère n° 10.
+ * `.vt-status--on/--danger/--warning` posent une couleur SÉMANTIQUE sur un fond
+ * teinté de la même couleur : joli et lisible à 16 px, mais à 12 px sur fond clair
+ * ça tombe entre 2,92 et 3,40:1 — sous le seuil.
  *
- * On ne retouche pas la classe globale : elle habille 29 autres pages, et leur
- * reprise est le chantier du bloc B. On la RESSERRE dans l'espace dépôt, où le
- * critère s'applique — la teinte et donc la signification restent les mêmes, seule
- * la valeur descend assez pour être lue. « Une couleur = une signification » n'est
- * pas « une couleur = une valeur exacte ».
+ * ⚠️ CE COMMENTAIRE DISAIT : « on ne retouche pas la classe globale, elle habille
+ * 29 autres pages, et leur reprise est le chantier du bloc B ». Le resserrement
+ * n'existait donc que dans l'espace dépôt.
+ *
+ * **Le bloc B est fini** (2026-08-14) : la raison d'attendre a disparu, et la
+ * règle est remontée là où elle aurait toujours dû être — dans la classe
+ * elle-même. La teinte et donc la signification ne bougent pas ; seule la valeur
+ * descend assez pour être lue. « Une couleur = une signification » n'est pas
+ * « une couleur = une valeur exacte ».
+ *
+ * Les surcharges `.layout--depot` sont parties avec : elles pointaient sur
+ * `--depot-succes`, qui n'est qu'un alias de `--texte-succes`. Elles ne
+ * changeaient plus rien, et deux endroits pour une même décision, c'est le
+ * « jumeau » qui finit par diverger.
  */
-.layout--depot .vt-status--on { color: var(--depot-succes) }
-.layout--depot .vt-status--danger { color: var(--depot-alerte) }
-.layout--depot .vt-status--warning { color: var(--depot-attente) }
-.layout--depot .vt-status--offline { color: var(--depot-attenue) }
 /* L'entrée de menu active : même cas, accent sur fond teinté d'accent (3,24:1). */
 .layout--depot .sidebar-link.active,
 .layout--depot .bottom-item.active { color: var(--depot-succes) }
@@ -1319,7 +1324,7 @@ textarea:focus-visible,
 }
 .vt-status__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .vt-status--on {
-  color: var(--color-tracky-light);
+  color: var(--texte-succes);
   background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-tracky-light) 28%, transparent);
 }
@@ -1327,12 +1332,12 @@ textarea:focus-visible,
 .vt-status--idle { color: var(--text-secondary); background: var(--surface-tertiary); }
 .vt-status--offline { color: var(--text-tertiary); background: var(--surface-tertiary); }
 .vt-status--warning {
-  color: var(--warning);
+  color: var(--texte-attente);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   border-color: color-mix(in srgb, var(--warning) 26%, transparent);
 }
 .vt-status--danger {
-  color: var(--danger);
+  color: var(--texte-alerte);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   border-color: color-mix(in srgb, var(--danger) 26%, transparent);
 }

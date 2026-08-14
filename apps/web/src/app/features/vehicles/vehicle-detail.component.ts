@@ -913,6 +913,30 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
   `,
   styles: [`
+    /* ─── Cibles tactiles au doigt ───────────────────────────────────────────
+     *
+     * Critere de recette « iPhone 390 px : cibles >= 44 px ». Mesure a 375 px le
+     * 2026-08-14 : SEPT commandes sortaient sous le seuil — retour 38x38, IMEI
+     * 92x36, « Changer » 51x36, « Incident » et « QR » 94x36 et 63x36, detacher
+     * le boitier 18x36, assigner un conducteur 84x36.
+     *
+     * ⚠️ La regle des 44 px de styles.css ne les rattrapait pas : c'est une LISTE
+     * de noms de classes (.tab-btn, .main-tab, .bn-tab, .vdx-tab…) et aucune de
+     * celles-ci n'y figure. Une liste ne rattrape que ce qu'on y inscrit — d'ou
+     * cette regle, ecrite dans le composant qui porte les commandes.
+     *
+     * La HAUTEUR suffit pour les commandes a libelle : les elargir casserait la
+     * ligne. Les boutons a icone seule prennent les deux dimensions.
+     */
+    @media (max-width: 768px) {
+      .vdx-link,
+      .vdx-imei,
+      .vd-incident-btn,
+      .vd-driver-card-btn { min-height: 44px }
+      .vdx-back,
+      .vd-tracker-detach { min-width: 44px; min-height: 44px }
+    }
+
     /* ─── Bandeau « en mission » (espace dépôt, A2 § 9) ──────────────────────
        Violet : c'est la couleur du DÉPÔT dans tout le système (design/TOKENS.md).
        Ambre quand la mission est en retard — une attente à lever, pas un échec. */
@@ -965,7 +989,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-hero-plate { font-weight: 700; color: var(--fg-primary); letter-spacing: .02em; }
     .vdx-dot { color: var(--fg-tertiary); }
     .vdx-hero-group { display: inline-flex; align-items: center; gap: 7px; }
-    .vdx-link { font-size: .76rem; font-weight: 700; color: var(--tracky-light); cursor: pointer; }
+    /* Convention du kit : un libelle prend --texte-succes, jamais le vert de
+       marque (3,34:1 en clair). */
+    .vdx-link { font-size: .76rem; font-weight: 700; color: var(--texte-succes); cursor: pointer; }
     .vdx-link:hover { text-decoration: underline; }
     .vdx-hero-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; flex-shrink: 0; }
 
@@ -980,7 +1006,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-stat-u { font-size: .72rem; font-weight: 600; color: var(--fg-tertiary); }
     .vdx-stat-coord { font-family: var(--font-mono, monospace); font-size: .66rem; color: var(--fg-tertiary); margin-top: 2px; }
     .vdx-stat-live { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .68rem; font-weight: 700; color: var(--fg-tertiary); }
-    .vdx-stat-live--on { color: var(--tracky-light); }
+    .vdx-stat-live--on { color: var(--texte-succes); }
     /* DORMANCE — violet, identique au badge « Dormant » (source unique : connectivityMeta).
        Le liseré sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ».
        La valeur SUIT le badge : les deux se lisent côte à côte sur la même fiche, une
@@ -1030,7 +1056,8 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
     .vdx-tab:hover { color: var(--fg-secondary); }
     .vdx-tab--active { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong); }
-    .vdx-tab-badge { min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); font-size: .66rem; font-weight: 800; }
+    /* Compteur sur pastille teintee : le chiffre est du TEXTE (2,88:1 avec --danger). */
+    .vdx-tab-badge { min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); font-size: .66rem; font-weight: 800; }
 
 
     /* ─── V1.7 — Carte super-admin "Reglage materiel ACC" ─── */
@@ -1552,7 +1579,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-tracker-extra { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap }
     .vd-inst { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
     .vd-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
-    .vd-inst--no-sim { color: var(--warning); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+    .vd-inst--no-sim { color: var(--texte-attente); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
     .vd-sim { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace) }
     .vd-tracker-detach {
       background: transparent; border: 0; padding: 3px; border-radius: 4px;
@@ -1601,7 +1628,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 12px; border-radius: 10px;
       background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.28);
-      color: var(--warning); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
+      color: var(--texte-attente); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
       white-space: nowrap;
     }
     .vd-incident-btn:hover { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.42); }
