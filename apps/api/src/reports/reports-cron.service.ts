@@ -61,7 +61,7 @@ export class ReportsCronService {
         }
 
         const pdfBuffer = await this.pdf.generate(report);
-        const subject = `[Vizyo Tracky] Rapport hebdomadaire — ${fleet.name}`;
+        const subject = `Rapport hebdomadaire — ${fleet.name}`;
         const fromStr = formatFleetDate(from);
         const toStr = formatFleetDate(to);
         const body = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} est en piece jointe.\n\nResume :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n- Conso estimee : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n\nL'equipe Vizyo`;

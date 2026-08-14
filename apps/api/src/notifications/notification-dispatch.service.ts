@@ -1282,7 +1282,11 @@ export class NotificationDispatchService {
   ): Promise<void> {
     const prefix = isEscalation ? '[ESCALADE] ' : '';
     const plate = alert.vehicle?.plate ?? alert.vehicleId ?? '';
-    const subject = `${prefix}[Tracky] ${alert.title}${plate ? ` — ${plate}` : ''}`;
+    // Refonte e-mails (2026-08) : plus de crochets de MARQUE en tete de sujet —
+    // motif spam classique, et 16 caracteres manges sur l'apercu mobile. Le nom
+    // d'expediteur (RESEND_FROM = « Vizyo Tracky ») porte deja la marque.
+    // `[ESCALADE]` reste : ce n'est pas de la marque, c'est une information.
+    const subject = `${prefix}${alert.title}${plate ? ` — ${plate}` : ''}`;
     const bodyText = `${prefix}${alert.title}\n${alert.message ?? ''}\n\nVehicule : ${plate || 'N/A'}\nSeverite : ${alert.severity}\n\nVoir l'alerte : (acceder a Tracky pour acquitter)`;
 
     if (channel === 'EMAIL') {

@@ -522,7 +522,7 @@ export class InstallationBookingService {
       void this.email
         .send({
           to: booking.clientEmail,
-          subject: '[Vizyo Tracky] Votre demande de créneau d\'installation',
+          subject: 'Votre demande de créneau d\'installation',
           html: this.email.shell({
             eyebrow: 'Installation · Créneau',
             footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',

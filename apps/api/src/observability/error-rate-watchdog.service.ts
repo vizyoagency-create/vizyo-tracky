@@ -93,7 +93,8 @@ export class ErrorRateWatchdogService {
       .map(([source, count]) => ({ source, count }));
 
     const html = this.email.buildErrorRateAlertEmail({ total, critical, threshold: this.threshold, top, since });
-    const subject = `[Tracky] ${total} erreurs en 1 h${critical > 0 ? ` (dont ${critical} critiques)` : ''}`;
+    // Refonte e-mails : pas de crochets de marque en tete de sujet (cf. shell()).
+    const subject = `${total} erreurs en 1 h${critical > 0 ? ` (dont ${critical} critiques)` : ''}`;
 
     const res = await this.email.send({
       to: this.recipient,

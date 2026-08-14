@@ -126,36 +126,36 @@ export class LeadsService {
   ) {
     const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-    // Rangées de contact (mono label + valeur Manrope), séparées par un filet.
-    const sep = `<tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>`;
-    const labelStyle = `padding:12px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#69736E;width:110px;vertical-align:top;`;
-    const valStyle = `padding:12px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#EAEFED;`;
+    // Rangees de contact (label mono + valeur), separees par un filet.
+    const sep = `<tr><td colspan="2" style="border-top:1px solid #E3E8E6;"></td></tr>`;
+    const labelStyle = `padding:12px 18px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#656F68;width:110px;vertical-align:top;`;
+    const valStyle = `padding:12px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#0A1311;`;
     const rows: string[] = [
       `<tr><td style="${labelStyle}">Nom</td><td style="${valStyle}">${escHtml(lead.name)}</td></tr>`,
-      `<tr><td style="${labelStyle}">E-mail</td><td style="padding:12px 18px;font-size:14px;"><a href="mailto:${lead.email}" style="color:#10E0A0;text-decoration:none;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;">${escHtml(lead.email)}</a></td></tr>`,
+      `<tr><td style="${labelStyle}">E-mail</td><td style="padding:12px 18px;font-size:14px;"><a href="mailto:${lead.email}" style="color:#0A7A55;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">${escHtml(lead.email)}</a></td></tr>`,
     ];
     if (lead.phone) {
-      rows.push(`<tr><td style="${labelStyle}">Téléphone</td><td style="${valStyle}"><a href="tel:${escHtml(lead.phone)}" style="color:#EAEFED;text-decoration:none;">${escHtml(lead.phone)}</a></td></tr>`);
+      rows.push(`<tr><td style="${labelStyle}">Téléphone</td><td style="${valStyle}"><a class="m-title" href="tel:${escHtml(lead.phone)}" style="color:#0A1311;text-decoration:none;">${escHtml(lead.phone)}</a></td></tr>`);
     }
     if (lead.company || lead.fleetSize) {
       const parts: string[] = [];
       if (lead.company) parts.push(escHtml(lead.company));
-      if (lead.fleetSize) parts.push(`<span style="color:#10E0A0;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:13px;">${escHtml(lead.fleetSize)} véhicules</span>`);
+      if (lead.fleetSize) parts.push(`<span style="color:#0A7A55;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:13px;">${escHtml(lead.fleetSize)} véhicules</span>`);
       rows.push(`<tr><td style="${labelStyle}">Société</td><td style="${valStyle}">${parts.join(' · ')}</td></tr>`);
     }
     const contactTable = rows.join(sep);
 
     const messageBlock = lead.message
-      ? `<div style="margin-top:12px;padding:14px 16px;background:#0C110F;border:1px solid rgba(255,255,255,.06);border-radius:11px;">
-            <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#565f5b;margin-bottom:6px;">Message</div>
-            <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;color:#9BA5A1;">${escHtml(lead.message)}</p>
+      ? `<div style="margin-top:12px;padding:14px 16px;background:#F6F9F7;border:1px solid #E3E8E6;border-radius:11px;">
+            <div class="m-foot" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#656F68;margin-bottom:6px;">Message</div>
+            <p class="m-text" style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#56635E;">${escHtml(lead.message)}</p>
           </div>`
       : '';
 
     const resubBanner = isResubmission
       ? `<tr><td style="padding:22px 36px 0;">
             <div style="padding:11px 15px;background:rgba(245,179,61,.1);border:1px solid rgba(245,179,61,.3);border-radius:11px;">
-              <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;font-weight:600;color:#F5B33D;">Re-soumission #${submissionCount} — ce prospect a déjà soumis le formulaire.</p>
+              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;color:#885B05;">Re-soumission #${submissionCount} — ce prospect a déjà soumis le formulaire.</p>
             </div>
           </td></tr>`
       : '';
@@ -166,16 +166,16 @@ export class LeadsService {
       body: `
         ${resubBanner}
         <tr><td style="padding:26px 36px 0;">
-          <h1 style="margin:0 0 4px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Nouveau prospect</h1>
-          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#69736E;">Reçu à l'instant via la landing page</p>
+          <h1 class="m-title" style="margin:0 0 4px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">Nouveau prospect</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:#656F68;">Reçu à l'instant via la landing page</p>
         </td></tr>
         <tr><td style="padding:0 36px;">
-          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">${contactTable}</table>
+          <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid #E3E8E6;border-radius:13px;">${contactTable}</table>
           ${messageBlock}
         </td></tr>
         <tr><td style="padding:20px 36px 0;">
           <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
-            <a href="https://manager.vizyoagency.com/services/leads" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir Vizyo Manager →</a>
+            <a href="https://manager.vizyoagency.com/services/leads" style="display:inline-block;padding:14px 30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir Vizyo Manager →</a>
           </td></tr></table>
         </td></tr>`,
     });
