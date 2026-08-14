@@ -526,8 +526,27 @@ interface AlertCluster {
       background: transparent; cursor: pointer; transition: all .2s;
     }
     .main-tab:hover { color: var(--fg-secondary) }
+    /* ─── Onglet « Regles » : trois classes ORPHELINES ───
+       .rs-note, .rs-link et .rs-off etaient posees dans le gabarit sans qu'AUCUNE
+       regle n'existe — ni ici, ni dans styles.css, ni ailleurs dans le depot. Le
+       lien d'action rendait donc comme du texte brut (et sortait a 343x37), et
+       .rs-off, censee montrer qu'une regle est DESACTIVEE, ne montrait rien du
+       tout. C'est le defaut « regle CSS qui ne s'applique pas », dans sa version
+       la plus discrete : la classe est bien la, elle ne fait rien. */
+    .rs-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-tertiary) }
+    .rs-link {
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
+      min-height: 44px; font-size: 12.5px; font-weight: 600;
+      color: var(--texte-succes); text-decoration: none;
+    }
+    .rs-link:hover { text-decoration: underline }
+    /* Une regle desactivee n'envoie rien : elle doit se LIRE comme telle. */
+    .rs-off { opacity: .55 }
+
+    /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, jamais
+       le vert de marque. 6e occurrence du meme motif. Mesure : 3,17:1 en clair. */
     .main-tab.active {
-      background: rgba(16,224,160,.1); color: var(--tracky-light);
+      background: rgba(16,224,160,.1); color: var(--texte-succes);
       box-shadow: 0 1px 3px rgba(0,0,0,.1);
     }
     .tab-badge {
