@@ -121,9 +121,14 @@ import { ThemeService } from '../../core/theme/theme.service';
             />
             Rester connecté
           </label>
+          <!-- « oublie » sans accent est reste ici alors que /forgot-password ecrit
+               le mot avec son accent, a deux ecrans d'ecart. La garde verif:accents
+               est VERTE : le mot n'est pas dans sa liste, et volontairement — « il
+               oublie » est un verbe valide sans accent. Une garde-liste ne rattrape
+               que ce qu'on y inscrit. -->
           <a routerLink="/forgot-password"
-             class="lg-oubli text-[13px] text-tracky-light hover:text-tracky transition-colors cursor-pointer">
-            Mot de passe oublie ?
+             class="lg-oubli text-[13px] text-texte-succes hover:text-tracky transition-colors cursor-pointer">
+            Mot de passe oublié ?
           </a>
         </div>
 

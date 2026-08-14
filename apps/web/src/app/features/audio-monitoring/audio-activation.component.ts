@@ -40,7 +40,7 @@ const ATTESTATION_VERSION = 'v1';
   template: `
     <div class="aa-page">
       <a routerLink="/settings"
-         class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
+         class="aa-retour text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
         <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon> Paramètres
       </a>
       <h1 class="font-display font-extrabold text-[1.72rem] tracking-[-0.03em] leading-[1.1] text-fg-primary">Mode assistance.</h1>
@@ -181,6 +181,13 @@ const ATTESTATION_VERSION = 'v1';
     </div>
   `,
   styles: [`
+    /* Lien de retour mesure a 343x36, sous le plancher de 44 px.
+       ⚠️ La classe utilitaire min-h-[44px] NE MARCHE PAS ici : le plancher global
+       de styles.css (button, a { min-height: 36px } sous pointer: coarse) est
+       ecrit HORS COUCHE, et une regle sans couche bat toujours une regle placee
+       dans @layer utilities — quelle que soit la specificite. Il faut donc une
+       regle de composant, elle aussi hors couche. */
+    .aa-retour { min-height: 44px }
     .aa-page { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px }
     .s-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 18px; overflow: hidden }
     .s-card-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle) }

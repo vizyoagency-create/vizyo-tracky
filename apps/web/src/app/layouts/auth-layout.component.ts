@@ -327,7 +327,11 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
 
         <header class="auth-head">
           <app-logo variant="icon" [size]="30" />
-          <span class="brand-word">Vizyo <span class="text-tracky-light">Tracky</span></span>
+          <!-- Le logotype est du TEXTE : meme convention que partout ailleurs, il
+               prend --texte-succes et non le vert de marque (3,34:1 en clair).
+               La top-bar du shell porte le meme defaut ; elle sera reprise au
+               bloc G, avec le meme jeton. -->
+          <span class="brand-word">Vizyo <span class="text-texte-succes">Tracky</span></span>
         </header>
 
         <main class="auth-main">

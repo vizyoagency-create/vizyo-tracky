@@ -170,7 +170,9 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       color: var(--fg-secondary);
       line-height: 1;
     }
-    .cal-cell--today .cal-cell-day { color: var(--tracky-light); }
+    /* Le numero du jour courant est du TEXTE : meme convention que l'etat actif
+       d'un segment (styles.css) — --texte-succes, pas le vert de marque (3,24:1). */
+    .cal-cell--today .cal-cell-day { color: var(--texte-succes); }
     .cal-cell-pills {
       display: flex;
       flex-direction: column;

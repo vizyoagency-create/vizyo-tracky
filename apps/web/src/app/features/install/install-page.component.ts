@@ -206,7 +206,10 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     .ip-badge lucide-icon { color: var(--tracky-light); }
 
     .ip-foot { margin: 24px 0 0; text-align: center; font-size: .86rem; color: var(--fg-tertiary); }
-    .ip-foot a { color: var(--tracky-light); font-weight: 600; }
+    /* 3,34:1 en clair. La sonde de recette signale aussi sa cible a 80x18 — c'est
+       son angle mort n° 3 : un lien EN LIGNE dans une phrase, l'elargir casserait
+       le texte. Seule la couleur change. */
+    .ip-foot a { color: var(--texte-succes); font-weight: 600; }
     .ip-foot a:hover { text-decoration: underline; }
   `],
 })

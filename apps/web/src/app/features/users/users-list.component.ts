@@ -169,7 +169,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                 <span class="u-avatar" [class]="avatarClass(u)">{{ userInitials(u) }}</span>
                 <div class="u-user-txt">
                   <div class="u-name">{{ displayName(u) }}</div>
-                  <div class="u-email mono">{{ u.email }}</div>
+                  <div class="u-email mono" [title]="u.email">{{ u.email }}</div>
                 </div>
               </div>
               <span class="u-cell-role">
@@ -209,7 +209,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                 <span class="u-avatar pending">{{ invInitials(inv) }}</span>
                 <div class="u-user-txt">
                   <div class="u-name">{{ invName(inv) }}</div>
-                  <div class="u-email mono">{{ inv.email }}</div>
+                  <div class="u-email mono" [title]="inv.email">{{ inv.email }}</div>
                 </div>
               </div>
               <span class="u-cell-role">
@@ -337,19 +337,22 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-avatar.admin { background: var(--tracky); color: var(--accent-ink) }
     .u-avatar.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .u-avatar.viewer { background: var(--bg-tertiary); color: var(--fg-tertiary) }
-    .u-avatar.pending { background: transparent; border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning) }
+    .u-avatar.pending { background: transparent; border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); color: var(--texte-attente) }
     .u-user-txt { min-width: 0 }
     .u-name { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-email { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 
     .u-cell-role { display: flex; align-items: center; gap: 7px; flex-wrap: wrap }
     .u-role-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-secondary) }
-    .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    /* Pastilles de role : 11,5 px sur un lavis a 14 % — du petit texte, donc les
+       jetons de la famille --texte-*. La couleur de marque rendait 2,92:1,
+       et --danger 3,31:1. */
+    .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--texte-succes) }
     /* Espace dépôt (2026-08) — violet : un dépôt n'est pas un membre de la flotte,
        et la pastille doit le dire d'un coup d'œil dans une liste mêlée. */
-    .u-role-pill.depot { background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--violet) }
-    .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
-    .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .u-role-pill.depot { background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--texte-violet) }
+    .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente) }
+    .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte) }
     .u-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor }
 
     .u-scope { font-size: 12.5px; color: var(--fg-secondary) }

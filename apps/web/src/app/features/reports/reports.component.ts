@@ -347,7 +347,9 @@ import {
             <span>Durée totale</span>
           </div>
           <div class="rep-kpi-body">
-            <p class="rep-kpi-value">{{ formatDuration(kpis().totalDuration) }}</p>
+            <!-- Tronque a 375 px sans attribut title : « 24h18 » se coupait sans que la
+                 valeur entiere soit lisible nulle part. -->
+            <p class="rep-kpi-value" [title]="formatDuration(kpis().totalDuration)">{{ formatDuration(kpis().totalDuration) }}</p>
             <span class="rep-kpi-meta">~{{ avgDurationPerActiveDay() }} / jour actif</span>
           </div>
         </div>
@@ -1018,7 +1020,9 @@ import {
     }
     .rep-export-btn:disabled { opacity: .5; cursor: not-allowed }
     .rep-export-btn--pdf {
-      color: var(--tracky-light);
+      /* Meme convention que l'etat actif d'un segment : le vert de MARQUE ne porte
+         pas de texte (il rendait 3,17:1 en clair). */
+      color: var(--texte-succes);
       background: rgba(16,224,160,.08);
       border-color: rgba(16,224,160,.22);
     }
@@ -1026,11 +1030,20 @@ import {
       background: rgba(16,224,160,.14);
       border-color: rgba(16,224,160,.32);
     }
-    /* Excel — teinte verte « tableur » (217954) distincte du tracky. */
+    /* Excel — teinte verte « tableur » (217954) distincte du tracky.
+       On garde la DECISION de la planche — une teinte a part, pour que l'export
+       tableur ne se confonde pas avec le vert de marque — mais pas sa VALEUR :
+       #34d399 rendait 1,74:1 en theme clair (et 1,64 mesure, l'ecart venant de
+       l'opacite .5 de l'etat desactive). Assombri pour le clair seulement, il
+       reste parfaitement distinct du tracky. */
     .rep-export-btn--excel {
       color: #34d399;
       background: rgba(33,121,84,.10);
       border-color: rgba(33,121,84,.28);
+    }
+    :host-context([data-theme='light']) .rep-export-btn--excel,
+    :host-context([data-theme='light']) .rep-export-btn--excel lucide-icon {
+      color: color-mix(in srgb, #34d399 55%, #000);
     }
     .rep-export-btn--excel:hover:not(:disabled) {
       background: rgba(33,121,84,.18);

@@ -276,8 +276,12 @@ interface GroupOption {
           <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#10E0A0"></span>Maintenance</span>
           <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#F59E0B"></span>Incident</span>
           <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#38BDF8"></span>Réservation</span>
-          <span class="inline-flex items-center gap-1.5"><span style="color:#38BDF8;font-weight:800">●</span>Activité réelle</span>
-          <span class="inline-flex items-center gap-1.5"><span style="color:#A78BFA;font-weight:800">~</span>Usage prévu</span>
+          <!-- Deux styles EN LIGNE avec la couleur en dur : #38BDF8 et #A78BFA sont
+               les valeurs SOMBRES de --blue et --violet, donc les glyphes gardaient
+               la teinte du theme sombre en clair (2,08:1 et 2,65:1). Les jetons
+               --texte-* portent la meme signification et basculent. -->
+          <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--reel">●</span>Activité réelle</span>
+          <span class="inline-flex items-center gap-1.5"><span class="ag-leg-glyphe ag-leg-glyphe--prevu">~</span>Usage prévu</span>
         </div>
       }
 
@@ -656,12 +660,16 @@ interface GroupOption {
     .ag-btn-primary {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 14px; border-radius: 10px;
-      background: var(--tracky, #10E0A0); color: #fff;
+      /* Un color:#fff sur l'accent, c'est l'Ecart 2 de design/B0-SOCLE.md : sur un
+         fond accent l'encre doit etre FONCEE. Mesure : 3,43:1 en clair et 1,72:1
+         en sombre (le vert y est plus vif, donc c'est PIRE). Les replis #10E0A0 /
+         #0bb586 sautent aussi : les deux noms de tete sont bien declares. */
+      background: var(--tracky); color: var(--accent-ink);
       border: none; font-size: 13px; font-weight: 700; cursor: pointer;
       transition: background .15s, opacity .15s;
       white-space: nowrap;
     }
-    .ag-btn-primary:hover:not(:disabled) { background: var(--tracky-dark, #0bb586); }
+    .ag-btn-primary:hover:not(:disabled) { background: var(--tracky-dark); }
     .ag-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
     .ag-btn-ghost {
       padding: 8px 14px; border-radius: 10px;
@@ -726,7 +734,13 @@ interface GroupOption {
       color: var(--fg-primary); font-family: var(--font-display);
       letter-spacing: -.02em;
     }
-    .ag-stat--danger .ag-stat-value { color: var(--danger); }
+    /* Un CHIFFRE est du texte : il prend le jeton --texte-*, pas la couleur
+       semantique pleine (--danger rendait 3,94:1 en clair). */
+    .ag-stat--danger .ag-stat-value { color: var(--texte-alerte); }
+    /* Glyphes de legende (● et ~) — etaient en style en ligne, cf. le gabarit. */
+    .ag-leg-glyphe { font-weight: 800; }
+    .ag-leg-glyphe--reel { color: var(--texte-info); }
+    .ag-leg-glyphe--prevu { color: var(--texte-violet); }
     .ag-stat-label {
       font-size: 10px; font-weight: 600; color: var(--fg-tertiary);
       text-transform: uppercase; letter-spacing: .04em; margin-top: 4px;

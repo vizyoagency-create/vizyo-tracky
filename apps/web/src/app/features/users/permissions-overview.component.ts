@@ -279,7 +279,11 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
       display: flex; align-items: center; justify-content: center;
       font-size: 11px; font-weight: 700; color: white;
     }
-    .po-user-avatar.admin { background: var(--tracky) }
+    /* Ecart 2 : sur l'ACCENT l'encre doit etre foncee. Le blanc herite de
+       .po-user-avatar rendait 3,43:1 en clair et 1,72:1 en sombre — le vert y
+       est plus vif, donc pire. Les deux gris ci-dessous gardent le blanc : mesure
+       a 4,76:1, une encre foncee y tomberait a 3,99. */
+    .po-user-avatar.admin { background: var(--tracky); color: var(--accent-ink) }
     .po-user-avatar.manager { background: #64748b }
     .po-user-avatar.viewer { background: #6b7280 }
     .po-user-info { flex: 1; min-width: 0 }
@@ -289,9 +293,12 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
       padding: 3px 8px; border-radius: 8px; font-size: 10px; font-weight: 700;
       text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0;
     }
-    .po-role-badge.admin { background: rgba(16,224,160,.12); color: var(--tracky-light) }
+    /* Pastilles de role : 10 px, donc du PETIT texte — jetons de la famille
+       --texte-*, jamais la couleur de marque (3,17:1) ni un gris en dur
+       (#9ca3af rendait 2,19:1, le pire ratio de la page). */
+    .po-role-badge.admin { background: rgba(16,224,160,.12); color: var(--texte-succes) }
     .po-role-badge.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
-    .po-role-badge.viewer { background: rgba(107,114,128,.12); color: #9ca3af }
+    .po-role-badge.viewer { background: rgba(107,114,128,.12); color: var(--texte-inactif) }
     .po-chevron { color: var(--fg-tertiary); flex-shrink: 0 }
 
     .po-user-scope-summary { display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0 }
