@@ -19,8 +19,8 @@
 > | T6 négociation — **INTERFACE** | ✅ **un seul fil, les deux camps** |
 > | T7 affectation et conversion | ✅ API + écran (véhicule, conducteur, consignes) |
 > | T9 e-mails | ✅ **les quatre** : demande, contre-proposition, accord, affectation |
-> | **T8 multi-arrêts dans l'agenda** | ❌ |
-> | **T10 recette** | ✅ **navigateur, 375 px, cycle complet — 6 scénarios** |
+> | **T8 multi-arrêts dans l'agenda** | ✅ saisie, liste, carte du dépôt |
+> | **T10 recette** | ✅ **navigateur, 375 px, cycle complet — 8 scénarios** |
 >
 > **La recette navigateur est AUTOMATISÉE** :
 > `apps/web/e2e/a6-demandes-et-negociation.spec.ts`. Elle joue le cycle entier à
@@ -142,6 +142,57 @@
 >    dans `MissionStatusService`, qui tourne déjà toutes les minutes.
 > 4. Deux e-mails manquent : **accord conclu** et **mission affectée**. Les deux
 >    moments les plus attendus des deux côtés.
+
+---
+
+## 0bis. Revue complète du lot — 2026-08-14
+
+> Passe de bout en bout : API, interface, isolation, contrats, tests. Ce qui suit est
+> **ce qui a été trouvé**, pas ce qui a été écrit — le reste du document dit déjà ce
+> qui a été écrit.
+
+### Corrigé pendant la revue
+
+| # | Constat | Gravité |
+|---|---|---|
+| 1 | **Un CONDUCTEUR lisait toutes les négociations.** `GET /mission-requests` était gardée par `missions_view`, que le rôle DRIVER porte par défaut. Vérifié sur une session réelle : **200, 21 Ko** — noms des dépôts, adresses, montants, messages. Un LECTEUR aussi. Passé à `missions_request` : la capacité de **négocier**, portée par le dépôt, le gestionnaire et l'administrateur — les deux côtés de la table, personne d'autre. Re-vérifié : **403**. | **Haute** |
+| 2 | **Le dépôt pouvait accepter son propre devis automatique.** Le tour 0 porte l'auteur `SYSTEM`, égal à aucun des deux camps : la garde laissait passer. Accord à une seule signature. Corrigé par `campDuTour()`. | **Haute** |
+| 3 | **On ne pouvait pas créer de mission depuis un téléphone.** `mission-dialog` en `z-index: 61`, barre de navigation basse en `7000` : le bouton « Créer » était couvert, un appui ouvrait « Alertes ». | **Haute** |
+| 4 | **Le recalcul d'une contre-proposition mentait** : « Sur 62 km, votre grille donne 79,00 € HT (tranche 0 à 50 km) ». Un `computed()` lisant un champ `ngModel`. | Moyenne |
+| 5 | **Le simulateur affichait « 202.8 € »** — point décimal anglais, décimale manquante, sur l'écran dont l'objet est de faire relire un prix. | Moyenne |
+| 6 | **Deux textes de l'onglet Paramètres sous le seuil** de contraste, dans les DEUX thèmes (3,16:1 et 3,75:1). | Moyenne |
+| 7 | **La croix de fermeture de `mission-dialog` faisait 26 px** — seul moyen de fermer hors iOS. | Moyenne |
+| 8 | **Les deux `select` de `mission-dialog` sans nom accessible propre** : le `label` enveloppant le contrôle, le nom calculé avalait la liste des options. Un lecteur d'écran annonçait la flotte entière à chaque prise de focus. | Moyenne |
+| 9 | **Les comptes dépôt existants n'ont pas `missions_request`** : clé absente du JSON de permissions, et le résolveur teste `=== true`. L'écran accusait à tort le transporteur de ne pas avoir publié ses tarifs. | Moyenne |
+
+**Le point commun des n° 3, 7 et 8 : `mission-dialog` porte ses propres styles au lieu
+de la coque partagée.** Le § 10 le disait déjà. Il avait raison trois fois de plus.
+
+### Vérifié et sain
+
+- **Isolation du dépôt** — `lister` et `chargerAccessible` bornent sur `depotUserId`
+  à chaque requête ; un dépôt tiers reçoit `404`, jamais `403` (sonder l'existence
+  d'une demande par son identifiant reste impossible). Testé.
+- **Liens publics** — leur sélection ne rend que `destLabel`. T8 n'y ajoute rien : la
+  tournée complète exposerait les adresses des autres clients du transporteur à un
+  destinataire de colis.
+- **Ce que le dépôt reçoit** — `DepotMissionDto.stops` porte les **libellés seuls**.
+  Le test du « contrat de fuite » couvre le champ.
+- **Une demande expirée** ne se négocie, ne s'accepte, ne se refuse et ne s'affecte
+  plus. Quatre gardes, quatre tests.
+- **L'affectation** est refusée deux fois à un dépôt : par la permission du contrôleur
+  (`missions_manage`) et par le service, avant toute écriture.
+
+### Dette restante, assumée
+
+| Sujet | État |
+|---|---|
+| `estimatedDistanceM` | Toujours nul — décision Q3 : pas de service de routage, et un vol d'oiseau ferait changer de tranche. L'écran le dit. |
+| Modifier les arrêts d'une mission existante | **Non fait.** `ModifierMissionEntree` ne porte pas `stops` ; la tournée se fige à la création. `mission-dialog` ne sert qu'à créer. |
+| Cibles tactiles de l'**agenda** | 7 boutons sous 44 px (`ag-month-btn` 30, `ag-today-btn` 31, `mp-filtre` 35, `mp-creer` 36…). **Antérieurs à ce lot**, hors périmètre A6, non corrigés. |
+| Liste des demandes | Plafond serveur à 200, aucune pagination ni filtre. Suffisant aujourd'hui, à revoir avant un client à fort volume. |
+| Suite web | **Un échec non reproductible** observé une fois sur cinq exécutions (353 tests). Quatre passes suivantes vertes ; le test fautif n'a pas pu être nommé. |
+| Migration T2 + `PRICING_GRID_MISSING` | Appliquées **en local uniquement**. Rien n'est déployé. |
 
 ---
 

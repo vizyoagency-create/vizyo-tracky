@@ -54,9 +54,27 @@ export class MissionRequestsController {
   /**
    * La liste. Un depot ne voit QUE les siennes — borne dans le service, sur
    * `depotUserId`, a chaque requete et jamais depuis un champ de session.
+   *
+   * ┌─ `missions_request`, ET NON `missions_view` ──────────────────────────────┐
+   * │ Corrige le 2026-08-14, apres verification sur une session reelle : un      │
+   * │ compte CONDUCTEUR porte `missions_view` par defaut et obtenait donc 21 Ko  │
+   * │ de negociations — noms des depots, adresses, montants, messages. Un        │
+   * │ LECTEUR aussi.                                                             │
+   * │                                                                            │
+   * │ Ce n'est pas un detail de droits : le reste du produit protege deja le     │
+   * │ conducteur de ces donnees. `MissionConducteurDto` est explicitement vide   │
+   * │ de toute information du depot — « Aucune donnee du depot », dit son        │
+   * │ commentaire. Cette route contredisait cette intention par une permission   │
+   * │ trop large.                                                                │
+   * │                                                                            │
+   * │ `missions_request` est la capacite de NEGOCIER : la portent le depot, le   │
+   * │ gestionnaire de flotte et l'administrateur — exactement les deux cotes de  │
+   * │ la table, et personne d'autre. Lire un fil de negociation sans pouvoir y   │
+   * │ prendre part n'a aucun usage dans le produit.                              │
+   * └────────────────────────────────────────────────────────────────────────────┘
    */
   @Get()
-  @RequirePermissions('missions_view')
+  @RequirePermissions('missions_request')
   lister(
     @Req() req: AuthenticatedRequest,
     @Query('fleetId') fleetId?: string,
@@ -96,9 +114,15 @@ export class MissionRequestsController {
     return this.demandes.grilleApplicable(req.user);
   }
 
-  /** Le detail d'une demande, avec son fil de negociation complet. */
+  /**
+   * Le detail d'une demande, avec son fil de negociation complet.
+   *
+   * Meme permission que la liste, et pour la meme raison : le detail porte PLUS que
+   * la liste — chaque tour, chaque montant, chaque message. Le fermer d'un cote en
+   * le laissant ouvert de l'autre n'aurait rien ferme du tout.
+   */
   @Get(':id')
-  @RequirePermissions('missions_view')
+  @RequirePermissions('missions_request')
   detail(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     // `detailPour` verifie l'acces AVANT de rendre quoi que ce soit. Lire puis
     // filtrer laisserait fuiter l'existence d'une demande par son identifiant.
