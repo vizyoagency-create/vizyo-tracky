@@ -63,6 +63,37 @@ T_DEBUT=$(date +%s)
 # seul, double la limite de 2 que cette procedure impose. Huit passages sans que ce soit visible.
 # C'est la famille de VPS-M21 : un defaut qui RASSURE n'a aucun plaignant. On capture les deux.
 CHARGE_DEBUT=$(cut -d' ' -f1 /proc/loadavg)
+# ⚠️⚠️ AJOUTE LE 2026-08-15 (VPS-M35) — LE VERDICT DE CHARGE ACCUSAIT L'AUDIT A TORT.
+# Angle mort n° 1 du rapport du 2026-08-14. Le bloc BUDGET a annonce ce jour-la une charge
+# passee de 2,43 a 14,70 — « +12,27 sur 2 coeurs », qui se lit comme une catastrophe. `sar`
+# disait autre chose sur la MEME fenetre : l'inactivite de la machine n'avait bouge que de
+# 38,63 % a 34,68 %, soit ~0,08 coeur sur 2.
+#
+# La cause est mecanique : la moyenne de charge de Linux compte les processus *runnable* ET
+# ceux en sommeil ININTERRUPTIBLE (etat `D`). Chaque `docker ...` — du collecteur comme des
+# 65 sondes de sante par minute — attend sur le socket d'un demon qui tourne en boucle depuis
+# le 2026-08-11 (VPS-016). Ils s'empilent dans la file SANS CONSOMMER UN CYCLE. Sur cette
+# machine, `loadavg` mesure la longueur d'une file d'attente, pas une consommation de CPU.
+#
+# ⚠️ On ne REMPLACE pas `loadavg` : il est juste sur une machine saine, et l'abandonner
+# effacerait la serie `chargeApresCollecte`. On lui adjoint les DEUX mesures qui manquaient :
+#
+#   1. `/proc/$$/stat` champs 14-17 (utime + stime + cutime + cstime) — le temps CPU
+#      REELLEMENT consomme par ce script ET tous ses enfants deja recuperes. C'est une mesure
+#      DIRECTE de ce que l'audit coute, pas une deduction. `$$` designe le shell principal
+#      meme lu depuis une substitution de commande, contrairement a `/proc/self/stat`.
+#   2. `/proc/stat` ligne `cpu` — de quoi calculer %idle et %nice sur EXACTEMENT la fenetre de
+#      la collecte, sans dependre de la tranche de 10 min de `sar` (qui, a l'heure normale du
+#      passage, n'est meme pas encore ecrite quand le script se termine).
+#
+# Cout : deux lectures de /proc au debut, deux a la fin. Aucun fork, aucun appel Docker.
+#
+# ⚠️ PORTEE, ecrite ici pour qu'on ne la surestime pas : `cutime`/`cstime` ne comptent que les
+# enfants DEJA ATTENDUS. Un processus encore en vie a la lecture n'y figure pas, et le cout de
+# `sshd` cote serveur n'y figure pas non plus. Le chiffre est donc un PLANCHER du cout de
+# l'audit — ce qui est le bon sens de l'erreur : il ne peut pas disculper l'audit a tort.
+CPU_AUDIT_DEBUT=$(awk '{print $14+$15+$16+$17}' "/proc/$$/stat" 2>/dev/null)
+STAT_DEBUT=$(awk '$1=="cpu"{print $2,$3,$4,$5,$6,$7,$8,$9; exit}' /proc/stat 2>/dev/null)
 section() { printf '\n\n═════ %s ═════   [t+%ss]\n' "$1" "$(( $(date +%s) - T_DEBUT ))"; }
 sub()     { printf '\n── %s ──\n' "$1"; }
 have()    { command -v "$1" >/dev/null 2>&1; }
@@ -609,7 +640,7 @@ sub "Conteneurs actifs : sante, redemarrages, limites"
 # correctif de VPS-M08, pas le gabarit. Il vaut exactement autant en un appel qu'en trente-deux.
 IDS=$(docker ps -q 2>/dev/null)
 NB_PS=$(printf '%s\n' "$IDS" | grep -c .)
-INSPECT=$(printf '%s\n' "$IDS" | xargs -r docker inspect --format '{{.Name}}|{{.RestartCount}}|{{with .State.Health}}{{.Status}}{{else}}aucune sonde{{end}}|{{.HostConfig.Memory}}|{{.HostConfig.RestartPolicy.Name}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{else}}aucun{{end}}' 2>/dev/null)
+INSPECT=$(printf '%s\n' "$IDS" | xargs -r docker inspect --format '{{.Name}}|{{.RestartCount}}|{{with .State.Health}}{{.Status}}{{else}}aucune sonde{{end}}|{{.HostConfig.Memory}}|{{.HostConfig.RestartPolicy.Name}}|{{with index .Config.Labels "com.docker.compose.project"}}{{.}}{{else}}aucun{{end}}|{{.State.StartedAt}}' 2>/dev/null)
 NB_RENDUS=$(printf '%s\n' "$INSPECT" | grep -c '|')
 printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=6 { sub(/^\//,"",$1)
   printf "  %s | redem=%s | sante=%s | memlimit=%s | redem_pol=%s | projet=%s\n", $1,$2,$3,$4,$5,$6 }'
@@ -626,6 +657,56 @@ else
 fi
 printf '  limites CPU : %s conteneur(s) sur %s en ont une\n' \
   "$(printf '%s\n' "$IDS" | xargs -r docker inspect --format '{{.HostConfig.NanoCpus}}' 2>/dev/null | grep -vc '^0$')" "$NB_PS"
+
+# ⚠️⚠️ AJOUTE LE 2026-08-15 (VPS-M38) — `redem=N` EST UN COMPTEUR CUMULE PUBLIE SANS SA FENETRE.
+# Trouve ce matin : la table ci-dessus affichait `maalem-dev-admin | redem=8 | sante=healthy`.
+# Huit redemarrages se lit comme « ce conteneur redemarre en boucle ». La verite est l'inverse :
+#
+#   Created=2026-08-14T10:30:03   FinishedAt=10:31:16   StartedAt=10:31:29   ExitCode=0
+#
+# Les huit redemarrages tiennent dans les 86 SECONDES qui ont suivi son deploiement, et il
+# tourne sans broncher depuis 16 heures. Un demarrage difficile, pas une boucle.
+#
+# Le defaut n'est PAS le chiffre — `RestartCount` est exact. C'est qu'il est publie sans dire
+# QUAND, exactement comme le cumul CPU de la section 1 (« un 🟠 peut rester allume des semaines
+# apres la fin de l'incident : c est 'maintenant' qui tranche »). Cette lecon avait ete tiree
+# pour `dockerd` le 2026-08-08 et jamais appliquee a la colonne d'a cote. C'est la famille
+# VPS-M11 / M20 / M21 — une mesure derivee d'une source qui tourne doit porter sa fenetre — et
+# elle mord ici dans le sens ACCUSATEUR : le conteneur est sain, la ligne dit qu'il ne l'est pas.
+#
+# ⚠️ AUCUN APPEL DOCKER DE PLUS : `StartedAt` vient du gabarit deja recupere ci-dessus.
+# ⚠️ COMPARAISON LEXICOGRAPHIQUE sur l'horodatage RFC3339 UTC, pas un `date -d` par conteneur —
+# 33 forks pour dater des conteneurs, c'est le piege que VPS-M14 a deja paye, et c'est la
+# technique retenue le 2026-08-14 pour les images creees dans les 24 h. Elle est valide parce
+# que Docker emet toujours ces dates en UTC (`Z`), zero-remplies : l'ordre alphabetique EST
+# l'ordre chronologique.
+sub "Conteneurs qui ont REDEMARRE : la boucle est-elle ACTIVE, ou ETEINTE depuis ?"
+SEUIL_2H=$(date -u -d '-2 hours' '+%Y-%m-%dT%H:%M:%S' 2>/dev/null)
+SEUIL_24H=$(date -u -d '-24 hours' '+%Y-%m-%dT%H:%M:%S' 2>/dev/null)
+if [ -z "${SEUIL_2H:-}" ] || [ -z "${SEUIL_24H:-}" ]; then
+  # Branche degeneree : on affiche les dates BRUTES et on refuse de classer. Un verdict
+  # « ✅ aucune boucle active » calcule sur un seuil vide serait une fausse rassurance (VPS-M28).
+  echo "  🔴 SEUIL INCALCULABLE (date -u indisponible) : CE BLOC NE CLASSE RIEN ce passage."
+  printf '%s\n' "$INSPECT" | awk -F'|' 'NF>=7 && $2+0>0 { sub(/^\//,"",$1)
+    printf "     %-24s redem=%-4s dernier demarrage %s\n", $1, $2, substr($7,1,16) }'
+else
+  printf '%s\n' "$INSPECT" | awk -F'|' -v s2="$SEUIL_2H" -v s24="$SEUIL_24H" '
+    NF>=7 && $2+0>0 {
+      sub(/^\//,"",$1); n++
+      if ($7 >= s2)       { v="🔴 BOUCLE ACTIVE — un redemarrage dans les 2 dernieres heures"; actifs++ }
+      else if ($7 >= s24) { v="🟠 RECENTE — dernier redemarrage dans les 24 h, stabilise depuis"; recents++ }
+      else                { v="✅ ETEINTE — plus aucun redemarrage depuis plus de 24 h" }
+      printf "  %-24s redem=%-4s dernier demarrage %s  %s\n", $1, $2, substr($7,1,16), v
+    }
+    END {
+      if (n==0) { print "  ✅ aucun conteneur avec un compteur de redemarrage > 0." ; exit }
+      printf "  → %d conteneur(s) au compteur > 0 : %d en boucle ACTIVE, %d stabilise(s) depuis moins de 24 h\n", n, actifs+0, recents+0
+      if (actifs+0 == 0)
+        print  "     ⚠️ Un compteur > 0 sans redemarrage recent est un HISTORIQUE, pas un incident."
+      else
+        print  "     🔴 A TRAITER : un compteur qui avance ENCORE est le seul cas qui compte ici."
+    }'
+fi
 
 # ── Le prerequis du redemarrage, verifie au lieu d'etre suppose ──
 # Le plan d'action « redemarrer pour activer le noyau » repose entierement sur cette ligne :
@@ -1856,6 +1937,68 @@ awk -v d0="$CHARGE_DEBUT" -v d1="$CHARGE_FIN" 'BEGIN{
   else
     printf "  ✅ charge maitrisee : %.2f → %.2f (%+.2f).\n", d0, d1, delta
 }'
+# ⚠️ VPS-M35 — LE DISCRIMINANT, sans lequel le verdict ci-dessus accuse sans preuve.
+# `loadavg` dit qu'une file s'est allongee ; il ne dit pas QUI a consomme le processeur. Les
+# deux lignes qui suivent le disent, et elles se lisent ensemble :
+#   • « l audit a consomme X % » vient de son PROPRE compteur CPU (/proc/$$/stat) : c'est une
+#     mesure directe, pas une soustraction ;
+#   • « la machine etait inactive a Y % » vient de /proc/stat sur exactement la meme fenetre.
+# Quand la charge monte de 12 pendant que l'audit consomme 3 % et que la machine garde 35 %
+# d'inactivite, la charge ne mesure PAS une consommation — et il faut que la sortie le dise,
+# sinon le lecteur qui verifie une fois cesse de lire la ligne (mode d'echec de VPS-M21, dans
+# l'autre sens : un defaut qui ACCUSE n'a pas plus de plaignant qu'un defaut qui rassure).
+CPU_AUDIT_FIN=$(awk '{print $14+$15+$16+$17}' "/proc/$$/stat" 2>/dev/null)
+STAT_FIN=$(awk '$1=="cpu"{print $2,$3,$4,$5,$6,$7,$8,$9; exit}' /proc/stat 2>/dev/null)
+TICKS=$(getconf CLK_TCK 2>/dev/null); case "${TICKS:-}" in ''|*[!0-9]*) TICKS=100 ;; esac
+# ⚠️ CHAQUE BRANCHE DEGENEREE REND UN AVEU, JAMAIS UNE RASSURANCE (lecon VPS-M28) : si une des
+# deux lectures manque, le bloc DIT qu'il ne conclut pas, au lieu d'afficher un 0 % rassurant.
+if [ -z "${STAT_DEBUT:-}" ] || [ -z "${STAT_FIN:-}" ] || [ -z "${CPU_AUDIT_DEBUT:-}" ] || [ -z "${CPU_AUDIT_FIN:-}" ]; then
+  echo "  🔴 DISCRIMINANT INDISPONIBLE : /proc/stat ou /proc/\$\$/stat n a pas pu etre lu."
+  echo "     Le verdict de charge ci-dessus repose donc sur loadavg SEUL — et VPS-M35 etablit"
+  echo "     que sur cette machine loadavg mesure une file d attente, pas une consommation."
+  echo "     NE PAS conclure sur le cout de l audit ce passage."
+else
+  echo "$STAT_DEBUT|$STAT_FIN" | awk -F'|' -v ca0="$CPU_AUDIT_DEBUT" -v ca1="$CPU_AUDIT_FIN" \
+       -v tk="$TICKS" -v np="$(nproc)" -v d="$DUREE" -v l0="$CHARGE_DEBUT" -v l1="$CHARGE_FIN" '{
+    n=split($1,a," "); split($2,b," ")
+    tot=0; for (i=1;i<=n;i++) { dd[i]=b[i]-a[i]; tot+=dd[i] }
+    if (tot <= 0) {
+      print "  🔴 DISCRIMINANT INEXPLOITABLE : /proc/stat n a pas avance entre les deux lectures."
+      print "     Aucune conclusion sur le cout de l audit ce passage."
+      exit
+    }
+    pidle = 100*dd[4]/tot; pnice = 100*dd[2]/tot; puser = 100*dd[1]/tot
+    psys  = 100*dd[3]/tot; pio = 100*dd[5]/tot;   psteal = (n>=8 ? 100*dd[8]/tot : 0)
+    audit_s = (ca1-ca0)/tk
+    printf "  ── DISCRIMINANT (VPS-M35) : ce que loadavg ne dit pas ──\n"
+    printf "  machine sur la MEME fenetre : idle %.1f %%  |  nice %.2f %%  |  user %.1f %%  |  sys %.1f %%  |  iowait %.1f %%  |  steal %.1f %%\n", \
+           pidle, pnice, puser, psys, pio, psteal
+    # ⚠️ CE GARDE A ETE POSE APRES COUP, ET IL A ETE ATTRAPE A L ESSAI (branche h du 2026-08-15).
+    # La premiere ecriture portait `capacite_s = (d>0 ? d*np : 1)` : avec une duree nulle, elle
+    # divisait 0,3 s de CPU par UNE seconde de capacite fictive, annoncait « 32 % de la machine »
+    # et declenchait le verdict 🔴 C EST L AUDIT. Un denominateur invente produisait une ACCUSATION
+    # sure d elle. C est le mode d echec de VPS-M28 retourne : la fausse rassurance et la fausse
+    # accusation coutent pareil, et un repli qui fabrique une valeur est toujours le coupable.
+    # Une duree nulle n est pas un cout nul : c est une ABSENCE DE MESURE, et elle se dit.
+    if (d <= 0) {
+      printf "  🔴 COUT DE L AUDIT NON CALCULABLE : duree de collecte nulle, donc aucune capacite\n     de reference. L audit a consomme %.1f s de CPU — ce chiffre est exact, mais il ne se\n     rapporte a RIEN. Ne pas en tirer de pourcentage, et ne pas conclure sur la charge.\n", audit_s
+      exit
+    }
+    capacite_s = d*np
+    paudit = 100*audit_s/capacite_s
+    printf "  cout REEL de l audit : %.1f s de CPU sur %d s x %d coeurs = %.1f %% de la machine\n", \
+           audit_s, d, np, paudit
+    if (paudit >= 25)
+      printf "  🔴 C EST BIEN L AUDIT, ET C EST MESURE : il a pris %.1f %% de la machine (seuil 25 %%).\n     Le verdict de charge ci-dessus est CONFIRME par une mesure directe, pas par loadavg.\n", paudit
+    else if (pidle < 10)
+      printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), mais l audit n y est que pour %.1f %%.\n     Chercher le consommateur AILLEURS : user %.1f %% + sys %.1f %% ne sont pas de l audit.\n", pidle, paudit, puser, psys
+    else if (l1-l0 > 1.0)
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite. Les processus s empilent en sommeil ININTERRUPTIBLE sur le\n     socket d un demon en boucle (VPS-016) : ils comptent dans loadavg sans bruler un cycle.\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle
+    else
+      printf "  ✅ COUT CONFIRME FAIBLE : %.1f %% de la machine, %.1f %% d inactivite restante.\n", paudit, pidle
+    printf "  ⚠️ PORTEE : « cout REEL » ne compte que les enfants DEJA attendus, et pas sshd cote\n     serveur. C est un PLANCHER — il ne peut pas disculper l audit a tort.\n"
+  }'
+fi
 awk -v d="$DUREE" -v b="${BUDGET:-90}" 'BEGIN{
   if (d <= b) print "  ✅ DANS LE BUDGET."
   else {
