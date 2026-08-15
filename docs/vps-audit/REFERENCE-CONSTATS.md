@@ -2580,6 +2580,31 @@ sens accusateur, qui n'a pas plus de plaignant que le sens rassurant.
 > Le 2026-08-14 il valait ~150 pour 1 (+12,27 pour 3,95 points). **Le phénomène n'est donc pas
 > réservé aux lectures extrêmes** : c'est la lecture *ordinaire* de `loadavg` qui est fausse sur
 > cette machine tant que VPS-016 dure.
+>
+> ### ⚠️ Le défaut a DEUX faces, et l'essai d'intégration a révélé la seconde
+>
+> Ce constat n'avait vu que la face **accusatrice**. L'essai de bout en bout du correctif, dans le
+> vrai contexte d'invocation (`bash -s` par SSH) avec un corps réduit à 6 secondes, a rendu :
+>
+> ```
+> charge 1 min : 1.45 au DEBUT  →  1.50 a la FIN
+> ✅ charge maitrisee : 1.45 → 1.50 (+0.05).        ← l ANCIEN verdict
+> cout REEL de l audit : 5.1 s de CPU sur 6 s x 2 coeurs = 42.8 % de la machine
+> 🔴 C EST BIEN L AUDIT, ET C EST MESURE : 42.8 %.   ← le NOUVEAU
+> ```
+>
+> | Fenêtre | Ce que `loadavg` dit | Ce qui se passe |
+> |---|---|---|
+> | Longue, machine bloquée (08-14, 08-15) | « +12,27 » / « +2,60 » | l'audit ne consomme presque rien — **fausse accusation** |
+> | **Courte** (6 s) | « **✅ charge maîtrisée** » | l'audit consomme **43 %** — **fausse rassurance** |
+>
+> La moyenne de charge est lissée sur une minute : sur une fenêtre courte, elle n'a pas le temps de
+> bouger. **Et c'est la face rassurante qui est la plus dangereuse** — VPS-M21, *un défaut qui
+> rassure n'a aucun plaignant*.
+>
+> **La leçon de méthode, et elle est nouvelle** : les huit branches avaient toutes été validées
+> **séparément** ; c'est l'essai de l'**assemblage** qui a montré la seconde face. *Essayer les
+> branches ne remplace pas essayer le montage* — la discipline VPS-M13 gagne ici une marche.
 
 **Le défaut, tel qu'il a été constaté le 2026-08-14.** Le bloc BUDGET a rendu :
 
