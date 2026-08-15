@@ -52,18 +52,23 @@ export async function ouvrirSession(page: Page, camp: CampRecette): Promise<void
       localStorage.setItem('vizyo-tracky-user', u as string);
       localStorage.setItem('vizyo-tracky-remember', '1');
 
-      // ⚠️ LES PORTAILS DE PREMIER LANCEMENT SONT MARQUÉS COMME DÉJÀ VUS.
+      // ⚠️ `tracky.perms.onboarded` N'EST PLUS POSÉ ICI, ET C'EST VOLONTAIRE.
       //
-      // `<app-permissions-gate>` s'affiche en plein écran tant que
-      // `tracky.perms.onboarded` est absent — c'est-à-dire toujours, dans un
-      // profil de navigateur neuf comme celui d'un test. Il INTERCEPTE LES CLICS
-      // sur tout l'écran derrière lui : sans cette ligne, la recette échoue au
-      // premier bouton, avec un message qui parle d'un élément « qui intercepte
-      // les événements de pointeur » et ne nomme jamais le portail.
+      // `<app-permissions-gate>` s'affichait en plein écran dans tout profil de
+      // navigateur neuf — donc à chaque exécution — et INTERCEPTAIT LES CLICS sur
+      // tout l'écran derrière lui. La recette échouait au premier bouton, avec un
+      // message parlant d'un élément « qui intercepte les événements de pointeur »
+      // sans jamais nommer le portail.
       //
-      // Ces portails ont leurs propres tests. Ce qu'on éprouve ici, ce sont les
-      // écrans A6 — un utilisateur réel les a franchis depuis longtemps.
-      localStorage.setItem('tracky.perms.onboarded', '1');
+      // Il est désormais muet en développement, décidé le 2026-08-14 :
+      // `PermissionOnboardingService.init()` sort immédiatement sous `isDevMode()`.
+      // Le contournement a donc été RETIRÉ plutôt que gardé « au cas où » — le
+      // laisser aurait masqué une régression de cette neutralisation, et la recette
+      // aurait continué de passer sur un écran que personne ne peut plus utiliser.
+      // Que ces huit scénarios passent est maintenant la preuve que le portail se
+      // tait vraiment.
+      //
+      // La bannière d'installation, elle, n'est pas concernée par cette décision.
       localStorage.setItem('tracky.pwa.dismissed', '1');
       localStorage.setItem('tracky.pwa.visits', '99');
     },

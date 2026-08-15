@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Calculator, Plus, Save, Trash2, TriangleAlert } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -57,6 +58,25 @@ type Simulation =
       <div class="mp-panne">
         <p>{{ erreur() }}</p>
         <button type="button" class="mp-btn" (click)="charger()">Réessayer</button>
+      </div>
+    } @else if (aucuneSociete()) {
+      <!-- ⚠️ DEUX ETATS VIDES, ET PAS UN SEUL. Le super-admin n'appartient a aucune
+           societe : sans choix au selecteur, le serveur ne PEUT pas dire quelle grille
+           montrer, et il rend une reponse vide — la MEME que « cette societe n'a pas
+           de grille ». Les confondre menait dans une impasse : l'ecran annoncait une
+           grille absente pour « cette societe » alors qu'aucune n'etait choisie, et le
+           bouton « Partir d'une grille type » conduisait a un enregistrement que le
+           serveur refuse avec « Selectionnez une societe ». Constate en preview le
+           2026-08-14. On nomme donc le geste attendu, et on ne propose rien d'autre. -->
+      <div class="mp-vide">
+        <lucide-icon [img]="TriangleAlert" [size]="20" />
+        <div>
+          <p class="mp-vide-t">Choisissez une société pour voir sa grille.</p>
+          <p class="mp-vide-s">
+            Une grille tarifaire appartient à une société : « toutes » n'a pas de sens
+            ici. Sélectionnez-en une dans la barre du haut.
+          </p>
+        </div>
       </div>
     } @else if (!grille()) {
       <!-- Aucune grille : un etat NORMAL, pas une panne. On dit la consequence — sans
@@ -317,6 +337,8 @@ export class MissionPricingTabComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
   private readonly fleetFilter = inject(FleetFilterService);
+  /** Le rôle, pour distinguer « aucune société choisie » de « je n'en ai qu'une ». */
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
 
   protected readonly Calculator = Calculator;
@@ -332,6 +354,28 @@ export class MissionPricingTabComponent implements OnInit {
   protected readonly enregistrement = signal(false);
   protected readonly messageEnregistrement = signal<string | null>(null);
   protected readonly simulation = signal<Simulation | 'encours' | null>(null);
+
+  /**
+   * Aucune société n'est DÉSIGNABLE : un super-admin qui n'en a choisi aucune.
+   *
+   * ⚠️ LES DEUX CONDITIONS SONT NÉCESSAIRES, et l'oubli de la première a failli
+   * passer. `selectedFleetId()` vaut `null` pour TOUT LE MONDE sauf un super-admin
+   * ayant fait un choix : un gestionnaire de flotte n'a pas de sélecteur du tout, et
+   * son `null` ne veut pas dire « toutes les sociétés » mais « la mienne, la seule ».
+   * Ne tester que le sélecteur aurait donc affiché « Choisissez une société » à
+   * l'écran de tous les gestionnaires, sur une grille parfaitement lisible.
+   *
+   * C'est exactement le périmètre que `requiredFleetScope` calcule côté serveur : lui
+   * seul rend une réponse vide pour un super-admin sans société.
+   */
+  // Corps a accolades, et non une expression flechee : la garde des accents cherche du
+  // texte entre un chevron fermant et un chevron ouvrant, et la fleche d'une expression
+  // courte ouvre un intervalle qui court jusqu'au prochain generique — en avalant au
+  // passage les commentaires des proprietes suivantes, qu'elle signale alors a tort.
+  // L'accolade referme l'intervalle sur place.
+  protected readonly aucuneSociete = computed(() => {
+    return this.auth.user()?.role === 'SUPER_ADMIN' && this.fleetFilter.selectedFleetId() === null;
+  });
 
   protected active = true;
   protected tva = 20;

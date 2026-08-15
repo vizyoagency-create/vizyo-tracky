@@ -1,6 +1,6 @@
 import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { inject, Injectable, isDevMode, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 /**
@@ -21,7 +21,33 @@ export class PermissionOnboardingService {
 
   readonly shouldOnboard = signal(false);
 
+  /**
+   * ⚠️ MUET EN DÉVELOPPEMENT (décision du 2026-08-14).
+   *
+   * ┌─ CE QU'IL FAUT COMPRENDRE AVANT DE LE RÉACTIVER ──────────────────────────┐
+   * │ Cet écran se pose EN PLEIN ÉCRAN au premier lancement et intercepte tous   │
+   * │ les clics derrière lui. En production c'est son rôle. Sur un poste de      │
+   * │ développement, il repart à zéro à chaque profil de navigateur neuf — donc  │
+   * │ à chaque exécution de recette automatisée, à chaque fenêtre privée, à      │
+   * │ chaque nettoyage du stockage local. Il barrait la route au premier bouton  │
+   * │ de chaque scénario, avec un message d'erreur qui parle d'« élément qui     │
+   * │ intercepte les événements de pointeur » et ne le nomme jamais.             │
+   * │                                                                            │
+   * │ On le TAIT ici plutôt que de le contourner dans chaque harnais : un        │
+   * │ contournement par test se recopie, se périme, et finit par manquer         │
+   * │ quelque part.                                                              │
+   * │                                                                            │
+   * │ ⚠️ RIEN D'AUTRE NE CHANGE. `record()` et `finish()` restent intacts : la   │
+   * │ traçabilité serveur des choix (UserPermission) et le comportement de       │
+   * │ production sont exactement ceux d'avant. `isDevMode()` est faux dès qu'un  │
+   * │ paquet est construit en production, y compris servi depuis localhost.      │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
   init(): void {
+    if (isDevMode()) {
+      this.shouldOnboard.set(false);
+      return;
+    }
     try {
       this.shouldOnboard.set(!localStorage.getItem(this.KEY_DONE));
     } catch {
