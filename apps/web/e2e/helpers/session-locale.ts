@@ -31,12 +31,19 @@ import type { Page } from '@playwright/test';
  * Trois comptes, pas deux — et le troisième est le plus instructif.
  *
  * `CARRIER` est un GESTIONNAIRE à qui un administrateur a accordé nommément
- * `missions_request` ; `SANS_PERM` est un gestionnaire ordinaire, qui ne l'a pas.
- * Faire tourner la recette sous le premier plutôt que sous un FLEET_ADMIN est
- * délibéré : l'administrateur court-circuite toutes les gardes (`isAdmin` sort avant
- * la résolution), donc un scénario joué sous son compte ne prouve RIEN du chemin
- * d'octroi. Sous un gestionnaire, il prouve les deux à la fois — la permission
- * accordée ouvre, son absence ferme.
+ * `missions_request` ET `agenda_view` ; `SANS_PERM` est un gestionnaire ordinaire, qui
+ * n'a ni l'une ni l'autre. Faire tourner la recette sous le premier plutôt que sous un
+ * FLEET_ADMIN est délibéré : l'administrateur court-circuite toutes les gardes
+ * (`isAdmin` sort avant la résolution), donc un scénario joué sous son compte ne prouve
+ * RIEN du chemin d'octroi. Sous un gestionnaire, il prouve les deux à la fois — la
+ * permission accordée ouvre, son absence ferme.
+ *
+ * ⚠️ LES DEUX COMPTES NE VOIENT PAS LE MÊME AGENDA, et c'est voulu depuis le
+ * 2026-08-15. Avec `agenda_view`, `CARRIER` garde la grille du mois, sa barre de
+ * filtres et ses cinq segments — c'est lui qui fait mesurer les cibles tactiles de la
+ * barre d'outils. Sans elle, `SANS_PERM` ouvre directement sur le tableau des missions,
+ * sans compteurs ni échéances : c'est le parcours que vérifie le scénario 5septies.
+ * Un seul compte ne pouvait pas couvrir les deux.
  */
 export type CampRecette = 'CARRIER' | 'DEPOT' | 'SANS_PERM';
 

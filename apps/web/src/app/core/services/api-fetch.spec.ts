@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchJson, apiFetchRaw } from './api-fetch';
+import { resetClientErrorDedup } from '../error/report-client-error';
 import { HttpFailure } from './http-failure';
 
 /**
@@ -18,8 +19,39 @@ import { HttpFailure } from './http-failure';
 describe('api-fetch', () => {
   let realFetch: typeof globalThis.fetch;
   let reported: string[];
+  /**
+   * ⚠️ LA VISIBILITÉ EST ÉPINGLÉE, ET C'EST LE CORRECTIF DE L'INSTABILITÉ DE LA SUITE.
+   *
+   * `shouldReportNetworkFailure()` refuse de remonter quand la page est cachée — c'est
+   * la raison d'être du module (cf. TRK-002 : un onglet en arrière-plan annule ses
+   * requêtes, personne ne peut corriger ça). Les tests qui vérifient qu'une page
+   * VISIBLE remonte bien lisaient donc `document.visibilityState` du navigateur RÉEL,
+   * celui que Karma pilote.
+   *
+   * Or cette fenêtre passe en `hidden` dès qu'elle est reléguée à l'arrière-plan :
+   * une autre application au premier plan, un écran qui s'éteint, une machine chargée.
+   * Le test échouait alors sur `Expected 0 to be 1` — non parce que le code avait
+   * changé, mais parce que personne ne regardait l'écran. D'où un échec « impossible à
+   * reproduire » : il ne dépendait pas du code, il dépendait du bureau.
+   *
+   * On épingle donc l'état au lieu de le subir. Le test de la page cachée n'a plus
+   * besoin d'un second espion : il pose la variable, et la restaure par le `beforeEach`
+   * suivant.
+   */
+  let visibilite: DocumentVisibilityState;
 
   beforeEach(() => {
+    visibilite = 'visible';
+    spyOnProperty(document, 'visibilityState', 'get').and.callFake(() => visibilite);
+    // `navigator.onLine` compte pour la même décision, et dépend de la machine.
+    spyOnProperty(navigator, 'onLine', 'get').and.returnValue(true);
+    // La dédup de `reportClientError` est un SINGLETON DE MODULE, et Karma joue les 353
+    // tests dans un seul contexte, dans un ordre tiré au sort. Deux tests qui produisent
+    // le même message se retrouvent à moins de quinze secondes l'un de l'autre : le
+    // second serait dédupliqué et lirait 0. Aucun couple ne se télescope depuis que la
+    // visibilité est épinglée, mais l'état partagé, lui, doit être remis à zéro — sinon
+    // le prochain test ajouté sans y penser rouvre exactement le même piège.
+    resetClientErrorDedup();
     realFetch = globalThis.fetch;
     reported = [];
     // La remontée passe par `reportClientError`, qui poste sur /api/activity/error.
@@ -119,18 +151,22 @@ describe('api-fetch', () => {
       // Onglet en arrière-plan, appareil en veille, navigation en cours : le navigateur
       // annule les requêtes. Sur iOS c'est le fameux `TypeError: Load failed`. Ce n'est
       // pas une panne de plateforme, et personne ne peut le corriger.
-      const spy = spyOnProperty(document, 'visibilityState', 'get').and.returnValue('hidden');
-      try {
-        pending = () => Promise.reject(new TypeError('Load failed'));
-        await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
-        expect(reported.length).toBe(0);
-      } finally {
-        spy.and.callThrough();
-      }
+      //
+      // On DÉCLARE la page cachée — plus de second espion à poser puis à défaire : le
+      // `beforeEach` remet `visibilite` à « visible » pour le test suivant.
+      visibilite = 'hidden';
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+      expect(reported.length).toBe(0);
     });
 
     it('une page VISIBLE remonte toujours — sinon le module ne sert plus à rien', async () => {
       // 🔑 Le vrai test du correctif : il devait supprimer le bruit SANS supprimer le signal.
+      //
+      // ⚠️ C'est CE test qui rendait la suite instable, et il n'avait aucun défaut de
+      // logique : il lisait la visibilité réelle de la fenêtre Karma. Quand elle passait
+      // en arrière-plan, le module se taisait — exactement comme il doit le faire — et
+      // l'assertion tombait. Voir la note sur `visibilite` en tête de fichier.
       pending = () => Promise.reject(new TypeError('Failed to fetch'));
       await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
       expect(reported.length).toBe(1);
@@ -142,6 +178,22 @@ describe('api-fetch', () => {
         silentNetworkFailure: true,
       }).catch(() => undefined);
       expect(reported.length).toBe(0);
+    });
+
+    it('deux pannes IDENTIQUES coup sur coup ne font qu’une ligne — la dédup existe vraiment', async () => {
+      // Ce test verrouille le mécanisme qui rendait la suite instable, et il le fait
+      // dans le bon sens : la dédup n'est pas un défaut, c'est le comportement voulu
+      // (quinze secondes, cf. `reportClientError`). Sans elle, une API tombée
+      // remplirait le centre d'alerte de cent lignes identiques en une minute.
+      //
+      // Ce qui était faux, c'est qu'un test en hérite d'un autre. La preuve tient en
+      // deux appels : ici on la déclenche EXPRÈS, et une seule remontée part.
+      pending = () => Promise.reject(new TypeError('Failed to fetch'));
+      await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+      await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+      expect(reported.length)
+        .withContext('la seconde panne identique doit être avalée par la dédup')
+        .toBe(1);
     });
 
     it('apiFetchRaw sans mode silencieux remonte — c’est le second essai qui parle', async () => {

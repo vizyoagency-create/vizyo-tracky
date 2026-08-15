@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { swallow } from './swallow';
+import { resetClientErrorDedup } from './report-client-error';
 import { HttpFailure } from '../services/http-failure';
 
 /**
@@ -20,6 +21,12 @@ describe('swallow — ce qui remonte au centre d’alerte', () => {
   let realFetch: typeof globalThis.fetch;
 
   beforeEach(() => {
+    // La dédup de `reportClientError` est un singleton de module que Karma partage
+    // entre les 353 tests, joués dans un ordre tiré au sort. Aucun couple de messages
+    // ne se télescope ici aujourd'hui — la ligne est là pour que ce fichier ne devienne
+    // pas la prochaine suite instable. (`swallow` ne regarde pas la visibilité de la
+    // page, contrairement à `api-fetch` : rien à épingler de ce côté.)
+    resetClientErrorDedup();
     posted = [];
     realFetch = globalThis.fetch;
     // On observe le POST réellement émis, pas un espion sur `reportClientError` : c'est

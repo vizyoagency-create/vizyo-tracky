@@ -100,6 +100,34 @@ function creneauDuJour(decalageHeures: number): string {
 }
 
 /**
+ * Ouvre le tableau des missions de l'agenda, quel que soit le compte.
+ *
+ * ⚠️ LE SEGMENT « Mission » N'EXISTE PAS POUR TOUT LE MONDE, et c'est le correctif du
+ * 2026-08-15. Le sélecteur de type ne pilote que la grille du calendrier : un compte
+ * sans `agenda_view` n'a pas de grille, donc pas de barre de filtres — l'agenda s'ouvre
+ * DIRECTEMENT sur les missions. Un compte qui a les deux garde ses cinq segments et doit
+ * cliquer.
+ *
+ * Cliquer sans condition marcherait pour l'un et échouerait pour l'autre. On vise donc
+ * le PANNEAU, seul point d'ancrage commun aux deux parcours.
+ */
+async function ouvrirOngletMissions(page: Page): Promise<void> {
+  const segment = page.getByRole('button', { name: 'Mission', exact: true });
+  const creer = page.getByRole('button', { name: /Nouvelle mission/i });
+
+  // ⚠️ ON ATTEND AVANT DE COMPTER. `count()` est un INSTANTANÉ, pas une assertion qui
+  // patiente : appelé dans la foulée du `goto`, il lisait le DOM d'avant le rendu
+  // Angular, renvoyait 0, et le clic était sauté en silence. Le test attendait ensuite
+  // quinze secondes un tableau que personne n'avait ouvert — en accusant l'écran.
+  //
+  // Le point d'ancrage est donc « l'un OU l'autre » : le segment si le compte a le
+  // calendrier, le tableau directement s'il ne l'a pas.
+  await expect(segment.or(creer).first()).toBeVisible({ timeout: 15_000 });
+  if (await segment.count()) await segment.click();
+  await expect(creer).toBeVisible({ timeout: 15_000 });
+}
+
+/**
  * Les trois contrôles non négociables, sur l'écran tel qu'il est rendu.
  *
  * Regroupés parce qu'ils vont toujours ensemble : un écran qui passe l'un et rate
@@ -403,10 +431,7 @@ test.describe('A6 — demandes de mission et négociation, à 375 px', () => {
     await page.goto('/agenda');
 
     // L'onglet Mission de l'agenda porte la liste ET le bouton de création.
-    await page.getByRole('button', { name: 'Mission', exact: true }).click();
-    await expect(page.getByRole('button', { name: /Nouvelle mission/i })).toBeVisible({
-      timeout: 15_000,
-    });
+    await ouvrirOngletMissions(page);
     await page.getByRole('button', { name: /Nouvelle mission/i }).click();
 
     // L'agenda LUI-MEME, avant d'ouvrir quoi que ce soit. Ses sept boutons sous 44 px
@@ -509,13 +534,7 @@ test.describe('A6 — demandes de mission et négociation, à 375 px', () => {
   test('5quater — transporteur : il modifie la tournée, avec motif, et le journal la retient', async ({ page }) => {
     await ouvrirSession(page, 'CARRIER');
     await page.goto('/agenda');
-    await page.getByRole('button', { name: 'Mission', exact: true }).click();
-    // On attend que le PANNEAU soit la avant d'y chercher une ligne : sans ce point
-    // d'ancrage, la recherche part sur un onglet encore vide et echoue sur un ecran
-    // parfaitement correct.
-    await expect(page.getByRole('button', { name: /Nouvelle mission/i })).toBeVisible({
-      timeout: 15_000,
-    });
+    await ouvrirOngletMissions(page);
 
     // ⚠️ ON VISE « Dépôt <empreinte> », PAS SEULEMENT L'EMPREINTE. Deux missions de
     // cette exécution la portent : celle née de la demande (« Entrepôt <empreinte> »)
@@ -628,6 +647,57 @@ test.describe('A6 — demandes de mission et négociation, à 375 px', () => {
 
     await controlesDeBase(page, 'Missions · sans la permission');
     await capture(page, 'e2e-captures/7d-sans-permission-375.png');
+  });
+
+  test('5septies — gestionnaire sans agenda_view : l\'agenda ne crie plus', async ({ page }) => {
+    // ⚠️ CE SCÉNARIO EXISTE PARCE QUE LES CAPTURES DE RECETTE LE MONTRAIENT DÉJÀ.
+    //
+    // Sur chaque écran d'agenda pris pendant ce lot, deux bandeaux rouges attendaient
+    // en bas : « Vous n'avez pas l'autorisation de consulter ces données » et
+    // « Permission requise : agenda_view ». Le produit fonctionnait — les missions se
+    // chargeaient — mais il annonçait une panne à chaque ouverture.
+    //
+    // La cause est structurelle et vaut d'être retenue : la ROUTE est gardée large
+    // (agenda_view, reservations_*, ai_optimize, missions_view) pour que chacun
+    // atteigne SA partie, alors que les DONNÉES du calendrier n'appartiennent qu'à
+    // agenda_view. Un gestionnaire entrait donc légitimement, puis se faisait refuser
+    // deux appels qu'on n'aurait jamais dû lancer pour lui.
+    //
+    // Le test mesure la seule chose qui compte pour l'utilisateur : zéro notification
+    // d'erreur, et le tableau des missions bien présent.
+    test.skip(!jetonPresent('SANS_PERM'), 'Jeton A6_TOKEN_SANS_PERM manquant');
+    await ouvrirSession(page, 'SANS_PERM');
+
+    const refus: number[] = [];
+    page.on('response', (r) => {
+      if (r.status() === 403 && r.url().includes('/api/agenda/')) refus.push(r.status());
+    });
+
+    await page.goto('/agenda');
+    await expect(page.getByRole('button', { name: /Nouvelle mission/i })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Le tableau des missions est là — c'est pour lui que ce compte vient.
+    //
+    // ⚠️ ON VISE LE PANNEAU, PAS SON CONTENU. Ce compte appartient à une autre flotte,
+    // qui n'a aucune mission : exiger une carte ferait échouer le test sur un écran
+    // parfaitement correct, qui affiche « Aucune mission créée pour l'instant ». Ce
+    // qu'on vérifie ici, c'est que le compte ATTERRIT sur ses missions — pas qu'il en a.
+    await expect(page.locator('.mp-kpis')).toBeVisible({ timeout: 15_000 });
+
+    // Et rien ne hurle : ni au réseau, ni à l'écran.
+    expect(refus, `${refus.length} appel(s) agenda refusé(s) en 403`).toEqual([]);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.getByText('Permission requise')).toHaveCount(0);
+
+    // Les compteurs et les échéances du calendrier ne sont pas affichés à zéro : la
+    // flotte en a peut-être trente, ce compte n'a simplement pas le droit de les lire.
+    await expect(page.locator('.ag-summary')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /À venir & en retard/ })).toHaveCount(0);
+
+    await controlesDeBase(page, 'Agenda · sans agenda_view');
+    await capture(page, 'e2e-captures/7e-agenda-sans-permission-375.png');
   });
 
   // ═══ 6. LE MÊME PARCOURS, EN GRAND ══════════════════════════════════════

@@ -191,9 +191,9 @@ de la coque partagée.** Le § 10 le disait déjà. Il avait raison trois fois d
 | Modifier les arrêts d'une mission existante | ✅ **Fait**, avec journal immuable — cf. § 0ter. |
 | Cibles tactiles de l'**agenda** | ✅ **Corrigées** : `ag-month-btn`, `ag-today-btn`, `ag-seg-btn`, `ag-dd-trigger`, `mp-filtre`, `mp-creer`. Mesurées à chaque recette. |
 | Liste des demandes | Plafond serveur à 200, aucune pagination ni filtre. Suffisant aujourd'hui, à revoir avant un client à fort volume. |
-| Suite web | **Un échec non reproductible** observé deux fois sur sept exécutions (353 tests). Les passes suivantes sont vertes ; le test fautif n'a jamais pu être nommé — le rapporteur ne le cite pas et il ne se reproduit pas isolément. |
+| Suite web | ✅ **Nommé et corrigé** — cf. § 0quinquies. Ce n'était pas de l'instabilité, mais un couplage entre deux tests par un état de module. |
 | Migrations | T2 et `PRICING_GRID_MISSING` sont **en production** depuis `842c553`. `20260815080000_historique_des_tournees` part avec ce lot. |
-| `agenda_view` du gestionnaire | Deux notifications d'erreur à chaque ouverture de l'agenda — cf. § 0quater, antérieur à ce lot. |
+| `agenda_view` du gestionnaire | ✅ **Corrigé** — cf. § 0quinquies. |
 
 ---
 
@@ -282,14 +282,97 @@ comptes existants, pour ouvrir l'écran aux dépôts. Un `true` explicite l'empo
 défaut : les comptes concernés gardent la permission. À vérifier au déploiement — les
 **dépôts** doivent la garder, les **gestionnaires** ne le devraient pas.
 
-### Constaté au passage, hors lot
+### Constaté au passage
 
 Un `FLEET_MANAGER` a `agenda_view: false` par défaut alors que l'onglet Missions vit
-**dans** l'agenda (la route est ouverte par `missions_view`, cf. `app.routes.ts`). La
-page s'affiche et les missions se chargent, mais deux notifications d'erreur tombent à
-chaque visite : « Permission requise : agenda_view ». Antérieur à ce lot, visible sur
-chaque capture de recette, et c'est un arbitrage de rôles à trancher — pas une
-correction à glisser ici.
+**dans** l'agenda. Deux notifications d'erreur tombaient à chaque visite. **Corrigé** —
+cf. § 0quinquies.
+
+---
+
+## 0quinquies. Les deux défauts que la recette montrait sans qu'on les corrige — 2026-08-15
+
+Deux constats traînaient en « dette assumée » au bas du § 0bis. Aucun des deux ne
+méritait ce statut : le premier gâchait chaque ouverture de l'agenda, le second faisait
+douter de toute la suite de tests. Ils sont traités.
+
+### 1. L'agenda criait à la panne chez un gestionnaire
+
+Deux bandeaux rouges à chaque ouverture — « Vous n'avez pas l'autorisation de consulter
+ces données », puis « Permission requise : agenda_view » — pendant que les missions se
+chargeaient normalement en dessous. Visible sur **chaque capture** de recette de ce lot.
+
+**La cause est structurelle, et vaut d'être retenue.** La ROUTE `/agenda` est gardée
+large (`agenda_view`, `reservations_*`, `ai_optimize`, `missions_view`) pour que chacun
+atteigne SA partie de l'écran — c'est l'onglet Missions qui a fait ajouter
+`missions_view`. Mais les DONNÉES du calendrier (`GET /agenda/events`,
+`GET /agenda/summary`) n'appartiennent qu'à `agenda_view`. Le gestionnaire entrait donc
+légitimement, puis se faisait refuser deux appels **qu'on n'aurait jamais dû lancer pour
+lui**.
+
+Le correctif ne touche à aucune permission — il évite d'aller frapper à une porte qu'on
+sait fermée :
+
+- `loadEvents()` et `loadSummary()` sortent d'emblée sans `agenda_view`. Le patron
+  existait déjà dans ce fichier pour `loadActivity()` et `loadForecast()` ; il manquait
+  aux deux appels principaux.
+- La barre de filtres disparaît : groupe, véhicule, type et navigation par mois ne
+  pilotent QUE la grille. Sans grille, c'étaient quatre commandes inertes.
+- Les trois compteurs et « À venir & en retard » disparaissent aussi. **Trois zéros et
+  « aucune échéance » ne sont pas une information quand on n'a pas le droit de lire les
+  échéances : c'est une affirmation fausse.** La flotte en a peut-être trente.
+- Le sous-titre suit : « Les missions de votre flotte, et leurs tournées » au lieu de
+  « Entretiens planifiés et incidents ».
+
+> **Ce qui n'a PAS été fait, et pourquoi.** Accorder `agenda_view` au rôle aurait éteint
+> les bandeaux en une ligne — et ouvert au gestionnaire la maintenance, les incidents et
+> les réservations de toute la flotte. C'est un arbitrage de rôles, il appartient au
+> client, et il n'était pas nécessaire pour supprimer le défaut.
+
+Verrouillé par le scénario `5septies`, qui compte les 403 au réseau **et** les
+notifications à l'écran : les deux doivent être à zéro.
+
+### 2. Le test web « instable » dépendait du bureau, pas du code
+
+Un échec sur 353, environ une fois sur cinq, jamais nommé. Douze exécutions consécutives
+ont donné **deux échecs, le même test, la même ligne** :
+
+> `api-fetch › remontée au centre d'alerte › une page VISIBLE remonte toujours`
+> — `Expected 0 to be 1`, `api-fetch.spec.ts:136`
+
+**La cause : `document.visibilityState`.** `shouldReportNetworkFailure()` refuse de
+remonter une panne réseau quand la page est cachée — c'est la raison d'être du module
+(TRK-002 : un onglet en arrière-plan annule ses requêtes, et personne ne peut corriger
+ça). Les tests qui vérifient qu'une page **visible** remonte bien lisaient donc la
+visibilité RÉELLE de la fenêtre que Karma pilote. Cette fenêtre passe en `hidden` dès
+qu'elle est reléguée à l'arrière-plan : une autre application au premier plan, un écran
+qui s'éteint, une machine chargée.
+
+Le test ne testait donc pas seulement le code : il testait **si quelqu'un regardait
+l'écran**. D'où un échec « impossible à reproduire » — il ne dépendait d'aucune ligne de
+source.
+
+> **Ma première explication était fausse, et la façon dont elle est tombée compte.**
+> J'ai d'abord accusé la dédup de `reportClientError` — un vrai singleton de module,
+> une vraie explication plausible, et Jasmine joue bien dans un ordre aléatoire. Le
+> correctif correspondant n'a rien changé : l'échec s'est **déplacé sur un autre test**,
+> et surtout sur un test que je venais d'écrire, où deux appels identiques se suivent
+> DANS LE MÊME `it`. Là, aucune histoire d'ordre ne tient : si même le premier appel ne
+> remonte rien, ce n'est pas la dédup. C'est ce déplacement qui a désigné la vraie cause.
+
+Correctif : la visibilité est **épinglée** dans le `beforeEach`, comme `navigator.onLine`
+qui souffrait du même mal. Le test de la page cachée pose simplement `visibilite =
+'hidden'` — plus de second espion à défaire, et le `beforeEach` suivant restaure l'état.
+
+La remise à zéro de la dédup est **conservée** : le couplage par état de module est réel
+même s'il n'était pas le coupable ici, et deux lignes suffisent à fermer le piège pour
+le prochain test qu'on ajoutera. Un test le verrouille dans le bon sens — deux pannes
+identiques coup sur coup ne doivent faire qu'une ligne au centre d'alerte.
+
+> ⚠️ **Et le rapporteur nommait le coupable depuis le début.** Karma imprimait le nom du
+> test et sa ligne à chaque échec ; c'est le filtrage de la sortie (`Select-String` sur
+> « TOTAL|FAILED ») qui les avait mangés. Une suite qu'on croit muette mérite d'abord
+> qu'on relise sa sortie entière.
 
 ---
 
