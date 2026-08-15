@@ -56,8 +56,11 @@ describe('MissionRequestsController — qui lit les negociations', () => {
   });
 
   describe('la matrice des roles, cote a cote avec la garde', () => {
-    /** Les deux cotes de la table, et eux seuls. */
-    const AUTORISES = ['DEPOT', 'FLEET_MANAGER', 'FLEET_ADMIN'] as const;
+    /**
+     * Les deux BOUTS de la table : celui qui demande, celui qui arbitre. Le
+     * gestionnaire n'y est pas — voir le test suivant, c'est une decision.
+     */
+    const AUTORISES = ['DEPOT', 'FLEET_ADMIN'] as const;
     /** Ceux qui n'ont rien a faire dans une negociation commerciale. */
     const EXCLUS = ['DRIVER', 'VIEWER', 'NIGHT_WATCHMAN'] as const;
 
@@ -72,6 +75,20 @@ describe('MissionRequestsController — qui lit les negociations', () => {
         expect(getDefaultPermissions(role).missions_request).toBe(false);
       });
     }
+
+    it('le GESTIONNAIRE ne la porte PAS par defaut, alors qu\'il cree des missions', () => {
+      // ⚠️ DECISION DU CLIENT, 2026-08-15, ET ELLE VA CONTRE L'INTUITION.
+      //
+      // Le gestionnaire porte `missions_manage` : il cree des missions toute la
+      // journee. La symetrie voudrait qu'il puisse aussi en demander une. Le client
+      // tranche l'inverse : creer une mission, c'est planifier son propre parc ;
+      // demander et negocier, c'est engager un PRIX face a un tiers. Deux metiers.
+      //
+      // Ce test existe pour qu'un futur « tiens, c'est incoherent » ne la rouvre pas
+      // en silence : elle est fermee EXPRES, et un admin l'accorde nommement.
+      expect(getDefaultPermissions('FLEET_MANAGER').missions_manage).toBe(true);
+      expect(getDefaultPermissions('FLEET_MANAGER').missions_request).toBe(false);
+    });
 
     it('le CONDUCTEUR porte missions_view — c\'est pourquoi la garde ne peut pas s\'y fier', () => {
       // La ligne qui explique la fuite. Si un jour `missions_view` lui est retiree,

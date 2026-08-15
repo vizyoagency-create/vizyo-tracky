@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { LucideAngularModule, Route, Settings, Inbox } from 'lucide-angular';
 import { MissionPricingTabComponent } from './mission-pricing-tab.component';
 import { MissionRequestsTabComponent } from './mission-requests-tab.component';
@@ -30,18 +31,30 @@ const ONGLETS: Onglet[] = ['demandes', 'parametres'];
       <header class="mp-tete">
         <span class="vt-eyebrow">Exploitation</span>
         <h1 class="mp-titre">Missions</h1>
+        <!-- Le sous-titre suit les droits, comme les onglets. Annoncer « les demandes
+             de vos dépôts » à un compte qui n'y a pas accès lui ferait chercher un
+             écran qui ne s'ouvrira pas — et pour lui, cette page EST la grille. -->
         <p class="mp-sous">
-          Les demandes de vos dépôts, et la grille tarifaire qui les chiffre.
+          @if (peutNegocier()) {
+            Les demandes de vos dépôts, et la grille tarifaire qui les chiffre.
+          } @else {
+            La grille tarifaire qui chiffre vos missions.
+          }
         </p>
       </header>
 
       <nav class="mp-onglets" role="tablist" aria-label="Sections des missions">
-        <button type="button" role="tab" class="mp-onglet"
-                [class.active]="onglet() === 'demandes'"
-                [attr.aria-selected]="onglet() === 'demandes'"
-                (click)="allerA('demandes')">
-          <lucide-icon [img]="Inbox" [size]="15" /> Demandes
-        </button>
+        <!-- L'onglet n'existe que pour qui peut negocier. Le montrer a un compte qui
+             recevra 403 en l'ouvrant serait promettre ce qu'on ne tient pas — et la
+             liste des demandes porte des montants commerciaux. -->
+        @if (peutNegocier()) {
+          <button type="button" role="tab" class="mp-onglet"
+                  [class.active]="onglet() === 'demandes'"
+                  [attr.aria-selected]="onglet() === 'demandes'"
+                  (click)="allerA('demandes')">
+            <lucide-icon [img]="Inbox" [size]="15" /> Demandes
+          </button>
+        }
         <button type="button" role="tab" class="mp-onglet"
                 [class.active]="onglet() === 'parametres'"
                 [attr.aria-selected]="onglet() === 'parametres'"
@@ -86,10 +99,17 @@ const ONGLETS: Onglet[] = ['demandes', 'parametres'];
 export class MissionsPageComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly perms = inject(PermissionsService);
 
   protected readonly Settings = Settings;
   protected readonly Route = Route;
   protected readonly Inbox = Inbox;
+
+  /**
+   * Négocier une demande, c'est `missions_request` — la même capacité des deux côtés
+   * de la table. Sans elle, l'onglet n'apparaît pas et son URL ne mène nulle part.
+   */
+  protected readonly peutNegocier = computed(() => this.perms.can('missions_request'));
 
   /**
    * Les demandes par défaut, et non les paramètres.
@@ -100,6 +120,13 @@ export class MissionsPageComponent implements OnInit {
   protected readonly onglet = signal<Onglet>('demandes');
 
   ngOnInit(): void {
+    // ⚠️ LE DÉFAUT DÉPEND DE CE QU'ON A LE DROIT DE VOIR. Ouvrir `/missions` sur un
+    // onglet « Demandes » qui n'existe pas pour ce compte afficherait un panneau vide
+    // sous une barre d'onglets qui n'en propose qu'un — l'écran aurait l'air cassé.
+    if (!this.peutNegocier()) {
+      this.onglet.set('parametres');
+      return;
+    }
     const demande = this.route.snapshot.queryParamMap.get('tab');
     if (demande && (ONGLETS as string[]).includes(demande)) {
       this.onglet.set(demande as Onglet);

@@ -2,8 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
+  NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import {
   MissionStatus,
@@ -21,6 +24,7 @@ import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MissionPricingService } from './mission-pricing.service';
 
 /**
  * Espace depot (2026-08) — les missions. Cf. design/A2-MISSIONS.md.
@@ -90,6 +94,26 @@ export interface ArretMissionEntree {
   /** Créneau souhaité SUR CET ARRÊT — distinct de la fenêtre de la mission. */
   wantedAt?: string | null;
   note?: string | null;
+}
+
+/**
+ * A6 — UNE version de la tournée, telle que les deux camps la relisent.
+ *
+ * Les arrêts y sont des LIBELLÉS, jamais des objets complets : cet historique part
+ * aussi au dépôt, qui n'a que faire du `placeId` des lieux clés de son transporteur.
+ */
+export interface RevisionTourneeDto {
+  position: number;
+  /** Nom FIGÉ à l'écriture : un compte supprimé ne doit pas effacer sa signature. */
+  authorName: string;
+  authorRole: UserRole;
+  reason: string | null;
+  stops: string[];
+  distanceKm: number | null;
+  /** Tarif de CETTE version, en centimes HT. `null` = sur devis, ou pas de grille. */
+  amountCents: number | null;
+  previousAmountCents: number | null;
+  createdAt: string;
 }
 
 /** Une ligne du tableau des missions, cote transporteur (A2 § 6). */
@@ -236,6 +260,15 @@ export class MissionsService {
     private readonly config: ConfigService<Env, true>,
     private readonly gateway: RealtimeGateway,
     private readonly partage: MissionShareService,
+    /**
+     * A6 — le recalcul du tarif quand la tournée change.
+     *
+     * ⚠️ `forwardRef` : `MissionPricingService` ne dépend pas de ce service, mais
+     * `MissionRequestsService` dépend des deux et Nest résout le module en cercle.
+     * Sans lui, le smoke-boot tombe sur une dépendance non résolue.
+     */
+    @Inject(forwardRef(() => MissionPricingService))
+    private readonly pricing: MissionPricingService,
   ) {}
 
   async creer(
@@ -322,6 +355,32 @@ export class MissionsService {
             wantedAt: a.wantedAt ? new Date(a.wantedAt) : null,
             note: a.note ?? null,
           })),
+        });
+
+        // LA RÉVISION 0 : l'état de départ, signé et daté comme les suivantes.
+        //
+        // Sans elle, l'historique commencerait à la première modification et
+        // personne ne saurait d'où la tournée est partie — or c'est exactement la
+        // question qu'on pose six mois plus tard devant une facture contestée.
+        await tx.missionStopRevision.create({
+          data: {
+            missionId: creee.id,
+            position: 0,
+            authorUserId: user.id,
+            authorName: this.nomAuteur(user),
+            authorRole: user.role,
+            // Aucun motif a la creation : il n'y a rien a justifier. Le champ n'est
+            // demande qu'aux modifications, ou il repond a « pourquoi ».
+            reason: null,
+            stops: arrets.map((a, i) => ({
+              position: i,
+              kind: i === 0 ? MissionStopKind.PICKUP : MissionStopKind.DROPOFF,
+              label: a.label,
+            })) as unknown as Prisma.InputJsonValue,
+            distanceM: null,
+            amountCents: null,
+            previousAmountCents: null,
+          },
         });
       }
 
@@ -1070,6 +1129,299 @@ export class MissionsService {
   }
 
   /** Les cinq validations de creneau d'A2 § 4, dans l'ordre ou elles se lisent. */
+  /**
+   * A6 — MODIFIER LA TOURNÉE d'une mission existante, et l'inscrire au journal.
+   *
+   * ┌─ CE GESTE COÛTE DE L'ARGENT, ET C'EST POURQUOI IL LAISSE UNE TRACE ────────┐
+   * │ Trois livraisons de plus, et la distance saute d'une tranche : la mission  │
+   * │ vaut 169 € au lieu de 79 €. Sans journal, la facture arrive chez le dépôt  │
+   * │ sans que personne ne puisse dire ce qui a changé, quand, ni par qui — et   │
+   * │ la discussion se termine au téléphone, sans arbitre.                        │
+   * │                                                                            │
+   * │ Chaque modification écrit donc une révision COMPLÈTE : l'état après, la    │
+   * │ distance retenue, le tarif recalculé, le tarif d'avant, l'auteur (nom figé)│
+   * │ et le motif. Relire l'histoire ne demande alors ni recalcul, ni la grille  │
+   * │ tarifaire de l'époque — qui aura pu changer entre-temps.                    │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠️ LE PRIX CONVENU N'EST PAS RÉÉCRIT. Quand la mission vient d'une demande
+   * négociée, `agreedAmountCents` porte un accord signé par les deux parties : le
+   * modifier d'office ferait changer un engagement dans le dos de l'une d'elles. On
+   * calcule ce que vaut la NOUVELLE tournée, on l'inscrit, et on laisse les humains
+   * décider de ce qu'ils facturent. L'écran affiche l'écart.
+   *
+   * ⚠️ RÉSERVÉ AU TRANSPORTEUR. Un dépôt est un tiers en lecture seule sur une
+   * mission — c'est l'invariant qui tient tout le lot. Il négocie une DEMANDE, pas
+   * une mission déjà affectée. La garde du contrôleur (`missions_manage`) le refuse
+   * déjà ; le service le revérifie parce qu'une permission peut être accordée par
+   * erreur, et qu'une écriture sur le trajet d'un camion engagé n'est pas rattrapable.
+   */
+  async modifierTournee(
+    user: AuthUser,
+    missionId: string,
+    entree: { stops: ArretMissionEntree[]; distanceKm?: number | null; reason?: string | null },
+    fleetIdDemande?: string,
+  ): Promise<{ revision: number; amountCents: number | null; previousAmountCents: number | null }> {
+    if (user.role === UserRole.DEPOT) {
+      throw new ForbiddenException(
+        'Un dépôt ne modifie pas une mission : c\'est le trajet d\'un camion déjà engagé.',
+      );
+    }
+
+    const portee = this.porteeLecture(user, fleetIdDemande);
+    const mission = await this.prisma.mission.findFirst({
+      where: { id: missionId, ...(portee ? { fleetId: portee } : {}) },
+      select: {
+        id: true, ref: true, fleetId: true, status: true, depotUserId: true,
+        startAt: true, endAt: true,
+        stopRevisions: { orderBy: { position: 'desc' }, take: 1 },
+      },
+    });
+    if (!mission) throw new NotFoundException('Mission introuvable');
+
+    // Une mission terminée ou annulée ne se retouche pas : son trajet a eu lieu, ou
+    // n'aura pas lieu. Réécrire l'un ou l'autre serait réécrire l'histoire.
+    if (mission.status === MissionStatus.DONE || mission.status === MissionStatus.CANCELLED) {
+      throw new BadRequestException(
+        `Cette mission est ${LIBELLE_STATUT[mission.status]} : sa tournée ne se modifie plus.`,
+      );
+    }
+
+    const arrets = this.validerArretsMission(entree.stops);
+    if (!arrets) {
+      throw new BadRequestException('Indiquez les arrêts de la tournée.');
+    }
+    const motif = (entree.reason ?? '').trim();
+    if (motif.length < 3) {
+      // Le motif est OBLIGATOIRE ici, alors qu'il ne l'est pas à la création : une
+      // tournée qu'on change a une raison, et c'est elle qu'on cherchera plus tard.
+      throw new BadRequestException(
+        'Un motif est obligatoire : c\'est lui qu\'on relira pour comprendre le changement.',
+      );
+    }
+    const distanceM = this.kmVersMetres(entree.distanceKm);
+
+    // Le tarif de la NOUVELLE tournée, sur la grille de la société. Sans distance ou
+    // sans grille, on n'invente rien : la révision porte alors un montant nul, et
+    // l'écran dit pourquoi.
+    let amountCents: number | null = null;
+    if (distanceM !== null) {
+      const tarif = await this.pricing.tarifPour(mission.fleetId, distanceM);
+      amountCents = tarif.statut === 'TARIF' ? tarif.htCents : null;
+    }
+    const precedente = mission.stopRevisions[0] ?? null;
+    const previousAmountCents = precedente?.amountCents ?? null;
+    const position = precedente ? precedente.position + 1 : 0;
+
+    const origineLabel = arrets[0].label;
+    const destinationLabel = arrets[arrets.length - 1].label;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Les arrêts sont REMPLACÉS en bloc : une tournée se lit comme un tout, et une
+      // fusion ligne à ligne laisserait des positions orphelines qu'aucun écran ne
+      // montrerait. L'ancien état n'est pas perdu — il est dans la révision précédente.
+      await tx.missionStop.deleteMany({ where: { missionId } });
+      await tx.missionStop.createMany({
+        data: arrets.map((a, i) => ({
+          missionId,
+          position: i,
+          kind: i === 0 ? MissionStopKind.PICKUP : MissionStopKind.DROPOFF,
+          label: a.label,
+          placeId: a.placeId ?? null,
+          wantedAt: a.wantedAt ? new Date(a.wantedAt) : null,
+          note: a.note ?? null,
+        })),
+      });
+
+      // Les deux libellés dérivés suivent, comme à la création (§ 4.1).
+      await tx.mission.update({
+        where: { id: missionId },
+        data: { originLabel: origineLabel, destLabel: destinationLabel },
+      });
+
+      // ⚠️ L'ÉVÉNEMENT D'AGENDA AUSSI. Il porte le trajet dans son titre : le laisser
+      // en arrière ferait lire deux trajets différents pour la même mission, selon
+      // qu'on regarde l'agenda ou la fiche.
+      await tx.vehicleEvent.updateMany({
+        where: {
+          type: VehicleEventType.MISSION,
+          metadata: { path: ['missionId'], equals: missionId },
+        },
+        data: { title: `Mission ${mission.ref} · ${origineLabel} → ${destinationLabel}` },
+      });
+
+      await tx.missionStopRevision.create({
+        data: {
+          missionId,
+          position,
+          authorUserId: user.id,
+          authorName: this.nomAuteur(user),
+          authorRole: user.role,
+          reason: motif,
+          stops: arrets.map((a, i) => ({
+            position: i,
+            kind: i === 0 ? MissionStopKind.PICKUP : MissionStopKind.DROPOFF,
+            label: a.label,
+          })) as unknown as Prisma.InputJsonValue,
+          distanceM,
+          amountCents,
+          previousAmountCents,
+        },
+      });
+    });
+
+    this.logger.log(
+      `Mission ${mission.ref} — tournee modifiee par ${user.id} : ${arrets.length} arret(s), revision ${position}`,
+    );
+
+    // Le dépôt est prévenu : c'est SON camion et, le cas échéant, SA facture. Hors
+    // transaction — un e-mail qui échoue ne doit pas annuler une modification écrite.
+    if (mission.depotUserId) {
+      void this.notifierTourneeModifiee(mission.depotUserId, {
+        ref: mission.ref,
+        origin: origineLabel,
+        destination: destinationLabel,
+        nbArrets: arrets.length,
+        startAt: mission.startAt,
+        endAt: mission.endAt,
+        motif,
+        amountCents,
+      });
+    }
+
+    return { revision: position, amountCents, previousAmountCents };
+  }
+
+  /**
+   * L'historique des tournées d'une mission, du plus ancien au plus récent.
+   *
+   * Rendu APRÈS vérification de portée : lire puis filtrer laisserait deviner
+   * l'existence d'une mission d'une autre société par son identifiant.
+   */
+  async historiqueTournee(user: AuthUser, missionId: string, fleetIdDemande?: string) {
+    const portee = this.porteeLecture(user, fleetIdDemande);
+    const mission = await this.prisma.mission.findFirst({
+      where: { id: missionId, ...(portee ? { fleetId: portee } : {}) },
+      select: {
+        id: true,
+        stopRevisions: { orderBy: { position: 'asc' } },
+      },
+    });
+    if (!mission) throw new NotFoundException('Mission introuvable');
+    return mission.stopRevisions.map((r) => this.versRevisionDto(r));
+  }
+
+  /**
+   * Prévenir le dépôt que SA tournée a changé.
+   *
+   * ┌─ POURQUOI CET AVIS N'EST PAS FACULTATIF ──────────────────────────────────┐
+   * │ Le dépôt organise ses quais sur l'heure d'arrivée annoncée. Deux           │
+   * │ livraisons insérées avant chez lui, et le camion arrive une heure plus     │
+   * │ tard — sans un mot, il constate le retard, appelle, et découvre le         │
+   * │ changement en même temps que sa facture. L'avis transforme un incident en  │
+   * │ information.                                                               │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * Même gabarit que les quatre autres avis du lot : ce qui change d'un avis à
+   * l'autre, c'est le titre et le lien, jamais la mise en page.
+   */
+  private async notifierTourneeModifiee(
+    depotUserId: string,
+    info: {
+      ref: string;
+      origin: string;
+      destination: string;
+      nbArrets: number;
+      startAt: Date;
+      endAt: Date;
+      motif: string;
+      amountCents: number | null;
+    },
+  ): Promise<void> {
+    try {
+      const depot = await this.prisma.user.findUnique({
+        where: { id: depotUserId },
+        select: { email: true, fleetId: true, fleet: { select: { name: true } } },
+      });
+      if (!depot?.email) return;
+
+      const base = this.config.get('APP_BASE_URL', { infer: true }) ?? '';
+      const tpl = this.email.buildMissionQuoteEmail({
+        ref: info.ref,
+        titre: 'Votre tournée a changé',
+        intro:
+          'Le trajet de cette mission a été modifié. Le détail ci-dessous est celui qui s\'applique désormais.',
+        origin: info.origin,
+        destination: info.destination,
+        nbArrets: info.nbArrets,
+        startAt: info.startAt,
+        endAt: info.endAt,
+        amountCents: info.amountCents,
+        // Le motif saisi par le transporteur : c'est la seule phrase qui explique
+        // POURQUOI, et c'est celle que le depot cherchera.
+        message: info.motif,
+        carrierName: depot.fleet?.name ?? 'Votre transporteur',
+        url: `${base}/depot/missions`,
+        libelleAction: 'Voir la mission',
+      });
+
+      await this.email.send({
+        to: depot.email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        template: 'mission_tournee_modifiee',
+        fleetId: depot.fleetId,
+        context: { missionRef: info.ref },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Avis de tournée modifiée en échec pour la mission ${info.ref} : ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Le nom FIGÉ de l'auteur d'une révision. */
+  private nomAuteur(user: AuthUser): string {
+    const compose = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+    return compose || user.email || 'Compte supprimé';
+  }
+
+  /** Les kilomètres de l'écran deviennent des mètres entiers en base. */
+  private kmVersMetres(km: number | null | undefined): number | null {
+    if (km === null || km === undefined) return null;
+    if (!Number.isFinite(km) || km < 0) {
+      throw new BadRequestException('La distance doit être un nombre positif.');
+    }
+    return Math.round(km * 1000);
+  }
+
+  private versRevisionDto(r: {
+    position: number;
+    authorName: string;
+    authorRole: UserRole;
+    reason: string | null;
+    stops: Prisma.JsonValue;
+    distanceM: number | null;
+    amountCents: number | null;
+    previousAmountCents: number | null;
+    createdAt: Date;
+  }): RevisionTourneeDto {
+    return {
+      position: r.position,
+      authorName: r.authorName,
+      authorRole: r.authorRole,
+      reason: r.reason,
+      stops: Array.isArray(r.stops)
+        ? (r.stops as Array<{ position: number; kind: string; label: string }>).map((s) => s.label)
+        : [],
+      distanceKm: r.distanceM === null ? null : r.distanceM / 1000,
+      amountCents: r.amountCents,
+      previousAmountCents: r.previousAmountCents,
+      createdAt: r.createdAt.toISOString(),
+    };
+  }
+
   /**
    * A6 / T8 — les arrêts d'une mission, vérifiés.
    *

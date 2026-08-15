@@ -37,6 +37,12 @@ export type EmailTemplateId =
   | 'partner_consent_invitation'
   // Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
   | 'mission_assigned'
+  /**
+   * A6 — la TOURNÉE d'une mission a changé après affectation. Identifiant distinct
+   * de `mission_assigned` : ce n'est pas la même nouvelle, et le journal des envois
+   * doit pouvoir répondre à « combien de tournées ont bougé ce mois-ci ? ».
+   */
+  | 'mission_tournee_modifiee'
   // Lot A3 — un dépôt signale un incident : le seul e-mail de l'espace dépôt qui
   // remonte vers le transporteur, et non l'inverse.
   | 'depot_incident';
@@ -1590,6 +1596,23 @@ ${this.commercialSignatureText()}`;
           carrierName: 'MH Cars',
           url: `${appBase}/missions`,
           libelleAction: 'Ouvrir la demande',
+        });
+      case 'mission_tournee_modifiee':
+        return this.buildMissionQuoteEmail({
+          ref: 'M-2481',
+          titre: 'Votre tournée a changé',
+          intro:
+            'Le trajet de cette mission a été modifié. Le détail ci-dessous est celui qui s\'applique désormais.',
+          origin: 'Entrepôt Toulouse',
+          destination: 'Client Muret',
+          nbArrets: 4,
+          startAt: new Date('2026-09-02T08:00:00Z'),
+          endAt: new Date('2026-09-02T12:00:00Z'),
+          amountCents: 16900,
+          message: 'Deux livraisons ajoutées à la demande du client.',
+          carrierName: 'MH Cars',
+          url: `${appBase}/depot/missions`,
+          libelleAction: 'Voir la mission',
         });
       case 'depot_incident':
         return this.buildDepotIncidentEmail({

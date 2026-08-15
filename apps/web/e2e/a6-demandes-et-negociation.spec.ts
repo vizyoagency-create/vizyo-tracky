@@ -56,16 +56,27 @@ const EMPREINTE = `R${Date.now().toString().slice(-6)}`;
 const ADRESSE_CHARGEMENT = `Entrepôt Fenouillet ${EMPREINTE}`;
 
 /**
- * Le créneau souhaité — dans trois jours, à une heure PROPRE À CETTE EXÉCUTION.
+ * Le créneau souhaité — PROPRE À CETTE EXÉCUTION, jour ET heure.
  *
  * ⚠️ L'étape 5 affecte un vrai véhicule, qui devient donc indisponible sur ce créneau.
- * Deux recettes lancées sur le même horaire se disputeraient les mêmes camions, et la
- * seconde échouerait sur « aucun véhicule libre » — un échec qui accuse l'écran alors
- * qu'il n'a rien fait de mal. Le décalage horaire rend la recette REJOUABLE.
+ * Deux recettes qui tombent sur le même horaire se disputent les mêmes camions, et la
+ * seconde échoue sur « aucun véhicule libre » — un échec qui accuse l'écran alors qu'il
+ * n'a rien fait de mal.
+ *
+ * ⚠️ LE CRÉNEAU EST DÉRIVÉ DE L'HORLOGE, PAS TIRÉ AU SORT, et la nuance a coûté une
+ * recette. Croiser `getSeconds() % 5` et `getMinutes() % 12` donnait bien soixante
+ * créneaux — mais tirés au hasard à chaque lancement. Or soixante tirages aléatoires
+ * se télescopent bien avant d'être épuisés : à la quinzième exécution d'une journée,
+ * une collision est plus probable qu'improbable, et elle est arrivée. Une MINUTERIE
+ * monotone ne se répète, elle, qu'après avoir tout parcouru : deux lancements à une
+ * minute d'écart ne peuvent pas tomber sur le même jour, et le cycle complet fait
+ * quatre heures.
  */
-const HEURE_DEPART = 5 + (new Date().getMinutes() % 12);
+const MINUTES_EPOCH = Math.floor(Date.now() / 60_000);
+const HEURE_DEPART = 5 + (Math.floor(MINUTES_EPOCH / 20) % 12);
+const JOURS_DAVANCE = 3 + (MINUTES_EPOCH % 20);
 
-function creneau(decalageHeures: number, joursDAvance = 3): string {
+function creneau(decalageHeures: number, joursDAvance = JOURS_DAVANCE): string {
   const d = new Date(Date.now() + joursDAvance * 24 * 3600_000);
   d.setHours(HEURE_DEPART + decalageHeures, 0, 0, 0);
   const p = (n: number) => String(n).padStart(2, '0');
@@ -132,7 +143,12 @@ async function controlesDeBase(page: Page, ecran: string, racine = 'body'): Prom
       .map((el) => {
         const classe = (el.className || '').toString().split(' ')[0];
         const h = Math.round(el.getBoundingClientRect().height);
-        return `${el.tagName.toLowerCase()}.${classe} (${h}px)`;
+        // Le NOM ACCESSIBLE, pas seulement la classe : une classe utilitaire comme
+        // `text-fg-tertiary` est portee par quarante composants, et le message ne
+        // disait donc pas QUEL bouton corriger. On perdait la mesure a le chercher.
+        const nom =
+          el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 28) || '(sans nom)';
+        return `${el.tagName.toLowerCase()}.${classe} (${h}px) « ${nom} »`;
       }),
     racine,
   );
@@ -388,7 +404,15 @@ test.describe('A6 — demandes de mission et négociation, à 375 px', () => {
 
     // L'onglet Mission de l'agenda porte la liste ET le bouton de création.
     await page.getByRole('button', { name: 'Mission', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Nouvelle mission/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByRole('button', { name: /Nouvelle mission/i }).click();
+
+    // L'agenda LUI-MEME, avant d'ouvrir quoi que ce soit. Ses sept boutons sous 44 px
+    // etaient anterieurs a ce lot et sortis du controle le 2026-08-14 ; ils sont
+    // corriges, et la mesure revient ici pour qu'ils ne redescendent pas.
+    await controlesDeBase(page, 'Agenda · barre d\'outils');
 
     const modale = page.getByRole('dialog');
     await expect(modale).toBeVisible({ timeout: 15_000 });
@@ -470,6 +494,140 @@ test.describe('A6 — demandes de mission et négociation, à 375 px', () => {
     // `fullPage` n'y capture que le haut de l'écran — donc jamais la mission.
     await carte.scrollIntoViewIfNeeded();
     await carte.screenshot({ path: 'e2e-captures/5e-depot-tournee-375.png' });
+  });
+
+  // ═══ 5quater. LA TOURNÉE SE MODIFIE, ET LAISSE UNE TRACE ════════════════
+
+  /**
+   * A6 — « qui a changé quoi, quand, et de combien le prix bouge ».
+   *
+   * Le journal n'est pas un confort : une tournée qui change change le prix, et sans
+   * historique le dépôt découvre l'écart sur sa facture, sans pouvoir dire ce qui a
+   * bougé. Le scénario suit donc les DEUX bouts — le transporteur qui modifie, et le
+   * dépôt qui lit ce qui a changé.
+   */
+  test('5quater — transporteur : il modifie la tournée, avec motif, et le journal la retient', async ({ page }) => {
+    await ouvrirSession(page, 'CARRIER');
+    await page.goto('/agenda');
+    await page.getByRole('button', { name: 'Mission', exact: true }).click();
+    // On attend que le PANNEAU soit la avant d'y chercher une ligne : sans ce point
+    // d'ancrage, la recherche part sur un onglet encore vide et echoue sur un ecran
+    // parfaitement correct.
+    await expect(page.getByRole('button', { name: /Nouvelle mission/i })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // ⚠️ ON VISE « Dépôt <empreinte> », PAS SEULEMENT L'EMPREINTE. Deux missions de
+    // cette exécution la portent : celle née de la demande (« Entrepôt <empreinte> »)
+    // et celle saisie dans l'agenda (« Dépôt <empreinte> »). Le `.first()` prenait la
+    // première par heure de départ, donc pas toujours la bonne — et le scénario
+    // éprouvait alors une mission qu'il n'avait pas préparée.
+    const ligne = page.locator('.mp-carte', { hasText: `Dépôt ${EMPREINTE}` }).first();
+    await expect(ligne).toBeVisible({ timeout: 15_000 });
+    await ligne.getByRole('button', { name: /Modifier la tournée/i }).click();
+
+    const modale = page.getByRole('dialog');
+    await expect(modale).toBeVisible({ timeout: 15_000 });
+    // La tournée s'ouvre sur CE QU'ELLE EST, jamais sur un formulaire vide.
+    await expect(modale.getByLabel('Adresse de chargement')).toHaveValue(new RegExp(EMPREINTE));
+    // L'historique porte déjà la version initiale, écrite à la création.
+    await expect(modale.getByText('Tournée initiale')).toBeVisible();
+
+    // Une livraison de plus, et la distance qui va avec.
+    //
+    // ⚠️ ON ATTEND QUE LA LIGNE SOIT RENDUE AVANT DE COMPTER. `count()` juste après le
+    // clic lisait le DOM d'avant le rendu Angular : il renvoyait 3 au lieu de 4, et le
+    // test remplissait donc la TROISIÈME livraison — écrasant « Client Muret » — pour
+    // laisser la quatrième vide. Le formulaire refusait alors d'enregistrer, à juste
+    // titre : une adresse vide n'est pas une livraison. Le test accusait l'écran d'un
+    // défaut qu'il avait lui-même provoqué.
+    const adresses = modale.getByLabel(/Adresse de la livraison/);
+    const avant = await adresses.count();
+    await modale.getByRole('button', { name: /Ajouter une livraison/i }).click();
+    await expect(adresses).toHaveCount(avant + 1);
+    await modale.getByLabel(`Adresse de la livraison ${avant + 1}`).fill('Client Tournefeuille');
+    await modale.getByLabel('Distance retenue').fill('62');
+
+    // ⚠️ SANS MOTIF, ON NE PASSE PAS. Une tournée qu'on change a une raison, et
+    // c'est elle qu'on relira dans le journal.
+    await expect(modale.getByRole('button', { name: /Enregistrer la tournée/i })).toBeDisabled();
+    await modale.getByLabel('Motif du changement').fill('Le client a ajouté un point de livraison.');
+    await expect(modale.getByRole('button', { name: /Enregistrer la tournée/i })).toBeEnabled();
+
+    await controlesDeBase(page, 'Tournée · édition', '[role="dialog"]');
+    await capture(page, 'e2e-captures/7a-tournee-edition-375.png');
+
+    await modale.getByRole('button', { name: /Enregistrer la tournée/i }).click();
+    await expect(modale).toBeHidden({ timeout: 20_000 });
+
+    // Le journal a retenu : on rouvre et la modification y est, signée et datée.
+    await page.locator('.mp-carte', { hasText: `Dépôt ${EMPREINTE}` }).first()
+      .getByRole('button', { name: /Modifier la tournée/i }).click();
+    const relue = page.getByRole('dialog');
+    await expect(relue.getByText('Modification 1')).toBeVisible({ timeout: 15_000 });
+    await expect(relue).toContainText('Le client a ajouté un point de livraison.');
+    await expect(relue).toContainText('Client Tournefeuille');
+    await capture(page, 'e2e-captures/7b-tournee-journal-375.png');
+  });
+
+  test('5quinquies — dépôt : il voit que sa tournée a changé, par qui et pourquoi', async ({ page }) => {
+    await ouvrirSession(page, 'DEPOT');
+    await page.goto('/depot/missions');
+
+    // « Dépôt <empreinte> », comme au scénario précédent : deux missions de cette
+    // exécution portent l'empreinte, et seule celle-ci a été modifiée.
+    const carte = page.locator('.dmc', { hasText: `Dépôt ${EMPREINTE}` }).first();
+    await expect(carte).toBeVisible({ timeout: 15_000 });
+    // La phrase qui évite la facture surprise.
+    await expect(carte.locator('.dmc-modif')).toContainText('Tournée modifiée');
+    await expect(carte.locator('.dmc-modif')).toContainText('Le client a ajouté un point de livraison.');
+
+    const contraste = await contrasteRendu(page, '.dmc-modif');
+    expect(contraste!, `« tournée modifiée » à ${contraste?.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+
+    await controlesDeBase(page, 'Dépôt · tournée modifiée');
+    await carte.scrollIntoViewIfNeeded();
+    await carte.screenshot({ path: 'e2e-captures/7c-depot-tournee-modifiee-375.png' });
+  });
+
+  // ═══ 5sexies. CELUI QUI N'A PAS LE DROIT ════════════════════════════════
+
+  test('5sexies — gestionnaire sans la permission : ni l\'onglet, ni la porte', async ({ page }) => {
+    // ⚠️ LE SEUL SCÉNARIO QUI VÉRIFIE UN REFUS, ET C'EST POUR ÇA QU'IL EXISTE.
+    //
+    // Les neuf autres tournent sous des comptes autorisés : ils prouvent que l'écran
+    // MARCHE, jamais qu'il se FERME. Or « ça ne s'affiche qu'aux personnes
+    // autorisées » est une demande explicite du client, et une demande de ce genre
+    // ne se vérifie que par la négative.
+    //
+    // Les deux moitiés comptent, et elles sont indépendantes :
+    //   — l'onglet caché, sinon le compte voit une promesse qui finira en erreur ;
+    //   — l'API fermée, sinon l'écran est seulement DISCRET. Cacher un bouton n'a
+    //     jamais fermé une route : le lot précédent l'a appris avec le conducteur qui
+    //     lisait 21 Ko de négociations sans qu'aucun écran ne le lui propose.
+    test.skip(!jetonPresent('SANS_PERM'), 'Jeton A6_TOKEN_SANS_PERM manquant');
+    await ouvrirSession(page, 'SANS_PERM');
+
+    // Il demande explicitement l'onglet interdit : le lien a pu lui être transféré.
+    await page.goto('/missions?tab=demandes');
+    await expect(page.getByRole('heading', { name: 'Tranches de distance' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('tab', { name: /Demandes/ })).toHaveCount(0);
+    // Le sous-titre non plus ne promet pas ce qu'il ne tient pas.
+    await expect(page.locator('.mp-sous')).not.toContainText('demandes de vos dépôts');
+
+    // Et la porte de derrière, celle qu'aucun écran ne montre.
+    const refus = await page.evaluate(async () => {
+      const r = await fetch('/api/mission-requests', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('vizyo-tracky-token')}` },
+      });
+      return { statut: r.status, taille: (await r.text()).length };
+    });
+    expect(refus.statut, `GET /mission-requests a renvoyé ${refus.statut}`).toBe(403);
+
+    await controlesDeBase(page, 'Missions · sans la permission');
+    await capture(page, 'e2e-captures/7d-sans-permission-375.png');
   });
 
   // ═══ 6. LE MÊME PARCOURS, EN GRAND ══════════════════════════════════════

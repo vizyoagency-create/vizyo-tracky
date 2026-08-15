@@ -519,6 +519,10 @@ model User {
   /// périmètre : un DEPOT n'a jamais de ligne UserVehicleAccess (A1 § 7).
   depotMissions          Mission[]               @relation("MissionDepot")
   missionRequests        MissionRequest[]        @relation("MissionRequestDepot")
+  /// Lot A6 — les modifications de tournee signees par ce compte. SetNull cote
+  /// revision : supprimer un compte n'efface pas l'historique, dont le nom de
+  /// l'auteur est fige a l'ecriture.
+  missionStopRevisions   MissionStopRevision[]   @relation("MissionStopRevisionAuthor")
   /// Lot A4 — les liens publics de suivi générés par ce compte. Un dépôt comme un
   /// gestionnaire peut en créer ; c'est par cette relation qu'on révoque les liens
   /// d'un compte désactivé (A4 § 8).
@@ -1103,6 +1107,8 @@ model Mission {
   request         MissionRequest?    @relation("MissionFromRequest")
   /// Les arrets de la tournee. originLabel/destLabel en sont le resume derive.
   stops           MissionStop[]
+  /// L'historique des versions de la tournee, du plus ancien au plus recent.
+  stopRevisions   MissionStopRevision[]
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -1395,6 +1401,67 @@ model MissionStop {
   @@index([requestId])
   @@index([missionId])
   @@map("mission_stops")
+}
+
+/// UNE version de la tournée d'une mission. Immuable une fois écrite.
+///
+/// ┌─ POURQUOI UN JOURNAL ET PAS UN SIMPLE « modifiéLe / modifiéPar » ──────────┐
+/// │ Une tournée qui change change AUSSI le prix : trois livraisons de plus, et │
+/// │ la distance saute d'une tranche. Six mois plus tard, face à une facture    │
+/// │ contestée, « modifié le 15 août par Claire » ne répond à aucune des trois  │
+/// │ questions qui comptent : qu'y avait-il AVANT, combien ça valait, et        │
+/// │ pourquoi ça a bougé.                                                       │
+/// │                                                                            │
+/// │ Chaque ligne porte donc l'ÉTAT COMPLET après le changement, plus le tarif  │
+/// │ recalculé et celui d'avant. On relit l'histoire sans la reconstituer, et   │
+/// │ sans dépendre d'une grille tarifaire qui aura pu changer entre-temps.      │
+/// │                                                                            │
+/// │ Même patron que `MissionQuoteRound` pour la négociation : une ligne par    │
+/// │ mouvement, jamais un champ tenu en parallèle qui diverge de son historique.│
+/// └────────────────────────────────────────────────────────────────────────────┘
+model MissionStopRevision {
+  id        String  @id @default(uuid()) @db.Uuid
+  missionId String  @db.Uuid
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  /// Rang de la révision, à partir de 0. La 0 est l'état À LA CRÉATION : sans elle,
+  /// l'historique commencerait au premier changement et personne ne saurait d'où
+  /// la tournée est partie.
+  position Int
+
+  /// L'auteur. `authorUserId` peut devenir nul (compte supprimé) — c'est pourquoi
+  /// le NOM est figé à l'écriture. Un journal dont les auteurs s'effacent avec les
+  /// comptes ne prouve plus rien.
+  authorUserId String?   @db.Uuid
+  authorUser   User?     @relation("MissionStopRevisionAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  authorName   String
+  authorRole   UserRole
+
+  /// Ce que l'auteur a répondu à « pourquoi ». Facultatif à la création (rien à
+  /// justifier), demandé ensuite.
+  reason String?
+
+  /// L'état COMPLET des arrêts après ce changement : `[{ position, kind, label }]`.
+  /// Figé en JSON plutôt que recomposé depuis `MissionStop`, qui ne porte que
+  /// l'état COURANT.
+  stops Json
+
+  /// Distance retenue après ce changement, en mètres. Nulle tant que personne ne
+  /// l'a saisie — aucun service de routage n'est branché (cf. A6 Q3).
+  distanceM Int?
+
+  /// Tarif recalculé sur la grille après ce changement, en centimes HT.
+  /// `null` = « sur devis », ou aucune grille active : on ne l'invente pas.
+  amountCents Int?
+
+  /// Le tarif d'AVANT, pour lire l'écart sans rejouer tout l'historique.
+  previousAmountCents Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([missionId, position])
+  @@index([missionId])
+  @@map("mission_stop_revisions")
 }
 
 /// UN tour de négociation. Immuable une fois écrit.

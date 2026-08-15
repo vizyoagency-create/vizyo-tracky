@@ -47,6 +47,31 @@ export interface DepotMissionDriverDto {
  *   - le trace parcouru            → revele les points de livraison precedents,
  *                                     donc les autres clients (A4 § 2)
  */
+/**
+ * A6 — UNE version de la tournee, telle que le DEPOT la relit.
+ *
+ * ⚠️ Volontairement plus pauvre que le DTO du transporteur : ni identifiant d'auteur,
+ * ni `placeId`, ni note interne. Le depot doit pouvoir repondre a « qu'est-ce qui a
+ * change, quand, par qui, et combien ca coute » — pas obtenir l'annuaire interne de
+ * son transporteur.
+ */
+export interface DepotStopRevisionDto {
+  /** Rang de la version. 0 = l'etat a la creation de la mission. */
+  position: number;
+  /** Nom FIGE a l'ecriture : un compte supprime ne doit pas effacer sa signature. */
+  authorName: string;
+  /** Ce que l'auteur a repondu a « pourquoi ». Absent sur la version initiale. */
+  reason: string | null;
+  /** Les arrets de CETTE version, dans l'ordre. Libelles seuls. */
+  stops: string[];
+  distanceKm: number | null;
+  /** Tarif de cette version en centimes HT. `null` = sur devis, ou pas de grille. */
+  amountCents: number | null;
+  /** Le tarif d'AVANT, pour lire l'ecart sans rejouer l'historique. */
+  previousAmountCents: number | null;
+  createdAt: string;
+}
+
 export interface DepotMissionDto {
   id: string;
   /** Reference lisible : « M-2481 ». */
@@ -70,6 +95,21 @@ export interface DepotMissionDto {
    * a 4 arrets prevus.
    */
   stops: string[];
+  /**
+   * A6 — L'HISTORIQUE DES TOURNEES, du plus ancien au plus recent.
+   *
+   * ┌─ POURQUOI LE DEPOT Y A DROIT ─────────────────────────────────────────────┐
+   * │ Une tournee qui change change aussi le PRIX : trois livraisons de plus, et │
+   * │ la distance saute d'une tranche. Sans cet historique, le depot decouvre    │
+   * │ l'ecart sur sa facture et n'a aucun moyen de savoir ce qui a bouge, quand, │
+   * │ ni pourquoi. C'est exactement l'appel telephonique que tout ce lot cherche │
+   * │ a eviter.                                                                  │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * VIDE pour les missions creees avant cette version, et pour celles dont la
+   * tournee n'a jamais bouge — l'ecran n'affiche alors rien du tout.
+   */
+  stopHistory: DepotStopRevisionDto[];
   /** ISO 8601. La fenetre annoncee au depot. */
   startAt: string;
   endAt: string;

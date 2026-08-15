@@ -272,6 +272,15 @@ export class DepotLiveService {
       // « Fenouillet -> Muret ». Le typage l'a d'ailleurs refuse, et c'est exactement
       // ce que la selection partagee est censee provoquer.
       stops: { select: { label: true }, orderBy: { position: 'asc' } },
+      // A6 — l'historique des tournees, meme selection que `depot.service` : cette
+      // requete alimente le meme `versDtoPublic`, et le typage refuserait l'ecart.
+      stopRevisions: {
+        select: {
+          position: true, authorName: true, reason: true, stops: true,
+          distanceM: true, amountCents: true, previousAmountCents: true, createdAt: true,
+        },
+        orderBy: { position: 'asc' },
+      },
     } as const;
   }
 }

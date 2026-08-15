@@ -188,11 +188,108 @@ de la coque partagée.** Le § 10 le disait déjà. Il avait raison trois fois d
 | Sujet | État |
 |---|---|
 | `estimatedDistanceM` | Toujours nul — décision Q3 : pas de service de routage, et un vol d'oiseau ferait changer de tranche. L'écran le dit. |
-| Modifier les arrêts d'une mission existante | **Non fait.** `ModifierMissionEntree` ne porte pas `stops` ; la tournée se fige à la création. `mission-dialog` ne sert qu'à créer. |
-| Cibles tactiles de l'**agenda** | 7 boutons sous 44 px (`ag-month-btn` 30, `ag-today-btn` 31, `mp-filtre` 35, `mp-creer` 36…). **Antérieurs à ce lot**, hors périmètre A6, non corrigés. |
+| Modifier les arrêts d'une mission existante | ✅ **Fait**, avec journal immuable — cf. § 0ter. |
+| Cibles tactiles de l'**agenda** | ✅ **Corrigées** : `ag-month-btn`, `ag-today-btn`, `ag-seg-btn`, `ag-dd-trigger`, `mp-filtre`, `mp-creer`. Mesurées à chaque recette. |
 | Liste des demandes | Plafond serveur à 200, aucune pagination ni filtre. Suffisant aujourd'hui, à revoir avant un client à fort volume. |
-| Suite web | **Un échec non reproductible** observé une fois sur cinq exécutions (353 tests). Quatre passes suivantes vertes ; le test fautif n'a pas pu être nommé. |
-| Migration T2 + `PRICING_GRID_MISSING` | Appliquées **en local uniquement**. Rien n'est déployé. |
+| Suite web | **Un échec non reproductible** observé deux fois sur sept exécutions (353 tests). Les passes suivantes sont vertes ; le test fautif n'a jamais pu être nommé — le rapporteur ne le cite pas et il ne se reproduit pas isolément. |
+| Migrations | T2 et `PRICING_GRID_MISSING` sont **en production** depuis `842c553`. `20260815080000_historique_des_tournees` part avec ce lot. |
+| `agenda_view` du gestionnaire | Deux notifications d'erreur à chaque ouverture de l'agenda — cf. § 0quater, antérieur à ce lot. |
+
+---
+
+## 0ter. La tournée se modifie, et laisse une trace — 2026-08-15
+
+> Demandé par le client : « qu'on puisse modifier, et surtout mettre la traçabilité :
+> telle personne a changé, et donc le prix change ».
+
+### Le modèle
+
+`MissionStopRevision` — une ligne **immuable** par version de la tournée, même patron
+que `MissionQuoteRound` pour la négociation.
+
+| Champ | Pourquoi |
+|---|---|
+| `position` | Rang. **La 0 est l'état à la création** : sans elle, l'historique commencerait au premier changement et personne ne saurait d'où la tournée est partie. |
+| `authorName` **figé**, `authorUserId` en `SET NULL` | Supprimer un compte ne doit pas effacer qui a modifié une tournée facturée. |
+| `stops` (JSON) | L'état **complet** après le changement. Relire l'histoire ne demande alors ni recalcul, ni la grille tarifaire de l'époque. |
+| `amountCents` / `previousAmountCents` | L'écart se lit sans rejouer l'historique. |
+| `reason` | **Obligatoire** à la modification, absent à la création : une tournée qu'on change a une raison, une tournée qu'on crée n'a rien à justifier. |
+
+### Les décisions qui comptent
+
+1. **Le prix convenu n'est PAS réécrit.** `agreedAmountCents` porte un accord signé
+   des deux parties ; le modifier d'office ferait bouger un engagement dans le dos de
+   l'une d'elles. On calcule ce que vaut la nouvelle tournée, on l'inscrit, et les
+   humains décident. Les deux écrans affichent l'écart.
+2. **Un dépôt ne modifie pas une mission.** C'est l'invariant du lot : il négocie une
+   *demande*, pas un camion déjà engagé. Il **lit** l'historique — c'est SA facture.
+3. **Route séparée** (`PATCH /missions/:id/stops`) plutôt qu'un champ de plus dans
+   `PATCH /:id` : `CHAMPS_MODIFIABLES` décide champ par champ selon le statut, et y
+   glisser les arrêts aurait mélangé cette règle avec celle de la traçabilité.
+4. **L'événement d'agenda suit.** Il porte le trajet dans son titre ; le laisser en
+   arrière ferait lire deux trajets différents pour la même mission.
+5. **Une mission terminée ou annulée ne se retouche pas.** Son trajet a eu lieu, ou
+   n'aura pas lieu.
+
+### Ce que chacun voit
+
+- **Transporteur** — bouton « Modifier la tournée » sur chaque mission encore ouverte.
+  La modale s'ouvre sur la tournée **actuelle**, exige un motif, et déroule le journal
+  complet : auteur, date, motif, arrêts, distance, montant et montant précédent.
+- **Dépôt** — une ligne sur sa carte : « Tournée modifiée le 15 août par Claire V. —
+  le client a ajouté un point. **169,00 € HT au lieu de 79,00 €.** » Plus un e-mail
+  (`mission_tournee_modifiee`), parce qu'il organise ses quais sur l'heure annoncée.
+
+---
+
+## 0quater. La permission, et qui voit l'écran — 2026-08-15
+
+**Décision du client : le gestionnaire ne porte PAS `missions_request` par défaut.**
+
+Elle était ouverte au rôle `FLEET_MANAGER` à la livraison d'A6, par symétrie avec
+`missions_manage` — « celui qui crée une mission peut bien en demander une ». Le client
+tranche l'inverse, et il a raison : créer une mission, c'est planifier son propre parc ;
+demander et négocier, c'est **engager un prix face à un tiers**. Deux métiers. Un
+administrateur l'accorde nommément, depuis l'écran des droits où elle est cochable et
+documentée (groupe « Missions & dépôts »).
+
+### Ce que ce changement ferme réellement
+
+Le résolveur du serveur applique les **défauts du rôle** aux clés absentes du JSON
+(`applyFallbacks` : `{ ...roleDefaults, ...user.permissions }`). Le front, lui, lit le
+JSON **brut** (`user.permissions?.[clé] === true`). Cette asymétrie n'est pas un défaut
+— elle explique le trou :
+
+> Tant que le défaut valait `true`, **tout gestionnaire pouvait appeler
+> `GET /mission-requests`**, y compris ceux dont l'écran ne montrait aucun onglet. La
+> porte était ouverte derrière un mur. Fermer le défaut ferme la porte ; masquer
+> l'onglet ne fermait que le mur.
+
+C'est la même leçon que le n° 1 de la revue (le conducteur qui lisait 21 Ko de
+négociations) — et elle se vérifie par la **négative**, jamais en regardant un écran
+autorisé fonctionner. D'où le scénario `5sexies`, joué sous un gestionnaire à qui
+`missions_view` a été accordée et `missions_request` refusée : ni onglet, ni sous-titre
+qui le promette, et **403** sur la route.
+
+⚠️ **La recette tourne sous un GESTIONNAIRE, pas sous un administrateur** — et c'est
+délibéré. `isAdmin` sort avant toute résolution : un scénario joué sous un FLEET_ADMIN
+ne prouve rien du chemin d'octroi. Sous un gestionnaire, il prouve les deux sens.
+
+### En production
+
+Le rattrapage du 2026-08-14 a écrit `missions_request: true` **explicitement** sur des
+comptes existants, pour ouvrir l'écran aux dépôts. Un `true` explicite l'emporte sur le
+défaut : les comptes concernés gardent la permission. À vérifier au déploiement — les
+**dépôts** doivent la garder, les **gestionnaires** ne le devraient pas.
+
+### Constaté au passage, hors lot
+
+Un `FLEET_MANAGER` a `agenda_view: false` par défaut alors que l'onglet Missions vit
+**dans** l'agenda (la route est ouverte par `missions_view`, cf. `app.routes.ts`). La
+page s'affiche et les missions se chargent, mais deux notifications d'erreur tombent à
+chaque visite : « Permission requise : agenda_view ». Antérieur à ce lot, visible sur
+chaque capture de recette, et c'est un arbitrage de rôles à trancher — pas une
+correction à glisser ici.
 
 ---
 

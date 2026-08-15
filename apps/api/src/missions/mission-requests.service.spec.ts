@@ -28,6 +28,7 @@ describe('MissionRequestsService', () => {
     user: { findMany: jest.Mock };
     missionQuoteRound: { create: jest.Mock };
     missionStop: { deleteMany: jest.Mock; createMany: jest.Mock };
+    missionStopRevision: { create: jest.Mock };
     missionPricingSettings: { findUnique: jest.Mock };
     vehicleEvent: { create: jest.Mock; updateMany: jest.Mock };
     mission: { create: jest.Mock };
@@ -103,6 +104,8 @@ describe('MissionRequestsService', () => {
       },
       missionQuoteRound: { create: jest.fn().mockResolvedValue({}) },
       missionStop: { deleteMany: jest.fn().mockResolvedValue({}), createMany: jest.fn().mockResolvedValue({}) },
+      /** A6 — le journal des tournees, ecrit aussi a la conversion. */
+      missionStopRevision: { create: jest.fn().mockResolvedValue({ id: 'rev-0' }) },
       missionPricingSettings: { findUnique: jest.fn().mockResolvedValue({ quoteValidityHours: 48 }) },
       // Presents UNIQUEMENT pour prouver qu'on n'y touche pas.
       vehicleEvent: { create: jest.fn(), updateMany: jest.fn() },
@@ -778,6 +781,34 @@ describe('MissionRequestsService', () => {
         // relier à la demande qu'il a négociée.
         expect(avis.ref).toBe('D-0001');
         expect(avis.intro).toContain('M-0042');
+      });
+
+      /**
+       * A6 — LA MISSION CONVERTIE PART AVEC SON JOURNAL, pas avec une page blanche.
+       *
+       * Ce chemin recopie les arrets depuis la demande negociee, sans passer par le
+       * `stops` de `MissionsService.creer` : il n'heritait donc pas de la revision
+       * initiale. Une mission nee d'une demande arrivait avec un historique VIDE, et
+       * sa premiere modification y serait apparue sans rien avant elle — alors que la
+       * tournee avait bel et bien un etat de depart, celui sur lequel les deux
+       * parties s'etaient accordees. Trouve par la recette navigateur du 2026-08-15.
+       */
+      it('écrit la révision 0 de la tournée, avec le montant CONVENU', async () => {
+        prisma.missionRequest.findFirst.mockResolvedValue(ACCEPTEE());
+        await service.affecter(TRANSPORTEUR, 'r-1', { vehicleId: 'v-1' });
+        const data = prisma.missionStopRevision.create.mock.calls[0][0].data;
+        expect(data).toMatchObject({
+          missionId: 'm-9',
+          position: 0,
+          // La distance et le montant de L'ACCORD : c'est la reference contre
+          // laquelle tout ecart ulterieur se lira.
+          distanceM: 43_000,
+          amountCents: 7900,
+          previousAmountCents: null,
+        });
+        // Le motif rappelle d'ou vient la tournee — un journal qui commence sans
+        // explication n'explique rien.
+        expect(data.reason).toContain('D-0001');
       });
 
       it('coupe l\'avis générique de création de mission — pas deux e-mails pour un événement', async () => {

@@ -281,7 +281,15 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   // depot destinataire et partage un suivi.
   missions_view: true,
   missions_manage: true,
-  missions_request: true,
+  // ⚠️ FERMEE PAR DEFAUT, SUR DECISION DU CLIENT (2026-08-15). Elle etait ouverte a la
+  // livraison d'A6 par symetrie avec `missions_manage` — « celui qui cree une mission
+  // peut bien en demander une ». Le client tranche l'inverse : demander et negocier,
+  // c'est engager un PRIX face a un tiers, pas planifier un camion. Un gestionnaire
+  // qui affecte des vehicules toute la journee n'a aucune raison d'ouvrir un fil de
+  // negociation, et l'ouvrir par defaut a des dizaines de comptes existants aurait
+  // accorde ce droit sans que personne ne l'ait demande. Un admin l'accorde nommement,
+  // depuis l'ecran des droits, ou la permission est cochable et documentee.
+  missions_request: false,
   mission_share: true,
   driver_contact_view: true,
 };

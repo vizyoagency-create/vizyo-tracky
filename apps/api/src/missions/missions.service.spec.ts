@@ -11,6 +11,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionShareService } from '../depot/mission-share.service';
+import { MissionPricingService } from './mission-pricing.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MissionsService } from './missions.service';
 
@@ -30,11 +31,14 @@ describe('MissionsService — creation', () => {
     mission: { findFirst: jest.Mock; create: jest.Mock; findMany: jest.Mock; update: jest.Mock };
     vehicleEvent: { create: jest.Mock; updateMany: jest.Mock };
     /** A6 / T8 — les arrets de la tournee. */
-    missionStop: { createMany: jest.Mock };
+    missionStop: { createMany: jest.Mock; deleteMany: jest.Mock };
+    /** A6 — le journal des tournees. */
+    missionStopRevision: { create: jest.Mock };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
   };
-  let email: { buildMissionAssignedEmail: jest.Mock; send: jest.Mock };
+  let email: { buildMissionAssignedEmail: jest.Mock; buildMissionQuoteEmail: jest.Mock; send: jest.Mock };
+  let pricing: { tarifPour: jest.Mock };
 
   const GESTIONNAIRE = { id: 'u-1', fleetId: 'f-1', role: UserRole.FLEET_MANAGER } as AuthUser;
 
@@ -75,7 +79,11 @@ describe('MissionsService — creation', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       // A6 / T8 — les arrets, ecrits dans la MEME transaction que la mission.
-      missionStop: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      missionStop: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      missionStopRevision: { create: jest.fn().mockResolvedValue({ id: 'rev-1' }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(),
     };
@@ -84,7 +92,14 @@ describe('MissionsService — creation', () => {
 
     email = {
       buildMissionAssignedEmail: jest.fn().mockReturnValue({ subject: 's', html: 'h', text: 't' }),
+      buildMissionQuoteEmail: jest.fn().mockReturnValue({ subject: 's', html: 'h', text: 't' }),
       send: jest.fn().mockResolvedValue({ ok: true }),
+    };
+    pricing = {
+      tarifPour: jest.fn().mockResolvedValue({
+        statut: 'TARIF', trancheLibelle: '51 à 100 km', distanceKm: 62,
+        htCents: 16900, tvaCents: 3380, ttcCents: 20280, lignes: [],
+      }),
     };
     prisma.user.findUnique = jest.fn().mockResolvedValue({
       email: 'depot@exemple.fr',
@@ -103,6 +118,9 @@ describe('MissionsService — creation', () => {
         // Lot A4 — la cloture ferme les liens publics de la mission. Un espion suffit :
         // ce qui est teste ici est la BASCULE, pas la fermeture (qui a ses propres tests).
         { provide: MissionShareService, useValue: { fermerLiensDeMission: jest.fn().mockResolvedValue(0) } },
+        // A6 — le recalcul du tarif quand la tournee change. Un espion suffit : la
+        // grille a ses propres tests, ce qui est verifie ici c'est le JOURNAL.
+        { provide: MissionPricingService, useValue: pricing },
       ],
     }).compile();
     service = moduleRef.get(MissionsService);
@@ -200,6 +218,159 @@ describe('MissionsService — creation', () => {
       ).rejects.toThrow();
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.vehicleEvent.create).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * A6 — MODIFIER LA TOURNEE, ET LAISSER UNE TRACE.
+   *
+   * ┌─ CE QUI EST PROTEGE ICI ──────────────────────────────────────────────────┐
+   * │ 1. LE JOURNAL EST IMMUABLE ET COMPLET. Chaque modification ecrit une       │
+   * │    revision de plus, jamais un champ ecrase : c'est ce qui permet de       │
+   * │    repondre six mois plus tard a « pourquoi cette facture ».               │
+   * │ 2. LE MOTIF EST OBLIGATOIRE. Une tournee qu'on change a une raison.        │
+   * │ 3. LE PRIX CONVENU N'EST PAS REECRIT. On calcule ce que vaut la nouvelle   │
+   * │    tournee, on l'inscrit, et on laisse les humains decider.                │
+   * │ 4. UN DEPOT NE MODIFIE PAS UNE MISSION. C'est l'invariant du lot.          │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  describe('modifier la tournee, et la tracer', () => {
+    const DEPOT = { id: 'depot-1', fleetId: 'f-1', role: UserRole.DEPOT } as AuthUser;
+    const TOURNEE = [
+      { label: 'Entrepot Fenouillet' },
+      { label: 'Client Blagnac' },
+      { label: 'Client Muret' },
+    ];
+
+    const missionEn = (over: Record<string, unknown> = {}) => ({
+      id: 'm-1', ref: 'M-0001', fleetId: 'f-1', status: MissionStatus.PLANNED,
+      depotUserId: 'depot-1', startAt: new Date(), endAt: new Date(),
+      stopRevisions: [],
+      ...over,
+    });
+
+    it('ecrit une revision, avec l\'auteur et le motif', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE,
+        distanceKm: 62,
+        reason: 'Le client a ajoute un point de livraison.',
+      });
+      const data = prisma.missionStopRevision.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        missionId: 'm-1',
+        position: 0,
+        authorRole: UserRole.FLEET_MANAGER,
+        reason: 'Le client a ajoute un point de livraison.',
+        distanceM: 62_000,
+      });
+      // Le nom est FIGE : un compte supprime ne doit pas effacer sa signature.
+      expect(typeof data.authorName).toBe('string');
+      expect(data.authorName.length).toBeGreaterThan(0);
+    });
+
+    it('range la revision APRES la precedente, jamais a sa place', async () => {
+      prisma.mission.findFirst.mockResolvedValue(
+        missionEn({ stopRevisions: [{ position: 3, amountCents: 7900 }] }),
+      );
+      await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: 62, reason: 'Motif suffisant.',
+      });
+      const data = prisma.missionStopRevision.create.mock.calls[0][0].data;
+      expect(data.position).toBe(4);
+      // Le tarif d'AVANT est recopie : relire l'ecart ne doit pas demander de
+      // rejouer tout l'historique, ni la grille tarifaire de l'epoque.
+      expect(data.previousAmountCents).toBe(7900);
+    });
+
+    it('RECALCULE le tarif sur la nouvelle distance', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      const r = await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: 62, reason: 'Motif suffisant.',
+      });
+      expect(pricing.tarifPour).toHaveBeenCalledWith('f-1', 62_000);
+      expect(r.amountCents).toBe(16900);
+    });
+
+    it('n\'invente aucun montant sans distance', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      const r = await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: null, reason: 'Motif suffisant.',
+      });
+      expect(pricing.tarifPour).not.toHaveBeenCalled();
+      expect(r.amountCents).toBeNull();
+    });
+
+    it('exige un motif — c\'est lui qu\'on relira', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      await expect(
+        service.modifierTournee(GESTIONNAIRE, 'm-1', { stops: TOURNEE, reason: '' }),
+      ).rejects.toThrow(/motif/i);
+      expect(prisma.missionStopRevision.create).not.toHaveBeenCalled();
+      expect(prisma.missionStop.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('UN DEPOT NE MODIFIE PAS UNE MISSION', async () => {
+      // L'invariant du lot : un depot est un tiers en lecture seule sur une mission.
+      // Il negocie une DEMANDE, pas un camion deja engage.
+      await expect(
+        service.modifierTournee(DEPOT, 'm-1', { stops: TOURNEE, reason: 'Motif suffisant.' }),
+      ).rejects.toThrow(/dépôt ne modifie pas/i);
+      expect(prisma.mission.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('refuse une mission terminee ou annulee', async () => {
+      for (const status of [MissionStatus.DONE, MissionStatus.CANCELLED]) {
+        prisma.missionStopRevision.create.mockClear();
+        prisma.mission.findFirst.mockResolvedValue(missionEn({ status }));
+        await expect(
+          service.modifierTournee(GESTIONNAIRE, 'm-1', { stops: TOURNEE, reason: 'Motif suffisant.' }),
+        ).rejects.toThrow(/ne se modifie plus/);
+        expect(prisma.missionStopRevision.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('remplace les arrets EN BLOC et recompose les deux libelles', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: 62, reason: 'Motif suffisant.',
+      });
+      expect(prisma.missionStop.deleteMany).toHaveBeenCalledWith({ where: { missionId: 'm-1' } });
+      expect(prisma.mission.update.mock.calls[0][0].data).toMatchObject({
+        originLabel: 'Entrepot Fenouillet',
+        destLabel: 'Client Muret',
+      });
+    });
+
+    it('met l\'evenement d\'agenda a jour — sinon deux trajets pour une mission', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: 62, reason: 'Motif suffisant.',
+      });
+      const maj = prisma.vehicleEvent.updateMany.mock.calls[0][0];
+      expect(maj.where.metadata).toEqual({ path: ['missionId'], equals: 'm-1' });
+      expect(maj.data.title).toContain('Client Muret');
+    });
+
+    it('previent le depot : c\'est son camion, et sa facture', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn());
+      await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: 62, reason: 'Deux points ajoutes.',
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(email.buildMissionQuoteEmail).toHaveBeenCalled();
+      // Le motif part avec l'avis : c'est la seule phrase qui explique POURQUOI.
+      expect(email.buildMissionQuoteEmail.mock.calls[0][0].message).toBe('Deux points ajoutes.');
+      expect(email.send.mock.calls[0][0].template).toBe('mission_tournee_modifiee');
+    });
+
+    it('une mission sans depot ne declenche aucun avis', async () => {
+      prisma.mission.findFirst.mockResolvedValue(missionEn({ depotUserId: null }));
+      await service.modifierTournee(GESTIONNAIRE, 'm-1', {
+        stops: TOURNEE, distanceKm: 62, reason: 'Motif suffisant.',
+      });
+      await new Promise((r) => setImmediate(r));
+      expect(email.send).not.toHaveBeenCalled();
     });
   });
 

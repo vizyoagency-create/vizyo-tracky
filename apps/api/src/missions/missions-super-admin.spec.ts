@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MissionShareService } from '../depot/mission-share.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { NO_FLEET } from '../common/tenant-scope';
+import { MissionPricingService } from './mission-pricing.service';
 import { MissionsService } from './missions.service';
 
 /**
@@ -124,6 +125,9 @@ describe('MissionsService — la portee du SUPER_ADMIN', () => {
           provide: MissionShareService,
           useValue: { fermerLiensDeMission: jest.fn().mockResolvedValue(0) },
         },
+        // A6 — le recalcul du tarif quand une tournee change. Inutilise par ces
+        // tests de PORTEE, mais requis par le constructeur.
+        { provide: MissionPricingService, useValue: { tarifPour: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(MissionsService);

@@ -30,8 +30,9 @@ const COLOR_MAP: Record<ToastKind, string> = {
         <button
           (click)="toastService.dismissAll()"
           class="pointer-events-auto self-end text-xs font-medium text-fg-tertiary hover:text-fg-primary
-                 bg-bg-secondary/95 backdrop-blur-md border border-border-subtle rounded-lg px-2.5 py-1
+                 bg-bg-secondary/95 backdrop-blur-md border border-border-subtle rounded-lg px-3
                  flex items-center gap-1 cursor-pointer shadow-lg"
+          style="min-height:44px"
           aria-label="Fermer toutes les notifications">
           <lucide-icon [img]="X" [size]="12" aria-hidden="true"></lucide-icon>
           Tout fermer
@@ -75,9 +76,16 @@ const COLOR_MAP: Record<ToastKind, string> = {
               </div>
             }
           </div>
+          <!-- ⚠️ LA ZONE CLIQUABLE FAIT 44 px, PAS L'ICONE. Le X reste a 14 px — le
+               grossir deformerait la carte — mais le bouton qui le porte s'etend, avec
+               un retrait negatif pour ne pas decaler la mise en page. Mesure a 14 px
+               pendant la recette du 2026-08-15 : sur telephone, fermer une notification
+               demandait de viser une cible plus petite que le doigt, et un rate ouvre
+               ce qu'il y a derriere. -->
           <button
             (click)="toastService.dismiss(toast.id)"
-            class="text-fg-tertiary hover:text-fg-primary shrink-0 cursor-pointer"
+            class="text-fg-tertiary hover:text-fg-primary shrink-0 cursor-pointer flex items-center justify-center"
+            style="min-height:44px;min-width:44px;margin:-12px -8px -12px 0"
             aria-label="Fermer la notification"
           >
             <lucide-icon [img]="X" [size]="14" aria-hidden="true"></lucide-icon>

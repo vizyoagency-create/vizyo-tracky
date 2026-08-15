@@ -6,6 +6,7 @@ import { swallow } from '../../core/error/swallow';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { MissionDialogComponent } from './mission-dialog/mission-dialog.component';
+import { MissionStopsModalComponent } from './mission-stops-modal.component';
 
 /**
  * Le message a afficher pour une panne de chargement des missions.
@@ -73,7 +74,7 @@ const FILTRES = [
 @Component({
   selector: 'app-missions-panel',
   standalone: true,
-  imports: [LucideAngularModule, MissionDialogComponent],
+  imports: [LucideAngularModule, MissionDialogComponent, MissionStopsModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- ═══ Les 5 compteurs ═══════════════════════════════════════════════════
@@ -110,6 +111,15 @@ const FILTRES = [
 
     @if (modaleOuverte()) {
       <app-mission-dialog (fermer)="modaleOuverte.set(false)" (creee)="charger()" />
+    }
+    @if (tourneeOuverte(); as m) {
+      <app-mission-stops-modal
+        [missionId]="m.id"
+        [missionRef]="m.ref"
+        [arretsInitiaux]="arretsDe(m)"
+        (modifiee)="charger()"
+        (fermer)="tourneeOuverte.set(null)"
+      />
     }
 
     @if (chargement()) {
@@ -152,6 +162,14 @@ const FILTRES = [
             } @else {
               <span class="mp-interne">Mission interne</span>
             }
+            <!-- A6 — la tournee se modifie APRES creation, avec motif et journal. Le
+                 bouton disparait sur une mission terminee ou annulee : son trajet a
+                 eu lieu, ou n'aura pas lieu, et le serveur refuse de le reecrire. -->
+            @if (modifiable(m)) {
+              <button type="button" class="mp-tournee" (click)="ouvrirTournee(m)">
+                <lucide-icon [img]="Route" [size]="14" /> Modifier la tournée
+              </button>
+            }
           </li>
         }
       </ul>
@@ -161,7 +179,7 @@ const FILTRES = [
           <thead>
             <tr>
               <th>Réf.</th><th>Trajet</th><th>Créneau</th><th>Véhicule</th>
-              <th>Dépôt destinataire</th><th>Statut</th>
+              <th>Dépôt destinataire</th><th>Statut</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -188,6 +206,13 @@ const FILTRES = [
                 <td><span class="vt-status" [class]="classeStatut(m.status)">
                   <span class="vt-status__dot"></span>{{ libelleStatut(m.status) }}
                 </span></td>
+                <td>
+                  @if (modifiable(m)) {
+                    <button type="button" class="mp-tournee" (click)="ouvrirTournee(m)">
+                      <lucide-icon [img]="Route" [size]="14" /> Tournée
+                    </button>
+                  }
+                </td>
               </tr>
             }
           </tbody>
@@ -238,9 +263,30 @@ const FILTRES = [
        Masquées sur large écran ; c'est le tableau qui prend le relais. On ne
        duplique pas la donnée : le même signal alimente les deux rendus. */
     .mp-cartes { display: none; }
+    /* A6 — modifier la tournee. Discret : c'est un geste rare, mais qui doit rester
+       trouvable sans ouvrir un menu.
+       ⚠️ DECLARE AVANT le bloc mobile, et pas apres : a specificite egale, c'est la
+       DERNIERE regle qui gagne. Place en dessous, cette hauteur minimale de 34 px
+       ecrasait le 44 px du telephone — la recette l'a mesure et l'a refuse. */
+    .mp-tournee {
+      display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+      min-height: 34px; padding: 7px 12px; border-radius: 9px; cursor: pointer;
+      font-family: inherit; font-size: 12px; font-weight: 600;
+      background: transparent; border: 1px dashed var(--border-strong-color);
+      color: var(--text-secondary);
+    }
+    .mp-tournee:hover { color: var(--text-primary); border-style: solid; }
+
     @media (max-width: 767px) {
       .mp-table-wrap { display: none; }
       .mp-cartes { display: flex; flex-direction: column; gap: 9px; margin: 0; padding: 0; list-style: none; }
+
+      /* Cibles tactiles : mesurees a 35 px (filtres) et 36 px (creer) pendant la
+         recette du 2026-08-14. Les quatre filtres sont colles les uns aux autres —
+         c'est la que quatre pixels manquants se paient, pas sur un bouton isole. */
+      .mp-filtre { min-height: 44px; }
+      .mp-creer { min-height: 44px; }
+      .mp-tournee { min-height: 44px; }
     }
     .mp-carte { display: flex; flex-direction: column; gap: 7px; padding: 13px 14px;
                 border-radius: 14px; background: var(--surface-secondary);
@@ -277,6 +323,31 @@ export class MissionsPanelComponent implements OnInit {
   protected readonly Plus = Plus;
 
   protected readonly modaleOuverte = signal(false);
+  /** A6 — la mission dont on modifie la tournée. */
+  protected readonly tourneeOuverte = signal<MissionLigne | null>(null);
+
+  /**
+   * Une tournée terminée ou annulée ne se retouche pas : son trajet a eu lieu, ou
+   * n'aura pas lieu. Le serveur le refuse ; l'écran ne propose donc pas le geste.
+   */
+  protected modifiable(m: MissionLigne): boolean {
+    return m.status !== 'DONE' && m.status !== 'CANCELLED';
+  }
+
+  protected ouvrirTournee(m: MissionLigne): void {
+    this.tourneeOuverte.set(m);
+  }
+
+  /**
+   * Les arrêts à charger dans la modale.
+   *
+   * Une mission point à point n'en a aucun : on lui passe alors ses deux libellés,
+   * qui SONT sa tournée à deux points. Sans cela, le formulaire s'ouvrirait vide sur
+   * une mission qui a bel et bien un départ et une arrivée.
+   */
+  protected arretsDe(m: MissionLigne): string[] {
+    return m.stops && m.stops.length >= 2 ? m.stops : [m.origin, m.destination];
+  }
   private readonly fleetFilter = inject(FleetFilterService);
   /** Le sélecteur de société change → on recharge dans la nouvelle société. */
   private readonly effetSociete = effect(() => {

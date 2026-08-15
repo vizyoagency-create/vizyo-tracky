@@ -468,6 +468,40 @@ export class MissionRequestsService {
           note: a.note,
         })),
       });
+
+      // LA RÉVISION 0 DE LA TOURNÉE, ici aussi.
+      //
+      // ⚠️ Ce chemin-ci écrit les arrêts LUI-MÊME, sans passer par le `stops` de
+      // `MissionsService.creer` — il les recopie depuis la demande négociée. Il
+      // n'héritait donc pas de la révision initiale, et une mission née d'une demande
+      // arrivait avec un journal VIDE : la première modification y serait apparue
+      // sans rien avant elle, alors que la tournée avait bel et bien un état de
+      // départ, celui sur lequel les deux parties s'étaient accordées.
+      //
+      // Trouvé par la recette navigateur du 2026-08-15, en ouvrant le journal d'une
+      // mission convertie.
+      //
+      // La distance et le montant viennent de l'ACCORD : ce sont eux la référence
+      // contre laquelle tout écart ultérieur se lira.
+      await tx.missionStopRevision.create({
+        data: {
+          missionId: mission.id,
+          position: 0,
+          authorUserId: user.id,
+          authorName:
+            `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || 'Compte supprimé',
+          authorRole: user.role,
+          reason: `Tournée issue de la demande ${demande.ref}, acceptée par les deux parties.`,
+          stops: arrets.map((a) => ({
+            position: a.position,
+            kind: a.kind,
+            label: a.label,
+          })) as unknown as Prisma.InputJsonValue,
+          distanceM: demande.usedDistanceM,
+          amountCents: demande.agreedAmountCents,
+          previousAmountCents: null,
+        },
+      });
       await tx.missionRequest.update({
         where: { id: requestId },
         data: { status: MissionRequestStatus.CONVERTED, missionId: mission.id },

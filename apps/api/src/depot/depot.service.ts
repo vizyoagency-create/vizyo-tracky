@@ -223,8 +223,18 @@ export class DepotService {
       // les coordonnees des lieux cles de son transporteur ni les consignes internes
       // laissees sur un arret qui ne le concerne pas.
       stops: { select: { label: true }, orderBy: { position: 'asc' } },
+      // A6 — l'historique des tournees. On charge le NOM de l'auteur, jamais son
+      // identifiant : le depot doit savoir QUI a modifie, pas pouvoir remonter a un
+      // compte de la societe de son transporteur.
+      stopRevisions: {
+        select: {
+          position: true, authorName: true, reason: true, stops: true,
+          distanceM: true, amountCents: true, previousAmountCents: true, createdAt: true,
+        },
+        orderBy: { position: 'asc' },
+      },
       // Volontairement ABSENTS : vehicleId, driverId, depotUserId, notes,
-      // originPlaceId, destPlaceId, createdByUserId, fleetId.
+      // originPlaceId, destPlaceId, createdByUserId, fleetId, authorUserId.
     } as const;
   }
 
@@ -236,6 +246,19 @@ export class DepotService {
       destination: m.destLabel,
       // Vide sur une mission point a point : l'ecran retombe sur `origin -> destination`.
       stops: m.stops.map((s) => s.label),
+      // Vide tant que la tournee n'a jamais bouge : l'ecran n'affiche alors rien.
+      stopHistory: m.stopRevisions.map((r) => ({
+        position: r.position,
+        authorName: r.authorName,
+        reason: r.reason,
+        stops: Array.isArray(r.stops)
+          ? (r.stops as Array<{ label: string }>).map((s) => s.label)
+          : [],
+        distanceKm: r.distanceM === null ? null : r.distanceM / 1000,
+        amountCents: r.amountCents,
+        previousAmountCents: r.previousAmountCents,
+        createdAt: r.createdAt.toISOString(),
+      })),
       startAt: m.startAt.toISOString(),
       endAt: m.endAt.toISOString(),
       status: m.status as MissionStatusDto,
@@ -297,4 +320,15 @@ type MissionSelectionnee = {
   fleet: { name: string };
   /** A6 / T8 — les arrets de la tournee. Le LIBELLE seul, cf. `selectionMission`. */
   stops: Array<{ label: string }>;
+  /** A6 — l'historique des tournees. Sans identifiant d'auteur. */
+  stopRevisions: Array<{
+    position: number;
+    authorName: string;
+    reason: string | null;
+    stops: unknown;
+    distanceM: number | null;
+    amountCents: number | null;
+    previousAmountCents: number | null;
+    createdAt: Date;
+  }>;
 };

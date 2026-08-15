@@ -9,6 +9,7 @@ import { DepotScopeGuard } from '../depot/depot-scope.guard';
 import { MissionPricingService, type GrilleEntree } from './mission-pricing.service';
 import {
   MissionsService,
+  type ArretMissionEntree,
   type CreerMissionEntree,
   type ModifierMissionEntree,
 } from './missions.service';
@@ -160,6 +161,45 @@ export class MissionsController {
   @RequirePermissions('missions_manage')
   depots(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
     return this.missions.listerDepots(req.user, fleetId || undefined);
+  }
+
+  /**
+   * A6 — MODIFIER LA TOURNÉE d'une mission, et l'inscrire au journal.
+   *
+   * Route SÉPARÉE de `PATCH /:id`, et c'est délibéré : `CHAMPS_MODIFIABLES` décide
+   * champ par champ de ce qu'un statut autorise, et y glisser un tableau d'arrêts
+   * aurait mélangé deux règles — celle des champs, et celle de la traçabilité, qui
+   * exige un motif et écrit une révision. Deux gestes, deux routes.
+   *
+   * `missions_manage` : modifier le trajet d'un camion engagé n'est pas négocier.
+   * Le service refuse en plus explicitement le rôle DEPOT.
+   */
+  @Patch(':id/stops')
+  @RequirePermissions('missions_manage')
+  modifierTournee(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: { stops: ArretMissionEntree[]; distanceKm?: number | null; reason?: string | null },
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.missions.modifierTournee(req.user, id, dto, fleetId || undefined);
+  }
+
+  /**
+   * L'historique des tournées, du plus ancien au plus récent.
+   *
+   * Gardée par `missions_view` : relire ce qui a été fait n'est pas le refaire. Le
+   * dépôt destinataire, lui, reçoit le même historique par `/depot/missions/:id` —
+   * il n'a pas accès à ce contrôleur, fermé à son rôle par construction.
+   */
+  @Get(':id/stop-revisions')
+  @RequirePermissions('missions_view')
+  historiqueTournee(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.missions.historiqueTournee(req.user, id, fleetId || undefined);
   }
 
   /**

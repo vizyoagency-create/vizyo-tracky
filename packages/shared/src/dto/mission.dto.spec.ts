@@ -58,6 +58,20 @@ describe('DepotMissionDto — le contrat de fuite', () => {
       // interdites ci-dessous couvre aussi ce champ : c'est un tableau de chaines,
       // il ne peut donc porter ni `placeId`, ni coordonnees, ni note interne.
       stops: ['Fenouillet', 'Blagnac', 'Muret'],
+      // A6 — l'historique des tournees. Le test des cles interdites ci-dessous le
+      // couvre aussi : il ne porte ni identifiant d'auteur, ni placeId, ni note.
+      stopHistory: [
+        {
+          position: 0,
+          authorName: 'Claire V.',
+          reason: null,
+          stops: ['Fenouillet', 'Muret'],
+          distanceKm: null,
+          amountCents: null,
+          previousAmountCents: null,
+          createdAt: '2026-08-09T07:00:00.000Z',
+        },
+      ],
       startAt: '2026-08-09T08:15:00.000Z',
       endAt: '2026-08-09T11:40:00.000Z',
       status: 'IN_PROGRESS',
@@ -84,10 +98,20 @@ describe('DepotMissionDto — le contrat de fuite', () => {
       'originPlaceId',
       'destPlaceId',
     ];
-    const cles = [...Object.keys(dto), ...Object.keys(dto.vehicle), ...Object.keys(dto.driver!)];
+    const cles = [
+      ...Object.keys(dto),
+      ...Object.keys(dto.vehicle),
+      ...Object.keys(dto.driver!),
+      // A6 — l'historique part au depot : ses cles comptent autant que les autres.
+      ...Object.keys(dto.stopHistory[0] ?? {}),
+    ];
     for (const interdit of INTERDITS) {
       expect(cles).not.toContain(interdit);
     }
+    // ⚠️ L'AUTEUR EST UN NOM, JAMAIS UN IDENTIFIANT. Servir `authorUserId` donnerait
+    // au depot une cle de la base de son transporteur, sur un ecran qui n'a besoin
+    // que de « qui a modifie ».
+    expect(cles).not.toContain('authorUserId');
   });
 
   /**

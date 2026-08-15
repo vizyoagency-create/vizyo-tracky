@@ -283,6 +283,40 @@ function couplesNegociation(t, nomTheme) {
   ];
 }
 
+/**
+ * Lot A6 — LA TRAÇABILITÉ DES TOURNÉES : la modale d'édition du transporteur, et la
+ * ligne « tournée modifiée » que lit le dépôt.
+ *
+ * Ces deux écrans annoncent un ÉCART DE PRIX. Un montant qu'on lit mal se relit de
+ * travers, et un montant mal relu se conteste — c'est très exactement le litige que
+ * cette fonctionnalité existe pour éviter.
+ */
+function couplesTracabilite(t, nomTheme) {
+  const fond = t['--surface-secondary'];
+  const fondTertiaire = t['--surface-tertiary'] ?? fond;
+  const vert = t['--color-tracky-light'];
+  const succes = texte(t, nomTheme, '--texte-succes');
+  const attente = texte(t, nomTheme, '--texte-attente');
+  const attenue = texte(t, nomTheme, '--texte-inactif');
+  const secondaire = hex(t['--text-secondary']);
+  const principal = hex(t['--text-primary']);
+  return [
+    // La modale du transporteur.
+    ['tournée · pastille « Chargement »', succes, melange(hex(vert), fondTertiaire, 0.16)],
+    ['tournée · aide sous les champs', attenue, hex(fond)],
+    ['tournée · écart de prix annoncé', secondaire, hex(fondTertiaire)],
+    ['tournée · écart en hausse (attente sur teinte 12 %)', attente, melange(attente, fond, 0.12)],
+    // Le journal.
+    ['journal · titre d\'une révision', principal, hex(fondTertiaire)],
+    ['journal · auteur et motif', secondaire, hex(fondTertiaire)],
+    ['journal · horodatage', attenue, hex(fondTertiaire)],
+    ['journal · montant de la révision', principal, hex(fondTertiaire)],
+    // Ce que le depot lit sur sa carte.
+    ['dépôt · « tournée modifiée » (attente sur teinte 11 %)', attente, melange(attente, fond, 0.11)],
+    ['dépôt · montant dans « tournée modifiée »', principal, melange(attente, fond, 0.11)],
+  ];
+}
+
 const SECTIONS = [
   ['Espace dépôt', couplesDepot],
   ['Badge de présence', couplesBadge],
@@ -290,6 +324,7 @@ const SECTIONS = [
   ['Bulles de carte', couplesBulle],
   ['Demande de mission (A6)', couplesDemande],
   ['Négociation (A6)', couplesNegociation],
+  ['Traçabilité des tournées (A6)', couplesTracabilite],
   ['Grille tarifaire (A6)', couplesTarifs],
 ];
 

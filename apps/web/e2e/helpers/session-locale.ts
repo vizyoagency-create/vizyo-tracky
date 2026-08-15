@@ -27,11 +27,23 @@ import type { Page } from '@playwright/test';
  * test précédent ferait donc travailler tout le scénario sous le compte de l'autre
  * camp, en silence, avec des assertions qui passent pour de mauvaises raisons.
  */
-export type CampRecette = 'CARRIER' | 'DEPOT';
+/**
+ * Trois comptes, pas deux — et le troisième est le plus instructif.
+ *
+ * `CARRIER` est un GESTIONNAIRE à qui un administrateur a accordé nommément
+ * `missions_request` ; `SANS_PERM` est un gestionnaire ordinaire, qui ne l'a pas.
+ * Faire tourner la recette sous le premier plutôt que sous un FLEET_ADMIN est
+ * délibéré : l'administrateur court-circuite toutes les gardes (`isAdmin` sort avant
+ * la résolution), donc un scénario joué sous son compte ne prouve RIEN du chemin
+ * d'octroi. Sous un gestionnaire, il prouve les deux à la fois — la permission
+ * accordée ouvre, son absence ferme.
+ */
+export type CampRecette = 'CARRIER' | 'DEPOT' | 'SANS_PERM';
 
 const JETONS: Record<CampRecette, string | undefined> = {
   CARRIER: process.env['A6_TOKEN_CARRIER'],
   DEPOT: process.env['A6_TOKEN_DEPOT'],
+  SANS_PERM: process.env['A6_TOKEN_SANS_PERM'],
 };
 
 export function jetonPresent(camp: CampRecette): boolean {

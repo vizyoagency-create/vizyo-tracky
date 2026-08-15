@@ -819,6 +819,25 @@ interface GroupOption {
       .ag-month-label { flex: 1; }
     }
 
+    /* ══ CIBLES TACTILES — 44 px SOUS 768 px (critere 7 de B1) ══════════════════
+     *
+     * Mesurees a 375 px pendant la recette du 2026-08-14 : fleches de mois 30 px,
+     * « Aujourd'hui » 31 px, segments de type 27 px. Toutes en dessous du seuil, et
+     * toutes voisines les unes des autres — c'est la combinaison qui fait rater :
+     * on vise « Mission » et on change de mois.
+     *
+     * La densite du BUREAU ne bouge pas : a la souris, 30 px se cliquent tres bien,
+     * et elargir partout aurait grossi une barre d'outils que rien n'obligeait a
+     * grossir. Le seuil est une contrainte du DOIGT, pas une regle d'esthetique. */
+    @media (max-width: 767px) {
+      .ag-month-btn { width: 44px; height: 44px; }
+      .ag-today-btn { min-height: 44px; padding: 0 12px; }
+      .ag-seg-btn { min-height: 44px; }
+      /* Le selecteur de vehicule : 38 px, et il ouvre une liste deroulante — le rater
+         ferme le panneau au lieu de l'ouvrir. */
+      .ag-dd-trigger { min-height: 44px; }
+    }
+
     /* ─── Liste à venir / en retard ─── */
     .ag-up-row {
       display: flex; align-items: center; gap: 10px;

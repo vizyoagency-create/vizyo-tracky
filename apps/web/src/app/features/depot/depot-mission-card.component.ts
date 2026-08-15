@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import type { DepotMissionDto } from '@vizyo/tracky-shared';
-import { LucideAngularModule, Phone, Truck } from 'lucide-angular';
+import { History, LucideAngularModule, Phone, Truck } from 'lucide-angular';
 
 /**
  * Espace dépôt (2026-08) — la carte d'une mission (A3 § 1).
@@ -48,6 +48,20 @@ import { LucideAngularModule, Phone, Truck } from 'lucide-angular';
             <li>{{ e }}</li>
           }
         </ol>
+      }
+
+      <!-- A6 — LA TOURNEE A CHANGE. Le depot organise ses quais sur l'heure annoncee :
+           deux livraisons inserees avant chez lui decalent son camion, et le prix avec.
+           Sans cette ligne, il decouvre l'ecart sur sa facture, sans savoir ce qui a
+           bouge ni pourquoi. Absente tant que rien n'a change. -->
+      @if (derniereModification(); as mod) {
+        <p class="dmc-modif">
+          <lucide-icon [img]="History" [size]="13" aria-hidden="true" />
+          <span>
+            Tournée modifiée le {{ mod.quand }} par {{ mod.qui }}{{ mod.motif ? ' — ' + mod.motif : '' }}
+            @if (mod.ecart) { <strong>{{ mod.ecart }}</strong> }
+          </span>
+        </p>
       }
 
       <div class="dmc-creneau">
@@ -117,6 +131,13 @@ import { LucideAngularModule, Phone, Truck } from 'lucide-angular';
                   border-left: 2px dotted var(--border-strong-color) }
     .dmc-etapes li { font-size: 12.5px; line-height: 1.45; color: var(--text-secondary);
                      overflow-wrap: anywhere }
+    .dmc-modif { display: flex; align-items: flex-start; gap: 7px; margin: 8px 0 0;
+                 padding: 8px 10px; border-radius: 10px; font-size: 12px; line-height: 1.5;
+                 color: var(--texte-attente);
+                 background: color-mix(in srgb, var(--warning) 11%, transparent);
+                 border: 1px solid color-mix(in srgb, var(--warning) 26%, transparent) }
+    .dmc-modif lucide-icon { flex: 0 0 auto; margin-top: 1px }
+    .dmc-modif strong { color: var(--text-primary) }
     .dmc-creneau {
       display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
       font-family: var(--font-mono); font-size: 11.5px; color: var(--depot-attenue);
@@ -158,6 +179,7 @@ export class DepotMissionCardComponent {
   readonly appeler = output<DepotMissionDto>();
 
   protected readonly Truck = Truck;
+  protected readonly History = History;
   protected readonly Phone = Phone;
 
   /** Le bouton d'appel n'existe que pendant le suivi : hors fenêtre, l'endpoint
@@ -204,6 +226,46 @@ export class DepotMissionCardComponent {
   protected readonly etapesIntermediaires = computed(() => {
     const s = this.mission().stops ?? [];
     return s.length > 2 ? s.slice(1, -1) : [];
+  });
+
+  /**
+   * A6 — la DERNIÈRE modification de la tournée, en une phrase.
+   *
+   * ┌─ UNE LIGNE, PAS UN JOURNAL ───────────────────────────────────────────────┐
+   * │ Le dépôt n'a pas besoin de relire six versions sur une carte de liste : il │
+   * │ a besoin de savoir que ça a bougé, quand, par qui, pourquoi, et de combien.│
+   * │ L'historique complet lui reste accessible — il est dans le DTO — mais le   │
+   * │ dérouler ici transformerait une carte de six lignes en écran de lecture.   │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * La révision 0 est l'état INITIAL : elle ne compte pas comme une modification,
+   * sinon toute mission s'annoncerait « modifiée » dès sa création.
+   */
+  protected readonly derniereModification = computed(() => {
+    const h = this.mission().stopHistory ?? [];
+    const modifications = h.filter((r) => r.position > 0);
+    if (modifications.length === 0) return null;
+    const derniere = modifications[modifications.length - 1];
+
+    const euros = (c: number) =>
+      `${(c / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+    // L'ecart n'est annonce que s'il EXISTE : « 79 € au lieu de 79 € » est du bruit.
+    const ecart =
+      derniere.amountCents !== null &&
+      derniere.previousAmountCents !== null &&
+      derniere.amountCents !== derniere.previousAmountCents
+        ? ` ${euros(derniere.amountCents)} HT au lieu de ${euros(derniere.previousAmountCents)}.`
+        : null;
+
+    return {
+      quand: new Date(derniere.createdAt).toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+      }),
+      qui: derniere.authorName,
+      motif: derniere.reason,
+      ecart,
+    };
   });
 
   protected heure(iso: string): string {
