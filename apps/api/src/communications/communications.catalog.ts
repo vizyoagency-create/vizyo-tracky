@@ -32,7 +32,27 @@ export type SmsTemplateId =
   | 'sim_direct';
 
 /** Modèles de notification push (cf. WebPushService). */
-export type PushTemplateId = 'alert' | 'maintenance_due' | 'admin_test';
+/**
+ * ⚠️ CE CATALOGUE A ÉTÉ COMPLÉTÉ À LA CENTRALISATION DU 2026-08-16, ET C'EST UNE
+ * CORRECTION, PAS UN AJOUT DE CONFORT.
+ *
+ * Le module « Communications » date du 2026-07-20 et n'avait jamais été fusionné. Entre
+ * temps, la notification est passée par un CHEMIN GÉNÉRIQUE (`notifyUsers`) qui sert
+ * quatre catégories : MAINTENANCE, REPORT, VALIDATION et SYSTEM. Le catalogue, lui, n'en
+ * connaissait qu'une — `maintenance_due`.
+ *
+ * Conséquence à la fusion : `PushPayload.template` est OBLIGATOIRE (c'est la promesse du
+ * module : « aucun envoi anonyme »), et le compilateur refusait les trois catégories sans
+ * modèle. Les inventer ici est le seul choix cohérent — les taire aurait signifié rendre
+ * `template` optionnel, c'est-à-dire vider le module de sa raison d'être.
+ */
+export type PushTemplateId =
+  | 'alert'
+  | 'maintenance_due'
+  | 'report_ready'
+  | 'validation_pending'
+  | 'system_notice'
+  | 'admin_test';
 
 export interface CommTemplateMeta {
   channel: CommChannel;
@@ -65,6 +85,9 @@ export const SMS_TEMPLATE_META: (CommTemplateMeta & { id: SmsTemplateId })[] = [
 export const PUSH_TEMPLATE_META: (CommTemplateMeta & { id: PushTemplateId })[] = [
   { channel: 'PUSH', id: 'alert', label: 'Alerte véhicule', category: 'Alerte', trigger: 'Alerte temps réel (et escalades)', description: 'Notification instantanée, même application fermée.' },
   { channel: 'PUSH', id: 'maintenance_due', label: 'Entretien à prévoir', category: 'Agenda', trigger: 'Échéance d’entretien atteinte', description: 'Rappel de maintenance planifiée sur un véhicule.' },
+  { channel: 'PUSH', id: 'report_ready', label: 'Rapport disponible', category: 'Rapports', trigger: 'Rapport périodique généré', description: 'Le rapport demandé est prêt à être consulté.' },
+  { channel: 'PUSH', id: 'validation_pending', label: 'Validation attendue', category: 'Agenda', trigger: 'Demande en attente d’arbitrage', description: 'Une réservation ou une demande attend une décision.' },
+  { channel: 'PUSH', id: 'system_notice', label: 'Information système', category: 'Technique', trigger: 'Événement de plateforme à porter à connaissance', description: 'Message de service — maintenance, incident, changement.' },
   { channel: 'PUSH', id: 'admin_test', label: 'Notification de test', category: 'Technique', trigger: 'Bouton de test dans l’espace admin', description: 'Vérifie qu’un appareil reçoit bien les notifications.' },
 ];
 

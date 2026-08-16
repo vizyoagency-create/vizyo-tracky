@@ -35,6 +35,11 @@ const EVERY_SMS: Record<SmsTemplateId, true> = {
 const EVERY_PUSH: Record<PushTemplateId, true> = {
   alert: true,
   maintenance_due: true,
+  // Ajoutés à la centralisation du 2026-08-16 : le chemin générique de notification
+  // sert quatre catégories, le catalogue n'en connaissait qu'une.
+  report_ready: true,
+  validation_pending: true,
+  system_notice: true,
   admin_test: true,
 };
 

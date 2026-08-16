@@ -244,6 +244,9 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
         </div>
       </section>
 
+      <section class="sec">
+        <h2 class="sec-t">Système &amp; données</h2>
+        <div class="grid">
         <!-- ── ABONNEMENTS & TARIFS (wide) — D4 + Phase 3 chantier commercial ── -->
         <a routerLink="/admin/subscriptions" class="card card-wide" style="--i:9">
           <span class="accent accent-green"></span>

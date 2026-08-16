@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Alert, AlertRule, User, Vehicle } from '@prisma/client';
 import { UserRole } from '@prisma/client';
+import type { PushTemplateId } from '../communications/communications.catalog';
 import type {
   AlertSeverity as ClientAlertSeverity,
   AlertType as ClientAlertType,
@@ -164,6 +165,27 @@ interface DeliveryRecord {
  * canaux (push/email/whatsapp) ne sont pas throttles.
  */
 const SMS_THROTTLE_MS = 5 * 60_000;
+
+/**
+ * La catégorie de notification → le modèle inscrit au catalogue « Communications ».
+ *
+ * ⚠️ `Record<…, …>` EXHAUSTIF, ET C'EST VOULU : le compilateur refusera d'ajouter une
+ * catégorie sans lui donner de modèle. C'est la seule garantie contre le retour d'un
+ * envoi anonyme — le module admin ne saurait alors plus dire CE QUI a été poussé, et un
+ * journal qui affiche « inconnu » ne sert à personne.
+ *
+ * `ALERT` n'y figure pas : les alertes ne passent PAS par le chemin générique, elles ont
+ * le leur (`sendPush`, un seul chemin depuis la correction des 582 alertes sans push).
+ */
+const PUSH_TEMPLATE_PAR_CATEGORIE: Record<
+  Exclude<NotificationCategory, 'ALERT'>,
+  PushTemplateId
+> = {
+  MAINTENANCE: 'maintenance_due',
+  REPORT: 'report_ready',
+  VALIDATION: 'validation_pending',
+  SYSTEM: 'system_notice',
+};
 
 /** Alerte enrichie de son vehicule — exportee pour que le rejeu puisse la reconstituer. */
 export interface AlertWithVehicle extends Alert {
@@ -975,7 +997,16 @@ export class NotificationDispatchService {
       try {
         const result = await this.webPush.sendToUser(
           userId,
-          { title: input.title, body: input.body, url: input.url, data: { category, subjectKey: input.subjectKey ?? null } },
+          {
+            // Le chemin GÉNÉRIQUE sert quatre catégories : chacune a désormais son
+            // modèle au catalogue, sans quoi le journal « Communications » afficherait
+            // quatre natures d'envoi sous une seule étiquette — ou aucune.
+            template: PUSH_TEMPLATE_PAR_CATEGORIE[category],
+            title: input.title,
+            body: input.body,
+            url: input.url,
+            data: { category, subjectKey: input.subjectKey ?? null },
+          },
           input.fleetId ?? null,
         );
         if (result.sent > 0) sent++;
@@ -1079,6 +1110,10 @@ export class NotificationDispatchService {
     let result: SendResult;
     try {
       result = await this.webPush.sendToUser(user.id, {
+        // Le modèle rend le push identifiable au module « Communications ». Ce chemin
+        // ne sert QUE les alertes véhicule — escalades comprises, qui restent des
+        // alertes et se lisent au même endroit.
+        template: 'alert',
         title,
         body,
         url: '/alerts',
