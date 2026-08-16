@@ -38,14 +38,21 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
       <!-- En-tête -->
       <div class="flex items-start justify-between gap-4 mb-5">
         <div>
-          <a routerLink="/admin" class="font-mono text-[10px] tracking-[0.14em] uppercase text-fg-tertiary hover:text-fg-secondary">← Administration</a>
-          <h1 class="font-display text-[26px] font-extrabold tracking-[-0.025em] text-fg-primary mt-1">Communications</h1>
+          <!-- ⚠️ 44 px DE HAUT, pour un texte de 10. C'est le SEUL chemin de retour vers
+               l'administration sur cet écran, et il mesurait 14 px : au doigt, on le rate.
+               Le retrait négatif garde le titre à sa place — la zone grandit, pas la mise
+               en page. -->
+          <a routerLink="/admin"
+             class="inline-flex items-center font-mono text-[10px] tracking-[0.14em] uppercase text-fg-tertiary hover:text-fg-secondary"
+             style="min-height:44px;margin-top:-12px">← Administration</a>
+          <h1 class="font-display text-[26px] font-extrabold tracking-[-0.025em] text-fg-primary -mt-2">Communications</h1>
           <p class="text-[13px] text-fg-tertiary mt-0.5">
             Tout ce que Tracky envoie — e-mails, SMS et notifications — au même endroit.
           </p>
         </div>
         <button type="button" (click)="reload()" [disabled]="loading()"
-                class="shrink-0 inline-flex items-center gap-2 text-[12.5px] font-semibold px-3 py-2 rounded-lg border border-border-subtle text-fg-secondary hover:text-fg-primary disabled:opacity-50">
+                class="shrink-0 inline-flex items-center gap-2 text-[12.5px] font-semibold px-3 py-2 rounded-lg border border-border-subtle text-fg-secondary hover:text-fg-primary disabled:opacity-50"
+                style="min-height:44px">
           <lucide-icon [img]="RefreshCw" [size]="14" />
           {{ loading() ? '…' : 'Rafraîchir' }}
         </button>
@@ -55,16 +62,26 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
       <div class="grid sm:grid-cols-3 gap-3.5 mb-5">
         @for (c of channels(); track c.channel) {
           <div class="relative overflow-hidden bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-[18px_20px]">
-            <div class="flex items-center justify-between mb-3">
-              <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl text-[17px]" [class]="meta(c.channel).soft">{{ meta(c.channel).icon }}</span>
-              <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-2 py-1 rounded-md" [class]="meta(c.channel).soft + ' ' + meta(c.channel).tone">{{ meta(c.channel).label }}</span>
+            <!-- ⚠️ LA RANGÉE PASSE À LA LIGNE, ELLE NE COUPE PAS. À trois colonnes dans une
+                 fenêtre étroite, la carte tombe à 131 px : l'icône en prend 36, il reste
+                 54 px pour un libellé qui en réclame 100. « NOTIFICATIONS » sortait donc de
+                 sa pilule. Tronquer donnait « NOTI… » — un badge dont le seul rôle est de
+                 nommer le canal, et qui ne le nomme plus. Il descend d'une ligne. -->
+            <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+              <span class="inline-flex items-center justify-center w-9 h-9 rounded-xl text-[17px] shrink-0" [class]="meta(c.channel).soft">{{ meta(c.channel).icon }}</span>
+              <span class="font-mono text-[9px] tracking-[0.12em] uppercase px-2 py-1 rounded-md whitespace-nowrap" [class]="meta(c.channel).soft + ' ' + meta(c.channel).tone">{{ meta(c.channel).label }}</span>
             </div>
             <div class="font-mono text-[26px] font-semibold text-fg-primary leading-none">{{ c.sent }}</div>
-            <div class="font-mono text-[9.5px] tracking-[0.1em] uppercase text-fg-tertiary mt-1.5">envoyés · {{ overview()?.days ?? 30 }} j</div>
+            <!-- whitespace-nowrap : sans lui, le « j » de « 30 j » partait seul à la ligne. -->
+            <div class="font-mono text-[9.5px] tracking-[0.1em] uppercase text-fg-tertiary mt-1.5 whitespace-nowrap">envoyés · {{ overview()?.days ?? 30 }} j</div>
             <div class="flex gap-2 mt-3">
+              <!-- ⚠️ ZÉRO ENVOI N'EST PAS ZÉRO POUR CENT DE RÉUSSITE. Le taux affichait
+                   « 0 % » en ROUGE sur un canal qui n'avait simplement rien envoyé sur la
+                   période — un administrateur y lit « mes SMS ne partent plus » alors que
+                   rien n'est cassé. Un taux sans envoi n'existe pas : on écrit « — ». -->
               <div class="flex-1 bg-bg-primary border border-border-subtle rounded-lg p-[7px_9px]">
                 <div class="font-mono text-[8.5px] uppercase text-fg-tertiary">Succès</div>
-                <div class="font-mono text-[13px] font-semibold" [class]="c.successRate >= 90 ? 'text-tracky-light' : c.successRate >= 60 ? 'text-amber-400' : 'text-rose-400'">{{ c.successRate }}%</div>
+                <div class="font-mono text-[13px] font-semibold" [class]="tauxClasse(c)">{{ tauxLabel(c) }}</div>
               </div>
               <div class="flex-1 bg-bg-primary border border-border-subtle rounded-lg p-[7px_9px]">
                 <div class="font-mono text-[8.5px] uppercase text-fg-tertiary">Échecs</div>
@@ -79,7 +96,8 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
       <div class="flex gap-1 mb-4 border-b border-border-subtle">
         @for (t of TABS; track t.key) {
           <button type="button" (click)="activeTab.set(t.key)"
-                  class="px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors"
+                  class="px-4 text-[13px] font-semibold border-b-2 -mb-px transition-colors"
+                  style="min-height:44px"
                   [class]="activeTab() === t.key ? 'border-tracky-light text-fg-primary' : 'border-transparent text-fg-tertiary hover:text-fg-secondary'">
             {{ t.label }}
           </button>
@@ -117,19 +135,25 @@ const CHANNEL_META: Record<CommChannel, { label: string; icon: string; tone: str
 
       <!-- ══ JOURNAL ══ -->
       @if (activeTab() === 'journal') {
+        <!-- ⚠️ 44 px SUR TOUTE LA RANGÉE. Ces cinq contrôles mesuraient 36 px : ils ne
+             vivent que sur cet onglet, et la première mesure — prise sur la vue
+             d'ensemble — ne les voyait pas. Un filtre se tape au doigt comme le reste. -->
         <div class="flex flex-wrap gap-2 mb-3.5">
           <button type="button" (click)="setChannel(undefined)"
-                  class="px-3 py-1.5 rounded-lg text-[12px] font-semibold border"
+                  class="px-3 rounded-lg text-[12px] font-semibold border"
+                  style="min-height:44px"
                   [class]="!channel() ? 'border-tracky-light text-tracky-light bg-tracky-light/10' : 'border-border-subtle text-fg-tertiary'">Tous</button>
           @for (c of CHANNEL_KEYS; track c) {
             <button type="button" (click)="setChannel(c)"
-                    class="px-3 py-1.5 rounded-lg text-[12px] font-semibold border"
+                    class="px-3 rounded-lg text-[12px] font-semibold border"
+                    style="min-height:44px"
                     [class]="channel() === c ? 'border-tracky-light text-tracky-light bg-tracky-light/10' : 'border-border-subtle text-fg-tertiary'">
               {{ meta(c).icon }} {{ meta(c).label }}
             </button>
           }
           <input [(ngModel)]="search" (keyup.enter)="reloadLogs()" placeholder="Rechercher…"
-                 class="flex-1 min-w-[160px] px-3 py-1.5 rounded-lg bg-bg-secondary border border-border-subtle text-[12.5px] text-fg-primary placeholder:text-fg-tertiary" />
+                 style="min-height:44px"
+                 class="flex-1 min-w-[160px] px-3 rounded-lg bg-bg-secondary border border-border-subtle text-[12.5px] text-fg-primary placeholder:text-fg-tertiary" />
         </div>
 
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
@@ -259,6 +283,24 @@ export class AdminCommunicationsComponent implements OnInit {
 
   protected barH(n: number): number {
     return Math.round((n / this.maxBar()) * 108);
+  }
+
+  /** Le taux de succès, ou « — » quand il n'y a rien eu à réussir. */
+  protected tauxLabel(c: { sent: number; successRate: number }): string {
+    return c.sent === 0 ? '—' : `${c.successRate}%`;
+  }
+
+  /**
+   * La couleur suit le taux — sauf quand il n'y en a pas.
+   *
+   * Un canal muet est NEUTRE, pas en échec : le rouge est réservé à ce qui est parti et
+   * n'est pas arrivé. Peindre en rouge une absence d'envoi ferait chercher une panne
+   * inexistante, et userait le rouge pour le jour où il compte.
+   */
+  protected tauxClasse(c: { sent: number; successRate: number }): string {
+    if (c.sent === 0) return 'text-fg-tertiary';
+    if (c.successRate >= 90) return 'text-tracky-light';
+    return c.successRate >= 60 ? 'text-amber-400' : 'text-rose-400';
   }
 
   protected outcomeLabel(o: CommLogDto['outcome']): string {
