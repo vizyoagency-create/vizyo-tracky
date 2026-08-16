@@ -3325,6 +3325,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
   });
 
+  // La couche de densité suit le même périmètre que les marqueurs : elle n'est
+  // chargée qu'à l'allumage, donc rien ne la rafraîchissait en changeant de société
+  // (relevé de recette). Le filtrage lui-même est dans `loadHeatmap()` ; cet effet ne
+  // fait que redemander le calcul quand le périmètre bouge.
+  private heatmapFleetEffect = effect(() => {
+    this.fleetFilter.selectedFleetId();
+    untracked(() => {
+      if (this.map && this.showHeatmap()) {
+        this.loadHeatmap().catch(() => { /* silent */ });
+      }
+    });
+  });
+
   // Zones mortes GPS : chargées EN CONTINU (indépendamment du toggle d'affichage) car elles servent
   // à l'override « à l'arrêt · parking souterrain » des cards, pas seulement au calque. Rechargées
   // au changement de société (super-admin).
@@ -4455,9 +4468,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!this.map) return;
     const fromIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const ids = this._accessibleIds();
-    const vehiclesToScan = ids === 'ALL'
+    const vehiclesToScan = (ids === 'ALL'
       ? Array.from(this.vehicleMeta.keys())
-      : Array.from(ids as Set<string>);
+      : Array.from(ids as Set<string>)
+    // ⚠️ LA CHALEUR NE SUIVAIT PAS LE FILTRE SOCIETE (releve de recette).
+    //
+    // Les marqueurs disparaissaient bien en changeant de societe, mais la couche
+    // de densite restait celle d'avant : les marqueurs sont filtres client-side
+    // par `fleetFilter.matches()` (cf. applyFilters), la heatmap ne l'etait pas.
+    // Une carte qui montre les vehicules d'une societe et la chaleur d'une autre
+    // ment deux fois : sur ce qu'elle affiche, et sur ce qu'elle laisse deduire.
+    //
+    // Meme regle, meme source que les marqueurs — sinon les deux divergeront a
+    // nouveau au prochain changement de perimetre.
+    ).filter((id) => this.fleetFilter.matches(this.vehicleMeta.get(id)?.fleetId ?? null));
 
     const features: Array<GeoJSON.Feature<GeoJSON.Point>> = [];
     for (const vehicleId of vehiclesToScan) {

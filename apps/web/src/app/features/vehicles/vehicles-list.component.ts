@@ -282,13 +282,23 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
           }
           @if (filteredVehicles().length === 0) {
             <!-- Un filtre qui ne renvoie rien n'est PAS une flotte vide : on le dit,
-                 et on offre la sortie. -->
+                 et on offre la sortie. Encore faut-il offrir LA BONNE : le vide a
+                 deux causes distinctes ici, et une seule des deux se répare avec le
+                 bouton « Réinitialiser ». Voir societeSansVehicule plus bas. -->
             <div class="vlist-empty">
               <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
-              <p class="empty-text">Aucun véhicule ne correspond à vos filtres</p>
-              <button (click)="reinitialiserFiltres()" class="empty-cta">
-                Voir les {{ vehicles().length }} véhicules
-              </button>
+              @if (societeSansVehicule()) {
+                <p class="empty-text">Cette société n'a aucun véhicule</p>
+                <p class="empty-detail">Les autres véhicules appartiennent à d'autres sociétés.</p>
+                <button (click)="voirToutesLesSocietes()" class="empty-cta">
+                  Voir toutes les sociétés
+                </button>
+              } @else {
+                <p class="empty-text">Aucun véhicule ne correspond à vos filtres</p>
+                <button (click)="reinitialiserFiltres()" class="empty-cta">
+                  Voir les {{ vehiculesDuPerimetre().length }} véhicules
+                </button>
+              }
             </div>
           } @else if (viewMode() === 'table') {
           <div class="v-table-wrap">
@@ -402,7 +412,7 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
                       @if (liveStatus(v.id); as ls) {
                         <span class="v-live-pill" [class]="ls.cssClass">
                           <span class="v-live-dot"></span>
-                          @if (ls.kind === 'moving') { En roulage } @else if (ls.kind === 'idle') { Au ralenti } @else { À l'arrêt }
+                          @if (ls.kind === 'moving') { Roule } @else if (ls.kind === 'idle') { Au ralenti } @else { À l'arrêt }
                         </span>
                       } @else {
                         <app-connectivity-badge [state]="presence(v)" [lastSeenAt]="lastSeenOf(v)" [compact]="true" />
@@ -1060,7 +1070,18 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
     }
     .empty-icon { width: 60px; height: 60px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
     .empty-text { font-size: 14px; color: var(--fg-tertiary) }
-    .empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
+    /* La cause du vide, en une ligne : « les 15 autres ne sont pas à vous de les
+       montrer ». Sans elle, « Cette société n'a aucun véhicule » laisse croire à
+       une panne alors que c'est le périmètre choisi qui répond. */
+    .empty-detail { font-size: 13px; color: var(--fg-tertiary); max-width: 34ch; text-align: center }
+    /* Mesurée à 139 × 36 : sous le plancher de 44 px. C'est pourtant la SEULE
+       sortie de cet écran — le sélecteur de société est en haut, hors de vue.
+       Une sortie unique qu'on rate au doigt n'est pas une sortie.
+       Couleur : --tracky-light donnait 3,39:1 sur fond clair. Le lien reste vert
+       (la décision), c'est la valeur qui suit le thème — --texte-succes assombrit
+       le même vert en clair et le laisse tel quel en sombre. */
+    .empty-cta { font-size: 13px; color: var(--texte-succes); background: none; border: none; cursor: pointer; text-decoration: underline;
+                 min-height: 44px; padding: 0 12px }
 
     /* Vehicle grid */
     .v-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px }
@@ -1213,11 +1234,30 @@ export class VehiclesListComponent implements OnInit {
     }
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   });
+  /**
+   * Les véhicules du PÉRIMÈTRE courant : la liste complète réduite à la société
+   * choisie dans le sélecteur global. C'est le seul total qu'on ait le droit
+   * d'annoncer à l'écran — `vehicles()` compte aussi ceux des autres sociétés,
+   * que l'utilisateur ne peut pas faire apparaître en touchant à ses filtres.
+   */
+  protected readonly vehiculesDuPerimetre = computed(() =>
+    this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId)),
+  );
+
+  /**
+   * La société sélectionnée n'a aucun véhicule — vide par PÉRIMÈTRE, pas par
+   * filtre. Les deux causes demandent une sortie différente : réinitialiser les
+   * filtres ne ramènera jamais un véhicule d'une autre société.
+   */
+  protected readonly societeSansVehicule = computed(
+    () => this.fleetFilter.isActive() && this.vehiculesDuPerimetre().length === 0,
+  );
+
   protected readonly filteredVehicles = computed(() => {
     const gid = this.groupFilter();
     const q = this.search().trim().toLowerCase();
     // Filtre société global (SUPER_ADMIN) — no-op pour les autres rôles.
-    let list = this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId));
+    let list = this.vehiculesDuPerimetre();
     if (gid) list = list.filter((v) => v.group?.id === gid);
     if (q) {
       list = list.filter((v) =>
@@ -1292,7 +1332,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly statutFiltre = signal<FiltreStatut>('tous');
   protected readonly FILTRES_STATUT: ReadonlyArray<{ id: FiltreStatut; label: string }> = [
     { id: 'tous', label: 'Tous' },
-    { id: 'roulage', label: 'En roulage' },
+    { id: 'roulage', label: 'Roule' },
     { id: 'arret', label: 'À l’arrêt' },
     { id: 'hors-ligne', label: 'Hors ligne' },
     { id: 'sans-boitier', label: 'Pas de boîtier' },
@@ -1302,7 +1342,7 @@ export class VehiclesListComponent implements OnInit {
    * Le statut d'un véhicule pour les puces.
    *
    * ⚠️ Il part de `connectivity()` et de `liveStatus()` — LES MÊMES sources que les
-   * lignes de la liste. Une puce qui compterait autrement afficherait « En roulage 6 »
+   * lignes de la liste. Une puce qui compterait autrement afficherait « Roule 6 »
    * au-dessus d'une liste qui n'en montre que 4 : deux vérités sur le même écran.
    */
   protected statutDe(v: VehicleDetailDto): FiltreStatut {
@@ -1333,6 +1373,15 @@ export class VehiclesListComponent implements OnInit {
     this.search.set('');
     this.groupFilter.set('');
     this.statutFiltre.set('tous');
+  }
+
+  /**
+   * Lève le filtre société global. C'est la seule sortie qui marche quand la
+   * société choisie n'a aucun véhicule : le sélecteur est dans la barre du haut,
+   * loin du message, et rien n'y renvoyait.
+   */
+  protected voirToutesLesSocietes(): void {
+    this.fleetFilter.set(null);
   }
   /** feat/comptes-conducteurs (4a) — véhicule dont on affiche le QR (null = modale fermée). */
   protected readonly qrVehicle = signal<VehicleDetailDto | null>(null);

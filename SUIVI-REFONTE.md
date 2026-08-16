@@ -115,8 +115,51 @@ localStorage.setItem('vizyo-tracky-user', JSON.stringify(
 prendre un `authUserId` en forme de cuid.
 ⚠️ `POST /api/auth/logout` répond **500** mais **fait bien le travail** (il efface le
 cookie qui prime sur le Bearer). Ne pas s'y arrêter : vérifier `/api/auth/me` ensuite.
-⚠️ **Aucun compte DRIVER en base de dev** (4 FLEET_ADMIN, 3 DEPOT, 3 SUPER_ADMIN,
-2 FLEET_MANAGER, 1 VIEWER, **0 DRIVER**).
+⚠️ ~~**Aucun compte DRIVER en base de dev**~~ — **réglé** : `prisma/seed-roles-test.ts`
+crée un `DRIVER` et un `NIGHT_WATCHMAN`, avec leur périmètre (cf. juste en dessous).
+
+### 3bis. Ouvrir une session « conducteur » ou « veilleur »
+
+**Il n'y a pas d'identifiants** — et il ne peut pas y en avoir. L'authentification passe
+par Vizyo Auth ; la table locale `users` **ne porte aucun mot de passe**, seulement un
+`authUserId` que l'API résout depuis le `sub` d'un JWT signé. Un compte de test s'ouvre
+donc **avec un jeton**, jamais par le formulaire de connexion.
+
+```bash
+pnpm --filter @vizyo/tracky-api exec ts-node prisma/seed-roles-test.ts
+```
+
+Le seed est **idempotent** et refuse de tourner si `DATABASE_URL` ne pointe pas sur une
+base locale. Il crée les deux comptes **et leur périmètre** — c'est la partie qu'on
+oublie (§ 6octies.4) :
+
+| Rôle | `authUserId` | Périmètre créé | Ce qu'il doit voir |
+|---|---|---|---|
+| `DRIVER` | `seedtest0000conducteur0001` | `Vehicle.currentDriverId` **+** `UserVehicleAccess` (VEHICLE) | 1 véhicule |
+| `NIGHT_WATCHMAN` | `seedtest0000veilleur00001` | groupe « Parking nuit » **+** `UserVehicleAccess` (GROUP) | 3 véhicules |
+
+> ⚠️ **Les deux liens sont nécessaires.** `currentDriverId` dit « c'est son véhicule »,
+> `UserVehicleAccess` dit « il a le droit de le voir ». Avec le premier seul,
+> `getAccessibleVehicleIds()` renvoie `[]` et l'écran est vide — on croit alors mesurer
+> un état « vide » légitime alors qu'on mesure un compte mal câblé. Ce piège a été payé
+> **deux fois** : sur `/driver`, puis sur le veilleur.
+
+Puis, pour le jeton (24 h) — charger d'abord le `.env` dans le processus :
+
+```bash
+pnpm --filter @vizyo/tracky-api exec ts-node prisma/gen-test-token.ts seedtest0000veilleur00001
+```
+
+Et dans la console de la page (l'ordre compte — cf. le piège du cookie ci-dessus) :
+
+```js
+await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+const JETON = '<coller le jeton>';
+const me = await (await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + JETON } })).json();
+localStorage.setItem('vizyo-tracky-token', JETON);
+localStorage.setItem('vizyo-tracky-user', JSON.stringify({ ...me, sub: me.id, permissions: me.permissions ?? null }));
+location.href = '/vehicles';
+```
 
 **Basculer le thème pour mesurer.** La préférence est **serveur** : `applyFromPrefs()`
 réécrit `localStorage['vizyo-theme']` au boot. Pour une mesure CSS, poser directement
@@ -823,6 +866,118 @@ elles sont hors périmètre. À traiter dans un lot dédié si le client le souh
 
 ---
 
+## 6octies. Retours de recette du client (2026-08-16) — 3 défauts + l'accès veilleur
+
+Le client a testé l'application lui-même et a remonté quatre points. **Trois étaient des
+défauts réels**, corrigés et **mesurés dans le navigateur**. Le quatrième était une
+demande d'accès — qui a révélé un cinquième défaut, dans le seed.
+
+### 6octies.1 « En roulage » → « Roule »
+
+Demande de langage, pas de contraste. Trois occurrences dans
+`vehicles-list.component.ts` (le statut de carte, le segment de filtre, l'étiquette).
+**Mesuré** : la feuille de filtres affiche « Roule 9 ».
+
+### 6octies.2 La carte de chaleur ne suivait pas le filtre société
+
+> « j'ai activé le filtre heatmap et j'ai filtré dans la navbar pour les sociétés, les
+> véhicules disparaissent bien quand je change de société **mais la heatmap reste** »
+
+Exact, et le défaut était double :
+
+1. **Elle n'était jamais filtrée.** Les marqueurs le sont côté client par
+   `fleetFilter.matches()` dans `applyFilters()` ; `loadHeatmap()` balayait, lui, tout
+   `_accessibleIds` sans regarder la société. Une carte qui montre les véhicules d'une
+   société et la chaleur d'une autre **ment deux fois** : sur ce qu'elle affiche, et sur
+   ce qu'elle laisse déduire.
+2. **Rien ne la rechargeait.** Elle n'est calculée qu'au moment où on l'allume.
+
+> ⚠️ **Ma première correction était fausse, et l'a été silencieusement.** J'avais placé
+> le rechargement dans le `.then()` de `vehiclesApi.list()`, en me disant que c'était
+> « le seul endroit où `_accessibleIds` vient d'être rafraîchi ». Ce bloc est dans
+> **`ngAfterViewInit`** : il ne joue **qu'une fois**, au montage. Le code compilait, se
+> lisait bien, et ne servait à rien.
+> **La leçon** : avant de poser un effet de bord dans une méthode, lire *son nom*. Un
+> raisonnement juste sur les données (« ici les IDs sont frais ») ne dit rien sur le
+> **cycle de vie** de l'endroit où on l'écrit.
+
+La forme retenue suit les deux voisins déjà en place (`fuelStationsFleetEffect`,
+`deadZonesFleetEffect`) : un `effect` sur `selectedFleetId()` + `untracked`, et le
+filtrage **à la même source et selon la même règle que les marqueurs** — sinon les deux
+divergeront à nouveau au prochain changement de périmètre.
+
+**Mesuré au réseau** (la preuve directe : quels véhicules la chaleur balaie) —
+`/api/positions?vehicleId=…`, trois lots successifs :
+
+| Sélecteur | Véhicules balayés | Attendu |
+|---|---|---|
+| Toutes les sociétés | **15** | 15 |
+| CDEF 31 | **5**, exactement les `cdef0031-…` | 5 |
+| Retour à Toutes | **15** | 15 |
+
+### 6octies.3 « Voir les 15 véhicules » sous « Aucun véhicule ne correspond à vos filtres »
+
+> « société sans voiture […] mais je vois écrit "Voir les 15 véhicules" […] il y a une
+> petite incohérence ! »
+
+Le bouton **mentait deux fois** : le compte annonçait 15 véhicules qui appartiennent à
+d'autres sociétés, et `reinitialiserFiltres()` ne remet à zéro que les filtres **locaux**
+— jamais le sélecteur société. Cliquer dessus ne pouvait rien ramener.
+
+Le vide a **deux causes** qui demandent deux sorties différentes :
+
+| Cause | Message | Sortie |
+|---|---|---|
+| La société n'a aucun véhicule | « Cette société n'a aucun véhicule » + la raison | **Voir toutes les sociétés** (`fleetFilter.set(null)`) |
+| Les filtres locaux ne renvoient rien | « Aucun véhicule ne correspond à vos filtres » | « Voir les **N** véhicules » — N **du périmètre** |
+
+**Mesuré** — société « Fleet Test » (0 véhicule) : le bon message s'affiche, le bouton
+lève le filtre et **15 véhicules reviennent**. Société « tracky-1 » (2 véhicules) +
+recherche sans résultat : « Voir les **2** véhicules », plus 15.
+
+Deux défauts trouvés **en mesurant**, invisibles à la lecture :
+- `.empty-cta` était à **139 × 36** — sous le plancher de 44 px, alors que c'est la
+  **seule sortie** de cet écran. Une sortie unique qu'on rate au doigt n'est pas une
+  sortie. → `min-height: 44px`, mesurée à **163 × 44**.
+- `.empty-cta` était en `--tracky-light` : **3,39:1** sur fond clair. Règle 2 —
+  on garde la décision (un lien vert), pas la valeur : `--texte-succes` assombrit le
+  même vert en clair et le laisse tel quel en sombre. → **5,90:1** clair, **11,08:1**
+  sombre.
+
+**Bilan des trois textes de cet état, dans les deux thèmes : 0 échec.**
+
+### 6octies.4 L'accès veilleur — et le trou qu'il a révélé
+
+> « Le mode veilleur j'ai pas testé donne moi les identifiants ! »
+
+**Il n'existe pas d'identifiants.** L'authentification passe par Vizyo Auth ; la table
+locale `users` ne porte **aucun mot de passe** (vérifié au schéma), seulement un
+`authUserId` résolu depuis le `sub` d'un JWT signé. Un compte de test s'ouvre donc avec
+un jeton, pas avec un couple e-mail / mot de passe. Le mode d'emploi est au § 3.
+
+⚠️ **Et le compte veilleur était inutilisable.** `seed-roles-test.ts` accordait bien un
+`UserVehicleAccess` au **conducteur**, mais pas au veilleur :
+`getAccessibleVehicleIds()` renvoie `[]` dès qu'un utilisateur n'a **aucune** ligne
+d'accès. Son écran aurait été vide — et **on aurait mesuré cet écran vide en croyant
+mesurer le mode veilleur**. C'est très exactement le piège déjà payé sur `/driver`,
+retombé au même endroit une seconde fois.
+
+Le seed crée désormais un groupe **« Parking nuit »** (3 véhicules) et un accès
+`accessType: 'GROUP'`. Le groupe n'est pas un détail : la liste démarre en vue groupée
+pour ce rôle **parce que « son périmètre = ses groupes »**. Trois véhicules en vrac
+auraient rempli l'écran sans jamais exercer ce que le rôle est censé montrer.
+
+**Vérifié à l'API** : `GET /api/vehicles` avec le jeton veilleur renvoie **3 véhicules**,
+tous porteurs de `group: { name: "Parking nuit" }` — contre 15 pour l'admin.
+
+🔴 **Ce qui reste non fait** : l'écran veilleur **n'est toujours pas mesuré**. Le
+panneau navigateur (CDP) s'est bloqué pendant la bascule de compte, et le blocage touche
+**même un onglet vierge** — c'est l'outil, pas l'application. Les trois correctifs
+ci-dessus, eux, ont tous été mesurés **avant** la panne. Le § 12.10 reste donc ouvert :
+le compte existe maintenant et il est correct, seule la mesure manque.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -851,7 +1006,7 @@ elles sont hors périmètre. À traiter dans un lot dédié si le client le souh
 | **Poignée `.bs-handle-wrap`** | 375 × 36 — sous 44 px en hauteur, mais pleine largeur. Partagée par **toutes** les feuilles de l'app : à trancher au niveau du kit. |
 | **Étiquettes de plaque sur téléphone** | La planche les masque (`.mfrm .vk-plate { display: none }`). Non appliqué : `showPlates` est une préférence **persistée** de l'utilisateur. |
 | **Liste groupée par défaut sur `/vehicles`** | Cf. § 5.3 n° 3. |
-| **Variante critique de `confirm-modal`** | Existe (liseré rouge, plaque à retaper) mais **branchée nulle part**. `B1-PAGES.md` § F la spécifie pour la coupure moteur. Ajouter une saisie à un geste d'urgence est une décision d'écran. |
+| ~~**Variante critique de `confirm-modal`**~~ | ✅ **TRANCHÉE le 2026-08-11** — cette ligne était **périmée** (vérifié le 2026-08-14 : `engine-control-button.component.ts:151` passe `[critique]="true"`). Décision client : la variante est branchée sur la **coupure seulement**, pas sur la reprise. Couper immobilise un bien, parfois avec quelqu'un dedans ; rallumer ne fait que débloquer. |
 | **Regroupement des lieux « Discrets »** | La planche écrit « regroupe les plus proches ». **Non livré** — les lieux et zones mortes sont des marqueurs DOM, qui ne se regroupent pas nativement. La phrase affichée a été réécrite pour ne dire que ce qui est fait. |
 
 ### 7.3 Non terminé, connu
@@ -885,7 +1040,7 @@ Sur `/vehicles`, j'ai mesuré la feuille de filtres (0 échec) et je m'en suis c
 L'écran entier en avait **14**. Une feuille propre au-dessus d'une liste qui échoue reste
 un écran qui échoue.
 
-### 8.3 Les accents graves cassent le build — **6 fois**
+### 8.3 Les accents graves cassent le build — **7 fois**
 
 Un accent grave dans un commentaire de `template:` ou `styles:` **ferme le littéral**.
 `tsc` passe, Angular échoue avec un `NG1002` incompréhensible, et le serveur sert un
@@ -899,6 +1054,23 @@ inexpliqué.**
 > trait pour trait à un problème de cascade CSS. Dix minutes cherchées du mauvais côté.
 > **Une règle qu'on vient d'écrire et que le navigateur ignore : regarder les logs du
 > serveur AVANT la cascade.**
+
+> ⚠️ **7ᵉ occurrence le 2026-08-16**, et c'était en écrivant un commentaire qui *renvoyait
+> à un nom de symbole* — le réflexe de développeur d'entourer `societeSansVehicule`
+> d'accents graves. **Dans un commentaire de `template:`, écrire le nom nu.**
+
+### 8.3bis ⭐ Un effet de bord juste, posé au mauvais endroit du cycle de vie
+
+*Payé le 2026-08-16 sur la carte de chaleur (§ 6octies.2).* Le raisonnement était bon —
+« il faut recharger là où `_accessibleIds` vient d'être rafraîchi » — et le code, posé
+dans le `.then()` de `vehiclesApi.list()`, **était dans `ngAfterViewInit`** : joué une
+seule fois, au montage. Il compilait, se relisait bien, et **ne servait à rien**.
+
+> **La règle** : avant de poser un effet de bord dans une méthode, **lire son nom** et
+> répondre à « quand est-elle rappelée ? ». Un raisonnement juste sur les **données** ne
+> dit rien sur le **cycle de vie** de l'endroit où on l'écrit. Et chercher d'abord un
+> voisin qui résout déjà le même problème : ici `fuelStationsFleetEffect` et
+> `deadZonesFleetEffect` donnaient la forme correcte, à dix lignes de là.
 
 ### 8.4 « On ne sait pas encore » n'est pas un état connu — **3 fois**
 
@@ -1152,12 +1324,26 @@ doit rester en modifications locales non commitées.
 9. *(nouveau)* **La forme de l'écran simplifié** (§ 6quater.5) : la planche impose
    « jamais plus de 3 boutons » en langage courant, l'écran en porte **sept** en langage
    d'application. Quelles trois commandes garder — et lesquelles passent derrière ?
-10. *(dette d'environnement, pas une décision)* **Aucun compte `NIGHT_WATCHMAN` ni
-    `DRIVER`** en base de dev : deux interfaces entières (`/driver`, mode veilleur) sont
-    livrées **sans avoir jamais été vues à l'écran**. Un compte de chaque réglerait les
-    deux d'un coup.
+10. *(dette d'environnement, pas une décision)* ~~**Aucun compte `NIGHT_WATCHMAN` ni
+    `DRIVER`**~~ — **les comptes existent et sont correctement câblés** (§ 3bis,
+    `seed-roles-test.ts`). ⚠️ **Il reste la mesure** : l'écran veilleur n'a toujours pas
+    été vu. Le panneau navigateur s'est masqué au moment de la bascule de compte et ne
+    répond plus (§ 6octies.4). **À reprendre dès que le panneau est rouvert** — c'est
+    quelques minutes, tout le reste est prêt.
 
-**Et le rappel qui compte maintenant** : **35 commits ne sont pas poussés.** C'est le
+**Recette du client du 2026-08-16 — les 4 retours** (§ 6octies) :
+
+- [x] ~~« En roulage » → « Roule »~~ — mesuré.
+- [x] ~~La carte de chaleur ignorait le filtre société~~ — corrigé et **mesuré au
+      réseau** (15 → 5 → 15 véhicules balayés). ⚠️ Ma première correction était fausse :
+      elle était posée dans `ngAfterViewInit`, qui ne joue qu'une fois (§ 6octies.2).
+- [x] ~~« Voir les 15 véhicules » sur une société vide~~ — le vide a deux causes, il a
+      maintenant deux sorties. Deux défauts trouvés **en mesurant** au passage : cible à
+      36 px et lien à 3,39:1.
+- [ ] **Le mode veilleur** — le compte est prêt et vérifié à l'API (3 véhicules via
+      « Parking nuit »), **l'écran reste à mesurer**. Bloqué par le panneau navigateur.
+
+**Et le rappel qui compte maintenant** : **les commits ne sont pas poussés.** C'est le
 seul obstacle entre le travail fait, vérifié, et la recette.
 
 ---

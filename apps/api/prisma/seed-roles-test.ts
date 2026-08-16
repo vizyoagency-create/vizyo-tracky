@@ -176,6 +176,59 @@ async function main(): Promise<void> {
     }
   }
 
+  // ═══ LE VEILLEUR AUSSI A BESOIN D'UN PÉRIMÈTRE ═══════════════════════════
+  //
+  // Même piège que pour le conducteur, et il a bien failli se reproduire :
+  // `getAccessibleVehicleIds` renvoie `[]` dès qu'un utilisateur n'a AUCUNE ligne
+  // `UserVehicleAccess`. Un veilleur fraîchement créé voyait donc un écran vide —
+  // et on aurait mesuré cet écran en croyant mesurer le mode veilleur.
+  //
+  // Son périmètre passe par un GROUPE, pas par des véhicules isolés : la liste
+  // démarre en vue groupée pour ce rôle précisément parce que « son périmètre =
+  // ses groupes ». Lui donner trois véhicules en vrac aurait rempli l'écran sans
+  // jamais exercer ce que le rôle est censé montrer.
+  const veilleur = await prisma.user.findUnique({
+    where: { authUserId: 'seedtest0000veilleur00001' },
+  });
+  if (veilleur) {
+    const groupe = await prisma.vehicleGroup.upsert({
+      where: { fleetId_name: { fleetId: fleet.id, name: 'Parking nuit' } },
+      update: {},
+      create: { fleetId: fleet.id, name: 'Parking nuit' },
+    });
+
+    // Trois véhicules suffisent : assez pour voir un groupe rempli, assez peu
+    // pour que la restriction se VOIE (la flotte de dev en compte davantage).
+    const aRattacher = await prisma.vehicle.findMany({
+      where: { fleetId: fleet.id },
+      orderBy: { createdAt: 'asc' },
+      take: 3,
+      select: { id: true, plate: true },
+    });
+    for (const v of aRattacher) {
+      await prisma.vehicleGroupAssignment.upsert({
+        where: { vehicleId_groupId: { vehicleId: v.id, groupId: groupe.id } },
+        update: {},
+        create: { vehicleId: v.id, groupId: groupe.id },
+      });
+    }
+    console.log(
+      `\n  Groupe « ${groupe.name} » : ${aRattacher.map((v) => v.plate).join(', ')}`,
+    );
+
+    const dejaLa = await prisma.userVehicleAccess.findFirst({
+      where: { userId: veilleur.id, accessType: 'GROUP', groupId: groupe.id },
+    });
+    if (dejaLa) {
+      console.log(`  Accès GROUP déjà accordé au veilleur`);
+    } else {
+      await prisma.userVehicleAccess.create({
+        data: { userId: veilleur.id, accessType: 'GROUP', groupId: groupe.id },
+      });
+      console.log(`  Accès GROUP accordé au veilleur sur « ${groupe.name} »`);
+    }
+  }
+
   console.log('\nPour ouvrir une session :');
   for (const c of COMPTES) {
     console.log(`  ts-node prisma/gen-test-token.ts ${c.authUserId}   # ${c.role}`);
