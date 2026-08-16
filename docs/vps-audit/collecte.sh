@@ -94,6 +94,23 @@ CHARGE_DEBUT=$(cut -d' ' -f1 /proc/loadavg)
 # l'audit — ce qui est le bon sens de l'erreur : il ne peut pas disculper l'audit a tort.
 CPU_AUDIT_DEBUT=$(awk '{print $14+$15+$16+$17}' "/proc/$$/stat" 2>/dev/null)
 STAT_DEBUT=$(awk '$1=="cpu"{print $2,$3,$4,$5,$6,$7,$8,$9; exit}' /proc/stat 2>/dev/null)
+# ⚠️⚠️ AJOUTE LE 2026-08-16 (VPS-M39) — LE DISCRIMINANT SAVAIT DIRE « CE N EST PAS L AUDIT »
+# ET N A JAMAIS SU DIRE « C EST CECI ». A son premier passage reel (2026-08-16) il a rendu
+# « 🟠 MACHINE SATUREE (5,3 % d inactivite), mais l audit n y est que pour 15,7 %. Chercher le
+# consommateur AILLEURS » — alors que le consommateur etait deja imprime 800 lignes plus haut,
+# dans la section 1 : `dockerd` a 99,3 % d un coeur, soit ~50 % d une machine a 2 vCPU.
+# Deux mesures justes, cote a cote, sans lien — c est exactement le mode d echec nomme par
+# VPS-026 (« la sonde Docker Hub et le chemin de sauvegarde, deux mesures justes sans lien »).
+# Un verdict qui dit « cherchez ailleurs » quand la reponse est dans la meme sortie n est pas
+# un verdict, c est un renvoi.
+# Cout : DEUX lectures de /proc/<pid>/stat, aucun fork, aucun appel Docker — le meme prix que
+# ce qui est deja preleve pour l audit lui-meme.
+# ⚠️ Le PID est resolu ICI, au debut, et conserve : le resoudre a la fin comparerait deux
+# processus differents si le demon avait redemarre entre-temps — et rendrait un delta absurde
+# sans rien signaler. Un demon qui redemarre pendant la collecte se dit, il ne se lisse pas.
+DOCKERD_PID=$(pgrep -o dockerd 2>/dev/null)
+CPU_DOCKERD_DEBUT=$(awk '{s=$0; sub(/^[0-9]+ \(.*\) /,"",s); split(s,f," "); print f[12]+f[13]}' \
+                    "/proc/${DOCKERD_PID:-0}/stat" 2>/dev/null)
 section() { printf '\n\n═════ %s ═════   [t+%ss]\n' "$1" "$(( $(date +%s) - T_DEBUT ))"; }
 sub()     { printf '\n── %s ──\n' "$1"; }
 have()    { command -v "$1" >/dev/null 2>&1; }
@@ -343,6 +360,72 @@ if [ "${EMB_PID:-}" ]; then
     esac
     printf '     tid=%-9s %7.0f s CPU cumule   bloque dans : %s\n' "$tid" "$cpu" "$W"
   done
+  # ⚠️⚠️ AJOUTE LE 2026-08-16 (VPS-M36, volet ECHANTILLONNAGE — angle mort n° 7 du 2026-08-15).
+  # Les trois lignes ci-dessus sont UN tirage. Le 2026-08-14, le meme thread avait donne
+  # `wait_for_partner` puis `futex_wait_queue` a six minutes d intervalle : trois lignes peuvent
+  # chacune etre un coup de chance, sur le constat le plus lourd du dispositif (VPS-016).
+  # Les 15 et 16 aout, la repartition a du etre prise A LA MAIN, en marge, pour lever le doute —
+  # deux passages de suite ou une verification manuelle a porte une conclusion publiee. C est
+  # exactement ce que le §7 de la procedure appelle un angle mort a fermer dans le SCRIPT.
+  #
+  # La repartition sur TOUS les threads vaut mieux que trois lignes, et elle coute le meme prix :
+  # une lecture de /proc par thread (42 aujourd hui), aucun fork par thread, un seul `sort|uniq`.
+  # « 33 des 42 en futex_wait_queue » est une mesure ; « les 3 plus chauds sont en futex » est un
+  # echantillon de trois.
+  # ⚠️ UN SEUL `awk` POUR LES 42 FICHIERS, pas un `cat` par thread. La premiere ecriture faisait
+  # `for t in …; do cat "$t/wchan"; done` — 42 forks sur une machine dont il reste un demi-coeur,
+  # dans un bloc dont le commentaire promettait « aucun fork par thread ». Le code doit tenir la
+  # promesse du commentaire, sinon c est le commentaire qui devient faux (VPS-M12 : le collecteur
+  # ne doit pas peser sur ce qu il mesure). `FNR==1` : `wchan` n a pas de saut de ligne final,
+  # donc chaque fichier tient en UN enregistrement.
+  # ⚠️⚠️⚠️ VPS-M40 — CE BLOC A FAILLI PUBLIER UNE CORROBORATION FABRIQUEE, ET LE CAS TEMOIN L A
+  # ARRETE. La premiere ecriture rendait un verdict : « ≥ 50 % des threads en futex_wait_queue
+  # → c est l ORDONNANCEUR Go qui tourne en rond, signature de VPS-016 ». Essaye sur `dockerd` :
+  # 33/42, soit 79 % → 🔴. Essaye sur `containerd`, un demon PARFAITEMENT SAIN qui consomme
+  # 0,3 % d un coeur : **13/14, soit 93 % → 🔴 lui aussi.**
+  # Un runtime Go au REPOS gare ses threads dans un futex : c est l etat NORMAL, pas la panne.
+  # La repartition ne discrimine donc RIEN, et le verdict qu on s appretait a en tirer aurait
+  # donne au constat le plus lourd du dispositif une confirmation qui n en est pas une.
+  # Le rapport du 2026-08-15 s en approchait deja : « une repartition a 79 % : la conclusion ne
+  # repose plus sur un tirage ». Elle ne reposait pas sur un tirage — elle ne reposait sur rien.
+  # CE QUI DISCRIMINE EST AILLEURS, ET LE COLLECTEUR L A DEJA IMPRIME DEUX LIGNES PLUS HAUT :
+  # dockerd 99 % d un coeur MAINTENANT et 159 h cumulees, containerd 0,3 % et 2,9 h.
+  # Le bloc affiche donc la repartition SANS verdict, et il imprime celle d un demon TEMOIN a
+  # cote — pour qu aucun lecteur (moi compris, au prochain passage) ne refasse la deduction.
+  # Cout du temoin : ~14 lectures de /proc de plus, un awk. Le meme prix qu une erreur evitee.
+  echo "     ── repartition du wchan : la MESURE, et pourquoi elle ne conclut PAS seule ──"
+  repartition_wchan() {
+    _pid="$1"; _nom="$2"
+    _n=$(ls "/proc/$_pid/task" 2>/dev/null | wc -l)
+    if [ "${_n:-0}" -eq 0 ]; then
+      printf '       %-12s 🔴 AUCUN THREAD LU : /proc illisible — aucune conclusion.\n' "$_nom"
+      return
+    fi
+    awk 'FNR==1{ v=$0; if (v=="0") v="[running-espace-utilisateur]"; if (v=="") v="[vide]"; print v }' \
+        /proc/$_pid/task/*/wchan 2>/dev/null \
+      | sort | uniq -c | sort -rn \
+      | awk -v n="$_n" -v nom="$_nom" '
+          { lus += $1; if (NR==1) { top=$1; etat=$2 }
+            if (NR<=3) ligne = ligne sprintf("%d %s, ", $1, $2) }
+          END {
+            sub(/, $/, "", ligne)
+            base = (lus > 0 ? lus : n)
+            printf "       %-12s %d threads : %s   → %.0f %% en « %s »\n", nom, n, ligne, 100*top/base, etat
+            # Denominateur annonce ET ecart annonce (VPS-M08/M22/M34).
+            if (lus < n)
+              printf "       %-12s ⚠️ %d thread(s) sur %d non lus : le pourcentage porte sur %d.\n", "", n-lus, n, lus
+          }'
+  }
+  repartition_wchan "$EMB_PID" "dockerd"
+  # ⚠️ LE TEMOIN N EST PAS UN ORNEMENT : c est lui qui empeche de relire la ligne du dessus
+  # comme une preuve. S il disparait un jour, le verdict fabrique revient avec lui.
+  TEMOIN_PID=$(pgrep -o containerd 2>/dev/null)
+  [ -n "$TEMOIN_PID" ] && repartition_wchan "$TEMOIN_PID" "containerd"
+  echo "       ⚠️ AUCUN VERDICT N EST TIRE DE CES DEUX LIGNES, ET C EST VOULU (VPS-M40) :"
+  echo "          containerd est SAIN et affiche la meme signature futex que dockerd. Un runtime"
+  echo "          Go au repos gare ses threads dans un futex — c est l etat normal d un demon"
+  echo "          qui attend, pas celui d un demon qui s emballe."
+  echo "          CE QUI DISCRIMINE est le CPU, imprime plus haut : « maintenant » et « cumul »."
   printf '     threads du demon : %s   (le runtime Go en cree de nouveaux quand les anciens sont coinces)\n' \
     "$(ls /proc/$EMB_PID/task 2>/dev/null | wc -l)"
   echo "     ⚠️ Le vidage des goroutines (kill -USR1) trancherait la CAUSE — c est une ECRITURE,"
@@ -1686,6 +1769,77 @@ if [ -d /var/backups/vizyo-verify ]; then
   printf '  droits du dossier : %s (700 attendu)\n' "$(stat -c%a /var/backups/vizyo-verify)"
 fi
 
+# ⚠️⚠️ AJOUTE LE 2026-08-16 (VPS-026) — LA DEPENDANCE RESEAU DU SEUL CHEMIN DE SAUVEGARDE DES
+# PIECES D IDENTITE, SUIVIE A LA MAIN PENDANT QUATRE PASSAGES.
+# `backup.sh` lance un conteneur `alpine:latest` pour son tar+gpg. Quand l image est absente, il
+# la TIRE depuis Docker Hub — a 03 h 30, dans un chemin qui vient de passer huit jours en echec
+# silencieux (VPS-015). Le constat existait depuis le 2026-08-13 et RIEN dans le collecteur ne
+# le mesurait : chaque passage le rouvrait par une commande tapee en marge.
+#
+# ⚠️ ET LA CAUSE, QUE DEUX PASSAGES ONT DECLAREE « NON ETABLIE », EST MECANIQUE :
+# `docker image prune -af --filter "until=24h"` a 00 h 40 epargne l image tant qu elle a MOINS
+# de 24 h, et la supprime au passage suivant. Comme le tirage a lieu a 03 h 31 — donc APRES le
+# menage du jour — l image obtient toujours un sursis d une nuit, puis meurt la seconde. D ou
+# une ALTERNANCE de periode 2 jours, verifiee 4 fois sur 4 (08-12 tiree, 08-13 epargnee,
+# 08-14 tiree, 08-15 epargnee, 08-16 supprimee).
+# Le 2026-08-14 avait ecarte cette explication en constatant que « le prune a tourne le 08-13
+# comme le 08-14 et l image a survecu a l un et pas a l autre » — c est vrai, et ca ne refute
+# rien : ce qui change entre les deux nuits n est pas le prune, c est l AGE de l image. La
+# comparaison portait sur le declencheur en oubliant la grandeur sur laquelle il filtre.
+# C est pourquoi ce bloc affiche l AGE, et pas seulement la presence.
+sub "VPS-026 — alpine:latest sera-t-il retelecharge a la prochaine sauvegarde ?"
+ALP=$(docker images alpine:latest --format '{{.CreatedAt}}' 2>/dev/null | head -1)
+ALP_ID=$(docker images alpine:latest -q 2>/dev/null | head -1)
+if [ -z "$ALP_ID" ]; then
+  echo "  🔴 ABSENT : la sauvegarde de cette nuit TIRERA l image depuis Docker Hub."
+  echo "     Le seul dispositif de sauvegarde des pieces d identite depend donc, a 03 h 31,"
+  echo "     que registry-1.docker.io reponde. Voir la sonde de dependances (section 6)."
+else
+  # ⚠️ `Created` d une image TIREE est la date de publication AMONT (alpine : des semaines), pas
+  # celle du tirage. Elle ne dit donc rien de l age local, et c est le piege exact qui a fait
+  # ecarter la bonne explication le 2026-08-14. La grandeur locale est `.Metadata.LastTagTime` —
+  # verifie sur la machine le 2026-08-16 : `postgres:17-alpine` porte Created=2026-02-26 pour
+  # LastTagTime=2026-03-07, `nginx:alpine` Created=2025-12-18 pour LastTagTime=2026-01-02.
+  # ⚠️ PORTEE, ecrite avant qu elle ne coute : LastTagTime est la date du dernier ETIQUETAGE, pas
+  # strictement du tirage. Sur `tracky-api:latest`, construit a 17 h 05 le 08-15, elle vaut
+  # 00 h 05 le 08-16 — un reetiquetage lors du deploiement suivant. Pour `alpine`, qui est tire
+  # puis jamais reetiquete, les deux coincident ; pour une image construite localement, cette
+  # ligne ne doit PAS etre lue comme une date de build.
+  # ⚠️ Une premiere version lisait le content store par `find /var/lib/docker/image …`. Ce
+  # chemin N EXISTE PAS avec le pilote overlayfs — et la section 3 de ce meme script l ecrit
+  # noir sur blanc depuis toujours. Le bloc serait tombe dans sa branche degeneree a chaque
+  # passage, en silence. Attrape a l essai, avant publication.
+  ALP_TAG=$(docker inspect --format '{{.Metadata.LastTagTime}}' alpine:latest 2>/dev/null | cut -c1-19)
+  # ⚠️⚠️ LE GARDE PORTE SUR LA CHAINE, PAS SUR LE CODE DE RETOUR DE `date` — ET C EST UNE
+  # BRANCHE FAUSSE ATTRAPEE A L ESSAI, AVANT PUBLICATION (2026-08-16).
+  # `date -d "" +%s` NE FAILLE PAS : il rend l instant present, avec un code de retour 0. Le
+  # garde `[ -n "$ALP_EPOCH" ]` etait donc toujours vrai, et un LastTagTime VIDE fabriquait un
+  # age de ~0 h, puis publiait « 🟠 EPARGNE CETTE NUIT » avec l aplomb d une mesure.
+  # Une absence de donnee produisait une PREDICTION. C est VPS-M28 a l identique — le repli qui
+  # invente une valeur — et c est le TROISIEME passage consecutif ou la discipline « essayer
+  # chaque branche sur la machine » attrape un correctif ecrit le jour meme.
+  ALP_EPOCH=""
+  case "$ALP_TAG" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*) ALP_EPOCH=$(date -d "$ALP_TAG" +%s 2>/dev/null) ;;
+  esac
+  if [ -n "$ALP_EPOCH" ]; then
+    ALP_AGE_H=$(( ( $(date +%s) - ALP_EPOCH ) / 3600 ))
+    printf '  present, tire localement le %s — soit il y a %s h\n' "$ALP_TAG" "$ALP_AGE_H"
+    if [ "$ALP_AGE_H" -lt 24 ]; then
+      echo "  🟠 EPARGNE CETTE NUIT (moins de 24 h), SUPPRIME LA SUIVANTE : le menage de 00 h 40"
+      echo "     filtre sur until=24h. La sauvegarde de cette nuit ne tirera pas ; celle d apres,"
+      echo "     si. C est l alternance de periode 2 jours decrite dans VPS-026."
+    else
+      echo "  🔴 PLUS DE 24 h : le menage de 00 h 40 le supprimera, et la sauvegarde suivante"
+      echo "     tirera l image depuis Docker Hub."
+    fi
+  else
+    echo "  present, mais AGE LOCAL NON LU (LastTagTime vide ou illisible) : ne pas conclure sur"
+    echo "  la prochaine nuit — la PRESENCE d aujourd hui ne predit rien par elle-meme, c est"
+    echo "  l AGE qui gouverne le prune. C est l erreur de lecture du 2026-08-14."
+  fi
+fi
+
 # Le point le plus expose, et il ne se corrige pas par du code : tout est sur le meme disque
 # que les donnees. Un incident chez l'hebergeur emporte les deux ensemble.
 sub "Copie hors-site"
@@ -1949,6 +2103,10 @@ awk -v d0="$CHARGE_DEBUT" -v d1="$CHARGE_FIN" 'BEGIN{
 # l'autre sens : un defaut qui ACCUSE n'a pas plus de plaignant qu'un defaut qui rassure).
 CPU_AUDIT_FIN=$(awk '{print $14+$15+$16+$17}' "/proc/$$/stat" 2>/dev/null)
 STAT_FIN=$(awk '$1=="cpu"{print $2,$3,$4,$5,$6,$7,$8,$9; exit}' /proc/stat 2>/dev/null)
+# VPS-M39 — meme PID qu'au debut, jamais re-resolu (voir le commentaire de la capture).
+CPU_DOCKERD_FIN=$(awk '{s=$0; sub(/^[0-9]+ \(.*\) /,"",s); split(s,f," "); print f[12]+f[13]}' \
+                   "/proc/${DOCKERD_PID:-0}/stat" 2>/dev/null)
+DOCKERD_VIVANT=$([ -n "${DOCKERD_PID:-}" ] && [ -r "/proc/${DOCKERD_PID}/stat" ] && echo 1 || echo 0)
 TICKS=$(getconf CLK_TCK 2>/dev/null); case "${TICKS:-}" in ''|*[!0-9]*) TICKS=100 ;; esac
 # ⚠️ CHAQUE BRANCHE DEGENEREE REND UN AVEU, JAMAIS UNE RASSURANCE (lecon VPS-M28) : si une des
 # deux lectures manque, le bloc DIT qu'il ne conclut pas, au lieu d'afficher un 0 % rassurant.
@@ -1959,7 +2117,8 @@ if [ -z "${STAT_DEBUT:-}" ] || [ -z "${STAT_FIN:-}" ] || [ -z "${CPU_AUDIT_DEBUT
   echo "     NE PAS conclure sur le cout de l audit ce passage."
 else
   echo "$STAT_DEBUT|$STAT_FIN" | awk -F'|' -v ca0="$CPU_AUDIT_DEBUT" -v ca1="$CPU_AUDIT_FIN" \
-       -v tk="$TICKS" -v np="$(nproc)" -v d="$DUREE" -v l0="$CHARGE_DEBUT" -v l1="$CHARGE_FIN" '{
+       -v tk="$TICKS" -v np="$(nproc)" -v d="$DUREE" -v l0="$CHARGE_DEBUT" -v l1="$CHARGE_FIN" \
+       -v cd0="$CPU_DOCKERD_DEBUT" -v cd1="$CPU_DOCKERD_FIN" -v dviv="$DOCKERD_VIVANT" '{
     n=split($1,a," "); split($2,b," ")
     tot=0; for (i=1;i<=n;i++) { dd[i]=b[i]-a[i]; tot+=dd[i] }
     if (tot <= 0) {
@@ -1988,10 +2147,39 @@ else
     paudit = 100*audit_s/capacite_s
     printf "  cout REEL de l audit : %.1f s de CPU sur %d s x %d coeurs = %.1f %% de la machine\n", \
            audit_s, d, np, paudit
+    # ⚠️ VPS-M39 — LA PART DE `dockerd`, SUR EXACTEMENT LA MEME FENETRE.
+    # Sans elle, la seule chose que ce bloc savait dire d une machine saturee etait « ce n est
+    # pas l audit, cherchez ailleurs ». Avec elle, il NOMME. Trois branches degenerees, et
+    # chacune AVOUE plutot que de rassurer (discipline VPS-M28) : compteur qui recule (le demon
+    # a redemarre pendant la collecte — un evenement en soi), demon disparu, lecture manquante.
+    pdock = -1
+    if (dviv+0 == 1 && cd0 != "" && cd1 != "") {
+      dock_s = (cd1-cd0)/tk
+      if (dock_s < 0)
+        printf "  🔴 LE COMPTEUR DE dockerd A RECULE (%.1f s) : le demon a REDEMARRE pendant la\n     collecte. C est un evenement a signaler, pas une mesure a lisser — la part de dockerd\n     n est pas calculable sur cette fenetre, et le reste du bloc ne la compte pas.\n", dock_s
+      else {
+        pdock = 100*dock_s/capacite_s
+        preste = 100 - paudit - pdock - pidle
+        if (preste < 0) preste = 0
+        printf "  part de dockerd      : %.1f s de CPU sur la MEME fenetre = %.1f %% de la machine\n", dock_s, pdock
+        printf "  → repartition : audit %.1f %%  |  dockerd %.1f %%  |  reste %.1f %%  |  inactif %.1f %%\n", \
+               paudit, pdock, preste, pidle
+      }
+    } else
+      printf "  ⚠️ part de dockerd NON MESUREE (pid introuvable ou /proc illisible) : le verdict\n     ci-dessous ne peut donc PAS nommer le consommateur, seulement disculper l audit.\n"
     if (paudit >= 25)
       printf "  🔴 C EST BIEN L AUDIT, ET C EST MESURE : il a pris %.1f %% de la machine (seuil 25 %%).\n     Le verdict de charge ci-dessus est CONFIRME par une mesure directe, pas par loadavg.\n", paudit
+    else if (pidle < 10 && pdock >= 25)
+      printf "  🔴 MACHINE SATUREE (%.1f %% d inactivite) ET LE CONSOMMATEUR EST NOMME : `dockerd`\n     prend %.1f %% de la machine sur cette fenetre, l audit %.1f %%. C est VPS-016, pas la\n     collecte — et le depassement de budget ci-dessous en decoule (un script en priorite\n     idle attend d autant plus qu un coeur est confisque).\n", pidle, pdock, paudit
+    # ⚠️ DEUX BRANCHES DISTINCTES, ET C EST LE POINT. La premiere ecriture n en avait qu une,
+    # avec `(pdock>=0 ? pdock : 0)` : quand la part de dockerd n etait PAS mesurable, elle
+    # publiait « dockerd 0,0 % », ce qui se lit « dockerd n a rien consomme » — une AFFIRMATION,
+    # tiree d une ABSENCE. Attrape a l essai (branche e), meme famille que la date vide du bloc
+    # alpine ci-dessus et que VPS-M28 : un repli ne doit jamais fabriquer la valeur qui manque.
+    else if (pidle < 10 && pdock >= 0)
+      printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), l audit n y est que pour %.1f %% et\n     dockerd pour %.1f %%. Le consommateur n est NI l un NI l autre : le chercher dans\n     user %.1f %% + sys %.1f %% — sondes de sante, runc, backends PostgreSQL.\n", pidle, paudit, pdock, puser, psys
     else if (pidle < 10)
-      printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), mais l audit n y est que pour %.1f %%.\n     Chercher le consommateur AILLEURS : user %.1f %% + sys %.1f %% ne sont pas de l audit.\n", pidle, paudit, puser, psys
+      printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), l audit n y est que pour %.1f %%, et la\n     part de dockerd N A PAS PU ETRE MESUREE ce passage. Le consommateur n est donc PAS\n     nomme — et surtout, ne pas lire cette absence comme « dockerd n y est pour rien ».\n", pidle, paudit
     else if (l1-l0 > 1.0)
       printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite. Les processus s empilent en sommeil ININTERRUPTIBLE sur le\n     socket d un demon en boucle (VPS-016) : ils comptent dans loadavg sans bruler un cycle.\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle
     else
