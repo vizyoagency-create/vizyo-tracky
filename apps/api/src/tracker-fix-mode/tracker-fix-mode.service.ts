@@ -11,6 +11,7 @@ import {
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
+import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
 /**
@@ -98,6 +99,7 @@ export class TrackerFixModeService {
     private readonly registry: SocketRegistryService,
     private readonly wireLogger: CobanWireLogger,
     private readonly sms: SmsGatewayService,
+    private readonly ackWaiter: AckWaiterService,
   ) {
     const min = Number(process.env.FIX_COMMAND_EXPIRY_MIN);
     this.commandExpiryMs = (Number.isFinite(min) && min > 0 ? min : 30) * 60_000;
@@ -168,6 +170,72 @@ export class TrackerFixModeService {
    * Rules are intentionally simple — they cover the 3-4 most common failure
    * modes observed on Coban-403D field deployments. Refine with field data.
    */
+  /**
+   * TRK-014 — inscrit un guetteur d'ACK après un envoi TCP réussi.
+   *
+   * Ce chemin écrivait `SENT`, journalisait la trame, et s'arrêtait là. Résultat : sur
+   * **4071 commandes depuis le 2026-04-27, `ackedAt` et `ackResponse` sont NULL sans une
+   * seule exception**. On en concluait que « le Coban n'accuse pas réception » — alors que
+   * personne n'avait jamais écouté. Le motif (`/fix.*ok/i`) et le délai (15 s) existaient
+   * déjà au catalogue, et `tcp-server.service` offre chaque trame entrante au guetteur : il
+   * ne manquait que l'inscription.
+   *
+   * Ce que ça débloque : [TRK-012] (la cadence de 300 s jamais appliquée) repose entièrement
+   * sur l'observation des trames, ce qui laisse trois causes indiscernables — commande non
+   * reçue, rejetée en silence (mot de passe), ou acceptée sans être appliquée. Un `fix ok`,
+   * ou même une absence de réponse ENFIN TRACÉE, tranche entre elles.
+   *
+   * ⚠️ **L'ACK informe, il ne décide de rien.** On ne touche PAS au `status` : ni
+   * `ACKNOWLEDGED` en cas de réponse, ni `FAILED` en cas de silence. C'est la leçon
+   * durement acquise de TRK-007 — reconditionner la clôture à une réponse du boîtier
+   * laisserait de nouveau des commandes ouvertes à vie dès qu'il se tait, et le centre
+   * d'alerte redeviendrait une file qui ne se vide pas. L'échéance PUREMENT TEMPORELLE
+   * reste la seule fin de vie d'une commande.
+   */
+  private armAckListener(
+    imei: string,
+    commandId: string,
+    template: { expectedAckPattern?: RegExp; ackTimeoutMs?: number },
+  ): void {
+    const pattern = template.expectedAckPattern;
+    const timeoutMs = template.ackTimeoutMs;
+    if (!pattern || !timeoutMs) return;
+
+    const sentAt = Date.now();
+    this.ackWaiter
+      .waitForAck(imei, pattern, timeoutMs, commandId)
+      .then(async (rawAck) => {
+        this.wireLogger.ackMatch(imei, rawAck, commandId, Date.now() - sentAt);
+        // Information ajoutée, statut inchangé (cf. ⚠️ ci-dessus).
+        await this.prisma.trackerCommand.update({
+          where: { id: commandId },
+          data: { ackedAt: new Date(), ackResponse: rawAck },
+        });
+        this.logger.log(
+          { imei, commandId, rawAck },
+          `TRK-014 — premier accusé de réception reçu sur le chemin adaptatif`,
+        );
+      })
+      .catch(async (err) => {
+        // Le silence est une MESURE, pas un incident : il répond enfin à « le boîtier
+        // répond-il ? ». Tracé au journal de trames ET dans l'indice de diagnostic, qui
+        // lui est durable et visible à l'écran des commandes.
+        this.wireLogger.ackTimeout(imei, commandId, pattern.source, timeoutMs);
+        await this.prisma.trackerCommand
+          .update({
+            where: { id: commandId },
+            data: {
+              diagnosticHint: `Aucune réponse du boîtier en ${Math.round(timeoutMs / 1000)} s (motif attendu : ${pattern.source}). Le canal descendant est ouvert et la trame est partie — le boîtier ne confirme rien.`,
+            },
+          })
+          .catch(() => undefined);
+        this.logger.debug({ imei, commandId, err: (err as Error)?.message }, 'ACK timeout fix-mode');
+      })
+      // Un guetteur d'arrière-plan ne doit JAMAIS remonter jusqu'à l'appelant : il tourne
+      // après que la commande a été rendue.
+      .catch(() => undefined);
+  }
+
   static buildDiagnosticHint(input: {
     sentViaSocket: boolean;
     failureCount: number;
@@ -657,6 +725,9 @@ export class TrackerFixModeService {
       commandId: command.id,
       source: 'fix-mode-adaptive',
     });
+
+    // TRK-014 — écouter la réponse du boîtier. Ce chemin ne l'a JAMAIS fait.
+    this.armAckListener(tracker.imei, command.id, template);
 
     // Update tracker desired + sync timestamp. The reconciler will confirm later.
     await this.prisma.tracker.update({

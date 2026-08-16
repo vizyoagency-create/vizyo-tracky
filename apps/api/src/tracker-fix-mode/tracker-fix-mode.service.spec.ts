@@ -3,6 +3,7 @@ import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { TrackerFixModeService } from './tracker-fix-mode.service';
 
 describe('TrackerFixModeService.intervalLabel', () => {
@@ -96,6 +97,12 @@ describe('TrackerFixModeService.desiredIntervalFor', () => {
         { provide: SocketRegistryService, useValue: {} },
         { provide: CobanWireLogger, useValue: {} },
         { provide: SmsGatewayService, useValue: { isEnabled: () => false, send: jest.fn() } },
+        // TRK-014 — guetteur d'ACK. Un guetteur qui ne resout jamais : ces cas verifient
+        // l'ENVOI, pas la reponse du boitier.
+        {
+          provide: AckWaiterService,
+          useValue: { waitForAck: jest.fn().mockReturnValue(new Promise(() => undefined)) },
+        },
       ],
     }).compile();
     service = module.get(TrackerFixModeService);
@@ -187,6 +194,12 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
         { provide: SocketRegistryService, useValue: registry },
         { provide: CobanWireLogger, useValue: { out: jest.fn() } },
         { provide: SmsGatewayService, useValue: sms },
+        // TRK-014 — guetteur d'ACK. Un guetteur qui ne resout jamais : ces cas verifient
+        // l'ENVOI, pas la reponse du boitier.
+        {
+          provide: AckWaiterService,
+          useValue: { waitForAck: jest.fn().mockReturnValue(new Promise(() => undefined)) },
+        },
       ],
     }).compile();
     service = module.get(TrackerFixModeService);
@@ -346,6 +359,9 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
       {} as any,
       {} as any,
       { isEnabled: () => false, send: jest.fn() } as any,
+      // TRK-014 — guetteur d'ACK. Ce bloc de tests ne passe jamais par l'envoi, donc
+      // un guetteur qui ne résout rien suffit.
+      { waitForAck: jest.fn().mockReturnValue(new Promise(() => undefined)) } as any,
     );
     return { svc, prisma };
   };
@@ -463,6 +479,12 @@ describe('TrackerFixModeService.reconcile', () => {
         { provide: SocketRegistryService, useValue: {} },
         { provide: CobanWireLogger, useValue: {} },
         { provide: SmsGatewayService, useValue: { isEnabled: () => false, send: jest.fn() } },
+        // TRK-014 — guetteur d'ACK. Un guetteur qui ne resout jamais : ces cas verifient
+        // l'ENVOI, pas la reponse du boitier.
+        {
+          provide: AckWaiterService,
+          useValue: { waitForAck: jest.fn().mockReturnValue(new Promise(() => undefined)) },
+        },
       ],
     }).compile();
     service = module.get(TrackerFixModeService);
@@ -753,5 +775,121 @@ describe('TrackerFixModeService.reconcile', () => {
     );
     expect(out.nextFailureCount).toBe(3);
     expect(out.nextFailing).toBe(true);
+  });
+});
+
+/**
+ * TRK-014 (2026-08-10) — le chemin adaptatif n'a JAMAIS écouté la réponse du boîtier.
+ *
+ * Sur 4071 commandes émises depuis le 2026-04-27, `ackedAt` et `ackResponse` étaient NULL
+ * sans une seule exception. On en concluait que « le Coban n'accuse pas réception » ; en
+ * réalité personne n'avait jamais armé le guetteur. Le motif et le délai existaient déjà
+ * au catalogue.
+ *
+ * ⚠️ Le test qui compte le plus est le dernier : l'ACK **informe**, il ne clôture rien.
+ * Reconditionner la fin de vie d'une commande à une réponse du boîtier rouvrirait
+ * exactement TRK-007 — un boîtier muet laisserait des commandes ouvertes à vie.
+ */
+describe('TrackerFixModeService — écoute de l’accusé de réception (TRK-014)', () => {
+  const IMEI = '864035054757027';
+
+  const build = (ack: { resolve?: string; reject?: boolean } = {}) => {
+    const created = { id: 'cmd-1' };
+    const updates: Record<string, unknown>[] = [];
+    const prisma = {
+      trackerCommand: {
+        count: jest.fn().mockResolvedValue(0),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(created),
+        update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          updates.push(data);
+          return {};
+        }),
+      },
+      tracker: { update: jest.fn().mockResolvedValue({}) },
+    } as any;
+
+    const waitForAck = jest.fn().mockImplementation(() => {
+      if (ack.resolve !== undefined) return Promise.resolve(ack.resolve);
+      if (ack.reject) return Promise.reject(new Error('ACK timeout after 15000ms'));
+      return new Promise(() => undefined); // jamais résolu
+    });
+    const wireLogger = { out: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() } as any;
+
+    const svc = new TrackerFixModeService(
+      prisma,
+      { send: jest.fn().mockReturnValue(true) } as any, // socket TCP disponible
+      wireLogger,
+      { isEnabled: () => false, send: jest.fn() } as any,
+      { waitForAck } as any,
+    );
+    return { svc, prisma, updates, waitForAck, wireLogger };
+  };
+
+  const tracker = () =>
+    ({
+      id: 't1',
+      imei: IMEI,
+      desiredFixIntervalS: 20,
+      currentFixIntervalS: 20,
+      fixCommandFailing: false,
+      fixCommandFailureCount: 0,
+      lastSeenAt: new Date(),
+      lastValidFrameAt: new Date(),
+      simPhoneNumber: null,
+      vehicle: { fleet: { adaptiveFixModeEnabled: true } },
+    }) as any;
+
+  /** Laisse tourner les promesses d'arrière-plan du guetteur. */
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('arme le guetteur avec le motif et le délai du catalogue', async () => {
+    const { svc, waitForAck } = build();
+    await svc.requestChange(tracker(), 300, 'TEST', {});
+
+    expect(waitForAck).toHaveBeenCalledTimes(1);
+    const [imei, pattern, timeoutMs, commandId] = waitForAck.mock.calls[0];
+    expect(imei).toBe(IMEI);
+    expect(pattern.source).toBe('fix.*ok');
+    expect(timeoutMs).toBe(15000);
+    expect(commandId).toBe('cmd-1');
+  });
+
+  it('enregistre l’accusé quand le boîtier répond enfin', async () => {
+    const { svc, updates, wireLogger } = build({ resolve: 'fix ok' });
+    await svc.requestChange(tracker(), 300, 'TEST', {});
+    await flush();
+
+    const ackUpdate = updates.find((u) => u['ackResponse'] !== undefined);
+    expect(ackUpdate).toBeDefined();
+    expect(ackUpdate!['ackResponse']).toBe('fix ok');
+    expect(ackUpdate!['ackedAt']).toBeInstanceOf(Date);
+    expect(wireLogger.ackMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('trace le SILENCE du boîtier — une mesure, pas un incident', async () => {
+    const { svc, updates, wireLogger } = build({ reject: true });
+    await svc.requestChange(tracker(), 300, 'TEST', {});
+    await flush();
+
+    expect(wireLogger.ackTimeout).toHaveBeenCalledTimes(1);
+    const hint = updates.find((u) => typeof u['diagnosticHint'] === 'string' && String(u['diagnosticHint']).includes('Aucune réponse'));
+    expect(hint).toBeDefined();
+  });
+
+  it('🔑 NE CHANGE JAMAIS le statut de la commande — ni sur ACK, ni sur silence', async () => {
+    // C'est la leçon de TRK-007. La fin de vie d'une commande reste PUREMENT temporelle :
+    // si le boîtier se tait, l'échéance ferme ; s'il répond, l'information s'ajoute.
+    for (const scenario of [{ resolve: 'fix ok' }, { reject: true }]) {
+      const { svc, updates } = build(scenario);
+      await svc.requestChange(tracker(), 300, 'TEST', {});
+      const before = updates.length;
+      await flush();
+
+      const afterSend = updates.slice(before - 1 < 0 ? 0 : before);
+      for (const u of afterSend) {
+        expect(u['status']).toBeUndefined();
+      }
+    }
   });
 });
