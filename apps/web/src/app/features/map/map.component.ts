@@ -84,6 +84,7 @@ import {
   type FiltreFlotte,
   type LigneFlotte,
 } from './flotte-lignes';
+import { regrouperParProximite } from './regroupement-lieux';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
@@ -354,12 +355,11 @@ const RESYNC_RADIUS_M = 150;
                     (click)="reglerAffichageLieux(m.id)">{{ m.label }}</button>
           }
         </div>
-        <!-- Cette phrase décrit ce que le code FAIT, pas ce qu'on aimerait qu'il fasse :
-             les repères rétrécissent et repassent derrière les véhicules. Le
-             regroupement des plus proches n'est pas livré (cf. journal). -->
+        <!-- Cette phrase décrit ce que le code FAIT, pas ce qu'on aimerait qu'il fasse.
+             Le regroupement est livré depuis le 2026-08-16 : la phrase le dit enfin. -->
         <p class="cl-note">
-          « Discrets » réduit les lieux et les fait passer derrière : les véhicules
-          restent toujours au premier plan.
+          « Discrets » réduit les lieux, les fait passer derrière et regroupe ceux qui
+          se chevauchent : les véhicules restent toujours au premier plan.
         </p>
       </div>
 
@@ -3522,7 +3522,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.map.on('pitch', () => this.mapPitch.set(this.map!.getPitch()));
     // Mémorisation de la dernière vue : on retrouve SA zone au retour, au lieu de repartir de la
     // vue par défaut. `moveend` ne se déclenche qu'en fin de geste — pas de flot d'écritures.
-    this.map.on('moveend', () => this.persistLastView());
+    this.map.on('moveend', () => {
+      this.persistLastView();
+      // Le regroupement du mode « Discrets » se calcule en pixels écran : il n'a de
+      // sens que pour la vue courante. Sans ce rappel, les paquets restaient ceux du
+      // zoom où on a activé le mode — on zoomait sur « 4 » et il restait « 4 ».
+      if (this.lieuxAffichage() === 'discrets') this.renderDeadZoneMarkers();
+    });
 
     // Quand l'utilisateur drag manuellement en mode follow, sortir du mode.
     // V1.12 — On en profite pour notifier les overlays (panel Baanool) qu'il
@@ -5072,10 +5078,27 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    */
   private renderDeadZoneMarkers(): void {
     if (!this.map) return;
-    const zones = this.showDeadZones() ? this.deadZonesData() : [];
+    const zones = (this.showDeadZones() ? this.deadZonesData() : [])
+      .filter((z) => Number.isFinite(z.centroidLat) && Number.isFinite(z.centroidLng));
+
+    // ═══ « DISCRETS » REGROUPE LES PLUS PROCHES ════════════════════════════
+    //
+    // La planche Carte écrit « regroupe les plus proches ». C'était la moitié non
+    // livrée du mode discret : les repères rapetissaient et passaient derrière,
+    // mais dix parkings dans la même rue restaient dix pastilles empilées — plus
+    // petites, donc plus difficiles à viser QU'AVANT.
+    //
+    // Le regroupement se fait en PIXELS ÉCRAN, pas en degrés : c'est le
+    // chevauchement visuel qu'on corrige, et deux points distants de 200 m se
+    // superposent au zoom 11 sans se toucher au zoom 17. La projection dépendant
+    // de la vue, le rendu est refait à chaque `moveend` (cf. initMap).
+    if (this.lieuxAffichage() === 'discrets') {
+      this.renderDeadZonesGroupees(zones);
+      return;
+    }
+
     const seen = new Set<string>();
     for (const z of zones) {
-      if (!Number.isFinite(z.centroidLat) || !Number.isFinite(z.centroidLng)) continue;
       seen.add(z.id);
       const existing = this.deadZoneMarkers.get(z.id);
       if (existing) {
@@ -5094,6 +5117,87 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.deadZoneMarkers.delete(id);
       }
     }
+  }
+
+  /**
+   * Rendu du mode « Discrets » : un repère par PAQUET de repères qui se touchent.
+   *
+   * La règle de regroupement vit dans `regroupement-lieux.ts` : elle est de
+   * l'arithmétique pure et se teste, alors que `map.project()` exige une vraie
+   * instance MapLibre. Ici on ne fait que projeter, puis dessiner.
+   *
+   * Les clés de marqueur changent à chaque vue (elles portent la composition du
+   * paquet), donc on repart d'une carte propre : réutiliser un marqueur dont le
+   * groupe a changé afficherait un compteur périmé.
+   */
+  private renderDeadZonesGroupees(zones: GpsDeadZoneMapDto[]): void {
+    if (!this.map) return;
+    const carte = this.map;
+    // 2 × la taille du repère discret : deux pastilles qui ne se touchent pas
+    // restent distinctes — on ne regroupe que ce qui se chevauche vraiment.
+    const RAYON_PX = GEOMETRIE_LIEU.discrets.taille * 2;
+
+    const paquets = regrouperParProximite(
+      zones.map((z) => {
+        const p = carte.project([z.centroidLng, z.centroidLat]);
+        return { element: z, x: p.x, y: p.y };
+      }),
+      RAYON_PX,
+    );
+
+    for (const [, marker] of this.deadZoneMarkers) marker.remove();
+    this.deadZoneMarkers.clear();
+
+    for (const paquet of paquets) {
+      const tete = paquet[0]!;
+      const el = paquet.length === 1
+        ? this.buildDeadZoneEl(tete)
+        : this.buildDeadZoneGroupeEl(paquet);
+      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([tete.centroidLng, tete.centroidLat])
+        .addTo(carte);
+      // La clé porte la composition : au prochain rendu, un paquet différent est
+      // un marqueur différent.
+      this.deadZoneMarkers.set(paquet.map((z) => z.id).join('+'), marker);
+    }
+  }
+
+  /**
+   * Le repère d'un PAQUET : le nombre, pas une icône de plus.
+   *
+   * Cliquer zoome sur le paquet au lieu d'ouvrir une bulle : à ce niveau de zoom
+   * l'application ne sait pas lequel des quatre parkings l'utilisateur visait —
+   * et en choisir un à sa place serait deviner. Zoomer les sépare, et le geste
+   * suivant devient sans ambiguïté.
+   */
+  private buildDeadZoneGroupeEl(paquet: GpsDeadZoneMapDto[]): HTMLElement {
+    const g = GEOMETRIE_LIEU.discrets;
+    // Un paquet qui contient une zone suspecte porte sa couleur : le regroupement
+    // ne doit jamais faire DISPARAITRE un signal d'alerte derriere une moyenne.
+    const suspect = paquet.some((z) => z.status === 'SUSPECT');
+    const fond = suspect ? this.COULEUR_ZONE_SUSPECTE : this.COULEUR_PARKING;
+    const el = document.createElement('div');
+    el.className = 'tracky-deadzone-marker tracky-deadzone-marker--groupe';
+    const taille = g.taille + 5;
+    el.style.cssText =
+      `z-index:${g.z};width:${taille}px;height:${taille}px;border-radius:50%;`
+      + `background:${fond};`
+      + 'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;'
+      + `justify-content:center;color:${this.encreMarqueur(fond)};`
+      + `font-weight:800;font-size:${g.police}px;line-height:1;cursor:pointer`;
+    el.textContent = String(paquet.length);
+    el.setAttribute('aria-label',
+      `${paquet.length} lieux groupés${suspect ? ', dont une zone GPS suspecte' : ''} — toucher pour les séparer`);
+    el.title = el.getAttribute('aria-label')!;
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.map?.easeTo({
+        center: [paquet[0]!.centroidLng, paquet[0]!.centroidLat],
+        zoom: Math.min((this.map.getZoom() ?? 12) + 2, 18),
+        duration: 400,
+      });
+    });
+    return el;
   }
 
   /**

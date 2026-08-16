@@ -978,6 +978,142 @@ le compte existe maintenant et il est correct, seule la mesure manque.
 
 ---
 
+## 6nonies. Les lots restants (2026-08-16) — ce qui est fait, ce qui attend un accord
+
+### 6nonies.1 ✅ L'écran simplifié a maintenant ses 3 boutons
+
+**La décision manquante n'en était pas une** : je l'avais notée « la planche n'en nomme
+que deux explicitement » (§ 6quater.5). **C'est faux.** La planche nomme les trois, deux
+fois, dans les deux gabarits (iOS et Android) : **« Ma voiture » · « Trajet » ·
+« Anti-vol »**, plus un **« Menu » étroit** (54-58 px) qui est précisément le « derrière »
+de la règle 1.
+
+> ⚠️ **Une décision notée « à trancher » qui était déjà écrite dans la planche.** C'est le
+> même défaut que le § 7.3 et que la ligne « variante critique » : un point marqué en
+> attente que personne ne rouvre parce qu'il est marqué en attente. **Avant de porter une
+> question au client, relire la planche jusqu'au bout** — les trois libellés étaient à
+> vingt lignes l'un de l'autre.
+
+Ce qui a été fait, en suivant les 4 règles :
+
+| Avant | Après |
+|---|---|
+| **7 ronds d'icônes** éparpillés sur 3 coins, en langage d'application (« Recentrer », « Alertes », « Mon compte », « Véhicules », « Vue satellite ») | **3 boutons larges portant leur libellé** en bas + **1 Menu étroit**, et **3 outils de carte** en petits ronds sur le côté |
+| Aucun libellé — une icône se devine | « Ma voiture », « Trajet », « Anti-vol » — ça se lit |
+| Menu, Alertes, Mon compte au même niveau que tout le reste | Passés **derrière** le Menu, qui porte aussi le compteur d'alertes non lues |
+
+Trois précisions qui ont demandé une décision de mise en œuvre :
+
+1. **La liste est partagée par les trois boutons**, avec une `intention` : le titre change
+   (« Voir les trajets de quel véhicule ? »), et c'est lui qui dit ce que le geste suivant
+   va faire. Sans ça, taper « Trajet » ouvrait la même liste que « Ma voiture ».
+2. **Un seul véhicule → pas de liste du tout.** La cible est « un artisan avec 1 à 3
+   véhicules » : le cas à un véhicule est le cas courant, pas le cas limite. Un sélecteur
+   à une entrée est un geste pour rien.
+3. **Aucun contrat nouveau** : « Trajet » et « Anti-vol » ouvrent la fiche véhicule via
+   `?tab=history` / `?tab=surveillance`, un paramètre que la fiche lit déjà.
+
+La règle 4 (« la sortie est visible ») était **déjà tenue** : le menu porte « Revenir en
+interface complète », détaché, en violet — et le Menu est resté dans la barre du bas.
+
+**Mesuré le 2026-08-16, à 375 px, dans les deux thèmes — 0 échec :**
+
+| Élément | Taille | Contraste clair / sombre |
+|---|---|---|
+| « Ma voiture » (principal) | 88 × 62 | 5,54 / 11,04 |
+| « Trajet » · « Anti-vol » | 88 × 62 | 18,85 / 15,86 |
+| « Menu » | 58 × 62 | 6,28 / 7,28 |
+| Les 3 outils de carte | 44 × 44 | — |
+
+Et les trois intentions vérifiées bout en bout : le titre du panneau change
+(« Mes véhicules » → « Voir les trajets de quel véhicule ? » → « Protéger quel
+véhicule ? »), et taper une ligne sous « Anti-vol » ouvre bien
+`/vehicles/<id>?tab=surveillance` **avec l'onglet Surveillance actif**.
+
+> ⚠️ **Pour revoir cet écran** : `uiMode` est une préférence **serveur**. La poser dans
+> `localStorage` ne suffit pas — l'application la réécrit au démarrage depuis
+> `/api/auth/me`. Il faut `PATCH /api/users/me/preferences {"uiMode":"baanool"}`.
+
+### 6nonies.2 ✅ Le regroupement des lieux « Discrets » — la moitié qui manquait
+
+La planche écrit « regroupe les plus proches ». C'était la moitié non livrée du mode
+discret : les repères rapetissaient et passaient derrière, mais **dix parkings dans la
+même rue restaient dix pastilles empilées — plus petites, donc plus difficiles à viser
+qu'avant**. Le mode aggravait ce qu'il prétendait résoudre.
+
+Le regroupement se fait **en pixels écran**, pas en degrés : c'est le chevauchement
+visuel qu'on corrige, et deux points distants de 200 m se superposent au zoom 11 sans se
+toucher au zoom 17. Donc :
+
+- rayon = **2 × la taille du repère discret** — on ne groupe que ce qui se chevauche ;
+- recalcul **à chaque `moveend`** — sinon les paquets restent ceux du zoom d'activation,
+  et on zoome sur « 4 » qui reste « 4 » ;
+- **un paquet contenant une zone suspecte porte sa couleur** : grouper ne doit jamais
+  faire disparaître un signal d'alerte derrière une moyenne ;
+- **cliquer zoome au lieu d'ouvrir une bulle** — à ce niveau l'application ne sait pas
+  lequel des quatre parkings était visé, et en choisir un serait deviner.
+
+La phrase de la légende a été mise à jour : elle décrivait ce que le code faisait, elle
+décrit maintenant ce qu'il fait vraiment.
+
+**La règle de regroupement vit dans `regroupement-lieux.ts`, à part du composant** —
+`map.project()` exige une vraie instance MapLibre, l'arithmétique non. **7 tests** la
+couvrent, dont les trois cas qui se trompent facilement : la distance est une **hypoténuse**
+(30 px en x *et* 30 en y font 42, pas 30), la **limite du rayon est incluse**, et **aucun
+repère ne tombe dans deux paquets** (sinon le total affiché dépasse le nombre de lieux).
+
+**Mesuré à l'écran**, sur 5 zones semées en dev (4 à ~15-40 m, 1 à 3 km) :
+
+| | Résultat |
+|---|---|
+| Mode « Tous » | **5 repères** |
+| Mode « Discrets » | **2 repères**, dont **1 paquet portant « 4 »** |
+| Couleur du paquet | rouge d'alerte — l'une des 4 est SUSPECT, le signal survit au groupement |
+| Contraste du compteur | **5,12:1** (encre choisie par luminance) |
+| Annonce vocale | « 4 lieux groupés, dont une zone GPS suspecte — toucher pour les séparer » |
+
+🔴 **Non mesuré : le clic qui zoome pour séparer.** Ce n'est pas le code — **la carte est
+figée dans ce navigateur** : le bouton « Vue d'ensemble » de l'application ne la déplace
+pas non plus, et tous les marqueurs restent à x ≈ −55 000 (hors écran). Vérifié en
+comparant avec un contrôle existant avant de conclure, plutôt que d'accuser le nouveau
+code. **À revoir en recette sur le VPS**, avec le mode veilleur.
+
+> **Pour refaire la mesure** : semer 4 zones à ~0,0002° l'une de l'autre + 1 à 0,027°
+> (`prisma.gpsDeadZone.create`, `placeLabel: 'SONDE-REGROUPEMENT'` pour pouvoir les
+> reprendre), puis **changer de société dans le sélecteur** — c'est ce qui déclenche
+> `loadDeadZones()`. ⚠️ Au chargement direct de `/map`, le bloc `map.on('load')` ne
+> rejoue pas toujours dans ce navigateur : les zones n'apparaissent qu'après ce
+> changement de périmètre.
+
+### 6nonies.3 ⚠️ La coupure moteur était DÉJÀ finie — le § 7.3 était périmé
+
+Les quatre éléments listés comme « restants » sont dans le code, livrés par
+**`b7886d9` « coupure moteur — le compte a rebours, la raison, et trois sorties »** :
+
+| Élément annoncé manquant | Où il est |
+|---|---|
+| Compte à rebours pendant les 90 s | `secondesRestantes()` + tick **adaptatif** (1 s en fenêtre, 5 s sinon) → « En attente… 47 s » |
+| La raison du refus hors du `title` | `.ec-refus`, un paragraphe sous le bouton |
+| 3 sorties sur l'état non confirmé | `.ec-nc-sorties` : Renvoyer · Voir l'historique · J'ai vérifié sur place |
+| Boîtier muet en 3 étapes numérotées | `.ec-etapes`, `<ol>` de trois `<li>` numérotés |
+
+> **Troisième ligne périmée trouvée dans ce fichier** (après « variante critique » et
+> « aucun compte DRIVER »). Le suivi a une dette propre : **une ligne « non fait » ne
+> vieillit pas toute seule**. Désormais, avant de rouvrir un point de cette liste :
+> `git log -- <fichier>` d'abord, la lecture ensuite.
+
+**Mesuré le 2026-08-16 — 34 couples de couleurs, 0 échec, dans les deux thèmes**, et
+**4 cibles à 44 px** (le bouton « Couper » + les trois sorties de l'état non confirmé).
+
+> Les états « boîtier muet » et « non confirmé » n'apparaissent qu'en conditions réelles
+> (72 h de silence, une commande sans réponse). Ils ont été mesurés en **injectant leur
+> structure avec l'attribut de portée Angular du composant** (`_ngcontent-…`) : ce sont
+> donc bien **les vraies règles CSS** qui sont mesurées, sur les vrais jetons. Ce que
+> cela ne prouve pas : que ces blocs s'affichent au bon moment — ça, c'est la logique,
+> et elle est lisible ligne à ligne.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -1311,19 +1447,26 @@ doit rester en modifications locales non commitées.
 3. **Le contrat d'API de `/places`** (`seuilPassages` + `statut`) — sinon la page ne peut
    pas montrer le cycle de vie que la planche décrit. **Toujours bloquant** (§ 7.1), et
    c'est le seul point de B-pages livré volontairement incomplet.
+   👉 **Proposition écrite et prête à valider : `docs/A-VALIDER-2026-08-16.md` § 2.1.**
 4. **La liste groupée par défaut sur `/vehicles`** — décision de comportement.
 5. Les **168 cellules 10×11** de la carte de chaleur `/reports` : une grille de données
    dense tombe-t-elle sous le plancher de 44 px ? Les élargir détruirait la lecture
    d'ensemble, qui est tout l'intérêt de l'objet.
-6. Les **4 autres points d'API** du § 7.1 (`/admin/ai-usage` ×2, `/integrations`,
-   `/book/:token`) — inchangés.
-7. Les **6 décisions d'écran** du § 7.2 (week-end en surveillance, zoom MapLibre,
-   poignée de feuille, plaques sur téléphone, variante critique de `confirm-modal`,
-   regroupement des lieux discrets) — inchangées.
-8. La **coupure moteur à moitié faite** (§ 7.3) — inchangée.
-9. *(nouveau)* **La forme de l'écran simplifié** (§ 6quater.5) : la planche impose
-   « jamais plus de 3 boutons » en langage courant, l'écran en porte **sept** en langage
-   d'application. Quelles trois commandes garder — et lesquelles passent derrière ?
+6. Les **3 autres points d'API** (`/admin/ai-usage`, `/integrations`, `/book/:token`).
+   👉 **Contrats rédigés, prêts à valider : `docs/A-VALIDER-2026-08-16.md` § 2.2 à 2.4.**
+   Le ratio marge de `/admin/ai-usage` reste écarté (tranché le 2026-08-14).
+7. Les décisions d'écran du § 7.2 : ~~regroupement des lieux discrets~~ ✅ **livré le
+   2026-08-16** (§ 6nonies.2). Restent le **week-end en surveillance**, le **zoom
+   MapLibre** (29 px), la **poignée de feuille** (déjà relevée à 44 px au kit), les
+   **plaques sur téléphone**.
+   👉 **Week-end : spec écrite avec ses trois formes possibles et un conseil —
+   `docs/A-VALIDER-2026-08-16.md` § 1.** ⚠️ C'est le seul point qui **change le
+   comportement d'antivols déjà en service** : rien n'est codé sans réponse.
+8. ~~La **coupure moteur à moitié faite**~~ — **elle ne l'était pas** : les 4 éléments
+   sont livrés depuis `b7886d9`, et mesurés le 2026-08-16 (§ 6nonies.3). La ligne était
+   périmée.
+9. ~~**La forme de l'écran simplifié**~~ — **ce n'était pas une décision** : la planche
+   nomme les trois boutons. Livré et mesuré le 2026-08-16 (§ 6nonies.1).
 10. *(dette d'environnement, pas une décision)* ~~**Aucun compte `NIGHT_WATCHMAN` ni
     `DRIVER`**~~ — **les comptes existent et sont correctement câblés** (§ 3bis,
     `seed-roles-test.ts`). ⚠️ **Il reste la mesure** : l'écran veilleur n'a toujours pas
