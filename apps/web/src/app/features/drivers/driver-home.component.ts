@@ -45,11 +45,11 @@ interface MissionConducteur {
           </span>
           <div>
             <div class="text-sm font-semibold leading-tight">Mes véhicules</div>
-            <div class="text-[11px] text-fg-tertiary leading-tight">{{ email() }}</div>
+            <div class="text-[11.5px] text-fg-secondary leading-tight">{{ email() }}</div>
           </div>
         </div>
-        <button (click)="logout()" class="inline-flex items-center gap-1.5 text-xs text-fg-tertiary hover:text-fg-primary">
-          <lucide-icon [img]="LogOut" [size]="15" /> Déconnexion
+        <button (click)="logout()" class="dh-deco">
+          <lucide-icon [img]="LogOut" [size]="16" /> Déconnexion
         </button>
       </header>
 
@@ -60,19 +60,18 @@ interface MissionConducteur {
         @for (m of missions(); track m.id) {
           <article class="mb-3 rounded-[14px] border border-border-subtle bg-bg-secondary p-3.5">
             <div class="flex items-center justify-between gap-2">
-              <span class="font-mono text-[11px] font-semibold text-fg-tertiary">{{ m.ref }}</span>
-              <span class="text-[11px] font-semibold text-fg-secondary">{{ heure(m.startAt) }} → {{ heure(m.endAt) }}</span>
+              <span class="font-mono text-[11.5px] font-semibold text-fg-secondary">{{ m.ref }}</span>
+              <span class="text-[11.5px] font-semibold text-fg-secondary">{{ heure(m.startAt) }} → {{ heure(m.endAt) }}</span>
             </div>
             <p class="mt-1 text-sm font-semibold leading-snug">{{ m.origin }} → {{ m.destination }}</p>
-            <p class="mt-0.5 font-mono text-[11px] text-fg-tertiary">{{ m.plate }}</p>
+            <p class="mt-0.5 font-mono text-[11.5px] text-fg-secondary">{{ m.plate }}</p>
 
             @if (m.depotWatching) {
               <!-- ⚠️ OBLIGATION D'INFORMATION, pas une politesse : le conducteur doit
                    savoir qu'un tiers voit sa position pendant la mission. C'est la
                    condition de conformité du dispositif (A2 § 3.4). Le drapeau est
                    décidé côté serveur — ce bloc ne fait que le rendre visible. -->
-              <p class="mt-2.5 flex items-start gap-2 rounded-[10px] px-2.5 py-2 text-[11.5px] leading-relaxed"
-                 style="background: color-mix(in srgb, var(--violet) 12%, transparent); color: var(--violet)">
+              <p class="dh-mention">
                 <lucide-icon [img]="Eye" [size]="14" class="mt-px shrink-0" />
                 <span>Le dépôt destinataire suit la position de ce véhicule pendant le créneau de la mission.</span>
               </p>
@@ -82,34 +81,53 @@ interface MissionConducteur {
 
         @if (loading()) {
           <div class="py-16 flex justify-center">
-            <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
+            <span class="w-6 h-6 border-2 border-fg-secondary border-t-tracky-light rounded-full animate-spin"></span>
+          </div>
+        } @else if (erreur()) {
+          <!--
+            ⚠️ UNE PANNE N'EST PAS UNE ABSENCE D'AFFECTATION. Le gestionnaire d'erreur ne
+            faisait que couper le chargement : l'ecran affichait donc « Aucun vehicule ne
+            vous est attribue », ce qui, pour un conducteur devant son camion, veut dire
+            « on ne vous a rien confie ». Le mensonge est en plus impossible a lever : il
+            n'a personne a qui demander sur cet ecran.
+          -->
+          <div class="dh-etat">
+            <p class="dh-etat-t">Impossible de charger vos véhicules</p>
+            <p class="dh-etat-s">Ce n'est pas une question d'affectation : la liste n'a pas pu être récupérée.</p>
+            <button type="button" class="dh-recours" (click)="charger()">Réessayer</button>
           </div>
         } @else if (vehicles().length === 0) {
-          <div class="py-16 text-center text-sm text-fg-tertiary">
-            Aucun véhicule ne vous est attribué pour le moment.
+          <div class="dh-etat">
+            <p class="dh-etat-t">Aucun véhicule ne vous est attribué</p>
+            <p class="dh-etat-s">Votre responsable de flotte peut vous en affecter un.</p>
           </div>
         } @else {
-          <p class="text-xs text-fg-tertiary mb-3">Choisissez un véhicule pour le déverrouiller (vous devez être à proximité), ou scannez son QR.</p>
-          <div class="flex flex-col gap-2">
+          <p class="text-[13px] text-fg-secondary mb-3 leading-relaxed">Choisissez un véhicule pour le déverrouiller — vous devez être à proximité — ou scannez son QR.</p>
+          <div class="flex flex-col gap-2.5">
             @for (v of vehicles(); track v.id) {
-              <div class="flex items-center justify-between gap-3 rounded-xl bg-bg-secondary border border-border-subtle p-3">
-                <div class="min-w-0">
-                  <div class="text-sm font-semibold truncate">{{ v.plate }}</div>
-                  @if (v.brand || v.model) {
-                    <div class="text-xs text-fg-tertiary truncate">{{ v.brand }} {{ v.model }}</div>
-                  }
+              <!--
+                UNE MAIN (B1 § B). L'action principale etait une pastille douce de 33 px
+                coincee en haut a droite de la ligne — la zone la moins accessible au pouce,
+                et la meme affordance qu'un bouton secondaire. La planche en fait une BARRE
+                PLEINE de 48 px en accent solide : c'est le geste de l'ecran.
+              -->
+              <div class="dh-carte">
+                <div class="flex items-center gap-3">
+                  <span class="dh-tuile"><lucide-icon [img]="Car" [size]="24" /></span>
+                  <div class="flex-1 min-w-0">
+                    <div class="dh-plaque">{{ v.plate }}</div>
+                    @if (v.brand || v.model) {
+                      <div class="dh-modele">{{ v.brand }} {{ v.model }}</div>
+                    }
+                  </div>
                 </div>
-                <div class="shrink-0 flex items-center gap-2">
-                  <button type="button" (click)="privacyFor.set(v)" title="Vie privée & horaires"
-                    class="inline-flex items-center justify-center px-2.5 py-2 rounded-lg bg-bg-tertiary text-fg-tertiary border border-border-subtle">
-                    <lucide-icon [img]="ShieldCheck" [size]="15" />
+                <div class="flex gap-2.5">
+                  <button type="button" (click)="privacyFor.set(v)" class="dh-bouclier"
+                          aria-label="Vie privée et horaires de ce véhicule">
+                    <lucide-icon [img]="ShieldCheck" [size]="20" />
                   </button>
-                  <a
-                    [routerLink]="['/driver/unlock']"
-                    [queryParams]="{ vehicleId: v.id }"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-tracky/20 text-tracky-light border border-tracky/30"
-                  >
-                    <lucide-icon [img]="Unlock" [size]="14" /> Déverrouiller
+                  <a [routerLink]="['/driver/unlock']" [queryParams]="{ vehicleId: v.id }" class="dh-unlock">
+                    <lucide-icon [img]="Unlock" [size]="18" /> Déverrouiller
                   </a>
                 </div>
               </div>
@@ -123,6 +141,67 @@ interface MissionConducteur {
       }
     </div>
   `,
+  styles: [`
+    /*
+     * CONTRASTE EXTERIEUR (B1 § B). Cet ecran se lit dehors, souvent en plein soleil, sur un
+     * telephone dont la luminosite ne suffit jamais. Le texte secondaire y etait en
+     * --fg-tertiary a 11 px : un jeton a 3:1, deja limite en interieur.
+     */
+    .dh-mention {
+      display: flex; align-items: flex-start; gap: 8px; margin-top: 10px;
+      padding: 8px 10px; border-radius: 10px; font-size: 12px; line-height: 1.55;
+      background: color-mix(in srgb, var(--violet) 12%, transparent);
+      color: var(--texte-violet);
+    }
+    .dh-mention lucide-icon { margin-top: 1px; flex-shrink: 0; }
+
+    .dh-deco {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 44px; padding: 0 10px; border-radius: 10px;
+      background: transparent; border: none; cursor: pointer;
+      color: var(--fg-secondary); font-size: 13px; font-family: inherit;
+    }
+
+    /* La carte vehicule : identite en haut, LE GESTE en bas, pleine largeur. */
+    .dh-carte {
+      display: flex; flex-direction: column; gap: 12px; padding: 13px;
+      border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .dh-tuile {
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 46px; height: 46px; border-radius: 16px;
+      background: var(--surface-quaternary); color: var(--fg-secondary);
+    }
+    .dh-plaque { font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--fg-primary); }
+    .dh-modele { font-size: 12.5px; color: var(--fg-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dh-bouclier {
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 48px; height: 48px; border-radius: 13px; cursor: pointer;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary);
+    }
+    /*
+     * Le geste de l'ecran : barre PLEINE de 48 px en accent solide, atteignable au pouce.
+     * Il etait une pastille douce de 33 px en haut a droite de la ligne — la zone la moins
+     * accessible d'un telephone tenu d'une main, et l'affordance d'un bouton secondaire.
+     */
+    .dh-unlock {
+      flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      height: 48px; border-radius: 13px; text-decoration: none;
+      background: var(--color-tracky-light); color: var(--accent-ink);
+      font-size: 14px; font-weight: 800; white-space: nowrap;
+    }
+
+    .dh-etat { padding: 48px 12px; text-align: center; }
+    .dh-etat-t { margin: 0; font-size: 15px; font-weight: 700; color: var(--fg-primary); }
+    .dh-etat-s { margin: 6px auto 0; max-width: 300px; font-size: 13px; line-height: 1.55; color: var(--fg-secondary); text-wrap: pretty; }
+    .dh-recours {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 44px; margin-top: 16px; padding: 0 18px; border-radius: 12px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-strong);
+      color: var(--fg-primary); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+    }
+    @media (prefers-reduced-motion: reduce) { .animate-spin { animation: none; } }
+  `],
 })
 export class DriverHomeComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
@@ -132,6 +211,8 @@ export class DriverHomeComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly loading = signal(true);
+  /** La liste n'a pas pu être chargée — à ne PAS confondre avec « aucun véhicule attribué ». */
+  protected readonly erreur = signal(false);
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   /** Véhicule dont on ouvre le panneau « Vie privée & horaires » (overlay). */
   protected readonly privacyFor = signal<VehicleDetailDto | null>(null);
@@ -154,16 +235,7 @@ export class DriverHomeComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.vehiclesApi
-      .list()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (v) => {
-          this.vehicles.set(v ?? []);
-          this.loading.set(false);
-        },
-        error: () => this.loading.set(false),
-      });
+    this.charger();
 
     // Les missions ne bloquent PAS l'écran : un échec laisse la liste vide et le
     // conducteur garde ses véhicules. Le bandeau d'information n'apparaît que s'il y a
@@ -174,6 +246,31 @@ export class DriverHomeComponent implements OnInit {
       .subscribe({
         next: (m) => this.missions.set(m ?? []),
         error: (err) => swallow('driver-home:missions', err),
+      });
+  }
+
+  /**
+   * ⚠️ Une PANNE et une absence d'affectation sont deux choses. Le `catch` ne posait que
+   * `loading = false`, donc l'ecran affichait « Aucun vehicule ne vous est attribue » — ce
+   * qui, pour un conducteur debout devant son camion, veut dire « on ne vous a rien
+   * confie ». Et il n'a personne a qui demander depuis cet ecran.
+   */
+  protected charger(): void {
+    this.erreur.set(false);
+    this.loading.set(true);
+    this.vehiclesApi
+      .list()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (v) => {
+          this.vehicles.set(v ?? []);
+          this.loading.set(false);
+        },
+        error: (err) => {
+          swallow('driver-home:vehicles', err);
+          this.erreur.set(true);
+          this.loading.set(false);
+        },
       });
   }
 

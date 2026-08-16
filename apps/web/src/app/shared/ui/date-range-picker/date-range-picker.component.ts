@@ -32,6 +32,24 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule],
   template: `
+    <!-- LES QUATRE RACCOURCIS D'ABORD — « dans 9 cas sur 10 on veut 7 jours, pas un
+         calendrier » (Kit Partage). Ils sont AVANT la grille, pas à côté : le
+         calendrier reste disponible pour le dixième cas, il cesse d'être le passage
+         obligé des neuf autres. -->
+    @if (raccourcis()) {
+      <div class="drp-raccourcis" role="group" aria-label="Périodes courantes">
+        @for (r of RACCOURCIS; track r.jours) {
+          <button
+            type="button"
+            class="drp-rac"
+            [class.drp-rac--actif]="raccourciActif() === r.jours"
+            (click)="appliquerRaccourci(r.jours)">
+            {{ r.libelle }}
+          </button>
+        }
+      </div>
+    }
+
     <div class="drp-root" (keydown)="onKeydown($event)">
       @for (m of months(); track m.key; let idx = $index) {
         <div class="drp-month">
@@ -81,9 +99,40 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
         </div>
       }
     </div>
+
+    <!-- LE TOTAL DE LA SÉLECTION — « on évite les "du 1er au 31" involontaires ».
+         Deux clics dans une grille ne disent pas combien de jours on vient de choisir ;
+         un rapport lancé sur 31 jours au lieu de 7 ne se voit qu'à l'arrivée, quand il
+         est trop tard pour le rattraper. -->
+    @if (totalSelection(); as total) {
+      <p class="drp-total" role="status">{{ total }}</p>
+    }
   `,
   styles: [`
     :host { display: block; }
+
+    .drp-raccourcis { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .drp-rac {
+      min-height: 32px; padding: 6px 12px;
+      font: inherit; font-size: 12px; font-weight: 600;
+      border-radius: 8px; cursor: pointer;
+      background: var(--bg-quaternary);
+      color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+    }
+    .drp-rac:hover { color: var(--fg-primary); }
+    .drp-rac--actif {
+      background: color-mix(in srgb, var(--texte-succes) 14%, transparent);
+      color: var(--texte-succes);
+      border-color: color-mix(in srgb, var(--texte-succes) 30%, transparent);
+    }
+
+    .drp-total {
+      margin: 10px 0 0;
+      font-size: 12px; font-weight: 600;
+      color: var(--fg-secondary);
+      text-align: center;
+    }
     .drp-root {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -117,7 +166,7 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
       border-color: var(--border-subtle);
     }
     .drp-nav:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
+      outline: 2px solid color-mix(in srgb, var(--tracky-light) 60%, transparent);
       outline-offset: 1px;
     }
     .drp-nav-spacer { width: 24px; height: 24px; }
@@ -149,23 +198,23 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
       color: var(--fg-primary);
     }
     .drp-cell:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 70%, transparent);
+      outline: 2px solid color-mix(in srgb, var(--tracky-light) 70%, transparent);
       outline-offset: 1px;
       z-index: 1;
     }
     .drp-cell--outside { color: var(--fg-tertiary); opacity: .55; }
     .drp-cell--today {
-      border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
+      border-color: color-mix(in srgb, var(--tracky-light) 60%, transparent);
     }
     .drp-cell--in-range,
     .drp-cell--preview {
-      background: color-mix(in srgb, var(--tracky, #10E0A0) 15%, transparent);
+      background: color-mix(in srgb, var(--tracky) 15%, transparent);
       color: var(--fg-primary);
       border-radius: 0;
     }
-    .drp-cell--preview { background: color-mix(in srgb, var(--tracky, #10E0A0) 8%, transparent); }
+    .drp-cell--preview { background: color-mix(in srgb, var(--tracky) 8%, transparent); }
     .drp-cell--start, .drp-cell--end {
-      background: var(--tracky, #10E0A0);
+      background: var(--tracky);
       color: white !important;
       font-weight: 700;
       border-color: transparent;
@@ -193,6 +242,8 @@ export class DateRangePickerComponent {
   readonly to = input<string>('');
   readonly max = input<string>('');
   readonly min = input<string>('');
+  /** Affiche la rangée de raccourcis au-dessus de la grille. */
+  readonly raccourcis = input<boolean>(true);
 
   readonly fromChange = output<string>();
   readonly toChange = output<string>();
@@ -202,6 +253,17 @@ export class DateRangePickerComponent {
   protected readonly ChevronRight = ChevronRight;
 
   protected readonly weekdayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  /**
+   * Les quatre périodes qui couvrent l'essentiel des usages. Bornes INCLUSES : « 7
+   * jours » se lit comme sept jours affichés, aujourd'hui compris — pas six plus un.
+   */
+  protected readonly RACCOURCIS = [
+    { jours: 7, libelle: '7 jours' },
+    { jours: 14, libelle: '14 jours' },
+    { jours: 30, libelle: '30 jours' },
+    { jours: 90, libelle: '90 jours' },
+  ] as const;
 
   private readonly today = startOfDay(new Date());
 
@@ -223,6 +285,51 @@ export class DateRangePickerComponent {
     const right = addMonths(left, 1);
     return [this.buildMonthView(left), this.buildMonthView(right)];
   });
+
+  /**
+   * « Du 12 au 18 mars · 7 jours ». Le nombre de jours est la moitié utile : deux clics
+   * dans une grille ne le disent pas, et un rapport lancé sur 31 jours au lieu de 7 ne
+   * se voit qu'à l'arrivée.
+   */
+  protected readonly totalSelection = computed(() => {
+    const a = this.parsedFrom();
+    const b = this.parsedTo();
+    if (!a || !b) return null;
+    const lo = a <= b ? a : b;
+    const hi = a <= b ? b : a;
+    // Bornes incluses : du lundi au lundi suivant fait 8 jours, pas 7.
+    const jours = Math.round((startOfDay(hi).getTime() - startOfDay(lo).getTime()) / 86_400_000) + 1;
+    const fmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
+    return `Du ${fmt.format(lo)} au ${fmt.format(hi)} · ${jours} jour${jours > 1 ? 's' : ''}`;
+  });
+
+  /** Le raccourci qui correspond exactement à la sélection courante, s'il y en a un. */
+  protected readonly raccourciActif = computed(() => {
+    const a = this.parsedFrom();
+    const b = this.parsedTo();
+    if (!a || !b) return null;
+    if (!isSameDay(startOfDay(b), this.today)) return null;
+    const jours = Math.round((startOfDay(b).getTime() - startOfDay(a).getTime()) / 86_400_000) + 1;
+    return this.RACCOURCIS.some((r) => r.jours === jours) ? jours : null;
+  });
+
+  /**
+   * Applique une période qui se termine AUJOURD'HUI. C'est le sens attendu de « 7
+   * jours » sur un tableau de bord : les sept derniers, pas une fenêtre glissante
+   * autour de la sélection en cours.
+   */
+  protected appliquerRaccourci(jours: number): void {
+    const fin = this.today;
+    const debut = addDays(fin, -(jours - 1));
+    this.pendingFrom.set(null);
+    this.hoverDate.set(null);
+    this.leftMonth.set(addMonths(startOfMonth(fin), -1));
+    const from = toIso(debut);
+    const to = toIso(fin);
+    this.fromChange.emit(from);
+    this.toChange.emit(to);
+    this.rangeChange.emit({ from, to });
+  }
 
   private readonly focusEffect = effect(() => {
     const fd = this.focusedDate();

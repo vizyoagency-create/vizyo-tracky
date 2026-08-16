@@ -1,36 +1,54 @@
+/* ─── Palette ───────────────────────────────────────────────────────────────
+ *
+ * ⚠️ CETTE PAGE NE SUIVAIT PAS LE THÈME DE L'APPLICATION (mesuré le 2026-08-14).
+ *
+ * Elle portait sa PROPRE palette `--fs-*` en dur, avec un
+ * `@media (prefers-color-scheme: dark)` pour basculer. Or l'application ne pilote
+ * pas son thème par la préférence de l'OS : c'est l'attribut `data-theme` posé sur
+ * `<html>` qui commande. Les deux sont indépendants.
+ *
+ * Conséquence sur une machine dont l'OS est en sombre et l'app en clair — le cas
+ * de la mesure : `--fs-text` restait `#e8efec`, un blanc cassé, posé sur le fond
+ * CLAIR de l'application.
+ *
+ *   « Horaires de la flotte » (titre, 20 px)   1,14:1
+ *   « Rafraîchir »                             1,14:1
+ *   « Aperçu & appliquer »                     1,48:1   (dans les DEUX thèmes)
+ *   trois textes d'explication                 2,40:1
+ *
+ * Ce n'était donc pas un défaut de contraste à retoucher, mais une page entière
+ * qui ignorait le thème. Les `--fs-*` sont maintenant des ALIAS des jetons du kit :
+ * la bascule se fait toute seule, les deux blocs `prefers-color-scheme` ont disparu,
+ * et les noms `--fs-*` restent — les 200 règles qui les consomment n'ont pas à
+ * bouger, et un alias coûte moins qu'une passe de renommage sans objet (même
+ * raisonnement que `--depot-*` dans styles.css).
+ */
 :host {
-  --fs-bg: #ffffff;
-  --fs-bg-soft: #f6f8f7;
-  --fs-border: #e3e8e6;
-  --fs-text: #1a2420;
-  --fs-muted: #6b7873;
-  --fs-emerald: #0f766e;
-  --fs-emerald-soft: #d9f2ec;
-  --fs-danger: #b42318;
-  --fs-danger-soft: #fee4e2;
-  --fs-warn: #b54708;
-  --fs-warn-soft: #fef0c7;
-  --fs-info: #175cd3;
-  --fs-info-soft: #d1e9ff;
+  --fs-bg: var(--bg-secondary);
+  --fs-bg-soft: var(--bg-tertiary);
+  --fs-border: var(--border-subtle);
+  --fs-text: var(--fg-primary);
+  --fs-muted: var(--fg-tertiary);
+
+  /* DEUX jetons par couleur : celui qui PORTE du texte, et celui qui REMPLIT une
+     surface. Les confondre est exactement ce qui donnait « Aperçu & appliquer »
+     à 1,48:1 — du blanc sur un turquoise clair. La famille `--texte-*` est faite
+     pour le premier usage, la couleur pleine pour le second. */
+  --fs-emerald: var(--texte-succes);
+  --fs-emerald-plein: var(--tracky);
+  --fs-emerald-soft: color-mix(in srgb, var(--tracky) 14%, transparent);
+  --fs-danger: var(--texte-alerte);
+  --fs-danger-plein: var(--danger);
+  --fs-danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --fs-warn: var(--texte-attente);
+  --fs-warn-plein: var(--warning);
+  --fs-warn-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+  --fs-info: var(--texte-info);
+  --fs-info-plein: var(--blue);
+  --fs-info-soft: color-mix(in srgb, var(--blue) 14%, transparent);
+
   display: block;
   color: var(--fs-text);
-}
-@media (prefers-color-scheme: dark) {
-  :host {
-    --fs-bg: #141a18;
-    --fs-bg-soft: #1c2320;
-    --fs-border: #2b3531;
-    --fs-text: #e8efec;
-    --fs-muted: #9aa8a2;
-    --fs-emerald: #5eead4;
-    --fs-emerald-soft: #113a34;
-    --fs-danger: #fda29b;
-    --fs-danger-soft: #451a17;
-    --fs-warn: #fdb022;
-    --fs-warn-soft: #4a2e0a;
-    --fs-info: #84caff;
-    --fs-info-soft: #10314f;
-  }
 }
 
 .fsched { padding: 16px; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
@@ -49,7 +67,7 @@
 /* Tiles */
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
 .tile { background: var(--fs-bg); border: 1px solid var(--fs-border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
-.tile.hot { border-color: var(--fs-danger); box-shadow: 0 0 0 1px var(--fs-danger) inset; }
+.tile.hot { border-color: var(--fs-danger-plein); box-shadow: 0 0 0 1px var(--fs-danger-plein) inset; }
 .tile .n { font-size: 22px; font-weight: 700; }
 .tile .l { font-size: 12px; color: var(--fs-muted); }
 .tile[title] { cursor: help; }
@@ -63,54 +81,64 @@
 .help-body { padding: 0 16px 14px; }
 .help-intro { font-size: 13px; margin: 0 0 8px; color: var(--fs-text); }
 .help-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13px; line-height: 1.5; }
+/* Les pastilles de la légende sont des APLATS de 9 px, sans texte : elles prennent
+   la couleur pleine, pas le jeton de texte (qui est assombri pour être lu). */
 .help-list .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: baseline; }
-.help-list .dot.chip-ok { background: var(--fs-emerald); }
-.help-list .dot.chip-danger { background: var(--fs-danger); }
-.help-list .dot.chip-warn { background: var(--fs-warn); }
-.help-list .dot.chip-cut { background: #8a94a6; }
-.help-list .dot.chip-info { background: var(--fs-info); }
+.help-list .dot.chip-ok { background: var(--fs-emerald-plein); }
+.help-list .dot.chip-danger { background: var(--fs-danger-plein); }
+.help-list .dot.chip-warn { background: var(--fs-warn-plein); }
+.help-list .dot.chip-cut { background: var(--fg-tertiary); }
+.help-list .dot.chip-info { background: var(--fs-info-plein); }
 .help-note { font-size: 12.5px; margin: 10px 0 0; padding: 9px 11px; background: var(--fs-emerald-soft); color: var(--fs-emerald); border-radius: 9px; line-height: 1.5; }
 .n.ok { color: var(--fs-emerald); } .n.cut { color: var(--fs-text); } .n.danger { color: var(--fs-danger); } .n.warn { color: var(--fs-warn); }
 
 /* Banners */
 .banner { display: flex; gap: 10px; align-items: flex-start; border-radius: 12px; padding: 12px 14px; font-size: 13px; }
-.banner.danger { background: var(--fs-danger-soft); color: var(--fs-danger); border: 1px solid var(--fs-danger); }
+.banner.danger { background: var(--fs-danger-soft); color: var(--fs-danger); border: 1px solid var(--fs-danger-plein); }
 .banner.info { background: var(--fs-info-soft); color: var(--fs-info); border: 1px solid transparent; }
-/* Aperçu jours fériés (incident 14/07) : vert rassurant si roulent normalement, ambre si coupés. */
-.banner.holiday-ok { background: rgba(16,185,129,.10); color: #047857; border: 1px solid rgba(16,185,129,.35); }
-.banner.holiday-warn { background: rgba(245,158,11,.12); color: #b45309; border: 1px solid rgba(245,158,11,.45); }
+/* Aperçu jours fériés (incident 14/07) : vert rassurant si roulent normalement, ambre si coupés.
+   Les hex d'origine (#047857 / #b45309) ne suivaient aucun thème — ce sont les mêmes
+   significations que succès et attente, donc les mêmes jetons. */
+.banner.holiday-ok { background: var(--fs-emerald-soft); color: var(--fs-emerald); border: 1px solid color-mix(in srgb, var(--tracky) 35%, transparent); }
+.banner.holiday-warn { background: var(--fs-warn-soft); color: var(--fs-warn); border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); }
 /* Bouton « Réactiver » sur une ligne suspendue (efface l'override → rejoint le cycle). */
-.btn-reactivate { margin-top: 5px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; border: 1px solid #0ea5e9; background: transparent; color: #0ea5e9; cursor: pointer; white-space: nowrap; }
-.btn-reactivate:hover:not(:disabled) { background: rgba(14,165,233,.10); }
+.btn-reactivate { margin-top: 5px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; border: 1px solid var(--fs-info-plein); background: transparent; color: var(--fs-info); cursor: pointer; white-space: nowrap; }
+.btn-reactivate:hover:not(:disabled) { background: var(--fs-info-soft); }
 .btn-reactivate:disabled { opacity: .5; cursor: default; }
 /* Vue GROUPÉE par flotte : en-tête de section (super-admin voyant plusieurs sociétés). */
-.fleet-group-head td { background: rgba(14,165,233,.08); padding: 9px 12px; border-top: 2px solid rgba(100,116,139,.25); }
+.fleet-group-head td { background: var(--fs-info-soft); padding: 9px 12px; border-top: 2px solid var(--fs-border); }
 .fg-name { font-weight: 800; font-size: 13px; }
-.fg-meta { margin-left: 10px; font-size: 12px; color: var(--text-secondary, #64748b); }
+/* Était `var(--text-secondary, #64748b)` : un repli hexadécimal gagne dès que le nom
+   de tête manque, et fige alors une couleur hors thème (forme refusée n° 2). */
+.fg-meta { margin-left: 10px; font-size: 12px; color: var(--fs-muted); }
 .plates { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.plate-chip { background: rgba(0,0,0,.06); border-radius: 6px; padding: 1px 6px; font-weight: 600; font-size: 12px; }
+.plate-chip { background: var(--fs-bg-soft); border-radius: 6px; padding: 1px 6px; font-weight: 600; font-size: 12px; }
 
 /* Bulk */
 .bulk-head h2 { font-size: 15px; margin: 0; }
-.bulk-warn { display: flex; align-items: center; gap: 7px; margin: 8px 0 0; font-size: 12.5px; font-weight: 600; color: var(--fs-warn); background: var(--fs-warn-soft); border: 1px solid var(--fs-warn); border-radius: 8px; padding: 8px 10px; }
+.bulk-warn { display: flex; align-items: center; gap: 7px; margin: 8px 0 0; font-size: 12.5px; font-weight: 600; color: var(--fs-warn); background: var(--fs-warn-soft); border: 1px solid var(--fs-warn-plein); border-radius: 8px; padding: 8px 10px; }
 .bulk-form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; }
 .bulk-form label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fs-muted); }
 .bulk-form input[type="time"] { background: var(--fs-bg-soft); border: 1px solid var(--fs-border); border-radius: 8px; padding: 5px 8px; color: var(--fs-text); }
 .days { display: inline-flex; gap: 4px; }
 .day { border: 1px solid var(--fs-border); background: var(--fs-bg-soft); color: var(--fs-muted); border-radius: 8px; padding: 5px 9px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.day.on { background: var(--fs-emerald-soft); color: var(--fs-emerald); border-color: var(--fs-emerald); }
+.day.on { background: var(--fs-emerald-soft); color: var(--fs-emerald); border-color: var(--fs-emerald-plein); }
 .bulk-actions { display: flex; gap: 8px; margin-left: auto; }
 
 /* Buttons */
 .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 9px; padding: 7px 12px; font-size: 13px; font-weight: 600; border: 1px solid var(--fs-border); background: var(--fs-bg-soft); color: var(--fs-text); cursor: pointer; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.primary { background: var(--fs-emerald); border-color: var(--fs-emerald); color: #fff; }
+/* `color: #fff` sur l'accent, c'est l'Écart 2 de design/B0-SOCLE.md : sur un fond
+   accent l'encre doit être FONCÉE, jamais blanche. `--accent-ink` est ce jeton. */
+.btn.primary { background: var(--fs-emerald-plein); border-color: var(--fs-emerald-plein); color: var(--accent-ink); }
 .btn.ghost { background: transparent; }
 .btn.icon { padding: 6px; }
 .row-actions { display: inline-flex; gap: 6px; justify-content: flex-end; }
 a.btn.icon { text-decoration: none; color: var(--fs-text); }
-.btn.danger-ghost { color: var(--fs-danger); border-color: var(--fs-danger); background: transparent; }
-.btn.danger-solid { background: var(--fs-danger); border-color: var(--fs-danger); color: #fff; }
+.btn.danger-ghost { color: var(--fs-danger); border-color: var(--fs-danger-plein); background: transparent; }
+/* Même encre foncée sur le rouge plein : `--accent-ink` sert déjà d'encre sur fond
+   de couleur ailleurs (fleet-activity, integrations). Blanc y rendait 3,94:1. */
+.btn.danger-solid { background: var(--fs-danger-plein); border-color: var(--fs-danger-plein); color: var(--accent-ink); }
 
 /* Table */
 .table-wrap { padding: 0; overflow-x: auto; }
@@ -125,19 +153,20 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 .grp { font-size: 11px; background: var(--fs-bg-soft); border: 1px solid var(--fs-border); border-radius: 6px; padding: 1px 6px; color: var(--fs-muted); }
 /* Badge « en mouvement » (véhicule qui roule maintenant, quel que soit son état horaire) */
 .mov { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--fs-emerald); background: var(--fs-emerald-soft); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
-.mov-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fs-emerald); box-shadow: 0 0 0 0 var(--fs-emerald); animation: mov-pulse 1.5s ease-out infinite; }
-@keyframes mov-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fs-emerald) 55%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.mov-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fs-emerald-plein); box-shadow: 0 0 0 0 var(--fs-emerald-plein); animation: mov-pulse 1.5s ease-out infinite; }
+@keyframes mov-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fs-emerald-plein) 55%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) { .mov-dot { animation: none; } }
 
 /* Chips */
 .chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .chip-ok { background: var(--fs-emerald-soft); color: var(--fs-emerald); }
-.chip-cut { background: #e6e9e8; color: #344; }
+/* Était `#e6e9e8` / `#344` avec une surcharge `prefers-color-scheme` : deux valeurs
+   en dur et une règle de thème de plus à tenir. Les jetons basculent seuls. */
+.chip-cut { background: var(--fs-bg-soft); color: var(--fg-secondary); }
 .chip-warn { background: var(--fs-warn-soft); color: var(--fs-warn); }
 .chip-danger { background: var(--fs-danger-soft); color: var(--fs-danger); }
 .chip-info { background: var(--fs-info-soft); color: var(--fs-info); }
 .chip-muted { background: var(--fs-bg-soft); color: var(--fs-muted); }
-@media (prefers-color-scheme: dark) { .chip-cut { background: #2b3531; color: #cdd8d3; } }
 .warn-txt { color: var(--fs-warn); margin-top: 3px; }
 
 /* Countdown */
@@ -147,8 +176,8 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 .cd-cut { color: var(--fs-danger); }
 
 /* Live dot + spinner */
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fs-emerald); display: inline-block; box-shadow: 0 0 0 3px var(--fs-emerald-soft); }
-.live-dot.stale { background: var(--fs-warn); box-shadow: 0 0 0 3px var(--fs-warn-soft); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fs-emerald-plein); display: inline-block; box-shadow: 0 0 0 3px var(--fs-emerald-soft); }
+.live-dot.stale { background: var(--fs-warn-plein); box-shadow: 0 0 0 3px var(--fs-warn-soft); }
 .spin { animation: fs-spin 1s linear infinite; }
 @keyframes fs-spin { to { transform: rotate(360deg); } }
 
@@ -178,7 +207,7 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 @keyframes ap-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
 
 .ap-sec { border: 1px solid var(--fs-border); border-radius: 12px; padding: 12px; margin-top: 12px; background: var(--fs-bg); }
-.ap-sec.pending { border-color: var(--fs-warn); background: var(--fs-warn-soft); }
+.ap-sec.pending { border-color: var(--fs-warn-plein); background: var(--fs-warn-soft); }
 .ap-sec-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .ap-sec-head b { font-weight: 700; }
 .ap-sec.pending .ap-sec-head { color: var(--fs-warn); }
@@ -189,7 +218,7 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 
 .ap-cards { display: flex; flex-direction: column; gap: 7px; }
 .ap-card { display: flex; align-items: center; gap: 9px; background: var(--fs-bg); border: 1px solid var(--fs-border); border-radius: 10px; padding: 9px 12px; font-size: 13px; transition: background-color .5s ease, border-color .5s ease; }
-.ap-card.done { background: var(--fs-emerald-soft); border-color: var(--fs-emerald); animation: ap-slidein .4s ease; }
+.ap-card.done { background: var(--fs-emerald-soft); border-color: var(--fs-emerald-plein); animation: ap-slidein .4s ease; }
 @keyframes ap-slidein { from { transform: translateX(-6px); opacity: .5; } to { transform: translateX(0); opacity: 1; } }
 .ap-plate { font-weight: 700; }
 .ap-state { margin-left: auto; font-size: 12px; color: var(--fs-muted); }
@@ -197,15 +226,14 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 .ap-card.done lucide-icon { color: var(--fs-emerald); }
 
 /* Spinner « en attente » */
-.ap-spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--fs-warn-soft); border-top-color: var(--fs-warn); animation: ap-spin .9s linear infinite; flex: 0 0 auto; }
+.ap-spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--fs-warn-soft); border-top-color: var(--fs-warn-plein); animation: ap-spin .9s linear infinite; flex: 0 0 auto; }
 @keyframes ap-spin { to { transform: rotate(360deg); } }
 
 .ap-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .ap-chip { font-size: 12px; font-weight: 600; border-radius: 7px; padding: 3px 8px; }
-.ap-chip.cut { background: #e6e9e8; color: #344; }
+.ap-chip.cut { background: var(--fs-bg-soft); color: var(--fg-secondary); }
 .ap-chip.okc { background: var(--fs-emerald-soft); color: var(--fs-emerald); }
 .ap-chip.fail { background: var(--fs-danger-soft); color: var(--fs-danger); cursor: help; }
-@media (prefers-color-scheme: dark) { .ap-chip.cut { background: #2b3531; color: #cdd8d3; } }
 
 @media (prefers-reduced-motion: reduce) {
   .ap-badge, .ap-card.done, .ap-spinner, .spin, .live-dot { animation: none !important; }
@@ -214,4 +242,23 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
 @media (max-width: 640px) {
   .bulk-actions { margin-left: 0; width: 100%; }
   .fsched-head { flex-direction: column; }
+}
+
+/* ─── Cibles tactiles au doigt (lot B-pages) ─────────────────────────────────
+ *
+ * Critère de recette « iPhone 390 px : cibles ≥ 44 px ». Mesuré à 375 px :
+ * 31 boutons d'action, les 7 cases de jour et la bascule d'aide étaient sous le
+ * seuil.
+ *
+ * Cocher un jour est le geste central de cette page, et l'erreur ne pardonne
+ * pas : une case ratée pose un horaire de COUPURE MOTEUR sur le mauvais jour.
+ * On ne découvre la faute que le matin où le véhicule ne démarre pas.
+ */
+@media (max-width: 768px) {
+  .btn,
+  .day,
+  .help-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

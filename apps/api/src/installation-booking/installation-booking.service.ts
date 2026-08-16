@@ -37,6 +37,22 @@ const ACTIVE: InstallationBookingStatus[] = ['PENDING', 'CONFIRMED'];
 /** Notification opérateur — le client l'a demandé sur cette boîte. */
 const CONTACT_EMAIL = 'contact@vizyoagency.com';
 
+/**
+ * Combien de temps on garde l'adresse d'un client qui demande à être prévenu.
+ *
+ * ⚠️ CE NOMBRE EST UNE DÉCISION, PAS UN RÉGLAGE TECHNIQUE — **arbitrée par le
+ * client le 2026-08-16**. Passé ce délai, la ligne est supprimée qu'elle ait servi
+ * ou non : une adresse collectée pour une finalité qui s'est épuisée n'a plus de
+ * raison d'être conservée.
+ *
+ * 90 jours = l'horizon de réservation par défaut (42 j) avec de la marge : au-delà,
+ * la personne a trouvé une solution ailleurs, et la prévenir n'aurait plus de sens.
+ *
+ * Ne pas l'allonger « pour être tranquille » : c'est la durée qui rend la collecte
+ * proportionnée, et la rallonger sans nouvelle décision la rendrait excessive.
+ */
+const SLOT_WATCH_RETENTION_DAYS = 90;
+
 type LinkRow = Prisma.InstallationBookingLinkGetPayload<{ include: { fleet: { select: { name: true } } } }>;
 type BookingRow = Prisma.InstallationBookingGetPayload<{ include: { link: { select: { label: true; planId: true } } } }>;
 
@@ -243,6 +259,10 @@ export class InstallationBookingService {
         : null,
       slotMinutes: link.slotMinutes,
       days: [],
+      telephonePublic: this.telephoneAtelier(),
+      // On n'ouvre cette sortie que si le lien est encore vivant : proposer d'être
+      // prévenu sur un lien expiré promettrait un e-mail qui ne partira jamais.
+      abonnementCreneauDisponible: closedReason === null,
     };
     if (closedReason) return base;
 
@@ -255,6 +275,79 @@ export class InstallationBookingService {
       slots: d.slots.map((s) => ({ startAt: s.startAt.toISOString(), endAt: s.endAt.toISOString(), label: s.label })),
     }));
     return base;
+  }
+
+  /**
+   * Le téléphone de l'ATELIER, jamais celui d'une personne.
+   *
+   * Il vient de la configuration serveur et pas d'une fiche utilisateur : cette
+   * page est publique, son URL circule par e-mail et par SMS, et un numéro
+   * personnel exposé là ne se reprend plus. Non configuré → `null`, et le bouton
+   * « Appeler » ne s'affiche pas du tout : mieux vaut deux sorties que trois dont
+   * une qui ne sonne nulle part.
+   */
+  private telephoneAtelier(): string | null {
+    const brut = this.config.get('INSTALLATION_PUBLIC_PHONE', { infer: true }) as string | undefined;
+    const valeur = (brut ?? '').trim();
+    return valeur.length > 0 ? valeur : null;
+  }
+
+  /**
+   * « Prévenez-moi si un créneau se libère » — la sortie n° 3.
+   *
+   * Idempotent par (lien, e-mail) : dix clics impatients n'inscrivent qu'une fois,
+   * et n'enverront donc qu'un seul e-mail. Chaque inscription REPOUSSE la date de
+   * purge — quelqu'un qui redemande manifeste que sa demande tient toujours.
+   */
+  async watchSlots(rawToken: string, email: string): Promise<{ ok: true }> {
+    const link = await this.prisma.installationBookingLink.findUnique({
+      where: { token: rawToken },
+      select: { id: true, fleetId: true, label: true, active: true, expiresAt: true, singleUse: true },
+    });
+    if (!link) throw new NotFoundException('Lien de réservation introuvable.');
+
+    const closed = this.closedReason(link as unknown as LinkRow);
+    if (closed) {
+      throw new BadRequestException(
+        "Ce lien n'est plus actif : personne ne pourra vous prévenir. Contactez l'atelier.",
+      );
+    }
+
+    const propre = email.trim().toLowerCase();
+    const expiresAt = new Date(Date.now() + SLOT_WATCH_RETENTION_DAYS * 24 * 3600 * 1000);
+    await this.prisma.installationSlotWatcher.upsert({
+      where: { linkId_email: { linkId: link.id, email: propre } },
+      update: { expiresAt, notifiedAt: null },
+      create: { linkId: link.id, email: propre, expiresAt },
+    });
+
+    this.systemActivity.record({
+      category: 'INSTALLATION',
+      action: 'slot_watch_requested',
+      status: 'SUCCESS',
+      actor: 'client',
+      target: link.label,
+      detail: "Demande d'être prévenu qu'un créneau se libère",
+      fleetId: link.fleetId,
+      meta: { linkId: link.id },
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Purge des abonnements expirés. Appelée par le cron d'entretien.
+   *
+   * Ce n'est pas de l'hygiène de base : c'est la LIMITE que la collecte s'est
+   * donnée. Sans cette purge, la table deviendrait une réserve d'adresses gardées
+   * sans finalité — exactement ce que la conception voulait éviter.
+   */
+  async purgerAbonnementsExpires(): Promise<number> {
+    const { count } = await this.prisma.installationSlotWatcher.deleteMany({
+      where: { expiresAt: { lte: new Date() } },
+    });
+    if (count > 0) this.logger.log(`Abonnements « prévenez-moi » purgés : ${count}`);
+    return count;
   }
 
   async createPublicBooking(rawToken: string, dto: CreatePublicBookingDto): Promise<PublicBookingResultDto> {
@@ -522,7 +615,7 @@ export class InstallationBookingService {
       void this.email
         .send({
           to: booking.clientEmail,
-          subject: '[Vizyo Tracky] Votre demande de créneau d\'installation',
+          subject: 'Votre demande de créneau d\'installation',
           html: this.email.shell({
             eyebrow: 'Installation · Créneau',
             footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',

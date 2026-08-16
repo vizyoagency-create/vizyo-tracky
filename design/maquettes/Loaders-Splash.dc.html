@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-deep:#047857;--accent-soft:rgba(16,224,160,.12);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.12);--amber:#F5B33D;--grid:rgba(255,255,255,.04);--sk:rgba(255,255,255,.06);--sk-hi:rgba(255,255,255,.10);--splashbg:#0A0F0D;--shadow:0 1px 2px rgba(0,0,0,.5),0 26px 60px -22px rgba(0,0,0,.7)}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F6F9F7;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.16);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-deep:#047857;--accent-soft:rgba(10,158,108,.10);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--grid:rgba(10,25,18,.045);--sk:rgba(10,25,18,.055);--sk-hi:rgba(10,25,18,.085);--splashbg:#FAFBFA;--shadow:0 1px 2px rgba(16,30,24,.05),0 26px 60px -22px rgba(16,30,24,.18)}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:inherit;text-decoration:none}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+
+/* ══ boutons page ══ */
+.btn{display:inline-flex;align-items:center;gap:9px;padding:10px 15px;border-radius:11px;font-size:.82rem;font-weight:700;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:border-color .18s,color .18s,background .18s;font-family:inherit}
+.btn:hover{border-color:var(--border2);color:var(--tx)}
+.btn-accent{background:var(--accent);border-color:transparent;color:var(--accent-ink);box-shadow:0 8px 20px -8px var(--accent)}
+.btn-accent:hover{background:var(--accent2);color:var(--accent-ink)}
+.lib{display:flex;flex-direction:column;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden}
+.lib-demo{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:30px 22px;min-height:132px;background:var(--bg2)}
+.lib-meta{padding:14px 18px 16px;border-top:1px solid var(--border)}
+
+/* ══ LOADER SYSTEM ══ */
+.spin{border-radius:50%;border:2px solid var(--sk);border-top-color:var(--accent);animation:vt-spin .7s linear infinite;flex:none}
+.prog{width:100%;height:3px;background:var(--sk);border-radius:2px;overflow:hidden;position:relative}
+.prog::before{content:"";position:absolute;top:0;left:0;height:100%;width:38%;border-radius:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:vt-prog 1.3s ease-in-out infinite}
+.progd{width:100%;height:6px;background:var(--sk);border-radius:3px;overflow:hidden}
+.progd>i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent-deep),var(--accent));box-shadow:0 0 10px -2px var(--accent);transition:width .4s}
+.sk{position:relative;overflow:hidden;background:var(--sk);border-radius:7px}
+.sk::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,var(--sk-hi),transparent);animation:vt-sweep 1.5s ease-in-out infinite}
+.dotp{display:inline-flex;gap:5px;align-items:center}
+.dotp>i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:vt-dot 1.2s ease-in-out infinite}
+.dotp>i:nth-child(2){animation-delay:.16s}
+.dotp>i:nth-child(3){animation-delay:.32s}
+.live{position:relative;width:9px;height:9px;flex:none}
+.live::before{content:"";position:absolute;inset:0;border-radius:50%;background:var(--accent)}
+.live::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--accent);animation:vt-ping 2s cubic-bezier(0,0,.2,1) infinite}
+
+/* ══ STAGE (flux rejouable) ══ */
+.frame{position:relative;width:100%;max-width:940px;aspect-ratio:940/564;border-radius:20px;overflow:hidden;border:1px solid var(--border2);background:var(--splashbg);box-shadow:var(--shadow)}
+.stage{position:absolute;inset:0;overflow:hidden}
+
+/* splash layer */
+.st-splash{position:absolute;inset:0;display:grid;place-items:center;z-index:5;background:radial-gradient(ellipse 70% 55% at 50% 42%,rgba(16,185,129,.10),transparent 65%),var(--splashbg);animation:st-splashout 520ms 2050ms both}
+.st-stack{position:relative;display:flex;flex-direction:column;align-items:center;gap:20px;animation:st-rise 720ms cubic-bezier(.16,1,.3,1) both}
+.st-glow{position:absolute;top:-8px;left:50%;width:180px;height:180px;margin-left:-90px;border-radius:50%;background:radial-gradient(circle,rgba(16,185,129,.5),transparent 65%);filter:blur(42px);z-index:-1;animation:st-pulse 2600ms ease-in-out infinite}
+.st-ring{position:absolute;top:50%;left:50%;width:74px;height:74px;margin:-46px 0 0 -37px;border:1px solid var(--accent);border-radius:50%;opacity:0;z-index:-1;animation:st-ringo 2600ms ease-out infinite}
+.st-logo{width:60px;height:auto;overflow:visible}
+.st-logo path{fill-opacity:0;stroke-opacity:1;stroke-dasharray:1;stroke-dashoffset:1;animation:st-draw 900ms 200ms both,st-fill 520ms 820ms both,st-sout 420ms 1180ms both}
+.st-title{margin:0;font-size:11px;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--tx2)}
+.st-bar{margin-top:2px;width:40px;height:2px;background:var(--sk);border-radius:1px;overflow:hidden;position:relative;opacity:0;animation:st-barin 420ms 760ms ease-out forwards}
+.st-bar::before{content:"";position:absolute;top:0;left:0;height:100%;width:60%;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:st-barslide 1500ms ease-in-out infinite}
+
+/* app layer */
+.st-app{position:absolute;inset:0;display:flex;opacity:0;animation:st-appin 560ms 2200ms both}
+.st-route{position:absolute;top:0;left:0;height:2px;z-index:6;background:var(--accent);box-shadow:0 0 8px var(--accent);width:0;animation:st-route 1500ms 2300ms cubic-bezier(.2,.7,.25,1) forwards}
+.st-side{flex:0 0 152px;background:var(--bg2);border-right:1px solid var(--border);padding:14px 12px;display:flex;flex-direction:column;gap:3px}
+.st-nav{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:9px;color:var(--tx2);font-size:11px;font-weight:600}
+.st-nav.on{background:var(--surface2);color:var(--accent)}
+.st-nav svg{flex:none}
+.st-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.st-top{height:46px;flex:none;display:flex;align-items:center;gap:12px;padding:0 18px;border-bottom:1px solid var(--border)}
+.st-content{position:relative;flex:1}
+.st-layer{position:absolute;inset:0;padding:18px;display:grid;grid-template-rows:auto 1fr;gap:14px}
+.st-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.st-lower{display:grid;grid-template-columns:1.5fr 1fr;gap:12px;min-height:0}
+.st-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px}
+.st-sk{z-index:2;animation:st-skout 380ms 3450ms both}
+.st-real{z-index:1}
+.st-real .st-r{opacity:0;animation:st-realin 480ms both}
+.st-badge{position:absolute;bottom:12px;left:12px;z-index:7;display:flex;align-items:center;gap:6px;padding:5px 9px;border-radius:8px;background:rgba(0,0,0,.34);backdrop-filter:blur(6px);color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.12em}
+[data-theme="light"] .st-badge{background:rgba(255,255,255,.7);color:var(--tx)}
+
+/* bar chart */
+.bars{display:flex;align-items:flex-end;gap:6px;height:100%}
+.bars>i{flex:1;background:linear-gradient(180deg,var(--accent),var(--accent-deep));border-radius:3px 3px 0 0;opacity:.9}
+
+@keyframes vt-spin{to{transform:rotate(360deg)}}
+@keyframes vt-prog{0%{transform:translateX(-120%)}100%{transform:translateX(360%)}}
+@keyframes vt-sweep{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
+@keyframes vt-dot{0%,100%{opacity:.28;transform:translateY(0)}45%{opacity:1;transform:translateY(-3px)}}
+@keyframes vt-ping{0%{transform:scale(1);opacity:.55}75%,100%{transform:scale(2.6);opacity:0}}
+@keyframes st-rise{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+@keyframes st-pulse{0%,100%{opacity:.5;transform:scale(.92)}50%{opacity:.95;transform:scale(1.08)}}
+@keyframes st-ringo{0%{transform:scale(.55);opacity:.5}100%{transform:scale(2.5);opacity:0}}
+@keyframes st-draw{to{stroke-dashoffset:0}}
+@keyframes st-fill{to{fill-opacity:1}}
+@keyframes st-sout{to{stroke-opacity:.14}}
+@keyframes st-barin{to{opacity:1}}
+@keyframes st-barslide{0%{transform:translateX(-100%)}100%{transform:translateX(200%)}}
+@keyframes st-splashout{to{opacity:0;transform:scale(1.03);visibility:hidden}}
+@keyframes st-appin{from{opacity:0;transform:scale(1.01)}to{opacity:1;transform:scale(1)}}
+@keyframes st-route{0%{width:0;opacity:1}70%{width:82%}92%{width:100%;opacity:1}100%{width:100%;opacity:0}}
+@keyframes st-skout{to{opacity:0;visibility:hidden}}
+@keyframes st-realin{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+/* closeup logo (section splash) */
+.cl-logo{width:92px;height:auto;overflow:visible}
+.cl-logo path{fill-opacity:0;stroke-opacity:1;stroke-dasharray:1;stroke-dashoffset:1;animation:st-draw 1000ms 300ms both,st-fill 560ms 1000ms both,st-sout 460ms 1400ms both}
+
+@media (max-width:900px){.libgrid{grid-template-columns:repeat(2,1fr)!important}}
+@media (max-width:620px){.libgrid{grid-template-columns:1fr!important}.splitcol{grid-template-columns:1fr!important}}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  .st-splash{display:none}
+  .st-sk{display:none}
+  .st-app{opacity:1}
+  .st-route{display:none}
+  .st-real .st-r{opacity:1}
+  .st-logo path,.cl-logo path{fill-opacity:1;stroke-opacity:.14;stroke-dashoffset:0}
+}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<template id="__bundler_thumbnail"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" rx="18" fill="#0A0F0D"/><circle cx="50" cy="44" r="26" fill="#10E0A0" opacity="0.16"/><path d="M40 34 L50 56 L60 34" stroke="#10E0A0" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="62" cy="33" r="6" fill="#10E0A0"/><rect x="34" y="70" width="32" height="4" rx="2" fill="#10E0A0" opacity="0.5"/></svg></template>
+<div style="min-height:100vh;background:var(--bg);position:relative">
+<div style="position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:46px 46px;-webkit-mask-image:radial-gradient(ellipse 70% 42% at 50% 0%,#000,transparent 72%);mask-image:radial-gradient(ellipse 70% 42% at 50% 0%,#000,transparent 72%)"></div>
+
+<div style="position:relative;max-width:1120px;margin:0 auto;padding:40px 32px 72px">
+
+<!-- header -->
+<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:34px">
+<a href="Index.dc.html" style="display:flex;align-items:center;gap:11px">
+<svg width="30" height="30" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#hg)"/><defs><linearGradient id="hg" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
+<span style="font-weight:800;font-size:1rem;letter-spacing:-.01em">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</a>
+<div style="display:flex;align-items:center;gap:10px">
+<button onClick="{{ replay }}" class="btn btn-accent"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>Rejouer le flux</button>
+<button onClick="{{ toggleTheme }}" aria-label="Thème" class="btn" style="width:42px;height:42px;padding:0;justify-content:center"><svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+</div>
+</div>
+
+<!-- title -->
+<div style="margin-bottom:36px">
+<span class="mono" style="font-size:.7rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)">Refonte app · Chargement</span>
+<h1 style="margin:12px 0 0;font-size:2.3rem;font-weight:800;letter-spacing:-.03em;line-height:1.06">Splash &amp; loaders — un système cohérent.</h1>
+<p style="margin:12px 0 0;font-size:1.02rem;color:var(--tx2);max-width:660px;line-height:1.55">Le parcours d'ouverture de la PWA, de l'écran de démarrage jusqu'au tableau de bord vivant, plus la grammaire de chargement réutilisée partout dans l'app. Sobre, technique, sans temps mort perçu.</p>
+</div>
+
+<!-- ══ SECTION 1 · LE FLUX ══ -->
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+<span class="mono" style="font-size:.66rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3)">01 · Le flux d'ouverture</span>
+<span class="mono" style="font-size:.66rem;color:var(--tx3)">PWA standalone · rejouable ↑</span>
+</div>
+
+<div style="display:flex;justify-content:center;margin-bottom:16px">
+<div class="frame">
+<div class="st-badge mono"><span class="live"></span>SÉQUENCE</div>
+<sc-if value="{{ show }}" hint-placeholder-val="{{ true }}">
+<div class="stage">
+
+<!-- splash -->
+<div class="st-splash">
+<div class="st-stack">
+<span class="st-glow"></span><span class="st-ring"></span>
+<svg class="st-logo" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" stroke="var(--accent)" stroke-width="4" stroke-linejoin="round" fill="url(#stg)" pathLength="1"/><defs><linearGradient id="stg" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
+<h1 class="st-title">Vizyo Tracky</h1>
+<div class="st-bar"></div>
+</div>
+</div>
+
+<!-- app -->
+<div class="st-app">
+<span class="st-route"></span>
+<aside class="st-side">
+<div style="display:flex;align-items:center;gap:8px;padding:2px 6px 12px;margin-bottom:4px;border-bottom:1px solid var(--border)">
+<svg width="18" height="18" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#sg2)"/><defs><linearGradient id="sg2" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
+<span style="font-weight:800;font-size:12px">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</div>
+<div class="st-nav on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Tableau de bord</div>
+<div class="st-nav"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/></svg>Carte</div>
+<div class="st-nav"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Véhicules</div>
+<div class="st-nav"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Alertes</div>
+<div class="st-nav"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Rapports</div>
+</aside>
+
+<div class="st-main">
+<div class="st-top">
+<span style="font-weight:800;font-size:13px">Tableau de bord</span>
+<div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+<span class="mono" style="display:inline-flex;align-items:center;gap:6px;font-size:9.5px;color:var(--tx2);padding:5px 9px;border:1px solid var(--border);border-radius:8px;white-space:nowrap;flex:none"><span class="live"></span>24 en ligne</span>
+<span style="width:26px;height:26px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800">LR</span>
+</div>
+</div>
+<div class="st-content">
+
+<!-- skeleton layer -->
+<div class="st-layer st-sk">
+<div class="st-kpis">
+<div class="st-card"><div class="sk" style="width:26px;height:26px;border-radius:8px;margin-bottom:12px"></div><div class="sk" style="width:52px;height:16px;margin-bottom:7px"></div><div class="sk" style="width:70%;height:8px"></div></div>
+<div class="st-card"><div class="sk" style="width:26px;height:26px;border-radius:8px;margin-bottom:12px"></div><div class="sk" style="width:52px;height:16px;margin-bottom:7px"></div><div class="sk" style="width:70%;height:8px"></div></div>
+<div class="st-card"><div class="sk" style="width:26px;height:26px;border-radius:8px;margin-bottom:12px"></div><div class="sk" style="width:52px;height:16px;margin-bottom:7px"></div><div class="sk" style="width:70%;height:8px"></div></div>
+<div class="st-card"><div class="sk" style="width:26px;height:26px;border-radius:8px;margin-bottom:12px"></div><div class="sk" style="width:52px;height:16px;margin-bottom:7px"></div><div class="sk" style="width:70%;height:8px"></div></div>
+</div>
+<div class="st-lower">
+<div class="st-card"><div class="sk" style="width:120px;height:11px;margin-bottom:16px"></div><div style="display:flex;align-items:flex-end;gap:6px;height:calc(100% - 30px)"><div class="sk" style="flex:1;height:40%"></div><div class="sk" style="flex:1;height:62%"></div><div class="sk" style="flex:1;height:50%"></div><div class="sk" style="flex:1;height:78%"></div><div class="sk" style="flex:1;height:55%"></div><div class="sk" style="flex:1;height:88%"></div><div class="sk" style="flex:1;height:66%"></div></div></div>
+<div class="st-card"><div class="sk" style="width:90px;height:11px;margin-bottom:16px"></div><div style="display:flex;flex-direction:column;gap:13px"><div style="display:flex;gap:9px;align-items:center"><div class="sk" style="width:22px;height:22px;border-radius:50%"></div><div style="flex:1"><div class="sk" style="width:80%;height:8px;margin-bottom:5px"></div><div class="sk" style="width:50%;height:7px"></div></div></div><div style="display:flex;gap:9px;align-items:center"><div class="sk" style="width:22px;height:22px;border-radius:50%"></div><div style="flex:1"><div class="sk" style="width:70%;height:8px;margin-bottom:5px"></div><div class="sk" style="width:45%;height:7px"></div></div></div><div style="display:flex;gap:9px;align-items:center"><div class="sk" style="width:22px;height:22px;border-radius:50%"></div><div style="flex:1"><div class="sk" style="width:75%;height:8px;margin-bottom:5px"></div><div class="sk" style="width:48%;height:7px"></div></div></div></div></div>
+</div>
+</div>
+
+<!-- real layer -->
+<div class="st-layer st-real">
+<div class="st-kpis">
+<div class="st-card st-r" style="animation-delay:3650ms"><div style="width:26px;height:26px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin-bottom:10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/></svg></div><div style="font-size:17px;font-weight:800">142</div><div style="font-size:9.5px;color:var(--tx2);font-weight:600">Véhicules actifs</div></div>
+<div class="st-card st-r" style="animation-delay:3720ms"><div style="width:26px;height:26px;border-radius:8px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin-bottom:10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 12h20"/></svg></div><div style="font-size:17px;font-weight:800">1 284 km</div><div style="font-size:9.5px;color:var(--tx2);font-weight:600">Distance du jour</div></div>
+<div class="st-card st-r" style="animation-delay:3790ms"><div style="width:26px;height:26px;border-radius:8px;background:var(--amber-soft,rgba(245,179,61,.12));color:var(--amber);display:flex;align-items:center;justify-content:center;margin-bottom:10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div style="font-size:17px;font-weight:800">37 h</div><div style="font-size:9.5px;color:var(--tx2);font-weight:600">Temps de conduite</div></div>
+<div class="st-card st-r" style="animation-delay:3860ms"><div style="width:26px;height:26px;border-radius:8px;background:var(--red-soft);color:var(--red);display:flex;align-items:center;justify-content:center;margin-bottom:10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg></div><div style="font-size:17px;font-weight:800">2</div><div style="font-size:9.5px;color:var(--tx2);font-weight:600">Alertes ouvertes</div></div>
+</div>
+<div class="st-lower">
+<div class="st-card st-r" style="animation-delay:3940ms"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="font-size:11px;font-weight:700">Activité de la flotte</span><span class="mono" style="font-size:9px;color:var(--tx3)">7 J</span></div><div class="bars" style="height:calc(100% - 30px)"><i style="height:40%"></i><i style="height:62%"></i><i style="height:50%"></i><i style="height:78%"></i><i style="height:55%"></i><i style="height:88%"></i><i style="height:66%"></i></div></div>
+<div class="st-card st-r" style="animation-delay:4020ms"><div style="font-size:11px;font-weight:700;margin-bottom:14px">Dernières alertes</div><div style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;gap:9px;align-items:center"><span style="width:22px;height:22px;border-radius:50%;background:var(--red-soft);color:var(--red);display:flex;align-items:center;justify-content:center;flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></span><div style="min-width:0"><div style="font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Excès vitesse · TL-204</div><div class="mono" style="font-size:8.5px;color:var(--tx3);margin-top:1px">il y a 4 min</div></div></div>
+<div style="display:flex;gap:9px;align-items:center"><span style="width:22px;height:22px;border-radius:50%;background:var(--amber-soft,rgba(245,179,61,.12));color:var(--amber);display:flex;align-items:center;justify-content:center;flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/></svg></span><div style="min-width:0"><div style="font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Sortie zone · Toulouse N</div><div class="mono" style="font-size:8.5px;color:var(--tx3);margin-top:1px">il y a 22 min</div></div></div>
+<div style="display:flex;gap:9px;align-items:center"><span style="width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><div style="min-width:0"><div style="font-size:10.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Maintenance · MT-08</div><div class="mono" style="font-size:8.5px;color:var(--tx3);margin-top:1px">il y a 1 h</div></div></div>
+</div></div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+
+</div>
+</sc-if>
+</div>
+</div>
+
+<!-- timeline legend -->
+<div class="splitcol" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:56px">
+<div style="padding:14px 15px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><span class="mono" style="font-size:.6rem;letter-spacing:.12em;color:var(--tx3)">0 → 800 MS</span></div><div style="font-size:.86rem;font-weight:700;margin-bottom:3px">Splash</div><p style="margin:0;font-size:.76rem;color:var(--tx2);line-height:1.45">Logo qui se dessine, halo vivant. Durée plancher 800ms pour ne pas couper l'animation.</p></div>
+<div style="padding:14px 15px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent2)"></span><span class="mono" style="font-size:.6rem;letter-spacing:.12em;color:var(--tx3)">480 MS</span></div><div style="font-size:.86rem;font-weight:700;margin-bottom:3px">Fondu</div><p style="margin:0;font-size:.76rem;color:var(--tx2);line-height:1.45">Le splash s'efface, le shell (sidebar + top-bar) est déjà là dessous.</p></div>
+<div style="padding:14px 15px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent-deep)"></span><span class="mono" style="font-size:.6rem;letter-spacing:.12em;color:var(--tx3)">~1.2 S</span></div><div style="font-size:.86rem;font-weight:700;margin-bottom:3px">Skeleton</div><p style="margin:0;font-size:.76rem;color:var(--tx2);line-height:1.45">La structure exacte du dashboard en gris + balayage. Zéro saut de mise en page.</p></div>
+<div style="padding:14px 15px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span class="live" style="width:7px;height:7px"></span><span class="mono" style="font-size:.6rem;letter-spacing:.12em;color:var(--tx3)">CONTENU</span></div><div style="font-size:.86rem;font-weight:700;margin-bottom:3px">Contenu vivant</div><p style="margin:0;font-size:.76rem;color:var(--tx2);line-height:1.45">Les blocs se substituent au skeleton en cascade douce (~70ms d'écart).</p></div>
+</div>
+
+<!-- ══ SECTION 2 · LE SPLASH ══ -->
+<div style="margin-bottom:16px"><span class="mono" style="font-size:.66rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3)">02 · Le splash</span></div>
+<div class="splitcol" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:56px">
+<div style="position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--border);min-height:280px;display:grid;place-items:center;background:radial-gradient(ellipse 70% 55% at 50% 42%,rgba(16,185,129,.10),transparent 65%),var(--splashbg)">
+<div class="st-stack" style="animation:none">
+<span class="st-glow"></span><span class="st-ring"></span>
+<svg class="cl-logo" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" stroke="var(--accent)" stroke-width="4" stroke-linejoin="round" fill="url(#stg3)" pathLength="1"/><defs><linearGradient id="stg3" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
+<h1 class="st-title" style="font-size:12px">Vizyo Tracky</h1>
+<div class="st-bar" style="animation:none;opacity:1"></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><span class="mono" style="font-size:.62rem;color:var(--accent);flex:none;margin-top:2px">1</span><div><div style="font-size:.86rem;font-weight:700;margin-bottom:2px">Le logo se dessine</div><p style="margin:0;font-size:.78rem;color:var(--tx2);line-height:1.45">Tracé émeraude (900ms) puis remplissage dégradé, le contour se retire à 14%. Pas d'apparition brutale.</p></div></div>
+<div style="display:flex;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><span class="mono" style="font-size:.62rem;color:var(--accent);flex:none;margin-top:2px">2</span><div><div style="font-size:.86rem;font-weight:700;margin-bottom:2px">Halo vivant</div><p style="margin:0;font-size:.78rem;color:var(--tx2);line-height:1.45">Un halo radial qui respire (2.6s) et un anneau qui se propage — la marque « pulse » sans clignoter.</p></div></div>
+<div style="display:flex;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><span class="mono" style="font-size:.62rem;color:var(--accent);flex:none;margin-top:2px">3</span><div><div style="font-size:.86rem;font-weight:700;margin-bottom:2px">Barre discrète, tardive</div><p style="margin:0;font-size:.78rem;color:var(--tx2);line-height:1.45">La fine barre n'apparaît qu'à 760ms : si le boot est rapide, l'utilisateur ne la voit jamais.</p></div></div>
+<div style="display:flex;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:13px;background:var(--surface)"><span class="mono" style="font-size:.62rem;color:var(--accent);flex:none;margin-top:2px">4</span><div><div style="font-size:.86rem;font-weight:700;margin-bottom:2px">Thème dès le premier pixel</div><p style="margin:0;font-size:.78rem;color:var(--tx2);line-height:1.45">Dark par défaut, clair via <span class="mono" style="font-size:.72rem;color:var(--tx)">[data-theme]</span>. Zéro flash entre le splash iOS et le splash in-DOM.</p></div></div>
+</div>
+</div>
+
+<!-- ══ SECTION 3 · SYSTÈME DE LOADERS ══ -->
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+<span class="mono" style="font-size:.66rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--tx3)">03 · Système de loaders</span>
+<span class="mono" style="font-size:.66rem;color:var(--tx3)">une grammaire, partout</span>
+</div>
+<div class="libgrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:56px">
+
+<div class="lib">
+<div class="lib-demo"><div style="display:flex;align-items:center;gap:20px"><span class="spin" style="width:14px;height:14px"></span><span class="spin" style="width:18px;height:18px"></span><span class="spin" style="width:24px;height:24px"></span></div></div>
+<div class="lib-meta"><div style="font-size:.88rem;font-weight:700;margin-bottom:3px">Spinner</div><p class="mono" style="margin:0;font-size:.68rem;color:var(--tx3);line-height:1.5">bord 2px · rotate .7s linéaire · top = accent<br>tailles 14 / 18 / 24 px</p></div>
+</div>
+
+<div class="lib">
+<div class="lib-demo"><div style="width:100%;max-width:220px;display:flex;flex-direction:column;gap:16px"><div class="prog"></div><div class="progd"><i style="width:64%"></i></div></div></div>
+<div class="lib-meta"><div style="font-size:.88rem;font-weight:700;margin-bottom:3px">Barre de progression</div><p class="mono" style="margin:0;font-size:.68rem;color:var(--tx3);line-height:1.5">indéterminée : balayage 1.3s<br>déterminée : largeur = % réel</p></div>
+</div>
+
+<div class="lib">
+<div class="lib-demo"><div style="width:100%;max-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:14px;display:flex;gap:11px"><div class="sk" style="width:34px;height:34px;border-radius:50%;flex:none"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center"><div class="sk" style="width:80%;height:9px"></div><div class="sk" style="width:55%;height:8px"></div></div></div></div>
+<div class="lib-meta"><div style="font-size:.88rem;font-weight:700;margin-bottom:3px">Skeleton</div><p class="mono" style="margin:0;font-size:.68rem;color:var(--tx3);line-height:1.5">fill --sk · balayage 1.5s · radius 7<br>reproduit la vraie mise en page</p></div>
+</div>
+
+<div class="lib">
+<div class="lib-demo"><div style="display:flex;flex-direction:column;gap:11px;align-items:center"><span class="btn btn-accent" style="cursor:default"><span class="spin" style="width:14px;height:14px;border-color:rgba(4,19,13,.25);border-top-color:var(--accent-ink)"></span>Enregistrement…</span><span class="btn" style="cursor:default;opacity:.85"><span class="spin" style="width:13px;height:13px"></span>Charger plus</span></div></div>
+<div class="lib-meta"><div style="font-size:.88rem;font-weight:700;margin-bottom:3px">Bouton — état chargement</div><p class="mono" style="margin:0;font-size:.68rem;color:var(--tx3);line-height:1.5">spinner 13-14px + libellé d'action<br>bouton disabled pendant l'appel</p></div>
+</div>
+
+<div class="lib">
+<div class="lib-demo"><div style="width:100%;max-width:230px;border:1px dashed var(--border2);border-radius:12px;padding:22px;display:flex;flex-direction:column;align-items:center;gap:12px"><span class="spin" style="width:22px;height:22px"></span><span style="font-size:.78rem;color:var(--tx2);font-weight:600">Chargement des véhicules…</span></div></div>
+<div class="lib-meta"><div style="font-size:.88rem;font-weight:700;margin-bottom:3px">Chargement de panneau</div><p class="mono" style="margin:0;font-size:.68rem;color:var(--tx3);line-height:1.5">centré · libellé optionnel<br>min-height 120 · panneaux &amp; sheets</p></div>
+</div>
+
+<div class="lib">
+<div class="lib-demo"><div style="display:flex;flex-direction:column;gap:14px;align-items:center"><span style="display:inline-flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600;color:var(--tx2)"><span class="live"></span>En direct · 24 véhicules</span><span style="display:inline-flex;align-items:center;gap:9px;font-size:.8rem;font-weight:600;color:var(--tx2)"><span class="dotp"><i></i><i></i><i></i></span>Analyse IA…</span></div></div>
+<div class="lib-meta"><div style="font-size:.88rem;font-weight:700;margin-bottom:3px">Temps réel &amp; IA</div><p class="mono" style="margin:0;font-size:.68rem;color:var(--tx3);line-height:1.5">ping 2s (flux live) · points 1.2s (IA)<br>accent uniquement, jamais rouge</p></div>
+</div>
+
+</div>
+
+<!-- ══ SECTION 4 · PRINCIPES + HANDOFF ══ -->
+<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:14px" class="splitcol">
+<div style="padding:22px 24px;border:1px solid var(--border);border-radius:16px;background:var(--surface)">
+<span class="mono" style="font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)">04 · Principes</span>
+<div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">
+<div style="display:flex;gap:11px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M20 6L9 17l-5-5"/></svg><p style="margin:0;font-size:.86rem;color:var(--tx2);line-height:1.5"><span style="color:var(--tx);font-weight:700">Structure avant contenu.</span> Un skeleton qui copie la vraie mise en page, jamais un spinner plein écran — pas de saut au chargement.</p></div>
+<div style="display:flex;gap:11px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M20 6L9 17l-5-5"/></svg><p style="margin:0;font-size:.86rem;color:var(--tx2);line-height:1.5"><span style="color:var(--tx);font-weight:700">Loaders tardifs.</span> Un indicateur n'apparaît qu'après ~500-700ms : les chargements rapides restent silencieux.</p></div>
+<div style="display:flex;gap:11px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M20 6L9 17l-5-5"/></svg><p style="margin:0;font-size:.86rem;color:var(--tx2);line-height:1.5"><span style="color:var(--tx);font-weight:700">Une seule couleur.</span> L'émeraude porte tout mouvement de chargement. Le rouge/ambre restent réservés aux statuts.</p></div>
+<div style="display:flex;gap:11px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M20 6L9 17l-5-5"/></svg><p style="margin:0;font-size:.86rem;color:var(--tx2);line-height:1.5"><span style="color:var(--tx);font-weight:700">Mouvement respecté.</span> <span class="mono" style="font-size:.74rem;color:var(--tx)">prefers-reduced-motion</span> : tout se fige sur l'état final, proprement.</p></div>
+</div>
+</div>
+<div style="padding:22px 24px;border:1px solid var(--accent);border-radius:16px;background:var(--accent-soft);display:flex;flex-direction:column">
+<span class="mono" style="font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)">Intégration</span>
+<div style="font-size:1.05rem;font-weight:800;margin:12px 0 8px;letter-spacing:-.01em">Prêt pour Claude Code</div>
+<p style="margin:0 0 16px;font-size:.84rem;color:var(--tx2);line-height:1.5">Fichiers cibles, timings exacts et prompt d'implémentation dans le doc de handoff.</p>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:7px">
+<div class="mono" style="font-size:.72rem;color:var(--tx);display:flex;align-items:center;gap:8px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>app/LOADERS-HANDOFF.md</div>
+<div class="mono" style="font-size:.72rem;color:var(--tx2);display:flex;align-items:center;gap:8px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg>src/index.html · splash</div>
+<div class="mono" style="font-size:.72rem;color:var(--tx2);display:flex;align-items:center;gap:8px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/></svg>dashboard · skeleton</div>
+</div>
+</div>
+</div>
+
+<div style="margin-top:44px;padding-top:22px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+<span class="mono" style="font-size:.72rem;color:var(--tx3)">Splash &amp; loaders · design system Vizyo Tracky</span>
+<a href="Index.dc.html" class="mono" style="font-size:.72rem;color:var(--tx3)">← Tous les écrans</a>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1120,&quot;height&quot;:940},&quot;loopFlow&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Démo&quot;},&quot;defaultTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark'|'light'&quot;,&quot;section&quot;:&quot;Démo&quot;}}">
+class Component extends DCLogic {
+  state = { show: true, runId: 0 };
+
+  toggleTheme = () => {
+    const cur = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+
+  replay = () => {
+    this.setState({ show: false });
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState(s => ({ show: true, runId: s.runId + 1 })), 40);
+  };
+
+  componentDidMount() {
+    const dt = this.props.defaultTheme;
+    if (dt === 'light' || dt === 'dark') {
+      try { if (!localStorage.getItem('vt-theme')) document.documentElement.dataset.theme = dt; } catch (e) { document.documentElement.dataset.theme = dt; }
+    }
+    if (this.props.loopFlow) {
+      this._loop = setInterval(() => this.replay(), 6800);
+    }
+  }
+
+  componentWillUnmount() {
+    clearTimeout(this._t);
+    clearInterval(this._loop);
+  }
+
+  renderVals() {
+    return { show: this.state.show, replay: this.replay, toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

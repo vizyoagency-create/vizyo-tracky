@@ -135,7 +135,8 @@ const STATUS_LABELS: Record<string, string> = {
         [open]="showConfirm()"
         [title]="'Confirmer l\\'envoi ?'"
         [description]="confirmDescription()"
-        [confirmLabel]="'Oui, envoyer'"
+        [consequences]="confirmConsequences()"
+        [confirmLabel]="'Envoyer la commande'"
         [danger]="selectedTemplate()?.dangerous ?? false"
         [loading]="sending()"
         (confirmed)="doSend()"
@@ -283,7 +284,21 @@ export class CommandsPanelComponent implements OnInit {
   protected readonly confirmDescription = computed(() => {
     const tpl = this.selectedTemplate();
     if (!tpl) return '';
-    return `Vous allez envoyer <strong>${tpl.label}</strong> au tracker. ${tpl.dangerous ? 'Cette action est potentiellement dangereuse.' : ''}`;
+    return `Vous allez envoyer <strong>${tpl.label}</strong> au boîtier.`;
+  });
+
+  /**
+   * Ce qu'une commande dangereuse fait réellement — « potentiellement dangereuse » ne
+   * dit rien de ce qu'on risque. Une commande SMS part vers le matériel : elle ne
+   * s'annule pas, et le boîtier peut mettre plusieurs minutes à répondre.
+   */
+  protected readonly confirmConsequences = computed(() => {
+    const tpl = this.selectedTemplate();
+    if (!tpl) return '';
+    return tpl.dangerous
+      ? 'La commande part vers le boîtier et ne peut pas être rappelée. Elle modifie sa configuration : '
+        + 'une valeur erronée peut le rendre muet jusqu\'à une intervention sur le véhicule.'
+      : 'La commande part vers le boîtier et ne peut pas être rappelée. La réponse peut prendre plusieurs minutes.';
   });
 
   async ngOnInit(): Promise<void> {

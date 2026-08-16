@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#101514}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.pcfrm{display:flex;width:1600px;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--border2);box-shadow:0 44px 84px -34px rgba(0,0,0,.6)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.navlink{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:13px;color:var(--tx2);font-size:.85rem;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.navlink.active{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 28%,transparent);color:var(--accent)}
+.navsec{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--tx3);padding:14px 12px 4px;white-space:nowrap}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.sico{display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;flex-shrink:0}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.ibtn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx2);flex-shrink:0}
+.stat{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 12px;border-radius:10px;font-size:.735rem;font-weight:700;white-space:nowrap}
+.av{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:999px;font-size:.76rem;font-weight:800;flex-shrink:0}
+.ann{position:absolute;display:flex;align-items:center;gap:7px;padding:4px 9px;border-radius:7px;background:var(--violet);color:#fff;font-size:.65rem;font-weight:800;white-space:nowrap;z-index:60;box-shadow:0 6px 16px -4px rgba(0,0,0,.5)}
+.ann::before{content:"";position:absolute;left:-5px;top:50%;transform:translateY(-50%);width:0;height:0;border:5px solid transparent;border-right-color:var(--violet)}
+.ann.r::before{left:auto;right:-5px;border-right-color:transparent;border-left-color:var(--violet)}
+.tok{display:flex;align-items:center;gap:11px;padding:9px 13px;border-bottom:1px solid var(--border)}
+.tok:last-child{border-bottom:none}
+.tokn{font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:600;color:var(--tx2);white-space:nowrap}
+.tokv{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--tx3);margin-left:auto;white-space:nowrap}
+.sw{width:26px;height:26px;border-radius:7px;flex-shrink:0;border:1px solid var(--border2)}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@keyframes vt-prog{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-chevl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
+<symbol id="ic-chevd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 9 7 7 7-7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-grid" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></g></symbol>
+<symbol id="ic-map" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></g></symbol>
+<symbol id="ic-truck" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v11H1z"/><path d="M12 8h4.5l3.5 3.5V16H12z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="16.5" cy="18.5" r="2"/></g></symbol>
+<symbol id="ic-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></g></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2"/></g></symbol>
+<symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></g></symbol>
+<symbol id="ic-report" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6.5A2 2 0 0 0 4.5 4.5v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M13.5 2.5V8h6M8.5 17v-3M12 17v-6M15.5 17v-4"/></g></symbol>
+<symbol id="ic-gauge" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17a9 9 0 1 1 17 0"/><path d="m12 13 4-3.5"/><circle cx="12" cy="14.5" r="1.6"/></g></symbol>
+<symbol id="ic-cal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></g></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16.5 3.1a4 4 0 0 1 0 7.8"/></g></symbol>
+<symbol id="ic-clip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2.4"/><path d="M9 4V2.8h6V4M9 10h6M9 14h4"/></g></symbol>
+<symbol id="ic-act" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 12h-4l-3 8-4-16-3 8H2"/></symbol>
+<symbol id="ic-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.6 13.9a1.8 1.8 0 0 0 .4 2l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.8 1.8 0 0 0-3 1.3v.3a2 2 0 1 1-4 0v-.2a1.8 1.8 0 0 0-3.1-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.8 1.8 0 0 0-1.3-3.1H3a2 2 0 1 1 0-4h.2a1.8 1.8 0 0 0 1.3-3.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.8 1.8 0 0 0 3-1.3V3a2 2 0 1 1 4 0v.2a1.8 1.8 0 0 0 3.1 1.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.8 1.8 0 0 0 1.3 3.1h.3a2 2 0 1 1 0 4h-.2a1.8 1.8 0 0 0-1.6 1z"/></g></symbol>
+<symbol id="ic-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8L16.5 19.5l1.8-.7z"/></g></symbol>
+<symbol id="ic-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></g></symbol>
+<symbol id="ic-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" d="M3 6h18M3 12h18M3 18h18"/></symbol>
+<symbol id="ic-more" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-user" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g></symbol>
+<symbol id="ic-out" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></g></symbol>
+<symbol id="ic-term" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.4"/><path d="m7 9.5 2.5 2.5L7 14.5M12.5 15h5"/></g></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22M16.7 11.1A6 6 0 0 1 20 13M5 13a10 10 0 0 1 4-2.4M2 8.8A15 15 0 0 1 8 6M12.5 6.1c3.4.1 6.7 1.1 9.5 3M12 20h.01"/></g></symbol>
+<symbol id="ic-dl" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5M12 3v12"/></g></symbol>
+<symbol id="ic-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · G · le cadre de tout le reste</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Shell de l'application &amp; socle du design system</h1>
+<p style="margin:8px 0 0;max-width:900px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Les 28 pages sont refondues, mais le <b style="color:var(--tx)">cadre</b> qui les contient ne l'était pas : navigation, barre du haut, menu profil, nav mobile, modes spéciaux. C'est lui qui fixe les valeurs que les 25 composants partagés devront respecter — d'où le panneau de tokens en fin de planche.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>PC · shell déployé — nav par sections, barre du haut, menu profil ouvert</div>
+<div class="pcfrm" style="position:relative" data-screen-label="Shell PC deploye">
+<aside style="flex:0 0 244px;display:flex;flex-direction:column;background:var(--bg2);border-right:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:11px;height:60px;padding:0 18px;border-bottom:1px solid var(--border);flex-shrink:0">
+<svg width="26" height="26" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="flex:1;font-weight:800;font-size:.96rem;letter-spacing:-.01em;white-space:nowrap">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+<span style="display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:7px;color:var(--tx3)"><svg width="15" height="15"><use href="#ic-chevl"/></svg></span>
+</div>
+<nav style="flex:1;display:flex;flex-direction:column;gap:2px;padding:10px 12px;overflow:hidden">
+<span class="navsec" style="padding-top:4px">Supervision</span>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-grid"/></svg><span>Tableau de bord</span></a>
+<a class="navlink active"><svg width="18" height="18"><use href="#ic-map"/></svg><span>Carte</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-truck"/></svg><span>Véhicules</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-bell"/></svg><span>Alertes</span><span style="margin-left:auto;min-width:19px;height:19px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:var(--red);color:#fff;font-size:.65rem;font-weight:700">6</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-clock"/></svg><span>Horaires flotte</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-shield"/></svg><span>Vie privée</span><span style="margin-left:auto;min-width:19px;height:19px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:var(--amber-soft);color:var(--amber);font-size:.65rem;font-weight:700">3</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-pin"/></svg><span>Lieux clés</span></a>
+<span class="navsec">Analyse</span>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-report"/></svg><span>Rapports</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-gauge"/></svg><span>Scores de conduite</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-cal"/></svg><span>Agenda</span></a>
+<span class="navsec">Administration</span>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-users"/></svg><span>Utilisateurs</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-clip"/></svg><span>Installation</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-act"/></svg><span>Activité flotte</span></a>
+<a class="navlink"><svg width="18" height="18"><use href="#ic-gear"/></svg><span>Paramètres</span></a>
+</nav>
+<div style="padding:12px;flex-shrink:0">
+<div style="padding:13px 14px;border-radius:13px;background:linear-gradient(150deg,color-mix(in srgb,var(--violet) 20%,var(--surface)),var(--surface));border:1px solid color-mix(in srgb,var(--violet) 26%,transparent)">
+<div style="display:flex;align-items:center;gap:7px;margin-bottom:6px"><svg width="14" height="14" style="color:var(--violet)"><use href="#ic-spark"/></svg><span style="font-size:.775rem;font-weight:800">Agent IA</span></div>
+<p style="margin:0;font-size:.72rem;line-height:1.42;color:var(--tx2);text-wrap:pretty">Optimisez vos tournées et réaffectations.</p>
+<span style="display:inline-block;margin-top:8px;font-size:.72rem;font-weight:800;color:var(--violet)">Découvrir →</span>
+</div>
+</div>
+</aside>
+
+<div style="flex:1;display:flex;flex-direction:column;min-width:0">
+<header style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px;flex-shrink:0;padding:0 22px;background:var(--bg2);border-bottom:1px solid var(--border);overflow:hidden">
+<svg style="position:absolute;inset:0;width:100%;height:100%;opacity:.32;pointer-events:none" viewBox="0 0 1356 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 44 Q170 18 340 38 T680 32 T1020 44 T1356 26" fill="none" stroke="var(--accent)" stroke-width="1.1" opacity=".34"/><path d="M0 52 Q170 32 340 48 T680 44 T1020 54 T1356 38" fill="none" stroke="var(--accent)" stroke-width="1" opacity=".18"/></svg>
+<div style="position:relative;display:flex;align-items:baseline;gap:12px;min-width:0">
+<h2 style="margin:0;font-size:1.1rem;font-weight:800;letter-spacing:-.02em;white-space:nowrap">Carte</h2>
+<span class="mono" style="font-size:.72rem;color:var(--tx3);white-space:nowrap">Transports Duchamp · 42 véhicules</span>
+</div>
+<div style="position:relative;display:flex;align-items:center;gap:10px">
+<span class="stat" style="background:var(--accent-soft);color:var(--accent)"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);animation:vt-pulse 2s ease-in-out infinite"></span>Connecté</span>
+<span class="btns" style="height:34px;gap:8px">Transports Duchamp<svg width="12" height="12"><use href="#ic-chevd"/></svg></span>
+<span class="ibtn" style="position:relative"><svg width="17" height="17"><use href="#ic-bell"/></svg><span style="position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:var(--red);color:#fff;font-size:.6rem;font-weight:800;border:2px solid var(--bg2)">6</span></span>
+<span class="av" style="background:var(--accent);color:var(--accent-ink);border:2px solid var(--border2)">AD</span>
+</div>
+</header>
+
+<div style="position:relative;flex:1;min-height:560px;background:var(--bg);display:flex;align-items:center;justify-content:center">
+<div style="display:flex;flex-direction:column;align-items:center;gap:11px;opacity:.5">
+<svg width="34" height="34" style="color:var(--tx3)"><use href="#ic-map"/></svg>
+<span style="font-size:.82rem;font-weight:700;color:var(--tx3)">Contenu de la page</span>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">&lt;router-outlet&gt;</span>
+</div>
+
+<div style="position:absolute;top:12px;right:20px;width:280px;border-radius:16px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 26px 54px -18px rgba(0,0,0,.6);overflow:hidden;z-index:50">
+<div style="display:flex;align-items:center;gap:12px;padding:14px 16px">
+<span class="av" style="width:42px;height:42px;background:var(--accent);color:var(--accent-ink);font-size:.85rem">AD</span>
+<div style="min-width:0"><div style="font-size:.85rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">amelie.duchamp</div><div style="font-size:.72rem;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">amelie.duchamp@duchamp.fr</div></div>
+</div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 16px"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-user"/></svg><span style="font-size:.815rem;font-weight:600">Mon profil</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 16px"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-gear"/></svg><span style="font-size:.815rem;font-weight:600">Paramètres</span></div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 16px"><svg width="15" height="15" style="color:var(--violet)"><use href="#ic-term"/></svg><span style="font-size:.815rem;font-weight:600">Administration</span><span class="tag" style="margin-left:auto;background:var(--violet-soft);color:var(--violet);font-size:.6rem">super-admin</span></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 16px"><svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-moon"/></svg><span style="font-size:.815rem;font-weight:600">Mode clair</span></div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:10px 16px;color:var(--red)"><svg width="15" height="15"><use href="#ic-out"/></svg><span style="font-size:.815rem;font-weight:700">Se déconnecter</span></div>
+</div>
+</div>
+</div>
+
+<span class="ann" style="top:74px;left:258px">Sections nommées, badges au bout de la ligne</span>
+<span class="ann r" style="top:24px;left:900px">Socket temps réel · sélecteur société · alertes · profil</span>
+<span class="ann" style="bottom:26px;left:258px">Encart IA en pied — retirable, jamais bloquant</span>
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>PC · les 3 états du shell — replié, plein écran (carte), hors ligne + chargement</div>
+<div style="display:flex;flex-direction:column;gap:22px">
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Replié à 68 px — pictogrammes seuls, séparateurs entre sections, plus 176 px pour le contenu</p>
+<div class="pcfrm" style="position:relative" data-screen-label="Shell PC replie">
+<aside style="flex:0 0 68px;display:flex;flex-direction:column;align-items:center;background:var(--bg2);border-right:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;height:60px;width:100%;border-bottom:1px solid var(--border);flex-shrink:0">
+<svg width="24" height="24" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+</div>
+<nav style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0;overflow:hidden">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-grid"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;background:var(--accent-soft);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent)"><svg width="19" height="19"><use href="#ic-map"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-truck"/></svg></span>
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-bell"/></svg><span style="position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--red);border:2px solid var(--bg2)"></span></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-clock"/></svg></span>
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-shield"/></svg><span style="position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--amber);border:2px solid var(--bg2)"></span></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-pin"/></svg></span>
+<span style="width:26px;height:1px;background:var(--border2);margin:5px 0"></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-report"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-gauge"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-cal"/></svg></span>
+<span style="width:26px;height:1px;background:var(--border2);margin:5px 0"></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-users"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-clip"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-act"/></svg></span>
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-gear"/></svg></span>
+</nav>
+<div style="padding:0 0 12px"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--tx3)"><svg width="15" height="15"><use href="#ic-chev"/></svg></span></div>
+</aside>
+
+<div style="flex:1;display:flex;flex-direction:column;min-width:0">
+<header style="display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px;flex-shrink:0;padding:0 22px;background:var(--bg2);border-bottom:1px solid var(--border)">
+<div style="display:flex;align-items:baseline;gap:12px"><h2 style="margin:0;font-size:1.1rem;font-weight:800;letter-spacing:-.02em;white-space:nowrap">Véhicules</h2><span class="mono" style="font-size:.72rem;color:var(--tx3)">42 véhicules · 3 groupes</span></div>
+<div style="display:flex;align-items:center;gap:10px">
+<span class="stat" style="background:var(--accent-soft);color:var(--accent)"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Connecté</span>
+<span class="ibtn"><svg width="17" height="17"><use href="#ic-bell"/></svg></span>
+<span class="av" style="background:var(--accent);color:var(--accent-ink);border:2px solid var(--border2)">AD</span>
+</div>
+</header>
+<div style="flex:1;min-height:300px;background:var(--bg);display:flex;align-items:center;justify-content:center;opacity:.4"><span class="mono" style="font-size:.75rem;color:var(--tx3)">&lt;router-outlet&gt; · 1532 px de large</span></div>
+</div>
+<span class="ann" style="top:120px;left:82px">Le badge devient une pastille</span>
+</div>
+</div>
+
+<div style="display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start">
+
+<div style="flex:1;min-width:560px">
+<p class="frmlbl"><span class="plat pc">PC</span>Plein écran (carte, rejeu) — nav et barre du haut escamotées, un seul bouton de retour</p>
+<div style="position:relative;height:270px;border-radius:16px;overflow:hidden;background:linear-gradient(155deg,var(--surface2),var(--bg2));border:1px solid var(--border2)" data-screen-label="Shell PC plein ecran">
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:.4"><span class="mono" style="font-size:.75rem;color:var(--tx3)">carte plein écran</span></div>
+<div style="position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:9px;height:38px;padding:0 14px;border-radius:13px;background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--border2);backdrop-filter:blur(8px)">
+<svg width="15" height="15" style="color:var(--tx2)"><use href="#ic-menu"/></svg>
+<span style="font-size:.795rem;font-weight:700">Carte</span>
+</div>
+<div style="position:absolute;top:14px;right:14px;display:flex;gap:8px">
+<span class="stat" style="background:color-mix(in srgb,var(--surface) 88%,transparent);border:1px solid var(--border2);color:var(--accent);backdrop-filter:blur(8px)"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Connecté</span>
+<span class="av" style="width:34px;height:34px;font-size:.7rem;background:var(--accent);color:var(--accent-ink)">AD</span>
+</div>
+<span class="ann" style="bottom:16px;left:16px;position:absolute">Le shell ne disparaît pas : il se réduit à un bouton</span>
+</div>
+</div>
+
+<div style="flex:1;min-width:480px">
+<p class="frmlbl"><span class="plat pc">PC</span>Hors ligne + navigation en cours — deux signaux qui ne déplacent pas la mise en page</p>
+<div style="border-radius:16px;overflow:hidden;border:1px solid var(--border2)" data-screen-label="Shell PC etats">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:32px;background:var(--amber);color:#0A1311;font-size:.755rem;font-weight:800">
+<svg width="14" height="14"><use href="#ic-off"/></svg>Hors ligne — les données affichées datent de 14:07
+</div>
+<div style="position:relative;height:60px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 18px;overflow:hidden">
+<div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--surface3);overflow:hidden"><span style="display:block;width:30%;height:100%;background:var(--accent);animation:vt-prog 1.1s ease-in-out infinite"></span></div>
+<div style="display:flex;align-items:baseline;gap:10px"><h2 style="margin:0;font-size:1rem;font-weight:800;letter-spacing:-.02em">Rapports</h2><span class="mono" style="font-size:.7rem;color:var(--tx3)">chargement…</span></div>
+<span class="stat" style="background:var(--amber-soft);color:var(--amber)"><span style="width:7px;height:7px;border-radius:50%;background:var(--amber)"></span>Hors ligne</span>
+</div>
+<div style="padding:16px 18px;display:flex;flex-direction:column;gap:9px;background:var(--bg)">
+<div style="height:13px;width:38%;border-radius:5px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out infinite"></div>
+<div style="height:13px;width:72%;border-radius:5px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out .2s infinite"></div>
+<div style="height:13px;width:56%;border-radius:5px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out .4s infinite"></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:4px">
+<div style="height:54px;border-radius:13px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out .1s infinite"></div>
+<div style="height:54px;border-radius:13px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out .3s infinite"></div>
+<div style="height:54px;border-radius:13px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out .5s infinite"></div>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Le bandeau hors ligne <b style="color:var(--tx2)">pousse</b> le contenu (on doit le remarquer) ; la barre de progression <b style="color:var(--tx2)">se superpose</b> (2 px, aucun décalage).</p>
+</div>
+
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>iPhone · barre d'onglets à 5 entrées + feuille « Plus » — la nav vit en bas</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Shell standard — 5 onglets, le 5<sup>e</sup> ouvre le reste</p>
+<div class="mfrm" data-screen-label="Shell iPhone">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:83px;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 16px 12px">
+<div style="min-width:0"><h1 style="margin:0;font-size:1.55rem;font-weight:800;letter-spacing:-.035em">Tableau de bord</h1><div style="font-size:.735rem;color:var(--tx3);margin-top:2px">Transports Duchamp · 42 véhicules</div></div>
+<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;background:var(--surface);border:1px solid var(--border)"><svg width="16" height="16" style="color:var(--tx2)"><use href="#ic-bell"/></svg><span style="position:absolute;top:-2px;right:-2px;min-width:16px;height:16px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:var(--red);color:#fff;font-size:.58rem;font-weight:800;border:2px solid var(--bg2)">6</span></span>
+<span class="av" style="width:34px;height:34px;font-size:.7rem;background:var(--accent);color:var(--accent-ink)">AD</span>
+</div>
+</div>
+
+<div style="padding:0 16px 12px">
+<div style="display:flex;align-items:center;gap:9px;height:40px;padding:0 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border)">
+<svg width="15" height="15" style="color:var(--tx3)"><use href="#ic-search"/></svg>
+<span style="font-size:.83rem;color:var(--tx3)">Plaque, conducteur, lieu…</span>
+</div>
+</div>
+
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:11px">
+<div style="display:flex;align-items:center;gap:9px;padding:11px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<span style="width:7px;height:7px;border-radius:50%;background:var(--accent);animation:vt-pulse 2s ease-in-out infinite;flex-shrink:0"></span>
+<span style="font-size:.78rem;font-weight:700;color:var(--accent)">Temps réel actif</span>
+<span class="mono" style="margin-left:auto;font-size:.7rem;color:var(--tx3)">09:41</span>
+</div>
+<div style="height:132px;border-radius:16px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;opacity:.4"><span class="mono" style="font-size:.72rem;color:var(--tx3)">contenu de la page</span></div>
+<div style="display:flex;gap:9px">
+<div style="flex:1;height:74px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="flex:1;height:74px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="flex:1;height:74px;border-radius:13px;background:var(--surface);border:1px solid var(--border)"></div>
+</div>
+<div style="height:106px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="height:106px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;height:83px;background:color-mix(in srgb,var(--surface) 88%,transparent);border-top:1px solid var(--border);display:flex;align-items:flex-start;padding-top:9px;z-index:200;backdrop-filter:blur(14px)">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--accent)"><svg width="23" height="23"><use href="#ic-grid"/></svg><span style="font-size:.6rem;font-weight:700">Accueil</span></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--tx3)"><svg width="23" height="23"><use href="#ic-map"/></svg><span style="font-size:.6rem;font-weight:600">Carte</span></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--tx3)"><svg width="23" height="23"><use href="#ic-truck"/></svg><span style="font-size:.6rem;font-weight:600">Véhicules</span></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--tx3)"><span style="position:relative;display:flex"><svg width="23" height="23"><use href="#ic-bell"/></svg><span style="position:absolute;top:-3px;right:-6px;min-width:15px;height:15px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:var(--red);color:#fff;font-size:.56rem;font-weight:800">6</span></span><span style="font-size:.6rem;font-weight:600">Alertes</span></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--tx3)"><svg width="23" height="23"><use href="#ic-more"/></svg><span style="font-size:.6rem;font-weight:600">Plus</span></div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Feuille « Plus » — les 10 entrées restantes, groupées comme la nav PC</p>
+<div class="mfrm" data-screen-label="Shell iPhone plus">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;background:var(--bg2);opacity:.3;overflow:hidden;padding:12px 16px">
+<h1 style="margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.035em">Tableau de bord</h1>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;top:88px;border-radius:22px 22px 0 0;background:var(--bg2);overflow:hidden;box-shadow:0 -18px 40px -10px rgba(0,0,0,.5);z-index:150">
+<div style="display:flex;justify-content:center;padding:9px 0 3px"><span style="width:36px;height:5px;border-radius:3px;background:var(--border2)"></span></div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 18px 13px">
+<span style="font-size:1.02rem;font-weight:800;letter-spacing:-.02em">Tout Tracky</span>
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:999px;background:var(--surface2)"><svg width="14" height="14" style="color:var(--tx3)"><use href="#ic-x"/></svg></span>
+</div>
+
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:14px">
+
+<div>
+<div class="ioshdr" style="padding:0 3px 7px;font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3)">Supervision</div>
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="15" height="15"><use href="#ic-clock"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Horaires flotte</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--amber);color:#0A1311;flex-shrink:0"><svg width="15" height="15"><use href="#ic-shield"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Vie privée</span><span class="tag" style="background:var(--amber-soft);color:var(--amber)">3</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--violet);color:#fff;flex-shrink:0"><svg width="15" height="15"><use href="#ic-pin"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Lieux clés</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+</div>
+</div>
+
+<div>
+<div style="padding:0 3px 7px;font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3)">Analyse</div>
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--blue);color:#fff;flex-shrink:0"><svg width="15" height="15"><use href="#ic-report"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Rapports</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--blue);color:#fff;flex-shrink:0"><svg width="15" height="15"><use href="#ic-gauge"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Scores de conduite</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--violet);color:#fff;flex-shrink:0"><svg width="15" height="15"><use href="#ic-cal"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Agenda</span><span class="tag" style="background:var(--red-soft);color:var(--red)">2</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+</div>
+</div>
+
+<div>
+<div style="padding:0 3px 7px;font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3)">Administration</div>
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--surface3);color:var(--tx2);flex-shrink:0"><svg width="15" height="15"><use href="#ic-users"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Utilisateurs</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--surface3);color:var(--tx2);flex-shrink:0"><svg width="15" height="15"><use href="#ic-clip"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Installation</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--surface3);color:var(--tx2);flex-shrink:0"><svg width="15" height="15"><use href="#ic-act"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Activité flotte</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--surface3);color:var(--tx2);flex-shrink:0"><svg width="15" height="15"><use href="#ic-gear"/></svg></span><span style="flex:1;font-size:.85rem;font-weight:600">Paramètres</span><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-chev"/></svg></div>
+</div>
+</div>
+
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>04</i>Android · tiroir de navigation M3 — pas de barre d'onglets, les 3 boutons système suffisent</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Shell standard — barre d'app M3, hamburger, aucun doublon de la nav système</p>
+<div class="afrm" data-screen-label="Shell Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px">
+<svg width="21" height="21" style="color:var(--tx2)"><use href="#ic-menu"/></svg>
+<span style="flex:1;font-size:1.32rem;font-weight:600;letter-spacing:-.01em">Tableau de bord</span>
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-search"/></svg>
+<span style="position:relative;display:flex"><svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-bell"/></svg><span style="position:absolute;top:-3px;right:-5px;min-width:16px;height:16px;padding:0 4px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:var(--red);color:#fff;font-size:.58rem;font-weight:800;border:2px solid var(--bg)">6</span></span>
+<span class="av" style="width:30px;height:30px;font-size:.66rem;background:var(--accent);color:var(--accent-ink)">AD</span>
+</div>
+
+<div style="padding:2px 16px 14px">
+<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:16px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);animation:vt-pulse 2s ease-in-out infinite;flex-shrink:0"></span>
+<span style="font-size:.82rem;font-weight:600;color:var(--accent)">Temps réel actif</span>
+<span class="mono" style="margin-left:auto;font-size:.735rem;color:var(--tx3)">09:41</span>
+</div>
+</div>
+
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:12px">
+<div style="height:150px;border-radius:16px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;opacity:.4"><span class="mono" style="font-size:.74rem;color:var(--tx3)">contenu de la page</span></div>
+<div style="display:flex;gap:10px">
+<div style="flex:1;height:82px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="flex:1;height:82px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="flex:1;height:82px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+</div>
+<div style="height:120px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="height:120px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="height:120px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Tiroir ouvert — toutes les entrées d'un coup, sections et pastilles M3</p>
+<div class="afrm" data-screen-label="Shell Android tiroir">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">09:41</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:100"></div>
+<div style="position:absolute;top:0;left:0;bottom:0;width:326px;background:var(--surface);border-radius:0 22px 22px 0;z-index:110;overflow:hidden;box-shadow:14px 0 34px -8px rgba(0,0,0,.5)">
+
+<div style="display:flex;align-items:center;gap:12px;padding:16px 20px 13px">
+<svg width="27" height="27" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<div style="min-width:0"><div style="font-weight:700;font-size:1rem;white-space:nowrap">Vizyo Tracky</div><div style="font-size:.735rem;color:var(--tx3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Transports Duchamp</div></div>
+</div>
+
+<div style="padding:0 12px 4px"><div style="height:1px;background:var(--border)"></div></div>
+
+<div style="padding:7px 20px 3px;font-size:.735rem;font-weight:700;color:var(--tx3);letter-spacing:.02em">Supervision</div>
+<div style="padding:0 12px;display:flex;flex-direction:column;gap:1px">
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;background:var(--accent-soft);color:var(--accent)"><svg width="19" height="19"><use href="#ic-grid"/></svg><span style="flex:1;font-size:.87rem;font-weight:700">Tableau de bord</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-map"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Carte</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-truck"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Véhicules</span><span class="mono" style="font-size:.73rem;color:var(--tx3)">42</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-bell"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Alertes</span><span style="min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:var(--red);color:#fff;font-size:.68rem;font-weight:700">6</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-clock"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Horaires flotte</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-shield"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Vie privée</span><span style="min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:var(--amber-soft);color:var(--amber);font-size:.68rem;font-weight:700">3</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-pin"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Lieux clés</span></div>
+</div>
+
+<div style="padding:6px 12px 3px"><div style="height:1px;background:var(--border)"></div></div>
+<div style="padding:4px 20px 3px;font-size:.735rem;font-weight:700;color:var(--tx3)">Analyse</div>
+<div style="padding:0 12px;display:flex;flex-direction:column;gap:1px">
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-report"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Rapports</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-gauge"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Scores de conduite</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-cal"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Agenda</span><span style="min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:var(--red-soft);color:var(--red);font-size:.68rem;font-weight:700">2</span></div>
+</div>
+
+<div style="padding:6px 12px 3px"><div style="height:1px;background:var(--border)"></div></div>
+<div style="padding:4px 20px 3px;font-size:.735rem;font-weight:700;color:var(--tx3)">Administration</div>
+<div style="padding:0 12px;display:flex;flex-direction:column;gap:1px">
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-users"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Utilisateurs</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-clip"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Installation</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-act"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Activité flotte</span></div>
+<div style="display:flex;align-items:center;gap:14px;height:46px;padding:0 16px;border-radius:23px;color:var(--tx2)"><svg width="19" height="19"><use href="#ic-gear"/></svg><span style="flex:1;font-size:.87rem;font-weight:500">Paramètres</span></div>
+</div>
+
+</div>
+</div>
+<div class="anav" style="z-index:200"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+<div style="width:400px;display:flex;flex-direction:column;gap:16px">
+<p class="frmlbl" style="margin:0 0 -4px 6px">La décision de plateforme, écrite</p>
+<div class="card" style="overflow:hidden">
+<div style="padding:16px 18px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:11px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.87rem">iPhone : la nav vit en bas</b></div>
+<p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">5 onglets permanents, pouce en zone basse, le 5<sup>e</sup> ouvre le reste en feuille. Pas de hamburger : sur iOS il concurrence le geste de retour au bord de l'écran.</p>
+</div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:16px 18px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:11px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.87rem">Android : tiroir, pas de barre d'onglets</b></div>
+<p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Les 3 boutons système occupent déjà le bas de l'écran. Une barre d'onglets au-dessus ferait <b style="color:var(--tx)">deux rangées de navigation superposées</b> — on prend le tiroir M3, qui montre tout d'un coup.</p>
+</div>
+<div style="height:1px;background:var(--border)"></div>
+<div style="padding:16px 18px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:11px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-check"/></svg><b style="font-size:.87rem">PC : nav repliable</b></div>
+<p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">244 px déployée, 68 px replié. Sur la carte et le rejeu, elle s'escamote entièrement — mais laisse toujours un bouton de retour.</p>
+</div>
+</div>
+
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--violet) 26%,transparent)">
+<div style="padding:15px 18px">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--violet)"><use href="#ic-eye"/></svg><b style="font-size:.85rem">Ce qui reste constant partout</b></div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:5px;height:5px;border-radius:50%;background:var(--violet);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Les <b style="color:var(--tx)">3 mêmes sections</b> dans le même ordre : Supervision, Analyse, Administration</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:5px;height:5px;border-radius:50%;background:var(--violet);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Le badge de compteur toujours <b style="color:var(--tx)">en fin de ligne</b>, jamais collé au libellé</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:5px;height:5px;border-radius:50%;background:var(--violet);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">La pastille temps réel : <b style="color:var(--tx)">visible</b>, jamais un simple point muet</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:5px;height:5px;border-radius:50%;background:var(--violet);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">L'avatar en <b style="color:var(--tx)">haut à droite</b> sur les 3 plateformes</span></div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>05</i>Les 3 modes qui changent le shell entier — veilleur, interface simplifiée, contexte super-admin</div>
+<div style="display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start">
+
+<div style="flex:1;min-width:520px">
+<p class="frmlbl"><span class="plat pc">PC</span>Veilleur de nuit — un seul écran autorisé, pas de cloche, pas de profil</p>
+<div style="border-radius:16px;overflow:hidden;border:1px solid var(--border2);box-shadow:0 26px 54px -26px rgba(0,0,0,.5)" data-screen-label="Shell veilleur">
+<div style="display:flex;height:340px;background:var(--bg)">
+<aside style="flex:0 0 200px;display:flex;flex-direction:column;background:var(--bg2);border-right:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:10px;height:56px;padding:0 16px;border-bottom:1px solid var(--border)">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:800;font-size:.88rem;white-space:nowrap">Tracky</span>
+</div>
+<nav style="flex:1;padding:10px 10px">
+<a class="navlink active" style="font-size:.82rem"><svg width="17" height="17"><use href="#ic-truck"/></svg><span>Véhicules</span></a>
+</nav>
+<div style="padding:11px 12px">
+<div style="padding:10px 12px;border-radius:13px;background:var(--violet-soft);border:1px solid color-mix(in srgb,var(--violet) 26%,transparent)">
+<div style="font-size:.71rem;font-weight:800;color:var(--violet);margin-bottom:3px">Mode veilleur</div>
+<p style="margin:0;font-size:.68rem;line-height:1.4;color:var(--tx2)">Accès limité aux véhicules</p>
+</div>
+</div>
+</aside>
+<div style="flex:1;display:flex;flex-direction:column;min-width:0">
+<header style="display:flex;align-items:center;justify-content:space-between;gap:14px;height:56px;padding:0 18px;background:var(--bg2);border-bottom:1px solid var(--border)">
+<h2 style="margin:0;font-size:1rem;font-weight:800;letter-spacing:-.02em">Véhicules</h2>
+<div style="display:flex;align-items:center;gap:9px">
+<span class="ibtn"><svg width="16" height="16"><use href="#ic-moon"/></svg></span>
+<span class="ibtn" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 34%,transparent)"><svg width="16" height="16"><use href="#ic-out"/></svg></span>
+</div>
+</header>
+<div style="flex:1;display:flex;align-items:center;justify-content:center;opacity:.4"><span class="mono" style="font-size:.73rem;color:var(--tx3)">liste des véhicules uniquement</span></div>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Ce qui <b style="color:var(--tx2)">disparaît</b> : cloche d'alertes, menu profil, sélecteur de société, encart IA, 13 entrées de nav. Il reste le thème et la déconnexion — seul point de sortie, puisque Mon compte et Paramètres sont bloqués pour ce rôle.</p>
+</div>
+
+<div style="flex:1;min-width:480px;display:flex;flex-direction:column;gap:22px">
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Interface simplifiée — la carte prend tout, 3 gros boutons</p>
+<div style="position:relative;height:230px;border-radius:16px;overflow:hidden;background:linear-gradient(155deg,var(--surface2),var(--bg2));border:1px solid var(--border2)" data-screen-label="Shell simplifie">
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:.35"><span class="mono" style="font-size:.73rem;color:var(--tx3)">carte, plein cadre</span></div>
+<div style="position:absolute;top:13px;left:13px;display:flex;align-items:center;gap:9px;height:36px;padding:0 13px;border-radius:10px;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--border2)">
+<svg width="20" height="20" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-size:.8rem;font-weight:800">Tracky</span>
+</div>
+<div style="position:absolute;left:13px;right:13px;bottom:13px;display:flex;gap:10px">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 0;border-radius:13px;background:var(--accent);color:var(--accent-ink)"><svg width="24" height="24"><use href="#ic-truck"/></svg><span style="font-size:.79rem;font-weight:800">Mes véhicules</span></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 0;border-radius:13px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--border2);color:var(--tx2)"><svg width="24" height="24"><use href="#ic-bell"/></svg><span style="font-size:.79rem;font-weight:700">Alertes</span></div>
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 0;border-radius:13px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--border2);color:var(--tx2)"><svg width="24" height="24"><use href="#ic-gear"/></svg><span style="font-size:.79rem;font-weight:700">Réglages</span></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Pour les utilisateurs qui ne veulent qu'une chose : voir où sont les véhicules. Cibles de 44 px minimum, aucun sous-menu.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat pc">PC</span>Contexte super-admin — quand on regarde la flotte de quelqu'un d'autre, ça doit se voir</p>
+<div style="border-radius:16px;overflow:hidden;border:1px solid var(--border2)" data-screen-label="Shell super admin">
+<div style="display:flex;align-items:center;gap:11px;height:34px;padding:0 16px;background:var(--violet);color:#fff">
+<svg width="14" height="14"><use href="#ic-eye"/></svg>
+<span style="font-size:.755rem;font-weight:800">Vous consultez <b>Transports Duchamp</b> en tant que support</span>
+<span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:7px;background:rgba(255,255,255,.22);font-size:.7rem;font-weight:800">Quitter ce contexte</span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;height:56px;padding:0 18px;background:var(--bg2);border-bottom:1px solid var(--border)">
+<div style="display:flex;align-items:baseline;gap:10px"><h2 style="margin:0;font-size:1rem;font-weight:800;letter-spacing:-.02em">Véhicules</h2><span class="mono" style="font-size:.7rem;color:var(--tx3)">42 véhicules</span></div>
+<div style="display:flex;align-items:center;gap:9px">
+<span class="btns" style="height:32px;gap:7px;border-color:var(--violet);color:var(--violet)">Transports Duchamp<svg width="11" height="11"><use href="#ic-chevd"/></svg></span>
+<span class="av" style="width:32px;height:32px;font-size:.68rem;background:var(--violet);color:#fff">SA</span>
+</div>
+</div>
+<div style="height:96px;background:var(--bg);display:flex;align-items:center;justify-content:center;opacity:.4"><span class="mono" style="font-size:.72rem;color:var(--tx3)">données de la flotte consultée</span></div>
+</div>
+<p class="hint" style="margin-top:14px">Bandeau violet <b style="color:var(--tx2)">permanent</b>, non refermable, avec la sortie dedans. L'avatar passe au violet : impossible de croire qu'on est chez soi.</p>
+</div>
+
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>06</i>Socle · les valeurs que les 25 composants partagés doivent respecter</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:repeat(4,1fr);gap:20px;background:var(--bg2)">
+
+<div class="card" style="overflow:hidden">
+<div style="padding:13px 16px;border-bottom:1px solid var(--border)"><div class="crdt">Couleurs de sens</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Une couleur = une signification, partout</div></div>
+<div class="tok"><span class="sw" style="background:var(--accent)"></span><span class="tokn">accent</span><span class="tokv">succès · actif</span></div>
+<div class="tok"><span class="sw" style="background:var(--red)"></span><span class="tokn">red</span><span class="tokv">échec · danger</span></div>
+<div class="tok"><span class="sw" style="background:var(--amber)"></span><span class="tokn">amber</span><span class="tokv">attente · à vérifier</span></div>
+<div class="tok"><span class="sw" style="background:var(--blue)"></span><span class="tokn">blue</span><span class="tokv">information · neutre</span></div>
+<div class="tok"><span class="sw" style="background:var(--violet)"></span><span class="tokn">violet</span><span class="tokv">IA · super-admin</span></div>
+<div class="tok"><span class="sw" style="background:var(--surface3)"></span><span class="tokn">surface3</span><span class="tokv">inactif · désactivé</span></div>
+</div>
+
+<div class="card" style="overflow:hidden">
+<div style="padding:13px 16px;border-bottom:1px solid var(--border)"><div class="crdt">Rayons</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">7 paliers, pas plus — un rôle, une valeur</div></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:7px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">7 px</span><span class="tokv">pastille, étiquette</span></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:10px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">10 px</span><span class="tokv">bouton, champ</span></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:13px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">13 px</span><span class="tokv">encart dans une carte</span></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:16px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">16 px</span><span class="tokv">carte, panneau, porte</span></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:20px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">20 px</span><span class="tokv">bouton &amp; puce M3 · Android</span></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:22px 22px 7px 7px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">22 px</span><span class="tokv">feuille mobile</span></div>
+<div class="tok"><span style="width:26px;height:26px;border-radius:999px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0"></span><span class="tokn">999 px</span><span class="tokv">avatar, puce M3</span></div>
+</div>
+
+<div class="card" style="overflow:hidden">
+<div style="padding:13px 16px;border-bottom:1px solid var(--border)"><div class="crdt">Hauteurs</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Aucune cible mobile sous 44 px</div></div>
+<div class="tok"><span class="tokn" style="flex:1">Barre du haut PC</span><span class="tokv">60 px</span></div>
+<div class="tok"><span class="tokn" style="flex:1">Nav déployée / repliée</span><span class="tokv">244 / 68 px</span></div>
+<div class="tok"><span class="tokn" style="flex:1">Entrée de nav PC</span><span class="tokv">40 px</span></div>
+<div class="tok"><span class="tokn" style="flex:1">Barre d'onglets iOS</span><span class="tokv">83 px</span></div>
+<div class="tok"><span class="tokn" style="flex:1">Barre d'app M3</span><span class="tokv">56 px</span></div>
+<div class="tok"><span class="tokn" style="flex:1">Entrée de tiroir M3</span><span class="tokv">46 px</span></div>
+<div class="tok"><span class="tokn" style="flex:1">Bouton principal mobile</span><span class="tokv">50–56 px</span></div>
+</div>
+
+<div class="card" style="overflow:hidden">
+<div style="padding:13px 16px;border-bottom:1px solid var(--border)"><div class="crdt">Typographie</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Manrope · JetBrains Mono pour les données</div></div>
+<div class="tok"><span style="font-size:1.15rem;font-weight:800;letter-spacing:-.03em;flex:1">Titre de page</span><span class="tokv">1.1 rem · 800</span></div>
+<div class="tok"><span style="font-size:.9rem;font-weight:800;flex:1">Titre de carte</span><span class="tokv">.9 rem · 800</span></div>
+<div class="tok"><span style="font-size:.82rem;font-weight:600;flex:1">Texte courant</span><span class="tokv">.82 rem · 600</span></div>
+<div class="tok"><span style="font-size:.73rem;color:var(--tx3);flex:1">Texte secondaire</span><span class="tokv">.73 rem · tx3</span></div>
+<div class="tok"><span class="mono" style="font-size:.74rem;font-weight:600;flex:1">AB-231-CD</span><span class="tokv">mono · plaques, IMEI</span></div>
+<div class="tok"><span class="kpil" style="flex:1">Étiquette de section</span><span class="tokv">.6 rem · .12 em</span></div>
+</div>
+
+<div class="card" style="overflow:hidden;grid-column:span 2">
+<div style="padding:13px 16px;border-bottom:1px solid var(--border)"><div class="crdt">Les 6 états que chaque composant doit savoir montrer</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Un composant qui n'en gère que deux est incomplet — c'est le manque le plus fréquent aujourd'hui</div></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
+<div style="padding:14px 16px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--tx3)"></span><b style="font-size:.79rem">Chargement</b></div><div style="display:flex;flex-direction:column;gap:5px"><div style="height:9px;width:70%;border-radius:4px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out infinite"></div><div style="height:9px;width:45%;border-radius:4px;background:var(--surface3);animation:vt-pulse 1.6s ease-in-out .25s infinite"></div></div><p class="hint" style="margin-top:14px">Squelette à la forme du contenu, pas un rond qui tourne.</p></div>
+<div style="padding:14px 16px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><b style="font-size:.79rem">Rempli</b></div><div style="display:flex;flex-direction:column;gap:5px"><div style="height:9px;width:80%;border-radius:4px;background:var(--tx3);opacity:.5"></div><div style="height:9px;width:56%;border-radius:4px;background:var(--tx3);opacity:.5"></div></div><p class="hint" style="margin-top:14px">Le cas nominal.</p></div>
+<div style="padding:14px 16px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--tx3)"></span><b style="font-size:.79rem">Vide</b></div><div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;border:1px dashed var(--border2)"><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-check"/></svg><span style="font-size:.72rem;color:var(--tx2)">Rien à signaler</span></div><p class="hint" style="margin-top:14px">Toujours <b style="color:var(--tx2)">une action de sortie</b>, jamais un cul-de-sac.</p></div>
+<div style="padding:14px 16px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--red)"></span><b style="font-size:.79rem">Erreur</b></div><div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--red-soft)"><svg width="13" height="13" style="color:var(--red)"><use href="#ic-warn"/></svg><span style="font-size:.72rem;color:var(--red);font-weight:700">Échec · Réessayer</span></div><p class="hint" style="margin-top:14px">Dire ce qui s'est passé <b style="color:var(--tx2)">et</b> quoi faire.</p></div>
+<div style="padding:14px 16px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--amber)"></span><b style="font-size:.79rem">Partiel</b></div><div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--amber-soft)"><svg width="13" height="13" style="color:var(--amber)"><use href="#ic-off"/></svg><span style="font-size:.72rem;color:var(--amber);font-weight:700">Données de 14:07</span></div><p class="hint" style="margin-top:14px">Hors ligne ou partiel : dater ce qu'on montre.</p></div>
+<div style="padding:14px 16px;background:var(--surface)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="width:7px;height:7px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2)"></span><b style="font-size:.79rem">Interdit</b></div><div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)"><svg width="13" height="13" style="color:var(--tx3)"><use href="#ic-shield"/></svg><span style="font-size:.72rem;color:var(--tx3)">Permission requise</span></div><p class="hint" style="margin-top:14px">Nommer la permission manquante, ne pas juste masquer.</p></div>
+</div>
+</div>
+
+<div class="card" style="overflow:hidden;grid-column:span 2">
+<div style="padding:13px 16px;border-bottom:1px solid var(--border)"><div class="crdt">Ombres, densité, mouvement</div><div style="font-size:.71rem;color:var(--tx3);margin-top:2px">Trois règles courtes qui évitent 90 % des incohérences</div></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)">
+<div style="padding:15px 16px;background:var(--surface)">
+<b style="font-size:.79rem">Élévation</b>
+<div style="display:flex;flex-direction:column;gap:9px;margin-top:11px">
+<div style="height:30px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;padding:0 10px"><span class="tokn">0 · à plat</span></div>
+<div style="height:30px;border-radius:10px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 8px 20px -10px rgba(0,0,0,.5);display:flex;align-items:center;padding:0 10px"><span class="tokn">1 · menu, infobulle</span></div>
+<div style="height:30px;border-radius:10px;background:var(--surface);border:1px solid var(--border2);box-shadow:0 26px 54px -20px rgba(0,0,0,.6);display:flex;align-items:center;padding:0 10px"><span class="tokn">2 · modale, feuille</span></div>
+</div>
+<p class="hint">Jamais d'ombre sur un élément à plat dans une carte.</p>
+</div>
+<div style="padding:15px 16px;background:var(--surface)">
+<b style="font-size:.79rem">Densité de liste</b>
+<div style="display:flex;flex-direction:column;gap:0;margin-top:11px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
+<div style="height:46px;display:flex;align-items:center;padding:0 11px;border-bottom:1px solid var(--border)"><span class="tokn">46 px · PC</span></div>
+<div style="height:44px;display:flex;align-items:center;padding:0 11px;border-bottom:1px solid var(--border)"><span class="tokn">44 px · iOS</span></div>
+<div style="height:52px;display:flex;align-items:center;padding:0 11px"><span class="tokn">52 px · Android</span></div>
+</div>
+<p class="hint">Android respire plus : c'est Material, pas un oubli.</p>
+</div>
+<div style="padding:15px 16px;background:var(--surface)">
+<b style="font-size:.79rem">Mouvement</b>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:11px">
+<div class="tok" style="padding:7px 0;border-bottom:none"><span class="tokn" style="flex:1">Survol, bascule</span><span class="tokv">120 ms</span></div>
+<div class="tok" style="padding:7px 0;border-bottom:none"><span class="tokn" style="flex:1">Ouverture de panneau</span><span class="tokv">220 ms</span></div>
+<div class="tok" style="padding:7px 0;border-bottom:none"><span class="tokn" style="flex:1">Feuille mobile</span><span class="tokv">280 ms</span></div>
+<div class="tok" style="padding:7px 0;border-bottom:none"><span class="tokn" style="flex:1">Pulsation temps réel</span><span class="tokv">2 s · boucle</span></div>
+</div>
+<p class="hint"><span class="mono" style="font-size:.68rem">prefers-reduced-motion</span> coupe tout.</p>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

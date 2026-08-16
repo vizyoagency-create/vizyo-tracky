@@ -11,7 +11,8 @@
 |---|---|
 | **Supprimer ou vider `error_logs`** | Une erreur reste visible tant qu'elle n'est pas corrigée **et vérifiée**. Le centre d'alerte n'est pas une boîte de réception à vider. Consigne explicite du propriétaire. |
 | **Acquitter une commande / fermer une alerte** pour faire baisser un compteur | Même raison. Éteindre le témoin n'éteint pas le défaut. |
-| **`git commit`, `git add`, `git push`** | Le dépôt est partagé et d'autres sessions y travaillent. L'audit **écrit des fichiers**, un humain relit et commite. ⚠️ Jamais de `git add -A` sur ce dépôt. |
+| **`git add -A`, `git commit -a`, toucher un fichier HORS `docs/centre-alerte/`** | Le dépôt est partagé et d'autres sessions y travaillent : un `-A` emporterait leur WIP. Seul `docs/centre-alerte/` se commite, **chemin explicite obligatoire** (voir §11.b). |
+| **`git push`** | La publication en production passe par la copie de fichiers (§11.a), jamais par un push. Pousser une branche est une décision humaine. |
 | **Modifier du code applicatif** | L'audit **propose**. Le passage à l'acte est une décision humaine (voir §8). |
 | **Redémarrer / rebuild un conteneur, toucher la prod** | Un audit lit. Il n'agit pas. |
 | **Écrire un secret, un mot de passe ou une URL de base complète** dans un rapport | Les rapports sont versionnés. |
@@ -53,6 +54,27 @@ ssh root@72.62.26.240 'date -u; for c in tracky-api tracky-web; do printf "%s " 
 - Tables en `snake_case` (`error_logs`), colonnes en `camelCase` **à guillemeter** (`"createdAt"`).
   Un `created_at` échoue.
 - L'heure du serveur est en **UTC**. Les horodatages du rapport aussi — le préciser.
+- 🔴 **Les journaux de `tracky-api` mentent sur leur propre fenêtre — `--since` ET `--tail N`.**
+  Le conteneur tourne en `json-file` / `max-size=10m` / `max-file=3`, et la lecture ne recolle pas
+  au-delà du fichier courant. Deux mesures :
+
+  | Mesuré le | Commande | Ce qu'elle rend |
+  |---|---|---|
+  | 2026-08-08 | `--since 26h` | 205 lignes **se terminant 25 h avant l'heure courante** |
+  | 2026-08-09 | `--tail 200000` | 3714 lignes **se terminant 79 min avant l'heure courante** |
+  | 2026-08-09 | `--tail 3` | des lignes **de la seconde** |
+
+  Le remède écrit le 08/08 (« utiliser `--tail N` ») est donc **faux pour N grand** : il rend une
+  tranche tronquée à une frontière de rotation. Aucune forme de la commande n'est fiable a priori.
+
+  **La seule règle qui tient : mesurer la fenêtre obtenue, et la citer.** Un rapport donne le
+  **premier et le dernier horodatage réellement observés**, jamais la fenêtre demandée — et si
+  cette fenêtre ne va pas jusqu'à l'heure de collecte, il le dit.
+  ```bash
+  ssh root@72.62.26.240 'L=$(docker logs tracky-api --tail 200000 2>&1); echo "$L" | head -1; echo "$L" | tail -1; docker logs tracky-api --tail 1'
+  ```
+  *Un compteur sur une fenêtre qu'on n'a pas vérifiée est un compteur inventé — y compris quand on
+  croit avoir déjà corrigé le piège.*
 
 ---
 
@@ -317,12 +339,46 @@ provoquer.
 ⚠️ Cette copie n'efface jamais rien — elle ajoute et remplace. Un document retiré du dépôt
 resterait publié ; c'est volontaire (on ne perd pas un rapport par accident).
 
+### 11.b — Committer la documentation (obligatoire depuis le 2026-08-11)
+
+**La copie du §11.a ne suffit pas, et l'oublier a coûté sept rapports.** Constaté le 2026-08-11 :
+les rapports du 05/08 au 10/08 étaient publiés sur le VPS mais **jamais commités**. Conséquences
+concrètes :
+
+- dans le dépôt — donc sur toute autre machine, et pour toute relecture humaine — **ils n'existent
+  pas** ;
+- l'image Docker, construite depuis git, embarque une documentation **figée au 04/08**. Le montage
+  la masque en production… tant qu'il tient. Le jour où il saute, l'écran affiche une documentation
+  vieille d'une semaine **sans rien signaler**.
+
+Donc, à chaque passage, après le §11.a :
+
+```bash
+git add docs/centre-alerte
+```
+
+```bash
+git commit -m "docs(centre-alerte): audit du <AAAA-MM-JJ>"
+```
+
+| Règle | Pourquoi |
+|---|---|
+| **`git add docs/centre-alerte` — jamais `-A`, jamais `.`** | Le dépôt est partagé ; d'autres sessions ont du travail en cours. Le chemin explicite est la seule protection. |
+| **Aucun `git push`** | Pousser une branche est une décision humaine. La production, elle, est déjà à jour par la copie du §11.a. |
+| **Vérifier la branche avant de committer** (`git branch --show-current`) | Un commit de documentation sur une branche de fonctionnalité en cours reste acceptable, mais il faut le savoir et le dire dans la restitution. |
+
+> **Les trois gestes sont distincts et aucun ne remplace les autres :** écrire le fichier
+> (le rapport existe), le copier sur le VPS (l'écran le montre), le committer (il survit).
+> Sauter le troisième ne se voit nulle part — c'est exactement pourquoi il faut une consigne.
+
 ### Ce qui est automatique — et ce qui ne l'est pas
 
 | | |
 |---|---|
 | **La liste des documents** | 🤖 **Automatique.** Un `.md` déposé apparaît, sans rien déclarer. C'est délibéré : un rapport écrit chaque nuit ne doit pas pouvoir devenir invisible à cause d'un oubli. |
 | **Le journal des passages** | ✍️ **À écrire.** « Ce qui a été fait » ne se devine pas d'une liste de fichiers. |
+| **La copie sur le VPS (§11.a)** | ✍️ **À faire.** Sans elle, le rapport n'existe que sur le PC. |
+| **Le commit (§11.b)** | ✍️ **À faire.** Sans lui, le rapport n'existe que sur le VPS — et disparaît du dépôt comme de l'image. |
 
 ### Ce qu'il faut donc faire, à chaque passage
 

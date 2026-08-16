@@ -1,0 +1,21 @@
+-- Surveillance : le week-end peut être permanent (décision client du 2026-08-16).
+--
+-- « Un week-end n'a pas d'heures ouvrées. » Un profil réglé 20:00-06:00 sur 7 jours
+-- laissait le samedi de 06:00 à 20:00 SANS protection — quatorze heures où un dépôt
+-- est vide et où personne ne passe.
+--
+-- ⚠️ DEFAULT false, ET C'EST LE POINT DE CETTE MIGRATION.
+--
+-- Basculer les profils existants à 24 h le week-end changerait le comportement
+-- d'antivols DEJA EN SERVICE sans que personne l'ait demandé : plus de protection,
+-- mais aussi plus de déclenchements sur une manœuvre légitime du samedi après-midi.
+-- Personne n'aurait touché à son réglage, et son antivol ne se comporterait plus
+-- pareil.
+--
+-- C'est la même prudence que `20260810120000_surveillance_horaires_locaux`, dont la
+-- règle tenait en une phrase : aucun véhicule ne change de fenêtre de protection au
+-- déploiement. L'écran, lui, propose la case cochée à la CREATION d'un profil.
+--
+-- Migration additive et réversible : aucune donnée transformée, aucune ligne relue.
+ALTER TABLE "surveillance_profiles"
+  ADD COLUMN "weekendPermanent" BOOLEAN NOT NULL DEFAULT false;

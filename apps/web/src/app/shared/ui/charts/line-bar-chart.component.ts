@@ -283,8 +283,8 @@ function readColors() {
     fgPrimary: get('--fg-primary', '#F0FDF9'),
     fgSecondary: get('--fg-secondary', '#A7C7BC'),
     fgTertiary: get('--fg-tertiary', '#5C746C'),
-    borderSubtle: get('--border-subtle', 'rgba(16,224,160,0.08)'),
-    trackyAlpha15: 'rgba(16, 224, 160, 0.15)',
-    trackyAlpha20: 'rgba(16, 224, 160, 0.20)',
+    borderSubtle: get('--border-subtle', 'color-mix(in srgb, var(--color-tracky-light) 8%, transparent)'),
+    trackyAlpha15: 'color-mix(in srgb, var(--color-tracky-light) 15%, transparent)',
+    trackyAlpha20: 'color-mix(in srgb, var(--color-tracky-light) 20%, transparent)',
   };
 }

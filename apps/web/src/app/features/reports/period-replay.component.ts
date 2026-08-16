@@ -83,6 +83,29 @@ interface StopSegment {
 }
 type Segment = TripSegment | StopSegment;
 
+/** Un bloc dessiné dans la barre d'un jour : un trajet plein, un arrêt creux. */
+interface BlocJour {
+  kind: 'trip' | 'stop';
+  gauche: number;
+  largeur: number;
+}
+
+/**
+ * Une journée de la période, avec sa propre barre.
+ *
+ * La fenêtre d'une journée va de son PREMIER départ à sa DERNIÈRE arrivée, pas de
+ * 00:00 à 24:00 : c'est ce qui fait disparaître les nuits. Sur une frise continue de
+ * trois jours, elles mangeaient la majeure partie de la barre sans rien porter.
+ */
+interface Journee {
+  cle: string;
+  libelle: string;
+  nbTrajets: number;
+  debutMs: number;
+  finMs: number;
+  blocs: BlocJour[];
+}
+
 interface TimelineState {
   segments: Segment[];
   totalMs: number;
@@ -115,14 +138,14 @@ interface TimelineState {
               <div class="flex items-baseline gap-2 flex-wrap">
                 <strong class="text-fg-primary text-sm sm:text-base">Replay période</strong>
                 @if (vehiclePlate()) {
-                  <span class="text-[11px] font-bold uppercase tracking-wider text-tracky-light
+                  <span class="pr-plaque text-[11px] font-bold uppercase tracking-wider
                                px-1.5 py-0.5 rounded bg-tracky/15 border border-tracky/25">
                     {{ vehiclePlate() }}
                   </span>
                 }
               </div>
               @if (timeline(); as tl) {
-                <div class="text-[11px] text-fg-tertiary mt-0.5 truncate">
+                <div class="text-[11px] text-fg-secondary mt-0.5 truncate">
                   {{ tl.segments.length }} étape{{ tl.segments.length > 1 ? 's' : '' }} ·
                   {{ tripCount() }} trajet{{ tripCount() > 1 ? 's' : '' }} ·
                   {{ (tl.totalDistanceMeters / 1000) | number:'1.1-1' }} km
@@ -132,7 +155,7 @@ interface TimelineState {
             <button (click)="onClose()"
                     aria-label="Fermer le replay"
                     class="shrink-0 inline-flex items-center justify-center
-                           w-9 h-9 rounded-full bg-bg-tertiary/80 backdrop-blur-sm
+                           w-11 h-11 rounded-full bg-bg-tertiary/80 backdrop-blur-sm
                            text-fg-secondary hover:text-fg-primary hover:bg-bg-tertiary
                            border border-border-subtle cursor-pointer transition-colors">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
@@ -147,6 +170,7 @@ interface TimelineState {
                Map container = flex-1 (pas absolute inset-0) : MapLibre prefere
                un container en flow normal plutot qu'un absolute dans un
                parent flex (cause de bugs silencieux d'init constates en prod). -->
+          <div class="pr-corps">
           <div class="relative flex-1 flex flex-col min-h-[280px]">
             <div #mapContainer
                  id="period-replay-map-container"
@@ -186,12 +210,12 @@ interface TimelineState {
                     } @else {
                       <span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase
                                    tracking-wider px-1.5 py-0.5 rounded
-                                   bg-bg-tertiary text-fg-tertiary border border-border-subtle">
+                                   bg-bg-tertiary text-fg-secondary border border-border-subtle">
                         Prêt
                       </span>
                     }
                     @if (currentTripIndex() >= 0) {
-                      <span class="text-[10px] text-fg-tertiary font-mono">
+                      <span class="text-[10px] text-fg-secondary font-mono">
                         Trajet {{ currentTripIndex() + 1 }}/{{ tripCount() }}
                       </span>
                     }
@@ -202,24 +226,24 @@ interface TimelineState {
                   <div class="font-mono text-fg-primary text-base sm:text-lg leading-none">
                     {{ currentTimestamp() | date:'HH:mm:ss' }}
                   </div>
-                  <div class="text-[11px] text-fg-tertiary leading-none">
+                  <div class="text-[11px] text-fg-secondary leading-none">
                     {{ currentTimestamp() | date:'EEE dd MMM' }}
                   </div>
                 </div>
 
                 <div class="mt-2 grid grid-cols-3 gap-2">
                   <div>
-                    <div class="text-[9px] text-fg-tertiary uppercase tracking-wider">Vitesse</div>
+                    <div class="text-[9px] text-fg-secondary uppercase tracking-wider">Vitesse</div>
                     <div class="font-mono text-fg-primary text-sm flex items-baseline gap-0.5">
                       <span>{{ currentSpeedKmh() | number:'1.0-0' }}</span>
-                      <span class="text-[9px] text-fg-tertiary">km/h</span>
+                      <span class="text-[9px] text-fg-secondary">km/h</span>
                     </div>
                   </div>
                   <div>
-                    <div class="text-[9px] text-fg-tertiary uppercase tracking-wider">Parcouru</div>
+                    <div class="text-[9px] text-fg-secondary uppercase tracking-wider">Parcouru</div>
                     <div class="font-mono text-fg-primary text-sm flex items-baseline gap-0.5">
                       <span>{{ (cumulDistanceM() / 1000) | number:'1.1-1' }}</span>
-                      <span class="text-[9px] text-fg-tertiary">km</span>
+                      <span class="text-[9px] text-fg-secondary">km</span>
                     </div>
                   </div>
                   <div>
@@ -229,7 +253,7 @@ interface TimelineState {
                         {{ formatDur(currentStopRemainingMs() / 1000) }}
                       </div>
                     } @else {
-                      <div class="text-[9px] text-fg-tertiary uppercase tracking-wider">Écoulé</div>
+                      <div class="text-[9px] text-fg-secondary uppercase tracking-wider">Écoulé</div>
                       <div class="font-mono text-fg-primary text-sm">
                         {{ formatDur(virtualMs() / 1000) }}
                       </div>
@@ -240,34 +264,73 @@ interface TimelineState {
             }
           </div>
 
+          <!-- Les trajets de la période, cliquables. Le curseur seul obligeait à
+               chercher à l'aveugle le début d'un trajet précis. -->
+          @if (trajets().length) {
+            <aside class="pr-aside">
+              <h3 class="pr-aside-titre">
+                Les trajets
+                <span>{{ trajets().length }}</span>
+              </h3>
+              <ul class="pr-trajets">
+                @for (t of trajets(); track t.startMs) {
+                  <li>
+                    <button type="button" class="pr-trajet"
+                            [class.pr-trajet--on]="currentTripIndex() + 1 === t.rang"
+                            (click)="allerAMs(t.startMs)">
+                      <span class="pr-trajet-r">{{ t.rang }}</span>
+                      <span class="pr-trajet-c">
+                        <span class="pr-trajet-h">{{ t.heure }}</span>
+                        <span class="pr-trajet-d">{{ t.distance }} · {{ t.duree }}</span>
+                      </span>
+                    </button>
+                  </li>
+                }
+              </ul>
+            </aside>
+          }
+          </div>
+
           <!-- Footer : controles play/pause + scrubber + speed -->
           <div class="shrink-0 border-t border-border-subtle bg-bg-secondary/95 backdrop-blur
                       px-3 sm:px-4 py-3 flex flex-col gap-2">
 
-            <!-- Timeline scrubber : segments colores + cursor -->
-            <div #scrubberRef class="relative h-7 rounded-md overflow-hidden bg-bg-tertiary
-                                      cursor-pointer touch-none select-none"
-                 (pointerdown)="onScrubberPointer($event)"
-                 (pointermove)="onScrubberPointerMove($event)"
-                 (pointerup)="onScrubberPointerUp($event)">
-              @if (timeline(); as tl) {
-                @for (seg of tl.segments; track $index) {
-                  <div class="absolute top-0 bottom-0"
-                       [class]="seg.kind === 'trip' ? 'pr-seg-trip' : 'pr-seg-stop'"
-                       [style.left.%]="(seg.startMs - tl.segments[0].startMs) / tl.totalMs * 100"
-                       [style.width.%]="seg.durationMs / tl.totalMs * 100"
-                       [title]="seg.kind === 'trip' ? 'Trajet' : 'Arrêt'"></div>
-                }
-                <!-- Cursor de lecture -->
-                <div class="absolute top-0 bottom-0 w-[2px] bg-fg-primary shadow-md pointer-events-none"
-                     [style.left.%]="(virtualMs() / tl.totalMs) * 100"></div>
+            <!-- UNE BARRE PAR JOUR. Une frise continue de trois jours laissait les
+                 nuits occuper la majeure partie de la barre sans rien porter, et
+                 ne disait pas quel jour avait eu de l'activité. -->
+            <div class="pr-jours">
+              @for (j of journees(); track j.cle) {
+                <div class="pr-jour">
+                  <div class="pr-jour-h">
+                    <span class="pr-jour-nom">{{ j.libelle }}</span>
+                    <span class="pr-jour-n">{{ j.nbTrajets }} trajet{{ j.nbTrajets > 1 ? 's' : '' }}</span>
+                  </div>
+                  <div class="pr-barre touch-none select-none"
+                       role="slider" tabindex="0"
+                       [attr.aria-label]="'Position dans la journée du ' + j.libelle"
+                       [attr.aria-valuetext]="j.nbTrajets + ' trajets'"
+                       (pointerdown)="onBarreJour($event, j)">
+                    @for (b of j.blocs; track $index) {
+                      <div class="absolute top-0 bottom-0"
+                           [class]="b.kind === 'trip' ? 'pr-seg-trip' : 'pr-seg-stop'"
+                           [style.left.%]="b.gauche" [style.width.%]="b.largeur"
+                           [title]="b.kind === 'trip' ? 'Trajet' : 'Arrêt'"></div>
+                    }
+                    @if (curseurDansJour(j); as c) {
+                      <div class="pr-curseur" [style.left.%]="c.pos"></div>
+                    }
+                  </div>
+                </div>
+              }
+              @if (journees().length) {
+                <p class="pr-jours-note">Les creux sont les arrêts. Une barre s'arrête à la dernière arrivée du jour.</p>
               }
             </div>
 
             <!-- Controles -->
             <div class="flex items-center gap-2 sm:gap-3">
               <button (click)="togglePlay()"
-                      class="shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-full
+                      class="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-full
                              bg-tracky/15 border border-tracky/30 text-tracky-light
                              hover:bg-tracky/25 cursor-pointer transition-colors"
                       [attr.aria-label]="playing() ? 'Pause' : 'Lecture'">
@@ -278,26 +341,28 @@ interface TimelineState {
                 }
               </button>
 
-              <div class="flex-1 min-w-0 flex flex-wrap gap-1 justify-end">
+              <div class="flex-1 min-w-0 flex flex-wrap gap-1 justify-end items-center">
                 @for (preset of speedPresets; track preset.label) {
-                  <button (click)="setSpeed(preset.factor)"
-                          class="px-2 sm:px-2.5 py-1 text-[11px] rounded-md cursor-pointer
-                                 transition-colors min-h-[28px]"
-                          [class]="speedFactor() === preset.factor
-                            ? 'bg-tracky/20 text-tracky-light border border-tracky/30'
-                            : 'bg-bg-tertiary text-fg-tertiary border border-border-subtle hover:text-fg-secondary'">
+                  <button (click)="setSpeed(preset.factor)" class="pr-mult"
+                          [attr.aria-pressed]="speedFactor() === preset.factor && !autoSpeed()"
+                          [class.pr-mult--on]="speedFactor() === preset.factor && !autoSpeed()">
                     {{ preset.label }}
                   </button>
                 }
-                <button (click)="setSpeedAuto()"
-                        class="px-2 sm:px-2.5 py-1 text-[11px] rounded-md cursor-pointer
-                               transition-colors min-h-[28px]"
-                        [class]="autoSpeed() ? 'bg-tracky/20 text-tracky-light border border-tracky/30'
-                                              : 'bg-bg-tertiary text-fg-tertiary border border-border-subtle hover:text-fg-secondary'">
+                <button (click)="setSpeedAuto()" class="pr-mult"
+                        [attr.aria-pressed]="autoSpeed()"
+                        [class.pr-mult--on]="autoSpeed()">
                   Adapter
                 </button>
               </div>
             </div>
+
+            <!-- « 600× » ne dit ni ce qu'une seconde représente, ni combien de temps
+                 on va rester devant l'écran. Et « Adapter » choisissait un facteur
+                 sans jamais le dire : il est nommé ici. -->
+            <p class="pr-equiv">
+              @if (autoSpeed()) { <strong>Adapté à {{ speedFactor() }}×</strong> — } {{ equivalentVitesse() }}
+            </p>
           </div>
         </div>
       </div>
@@ -326,6 +391,77 @@ interface TimelineState {
         color-mix(in srgb, var(--fg-tertiary) 25%, transparent) 0 4px,
         color-mix(in srgb, var(--fg-tertiary) 12%, transparent) 4px 8px);
     }
+
+    /* ─── Une barre par jour ─── */
+    .pr-jours { display: grid; gap: 6px; }
+    .pr-jour { display: grid; gap: 3px; }
+    .pr-jour-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .pr-jour-nom { font-size: 11.5px; font-weight: 700; color: var(--fg-primary); text-transform: capitalize; }
+    .pr-jour-n { font-size: 11px; color: var(--fg-secondary); }
+    /* 44 px : la barre est la commande principale de cet ecran, et elle se saisit
+       au doigt. La hauteur VUE reste fine — le reste est de la surface de visee. */
+    .pr-barre {
+      position: relative; height: 44px; border-radius: 8px; overflow: hidden;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      cursor: pointer;
+    }
+    .pr-curseur {
+      position: absolute; top: 0; bottom: 0; width: 2px;
+      background: var(--fg-primary); box-shadow: 0 0 0 1px var(--bg-secondary);
+      pointer-events: none;
+    }
+    .pr-jours-note { margin: 2px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-secondary); }
+    /* La plaque etait en text-tracky-light sur un lavis vert : 3,43:1 en clair.
+       --texte-succes est la valeur assombrie prevue pour du petit texte. */
+    .pr-plaque { color: var(--texte-succes); }
+    .pr-equiv { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--fg-secondary); text-align: right; }
+    .pr-equiv strong { color: var(--fg-primary); font-weight: 700; }
+    .pr-mult {
+      min-height: 44px; min-width: 44px; padding: 0 10px; border-radius: 10px;
+      font-size: 11.5px; font-weight: 600; cursor: pointer;
+      background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .pr-mult--on {
+      background: color-mix(in srgb, var(--color-tracky-light) 18%, transparent);
+      color: var(--texte-succes); border-color: transparent;
+    }
+
+    /* ─── Les trajets, a cote de la carte au-dela de 1024 px ─── */
+    .pr-corps { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    .pr-aside {
+      display: flex; flex-direction: column; min-height: 0; max-height: 34%;
+      border-top: 1px solid var(--border-subtle); background: var(--bg-secondary);
+    }
+    @media (min-width: 1024px) {
+      .pr-corps { flex-direction: row; }
+      .pr-aside { max-height: none; width: 280px; flex: none; border-top: none; border-left: 1px solid var(--border-subtle); }
+    }
+    .pr-aside-titre {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+      margin: 0; padding: 10px 12px 6px; font-size: 12.5px; font-weight: 700; color: var(--fg-primary);
+    }
+    .pr-aside-titre span { font-size: 11px; font-weight: 600; color: var(--fg-secondary); }
+    .pr-trajets { list-style: none; margin: 0; padding: 0 8px 10px; overflow-y: auto; display: grid; gap: 3px; }
+    .pr-trajet {
+      width: 100%; min-height: 44px; display: flex; align-items: center; gap: 9px;
+      padding: 6px 8px; border-radius: 9px; text-align: left; cursor: pointer;
+      background: transparent; border: 1px solid transparent;
+    }
+    .pr-trajet:hover { background: var(--bg-tertiary); }
+    .pr-trajet--on {
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 30%, transparent);
+    }
+    .pr-trajet-r {
+      flex: none; width: 22px; height: 22px; border-radius: 7px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--bg-quaternary); color: var(--fg-primary);
+      font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+    }
+    .pr-trajet--on .pr-trajet-r { background: color-mix(in srgb, var(--color-tracky-light) 22%, transparent); color: var(--texte-succes); }
+    .pr-trajet-c { display: grid; gap: 1px; min-width: 0; }
+    .pr-trajet-h { font-size: 12px; font-weight: 600; color: var(--fg-primary); text-transform: capitalize; }
+    .pr-trajet-d { font-size: 11px; color: var(--fg-secondary); }
     /* Mobile : reduit le HUD pour ne pas couvrir trop de carte */
     @media (max-width: 640px) {
       .pr-hud { font-size: 12px; }
@@ -340,7 +476,6 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   readonly closed = output<void>();
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
-  private readonly scrubberRef = viewChild<ElementRef<HTMLDivElement>>('scrubberRef');
   private readonly mapSvc = inject(MapService);
   private readonly preferences = inject(PreferencesService);
 
@@ -380,15 +515,141 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   protected readonly speedPresets = [
     { label: '60×', factor: 60 },     // 1 min reelle / sec
     { label: '600×', factor: 600 },   // 10 min / sec
+    { label: '1800×', factor: 1800 }, // 30 min / sec — l'ecart 600 -> 3600 etait trop grand
     { label: '3600×', factor: 3600 }, // 1 h / sec
   ];
+
+  /**
+   * Ce que le multiplicateur veut dire, en clair : ce qu'une seconde de lecture
+   * représente, et le temps qu'on va rester devant l'écran. « 600× » ne le dit pas.
+   */
+  protected readonly equivalentVitesse = computed(() => {
+    const f = this.speedFactor();
+    const tl = this.timeline();
+    const parSeconde = this.dureeCourte(f);
+    if (!tl || tl.totalMs <= 0) return `${parSeconde} par seconde`;
+    return `${parSeconde} par seconde · la période en ${this.dureeCourte(tl.totalMs / 1000 / f)}`;
+  });
+
+  /**
+   * Une barre PAR JOUR, plutôt qu'une frise continue.
+   *
+   * On voit immédiatement quel jour a eu de l'activité, et les nuits ne mangent plus
+   * la barre : chaque journée s'étend de son premier départ à sa dernière arrivée.
+   * Un segment est rattaché au jour où il COMMENCE — un arrêt de nuit appartient à
+   * la soirée qui l'ouvre, pas au matin qui le referme.
+   */
+  protected readonly journees = computed<Journee[]>(() => {
+    const tl = this.timeline();
+    if (!tl || tl.segments.length === 0) return [];
+
+    const groupes = new Map<string, Segment[]>();
+    for (const s of tl.segments) {
+      const d = new Date(s.startMs);
+      const cle = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+      const liste = groupes.get(cle);
+      if (liste) liste.push(s); else groupes.set(cle, [s]);
+    }
+
+    const out: Journee[] = [];
+    for (const [cle, segs] of groupes) {
+      // La fenêtre est bornée par les TRAJETS, pas par les segments. Un arrêt du soir
+      // court jusqu'au lendemain matin : le borner sur lui étirerait la barre sur la
+      // nuit, et elle en occuperait la majeure partie — mesuré à 58 % et 71 %, soit
+      // exactement le défaut que cette barre par jour existe pour supprimer.
+      const trajets = segs.filter((s) => s.kind === 'trip');
+      const bornes = trajets.length ? trajets : segs;
+      const debutMs = Math.min(...bornes.map((s) => s.startMs));
+      const finMs = Math.max(...bornes.map((s) => s.endMs));
+      const etendue = Math.max(1, finMs - debutMs);
+
+      const blocs: BlocJour[] = [];
+      for (const s of segs) {
+        // Un segment qui sort de la fenêtre est rogné ; celui qui n'y entre pas
+        // du tout — la nuit — n'est pas dessiné.
+        const d = Math.max(s.startMs, debutMs);
+        const f = Math.min(s.endMs, finMs);
+        if (f <= d) continue;
+        const gauche = ((d - debutMs) / etendue) * 100;
+        const largeur = ((f - d) / etendue) * 100;
+        blocs.push({ kind: s.kind, gauche, largeur: Math.max(0.4, Math.min(100 - gauche, largeur)) });
+      }
+
+      out.push({
+        cle,
+        libelle: new Date(debutMs).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }),
+        nbTrajets: trajets.length,
+        debutMs, finMs, blocs,
+      });
+    }
+    return out.sort((a, b) => a.debutMs - b.debutMs);
+  });
+
+  /** Les trajets de la période, cliquables — on saute au départ de celui qu'on désigne. */
+  protected readonly trajets = computed(() => {
+    const tl = this.timeline();
+    if (!tl) return [];
+    return tl.segments
+      .filter((s): s is TripSegment => s.kind === 'trip')
+      .map((s, i) => ({
+        rang: i + 1,
+        startMs: s.startMs,
+        heure: new Date(s.startMs).toLocaleString('fr-FR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }),
+        distance: `${(s.totalDistMeters / 1000).toFixed(1)} km`,
+        duree: this.dureeCourte(s.durationMs / 1000),
+      }));
+  });
+
+  /** « 45 s », « 12 min », « 3 h 20 », « 2 j 4 h » — court, sans zéro inutile. */
+  protected dureeCourte(secondes: number): string {
+    const s = Math.max(0, Math.round(secondes));
+    if (s < 60) return `${s} s`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    if (h < 24) return rm ? `${h} h ${String(rm).padStart(2, '0')}` : `${h} h`;
+    const j = Math.floor(h / 24);
+    const rh = h % 24;
+    return rh ? `${j} j ${rh} h` : `${j} j`;
+  }
+
+  /**
+   * Position du curseur dans la barre d'un jour — `null` si la lecture est ailleurs.
+   *
+   * Renvoie un OBJET et non un nombre : `@if (…; as pos)` teste la véracité, et une
+   * position de `0 %` — le tout début d'une journée — est fausse. Le curseur
+   * disparaissait donc au premier trajet de chaque jour.
+   */
+  protected curseurDansJour(j: Journee): { pos: number } | null {
+    const tl = this.timeline();
+    if (!tl || tl.segments.length === 0) return null;
+    const absolu = tl.segments[0]!.startMs + this.virtualMs();
+    if (absolu < j.debutMs || absolu > j.finMs) return null;
+    return { pos: ((absolu - j.debutMs) / Math.max(1, j.finMs - j.debutMs)) * 100 };
+  }
+
+  /** Saute à une date absolue de la période. */
+  protected allerAMs(absoluMs: number): void {
+    const tl = this.timeline();
+    if (!tl || tl.segments.length === 0) return;
+    const cible = Math.max(0, Math.min(tl.totalMs, absoluMs - tl.segments[0]!.startMs));
+    this.virtualMs.set(cible);
+    this.applyVirtualMs(tl, cible, /* updateCumul= */ true);
+  }
+
+  protected onBarreJour(ev: PointerEvent, j: Journee): void {
+    const el = ev.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+    this.allerAMs(j.debutMs + ratio * (j.finMs - j.debutMs));
+  }
 
   private map: MlMap | null = null;
   private marker: MlMarker | null = null;
   private markerEl: HTMLElement | null = null;
   private animId: number | null = null;
   private lastFrameTime = 0;
-  private scrubberDragging = false;
   private resizeObserver: ResizeObserver | null = null;
 
   // --- Lifecycle ---
@@ -468,30 +729,11 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
 
   // --- Scrubber pointer interactions ---
 
-  protected onScrubberPointer(ev: PointerEvent): void {
-    this.scrubberDragging = true;
-    (ev.target as HTMLElement).setPointerCapture(ev.pointerId);
-    this.seekFromPointer(ev);
-  }
-  protected onScrubberPointerMove(ev: PointerEvent): void {
-    if (!this.scrubberDragging) return;
-    this.seekFromPointer(ev);
-  }
-  protected onScrubberPointerUp(ev: PointerEvent): void {
-    this.scrubberDragging = false;
-    try { (ev.target as HTMLElement).releasePointerCapture(ev.pointerId); } catch { /* */ }
-  }
-
-  private seekFromPointer(ev: PointerEvent): void {
-    const el = this.scrubberRef()?.nativeElement;
-    const tl = this.timeline();
-    if (!el || !tl) return;
-    const rect = el.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-    const targetMs = ratio * tl.totalMs;
-    this.virtualMs.set(targetMs);
-    this.applyVirtualMs(tl, targetMs, /* updateCumul= */ true);
-  }
+  /*
+   * La frise UNIQUE et ses trois gestionnaires de pointeur vivaient ici. Elle est
+   * remplacee par une barre par jour : chacune connait sa propre fenetre de temps,
+   * donc `onBarreJour()` suffit — il n'y a plus de ratio global a projeter.
+   */
 
   // --- Animation ---
 

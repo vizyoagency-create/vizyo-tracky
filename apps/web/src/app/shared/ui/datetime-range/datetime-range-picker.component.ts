@@ -142,7 +142,7 @@ interface DayCell {
       transition: border-color .15s, box-shadow .15s;
     }
     .dtr-field:hover { border-color: var(--tracky-light); }
-    .dtr-field--open { border-color: var(--tracky-light); box-shadow: 0 0 0 3px rgba(16,224,160,.14); }
+    .dtr-field--open { border-color: var(--tracky-light); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-tracky-light) 14%, transparent); }
     .dtr-field-ic { color: var(--tracky-light); flex-shrink: 0; }
     .dtr-field-txt { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dtr-field-txt--ph { color: var(--fg-tertiary); font-weight: 500; }
@@ -193,7 +193,7 @@ interface DayCell {
     .dtr-day--range { background: color-mix(in srgb, var(--tracky-light) 15%, transparent); border-radius: 0; color: var(--fg-primary); }
     /* Bornes de la plage : pastille pleine accent. */
     .dtr-day--start, .dtr-day--end {
-      background: var(--tracky-light); color: var(--accent-ink, #04130D); font-weight: 800;
+      background: var(--tracky-light); color: var(--accent-ink); font-weight: 800;
     }
     .dtr-day--start { border-radius: 9px 0 0 9px; }
     .dtr-day--end { border-radius: 0 9px 9px 0; }
@@ -211,12 +211,12 @@ interface DayCell {
     .dtr-time input:focus { outline: none; border-color: var(--tracky-light); }
     .dtr-arrow { padding-bottom: 9px; color: var(--fg-tertiary); font-size: 15px; font-weight: 700; }
 
-    .dtr-warn { margin: 9px 0 0; font-size: 11.5px; font-weight: 600; color: var(--danger, #EF4444); }
+    .dtr-warn { margin: 9px 0 0; font-size: 11.5px; font-weight: 600; color: var(--danger); }
 
     .dtr-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border-subtle); }
     .dtr-today { font-size: 12.5px; font-weight: 700; color: var(--tracky-light); padding: 4px 2px; }
     .dtr-today:hover { text-decoration: underline; }
-    .dtr-done { display: inline-flex; align-items: center; gap: 5px; padding: 8px 15px; border-radius: 9px; background: var(--tracky-light); color: var(--accent-ink, #04130D); font-size: 12.5px; font-weight: 800; }
+    .dtr-done { display: inline-flex; align-items: center; gap: 5px; padding: 8px 15px; border-radius: 9px; background: var(--tracky-light); color: var(--accent-ink); font-size: 12.5px; font-weight: 800; }
 
     /* Dark : traits renforcés (les bordures à 8 % blanc sont quasi invisibles). */
     :host-context([data-theme='dark']) .dtr-field,

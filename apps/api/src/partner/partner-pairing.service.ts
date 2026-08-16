@@ -191,6 +191,7 @@ export class PartnerPairingService {
       billingStatus: link.billingStatus,
       organizationName: link.externalOrgName,
       scopes: parsePartnerScopes(link.scopes),
+      volume30j: await this.volumeParCategorie(fleetId, parsePartnerScopes(link.scopes)),
       approvedAt: link.approvedAt,
       lastSeenAt: link.lastSeenAt,
       revokedAt: link.revokedAt,
@@ -202,6 +203,59 @@ export class PartnerPairingService {
         createdAt: e.createdAt,
       })),
     };
+  }
+
+  /**
+   * CE QUE CHAQUE CATÉGORIE DONNE À VOIR, sur 30 jours glissants — « 3 412 trajets ».
+   *
+   * ┌───────────────────────────────────────────────────────────────────────────┐
+   * │ ON COMPTE CE QUI EST EXPOSÉ, PAS CE QUI A ÉTÉ LU                           │
+   * │                                                                            │
+   * │ Rien n'enregistre aujourd'hui ce que le partenaire consulte réellement —   │
+   * │ l'outbox ne porte que les révocations. Instrumenter chaque lecture serait  │
+   * │ un autre chantier, et le nombre obtenu répondrait à « combien il a pris », │
+   * │ pas à la question de l'écran.                                              │
+   * │                                                                            │
+   * │ Or cet écran est un écran de CONSENTEMENT : ce qui s'y décide, c'est ce à  │
+   * │ quoi on ouvre l'accès. « 3 412 trajets » veut donc dire « cocher cette     │
+   * │ case donne accès à 3 412 trajets » — et c'est bien ce chiffre-là qui aide  │
+   * │ à décider, y compris quand le partenaire n'a encore rien lu.               │
+   * └───────────────────────────────────────────────────────────────────────────┘
+   *
+   * Une catégorie ÉTEINTE n'est pas comptée : afficher un volume pour un accès
+   * fermé laisserait croire qu'il circule quelque chose.
+   */
+  private async volumeParCategorie(
+    fleetId: string,
+    scopes: PartnerScope[],
+  ): Promise<Record<string, number>> {
+    const actifs = new Set(scopes);
+    const depuis = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    const volume: Record<string, number> = {};
+
+    const compter = async (scope: PartnerScope, fn: () => Promise<number>): Promise<void> => {
+      if (!actifs.has(scope)) return;
+      try {
+        volume[scope] = await fn();
+      } catch {
+        // Best-effort : un compteur indisponible ne doit pas casser l'écran de
+        // consentement. Absent du dictionnaire = l'écran n'affiche rien pour
+        // cette ligne, plutôt qu'un zéro qui affirmerait « aucune donnée ».
+      }
+    };
+
+    await Promise.all([
+      compter('VEHICLE_IDENTITY', () => this.prisma.vehicle.count({ where: { fleetId } })),
+      compter('DRIVER_IDENTITY', () => this.prisma.driver.count({ where: { fleetId } })),
+      compter('MILEAGE_TRIPS', () =>
+        this.prisma.trip.count({ where: { fleetId, startedAt: { gte: depuis } } })),
+      compter('FUEL', () =>
+        this.prisma.tripFuelStop.count({ where: { fleetId, createdAt: { gte: depuis } } })),
+      compter('ALERTS', () =>
+        this.prisma.alert.count({ where: { fleetId, createdAt: { gte: depuis } } })),
+    ]);
+
+    return volume;
   }
 
   /**

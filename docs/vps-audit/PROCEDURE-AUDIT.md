@@ -15,9 +15,11 @@ agent) puisse refaire le même passage et obtenir des chiffres comparables.
 | **Ce qui va bien se dit aussi.** | Un rapport qui ne liste que des problèmes empêche de voir qu'un problème a disparu. |
 | **Tout parcours de disque est borné.** | Sur 2 vCPU, un `du /` non borné fausse la mesure de charge qu'il est censé produire. |
 
-> ⚠️ **La seule exception d'écriture** : l'agent met à jour `docs/vps-audit/` (rapport,
-> référentiel, manifeste) **dans le dépôt local**. Il ne commite pas, il ne pousse pas, et il
-> n'écrit jamais sur le VPS.
+> ⚠️ **Les seules écritures autorisées**, et elles sont toutes dans `docs/vps-audit/` : mettre à
+> jour le rapport, le référentiel et le manifeste dans le dépôt local, **copier** le dossier vers
+> `/opt/tracky-vps-audit` sur le VPS (§8 — un dossier dédié, hors de l'arbre git du serveur), et
+> **committer ce seul chemin** (§8 bis). Aucun `git push`, aucune autre écriture sur le VPS,
+> aucun fichier hors de `docs/vps-audit/`.
 
 ---
 
@@ -291,6 +293,42 @@ trouvé.
 
 ---
 
+## 8 bis. Committer la documentation (obligatoire depuis le 2026-08-11)
+
+**La copie du §8 ne suffit pas, et l'oublier a coûté six rapports.** Constaté le 2026-08-11 : les
+rapports du 05/08 au 10/08 étaient publiés sur le VPS mais **jamais commités**. Conséquences
+concrètes :
+
+- dans le dépôt — donc sur toute autre machine, et pour toute relecture humaine — **ils n'existent
+  pas** ;
+- l'image Docker, construite depuis git, embarque une documentation **figée au 04/08**. Le montage
+  la masque en production… tant qu'il tient. Le jour où il saute, l'écran affiche une documentation
+  vieille d'une semaine **sans rien signaler** — exactement le mode de panne que le `mkdir -p` du
+  §8 existe déjà pour éviter, sous une autre forme.
+
+Donc, à chaque passage, après le §8 :
+
+```bash
+git add docs/vps-audit
+```
+
+```bash
+git commit -m "docs(vps-audit): audit du <AAAA-MM-JJ>"
+```
+
+| Règle | Pourquoi |
+|---|---|
+| **`git add docs/vps-audit` — jamais `-A`, jamais `.`** | Le dépôt est partagé ; d'autres sessions ont du travail en cours qu'un `-A` emporterait. Le chemin explicite est la seule protection. |
+| **Aucun `git push`** | Pousser une branche est une décision humaine. La production, elle, est déjà à jour par la copie du §8. |
+| **Relire la collecte brute avant de la committer** | `collectes/*.txt` est une sortie de commandes **non retouchée** : elle est versionnée, donc elle ne doit porter ni mot de passe, ni clé, ni URL de connexion complète. Vérifié le 2026-08-11 sur les trois fichiers existants — seuls des **noms** d'options `sshd` y apparaissent, aucune valeur secrète. Refaire ce contrôle si `collecte.sh` gagne une commande qui lit un environnement (`docker inspect`, `env`, `cat .env`). |
+| **Vérifier la branche** (`git branch --show-current`) | Un commit de documentation sur une branche de fonctionnalité reste acceptable, mais il faut le savoir et le dire dans la restitution. |
+
+> **Les trois gestes sont distincts et aucun ne remplace les autres :** écrire le fichier
+> (le rapport existe), le copier sur le VPS (l'écran le montre), le committer (il survit).
+> Sauter le troisième ne se voit nulle part — c'est exactement pourquoi il faut une consigne.
+
+---
+
 ## 9. Ce que l'audit ne fait pas
 
 Écrit noir sur blanc pour éviter les malentendus :
@@ -299,7 +337,10 @@ trouvé.
 - **Il ne redémarre rien.** Ni conteneur, ni service, ni machine.
 - **Il n'installe rien.** `fail2ban` est *recommandé*, jamais posé.
 - **Il ne modifie aucune configuration.** Ni `sshd_config`, ni `docker-compose`, ni Postgres.
-- **Il ne commite pas et ne pousse pas.** Les fichiers de `docs/vps-audit/` sont modifiés
-  localement ; la revue et le commit restent humains.
+- **Il ne pousse pas, et ne commite que `docs/vps-audit/`** (§8 bis), par chemin explicite. Tout
+  le reste du dépôt appartient à quelqu'un d'autre. *L'ancienne règle — « il ne commite pas, la
+  revue et le commit restent humains » — a été retirée le 2026-08-11 : personne ne relisait, donc
+  personne ne commitait, et six rapports sont restés hors du dépôt. Un garde-fou qui délègue à un
+  geste que personne ne fait ne protège rien, il perd des fichiers.*
 - **Il ne bannit aucune IP.** VPS-M01 dit pourquoi : il s'est déjà trompé de coupable une fois,
   et c'était au premier passage.

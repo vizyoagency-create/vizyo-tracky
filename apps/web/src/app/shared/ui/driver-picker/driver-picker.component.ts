@@ -90,7 +90,7 @@ import { DriversApiService } from '../../../core/services/drivers.service';
                          border border-transparent hover:border-border-subtle"
                   [class.dp-row--current]="d.id === currentDriverId()">
                   <span class="dp-avatar"
-                        [style.background]="d.color ?? '#10E0A0'">
+                        [style.background]="d.color ?? 'var(--color-tracky-light)'">
                     {{ initials(d) }}
                   </span>
                   <span class="flex-1 min-w-0">
@@ -126,7 +126,7 @@ import { DriversApiService } from '../../../core/services/drivers.service';
           <div class="flex items-center justify-between pt-2 border-t border-border-subtle">
             @if (currentDriverId()) {
               <button type="button" (click)="onPick(null)"
-                      class="text-xs font-medium text-red-400 hover:text-red-300
+                      class="text-xs font-medium dp-danger
                              flex items-center gap-1 cursor-pointer">
                 <lucide-icon [img]="XCircleIcon" [size]="13"></lucide-icon>
                 Retirer le conducteur
@@ -153,10 +153,17 @@ import { DriversApiService } from '../../../core/services/drivers.service';
     }
     .dp-current-badge {
       font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 6px;
-      background: rgba(16,224,160,.15); color: var(--tracky-light);
+      background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent);
+      color: var(--texte-succes);
       text-transform: uppercase; letter-spacing: .04em;
     }
-    .dp-row--current { background: rgba(16,224,160,.05); border-color: rgba(16,224,160,.18) !important }
+    .dp-row--current {
+      background: color-mix(in srgb, var(--color-tracky-light) 5%, transparent);
+      border-color: color-mix(in srgb, var(--color-tracky-light) 18%, transparent) !important;
+    }
+    /* Retirer un conducteur est destructif : le rouge du système, pas celui de la palette. */
+    .dp-danger { color: var(--texte-alerte) }
+    .dp-danger:hover { filter: brightness(1.15) }
   `],
 })
 export class DriverPickerComponent {

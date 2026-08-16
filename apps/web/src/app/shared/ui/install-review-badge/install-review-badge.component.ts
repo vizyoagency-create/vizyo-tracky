@@ -37,9 +37,9 @@ import { AlertTriangle, LucideAngularModule } from 'lucide-angular';
       font-weight: 800;
       letter-spacing: .01em;
       white-space: nowrap;
-      background: rgba(239, 68, 68, .14);
-      color: #ef4444;
-      border: 1px solid rgba(239, 68, 68, .35);
+      background: color-mix(in srgb, var(--texte-alerte) 14%, transparent);
+      color: var(--texte-alerte);
+      border: 1px solid color-mix(in srgb, var(--texte-alerte) 35%, transparent);
     }
     .ir-badge--compact { padding: 3px; }
   `],

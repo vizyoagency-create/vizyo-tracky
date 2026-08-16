@@ -5,14 +5,14 @@ import {
   moveItemInArray, transferArrayItem,
 } from '@angular/cdk/drag-drop';
 import {
-  LucideAngularModule, ClipboardList, ChevronUp, ChevronDown, ChevronLeft, CalendarDays, Info, GripVertical,
+  LucideAngularModule, ChevronUp, ChevronDown, ChevronLeft, CalendarDays, Info, GripVertical,
 } from 'lucide-angular';
 import type {
   InstallationEnergy, InstallationPlanDto, InstallationPlanSummaryDto, InstallationTaskDto,
 } from '@vizyo/tracky-shared';
 import { InstallationsApiService } from '../../core/services/installations.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
+import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
 import {
   DayGroup, distinctDays, ENERGY_LABELS, formatDateFr, groupByDay, installState,
   PLAN_STATUS_CLASS, PLAN_STATUS_LABELS, TASK_STATUS_LABELS, weekdayFr,
@@ -28,7 +28,7 @@ import {
   selector: 'app-installations-client',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, SpinnerComponent],
+  imports: [FormsModule, LucideAngularModule, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, ZoneComponent],
   template: `
     <div class="cl">
       <div class="cl-head">
@@ -37,13 +37,16 @@ import {
         <p class="cl-sub">Planning de pose de vos boîtiers GPS par nos techniciens.</p>
       </div>
 
-      @if (loading()) {
-        <div class="cl-loading"><app-spinner [size]="22" /></div>
-      } @else if (plans().length === 0) {
-        <div class="cl-empty">
-          <div class="cl-empty-ico"><lucide-icon [img]="ClipboardListIcon" [size]="30"></lucide-icon></div>
-          <p>Aucun planning d'installation publié pour le moment.</p>
-        </div>
+      <!-- Les trois etats non nominaux passent par <app-zone> : « vide » ne peut plus
+           absorber « erreur ». Avant, une API tombee laissait l'ecran annoncer
+           « Aucun planning publie » — cf. le commentaire de ngOnInit. -->
+      @if (etatZone() !== 'rempli') {
+        <app-zone [etat]="etatZone()" quoi="votre planning d'installation"
+                  vide="Aucun planning d'installation publié pour le moment"
+                  videDetail="Nos techniciens n'ont pas encore publié de date de pose. Vous serez prévenu dès qu'un créneau est fixé."
+                  erreur="Impossible de charger votre planning"
+                  erreurDetail="Un planning est peut-être publié : c'est son chargement qui a échoué."
+                  (reessayer)="recharger()" />
       } @else if (plan(); as p) {
         @if (plans().length > 1) {
           <button class="cl-back" (click)="backToList()">
@@ -138,13 +141,23 @@ import {
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : 54 boutons de réordonnancement et 27 poignées de glisser-déposer.
+       C'est la page où l'on ORGANISE une tournée d'installation, debout, sur le terrain :
+       la précision au pouce y est le premier besoin, pas le dernier.
+       (La même correction vit dans installation-editor : les deux écrans partagent les
+       classes mais pas la feuille de styles — l'encapsulation Angular les sépare.) */
+    @media (max-width: 768px) {
+      .ord-btn, .cdk-drag-handle { min-width: 44px; min-height: 44px }
+    }
     :host { display: block }
     .cl { max-width: 980px }
     .cl-head h1 { font-family: var(--font-display); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
     .cl-sub { font-size: 14px; color: var(--fg-tertiary); margin: 8px 0 20px }
-    .cl-loading { display: flex; justify-content: center; padding: 60px 0 }
-    .cl-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary) }
-    .cl-empty-ico { width: 58px; height: 58px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center }
+    /* .cl-loading, .cl-empty et .cl-empty-ico sont parties avec le spinner et le
+       bloc « vide » maison : <app-zone> rend les trois etats. Les laisser aurait
+       fait trois regles mortes de plus (cf. le § « regles CSS qui cessent de
+       s'appliquer »). */
     .cl-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); background: none; border: none; cursor: pointer; margin-bottom: 12px }
     .cl-back:hover { color: var(--tracky-light) }
 
@@ -219,7 +232,6 @@ export class InstallationsClientComponent implements OnInit {
   private readonly api = inject(InstallationsApiService);
   private readonly toast = inject(ToastService);
 
-  protected readonly ClipboardListIcon = ClipboardList;
   protected readonly ChevronUpIcon = ChevronUp;
   protected readonly ChevronDownIcon = ChevronDown;
   protected readonly ChevronLeftIcon = ChevronLeft;
@@ -231,6 +243,15 @@ export class InstallationsClientComponent implements OnInit {
   readonly plans = signal<InstallationPlanSummaryDto[]>([]);
   readonly plan = signal<InstallationPlanDto | null>(null);
   readonly reordering = signal(false);
+  readonly error = signal<string | null>(null);
+
+  /** L'ordre compte : une erreur n'est pas un vide, et prime sur lui. */
+  protected readonly etatZone = computed<EtatZone>(() => {
+    if (this.loading()) return 'chargement';
+    if (this.error()) return 'erreur';
+    if (this.plans().length === 0) return 'vide';
+    return 'rempli';
+  });
 
   // linkedSignal : re-derive de plan(), writable pour le drag&drop optimiste.
   readonly daysView = linkedSignal<DayGroup[]>(() => {
@@ -243,12 +264,32 @@ export class InstallationsClientComponent implements OnInit {
   });
 
   async ngOnInit(): Promise<void> {
+    await this.recharger();
+  }
+
+  /**
+   * Le `catch` qui laisse l'ecran mentir — 6e occurrence, 6e ecran sans rapport
+   * (SUIVI-REFONTE.md § 8.5), et une VARIANTE : il n'ecrasait pas un tableau, il
+   * ne posait RIEN. `plans` restait a sa valeur initiale `[]` et l'erreur partait
+   * dans un `toast.error` EPHEMERE.
+   *
+   * Resultat mesure au navigateur en faisant echouer `api.list()` : la page
+   * affichait « Aucun planning d'installation publie pour le moment » — un
+   * mensonge rassurant — pendant que le toast passait et disparaissait. Le toast
+   * s'efface, le mensonge reste.
+   *
+   * L'erreur est donc bien SIGNALEE et l'ecran ment quand meme : un toast n'est
+   * pas un etat. Il faut POSER l'etat, c'est ce que fait `error`.
+   */
+  protected async recharger(): Promise<void> {
     this.loading.set(true);
+    this.error.set(null);
     try {
       const list = await this.api.list();
       this.plans.set(list);
       if (list.length === 1) await this.select(list[0].id);
     } catch (err) {
+      this.error.set(this.errMsg(err));
       this.toast.error('Échec de chargement', this.errMsg(err));
     } finally {
       this.loading.set(false);

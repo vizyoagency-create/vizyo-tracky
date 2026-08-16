@@ -345,7 +345,8 @@ const TIMEZONES = [
       <app-confirm-modal
         [open]="showDisableConfirm()"
         title="Désactiver l'automatisation"
-        description="Ce véhicule est actuellement immobilisé par l'automatisation horaire. Désactiver va rallumer le moteur automatiquement."
+        description="Ce véhicule est actuellement immobilisé par l'automatisation horaire."
+        consequences="Le moteur est rallumé immédiatement, et les plages horaires cessent de le couper. Le véhicule redevient utilisable en dehors des heures déclarées."
         confirmLabel="Désactiver et rallumer"
         cancelLabel="Annuler"
         [danger]="true"

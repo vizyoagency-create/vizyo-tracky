@@ -199,6 +199,8 @@ export class SurveillanceSchedulerService {
           profile.scheduleStartTime,
           profile.scheduleEndTime,
           days,
+          undefined, // fuseau : celui de la flotte, comme avant
+          profile.weekendPermanent,
         );
       }
 

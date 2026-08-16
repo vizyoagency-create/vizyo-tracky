@@ -55,6 +55,25 @@ const ACTION_LABELS: Record<string, string> = {
   place_analysis: 'Analyse de lieu',
 };
 
+/**
+ * Ce que chaque fonction PRODUIT, au pluriel — « 418 trajets analysés ce mois ».
+ *
+ * Le libellé vit ici, à côté de `ACTION_LABELS`, parce que c'est le serveur qui
+ * connaît la liste des actions. Laisser le client deviner l'unité d'un compteur,
+ * c'est lui demander d'inventer un fait métier ; une action ajoutée sans entrée
+ * ici n'affiche simplement pas son unité, au lieu d'en afficher une fausse.
+ */
+const ACTION_RESULTATS: Record<string, string> = {
+  capacity: 'capacités estimées',
+  placement: 'placements proposés',
+  agenda_optimization: 'créneaux optimisés',
+  agenda_agent: 'demandes traitées',
+  activity_report: "rapports d'activité rédigés",
+  trip_analysis: 'trajets analysés',
+  booking_parse: 'réservations comprises',
+  place_analysis: 'lieux qualifiés',
+};
+
 export interface AiUsageEntry {
   userId?: string | null;
   fleetId?: string | null;
@@ -66,6 +85,12 @@ export interface AiUsageEntry {
   cacheReadTokens: number;
   latencyMs?: number | null;
   ok?: boolean;
+  /**
+   * Combien d'objets cet appel a produits (trajets analysés, lieux qualifiés…).
+   * Laisser vide quand le point d'appel ne sait pas compter : `null` dit « non
+   * mesuré », là où `0` affirmerait « rien produit ». La page préfère se taire.
+   */
+  resultCount?: number | null;
 }
 
 /**
@@ -157,6 +182,7 @@ export class AiUsageService {
           costUsd,
           latencyMs: entry.latencyMs ?? null,
           ok: entry.ok ?? true,
+          resultCount: entry.resultCount ?? null,
         },
       });
       // Funnel unique des appels IA → visible aussi dans l'onglet Système. On skippe
@@ -212,9 +238,9 @@ export class AiUsageService {
         _count: { _all: true },
         _sum: { inputTokens: true, outputTokens: true, cacheReadTokens: true, costUsd: true },
       }),
-      this.prisma.aiUsageLog.groupBy({ by: ['action'], where, _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, costUsd: true } }),
-      this.prisma.aiUsageLog.groupBy({ by: ['fleetId'], where, _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, costUsd: true } }),
-      this.prisma.aiUsageLog.groupBy({ by: ['userId'], where, _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, costUsd: true } }),
+      this.prisma.aiUsageLog.groupBy({ by: ['action'], where, _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, costUsd: true, resultCount: true } }),
+      this.prisma.aiUsageLog.groupBy({ by: ['fleetId'], where, _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, costUsd: true, resultCount: true } }),
+      this.prisma.aiUsageLog.groupBy({ by: ['userId'], where, _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, costUsd: true, resultCount: true } }),
       this.prisma.$queryRaw<Array<{ day: Date; calls: bigint; cost: number }>>`
         SELECT date_trunc('day', "createdAt") AS day, COUNT(*)::bigint AS calls, COALESCE(SUM("costUsd"), 0) AS cost
         FROM ai_usage_logs
@@ -231,7 +257,10 @@ export class AiUsageService {
     const fleetName = new Map(fleets.map((f) => [f.id, f.name]));
     const userEmail = new Map(users.map((u) => [u.id, u.email]));
 
-    const row = (key: string | null, label: string, calls: number, i: number, o: number, cost: number): AiUsageBreakdownRowDto => ({
+    const row = (
+      key: string | null, label: string, calls: number, i: number, o: number, cost: number,
+      resultats: number | null = null, resultatsLibelle: string | null = null,
+    ): AiUsageBreakdownRowDto => ({
       key: key ?? '∅',
       label,
       calls,
@@ -239,16 +268,32 @@ export class AiUsageService {
       outputTokens: o,
       costUsd: cost,
       costEur: cost * rate,
+      resultats,
+      resultatsLibelle,
     });
 
     const byAction = byActionRaw
-      .map((r) => row(r.action, ACTION_LABELS[r.action] ?? r.action, r._count._all, r._sum.inputTokens ?? 0, r._sum.outputTokens ?? 0, r._sum.costUsd ?? 0))
+      .map((r) => row(
+        r.action, ACTION_LABELS[r.action] ?? r.action, r._count._all,
+        r._sum.inputTokens ?? 0, r._sum.outputTokens ?? 0, r._sum.costUsd ?? 0,
+        r._sum.resultCount, ACTION_RESULTATS[r.action] ?? null,
+      ))
       .sort((a, b) => b.costUsd - a.costUsd);
     const byFleet = byFleetRaw
-      .map((r) => row(r.fleetId, r.fleetId ? (fleetName.get(r.fleetId) ?? 'Flotte inconnue') : '— (hors flotte)', r._count._all, r._sum.inputTokens ?? 0, r._sum.outputTokens ?? 0, r._sum.costUsd ?? 0))
+      .map((r) => row(
+        r.fleetId, r.fleetId ? (fleetName.get(r.fleetId) ?? 'Flotte inconnue') : '— (hors flotte)', r._count._all,
+        r._sum.inputTokens ?? 0, r._sum.outputTokens ?? 0, r._sum.costUsd ?? 0,
+        // Une flotte cumule PLUSIEURS actions : le total a un sens, pas l'unité.
+        // Nommer « trajets analysés » ici mélangerait des trajets et des lieux.
+        r._sum.resultCount, null,
+      ))
       .sort((a, b) => b.costUsd - a.costUsd);
     const byUser = byUserRaw
-      .map((r) => row(r.userId, r.userId ? (userEmail.get(r.userId) ?? 'Utilisateur inconnu') : '— (système)', r._count._all, r._sum.inputTokens ?? 0, r._sum.outputTokens ?? 0, r._sum.costUsd ?? 0))
+      .map((r) => row(
+        r.userId, r.userId ? (userEmail.get(r.userId) ?? 'Utilisateur inconnu') : '— (système)', r._count._all,
+        r._sum.inputTokens ?? 0, r._sum.outputTokens ?? 0, r._sum.costUsd ?? 0,
+        r._sum.resultCount, null,
+      ))
       .sort((a, b) => b.costUsd - a.costUsd);
     const byDay = dayRows.map((d) => {
       const iso = d.day.toISOString().slice(0, 10);

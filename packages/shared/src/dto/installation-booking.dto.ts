@@ -48,6 +48,26 @@ export interface PublicBookingLinkDto {
   prefill: { name: string | null; email: string | null; phone: string | null; address: string | null } | null;
   slotMinutes: number;
   days: BookingDayDto[];
+  /**
+   * Téléphone de l'ATELIER, prêt à afficher. `null` = ne pas montrer le bouton.
+   *
+   * ⚠️ Numéro d'atelier, **jamais** celui d'une personne — confirmé par le client
+   * le 2026-08-16. Cette page est publique, son URL circule, et un numéro
+   * personnel exposé là ne se reprend plus. Il vient d'une configuration serveur,
+   * pas d'une fiche utilisateur.
+   */
+  telephonePublic: string | null;
+  /**
+   * L'atelier accepte-t-il de prévenir quand un créneau se libère ?
+   * `false` → on n'offre pas une sortie qui ne mène nulle part.
+   */
+  abonnementCreneauDisponible: boolean;
+}
+
+/** « Prévenez-moi » — la sortie n° 3 quand aucun créneau ne convient. */
+export interface AbonnementCreneauDto {
+  /** Rien d'autre n'est demandé : le strict nécessaire pour envoyer un e-mail. */
+  email: string;
 }
 
 /** Soumission d'une réservation (POST public). */

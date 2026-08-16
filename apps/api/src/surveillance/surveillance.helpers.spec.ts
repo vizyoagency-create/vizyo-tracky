@@ -113,6 +113,60 @@ describe('isWithinSchedule', () => {
     });
   });
 
+  /**
+   * « Un week-end n'a pas d'heures ouvrées » — décision client du 2026-08-16 (option B).
+   *
+   * Le défaut corrigé : un profil 20:00 → 06:00 sur sept jours laissait le samedi de
+   * 06:00 à 20:00 SANS protection. Quatorze heures où un dépôt est vide, et où l'écran
+   * affichait pourtant « antivol actif ».
+   *
+   * Le premier test de cette série est le plus important de tous : il vérifie que le
+   * comportement des profils EXISTANTS ne bouge pas. C'était toute la raison de choisir
+   * l'option B plutôt que la bascule automatique.
+   */
+  describe('week-end permanent', () => {
+    it('NE CHANGE RIEN quand la case est décochée (tous les profils existants)', () => {
+      // Samedi 14:00, plage 20:00 → 06:00 : hors plage, donc OFF. Comme avant.
+      expect(isWithinSchedule(utcDate('sat', 14), '20:00', '06:00', null, undefined, false)).toBe(false);
+      // Et sans passer l'argument du tout — le cas de tout appelant non modifié.
+      expect(isWithinSchedule(utcDate('sat', 14), '20:00', '06:00', null)).toBe(false);
+      expect(isWithinSchedule(utcDate('sun', 11), '20:00', '06:00', null)).toBe(false);
+    });
+
+    it('couvre le samedi et le dimanche 24 h quand la case est cochée', () => {
+      for (const h of [0, 6, 14, 19, 23]) {
+        expect(isWithinSchedule(utcDate('sat', h), '20:00', '06:00', null, undefined, true)).toBe(true);
+        expect(isWithinSchedule(utcDate('sun', h), '20:00', '06:00', null, undefined, true)).toBe(true);
+      }
+    });
+
+    it('laisse les jours de SEMAINE suivre leur plage', () => {
+      // C'est ce qui distingue « week-end permanent » de « permanent tout court ».
+      expect(isWithinSchedule(utcDate('wed', 14), '20:00', '06:00', null, undefined, true)).toBe(false);
+      expect(isWithinSchedule(utcDate('wed', 22), '20:00', '06:00', null, undefined, true)).toBe(true);
+    });
+
+    it('respecte un samedi DÉCOCHÉ — sinon décocher un jour n’aurait plus d’effet', () => {
+      expect(
+        isWithinSchedule(utcDate('sat', 14), '20:00', '06:00', ['mon', 'tue'], undefined, true),
+      ).toBe(false);
+      expect(
+        isWithinSchedule(utcDate('sat', 14), '20:00', '06:00', ['sat'], undefined, true),
+      ).toBe(true);
+    });
+
+    it('remplace la plage du jour au lieu de s’y ajouter (samedi 06:00, la borne de fin)', () => {
+      // Sans la règle, samedi 06:00 est OFF (borne de fin exclusive de la plage
+      // commencée vendredi soir). Avec elle, le samedi est couvert de bout en bout.
+      expect(isWithinSchedule(utcDate('sat', 6), '20:00', '06:00', null, undefined, false)).toBe(false);
+      expect(isWithinSchedule(utcDate('sat', 6), '20:00', '06:00', null, undefined, true)).toBe(true);
+    });
+
+    it('n’a aucun effet sur une plage nulle un jour de semaine', () => {
+      expect(isWithinSchedule(utcDate('mon', 12), '12:00', '12:00', null, undefined, true)).toBe(false);
+    });
+  });
+
   describe('cas dégradés', () => {
     it('plage nulle (start == end) est toujours OFF', () => {
       expect(isWithinSchedule(utcDate('mon', 12), '12:00', '12:00', null)).toBe(false);

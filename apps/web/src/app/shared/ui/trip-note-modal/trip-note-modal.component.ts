@@ -65,14 +65,14 @@ import { ToastService } from '../toast/toast.service';
 
           <div class="flex items-center justify-between gap-2 -mt-1">
             <span class="text-[10px] text-fg-tertiary"
-                  [class.text-amber-400]="text.length > 450">
+                  [class.tnm-attente]="text.length > 450">
               {{ text.length }} / 500
             </span>
             @if (trip()?.notes) {
               <button type="button"
                       (click)="onClear()"
                       [disabled]="saving()"
-                      class="text-xs font-medium text-red-400 hover:text-red-300
+                      class="text-xs font-medium tnm-danger
                              flex items-center gap-1 cursor-pointer disabled:opacity-50">
                 <lucide-icon [img]="Trash2Icon" [size]="12"></lucide-icon>
                 Supprimer la note
@@ -106,6 +106,14 @@ import { ToastService } from '../toast/toast.service';
       </div>
     }
   `,
+  styles: [`
+    /* Le compteur vire à l'ambre quand la limite approche, au rouge pour l'action
+       destructive. Les deux sur les jetons du système : les classes de palette
+       Tailwind portent une valeur figée, identique en thème clair et sombre. */
+    .tnm-attente { color: var(--texte-attente) }
+    .tnm-danger { color: var(--texte-alerte) }
+    .tnm-danger:hover { filter: brightness(1.15) }
+  `],
 })
 export class TripNoteModalComponent {
   private readonly tripsApi = inject(TripsApiService);

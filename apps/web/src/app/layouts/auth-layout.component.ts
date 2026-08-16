@@ -327,7 +327,11 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
 
         <header class="auth-head">
           <app-logo variant="icon" [size]="30" />
-          <span class="brand-word">Vizyo <span class="text-tracky-light">Tracky</span></span>
+          <!-- Le logotype est du TEXTE : meme convention que partout ailleurs, il
+               prend --texte-succes et non le vert de marque (3,34:1 en clair).
+               La top-bar du shell porte le meme defaut ; elle sera reprise au
+               bloc G, avec le meme jeton. -->
+          <span class="brand-word">Vizyo <span class="text-texte-succes">Tracky</span></span>
         </header>
 
         <main class="auth-main">
@@ -368,7 +372,10 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
         </header>
 
         <div class="brand-mid">
-          <h2 class="brand-h2">Suivez et sécurisez votre flotte, en temps réel.</h2>
+          <!-- B1-PAGES § G : le SEUL changement demande sur le shell hors session.
+               L'accroche disait ce que le produit fait ; celle-ci dit ce que le
+               client y gagne. Le reste du panneau droit est conserve tel quel. -->
+          <h2 class="brand-h2">Vous savez où sont vos véhicules. Et pourquoi ils s'arrêtent.</h2>
           <p class="brand-p">
             Géolocalisation, coupure moteur à distance, alertes et rapports — une seule
             plateforme, matériel posé par nos techniciens et données hébergées en France.

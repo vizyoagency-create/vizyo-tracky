@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#101514}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.pcfrm{display:flex;width:1600px;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--border2);box-shadow:0 44px 84px -34px rgba(0,0,0,.6)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.btnd{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--red);color:#fff;font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.plq{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;background:var(--surface3);border:1px solid var(--border2);font-family:'JetBrains Mono',monospace;font-size:.735rem;font-weight:600;white-space:nowrap}
+.st{display:grid;grid-template-columns:112px 1fr 150px;gap:14px;align-items:start;padding:13px 0;border-top:1px solid var(--border)}
+.stb{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:7px;font-size:.7rem;font-weight:800;white-space:nowrap}
+.fld{display:flex;flex-direction:column;gap:6px}
+.fld b{font-size:.71rem;font-weight:700;color:var(--tx3)}
+.fin{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);font-size:.84rem}
+.sw{position:relative;width:40px;height:23px;border-radius:999px;background:var(--surface3);border:1px solid var(--border2);flex-shrink:0}
+.sw i{position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:var(--tx3)}
+.sw.on{background:var(--accent);border-color:var(--accent)}
+.sw.on i{left:19px;background:#fff}
+.m3sw{position:relative;width:52px;height:32px;border-radius:16px;background:var(--surface3);border:2px solid var(--border2);flex-shrink:0}
+.m3sw i{position:absolute;top:6px;left:6px;width:16px;height:16px;border-radius:50%;background:var(--tx3)}
+.m3sw.on{background:var(--accent);border-color:var(--accent)}
+.m3sw.on i{top:2px;left:22px;width:24px;height:24px;background:var(--accent-ink)}
+.iosw{position:relative;width:51px;height:31px;border-radius:16px;background:var(--surface3);flex-shrink:0}
+.iosw i{position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.28)}
+.iosw.on{background:#30D158}
+.iosw.on i{left:22px}
+.m3fld{position:relative;padding:17px 14px 9px;border-radius:6px 6px 0 0;background:var(--surface2);border-bottom:1px solid var(--border2)}
+.m3fld b{position:absolute;top:6px;left:14px;font-size:.66rem;font-weight:600;color:var(--tx3)}
+.m3fld.on{border-bottom:2px solid var(--accent)}
+.m3fld.on b{color:var(--accent)}
+.cbx{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;border:2px solid var(--border2);flex-shrink:0}
+.cbx.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.wrong{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--red) 34%,transparent);background:var(--red-soft);padding:14px}
+.right{position:relative;border-radius:13px;border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);background:var(--accent-soft);padding:14px}
+.lbl{position:absolute;top:-8px;left:11px;padding:1px 7px;border-radius:6px;font-size:.6rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.day{display:flex;align-items:center;justify-content:center;height:32px;border-radius:10px;font-size:.74rem;font-weight:800;flex:1}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@keyframes vt-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-chevl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
+<symbol id="ic-chevd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 9 7 7 7-7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-power" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 6.6a9 9 0 1 1-12.7 0"/><line x1="12" y1="2" x2="12" y2="12"/></g></symbol>
+<symbol id="ic-poweroff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 6.6a9 9 0 0 1-2.1 14.2M5.6 6.6a9 9 0 0 0 1.6 13.6"/><line x1="12" y1="2" x2="12" y2="12"/><line x1="3" y1="3" x2="21" y2="21"/></g></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2"/></g></symbol>
+<symbol id="ic-timer" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="2.5" x2="15" y2="2.5"/><line x1="12" y1="14" x2="12" y2="9.5"/><circle cx="12" cy="14" r="8"/></g></symbol>
+<symbol id="ic-van" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h9.5l4 5H21a1 1 0 0 1 1 1v4h-3"/><path d="M2 7v10h3M9 17h7"/><circle cx="7" cy="17.5" r="2"/><circle cx="17.5" cy="17.5" r="2"/></g></symbol>
+<symbol id="ic-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></g></symbol>
+<symbol id="ic-sat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 3 11l4 4 8-8z"/><path d="m13 13 4 4-4 4-4-4"/><path d="M16 5a4 4 0 0 1 4 4M16 1.5a7.5 7.5 0 0 1 7.5 7.5"/></g></symbol>
+<symbol id="ic-satoff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3 3 11l4 4 8-8z"/><path d="m13 13 4 4-4 4-4-4"/><line x1="2" y1="2" x2="22" y2="22"/></g></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16.5 3.1a4 4 0 0 1 0 7.8"/></g></symbol>
+<symbol id="ic-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></g></symbol>
+<symbol id="ic-wave" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2 12h3l2-7 3 14 3-11 2 6h3l2-2"/></symbol>
+<symbol id="ic-move" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9 2 12l3 3M9 5l3-3 3 3M19 9l3 3-3 3M9 19l3 3 3-3M2 12h20M12 2v20"/></g></symbol>
+<symbol id="ic-door" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17"/><path d="M2 21h18M15 8l5 2v11"/><circle cx="11.5" cy="12" r="1"/></g></symbol>
+<symbol id="ic-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10.5" width="16" height="10.5" rx="2.2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></g></symbol>
+<symbol id="ic-map" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></g></symbol>
+<symbol id="ic-truck" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v11H1z"/><path d="M12 8h4.5l3.5 3.5V16H12z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="16.5" cy="18.5" r="2"/></g></symbol>
+<symbol id="ic-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.6 13.9a1.8 1.8 0 0 0 .4 2l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.8 1.8 0 0 0-3 1.3v.3a2 2 0 1 1-4 0v-.2a1.8 1.8 0 0 0-3.1-1.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.8 1.8 0 0 0-1.3-3.1H3a2 2 0 1 1 0-4h.2a1.8 1.8 0 0 0 1.3-3.1l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.8 1.8 0 0 0 3-1.3V3a2 2 0 1 1 4 0v.2a1.8 1.8 0 0 0 3.1 1.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.8 1.8 0 0 0 1.3 3.1h.3a2 2 0 1 1 0 4h-.2a1.8 1.8 0 0 0-1.6 1z"/></g></symbol>
+<symbol id="ic-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" d="M3 6h18M3 12h18M3 18h18"/></symbol>
+<symbol id="ic-hist" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/><path d="M12 8v4.4l3.2 1.9"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · planche ② · F6 + F7</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Coupure moteur &amp; panneau surveillance</h1>
+<p style="margin:8px 0 0;max-width:930px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Les deux actes les plus lourds de conséquences : immobiliser un véhicule, et armer un micro. Le code de la coupure est <b style="color:var(--tx)">remarquablement honnête</b> — il refuse d'afficher un succès qu'il n'a pas vérifié. La refonte rend cette honnêteté <b style="color:var(--tx)">visible</b> au lieu de la laisser dans des chaînes de caractères.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>00</i>Les 6 états d'une commande moteur — la machine à ne pas mentir</div>
+<div class="dash" style="padding:24px 26px;background:var(--bg2);display:grid;grid-template-columns:1.35fr 1fr;gap:26px">
+
+<div>
+<p style="margin:0 0 4px;font-size:.82rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Une coupure part vers un boîtier par GPRS, ou par SMS s'il est muet. Le boîtier confirme par une <b style="color:var(--tx)">chute d'ignition</b> — mais seulement si le moteur tournait. D'où six états, tous présents dans <span class="mono" style="font-size:.72rem;color:var(--tx3)">commandState</span>, et jamais résumés à « envoyé ✓ ».</p>
+
+<div class="st" style="border-top:none">
+<span><span class="stb" style="background:var(--amber-soft);color:var(--amber)"><svg width="12" height="12"><use href="#ic-timer"/></svg>En attente</span></span>
+<div style="min-width:0"><div style="font-size:.8rem;font-weight:700">Coupure envoyée — en attente de confirmation du boîtier…</div><p class="hint" style="margin:3px 0 0">Fenêtre de <b style="color:var(--tx2)">90 s</b> (<span class="mono" style="font-size:.68rem">CONFIRM_WINDOW_MS</span>). Un tick de 5 s fait basculer l'affichage à l'expiration.</p></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">SENT · &lt; 90 s</span>
+</div>
+
+<div class="st">
+<span><span class="stb" style="background:var(--accent);color:var(--accent-ink)"><svg width="12" height="12"><use href="#ic-check"/></svg>Confirmée</span></span>
+<div style="min-width:0"><div style="font-size:.8rem;font-weight:700">Coupure confirmée par le boîtier (chute d'ignition).</div><p class="hint" style="margin:3px 0 0">Le <b style="color:var(--tx2)">seul</b> état où le bouton passe à « Rallumer ». C'est la règle qui empêche tout faux succès.</p></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">ACKNOWLEDGED</span>
+</div>
+
+<div class="st">
+<span><span class="stb" style="background:var(--red);color:#fff"><svg width="12" height="12"><use href="#ic-warn"/></svg>Non confirmée</span></span>
+<div style="min-width:0"><div style="font-size:.8rem;font-weight:700">Coupure envoyée mais NON confirmée par le boîtier — à vérifier.</div><p class="hint" style="margin:3px 0 0">Passé 90 s sans accusé. Le véhicule est peut-être coupé, peut-être pas : <b style="color:var(--tx2)">il faut aller voir</b>.</p></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">SENT · &gt; 90 s</span>
+</div>
+
+<div class="st">
+<span><span class="stb" style="background:var(--blue-soft);color:var(--blue)"><svg width="12" height="12"><use href="#ic-info"/></svg>Non vérifiable</span></span>
+<div style="min-width:0"><div style="font-size:.8rem;font-weight:700">Coupure envoyée — confirmation par ignition indisponible (véhicule à l'arrêt).</div><p class="hint" style="margin:3px 0 0"><span class="mono" style="font-size:.68rem">confirmationExpected: false</span>. Moteur déjà éteint : aucune chute d'ignition à observer. Ce n'est <b style="color:var(--tx2)">pas</b> une anomalie — d'où le bleu et non le rouge.</p></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">SENT · à l'arrêt</span>
+</div>
+
+<div class="st">
+<span><span class="stb" style="background:var(--amber-soft);color:var(--amber)"><svg width="12" height="12"><use href="#ic-x"/></svg>Refusée</span></span>
+<div style="min-width:0"><div style="font-size:.8rem;font-weight:700">Coupure refusée — véhicule en mouvement.</div><p class="hint" style="margin:3px 0 0">Le garde-fou a fonctionné : <b style="color:var(--tx2)">c'est un succès, pas une panne</b>. Ambre, jamais rouge.</p></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">REJECTED_SPEED</span>
+</div>
+
+<div class="st">
+<span><span class="stb" style="background:var(--red);color:#fff"><svg width="12" height="12"><use href="#ic-warn"/></svg>Échec</span></span>
+<div style="min-width:0"><div style="font-size:.8rem;font-weight:700">Le boîtier n'a pas répondu — commande non transmise.</div><p class="hint" style="margin:3px 0 0">Ni GPRS, ni SMS. À rapprocher de l'état de connectivité du véhicule.</p></div>
+<span class="mono" style="font-size:.7rem;color:var(--tx3)">FAILED</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<div class="right">
+<span class="lbl" style="background:var(--accent);color:var(--accent-ink)">Ce que le code fait déjà bien</span>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:5px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Trois garde-fous de vitesse : refus au-delà de <b style="color:var(--tx)">20 km/h</b>, position fraîche exigée (&lt; 60 s) si le véhicule bouge, « à l'arrêt » défini à <b style="color:var(--tx)">≤ 5 km/h</b>.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Boîtier muet : la commande partira quand même en SMS, mais <b style="color:var(--tx)">l'absence de confirmation est annoncée trois fois</b> — dans les deux confirmations et dans le message final.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--accent);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Une coupure <b style="color:var(--tx)">en attente</b> compte déjà comme coupée pour le bouton — correctif d'un bug de production : « 3 CUT d'affilée, véhicule bloqué en attente ».</span></div>
+</div>
+</div>
+
+<div class="wrong">
+<span class="lbl" style="background:var(--red);color:#fff">Ce qui manque à l'écran</span>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:5px">
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Les 6 états vivent dans des <b style="color:var(--tx)">chaînes de texte</b> et une pastille discrète. Rien ne dit combien de temps il reste à attendre.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">Le bouton désactivé n'explique son refus que dans un <span class="mono" style="font-size:.68rem">title</span> — <b style="color:var(--tx)">invisible au doigt</b> sur mobile.</span></div>
+<div style="display:flex;align-items:baseline;gap:9px"><span style="width:4px;height:4px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span><span style="font-size:.765rem;line-height:1.45;color:var(--tx2)">« Immobilisation durable » est une case à cocher dans la modale : une décision qui <b style="color:var(--tx)">sort le véhicule du planning</b> mérite mieux qu'une case.</span></div>
+</div>
+</div>
+
+<div style="padding:14px 15px;border-radius:13px;background:var(--surface);border:1px solid color-mix(in srgb,var(--violet) 26%,transparent)">
+<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px"><svg width="15" height="15" style="color:var(--violet)"><use href="#ic-info"/></svg><b style="font-size:.83rem">Le principe de la refonte</b></div>
+<p style="margin:0;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Ne rien ajouter à la logique — elle est juste. <b style="color:var(--tx)">Tout montrer</b> : un compte à rebours pendant les 90 s, la raison du refus en clair sous le bouton, et l'immobilisation durable sortie de la case pour devenir un choix explicite entre deux options.</p>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>PC · F6 la coupure — les 4 états du bouton, puis la confirmation</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;background:var(--bg2)">
+
+<div data-screen-label="Bouton coupure autorise">
+<p class="frmlbl"><span class="plat pc">PC</span>① Autorisé — à l'arrêt depuis 12 min</p>
+<div class="card" style="overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="19" height="19" style="color:var(--tx3)"><use href="#ic-van"/></svg><span style="position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:999px;background:#fff;border:2px solid var(--surface);overflow:hidden"><img src="brands/renault.png" alt="" style="width:80%;height:80%;object-fit:contain"></span></span>
+<span class="plq">AB-231-CD</span>
+<span class="tag" style="margin-left:auto;background:var(--surface3);color:var(--tx2)"><svg width="10" height="10"><use href="#ic-poweroff"/></svg>Moteur éteint</span>
+</div>
+<div style="padding:15px 16px">
+<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+<div style="display:flex;align-items:center;gap:9px"><svg width="13" height="13" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg><span style="font-size:.775rem;color:var(--tx2)">À l'arrêt depuis <b style="color:var(--tx)">12 min</b></span></div>
+<div style="display:flex;align-items:center;gap:9px"><svg width="13" height="13" style="color:var(--accent);flex-shrink:0"><use href="#ic-sat"/></svg><span style="font-size:.775rem;color:var(--tx2)">Position de <b style="color:var(--tx)">il y a 8 s</b></span></div>
+<div style="display:flex;align-items:center;gap:9px"><svg width="13" height="13" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg><span style="font-size:.775rem;color:var(--tx2)">Boîtier vu <b style="color:var(--tx)">à l'instant</b></span></div>
+</div>
+<button class="btnd" style="width:100%;height:42px"><svg width="16" height="16"><use href="#ic-poweroff"/></svg>Couper le moteur</button>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Les <b style="color:var(--tx2)">3 conditions</b> qui rendent l'action possible sont affichées, pas seulement implicites. On sait pourquoi on peut cliquer.</p>
+</div>
+
+<div data-screen-label="Bouton coupure refuse">
+<p class="frmlbl"><span class="plat pc">PC</span>② Refusé — la raison sort du <span class="mono" style="font-size:.68rem">title</span></p>
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--amber) 30%,transparent)">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="19" height="19" style="color:var(--tx3)"><use href="#ic-van"/></svg><span style="position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:999px;background:#fff;border:2px solid var(--surface);overflow:hidden"><img src="brands/iveco.png" alt="" style="width:80%;height:80%;object-fit:contain"></span></span>
+<span class="plq">TR-771-QS</span>
+<span class="tag" style="margin-left:auto;background:var(--red-soft);color:var(--red)"><span style="width:6px;height:6px;border-radius:50%;background:var(--red);animation:vt-pulse 1.4s ease-in-out infinite"></span>74 km/h</span>
+</div>
+<div style="padding:15px 16px">
+<div style="display:flex;gap:10px;padding:11px 13px;border-radius:13px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 26%,transparent);margin-bottom:13px">
+<svg width="15" height="15" style="color:var(--amber);flex-shrink:0;margin-top:1px"><use href="#ic-warn"/></svg>
+<div style="min-width:0"><div style="font-size:.79rem;font-weight:800;color:var(--amber)">Vitesse trop élevée</div><p style="margin:3px 0 0;font-size:.75rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">On ne coupe jamais au-delà de <b style="color:var(--tx)">20 km/h</b>. La coupure redeviendra possible dès l'arrêt.</p></div>
+</div>
+<button class="btnd" style="width:100%;height:42px;background:var(--surface3);color:var(--tx3);cursor:default"><svg width="16" height="16"><use href="#ic-poweroff"/></svg>Couper le moteur</button>
+<div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding:9px 11px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="13" height="13" style="color:var(--accent);flex-shrink:0"><use href="#ic-bell"/></svg>
+<span style="flex:1;min-width:0;font-size:.735rem;color:var(--tx2)">Me prévenir dès qu'il s'arrête</span>
+<span class="sw"><i></i></span>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px"><b style="color:var(--tx2)">Ajouté :</b> plutôt que de laisser l'opérateur recliquer en boucle, on lui propose d'être notifié à l'arrêt. Le garde-fou devient un service.</p>
+</div>
+
+<div data-screen-label="Bouton coupure attente">
+<p class="frmlbl"><span class="plat pc">PC</span>③ En attente — le compte à rebours des 90 s</p>
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--amber) 34%,transparent)">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="19" height="19" style="color:var(--tx3)"><use href="#ic-van"/></svg><span style="position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:999px;background:#fff;border:2px solid var(--surface);overflow:hidden"><img src="brands/citroen.png" alt="" style="width:80%;height:80%;object-fit:contain"></span></span>
+<span class="plq">KL-118-ZQ</span>
+<span class="tag" style="margin-left:auto;background:var(--amber-soft);color:var(--amber)"><svg width="10" height="10"><use href="#ic-timer"/></svg>En attente</span>
+</div>
+<div style="padding:15px 16px">
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:13px">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:52px;height:52px;flex-shrink:0">
+<svg width="52" height="52" viewBox="0 0 52 52" style="transform:rotate(-90deg)"><circle cx="26" cy="26" r="22" fill="none" stroke="var(--surface3)" stroke-width="5"/><circle cx="26" cy="26" r="22" fill="none" stroke="var(--amber)" stroke-width="5" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="48"/></svg>
+<span class="mono" style="position:absolute;font-size:.79rem;font-weight:600;color:var(--amber)">58s</span>
+</span>
+<div style="min-width:0"><div style="font-size:.815rem;font-weight:800;color:var(--amber)">Coupure envoyée</div><p style="margin:3px 0 0;font-size:.75rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">On attend l'accusé du boîtier — il confirme par la chute d'ignition.</p></div>
+</div>
+<div style="padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<div class="mono" style="font-size:.7rem;color:var(--tx3)">Commande 7f3a91c2</div>
+<div style="font-size:.735rem;color:var(--tx2);margin-top:4px">Envoyée à 18:42:07 par Amélie Duchamp</div>
+</div>
+<button class="btns" style="width:100%;height:40px;margin-top:11px">Voir le journal des commandes</button>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Le compte à rebours est <b style="color:var(--tx2)">la seule information qui manquait</b> : aujourd'hui « en attente » ne dit pas si l'on attend depuis 3 s ou 80 s.</p>
+</div>
+
+<div data-screen-label="Bouton coupure non confirmee">
+<p class="frmlbl"><span class="plat pc">PC</span>④ Non confirmée — après 90 s</p>
+<div class="card" style="overflow:hidden;border-color:var(--red)">
+<div style="height:3px;background:var(--red)"></div>
+<div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+<span style="position:relative;display:flex;flex-shrink:0"><svg width="19" height="19" style="color:var(--tx3)"><use href="#ic-van"/></svg><span style="position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:999px;background:#fff;border:2px solid var(--surface);overflow:hidden"><img src="brands/ford.png" alt="" style="width:80%;height:80%;object-fit:contain"></span></span>
+<span class="plq">GH-204-LP</span>
+<span class="tag" style="margin-left:auto;background:var(--red);color:#fff"><svg width="10" height="10"><use href="#ic-warn"/></svg>Non confirmée</span>
+</div>
+<div style="padding:15px 16px">
+<div style="display:flex;gap:10px;padding:11px 13px;border-radius:13px;background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 26%,transparent);margin-bottom:13px">
+<svg width="15" height="15" style="color:var(--red);flex-shrink:0;margin-top:1px"><use href="#ic-warn"/></svg>
+<div style="min-width:0"><div style="font-size:.79rem;font-weight:800;color:var(--red)">Le boîtier n'a pas confirmé</div><p style="margin:3px 0 0;font-size:.75rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Le véhicule est <b style="color:var(--tx)">peut-être</b> coupé. Nous ne pouvons pas l'affirmer : il faut aller vérifier.</p></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<button class="btns" style="width:100%;height:40px"><svg width="14" height="14"><use href="#ic-satoff"/></svg>Vérifier la connectivité</button>
+<button class="btns" style="width:100%;height:40px">Renvoyer la commande</button>
+<button class="btns" style="width:100%;height:40px;color:var(--accent);border-color:color-mix(in srgb,var(--accent) 34%,transparent)">J'ai vérifié sur place · marquer coupé</button>
+</div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Trois sorties au lieu d'une impasse. « J'ai vérifié sur place » <b style="color:var(--tx2)">consigne le constat humain</b> dans l'audit — aujourd'hui l'état reste ambigu indéfiniment.</p>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>PC · la confirmation — un geste qui immobilise ne se fait pas en un clic</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:22px;background:var(--bg2)">
+
+<div data-screen-label="Confirm coupure">
+<p class="frmlbl"><span class="plat pc">PC</span>Cas normal — boîtier joignable</p>
+<div class="card" style="overflow:hidden;border-color:var(--red);box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="height:3px;background:var(--red)"></div>
+<div style="padding:18px 20px">
+<div style="display:flex;gap:13px">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:var(--red);color:#fff;flex-shrink:0"><svg width="20" height="20"><use href="#ic-poweroff"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:1rem;font-weight:800;color:var(--red)">Couper le moteur ?</div>
+<p style="margin:5px 0 0;font-size:.8rem;line-height:1.5;color:var(--tx2);text-wrap:pretty"><span class="plq" style="font-size:.7rem">AB-231-CD</span> est à l'arrêt depuis <b style="color:var(--tx)">12 min</b>. Le véhicule ne pourra plus redémarrer jusqu'à ce que vous le rallumiez.</p>
+</div>
+</div>
+
+<div style="margin-top:16px">
+<div class="kpil" style="margin-bottom:9px">Portée de la coupure</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:11px;padding:11px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid var(--accent)">
+<span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex-shrink:0;margin-top:1px"><svg width="11" height="11"><use href="#ic-check"/></svg></span>
+<div style="min-width:0"><div style="font-size:.79rem;font-weight:800">Coupure simple</div><p style="margin:2px 0 0;font-size:.74rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Le planning horaire reste actif : le véhicule <b style="color:var(--tx)">se rallumera seul demain à 06:00</b>.</p></div>
+</div>
+<div style="display:flex;gap:11px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2)">
+<span style="width:18px;height:18px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;margin-top:1px"></span>
+<div style="min-width:0"><div style="font-size:.79rem;font-weight:800">Immobilisation durable</div><p style="margin:2px 0 0;font-size:.74rem;line-height:1.45;color:var(--tx2);text-wrap:pretty"><b style="color:var(--amber)">Sort le véhicule du planning horaire.</b> Il restera coupé jusqu'à une action manuelle — y compris demain matin.</p></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Deux options explicites au lieu d'une case à cocher. La différence — se rallume seul ou pas — est <b style="color:var(--tx2)">écrite dans chaque option</b>.</p>
+</div>
+
+<div style="margin-top:16px">
+<div class="fld"><b>Motif <span style="color:var(--tx3);font-weight:600">· optionnel, visible dans l'audit</span></b><div class="fin" style="height:40px;color:var(--tx3)">ex. véhicule non restitué</div></div>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-lock"/></svg>
+<span style="font-size:.74rem;color:var(--tx2)">Cette action sera enregistrée dans l'audit avec votre nom et l'heure.</span>
+</div>
+</div>
+<div style="display:flex;justify-content:flex-end;gap:9px;padding:14px 20px;border-top:1px solid var(--border)">
+<button class="btns" style="height:40px">Annuler</button>
+<button class="btnd" style="height:40px"><svg width="15" height="15"><use href="#ic-poweroff"/></svg>Oui, couper le moteur</button>
+</div>
+</div>
+</div>
+
+<div data-screen-label="Confirm boitier muet">
+<p class="frmlbl"><span class="plat pc">PC</span>Boîtier muet — l'avertissement le plus important</p>
+<div class="card" style="overflow:hidden;border-color:var(--amber);box-shadow:0 26px 54px -24px rgba(0,0,0,.5)">
+<div style="height:3px;background:var(--amber)"></div>
+<div style="padding:18px 20px">
+<div style="display:flex;gap:13px">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:var(--amber);color:#0A1311;flex-shrink:0"><svg width="20" height="20"><use href="#ic-satoff"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:1rem;font-weight:800;color:var(--amber)">Le boîtier ne répond plus</div>
+<p style="margin:5px 0 0;font-size:.8rem;line-height:1.5;color:var(--tx2);text-wrap:pretty"><span class="plq" style="font-size:.7rem">VF-889-KD</span> n'a rien émis depuis <b style="color:var(--tx)">89 j</b>.</p>
+</div>
+</div>
+
+<div style="margin-top:15px;padding:13px 14px;border-radius:13px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent)">
+<div style="font-size:.8rem;font-weight:800;color:var(--amber);margin-bottom:7px">Ce qui va se passer exactement</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;gap:10px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--surface);font-size:.66rem;font-weight:600;flex-shrink:0;color:var(--tx2)">1</span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">La commande partira par <b style="color:var(--tx)">SMS</b> (repli), sans garantie de réception.</span></div>
+<div style="display:flex;gap:10px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--surface);font-size:.66rem;font-weight:600;flex-shrink:0;color:var(--tx2)">2</span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)"><b style="color:var(--amber)">Aucune confirmation ne viendra.</b> Le boîtier étant muet, il ne peut pas accuser réception.</span></div>
+<div style="display:flex;gap:10px"><span class="mono" style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;background:var(--surface);font-size:.66rem;font-weight:600;flex-shrink:0;color:var(--tx2)">3</span><span style="font-size:.755rem;line-height:1.45;color:var(--tx2)">Vous devrez <b style="color:var(--tx)">vérifier physiquement</b> que le véhicule est bien coupé.</span></div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 13px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<span class="cbx on"><svg width="12" height="12"><use href="#ic-check"/></svg></span>
+<span style="font-size:.775rem;line-height:1.45;color:var(--tx2)">J'ai compris qu'aucune confirmation ne suivra</span>
+</div>
+</div>
+<div style="display:flex;justify-content:flex-end;gap:9px;padding:14px 20px;border-top:1px solid var(--border)">
+<button class="btns" style="height:40px">Annuler</button>
+<button class="btnd" style="height:40px;background:var(--amber);color:#0A1311">Envoyer quand même</button>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">L'avertissement existe déjà dans le code, en une phrase dense. Ici il devient <b style="color:var(--tx2)">3 étapes numérotées</b> plus une case d'acquittement — parce que c'est le cas où l'opérateur risque le plus de croire à un succès.</p>
+</div>
+
+<div data-screen-label="Journal commandes">
+<p class="frmlbl"><span class="plat pc">PC</span>Journal des commandes — la mémoire du véhicule</p>
+<div class="card" style="overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;background:var(--surface3);color:var(--tx2)"><svg width="16" height="16"><use href="#ic-hist"/></svg></span>
+<div><div class="crdt">Commandes moteur</div><div style="font-size:.71rem;color:var(--tx3);margin-top:1px">5 dernières sur ce véhicule</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border)">
+<span class="mono" style="font-size:.7rem;color:var(--tx3);width:74px;flex-shrink:0">29/07 09:34</span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span class="stb" style="background:var(--accent);color:var(--accent-ink);font-size:.66rem">Confirmée</span><span style="font-size:.755rem;font-weight:700">Rallumage</span></div><div style="font-size:.71rem;color:var(--tx3);margin-top:3px">Amélie D. · accusé en 4 s</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--red-soft)">
+<span class="mono" style="font-size:.7rem;color:var(--tx3);width:74px;flex-shrink:0">20/07 21:14</span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span class="stb" style="background:var(--red);color:#fff;font-size:.66rem">Non confirmée</span><span style="font-size:.755rem;font-weight:700">Coupure</span></div><div style="font-size:.71rem;color:var(--tx3);margin-top:3px">Thomas L. · 3 essais · <b style="color:var(--accent)">vérifié sur place à 21:40</b></div></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--amber-soft)">
+<span class="mono" style="font-size:.7rem;color:var(--tx3);width:74px;flex-shrink:0">20/07 18:42</span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span class="stb" style="background:var(--amber-soft);color:var(--amber);font-size:.66rem">Refusée</span><span style="font-size:.755rem;font-weight:700">Coupure</span></div><div style="font-size:.71rem;color:var(--tx3);margin-top:3px">Planning horaire · 74 km/h — garde-fou</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border)">
+<span class="mono" style="font-size:.7rem;color:var(--tx3);width:74px;flex-shrink:0">19/07 19:03</span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span class="stb" style="background:var(--blue-soft);color:var(--blue);font-size:.66rem">Non vérifiable</span><span style="font-size:.755rem;font-weight:700">Coupure</span></div><div style="font-size:.71rem;color:var(--tx3);margin-top:3px">Planning horaire · moteur déjà éteint</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px">
+<span class="mono" style="font-size:.7rem;color:var(--tx3);width:74px;flex-shrink:0">18/07 06:02</span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:7px"><span class="stb" style="background:var(--accent);color:var(--accent-ink);font-size:.66rem">Confirmée</span><span style="font-size:.755rem;font-weight:700">Rallumage</span></div><div style="font-size:.71rem;color:var(--tx3);margin-top:3px">Planning horaire · accusé en 6 s</div></div>
+</div>
+</div>
+<p class="hint" style="margin-top:14px">Les 6 états <b style="color:var(--tx2)">cohabitent</b> dans le journal, chacun avec sa couleur. On lit l'histoire du véhicule : une coupure refusée à 18:42, une non confirmée le soir puis vérifiée à la main 26 min plus tard.</p>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>PC · F7 le panneau surveillance — et le défaut le plus embêtant : les horaires en UTC</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:1.25fr 1fr;gap:22px;background:var(--bg2)">
+
+<div data-screen-label="Surveillance PC">
+<p class="frmlbl"><span class="plat pc">PC</span>Configuration</p>
+<div class="card" style="overflow:hidden">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 17px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;background:var(--violet-soft);color:var(--violet)"><svg width="16" height="16"><use href="#ic-shield"/></svg></span>
+<div style="min-width:0;flex:1"><div class="crdt">Surveillance antivol</div><div style="font-size:.71rem;color:var(--tx3);margin-top:1px"><span class="plq" style="font-size:.68rem">AB-231-CD</span> · Renault Master</div></div>
+<span class="tag" style="background:var(--accent-soft);color:var(--accent)"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span>Armée</span>
+</div>
+
+<div style="padding:16px 17px;display:flex;flex-direction:column;gap:16px">
+
+<div>
+<div class="kpil" style="margin-bottom:9px">Quand la surveillance s'arme</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+<div style="padding:11px 12px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2)"><div style="font-size:.79rem;font-weight:700;color:var(--tx2)">Manuel</div><p class="hint" style="margin:3px 0 0">Vous armez vous-même</p></div>
+<div style="padding:11px 12px;border-radius:13px;background:var(--accent-soft);border:1px solid var(--accent)"><div style="font-size:.79rem;font-weight:800;color:var(--accent)">Plage horaire</div><p class="hint" style="margin:3px 0 0;color:var(--tx2)">Hors des heures ouvrées</p></div>
+<div style="padding:11px 12px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2)"><div style="font-size:.79rem;font-weight:700;color:var(--tx2)">Permanente</div><p class="hint" style="margin:3px 0 0">24 h / 24</p></div>
+</div>
+</div>
+
+<div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px">
+<span class="kpil">Plage de surveillance</span>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:.7rem;font-weight:700;color:var(--accent)"><svg width="12" height="12"><use href="#ic-clock"/></svg>Heure de Toulouse</span>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div class="fld"><b>Début</b><div class="fin mono" style="border-color:var(--accent);font-weight:600">20:00</div></div>
+<div class="fld"><b>Fin</b><div class="fin mono" style="font-weight:600">06:00</div></div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;margin-top:9px;padding:9px 11px;border-radius:10px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="13" height="13" style="color:var(--tx3);flex-shrink:0"><use href="#ic-info"/></svg>
+<span style="font-size:.73rem;color:var(--tx2)">Soit <span class="mono" style="color:var(--tx3)">18:00 → 04:00 UTC</span> · l'heure d'été est suivie automatiquement</span>
+</div>
+</div>
+
+<div>
+<div class="kpil" style="margin-bottom:9px">Jours actifs</div>
+<div style="display:flex;gap:7px">
+<span class="day" style="background:var(--accent);color:var(--accent-ink)">L</span>
+<span class="day" style="background:var(--accent);color:var(--accent-ink)">M</span>
+<span class="day" style="background:var(--accent);color:var(--accent-ink)">M</span>
+<span class="day" style="background:var(--accent);color:var(--accent-ink)">J</span>
+<span class="day" style="background:var(--accent);color:var(--accent-ink)">V</span>
+<span class="day" style="background:var(--violet-soft);color:var(--violet);border:1px solid var(--violet)">S</span>
+<span class="day" style="background:var(--violet-soft);color:var(--violet);border:1px solid var(--violet)">D</span>
+</div>
+<p class="hint" style="margin-top:14px">Samedi et dimanche en violet : la surveillance y est <b style="color:var(--tx2)">permanente</b>, pas seulement nocturne. Un week-end n'a pas d'heures ouvrées.</p>
+</div>
+
+<div style="height:1px;background:var(--border)"></div>
+
+<div>
+<div class="kpil" style="margin-bottom:9px">Ce qui déclenche une alerte</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--amber-soft);color:var(--amber);flex-shrink:0"><svg width="15" height="15"><use href="#ic-wave"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.795rem;font-weight:700">Vibration ou choc</div><p class="hint" style="margin:2px 0 0">Effraction, remorquage, tentative de démarrage.</p></div>
+<span class="sw on"><i></i></span>
+</div>
+<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--red-soft);color:var(--red);flex-shrink:0"><svg width="15" height="15"><use href="#ic-move"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.795rem;font-weight:700">Mouvement du véhicule</div><p class="hint" style="margin:2px 0 0">Le véhicule quitte sa position — vol probable.</p></div>
+<span class="sw on"><i></i></span>
+</div>
+<div style="display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="15" height="15"><use href="#ic-door"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.795rem;font-weight:700">Ouverture de portière</div><p class="hint" style="margin:2px 0 0">Nécessite un boîtier câblé sur le contacteur.</p></div>
+<span class="sw"><i></i></span>
+</div>
+</div>
+</div>
+
+<div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:9px">
+<span class="kpil">Sensibilité au choc</span>
+<span style="font-size:.71rem;font-weight:700;color:var(--accent)">Moyenne · recommandé</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+<div style="padding:10px 12px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2)"><div style="font-size:.775rem;font-weight:700;color:var(--tx2)">Faible</div><p class="hint" style="margin:2px 0 0">Vibrations fortes seulement</p></div>
+<div style="padding:10px 12px;border-radius:13px;background:var(--accent-soft);border:1px solid var(--accent)"><div style="font-size:.775rem;font-weight:800;color:var(--accent)">Moyenne</div><p class="hint" style="margin:2px 0 0;color:var(--tx2)">Le bon compromis</p></div>
+<div style="padding:10px 12px;border-radius:13px;background:var(--surface2);border:1px solid var(--border2)"><div style="font-size:.775rem;font-weight:700;color:var(--tx2)">Élevée</div><p class="hint" style="margin:2px 0 0">Réagit à tout — fausses alertes</p></div>
+</div>
+</div>
+
+<div>
+<div class="kpil" style="margin-bottom:9px">Qui est prévenu, en plus des destinataires habituels</div>
+<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px">
+<span class="chip" style="background:var(--accent-soft);color:var(--accent)"><span style="display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.58rem;font-weight:800">AD</span>Amélie Duchamp · Admin</span>
+<span class="chip" style="background:var(--accent-soft);color:var(--accent)"><span style="display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:999px;background:var(--violet);color:#fff;font-size:.58rem;font-weight:800">TL</span>Thomas Lenoir · Veilleur</span>
+<span class="chip" style="background:transparent;border:1px dashed var(--border2)">+ ajouter</span>
+</div>
+<p class="hint" style="margin:0">Ces personnes s'ajoutent aux destinataires définis dans les règles de notification — elles ne les remplacent pas.</p>
+</div>
+
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 17px;border-top:1px solid var(--border);background:var(--surface2)">
+<span style="display:inline-flex;align-items:center;gap:7px;font-size:.735rem;color:var(--tx3)"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-check"/></svg>Enregistré à l'instant</span>
+<button class="btns" style="height:34px">Désarmer maintenant</button>
+</div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:20px">
+
+<div class="wrong" data-screen-label="Defaut UTC">
+<span class="lbl" style="background:var(--red);color:#fff">Le défaut · horaires en UTC</span>
+<p style="margin:4px 0 12px;font-size:.775rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Les deux champs de la source portent le libellé <span class="mono" style="font-size:.7rem">Début (HH:mm UTC)</span> et <span class="mono" style="font-size:.7rem">Fin (HH:mm UTC)</span>. On demande à un gestionnaire de flotte de convertir mentalement — et la conversion <b style="color:var(--tx)">change deux fois par an</b>.</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div style="padding:11px 12px;border-radius:10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--red) 30%,transparent)">
+<div class="mono" style="font-size:.66rem;color:var(--red);margin-bottom:6px">Début (HH:mm UTC)</div>
+<div class="mono" style="font-size:.95rem;font-weight:600">18:00</div>
+<p style="margin:7px 0 0;font-size:.7rem;line-height:1.4;color:var(--red)">Voulait dire 20:00 en été…<br>et 19:00 en hiver.</p>
+</div>
+<div style="padding:11px 12px;border-radius:10px;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)">
+<div class="mono" style="font-size:.66rem;color:var(--accent);margin-bottom:6px">Début · heure de Toulouse</div>
+<div class="mono" style="font-size:.95rem;font-weight:600">20:00</div>
+<p style="margin:7px 0 0;font-size:.7rem;line-height:1.4;color:var(--tx2)">L'UTC reste affiché en dessous, à titre indicatif.</p>
+</div>
+</div>
+<p style="margin:11px 0 0;font-size:.75rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Conséquence réelle : une surveillance réglée « 18:00 » démarre à 20:00 en été. Deux heures pendant lesquelles le véhicule n'est <b style="color:var(--tx)">pas protégé</b>, sans que personne ne le sache.</p>
+</div>
+
+<div class="card" style="overflow:hidden" data-screen-label="Historique surveillance">
+<div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;background:var(--surface3);color:var(--tx2)"><svg width="16" height="16"><use href="#ic-hist"/></svg></span>
+<div style="min-width:0;flex:1"><div class="crdt">Déclenchements</div><div style="font-size:.71rem;color:var(--tx3);margin-top:1px">30 derniers jours · 4 événements</div></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--red-soft)">
+<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;background:var(--red);color:#fff;flex-shrink:0"><svg width="14" height="14"><use href="#ic-move"/></svg></span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:.79rem;font-weight:800;color:var(--red)">Mouvement détecté</span><span class="mono" style="font-size:.68rem;color:var(--tx3)">14/07 03:12</span></div><p style="margin:3px 0 0;font-size:.735rem;line-height:1.42;color:var(--tx2);text-wrap:pretty">Le véhicule a quitté le dépôt · 3 personnes prévenues en 8 s · <b style="color:var(--tx)">retrouvé à 04:40</b></p></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;background:var(--amber-soft);color:var(--amber);flex-shrink:0"><svg width="14" height="14"><use href="#ic-wave"/></svg></span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:.79rem;font-weight:700">Choc léger</span><span class="mono" style="font-size:.68rem;color:var(--tx3)">09/07 22:47</span></div><p style="margin:3px 0 0;font-size:.735rem;line-height:1.42;color:var(--tx2)">Sans suite · probable coup de vent sur une porte de hangar</p></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;background:var(--amber-soft);color:var(--amber);flex-shrink:0"><svg width="14" height="14"><use href="#ic-wave"/></svg></span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:.79rem;font-weight:700">Choc léger</span><span class="mono" style="font-size:.68rem;color:var(--tx3)">02/07 23:15</span></div><p style="margin:3px 0 0;font-size:.735rem;line-height:1.42;color:var(--tx2)">Sans suite</p></div>
+</div>
+<div style="display:flex;gap:11px;padding:12px 16px">
+<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:10px;background:var(--surface3);color:var(--tx3);flex-shrink:0"><svg width="14" height="14"><use href="#ic-shield"/></svg></span>
+<div style="min-width:0;flex:1"><div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:.79rem;font-weight:700;color:var(--tx2)">Surveillance armée</span><span class="mono" style="font-size:.68rem;color:var(--tx3)">01/07 20:00</span></div><p style="margin:3px 0 0;font-size:.735rem;line-height:1.42;color:var(--tx3)">Automatique · plage horaire</p></div>
+</div>
+<div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2)">
+<p style="margin:0;font-size:.735rem;line-height:1.45;color:var(--tx2);text-wrap:pretty"><b style="color:var(--tx)">2 chocs sans suite en 12 jours.</b> Si le motif se répète, passez la sensibilité en <b style="color:var(--tx)">Faible</b> — un antivol qui crie pour rien finit par être ignoré.</p>
+</div>
+</div>
+<p class="hint" style="margin:0"><b style="color:var(--tx2)">Ajouté :</b> le dénouement de chaque déclenchement (« retrouvé à 04:40 », « sans suite ») et un conseil déduit du motif. Aujourd'hui l'historique liste des événements sans dire ce qu'ils sont devenus.</p>
+
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>04</i>iPhone 390 × 844 · couper depuis le terrain — feuille d'action, glissement de sécurité</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Fiche véhicule — l'action est en bas, sous le pouce</p>
+<div class="mfrm" data-screen-label="Coupure iPhone"><div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">18:42</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+<div style="display:flex;align-items:center;gap:6px;padding:4px 16px 2px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-chevl"/></svg><span style="font-size:.86rem;font-weight:600;color:var(--accent)">Véhicules</span></div>
+<div style="padding:4px 16px 14px">
+<div style="display:flex;align-items:center;gap:10px"><span style="position:relative;display:flex;flex-shrink:0"><svg width="22" height="22" style="color:var(--tx3)"><use href="#ic-van"/></svg><span style="position:absolute;bottom:-4px;right:-4px;display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:999px;background:#fff;border:2px solid var(--bg2);overflow:hidden"><img src="brands/renault.png" alt="" style="width:80%;height:80%;object-fit:contain"></span></span><h1 style="margin:0;font-size:1.42rem;font-weight:800;letter-spacing:-.035em">AB-231-CD</h1></div>
+<div style="font-size:.735rem;color:var(--tx3);margin-top:4px">Renault Master · Chantier Nord</div>
+</div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:11px">
+<div style="display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--surface3);color:var(--tx2);flex-shrink:0"><svg width="16" height="16"><use href="#ic-poweroff"/></svg></span><div style="min-width:0;flex:1"><div style="font-size:.82rem;font-weight:700">Moteur éteint</div><div style="font-size:.72rem;color:var(--tx3);margin-top:2px">À l'arrêt depuis 12 min</div></div></div>
+<div style="padding:13px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<div class="kpil" style="margin-bottom:10px">Conditions pour couper</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:9px"><svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg><span style="font-size:.775rem;color:var(--tx2)">À l'arrêt depuis <b style="color:var(--tx)">12 min</b></span></div>
+<div style="display:flex;align-items:center;gap:9px"><svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-sat"/></svg><span style="font-size:.775rem;color:var(--tx2)">Position de <b style="color:var(--tx)">il y a 8 s</b></span></div>
+<div style="display:flex;align-items:center;gap:9px"><svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-check"/></svg><span style="font-size:.775rem;color:var(--tx2)">Boîtier vu <b style="color:var(--tx)">à l'instant</b></span></div>
+</div>
+</div>
+<div style="padding:13px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<div class="kpil" style="margin-bottom:10px">Dernière commande</div>
+<div style="display:flex;align-items:center;gap:9px"><span class="stb" style="background:var(--accent);color:var(--accent-ink);font-size:.66rem">Confirmée</span><span style="font-size:.755rem;color:var(--tx2)">Rallumage · 29/07 09:34</span></div>
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;padding:13px 16px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:52px;border-radius:13px;background:var(--red);color:#fff;font-size:.9rem;font-weight:800"><svg width="17" height="17"><use href="#ic-poweroff"/></svg>Couper le moteur</div>
+<p style="margin:9px 0 0;font-size:.71rem;color:var(--tx3);text-align:center">Une confirmation sera demandée</p>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+<p class="hint" style="margin-top:14px">L'action destructive occupe <b style="color:var(--tx2)">toute la largeur en bas</b> : on ne coupe pas un moteur par erreur avec le pouce, mais on ne doit pas la chercher non plus.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Confirmation — glissement, pas simple appui</p>
+<div class="mfrm" data-screen-label="Confirm iPhone"><div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">18:42</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;background:var(--bg2);opacity:.32;overflow:hidden;padding:12px 16px"><h1 style="margin:0;font-size:1.4rem;font-weight:800;letter-spacing:-.035em">AB-231-CD</h1></div>
+<div style="position:absolute;inset:50px 0 0;background:rgba(0,0,0,.4)"></div>
+<div style="position:absolute;left:0;right:0;bottom:0;top:214px;border-radius:22px 22px 0 0;background:var(--bg2);overflow:hidden;box-shadow:0 -18px 40px -10px rgba(0,0,0,.55);z-index:150">
+<div style="height:3px;background:var(--red)"></div>
+<div style="display:flex;justify-content:center;padding:9px 0 3px"><span style="width:36px;height:5px;border-radius:3px;background:var(--border2)"></span></div>
+<div style="padding:12px 20px 0">
+<span style="display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:13px;background:var(--red);color:#fff;margin-bottom:14px"><svg width="23" height="23"><use href="#ic-poweroff"/></svg></span>
+<h2 style="margin:0;font-size:1.28rem;font-weight:800;letter-spacing:-.03em;color:var(--red)">Couper le moteur ?</h2>
+<p style="margin:9px 0 0;font-size:.83rem;line-height:1.5;color:var(--tx2);text-wrap:pretty"><span class="plq" style="font-size:.7rem">AB-231-CD</span> est à l'arrêt depuis <b style="color:var(--tx)">12 min</b>. Il ne pourra plus redémarrer jusqu'à ce que vous le rallumiez.</p>
+</div>
+<div style="padding:18px 20px 0;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;gap:11px;padding:12px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid var(--accent)"><span style="display:flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex-shrink:0;margin-top:1px"><svg width="12" height="12"><use href="#ic-check"/></svg></span><div style="min-width:0"><div style="font-size:.8rem;font-weight:800">Coupure simple</div><p style="margin:2px 0 0;font-size:.745rem;line-height:1.42;color:var(--tx2)">Se rallume seul demain à 06:00</p></div></div>
+<div style="display:flex;gap:11px;padding:12px 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border2)"><span style="width:19px;height:19px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;margin-top:1px"></span><div style="min-width:0"><div style="font-size:.8rem;font-weight:800">Immobilisation durable</div><p style="margin:2px 0 0;font-size:.745rem;line-height:1.42;color:var(--tx2)"><b style="color:var(--amber)">Sort du planning</b> — reste coupé</p></div></div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 20px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="position:relative;height:54px;border-radius:16px;background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);overflow:hidden"><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;color:var(--red)">Glissez pour couper →</span><span style="position:absolute;top:4px;left:4px;bottom:4px;width:46px;display:flex;align-items:center;justify-content:center;border-radius:13px;background:var(--red);color:#fff"><svg width="19" height="19"><use href="#ic-chev"/></svg></span></div>
+<div style="display:flex;align-items:center;justify-content:center;height:44px;margin-top:6px;font-size:.85rem;font-weight:600;color:var(--tx3)">Annuler</div>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+<p class="hint" style="margin-top:14px"><b style="color:var(--tx2)">Glissement, pas appui.</b> Sur PC on tape la plaque ; au doigt, sur un chantier, un glissement volontaire est le bon équivalent — impossible à déclencher dans une poche.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>Surveillance — listes groupées iOS</p>
+<div class="mfrm" data-screen-label="Surveillance iPhone"><div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">18:42</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+<div style="display:flex;align-items:center;gap:6px;padding:4px 16px 2px"><svg width="15" height="15" style="color:var(--accent)"><use href="#ic-chevl"/></svg><span style="font-size:.86rem;font-weight:600;color:var(--accent)">AB-231-CD</span></div>
+<div style="padding:2px 16px 14px"><h1 style="margin:0;font-size:1.42rem;font-weight:800;letter-spacing:-.035em">Surveillance</h1><div style="font-size:.735rem;color:var(--tx3);margin-top:3px">Antivol · armée automatiquement</div></div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;align-items:center;gap:11px;padding:12px 13px;border-radius:13px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent)"><span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="16" height="16"><use href="#ic-shield"/></svg></span><div style="min-width:0;flex:1"><div style="font-size:.82rem;font-weight:800;color:var(--accent)">Armée</div><div style="font-size:.72rem;color:var(--tx2);margin-top:2px">Depuis 20:00 · jusqu'à 06:00</div></div></div>
+<div>
+<div style="font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 3px 7px">Plage · heure de Toulouse</div>
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="flex:1;font-size:.84rem;font-weight:600">Début</span><span class="mono" style="font-size:.86rem;font-weight:600;color:var(--accent)">20:00</span></div>
+<div style="height:1px;background:var(--border);margin-left:15px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:10px 15px;min-height:44px"><span style="flex:1;font-size:.84rem;font-weight:600">Fin</span><span class="mono" style="font-size:.86rem;font-weight:600">06:00</span></div>
+</div>
+<div style="font-size:.715rem;line-height:1.45;color:var(--tx3);padding:7px 3px 0">Soit <span class="mono">18:00 → 04:00 UTC</span>. L'heure d'été est suivie automatiquement.</div>
+</div>
+<div>
+<div style="font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 3px 7px">Déclencheurs</div>
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:12px;padding:8px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--amber);color:#0A1311;flex-shrink:0"><svg width="15" height="15"><use href="#ic-wave"/></svg></span><span style="flex:1;font-size:.83rem;font-weight:600">Vibration ou choc</span><span class="iosw on"><i></i></span></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--red);color:#fff;flex-shrink:0"><svg width="15" height="15"><use href="#ic-move"/></svg></span><span style="flex:1;font-size:.83rem;font-weight:600">Mouvement</span><span class="iosw on"><i></i></span></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;gap:12px;padding:8px 15px;min-height:44px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--surface3);color:var(--tx3);flex-shrink:0"><svg width="15" height="15"><use href="#ic-door"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.83rem;font-weight:600;color:var(--tx2)">Ouverture portière</div><div style="font-size:.69rem;color:var(--tx3);margin-top:1px">Boîtier non câblé</div></div><span class="iosw"><i></i></span></div>
+</div>
+</div>
+<div>
+<div style="font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 3px 7px">Derniers déclenchements</div>
+<div style="background:var(--surface);border-radius:13px;overflow:hidden">
+<div style="display:flex;align-items:flex-start;gap:12px;padding:11px 15px"><span style="display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;background:var(--red);color:#fff;flex-shrink:0;margin-top:1px"><svg width="15" height="15"><use href="#ic-move"/></svg></span><div style="min-width:0;flex:1"><div style="display:flex;align-items:baseline;gap:7px"><span style="font-size:.82rem;font-weight:700;color:var(--red)">Mouvement</span><span class="mono" style="font-size:.68rem;color:var(--tx3)">14/07 03:12</span></div><div style="font-size:.72rem;color:var(--tx2);margin-top:2px">Retrouvé à 04:40</div></div></div>
+<div style="height:1px;background:var(--border);margin-left:56px"></div>
+<div style="display:flex;align-items:center;justify-content:center;padding:11px 15px"><span style="font-size:.84rem;font-weight:600;color:var(--accent)">Tout l'historique</span></div>
+</div>
+</div>
+</div>
+</div>
+<div class="mhome"></div>
+</div>
+<p class="hint" style="margin-top:14px">L'UTC passe en <b style="color:var(--tx2)">note de pied</b> : l'information reste vérifiable sans être ce qu'on doit calculer.</p>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>05</i>Android 412 × 915 · dialogue M3 avec saisie de plaque, listes pleine largeur</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Confirmation — dialogue M3, la plaque à retaper</p>
+<div class="afrm" data-screen-label="Confirm Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">18:42</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px;opacity:.5">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-chevl"/></svg>
+<span style="flex:1;font-size:1.18rem;font-weight:600">AB-231-CD</span>
+</div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:11px;opacity:.35">
+<div style="height:78px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+<div style="height:120px;border-radius:16px;background:var(--surface);border:1px solid var(--border)"></div>
+</div>
+
+<div style="position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:100"></div>
+<div style="position:absolute;left:20px;right:20px;top:118px;border-radius:28px;background:var(--surface2);padding:24px;z-index:110;box-shadow:0 22px 44px -10px rgba(0,0,0,.6)">
+<span style="display:flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:var(--red-soft);color:var(--red);margin-bottom:16px"><svg width="23" height="23"><use href="#ic-poweroff"/></svg></span>
+<div style="font-size:1.32rem;font-weight:600;letter-spacing:-.012em;color:var(--red)">Couper le moteur ?</div>
+<p style="margin:11px 0 0;font-size:.845rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Le véhicule est à l'arrêt depuis <b style="color:var(--tx)">12 min</b>. Il ne pourra plus redémarrer jusqu'à ce que vous le rallumiez.</p>
+
+<div style="display:flex;flex-direction:column;gap:9px;margin-top:17px">
+<div style="display:flex;gap:12px;padding:12px 14px;border-radius:13px;background:var(--accent-soft);border:1px solid var(--accent)">
+<span style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex-shrink:0;margin-top:1px"><svg width="12" height="12"><use href="#ic-check"/></svg></span>
+<div style="min-width:0"><div style="font-size:.83rem;font-weight:600">Coupure simple</div><p style="margin:2px 0 0;font-size:.765rem;line-height:1.42;color:var(--tx2)">Se rallume seul demain à 06:00</p></div>
+</div>
+<div style="display:flex;gap:12px;padding:12px 14px;border-radius:13px;background:var(--surface3);border:1px solid transparent">
+<span style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;margin-top:1px"></span>
+<div style="min-width:0"><div style="font-size:.83rem;font-weight:600">Immobilisation durable</div><p style="margin:2px 0 0;font-size:.765rem;line-height:1.42;color:var(--tx2)"><b style="color:var(--amber)">Sort du planning</b> — reste coupé</p></div>
+</div>
+</div>
+
+<div style="margin-top:16px">
+<div class="m3fld on" style="padding:19px 14px 11px"><b style="color:var(--red)">Tapez la plaque pour confirmer</b><span class="mono" style="font-size:.92rem;font-weight:600">AB-231-CD<span style="display:inline-block;width:2px;height:15px;background:var(--red);margin-left:2px;vertical-align:-2px;animation:vt-pulse .9s steps(2) infinite"></span></span></div>
+</div>
+
+<div style="display:flex;align-items:center;gap:9px;margin-top:15px;padding:10px 12px;border-radius:13px;background:var(--surface3)">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-lock"/></svg>
+<span style="font-size:.755rem;line-height:1.4;color:var(--tx2)">Enregistré dans l'audit avec votre nom</span>
+</div>
+
+<div style="display:flex;justify-content:flex-end;gap:9px;margin-top:20px">
+<span style="display:inline-flex;align-items:center;height:42px;padding:0 17px;border-radius:21px;color:var(--tx2);font-size:.86rem;font-weight:600">Annuler</span>
+<span style="display:inline-flex;align-items:center;height:42px;padding:0 22px;border-radius:21px;background:var(--red);color:#fff;font-size:.86rem;font-weight:700">Couper</span>
+</div>
+</div>
+</div>
+<div class="anav" style="z-index:120"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">Android garde la <b style="color:var(--tx2)">saisie de plaque</b> du PC : le dialogue M3 s'y prête, et le bouton retour système offre une sortie sans risque — contrairement à un glissement qui pourrait aboutir par accident.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>État non confirmé — les 3 sorties</p>
+<div class="afrm" data-screen-label="Non confirmee Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">21:16</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-chevl"/></svg>
+<span style="flex:1;font-size:1.18rem;font-weight:600">GH-204-LP</span>
+</div>
+
+<div style="padding:2px 16px 0">
+<div style="padding:16px 17px;border-radius:16px;background:var(--red-soft);border:1px solid var(--red)">
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+<span style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:13px;background:var(--red);color:#fff;flex-shrink:0"><svg width="19" height="19"><use href="#ic-warn"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:700;color:var(--red)">Coupure non confirmée</div><div class="mono" style="font-size:.72rem;color:var(--tx3);margin-top:2px">envoyée à 21:14 · il y a 2 min</div></div>
+</div>
+<p style="margin:0;font-size:.82rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Le boîtier n'a pas accusé réception dans les 90 s. Le véhicule est <b style="color:var(--tx)">peut-être</b> coupé — nous ne pouvons pas l'affirmer.</p>
+</div>
+</div>
+
+<div style="font-size:.775rem;font-weight:800;color:var(--accent);padding:18px 20px 6px;letter-spacing:.01em">Que faire</div>
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:13px;padding:14px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--amber-soft);color:var(--amber);flex-shrink:0"><svg width="17" height="17"><use href="#ic-satoff"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.87rem;font-weight:600">Vérifier la connectivité</div><p style="margin:2px 0 0;font-size:.765rem;line-height:1.4;color:var(--tx3)">Boîtier hors ligne depuis 4 h</p></div>
+<svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+<div style="display:flex;align-items:center;gap:13px;padding:14px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--blue-soft);color:var(--blue);flex-shrink:0"><svg width="17" height="17"><use href="#ic-poweroff"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.87rem;font-weight:600">Renvoyer la commande</div><p style="margin:2px 0 0;font-size:.765rem;line-height:1.4;color:var(--tx3)">3ᵉ tentative</p></div>
+<svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+<div style="display:flex;align-items:center;gap:13px;padding:14px 15px;border-radius:16px;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)">
+<span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="17" height="17"><use href="#ic-check"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.87rem;font-weight:600">J'ai vérifié sur place</div><p style="margin:2px 0 0;font-size:.765rem;line-height:1.4;color:var(--tx3)">Consigne le constat dans l'audit</p></div>
+<svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-chev"/></svg>
+</div>
+</div>
+
+<div style="padding:20px 16px 0">
+<div style="padding:13px 15px;border-radius:16px;background:var(--surface2);border:1px dashed var(--border2)">
+<p style="margin:0;font-size:.775rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Tant que rien n'est tranché, ce véhicule reste marqué <b style="color:var(--tx)">« état incertain »</b> sur la carte et dans les listes. L'ambiguïté est visible partout, pas seulement ici.</p>
+</div>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">L'état incertain <b style="color:var(--tx2)">se propage</b> : c'est la seule façon d'éviter qu'un véhicule reste ambigu pendant des jours sans que personne ne s'en aperçoive.</p>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Surveillance — interrupteurs M3 pleine largeur</p>
+<div class="afrm" data-screen-label="Surveillance Android">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">18:42</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+<div style="display:flex;align-items:center;gap:16px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-chevl"/></svg>
+<span style="flex:1;font-size:1.18rem;font-weight:600;letter-spacing:-.01em">Surveillance</span>
+<svg width="19" height="19" style="color:var(--tx2)"><use href="#ic-hist"/></svg>
+</div>
+
+<div style="padding:2px 16px 0">
+<div style="display:flex;align-items:center;gap:13px;padding:15px 16px;border-radius:16px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent)">
+<span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:13px;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="20" height="20"><use href="#ic-shield"/></svg></span>
+<div style="min-width:0;flex:1"><div style="font-size:.95rem;font-weight:700;color:var(--accent)">Armée</div><div style="font-size:.755rem;color:var(--tx2);margin-top:2px">20:00 → 06:00 · heure de Toulouse</div></div>
+</div>
+</div>
+
+<div style="font-size:.775rem;font-weight:800;color:var(--accent);padding:18px 20px 6px">Armement</div>
+<div style="padding:0 16px;display:flex;gap:9px;flex-wrap:wrap">
+<span style="display:inline-flex;align-items:center;height:34px;padding:0 13px;border-radius:7px;border:1px solid var(--border2);font-size:.79rem;font-weight:600;color:var(--tx2)">Manuel</span>
+<span style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 13px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:.79rem;font-weight:700"><svg width="13" height="13"><use href="#ic-check"/></svg>Plage horaire</span>
+<span style="display:inline-flex;align-items:center;height:34px;padding:0 13px;border-radius:7px;border:1px solid var(--border2);font-size:.79rem;font-weight:600;color:var(--tx2)">Permanente</span>
+</div>
+
+<div style="padding:18px 16px 0;display:flex;gap:11px">
+<div class="m3fld on" style="flex:1;padding:19px 14px 11px"><b>Début</b><span class="mono" style="font-size:.92rem;font-weight:600">20:00</span></div>
+<div class="m3fld" style="flex:1;padding:19px 14px 11px"><b>Fin</b><span class="mono" style="font-size:.92rem;font-weight:600">06:00</span></div>
+</div>
+<div style="padding:9px 20px 0;font-size:.755rem;line-height:1.45;color:var(--tx3)">Soit <span class="mono">18:00 → 04:00 UTC</span> · heure d'été suivie automatiquement</div>
+
+<div style="font-size:.775rem;font-weight:800;color:var(--accent);padding:18px 20px 6px">Déclencheurs</div>
+<div style="display:flex;align-items:center;gap:16px;padding:9px 20px;min-height:52px"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--amber-soft);color:var(--amber);flex-shrink:0"><svg width="17" height="17"><use href="#ic-wave"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:500">Vibration ou choc</div><div style="font-size:.755rem;color:var(--tx3);margin-top:1px">Sensibilité moyenne</div></div><span class="m3sw on"><i></i></span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:9px 20px;min-height:52px"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--red-soft);color:var(--red);flex-shrink:0"><svg width="17" height="17"><use href="#ic-move"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:500">Mouvement du véhicule</div><div style="font-size:.755rem;color:var(--tx3);margin-top:1px">Vol probable</div></div><span class="m3sw on"><i></i></span></div>
+<div style="display:flex;align-items:center;gap:16px;padding:9px 20px;min-height:52px"><span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--surface3);color:var(--tx3);flex-shrink:0"><svg width="17" height="17"><use href="#ic-door"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:500;color:var(--tx2)">Ouverture de portière</div><div style="font-size:.755rem;color:var(--tx3);margin-top:1px">Boîtier non câblé</div></div><span class="m3sw"><i></i></span></div>
+
+<div style="font-size:.775rem;font-weight:800;color:var(--accent);padding:14px 20px 6px">Prévenir en plus</div>
+<div style="padding:0 16px;display:flex;gap:8px;flex-wrap:wrap">
+<span class="chip" style="height:32px;padding:0 11px;background:var(--accent-soft);color:var(--accent);font-size:.775rem">Amélie D.</span>
+<span class="chip" style="height:32px;padding:0 11px;background:var(--accent-soft);color:var(--accent);font-size:.775rem">Thomas L.</span>
+<span class="chip" style="height:32px;padding:0 11px;background:transparent;border:1px dashed var(--border2);font-size:.775rem">+ ajouter</span>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+<p class="hint" style="margin-top:14px">Interrupteurs M3 <b style="color:var(--tx2)">pleine largeur</b> avec sous-titre : la sensibilité devient une information sur la ligne du choc plutôt qu'un réglage séparé.</p>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

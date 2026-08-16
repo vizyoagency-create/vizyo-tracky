@@ -2,7 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 import { brandLogoUrl, findBrand } from '../../utils/vehicle-brands';
 
 /**
- * Logo de marque véhicule. Affiche le PNG `public/logos/brands/<slug>.png`
+ * Logo du CONSTRUCTEUR d'un véhicule — Renault, Volvo, Peugeot…
+ *
+ * ⚠️ NE PAS CONFONDRE AVEC `app-logo`, qui affiche le logo de Vizyo Tracky. Le kit
+ * signale les deux comme « deux composants que leur nom fait confondre »
+ * (`Kit Partage Refonte`). Le test qui tranche : si l'image change d'un véhicule à
+ * l'autre, c'est celui-ci ; si elle est la même partout, c'est `app-logo`.
+ *
+ * Affiche le PNG `public/logos/brands/<slug>.png`
  * correspondant au texte de marque (tolérant casse/accents), ou RIEN si la
  * marque est inconnue ou si le fichier n'existe pas (gestion `(error)`).
  *
@@ -40,6 +47,13 @@ import { brandLogoUrl, findBrand } from '../../utils/vehicle-brands';
       vertical-align: middle;
       flex-shrink: 0;
     }
+    /* ⚠️ EXCEPTION ASSUMÉE — ces deux fonds ne suivent PAS le thème, et c'est voulu.
+       Ce sont les plaques sur lesquelles se pose un logo CONSTRUCTEUR (Renault, Volvo,
+       Peugeot…), fourni en PNG avec ses propres couleurs et souvent sans transparence.
+       Le blanc et le gris très sombre sont les deux fonds sur lesquels ces logos ont
+       été dessinés ; les remplacer par une surface du thème rendrait certains d'entre
+       eux invisibles — un logo noir sur une surface sombre disparaît. La plaque est un
+       support d'image, pas une surface d'interface. */
     .brand-logo--chip {
       background: #fff;
       border-radius: 6px;

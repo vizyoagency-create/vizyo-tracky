@@ -57,7 +57,15 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
       </header>
 
       @if (error(); as err) {
-        <p class="ig-error" role="alert">{{ err }}</p>
+        <!--
+          Une erreur porte TOUJOURS un recours (regle du kit). Sans lui, la seule issue est
+          de recharger la page — et sur cet ecran, le client vient justement verifier ce
+          qui part chez un tiers : le laisser devant un constat muet est le pire moment.
+        -->
+        <div class="ig-error" role="alert">
+          <span>{{ err }}</span>
+          <button type="button" class="ig-btn ig-btn-recours" (click)="reessayer()">Réessayer</button>
+        </div>
       }
 
       @if (inviteExpired()) {
@@ -84,21 +92,46 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
             ou tout couper après coup.
           </p>
 
-          @for (s of pv.scopes; track s.key) {
-            <label class="ig-scope" [class.ig-scope-sensitive]="isSensitive(s.key)">
+          <!-- BLOC 1 — le partage courant, coché à la connexion. -->
+          <div class="ig-bloc-t">Partage de données · activé à la connexion</div>
+          @for (s of courantsDe(pv.scopes); track s.key) {
+            <label class="ig-scope">
               <input
                 type="checkbox"
                 [checked]="chosen().has(s.key)"
                 (change)="toggleChoice(s.key)"
               />
               <span class="ig-scope-body">
-                <span class="ig-scope-label">
-                  {{ s.label }}
-                  @if (isSensitive(s.key)) { <em class="ig-badge">sensible</em> }
-                </span>
+                <span class="ig-scope-label">{{ s.label }}</span>
                 <span class="ig-scope-desc">{{ s.description }}</span>
               </span>
             </label>
+          }
+
+          <!--
+            BLOC 2 — le sensible, SEPARE et decoche. Il etait melange au reste, distingue par
+            une seule pastille : on cochait la position temps reel dans le meme geste que la
+            plaque d'immatriculation. Le bandeau nomme l'obligation qui va avec.
+          -->
+          @if (sensiblesDe(pv.scopes).length) {
+            <div class="ig-bloc-t ig-bloc-t--sensible">
+              Sensible · décoché · à activer en connaissance de cause
+            </div>
+            @for (s of sensiblesDe(pv.scopes); track s.key) {
+              <label class="ig-scope ig-scope-sensitive">
+                <input
+                  type="checkbox"
+                  [checked]="chosen().has(s.key)"
+                  (change)="toggleChoice(s.key)"
+                />
+                <span class="ig-scope-body">
+                  <span class="ig-scope-label">
+                    {{ s.label }} <em class="ig-badge">sensible</em>
+                  </span>
+                  <span class="ig-scope-desc">{{ s.description }}</span>
+                </span>
+              </label>
+            }
           }
 
           <div class="ig-actions">
@@ -157,11 +190,31 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
         <section class="ig-card">
           <div class="ig-card-h">Ce que vous partagez</div>
           <p class="ig-muted">
-            Éteignez une catégorie et elle disparaît chez le partenaire. Le reste continue
-            de fonctionner.
+            Éteignez une catégorie : elle disparaît chez le partenaire, le reste continue.
           </p>
-          @for (s of allScopes(); track s.key) {
-            <label class="ig-scope" [class.ig-scope-sensitive]="isSensitive(s.key)">
+
+          <div class="ig-bloc-t">Partage de données · activé à la connexion</div>
+          @for (s of scopesCourants(); track s.key) {
+            <label class="ig-scope">
+              <input
+                type="checkbox"
+                [checked]="isOn(s.key)"
+                [disabled]="busy() || st.status !== 'ACTIVE'"
+                (change)="setScope(s.key, !isOn(s.key))"
+              />
+              <span class="ig-scope-body">
+                <span class="ig-scope-label">{{ s.label }}</span>
+                <span class="ig-scope-desc">{{ s.description }}</span>
+              </span>
+              <span class="ig-vol" [class.ig-vol-off]="!isOn(s.key)">{{ volume(s.key) }}</span>
+            </label>
+          }
+
+          <div class="ig-bloc-t ig-bloc-t--sensible">
+            Sensible · éteint par défaut · information des salariés obligatoire
+          </div>
+          @for (s of scopesSensibles(); track s.key) {
+            <label class="ig-scope ig-scope-sensitive">
               <input
                 type="checkbox"
                 [checked]="isOn(s.key)"
@@ -170,13 +223,25 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
               />
               <span class="ig-scope-body">
                 <span class="ig-scope-label">
-                  {{ s.label }}
-                  @if (isSensitive(s.key)) { <em class="ig-badge">sensible</em> }
+                  {{ s.label }} <em class="ig-badge">sensible</em>
                 </span>
                 <span class="ig-scope-desc">{{ s.description }}</span>
               </span>
+              <span class="ig-vol" [class.ig-vol-off]="!isOn(s.key)">{{ volume(s.key) }}</span>
             </label>
           }
+
+          <!-- Les deux garanties, ecrites plutot que sous-entendues. -->
+          <ul class="ig-garanties">
+            <li>
+              <strong>Vous</strong> choisissez chaque catégorie, à tout moment.
+              Vérifié à chaque requête du partenaire.
+            </li>
+            <li>
+              Éteindre une catégorie <strong>purge</strong> les données correspondantes
+              chez le partenaire.
+            </li>
+          </ul>
         </section>
 
         @if (st.events?.length) {
@@ -235,40 +300,83 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
        *
        * Règle : tout texte porte sa couleur, issue des tokens RÉELS.
        */
-      :host { color: var(--fg-primary, #EAEFED); }
-      .ig-wrap { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem; max-width: 52rem; color: var(--fg-primary, #EAEFED); }
-      .ig-title { margin: 0; font-size: 1.35rem; font-weight: 650; color: var(--fg-primary, #EAEFED); }
-      .ig-lead, .ig-muted { margin: 0.35rem 0 0; color: var(--fg-secondary, #9BA5A1); font-size: 0.9rem; }
-      .ig-card { background: var(--bg-secondary, #101514); border: 1px solid var(--border-subtle, rgba(255,255,255,.08)); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; color: var(--fg-primary, #EAEFED); }
-      .ig-card-danger { border-color: rgba(242, 112, 107, 0.35); }
-      .ig-card-h { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--fg-primary, #EAEFED); }
-      .ig-status { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: rgba(16, 224, 160, 0.14); color: var(--color-tracky-light, #10e0a0); }
-      .ig-status-off { background: rgba(242, 112, 107, 0.16); color: var(--danger, #F2706B); }
+      :host { color: var(--fg-primary); }
+      .ig-wrap { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem; max-width: 52rem; color: var(--fg-primary); }
+      .ig-title { margin: 0; font-size: 1.35rem; font-weight: 650; color: var(--fg-primary); }
+      .ig-lead, .ig-muted { margin: 0.35rem 0 0; color: var(--fg-secondary); font-size: 0.9rem; }
+      .ig-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; color: var(--fg-primary); }
+      .ig-card-danger { border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+      .ig-card-h { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--fg-primary); }
+      .ig-status { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: color-mix(in srgb, var(--color-tracky-light) 14%, transparent); color: var(--texte-succes); }
+      .ig-status-off { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); }
       .ig-meta { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0; font-size: 0.875rem; }
-      .ig-meta dt { color: var(--fg-tertiary, #69736E); }
-      .ig-meta dd { margin: 0; color: var(--fg-primary, #EAEFED); }
-      .ig-scope { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem; border-radius: 8px; cursor: pointer; color: var(--fg-primary, #EAEFED); }
-      .ig-scope:hover { background: var(--bg-tertiary, #161D1B); }
-      .ig-scope-sensitive { border-left: 3px solid #E0A848; }
-      .ig-scope-body { display: flex; flex-direction: column; gap: 0.15rem; }
+      /* --fg-tertiary est un jeton a 3:1 : lisible a 16 px, pas a 14 (3,16 clair / 3,75
+         sombre, mesure). Cf. point ouvert O5 de design/TOKENS.md. */
+      .ig-meta dt { color: var(--fg-secondary); }
+      .ig-meta dd { margin: 0; color: var(--fg-primary); }
+      /*
+       * L'ETIQUETTE porte la cible, pas la case : une case a cocher de 44 px est une tache.
+       * Mesuree ici en pleine largeur, elle depasse largement le seuil — et cliquer la
+       * description coche bien la categorie. Meme parti pris que « Rester connecte » sur
+       * /login (cf. fiche de reprise).
+       */
+      .ig-scope { display: flex; gap: 0.6rem; align-items: flex-start; min-height: 44px; padding: 0.55rem; border-radius: 8px; cursor: pointer; color: var(--fg-primary); }
+      .ig-scope:hover { background: var(--bg-tertiary); }
+      .ig-scope-sensitive { border-left: 3px solid var(--warning); }
+      .ig-scope-body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1; }
+
+      /*
+       * Les deux BLOCS (B1 § E). Le sensible n'est plus une simple pastille dans une liste
+       * plate : il a son bandeau, qui nomme l'obligation legale qui va avec.
+       */
+      .ig-bloc-t {
+        display: flex; align-items: center; gap: 0.5rem; min-height: 26px; margin-top: 0.35rem;
+        padding: 0.25rem 0.6rem; border-radius: 7px; background: var(--bg-tertiary);
+        font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+        color: var(--fg-secondary); text-wrap: pretty;
+      }
+      .ig-bloc-t--sensible {
+        background: color-mix(in srgb, var(--warning) 12%, transparent);
+        color: var(--texte-attente);
+      }
+
+      /* Ce qui part reellement. « Rien n'est transmis » est la moitie qui compte. */
+      .ig-vol { flex-shrink: 0; align-self: center; font-size: 0.72rem; font-weight: 700; text-align: right; color: var(--texte-succes); }
+      .ig-vol-off { color: var(--fg-secondary); }
+
+      .ig-garanties { list-style: none; margin: 0.35rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+      .ig-garanties li {
+        position: relative; padding-left: 1.15rem; font-size: 0.8rem; line-height: 1.45;
+        color: var(--fg-secondary); text-wrap: pretty;
+      }
+      .ig-garanties li::before {
+        content: '✓'; position: absolute; left: 0; top: 0; color: var(--texte-succes); font-weight: 800;
+      }
+      .ig-garanties strong { color: var(--fg-primary); }
       /* Le libellé que le client LIT pour décider : couleur explicite, obligatoire. */
-      .ig-scope-label { font-size: 0.9rem; font-weight: 550; color: var(--fg-primary, #EAEFED); }
-      .ig-scope-desc { font-size: 0.8rem; color: var(--fg-secondary, #9BA5A1); }
-      .ig-badge { font-style: normal; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.35rem; border-radius: 999px; background: rgba(224, 168, 72, 0.16); color: #E0A848; }
+      .ig-scope-label { font-size: 0.9rem; font-weight: 550; color: var(--fg-primary); }
+      .ig-scope-desc { font-size: 0.8rem; color: var(--fg-secondary); }
+      .ig-badge { font-style: normal; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.35rem; border-radius: 999px; background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
       .ig-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-      .ig-input { flex: 1 1 14rem; padding: 0.5rem 0.65rem; border-radius: 8px; border: 1px solid var(--border-subtle, rgba(255,255,255,.08)); background: var(--bg-tertiary, #161D1B); color: var(--fg-primary, #EAEFED); }
-      .ig-input::placeholder { color: var(--fg-tertiary, #69736E); }
+      .ig-input { flex: 1 1 14rem; padding: 0.5rem 0.65rem; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-tertiary); color: var(--fg-primary); }
+      .ig-input::placeholder { color: var(--fg-tertiary); }
       .ig-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-      .ig-btn { padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border-strong, rgba(255,255,255,.14)); background: transparent; color: var(--fg-primary, #EAEFED); cursor: pointer; font-size: 0.875rem; }
+      .ig-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--fg-primary); cursor: pointer; font-size: 0.875rem; }
       .ig-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .ig-btn-primary { background: var(--color-tracky, #10e0a0); border-color: transparent; color: #04130D; font-weight: 600; }
-      .ig-btn-danger { background: var(--danger, #F2706B); border-color: transparent; color: #2B0B0A; font-weight: 600; }
-      .ig-error { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: rgba(242, 112, 107, 0.16); color: var(--danger, #F2706B); font-size: 0.875rem; }
-      .ig-warn { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: rgba(224, 168, 72, 0.16); color: #E0A848; font-size: 0.875rem; }
-      .ig-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; color: var(--fg-primary, #EAEFED); }
+      .ig-btn-primary { background: var(--color-tracky-light); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+      .ig-btn-danger { background: var(--danger); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+      .ig-error {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        flex-wrap: wrap; margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px;
+        background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte);
+        font-size: 0.875rem;
+      }
+      .ig-btn-recours { border-color: color-mix(in srgb, var(--danger) 32%, transparent); color: var(--texte-alerte); flex-shrink: 0; }
+      .ig-warn { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); font-size: 0.875rem; }
+      .ig-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; color: var(--fg-primary); }
       .ig-log li { display: flex; gap: 0.5rem; align-items: baseline; }
-      .ig-log-date { color: var(--fg-tertiary, #69736E); min-width: 6.5rem; }
-      .ig-log-scope { color: var(--color-tracky-light, #10e0a0); }
+      .ig-log-date { color: var(--fg-secondary); min-width: 6.5rem; }
+      .ig-log-scope { color: var(--texte-succes); }
     `,
   ],
 })
@@ -290,6 +398,43 @@ export class IntegrationsComponent {
 
   /** Catalogue statique du registre partagé — survit au rechargement de page. */
   protected readonly allScopes = computed<PartnerScopeOption[]>(() => SCOPE_CATALOGUE);
+
+  /**
+   * Le catalogue en DEUX BLOCS (B1 § E « consentement en deux blocs, sensible décoché »).
+   *
+   * La séparation ne vient pas d'une liste recopiée ici : elle est dérivée de
+   * `PARTNER_SCOPES_SENSITIVE`, le registre partagé, dont un test verrouille l'invariant
+   * « SENSIBLE ⇒ jamais dans les défauts ». Une seconde liste tenue à la main divergerait
+   * au premier scope ajouté — et divergerait EN SILENCE, sur l'écran où le client accorde
+   * l'accès à des données nominatives.
+   */
+  protected readonly scopesCourants = computed<PartnerScopeOption[]>(
+    () => SCOPE_CATALOGUE.filter((s) => !SENSITIVE.has(s.key)),
+  );
+  protected readonly scopesSensibles = computed<PartnerScopeOption[]>(
+    () => SCOPE_CATALOGUE.filter((s) => SENSITIVE.has(s.key)),
+  );
+
+  /** Les memes deux blocs, mais sur le catalogue renvoye par l'apercu de consentement. */
+  protected courantsDe(scopes: PartnerScopeOption[]): PartnerScopeOption[] {
+    return scopes.filter((s) => !SENSITIVE.has(s.key));
+  }
+  protected sensiblesDe(scopes: PartnerScopeOption[]): PartnerScopeOption[] {
+    return scopes.filter((s) => SENSITIVE.has(s.key));
+  }
+
+  /**
+   * Ce qui part REELLEMENT, categorie par categorie.
+   *
+   * ⚠️ La planche affiche un VOLUME chiffre (« 3 412 trajets », « 186 pleins »). Ce chiffre
+   * n'existe dans AUCUN DTO : ni `PartnerLinkStatus` ni `PartnerScopeOption` ne le portent,
+   * et le reconstituer demanderait un appel par categorie. Il est donc laisse de cote —
+   * cf. la fiche de reprise. Ce qui est dit ici est ce qu'on sait avec certitude, et c'est
+   * la moitie qui compte : quand une categorie est eteinte, RIEN ne part.
+   */
+  protected volume(key: string): string {
+    return this.isOn(key) ? 'Transmis' : "Rien n'est transmis";
+  }
 
   constructor() {
     // Le lien reçu par e-mail arrive ici avec le code déjà résolu. Redemander au
@@ -370,6 +515,12 @@ export class IntegrationsComponent {
       this.confirmName = '';
       this.reload();
     });
+  }
+
+  /** Recours de l'etat d'erreur : une erreur sans geste qui suit oblige a recharger la page. */
+  protected reessayer(): void {
+    this.error.set(null);
+    this.reload();
   }
 
   private reload(): void {

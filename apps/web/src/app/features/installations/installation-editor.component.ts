@@ -397,19 +397,29 @@ interface TaskForm {
       </div>
     }
 
+    <!-- La conséquence porte le NOMBRE de lignes : « supprimer le planning » ne dit pas
+         si on en perd 2 ou 60. Ce qui est conservé est dit aussi — c'est la moitié
+         rassurante de l'information, et elle évite d'annuler par prudence. -->
     <app-confirm-modal
       [open]="showDeletePlan()" title="Supprimer le planning"
-      description="Le planning et ses lignes sont supprimés. Les véhicules et trackers déjà créés dans la flotte sont conservés."
+      [consequences]="deletePlanConsequences()"
       confirmLabel="Supprimer" [danger]="true" [loading]="deletingPlan()"
       (confirmed)="deletePlan()" (cancelled)="showDeletePlan.set(false)" />
 
     <app-confirm-modal
       [open]="!!taskToDelete()" title="Supprimer cette ligne"
-      [description]="deleteTaskDesc()"
+      [consequences]="deleteTaskDesc()"
       confirmLabel="Supprimer" [danger]="true" [loading]="deletingTask()"
       (confirmed)="deleteTask()" (cancelled)="taskToDelete.set(null)" />
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : 54 boutons de réordonnancement et 27 poignées de glisser-déposer.
+       C'est la page où l'on ORGANISE une tournée d'installation, debout, sur le terrain :
+       la précision au pouce y est le premier besoin, pas le dernier. */
+    @media (max-width: 768px) {
+      .ord-btn, .cdk-drag-handle { min-width: 44px; min-height: 44px }
+    }
     :host { display: block }
     .ed { max-width: 1000px }
     .ed-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 14px }
@@ -770,9 +780,24 @@ export class InstallationEditorComponent implements OnInit {
     if (t.status === 'SKIPPED') return '#6b7280';
     return '#fbbf24'; // PENDING
   }
+  /**
+   * Ce que la suppression du planning fait perdre, CHIFFRÉ — règle du kit : une modale
+   * de danger nomme ce qui disparaît. « Supprimer le planning » ne dit pas si on en perd
+   * deux lignes ou soixante, et la moitié rassurante (les véhicules restent) évite
+   * d'annuler par prudence.
+   */
+  protected deletePlanConsequences = computed(() => {
+    const n = this.plan()?.tasks.length ?? 0;
+    const lignes = n === 0 ? 'Aucune ligne' : n === 1 ? '1 ligne' : `${n} lignes`;
+    return `${lignes} de planning ${n > 1 ? 'sont supprimées' : 'est supprimée'}. `
+      + 'Les véhicules et les boîtiers déjà créés dans la flotte sont conservés.';
+  });
+
   protected deleteTaskDesc = computed(() => {
     const t = this.taskToDelete();
-    return t ? `Supprimer la ligne <strong>${t.plate}</strong> du planning ?` : '';
+    if (!t) return '';
+    // Pas de HTML ici : la conséquence est rendue en texte, une balise s'y afficherait telle quelle.
+    return `La ligne ${t.plate} quitte le planning. Le véhicule et son boîtier sont conservés.`;
   });
 
   // ── Plan ──

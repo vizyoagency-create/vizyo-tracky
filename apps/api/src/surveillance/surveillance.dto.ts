@@ -51,6 +51,16 @@ export class UpdateSurveillanceProfileDto {
   @IsIn(DAY_VALUES as unknown as string[], { each: true })
   scheduleDays?: string[] | null;
 
+  /**
+   * Samedi et dimanche COCHÉS sont surveillés 24 h au lieu de suivre la plage.
+   * « Un week-end n'a pas d'heures ouvrées » — décision client du 2026-08-16.
+   * Non transmis = inchangé ; le défaut en base est `false` pour ne rien modifier
+   * aux profils déjà en service.
+   */
+  @IsOptional()
+  @IsBoolean()
+  weekendPermanent?: boolean;
+
   @IsOptional()
   @IsBoolean()
   triggerVibration?: boolean;

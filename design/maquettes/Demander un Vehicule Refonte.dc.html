@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+[data-theme="dark"]{--bg:#080B0A;--bg2:#0B0F0E;--surface:#101514;--surface2:#161D1B;--surface3:#1D2624;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);--tx:#EAEFED;--tx2:#9BA5A1;--tx3:#69736E;--accent:#10E0A0;--accent2:#0FBE88;--accent-soft:rgba(16,224,160,.13);--accent-ink:#04130D;--red:#F2706B;--red-soft:rgba(242,112,107,.13);--amber:#F5B33D;--amber-soft:rgba(245,179,61,.13);--violet:#B69CFF;--violet-soft:rgba(182,156,255,.14);--blue:#6FB4FF;--blue-soft:rgba(111,180,255,.13);--ring:#101514}
+[data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F5F8F6;--surface3:#EDF2EF;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.15);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent2:#0B8F63;--accent-soft:rgba(10,158,108,.11);--accent-ink:#FFFFFF;--red:#D9544E;--red-soft:rgba(217,84,78,.10);--amber:#C98708;--amber-soft:rgba(201,135,8,.13);--violet:#7A5CE0;--violet-soft:rgba(122,92,224,.12);--blue:#2B7FD4;--blue-soft:rgba(43,127,212,.12);--ring:#FFFFFF}
+body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
+::selection{background:var(--accent);color:var(--accent-ink)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent2)}
+.mono{font-family:'JetBrains Mono',monospace}
+[data-theme="dark"] .ic-sun{display:none}
+[data-theme="light"] .ic-moon{display:none}
+.scrlbl{display:flex;align-items:center;gap:9px;margin-bottom:14px;font-size:.78rem;font-weight:800;letter-spacing:.02em;color:var(--tx2)}
+.scrlbl i{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:.62rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:3px 8px;border-radius:7px;background:var(--surface2);border:1px solid var(--border)}
+.frmlbl{display:flex;align-items:flex-end;flex-wrap:wrap;gap:5px 7px;min-height:36px;max-width:412px;font-size:.72rem;font-weight:700;line-height:1.45;color:var(--tx3);margin:0 0 12px 6px;text-wrap:pretty}
+.plat{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:7px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+.plat.ios{background:rgba(111,180,255,.16);color:var(--blue)}
+.plat.and{background:rgba(182,156,255,.16);color:var(--violet)}
+.plat.pc{background:var(--surface3);color:var(--tx3)}
+.pcfrm{display:flex;width:1600px;border-radius:16px;overflow:hidden;background:var(--bg);border:1px solid var(--border2);box-shadow:0 44px 84px -34px rgba(0,0,0,.6)}
+.mfrm{position:relative;width:390px;height:844px;flex:0 0 390px;border-radius:46px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.afrm{position:relative;width:412px;height:915px;flex:0 0 412px;border-radius:36px;background:var(--bg);overflow:hidden;box-shadow:0 0 0 11px #15191b,0 0 0 12px rgba(255,255,255,.14),0 38px 70px -26px rgba(0,0,0,.55)}
+.mstat{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:space-between;padding:14px 24px 0;z-index:210;pointer-events:none;color:var(--tx)}
+.astat{position:absolute;top:0;left:0;right:0;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;z-index:210;pointer-events:none;color:var(--tx)}
+.mhome{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--tx);opacity:.32;z-index:220;pointer-events:none}
+.anav{position:absolute;left:0;right:0;bottom:0;height:48px;display:flex;align-items:center;justify-content:center;gap:82px;background:var(--surface);border-top:1px solid var(--border);z-index:200;color:var(--tx2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.crdh{display:flex;align-items:center;gap:11px;padding:14px 17px;border-bottom:1px solid var(--border)}
+.crdt{font-size:.9rem;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
+.sico{display:flex;align-items:center;justify-content:center;width:31px;height:31px;border-radius:10px;flex-shrink:0}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;font-size:.66rem;font-weight:800;white-space:nowrap}
+.kpil{font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3);white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:7px;background:var(--surface3);color:var(--tx2);font-size:.68rem;font-weight:700;white-space:nowrap}
+.btnp{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:.79rem;font-weight:800;white-space:nowrap;border:none;cursor:pointer}
+.btns{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--surface);color:var(--tx2);font-size:.78rem;font-weight:700;white-space:nowrap;border:1px solid var(--border2);cursor:pointer}
+.hint{max-width:412px;font-size:.7rem;line-height:1.55;color:var(--tx3);margin:6px 0 0;text-wrap:pretty}
+.dash{border:1px dashed var(--border2);border-radius:16px}
+.iosgrp{background:var(--surface);border-radius:13px;overflow:hidden}
+.iosrow{display:flex;align-items:center;gap:12px;padding:9px 15px;min-height:42px}
+.iosdiv{height:1px;background:var(--border);margin-left:51px}
+.ioshdr{font-size:.7rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding:0 17px 7px}
+.iosftr{font-size:.715rem;line-height:1.45;color:var(--tx3);padding:7px 17px 0;text-wrap:pretty}
+.iosic{display:flex;align-items:center;justify-content:center;width:29px;height:29px;border-radius:7px;flex-shrink:0;color:#fff}
+.m3row{display:flex;align-items:center;gap:16px;padding:9px 20px;min-height:52px}
+.m3hdr{font-size:.775rem;font-weight:800;color:var(--accent);padding:13px 20px 5px;letter-spacing:.01em}
+.m3fld{position:relative;padding:17px 14px 9px;border-radius:6px 6px 0 0;background:var(--surface2);border-bottom:1px solid var(--border2)}
+.m3fld b{position:absolute;top:6px;left:14px;font-size:.66rem;font-weight:600;color:var(--tx3)}
+.m3fld.on{border-bottom:2px solid var(--accent)}
+.m3fld.on b{color:var(--accent)}
+.m3fld span{font-size:.87rem}
+.iosfld{display:flex;flex-direction:column;gap:5px}
+.iosfld b{font-size:.71rem;font-weight:700;color:var(--tx3)}
+.iosin{display:flex;align-items:center;height:44px;padding:0 13px;border-radius:13px;background:var(--surface);border:1px solid var(--border2);font-size:.86rem}
+.und{border-bottom:1.5px dashed color-mix(in srgb,var(--accent) 60%,transparent);padding-bottom:1px}
+.wv{display:flex;align-items:flex-end;gap:3px;height:34px}
+.wv i{width:4px;border-radius:2px;background:var(--accent);animation:vt-wv 1.05s ease-in-out infinite}
+@keyframes vt-wv{0%,100%{height:22%}50%{height:100%}}
+@keyframes vt-pulse{0%,100%{opacity:1}50%{opacity:.32}}
+@keyframes vt-ring{0%{transform:scale(1);opacity:.5}100%{transform:scale(1.9);opacity:0}}
+@keyframes vt-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="ic-chev" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
+<symbol id="ic-chevl" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m15 5-7 7 7 7"/></symbol>
+<symbol id="ic-chevd" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="m5 9 7 7 7-7"/></symbol>
+<symbol id="ic-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.6 4.6L19 6.8"/></symbol>
+<symbol id="ic-mic" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.4" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.6V21.5"/></g></symbol>
+<symbol id="ic-micoff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.4" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.6V21.5"/><line x1="3" y1="3" x2="21" y2="21"/></g></symbol>
+<symbol id="ic-users" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16.5 3.1a4 4 0 0 1 0 7.8"/></g></symbol>
+<symbol id="ic-pin" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.8"/></g></symbol>
+<symbol id="ic-cal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></g></symbol>
+<symbol id="ic-clock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2"/></g></symbol>
+<symbol id="ic-send" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2.5 11 13"/><path d="M21.5 2.5 15 21l-4-8-8-4z"/></g></symbol>
+<symbol id="ic-spark" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.7 1.8L21.5 19.5l-1.8.7L19 22l-.7-1.8L16.5 19.5l1.8-.7z"/></g></symbol>
+<symbol id="ic-user" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g></symbol>
+<symbol id="ic-mail" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2.4"/><path d="m3 6.5 9 6.5 9-6.5"/></g></symbol>
+<symbol id="ic-phone" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 16.9v2.6a2 2 0 0 1-2.2 2 19.6 19.6 0 0 1-8.6-3 19.3 19.3 0 0 1-6-6A19.6 19.6 0 0 1 1.3 3.9 2 2 0 0 1 3.3 2h2.6a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L7 9.8a15.8 15.8 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+<symbol id="ic-warn" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13.5"/><line x1="12" y1="17" x2="12" y2="17"/></g></symbol>
+<symbol id="ic-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.1"/></g></symbol>
+<symbol id="ic-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+<symbol id="ic-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></symbol>
+<symbol id="ic-pencil" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3.5a2.1 2.1 0 0 1 3 3L7.5 19 3 20.5 4.5 16z"/></g></symbol>
+<symbol id="ic-truck" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h11v11H1z"/><path d="M12 8h4.5l3.5 3.5V16H12z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="16.5" cy="18.5" r="2"/></g></symbol>
+<symbol id="ic-eyeoff" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 5.2A9.6 9.6 0 0 1 12 5c6 0 10 7 10 7a15 15 0 0 1-2.4 3.2M6.6 6.7A15 15 0 0 0 2 12s4 7 10 7a9.8 9.8 0 0 0 4-.8"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><line x1="2" y1="2" x2="22" y2="22"/></g></symbol>
+<symbol id="ic-kbd" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></g></symbol>
+</defs></svg>
+
+<div style="padding:36px 40px 60px;display:flex;flex-direction:column;gap:40px;background:var(--bg);min-height:100vh">
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+<div>
+<div class="kpil" style="margin-bottom:7px">Refonte Tracky · A6 · dernière page</div>
+<h1 style="margin:0;font-size:1.72rem;font-weight:800;letter-spacing:-.035em">Demander un véhicule</h1>
+<p style="margin:8px 0 0;max-width:880px;font-size:.87rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Lien public <span class="mono" style="color:var(--tx3)">/reserve/&lt;token&gt;</span>, ouvert depuis un SMS par quelqu'un qui n'a pas de compte. Le vrai geste ici c'est la <b style="color:var(--tx)">dictée</b> — aujourd'hui reléguée à une puce grise à côté d'un formulaire de 6 champs. La refonte en fait le chemin principal : on parle, on relit ce qui a été compris, on envoie.</p>
+</div>
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;gap:9px;height:40px;padding:0 15px;border-radius:10px;border:1px solid var(--border2);background:var(--surface);color:var(--tx2);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap"><svg class="ic-moon" width="16" height="16"><use href="#ic-moon"/></svg><svg class="ic-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Thème</button>
+</div>
+
+<div>
+<div class="scrlbl"><i>01</i>iPhone 390 × 844 · le parcours en 3 temps — je parle, je relis, j'envoie</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>1 · À l'ouverture — un seul geste proposé</p>
+<div class="mfrm" data-screen-label="Demande iPhone accueil">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">14:07</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 18px 16px">
+<div style="display:flex;align-items:center;gap:9px">
+<svg width="21" height="21" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:800;font-size:.86rem;white-space:nowrap">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</div>
+<span class="chip" style="font-size:.645rem">Transports Duchamp</span>
+</div>
+
+<div style="padding:0 22px">
+<h1 style="margin:0;font-size:1.52rem;font-weight:800;letter-spacing:-.035em;line-height:1.18">De quoi avez-vous besoin ?</h1>
+<p style="margin:9px 0 0;font-size:.82rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Dites-le d'une traite. On remplit la demande pour vous, vous relisez avant d'envoyer.</p>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;gap:15px;padding:38px 22px 0">
+<div style="position:relative;display:flex;align-items:center;justify-content:center">
+<span style="position:absolute;width:112px;height:112px;border-radius:50%;border:2px solid var(--accent);animation:vt-ring 2.4s ease-out infinite"></span>
+<span style="position:absolute;width:112px;height:112px;border-radius:50%;border:2px solid var(--accent);animation:vt-ring 2.4s ease-out 1.2s infinite"></span>
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:112px;height:112px;border-radius:50%;background:var(--accent);color:var(--accent-ink);box-shadow:0 14px 34px -10px color-mix(in srgb,var(--accent) 60%,transparent)"><svg width="44" height="44"><use href="#ic-mic"/></svg></span>
+</div>
+<div style="text-align:center">
+<div style="font-size:.98rem;font-weight:800">Appuyez et parlez</div>
+<div style="font-size:.78rem;color:var(--tx3);margin-top:4px">Places, destination, dates — dans l'ordre que vous voulez</div>
+</div>
+</div>
+
+<div style="padding:26px 22px 0">
+<div style="padding:13px 15px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px"><svg width="13" height="13" style="color:var(--accent)"><use href="#ic-spark"/></svg><span class="kpil">Exemples</span></div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<div style="font-size:.79rem;line-height:1.4;color:var(--tx2)">« 11 places pour Carcassonne demain de 9 h à 17 h »</div>
+<div style="font-size:.79rem;line-height:1.4;color:var(--tx2)">« Un utilitaire vendredi toute la journée, on déménage le local »</div>
+</div>
+</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 22px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:46px;border-radius:13px;background:var(--surface);border:1px solid var(--border2);color:var(--tx2);font-size:.85rem;font-weight:700"><svg width="16" height="16"><use href="#ic-kbd"/></svg>Écrire à la place</div>
+<p style="margin:10px 0 0;font-size:.71rem;line-height:1.45;color:var(--tx3);text-align:center;text-wrap:pretty">Transports Duchamp choisit le véhicule adapté et vous répond.</p>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>2 · Pendant la dictée — on voit que ça écoute</p>
+<div class="mfrm" data-screen-label="Demande iPhone dictee">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">14:07</span><div style="display:flex;align-items:center;gap:5px"><span style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:7px;background:var(--red);color:#fff;font-size:.62rem;font-weight:800">MICRO</span><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 18px 16px">
+<div style="display:flex;align-items:center;gap:9px">
+<svg width="21" height="21" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:800;font-size:.86rem;white-space:nowrap">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</div>
+<span class="chip" style="font-size:.645rem">Transports Duchamp</span>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:12px 22px 0">
+<div style="position:relative;display:flex;align-items:center;justify-content:center;width:112px;height:112px;border-radius:50%;background:var(--red-soft);border:2px solid var(--red);animation:vt-pulse 1.4s ease-in-out infinite">
+<div class="wv"><i style="animation-delay:0s"></i><i style="animation-delay:.12s"></i><i style="animation-delay:.24s;background:var(--red)"></i><i style="animation-delay:.36s;background:var(--red)"></i><i style="animation-delay:.18s;background:var(--red)"></i><i style="animation-delay:.06s"></i></div>
+</div>
+<div style="text-align:center">
+<div style="display:inline-flex;align-items:center;gap:7px;font-size:.95rem;font-weight:800;color:var(--red)"><span style="width:8px;height:8px;border-radius:50%;background:var(--red);animation:vt-pulse 1s ease-in-out infinite"></span>À l'écoute…</div>
+<div style="font-size:.775rem;color:var(--tx3);margin-top:4px">Parlez normalement, on s'arrête tout seul</div>
+</div>
+</div>
+
+<div style="padding:22px 22px 0">
+<div class="kpil" style="margin-bottom:8px">Ce que j'entends</div>
+<div style="padding:14px 15px;border-radius:16px;background:var(--surface);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)">
+<p style="margin:0;font-size:.9rem;line-height:1.5;color:var(--tx)">j'ai besoin de <span class="und">onze places</span> pour <span class="und">Carcassonne</span> <span class="und">demain</span> de <span class="und">neuf heures</span> à <span class="und">dix-sept heures</span><span style="display:inline-block;width:2px;height:15px;background:var(--accent);margin-left:3px;vertical-align:-2px;animation:vt-pulse .9s steps(2) infinite"></span></p>
+</div>
+<p style="margin:10px 0 0;font-size:.735rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Les mots soulignés sont ceux qui vont remplir la demande.</p>
+</div>
+
+<div style="padding:22px 22px 0">
+<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="15" height="15" style="color:var(--accent);flex-shrink:0;animation:vt-spin 1.4s linear infinite"><use href="#ic-spark"/></svg>
+<span style="font-size:.79rem;font-weight:700;color:var(--tx2)">Analyse en cours…</span>
+</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 22px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:50px;border-radius:13px;background:var(--red);color:#fff;font-size:.9rem;font-weight:800"><svg width="18" height="18"><use href="#ic-micoff"/></svg>J'ai fini de parler</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>3 · Relecture — chaque champ dit d'où il vient</p>
+<div class="mfrm" data-screen-label="Demande iPhone relecture">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">14:08</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:96px;overflow:hidden;background:var(--bg2)">
+
+<div style="padding:6px 18px 13px">
+<h1 style="margin:0;font-size:1.32rem;font-weight:800;letter-spacing:-.03em">Voilà ce que j'ai compris</h1>
+<div style="font-size:.755rem;color:var(--tx3);margin-top:3px">Corrigez ce qui ne va pas, puis envoyez</div>
+</div>
+
+<div style="padding:0 18px;display:flex;flex-direction:column;gap:13px">
+
+<div style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-mic"/></svg>
+<span style="flex:1;min-width:0;font-size:.74rem;line-height:1.4;color:var(--tx3);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">« 11 places pour Carcassonne demain de 9 h à 17 h »</span>
+<svg width="13" height="13" style="color:var(--accent);flex-shrink:0"><use href="#ic-pencil"/></svg>
+</div>
+
+<div class="iosgrp">
+<div class="iosrow" style="padding:10px 15px"><span class="iosic" style="background:#2B7FD4"><svg width="15" height="15"><use href="#ic-users"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.71rem;font-weight:700;color:var(--tx3)">Places</div><div style="font-size:.95rem;font-weight:700;margin-top:1px">11 personnes</div></div><span class="tag" style="background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="10" height="10"><use href="#ic-mic"/></svg>dicté</span></div>
+<div class="iosdiv"></div>
+<div class="iosrow" style="padding:10px 15px"><span class="iosic" style="background:#7A5CE0"><svg width="15" height="15"><use href="#ic-pin"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.71rem;font-weight:700;color:var(--tx3)">Destination</div><div style="font-size:.95rem;font-weight:700;margin-top:1px">Carcassonne</div></div><span class="tag" style="background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="10" height="10"><use href="#ic-mic"/></svg>dicté</span></div>
+<div class="iosdiv"></div>
+<div class="iosrow" style="padding:10px 15px"><span class="iosic" style="background:var(--accent);color:var(--accent-ink)"><svg width="15" height="15"><use href="#ic-cal"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.71rem;font-weight:700;color:var(--tx3)">Début</div><div style="font-size:.95rem;font-weight:700;margin-top:1px">mer. 30 juil. · 09:00</div></div><span class="tag" style="background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="10" height="10"><use href="#ic-mic"/></svg>dicté</span></div>
+<div class="iosdiv"></div>
+<div class="iosrow" style="padding:10px 15px"><span class="iosic" style="background:var(--accent);color:var(--accent-ink)"><svg width="15" height="15"><use href="#ic-clock"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.71rem;font-weight:700;color:var(--tx3)">Fin</div><div style="font-size:.95rem;font-weight:700;margin-top:1px">mer. 30 juil. · 17:00</div></div><span class="tag" style="background:var(--accent-soft);color:var(--accent);flex-shrink:0"><svg width="10" height="10"><use href="#ic-mic"/></svg>dicté</span></div>
+</div>
+<div class="iosftr" style="padding:0 3px">« Demain » a été lu comme <b style="color:var(--tx2)">mercredi 30 juillet</b>. Touchez une ligne pour la corriger.</div>
+
+<div>
+<div class="ioshdr" style="color:var(--amber);padding:0 3px 7px">Il manque votre contact</div>
+<div class="iosgrp">
+<div class="iosrow" style="padding:9px 15px"><span class="iosic" style="background:var(--surface3);color:var(--tx2)"><svg width="15" height="15"><use href="#ic-user"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.71rem;font-weight:700;color:var(--tx3)">Votre nom</div><div style="font-size:.88rem;color:var(--tx3);margin-top:1px">Nom ou structure</div></div></div>
+<div class="iosdiv"></div>
+<div class="iosrow" style="padding:9px 15px;background:var(--amber-soft)"><span class="iosic" style="background:#B37A08"><svg width="15" height="15"><use href="#ic-mail"/></svg></span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:.71rem;font-weight:700;color:var(--amber)">E-mail ou téléphone</span><span class="tag" style="background:var(--amber);color:#0A1311;font-size:.58rem">obligatoire</span></div><div style="font-size:.88rem;color:var(--tx3);margin-top:1px">vous@exemple.fr ou 06…</div></div></div>
+</div>
+<div class="iosftr" style="padding:7px 3px 0">C'est par là que Transports Duchamp vous confirmera. Sans contact, la demande ne peut pas partir.</div>
+</div>
+
+</div>
+</div>
+<div style="position:absolute;left:0;right:0;bottom:0;padding:12px 18px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:50px;border-radius:13px;background:var(--surface3);color:var(--tx3);font-size:.9rem;font-weight:800"><svg width="17" height="17"><use href="#ic-send"/></svg>Envoyer la demande</div>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat ios">iOS</span>4 · Envoyée — on dit ce qui se passe ensuite</p>
+<div class="mfrm" data-screen-label="Demande iPhone envoyee">
+<div class="mstat"><span class="mono" style="font-size:.78rem;font-weight:600">14:09</span><div style="display:flex;align-items:center;gap:5px"><svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="3.4" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="16" height="8.6" rx="2.2" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:50px;left:0;right:0;bottom:0;overflow:hidden;background:var(--bg2)">
+
+<div style="display:flex;flex-direction:column;align-items:center;padding:52px 26px 0;text-align:center">
+<span style="display:flex;align-items:center;justify-content:center;width:76px;height:76px;border-radius:50%;background:var(--accent);color:var(--accent-ink);margin-bottom:19px;box-shadow:0 14px 34px -10px color-mix(in srgb,var(--accent) 60%,transparent)"><svg width="38" height="38"><use href="#ic-check"/></svg></span>
+<h1 style="margin:0;font-size:1.45rem;font-weight:800;letter-spacing:-.035em">Demande envoyée</h1>
+<p style="margin:10px 0 0;font-size:.83rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Un gestionnaire de <b style="color:var(--tx)">Transports Duchamp</b> va la valider et choisir le véhicule.</p>
+</div>
+
+<div style="padding:26px 22px 0">
+<div style="padding:14px 16px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<div class="kpil" style="margin-bottom:10px">Votre demande</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:10px"><svg width="14" height="14" style="color:var(--blue);flex-shrink:0"><use href="#ic-users"/></svg><span style="font-size:.83rem;font-weight:700">11 places</span></div>
+<div style="display:flex;align-items:center;gap:10px"><svg width="14" height="14" style="color:var(--violet);flex-shrink:0"><use href="#ic-pin"/></svg><span style="font-size:.83rem;font-weight:700">Carcassonne</span></div>
+<div style="display:flex;align-items:center;gap:10px"><svg width="14" height="14" style="color:var(--accent);flex-shrink:0"><use href="#ic-cal"/></svg><span style="font-size:.83rem;font-weight:700">mer. 30 juil. · 09:00 → 17:00</span></div>
+<div style="display:flex;align-items:center;gap:10px"><svg width="14" height="14" style="color:var(--tx3);flex-shrink:0"><use href="#ic-mail"/></svg><span style="font-size:.83rem;color:var(--tx2)">marie.faure@mairie-toulouse.fr</span></div>
+</div>
+</div>
+</div>
+
+<div style="padding:15px 22px 0">
+<div style="display:flex;flex-direction:column;gap:11px">
+<div style="display:flex;gap:11px"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex-shrink:0;margin-top:1px"><svg width="12" height="12"><use href="#ic-check"/></svg></span><div><div style="font-size:.8rem;font-weight:700">Reçue à 14:09</div><p style="margin:2px 0 0;font-size:.735rem;line-height:1.4;color:var(--tx3)">Elle apparaît dans leur agenda.</p></div></div>
+<div style="display:flex;gap:11px"><span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;border:2px solid var(--amber);flex-shrink:0;margin-top:1px"><span style="width:6px;height:6px;border-radius:50%;background:var(--amber);animation:vt-pulse 1.6s ease-in-out infinite"></span></span><div><div style="font-size:.8rem;font-weight:700;color:var(--amber)">En attente de validation</div><p style="margin:2px 0 0;font-size:.735rem;line-height:1.4;color:var(--tx3)">Réponse en général sous 24 h ouvrées.</p></div></div>
+<div style="display:flex;gap:11px"><span style="width:22px;height:22px;border-radius:50%;border:2px solid var(--border2);flex-shrink:0;margin-top:1px"></span><div><div style="font-size:.8rem;font-weight:700;color:var(--tx3)">Vous recevez le véhicule attribué</div><p style="margin:2px 0 0;font-size:.735rem;line-height:1.4;color:var(--tx3)">Par e-mail, avec le lieu de retrait.</p></div></div>
+</div>
+</div>
+
+<div style="position:absolute;left:0;right:0;bottom:0;padding:14px 22px 30px;background:color-mix(in srgb,var(--bg2) 94%,transparent);border-top:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:center;gap:9px;height:46px;border-radius:13px;background:var(--surface);border:1px solid var(--border2);color:var(--tx2);font-size:.85rem;font-weight:700">Faire une autre demande</div>
+<p style="margin:10px 0 0;font-size:.71rem;color:var(--tx3);text-align:center">Gardez ce message : il fait office de reçu.</p>
+</div>
+<div class="mhome"></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>02</i>Android 412 × 915 · même parcours, champs remplis M3 et bouton étendu</div>
+<div style="display:flex;gap:34px;align-items:flex-start;width:1600px;max-width:1600px">
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Accueil — bouton étendu M3, pas de barre d'onglets</p>
+<div class="afrm" data-screen-label="Demande Android accueil">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">14:07</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+
+<div style="display:flex;align-items:center;gap:11px;height:56px;padding:0 16px">
+<svg width="22" height="22" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="flex:1;font-weight:700;font-size:1.05rem;white-space:nowrap">Demander un véhicule</span>
+</div>
+
+<div style="padding:0 16px 18px">
+<span class="tag" style="background:var(--accent-soft);color:var(--accent);margin-bottom:11px"><svg width="11" height="11"><use href="#ic-truck"/></svg>Transports Duchamp</span>
+<h1 style="margin:9px 0 0;font-size:1.6rem;font-weight:600;letter-spacing:-.02em;line-height:1.2">De quoi avez-vous besoin ?</h1>
+<p style="margin:10px 0 0;font-size:.86rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Dites-le d'une traite. On remplit la demande pour vous, vous relisez avant d'envoyer.</p>
+</div>
+
+<div style="display:flex;flex-direction:column;align-items:center;gap:17px;padding:26px 16px 0">
+<div style="position:relative;display:flex;align-items:center;justify-content:center">
+<span style="position:absolute;width:124px;height:124px;border-radius:50%;border:2px solid var(--accent);animation:vt-ring 2.4s ease-out infinite"></span>
+<span style="position:absolute;width:124px;height:124px;border-radius:50%;border:2px solid var(--accent);animation:vt-ring 2.4s ease-out 1.2s infinite"></span>
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:124px;height:124px;border-radius:50%;background:var(--accent);color:var(--accent-ink);box-shadow:0 14px 34px -10px color-mix(in srgb,var(--accent) 60%,transparent)"><svg width="48" height="48"><use href="#ic-mic"/></svg></span>
+</div>
+<div style="text-align:center">
+<div style="font-size:1.02rem;font-weight:700">Appuyez et parlez</div>
+<div style="font-size:.81rem;color:var(--tx3);margin-top:5px">Places, destination, dates — dans l'ordre que vous voulez</div>
+</div>
+</div>
+
+<div style="padding:28px 16px 0">
+<div style="padding:15px 16px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:7px;margin-bottom:9px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-spark"/></svg><span class="kpil">Exemples</span></div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:.83rem;line-height:1.42;color:var(--tx2)">« 11 places pour Carcassonne demain de 9 h à 17 h »</div>
+<div style="font-size:.83rem;line-height:1.42;color:var(--tx2)">« Un utilitaire vendredi toute la journée, on déménage le local »</div>
+</div>
+</div>
+</div>
+
+<div style="padding:20px 16px 0">
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;height:52px;border-radius:16px;border:1px solid var(--border2);color:var(--tx2);font-size:.87rem;font-weight:600"><svg width="17" height="17"><use href="#ic-kbd"/></svg>Écrire à la place</div>
+<p style="margin:13px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-align:center;text-wrap:pretty">Transports Duchamp choisit le véhicule adapté et vous répond.</p>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Relecture — champs remplis M3, provenance en libellé</p>
+<div class="afrm" data-screen-label="Demande Android relecture">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">14:08</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+
+<div style="display:flex;align-items:center;gap:18px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-chevl"/></svg>
+<span style="flex:1;font-size:1.28rem;font-weight:600;letter-spacing:-.01em">Vérifiez votre demande</span>
+</div>
+
+<div style="padding:0 16px 15px">
+<div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:16px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="16" height="16" style="color:var(--tx3);flex-shrink:0"><use href="#ic-mic"/></svg>
+<span style="flex:1;min-width:0;font-size:.785rem;line-height:1.4;color:var(--tx3);font-style:italic">« 11 places pour Carcassonne demain de 9 h à 17 h »</span>
+<svg width="15" height="15" style="color:var(--accent);flex-shrink:0"><use href="#ic-pencil"/></svg>
+</div>
+</div>
+
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:11px">
+<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:11px">
+<div class="m3fld on"><b>Places · dicté</b><span style="font-weight:600">11</span></div>
+<div class="m3fld on"><b>Destination · dicté</b><span style="font-weight:600">Carcassonne</span></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div class="m3fld on"><b>Début · dicté</b><span class="mono" style="font-size:.83rem;font-weight:600">30/07 09:00</span></div>
+<div class="m3fld on"><b>Fin · dicté</b><span class="mono" style="font-size:.83rem;font-weight:600">30/07 17:00</span></div>
+</div>
+<div style="display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:13px;background:var(--blue-soft);border:1px solid color-mix(in srgb,var(--blue) 24%,transparent)">
+<svg width="14" height="14" style="color:var(--blue);flex-shrink:0;margin-top:2px"><use href="#ic-info"/></svg>
+<span style="font-size:.775rem;line-height:1.45;color:var(--tx2)">« Demain » a été lu comme <b style="color:var(--tx)">mercredi 30 juillet</b>. Touchez un champ pour le corriger.</span>
+</div>
+</div>
+
+<div class="m3hdr" style="color:var(--amber)">Il manque votre contact</div>
+<div style="padding:2px 16px 0;display:flex;flex-direction:column;gap:11px">
+<div class="m3fld"><b>Votre nom · optionnel</b><span style="color:var(--tx3)">Nom ou structure</span></div>
+<div class="m3fld" style="border-bottom:2px solid var(--amber);background:var(--amber-soft)"><b style="color:var(--amber)">E-mail ou téléphone · obligatoire</b><span style="color:var(--tx3)">vous@exemple.fr ou 06…</span></div>
+<div style="display:flex;align-items:flex-start;gap:9px">
+<svg width="14" height="14" style="color:var(--amber);flex-shrink:0;margin-top:2px"><use href="#ic-mail"/></svg>
+<span style="font-size:.765rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">C'est par là que Transports Duchamp vous confirmera. Sans contact, la demande ne peut pas partir.</span>
+</div>
+</div>
+
+<div class="m3hdr">Ce que vous ne choisissez pas</div>
+<div style="padding:2px 16px 0">
+<div style="display:flex;align-items:flex-start;gap:11px;padding:13px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--border)">
+<svg width="17" height="17" style="color:var(--tx3);flex-shrink:0;margin-top:1px"><use href="#ic-eyeoff"/></svg>
+<div><div style="font-size:.83rem;font-weight:600">Le véhicule</div><p style="margin:3px 0 0;font-size:.765rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">La liste des véhicules ne vous est pas montrée — c'est la société qui attribue celui qui convient à votre besoin.</p></div>
+</div>
+</div>
+
+<div style="position:absolute;left:16px;right:16px;bottom:18px">
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;height:56px;border-radius:18px;background:var(--surface3);color:var(--tx3);font-size:.9rem;font-weight:700"><svg width="18" height="18"><use href="#ic-send"/></svg>Envoyer la demande</div>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+<div>
+<p class="frmlbl"><span class="plat and">Android</span>Saisie clavier — le repli quand le micro est refusé</p>
+<div class="afrm" data-screen-label="Demande Android clavier">
+<div class="astat"><span class="mono" style="font-size:.72rem;font-weight:600">14:07</span><div style="display:flex;align-items:center;gap:5px"><svg width="14" height="10" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx=".6"/><rect x="4.5" y="6" width="3" height="6" rx=".6"/><rect x="9" y="3" width="3" height="9" rx=".6"/><rect x="13.5" y="0" width="3" height="12" rx=".6"/></svg><svg width="20" height="10" viewBox="0 0 26 13" fill="none"><rect x=".6" y=".6" width="21" height="11.8" rx="2" stroke="currentColor" stroke-opacity=".45"/><rect x="2.2" y="2.2" width="15" height="8.6" rx="1" fill="currentColor"/><path d="M23.4 4.6v4a2.4 2.4 0 0 0 0-4z" fill="currentColor" fill-opacity=".5"/></svg></div></div>
+<div style="position:absolute;top:34px;left:0;right:0;bottom:48px;overflow:hidden;background:var(--bg)">
+
+<div style="display:flex;align-items:center;gap:18px;height:56px;padding:0 16px">
+<svg width="20" height="20" style="color:var(--tx2)"><use href="#ic-chevl"/></svg>
+<span style="flex:1;font-size:1.28rem;font-weight:600;letter-spacing:-.01em">Décrivez votre besoin</span>
+</div>
+
+<div style="padding:0 16px 14px">
+<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:16px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="15" height="15" style="color:var(--tx3);flex-shrink:0;margin-top:1px"><use href="#ic-micoff"/></svg>
+<span style="font-size:.775rem;line-height:1.45;color:var(--tx2);text-wrap:pretty">Le micro n'est pas disponible sur cet appareil. Écrivez votre besoin en une phrase, on remplit le reste.</span>
+</div>
+</div>
+
+<div style="padding:0 16px;display:flex;flex-direction:column;gap:12px">
+<div style="position:relative;padding:19px 14px 12px;border-radius:6px 6px 0 0;background:var(--surface2);border-bottom:2px solid var(--accent);min-height:96px">
+<span style="position:absolute;top:6px;left:14px;font-size:.66rem;font-weight:600;color:var(--accent)">Votre besoin</span>
+<span style="font-size:.9rem;line-height:1.5">11 places pour Carcassonne demain de 9h à 17h<span style="display:inline-block;width:2px;height:15px;background:var(--accent);margin-left:2px;vertical-align:-2px;animation:vt-pulse .9s steps(2) infinite"></span></span>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<span style="font-size:.75rem;color:var(--tx3)">Places, destination, date et heure</span>
+<span style="display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:.79rem;font-weight:700"><svg width="14" height="14"><use href="#ic-spark"/></svg>Analyser</span>
+</div>
+</div>
+
+<div class="m3hdr">Ou remplissez à la main</div>
+<div style="padding:2px 16px 0;display:flex;flex-direction:column;gap:11px">
+<div style="display:grid;grid-template-columns:1fr 1.4fr;gap:11px">
+<div class="m3fld"><b>Places</b><span style="color:var(--tx3)">ex. 11</span></div>
+<div class="m3fld"><b>Destination</b><span style="color:var(--tx3)">ex. Carcassonne</span></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div class="m3fld"><b>Début</b><span class="mono" style="font-size:.83rem;color:var(--tx3)">jj/mm --:--</span></div>
+<div class="m3fld"><b>Fin</b><span class="mono" style="font-size:.83rem;color:var(--tx3)">jj/mm --:--</span></div>
+</div>
+<div class="m3fld"><b>Votre nom · optionnel</b><span style="color:var(--tx3)">Nom ou structure</span></div>
+<div class="m3fld" style="border-bottom:2px solid var(--amber)"><b style="color:var(--amber)">E-mail ou téléphone · obligatoire</b><span style="color:var(--tx3)">vous@exemple.fr ou 06…</span></div>
+</div>
+
+<div style="position:absolute;left:16px;right:16px;bottom:18px">
+<div style="display:flex;align-items:center;justify-content:center;gap:10px;height:56px;border-radius:18px;background:var(--surface3);color:var(--tx3);font-size:.9rem;font-weight:700"><svg width="18" height="18"><use href="#ic-send"/></svg>Envoyer la demande</div>
+</div>
+
+</div>
+<div class="anav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 4v16L5 12z"/></svg></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<div>
+<div class="scrlbl"><i>03</i>PC · repli bureau (20 % des ouvertures) + les cas d'échec</div>
+<div class="dash" style="width:1600px;padding:26px;display:grid;grid-template-columns:1.5fr 1fr;gap:22px;background:var(--bg2)">
+
+<div class="card" style="overflow:hidden;box-shadow:0 26px 54px -24px rgba(0,0,0,.5)" data-screen-label="Demande PC">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 20px;border-bottom:1px solid var(--border)">
+<div style="display:flex;align-items:center;gap:11px">
+<svg width="23" height="23" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="#10E0A0"/></svg>
+<span style="font-weight:800;font-size:.92rem;white-space:nowrap">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
+</div>
+<span class="chip"><svg width="12" height="12"><use href="#ic-truck"/></svg>Transports Duchamp</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:24px">
+
+<div>
+<h1 style="margin:0;font-size:1.5rem;font-weight:800;letter-spacing:-.035em;line-height:1.2">De quoi avez-vous besoin ?</h1>
+<p style="margin:9px 0 0;font-size:.84rem;line-height:1.55;color:var(--tx2);text-wrap:pretty">Dictez ou écrivez votre besoin en une phrase. On remplit la demande, vous relisez avant d'envoyer.</p>
+
+<div style="display:flex;align-items:center;gap:14px;margin-top:20px;padding:15px 17px;border-radius:16px;background:var(--surface2);border:1px solid color-mix(in srgb,var(--accent) 26%,transparent)">
+<span style="position:relative;display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:var(--accent);color:var(--accent-ink);flex-shrink:0"><svg width="26" height="26"><use href="#ic-mic"/></svg></span>
+<div style="min-width:0"><div style="font-size:.87rem;font-weight:800">Dicter mon besoin</div><p style="margin:3px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">Le plus rapide. Autorisez le micro quand le navigateur le demande.</p></div>
+</div>
+
+<div style="margin-top:16px">
+<div style="font-size:.71rem;font-weight:700;color:var(--tx3);margin-bottom:7px">Ou écrivez-le</div>
+<div style="min-height:78px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px solid var(--accent);font-size:.87rem;line-height:1.5">11 places pour Carcassonne demain de 9h à 17h<span style="display:inline-block;width:2px;height:15px;background:var(--accent);margin-left:2px;vertical-align:-2px;animation:vt-pulse .9s steps(2) infinite"></span></div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px">
+<span style="font-size:.735rem;color:var(--tx3)">Places, destination, date et heure</span>
+<span class="btnp" style="height:34px;font-size:.765rem"><svg width="14" height="14"><use href="#ic-spark"/></svg>Analyser</span>
+</div>
+</div>
+
+<div style="display:flex;align-items:flex-start;gap:10px;margin-top:18px;padding:12px 14px;border-radius:13px;background:var(--surface2);border:1px solid var(--border)">
+<svg width="15" height="15" style="color:var(--tx3);flex-shrink:0;margin-top:2px"><use href="#ic-eyeoff"/></svg>
+<div><div style="font-size:.79rem;font-weight:700">Vous ne choisissez pas le véhicule</div><p style="margin:3px 0 0;font-size:.755rem;line-height:1.45;color:var(--tx3);text-wrap:pretty">La liste de la flotte ne vous est jamais montrée — la société attribue celui qui convient et vous le communique.</p></div>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:13px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<div class="kpil">Ce que j'ai compris</div>
+<span class="tag" style="background:var(--accent-soft);color:var(--accent)"><svg width="10" height="10"><use href="#ic-spark"/></svg>4 champs remplis</span>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1.5fr;gap:11px">
+<div class="iosfld"><b>Places</b><div class="iosin" style="border-color:var(--accent);font-weight:700">11</div></div>
+<div class="iosfld"><b>Destination</b><div class="iosin" style="border-color:var(--accent);font-weight:700">Carcassonne</div></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div class="iosfld"><b>Début</b><div class="iosin mono" style="border-color:var(--accent);font-weight:600;font-size:.82rem">30/07/2026 09:00</div></div>
+<div class="iosfld"><b>Fin</b><div class="iosin mono" style="border-color:var(--accent);font-weight:600;font-size:.82rem">30/07/2026 17:00</div></div>
+</div>
+<div style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border-radius:10px;background:var(--blue-soft);border:1px solid color-mix(in srgb,var(--blue) 22%,transparent)">
+<svg width="13" height="13" style="color:var(--blue);flex-shrink:0;margin-top:2px"><use href="#ic-info"/></svg>
+<span style="font-size:.75rem;line-height:1.45;color:var(--tx2)">« Demain » a été lu comme <b style="color:var(--tx)">mercredi 30 juillet</b>.</span>
+</div>
+
+<div style="height:1px;background:var(--border);margin:2px 0"></div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+<div class="iosfld"><b>Votre nom <span style="color:var(--tx3);font-weight:600">· optionnel</span></b><div class="iosin" style="color:var(--tx3)">Nom ou structure</div></div>
+<div class="iosfld"><b style="color:var(--amber)">E-mail ou téléphone · obligatoire</b><div class="iosin" style="border-color:var(--amber);background:var(--amber-soft);color:var(--tx3)">vous@exemple.fr ou 06…</div></div>
+</div>
+<div style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;border-radius:10px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent)">
+<svg width="13" height="13" style="color:var(--accent);flex-shrink:0;margin-top:2px"><use href="#ic-mail"/></svg>
+<span style="font-size:.75rem;line-height:1.45;color:var(--tx2)">C'est par là que Transports Duchamp vous confirmera. Sans contact, la demande ne peut pas partir.</span>
+</div>
+
+<div style="flex:1"></div>
+<button class="btnp" style="height:46px;width:100%;font-size:.87rem;opacity:.5"><svg width="17" height="17"><use href="#ic-send"/></svg>Envoyer la demande</button>
+<p style="margin:0;font-size:.735rem;color:var(--tx3);text-align:center">Votre demande part directement à Transports Duchamp.</p>
+</div>
+
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+<p class="frmlbl" style="margin:0 0 -4px 6px"><span class="plat pc">PC</span>Les cas d'échec — chacun avec une sortie</p>
+
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--red) 30%,transparent)" data-screen-label="Demande lien mort">
+<div style="padding:18px 20px;display:flex;gap:12px">
+<span class="sico" style="background:var(--red-soft);color:var(--red);width:34px;height:34px"><svg width="17" height="17"><use href="#ic-x"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:.92rem;font-weight:800">Lien indisponible</div>
+<p style="margin:5px 0 0;font-size:.775rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Ce lien a été désactivé par la société. Elle en a peut-être diffusé un nouveau — vérifiez le dernier message reçu.</p>
+<div style="display:flex;gap:8px;margin-top:12px"><span class="btns" style="height:34px;font-size:.75rem"><svg width="13" height="13"><use href="#ic-phone"/></svg>Appeler Transports Duchamp</span></div>
+</div>
+</div>
+</div>
+
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--amber) 30%,transparent)" data-screen-label="Demande IA incomprise">
+<div style="padding:18px 20px;display:flex;gap:12px">
+<span class="sico" style="background:var(--amber-soft);color:var(--amber);width:34px;height:34px"><svg width="17" height="17"><use href="#ic-warn"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:.92rem;font-weight:800">Je n'ai pas tout saisi</div>
+<p style="margin:5px 0 0;font-size:.775rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">J'ai compris <b style="color:var(--tx)">Carcassonne</b> et <b style="color:var(--tx)">11 places</b>, mais pas les dates. Complétez-les à la main, ou redictez juste la partie manquante.</p>
+<div style="display:flex;gap:8px;margin-top:12px"><span class="btnp" style="height:34px;font-size:.755rem"><svg width="13" height="13"><use href="#ic-mic"/></svg>Redicter les dates</span><span class="btns" style="height:34px;font-size:.75rem">Saisir à la main</span></div>
+<p style="margin:9px 0 0;font-size:.72rem;line-height:1.4;color:var(--tx3);text-wrap:pretty">Votre texte est conservé : rien n'est perdu.</p>
+</div>
+</div>
+</div>
+
+<div class="card" style="overflow:hidden" data-screen-label="Demande micro refuse">
+<div style="padding:18px 20px;display:flex;gap:12px">
+<span class="sico" style="background:var(--surface3);color:var(--tx3);width:34px;height:34px"><svg width="17" height="17"><use href="#ic-micoff"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:.92rem;font-weight:800">Micro refusé ou indisponible</div>
+<p style="margin:5px 0 0;font-size:.775rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Pas de blocage : la saisie clavier fait exactement la même chose, l'analyse marche aussi sur du texte écrit.</p>
+<div style="display:flex;gap:8px;margin-top:12px"><span class="btns" style="height:34px;font-size:.75rem"><svg width="13" height="13"><use href="#ic-kbd"/></svg>Écrire mon besoin</span></div>
+</div>
+</div>
+</div>
+
+<div class="card" style="overflow:hidden;border-color:color-mix(in srgb,var(--red) 24%,transparent)" data-screen-label="Demande envoi echoue">
+<div style="padding:18px 20px;display:flex;gap:12px">
+<span class="sico" style="background:var(--red-soft);color:var(--red);width:34px;height:34px"><svg width="17" height="17"><use href="#ic-warn"/></svg></span>
+<div style="min-width:0">
+<div style="font-size:.92rem;font-weight:800">L'envoi n'a pas abouti</div>
+<p style="margin:5px 0 0;font-size:.775rem;line-height:1.48;color:var(--tx2);text-wrap:pretty">Réseau instable. <b style="color:var(--tx)">Votre demande est conservée sur cet appareil</b> — réessayez, ou revenez plus tard sur ce lien : tout sera encore là.</p>
+<div style="display:flex;gap:8px;margin-top:12px"><span class="btnp" style="height:34px;font-size:.755rem">Réessayer</span><span class="btns" style="height:34px;font-size:.75rem">Copier ma demande</span></div>
+</div>
+</div>
+</div>
+
+<div style="padding:13px 15px;border-radius:13px;background:var(--surface2);border:1px dashed var(--border2)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><svg width="14" height="14" style="color:var(--accent)"><use href="#ic-spark"/></svg><b style="font-size:.79rem">Pourquoi la dictée passe devant</b></div>
+<p style="margin:0;font-size:.755rem;line-height:1.5;color:var(--tx2);text-wrap:pretty">Ce lien est ouvert par des gens qui ne connaissent pas l'app, souvent debout, une main occupée. Six champs à remplir au clavier sur un téléphone, c'est l'abandon. Une phrase dictée, c'est <b style="color:var(--tx)">quinze secondes</b> — et le formulaire reste là pour corriger.</p>
+</div>
+
+</div>
+
+</div>
+</div>
+
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const t = this.props.theme;
+    if (t === 'dark' || t === 'light') {
+      document.documentElement.dataset.theme = t;
+      try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    }
+  }
+  toggleTheme = () => {
+    const el = document.documentElement;
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try { localStorage.setItem('vt-theme', next); } catch (e) {}
+  };
+  renderVals() {
+    return { toggleTheme: this.toggleTheme };
+  }
+}
+</script>
+</body>
+</html>

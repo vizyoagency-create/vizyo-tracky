@@ -68,8 +68,19 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
             ⚠️ CE BOUTON ETAIT DESACTIVE tant que la geolocalisation n'etait pas accordee,
             et il n'existait AUCUNE autre porte. Un utilisateur qui refusait le GPS — ou
             dont le navigateur ne le propose pas — restait enferme dehors, definitivement.
+
+            La sortie existe depuis. Ce qui manquait encore (B1 § F) : elle ne DISAIT PAS ce
+            qu'on abandonne. « Continuer vers l'application » laisse croire qu'on ne perd
+            rien ; « Continuer SANS DEVERROUILLAGE QR » nomme la seule fonction qui cesse
+            d'etre disponible — et rappelle, juste dessous, qu'elle se recupere plus tard.
           -->
-          <button type="button" class="pg-continue" (click)="finish()">Continuer vers l'application</button>
+          <button type="button" class="pg-continue" (click)="finish()">{{ libelleSortie() }}</button>
+          @if (geoState() !== 'granted') {
+            <p class="pg-hint">
+              Vous pourrez autoriser la localisation au moment de scanner un QR, ou depuis
+              Paramètres — rien n'est définitif.
+            </p>
+          }
         </div>
       </div>
     }
@@ -85,10 +96,10 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
     .pg-shell {
       width: 100%; max-width: 540px; background: var(--bg-secondary);
       border: 1px solid var(--border-subtle); border-radius: var(--radius-card, 18px);
-      box-shadow: 0 30px 80px -20px rgba(0,0,0,.55); padding: 26px 24px 22px;
+      padding: 26px 24px 22px;
       max-height: calc(100dvh - 32px); overflow-y: auto;
     }
-    .pg-rang { margin: 0 0 4px; font-size: .78rem; font-weight: 700; color: var(--fg-tertiary); }
+    .pg-rang { margin: 0 0 4px; font-size: .78rem; font-weight: 700; color: var(--fg-secondary); }
     .pg-title { margin: 0 0 6px; font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; color: var(--fg-primary); }
     .pg-lead { margin: 0 0 18px; font-size: .92rem; line-height: 1.55; color: var(--fg-secondary); }
     .pg-item {
@@ -98,34 +109,35 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
     .pg-item--muted { opacity: .82; }
     .pg-ico {
       width: 40px; height: 40px; border-radius: 11px; flex: none;
-      background: color-mix(in srgb, var(--tracky-light) 15%, transparent);
-      color: var(--tracky-light); display: flex; align-items: center; justify-content: center;
+      background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent);
+      color: var(--texte-succes); display: flex; align-items: center; justify-content: center;
     }
     .pg-txt { flex: 1; min-width: 0; }
     .pg-h { font-weight: 700; font-size: .96rem; color: var(--fg-primary); }
-    .pg-d { font-size: .84rem; line-height: 1.5; color: var(--fg-tertiary); margin-top: 2px; }
+    .pg-d { font-size: .84rem; line-height: 1.5; color: var(--fg-secondary); margin-top: 2px; text-wrap: pretty; }
     .pg-btn {
+      /* 44 px : c'est une porte bloquante, et le bouton qui la franchit se touche. */
       flex: none; align-self: center; font: inherit; font-weight: 700; font-size: .82rem;
-      padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+      min-height: 44px; padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
       border: 1px solid var(--border-strong); background: transparent; color: var(--fg-primary);
     }
     .pg-btn:disabled { cursor: default; }
-    .pg-btn--ok { border-color: transparent; background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--tracky-light); }
+    .pg-btn--ok { border-color: transparent; background: color-mix(in srgb, var(--color-tracky-light) 16%, transparent); color: var(--texte-succes); }
     .pg-req {
       display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
       font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
-      vertical-align: middle; background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--tracky-light);
+      vertical-align: middle; background: color-mix(in srgb, var(--color-tracky-light) 14%, transparent); color: var(--texte-succes);
     }
     .pg-warn {
       margin-top: 8px; padding: 8px 10px; border-radius: 9px; font-size: .78rem; line-height: 1.45;
-      background: color-mix(in srgb, #f2a33c 13%, transparent); color: #e6952f;
-      border: 1px solid color-mix(in srgb, #f2a33c 30%, transparent);
+      background: color-mix(in srgb, var(--warning) 13%, transparent); color: var(--texte-attente);
+      border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
     }
-    .pg-hint { margin: 16px 0 0; font-size: .82rem; color: var(--fg-tertiary); text-align: center; }
+    .pg-hint { margin: 10px 0 0; font-size: .82rem; line-height: 1.5; color: var(--fg-secondary); text-align: center; text-wrap: pretty; }
     .pg-continue {
       width: 100%; margin-top: 20px; font: inherit; font-weight: 700; font-size: .95rem;
       padding: 13px; border-radius: 12px; border: 0; cursor: pointer;
-      background: var(--tracky-light); color: #04130d;
+      min-height: 48px; background: var(--color-tracky-light); color: var(--accent-ink);
     }
     .pg-continue:disabled { opacity: .45; cursor: not-allowed; }
     `,
@@ -147,6 +159,18 @@ export class PermissionsGateComponent {
 
   label(s: PState): string {
     return s === 'granted' ? 'Autorisé' : s === 'denied' ? 'Refusé' : s === 'busy' ? '…' : 'Autoriser';
+  }
+
+  /**
+   * NOMMER CE QU'ON ABANDONNE (B1 § F). « Continuer vers l'application » laisse croire
+   * qu'on ne perd rien. Tant que la localisation n'est pas accordée, on perd EXACTEMENT une
+   * chose — le déverrouillage par QR — et le bouton le dit. Une fois accordée, il n'y a plus
+   * rien à annoncer : le libellé redevient neutre.
+   */
+  libelleSortie(): string {
+    return this.geoState() === 'granted'
+      ? "Continuer vers l'application"
+      : 'Continuer sans déverrouillage QR';
   }
 
   /** Sur refus on propose « Réessayer » — sans jamais bloquer l'entrée dans l'application. */

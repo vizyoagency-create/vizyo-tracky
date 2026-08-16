@@ -2,7 +2,7 @@ import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload, ChevronDown, ChevronRight } from 'lucide-angular';
+import { LucideAngularModule, Plus, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload, ChevronDown, ChevronRight } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -12,13 +12,14 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-draw-dialog.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 
 @Component({
   selector: 'app-geofences-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, ConfirmModalComponent, GeofenceDrawDialogComponent, SaFleetBadgeComponent, GroupBadgeComponent],
+  imports: [LucideAngularModule, RouterLink, ConfirmModalComponent, GeofenceDrawDialogComponent, SaFleetBadgeComponent, GroupBadgeComponent, ZoneComponent],
   template: `
     <div class="gf-page" [class.gf-page--embedded]="embedded()">
       @if (!embedded()) {
@@ -51,16 +52,17 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
         }
       </div>
 
-      @if (loading()) {
-        <div class="gf-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
-      } @else if (visibleGeofences().length === 0) {
-        <div class="gf-empty">
-          <div class="gf-empty-icon"><lucide-icon [img]="Shield" [size]="32"></lucide-icon></div>
-          <p>Aucune géofence configurée</p>
-          @if (perms.can('geofences_manage')) {
-            <button (click)="openCreate()" class="gf-empty-cta">Créer votre première zone</button>
-          }
-        </div>
+      <!-- Les trois etats non nominaux passent par <app-zone> : « vide » ne peut
+           plus absorber « erreur ». Avant, une API tombee annoncait « Aucune
+           geofence configuree » et proposait d'en creer une premiere — sur un
+           ecran de securite. -->
+      @if (etatZone() !== 'rempli') {
+        <app-zone [etat]="etatZone()" quoi="vos géofences"
+                  vide="Aucune géofence configurée"
+                  videDetail="Une géofence délimite une zone qui déclenche une alerte à l'entrée ou à la sortie d'un véhicule."
+                  erreur="Impossible de charger vos géofences"
+                  erreurDetail="Vos zones sont toujours actives côté serveur : c'est leur affichage qui a échoué."
+                  (reessayer)="recharger()" />
       } @else {
         <div class="gf-grid">
           @for (g of visibleGeofences(); track g.id) {
@@ -174,6 +176,13 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     @media (max-width: 600px) {
       .gf-header { flex-direction: column; align-items: stretch; gap: 12px; }
       .gf-header-actions { width: 100%; }
+      /* Critere de recette « cibles >= 44 px au doigt ». Mesure a 375 px :
+         « Importer GeoJSON » 157x36, « Nouvelle zone » 138x36 et le geste de
+         l'ecran vide 156x36 — les trois commandes de l'onglet, toutes sous le
+         seuil. Le plancher global de styles.css s'arrete a 36 px : c'est un
+         filet, jamais la preuve (cf. son propre commentaire). */
+      .gf-import-btn,
+      .gf-header-actions .btn-primary { min-height: 44px }
     }
     .gf-import-btn {
       display: inline-flex; align-items: center; gap: 6px;
@@ -191,15 +200,9 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     :host-context([data-theme="light"]) .gf-blobs::after { background: radial-gradient(ellipse, rgba(59,130,246,.08) 0%, transparent 70%) }
     :host-context([data-theme="light"]) .gf-blob-c { background: radial-gradient(ellipse, rgba(168,85,247,.06) 0%, transparent 70%) }
 
-    .gf-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
-    .gf-empty {
-      position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
-      padding: 50px 20px; border-radius: 16px;
-      background: rgba(var(--bg-secondary-rgb,15,23,20),.5); backdrop-filter: blur(16px);
-      border: 1px solid rgba(16,224,160,.08); color: var(--fg-tertiary); font-size: 14px;
-    }
-    .gf-empty-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
-    .gf-empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
+    /* .gf-loading, .gf-empty et .gf-empty-icon sont parties avec le bloc maison :
+       <app-zone> rend le chargement, le vide ET l'erreur. Les laisser aurait fait
+       trois regles mortes de plus. */
 
     .gf-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px }
 
@@ -212,7 +215,6 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     .gf-card:hover { border-color: rgba(16,224,160,.2); box-shadow: 0 0 24px rgba(16,224,160,.06), 0 6px 20px rgba(0,0,0,.12) }
     :host-context([data-theme="light"]) .gf-card { background: rgba(255,255,255,.7); border-color: rgba(5,150,105,.15); box-shadow: 0 2px 12px rgba(0,0,0,.04) }
     :host-context([data-theme="light"]) .gf-card:hover { border-color: rgba(5,150,105,.3); box-shadow: 0 4px 20px rgba(5,150,105,.08) }
-    :host-context([data-theme="light"]) .gf-empty { background: rgba(255,255,255,.7); border-color: rgba(5,150,105,.12) }
 
     /* Visual circle */
     .gf-visual { position: relative; width: 64px; height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: center }
@@ -294,6 +296,14 @@ export class GeofencesListComponent implements OnInit {
   }
   protected isTargetsExpanded(id: string): boolean { return this.expandedTargets().has(id); }
   protected readonly loading = signal(true);
+  protected readonly error = signal<string | null>(null);
+
+  /** L'ordre compte : une erreur n'est pas un vide, et prime sur lui. */
+  protected readonly etatZone = computed<EtatZone>(() => {
+    if (this.loading()) return 'chargement';
+    if (this.error()) return 'erreur';
+    return this.visibleGeofences().length === 0 ? 'vide' : 'rempli';
+  });
   protected readonly importing = signal(false);
   protected readonly showDrawDialog = signal(false);
   protected readonly showDeleteConfirm = signal(false);
@@ -303,7 +313,6 @@ export class GeofencesListComponent implements OnInit {
 
   protected readonly Plus = Plus;
   protected readonly Upload = Upload;
-  protected readonly Shield = Shield;
   protected readonly ChevronDownIcon = ChevronDown;
   protected readonly ChevronRightIcon = ChevronRight;
   protected readonly Trash2 = Trash2;
@@ -410,13 +419,31 @@ export class GeofencesListComponent implements OnInit {
     this.loadGeofences();
   }
 
+  /**
+   * ⚠️ LE `catch` QUI POSE UN TABLEAU VIDE — 7e occurrence dans l'app, et sur
+   * l'ecran ou il coute le plus cher (SUIVI-REFONTE.md § 8.5).
+   *
+   * Il faisait `this.geofences.set([])`. Verifie au navigateur, API en panne, en
+   * partant d'une liste NON vide : la liste tombait a 0 et la page annoncait
+   * « Aucune geofence configuree » avec « Creer votre premiere zone ». Sur un
+   * ecran de SECURITE, faire croire a un exploitant qu'aucune zone ne surveille
+   * sa flotte est le pire des deux sens d'erreur.
+   *
+   * Desormais : la liste est LAISSEE INTACTE (ce qu'on avait reste vrai) et
+   * l'erreur est POSEE — un toast ne suffit pas, il s'efface.
+   */
   private async loadGeofences(): Promise<void> {
     this.loading.set(true);
+    this.error.set(null);
     try {
       const list = await firstValueFrom(this.geofencesApi.list());
       this.geofences.set(list);
     } catch (err) {
-      swallow('geofences-list:loadGeofences', err); this.geofences.set([]); }
-    finally { this.loading.set(false); }
+      swallow('geofences-list:loadGeofences', err);
+      this.error.set('Impossible de charger vos géofences.');
+    } finally { this.loading.set(false); }
   }
+
+  /** Recours de <app-zone> : le bouton « Reessayer » doit rejouer le chargement. */
+  protected recharger(): void { void this.loadGeofences(); }
 }

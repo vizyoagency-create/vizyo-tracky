@@ -188,9 +188,9 @@ import {
 
         @for (p of periods; track p.label) {
           <button (click)="setPeriod(p.from, p.to); customRangeOpen.set(false)"
-                  class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
+                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
                   [class]="periodFrom === p.from && periodTo === p.to && !isCustomRange()
-                    ? 'bg-tracky/20 text-tracky-light border-tracky/30'
+                    ? 'bg-tracky/20 text-texte-succes border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
             {{ p.label }}
           </button>
@@ -200,9 +200,9 @@ import {
         <div class="rep-custom-wrapper">
           <button type="button"
                   (click)="customRangeOpen.set(!customRangeOpen())"
-                  class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
                   [class]="isCustomRange()
-                    ? 'bg-tracky/20 text-tracky-light border-tracky/30'
+                    ? 'bg-tracky/20 text-texte-succes border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
             <lucide-icon [img]="CalendarIcon" [size]="12"></lucide-icon>
             @if (isCustomRange()) { {{ customRangeLabel() }} } @else { Personnalisé }
@@ -273,8 +273,8 @@ import {
                 [disabled]="!canPeriodReplay()"
                 [title]="canPeriodReplay() ? 'Replay de tous les trajets de la période'
                                             : 'Sélectionne un véhicule avec des trajets sur la période'"
-                class="px-3 py-1.5 text-xs rounded-lg border border-tracky/30
-                       bg-tracky/10 text-tracky-light hover:bg-tracky/20
+                class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-tracky/30
+                       bg-tracky/10 text-texte-succes hover:bg-tracky/20
                        transition-colors cursor-pointer disabled:opacity-40
                        inline-flex items-center gap-1.5">
           <lucide-icon [img]="Play" [size]="12"></lucide-icon>
@@ -283,7 +283,7 @@ import {
 
         @if (isAdmin()) {
           <button (click)="onRecompute()" [disabled]="!selectedVehicleId() || recomputing()"
-                  class="px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
+                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
                          bg-amber-500/10 text-amber-400 hover:bg-amber-500/20
                          transition-colors cursor-pointer disabled:opacity-40">
             @if (recomputing()) { Recalcul... } @else { Recalculer }
@@ -347,7 +347,9 @@ import {
             <span>Durée totale</span>
           </div>
           <div class="rep-kpi-body">
-            <p class="rep-kpi-value">{{ formatDuration(kpis().totalDuration) }}</p>
+            <!-- Tronque a 375 px sans attribut title : « 24h18 » se coupait sans que la
+                 valeur entiere soit lisible nulle part. -->
+            <p class="rep-kpi-value" [title]="formatDuration(kpis().totalDuration)">{{ formatDuration(kpis().totalDuration) }}</p>
             <span class="rep-kpi-meta">~{{ avgDurationPerActiveDay() }} / jour actif</span>
           </div>
         </div>
@@ -645,7 +647,7 @@ import {
                   <td class="p-3 text-center">
                     <div class="flex items-center justify-center gap-1.5">
                       @if (trip.polyline) {
-                        <button (click)="openReplay(trip)" class="text-tracky-light hover:underline cursor-pointer" title="Replay">
+                        <button (click)="openReplay(trip)" class="rep-ligne-action text-tracky-light hover:underline cursor-pointer" title="Replay">
                           <lucide-icon [img]="Play" [size]="16"></lucide-icon>
                         </button>
                       }
@@ -710,6 +712,33 @@ import {
     />
   `,
   styles: [`
+    /* ─── Cibles tactiles — ce que la mesure a corrigé dans mon diagnostic ──────
+     *
+     * La sonde comptait 232 cibles sous 44 px sur cette page, et j'en avais conclu
+     * qu'elle appelait la refonte mobile de B1 § D. La mesure dit autre chose :
+     *
+     *   · 168 de ces 232 sont les CELLULES DE LA CARTE DE CHALEUR (24 h × 7 j, 10 × 11
+     *     px chacune). Ce ne sont pas des commandes, ce sont des données. Les porter à
+     *     44 px ferait 7 392 px de large sur un écran de 375 : la carte de chaleur
+     *     cesserait d'exister. Le critère vise ce qu'on actionne, pas ce qu'on lit.
+     *   · le scroll horizontal, lui, est DÉJÀ à zéro — le critère « jamais de scroll
+     *     horizontal » est tenu.
+     *
+     * Restent 64 vraies commandes, corrigées ici. Le vrai sujet de la refonte n'est
+     * donc pas le tableau, c'est la carte de chaleur : au doigt, elle demande un
+     * drill-down (toucher un jour, puis lire ses heures) plutôt que des cellules
+     * qu'aucun pouce ne peut viser. Cela reste à faire, et c'est écrit comme tel. */
+    @media (max-width: 768px) {
+      .rep-driver, .rep-note, .rep-export-btn, .rep-reset-btn,
+      .rep-dropdown-trigger, .rep-th, .rep-periode { min-height: 44px }
+      /* L'action de fin de ligne est un pictogramme de 16 px : c'est la SURFACE qui
+         doit grandir, pas le dessin. */
+      .rep-ligne-action { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center }
+      /* Les actions en fin de ligne sont des pictogrammes de 16 px : c'est la surface
+         qui doit grandir, pas le dessin. */
+      /* Les raccourcis de période portent une classe stable — les utilitaires
+         Tailwind ne s'attrapent pas depuis une feuille de styles. */
+    }
     /* ─── Sparkline KPI cards ─── */
     .rep-kpi-grid {
       display: grid;
@@ -991,7 +1020,9 @@ import {
     }
     .rep-export-btn:disabled { opacity: .5; cursor: not-allowed }
     .rep-export-btn--pdf {
-      color: var(--tracky-light);
+      /* Meme convention que l'etat actif d'un segment : le vert de MARQUE ne porte
+         pas de texte (il rendait 3,17:1 en clair). */
+      color: var(--texte-succes);
       background: rgba(16,224,160,.08);
       border-color: rgba(16,224,160,.22);
     }
@@ -999,11 +1030,20 @@ import {
       background: rgba(16,224,160,.14);
       border-color: rgba(16,224,160,.32);
     }
-    /* Excel — teinte verte « tableur » (217954) distincte du tracky. */
+    /* Excel — teinte verte « tableur » (217954) distincte du tracky.
+       On garde la DECISION de la planche — une teinte a part, pour que l'export
+       tableur ne se confonde pas avec le vert de marque — mais pas sa VALEUR :
+       #34d399 rendait 1,74:1 en theme clair (et 1,64 mesure, l'ecart venant de
+       l'opacite .5 de l'etat desactive). Assombri pour le clair seulement, il
+       reste parfaitement distinct du tracky. */
     .rep-export-btn--excel {
       color: #34d399;
       background: rgba(33,121,84,.10);
       border-color: rgba(33,121,84,.28);
+    }
+    :host-context([data-theme='light']) .rep-export-btn--excel,
+    :host-context([data-theme='light']) .rep-export-btn--excel lucide-icon {
+      color: color-mix(in srgb, #34d399 55%, #000);
     }
     .rep-export-btn--excel:hover:not(:disabled) {
       background: rgba(33,121,84,.18);

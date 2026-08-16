@@ -29,11 +29,19 @@
   --color-bg-primary: var(--surface-primary);
   --color-bg-secondary: var(--surface-secondary);
   --color-bg-tertiary: var(--surface-tertiary);
+  --color-bg-quaternary: var(--surface-quaternary);
   --color-fg-primary: var(--text-primary);
   --color-fg-secondary: var(--text-secondary);
   --color-fg-tertiary: var(--text-tertiary);
   --color-border-subtle: var(--border-color);
   --color-border-strong: var(--border-strong-color);
+  /* La famille `--texte-*` n'existait qu'en CSS : un gabarit Tailwind qui voulait
+     du vert lisible n'avait que `text-tracky-light`, la couleur de MARQUE — d'où
+     l'échec de /reports (3,34:1). `text-texte-succes` est son pendant utilitaire.
+     ⚠️ Déclaré ici, il n'est PAS émis dans `:root` : s'en servir en
+     `var(--color-texte-succes)` ne marcherait pas (forme refusée n° 4,
+     cf. `verif:variables`). C'est un utilitaire Tailwind, rien d'autre. */
+  --color-texte-succes: var(--texte-succes);
 }
 
 :root,
@@ -41,10 +49,22 @@
   --surface-primary: #080B0A;
   --surface-secondary: #101514;
   --surface-tertiary: #161D1B;
+  /* Quatrième niveau d'élévation (lot B-kit) — `--surface3` des planches. Il porte
+     ce qui se pose SUR une carte : chips, squelettes, pastilles de plateforme. Le
+     point ouvert O1 de design/TOKENS.md le disait « à créer si une maquette prouve
+     son usage » : 505 usages dans 27 planches sur 28, dont 34 dans `Kit Partage`. */
+  --surface-quaternary: #1D2624;
   --surface-rail: #0B0F0E; /* bg sidebar / top-bar (DS bg-2) */
   --text-primary: #EAEFED;
   --text-secondary: #9BA5A1;
-  --text-tertiary: #69736E;
+  /* Refonte v2, point O5 — était #69736E, un jeton 3:1 employé comme COULEUR DE
+     TEXTE sur ~29 écrans : à lui seul la source de ~85 % des échecs de contraste
+     du lot B-pages. `verif:contraste` ne pouvait pas le voir (il vérifie les 46
+     couples déclarés, pas les usages). Recalculé sur le fond le plus défavorable
+     du thème — --surface-quaternary (#1D2624), pas le fond nominal : 4,63:1 là,
+     5,51:1 sur --surface-secondary. --text-secondary reste à 6,12:1, donc les
+     trois niveaux gardent leur hiérarchie. */
+  --text-tertiary: #848F8A;
   --border-color: rgba(255, 255, 255, 0.08);
   --border-strong-color: rgba(255, 255, 255, 0.14);
   --accent-ink: #04130D; /* texte SUR l'accent */
@@ -65,10 +85,15 @@
   --surface-primary: #FBFCFB;
   --surface-secondary: #FFFFFF;
   --surface-tertiary: #F6F9F7;
+  --surface-quaternary: #EDF2EF;
   --surface-rail: #F2F5F3; /* bg sidebar / top-bar */
   --text-primary: #0A1311;
   --text-secondary: #56635E;
-  --text-tertiary: #8A938F;
+  /* Point O5, pendant clair — était #8A938F, soit 3,16:1 sur blanc. Même calcul
+     sur le fond clair le plus défavorable, --surface-quaternary (#EDF2EF) :
+     4,61:1 là, 5,22:1 sur --surface-secondary (#FFFFFF). --text-secondary reste
+     à 6,28:1. */
+  --text-tertiary: #656F68;
   --border-color: rgba(10, 25, 18, 0.09);
   --border-strong-color: rgba(10, 25, 18, 0.16);
   /* Refonte v2 — était #FFFFFF, soit 3,43:1 sur l'accent clair #0A9E6C : sous le seuil
@@ -161,6 +186,69 @@ body.plat-android {
   --texte-inactif: var(--text-secondary);
 }
 
+/* ─── L'ÉTAT ACTIF d'un sélecteur segmenté ──────────────────────────────────
+ *
+ * Cinq écrans écrivaient le même défaut, chacun dans son coin : l'onglet ACTIF
+ * se peignait en `var(--tracky-light)` (ou `text-tracky-light` en Tailwind),
+ * c'est-à-dire le vert de MARQUE employé comme couleur de TEXTE.
+ *
+ *   /install « Android »      .ip-seg-btn.on        3,43:1
+ *   /scores  « 90 j »         .ds-seg button.on     3,43:1
+ *   /agenda  « Tous »         .ag-seg-btn--active   3,43:1
+ *   /account « Profil »       .tab.active           3,34:1
+ *   /reports « 7 jours »      text-tracky-light     3,34:1
+ *
+ * C'est la règle du kit — un libellé prend un jeton `--texte-*`, jamais la
+ * couleur de marque — réintroduite cinq fois parce qu'aucune classe ne la
+ * portait. Celle-ci la porte : les cinq pointent ici, plus personne ne
+ * redécide la valeur dans son coin.
+ *
+ * Mesure sur les fonds réels (clair, le seul thème où ça échouait) :
+ *   sur --bg-secondary        3,43 -> 5,97:1
+ *   sur un lavis 20 % accent  2,72 -> 4,74:1
+ *   sur un lavis 10 % accent  3,06 -> 5,33:1
+ * En sombre `--texte-succes` VAUT `--color-tracky-light` : rien ne bouge.
+ *
+ * Pas de classe partagée ici : chaque sélecteur porte aussi SON fond et SON
+ * ombre, et une classe qui ne poserait que la couleur ferait doublon — c'est
+ * le JETON qui est le point unique, comme pour `.tk-popup-btn--*`.
+ * ⇒ CONVENTION : l'état actif d'un segment prend `var(--texte-succes)`,
+ *   jamais `var(--tracky-light)` ni `text-tracky-light`.
+ */
+
+/* ─── Cibles tactiles : 44 px au doigt (lot B-pages) ────────────────────────
+ *
+ * Critère de recette commun à chaque page : « iPhone 390 px : cibles ≥ 44 px ».
+ * La sonde de recette a mesuré 36 à 39 px sur TOUTES les barres d'onglets de
+ * l'application — Véhicules, Groupes, Capacités, Mode privé, Géofences, Règles,
+ * Critiques… Aucune n'était fausse à la lecture : 36 px est une hauteur
+ * raisonnable à la souris, et c'est en la mesurant au doigt qu'elle devient
+ * fausse.
+ *
+ * La règle vit ici et non dans chaque composant : ces barres sont une douzaine,
+ * écrites par autant d'écrans, et une règle de feuille globale traverse
+ * l'encapsulation Angular qui les sépare. Elle ne s'applique QUE sous 768 px :
+ * à la souris, 36 px suffisent et gardent les écrans denses lisibles.
+ *
+ * ⚠️ CE N'EST PAS UNE RÈGLE UNIVERSELLE, C'EST UNE LISTE DE NOMS. Le sélecteur
+ * énumère les classes existantes : il ne peut PAS rattraper une barre à venir
+ * qui s'appellerait autrement. Constat mesuré au lot B-pages (2026-08-11) :
+ * `/fleet-admin/activity` écrivait `.fa-tabs button` et sortait à 37 px, sous
+ * une règle censée « rattraper celles à venir ». Toute nouvelle barre d'onglets
+ * DOIT donc porter `.tab-btn` — c'est la convention, et c'est ce qui la fait
+ * entrer dans cette garantie. La mesure au doigt reste le seul juge.
+ */
+@media (max-width: 768px) {
+  .tab-btn,
+  .main-tab,
+  .bn-tab,
+  .vdx-tab,
+  .vdx-famille,
+  .sm-day-btn {
+    min-height: 44px;
+  }
+}
+
 /* ─── Espace dépôt (2026-08), lot A3 ─────────────────────────────────────────
  *
  * Le dépôt avait mesuré le problème en premier et s'était donné ses propres
@@ -178,22 +266,27 @@ body.plat-android {
   --depot-attente: var(--texte-attente);
 }
 
-/* ─── Pastilles de statut, version dépôt ─────────────────────────────────────
+/* ─── Pastilles de statut ────────────────────────────────────────────────────
  *
- * `.vt-status--on/--danger/--offline` posent une couleur SÉMANTIQUE sur un fond
- * teinté de la même couleur. Le résultat est joli et lisible à 16 px ; à 12 px sur
- * fond clair il tombe entre 2,98 et 3,40:1 — sous le seuil du critère n° 10.
+ * `.vt-status--on/--danger/--warning` posent une couleur SÉMANTIQUE sur un fond
+ * teinté de la même couleur : joli et lisible à 16 px, mais à 12 px sur fond clair
+ * ça tombe entre 2,92 et 3,40:1 — sous le seuil.
  *
- * On ne retouche pas la classe globale : elle habille 29 autres pages, et leur
- * reprise est le chantier du bloc B. On la RESSERRE dans l'espace dépôt, où le
- * critère s'applique — la teinte et donc la signification restent les mêmes, seule
- * la valeur descend assez pour être lue. « Une couleur = une signification » n'est
- * pas « une couleur = une valeur exacte ».
+ * ⚠️ CE COMMENTAIRE DISAIT : « on ne retouche pas la classe globale, elle habille
+ * 29 autres pages, et leur reprise est le chantier du bloc B ». Le resserrement
+ * n'existait donc que dans l'espace dépôt.
+ *
+ * **Le bloc B est fini** (2026-08-14) : la raison d'attendre a disparu, et la
+ * règle est remontée là où elle aurait toujours dû être — dans la classe
+ * elle-même. La teinte et donc la signification ne bougent pas ; seule la valeur
+ * descend assez pour être lue. « Une couleur = une signification » n'est pas
+ * « une couleur = une valeur exacte ».
+ *
+ * Les surcharges `.layout--depot` sont parties avec : elles pointaient sur
+ * `--depot-succes`, qui n'est qu'un alias de `--texte-succes`. Elles ne
+ * changeaient plus rien, et deux endroits pour une même décision, c'est le
+ * « jumeau » qui finit par diverger.
  */
-.layout--depot .vt-status--on { color: var(--depot-succes) }
-.layout--depot .vt-status--danger { color: var(--depot-alerte) }
-.layout--depot .vt-status--warning { color: var(--depot-attente) }
-.layout--depot .vt-status--offline { color: var(--depot-attenue) }
 /* L'entrée de menu active : même cas, accent sur fond teinté d'accent (3,24:1). */
 .layout--depot .sidebar-link.active,
 .layout--depot .bottom-item.active { color: var(--depot-succes) }
@@ -203,6 +296,7 @@ body.plat-android {
   --bg-primary: var(--surface-primary);
   --bg-secondary: var(--surface-secondary);
   --bg-tertiary: var(--surface-tertiary);
+  --bg-quaternary: var(--surface-quaternary);
   --bg-secondary-rgb: var(--surface-secondary-rgb);
   --fg-primary: var(--text-primary);
   --fg-secondary: var(--text-secondary);
@@ -547,6 +641,15 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
 
 /* ----- Vehicle marker ----- */
 
+/* ═══ PASTILLE VÉHICULE — reprise en SVG le 2026-08-12 ══════════════════════════
+   Ligne B1 « pastilles de véhicule redessinées (à reprendre en SVG) ». C'était une
+   pile de quatre div dont les formes étaient dessinées en CSS : un anneau en
+   `border`, une flèche en `border-*` de triangle, un cœur en `box-shadow`. Tout est
+   maintenant UN SVG (cf. `buildVehicleMarkerEl`) — net à toute densité d'écran.
+
+   ⚠️ Ces marqueurs sont injectés par MapLibre HORS d'Angular : ils ne portent aucun
+   attribut d'encapsulation, donc AUCUN style de composant ne les atteint. Cette
+   feuille globale est le seul endroit d'où on peut les styler. */
 .tracky-marker {
   position: relative;
   width: 56px;
@@ -554,17 +657,25 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   cursor: pointer;
   pointer-events: auto;
   --tracky-color: #10e0a0;
+  /* Encre de l'icône. Défaut DÉCLARÉ ici (comme --tracky-color) et non repli en
+     ligne : `buildVehicleMarkerEl` la recalcule à chaque rendu selon la luminance
+     du fond — cf. `markerInk`. */
+  --tracky-ink: #ffffff;
   --tracky-heading: 0deg;
+  /* La couleur est portée UNE FOIS ici ; toutes les formes la reprennent en
+     currentColor (décision de la planche : un seul point de vérité). */
+  color: var(--tracky-color);
   will-change: transform;
+}
+.tracky-marker__pastille {
+  display: block;
+  overflow: visible;
 }
 
 /* Halo de pulsation : visible sur le vehicule actif (suivi) ou pour signaler la mise a jour */
 .tracky-marker__pulse {
-  position: absolute;
-  inset: 8px;
-  border-radius: 9999px;
-  background: var(--tracky-color);
   opacity: 0;
+  transform-origin: center;
 }
 .tracky-marker--active .tracky-marker__pulse {
   opacity: 0.45;
@@ -575,68 +686,64 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   75%, 100% { transform: scale(2); opacity: 0; }
 }
 
-/* Anneau exterieur tournant selon le heading — sert de fleche directionnelle */
-.tracky-marker__heading-ring {
-  position: absolute;
-  inset: 4px;
-  border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.45);
+/* Flèche de cap : c'est le GROUPE qui tourne, autour du centre de la pastille. */
+.tracky-marker__cap {
   transform: rotate(var(--tracky-heading));
+  transform-origin: 28px 28px;
   transition: transform 600ms cubic-bezier(0.4, 0, 0.2, 1);
-  pointer-events: none;
 }
-.tracky-marker__heading-ring::before {
-  content: '';
-  position: absolute;
-  top: -7px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-bottom: 9px solid var(--tracky-color);
+.tracky-marker__fleche {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
+/* Position FIGÉE (hors ligne, GPS perdu, garé sous terre) : aucune direction à
+   montrer. La planche omet le repère directionnel sur « AZ-330-PB · hors ligne » —
+   une flèche y affirmerait un cap que plus personne ne mesure. */
+.tracky-marker--offline .tracky-marker__cap { display: none; }
 
-/* Cercle central : couleur vitesse + icone vehicule */
-.tracky-marker__core {
-  position: absolute;
-  inset: 12px;
-  border-radius: 9999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: background 200ms ease, transform 200ms ease;
+.tracky-marker__anneau {
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 2;
 }
-.tracky-marker:hover .tracky-marker__core {
-  transform: scale(1.08);
+
+.tracky-marker__coeur {
+  stroke: #fff;
+  stroke-width: 2;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+  transition: transform 200ms ease;
+  transform-origin: 28px 28px;
 }
-.tracky-marker--active .tracky-marker__core {
-  border-color: #fff5e0;
-  box-shadow:
-    0 0 0 2px rgba(255, 245, 224, 0.5),
-    0 4px 16px rgba(0, 0, 0, 0.5);
+.tracky-marker:hover .tracky-marker__coeur { transform: scale(1.08); }
+.tracky-marker--active .tracky-marker__coeur {
+  stroke: #fff5e0;
+  filter: drop-shadow(0 0 2px rgba(255, 245, 224, 0.8)) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+}
+
+/* L'icône passe en ENCRE SOMBRE sur le fond vif — décision de la planche, qui pose
+   #04130D sur le vert et #1A1204 sur l'ambre : du blanc sur #10E0A0 donne 1,72:1,
+   l'encre sombre 10,44:1.
+
+   ⚠️ L'encre est calculée en JS (`markerInk`) et NON en `color-mix` ici : une teinte
+   sombre fixe régresse sur `#5C746C`, la couleur « à l'arrêt », déjà sombre (3,85
+   contre 5,04 au blanc). Le choix se fait donc par LUMINANCE du fond, et un test
+   vérifie que les six couleurs de la palette passent 4,5:1. */
+.tracky-marker__icone {
+  /* Sans repli : `--tracky-ink` est TOUJOURS posée par `buildVehicleMarkerEl`, comme
+     `--tracky-color`. Un repli en dur ici gagnerait toujours si la pose disparaissait,
+     et masquerait la panne au lieu de la montrer (cf. `pnpm verif:variables`). */
+  stroke: var(--tracky-ink);
 }
 
 /* Indicateur ACC ON/OFF */
 .tracky-marker__acc {
-  position: absolute;
-  bottom: 9px;
-  right: 9px;
-  width: 11px;
-  height: 11px;
-  border-radius: 9999px;
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  stroke: #fff;
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
 }
-.tracky-acc--on { background: #10e0a0; }
-.tracky-acc--off { background: #6b7280; }
+.tracky-acc--on { fill: #10e0a0; }
+.tracky-acc--off { fill: #6b7280; }
 /* Contact INCONNU (télémétrie périmée : hors-ligne, GPS perdu, garé sous terre). Creux et pâle :
    visuellement « on ne sait pas », à ne pas confondre avec le gris plein « contact coupé ». */
-.tracky-acc--unknown { background: transparent; border-color: rgba(255, 255, 255, 0.55); box-shadow: none; }
+.tracky-acc--unknown { fill: transparent; stroke: rgba(255, 255, 255, 0.55); filter: none; }
 
 /* Badge logo de marque (haut-gauche, pastille blanche pour rester lisible) */
 .tracky-marker__brand {
@@ -741,7 +848,23 @@ textarea:focus-visible,
   border: 0;
 }
 
-/* Touch targets : garantir minimum 44px sur tous les éléments interactifs en mobile */
+/*
+ * Plancher tactile générique : 36 px, PAS 44.
+ *
+ * ⚠️ Le commentaire d'origine annonçait « garantir minimum 44px » alors que la
+ * déclaration pose 36 px — relevé au lot B-pages (2026-08-11). Un commentaire
+ * qui promet une garantie que le code ne tient pas est pire que pas de
+ * commentaire : il fait sauter la vérification. La valeur est laissée à 36 px
+ * et c'est le texte qui est corrigé, pour deux raisons :
+ *
+ *  · monter `a` à 44 px casserait les liens EN LIGNE dans une phrase — c'est
+ *    l'exception déjà assumée sur `/places` et `/settings` (« Coûts IA ») ;
+ *  · le critère de recette (≥ 44 px) est tenu ÉCRAN PAR ÉCRAN et mesuré au
+ *    navigateur, pas par un plancher global qu'aucune sonde ne peut vérifier
+ *    ici (le panneau n'émule pas `pointer: coarse`).
+ *
+ * Ce plancher n'est donc qu'un filet, jamais la preuve. La preuve est la mesure.
+ */
 @media (max-width: 768px) and (pointer: coarse) {
   button, a, input[type='checkbox'], input[type='radio'] {
     min-height: 36px;
@@ -783,7 +906,8 @@ textarea:focus-visible,
   opacity: 0.5;
 }
 .tracky-marker--mini .tracky-marker__pulse,
-.tracky-marker--mini .tracky-marker__heading-ring,
+.tracky-marker--mini .tracky-marker__cap,
+.tracky-marker--mini .tracky-marker__anneau,
 .tracky-marker--mini .tracky-marker__acc,
 .tracky-marker--mini .tracky-marker__brand,
 .tracky-marker--mini .tracky-marker__plate {
@@ -791,13 +915,13 @@ textarea:focus-visible,
 }
 
 /* Hydrate (cache REST, pas live) — opacite reduite jusqu'au prochain WS */
-.tracky-marker--hydrated .tracky-marker__core {
+.tracky-marker--hydrated .tracky-marker__coeur {
   opacity: 0.85;
 }
 
 /* Boîtier hors-ligne : marqueur grisé + estompé à sa dernière position connue.
    On coupe aussi le pulse pour qu'il ne « respire » plus comme un véhicule actif. */
-.tracky-marker--offline .tracky-marker__core {
+.tracky-marker--offline .tracky-marker__coeur {
   opacity: 0.5;
 }
 .tracky-marker--offline .tracky-marker__pulse {
@@ -1080,12 +1204,18 @@ textarea:focus-visible,
    Réf. maquettes app/*.dc.html (.card / .chip / .kpi / eyebrow).
    ════════════════════════════════════════════════════════════ */
 
-/* Eyebrow — sur-titre mono MAJUSCULE accent (au-dessus d'un titre de section) */
+/* Eyebrow — sur-titre mono MAJUSCULE accent (au-dessus d'un titre de section)
+ *
+ * `--texte-succes` et non `--color-tracky-light` : c'est du TEXTE à 11 px, donc pile le cas
+ * que la famille `--texte-*` a été créée pour traiter (TOKENS.md § « Petit texte » : « dès
+ * que la couleur porte des caractères sous 14 px »). Mesuré au lot B-pages (2026-08-11) :
+ * le vert de marque donnait 3,34:1 en thème clair. En thème SOMBRE rien ne change, les deux
+ * jetons y portent la même valeur. */
 .vt-eyebrow {
   font-family: var(--font-mono);
   font-size: 11px; font-weight: 600;
   letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--color-tracky-light);
+  color: var(--texte-succes);
 }
 
 /* Plaque / ligne cliquable → fiche véhicule (directive [vehicleLink]).
@@ -1194,7 +1324,7 @@ textarea:focus-visible,
 }
 .vt-status__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .vt-status--on {
-  color: var(--color-tracky-light);
+  color: var(--texte-succes);
   background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
   border-color: color-mix(in srgb, var(--color-tracky-light) 28%, transparent);
 }
@@ -1202,12 +1332,12 @@ textarea:focus-visible,
 .vt-status--idle { color: var(--text-secondary); background: var(--surface-tertiary); }
 .vt-status--offline { color: var(--text-tertiary); background: var(--surface-tertiary); }
 .vt-status--warning {
-  color: var(--warning);
+  color: var(--texte-attente);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   border-color: color-mix(in srgb, var(--warning) 26%, transparent);
 }
 .vt-status--danger {
-  color: var(--danger);
+  color: var(--texte-alerte);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   border-color: color-mix(in srgb, var(--danger) 26%, transparent);
 }

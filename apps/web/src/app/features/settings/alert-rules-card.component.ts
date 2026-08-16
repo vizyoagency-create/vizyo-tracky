@@ -277,63 +277,67 @@ const EMPTY_FORM: RuleForm = {
     }
   `,
   styles: [`
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem; }
+    .card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 1.1rem; }
     .card-head { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
     h2 { margin: 0 0 .2rem; font-size: 1.02rem; }
-    .desc, .field-hint, .muted { color: var(--text-muted); font-size: .84rem; line-height: 1.45; }
+    .desc, .field-hint, .muted { color: var(--fg-secondary); font-size: .84rem; line-height: 1.45; }
     .desc { margin: 0; max-width: 60ch; }
     .note { display: flex; gap: .6rem; align-items: flex-start; margin: .9rem 0;
-      padding: .7rem .8rem; border-radius: 10px; background: var(--accent-soft, rgba(16,185,129,.1)); }
+      padding: .7rem .8rem; border-radius: 10px;
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); }
     .note p { margin: 0; font-size: .85rem; line-height: 1.5; }
-    .readonly { margin: .6rem 0 0; font-size: .84rem; color: var(--text-muted); }
+    .readonly { margin: .6rem 0 0; font-size: .84rem; color: var(--fg-secondary); }
     .empty { padding: .9rem 0; }
     .empty p { margin: 0 0 .25rem; font-size: .88rem; }
     .rules { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; gap: .55rem; }
-    .rule { border: 1px solid var(--border); border-radius: 11px; padding: .7rem .8rem;
+    .rule { border: 1px solid var(--border-subtle); border-radius: 11px; padding: .7rem .8rem;
       display: grid; grid-template-columns: 1fr auto; gap: .35rem .6rem; align-items: center; }
     .rule-off { opacity: .55; }
     .rule-main { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
     .rule-type { font-weight: 600; font-size: .9rem; }
     .rule-state { font-size: .74rem; padding: .1rem .45rem; border-radius: 999px;
-      background: var(--border); color: var(--text-muted); }
-    .rule-state.on { background: rgba(16,185,129,.16); color: #059669; }
+      background: var(--bg-quaternary); color: var(--fg-secondary); }
+    .rule-state.on { background: color-mix(in srgb, var(--color-tracky-light) 16%, transparent); color: var(--texte-succes); }
     .rule-meta { grid-column: 1 / -1; display: flex; gap: .35rem; flex-wrap: wrap; align-items: center; }
-    .chip { font-size: .74rem; padding: .12rem .48rem; border-radius: 999px; border: 1px solid var(--border); }
-    .chip-muted { color: var(--text-muted); }
+    .chip { font-size: .74rem; padding: .12rem .48rem; border-radius: 999px; border: 1px solid var(--border-subtle); }
+    .chip-muted { color: var(--fg-secondary); }
     .rule-actions { display: flex; gap: .3rem; }
     /* 44 px : cible tactile minimale — la page est consultée au téléphone. */
     .btn-icon { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center;
-      justify-content: center; border: 1px solid var(--border); border-radius: 10px;
+      justify-content: center; border: 1px solid var(--border-subtle); border-radius: 10px;
       background: transparent; color: inherit; cursor: pointer; }
-    .btn-icon.danger { color: #dc2626; }
+    .btn-icon.danger { color: var(--texte-alerte); }
     .btn-primary, .btn-ghost { min-height: 44px; padding: 0 .95rem; border-radius: 10px;
       font-size: .88rem; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; }
-    .btn-primary { background: var(--accent, #10b981); color: #fff; border: none; }
+    /* Encre FONCEE sur l'accent — regle non negociable de B0-SOCLE. Le blanc mesurait
+       2,54:1 ici. Le repli hexadecimal etait mort : la variable est toujours definie. */
+    .btn-primary { background: var(--color-tracky-light); color: var(--accent-ink); border: none; }
     .btn-primary[disabled] { opacity: .6; cursor: default; }
-    .btn-ghost { background: transparent; border: 1px solid var(--border); color: inherit; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border-subtle); color: inherit; }
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60;
       display: flex; align-items: flex-end; justify-content: center; }
-    .sheet { background: var(--surface); width: min(560px, 100%); max-height: 92dvh;
+    .sheet { background: var(--bg-secondary); width: min(560px, 100%); max-height: 92dvh;
       display: flex; flex-direction: column; border-radius: 16px 16px 0 0;
       /* Zone sûre iOS : sans ça le bouton passe sous la barre gestuelle. */
       padding-bottom: env(safe-area-inset-bottom, 0); }
     .sheet-head, .sheet-foot { display: flex; align-items: center; gap: .6rem; padding: .9rem 1rem; }
-    .sheet-head { justify-content: space-between; border-bottom: 1px solid var(--border); }
-    .sheet-foot { justify-content: flex-end; border-top: 1px solid var(--border); }
+    .sheet-head { justify-content: space-between; border-bottom: 1px solid var(--border-subtle); }
+    .sheet-foot { justify-content: flex-end; border-top: 1px solid var(--border-subtle); }
     .sheet-head h3 { margin: 0; font-size: 1rem; }
     .sheet-body { padding: 1rem; overflow-y: auto; display: grid; gap: 1rem; }
     .field { display: grid; gap: .3rem; border: none; padding: 0; margin: 0; }
     .field-label { font-size: .86rem; font-weight: 600; }
-    .field-label em { font-style: normal; font-weight: 400; color: var(--text-muted); font-size: .78rem; }
+    .field-label em { font-style: normal; font-weight: 400; color: var(--fg-secondary); font-size: .78rem; }
     select, input[type="number"] { min-height: 44px; padding: 0 .6rem; border-radius: 10px;
-      border: 1px solid var(--border); background: var(--surface); color: inherit; font-size: .9rem; width: 100%; }
+      border: 1px solid var(--border-subtle); background: var(--bg-secondary); color: inherit; font-size: .9rem; width: 100%; }
     .toggle { display: flex; gap: .6rem; align-items: flex-start; min-height: 44px; padding: .25rem 0; cursor: pointer; }
     .toggle input { width: 20px; height: 20px; margin-top: .55rem; flex: none; }
     .toggle-txt { display: grid; gap: .1rem; }
     .toggle-label { display: inline-flex; gap: .35rem; align-items: center; font-size: .89rem; }
-    .field-warn { font-size: .8rem; line-height: 1.45; color: #b45309;
-      background: rgba(245,158,11,.1); border-radius: 8px; padding: .4rem .55rem; }
-    .error { display: flex; gap: .45rem; align-items: center; margin: 0; color: #dc2626; font-size: .85rem; }
+    .field-warn { font-size: .8rem; line-height: 1.45; color: var(--texte-attente);
+      background: color-mix(in srgb, var(--warning) 12%, transparent);
+      border-radius: 8px; padding: .4rem .55rem; }
+    .error { display: flex; gap: .45rem; align-items: center; margin: 0; color: var(--texte-alerte); font-size: .85rem; }
     @media (min-width: 640px) {
       .overlay { align-items: center; }
       .sheet { border-radius: 16px; }

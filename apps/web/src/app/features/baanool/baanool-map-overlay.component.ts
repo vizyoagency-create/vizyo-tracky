@@ -3,7 +3,7 @@ import { DecimalPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import {
   LucideAngularModule,
-  Menu, Maximize2, Bell, UserCircle2,
+  Menu, Maximize2, History, ShieldCheck,
   Car, Crosshair, Satellite, Search, ChevronRight, X,
 } from 'lucide-angular';
 import {
@@ -37,34 +37,15 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
   standalone: true,
   imports: [LucideAngularModule, DecimalPipe],
   template: `
-      <!-- TOP-LEFT : burger + recentrer + alertes -->
-      <div class="bn-top-left">
-        <button class="bn-circle" (click)="openMenu()" aria-label="Menu">
-          <lucide-icon [img]="MenuIcon" [size]="22"></lucide-icon>
-        </button>
-        <button class="bn-circle" (click)="mapBridge.requestRecenter()" aria-label="Recentrer">
-          <lucide-icon [img]="MaximizeIcon" [size]="22"></lucide-icon>
-        </button>
-        <button class="bn-circle" (click)="goAlerts()" aria-label="Alertes">
-          <lucide-icon [img]="BellIcon" [size]="22"></lucide-icon>
-          @if (unreadCount() > 0) {
-            <span class="bn-badge">{{ unreadCount() }}</span>
-          }
-        </button>
-      </div>
-
-      <!-- TOP-RIGHT : profile -->
-      <div class="bn-top-right">
-        <button class="bn-circle bn-circle--empty" (click)="goAccount()" aria-label="Mon compte">
-          <lucide-icon [img]="UserIcon" [size]="22"></lucide-icon>
-        </button>
-      </div>
-
-      <!-- RIGHT VERTICAL : vehicules, GPS, satellite (coupe-circuit retire :
-           l'action est deja accessible via popup au click vehicule sur la map). -->
+      <!-- LES OUTILS DE LA CARTE — recadrer, se localiser, changer de fond.
+           Ce ne sont pas des destinations : la règle « jamais plus de 3 boutons »
+           porte sur les FONCTIONS, pas sur les prises en main de la carte, que la
+           planche garde elle aussi en petits ronds à côté du bloc du bas.
+           Menu, Alertes et Mon compte ont quitté cet étage : ce sont des
+           destinations, elles passent DERRIÈRE le Menu (règle 1). -->
       <div class="bn-right">
-        <button class="bn-circle bn-color-blue" (click)="togglePanel()" aria-label="Vehicules" [class.active]="panelOpen()">
-          <lucide-icon [img]="CarIcon" [size]="20"></lucide-icon>
+        <button class="bn-circle" (click)="mapBridge.requestRecenter()" aria-label="Voir tous mes véhicules sur la carte">
+          <lucide-icon [img]="MaximizeIcon" [size]="20"></lucide-icon>
         </button>
         <button class="bn-circle" (click)="mapBridge.requestLocate()" aria-label="Ma position">
           <lucide-icon [img]="CrosshairIcon" [size]="20"></lucide-icon>
@@ -74,12 +55,43 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
         </button>
       </div>
 
+      <!-- LE BLOC DU BAS — les 4 règles de l'interface simplifiée.
+           Trois besoins en langage courant, jamais quatre ; le reste entre derrière
+           le Menu, qui porte aussi la sortie « Revenir en interface complète ». -->
+      <nav class="bn-bas" aria-label="Navigation simplifiée">
+        <button class="bn-bas-btn bn-bas-btn--principal" [class.active]="panelOpen() && intention() === 'centrer'"
+                (click)="ouvrirPour('centrer')">
+          <lucide-icon [img]="CarIcon" [size]="21"></lucide-icon>
+          Ma voiture
+        </button>
+        <button class="bn-bas-btn" (click)="ouvrirPour('trajet')">
+          <lucide-icon [img]="HistoryIcon" [size]="21"></lucide-icon>
+          Trajet
+        </button>
+        <button class="bn-bas-btn" (click)="ouvrirPour('antivol')">
+          <lucide-icon [img]="ShieldIcon" [size]="21"></lucide-icon>
+          Anti-vol
+        </button>
+        <button class="bn-bas-btn bn-bas-btn--menu" (click)="openMenu()"
+                [attr.aria-label]="unreadCount() > 0 ? 'Menu — ' + unreadCount() + ' alerte(s) non lue(s)' : 'Menu'">
+          <lucide-icon [img]="MenuIcon" [size]="19"></lucide-icon>
+          Menu
+          @if (unreadCount() > 0) {
+            <span class="bn-badge">{{ unreadCount() }}</span>
+          }
+        </button>
+      </nav>
+
       <!-- CENTRAL PANEL (toggleable) -->
       @if (panelOpen()) {
-        <div class="bn-panel" role="dialog" aria-label="Liste des véhicules">
+        <div class="bn-panel" role="dialog" [attr.aria-label]="titrePanneau()">
           <button class="bn-panel-close" (click)="closePanel()" aria-label="Fermer la liste">
             <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
           </button>
+          <!-- Le panneau sert les trois intentions. Sans ce titre, on tape « Trajet »
+               puis on voit la même liste que « Ma voiture » : on ne sait plus ce que
+               le prochain geste va faire. -->
+          <p class="bn-panel-titre">{{ titrePanneau() }}</p>
           <div class="bn-panel-search">
             <lucide-icon [img]="SearchIcon" [size]="16"></lucide-icon>
             <input
@@ -155,22 +167,22 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: white;
+      background: var(--bg-secondary);
       border: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      color: #333;
+      color: var(--fg-primary);
       position: relative;
       transition: transform 120ms;
     }
     .bn-circle:active { transform: scale(0.92); }
     .bn-circle.active { box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.4), 0 4px 12px rgba(0, 0, 0, 0.15); }
-    .bn-circle--empty { background: rgba(255, 255, 255, 0.95); }
-    .bn-color-blue { background: #4285f4; color: white; }
-    .bn-color-red { background: #ea4335; color: white; }
+    .bn-circle--empty { background: var(--bg-secondary); }
+    .bn-color-blue { background: var(--blue); color: var(--accent-ink); }
+    .bn-color-red { background: var(--danger); color: var(--accent-ink); }
 
     /* Badge alerte non lue, accroche en haut a droite du cercle. */
     .bn-badge {
@@ -179,8 +191,8 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       min-width: 18px; height: 18px;
       padding: 0 4px;
       border-radius: 9999px;
-      background: #f59e0b;
-      color: white;
+      background: var(--warning);
+      color: var(--accent-ink);
       font-size: 10px;
       font-weight: 700;
       display: flex;
@@ -188,24 +200,54 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       justify-content: center;
     }
 
-    /* Chaque cluster est position:fixed independamment — pas de conteneur
-       intermediaire qui pourrait bloquer les events sur iOS Safari. */
-    .bn-top-left {
+    /* LE BLOC DU BAS — trois besoins, jamais quatre.
+       La planche pose des boutons LARGES portant un libellé (62-66 px de haut,
+       rayon 16-20), pas des ronds d'icônes : un artisan doit pouvoir lire l'écran
+       en une seconde, et une icône seule se devine au lieu de se lire.
+       Le quatrième, « Menu », est volontairement ÉTROIT et sans accent : ce n'est
+       pas une quatrième fonction, c'est la porte derrière laquelle passent toutes
+       les autres — y compris la sortie « Revenir en interface complète ». */
+    .bn-bas {
       position: fixed;
-      top: calc(12px + env(safe-area-inset-top));
-      left: 12px;
+      left: 14px; right: 14px;
+      bottom: calc(14px + env(safe-area-inset-bottom));
       display: flex;
       gap: 8px;
       z-index: 7500;
       pointer-events: auto;
     }
-    .bn-top-right {
-      position: fixed;
-      top: calc(12px + env(safe-area-inset-top));
-      right: 12px;
-      z-index: 7500;
-      pointer-events: auto;
+    .bn-bas-btn {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 5px;
+      height: 62px;
+      border-radius: 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-strong);
+      color: var(--fg-primary);
+      font-size: 12px; font-weight: 700;
+      line-height: 1.15; text-align: center;
+      cursor: pointer;
+      box-shadow: 0 8px 20px -4px rgba(0, 0, 0, .28);
+      transition: transform 120ms;
     }
+    .bn-bas-btn:active { transform: scale(0.96) }
+    .bn-bas-btn--principal {
+      background: var(--tracky-light);
+      border-color: var(--tracky-light);
+      color: var(--accent-ink);
+    }
+    /* Étroit — il porte le même geste, pas le même poids. */
+    .bn-bas-btn--menu {
+      flex: 0 0 58px;
+      position: relative;
+      font-size: 11px;
+      color: var(--fg-secondary);
+    }
+
+    /* Chaque cluster est position:fixed independamment — pas de conteneur
+       intermediaire qui pourrait bloquer les events sur iOS Safari. */
     .bn-right {
       position: fixed;
       right: 12px;
@@ -218,23 +260,34 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       pointer-events: auto;
     }
 
-    /* Panel central blanc : flotte sous la top-bar, max-width pour pas etaler sur desktop. */
+    /* Panel central blanc : max-width pour pas etaler sur desktop.
+       Il descendait de 72 px pour passer sous les ronds du haut ; ces ronds sont
+       partis dans le Menu, donc il remonte. Sa hauteur maximale laisse la place
+       au bloc du bas — sinon la liste passe DERRIÈRE les boutons qui l'ont
+       ouverte, et les dernières lignes deviennent intouchables. */
     .bn-panel {
       position: fixed;
-      top: calc(72px + env(safe-area-inset-top));
+      top: calc(14px + env(safe-area-inset-top));
       z-index: 7500;
       left: 12px;
-      right: 70px; /* laisse la place pour la bn-top-right */
+      right: 70px; /* laisse la place pour la colonne d'outils de carte */
       max-width: 480px;
-      background: white;
+      background: var(--bg-secondary);
       border-radius: 12px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
       overflow: hidden;
-      /* dvh = iOS-safe (tient compte de la barre/safe-area) ; vh reste en fallback. */
-      max-height: calc(100vh - 200px);
-      max-height: calc(100dvh - 200px);
+      /* dvh = iOS-safe (tient compte de la barre/safe-area) ; vh reste en fallback.
+         120 px = les 62 px du bloc du bas + ses marges + la marge du haut. */
+      max-height: calc(100vh - 120px);
+      max-height: calc(100dvh - 120px);
       display: flex;
       flex-direction: column;
+    }
+    .bn-panel-titre {
+      margin: 0;
+      padding: 12px 44px 0 14px;
+      font-size: 13px; font-weight: 700;
+      color: var(--fg-primary);
     }
     /* Bouton fermeture en absolute dans le coin du panel — petite icone X qui
        n'empiete pas sur le contenu mais reste cliquable au pouce. */
@@ -251,11 +304,11 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      color: #999;
+      color: var(--fg-tertiary);
       z-index: 1;
       transition: background-color 120ms, color 120ms;
     }
-    .bn-panel-close:hover { background: #f5f5f5; color: #333; }
+    .bn-panel-close:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
     .bn-panel-close:active { transform: scale(0.9); }
     .bn-panel-search {
       display: flex;
@@ -263,7 +316,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       gap: 10px;
       padding: 12px 44px 12px 14px; /* +30px right pour ne pas chevaucher le X */
       border-bottom: 1px solid #eee;
-      color: #999;
+      color: var(--fg-tertiary);
     }
     .bn-panel-search input {
       flex: 1;
@@ -271,7 +324,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       outline: none;
       font-size: 14px;
       background: transparent;
-      color: #333;
+      color: var(--fg-primary);
       min-width: 0;
     }
     .bn-panel-tabs {
@@ -287,13 +340,13 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       border: none;
       border-bottom: 2px solid transparent;
       font-size: 13px;
-      color: #666;
+      color: var(--fg-secondary);
       cursor: pointer;
       transition: color 120ms, border-color 120ms;
     }
     .bn-tab.active {
-      color: #00c896;
-      border-bottom-color: #00c896;
+      color: var(--texte-succes);
+      border-bottom-color: var(--tracky-light);
       font-weight: 600;
     }
     .bn-panel-vehicles {
@@ -308,36 +361,40 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       align-items: center;
       gap: 10px;
       padding: 12px 16px;
-      background: white;
+      background: var(--bg-secondary);
       border: none;
       cursor: pointer;
-      color: #333;
+      color: var(--fg-primary);
       font-size: 14px;
       border-bottom: 1px solid #f5f5f5;
       text-align: left;
     }
-    .bn-vehicle-row:hover { background: #f8f8f8; }
+    .bn-vehicle-row:hover { background: var(--bg-tertiary); }
     .bn-vehicle-row:last-child { border-bottom: none; }
     .bn-vehicle-dot {
       width: 10px; height: 10px; border-radius: 50%;
-      background: #ccc; flex-shrink: 0;
+      background: var(--fg-tertiary); flex-shrink: 0;
     }
-    .bn-vehicle-dot.online { background: #00c896; box-shadow: 0 0 0 3px rgba(0, 200, 150, 0.2); }
+    .bn-vehicle-dot.online { background: var(--tracky); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tracky) 20%, transparent); }
     /* Muet de longue date : pastille CREUSE (le signal ne revient plus) plutot
        qu'un simple gris, et ligne estompee. Le vehicule reste dans la liste et
        reste cliquable — il est signale, jamais masque. */
-    .bn-vehicle-dot.dormant { background: #e5e7eb; box-shadow: inset 0 0 0 2px #9ca3af; }
+    .bn-vehicle-dot.dormant { background: var(--bg-quaternary); box-shadow: inset 0 0 0 2px var(--fg-tertiary); }
     .bn-vehicle-row--dormant { opacity: 0.72; }
     .bn-vehicle-main { flex: 1; min-width: 0; }
-    .bn-vehicle-plate { font-weight: 600; font-size: 14px; color: #333; }
-    .bn-vehicle-meta { font-size: 12px; color: #999; margin-top: 2px; }
+    .bn-vehicle-plate { font-weight: 600; font-size: 14px; color: var(--fg-primary); }
+    .bn-vehicle-meta { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px; }
     .bn-vehicle-empty {
-      padding: 32px 16px; text-align: center; color: #999; font-size: 13px;
+      padding: 32px 16px; text-align: center; color: var(--fg-tertiary); font-size: 13px;
     }
 
-    /* Mobile : compress les espacements et reduce panel padding. */
+    /* Mobile : compress les espacements et reduce panel padding.
+       ⚠️ Cette regle RAMENAIT les boutons a 40x40 — sous le plancher de 44 px, et
+       precisement sur mobile, la ou le doigt en a le plus besoin. C'est l'inverse
+       du critere de recette « iPhone 390 px : cibles >= 44 px », et sur le mode
+       destine aux utilisateurs qui ont le moins de marge d'erreur. Les
+       espacements se compressent, la CIBLE non. */
     @media (max-width: 480px) {
-      .bn-circle { width: 40px; height: 40px; }
       .bn-right { gap: 10px; }
       .bn-panel { right: 60px; }
     }
@@ -361,8 +418,8 @@ export class BaanoolMapOverlayComponent implements OnInit {
   // Icons
   protected readonly MenuIcon = Menu;
   protected readonly MaximizeIcon = Maximize2;
-  protected readonly BellIcon = Bell;
-  protected readonly UserIcon = UserCircle2;
+  protected readonly HistoryIcon = History;
+  protected readonly ShieldIcon = ShieldCheck;
   protected readonly CarIcon = Car;
   protected readonly CrosshairIcon = Crosshair;
   protected readonly SatelliteIcon = Satellite;
@@ -493,15 +550,60 @@ export class BaanoolMapOverlayComponent implements OnInit {
     });
   });
 
+  /**
+   * Ce que le PROCHAIN clic sur un véhicule va faire.
+   *
+   * Les trois boutons du bas partagent une même liste : la choisir est le geste
+   * commun, seule la destination change. Sans cet état, « Trajet » ouvrirait la
+   * même liste que « Ma voiture » et le geste suivant serait une devinette.
+   */
+  protected readonly intention = signal<'centrer' | 'trajet' | 'antivol'>('centrer');
+
+  protected readonly titrePanneau = computed(() => {
+    switch (this.intention()) {
+      case 'trajet': return 'Voir les trajets de quel véhicule ?';
+      case 'antivol': return 'Protéger quel véhicule ?';
+      default: return 'Mes véhicules';
+    }
+  });
+
+  /**
+   * Ouvre la liste pour une intention — ou saute la liste s'il n'y a rien à
+   * choisir. Un sélecteur à une seule entrée demande un geste pour rien : la
+   * cible de cette interface est « un artisan avec 1 à 3 véhicules », donc le cas
+   * à un véhicule est le cas courant, pas le cas limite.
+   */
+  protected ouvrirPour(intention: 'centrer' | 'trajet' | 'antivol'): void {
+    const seul = this.filteredVehicles();
+    if (seul.length === 1) {
+      this.panelOpen.set(false);
+      this.allerVers(intention, seul[0]!.vehicleId);
+      return;
+    }
+    // Re-taper le bouton déjà actif referme : le geste reste réversible.
+    if (this.panelOpen() && this.intention() === intention) {
+      this.panelOpen.set(false);
+      return;
+    }
+    this.intention.set(intention);
+    this.panelOpen.set(true);
+  }
+
+  private allerVers(intention: 'centrer' | 'trajet' | 'antivol', vehicleId: string): void {
+    if (intention === 'centrer') {
+      this.mapBridge.requestFlyToVehicle(vehicleId);
+      return;
+    }
+    // `?tab=` est déjà lu par la fiche véhicule : aucun contrat nouveau.
+    const tab = intention === 'trajet' ? 'history' : 'surveillance';
+    void this.router.navigate(['/vehicles', vehicleId], { queryParams: { tab } });
+  }
+
   onVehicleClick(vehicleId: string): void {
-    this.mapBridge.requestFlyToVehicle(vehicleId);
+    this.allerVers(this.intention(), vehicleId);
     // Fermer le panel apres avoir centre — pattern UX coherent : l'utilisateur
     // a fait sa selection, on revele la map qui montre le vehicule choisi.
     this.panelOpen.set(false);
-  }
-
-  togglePanel(): void {
-    this.panelOpen.update(v => !v);
   }
 
   /** Ferme le panel (utilise par le bouton X). togglePanel() sert au bouton
@@ -512,13 +614,5 @@ export class BaanoolMapOverlayComponent implements OnInit {
 
   onSearch(e: Event): void {
     this.searchQuery.set((e.target as HTMLInputElement).value);
-  }
-
-  goAlerts(): void {
-    void this.router.navigate(['/alerts']);
-  }
-
-  goAccount(): void {
-    void this.router.navigate(['/account']);
   }
 }

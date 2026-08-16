@@ -214,6 +214,15 @@ const envSchema = z.object({
   // Duree de vie du bail (jeton opaque). Courte VOLONTAIREMENT : c'est le filet
   // de securite si la purge Redis echoue a la revocation.
   PARTNER_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  // Telephone de l'ATELIER affiche sur la page publique de prise de rendez-vous
+  // (`/book/:token`). Vide = le bouton « Appeler » n'apparait pas du tout.
+  //
+  // ⚠️ NUMERO D'ATELIER, JAMAIS D'UNE PERSONNE — confirme par le client le
+  // 2026-08-16. Il vient d'ICI, et pas d'une fiche utilisateur, precisement parce
+  // que cette page est publique : son URL circule par e-mail et par SMS, et un
+  // numero personnel expose la ne se reprend plus. Ne jamais rebrancher ce champ
+  // sur `User.phone` ni sur le telephone d'un client pre-rempli.
+  INSTALLATION_PUBLIC_PHONE: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

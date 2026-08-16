@@ -343,6 +343,10 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ». */
+    @media (max-width: 768px) {
+      .tab, .btn-primary, .btn-ghost { min-height: 44px }
+    }
     .page {
       max-width: 980px;
       margin: 0 auto;
@@ -375,9 +379,12 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       white-space: nowrap;
       flex: 0 0 auto;
     }
+    /* Convention du kit (styles.css) : le LIBELLE actif prend --texte-succes.
+       Le LISERE, lui, reste en --tracky-light : ce n'est pas du texte, il n'est
+       pas soumis au 4,5:1, et c'est lui qui porte la marque sur cette barre. */
     .tab.active {
-      color: var(--tracky-light, #10E0A0);
-      border-bottom-color: var(--tracky-light, #10E0A0);
+      color: var(--texte-succes);
+      border-bottom-color: var(--tracky-light);
     }
     .tab:hover:not(.active) { color: var(--fg-secondary); }
     /* Mobile : tabs plus compactes pour limiter le risque de troncature. */
@@ -510,7 +517,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       background: var(--bg-tertiary);
       border-radius: 10px;
     }
-    .info-box lucide-icon { color: var(--accent-warning, #f59e0b); flex-shrink: 0; }
+    .info-box lucide-icon { color: var(--warning); flex-shrink: 0; }
     .info-box strong { color: var(--fg-primary); display: block; margin-bottom: 4px; }
     .info-box p { margin: 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.5; }
 

@@ -11,6 +11,25 @@ import {
  * ce jour de la semaine, à cette heure.
  *
  * Ordre des jours : lundi en haut → dimanche en bas (norme FR/ISO).
+ *
+ * ─── LES 168 CELLULES DE 10 × 11 PX SONT UNE EXCEPTION ASSUMÉE ──────────────
+ *
+ * Le critère de recette impose des cibles ≥ 44 px au doigt. Les cellules de
+ * cette grille mesurent 10 × 11 et la sonde les signale, à raison : ce sont des
+ * `<button>`.
+ *
+ * **Décision client du 2026-08-14 : on les laisse.** Une cellule à 44 px donnerait
+ * une grille de 7 392 px de large — la vue d'ensemble sur 24 h × 7 j, qui est
+ * toute la raison d'être de l'objet, disparaîtrait derrière un défilement.
+ *
+ * Ce n'est pas un renoncement, parce que **le doigt a déjà un chemin** : chaque
+ * étiquette de jour (`.hm-day-label`) est une cible de 24 × 44 qui ouvre le détail
+ * du jour. Les cellules servent au SURVOL et au focus clavier — elles portent
+ * chacune un `aria-label` complet (« Lun 15h, 6 trajets »), donc le contenu reste
+ * accessible au lecteur d'écran et à la navigation clavier.
+ *
+ * ⚠️ Si un jour cette grille devient le SEUL accès à une information, la décision
+ * est à revoir : elle tient parce qu'un autre chemin existe.
  */
 export type HeatmapMatrix = number[][];
 
@@ -52,13 +71,24 @@ interface HoverInfo {
         </div>
         @for (row of data(); track $index; let dayIdx = $index) {
           <div class="hm-row">
-            <div class="hm-day-label">{{ days[dayIdx] }}</div>
+            <!-- LE JOUR EST UN BOUTON — c'est lui, le drill-down (B1 § D).
+                 Les 168 cellules ne se lisent qu'au SURVOL, qui n'existe pas au doigt :
+                 sur un téléphone, la carte de chaleur était donc un dessin muet. Les
+                 agrandir n'était pas la réponse — 168 × 44 px font 7 392 px de large.
+                 On ouvre le jour, et ses heures se lisent en toutes lettres. -->
+            <button
+              type="button"
+              class="hm-day-label"
+              [class.hm-day-label--ouvert]="jourOuvert() === dayIdx"
+              [attr.aria-expanded]="jourOuvert() === dayIdx"
+              [attr.aria-label]="'Détail du ' + days[dayIdx]"
+              (click)="basculerJour(dayIdx)">{{ days[dayIdx] }}</button>
             @for (count of row; track $index; let hourIdx = $index) {
               <button
                 type="button"
                 class="hm-cell"
                 [style.background]="cellColor(count)"
-                [style.--hm-cell-border]="count > 0 ? 'rgba(16,224,160,.20)' : 'transparent'"
+                [style.--hm-cell-border]="count > 0 ? 'color-mix(in srgb, var(--color-tracky-light) 20%, transparent)' : 'transparent'"
                 [attr.aria-label]="ariaLabelCell(dayIdx, hourIdx, count)"
                 (pointerenter)="onCellHover($event, dayIdx, hourIdx, count)"
                 (focus)="onCellHover($event, dayIdx, hourIdx, count)"
@@ -66,6 +96,21 @@ interface HoverInfo {
               ></button>
             }
           </div>
+          @if (jourOuvert() === dayIdx) {
+            <div class="hm-detail" role="status">
+              @if (heuresDuJour(dayIdx); as heures) {
+                @if (heures.length === 0) {
+                  <span class="hm-detail-vide">Aucun trajet ce jour-là.</span>
+                } @else {
+                  @for (h of heures; track h.heure) {
+                    <span class="hm-detail-h">
+                      <strong>{{ h.heure }} h</strong> — {{ h.count }} trajet{{ h.count > 1 ? 's' : '' }}
+                    </span>
+                  }
+                }
+              }
+            </div>
+          }
         }
       </div>
 
@@ -129,7 +174,22 @@ interface HoverInfo {
       text-align: right;
       padding-right: 6px;
       line-height: 1;
+      background: none; border: 0; cursor: pointer; font-family: inherit;
     }
+    .hm-day-label--ouvert { color: var(--texte-succes); }
+    .hm-day-label:hover { color: var(--fg-secondary); }
+    /* Le détail d'un jour : les heures en toutes lettres, ce que le survol donnait
+       jusqu'ici à la souris seulement. */
+    .hm-detail {
+      display: flex; flex-wrap: wrap; gap: 4px 12px;
+      margin: 4px 0 6px; padding: 8px 10px;
+      background: var(--bg-quaternary);
+      border-radius: 8px;
+      font-size: 11px; line-height: 1.5; color: var(--fg-secondary);
+    }
+    .hm-detail-h strong { color: var(--fg-primary); font-weight: 700; }
+    .hm-detail-vide { color: var(--fg-tertiary); font-style: italic; }
+
     .hm-cell {
       width: 100%;
       aspect-ratio: 1 / 1;
@@ -145,7 +205,7 @@ interface HoverInfo {
     .hm-cell:hover,
     .hm-cell:focus-visible {
       transform: scale(1.18);
-      outline: 2px solid var(--tracky-light, #10E0A0);
+      outline: 2px solid var(--tracky-light);
       outline-offset: 1px;
       z-index: 5;
       position: relative;
@@ -158,15 +218,16 @@ interface HoverInfo {
         gap: 2px;
       }
       .hm-corner { width: 24px; }
-      .hm-day-label { font-size: 9px; padding-right: 4px; }
+      /* Au doigt, le jour est la seule prise sur la carte : 44 px. */
+      .hm-day-label { font-size: 9px; padding-right: 4px; min-height: 44px; }
       .hm-cell { min-height: 11px; max-height: 22px; border-radius: 2px; }
       .hm-hour-label { font-size: 8px; }
     }
     .hm-tooltip {
       position: absolute;
       transform: translate(-50%, calc(-100% - 10px));
-      background: var(--bg-secondary, #0F1714);
-      border: 1px solid var(--border-subtle, rgba(16,224,160,.08));
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 6px 10px;
       pointer-events: none;
@@ -177,8 +238,8 @@ interface HoverInfo {
       z-index: 10;
       white-space: nowrap;
     }
-    .hm-tooltip strong { font-size: 12px; color: var(--fg-primary, #F0FDF9); font-weight: 700; }
-    .hm-tooltip span { font-size: 11px; color: var(--fg-secondary, #A7C7BC); }
+    .hm-tooltip strong { font-size: 12px; color: var(--fg-primary); font-weight: 700; }
+    .hm-tooltip span { font-size: 11px; color: var(--fg-secondary); }
     .sr-only {
       position: absolute; width: 1px; height: 1px;
       padding: 0; margin: -1px; overflow: hidden;
@@ -193,6 +254,24 @@ export class HeatmapChartComponent {
   protected readonly days = DAYS_FR;
   protected readonly hoursAxis = Array.from({ length: 24 }, (_, i) => i);
   protected readonly hover = signal<HoverInfo | null>(null);
+  /**
+   * Le jour dont on a demandé le détail. `null` = aucun. C'est le drill-down du doigt :
+   * le survol, seul moyen de lire une cellule jusqu'ici, n'existe pas sur un écran
+   * tactile — la carte de chaleur y était un dessin muet.
+   */
+  protected readonly jourOuvert = signal<number | null>(null);
+
+  protected basculerJour(jour: number): void {
+    this.jourOuvert.update((courant) => (courant === jour ? null : jour));
+  }
+
+  /** Les heures NON VIDES d'un jour. Lister les 24 noierait les trois qui comptent. */
+  protected heuresDuJour(jour: number): { heure: number; count: number }[] {
+    const ligne = this.data()[jour] ?? [];
+    return ligne
+      .map((count, heure) => ({ heure, count }))
+      .filter((h) => h.count > 0);
+  }
 
   /** Max sur l'ensemble pour normaliser l'intensité de couleur. */
   private readonly maxCount = computed(() => {

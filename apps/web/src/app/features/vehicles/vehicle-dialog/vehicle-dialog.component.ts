@@ -31,11 +31,11 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
             <div class="flex items-center gap-3">
               @if (isEditMode()) {
                 <div class="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                  <lucide-icon [img]="PencilIcon" [size]="16" class="text-blue-400"></lucide-icon>
+                  <lucide-icon [img]="PencilIcon" [size]="16" class="vd-info-txt"></lucide-icon>
                 </div>
                 <div>
                   <h2 class="text-lg font-display font-bold text-fg-primary">Modifier le véhicule</h2>
-                  <p class="text-[10px] text-fg-tertiary">Modifier les informations du véhicule</p>
+                  <p class="text-[10px] text-fg-secondary">Modifier les informations du véhicule</p>
                 </div>
               } @else if (currentStep() === 1) {
                 <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
@@ -43,20 +43,20 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                 </div>
                 <div>
                   <h2 class="text-lg font-display font-bold text-fg-primary">Nouveau véhicule</h2>
-                  <p class="text-[10px] text-fg-tertiary">Étape 1 — Informations du véhicule</p>
+                  <p class="text-[11px] text-fg-secondary">Étape 1 sur 2 · informations</p>
                 </div>
               } @else {
                 <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
                   <lucide-icon [img]="RadioIcon" [size]="16" class="text-tracky-light"></lucide-icon>
                 </div>
                 <div>
-                  <h2 class="text-lg font-display font-bold text-fg-primary">Assigner un tracker</h2>
-                  <p class="text-[10px] text-fg-tertiary">Étape 2 — Tracker GPS</p>
+                  <h2 class="text-lg font-display font-bold text-fg-primary">Associer un boîtier</h2>
+                  <p class="text-[11px] text-fg-secondary">Étape 2 sur 2 · <strong class="vd-facultatif">facultative</strong></p>
                 </div>
               }
             </div>
             <button (click)="onClose()"
-              class="p-1.5 rounded-lg text-fg-tertiary hover:text-fg-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
+              class="vd-croix text-fg-secondary hover:text-fg-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </div>
@@ -65,19 +65,18 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
           @if (!isEditMode()) {
             <div class="flex items-center px-6 py-3 border-b border-border-subtle bg-bg-secondary">
               <div class="flex items-center gap-2">
-                <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0"
-                  [class]="currentStep() > 1 ? 'bg-tracky text-white' : 'bg-tracky text-white'">
+                <span class="vd-puce vd-puce--on">
                   @if (currentStep() > 1) {
                     <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon>
                   } @else { 1 }
                 </span>
-                <span class="text-xs font-medium" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-tertiary'">Véhicule</span>
+                <span class="text-xs font-medium" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-secondary'">Véhicule</span>
               </div>
               <div class="flex-1 h-px bg-border-subtle mx-3"></div>
               <div class="flex items-center gap-2">
-                <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0"
-                  [class]="currentStep() >= 2 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">2</span>
-                <span class="text-xs font-medium" [class]="currentStep() >= 2 ? 'text-fg-primary' : 'text-fg-tertiary'">Tracker</span>
+                <span [class]="currentStep() >= 2 ? 'vd-puce vd-puce--on' : 'vd-puce'">2</span>
+                <span class="text-xs font-medium" [class]="currentStep() >= 2 ? 'text-fg-primary' : 'text-fg-secondary'">Boîtier</span>
+                <span class="vd-facultatif-puce">facultatif</span>
               </div>
             </div>
           }
@@ -87,7 +86,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
 
             <!-- Loading vehicle data (edit mode) -->
             @if (isEditMode() && vehicleLoading()) {
-              <div class="flex items-center justify-center gap-2 text-sm text-fg-tertiary py-8">
+              <div class="flex items-center justify-center gap-2 text-sm text-fg-secondary py-8">
                 <span class="w-5 h-5 border-2 border-fg-tertiary/30 border-t-fg-tertiary rounded-full animate-spin"></span>
                 Chargement du véhicule...
               </div>
@@ -95,7 +94,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
 
             <!-- Error -->
             @if (errorMessage()) {
-              <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 text-red-400 text-sm">
+              <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 vd-erreur-txt text-sm">
                 {{ errorMessage() }}
               </div>
             }
@@ -106,16 +105,16 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                 <section>
                   <p class="section-title">Flotte</p>
                   @if (fleetsLoading()) {
-                    <div class="flex items-center gap-2 text-sm text-fg-tertiary py-2">
+                    <div class="flex items-center gap-2 text-sm text-fg-secondary py-2">
                       <span class="w-4 h-4 border-2 border-fg-tertiary/30 border-t-fg-tertiary rounded-full animate-spin"></span>
                       Chargement des flottes...
                     </div>
                   } @else if (fleetsError()) {
-                    <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 text-red-400 text-sm">
+                    <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 vd-erreur-txt text-sm">
                       {{ fleetsError() }}
                     </div>
                   } @else if (fleets().length === 0) {
-                    <div class="p-3 rounded-xl bg-amber-600/10 border border-amber-600/20 text-amber-400 text-sm">
+                    <div class="p-3 rounded-xl bg-amber-600/10 border border-amber-600/20 vd-avert-txt text-sm">
                       Aucune flotte disponible, créez une flotte d'abord
                     </div>
                   } @else {
@@ -130,6 +129,16 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                     </div>
                   }
                 </section>
+              }
+
+              <!-- Ce que le formulaire exige VRAIMENT, dit d'emblee : le reste peut
+                   attendre. Le compte est calcule depuis la liste des champs, pas
+                   ecrit a la main — un champ ajoute le met a jour tout seul. -->
+              @if (!isEditMode()) {
+                <p class="vd-requis">
+                  <strong>{{ champs().requis }} champ{{ champs().requis > 1 ? 's' : '' }} requis</strong>
+                  sur {{ champs().total }} — les autres se complètent plus tard.
+                </p>
               }
 
               <section>
@@ -220,29 +229,50 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
 
             <!-- Step 2: Tracker (create mode only) -->
             @if (!isEditMode() && currentStep() === 2) {
-              <div class="p-3 rounded-xl bg-tracky/8 border border-tracky/20 text-sm text-tracky-light flex items-center gap-2">
+              <div class="vd-succes p-3 rounded-xl text-sm flex items-center gap-2">
                 <lucide-icon [img]="CheckIcon" [size]="14"></lucide-icon>
                 Véhicule <strong class="text-fg-primary mx-1">{{ plate }}</strong> créé avec succès
               </div>
 
+              <!-- Un client qui saisit sa flotte n'a pas encore ses boitiers : ils
+                   arrivent a l'installation. L'etape le dit, plutot que de bloquer. -->
+              <div class="vd-sans">
+                <p class="vd-sans-t">Le boîtier n'est pas encore posé ? Passez cette étape.</p>
+                <p class="vd-sans-d">
+                  <strong>{{ plate || 'Le véhicule' }}</strong> entre dans le <strong>suivi d'installation</strong>
+                  et apparaîtra sur la carte dès la pose.
+                </p>
+              </div>
+
               <section>
-                <p class="section-title">Tracker GPS</p>
+                <p class="section-title">Boîtier GPS</p>
                 <div class="space-y-3">
                   <div>
-                    <label class="field-label">IMEI du tracker *</label>
-                    <input type="text" [(ngModel)]="imei" placeholder="123456789012345" pattern="\\d{15}" maxlength="15"
+                    <div class="vd-label-ligne">
+                      <label class="field-label">IMEI du boîtier</label>
+                      <!-- Le compteur remplace un bouton grise sans explication : on voit
+                           ou on en est, et ce qu'il manque. -->
+                      <span class="vd-compteur" [class.vd-compteur--ok]="imei.length === 15">{{ imei.length }} / 15</span>
+                    </div>
+                    <input type="text" [(ngModel)]="imei" placeholder="861234037582910" inputmode="numeric" pattern="\\d{15}" maxlength="15"
                       class="field-input font-mono tracking-wider" />
-                    <p class="text-[10px] text-fg-tertiary mt-1">15 chiffres, visible sur l'étiquette du boîtier GPS</p>
+                    @if (imei.length > 0 && imei.length < 15) {
+                      <p class="vd-manque">Il manque {{ 15 - imei.length }} chiffre{{ 15 - imei.length > 1 ? 's' : '' }}.</p>
+                    } @else {
+                      <p class="vd-aide">15 chiffres, imprimés sous le code-barres du boîtier.</p>
+                    }
                   </div>
                   <div>
-                    <label class="field-label">Modèle du tracker</label>
-                    <input type="text" [(ngModel)]="trackerModel" placeholder="Coban GPS403D" class="field-input" />
+                    <label class="field-label">Modèle <span class="vd-opt">· optionnel</span></label>
+                    <input type="text" [(ngModel)]="trackerModel" placeholder="Teltonika FMB920" class="field-input" />
                   </div>
                   <div>
-                    <label class="field-label">N° SIM du boîtier</label>
+                    <label class="field-label">N° SIM <span class="vd-opt">· optionnel</span></label>
                     <input type="tel" [(ngModel)]="simPhoneNumber" placeholder="+33612345678" maxlength="16"
                       class="field-input font-mono" />
-                    <p class="text-[10px] text-fg-tertiary mt-1">Format international (E.164). Optionnel — requis pour le statut « Installé ».</p>
+                    <!-- La consequence, pas le vocabulaire interne : « requis pour le
+                         statut Installe » ne dit pas ce qui se passe sans lui. -->
+                    <p class="vd-aide">Sans n° SIM, aucune position n'arrivera — même boîtier posé.</p>
                   </div>
                 </div>
               </section>
@@ -252,24 +282,23 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
           <!-- Footer -->
           <div class="px-6 py-4 border-t border-border-subtle flex items-center justify-end gap-3">
             <button (click)="onClose()"
-              class="px-4 py-2.5 text-sm font-medium rounded-xl bg-bg-tertiary text-fg-secondary border border-border-subtle
+              class="vd-annuler bg-bg-tertiary text-fg-secondary border border-border-subtle
                      hover:text-fg-primary transition-colors cursor-pointer">
               Annuler
             </button>
 
             @if (!isEditMode() && currentStep() === 2) {
-              <button (click)="onSkipTracker()"
-                class="px-4 py-2.5 text-sm font-medium rounded-xl text-fg-tertiary
-                       hover:text-fg-secondary transition-colors cursor-pointer">
-                Passer
+              <!-- Une sortie NOMMEE, pas un abandon : « Passer » ne disait pas ce
+                   qu'on passe, ni ce qu'il advient du vehicule. -->
+              <button (click)="onSkipTracker()" class="vd-sortie">
+                Sans boîtier pour l'instant
               </button>
             }
 
             @if (isEditMode()) {
               <!-- Edit mode: save button -->
               <button (click)="onSubmitEdit()" [disabled]="isLoading() || !plate.trim() || (isSuperAdmin() && !selectedFleetId)"
-                class="px-5 py-2.5 text-sm font-medium rounded-xl bg-blue-600 hover:bg-blue-700 text-white
-                       transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
+                class="vd-bouton vd-enregistrer transition-all cursor-pointer disabled:opacity-50">
                 @if (isLoading()) {
                   <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                 } @else {
@@ -279,8 +308,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
               </button>
             } @else if (currentStep() === 1) {
               <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plate.trim() || (isSuperAdmin() && !selectedFleetId)"
-                class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
-                       transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
+                class="vd-bouton vd-primaire transition-all cursor-pointer disabled:opacity-50">
                 @if (isLoading()) {
                   <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                 }
@@ -289,14 +317,13 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
               </button>
             } @else {
               <button (click)="onSubmitStep2()" [disabled]="isLoading() || imei.length !== 15"
-                class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
-                       transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
+                class="vd-bouton vd-primaire transition-all cursor-pointer disabled:opacity-50">
                 @if (isLoading()) {
                   <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                 } @else {
                   <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
                 }
-                Assigner et terminer
+                Créer le véhicule
               </button>
             }
           </div>
@@ -319,10 +346,10 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     }
     .animate-slide-in { animation: slideIn .25s ease-out }
     @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
-    .section-title { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }
-    .field-label { display: block; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); margin-bottom: 4px }
+    .section-title { font-size: 10px; font-weight: 700; color: var(--fg-secondary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }
+    .field-label { display: block; font-size: 11px; font-weight: 600; color: var(--fg-secondary); margin-bottom: 4px }
     .field-input {
-      width: 100%; padding: 10px 14px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle);
+      width: 100%; min-height: 44px; padding: 10px 14px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle);
       border-radius: 12px; color: var(--fg-primary); font-size: 13px; outline: none; transition: border-color .2s;
     }
     .field-input:focus { border-color: var(--tracky) }
@@ -331,9 +358,94 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     .vd-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 9px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--tracky-light, #10E0A0); background: rgba(16,224,160,.12) }
     .vd-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 5px; font-size: 14px; line-height: 1; color: var(--fg-tertiary); cursor: pointer }
     .vd-chip-x:hover { color: #EF4444; background: rgba(239,68,68,.12) }
-    .vd-chip-input { flex: 1; min-width: 90px; background: transparent; border: none; outline: none; color: var(--fg-primary); font-size: 13px }
+    /* 44 px : ce champ mesurait 20 de haut, noye dans la boite a etiquettes. */
+    .vd-chip-input { flex: 1; min-width: 90px; min-height: 44px; background: transparent; border: none; outline: none; color: var(--fg-primary); font-size: 13px }
     .vd-chip-input::placeholder { color: var(--fg-tertiary) }
-    .vd-hint { font-size: 10.5px; color: var(--fg-muted); margin-top: 5px }
+    .vd-hint { font-size: 10.5px; color: var(--fg-secondary); margin-top: 5px }
+
+    /* ─── Ce que le formulaire exige vraiment ─── */
+    .vd-requis {
+      margin: 0; padding: 9px 12px; border-radius: 10px;
+      font-size: 12.5px; line-height: 1.45; color: var(--fg-secondary);
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+    }
+    .vd-requis strong { color: var(--fg-primary); font-weight: 700; }
+
+    /* ─── Le boitier est facultatif, et le dit ─── */
+    .vd-facultatif { color: var(--texte-attente); font-weight: 700; }
+    .vd-facultatif-puce {
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+      padding: 2px 6px; border-radius: 999px;
+      background: color-mix(in srgb, var(--warning) 16%, transparent);
+      color: var(--texte-attente);
+    }
+    .vd-sans {
+      padding: 11px 13px; border-radius: 12px;
+      background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 26%, transparent);
+    }
+    .vd-sans-t { margin: 0; font-size: 13px; font-weight: 700; color: var(--fg-primary); }
+    .vd-sans-d { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: var(--fg-secondary); }
+    .vd-sans-d strong { color: var(--fg-primary); font-weight: 700; }
+
+    /* ─── Le compteur, a la place d'un bouton grise sans explication ─── */
+    .vd-label-ligne { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .vd-compteur {
+      font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+      color: var(--fg-secondary);
+    }
+    .vd-compteur--ok { color: var(--texte-succes); }
+    .vd-manque { margin: 5px 0 0; font-size: 11px; color: var(--texte-attente); }
+    .vd-aide { margin: 5px 0 0; font-size: 11px; line-height: 1.45; color: var(--fg-secondary); }
+    .vd-opt { font-weight: 400; color: var(--fg-secondary); }
+
+    /* La sortie NOMMEE : lisible, atteignable au doigt, sans concurrencer l'action
+       principale — c'est un choix assume, pas un abandon. */
+    .vd-sortie {
+      min-height: 44px; padding: 0 14px; border-radius: 12px;
+      font-size: 13.5px; font-weight: 600; cursor: pointer;
+      background: transparent; color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+    }
+    .vd-sortie:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
+
+    /* Encre FONCEE sur l'accent — regle non negociable de B0-SOCLE. Ces boutons et
+       ces puces ecrivaient bg-tracky text-white : du blanc sur du vert menthe. */
+    .vd-primaire { background: var(--tracky-light); color: var(--accent-ink); }
+    .vd-primaire:hover:not([disabled]) { filter: brightness(1.06); }
+    .vd-puce {
+      width: 24px; height: 24px; border-radius: 999px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700;
+      background: var(--bg-tertiary); color: var(--fg-secondary);
+    }
+    .vd-puce--on { background: var(--tracky-light); color: var(--accent-ink); }
+
+    /* Classes de palette Tailwind remplacees : elles portaient une valeur figee,
+       identique en clair et en sombre, et doublaient un jeton existant. */
+    /* 44 px : la croix mesurait 30 x 36, les boutons du pied 42. */
+    .vd-croix { width: 44px; height: 44px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .vd-bouton, .vd-annuler {
+      min-height: 44px; padding: 0 16px; border-radius: 12px;
+      font-size: 13.5px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    /* --blue est FONCE en theme clair (#0369A1) et CLAIR en sombre (#38BDF8).
+       Une encre blanche fixe donne 5,93 d'un cote et 2,14 de l'autre : l'encre
+       doit suivre le theme, comme --accent-ink le fait sur l'accent. */
+    .vd-enregistrer { background: var(--blue); color: #FFFFFF; border: none; }
+    :host-context([data-theme='dark']) .vd-enregistrer { color: var(--accent-ink); }
+    .vd-enregistrer:hover:not([disabled]) { filter: brightness(1.08); }
+    /* Le bandeau de succes ecrivait text-tracky-light sur son propre lavis : 3,34
+       en clair. --texte-succes est la valeur assombrie prevue pour ca. */
+    .vd-succes {
+      background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 24%, transparent);
+      color: var(--texte-succes);
+    }
+    .vd-erreur-txt { color: var(--texte-alerte); }
+    .vd-avert-txt { color: var(--texte-attente); }
+    .vd-info-txt { color: var(--texte-info); }
     select.field-input {
       appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -346,11 +458,15 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px }
     .type-btn {
       display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px;
-      background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); color: var(--fg-tertiary);
+      background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); color: var(--fg-secondary);
       cursor: pointer; transition: all .2s; font-size: 10px; font-weight: 600;
     }
-    .type-btn:hover { border-color: var(--border-strong); color: var(--fg-secondary) }
-    .type-btn.active { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
+    .type-btn:hover { border-color: var(--border-strong); color: var(--fg-primary) }
+    /* Le libelle actif etait en --tracky-light : 3,2:1 sur son propre lavis, en clair. */
+    .type-btn.active {
+      border-color: var(--tracky); color: var(--texte-succes);
+      background: color-mix(in srgb, var(--color-tracky-light) 8%, transparent);
+    }
     .type-icon { display: flex; align-items: center; justify-content: center; height: 24px }
     @media (max-width: 480px) { .type-grid { grid-template-columns: repeat(3, 1fr) } }
   `],
@@ -380,6 +496,35 @@ export class VehicleDialogComponent {
   protected readonly fleetsError = signal('');
   protected readonly vehicleLoading = signal(false);
   protected selectedFleetId = '';
+
+  /**
+   * Les champs de l'étape 1, dans l'ordre du formulaire.
+   *
+   * Cette liste existe pour que « N champs requis sur M » se CALCULE. Un compteur
+   * écrit à la main devient faux au premier champ ajouté, et personne ne s'en
+   * aperçoit — c'est le défaut que l'assistant de démarrage portait avec son
+   * « étape N sur 5 ». Ajouter un champ au gabarit sans l'ajouter ici est visible :
+   * le total ne bouge pas.
+   */
+  private readonly CHAMPS_ETAPE_1: ReadonlyArray<{ cle: string; requis: boolean; superAdmin?: boolean }> = [
+    { cle: 'flotte', requis: true, superAdmin: true },
+    { cle: 'plaque', requis: true },
+    { cle: 'type', requis: false },
+    { cle: 'marque', requis: false },
+    { cle: 'modele', requis: false },
+    { cle: 'annee', requis: false },
+    { cle: 'couleur', requis: false },
+    { cle: 'places', requis: false },
+    { cle: 'siegesEnfants', requis: false },
+    { cle: 'energie', requis: false },
+    { cle: 'equipements', requis: false },
+  ];
+
+  /** Ce que le formulaire exige vraiment — la flotte n'apparaît qu'au super-admin. */
+  protected readonly champs = computed(() => {
+    const visibles = this.CHAMPS_ETAPE_1.filter((c) => !c.superAdmin || this.isSuperAdmin());
+    return { requis: visibles.filter((c) => c.requis).length, total: visibles.length };
+  });
 
   protected readonly currentStep = signal(1);
   protected readonly isLoading = signal(false);

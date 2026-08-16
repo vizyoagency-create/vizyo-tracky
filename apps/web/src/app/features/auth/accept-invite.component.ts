@@ -37,7 +37,7 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
       <div class="ai-logo">
         <app-logo variant="icon" [size]="32" />
-        <span class="ai-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+        <span class="ai-brand">Vizyo <span class="text-texte-succes">Tracky</span></span>
       </div>
 
       <div class="ai-card">
@@ -160,7 +160,8 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
     .ai-theme {
       position: absolute; top: 22px; right: 22px; z-index: 2;
       display: inline-flex; align-items: center; justify-content: center;
-      width: 38px; height: 38px; border-radius: 10px;
+      /* Critere de recette « cibles >= 44 px au doigt » : elle sortait a 38x38. */
+      width: 44px; height: 44px; border-radius: 10px;
       border: 1px solid var(--border-subtle); background: var(--bg-secondary);
       color: var(--fg-secondary); cursor: pointer; transition: color .2s, border-color .2s;
     }

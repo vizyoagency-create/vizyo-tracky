@@ -24,6 +24,21 @@ export function messageDePanne(err: unknown): string {
 }
 
 /**
+ * Le message a afficher pour une panne de chargement des missions.
+ *
+ * Le message du SERVEUR passe en premier quand il existe : c'est lui qui porte la
+ * cause. « Aucune flotte associée » dit quoi corriger ; « Vous n'avez pas
+ * l'autorisation », derive du seul statut 403, serait ici FAUX — un super-admin a
+ * bien le droit, il n'a simplement aucune societe rattachee. Le repli generique ne
+ * sert que lorsque la reponse ne dit rien.
+ */
+export function messageDePanne(err: unknown): string {
+  const brut = (err as { error?: { message?: unknown } } | null)?.error?.message;
+  const duServeur = typeof brut === 'string' ? brut.trim() : '';
+  return duServeur || httpFailureMessage(err, 'les missions');
+}
+
+/**
  * Espace dépôt (2026-08) — l'onglet Missions de `/agenda`. Cf. design/A2-MISSIONS.md § 6.
  *
  * **Pourquoi un composant à part** : `agenda.component.ts` fait 1816 lignes. Y verser

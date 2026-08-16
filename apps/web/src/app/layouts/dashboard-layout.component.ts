@@ -64,6 +64,14 @@ interface NavItem {
   label: string;
   route: string;
   icon: typeof LayoutDashboard;
+  /**
+   * Entrée DÉTACHÉE du reste du menu — un filet au-dessus, et une teinte violette.
+   * Réservée à la sortie du mode simplifié : elle ne fait pas partie de la navigation,
+   * elle en est l'issue.
+   */
+  detachee?: boolean;
+  /** Ligne d'explication sous le libellé. Une seule entrée en a besoin aujourd'hui. */
+  sousTitre?: string;
 }
 /** Groupe de navigation : une section (eyebrow) + ses items.
  *  `section: null` = groupe sans en-tête (modes veilleur / baanool). */
@@ -78,7 +86,7 @@ interface NavGroup {
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, DeviceVerificationGateComponent, TwoFactorProposalComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
-    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()" [class.layout--depot]="auth.isDepot()">
+    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()" [class.layout--depot]="auth.isDepot()" [class.layout--hors-ligne]="!network.online()">
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
@@ -170,10 +178,14 @@ interface NavGroup {
                 <a [routerLink]="item.route" routerLinkActive="active"
                    #rla="routerLinkActive"
                    class="bs-link"
+                   [class.bs-link--detachee]="item.detachee"
                    [attr.aria-current]="rla.isActive ? 'page' : null"
                    (click)="mobileMenuOpen.set(false)">
                   <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-                  <span>{{ item.label }}</span>
+                  <span class="bs-link-txt">
+                    {{ item.label }}
+                    @if (item.sousTitre) { <small class="bs-link-sous">{{ item.sousTitre }}</small> }
+                  </span>
                 </a>
               }
             </div>
@@ -386,7 +398,20 @@ interface NavGroup {
       position: relative;
     }
 
-    /* ─── OFFLINE BANNER ─── */
+    /* ─── BANDEAU HORS LIGNE ───
+     *
+     * B1-PAGES § G distingue deux comportements, et les oppose exprès :
+     * le bandeau hors ligne POUSSE le contenu, la barre de progression SE
+     * SUPERPOSE. Le bandeau etait en position absolue : il se superposait, donc
+     * il masquait les 28 px hauts de l'ecran — la top-bar et son titre.
+     *
+     * Il RESTE absolu (il doit couvrir toute la largeur, sidebar comprise, et
+     * gerer l'encoche) ; c'est le layout qui lui cede la place. Le contenu est
+     * donc bien pousse, sans un niveau de DOM en plus et sans toucher au flex
+     * horizontal qui porte la sidebar.
+     */
+    .layout--hors-ligne { padding-top: calc(28px + env(safe-area-inset-top)) }
+
     .offline-banner {
       position: absolute;
       top: 0; left: 0; right: 0;
@@ -456,7 +481,11 @@ interface NavGroup {
       border: 1px solid transparent; transition: all .2s;
     }
     .sidebar-link:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
+    /* Bloc G — l'entree ACTIVE de navigation, dans les deux barres. C'est le
+       motif deja tranche au kit (styles.css) : le vert de MARQUE ne porte pas de
+       texte. Mesure a 375 px : l'entree active de la barre du bas rendait 3,24:1
+       en clair, sur les 9 pages internes a la fois. */
+    .sidebar-link.active { background: var(--bg-tertiary); color: var(--texte-succes); border-color: var(--border-strong) }
     /* Espace dépôt — l'accent sur fond teinté donne 3,24:1 à 13,5 px, sous le seuil
        du critère n° 10. La règle vit ICI et non dans styles.css : l'encapsulation
        émulée ajoute un attribut au sélecteur du composant, ce qui le rend plus
@@ -522,8 +551,12 @@ interface NavGroup {
     .route-progress {
       position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
       z-index: 3; pointer-events: none; border-radius: 0 2px 2px 0;
-      background: linear-gradient(90deg, var(--tracky, #0A9E6C), var(--tracky-light, #10E0A0));
-      box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light, #10E0A0) 55%, transparent);
+      /* Les replis #0A9E6C / #10E0A0 sautent : les deux noms de tete sont bien
+         declares, donc ils ne servaient jamais — mais un hexadecimal en repli
+         gagne des que le nom manque, et ceux-la auraient fige les valeurs d'UN
+         theme sur les deux. */
+      background: linear-gradient(90deg, var(--tracky), var(--tracky-light));
+      box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light) 55%, transparent);
       animation: vt-route 900ms ease-out both;
     }
     @media (prefers-reduced-motion: reduce) {
@@ -605,7 +638,10 @@ interface NavGroup {
       line-height: 1;
     }
     .top-bar-brand-name { color: var(--fg-primary) }
-    .top-bar-brand-name--accent { color: var(--tracky-light) }
+    /* Le logotype est du TEXTE. 3,18:1 en clair — dernier echec restant sur
+       CHACUNE des pages mesurees, parce qu'il est dans le shell. Les 4 pages
+       d'authentification portaient le meme et ont ete reprises avec ce jeton. */
+    .top-bar-brand-name--accent { color: var(--texte-succes) }
 
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
@@ -789,6 +825,73 @@ interface NavGroup {
     /* ════════════════════════════════════════════════════════
        MOBILE (< 768px)
        ════════════════════════════════════════════════════════ */
+    /* ─── Menu en FEUILLE (bouton de navigation) ────────────────────────────────
+     *
+     * ⚠️ CES RÈGLES ÉTAIENT DANS @media (max-width: 768px), et c'était un défaut.
+     * La feuille n'est pas réservée au mobile : le MODE SIMPLIFIÉ masque les rails
+     * et navigue au bouton, à TOUTE largeur. Sur un écran large, le menu s'ouvrait
+     * donc sans aucun de ses styles — libellés bruts, sans cartes, sans couleurs,
+     * et le filet violet de la sortie invisible.
+     *
+     * Les sortir du media query est sans risque : elles ne visent que des éléments
+     * qui n'existent que dans la feuille, et la feuille n'est rendue que menu ouvert. */
+      .bs-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 4px 12px;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 8px;
+      }
+      .bs-brand {
+        font-size: 13px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: .08em; color: var(--fg-primary);
+      }
+      .bs-nav-wrap { display: flex; flex-direction: column; gap: 4px }
+      .bs-section { padding: 12px 4px 2px }
+      .bs-nav {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+        padding: 2px 0 6px;
+      }
+      .bs-link {
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 14px; border-radius: 14px;
+        color: var(--fg-secondary); text-decoration: none;
+        font-size: 14px; font-weight: 600;
+        background: var(--bg-tertiary);
+        border: 1px solid transparent;
+        transition: all .15s;
+        min-height: 56px;
+      }
+      .bs-link:active { transform: scale(.97) }
+      .bs-link.active {
+        background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent);
+        color: var(--texte-succes);
+        border-color: color-mix(in srgb, var(--color-tracky-light) 25%, transparent);
+      }
+      .bs-link-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0 }
+      .bs-link-sous { font-size: 11px; font-weight: 500; opacity: .85 }
+      /* LA SORTIE DU MODE SIMPLIFIÉ — détachée par un filet, en violet.
+         Règle non négociable de B1 § J : sans elle, l'utilisateur est enfermé dans un
+         mode qu'il n'a pas compris, et le réglage qui l'en sort est justement celui
+         qu'il ne trouve plus. Le violet la sépare des pages : ce n'est pas une
+         destination de plus, c'est la porte. */
+      .bs-link--detachee {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border-strong);
+        border-radius: 0 0 14px 14px;
+        color: var(--texte-violet);
+      }
+      .bs-link--detachee.active {
+        background: color-mix(in srgb, var(--texte-violet) 12%, transparent);
+        color: var(--texte-violet);
+        border-color: var(--border-strong);
+        border-top-color: var(--border-strong);
+      }
+      /* Mode sombre : un peu plus de contraste sur les cartes */
+      :host-context([data-theme="dark"]) .bs-link {
+        background: rgba(255,255,255,.04);
+      }
+
     @media (max-width: 768px) {
       .desktop-sidebar { display: none }
 
@@ -821,55 +924,26 @@ interface NavGroup {
         min-height: 48px;
       }
       .bottom-item:hover { background: var(--bg-tertiary) }
-      .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
+      .bottom-item.active { color: var(--texte-succes); background: var(--bg-tertiary) }
       .bottom-item lucide-icon { display: block }
 
       /* Mobile : touch targets 44x44 minimum (Apple HIG iOS, materiel design Android).
          Sur l'ancien 36x36 le user reportait "trop petit pour mon doigt" + clics
          rates 2-3 fois (cible too small, finger covers the icon entirely). */
+      /* ⚠️ flex: none — mesuré, pas supposé. Le bouton DÉCLARAIT déjà 44 × 44, et il
+         n'en faisait que 18 de large sur un écran de 375 px : la barre du haut est une
+         rangée flex, le sélecteur de société y prend 156 px, et le burger — seul élément
+         sans flex-shrink: 0 — cédait tout le reste. Un CSS parfaitement correct à la
+         lecture, et la porte de toute la navigation mobile réduite à un trait.
+         C'est la sonde de recette qui l'a vu (critère : cibles ≥ 44 px). */
       .mobile-burger {
-        display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        flex: none; width: 44px; min-width: 44px; height: 44px; border-radius: 10px;
         background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
       }
       .mobile-burger:hover { background: var(--bg-tertiary) }
 
       /* Bottom-sheet content (remplace l'ancien drawer lateral) */
-      .bs-header {
-        display: flex; align-items: center; gap: 8px;
-        padding: 4px 4px 12px;
-        border-bottom: 1px solid var(--border-subtle);
-        margin-bottom: 8px;
-      }
-      .bs-brand {
-        font-size: 13px; font-weight: 800; text-transform: uppercase;
-        letter-spacing: .08em; color: var(--fg-primary);
-      }
-      .bs-nav-wrap { display: flex; flex-direction: column; gap: 4px }
-      .bs-section { padding: 12px 4px 2px }
-      .bs-nav {
-        display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-        padding: 2px 0 6px;
-      }
-      .bs-link {
-        display: flex; align-items: center; gap: 12px;
-        padding: 14px 14px; border-radius: 14px;
-        color: var(--fg-secondary); text-decoration: none;
-        font-size: 14px; font-weight: 600;
-        background: var(--bg-tertiary);
-        border: 1px solid transparent;
-        transition: all .15s;
-        min-height: 56px;
-      }
-      .bs-link:active { transform: scale(.97) }
-      .bs-link.active {
-        background: rgba(16,224,160,.1);
-        color: var(--tracky-light);
-        border-color: rgba(16,224,160,.25);
-      }
-      /* Mode sombre : un peu plus de contraste sur les cartes */
-      :host-context([data-theme="dark"]) .bs-link {
-        background: rgba(255,255,255,.04);
-      }
 
       /* Mobile : on conserve le padding-top: env(safe-area-inset-top) de la regle de base
          (notch / Dynamic Island en PWA iOS standalone). Utiliser les longhand
@@ -881,7 +955,10 @@ interface NavGroup {
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
       .top-connected { display: none }
-      .top-bar-brand { display: flex; flex-shrink: 0 }
+      /* Cible tactile — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+         Mesuré, pas supposé : ces boutons tenaient entre 36 et 42 px. */
+      .top-bar-brand { display: flex; flex-shrink: 0; min-height: 44px; align-items: center }
+      .user-menu-trigger { min-width: 44px; min-height: 44px }
       .top-bar-brand-text { font-size: 13px }
       /* Place réduite sur mobile (sélecteur société SA) : on garde le logo + « Tracky »
          seul, on masque « Vizyo » pour éviter que la barre soit trop tassée. */
@@ -1185,21 +1262,44 @@ export class DashboardLayoutComponent {
         },
       ];
     }
-    // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
-    // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =
-    // onglet de Véhicules, Conducteurs = onglet d'Utilisateurs.
+    // ⚠️ MODE SIMPLIFIÉ — LE MENU GARDE TOUT (B1 § J, défaut relevé et corrigé).
+    //
+    // Le réglage promet, mot pour mot : « Toutes les pages restent accessibles. »
+    // Le menu, lui, était réduit à cinq entrées — Tableau de bord, Rapports, Scores et
+    // Agenda disparaissaient. La promesse et le code se contredisaient, et c'est la
+    // promesse qui avait raison : le mode simplifié SIMPLIFIE L'ÉCRAN (connexion directe
+    // à la carte, rails masqués, navigation au menu), il ne retire pas de fonctions.
+    //
+    // Ce qui change ici est donc la FORME, pas le contenu : un seul groupe sans
+    // en-têtes de section, parce que le mode simplifié n'affiche pas d'eyebrows.
     if (this.isBaanoolMode()) {
-      const items: NavItem[] = [
-        ...(this.perms.can('vehicles_view') ? [
-          { label: 'Carte', route: '/map', icon: Map },
-          { label: 'Véhicules', route: '/vehicles', icon: Truck },
-        ] : []),
-        ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-        ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-        { label: 'Paramètres', route: '/settings', icon: Settings },
-      ];
+      // ⚠️ Paramètres n'est PAS dans `groupesComplets()` : en mode complet il vit dans
+      // le rail bas, et l'y ajouter le ferait apparaître deux fois. On le pose ici, et
+      // ici seulement — détaché, parce que c'est la porte de sortie, pas une page.
+      const items: NavItem[] = this.groupesComplets().flatMap((g) => g.items);
+      // RÈGLE NON NÉGOCIABLE (B1 § J) : « Paramètres reste toujours dans le menu,
+      // détaché, en violet, sous-titré Revenir en interface complète. » Sans cette
+      // garantie, l'utilisateur est enfermé dans un mode qu'il n'a pas compris — et
+      // le réglage qui l'en sort est précisément celui qu'il ne trouve plus.
+      items.push({
+        label: 'Paramètres',
+        route: '/settings',
+        icon: Settings,
+        detachee: true,
+        sousTitre: 'Revenir en interface complète',
+      });
       return [{ section: null, items }];
     }
+    return this.groupesComplets();
+  });
+
+  /**
+   * Le menu COMPLET, en sections. Extrait de `navItems` pour que le mode simplifié
+   * puisse le réutiliser tel quel : c'est la seule façon de garantir que sa promesse
+   * — « toutes les pages restent accessibles » — reste vraie quand une page s'ajoute
+   * ici. Une seconde liste, tenue à la main, aurait divergé au premier ajout.
+   */
+  private groupesComplets(): NavGroup[] {
     // Regroupement en sections (eyebrows mono) — refonte DS §3.
     const supervision: NavItem[] = [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
@@ -1249,5 +1349,5 @@ export class DashboardLayoutComponent {
       { section: 'Analyse', items: analyse },
       { section: 'Administration', items: administration },
     ] satisfies NavGroup[]).filter((g) => g.items.length > 0);
-  });
+  }
 }

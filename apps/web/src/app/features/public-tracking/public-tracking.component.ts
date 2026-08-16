@@ -146,7 +146,10 @@ type Etat = 'chargement' | 'actif' | 'ferme';
        PUBLIQUE : elle vit hors du shell, donc sans cette classe. Les variables y
        etaient vides et le repli gagnait — mesure a 3,43:1 et 3,02:1 en theme
        clair, sur le seul ecran que voit le destinataire du lien. On emploie donc
-       les jetons GLOBAUX, qui existent partout. */
+       les jetons GLOBAUX, qui existent partout.
+
+       verif:variables ne voit PAS ce cas : --depot-succes EST definie dans
+       styles.css, mais sous un selecteur scope. Le controle ignore la portee. */
     .pt-statut--route { color: var(--texte-succes) }
     .pt-statut--retard { color: var(--texte-alerte) }
     .pt-arrivee {

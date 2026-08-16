@@ -169,7 +169,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                 <span class="u-avatar" [class]="avatarClass(u)">{{ userInitials(u) }}</span>
                 <div class="u-user-txt">
                   <div class="u-name">{{ displayName(u) }}</div>
-                  <div class="u-email mono">{{ u.email }}</div>
+                  <div class="u-email mono" [title]="u.email">{{ u.email }}</div>
                 </div>
               </div>
               <span class="u-cell-role">
@@ -209,7 +209,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                 <span class="u-avatar pending">{{ invInitials(inv) }}</span>
                 <div class="u-user-txt">
                   <div class="u-name">{{ invName(inv) }}</div>
-                  <div class="u-email mono">{{ inv.email }}</div>
+                  <div class="u-email mono" [title]="inv.email">{{ inv.email }}</div>
                 </div>
               </div>
               <span class="u-cell-role">
@@ -294,6 +294,13 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
 
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : le menu d'actions de chaque ligne (15 lignes, 15 cibles) et les
+       trois onglets étaient sous le seuil. Sur une liste, la cible par ligne est celle
+       qu'on vise le plus souvent et la plus facile à rater — les lignes sont serrées. */
+    @media (max-width: 768px) {
+      .u-menu-btn, .u-tab, .btn-primary { min-width: 44px; min-height: 44px }
+    }
     .upage { position: relative; min-height: 100%; max-width: 1240px; margin: 0 auto }
 
     /* ─── Header ─── */
@@ -330,19 +337,22 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-avatar.admin { background: var(--tracky); color: var(--accent-ink) }
     .u-avatar.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .u-avatar.viewer { background: var(--bg-tertiary); color: var(--fg-tertiary) }
-    .u-avatar.pending { background: transparent; border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning) }
+    .u-avatar.pending { background: transparent; border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); color: var(--texte-attente) }
     .u-user-txt { min-width: 0 }
     .u-name { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-email { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 
     .u-cell-role { display: flex; align-items: center; gap: 7px; flex-wrap: wrap }
     .u-role-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-secondary) }
-    .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    /* Pastilles de role : 11,5 px sur un lavis a 14 % — du petit texte, donc les
+       jetons de la famille --texte-*. La couleur de marque rendait 2,92:1,
+       et --danger 3,31:1. */
+    .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--texte-succes) }
     /* Espace dépôt (2026-08) — violet : un dépôt n'est pas un membre de la flotte,
        et la pastille doit le dire d'un coup d'œil dans une liste mêlée. */
-    .u-role-pill.depot { background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--violet) }
-    .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
-    .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .u-role-pill.depot { background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--texte-violet) }
+    .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente) }
+    .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte) }
     .u-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor }
 
     .u-scope { font-size: 12.5px; color: var(--fg-secondary) }
@@ -352,7 +362,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-row-menu { position: relative; display: flex; justify-content: flex-end }
     .u-menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--fg-tertiary); cursor: pointer; transition: all .15s }
     .u-menu-btn:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .u-menu { position: absolute; top: 34px; right: 0; z-index: 51; min-width: 208px; padding: 6px; border-radius: 12px; background: var(--surface, var(--bg-secondary)); border: 1px solid var(--border-strong, var(--border-subtle)); box-shadow: 0 18px 44px -14px rgba(0,0,0,.5) }
+    .u-menu { position: absolute; top: 34px; right: 0; z-index: 51; min-width: 208px; padding: 6px; border-radius: 12px; background: var(--bg-secondary); border: 1px solid var(--border-strong); box-shadow: 0 18px 44px -14px rgba(0,0,0,.5) }
     .u-menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border-radius: 8px; border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; transition: background .12s, color .12s; white-space: nowrap }
     .u-menu-item:hover:not(.disabled) { background: var(--bg-tertiary); color: var(--fg-primary) }
     .u-menu-item.danger:hover:not(.disabled) { color: var(--danger) }

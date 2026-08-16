@@ -28,8 +28,13 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
           (click)="toggle($event)"
           aria-haspopup="listbox"
           [attr.aria-expanded]="open()"
-          aria-label="Filtrer par société">
+          [attr.aria-label]="'Filtrer par société — ' + currentLabel()"
+          [attr.title]="currentLabel()">
           <lucide-icon [img]="BuildingIcon" [size]="14" class="fs-icon" aria-hidden="true"></lucide-icon>
+          <!-- Le nom complet est porté par title ET par aria-label : tronqué à
+               l'écran, « CDEF 31 — Centre Dép. de l'Enfant et de la Famille » n'était
+               récupérable NULLE PART. Une ellipse cache une information ; sans recours,
+               elle la supprime. -->
           <span class="fs-label">{{ currentLabel() }}</span>
           <lucide-icon [img]="ChevronIcon" [size]="14" class="fs-chev" [class.up]="open()" aria-hidden="true"></lucide-icon>
         </button>
@@ -41,7 +46,7 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
               @if (selected() === null) { <lucide-icon [img]="CheckIcon" [size]="15" class="fs-opt-check"></lucide-icon> }
             </button>
             @for (f of fleetList(); track f.id) {
-              <button type="button" class="fs-opt" [class.sel]="selected() === f.id" role="option" [attr.aria-selected]="selected() === f.id" (click)="pick(f.id)">
+              <button type="button" class="fs-opt" [class.sel]="selected() === f.id" role="option" [attr.aria-selected]="selected() === f.id" [attr.title]="f.name" (click)="pick(f.id)">
                 <span class="fs-opt-txt">{{ f.name }}</span>
                 @if (selected() === f.id) { <lucide-icon [img]="CheckIcon" [size]="15" class="fs-opt-check"></lucide-icon> }
               </button>
@@ -55,6 +60,9 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
     .fs-wrap { position: relative; }
     .fleet-selector {
       display: inline-flex; align-items: center; gap: 6px;
+      /* 34 px mesurés sur mobile, sous le seuil de 44 du critère de recette. La hauteur
+         ne monte QUE sur petit écran : au doigt il faut 44, à la souris 34 suffit et
+         garde la barre du haut compacte. */
       height: 34px; padding: 0 8px 0 10px; border-radius: 10px;
       background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
       color: var(--fg-secondary); cursor: pointer;
@@ -82,7 +90,7 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
       position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
       min-width: 210px; max-width: 260px; padding: 6px;
       border-radius: 12px;
-      background: var(--surface, var(--bg-secondary));
+      background: var(--bg-secondary);
       border: 1px solid var(--border-strong, var(--border-subtle));
       box-shadow: 0 18px 44px -14px rgba(0,0,0,.5);
       max-height: 320px; overflow-y: auto;
@@ -102,7 +110,10 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
     .fs-opt-check { flex-shrink: 0; color: var(--tracky-light); }
 
     @media (max-width: 768px) {
-      .fleet-selector { max-width: 160px; height: 32px; }
+      /* 32 px tenait dans la barre, mais pas sous le doigt : critère de recette
+         « iPhone 390 px : cibles ≥ 44 px ». La largeur, elle, reste contrainte —
+         c'est la hauteur qui se touche, pas la longueur du nom. */
+      .fleet-selector { max-width: 160px; height: 44px; }
       .fs-label { max-width: 96px; font-size: 11px; }
       .fs-menu { min-width: 190px; }
     }

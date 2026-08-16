@@ -9,11 +9,17 @@ const ICON_MAP: Record<ToastKind, any> = {
   info: Info,
 };
 
+/**
+ * Les quatre types du toast, sur la famille de PETIT TEXTE — le pictogramme fait 20 px
+ * mais il se lit comme du texte coloré, et `text-red-400` / `text-amber-400` /
+ * `text-sky-400` sont des couleurs de la palette Tailwind, hors du système : elles ne
+ * suivent pas le thème clair et doublent des jetons qui existent.
+ */
 const COLOR_MAP: Record<ToastKind, string> = {
-  success: 'text-tracky-light',
-  error: 'text-red-400',
-  warning: 'text-amber-400',
-  info: 'text-sky-400',
+  success: 'toast-ic--succes',
+  error: 'toast-ic--alerte',
+  warning: 'toast-ic--attente',
+  info: 'toast-ic--info',
 };
 
 @Component({
@@ -101,50 +107,66 @@ const COLOR_MAP: Record<ToastKind, string> = {
     }
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
 
+    /* Cibles tactiles — critère « iPhone 390 px : cibles ≥ 44 px ». Mesuré : la croix
+       de fermeture faisait 14 px de large, « Tout fermer » 36 de haut. Un toast qu'on
+       n'arrive pas à fermer reste à l'écran par-dessus ce qu'on essaie de lire. */
+    @media (max-width: 768px) {
+      .toast-stack button { min-width: 44px; min-height: 44px }
+    }
+
+    .toast-ic--succes { color: var(--texte-succes) }
+    .toast-ic--alerte { color: var(--texte-alerte) }
+    .toast-ic--attente { color: var(--texte-attente) }
+    .toast-ic--info { color: var(--texte-info) }
+
     /* Style CRITICAL : bordure rouge + halo subtil pour attirer le regard. */
     .toast-critical {
-      border-color: rgba(220, 38, 38, 0.55) !important;
+      border-color: color-mix(in srgb, var(--texte-alerte) 55%, transparent) !important;
       box-shadow:
-        0 12px 40px rgba(220, 38, 38, 0.15),
-        0 0 0 1px rgba(220, 38, 38, 0.25),
-        0 0 24px rgba(220, 38, 38, 0.18);
+        0 12px 40px color-mix(in srgb, var(--texte-alerte) 15%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--texte-alerte) 25%, transparent),
+        0 0 24px color-mix(in srgb, var(--texte-alerte) 18%, transparent);
       animation:
         slideIn 0.3s ease-out,
         toast-critical-pulse 1.6s ease-in-out infinite;
     }
     @keyframes toast-critical-pulse {
       0%, 100% { box-shadow:
-        0 12px 40px rgba(220, 38, 38, 0.15),
-        0 0 0 1px rgba(220, 38, 38, 0.25),
-        0 0 24px rgba(220, 38, 38, 0.18); }
+        0 12px 40px color-mix(in srgb, var(--texte-alerte) 15%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--texte-alerte) 25%, transparent),
+        0 0 24px color-mix(in srgb, var(--texte-alerte) 18%, transparent); }
       50% { box-shadow:
-        0 12px 40px rgba(220, 38, 38, 0.22),
-        0 0 0 1px rgba(220, 38, 38, 0.45),
-        0 0 32px rgba(220, 38, 38, 0.32); }
+        0 12px 40px color-mix(in srgb, var(--texte-alerte) 22%, transparent),
+        0 0 0 1px color-mix(in srgb, var(--texte-alerte) 45%, transparent),
+        0 0 32px color-mix(in srgb, var(--texte-alerte) 32%, transparent); }
     }
     @media (prefers-reduced-motion: reduce) {
       .toast-critical { animation: slideIn 0.3s ease-out; }
     }
 
-    /* Position : bas-droite, plus de bottom-bar à éviter. Mobile : safe-area + 16px. */
+    /* Sur PC : bas-droite. Il n'y a pas de barre d'onglets à éviter, et le coin bas
+       droit est hors du chemin de lecture. */
     .toast-stack { bottom: 1rem; }
+
+    /* ─── SUR MOBILE, LE TOAST EST EN HAUT ─────────────────────────────────────
+     *
+     * Règle du kit (Kit Partage) : « le toast est en haut : le bas est occupé par la
+     * barre d'onglets, un toast qui s'y superpose masque la navigation ». Et son
+     * corollaire : « le toast est en haut et la feuille en bas, les deux surfaces ne
+     * se disputent jamais la même zone ».
+     *
+     * Le code d'avant restait EN BAS et remontait de 76 px pour passer au-dessus de
+     * la barre — puis redescendait en plein écran, puis remontait tout en haut dès
+     * qu'une modale s'ouvrait. Trois positions pour une même surface, chacune
+     * rattrapant la précédente, et une collision garantie avec la feuille du bas.
+     * Le haut n'a aucun de ces conflits : rien d'autre n'y vit sur mobile. */
     @media (max-width: 768px) {
-      /* Mobile : la bottom-bar mesure ~60px (6 + 48 + 6) + safe-area, on
-         decale le toast au-dessus pour ne pas qu'une notification se retrouve
-         partiellement masquee par la barre de navigation. */
       .toast-stack {
-        bottom: calc(env(safe-area-inset-bottom) + 76px);
+        top: calc(env(safe-area-inset-top) + 12px);
+        bottom: auto;
         right: 12px;
         left: 12px;
         max-width: none;
-      }
-      /* En mode fullscreen (/map), la bottom-bar est cachee — on remet le
-         toast pres du bord pour ne pas laisser un trou inutile.
-         Le toast-container est rendu au niveau global (app.ts) donc on cible
-         via body:has(...) plutot que :host-context(...) qui ne matche que
-         dans la chaine d'ancetres du host. */
-      body:has(.layout--fullscreen) .toast-stack {
-        bottom: calc(env(safe-area-inset-bottom) + 16px);
       }
       /* Sur mobile, les toasts prennent toute la largeur disponible */
       .toast-stack > div {
@@ -152,14 +174,13 @@ const COLOR_MAP: Record<ToastKind, string> = {
         max-width: none !important;
         width: 100%;
       }
+      /* Le toast arrive du haut, pas de la droite : une entrée latérale sur un
+         bandeau pleine largeur donne l'impression qu'il vient de nulle part. */
+      .animate-slide-in { animation-name: slideDown; }
     }
-    /* Quand un modal/drawer est ouvert (body scroll lock ou overlay actif),
-       on déplace le toast vers le haut pour ne pas masquer les actions. */
-    body:has(.mobile-overlay) .toast-stack,
-    body:has(.tracky-mobile-sheet--open) .toast-stack,
-    body:has(.dash-customizer-overlay) .toast-stack {
-      bottom: auto !important;
-      top: calc(env(safe-area-inset-top) + 12px) !important;
+    @keyframes slideDown {
+      from { transform: translateY(-120%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
     }
   `],
 })

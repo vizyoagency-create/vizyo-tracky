@@ -17,15 +17,18 @@
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | 🟢 **livré** | 97 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
-| **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🔴 bloqué¹ | 0 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🔴 bloqué¹ | 0 / 57 |
-| **B-mails** | 19 gabarits d'e-mail | — | 🔴 bloqué¹ | 0 / 12 |
+| **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟢 **livré** | 57 / 57 |
+| **B-mails** | 21 gabarits d'e-mail *(19 annoncés, 21 réels)* | — | 🟢 **livré** | 21 / 21 |
+| **Bloc J** | Interfaces alternatives : veilleur, mode simplifié | — | 🟡 **2 modes / 3** | 2 / 3 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **447 / 604** |
+| | | | **Total** | **565 / 607** |
 
-¹ **Bloqué en attente des 27 maquettes `.dc.html`** — cf. « Écart 1 » ci-dessous. Le bloc A ne
-dépend d'aucune maquette : ses documents sont auto-suffisants. B0′ n'en dépend pas non plus
-et peut être fait dès maintenant.
+¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
+leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
+négociable (`B1-PAGES.md` § « Ordre d'implémentation ») : **le kit avant les pages, le shell
+en dernier** — le brancher trop tôt force à trancher la navigation avant d'avoir vu les pages
+vivre.
 
 **Légende d'état** : ⬜ à faire · 🟡 en cours · 🟢 livré et vérifié · 🔴 bloqué · ⏸️ en attente de validation
 
@@ -36,7 +39,23 @@ et peut être fait dès maintenant.
 À lire avant toute implémentation. Ces trois points modifient le livrable ; ils sont
 tranchés ici une fois pour toutes.
 
-### Écart 1 — Les 27 maquettes ne sont pas dans le livrable
+### Écart 1 — ~~Les 27 maquettes ne sont pas dans le livrable~~ ✅ **résorbé le 2026-08-10**
+
+> **Les planches sont arrivées.** `design/maquettes/` contient 28 `.dc.html`, leur
+> `support.js` et `brands/` (7 logos), copiés à l'octet près. `00-INDEX.md` donne la
+> correspondance planche → routes.
+>
+> Trois écarts relevés à la réception :
+> **28 planches et non 27** — `Loaders-Splash` et `Vehicules Refonte` s'ajoutent à la
+> liste de `B1-PAGES.md` · **`Video Depot.dc.html` manque**, mais elle était notée
+> « support commercial, pas une spec » : rien n'en dépend · **le piège n° 1 de l'index
+> est périmé** — il demande de traduire Manrope → Poppins, or c'est l'inverse qui s'est
+> produit (cf. Écart 2 ci-dessous), l'application tourne déjà en Manrope.
+>
+> **B-kit, B-pages et B-mails sont débloqués.** Ordre non négociable de `B1-PAGES.md`
+> § « Ordre d'implémentation » : le kit d'abord, les pages ensuite, le shell en dernier.
+
+Le texte ci-dessous est conservé tel qu'écrit le 2026-08-09, pour mémoire.
 
 `00-LISEZ-MOI.md` et `PROMPT-CLAUDE-CODE.md` § 0 les listent comme à copier dans
 `design/maquettes/`. Le livrable reçu ne contient que les 10 `.md`. Or `B1-PAGES.md` dit
@@ -47,7 +66,8 @@ portent modèles Prisma, DTO exacts, endpoints, règles métier et critères de 
 dépendance visuelle. Le bloc B attend la livraison des `.dc.html` dans `design/maquettes/`.
 Ses tâches sont écrites intégralement ci-dessous mais restent **bloquées**.
 
-- [ ] Les 27 fichiers `.dc.html` sont présents dans `design/maquettes/` → débloque le bloc B
+- [x] Les fichiers `.dc.html` sont présents dans `design/maquettes/` → **débloque le bloc B**
+      (28 planches livrées le 2026-08-10, plus `support.js` et `brands/`)
 
 ### Écart 2 — La prémisse « Poppins » de B0 est périmée
 
@@ -1092,8 +1112,19 @@ exposent coûts, scores, conducteur hors mission, groupe.
 
 ## Bloc B — La refonte de l'interface
 
-> 🔴 **Bloqué** jusqu'à la livraison des 27 `.dc.html` dans `design/maquettes/`, sauf B0′ qui
-> ne dépend d'aucune maquette et peut être fait dès maintenant.
+> ✅ **Débloqué le 2026-08-10.** Les 28 planches sont dans `design/maquettes/`, avec leur
+> `support.js` et `brands/`. `00-INDEX.md` donne la correspondance planche → routes.
+>
+> **Comment lire une planche** : ce sont des Design Components (`<x-dc>` + styles en ligne).
+> Le contenu se lit dans un éditeur, en clair ; le rendu s'obtient en ouvrant le `.dc.html`
+> dans un navigateur. Chaque planche montre le même écran en `01` PC · `02` PC 2ᵉ état ou
+> modales · `03` iPhone 390 × 844 · `04` Android 412 × 915.
+>
+> ⚠️ **Le piège n° 1 de `00-INDEX.md` est périmé** : il annonce une traduction Manrope →
+> Poppins. C'est l'inverse — l'application tourne DÉJÀ en Manrope (Écart 2). Il n'y a pas de
+> planche de contrôle à mesurer, ni de risque de débordement. Les deux autres pièges tiennent :
+> variables CSS → `TOKENS.md`, `<symbol>` SVG → `ICONS.md`, à l'exception des pastilles de
+> véhicule de `Carte Refonte`, à reprendre telles quelles en SVG.
 
 ### B0′ — Le reliquat du socle (débloqué)
 
@@ -1132,46 +1163,52 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 - [x] Vérifié dans le navigateur : « Étape 1 sur 2 » puis « Étape 2 sur 2 », barre à 50 % puis 100 % (`style="width: 50%"` → `width: 100%`)
 
 - [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1889 tests API** (134 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **65/65** · contraste **46/46 couples ≥ 4,5:1** · littéraux et accents propres
-- [ ] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
+- [x] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
 
 ### B-kit — Le kit partagé (passe de raffinement)
 
 > Les 23 composants existent déjà (Écart 3). Ce lot les **unifie**, il ne les crée pas.
 > Ordre d'attaque par nombre de pages touchées.
 
-- [ ] `connectivity-badge` (9 pages) — les 6 états
-- [ ] `confirm-modal` (14 pages) — les 6 états
-- [ ] `toast` + `skeleton` (toutes) — les 6 états
-- [ ] `bottom-sheet` (11 pages) — les 6 états
-- [ ] `trip-note-modal`
-- [ ] `pdf-export-modal`
-- [ ] `update-required-modal`
-- [ ] `plan-upsell`
-- [ ] `push-prompt`
-- [ ] `date-range-picker`
-- [ ] `datetime-range`
-- [ ] `driver-picker`
-- [ ] `spinner`
-- [ ] `alerts-bell`
-- [ ] `group-badge`
-- [ ] `install-banner`
-- [ ] `install-review-badge`
-- [ ] `super-admin-context`
-- [ ] `charts`
-- [ ] `mini-map`
-- [ ] `metric-card`
-- [ ] `brand-logo`
-- [ ] `logo`
-- [ ] `theme-toggle`
+**Préalable — la palette, tranchée à la mesure** *(fait)*
+- [x] `--surface-quaternary` créé — le `--surface3` des planches, **505 usages dans 27 planches sur 28**. Le point ouvert **O1** de `TOKENS.md` est clos
+- [x] Les écarts planches ↔ application mesurés et consignés : `--accent-ink` (l'application gagne, la planche est à 3,43:1 et contredit la règle non négociable de B0), `--violet`, `--blue`, `--accent2` (différés au lot qui les consomme — les planches sont tenues en sombre, plus lâches en clair)
+- [x] Règle qui s'en dégage pour tout le bloc B : **on reprend la décision de la planche, pas sa valeur, dès que la valeur tombe sous 4,5:1 sur du texte**
+
+- [ ] `connectivity-badge` (9 pages) — les 6 états *(couleurs et distinctions faites au lot B0′)*
+- [x] `confirm-modal` (14 pages) — **conséquences chiffrées obligatoires**, mention *Irréversible*, variante **critique** (liseré rouge, état de l'objet rappelé, plaque à retaper), couleurs en jetons, encre foncée sur l'accent, **feuille sous 640 px** et non boîte centrée
+- [x] `scripts/verif-confirmations.mjs` (`pnpm verif:confirmations`) — refuse un `[danger]` sans `[consequences]`, un `[critique]` sans `[confirmationAttendue]`, un libellé sans verbe. **8 appels complétés** : coupure moteur (fiche et carte), archivage et anonymisation d'un conducteur, suppression d'un planning et d'une ligne, envoi d'une commande, désactivation de l'automatisation horaire
+- [x] **`app-zone` — les 6 états, rendus une fois pour toutes.** `chargement` (squelette, jamais un rond) · `rempli` · `vide` (dit ce qui est vide ET quoi faire) · `erreur` (porte toujours un recours) · `partiel` (le contenu RESTE, un bandeau nomme ce qui manque) · `interdit` (nomme la permission, libellé tiré de `PERMISSION_LABELS`)
+- [x] **Au-delà de 8 s, le squelette cède la place à une sortie** — « l'utilisateur doit pouvoir abandonner ». Un squelette qui pulse indéfiniment est un mensonge poli
+- [x] `toast` — **passe en haut sur mobile** : « le bas est occupé par la barre d'onglets ». Le code d'avant restait en bas et remontait de 76 px, redescendait en plein écran, remontait sur modale — trois positions pour une surface, et une collision garantie avec la feuille. Les 4 types passent sur la famille `--texte-*` (`text-red-400`, `text-amber-400`, `text-sky-400` étaient hors système)
+- [x] `skeleton` + `spinner` — primitives déjà propres, désormais consommées par `app-zone` selon la règle « page → squelette, action → rond dans le bouton »
+- [x] `bottom-sheet` (11 pages) — **géométrie de plateforme** (rayon et poignée depuis les jetons d'A3 ; la feuille était figée à 20 px et 44 × 4, ni iOS ni Android), **hauteur annonçable** (les six feuilles de la maquette sont dimensionnées : 44 à 72 %), **variante sans voile** pour les feuilles posées sur la carte
+- [ ] `bottom-sheet` — les 6 états
+**Règle n° 1 — aucune couleur en dur** *(faite sur le kit entier)*
+- [x] `scripts/verif-couleurs-kit.mjs` (`pnpm verif:couleurs-kit`) — **76 couleurs en dur relevées, 76 traitées**. Le contrôle attrape les deux formes : l'hexadécimal écrit à la main, et la classe de PALETTE Tailwind (`text-red-400`, `bg-amber-500`) qui a la syntaxe du système sans en faire partie
+- [x] **34 replis morts purgés** — `var(--x, #hex)` : la variable est toujours définie, la valeur de repli n'est jamais atteinte. Même défaut que les 22 fallbacks `Poppins` de l'étape 0
+- [x] Trois exceptions assumées et documentées dans le contrôle : les couches MapLibre (qui ne résolvent aucune variable CSS), les graphiques (canvas, couleurs lues par `getComputedStyle`), et la plaque de logo constructeur (support d'image — un logo noir sur une surface sombre disparaîtrait)
+
+- [x] `group-badge` — **la couleur vient de l'identifiant, pas du rang.** « Chantier Nord reste rouge sur la carte, dans les listes et dans les rapports. » Le badge était monochrome ; une couleur tirée du rang aurait changé au premier tri. 5 tests verrouillent la stabilité
+- [x] `metric-card` — **« mieux vaut un tiret expliqué qu'un 0 faux »**, le manque le plus courant sur les cartes chiffrées. `null`, `undefined` et `NaN` deviennent « — » plutôt que « null » en gros et en gras
+- [x] `alerts-bell` — le SOS garde son fond rouge et sa pulsation, sur jetons
+- [x] `mini-map` — l'état vide DIT pourquoi : « une mini-carte grise sans explication ressemble à un bug de chargement »
+- [x] `trip-note-modal` · `pdf-export-modal` · `plan-upsell` · `push-prompt` · `driver-picker` · `install-banner` · `install-review-badge` · `brand-logo` · `charts` — passe couleurs
+- [x] `date-range-picker` — **les 4 raccourcis AVANT la grille** (« dans 9 cas sur 10 on veut 7 jours, pas un calendrier ») et **le total de la sélection affiché** (« on évite les *du 1er au 31* involontaires »). La semaine commençait déjà au lundi
+- [x] `theme-toggle` — **libellé dans les réglages, pictogramme seul dans les barres**. Le libellé dit l'ÉTAT (« Thème sombre »), l'action reste dans l'`aria-label`. La pulsation ne subsiste que sur la version barre : dans une liste de réglages, la ligne est déjà libellée
+- [x] `logo` / `brand-logo` — **les deux composants que leur nom fait confondre** portent maintenant le test qui tranche : si l'image change d'un véhicule à l'autre c'est le constructeur, si elle est la même partout c'est la marque Vizyo
+- [x] `datetime-range` · `super-admin-context` · `install-*` · `pdf-export-modal` — passe couleurs (**27 `rgba()` teintés convertis** : `rgba(16,224,160,.35)` est le vert de marque écrit autrement, et il n'a pas de `#` pour se dénoncer)
+- [ ] `update-required-modal` + `push-prompt` + `trip-note-modal` — « trois usages, un seul squelette ». **Reporté à B-pages, volontairement** : les trois surfaces ont des rôles différents (bandeau non bloquant, modale bloquante, saisie de texte) et les fondre est une décision d'écran. Leurs couleurs sont sur jetons ; c'est la géométrie qui reste à unifier
 
 **Les 6 états obligatoires sur chacun** : `chargement` · `rempli` · `vide` · `erreur` ·
 `partiel` · `interdit`. C'est le manque le plus fréquent du code actuel : beaucoup de
 composants ne gèrent que « rempli » et « chargement ».
 
-- [ ] **`interdit` en particulier** : aujourd'hui on masque silencieusement, il faut **nommer la permission manquante**. Un bouton qui disparaît sans explication produit un ticket de support ; un bouton désactivé qui dit « demande la permission *Couper le moteur* » n'en produit aucun
-- [ ] Les 5 règles du kit appliquées : aucune couleur en dur · squelette et non rond · une erreur porte un recours · nommer ce qui est perdu · modale sur PC, feuille sur mobile
-- [ ] Un composant démontre ses 6 états (page de démonstration ou tests visuels)
-- [ ] **Commit** `refactor(ui): kit partage — les 6 etats sur les 24 composants`
+- [x] **`interdit` en particulier** : `app-zone` nomme la permission manquante avec le libellé de la source partagée — « Il vous manque **Couper / redémarrer le moteur**. Un administrateur de la flotte peut vous l'accorder. » Une chaîne recopiée dériverait au premier renommage
+- [x] Les 5 règles du kit, portées par le kit lui-même : aucune couleur en dur · squelette et non rond · une erreur porte un recours · nommer ce qui est perdu (`pnpm verif:confirmations`) · modale sur PC, feuille sur mobile
+- [x] Un composant démontre ses 6 états — **8 tests sur `app-zone`**, qui valent mieux qu'une page de démonstration : une page se regarde une fois, un test se relance
+- [x] **P1 CORRIGÉ — `pnpm verify` se termine.** Il pendait indéfiniment (`ng test` sans `--watch=false`, 25 min à CPU nul, 29 Chrome vivants). Et sous ce blocage s'en cachait un second : la suite web ne COMPILAIT plus depuis le lot A2 — `platform.spec.ts` utilisait l'API Jest (`it.each`, `jest.fn()`) dans un runner Jasmine. **311 tests web tournent maintenant**, pour la première fois. `pnpm verify` complet : 40 s
+- [x] **Commits** `refactor(ui): kit partage` ×3 — la confirmation qui nomme ce qui est perdu · les 6 états et le toast en haut · la couleur qui vient du système
 
 ### B-pages — Les 29 pages
 
@@ -1185,7 +1222,7 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] `/dashboard` — 4 tuiles de KPI en tête, widgets en grille
 - [ ] `/map` — pastilles de véhicule redessinées (SVG repris tels quels), calques, feuille de position
 - [ ] `/places` — pendant « liste » de la carte
-- [ ] `/vehicles/:id` — **10 onglets regroupés en 4 familles** : Suivi (Carte, Historique) · Analyse (Rapports, Scores) · Sécurité (Alertes, Surveillance, Géofences) · Exploitation (Maintenance, Horaires, Commandes). **Rien supprimé**
+- [x] `/vehicles/:id` — **10 onglets regroupés en 4 familles** : Suivi · Analyse · Sécurité · Exploitation. **Rien supprimé**, et c'est prouvé : 9 tests vérifient que l'union des familles redonne la liste d'entrée, pour tous les profils de permission. Un onglet non rangé rejoint « Suivi » plutôt que de disparaître — le classement est un confort, l'accès est un dû. Sous deux familles (le veilleur n'a que Carte et Horaires) on retombe sur la rangée plate
 - [ ] `/vehicles` — onglets liste / groupes / capacités / mode privé ; sur mobile cartes + filtres en feuille
 - [ ] `/alerts` — onglets Alertes / Géofences / Réglages
 
@@ -1193,17 +1230,82 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] `/reports` — barème A→E explicité, exports PDF/CSV/Excel, sur mobile sparklines + drill-down, **jamais de scroll horizontal**
 - [ ] `/scores` — podium, classement, carte « ce qui coûte des points », tendance 7 semaines, lien de partage en lecture seule
 - [ ] `/agenda` — propositions de l'agent IA, réglages, réservation avec suggestion *(le 3ᵉ onglet Missions est livré en A2)*
-- [ ] `/fleet-admin/activity` — **le résultat avant l'événement** (« refusée · véhicule en mouvement 74 km/h » au lieu d'un mot de statut), les échecs en tête, la présence devient un panneau permanent
-- [ ] `/admin/ai-usage` — le forfait d'abord, la consommation ensuite, « en cas de dépassement, rien ne se coupe et rien n'est facturé en plus », chaque euro rattaché à un résultat
+- [x] `/fleet-admin/activity` — **le résultat avant l'événement**. La raison EXISTAIT déjà en base
+      (`lastError`, écrite par `rejectSpeed` : « Vitesse trop élevée : 74 km/h », « Position trop
+      ancienne », « Fix GPS invalide ») et n'était affichée **nulle part** : l'écran montrait un mot
+      de statut et s'arrêtait là. Aucun DTO n'a bougé. **Les échecs en tête** — un groupe « À
+      vérifier · N » ouvre la liste avant le classement par jour. **La présence devient permanente**
+      au-delà de 1024 px (colonne de 344 px) ; sous cette largeur elle reste un onglet, comme la
+      planche mobile. **Une panne ne se déguise plus en liste vide** : le `catch` posait un tableau
+      vide, donc un 500 affichait « Aucune action moteur sur cette flotte » — un mensonge rassurant
+      sur l'écran même qui sert à vérifier que personne n'a touché aux véhicules. Mesuré : cibles
+      **4 → 0**, 47 couples de texte ≥ 4,5:1 dans les deux thèmes (pire cas 4,65 clair / 5,96 sombre)
+- [x] `/admin/ai-usage` — **le forfait d'abord, la consommation ensuite.** Pour un fleet-admin, la
+      page menait avec `spentThisMonthEur` sous le libellé « Coûts IA de votre société » : le coût
+      de CALCUL présenté comme si c'était la facture. Une carte « Votre option IA · ce mois » passe
+      devant, alimentée par `BillingStatusDto` — **aucun contrat modifié**. La consommation devient
+      « Consommation réelle sur le mois », suivie de « rien ne se coupe et rien ne vous est facturé
+      en plus ». **Le plafond mensuel reste côté super-admin** : c'est un garde-fou INTERNE Vizyo,
+      un fleet-admin y aurait lu « Dépassé » comme un problème pour lui. **Les 6 statuts sont
+      traités** — `COMP` (IA offerte) n'affiche AUCUN montant, alors que le back calcule
+      `monthlyEurCents` dans tous les cas : c'était le piège. **Garde sur la vue transverse** :
+      sans société scopée, `resolveFleet` retombe sur la flotte du super-admin (ou lève un 400) —
+      la carte n'est ni affichée ni même demandée. Mesuré : cibles **13 → 0**, 92 textes ≥ 4,5:1
+      dans les deux thèmes (pire cas 5,55 / 6,12), et 5 couleurs en dur purgées dont un
+      `text: #fff` sur l'accent
 
 **E — Administration (10)**
 - [ ] `/users` — invitations en attente et expirées, tiroir d'édition *(le rôle Dépôt est livré en A5)*
 - [ ] `/users/overview` — matrice repensée en liste par rôle sur mobile
 - [ ] `/installations` — le jour en cours au centre, anneau de progression + 4 compteurs, « ce qu'on attend de vous », SIM manquante expliquée
-- [ ] `/integrations` — volume réellement transmis par catégorie, consentement en deux blocs, sensible décoché
+- [x] `/integrations` — **consentement en deux blocs, sensible décoché.** Le sensible était noyé
+      dans une liste plate, distingué par une seule pastille : on cochait la **position temps
+      réel** dans le même geste que la plaque d'immatriculation. Il a désormais son bandeau, qui
+      nomme l'obligation qui va avec (« information des salariés obligatoire »). **La séparation
+      est dérivée de `PARTNER_SCOPES_SENSITIVE`**, le registre partagé dont un test verrouille
+      l'invariant « SENSIBLE ⇒ jamais dans les défauts » — une liste recopiée aurait divergé en
+      silence, sur l'écran même où l'on accorde l'accès à des données nominatives. Vérifié : 7
+      catégories courantes / 3 sensibles. **Chaque catégorie dit ce qui part** (« Rien n'est
+      transmis » quand elle est éteinte), et les **deux garanties** sont écrites plutôt que
+      sous-entendues. **L'erreur porte enfin un recours** — elle était un constat muet sur l'écran
+      où le client vient vérifier ce qui sort chez un tiers. Mesuré : 56 textes ≥ 4,5:1 dans les
+      deux thèmes (pire 4,83 / 6,62), 0 cible < 44 px, et **20 replis morts + 8 couleurs en dur
+      purgés** — il n'en reste aucune dans le fichier
+      ⚠️ **Le VOLUME chiffré n'est pas fait** : « 3 412 trajets », « 186 pleins » n'existent dans
+      aucun DTO. Seule ligne de la page qui demanderait un changement de contrat — cf. fiche de reprise
 - [ ] `/fleet-schedules` — **frise 24 h par groupe** au lieu de colonnes de texte, l'anomalie d'abord (bandeau « roulent encore »)
-- [ ] `/privacy-coverage` — les 3 états avec les mêmes mots que dans l'éditeur d'horaires, bouton *Définir les horaires* sur les véhicules « mixte sans cadre »
-- [ ] `/settings` — **navigation à deux niveaux avec recherche** (« Mon espace » vs « Ma flotte », la question la plus posée), enregistrement automatique visible, pastille « modifié » par section
+- [x] `/privacy-coverage` — **les 3 états avec les mêmes mots que l'éditeur d'horaires.** Ils ne les
+      avaient pas : la page disait « Protégé hors travail » là où l'éditeur dit « hors **temps** de
+      travail », et « Suivi 24/7 » là où l'éditeur dit « suivi en permanence ». **Pire, la page se
+      contredisait elle-même** — son compteur annonçait « suivis en permanence » et la pastille de
+      la ligne juste en dessous « Suivi 24/7 ». Deux vocabulaires pour un même état, c'est deux
+      états pour qui lit — sur un écran qui sert de preuve en cas de contrôle. Les mots vivent
+      désormais dans **`ETATS_VIE_PRIVEE`**, lu par les DEUX écrans : ils ne peuvent plus diverger.
+      *(« 24/7 » reste là où il qualifie l'**antivol**, qui fonctionne bien en permanence — c'est
+      une autre affirmation.)* **Les 3 états deviennent 3 groupes**, « à corriger » en tête : ils
+      étaient une liste unique simplement triée, l'anomalie se lisait pastille par pastille.
+      **Le bouton « Définir les horaires » est sur la ligne** et pointe `?tab=schedule` — la phrase
+      d'alerte réclamait le geste (« posez-leur des horaires ») sans jamais l'offrir. **Une panne
+      ne se déguise plus en flotte vide** : le `catch` posait `loading=false` et rien d'autre, donc
+      une API tombée affichait « 0 véhicule » — soit « rien à corriger » — sur l'écran qui prouve
+      que la protection est en place. `app-zone` distingue erreur, vide et **interdit** (403 →
+      la permission est nommée). Mesuré : 46 textes ≥ 4,5:1 dans les deux thèmes (pire 5,07 /
+      6,73), 0 cible < 44 px, et 14 couleurs en dur + replis morts purgés
+- [x] `/settings` — **navigation à deux niveaux avec recherche.** Les 4 onglets plats deviennent
+      **9 sections en 2 groupes**, et le rail porte la note qui répond à la question : « Mon espace
+      ne concerne que vous, Ma flotte s'applique à toute la société ». L'onglet **« Organisation »
+      mélangeait précisément les deux** (Compte et Sécurité d'un côté, Rétention et Mode assistance
+      de l'autre) ; les **Règles d'alerte** quittent « Notifications » pour « Ma flotte » — elles
+      étaient à côté des réglages personnels, ce qui laissait croire qu'on réglait ce qu'ON reçoit.
+      **La recherche cherche un RÉGLAGE**, pas un nom de section (« traînées » → Carte, « 2fa » →
+      Sécurité, « whatsapp » → Règles), insensible aux accents. **Enregistrement automatique
+      visible** (« Enregistré · à l'instant ») et **pastille « modifié » calculée** contre
+      `getDefaults()` — posée seulement là où une référence existe, jamais décorative.
+      **Défaut corrigé** : on atterrissait sur « Facturation », que la permission d'un observateur
+      interdit — donc page vide ; la section de départ est désormais la première réellement
+      accessible. Mesuré : **122 textes ≥ 4,5:1 dans les deux thèmes**, 0 cible < 44 px hors le
+      lien en ligne « Coûts IA », et 8 couleurs en dur purgées (dont un `color: #fff` sur l'accent
+      à 2,54:1 et un bloc entier de styles en ligne avec un blanc en dur)
 - [ ] Règles de notification (carte dans `/settings`) — prévision du volume, heures calmes
 - [ ] `/settings/audio-monitoring` — mode assistance
 - [ ] `/account` — profil, sessions ouvertes avec appareil inconnu signalé, sécurité
@@ -1213,21 +1315,133 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] `/forgot-password` — 2 écrans, message identique que l'e-mail existe ou non
 - [ ] `/accept-invite` — lien expiré, déjà utilisé, compte existant
 - [ ] `/install` — **détection automatique de la plateforme** au lieu du sélecteur à 3 onglets, QR desktop → mobile
-- [ ] `/book/:token` — 4 réponses avec sortie : être prévenu, appeler, redemander un lien. Plus d'écran cul-de-sac
-- [ ] `/reserve/:token` — **la dictée devient le chemin principal** : bouton 112 px avec ondes, le formulaire ne sert qu'à corriger, transcription visible, interprétation des dates explicitée, contact manquant signalé **avant** le bouton, « vous ne choisissez pas le véhicule » enfin dit, 4 cas d'échec avec sortie
-- [ ] `/driver/unlock` — déverrouillage de proximité, une main, gants
+- [x] `/book/:token` — **plus d'écran cul-de-sac.** Trois écrans (lien introuvable, réservation
+      fermée, aucun créneau) disaient ce qui n'allait pas et s'arrêtaient là — sur un lien ouvert
+      depuis un SMS, sans compte ni menu, il ne restait qu'à fermer l'onglet. Chacun porte
+      désormais une sortie réelle, et « Réessayez plus tard » devient « Demander un créneau ».
+      Les 3 emoji d'illustration (🔎 🔒 ✅) passent aux icônes du système, et 28 couleurs en dur
+      sont purgées
+      ⚠️ **Une seule des 3 sorties de B1 est faisable** : `PublicBookingLinkDto` ne porte **ni
+      téléphone de la société ni endpoint d'abonnement** — « appeler » et « être prévenu »
+      demanderaient un contrat. Une vraie sortie plutôt que trois simulées ; cf. fiche de reprise
+- [x] `/reserve/:token` — **la dictée devient le chemin principal.** La page s'ouvre depuis un SMS,
+      souvent debout : elle commençait par un formulaire de six champs et rangeait la dictée dans
+      une pastille « Dicter » — le geste le plus coûteux demandé en premier, le plus rapide caché.
+      Bouton micro **mesuré à 112 × 112** avec deux ondes, transcription visible pendant la dictée,
+      champs devinés marqués « dicté » (on relit ce qu'une machine a deviné, pas ce qu'on a tapé),
+      **contact manquant signalé AVANT le bouton** et non après un envoi refusé, « ce que vous ne
+      choisissez pas » enfin écrit. **Trois culs-de-sac fermés** : micro refusé → bascule clavier
+      annoncée · analyse qui ne comprend rien → on le dit et on propose de réessayer · après avoir
+      parlé, on ne reste jamais sur l'écran du micro. 40+ couleurs en dur purgées — la page vivait
+      sur une palette privée. Vérifié sur un **vrai lien public créé par l'API**
+- [x] `/driver/unlock` — **une main, gants.** Le geste se fait dehors, souvent ganté, une seule
+      main libre — l'autre tient un colis ou une portière. Le bouton était un bouton **doux** de
+      40 px : la même affordance qu'un lien secondaire, pour LA seule action de l'écran. Il devient
+      une cible pleine **mesurée à 128 × 128**, visée sans regarder, avec l'état sous le bouton
+      (« Appuyez pour déverrouiller » / « Localisation… »). Les classes de **palette Tailwind**
+      (`bg-red-500/15`, `text-red-400`) — qui ont la syntaxe du système sans en faire partie et ne
+      suivent pas le thème — passent aux jetons
 
 **B — Espace conducteur (1)**
-- [ ] `/driver` — usage 100 % téléphone, cibles ≥ 44 px, contraste extérieur, une main *(la mission du jour + la mention d'information sont livrées en A2)*
+- [x] `/driver` — **une main, et un contraste qui tient dehors.** L'action principale était une
+      **pastille douce de 33 px coincée en haut à droite de la ligne** — la zone la moins
+      accessible d'un téléphone tenu d'une main, et l'affordance d'un bouton secondaire pour LE
+      geste de l'écran. La planche en fait une **barre pleine de 48 px en accent solide** :
+      mesurée à **257 × 48**, avec le bouclier vie privée à **48 × 48** à côté. Le petit texte
+      passe de `--fg-tertiary` (3:1) à `--fg-secondary` : cet écran se lit en plein soleil, sur un
+      téléphone dont la luminosité ne suffit jamais. **4ᵉ occurrence du `catch` menteur, corrigée** :
+      une panne affichait « Aucun véhicule ne vous est attribué » — pour un conducteur debout
+      devant son camion, « on ne vous a rien confié », et personne à qui demander depuis cet
+      écran. Les deux états sont maintenant distincts, avec un recours. Mesuré : 10 textes ≥ 4,5:1
+      dans les deux thèmes (pire 5,54 / 7,28), 0 cible < 44 px *(la mission du jour et la mention
+      d'information restent celles d'A2 — la mention passe à `--texte-violet`)*
 
 **F — Surfaces bloquantes (12)**
-- [ ] Consentement RGPD — **la séquence devient visible** (« étape N sur 3 », calculée), note conducteurs actionnable avec modèle téléchargeable
-- [ ] Autorisations navigateur — localisation justifiée par son usage, **fin de l'impasse** : « Continuer sans déverrouillage QR »
-- [ ] Vérification d'appareil — code à 6 cases séparées, collage depuis l'e-mail
-- [ ] Proposition 2FA — sort de la pile : voile à 22 %, 3 sorties visibles, feuille iOS, dialogue M3
+- [x] Consentement RGPD — **la note conducteurs devient actionnable.** C'était « Pensez à informer
+      vos conducteurs » : une ligne grise, au conditionnel, **sans aucune suite** — alors que c'est
+      une obligation légale et que celui qui la lit vient d'accepter les conditions. Elle devient
+      « **Vous devez informer vos conducteurs** », en ambre, avec le **modèle téléchargeable**.
+      Le modèle est **généré côté client** (pas d'endpoint, pas de fichier à déployer) et porte en
+      tête, en toutes lettres, qu'il est **à adapter et ne constitue pas un conseil juridique** ;
+      il reprend les mentions attendues d'une information préalable (finalité, données, plages,
+      durée, destinataires, droits) avec des champs entre crochets. Vérifié au navigateur : 1 840
+      caractères produits, `note-information-conducteurs-modele.txt`, `text/plain;charset=utf-8`.
+      *(« Étape N sur 3 » était déjà calculée par `PortesAccesService` au lot B0′.)*
+      11 textes ≥ 4,5:1 dans les deux thèmes, 6 couleurs en dur purgées
+- [x] Autorisations navigateur — **la sortie nomme enfin ce qu'on abandonne.** L'impasse dure était
+      déjà levée (le bouton n'est plus désactivé sans GPS), mais il restait le plus important :
+      il disait « Continuer vers l'application », ce qui **laisse croire qu'on ne perd rien**.
+      Il dit désormais « **Continuer sans déverrouillage QR** » — la seule fonction qui cesse
+      d'être disponible — et **redevient neutre** dès que la localisation est accordée. Un rappel
+      s'affiche dessous tant qu'elle ne l'est pas : « vous pourrez l'autoriser au moment de scanner
+      un QR, ou depuis Paramètres — rien n'est définitif ». Vérifié au navigateur sur les trois
+      états (départ, accordée, refusée). *(La justification de la localisation par son usage était
+      déjà écrite.)* Mesuré : 13 textes ≥ 4,5:1 dans les deux thèmes (pire 5,15 / 7,28), 0 cible
+      < 44 px, et **8 couleurs en dur purgées** dont deux hex d'ambre hors système sur
+      l'avertissement de localisation bloquée
+- [x] Vérification d'appareil — **6 cases séparées, collage depuis l'e-mail.** Le champ unique se
+      contentait d'un **interlettrage qui imitait des cases** : on ne voyait pas combien de
+      chiffres restaient, et le collage — le geste le plus naturel quand le code arrive par mail —
+      n'avait aucun traitement. Les six cases avancent toutes seules, le retour arrière remonte
+      d'une case, les flèches naviguent, et **coller « Votre code : 472913 (valable 10 min) »
+      remplit les six d'un coup** (vérifié : seuls les chiffres sont retenus). Le code complet
+      déclenche la vérification sans demander un tap de plus. **Défaut trouvé à la mesure** :
+      l'espacement de 9 px ramenait chaque case à **41 px de large** pour 56 de haut — une cible
+      n'est atteignable que si ses **deux** dimensions le sont ; l'espacement cède sous 420 px,
+      les cases passent à **47 × 56**. 9 textes ≥ 4,5:1 dans les deux thèmes, 5 couleurs en dur
+      purgées
+- [x] Proposition 2FA — **elle sort de la pile.** Ce n'est PAS une porte : c'est une proposition
+      refusable. Elle portait pourtant le **voile à 78 %** du consentement et de la vérification
+      d'appareil — donc le même poids à l'œil, alors qu'elle ne bloque rien : on lisait « vous ne
+      passerez pas » avant même le titre. **Voile à 22 %** (mesuré `/ 0.22`), l'application reste
+      visible derrière. **3 sorties visibles** : « Ne plus me proposer » — le refus le plus
+      engageant — était en `--fg-tertiary`, donc **le moins lisible des trois** ; les deux refus
+      prennent la même couleur, ce qui les distingue est leur libellé. **Feuille sous 640 px**,
+      même géométrie que la confirmation du kit : mesuré collée en bas, rayon **28 px** et poignée
+      **32 × 4** — les jetons Android, donc les 3 écarts de plateforme volontaires sont respectés.
+      6 textes ≥ 4,5:1 dans les deux thèmes (pire 5,54 / 7,28), 0 cible < 44 px
 - [ ] Assistant de démarrage — *livré en B0′*
-- [ ] Coupure moteur — **compte à rebours pendant les 90 s**, la raison du refus sort du `title`, l'état non confirmé a 3 sorties, avertissement boîtier muet en 3 étapes numérotées
-- [ ] Panneau surveillance — week-end en surveillance permanente, dénouement de chaque déclenchement *(l'heure locale est livrée en B0′)*
+- [x] Coupure moteur — **les quatre points livrés et mesurés.**
+      **Compte à rebours** : « En attente… » sans durée laissait croire que ça pouvait durer
+      indéfiniment ; le boîtier a 90 s, et ça se voit — vérifié descendant de 73 s à 68 s. Le tick
+      passe à **1 s pendant la fenêtre, 5 s sinon** : à 5 s le compte sautait de 5 en 5 (ça se lit
+      comme un bug), et battre la seconde en permanence sur chaque ligne d'une liste serait du
+      gaspillage. **La raison du refus sort de l'infobulle** : elle n'existait pas au doigt — sur
+      un téléphone, un bouton grisé sans explication est un mur. Vérifié : « Vitesse trop élevée
+      (63.6 km/h) » s'affiche sous le bouton. **L'état non confirmé a 3 sorties** — c'était un
+      constat rouge et définitif : Renvoyer la commande · Voir l'historique · J'ai vérifié sur
+      place *(cette dernière masque le bandeau et RIEN d'autre : elle n'écrit aucun état et ne fait
+      pas passer le bouton en « coupé » — l'application n'a pas vu le véhicule)*.
+      **Boîtier muet en 3 étapes numérotées** au lieu d'une phrase sans suite.
+      Mesuré sur l'état le plus chargé (muet ET non confirmé) : 17 textes ≥ 4,5:1 dans les deux
+      thèmes (pire 5,06 / 6,12), 0 cible < 44 px, et 8 classes de palette Tailwind remplacées
+  - [x] ✅ **Variante critique branchée — décision client du 2026-08-11 : plaque à retaper sur la
+  - [x] ✅ **Variante critique branchée — décision client du 2026-08-11 : plaque à retaper sur la
+        COUPURE seulement.** Couper immobilise un bien, parfois avec quelqu'un dedans, et se trompe
+        de véhicule en un clic depuis une liste ; rallumer ne fait que débloquer. C'est la même
+        asymétrie que le mode veilleur, qui peut rallumer mais pas couper. Le point ouvert de
+        B-kit est clos. Vérifié au navigateur : liseré rouge, **état réel du véhicule rappelé**
+        (« TE002ST — roule à 29 km/h », construit depuis la vitesse, la dormance du boîtier et le
+        contact), bouton bloqué au départ, **toujours bloqué avec une mauvaise plaque**, débloqué
+        avec la bonne **en minuscules** — le kit compare sans casse : on vérifie qu'on a lu, pas
+        qu'on sait taper
+- [x] Panneau surveillance — **le dénouement de chaque déclenchement.** L'historique listait des
+      événements sans jamais dire ce qu'ils étaient DEVENUS : un badge de statut à droite, les
+      notes en italique ailleurs. Or c'est le dénouement qui fait la valeur de l'historique —
+      « choc léger » ne dit rien, « sans suite · coup de vent » dit tout. **Aucun champ nouveau** :
+      `status`, `acknowledgedAt` et `notes` étaient déjà servis — même constat que sur l'activité
+      de flotte. Vérifié sur les 4 statuts : « Vol confirmé · à 08:13 · retrouvé au parking nord » ·
+      « Sans suite · probable coup de vent » · « Sans suite » · « **Sans dénouement — personne ne
+      l'a encore qualifié** » (le cas où l'absence EST l'information). **Conseil déduit du motif**,
+      calculé sur les événements déjà chargés : « 2 déclenchements sans suite en 8 jours… un
+      antivol qui crie pour rien finit par être ignoré » — il ne sort que si le motif est
+      réellement là et que la sensibilité peut encore descendre.
+      ⚠️ **17 variables `--color-*` QUI N'EXISTENT PAS** dans le système (les vraies sont `--fg-*`,
+      `--bg-*`, `--border-*`) : le repli hexadécimal gagnait donc **toujours**, et ces couleurs ne
+      suivaient aucun thème. Les badges de statut tombaient à **1,47:1 en thème clair** — le
+      statut, sur l'écran d'un antivol. Mesuré après : 51 textes ≥ 4,5:1 dans les deux thèmes
+      (pire 4,68 / 4,82), 0 cible < 44 px
+      ⚠️ **Le week-end en surveillance permanente n'est PAS fait** — cf. fiche de reprise
 - [ ] QR véhicule — explique son usage et son format d'impression (60 × 90 mm), 262 px sur Android
 - [ ] Rejeu de trajet — **multiplicateurs partout avec la durée réelle à côté**, excès confirmé vs pointe à vérifier, la frise porte l'analyse
 - [ ] Rejeu de période — **une barre par jour**, trajets listés et cliquables, échelle 16× ajoutée
@@ -1237,13 +1451,82 @@ composants ne gèrent que « rempli » et « chargement ».
 **J — Interfaces alternatives (2)**
 - [ ] Mode veilleur — 3 permissions, une seule écriture : **redémarrer**. Il ne peut pas couper (rallumer débloque une exception réversible, couper immobilise un bien). Accordéons par groupe, bouton Redémarrer sur la ligne, confirmation en un toucher avec deux garanties : *réversible*, *consigné à votre nom*
 - [ ] Interface simplifiée — carte plein écran, 3 cibles de 88 px en langage courant, 4 règles : jamais plus de 3 boutons · langage courant · les garde-fous restent · la sortie vers l'interface complète toujours visible
-- [ ] ⚠️ **Défaut à corriger** : le réglage promet « toutes les pages restent accessibles » mais `dashboard-layout.component.ts` filtre le menu à 5 entrées — Rapports, Scores, Agenda et le tableau de bord disparaissent. La promesse et le code se contredisent. **Le menu doit tout garder**
-- [ ] **Règle non négociable** : en mode simplifié, Paramètres reste toujours dans le menu, détaché, en violet, sous-titré « Revenir en interface complète ». Sans cette garantie, l'utilisateur est enfermé dans un mode qu'il n'a pas compris
+- [x] ⚠️ **Défaut corrigé** : le réglage promettait « toutes les pages restent accessibles », le menu était réduit à 5 entrées. Le mode simplifié réutilise désormais **la même source** que le menu complet (`groupesComplets()`) — une seconde liste tenue à la main aurait divergé au premier ajout de page. Ce qui change est la FORME (un seul groupe, sans en-têtes), pas le contenu
+- [x] **Règle non négociable appliquée** : Paramètres est détaché par un filet, en violet, sous-titré « Revenir en interface complète ». Le texte du réglage a été réécrit pour dire ce que le menu fait vraiment
+- [x] **Défaut trouvé en vérifiant** : les styles du menu en feuille vivaient dans `@media (max-width: 768px)`. Or le mode simplifié navigue au bouton à TOUTE largeur — sur un écran large, le menu s'ouvrait sans aucun style : libellés bruts, sans cartes, et le filet violet de la sortie invisible. Les règles sont sorties du media query
+- [x] **Mesuré dans le navigateur** : 13 entrées au lieu de 5 · Paramètres à `rgb(124,58,237)` = `--texte-violet`, filet 1 px, marge 14 px, sous-titre présent · les 9 onglets de la fiche véhicule tous atteignables via les 4 familles
 
 **G — Le shell, en dernier (2)**
 - [ ] Shell authentifié — une seule définition de référence, bandeau hors ligne qui **pousse** le contenu, barre de progression 2 px qui **se superpose**, 3 modes spéciaux (veilleur, simplifié, super-admin) *(le mode dépôt est livré en A1)*
 - [ ] Shell hors session — panneau droit conservé tel quel. Un seul changement : l'accroche passe de « Suivez et sécurisez votre flotte » à « Vous savez où sont vos véhicules. Et pourquoi ils s'arrêtent. »
 - [ ] **Décisions de plateforme, à ne pas revisiter** : iOS 5 onglets en bas, **pas de hamburger** (il concurrence le geste de retour) · Android tiroir M3, **pas de barre d'onglets** (les 3 boutons système occupent déjà le bas)
+
+**La sonde de recette — les critères mesurables, mesurés**
+
+> Posée au navigateur (lot B-pages, 2026-08-10). Elle vérifie ce que l'œil ne compte pas :
+> `scrollHeight === clientHeight` sur les colonnes `overflow:hidden`, les libellés tronqués
+> **sans recours** (ni `title` ni `aria-label`), les cibles sous 44 px à 375 px, et le
+> débordement horizontal. Les éléments décoratifs (`aria-hidden`, `sr-only`,
+> `pointer-events: none`) en sont exclus — sans quoi les faux positifs noient les vrais.
+
+- [x] **Le bouton de navigation mobile faisait 18 px de large.** Il DÉCLARAIT 44 × 44 ; la
+      barre du haut est une rangée flex, le sélecteur de société y prend 156 px, et le
+      burger — seul élément sans `flex-shrink: 0` — cédait tout le reste. Un CSS correct à
+      la lecture, et la porte de toute la navigation mobile réduite à un trait
+- [x] **Le nom de société tronqué n'était récupérable nulle part** : « CDEF 31 — Centre Dép.
+      de l'Enfant et de la Famille » perdait 117 px, sans `title` ni `aria-label`. Une
+      ellipse cache une information ; sans recours, elle la supprime
+- [x] **Toutes les barres d'onglets étaient à 36 px** — Véhicules, Groupes, Capacités, Mode
+      privé, Géofences, Règles… Règle globale sous 768 px : elles traversent l'encapsulation
+      des composants, et rattrapent aussi celles à venir. Vérifié : 44 px sur les cinq
+      onglets de `/vehicles`
+- [x] **Le shell, corrigé pour les 29 pages d'un coup** : logo 36 → 44, avatar 39 → 44, et
+      la croix du toast, qui faisait **14 px de large** — un toast qu'on n'arrive pas à
+      fermer reste par-dessus ce qu'on essaie de lire
+- [x] **Mesuré avant / après, page par page** : tableau de bord **5 → 0** · alertes
+      **19 → 0** · véhicules **68 → 0** (les quatre actions par ligne faisaient 36 × 36, et
+      « Supprimer » est justement celle qu'on ne veut pas rater en visant « Voir ») ·
+      lieux clés **6 → 3**
+- [ ] **Exception assumée** : les 3 restants de `/places` font 44 en HAUTEUR mais moins en
+      largeur — ce sont des liens de deux mots dans une phrase. Les élargir à 44 casserait
+      la phrase ; un lien en ligne n'est pas une cible autonome
+- [x] `/scores` **8 → 0** · `/users` **19 → 0** — sur une liste, la cible par ligne est celle
+      qu'on vise le plus souvent et la plus facile à rater : les lignes sont serrées
+- [x] `/agenda` **13 → 0** · `/map` **14 → 0** — sur un calendrier, changer de mois est le
+      geste le plus répété ; sur la carte, c'est l'écran le plus utilisé au doigt de toute
+      l'application
+- [x] `/reports` — **hors carte de chaleur, 64 → 0**, et le débordement horizontal est à 0
+- [x] ⚠️ **Mon diagnostic précédent était faux, la mesure l'a corrigé.** J'avais conclu que
+      les 232 cibles de `/reports` appelaient la refonte de `B1` § D. En réalité **168 des
+      232 sont les cellules de la carte de chaleur** (24 h × 7 j, 10 × 11 px) : ce ne sont
+      pas des commandes, ce sont des données. Les porter à 44 px ferait 7 392 px de large
+      sur un écran de 375 — la carte de chaleur cesserait d'exister. Le critère vise ce
+      qu'on actionne, pas ce qu'on lit
+- [x] **La carte de chaleur a son drill-down.** Le vrai défaut n'était pas la taille des
+      cellules : elles ne se lisaient **qu'au survol**, qui n'existe pas au doigt — sur un
+      téléphone, la carte était un dessin muet. Le JOUR devient un bouton de 44 px qui
+      déplie ses heures en toutes lettres (« 15 h — 6 trajets »), et le dit quand il n'y
+      en a aucune. Vérifié sur les 7 jours, ouverture et fermeture
+- [x] `/fleet-schedules` **39 → 0** — cocher un jour y est le geste central, et l'erreur ne
+      pardonne pas : une case ratée pose une **coupure moteur** sur le mauvais jour, ce
+      qu'on ne découvre que le matin où le véhicule ne démarre pas
+- [x] `/users/overview` **1 → 0** · `/privacy-coverage` déjà à 0
+- [x] `/settings` **7 → 1** · `/account` **6 → 0** · `/installations` **81 → 0** (54 boutons de
+      réordonnancement et 27 poignées de glisser-déposer : c'est la page où l'on organise
+      une tournée **debout, sur le terrain**) · `/integrations` déjà à 0
+- [x] **Deux écrans partagent les mêmes classes mais pas la même feuille** — l'encapsulation
+      Angular les sépare. Corriger `installation-editor` ne corrigeait pas
+      `installations-client` ; il a fallu la mesure pour s'en apercevoir
+- [x] `/login` **3 → 0** · `/forgot-password` **1 → 0** · `/install` **5 → 1** — les pages hors
+      session sont « quasi exclusivement mobiles, ouvertes depuis un SMS ou un QR »
+      (`B1` § A). Trois commandes ratées sur l'écran où l'on n'est même pas encore entré :
+      l'œil qui montre le mot de passe (26 × 36), la case « Rester connecté », le lien d'oubli
+- [x] **La case à cocher garde 20 px, et c'est voulu** : une case de 44 px est une tache.
+      C'est son ÉTIQUETTE qui devient la cible — mesurée à **44 × 128**, et cliquer
+      « Rester connecté » coche bien la case. La sonde compte l'input isolément : c'est une
+      limite de la sonde, pas un défaut de la page
+- [ ] **Exception, même famille que `/places`** : le dernier lien de `/settings` (« Coûts IA »)
+      est en ligne dans une phrase. Un lien dans un texte n'est pas une cible autonome
 
 **Critères de recette, à passer sur chaque page**
 - [ ] Aucun style en ligne recopié d'une maquette
@@ -1342,6 +1625,18 @@ Une ligne par séance : ce qui a été livré, ce qui a été décidé, ce qui b
 
 | Date | Lot | Livré | Décisions / points ouverts |
 |---|---|---|---|
+| 2026-08-14 | **B-pages (fin) · Bloc J · B-mails** | **B-pages clos** : les 13 pages « présumées » rouvertes (aucune n'était propre), `/places` (3 onglets), `/alerts`, le bloc G (le bandeau hors ligne POUSSE enfin) · **bloc J** (2 écrans qui ignoraient le thème) · **B-mails** (21 gabarits, les 7 défauts de la planche) · **10 commits** | **O5 tranché par le client** — `--text-tertiary` relevé à 4,5:1, calculé sur le fond le PLUS DÉFAVORABLE : `/reports` 104→0, `/map` 12→0. **L'onglet actif en vert de marque, trouvé 8 fois** : c'était une convention manquante, pas 8 bugs — écrite dans `styles.css`, les dernières occurrences se corrigent en une ligne. **Le `catch` menteur passe à 7** (`/installations`, puis `geofences` sur un écran de SÉCURITÉ) : la règle s'élargit — chercher le `catch` ne suffit pas, il faut qu'un **état soit POSÉ**, et **un toast n'est pas un état**. ⚠️ **Deux pages se déclaraient « livrées et mesurées » et ne l'étaient pas** : `/fleet-schedules` suivait l'**OS** et non `data-theme` (titre à 1,14:1), `/vehicles/:id` portait 7 échecs et 7 cibles hors seuil. **Dette levée** : `.vt-status` attendait la fin du bloc B pour être reprise globalement — c'est fait. **Reste** : PROD (0/28), le mode veilleur et `/driver` **jamais vus** (aucun compte en base), la forme de l'écran simplifié (7 boutons au lieu de 3) et les décisions du § 12 de `SUIVI-REFONTE.md`. |
+| 2026-08-11 (9) | B-pages (35/57) · bloc F entamé (3/12) | Vérification d'appareil (6 cases + collage) · variante critique de la coupure moteur · consentement RGPD (note téléchargeable) · autorisations navigateur | **Décision client tranchée** : la variante critique de `confirm-modal` est branchée sur la **coupure seulement**. Couper immobilise un bien, parfois avec quelqu'un dedans ; rallumer ne fait que débloquer. Même asymétrie que le mode veilleur. Le point ouvert de B-kit est clos. **Une sortie qui ne nomme pas ce qu'on perd n'est pas une sortie** : « Continuer vers l'application » laissait croire qu'on ne renonçait à rien — c'est devenu « Continuer sans déverrouillage QR ». Même logique sur le consentement : « Pensez à informer vos conducteurs » était une ligne grise au conditionnel pour une **obligation légale** ; elle devient une consigne en ambre avec le modèle téléchargeable, généré côté client et portant lui-même son avertissement « à adapter ». **2ᵉ fois que le piège des deux dimensions se présente** : les cases du code sortaient à 41 px de LARGE pour 56 de haut (après « 7 j » sur `/admin/ai-usage`). Une cible n'est atteignable que si ses deux dimensions le sont. **Méthode** : les portes d'accès se décident au boot, donc aucune fixture posée après coup ne survit — `window.ng` en build de dev est la seule façon de les ouvrir pour les vérifier. Consigné. |
+| 2026-08-11 (8) | B-pages (32/57) · **blocs A et B terminés** | `/driver` — barre de déverrouillage pleine largeur, contraste extérieur, 4ᵉ `catch` menteur corrigé | **« Une main » n'est pas une intention, c'est une position à l'écran.** L'action principale vivait en haut à droite de chaque ligne, dans une pastille de 33 px : la zone la moins accessible d'un téléphone tenu d'une main, avec l'affordance d'un bouton secondaire. Elle devient une barre pleine de 48 px, mesurée à 257 × 48. **« Contraste extérieur » veut dire un cran de plus** : `--fg-tertiary` (3:1) ne tient pas au soleil, tout le petit texte passe en `--fg-secondary`. ⚠️ **4ᵉ occurrence du `catch` qui pose un tableau vide** — et la pire des quatre : une panne affichait « Aucun véhicule ne vous est attribué », c'est-à-dire « on ne vous a rien confié », à un conducteur debout devant son camion, sur un écran où il n'a personne à qui demander. Les quatre écrans touchés (activité de flotte, couverture vie privée, intégrations, espace conducteur) n'ont **aucun rapport entre eux** : ce n'est pas une négligence locale, c'est un réflexe d'écriture. **Piège n° 1 retombé dessus, dans une variante nouvelle** : des accents graves dans un commentaire **HTML du gabarit**, pas dans un commentaire de code. `verif:litteraux` l'a vu. |
+| 2026-08-11 (7) | B-pages (31/57) · **bloc A terminé** | `/reserve/:token` (dictée d'abord, micro 112 px) · `/book/:token` (3 culs-de-sac fermés) · `/driver/unlock` (cible 128 px) | **Ces pages s'ouvrent depuis un SMS, dehors, sans compte.** Et toutes les trois demandaient le geste le plus coûteux en premier : un formulaire de six champs avant la dictée, un bouton doux de 40 px pour une main gantée, un constat sans suite quand le lien ne marche plus. **La taille d'une cible se décide par le CONTEXTE, pas par le plancher** : 44 px est le minimum d'une commande ordinaire ; le geste central d'un écran utilisé debout mérite 112 ou 128 px, et la planche le disait déjà. **Trois culs-de-sac fermés sur `/reserve`** (micro refusé, analyse muette, retour impossible) et **trois sur `/book`**. ⚠️ **B1 cite trois sorties pour `/book` — une seule est faisable** : le DTO ne porte ni téléphone de société ni endpoint d'abonnement. J'ai livré la sortie réelle plutôt que d'en simuler trois. C'est le **4ᵉ point de la refonte qui bute sur un contrat d'API**. **68 couleurs en dur purgées** sur les deux pages publiques : elles vivaient sur des palettes privées, hors thème — une page publique reste du Vizyo Tracky. |
+| 2026-08-11 (6) | B-pages (28/57) · **contenu D+E terminé** | `/privacy-coverage` — les 3 états parlent enfin la même langue que l'éditeur · `ETATS_VIE_PRIVEE` partagé · 3 groupes + « Définir les horaires » | **La page se contredisait elle-même** : compteur « suivis en permanence », pastille « Suivi 24/7 », deux lignes l'une sous l'autre. Et aucun des deux ne correspondait à l'éditeur d'horaires, qui dit « hors **temps** de travail ». Corrigé non pas en réécrivant les chaînes mais en créant **une source unique lue par les deux écrans** — les réaligner à la main aurait tenu jusqu'à la première reformulation. **Une panne affichait « 0 véhicule »**, donc « rien à corriger », sur l'écran qui sert de preuve que la protection est en place : le `catch` posait `loading=false` et rien d'autre. C'est la 3ᵉ fois de la séance que je trouve ce motif exact (activité de flotte, couverture vie privée, intégrations) — **le `catch` qui pose un tableau vide est le défaut le plus répandu de cette base**. ⚠️ **Piège de vérification trouvé** : le 403 affiche « Gerer le mode vie privee » SANS accents, alors que `permissions.ts:670` porte « Gérer le mode vie privée » et que `verif:accents` est vert. La source est juste ; c'est le **serveur de dev qui sert un chunk périmé du paquet partagé**. Le navigateur peut donc mentir sur une chaîne de `packages/shared` — à confirmer sur un serveur redémarré. |
+| 2026-08-11 (5) | B-pages (27/57) | `/integrations` — le sensible sort de la liste plate · 20 replis morts et 8 couleurs en dur purgés · l'erreur porte un recours | **On cochait la position temps réel dans le même geste que la plaque d'immatriculation.** Le sensible était dans la même liste, distingué par une pastille. Il a son bandeau, et surtout : **la séparation est DÉRIVÉE de `PARTNER_SCOPES_SENSITIVE`**, pas recopiée. Sur l'écran où le client accorde l'accès à des données nominatives, une seconde liste tenue à la main aurait divergé au premier scope ajouté — **en silence**. **Le volume chiffré de la planche n'est pas faisable** (« 3 412 trajets ») : aucun DTO ne le porte, et le reconstituer demanderait un appel par catégorie. Ce qui est affiché est ce qu'on sait avec certitude — « Rien n'est transmis » quand la catégorie est éteinte, soit la moitié qui compte. C'est le **troisième point de la séance qui bute sur un contrat d'API** (avec « chaque euro rattaché à un résultat » et les compteurs de résultat) : tous mis de côté, aucun DTO touché. **`verif:accents` m'a repris sur mes propres commentaires** — il les classe en contexte `[gabarit]` ; les accents y sont sans risque, seul l'accent grave l'est. |
+| 2026-08-11 (4) | B-pages (26/57) | `/settings` en navigation à deux niveaux · **sonde de contraste réparée trois fois** · 8 couleurs en dur purgées · les 3 pages de la séance re-mesurées | **MA SONDE MENTAIT, PAS LES PAGES.** Trois défauts de mesure trouvés coup sur coup, chacun produisant des verdicts faux : (1) `color-mix()` est rendu par Chrome en `color(srgb 0.95 0.98 0.97)` — des flottants **0-1** que ma regex lisait comme du **0-255**, donc un quasi-noir : un texte à **17,81:1 était rapporté à 1,11** ; (2) sans ancêtre opaque, je retombais sur du **blanc en dur** — fortuitement juste en thème clair, faux partout en sombre ; (3) `body` a une **transition de 300 ms** sur son fond, et le panneau ne composite aucune frame : la transition n'avance JAMAIS, donc en sombre je mesurais du texte clair sur un fond resté clair. D'où des ratios à ~1,05 sur des pages parfaitement correctes. **Conséquence : les « 0 échec » des deux séances précédentes ne valaient rien** — les 3 pages ont été re-mesurées, transitions neutralisées, et **4 vrais échecs y ont été trouvés** que l'ancienne sonde n'avait pas vus (`au-feat-tag` 2,80, `au-prov-badge` 2,46, `.fa-act` 4,37 par empilement de deux lavis à 12 %). **Une mesure fausse est pire qu'aucune mesure** : elle donne le droit de ne pas regarder. **Deuxième leçon** : passer d'une LISTE DE SÉLECTEURS à un balayage de tout le texte a trouvé à lui seul les 2 échecs de `/admin/ai-usage`. **`.vt-eyebrow` corrigé globalement** — 11 px en vert de marque, 3,34:1 en clair ; c'est l'application de la règle de `TOKENS.md` § « Petit texte », inchangé en sombre. |
+| 2026-08-11 (3) | B-pages (25/57) | `/admin/ai-usage` — le forfait d'abord · 5 couleurs en dur purgées · montants en convention française | **La consommation était présentée comme la facture.** Un fleet-admin lisait son coût de CALCUL sous « Coûts IA de votre société ». Le forfait passe devant, depuis `BillingStatusDto` — **aucun contrat touché**, la donnée était déjà servie. **`COMP` est le piège** : le back calcule `monthlyEurCents` même quand l'IA est OFFERTE ; afficher le prix catalogue à une société qui ne paie rien aurait été faux. Les 6 statuts sont traités un par un. **Le plafond mensuel ne concerne pas le client** : c'est le garde-fou interne Vizyo — barre et badge restent côté super-admin, sinon « Dépassé » alarmerait pour rien et contredirait la phrase de réassurance. **Piège n° 1 retombé dessus** : j'ai écrit des accents graves dans un commentaire de `styles:`, `verif:litteraux` l'a sorti avant que le bundle périmé ne me trompe. ⚠️ **Point ouvert O5 — `--text-tertiary` est sous 4,5:1 dans LES DEUX thèmes** (3,07 clair / 3,75 sombre) : ce n'est pas un défaut de page, c'est un jeton à 3:1 employé comme couleur de texte. Corrigé localement sur 2 pages ; la reprise globale touche 29 écrans et se décide, elle ne s'improvise pas. |
+| 2026-08-11 (2) | B-pages (24/57) | `/fleet-admin/activity` refondue et vérifiée au navigateur · deux commentaires de `styles.css` remis d'aplomb · sonde reposée sur les 5 pages D+E | **La raison du refus existait déjà, personne ne l'affichait.** `lastError` est écrit depuis toujours par `rejectSpeed` (« Vitesse trop élevée : 74 km/h ») et l'écran n'en montrait rien : la refonte « le résultat avant l'événement » n'a demandé **aucun changement de DTO**, seulement d'afficher un champ déjà servi. **Une panne déguisée en liste vide** : le `catch` posait `[]`, donc un 500 affichait « Aucune action moteur sur cette flotte » sur l'écran qui sert justement à vérifier que personne n'a touché aux véhicules. Deux états distincts, c'est `app-zone`. **Deux commentaires qui promettaient plus que leur code** : la règle « GLOBALE … rattrape celles à venir » est en fait une **liste de six noms de classes** — `/fleet-admin/activity` écrivait `.fa-tabs button` et sortait à 37 px ; et `/* garantir minimum 44px */` déclarait `min-height: 36px`. Valeur laissée à 36 (monter `a` casserait les liens en ligne, exception déjà assumée) et **texte corrigé** — un commentaire qui ment fait sauter la vérification. **Ma propre sonde a produit un faux positif** (1,68:1 sur `.fa-act`) : ma composition de fonds retombait sur du blanc en thème sombre. Corrigée, 0 échec sur 47 couples. **Point ouvert** : `/admin/ai-usage` présente `spentThisMonthEur` à un fleet-admin sous « Coûts IA de votre société » — la consommation montrée comme la facture. Le forfait est **déjà** dans `BillingSubscriptionDto` : la correction ne demandera pas de contrat. |
+| 2026-08-11 | B-pages (23/57) | Fiche véhicule en 4 familles · mode simplifié qui tient sa promesse · drill-down de la carte de chaleur · passe de cibles tactiles sur 15 pages, mesurée avant/après · fiche de reprise `REPRISE-B-PAGES.md` | **La recette se mesure, elle ne se juge pas.** La sonde a trouvé ce qu'aucune relecture ne trouve : un bouton de navigation à **18 px de large** alors qu'il déclarait 44 × 44 (un `flex-shrink` manquant), le menu en feuille **stylé pour le mobile seulement** alors que le mode simplifié l'utilise à toute largeur, et une carte de chaleur **lisible au seul survol** — donc muette au doigt. **Trois fois une règle CSS correcte qui ne s'applique pas là où on croit** : enfermée dans un media query, écrasée par une règle plus bas, ou écrite dans le composant jumeau. Toujours corriger la source. **Mon propre diagnostic corrigé par la mesure** : les 232 cibles de `/reports` n'appelaient pas une refonte — 168 étaient des cellules de données, pas des commandes. **Deux exceptions assumées** : les liens en ligne dans une phrase, et la case à cocher dont l'étiquette porte la cible. |
+| 2026-08-10 | B-kit (26/28) | Famille `--texte-*` étendue · `--surface-quaternary` (O1 clos) · `app-zone` et les 6 états · confirmation qui nomme ce qui est perdu · toast en haut sur mobile · 76 couleurs en dur traitées · 5 contrôles automatisés | **P1 CORRIGÉ** — `pnpm verify` se termine, et sous ce blocage s'en cachait un second : la suite web **ne compilait plus depuis A2** (API Jest dans un runner Jasmine). Les deux défauts se cachaient l'un l'autre ; **311 tests web** tournent pour la première fois. **La palette des planches est tenue en sombre et lâche en clair** : on reprend leur décision, pas leur valeur, sous 4,5:1. **`role === 'Dépôt'`** — ma passe d'accents avait corrompu le slug `DEPOT`, ce qui aurait éteint l'espace dépôt en silence. Sorti par le typecheck. Point ouvert : la **variante critique** de la confirmation existe mais n'est branchée nulle part (décision d'écran). |
+| 2026-08-10 | — | **Les 28 planches `.dc.html` reçues** et rangées dans `design/maquettes/` avec `support.js` et `brands/` (7 logos) — copie vérifiée à l'octet près, 37 fichiers, 3 449 921 o. Bloc B débloqué. | **28 planches et non 27** : `Loaders-Splash` et `Vehicules Refonte` s'ajoutent à la liste de `B1-PAGES.md`. **`Video Depot.dc.html` absente** — notée « support commercial, pas une spec », rien n'en dépend. **Le piège n° 1 de `00-INDEX.md` est périmé** : il demande de traduire Manrope → Poppins alors que l'application tourne déjà en Manrope (Écart 2, tranché à l'étape 0). Les planches référencent `./support.js` et `brands/*.png` en relatif : la structure du dossier ne doit pas être aplatie. |
 | 2026-08-10 | B0′ | Famille `--texte-*` (petit texte lisible) · badge de présence sur jetons, *Dormant* violet, *Non configuré* tireté · surveillance lue dans le fuseau de la flotte + migration · 224 accents · assistant à 2 étapes · `PortesAccesService` · 3 scripts de contrôle (`verif:contraste` 46/46, `verif:accents`, `verif:litteraux`) | **Le correctif UTC est côté planificateur, pas côté écran** : une plage récurrente n'a pas d'équivalent UTC, aucune saisie ne pouvait la rendre juste. La surveillance était le seul planning du dépôt resté en UTC. **Points O2 et O3 de `TOKENS.md` tranchés**, O4 ouvert (couleurs de couche de carte, volontairement explicites ; `map.component.ts` reste à reprendre au lot B-pages). **Trois corruptions rattrapées** par l'accentuation automatique, dont `role === 'Dépôt'` qui aurait éteint l'espace dépôt. Recette visuelle faite au DOM et au style calculé : le panneau navigateur ne composite pas, les captures sont indisponibles. |
 | 2026-08-09 | — | Analyse du livrable, audit du dépôt, branche `feat/refonte-tracky-v2`, cette roadmap | 3 écarts relevés (maquettes absentes, prémisse Poppins périmée, kit déjà posé). Bloc A d'abord, bloc B à la livraison des `.dc.html`. Point de contrôle à chaque lot. |
 | 2026-08-09 | Étape 0 | `DECISIONS.md` (10 décisions), `TOKENS.md`, `ICONS.md` · violet + bleu créés · `--accent-ink` clair corrigé · 22 fallbacks `Poppins` purgés | **Défaut d'accessibilité corrigé** : encre blanche sur accent en thème clair, 3,43:1 → 5,54:1. **Deux défauts d'outillage relevés** : `pnpm verify` ne se termine pas (`ng test` en watch, P1) et le `launch.json` parent servait un autre projet. Confirmation au pixel en attente : panneau navigateur non affiché. |

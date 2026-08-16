@@ -82,6 +82,7 @@ import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivit
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
+import { rangerEnFamilles } from './onglets-familles';
 import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
 
 @Component({
@@ -514,9 +515,34 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
           </div>
         }
 
-        <!-- Onglets (dtab, maquette 06) -->
+        <!-- ONGLETS EN DEUX NIVEAUX (B1 § C) — dix onglets alignés dans une rangée qui
+             défile obligent à chercher : on ne voit jamais l'ensemble, et « Géofences »
+             se trouve après « Maintenance » sans qu'aucune logique ne le dise. Quatre
+             familles rendent la carte lisible d'un coup d'œil. RIEN N'EST SUPPRIMÉ :
+             chaque onglet reste accessible, il est seulement rangé.
+
+             Sous trois onglets visibles — le veilleur de nuit n'en voit que deux — le
+             niveau des familles disparaît : deux boîtes pour deux onglets sont un
+             classement qui ne classe rien. -->
+        @if (famillesVisibles().length > 1) {
+          <div class="vdx-familles" role="tablist" aria-label="Familles d'onglets">
+            @for (f of famillesVisibles(); track f.cle) {
+              <button
+                type="button"
+                role="tab"
+                class="vdx-famille"
+                [class.vdx-famille--active]="familleActive() === f.cle"
+                [attr.aria-selected]="familleActive() === f.cle"
+                (click)="ouvrirFamille(f)">
+                {{ f.libelle }}
+                @if (f.badge > 0) { <span class="vdx-tab-badge">{{ f.badge }}</span> }
+              </button>
+            }
+          </div>
+        }
+
         <div class="vdx-tabs">
-          @for (tab of tabs(); track tab.key) {
+          @for (tab of ongletsDeLaFamille(); track tab.key) {
             <button (click)="activeTab.set(tab.key)" class="vdx-tab" [class.vdx-tab--active]="activeTab() === tab.key">
               <lucide-icon [img]="tab.icon" [size]="15"></lucide-icon>
               <span class="vdx-tab-label">{{ tab.label }}</span>
@@ -887,6 +913,30 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
   `,
   styles: [`
+    /* ─── Cibles tactiles au doigt ───────────────────────────────────────────
+     *
+     * Critere de recette « iPhone 390 px : cibles >= 44 px ». Mesure a 375 px le
+     * 2026-08-14 : SEPT commandes sortaient sous le seuil — retour 38x38, IMEI
+     * 92x36, « Changer » 51x36, « Incident » et « QR » 94x36 et 63x36, detacher
+     * le boitier 18x36, assigner un conducteur 84x36.
+     *
+     * ⚠️ La regle des 44 px de styles.css ne les rattrapait pas : c'est une LISTE
+     * de noms de classes (.tab-btn, .main-tab, .bn-tab, .vdx-tab…) et aucune de
+     * celles-ci n'y figure. Une liste ne rattrape que ce qu'on y inscrit — d'ou
+     * cette regle, ecrite dans le composant qui porte les commandes.
+     *
+     * La HAUTEUR suffit pour les commandes a libelle : les elargir casserait la
+     * ligne. Les boutons a icone seule prennent les deux dimensions.
+     */
+    @media (max-width: 768px) {
+      .vdx-link,
+      .vdx-imei,
+      .vd-incident-btn,
+      .vd-driver-card-btn { min-height: 44px }
+      .vdx-back,
+      .vd-tracker-detach { min-width: 44px; min-height: 44px }
+    }
+
     /* ─── Bandeau « en mission » (espace dépôt, A2 § 9) ──────────────────────
        Violet : c'est la couleur du DÉPÔT dans tout le système (design/TOKENS.md).
        Ambre quand la mission est en retard — une attente à lever, pas un échec. */
@@ -939,7 +989,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-hero-plate { font-weight: 700; color: var(--fg-primary); letter-spacing: .02em; }
     .vdx-dot { color: var(--fg-tertiary); }
     .vdx-hero-group { display: inline-flex; align-items: center; gap: 7px; }
-    .vdx-link { font-size: .76rem; font-weight: 700; color: var(--tracky-light); cursor: pointer; }
+    /* Convention du kit : un libelle prend --texte-succes, jamais le vert de
+       marque (3,34:1 en clair). */
+    .vdx-link { font-size: .76rem; font-weight: 700; color: var(--texte-succes); cursor: pointer; }
     .vdx-link:hover { text-decoration: underline; }
     .vdx-hero-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; flex-shrink: 0; }
 
@@ -954,7 +1006,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-stat-u { font-size: .72rem; font-weight: 600; color: var(--fg-tertiary); }
     .vdx-stat-coord { font-family: var(--font-mono, monospace); font-size: .66rem; color: var(--fg-tertiary); margin-top: 2px; }
     .vdx-stat-live { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .68rem; font-weight: 700; color: var(--fg-tertiary); }
-    .vdx-stat-live--on { color: var(--tracky-light); }
+    .vdx-stat-live--on { color: var(--texte-succes); }
     /* DORMANCE — violet, identique au badge « Dormant » (source unique : connectivityMeta).
        Le liseré sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ».
        La valeur SUIT le badge : les deux se lisent côte à côte sur la même fiche, une
@@ -974,7 +1026,26 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-imei:hover .vd-stat-copy-icon { opacity: 1; color: var(--tracky-light); }
     @keyframes vt-blink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
-    /* ── Onglets (dtab) ── */
+    /* ── Onglets, niveau 1 : les familles ── */
+    .vdx-familles { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
+    .vdx-familles::-webkit-scrollbar { display: none; }
+    .vdx-famille {
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      padding: 7px 13px; border-radius: 9999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-quaternary);
+      font: inherit; font-size: .78rem; font-weight: 700; letter-spacing: .01em;
+      color: var(--fg-tertiary); cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .vdx-famille:hover { color: var(--fg-secondary); }
+    .vdx-famille--active {
+      background: color-mix(in srgb, var(--texte-succes) 13%, transparent);
+      color: var(--texte-succes);
+      border-color: color-mix(in srgb, var(--texte-succes) 30%, transparent);
+    }
+
+    /* ── Onglets, niveau 2 (dtab) ── */
     .vdx-tabs { display: flex; align-items: center; gap: 5px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 13px; overflow-x: auto; scrollbar-width: none; }
     .vdx-tabs::-webkit-scrollbar { display: none; }
     .vdx-tab {
@@ -985,7 +1056,8 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
     .vdx-tab:hover { color: var(--fg-secondary); }
     .vdx-tab--active { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong); }
-    .vdx-tab-badge { min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); font-size: .66rem; font-weight: 800; }
+    /* Compteur sur pastille teintee : le chiffre est du TEXTE (2,88:1 avec --danger). */
+    .vdx-tab-badge { min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); font-size: .66rem; font-weight: 800; }
 
 
     /* ─── V1.7 — Carte super-admin "Reglage materiel ACC" ─── */
@@ -1354,35 +1426,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
     .vd-driver-card-btn:disabled { opacity: 0.5; cursor: wait; }
 
-    /* ─── Pill conducteur dans une trip card ─── */
-    .vd-trip-driver {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-      padding: 4px 9px;
-      background: color-mix(in srgb, var(--driver-color, #10E0A0) 12%, transparent);
-      border: 1px solid color-mix(in srgb, var(--driver-color, #10E0A0) 30%, transparent);
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--fg-primary);
-      width: fit-content;
-    }
-    .vd-trip-driver-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--driver-color, #10E0A0);
-      flex-shrink: 0;
-    }
-    .vd-trip-driver-source {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--fg-tertiary);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
+    /* La pastille conducteur (.vd-trip-driver) vivait ici sans qu'aucun element du
+       gabarit ne porte la classe : regles mortes, supprimees. Le rendu reel est
+       dans vehicle-reports-tab, qui pose bien --driver-color via [style]. */
 
     /* ─── Trajets : note libre (lecture / edition / ajout) ─── */
     .vd-trip-note {
@@ -1533,7 +1579,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-tracker-extra { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap }
     .vd-inst { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
     .vd-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
-    .vd-inst--no-sim { color: var(--warning); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+    .vd-inst--no-sim { color: var(--texte-attente); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
     .vd-sim { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace) }
     .vd-tracker-detach {
       background: transparent; border: 0; padding: 3px; border-radius: 4px;
@@ -1582,7 +1628,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 12px; border-radius: 10px;
       background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.28);
-      color: var(--warning); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
+      color: var(--texte-attente); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
       white-space: nowrap;
     }
     .vd-incident-btn:hover { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.42); }
@@ -1897,6 +1943,40 @@ export class VehicleDetailComponent implements OnInit {
       .filter((t) => !t.adminOnly || isAdmin)
       .filter((t) => !t.perm || this.perms.can(t.perm as any));
   });
+
+  /**
+   * Les familles qui ont au moins un onglet visible pour cet utilisateur. Une famille
+   * vide disparaît : proposer « Sécurité » à quelqu'un qui n'a aucune de ses trois
+   * permissions ouvre une boîte vide, ce qui se lit comme une panne.
+   */
+  protected readonly famillesVisibles = computed(() =>
+    rangerEnFamilles(this.tabs(), this.alerts().length),
+  );
+
+  /** La famille qui contient l'onglet ouvert. */
+  protected readonly familleActive = computed(() => {
+    const courant = this.activeTab();
+    return this.famillesVisibles().find((f) => f.onglets.some((t) => t.key === courant))?.cle
+      ?? this.famillesVisibles()[0]?.cle
+      ?? 'suivi';
+  });
+
+  /**
+   * Les onglets du second niveau. Sous deux familles, on retombe sur la rangée plate :
+   * le veilleur de nuit ne voit que Carte et Horaires, et deux boîtes pour deux onglets
+   * sont un classement qui ne classe rien.
+   */
+  protected readonly ongletsDeLaFamille = computed(() => {
+    const familles = this.famillesVisibles();
+    if (familles.length <= 1) return this.tabs();
+    return familles.find((f) => f.cle === this.familleActive())?.onglets ?? this.tabs();
+  });
+
+  /** Ouvrir une famille ouvre son PREMIER onglet — une famille n'a pas de contenu propre. */
+  protected ouvrirFamille(f: { onglets: { key: string }[] }): void {
+    const premier = f.onglets[0];
+    if (premier) this.activeTab.set(premier.key);
+  }
 
   private lastAlertCount = -1;
   private alertRefreshEffect = effect(() => {

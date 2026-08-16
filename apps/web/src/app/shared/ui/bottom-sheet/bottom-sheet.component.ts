@@ -39,6 +39,7 @@ import {
       <div
         class="bs-backdrop"
         [class.bs-backdrop--leaving]="leaving()"
+        [class.bs-backdrop--sans-voile]="sansVoile"
         (click)="dismiss()"
         aria-hidden="true">
       </div>
@@ -47,6 +48,8 @@ import {
         class="bs-panel"
         [class.bs-panel--leaving]="leaving()"
         [style.transform]="panelTransform()"
+        [style.--bs-hauteur]="hauteurCss()"
+        [attr.data-hauteur]="hauteur ? '' : null"
         role="dialog"
         aria-modal="true"
         [attr.aria-label]="ariaLabel || null">
@@ -77,40 +80,68 @@ import {
       -webkit-backdrop-filter: blur(2px);
       animation: bs-fade-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
     }
+    /* Le voile disparaît quand la feuille se pose sur une carte : « la carte reste
+       lisible et manipulable derrière » (Kit Partage). Une carte masquée par un voile
+       gris pendant qu'on choisit un calque ne montre plus ce qu'on est en train de régler. */
+    .bs-backdrop--sans-voile {
+      background: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
     .bs-backdrop--leaving {
       animation: bs-fade-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
     }
 
+    /* GÉOMÉTRIE DE PLATEFORME — le rayon et la poignée viennent des jetons posés au
+       lot A3, pas de valeurs figées. La feuille était à 20 px de rayon et 44 × 4 de
+       poignée : ni iOS (22 px, 36 × 5) ni Android (28 px, 32 × 4). Un seul habillage
+       pour deux plateformes donne une application étrangère sur les deux
+       (design/B1-PAGES.md § « Le système de référence »). La classe plat-* est posée
+       sur body par shared/utils/platform.ts ; les jetons sont déclarés au niveau de
+       body dans styles.css, donc ils traversent l'encapsulation sans sélecteur. */
     .bs-panel {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 8001;
       max-height: 85vh; max-height: 85dvh;
       display: flex; flex-direction: column;
-      background: var(--bg-secondary, #0F1714);
-      border-top-left-radius: 20px;
-      border-top-right-radius: 20px;
+      background: var(--bg-secondary);
+      border-top-left-radius: var(--feuille-rayon);
+      border-top-right-radius: var(--feuille-rayon);
       box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.5);
       padding-bottom: env(safe-area-inset-bottom);
       animation: bs-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
       will-change: transform;
       touch-action: pan-y;
     }
+    /* HAUTEUR ANNONCÉE — les six feuilles de la maquette sont dimensionnées, pas
+       laissées au contenu : commandes de rejeu 50 %, calques de carte 62 %, fiche
+       véhicule 72 %, valider un lieu 56 %, choisir une période 58 %, partager une
+       position 44 %. Une feuille qui prend la hauteur de son contenu saute d'un écran
+       à l'autre ; une hauteur déclarée se retient. Sans l'entrée, rien ne change. */
+    .bs-panel[data-hauteur] { height: var(--bs-hauteur); }
     .bs-panel--leaving {
       animation: bs-slide-down 220ms cubic-bezier(0.4, 0, 1, 1) both;
     }
 
+    /* La poignee est une CIBLE : c'est elle qu'on attrape pour tirer la feuille.
+       Mesuree a 375x36, elle passait sous le plancher de 44 px en hauteur — sa
+       pleine largeur la rendait attrapable, mais un geste de glissement demande
+       de la marge dans le sens ou l'on tire, c'est-a-dire en hauteur.
+       Elle est partagee par TOUTES les feuilles de l'app : une seule regle ici
+       les corrige toutes. Le trait visible ne change pas de taille, seule sa
+       zone de prise s'agrandit. */
     .bs-handle-wrap {
       flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      width: 100%; height: 28px;
+      width: 100%; min-height: 44px;
       background: transparent; border: none;
       cursor: grab; touch-action: none;
     }
     .bs-handle-wrap:active { cursor: grabbing }
     .bs-handle {
       display: block;
-      width: 44px; height: 4px;
+      width: var(--feuille-poignee-l); height: var(--feuille-poignee-h);
       border-radius: 9999px;
-      background: var(--fg-tertiary, #64748b);
+      background: var(--fg-tertiary);
       opacity: 0.45;
       transition: opacity .15s ease;
     }
@@ -162,6 +193,26 @@ export class BottomSheetComponent {
 
   /** Texte aria-label du dialog (utile pour les screen readers). */
   @Input() ariaLabel?: string;
+
+  /**
+   * Hauteur annoncée, en pourcentage de la fenêtre (50, 62, 72, 56, 58, 44 dans les
+   * six feuilles de la maquette). Non renseignée, la feuille prend la hauteur de son
+   * contenu — ce qui la fait sauter d'un écran à l'autre.
+   */
+  @Input() hauteur?: number;
+
+  /**
+   * Retire le voile. À réserver aux feuilles posées sur une CARTE : « le toast est en
+   * haut et la feuille en bas, les deux surfaces ne se disputent jamais la même zone.
+   * Le voile est absent — la carte reste lisible et manipulable derrière. » Partout
+   * ailleurs le voile reste : il dit qu'on est dans une tâche modale.
+   */
+  @Input() sansVoile = false;
+
+  /** `dvh` et non `vh` : sur mobile, la barre d'URL fait mentir `vh` de sa propre hauteur. */
+  protected hauteurCss(): string | null {
+    return this.hauteur ? `${this.hauteur}dvh` : null;
+  }
 
   /** Emis quand l'utilisateur ferme la sheet (tap backdrop, drag-down, ESC). */
   @Output() closed = new EventEmitter<void>();

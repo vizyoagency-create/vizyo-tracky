@@ -13,6 +13,47 @@ const MIN_STOP_MIN = 4;
 const MAX_PASSAGES = 300;
 
 /**
+ * Nombre de passages à partir duquel une station est considérée QUALIFIABLE — la
+ * file « 8/8 · PRÊT À VALIDER » de la planche Lieux.
+ *
+ * ┌───────────────────────────────────────────────────────────────────────────┐
+ * │ CE NOMBRE VIT ICI, ET NULLE PART AILLEURS                                  │
+ * │                                                                            │
+ * │ L'écran affichait « 8/8 » sans que rien ne définisse le 8 : il aurait dû   │
+ * │ l'inventer côté client. Un seuil recopié dans le navigateur doit rester    │
+ * │ d'accord avec la règle de détection du serveur — et le jour où celle-ci    │
+ * │ bouge, l'écran continue d'afficher l'ancien nombre EN AYANT L'AIR JUSTE.   │
+ * │                                                                            │
+ * │ C'est la même erreur que la légende de carte réécrite d'après la planche   │
+ * │ sans vérifier la donnée. Le serveur envoie donc le seuil ET le statut ; le │
+ * │ client ne recalcule rien, il affiche.                                       │
+ * └───────────────────────────────────────────────────────────────────────────┘
+ *
+ * Pourquoi 8 : c'est le seuil de la planche, et il tient au métier — en dessous,
+ * quelques passages peuvent être un hasard de tournée ; au-delà, la station fait
+ * partie des habitudes de la flotte.
+ */
+const SEUIL_PASSAGES_QUALIFIABLE = 8;
+
+/**
+ * Où en est une station dans son cycle de vie. Dérivé, jamais stocké : il se
+ * recalcule à chaque lecture depuis les passages et le lien vers un lieu validé.
+ *
+ * - `VALIDE`         : l'exploitant l'a confirmée — elle est un lieu de la flotte.
+ * - `PRET_A_VALIDER` : assez de passages pour décider, mais personne n'a décidé.
+ * - `EN_COURS`       : des passages, pas encore assez.
+ * - `A_QUALIFIER`    : à peine vue (un seul passage).
+ */
+export type StatutStation = 'A_QUALIFIER' | 'EN_COURS' | 'PRET_A_VALIDER' | 'VALIDE';
+
+function statutStation(passages: number, dejaValidee: boolean): StatutStation {
+  if (dejaValidee) return 'VALIDE';
+  if (passages >= SEUIL_PASSAGES_QUALIFIABLE) return 'PRET_A_VALIDER';
+  if (passages > 1) return 'EN_COURS';
+  return 'A_QUALIFIER';
+}
+
+/**
  * Lieux clés (2026-07) — référentiel MÉTIER des lieux de la flotte.
  *
  * Deux natures de lieux, gérées ici :
@@ -327,6 +368,8 @@ export class FleetPlacesService {
           fuelType: e.fuelType,
           placeId: place?.id ?? null,
           placeName: place?.name ?? null,
+          seuilPassages: SEUIL_PASSAGES_QUALIFIABLE,
+          statut: statutStation(e.passages, place != null),
         };
       })
       .sort((a, b) => b.passages - a.passages || (a.lastAt < b.lastAt ? 1 : -1));
@@ -411,4 +454,12 @@ export interface StationGroupDto {
   /** Lieu de la flotte correspondant si la station est déjà validée (sinon null). */
   placeId: string | null;
   placeName: string | null;
+  /**
+   * Passages nécessaires pour qualifier — la file « 8/8 » de la planche.
+   * Envoyé par le serveur pour que le client n'ait JAMAIS à inventer ce nombre :
+   * un seuil recopié dériverait en silence de la règle de détection.
+   */
+  seuilPassages: number;
+  /** Où en est la station dans son cycle de vie. Dérivé, jamais stocké. */
+  statut: StatutStation;
 }

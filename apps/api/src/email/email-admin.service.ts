@@ -25,7 +25,7 @@ export const TEMPLATE_META: {
   { id: 'device_verification', label: 'Code nouvel appareil', category: 'Sécurité', subject: 'Votre code de connexion : {code}', trigger: 'Connexion depuis un appareil non reconnu (2FA)', noOpenTracking: true },
   { id: 'two_factor_disable', label: 'Désactivation 2FA', category: 'Sécurité', subject: 'Code pour désactiver la double authentification : {code}', trigger: 'Demande de désactivation du 2FA', noOpenTracking: true },
   { id: 'weekly_report', label: 'Rapport hebdomadaire', category: 'Rapport', subject: 'Rapport hebdomadaire — {flotte}', trigger: 'Cron · lundi 08:00' },
-  { id: 'alert', label: 'Alerte véhicule', category: 'Alerte', subject: '[Tracky] {alerte} — {plaque}', trigger: 'Alerte temps réel' },
+  { id: 'alert', label: 'Alerte véhicule', category: 'Alerte', subject: '{alerte} — {plaque}', trigger: 'Alerte temps réel' },
   { id: 'lead', label: 'Nouveau lead', category: 'Interne', subject: 'Nouveau lead Tracky — {société}', trigger: 'Formulaire landing page' },
   { id: 'lead_welcome', label: 'Bienvenue prospect', category: 'Commercial', subject: 'Votre présentation Vizyo Tracky — et mes coordonnées', trigger: '1re demande d\'un prospect (landing page)' },
   { id: 'quote_signed', label: 'Devis signé (interne)', category: 'Interne', subject: 'Devis signé en ligne — {société}', trigger: 'Un prospect valide « bon pour accord »' },

@@ -199,6 +199,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       [open]="showArchiveModal()"
       title="Archiver ce conducteur"
       [description]="archiveDescription()"
+      [consequences]="archiveConsequences()"
       confirmLabel="Archiver"
       [danger]="true"
       [loading]="archiving()"
@@ -208,8 +209,10 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 
     <app-confirm-modal
       [open]="showAnonymizeModal()"
-      title="Anonymiser ce conducteur ? (IRRÉVERSIBLE)"
+      title="Anonymiser ce conducteur ?"
       [description]="anonymizeDescription()"
+      [consequences]="anonymizeConsequences()"
+      [irreversible]="true"
       confirmLabel="Anonymiser définitivement"
       [danger]="true"
       [loading]="anonymizing()"
@@ -442,13 +445,44 @@ export class DriversListComponent implements OnInit {
   protected readonly anonymizeDescription = computed(() => {
     const d = this.driverToAnonymize();
     if (!d) return '';
-    return `<strong>${d.firstName} ${d.lastName}</strong> — ses nom, téléphone, e-mail, permis et notes seront <strong>définitivement effacés</strong>, son compte de connexion désactivé et ses accès supprimés. Les trajets sont conservés sous une fiche anonyme (droit à l'effacement, RGPD art. 17). Cette action est <strong>irréversible</strong>. Pensez à faire l'export RGPD avant si nécessaire.`;
+    return `<strong>${d.firstName} ${d.lastName}</strong> — droit à l'effacement (RGPD art. 17). `
+      + 'Pensez à lancer l\'export RGPD avant, si vous en avez besoin.';
+  });
+
+  /**
+   * Ce qui disparaît, énuméré. La règle du kit demande des chiffres ; ici ce sont des
+   * CHAMPS, et les nommer un par un vaut mieux qu'un « ses données » qui laisse croire
+   * que les trajets partent aussi — c'est précisément l'inverse.
+   */
+  protected readonly anonymizeConsequences = computed(() => {
+    const d = this.driverToAnonymize();
+    if (!d) return '';
+    return 'Nom, téléphone, e-mail, permis et notes sont effacés, le compte de connexion désactivé '
+      + 'et les accès supprimés. Les trajets, eux, sont conservés sous une fiche anonyme.';
   });
 
   protected readonly archiveDescription = computed(() => {
     const d = this.driverToArchive();
     const name = d ? `${d.firstName} ${d.lastName}` : '';
-    return `Voulez-vous archiver <strong>${name}</strong> ? L'historique des trajets est conservé. Le conducteur est retiré des véhicules où il était actif.`;
+    return `Archiver <strong>${name}</strong>.`;
+  });
+
+  protected readonly archiveConsequences = computed(() => {
+    const d = this.driverToArchive();
+    // `_count` n'est renvoyé que par GET /drivers ; absent, on ne CHIFFRE PAS plutôt que
+    // d'annoncer « 0 véhicule » à quelqu'un qui en conduit trois. Un compteur faux dans
+    // une modale de danger est pire que pas de compteur.
+    const n = d?._count?.currentVehicles;
+    const vehicules = n === undefined
+      ? 'Il est retiré des véhicules où il est actif.'
+      : n === 0 ? 'Il n\'est affecté à aucun véhicule.'
+      : n === 1 ? 'Il est retiré du véhicule où il est actif.'
+      : `Il est retiré des ${n} véhicules où il est actif.`;
+    const trajets = d?._count?.trips;
+    const histo = trajets === undefined
+      ? 'L\'historique de ses trajets est conservé'
+      : `Ses ${trajets.toLocaleString('fr-FR')} trajets sont conservés`;
+    return `${vehicules} ${histo}, et l'archivage se défait.`;
   });
 
   async ngOnInit(): Promise<void> {

@@ -140,6 +140,12 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles — critère « iPhone 390 px : cibles ≥ 44 px ». Cette page s'ouvre
+       depuis un QR code, donc TOUJOURS sur un téléphone : c'est le dernier endroit où
+       une commande devrait demander de la précision. */
+    @media (max-width: 768px) {
+      .ip-seg-btn, .ip-theme { min-width: 44px; min-height: 44px }
+    }
     .ip-page { position: relative; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 44px max(22px, env(safe-area-inset-left)); background: var(--bg-primary); overflow: hidden; }
     .ip-grid {
       position: absolute; inset: 0; pointer-events: none;
@@ -163,7 +169,9 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     .ip-seg { display: flex; gap: 4px; padding: 4px; border-radius: 13px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); margin-bottom: 16px; }
     .ip-seg-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 6px; border-radius: 10px; border: none; background: transparent; color: var(--fg-tertiary); font-family: inherit; font-size: .84rem; font-weight: 700; cursor: pointer; transition: color .18s, background .18s; }
     .ip-seg-btn:hover { color: var(--fg-secondary); }
-    .ip-seg-btn.on { background: var(--bg-secondary); color: var(--tracky-light); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, pas
+       le vert de marque. Sur --bg-secondary clair : 3,43 -> 5,97:1. */
+    .ip-seg-btn.on { background: var(--bg-secondary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.2); }
 
     .ip-card { padding: 22px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); box-shadow: 0 1px 2px rgba(0,0,0,.35), 0 30px 70px -22px rgba(0,0,0,.5); animation: ip-fade .3s cubic-bezier(.16,1,.3,1); }
     @keyframes ip-fade { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
@@ -198,7 +206,10 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     .ip-badge lucide-icon { color: var(--tracky-light); }
 
     .ip-foot { margin: 24px 0 0; text-align: center; font-size: .86rem; color: var(--fg-tertiary); }
-    .ip-foot a { color: var(--tracky-light); font-weight: 600; }
+    /* 3,34:1 en clair. La sonde de recette signale aussi sa cible a 80x18 — c'est
+       son angle mort n° 3 : un lien EN LIGNE dans une phrase, l'elargir casserait
+       le texte. Seule la couleur change. */
+    .ip-foot a { color: var(--texte-succes); font-weight: 600; }
     .ip-foot a:hover { text-decoration: underline; }
   `],
 })

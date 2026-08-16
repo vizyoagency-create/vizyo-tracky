@@ -432,51 +432,63 @@ interface AlertCluster {
     /* ═══════════════════════════════════════════════════════
        Baanool view
        ═══════════════════════════════════════════════════════ */
-    .bn-alerts { background: white; min-height: 100%; display: flex; flex-direction: column; }
+    /* ⚠️ CET ECRAN NE SUIVAIT PAS LE THEME DE L'APPLICATION.
+       Il portait ~16 couleurs figees (white, #333, #eee, #999, #ccc, #00c896).
+       Mesure le 2026-08-14, mode simplifie actif : TROIS echecs IDENTIQUES en
+       clair et en sombre — la signature d'une palette qui ignore data-theme
+       (« Message d'alarme » 2,16:1, « Notification » et « Aucune donnee » 2,85:1).
+       Meme defaut que /fleet-schedules, meme correctif : les jetons du kit. */
+    .bn-alerts { background: var(--bg-primary); min-height: 100%; display: flex; flex-direction: column; }
     .bn-alerts-header {
       display: flex; align-items: center; gap: 8px;
-      padding: 12px 16px; border-bottom: 1px solid #eee; background: white;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary);
     }
+    /* Critere de recette « cibles >= 44 px au doigt » : mesurees a 36x36 — et
+       c'est le mode destine aux utilisateurs qui ont le plus besoin de marge. */
     .bn-back, .bn-more {
-      width: 36px; height: 36px; border-radius: 50%; border: none;
+      width: 44px; height: 44px; border-radius: 50%; border: none;
       background: transparent; display: flex; align-items: center; justify-content: center;
-      cursor: pointer; color: #333;
+      cursor: pointer; color: var(--fg-primary);
     }
-    .bn-title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; margin: 0; color: #333; }
-    .bn-tabs { display: flex; gap: 0; border-bottom: 1px solid #eee; background: white; }
+    .bn-title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; margin: 0; color: var(--fg-primary); }
+    .bn-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); }
     .bn-tab {
       flex: 1; padding: 14px 8px; background: none; border: none;
       border-bottom: 2px solid transparent;
-      font-size: 15px; color: #999; cursor: pointer; transition: color 120ms, border-color 120ms;
+      font-size: 15px; color: var(--fg-tertiary); cursor: pointer; transition: color 120ms, border-color 120ms;
     }
-    .bn-tab.active { color: #00c896; border-bottom-color: #00c896; font-weight: 600; }
+    /* L'onglet actif prend --texte-succes : meme convention que les 7 autres
+       selecteurs segmentes de l'app (styles.css). #00c896 rendait 2,16:1. */
+    .bn-tab.active { color: var(--texte-succes); border-bottom-color: var(--tracky-light); font-weight: 600; }
     .bn-empty {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 12px; padding: 40px 16px; color: #ccc;
+      gap: 12px; padding: 40px 16px; color: var(--fg-tertiary);
     }
     .bn-empty-icon { opacity: 0.5; }
-    .bn-empty-text { color: #999; font-size: 14px; margin: 0; }
+    .bn-empty-text { color: var(--fg-tertiary); font-size: 14px; margin: 0; }
     .bn-list { flex: 1; overflow-y: auto; }
     .bn-row {
       display: flex; align-items: center; gap: 12px;
-      padding: 14px 16px; border-bottom: 1px solid #f5f5f5; background: white;
+      padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary);
     }
     .bn-row--acked { opacity: 0.5; }
     .bn-row-icon {
       width: 36px; height: 36px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
-    .bn-row-icon.sev-CRITICAL { background: #fee; color: #d32f2f; }
-    .bn-row-icon.sev-WARNING { background: #fff3e0; color: #f57c00; }
-    .bn-row-icon.sev-INFO { background: #e3f2fd; color: #1976d2; }
+    .bn-row-icon.sev-CRITICAL { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
+    .bn-row-icon.sev-WARNING { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente); }
+    .bn-row-icon.sev-INFO { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--texte-info); }
     .bn-row-main { flex: 1; min-width: 0; }
-    .bn-row-title { font-size: 14px; color: #333; font-weight: 500; }
-    .bn-row-meta { font-size: 12px; color: #999; margin-top: 2px; }
-    .bn-speed { color: #f57c00; font-weight: 600; }
-    .bn-count { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 9999px; font-size: 11px; font-weight: 800; background: rgba(16,224,160,.18); color: var(--tracky-light); }
+    .bn-row-title { font-size: 14px; color: var(--fg-primary); font-weight: 500; }
+    .bn-row-meta { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px; }
+    .bn-speed { color: var(--texte-attente); font-weight: 600; }
+    .bn-count { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 9999px; font-size: 11px; font-weight: 800; background: rgba(16,224,160,.18); color: var(--texte-succes); }
+    /* Acquitter une alerte : 32x32 sous le plancher, et du blanc sur un vert vif
+       (Ecart 2 — sur un fond accent l'encre est FONCEE). */
     .bn-row-ack {
-      width: 32px; height: 32px; border-radius: 50%;
-      background: #00c896; color: white; border: none; cursor: pointer;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--tracky); color: var(--accent-ink); border: none; cursor: pointer;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
 
@@ -530,8 +542,27 @@ interface AlertCluster {
       background: transparent; cursor: pointer; transition: all .2s;
     }
     .main-tab:hover { color: var(--fg-secondary) }
+    /* ─── Onglet « Regles » : trois classes ORPHELINES ───
+       .rs-note, .rs-link et .rs-off etaient posees dans le gabarit sans qu'AUCUNE
+       regle n'existe — ni ici, ni dans styles.css, ni ailleurs dans le depot. Le
+       lien d'action rendait donc comme du texte brut (et sortait a 343x37), et
+       .rs-off, censee montrer qu'une regle est DESACTIVEE, ne montrait rien du
+       tout. C'est le defaut « regle CSS qui ne s'applique pas », dans sa version
+       la plus discrete : la classe est bien la, elle ne fait rien. */
+    .rs-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-tertiary) }
+    .rs-link {
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
+      min-height: 44px; font-size: 12.5px; font-weight: 600;
+      color: var(--texte-succes); text-decoration: none;
+    }
+    .rs-link:hover { text-decoration: underline }
+    /* Une regle desactivee n'envoie rien : elle doit se LIRE comme telle. */
+    .rs-off { opacity: .55 }
+
+    /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, jamais
+       le vert de marque. 6e occurrence du meme motif. Mesure : 3,17:1 en clair. */
     .main-tab.active {
-      background: rgba(16,224,160,.1); color: var(--tracky-light);
+      background: rgba(16,224,160,.1); color: var(--texte-succes);
       box-shadow: 0 1px 3px rgba(0,0,0,.1);
     }
     .tab-badge {
@@ -728,6 +759,22 @@ interface AlertCluster {
     }
     .cfg-btn-primary:hover { background: var(--tracky-light) }
     .cfg-btn-primary:disabled { opacity: .5; cursor: not-allowed }
+
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : « Tout acquitter » 36, les filtres 36, « Acquitter (3) » 36,
+       « 3 occurrences » 36. Acquitter une alerte est le geste principal de cette page ;
+       il se faisait sur une cible d'un quart trop petite. */
+    @media (max-width: 768px) {
+      .a-ack-all,
+      .a-filter,
+      .al-ack,
+      .al-expand { min-height: 44px }
+      /* La plaque est un LIEN vers la fiche véhicule, haut de 15 px. On l'agrandit sans
+         la déplacer : le padding négatif garderait la ligne compacte, mais casserait
+         l'alignement du texte — mieux vaut une ligne un peu plus haute qu'un lien qu'on
+         rate une fois sur deux. */
+      .al-plate { display: inline-flex; align-items: center; min-height: 44px }
+    }
 
     @media (max-width: 480px) {
       .a-title { font-size: 20px }
