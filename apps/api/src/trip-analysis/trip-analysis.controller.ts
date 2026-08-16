@@ -7,6 +7,7 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { DepotScopeGuard } from '../depot/depot-scope.guard';
 import { DrivingScoreService } from './driving-score.service';
 import { FuelCalibrationService } from './fuel-calibration.service';
 import { FuelReportService } from './fuel-report.service';
@@ -18,9 +19,24 @@ import { TripAutomationService } from './trip-automation.service';
  * Traçabilité fine des trajets (Palier 2) — API. Toute route exige une session ; le SERVICE applique
  * le scoping véhicule (anti-IDOR, 404 hors périmètre). Ouvert à tous les rôles (VIEWER inclus) pour
  * consulter les trajets de SES véhicules.
+ *
+ * ⚠️ FERMÉ AU RÔLE DEPOT (espace dépôt 2026-08, revue A1.4).
+ *
+ * Huit routes de ce contrôleur sont gardées par `trips_view` — et `trips_view` est
+ * OUVERTE à un dépôt (A1 § 2), parce qu'il doit voir les trajets de SES missions.
+ * Sans le garde ci-dessous, un dépôt authentifié atteignait donc : les scores de
+ * conduite de toute la flotte, les rapports carburant par véhicule, la calibration
+ * des pleins et la carte des stations. Exactement ce qu'A1 § 4 interdit — « leurs DTO
+ * exposent des champs qu'un dépôt ne doit pas voir (coûts, scores) » — et ce qu'A3 § 7
+ * réaffirme : « aucune donnée de coût, de score, de consommation ».
+ *
+ * `DepotScopeGuard` est en refus par défaut : sans décorateur `@DepotScope`, il rend
+ * 403 à un DEPOT et laisse passer tous les autres rôles sans rien changer. Le dépôt
+ * consulte ses trajets par son endpoint dédié `/depot/trips/:id` (lot A3), dont le DTO
+ * est restreint.
  */
 @Controller('trip-analysis')
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, DepotScopeGuard)
 export class TripAnalysisController {
   constructor(
     private readonly svc: TripAnalysisService,

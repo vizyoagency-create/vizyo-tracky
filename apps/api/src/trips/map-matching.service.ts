@@ -35,7 +35,7 @@ export class MapMatchingService {
     for (const chunk of chunks) {
       const segment = await this.matchChunk(chunk);
       if (!segment) {
-        this.logger.warn(`OSRM match echoue sur ${chunk.length} points, fallback raw`);
+        this.logger.warn(`OSRM match échoué sur ${chunk.length} points, fallback raw`);
         return null;
       }
       // Eviter de dupliquer le dernier point d'un chunk avec le premier du suivant.

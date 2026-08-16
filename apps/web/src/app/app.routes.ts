@@ -6,12 +6,33 @@ import { roleGuard } from './core/guards/role.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
 import { watchmanChildGuard } from './core/guards/watchman.guard';
 import { driverAwayFromDashboardGuard } from './core/guards/driver.guard';
+import { depotChildGuard, depotRoleGuard } from './core/guards/depot.guard';
 
 export const routes: Routes = [
   {
     path: '',
     pathMatch: 'full',
     redirectTo: 'login',
+  },
+  /**
+   * Espace dépôt (2026-08), lot A4 — LE SUIVI PUBLIC.
+   *
+   * ┌─ LA SEULE ROUTE DE L'APPLICATION SANS AUCUN GARDE ────────────────────────┐
+   * │ Ni `authGuard`, ni `auth-layout`, ni shell : le destinataire n'a pas de    │
+   * │ compte et ne doit voir aucune marque Tracky imposée, aucun menu, aucun     │
+   * │ lien vers l'application (A4 § 6).                                          │
+   * │                                                                            │
+   * │ Déclarée AVANT les routes authentifiées, et volontairement en tête de      │
+   * │ fichier : c'est une exception, elle se lit comme telle.                    │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   */
+  {
+    path: 's/:token',
+    loadComponent: () =>
+      import('./features/public-tracking/public-tracking.component').then(
+        (m) => m.PublicTrackingComponent,
+      ),
+    data: { title: 'Suivi de livraison' },
   },
   {
     path: 'login',
@@ -88,8 +109,22 @@ export const routes: Routes = [
     // renvoyé vers son espace `/driver` (il n'entre jamais dans l'app d'admin).
     canActivate: [authGuard, driverAwayFromDashboardGuard],
     // Sprint 3 — confine le veilleur de nuit à /vehicles* (allowlist default-deny).
-    canActivateChild: [watchmanChildGuard],
+    // Espace dépôt (2026-08) — confine le compte DEPOT à /depot* (+ /account).
+    canActivateChild: [watchmanChildGuard, depotChildGuard],
     children: [
+      {
+        // Espace dépôt (2026-08) — l'espace du donneur d'ordre. Vit DANS le shell :
+        // A1 § 5 lui donne 4 entrées de navigation et la marque du transporteur.
+        // `depotRoleGuard` referme l'entrée : un gestionnaire qui s'y égarerait ne
+        // verrait qu'un espace vide et incompréhensible.
+        path: 'depot',
+        canActivate: [depotRoleGuard],
+        loadChildren: () => import('./features/depot/depot.routes').then((m) => m.DEPOT_ROUTES),
+        // Lot A3 — le titre est porté par CHAQUE onglet (Carte live · Mes missions ·
+        // Historique · Documents). Le shell lit `route.firstChild`, donc cette entrée :
+        // le laisser à « Mes missions » afficherait ce titre sur les quatre écrans.
+        data: { title: 'Suivi de livraison' },
+      },
       {
         path: 'dashboard',
         loadComponent: () =>
@@ -199,8 +234,26 @@ export const routes: Routes = [
         // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles depuis
         // le calendrier). Gaté large pour ne pas régresser l'accès des délégués qui n'avaient que
         // reservations_*/ai_optimize ; chaque action interne reste gardée par sa permission.
+        // Espace dépôt (2026-08) — `missions_view` ajoutée à la liste. L'onglet Missions
+        // vit DANS l'agenda (décision client, A2 § intro), mais un FLEET_MANAGER a
+        // `missions_manage: true` et `agenda_view: false` PAR DÉFAUT : sans cette
+        // permission ici, le rôle qui possède les missions ne pouvait pas atteindre son
+        // propre écran. Trouvé en testant l'écran, invisible en test unitaire.
+        // A6 (2026-08) — la page des missions du transporteur. Pour l'instant elle
+        // ne porte que l'onglet Paramètres, c'est-à-dire la grille tarifaire ; les
+        // Demandes et les Missions y arrivent avec T5 et T6.
+        //
+        // Gardée par `missions_view` : lire ses tarifs n'est pas les modifier, et
+        // l'écriture est de toute façon refusée au serveur sans `missions_manage`.
+        path: 'missions',
+        canActivate: [anyPermissionGuard('missions_view')],
+        loadComponent: () =>
+          import('./features/missions/missions-page.component').then((m) => m.MissionsPageComponent),
+        data: { title: 'Missions' },
+      },
+      {
         path: 'agenda',
-        canActivate: [anyPermissionGuard('agenda_view', 'reservations_view', 'reservations_request', 'ai_optimize')],
+        canActivate: [anyPermissionGuard('agenda_view', 'reservations_view', 'reservations_request', 'ai_optimize', 'missions_view')],
         loadComponent: () =>
           import('./features/agenda/agenda.component').then((m) => m.AgendaComponent),
         data: { title: 'Agenda' },

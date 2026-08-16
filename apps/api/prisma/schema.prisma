@@ -19,6 +19,11 @@ enum UserRole {
   // feat/comptes-conducteurs — rôle « conducteur » : voit ses véhicules et (si autorisé par
   // périmètre) déverrouille le moteur / active le mode vie privée. Lié à un Driver via Driver.userId.
   DRIVER
+  // Espace dépôt (2026-08) — rôle LATÉRAL, pas un rang. Un tiers en lecture seule dont le
+  // périmètre est borné par la mission : il voit UN camion PENDANT [startAt, endAt], parce
+  // qu'une Mission le désigne comme destinataire, et rien du tout en dehors. N'a JAMAIS de
+  // ligne UserVehicleAccess. Cf. design/A1-ROLE-DEPOT.md.
+  DEPOT
 }
 
 enum TrackerStatus {
@@ -65,6 +70,11 @@ enum AlertType {
   IDLE_TIME
   SURVEILLANCE_TRIGGERED
   MAINTENANCE_DUE
+  /// A6 arbitrage J — la flotte n'a pas de grille tarifaire active. Seule alerte de
+  /// ce catalogue qui ne vienne PAS d'un boîtier : elle porte donc un `vehicleId`
+  /// nul, ce que le centre d'alertes sait déjà afficher. Elle n'immobilise rien —
+  /// les missions restent créables, c'est la tarification qui disparaît.
+  PRICING_GRID_MISSING
   UNKNOWN
 }
 
@@ -216,25 +226,25 @@ enum FleetMetier {
 }
 
 model Fleet {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  clientId  String?
+  id                      String      @id @default(uuid()) @db.Uuid
+  name                    String
+  clientId                String?
   // Sprint 9 — Metier de la flotte : conditionne l'objectif d'optimisation IA
   // (CHILDREN_TRANSPORT = enfants/places, PARCELS = colis, RENTAL = location).
   // Defaut GENERIC. Regle par un super-admin.
-  metier    FleetMetier @default(GENERIC)
+  metier                  FleetMetier @default(GENERIC)
   // V1.5 (Sprint H1) — sampling adaptatif des positions cote serveur.
   // true = positions redondantes (vehicule arrete) ne sont pas persistees pour
   // economiser le stockage. UX-first : le broadcast WS reste integral.
   // Opt-out par fleet pour les contrats imposant un tracage continu (legal).
-  adaptiveSamplingEnabled Boolean @default(true)
+  adaptiveSamplingEnabled Boolean     @default(true)
   // V1.5 (Sprint H3) — pilotage adaptatif du fix interval boitier (fix030s en
   // mouvement, fix120s/300s a l'arret). Reduit la conso batterie + data SIM.
   // Opt-out pour les contrats imposant le mode 30s permanent.
-  adaptiveFixModeEnabled  Boolean @default(true)
+  adaptiveFixModeEnabled  Boolean     @default(true)
   // V1.5 (Sprint L) — Tarif litre essence pour estimer la consommation dans
   // les rapports. Default 1.85 EUR/L (moyenne FR fin 2025). Override par fleet.
-  fuelPriceEurL           Float   @default(1.85)
+  fuelPriceEurL           Float       @default(1.85)
   // V1.5 (Sprint L) — Email de contact pour le rapport hebdomadaire automatique
   // envoye chaque lundi 08:00 UTC. Si null, fallback sur l'email du premier
   // FLEET_ADMIN de la fleet. Si vide explicite ('-'), on n'envoie pas le rapport.
@@ -244,40 +254,44 @@ model Fleet {
   // l'app reste pleinement fonctionnelle sans IA (analyse déterministe des trajets, stations, scores
   // = NON IA, jamais coupés). Togglable par le FLEET_ADMIN depuis ses réglages (et par un super-admin).
   // OPT-IN (2026-07-14) : défaut OFF — aucune flotte n'a l'IA tant qu'un admin ne l'active pas.
-  aiEnabled               Boolean @default(false)
+  aiEnabled               Boolean     @default(false)
   // Facturation (2026-07) — Stripe. L'IA est une OPTION PAYANTE. L'interrupteur runtime `aiEnabled`
   // est PILOTÉ par l'abonnement (`AiSubscription`) : statut ACTIVE ou COMP → aiEnabled=true, sinon false.
   // `stripeCustomerId` = client Stripe de la société (créé à la 1re carte / au 1er abonnement).
   stripeCustomerId        String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
 
-  users         User[]
-  vehicles      Vehicle[]
-  geofences     Geofence[]
-  alerts        Alert[]
-  vehicleGroups VehicleGroup[]
-  drivers       Driver[]
-  surveillanceProfiles SurveillanceProfile[]
-  surveillanceEvents   SurveillanceEvent[]
-  installationPlans    InstallationPlan[]
+  users                    User[]
+  vehicles                 Vehicle[]
+  geofences                Geofence[]
+  alerts                   Alert[]
+  vehicleGroups            VehicleGroup[]
+  drivers                  Driver[]
+  surveillanceProfiles     SurveillanceProfile[]
+  surveillanceEvents       SurveillanceEvent[]
+  installationPlans        InstallationPlan[]
   installationBookingLinks InstallationBookingLink[]
   // Refonte agenda/IA (2026-07) — reglages de l'agent d'optimisation d'agenda (1:1, opt-in).
   agendaAgentSettings      AgendaAgentSettings?
   // Refonte agenda/IA (P4) — liens publics de demande de reservation (societe fixe).
   reservationBookingLinks  ReservationBookingLink[]
   // V1.16 — SIM allouees a cette flotte (parc WhereverSIM).
-  sims                 Sim[]
+  sims                     Sim[]
   // Sprint 4 — config d'activation de l'ecoute audio (1:1, OFF par defaut).
-  audioConfig          FleetAudioConfig?
+  audioConfig              FleetAudioConfig?
   // Facturation (2026-07) — abonnement à l'option IA (1:1).
-  aiSubscription       AiSubscription?
+  aiSubscription           AiSubscription?
   // D4 (chantier commercial 2026-07) — abonnement commercial (plan/formule/options, 1:1).
-  subscription         FleetSubscription?
+  subscription             FleetSubscription?
   // Integration partenaire (Tracky x Maestroo) — 1 lien VIVANT max par partenaire,
   // + l'historique des liens revoques. Cf. PartnerLink.
-  partnerLinks         PartnerLink[]
-  partnerInvitations   PartnerInvitation[]
+  partnerLinks             PartnerLink[]
+  partnerInvitations       PartnerInvitation[]
+  // Espace dépôt (2026-08) — les missions de la flotte (séquence `ref` par flotte).
+  missions                 Mission[]
+  missionRequests          MissionRequest[]
+  missionPricingSettings   MissionPricingSettings?
 
   @@map("fleets")
 }
@@ -434,14 +448,14 @@ model AiFeatureFlags {
 }
 
 model User {
-  id         String   @id @default(uuid()) @db.Uuid
-  authUserId String   @unique
-  email      String   @unique
-  firstName  String?
-  lastName   String?
-  role        UserRole @default(VIEWER)
-  permissions Json?
-  isActive    Boolean  @default(true)
+  id                       String              @id @default(uuid()) @db.Uuid
+  authUserId               String              @unique
+  email                    String              @unique
+  firstName                String?
+  lastName                 String?
+  role                     UserRole            @default(VIEWER)
+  permissions              Json?
+  isActive                 Boolean             @default(true)
   /// « Owner » plateforme (niveau au-dessus des SUPER_ADMIN). Le compte reste
   /// techniquement SUPER_ADMIN et garde TOUS ses pouvoirs ; ce flag pilote
   /// UNIQUEMENT l'invisibilité : un compte owner est exclu des listes
@@ -449,83 +463,97 @@ model User {
   /// masqué comme auteur d'action — pour tout viewer NON-owner. Un owner, lui,
   /// voit tout (y compris les autres owners). Réversible (false = redevient un
   /// super-admin visible). Backfill initial : admin@vizyoagency.com.
-  isOwner     Boolean  @default(false)
-  fleetId    String?  @db.Uuid
-  fleet      Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  isOwner                  Boolean             @default(false)
+  fleetId                  String?             @db.Uuid
+  fleet                    Fleet?              @relation(fields: [fleetId], references: [id], onDelete: SetNull)
   // V1.5 (Sprint J) — onboarding + profil enrichi.
   // phone : E.164 (+33612345678), utilise pour les notifications WhatsApp Sprint M.
   // onboardingCompletedAt : null = wizard non termine, declenche au premier login.
   // escalationContactUserId : si une alerte CRITICAL n'est pas ack en 10min,
   //   on notifie ce user (Sprint M).
-  phone                   String?
-  onboardingCompletedAt   DateTime?
+  phone                    String?
+  onboardingCompletedAt    DateTime?
   /// V1.12 — preferences UI per-user (JSON extensible).
   /// Aujourd'hui : `{ uiMode: 'tracky' | 'baanool' }`. Default null = mode Tracky
   /// (UI riche dashboard + sidebar). Mode 'baanool' = layout simplifie inspire
   /// de l'app Baanool : sidebar cachee, post-login direct sur /map, navigation
   /// via burger uniquement. Toutes les pages restent accessibles.
-  preferences             Json?
-  escalationContactUserId String?  @db.Uuid
-  escalationContact       User?    @relation("UserEscalation", fields: [escalationContactUserId], references: [id], onDelete: SetNull)
-  escalatedTo             User[]   @relation("UserEscalation")
-  acknowledgedAlerts Alert[]           @relation("AlertAcknowledgedBy")
-  trackerCommands    TrackerCommand[]
-  vehicleAccess      UserVehicleAccess[]
-  invitationsSent    Invitation[]      @relation("InvitationCreatedBy")
-  tripNotesAuthored  Trip[]            @relation("TripNotesAuthor")
+  preferences              Json?
+  escalationContactUserId  String?             @db.Uuid
+  escalationContact        User?               @relation("UserEscalation", fields: [escalationContactUserId], references: [id], onDelete: SetNull)
+  escalatedTo              User[]              @relation("UserEscalation")
+  acknowledgedAlerts       Alert[]             @relation("AlertAcknowledgedBy")
+  trackerCommands          TrackerCommand[]
+  vehicleAccess            UserVehicleAccess[]
+  invitationsSent          Invitation[]        @relation("InvitationCreatedBy")
+  tripNotesAuthored        Trip[]              @relation("TripNotesAuthor")
   /// Phase 3 (futur) : si ce User est lie a un compte conducteur (driver login).
   /// Aujourd'hui null pour tous les Users existants. Cf. Driver.userId.
-  driverProfile      Driver?
+  driverProfile            Driver?
   /// Sprint user-activity — sessions + actions de l'utilisateur dans l'app.
-  sessions           UserSession[]
+  sessions                 UserSession[]
   /// Consentements RGPD versionnés (CGU / Politique de confidentialité) — le gate
   /// d'accès (403 CONSENT_REQUIRED) compare CONSENT_VERSION à la dernière acceptation.
-  consents           UserConsent[]
+  consents                 UserConsent[]
   /// Permissions device accordées (notifications, localisation) — cf. UserPermission.
-  devicePermissions  UserPermission[]
+  devicePermissions        UserPermission[]
   /// Sécurité — appareils de confiance (vérification e-mail des nouveaux appareils).
-  trustedDevices     TrustedDevice[]
+  trustedDevices           TrustedDevice[]
   /// Sécurité — historique des connexions (appareil + position géo-IP) : socle de la
   /// détection adaptative (appareil/zone inhabituels) et de la carte admin.
-  loginEvents        LoginEvent[]
+  loginEvents              LoginEvent[]
   /// Sécurité — 2FA app OPT-IN par l'utilisateur (jamais imposé). false = pas de
   /// vérification. À l'activation, un code e-mail est demandé UNIQUEMENT sur une vraie
   /// anomalie (nouvel appareil / zone inhabituelle), et seulement une fois qu'on a
   /// assez d'historique pour juger (sinon on apprend, sans gêner).
-  twoFactorEnabled   Boolean   @default(false)
+  twoFactorEnabled         Boolean             @default(false)
   /// Dernière fois qu'on a PROPOSÉ le 2FA (pour ne pas harceler).
-  twoFactorPromptedAt DateTime?
+  twoFactorPromptedAt      DateTime?
   /// L'utilisateur a écarté la proposition (« plus tard / ne plus demander »).
-  twoFactorPromptDismissed Boolean @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  twoFactorPromptDismissed Boolean             @default(false)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+
+  /// Espace dépôt (2026-08) — missions dont CE compte est le dépôt destinataire.
+  /// N'est peuplé que pour les comptes de rôle DEPOT. C'est la SEULE source de son
+  /// périmètre : un DEPOT n'a jamais de ligne UserVehicleAccess (A1 § 7).
+  depotMissions          Mission[]               @relation("MissionDepot")
+  missionRequests        MissionRequest[]        @relation("MissionRequestDepot")
+  /// Lot A6 — les modifications de tournee signees par ce compte. SetNull cote
+  /// revision : supprimer un compte n'efface pas l'historique, dont le nom de
+  /// l'auteur est fige a l'ecriture.
+  missionStopRevisions   MissionStopRevision[]   @relation("MissionStopRevisionAuthor")
+  /// Lot A4 — les liens publics de suivi générés par ce compte. Un dépôt comme un
+  /// gestionnaire peut en créer ; c'est par cette relation qu'on révoque les liens
+  /// d'un compte désactivé (A4 § 8).
+  missionShareLinks      MissionShareLink[]      @relation("MissionShareAuthor")
+  notificationPreference NotificationPreference?
+  notificationDeliveries NotificationDelivery[]
 
   @@index([fleetId])
   @@map("users")
-  notificationPreference NotificationPreference?
-  notificationDeliveries NotificationDelivery[]
 }
 
 /// V1.5 (Sprint M) — Subscription Web Push d'un utilisateur (1 abonnement
 /// par device/browser). Une ligne = un endpoint push valide.
 model PushSubscription {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  endpoint    String   @unique
-  p256dh      String
-  auth        String
-  userAgent   String?
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
   /// Identifiant stable du device cote client (UUID genere une fois, stocke en
   /// localStorage). Permet de dedupliquer parfaitement une re-inscription apres
   /// reinstallation PWA ou rotation d'endpoint : on upsert sur (userId, deviceId)
   /// au lieu de creer une nouvelle ligne a chaque endpoint regenere. Optionnel
   /// pour la backward-compat (les subs existantes restent valides).
-  deviceId    String?
-  lastSeenAt  DateTime @default(now())
+  deviceId   String?
+  lastSeenAt DateTime @default(now())
   /// Nom lisible de l'appareil pour la gestion/révocation des devices (ex.
   /// « iPhone de Jean », « Chrome — Windows »). Facultatif (dérivé du userAgent).
-  label       String?
-  createdAt   DateTime @default(now())
+  label      String?
+  createdAt  DateTime @default(now())
 
   @@index([userId])
   @@index([userId, deviceId])
@@ -538,19 +566,19 @@ model PushSubscription {
 /// channels = ['IN_APP', 'WEB_PUSH', 'EMAIL', 'WHATSAPP'] — l'in-app est
 /// toujours actif (legacy ALERT_NEW WS) ; cette table active push/email/whatsapp.
 model AlertRule {
-  id           String   @id @default(uuid()) @db.Uuid
-  fleetId      String   @db.Uuid
-  vehicleId    String?  @db.Uuid
-  alertType    String   // ex: 'OVERSPEED', 'SOS', '*' = tous
-  enabled      Boolean  @default(true)
-  channels     Json     @default("[]") // ['WEB_PUSH', 'EMAIL', 'WHATSAPP']
+  id               String   @id @default(uuid()) @db.Uuid
+  fleetId          String   @db.Uuid
+  vehicleId        String?  @db.Uuid
+  alertType        String // ex: 'OVERSPEED', 'SOS', '*' = tous
+  enabled          Boolean  @default(true)
+  channels         Json     @default("[]") // ['WEB_PUSH', 'EMAIL', 'WHATSAPP']
   // Escalade : si l'alerte n'est pas acquittee en `escalateAfterMin` minutes
   // ET sa severity est CRITICAL, on notifie escalateTo (ou User.escalationContactUserId
   // si null).
   escalateAfterMin Int?
-  escalateToUserId String? @db.Uuid
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  escalateToUserId String?  @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([fleetId])
   @@index([vehicleId])
@@ -564,23 +592,23 @@ model AlertRule {
 /// L'utilisateur clique, set son password, on call Vizyo Auth.register puis
 /// on cree le User Tracky local avec authUserId retourne.
 model Invitation {
-  id          String   @id @default(uuid()) @db.Uuid
-  email       String
-  role        UserRole
-  fleetId     String?  @db.Uuid
-  tokenHash   String   @unique
-  expiresAt   DateTime
-  permissions Json?
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String
+  role         UserRole
+  fleetId      String?   @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  permissions  Json?
   // Scopes d'acces (matrice Acces & Permissions) configures des l'invitation :
   // tableau de { type: ALL|GROUP|VEHICLE, groupId?, vehicleId?, permissions }.
   // Materialises en lignes UserVehicleAccess a l'acceptation. Null = legacy
   // (retombe sur `permissions` = un unique scope ALL).
   accessScopes Json?
-  status      String   @default("PENDING") // 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
-  createdById String   @db.Uuid
-  createdBy   User     @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  acceptedAt  DateTime?
-  createdAt   DateTime @default(now())
+  status       String    @default("PENDING") // 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
+  createdById  String    @db.Uuid
+  createdBy    User      @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  acceptedAt   DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([email])
   @@index([status])
@@ -591,56 +619,59 @@ model Invitation {
 }
 
 model Vehicle {
-  id        String   @id @default(uuid()) @db.Uuid
-  fleetId   String   @db.Uuid
-  fleet     Fleet    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  plate     String
-  type      VehicleType @default(CAR)
-  brand     String?
-  model     String?
+  id                          String                   @id @default(uuid()) @db.Uuid
+  fleetId                     String                   @db.Uuid
+  fleet                       Fleet                    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  plate                       String
+  type                        VehicleType              @default(CAR)
+  brand                       String?
+  model                       String?
   /// Type de carburant. Synchronisé depuis le planning d'installation (InstallationTask.energy),
   /// éditable sur la fiche. Réutilise l'enum InstallationEnergy (Diesel/Essence/Électrique/Hybride/Autre).
-  energy    InstallationEnergy?
-  year      Int?
-  color     String?
+  energy                      InstallationEnergy?
+  year                        Int?
+  color                       String?
   // V1.5 (Sprint L) — Estimation consommation pour les rapports : litres
   // au 100km par defaut selon le type vehicule. Si null, on utilise une valeur
   // par defaut cote service (CAR=7, TRUCK=22, VAN=10, MOTO=4, BUS=28).
-  fuelConsumptionL100km Float?
+  fuelConsumptionL100km       Float?
   // Calibration carburant « methode du plein » (2026-07) — consommation REELLE mesuree a partir des
   // pleins renseignes (litres/distance entre 2 pleins complets). Recalculee a chaque plein. Quand
   // presente, elle PRIME sur fuelConsumptionL100km partout (rapports/PDF/Excel/fuel card) -> l'app
   // devient precise « au fur et a mesure ». calibratedTanks = nb de reservoirs mesures (confiance).
   calibratedConsumptionL100km Float?
-  calibratedTanks             Int      @default(0)
+  calibratedTanks             Int                      @default(0)
   calibratedAt                DateTime?
   /// Conducteur "courant" du vehicule. Sert de defaut snappe sur Trip.driverId
   /// au moment de la cloture du trajet (driverSource='AUTO'). Modifiable a
   /// posteriori par les admins/managers.
-  currentDriverId String?  @db.Uuid
-  currentDriver   Driver?  @relation("VehicleCurrentDriver", fields: [currentDriverId], references: [id], onDelete: SetNull)
-  tracker    Tracker?
-  schedule   VehicleSchedule?
-  trips      Trip[]
-  alerts     Alert[]
-  groups     VehicleGroupAssignment[]
-  userAccess UserVehicleAccess[]
-  surveillanceProfile SurveillanceProfile?
-  surveillanceEvents  SurveillanceEvent[]
-  installationTasks   InstallationTask[] @relation("InstallationTaskVehicle")
+  currentDriverId             String?                  @db.Uuid
+  currentDriver               Driver?                  @relation("VehicleCurrentDriver", fields: [currentDriverId], references: [id], onDelete: SetNull)
+  tracker                     Tracker?
+  schedule                    VehicleSchedule?
+  trips                       Trip[]
+  alerts                      Alert[]
+  groups                      VehicleGroupAssignment[]
+  userAccess                  UserVehicleAccess[]
+  surveillanceProfile         SurveillanceProfile?
+  surveillanceEvents          SurveillanceEvent[]
+  installationTasks           InstallationTask[]       @relation("InstallationTaskVehicle")
   // Sprint 7 — baseline kilometrique autoritaire (saisi a l'entretien) + agenda.
-  lastOdometerKm   Int?
-  lastOdometerAt   DateTime?
+  lastOdometerKm              Int?
+  lastOdometerAt              DateTime?
   // Sprint 8 — caractéristiques pour les critères de réservation : nb de places,
   // sièges enfants/pouponnière, équipements (tags libres extensibles).
-  seats            Int?
-  childSeats       Int?
-  features         String[] @default([])
-  vehicleEvents    VehicleEvent[]
-  maintenancePlans MaintenancePlan[]
+  seats                       Int?
+  childSeats                  Int?
+  features                    String[]                 @default([])
+  vehicleEvents               VehicleEvent[]
+  maintenancePlans            MaintenancePlan[]
+  // Espace dépôt (2026-08) — missions portées par ce véhicule. onDelete: Restrict côté
+  // Mission : la suppression est refusée tant qu'une mission non terminée existe.
+  missions                    Mission[]
   // Zones mortes GPS (suivi FS-253) : endroits ou CE vehicule perd recurremment son lock GPS.
-  gpsDeadZones     GpsDeadZone[]
-  gpsLossEvents    GpsLossEvent[]
+  gpsDeadZones                GpsDeadZone[]
+  gpsLossEvents               GpsLossEvent[]
   // Mode vie privee : quand ON, AUCUNE position n'est collectee/diffusee pour ce
   // vehicule (la trame est jetee a l'ingestion ; la derniere position connue reste
   // figee). `privacyModeSince`/`By`/`Note` = etat courant ; l'historique complet
@@ -649,19 +680,19 @@ model Vehicle {
   /// professionnel : tracé 24/7, antivol actif la nuit et le week-end. true = le cadre de temps de
   /// travail s'applique : hors plage, plus aucune position n'est collectée (RGPD/CNIL).
   /// Activé explicitement par le fleet-admin, véhicule par véhicule (proportionnalité).
-  mixedUseEnabled    Boolean  @default(false)
-  privacyModeEnabled Boolean  @default(false)
-  privacyModeSince   DateTime?
-  privacyModeById    String?  @db.Uuid
-  privacyModeNote    String?
-  privacyModeEvents  PrivacyModeEvent[]
+  mixedUseEnabled             Boolean                  @default(false)
+  privacyModeEnabled          Boolean                  @default(false)
+  privacyModeSince            DateTime?
+  privacyModeById             String?                  @db.Uuid
+  privacyModeNote             String?
+  privacyModeEvents           PrivacyModeEvent[]
   // Incr. RGPD calendrier — cadre de temps de travail (opt-in). Hors plages = prive (non
   // collecte) par defaut. `workOverrideUntil` = exception ponctuelle « je travaille » (conducteur,
   // ex. intervention un dimanche) : force le suivi jusqu'a cette date malgre le calendrier.
-  workSchedule       VehicleWorkSchedule?
-  workOverrideUntil  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  workSchedule                VehicleWorkSchedule?
+  workOverrideUntil           DateTime?
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
 
   @@unique([fleetId, plate])
   @@index([fleetId])
@@ -748,6 +779,10 @@ enum VehicleEventType {
   MAINTENANCE
   INCIDENT
   RESERVATION // (Sprint 8) STUB — non câblé en S7
+  // Espace dépôt (2026-08) — l'événement d'agenda d'une mission. Porte `blocksVehicle`,
+  // donc entre dans le chemin d'indisponibilité EXISTANT (findImmobilized). Aucun second
+  // mécanisme : deux sources d'indisponibilité, une seule logique de lecture (A2 § 3.2).
+  MISSION
 }
 
 enum VehicleEventStatus {
@@ -764,39 +799,39 @@ enum VehicleEventStatus {
 /// les incidents ; conçu pour accueillir les réservations (Sprint 8) sans refonte
 /// (startAt/endAt/allDay = créneau, metadata = champs par type, type extensible).
 model VehicleEvent {
-  id            String   @id @default(uuid()) @db.Uuid
-  fleetId       String   @db.Uuid            // tenant (scoping) — scalaire, cascade via le véhicule
-  vehicleId     String   @db.Uuid
-  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid()) @db.Uuid
+  fleetId   String  @db.Uuid // tenant (scoping) — scalaire, cascade via le véhicule
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
-  type          VehicleEventType
-  category      String?            // sous-type libre extensible : 'OIL_CHANGE','TECHNICAL_INSPECTION','DOOR_ISSUE'…
-  status        VehicleEventStatus @default(PLANNED)
-  severity      String?            // incidents : 'LOW'|'MEDIUM'|'HIGH'
+  type     VehicleEventType
+  category String? // sous-type libre extensible : 'OIL_CHANGE','TECHNICAL_INSPECTION','DOOR_ISSUE'…
+  status   VehicleEventStatus @default(PLANNED)
+  severity String? // incidents : 'LOW'|'MEDIUM'|'HIGH'
 
-  title         String
-  description   String?
+  title       String
+  description String?
 
-  startAt       DateTime           // ancrage temporel (échéance/réalisation/début)
-  endAt         DateTime?          // plage (garage du X au Y ; créneau réservation S8)
-  allDay        Boolean  @default(true)
+  startAt       DateTime // ancrage temporel (échéance/réalisation/début)
+  endAt         DateTime? // plage (garage du X au Y ; créneau réservation S8)
+  allDay        Boolean   @default(true)
   // Immobilise le véhicule : tant que l'événement est actif (PLANNED/OPEN/IN_PROGRESS),
   // le véhicule est exclu des suggestions/réservations (roue crevée, passage garage…).
-  blocksVehicle Boolean  @default(false)
+  blocksVehicle Boolean   @default(false)
 
-  odometerKm    Int?               // km saisi (autoritaire) au moment de l'événement
-  planId        String?  @db.Uuid
+  odometerKm    Int? // km saisi (autoritaire) au moment de l'événement
+  planId        String?          @db.Uuid
   plan          MaintenancePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
-  linkedEventId String?  @db.Uuid  // chaînage : incident -> passage garage
+  linkedEventId String?          @db.Uuid // chaînage : incident -> passage garage
 
-  resolvedAt    DateTime?
-  metadata      Json?              // extensible par type sans migration (S8 : réservé par, motif…)
+  resolvedAt DateTime?
+  metadata   Json? // extensible par type sans migration (S8 : réservé par, motif…)
 
-  createdBy     String   @db.Uuid
-  source        String   @default("MANUAL") // MANUAL | AUTO | SYSTEM
+  createdBy String @db.Uuid
+  source    String @default("MANUAL") // MANUAL | AUTO | SYSTEM
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([fleetId, startAt])
   @@index([vehicleId, startAt(sort: Desc)])
@@ -809,25 +844,25 @@ model VehicleEvent {
 /// Sprint 7 — Plan de maintenance récurrent (CT/vidange « tous les X mois/km »). Génère
 /// des VehicleEvent PLANNED (prochaine échéance) + déclenche les rappels.
 model MaintenancePlan {
-  id              String   @id @default(uuid()) @db.Uuid
-  fleetId         String   @db.Uuid
-  vehicleId       String   @db.Uuid
-  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid()) @db.Uuid
+  fleetId   String  @db.Uuid
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
-  category        String   // 'OIL_CHANGE','TECHNICAL_INSPECTION',…
-  label           String
-  intervalMonths  Int?     // tous les N mois (l'un et/ou l'autre)
-  intervalKm      Int?     // tous les N km
-  lastDoneAt      DateTime?
-  lastDoneKm      Int?
-  reminderDaysBefore Int  @default(30)
-  reminderKmBefore   Int? @default(1000)
-  enabled         Boolean  @default(true)
+  category           String // 'OIL_CHANGE','TECHNICAL_INSPECTION',…
+  label              String
+  intervalMonths     Int? // tous les N mois (l'un et/ou l'autre)
+  intervalKm         Int? // tous les N km
+  lastDoneAt         DateTime?
+  lastDoneKm         Int?
+  reminderDaysBefore Int       @default(30)
+  reminderKmBefore   Int?      @default(1000)
+  enabled            Boolean   @default(true)
 
-  events          VehicleEvent[]
+  events VehicleEvent[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([fleetId, vehicleId])
   @@index([enabled])
@@ -835,77 +870,77 @@ model MaintenancePlan {
 }
 
 model Tracker {
-  id                   String                 @id @default(uuid()) @db.Uuid
-  imei                 String                 @unique
-  model                String                 @default("COBAN_GPS403D")
-  status               TrackerStatus          @default(OFFLINE)
-  lastSeenAt           DateTime?
+  id                     String                     @id @default(uuid()) @db.Uuid
+  imei                   String                     @unique
+  model                  String                     @default("COBAN_GPS403D")
+  status                 TrackerStatus              @default(OFFLINE)
+  lastSeenAt             DateTime?
   // V1.4 — etat ignition fiable (remote `2c7e29b`)
-  lastKnownIgnition    Boolean?
-  lastIgnitionChangeAt DateTime?
+  lastKnownIgnition      Boolean?
+  lastIgnitionChangeAt   DateTime?
   // V1.4 — denormalisation derniere position connue (Sprint A — hydratation au login)
   // Permet l'hydratation immediate de la carte au login sans attendre la prochaine trame.
-  lastLat              Float?
-  lastLng              Float?
-  lastSpeedKmh         Float?
-  lastHeading          Float?
-  lastIgnition         Boolean?
-  lastValid            Boolean?
-  lastPositionAt       DateTime?
+  lastLat                Float?
+  lastLng                Float?
+  lastSpeedKmh           Float?
+  lastHeading            Float?
+  lastIgnition           Boolean?
+  lastValid              Boolean?
+  lastPositionAt         DateTime?
   // Incident FS-253 (GPS perdu) — reception de la derniere trame `no_fix` (LBS sans
   // lock GPS). Un boitier VIVANT (lastSeenAt frais) qui emet des `no_fix` RECENTS alors
   // que `lastPositionAt` est perime = GPS perdu (antenne debranchee / masquee / ciel).
   // C'est le discriminant qui distingue « GPS perdu » d'un simple stationnement (un
   // boitier gare sain n'emet PAS de `no_fix`, il dort en heartbeat). Alimente l'etat
   // GPS_LOST cote UI + le detecteur d'alerte gps-integrity.
-  lastNoFixAt          DateTime?
+  lastNoFixAt            DateTime?
   // V1.5 (Sprint H1) — etat du sampling adaptatif.
   // lastWriteAt = derniere fois ou une trame a ete reellement persistee dans `positions`
   //              (different de lastPositionAt qui suit `deviceTime` de la trame brute).
   // lastSampledState = derniere classification appliquee (MOVING / IDLE_ENGINE_ON / STOPPED).
   // verboseUntil = override admin temporaire qui force l'INSERT de chaque trame (debugging).
-  lastWriteAt          DateTime?
-  lastSampledState     String?
-  verboseUntil         DateTime?
+  lastWriteAt            DateTime?
+  lastSampledState       String?
+  verboseUntil           DateTime?
   // V1.5 (Sprint H3) — pilotage du fix interval boitier (commande Coban `fix...***n`).
   // desired = ce que le serveur veut que le boitier emette ; current = ce qu'on observe
   // reellement. Si desired != current pendant > 6 trames, on incrementre le compteur
   // d'echec et on marque le tracker FAILING.
-  desiredFixIntervalS     Int       @default(30)
-  currentFixIntervalS     Int?
-  lastFixIntervalSyncAt   DateTime?
+  desiredFixIntervalS    Int                        @default(30)
+  currentFixIntervalS    Int?
+  lastFixIntervalSyncAt  DateTime?
   // Compteur d'echecs consecutifs (commande envoyee non prise en compte par le boitier).
-  fixCommandFailureCount  Int       @default(0)
-  fixCommandFailing       Boolean   @default(false)
+  fixCommandFailureCount Int                        @default(0)
+  fixCommandFailing      Boolean                    @default(false)
   // Override admin : si > now, le serveur ne tente pas de nouvelles transitions
   // automatiques (utile pour figer le tracker en mode 30s pour 24h depuis l'admin).
-  fixModeOverrideUntil    DateTime?
+  fixModeOverrideUntil   DateTime?
   // Timestamp deviceTime de la derniere trame valide observee — sert au reconciler
   // pour calculer le delta entre 2 trames et inferer l'intervalle reel.
-  lastValidFrameAt        DateTime?
+  lastValidFrameAt       DateTime?
   // V1.5 (Sprint I) — numero E.164 de la SIM data du boitier. Permet le fallback
   // SMS quand la socket TCP est indisponible. Renseigne au moment du provisionnement
   // SMS via /admin/sms/provision.
-  simPhoneNumber          String?
+  simPhoneNumber         String?
   /// V1.7 — Indique si le fil ACC du boitier (jaune) est physiquement connecte
   /// au +12V apres contact. Si false, le serveur infere `ignition` depuis la
   /// vitesse GPS (>3 km/h => ON). Reglable par SUPER_ADMIN uniquement depuis
   /// la fiche vehicule. Default true (cas standard en flotte pro).
-  accConnected            Boolean   @default(true)
-  vehicleId            String?                @unique @db.Uuid
-  vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  positions  Position[]
-  samplingDecisions PositionSamplingDecision[]
-  commands        EngineControlCommand[]
+  accConnected           Boolean                    @default(true)
+  vehicleId              String?                    @unique @db.Uuid
+  vehicle                Vehicle?                   @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  positions              Position[]
+  samplingDecisions      PositionSamplingDecision[]
+  commands               EngineControlCommand[]
   // Sprint 4 — commandes d'ecoute audio (audit immuable, Scenario A appel live).
-  audioCommands   AudioMonitoringCommand[]
-  trackerCommands TrackerCommand[]
-  alerts          Alert[]
-  installationTasks InstallationTask[] @relation("InstallationTaskTracker")
+  audioCommands          AudioMonitoringCommand[]
+  trackerCommands        TrackerCommand[]
+  alerts                 Alert[]
+  installationTasks      InstallationTask[]         @relation("InstallationTaskTracker")
   // V1.16 — SIM data physiquement posee dans ce boitier (1:1).
-  sim             Sim?
-  createdAt  DateTime               @default(now())
-  updatedAt  DateTime               @updatedAt
+  sim                    Sim?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
 
   @@index([status])
   @@map("trackers")
@@ -918,16 +953,16 @@ model Tracker {
 /// un sampling trop agressif.
 /// Retention courte : purge auto au-dela de 7 jours (cron quotidien).
 model PositionSamplingDecision {
-  id          String   @id @default(uuid()) @db.Uuid
-  trackerId   String   @db.Uuid
-  tracker     Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
-  decision    String   // 'INSERTED' | 'SKIPPED_DUP' | 'SKIPPED_THROTTLE' | 'INSERTED_VERBOSE' | 'SKIPPED_REPLAY'
-  state       String   // 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED'
-  reason      String?  // ex: "haversine 3m < 15m radius, throttle 90s active"
-  speedKmh    Float?
-  ignition    Boolean?
-  distanceM   Float?   // distance haversine vs derniere position persistee
-  receivedAt  DateTime @default(now())
+  id         String   @id @default(uuid()) @db.Uuid
+  trackerId  String   @db.Uuid
+  tracker    Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  decision   String // 'INSERTED' | 'SKIPPED_DUP' | 'SKIPPED_THROTTLE' | 'INSERTED_VERBOSE' | 'SKIPPED_REPLAY'
+  state      String // 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED'
+  reason     String? // ex: "haversine 3m < 15m radius, throttle 90s active"
+  speedKmh   Float?
+  ignition   Boolean?
+  distanceM  Float? // distance haversine vs derniere position persistee
+  receivedAt DateTime @default(now())
 
   @@index([trackerId, receivedAt(sort: Desc)])
   @@index([receivedAt])
@@ -957,24 +992,29 @@ model Position {
 }
 
 model Trip {
-  id                 String   @id @default(uuid()) @db.Uuid
-  vehicleId          String   @db.Uuid
-  vehicle            Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  trackerId          String?  @db.Uuid
-  fleetId            String?  @db.Uuid
+  id                 String    @id @default(uuid()) @db.Uuid
+  vehicleId          String    @db.Uuid
+  vehicle            Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  trackerId          String?   @db.Uuid
+  fleetId            String?   @db.Uuid
   startedAt          DateTime
   endedAt            DateTime?
-  durationSeconds    Int      @default(0)
-  startLat           Float    @default(0)
-  startLng           Float    @default(0)
+  durationSeconds    Int       @default(0)
+  startLat           Float     @default(0)
+  startLng           Float     @default(0)
   endLat             Float?
   endLng             Float?
-  distanceKm         Float    @default(0)
-  distanceMeters     Float    @default(0)
-  maxSpeed           Float    @default(0)
-  avgSpeed           Float    @default(0)
-  positionCount      Int      @default(0)
-  segmentationSource String   @default("live")
+  distanceKm         Float     @default(0)
+  distanceMeters     Float     @default(0)
+  maxSpeed           Float     @default(0)
+  avgSpeed           Float     @default(0)
+  positionCount      Int       @default(0)
+  segmentationSource String    @default("live")
+  /// Espace dépôt (2026-08) — mission à laquelle ce trajet est rattaché, une fois la
+  /// mission terminée. C'est ce lien qui autorise un DEPOT à consulter le trajet dans
+  /// son historique. Null = trajet ordinaire, invisible de tout dépôt.
+  missionId          String?   @db.Uuid
+  mission            Mission?  @relation("TripMission", fields: [missionId], references: [id], onDelete: SetNull)
   polyline           String?
   /// Sprint G.3 V1.4 : polyligne snappee aux routes via OSRM /match.
   /// Si null, le frontend affiche `polyline` (raw GPS).
@@ -983,25 +1023,583 @@ model Trip {
   /// Editable par FLEET_ADMIN, FLEET_MANAGER (avec perm `trips_edit_notes`)
   /// et SUPER_ADMIN. On ne garde pas l'historique : seul le dernier auteur
   /// est trace via `notesUpdatedBy*` pour traçabilite minimale.
-  notes              String?  @db.Text
+  notes              String?   @db.Text
   notesUpdatedAt     DateTime?
-  notesUpdatedById   String?  @db.Uuid
-  notesUpdatedBy     User?    @relation("TripNotesAuthor", fields: [notesUpdatedById], references: [id], onDelete: SetNull)
+  notesUpdatedById   String?   @db.Uuid
+  notesUpdatedBy     User?     @relation("TripNotesAuthor", fields: [notesUpdatedById], references: [id], onDelete: SetNull)
   /// Conducteur snape sur ce trajet. Renseigne automatiquement a la cloture
   /// (`driverSource='AUTO'`) depuis Vehicle.currentDriverId si defini.
   /// Editable a posteriori par les admins/managers (`driverSource='MANUAL'`).
-  driverId           String?  @db.Uuid
-  driver             Driver?  @relation("TripDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  driverId           String?   @db.Uuid
+  driver             Driver?   @relation("TripDriver", fields: [driverId], references: [id], onDelete: SetNull)
   /// 'AUTO' = snape depuis Vehicle.currentDriver au finalize.
   /// 'MANUAL' = modifie manuellement par un admin/manager.
   /// null = pas de driver (jamais assigne).
   driverSource       String?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime  @default(now())
 
   @@index([vehicleId, startedAt(sort: Desc)])
   @@index([fleetId, startedAt(sort: Desc)])
   @@index([driverId, startedAt(sort: Desc)])
+  @@index([missionId])
   @@map("trips")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Espace dépôt (2026-08) — les missions. Cf. design/A2-MISSIONS.md § 1.
+//
+// L'application connaissait des TRAJETS (Trip), détectés a posteriori depuis les
+// positions. Elle ne connaissait pas d'INTENTION : personne ne déclarait « ce camion
+// part à 8h15 livrer Muret pour le dépôt de Fenouillet ».
+//
+// La mission est cette déclaration, et le pivot de tout le bloc A : c'est elle qui
+// ouvre l'accès au dépôt, et sa fenêtre horaire qui le referme.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Mission {
+  id      String @id @default(uuid()) @db.Uuid
+  /// Référence lisible, séquence par flotte : « M-2481 ». Générée en transaction —
+  /// deux missions créées simultanément ne doivent pas recevoir la même référence.
+  /// La contrainte @@unique([fleetId, ref]) est le filet, pas le mécanisme.
+  ref     String
+  fleetId String @db.Uuid
+  fleet   Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  /// Origine et destination : soit un lieu clé de la flotte, soit une adresse libre.
+  originPlaceId String? @db.Uuid
+  originLabel   String
+  destPlaceId   String? @db.Uuid
+  destLabel     String
+
+  /// LA FENÊTRE. C'est elle qui borne l'accès du dépôt : hors de [startAt, endAt],
+  /// la position n'est plus servie — l'API répond 403, ce n'est pas un filtre d'affichage.
+  startAt DateTime
+  endAt   DateTime
+
+  vehicleId String  @db.Uuid
+  /// Restrict : un véhicule ne se supprime pas tant qu'une mission non terminée existe.
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  driverId  String? @db.Uuid
+  driver    Driver? @relation("MissionDriver", fields: [driverId], references: [id], onDelete: SetNull)
+
+  /// Le compte DEPOT destinataire. Null = mission interne, invisible de tout dépôt.
+  /// SetNull : si le dépôt est supprimé, la mission survit et redevient interne.
+  depotUserId String? @db.Uuid
+  depotUser   User?   @relation("MissionDepot", fields: [depotUserId], references: [id], onDelete: SetNull)
+
+  /// Statut DÉRIVÉ, jamais saisi : aucun bouton « passer en cours ». Cf. A2 § 2.
+  status        MissionStatus @default(PLANNED)
+  /// Horodatages réels, alimentés par la détection de position.
+  actualStartAt DateTime?
+  actualEndAt   DateTime?
+  /// Trajet(s) rattachés une fois la mission terminée.
+  trips         Trip[]        @relation("TripMission")
+
+  /// Notes internes du transporteur — NON transmises au dépôt.
+  notes           String?
+  createdByUserId String?            @db.Uuid
+  cancelledAt     DateTime?
+  cancelReason    String?
+  /// Lot A4 — les liens publics de suivi ouverts sur cette mission. Cascade : la mission
+  /// disparaît, ses liens aussi. Un lien orphelin serait un accès sans objet ni contrôle.
+  shareLinks      MissionShareLink[]
+  /// La demande dont cette mission est nee, quand elle vient d une negociation.
+  request         MissionRequest?    @relation("MissionFromRequest")
+  /// Les arrets de la tournee. originLabel/destLabel en sont le resume derive.
+  stops           MissionStop[]
+  /// L'historique des versions de la tournee, du plus ancien au plus recent.
+  stopRevisions   MissionStopRevision[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([fleetId, ref])
+  @@index([fleetId, startAt])
+  /// L'index du périmètre dépôt : toute requête d'un DEPOT porte depotUserId.
+  @@index([depotUserId, startAt])
+  /// L'index de l'indisponibilité véhicule et de la détection de conflit de créneau.
+  @@index([vehicleId, startAt, endAt])
+  @@map("missions")
+}
+
+/// Espace dépôt (2026-08), lot A4 — LE LIEN PUBLIC DE SUIVI.
+///
+/// ┌─ CE QUE CE MODÈLE PROTÈGE ────────────────────────────────────────────────┐
+/// │ Un lien public qui n'expire pas, ou qui expose plus que prévu, est une      │
+/// │ fuite PERMANENTE et INDEXABLE. Le dépôt l'envoie par SMS à son client       │
+/// │ final ; ce SMS se transfère, se copie dans un groupe, finit sur une page.   │
+/// │                                                                            │
+/// │ D'où trois propriétés portées par le modèle lui-même :                      │
+/// │   · `token` unique, opaque, 22 caractères base62 — jamais un uuid de        │
+/// │     mission, jamais dérivé d'un identifiant existant ;                      │
+/// │   · `expiresAt` calculé À LA CRÉATION et JAMAIS prolongeable — aucun        │
+/// │     endpoint ne le repousse, prolonger c'est créer un nouveau lien ;        │
+/// │   · le suivi d'usage (`openCount`, `lastOpenedFrom`) pour que le dépôt      │
+/// │     révoque en connaissance de cause.                                       │
+/// └────────────────────────────────────────────────────────────────────────────┘
+///
+/// Calqué sur `ReservationBookingLink`, qui a fait ses preuves — avec l'expiration
+/// rendue OBLIGATOIRE (là-bas elle est facultative : ici, un lien sans terme n'a
+/// aucun sens légitime). Cf. design/A4-PARTAGE.md § 1.
+model MissionShareLink {
+  id        String  @id @default(uuid()) @db.Uuid
+  missionId String  @db.Uuid
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  /// Opaque, imprévisible, 22 caractères base62. JAMAIS un uuid de mission : un token
+  /// prévisible donnerait accès à toutes les missions par simple énumération.
+  token String @unique
+
+  /// Qui a généré le lien — un compte DEPOT, ou un gestionnaire du transporteur.
+  /// Cascade : le compte supprimé emporte ses liens. Un lien sans auteur est un accès
+  /// que plus personne n'assume.
+  createdByUserId String @db.Uuid
+  createdBy       User   @relation("MissionShareAuthor", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  /// L'EXPIRATION. Calculée à la création, jamais prolongeable, vérifiée à chaque
+  /// requête à l'heure serveur.
+  expiresAt DateTime
+  duration  ShareDuration
+
+  revokedAt       DateTime?
+  revokedByUserId String?   @db.Uuid
+
+  /// Suivi d'usage — pour une révocation éclairée et pour l'audit.
+  openCount      Int       @default(0)
+  firstOpenedAt  DateTime?
+  lastOpenedAt   DateTime?
+  /// Empreinte TRONQUÉE de l'appelant (« 92.184.x.x »), jamais l'IP complète : on veut
+  /// distinguer deux destinataires, pas identifier une personne (RGPD).
+  lastOpenedFrom String?
+
+  createdAt DateTime @default(now())
+
+  @@index([missionId, createdAt])
+  /// L'index de la purge quotidienne des liens expirés.
+  @@index([expiresAt])
+  @@map("mission_share_links")
+}
+
+/// Les trois durées d'A4 § 4. Pas de durée libre : un champ « nombre de minutes »
+/// finirait à 43 200 le jour où quelqu'un voudra « un lien pour le mois ».
+enum ShareDuration {
+  /// `now + 15 min` — le défaut, et la contrainte client explicite.
+  MIN_15
+  /// `now + 1 h`
+  HOUR_1
+  /// `mission.endAt + 30 min`. La marge couvre le retard : un lien qui expire pile à
+  /// l'heure prévue meurt au moment où le client en a le plus besoin.
+  UNTIL_MISSION_END
+}
+
+enum MissionStatus {
+  /// À la création. La position n'est PAS servie au dépôt, même si startAt est passé.
+  PLANNED
+  /// Première position détectée après startAt − 15 min.
+  IN_PROGRESS
+  /// now > endAt et véhicule pas encore arrivé. N'INTERROMPT PAS le suivi : c'est
+  /// précisément le moment où le dépôt a le plus besoin de voir le camion.
+  LATE
+  /// Arrivée détectée, ou clôture manuelle. Ferme l'accès et tous les liens de partage.
+  DONE
+  /// Annulation explicite avec motif. Reste dans l'historique du dépôt.
+  CANCELLED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  DEMANDES DE MISSION ET DEVIS  (2026-08)
+//
+//  Jusqu'ici le dépôt était un TIERS EN LECTURE SEULE : il recevait des missions,
+//  il n'en demandait aucune. Ce bloc lui ouvre le droit de DEMANDER — pas de créer.
+//  La distinction porte tout le reste : une demande n'immobilise aucun véhicule,
+//  n'ouvre aucun accès à une position, et ne devient une `Mission` qu'au moment où
+//  le transporteur affecte un camion. Tant que les deux parties n'ont pas signé,
+//  rien n'existe côté exploitation.
+//
+//  Trois décisions structurantes, écrites ici parce qu'elles ne se devinent pas :
+//
+//  1. LA NÉGOCIATION EST UN FIL, PAS DEUX CHAMPS. Chaque proposition est une ligne
+//     de `MissionQuoteRound`. Écraser un « prix courant » ferait perdre qui a
+//     proposé quoi et quand — et une négociation commerciale sans trace est un
+//     litige en puissance.
+//
+//  2. LES DISTANCES SONT EN MÈTRES, ENTIERS. Le devis est un calcul d'argent : les
+//     kilomètres flottants introduisent une dérive d'arrondi qui finit par une
+//     facture contestée. On stocke des mètres, on affiche des kilomètres.
+//
+//  3. LES MONTANTS SONT EN CENTIMES, ENTIERS — même convention que
+//     `AiSubscription.unitAmountEurCents`, pour la même raison.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Le cycle d'une demande. Les transitions sont gardées côté service ; cet enum ne
+/// fait que les nommer.
+enum MissionRequestStatus {
+  /// Le dépôt saisit. Rien n'est parti, rien n'est visible du transporteur.
+  DRAFT
+  /// Envoyée. Le devis automatique est calculé À CET INSTANT et figé dans le
+  /// premier tour : un tarif modifié après coup ne doit pas réécrire une offre
+  /// déjà lue par le dépôt.
+  SUBMITTED
+  /// Une contre-proposition est sur la table, en attente de l'autre partie.
+  /// L'auteur du dernier tour dit qui doit répondre.
+  NEGOTIATING
+  /// Les deux parties sont d'accord sur un montant. Reste à affecter.
+  ACCEPTED
+  /// Camion et conducteur affectés : la `Mission` existe. Fin du cycle.
+  CONVERTED
+  /// Refusée par l'une des deux parties, avec motif.
+  REJECTED
+  /// Personne n'a répondu avant l'échéance du devis.
+  EXPIRED
+}
+
+/// Ce qu'on vient faire à une adresse. Une tournée mélange les deux.
+enum MissionStopKind {
+  PICKUP
+  DROPOFF
+}
+
+/// Qui a émis un tour de négociation. Le rôle, pas la personne : c'est la POSITION
+/// dans la négociation qui compte, et elle survit au départ d'un salarié.
+enum QuoteRoundAuthor {
+  /// Proposé par le système au dépôt de la grille tarifaire du transporteur.
+  SYSTEM
+  DEPOT
+  CARRIER
+}
+
+/// Une DEMANDE de mission émise par un compte dépôt.
+///
+/// ⚠️ Ce n'est PAS une `Mission`. Aucun véhicule n'est réservé, aucun événement
+/// d'agenda n'est posé, aucune position n'est servie. La `Mission` naît à
+/// l'affectation, par `MissionsService.creer` — le chemin existant, avec ses sept
+/// validations et ses quatre effets de bord.
+model MissionRequest {
+  id      String @id @default(uuid()) @db.Uuid
+  /// Référence lisible, séquence par flotte : « D-0142 ». Distincte de celle des
+  /// missions : un dépôt qui appelle doit pouvoir dire « ma demande D-0142 » sans
+  /// qu'on la confonde avec la mission M-0142 d'un autre client.
+  ref     String
+  fleetId String @db.Uuid
+  fleet   Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  /// L'auteur. Cascade : le compte disparaît, ses demandes aussi — contrairement
+  /// aux missions, qui survivent parce qu'elles ont eu lieu.
+  depotUserId String @db.Uuid
+  depotUser   User   @relation("MissionRequestDepot", fields: [depotUserId], references: [id], onDelete: Cascade)
+
+  status MissionRequestStatus @default(DRAFT)
+
+  /// Le trajet, en une ou plusieurs adresses (cf. MissionStop).
+  stops MissionStop[]
+
+  /// La fenêtre SOUHAITÉE. Le transporteur peut la contester en contre-proposant :
+  /// c'est une demande, pas une réservation.
+  wantedStartAt DateTime
+  wantedEndAt   DateTime
+
+  /// Ce que le dépôt fait transporter. Texte libre : normaliser une nomenclature
+  /// de marchandises serait un chantier à soi seul, et personne ne la remplirait.
+  goodsDescription String?
+  weightKg         Int?
+  /// Type de véhicule souhaité — sert le coefficient tarifaire.
+  vehicleType      VehicleType?
+
+  /// ── LES TROIS DISTANCES, ET POURQUOI ELLES SONT TROIS ────────────────────────
+  /// `declared` : ce que le dépôt a saisi. `estimated` : ce que le serveur calcule
+  /// depuis les adresses. Elles divergent souvent, et aucune des deux n'a raison
+  /// d'office — le dépôt connaît ses contraintes de tournée, le calcul ignore les
+  /// interdictions de tonnage. `used` est celle RETENUE pour le devis, choisie par
+  /// le transporteur. Garder les trois permet de dire « vous aviez annoncé 40 km,
+  /// nous en comptons 47 » plutôt que d'imposer un chiffre sans explication.
+  declaredDistanceM  Int?
+  estimatedDistanceM Int?
+  usedDistanceM      Int?
+
+  /// Les tours de négociation, du plus ancien au plus récent.
+  rounds MissionQuoteRound[]
+
+  /// Le montant sur lequel les deux parties se sont accordées, en centimes.
+  agreedAmountCents Int?
+  agreedAt          DateTime?
+  /// Échéance du devis courant. Passée, la demande bascule EXPIRED.
+  quoteExpiresAt    DateTime?
+
+  /// Motif de refus — obligatoire côté service. Sans lui, l'autre partie ne sait
+  /// pas quoi corriger et repose la même demande.
+  rejectedAt     DateTime?
+  rejectedReason String?
+  rejectedBy     QuoteRoundAuthor?
+
+  /// La mission née de cette demande. SetNull : la mission peut être supprimée
+  /// sans effacer la trace de la négociation qui l'a produite.
+  missionId String?  @unique @db.Uuid
+  mission   Mission? @relation("MissionFromRequest", fields: [missionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fleetId, ref])
+  /// Le tableau du transporteur : ses demandes en attente, les plus récentes d'abord.
+  @@index([fleetId, status, createdAt])
+  /// L'écran du dépôt : les siennes.
+  @@index([depotUserId, createdAt])
+  @@map("mission_requests")
+}
+
+/// Une adresse d'une tournée — d'une DEMANDE ou d'une MISSION.
+///
+/// ┌─ POURQUOI PARTOUT, ET PAS SEULEMENT SUR LA DEMANDE ───────────────────────┐
+/// │ « C'est rare, les missions avec une seule adresse » (client, 2026-08-13).  │
+/// │ Cantonner les arrêts à la demande aurait produit une mission APPAUVRIE dès │
+/// │ sa création : le transporteur aurait perdu, en convertissant, l'essentiel  │
+/// │ de ce que le dépôt avait décrit.                                          │
+/// └────────────────────────────────────────────────────────────────────────────┘
+///
+/// ⚠️ `Mission.originLabel` et `Mission.destLabel` RESTENT, et deviennent DÉRIVÉS :
+/// premier et dernier arrêt. Les conserver évite de toucher `MissionListeDto`,
+/// `MissionEnCoursDto`, l'espace dépôt, les liens publics et l'agenda — soit tout ce
+/// que le client teste en ce moment. Les arrêts sont la source de vérité, les deux
+/// libellés en sont le résumé, recalculé à chaque écriture.
+///
+/// Composition, volontairement SOUPLE (client, 2026-08-13) : un seul `PICKUP`, en
+/// position 0 — l'adresse de chargement, elle ne bouge pas. Au moins un `DROPOFF`,
+/// sans maximum. Le retour au dépôt est un `DROPOFF` COMME UN AUTRE, jamais ajouté
+/// d'office : « le retour n'est pas obligatoire ».
+model MissionStop {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// L'un OU l'autre, jamais les deux — garde posée côté service, Prisma ne sait
+  /// pas exprimer un « exactement un parmi deux » (contrainte CHECK ajoutée par la
+  /// migration).
+  requestId String?         @db.Uuid
+  request   MissionRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  missionId String?         @db.Uuid
+  mission   Mission?        @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  /// Rang dans la tournée, à partir de 0. C'est l'ordre de passage demandé.
+  position Int
+  kind     MissionStopKind @default(DROPOFF)
+
+  /// Adresse libre, ou lieu clé de la flotte quand il est connu.
+  label   String
+  placeId String?     @db.Uuid
+  place   FleetPlace? @relation(fields: [placeId], references: [id], onDelete: SetNull)
+
+  /// Coordonnées, quand le géocodage a abouti. Nulles = distance non estimable
+  /// sur ce segment, et l'écran doit le dire plutôt que d'afficher un zéro.
+  lat Float?
+  lng Float?
+
+  /// Créneau souhaité sur cet arrêt précis, quand il y en a un.
+  wantedAt DateTime?
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, position])
+  @@unique([missionId, position])
+  @@index([requestId])
+  @@index([missionId])
+  @@map("mission_stops")
+}
+
+/// UNE version de la tournée d'une mission. Immuable une fois écrite.
+///
+/// ┌─ POURQUOI UN JOURNAL ET PAS UN SIMPLE « modifiéLe / modifiéPar » ──────────┐
+/// │ Une tournée qui change change AUSSI le prix : trois livraisons de plus, et │
+/// │ la distance saute d'une tranche. Six mois plus tard, face à une facture    │
+/// │ contestée, « modifié le 15 août par Claire » ne répond à aucune des trois  │
+/// │ questions qui comptent : qu'y avait-il AVANT, combien ça valait, et        │
+/// │ pourquoi ça a bougé.                                                       │
+/// │                                                                            │
+/// │ Chaque ligne porte donc l'ÉTAT COMPLET après le changement, plus le tarif  │
+/// │ recalculé et celui d'avant. On relit l'histoire sans la reconstituer, et   │
+/// │ sans dépendre d'une grille tarifaire qui aura pu changer entre-temps.      │
+/// │                                                                            │
+/// │ Même patron que `MissionQuoteRound` pour la négociation : une ligne par    │
+/// │ mouvement, jamais un champ tenu en parallèle qui diverge de son historique.│
+/// └────────────────────────────────────────────────────────────────────────────┘
+model MissionStopRevision {
+  id        String  @id @default(uuid()) @db.Uuid
+  missionId String  @db.Uuid
+  mission   Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  /// Rang de la révision, à partir de 0. La 0 est l'état À LA CRÉATION : sans elle,
+  /// l'historique commencerait au premier changement et personne ne saurait d'où
+  /// la tournée est partie.
+  position Int
+
+  /// L'auteur. `authorUserId` peut devenir nul (compte supprimé) — c'est pourquoi
+  /// le NOM est figé à l'écriture. Un journal dont les auteurs s'effacent avec les
+  /// comptes ne prouve plus rien.
+  authorUserId String?   @db.Uuid
+  authorUser   User?     @relation("MissionStopRevisionAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  authorName   String
+  authorRole   UserRole
+
+  /// Ce que l'auteur a répondu à « pourquoi ». Facultatif à la création (rien à
+  /// justifier), demandé ensuite.
+  reason String?
+
+  /// L'état COMPLET des arrêts après ce changement : `[{ position, kind, label }]`.
+  /// Figé en JSON plutôt que recomposé depuis `MissionStop`, qui ne porte que
+  /// l'état COURANT.
+  stops Json
+
+  /// Distance retenue après ce changement, en mètres. Nulle tant que personne ne
+  /// l'a saisie — aucun service de routage n'est branché (cf. A6 Q3).
+  distanceM Int?
+
+  /// Tarif recalculé sur la grille après ce changement, en centimes HT.
+  /// `null` = « sur devis », ou aucune grille active : on ne l'invente pas.
+  amountCents Int?
+
+  /// Le tarif d'AVANT, pour lire l'écart sans rejouer tout l'historique.
+  previousAmountCents Int?
+
+  createdAt DateTime @default(now())
+
+  @@unique([missionId, position])
+  @@index([missionId])
+  @@map("mission_stop_revisions")
+}
+
+/// UN tour de négociation. Immuable une fois écrit.
+///
+/// Le montant courant d'une demande, c'est le dernier tour — jamais un champ tenu
+/// à jour en parallèle, qui finirait par diverger de son propre historique.
+model MissionQuoteRound {
+  id        String         @id @default(uuid()) @db.Uuid
+  requestId String         @db.Uuid
+  request   MissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  /// Rang du tour, à partir de 0. Le tour 0 est le devis automatique.
+  position Int
+  author   QuoteRoundAuthor
+  /// Null pour un tour SYSTEM : personne ne l'a écrit.
+  authorUserId String? @db.Uuid
+
+  /// NULL = « sur devis » : la distance dépasse la dernière tranche chiffrée, aucun
+  /// montant n'est calculable. Le tour existe quand même — il porte les conditions.
+  amountCents Int?
+
+  /// ┌─ UN TOUR PORTE SES CONDITIONS, PAS SEULEMENT UN PRIX ─────────────────────┐
+  /// │ Une contre-proposition peut changer les adresses, le créneau et la         │
+  /// │ distance retenue, pas uniquement le montant (arbitrage I, 2026-08-13).     │
+  /// │                                                                            │
+  /// │ Chaque tour fige donc l'INTÉGRALITÉ de ce qu'il propose : arrêts, fenêtre, │
+  /// │ distance. Accepter, c'est accepter UNE VERSION PRÉCISE — un accord sur un  │
+  /// │ prix dont les conditions ont bougé entre-temps n'est pas un accord.        │
+  /// │                                                                            │
+  /// │ Snapshot COMPLET et non différentiel : quelques centaines d'octets contre  │
+  /// │ une reconstitution par accumulation de diffs, qui se lit mal et se trompe. │
+  /// └────────────────────────────────────────────────────────────────────────────┘
+  terms Json
+
+  /// Le détail du calcul, figé. Pour un tour automatique : la tranche appliquée,
+  /// le HT, la TVA, le TTC. Pour un tour humain ajusté : le calcul de départ ET
+  /// l'écart consenti. Jamais recalculé — une grille modifiée demain ne doit pas
+  /// réécrire un devis déjà lu.
+  breakdown Json?
+
+  /// Le mot qui accompagne l'offre. C'est souvent lui qui débloque la négociation.
+  message String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, position])
+  @@index([requestId, position])
+  @@map("mission_quote_rounds")
+}
+
+/// La grille tarifaire d'une flotte — ce qui permet de calculer un devis.
+///
+/// Par flotte, comme `AgendaAgentSettings`, et NON un singleton : `PricingSettings`
+/// (plus haut) est le prix de vente de Tracky lui-même, un autre domaine.
+///
+/// ⚠️ TANT QU'AUCUNE LIGNE N'EXISTE POUR UNE FLOTTE, LA DEMANDE DE MISSION EST
+/// FERMÉE À SES DÉPÔTS. Un devis calculé sur une grille vide vaudrait zéro euro et
+/// partirait quand même : mieux vaut une fonctionnalité indisponible qu'une offre
+/// commerciale fausse.
+model MissionPricingSettings {
+  id      String @id @default(uuid()) @db.Uuid
+  fleetId String @unique @db.Uuid
+  fleet   Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  /// Interrupteur explicite. Une grille remplie mais désactivée ferme la demande
+  /// sans effacer les tarifs — utile le temps de les revoir.
+  enabled Boolean @default(false)
+
+  /// ── LES TRANCHES SONT LE CŒUR DU CALCUL ──────────────────────────────────────
+  /// La grille réelle du client n'est PAS un prix au kilomètre : c'est un forfait
+  /// par tranche de distance (79 € de 0 à 50 km, 169 € de 51 à 100…). Un modèle
+  /// unitaire aurait produit des montants faux à chaque borne.
+  tiers MissionPricingTier[]
+
+  /// ── SUPPLÉMENTS, TOUS OPTIONNELS ─────────────────────────────────────────────
+  /// À zéro par défaut : « modulable et non stricte » (client, 2026-08-13). Une
+  /// flotte dont les tranches couvrent tout les laisse à zéro et ils disparaissent
+  /// du devis.
+  /// Chaque livraison au-delà de la première.
+  extraStopCents   Int @default(0)
+  /// Attente sur site, à l'heure entamée.
+  waitingHourCents Int @default(0)
+
+  /// TVA en pourcentage entier appliqué au total HT. 20 = 20 %.
+  vatPct Int @default(20)
+
+  /// Durée de validité d'un devis, en heures. Au-delà, la demande expire.
+  quoteValidityHours Int @default(48)
+
+  /// Mot affiché au dépôt sous le devis — conditions, délais de paiement.
+  quoteFooterNote String?
+
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("mission_pricing_settings")
+}
+
+/// Une tranche de distance et son forfait.
+///
+/// ┌─ « SUR DEVIS » EST UN ÉTAT, PAS UN PRIX ───────────────────────────────────┐
+/// │ La grille du client s'arrête à 400 km : au-delà, « Sur devis ». On le      │
+/// │ représente par `priceCents = NULL`, et cela se propage jusqu'au bout :     │
+/// │ aucun tour 0 automatique n'est écrit, la demande part SANS montant, et le  │
+/// │ transporteur chiffre lui-même.                                            │
+/// │                                                                            │
+/// │ Mettre zéro à la place aurait produit un devis à 0 € — une offre           │
+/// │ commerciale fausse, envoyée à un client final.                            │
+/// └────────────────────────────────────────────────────────────────────────────┘
+model MissionPricingTier {
+  id         String                 @id @default(uuid()) @db.Uuid
+  settingsId String                 @db.Uuid
+  settings   MissionPricingSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  /// La prestation. Libellé libre : la grille du client est numérotée
+  /// (« 2. Courses Express »), donc d'autres suivront, et une énumération figée
+  /// imposerait une migration à chaque ajout.
+  category String
+
+  /// Rang d'affichage et d'évaluation, à partir de 0.
+  position Int
+
+  /// Bornes en KILOMÈTRES, toutes deux INCLUSES. `toKm` nul = pas de limite haute.
+  /// Le service refuse les trous et les recouvrements : une distance doit tomber
+  /// dans une tranche et une seule.
+  fromKm Int
+  toKm   Int?
+
+  /// Forfait HT en centimes. NULL = « sur devis » (cf. l'encadré).
+  priceCents Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([settingsId, category, position])
+  @@index([settingsId, category, fromKm])
+  @@map("mission_pricing_tiers")
 }
 
 /// Conducteur — variante "hybride" (Phase 2).
@@ -1015,32 +1613,35 @@ model Trip {
 ///   pour preserver l'historique des Trip.driverId snappes.
 /// - Couleur servant de pastille UI pour repere visuel rapide (ex: planning).
 model Driver {
-  id             String   @id @default(uuid()) @db.Uuid
-  fleetId        String   @db.Uuid
-  fleet          Fleet    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  firstName      String
-  lastName       String
+  id              String    @id @default(uuid()) @db.Uuid
+  fleetId         String    @db.Uuid
+  fleet           Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  firstName       String
+  lastName        String
   /// E.164 (+33612345678) — utile pour SMS/whatsapp futur, validation cote app.
-  phone          String?
-  email          String?
+  phone           String?
+  email           String?
   /// Numero de permis (libre, usage interne — pas de validation officielle).
-  licenseNumber  String?
+  licenseNumber   String?
   /// Couleur hex de pastille UI (default vert tracky).
-  color          String?  @default("#10E0A0")
+  color           String?   @default("#10E0A0")
   /// Note libre sur le conducteur (a propos de lui, distinct de Trip.notes).
-  notes          String?  @db.Text
-  isActive       Boolean  @default(true)
+  notes           String?   @db.Text
+  isActive        Boolean   @default(true)
   /// Phase 3 — Si renseigne, ce driver a un compte User (login) avec role DRIVER.
   /// 1:1 strict (un User = un Driver max).
-  userId         String?  @unique @db.Uuid
-  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId          String?   @unique @db.Uuid
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   /// Vehicules dont ce driver est le conducteur "courant" (defaut sur les
   /// prochains trajets). Souvent 1, peut etre N si plusieurs vehicules.
   currentVehicles Vehicle[] @relation("VehicleCurrentDriver")
   /// Tous les trajets snappes sur ce driver (historique).
-  trips          Trip[]   @relation("TripDriver")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  trips           Trip[]    @relation("TripDriver")
+  /// Espace depot (2026-08) — missions affectees a ce conducteur. La mission garde le
+  /// conducteur historique meme s'il est retire du vehicule (SetNull a la suppression).
+  missions        Mission[] @relation("MissionDriver")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([fleetId])
   @@index([fleetId, isActive])
@@ -1049,27 +1650,27 @@ model Driver {
 
 /// `geometry` (geography 4326) ajouté manuellement dans la migration.
 model Geofence {
-  id           String       @id @default(uuid()) @db.Uuid
-  fleetId      String       @db.Uuid
-  fleet        Fleet        @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  name         String
-  type         GeofenceType
-  rule         GeofenceRule @default(BOTH)
-  centerLat    Float        @default(0)
-  centerLng    Float        @default(0)
-  radiusMeters Int          @default(500)
+  id             String            @id @default(uuid()) @db.Uuid
+  fleetId        String            @db.Uuid
+  fleet          Fleet             @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  name           String
+  type           GeofenceType
+  rule           GeofenceRule      @default(BOTH)
+  centerLat      Float             @default(0)
+  centerLng      Float             @default(0)
+  radiusMeters   Int               @default(500)
   /// Pour les geofences POLYGON : liste ordonnee de sommets [{lat, lng}, ...].
   /// Sprint F.2 V1.4. Ignore si type = CIRCLE.
-  polygonPoints Json?
+  polygonPoints  Json?
   /// V1.5 (Sprint N) — pour les geofences CORRIDOR : polyligne ordonnee
   /// + largeur en metres. Alerte si le vehicule sort du buffer.
-  corridorPoints  Json?
-  corridorWidthM  Int?         @default(100)
-  color        String?      @default("#10e0a0")
-  active       Boolean      @default(true)
+  corridorPoints Json?
+  corridorWidthM Int?              @default(100)
+  color          String?           @default("#10e0a0")
+  active         Boolean           @default(true)
   vehicleTargets GeofenceVehicle[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([fleetId])
   @@map("geofences")
@@ -1091,28 +1692,28 @@ model GeofenceVehicle {
 }
 
 model Alert {
-  id               String        @id @default(uuid()) @db.Uuid
-  fleetId          String        @db.Uuid
-  fleet            Fleet         @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  vehicleId        String?       @db.Uuid
-  vehicle          Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  trackerId        String?       @db.Uuid
-  tracker          Tracker?      @relation(fields: [trackerId], references: [id], onDelete: SetNull)
-  type             AlertType
-  severity         AlertSeverity @default(WARNING)
-  title            String
-  message          String?
-  payload          Json?
-  latitude         Float?
-  longitude        Float?
-  acknowledgedAt   DateTime?
-  acknowledgedBy   String?       @db.Uuid
-  acknowledgedUser User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  id                String             @id @default(uuid()) @db.Uuid
+  fleetId           String             @db.Uuid
+  fleet             Fleet              @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  vehicleId         String?            @db.Uuid
+  vehicle           Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  trackerId         String?            @db.Uuid
+  tracker           Tracker?           @relation(fields: [trackerId], references: [id], onDelete: SetNull)
+  type              AlertType
+  severity          AlertSeverity      @default(WARNING)
+  title             String
+  message           String?
+  payload           Json?
+  latitude          Float?
+  longitude         Float?
+  acknowledgedAt    DateTime?
+  acknowledgedBy    String?            @db.Uuid
+  acknowledgedUser  User?              @relation("AlertAcknowledgedBy", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
   // V1.5 (Sprint M) — escalade automatique si CRITICAL non-ack > N min.
   // Une alerte ne peut etre escaladee qu'une seule fois (escalatedAt non null).
-  escalatedAt      DateTime?
+  escalatedAt       DateTime?
   surveillanceEvent SurveillanceEvent?
-  createdAt        DateTime      @default(now())
+  createdAt         DateTime           @default(now())
 
   @@index([fleetId, createdAt(sort: Desc)])
   @@index([fleetId, acknowledgedAt])
@@ -1211,6 +1812,10 @@ model FleetPlace {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
+  /// Arrets de demandes de mission qui pointent sur ce lieu. SetNull cote arret :
+  /// supprimer un lieu cle ne doit pas effacer une demande deja negociee.
+  requestStops MissionStop[]
+
   @@unique([fleetId, stationId])
   @@index([fleetId])
   @@index([fleetId, kind])
@@ -1308,35 +1913,35 @@ model PlaceAutomationRun {
 /// via SurveillanceSchedulerService (cron toutes les minutes) selon les
 /// plages horaires definies.
 model SurveillanceProfile {
-  id           String                  @id @default(uuid()) @db.Uuid
-  vehicleId    String                  @unique @db.Uuid
-  vehicle      Vehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  fleetId      String                  @db.Uuid
-  fleet        Fleet                   @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  mode         SurveillanceMode        @default(OFF)
-  sensitivity  SurveillanceSensitivity @default(MEDIUM)
+  id                      String                  @id @default(uuid()) @db.Uuid
+  vehicleId               String                  @unique @db.Uuid
+  vehicle                 Vehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fleetId                 String                  @db.Uuid
+  fleet                   Fleet                   @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  mode                    SurveillanceMode        @default(OFF)
+  sensitivity             SurveillanceSensitivity @default(MEDIUM)
   // Plage horaire (HH:mm, UTC). Si `scheduleStartTime > scheduleEndTime`,
   // la plage passe minuit (ex 20:00 -> 06:00).
-  scheduleStartTime String?
-  scheduleEndTime   String?
+  scheduleStartTime       String?
+  scheduleEndTime         String?
   // Jours actifs : array de strings ["mon","tue","wed","thu","fri","sat","sun"].
   // Null = tous les jours.
-  scheduleDays      Json?
+  scheduleDays            Json?
   // Triggers actifs lors d'un armement.
-  triggerVibration  Boolean @default(true)
-  triggerMovement   Boolean @default(true)
-  triggerDoor       Boolean @default(false)
+  triggerVibration        Boolean                 @default(true)
+  triggerMovement         Boolean                 @default(true)
+  triggerDoor             Boolean                 @default(false)
   // Destinataires supplementaires (FLEET_MANAGER opt-in). Les FLEET_ADMIN
   // de la fleet sont notifies par defaut via NotificationDispatchService.
   additionalNotifyUserIds String[]
   // Etat courant — maintenu par armNow/disarmNow ou par le scheduler.
-  currentlyArmed Boolean   @default(false)
-  lastArmedAt    DateTime?
-  lastDisarmedAt DateTime?
+  currentlyArmed          Boolean                 @default(false)
+  lastArmedAt             DateTime?
+  lastDisarmedAt          DateTime?
   // Audit : qui a cree le profil.
-  createdBy      String    @db.Uuid
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdBy               String                  @db.Uuid
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
 
   events SurveillanceEvent[]
 
@@ -1466,13 +2071,13 @@ model TrackerCommand {
   // `diagnosticHint` est une suggestion textuelle generee par le service quand la
   // commande echoue (ex: "tester reset SMS"). `acknowledgedBy` permet a un admin de
   // marquer une erreur comme traitee depuis le centre d'alertes.
-  expectedResult   String?
-  observedResult   String?
-  contextSnapshot  Json?
-  diagnosticHint   String?
-  outcomeReason    String?
-  acknowledgedBy   String?              @db.Uuid
-  acknowledgedAt   DateTime?
+  expectedResult  String?
+  observedResult  String?
+  contextSnapshot Json?
+  diagnosticHint  String?
+  outcomeReason   String?
+  acknowledgedBy  String?               @db.Uuid
+  acknowledgedAt  DateTime?
   requestedBy     String                @db.Uuid
   requestedByUser User                  @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
   createdAt       DateTime              @default(now())
@@ -1488,9 +2093,9 @@ model TrackerCommand {
 model WireLog {
   id        String   @id @default(uuid()) @db.Uuid
   imei      String
-  direction String   // 'IN' | 'OUT'
+  direction String // 'IN' | 'OUT'
   raw       String   @db.Text
-  frameType String?  // 'login' | 'heartbeat' | 'position' | 'unknown' | 'command' | 'ack'
+  frameType String? // 'login' | 'heartbeat' | 'position' | 'unknown' | 'command' | 'ack'
   commandId String?  @db.Uuid
   context   Json?
   createdAt DateTime @default(now())
@@ -1503,8 +2108,8 @@ model WireLog {
 
 model ErrorLog {
   id        String   @id @default(uuid()) @db.Uuid
-  level     String   // 'ERROR' | 'CRITICAL'
-  source    String   // 'tcp-server' | 'engine-control' | 'tracker-commands' | 'http' | ...
+  level     String // 'ERROR' | 'CRITICAL'
+  source    String // 'tcp-server' | 'engine-control' | 'tracker-commands' | 'http' | ...
   message   String
   stack     String?  @db.Text
   imei      String?
@@ -1574,49 +2179,49 @@ model AiProviderSettings {
 /// UNIQUE réutilisée partout (fiche véhicule, rapports, replay). Le récit/Trust Score LLM (Palier 3)
 /// s'ajoute dans les colonnes `provider`/`narrative`/`trustScore` sans recalcul.
 model TripAnalysis {
-  id            String   @id @default(uuid()) @db.Uuid
-  tripId        String   @unique @db.Uuid
-  fleetId       String   @db.Uuid
-  vehicleId     String   @db.Uuid
+  id        String @id @default(uuid()) @db.Uuid
+  tripId    String @unique @db.Uuid
+  fleetId   String @db.Uuid
+  vehicleId String @db.Uuid
 
   // Résumé
-  distanceKm    Float
-  durationSec   Int
-  movingSec     Int
-  avgSpeedKmh   Float
-  maxSpeedKmh   Float
-  stopCount     Int
-  idleSec       Int      // moteur tournant à l'arrêt (ignition ON, vitesse ~0)
+  distanceKm  Float
+  durationSec Int
+  movingSec   Int
+  avgSpeedKmh Float
+  maxSpeedKmh Float
+  stopCount   Int
+  idleSec     Int // moteur tournant à l'arrêt (ignition ON, vitesse ~0)
 
   // Qualité GPS
   gpsPoints     Int
-  gpsValidRatio Float    // 0..1
-  gpsLostCount  Int      // trous de signal détectés
+  gpsValidRatio Float // 0..1
+  gpsLostCount  Int // trous de signal détectés
 
   // Excès de vitesse (limites OSM quand connues)
-  speedingCount Int      // nb de segments en excès
-  speedingSec   Int      // durée cumulée en excès
-  maxOverKmh    Float    // plus gros dépassement (km/h au-dessus de la limite)
-  limitsKnown   Boolean  @default(false) // au moins une limite OSM résolue
+  speedingCount Int // nb de segments en excès
+  speedingSec   Int // durée cumulée en excès
+  maxOverKmh    Float // plus gros dépassement (km/h au-dessus de la limite)
+  limitsKnown   Boolean @default(false) // au moins une limite OSM résolue
 
   // Éco-conduite
-  harshAccel    Int
-  harshBrake    Int
-  ecoScore      Int      // 0..100 (100 = conduite souple/éco)
-  fuelLiters    Float?   // conso estimée
-  co2Kg         Float?
+  harshAccel Int
+  harshBrake Int
+  ecoScore   Int // 0..100 (100 = conduite souple/éco)
+  fuelLiters Float? // conso estimée
+  co2Kg      Float?
 
   // Détail structuré réutilisable (arrêts, segments d'excès, itinéraire, tracé simplifié)
-  detail        Json
+  detail Json
 
   // Couche LLM optionnelle (Palier 3) — récit + Trust Score, sans recalcul du déterministe
-  provider      String?  // 'claude' | 'gpt' | null (déterministe seul)
-  narrative     String?
-  advice        String?
-  trustScore    Int?     // Tracky Trust Score 0..100
+  provider   String? // 'claude' | 'gpt' | null (déterministe seul)
+  narrative  String?
+  advice     String?
+  trustScore Int? // Tracky Trust Score 0..100
 
-  computedAt    DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([vehicleId, computedAt])
   @@index([fleetId, computedAt])
@@ -1628,7 +2233,7 @@ model TripAnalysis {
 model SpeedLimitCache {
   id        String   @id @default(uuid()) @db.Uuid
   key       String   @unique
-  maxspeed  Int?     // km/h ; null = inconnu (route sans tag maxspeed)
+  maxspeed  Int? // km/h ; null = inconnu (route sans tag maxspeed)
   lat       Float
   lng       Float
   createdAt DateTime @default(now())
@@ -2067,10 +2672,10 @@ model TrackerProvisioning {
 /// alerte rouge dans /admin/alerts.
 model BackupRun {
   id           String   @id @default(uuid()) @db.Uuid
-  status       String   // 'OK' | 'FAILED'
+  status       String // 'OK' | 'FAILED'
   sizeBytes    BigInt?
   durationMs   Int?
-  destination  String?  // 'local' | 's3' | 'backblaze' | 'rclone:remote_name'
+  destination  String? // 'local' | 's3' | 'backblaze' | 'rclone:remote_name'
   filename     String?
   errorMessage String?
   createdAt    DateTime @default(now())
@@ -2082,19 +2687,19 @@ model BackupRun {
 /// Lead capturé via le formulaire de la landing page.
 /// Stocké en DB + notification email à l'admin.
 model Lead {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String
-  email       String
-  phone       String?
-  company     String?
-  fleetSize   String?  // ex: "1-10", "11-50", "50+"
-  message     String?  @db.Text
-  source      String   @default("lp") // "lp" | "whatsapp" | "manual"
-  status      String   @default("NEW") // "NEW" | "CONTACTED" | "CONVERTED" | "REJECTED"
-  ipAddress   String?
-  submissionCount Int  @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  email           String
+  phone           String?
+  company         String?
+  fleetSize       String? // ex: "1-10", "11-50", "50+"
+  message         String?  @db.Text
+  source          String   @default("lp") // "lp" | "whatsapp" | "manual"
+  status          String   @default("NEW") // "NEW" | "CONTACTED" | "CONVERTED" | "REJECTED"
+  ipAddress       String?
+  submissionCount Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([email])
   @@index([status])
@@ -2103,19 +2708,19 @@ model Lead {
 }
 
 model SmsLog {
-  id          String   @id @default(uuid()) @db.Uuid
-  direction   String   // 'OUT' | 'IN'
-  fromNumber  String?
-  toNumber    String?
-  body        String   @db.Text
-  twilioSid   String?
-  status      String?  // queued / sent / delivered / failed / received / undelivered
-  errorCode   String?
-  errorMessage String?
-  imei        String?
+  id             String   @id @default(uuid()) @db.Uuid
+  direction      String // 'OUT' | 'IN'
+  fromNumber     String?
+  toNumber       String?
+  body           String   @db.Text
+  twilioSid      String?
+  status         String? // queued / sent / delivered / failed / received / undelivered
+  errorCode      String?
+  errorMessage   String?
+  imei           String?
   provisioningId String?  @db.Uuid
-  context     Json?
-  createdAt   DateTime @default(now())
+  context        Json?
+  createdAt      DateTime @default(now())
 
   @@index([createdAt(sort: Desc)])
   @@index([imei])
@@ -2159,24 +2764,24 @@ model EmailLog {
 }
 
 model EngineControlCommand {
-  id          String        @id @default(uuid()) @db.Uuid
-  trackerId   String        @db.Uuid
-  tracker     Tracker       @relation(fields: [trackerId], references: [id], onDelete: Cascade)
-  action      EngineAction
-  scheduledAt DateTime?
-  status      CommandStatus @default(PENDING)
-  reason      String?
-  requestedBy String        @db.Uuid
-  source      String        @default("MANUAL") // "MANUAL" | "SCHEDULER" | "DEVICE_OBSERVED"
+  id                   String        @id @default(uuid()) @db.Uuid
+  trackerId            String        @db.Uuid
+  tracker              Tracker       @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  action               EngineAction
+  scheduledAt          DateTime?
+  status               CommandStatus @default(PENDING)
+  reason               String?
+  requestedBy          String        @db.Uuid
+  source               String        @default("MANUAL") // "MANUAL" | "SCHEDULER" | "DEVICE_OBSERVED"
   // Sprint 2 (Fiabilisation) — true si une chute d'ignition est attendable comme
   // preuve reelle de coupure (CUT d'un vehicule en marche). false pour RESTORE ou
   // CUT a l'arret => etat affiche "non verifiable" (pas de transition observable).
-  confirmationExpected Boolean @default(false)
-  lastError   String?
-  sentAt      DateTime?
-  ackedAt     DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  confirmationExpected Boolean       @default(false)
+  lastError            String?
+  sentAt               DateTime?
+  ackedAt              DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
 
   @@index([trackerId, status])
   // V1.10 (Sprint 2 perf) — vehicles.snapshot et positions.service appellent
@@ -2268,8 +2873,8 @@ model FleetAudioConfig {
 }
 
 model VehicleSchedule {
-  id        String @id @default(uuid()) @db.Uuid
-  vehicleId String @unique @db.Uuid
+  id        String  @id @default(uuid()) @db.Uuid
+  vehicleId String  @unique @db.Uuid
   vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   enabled   Boolean @default(false)
   timezone  String  @default("Europe/Paris")
@@ -2309,21 +2914,21 @@ model VehicleSchedule {
 
   // V1.5 (Sprint K) — Calendrier jours feries (lib `date-holidays`).
   // 'FR' = France metropolitaine. Liste : FR / MA / BE / LU / CH (config UI).
-  countryCode    String @default("FR")
+  countryCode   String  @default("FR")
   // INCIDENT 2026-07-14 — coupe automatique les jours FÉRIÉS. OPT-IN, défaut FALSE :
   // par défaut un férié suit les horaires NORMAUX du jour (une flotte de location doit rouler
   // le 14 juillet !). Avant, le seul `countryCode` (défaut 'FR') coupait TOUT tous les fériés →
   // 29/30 véhicules cdef31 immobilisés le 14/07. À n'activer que pour une flotte qui veut
   // vraiment être à l'arrêt les fériés (les fermetures précises passent par customDates).
-  cutOnHolidays  Boolean @default(false)
+  cutOnHolidays Boolean @default(false)
 
   // V1.5 (Sprint K) — Override ponctuel pour une date specifique :
   // [{ date: "2026-12-24", slots: [{ start: "08:00", end: "16:00" }] },
   //  { date: "2026-12-25", closed: true }]
-  customDates    Json?
+  customDates Json?
 
   lastEvaluatedAt    DateTime?
-  lastEvaluatedState String?   // "IN_WINDOW" | "OUT_OF_WINDOW"
+  lastEvaluatedState String? // "IN_WINDOW" | "OUT_OF_WINDOW"
   overrideUntil      DateTime? // scheduler ignores until this time after manual action
 
   history ScheduleHistory[]
@@ -2338,14 +2943,14 @@ model VehicleSchedule {
 /// Une ligne par CUT/RESTORE auto, avec la raison detaillee. Sert pour la
 /// timeline UI de la fiche vehicule + l'audit operateur.
 model ScheduleHistory {
-  id          String   @id @default(uuid()) @db.Uuid
-  scheduleId  String   @db.Uuid
-  schedule    VehicleSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  vehicleId   String   @db.Uuid
-  occurredAt  DateTime @default(now())
-  action      String   // 'CUT' | 'RESTORE'
-  reason      String   // 'OUT_OF_WINDOW' | 'IN_WINDOW_RESUME' | 'HOLIDAY' | 'CUSTOM_DATE_CLOSED' | 'CUSTOM_DATE_RANGE'
-  windowDesc  String?  // ex: "08:00-12:00 + 14:00-18:00" ou "Ferie : 1er mai"
+  id         String          @id @default(uuid()) @db.Uuid
+  scheduleId String          @db.Uuid
+  schedule   VehicleSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  vehicleId  String          @db.Uuid
+  occurredAt DateTime        @default(now())
+  action     String // 'CUT' | 'RESTORE'
+  reason     String // 'OUT_OF_WINDOW' | 'IN_WINDOW_RESUME' | 'HOLIDAY' | 'CUSTOM_DATE_CLOSED' | 'CUSTOM_DATE_RANGE'
+  windowDesc String? // ex: "08:00-12:00 + 14:00-18:00" ou "Ferie : 1er mai"
 
   @@index([scheduleId, occurredAt(sort: Desc)])
   @@index([vehicleId, occurredAt(sort: Desc)])
@@ -2358,21 +2963,21 @@ model ScheduleHistory {
 /// Les themes de journee sont stockes en JSON `dayThemes` (cle = date ISO
 /// "YYYY-MM-DD", valeur = libelle) pour eviter une 3eme table.
 model InstallationPlan {
-  id            String                 @id @default(uuid()) @db.Uuid
-  fleetId       String                 @db.Uuid
-  fleet         Fleet                  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  id            String                    @id @default(uuid()) @db.Uuid
+  fleetId       String                    @db.Uuid
+  fleet         Fleet                     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
   clientName    String
   clientAddress String?
   description   String?
-  startDate     DateTime?              @db.Date
-  endDate       DateTime?              @db.Date
-  status        InstallationPlanStatus @default(DRAFT)
+  startDate     DateTime?                 @db.Date
+  endDate       DateTime?                 @db.Date
+  status        InstallationPlanStatus    @default(DRAFT)
   // { "2026-06-08": "Vieux diesels (coupure simple)", ... }
   dayThemes     Json?
   tasks         InstallationTask[]
   bookingLinks  InstallationBookingLink[]
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
 
   @@index([fleetId])
   @@index([fleetId, status])
@@ -2409,13 +3014,13 @@ model InstallationTask {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
 
+  booking InstallationBooking?
+
   @@index([planId, orderIndex])
   @@index([planId, scheduledDate])
   @@index([vehicleId])
   @@index([trackerId])
   @@map("installation_tasks")
-
-  booking InstallationBooking?
 }
 
 /// Prise de RDV en ligne — LIEN PUBLIC de reservation de creneau d'installation.
@@ -2677,8 +3282,8 @@ model UserConsent {
   id         String   @id @default(uuid()) @db.Uuid
   userId     String   @db.Uuid
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  docType    String   // 'CGU' | 'PRIVACY'
-  version    String   // ex. '2026-07-16'
+  docType    String // 'CGU' | 'PRIVACY'
+  version    String // ex. '2026-07-16'
   accepted   Boolean  @default(true)
   acceptedAt DateTime @default(now())
   ip         String?
@@ -2696,8 +3301,8 @@ model UserConsent {
 model LpConsent {
   id         String   @id @default(uuid()) @db.Uuid
   sessionId  String?
-  choice     String   // 'granted' | 'denied'
-  categories Json?    // { measure: boolean }
+  choice     String // 'granted' | 'denied'
+  categories Json? // { measure: boolean }
   ip         String?
   userAgent  String?
   page       String?
@@ -2715,7 +3320,7 @@ model UserPermission {
   userId    String   @db.Uuid
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   deviceId  String?
-  kind      String   // 'PUSH' | 'GEOLOCATION'
+  kind      String // 'PUSH' | 'GEOLOCATION'
   granted   Boolean
   ip        String?
   userAgent String?
@@ -2816,60 +3421,60 @@ enum PartnerLinkStatus {
 /// pas une règle de service : deux liens vivants rendraient « purger le lien »
 /// ambigu, et la révocation ne voudrait plus rien dire.
 model PartnerLink {
-  id                  String            @id @default(uuid()) @db.Uuid
-  fleetId             String            @db.Uuid
-  fleet               Fleet             @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  id               String  @id @default(uuid()) @db.Uuid
+  fleetId          String  @db.Uuid
+  fleet            Fleet   @relation(fields: [fleetId], references: [id], onDelete: Cascade)
   /// 'MAESTROO' — String et non enum : ajouter un partenaire ne doit pas coûter
   /// une migration d'enum.
-  partner             String
-  externalOrgId       String
-  externalOrgName     String
-  externalOrgSiret    String?
+  partner          String
+  externalOrgId    String
+  externalOrgName  String
+  externalOrgSiret String?
 
-  status              PartnerLinkStatus @default(ACTIVE)
+  status PartnerLinkStatus @default(ACTIVE)
 
   /// Créneau d'unicité (cf. commentaire du modèle). INVARIANT maintenu par le
   /// service : `liveKey = partner` si status != REVOKED, `null` sinon.
-  liveKey             String?
+  liveKey String?
 
   /// D8 — 'COMP' (offert) | 'ACTIVE' (payant) | 'NONE'. AUCUN paiement n'est
   /// branché en lot 0 : le point de contrôle existe pour que passer au payant
   /// soit un changement d'état et non une refonte. Patron repris d'AiSubscription.
   /// ⚠️ Axe INDÉPENDANT de `status` : un client peut être COMP (offert) ET
   /// SUSPENDED (impayé sur son abonnement principal).
-  billingStatus       String            @default("COMP")
+  billingStatus String @default("COMP")
 
   /// ⚠️ Suspension PLATEFORME (impayé) — DISTINCTE de `status`. Tant qu'elle est
   /// levée, le client ne peut NI réactiver, NI refaire un handshake sur cette
   /// flotte. Sans ce refus au niveau du handshake, le client révoque, recommence,
   /// et le levier commercial ne vaut rien. Seul un SUPER_ADMIN peut la lever.
-  suspendedByPlatform Boolean           @default(false)
+  suspendedByPlatform Boolean @default(false)
   suspendedReason     String?
 
   /// Scopes ACTIFS (PartnerScope[] — cf. packages/shared/src/partner/scopes.ts).
   /// ÉTAT VIVANT vérifié à CHAQUE requête partenaire, pas un consentement figé.
   /// Une liste vide veut dire « plus rien n'est partagé », jamais « applique les
   /// défauts ».
-  scopes              Json              @default("[]")
+  scopes Json @default("[]")
 
   /// Secret du lien, remis UNE SEULE FOIS au partenaire, stocké HASHÉ.
   /// Propre à ce lien : sa compromission n'expose pas la plateforme.
-  secretHash          String
-  secretRotatedAt     DateTime?
+  secretHash      String
+  secretRotatedAt DateTime?
 
-  createdByUserId     String?           @db.Uuid
-  approvedByUserId    String?           @db.Uuid
-  approvedAt          DateTime?
+  createdByUserId  String?   @db.Uuid
+  approvedByUserId String?   @db.Uuid
+  approvedAt       DateTime?
   /// Dernier appel partenaire authentifié — alimente « dernière activité ».
-  lastSeenAt          DateTime?
-  revokedAt           DateTime?
-  revokedReason       String?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  lastSeenAt       DateTime?
+  revokedAt        DateTime?
+  revokedReason    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  events              PartnerLinkEvent[]
-  tokens              PartnerAccessToken[]
-  outbox              PartnerOutboxEvent[]
+  events PartnerLinkEvent[]
+  tokens PartnerAccessToken[]
+  outbox PartnerOutboxEvent[]
 
   /// Au plus UN lien vivant par (flotte, partenaire).
   @@unique([fleetId, liveKey])
@@ -2956,30 +3561,30 @@ model PartnerOutboxEvent {
 /// Sert aussi de PREUVE DE CONSENTEMENT (RGPD) : qui a été sollicité, quand, qui
 /// a cliqué, depuis quelle IP, et ce qui a été accepté.
 model PartnerInvitation {
-  id               String    @id @default(uuid()) @db.Uuid
-  fleetId          String    @db.Uuid
-  fleet            Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  partner          String
+  id          String @id @default(uuid()) @db.Uuid
+  fleetId     String @db.Uuid
+  fleet       Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  partner     String
   /// Code émis par le partenaire, recopié dans le lien profond.
   /// ⚠️ Non unique à dessein : une invitation peut être renvoyée sur le même code.
-  pairingCode      String
-  token            String    @unique
-  email            String
+  pairingCode String
+  token       String @unique
+  email       String
 
-  sentByUserId     String?   @db.Uuid
-  sentAt           DateTime  @default(now())
+  sentByUserId String?  @db.Uuid
+  sentAt       DateTime @default(now())
   /// Au-delà, le lien ne redirige plus : un lien de consentement qui traîne des
   /// mois dans une boîte mail n'a plus rien à voir avec une décision éclairée.
-  expiresAt        DateTime
+  expiresAt    DateTime
 
   /// Premier clic — c'est LUI qui fait foi (« le client a-t-il ouvert ? »).
   /// Un pixel de suivi mesurerait l'affichage, pas l'intention, et la moitié des
   /// clients mail le bloquent.
-  openedAt         DateTime?
-  lastOpenedAt     DateTime?
-  openCount        Int       @default(0)
-  openIp           String?
-  openUserAgent    String?
+  openedAt      DateTime?
+  lastOpenedAt  DateTime?
+  openCount     Int       @default(0)
+  openIp        String?
+  openUserAgent String?
 
   acceptedAt       DateTime?
   acceptedByUserId String?   @db.Uuid
@@ -2988,8 +3593,8 @@ model PartnerInvitation {
   acceptedScopes   Json      @default("[]")
   linkId           String?   @db.Uuid
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   /// Recherche du garde anti-transfert : « ce code est-il déjà promis à une flotte ? »
   @@index([partner, pairingCode])
@@ -3070,14 +3675,14 @@ model NotificationDelivery {
   id String @id @default(uuid()) @db.Uuid
 
   /// Alerte d'origine. NULL pour un envoi de test ou une notification hors alerte.
-  alertId String? @db.Uuid
+  alertId   String? @db.Uuid
   /// Dénormalisés : permettent de filtrer/compter sans jointure, et surtout de garder une
   /// trace lisible même après purge de l'alerte d'origine (rétention plus courte).
   alertType String?
   severity  String?
 
-  userId String @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId  String  @db.Uuid
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Flotte de l'alerte. NULL pour un envoi cross-flotte à un SUPER_ADMIN.
   fleetId String? @db.Uuid
 

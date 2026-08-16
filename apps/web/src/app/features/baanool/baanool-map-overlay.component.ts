@@ -76,7 +76,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
 
       <!-- CENTRAL PANEL (toggleable) -->
       @if (panelOpen()) {
-        <div class="bn-panel" role="dialog" aria-label="Liste des vehicules">
+        <div class="bn-panel" role="dialog" aria-label="Liste des véhicules">
           <button class="bn-panel-close" (click)="closePanel()" aria-label="Fermer la liste">
             <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
           </button>
@@ -84,7 +84,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
             <lucide-icon [img]="SearchIcon" [size]="16"></lucide-icon>
             <input
               type="search"
-              placeholder="Numero d'appareil/plaque d'i..."
+              placeholder="Numéro d'appareil/plaque d'i..."
               [value]="searchQuery()"
               (input)="onSearch($event)"
             />
@@ -99,7 +99,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
           <div class="bn-panel-vehicles">
             @if (filteredVehicles().length === 0) {
               <div class="bn-vehicle-empty">
-                Aucun vehicule
+                Aucun véhicule
               </div>
             } @else {
               @for (v of filteredVehicles(); track v.vehicleId) {

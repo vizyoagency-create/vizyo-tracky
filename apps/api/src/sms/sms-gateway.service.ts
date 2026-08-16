@@ -404,7 +404,7 @@ export class SmsGatewayService implements OnModuleInit {
             context: context as object,
           },
         });
-        this.logger.error(`SMS (vizyo-texto) echec vers ${to}: ${errorMessage}`);
+        this.logger.error(`SMS (vizyo-texto) échec vers ${to}: ${errorMessage}`);
         this.errorLogger.record(
           errorMessage,
           'sms-gateway',
@@ -429,7 +429,7 @@ export class SmsGatewayService implements OnModuleInit {
             context: context as object,
           },
         });
-        this.logger.error(`SMS (vizyo-texto) echec vers ${to}: ${errorMessage}`);
+        this.logger.error(`SMS (vizyo-texto) échec vers ${to}: ${errorMessage}`);
         this.errorLogger.record(
           errorMessage,
           'sms-gateway',
@@ -563,7 +563,7 @@ export class SmsGatewayService implements OnModuleInit {
     const safePhone = input.recipientPhone.trim();
     if (!safePhone.startsWith('+') || safePhone.length < 8) {
       throw new Error(
-        'Numero destinataire invalide (format E.164 attendu, ex: +33612345678)',
+        'Numéro destinataire invalide (format E.164 attendu, ex: +33612345678)',
       );
     }
     const payload = `fix030s***n123456`; // benigne 30s

@@ -213,7 +213,7 @@ export class ReportsController {
     const from = new Date(body.from);
     const to = new Date(body.to);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException('from et to doivent etre des dates ISO valides');
+      throw new BadRequestException('from et to doivent être des dates ISO valides');
     }
     if (from.getTime() >= to.getTime()) {
       throw new BadRequestException('from doit etre strictement avant to');
@@ -269,7 +269,7 @@ export class ReportsController {
     const from = new Date(fromRaw);
     const to = new Date(toRaw);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException('from et to doivent etre des dates ISO valides');
+      throw new BadRequestException('from et to doivent être des dates ISO valides');
     }
     if (from.getTime() >= to.getTime()) {
       throw new BadRequestException('from doit etre strictement avant to');

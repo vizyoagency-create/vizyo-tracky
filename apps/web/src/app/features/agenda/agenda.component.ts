@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
+import { MissionsPanelComponent } from './missions-panel.component';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -71,7 +72,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent],
   template: `
     <div class="flex flex-col gap-5">
       <app-plan-upsell feature="agenda" />
@@ -83,8 +84,15 @@ interface GroupOption {
               <lucide-icon [img]="CalendarDaysIcon" [size]="22" class="text-tracky-light"></lucide-icon>
               Agenda
             </h1>
+            <!-- Le sous-titre suit ce que le compte voit réellement : annoncer des
+                 entretiens à qui n'a pas la permission agenda_view promet un écran qui
+                 n'existe pas pour lui. -->
             <p class="text-sm text-fg-tertiary mt-0.5">
-              Entretiens planifiés et incidents de votre flotte
+              @if (canSeeAgenda()) {
+                Entretiens planifiés et incidents de votre flotte
+              } @else {
+                Les missions de votre flotte, et leurs tournées
+              }
             </p>
           </div>
           <div class="ag-actions">
@@ -134,7 +142,9 @@ interface GroupOption {
         <!-- Suivi des opérations IA lancées en arrière-plan (analyse, optimisation…) -->
         <app-ai-job-pill (view)="onAiJobView($event)"></app-ai-job-pill>
 
-        <!-- Strip de 3 stats -->
+        <!-- Strip de 3 stats — trois zéros seraient un mensonge pour qui n'a pas le
+             droit de lire les échéances : la flotte en a peut-être trente. -->
+        @if (canSeeAgenda()) {
         <div class="ag-summary">
           <div class="ag-stat ag-stat--danger">
             <div class="ag-stat-icon"><lucide-icon [img]="AlertTriangleIcon" [size]="16"></lucide-icon></div>
@@ -158,9 +168,13 @@ interface GroupOption {
             </div>
           </div>
         </div>
+        }
       </header>
 
-      <!-- Barre de filtres -->
+      <!-- Barre de filtres — groupe, véhicule, type et mois ne pilotent QUE la grille du
+           calendrier. Sans la permission agenda_view il n'y a pas de grille : le tableau
+           des missions porte ses propres filtres, et cette barre ne ferait rien. -->
+      @if (canSeeAgenda()) {
       <div class="ag-filters">
         @if (groupOptions().length > 0) {
           <div class="ag-dd-wrapper">
@@ -247,6 +261,17 @@ interface GroupOption {
           </button>
         </div>
       </div>
+      }
+
+      <!-- Espace dépôt (2026-08) — l'onglet Missions. Le sélecteur de type fait office
+           d'onglet : choisir « Mission » ouvre le tableau, ses filtres et ses cinq
+           compteurs, à la place de la grille du mois. Les missions restent visibles
+           dans la grille sous « Tous » — c'est l'exigence d'A2 § 3.1 : le gestionnaire
+           doit les voir sur le MÊME calendrier que la maintenance et les réservations,
+           sinon il double-réserve. -->
+      @if (selectedType() === 'MISSION' || !canSeeAgenda()) {
+        <app-missions-panel />
+      } @else {
 
       <!-- Calendrier -->
       @if (loading()) {
@@ -270,7 +295,12 @@ interface GroupOption {
         </div>
       }
 
-      <!-- À venir / en retard -->
+      }
+
+      <!-- À venir / en retard — dérivé des événements de l'agenda. Sans le droit de les
+           lire, « Aucune échéance à venir » n'est pas une information, c'est une
+           affirmation fausse. -->
+      @if (canSeeAgenda()) {
       <section class="flex flex-col gap-2">
         <h2 class="text-sm font-display font-bold text-fg-primary flex items-center gap-2">
           <lucide-icon [img]="ListChecksIcon" [size]="16" class="text-fg-tertiary"></lucide-icon>
@@ -310,6 +340,7 @@ interface GroupOption {
           </div>
         }
       </section>
+      }
     </div>
 
     <!-- ─── Panneau jour (bottom-sheet mobile / centre desktop) ─── -->
@@ -702,7 +733,7 @@ interface GroupOption {
     .ag-stat-body { display: flex; flex-direction: column; min-width: 0; }
     .ag-stat-value {
       font-size: 22px; font-weight: 800; line-height: 1;
-      color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif);
+      color: var(--fg-primary); font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .ag-stat--danger .ag-stat-value { color: var(--danger); }
@@ -804,6 +835,25 @@ interface GroupOption {
       .ag-seg { flex: 1; }
       .ag-month-nav { margin-left: 0; width: 100%; justify-content: space-between; }
       .ag-month-label { flex: 1; }
+    }
+
+    /* ══ CIBLES TACTILES — 44 px SOUS 768 px (critere 7 de B1) ══════════════════
+     *
+     * Mesurees a 375 px pendant la recette du 2026-08-14 : fleches de mois 30 px,
+     * « Aujourd'hui » 31 px, segments de type 27 px. Toutes en dessous du seuil, et
+     * toutes voisines les unes des autres — c'est la combinaison qui fait rater :
+     * on vise « Mission » et on change de mois.
+     *
+     * La densite du BUREAU ne bouge pas : a la souris, 30 px se cliquent tres bien,
+     * et elargir partout aurait grossi une barre d'outils que rien n'obligeait a
+     * grossir. Le seuil est une contrainte du DOIGT, pas une regle d'esthetique. */
+    @media (max-width: 767px) {
+      .ag-month-btn { width: 44px; height: 44px; }
+      .ag-today-btn { min-height: 44px; padding: 0 12px; }
+      .ag-seg-btn { min-height: 44px; }
+      /* Le selecteur de vehicule : 38 px, et il ouvre une liste deroulante — le rater
+         ferme le panneau au lieu de l'ouvrir. */
+      .ag-dd-trigger { min-height: 44px; }
     }
 
     /* ─── Liste à venir / en retard ─── */
@@ -1148,6 +1198,10 @@ export class AgendaComponent implements OnInit {
     { value: 'MAINTENANCE', label: 'Maintenance' },
     { value: 'INCIDENT', label: 'Incident' },
     { value: 'RESERVATION', label: 'Réservation' },
+    // Espace dépôt (2026-08) — les missions apparaissent dans la MÊME grille que la
+    // maintenance, les incidents et les réservations. C'est l'exigence d'A2 § 3.1 :
+    // un gestionnaire qui ne voit pas les missions sur son calendrier double-réserve.
+    { value: 'MISSION', label: 'Mission' },
   ];
 
   private readonly monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
@@ -1172,6 +1226,17 @@ export class AgendaComponent implements OnInit {
   });
   /** Couches d'analyse (activité réelle, prévision, disponibilité) — même garde que la donnée. */
   protected readonly canSeeInsights = computed(() => this.perms.can('reservations_view'));
+  /**
+   * Le CALENDRIER lui-même — événements, compteurs, échéances.
+   *
+   * ⚠️ CE N'EST PAS LA MÊME CHOSE QUE POUVOIR OUVRIR LA PAGE. La route est gardée
+   * large (`agenda_view`, `reservations_*`, `ai_optimize`, `missions_view`) pour que
+   * chacun atteigne SA partie ; celle-ci n'appartient qu'à `agenda_view`. Un
+   * gestionnaire qui vient pour ses missions ne voit donc ni la grille du mois, ni les
+   * trois compteurs, ni les échéances — et surtout, on ne les lui demande pas au
+   * serveur, qui les refuserait.
+   */
+  protected readonly canSeeAgenda = computed(() => this.perms.can('agenda_view'));
   protected readonly resSheetOpen = signal(false);
   protected readonly resStartMode = signal<'request' | 'validate'>('request');
   protected readonly resDefaultDate = signal<string | null>(null);
@@ -1510,6 +1575,11 @@ export class AgendaComponent implements OnInit {
   }
 
   private async loadSummary(): Promise<void> {
+    // Même garde que `loadEvents` : `GET /agenda/summary` exige `agenda_view`.
+    if (!this.canSeeAgenda()) {
+      this.summary.set(null);
+      return;
+    }
     try {
       this.summary.set(await firstValueFrom(this.api.summary(this.currentFleetId())));
     } catch (err) {
@@ -1530,6 +1600,21 @@ export class AgendaComponent implements OnInit {
   }
 
   private async loadEvents(): Promise<void> {
+    // ⚠️ ON N'APPELLE PAS CE QU'ON N'A PAS LE DROIT D'APPELER.
+    //
+    // La route `/agenda` s'ouvre à `missions_view` — l'onglet Missions y vit, décision
+    // A2 § intro — mais `GET /agenda/events` exige `agenda_view`, que le gestionnaire
+    // n'a PAS par défaut. Le compte entrait donc, et récoltait deux notifications
+    // rouges à chaque visite : celle de l'intercepteur sur le 403, puis celle du bloc
+    // `catch` ci-dessous. Sur chaque capture de recette, ces deux bandeaux annonçaient
+    // une panne là où le produit fonctionnait comme prévu.
+    //
+    // Le même patron protège déjà `loadActivity` et `loadForecast`. Il manquait ici.
+    if (!this.canSeeAgenda()) {
+      this.events.set([]);
+      this.loading.set(false);
+      return;
+    }
     this.loading.set(true);
     try {
       const { from, to } = this.monthWindow();

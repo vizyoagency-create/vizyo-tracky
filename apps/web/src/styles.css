@@ -50,6 +50,11 @@
   --accent-ink: #04130D; /* texte SUR l'accent */
   --danger: #F2706B;
   --warning: #F5B33D;
+  /* Refonte v2 — « une couleur = une signification » (design/TOKENS.md).
+     violet = IA, super-admin, DÉPÔT · bleu = information.
+     Contrastes mesurés sur --surface-secondary (#101514) : 6,77:1 et 8,60:1. */
+  --violet: #A78BFA;
+  --blue: #38BDF8;
   --surface-secondary-rgb: 16, 21, 20;
   /* Skeletons de chargement : base + reflet du balayage. */
   --sk: rgba(255, 255, 255, 0.06);
@@ -66,15 +71,132 @@
   --text-tertiary: #8A938F;
   --border-color: rgba(10, 25, 18, 0.09);
   --border-strong-color: rgba(10, 25, 18, 0.16);
-  --accent-ink: #FFFFFF; /* texte SUR l'accent (light) */
+  /* Refonte v2 — était #FFFFFF, soit 3,43:1 sur l'accent clair #0A9E6C : sous le seuil
+     WCAG de 4,5:1 pour du texte. Règle non négociable de design/B0-SOCLE.md § Écart 2 :
+     « sur un fond accent, l'encre doit être foncée, jamais blanche ». #04130D → 5,54:1.
+     Un seul jeton, 43 usages corrigés (boutons primaires, avatars, pastilles). */
+  --accent-ink: #04130D; /* texte SUR l'accent (light) */
   --color-tracky-light: #0A9E6C; /* accent light */
   --color-tracky: #0A9E6C;
   --danger: #D9544E;
   --warning: #C98708;
+  /* Refonte v2 — pendants clairs de --violet / --blue (design/TOKENS.md).
+     Contrastes mesurés sur --surface-secondary (#FFFFFF) : 5,70:1 et 5,93:1. */
+  --violet: #7C3AED;
+  --blue: #0369A1;
   --surface-secondary-rgb: 255, 255, 255;
   --sk: rgba(10, 25, 18, 0.055);
   --sk-hi: rgba(10, 25, 18, 0.085);
 }
+
+/* ─── Géométrie de plateforme (refonte v2) ──────────────────────────────────
+ *
+ * Les 3 écarts iOS/Android sont VOLONTAIRES, pas des oublis (design/B1-PAGES.md
+ * § « Le système de référence ») :
+ *
+ *              iOS        Android
+ *   poignée    36 × 5     32 × 4
+ *   rayon      22 px      28 px
+ *   densité    44 px      56 px
+ *
+ * « Les aplatir donne une application étrangère sur les deux plateformes. »
+ *
+ * Aucun composant ne teste la plateforme dans son template : il consomme ces
+ * variables et suit. C'est ce qui évite que chaque écran réinvente sa condition —
+ * et se trompe. La classe est posée par `shared/utils/platform.ts`.
+ *
+ * Le repli (hors iOS/Android) prend la géométrie iOS, plus sobre sur un écran large.
+ */
+:root {
+  --feuille-rayon: 22px;
+  --feuille-poignee-l: 36px;
+  --feuille-poignee-h: 5px;
+  --densite-liste: 44px;
+}
+body.plat-android {
+  --feuille-rayon: 28px;
+  --feuille-poignee-l: 32px;
+  --feuille-poignee-h: 4px;
+  --densite-liste: 56px;
+}
+
+/* ─── Jetons de PETIT TEXTE (refonte v2, lot B0′) ────────────────────────────
+ *
+ * Une couleur sémantique lisible à 16 px ne l'est pas à 11. `--danger` (#D9544E)
+ * sur blanc donne 3,94:1, `--warning` (#C98708) 2,68:1 sur son propre lavis :
+ * sous le seuil WCAG de 4,5:1 exigé sur le texte. Le défaut ne se voit pas en
+ * relisant le code — la couleur est « la bonne », c'est sa VALEUR qui est trop
+ * claire pour la taille à laquelle on l'emploie.
+ *
+ * D'où cette famille : la même signification, une valeur assez foncée pour être
+ * lue. `--danger` reste le rouge des barres, des liserés et des grandes icônes ;
+ * `--texte-alerte` est le rouge des chips, des libellés et des compteurs.
+ *
+ * ASSOMBRISSEMENTS MESURÉS, pas choisis à l'œil (`pnpm verif:contraste`) : chaque
+ * pourcentage est le PLUS CLAIR qui passe encore 4,6:1 sur le pire fond clair de
+ * l'application, un lavis de 12 % de la couleur elle-même posé sur
+ * `--surface-tertiary`. Un point de plus et le couple tombe sous le seuil.
+ *
+ * En thème sombre, rien à corriger : un texte clair sur fond noir passe largement
+ * (5,5 à 8,5:1). Les jetons y sont repris tels quels — assombrir un texte déjà
+ * clair sur un fond déjà noir le rendrait moins lisible, pas plus.
+ */
+:root,
+[data-theme='dark'] {
+  --texte-succes: var(--color-tracky-light);
+  --texte-alerte: var(--danger);
+  --texte-attente: var(--warning);
+  --texte-info: var(--blue);
+  --texte-violet: var(--violet);
+  --texte-inactif: var(--text-secondary);
+}
+[data-theme='light'] {
+  --texte-succes: color-mix(in srgb, var(--color-tracky-light) 72%, #000);
+  --texte-alerte: color-mix(in srgb, var(--danger) 78%, #000);
+  --texte-attente: color-mix(in srgb, var(--warning) 68%, #000);
+  /* Bleu, violet et gris passent tels quels (4,71 · 4,65 · 5,03:1) : les
+     assombrir n'ajouterait rien et éloignerait de la couleur de la maquette. */
+  --texte-info: var(--blue);
+  --texte-violet: var(--violet);
+  --texte-inactif: var(--text-secondary);
+}
+
+/* ─── Espace dépôt (2026-08), lot A3 ─────────────────────────────────────────
+ *
+ * Le dépôt avait mesuré le problème en premier et s'était donné ses propres
+ * valeurs, en notant que « les jetons globaux ne bougent pas — leur reprise est
+ * le chantier du bloc B ». C'est ce lot : les quatre jetons ne sont plus que des
+ * alias. Une seule définition de « le rouge qui se lit », pour les 30 écrans.
+ *
+ * Les noms `--depot-*` restent : les dix composants de la fonctionnalité les
+ * consomment, et un alias coûte moins qu'une passe de renommage sans objet.
+ */
+.layout--depot {
+  --depot-attenue: var(--texte-inactif);
+  --depot-alerte: var(--texte-alerte);
+  --depot-succes: var(--texte-succes);
+  --depot-attente: var(--texte-attente);
+}
+
+/* ─── Pastilles de statut, version dépôt ─────────────────────────────────────
+ *
+ * `.vt-status--on/--danger/--offline` posent une couleur SÉMANTIQUE sur un fond
+ * teinté de la même couleur. Le résultat est joli et lisible à 16 px ; à 12 px sur
+ * fond clair il tombe entre 2,98 et 3,40:1 — sous le seuil du critère n° 10.
+ *
+ * On ne retouche pas la classe globale : elle habille 29 autres pages, et leur
+ * reprise est le chantier du bloc B. On la RESSERRE dans l'espace dépôt, où le
+ * critère s'applique — la teinte et donc la signification restent les mêmes, seule
+ * la valeur descend assez pour être lue. « Une couleur = une signification » n'est
+ * pas « une couleur = une valeur exacte ».
+ */
+.layout--depot .vt-status--on { color: var(--depot-succes) }
+.layout--depot .vt-status--danger { color: var(--depot-alerte) }
+.layout--depot .vt-status--warning { color: var(--depot-attente) }
+.layout--depot .vt-status--offline { color: var(--depot-attenue) }
+/* L'entrée de menu active : même cas, accent sur fond teinté d'accent (3,24:1). */
+.layout--depot .sidebar-link.active,
+.layout--depot .bottom-item.active { color: var(--depot-succes) }
 
 /* Aliases — bare names used directly in component styles (without --color- prefix). */
 :root {
@@ -862,17 +984,25 @@ textarea:focus-visible,
   min-height: 38px;
 }
 .tk-popup-btn:active { transform: scale(0.97); }
-.tk-popup-btn--primary {
-  background: rgba(16, 224, 160, 0.14);
-  color: #059669;
-  border-color: rgba(16, 224, 160, 0.32);
+/* Les boutons de bulle portaient chacun leur paire de valeurs et leur propre
+   surcharge `[data-theme='dark']` : #059669/#10E0A0 pour le vert, #dc2626/#f87171
+   pour le rouge, #3b82f6 pour le bleu — trois doublons des jetons, plus quatre
+   règles de thème à maintenir. La famille `--texte-*` bascule seule : les
+   surcharges disparaissent, et le point ouvert O3 de design/TOKENS.md avec elles. */
+.tk-popup-btn--primary,
+.tk-popup-btn--success {
+  background: color-mix(in srgb, var(--texte-succes) 14%, transparent);
+  color: var(--texte-succes);
+  border-color: color-mix(in srgb, var(--texte-succes) 32%, transparent);
 }
-[data-theme='dark'] .tk-popup-btn--primary {
-  color: #10E0A0;
-}
-.tk-popup-btn--primary:hover {
-  background: rgba(16, 224, 160, 0.22);
-  border-color: rgba(16, 224, 160, 0.48);
+/* Survol à 18 % et non plus 22 % : un lavis calibré sur un vert VIF (#10E0A0) est
+   trop appuyé sous une encre foncée — 4,30:1, sous le seuil, précisément au moment
+   où l'utilisateur regarde le bouton. Les trois boutons partagent maintenant la même
+   valeur, qu'ils n'avaient d'ailleurs aucune raison de faire diverger. */
+.tk-popup-btn--primary:hover,
+.tk-popup-btn--success:hover {
+  background: color-mix(in srgb, var(--texte-succes) 18%, transparent);
+  border-color: color-mix(in srgb, var(--texte-succes) 48%, transparent);
 }
 .tk-popup-btn--ghost {
   background: var(--surface-tertiary);
@@ -884,36 +1014,21 @@ textarea:focus-visible,
   border-color: var(--border-strong-color);
 }
 .tk-popup-btn--info {
-  background: rgba(59, 130, 246, 0.10);
-  color: #3b82f6;
-  border-color: rgba(59, 130, 246, 0.30);
+  background: color-mix(in srgb, var(--texte-info) 10%, transparent);
+  color: var(--texte-info);
+  border-color: color-mix(in srgb, var(--texte-info) 30%, transparent);
 }
 .tk-popup-btn--info:hover {
-  background: rgba(59, 130, 246, 0.18);
+  background: color-mix(in srgb, var(--texte-info) 18%, transparent);
 }
 .tk-popup-btn--danger {
-  background: rgba(239, 68, 68, 0.10);
-  color: #dc2626;
-  border-color: rgba(239, 68, 68, 0.30);
-}
-[data-theme='dark'] .tk-popup-btn--danger {
-  color: #f87171;
+  background: color-mix(in srgb, var(--texte-alerte) 10%, transparent);
+  color: var(--texte-alerte);
+  border-color: color-mix(in srgb, var(--texte-alerte) 30%, transparent);
 }
 .tk-popup-btn--danger:hover {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.48);
-}
-.tk-popup-btn--success {
-  background: rgba(16, 224, 160, 0.14);
-  color: #059669;
-  border-color: rgba(16, 224, 160, 0.32);
-}
-[data-theme='dark'] .tk-popup-btn--success {
-  color: #10E0A0;
-}
-.tk-popup-btn--success:hover {
-  background: rgba(16, 224, 160, 0.22);
-  border-color: rgba(16, 224, 160, 0.48);
+  background: color-mix(in srgb, var(--texte-alerte) 18%, transparent);
+  border-color: color-mix(in srgb, var(--texte-alerte) 48%, transparent);
 }
 
 /* ───────────────────────────────────────────────────────────────────────────

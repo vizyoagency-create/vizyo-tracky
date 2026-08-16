@@ -1,6 +1,7 @@
 import {
   AfterViewInit,
   Component,
+  computed,
   effect,
   ElementRef,
   HostListener,
@@ -24,6 +25,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
+import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
 
 @Component({
   selector: 'app-trip-replay',
@@ -67,11 +69,11 @@ import {
                 @if (trip()?.driver) {
                   <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px]
                                font-semibold border"
-                        [style.background]="'color-mix(in srgb, ' + (trip()!.driver!.color || '#10E0A0') + ' 12%, transparent)'"
-                        [style.border-color]="'color-mix(in srgb, ' + (trip()!.driver!.color || '#10E0A0') + ' 30%, transparent)'"
+                        [style.background]="'color-mix(in srgb, ' + couleurConducteur() + ' 12%, transparent)'"
+                        [style.border-color]="'color-mix(in srgb, ' + couleurConducteur() + ' 30%, transparent)'"
                         [style.color]="'var(--fg-primary)'">
                     <span class="inline-block w-2 h-2 rounded-full"
-                          [style.background]="trip()!.driver!.color || '#10E0A0'"></span>
+                          [style.background]="couleurConducteur()"></span>
                     {{ trip()!.driver!.firstName }} {{ trip()!.driver!.lastName }}
                   </span>
                 }
@@ -116,8 +118,8 @@ import {
             @if (analysis(); as a) {
               @if (a.stopCount > 0 || a.speedingCount > 0) {
                 <div class="tr-legend">
-                  @if (a.stopCount > 0) { <span><i class="tr-dot tr-dot--stop"></i> Arrêt</span> }
-                  @if (a.speedingCount > 0) { <span><i class="tr-dot tr-dot--speed"></i> Excès de vitesse</span> }
+                  @if (a.stopCount > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.arret"></i> Arrêt</span> }
+                  @if (a.speedingCount > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.exces"></i> Excès de vitesse</span> }
                 </div>
               }
             }
@@ -172,11 +174,13 @@ import {
       background: var(--bg-tertiary); color: var(--fg-secondary);
       border: 1px solid var(--border-subtle);
     }
-    .tr-as-chip[data-tier="good"] { background: color-mix(in srgb, var(--tracky-light,#10E0A0) 16%, transparent); color: var(--tracky-light,#10E0A0); border-color: transparent; }
-    .tr-as-chip[data-tier="mid"]  { background: color-mix(in srgb, #F59E0B 16%, transparent); color: #F59E0B; border-color: transparent; }
-    .tr-as-chip[data-tier="bad"]  { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; border-color: transparent; }
-    .tr-as-chip--stop { color: #60A5FA; }
-    .tr-as-chip--speed { background: color-mix(in srgb, #EF4444 14%, transparent); color: #EF4444; border-color: transparent; }
+    /* Chips d'analyse : jetons de PETIT TEXTE (11 px). Les valeurs d'avant — #F59E0B,
+       #EF4444, #60A5FA — donnaient 2,7 à 3,4:1 en thème clair, sous le seuil. */
+    .tr-as-chip[data-tier="good"] { background: color-mix(in srgb, var(--texte-succes) 16%, transparent); color: var(--texte-succes); border-color: transparent; }
+    .tr-as-chip[data-tier="mid"]  { background: color-mix(in srgb, var(--texte-attente) 16%, transparent); color: var(--texte-attente); border-color: transparent; }
+    .tr-as-chip[data-tier="bad"]  { background: color-mix(in srgb, var(--texte-alerte) 16%, transparent); color: var(--texte-alerte); border-color: transparent; }
+    .tr-as-chip--stop { color: var(--texte-info); }
+    .tr-as-chip--speed { background: color-mix(in srgb, var(--texte-alerte) 14%, transparent); color: var(--texte-alerte); border-color: transparent; }
 
     /* Légende carte */
     .tr-legend {
@@ -189,9 +193,10 @@ import {
       font-size: 11px; font-weight: 600; color: var(--fg-secondary);
     }
     .tr-legend span { display: inline-flex; align-items: center; gap: 6px; }
-    .tr-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px rgba(255,255,255,.5); }
-    .tr-dot--stop { background: #3B82F6; }
-    .tr-dot--speed { background: #EF4444; }
+    /* La pastille de légende reprend la couleur de la COUCHE de carte, pas celle du
+       chip : c'est elle qu'on cherche des yeux sur le fond. Le halo suit la surface —
+       en blanc fixe il disparaissait sur le fond clair de la légende. */
+    .tr-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px var(--bg-secondary); }
   `],
 })
 export class TripReplayComponent implements AfterViewInit, OnDestroy {
@@ -205,6 +210,17 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly closed = output<void>();
   /** Demande au parent d'ouvrir le modal d'edition pour le trip courant. */
   readonly editNote = output<TripDto>();
+
+  /** Exposé au template : la légende doit porter la couleur RÉELLE des couches de carte. */
+  protected readonly couleursCarte = COULEURS_CARTE;
+  /**
+   * La couleur du conducteur est une DONNÉE (choisie dans sa fiche), pas un jeton : elle
+   * ne peut pas suivre le thème. Seul son repli le fait — un conducteur sans couleur
+   * prenait un vert fixe qui, sur fond clair, n'était pas celui de l'accent.
+   */
+  protected readonly couleurConducteur = computed(
+    () => this.trip()?.driver?.color || 'var(--color-tracky-light)',
+  );
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly mapSvc = inject(MapService);
@@ -386,7 +402,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
         type: 'line',
         source: 'replay-line',
         paint: {
-          'line-color': '#10E0A0',
+          'line-color': COULEURS_CARTE.trace,
           'line-width': 4,
           'line-opacity': 0.85,
         },
@@ -442,7 +458,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       });
       map.addLayer({
         id: 'replay-stops', type: 'circle', source: 'replay-stops',
-        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': '#3B82F6', 'circle-opacity': 0.8, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.arret, 'circle-opacity': 0.8, 'circle-stroke-width': 2, 'circle-stroke-color': COULEURS_CARTE.contour },
       });
     }
 
@@ -461,7 +477,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       });
       map.addLayer({
         id: 'replay-speeding', type: 'circle', source: 'replay-speeding',
-        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': '#EF4444', 'circle-opacity': 0.9, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.exces, 'circle-opacity': 0.9, 'circle-stroke-width': 2, 'circle-stroke-color': COULEURS_CARTE.contour },
       });
     }
   }

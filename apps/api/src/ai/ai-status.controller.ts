@@ -8,6 +8,7 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { DepotScopeGuard } from '../depot/depot-scope.guard';
 import { AiAvailabilityService } from './ai-availability.service';
 
 /**
@@ -17,8 +18,15 @@ import { AiAvailabilityService } from './ai-availability.service';
  * - GET/PUT /api/ai/fleet-enabled : le fleet-admin active/désactive TOUTE l'IA de SA flotte
  *   (super-admin : n'importe quelle flotte via `fleetId`). Scopé anti-IDOR.
  */
+/**
+ * ⚠️ FERMÉ AU RÔLE DEPOT (espace dépôt 2026-08, revue A1.4). `GET /ai/status` n'exigeait
+ * aucune permission — « pour TOUT utilisateur authentifié » — ce qui incluait un dépôt
+ * depuis la création du rôle. Un dépôt n'a aucune fonctionnalité IA : lui servir la
+ * configuration IA de son transporteur est une fuite d'agrégat, que la règle 6 d'A1 § 3
+ * interdit. `DepotScopeGuard` refuse par défaut, sans rien changer aux autres rôles.
+ */
 @Controller('ai')
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, DepotScopeGuard)
 export class AiStatusController {
   constructor(private readonly aiAvail: AiAvailabilityService) {}
 

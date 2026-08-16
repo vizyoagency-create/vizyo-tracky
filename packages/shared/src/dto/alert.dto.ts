@@ -25,6 +25,11 @@ export type AlertType =
   // d'échéance d'entretien n'avait donc pas de type côté client (elle retombait en
   // `UNKNOWN` au typage). Ajouté pour que les préférences puissent la nommer.
   | 'MAINTENANCE_DUE'
+  // A6 arbitrage J — la flotte n'a pas de grille tarifaire active. La SEULE alerte de
+  // ce catalogue qui ne vienne pas d'un boîtier : elle porte un `vehicleId` nul et une
+  // `severity` WARNING. Elle informe, elle ne coupe rien — les missions restent
+  // créables, seule la demande de mission du dépôt se ferme faute de tarif à présenter.
+  | 'PRICING_GRID_MISSING'
   | 'UNKNOWN';
 
 /**

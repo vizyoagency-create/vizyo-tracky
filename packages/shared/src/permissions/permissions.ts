@@ -15,7 +15,16 @@
  * SUPER_ADMIN et FLEET_ADMIN bypass (tous booleens true).
  */
 
-export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
+/**
+ * Espace depot (2026-08) — `DEPOT` est un role LATERAL, pas un rang.
+ *
+ * Ne PAS le glisser dans une comparaison de niveau : son perimetre n'est pas un
+ * sous-ensemble de la flotte, c'est un axe different. Un VIEWER voit N vehicules en
+ * permanence ; un DEPOT voit UN vehicule PENDANT une fenetre horaire, parce qu'une
+ * mission l'y autorise, et rien du tout en dehors. Aucune relation d'inclusion ne
+ * relie les deux — cf. design/A1-ROLE-DEPOT.md § 1 et design/DECISIONS.md D3.
+ */
+export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER' | 'DEPOT';
 
 export interface UserPermissions {
   vehicles_view: boolean;
@@ -58,7 +67,7 @@ export interface UserPermissions {
   /** Assigner / detacher une carte SIM a un tracker. */
   sims_assign: boolean;
   /**
-   * Sprint 4 — Declencher l'ecoute audio a distance du vehicule (micro). Capacite
+   * Sprint 4 — Déclencher l'ecoute audio à distance du vehicule (micro). Capacite
    * LEGALEMENT SENSIBLE : OFF par defaut PARTOUT sauf admin, gate env supplementaire
    * (desactivee en production sans flag explicite, cf. AudioMonitoringGuard).
    */
@@ -136,11 +145,45 @@ export interface UserPermissions {
   /**
    * Integration partenaire (Tracky x Maestroo) — connecter la flotte a une application
    * partenaire, choisir les CATEGORIES de donnees partagees, et COUPER le partage (en
-   * totalite ou categorie par categorie) a tout moment. C'est un acte a consequence :
+   * totalite ou categorie par categorie) à tout moment. C'est un acte a consequence :
    * il expose des donnees de la flotte a une application tierce. Reserve au fleet-admin
    * par defaut ; accordable, jamais implicite.
    */
   integrations_manage: boolean;
+
+  /**
+   * Espace depot (2026-08) — voir les missions dont on est le depot destinataire.
+   * Le perimetre n'est PAS la flotte : il est calcule depuis Mission.depotUserId,
+   * A CHAQUE REQUETE, jamais depuis UserVehicleAccess ni Fleet. OFF par defaut pour
+   * tous les roles sauf DEPOT, VIEWER et DRIVER (cf. design/A1-ROLE-DEPOT.md § 2).
+   */
+  missions_view: boolean;
+  /** Creer / modifier / annuler une mission et designer son depot destinataire. */
+  missions_manage: boolean;
+  /**
+   * Espace depot, lot A6 (2026-08) — DEMANDER une mission, et negocier son devis.
+   *
+   * ⚠️ NE PAS CONFONDRE AVEC `missions_manage`. Demander n'est pas creer : une
+   * demande n'immobilise aucun vehicule, ne pose aucun evenement d'agenda et n'ouvre
+   * aucun acces a une position. Elle ne devient une `Mission` qu'au moment ou le
+   * TRANSPORTEUR affecte un camion — c'est lui, et lui seul, qui cree.
+   *
+   * C'est la premiere capacite d'ECRITURE jamais accordee au role DEPOT, jusqu'ici
+   * strictement en lecture. Elle reste bornee a SES PROPRES demandes, verifiees a
+   * chaque requete comme le reste de son perimetre.
+   *
+   * ON pour DEPOT et pour les roles qui gerent deja les missions — un gestionnaire
+   * peut avoir a saisir une demande pour un depot qui l'appelle au telephone.
+   */
+  missions_request: boolean;
+  /** Generer un lien public temporaire de suivi vers un client final (15 min par defaut). */
+  mission_share: boolean;
+  /**
+   * Voir le nom et le telephone du conducteur d'une mission dont on est destinataire.
+   * Le telephone est masque COTE API (« 06 12 •• •• 47 ») : le numero complet ne quitte
+   * jamais le serveur, et le bouton d'appel passe par un endpoint qui journalise l'acces.
+   */
+  driver_contact_view: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -183,6 +226,13 @@ const VIEWER_DEFAULTS: UserPermissions = {
   places_manage: false,
   places_analyze: false,
   integrations_manage: false,
+  // Le lecteur voit les missions de la flotte, mais n'en cree aucune, ne partage
+  // rien et n'accede pas aux coordonnees des conducteurs.
+  missions_view: true,
+  missions_manage: false,
+  missions_request: false,
+  mission_share: false,
+  driver_contact_view: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -227,6 +277,21 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   // …mais PAS l'analyse IA (elle consomme des tokens) : un admin peut l'accorder.
   places_analyze: false,
   integrations_manage: false,
+  // Le gestionnaire est l'exploitant : c'est lui qui cree les missions, designe le
+  // depot destinataire et partage un suivi.
+  missions_view: true,
+  missions_manage: true,
+  // ⚠️ FERMEE PAR DEFAUT, SUR DECISION DU CLIENT (2026-08-15). Elle etait ouverte a la
+  // livraison d'A6 par symetrie avec `missions_manage` — « celui qui cree une mission
+  // peut bien en demander une ». Le client tranche l'inverse : demander et negocier,
+  // c'est engager un PRIX face a un tiers, pas planifier un camion. Un gestionnaire
+  // qui affecte des vehicules toute la journee n'a aucune raison d'ouvrir un fil de
+  // negociation, et l'ouvrir par defaut a des dizaines de comptes existants aurait
+  // accorde ce droit sans que personne ne l'ait demande. Un admin l'accorde nommement,
+  // depuis l'ecran des droits, ou la permission est cochable et documentee.
+  missions_request: false,
+  mission_share: true,
+  driver_contact_view: true,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -269,6 +334,11 @@ const ADMIN_DEFAULTS: UserPermissions = {
   places_manage: true,
   places_analyze: true,
   integrations_manage: true,
+  missions_view: true,
+  missions_manage: true,
+  missions_request: true,
+  mission_share: true,
+  driver_contact_view: true,
 };
 
 /**
@@ -318,6 +388,13 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   places_manage: false,
   places_analyze: false,
   integrations_manage: false,
+  // Le veilleur reste a zero sur les missions : son metier est nocturne, les missions
+  // sont diurnes, et il travaille sans aucune donnee de conducteur (A1 § 2).
+  missions_view: false,
+  missions_manage: false,
+  missions_request: false,
+  mission_share: false,
+  driver_contact_view: false,
 };
 
 /**
@@ -368,6 +445,84 @@ const DRIVER_DEFAULTS: UserPermissions = {
   places_manage: false,
   places_analyze: false,
   integrations_manage: false,
+  // Le conducteur voit LES SIENNES (borne serveur : missions dont il est le driver).
+  // `driver_contact_view` n'a pas de sens pour lui : c'est son propre numero.
+  missions_view: true,
+  missions_manage: false,
+  missions_request: false,
+  mission_share: false,
+  driver_contact_view: false,
+};
+
+/**
+ * Espace depot (2026-08) — « depot » : un TIERS EN LECTURE SEULE, dont le perimetre est
+ * borne par la mission. Ce n'est pas un utilisateur de la flotte.
+ *
+ * TOUT est a false sauf quatre lignes. Ces quatre-la ne donnent aucun acces general :
+ * elles ouvrent une porte que `DepotScopeGuard` referme a chaque requete sur le
+ * perimetre reel (Mission.depotUserId + fenetre horaire). Hors perimetre, l'API repond
+ * 403 — jamais 200 avec un tableau vide.
+ *
+ * Ce qui reste explicitement FERME, et pourquoi :
+ *   vehicles_view      — jamais d'acces flotte. La cle du depot est la plaque.
+ *   reports_*          — l'export depot passe par un endpoint dedie (A3 § 8).
+ *   engine_control     — aucune ecriture sur un vehicule, jamais.
+ *   agenda_*, reservations_* — l'agenda est l'outil du transporteur.
+ *
+ * cf. design/A1-ROLE-DEPOT.md § 2.
+ */
+const DEPOT_DEFAULTS: UserPermissions = {
+  // — Les quatre seules capacites ouvertes —
+  /** Ses missions uniquement : `where` Prisma sur depotUserId. */
+  missions_view: true,
+  /** Les trajets rattaches a ses missions uniquement. */
+  trips_view: true,
+  /** Un lien public temporaire, pour ses propres missions uniquement. */
+  mission_share: true,
+  /** Le conducteur de la mission en cours uniquement, telephone masque cote API. */
+  driver_contact_view: true,
+
+  // — Tout le reste est ferme —
+  missions_manage: false,
+  missions_request: true,
+  vehicles_view: false,
+  vehicles_create: false,
+  vehicles_edit: false,
+  vehicles_delete: false,
+  engine_control: false,
+  privacy_manage: false,
+  schedules_manage: false,
+  groups_view: false,
+  groups_manage: false,
+  geofences_view: false,
+  geofences_manage: false,
+  alerts_view: false,
+  alerts_acknowledge: false,
+  alerts_configure: false,
+  reports_view: false,
+  reports_export: false,
+  fuel_manage: false,
+  users_view: false,
+  users_manage: false,
+  drivers_view: false,
+  drivers_manage: false,
+  sims_view: false,
+  sims_assign: false,
+  audio_monitoring: false,
+  agenda_view: false,
+  agenda_manage: false,
+  reservations_view: false,
+  reservations_request: false,
+  reservations_manage: false,
+  ai_optimize: false,
+  ai_narrate: false,
+  ai_configure: false,
+  billing_manage: false,
+  qr_manage: false,
+  places_view: false,
+  places_manage: false,
+  places_analyze: false,
+  integrations_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -380,6 +535,8 @@ export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
       return { ...NIGHT_WATCHMAN_DEFAULTS };
     case 'DRIVER':
       return { ...DRIVER_DEFAULTS };
+    case 'DEPOT':
+      return { ...DEPOT_DEFAULTS };
     case 'FLEET_ADMIN':
     case 'SUPER_ADMIN':
       return { ...ADMIN_DEFAULTS };
@@ -390,6 +547,50 @@ export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
 }
 
 export const PERMISSION_KEYS = Object.keys(VIEWER_DEFAULTS) as (keyof UserPermissions)[];
+
+/**
+ * Roles FERMES : leur jeu de permissions est fixe par le role lui-meme et ne se
+ * negocie pas — ni en accordant (ils ne delèguent rien), ni en recevant (on ne
+ * peut pas leur ajouter une capacite depuis l'interface ni depuis l'API).
+ *
+ * `DEPOT` est ferme parce que son perimetre n'est pas un jeu de cases a cocher :
+ * il est calcule a chaque requete depuis `Mission.depotUserId` et la fenetre
+ * horaire. Lui accorder `vehicles_view` ne lui ouvrirait pas « la flotte » — ca
+ * produirait un etat incoherent ou l'interface promet un acces que le garde
+ * refuse. Cf. A5 § 4 : « Le perimetre d'un depot est fixe par ses missions. »
+ */
+export const CLOSED_ROLES: readonly UserRoleSlug[] = ['DEPOT'] as const;
+
+export function isClosedRole(role: UserRoleSlug): boolean {
+  return CLOSED_ROLES.includes(role);
+}
+
+/** Un jeu de permissions exhaustif, tout a `false`. */
+function allPermissionsFalse(): UserPermissions {
+  const out = {} as UserPermissions;
+  for (const key of PERMISSION_KEYS) out[key] = false;
+  return out;
+}
+
+/**
+ * Permissions a ecrire pour un utilisateur d'un role CIBLE donne.
+ *
+ * C'est le point d'entree que doivent employer les routes qui creent ou editent un
+ * compte (users.controller, invitations) — `clampPermissions` seul ne suffit pas :
+ * il borne au GRANTER, pas a la CIBLE. Un FLEET_ADMIN (qui detient tout) passant
+ * `{ vehicles_view: true }` sur un compte DEPOT franchirait le clamp sans encombre.
+ *
+ * Pour un role ferme, la demande est ignoree : on ecrit les defauts du role, point.
+ */
+export function permissionsForTargetRole(
+  targetRole: UserRoleSlug,
+  requested: Partial<UserPermissions> | null | undefined,
+  granter: { role: UserRoleSlug; permissions?: Partial<UserPermissions> | null },
+): UserPermissions {
+  const targetDefaults = getDefaultPermissions(targetRole);
+  if (isClosedRole(targetRole)) return targetDefaults;
+  return clampPermissions(requested, granter, targetDefaults);
+}
 
 /**
  * Permissions effectives d'un "granter" (inviteur / editeur) pour borner ce
@@ -403,6 +604,14 @@ export function effectiveGranterPermissions(granter: {
 }): UserPermissions {
   if (granter.role === 'SUPER_ADMIN' || granter.role === 'FLEET_ADMIN') {
     return { ...ADMIN_DEFAULTS };
+  }
+  // Roles FERMES : ils ne delèguent rien, quoi que porte leur set explicite.
+  // Un DEPOT n'invite personne. Le court-circuit est le pendant exact du bypass
+  // admin ci-dessus — sans lui, `effectiveGranterPermissions` renverrait les
+  // defauts du role, dont les 4 capacites ouvertes, et un depot pourrait les
+  // conferer a autrui. Exigence explicite d'A1 § 2.
+  if (isClosedRole(granter.role)) {
+    return allPermissionsFalse();
   }
   const out = getDefaultPermissions(granter.role);
   const explicit = granter.permissions;
@@ -477,53 +686,53 @@ export interface PermissionLabel {
  * Toute nouvelle permission DOIT etre ajoutee ici sinon TS rale (Record exhaustif).
  */
 export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> = {
-  vehicles_view: { group: 'Vehicules', label: 'Voir les vehicules' },
-  vehicles_create: { group: 'Vehicules', label: 'Ajouter un vehicule' },
-  vehicles_edit: { group: 'Vehicules', label: 'Modifier un vehicule' },
-  vehicles_delete: { group: 'Vehicules', label: 'Supprimer un vehicule' },
+  vehicles_view: { group: 'Véhicules', label: 'Voir les véhicules' },
+  vehicles_create: { group: 'Véhicules', label: 'Ajouter un véhicule' },
+  vehicles_edit: { group: 'Véhicules', label: 'Modifier un véhicule' },
+  vehicles_delete: { group: 'Véhicules', label: 'Supprimer un véhicule' },
   engine_control: {
-    group: 'Vehicules',
-    label: 'Couper / redemarrer le moteur',
-    description: 'Action sensible. Soumise aux contraintes metier (vitesse, fix GPS).',
+    group: 'Véhicules',
+    label: 'Couper / redémarrer le moteur',
+    description: 'Action sensible. Soumise aux contraintes métier (vitesse, fix GPS).',
   },
   privacy_manage: {
-    group: 'Vehicules',
-    label: 'Gerer le mode vie privee',
-    description: 'Activer/desactiver la pause de collecte des positions d\'un vehicule (aucune position enregistree pendant le mode prive).',
+    group: 'Véhicules',
+    label: 'Gérer le mode vie privée',
+    description: 'Activer/désactiver la pause de collecte des positions d\'un véhicule (aucune position enregistrée pendant le mode privé).',
   },
 
   schedules_manage: {
     group: 'Horaires',
-    label: 'Gerer les horaires marche/coupure',
-    description: 'Definir les plages horaires d\'allumage/coupure automatique d\'un vehicule.',
+    label: 'Gérer les horaires marche/coupure',
+    description: 'Définir les plages horaires d\'allumage/coupure automatique d\'un véhicule.',
   },
-  groups_view: { group: 'Groupes', label: 'Voir les groupes de vehicules' },
-  groups_manage: { group: 'Groupes', label: 'Gerer les groupes (creer, renommer, supprimer)' },
+  groups_view: { group: 'Groupes', label: 'Voir les groupes de véhicules' },
+  groups_manage: { group: 'Groupes', label: 'Gérer les groupes (créer, renommer, supprimer)' },
   geofences_view: { group: 'Geofences', label: 'Voir les geofences' },
-  geofences_manage: { group: 'Geofences', label: 'Gerer les geofences' },
+  geofences_manage: { group: 'Geofences', label: 'Gérer les geofences' },
   alerts_view: { group: 'Alertes', label: 'Voir les alertes' },
   alerts_acknowledge: { group: 'Alertes', label: 'Acquitter les alertes' },
-  alerts_configure: { group: 'Alertes', label: 'Configurer les regles d\'alertes', description: 'Creer, modifier et supprimer les regles de notification et seuils par vehicule.' },
+  alerts_configure: { group: 'Alertes', label: 'Configurer les règles d\'alertes', description: 'Créer, modifier et supprimer les règles de notification et seuils par véhicule.' },
   reports_view: { group: 'Rapports', label: 'Voir les rapports' },
   reports_export: {
     group: 'Rapports',
     label: 'Exporter les rapports (PDF / Excel / CSV)',
-    description: 'Telecharger les rapports et exports de donnees. Separe de la simple lecture pour eviter l\'exfiltration de l\'historique GPS.',
+    description: 'Télécharger les rapports et exports de données. Séparé de la simple lecture pour éviter l\'exfiltration de l\'historique GPS.',
   },
   trips_view: {
     group: 'Trajets & analyse',
     label: 'Voir l\'analyse des trajets & les scores',
-    description: 'Tracabilite fine : arrets, exces de vitesse (limites OSM), eco-conduite, conso/CO2, scores de conduite / classement et suivi carburant.',
+    description: 'Traçabilité fine : arrêts, excès de vitesse (limites OSM), éco-conduite, conso/CO2, scores de conduite / classement et suivi carburant.',
   },
   fuel_manage: {
     group: 'Trajets & analyse',
     label: 'Renseigner les pleins (calibration carburant)',
-    description: 'Saisir / modifier / supprimer les pleins (methode du plein) pour calibrer la consommation reelle et les couts.',
+    description: 'Saisir / modifier / supprimer les pleins (méthode du plein) pour calibrer la consommation réelle et les coûts.',
   },
   users_view: { group: 'Utilisateurs', label: 'Voir les utilisateurs' },
-  users_manage: { group: 'Utilisateurs', label: 'Gerer les utilisateurs (inviter, editer)' },
+  users_manage: { group: 'Utilisateurs', label: 'Gérer les utilisateurs (inviter, éditer)' },
   drivers_view: { group: 'Conducteurs', label: 'Voir les conducteurs' },
-  drivers_manage: { group: 'Conducteurs', label: 'Gerer les conducteurs' },
+  drivers_manage: { group: 'Conducteurs', label: 'Gérer les conducteurs' },
   sims_view: {
     group: 'Cartes SIM',
     label: 'Voir les cartes SIM',
@@ -531,98 +740,128 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
   },
   sims_assign: {
     group: 'Cartes SIM',
-    label: 'Assigner une carte SIM a un tracker',
-    description: 'Poser / detacher une SIM sur un boitier de la flotte.',
+    label: 'Assigner une carte SIM à un tracker',
+    description: 'Poser / détacher une SIM sur un boîtier de la flotte.',
   },
   audio_monitoring: {
     group: 'Audio',
     label: 'Écouter l\'audio du véhicule',
     description:
-      'Capacite legalement sensible (micro embarque). Desactivee en production sans flag dedie, attestation flotte requise. OFF par defaut.',
+      'Capacité légalement sensible (micro embarqué). Désactivée en production sans flag dédié, attestation flotte requise. OFF par défaut.',
   },
   agenda_view: {
     group: 'Agenda',
     label: 'Voir l\'agenda + signaler un incident',
     description:
-      'Calendrier maintenance/incidents. Permet aussi de signaler un incident sur un vehicule accessible.',
+      'Calendrier maintenance/incidents. Permet aussi de signaler un incident sur un véhicule accessible.',
   },
   agenda_manage: {
     group: 'Agenda',
-    label: 'Gerer la maintenance (evenements, plans, echeances)',
+    label: 'Gérer la maintenance (événements, plans, échéances)',
     description:
-      'Creer/editer/resoudre les evenements de maintenance et les plans recurrents (CT, vidange...).',
+      'Créer/éditer/résoudre les événements de maintenance et les plans récurrents (CT, vidange...).',
   },
   reservations_view: {
-    group: 'Reservations',
-    label: 'Voir les reservations & disponibilites',
+    group: 'Réservations',
+    label: 'Voir les réservations & disponibilités',
     description:
-      'Voir les reservations de vehicules et les creneaux de disponibilite (activite reelle, dashboard d\'optimisation).',
+      'Voir les réservations de véhicules et les créneaux de disponibilité (activité réelle, dashboard d\'optimisation).',
   },
   reservations_request: {
-    group: 'Reservations',
-    label: 'Demander une reservation',
+    group: 'Réservations',
+    label: 'Demander une réservation',
     description:
-      'Deposer une demande de reservation (creneau + criteres) sur un vehicule accessible ; validee ensuite par un gestionnaire.',
+      'Déposer une demande de réservation (créneau + critères) sur un véhicule accessible ; validée ensuite par un gestionnaire.',
   },
   reservations_manage: {
-    group: 'Reservations',
-    label: 'Gerer les reservations',
+    group: 'Réservations',
+    label: 'Gérer les réservations',
     description:
-      'Valider / refuser / editer / annuler / supprimer les reservations et auto-affecter un vehicule libre.',
+      'Valider / refuser / éditer / annuler / supprimer les réservations et auto-affecter un véhicule libre.',
   },
   ai_optimize: {
     group: 'Intelligence artificielle',
     label: 'Lancer les propositions IA (optimisation agenda)',
     description:
-      'Demander a l\'IA des propositions (capacite du parc, placement optimise). L\'IA propose ; l\'application reutilise vehicles_edit / reservations_*.',
+      'Demander à l\'IA des propositions (capacité du parc, placement optimisé). L\'IA propose ; l\'application réutilise vehicles_edit / reservations_*.',
   },
   ai_narrate: {
     group: 'Intelligence artificielle',
-    label: 'Generer les recits IA de trajet',
+    label: 'Générer les récits IA de trajet',
     description:
-      'Produire le recit IA d\'un trajet (resume vulgarise + Trust Score + conseils). Chaque generation est un appel LLM facture.',
+      'Produire le récit IA d\'un trajet (résumé vulgarisé + Trust Score + conseils). Chaque génération est un appel LLM facturé.',
   },
   ai_configure: {
     group: 'Intelligence artificielle',
     label: 'Configurer l\'IA de la flotte',
     description:
-      'Couper ou activer l\'assistance IA pour toute la societe (interrupteur maitre).',
+      'Couper ou activer l\'assistance IA pour toute la société (interrupteur maître).',
   },
   billing_manage: {
     group: 'Facturation',
     label: 'Facturation & options',
     description:
-      'Voir les informations d\'abonnement / facturation et (a terme) gerer le moyen de paiement. Reserve aux admins par defaut, accordable par utilisateur.',
+      'Voir les informations d\'abonnement / facturation et (à terme) gérer le moyen de paiement. Réservé aux admins par défaut, accordable par utilisateur.',
   },
   qr_manage: {
-    group: 'Vehicules',
-    label: 'Generer / imprimer les QR de deverrouillage',
+    group: 'Véhicules',
+    label: 'Générer / imprimer les QR de déverrouillage',
     description:
-      'Generer et imprimer les QR codes de deverrouillage des vehicules (fiche, liste, feuille « tous les QR »). Reserve aux admins par defaut, accordable.',
+      'Générer et imprimer les QR codes de déverrouillage des véhicules (fiche, liste, feuille « tous les QR »). Réservé aux admins par défaut, accordable.',
   },
   places_view: {
-    group: 'Lieux cles',
-    label: 'Voir les lieux cles',
+    group: 'Lieux clés',
+    label: 'Voir les lieux clés',
     description:
-      'Consulter les stations-service frequentees (passages detectes avec arret reel) et les parkings / stationnements recurrents de la flotte.',
+      'Consulter les stations-service fréquentées (passages détectés avec arrêt réel) et les parkings / stationnements récurrents de la flotte.',
   },
   places_manage: {
-    group: 'Lieux cles',
-    label: 'Gerer les lieux cles',
+    group: 'Lieux clés',
+    label: 'Gérer les lieux clés',
     description:
-      'Valider une station-service detectee (elle devient une station de la flotte sur la carte), creer / modifier / supprimer un parking ou un stationnement recurrent. Accorde aux managers par defaut.',
+      'Valider une station-service détectée (elle devient une station de la flotte sur la carte), créer / modifier / supprimer un parking ou un stationnement récurrent. Accordé aux managers par défaut.',
   },
   places_analyze: {
-    group: 'Lieux cles',
+    group: 'Lieux clés',
     label: 'Lancer une analyse IA d\'un lieu',
     description:
-      'Declencher l\'analyse IA d\'un lieu (enrichissement OSM + synthese). CONSOMME DES TOKENS (cout reel) : reserve aux admins par defaut, accordable. Reste soumis a l\'interrupteur IA de la societe et au kill-switch global.',
+      'Déclencher l\'analyse IA d\'un lieu (enrichissement OSM + synthèse). CONSOMME DES TOKENS (coût réel) : réservé aux admins par défaut, accordable. Reste soumis à l\'interrupteur IA de la société et au kill-switch global.',
   },
   integrations_manage: {
     group: 'Integrations',
-    label: 'Gerer les integrations partenaires',
+    label: 'Gérer les intégrations partenaires',
     description:
-      'Connecter la flotte a une application partenaire (Maestroo), choisir les categories de donnees partagees, et couper le partage a tout moment. Acte a consequence : expose des donnees de la flotte a une application tierce. Reserve au fleet-admin par defaut.',
+      'Connecter la flotte à une application partenaire (Maestroo), choisir les catégories de données partagées, et couper le partage à tout moment. Acte à conséquence : expose des données de la flotte à une application tierce. Réservé au fleet-admin par défaut.',
+  },
+  missions_view: {
+    group: 'Missions & dépôts',
+    label: 'Voir les missions',
+    description:
+      'Consulter les missions (trajet planifié avec créneau, véhicule et dépôt destinataire). Pour un compte Dépôt, limité à SES propres missions et à leur fenêtre horaire.',
+  },
+  missions_manage: {
+    group: 'Missions & dépôts',
+    label: 'Créer / modifier une mission',
+    description:
+      'Créer, modifier et annuler une mission, et désigner son dépôt destinataire. Acte à conséquence : ouvre à un tiers la position du véhicule pendant le créneau, et rend le véhicule indisponible à la réservation.',
+  },
+  missions_request: {
+    group: 'Missions & dépôts',
+    label: 'Demander une mission',
+    description:
+      'Déposer une demande de mission et en négocier le devis. Demander n\'est pas créer : une demande n\'immobilise aucun véhicule et n\'ouvre aucun accès à une position. Elle ne devient une mission qu\'au moment où le transporteur affecte un camion. Pour un compte Dépôt, limité à SES propres demandes.',
+  },
+  mission_share: {
+    group: 'Missions & dépôts',
+    label: 'Partager un suivi (lien 15 min)',
+    description:
+      'Générer un lien public temporaire vers un client final. Le lien n\'affiche que la position et l\'heure d\'arrivée estimée, expire automatiquement et reste révocable.',
+  },
+  driver_contact_view: {
+    group: 'Missions & dépôts',
+    label: 'Contacter le conducteur d\'une mission',
+    description:
+      'Voir le nom et le téléphone du conducteur d\'une mission dont on est destinataire. Le numéro est masqué côté serveur ; l\'appel passe par un endpoint qui journalise l\'accès.',
   },
 };
 
@@ -645,4 +884,7 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Intelligence artificielle',
   'Facturation',
   'Integrations',
+  // Espace depot (2026-08) — section en BAS de la matrice, avec sa 6e colonne « Depot »
+  // et son marqueur ◆ (accorde, mais limite a ses propres missions). Cf. A5 § 4.
+  'Missions & depots',
 ] as const;

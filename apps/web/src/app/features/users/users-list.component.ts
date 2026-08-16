@@ -1,3 +1,4 @@
+import { HttpClient } from '@angular/common/http';
 import { swallow } from '../../core/error/swallow';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
@@ -23,7 +24,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { DriversListComponent } from '../drivers/drivers-list.component';
 
-type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
+type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER' | 'DEPOT';
 
 @Component({
   selector: 'app-users-list',
@@ -93,9 +94,19 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
               <div class="m-grid">
                 <span class="m-cap" [title]="p.description">{{ p.label }}</span>
                 @for (r of roleCols; track r.role) {
-                  <span class="m-cell">
-                    @if (isDefaultOn(p.key, r.role)) {
+                  <span class="m-cell" [class.m-cell--fige]="r.role === 'DEPOT'">
+                    @if (r.role === 'DEPOT' && isDefaultOn(p.key, r.role)) {
+                      <!-- ◆ — accordé, MAIS limité à ses propres missions.
+                           Une coche verte identique aux autres rôles produirait
+                           l'inquiétude inverse : le Fleet Admin croirait ouvrir sa
+                           flotte. C'est cette distinction visuelle qui lui permet de
+                           comprendre en trois secondes (A5 § 4). -->
+                      <span class="chk-depot" title="Accordé, mais limité à ses propres missions — non modifiable">◆</span>
+                    } @else if (isDefaultOn(p.key, r.role)) {
                       <span class="chk" title="Activé par défaut"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon></span>
+                    } @else if (r.role === 'DEPOT') {
+                      <!-- Le rôle est FERMÉ : la case est grisée, pas « activable ». -->
+                      <span class="chk-fige" title="Le périmètre d'un dépôt est fixé par ses missions">—</span>
                     } @else {
                       <span class="chk-part" title="Désactivé par défaut — activable par utilisateur">○</span>
                     }
@@ -107,7 +118,17 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
           <div class="m-legend">
             <span><span class="chk chk-sm"><lucide-icon [img]="CheckIcon" [size]="11"></lucide-icon></span> Activé par défaut</span>
             <span><span class="chk-part chk-sm">○</span> Désactivé par défaut — activable par utilisateur</span>
+            <span><span class="chk-depot chk-sm">◆</span> Limité à ses propres missions</span>
           </div>
+          <!-- La légende du ◆, en toutes lettres. Sans elle, le marqueur intrigue
+               sans rassurer — et c'est précisément la question que se pose un Fleet
+               Admin avant d'ouvrir un accès à une société extérieure. -->
+          <p class="m-legend-depot">
+            <strong>◆ Limité à ses propres missions</strong> — le dépôt n'a aucun droit
+            d'action : son accès est en lecture seule, borné à la fenêtre horaire de chaque
+            mission. Ses cases ne sont pas modifiables : son périmètre est fixé par les
+            missions que vous lui assignez, pas par cette matrice.
+          </p>
         </div>
       } @else if (loading()) {
         <div class="u-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
@@ -317,6 +338,9 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-cell-role { display: flex; align-items: center; gap: 7px; flex-wrap: wrap }
     .u-role-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-secondary) }
     .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    /* Espace dépôt (2026-08) — violet : un dépôt n'est pas un membre de la flotte,
+       et la pastille doit le dire d'un coup d'œil dans une liste mêlée. */
+    .u-role-pill.depot { background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--violet) }
     .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
     .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
     .u-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor }
@@ -352,6 +376,22 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .chk { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
     .chk-part { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); font-size: 13px }
     .chk-none { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; color: var(--fg-tertiary); font-weight: 700 }
+    /* ═══ Espace dépôt (2026-08) — le marqueur ◆ et les cases figées ═══════════
+       Violet, DISTINCT de la coche verte. C'est la distinction qui permet à un
+       Fleet Admin de comprendre en trois secondes qu'ouvrir un accès dépôt
+       n'ouvre pas sa flotte (A5 § 4). */
+    .chk-depot { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+                 border-radius: 7px; background: color-mix(in srgb, var(--violet) 16%, transparent);
+                 color: var(--violet); font-size: 12px; font-weight: 700 }
+    .chk-fige { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+                color: var(--fg-tertiary); opacity: .5 }
+    /* La colonne entière est visiblement figée : le rôle est fermé, ses cases ne se
+       cochent pas. Le dire par le style évite qu'on essaie puis qu'on cherche pourquoi. */
+    .m-cell--fige { opacity: .92; cursor: not-allowed }
+    .m-legend-depot { margin: 0; padding: 11px 18px; border-top: 1px solid var(--border-subtle);
+                      background: color-mix(in srgb, var(--violet) 7%, transparent);
+                      font-size: 11.5px; line-height: 1.6; color: var(--fg-secondary) }
+    .m-legend-depot strong { color: var(--violet) }
     .m-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-secondary); font-size: 11.5px; color: var(--fg-tertiary) }
     .m-legend > span { display: inline-flex; align-items: center; gap: 7px }
     .chk-sm { width: 18px; height: 18px }
@@ -361,10 +401,36 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
       .u-col-scope, .u-col-last { display: none !important }
       .m-grid { grid-template-columns: minmax(140px,1.6fr) repeat(5,1fr) }
     }
+
+    /* ═══ TÉLÉPHONE : le rôle passe SOUS le nom ═══════════════════════════════
+       À 1000 px la ligne reste à trois colonnes : 160 + 140 + 44, plus deux
+       gouttières de 14 et 36 de padding — 408 px de plancher. Sur un écran de
+       375 px il en manque donc 48, et la carte les masquait (overflow: hidden)
+       au lieu de les résoudre : l'en-tête « UTILISATEUR » était coupé à gauche et
+       le menu « … », ancré au bord droit de la ligne, se retrouvait rogné hors de
+       l'écran. Relevé le 2026-08-12 : ligne de 390 px dans un conteneur de 342.
+
+       Deux colonnes suffisent : identité et menu. Le rôle et le badge de société
+       reviennent en dessous, où ils ont toute la largeur. */
+    @media (max-width: 560px) {
+      .u-thead { display: none }
+      .u-row {
+        grid-template-columns: minmax(0,1fr) 44px;
+        gap: 6px 10px;
+        padding: 12px 14px;
+      }
+      .u-cell-user { grid-column: 1; grid-row: 1 }
+      .u-cell-role { grid-column: 1; grid-row: 2; display: flex; flex-wrap: wrap;
+                     align-items: center; gap: 6px; padding-left: 45px }
+      .u-row-menu { grid-column: 2; grid-row: 1 / span 2; align-self: start }
+      /* Le menu ne dépasse jamais l'écran, quelle que soit la longueur des libellés. */
+      .u-menu { max-width: calc(100vw - 28px) }
+    }
   `],
 })
 export class UsersListComponent implements OnInit {
   private readonly usersService = inject(UsersApiService);
+  private readonly http = inject(HttpClient);
   private readonly audioApi = inject(AudioMonitoringService);
   private readonly toast = inject(ToastService);
 
@@ -388,6 +454,12 @@ export class UsersListComponent implements OnInit {
   }
 
   readonly loading = signal(true);
+  /**
+   * Espace dépôt (2026-08) — missions en cours par compte dépôt, pour la colonne
+   * « Périmètre » (A5 § 3). Chargé à part et sans bloquer : la liste des utilisateurs
+   * ne doit pas dépendre d'une donnée de mission.
+   */
+  protected readonly missionsEnCours = signal<Record<string, number>>({});
   /**
    * Message de PANNE, distinct de l'etat « aucun utilisateur ».
    *
@@ -453,6 +525,8 @@ export class UsersListComponent implements OnInit {
     { role: 'VIEWER', short: 'Lecteur' },
     { role: 'NIGHT_WATCHMAN', short: 'Veilleur' },
     { role: 'DRIVER', short: 'Conducteur' },
+    // Espace dépôt (2026-08) — 6ᵉ colonne, après Conducteur (A5 § 4).
+    { role: 'DEPOT', short: 'Dépôt' },
   ];
   /**
    * TOUTES les capacités, groupées, dérivées de la SOURCE UNIQUE (packages/shared) — plus de liste
@@ -531,6 +605,8 @@ export class UsersListComponent implements OnInit {
   protected readonly perms = inject(PermissionsService);
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   private fleets: FleetSummary[] = [];
+  /** Vrai si `/api/fleets` a echoue : distingue « pas de flotte » de « on ne sait pas ». */
+  private fleetsEnEchec = false;
 
   protected userInitials(u: TrackyUser): string {
     if (u.firstName && u.lastName) return (u.firstName[0] + u.lastName[0]).toUpperCase();
@@ -551,12 +627,27 @@ export class UsersListComponent implements OnInit {
     return u.role === 'FLEET_ADMIN' || u.role === 'SUPER_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer';
   }
   protected rolePillClass(role: string): string {
+    // Espace dépôt — violet, la couleur du dépôt dans tout le système (A5 § 3).
+    if (role === 'DEPOT') return 'depot';
     return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN' ? 'admin' : 'neutral';
   }
   /** Périmètre honnête dérivé du rôle (le détail par groupe/véhicule est dans le drawer Accès). */
   protected perimeterLabel(u: TrackyUser): string {
     if (!u.isActive) return 'Archivé';
     if (u.role === 'SUPER_ADMIN' || u.role === 'FLEET_ADMIN') return 'Toute la flotte';
+    // ═══ ESPACE DÉPÔT — LA COLONNE PORTE L'ACTIVITÉ, PAS UN SCOPE ═══════════
+    //
+    // A5 § 3 : « La colonne Périmètre porte l'activité plutôt qu'un scope — c'est
+    // l'information utile : un dépôt sans mission depuis trois mois est un compte
+    // à fermer. »
+    //
+    // Écrire « Accès personnalisé » pour un dépôt serait faux deux fois : il n'a
+    // aucun scope, et rien n'a été personnalisé.
+    if (u.role === 'DEPOT') {
+      const n = this.missionsEnCours()[u.id];
+      if (n === undefined) return 'Missions…';
+      return n === 0 ? 'Aucune mission' : n === 1 ? '1 mission en cours' : `${n} missions en cours`;
+    }
     return 'Accès personnalisé';
   }
 
@@ -588,8 +679,27 @@ export class UsersListComponent implements OnInit {
       this.activeTab.set('roles');
     }
     await this.loadUsers();
+    // Espace dépôt — l'activité des dépôts, détachée : un échec laisse « Missions… »
+    // et n'empêche pas la liste de s'afficher.
+    const societe = this.fleetFilter.selectedFleetId();
+    void firstValueFrom(
+      this.http.get<Record<string, number>>(
+        `/api/missions/depot-activity${societe ? '?fleetId=' + encodeURIComponent(societe) : ''}`,
+      ),
+    )
+      .then((a) => this.missionsEnCours.set(a ?? {}))
+      .catch((err) => swallow('users-list:depotActivity', err));
     if (this.isSuperAdmin()) {
-      this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);
+      // ⚠️ C'ETAIT UN `.catch(() => [])` MUET. En cas de panne, le selecteur de flotte
+      // du drawer DISPARAISSAIT — sa condition d'affichage est `fleets?.length` — et un
+      // SUPER_ADMIN creait alors des comptes sans flotte sans qu'aucun ecran ne l'indique.
+      // Pour un compte DEPOT, cela produit un compte inerte : `validerDepot` (API) exige
+      // un depot de la flotte de la mission. On retient donc l'echec pour le dire.
+      this.fleets = await firstValueFrom(this.fleetsApi.list()).catch((err) => {
+        swallow('users-list:fleets', err);
+        this.fleetsEnEchec = true;
+        return [] as FleetSummary[];
+      });
       // FAIL-CLOSED : on construit l'ensemble des flottes éligibles (N1). En cas d'erreur,
       // le set reste vide → tous les boutons « Info Mode assistance » restent désactivés.
       await firstValueFrom(this.audioApi.getFleetsWithAudio())
@@ -650,6 +760,7 @@ export class UsersListComponent implements OnInit {
       mode: 'create',
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      fleetsEnEchec: this.fleetsEnEchec,
       groups,
       vehicles,
       // Audio hors invitation (accordable après acceptation via la matrice, garde d'éligibilité).
@@ -676,6 +787,7 @@ export class UsersListComponent implements OnInit {
       user,
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      fleetsEnEchec: this.fleetsEnEchec,
       groups,
       vehicles,
       audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
@@ -701,6 +813,7 @@ export class UsersListComponent implements OnInit {
       },
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      fleetsEnEchec: this.fleetsEnEchec,
       groups,
       vehicles,
       audioEligible: !!inv.fleetId && this.eligibleFleetIds().has(inv.fleetId),
@@ -719,7 +832,7 @@ export class UsersListComponent implements OnInit {
           fleetId: result.fleetId,
           accessScopes: result.accessScopes,
         });
-        this.toast.success(`Invitation envoyee a ${result.email}`);
+        this.toast.success(`Invitation envoyée a ${result.email}`);
       } else if (mode === 'edit-invitation') {
         const invId = this.drawerData()?.invitation?.id;
         if (invId) {
@@ -728,7 +841,7 @@ export class UsersListComponent implements OnInit {
             role: result.role,
             accessScopes: result.accessScopes,
           });
-          this.toast.success('Invitation mise a jour');
+          this.toast.success('Invitation mise à jour');
         }
       } else {
         const userId = this.drawerData()?.user?.id;
@@ -801,7 +914,7 @@ export class UsersListComponent implements OnInit {
   async onResetPassword(user: TrackyUser): Promise<void> {
     try {
       await this.usersService.resetPassword(user.id);
-      this.toast.success(`Un email de reinitialisation a ete envoye a ${user.email}.`);
+      this.toast.success(`Un email de reinitialisation a été envoyé a ${user.email}.`);
     } catch {
       this.toast.error('Erreur lors de l\'envoi du lien de reinitialisation.');
     }
@@ -822,7 +935,7 @@ export class UsersListComponent implements OnInit {
     this.sendingAudioInfo.set(true);
     try {
       await firstValueFrom(this.audioApi.sendAudioInfoMail(user.id));
-      this.toast.success(`Mail envoye a ${user.email}`);
+      this.toast.success(`Mail envoyé a ${user.email}`);
       this.showAudioInfoModal.set(false);
       this.audioInfoTarget.set(null);
     } catch (err) {

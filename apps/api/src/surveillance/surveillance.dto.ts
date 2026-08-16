@@ -27,7 +27,10 @@ export class UpdateSurveillanceProfileDto {
   @IsEnum(SurveillanceSensitivity)
   sensitivity?: SurveillanceSensitivity;
 
-  // Format "HH:mm" UTC — ex "20:00" ou "06:30".
+  // Format "HH:mm" dans le fuseau de la flotte — ex "20:00" ou "06:30". C'est une heure
+  // de PENDULE, pas un instant : elle n'a pas d'équivalent UTC unique (+2 h l'été, +1 h
+  // l'hiver). Le champ ne change ni de nom ni de forme ; seule sa LECTURE a été corrigée
+  // au lot B0′, et les valeurs déjà en base ont été converties par migration.
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'scheduleStartTime doit être au format HH:mm (00:00 - 23:59)',

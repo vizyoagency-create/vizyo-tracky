@@ -85,7 +85,7 @@ export class GeofencesService {
       if (!firstFleet) throw new ForbiddenException('Aucune flotte existante a laquelle rattacher la geofence');
       fleetId = firstFleet.id;
     } else {
-      throw new ForbiddenException('Aucune flotte associee a votre compte');
+      throw new ForbiddenException('Aucune flotte associée à votre compte');
     }
 
     const type = dto.type ?? GeofenceType.CIRCLE;
@@ -195,7 +195,7 @@ export class GeofencesService {
       } else if (dto.type === 'CORRIDOR') {
         const corr = existing.corridorPoints as unknown;
         if (!Array.isArray(corr) || corr.length < 2) {
-          throw new BadRequestException('Un geofence CORRIDOR requiert corridorPoints (>= 2 points) deja definis');
+          throw new BadRequestException('Un geofence CORRIDOR requiert corridorPoints (>= 2 points) déjà definis');
         }
       }
       data.type = dto.type;
@@ -413,7 +413,7 @@ export class GeofencesService {
       ?? (requestedBy.role === UserRole.SUPER_ADMIN
         ? (await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' } }))?.id
         : null);
-    if (!fleetId) throw new ForbiddenException('Aucune flotte associee');
+    if (!fleetId) throw new ForbiddenException('Aucune flotte associée');
 
     let created = 0;
     let skipped = 0;

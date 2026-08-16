@@ -302,7 +302,7 @@ import {
     .vmt-odo-label { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .04em; }
     .vmt-odo-value {
       font-size: 22px; font-weight: 800; color: var(--fg-primary);
-      font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em; line-height: 1.1; margin-top: 2px;
+      font-family: var(--font-display); letter-spacing: -.02em; line-height: 1.1; margin-top: 2px;
     }
     .vmt-odo-value--empty { color: var(--fg-tertiary); }
     .vmt-odo-unit { font-size: 12px; font-weight: 600; color: var(--fg-tertiary); }

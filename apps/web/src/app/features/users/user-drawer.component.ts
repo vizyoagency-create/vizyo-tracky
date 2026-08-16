@@ -1,7 +1,7 @@
 import { Component, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, X, Save, Map } from 'lucide-angular';
+import { LucideAngularModule, X, Save, Map, Warehouse } from 'lucide-angular';
 import type { TrackyUser } from '../../core/services/users.service';
 import type { FleetSummary } from '../../core/services/fleets.service';
 import type { VehicleGroup } from '../../core/services/vehicle-groups.service';
@@ -26,12 +26,44 @@ export interface UserDrawerData {
   };
   isSuperAdmin?: boolean;
   fleets?: FleetSummary[];
+  /**
+   * La liste des flottes n'a pas pu être chargée. Distingué d'une liste vide : sans
+   * cette information, le sélecteur disparaissait en silence et un SUPER_ADMIN créait
+   * des comptes sans flotte sans jamais savoir pourquoi le choix ne lui était pas offert.
+   */
+  fleetsEnEchec?: boolean;
   /** Véhicules/groupes de la flotte (pour les scopes GROUP/VEHICLE de la matrice). */
   groups?: VehicleGroup[];
   vehicles?: VehicleDetailDto[];
   audioEligible?: boolean;
   /** Mode edit — scopes d'accès existants de l'utilisateur (UserVehicleAccess), pour amorcer la matrice. */
   accessEntries?: DrawerAccessScope[];
+}
+
+/**
+ * Le motif de refus AVANT envoi, ou `null` si le formulaire peut partir.
+ *
+ * Fonction pure et exportée pour être vérifiable sans monter le composant — la
+ * règle qui compte ici est celle du dépôt, et elle protège d'un compte INERTE :
+ * l'invitation d'un dépôt sans flotte part sans erreur, le compte se crée, puis
+ * `validerDepot` (missions.service) ne le proposera jamais comme destinataire,
+ * puisqu'il exige un dépôt appartenant à la flotte de la mission. L'échec se
+ * manifeste alors dans l'agenda, loin de l'écran qui l'a causé.
+ */
+export function motifDeRefus(champs: {
+  mode: 'create' | 'edit' | 'edit-invitation';
+  email: string;
+  role: string;
+  isSuperAdmin: boolean;
+  fleetId: string;
+}): string | null {
+  if (champs.mode === 'create' && !champs.email) return 'Email requis';
+  // Hors SUPER_ADMIN, la flotte n'est pas saisie : le serveur impose celle de
+  // l'inviteur. Exiger un choix qui n'est pas affiché bloquerait sans issue.
+  if (champs.role === 'DEPOT' && champs.isSuperAdmin && !champs.fleetId) {
+    return 'Choisissez la flotte de ce dépôt : sans elle, aucune mission ne pourra lui être affectée.';
+  }
+  return null;
 }
 
 export interface UserDrawerResult {
@@ -55,7 +87,13 @@ export interface UserDrawerResult {
   imports: [FormsModule, LucideAngularModule, AccessMatrixEditorComponent],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <!-- ⚠️ h-[100dvh] EN PLUS de inset-0, et ce n'est pas redondant. bottom: 0 se
+           résout sur le viewport SMALL (barre d'URL affichée) : quand elle se rétracte au
+           défilement, la zone visible grandit mais le panneau garde son ancienne hauteur,
+           et un bandeau vide apparaît sous le pied — c'est le « gros espace blanc en bas »
+           relevé le 2026-08-12 sur Android. dvh suit le viewport dynamique. Sur un
+           élément positionné, top + height l'emportent et bottom est ignoré. -->
+      <div class="fixed inset-0 h-[100dvh] z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
         <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
@@ -89,7 +127,7 @@ export interface UserDrawerResult {
               <section>
                 <h3 class="section-title">Inviter un utilisateur</h3>
                 <p class="text-xs text-fg-tertiary mb-3">
-                  Un email d'invitation sera envoye. L'utilisateur pourra creer son mot de passe et renseigner ses informations.
+                  Un email d'invitation sera envoyé. L'utilisateur pourra créer son mot de passe et renseigner ses informations.
                 </p>
                 <div class="space-y-3">
                   <div>
@@ -108,11 +146,40 @@ export interface UserDrawerResult {
                     Flotte
                   </h3>
                   <select [(ngModel)]="selectedFleetId" class="field-input field-select">
-                    <option value="">-- Aucune flotte --</option>
+                    <option value="">{{ role === 'DEPOT' ? '-- Choisir la flotte --' : '-- Aucune flotte --' }}</option>
                     @for (f of data()!.fleets!; track f.id) {
                       <option [value]="f.id">{{ f.name }}</option>
                     }
                   </select>
+                  <!-- Espace dépôt — la flotte n'est pas un confort ici, c'est ce qui rend le
+                       compte utilisable. validerDepot (missions.service) exige un dépôt
+                       APPARTENANT à la flotte de la mission : sans flotte, aucune mission ne
+                       pourra jamais lui être affectée. Le serveur accepte pourtant l'invitation
+                       sans flotte — on le refuse ici plutôt que de livrer un compte inerte. -->
+                  @if (role === 'DEPOT') {
+                    <p class="text-xs text-fg-tertiary mt-2">
+                      Obligatoire pour un dépôt : sans flotte, aucune mission ne pourra lui
+                      être affectée.
+                    </p>
+                  }
+                </section>
+              }
+
+              <!-- Le sélecteur manque alors qu'il devrait être là : on le DIT. -->
+              @if (data()?.isSuperAdmin && !data()?.fleets?.length) {
+                <section>
+                  <h3 class="section-title">
+                    <lucide-icon [img]="MapIcon" [size]="12" class="inline-block mr-1 text-tracky-light"></lucide-icon>
+                    Flotte
+                  </h3>
+                  <p class="text-xs text-fg-tertiary">
+                    @if (data()?.fleetsEnEchec) {
+                      La liste des flottes n'a pas pu être chargée. Fermez et rouvrez cette
+                      fenêtre : sans elle, le compte sera créé sans flotte.
+                    } @else {
+                      Aucune flotte n'existe encore. Créez-en une avant d'inviter un dépôt.
+                    }
+                  </p>
                 </section>
               }
             }
@@ -169,6 +236,16 @@ export interface UserDrawerResult {
                   class="role-btn" [class.active]="role === 'DRIVER'" [class.viewer]="role === 'DRIVER'">
                   Conducteur
                 </button>
+                <!-- Espace dépôt (2026-08) — proposé à la CRÉATION seulement.
+                     Le changement de rôle depuis ou vers « Dépôt » est interdit dans
+                     les deux sens (A5 § 5) : le proposer en édition afficherait un
+                     bouton que le serveur refuse. -->
+                @if (data()?.mode !== 'edit') {
+                  <button (click)="setRole('DEPOT')"
+                    class="role-btn role-depot" [class.active]="role === 'DEPOT'">
+                    Dépôt
+                  </button>
+                }
                 @if (data()?.isSuperAdmin) {
                   <button (click)="setRole('FLEET_ADMIN')"
                     class="role-btn" [class.active]="role === 'FLEET_ADMIN'" [class.admin-role]="role === 'FLEET_ADMIN'">
@@ -207,6 +284,32 @@ export interface UserDrawerResult {
               </section>
             }
 
+            <!-- ═══ ESPACE DÉPÔT — LES CHAMPS DE PÉRIMÈTRE DISPARAISSENT ═══════
+                 A5 § 2 : « Un DEPOT n'a pas de scope véhicule ni groupe : son
+                 périmètre est calculé depuis les missions. Afficher un sélecteur de
+                 groupes serait un MENSONGE D'INTERFACE — et une invitation à créer
+                 une ligne UserVehicleAccess interdite. »
+
+                 Le serveur refuse déjà (deux verrous posés côté API). Ici on évite
+                 de proposer ce qu'il refusera : un écran qui demande puis échoue est
+                 pire qu'un écran qui n'a jamais demandé. -->
+            @if (role === 'DEPOT') {
+              <section>
+                <h3 class="section-title">Ce que verra ce compte</h3>
+                <p class="depot-perimetre">
+                  <lucide-icon [img]="WarehouseIcon" [size]="15" />
+                  <span>
+                    Ce compte verra <strong>uniquement les missions que vous lui
+                    assignerez</strong>, pendant leur créneau. Aucun accès à votre flotte.
+                  </span>
+                </p>
+                <p class="text-xs text-fg-tertiary mt-2">
+                  Pour lui ouvrir un accès, créez une mission depuis l'agenda et
+                  désignez-le comme dépôt destinataire.
+                </p>
+              </section>
+            } @else {
+
             <!-- Accès & Permissions -->
             <section>
               <h3 class="section-title">Accès & permissions</h3>
@@ -228,6 +331,7 @@ export interface UserDrawerResult {
                 (scopesChange)="scopes.set($event)"
               />
             </section>
+            }
           </div>
 
           <!-- Footer -->
@@ -278,6 +382,22 @@ export interface UserDrawerResult {
     }
     .field-input:focus { border-color: var(--tracky) }
     .field-input::placeholder { color: var(--fg-tertiary) }
+
+    /* Espace dépôt — violet, la couleur du dépôt dans tout le système. */
+    .role-btn.role-depot.active {
+      border-color: var(--violet);
+      background: color-mix(in srgb, var(--violet) 14%, transparent);
+      color: var(--violet);
+    }
+    .depot-perimetre {
+      display: flex; align-items: flex-start; gap: 9px; margin: 0;
+      padding: 11px 13px; border-radius: 12px; font-size: 12.5px; line-height: 1.55;
+      background: color-mix(in srgb, var(--violet) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--violet) 26%, transparent);
+      color: var(--violet);
+    }
+    .depot-perimetre lucide-icon { flex-shrink: 0; margin-top: 1px; }
+    .depot-perimetre strong { color: var(--fg-primary); }
 
     .role-btn {
       flex: 1; padding: 10px; border-radius: 12px; font-size: 13px; font-weight: 600; text-align: center;
@@ -348,6 +468,8 @@ export class UserDrawerComponent {
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;
   protected readonly MapIcon = Map;
+  /** Espace dépôt — `Warehouse`, seul ajout au vocabulaire d'icônes (design/ICONS.md D-I2). */
+  protected readonly WarehouseIcon = Warehouse;
 
   @HostListener('document:keydown.escape')
   onEscape() { if (this.open() && !this.loading()) this.onClose(); }
@@ -417,8 +539,15 @@ export class UserDrawerComponent {
   }
 
   onSave(): void {
-    if (this.data()?.mode === 'create' && !this.email) {
-      this.error.set('Email requis');
+    const refus = motifDeRefus({
+      mode: this.data()?.mode ?? 'create',
+      email: this.email,
+      role: this.role,
+      isSuperAdmin: !!this.data()?.isSuperAdmin,
+      fleetId: this.selectedFleetId,
+    });
+    if (refus) {
+      this.error.set(refus);
       return;
     }
     const isCreate = this.data()?.mode === 'create';

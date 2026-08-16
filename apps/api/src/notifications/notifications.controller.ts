@@ -78,7 +78,7 @@ export class NotificationsController {
   }
 
   /**
-   * Mise a jour PARTIELLE des preferences de l'utilisateur connecte : seuls les champs
+   * Mise à jour PARTIELLE des preferences de l'utilisateur connecte : seuls les champs
    * presents sont modifies, les autres restent tels quels (l'ecran peut donc envoyer un
    * seul interrupteur sans reecrire tout le reste).
    *
@@ -126,7 +126,7 @@ export class NotificationsController {
     // `crypto.randomUUID` est indisponible, le client fabrique
     // `${Date.now()}-${Math.random().toString(36)}` — du base36, donc des lettres g..z.
     // Le serveur mettait alors `deviceId` a `undefined` sans erreur ni journal, et le
-    // dedoublonnage retombait sur le User-Agent, qui change a chaque mise a jour du
+    // dedoublonnage retombait sur le User-Agent, qui change a chaque mise à jour du
     // navigateur : des lignes fantomes pour un meme appareil physique.
     //
     // On accepte desormais tout identifiant opaque raisonnable, et on se rabat sur
@@ -221,7 +221,7 @@ export class NotificationsController {
     const isOwner = sub.userId === req.user.id;
     const isSuperAdmin = req.user.role === UserRole.SUPER_ADMIN;
     if (!isOwner && !isSuperAdmin) {
-      throw new ForbiddenException('Acces refuse');
+      throw new ForbiddenException('Accès refusé');
     }
     await this.webPush.deleteSubscriptionById(id);
   }
@@ -257,7 +257,7 @@ export class NotificationsController {
     },
   ) {
     if (!this.webPush.isEnabled()) {
-      throw new BadRequestException('Push desactive cote serveur (VAPID manquant)');
+      throw new BadRequestException('Push désactivé cote serveur (VAPID manquant)');
     }
     const allMySubs = await this.webPush.listForUser(req.user.id);
     if (allMySubs.length === 0) {

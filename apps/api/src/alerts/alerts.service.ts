@@ -114,7 +114,7 @@ export class AlertsService {
         })
         .catch((err) => {
           this.logger.error(
-            `surveillanceEvent.create a echoue pour l'alerte ${alert.id} (broadcast/dispatch maintenus): ${err instanceof Error ? err.message : err}`,
+            `surveillanceEvent.create a échoué pour l'alerte ${alert.id} (broadcast/dispatch maintenus): ${err instanceof Error ? err.message : err}`,
           );
         });
     }
@@ -222,6 +222,65 @@ export class AlertsService {
     this.dispatch.dispatchAlert(alert).catch((err) => {
       this.logger.warn(`Notification dispatch failed for GPS_LOST alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
     });
+    return alert;
+  }
+
+  /**
+   * A6 arbitrage J — la flotte n'a pas de grille tarifaire active.
+   *
+   * ┌─ ON ALERTE, ON NE BLOQUE PAS ─────────────────────────────────────────────┐
+   * │ Couper la création de mission faute de grille aurait rendu `/agenda`       │
+   * │ inopérant pour un client en pleine recette. La décision du client est      │
+   * │ l'inverse : les missions restent créables, sans montant, et l'absence      │
+   * │ remonte ICI. Seule la demande côté dépôt se ferme — une mission sans prix  │
+   * │ reste une mission, une demande sans prix n'a pas d'objet.                  │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * ⚠️ SEULE ALERTE DU CATALOGUE SANS VÉHICULE. Toutes les autres naissent d'une
+   * trame de boîtier ; celle-ci décrit un RÉGLAGE de la société. `vehicleId` reste
+   * donc nul — le centre d'alertes sait déjà ne pas afficher de plaque dans ce cas.
+   *
+   * ⚠️ AUCUN DISPATCH EXTERNE, ET C'EST DÉLIBÉRÉ. `dispatchAlert` réveille un
+   * téléphone : légitime pour un SOS, absurde pour un tarif non publié, qui attend
+   * très bien l'ouverture du navigateur. L'alerte est diffusée en direct pour que le
+   * compteur du centre bouge sans rechargement, et s'arrête là.
+   *
+   * DÉDUPLIQUÉE sur 24 h, ACQUITTÉE OU NON. La cause persiste tant que personne n'a
+   * publié de grille, et chaque demande de devis repasse ici : sans fenêtre, un dépôt
+   * qui insiste produirait une alerte par tentative. En ne filtrant pas sur
+   * `acknowledgedAt`, acquitter la fait taire pour la journée au lieu d'en faire
+   * renaître une au calcul suivant — même raisonnement que `createGpsLostAlert`.
+   *
+   * Retourne l'alerte créée, ou `null` si une alerte récente existe déjà.
+   */
+  async createPricingGridMissingAlert(
+    fleetId: string,
+    motif: string,
+    dedupWindowMs = 24 * 60 * 60 * 1000,
+  ): Promise<Alert | null> {
+    const since = new Date(Date.now() - dedupWindowMs);
+    const existing = await this.prisma.alert.findFirst({
+      where: { fleetId, type: AlertType.PRICING_GRID_MISSING, createdAt: { gte: since } },
+      select: { id: true },
+    });
+    if (existing) return null;
+
+    const alert = await this.prisma.alert.create({
+      data: {
+        fleetId,
+        type: AlertType.PRICING_GRID_MISSING,
+        severity: AlertSeverity.WARNING,
+        title: '💶 Grille tarifaire absente',
+        // Le motif vient de `MissionPricingService.tarifPour` : il distingue « aucune
+        // grille » de « grille désactivée », deux gestes différents pour la corriger.
+        message: `${motif} Les missions restent créables, sans montant, mais vos dépôts ne peuvent pas déposer de demande faute de tarif à leur présenter. Publiez une grille dans Missions › Paramètres.`,
+        payload: { fleetId, motif } as Prisma.InputJsonValue,
+      },
+      include: { vehicle: true, tracker: true },
+    });
+
+    this.gateway.broadcastAlert(alert);
+    this.logger.warn(`[ALERT] WARNING PRICING_GRID_MISSING pour la flotte ${fleetId}`);
     return alert;
   }
 

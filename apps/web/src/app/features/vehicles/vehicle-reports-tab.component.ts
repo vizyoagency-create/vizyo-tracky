@@ -753,7 +753,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
       font-size: 22px;
       font-weight: 800;
       color: var(--tracky-light);
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .vrt-trip-distance-unit { font-size: 11px; color: var(--fg-tertiary); font-weight: 600; }

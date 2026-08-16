@@ -82,7 +82,7 @@ export class AdminSamplingController {
     await this.assertAccess(req, trackerId);
     const minutes = typeof body?.durationMinutes === 'number' ? body.durationMinutes : 0;
     if (!Number.isFinite(minutes) || minutes < 0 || minutes > 24 * 60) {
-      throw new BadRequestException('durationMinutes doit etre entre 0 et 1440 (24h)');
+      throw new BadRequestException('durationMinutes doit être entre 0 et 1440 (24h)');
     }
     return this.sampling.setVerboseMode(trackerId, minutes);
   }
@@ -102,7 +102,7 @@ export class AdminSamplingController {
     });
     if (!tracker) throw new NotFoundException('Tracker introuvable');
     if (!tracker.vehicle || tracker.vehicle.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+      throw new ForbiddenException('Accès refusé');
     }
   }
 }

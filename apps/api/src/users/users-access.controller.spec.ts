@@ -85,6 +85,9 @@ function makeController(prisma: PrismaService): UsersController {
     {} as never,
     // Owner plateforme — isMasked=false ⇒ assertTargetVisible no-op (tests d'accès inchangés).
     { isMasked: () => false } as never,
+    // Lot A4 — fermeture des liens publics à l'archivage. Non exercée par ces tests
+    // d'accès, mais exigée à la construction.
+    { fermerLiensDuCompte: jest.fn().mockResolvedValue(0) } as never,
   );
 }
 

@@ -49,12 +49,12 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'COLLISION', label: 'Collision', severity: 'critical' },
   { value: 'TOW', label: 'Remorquage', severity: 'critical' },
   { value: 'TAMPER', label: 'Retrait tracker', severity: 'critical' },
-  { value: 'ILLEGAL_IGNITION', label: 'Demarrage non autorise', severity: 'critical' },
+  { value: 'ILLEGAL_IGNITION', label: 'Démarrage non autorise', severity: 'critical' },
   { value: 'LOW_BATTERY', label: 'Batterie faible', severity: 'warning' },
-  { value: 'OVERSPEED', label: 'Exces de vitesse', severity: 'warning' },
-  { value: 'GEOFENCE_ENTER', label: 'Entree geofence', severity: 'warning' },
+  { value: 'OVERSPEED', label: 'Excès de vitesse', severity: 'warning' },
+  { value: 'GEOFENCE_ENTER', label: 'Entrée geofence', severity: 'warning' },
   { value: 'GEOFENCE_EXIT', label: 'Sortie geofence', severity: 'warning' },
-  { value: 'MOVEMENT_IDLE', label: 'Mouvement vehicule eteint', severity: 'warning' },
+  { value: 'MOVEMENT_IDLE', label: 'Mouvement véhicule eteint', severity: 'warning' },
   { value: 'BONNET', label: 'Capot ouvert', severity: 'warning' },
   { value: 'DOOR', label: 'Porte ouverte', severity: 'warning' },
   { value: 'FATIGUE', label: 'Fatigue conducteur', severity: 'warning' },
@@ -63,7 +63,11 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'HARSH_TURN', label: 'Virage brutal', severity: 'info' },
   { value: 'VIBRATION', label: 'Vibration', severity: 'info' },
   { value: 'GPS_LOST', label: 'Perte signal GPS', severity: 'info' },
-  { value: 'IDLE_TIME', label: 'Arret prolonge', severity: 'info' },
+  { value: 'IDLE_TIME', label: 'Arrêt prolonge', severity: 'info' },
+  // A6 arbitrage J — la seule entrée de cette liste qui ne vienne pas d'un boîtier :
+  // elle décrit un réglage de la société, pas un événement du terrain. Elle est donc
+  // sans plaque, et le filtre par véhicule ne la fait jamais apparaître — c'est voulu.
+  { value: 'PRICING_GRID_MISSING', label: 'Grille tarifaire absente', severity: 'warning' },
 ];
 
 const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS'; label: string; icon: typeof Bell }[] = [
@@ -131,7 +135,7 @@ interface AlertCluster {
             <div class="bn-empty-icon">
               <lucide-icon [img]="AlertTriangle" [size]="56"></lucide-icon>
             </div>
-            <p class="bn-empty-text">Aucune donnee</p>
+            <p class="bn-empty-text">Aucune donnée</p>
           </div>
         } @else {
           <div class="bn-list">
@@ -837,6 +841,8 @@ export class AlertsComponent implements OnInit {
     GPS_LOST: 'Perte du signal GPS',
     IDLE_TIME: 'Temps d\'arrêt prolongé',
     SURVEILLANCE_TRIGGERED: 'Surveillance déclenchée',
+    MAINTENANCE_DUE: 'Entretien à échéance',
+    PRICING_GRID_MISSING: 'Grille tarifaire absente',
     UNKNOWN: 'Alerte inconnue',
   };
 

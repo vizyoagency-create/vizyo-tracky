@@ -112,6 +112,20 @@ export class RealtimeService {
   private static readonly INCIDENT_REPEAT_MS = 30 * 60_000;
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
+
+  /**
+   * Rattrape le chargement des alertes quand la socket s'est connectée AVANT que
+   * l'on sache qui est connecté.
+   *
+   * Sans cela, la garde renforcée de `loadInitialAlerts` transformerait la pluie de
+   * 403 en une liste d'alertes vide au premier chargement — on aurait troqué un
+   * défaut bruyant contre un défaut silencieux, ce qui est pire. L'appel est
+   * idempotent : il remplace la liste, il ne l'accumule pas.
+   */
+  private readonly alertesDesQueUtilisateurConnu = effect(() => {
+    const u = this.auth.user();
+    if (u && u.role !== 'DEPOT' && this.connected()) void this.loadInitialAlerts();
+  });
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
   private readonly visibility = inject(VisibilityService);
@@ -434,7 +448,7 @@ export class RealtimeService {
    */
   private acknowledgeAlertInline(alertId: string): void {
     void firstValueFrom(this.http.post(`/api/alerts/${alertId}/acknowledge`, {})).catch(() => {
-      this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
+      this.toast.error('Échec de l\'acquittement', 'Reessayer depuis la liste des alertes');
     });
   }
 
@@ -692,6 +706,18 @@ export class RealtimeService {
    * les valeurs hydratees (meme cle = trackerId).
    */
   private async hydrate(): Promise<void> {
+    // ⚠️ Espace dépôt (2026-08), lot A3 — un DEPOT n'a pas `vehicles_view` : ce
+    // `GET /api/vehicles/snapshot` lui répond 403, et l'intercepteur global en fait
+    // un bandeau rouge « Action impossible » à CHAQUE chargement de sa carte.
+    //
+    // Le refus est correct — c'est l'appel qui ne l'est pas. Deux dégâts : le dépôt
+    // croit l'outil cassé, et surtout le journal se remplit de 403 LÉGITIMES, ceux-là
+    // mêmes par lesquels on vérifie l'isolation. On ne noie pas le signal qui sert à
+    // prouver la propriété qu'on tient à prouver.
+    //
+    // Le dépôt a son propre canal : `DepotLiveStore` lit `/depot/live` et rejoint les
+    // salons `depot:mission:<id>`.
+    if (this.auth.isDepot()) return;
     try {
       // Sprint 3 (revue C1) — capture de l'état coupe AVANT le fetch snapshot. Le snapshot
       // peut être antérieur à un event WS arrivé pendant le round-trip ; on ré-appliquera
@@ -769,6 +795,22 @@ export class RealtimeService {
   }
 
   private async loadInitialAlerts(): Promise<void> {
+    // Même raison que `hydrate()` : un DEPOT n'a pas `alerts_view`. Les alertes sont
+    // l'outil du transporteur, jamais celui du tiers en lecture (A1 § 2).
+    //
+    // ⚠️ ON TESTE L'ABSENCE D'UTILISATEUR, PAS SEULEMENT LE RÔLE DÉPÔT.
+    // `isDepot()` lit l'utilisateur COURANT, qui vaut `null` tant que `/api/auth/me`
+    // n'a pas répondu. Or cette méthode est appelée sur l'événement `connect` de la
+    // socket, laquelle s'établit AVANT cette réponse au chargement de la page : la
+    // garde laissait donc passer, et un compte DEPOT recevait un 403 « Permission
+    // requise : alerts_view ». Rejouée à chaque reconnexion, elle en a produit 25 en
+    // une seule session — jusqu'au 429 du limiteur de débit (production, 2026-08-12).
+    //
+    // Tant qu'on ignore QUI est connecté, on ne demande rien. L'effet ci-dessous
+    // rejoue l'appel dès que l'utilisateur est connu, donc rien n'est perdu pour un
+    // compte légitime dont la socket se serait connectée trop tôt.
+    const utilisateur = this.auth.user();
+    if (!utilisateur || utilisateur.role === 'DEPOT') return;
     try {
       const res = await firstValueFrom(
         this.http.get<{ items: AlertEvent[] }>('/api/alerts', {

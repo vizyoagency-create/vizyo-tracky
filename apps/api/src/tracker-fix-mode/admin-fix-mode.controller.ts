@@ -122,13 +122,13 @@ export class AdminFixModeController {
 
     const minutes = body?.durationMinutes ?? 0;
     if (!Number.isFinite(minutes) || minutes < 0 || minutes > 24 * 60) {
-      throw new BadRequestException('durationMinutes doit etre entre 0 et 1440 (24h)');
+      throw new BadRequestException('durationMinutes doit être entre 0 et 1440 (24h)');
     }
     const intervalS = body?.intervalS ?? null;
     // V1.14 — Borne inferieure = 20s (minimum hardware Coban GPS403D).
     // Le service applique le meme clamp via Math.max(HARD_CAP_MIN_S, ...) en defense en profondeur.
     if (intervalS !== null && (!Number.isFinite(intervalS) || intervalS < 20 || intervalS > 300)) {
-      throw new BadRequestException('intervalS doit etre entre 20 et 300 si fourni');
+      throw new BadRequestException('intervalS doit être entre 20 et 300 si fourni');
     }
 
     return this.fixMode.setManualOverride(trackerId, minutes, intervalS, req.user.id);
@@ -142,7 +142,7 @@ export class AdminFixModeController {
     if (!tracker) throw new NotFoundException('Tracker introuvable');
     if (req.user.role !== UserRole.SUPER_ADMIN) {
       if (!tracker.vehicle || tracker.vehicle.fleetId !== req.user.fleetId) {
-        throw new ForbiddenException('Acces refuse');
+        throw new ForbiddenException('Accès refusé');
       }
     }
     return tracker;

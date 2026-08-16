@@ -1,4 +1,6 @@
 import { SurveillanceSensitivity } from '@prisma/client';
+import { FLEET_TIME_ZONE } from '../common/utils/datetime';
+import { getNowInTimezone } from '../vehicle-schedules/schedule-evaluator';
 import type { ScheduleDay } from './surveillance.dto';
 
 /**
@@ -24,20 +26,49 @@ const DAY_INDEX: Record<ScheduleDay, number> = {
 };
 
 /**
- * Détermine si `now` (UTC) tombe dans la plage horaire `[start, end]` pour le
- * profil. Gère les plages qui traversent minuit (ex 20:00 -> 06:00) ET le filtre
- * sur les jours actifs.
+ * Détermine si `now` tombe dans la plage horaire `[start, end]` pour le profil.
+ * Gère les plages qui traversent minuit (ex 20:00 -> 06:00) ET le filtre sur les
+ * jours actifs.
+ *
+ * ┌───────────────────────────────────────────────────────────────────────────┐
+ * │ « 20:00 » EST UNE HEURE DE PENDULE, PAS UN INSTANT (corrigé au lot B0′)     │
+ * │                                                                            │
+ * │ Cette fonction lisait `getUTCHours()`. Une surveillance réglée sur 18:00    │
+ * │ démarrait donc à 18:00 UTC, soit **20:00 à Paris en été** : deux heures     │
+ * │ pendant lesquelles le véhicule n'était pas protégé, sans que personne ne le │
+ * │ sache — l'écran affichait bien « 18:00 », et l'antivol était bien « actif ».│
+ * │                                                                            │
+ * │ Une plage récurrente n'a pas d'équivalent UTC : son décalage vaut +2 h      │
+ * │ l'été et +1 h l'hiver. Le seul énoncé juste est « 18:00 dans le fuseau de   │
+ * │ la flotte », que `getNowInTimezone` résout au bon décalage à chaque tick, y │
+ * │ compris le dimanche du changement d'heure.                                  │
+ * │                                                                            │
+ * │ C'est déjà la convention du dépôt : `VehicleSchedule` (horaires moteur) et  │
+ * │ `VehicleWorkSchedule` (cadre RGPD) portent une colonne `timezone`, et       │
+ * │ `evaluateSchedule` en tient compte depuis le sprint K. La surveillance      │
+ * │ était le seul planning resté en UTC.                                        │
+ * │                                                                            │
+ * │ Les profils déjà en base ont été convertis par la migration                 │
+ * │ `20260810_surveillance_horaires_locaux` : aucun véhicule ne change de       │
+ * │ fenêtre de protection au déploiement.                                       │
+ * └───────────────────────────────────────────────────────────────────────────┘
  *
  * Important pour le wrap minuit : la "journée logique" est rattachée au jour
  * où débute la plage. Ex : la plage 20:00→06:00 du lundi couvre lundi 20:00 →
  * mardi 06:00. Donc on vérifie si le `start day` est dans `scheduleDays`, pas
  * le jour calendaire courant.
+ *
+ * @param timezone fuseau dans lequel lire `startTime`/`endTime`. Par défaut celui
+ *                 de la flotte — les profils n'ont pas (encore) de colonne dédiée ;
+ *                 le jour où une flotte sortira de France métropolitaine, elle se
+ *                 branchera ici comme `VehicleSchedule.timezone` le fait déjà.
  */
 export function isWithinSchedule(
   now: Date,
   startTime: string,
   endTime: string,
   scheduleDays: ScheduleDay[] | null | undefined,
+  timezone: string = FLEET_TIME_ZONE,
 ): boolean {
   const [sH, sM] = startTime.split(':').map(Number);
   const [eH, eM] = endTime.split(':').map(Number);
@@ -47,11 +78,14 @@ export function isWithinSchedule(
   ) {
     return false;
   }
-  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  // Date « naïve » dont les composants locaux sont ceux du fuseau demandé : on lit
+  // ensuite getHours() / getDay(), jamais leurs variantes UTC.
+  const local = getNowInTimezone(timezone, now);
+  const nowMin = local.getHours() * 60 + local.getMinutes();
   const startMin = (sH as number) * 60 + (sM as number);
   const endMin = (eH as number) * 60 + (eM as number);
 
-  const todayIdx = now.getUTCDay();
+  const todayIdx = local.getDay();
   const yesterdayIdx = (todayIdx + 6) % 7;
   const dayMatch = (idx: number): boolean => {
     if (!scheduleDays || scheduleDays.length === 0) return true;

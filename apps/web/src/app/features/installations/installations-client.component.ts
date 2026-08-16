@@ -140,7 +140,7 @@ import {
   styles: [`
     :host { display: block }
     .cl { max-width: 980px }
-    .cl-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
+    .cl-head h1 { font-family: var(--font-display); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
     .cl-sub { font-size: 14px; color: var(--fg-tertiary); margin: 8px 0 20px }
     .cl-loading { display: flex; justify-content: center; padding: 60px 0 }
     .cl-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary) }
@@ -151,7 +151,7 @@ import {
     .cl-card { padding: 20px 22px; border-radius: 18px; background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
     .cl-plan { margin-bottom: 18px }
     .cl-plan-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start }
-    .cl-plan-top h2 { font-family: var(--font-display, Poppins, sans-serif); font-size: 19px; font-weight: 800; color: var(--fg-primary); margin: 0 }
+    .cl-plan-top h2 { font-family: var(--font-display); font-size: 19px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .cl-addr { font-size: 12px; color: var(--fg-tertiary); margin-top: 4px }
     .cl-desc { font-size: 13px; color: var(--fg-secondary); margin-top: 6px }
     .cl-period { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); margin-top: 8px; font-family: var(--font-mono, monospace) }

@@ -16,8 +16,8 @@ export class MapBridgeService {
   readonly locateTrigger = signal(0);
   /** Incremente quand l'utilisateur demande a switcher le style de carte (satellite <-> standard). */
   readonly toggleSatelliteTrigger = signal(0);
-  /** vehicleId quand l'utilisateur veut centrer la map sur un vehicule precis
-   *  (depuis le panel Baanool). Reset a null apres consommation. */
+  /** vehicleId quand l'utilisateur veut centrer la map sur un véhicule precis
+   *  (depuis le panel Baanool). Reset a null après consommation. */
   readonly flyToVehicleId = signal<string | null>(null);
   /** Incremente quand l'utilisateur interagit directement avec la map (drag,
    *  zoom, click sur le fond). Utilise par les overlays (ex: panel Baanool)

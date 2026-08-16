@@ -79,7 +79,7 @@ export class NotificationEligibilityService {
       // trop. Ici le pire cas est la divulgation d'une alerte — plaque, position — à
       // quelqu'un qui n'y a pas droit. Une panne ne doit jamais ÉLARGIR une audience.
       this.logger.error(
-        `[notif] verification des droits indisponible — aucun destinataire retenu: ${err instanceof Error ? err.message : err}`,
+        `[notif] vérification des droits indisponible — aucun destinataire retenu: ${err instanceof Error ? err.message : err}`,
       );
       for (const id of ids) verdicts.set(id, 'no_permission');
       return verdicts;

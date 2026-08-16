@@ -92,8 +92,8 @@ interface SyncData {
           <div class="banner-warn">
             <lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon>
             <span>
-              La base Vizyo Auth n'a pas pu etre lue. Les comptes affiches ci-dessous sont
-              ceux de Tracky uniquement — la comparaison n'est PAS fiable en l'etat.
+              La base Vizyo Auth n'a pas pu être lue. Les comptes affiches ci-dessous sont
+              ceux de Tracky uniquement — la comparaison n'est PAS fiable en l'état.
             </span>
           </div>
         }
@@ -381,7 +381,7 @@ export class AdminAuthSyncComponent implements OnInit {
       this.data.set(res);
     } catch (err) {
       swallow('admin-auth-sync:load', err);
-      this.toast.error('Echec du chargement');
+      this.toast.error('Échec du chargement');
     } finally {
       this.loading.set(false);
     }
@@ -395,7 +395,7 @@ export class AdminAuthSyncComponent implements OnInit {
       await this.load();
     } catch (err) {
       swallow('admin-auth-sync:removeFromTracky', err);
-      this.toast.error('Echec de la suppression');
+      this.toast.error('Échec de la suppression');
     }
   }
 
@@ -407,7 +407,7 @@ export class AdminAuthSyncComponent implements OnInit {
       await this.load();
     } catch (err) {
       swallow('admin-auth-sync:removeFromAuth', err);
-      this.toast.error('Echec de la suppression');
+      this.toast.error('Échec de la suppression');
     }
   }
 }

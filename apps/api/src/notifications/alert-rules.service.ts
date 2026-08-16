@@ -58,9 +58,9 @@ export class AlertRulesService {
 
     if (params.vehicleId) {
       const v = await this.prisma.vehicle.findUnique({ where: { id: params.vehicleId } });
-      if (!v) throw new NotFoundException('Vehicule introuvable');
+      if (!v) throw new NotFoundException('Véhicule introuvable');
       if (v.fleetId !== fleetId) {
-        throw new ForbiddenException('Le vehicule n\'appartient pas a la flotte');
+        throw new ForbiddenException('Le véhicule n\'appartient pas a la flotte');
       }
     }
     if (params.escalateToUserId) {

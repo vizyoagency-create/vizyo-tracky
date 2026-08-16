@@ -505,7 +505,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           <!-- Detail des reponses Apple/Mozilla/Google par device -->
           @if (testLastResult()?.results?.length) {
             <div class="border-t border-border-subtle pt-3 flex flex-col gap-1.5">
-              <p class="text-xs uppercase text-fg-tertiary tracking-wide">Detail par device</p>
+              <p class="text-xs uppercase text-fg-tertiary tracking-wide">Détail par device</p>
               @for (r of testLastResult()!.results!; track r.id) {
                 <div class="flex items-center gap-2 text-xs bg-bg-tertiary rounded-lg px-2.5 py-1.5">
                   <!-- Status code colore : 201 = OK Apple/Google, 410/404 = sub expiree (purgee), 403 = VAPID, 413 = payload trop gros -->
@@ -540,19 +540,19 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             Tester le fallback SMS (bypass conditions tracker)
           </div>
           <p class="text-xs text-fg-tertiary">
-            Envoie une commande Coban benigne <code class="font-mono">fix030s***n123456</code> au numero
-            destinataire en utilisant la gateway SMS — sans verifier que le tracker est offline ou que
-            sa SIM est configuree. Sert a valider la chaine SMS + audit.
+            Envoie une commande Coban benigne <code class="font-mono">fix030s***n123456</code> au numéro
+            destinataire en utilisant la gateway SMS — sans vérifier que le tracker est offline ou que
+            sa SIM est configurée. Sert à valider la chaîne SMS + audit.
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select [(ngModel)]="fbTrackerId"
                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm">
-              <option value="">Selectionner un tracker...</option>
+              <option value="">Sélectionner un tracker...</option>
               @for (t of smsTrackers(); track t.id) {
                 <option [value]="t.id">{{ t.imei }} — {{ t.plate ?? 'sans plaque' }}</option>
               }
             </select>
-            <input [(ngModel)]="fbPhone" placeholder="+33612345678 (ton numero)"
+            <input [(ngModel)]="fbPhone" placeholder="+33612345678 (ton numéro)"
                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
           </div>
           <button (click)="testFallback()" [disabled]="!fbTrackerId || !fbPhone || fbSending()"
@@ -563,7 +563,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           @if (fbResult(); as r) {
             <div class="text-xs font-mono rounded p-2 border"
                  [class]="r.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'">
-              {{ r.ok ? 'OK' : 'KO' }} — payload <code>{{ r.payload }}</code> envoye au tracker
+              {{ r.ok ? 'OK' : 'KO' }} — payload <code>{{ r.payload }}</code> envoyé au tracker
               IMEI <code>{{ r.trackerImei }}</code>
               @if (r.smsResult.twilioSid) { · sid <code>{{ r.smsResult.twilioSid }}</code> }
               @if (r.smsResult.error) { · erreur : {{ r.smsResult.error }} }
@@ -753,9 +753,9 @@ export class ObservabilityComponent implements OnInit {
       const sel = new Set(this.selectedSubIds());
       sel.delete(id);
       this.selectedSubIds.set(sel);
-      this.toast.success('Subscription supprimee');
+      this.toast.success('Subscription supprimée');
     } catch {
-      this.toast.error('Suppression echouee');
+      this.toast.error('Suppression échouée');
     } finally {
       this.deletingDeviceId.set(null);
     }
@@ -766,7 +766,7 @@ export class ObservabilityComponent implements OnInit {
     try {
       const res = await this.notif.subscribePush();
       if (res.ok) {
-        this.toast.success('Notifications activees sur ce device');
+        this.toast.success('Notifications activées sur ce device');
         await this.notif.listDevices().catch(() => {/* silencieux */});
       } else {
         this.toast.error(res.reason ?? 'Echec de l\'activation');
@@ -796,7 +796,7 @@ export class ObservabilityComponent implements OnInit {
         const sec = Math.round(res.delayMs / 1000);
         this.testLastResult.set({
           ok: true,
-          message: `Notification programmee dans ${sec}s vers ${res.targetDevices} device(s). Les statuts par push apparaitront ici lors de l'envoi immediat.`,
+          message: `Notification programmee dans ${sec}s vers ${res.targetDevices} device(s). Les statuts par push apparaitront ici lors de l'envoi immédiat.`,
           at,
         });
         this.toast.success('Notification programmee', `Verifie ton device dans ~${sec}s`);
@@ -808,12 +808,12 @@ export class ObservabilityComponent implements OnInit {
         const ok = sentCount > 0 && failedCount === 0;
         this.testLastResult.set({
           ok,
-          message: `Envoye immediatement : ${sentCount}/${res.targetDevices} livre(s)${failedCount ? `, ${failedCount} echec(s)` : ''}.`,
+          message: `Envoyé immédiatement : ${sentCount}/${res.targetDevices} livre(s)${failedCount ? `, ${failedCount} echec(s)` : ''}.`,
           at,
           results: res.results,
         });
-        if (ok) this.toast.success('Notification envoyee');
-        else this.toast.error('Echec d\'envoi', 'Voir le detail par device ci-dessous.');
+        if (ok) this.toast.success('Notification envoyée');
+        else this.toast.error('Échec d\'envoi', 'Voir le detail par device ci-dessous.');
       }
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;
@@ -860,7 +860,7 @@ export class ObservabilityComponent implements OnInit {
       const r = await firstValueFrom(this.smsApi.testFallback(this.fbTrackerId, this.fbPhone));
       this.fbResult.set(r);
       if (r.ok) {
-        this.toast.success(`Test fallback OK — payload envoye au ${this.fbPhone}`);
+        this.toast.success(`Test fallback OK — payload envoyé au ${this.fbPhone}`);
       } else {
         this.toast.error(`Test fallback KO : ${r.smsResult.error ?? 'erreur inconnue'}`);
       }

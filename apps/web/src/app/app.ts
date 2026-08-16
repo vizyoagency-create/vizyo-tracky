@@ -9,6 +9,8 @@ import { PwaUpdateService } from './core/services/pwa-update.service';
 import { RealtimeService } from './core/services/realtime.service';
 import { ThemeService } from './core/theme/theme.service';
 import { ToastContainerComponent } from './shared/ui/toast/toast-container.component';
+import { estPagePublique } from './core/utils/page-publique';
+import { appliquerPlateforme } from './shared/utils/platform';
 import { UpdateRequiredModalComponent } from './shared/ui/update-required-modal/update-required-modal.component';
 
 @Component({
@@ -34,6 +36,11 @@ export class App implements OnInit {
   private readonly activityTracker = inject(ActivityTrackerService);
 
   ngOnInit(): void {
+    // Refonte v2 — pose `plat-ios` / `plat-android` / `plat-bureau` sur <body>. Les
+    // 3 écarts de géométrie (poignée, rayon, densité) sont VOLONTAIRES : les aplatir
+    // donnerait une application étrangère sur les deux plateformes (B1 § système de
+    // référence). Fait en premier : des composants montés plus bas les consomment.
+    appliquerPlateforme();
     // Charger les préférences si déjà authentifié (refresh page)
     const user = this.auth.user();
     if (user?.sub) {
@@ -48,12 +55,28 @@ export class App implements OnInit {
 
     // Services transverses PWA/network : init avant la connexion realtime
     // pour qu'on dispose de l'etat de connectivite des le depart.
+    //
+    // ⚠️ RIEN DE TOUT CELA SUR LA PAGE PUBLIQUE DE SUIVI (lot A4). `installPrompt`
+    // compte les visites dans le localStorage et propose d'installer l'application ;
+    // `pwaUpdate` enregistre un service worker. Chez un destinataire anonyme, ce sont
+    // deux traces posées sur son appareil et une proposition qui n'a aucun sens — il
+    // ne vient pas installer une application de gestion de flotte, il regarde arriver
+    // son colis (A4 § 6). Le réseau, lui, reste utile : il ne pose rien.
     this.network.init();
-    this.installPrompt.init();
-    this.pwaUpdate.init();
+    if (!estPagePublique()) {
+      this.installPrompt.init();
+      this.pwaUpdate.init();
+    }
 
     const token = this.auth.token;
-    if (token) {
+    // ⚠️ Espace dépôt (2026-08), lot A3 — PAS de socket de flotte pour un DEPOT.
+    //
+    // `RealtimeService` est le canal de la FLOTTE : positions de tous les véhicules,
+    // alertes, statuts de boîtier. Un dépôt n'en reçoit rien (le serveur ne le met
+    // dans aucun salon de flotte, A1 § 3) — il ouvrait donc un second raccordement
+    // permanent qui n'écoute rien, en plus de celui de `DepotLiveStore`. Deux sockets
+    // par dépôt, deux fois la revalidation périodique, pour zéro message utile.
+    if (token && !this.auth.isDepot()) {
       this.realtime.connect(token);
     }
   }

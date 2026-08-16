@@ -7,7 +7,7 @@ import { AuthService } from './auth.service';
  * Un SUPER_ADMIN a fleetId=null et voit TOUTES les societes. Ce service porte
  * la societe actuellement selectionnee dans le selecteur global du top-bar
  * (`<app-fleet-selector>`), et les pages "liste" s'y abonnent pour restreindre
- * les lignes affichees a cette flotte.
+ * les lignes affichees à cette flotte.
  *
  * - `selectedFleetId() === null` => "Toutes les societes" (aucun filtre).
  * - Persistant en localStorage : le choix survit a un reload / navigation.

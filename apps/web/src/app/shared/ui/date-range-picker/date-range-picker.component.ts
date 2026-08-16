@@ -38,7 +38,7 @@ import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
           <div class="drp-header">
             @if (idx === 0) {
               <button type="button" class="drp-nav" (click)="prevMonth()"
-                      aria-label="Mois precedent">
+                      aria-label="Mois précédent">
                 <lucide-icon [img]="ChevronLeft" [size]="14"></lucide-icon>
               </button>
             } @else { <span class="drp-nav-spacer"></span> }

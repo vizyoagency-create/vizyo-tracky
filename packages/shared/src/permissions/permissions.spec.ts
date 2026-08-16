@@ -2,6 +2,8 @@ import {
   clampPermissions,
   effectiveGranterPermissions,
   getDefaultPermissions,
+  isClosedRole,
+  permissionsForTargetRole,
   PERMISSION_KEYS,
   PERMISSION_LABELS,
   type UserPermissions,
@@ -108,6 +110,11 @@ describe('permissions — complétude (garde-fou ajout de permissions)', () => {
     'FLEET_MANAGER',
     'VIEWER',
     'NIGHT_WATCHMAN',
+    // DRIVER manquait a l'appel : le garde-fou ne le couvrait pas alors qu'il a ses
+    // propres defauts. Ajoute avec DEPOT — la liste doit etre exhaustive, sinon un
+    // role peut partir en production avec une permission `undefined`.
+    'DRIVER',
+    'DEPOT',
   ];
 
   it.each(ALL_ROLES)('les défauts de %s couvrent EXACTEMENT toutes les clés (aucune manquante ni en trop)', (role) => {
@@ -121,6 +128,197 @@ describe('permissions — complétude (garde-fou ajout de permissions)', () => {
 
   it('PERMISSION_LABELS couvre exactement toutes les clés de permission', () => {
     expect(Object.keys(PERMISSION_LABELS).sort()).toEqual([...PERMISSION_KEYS].sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Espace dépôt (2026-08) — le rôle DEPOT. Cf. design/A1-ROLE-DEPOT.md § 2.
+//
+// Ces tests fixent le CONTRAT du rôle côté source partagée. Ils ne remplacent pas
+// les 12 tests d'isolation d'API (depot-isolation.e2e-spec.ts) : ici on vérifie ce
+// que le rôle PEUT en théorie, là-bas ce que le serveur SERT réellement.
+// ---------------------------------------------------------------------------
+describe('permissions — rôle DEPOT', () => {
+  // ⚠️ CETTE LISTE EST PASSÉE DE 4 À 5 LE 2026-08-14, ET C'EST UNE DÉCISION.
+  //
+  // `missions_request` est la PREMIÈRE capacité d'écriture jamais accordée à ce rôle,
+  // jusque-là strictement en lecture (lot A6, à la demande du client). L'invariant
+  // « aucune écriture pour un dépôt » n'existe donc plus tel quel.
+  //
+  // Ce qui le remplace, et qui doit rester vrai : DEMANDER N'EST PAS CRÉER. Une
+  // demande n'immobilise aucun véhicule, ne pose aucun événement d'agenda, n'ouvre
+  // aucun accès à une position. Elle ne devient une `Mission` qu'au moment où le
+  // TRANSPORTEUR affecte un camion — `missions_manage` reste fermée, et les tests
+  // ci-dessous le vérifient.
+  //
+  // Si cette liste devait grandir encore, s'arrêter et se demander si le rôle est
+  // toujours « un tiers en lecture bornée par ses missions ».
+  const OUVERTES: (keyof UserPermissions)[] = [
+    'missions_view',
+    'missions_request',
+    'trips_view',
+    'mission_share',
+    'driver_contact_view',
+  ];
+
+  it('exactement 5 permissions ouvertes, toutes les autres fermées', () => {
+    const perms = getDefaultPermissions('DEPOT');
+    const ouvertes = PERMISSION_KEYS.filter((k) => perms[k] === true).sort();
+    expect(ouvertes).toEqual([...OUVERTES].sort());
+  });
+
+  it.each([
+    // Le cœur du rôle : aucun accès flotte, aucune écriture sur un véhicule.
+    'vehicles_view',
+    'engine_control',
+    'privacy_manage',
+    'schedules_manage',
+    // L'export dépôt passe par un endpoint dédié, pas par /reports.
+    'reports_view',
+    'reports_export',
+    // Hors périmètre, sans exception.
+    'users_view',
+    'users_manage',
+    'drivers_view',
+    'sims_view',
+    'billing_manage',
+    'alerts_view',
+    'geofences_view',
+    'groups_view',
+    'places_view',
+    'audio_monitoring',
+    'qr_manage',
+    // L'agenda est l'outil du transporteur.
+    'agenda_view',
+    'reservations_view',
+    'reservations_request',
+    'reservations_manage',
+    // Un dépôt ne crée pas de mission : il en est le destinataire.
+    'missions_manage',
+  ] as (keyof UserPermissions)[])('%s est fermée pour un DEPOT', (key) => {
+    expect(getDefaultPermissions('DEPOT')[key]).toBe(false);
+  });
+
+  it('un DEPOT n\'accorde RIEN : effectiveGranterPermissions est intégralement à false', () => {
+    const granter = effectiveGranterPermissions({ role: 'DEPOT' });
+    expect(Object.values(granter).every((v) => v === false)).toBe(true);
+  });
+
+  it('un DEPOT ne peut pas s\'auto-accorder une capacité via un set explicite', () => {
+    // Un `User.permissions` falsifié en base ou par une route mal gardée ne doit pas
+    // suffire : le clamp borne au granter, et un DEPOT ne détient rien à accorder.
+    const escalade = clampPermissions(
+      { vehicles_view: true, engine_control: true, users_manage: true },
+      { role: 'DEPOT', permissions: { vehicles_view: true, engine_control: true } },
+      getDefaultPermissions('VIEWER'),
+    );
+    expect(escalade.vehicles_view).toBe(false);
+    expect(escalade.engine_control).toBe(false);
+    expect(escalade.users_manage).toBe(false);
+  });
+
+  it('personne ne peut accorder vehicles_view à un compte DEPOT (A5 § 9, critère 4)', () => {
+    // Le cas qui compte : un FLEET_ADMIN (qui détient TOUT) demande explicitement
+    // d'ouvrir la flotte à un dépôt. `clampPermissions` seul laisserait passer —
+    // il borne au granter, et le granter a tout. C'est le rôle CIBLE qui refuse.
+    const ecrit = permissionsForTargetRole(
+      'DEPOT',
+      { vehicles_view: true, engine_control: true, users_manage: true, reports_export: true },
+      { role: 'FLEET_ADMIN' },
+    );
+    expect(ecrit.vehicles_view).toBe(false);
+    expect(ecrit.engine_control).toBe(false);
+    expect(ecrit.users_manage).toBe(false);
+    expect(ecrit.reports_export).toBe(false);
+    // …et les 4 capacités légitimes du rôle restent ouvertes.
+    expect(ecrit.missions_view).toBe(true);
+    expect(ecrit.mission_share).toBe(true);
+  });
+
+  it('permissionsForTargetRole n\'altère PAS les rôles ouverts (non-régression)', () => {
+    // Le court-circuit ne doit toucher que les rôles fermés : pour tous les autres,
+    // le comportement reste exactement celui de clampPermissions.
+    const attendu = clampPermissions(
+      { reports_export: true },
+      { role: 'FLEET_MANAGER' },
+      getDefaultPermissions('VIEWER'),
+    );
+    const obtenu = permissionsForTargetRole(
+      'VIEWER',
+      { reports_export: true },
+      { role: 'FLEET_MANAGER' },
+    );
+    expect(obtenu).toEqual(attendu);
+    expect(obtenu.reports_export).toBe(true);
+  });
+
+  it('un DEPOT reste fermé même si le granter est un autre DEPOT', () => {
+    const ecrit = permissionsForTargetRole(
+      'DEPOT',
+      { vehicles_view: true },
+      { role: 'DEPOT', permissions: { vehicles_view: true } },
+    );
+    expect(ecrit.vehicles_view).toBe(false);
+  });
+
+  it('DEPOT est le seul rôle fermé — les autres restent modifiables', () => {
+    expect(isClosedRole('DEPOT')).toBe(true);
+    for (const r of ['SUPER_ADMIN', 'FLEET_ADMIN', 'FLEET_MANAGER', 'VIEWER', 'NIGHT_WATCHMAN', 'DRIVER'] as UserRoleSlug[]) {
+      expect(isClosedRole(r)).toBe(false);
+    }
+  });
+
+  it('DEPOT n\'est pas un rang : ses permissions ne sont pas un sous-ensemble de VIEWER', () => {
+    // L'invariant de D3. Si DEPOT était « sous VIEWER », toute permission ouverte au
+    // dépôt serait aussi ouverte au lecteur. Ce n'est pas le cas — mission_share,
+    // driver_contact_view et, depuis A6, missions_request sont fermées au VIEWER et
+    // ouvertes au DEPOT. Un test qui casse ici signale qu'on a glissé DEPOT dans une
+    // hiérarchie.
+    //
+    // `missions_request` renforce d'ailleurs l'invariant plutôt qu'elle ne l'affaiblit :
+    // un lecteur ne demande pas de mission, un dépôt si. Les deux rôles s'écartent
+    // davantage, ils ne se rapprochent pas.
+    const depot = getDefaultPermissions('DEPOT');
+    const viewer = getDefaultPermissions('VIEWER');
+    const ouvertesAuDepotFermeesAuViewer = PERMISSION_KEYS.filter(
+      (k) => depot[k] && !viewer[k],
+    );
+    expect(ouvertesAuDepotFermeesAuViewer.sort()).toEqual(
+      ['driver_contact_view', 'mission_share', 'missions_request'].sort(),
+    );
+  });
+});
+
+describe('permissions — missions : défauts par rôle (A1 § 2)', () => {
+  const TABLE: Array<[UserRoleSlug, boolean, boolean, boolean, boolean]> = [
+    // rôle,             missions_view, missions_manage, mission_share, driver_contact_view
+    ['SUPER_ADMIN', true, true, true, true],
+    ['FLEET_ADMIN', true, true, true, true],
+    ['FLEET_MANAGER', true, true, true, true],
+    ['VIEWER', true, false, false, false],
+    ['NIGHT_WATCHMAN', false, false, false, false],
+    ['DRIVER', true, false, false, false],
+    ['DEPOT', true, false, true, true],
+  ];
+
+  it.each(TABLE)('%s', (role, view, manage, share, contact) => {
+    const p = getDefaultPermissions(role);
+    expect(p.missions_view).toBe(view);
+    expect(p.missions_manage).toBe(manage);
+    expect(p.mission_share).toBe(share);
+    expect(p.driver_contact_view).toBe(contact);
+  });
+
+  it('le veilleur de nuit reste à zéro sur les missions', () => {
+    // Son métier est nocturne, les missions sont diurnes, et il travaille sans
+    // aucune donnée de conducteur. Invariant explicite d'A1 § 2.
+    const p = getDefaultPermissions('NIGHT_WATCHMAN');
+    expect([p.missions_view, p.missions_manage, p.mission_share, p.driver_contact_view]).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
   });
 });
 

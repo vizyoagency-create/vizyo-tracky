@@ -111,7 +111,7 @@ export class VehicleGroupsController {
       where: { id: dto.vehicleId, fleetId: group.fleetId },
       select: { id: true },
     });
-    if (!vehicle) throw new BadRequestException('Vehicule introuvable dans cette flotte');
+    if (!vehicle) throw new BadRequestException('Véhicule introuvable dans cette flotte');
 
     return this.prisma.vehicleGroupAssignment.create({
       data: { vehicleId: dto.vehicleId, groupId: id },

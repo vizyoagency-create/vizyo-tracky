@@ -218,7 +218,7 @@ const STOP_LABELS: Record<string, string> = {
     .pa-back:hover { color: var(--fg-secondary); }
     .pa-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
     .pa-ico { width: 48px; height: 48px; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: rgba(139,92,246,.12); color: #a78bfa; flex-shrink: 0; }
-    .pa-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; letter-spacing: -.4px; color: var(--fg-primary); margin: 0; }
+    .pa-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: -.4px; color: var(--fg-primary); margin: 0; }
     .pa-head p { color: var(--fg-tertiary); font-size: 13px; margin: 3px 0 0; }
     .pa-state { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
     .pa-state.on { background: rgba(16,224,160,.08); color: var(--tracky-light); border-color: rgba(16,224,160,.18); }

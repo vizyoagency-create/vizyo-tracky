@@ -177,7 +177,7 @@ export class TrackerProvisioningService {
       steps.push({ key: 'apnpasswd', label: 'Mot de passe APN', payload: `apnpasswd${pwd} ${params.apnPasswd}`, expect: 'apn' });
     }
     if (adminNum) {
-      steps.push({ key: 'admin', label: `Numero admin ${adminNum}`, payload: `admin${pwd} ${adminNum}`, expect: 'admin' });
+      steps.push({ key: 'admin', label: `Numéro admin ${adminNum}`, payload: `admin${pwd} ${adminNum}`, expect: 'admin' });
     }
     steps.push({
       key: 'adminip',
@@ -222,7 +222,7 @@ export class TrackerProvisioningService {
       throw new BadRequestException('IMEI invalide (14-16 chiffres attendus)');
     }
     if (!params.phoneNumber.startsWith('+')) {
-      throw new BadRequestException('phoneNumber doit etre au format E.164 (ex: +33612345678)');
+      throw new BadRequestException('phoneNumber doit être au format E.164 (ex: +33612345678)');
     }
     if (!params.apn || !params.serverIp || !params.serverPort) {
       throw new BadRequestException('apn, serverIp et serverPort sont requis');
@@ -234,7 +234,7 @@ export class TrackerProvisioningService {
     });
     if (existing) {
       throw new BadRequestException(
-        `Un provisionnement est deja en cours pour ${params.imei} (id ${existing.id}). Annuler avant d'en relancer un.`,
+        `Un provisionnement est déjà en cours pour ${params.imei} (id ${existing.id}). Annuler avant d'en relancer un.`,
       );
     }
 
@@ -445,7 +445,7 @@ export class TrackerProvisioningService {
         // Rattache la ligne SmsLog entrante a ce provisioning (audit Logs).
         this.prisma.smsLog
           .update({ where: { id: reply.smsLogId }, data: { imei: params.imei, provisioningId } })
-          .catch((e) => this.logger.warn(`SmsLog enrich (inbound) echouee: ${e instanceof Error ? e.message : e}`));
+          .catch((e) => this.logger.warn(`SmsLog enrich (inbound) échouée: ${e instanceof Error ? e.message : e}`));
       } else if (canReadReplies) {
         await this.patchStep(provisioningId, i, { status: 'no-ack' });
       }
@@ -505,7 +505,7 @@ export class TrackerProvisioningService {
    *   - tracker en ligne / vu depuis le lancement -> tout va bien, AUCUNE alerte
    *     (le provisioning a fonctionne, l'absence d'ACK SMS n'est pas un echec) ;
    *   - sinon (ni ACK, ni connexion) -> vraie panne, on remonte une ERROR.
-   * Ce delai + ce double critere evitent les faux positifs dans le centre d'alerte.
+   * Ce délai + ce double critere evitent les faux positifs dans le centre d'alerte.
    */
   private async alertIfBoitierSilent(provisioningId: string, imei: string): Promise<void> {
     try {
@@ -534,7 +534,7 @@ export class TrackerProvisioningService {
         'ERROR',
       );
     } catch (e) {
-      this.logger.warn(`alertIfBoitierSilent(${provisioningId}) echouee: ${e instanceof Error ? e.message : e}`);
+      this.logger.warn(`alertIfBoitierSilent(${provisioningId}) échouée: ${e instanceof Error ? e.message : e}`);
     }
   }
 
@@ -637,8 +637,8 @@ export class TrackerProvisioningService {
 
   /**
    * Resout la flotte via imei -> tracker.vehicle.fleetId et la compare au caller.
-   * Echoue par 404 si le caller est non-SUPER et que le tracker n'appartient
-   * pas a sa flotte (ou n'a pas de vehicule rattache).
+   * Échoué par 404 si le caller est non-SUPER et que le tracker n'appartient
+   * pas a sa flotte (ou n'a pas de véhicule rattache).
    */
   private async assertTenantAccess(imei: string, requestedBy?: RequestedBy): Promise<void> {
     if (!requestedBy || requestedBy.role === UserRole.SUPER_ADMIN) return;

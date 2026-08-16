@@ -1,10 +1,28 @@
+import { HttpClient } from '@angular/common/http';
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
-import { Car, LogOut, LucideAngularModule, ShieldCheck, Unlock } from 'lucide-angular';
+import { Car, Eye, LogOut, LucideAngularModule, ShieldCheck, Unlock } from 'lucide-angular';
+import { swallow } from '../../core/error/swallow';
 import { AuthService } from '../../core/services/auth.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { DriverPrivacyPanelComponent } from './driver-privacy-panel.component';
+
+/**
+ * Espace dépôt (2026-08) — une mission telle que son CONDUCTEUR la voit.
+ * `depotWatching` est décidé côté serveur : c'est une obligation d'information, elle ne
+ * doit pas dépendre d'un calcul côté client qu'on pourrait retirer par mégarde.
+ */
+interface MissionConducteur {
+  id: string;
+  ref: string;
+  origin: string;
+  destination: string;
+  startAt: string;
+  endAt: string;
+  plate: string;
+  depotWatching: boolean;
+}
 
 /**
  * feat/comptes-conducteurs (6) — espace conducteur « Mes véhicules ».
@@ -36,6 +54,32 @@ import { DriverPrivacyPanelComponent } from './driver-privacy-panel.component';
       </header>
 
       <main class="p-4 max-w-md mx-auto">
+        <!-- Espace dépôt (2026-08) — la mission du jour, avec sa mention d'information.
+             Placée AVANT la liste des véhicules : c'est ce qui structure la journée du
+             conducteur, et la mention doit être vue sans avoir à faire défiler. -->
+        @for (m of missions(); track m.id) {
+          <article class="mb-3 rounded-[14px] border border-border-subtle bg-bg-secondary p-3.5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-mono text-[11px] font-semibold text-fg-tertiary">{{ m.ref }}</span>
+              <span class="text-[11px] font-semibold text-fg-secondary">{{ heure(m.startAt) }} → {{ heure(m.endAt) }}</span>
+            </div>
+            <p class="mt-1 text-sm font-semibold leading-snug">{{ m.origin }} → {{ m.destination }}</p>
+            <p class="mt-0.5 font-mono text-[11px] text-fg-tertiary">{{ m.plate }}</p>
+
+            @if (m.depotWatching) {
+              <!-- ⚠️ OBLIGATION D'INFORMATION, pas une politesse : le conducteur doit
+                   savoir qu'un tiers voit sa position pendant la mission. C'est la
+                   condition de conformité du dispositif (A2 § 3.4). Le drapeau est
+                   décidé côté serveur — ce bloc ne fait que le rendre visible. -->
+              <p class="mt-2.5 flex items-start gap-2 rounded-[10px] px-2.5 py-2 text-[11.5px] leading-relaxed"
+                 style="background: color-mix(in srgb, var(--violet) 12%, transparent); color: var(--violet)">
+                <lucide-icon [img]="Eye" [size]="14" class="mt-px shrink-0" />
+                <span>Le dépôt destinataire suit la position de ce véhicule pendant le créneau de la mission.</span>
+              </p>
+            }
+          </article>
+        }
+
         @if (loading()) {
           <div class="py-16 flex justify-center">
             <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
@@ -82,6 +126,7 @@ import { DriverPrivacyPanelComponent } from './driver-privacy-panel.component';
 })
 export class DriverHomeComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -91,13 +136,21 @@ export class DriverHomeComponent implements OnInit {
   /** Véhicule dont on ouvre le panneau « Vie privée & horaires » (overlay). */
   protected readonly privacyFor = signal<VehicleDetailDto | null>(null);
 
+  /** Espace dépôt (2026-08) — les missions du jour de ce conducteur. */
+  protected readonly missions = signal<MissionConducteur[]>([]);
+
   protected readonly Car = Car;
   protected readonly LogOut = LogOut;
   protected readonly Unlock = Unlock;
   protected readonly ShieldCheck = ShieldCheck;
+  protected readonly Eye = Eye;
 
   protected email(): string {
     return this.auth.user()?.email ?? '';
+  }
+
+  protected heure(iso: string): string {
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
 
   ngOnInit(): void {
@@ -110,6 +163,17 @@ export class DriverHomeComponent implements OnInit {
           this.loading.set(false);
         },
         error: () => this.loading.set(false),
+      });
+
+    // Les missions ne bloquent PAS l'écran : un échec laisse la liste vide et le
+    // conducteur garde ses véhicules. Le bandeau d'information n'apparaît que s'il y a
+    // réellement une mission suivie.
+    this.http
+      .get<MissionConducteur[]>('/api/missions/mine')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (m) => this.missions.set(m ?? []),
+        error: (err) => swallow('driver-home:missions', err),
       });
   }
 

@@ -2394,7 +2394,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly isBaanoolMode = computed(() =>
     this.auth.user()?.preferences?.uiMode === 'baanool',
   );
-  /** Donnees de la bottom card Baanool (null = fermee). */
+  /** Données de la bottom card Baanool (null = fermee). */
   protected readonly baanoolCard = signal<BaanoolCardData | null>(null);
   /**
    * Zones mortes GPS (suivi FS-253) — si un véhicule GPS_LOST a sa dernière position figée dans
@@ -3489,7 +3489,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         lat: p.lat, lng: p.lng, timestamp: p.timestamp,
       })));
       if (cleaned.length < 2) {
-        this.toast.show({ kind: 'info', title: 'Pas assez de positions sur la derniere heure', duration: 3000 });
+        this.toast.show({ kind: 'info', title: 'Pas assez de positions sur la dernière heure', duration: 3000 });
         return;
       }
       const coords = cleaned.map((p) => [p.lng, p.lat] as [number, number]);
@@ -3501,7 +3501,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       });
     } catch (err) {
       swallow('map:loadMiniReplay', err);
-      this.toast.show({ kind: 'error', title: 'Echec du chargement de la derniere heure', duration: 3000 });
+      this.toast.show({ kind: 'error', title: 'Échec du chargement de la dernière heure', duration: 3000 });
     }
   }
 
@@ -3986,7 +3986,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
               clusterCount = 1;
               continue;
             }
-            // Verifier si le point est dans le rayon du cluster
+            // Vérifier si le point est dans le rayon du cluster
             const d = haversineMeters(clusterCenterLat, clusterCenterLng, p.lat, p.lng);
             if (d > STOP_MAX_RADIUS_M) {
               // Sortie du cluster — verifier sa duree
@@ -5088,7 +5088,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         entry = { marker, el, abort };
         this.markers.set(pos.trackerId, entry);
       } else {
-        // Mise a jour de la verite. Le tick() loop fera converger display vers
+        // Mise à jour de la verite. Le tick() loop fera converger display vers
         // (truth + extrapolation par speed/heading) via filtre passe-bas.
         // Resultat : icone collee au temps reel quand le vehicule roule droit,
         // correction douce sur virages/freinages quand la trame suivante arrive.
@@ -5259,7 +5259,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (this.activePopupTrackerId && this.activePopupVehicleId) {
       const pos = positions.find((p) => p.trackerId === this.activePopupTrackerId);
       if (pos) {
-        // Baanool bottom card : mise a jour reactive via signal.
+        // Baanool bottom card : mise à jour reactive via signal.
         // On ne set() que si les valeurs affichees ont change, pour eviter
         // des re-renders constants qui avalent les taps sur les boutons.
         const currentCard = this.baanoolCard();

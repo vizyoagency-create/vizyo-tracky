@@ -1,5 +1,5 @@
 import { swallow } from '../../core/error/swallow';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,13 +9,29 @@ import {
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
   UserRound, UserPlus, Copy, Play, Layers, Wrench, QrCode, SatelliteDish, ParkingSquare,
+  // Espace dépôt (2026-08) — « un tiers regarde ce camion » sur le bandeau de mission.
+  Eye,
 } from 'lucide-angular';
+
+/** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
+interface MissionEnCours {
+  id: string;
+  ref: string;
+  origin: string;
+  destination: string;
+  startAt: string;
+  endAt: string;
+  status: 'IN_PROGRESS' | 'LATE';
+  depotName: string | null;
+  depotWatching: boolean;
+}
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService, type EngineControlCommandDto } from '../../core/services/engine-control.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PositionsApiService, type PositionDto } from '../../core/services/positions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -84,6 +100,31 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       </div>
     } @else if (vehicle(); as v) {
       <div class="vdx-wrap">
+        @if (missionEnCours(); as m) {
+          <!-- Espace dépôt (2026-08) — bandeau « en mission » (A2 § 9).
+               Placé TOUT EN HAUT, avant le hero : un gestionnaire qui ouvre cette
+               fiche pour couper le moteur ou changer un horaire doit savoir qu'un
+               tiers regarde ce camion EN CE MOMENT. Le mettre plus bas reviendrait
+               à le lui apprendre après coup. -->
+          <div class="vdx-mission" [class.vdx-mission--retard]="m.status === 'LATE'">
+            <span class="vdx-mission-ico"><lucide-icon [img]="Route" [size]="17" /></span>
+            <div class="vdx-mission-txt">
+              <p class="vdx-mission-l1">
+                <strong>{{ m.status === 'LATE' ? 'En mission — en retard' : 'En mission' }}</strong>
+                <span class="vdx-mission-ref">{{ m.ref }}</span>
+              </p>
+              <p class="vdx-mission-l2">
+                {{ m.origin }} → {{ m.destination }} · {{ heureMission(m.startAt) }} → {{ heureMission(m.endAt) }}
+              </p>
+              @if (m.depotWatching) {
+                <p class="vdx-mission-depot">
+                  <lucide-icon [img]="Eye" [size]="13" />
+                  {{ m.depotName }} suit la position de ce véhicule jusqu'à {{ heureMission(m.endAt) }}.
+                </p>
+              }
+            </div>
+          </div>
+        }
         <!-- Hero (maquette 06) : nom du véhicule + pastille de statut, plaque/couleur/groupe en sous-ligne -->
         <div class="vdx-hero">
           <div class="vdx-hero-main">
@@ -729,7 +770,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
             </div>
 
             @if (orphanTrackers().length === 0) {
-              <p class="text-xs text-fg-tertiary text-center py-3">Aucun tracker orphelin — saisissez l'IMEI ci-dessus pour en creer un.</p>
+              <p class="text-xs text-fg-tertiary text-center py-3">Aucun tracker orphelin — saisissez l'IMEI ci-dessus pour en créer un.</p>
             } @else {
               <p class="text-xs text-fg-tertiary mb-2">Ou assigner un tracker existant :</p>
               <div class="flex flex-col gap-2 max-h-60 overflow-y-auto">
@@ -846,6 +887,30 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
   `,
   styles: [`
+    /* ─── Bandeau « en mission » (espace dépôt, A2 § 9) ──────────────────────
+       Violet : c'est la couleur du DÉPÔT dans tout le système (design/TOKENS.md).
+       Ambre quand la mission est en retard — une attente à lever, pas un échec. */
+    .vdx-mission {
+      display: flex; align-items: flex-start; gap: 11px;
+      padding: 12px 14px; margin-bottom: 14px; border-radius: 14px;
+      background: color-mix(in srgb, var(--violet) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--violet) 26%, transparent);
+    }
+    .vdx-mission--retard {
+      background: color-mix(in srgb, var(--warning) 10%, transparent);
+      border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    }
+    .vdx-mission-ico { color: var(--violet); flex-shrink: 0; margin-top: 1px; }
+    .vdx-mission--retard .vdx-mission-ico { color: var(--warning); }
+    .vdx-mission-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .vdx-mission-l1 { margin: 0; display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+                      font-size: 13.5px; color: var(--violet); }
+    .vdx-mission--retard .vdx-mission-l1 { color: var(--warning); }
+    .vdx-mission-ref { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); }
+    .vdx-mission-l2 { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+    .vdx-mission-depot { margin: 2px 0 0; display: flex; align-items: center; gap: 6px;
+                         font-size: 12px; line-height: 1.5; color: var(--text-tertiary); }
+
     /* ═══════════════════════════════════════════════════════════════════
        Maquette 06 — Détail véhicule. Intégration DS (mêmes tokens que l'app).
        Préfixe .vdx-* pour la refonte, réutilise les tokens --tracky-light /
@@ -890,10 +955,12 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-stat-coord { font-family: var(--font-mono, monospace); font-size: .66rem; color: var(--fg-tertiary); margin-top: 2px; }
     .vdx-stat-live { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .68rem; font-weight: 700; color: var(--fg-tertiary); }
     .vdx-stat-live--on { color: var(--tracky-light); }
-    /* DORMANCE — ambre brûlé, identique au badge « Dormant » (source unique : connectivityMeta).
-       Le liseré ambre sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ». */
-    .vdx-stat-live--dormant { color: #d97706; }
-    .vdx-stat--stale { border-color: rgba(217,119,6,.35); }
+    /* DORMANCE — violet, identique au badge « Dormant » (source unique : connectivityMeta).
+       Le liseré sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ».
+       La valeur SUIT le badge : les deux se lisent côte à côte sur la même fiche, une
+       divergence de teinte s'y verrait comme deux états différents. */
+    .vdx-stat-live--dormant { color: var(--texte-violet); }
+    .vdx-stat--stale { border-color: color-mix(in srgb, var(--texte-violet) 35%, transparent); }
     .vdx-stale-v { color: var(--fg-tertiary); font-weight: 700; }
     .vdx-stat-stale { margin-top: 4px; font-size: .64rem; line-height: 1.35; color: var(--fg-tertiary); font-style: italic; }
     .vdx-live-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
@@ -1108,7 +1175,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       font-size: 16px;
       font-weight: 800;
       color: var(--tracky-light);
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .vd-history-speed.zero { color: var(--fg-tertiary); }
@@ -1189,7 +1256,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       font-size: 22px;
       font-weight: 800;
       color: var(--tracky-light);
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .vd-trip-distance-unit { font-size: 11px; color: var(--fg-tertiary); font-weight: 600; }
@@ -1602,6 +1669,9 @@ export class VehicleDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly http = inject(HttpClient);
+  /** Un SUPER_ADMIN n'a pas de flotte : le bandeau « en mission » a besoin de la sienne. */
+  private readonly fleetFilter = inject(FleetFilterService);
   private readonly positionsApi = inject(PositionsApiService);
   private readonly alertsApi = inject(AlertsApiService);
   private readonly engineControlApi = inject(EngineControlService);
@@ -1641,6 +1711,8 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
   protected readonly vehicleTrips = signal<TripDto[]>([]);
   protected readonly loading = signal(true);
+  /** Espace dépôt (2026-08) — la mission en cours de ce véhicule, ou null. */
+  protected readonly missionEnCours = signal<MissionEnCours | null>(null);
   // Edition note (un seul trip en edition a la fois — switch reset auto).
   protected readonly editingNoteTripId = signal<string | null>(null);
   protected editingNoteText = '';
@@ -1706,6 +1778,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly BellOff = BellOff;
   protected readonly HistoryIcon = History;
   protected readonly Route = Route;
+  protected readonly Eye = Eye;
   protected readonly ZapIcon = Zap;
   protected readonly ShieldAlert = ShieldAlert;
   protected readonly ShieldCheck = ShieldCheck;
@@ -1724,7 +1797,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly imeiCopied = signal(false);
   /**
    * Copie l'IMEI complet dans le presse-papier et affiche un check pendant 1.5s.
-   * `navigator.clipboard.writeText` echoue parfois (NotAllowedError sans interaction
+   * `navigator.clipboard.writeText` échoué parfois (NotAllowedError sans interaction
    * utilisateur consideree "trustworthy", contextes HTTP non secure, focus perdu) :
    * fallback sur la technique `document.execCommand('copy')` via textarea cache.
    */
@@ -2303,8 +2376,31 @@ export class VehicleDetailComponent implements OnInit {
     await this.loadAll(id);
   }
 
+  /**
+   * Espace dépôt (2026-08) — la mission en cours, pour le bandeau (A2 § 9).
+   *
+   * Chargée à part et sans bloquer : un échec laisse le bandeau absent et la fiche
+   * intacte. Elle ne doit jamais empêcher d'ouvrir un véhicule.
+   */
+  private async chargerMissionEnCours(vehicleId: string): Promise<void> {
+    try {
+      const m = await firstValueFrom(
+        this.http.get<MissionEnCours | null>(`/api/missions/vehicle/${vehicleId}/current${this.fleetFilter.selectedFleetId() ? '?fleetId=' + encodeURIComponent(this.fleetFilter.selectedFleetId()!) : ''}`),
+      );
+      this.missionEnCours.set(m ?? null);
+    } catch (err) {
+      swallow('vehicle-detail:missionEnCours', err);
+      this.missionEnCours.set(null);
+    }
+  }
+
+  protected heureMission(iso: string): string {
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
   private async loadAll(vehicleId: string): Promise<void> {
     this.loading.set(true);
+    void this.chargerMissionEnCours(vehicleId);
     try {
       const v = await firstValueFrom(this.vehiclesApi.findOne(vehicleId));
       this.vehicle.set(v);
@@ -2541,13 +2637,13 @@ export class VehicleDetailComponent implements OnInit {
       );
       this.editingNoteTripId.set(null);
       this.editingNoteText = '';
-      this.toast.success('Note enregistree');
+      this.toast.success('Note enregistrée');
     } catch (err) {
       swallow('vehicle-detail:saveTripNote', err);
       const msg = err instanceof HttpErrorResponse
         ? err.error?.message ?? 'Erreur inconnue'
         : err instanceof Error ? err.message : 'Erreur inconnue';
-      this.toast.error('Echec enregistrement note', msg);
+      this.toast.error('Échec enregistrement note', msg);
     } finally {
       this.savingNote.set(false);
     }
@@ -2688,7 +2784,7 @@ export class VehicleDetailComponent implements OnInit {
 
   /**
    * Callback du picker. driver=null => retire l'assignation. Sinon affecte
-   * et met a jour le signal vehicle local pour refleter l'etat sans re-fetch.
+   * et met a jour le signal vehicle local pour refleter l'état sans re-fetch.
    */
   protected async onDriverPicked(driver: DriverDto | null): Promise<void> {
     const v = this.vehicle();
@@ -2709,7 +2805,7 @@ export class VehicleDetailComponent implements OnInit {
       );
     } catch (err) {
       swallow('vehicle-detail:onDriverPicked', err);
-      this.toast.error('Echec assignation', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec assignation', err instanceof HttpErrorResponse ? err.error?.message : '');
     } finally {
       this.assigningDriver.set(false);
     }

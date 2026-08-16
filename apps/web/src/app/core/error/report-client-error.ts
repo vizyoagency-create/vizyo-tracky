@@ -17,6 +17,25 @@ let lastKey = '';
 let lastAt = 0;
 const DEDUP_MS = 15_000;
 
+/**
+ * Remet la dédup à zéro. **Réservé aux tests**, et ce n'est pas du confort.
+ *
+ * ⚠️ CES DEUX VARIABLES SONT UN SINGLETON DE MODULE, PARTAGÉ PAR TOUTE LA SUITE.
+ * Karma charge les 353 tests dans UN seul contexte de navigateur, et Jasmine les joue
+ * dans un ordre ALÉATOIRE. Deux tests qui déclenchent le même message se retrouvent
+ * donc à moins de quinze secondes l'un de l'autre : le second est dédupliqué, son
+ * `expect(...).toBe(1)` lit 0, et il échoue — mais seulement quand le tirage les met
+ * dans cet ordre. Un défaut qui n'apparaît qu'une fois sur cinq, et jamais isolément.
+ *
+ * ⚠️ Ce n'est PAS ce qui rendait la suite instable pendant le lot A6 — celui-là venait
+ * de `document.visibilityState`, cf. `api-fetch.spec`. Le piège décrit ici est réel,
+ * simplement il n'avait pas encore mordu. Deux lignes de `beforeEach` le ferment avant.
+ */
+export function resetClientErrorDedup(): void {
+  lastKey = '';
+  lastAt = 0;
+}
+
 export function reportClientError(source: string, error: unknown, route?: string): void {
   try {
     const sessionId = activityContext.sessionId ?? null;

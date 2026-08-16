@@ -75,7 +75,7 @@ export class PartnerInvitationService {
       where: { fleetId: fleet.id, partner: PARTNER, liveKey: { not: null } },
       select: { id: true },
     });
-    if (live) throw new BadRequestException('Cette flotte est deja connectee a Maestroo');
+    if (live) throw new BadRequestException('Cette flotte est déjà connectee a Maestroo');
 
     // ⚠️ Un code déjà promis à UNE AUTRE flotte ne peut pas être ré-invité
     // ailleurs : ce serait offrir à un second client d'appairer sa flotte sur
@@ -85,7 +85,7 @@ export class PartnerInvitationService {
       select: { id: true },
     });
     if (claimedElsewhere) {
-      throw new ForbiddenException('Ce code a deja ete envoye a une autre flotte');
+      throw new ForbiddenException('Ce code a déjà été envoyé a une autre flotte');
     }
 
     const token = randomBytes(24).toString('base64url');
@@ -183,7 +183,7 @@ export class PartnerInvitationService {
         `Code d'appairage promis a la flotte ${promised.fleetId} tente depuis ${fleetId} — REFUSE`,
       );
       throw new ForbiddenException(
-        'Ce code a ete emis pour une autre flotte. Demandez votre propre lien de consentement.',
+        'Ce code a été émis pour une autre flotte. Demandez votre propre lien de consentement.',
       );
     }
   }
@@ -245,7 +245,7 @@ export class PartnerInvitationService {
       where: { fleetId: fleet.id, partner: PARTNER, liveKey: { not: null } },
       select: { id: true },
     });
-    if (live) throw new BadRequestException('Cette flotte est deja connectee a Maestroo');
+    if (live) throw new BadRequestException('Cette flotte est déjà connectee a Maestroo');
 
     // Le destinataire proposé sert aussi d'adresse de l'espace : c'est là que
     // partira, plus tard, le lien d'activation du compte.

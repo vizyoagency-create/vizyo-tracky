@@ -37,7 +37,7 @@ export class SimsSyncService {
     try {
       await this.syncAll();
     } catch (err) {
-      this.logger.warn(`sync cron echoue : ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(`sync cron échoué : ${err instanceof Error ? err.message : err}`);
       // Sans ça, un token WhereverSIM expiré fige silencieusement le miroir SIM :
       // conso/statuts périmés affichés comme frais, seul indice = externalSyncedAt
       // qui vieillit. Remonté au centre d'alertes comme les échecs schedule-cron.

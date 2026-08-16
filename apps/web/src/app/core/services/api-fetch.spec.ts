@@ -1,4 +1,5 @@
 import { __resetTransportFailureCount, apiFetch, apiFetchJson, apiFetchRaw } from './api-fetch';
+import { resetClientErrorDedup } from '../error/report-client-error';
 import { HttpFailure } from './http-failure';
 
 /**
@@ -18,13 +19,42 @@ import { HttpFailure } from './http-failure';
 describe('api-fetch', () => {
   let realFetch: typeof globalThis.fetch;
   let reported: string[];
+  /**
+   * ⚠️ LA VISIBILITÉ EST ÉPINGLÉE, ET C'EST LE CORRECTIF DE L'INSTABILITÉ DE LA SUITE.
+   *
+   * `shouldReportNetworkFailure()` refuse de remonter quand la page est cachée — c'est
+   * la raison d'être du module (TRK-002 : un onglet en arrière-plan annule ses requêtes,
+   * personne ne peut corriger ça). Les tests qui vérifient qu'une page VISIBLE remonte
+   * bien lisaient donc `document.visibilityState` du navigateur RÉEL, celui que Karma
+   * pilote.
+   *
+   * Or cette fenêtre passe en `hidden` dès qu'elle est reléguée à l'arrière-plan : une
+   * autre application au premier plan, un écran qui s'éteint, une machine chargée. Le
+   * test échouait alors sur « Expected 0 to be 1 » — non parce que le code avait changé,
+   * mais parce que personne ne regardait l'écran. D'où un échec « impossible à
+   * reproduire » : il ne dépendait pas du code, il dépendait du bureau. Mesuré sur le
+   * lot A6 : 2 échecs sur 12 passes avant, 0 sur 15 après.
+   *
+   * On épingle donc l'état au lieu de le subir. Le test de la page cachée n'a plus
+   * besoin d'un second espion : il pose la variable, et la restaure par le `beforeEach`
+   * suivant.
+   */
+  let visibilite: DocumentVisibilityState;
 
   beforeEach(() => {
+    visibilite = 'visible';
+    spyOnProperty(document, 'visibilityState', 'get').and.callFake(() => visibilite);
+    // `navigator.onLine` pèse dans la même décision, et dépend lui aussi de la machine.
+    spyOnProperty(navigator, 'onLine', 'get').and.returnValue(true);
     realFetch = globalThis.fetch;
     reported = [];
     // Le compteur de confirmation vit au niveau du MODULE : sans cette remise à zéro, les
     // échecs d'un test feraient parler le suivant dès son premier échec.
     __resetTransportFailureCount();
+    // Même raison, autre singleton : `reportClientError` déduplique quinze secondes sur
+    // la clé « session + message ». Deux tests qui produisent le même message se
+    // télescopent, et Jasmine tire l'ordre au sort.
+    resetClientErrorDedup();
     // La remontée passe par `reportClientError`, qui poste sur /api/activity/error.
     // On l'observe par ce POST plutôt qu'en espionnant la fonction : c'est le
     // comportement OBSERVABLE, celui qui remplit réellement le centre d'alerte.
@@ -125,20 +155,22 @@ describe('api-fetch', () => {
       // Onglet en arrière-plan, appareil en veille, navigation en cours : le navigateur
       // annule les requêtes. Sur iOS c'est le fameux `TypeError: Load failed`. Ce n'est
       // pas une panne de plateforme, et personne ne peut le corriger.
-      const spy = spyOnProperty(document, 'visibilityState', 'get').and.returnValue('hidden');
-      try {
-        pending = () => Promise.reject(new TypeError('Load failed'));
-        await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
-        expect(reported.length).toBe(0);
-      } finally {
-        spy.and.callThrough();
-      }
+      // On DÉCLARE la page cachée — plus de second espion à poser puis à défaire : le
+      // `beforeEach` remet `visibilite` à « visible » pour le test suivant.
+      visibilite = 'hidden';
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+      expect(reported.length).toBe(0);
     });
 
     it('une page VISIBLE remonte toujours — sinon le module ne sert plus à rien', async () => {
       // 🔑 Le vrai test du correctif : il devait supprimer le bruit SANS supprimer le signal.
       // Il faut désormais DEUX échecs d'affilée (cf. « confirmer avant de crier »), ce que
       // toute panne réelle produit en une fraction de seconde.
+      //
+      // ⚠️ C'est CE test qui rendait la suite instable, et il n'avait aucun défaut de
+      // logique : il lisait la visibilité réelle de la fenêtre Karma. Voir la note sur
+      // `visibilite` en tête de fichier.
       pending = () => Promise.reject(new TypeError('Failed to fetch'));
       await apiFetch('/api/users', undefined, 'Chargement visible A').catch(() => undefined);
       await apiFetch('/api/users', undefined, 'Chargement visible A').catch(() => undefined);

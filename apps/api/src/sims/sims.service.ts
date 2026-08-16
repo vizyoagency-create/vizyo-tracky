@@ -162,7 +162,7 @@ export class SimsService {
     if (sim.fleetId && trackerFleetId && sim.fleetId !== trackerFleetId) {
       throw new BadRequestException('La SIM et le tracker n\'appartiennent pas à la même flotte');
     }
-    // SIM en stock posée sur un tracker de flotte => auto-allocation a cette flotte.
+    // SIM en stock posée sur un tracker de flotte => auto-allocation à cette flotte.
     const newFleetId = sim.fleetId ?? trackerFleetId;
     // ⚠️ Incident 2026-07-19 : le catalogue opérateur renvoie les MSISDN SANS `+`. Recopiés bruts,
     // ils rendaient tout SMS impossible (donc le repli du coupe-circuit inopérant). On normalise
@@ -428,7 +428,7 @@ export class SimsService {
       await this.sync.upsertRaw(raw);
     } catch (err) {
       this.logger.warn(
-        `push custom_field_1 vers WhereverSIM echoue (${iccid}) : ${err instanceof Error ? err.message : err}`,
+        `push custom_field_1 vers WhereverSIM échoué (${iccid}) : ${err instanceof Error ? err.message : err}`,
       );
     }
   }

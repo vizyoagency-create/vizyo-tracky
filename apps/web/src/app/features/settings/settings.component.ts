@@ -614,7 +614,7 @@ export class SettingsComponent implements OnInit {
       // au dashboard pour montrer le mode complet retrouve.
       void this.router.navigate([next === 'baanool' ? '/map' : '/dashboard']);
     } catch {
-      this.toast.error('Echec mise a jour de la preference');
+      this.toast.error('Échec mise à jour de la preference');
     } finally {
       this.savingUiMode.set(false);
     }

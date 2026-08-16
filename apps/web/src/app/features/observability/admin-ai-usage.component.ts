@@ -336,7 +336,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
     .au-title { display: flex; align-items: center; gap: 12px; }
     .au-ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(245,158,11,.12); color: #fbbf24; flex-shrink: 0; }
-    .au-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0; }
+    .au-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0; }
     .au-head p { font-size: 12.5px; color: var(--fg-tertiary); margin: 3px 0 0; }
     .au-actions { display: flex; align-items: center; gap: 8px; }
     .au-seg { display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 3px; gap: 2px; }
@@ -378,7 +378,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-budget[data-status="over"] { border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.04); }
     .au-budget-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .au-budget-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .03em; }
-    .au-budget-spent { font-family: var(--font-display, Poppins, sans-serif); font-size: 30px; font-weight: 800; color: var(--fg-primary); margin-top: 4px; }
+    .au-budget-spent { font-family: var(--font-display); font-size: 30px; font-weight: 800; color: var(--fg-primary); margin-top: 4px; }
     .au-budget[data-status="over"] .au-budget-spent, .au-budget[data-status="warn"] .au-budget-spent { color: #f87171; }
     .au-budget[data-status="warn"] .au-budget-spent { color: #fbbf24; }
     .au-budget-of { font-size: 16px; font-weight: 600; color: var(--fg-tertiary); }
@@ -433,7 +433,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
     @media (max-width: 640px) { .au-kpis { grid-template-columns: 1fr 1fr; } }
     .au-kpi { padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 3px; }
-    .au-kpi-n { font-family: var(--font-display, Poppins, sans-serif); font-size: 22px; font-weight: 800; color: var(--fg-primary); }
+    .au-kpi-n { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--fg-primary); }
     .au-kpi-l { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); font-weight: 600; }
     .au-kpi-sub { font-size: 11px; color: var(--fg-tertiary); }
 

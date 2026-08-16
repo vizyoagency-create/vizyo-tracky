@@ -107,7 +107,7 @@ function inAnySlot(slots: Slot[], minutesNow: number): { hit: boolean; desc: str
     // Plage normale (a<b) : [a, b[. Plage qui passe minuit (a>b, ex 22:00-06:00) :
     // hit si on est APRES le debut OU AVANT la fin. cf. audit #8 — sinon une plage
     // de nuit ne matchait JAMAIS et l'evaluateur tombait en OUT_OF_WINDOW => moteur
-    // coupe 24/7 pour un vehicule legitimement autorise la nuit.
+    // coupe 24/7 pour un véhicule legitimement autorise la nuit.
     const hit =
       a < b ? minutesNow >= a && minutesNow < b : a > b ? minutesNow >= a || minutesNow < b : false;
     if (hit) return { hit: true, desc };

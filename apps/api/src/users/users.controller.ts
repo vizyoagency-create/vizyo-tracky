@@ -17,8 +17,12 @@ import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
+import { MissionShareService } from '../depot/mission-share.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from './default-permissions';
+// Espace dépôt (2026-08) — importé directement de la source de vérité, comme le
+// demande l'en-tête de `default-permissions.ts` pour tout nouveau code.
+import { permissionsForTargetRole } from '@vizyo/tracky-shared';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import {
@@ -47,6 +51,8 @@ export class UsersController {
     private readonly emailService: EmailService,
     private readonly config: ConfigService<Env, true>,
     private readonly ownerVis: OwnerVisibilityService,
+    // Lot A4 — archiver un compte ferme aussi les liens publics qu'il a distribues.
+    private readonly missionShare: MissionShareService,
   ) {}
 
   /**
@@ -93,7 +99,7 @@ export class UsersController {
     @Body() dto: { uiMode?: 'tracky' | 'baanool' },
   ) {
     if (dto.uiMode !== undefined && dto.uiMode !== 'tracky' && dto.uiMode !== 'baanool') {
-      throw new BadRequestException('uiMode doit etre "tracky" ou "baanool"');
+      throw new BadRequestException('uiMode doit être "tracky" ou "baanool"');
     }
     const current = await this.prisma.user.findUnique({
       where: { id: req.user.id },
@@ -116,7 +122,7 @@ export class UsersController {
     @Body() dto: { firstName?: string; lastName?: string; phone?: string | null; escalationContactUserId?: string | null },
   ) {
     if (dto.phone && !/^\+\d{6,15}$/.test(dto.phone)) {
-      throw new BadRequestException('Numero de telephone doit etre au format E.164 (ex: +33612345678)');
+      throw new BadRequestException('Numéro de téléphone doit être au format E.164 (ex: +33612345678)');
     }
     if (dto.escalationContactUserId) {
       const target = await this.prisma.user.findUnique({
@@ -125,10 +131,10 @@ export class UsersController {
       });
       if (!target) throw new NotFoundException('Contact d\'escalade introuvable');
       if (req.user.role !== UserRole.SUPER_ADMIN && target.fleetId !== req.user.fleetId) {
-        throw new ForbiddenException('Le contact d\'escalade doit etre dans la meme flotte');
+        throw new ForbiddenException('Le contact d\'escalade doit être dans la même flotte');
       }
       if (target.id === req.user.id) {
-        throw new BadRequestException('Le contact d\'escalade ne peut pas etre vous-meme');
+        throw new BadRequestException('Le contact d\'escalade ne peut pas être vous-même');
       }
     }
     return this.prisma.user.update({
@@ -306,10 +312,16 @@ export class UsersController {
         // est FLEET_ADMIN/SUPER_ADMIN-only (tous deux ADMIN_DEFAULTS → clamp = no-op), mais
         // ce clamp rend l'invariant robuste si @Roles était un jour élargi (pas de bug
         // silencieux d'escalade). Cf. clampPermissions + permissions.spec.
-        permissions: clampPermissions(
+        // Espace dépôt (2026-08) — `permissionsForTargetRole` remplace `clampPermissions`
+        // seul. Le clamp borne au GRANTER, pas à la CIBLE : un FLEET_ADMIN, qui détient
+        // tout, pouvait donc doter un compte DEPOT de `vehicles_view` et franchir le clamp
+        // sans encombre. Pour un rôle FERMÉ, la demande est désormais ignorée et on écrit
+        // les défauts du rôle. Cf. A5 § 4 : « le périmètre d'un dépôt est fixé par ses
+        // missions ».
+        permissions: permissionsForTargetRole(
+          dto.role,
           getDefaultPermissions(dto.role),
           req.user,
-          getDefaultPermissions(dto.role),
         ) as unknown as Prisma.JsonObject,
         fleetId,
       },
@@ -515,6 +527,29 @@ export class UsersController {
     // Si le rôle change, réinitialiser les permissions par défaut du nouveau rôle
     const roleChanged = dto.role !== undefined && dto.role !== user.role;
 
+    // ══ ESPACE DÉPÔT (2026-08) — LE CHANGEMENT DE RÔLE EST INTERDIT DANS LES DEUX SENS
+    //
+    // « Un dépôt ne devient pas gestionnaire, et l'inverse non plus » (A5 § 5).
+    //
+    // Le sens qui compte : passer un dépôt en gestionnaire lui donnerait accès à TOUTE
+    // la flotte d'un clic, depuis un écran qui ne le dit pas. Un fleet-admin qui veut
+    // « donner un peu plus de droits » à un dépôt ouvrirait sa flotte entière sans s'en
+    // apercevoir.
+    //
+    // L'autre sens compte aussi : un gestionnaire basculé en dépôt garderait ses lignes
+    // `UserVehicleAccess`, ce qu'A1 § 7 interdit — et son périmètre deviendrait
+    // incohérent, mi-flotte mi-mission.
+    //
+    // Pour changer de rôle, on supprime le compte et on en crée un autre. C'est plus
+    // lourd, et c'est le but : l'acte doit être délibéré.
+    if (roleChanged && (user.role === UserRole.DEPOT || dto.role === UserRole.DEPOT)) {
+      throw new ForbiddenException(
+        'Le rôle « Dépôt » ne peut être ni attribué ni retiré à un compte existant. '
+          + 'Son périmètre est calculé depuis ses missions : le convertir ouvrirait ou fermerait '
+          + 'un accès sans que l\'écran le dise. Supprimez le compte et créez-en un autre.',
+      );
+    }
+
     // Only SUPER_ADMIN can reassign fleet
     const fleetIdUpdate = dto.fleetId !== undefined && req.user.role === UserRole.SUPER_ADMIN
       ? { fleetId: dto.fleetId }
@@ -592,7 +627,7 @@ export class UsersController {
 
     // Impossible de s'archiver soi-meme
     if (user.id === req.user.id) {
-      throw new ForbiddenException('Impossible de s\'archiver soi-meme');
+      throw new ForbiddenException('Impossible de s\'archiver soi-même');
     }
 
     // 1. Suspendre dans Vizyo Auth (plus de login possible)
@@ -612,6 +647,17 @@ export class UsersController {
       where: { id },
       data: { isActive: false },
     });
+
+    // 4. Espace dépôt (2026-08), lot A4 — FERMER LES LIENS PUBLICS QU'IL A OUVERTS.
+    //
+    // Retirer l'accès au compte ne suffit pas : ce compte a distribué des URL qui,
+    // elles, fonctionnent sans lui. Un dépôt archivé dont les liens restent actifs
+    // continue de faire suivre les camions du transporteur par des tiers qu'il a
+    // choisis — c'est exactement l'accès qu'on vient de retirer, par une autre porte.
+    const fermes = await this.missionShare.fermerLiensDuCompte(id);
+    if (fermes > 0) {
+      this.logger.log(`${fermes} lien(s) de partage ferme(s) — compte ${user.email} archive`);
+    }
 
     return { ok: true };
   }
@@ -745,9 +791,25 @@ export class UsersController {
       ? dto.entries
       : this.legacyToEntries(dto);
 
+    // ══ ESPACE DÉPÔT (2026-08) — UN DEPOT N'A JAMAIS DE PÉRIMÈTRE VÉHICULE ═════
+    //
+    // Second verrou, après celui de l'acceptation d'invitation. Une ligne créée ici
+    // par erreur (script, import, écran mal gardé) donnerait au dépôt un périmètre
+    // résolu par `PermissionsResolverService`, en contournant entièrement
+    // `DepotScopeService` — l'isolation du bloc A tomberait sans bruit.
+    //
+    // A5 § 4 : « Le périmètre d'un dépôt est fixé par ses missions. »
+    if (user.role === UserRole.DEPOT) {
+      throw new BadRequestException(
+        'Un compte dépôt n\'a pas de périmètre véhicule : il voit les missions que vous lui '
+          + 'assignez, pendant leur créneau, et rien d\'autre. Assignez-lui une mission depuis '
+          + 'l\'agenda pour lui ouvrir un accès.',
+      );
+    }
+
     if (entries.length === 0) {
       throw new BadRequestException(
-        'Au moins une entree d\'acces requise (ALL, GROUP, ou VEHICLE)',
+        'Au moins une entrée d\'accès requise (ALL, GROUP, ou VEHICLE)',
       );
     }
 
@@ -807,7 +869,7 @@ export class UsersController {
     @Req() req: AuthenticatedRequest,
   ) {
     await this.assertTargetVisible(userId, req);
-    // 1. Verifier que l'user cible est dans la fleet du caller (defense en profondeur)
+    // 1. Vérifier que l'user cible est dans la fleet du caller (defense en profondeur)
     const userWhere: Prisma.UserWhereInput = { id: userId };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
       if (!req.user.fleetId) throw new NotFoundException('User not found');
@@ -816,7 +878,7 @@ export class UsersController {
     const targetUser = await this.prisma.user.findFirst({ where: userWhere });
     if (!targetUser) throw new NotFoundException('User not found');
 
-    // 2. Verifier que la ligne d'acces appartient bien a ce user
+    // 2. Vérifier que la ligne d'acces appartient bien a ce user
     const entry = await this.prisma.userVehicleAccess.findFirst({
       where: { id: accessId, userId },
     });
@@ -864,7 +926,7 @@ export class UsersController {
     const totalEntries = await this.prisma.userVehicleAccess.count({ where: { userId } });
     if (totalEntries <= 1) {
       throw new BadRequestException(
-        'Impossible de supprimer la derniere entree d\'acces. Utilisez d\'abord PUT /users/:id/access pour reconfigurer.',
+        'Impossible de supprimer la dernière entrée d\'accès. Utilisez d\'abord PUT /users/:id/access pour reconfigurer.',
       );
     }
 
@@ -901,10 +963,10 @@ export class UsersController {
     // Validation structurelle : GROUP requiert groupId, VEHICLE requiert vehicleId
     for (const entry of entries) {
       if (entry.type === 'GROUP' && !entry.groupId) {
-        throw new BadRequestException('groupId requis pour une entree type GROUP');
+        throw new BadRequestException('groupId requis pour une entrée type GROUP');
       }
       if (entry.type === 'VEHICLE' && !entry.vehicleId) {
-        throw new BadRequestException('vehicleId requis pour une entree type VEHICLE');
+        throw new BadRequestException('vehicleId requis pour une entrée type VEHICLE');
       }
     }
 
@@ -936,7 +998,7 @@ export class UsersController {
       });
       if (found.length !== vehicleIds.length) {
         throw new BadRequestException(
-          'Un ou plusieurs vehicules n\'appartiennent pas a la flotte de cet utilisateur',
+          'Un ou plusieurs véhicules n\'appartiennent pas a la flotte de cet utilisateur',
         );
       }
     }
@@ -1090,7 +1152,7 @@ export class UsersController {
     const ok = await this.accountSync.applyStatus(user.authUserId, user.isActive, `realign:${user.email}`);
     if (!ok) {
       throw new BadRequestException(
-        'Vizyo Auth a refuse la mise a jour. Le detail est dans le centre d\'alerte.',
+        'Vizyo Auth a refusé la mise à jour. Le détail est dans le centre d\'alerte.',
       );
     }
     return { ok: true, applied: user.isActive ? 'active' : 'suspended' };

@@ -342,7 +342,7 @@ export class GeofencesListComponent implements OnInit {
       await this.loadGeofences();
     } catch (err) {
       swallow('geofences-list:onFileSelected', err);
-      this.toast.error('Echec de l\'import (fichier GeoJSON invalide ?)');
+      this.toast.error('Échec de l\'import (fichier GeoJSON invalide ?)');
     } finally {
       this.importing.set(false);
       const input = document.querySelector<HTMLInputElement>('input[type="file"]');

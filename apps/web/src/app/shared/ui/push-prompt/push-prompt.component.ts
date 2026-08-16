@@ -39,7 +39,7 @@ const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surpre
         <div class="prompt-content">
           <p id="push-prompt-title" class="prompt-title">Activer les notifications</p>
           <p class="prompt-subtitle">
-            Recevez les alertes critiques meme app fermee, sur ce device.
+            Recevez les alertes critiques même app fermee, sur ce device.
           </p>
         </div>
         <div class="prompt-actions">
@@ -223,10 +223,10 @@ export class PushPromptComponent implements OnInit {
     try {
       const result = await this.notif.subscribePush();
       if (result.ok) {
-        this.toast.success('Notifications activees', 'Vous recevrez les alertes critiques meme app fermee.');
+        this.toast.success('Notifications activées', 'Vous recevrez les alertes critiques meme app fermee.');
         this.dismissedThisSession.set(true);
       } else {
-        this.toast.error(result.reason ?? 'Echec de l\'activation', 'Verifiez les permissions du navigateur.');
+        this.toast.error(result.reason ?? 'Echec de l\'activation', 'Vérifiez les permissions du navigateur.');
       }
     } finally {
       this.loading.set(false);

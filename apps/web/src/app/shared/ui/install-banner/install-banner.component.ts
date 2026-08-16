@@ -10,7 +10,7 @@ import { InstallPromptService } from '../../../core/services/install-prompt.serv
  * - iOS Safari : instructions visuelles (Partager -> Sur l'ecran d'accueil).
  *
  * Auto-masquee si :
- *  - l'app est deja en mode standalone,
+ *  - l'app est déjà en mode standalone,
  *  - l'utilisateur a rejete la banniere il y a < 30 jours.
  */
 @Component({

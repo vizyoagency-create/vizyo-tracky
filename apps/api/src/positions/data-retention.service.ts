@@ -102,14 +102,14 @@ export class DataRetentionService {
    */
   async runPositionsRetention(): Promise<PositionsRetentionResult> {
     if (this.positionsRunning) {
-      this.logger.warn('[retention] run precedent encore en cours — skip');
+      this.logger.warn('[retention] run précédent encore en cours — skip');
       return this.disabledResult();
     }
     this.positionsRunning = true;
     try {
       return await this.runPositionsRetentionOnce();
     } catch (err) {
-      this.logger.error(`[retention] run a echoue: ${err instanceof Error ? err.message : err}`);
+      this.logger.error(`[retention] run a échoué: ${err instanceof Error ? err.message : err}`);
       this.errorLogger?.recordBackground(err instanceof Error ? err : new Error(String(err)), 'cron:data-retention');
       return this.disabledResult();
     } finally {

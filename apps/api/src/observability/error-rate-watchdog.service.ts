@@ -110,7 +110,7 @@ export class ErrorRateWatchdogService {
       this.lastAlertAt = now;
       this.logger.warn(`Centre d'alerte : ${total} erreurs en 1 h — e-mail envoyé à ${this.recipient}.`);
     } else {
-      this.logger.error(`Alerte de saturation NON envoyee (${res.error ?? 'erreur inconnue'})`);
+      this.logger.error(`Alerte de saturation NON envoyée (${res.error ?? 'erreur inconnue'})`);
     }
   }
 }

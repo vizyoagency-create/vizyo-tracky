@@ -42,7 +42,7 @@ function makeGateway(
     user: { findUnique: jest.fn().mockResolvedValue({ role: user.role, permissions: { alerts_view: true } }) },
   };
   const access = { getAccessibleVehicleIds: jest.fn().mockResolvedValue(accessible) };
-  const gw = new RealtimeGateway(auth as never, prisma as never, access as never);
+  const gw = new RealtimeGateway(auth as never, prisma as never, access as never, { activeMissionIds: jest.fn().mockResolvedValue([]) } as never);
   const chain = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
   gw.server = { to: jest.fn().mockReturnValue(chain) } as never;
   return { gw, chain };
@@ -123,7 +123,7 @@ describe('RealtimeGateway — périmètre par véhicule', () => {
       };
       const prisma = { user: { findUnique: jest.fn().mockResolvedValue({ role: 'FLEET_MANAGER', permissions: {} }) } };
       const access = { getAccessibleVehicleIds: jest.fn().mockRejectedValue(new Error('base indisponible')) };
-      const gw = new RealtimeGateway(auth as never, prisma as never, access as never);
+      const gw = new RealtimeGateway(auth as never, prisma as never, access as never, { activeMissionIds: jest.fn().mockResolvedValue([]) } as never);
       gw.server = { to: jest.fn().mockReturnValue({ to: jest.fn().mockReturnThis(), emit: jest.fn() }) } as never;
 
       const client = makeClient('s3');
@@ -175,7 +175,7 @@ describe('RealtimeGateway — revalidation du perimetre', () => {
       },
     };
     const access = { getAccessibleVehicleIds: jest.fn().mockResolvedValue(accessible) };
-    const gw = new RealtimeGateway(auth as never, prisma as never, access as never);
+    const gw = new RealtimeGateway(auth as never, prisma as never, access as never, { activeMissionIds: jest.fn().mockResolvedValue([]) } as never);
     return { gw, findMany, access };
   }
 

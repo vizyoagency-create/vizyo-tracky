@@ -54,7 +54,7 @@ export class RetentionStatsService {
   /** Vue fleet-admin : config + le snapshot de SA flotte (scope = son fleetId). */
   async getFleetView(fleetId: string | null | undefined): Promise<RetentionFleetViewDto> {
     if (!fleetId) {
-      throw new ForbiddenException('Aucune flotte associee a cet utilisateur');
+      throw new ForbiddenException('Aucune flotte associée a cet utilisateur');
     }
     const snap = (await this.prisma.retentionSnapshot.findUnique({
       where: { scope: fleetId },

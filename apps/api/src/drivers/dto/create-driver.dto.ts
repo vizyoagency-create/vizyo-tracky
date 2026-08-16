@@ -2,7 +2,7 @@ import { IsBoolean, IsEmail, IsHexColor, IsOptional, IsString, MaxLength, MinLen
 
 export class CreateDriverDto {
   @IsString()
-  @MinLength(1, { message: 'Prenom requis.' })
+  @MinLength(1, { message: 'Prénom requis.' })
   @MaxLength(80)
   firstName!: string;
 

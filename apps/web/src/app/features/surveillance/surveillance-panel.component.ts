@@ -133,7 +133,7 @@ const ROLE_LABELS: Record<string, string> = {
                   <p class="text-xs text-fg-secondary mt-1">
                     <lucide-icon [img]="Clock" [size]="12" class="inline align-middle"></lucide-icon>
                     Plage automatique : <span class="font-mono">{{ p.scheduleStartTime }}</span>
-                    → <span class="font-mono">{{ p.scheduleEndTime }}</span> UTC
+                    → <span class="font-mono">{{ p.scheduleEndTime }}</span>
                     @if (p.scheduleDays && p.scheduleDays.length > 0 && p.scheduleDays.length < 7) {
                       ({{ formatDays(p.scheduleDays) }})
                     }
@@ -232,7 +232,7 @@ const ROLE_LABELS: Record<string, string> = {
           @if (form().mode === 'SCHEDULED') {
             <div class="sm-grid mt-3">
               <div class="sm-field">
-                <label class="sm-label">Début (HH:mm UTC)</label>
+                <label class="sm-label">Début</label>
                 <input
                   type="time"
                   class="sm-input"
@@ -240,7 +240,7 @@ const ROLE_LABELS: Record<string, string> = {
                   (change)="updateField('scheduleStartTime', $any($event.target).value || null)" />
               </div>
               <div class="sm-field">
-                <label class="sm-label">Fin (HH:mm UTC)</label>
+                <label class="sm-label">Fin</label>
                 <input
                   type="time"
                   class="sm-input"
@@ -248,6 +248,18 @@ const ROLE_LABELS: Record<string, string> = {
                   (change)="updateField('scheduleEndTime', $any($event.target).value || null)" />
               </div>
             </div>
+
+            <!-- L'heure saisie est celle de l'horloge murale. L'équivalent UTC reste
+                 affiché, en note : il sert à recouper avec les journaux du serveur, et
+                 à rassurer quiconque se souvient de l'ancien comportement. -->
+            <p class="sm-note mt-2">
+              Heure de la flotte ({{ FUSEAU_FLOTTE }}).
+              @if (equivalentUtc(); as utc) {
+                {{ utc }}
+              }
+              Le changement d'heure est suivi automatiquement : la plage ne bouge pas
+              sur l'horloge.
+            </p>
 
             <div class="mt-3">
               <label class="sm-label">Jours actifs</label>
@@ -485,6 +497,14 @@ const ROLE_LABELS: Record<string, string> = {
       line-height: 1.35;
       color: rgb(251, 191, 36);
     }
+    /* Note de pied du réglage horaire. Le reste des couleurs de ce panneau est en dur ;
+       leur reprise appartient au lot B-pages § F « Panneau surveillance », qui attend
+       les maquettes. On n'en ajoute pas une de plus au passage. */
+    .sm-note {
+      font-size: 0.72rem;
+      line-height: 1.4;
+      color: var(--fg-tertiary);
+    }
     .sm-btn {
       display: inline-flex; align-items: center; gap: 0.375rem;
       padding: 0.5rem 0.875rem;
@@ -621,6 +641,44 @@ export class SurveillancePanelComponent implements OnInit {
   protected readonly actingEventId = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly savedAt = signal<number | null>(null);
+
+  /**
+   * Le fuseau dans lequel la plage est lue par le planificateur — celui de la flotte,
+   * pas celui du navigateur. La nuance compte : un gestionnaire en déplacement hors de
+   * France verrait « heure locale » et croirait à SON horloge, alors que l'antivol suit
+   * celle des véhicules. Côté serveur : `FLEET_TIME_ZONE`.
+   */
+  protected readonly FUSEAU_FLOTTE = 'Europe/Paris';
+
+  /**
+   * « 18:00 → 23:00 correspond aujourd'hui à 16:00 → 21:00 UTC. »
+   *
+   * Le décalage est MESURÉ pour la date du jour, jamais codé en dur : il vaut +2 h
+   * l'été et +1 h l'hiver, et un décalage figé redeviendrait faux au changement
+   * d'heure — exactement le défaut que ce lot corrige. Même méthode que
+   * `fleet-tz.util.ts` côté API.
+   */
+  protected readonly equivalentUtc = computed(() => {
+    const debut = this.form().scheduleStartTime;
+    const fin = this.form().scheduleEndTime;
+    if (!debut || !fin) return null;
+    const u1 = this.versUtc(debut);
+    const u2 = this.versUtc(fin);
+    if (!u1 || !u2) return null;
+    return `${debut} → ${fin} correspond aujourd'hui à ${u1} → ${u2} UTC.`;
+  });
+
+  /** Convertit une heure de pendule de la flotte en heure UTC, pour la date du jour. */
+  private versUtc(hhmm: string): string | null {
+    const [h, m] = hhmm.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    const sonde = new Date();
+    const enFlotte = new Date(sonde.toLocaleString('en-US', { timeZone: this.FUSEAU_FLOTTE }));
+    const enUtc = new Date(sonde.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const decalageMin = Math.round((enFlotte.getTime() - enUtc.getTime()) / 60000);
+    const total = (((h as number) * 60 + (m as number) - decalageMin) % 1440 + 1440) % 1440;
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
 
   // Form mirror du profile (édition locale). Patched chaque fois qu'on update,
   // pour permettre l'optimistic UI sans attendre le PUT.
@@ -843,7 +901,7 @@ export class SurveillancePanelComponent implements OnInit {
    * Ajoute ou retire un destinataire additionnel.
    *
    * Passe par `updateField`, donc on herite du meme comportement que les autres
-   * reglages du panneau : mise a jour optimiste, regroupement des changements et
+   * reglages du panneau : mise à jour optimiste, regroupement des changements et
    * envoi differe de 400 ms (cocher trois personnes = UN appel, pas trois), avec
    * rechargement depuis le serveur si l'enregistrement echoue.
    */

@@ -114,7 +114,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
     .abc-badge[data-st="PAST_DUE"] { background: rgba(239,68,68,.16); color: #f87171; }
     .abc-badge[data-st="INVOICE_PENDING"] { background: rgba(245,158,11,.16); color: #fbbf24; }
     .abc-price { padding: 14px 16px; border-radius: 12px; background: var(--bg-tertiary); }
-    .abc-price-main { font-family: var(--font-display, Poppins, sans-serif); font-size: 26px; font-weight: 800; color: var(--fg-primary); }
+    .abc-price-main { font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--fg-primary); }
     .abc-price-per { font-size: 14px; font-weight: 600; color: var(--fg-tertiary); margin-left: 4px; }
     .abc-price-detail { font-size: 12.5px; color: var(--fg-secondary); margin-top: 3px; }
     .abc-dim { color: var(--fg-tertiary); }

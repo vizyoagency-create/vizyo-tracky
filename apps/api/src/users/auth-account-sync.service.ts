@@ -61,7 +61,7 @@ export class AuthAccountSyncService {
       // Bruyant À DESSEIN. C'est un `catch {}` vide qui a laissé quatre appels échouer
       // en 403 pendant des mois sans que personne ne le voie.
       this.logger.error(
-        `[auth-sync] ECHEC ${isActive ? 'reactivation' : 'suspension'} (${context}) auth=${authUserId.slice(0, 8)}: ${message}`,
+        `[auth-sync] Échec ${isActive ? 'reactivation' : 'suspension'} (${context}) auth=${authUserId.slice(0, 8)}: ${message}`,
       );
       this.errorLogger.recordBackground(
         err instanceof Error ? err : new Error(message),

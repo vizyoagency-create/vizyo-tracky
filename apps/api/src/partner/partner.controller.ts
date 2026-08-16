@@ -96,7 +96,7 @@ export class PartnerController {
    * appairer. On refuse plutôt que de deviner laquelle.
    */
   private requireFleet(req: AuthenticatedRequest): string {
-    if (!req.user.fleetId) throw new BadRequestException('Aucune flotte associee a ce compte');
+    if (!req.user.fleetId) throw new BadRequestException('Aucune flotte associée a ce compte');
     return req.user.fleetId;
   }
 }

@@ -27,11 +27,16 @@ import {
   Moon,
   Sparkles,
   AlarmClock,
-  MapPin, ShieldCheck, Plug } from 'lucide-angular';
+  MapPin, ShieldCheck, Plug,
+  // Espace dépôt (2026-08) — `Route` = la mission (design/ICONS.md, décision D-I3).
+  Route,
+  // Lot A3 — les trois autres onglets de l'espace dépôt.
+  History, FileText } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
 import { AuthService } from '../core/services/auth.service';
+import { DepotLiveStore } from '../features/depot/depot-live.store';
 import { NetworkStatusService } from '../core/services/network-status.service';
 import { RealtimeService } from '../core/services/realtime.service';
 import { ActivityTrackerService } from '../core/services/activity-tracker.service';
@@ -73,11 +78,11 @@ interface NavGroup {
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, DeviceVerificationGateComponent, TwoFactorProposalComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
-    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()">
+    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()" [class.layout--depot]="auth.isDepot()">
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
-          Hors-ligne — les donnees affichees datent de votre derniere session
+          Hors-ligne — les données affichees datent de votre dernière session
         </div>
       }
 
@@ -92,7 +97,12 @@ interface NavGroup {
             </button>
           } @else {
             <app-logo variant="icon" [size]="30" />
-            <span class="sidebar-brand text-tracky-light">Tracky</span>
+            <!-- Espace dépôt (2026-08) — LA MARQUE DU TRANSPORTEUR EN TÊTE, Tracky en
+                 pied de menu à 12 px (A3 § 7, règle 5). Un dépôt ne connaît pas notre
+                 marque : il connaît celle du transporteur qui lui a ouvert l'accès. -->
+            <span class="sidebar-brand" [class.text-tracky-light]="!auth.isDepot()">
+              {{ auth.isDepot() ? (depotStore.carrierName() || 'Suivi de livraison') : 'Tracky' }}
+            </span>
             <button (click)="collapsed.set(true)" class="sidebar-toggle"
                     aria-label="Replier le menu" [attr.aria-expanded]="true">
               <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
@@ -118,6 +128,14 @@ interface NavGroup {
             }
           }
         </nav>
+        <!-- Le pied de menu du dépôt : Vizyo Tracky à 12 px, discret et assumé.
+             L'espace appartient visuellement au transporteur ; nous en sommes le
+             moteur, pas l'enseigne (A3 § 7, règle 5). -->
+        @if (!collapsed() && auth.isDepot()) {
+          <div class="sidebar-foot">
+            <span class="depot-propulse">Propulsé par Vizyo Tracky</span>
+          </div>
+        }
         @if (!collapsed() && showAiPromo()) {
           <div class="sidebar-foot">
             <a routerLink="/agenda" class="ai-promo">
@@ -191,12 +209,17 @@ interface NavGroup {
             <!-- V1.12 — En mode Baanool le /dashboard n'est pas accessible
                  (filtre dans navItems), donc le logo redirige vers /map pour
                  eviter d'atterrir sur une page vide/redirigee. -->
-            <a [routerLink]="isBaanoolMode() ? '/map' : '/dashboard'"
+            <!-- Espace dépôt (2026-08), lot A3 — la marque du TRANSPORTEUR, et un lien
+                 vers /depot : un dépôt n'a pas de tableau de bord, le logo l'envoyait
+                 sur une route que son propre garde refuse. -->
+            <a [routerLink]="auth.isDepot() ? '/depot' : (isBaanoolMode() ? '/map' : '/dashboard')"
                class="top-bar-brand"
-               [attr.aria-label]="isBaanoolMode() ? 'Vizyo Tracky — Carte' : 'Vizyo Tracky — Tableau de bord'">
+               [attr.aria-label]="auth.isDepot() ? 'Suivi de livraison — carte' : (isBaanoolMode() ? 'Vizyo Tracky — Carte' : 'Vizyo Tracky — Tableau de bord')">
               <app-logo variant="icon" [size]="26" />
               <span class="top-bar-brand-text" aria-hidden="true">
-                <span class="top-bar-brand-name top-bar-brand-name--accent">Tracky</span>
+                <span class="top-bar-brand-name" [class.top-bar-brand-name--accent]="!auth.isDepot()">
+                  {{ auth.isDepot() ? (depotStore.carrierName() || 'Suivi de livraison') : 'Tracky' }}
+                </span>
               </span>
             </a>
             <h2 class="top-title">{{ pageTitle() }}</h2>
@@ -216,18 +239,32 @@ interface NavGroup {
                 <lucide-icon [img]="LogOutIcon" [size]="18"></lucide-icon>
               </button>
             } @else {
-            <!-- Pastille « Connecté » — état du socket temps réel (RealtimeService). -->
-            <span class="top-connected vt-status"
-                  [class.vt-status--on]="realtime.connected()"
-                  [class.vt-status--offline]="!realtime.connected()"
-                  role="status" aria-live="polite">
-              <span class="vt-status__dot" aria-hidden="true"></span>
-              {{ realtime.connected() ? 'Connecté' : 'Hors ligne' }}
-            </span>
+            <!-- Pastille « Connecté » — état du socket temps réel (RealtimeService).
+                 Masquée en mode dépôt : ce socket-là n'est pas le sien, et sa carte
+                 porte un indicateur bien plus utile — « rafraîchie il y a 12 s », qui
+                 date la DONNÉE plutôt que le tuyau (A3 § 1). -->
+            @if (!auth.isDepot()) {
+              <span class="top-connected vt-status"
+                    [class.vt-status--on]="realtime.connected()"
+                    [class.vt-status--offline]="!realtime.connected()"
+                    role="status" aria-live="polite">
+                <span class="vt-status__dot" aria-hidden="true"></span>
+                {{ realtime.connected() ? 'Connecté' : 'Hors ligne' }}
+              </span>
+            }
             <!-- Filtre societe global — SUPER_ADMIN uniquement (rend rien sinon).
-                 Ecrit dans FleetFilterService, consomme par les pages liste. -->
-            <app-fleet-selector />
-            <app-alerts-bell />
+                 Ecrit dans FleetFilterService, consomme par les pages liste.
+                 ⚠️ Espace dépôt (2026-08), lot A3 — ni sélecteur de société ni cloche
+                 d'alertes : un dépôt n'appartient à aucune société qu'il choisirait, et
+                 les alertes sont l'outil du transporteur (A3 § 7). La cloche appelait
+                 l'API des alertes, qui lui répond 403 — une icône qui ne peut rien
+                 afficher promet une fonction qui n'existe pas.
+                 (Aucun accent grave dans ce commentaire : il terminerait le littéral
+                 de template — piège payé trois fois sur ce chantier.) -->
+            @if (!auth.isDepot()) {
+              <app-fleet-selector />
+              <app-alerts-bell />
+            }
             <div class="user-menu-wrapper">
               <button (click)="userMenuOpen.set(!userMenuOpen())" class="user-menu-trigger">
                 <span class="user-avatar">{{ userInitials() }}</span>
@@ -247,10 +284,20 @@ interface NavGroup {
                     <lucide-icon [img]="UserCircle2Icon" [size]="16"></lucide-icon>
                     Mon profil
                   </a>
-                  <a routerLink="/settings" class="user-menu-item" (click)="userMenuOpen.set(false)">
-                    <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
-                    Paramètres
-                  </a>
+                  <!-- ⚠️ PAS POUR UN DEPOT. /settings est l'ecran de reglages de la
+                       FLOTTE — regles d'alerte, integrations, horaires. Un depot n'y a
+                       aucune permission : le garde de route le renvoyait au tableau de
+                       bord, qui lui est ferme aussi. Le lien promettait donc une page
+                       qu'il n'ouvrira jamais. Releve en recette le 2026-08-13.
+                       Meme traitement que le veilleur, plus haut. « Mon profil » reste :
+                       /account fonctionne pour un depot et porte son profil, ses
+                       notifications et sa securite. -->
+                  @if (!auth.isDepot()) {
+                    <a routerLink="/settings" class="user-menu-item" (click)="userMenuOpen.set(false)">
+                      <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
+                      Paramètres
+                    </a>
+                  }
                   @if (isSuperAdmin()) {
                     <a routerLink="/admin" class="user-menu-item" (click)="userMenuOpen.set(false)">
                       <lucide-icon [img]="TerminalIcon" [size]="16"></lucide-icon>
@@ -280,7 +327,7 @@ interface NavGroup {
 
       <!-- MOBILE BOTTOM BAR — cachee en mode fullscreen (page /map) pour
            liberer toute la hauteur ecran a la carte. -->
-      <nav class="bottom-bar" [class.bottom-bar--hidden]="fullscreen()">
+      <nav class="bottom-bar" [class.bottom-bar--hidden]="fullscreen() && !auth.isDepot()">
         @for (item of bottomItems(); track item.label) {
           @if (item.route === 'more') {
             <button (click)="mobileMenuOpen.set(true)" class="bottom-item press-feedback">
@@ -410,6 +457,12 @@ interface NavGroup {
     }
     .sidebar-link:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
     .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
+    /* Espace dépôt — l'accent sur fond teinté donne 3,24:1 à 13,5 px, sous le seuil
+       du critère n° 10. La règle vit ICI et non dans styles.css : l'encapsulation
+       émulée ajoute un attribut au sélecteur du composant, ce qui le rend plus
+       spécifique qu'une règle globale de même forme. */
+    .layout--depot .sidebar-link.active,
+    .layout--depot .bottom-item.active { color: var(--depot-succes) }
     /* Pied de sidebar — carte promo « Agent IA » (réf. maquette). */
     .sidebar-foot { padding: 12px; border-top: 1px solid var(--border-subtle) }
     .ai-promo {
@@ -535,6 +588,10 @@ interface NavGroup {
     .top-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; position: relative; z-index: 1 }
     .top-bar-brand {
       display: none;
+      /* 44 x 44 : en mobile le libelle est masque, il ne reste que l icone. */
+      min-width: 44px;
+      min-height: 44px;
+      justify-content: center;
       align-items: center;
       gap: 8px;
       text-decoration: none;
@@ -573,6 +630,9 @@ interface NavGroup {
       transition: border-color .2s;
     }
     .user-menu-trigger:hover { border-color: var(--tracky-light) }
+    /* 44 px sur le DECLENCHEUR : la pastille garde ses 36 px visuels, c est le
+       bouton qui porte la cible. Mesure a 39 x 39 avant. */
+    .user-menu-trigger { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
     .user-avatar {
       width: 36px; height: 36px; border-radius: 9999px;
       background: var(--color-tracky-light); color: var(--accent-ink);
@@ -641,6 +701,36 @@ interface NavGroup {
     .layout--baanool .desktop-sidebar { display: none !important; }
     .layout--baanool .bottom-bar { display: none !important; }
     .layout--baanool .main-area { width: 100%; }
+
+    /* ══ ESPACE DÉPÔT (2026-08), lot A3 — L'ÉCART iOS / ANDROID ══════════════
+     *
+     * iOS   : barre d'onglets basse à 4 entrées (Carte · Missions · Historique · Compte).
+     * Android : PAS de barre d'onglets — les trois boutons système occupent déjà le
+     *           bas de l'écran. Le menu latéral (hamburger → feuille basse) prend le
+     *           relais, et un FAB étendu « Partager » occupe le coin bas droit.
+     *
+     * L'écart est VOLONTAIRE : « les aplatir donne une application étrangère sur les
+     * deux plateformes » (design/B1-PAGES.md).
+     *
+     * ⚠️ :host-context() est OBLIGATOIRE pour atteindre body.plat-android depuis un
+     * composant à encapsulation émulée : un sélecteur d'ancêtre ordinaire serait
+     * réécrit en body.plat-android[_ngcontent-xxx] — attribut posé sur body, qui ne
+     * le porte pas — et la règle échouerait EN SILENCE.
+     * (Aucun accent grave ici : il terminerait le littéral de styles.)
+     * ════════════════════════════════════════════════════════ */
+    /* ⚠️ CETTE REGLE MASQUAIT LA BARRE D'ONGLETS DU DEPOT SUR ANDROID.
+       Elle appliquait A3 § 1 : les trois boutons systeme occupent deja le bas, une
+       barre de plus y serait illisible, le menu lateral prenant le relais. Le relais
+       existe bien — le burger reste affiche pour un depot — mais a l'usage le compte
+       depot se retrouvait SANS ONGLETS, et cherchait une navigation qu'aucun repere
+       ne signalait. Retire le 2026-08-12 sur retour d'usage.
+       L'argument d'illisibilite ne tient plus : la barre porte deja
+       padding-bottom: calc(env(safe-area-inset-bottom) + 6px), qui la place au-dessus
+       des boutons systeme comme de la barre de gestes. */
+
+    /* Vizyo Tracky en pied de menu, à 12 px : l'espace appartient visuellement au
+       transporteur (A3 § 7, règle 5). */
+    .depot-propulse { display: block; font-size: 12px; color: var(--depot-attenue, var(--fg-secondary)); text-align: center }
     /* Bug fix V1.12 : overflow:hidden ne doit s'appliquer qu'au /map fullscreen,
        sinon les pages avec contenu defilant (vehicle-detail, alerts, account)
        sont tronquees. On garde un padding horizontal pour que le contenu
@@ -852,7 +942,7 @@ export class DashboardLayoutComponent {
   protected readonly isBaanoolMode = computed(() =>
     this.auth.user()?.preferences?.uiMode === 'baanool',
   );
-  /** URL courante (mise a jour via NavigationEnd) — utilisee pour ne montrer
+  /** URL courante (mise à jour via NavigationEnd) — utilisee pour ne montrer
    *  l'overlay Baanool QUE sur la page /map. */
   protected readonly currentUrl = signal('');
   protected readonly isBaanoolMapPage = computed(() =>
@@ -934,6 +1024,18 @@ export class DashboardLayoutComponent {
     if (this.auth.isWatchman()) {
       return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
     }
+    // Espace dépôt (2026-08), lot A3 — barre d'onglets à 4 entrées sur iOS.
+    // Sur Android elle est masquée par CSS : les trois boutons système occupent déjà
+    // le bas de l'écran, une barre de plus y serait illisible et le menu latéral
+    // prend le relais (A3 § 1). C'est un écart VOLONTAIRE entre les plateformes.
+    if (this.auth.isDepot()) {
+      return [
+        { label: 'Carte', route: '/depot', icon: Map },
+        { label: 'Missions', route: '/depot/missions', icon: Route },
+        { label: 'Historique', route: '/depot/history', icon: History },
+        { label: 'Compte', route: '/account', icon: UserCircle2 },
+      ];
+    }
     return [
       { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
       ...(this.perms.can('vehicles_view') ? [
@@ -969,7 +1071,12 @@ export class DashboardLayoutComponent {
         this.routeLoading.set(false);
       }
       if (event instanceof NavigationEnd) {
-        const child = this.route.firstChild;
+        // Lot A3 — on descend jusqu'à la route la PLUS PROFONDE. Avant, on ne lisait
+        // que le premier enfant : les quatre onglets de `/depot`, servis par un
+        // `loadChildren`, portaient donc tous le titre de leur route parente. Chaque
+        // écran d'un module chargé à la demande peut désormais nommer sa page.
+        let child = this.route.firstChild;
+        while (child?.firstChild) child = child.firstChild;
         const data = child?.snapshot.data ?? {};
         this.fullscreen.set(data['fullscreen'] === true);
         const title = typeof data['title'] === 'string' ? data['title'] : 'Tableau de bord';
@@ -987,7 +1094,13 @@ export class DashboardLayoutComponent {
     });
     // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
     // et ouvrir le wizard si onboardingCompletedAt est null.
-    void this.onboarding.loadProfileAndDecide();
+    //
+    // ⚠️ Espace dépôt (2026-08), lot A3 — PAS pour un compte DEPOT. Le wizard de
+    // flotte lui promettait « Prêt à piloter votre flotte ? » et « Coupure moteur
+    // sécurisée à distance » : deux capacités que son rôle interdit, présentées comme
+    // les siennes dès son premier écran. Le dépôt a son propre onboarding, celui
+    // d'A3 § 5, qui explique ce qu'il verra et quand.
+    if (!this.auth.isDepot()) void this.onboarding.loadProfileAndDecide();
     // Gate RGPD : lève l'écran de consentement obligatoire si la version courante
     // n'a pas été acceptée (le back renvoie aussi 403 CONSENT_REQUIRED en secours).
     void this.consent.load();
@@ -1023,6 +1136,15 @@ export class DashboardLayoutComponent {
   };
 
   protected readonly auth = inject(AuthService);
+  /**
+   * Espace dépôt (2026-08) — la marque du transporteur en tête du menu.
+   *
+   * Lu depuis le store du dépôt plutôt qu'ajouté à `AuthUser` : enrichir le contrat
+   * du jeton pour un libellé d'en-tête modifierait un contrat d'API existant, ce que
+   * le chantier réserve à un accord explicite (règle 5). Le store est peuplé dès la
+   * première lecture de `/depot/live` ; d'ici là un repli neutre s'affiche.
+   */
+  protected readonly depotStore = inject(DepotLiveStore);
   private readonly perms = inject(PermissionsService);
   protected readonly network = inject(NetworkStatusService);
 
@@ -1041,6 +1163,27 @@ export class DashboardLayoutComponent {
         }
       }
       return [{ section: null, items }];
+    }
+    // Espace dépôt (2026-08) — troisième mode spécial du shell, après le veilleur et
+    // le mode simplifié. Quatre entrées, et rien d'autre : le dépôt n'est pas un
+    // utilisateur de la flotte, c'est un tiers en lecture seule (A1 § 5).
+    //
+    // Les trois entrées à venir (Missions, Historique, Documents) sont livrées par le
+    // lot A3. Les déclarer maintenant pointerait vers des routes inexistantes — un menu
+    // qui promet ce qu'il ne tient pas est précisément le défaut que B1 § J relève sur
+    // le mode simplifié. On les ajoute avec leurs écrans.
+    if (this.auth.isDepot()) {
+      return [
+        {
+          section: null,
+          items: [
+            { label: 'Carte live', route: '/depot', icon: Map },
+            { label: 'Mes missions', route: '/depot/missions', icon: Route },
+            { label: 'Historique', route: '/depot/history', icon: History },
+            { label: 'Documents', route: '/depot/documents', icon: FileText },
+          ],
+        },
+      ];
     }
     // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
     // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =
@@ -1095,7 +1238,7 @@ export class DashboardLayoutComponent {
       // ⚠️ ECRAN SANS CHEMIN DE RETOUR (audit du 2026-08-03).
       //
       // Le client consent au partage partenaire depuis un lien d'e-mail, sur un ecran qui
-      // promet « vous pouvez le couper a tout moment ». La route existait et etait gardee,
+      // promet « vous pouvez le couper à tout moment ». La route existait et etait gardee,
       // mais AUCUN lien de l'application n'y menait : passe le mail, la seule facon d'y
       // revenir etait de connaitre l'URL. Une promesse de reversibilite sans porte de
       // sortie n'est pas une promesse.

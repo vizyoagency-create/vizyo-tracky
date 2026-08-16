@@ -97,9 +97,9 @@ export class VehicleSchedulesController {
       where: { id: vehicleId },
       select: { id: true, fleetId: true },
     });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
     if (req.user.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+      throw new ForbiddenException('Accès refusé');
     }
     const limit = Math.max(1, Math.min(parseInt(limitRaw ?? '100', 10) || 100, 500));
     const since = new Date(Date.now() - 90 * 24 * 3600 * 1000);

@@ -43,9 +43,9 @@ export class VehicleEventsService {
       where: { id: vehicleId },
       select: { id: true, fleetId: true },
     });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
     if (user.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== user.fleetId) {
-      throw new ForbiddenException('Vehicule hors de votre flotte');
+      throw new ForbiddenException('Véhicule hors de votre flotte');
     }
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     resolveReportVehicleScope(accessible, [vehicleId]); // 403 si hors perimetre per-vehicule
@@ -60,7 +60,7 @@ export class VehicleEventsService {
   ): Promise<Prisma.VehicleEventWhereInput> {
     const where: Prisma.VehicleEventWhereInput = {};
     if (user.role !== UserRole.SUPER_ADMIN) {
-      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
+      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
       where.fleetId = user.fleetId;
     } else if (fleetId) {
       // Filtre société global (SUPER_ADMIN) : restreint à la société choisie dans le top-bar.
@@ -155,7 +155,7 @@ export class VehicleEventsService {
 
   async create(user: AuthUser, dto: CreateVehicleEventDto): Promise<VehicleEventDto> {
     if (dto.type === VehicleEventType.RESERVATION) {
-      throw new BadRequestException('Les reservations seront gerees au Sprint 8');
+      throw new BadRequestException('Les réservations seront gérées au Sprint 8');
     }
     const fleetId = await this.assertVehicleAccess(user, dto.vehicleId);
     const startAt = this.parseDate(dto.startAt, 'startAt');
@@ -291,7 +291,7 @@ export class VehicleEventsService {
       where: { ...where, id },
       select: { id: true, vehicleId: true, type: true },
     });
-    if (!ev) throw new NotFoundException('Evenement introuvable');
+    if (!ev) throw new NotFoundException('Événement introuvable');
     return ev;
   }
 
@@ -316,7 +316,7 @@ export class VehicleEventsService {
   private parseDate(raw: string, field: string): Date {
     const d = new Date(raw);
     if (Number.isNaN(d.getTime())) {
-      throw new BadRequestException(`${field} doit etre une date ISO valide`);
+      throw new BadRequestException(`${field} doit être une date ISO valide`);
     }
     return d;
   }

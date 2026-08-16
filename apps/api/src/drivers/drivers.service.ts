@@ -74,7 +74,7 @@ export class DriversService {
 
   async create(dto: CreateDriverDto, requestedBy: RequestedBy): Promise<Driver> {
     if (requestedBy.role !== UserRole.SUPER_ADMIN && !requestedBy.fleetId) {
-      throw new BadRequestException('Aucune fleet assignee a votre compte.');
+      throw new BadRequestException('Aucune fleet assignee à votre compte.');
     }
     if (!requestedBy.fleetId && requestedBy.role !== UserRole.SUPER_ADMIN) {
       throw new BadRequestException('Fleet requise.');
@@ -146,11 +146,11 @@ export class DriversService {
     // Filtre tenant integre au where : 404 si le vehicule appartient a une autre flotte.
     const vehicleWhere: Prisma.VehicleWhereInput = { id: vehicleId };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      if (!requestedBy.fleetId) throw new NotFoundException('Vehicule introuvable');
+      if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
       vehicleWhere.fleetId = requestedBy.fleetId;
     }
     const vehicle = await this.prisma.vehicle.findFirst({ where: vehicleWhere });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
     if (driverId) {
       // Le driver doit imperativement appartenir a la meme flotte que le vehicule

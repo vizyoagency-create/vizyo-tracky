@@ -9,7 +9,7 @@
  *   VIEWER → Lecteur · FLEET_MANAGER → Gestionnaire
  *   FLEET_ADMIN → Administrateur · SUPER_ADMIN → Super-Administrateur
  */
-export type AppRole = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
+export type AppRole = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER' | 'DEPOT';
 
 const ROLE_LABELS: Record<AppRole, string> = {
   SUPER_ADMIN: 'Super-Administrateur',
@@ -18,6 +18,9 @@ const ROLE_LABELS: Record<AppRole, string> = {
   VIEWER: 'Lecteur',
   NIGHT_WATCHMAN: 'Veilleur de nuit',
   DRIVER: 'Conducteur',
+  // Espace dépôt (2026-08) — « Dépôt », jamais « Client » ni « Partenaire » : le
+  // vocabulaire est fixé une fois pour toutes par A0 § Le vocabulaire.
+  DEPOT: 'Dépôt',
 };
 
 /**

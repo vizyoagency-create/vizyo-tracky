@@ -98,7 +98,7 @@ export class ReservationsService {
   ): Promise<{ fleetId?: string; ids: string[] | 'ALL' }> {
     let fleetId: string | undefined;
     if (user.role !== UserRole.SUPER_ADMIN) {
-      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
+      if (!user.fleetId) throw new ForbiddenException('Aucune flotte associée');
       fleetId = user.fleetId;
       // Un non-super-admin ne peut jamais viser une autre société que la sienne.
       if (requestedFleetId && requestedFleetId !== user.fleetId) {

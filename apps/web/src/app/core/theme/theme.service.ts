@@ -1,5 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { PreferencesService } from '../services/preferences.service';
+import { estPagePublique } from '../utils/page-publique';
 
 export type Theme = 'dark' | 'light';
 
@@ -17,7 +18,13 @@ export class ThemeService {
     const fromDom = document.documentElement.getAttribute('data-theme');
     const initial: Theme = fromDom === 'light' ? 'light' : 'dark';
     this.theme.set(initial);
-    // Persistance idempotente pour les prochains chargements
+    // Persistance idempotente pour les prochains chargements.
+    //
+    // ⚠️ Pas sur la page publique de suivi (lot A4) : le thème s'AFFICHE, il ne se
+    // STOCKE pas chez un destinataire anonyme. « La page ne pose rien sur l'appareil »
+    // (A4 § 6) vaut aussi pour une préférence anodine — la règle n'a de valeur que si
+    // elle ne souffre pas d'exception de confort.
+    if (estPagePublique()) return;
     try { localStorage.setItem('vizyo-theme', initial); } catch { /* */ }
   }
 

@@ -83,12 +83,12 @@ export class ReportExcelService {
         fleet: { select: { id: true, name: true, fuelPriceEurL: true } },
       },
     });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
     if (
       requestedBy.role !== UserRole.SUPER_ADMIN &&
       vehicle.fleetId !== requestedBy.fleetId
     ) {
-      throw new ForbiddenException('Acces refuse a ce vehicule');
+      throw new ForbiddenException('Accès refusé à ce véhicule');
     }
     // Mode vie privée (RGPD) : les trajets révèlent les déplacements → export bloqué tant qu'actif.
     if (vehicle.privacyModeEnabled) {

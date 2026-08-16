@@ -37,7 +37,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
               <lucide-icon [img]="ChevronRight" [size]="18" class="chevron"></lucide-icon>
             </div>
             <h3>Centre d'alertes</h3>
-            <p class="desc">Trackers en echec, hors ligne, commandes en attente, erreurs applicatives — tout centralise.</p>
+            <p class="desc">Trackers en échec, hors ligne, commandes en attente, erreurs applicatives — tout centralise.</p>
             @if (stats(); as s) {
               <div class="stats-row">
                 <div class="kpi" [class.kpi-hot]="s.failing > 0">
@@ -82,7 +82,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
               <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
             </div>
             <h3>Trackers</h3>
-            <p class="desc">Inventaire global, assignation vehicules, gestion SIM, statut en ligne.</p>
+            <p class="desc">Inventaire global, assignation véhicules, gestion SIM, statut en ligne.</p>
           </div>
         </a>
 
@@ -95,7 +95,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
               <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
             </div>
             <h3>Commandes tracker</h3>
-            <p class="desc">Historique et monitoring des commandes TCP/SMS envoyees aux boitiers.</p>
+            <p class="desc">Historique et monitoring des commandes TCP/SMS envoyées aux boîtiers.</p>
           </div>
         </a>
 
@@ -257,7 +257,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <div class="ico ico-cyan"><lucide-icon [img]="Server" [size]="20"></lucide-icon></div>
             <div class="body-text">
               <h3>Audit VPS</h3>
-              <p class="desc">Rapports quotidiens de la machine : ce qui sature, ce qui traine et ce qui expose. Constats horodates, gain estime et securite — en lecture seule.</p>
+              <p class="desc">Rapports quotidiens de la machine : ce qui sature, ce qui traine et ce qui expose. Constats horodates, gain estime et sécurité — en lecture seule.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
@@ -391,7 +391,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
       gap: 16px; flex-wrap: wrap; margin-bottom: 36px;
     }
     .hub-head h1 {
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       font-size: 28px; font-weight: 800; letter-spacing: -.5px;
       color: var(--fg-primary); margin: 0;
     }
@@ -495,7 +495,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     }
 
     .body h3 {
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       font-size: 16px; font-weight: 700;
       color: var(--fg-primary); margin: 0;
     }
@@ -560,7 +560,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
       background: rgba(239,68,68,.06);
     }
     .kpi-n {
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       font-size: 24px; font-weight: 800; line-height: 1;
       color: var(--fg-primary);
     }

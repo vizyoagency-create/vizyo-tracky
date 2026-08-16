@@ -10,6 +10,12 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
 
 /** Identifiant de modèle e-mail (journalisé dans EmailLog.template). */
 export type EmailTemplateId =
+  /**
+   * A6 — un tour de negociation d'une demande de mission. Un seul identifiant pour
+   * les deux sens (depot vers transporteur et l'inverse) : c'est le meme objet, et
+   * le journal des envois doit pouvoir les compter ensemble.
+   */
+  | 'mission_request'
   | 'invitation'
   | 'password_reset'
   | 'device_verification'
@@ -28,7 +34,18 @@ export type EmailTemplateId =
   | 'reservation_requested'
   | 'reservation_confirmed'
   | 'ai_invoice_request'
-  | 'partner_consent_invitation';
+  | 'partner_consent_invitation'
+  // Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
+  | 'mission_assigned'
+  /**
+   * A6 — la TOURNÉE d'une mission a changé après affectation. Identifiant distinct
+   * de `mission_assigned` : ce n'est pas la même nouvelle, et le journal des envois
+   * doit pouvoir répondre à « combien de tournées ont bougé ce mois-ci ? ».
+   */
+  | 'mission_tournee_modifiee'
+  // Lot A3 — un dépôt signale un incident : le seul e-mail de l'espace dépôt qui
+  // remonte vers le transporteur, et non l'inverse.
+  | 'depot_incident';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -232,6 +249,347 @@ export class EmailService {
   }
 
   /**
+   * Échappe le texte destiné à un corps HTML.
+   *
+   * Introduit avec `mission_assigned` (2026-08) parce que ses champs viennent d'une
+   * SAISIE LIBRE : `originLabel` et `destLabel` sont tapés par un gestionnaire dans la
+   * modale de création. Un libellé contenant `<` ou `&` casserait le rendu de l'e-mail
+   * chez le destinataire — et l'e-mail est la seule chose que le dépôt reçoit avant
+   * d'ouvrir l'application.
+   */
+  private escapeHtml(valeur: string): string {
+    return valeur
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Espace dépôt (2026-08) — l'invitation, version DÉPÔT. Cf. design/A5-COMPTES.md § 6.
+   *
+   * Un dépôt n'est pas un collègue. Il ne connaît ni Tracky, ni le mot « flotte », ni
+   * la personne qui l'invite. Trois différences en découlent :
+   *
+   *  1. **Le sujet nomme le TRANSPORTEUR**, pas Tracky : « MH CARS vous ouvre le suivi
+   *     de ses livraisons ». C'est de son transporteur qu'il attend un e-mail ; un
+   *     objet au nom d'un outil inconnu se lit comme du démarchage.
+   *  2. **Le corps dit ce que le compte permet ET ce qu'il ne permet pas.** Un accès
+   *     qu'on ouvre sans en donner les bornes inquiète autant qu'il rassure.
+   *  3. **La signature est celle du transporteur**, Tracky en pied.
+   *
+   * Règles héritées de la refonte des e-mails : pas de crochets dans le sujet,
+   * preheader renseigné, accents corrects, aucune information portée par une image.
+   */
+  private buildDepotInvitationEmail(opts: {
+    recipientName?: string | null;
+    inviterName: string;
+    fleetName: string;
+    acceptUrl: string;
+    expiresAt: Date;
+  }): { subject: string; html: string; text: string } {
+    const transporteur = this.escapeHtml(opts.fleetName);
+    const subject = `${opts.fleetName} vous ouvre le suivi de ses livraisons`;
+    const expire = formatFleetDateTime(opts.expiresAt);
+
+    const puce = (texte: string, oui: boolean) => `
+      <tr>
+        <td style="padding:5px 0;vertical-align:top;width:22px;font-family:'Manrope',system-ui,sans-serif;font-size:14px;color:${oui ? '#10E0A0' : '#69736E'};">${oui ? '✓' : '·'}</td>
+        <td style="padding:5px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13.5px;line-height:1.55;color:${oui ? '#EAEFED' : '#9BA5A1'};">${texte}</td>
+      </tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Accès',
+      footer: `${transporteur} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky. Ce lien expire le ${expire}.`,
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <!-- Preheader : première ligne lue dans la liste des messages. -->
+          <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Suivez vos livraisons en direct, sans compte à créer côté logistique.</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Suivez vos livraisons en direct</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${transporteur} vous ouvre un accès pour suivre les camions engagés sur vos livraisons. Rien à installer, rien à payer.</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${puce('Voir où en est chaque livraison qui vous est destinée', true)}
+            ${puce('Suivre le camion en direct, pendant le créneau de la mission', true)}
+            ${puce('Partager un lien de suivi temporaire à votre propre client', true)}
+            ${puce('Vous ne voyez pas les autres véhicules de ' + transporteur, false)}
+            ${puce('Vous ne voyez rien en dehors du créneau de vos missions', false)}
+          </table>
+        </td></tr>
+        <tr><td style="padding:24px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.acceptUrl}" style="display:inline-block;padding:13px 26px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">Activer mon accès</a>
+          </td></tr></table>
+          <p style="margin:14px 0 0;font-family:'Manrope',system-ui,sans-serif;font-size:12.5px;line-height:1.6;color:#69736E;">Ou copiez ce lien : <span style="color:#9BA5A1;">${opts.acceptUrl}</span></p>
+        </td></tr>`,
+    });
+
+    const text = [
+      `${opts.fleetName} vous ouvre le suivi de ses livraisons.`,
+      '',
+      'Ce que ce compte permet :',
+      '  - voir où en est chaque livraison qui vous est destinée',
+      '  - suivre le camion en direct, pendant le créneau de la mission',
+      '  - partager un lien de suivi temporaire à votre propre client',
+      '',
+      'Ce qu\'il ne permet pas :',
+      `  - voir les autres véhicules de ${opts.fleetName}`,
+      '  - voir quoi que ce soit en dehors du créneau de vos missions',
+      '',
+      `Activer mon accès : ${opts.acceptUrl}`,
+      `Ce lien expire le ${expire}.`,
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
+  /**
+   * Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
+   * Cf. design/A2-MISSIONS.md § 3.3.
+   *
+   * ⚠️ **LE SUJET PORTE L'INFORMATION.** « Livraison prévue jeudi 08:15 → 11:40 », et
+   * non « Nouvelle mission ». Un dépôt reçoit ces e-mails toute la journée : un sujet
+   * générique l'oblige à ouvrir pour savoir de quoi il s'agit, et il finit par ne plus
+   * les ouvrir du tout.
+   *
+   * Le nom du TRANSPORTEUR est mis en avant, pas Tracky : c'est de lui que le dépôt
+   * attend un e-mail, il ne connaît pas notre marque (A5 § 6, même principe).
+   */
+  /**
+   * A6 — un tour de negociation vient d'arriver chez l'autre partie.
+   *
+   * ┌─ UN SEUL GABARIT POUR LES DEUX SENS, ET C'EST DELIBERE ───────────────────┐
+   * │ Depot vers transporteur, transporteur vers depot : c'est le meme objet —  │
+   * │ « quelqu'un vous a repondu, voici son offre ». Deux gabarits auraient      │
+   * │ diverge des la premiere retouche, et l'un des deux serait devenu le        │
+   * │ parent pauvre de l'autre.                                                 │
+   * └────────────────────────────────────────────────────────────────────────────┘
+   *
+   * `amountCents` nul = « sur devis » : on ne remplace JAMAIS par zero. Un e-mail
+   * annoncant « 0,00 EUR » a un client final est pire qu'un e-mail sans montant.
+   */
+  buildMissionQuoteEmail(opts: {
+    ref: string;
+    /** Ce que le destinataire doit comprendre en une ligne. */
+    titre: string;
+    intro: string;
+    origin: string;
+    destination: string;
+    nbArrets: number;
+    startAt: Date;
+    endAt: Date;
+    amountCents: number | null;
+    message: string | null;
+    carrierName: string;
+    url: string;
+    libelleAction: string;
+  }): { subject: string; html: string; text: string } {
+    const jour = new Date(opts.startAt).toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+    const h = (d: Date) =>
+      new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const creneau = `${h(opts.startAt)} → ${h(opts.endAt)}`;
+    const montant =
+      opts.amountCents === null
+        ? 'Sur devis'
+        : `${(opts.amountCents / 100).toFixed(2).replace('.', ',')} € HT`;
+
+    // Pas de crochets dans le sujet (B1 § I). La reference y figure : c'est elle
+    // qu'on cherche dans une boite pleine.
+    const subject = `${opts.titre} — ${opts.ref}`;
+
+    const ligne = (libelle: string, valeur: string) => `
+      <tr>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13px;color:#69736E;width:120px;">${libelle}</td>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:600;color:#EAEFED;">${valeur}</td>
+      </tr>`;
+
+    const trajet =
+      opts.nbArrets > 2
+        ? `${this.escapeHtml(opts.origin)} → ${this.escapeHtml(opts.destination)} (${opts.nbArrets - 1} livraisons)`
+        : `${this.escapeHtml(opts.origin)} → ${this.escapeHtml(opts.destination)}`;
+
+    const html = this.shell({
+      eyebrow: 'Demande de mission',
+      footer: `${this.escapeHtml(opts.carrierName)}<br>Propulsé par Vizyo Tracky. E-mail automatique, ne pas répondre.`,
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${this.escapeHtml(opts.titre)}</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${this.escapeHtml(opts.intro)}</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${ligne('Référence', this.escapeHtml(opts.ref))}
+            ${ligne('Trajet', trajet)}
+            ${ligne('Créneau', `${jour}, ${creneau}`)}
+            ${ligne('Montant', this.escapeHtml(montant))}
+          </table>
+        </td></tr>
+        ${
+          opts.message
+            ? `<tr><td style="padding:18px 36px 0;">
+                 <p style="margin:0;padding:13px 15px;border-radius:11px;background:#12201B;font-family:'Manrope',system-ui,sans-serif;font-size:14px;line-height:1.6;color:#EAEFED;">« ${this.escapeHtml(opts.message)} »</p>
+               </td></tr>`
+            : ''
+        }
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.url}" style="display:inline-block;padding:13px 26px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">${this.escapeHtml(opts.libelleAction)}</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
+
+    const text = [
+      opts.titre,
+      '',
+      opts.intro,
+      '',
+      `Référence : ${opts.ref}`,
+      `Trajet    : ${opts.origin} → ${opts.destination}`,
+      `Créneau   : ${jour}, ${creneau}`,
+      `Montant   : ${montant}`,
+      ...(opts.message ? ['', `« ${opts.message} »`] : []),
+      '',
+      opts.url,
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
+  buildMissionAssignedEmail(opts: {
+    ref: string;
+    origin: string;
+    destination: string;
+    startAt: Date;
+    endAt: Date;
+    plate: string;
+    carrierName: string;
+    depotUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const jour = new Date(opts.startAt).toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+    const h = (d: Date) =>
+      new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const creneau = `${h(opts.startAt)} → ${h(opts.endAt)}`;
+
+    // Pas de crochets dans le sujet (règle héritée de la refonte des e-mails, B1 § I).
+    const subject = `Livraison prévue ${jour} ${creneau}`;
+
+    const ligne = (libelle: string, valeur: string) => `
+      <tr>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13px;color:#69736E;width:120px;">${libelle}</td>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:600;color:#EAEFED;">${valeur}</td>
+      </tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Livraison',
+      footer: `${this.escapeHtml(opts.carrierName)} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky. E-mail automatique, ne pas répondre.`,
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Une livraison vous est assignée</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${this.escapeHtml(opts.carrierName)} vous a assigné la mission <strong style="color:#EAEFED;">${this.escapeHtml(opts.ref)}</strong>. Vous pourrez suivre le camion en direct pendant son créneau.</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${ligne('Trajet', `${this.escapeHtml(opts.origin)} → ${this.escapeHtml(opts.destination)}`)}
+            ${ligne('Créneau', `${jour}, ${creneau}`)}
+            ${ligne('Camion', this.escapeHtml(opts.plate))}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.depotUrl}" style="display:inline-block;padding:13px 26px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">Suivre la livraison</a>
+          </td></tr></table>
+        </td></tr>
+        <tr><td style="padding:20px 36px 0;">
+          <p style="margin:0;font-family:'Manrope',system-ui,sans-serif;font-size:12.5px;line-height:1.6;color:#69736E;">Le suivi est actif de ${h(opts.startAt)} à ${h(opts.endAt)}. En dehors de ce créneau, la position du camion ne vous est pas communiquée — puis le trajet passe dans votre historique.</p>
+        </td></tr>`,
+    });
+
+    const text = [
+      `Une livraison vous est assignée par ${opts.carrierName}.`,
+      '',
+      `Mission : ${opts.ref}`,
+      `Trajet  : ${opts.origin} → ${opts.destination}`,
+      `Créneau : ${jour}, ${creneau}`,
+      `Camion  : ${opts.plate}`,
+      '',
+      `Suivre la livraison : ${opts.depotUrl}`,
+      '',
+      `Le suivi est actif de ${h(opts.startAt)} à ${h(opts.endAt)} uniquement.`,
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
+  /**
+   * Espace dépôt (2026-08) — un dépôt signale un incident sur l'une de ses missions.
+   * Cf. design/A3-ESPACE-DEPOT.md § 5.
+   *
+   * ⚠️ **LE SENS DE LECTURE EST INVERSÉ** par rapport aux autres e-mails de l'espace
+   * dépôt : ici le destinataire est le GESTIONNAIRE, pas le dépôt. C'est donc la
+   * marque Tracky qui parle — le gestionnaire la connaît, il travaille dedans — et
+   * c'est le nom du DÉPÔT qui est mis en avant, puisque c'est l'information neuve.
+   *
+   * Le sujet porte le motif et la référence : un gestionnaire qui reçoit trois
+   * signalements dans la journée doit pouvoir les trier sans en ouvrir un seul.
+   */
+  buildDepotIncidentEmail(opts: {
+    missionRef: string;
+    trajet: string;
+    plate: string;
+    motif: string;
+    message: string;
+    nomDepot: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `Signalement ${opts.nomDepot} · ${opts.motif} · mission ${opts.missionRef}`;
+
+    const ligne = (libelle: string, valeur: string) => `
+      <tr>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13px;color:#69736E;width:120px;">${libelle}</td>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:600;color:#EAEFED;">${valeur}</td>
+      </tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Signalement dépôt',
+      footer: 'Vizyo Tracky · E-mail automatique, ne pas répondre.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${this.escapeHtml(opts.nomDepot)} a signalé un incident</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Le signalement a été ajouté à votre agenda comme événement ouvert. Il n'immobilise pas le camion.</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${ligne('Motif', this.escapeHtml(opts.motif))}
+            ${ligne('Mission', this.escapeHtml(opts.missionRef))}
+            ${ligne('Trajet', this.escapeHtml(opts.trajet))}
+            ${ligne('Camion', this.escapeHtml(opts.plate))}
+          </table>
+        </td></tr>
+        ${
+          opts.message
+            ? `<tr><td style="padding:20px 36px 0;">
+          <p style="margin:0;padding:14px 16px;border-radius:12px;background:#101514;border:1px solid rgba(255,255,255,0.08);font-family:'Manrope',system-ui,sans-serif;font-size:14px;line-height:1.6;color:#EAEFED;">${this.escapeHtml(opts.message)}</p>
+        </td></tr>`
+            : ''
+        }`,
+    });
+
+    const text = [
+      `${opts.nomDepot} a signalé un incident.`,
+      '',
+      `Motif   : ${opts.motif}`,
+      `Mission : ${opts.missionRef}`,
+      `Trajet  : ${opts.trajet}`,
+      `Camion  : ${opts.plate}`,
+      ...(opts.message ? ['', opts.message] : []),
+      '',
+      "Le signalement a été ajouté à votre agenda comme événement ouvert. Il n'immobilise pas le camion.",
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
+  /**
    * Template invitation utilisateur — utilise par InvitationsService.
    * Charte 2026 (charte e-mails Tracky) via shell().
    */
@@ -243,9 +601,16 @@ export class EmailService {
     acceptUrl: string;
     expiresAt: Date;
   }): { subject: string; html: string; text: string } {
+    // ══ ESPACE DÉPÔT (2026-08) — VERSION DÉPÔT DU MÊME GABARIT ════════════════
+    //
+    // A5 § 6 : « Un dépôt n'est pas un collègue : il ne connaît ni Tracky ni le
+    // vocabulaire de la flotte. » On ADAPTE le gabarit existant, on n'en crée pas
+    // un second — c'est la même consigne que pour le mécanisme d'invitation.
+    if (opts.role === 'DEPOT') return this.buildDepotInvitationEmail(opts);
+
     const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
     const expiresLabel = formatFleetDateTime(opts.expiresAt);
-    const subject = `[Vizyo Tracky] Vous etes invite a rejoindre ${opts.fleetName}`;
+    const subject = `[Vizyo Tracky] Vous êtes invité à rejoindre ${opts.fleetName}`;
 
     const html = this.shell({
       eyebrow: 'Accès · Invitation',
@@ -266,7 +631,7 @@ export class EmailService {
 
     const text = `${greeting}
 
-${opts.inviterName} vous a invite a rejoindre la flotte ${opts.fleetName} sur Vizyo Tracky en tant que ${opts.role}.
+${opts.inviterName} vous a invité à rejoindre la flotte ${opts.fleetName} sur Vizyo Tracky en tant que ${opts.role}.
 
 Acceptez l'invitation en visitant ce lien :
 ${opts.acceptUrl}
@@ -1203,6 +1568,60 @@ ${this.commercialSignatureText()}`;
           role: 'Gestionnaire',
           acceptUrl: `${appBase}/accept-invite?token=apercu`,
           expiresAt: new Date(Date.now() + 7 * 86_400_000),
+        });
+      case 'mission_assigned':
+        return this.buildMissionAssignedEmail({
+          ref: 'M-2481',
+          origin: 'Fenouillet',
+          destination: 'Muret',
+          startAt: new Date(Date.now() + 20 * 3_600_000),
+          endAt: new Date(Date.now() + 23 * 3_600_000),
+          plate: 'FR-482-BX',
+          carrierName: fleetName,
+          depotUrl: `${appBase}/depot`,
+        });
+      case 'mission_request':
+        return this.buildMissionQuoteEmail({
+          ref: 'D-0142',
+          titre: 'Nouvelle demande de mission',
+          intro:
+            'Un de vos dépôts vous adresse une demande. Le devis ci-dessous a été calculé sur votre grille tarifaire.',
+          origin: 'Entrepôt Toulouse',
+          destination: 'Client Blagnac',
+          nbArrets: 3,
+          startAt: new Date('2026-09-02T08:00:00Z'),
+          endAt: new Date('2026-09-02T12:00:00Z'),
+          amountCents: 16900,
+          message: 'Livraison fragile, merci de prévoir des sangles.',
+          carrierName: 'MH Cars',
+          url: `${appBase}/missions`,
+          libelleAction: 'Ouvrir la demande',
+        });
+      case 'mission_tournee_modifiee':
+        return this.buildMissionQuoteEmail({
+          ref: 'M-2481',
+          titre: 'Votre tournée a changé',
+          intro:
+            'Le trajet de cette mission a été modifié. Le détail ci-dessous est celui qui s\'applique désormais.',
+          origin: 'Entrepôt Toulouse',
+          destination: 'Client Muret',
+          nbArrets: 4,
+          startAt: new Date('2026-09-02T08:00:00Z'),
+          endAt: new Date('2026-09-02T12:00:00Z'),
+          amountCents: 16900,
+          message: 'Deux livraisons ajoutées à la demande du client.',
+          carrierName: 'MH Cars',
+          url: `${appBase}/depot/missions`,
+          libelleAction: 'Voir la mission',
+        });
+      case 'depot_incident':
+        return this.buildDepotIncidentEmail({
+          missionRef: 'M-2481',
+          trajet: 'Fenouillet → Muret',
+          plate: 'FR-482-BX',
+          motif: 'Retard',
+          message: "Le camion n'est pas arrivé sur le créneau annoncé. Le quai est bloqué à partir de 12 h.",
+          nomDepot: 'Dépôt Fenouillet',
         });
       case 'password_reset':
         return this.buildPasswordResetEmail({

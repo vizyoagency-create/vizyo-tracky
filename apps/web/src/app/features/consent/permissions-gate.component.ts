@@ -3,6 +3,7 @@ import { Bell, LucideAngularModule, MapPin, WifiOff } from 'lucide-angular';
 import { ConsentService } from '../../core/services/consent.service';
 import { NotificationsApiService } from '../../core/services/notifications.service';
 import { PermissionOnboardingService } from '../../core/services/permission-onboarding.service';
+import { PortesAccesService } from '../../core/services/portes-acces.service';
 
 type PState = 'idle' | 'busy' | 'granted' | 'denied';
 
@@ -21,6 +22,9 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
     @if (perms.shouldOnboard() && !consent.mustAccept()) {
       <div class="pg-overlay" role="dialog" aria-modal="true" aria-labelledby="pg-title">
         <div class="pg-shell">
+          @if (portes.libelle('autorisations'); as rang) {
+            <p class="pg-rang">{{ rang }}</p>
+          }
           <h1 id="pg-title" class="pg-title">Activez votre application</h1>
           <p class="pg-lead">
             Pour profiter pleinement de Vizyo Tracky sur cet appareil, autorisez ces
@@ -84,6 +88,7 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
       box-shadow: 0 30px 80px -20px rgba(0,0,0,.55); padding: 26px 24px 22px;
       max-height: calc(100dvh - 32px); overflow-y: auto;
     }
+    .pg-rang { margin: 0 0 4px; font-size: .78rem; font-weight: 700; color: var(--fg-tertiary); }
     .pg-title { margin: 0 0 6px; font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; color: var(--fg-primary); }
     .pg-lead { margin: 0 0 18px; font-size: .92rem; line-height: 1.55; color: var(--fg-secondary); }
     .pg-item {
@@ -129,6 +134,8 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
 export class PermissionsGateComponent {
   readonly perms = inject(PermissionOnboardingService);
   readonly consent = inject(ConsentService);
+  /** Le rang de cette porte dans la file — calculé, jamais écrit (lot B0′). */
+  readonly portes = inject(PortesAccesService);
   private readonly notif = inject(NotificationsApiService);
 
   readonly Bell = Bell;
@@ -197,7 +204,7 @@ export class PermissionsGateComponent {
     //
     // Le motif invoque etait le deverrouillage d'un vehicule par QR code. Or :
     //   1. `driver-unlock.component.ts` demande DEJA la position au moment du
-    //      deverrouillage — la bloquer ici n'apporte donc rien a cette fonction ;
+    //      deverrouillage — la bloquer ici n'apporte donc rien à cette fonction ;
     //   2. ce deverrouillage concerne le role DRIVER, alors que cet ecran barrait la
     //      route a TOUS les roles, gestionnaires compris.
     //

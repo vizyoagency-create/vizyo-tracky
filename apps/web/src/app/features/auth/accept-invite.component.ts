@@ -356,7 +356,7 @@ export class AcceptInviteComponent implements OnInit {
       });
       if (!meRes.ok) {
         const body = await meRes.text().catch(() => '');
-        throw new Error(`Echec de la creation de session (HTTP ${meRes.status}${body ? ': ' + body.slice(0, 200) : ''})`);
+        throw new Error(`Échec de la création de session (HTTP ${meRes.status}${body ? ': ' + body.slice(0, 200) : ''})`);
       }
       const me = await meRes.json() as { id: string; email: string; role: string; fleetId: string | null };
       // Compte créé → AUTO-CONNEXION (demande user) : on ouvre la session tout de suite
@@ -383,7 +383,7 @@ export class AcceptInviteComponent implements OnInit {
       console.error('[accept-invite] submit failed:', err);
       // Compte deja active : redirection vers login
       if (message.includes('deja active')) {
-        this.toast.info('Votre compte est deja active. Connectez-vous.');
+        this.toast.info('Votre compte est déjà activé. Connectez-vous.');
         this.router.navigate(['/login']);
         return;
       }

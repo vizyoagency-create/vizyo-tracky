@@ -42,3 +42,10 @@ apps/api/prisma/generated
 # Audit sécurité : carte des failles NON corrigées — ne JAMAIS versionner
 # (reconstructible depuis la session d'audit ; backup hors repo).
 docs/review_loop/
+
+# Sorties de la recette Playwright. Le SCÉNARIO est versionné, ses artefacts non :
+# ce sont des captures d'un état de base local, qui changent à chaque exécution et
+# qu'aucune relecture de diff ne peut juger.
+apps/web/e2e-captures/
+apps/web/test-results/
+apps/web/playwright-report/

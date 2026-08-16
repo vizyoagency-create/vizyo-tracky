@@ -56,7 +56,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
           </a>
           <h1 class="text-2xl font-display font-bold text-fg-primary">Centre d'alertes</h1>
           <p class="text-sm text-fg-tertiary">
-            Trackers en echec, hors ligne prolonge, commandes en attente et erreurs applicatives.
+            Trackers en échec, hors ligne prolonge, commandes en attente et erreurs applicatives.
           </p>
         </div>
         <div class="flex gap-2">
@@ -68,7 +68,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
           </button>
           <button (click)="downloadExport()" [disabled]="exporting()"
                   class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 disabled:opacity-50"
-                  title="Telecharger le rapport d'erreurs (.md) pour debug IA">
+                  title="Télécharger le rapport d'erreurs (.md) pour debug IA">
             <lucide-icon [img]="Download" [size]="14"></lucide-icon>
             <span class="hidden sm:inline">{{ exporting() ? '...' : 'Rapport IA' }}</span>
           </button>
@@ -220,7 +220,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                   <th class="p-3 text-left">IMEI</th>
                   <th class="p-3 text-left">Fleet</th>
                   <th class="p-3 text-right">Echecs</th>
-                  <th class="p-3 text-right">Cible / Reel</th>
+                  <th class="p-3 text-right">Cible / Réel</th>
                   <th class="p-3 text-left">Dernier vu</th>
                   <th class="p-3"></th>
                 </tr>
@@ -623,7 +623,7 @@ export class AdminAlertsComponent implements OnInit {
       this.lastVisitAt.set(now);
     } catch (err) {
       swallow('admin-alerts:reload', err);
-      this.toast.error('Echec du chargement des alertes');
+      this.toast.error('Échec du chargement des alertes');
     } finally {
       this.loading.set(false);
     }
@@ -636,18 +636,18 @@ export class AdminAlertsComponent implements OnInit {
       this.reload();
     } catch (err) {
       swallow('admin-alerts:ackCommand', err);
-      this.toast.error('Echec de l\'acquittement');
+      this.toast.error('Échec de l\'acquittement');
     }
   }
 
   async clearFailing(trackerId: string): Promise<void> {
     try {
       await firstValueFrom(this.api.clearFailing(trackerId));
-      this.toast.success('Etat FAILING reinitialise');
+      this.toast.success('État FAILING reinitialise');
       this.reload();
     } catch (err) {
       swallow('admin-alerts:clearFailing', err);
-      this.toast.error('Echec de la reinitialisation');
+      this.toast.error('Échec de la reinitialisation');
     }
   }
 
@@ -662,7 +662,7 @@ export class AdminAlertsComponent implements OnInit {
       );
     } catch (err) {
       swallow('admin-alerts:exportForAI', err);
-      this.toast.error('Echec de l\'export');
+      this.toast.error('Échec de l\'export');
     } finally {
       this.exporting.set(false);
     }
@@ -685,7 +685,7 @@ export class AdminAlertsComponent implements OnInit {
       this.toast.success(`${result.errorCount} erreurs exportees en fichier .md`);
     } catch (err) {
       swallow('admin-alerts:downloadExport', err);
-      this.toast.error('Echec du telechargement');
+      this.toast.error('Échec du téléchargement');
     } finally {
       this.exporting.set(false);
     }

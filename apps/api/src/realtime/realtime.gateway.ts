@@ -9,11 +9,12 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { AlertEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent, VehicleMovementEvent } from '@vizyo/tracky-shared';
+import type { AlertEvent, DepotMissionEndedEvent, DepotMissionPositionEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent, VehicleMovementEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
+import { DepotScopeService } from '../depot/depot-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 // V1.10 (Sprint 6) — Le Redis adapter est branche au niveau IoAdapter custom
@@ -36,6 +37,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
+    // Espace dépôt (2026-08) — résout les missions dont le suivi est actif, pour
+    // décider des salons `depot:mission:<id>`. DepotModule est @Global.
+    private readonly depotScope: DepotScopeService,
   ) {}
 
 
@@ -75,7 +79,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       scope = [...accessible].sort().join(',');
     } else {
       this.logger.warn(
-        `[ws] perimetre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
+        `[ws] périmètre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
       );
       scope = 'INCONNU';
     }
@@ -105,7 +109,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return (explicit ? { ...defaults, ...explicit } : defaults).alerts_view === true;
     } catch (err) {
       this.logger.warn(
-        `[ws] verification alerts_view impossible pour ${user.id.slice(0, 8)} — salon d'alerte refuse: ${err instanceof Error ? err.message : err}`,
+        `[ws] vérification alerts_view impossible pour ${user.id.slice(0, 8)} — salon d'alerte refusé : ${err instanceof Error ? err.message : err}`,
       );
       return false;
     }
@@ -155,7 +159,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       return await this.vehicleAccess.getAccessibleVehicleIds(user as never);
     } catch (err) {
       this.logger.warn(
-        `[ws] perimetre vehicule illisible pour ${user.id.slice(0, 8)} — aucun live: ${err instanceof Error ? err.message : err}`,
+        `[ws] périmètre véhicule illisible pour ${user.id.slice(0, 8)} — aucun live: ${err instanceof Error ? err.message : err}`,
       );
       return [];
     }
@@ -190,6 +194,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       .to('pos:fleet:*')
       .emit(WS_EVENTS.POSITIONS_BATCH, { fleetId, positions });
 
+    // Espace dépôt (2026-08) — le lot part AUSSI vers les salons par mission, dans un
+    // payload restreint. Cf. `emitVersDepots` : un dépôt ne reçoit ni trackerId, ni
+    // vehicleId, ni fleetId, et ne partage aucun salon avec un compte de la flotte.
+    void this.emitVersDepots(positions as Array<{ vehicleId?: string | null }>);
+
     const byFleet = this.restrictedByFleet.get(fleetId);
     if (!byFleet || byFleet.size === 0) return;
     for (const { socket, allowed } of byFleet.values()) {
@@ -223,6 +232,35 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Le veilleur de nuit ne rejoint QUE `ops:fleet:*` : il reçoit la confirmation moteur
       // + le statut tracker, mais AUCUNE position (ni live `pos:*`, ni via les events `fleet:*`).
       const isWatchman = localUser.role === 'NIGHT_WATCHMAN';
+
+      // ══ ESPACE DEPOT (2026-08) — SALONS PAR MISSION, ET RIEN D'AUTRE ══════════
+      //
+      // Un DEPOT ne rejoint QUE `depot:mission:<missionId>`, une par mission dont le
+      // suivi est actif MAINTENANT. Jamais `fleet:*`, `pos:fleet:*`, `ops:fleet:*`
+      // ni `alerts:fleet:*` (A1 § 3, regle 5).
+      //
+      // ⚠️ Cette branche est un ARRET NET, volontairement place avant toute autre
+      // logique. Aujourd'hui un depot serait de toute facon exclu des salons de
+      // flotte : sans ligne `UserVehicleAccess`, `getAccessibleVehicleIds` renvoie
+      // `[]`, donc `restricted` vaut true et il finit dans le registre avec un
+      // ensemble vide. Mais ce serait une isolation ACCIDENTELLE — elle tient a une
+      // propriete d'un autre service, qui n'a jamais eu le depot en tete. Le jour ou
+      // ce service changerait (un defaut « aucune regle = tout voir », par exemple),
+      // le depot entrerait dans les salons de flotte sans qu'aucun test ne s'en
+      // apercoive. On ecrit donc l'exclusion, plutot que d'en heriter.
+      if (localUser.role === 'DEPOT') {
+        const missionIds = await this.depotScope.activeMissionIds(localUser.id);
+        for (const id of missionIds) client.join(`depot:mission:${id}`);
+        // L'empreinte porte les missions : quand l'une se termine ou qu'une autre
+        // demarre, le tick de revalidation coupe la socket et le client se reconnecte
+        // sur les bons salons. C'est ce qui garantit qu'un socket ouvert AVANT `endAt`
+        // ne continue pas de recevoir apres (A1 § 8, test 10).
+        (client.data as { scopeKey?: string }).scopeKey = `DEPOT|${missionIds.sort().join(',')}`;
+        this.logger.debug(
+          `Client ${client.id} (depot ${localUser.email}) — ${missionIds.length} mission(s) suivie(s), aucun salon de flotte`,
+        );
+        return;
+      }
 
       if (localUser.role === 'SUPER_ADMIN') {
         client.join('fleet:*');
@@ -317,7 +355,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * handshake : un user SUSPENDU (isActive=false) ou SUPPRIME continuait de recevoir
    * le live de sa flotte tant que sa socket tenait. Toutes les 60s on coupe les
    * sockets dont l'user n'est plus actif (1 requete DB sur les userIds connectes,
-   * en local a cette instance).
+   * en local à cette instance).
    *
    * Choix delibere : on NE deconnecte PAS sur simple expiration du token. L'user
    * reste legitime ; le forcer a se reconnecter a chaque TTL creerait du churn et
@@ -355,7 +393,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       for (const [userId, userSockets] of byUser) {
         if (!stillActive.has(userId)) {
           for (const socket of userSockets) {
-            this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
+            this.logger.warn(`Revalidation WS: déconnexion ${socket.id} (user ${userId} inactif/supprimé)`);
             socket.disconnect();
           }
           continue;
@@ -382,7 +420,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           // On ne coupe PAS sur une erreur de calcul : deconnecter sur un doute
           // transformerait un incident de lecture en interruption de service.
           this.logger.warn(
-            `[ws] empreinte de perimetre incalculable pour ${userId.slice(0, 8)} — socket conservee: ${err instanceof Error ? err.message : err}`,
+            `[ws] empreinte de périmètre incalculable pour ${userId.slice(0, 8)} — socket conservee: ${err instanceof Error ? err.message : err}`,
           );
           continue;
         }
@@ -393,7 +431,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           // laisse vivre plutot que de deconnecter tout le monde au premier deploiement.
           if (previous === undefined || previous === key) continue;
           this.logger.warn(
-            `Revalidation WS: deconnexion ${socket.id} (perimetre modifie pour ${userId}) — le client se reconnectera sur les bons salons`,
+            `Revalidation WS: déconnexion ${socket.id} (périmètre modifie pour ${userId}) — le client se reconnectera sur les bons salons`,
           );
           socket.disconnect();
         }
@@ -416,6 +454,79 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       `pos:fleet:${fleetId}`,
       'pos:fleet:*',
     ]);
+    void this.emitVersDepots([payload]);
+  }
+
+  /**
+   * ══ ESPACE DÉPÔT (2026-08), lot A3 — LE CÔTÉ ÉMISSION DES SALONS PAR MISSION ══
+   *
+   * A1 a construit la moitié JOINDRE : un compte DEPOT rejoint `depot:mission:<id>`,
+   * une par mission dont le suivi est actif, et aucun salon de flotte. Personne
+   * n'émettait vers ces salons — un dépôt était donc connecté à des salons muets, et
+   * sa carte ne bougeait que par le repli en polling.
+   *
+   * Trois propriétés tenues ici, chacune délibérée :
+   *
+   *  1. **Un payload DISTINCT.** `DepotMissionPositionEvent` ne porte ni `trackerId`,
+   *     ni `vehicleId`, ni `fleetId`. Réutiliser `PositionUpdateEvent` aurait servi
+   *     ces trois identifiants internes à un tiers — précisément ce que le DTO
+   *     restreint d'A1 s'interdit, contourné par le canal temps réel.
+   *
+   *  2. **Un salon par MISSION, pas par véhicule.** Deux dépôts sur la même tournée
+   *     reçoivent chacun la position, dans leur propre salon. Aucun des deux
+   *     n'apprend l'existence de l'autre.
+   *
+   *  3. **L'index d'aiguillage ne décide d'AUCUN accès.** Il ne fait que choisir un
+   *     salon. Ce qui autorise un dépôt à être DANS ce salon reste la revalidation de
+   *     socket d'A1, qui relit la base et coupe le raccordement à la bascule.
+   *
+   * Silencieux en cas d'échec : une position non routée est un marqueur qui ne bouge
+   * pas pendant une seconde, jamais une fuite.
+   */
+  private async emitVersDepots(
+    positions: Array<{ vehicleId?: string | null; lat?: number; lng?: number; speedKmh?: number; timestamp?: string }>,
+  ): Promise<void> {
+    if (!this.server || positions.length === 0) return;
+    try {
+      const index = await this.depotScope.missionsActivesParVehicule();
+      if (index.size === 0) return;
+
+      for (const p of positions) {
+        if (!p.vehicleId) continue;
+        const missionIds = index.get(p.vehicleId);
+        if (!missionIds) continue;
+        for (const missionId of missionIds) {
+          const charge: DepotMissionPositionEvent = {
+            missionId,
+            lat: p.lat ?? 0,
+            lng: p.lng ?? 0,
+            speedKmh: p.speedKmh ?? 0,
+            timestamp: p.timestamp ?? new Date().toISOString(),
+          };
+          this.server.to(`depot:mission:${missionId}`).emit(WS_EVENTS.DEPOT_MISSION_POSITION, charge);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[ws] aiguillage dépôt ignoré (${err instanceof Error ? err.message : err})`,
+      );
+    }
+  }
+
+  /**
+   * La mission s'est terminée pendant la consultation.
+   *
+   * Le marqueur va disparaître : sans cet événement, le dépôt voit un camion
+   * s'évanouir de sa carte et croit avoir perdu le suivi. Avec lui, l'interface
+   * retire le marqueur en transition ET explique pourquoi (A3 § 6).
+   */
+  emitDepotMissionEnded(missionId: string, missionRef: string): void {
+    if (!this.server) return;
+    const charge: DepotMissionEndedEvent = { missionId, missionRef };
+    this.server.to(`depot:mission:${missionId}`).emit(WS_EVENTS.DEPOT_MISSION_ENDED, charge);
+    // L'index d'aiguillage porte encore cette mission : on le vide pour que la
+    // position suivante ne reparte pas vers un salon qu'on vient de clore.
+    this.depotScope.invaliderIndex();
   }
 
   /**

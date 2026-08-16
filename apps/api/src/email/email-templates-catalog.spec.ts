@@ -13,6 +13,7 @@ import { TEMPLATE_META } from './email-admin.service';
  * ainsi une vue exhaustive de TOUS les e-mails envoyés depuis Tracky.
  */
 const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
+  mission_request: true,
   invitation: true,
   password_reset: true,
   device_verification: true,
@@ -32,6 +33,9 @@ const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
   reservation_confirmed: true,
   ai_invoice_request: true,
   partner_consent_invitation: true,
+  mission_assigned: true,
+  mission_tournee_modifiee: true,
+  depot_incident: true,
 };
 const ALL_IDS = Object.keys(EVERY_TEMPLATE) as EmailTemplateId[];
 

@@ -164,25 +164,25 @@ export class ReportPdfService {
     doc.moveDown(0.4);
 
     const kpis: { label: string; value: string }[] = [
-      { label: 'Vehicules actifs', value: `${report.vehicles.activeDuringPeriod} / ${report.vehicles.total}` },
+      { label: 'Véhicules actifs', value: `${report.vehicles.activeDuringPeriod} / ${report.vehicles.total}` },
       { label: 'Trajets', value: report.trips.count.toString() },
       { label: 'Distance totale', value: `${report.trips.totalKm.toFixed(1)} km` },
       // La moyenne par vehicule etait absente du PDF alors que c'est elle que le
       // client compare d'une semaine sur l'autre : il la lisait ailleurs (app,
       // export) sans jamais voir sur quelle base elle etait calculee. On l'affiche
       // ici, adossee a l'encart « parc exploite » rendu juste au-dessus.
-      { label: 'Distance moy./vehicule', value: `${report.trips.avgKmPerVehicle.toFixed(1)} km` },
-      { label: 'Duree totale', value: `${report.trips.totalDurationHours.toFixed(1)} h` },
+      { label: 'Distance moy./véhicule', value: `${report.trips.avgKmPerVehicle.toFixed(1)} km` },
+      { label: 'Durée totale', value: `${report.trips.totalDurationHours.toFixed(1)} h` },
       { label: 'Vitesse moy.', value: `${report.trips.avgSpeedKmh.toFixed(1)} km/h` },
       { label: 'Vitesse max', value: `${report.trips.maxSpeedKmh.toFixed(0)} km/h` },
       { label: 'Conso estimee', value: `${report.consumption.estimatedLiters.toFixed(1)} L` },
-      { label: 'Cout carburant', value: `${report.consumption.estimatedCostEur.toFixed(2)} EUR` },
+      { label: 'Coût carburant', value: `${report.consumption.estimatedCostEur.toFixed(2)} EUR` },
     ];
     // P3 carburant — prix REELLEMENT CONSTATE en station (si des passages ont ete captes).
     if (report.consumption.observedPriceEurL != null) {
       kpis.push({ label: 'Prix constate', value: `${report.consumption.observedPriceEurL.toFixed(3)} EUR/L` });
       if (report.consumption.estimatedCostAtObservedEur != null) {
-        kpis.push({ label: 'Cout au prix constate', value: `${report.consumption.estimatedCostAtObservedEur.toFixed(2)} EUR` });
+        kpis.push({ label: 'Coût au prix constate', value: `${report.consumption.estimatedCostAtObservedEur.toFixed(2)} EUR` });
       }
     }
 

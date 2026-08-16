@@ -33,7 +33,7 @@ export interface DriverDrawerResult {
   imports: [FormsModule, LucideAngularModule, DrivingScoreCardComponent],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <div class="fixed inset-0 h-[100dvh] z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
         <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
@@ -71,7 +71,7 @@ export interface DriverDrawerResult {
               <h3 class="section-title">Identite</h3>
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="field-label">Prenom *</label>
+                  <label class="field-label">Prénom *</label>
                   <input type="text" [(ngModel)]="firstName" placeholder="Votre prénom"
                     class="field-input" maxlength="80" />
                 </div>
@@ -90,7 +90,7 @@ export interface DriverDrawerResult {
                 <div>
                   <label class="field-label">
                     <lucide-icon [img]="PhoneIcon" [size]="11" class="inline mr-1"></lucide-icon>
-                    Telephone
+                    Téléphone
                   </label>
                   <input type="tel" [(ngModel)]="phone" placeholder="+33612345678"
                     class="field-input" maxlength="32" />

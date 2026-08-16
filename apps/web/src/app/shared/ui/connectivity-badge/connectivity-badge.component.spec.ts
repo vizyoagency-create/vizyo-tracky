@@ -35,8 +35,39 @@ describe('connectivityMeta / connectivityTitle — état DORMANT', () => {
     expect(connectivityMeta('OFFLINE').label).toBe('Hors ligne');
     expect(connectivityMeta('PARKED').label).toBe('Stationné');
     expect(connectivityMeta('NOT_CONFIGURED').label).toBe('Non configuré');
-    // Ambre dormant ≠ ambre hors-ligne : deux silences, deux urgences.
+    // Violet dormant ≠ ambre hors-ligne : deux silences, deux urgences, deux couleurs.
     expect(connectivityMeta('DORMANT').color).not.toBe(connectivityMeta('OFFLINE').color);
+  });
+
+  /**
+   * Les couleurs étaient six hexadécimaux figés : elles ne suivaient pas le thème clair
+   * et redéfinissaient des jetons qui existaient déjà. Une valeur en dur ne casse rien —
+   * elle s'affiche, simplement dans la mauvaise teinte, et personne ne le remarque tant
+   * qu'on développe en thème sombre. D'où ce test, qui rend le retour en arrière visible.
+   */
+  it('ne rend AUCUNE couleur en dur : tout passe par un jeton', () => {
+    const states: VehiclePresenceState[] = [
+      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'OFFLINE', 'DORMANT', 'NOT_CONFIGURED',
+    ];
+    for (const s of states) {
+      const m = connectivityMeta(s);
+      for (const [champ, valeur] of Object.entries({ color: m.color, bg: m.bg, border: m.border })) {
+        expect(`${s}.${champ} = ${valeur}`).not.toMatch(/#[0-9a-f]{3,8}|rgba?\(/i);
+        expect(valeur).toContain('var(--texte-');
+      }
+    }
+  });
+
+  it('réserve le contour tireté au seul « Non configuré »', () => {
+    const states: VehiclePresenceState[] = [
+      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'OFFLINE', 'DORMANT',
+    ];
+    // « Stationné » et « Non configuré » partagent le gris : les deux sont calmes. Seul
+    // le contour dit lequel est un état de terrain et lequel est une absence d'installation.
+    expect(connectivityMeta('NOT_CONFIGURED').borderStyle).toBe('dashed');
+    expect(connectivityMeta('PARKED').color).toBe(connectivityMeta('NOT_CONFIGURED').color);
+    expect(connectivityMeta('PARKED').borderStyle).toBe('solid');
+    for (const s of states) expect(connectivityMeta(s).borderStyle).toBe('solid');
   });
 
   it('donne une infobulle propre au dormant, distincte de « non configuré »', () => {
