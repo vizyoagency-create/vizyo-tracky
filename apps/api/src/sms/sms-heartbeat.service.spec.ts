@@ -46,15 +46,18 @@ describe('SmsHeartbeatService', () => {
     expect(service.recipients()).toEqual(['+33656691615', '+33687654321']);
   });
 
-  it('sends one heartbeat SMS per recipient with source=sms-heartbeat', async () => {
+  it('sends one heartbeat SMS per recipient, avec le modèle typé gateway_heartbeat', async () => {
     recipientsEnv = '+33656691615,+33687654321';
     const result = await service.runHeartbeat();
 
     expect(send).toHaveBeenCalledTimes(2);
+    // `template` est désormais OBLIGATOIRE : c'est lui qui rend l'envoi identifiable
+    // dans le module Communications (journal + catalogue). `source` reste pour la
+    // continuité des libellés déjà journalisés.
     expect(send).toHaveBeenCalledWith(
       '+33656691615',
       expect.stringContaining('[Vizyo Tracky] Heartbeat'),
-      { source: 'sms-heartbeat' },
+      { template: 'gateway_heartbeat', source: 'sms-heartbeat' },
     );
     expect(result.skipped).toBe(false);
     expect(result.sent).toBe(2);

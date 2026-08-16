@@ -764,7 +764,7 @@ export class EngineControlService implements OnModuleDestroy {
     const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {
       imei,
       commandId,
-      source: 'engine-control-fallback',
+      template: 'engine_control_fallback', source: 'engine-control-fallback',
     });
     if (result.ok) return { ok: true };
     return { ok: false, reason: result.error ?? 'envoi SMS refusé par la passerelle' };

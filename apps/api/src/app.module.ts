@@ -46,7 +46,7 @@ import { BackupHealthModule } from './backup-health/backup-health.module';
 import { CacheModule } from './common/cache/cache.module';
 import { OwnerVisibilityModule } from './common/owner-visibility.module';
 import { EmailModule } from './email/email.module';
-import { EmailAdminModule } from './email/email-admin.module';
+import { CommunicationsModule } from './communications/communications.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DepotModule } from './depot/depot.module';
@@ -133,7 +133,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     SmsModule,
     BackupHealthModule,
     EmailModule,
-    EmailAdminModule,
+    CommunicationsModule,
     InvitationsModule,
     NotificationsModule,
     ReportsModule,

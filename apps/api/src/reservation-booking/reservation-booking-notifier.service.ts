@@ -89,7 +89,7 @@ export class ReservationBookingNotifier {
     try {
       const res = isEmail
         ? await this.email.send({ to: c, subject: built.subject, html: built.html, text: built.text, template, fleetId, context: { kind: 'public_reservation' } })
-        : await this.sms.send(c, built.text, { kind: 'public_reservation', fleetId });
+        : await this.sms.send(c, built.text, { template: 'reservation_public', kind: 'public_reservation', fleetId });
       if (!res.ok) {
         await this.errors.record(
           `Notification demandeur échouée (${isEmail ? 'e-mail' : 'SMS'}) : ${res.error ?? 'erreur inconnue'}`,

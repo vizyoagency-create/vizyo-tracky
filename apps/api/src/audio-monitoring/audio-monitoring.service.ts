@@ -212,7 +212,7 @@ export class AudioMonitoringService {
       const r = await this.sms.send(tracker.simPhoneNumber, 'monitor' + pwd, {
         imei: tracker.imei,
         commandId: command.id,
-        source: 'audio-monitor',
+        template: 'audio_arm', source: 'audio-monitor',
       });
       if (!r.ok) {
         const lastError = `Échec armement micro (SMS monitor) : ${r.error ?? 'refus passerelle'}`;
@@ -307,7 +307,7 @@ export class AudioMonitoringService {
       const pwd = this.devicePassword();
       const r = await this.sms.send(tracker.simPhoneNumber, 'tracker' + pwd, {
         imei: tracker.imei,
-        source: 'audio-disarm',
+        template: 'audio_disarm', source: 'audio-disarm',
       });
       ok = r.ok;
       if (!r.ok) {

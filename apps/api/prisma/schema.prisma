@@ -2726,16 +2726,20 @@ model Lead {
 }
 
 model SmsLog {
-  id             String   @id @default(uuid()) @db.Uuid
-  direction      String // 'OUT' | 'IN'
-  fromNumber     String?
-  toNumber       String?
-  body           String   @db.Text
-  twilioSid      String?
-  status         String? // queued / sent / delivered / failed / received / undelivered
-  errorCode      String?
-  errorMessage   String?
-  imei           String?
+  id          String   @id @default(uuid()) @db.Uuid
+  direction   String   // 'OUT' | 'IN'
+  /// Modèle d'envoi (SmsTemplateId) — alimente le centre « Communications » admin.
+  /// Nullable : les lignes écrites avant le catalogue n'en portent pas, et un SMS
+  /// ENTRANT (direction 'IN') n'a pas de modèle.
+  template    String?
+  fromNumber  String?
+  toNumber    String?
+  body        String   @db.Text
+  twilioSid   String?
+  status      String?  // queued / sent / delivered / failed / received / undelivered
+  errorCode   String?
+  errorMessage String?
+  imei        String?
   provisioningId String?  @db.Uuid
   context        Json?
   createdAt      DateTime @default(now())
@@ -2743,7 +2747,38 @@ model SmsLog {
   @@index([createdAt(sort: Desc)])
   @@index([imei])
   @@index([provisioningId])
+  @@index([template, createdAt])
   @@map("sms_logs")
+}
+
+/// Journal des notifications push (centre « Communications » admin). Une ligne PAR
+/// APPAREIL ciblé : c'est le seul endroit où l'on voit qu'un push a réellement été
+/// accepté — ou rejeté parce que l'abonnement est mort (404/410), ce qui explique
+/// qu'un utilisateur « ne reçoive plus rien ». Avant, ces issues étaient calculées
+/// puis jetées ; seul un compteur agrégé survivait dans le journal système.
+enum PushStatus {
+  SENT // accepté par le service de push du navigateur
+  FAILED // erreur d'envoi (réseau, payload, VAPID)
+  EXPIRED // abonnement expiré/révoqué (404/410) — l'appareil ne recevra plus rien
+}
+
+model PushLog {
+  id             String     @id @default(cuid())
+  template       String // PushTemplateId
+  userId         String?    @db.Uuid
+  subscriptionId String?    @db.Uuid
+  title          String
+  severity       String? // INFO | WARNING | CRITICAL
+  status         PushStatus @default(SENT)
+  statusCode     Int?
+  errorMessage   String?
+  fleetId        String?
+  createdAt      DateTime   @default(now())
+
+  @@index([template, createdAt])
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("push_logs")
 }
 
 /// Centre de gestion des e-mails (admin) — journal des envois transactionnels.

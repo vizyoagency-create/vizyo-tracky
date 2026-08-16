@@ -338,6 +338,25 @@ export class SimsService {
   async sendSms(id: string, text: string): Promise<{ sent: boolean }> {
     const sim = await this.loadSimUnique(id);
     const sent = await this.client.sendSms(sim.iccid, text);
+    // Ce chemin sort par l'API opérateur (WhereverSIM) et NON par la passerelle : il
+    // échappait donc totalement à `sms_logs`, rendant ces SMS invisibles dans le module
+    // « Communications ». On journalise ici pour que TOUT envoi soit traçable, quel que
+    // soit le tuyau. Best-effort : un échec d'écriture ne doit jamais casser l'envoi.
+    try {
+      await this.prisma.smsLog.create({
+        data: {
+          direction: 'OUT',
+          template: 'sim_direct',
+          fromNumber: 'whereversim',
+          toNumber: sim.msisdn ?? sim.iccid,
+          body: text,
+          status: sent ? 'sent' : 'failed',
+          context: { template: 'sim_direct', iccid: sim.iccid, simId: id } as object,
+        },
+      });
+    } catch {
+      /* best-effort — l'audit ne doit pas faire échouer l'envoi */
+    }
     return { sent };
   }
 

@@ -1310,7 +1310,12 @@ export class NotificationDispatchService {
       // Pour V1, on passe par le canal SMS Twilio classique — Twilio supporte
       // WhatsApp via prefix 'whatsapp:'. Si le user n'a pas de phone, skip.
       const target = user.phone.startsWith('whatsapp:') ? user.phone : `whatsapp:${user.phone}`;
-      await this.sms.send(target, bodyText, { alertId: alert.id, channel: 'whatsapp', escalation: isEscalation });
+      await this.sms.send(target, bodyText, {
+        template: 'alert_whatsapp',
+        alertId: alert.id,
+        channel: 'whatsapp',
+        escalation: isEscalation,
+      });
       return;
     }
     if (channel === 'SMS' && user.phone) {
@@ -1322,6 +1327,7 @@ export class NotificationDispatchService {
         return;
       }
       await this.sms.send(user.phone, this.formatAlertSms(alert, isEscalation), {
+        template: 'alert_notification',
         source: 'alert-notification',
         alertId: alert.id,
         vehicleId: alert.vehicleId ?? undefined,

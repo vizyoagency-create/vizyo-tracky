@@ -125,7 +125,7 @@ export class AudioAutoDisarmService {
       try {
         const r = await this.sms.send(sim, 'tracker' + pwd, {
           imei,
-          source: 'audio-auto-disarm',
+          template: 'audio_auto_disarm', source: 'audio-auto-disarm',
         });
         if (r.ok) {
           await this.prisma.audioMonitoringCommand.updateMany({
