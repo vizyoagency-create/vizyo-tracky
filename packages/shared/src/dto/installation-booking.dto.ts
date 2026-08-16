@@ -51,9 +51,10 @@ export interface PublicBookingLinkDto {
   /**
    * Téléphone de l'ATELIER, prêt à afficher. `null` = ne pas montrer le bouton.
    *
-   * ⚠️ C'est le numéro de l'atelier, jamais celui d'une personne : cette page est
-   * publique, son URL circule, et un numéro personnel exposé là ne se reprend
-   * plus. Il vient d'une configuration serveur, pas d'une fiche utilisateur.
+   * ⚠️ Numéro d'atelier, **jamais** celui d'une personne — confirmé par le client
+   * le 2026-08-16. Cette page est publique, son URL circule, et un numéro
+   * personnel exposé là ne se reprend plus. Il vient d'une configuration serveur,
+   * pas d'une fiche utilisateur.
    */
   telephonePublic: string | null;
   /**

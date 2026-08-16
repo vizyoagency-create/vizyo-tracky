@@ -40,13 +40,16 @@ const CONTACT_EMAIL = 'contact@vizyoagency.com';
 /**
  * Combien de temps on garde l'adresse d'un client qui demande à être prévenu.
  *
- * ⚠️ CE NOMBRE EST UNE DÉCISION, PAS UN RÉGLAGE TECHNIQUE. Passé ce délai, la
- * ligne est supprimée qu'elle ait servi ou non : une adresse collectée pour une
- * finalité qui s'est épuisée n'a plus de raison d'être conservée.
+ * ⚠️ CE NOMBRE EST UNE DÉCISION, PAS UN RÉGLAGE TECHNIQUE — **arbitrée par le
+ * client le 2026-08-16**. Passé ce délai, la ligne est supprimée qu'elle ait servi
+ * ou non : une adresse collectée pour une finalité qui s'est épuisée n'a plus de
+ * raison d'être conservée.
  *
  * 90 jours = l'horizon de réservation par défaut (42 j) avec de la marge : au-delà,
  * la personne a trouvé une solution ailleurs, et la prévenir n'aurait plus de sens.
- * À confirmer par le client — c'est le point resté ouvert de `A-VALIDER-2026-08-16`.
+ *
+ * Ne pas l'allonger « pour être tranquille » : c'est la durée qui rend la collecte
+ * proportionnée, et la rallonger sans nouvelle décision la rendrait excessive.
  */
 const SLOT_WATCH_RETENTION_DAYS = 90;
 

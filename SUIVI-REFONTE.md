@@ -1204,22 +1204,24 @@ dictionnaire plutôt que mis à zéro.
 `telephonePublic` + `abonnementCreneauDisponible`, et
 `POST /public/booking/:token/prevenir-moi`.
 
-Les deux points que j'avais soulevés sont tranchés **dans le sens le plus prudent**, faute
-de réponse explicite — et ils sont signalés ici pour être confirmés :
+Les deux points que j'avais soulevés ont été **confirmés par le client le 2026-08-16** —
+ils sont donc des décisions, pas des valeurs par défaut qu'on peut ajuster en passant :
 
-1. **Le téléphone est celui de l'ATELIER**, lu depuis `INSTALLATION_PUBLIC_PHONE`
+1. ✅ **Le téléphone est celui de l'ATELIER**, lu depuis `INSTALLATION_PUBLIC_PHONE`
    (configuration serveur), **jamais depuis une fiche utilisateur**. Cette page est
    publique, son URL circule par e-mail et par SMS : un numéro personnel exposé là ne se
    reprend plus. Non configuré → le bouton « Appeler » **n'apparaît pas** : mieux vaut
    deux sorties que trois dont une qui ne sonne nulle part.
-2. **La conservation est bornée à 90 jours** (`SLOT_WATCH_RETENTION_DAYS`), avec une
+   ⚠️ **Ne jamais rebrancher ce champ sur `User.phone`** ni sur le téléphone d'un client
+   pré-rempli — ce serait défaire la décision sans s'en rendre compte.
+2. ✅ **La conservation est bornée à 90 jours** (`SLOT_WATCH_RETENTION_DAYS`), avec une
    purge. Une seule donnée est demandée — l'e-mail, ni nom ni téléphone ni adresse — et
    l'inscription est **idempotente** par (lien, e-mail) : dix clics impatients
    n'enverront qu'un seul message. `@Throttle` y est plus serré que sur la réservation.
+   ⚠️ **Ne pas allonger cette durée « pour être tranquille »** : c'est elle qui rend la
+   collecte proportionnée. L'allonger sans nouvelle décision la rendrait excessive.
 
-🔴 **À confirmer par le client** : la durée de 90 jours (choisie parce que l'horizon de
-réservation par défaut est de 42 j — au-delà, la personne a trouvé ailleurs) et le fait
-que le numéro affiché soit bien celui de l'atelier.
+**Il ne reste donc plus aucune question ouverte sur les contrats d'API.**
 
 ---
 
@@ -1565,10 +1567,9 @@ doit rester en modifications locales non commitées.
    `resultats` sur `/admin/ai-usage`, `volume30j` sur `/integrations`, et sur
    `/book/:token` le téléphone d'atelier + l'abonnement « prévenez-moi ».
    Le ratio marge de `/admin/ai-usage` reste écarté (tranché le 2026-08-14).
-   🔴 **Deux points à CONFIRMER** sur `/book/:token` : la conservation à 90 jours des
-   e-mails d'abonnement, et le fait que le numéro affiché soit bien celui de l'atelier.
-   Les deux sont implémentés dans le sens le plus prudent — la confirmation ne débloque
-   rien, elle valide un choix déjà fait.
+   ✅ Les deux points de `/book/:token` sont **confirmés le 2026-08-16** : conservation
+   à **90 jours** des e-mails d'abonnement, et **numéro de l'atelier** (jamais d'une
+   personne). **Plus aucune question ouverte sur les contrats.**
 7. Les décisions d'écran du § 7.2 : ~~regroupement des lieux discrets~~ ✅ (§ 6nonies.2)
    et ~~week-end en surveillance~~ ✅ **option B, livrée** (§ 6decies.1). Restent le
    **zoom MapLibre** (29 px), la **poignée de feuille** (déjà relevée à 44 px au kit),

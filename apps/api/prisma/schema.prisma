@@ -3163,8 +3163,9 @@ model PartnerOutboxEvent {
 /// │ part avec elle. Rien d'autre n'est demandé : ni nom, ni téléphone, ni      │
 /// │ adresse. Le strict nécessaire pour envoyer UN e-mail.                      │
 /// │                                                                            │
-/// │ ⚠️ La DURÉE est un choix à confirmer par le client (90 j par défaut, cf.   │
-/// │ `SLOT_WATCH_RETENTION_DAYS`).                                              │
+/// │ La DURÉE — 90 jours — est une décision du client, prise le 2026-08-16 (cf. │
+/// │ `SLOT_WATCH_RETENTION_DAYS`). Ne pas l'allonger sans nouvelle décision :   │
+/// │ c'est elle qui rend la collecte proportionnée.                             │
 /// └───────────────────────────────────────────────────────────────────────────┘
 model InstallationSlotWatcher {
   id        String                  @id @default(uuid()) @db.Uuid
