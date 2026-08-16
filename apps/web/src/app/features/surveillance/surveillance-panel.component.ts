@@ -138,6 +138,12 @@ const ROLE_LABELS: Record<string, string> = {
                       ({{ formatDays(p.scheduleDays) }})
                     }
                   </p>
+                  <!-- Le résumé annonce la plage : s'il tait le week-end, il annonce
+                       une protection plus COURTE que la vraie. Le dire ici évite de
+                       devoir ouvrir les réglages pour savoir ce qui est couvert. -->
+                  @if (p.weekendPermanent && joursWeekEndCouverts(p.scheduleDays); as jours) {
+                    <p class="sm-week-end mt-1">{{ jours }} surveillé(s) 24 h — un week-end n'a pas d'heures ouvrées.</p>
+                  }
                 }
               </div>
             </div>
@@ -269,6 +275,8 @@ const ROLE_LABELS: Record<string, string> = {
                     type="button"
                     class="sm-day-btn"
                     [class.sm-day-btn--active]="isDayActive(day)"
+                    [class.sm-day-btn--week-end]="estWeekEndPermanent(day)"
+                    [attr.aria-label]="DAY_LABELS[day] + (estWeekEndPermanent(day) ? ' — surveillé 24 h' : '')"
                     (click)="toggleDay(day)">
                     {{ DAY_LABELS[day] }}
                   </button>
@@ -278,6 +286,34 @@ const ROLE_LABELS: Record<string, string> = {
                 Aucun jour sélectionné = tous les jours.
               </p>
             </div>
+
+            <!--
+              « UN WEEK-END N'A PAS D'HEURES OUVRÉES. »
+
+              Un profil réglé 20:00 → 06:00 laissait le samedi de 06:00 à 20:00 SANS
+              protection : quatorze heures où un dépôt est vide, pendant lesquelles
+              l'écran affichait pourtant « antivol actif ».
+
+              La case est proposée COCHÉE à la création et reste DÉCOCHÉE sur les
+              profils existants (décision client du 2026-08-16). Changer d'office un
+              antivol déjà en service donnerait plus de protection, mais aussi plus de
+              déclenchements sur une manœuvre légitime du samedi — sans que personne
+              ne l'ait demandé.
+            -->
+            <label class="sm-check mt-3">
+              <input
+                type="checkbox"
+                [checked]="form().weekendPermanent"
+                (change)="updateField('weekendPermanent', $any($event.target).checked)" />
+              <span>
+                <strong>Week-end surveillé en permanence</strong>
+                <span class="sm-check-detail">
+                  Samedi et dimanche sont couverts 24 h au lieu de suivre la plage —
+                  un week-end n'a pas d'heures ouvrées. Les jours décochés restent
+                  hors surveillance.
+                </span>
+              </span>
+            </label>
           }
 
           <!-- Triggers -->
@@ -593,6 +629,15 @@ const ROLE_LABELS: Record<string, string> = {
       border-color: color-mix(in srgb, var(--color-tracky-light) 40%, transparent);
       color: var(--texte-succes);
     }
+    /* LE VIOLET DIT UN FAIT, PAS UNE DÉCORATION : ce jour-là la surveillance est
+       permanente, pas seulement nocturne. Il ne s'allume que si la case est cochée
+       ET le jour actif — sinon la couleur annoncerait une protection absente.
+       Posé après --active pour le remplacer sur ces deux jours. */
+    .sm-day-btn--week-end {
+      background: color-mix(in srgb, var(--violet) 15%, transparent);
+      border-color: color-mix(in srgb, var(--violet) 45%, transparent);
+      color: var(--texte-violet);
+    }
     .sm-check {
       display: inline-flex; align-items: center; gap: 0.5rem;
       font-size: 0.875rem;
@@ -600,6 +645,19 @@ const ROLE_LABELS: Record<string, string> = {
       cursor: pointer;
     }
     .sm-check input { width: 16px; height: 16px; accent-color: var(--color-tracky-light); }
+    /* Une case qui porte une explication ne s'aligne plus au centre : le carré doit
+       rester en face de sa PREMIÈRE ligne, pas au milieu du paragraphe. */
+    .sm-check:has(.sm-check-detail) { align-items: flex-start; }
+    .sm-check:has(.sm-check-detail) input { margin-top: 2px; flex-shrink: 0; }
+    .sm-check-detail {
+      display: block; margin-top: 2px;
+      font-size: 0.75rem; line-height: 1.45;
+      color: var(--fg-secondary); text-wrap: pretty;
+    }
+    .sm-week-end {
+      margin: 0; font-size: 0.75rem; line-height: 1.45;
+      color: var(--texte-violet); text-wrap: pretty;
+    }
     .sm-event {
       padding: 0.75rem;
       background: var(--bg-tertiary);
@@ -723,6 +781,10 @@ export class SurveillancePanelComponent implements OnInit {
         scheduleStartTime: null as string | null,
         scheduleEndTime: null as string | null,
         scheduleDays: null as string[] | null,
+        // Proposé COCHÉ à la création — c'est le comportement de la planche. Les
+        // profils déjà en base arrivent avec `false` et ne bougent pas : c'est
+        // toute la différence entre un nouveau réglage et un antivol en service.
+        weekendPermanent: true,
         triggerVibration: true,
         triggerMovement: true,
         triggerDoor: false,
@@ -734,11 +796,40 @@ export class SurveillancePanelComponent implements OnInit {
       scheduleStartTime: p.scheduleStartTime,
       scheduleEndTime: p.scheduleEndTime,
       scheduleDays: p.scheduleDays,
+      weekendPermanent: p.weekendPermanent ?? false,
       triggerVibration: p.triggerVibration,
       triggerMovement: p.triggerMovement,
       triggerDoor: p.triggerDoor,
     };
   });
+
+  /** Le jour tombe-t-il un week-end ? Décide de la pastille violette. */
+  protected estWeekEnd(day: string): boolean {
+    return day === 'sat' || day === 'sun';
+  }
+
+  /**
+   * Les jours de week-end RÉELLEMENT couverts, nommés — ou null s'il n'y en a
+   * aucun. Un samedi décoché ne compte pas : annoncer « samedi et dimanche »
+   * quand seul le dimanche est actif promettrait une protection qui n'existe pas.
+   */
+  protected joursWeekEndCouverts(jours: string[] | null): string | null {
+    const actifs = ['sat', 'sun'].filter(
+      (d) => !jours || jours.length === 0 || jours.includes(d),
+    );
+    if (actifs.length === 0) return null;
+    const noms = actifs.map((d) => (d === 'sat' ? 'Samedi' : 'Dimanche'));
+    return noms.join(' et ');
+  }
+
+  /**
+   * Ce jour est-il réellement surveillé 24 h ? Il faut les DEUX : la case cochée
+   * ET le jour actif. Un samedi décoché n'est pas surveillé du tout — colorier la
+   * pastille sur la seule case cochée annoncerait une protection absente.
+   */
+  protected estWeekEndPermanent(day: string): boolean {
+    return this.form().weekendPermanent && this.estWeekEnd(day) && this.isDayActive(day);
+  }
 
   /**
    * BOÎTIER MUET (seuil AGIR = 72 h) — libellé de silence, ou null si le boîtier parle.

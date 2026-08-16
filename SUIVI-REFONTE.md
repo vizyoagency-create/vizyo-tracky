@@ -1114,6 +1114,115 @@ Les quatre éléments listés comme « restants » sont dans le code, livrés pa
 
 ---
 
+## 6decies. Week-end en surveillance + les 4 contrats d'API (2026-08-16) — tranchés et livrés
+
+Le client a répondu : **option B pour le week-end**, et **ouverture des 4 contrats**.
+
+### 6decies.1 Le week-end permanent — option B
+
+Le défaut corrigé : un profil réglé `20:00 → 06:00` sur sept jours laissait le samedi
+**de 06:00 à 20:00 sans protection**. Quatorze heures où un dépôt est vide, et où
+l'écran affichait pourtant « antivol actif ». Même famille d'erreur que les heures lues
+en UTC (lot B0′) : une promesse tenue à l'affichage, pas dans les faits.
+
+**Ce qui change, et rien d'autre** :
+
+| | |
+|---|---|
+| Base | `weekendPermanent BOOLEAN NOT NULL DEFAULT false` |
+| Règle | Un jour de week-end **coché** est armé 24 h ; les jours de semaine gardent la plage |
+| Profils existants | **`false` — aucun ne change de comportement au déploiement** |
+| Nouveaux profils | La case est proposée **cochée** |
+| Écran | Pastilles **S** et **D** en violet quand elles sont réellement couvertes, + le résumé le dit |
+
+> ⚠️ **Le `DEFAULT false` EST la décision, pas un détail d'implémentation.** Basculer
+> l'existant aurait donné plus de protection *et* plus de déclenchements sur une manœuvre
+> légitime du samedi — sans que personne ne l'ait demandé. C'est la prudence de la
+> migration `surveillance_horaires_locaux`, reprise mot pour mot.
+
+Le paramètre est **optionnel et en dernière position** : tout appelant qui ne le passe pas
+garde exactement le comportement d'avant. **6 tests** ajoutés, et le premier est le plus
+important — il vérifie que **rien ne bouge quand la case est décochée**.
+
+Deux pièges évités en chemin :
+- La règle est testée **avant** la plage : elle la *remplace* ce jour-là, elle ne s'y
+  ajoute pas (visible sur samedi 06:00, la borne de fin, qui passe de OFF à ON).
+- Elle respecte `scheduleDays` : **un samedi décoché n'est pas surveillé**, sinon
+  décocher un jour n'aurait plus aucun effet. La pastille violette suit la même règle —
+  colorier sur la seule case cochée annoncerait une protection absente.
+
+### 6decies.2 `/places` — le cycle de vie, dérivé côté serveur
+
+`GET /fleet-places/station-groups` porte désormais **`seuilPassages`** et **`statut`**
+(`A_QUALIFIER` · `EN_COURS` · `PRET_A_VALIDER` · `VALIDE`).
+
+> **Pourquoi le serveur et pas le client** : inventer le « 8 » dans le navigateur
+> poserait un nombre qui doit rester d'accord avec la règle de détection du serveur. Le
+> jour où celle-ci bouge, l'écran continuerait d'afficher l'ancien seuil **en ayant l'air
+> juste**. C'est exactement l'erreur du § 8.1.
+
+Côté écran : la pastille « **6/8 · En cours** », le tri **par avancement** (une file
+d'attente montre d'abord ce qui est actionnable), et le bouton « **Tout valider (N sûrs)** »
+qui ne porte **que** les stations déclarées prêtes par le serveur — valider en masse ce
+qui n'a que deux passages ferait entrer au référentiel des lieux vus une fois par hasard.
+
+Le champ est **optionnel** côté client : un backend antérieur ne l'envoie pas, et l'écran
+se tait alors plutôt que d'afficher « 6/undefined ».
+
+### 6decies.3 `/admin/ai-usage` — ce que l'IA produit
+
+`AiUsageLog.resultCount` (**nullable**) + `resultats` / `resultatsLibelle` sur les lignes
+d'agrégat. La page disait ce que l'IA **coûte** sans jamais dire ce qu'elle **rend** :
+une facture sans ligne.
+
+> ⚠️ **`null` ≠ `0`.** `0` affirmerait « cet appel n'a rien produit » ; `null` dit « on ne
+> l'a pas noté » — le cas de toutes les lignes antérieures. On ne réécrit pas le passé
+> pour faire joli dans un graphique.
+
+Le **libellé** (« trajets analysés », « lieux qualifiés ») est nommé par le serveur, seul
+à connaître la liste des actions. Sur les lignes **par flotte** ou **par utilisateur**, il
+vaut `null` : ces lignes cumulent plusieurs actions, et nommer l'unité y mélangerait des
+trajets et des lieux. Le ratio de marge reste écarté (tranché le 2026-08-14).
+
+### 6decies.4 `/integrations` — le volume par catégorie
+
+`volume30j: Record<scope, number>` sur le statut du lien.
+
+> **On compte ce qui est EXPOSÉ, pas ce qui a été lu.** Rien n'enregistre aujourd'hui les
+> lectures du partenaire (l'outbox ne porte que les révocations), et instrumenter chaque
+> appel répondrait à « combien il a pris » — pas à la question de l'écran. Or c'est un
+> écran de **consentement** : ce qui s'y décide, c'est ce à quoi on ouvre l'accès.
+> « 3 412 trajets » veut donc dire « cocher cette case donne accès à 3 412 trajets », et
+> c'est ce chiffre-là qui aide à décider, y compris avant toute lecture.
+
+Une catégorie **éteinte n'est pas comptée** — un volume affiché sur un accès fermé
+laisserait croire que quelque chose circule. Un compteur indisponible est **absent** du
+dictionnaire plutôt que mis à zéro.
+
+### 6decies.5 `/book/:token` — les trois sorties
+
+`telephonePublic` + `abonnementCreneauDisponible`, et
+`POST /public/booking/:token/prevenir-moi`.
+
+Les deux points que j'avais soulevés sont tranchés **dans le sens le plus prudent**, faute
+de réponse explicite — et ils sont signalés ici pour être confirmés :
+
+1. **Le téléphone est celui de l'ATELIER**, lu depuis `INSTALLATION_PUBLIC_PHONE`
+   (configuration serveur), **jamais depuis une fiche utilisateur**. Cette page est
+   publique, son URL circule par e-mail et par SMS : un numéro personnel exposé là ne se
+   reprend plus. Non configuré → le bouton « Appeler » **n'apparaît pas** : mieux vaut
+   deux sorties que trois dont une qui ne sonne nulle part.
+2. **La conservation est bornée à 90 jours** (`SLOT_WATCH_RETENTION_DAYS`), avec une
+   purge. Une seule donnée est demandée — l'e-mail, ni nom ni téléphone ni adresse — et
+   l'inscription est **idempotente** par (lien, e-mail) : dix clics impatients
+   n'enverront qu'un seul message. `@Throttle` y est plus serré que sur la réservation.
+
+🔴 **À confirmer par le client** : la durée de 90 jours (choisie parce que l'horizon de
+réservation par défaut est de 42 j — au-delà, la personne a trouvé ailleurs) et le fait
+que le numéro affiché soit bien celui de l'atelier.
+
+---
+
 ## 7. Décisions en attente d'arbitrage — **ne pas trancher seul**
 
 ### 7.1 Bloqués par un contrat d'API (5)
@@ -1444,24 +1553,26 @@ doit rester en modifications locales non commitées.
 **Décisions encore à demander — la liste COMPLÈTE, rien d'autre n'est en suspens :**
 
 1. ~~**O5**~~ ✅ tranché le 2026-08-14. · 2. ~~**Onglet actif**~~ ✅ tranché le 2026-08-14.
-3. **Le contrat d'API de `/places`** (`seuilPassages` + `statut`) — sinon la page ne peut
-   pas montrer le cycle de vie que la planche décrit. **Toujours bloquant** (§ 7.1), et
-   c'est le seul point de B-pages livré volontairement incomplet.
-   👉 **Proposition écrite et prête à valider : `docs/A-VALIDER-2026-08-16.md` § 2.1.**
+3. ~~**Le contrat d'API de `/places`**~~ ✅ **tranché et livré le 2026-08-16**
+   (§ 6decies.2). `seuilPassages` + `statut` sont dérivés côté serveur, l'écran affiche
+   la file « 6/8 · En cours » et le bouton « Tout valider ». **B-pages n'a plus de point
+   volontairement incomplet.**
 4. **La liste groupée par défaut sur `/vehicles`** — décision de comportement.
 5. Les **168 cellules 10×11** de la carte de chaleur `/reports` : une grille de données
    dense tombe-t-elle sous le plancher de 44 px ? Les élargir détruirait la lecture
    d'ensemble, qui est tout l'intérêt de l'objet.
-6. Les **3 autres points d'API** (`/admin/ai-usage`, `/integrations`, `/book/:token`).
-   👉 **Contrats rédigés, prêts à valider : `docs/A-VALIDER-2026-08-16.md` § 2.2 à 2.4.**
+6. ~~Les **3 autres points d'API**~~ ✅ **ouverts le 2026-08-16** (§ 6decies.3 à .5) :
+   `resultats` sur `/admin/ai-usage`, `volume30j` sur `/integrations`, et sur
+   `/book/:token` le téléphone d'atelier + l'abonnement « prévenez-moi ».
    Le ratio marge de `/admin/ai-usage` reste écarté (tranché le 2026-08-14).
-7. Les décisions d'écran du § 7.2 : ~~regroupement des lieux discrets~~ ✅ **livré le
-   2026-08-16** (§ 6nonies.2). Restent le **week-end en surveillance**, le **zoom
-   MapLibre** (29 px), la **poignée de feuille** (déjà relevée à 44 px au kit), les
-   **plaques sur téléphone**.
-   👉 **Week-end : spec écrite avec ses trois formes possibles et un conseil —
-   `docs/A-VALIDER-2026-08-16.md` § 1.** ⚠️ C'est le seul point qui **change le
-   comportement d'antivols déjà en service** : rien n'est codé sans réponse.
+   🔴 **Deux points à CONFIRMER** sur `/book/:token` : la conservation à 90 jours des
+   e-mails d'abonnement, et le fait que le numéro affiché soit bien celui de l'atelier.
+   Les deux sont implémentés dans le sens le plus prudent — la confirmation ne débloque
+   rien, elle valide un choix déjà fait.
+7. Les décisions d'écran du § 7.2 : ~~regroupement des lieux discrets~~ ✅ (§ 6nonies.2)
+   et ~~week-end en surveillance~~ ✅ **option B, livrée** (§ 6decies.1). Restent le
+   **zoom MapLibre** (29 px), la **poignée de feuille** (déjà relevée à 44 px au kit),
+   les **plaques sur téléphone**.
 8. ~~La **coupure moteur à moitié faite**~~ — **elle ne l'était pas** : les 4 éléments
    sont livrés depuis `b7886d9`, et mesurés le 2026-08-16 (§ 6nonies.3). La ligne était
    périmée.

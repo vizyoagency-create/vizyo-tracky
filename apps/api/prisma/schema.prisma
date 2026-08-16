@@ -1508,6 +1508,16 @@ model SurveillanceProfile {
   // Jours actifs : array de strings ["mon","tue","wed","thu","fri","sat","sun"].
   // Null = tous les jours.
   scheduleDays            Json?
+  /// Samedi et dimanche COCHÉS sont surveillés 24 h, au lieu de suivre la plage.
+  /// « Un week-end n'a pas d'heures ouvrées » : un profil 20:00-06:00 laissait le
+  /// samedi de 06:00 à 20:00 SANS protection — quatorze heures où un dépôt est vide.
+  ///
+  /// ⚠️ Défaut `false` VOLONTAIRE. Passer les profils existants à 24 h le week-end
+  /// changerait un antivol déjà en service sans que personne l'ait demandé (plus de
+  /// protection, mais aussi plus de déclenchements sur une manœuvre légitime du
+  /// samedi). C'est la même prudence que la migration `surveillance_horaires_locaux`.
+  /// L'écran, lui, propose la case COCHÉE à la création. Décision client du 2026-08-16.
+  weekendPermanent        Boolean                 @default(false)
   // Triggers actifs lors d'un armement.
   triggerVibration        Boolean                 @default(true)
   triggerMovement         Boolean                 @default(true)
@@ -1723,6 +1733,14 @@ model AiUsageLog {
   costUsd          Float    @default(0)
   latencyMs        Int?
   ok               Boolean  @default(true)
+  /// Combien d'objets cet appel a réellement PRODUITS (trajets analysés, lieux
+  /// qualifiés, créneaux proposés…). La page « Coûts IA » disait ce que l'IA
+  /// coûte sans jamais dire ce qu'elle rend : une facture sans ligne.
+  ///
+  /// ⚠️ NULLABLE, et c'est le point. `0` affirmerait « cet appel n'a rien produit » ;
+  /// `null` dit « on ne l'a pas noté » — c'est le cas de toutes les lignes
+  /// antérieures à ce champ, et on ne réécrit pas le passé.
+  resultCount      Int?
 
   @@index([createdAt])
   @@index([fleetId, createdAt])
@@ -2662,6 +2680,7 @@ model InstallationBookingLink {
   updatedAt       DateTime          @updatedAt
 
   bookings InstallationBooking[]
+  watchers InstallationSlotWatcher[]
 
   @@index([fleetId])
   @@index([token])
@@ -3129,6 +3148,39 @@ model PartnerOutboxEvent {
   @@index([deliveredAt, nextAttemptAt])
   @@index([linkId])
   @@map("partner_outbox_events")
+}
+
+/// « Prévenez-moi si un créneau se libère » — la sortie n° 3 de la page publique.
+///
+/// Sans elle, un client qui ne trouve aucun créneau qui lui convient est dans un
+/// cul-de-sac : il referme l'onglet et personne ne le sait.
+///
+/// ┌───────────────────────────────────────────────────────────────────────────┐
+/// │ CE MODÈLE COLLECTE UNE DONNÉE PERSONNELLE SUR UNE PAGE PUBLIQUE            │
+/// │                                                                            │
+/// │ Donc il porte sa propre limite : `expiresAt`, purgé par le cron. On ne     │
+/// │ garde pas une adresse « au cas où » — la finalité s'épuise, la donnée      │
+/// │ part avec elle. Rien d'autre n'est demandé : ni nom, ni téléphone, ni      │
+/// │ adresse. Le strict nécessaire pour envoyer UN e-mail.                      │
+/// │                                                                            │
+/// │ ⚠️ La DURÉE est un choix à confirmer par le client (90 j par défaut, cf.   │
+/// │ `SLOT_WATCH_RETENTION_DAYS`).                                              │
+/// └───────────────────────────────────────────────────────────────────────────┘
+model InstallationSlotWatcher {
+  id        String                  @id @default(uuid()) @db.Uuid
+  linkId    String                  @db.Uuid
+  link      InstallationBookingLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  email     String
+  createdAt DateTime                @default(now())
+  /// Prévenu une fois → la finalité est remplie, la ligne devient purgeable.
+  notifiedAt DateTime?
+  /// Limite dure de conservation. Passée cette date, la ligne est supprimée
+  /// qu'elle ait servi ou non.
+  expiresAt DateTime
+
+  @@unique([linkId, email])
+  @@index([expiresAt])
+  @@map("installation_slot_watchers")
 }
 
 /// Invitation à consentir, envoyée par e-mail au fleet-admin.

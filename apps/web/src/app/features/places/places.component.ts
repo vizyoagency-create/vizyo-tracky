@@ -323,12 +323,34 @@ type OngletPlaces = 'valider' | 'valides' | 'zones';
           station sont comptés — un simple ralentissement devant une station ne l'est jamais.
         </p>
 
+        <!-- « Tout valider (3 sûrs) » — le raccourci de la planche. Il ne porte QUE
+             les stations que le SERVEUR déclare prêtes : valider en masse ce qui
+             n'a que deux passages ferait entrer dans le référentiel des lieux vus
+             une fois par hasard. Le compte est donc celui du serveur, pas un seuil
+             que l'écran se serait donné. -->
+        @if (canManage() && stationsSures().length > 0) {
+          <button type="button" class="lk-tout-valider"
+                  [disabled]="busyId() !== null"
+                  (click)="validerLesSures()">
+            <lucide-icon [img]="CheckIcon" [size]="14"></lucide-icon>
+            Tout valider ({{ stationsSures().length }} sûr{{ stationsSures().length > 1 ? 's' : '' }})
+          </button>
+        }
+
           <ul class="lk-list">
             @for (s of stationsAValider(); track s.stationId) {
               <li class="lk-item">
                 <div class="lk-item-main">
                   <div class="lk-item-line">
                     <strong class="lk-item-name">{{ s.label }}</strong>
+                    <!-- L'AVANCEMENT, tel que le serveur le voit. « 6/8 » dit à la fois
+                         où on en est et ce qu'il reste — un simple « en cours » ne dirait
+                         ni l'un ni l'autre. -->
+                    @if (avancement(s); as av) {
+                      <span class="pl-av {{ av.classe }}">
+                        <b>{{ av.texte }}</b> · {{ av.libelle }}
+                      </span>
+                    }
                   </div>
                   <span class="lk-item-meta">
                     <b>{{ s.passages }}</b> passage{{ s.passages > 1 ? 's' : '' }} ·
@@ -456,6 +478,33 @@ type OngletPlaces = 'valider' | 'valides' | 'zones';
     .lk-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 11px; border-radius: 10px; background: var(--bg-tertiary, rgba(148,163,184,.07)); border: 1px solid var(--border-subtle); }
     .lk-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
     .lk-item-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+
+    /* L'AVANCEMENT DANS LA FILE — « 6/8 · En cours ».
+       Trois teintes pour trois moments : ce qui est prêt attire l'œil (vert),
+       ce qui approche se lit sans appeler (ambre), ce qui vient d'apparaître
+       reste neutre. Le chiffre porte l'information, la couleur ne fait que
+       hiérarchiser — elle n'est jamais seule à dire l'état. */
+    .pl-av {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 1px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
+    }
+    .pl-av b { font-weight: 800; }
+    .pl-av--pret { background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent); color: var(--texte-succes); }
+    .pl-av--cours { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--texte-attente); }
+    .pl-av--qualifier { background: color-mix(in srgb, var(--fg-tertiary) 14%, transparent); color: var(--fg-secondary); }
+
+    /* Le raccourci de masse : une vraie cible, pas un lien discret — c'est
+       l'action qui vide la file. */
+    .lk-tout-valider {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      align-self: flex-start; min-height: 44px; padding: 0 14px;
+      border-radius: 10px; cursor: pointer;
+      background: color-mix(in srgb, var(--color-tracky-light) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 40%, transparent);
+      color: var(--texte-succes); font: inherit; font-size: 12.5px; font-weight: 700;
+    }
+    .lk-tout-valider:disabled { opacity: .55; cursor: wait; }
     .lk-item-name { color: var(--fg-primary); font-size: 13px; font-weight: 700; }
     .lk-item-meta { color: var(--fg-tertiary); font-size: 11.5px; }
     .lk-item-meta b { color: var(--fg-secondary); }
@@ -551,25 +600,64 @@ export class PlacesComponent {
    * La page empilait deux sections ; la planche les separe en trois onglets
    * (« A valider · Valides · Zones GPS »), chacun avec son compteur.
    *
-   * ⚠️ CE QUE LA PLANCHE MONTRE ET QU'ON NE FAIT PAS : la file d'attente
-   * « 8/8 · PRET A VALIDER », « 6/8 · EN COURS », « A QUALIFIER » et le bouton
-   * « Tout valider (3 surs) ». `StationGroupDto` porte `passages`,
-   * `distinctVehicles`, `avgStopMin` et `lastPriceEur` — NI SEUIL, NI STATUT — et
-   * aucune constante partagee ne definit le « 8 ». L'inventer cote client, ce
-   * serait poser un nombre qui doit rester d'accord avec la regle de detection
-   * du serveur : il deriverait en silence. Bloque tant que
-   * `GET /fleet-places/station-groups` n'expose pas `seuilPassages` + `statut`
-   * (SUIVI-REFONTE.md § 7.1).
+   * La file d'attente « 8/8 · PRET A VALIDER » est livree depuis le 2026-08-16 :
+   * le serveur envoie `seuilPassages` ET `statut`. Le client ne recalcule rien —
+   * inventer le « 8 » ici poserait un nombre qui doit rester d'accord avec la
+   * regle de detection du serveur, et qui deriverait en silence le jour ou elle
+   * bouge.
    */
   protected readonly onglet = signal<OngletPlaces>('valider');
 
   /**
    * Une station VALIDEE est devenue un lieu de la flotte : elle quitte « a valider ».
    * Sans ce filtre, l'onglet demanderait d'agir sur ce qui est deja fait.
+   *
+   * Tri par AVANCEMENT : les stations pretes a valider d'abord, puis celles qui
+   * approchent. C'est une file d'attente — ce qui est actionnable se lit en premier.
    */
-  protected readonly stationsAValider = computed(() =>
-    this.stations().filter((s) => !s.placeId),
+  protected readonly stationsAValider = computed(() => {
+    const rang: Record<string, number> = { PRET_A_VALIDER: 0, EN_COURS: 1, A_QUALIFIER: 2 };
+    return this.stations()
+      .filter((s) => !s.placeId)
+      .slice()
+      .sort((a, b) =>
+        (rang[a.statut ?? 'EN_COURS'] ?? 1) - (rang[b.statut ?? 'EN_COURS'] ?? 1)
+        || b.passages - a.passages,
+      );
+  });
+
+  /** Les stations que le serveur declare prêtes. Sert au bouton « Tout valider ». */
+  protected readonly stationsSures = computed(() =>
+    this.stationsAValider().filter((s) => s.statut === 'PRET_A_VALIDER'),
   );
+
+  /**
+   * L'avancement d'une station, tel que le SERVEUR le voit — ou null si ce backend
+   * ne l'envoie pas encore. Dans ce cas l'ecran se tait : mieux vaut ne rien dire
+   * que d'afficher « 6/undefined ».
+   */
+  protected avancement(s: StationGroupDto): { texte: string; libelle: string; classe: string } | null {
+    if (!s.statut || s.seuilPassages == null) return null;
+    switch (s.statut) {
+      case 'PRET_A_VALIDER':
+        return { texte: `${s.seuilPassages}/${s.seuilPassages}`, libelle: 'Prêt à valider', classe: 'pl-av--pret' };
+      case 'EN_COURS':
+        return { texte: `${s.passages}/${s.seuilPassages}`, libelle: 'En cours', classe: 'pl-av--cours' };
+      case 'A_QUALIFIER':
+        return { texte: `${s.passages}/${s.seuilPassages}`, libelle: 'À qualifier', classe: 'pl-av--qualifier' };
+      default:
+        return null;
+    }
+  }
+
+  /** Valide d'un coup les stations que le serveur declare sûres. */
+  protected async validerLesSures(): Promise<void> {
+    const sures = this.stationsSures();
+    if (sures.length === 0) return;
+    for (const s of sures) {
+      await this.validateStation(s);
+    }
+  }
 
   /** Les passages d'un lieu issu d'une station validee (pour ne pas les perdre). */
   protected stationOf(placeId: string): StationGroupDto | undefined {

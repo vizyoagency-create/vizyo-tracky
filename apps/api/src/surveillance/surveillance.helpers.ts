@@ -69,6 +69,7 @@ export function isWithinSchedule(
   endTime: string,
   scheduleDays: ScheduleDay[] | null | undefined,
   timezone: string = FLEET_TIME_ZONE,
+  weekendPermanent = false,
 ): boolean {
   const [sH, sM] = startTime.split(':').map(Number);
   const [eH, eM] = endTime.split(':').map(Number);
@@ -91,6 +92,26 @@ export function isWithinSchedule(
     if (!scheduleDays || scheduleDays.length === 0) return true;
     return scheduleDays.some((d) => DAY_INDEX[d] === idx);
   };
+
+  // ═══ « UN WEEK-END N'A PAS D'HEURES OUVRÉES » ═══════════════════════════════
+  //
+  // Un profil réglé 20:00 → 06:00 sur sept jours laissait le samedi de 06:00 à
+  // 20:00 SANS protection : quatorze heures où un dépôt est vide et où personne
+  // ne passe. L'écran affichait pourtant « antivol actif ». Même famille d'erreur
+  // que les heures lues en UTC (cf. le bloc ci-dessus) : une promesse tenue à
+  // l'affichage, pas dans les faits.
+  //
+  // Le test vient AVANT la plage — c'est bien lui qui la remplace ce jour-là, il
+  // ne s'y ajoute pas. Et il respecte `scheduleDays` : un samedi DÉCOCHÉ n'est pas
+  // surveillé du tout, sinon décocher un jour n'aurait plus aucun effet.
+  //
+  // ⚠️ `weekendPermanent` est `false` par défaut, et le paramètre est optionnel :
+  // tout appelant qui ne le passe pas garde EXACTEMENT le comportement d'avant.
+  // Décision client du 2026-08-16 (option B) : la case est décochée sur les profils
+  // existants, cochée à la création d'un nouveau.
+  if (weekendPermanent && (todayIdx === 0 || todayIdx === 6) && dayMatch(todayIdx)) {
+    return true;
+  }
 
   if (startMin === endMin) return false; // plage nulle
 

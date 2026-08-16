@@ -283,6 +283,11 @@ export class SurveillanceService {
           dto.scheduleDays === undefined
             ? undefined
             : (dto.scheduleDays as unknown as Prisma.InputJsonValue),
+        // `?? undefined` serait un piège ici : on doit pouvoir DÉCOCHER la case.
+        // `false ?? undefined` vaut bien `false`, mais on écrit le test explicite
+        // pour que la distinction « non transmis » / « transmis à false » se voie.
+        weekendPermanent:
+          dto.weekendPermanent === undefined ? undefined : dto.weekendPermanent,
         triggerVibration: dto.triggerVibration ?? undefined,
         triggerMovement: dto.triggerMovement ?? undefined,
         triggerDoor: dto.triggerDoor ?? undefined,

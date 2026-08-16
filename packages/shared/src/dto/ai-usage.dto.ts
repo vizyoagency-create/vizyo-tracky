@@ -36,6 +36,25 @@ export interface AiUsageBreakdownRowDto {
   outputTokens: number;
   costUsd: number;
   costEur: number;
+  /**
+   * Ce que ces appels ont réellement PRODUIT — « 418 trajets analysés ce mois ».
+   *
+   * La page disait ce que l'IA coûte sans jamais dire ce qu'elle rend : une
+   * facture sans ligne. Le coût seul ne permet aucune décision — c'est le
+   * rapport entre les deux qui en permet une.
+   *
+   * ⚠️ `null` = **non compté**, pas « zéro ». Les appels antérieurs à ce champ
+   * n'ont jamais enregistré leur nombre de résultats, et afficher « 0 résultat »
+   * pour un mois passé serait un mensonge tranquille. L'écran se tait alors.
+   */
+  resultats: number | null;
+  /**
+   * Ce que la fonction produit, au pluriel et en français : « trajets analysés »,
+   * « lieux qualifiés »… Nommé par le SERVEUR, qui seul connaît la liste des
+   * actions — le client n'a pas à deviner l'unité d'un compteur.
+   * `null` quand l'action est inconnue ou que la ligne n'agrège pas une action.
+   */
+  resultatsLibelle: string | null;
 }
 
 export interface AiUsageSummaryDto {

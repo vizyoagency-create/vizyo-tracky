@@ -20,6 +20,12 @@ export interface SurveillanceProfileDto {
   scheduleStartTime: string | null;
   scheduleEndTime: string | null;
   scheduleDays: string[] | null;
+  /**
+   * Samedi et dimanche cochés sont surveillés 24 h au lieu de suivre la plage.
+   * « Un week-end n'a pas d'heures ouvrées » — décision client du 2026-08-16.
+   * `false` sur tous les profils antérieurs : leur comportement n'a pas changé.
+   */
+  weekendPermanent: boolean;
   triggerVibration: boolean;
   triggerMovement: boolean;
   triggerDoor: boolean;
@@ -57,6 +63,7 @@ export interface UpdateProfileDto {
   scheduleStartTime?: string | null;
   scheduleEndTime?: string | null;
   scheduleDays?: string[] | null;
+  weekendPermanent?: boolean;
   triggerVibration?: boolean;
   triggerMovement?: boolean;
   triggerDoor?: boolean;

@@ -54,6 +54,19 @@ export interface StationGroupDto {
   /** Lieu de la flotte correspondant si la station est validée (sinon null). */
   placeId: string | null;
   placeName: string | null;
+  /**
+   * Passages nécessaires pour qualifier — le « 8 » de « 8/8 · PRÊT À VALIDER ».
+   *
+   * ⚠️ Vient du SERVEUR et ne se recalcule pas ici. Inventer ce nombre côté client
+   * poserait une valeur qui doit rester d'accord avec la règle de détection : le
+   * jour où celle-ci bouge, l'écran afficherait l'ancien seuil en ayant l'air juste.
+   *
+   * Optionnel : un backend antérieur ne l'envoie pas, et l'écran doit alors se
+   * taire plutôt que d'afficher « 8/undefined ».
+   */
+  seuilPassages?: number;
+  /** Où en est la station dans son cycle de vie. Dérivé côté serveur. */
+  statut?: 'A_QUALIFIER' | 'EN_COURS' | 'PRET_A_VALIDER' | 'VALIDE';
 }
 
 /**

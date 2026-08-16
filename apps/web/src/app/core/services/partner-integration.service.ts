@@ -34,6 +34,18 @@ export interface PartnerLinkStatus {
   billingStatus?: string;
   organizationName?: string | null;
   scopes?: string[];
+  /**
+   * Ce que chaque catégorie ACTIVE donne à voir, sur 30 jours glissants —
+   * « 3 412 trajets ». Clé = nom du périmètre.
+   *
+   * ⚠️ C'est un volume EXPOSÉ, pas consommé : rien n'enregistre ce que le
+   * partenaire lit réellement. C'est le bon chiffre pour cet écran, qui décide
+   * d'un ACCÈS — il répond à « cocher cette case donne accès à combien ».
+   *
+   * Une clé absente = compteur indisponible pour cette catégorie. L'écran se tait
+   * alors, au lieu d'afficher un zéro qui affirmerait « aucune donnée ».
+   */
+  volume30j?: Record<string, number>;
   approvedAt?: string | null;
   lastSeenAt?: string | null;
   revokedAt?: string | null;
