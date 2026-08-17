@@ -93,7 +93,8 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "jest": {
-    "maxWorkers": 6,
+    "maxWorkers": 2,
+    "cacheDirectory": "D:/dev-cache/jest",
     "moduleFileExtensions": [
       "js",
       "json",
