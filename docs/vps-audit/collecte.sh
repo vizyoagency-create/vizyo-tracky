@@ -1110,9 +1110,23 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
     echo "       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active, rien a faire."
     echo "          Une date de debut qui NE BOUGE PAS pendant que la fin avance = accumulation sans borne."
   fi
-  docker exec "$pg" psql -U "$U" -d "$D" -t -c \
+  # ⚠️ AJOUTE LE 2026-08-17 — angle mort n° 3 des rapports du 08-13 au 08-16, REPORTE CINQ FOIS.
+  # `random_page_cost` est lu ICI pour les six bases, et le levier 4 le RELISAIT avec un
+  # `docker exec` de plus par base — soit SIX chaines `runc` completes (~5 processus chacune,
+  # plus un backend Postgres) pour une valeur deja en memoire, sur la machine dont le demon
+  # Docker tourne en boucle depuis huit jours. On capture la sortie une fois, on l affiche, et
+  # on en DERIVE le levier 4 : c est le patron de VPS-M30 (« la table, les limites CPU et la
+  # carte des projets derivent toutes du MEME texte »), applique a un second objet.
+  # ⚠️ Le mode d echec est volontairement BRUYANT : si cette capture casse, le levier 4 affiche
+  # `🔴 0 / 6 bases examinees` — un aveu, pas une rassurance (discipline VPS-M28). Le garde de
+  # denominateur de VPS-M34 est conserve tel quel : c est lui le vrai correctif, pas la source.
+  REGLAGES=$(docker exec "$pg" psql -U "$U" -d "$D" -t -c \
     "SELECT '  reglage '||name||' = '||setting||coalesce(unit,'') FROM pg_settings
-     WHERE name IN ('shared_buffers','work_mem','effective_cache_size','random_page_cost');" 2>/dev/null
+     WHERE name IN ('shared_buffers','work_mem','effective_cache_size','random_page_cost');" 2>/dev/null)
+  [ -n "$REGLAGES" ] && printf '%s\n' "$REGLAGES"
+  RPC_UN=$(printf '%s\n' "$REGLAGES" | awk '/random_page_cost/ {print $NF}')
+  [ -n "$RPC_UN" ] && RPC_CACHE="${RPC_CACHE}${pg}=${RPC_UN}
+"
 done
 sub "Redis"
 for r in $(docker ps --format '{{.Names}}' 2>/dev/null | grep redis); do
@@ -1788,8 +1802,18 @@ fi
 # comparaison portait sur le declencheur en oubliant la grandeur sur laquelle il filtre.
 # C est pourquoi ce bloc affiche l AGE, et pas seulement la presence.
 sub "VPS-026 — alpine:latest sera-t-il retelecharge a la prochaine sauvegarde ?"
-ALP=$(docker images alpine:latest --format '{{.CreatedAt}}' 2>/dev/null | head -1)
-ALP_ID=$(docker images alpine:latest -q 2>/dev/null | head -1)
+# ⚠️ CORRIGE LE 2026-08-17 — `head -1` remplace par `awk NR==1`, et ce n est pas cosmetique.
+# `head` FERME son entree des qu il a sa ligne : le client Docker en amont recoit un SIGPIPE et
+# meurt en cours de requete. C est exactement la ligne « error reading preface from client » que
+# VPS-M12 interdit depuis le 2026-08-06, et qui precedait la premiere boucle de VPS-016.
+# `awk` lit jusqu a EOF : le client termine sa requete proprement, pour le meme fork.
+# ⚠️ Ces deux commandes rendent au plus UNE ligne (le filtre est un `repo:tag` exact), donc le
+# defaut ne peut pas se declencher ici AUJOURD HUI. On le rend structurellement impossible
+# quand meme : un argument « ca ne peut pas arriver » doit etre refait a chaque relecture, un
+# `awk` non. C est le seul des six `docker … | …` du script ou la coupure etait concevable —
+# les quatre autres passent par `sort` ou `grep`, qui lisent tout avant d ecrire.
+ALP=$(docker images alpine:latest --format '{{.CreatedAt}}' 2>/dev/null | awk 'NR==1')
+ALP_ID=$(docker images alpine:latest -q 2>/dev/null | awk 'NR==1')
 if [ -z "$ALP_ID" ]; then
   echo "  🔴 ABSENT : la sauvegarde de cette nuit TIRERA l image depuis Docker Hub."
   echo "     Le seul dispositif de sauvegarde des pieces d identite depend donc, a 03 h 31,"
@@ -2008,9 +2032,16 @@ sub "Levier 4 — reglages PostgreSQL"
 PG_TOUS=$(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | grep -E "postgres|postgis")
 PG_NB=$(printf '%s\n' "$PG_TOUS" | grep -c .)
 PG_VUS=0
+#
+# ⚠️ CORRIGE LE 2026-08-17 — CE LEVIER NE PARLE PLUS A DOCKER DU TOUT. Il relisait
+# `random_page_cost` par un `docker exec` supplementaire alors que la section 5 venait de le
+# lire pour les MEMES six bases. Six chaines `runc` et six backends Postgres pour une valeur
+# deja en memoire : un capteur qui coute sans rien apprendre (famille VPS-M05 / VPS-M30).
+# La valeur vient desormais de `RPC_CACHE`, rempli en section 5 a cout NUL.
+# ⚠️ Ce que ce correctif NE change PAS, et c est deliberе : le denominateur ci-dessous. Une base
+# absente de `RPC_CACHE` n est toujours PAS comptee comme vue, donc l ecart se voit (VPS-M34).
 for pg in $PG_TOUS; do
-  RPC=$(docker exec "$pg" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SHOW random_page_cost;"' 2>/dev/null | tr -d '
-')
+  RPC=$(printf '%s\n' "$RPC_CACHE" | awk -F= -v p="$pg" '$1==p {print $2; exit}')
   [ -z "$RPC" ] && continue
   PG_VUS=$(( PG_VUS + 1 ))
   # 4 = valeur pour disque MECANIQUE. Sur SSD, le planificateur surestime le cout des acces
