@@ -21,8 +21,59 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
  * SmsAdminController, decision §0.3 de docs/13-roadmap-v1.5-finition.md).
  */
 
+/**
+ * Statut de SOUMISSION d'un SMS sortant, tel que la passerelle le rend dans la même
+ * seconde. Ce sont les valeurs jamais réécrites par personne (cf. TRK-026).
+ */
+export const SMS_SUBMISSION_STATUSES = ['queued', 'accepted', 'sending', 'noop'] as const;
+/** Statuts terminaux d'ÉCHEC connus (fournisseur). */
+export const SMS_FAILED_STATUSES = [
+  'failed',
+  'rejected',
+  'undelivered',
+  'error',
+  'cancelled',
+  'canceled',
+] as const;
+/** Statuts terminaux de SUCCÈS — les seuls qui prouvent une remise. */
+export const SMS_DELIVERED_STATUSES = ['delivered', 'sent', 'received'] as const;
+
+/**
+ * Issue d'un envoi, à trois états — TRK-026 (2026-08-17).
+ *
+ * ⚠️ **Un booléen ne peut pas porter « accepté mais non confirmé »**, et c'est le SEUL
+ * état que ce canal produise aujourd'hui : la passerelle répond `queued` dans la même
+ * seconde et **aucun accusé de remise n'a jamais été enregistré**. Tout code qui traitait
+ * `ok === true` comme « le SMS est arrivé » se trompait ; il n'a jamais dit que ça.
+ *
+ * - `accepted`  : la passerelle a pris le message. **Ne prouve RIEN sur sa remise.**
+ * - `delivered` : un statut terminal de succès a été observé. **Seul cas qui prouve.**
+ * - `failed`    : refus explicite (HTTP non-2xx, statut d'échec, exception réseau).
+ */
+export type SmsOutcome = 'accepted' | 'delivered' | 'failed';
+
+/** Traduit un statut fournisseur en issue à trois états. */
+export function smsOutcomeFromStatus(status: string | null | undefined): SmsOutcome {
+  const s = String(status ?? '').toLowerCase();
+  if ((SMS_FAILED_STATUSES as readonly string[]).includes(s)) return 'failed';
+  if ((SMS_DELIVERED_STATUSES as readonly string[]).includes(s)) return 'delivered';
+  return 'accepted';
+}
+
 export interface SendSmsResult {
+  /**
+   * ⚠️ **`ok` signifie « non refusé », PAS « remis »** (TRK-026). Conservé tel quel : 11
+   * appelants s'appuient dessus, dont le repli du coupe-circuit — en changer le sens
+   * silencieusement serait pire que le défaut. Pour décider d'après une PREUVE de remise,
+   * lire `outcome === 'delivered'`.
+   */
   ok: boolean;
+  /** Issue à trois états. `accepted` = pris en charge, remise NON prouvée. */
+  outcome: SmsOutcome;
+  /** Statut brut rendu par la passerelle à la soumission (`queued` en pratique). */
+  submittedStatus?: string;
+  /** Identifiant de la ligne `sms_logs` créée — point d'entrée de la réconciliation. */
+  smsLogId?: string;
   twilioSid?: string;
   error?: string;
 }
@@ -147,19 +198,51 @@ export class SmsGatewayService implements OnModuleInit {
     fromNumber?: string;
     recentFailures24h?: number;
     lastFailure?: { at: string; toNumber: string | null; errorCode?: string; errorMessage?: string } | null;
+    /**
+     * 🔴 TRK-026 — **`recentFailures24h` n'est PAS un indicateur de santé**, et l'écran ne
+     * doit plus le présenter comme tel. Il compte les lignes `status='failed'`, or aucun
+     * code ne réécrit jamais `sms_logs.status` : seul un refus SYNCHRONE (HTTP non-2xx,
+     * timeout) peut produire un `failed`. Une SIM expirée, un téléphone déchargé ou un
+     * opérateur qui bloque rendent tous HTTP 200 + `queued` → ce compteur vaut 0.
+     * Mesuré en prod : dernier `failed` le 2026-07-25, soit 0 pendant 22 jours de cécité.
+     *
+     * `deliveryProofAvailable` dit la vérité : tant qu'il vaut `false`, AUCUN compteur de
+     * cette réponse ne peut affirmer que la chaîne fonctionne.
+     */
+    deliveryProofAvailable: boolean;
+    /** Sortants jamais sortis de leur statut de soumission — le vrai chiffre à afficher. */
+    pendingWithoutReceipt: number;
+    /** Date du plus ancien sortant sans accusé de remise (null si aucun). */
+    oldestPendingAt: string | null;
   }> {
     // Compte les SMS OUT en echec dans les 24h (utile meme en mode noop).
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [recentFailures24h, lastFailureRow] = await Promise.all([
-      this.prisma.smsLog.count({
-        where: { direction: 'OUT', status: 'failed', createdAt: { gte: since } },
-      }),
-      this.prisma.smsLog.findFirst({
-        where: { direction: 'OUT', status: 'failed' },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true, toNumber: true, errorCode: true, errorMessage: true },
-      }),
-    ]);
+    const submission = [...SMS_SUBMISSION_STATUSES];
+    const [recentFailures24h, lastFailureRow, pendingWithoutReceipt, oldestPending, everDelivered] =
+      await Promise.all([
+        this.prisma.smsLog.count({
+          where: { direction: 'OUT', status: 'failed', createdAt: { gte: since } },
+        }),
+        this.prisma.smsLog.findFirst({
+          where: { direction: 'OUT', status: 'failed' },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true, toNumber: true, errorCode: true, errorMessage: true },
+        }),
+        // Sortants figés sur un statut de soumission : la mesure honnête de la cécité.
+        this.prisma.smsLog.count({
+          where: { direction: 'OUT', status: { in: submission } },
+        }),
+        this.prisma.smsLog.findFirst({
+          where: { direction: 'OUT', status: { in: submission } },
+          orderBy: { createdAt: 'asc' },
+          select: { createdAt: true },
+        }),
+        // Un SEUL sortant ayant atteint un statut terminal de succès suffit à prouver que la
+        // chaîne d'accusés de remise existe. Zéro = elle n'a jamais fonctionné.
+        this.prisma.smsLog.count({
+          where: { direction: 'OUT', status: { in: [...SMS_DELIVERED_STATUSES] } },
+        }),
+      ]);
 
     const lastFailure = lastFailureRow
       ? {
@@ -169,6 +252,8 @@ export class SmsGatewayService implements OnModuleInit {
           errorMessage: lastFailureRow.errorMessage ?? undefined,
         }
       : null;
+    const deliveryProofAvailable = everDelivered > 0;
+    const oldestPendingAt = oldestPending ? oldestPending.createdAt.toISOString() : null;
 
     // vizyo-texto : ping le /health du relay (cout = 1 GET, pas de SMS).
     if (this.provider === 'vizyo-texto') {
@@ -181,6 +266,9 @@ export class SmsGatewayService implements OnModuleInit {
           fromNumber: this.textoUrl,
           recentFailures24h,
           lastFailure,
+          deliveryProofAvailable,
+          pendingWithoutReceipt,
+          oldestPendingAt,
         };
       } catch (err) {
         return {
@@ -190,6 +278,9 @@ export class SmsGatewayService implements OnModuleInit {
           fromNumber: this.textoUrl,
           recentFailures24h,
           lastFailure,
+          deliveryProofAvailable,
+          pendingWithoutReceipt,
+          oldestPendingAt,
         };
       }
     }
@@ -201,6 +292,9 @@ export class SmsGatewayService implements OnModuleInit {
         fromNumber: this.fromNumber || undefined,
         recentFailures24h,
         lastFailure,
+        deliveryProofAvailable,
+        pendingWithoutReceipt,
+        oldestPendingAt,
       };
     }
 
@@ -214,6 +308,9 @@ export class SmsGatewayService implements OnModuleInit {
         fromNumber: this.fromNumber,
         recentFailures24h,
         lastFailure,
+        deliveryProofAvailable,
+        pendingWithoutReceipt,
+        oldestPendingAt,
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -226,8 +323,59 @@ export class SmsGatewayService implements OnModuleInit {
         fromNumber: this.fromNumber,
         recentFailures24h,
         lastFailure,
+        deliveryProofAvailable,
+        pendingWithoutReceipt,
+        oldestPendingAt,
       };
     }
+  }
+
+  /**
+   * Relit l'état d'un sortant et le RÉCONCILIE si un statut terminal est connu — TRK-026.
+   *
+   * 🔴 **Pourquoi cette méthode existe.** Avant le 2026-08-17, `grep -rn "smsLog.update"`
+   * ne rendait **aucune occurrence** dans tout `apps/api/src` : `sms_logs.status` était écrit
+   * une seule fois, à l'insertion, et plus jamais. Le webhook entrant (`recordInbound`) ne
+   * crée que des lignes `received` pour les SMS **entrants** ; il ne réconcilie aucun sortant.
+   * Conséquence : un sortant restait figé sur son statut de soumission à vie, et TOUT
+   * instrument bâti dessus (preuve de vie, compteur d'échecs de l'écran admin) était inerte.
+   *
+   * ⚠️ **Cette méthode ne fabrique pas de preuve.** Elle offre le point d'entrée qui manquait.
+   * Tant que la passerelle n'expose pas d'accusé de remise (correctif nº 1 de TRK-018, dépôt
+   * `vizyo-texto`), `providerStatus` est indisponible et l'issue reste `accepted` — ce qui est
+   * la réponse HONNÊTE, pas un échec de la réconciliation.
+   *
+   * @param providerStatus statut terminal observé côté fournisseur, si on en a un.
+   * @returns l'issue à trois états après réconciliation, ou `null` si la ligne est introuvable.
+   */
+  async reconcileOutboundStatus(
+    smsLogId: string,
+    providerStatus?: string | null,
+  ): Promise<{ outcome: SmsOutcome; status: string | null } | null> {
+    const log = await this.prisma.smsLog.findUnique({
+      where: { id: smsLogId },
+      select: { id: true, status: true, direction: true },
+    });
+    if (!log || log.direction !== 'OUT') return null;
+
+    // Rien de neuf à écrire : on rend l'état courant tel quel. Un statut déjà terminal n'est
+    // JAMAIS réécrit — une preuve de remise ne se dégrade pas.
+    const current = smsOutcomeFromStatus(log.status);
+    if (!providerStatus || current !== 'accepted') {
+      return { outcome: current, status: log.status };
+    }
+
+    const next = String(providerStatus).toLowerCase();
+    if (smsOutcomeFromStatus(next) === 'accepted') {
+      // Le fournisseur répond encore un statut de soumission → toujours aucune preuve.
+      return { outcome: 'accepted', status: log.status };
+    }
+    const updated = await this.prisma.smsLog.update({
+      where: { id: log.id },
+      data: { status: next },
+      select: { status: true },
+    });
+    return { outcome: smsOutcomeFromStatus(updated.status), status: updated.status };
   }
 
   /**
@@ -260,7 +408,7 @@ export class SmsGatewayService implements OnModuleInit {
     context: SmsSendContext,
   ): Promise<SendSmsResult> {
     const safeTo = to.trim();
-    if (!safeTo) return { ok: false, error: 'Numero destinataire vide' };
+    if (!safeTo) return { ok: false, outcome: 'failed', error: 'Numero destinataire vide' };
 
     // vizyo-texto en priorite (V1.14 — remplace l'appel Twilio).
     if (this.provider === 'vizyo-texto') {
@@ -269,7 +417,7 @@ export class SmsGatewayService implements OnModuleInit {
 
     // No-op mode: write the audit row, return success without network call.
     if (this.provider === 'noop' || !this.client) {
-      await this.prisma.smsLog.create({
+      const log = await this.prisma.smsLog.create({
         data: {
           direction: 'OUT',
           fromNumber: this.fromNumber || 'noop',
@@ -283,7 +431,9 @@ export class SmsGatewayService implements OnModuleInit {
         },
       });
       this.logger.debug(`[noop] SMS to ${safeTo}: ${body}`);
-      return { ok: true };
+      // `noop` = pris en charge, rien d'envoyé : `accepted`, jamais `delivered`. Hors prod
+      // la nuance est gratuite ; en prod elle empêche un no-op de passer pour une remise.
+      return { ok: true, outcome: 'accepted', submittedStatus: 'noop', smsLogId: log.id };
     }
 
     try {
@@ -292,7 +442,7 @@ export class SmsGatewayService implements OnModuleInit {
         to: safeTo,
         body,
       });
-      await this.prisma.smsLog.create({
+      const log = await this.prisma.smsLog.create({
         data: {
           direction: 'OUT',
           fromNumber: this.fromNumber,
@@ -306,7 +456,14 @@ export class SmsGatewayService implements OnModuleInit {
           context: context as object,
         },
       });
-      return { ok: true, twilioSid: message.sid };
+      return {
+        ok: true,
+        // Twilio rend `queued`/`accepted` à la soumission : `accepted`, pas `delivered`.
+        outcome: smsOutcomeFromStatus(message.status),
+        submittedStatus: message.status,
+        smsLogId: log.id,
+        twilioSid: message.sid,
+      };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       const errorCode = (err as { code?: string | number }).code?.toString();
@@ -331,7 +488,7 @@ export class SmsGatewayService implements OnModuleInit {
         'sms-gateway',
         { imei: context?.imei, toNumber: safeTo, errorCode, provider: 'twilio' },
       ).catch((e) => this.logger.error('ErrorLog persist failed', e));
-      return { ok: false, error: errorMessage };
+      return { ok: false, outcome: 'failed', submittedStatus: 'failed', error: errorMessage };
     }
   }
 
@@ -433,7 +590,7 @@ export class SmsGatewayService implements OnModuleInit {
           'sms-gateway',
           { imei: context?.imei, toNumber: to, httpStatus: res.status, provider: 'vizyo-texto' },
         ).catch((e) => this.logger.error('ErrorLog persist failed', e));
-        return { ok: false, error: errorMessage };
+        return { ok: false, outcome: 'failed', submittedStatus: 'failed', error: errorMessage };
       }
 
       // B4 — 200 mais body vide/malformé → traiter comme échec.
@@ -459,12 +616,12 @@ export class SmsGatewayService implements OnModuleInit {
           'sms-gateway',
           { imei: context?.imei, toNumber: to, httpStatus: res.status, provider: 'vizyo-texto' },
         ).catch((e) => this.logger.error('ErrorLog persist failed', e));
-        return { ok: false, error: errorMessage };
+        return { ok: false, outcome: 'failed', submittedStatus: 'failed', error: errorMessage };
       }
 
       const providerId = data.providerId ?? data.id;
       const status = data.status ?? 'queued';
-      await this.prisma.smsLog.create({
+      const log = await this.prisma.smsLog.create({
         data: {
           direction: 'OUT',
           fromNumber: 'vizyo-texto',
@@ -479,9 +636,27 @@ export class SmsGatewayService implements OnModuleInit {
         },
       });
       // #34 — `ok` ne doit PAS rester true pour les statuts d'echec autres que
-      // 'failed' (rejected/undelivered/error...). Liste des statuts d'echec connus.
-      const failedStatuses = ['failed', 'rejected', 'undelivered', 'error', 'cancelled', 'canceled'];
-      return { ok: !failedStatuses.includes(String(status).toLowerCase()), twilioSid: providerId };
+      // 'failed' (rejected/undelivered/error...).
+      //
+      // 🔴 TRK-026 (2026-08-17) — **ce durcissement ne pouvait rien attraper.** Il élargit la
+      // liste des statuts d'ÉCHEC, alors que le seul statut que cette passerelle rende ici est
+      // `queued` — qui n'en est pas un, et ne doit pas en devenir un : `queued` n'est pas un
+      // échec, c'est une ABSENCE DE RÉPONSE. En production, 332 messages sortants sont figés
+      // sur ce statut et aucun n'a jamais atteint d'état terminal depuis le 2026-07-25.
+      // *On avait corrigé la forme du test, pas le fait qu'il n'y a rien à tester.*
+      //
+      // D'où `outcome` : le statut de soumission décide de `accepted` vs `failed`, et JAMAIS
+      // de `delivered`. Seule une réconciliation ultérieure (`reconcileOutboundStatus`) peut
+      // prononcer `delivered` — et elle a besoin d'un accusé de remise que la passerelle
+      // n'expose pas encore (correctif nº 1 de TRK-018, dépôt vizyo-texto).
+      const outcome = smsOutcomeFromStatus(status);
+      return {
+        ok: outcome !== 'failed',
+        outcome,
+        submittedStatus: status,
+        smsLogId: log.id,
+        twilioSid: providerId,
+      };
     } catch (err) {
       // A1 — erreur réseau / timeout → log dans ErrorLog.
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -505,7 +680,7 @@ export class SmsGatewayService implements OnModuleInit {
         'sms-gateway',
         { imei: context?.imei, toNumber: to, provider: 'vizyo-texto' },
       ).catch((e) => this.logger.error('ErrorLog persist failed', e));
-      return { ok: false, error: errorMessage };
+      return { ok: false, outcome: 'failed', submittedStatus: 'failed', error: errorMessage };
     }
   }
 

@@ -110,16 +110,35 @@ export class SmsAdminController {
   /**
    * V1.15 — POST /api/admin/sms/heartbeat/run-now
    *
-   * Declenche manuellement la "preuve de vie" SMS (sinon cron hebdo lundi 09h00).
+   * Declenche manuellement l'ENVOI de la "preuve de vie" SMS (sinon cron hebdo lundi 09h00).
    * Utile pour valider la chaine SMS post-deploiement sans attendre. Envoie un
    * SMS de test a chaque numero de SMS_HEARTBEAT_RECIPIENTS via la gateway active.
    *
-   * Returns : { provider, recipients, sent, failed, skipped, results[] }
+   * Returns : { provider, recipients, sent, failed, skipped, smsLogIds[], results[] }
    * `skipped=true` => aucun destinataire configure (no-op safe).
+   *
+   * ⚠️ **`sent` ne prouve PAS que le SMS est arrive** (TRK-026) : il compte les messages
+   * ACCEPTES par la passerelle, dans la meme seconde. Pour un verdict de remise, appeler
+   * ensuite `POST heartbeat/verify` — quelques minutes plus tard.
    */
   @Post('heartbeat/run-now')
   async runHeartbeat() {
     return this.heartbeat.runHeartbeat();
+  }
+
+  /**
+   * TRK-026 — POST /api/admin/sms/heartbeat/verify
+   *
+   * Relit les heartbeats recents et prononce le verdict de REMISE. N'envoie rien :
+   * idempotent, rejouable. Pendant manuel du cron de lundi 09h20.
+   *
+   * Returns : { verdict, checked, delivered, failed, indeterminate, oldestAgeMin }
+   * `verdict = 'INDETERMINE'` est la reponse HONNETE tant que la passerelle n'expose
+   * aucun accuse de remise : ni un succes, ni une panne.
+   */
+  @Post('heartbeat/verify')
+  async verifyHeartbeat() {
+    return this.heartbeat.verifyHeartbeat();
   }
 
   @Get('logs')

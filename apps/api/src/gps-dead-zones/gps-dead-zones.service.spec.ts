@@ -85,12 +85,12 @@ describe('GpsDeadZonesService', () => {
     expect(prisma.gpsDeadZone.create).not.toHaveBeenCalled();
   });
 
-  it('rattache une perte proche à la zone existante et promeut LEARNING→RECURRING au seuil', async () => {
+  it('rattache une perte proche à la zone existante et incrémente les occurrences', async () => {
     const { svc, prisma } = build();
     prisma.gpsLossEvent.create.mockResolvedValue({ id: 'e2' });
-    // Zone existante ~12 m plus loin, déjà 2 occurrences (seuil défaut = 3).
+    // Zone existante ~12 m plus loin, déjà 2 occurrences.
     prisma.gpsDeadZone.findMany.mockResolvedValue([
-      { id: 'z1', vehicleId: 'v1', centroidLat: 43.6, centroidLng: 1.45, radiusM: 8, occurrences: 2, status: 'LEARNING', placeLabel: 'Toulouse' },
+      { id: 'z1', vehicleId: 'v1', centroidLat: 43.6, centroidLng: 1.45, radiusM: 8, occurrences: 2, status: 'LEARNING', label: 'UNKNOWN', reviewedAt: null, placeLabel: 'Toulouse' },
     ]);
     prisma.gpsDeadZone.update.mockImplementation(({ data }: any) => ({ id: 'z1', ...data }));
 
@@ -100,8 +100,131 @@ describe('GpsDeadZonesService', () => {
     expect(prisma.gpsDeadZone.update).toHaveBeenCalledTimes(1);
     const data = prisma.gpsDeadZone.update.mock.calls[0][0].data;
     expect(data.occurrences).toBe(3);
-    expect(data.status).toBe('RECURRING'); // 3 >= seuil
+    // ⚠️ RECALIBRÉ le 2026-08-17. Ce test attendait `RECURRING` (3 >= minOccurrences).
+    // Depuis la règle du parking souterrain, une zone JAMAIS revue est qualifiée dès la
+    // 2ᵉ occurrence — elle est donc déjà `CONFIRMED_BENIGN` en arrivant à 3. La promotion
+    // LEARNING→RECURRING reste testée ci-dessous, avec un seuil de parking relevé.
+    expect(data.status).toBe('CONFIRMED_BENIGN');
+    expect(data.label).toBe('UNDERGROUND_PARKING');
     expect(res!.zone.id).toBe('z1');
+  });
+
+  // --- 2026-08-17 : qualification AUTOMATIQUE en parking souterrain ----------------------
+  //
+  // Cause réelle terrain : les véhicules se garent dans des parkings souterrains. Reperdre
+  // le GPS au MÊME endroit signe un lieu, pas une panne. À la 2ᵉ perte le lieu est qualifié
+  // et devient silencieux ; la 1ʳᵉ alerte toujours.
+
+  describe('qualification automatique en parking', () => {
+    const zoneAt = (occurrences: number, over: Record<string, unknown> = {}) => ({
+      id: 'z1',
+      vehicleId: 'v1',
+      centroidLat: 43.6,
+      centroidLng: 1.45,
+      radiusM: 8,
+      occurrences,
+      status: 'LEARNING',
+      label: 'UNKNOWN',
+      reviewedAt: null,
+      placeLabel: 'Toulouse',
+      ...over,
+    });
+
+    const recordSecondLoss = async (zone: Record<string, unknown>) => {
+      const { svc, prisma } = build();
+      prisma.gpsLossEvent.create.mockResolvedValue({ id: 'e9' });
+      prisma.gpsDeadZone.findMany.mockResolvedValue([zone]);
+      prisma.gpsDeadZone.update.mockImplementation(({ data }: any) => ({ id: 'z1', ...data }));
+      await svc.recordLoss(lossInput({ lat: 43.6001, lng: 1.45, lostAt: new Date('2026-07-16T08:00:00Z') }));
+      return prisma.gpsDeadZone.update.mock.calls[0][0].data;
+    };
+
+    it('🔑 qualifie UNDERGROUND_PARKING + CONFIRMED_BENIGN à la 2ᵉ occurrence', async () => {
+      const data = await recordSecondLoss(zoneAt(1));
+      expect(data.occurrences).toBe(2);
+      expect(data.label).toBe('UNDERGROUND_PARKING');
+      expect(data.status).toBe('CONFIRMED_BENIGN');
+    });
+
+    it('🔑 ne qualifie RIEN à la 1ʳᵉ occurrence — la première perte doit alerter', async () => {
+      const { svc, prisma } = build();
+      prisma.gpsLossEvent.create.mockResolvedValue({ id: 'e1' });
+      prisma.gpsDeadZone.findMany.mockResolvedValue([]);
+      prisma.gpsDeadZone.create.mockResolvedValue({ id: 'z1', occurrences: 1, status: 'LEARNING', label: 'UNKNOWN', centroidLat: 43.6, centroidLng: 1.45, placeLabel: null });
+
+      await svc.recordLoss(lossInput());
+
+      // C'est le seul signal utile pour l'exploitant : un véhicule a perdu le GPS ICI.
+      const data = prisma.gpsDeadZone.create.mock.calls[0][0].data;
+      expect(data.status).toBe('LEARNING');
+      expect(data.label).toBeUndefined(); // défaut Prisma = UNKNOWN, jamais posé à la main
+    });
+
+    it('⚠️ ne TOUCHE PAS une zone revue par un opérateur (SUSPECT reste SUSPECT)', async () => {
+      const data = await recordSecondLoss(
+        zoneAt(1, { status: 'SUSPECT', label: 'JAMMER_SUSPECTED', reviewedAt: new Date('2026-08-01') }),
+      );
+      // Un humain qui soupçonne un brouilleur ne doit jamais voir son verdict écrasé par
+      // une heuristique — sinon on éteint l'alerte exactement là où elle compte.
+      expect(data.status).toBe('SUSPECT');
+      expect(data.label).toBe('JAMMER_SUSPECTED');
+    });
+
+    it("⚠️ ne requalifie pas une zone revue laissée en UNKNOWN (l'opérateur a tranché le statut)", async () => {
+      const data = await recordSecondLoss(
+        zoneAt(1, { status: 'RECURRING', label: 'UNKNOWN', reviewedAt: new Date('2026-08-01') }),
+      );
+      expect(data.label).toBe('UNKNOWN');
+      expect(data.status).toBe('RECURRING');
+    });
+
+    it('traite un champ ABSENT comme « jamais qualifiée » (mock partiel ≡ null Prisma)', async () => {
+      // Garde-fou de cohérence mock/réalité : Prisma rend `null`/`UNKNOWN`, un objet partiel
+      // rend `undefined`. Les deux doivent déclencher la qualification, sinon le test et la
+      // production divergent en silence.
+      const partielle = { id: 'z1', vehicleId: 'v1', centroidLat: 43.6, centroidLng: 1.45, radiusM: 8, occurrences: 1, status: 'LEARNING' };
+      const data = await recordSecondLoss(partielle);
+      expect(data.label).toBe('UNDERGROUND_PARKING');
+      expect(data.status).toBe('CONFIRMED_BENIGN');
+    });
+
+    it('respecte GPS_DEADZONE_AUTO_PARKING_OCCURRENCES — et la promotion RECURRING reste vivante', async () => {
+      const prev = process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES;
+      process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES = '5';
+      try {
+        const prisma = buildPrisma();
+        const svc = new GpsDeadZonesService(prisma, { label: jest.fn().mockResolvedValue(null) } as any);
+        prisma.gpsLossEvent.create.mockResolvedValue({ id: 'e9' });
+        prisma.gpsDeadZone.findMany.mockResolvedValue([zoneAt(2)]);
+        prisma.gpsDeadZone.update.mockImplementation(({ data }: any) => ({ id: 'z1', ...data }));
+
+        await svc.recordLoss(lossInput({ lat: 43.6001, lng: 1.45, lostAt: new Date('2026-07-16T08:00:00Z') }));
+
+        // Seuil de parking relevé à 5 → à 3 occurrences, c'est la promotion historique
+        // LEARNING→RECURRING (minOccurrences = 3) qui s'applique. Ce chemin n'est donc pas
+        // du code mort : il redevient atteignable dès que les deux seuils se croisent.
+        const data = prisma.gpsDeadZone.update.mock.calls[0][0].data;
+        expect(data.occurrences).toBe(3);
+        expect(data.status).toBe('RECURRING');
+        expect(data.label).toBe('UNKNOWN');
+      } finally {
+        if (prev === undefined) delete process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES;
+        else process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES = prev;
+      }
+    });
+
+    it('plancher DUR à 2 : un seuil à 1 est refusé (la 1ʳᵉ perte doit toujours alerter)', () => {
+      const prev = process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES;
+      process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES = '1';
+      try {
+        const svc = new GpsDeadZonesService(buildPrisma(), { label: jest.fn() } as any);
+        // Un 1 accepté rendrait le détecteur muet dès la première perte, donc inutile.
+        expect(svc.autoParkingOccurrences).toBe(2);
+      } finally {
+        if (prev === undefined) delete process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES;
+        else process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES = prev;
+      }
+    });
   });
 
   it('crée une SECONDE zone quand la perte est loin de toute zone existante', async () => {

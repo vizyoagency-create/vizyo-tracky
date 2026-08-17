@@ -17,6 +17,81 @@
 
 ---
 
+## ✅ 2026-08-17 *(passe de correction)* — TRK-026 corrigé, et la règle du parking souterrain appliquée
+
+Première fois que ce référentiel enregistre du **code écrit**, pas seulement un correctif proposé.
+Deux chantiers, demandés explicitement par le propriétaire.
+
+### 1. [TRK-026](#trk-026) — la preuve de vie SMS peut enfin échouer
+
+Quatre gestes : le **chemin d'écriture qui manquait** (`reconcileOutboundStatus` — il n'existait
+aucun `smsLog.update` dans tout le dépôt), l'**issue à trois états** (`accepted`/`delivered`/
+`failed`), la **vérification différée** (deux crons : envoi lundi 09:00, verdict lundi 09:20), et un
+corps de message qui **cesse d'affirmer** que la chaîne est saine.
+
+> ⚠️ **`ok` est conservé, délibérément.** Onze appelants s'appuient dessus, dont le repli du
+> coupe-circuit. *En changer le sens silencieusement aurait été pire que le défaut d'origine :* un
+> booléen qui veut soudain dire autre chose casse une garde de sécurité sans rien signaler. Le
+> commentaire dit maintenant ce qu'il vaut — « non refusé », pas « remis ».
+
+🔑 **Un cas que rien ne couvrait est apparu en écrivant la vérification** : le verdict `NON_EMIS`,
+quand le cron d'envoi lui-même n'a pas tourné. *Un heartbeat absent et un heartbeat non remis se
+ressemblent exactement quand on ne regarde que les erreurs.*
+
+⚠️ **Le verdict restera `INDETERMINE` après déploiement, et c'est le résultat attendu** — pas un bug.
+On remplace un faux vert par un « on ne sait pas » daté. La ligne disparaîtra d'elle-même quand la
+passerelle exposera un accusé de remise ([TRK-018](#trk-018) nº 1).
+
+### 2. Perte GPS — la règle du parking souterrain
+
+**Cause réelle, donnée par le propriétaire : les véhicules se garent dans des parkings souterrains.**
+Le GSM passe, le ciel non. Reperdre le GPS **au même endroit** signe donc un lieu, pas une panne.
+
+| Occurrence au même endroit | Comportement |
+|---|---|
+| **1ʳᵉ** | **alerte** — le seul signal utile |
+| **2ᵉ** | lieu qualifié `UNDERGROUND_PARKING` **automatiquement** → **plus aucune alerte** |
+| 3ᵉ et + | rien : ni alerte flotte, ni ligne, ni comptage |
+
+Et le plafond de 24 h de [TRK-011](#trk-011) est **retiré sur les zones de parking**. C'est lui qui
+signait **18 des 27** lignes `gps-integrity`, sur deux véhicules dont les zones étaient **déjà**
+qualifiées parking par un opérateur.
+
+> 🔑 **Un calibrage juste sur une prémisse fausse reste faux.** Le code justifiait ses 24 h par « un
+> stationnement de nuit dure ~12 h ». Sur un parking souterrain, un véhicule reste garé une semaine
+> de congés. *La durée d'une perte n'y porte aucune information — le plafond ne mesurait qu'une
+> durée de stationnement.*
+
+⚠️ **Deux mocks divergeaient de la production, et l'auraient laissé passer.** La garde d'origine
+s'écrivait `zone.reviewedAt === null` et `zone.label === 'UNKNOWN'` ; les mocks de test omettent ces
+champs (`undefined`), Prisma rend `null` / `'UNKNOWN'`. **Les tests passaient tout en décrivant un
+comportement différent de la production.** Réécrit en tests de présence — et un test dédié verrouille
+désormais l'équivalence « champ absent ≡ `null` Prisma ». *Un test vert sur un mock qui n'existe pas
+en base ne prouve rien.*
+
+⚠️ **La contrepartie a sa propre fiche : [TRK-027](#trk-027).** Une antenne morte se tait au même
+endroit qu'un parking → silenciée dès la 2ᵉ fois. Le fait reste **consultable** (le journal du cron
+nomme les véhicules silenciés et la durée, `gps_sans_fix` le mesure chaque nuit) mais n'est plus
+notifié. Le garde-fou à écrire est **le contact**, pas une durée : *une voiture qui roule sans fix
+n'est dans aucun parking.* Il est bloqué par un prérequis mesuré — **l'ACC n'est pas persisté sur
+une trame `no_fix`** (`tcp-server.service.ts` n'y écrit que `lastSeenAt`/`lastNoFixAt`), donc
+`lastKnownIgnition` est figé pendant toute la perte. L'écrire sans ce prérequis produirait un
+garde-fou qui **affirme une cause fausse**.
+
+### Vérification
+
+`pnpm typecheck` ✅ · smoke-boot DI ✅ *(5 tests — le heartbeat injecte désormais `PrismaService`,
+résolu par `PrismaModule` qui est `@Global()` : aucun câblage à ajouter, et c'est **prouvé**)* ·
+**51 tests** sur les 3 suites touchées, dont **19 neufs** · suite complète **2106/2107**, l'unique
+échec (`partner-invitation`) passant **29/29 en isolation** — instabilité connue du harnais.
+
+🔴 **Rien n'est déployé.** Le code est sur une branche, non poussé, non mergé : la production tourne
+toujours l'ancien comportement. Les deux fiches restent donc 🟠 jusqu'à vérification en ligne.
+
+---
+
+---
+
 ## 🔴 2026-08-17 *(2ᵉ passage, 08:48)* — la sonde chargée d'annoncer la panne du canal de secours ne peut pas rendre « en panne »
 
 Relance demandée le même jour. `error_logs` n'a pas bougé d'une ligne — **zéro écriture depuis le
@@ -3956,6 +4031,45 @@ Une perte dépassant le plafond dans une zone bénigne produit une ligne — **e
 nuit ordinaire n'en produit toujours aucune**. Le second point est le vrai test : un correctif qui
 ferait re-crier la zone à chaque perte aurait annulé la fonctionnalité.
 
+### 🔶 2026-08-17 — LE PLAFOND EST RETIRÉ SUR LES ZONES DE PARKING (décision du propriétaire)
+
+Ce plafond a été juste pendant treize jours, puis il est devenu la **première source de bruit du
+centre d'alerte**. Mesuré au 2ᵉ passage du 17/08 :
+
+| Famille de ligne `gps-integrity` | Lignes | Sur |
+|---|---|---|
+| **« GPS perdu ANORMALEMENT LONG » (ce plafond)** | **18 / 27** | **2 véhicules** — FZ-862-VY (10) et FS-253-HR (8) |
+| « GPS perdu … depuis 2 h » (première perte) | 9 / 27 | 6 véhicules distincts |
+
+**Et les deux zones incriminées étaient DÉJÀ qualifiées `UNDERGROUND_PARKING` par un opérateur**,
+statut `CONFIRMED_BENIGN`, `reviewedAt` renseigné. Autrement dit : un humain avait déjà répondu à la
+question, et le plafond continuait de poser la question tous les jours.
+
+> 🔑 **Le calibrage reposait sur une prémisse fausse.** Le commentaire du code disait : *« un
+> stationnement de nuit ordinaire dure ~12 h ; 24 h laisse passer un week-end court »*. La cause
+> réelle, donnée par le propriétaire, est le **parking souterrain** — où un véhicule reste garé un
+> week-end, une semaine de congés, un mois. *Sur un parking, la durée d'une perte ne porte
+> AUCUNE information ; le plafond ne mesurait donc rien qu'une durée de stationnement.*
+
+**Ce qui change** (`gps-integrity.service.ts`) : `benignSilenceExceeded` gagne la condition
+`!isParkingZone`. Une zone dont le libellé est `UNDERGROUND_PARKING` ou `COVERED_PARKING` silencie
+**sans aucun plafond**.
+
+**Ce qui NE change pas :** le plafond reste **intégralement actif** pour toute autre zone
+`CONFIRMED_BENIGN`. Là, la confirmation dit « cet endroit est normal » sans dire pourquoi, et la
+durée porte encore de l'information. Un test le verrouille explicitement sur une zone
+`JAMMER_SUSPECTED` — sans lui, la levée du plafond aurait rouvert le trou en grand.
+
+⚠️ **La contrepartie est réelle et elle a sa propre fiche : [TRK-027](#trk-027).** Une antenne morte
+se tait au même endroit qu'un parking, donc elle sera silenciée dès la 2ᵉ occurrence. Le fait reste
+**consultable** (journal du cron, `gps_sans_fix`, fiche véhicule), il n'est plus notifié. Le
+garde-fou qui reste à écrire est **le contact**, pas une durée — et il exige de persister l'ACC des
+trames `no_fix`, qui ne l'est pas.
+
+*Cette fiche reste 🟢 CORRIGÉ : le trou qu'elle a bouché — une zone bénigne muette SANS BORNE et
+sans qu'on sache pourquoi — l'est toujours. Ce qui est retiré, c'est son application à un cas où la
+borne était structurellement fausse.*
+
 ---
 
 ## TRK-019
@@ -4557,8 +4671,9 @@ jamais bougé.
 
 **Signature** — *(absence de ligne, pas une erreur)* `sms-heartbeat | (aucune ligne, jamais) |
 preuve de vie hebdomadaire dont l'échec est structurellement impossible`
-**Statut : 🔴 NON CORRIGÉ** · **0 ligne `sms-heartbeat` depuis la mise en service · 332 SMS sortants
-figés en `queued` · aucun état terminal depuis le 2026-07-25** · découvert 2026-08-17 *(2ᵉ passage)*
+**Statut : 🟠 CORRECTIF ÉCRIT ET TESTÉ, non déployé** · **0 ligne `sms-heartbeat` depuis la mise en
+service · 332 SMS sortants figés en `queued` · aucun état terminal depuis le 2026-07-25** ·
+découvert 2026-08-17 *(2ᵉ passage)* · corrigé le 2026-08-17 *(voir « Correctif appliqué » en bas)*
 
 > ### La sonde chargée d'annoncer la panne du canal de repli du coupe-circuit ne peut pas rendre « en panne ».
 
@@ -4685,6 +4800,189 @@ Le prochain heartbeat tombe **lundi 24/08 à 07:00 UTC**. Relever (a) le statut 
 **Condition d'échec du diagnostic :** si une ligne `sms-heartbeat` apparaît **sans qu'aucun correctif
 n'ait été livré**, l'analyse est fausse et il faut la reprendre entièrement — un chemin d'écriture
 existerait alors, que ce passage n'a pas trouvé.
+
+---
+
+### ✅ 2026-08-17 — CORRECTIF APPLIQUÉ (écrit, testé, **non déployé**)
+
+Quatre gestes, dans l'ordre où ils comptent.
+
+#### 1. Le chemin d'écriture qui manquait — `reconcileOutboundStatus()`
+
+`apps/api/src/sms/sms-gateway.service.ts`. C'était la cause racine : **aucun `smsLog.update`
+n'existait dans tout `apps/api/src`**. Sans point d'entrée, aucun accusé de remise n'aurait pu être
+enregistré même s'il arrivait. La méthode ne **fabrique** aucune preuve — elle rend l'état courant
+quand aucun statut fournisseur n'est disponible, et **ne réécrit jamais un statut déjà terminal**
+(une preuve de remise ne se dégrade pas).
+
+#### 2. L'issue à trois états — `SmsOutcome`
+
+`accepted` / `delivered` / `failed`, avec `smsOutcomeFromStatus()` et trois listes explicites
+(`SMS_SUBMISSION_STATUSES`, `SMS_FAILED_STATUSES`, `SMS_DELIVERED_STATUSES`).
+
+⚠️ **`ok` est CONSERVÉ tel quel, et c'est délibéré.** Onze appelants s'appuient dessus, dont le repli
+du coupe-circuit (`engine-control.service.ts:494` et `:769`) et le provisioning. En changer le sens
+silencieusement aurait été **pire que le défaut d'origine** : un booléen qui veut soudain dire autre
+chose casse des gardes de sécurité sans rien signaler. Son commentaire dit désormais ce qu'il vaut —
+« non refusé », pas « remis » — et `outcome` est là pour qui veut décider sur une preuve.
+
+#### 3. La sonde ne conclut plus à l'envoi — vérification différée
+
+`apps/api/src/sms/sms-heartbeat.service.ts`. Deux crons au lieu d'un :
+
+| Cron | Heure (Europe/Paris) | Rôle |
+|---|---|---|
+| `sms-heartbeat` | lundi **09:00** | envoie, et **ne conclut rien** |
+| `sms-heartbeat-verify` | lundi **09:20** | relit les messages émis et **prononce le verdict** |
+
+Verdict à cinq branches : `OK` (remise prouvée → **silence**), `ECHEC` (refus → `CRITICAL`),
+`INDETERMINE` (accepté sans preuve → `ERROR` explicite), **`NON_EMIS`** (aucun heartbeat en base →
+`CRITICAL`), `SANS_OBJET` (aucun destinataire).
+
+> 🔑 **`NON_EMIS` couvre un cas que RIEN ne couvrait** : le cron d'envoi qui ne tourne pas
+> (conteneur redémarré au mauvais moment, `@Cron` non enregistré, exception avalée). *Un heartbeat
+> absent et un heartbeat non remis se ressemblent exactement quand on ne regarde que les erreurs.*
+
+⚠️ **Deux crons plutôt qu'un `setTimeout`** : cette sonde tourne une fois par semaine, donc la
+fenêtre où un redéploiement avalerait un timer en mémoire est énorme. La vérification retrouve ses
+messages en base par `template = 'gateway_heartbeat'` → idempotente, rejouable à la main via
+`POST /api/admin/sms/heartbeat/verify`.
+
+#### 4. Le corps du message ne mentionne plus la santé de la chaîne
+
+`« chaine SMS OK »` → `« si vous lisez ceci, la remise fonctionne »`. L'ancien texte se lisait comme
+un **constat** alors qu'il n'était qu'un envoi tenté — porté par la chaîne même qu'il prétendait
+valider. Un test verrouille l'absence de l'ancienne formule.
+
+#### Et l'écran d'administration cesse d'être vert par construction
+
+`healthCheck()` expose `deliveryProofAvailable` (faux tant qu'aucun sortant n'a jamais atteint un
+statut terminal de succès), `pendingWithoutReceipt` et `oldestPendingAt`. `recentFailures24h` reste
+présent pour la compatibilité, avec un commentaire qui dit pourquoi il ne mesure rien.
+
+#### Vérification exécutée
+
+| | |
+|---|---|
+| `pnpm typecheck` | ✅ 3 tâches |
+| Smoke-boot DI (`app.module.smoke`) | ✅ 5 tests — `SmsHeartbeatService` injecte désormais `PrismaService`, résolu via `PrismaModule` qui est `@Global()` : **aucun câblage de module à ajouter**, et c'est prouvé, pas supposé |
+| `sms-heartbeat.service.spec.ts` | ✅ **12 tests** (dont 7 neufs sur la vérification différée) |
+| Suite complète | ✅ 2106/2107 — l'unique échec (`partner-invitation`) passe **29/29 en isolation** : instabilité connue du harnais, sans rapport |
+
+#### ⚠️ Ce que ce correctif NE fait pas
+
+Il ne rend pas la chaîne SMS prouvable. Tant que la passerelle n'expose pas d'accusé de remise
+(correctif nº 1 de [TRK-018](#trk-018), dépôt `vizyo-texto`), le verdict hebdomadaire sera
+**`INDETERMINE`** — et écrira une ligne `ERROR` par semaine. **C'est le résultat attendu, pas un
+bug** : on remplace un faux vert par un « on ne sait pas » daté et visible. La ligne disparaîtra
+d'elle-même le jour où un accusé de remise existera, sans nouvelle modification.
+
+#### 🗓️ Test daté — lundi 2026-08-24, 09:30 UTC+2
+
+Après déploiement : relever le verdict (`POST /api/admin/sms/heartbeat/verify`) et la ligne
+`sms-heartbeat` dans `error_logs`. Attendu : **`INDETERMINE` + une ligne `ERROR`**.
+**Condition d'échec :** un verdict `OK` sans qu'aucun accusé de remise n'ait été livré côté
+passerelle signifierait que `SMS_DELIVERED_STATUSES` attrape un statut de soumission — donc que le
+faux vert a simplement changé de place. Vérifier alors la valeur brute de `sms_logs.status`.
+
+---
+
+## TRK-027
+
+**Signature** — *(trou assumé, pas une erreur observée)* `gps-integrity | (aucune ligne, par
+conception) | une antenne morte devient silencieuse dès la 2ᵉ perte au même endroit`
+**Statut : 🟠 TROU ASSUMÉ — garde-fou à écrire** · **contrepartie connue de la règle du parking** ·
+ouvert 2026-08-17
+
+> ### La règle du parking souterrain silencie un lieu. Une antenne morte se tait exactement au même endroit.
+
+### Le contexte
+
+Le 2026-08-17, sur constat terrain du propriétaire — *les véhicules se garent dans des parkings
+souterrains* — la règle suivante a été appliquée (voir [TRK-011](#trk-011) et
+[TRK-001](#trk-001)) : à la **2ᵉ** perte GPS au même endroit, le lieu est qualifié
+`UNDERGROUND_PARKING` automatiquement et **n'alerte plus jamais**, sans plafond de durée.
+
+C'est juste, et c'est mesuré : **18 des 27** lignes `gps-integrity` de production venaient du
+plafond de 24 h appliqué à deux zones **déjà** qualifiées parking par un opérateur. Un parking
+explique une perte de durée quelconque — congés, immobilisation longue.
+
+### Le trou, énoncé sans détour
+
+**Une antenne réellement morte produit le même motif.** Le véhicule se gare là où il se gare
+d'habitude, le boîtier reste joignable, le fix ne revient pas. À la 2ᵉ occurrence, le lieu est
+classé parking et le défaut devient **définitivement silencieux**.
+
+C'est le trou de [TRK-011](#trk-011) — à une différence près, qui compte : il est désormais
+atteignable **sans aucune décision humaine**. Avant, il fallait qu'un opérateur confirme la zone.
+
+### Ce qui reste mesurable — la raison pour laquelle ce n'est pas une régression
+
+Le fait n'est pas notifié ; il n'est pas invisible :
+
+| Canal | Ce qu'il montre |
+|---|---|
+| Journal de synthèse du cron | nomme les véhicules silenciés **et la durée** (`FS-253-HR (5 j, parking)`) |
+| Section `gps_sans_fix` de `collecte.sql` | c'est elle qui a mesuré les 113,4 h de FS-253-HR |
+| Fiche véhicule / carte | la zone reste affichée, l'état « en attente GPS » reste visible |
+
+*Un état stable qui dure se consulte ; c'est la doctrine de cette base depuis
+[TRK-011](#trk-011). Ce qui change ici, c'est qu'on l'applique jusqu'au bout.*
+
+### Le garde-fou à écrire — physique, pas temporel
+
+Un plafond de durée est le mauvais outil : il vient d'être retiré pour de bonnes raisons. Le bon
+discriminant est **le contact** :
+
+> Un véhicule **garé** dans un parking a le contact **coupé**. Un véhicule qui **roule** sans fix
+> GPS n'est dans aucun parking — c'est une antenne.
+
+Règle proposée : silencier une zone de parking **uniquement si `lastKnownIgnition` est faux**, et
+alerter dès que le contact est mis alors que le fix manque depuis plus de N minutes.
+
+### 🔴 Le prérequis, et c'est lui qui bloque
+
+**L'ACC n'est pas persisté sur une trame `no_fix`.** `tcp-server.service.ts:332-335` n'écrit que
+`lastSeenAt` et `lastNoFixAt` :
+
+```ts
+await this.prisma.tracker.update({
+  where: { imei: frame.imei },
+  data: { lastSeenAt: new Date(), lastNoFixAt: new Date() },
+});
+```
+
+Or `lastKnownIgnition` n'est réécrit que par le chemin des trames de **position**. Pendant une perte
+GPS, il est donc **figé sur sa valeur d'avant la perte** — exactement comme `lastLat/lastLng`. Le
+garde-fou ci-dessus lirait une valeur périmée, ce qui est pire qu'aucun garde-fou : il conclurait
+« contact coupé » sur un véhicule en train de rouler.
+
+⚠️ **Ne PAS écrire ce garde-fou avant d'avoir vérifié que la trame `no_fix` porte l'ACC.** Le
+parseur (`coban.parser.ts:23`) construit `noFix()` avec `{ type, imei, alarm, deviceTime, raw }` —
+il **jette** tout le reste. Les trames de position, elles, extraient bien `result.ignition`
+(lignes 198 et 289). Il faut donc :
+
+1. établir si la trame LBS/`no_fix` du GPS403D contient le champ ACC (lecture de trames réelles dans
+   `wire_logs`, rétention 3 j — **pas** une lecture de la doc) ;
+2. si oui : l'exposer dans `CobanNoFixFrame` et le persister dans `lastKnownIgnition` ;
+3. seulement alors, conditionner le silence au contact.
+
+*Sans l'étape 1, l'étape 3 est un garde-fou qui affirme une cause fausse — la famille la plus grave
+du §7 de la procédure.*
+
+### Vérification après correctif
+
+Un véhicule dont la zone est un parking, contact **mis**, sans fix depuis plus du seuil → **doit**
+produire une alerte. Le même véhicule contact **coupé**, sans fix depuis une semaine → **ne doit
+rien** produire. Les deux moitiés sont nécessaires : n'en tester qu'une revient à retrouver soit le
+bruit de TRK-011, soit la cécité de cette fiche.
+
+### 🗓️ Test daté — au prochain passage
+
+Relever, pour chaque zone qualifiée parking automatiquement, le nombre d'épisodes et la durée
+maximale observée. **Signal d'alarme :** un véhicule dont un épisode « parking » dépasse **7 jours**
+mérite un contrôle terrain manuel — aucune règle logicielle ne le dira, et c'est précisément ce que
+cette fiche documente.
 
 ---
 

@@ -158,6 +158,90 @@ describe('GpsIntegrityService', () => {
     expect((ctx as Record<string, unknown>).benignSilenceExceeded).toBe(true);
   });
 
+  // --- 2026-08-17 : la règle du parking souterrain ---------------------------------------
+  //
+  // Le plafond de TRK-011 ci-dessus reste juste pour une zone bénigne SANS nature connue.
+  // Sur un parking, il est structurellement faux : un véhicule peut y rester garé des
+  // semaines. Ces tests verrouillent la frontière entre les deux.
+
+  describe('zone qualifiée PARKING — silence sans plafond de durée', () => {
+    const parkingZone = (over: Record<string, unknown> = {}) => ({
+      zone: {
+        id: 'z1',
+        status: 'CONFIRMED_BENIGN',
+        label: 'UNDERGROUND_PARKING',
+        occurrences: 2,
+        ...over,
+      },
+      isNewEpisode: false,
+    });
+
+    it('reste MUET sur un parking souterrain, même à 29 h (au-delà du plafond)', async () => {
+      const { svc, prisma, alerts, errorLogger } = build(parkingZone());
+      prisma.tracker.findMany.mockResolvedValue([makeTracker()]); // 29 h
+
+      await svc.tick();
+
+      // C'est exactement le cas qui produisait « GPS perdu ANORMALEMENT LONG » en production :
+      // 18 des 27 lignes `gps-integrity`, sur deux zones déjà qualifiées parking.
+      expect(alerts.createGpsLostAlert).not.toHaveBeenCalled();
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('reste MUET sur un parking après 5 JOURS — une durée n’est plus un signal ici', async () => {
+      const { svc, prisma, alerts, errorLogger } = build(parkingZone());
+      prisma.tracker.findMany.mockResolvedValue([
+        makeTracker({ lastPositionAt: new Date(Date.now() - 120 * 3600_000) }),
+      ]);
+
+      await svc.tick();
+
+      // 120 h = le cas réel de FS-253-HR au 17/08. Congés, immobilisation : un parking
+      // explique une perte de durée quelconque.
+      expect(alerts.createGpsLostAlert).not.toHaveBeenCalled();
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('reste MUET aussi sur un parking COUVERT', async () => {
+      const { svc, prisma, alerts, errorLogger } = build(parkingZone({ label: 'COVERED_PARKING' }));
+      prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+
+      await svc.tick();
+
+      expect(alerts.createGpsLostAlert).not.toHaveBeenCalled();
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('🔑 le plafond TRK-011 s’applique TOUJOURS à une zone bénigne SANS nature de parking', async () => {
+      const { svc, prisma, alerts, errorLogger } = build(
+        parkingZone({ label: 'JAMMER_SUSPECTED' }),
+      );
+      prisma.tracker.findMany.mockResolvedValue([makeTracker()]); // 29 h
+      alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+      await svc.tick();
+
+      // La levée du plafond est réservée aux PARKINGS. Ailleurs, la durée porte encore de
+      // l'information et TRK-011 garde tout son sens — sinon on rouvre le trou en grand.
+      expect(alerts.createGpsLostAlert).toHaveBeenCalledTimes(1);
+      expect(errorLogger.record).toHaveBeenCalledTimes(1);
+      expect((errorLogger.record.mock.calls[0][0] as Error).message).toContain('ANORMALEMENT LONG');
+    });
+
+    it('un boîtier silencié reste CONSULTABLE dans le journal de synthèse (pas notifié ≠ invisible)', async () => {
+      const { svc, prisma } = build(parkingZone());
+      const log = jest.spyOn((svc as unknown as { logger: { log: (m: string) => void } }).logger, 'log');
+      prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+
+      await svc.tick();
+
+      // La contrepartie de la règle : le fait ne doit pas devenir invisible, seulement
+      // silencieux. Le journal nomme le véhicule, la durée et la raison du silence.
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('FS-253-HR'));
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('parking'));
+    });
+  });
+
   it('ne conseille PAS de reconfirmer une zone déjà confirmée', async () => {
     const { svc, prisma, alerts, errorLogger } = build({
       zone: { id: 'z1', status: 'CONFIRMED_BENIGN', occurrences: 5 },

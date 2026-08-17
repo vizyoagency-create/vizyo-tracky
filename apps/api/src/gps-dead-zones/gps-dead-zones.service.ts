@@ -39,6 +39,18 @@ export class GpsDeadZonesService {
   readonly matchRadiusM: number;
   /** Occurrences (épisodes distincts) à partir desquelles une zone est « reconnue » (RECURRING). */
   readonly minOccurrences: number;
+  /**
+   * Occurrences à partir desquelles une zone est AUTOMATIQUEMENT qualifiée de parking
+   * souterrain, donc rendue silencieuse — décision du propriétaire, 2026-08-17.
+   *
+   * Réglable via `GPS_DEADZONE_AUTO_PARKING_OCCURRENCES`, défaut **2**.
+   *
+   * ⚠️ **Plancher dur à 2, jamais 1.** La toute PREMIÈRE perte dans un lieu doit toujours
+   * alerter : c'est le seul moment où l'exploitant apprend qu'un véhicule a perdu le GPS
+   * quelque part. Un seuil à 1 rendrait le détecteur muet dès la première occurrence, donc
+   * entièrement inutile. Le plancher est structurel, pas conventionnel.
+   */
+  readonly autoParkingOccurrences: number;
   /** Borne haute du rayon observé d'une zone (évite qu'un cluster n'avale toute une ville). */
   private readonly maxRadiusM = 400;
 
@@ -50,6 +62,8 @@ export class GpsDeadZonesService {
     this.matchRadiusM = Number.isFinite(radius) && radius > 0 ? radius : 150;
     const min = Number(process.env.GPS_DEADZONE_MIN_OCCURRENCES);
     this.minOccurrences = Number.isFinite(min) && min >= 2 ? Math.floor(min) : 3;
+    const auto = Number(process.env.GPS_DEADZONE_AUTO_PARKING_OCCURRENCES);
+    this.autoParkingOccurrences = Number.isFinite(auto) && auto >= 2 ? Math.floor(auto) : 2;
   }
 
   /**
@@ -155,13 +169,58 @@ export class GpsDeadZonesService {
     const occurrences = n + 1;
     // Seule une zone encore en apprentissage passe automatiquement à RECURRING. Les décisions
     // opérateur (CONFIRMED_BENIGN / SUSPECT) sont préservées — elles ne doivent pas régresser.
-    const status =
+    let status =
       zone.status === GpsDeadZoneStatus.LEARNING && occurrences >= this.minOccurrences
         ? GpsDeadZoneStatus.RECURRING
         : zone.status;
+    let label = zone.label;
+
+    /**
+     * 🔑 **Qualification AUTOMATIQUE en parking souterrain (décision du propriétaire, 17/08).**
+     *
+     * Cause réelle constatée sur le terrain : les véhicules se garent dans des **parkings
+     * souterrains**. Le boîtier reste joignable (GSM passe) mais perd le ciel — d'où un
+     * `no_fix` frais et une position figée, exactement le motif que ce détecteur cherche.
+     * Reperdre le GPS **au même endroit** est donc la signature d'un lieu, pas d'une panne.
+     *
+     * Règle : à la **2ᵉ** occurrence, on pose `UNDERGROUND_PARKING` + `CONFIRMED_BENIGN`,
+     * ce qui rend le lieu silencieux (cf. `GpsIntegrityService`). La 1ʳᵉ perte, elle, alerte
+     * toujours — c'est le seul signal utile.
+     *
+     * ⚠️ **On ne touche JAMAIS une zone qu'un opérateur a revue** (`reviewedAt` non nul) :
+     * un humain qui a posé `SUSPECT` (brouilleur possible) ne doit pas voir sa décision
+     * écrasée par une heuristique. Le test porte sur `reviewedAt`, pas sur le statut : c'est
+     * la seule marque fiable de « quelqu'un a une opinion ici ».
+     *
+     * ⚠️ **Ce que ça coûte, écrit noir sur blanc** — une antenne morte produit aussi des
+     * pertes répétées au même endroit (là où le véhicule se gare d'habitude). À partir de la
+     * 2ᵉ, elle sera donc classée parking et deviendra silencieuse : c'est le trou de TRK-011,
+     * désormais atteignable SANS décision humaine. Le fait reste **mesurable** (section
+     * `gps_sans_fix` de l'audit quotidien, compteur `suppressed` du cron, fiche véhicule),
+     * il n'est simplement plus **notifié** — ce qui est la demande explicite. Le garde-fou
+     * qui reste à écrire est physique, pas temporel : ne silencier que si le contact est
+     * COUPÉ (une voiture qui roule sans fix n'est pas dans un parking). Il exige de persister
+     * l'ACC des trames `no_fix`, qui ne l'est pas aujourd'hui — cf. TRK-027.
+     */
+    // ⚠️ Tests de PRÉSENCE, pas d'égalité stricte. Prisma rend `reviewedAt: null` et
+    // `label: 'UNKNOWN'` ; un objet partiel rend `undefined` pour les deux. Les quatre
+    // valeurs disent la même chose — « personne n'a d'opinion sur cette zone ». Une égalité
+    // stricte ferait passer les tests (mocks sans le champ) tout en se comportant autrement
+    // en production : c'est la définition d'un test qui verrouille un bug.
+    const jamaisQualifiee = !zone.label || zone.label === GpsDeadZoneLabel.UNKNOWN;
+    if (!zone.reviewedAt && jamaisQualifiee && occurrences >= this.autoParkingOccurrences) {
+      label = GpsDeadZoneLabel.UNDERGROUND_PARKING;
+      status = GpsDeadZoneStatus.CONFIRMED_BENIGN;
+      this.logger.log(
+        `Zone ${zone.id} qualifiee AUTOMATIQUEMENT parking souterrain ` +
+          `(${occurrences} pertes au meme endroit >= seuil ${this.autoParkingOccurrences}) — ` +
+          'les pertes GPS y deviennent silencieuses.',
+      );
+    }
+
     return this.prisma.gpsDeadZone.update({
       where: { id: zone.id },
-      data: { centroidLat, centroidLng, radiusM, occurrences, lastSeenAt: new Date(), status },
+      data: { centroidLat, centroidLng, radiusM, occurrences, lastSeenAt: new Date(), status, label },
     });
   }
 
@@ -300,10 +359,19 @@ export class GpsDeadZonesService {
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
   }
 
-  /** Suggestion (non contraignante) de nature quand la zone est récurrente et non encore qualifiée. */
+  /**
+   * Suggestion (non contraignante) de nature quand la zone est récurrente et non encore qualifiée.
+   *
+   * Depuis le 17/08, une zone JAMAIS revue est qualifiée automatiquement dès
+   * `autoParkingOccurrences` — la suggestion ne concerne donc plus que les zones qu'un
+   * opérateur a revues en laissant le libellé à `UNKNOWN`. Même seuil, pour que l'écran ne
+   * suggère jamais autre chose que ce que l'automatisme aurait posé.
+   */
   private suggestedLabel(zone: GpsDeadZone): GpsDeadZoneLabel | null {
     if (zone.label !== GpsDeadZoneLabel.UNKNOWN) return null;
-    return zone.occurrences >= this.minOccurrences ? GpsDeadZoneLabel.UNDERGROUND_PARKING : null;
+    return zone.occurrences >= this.autoParkingOccurrences
+      ? GpsDeadZoneLabel.UNDERGROUND_PARKING
+      : null;
   }
 
   private toDto(zone: GpsDeadZone, events: GpsLossEvent[] = []): GpsDeadZoneDto {

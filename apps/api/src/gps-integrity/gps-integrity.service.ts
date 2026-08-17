@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { GpsDeadZoneStatus } from '@prisma/client';
+import { GpsDeadZoneLabel, GpsDeadZoneStatus } from '@prisma/client';
 import { TRACKER_ONLINE_THRESHOLD_MS } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AlertsService } from '../alerts/alerts.service';
@@ -24,6 +24,36 @@ import { ErrorLogger } from '../observability/error-logger.service';
  * au centre d'alertes admin (ErrorLog). Le `no_fix` récent est le discriminant qui évite
  * de faux-positiver une voiture simplement garée : un boîtier garé SAIN est MUET (heartbeat
  * seulement), il n'émet pas de `no_fix`.
+ *
+ * ---
+ *
+ * ## 2026-08-17 — la règle du parking souterrain (décision du propriétaire)
+ *
+ * Cause réelle du gros du volume, constatée sur le terrain : **les véhicules se garent dans
+ * des parkings souterrains.** Le GSM passe, le ciel non — donc `no_fix` frais + position
+ * figée, exactement le motif que ce détecteur cherche. Ce n'est pas une panne, c'est un lieu.
+ *
+ * Règle appliquée :
+ *
+ * | Occurrence de perte au MÊME endroit | Comportement |
+ * |---|---|
+ * | **1ʳᵉ** | **alerte** (flotte + centre d'alerte) — le seul signal utile |
+ * | **2ᵉ** | le lieu est qualifié `UNDERGROUND_PARKING` **automatiquement**, et **plus aucune alerte** |
+ * | 3ᵉ et suivantes | rien — ni alerte flotte, ni ligne au centre d'alerte, ni comptage |
+ *
+ * Le seuil vit dans `GpsDeadZonesService.autoParkingOccurrences` (défaut 2, plancher dur
+ * à 2 pour que la première perte alerte toujours).
+ *
+ * ⚠️ **Contrepartie assumée, écrite pour qu'elle ne surprenne personne :** une antenne
+ * réellement morte perd aussi le GPS au même endroit (là où le véhicule se gare). Dès la
+ * 2ᵉ fois elle sera classée parking et deviendra **silencieuse**. C'est le trou de TRK-011,
+ * désormais atteignable sans décision humaine. Le fait reste **consultable** — journal de
+ * synthèse de ce cron (il nomme les véhicules silenciés et la durée), section `gps_sans_fix`
+ * de l'audit quotidien, fiche véhicule — il n'est plus **notifié**. Le garde-fou qui reste à
+ * écrire est physique et non temporel : ne silencier que si le CONTACT est coupé, une voiture
+ * qui roule sans fix n'étant pas dans un parking. Il exige de persister l'ACC des trames
+ * `no_fix` (non fait aujourd'hui : `tcp-server.service.ts` n'y écrit que `lastSeenAt` et
+ * `lastNoFixAt`) — voir la fiche TRK-027 du référentiel.
  */
 @Injectable()
 export class GpsIntegrityService {
@@ -38,6 +68,13 @@ export class GpsIntegrityService {
    *
    * Calibrage : un stationnement de nuit ordinaire dure ~12 h et doit rester silencieux ;
    * 24 h laisse passer un week-end court sans crier, tout en bornant une antenne morte.
+   *
+   * ⚠️ **NE S'APPLIQUE PLUS AUX ZONES DE PARKING depuis le 2026-08-17.** Un parking
+   * souterrain explique une perte de durée quelconque (congés, immobilisation longue), donc
+   * un plafond y produit une fausse alerte garantie au bout de 24 h. Mesuré : ce plafond
+   * signait **18 des 27** lignes `gps-integrity` de production, sur deux véhicules dont les
+   * zones étaient DÉJÀ qualifiées parking. Il reste actif pour les autres zones bénignes,
+   * où la durée porte encore de l'information.
    */
   private readonly benignMaxSilenceMs: number;
   private readonly benignMaxSilenceLabel: string;
@@ -141,6 +178,8 @@ export class GpsIntegrityService {
 
       let raised = 0;
       let suppressed = 0;
+      /** Véhicules rendus silencieux ce tick — consultables, pas notifiés (voir plus bas). */
+      const silenced: string[] = [];
       for (const t of suspects) {
         if (!t.vehicle) continue;
         try {
@@ -185,12 +224,35 @@ export class GpsIntegrityService {
           //
           // Au-delà du plafond, on alerte MALGRÉ la zone — et le message dit pourquoi il parle
           // quand même, sinon l'opérateur irait reconfirmer une zone déjà confirmée.
+          // 🔑 **EXCEPTION PARKING (décision du propriétaire, 2026-08-17).** Un parking
+          // souterrain explique une perte de DURÉE QUELCONQUE : un véhicule peut y rester
+          // garé un week-end, une semaine de congés, un mois. Le plafond de TRK-011 y était
+          // donc structurellement faux — il transformait un stationnement normal en alerte
+          // « ANORMALEMENT LONG » dès 24 h, et c'est exactement ce qui s'est produit :
+          // 18 des 27 lignes `gps-integrity` de production venaient de ce plafond, sur DEUX
+          // véhicules dont les zones étaient déjà qualifiées parking par un opérateur.
+          //
+          // Le plafond RESTE en vigueur pour les autres zones confirmées bénignes : là, la
+          // confirmation dit « cet endroit est normal » sans dire pourquoi, et la durée porte
+          // encore de l'information. Ce n'est que sur un parking qu'elle n'en porte plus.
+          const isParkingZone =
+            zone?.label === GpsDeadZoneLabel.UNDERGROUND_PARKING ||
+            zone?.label === GpsDeadZoneLabel.COVERED_PARKING;
+
           const benignSilenceExceeded =
             zone?.status === GpsDeadZoneStatus.CONFIRMED_BENIGN &&
+            !isParkingZone &&
             (t.lastPositionAt === null || now - t.lastPositionAt.getTime() >= this.benignMaxSilenceMs);
 
           if (zone && zone.status === GpsDeadZoneStatus.CONFIRMED_BENIGN && !benignSilenceExceeded) {
             suppressed++;
+            // ⚠️ Le fait doit rester MESURABLE même s'il n'est plus notifié — sinon on
+            // remplace une alerte trop bavarde par une cécité (la leçon de TRK-011). Ce
+            // journal est le canal de consultation : il nomme le véhicule et la durée, sans
+            // créer ni alerte flotte ni ligne au centre d'alerte.
+            silenced.push(
+              `${t.vehicle.plate} (${agoLabel}${isParkingZone ? ', parking' : ''})`,
+            );
             continue;
           }
 
@@ -263,7 +325,8 @@ export class GpsIntegrityService {
       if (suspects.length) {
         this.logger.log(
           `GPS-integrity: ${suspects.length} boîtier(s) vivant(s) sans position GPS ` +
-            `(${raised} nouvelle(s) alerte(s), ${suppressed} en zone confirmée).`,
+            `(${raised} nouvelle(s) alerte(s), ${suppressed} en zone confirmée` +
+            `${silenced.length ? ` : ${silenced.join(', ')}` : ''}).`,
         );
       }
     } catch (err) {
