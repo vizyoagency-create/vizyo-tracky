@@ -17,6 +17,77 @@
 
 ---
 
+## 🔴 2026-08-17 *(2ᵉ passage, 08:48)* — la sonde chargée d'annoncer la panne du canal de secours ne peut pas rendre « en panne »
+
+Relance demandée le même jour. `error_logs` n'a pas bougé d'une ligne — **zéro écriture depuis le
+redéploiement du 16/08 16:03**, soit 16,7 h — et c'est l'examen des canaux muets qui rend la
+trouvaille : **[TRK-026](#trk-026)**, la « preuve de vie » SMS hebdomadaire, **ne peut pas échouer**.
+
+Le cron a tourné ce matin à 07:00 UTC (lundi 09:00 Paris, à la seconde attendue). Son SMS — qui
+annonce littéralement *« chaine SMS OK »* — dort en `queued` avec 331 autres. Il n'y a **jamais eu**
+une seule ligne `error_logs` de source `sms-heartbeat`.
+
+| Maillon | Ce qui casse la sonde |
+|---|---|
+| `sms-heartbeat.service.ts:107` | n'écrit l'ErrorLog `CRITICAL` que si `send()` rend `ok: false` |
+| `sms-gateway.service.ts:484` | déduit `ok` du statut **rendu à la soumission** — donc `queued` |
+| *nulle part* | **`grep -rn "smsLog.update" apps/api/src` → zéro occurrence** |
+
+> 🔑 **Un compteur figé peut être un compteur sans chemin d'écriture.** `sms_logs.status` ressemble à
+> une chronologie ; ce n'est que la trace de l'instant d'insertion. *Avant de lire une colonne d'état
+> comme une histoire, chercher qui l'écrit une seconde fois — si personne, ce n'est pas un état.*
+>
+> Et le durcissement antérieur le montre en creux : le commentaire `#34` a élargi la liste des
+> statuts d'échec reconnus par `send()`. **Élargir une liste d'échecs ne sert à rien quand le seul
+> statut jamais rendu n'en est pas un.** *On avait corrigé la forme du test, pas l'absence d'objet.*
+
+**Défaut jumeau, au sens du §7.5 :** `healthCheck()` alimente l'écran d'administration avec
+`recentFailures24h` compté sur `status = 'failed'` — **structurellement 0 depuis le 25/07** — et son
+`reachable` pingue le `/health` **du relais**, pas le téléphone qui porte la SIM. *La même erreur que
+la sonde de dépendances qui interrogeait l'URL interne : on instrumente le maillon le plus proche,
+jamais celui qui tombe.* L'écran est vert par construction.
+
+**Trois angles morts ouverts pour la première fois, et trois résultats négatifs qui valent d'être
+écrits :** le **cloisonnement des notifications tient** (0 destinataire non-owner d'une autre flotte,
+sur la totalité de la table) ; les **sauvegardes sont intactes** (111 exécutions, 0 échec, dernière ce
+matin 03:02) ; et `api_traffic_logs`, qui semblait mort à 9 lignes par jour, a simplement un
+**périmètre volontairement étroit**.
+
+> ⚠️ **Ce dernier point est un piège à retenir.** « 0 erreur HTTP sur 24 h » est ici *structurellement
+> garanti* : l'intercepteur s'exécute **après** les guards, donc un 401 ou un 429 ne l'atteint jamais,
+> `/api/auth/` est exclu par conception, et les requêtes authentifiées sont dédupliquées à 1 par
+> (utilisateur, IP) / 10 min. *Un compteur à zéro peut être un capteur éteint — ou un capteur dont le
+> périmètre exclut précisément ce qu'on croyait mesurer.*
+
+**Deux tests datés rendent leur verdict, et l'un dans un sens inattendu :**
+
+| Fiche | Le test disait | Ce qui est mesuré |
+|---|---|---|
+| [TRK-001](#trk-001) | « rien ne doit être écrit le 17/08 vers 08:55 et 15:35 » | **ANNULÉ pour FZ-862-VY** — son fix est revenu à **08:45:11** après **120,0 h**, 25 min avant l'échéance : la condition de nullité écrite la veille s'est réalisée. **PENDANT pour FS-253-HR** (rappel vers 15:45). *Le test n'a pas de réponse — et la clause de nullité a évité de lire un silence comme une réussite.* |
+| [TRK-014](#trk-014) | « l'instrument est-il vraiment réarmé ? » | **32 commandes sur 32** portent l'indice de silence aujourd'hui. Trois points sur la même définition : **0/285** (12→15/08), **18/70** (16/08), **32/32**. Total 100 → **131**. |
+
+> **Le témoin remarche, et ce qu'il dit est pire que son silence.** 100 % des commandes émises
+> aujourd'hui n'ont reçu aucune réponse du boîtier, et `ackedAt` vaut **0 sur 4544**. C'est
+> exactement ce que [TRK-012](#trk-012) prédit — dont le correctif attend un accord depuis le 11/08,
+> **septième jour**.
+
+**[TRK-017](#trk-017) — 42 blocages, et une mesure nouvelle appuie le titre de la fiche.** Les deux
+populations d'appels n'ont pas la même origine : les **159** appels normaux viennent de `172.18.0.1`
+(passerelle Docker interne = l'API de production), les **42** blocages de `82.67.153.51`, une adresse
+publique. Charge stable depuis une semaine — `requestedCount = 1`, refus *« 25 suppression(s) au-dela
+du plafond de 5 »*, à `h:24:59` chaque heure, une seconde avant la réconciliation de la production.
+*Un attaquant ne rejouerait pas la même charge d'un seul numéro à la même minute pendant sept jours :*
+c'est bien une **seconde instance** portant la clé de production. Clé `vtx_48fe` inchangée,
+**7ᵉ jour**. Rien depuis 02:24:59 — **quatrième silence**, et pour la quatrième fois il ne prouve
+aucune révocation.
+
+*(Note de méthode : le 1ᵉʳ passage avait manqué la frappe de 01:24:59, tombée pendant sa fenêtre de
+collecte de 25 minutes. **Une collecte étalée n'est pas un instantané.**)*
+
+---
+
+---
+
 ## 🟢 2026-08-17 — la production repasse sur `main`, et l'instrument qui accusait depuis 5 jours est réfuté
 
 **[TRK-019](#trk-019) se referme.** Les images ont été reconstruites le **16/08 à 15:59 / 16:00**,
@@ -3695,6 +3766,38 @@ du **09/06** et les 230 `received` arrêtés au **13/07**.
 > constat n'est toujours pas « les SMS n'arrivent pas » — c'est que rien, nulle part, ne peut le
 > dire. Un véhicule est coupé et redémarré chaque nuit par ce canal.
 
+### 🔴 2026-08-17 *(2ᵉ passage)* — l'instrument censé signaler cette cécité est lui-même inerte → [TRK-026](#trk-026)
+
+Test daté **passé une 7ᵉ fois** : `engine_control_commands` `SENT` > 24 h = **257** (242 · 254 ·
+**257**) ; passerelle **334** `queued` (326 · 328 · **334**). Toujours strictement croissant, toujours
+aucun état terminal.
+
+**Mais le 2ᵉ passage du 17/08 trouve la pièce qui manquait à cette fiche.** Le correctif nº 1
+ci-dessus — « faire remonter l'accusé de remise » — était présenté comme le préalable à tout. Il l'est
+toujours, **et il ne suffira pas** :
+
+- côté Tracky, **aucun code ne met jamais à jour `sms_logs.status`** (`grep -rn "smsLog.update"
+  apps/api/src` → zéro occurrence). La table n'a pas de chemin d'écriture pour un second état, donc
+  même des DLR disponibles ne seraient enregistrés nulle part ;
+- et `send()` déduit son `ok` de la réponse **synchrone** de la passerelle, ce qui rend aveugle
+  **toute** sonde bâtie dessus — dont la « preuve de vie » hebdomadaire de [TRK-026](#trk-026), qui
+  n'a jamais pu écrire une seule ligne d'erreur depuis sa mise en service.
+
+> **Ce que ça change pour cette fiche.** Le §« Ne pas conclure que le repli SMS est mort » énumérait
+> trois canaux qui rendent le coupe-circuit invérifiable. **Il y en a un quatrième, et c'est le pire :
+> le canal de surveillance lui-même.** Les trois premiers ne pouvaient pas prouver qu'une coupure a
+> eu lieu ; celui-là affirme activement que tout va bien. *Une cécité qu'on connaît est un risque ;
+> une cécité qui rend « OK » est un piège.*
+
+**Le cas EY-613-MF, mesuré ce passage :** `RESTORE` émis le **17/08 à 03:00:00.978**, SMS
+`resume123456` `queued` depuis **03:00:03**, boîtier **`OFFLINE` et sans fix GPS depuis 07:20:51**. Sur
+3 jours : 7 commandes moteur, 0 acquittée, toutes en repli SMS.
+
+🗓️ **Test daté reconduit au prochain passage**, avec un second volet emprunté à TRK-026 : si un
+message quitte enfin `queued`, **vérifier dans la même minute que `sms_logs` l'a enregistré côté
+Tracky**. Un DLR reçu par la passerelle mais non répercuté laisserait cette fiche exactement où elle
+est, en donnant l'illusion du contraire.
+
 ---
 
 ## TRK-009
@@ -4447,6 +4550,141 @@ occurrence.
 `error_logs` **dans l'heure qui suit**, sans qu'aucune entrée n'ait eu besoin d'être rétablie. Une
 vérification qui se contenterait de compter les entrées d'allowlist ne prouverait rien : elles n'ont
 jamais bougé.
+
+---
+
+## TRK-026
+
+**Signature** — *(absence de ligne, pas une erreur)* `sms-heartbeat | (aucune ligne, jamais) |
+preuve de vie hebdomadaire dont l'échec est structurellement impossible`
+**Statut : 🔴 NON CORRIGÉ** · **0 ligne `sms-heartbeat` depuis la mise en service · 332 SMS sortants
+figés en `queued` · aucun état terminal depuis le 2026-07-25** · découvert 2026-08-17 *(2ᵉ passage)*
+
+> ### La sonde chargée d'annoncer la panne du canal de repli du coupe-circuit ne peut pas rendre « en panne ».
+
+### Ce que le code promet
+
+Un cron hebdomadaire (`@Cron('0 0 9 * * 1', { timeZone: 'Europe/Paris' })`,
+`apps/api/src/sms/sms-heartbeat.service.ts:58`) envoie un SMS aux numéros d'administration. Son
+commentaire d'en-tête nomme précisément les pannes visées :
+
+> *« vizyo-texto repose sur une SIM Android physique. La chaine peut casser silencieusement : tel
+> decharge, app capcom6 crashee, SIM expiree, operateur qui block… Si la chaine marche, le SMS
+> arrive ; si elle casse, un ErrorLog CRITICAL `source='sms-heartbeat'` est cree — on sait que la SIM
+> est down avant le prochain incident. »*
+
+**Les quatre pannes citées produisent toutes le même observable : un SMS accepté par la passerelle,
+puis jamais remis.** C'est-à-dire un HTTP 200 et un statut `queued`. Aucune ne peut donc déclencher
+l'ErrorLog.
+
+### Cause racine — trois maillons, et c'est le troisième qui décide
+
+| Maillon | Où | Ce qu'il fait |
+|---|---|---|
+| Le heartbeat n'incrémente `failed` que sur `res.ok === false` | `sms-heartbeat.service.ts:107-117` | c'est la seule branche qui écrit l'ErrorLog `CRITICAL` |
+| `send()` déduit `ok` du statut **rendu à la soumission** | `sms-gateway.service.ts:484` | `ok = !['failed','rejected','undelivered','error','cancelled','canceled'].includes(status)` |
+| **Aucun code ne met jamais à jour `sms_logs.status`** | *nulle part* | `grep -rn "smsLog.update" apps/api/src` → **zéro occurrence** |
+
+`sms_logs.status` est écrit **une seule fois, à l'insertion** (`sms-gateway.service.ts:467-480`),
+avec le statut que la passerelle rend dans la même seconde — `queued`. Le webhook entrant
+(`recordInbound`, ligne 513 sq.) ne crée que des lignes `received` pour les SMS **entrants** : il ne
+réconcilie aucun sortant. Un SMS sortant reste donc figé sur son statut de soumission **à vie**.
+
+Comme `queued` ne figure pas dans `failedStatuses` — et **ne doit pas y figurer**, puisque ce n'est
+pas un échec mais une absence de réponse — `send()` rend `ok: true` dès que l'appel HTTP aboutit.
+`failed` reste à 0. L'ErrorLog n'est jamais écrit.
+
+> ⚠️ Le commentaire de la ligne 481 est instructif : *« #34 — `ok` ne doit PAS rester true pour les
+> statuts d'echec autres que 'failed' »*. Quelqu'un a déjà durci cette liste. **Durcir une liste de
+> statuts d'échec ne sert à rien quand le seul statut jamais rendu n'en est pas un.** Le correctif
+> précédent a traité la forme du test, pas le fait qu'il n'y a rien à tester.
+
+### Mesures en production — 2026-08-17 08:48 UTC
+
+| Mesure | Valeur |
+|---|---|
+| Lignes `error_logs` de source `sms-heartbeat`, `sms-gateway` ou `sms-webhook` | **0 — depuis toujours** |
+| SMS sortants en `queued` (`sms_logs`) | **332**, dernier **17/08 07:00:00.529** |
+| Dernier `failed` (`sms_logs`) | **2026-07-25 20:09** — figé depuis 22 jours |
+| Dernier `received` | **2026-07-13** |
+| Heartbeat du jour | émis **17/08 07:00:00.529** = lundi 09:00 Paris ✅, statut **`queued`** |
+| Côté passerelle (`messages`) | **334** `queued`, heartbeat à **07:00:00.389**, `providerId` renseigné |
+
+Le cron **a bien tourné**, à la seconde attendue : ce n'est pas un cron mort. Son message porte le
+texte `[Vizyo Tracky] Heartbeat 2026-08-17T07:00:00.106Z via vizyo-texto — chaine SMS OK`.
+
+> **Famille : mensonger** (§7). Un message qui *affirme* que la chaîne est saine, transporté par la
+> chaîne qu'il est censé tester, et dont l'arrivée n'est jamais vérifiée. *Une sonde qui ne peut pas
+> rendre « en panne » ne mesure rien — elle décore.*
+
+### Défaut jumeau (§7.5) — l'écran d'administration est vert par construction
+
+`healthCheck()` (`sms-gateway.service.ts:152-160`) alimente l'écran d'administration avec
+`recentFailures24h`, compté sur `status = 'failed'` dans `sms_logs`. Pour la même raison, **ce
+compteur vaut structurellement 0 depuis le 25/07**, et `lastFailure` ressort invariablement la ligne
+du 25/07 20:09. Le `reachable` du même écran pingue `/health` **du relais** — la santé du relais, pas
+celle du téléphone qui porte la SIM. Deux indicateurs, aucun ne regarde le maillon qui casse.
+
+*C'est le défaut de la sonde de dépendances qui interrogeait l'URL interne, reproduit à l'identique
+sur un autre canal : on instrumente le maillon le plus proche, jamais celui qui tombe.*
+
+### Ce que ça coûte — EY-613-MF, le cas concret
+
+Le véhicule coupé et redémarré chaque nuit par le repli SMS de [TRK-018](#trk-018). Sur trois jours :
+**7 commandes moteur**, toutes `SENT`, toutes `ackedAt` nul, toutes `Envoyé via SMS (TCP
+indisponible)`, `confirmationExpected = false`. Le dernier `RESTORE` est parti le **17/08 à
+03:00:00.978** ; son SMS `resume123456` est `queued` depuis **03:00:03** ; le boîtier est **`OFFLINE`
+et sans fix GPS depuis 07:20:51**.
+
+Personne, à aucun étage, ne peut dire si ce véhicule a été redémarré — **et la sonde construite pour
+le dire a rendu « OK ».**
+
+### Correctifs proposés
+
+1. **Découpler la mesure de la soumission — le cœur du correctif.** Le heartbeat doit relire l'état
+   de **son propre message** après un délai (proposition : 15 min), et non se fier au retour
+   synchrone. En l'absence d'accusé de remise, conclure **`INDÉTERMINÉ`** : un troisième état,
+   distinct de OK et d'ÉCHEC. *Un booléen ne peut pas porter « accepté mais non confirmé », et c'est
+   le seul état que ce canal produise.*
+2. **Faire rendre un tri-état par `send()`** (`accepted` / `delivered` / `failed`) au lieu d'un
+   `ok: boolean`, et laisser chaque appelant décider de ce qu'il en fait. Le repli du coupe-circuit
+   et un SMS de provisionnement n'ont pas les mêmes exigences.
+3. **Cesser de présenter `recentFailures24h` comme un indicateur de santé** tant qu'aucun statut
+   terminal n'existe. Afficher le fait : « N messages sans accusé de remise depuis X ».
+4. **Le préalable reste le nº 1 de [TRK-018](#trk-018)** — un accusé de remise depuis la passerelle
+   (dépôt `vizyo-texto`, hors périmètre d'écriture de cet audit). ⚠️ **Mais il ne suffirait pas :**
+   `send()` lit la réponse **synchrone**, donc le heartbeat resterait aveugle même avec des DLR
+   disponibles. **Les deux correctifs sont nécessaires, dans cet ordre ou en parallèle.**
+
+### ⚠️ Ne pas « corriger » en supprimant le heartbeat
+
+Il coûte un SMS par semaine et il *pourrait* fonctionner. Le retirer supprimerait la seule intention
+de surveillance de ce canal. Le défaut n'est pas la sonde, c'est **ce qu'elle lit**.
+
+### ⚠️ Ne pas conclure que les SMS n'arrivent pas
+
+Rien ici ne le montre, et c'est exactement la réserve de [TRK-018](#trk-018) : ce constat est une
+**cécité**, pas une panne. Ce qui est établi, c'est qu'aucun instrument — ni la sonde, ni l'écran, ni
+la table — ne peut distinguer un canal sain d'un canal mort. *Et pour la sonde, ce n'est pas une
+limite de mesure : c'est une impossibilité de construction.*
+
+### Vérification après correctif
+
+Couper volontairement la chaîne en **aval** de la passerelle (téléphone hors ligne, app arrêtée) un
+lundi, et vérifier qu'une ligne `sms-heartbeat` apparaît dans `error_logs`. Un heartbeat qui
+« réussit » téléphone éteint prouve que le correctif n'est pas appliqué.
+⚠️ **Ne pas valider en regardant l'écran d'administration** — il est vert par construction (défaut
+jumeau ci-dessus), et le valider par lui reviendrait à contrôler une sonde par une autre sonde
+cassée.
+
+### 🗓️ Test daté — au passage du 2026-08-24
+
+Le prochain heartbeat tombe **lundi 24/08 à 07:00 UTC**. Relever (a) le statut de son SMS dans
+`sms_logs` et (b) la présence d'une ligne `sms-heartbeat` dans `error_logs`. Tant que (a) vaut
+`queued` et (b) reste vide, la fiche est confirmée telle qu'écrite.
+**Condition d'échec du diagnostic :** si une ligne `sms-heartbeat` apparaît **sans qu'aucun correctif
+n'ait été livré**, l'analyse est fausse et il faut la reprendre entièrement — un chemin d'écriture
+existerait alors, que ce passage n'a pas trouvé.
 
 ---
 
