@@ -342,7 +342,15 @@ import {
     :host { display: block }
     .sp { max-width: 1100px }
     .sp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px }
+    /* ⚠️ 44 px SOUS 768 px — c'est le seul chemin de retour de cet écran, et il
+       mesurait 18 px de haut. La règle globale de styles.css ne l'attrape pas : elle
+       ne peut pas connaître les classes de chaque composant, et un lien qui se comporte
+       en bouton doit donc déclarer sa propre cible. Le retrait négatif compense la
+       hauteur ajoutée pour que le titre ne descende pas. */
     .sp-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 6px }
+    @media (max-width: 768px) {
+      .sp-back { min-height: 44px; margin-top: -10px; margin-bottom: 0 }
+    }
     .sp-back:hover { color: var(--tracky-light) }
     .sp-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .sp-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }

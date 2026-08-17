@@ -139,9 +139,15 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
     `
       .page { max-width: 980px; margin: 0 auto; padding: 8px 0 40px; }
       .head { margin-bottom: 20px; }
+      /* ⚠️ 44 px SOUS 768 px — seul chemin de retour, mesuré à 20 px au balayage du
+         2026-08-17. La règle globale ne connaît pas cette classe : un lien qui se
+         comporte en bouton déclare sa propre cible. */
       .back {
         display: inline-flex; align-items: center; gap: 6px; color: var(--fg-tertiary);
         font-size: 13px; text-decoration: none; margin-bottom: 10px;
+      }
+      @media (max-width: 768px) {
+        .back { min-height: 44px; margin-top: -12px; margin-bottom: 0 }
       }
       .back:hover { color: var(--fg-secondary); }
       h1 { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-size: 26px; margin: 0 0 8px; color: var(--fg-primary); }

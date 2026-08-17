@@ -114,7 +114,11 @@ type Period = '24h' | '7d' | '30d';
               <button type="button" (click)="clearUsers()" class="text-xs text-fg-tertiary hover:underline">Tout décocher</button>
             </div>
             @for (u of filterUsers(); track u.id) {
-              <label class="flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-bg-tertiary/50 cursor-pointer text-sm">
+              <!-- ⚠️ C'EST LE LIBELLÉ QU'ON TAPE, PAS LA CASE. La case fait 13 px et ne
+                   grandira pas — l'agrandir donnerait une case à cocher géante et laide.
+                   La cible, c'est la ligne entière : elle bascule la valeur, et elle doit
+                   donc faire 44 px de haut au doigt. -->
+              <label class="flex items-center gap-2 px-1.5 py-1.5 min-h-[44px] rounded-md hover:bg-bg-tertiary/50 cursor-pointer text-sm">
                 <input type="checkbox" [checked]="isUserShown(u.id)" (change)="toggleUser(u.id)" class="accent-[var(--color-tracky,#10E0A0)] shrink-0">
                 <span class="truncate text-fg-secondary">{{ u.name }}</span>
               </label>

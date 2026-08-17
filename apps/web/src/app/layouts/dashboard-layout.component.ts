@@ -936,11 +936,24 @@ interface NavGroup {
          sans flex-shrink: 0 — cédait tout le reste. Un CSS parfaitement correct à la
          lecture, et la porte de toute la navigation mobile réduite à un trait.
          C'est la sonde de recette qui l'a vu (critère : cibles ≥ 44 px). */
-      .mobile-burger {
+      /* ⚠️ LE BURGER NE SURVIT QUE LÀ OÙ LA BARRE DU BAS DISPARAÎT.
+         Il ouvre EXACTEMENT le même panneau que le bouton « Plus » de la barre du bas
+         (même signal mobileMenuOpen) : partout où cette barre est visible, c'est un
+         doublon — et il coûte 54 px sur une rangée qui n'en a que 347. Ces 54 px
+         manquaient au logo et au sélecteur de société, les deux repères qui disent
+         « où suis-je » et « quelle société je regarde ».
+         Il reste indispensable en plein écran (carte) et en mode Baanool, où la barre du
+         bas est masquée : là, c'est la SEULE porte vers la navigation. */
+      .mobile-burger { display: none }
+      .layout--fullscreen .mobile-burger,
+      .layout--baanool .mobile-burger {
         display: flex; align-items: center; justify-content: center;
         flex: none; width: 44px; min-width: 44px; height: 44px; border-radius: 10px;
         background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
       }
+      /* Le dépôt garde sa barre du bas même en plein écran (cf. bottom-bar--hidden) :
+         son burger resterait donc un doublon. */
+      .layout--depot.layout--fullscreen .mobile-burger { display: none }
       .mobile-burger:hover { background: var(--bg-tertiary) }
 
       /* Bottom-sheet content (remplace l'ancien drawer lateral) */
@@ -960,6 +973,20 @@ interface NavGroup {
       .top-bar-brand { display: flex; flex-shrink: 0; min-height: 44px; align-items: center }
       .user-menu-trigger { min-width: 44px; min-height: 44px }
       .top-bar-brand-text { font-size: 13px }
+
+      /* ⚠️ QUI CÈDE QUAND LA RANGÉE EST TROP COURTE. Sans cette répartition, les deux
+         moitiés de la barre se CHEVAUCHAIENT : mesuré à 375 px, le logo occupait
+         68→144 px et le sélecteur de société démarrait à 105 — 39 px l'un par-dessus
+         l'autre, et le nom de la page passait sous le badge d'état.
+         La répartition space-between ne protège de rien : elle distribue l'espace
+         restant, elle n'en crée pas. La droite (sélecteur, cloche, avatar) porte des
+         largeurs fixes et ne peut pas céder ; c'est donc la gauche qui doit plier, et
+         le nom de la marque qui se coupe — pas la fonction qui disparaît. */
+      .top-actions { flex-shrink: 0 }
+      .top-bar-left { flex: 1 1 auto; min-width: 0; overflow: hidden }
+      .top-bar-brand-text {
+        min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
       /* Place réduite sur mobile (sélecteur société SA) : on garde le logo + « Tracky »
          seul, on masque « Vizyo » pour éviter que la barre soit trop tassée. */
       .top-bar-brand-name:not(.top-bar-brand-name--accent) { display: none }

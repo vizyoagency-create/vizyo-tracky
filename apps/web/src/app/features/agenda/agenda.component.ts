@@ -856,7 +856,17 @@ interface GroupOption {
     @media (max-width: 640px) {
       .ag-filters { gap: 6px; }
       .ag-dd-trigger { min-width: 0; flex: 1; max-width: none; }
-      .ag-seg { flex: 1; }
+      /* ⚠️ LA BARRE DE SEGMENTS DÉFILE, SINON LE DERNIER EST INATTEIGNABLE.
+         Ses cinq segments réclament 398 px et l'écran en offre 375 : « Mission » —
+         l'onglet du lot dépôt, celui qu'un exploitant ouvre tous les jours — sortait
+         du cadre sans aucun moyen d'y accéder. Le débordement ne se voyait pas : un
+         parent le coupait, la page ne défilait pas, et l'écran avait l'air complet.
+         Mesuré au balayage du 2026-08-17. */
+      .ag-seg {
+        flex: 1; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+      }
+      .ag-seg::-webkit-scrollbar { display: none }
+      .ag-seg-btn { flex: 0 0 auto; white-space: nowrap }
       .ag-month-nav { margin-left: 0; width: 100%; justify-content: space-between; }
       .ag-month-label { flex: 1; }
     }

@@ -76,7 +76,13 @@ const STATUS_LABELS: Record<string, string> = {
       </div>
 
       @if (commands().length > 0) {
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
+        <!-- ⚠️ LE MASQUAGE DU DÉBORDEMENT COUPAIT LE TABLEAU AU LIEU DE LE LAISSER
+             DÉFILER. Il réclame 841 px et le téléphone en offre 375 : les colonnes de
+             droite — dont l'accusé de réception, la raison d'être de ce lot — étaient
+             simplement invisibles, sans le moindre indice qu'il en manquait.
+             Le défilement horizontal garde le coin arrondi ET rend les colonnes
+             atteignables. -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
               <tr>

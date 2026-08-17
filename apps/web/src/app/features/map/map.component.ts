@@ -2042,6 +2042,13 @@ const RESYNC_RADIUS_M = 150;
     }
     .tracky-sheet-checkbox:active { background: var(--bg-tertiary); }
     .tracky-sheet-checkbox input { width: 16px; height: 16px; accent-color: #10E0A0; flex-shrink: 0; }
+    /* ⚠️ LA CIBLE, C'EST LA LIGNE — pas la case de 16 px, qu'on ne grossira pas sans la
+       rendre disgracieuse. Ces filtres commandent ce que la carte affiche : « En
+       mouvement », « Arrêt moteur ON », « Éteint », « Hors ligne ». Ils vivent dans une
+       feuille qu'on manipule au pouce, et le libellé cliquable mesurait 32 px. */
+    @media (max-width: 768px) {
+      .tracky-sheet-checkbox { min-height: 44px }
+    }
 
     .tracky-sheet-actions-grid {
       display: grid;

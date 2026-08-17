@@ -23,8 +23,15 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
       <div class="fixed inset-0 z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
+        <!-- ⚠️ LE RÔLE DE MODALE MANQUAIT. Le panneau existait, se voyait, se remplissait —
+             mais rien ne le DÉCLARAIT comme une modale : un lecteur d'écran l'annonçait
+             comme une simple zone, sans dire qu'il faut en sortir pour revenir à la page.
+             Relevé au balayage responsive du 2026-08-17, qui cherchait les modales par
+             leur rôle et ne trouvait pas celle-ci. -->
         <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
-                    flex flex-col animate-slide-in overflow-hidden vd-overlay">
+                    flex flex-col animate-slide-in overflow-hidden vd-overlay"
+             role="dialog" aria-modal="true"
+             [attr.aria-label]="isEditMode() ? 'Modifier le véhicule' : 'Ajouter un véhicule'">
 
           <!-- Header -->
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">

@@ -309,8 +309,13 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 3px }
     .u-header-actions { display: flex; align-items: center; gap: 12px }
     .u-invite-btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap }
+    /* La cible, c'est le libellé — la case fait 13 px et ne grandira pas. Mesuré à
+       18 px au balayage du 2026-08-17, comme ses jumeaux de /drivers et de la carte. */
     .u-toggle-archived { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); cursor: pointer }
     .u-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
+    @media (max-width: 768px) {
+      .u-toggle-archived { min-height: 44px }
+    }
 
     /* ─── Tabs ─── */
     .u-tabs { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap }

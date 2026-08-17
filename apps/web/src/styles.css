@@ -238,14 +238,67 @@ body.plat-android {
  * DOIT donc porter `.tab-btn` — c'est la convention, et c'est ce qui la fait
  * entrer dans cette garantie. La mesure au doigt reste le seul juge.
  */
+/* ⚠️ LA LISTE DE NOMS EST DEVENUE UNE RÈGLE DE TYPE — 2026-08-17.
+ *
+ * L'avertissement ci-dessus s'est vérifié à l'échelle. Un balayage des 32 écrans à
+ * 375 px a compté **111 cibles sous 44 px**, sur 25 écrans, et AUCUNE ne portait un des
+ * six noms énumérés : des `px-4 py-2` à 36 px, des `px-2.5 py-1` à 26, un champ de
+ * recherche à 20, des boutons d'action à 22. Une liste de noms ne peut pas suivre une
+ * application qui grandit — c'est ce que le commentaire redoutait, mesuré.
+ *
+ * La règle porte donc sur ce qui SE TAPE, quel que soit son nom. Trois exceptions, et
+ * elles sont motivées :
+ *
+ *   — LES LIENS EN LIGNE. Un lien dans une phrase ne peut pas faire 44 px de haut sans
+ *     disloquer le paragraphe. WCAG 2.5.8 les exempte explicitement pour cette raison.
+ *     On ne vise donc que les liens qui se présentent DÉJÀ comme des boutons (flex,
+ *     inline-flex, block) — ceux-là ont une boîte à eux.
+ *   — LES CASES ET LES RADIOS. Leur cible, c'est le `label` qui les enveloppe : c'est
+ *     lui qu'on tape, et il fait sa hauteur.
+ *   — LES CELLULES DE VISUALISATION (`.hm-cell`, `.tracky-marker`). Une carte de chaleur
+ *     à 7 × 24 cases demanderait 1056 px de large pour tenir le seuil, et un marqueur de
+ *     véhicule est posé à une COORDONNÉE : l'agrandir déplacerait l'information. Ce sont
+ *     des points de données, pas des commandes ; la liste des véhicules porte la même
+ *     action, en taille normale.
+ */
 @media (max-width: 768px) {
-  .tab-btn,
-  .main-tab,
-  .bn-tab,
-  .vdx-tab,
-  .vdx-famille,
-  .sm-day-btn {
+  button,
+  select,
+  textarea,
+  [role='button'],
+  [role='tab'],
+  input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+  a[class*='btn'],
+  a[class*='button'] {
     min-height: 44px;
+  }
+
+  /* Les liens qui se comportent en boutons — ceux qui portent déjà leur propre boîte. */
+  a.inline-flex,
+  a.flex,
+  a.block {
+    min-height: 44px;
+  }
+
+  /* Un bouton qui grandit doit garder son contenu centré : sans cela, le texte reste
+     collé en haut de la boîte agrandie. */
+  button,
+  [role='button'],
+  a[class*='btn'],
+  a.inline-flex,
+  a.flex {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  a.block { display: flex; align-items: center; }
+
+  /* Les exceptions motivées ci-dessus. */
+  .hm-cell,
+  .tracky-marker,
+  .tracky-marker * {
+    min-height: 0;
+    display: revert;
   }
 }
 

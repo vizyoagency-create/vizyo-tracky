@@ -158,7 +158,11 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
           <!-- LOG TABLE -->
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
             <div class="flex items-center justify-between gap-3.5 p-[16px_22px] border-b border-border-subtle flex-wrap">
-              <div class="flex items-center gap-1">
+              <!-- ⚠️ RETOUR À LA LIGNE OBLIGATOIRE. Cette rangée de filtres poussait la
+                   page à 417 px sur un écran de 375 : le conteneur parent enveloppe,
+                   celui-ci non, et les six boutons tenaient donc sur une seule ligne
+                   coûte que coûte. Les derniers filtres sortaient de l'écran. -->
+              <div class="flex items-center gap-1 flex-wrap">
                 @for (f of statusFilters; track f.id) {
                   <button (click)="setFilter(f.id)"
                           class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer"

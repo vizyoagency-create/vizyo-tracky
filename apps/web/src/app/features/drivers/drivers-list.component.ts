@@ -244,9 +244,14 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       .d-header { flex-direction: column; align-items: stretch; gap: 12px; }
       .d-header-actions { width: 100%; }
     }
+    /* Même principe que les contacts plus bas : c'est le LIBELLÉ qu'on tape, et il
+       mesurait 17 px. La case reste à sa taille, la ligne prend 44. */
     .d-toggle-archived {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 11px; color: var(--fg-tertiary); cursor: pointer;
+    }
+    @media (max-width: 768px) {
+      .d-toggle-archived { min-height: 44px }
     }
     .d-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
     /* bouton « Ajouter » : .btn-primary global (styles.css) */
@@ -341,10 +346,17 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       border-top: 1px solid var(--border-subtle);
       border-bottom: 1px solid var(--border-subtle);
     }
+    /* ⚠️ TÉLÉPHONER ET ÉCRIRE SONT DES ACTIONS, pas du texte. Ces deux liens ouvrent
+       le composeur et le client mail du téléphone — c'est le geste le plus utile de la
+       fiche conducteur — et ils mesuraient 17 px de haut. Portés à 44 px sous 768 px,
+       sans toucher à la taille du texte : c'est la ZONE qui grandit. */
     .d-contact-item {
       display: flex; align-items: center; gap: 6px;
       font-size: 11px; color: var(--fg-tertiary);
       text-decoration: none; transition: color .15s;
+    }
+    @media (max-width: 768px) {
+      .d-contact-item { min-height: 44px }
     }
     .d-contact-item:hover { color: var(--tracky-light) }
     .d-contact-item lucide-icon { color: inherit; flex-shrink: 0 }

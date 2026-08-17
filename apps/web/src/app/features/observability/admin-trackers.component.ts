@@ -184,7 +184,11 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
                   <td class="p-3 text-fg-primary text-xs font-medium">
                     @if (t.vehicle) {
                       <div class="flex items-center gap-1.5">
-                        <a [routerLink]="['/vehicles', t.vehicle.id]" class="text-tracky-light hover:underline">{{ t.vehicle.plate }}</a>
+                        <!-- La plaque est un LIEN vers la fiche du véhicule : une
+                             commande, pas une étiquette. 16 px de haut dans une ligne
+                             de tableau, c'est intapable au doigt. -->
+                        <a [routerLink]="['/vehicles', t.vehicle.id]"
+                           class="text-tracky-light hover:underline inline-flex items-center min-h-[44px]">{{ t.vehicle.plate }}</a>
                         <app-group-badge [group]="t.vehicle.group" />
                       </div>
                     } @else { — }
@@ -217,10 +221,15 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
                           Assigner
                         </button>
                       }
+                      <!-- ⚠️ CE SONT DES COMMANDES, PAS DU TEXTE. « Fix » et « Sampling »
+                           ouvrent deux écrans de réglage du boîtier et mesuraient 16 px
+                           de haut : au doigt, dans une ligne de tableau dense, on tape à
+                           côté. Une boîte inline-flex de 44 px leur donne une cible,
+                           sans changer la taille du libellé. -->
                       <a [routerLink]="['/admin/trackers', t.id, 'fix-mode']"
-                         class="text-xs text-sky-400 hover:text-sky-300">Fix</a>
+                         class="text-xs text-sky-400 hover:text-sky-300 inline-flex items-center min-h-[44px]">Fix</a>
                       <a [routerLink]="['/admin/trackers', t.id, 'sampling']"
-                         class="text-xs text-purple-400 hover:text-purple-300">Sampling</a>
+                         class="text-xs text-purple-400 hover:text-purple-300 inline-flex items-center min-h-[44px]">Sampling</a>
                     </div>
                   </td>
                 </tr>
