@@ -11,9 +11,60 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-16**
+- Dernière mise à jour : **2026-08-17**
 
 ---
+
+---
+
+## 🟢 2026-08-17 — la production repasse sur `main`, et l'instrument qui accusait depuis 5 jours est réfuté
+
+**[TRK-019](#trk-019) se referme.** Les images ont été reconstruites le **16/08 à 15:59 / 16:00**,
+les conteneurs recréés à **16:03**, et `/opt/vizyo-tracky` est sur **`main`** @ `3fccee5` — le point
+de fork a disparu. Les deux commits perdus (`d5e5fb1`, `73440d8`) sont sur `main`, et **trois des
+quatre marqueurs sont de retour** dans les artefacts servis.
+
+> **Et deux instruments le prouvent sans lire un binaire.** Les silences boîtier tracés, figés à
+> **81** depuis le 11/08 (0 sur 355 commandes), sont passés à **100** — dont un le 17/08 à 00:56.
+> La trace horaire de réconciliation de l'allowlist, muette depuis le 11/08, réécrit à chaque heure.
+> *Un marqueur présent dit qu'un code est là ; un compteur qui repart le prouve.*
+
+**Le 4ᵉ marqueur n'était pas absent : il n'était pas mesurable.** Depuis le 12/08, cinq rapports ont
+déclaré [TRK-002](#trk-002) en régression parce que `consecutiveTransportFailures` ne se trouvait pas
+dans le bundle servi. C'est une variable de **portée module**, dans un artefact **minifié d'une
+ligne** : le minifieur la renomme, toujours.
+
+| Symbole cherché dans `chunk-IJIQMQ3Y.js` | Nature | Antérieur au correctif ? | Occurrences |
+|---|---|---|---|
+| `shouldReportNetworkFailure` | fonction de module | **oui, des semaines** | **0** |
+| `consecutiveTransportFailures` | `let` de module | non | 0 |
+| `"API injoignable"` · `"Rafraichissement de session"` | littéraux | oui | **1** · **1** |
+
+Le contrôle est décisif : un symbole **certainement en production** rend zéro. Le témoin employé
+jusqu'ici était un *littéral de chaîne* — il attestait qu'on lisait le bon fichier, jamais qu'un
+**nom de variable** y serait visible s'il existait.
+
+> 🔑 **Un témoin ne vaut que s'il est de la MÊME NATURE que ce qu'il contrôle.** Les marqueurs *API*
+> restent valables (sortie `tsc`, non minifiée — ils viennent de repasser d'absents à présents) ;
+> les marqueurs *web* de type identifiant sont, eux, définitivement retirés du référentiel.
+
+**Et le correctif de [TRK-017](#trk-017), redéployé cette nuit, ne peut pas remonter l'attaque pour
+laquelle il a été écrit** → nouvelle fiche **[TRK-025](#trk-025)**. Il lit `removalsBlocked` dans la
+réponse du sync que **l'API émet elle-même** — un sync qui ne demande jamais de suppression
+(`+0 / -0` à chaque heure). Les **40** suppressions de masse retenues appartiennent à un tiers, et ne
+traversent jamais ce canal. *Un correctif branché sur le résultat de sa propre requête ne peut pas
+voir ce que fait quelqu'un d'autre avec la même clé.*
+
+**L'appelant de TRK-017 est revenu, pour la troisième fois après un silence** (5 frappes les 16 et
+17/08, après 32 h de calme). Clé `vtx_48fe` toujours vivante : **7ᵉ jour**. *Trois occurrences du même
+motif : un compteur de frappes mesure l'activité de l'attaquant, jamais son accès.*
+
+> **Enfin, une corrélation démontée avant d'être racontée.** Les insertions de positions baissent
+> pour le 3ᵉ jour (24 201 → 19 849 → **15 249**) et les rejets [TRK-015](#trk-015) sont retombés
+> (5 323 → 2 287). La cause n'est ni le garde-fou ni une panne : **c'est le calendrier** — 195 trajets
+> vendredi, 149 samedi (férié), **73 dimanche**, et le motif d'écrêtage dominant dit
+> `STOPPED immobile, throttle 300s actif`. *Avant de lier deux grandeurs qui bougent ensemble,
+> chercher la troisième qui les gouverne.*
 
 ---
 
@@ -593,21 +644,22 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-023](#trk-023) | *alertes* | **42 038 alertes sur 51 529 (81,6 %) partent sans message** — dont **41 507 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🔴 NON CORRIGÉ *(numérateur inchangé ; **dormant sur 24 h** — 3 alertes, toutes `GPS_LOST` avec message. KSR370 mort depuis 47 h, ses 2 cartes rouges toujours vides)* | 2026-08-13 | 2026-08-16 |
-| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🔴 NON CORRIGÉ *(🔴 **4ᵉ RECONSTRUCTION** — api 15/08 17:05, web 16/08 00:04, conteneurs 00:06 ; `merge-base` toujours `c3c2704`. Témoin web migré vers `chunk-XXNB5VTF.js` : l'artefact est NEUF et le trou est le même)* | 2026-08-12 | 2026-08-16 |
-| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(🔴 **test daté DÉCLENCHÉ** : +2 le 15/08 (10 → **12**), **3 jours sur 4**, même opérateur — l'usage est RÉGULIER, pas un vestige de mai)* | 2026-08-13 | 2026-08-16 |
-| [TRK-022](#trk-022) | *alertes* | Aucune déduplication des alarmes Coban : **1317 survitesses en un jour**, et **41 479 `POWER_CUT` en 15 jours** | 🔴 NON CORRIGÉ *(0 survitesse sur 24 h, 2ᵉ jour consécutif — grandeur qui suit un seul chauffeur ; le fait structurel « 1 véhicule sur 43 » n'a pas bougé)* | 2026-08-13 | 2026-08-16 |
-| [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : des boîtiers marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🔴 NON CORRIGÉ *(**2ᵉ point identique** sur la définition écrite (5 min / 15 min) : **0 / 1**, comme le 15/08. Le boîtier muet est celui qui porte la commande en attente)* | 2026-08-14 | 2026-08-16 |
-| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ *(`ackedAt` = 0 sur 4444, `acknowledgedAt` = 30, inchangé)* | 2026-08-12 | 2026-08-16 |
-| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : commandes moteur `SENT`, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté **passé 5 fois** : 219 → 224 → 231 → 236 → **242** ; passerelle **326** `queued`, dernier empilé le 15/08 18:01)* | 2026-08-11 | 2026-08-16 |
-| [TRK-017](#trk-017) | `sms-allowlist` | Un appelant hors VPS efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé `vtx_48fe` inchangée — `tenants.updatedAt` au 05/06 — **6ᵉ jour**. ⚠️ **0 frappe depuis le 14/08 17:25** : c'est une absence de MESURE, pas de menace — il s'est déjà tu puis est revenu)* | 2026-08-09 | 2026-08-16 |
-| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(13ᵉ jour > 88 % — **89,2 %** le 15/08 ; oscillation 92,6 → 88,8 → 89,2, aucune ligne touchée)* | 2026-08-09 | 2026-08-16 |
-| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ *(⚠️ **5497 rejets / 2820 trous** sur 24 h — ×3,5 et ×5,3 — sur **34 boîtiers**, sans rafale, ET **−18 % d'insertions** pour −2 % de trames entrantes. 3ᵉ point demandé)* | 2026-08-08 | 2026-08-16 |
-| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(⚠️ **instrument désarmé depuis le 11/08 22:37**, 5ᵉ jour : silences figés à 81, **0 sur 160 commandes** depuis l'image du 13/08 et **0 sur 2** depuis celle du 16/08 ; `ackedAt` = 0 sur 4444)* | 2026-08-07 | 2026-08-16 |
-| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord depuis 5 jours ; 297 échecs « intervalle observé 20 s » sur 7 j)* | 2026-08-05 | 2026-08-16 |
-| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(🔴 **test daté DÉCLENCHÉ, seuil de 9 franchi** : 8 → **11** clôtures strictement fausses (7·7·7·8·11) ; dénominateur 49 → 54)* | 2026-08-06 | 2026-08-16 |
-| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(**3ᵉ rappel PRÉSENT** sur les 2 véhicules le 15/08 — 3ᵉ point du même motif, la cadence servie est quotidienne. Épisodes à 88,3 h et 81,8 h, terrain demandé depuis le 03/08)* | 2026-07-28 | 2026-08-16 |
-| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 **RÉGRESSION CONFIRMÉE** *(aucune occurrence nouvelle sur 24 h ; marqueur absent du bundle **neuf** du 16/08, témoin désormais dans `chunk-XXNB5VTF.js`)* | 2026-07-29 | 2026-08-16 |
+| [TRK-025](#trk-025) | `sms-allowlist` | **40 suppressions de masse retenues par la passerelle, 0 remontée** — le champ lu vient de la réponse au sync que l'API émet elle-même, où il vaut toujours 0 | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(nouvelle ; correctif redéployé le 16/08 16:03 et **prouvé incapable de se déclencher** : 2 blocages depuis, 0 ligne)* | 2026-08-17 | 2026-08-17 |
+| [TRK-023](#trk-023) | *alertes* | **42 038 alertes sur 51 531 (81,6 %) partent sans message** — dont **41 507 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🔴 NON CORRIGÉ *(numérateur inchangé ; **dormant sur 24 h** — 2 alertes, toutes `GPS_LOST` avec message. KSR370 mort depuis 71 h, ses 2 cartes rouges toujours vides)* | 2026-08-13 | 2026-08-17 |
+| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🟢 CORRIGÉ *(5ᵉ image, **servie depuis `main`** @ `3fccee5` — conteneurs recréés le 16/08 16:03. 3 marqueurs sur 3 mesurables PRÉSENTS + 2 preuves comportementales. ⚠️ réserve : le fait est réparé, la CAUSE n'a pas de garde — vérifier la branche à chaque image)* | 2026-08-12 | 2026-08-17 |
+| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(test daté RÉPONDU : **non**, aucun nouvel essai, compte figé à **12**. Gravité 1 maintenue — 3 journées distinctes sur 5)* | 2026-08-13 | 2026-08-17 |
+| [TRK-022](#trk-022) | *alertes* | Aucune déduplication des alarmes Coban : **1317 survitesses en un jour**, et **41 479 `POWER_CUT` en 15 jours** | 🔴 NON CORRIGÉ *(0 survitesse sur 24 h, **3ᵉ jour** consécutif — grandeur qui suit un seul chauffeur ; le fait structurel « 1 véhicule sur 43 » n'a pas bougé)* | 2026-08-13 | 2026-08-17 |
+| [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : des boîtiers marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🔴 NON CORRIGÉ *(**3ᵉ point identique** sur la définition écrite (5 min / 15 min) : **0 / 1**. Trois mesures concordantes)* | 2026-08-14 | 2026-08-17 |
+| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ *(`ackedAt` = 0 sur **4513**, `acknowledgedAt` = 30, inchangé)* | 2026-08-12 | 2026-08-17 |
+| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : commandes moteur `SENT`, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté **passé 6 fois** : 224 → 231 → 236 → 242 → **254** ; passerelle **328** `queued`, dernier empilé le 16/08 18:00)* | 2026-08-11 | 2026-08-17 |
+| [TRK-017](#trk-017) | `sms-allowlist` | Un appelant hors VPS efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé `vtx_48fe` inchangée — `tenants.updatedAt` au 05/06 — **7ᵉ jour**. ⚠️ **35 → 40 blocages** : l'appelant EST REVENU après 32 h de silence, pour la **3ᵉ fois** — la leçon devient une règle. Sa remontée au centre d'alerte est morte, cf. [TRK-025](#trk-025))* | 2026-08-09 | 2026-08-17 |
+| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(**84,9 %** le 16/08 — plus bas point, mais sur **73 trajets** (dimanche) : échantillon, pas amélioration. Cumul 81,6 %)* | 2026-08-09 | 2026-08-17 |
+| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ *(**test daté RÉPONDU** : rejets 5497 → **2465**, le 15/08 était UNE JOURNÉE. La baisse d'insertions s'explique par le **week-end** (73 trajets dimanche vs 195 vendredi), pas par le garde-fou. 317 rejets = rejeu de tampon de HD-779-MA)* | 2026-08-08 | 2026-08-17 |
+| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(✅ **instrument RÉARMÉ** le 16/08 16:03 : silences 81 → **100**. Mais le défaut est intact — `ackedAt` = **0 sur 4513**)* | 2026-08-07 | 2026-08-17 |
+| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord depuis **6 jours** ; 288 échecs « intervalle observé 20 s » sur 7 j)* | 2026-08-05 | 2026-08-17 |
+| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(numérateur **11**, stable après son bond (7·7·7·8·11·11) ; dénominateur 54 → **58**. L'argument « figé » reste mort)* | 2026-08-06 | 2026-08-17 |
+| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(correctif **de retour en prod** le 16/08 16:03 ; les 2 rappels du 16/08 lui sont ANTÉRIEURS. Le vrai test échoit le 17/08. Épisodes à 112,3 h et 105,8 h, terrain demandé depuis le 03/08)* | 2026-07-28 | 2026-08-17 |
+| [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🟢 CORRIGÉ *(déployé — `d5e5fb1` est sur `main`, branche servie depuis le 16/08 16:03. ⚠️ **le marqueur binaire est RETIRÉ** : invalide sur bundle minifié, réfuté par contrôle. 5 verdicts « régression » de 12→16/08 rectifiés ; seul un contrôle COMPORTEMENTAL vaut désormais)* | 2026-07-29 | 2026-08-17 |
 | [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ | 2026-07-31 | 2026-07-31 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟢 CORRIGÉ | 2026-07-28 | 2026-07-28 |
@@ -986,8 +1038,40 @@ deux heures d'échéance différentes.
 
 **Signature** — `frontend | ERROR | [api-fetch] Error: Rafraichissement de session — API injoignable : TypeError: <TYPE>`
 (`<TYPE>` = `Load failed` sur Safari/iOS, `Failed to fetch` sur Chrome — même défaut)
-**Statut : 🟢 CORRIGÉ** *(livré le 2026-08-04)* · 2 occurrences · 2026-07-29 → 2026-08-03
-*(Aucune nouvelle occurrence depuis le correctif. Les 2 lignes restantes lui sont antérieures.)*
+**Statut : 🟢 CORRIGÉ** *(déployé — `d5e5fb1` est sur `main`, branche servie depuis le 2026-08-16 16:03)*
+· 8 occurrences · 2026-07-29 → 2026-08-13
+
+> ### 🔴 Rectification du 2026-08-17 — le marqueur binaire de cette fiche est RETIRÉ
+>
+> Du 12/08 au 16/08, **cinq rapports** ont déclaré cette fiche en régression au motif que
+> `consecutiveTransportFailures` était introuvable dans le bundle servi. **Ce verdict a été rendu
+> cinq fois par un instrument qui rend « absent » quoi qu'il arrive.**
+>
+> Le symbole est `let consecutiveTransportFailures = 0;` — une variable de **portée module**, ni
+> exportée ni atteinte par chaîne, dans un artefact **minifié d'une seule ligne**
+> (`chunk-IJIQMQ3Y.js`, 4 721 octets). Le minifieur la renomme, toujours.
+>
+> **Le contrôle qui réfute la méthode :**
+>
+> | Symbole | Nature | Antérieur au correctif ? | Occurrences |
+> |---|---|---|---|
+> | `shouldReportNetworkFailure` | fonction de module | **oui, des semaines** | **0** |
+> | `noteTransportFailure` · `CONFIRM_AFTER_FAILURES` · `__resetTransportFailureCount` | module | non | 0 |
+> | `"API injoignable"` · `"Rafraichissement de session"` | littéraux de chaîne | oui | **1** · **1** |
+>
+> Un symbole certainement en production rend zéro : la mesure ne mesure rien. Le témoin employé
+> jusqu'ici était un *littéral de chaîne* — il attestait qu'on lisait le bon fichier, jamais qu'un
+> **nom de variable** y serait visible s'il existait.
+>
+> 🔑 **Un témoin ne vaut que s'il est de la MÊME NATURE que ce qu'il contrôle.** Sur un artefact
+> minifié, seuls survivent les littéraux, les noms exportés non élagués et les clés d'objet lues par
+> chaîne. Les marqueurs *API* restent valables (sortie `tsc`, non minifiée) ; **tout marqueur *web*
+> de type identifiant est proscrit** dans ce référentiel.
+>
+> **Ce qu'on peut affirmer, et rien de plus :** le correctif est **déployé**, établi par l'identité
+> de la branche servie et la date de l'image — pas par une observation du bundle. Le seul contrôle
+> valable désormais est **comportemental** : toute ligne `frontend | Rafraichissement de session`
+> postérieure au 16/08 16:03 prouverait que la confirmation à deux échecs ne tient pas.
 
 ### Chaîne d'appel
 `auth.service.ts` → `scheduleProactiveRefresh()` arme un `setTimeout` **~60 s avant l'expiration**
@@ -3774,7 +3858,32 @@ ferait re-crier la zone à chaque perte aurait annulé la fonctionnalité.
 ## TRK-019
 
 **Signature** — `livraison | (aucune ligne) | Un correctif vérifié en production disparaît d'un déploiement construit depuis une branche forkée avant lui`
-**Statut : 🔴 NON CORRIGÉ** · 4 correctifs perdus · 2026-08-12
+**Statut : 🟢 CORRIGÉ le 2026-08-17** · 4 correctifs perdus puis rétablis · 2026-08-12 → 2026-08-17
+
+> ### ✅ Fermeture du 2026-08-17 — la production est servie depuis `main`
+>
+> | | Constat |
+> |---|---|
+> | Images | `tracky-web` 16/08 15:59:24 · `tracky-api` 16/08 16:00:48 |
+> | Conteneurs | recréés le **16/08 16:03:14**, `restarts=0` |
+> | Branche servie | **`main`** @ `3fccee5` — le point de fork a disparu |
+> | Commits perdus | `d5e5fb1` et `73440d8` vérifiés sur `main` (`git branch --contains`) |
+>
+> **Trois marqueurs sur trois mesurables sont présents** dans `/app/apps/api/dist/` :
+> `reminderIntervalMs` (TRK-001), `episodeOpenedAt` (TRK-017), `armAckListener` (TRK-014). Le
+> quatrième (TRK-002, côté web) n'est **pas mesurable** par cette méthode — voir la rectification
+> d'instrument dans la fiche [TRK-002](#trk-002).
+>
+> **Et deux instruments le confirment par leur comportement :** les silences boîtier tracés passent
+> de **81** (figés depuis le 11/08, 0 sur 355 commandes) à **100** ; la trace horaire de
+> réconciliation de l'allowlist, muette depuis le 11/08, réécrit à chaque heure.
+>
+> ⚠️ **Réserve, et elle est le vrai reste-à-faire.** Le fait est réparé ; la **cause** ne l'est pas.
+> Rien n'empêche une prochaine mise en ligne de repartir d'une branche forkée, et rien ne le
+> signalerait. Correctif structurel proposé : **refuser de construire une image dont le `merge-base`
+> avec `main` n'est pas `main` lui-même**, ou au minimum inscrire la branche et le `merge-base` dans
+> une route de version lisible depuis l'application. Tant qu'il n'existe pas, cette fiche doit être
+> **re-vérifiée à chaque nouvelle image** (test daté nº 4 du rapport du 17/08).
 
 ### Ce qui a été mesuré
 
@@ -4276,6 +4385,71 @@ chemin `OVERSPEED`.
 
 ---
 
+## TRK-025
+
+**Signature** — `sms-allowlist | (aucune ligne) | suppressions de masse retenues par la passerelle, jamais remontées au centre d'alerte`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 1** · **40 blocages, 0 ligne** · découvert 2026-08-17
+
+> ### Le garde-fou retient 40 tentatives d'effacement de masse. Le centre d'alerte n'en affiche aucune.
+
+### Ce que le correctif promettait
+
+Le commit `d5e5fb1` (10/08) annonçait : *« Nouveau : une suppression de masse retenue par la
+passerelle est remontée tout de suite (champ `removalsBlocked`, côté vizyo-texto). »* Le code existe
+bien, et il est **redéployé depuis le 16/08 16:03** (marqueur `episodeOpenedAt` vérifié présent).
+
+### Ce que la mesure dit
+
+| Mesure | Valeur |
+|---|---|
+| `allowlist_audit_logs.outcome = 'removals_blocked'` (passerelle) | **40**, dont **2** après le redéploiement (16/08 23:24:59, 17/08 00:24:59) |
+| Lignes `sms-allowlist` dans `error_logs` | **aucune depuis le 10/08 14:25** |
+| Trace horaire de réconciliation (`system_activity_logs`) | `+0 / -0 (41 inchangés)` — à **chaque** passage |
+
+Le cron tourne, la garde retient, et rien ne remonte.
+
+### Cause racine
+
+`reportCoverage` (`apps/api/src/sms/allowlist.service.ts:173`) lit `result.removalsBlocked`, où
+`result` est la réponse du `POST /v1/allowlist/sync` **que l'API émet elle-même**
+(`allowlist.service.ts:318`). Or cette synchronisation ne demande **jamais** de suppression : le
+journal système le montre à chaque heure (`-0`). La passerelle n'a donc rien à retenir *pour cette
+requête*, et le champ vaut structurellement **0**.
+
+Les suppressions qui comptent sont celles d'un **tiers** porteur de la clé de production
+(`82.67.153.51`, cf. [TRK-017](#trk-017)). Elles n'existent que dans `allowlist_audit_logs` côté
+passerelle — table qu'**aucun code de l'API ne lit** : les seules occurrences de `removalsBlocked`
+dans `apps/api/src` sont les quatre lignes du champ lui-même.
+
+> **Famille : angle mort.** Le garde-fou fonctionne parfaitement — 42 numéros intacts depuis 154,8 h.
+> C'est sa **remontée** qui est morte, et elle est indétectable par construction : *un canal qui
+> n'écrit jamais ressemble exactement à un canal sur lequel rien n'arrive.*
+>
+> ⚠️ Ne pas « corriger » en faisant alerter le cron sur les entrées manquantes : ce chemin existe
+> déjà, il fonctionne, et il ne se déclenche pas ici **parce que rien ne manque** — la garde a tenu.
+> Corriger le cri, pas le garde-fou.
+
+### Correctif proposé
+
+1. **Préférable** — côté passerelle, exposer `GET /v1/allowlist/audit?since=<horodatage>` ; le cron
+   de réconciliation le lit à chaque passage et remonte au centre d'alerte tout
+   `outcome = removals_blocked` postérieur au précédent passage, **avec l'adresse appelante**.
+2. **À défaut** — faire renvoyer par `/v1/allowlist/sync` un cumul (`removalsBlockedTotal`) plutôt
+   que le compteur de la requête courante ; l'API alerte sur toute progression entre deux passages.
+
+Dans les deux cas, respecter la cadence déjà en place pour cette source : **une alerte par épisode,
+rappel quotidien tant qu'il dure** — le défaut d'origine de TRK-017 était précisément une ligne par
+occurrence.
+
+### Vérification
+
+À la prochaine tentative retenue par la passerelle, une ligne `sms-allowlist` doit apparaître dans
+`error_logs` **dans l'heure qui suit**, sans qu'aucune entrée n'ait eu besoin d'être rétablie. Une
+vérification qui se contenterait de compter les entrées d'allowlist ne prouverait rien : elles n'ont
+jamais bougé.
+
+---
+
 ## TRK-024
 
 **Signature** — `trackers | status = 'OFFLINE'` alors que `lastSeenAt` a moins de 5 minutes
@@ -4568,6 +4742,7 @@ trame — n'a jamais été décodé. Contrôle terrain demandé depuis le 15/08.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-17 | 46 (2 sur 24 h — **2 rappels `gps-integrity` attendus**, tous deux ANTÉRIEURS à la reconstruction de 16:03, 0 CRITICAL) | 23 revues ; **TRK-019 REFERMÉ** — production servie depuis `main` (5ᵉ image, 16/08 16:03), 3 marqueurs sur 3 mesurables présents + 2 preuves comportementales (silences 81 → **100**, trace allowlist horaire à nouveau) ; **TRK-002 rectifié : l'instrument était invalide** (variable de portée module cherchée dans un bundle minifié — le contrôle `shouldReportNetworkFailure`, en prod depuis des semaines, rend 0), 5 verdicts « régression » annulés ; **TRK-015 : test daté RÉPONDU** — le pic du 15/08 était une journée, et la baisse d'insertions est un **week-end** (73 trajets dimanche vs 195 vendredi) ; TRK-021 test daté **non déclenché** ; TRK-018 **passé 6ᵉ fois** ; TRK-017 **7ᵉ jour**, appelant revenu (3ᵉ fois après un silence) ; HD-779-MA a repris après 31 h **en rejouant un tampon** (317 rejets) | 1 (TRK-025) | agent d'audit |
 | 2026-08-16 | 44 (3 sur 24 h — **3 rappels `gps-integrity` attendus**, 0 CRITICAL) | 24 revues ; **TRK-019 : 4ᵉ reconstruction** (témoin web migré vers `chunk-XXNB5VTF.js` — l'artefact est neuf et le trou identique) ; **2 tests datés DÉCLENCHÉS** — TRK-021 passe en **gravité 1** (12 échecs, 3 jours sur 4) et TRK-013 franchit son seuil (8 → **11**, l'argument « numérateur figé » est mort) ; **TRK-015 : rejets ×3,5 ET insertions −18 %** le même jour, 3ᵉ point demandé ; tests datés TRK-001 (3ᵉ rappel) et TRK-018 **passés** ; TRK-017 **6ᵉ jour**, clé toujours vivante malgré 32 h de silence | 0 | agent d'audit |
 | 2026-08-15 | 41 (2 sur 24 h — 2 rappels GPS **attendus**) | 22 revues ; **le volet décisif de TRK-001 tranche par le COMPORTEMENT** sur 2 véhicules (le rappel de 48 h, et non celui de 72 h, était le discriminant) ; TRK-017 **35 blocages dont 11 le 14/08**, sa journée record ; TRK-021 6 → **10** ; **TRK-013 : le numérateur n'est plus figé** (7 → 8) ; TRK-024 voit son asymétrie « à sens unique » **tomber** (0 / 1, inversé) ; test daté TRK-018 **passé** | 0 | agent d'audit *(ligne ajoutée rétroactivement le 16/08 — elle manquait)* |
 | 2026-08-14 | 39 (3 sur 24 h — 2 rappels GPS **attendus**, 1 ligne TRK-002) | 21 revues ; **TRK-023 élargi de 1 à 42 038 alertes** (dont 41 507 CRITICAL et 3 SOS) ; **TRK-022 renforcé** sur `POWER_CUT` (41 479 en 15 jours de juin) ; TRK-019 **3ᵉ reconstruction**, point de fork inchangé ; **TRK-017 : l'appelant est REVENU**, clé toujours valide ; tests datés TRK-018 **passé**, TRK-001 volets 1-2 **passés** et volet 3 **non échu** | 1 (TRK-024) | agent d'audit |
