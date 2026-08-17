@@ -1,4 +1,8 @@
-import { deadZoneEstSilencieuse, deadZonePeriodeLabel } from './gps-dead-zone';
+import {
+  deadZoneDureeTypiqueLabel,
+  deadZoneEstSilencieuse,
+  deadZonePeriodeLabel,
+} from './gps-dead-zone';
 
 /**
  * ── CE QUE CES TESTS VERROUILLENT ────────────────────────────────────────────────────
@@ -89,5 +93,45 @@ describe('deadZoneEstSilencieuse — ne promettre que ce que le serveur tient', 
     expect(deadZoneEstSilencieuse({ status: 'RECURRING', label: 'UNDERGROUND_PARKING' })).toBe(false);
     expect(deadZoneEstSilencieuse({ status: 'SUSPECT', label: 'UNDERGROUND_PARKING' })).toBe(false);
     expect(deadZoneEstSilencieuse({ status: 'LEARNING', label: 'UNKNOWN' })).toBe(false);
+  });
+});
+
+/**
+ * ── TRK-028 : LA DURÉE TYPIQUE, EN CLAIR ─────────────────────────────────────────────
+ *
+ * C'est la phrase qui répond à la question du conducteur inquiet : « il est où ? ».
+ * « Environ 3 h » suffit à rassurer ; « 3 h 12 » suggère une précision que la médiane de
+ * quelques épisodes n'a pas, et invite à comparer deux valeurs incomparables.
+ */
+describe('deadZoneDureeTypiqueLabel — un ordre de grandeur, pas un chronomètre', () => {
+  it('se tait quand rien n’a été mesuré — pas de durée inventée', () => {
+    expect(deadZoneDureeTypiqueLabel(null)).toBeNull();
+    expect(deadZoneDureeTypiqueLabel(0)).toBeNull();
+    expect(deadZoneDureeTypiqueLabel(-5)).toBeNull();
+  });
+
+  it('sous une heure : arrondi aux 5 minutes', () => {
+    expect(deadZoneDureeTypiqueLabel(23)).toBe('environ 25 min');
+    expect(deadZoneDureeTypiqueLabel(47)).toBe('environ 45 min');
+  });
+
+  it('jamais « environ 0 min » : le plancher est 5', () => {
+    // Un épisode très court arrondirait à zéro — « le signal revient environ 0 min
+    // après » ne veut rien dire.
+    expect(deadZoneDureeTypiqueLabel(2)).toBe('environ 5 min');
+  });
+
+  it('en heures au-delà, au demi près tant que ça reste lisible', () => {
+    expect(deadZoneDureeTypiqueLabel(180)).toBe('environ 3 h');
+    expect(deadZoneDureeTypiqueLabel(195)).toBe('environ 3 h 30');
+    expect(deadZoneDureeTypiqueLabel(200)).toBe('environ 3 h 30');
+  });
+
+  it('à l’heure pleine passé dix heures — le demi n’apporte plus rien', () => {
+    expect(deadZoneDureeTypiqueLabel(700)).toBe('environ 12 h');
+  });
+
+  it('en jours au-delà de deux : un véhicule au parking pour le week-end', () => {
+    expect(deadZoneDureeTypiqueLabel(4320)).toBe('environ 3 jours');
   });
 });

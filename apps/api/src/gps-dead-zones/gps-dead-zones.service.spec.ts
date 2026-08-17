@@ -316,4 +316,100 @@ describe('GpsDeadZonesService', () => {
     const where = prisma.gpsDeadZone.findMany.mock.calls[0][0].where;
     expect(where.fleetId).toBeUndefined();
   });
+
+  /**
+   * ── TRK-028 : LE RETOUR DU SIGNAL ──────────────────────────────────────────────────
+   *
+   * Jusqu'ici la table n'enregistrait que l'ENTRÉE en zone morte. La fiche véhicule
+   * pouvait donc affirmer « la position réapparaîtra à la sortie » sans jamais pouvoir
+   * le montrer — une promesse sans preuve. Ces tests verrouillent les deux moitiés :
+   * fermer l'épisode au bon instant, et n'annoncer une durée que lorsqu'on en a une.
+   */
+  describe('recordRecovery — refermer un épisode', () => {
+    const buildAvecRecovery = () => {
+      const prisma = buildPrisma();
+      prisma.gpsLossEvent.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      const svc = new GpsDeadZonesService(prisma, { label: jest.fn() } as any);
+      return { svc, prisma };
+    };
+
+    it('ne ferme QUE les épisodes ouverts — une date déjà posée ne se réécrit pas', async () => {
+      // ⚠️ C'est l'invariant central. La PREMIÈRE position valide après la perte est la
+      // bonne ; si un appel ultérieur pouvait écraser la date, chaque trame suivante
+      // allongerait l'absence et la durée médiane deviendrait un pur artefact.
+      const { svc, prisma } = buildAvecRecovery();
+      const at = new Date('2026-08-17T09:30:00Z');
+
+      await svc.recordRecovery({ vehicleId: 'v1', at });
+
+      const appel = prisma.gpsLossEvent.updateMany.mock.calls[0][0];
+      expect(appel.where).toEqual({ vehicleId: 'v1', recoveredAt: null });
+      expect(appel.data).toEqual({ recoveredAt: at });
+    });
+
+    it('rend le nombre d’épisodes refermés — plusieurs peuvent traîner ouverts', async () => {
+      const { svc, prisma } = buildAvecRecovery();
+      prisma.gpsLossEvent.updateMany.mockResolvedValue({ count: 3 });
+      const n = await svc.recordRecovery({ vehicleId: 'v1', at: new Date('2026-08-17T09:30:00Z') });
+      expect(n).toBe(3);
+    });
+
+    it('refuse une date invalide sans toucher à la base', async () => {
+      const { svc, prisma } = buildAvecRecovery();
+      const n = await svc.recordRecovery({ vehicleId: 'v1', at: new Date('pas une date') });
+      expect(n).toBe(0);
+      expect(prisma.gpsLossEvent.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('durée typique — la médiane, jamais la moyenne', () => {
+    const zone = { id: 'z1', vehicleId: 'v1', fleetId: 'f1', centroidLat: 43.6, centroidLng: 1.45, radiusM: 40, occurrences: 4, firstSeenAt: new Date('2026-07-01T00:00:00Z'), lastSeenAt: new Date('2026-08-17T00:00:00Z'), status: 'CONFIRMED_BENIGN', label: 'UNDERGROUND_PARKING', placeLabel: 'Toulouse', note: null, reviewedById: null, reviewedAt: null, createdAt: new Date(), updatedAt: new Date() } as any;
+
+    const episode = (lostAt: string, recoveredAt: string | null) => ({
+      lat: 43.6, lng: 1.45, lostAt: new Date(lostAt),
+      detectedAt: new Date(lostAt),
+      recoveredAt: recoveredAt ? new Date(recoveredAt) : null,
+    });
+
+    const lire = async (events: unknown[]) => {
+      const prisma = buildPrisma();
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', fleetId: 'f1' });
+      prisma.gpsDeadZone.findMany.mockResolvedValue([{ ...zone, events }]);
+      const svc = new GpsDeadZonesService(prisma, { label: jest.fn() } as any);
+      const [dto] = await svc.listForVehicle('v1', superAdmin as any);
+      return dto;
+    };
+
+    it('⚠️ un week-end au parking ne doit pas gonfler la durée annoncée', async () => {
+      // Trois sorties ordinaires (~3 h) et un stationnement de 72 h. La MOYENNE donnerait
+      // plus de 20 h — une durée que l'exploitant ne verra jamais. La médiane décrit le
+      // cas ordinaire, qui est précisément ce qu'on cherche à faire comprendre.
+      const dto = await lire([
+        episode('2026-08-01T08:00:00Z', '2026-08-01T11:00:00Z'), // 180 min
+        episode('2026-08-02T08:00:00Z', '2026-08-02T11:10:00Z'), // 190 min
+        episode('2026-08-03T08:00:00Z', '2026-08-03T11:20:00Z'), // 200 min
+        episode('2026-08-08T18:00:00Z', '2026-08-11T18:00:00Z'), // 4320 min (week-end)
+      ]);
+      // Médiane de [180, 190, 200, 4320] = (190 + 200) / 2 = 195.
+      expect(dto.typicalOutageMinutes).toBe(195);
+    });
+
+    it('ignore les épisodes encore ouverts — une absence en cours n’a pas de durée', async () => {
+      const dto = await lire([
+        episode('2026-08-01T08:00:00Z', '2026-08-01T11:00:00Z'),
+        episode('2026-08-17T08:00:00Z', null), // le véhicule est dedans en ce moment
+      ]);
+      expect(dto.typicalOutageMinutes).toBe(180);
+    });
+
+    it('reste NULL tant qu’aucun épisode n’est refermé — on se tait plutôt que deviner', async () => {
+      const dto = await lire([episode('2026-08-17T08:00:00Z', null)]);
+      expect(dto.typicalOutageMinutes).toBeNull();
+    });
+
+    it('expose le retour du signal sur chaque épisode', async () => {
+      const dto = await lire([episode('2026-08-01T08:00:00Z', '2026-08-01T11:00:00Z')]);
+      expect(dto.recentEvents[0].recoveredAt).toBe('2026-08-01T11:00:00.000Z');
+    });
+  });
 });

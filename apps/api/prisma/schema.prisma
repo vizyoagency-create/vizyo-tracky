@@ -1782,10 +1782,18 @@ model GpsLossEvent {
   lng        Float
   lostAt     DateTime
   detectedAt DateTime     @default(now())
+  /// Retour du signal : horodatage de la PREMIERE position valide apres la perte, ecrit a
+  /// l'ingestion (TRK-028). NULL tant que le vehicule n'est pas ressorti — un episode
+  /// ouvert. C'est la seule donnee qui permet de dire « le signal revient apres X »
+  /// plutot que de constater une absence sans fin.
+  recoveredAt DateTime?
 
   @@unique([vehicleId, lostAt])
   @@index([zoneId])
   @@index([fleetId, detectedAt])
+  /// Retrouver les episodes OUVERTS d'un vehicule sans balayer la table : c'est la
+  /// requete du chemin d'ingestion, la plus chaude du systeme.
+  @@index([vehicleId, recoveredAt])
   @@map("gps_loss_events")
 }
 

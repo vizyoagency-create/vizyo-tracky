@@ -75,6 +75,7 @@ import {
 } from '../../core/services/gps-dead-zones.service';
 import {
   matchDeadZone,
+  deadZoneDureeTypiqueLabel,
   deadZoneEstSilencieuse,
   deadZoneNatureLabel,
   deadZonePeriodeLabel,
@@ -511,8 +512,12 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                          Promettre « aucune alerte » sur celles-là se retournerait le jour
                          où l'alerte tombe — au pire moment. -->
                     @if (dzSilencieuse(z)) {
+                      <!-- TRK-028 — la preuve derrière la promesse. Tant qu'aucun épisode
+                           n'a été vu se refermer, on n'annonce aucune durée : la phrase
+                           reste vraie, elle est seulement moins précise. -->
                       <div class="vd-dz-rassure">
-                        Aucune alerte ici : le véhicule réapparaît en sortant.
+                        Aucune alerte ici : le véhicule réapparaît en sortant@if (dzDuree(z); as d) {,
+                        <strong>{{ d }}</strong> d'après les passages précédents}.
                       </div>
                     } @else if (z.status === 'CONFIRMED_BENIGN') {
                       <div class="vd-dz-rassure">
@@ -2391,6 +2396,11 @@ export class VehicleDetailComponent implements OnInit {
   /** Zone définitivement silencieuse (parking reconnu) — cf. la règle serveur. */
   protected dzSilencieuse(z: GpsDeadZoneDto): boolean {
     return deadZoneEstSilencieuse(z);
+  }
+
+  /** Durée typique d'absence, en clair — `null` tant qu'aucun épisode n'est refermé. */
+  protected dzDuree(z: GpsDeadZoneDto): string | null {
+    return deadZoneDureeTypiqueLabel(z.typicalOutageMinutes);
   }
 
   /** Confirme une zone comme « normale » (parking) → l'app cesse d'alerter sur les pertes ici. */

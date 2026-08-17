@@ -902,24 +902,32 @@ textarea:focus-visible,
 }
 
 /*
- * Plancher tactile générique : 36 px, PAS 44.
+ * Plancher tactile résiduel : 36 px, pour CE QUE LA RÈGLE DES 44 px EXCLUT.
  *
- * ⚠️ Le commentaire d'origine annonçait « garantir minimum 44px » alors que la
- * déclaration pose 36 px — relevé au lot B-pages (2026-08-11). Un commentaire
- * qui promet une garantie que le code ne tient pas est pire que pas de
- * commentaire : il fait sauter la vérification. La valeur est laissée à 36 px
- * et c'est le texte qui est corrigé, pour deux raisons :
+ * ⚠️ `button` A ÉTÉ RETIRÉ DE CETTE LISTE — 2026-08-17, mesuré au navigateur.
  *
- *  · monter `a` à 44 px casserait les liens EN LIGNE dans une phrase — c'est
- *    l'exception déjà assumée sur `/places` et `/settings` (« Coûts IA ») ;
- *  · le critère de recette (≥ 44 px) est tenu ÉCRAN PAR ÉCRAN et mesuré au
- *    navigateur, pas par un plancher global qu'aucune sonde ne peut vérifier
- *    ici (le panneau n'émule pas `pointer: coarse`).
+ * Cette règle défaisait silencieusement celle des 44 px écrite plus haut. Même
+ * spécificité (`button`, 0-0-1), déclarée PLUS BAS dans le fichier : sur un
+ * appareil tactile — c'est-à-dire exactement la cible — c'est le 36 px qui
+ * gagnait la cascade. Les boutons de la fiche véhicule mesuraient 36 px dans un
+ * aperçu 375 px avec pointeur grossier émulé.
  *
- * Ce plancher n'est donc qu'un filet, jamais la preuve. La preuve est la mesure.
+ * Et la recette Playwright ne pouvait pas le voir : elle ouvre un viewport de
+ * 375 px SANS `hasTouch`, donc `pointer: coarse` n'y matche pas, donc elle
+ * mesurait les 44 px de la règle du dessus. Un vert obtenu sur une condition que
+ * le téléphone réel ne remplit pas — c'est le pire des verts.
+ *
+ * On ne compte pas sur l'ordre des règles pour arbitrer : `button` sort de la
+ * liste, la règle des 44 px devient sa seule loi. Le reste garde son filet :
+ *
+ *  · `a` : monter les liens EN LIGNE à 44 px disloquerait le paragraphe — c'est
+ *    l'exemption WCAG 2.5.8, déjà assumée sur `/places` et `/settings` ;
+ *  · cases et radios : leur vraie cible est le `label` qui les enveloppe.
+ *
+ * Ce plancher n'est qu'un filet, jamais la preuve. La preuve est la mesure.
  */
 @media (max-width: 768px) and (pointer: coarse) {
-  button, a, input[type='checkbox'], input[type='radio'] {
+  a, input[type='checkbox'], input[type='radio'] {
     min-height: 36px;
   }
 }

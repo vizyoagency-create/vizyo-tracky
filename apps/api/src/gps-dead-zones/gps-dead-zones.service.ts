@@ -145,6 +145,61 @@ export class GpsDeadZonesService {
     return { zone, isNewEpisode: true };
   }
 
+  /**
+   * TRK-028 — le RETOUR du signal. Ferme les épisodes encore ouverts d'un véhicule.
+   *
+   * ⚠️ APPELÉ DEPUIS LE CHEMIN D'INGESTION, donc sous contrainte de coût. L'appelant
+   * (`positions.service`) ne déclenche cette écriture QUE lorsqu'une position valide
+   * arrive après un silence assez long pour qu'un épisode ait pu être ouvert — sur une
+   * trame ordinaire, il n'y a même pas de requête. Sans ce filtre, on paierait un
+   * `updateMany` par trame et par véhicule, sur la route la plus chaude du système.
+   *
+   * IDEMPOTENT par construction : le `where` ne retient que `recoveredAt: null`. Un
+   * second appel ne trouve plus rien et n'écrase aucune date déjà posée — la PREMIÈRE
+   * position valide après la perte est la bonne, pas la dixième.
+   *
+   * `updateMany` et non `update` : un véhicule peut porter plusieurs épisodes ouverts si
+   * le cron a tourné pendant que la donnée était incohérente. On les ferme tous plutôt
+   * que d'en laisser traîner un qui fausserait toutes les moyennes ensuite.
+   */
+  async recordRecovery(input: { vehicleId: string; at: Date }): Promise<number> {
+    const { vehicleId, at } = input;
+    if (!(at instanceof Date) || Number.isNaN(at.getTime())) return 0;
+    const { count } = await this.prisma.gpsLossEvent.updateMany({
+      where: { vehicleId, recoveredAt: null },
+      data: { recoveredAt: at },
+    });
+    if (count > 0) {
+      this.logger.log(
+        `Vehicule ${vehicleId} : signal GPS retrouve, ${count} episode(s) clos a ${at.toISOString()}.`,
+      );
+    }
+    return count;
+  }
+
+  /**
+   * La durée TYPIQUE d'une absence sur une zone, en minutes — la médiane, pas la moyenne.
+   *
+   * ⚠️ LA MÉDIANE, ET C'EST UNE DÉCISION. Un véhicule qui dort trois jours au parking
+   * pendant les congés produit un épisode de 72 h ; la moyenne s'envole et annonce une
+   * durée que l'exploitant ne verra jamais. La médiane décrit le cas ordinaire, qui est
+   * précisément ce qu'on cherche à faire comprendre.
+   *
+   * `null` tant qu'aucun épisode n'est clos : on ne devine pas une durée, on se tait.
+   */
+  private dureeTypiqueMinutes(events: { lostAt: Date; recoveredAt: Date | null }[]): number | null {
+    const durees = events
+      .filter((e) => e.recoveredAt)
+      .map((e) => (e.recoveredAt as Date).getTime() - e.lostAt.getTime())
+      .filter((ms) => ms > 0)
+      .sort((a, b) => a - b);
+    if (durees.length === 0) return null;
+    const milieu = Math.floor(durees.length / 2);
+    const ms =
+      durees.length % 2 === 1 ? durees[milieu] : (durees[milieu - 1] + durees[milieu]) / 2;
+    return Math.round(ms / 60_000);
+  }
+
   /** Zone du véhicule la plus proche du point ET dans le rayon de rattachement, ou null. */
   private nearestZone(zones: GpsDeadZone[], lat: number, lng: number): GpsDeadZone | null {
     let best: GpsDeadZone | null = null;
@@ -391,11 +446,16 @@ export class GpsDeadZonesService {
       placeLabel: zone.placeLabel,
       note: zone.note,
       reviewedAt: zone.reviewedAt ? zone.reviewedAt.toISOString() : null,
+      // TRK-028 — calculée sur les épisodes fournis. `listForVehicle` en passe assez pour
+      // que la médiane ait un sens ; ailleurs (carte), la valeur reste nulle et l'écran
+      // n'annonce rien plutôt que d'annoncer une durée tirée d'un seul épisode.
+      typicalOutageMinutes: this.dureeTypiqueMinutes(events),
       recentEvents: events.map((e) => ({
         lat: e.lat,
         lng: e.lng,
         lostAt: e.lostAt.toISOString(),
         detectedAt: e.detectedAt.toISOString(),
+        recoveredAt: e.recoveredAt ? e.recoveredAt.toISOString() : null,
       })),
     };
   }
@@ -413,6 +473,8 @@ export interface GpsDeadZoneEventDto {
   lng: number;
   lostAt: string;
   detectedAt: string;
+  /** TRK-028 — retour du signal, ou `null` si l'épisode est encore ouvert. */
+  recoveredAt: string | null;
 }
 
 export interface GpsDeadZoneDto {
@@ -432,6 +494,11 @@ export interface GpsDeadZoneDto {
   placeLabel: string | null;
   note: string | null;
   reviewedAt: string | null;
+  /**
+   * TRK-028 — durée MÉDIANE d'une absence sur cette zone, en minutes. `null` tant
+   * qu'aucun épisode n'a été vu se refermer : on ne devine pas une durée.
+   */
+  typicalOutageMinutes: number | null;
   recentEvents: GpsDeadZoneEventDto[];
 }
 

@@ -88,6 +88,33 @@ export function deadZonePeriodeLabel(
 }
 
 /**
+ * TRK-028 — la durée typique d'une absence, en clair : « environ 3 h », « environ 25 min ».
+ *
+ * ⚠️ ON ARRONDIT GROSSIÈREMENT, ET C'EST VOULU. « 3 h 12 » suggère une précision que la
+ * médiane de quelques épisodes n'a pas, et invite à comparer deux valeurs qui ne se
+ * comparent pas. L'exploitant a besoin d'un ORDRE DE GRANDEUR pour savoir s'il doit
+ * s'inquiéter — pas d'un chronomètre.
+ *
+ * `null` en entrée rend `null` : aucun épisode refermé, donc rien à annoncer. Se taire
+ * vaut mieux que d'inventer une durée à partir de rien.
+ */
+export function deadZoneDureeTypiqueLabel(minutes: number | null): string | null {
+  if (minutes === null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  if (minutes < 60) {
+    const arrondi = Math.max(5, Math.round(minutes / 5) * 5);
+    return `environ ${arrondi} min`;
+  }
+  const heures = minutes / 60;
+  if (heures < 10) {
+    // Au demi-quart près sous dix heures : « 3 h 30 » reste lisible et utile.
+    const demi = Math.round(heures * 2) / 2;
+    return Number.isInteger(demi) ? `environ ${demi} h` : `environ ${Math.floor(demi)} h 30`;
+  }
+  if (heures < 48) return `environ ${Math.round(heures)} h`;
+  return `environ ${Math.round(heures / 24)} jours`;
+}
+
+/**
  * La zone est-elle DÉFINITIVEMENT silencieuse — c'est-à-dire un parking reconnu ?
  *
  * ⚠️ « Confirmée bénigne » NE SUFFIT PAS, et la nuance est la seule qui compte pour

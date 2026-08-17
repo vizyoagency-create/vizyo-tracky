@@ -177,7 +177,14 @@ async function sonder(page: Page): Promise<Constat> {
 
 test.describe('Recette responsive — toute l\'application à 375 px', () => {
   test.skip(!JETON, 'E2E_TOKEN_ADMIN manquant');
-  test.use({ viewport: TELEPHONE });
+  // ⚠️ `hasTouch` AUTANT QUE LA LARGEUR — ajouté le 2026-08-17, après coup.
+  //
+  // Un viewport de 375 px sans tactile ne matche PAS `pointer: coarse`, et la feuille
+  // globale a des règles sous cette condition. Le balayage mesurait donc une variante
+  // du CSS qu'aucun téléphone ne sert : il annonçait 44 px là où l'appareil réel
+  // appliquait un plancher à 36. Une sonde qui n'émule pas la condition qu'elle
+  // prétend vérifier rend un vert plus dangereux qu'un rouge.
+  test.use({ viewport: TELEPHONE, hasTouch: true, isMobile: true });
 
   test.beforeEach(async ({ page, baseURL }) => {
     // ⚠️ LE COOKIE, PAS SEULEMENT `localStorage`. `JwtAuthGuard` lit `tracky_at` EN

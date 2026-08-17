@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import type { CobanPositionFrame } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
@@ -71,7 +72,7 @@ describe('PositionsService.list', () => {
         { provide: RealtimeGateway, useValue: { broadcastPosition: jest.fn(), emitTrackerStatus: jest.fn(), emitVehicleMovement: jest.fn() } },
         { provide: GeofencesService, useValue: { checkViolations: jest.fn() } },
         { provide: TripsService, useValue: { processPosition: jest.fn() } },
-        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id'), recordBackground: jest.fn() } },
         { provide: PositionSamplingService, useValue: {
           classify: jest.fn().mockReturnValue({ state: 'MOVING', distanceM: null }),
           decide: jest.fn().mockReturnValue({ shouldInsert: true, decision: 'INSERTED', state: 'MOVING', reason: 'test', distanceM: null }),
@@ -89,6 +90,7 @@ describe('PositionsService.list', () => {
           reconcile: jest.fn().mockReturnValue({ nextCurrentFixIntervalS: 30, nextFailureCount: 0, nextFailing: false }),
           requestChange: jest.fn().mockResolvedValue(null),
         } },
+        { provide: GpsDeadZonesService, useValue: { recordRecovery: jest.fn().mockResolvedValue(0) } },
       ],
     }).compile();
 
@@ -158,6 +160,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     emitEngineCommandUpdate: jest.Mock;
     emitVehicleMovement: jest.Mock;
   };
+  let deadZones: { recordRecovery: jest.Mock };
   let trackerRow: Record<string, unknown>;
 
   const IMEI = '359339074500001';
@@ -182,6 +185,9 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     lastValidFrameAt: LAST_SEEN,
     lastWriteAt: LAST_SEEN,
     lastSampledState: 'MOVING',
+    // FK portee par la ligne tracker elle-meme — c'est celle que lit le raccroc
+    // « retour du signal » (TRK-028), pas `vehicle.id` de la relation incluse.
+    vehicleId: VEHICLE_ID,
     verboseUntil: null,
     desiredFixIntervalS: 30,
     currentFixIntervalS: 30,
@@ -251,6 +257,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       emitEngineCommandUpdate: jest.fn(),
       emitVehicleMovement: jest.fn(),
     };
+    deadZones = { recordRecovery: jest.fn().mockResolvedValue(0) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -259,7 +266,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
         { provide: RealtimeGateway, useValue: gateway },
         { provide: GeofencesService, useValue: { checkViolations: jest.fn().mockResolvedValue(undefined) } },
         { provide: TripsService, useValue: trips },
-        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id'), recordBackground: jest.fn() } },
         { provide: PositionSamplingService, useValue: sampling },
         { provide: PositionBroadcastBuffer, useValue: broadcastBuffer },
         {
@@ -279,6 +286,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
             requestChange: jest.fn().mockResolvedValue(null),
           },
         },
+        { provide: GpsDeadZonesService, useValue: deadZones },
       ],
     }).compile();
 
@@ -571,5 +579,48 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       FLEET_ID,
       expect.objectContaining({ trackerId: TRACKER_ID, status: 'online' }),
     );
+  });
+
+  /**
+   * ── TRK-028 : LE RETOUR DU SIGNAL SE NOTE A L'INGESTION ────────────────────────────
+   *
+   * Le cron d'integrite ouvre l'episode mais ne peut pas le refermer : il tourne toutes
+   * les 5 minutes SUR LES BOITIERS SANS FIX, donc un vehicule ressorti du parking a deja
+   * quitte sa liste. L'instant du retour n'existe qu'ici, dans la premiere trame valide.
+   *
+   * Les deux tests ci-dessous verrouillent la condition de declenchement, parce qu'elle
+   * porte tout le cout : sans le filtre de silence, c'est un updateMany par trame et par
+   * vehicule sur la route la plus chaude du systeme.
+   */
+  it('une trame ordinaire ne coute AUCUNE requete de fermeture', async () => {
+    // 30 s de silence : aucun episode n'a pu etre ouvert (seuil = 2 h).
+    await service.ingest(makeFrame());
+    expect(deadZones.recordRecovery).not.toHaveBeenCalled();
+  });
+
+  it('apres un long silence, la premiere trame valide referme l\'episode a son instant reel', async () => {
+    // Le vehicule ressort du parking a 04:00 apres 3 h sans fix : au-dela du seuil,
+    // un episode a pu etre ouvert, on tente donc la fermeture.
+    const sortie = makeFrame({ deviceTime: new Date('2026-06-11T04:00:00Z') });
+
+    await service.ingest(sortie);
+
+    expect(deadZones.recordRecovery).toHaveBeenCalledTimes(1);
+    // ⚠️ `frame.deviceTime`, PAS `new Date()` : l'heure du boitier est l'instant du
+    // retour ; l'heure serveur y ajouterait la latence de la file d'ingestion.
+    expect(deadZones.recordRecovery).toHaveBeenCalledWith({
+      vehicleId: VEHICLE_ID,
+      at: sortie.deviceTime,
+    });
+  });
+
+  it('un echec de fermeture ne casse pas l\'ingestion — la position est persistee quand meme', async () => {
+    // La fermeture est un enrichissement. Si elle echoue, la trame doit vivre :
+    // perdre une position pour une statistique serait un mauvais echange.
+    deadZones.recordRecovery.mockRejectedValue(new Error('base injoignable'));
+
+    await service.ingest(makeFrame({ deviceTime: new Date('2026-06-11T04:00:00Z') }));
+
+    expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
   });
 });

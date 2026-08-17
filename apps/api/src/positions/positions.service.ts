@@ -10,6 +10,7 @@ import type { Position, Tracker, Vehicle } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { evaluateIngestionFix, isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
@@ -34,6 +35,17 @@ interface RequestedBy {
 export class PositionsService {
   private readonly logger = new Logger(PositionsService.name);
 
+  /**
+   * Silence au-delà duquel un épisode de perte GPS a pu être ouvert par le cron
+   * d'intégrité — donc au-delà duquel une position valide vaut la peine d'aller
+   * chercher un épisode à refermer.
+   *
+   * ⚠️ MÊME SOURCE QUE LE CRON (`GPS_LOST_ALERT_MIN`, 2 h par défaut). Deux constantes
+   * qui divergent produiraient soit des épisodes jamais refermés — donc une durée
+   * médiane calculée sur rien — soit une requête inutile sur chaque trame.
+   */
+  private readonly seuilEpisodeMs: number;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
@@ -44,7 +56,11 @@ export class PositionsService {
     private readonly broadcastBuffer: PositionBroadcastBuffer,
     private readonly fixMode: TrackerFixModeService,
     private readonly batchBuffer: PositionBatchBufferService,
-  ) {}
+    private readonly deadZones: GpsDeadZonesService,
+  ) {
+    const min = Number(process.env.GPS_LOST_ALERT_MIN);
+    this.seuilEpisodeMs = (Number.isFinite(min) && min > 0 ? min : 120) * 60_000;
+  }
 
   async ingest(frame: CobanPositionFrame): Promise<void> {
     const tracker = await this.prisma.tracker.findUnique({
@@ -248,6 +264,38 @@ export class PositionsService {
     // connue. Mise à jour seulement quand la trame GPS est valide pour ne pas
     // ecraser une position fraiche par un fix degrade.
     if (frame.valid) {
+      // ⚠️ TRK-028 — LE RETOUR DU SIGNAL SE MESURE ICI, ET NULLE PART AILLEURS.
+      //
+      // Cette trame est la PREMIERE position valide apres le silence : son `deviceTime`
+      // est l'instant exact ou le vehicule est ressorti. Le cron d'integrite ne pourrait
+      // pas le dire — il tourne toutes les 5 minutes et ne regarde que les boitiers SANS
+      // fix, donc un vehicule ressorti a deja disparu de sa liste. Sur une absence
+      // typique de quelques heures, une erreur de 5 minutes serait tolerable ; sur le
+      // principe, lire l'instant reel ne coute rien de plus.
+      //
+      // ⚠️ ET LE FILTRE EST CE QUI REND LA CHOSE GRATUITE. Un episode n'existe qu'apres
+      // `GPS_LOST_ALERT_MIN` (2 h par defaut) sans fix : on ne tente donc la fermeture
+      // que si le silence a depasse ce seuil. Sur une trame ordinaire — l'ecrasante
+      // majorite — il n'y a pas meme une requete. Sans ce filtre, on paierait un
+      // `updateMany` par trame et par vehicule sur la route la plus chaude du systeme.
+      const silenceMs = tracker.lastPositionAt
+        ? frame.deviceTime.getTime() - tracker.lastPositionAt.getTime()
+        : Number.POSITIVE_INFINITY;
+      if (tracker.vehicleId && silenceMs >= this.seuilEpisodeMs) {
+        void this.deadZones
+          .recordRecovery({ vehicleId: tracker.vehicleId, at: frame.deviceTime })
+          .catch((err) => {
+            // Meme traitement que `recordLoss` cote cron : un echec ici ne doit pas
+            // casser l'ingestion, mais il doit se voir au centre d'alerte — sinon on
+            // reconstruit une cecite en croyant mesurer.
+            this.errorLogger.recordBackground(
+              err instanceof Error ? err : new Error(String(err)),
+              'gps-dead-zones',
+              { imei: frame.imei, vehicleId: tracker.vehicleId ?? undefined, phase: 'recordRecovery' },
+            );
+          });
+      }
+
       trackerUpdate.lastLat = frame.latitude;
       trackerUpdate.lastLng = frame.longitude;
       trackerUpdate.lastSpeedKmh = frame.speedKph;

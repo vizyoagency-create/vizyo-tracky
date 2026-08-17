@@ -21,6 +21,8 @@ export interface GpsDeadZoneEventDto {
   lng: number;
   lostAt: string;
   detectedAt: string;
+  /** TRK-028 — retour du signal, ou `null` si l'épisode est encore ouvert. */
+  recoveredAt: string | null;
 }
 
 export interface GpsDeadZoneDto {
@@ -40,6 +42,11 @@ export interface GpsDeadZoneDto {
   placeLabel: string | null;
   note: string | null;
   reviewedAt: string | null;
+  /**
+   * TRK-028 — durée MÉDIANE d'une absence sur cette zone, en minutes. `null` tant qu'aucun
+   * épisode n'a été vu se refermer : l'écran n'annonce alors aucune durée.
+   */
+  typicalOutageMinutes: number | null;
   recentEvents: GpsDeadZoneEventDto[];
 }
 
