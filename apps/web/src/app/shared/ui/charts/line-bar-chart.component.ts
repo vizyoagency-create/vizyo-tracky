@@ -276,15 +276,35 @@ function formatHours(h: number): string {
 function readColors() {
   const cs = getComputedStyle(document.documentElement);
   const get = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+  const trackyLight = get('--tracky-light', '#10E0A0');
+
+  /**
+   * ⚠️ AUCUN `var(--…)` NE PEUT SORTIR D'ICI — releve en production le 2026-08-17.
+   *
+   * Ces valeurs partent dans `ctx.fillStyle` d'un canvas (Chart.js). Un canvas n'a
+   * PAS de contexte d'element : il ne peut resoudre aucune variable CSS. Et le mode
+   * d'echec est silencieux et trompeur — quand `fillStyle` recoit une valeur qu'il
+   * ne sait pas lire, il ne jette pas : il GARDE SA VALEUR PRECEDENTE, c'est-a-dire
+   * le noir par defaut.
+   *
+   * Consequence constatee sur /reports : l'aire du graphique et le remplissage des
+   * barres etaient peints en NOIR OPAQUE, pendant que la ligne et les bordures —
+   * qui passent par `get()`, donc deja resolues — restaient vertes. Rien dans la
+   * console, rien dans les tests : juste un graphique faux a l'ecran.
+   *
+   * On compose donc les teintes a partir de la valeur DEJA RESOLUE. `color-mix`
+   * avec une couleur litterale, lui, est bien accepte par le canvas (verifie au
+   * navigateur : il rend `color(srgb 0.06 0.88 0.63 / 0.15)`).
+   */
   return {
-    trackyLight: get('--tracky-light', '#10E0A0'),
+    trackyLight,
     tracky: get('--tracky', '#059669'),
     bgSecondary: get('--bg-secondary', '#0F1714'),
     fgPrimary: get('--fg-primary', '#F0FDF9'),
     fgSecondary: get('--fg-secondary', '#A7C7BC'),
     fgTertiary: get('--fg-tertiary', '#5C746C'),
-    borderSubtle: get('--border-subtle', 'color-mix(in srgb, var(--color-tracky-light) 8%, transparent)'),
-    trackyAlpha15: 'color-mix(in srgb, var(--color-tracky-light) 15%, transparent)',
-    trackyAlpha20: 'color-mix(in srgb, var(--color-tracky-light) 20%, transparent)',
+    borderSubtle: `color-mix(in srgb, ${trackyLight} 8%, transparent)`,
+    trackyAlpha15: `color-mix(in srgb, ${trackyLight} 15%, transparent)`,
+    trackyAlpha20: `color-mix(in srgb, ${trackyLight} 20%, transparent)`,
   };
 }

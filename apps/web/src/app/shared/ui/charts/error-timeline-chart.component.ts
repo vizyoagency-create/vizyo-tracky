@@ -167,6 +167,11 @@ function readColors() {
     fgPrimary: get('--fg-primary', '#F0FDF9'),
     fgSecondary: get('--fg-secondary', '#A7C7BC'),
     fgTertiary: get('--fg-tertiary', '#5C746C'),
-    borderSubtle: get('--border-subtle', 'color-mix(in srgb, var(--color-tracky-light) 8%, transparent)'),
+    // ⚠️ Repli SANS `var(--…)` : ces couleurs finissent dans `ctx.fillStyle` d'un
+    // canvas, qui ne resout aucune variable CSS et garde silencieusement sa valeur
+    // precedente — du noir. Le meme piege peignait l'aire de /reports en noir opaque
+    // (releve en production le 2026-08-17). Un repli doit etre une couleur, pas une
+    // reference a resoudre.
+    borderSubtle: get('--border-subtle', 'color-mix(in srgb, #10E0A0 8%, transparent)'),
   };
 }

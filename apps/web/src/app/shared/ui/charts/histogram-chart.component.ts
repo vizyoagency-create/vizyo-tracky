@@ -205,6 +205,9 @@ function readColors() {
     fgPrimary: get('--fg-primary', '#F0FDF9'),
     fgSecondary: get('--fg-secondary', '#A7C7BC'),
     fgTertiary: get('--fg-tertiary', '#5C746C'),
-    borderSubtle: get('--border-subtle', 'color-mix(in srgb, var(--color-tracky-light) 8%, transparent)'),
+    // ⚠️ Repli SANS `var(--…)` : un canvas ne resout pas les variables CSS et garde
+    // silencieusement sa couleur precedente (du noir). Cf. le meme piege corrige sur
+    // line-bar-chart, qui peignait l'aire de /reports en noir opaque.
+    borderSubtle: get('--border-subtle', 'color-mix(in srgb, #10E0A0 8%, transparent)'),
   };
 }
