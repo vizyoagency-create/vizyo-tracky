@@ -75,7 +75,9 @@ import {
 } from '../../core/services/gps-dead-zones.service';
 import {
   matchDeadZone,
+  deadZoneEstSilencieuse,
   deadZoneNatureLabel,
+  deadZonePeriodeLabel,
   deadZoneStatusLabel,
 } from '../../shared/utils/gps-dead-zone';
 import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
@@ -435,15 +437,23 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               <div class="vd-dz-now">
                 <lucide-icon [img]="ParkingSquare" [size]="16"></lucide-icon>
                 @if (cz.status === 'CONFIRMED_BENIGN') {
+                  <!-- ⚠️ DIRE QUE LE SIGNAL REVIENT, pas seulement que ce n'est pas une
+                       panne. « Ce n'est pas une panne » rassure sur la cause ; il reste
+                       à dire ce qui va se passer. Sans cette phrase, l'exploitant voit
+                       un véhicule figé sur la carte et rappelle le conducteur — le coup
+                       de fil que cet écran existe pour éviter. -->
                   <span>
                     Actuellement <strong>à l'arrêt en parking souterrain</strong>@if (cz.placeLabel) { ({{ cz.placeLabel }})}.
-                    Perte de GPS normale ici — ce n'est pas une panne.
+                    Perte de GPS normale ici — ce n'est pas une panne : le boîtier est joignable,
+                    c'est le ciel qui manque. <strong>La position réapparaîtra d'elle-même à la sortie</strong>,
+                    sans aucune manipulation.
                   </span>
                 } @else {
                   <div class="vd-dz-now-ask">
                     <span>
                       Ce véhicule perd le GPS <strong>ici même</strong>@if (cz.placeLabel) { ({{ cz.placeLabel }})}, déjà {{ cz.occurrences }} fois.
-                      Est-ce un <strong>parking souterrain / couvert</strong> (perte normale) ?
+                      Si c'est un <strong>parking souterrain ou couvert</strong>, la position
+                      reviendra à la sortie et il n'y a rien à faire.
                     </span>
                     @if (canEditVehicle()) {
                       <div class="vd-dz-actions">
@@ -456,9 +466,19 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
               </div>
             }
 
+            <!-- ⚠️ CE TEXTE PROMETTAIT UNE CONFIRMATION MANUELLE QUI N'EST PLUS REQUISE.
+                 TRK-026 (2026-08-17) qualifie la zone en parking dès la DEUXIÈME perte au
+                 même endroit et la rend silencieuse. L'ancienne phrase — « confirmez pour
+                 ne plus recevoir d'alerte » — décrivait donc un geste devenu inutile, et
+                 laissait croire que les alertes continuaient tant qu'on n'avait rien fait.
+                 Un écran qui décrit une règle périmée est pire qu'un écran muet : on agit
+                 dessus. -->
             <p class="vd-dz-intro">
-              Endroits où ce véhicule reperd régulièrement le GPS (parking souterrain, tunnel… ou brouilleur).
-              Confirmez une zone « normale » pour ne plus recevoir d'alerte « GPS perdu » ici.
+              Endroits où ce véhicule reperd régulièrement le GPS : parking souterrain, tunnel,
+              rue couverte… ou brouilleur. <strong>Dès la deuxième perte au même endroit</strong>,
+              le lieu est reconnu comme parking et les alertes « GPS perdu » s'y arrêtent —
+              le véhicule réapparaît de lui-même en sortant. Marquez « suspect » si vous
+              pensez qu'il ne s'agit pas d'un parking.
             </p>
 
             <ul class="vd-dz-list">
@@ -473,13 +493,32 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                       <strong>{{ z.placeLabel || ((z.centroidLat | number: '1.4-4') + ', ' + (z.centroidLng | number: '1.4-4')) }}</strong>
                       <span class="vd-dz-badge" [attr.data-s]="z.status">{{ dzStatusLabel(z.status) }}</span>
                     </div>
+                    <!-- ⚠️ « 9 fois » NE VEUT RIEN DIRE SANS SA PÉRIODE. Neuf pertes en un
+                         mois décrivent une habitude ; neuf en un an décrivent un hasard. Le
+                         compteur seul laissait l'exploitant sans échelle, et c'est de cette
+                         échelle qu'il a besoin pour juger si le lieu est vraiment un
+                         passage régulier. -->
                     <div class="vd-dz-item-meta">
-                      <span>Perdu {{ z.occurrences }} fois</span>
+                      <span>{{ z.occurrences }} passage{{ z.occurrences > 1 ? 's' : '' }} sans GPS</span>
                       <span aria-hidden="true">·</span>
                       <span>{{ dzNatureLabel(z) }}</span>
                       <span aria-hidden="true">·</span>
-                      <span>dernière {{ relativeTime(z.lastSeenAt) }}</span>
+                      <span>{{ dzPeriode(z) }}</span>
                     </div>
+                    <!-- ⚠️ ON NE PROMET LE SILENCE QUE LÀ OÙ IL EST INCONDITIONNEL.
+                         Une zone « normale » qui n'est pas un parking reste soumise au
+                         plafond de silence côté serveur : l'alerte y revient au-delà.
+                         Promettre « aucune alerte » sur celles-là se retournerait le jour
+                         où l'alerte tombe — au pire moment. -->
+                    @if (dzSilencieuse(z)) {
+                      <div class="vd-dz-rassure">
+                        Aucune alerte ici : le véhicule réapparaît en sortant.
+                      </div>
+                    } @else if (z.status === 'CONFIRMED_BENIGN') {
+                      <div class="vd-dz-rassure">
+                        Marquée normale. Une absence anormalement longue restera signalée.
+                      </div>
+                    }
                     @if (z.note) { <div class="vd-dz-note">{{ z.note }}</div> }
                   </div>
                   @if (canEditVehicle()) {
@@ -1159,6 +1198,11 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-dz-badge[data-s='SUSPECT'] { background: rgba(239,68,68,.16); color: var(--danger); }
     .vd-dz-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--fg-tertiary); font-size: 11px; }
     .vd-dz-note { color: var(--fg-secondary); font-size: 11px; font-style: italic; }
+    /* La ligne qui dit que tout va bien : verte, discrete, jamais alarmante. Elle
+       n'apparait que sur une zone reconnue — ailleurs, elle serait une promesse. */
+    .vd-dz-rassure {
+      margin-top: 3px; font-size: 11px; color: var(--texte-succes);
+    }
     .vd-dz-actions { display: flex; gap: 6px; flex-wrap: wrap; }
     .vd-dz-btn { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--fg-secondary); font-size: 11px; font-weight: 600; cursor: pointer; }
     .vd-dz-btn:disabled { opacity: .5; cursor: wait; }
@@ -2337,6 +2381,16 @@ export class VehicleDetailComponent implements OnInit {
   /** Nature (confirmée ou suggérée) d'une zone morte, en clair (délègue à l'util partagé). */
   protected dzNatureLabel(z: GpsDeadZoneDto): string {
     return deadZoneNatureLabel(z);
+  }
+
+  /** Période d'observation d'une zone (délègue à l'util partagé, comme les libellés). */
+  protected dzPeriode(z: GpsDeadZoneDto): string {
+    return deadZonePeriodeLabel(z, (iso) => this.relativeTime(iso));
+  }
+
+  /** Zone définitivement silencieuse (parking reconnu) — cf. la règle serveur. */
+  protected dzSilencieuse(z: GpsDeadZoneDto): boolean {
+    return deadZoneEstSilencieuse(z);
   }
 
   /** Confirme une zone comme « normale » (parking) → l'app cesse d'alerter sur les pertes ici. */
