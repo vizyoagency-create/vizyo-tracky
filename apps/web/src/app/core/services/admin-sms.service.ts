@@ -183,22 +183,17 @@ export class AdminSmsService {
     return this.http.post<SmsHeartbeatResult>('/api/admin/sms/heartbeat/run-now', {});
   }
 
-  startProvisioning(body: {
-    imei: string;
-    phoneNumber: string;
-    apn: string;
-    apnUser?: string;
-    apnPasswd?: string;
-    serverIp: string;
-    serverPort: number;
-    adminNumber?: string;
-    lowBatteryPhone?: string;
-    accOn?: boolean;
-    fixIntervalS?: number;
-    ackTimeoutS?: number;
-  }) {
-    return this.http.post<{ id: string }>('/api/admin/sms/provision', body);
-  }
+  /**
+   * ⚠️ `startProvisioning` et `cancelProvisioning` ont ete retires ici (2026-08-18).
+   *
+   * Le lancement d'une configuration se fait desormais par
+   * `POST /api/tracker-onboarding/provisionner`, ou l'APN, l'IP et le port sont DEDUITS
+   * cote serveur au lieu d'etre saisis. Garder un client vers l'ancienne route laissait
+   * un second chemin appelable, aux parametres libres — dont celui de l'IP du serveur.
+   *
+   * La route admin existe toujours cote API : elle n'est simplement plus atteignable
+   * depuis l'application.
+   */
 
   listProvisionings(limit = 50) {
     return this.http.get<{ items: ProvisioningDto[] }>('/api/admin/sms/provision', {
@@ -208,10 +203,6 @@ export class AdminSmsService {
 
   getProvisioning(id: string) {
     return this.http.get<ProvisioningDto>(`/api/admin/sms/provision/${id}`);
-  }
-
-  cancelProvisioning(id: string) {
-    return this.http.post<{ ok: boolean }>(`/api/admin/sms/provision/${id}/cancel`, {});
   }
 
   backupHealth(limit = 30) {
