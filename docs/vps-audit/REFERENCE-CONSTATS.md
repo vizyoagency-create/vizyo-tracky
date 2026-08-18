@@ -3174,9 +3174,9 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 
 ---
 
-## VPS-028 — ~~Quatre `.example` commités portent les vraies valeurs de production~~ → **SURÉVALUÉ : aucun secret de production n'a fuité**
+## VPS-028 — ~~Quatre `.example` commités portent les vraies valeurs de production~~ → **ENTIÈREMENT RÉFUTÉ : il n'y avait aucun secret, pas même en développement**
 
-- **Domaine** : sécurité · **Gravité** : **4** (annoncée **1** pendant deux heures) · **Statut** : `ACCEPTE` — **corrigé le jour même, avant toute action**
+- **Domaine** : sécurité · **Gravité** : — · **Statut** : `ACCEPTE` (**réfuté** le 2026-08-18, en deux temps, avant toute action irréversible)
 - **Vu** : 2026-08-18 · **Mesure** : sur les **20** « valeurs identiques » relevées, **une seule est un secret**, et c'est une valeur de **développement**. Les cinq bases de production portent des mots de passe de **32 à 64 caractères** ; aucun n'a fuité.
 
 > ### ❌ 2026-08-18, 08 h 45 — CE CONSTAT ÉTAIT SURÉVALUÉ, ET LA ROTATION AURAIT ÉTÉ VAINE
@@ -3217,6 +3217,61 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 >
 > `vizyo-auth-db` ne publie **pas** son port sur `0.0.0.0` : réseau Docker interne seulement.
 >
+> ### ❌❌ SECOND TEMPS, 09 h 20 — le « seul vrai secret » était un MARQUEUR, lui aussi
+>
+> Après la première correction, il restait **une** ligne présentée comme un vrai secret fuité : le
+> JWT de développement de `vizyo-auth`, 13 caractères. La rotation en a été demandée, et acceptée.
+> **En l'exécutant, le `git diff` a affiché l'ancienne valeur :**
+>
+> ```
+> - JWT_SECRET=dev_change_me
+> ```
+>
+> **`dev_change_me`.** Treize caractères qui disent littéralement *« change-moi »*. Ce n'est pas un
+> secret oublié : c'est un **marqueur de gabarit**, et mon détecteur de marqueurs ne l'a pas
+> reconnu **à cause d'un tiret bas** — il cherchait `changeme`, `CHANGEME`, `your[-_]`,
+> `placeholder`… et la chaîne s'écrit `change_me`.
+>
+> ### ⚠️ Et la « correction » que j'allais commiter était une RÉGRESSION, sur deux plans
+>
+> Le dépôt contient une **garde de production** dans `apps/api/src/config/env.validation.ts` :
+>
+> ```js
+> const weakSecrets = ['dev_change_me', 'dev_admin_change_me', 'change_me', 'secret'];
+> if (weakSecrets.some(weak => env.JWT_SECRET.includes(weak))) throw new Error('Production requires strong JWT_SECRET…');
+> ```
+>
+> `dev_change_me` n'est donc pas une négligence : c'est une valeur **délibérément reconnaissable**,
+> que le code **refuse de laisser démarrer en production**. Ma modification aurait :
+>
+> | Ce que j'allais faire | Conséquence |
+> |---|---|
+> | mettre un vrai secret de 44 car. dans `.env.development` | **introduire un vrai secret dans un fichier SUIVI PAR GIT**, là où il n'y en avait aucun |
+> | mettre `<generer: openssl rand -base64 32>` dans `.env.example` | **désarmer la garde** — vérifié : cette chaîne **passe** le contrôle de production |
+>
+> ```
+> 🛑 REFUSE en prod    dev_change_me (le marqueur actuel)
+> ✅ accepte en prod   <generer: openssl rand -base64 32>  (ce que j allais mettre)
+> ```
+>
+> **La branche a été supprimée, le dépôt est revenu sur `main`, arbre propre, rien n'a été poussé.**
+>
+> > **La leçon, et elle est plus dure que la première** : *un « correctif » de sécurité doit prouver
+> > qu'il laisse le système au moins aussi protégé qu'il l'a trouvé.* Ici la mesure de sécurité
+> > existait déjà, dans le code, en évidence — et le correctif proposé l'aurait contournée. C'est le
+> > symétrique exact de VPS-M31 (*un garde-fou qui cache un défaut est plus dangereux qu'un
+> > garde-fou absent*) : ici, **un correctif qui retire un garde-fou est pire que le défaut qu'il
+> > croit corriger**.
+>
+> ### Bilan des deux temps
+>
+> | Ce qui était annoncé | Ce qui était vrai |
+> |---|---|
+> | « 20 valeurs de production fuitées dans 4 dépôts GitHub » | **19 configurations** (URL, domaines, noms) **+ 1 marqueur** `dev_change_me` |
+> | « gravité 1, rotation requise » | **rien à faire** — et la rotation aurait désarmé une garde |
+>
+> **Zéro secret. Deux détecteurs faux. Une remédiation dangereuse évitée deux fois.**
+
 > ### La cause de l'erreur : un détecteur qui comptait des URL comme des secrets
 >
 > Le motif employé contenait `_URL` et un seuil de 12 caractères — donc
@@ -3280,8 +3335,42 @@ en marge, et le « corriger » dans un fichier qui ne le contient pas ne servira
 elle, entre au référentiel : *avant de publier un dénombrement, afficher les **noms** de ce qui est
 compté sur un échantillon.* Trois lignes de sortie auraient suffi à voir `APP_DOMAIN` dans la liste.
 
+### ⚠️⚠️ Le SECOND défaut du même détecteur, trouvé une heure plus tard
+
+Après la première correction, une ligne survivait : un JWT de développement de 13 caractères,
+présenté comme *« le seul vrai secret »*. La rotation en a été demandée. **Le `git diff` de ma
+propre modification a affiché l'ancienne valeur : `dev_change_me`.**
+
+Mon détecteur de marqueurs cherchait `changeme|CHANGEME|your[-_]|YOUR[-_]|xxxx|XXXX|<[a-z]+>|
+example\.com|placeholder|dummy|fake`. **La chaîne s'écrit `change_me`, avec un tiret bas.** Un
+caractère a suffi pour promouvoir un marqueur au rang de secret — et pour justifier une rotation.
+
+> **Le motif de recherche était trop large et le motif de MARQUEUR trop étroit : les deux erreurs
+> poussent dans le même sens**, celui du faux positif. Un détecteur à deux motifs doit être éprouvé
+> sur les deux, et sur des cas où l'on connaît la réponse. `dev_change_me` en était un.
+
+### ⚠️ Et le correctif proposé aurait DÉSARMÉ une garde existante
+
+Le dépôt contient déjà, dans `env.validation.ts`, une liste `weakSecrets` qui **refuse le démarrage
+en production** si le secret contient `dev_change_me`, `change_me` ou `secret`. Vérifié :
+
+```
+🛑 REFUSE en prod    dev_change_me                         (le marqueur actuel)
+✅ accepte en prod   <generer: openssl rand -base64 32>    (ce que j allais commiter)
+```
+
+Le remplacement aurait donc **fait passer** en production une valeur que le code rejetait, **et**
+introduit un vrai secret dans un fichier suivi par git. Branche supprimée, rien poussé.
+
+> **La règle** : *un « correctif » de sécurité doit prouver qu'il laisse le système **au moins aussi
+> protégé** qu'il l'a trouvé.* C'est le symétrique de VPS-M31 : un garde-fou qui cache un défaut est
+> dangereux — **un correctif qui retire un garde-fou l'est davantage**, parce qu'il se présente
+> comme un progrès.
+
 **À ne pas faire** : durcir le motif jusqu'à ne plus rien trouver. Un critère de recherche doit
-rester large — c'est le **dénombrement** qui doit être qualifié, pas la recherche.
+rester large — c'est le **dénombrement** qui doit être qualifié, pas la recherche. Et **ne jamais
+proposer une rotation sans avoir lu la valeur en place** : trois secondes de `git diff` ont réfuté
+ce que deux heures de mesure indirecte avaient construit.
 
 ---
 
