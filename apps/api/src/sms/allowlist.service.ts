@@ -297,19 +297,93 @@ export class AllowlistService {
    *     vizyo-texto renvoie 403 sur un numero non-allowliste.
    * Dedup par numero ; un tracker prime sur un user en cas de meme numero.
    */
+  /**
+   * E.164 : l'inventaire WhereverSIM stocke le MSISDN SANS le signe plus, alors
+   * que simPhoneNumber et l'allowlist le portent. Sans cette normalisation on
+   * pousserait 345901035259762, que vizyo-texto ne reconnaîtrait pas comme le
+   * même numéro que +345901035259762 — deux entrées pour une seule puce, et un
+   * 403 malgré une allowlist « à jour ».
+   */
+  private e164(numero: string): string {
+    const net = numero.trim().replace(/[\s.-]/g, '');
+    return net.startsWith('+') ? net : `+${net}`;
+  }
+
+  /**
+   * Les numéros à autoriser, UN PAR BOÎTIER CONNU.
+   *
+   * ── POURQUOI L'INVENTAIRE SIM FAIT AUTORITÉ SUR LA FICHE BOÎTIER ─────────────
+   *
+   * Le champ simPhoneNumber est une SAISIE : quelqu'un tape le numéro en créant
+   * la fiche. Quand on change la puce d'un boîtier sans retoucher la fiche, ce
+   * champ garde l'ancien numéro — ou reste vide — et le nouveau n'entre JAMAIS
+   * dans l'allowlist. Tout SMS vers ce boîtier part alors en 403.
+   *
+   * C'est exactement ce qui s'est produit : du 19 au 25 juillet 2026, 1476 SMS
+   * rejetés « hors allowlist du tenant », sur des puces pourtant actives chez
+   * l'opérateur. Et le 18 août, trois puces activées les 14-15 août étaient
+   * encore absentes de l'allowlist — dont celles de deux véhicules en service.
+   *
+   * L'inventaire des puces, lui, est synchronisé depuis l'API WhereverSIM toutes
+   * les heures et porte le couple msisdn vers imei : il sait quelle puce est
+   * PHYSIQUEMENT dans quel boîtier. On le prend donc comme source, et la saisie
+   * manuelle ne sert plus que de repli.
+   *
+   * ⚠️ ON NE PREND QUE LES BOÎTIERS DÉJÀ EN BASE. Une puce activée dont le boîtier
+   * n'est pas déclaré n'entre pas : ouvrir l'allowlist à tout le parc SIM
+   * élargirait la surface d'envoi à des équipements dont on ignore où ils sont.
+   * Le trou se referme en déclarant le boîtier, pas en baissant la garde.
+   */
+  private async numerosDesBoitiers(): Promise<Map<string, string>> {
+    const trackers = await this.prisma.tracker.findMany({
+      select: { id: true, imei: true, simPhoneNumber: true },
+    });
+    const puces = await this.prisma.sim.findMany({
+      where: { imei: { in: trackers.map((t) => t.imei) }, msisdn: { not: null } },
+      select: { imei: true, msisdn: true },
+    });
+    const puceParImei = new Map(puces.map((s) => [s.imei as string, s.msisdn as string]));
+
+    const parNumero = new Map<string, string>();
+    const aRecaler: { id: string; imei: string; avant: string | null; apres: string }[] = [];
+
+    for (const t of trackers) {
+      const depuisInventaire = puceParImei.get(t.imei);
+      const numero = depuisInventaire ? this.e164(depuisInventaire) : t.simPhoneNumber;
+      if (!numero) continue;
+      parNumero.set(numero, `Tracker ${t.imei}`);
+      if (depuisInventaire && t.simPhoneNumber !== numero) {
+        aRecaler.push({ id: t.id, imei: t.imei, avant: t.simPhoneNumber, apres: numero });
+      }
+    }
+
+    // On RECOPIE le numero trouve sur la fiche boitier. Sans ca, l'ecran admin
+    // continuerait d'afficher l'ancien numero pendant que les SMS partent vers le
+    // bon : l'exploitant lirait un ecran qui ment sur ce que fait le systeme.
+    for (const r of aRecaler) {
+      await this.prisma.tracker.update({ where: { id: r.id }, data: { simPhoneNumber: r.apres } });
+      this.systemActivity.record({
+        category: 'SMS',
+        action: 'tracker_sim_recalee',
+        status: 'SUCCESS',
+        actor: 'system',
+        detail: `Boîtier ${r.imei} : numéro SIM ${r.avant ?? '(vide)'} → ${r.apres}, d'après l'inventaire WhereverSIM.`,
+        meta: { imei: r.imei, avant: r.avant, apres: r.apres, source: 'wherever-sim' },
+      });
+      this.logger.log(`Tracker ${r.imei} : simPhoneNumber recale ${r.avant ?? '(vide)'} -> ${r.apres}`);
+    }
+    return parNumero;
+  }
+
   async syncFromTrackers(): Promise<AllowlistSyncResult> {
-    const [trackers, users] = await Promise.all([
-      this.prisma.tracker.findMany({
-        where: { simPhoneNumber: { not: null } },
-        select: { imei: true, simPhoneNumber: true },
-      }),
+    const [numerosBoitiers, users] = await Promise.all([
+      this.numerosDesBoitiers(),
       this.prisma.user.findMany({
         where: { phone: { not: null }, isActive: true },
         select: { email: true, phone: true },
       }),
     ]);
-    const byPhone = new Map<string, string>();
-    for (const t of trackers) byPhone.set(t.simPhoneNumber as string, `Tracker ${t.imei}`);
+    const byPhone = new Map<string, string>(numerosBoitiers);
     for (const u of users) {
       const phone = u.phone as string;
       if (!byPhone.has(phone)) byPhone.set(phone, `User ${u.email}`);
@@ -334,21 +408,30 @@ export class AllowlistService {
     return result;
   }
 
-  /** Reconciliation : trackers non synces + entrees orphelines. */
+  /**
+   * Reconciliation : boitiers non synces + entrees orphelines.
+   *
+   * ⚠️ CET ETAT DOIT SE CALCULER SUR LA MEME SOURCE QUE `syncFromTrackers()`.
+   * S'il regardait encore `simPhoneNumber` seul, l'ecran admin annoncerait
+   * « rien a synchroniser » pendant que le sync, lui, ajouterait des numeros —
+   * et l'exploitant conclurait que l'ecran est casse. Un tableau de bord qui
+   * mesure autre chose que ce que fait le systeme est pire qu'un tableau absent.
+   */
   async status(): Promise<AllowlistStatus> {
-    const [entries, trackers, users] = await Promise.all([
+    const [entries, numerosBoitiers, users] = await Promise.all([
       this.list(),
-      this.prisma.tracker.findMany({
-        where: { simPhoneNumber: { not: null } },
-        select: { imei: true, simPhoneNumber: true },
-      }),
+      this.numerosDesBoitiers(),
       this.prisma.user.findMany({
         where: { phone: { not: null }, isActive: true },
         select: { phone: true },
       }),
     ]);
+    const trackers = Array.from(numerosBoitiers, ([phone, label]) => ({
+      imei: label.replace(/^Tracker /, ''),
+      simPhoneNumber: phone,
+    }));
     const allowed = new Set(entries.map((e) => e.phone));
-    const trackerPhones = new Set(trackers.map((t) => t.simPhoneNumber as string));
+    const trackerPhones = new Set(trackers.map((t) => t.simPhoneNumber));
     // V1.15 — les User.phone actifs sont aussi des numéros legitimes (notifs SMS
     // d'alerte) synces par syncFromTrackers() : on les considere "connus" pour ne
     // pas les remonter comme orphelins (sinon un admin les supprimerait a tort).
@@ -358,8 +441,8 @@ export class AllowlistService {
     ]);
 
     const missing = trackers
-      .filter((t) => !allowed.has(t.simPhoneNumber as string))
-      .map((t) => ({ imei: t.imei, phone: t.simPhoneNumber as string }));
+      .filter((t) => !allowed.has(t.simPhoneNumber))
+      .map((t) => ({ imei: t.imei, phone: t.simPhoneNumber }));
 
     const orphans = entries
       .filter((e) => e.source === 'synced' && !knownPhones.has(e.phone))

@@ -1111,6 +1111,11 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'surveillance_armed': return { label: 'Armement', cls: 'bg-orange-500/15 text-orange-400' };
       case 'surveillance_disarmed': return { label: 'Désarmement', cls: 'bg-emerald-500/15 text-emerald-400' };
       case 'push_test': return { label: 'Test', cls: 'bg-bg-tertiary text-fg-tertiary' };
+      // Vie de l'allowlist SMS : ces deux lignes disent QUI a le droit de recevoir un
+      // SMS. Sans badge elles se noyaient dans la categorie « SMS » avec les envois
+      // ordinaires, alors qu'un numero qui entre ou sort est un evenement d'acces.
+      case 'allowlist_synced': return { label: 'Allowlist', cls: 'bg-violet-500/15 text-violet-400' };
+      case 'tracker_sim_recalee': return { label: 'SIM recalée', cls: 'bg-amber-500/15 text-amber-400' };
       default:
         if (a.action.startsWith('sms_') && a.action !== 'sms_sent') {
           return { label: a.action.slice(4).replace(/-/g, ' '), cls: 'bg-violet-500/15 text-violet-400' };
