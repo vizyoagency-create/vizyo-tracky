@@ -50,6 +50,50 @@ export LC_ALL=C
 ERRBUF=/tmp/audit-vps-stderr.log
 exec 2>"$ERRBUF"
 
+# ⚠️⚠️ AJOUTE LE 2026-08-18 (VPS-M43) — LE TAMPON CI-DESSUS N'EST PUBLIE QU'A LA FIN, DONC
+# JAMAIS QUAND LA COLLECTE MEURT EN ROUTE. Et elle est morte en route ce matin, deux fois de
+# suite, sur une variable non liee (`RPC_CACHE`, section 5) : `set -u` arrete `bash` net, le
+# message part dans `$ERRBUF`, et `$ERRBUF` n'est jamais lu puisqu'on n'atteint pas sa
+# publication. Sortie tronquee, stderr local VIDE, aucune explication nulle part.
+#
+# Le marqueur `FIN DE COLLECTE` a fait son travail — il a dit QU'ELLE etait tronquee. Il ne
+# pouvait pas dire POURQUOI, et c'est ce qui a coute deux collectes completes a une machine a
+# 2 vCPU avant qu'un `grep` cote poste ne trouve la cause.
+#
+# Ce trap publie le tampon SUR STDOUT quand on sort autrement que par la fin normale. Il coute
+# un `trap` et rien d'autre : sur un passage sain, `FIN_NORMALE` vaut 1 et il ne fait rien.
+# ⚠️ Il ne remplace PAS le bloc de fin (VPS-M33), qui compte et publie les erreurs NON FATALES
+#    d'un passage reussi. Les deux repondent a deux questions differentes : « qu'est-ce qui a
+#    rate en chemin ? » et « pourquoi ca s'est arrete ? ». Un seul des deux laisse un trou.
+FIN_NORMALE=0
+_publier_erreurs_si_mort_en_route() {
+  st=$?
+  [ "${FIN_NORMALE:-0}" = "1" ] && return 0
+  printf '\n\n'
+  # ⚠️ Attrape a l'essai de la branche C (mort par signal) : dans un trap EXIT, `$?` ne porte
+  #    PAS le statut 143/137 d'une mort par signal — il vaut 0. Publier « statut de sortie 0 »
+  #    sur une collecte tuee, c'est AFFIRMER que tout allait bien au moment de mourir. On
+  #    l'annonce donc comme non significatif plutot que de le donner pour une mesure (VPS-M28).
+  if [ "$st" = "0" ]; then
+    printf '🔴🔴 LA COLLECTE S EST ARRETEE AVANT LA FIN — statut de sortie NON SIGNIFICATIF\n'
+    printf '     (dans un trap EXIT, `$?` vaut 0 sur une mort par SIGNAL : ne pas lire ce 0\n'
+    printf '      comme « elle s est bien terminee »).\n'
+  else
+    printf '🔴🔴 LA COLLECTE S EST ARRETEE AVANT LA FIN — statut de sortie %s.\n' "$st"
+  fi
+  printf '     Ce qui suit est le tampon stderr, publie par le trap de sortie (VPS-M43).\n'
+  printf '     ⚠️ NE PAS interpreter les sections deja produites comme un passage complet :\n'
+  printf '        la procedure impose de RELANCER, pas de lire une sortie partielle.\n'
+  if [ -s "$ERRBUF" ]; then
+    printf '     ── dernieres lignes de stderr ──\n'
+    tail -20 "$ERRBUF" 2>/dev/null | sed 's/^/     /'
+  else
+    printf '     tampon stderr VIDE : la mort ne vient pas d un message d erreur\n'
+    printf '     (signal recu, connexion coupee, ou processus tue de l exterieur).\n'
+  fi
+}
+trap _publier_erreurs_si_mort_en_route EXIT
+
 # ⚠️ AJOUTE LE 2026-08-06. La collecte a mis 136 s ce jour-la (budget : 90 s) et RIEN dans la
 # sortie ne disait ou le temps etait passe — il a fallu re-mesurer a la main, section par
 # section. Un budget qu'on impose sans l'instrumenter ne se diagnostique pas : il se constate.
@@ -231,7 +275,50 @@ for n in dockerd containerd systemd-journald snapd; do
   # On reutilise les DEUX instantanes deja pris ci-dessus : aucune mesure supplementaire.
   INST=$(printf '%s\n%s\n' "$AVANT" "$APRES" | awk -v pid="$p" -v hz="$HZ" -v dt="$DT" '
     $1==pid { if (vu++) printf "%.1f", 100*(($2-t)/hz)/dt; else t=$2 }')
-  [ -z "$INST" ] && INST=0
+  # ⚠️⚠️ CORRIGE LE 2026-08-18 (VPS-M44) — ICI SE TROUVAIT `[ -z "$INST" ] && INST=0`, ET IL A
+  # PUBLIE « dockerd maintenant 0,0 % — 🟠 SEQUELLE, calme maintenant » LE 2026-08-18 A 03h51,
+  # sur un demon qui consommait 1,44 coeur en moyenne sur les 25 heures encadrant la mesure et
+  # que `sar` place, sur la tranche de dix minutes contenant cet instant, a 5,75 % d inactivite.
+  #
+  # Le grand instantane (`snap()`) lit ~900 fichiers de /proc en priorite `nice -n 19`. Sur une
+  # machine a ~6 % d inactivite, il arrive qu un PID manque a l un des deux echantillons : awk ne
+  # rend alors RIEN, et le repli FABRIQUAIT UN ZERO. Une absence de mesure devenait une
+  # affirmation — « il n a rien consomme » — et c est le sens RASSURANT (VPS-M21).
+  #
+  # ⚠️ Ce defaut est VPS-M39 A L IDENTIQUE, ET A TROIS LIGNES DE LA. VPS-M39 a corrige le 08-16
+  # exactement ce repli (`pdock >= 0 ? pdock : 0`) dans le bloc BUDGET, en ecrivant : « quand la
+  # part de dockerd n est pas mesurable, il publiait dockerd 0,0 %, ce qui se lit : dockerd n a
+  # rien consomme. Une AFFIRMATION tiree d une ABSENCE. » La lecon n a jamais ete portee au bloc
+  # d a cote — celui qui, lui, decide du verdict du constat le plus lourd du dispositif.
+  #
+  # Le cout n etait pas seulement un chiffre faux : `EMB_PID` (plus bas) reste vide quand INST
+  # vaut 0, donc TOUT le bloc « signature de boucle » de VPS-M28 est saute EN SILENCE — le
+  # collecteur perd son propre diagnostic le matin ou il sert.
+  #
+  # On distingue donc les deux cas, et quand la mesure a echoue on la REFAIT, cibles seulement :
+  # 2 lectures de /proc pour ce seul PID et 1 s d attente, au lieu de deux balayages de 900
+  # fichiers. Si la reprise echoue aussi, on AVOUE — jamais un zero.
+  if [ -z "$INST" ]; then
+    R0=$(awk '{ sub(/^[0-9]+ \(.*\) /, ""); print $12+$13 }' /proc/$p/stat 2>/dev/null)
+    T0=$(awk '{print $1}' /proc/uptime)
+    sleep 1
+    R1=$(awk '{ sub(/^[0-9]+ \(.*\) /, ""); print $12+$13 }' /proc/$p/stat 2>/dev/null)
+    T1=$(awk '{print $1}' /proc/uptime)
+    if [ -n "$R0" ] && [ -n "$R1" ]; then
+      INST=$(awk -v a="$R0" -v b="$R1" -v t0="$T0" -v t1="$T1" -v hz="$HZ" \
+        'BEGIN{ d=t1-t0; if (d>0) printf "%.1f", 100*((b-a)/hz)/d }')
+      printf '  ⚠️ %s : le grand instantane n a pas rendu ce PID — mesure REPRISE sur 1 s, ciblee.\n' "$n"
+    fi
+  fi
+  if [ -z "$INST" ]; then
+    # Aucun zero fabrique. On dit ce qu on ne sait pas, et on refuse le verdict rassurant.
+    awk -v hz="$HZ" -v up="$UPS" -v n="$n" '{
+      s=($14+$15)/hz; r=100*s/up
+      printf "  %-16s maintenant  NON MESURABLE  |  cumul %5.1f h CPU / %5.1f h uptime = %5.1f %%\n",
+        n, s/3600, up/3600, r
+      if (r > 50) printf "     🔴 CUMUL ELEVE ET INSTANTANE NON MESURABLE : on ne peut PAS dire si la\n        boucle est EN COURS ou ETEINTE. NE PAS lire cette absence comme « calme maintenant »\n        (VPS-M44). Trancher a la main : ps -o etime,time -p %s, puis sar -u.\n", n
+    }' /proc/$p/stat 2>/dev/null
+  else
   awk -v hz="$HZ" -v up="$UPS" -v n="$n" -v inst="$INST" '{
     s=($14+$15)/hz; r=100*s/up      # s et up sont tous deux en SECONDES
     if (inst+0 > 50)   v="🔴 EMBALLEMENT EN COURS — il tourne en boucle MAINTENANT"
@@ -239,7 +326,12 @@ for n in dockerd containerd systemd-journald snapd; do
     else               v=""
     printf "  %-16s maintenant %5.1f %%  |  cumul %5.1f h CPU / %5.1f h uptime = %5.1f %%  %s\n",
       n, inst, s/3600, up/3600, r, v
+    # ⚠️ Un instantane de 3 s sur une machine saturee est un ECHANTILLON, pas un etat. Quand il
+    # dit « calme » alors que le cumul crie, la seule lecture honnete est « je ne sais pas sur
+    # cette fenetre » — c est la lecon de VPS-M36 (un echantillon unique presente comme un etat).
+    if (inst+0 <= 50 && r > 50) printf "     ⚠️ Instantane BAS et cumul HAUT : 3 s ne suffisent pas a conclure que la boucle\n        est finie. Confirmer par ps -o etime,time (continuite) AVANT d ecrire « elle a cesse ».\n"
   }' /proc/$p/stat 2>/dev/null
+  fi
   # Retenir le PREMIER demon en emballement EN COURS : c'est lui qu'on ausculte plus bas.
   # On ne retient PAS sur le cumul (🟠) : une sequelle n'a rien a ausculter, la boucle est finie.
   if [ -z "${EMB_PID:-}" ] && [ "$(awk -v i="$INST" 'BEGIN{print (i+0>50)?1:0}')" = "1" ]; then
@@ -1033,6 +1125,24 @@ section "5. DONNEES (PostgreSQL)"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # Les identifiants se LISENT dans l'env du conteneur. Les deviner (`-U postgres`) renvoie une
 # sortie VIDE que l'on prendrait pour « rien a signaler » — le pire des faux negatifs.
+#
+# ⚠️⚠️ CORRIGE LE 2026-08-18 (VPS-M43) — CETTE LIGNE EST TOUT LE CORRECTIF, ET SON ABSENCE A
+# DECAPITE LA COLLECTE DEUX FOIS. Le correctif du 2026-08-17 (angle mort n° 3, patron VPS-M30)
+# accumule `random_page_cost` dans `RPC_CACHE` pour que le levier 4 en DERIVE au lieu de relancer
+# six `docker exec`. Il ne l'a jamais INITIALISE. Or ce script tourne sous `set -u` (ligne 27) :
+# la premiere lecture de `${RPC_CACHE}`, a la fin de la PREMIERE iteration, est une variable non
+# liee — donc `bash` s'arrete net, avec le statut 1, au beau milieu de la section 5.
+#
+# ⚠️ Et il s'arrete EN SILENCE, parce que `exec 2>"$ERRBUF"` (ligne 51) envoie « unbound
+# variable » dans un tampon qui n'est publie qu'a la FIN — c'est-a-dire jamais, puisqu'on meurt
+# avant. Le garde VPS-M33, ecrit precisement pour rendre les erreurs du collecteur visibles, est
+# ce qui a rendu celle-ci invisible. Voir le trap de la ligne ~52, qui ferme ce mode d'echec.
+#
+# ⚠️ La lecon N'EST PAS « penser a initialiser » : c'est celle de VPS-M35, mot pour mot, trois
+# jours plus tard — ESSAYER LES BRANCHES NE REMPLACE PAS ESSAYER LE MONTAGE. Le correctif du
+# 08-17 a ete valide par six branches ET une contre-epreuve 6/6 sur la machine ; aucune de ces
+# sept verifications ne pouvait le voir, parce qu'elles rejouaient le BLOC, jamais le SCRIPT.
+RPC_CACHE=''
 for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|postgis"); do
   U=$(docker exec "$pg" printenv POSTGRES_USER 2>/dev/null)
   D=$(docker exec "$pg" printenv POSTGRES_DB   2>/dev/null)
@@ -1264,6 +1374,71 @@ else
 fi
 echo "     (et meme sur cache frais, un 0 n'est PAS une garantie : Ubuntu publie beaucoup de"
 echo "      correctifs par 'noble-updates', qui ne porte pas le mot 'security'.)"
+# ⚠️⚠️ AJOUTE LE 2026-08-18 — ANGLE MORT N° 6 DU RAPPORT DU 2026-08-17.
+# Le garde VPS-M29 ci-dessus fonctionne : il a refuse de publier 5 fois sur 6 passages. Mais une
+# mesure disponible UN MATIN SUR SIX n'est pas une surveillance, et le sujet n'est plus le garde,
+# c'est la CADENCE de sa source. `apt-daily.timer` porte un delai aleatoire de plusieurs heures :
+# il peut tirer a 23 h et laisser un cache de 25 h au moment de la collecte.
+#
+# ⚠️ CE QU'IL NE FAUT PAS FAIRE, et c'est la tentation evidente : elargir le seuil de 6 h pour
+#    que le chiffre passe. C'est exactement ce que VPS-M31 punit — on elargit la tolerance d'un
+#    garde au lieu de chercher la grandeur qui separe les cas.
+#
+# Ce qu'on fait a la place : lire une SECONDE source, avec sa PROPRE fraicheur, et l'afficher
+# A COTE de la premiere — jamais a sa place. `/var/lib/update-notifier/updates-available` est
+# ecrit par `update-notifier-download.timer`, qui a son propre horaire : quand l'une des deux
+# sources est perimee, l'autre ne l'est pas forcement.
+#
+# ⚠️ PORTEE, ecrite avant qu'elle ne coute : ce fichier est un TEXTE destine au message du jour
+#    (« N updates can be applied immediately »), pas une API. Son format peut changer, et il peut
+#    etre absent (paquet non installe). Les deux cas doivent AVOUER, pas rendre 0 — c'est la
+#    lecon VPS-M28/M02 : un repli qui FABRIQUE une valeur produit une affirmation a partir d une
+#    absence. Et les deux sources ne comptent pas exactement la meme chose : celle-ci ne connait
+#    que ce que son propre `apt-get -s` a vu. UN ECART ENTRE LES DEUX N'EST PAS UNE ERREUR, c'est
+#    l'information — il date le moment ou l'une des deux a cesse de voir.
+UPD_FILE=/var/lib/update-notifier/updates-available
+if [ -r "$UPD_FILE" ]; then
+  UPD_STAMP=$(stat -c '%Y' "$UPD_FILE" 2>/dev/null || echo 0)
+  UPD_AGE_H=$(( ( $(date +%s) - ${UPD_STAMP:-0} ) / 3600 ))
+  # Deux entiers extraits separement : la 1re ligne porte le total, la 2e (si elle existe) la
+  # part de securite. `grep -o '[0-9]\+'` puis `head -1` : aucun positionnel, aucune hypothese
+  # sur la ponctuation de la phrase, qui est traduite selon la locale du systeme.
+  UPD_TOT=$(grep -m1 -oE '[0-9]+' "$UPD_FILE" 2>/dev/null | head -1)
+  UPD_SEC=$(grep -iE 'securit|security' "$UPD_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+  if [ -n "$UPD_TOT" ]; then
+    printf '  ── 2e source, INDEPENDANTE du cache apt (update-notifier) ──\n'
+    printf '     ecrite le : %s  (il y a %s h)\n' \
+      "$(date -d "@${UPD_STAMP:-0}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo inconnu)" "$UPD_AGE_H"
+    if [ "$UPD_AGE_H" -le 6 ]; then
+      printf '     %s paquets en retard   ✅ %s h — MESURE VALIDE\n' "$UPD_TOT" "$UPD_AGE_H"
+    else
+      printf '     %s paquets en retard   🟠 %s h — PERIMEE elle aussi\n' "$UPD_TOT" "$UPD_AGE_H"
+    fi
+    # ⚠️ Ubuntu OMET la ligne « … standard security updates » quand elle vaudrait 0. Une absence
+    #    de ligne et un zero produisent donc le meme fichier, et les DEUX lectures sont fausses :
+    #    afficher « ? » crie au loup sur le cas normal, afficher « 0 » AFFIRME a partir d une
+    #    absence (VPS-M02/M28). On dit donc exactement ce qu on sait, et rien de plus.
+    if [ -n "$UPD_SEC" ]; then
+      printf '     dont %s de securite (ligne presente dans le fichier)\n' "$UPD_SEC"
+    else
+      echo  "     part securite : LIGNE ABSENTE du fichier. Ubuntu ne l ecrit pas quand elle vaut 0,"
+      echo  "     donc « absente » et « zero » sont indiscernables ICI : c est le cache apt qui tranche."
+    fi
+    printf '     → cache apt %s h vs update-notifier %s h : la plus FRAICHE des deux est %s.\n' \
+      "$APT_AGE_H" "$UPD_AGE_H" \
+      "$( [ "$UPD_AGE_H" -lt "$APT_AGE_H" ] && echo 'update-notifier' || echo 'le cache apt' )"
+    echo  "     ⚠️ Les deux sources ne comptent pas la meme chose et n ont pas la meme fraicheur."
+    echo  "        Un ECART entre elles n est PAS une erreur : c est ce qui date le moment ou"
+    echo  "        l une des deux a cesse de voir. Ne JAMAIS substituer l une a l autre."
+  else
+    echo  "  ── 2e source (update-notifier) : fichier present mais AUCUN nombre extrait ──"
+    echo  "     🟠 MESURE NON FAITE — format inattendu. NE PAS lire ceci comme « 0 paquet »."
+  fi
+else
+  echo  "  ── 2e source (update-notifier) : fichier ABSENT ou illisible ──"
+  echo  "     🟠 MESURE NON FAITE (paquet update-notifier-common non installe ?)."
+  echo  "     NE PAS lire cette absence comme « rien a signaler » — c est VPS-M02."
+fi
 # ⚠️ Ce que le compte de paquets ne dira JAMAIS : si un paquet a ete INSTALLE, les demons qui
 # le chargeaient tournent encore sur l'ancienne version jusqu'a leur redemarrage. Le 2026-08-11
 # a 06h19, unattended-upgrades a installe 11 paquets systemd/udev — le compte est retombe de 70
@@ -2252,4 +2427,8 @@ fi
 echo "  ⚠️ PORTEE : ce compteur ne voit QUE ce qui n est pas deja tu par un \`2>/dev/null\` local,"
 echo "     et le script en pose une centaine, volontairement, pour des erreurs ATTENDUES."
 echo "     Un zero ne dit donc pas « aucune erreur », il dit « aucune erreur INATTENDUE »."
+# ⚠️ Desarme le trap de sortie (VPS-M43) : a partir d'ici, la fin est NORMALE. La ligne est
+# volontairement AVANT le marqueur, pour qu'un passage qui meurt entre les deux soit encore
+# signale comme anormal.
+FIN_NORMALE=1
 printf '\n\nFIN DE COLLECTE — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
