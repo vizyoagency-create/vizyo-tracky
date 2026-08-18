@@ -42,5 +42,6 @@ export * from './partner';
 export * from './permissions';
 export * from './protocol';
 export * from './utils/gps-sanity';
+export * from './utils/plaque';
 export * from './utils/live-motion';
 export * from './utils/tracker-liveness';

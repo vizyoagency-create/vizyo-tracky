@@ -8,6 +8,9 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetsApiService, type FleetSummary } from '../../../core/services/fleets.service';
 import { TrackersApiService } from '../../../core/services/trackers.service';
+// Alias : la methode du composant s'appelle aussi `messagePlaque`. Sans alias, seule
+// l'absence de `this.` distingue les deux — un piege pour la prochaine relecture.
+import { formaterPlaqueFr, messagePlaque as diagnosticPlaque, normaliserPlaque } from '@vizyo/tracky-shared';
 import { MiseEnServiceComponent } from '../mise-en-service/mise-en-service.component';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
 import type { InstallationEnergy } from '@vizyo/tracky-shared';
@@ -154,7 +157,31 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                 <div class="space-y-3">
                   <div>
                     <label class="field-label">Plaque d'immatriculation *</label>
-                    <input type="text" [(ngModel)]="plate" placeholder="AB-123-CD" maxlength="20" class="field-input font-mono" />
+                    <!-- ⚠️ LES TIRETS SE POSENT PENDANT LA FRAPPE. La validation seule
+                         laisserait l'utilisateur deviner le gabarit ; en le voyant se
+                         remplir, il sait ou il en est sans lire d'aide. -->
+                    <input
+                      type="text"
+                      [ngModel]="plate"
+                      (ngModelChange)="onPlaqueSaisie($event)"
+                      [placeholder]="plaqueEtrangere ? 'KSR370' : 'AB-123-CD'"
+                      [attr.inputmode]="plaqueEtrangere ? null : 'text'"
+                      maxlength="20"
+                      autocapitalize="characters"
+                      spellcheck="false"
+                      class="field-input font-mono"
+                    />
+                    @if (messagePlaque(); as m) {
+                      <p class="vd-manque">{{ m }}</p>
+                    } @else if (plate.trim()) {
+                      <p class="vd-aide vd-plaque-ok">Plaque valide.</p>
+                    }
+                    <!-- Une case, pas une detection : deviner le pays refuserait une
+                         plaque etrangere legitime — ce parc en compte une. -->
+                    <label class="vd-plaque-etr">
+                      <input type="checkbox" [(ngModel)]="plaqueEtrangere" (ngModelChange)="onBasculePlaque()" />
+                      <span>Plaque étrangère (pas de mise en forme automatique)</span>
+                    </label>
                   </div>
                 </div>
               </section>
@@ -276,7 +303,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
 
             @if (isEditMode()) {
               <!-- Edit mode: save button -->
-              <button (click)="onSubmitEdit()" [disabled]="isLoading() || !plate.trim() || (isSuperAdmin() && !selectedFleetId)"
+              <button (click)="onSubmitEdit()" [disabled]="isLoading() || !plaqueValide() || (isSuperAdmin() && !selectedFleetId)"
                 class="vd-bouton vd-enregistrer transition-all cursor-pointer disabled:opacity-50">
                 @if (isLoading()) {
                   <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
@@ -286,7 +313,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                 Enregistrer
               </button>
             } @else if (currentStep() === 1) {
-              <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plate.trim() || (isSuperAdmin() && !selectedFleetId)"
+              <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plaqueValide() || (isSuperAdmin() && !selectedFleetId)"
                 class="vd-bouton vd-primaire transition-all cursor-pointer disabled:opacity-50">
                 @if (isLoading()) {
                   <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
@@ -424,6 +451,12 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     select.field-input option:checked { background: #10b981; color: white }
     .brand-field { display: flex; align-items: center; gap: 8px }
     .brand-field select { flex: 1; min-width: 0 }
+    .vd-plaque-ok { color: var(--texte-succes) }
+    .vd-plaque-etr {
+      display: flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px;
+      font-size: 12px; color: var(--fg-secondary); cursor: pointer;
+    }
+    .vd-plaque-etr input { width: 16px; height: 16px; flex: 0 0 16px; accent-color: var(--tracky) }
     .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px }
     .type-btn {
       display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px;
@@ -517,6 +550,8 @@ export class VehicleDialogComponent {
   }
 
   protected plate = '';
+  /** Coché : on n'impose ni le gabarit français ni les tirets. */
+  protected plaqueEtrangere = false;
   protected vehicleType = 'CAR';
   protected brand = '';
   protected model = '';
@@ -667,6 +702,35 @@ export class VehicleDialogComponent {
    * travail, il ne reste qu'à refermer. `onSubmitStep2` reste en place pour l'ancien
    * chemin (il n'est plus atteignable depuis ce gabarit).
    */
+  /**
+   * Mise en forme à la frappe, et seulement pour les plaques françaises.
+   *
+   * ⚠️ CE CHAMP EST L'IDENTIFIANT DU VÉHICULE — à l'écran, sur les rapports, sur les
+   * cartes QR. Le formulaire n'exigeait qu'une chaîne non vide : un véhicule est parti
+   * en production avec « FT- » pour toute plaque, validé sans un mot.
+   */
+  protected onPlaqueSaisie(valeur: string): void {
+    this.plate = this.plaqueEtrangere ? valeur.toUpperCase() : formaterPlaqueFr(valeur);
+  }
+
+  /** En basculant, on remet la saisie au format du mode choisi. */
+  protected onBasculePlaque(): void {
+    this.plate = this.plaqueEtrangere
+      ? normaliserPlaque(this.plate)
+      : formaterPlaqueFr(this.plate);
+  }
+
+  protected messagePlaque(): string | null {
+    // Silencieux tant que le champ est vide : on n'accuse pas quelqu'un qui n'a pas
+    // encore tapé. Le bouton reste désactivé, ce qui suffit à dire que ce n'est pas fini.
+    if (!this.plate.trim()) return null;
+    return diagnosticPlaque(this.plate, this.plaqueEtrangere);
+  }
+
+  protected plaqueValide(): boolean {
+    return diagnosticPlaque(this.plate, this.plaqueEtrangere) === null;
+  }
+
   protected onMiseEnServiceFinie(): void {
     this.done.emit();
     this.reset();
@@ -721,6 +785,7 @@ export class VehicleDialogComponent {
     this.createdVehicleId.set('');
     this.selectedFleetId = '';
     this.plate = '';
+    this.plaqueEtrangere = false;
     this.vehicleType = 'CAR';
     this.brand = '';
     this.model = '';
