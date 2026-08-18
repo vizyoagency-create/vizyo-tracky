@@ -1,9 +1,24 @@
-import { ArrayMaxSize, IsArray, IsEnum, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
 import { InstallationEnergy, VehicleType } from '@prisma/client';
 
 export class CreateVehicleDto {
   @IsString()
   @Length(1, 20)
+  /**
+   * ⚠️ QUATRE CARACTERES UTILES AU MINIMUM — ajoute le 2026-08-18.
+   *
+   * `Length(1, 20)` acceptait « FT- », et un vehicule est parti en production avec cette
+   * plaque : une saisie interrompue, validee sans un mot. Le formulaire a ete corrige,
+   * mais un formulaire n'est pas une garde — un appel d'API direct passait encore.
+   *
+   * On compte les caracteres ALPHANUMERIQUES, pas la longueur brute : « FT- » en a deux,
+   * « AB-123-CD » en a sept. Le seuil reste volontairement bas pour ne rien presumer des
+   * plaques etrangeres — ce parc en compte une, KSR370, qui en a six. Verifie avant
+   * d'ecrire : aucun des vehicules existants n'a moins de quatre caracteres utiles.
+   */
+  @Matches(/^(?:[^A-Za-z0-9]*[A-Za-z0-9]){4,}/, {
+    message: 'plate : la plaque doit comporter au moins 4 caractères (lettres ou chiffres).',
+  })
   plate!: string;
 
   @IsOptional()

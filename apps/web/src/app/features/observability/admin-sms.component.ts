@@ -42,19 +42,7 @@ import { TrackerDetail, TrackersApiService } from '../../core/services/trackers.
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import type { SimDto } from '@vizyo/tracky-shared';
 
-type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
-
-interface PrefillItem {
-  key: string;
-  type: 'sim' | 'vehicle';
-  imei: string;
-  phone: string;
-  apn: string;
-  plate: string;
-  fleet: string;
-  iccid: string;
-  configured: boolean;
-}
+type Tab = 'status' | 'logs' | 'allowlist' | 'backup';
 
 @Component({
   selector: 'app-admin-sms',
@@ -415,121 +403,17 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   adhocTo = '';
   adhocBody = '';
 
-  // Provisioning / config boitier form
-  provIMEI = '';
-  provPhone = '';
-  provApn = 'wsim';
-  provAdminNumber = '';
-  provServerIp = '72.62.26.240';
-  provServerPort: number | null = 5023;
-  provFixInterval: number | null = 20;
-  provAckTimeout: number | null = null; // vide => defaut backend (DEFAULT_ACK_TIMEOUT_S=45s)
-  provApnUser = '';
-  provApnPasswd = '';
-  provAccOn = false;
-  provLowBatPhone = '';
-  readonly showAdvanced = signal(false);
+  /**
+   * ⚠️ ICI VIVAIENT LE FORMULAIRE DE CONFIGURATION ET SON PRE-REMPLISSAGE.
+   *
+   * Retires avec l'onglet qu'ils servaient (2026-08-18) : la configuration d'un boitier
+   * se fait desormais dans la modale d'ajout de vehicule, ou tout est deduit au lieu
+   * d'etre saisi. Les garder ici aurait laisse une seconde implementation vivante mais
+   * jamais exercee — et c'est toujours celle qu'on ne teste pas qui derive.
+   *
+   * `provisionings` et le sondage restent : ils alimentent encore `reload()`.
+   */
 
-  // ─── Pre-remplissage depuis SIM / véhicule ─────────────────────────────────
-  prefillSearch = '';
-  readonly prefillOpen = signal(false);
-  readonly prefillLoading = signal(false);
-  readonly prefillItems = signal<PrefillItem[]>([]);
-  readonly filteredPrefillItems = computed(() => {
-    const q = this.prefillSearch.toLowerCase().trim();
-    const items = this.prefillItems();
-    if (!q) return items;
-    return items.filter(
-      (i) =>
-        (i.imei?.toLowerCase().includes(q)) ||
-        (i.phone?.toLowerCase().includes(q)) ||
-        (i.plate?.toLowerCase().includes(q)) ||
-        (i.fleet?.toLowerCase().includes(q)) ||
-        (i.iccid?.toLowerCase().includes(q)),
-    );
-  });
-
-  async onPrefillFocus(): Promise<void> {
-    this.prefillOpen.set(true);
-    if (this.prefillItems().length === 0) await this.loadPrefillItems();
-  }
-
-  onPrefillInput(): void {
-    this.prefillOpen.set(true);
-  }
-
-  private async loadPrefillItems(): Promise<void> {
-    this.prefillLoading.set(true);
-    try {
-      const [sims, trackers] = await Promise.all([
-        this.simsApi.list(),
-        firstValueFrom(this.trackersApi.list()),
-      ]);
-
-      // Un tracker qui a deja envoye des positions (lastSeenAt) = configure
-      const activeImeis = new Set(
-        trackers
-          .filter((t) => t.lastSeenAt)
-          .map((t) => t.imei),
-      );
-
-      const items: PrefillItem[] = [];
-
-      // SIMs avec un msisdn
-      for (const s of sims) {
-        if (!s.msisdn) continue;
-        const imei = s.tracker?.imei ?? s.imei ?? '';
-        items.push({
-          key: `sim-${s.id}`,
-          type: 'sim',
-          imei,
-          phone: s.msisdn,
-          apn: s.apn ?? '',
-          plate: s.tracker?.vehiclePlate ?? '',
-          fleet: s.fleet?.name ?? '',
-          iccid: s.iccid,
-          configured: !!imei && activeImeis.has(imei),
-        });
-      }
-
-      // Trackers avec SIM qui n'ont pas ete couverts par les SIMs
-      const coveredImeis = new Set(items.map((i) => i.imei).filter(Boolean));
-      for (const t of trackers) {
-        if (coveredImeis.has(t.imei)) continue;
-        if (!t.simPhoneNumber && !t.vehicle) continue;
-        items.push({
-          key: `tracker-${t.id}`,
-          type: 'vehicle',
-          imei: t.imei,
-          phone: t.simPhoneNumber ?? '',
-          apn: '',
-          plate: t.vehicle?.plate ?? '',
-          fleet: t.vehicle?.fleet?.name ?? '',
-          iccid: '',
-          configured: activeImeis.has(t.imei),
-        });
-      }
-
-      this.prefillItems.set(items);
-    } catch (err) {
-      // silencieux
-      swallow('admin-sms:loadPrefillItems', err);
-    } finally {
-      this.prefillLoading.set(false);
-    }
-  }
-
-  applyPrefill(item: PrefillItem): void {
-    if (item.imei) this.provIMEI = item.imei;
-    if (item.phone) {
-      // Normalise E.164 : ajoute le + si absent
-      this.provPhone = item.phone.startsWith('+') ? item.phone : `+${item.phone}`;
-    }
-    if (item.apn) this.provApn = item.apn;
-    this.prefillOpen.set(false);
-    this.prefillSearch = '';
-    this.toast.success(`Pre-rempli depuis ${item.type === 'sim' ? 'SIM' : 'véhicule'} ${item.plate || item.imei}`);
-  }
 
   readonly selectedProvId = signal<string | null>(null);
   readonly selectedProv = computed(
@@ -664,48 +548,6 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     }
   }
 
-  async startProvisioning(): Promise<void> {
-    if (!this.provServerPort) return;
-    try {
-      const res = await firstValueFrom(
-        this.api.startProvisioning({
-          imei: this.provIMEI.trim(),
-          phoneNumber: this.provPhone.trim(),
-          apn: this.provApn.trim(),
-          adminNumber: this.provAdminNumber.trim() || undefined,
-          serverIp: this.provServerIp.trim(),
-          serverPort: this.provServerPort,
-          fixIntervalS: this.provFixInterval ?? undefined,
-          ackTimeoutS: this.provAckTimeout ?? undefined,
-          apnUser: this.provApnUser.trim() || undefined,
-          apnPasswd: this.provApnPasswd.trim() || undefined,
-          accOn: this.provAccOn || undefined,
-          lowBatteryPhone: this.provLowBatPhone.trim() || undefined,
-        }),
-      );
-      this.selectedProvId.set(res.id);
-      this.toast.success('Configuration lancée — suivez la connexion du boîtier ci-dessous');
-      await this.refreshProvisionings();
-      this.startPolling();
-    } catch (err: unknown) {
-      swallow('admin-sms:startProvisioning', err);
-      const message = err && typeof err === 'object' && 'error' in err
-        ? (err as { error?: { message?: string } }).error?.message
-        : null;
-      this.toast.error(message ?? 'Echec du demarrage');
-    }
-  }
-
-  async cancelProv(id: string): Promise<void> {
-    try {
-      await firstValueFrom(this.api.cancelProvisioning(id));
-      this.toast.success('Sequence annulée');
-      this.reload();
-    } catch (err) {
-      swallow('admin-sms:cancelProv', err);
-      this.toast.error('Échec annulation');
-    }
-  }
 
   // ─── Allowlist vizyo-texto (V1.14) ─────────────────────────────────────────
 
