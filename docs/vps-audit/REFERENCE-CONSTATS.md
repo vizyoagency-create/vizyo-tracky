@@ -2251,8 +2251,24 @@ que les noms ne sont pas séparés. C'est exactement la commande que Compose pro
 
 ## VPS-021 — La porte d'entrée HTTP/HTTPS de toute la production appartient à une pile déclarée morte
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE`
-- **Vu** : 2026-08-18 · **Mesure** : **1 seul conteneur tient les ports 80 et 443**, `foodsqan-traefik`, et il sert **25 domaines** portes par 21 conteneurs etiquetes. Bout-en-bout : app-tracky **200 en 83 ms**, `/api/health` **200 en 83 ms**, `tracky.vizyoagency.com` **200 en 85 ms**, app-verify **302 en 210 ms**. 🟠 **LES LATENCES ONT DOUBLE** — contre 49/31/56/83 ms le 08-17, soit des facteurs de **1,5 a 2,7**. Aucune erreur, aucun 5xx, aucun conteneur tombe : les codes sont inchanges. Mais **c'est la premiere fois depuis le 2026-08-05 que VPS-016 produit un effet mesurable HORS de la machine**, et la phrase « ce que ca ne coute PAS : la production repond », ecrite a quinze passages, doit etre nuancee. ⚠️ Mesure ponctuelle, mediane de 3, prise pendant une collecte ET un build — mais prise par le meme collecteur au meme endroit du script tous les jours, et les six passages precedents n'ont jamais depasse 119 ms sur les trois premiers points. ⚠️ Il n'a toujours AUCUNE sonde de sante, et ils sont **9 sur 33** dans ce cas — **9e passage**. *(mesure du 2026-08-17, conservee ci-dessous.)*
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : ✅ **`APPLIQUE` (2026-08-18)** — le garde-fou de lecture est posé ; le déplacement vers `/opt/infra-proxy/` reste ouvert
+- **Vu** : 2026-08-18 · **Mesure** : **1 seul conteneur tient les ports 80 et 443**
+
+> ### ✅ 2026-08-18 — `NE-PAS-SUPPRIMER.txt` est posé, après neuf passages
+>
+> `/opt/foodsqan/NE-PAS-SUPPRIMER.txt` — 2 665 octets, mode 644, **troisième entrée d'un `ls`**
+> (derrière `CHANGELOG.md` et `MAINTENANCE.md`), donc impossible à manquer en ouvrant le dossier.
+>
+> Il dit, dans cet ordre : que le nom **ment sur le rôle** ; que ce dossier définit
+> `foodsqan-traefik`, unique tenant des ports 80/443 ; les **25 domaines** qui en dépendent ; la
+> commande qui le vérifie (`docker compose ls`) ; les **trois** gestes à ne pas faire (`rm -rf`,
+> toucher au volume `foodsqan-letsencrypt` qui n'est dans aucune sauvegarde, renommer le réseau
+> `foodsqan-public`) ; et **pourquoi il existe** — le plan d'audit du 2026-08-07 avait lui-même
+> proposé de supprimer ce dossier.
+>
+> ⚠️ **Ce qui reste ouvert** : le déplacement vers `/opt/infra-proxy/` avec un `name:` explicite.
+> Le fichier ne fait que **rendre le piège lisible** — il ne le désarme pas. Mais c'est exactement
+> ce que ce constat demandait au point 1, et il coûtait deux minutes depuis neuf passages., `foodsqan-traefik`, et il sert **25 domaines** portes par 21 conteneurs etiquetes. Bout-en-bout : app-tracky **200 en 83 ms**, `/api/health` **200 en 83 ms**, `tracky.vizyoagency.com` **200 en 85 ms**, app-verify **302 en 210 ms**. 🟠 **LES LATENCES ONT DOUBLE** — contre 49/31/56/83 ms le 08-17, soit des facteurs de **1,5 a 2,7**. Aucune erreur, aucun 5xx, aucun conteneur tombe : les codes sont inchanges. Mais **c'est la premiere fois depuis le 2026-08-05 que VPS-016 produit un effet mesurable HORS de la machine**, et la phrase « ce que ca ne coute PAS : la production repond », ecrite a quinze passages, doit etre nuancee. ⚠️ Mesure ponctuelle, mediane de 3, prise pendant une collecte ET un build — mais prise par le meme collecteur au meme endroit du script tous les jours, et les six passages precedents n'ont jamais depasse 119 ms sur les trois premiers points. ⚠️ Il n'a toujours AUCUNE sonde de sante, et ils sont **9 sur 33** dans ce cas — **9e passage**. *(mesure du 2026-08-17, conservee ci-dessous.)*
 - **Mesure du 2026-08-17, conservée** : **1 seul conteneur tient les ports 80 et 443**, `foodsqan-traefik`, et il sert **25 domaines** portes par 21 conteneurs etiquetes. Bout-en-bout du 2026-08-17 : app-tracky **200 en 49 ms**, `/api/health` **200 en 31 ms**, `tracky.vizyoagency.com` **200 en 56 ms**, app-verify **302 en 83 ms** — **les meilleurs temps depuis le debut de la boucle**, pendant que la machine perd plus d'un coeur depuis **125 h 20**. ⚠️ Il n'a toujours AUCUNE sonde de sante, et ils sont **9 sur 33** dans ce cas — **8e passage**. *(mesure du 2026-08-16, conservee : 25 domaines, bout-en-bout 42/39/119/139 ms.)*
 
 **Quoi.**
@@ -2322,7 +2338,73 @@ porte les certificats de tous les domaines publics.
 ## VPS-022 — Trois jetons GitHub en clair dans `/opt`, lisibles par tous
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-18 · **Mesure** : **3 fichiers**, dont deux en mode **644** — inchange, **11e passage sans action**. Le correctif (`chmod 600`) coute 10 secondes et n'a aucun effet de bord. Il est en tete du plan d'action depuis onze passages : ce n'est plus un sujet technique.
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : ✅ **`APPLIQUE` sur son périmètre d'origine (2026-08-18)** — 🔴 **mais le constat ROUVRE aussitôt, avec un périmètre 7× plus grand**
+- **Vu** : 2026-08-18 · **Mesure** : les 3 fichiers d'origine sont en **600**. ⚠️ **La contre-épreuve du correctif a trouvé 9 fichiers `.env` RÉELS de plus en 644, plus 4 sauvegardes.**
+
+> ### ✅ 2026-08-18 — corrigé après onze passages, en dix secondes
+>
+> ```
+> /opt/foodsqan/.git/config                644 -> 600  ✅
+> /opt/dg-epaviste-depannage/.git/config   644 -> 600  ✅
+> /opt/foodsqan/.env.production            déjà 600     =
+> ```
+>
+> ⚠️ **Une correction au référentiel au passage** : la fiche disait « 3 fichiers, dont deux en mode
+> 644 » et le plan disait « `chmod 600` sur les **3** fichiers ». **Seuls DEUX étaient à changer** —
+> `.env.production` était déjà en 600. Le geste restait juste, le compte non.
+>
+> **Contrôle après** : `git -C /opt/foodsqan remote get-url origin` et son équivalent
+> `dg-epaviste` répondent toujours. Les deux dépôts sont `root:root`, aucun conteneur ne les lit.
+>
+> ### 🔴 ET LA CONTRE-ÉPREUVE A TROUVÉ SEPT FOIS PLUS — le périmètre était faux depuis le début
+>
+> Le contrôle « reste-t-il un porteur de secret lisible par tous dans `/opt` ? », lancé **pour
+> vérifier le correctif**, a élargi la recherche des `.git/config` aux `.env*`. Résultat :
+>
+> | Fichier **RÉEL** en 644 | Lignes sensibles | Ce qu'il porte |
+> |---|---:|---|
+> | `/opt/vizyo-manager/.env.prod` | **23** | Stripe, factures, clients |
+> | `/opt/maestroo/.env.dev` | 19 | |
+> | `/opt/vizyo-manager/vizyo-manager-api/.env` | 17 | |
+> | `/opt/vizyo-leads/.env.prod` | 13 | pile supprimée le 08-04 |
+> | `/opt/vizyo-leads/.env` | 10 | idem |
+> | **`/opt/vizyo-auth/.env`** | **9** | **l'authentification de TOUTES les applications** |
+> | `/opt/dg-epaviste-depannage/.env` | 1 | |
+> | **+ 4 sauvegardes** `/opt/maestroo/.env.dev.bak*` | 13 à 19 chacune | dont une « avant-retrait-superadmin » |
+>
+> *(Les `.env.example` portent des marqueurs de gabarit — `changeme`, `your_`, `<…>` — et ne sont
+> pas comptés. `/opt/vizyo-tracky/.env` est en 644 avec 9 lignes sensibles **mais 5 marqueurs** :
+> à trancher à l'œil, il n'est pas classé ici.)*
+>
+> **Et il y a bien quelqu'un pour les lire** : `/etc/passwd` déclare **trois** comptes avec un shell
+> de connexion — `root`, `sync`, **`ubuntu`**.
+>
+> ### Le risque du correctif est MESURÉ, et il est nul
+>
+> La question qui décide : *un conteneur non-root lit-il un de ces fichiers ?* Six conteneurs
+> tournent en non-root (`nodejs`, `nestjs`, `nextjs`, `node`, `guest`). **Aucun ne monte un `.env`
+> par bind-mount** — vérifié sur les 33 : leurs variables sont injectées par Compose **au
+> démarrage**, en root. Un `chmod 600` ne peut donc rien casser.
+>
+> **Quoi faire** — 13 fichiers, dix secondes, réversible :
+>
+> ```bash
+> chmod 600 /opt/vizyo-manager/.env.prod /opt/vizyo-manager/vizyo-manager-api/.env >           /opt/vizyo-auth/.env /opt/maestroo/.env.dev /opt/maestroo/.env.dev.bak* >           /opt/vizyo-leads/.env /opt/vizyo-leads/.env.prod /opt/dg-epaviste-depannage/.env
+> ```
+>
+> ⚠️ **Les 4 `.bak` de `maestroo` méritent mieux qu'un `chmod`** : ce sont des copies d'un fichier
+> d'environnement de développement, dont une nommée « avant-retrait-superadmin ». Les garder en 600
+> ferme la lecture ; les **supprimer** ferme la question — mais c'est une décision, pas un geste
+> d'audit.
+>
+> > **La leçon, et c'est la deuxième fois en un jour** : ce constat a vécu **onze passages** sur un
+> > périmètre de trois fichiers, parce que la question posée le 2026-08-08 était *« où sont les
+> > jetons GitHub ? »* et non *« qu'est-ce qui est lisible par tous et ne devrait pas l'être ? »*.
+> > C'est exactement VPS-027 sur un autre objet : *un périmètre trop étroit ne se contredit
+> > jamais — il rend des réponses justes à une question plus petite que celle qu'on croit poser.*
+> > Ici, c'est **le correctif lui-même** qui a révélé le vrai périmètre, parce que sa contre-épreuve
+> > a été écrite plus large que lui.
+- **Mesure du 2026-08-17, conservée** : **3 fichiers**, dont deux en mode **644** — **10e passage sans action**. Le correctif (`chmod 600`) coute 10 secondes et n'a aucun effet de bord. Il est en tete du plan d'action depuis onze passages : ce n'est plus un sujet technique.
 - **Mesure du 2026-08-17, conservée** : **3 fichiers**, dont deux en mode **644** — inchange, **10e passage sans action**. Le correctif (`chmod 600`) coute 10 secondes et n'a aucun effet de bord. Il est en tete du plan d'action depuis dix passages : ce n'est plus un sujet technique.
 
 **Quoi.** `/opt/foodsqan/.git/config` contient une URL de dépôt de la forme
