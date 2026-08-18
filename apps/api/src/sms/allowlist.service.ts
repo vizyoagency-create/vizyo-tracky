@@ -334,7 +334,7 @@ export class AllowlistService {
    * élargirait la surface d'envoi à des équipements dont on ignore où ils sont.
    * Le trou se referme en déclarant le boîtier, pas en baissant la garde.
    */
-  private async numerosDesBoitiers(): Promise<Map<string, string>> {
+  private async numerosDesBoitiers(options: { recaler: boolean }): Promise<Map<string, string>> {
     const trackers = await this.prisma.tracker.findMany({
       select: { id: true, imei: true, simPhoneNumber: true },
     });
@@ -357,9 +357,16 @@ export class AllowlistService {
       }
     }
 
-    // On RECOPIE le numero trouve sur la fiche boitier. Sans ca, l'ecran admin
-    // continuerait d'afficher l'ancien numero pendant que les SMS partent vers le
-    // bon : l'exploitant lirait un ecran qui ment sur ce que fait le systeme.
+    /**
+     * On RECOPIE le numéro trouvé sur la fiche boîtier — sinon l'écran admin
+     * continuerait d'afficher l'ancien pendant que les SMS partent vers le bon.
+     *
+     * ⚠️ MAIS SEULEMENT DEPUIS LA SYNCHRO, JAMAIS DEPUIS status(). Ce dernier sert
+     * un GET que l'écran admin appelle à chaque affichage : y écrire ferait muter
+     * la base et remplir le journal au simple fait de REGARDER un tableau de bord,
+     * y compris pour un lecteur sans droit d'écriture. Un GET ne modifie rien.
+     */
+    if (!options.recaler) return parNumero;
     for (const r of aRecaler) {
       await this.prisma.tracker.update({ where: { id: r.id }, data: { simPhoneNumber: r.apres } });
       this.systemActivity.record({
@@ -377,7 +384,7 @@ export class AllowlistService {
 
   async syncFromTrackers(): Promise<AllowlistSyncResult> {
     const [numerosBoitiers, users] = await Promise.all([
-      this.numerosDesBoitiers(),
+      this.numerosDesBoitiers({ recaler: true }),
       this.prisma.user.findMany({
         where: { phone: { not: null }, isActive: true },
         select: { email: true, phone: true },
@@ -420,7 +427,7 @@ export class AllowlistService {
   async status(): Promise<AllowlistStatus> {
     const [entries, numerosBoitiers, users] = await Promise.all([
       this.list(),
-      this.numerosDesBoitiers(),
+      this.numerosDesBoitiers({ recaler: false }),
       this.prisma.user.findMany({
         where: { phone: { not: null }, isActive: true },
         select: { phone: true },

@@ -243,3 +243,49 @@ describe('AllowlistService — d’ou viennent les numeros autorises', () => {
     expect(systemActivity.record).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * ── UN GET NE MODIFIE RIEN ───────────────────────────────────────────────────────────
+ *
+ * `status()` sert l'ecran admin, appele a CHAQUE affichage. La premiere version de ce
+ * correctif y recalait les fiches et ecrivait au journal : regarder un tableau de bord
+ * mutait la base — y compris pour un lecteur sans droit d'ecriture. Ce test verrouille
+ * la separation.
+ */
+describe('AllowlistService — status() reste en lecture seule', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('n’ecrit NI en base NI au journal, meme quand une fiche est perimee', async () => {
+    const majTracker = jest.fn().mockResolvedValue({});
+    const systemActivity = { record: jest.fn() };
+    const prisma = {
+      // Fiche perimee : la synchro la corrigerait, status() doit s'en abstenir.
+      tracker: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 't1', imei: '864035053276839', simPhoneNumber: '+33600000000' },
+        ]),
+        update: majTracker,
+      },
+      sim: { findMany: jest.fn().mockResolvedValue([
+        { imei: '864035053276839', msisdn: '345901035259773' },
+      ]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new AllowlistService(
+      prisma as never,
+      { get: jest.fn(() => 'x') } as never,
+      { record: jest.fn(), recordBackground: jest.fn() } as never,
+      systemActivity as never,
+    );
+    jest.spyOn(service, 'list').mockResolvedValue([]);
+
+    const etat = await service.status();
+
+    expect(majTracker).not.toHaveBeenCalled();
+    expect(systemActivity.record).not.toHaveBeenCalled();
+    // Il RAPPORTE quand meme le vrai numero manquant — lecture seule n'est pas cecite.
+    expect(etat.missing).toEqual([
+      { imei: '864035053276839', phone: '+345901035259773' },
+    ]);
+  });
+});
