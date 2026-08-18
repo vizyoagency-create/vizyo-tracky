@@ -2371,10 +2371,35 @@ porte les certificats de tous les domaines publics.
 > les `.bak`. Git ne suit que le bit **exécutable** — un 644 → 600 lui est invisible. *Un compteur
 > qui mélange « modifié » et « non suivi » accuse un geste qui n'a rien fait.*
 >
-> ⚠️ **Ce qui reste et ne se règle PAS par un `chmod`** : les 9 sauvegardes `.env.prod.bak-*` de
-> Tracky et les 4 de `maestroo` sont maintenant en 600, mais **treize copies d'un fichier de
-> secrets restent treize copies**. Les supprimer ferme la question ; c'est une décision, pas un
-> geste d'audit.
+> ### ✅ 2026-08-18, 09 h 50 — les 13 sauvegardes sont SUPPRIMÉES, sur décision explicite
+>
+> C'est le **premier `rm` du dispositif**, et il sort du garde-fou de lecture seule : il a été
+> demandé nommément par le propriétaire de la machine. **50 025 octets, 13 fichiers.**
+>
+> **Trois contrôles avant, parce qu'une suppression ne se relit pas :**
+>
+> | Question | Réponse |
+> |---|---|
+> | Une **clé** existe-t-elle dans une sauvegarde et plus dans le fichier courant ? | **une seule** — `ANTHROPIC_ANTHROPIC_API_KEY` (préfixe doublé, faute de frappe) |
+> | …et sa **valeur** ? | **identique** à l'`ANTHROPIC_API_KEY` courante — le nom avait été corrigé, rien n'est perdu |
+> | Une **valeur** longue absente du courant ? | **une seule** — `PARTNER_MAESTROO_API_URL`, une **URL** remplacée depuis ; le conteneur utilise bien la nouvelle |
+>
+> **Vérifications après** : 0 sauvegarde restante · `.env.prod` et `.env.dev` **inchangés à
+> l'octet près** (empreintes SHA-256 avant/après) · **33/33 conteneurs, 0 en anomalie** ·
+> `docker compose --env-file .env.prod config` lit toujours le fichier · production en 120 et
+> 208 ms.
+>
+> ### Le gain réel, et il n'est pas le disque
+>
+> **Les copies de la clé d'API Anthropic passent de 10 à 1.** 50 Ko ne pèsent rien sur 96 Go ; ce
+> qui comptait, c'est qu'une clé vivante existait en **dix exemplaires** sur une machine où trois
+> comptes ont un shell de connexion. *Un fichier de sauvegarde de secrets n'est pas un fichier de
+> sauvegarde : c'est une copie supplémentaire du secret, et elle vieillit sans que personne la
+> relise.*
+>
+> ⚠️ **À ne pas généraliser** : ces treize-là étaient supprimables **parce que la vérification l'a
+> montré**, pas parce que ce sont des `.bak`. Le test qui décide n'est pas le nom du fichier, c'est
+> *« contient-il une clé ou une valeur qui n'existe nulle part ailleurs ? »*.
 
 > ### ✅ 2026-08-18 — corrigé après onze passages, en dix secondes
 >
