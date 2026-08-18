@@ -2339,7 +2339,42 @@ porte les certificats de tous les domaines publics.
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : ✅ **`APPLIQUE` sur son périmètre d'origine (2026-08-18)** — 🔴 **mais le constat ROUVRE aussitôt, avec un périmètre 7× plus grand**
-- **Vu** : 2026-08-18 · **Mesure** : les 3 fichiers d'origine sont en **600**. ⚠️ **La contre-épreuve du correctif a trouvé 9 fichiers `.env` RÉELS de plus en 644, plus 4 sauvegardes.**
+- **Vu** : 2026-08-18 · **Mesure** : ✅ **33 fichiers fermés en tout**, et le balayage complet de `/opt` (51 candidats, sans limite de profondeur, `node_modules` exclus) rend **`AUCUN fichier d'environnement RÉEL lisible par tous`**. Contenu vérifié intact par **26 empreintes SHA-256 avant/après**. Production contrôlée après chaque lot : **33/33 conteneurs, 0 en anomalie**, les six points publics répondent en **26 à 56 ms**.
+
+> ### ✅ 2026-08-18 — TROIS LOTS, ET LE DEUXIÈME A ÉTÉ TROUVÉ PAR UNE ERREUR DE MA MESURE
+>
+> | Lot | Fichiers | Ce qu'il contenait |
+> |---|---:|---|
+> | 1 — périmètre d'origine | **2** (+1 déjà en 600) | les 2 `.git/config` porteurs d'un jeton GitHub |
+> | 2 — contre-épreuve `-maxdepth 3` | **13** | `vizyo-manager/.env.prod` (23 lignes), `vizyo-auth/.env` (9), `maestroo/.env.dev` + 4 `.bak`… |
+> | **3 — balayage SANS limite de profondeur** | **13** | **`/opt/vizyo-tracky/deploy/vps/.env.prod` (25 lignes) + ses 9 sauvegardes**, `vizyo-texto/deploy/vps/.env`, `vizyo-auth/apps/api/.env.{development,postgres}` |
+> | 4 — modèles qui n'en étaient pas | **5** | voir **VPS-028** |
+>
+> ⚠️⚠️ **Le lot 3 n'existe que parce que mon propre balayage était borné à `-maxdepth 3`.** Le
+> fichier le plus sensible de la machine — l'environnement de production de **Tracky lui-même** —
+> est à la profondeur **4** (`/opt/vizyo-tracky/deploy/vps/`). Je l'ai donc manqué en publiant, le
+> même matin, deux constats sur des **périmètres trop étroits** (VPS-027, et VPS-022 lui-même).
+> *Troisième fois dans la même journée, et la seule des trois où c'est la mesure de l'audit qui
+> portait la borne.*
+>
+> ### Le risque a été mesuré AVANT d'agir, pas supposé
+>
+> | Question | Réponse |
+> |---|---|
+> | Un service systemd non-root lit-il `/opt` ? | **non** — les seules unités non-root sont `polkit`, `networkd`, `resolved`, `timesyncd` |
+> | Un `EnvironmentFile` pointe-t-il vers `/opt` ? | **aucun** |
+> | Un conteneur monte-t-il un `.env` par bind-mount ? | **aucun sur les 33** — Compose injecte les variables **au démarrage**, en root |
+> | Un déploiement fonctionnerait-il encore ? | **oui**, vérifié : `docker compose --env-file .env.prod config` lit le fichier en 600 sans broncher |
+>
+> ⚠️ **Fausse alerte levée au passage** : `git status` a annoncé « 9 fichiers `.env` modifiés » dans
+> `vizyo-tracky` juste après le `chmod`. Vérifié : les neuf sont en **`??` (non suivis)**, ce sont
+> les `.bak`. Git ne suit que le bit **exécutable** — un 644 → 600 lui est invisible. *Un compteur
+> qui mélange « modifié » et « non suivi » accuse un geste qui n'a rien fait.*
+>
+> ⚠️ **Ce qui reste et ne se règle PAS par un `chmod`** : les 9 sauvegardes `.env.prod.bak-*` de
+> Tracky et les 4 de `maestroo` sont maintenant en 600, mais **treize copies d'un fichier de
+> secrets restent treize copies**. Les supprimer ferme la question ; c'est une décision, pas un
+> geste d'audit.
 
 > ### ✅ 2026-08-18 — corrigé après onze passages, en dix secondes
 >
@@ -3136,6 +3171,55 @@ stockage en surprovisionnement), ou si le nombre d'appels quotidiens double.
 **À ne pas faire** : désactiver `qemu-guest-agent`. On perdrait la console de secours et le
 redimensionnement à chaud, pour un risque qui n'est pas une intrusion mais une **dépendance
 contractuelle** — et on la découvrirait au pire moment, exactement comme `/opt/foodsqan` (VPS-021).
+
+---
+
+## VPS-028 — Quatre fichiers `.example` suivis par git portent les VRAIES valeurs de production
+
+- **Domaine** : sécurité · **Gravité** : **1** · **Statut** : `A_TRAITER` — **un `chmod` n'y change RIEN**
+- **Vu** : 2026-08-18 · **Mesure à la découverte** : **5 fichiers `.example` portent des valeurs identiques à celles du fichier réel voisin ; 4 d'entre eux sont SUIVIS PAR GIT**
+
+**Quoi.** En triant les porteurs de secrets de `/opt`, six `.example` ne portaient **aucun marqueur
+de gabarit** (`changeme`, `your_`, `<…>`). La mesure qui tranche — *leurs valeurs sont-elles
+identiques à celles du fichier réel voisin ?* — répond sans ambiguïté :
+
+| Fichier `.example` | Valeurs identiques au réel | Suivi par git |
+|---|---:|---|
+| `/opt/vizyo-tracky/deploy/vps/.env.prod.example` | **6** | 🔴 **oui** — `vizyoagency-create/vizyo-tracky` |
+| `/opt/vizyo-auth/apps/api/.env.example` | 3 | 🔴 **oui** — `vizyoagency-create/vizyo-auth` |
+| `/opt/vizyo-leads/.env.example` | 3 | 🔴 **oui** — `vizyoagency-create/vizyo-leads` |
+| `/opt/vizyo-manager/vizyo-manager-api/.env.example` | 3 | 🔴 **oui** — `vizyoagency-create/vizyo-manager` |
+| `/opt/vizyo-verify/deploy/vps/.env.production.example` | 4 | hors dépôt git |
+| `/opt/vizyo-verify/.env.example` | **0** | — *(vrai gabarit, laissé tel quel)* |
+
+**Ce ne sont pas des gabarits : ce sont des fuites**, et quatre d'entre elles sont **dans des dépôts
+GitHub**, donc hors de cette machine, dans l'historique, sur tous les postes qui ont cloné.
+
+**Pourquoi c'était invisible.** Un `.example` est *fait* pour être lisible et commité — c'est sa
+fonction. Personne ne le lit comme un porteur de secret, et l'audit ne le lisait pas non plus :
+VPS-022 cherchait des **jetons GitHub dans `.git/config`**, puis des fichiers en **644**. Ces deux
+critères ratent le cas : le fichier a le bon nom, le bon mode *attendu*, et il est au bon endroit.
+**Seule la comparaison avec le fichier réel le révèle**, et personne ne l'avait faite.
+
+**Quoi faire.** L'ordre compte, et l'inverser ne sert à rien :
+
+1. **ROTATION** des valeurs concernées — c'est le seul geste qui ferme le risque. Un `chmod` sur un
+   fichier déjà publié sur GitHub ne protège rien.
+2. Remplacer les valeurs des `.example` par de vrais marqueurs (`changeme`, `<votre-cle>`), commiter,
+   pousser.
+3. **Purger l'historique** des dépôts concernés (`git filter-repo`) — ou décider explicitement de ne
+   pas le faire, en sachant que les valeurs restent atteignables.
+
+✅ **Fait le 2026-08-18, et ce n'est PAS le correctif** : les 5 fichiers sont passés en 600. Ça ferme
+la lecture **locale** par le compte `ubuntu`, et rien d'autre. C'est de la défense en profondeur, à
+ne pas confondre avec une résolution.
+
+**À ne pas faire** : marquer ce constat résolu parce que les modes sont corrigés. C'est exactement
+le mode d'échec que ce référentiel poursuit — *un défaut qui rassure n'a aucun plaignant* (VPS-M21) :
+ici la trace visible (le mode) est corrigée pendant que l'effet réel (des secrets dans GitHub) est
+intact.
+
+**Seuil** : reste en gravité 1 tant qu'aucune rotation n'est faite.
 
 ---
 
