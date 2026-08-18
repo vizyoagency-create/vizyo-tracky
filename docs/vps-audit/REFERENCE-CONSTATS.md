@@ -3174,56 +3174,116 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 
 ---
 
-## VPS-028 — Quatre fichiers `.example` suivis par git portent les VRAIES valeurs de production
+## VPS-028 — ~~Quatre `.example` commités portent les vraies valeurs de production~~ → **SURÉVALUÉ : aucun secret de production n'a fuité**
 
-- **Domaine** : sécurité · **Gravité** : **1** · **Statut** : `A_TRAITER` — **un `chmod` n'y change RIEN**
-- **Vu** : 2026-08-18 · **Mesure à la découverte** : **5 fichiers `.example` portent des valeurs identiques à celles du fichier réel voisin ; 4 d'entre eux sont SUIVIS PAR GIT**
+- **Domaine** : sécurité · **Gravité** : **4** (annoncée **1** pendant deux heures) · **Statut** : `ACCEPTE` — **corrigé le jour même, avant toute action**
+- **Vu** : 2026-08-18 · **Mesure** : sur les **20** « valeurs identiques » relevées, **une seule est un secret**, et c'est une valeur de **développement**. Les cinq bases de production portent des mots de passe de **32 à 64 caractères** ; aucun n'a fuité.
 
-**Quoi.** En triant les porteurs de secrets de `/opt`, six `.example` ne portaient **aucun marqueur
-de gabarit** (`changeme`, `your_`, `<…>`). La mesure qui tranche — *leurs valeurs sont-elles
-identiques à celles du fichier réel voisin ?* — répond sans ambiguïté :
-
-| Fichier `.example` | Valeurs identiques au réel | Suivi par git |
-|---|---:|---|
-| `/opt/vizyo-tracky/deploy/vps/.env.prod.example` | **6** | 🔴 **oui** — `vizyoagency-create/vizyo-tracky` |
-| `/opt/vizyo-auth/apps/api/.env.example` | 3 | 🔴 **oui** — `vizyoagency-create/vizyo-auth` |
-| `/opt/vizyo-leads/.env.example` | 3 | 🔴 **oui** — `vizyoagency-create/vizyo-leads` |
-| `/opt/vizyo-manager/vizyo-manager-api/.env.example` | 3 | 🔴 **oui** — `vizyoagency-create/vizyo-manager` |
-| `/opt/vizyo-verify/deploy/vps/.env.production.example` | 4 | hors dépôt git |
-| `/opt/vizyo-verify/.env.example` | **0** | — *(vrai gabarit, laissé tel quel)* |
-
-**Ce ne sont pas des gabarits : ce sont des fuites**, et quatre d'entre elles sont **dans des dépôts
-GitHub**, donc hors de cette machine, dans l'historique, sur tous les postes qui ont cloné.
-
-**Pourquoi c'était invisible.** Un `.example` est *fait* pour être lisible et commité — c'est sa
-fonction. Personne ne le lit comme un porteur de secret, et l'audit ne le lisait pas non plus :
-VPS-022 cherchait des **jetons GitHub dans `.git/config`**, puis des fichiers en **644**. Ces deux
-critères ratent le cas : le fichier a le bon nom, le bon mode *attendu*, et il est au bon endroit.
-**Seule la comparaison avec le fichier réel le révèle**, et personne ne l'avait faite.
-
-**Quoi faire.** L'ordre compte, et l'inverser ne sert à rien :
-
-1. **ROTATION** des valeurs concernées — c'est le seul geste qui ferme le risque. Un `chmod` sur un
-   fichier déjà publié sur GitHub ne protège rien.
-2. Remplacer les valeurs des `.example` par de vrais marqueurs (`changeme`, `<votre-cle>`), commiter,
-   pousser.
-3. **Purger l'historique** des dépôts concernés (`git filter-repo`) — ou décider explicitement de ne
-   pas le faire, en sachant que les valeurs restent atteignables.
-
-✅ **Fait le 2026-08-18, et ce n'est PAS le correctif** : les 5 fichiers sont passés en 600. Ça ferme
-la lecture **locale** par le compte `ubuntu`, et rien d'autre. C'est de la défense en profondeur, à
-ne pas confondre avec une résolution.
-
-**À ne pas faire** : marquer ce constat résolu parce que les modes sont corrigés. C'est exactement
-le mode d'échec que ce référentiel poursuit — *un défaut qui rassure n'a aucun plaignant* (VPS-M21) :
-ici la trace visible (le mode) est corrigée pendant que l'effet réel (des secrets dans GitHub) est
-intact.
-
-**Seuil** : reste en gravité 1 tant qu'aucune rotation n'est faite.
+> ### ❌ 2026-08-18, 08 h 45 — CE CONSTAT ÉTAIT SURÉVALUÉ, ET LA ROTATION AURAIT ÉTÉ VAINE
+>
+> Le constat annonçait, en gravité 1 : *« les secrets sont dans quatre dépôts GitHub, hors de cette
+> machine »*, et recommandait une **rotation**. Avant de l'exécuter — sur l'authentification de
+> toutes les applications, un mardi à 08 h 45 — les valeurs concernées ont été **nommées**. Elles ne
+> sont pas ce que le constat disait.
+>
+> | Ce qui a « fuité » | Nature réelle |
+> |---|---|
+> | `APP_DOMAIN`, `LP_DOMAIN`, `APP_URL`, `PUBLIC_ORIGIN`, `PUBLIC_BASE_URL`, `ADMIN_BASE_URL`, `DASHBOARD_URL`, `VIZYO_AUTH_API_URL`, `VIZYO_LEADS_API_URL`, `REDIS_URL` | **des URL et des noms de domaine** — publics par construction |
+> | `TRAEFIK_NETWORK`, `STORAGE_DIR`, `POSTGRES_DB`, `JWT_ISSUER`, `VAPID_SUBJECT`, `RESEND_FROM_EMAIL` | **de la configuration** — un nom de réseau, un chemin, un nom de base, une adresse d'expéditeur |
+> | `DATABASE_URL` (vizyo-leads, vizyo-auth *dev*, 2 `.example`) | contient le mot de passe **`password`** — vérifié : son `sha256` vaut `5e884898da28…`, c'est le **défaut**, pas un secret |
+> | **`JWT_SECRET`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`** (vizyo-auth) | **les seuls vrais secrets** — 13 caractères, et de **DÉVELOPPEMENT** |
+>
+> ### La production n'est pas concernée, et c'est vérifié à deux endroits
+>
+> ```
+> JWT_SECRET          example=211c3a6bf59e   dev=211c3a6bf59e   PROD=2593c20f13c8   different
+> JWT_ACCESS_SECRET   example=211c3a6bf59e   dev=211c3a6bf59e   PROD=a2bdefba9951   different
+> JWT_REFRESH_SECRET  example=211c3a6bf59e   dev=211c3a6bf59e   PROD=c96708b09e8d   different
+> ```
+>
+> Vérifié **dans le fichier** (`/opt/vizyo-auth/.env`) **et dans l'environnement du conteneur en
+> service** (`docker exec vizyo-auth-api printenv`) : **44 caractères**, et différents des trois.
+> *Un fichier sur disque ne prouve pas ce qu'un processus utilise — d'où les deux lectures.*
+>
+> Et les cinq bases de production :
+>
+> | Base | Longueur du mot de passe | Est-ce `password` ? |
+> |---|---:|---|
+> | `vizyo-auth-db` | **44** | non |
+> | `tracky-postgres` | **64** | non |
+> | `vizyo-verify-postgres` | **48** | non |
+> | `vizyo-manager-postgres` | **32** | non |
+> | `texto-postgres` | **32** | non |
+>
+> `vizyo-auth-db` ne publie **pas** son port sur `0.0.0.0` : réseau Docker interne seulement.
+>
+> ### La cause de l'erreur : un détecteur qui comptait des URL comme des secrets
+>
+> Le motif employé contenait `_URL` et un seuil de 12 caractères — donc
+> `APP_URL=https://app-tracky.vizyoagency.com` **compte comme une ligne sensible**. Sur 20 valeurs
+> identiques, **19 étaient de la configuration**. Voir **VPS-M46**.
+>
+> ### Ce qui reste vrai, et c'est peu
+>
+> 1. **Un secret JWT de développement (13 caractères) est dans `vizyo-auth` sur GitHub.** Sans effet
+>    sur la production, mais 13 caractères est faible et un `.example` n'a aucune raison de porter
+>    une vraie valeur. *À corriger au fil de l'eau, dans le dépôt — pas sur le VPS.*
+> 2. Les `.example` gagneraient à porter de vrais marqueurs (`<votre-cle>`). **C'est de l'hygiène,
+>    pas un incident.**
+>
+> **À ne pas faire — et c'est le cœur de la correction** : exécuter la rotation qui avait été
+> demandée. Elle aurait coupé les sessions de tous les utilisateurs de toutes les applications, un
+> mardi matin, **pour remplacer des noms de domaine par d'autres noms de domaine**.
+>
+> > *Le coût d'un constat surévalué n'est pas l'inquiétude qu'il crée : c'est l'action dangereuse
+> > qu'il justifie.* Un constat sous-évalué se paie en incident ; un constat surévalué se paie en
+> > remédiation inutile sur un système sain — et celle-ci était irréversible.
 
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M46 — Mon détecteur de secrets comptait les URL, et il a produit un constat de gravité 1
+
+- **Vu** : 2026-08-18 · **Statut** : `APPLIQUE` (constat corrigé **avant toute action** ; le motif ne vit que dans les vérifications en marge, pas dans `collecte.sh`)
+
+**Quoi.** Le tri des porteurs de secrets de `/opt` reposait sur un motif contenant `_URL` et un
+seuil de 12 caractères. Conséquence : **`APP_URL=https://app-tracky.vizyoagency.com` est compté
+comme une ligne sensible.** Sur les **20** « valeurs identiques » qui ont fondé **VPS-028** en
+gravité 1, **19 étaient de la configuration** — noms de domaine, URL publiques, nom de réseau
+Docker, chemin de stockage, nom de base, adresse d'expéditeur. La vingtième, un secret JWT, était
+une valeur de **développement**, la production en utilisant une autre.
+
+**Ce que ça a failli coûter.** Le constat recommandait une **rotation** des secrets de `vizyo-auth`,
+c'est-à-dire de l'authentification de **toutes** les applications, un mardi à 08 h 45. Elle aurait
+déconnecté tous les utilisateurs — **pour remplacer des noms de domaine par d'autres noms de
+domaine**.
+
+**Ce qui l'a rattrapé.** Avant de tourner quoi que ce soit, les clés ont été **listées par leur
+nom**. Elles se lisent en trois secondes et elles disent tout : `APP_DOMAIN`, `LP_DOMAIN`,
+`TRAEFIK_NETWORK`, `RESEND_FROM_EMAIL`… La mesure décisive a ensuite été prise **deux fois** — dans
+le fichier **et** dans l'environnement du conteneur en service — parce qu'un fichier sur disque ne
+prouve pas ce qu'un processus utilise.
+
+**Pourquoi c'était invisible.** Le motif a été écrit **pour trouver**, pas pour **compter**. Comme
+critère de *recherche* il est bon : large, il ne rate rien. Comme critère de *dénombrement* il est
+faux — et c'est en dénombrant (« 23 lignes sensibles », « 25 lignes ») que le constat a pris sa
+gravité. **Le même motif a servi aux deux usages sans être requalifié entre les deux.**
+
+> **C'est VPS-M01 à quatorze jours d'écart, sur le même mode d'échec** : *un compteur d'incidents
+> doit prouver qu'il compte des **incidents**.* Le premier passage avait désigné une IP
+> d'administration comme « principale attaquante » parce que le motif `from <IP>` capturait aussi
+> les connexions **réussies**. Ici le motif capture aussi les **URL**.
+
+**Quoi faire.** Le motif n'entre **pas** dans `collecte.sh` — il ne vit que dans les vérifications
+en marge, et le « corriger » dans un fichier qui ne le contient pas ne servirait à rien. La règle,
+elle, entre au référentiel : *avant de publier un dénombrement, afficher les **noms** de ce qui est
+compté sur un échantillon.* Trois lignes de sortie auraient suffi à voir `APP_DOMAIN` dans la liste.
+
+**À ne pas faire** : durcir le motif jusqu'à ne plus rien trouver. Un critère de recherche doit
+rester large — c'est le **dénombrement** qui doit être qualifié, pas la recherche.
+
+---
 
 ### VPS-M45 — Le collecteur n'a jamais regardé les CLIENTS de Docker, et la cause y était depuis treize jours
 
