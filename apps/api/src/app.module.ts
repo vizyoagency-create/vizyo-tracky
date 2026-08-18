@@ -73,6 +73,7 @@ import { PublicStatsModule } from './public-stats/public-stats.module';
 import { ApiTrafficModule } from './api-traffic/api-traffic.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { DriverUnlockApiModule } from './driver-unlock/driver-unlock-api.module';
+import { TrackerOnboardingModule } from './tracker-onboarding/tracker-onboarding.module';
 import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
 
 @Module({
@@ -173,6 +174,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     SurveillanceModule,
     SystemMetricsModule,
     UserActivityModule,
+    TrackerOnboardingModule,
     UnknownTrackersModule,
     // Sprint 4 — écoute audio (micro embarqué), LÉGALEMENT CRITIQUE. Device MOCKÉ ;
     // en prod l'écoute reste impossible sans AUDIO_MONITORING_ENABLED='true' (#2).

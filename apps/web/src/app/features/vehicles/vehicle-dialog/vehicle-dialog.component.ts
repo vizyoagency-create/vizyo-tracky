@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetsApiService, type FleetSummary } from '../../../core/services/fleets.service';
 import { TrackersApiService } from '../../../core/services/trackers.service';
+import { MiseEnServiceComponent } from '../mise-en-service/mise-en-service.component';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
 import type { InstallationEnergy } from '@vizyo/tracky-shared';
 import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
@@ -17,7 +18,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
 @Component({
   selector: 'app-vehicle-dialog',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, BrandLogoComponent],
+  imports: [FormsModule, LucideAngularModule, BrandLogoComponent, MiseEnServiceComponent],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex justify-end">
@@ -251,38 +252,17 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                 </p>
               </div>
 
-              <section>
-                <p class="section-title">Boîtier GPS</p>
-                <div class="space-y-3">
-                  <div>
-                    <div class="vd-label-ligne">
-                      <label class="field-label">IMEI du boîtier</label>
-                      <!-- Le compteur remplace un bouton grise sans explication : on voit
-                           ou on en est, et ce qu'il manque. -->
-                      <span class="vd-compteur" [class.vd-compteur--ok]="imei.length === 15">{{ imei.length }} / 15</span>
-                    </div>
-                    <input type="text" [(ngModel)]="imei" placeholder="861234037582910" inputmode="numeric" pattern="\\d{15}" maxlength="15"
-                      class="field-input font-mono tracking-wider" />
-                    @if (imei.length > 0 && imei.length < 15) {
-                      <p class="vd-manque">Il manque {{ 15 - imei.length }} chiffre{{ 15 - imei.length > 1 ? 's' : '' }}.</p>
-                    } @else {
-                      <p class="vd-aide">15 chiffres, imprimés sous le code-barres du boîtier.</p>
-                    }
-                  </div>
-                  <div>
-                    <label class="field-label">Modèle <span class="vd-opt">· optionnel</span></label>
-                    <input type="text" [(ngModel)]="trackerModel" placeholder="Teltonika FMB920" class="field-input" />
-                  </div>
-                  <div>
-                    <label class="field-label">N° SIM <span class="vd-opt">· optionnel</span></label>
-                    <input type="tel" [(ngModel)]="simPhoneNumber" placeholder="+33612345678" maxlength="16"
-                      class="field-input font-mono" />
-                    <!-- La consequence, pas le vocabulaire interne : « requis pour le
-                         statut Installe » ne dit pas ce qui se passe sans lui. -->
-                    <p class="vd-aide">Sans n° SIM, aucune position n'arrivera — même boîtier posé.</p>
-                  </div>
-                </div>
-              </section>
+              <!-- ⚠️ L'ANCIENNE ETAPE 2 EST REMPLACEE, PAS COMPLETEE (lot 5, 2026-08-18).
+                   Elle demandait de recopier a la main un IMEI de quinze chiffres lu sur
+                   une etiquette, dans un hangar. Quatre boitiers du parc portaient un IMEI
+                   faux a un ou trois chiffres pres — la saisie manuelle EST la panne.
+                   On scanne, le serveur identifie, et le rattachement s'observe. -->
+              <app-mise-en-service
+                [vehicleId]="createdVehicleId()"
+                [plaque]="plate"
+                (termine)="onMiseEnServiceFinie()"
+                (passer)="onSkipTracker()"
+              />
             }
           </div>
 
@@ -293,14 +273,6 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                      hover:text-fg-primary transition-colors cursor-pointer">
               Annuler
             </button>
-
-            @if (!isEditMode() && currentStep() === 2) {
-              <!-- Une sortie NOMMEE, pas un abandon : « Passer » ne disait pas ce
-                   qu'on passe, ni ce qu'il advient du vehicule. -->
-              <button (click)="onSkipTracker()" class="vd-sortie">
-                Sans boîtier pour l'instant
-              </button>
-            }
 
             @if (isEditMode()) {
               <!-- Edit mode: save button -->
@@ -321,16 +293,6 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                 }
                 Suivant
                 <lucide-icon [img]="ChevronRightIcon" [size]="14"></lucide-icon>
-              </button>
-            } @else {
-              <button (click)="onSubmitStep2()" [disabled]="isLoading() || imei.length !== 15"
-                class="vd-bouton vd-primaire transition-all cursor-pointer disabled:opacity-50">
-                @if (isLoading()) {
-                  <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                } @else {
-                  <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
-                }
-                Créer le véhicule
               </button>
             }
           </div>
@@ -536,7 +498,7 @@ export class VehicleDialogComponent {
   protected readonly currentStep = signal(1);
   protected readonly isLoading = signal(false);
   protected readonly errorMessage = signal('');
-  private readonly createdVehicleId = signal('');
+  protected readonly createdVehicleId = signal('');
 
   protected readonly vehicleTypes = VEHICLE_TYPES;
   private readonly brandLabels = VEHICLE_BRANDS.map((b) => b.label);
@@ -698,6 +660,16 @@ export class VehicleDialogComponent {
       swallow('vehicle-dialog:onSubmitEdit', err);
       this.errorMessage.set(this.extractError(err));
     } finally { this.isLoading.set(false); }
+  }
+
+  /**
+   * Le boîtier est rattaché et vu en ligne : le composant de mise en service a fait le
+   * travail, il ne reste qu'à refermer. `onSubmitStep2` reste en place pour l'ancien
+   * chemin (il n'est plus atteignable depuis ce gabarit).
+   */
+  protected onMiseEnServiceFinie(): void {
+    this.done.emit();
+    this.reset();
   }
 
   async onSubmitStep2(): Promise<void> {
