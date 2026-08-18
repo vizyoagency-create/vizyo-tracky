@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -7,6 +7,7 @@ import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { TrackerOnboardingService } from './tracker-onboarding.service';
+import { ProvisioningVehiculeService } from './provisioning-vehicule.service';
 import { RattachementService } from './rattachement.service';
 import { VerrouProvisioningRegistry } from './verrou-provisioning.registry';
 
@@ -24,6 +25,7 @@ export class TrackerOnboardingController {
     private readonly onboarding: TrackerOnboardingService,
     private readonly verrou: VerrouProvisioningRegistry,
     private readonly rattachement: RattachementService,
+    private readonly provisioning: ProvisioningVehiculeService,
   ) {}
 
   /** Nom lisible du détenteur — l'e-mail seul ne dit pas à qui on doit demander. */
@@ -140,5 +142,40 @@ export class TrackerOnboardingController {
   attente(@Query('trackerId') trackerId: string) {
     if (!trackerId) throw new BadRequestException('trackerId requis.');
     return this.rattachement.attente(trackerId);
+  }
+
+  /**
+   * Lance la configuration SMS du boîtier — dernier recours quand le TCP n'a rien donné.
+   *
+   * ⚠️ AUCUN PARAMÈTRE SENSIBLE DANS LA REQUÊTE. L'IP du serveur, le port et l'APN sont
+   * déduits côté serveur : les accepter du client permettrait à un administrateur de
+   * flotte de rediriger un boîtier vers une autre destination.
+   */
+  @Post('provisionner')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('vehicles_create')
+  provisionner(@Req() req: AuthenticatedRequest, @Body() body: { imei?: string }) {
+    if (!body?.imei) throw new BadRequestException('imei requis.');
+    return this.provisioning.lancer({
+      imei: body.imei,
+      demandeur: {
+        userId: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        fleetId: req.user.fleetId ?? null,
+      },
+    });
+  }
+
+  /** Avancement de la configuration, étape par étape. Sondé pendant l'envoi. */
+  @Get('provisionnement/:id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('vehicles_create')
+  etatProvisionnement(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.provisioning.etat(id, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId ?? null,
+    });
   }
 }

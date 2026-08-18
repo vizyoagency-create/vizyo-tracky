@@ -4,6 +4,16 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   API_PORT: z.coerce.number().int().positive().default(3000),
   TRACKER_TCP_PORT: z.coerce.number().int().positive().default(5023),
+  /**
+   * Adresse que les boîtiers doivent viser (commande `adminip`).
+   *
+   * ⚠️ PAS DE VALEUR PAR DÉFAUT, ET C'EST VOULU. Un défaut coderait en dur l'IP d'une
+   * installation dans le dépôt, et une autre installation configurerait ses boîtiers
+   * pour qu'ils parlent au mauvais serveur — panne silencieuse, découverte des semaines
+   * plus tard quand personne ne voit remonter de positions. Non renseignée, la
+   * configuration par SMS refuse de démarrer en le disant.
+   */
+  PROVISIONING_SERVER_IP: z.string().min(1).optional(),
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

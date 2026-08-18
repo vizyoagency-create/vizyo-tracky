@@ -47,6 +47,35 @@ export interface EtatAttenteDto {
   statut: string;
 }
 
+export interface LancementProvisioningDto {
+  provisioningId: string;
+  imei: string;
+  msisdn: string;
+  apn: string;
+  nbEtapes: number;
+}
+
+export interface EtapeProvisioningDto {
+  step: number;
+  key: string;
+  label: string;
+  payload: string;
+  /** `pending` | `sent` | `acked` | `no-ack` | `failed` | `noop` */
+  status: string;
+  error?: string;
+}
+
+export interface EtatProvisioningDto {
+  id: string;
+  imei: string;
+  status: string;
+  currentStep: number;
+  steps: EtapeProvisioningDto[];
+  failureReason?: string | null;
+  completedAt?: string | null;
+  failedAt?: string | null;
+}
+
 export interface EtatVerrouDto {
   libre: boolean;
   parMoi: boolean;
@@ -73,6 +102,19 @@ export class MiseEnServiceApi {
 
   attente(trackerId: string): Observable<EtatAttenteDto> {
     return this.http.get<EtatAttenteDto>(`${this.base}/attente`, { params: { trackerId } });
+  }
+
+  /**
+   * Lance la configuration SMS. On n'envoie QUE l'IMEI : l'IP du serveur, le port et
+   * l'APN sont déduits côté serveur — les laisser au client permettrait de rediriger un
+   * boîtier vers une autre destination.
+   */
+  provisionner(imei: string): Observable<LancementProvisioningDto> {
+    return this.http.post<LancementProvisioningDto>(`${this.base}/provisionner`, { imei });
+  }
+
+  etatProvisionnement(id: string): Observable<EtatProvisioningDto> {
+    return this.http.get<EtatProvisioningDto>(`${this.base}/provisionnement/${id}`);
   }
 
   /** Prend le verrou OU le rafraîchit : c'est le même appel, à dessein. */

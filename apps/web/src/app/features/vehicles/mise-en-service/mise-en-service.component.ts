@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, OnDestroy, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CheckCircle2, LucideAngularModule, ScanLine, Search, ShieldAlert, TriangleAlert } from 'lucide-angular';
+import { CheckCircle2, LucideAngularModule, MessageSquare, ScanLine, Search, ShieldAlert, TriangleAlert } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
   MiseEnServiceApi,
+  type EtatProvisioningDto,
   type EtatVerrouDto,
   type ResolutionIdentifiantDto,
 } from '../../../core/services/mise-en-service.service';
@@ -16,8 +17,10 @@ const ECOUTE_S = 60;
 const SONDAGE_MS = 3000;
 /** Un battement bien plus court que l'expiration serveur (90 s) : trois essais de marge. */
 const BATTEMENT_MS = 20_000;
+/** Une salve de 6 a 8 SMS avec accuse : quelques minutes. On sonde sans presser. */
+const SONDAGE_SMS_MS = 4000;
 
-type Etape = 'saisie' | 'resolution' | 'resolu' | 'rattachement' | 'attente' | 'reussi' | 'echec';
+type Etape = 'saisie' | 'resolution' | 'resolu' | 'rattachement' | 'attente' | 'sms' | 'reussi' | 'echec';
 
 @Component({
   selector: 'app-mise-en-service',
@@ -160,11 +163,54 @@ type Etape = 'saisie' | 'resolution' | 'resolu' | 'rattachement' | 'attente' | '
           <button type="button" class="mes-cta" (click)="termine.emit()">Terminer</button>
         }
 
+        @case ('sms') {
+          <!-- ⚠️ SUITE NATURELLE DE L'ECHEC TCP, PAS UN ECRAN SEPARE. L'ancienne version
+               s'arretait sur « lancez la configuration par SMS » sans dire ou : il fallait
+               connaitre /admin/sms, y etre SUPER_ADMIN, et retaper six champs. -->
+          <p class="mes-attente-t">Configuration par SMS</p>
+          <p class="mes-attente-d">
+            @if (provisioning(); as p) {
+              {{ etapesFaites(p) }} / {{ p.steps.length }} commandes acquittées par le boîtier.
+            } @else {
+              Envoi de la première commande…
+            }
+          </p>
+          <ol class="mes-etapes">
+            @for (e of provisioning()?.steps ?? []; track e.step) {
+              <li class="mes-etape" [attr.data-s]="e.status">
+                <span class="mes-puce" aria-hidden="true"></span>
+                <span class="mes-etape-l">{{ e.label }}</span>
+                <span class="mes-etape-s">{{ libelleEtape(e.status) }}</span>
+              </li>
+            }
+          </ol>
+          @if (provisioning()?.failureReason; as raison) {
+            <div class="mes-bloc mes-bloc--ko">
+              <lucide-icon [img]="TriangleAlert" [size]="15" /> {{ raison }}
+            </div>
+          }
+          <button type="button" class="mes-sortie" (click)="passer.emit()">
+            Fermer — la configuration se poursuit
+          </button>
+        }
+
         @case ('echec') {
           <div class="mes-bloc mes-bloc--ko">
             <lucide-icon [img]="TriangleAlert" [size]="15" />
             {{ erreur() }}
           </div>
+          <!-- La configuration SMS n'est proposee que si elle a un sens : il faut un
+               boitier declare (donc un trackerId) et un numero pour le joindre. -->
+          @if (peutProvisionner()) {
+            <button type="button" class="mes-cta" (click)="lancerSms()">
+              <lucide-icon [img]="MessageSquare" [size]="15" />
+              Lancer la configuration par SMS
+            </button>
+            <p class="mes-aide">
+              Six à huit commandes seront envoyées au boîtier, chacune attendant son
+              accusé de réception. Comptez deux à trois minutes.
+            </p>
+          }
           <button type="button" class="mes-sortie" (click)="recommencer()">Reprendre</button>
         }
       }
@@ -267,6 +313,21 @@ type Etape = 'saisie' | 'resolution' | 'resolu' | 'rattachement' | 'attente' | '
       .mes-ok { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 4px; color: var(--texte-succes) }
       .mes-ok-t { margin: 0; font-size: 14px; font-weight: 600; color: var(--fg-primary) }
       .mes-ok-d { margin: 0; font-size: 12px; color: var(--fg-secondary) }
+
+      .mes-etapes { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0; padding: 0; list-style: none }
+      .mes-etape { display: flex; align-items: center; gap: 8px; padding: 7px 2px; font-size: 12px; color: var(--fg-secondary) }
+      .mes-puce { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--fg-tertiary) }
+      .mes-etape-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+      .mes-etape-s { font-size: 11px; color: var(--fg-tertiary) }
+      /* L'etat se lit a la couleur ET au mot : la couleur seule exclut les daltoniens. */
+      .mes-etape[data-s='sent'] .mes-puce { background: var(--warning); animation: mes-pulse 1.1s ease-in-out infinite }
+      .mes-etape[data-s='acked'] .mes-puce { background: var(--tracky-light) }
+      .mes-etape[data-s='acked'] .mes-etape-s { color: var(--texte-succes) }
+      .mes-etape[data-s='no-ack'] .mes-puce,
+      .mes-etape[data-s='failed'] .mes-puce { background: var(--danger) }
+      .mes-etape[data-s='no-ack'] .mes-etape-s,
+      .mes-etape[data-s='failed'] .mes-etape-s { color: var(--danger) }
+      @keyframes mes-pulse { 50% { opacity: .35 } }
     `,
   ],
 })
@@ -290,17 +351,20 @@ export class MiseEnServiceComponent implements OnDestroy {
   protected readonly restant = signal(ECOUTE_S);
   protected readonly positions = signal(0);
   protected readonly scannerOuvert = signal(false);
+  protected readonly provisioning = signal<EtatProvisioningDto | null>(null);
 
   protected readonly ScanLine = ScanLine;
   protected readonly Search = Search;
   protected readonly CheckCircle2 = CheckCircle2;
   protected readonly TriangleAlert = TriangleAlert;
   protected readonly ShieldAlert = ShieldAlert;
+  protected readonly MessageSquare = MessageSquare;
 
   private trackerId = '';
   private tickCompteur = 0;
   private tickSondage = 0;
   private tickBattement = 0;
+  private tickSms = 0;
 
   constructor() {
     this.destroyRef.onDestroy(() => this.tousArretes());
@@ -453,19 +517,79 @@ export class MiseEnServiceComponent implements OnDestroy {
     }
   }
 
+  /**
+   * La configuration SMS n'a de sens que si le boîtier est DÉCLARÉ et qu'on sait le
+   * joindre. Proposer le bouton sans l'un des deux offrirait une action qui échouerait
+   * — pire qu'une action absente, parce qu'elle fait espérer.
+   */
+  protected peutProvisionner(): boolean {
+    return this.trackerId !== '' && !!this.resolution()?.msisdn;
+  }
+
+  protected etapesFaites(p: EtatProvisioningDto): number {
+    return p.steps.filter((e) => e.status === 'acked' || e.status === 'noop').length;
+  }
+
+  /** Le mot compte autant que la couleur : un daltonien ne lit que le mot. */
+  protected libelleEtape(statut: string): string {
+    switch (statut) {
+      case 'acked': return 'confirmé';
+      case 'sent': return 'envoyé…';
+      case 'no-ack': return 'sans réponse';
+      case 'failed': return 'échec';
+      case 'noop': return 'ignoré';
+      default: return 'en attente';
+    }
+  }
+
+  protected async lancerSms(): Promise<void> {
+    const r = this.resolution();
+    if (!r?.imei) return;
+    this.etape.set('sms');
+    this.provisioning.set(null);
+    try {
+      const lance = await firstValueFrom(this.api.provisionner(r.imei));
+      this.tickSms = window.setInterval(() => void this.sonderSms(lance.provisioningId), SONDAGE_SMS_MS);
+      void this.sonderSms(lance.provisioningId);
+    } catch (e) {
+      this.erreur.set(this.messageErreur(e, "La configuration par SMS n'a pas pu démarrer."));
+      this.etape.set('echec');
+    }
+  }
+
+  private async sonderSms(id: string): Promise<void> {
+    try {
+      const etat = await firstValueFrom(this.api.etatProvisionnement(id));
+      this.provisioning.set(etat);
+      if (etat.status === 'COMPLETED') {
+        // Le boîtier vient d'être configuré : il va se connecter. On repart écouter,
+        // plutôt que d'annoncer un succès que rien n'a encore prouvé.
+        if (this.tickSms) window.clearInterval(this.tickSms);
+        this.tickSms = 0;
+        this.demarrerEcoute();
+      } else if (etat.status === 'FAILED') {
+        if (this.tickSms) window.clearInterval(this.tickSms);
+        this.tickSms = 0;
+      }
+    } catch {
+      /* un sondage raté n'est pas un échec : le suivant retentera */
+    }
+  }
+
   protected recommencer(): void {
     this.tousArretes();
     this.code = '';
     this.resolution.set(null);
+    this.provisioning.set(null);
     this.erreur.set('');
     this.etape.set('saisie');
   }
 
   private tousArretes(): void {
-    for (const t of [this.tickCompteur, this.tickSondage, this.tickBattement]) {
+    for (const t of [this.tickCompteur, this.tickSondage, this.tickBattement, this.tickSms]) {
       if (t) window.clearInterval(t);
     }
-    this.tickCompteur = this.tickSondage = this.tickBattement = 0;
+    this.tickCompteur = this.tickSondage = this.tickBattement = this.tickSms = 0;
     // On rend le verrou : le garder après coup bloquerait le poste suivant 90 s pour rien.
     if (this.verrou()?.parMoi) void firstValueFrom(this.api.rendreVerrou()).catch(() => undefined);
   }

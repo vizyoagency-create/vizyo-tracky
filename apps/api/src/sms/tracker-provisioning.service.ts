@@ -89,7 +89,7 @@ export interface TrackerLiveStatus {
   seenSinceStart: boolean;
 }
 
-interface ProvisioningParams {
+export interface ProvisioningParams {
   imei: string;
   phoneNumber: string;
   apn: string;

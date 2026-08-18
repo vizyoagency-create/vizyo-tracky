@@ -11,6 +11,6 @@ import { TrackerProvisioningService } from './tracker-provisioning.service';
   imports: [AuthModule],
   controllers: [SmsAdminController, SmsWebhookController],
   providers: [SmsGatewayService, TrackerProvisioningService, AllowlistService, SmsHeartbeatService],
-  exports: [SmsGatewayService],
+  exports: [SmsGatewayService, TrackerProvisioningService],
 })
 export class SmsModule {}
