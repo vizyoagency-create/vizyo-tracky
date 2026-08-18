@@ -11,7 +11,52 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-17**
+- Dernière mise à jour : **2026-08-18**
+
+---
+
+---
+
+## 🟢 2026-08-18 — les correctifs d'hier sont EN LIGNE, et un seul des trois a pu être vérifié
+
+Le déploiement du **17/08 15:54:49** (6ᵉ image, branche `main` @ `5d10796`, migration
+`20260817140000_retour_du_signal_gps` appliquée à 15:54:55) embarque les trois commits de la veille.
+Le référentiel enregistre donc, pour la première fois, le **passage en production** de son propre
+travail — et la distinction qui compte :
+
+| Correctif | En ligne | Exercé |
+|---|---|---|
+| Règle du parking souterrain | ✅ | ✅ **prouvé** — le journal du cron nomme les 2 véhicules silenciés, toutes les 5 min |
+| [TRK-026](#trk-026) — preuve de vie SMS | ✅ | ❌ cron hebdomadaire ; celui du 17/08 07:00 est **antérieur** au déploiement. Verdict réel : **lundi 24/08** |
+| [TRK-028](#trk-028) — durée d'absence | ✅ | ❌ `gps_loss_events` : **29 épisodes, 0 refermé** — aucun retour de fix depuis 15:54 |
+
+> 🔑 **« Déployé » et « vérifié » ne s'écrivent pas dans la même colonne.** C'est l'erreur exacte qui
+> a coûté cinq jours à [TRK-002](#trk-002). Deux des trois correctifs ne sont pas en défaut : ils
+> n'ont simplement pas encore eu d'occasion de s'exécuter, et le dire est une information.
+
+**La mesure qui qualifie un zéro.** 36 h sans une ligne `gps-integrity` auraient pu se lire comme une
+panne du détecteur. Le journal du conteneur dit le contraire, toutes les 5 minutes :
+*« 2 boîtier(s) vivant(s) sans position GPS (0 nouvelle(s) alerte(s), 2 en zone confirmée :
+FZ-862-VY (15 h, parking), FS-253-HR (5 j, parking)) »*. Le cron tourne, **voit** les deux véhicules,
+**nomme** leur durée, et décide de se taire. *Un compteur à zéro se qualifie en trouvant l'instrument
+qui explique le zéro — jamais en raisonnant sur le zéro.* C'est exactement la consultabilité que
+[TRK-027](#trk-027) exigeait en contrepartie, et elle est tenue.
+
+⚠️ **Et la contrepartie est devenue réelle le même jour** : **FS-253-HR**, 132,5 h sans fix, zone à
+9 occurrences qualifiée parking — **définitivement silencieux**. La fiche TRK-027 prescrit une
+surveillance manuelle au-delà de 7 jours ; il en est au 6ᵉ.
+
+**Une signature nouvelle — [TRK-029](#trk-029)** : le report d'une coupe moteur applique un backoff
+exponentiel (5 → 15 → 30 min) à une condition qui porte sa propre échéance (*« arrêté depuis 256 s,
+minimum 600 s »* = obstacle levé dans 344 s). HD-603-XY est devenu éligible à ~20:30 et a été coupé à
+**20:55** — 25 min d'immobilisation en trop. *Un backoff traite l'ignorance ; il ne doit pas traiter
+une échéance connue.*
+
+**Deux pièges d'outillage, tous deux fabriquant une catastrophe de toutes pièces :**
+`backup_runs.status` vaut **`OK`**, pas `SUCCESS` — un filtre d'exclusion a rendu « 112 sauvegardes,
+112 échecs » ; et `trips.polylineMatched` est **du texte** (la polyligne), pas un booléen — `IS NOT
+TRUE` a rendu « 100 % de trajets sans recalage sur cinq jours ». *Énumérer les valeurs d'une colonne
+d'état avant de filtrer dessus, jamais l'inverse.*
 
 ---
 
@@ -790,7 +835,9 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-025](#trk-025) | `sms-allowlist` | **40 suppressions de masse retenues par la passerelle, 0 remontée** — le champ lu vient de la réponse au sync que l'API émet elle-même, où il vaut toujours 0 | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(nouvelle ; correctif redéployé le 16/08 16:03 et **prouvé incapable de se déclencher** : 2 blocages depuis, 0 ligne)* | 2026-08-17 | 2026-08-17 |
+| [TRK-029](#trk-029) | `schedule-cron` | Le report d'une coupe applique un **backoff exponentiel à une échéance connue** — et le message dit « impossible » pour une action qui a abouti | 🔴 NON CORRIGÉ *(nouvelle ; HD-603-XY éligible à ~20:30, coupé à 20:55 — **25 min d'immobilisation en trop** ; aucune ligne de clôture)* | 2026-08-18 | 2026-08-18 |
+| [TRK-028](#trk-028) | `gps-integrity` | La fiche véhicule promettait « le véhicule réapparaît en sortant » **sans jamais dire quand** | 🟠 DÉPLOYÉ, NON EXERCÉ *(migration appliquée le 17/08 15:54:55 ; `gps_loss_events` = **29 épisodes, 0 refermé** — en attente d'un retour de fix)* | 2026-08-17 | 2026-08-18 |
+| [TRK-025](#trk-025) | `sms-allowlist` | **49 suppressions de masse retenues par la passerelle, 0 remontée** — le champ lu vient de la réponse au sync que l'API émet elle-même, où il vaut toujours 0 | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(**test daté CONFIRMÉ** : blocages 42 → **49**, lignes `sms-allowlist` toujours **0** depuis le 10/08 14:25)* | 2026-08-17 | 2026-08-18 |
 | [TRK-023](#trk-023) | *alertes* | **42 038 alertes sur 51 531 (81,6 %) partent sans message** — dont **41 507 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🔴 NON CORRIGÉ *(numérateur inchangé ; **dormant sur 24 h** — 2 alertes, toutes `GPS_LOST` avec message. KSR370 mort depuis 71 h, ses 2 cartes rouges toujours vides)* | 2026-08-13 | 2026-08-17 |
 | [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🟢 CORRIGÉ *(5ᵉ image, **servie depuis `main`** @ `3fccee5` — conteneurs recréés le 16/08 16:03. 3 marqueurs sur 3 mesurables PRÉSENTS + 2 preuves comportementales. ⚠️ réserve : le fait est réparé, la CAUSE n'a pas de garde — vérifier la branche à chaque image)* | 2026-08-12 | 2026-08-17 |
 | [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(test daté RÉPONDU : **non**, aucun nouvel essai, compte figé à **12**. Gravité 1 maintenue — 3 journées distinctes sur 5)* | 2026-08-13 | 2026-08-17 |
@@ -798,7 +845,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : des boîtiers marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🔴 NON CORRIGÉ *(**3ᵉ point identique** sur la définition écrite (5 min / 15 min) : **0 / 1**. Trois mesures concordantes)* | 2026-08-14 | 2026-08-17 |
 | [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ *(`ackedAt` = 0 sur **4513**, `acknowledgedAt` = 30, inchangé)* | 2026-08-12 | 2026-08-17 |
 | [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : commandes moteur `SENT`, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté **passé 6 fois** : 224 → 231 → 236 → 242 → **254** ; passerelle **328** `queued`, dernier empilé le 16/08 18:00)* | 2026-08-11 | 2026-08-17 |
-| [TRK-017](#trk-017) | `sms-allowlist` | Un appelant hors VPS efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé `vtx_48fe` inchangée — `tenants.updatedAt` au 05/06 — **7ᵉ jour**. ⚠️ **35 → 40 blocages** : l'appelant EST REVENU après 32 h de silence, pour la **3ᵉ fois** — la leçon devient une règle. Sa remontée au centre d'alerte est morte, cf. [TRK-025](#trk-025))* | 2026-08-09 | 2026-08-17 |
+| [TRK-017](#trk-017) | `sms-allowlist` | Un appelant hors VPS efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé `vtx_48fe` inchangée — `tenants.updatedAt` au 05/06 — **8ᵉ jour**. ⚠️ **42 → 49 blocages**, appels normaux 159 → **178** ; 5ᵉ silence lu comme un silence, PAS comme une révocation. Entrées intactes depuis **181,4 h**. ⚠️ **35 → 40 blocages** : l'appelant EST REVENU après 32 h de silence, pour la **3ᵉ fois** — la leçon devient une règle. Sa remontée au centre d'alerte est morte, cf. [TRK-025](#trk-025))* | 2026-08-09 | 2026-08-17 |
 | [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(**84,9 %** le 16/08 — plus bas point, mais sur **73 trajets** (dimanche) : échantillon, pas amélioration. Cumul 81,6 %)* | 2026-08-09 | 2026-08-17 |
 | [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ *(**test daté RÉPONDU** : rejets 5497 → **2465**, le 15/08 était UNE JOURNÉE. La baisse d'insertions s'explique par le **week-end** (73 trajets dimanche vs 195 vendredi), pas par le garde-fou. 317 rejets = rejeu de tampon de HD-779-MA)* | 2026-08-08 | 2026-08-17 |
 | [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(✅ **instrument RÉARMÉ** le 16/08 16:03 : silences 81 → **100**. Mais le défaut est intact — `ackedAt` = **0 sur 4513**)* | 2026-08-07 | 2026-08-17 |
@@ -806,7 +853,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(numérateur **11**, stable après son bond (7·7·7·8·11·11) ; dénominateur 54 → **58**. L'argument « figé » reste mort)* | 2026-08-06 | 2026-08-17 |
 | [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(correctif **de retour en prod** le 16/08 16:03 ; les 2 rappels du 16/08 lui sont ANTÉRIEURS. Le vrai test échoit le 17/08. Épisodes à 112,3 h et 105,8 h, terrain demandé depuis le 03/08)* | 2026-07-28 | 2026-08-17 |
 | [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🟢 CORRIGÉ *(déployé — `d5e5fb1` est sur `main`, branche servie depuis le 16/08 16:03. ⚠️ **le marqueur binaire est RETIRÉ** : invalide sur bundle minifié, réfuté par contrôle. 5 verdicts « régression » de 12→16/08 rectifiés ; seul un contrôle COMPORTEMENTAL vaut désormais)* | 2026-07-29 | 2026-08-17 |
-| [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ | 2026-07-31 | 2026-07-31 |
+| [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ *(**vérifié en production le 2026-08-18** : 1ʳᵉ occurrence depuis le 31/07, écrite en **`ERROR`** et non `CRITICAL` — `downMs=45 000`, `flaps=0` : exactement le calibrage prévu. La variante `ERROR` fait partie de la signature)* | 2026-07-31 | 2026-08-18 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟢 CORRIGÉ | 2026-07-28 | 2026-07-28 |
 | [TRK-006](#trk-006) | `frontend` | NG02100 sur `/admin/subscriptions` | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-30 |
@@ -4887,6 +4934,147 @@ faux vert a simplement changé de place. Vérifier alors la valeur brute de `sms
 
 ---
 
+## TRK-029
+
+**Signature** — `schedule-cron | ERROR | Automatisation horaire : coupe/reprise impossible sur <PLAQUE> depuis <DURÉE> — Coupe auto différée : véhicule arrêté depuis seulement <N>s (minimum requis <N>s)`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · 1 occurrence · découvert 2026-08-18
+*(Première ligne de source `schedule-cron` depuis l'ouverture du référentiel le 28/07.)*
+
+### Ce que ça veut dire
+
+L'automatisation horaire doit couper le moteur de **HD-603-XY** à 20:00. Le véhicule roule encore.
+La garde refuse — **et elle a raison**. Le report est ensuite ré-espacé par un backoff exponentiel,
+qui fait attendre 30 minutes une condition dont le code connaît l'heure exacte de levée.
+
+### La séquence, reconstituée dans le journal du conteneur
+
+La ligne seule ne permet pas le diagnostic ; la séquence, oui.
+
+| Heure (UTC) | Tentative | Cause du report | Prochain essai |
+|---|---|---|---|
+| **20:03** | CUT | *véhicule en mouvement (32,4 km/h)* | +5 min |
+| **20:08** | CUT | *arrêté depuis seulement 41 s (min. 600 s)* | +15 min |
+| **20:24** | CUT | *arrêté depuis seulement 256 s (min. 600 s)* | **+30 min** |
+| **~20:30** | — | **le véhicule franchit les 600 s : il est éligible** | *(rien ne le voit)* |
+| **20:31** | — | 🔴 ligne `error_logs` : « coupe impossible depuis 31 min » | — |
+| **20:55** | CUT | ✅ **réussi** (`schedule_history` : `CUT / OUT_OF_WINDOW`, 20:55:00.317) | — |
+
+Les quatre jours précédents, la même coupe tombait à 20:00:04, 20:00:05, 20:25:00 et 20:00:05.
+
+### Cause racine
+
+Le backoff (5 → 15 → 30 min) est appliqué **indistinctement** à toutes les causes de report. Or
+*« arrêté depuis 256 s, minimum requis 600 s »* n'est pas une incertitude : c'est un compte à rebours
+de **344 secondes**, lisible dans la donnée qui vient d'être évaluée. Le code a la réponse et attend
+quand même une demi-heure. Coût mesuré : **25 minutes d'immobilisation en trop**.
+
+> 🔑 **Un backoff traite l'ignorance ; il ne doit pas traiter une échéance connue.** Le même délai
+> croissant est **juste** pour un boîtier qui ne répond pas — on ne sait pas quand il reviendra — et
+> **faux** pour un compte à rebours qu'on lit dans la trame. *Deux causes de report que rien ne
+> distingue dans le code reçoivent la même punition, et l'une des deux la subit pour rien.*
+
+### Le défaut second — celui qu'un exploitant voit
+
+Le message affirme *« coupe/reprise **impossible** »* alors que le contexte porte
+`waitingBackoff: true` : l'attente était **voulue**. Et **rien ne referme la ligne** —
+`clearDeferral()` (`apps/api/src/vehicle-schedules/schedule-cron.service.ts`) ne vide que des `Map`
+en mémoire, sans aucune écriture. Le centre d'alerte conserve donc indéfiniment un « impossible » qui
+décrit une action **qui a abouti 24 minutes plus tard**.
+
+**Famille : mensonger** (§7) — le message affirme une impossibilité là où il y a eu une attente
+délibérée et résolue.
+
+### Correctif proposé — trois gestes, aucun ne touche à la garde
+
+1. **Réessai à l'échéance connue.** Quand la cause de report porte un compte à rebours calculable
+   (`arrêté depuis N s / minimum M s`), programmer le prochain essai à `M − N` secondes (+ un tick de
+   marge) au lieu du pas de backoff. **Conserver le backoff exponentiel** pour les échecs de
+   transport et les causes inconnues : c'est là qu'il est justifié.
+2. **Ne pas écrire « impossible » quand `waitingBackoff` est vrai et l'échéance connue.** Rédiger
+   *« coupe différée, réessai à HH:MM — véhicule arrêté depuis N s sur M s requis »*. Un exploitant
+   qui lit « impossible » appelle le conducteur ; celui qui lit « différée à 20:30 » attend.
+3. **Écrire la clôture.** `clearDeferral()` doit tracer l'aboutissement — ligne de résolution, ou
+   champ de résolution sur la ligne d'origine. *Une alerte sans état de sortie reste vraie pour
+   toujours.*
+
+### ⛔ Ce qu'il ne faut PAS faire
+
+**Ne pas toucher au minimum de 600 s, ni au refus de couper un véhicule en mouvement.** Le véhicule
+roulait à 32,4 km/h quand la fenêtre s'est ouverte ; la garde a fait exactement son travail. *Si un
+garde-fou crie mal, on corrige le cri — pas le garde-fou* (§8). Ne pas non plus « corriger » en
+cessant d'écrire la ligne : le blocage de 31 minutes est une information réelle, c'est sa
+**rédaction** et son **absence de clôture** qui sont fautives.
+
+### Vérification (porte sur la cause, pas sur l'affichage)
+
+Sur un véhicule dont la coupe est différée pour « arrêté depuis N s », mesurer l'écart entre
+l'instant où il franchit les 600 s et l'instant de la coupe effective : il doit tomber **sous un tick
+de cron**. Le relever dans `schedule_history` contre le journal du conteneur — **et pas** en comptant
+les lignes `error_logs`, qui diminueront de toute façon.
+
+### 🗓️ Test daté — au prochain passage
+
+Relever, pour chaque coupe différée, le délai entre éligibilité et coupe effective. **Ligne de base
+du 17/08 : 25 min.** Le correctif n'étant pas écrit, un second cas confirmerait que ce jour n'était
+pas une singularité.
+
+---
+
+## TRK-028
+
+**Signature** — *(pas une erreur observée : une promesse d'écran sans mesure derrière)*
+`gps-integrity | (aucune ligne) | « le véhicule réapparaît en sortant » — sans jamais dire quand`
+**Statut : 🟠 DÉPLOYÉ, NON EXERCÉ** · ouvert 2026-08-17, mesuré 2026-08-18
+
+> ⚠️ **Fiche créée le 2026-08-18, après coup.** Le numéro TRK-028 était employé par le commit
+> `5d10796` **sans qu'aucune fiche existe** dans ce référentiel — l'audit du 18/08 l'a découvert en
+> cherchant le prochain numéro libre. *Un identifiant de fiche attribué dans un message de commit
+> mais absent du référentiel est un renvoi mort : la fiche est écrite ici pour que la trace tienne.*
+
+### Ce que ça veut dire
+
+Depuis la règle du parking souterrain ([TRK-027](#trk-027)), la fiche véhicule annonce que la
+position réapparaîtra à la sortie du parking — **sans dire quand**. L'exploitant devait choisir entre
+croire l'écran et rappeler le conducteur : précisément le coup de fil que cet écran existe pour
+éviter. Le correctif mesure la durée réelle des épisodes passés et l'annonce.
+
+### Ce qui a été livré (commit `5d10796`, déployé le 17/08 15:54)
+
+- **Table `gps_loss_events`** (`lostAt` · `detectedAt` · `recoveredAt` · `zoneId`), migration
+  `20260817140000_retour_du_signal_gps` appliquée en production le **17/08 15:54:55**.
+- **Le raccroc est à l'ingestion, pas au cron** — et c'est le point de conception : le cron
+  d'intégrité tourne **sur les boîtiers sans fix**, donc un véhicule ressorti du parking a déjà
+  quitté sa liste. Il ne peut structurellement pas refermer un épisode. Seule l'ingestion voit
+  l'instant du retour.
+- **`recordRecovery` n'est appelé que si le silence a dépassé le seuil du cron** : sur une trame
+  ordinaire il n'y a pas même une requête. Sans ce filtre, un `updateMany` par trame et par véhicule
+  sur la route la plus chaude du système.
+- **Médiane, pas moyenne** : un week-end au parking (72 h) gonflerait une moyenne jusqu'à une durée
+  que personne ne voit jamais. Sur `[180, 190, 200, 4320]` min la médiane rend 195, la moyenne 1222.
+- **`recoveredAt` nullable sans défaut** : `NULL` = épisode ouvert, et c'est aussi l'état honnête des
+  lignes déjà en base.
+
+### État mesuré en production — 2026-08-18
+
+| Mesure | Valeur |
+|---|---|
+| Épisodes dans `gps_loss_events` | **29** |
+| Épisodes refermés (`recoveredAt` non nul) | **0** |
+| Épisode le plus récent | FZ-862-VY, ouvert le **17/08 12:22:55** |
+
+**Ce n'est pas un défaut : c'est l'absence d'occasion.** Aucun boîtier n'a retrouvé son fix après une
+perte longue depuis le déploiement de 15:54. Le seul retour du jour — FZ-862-VY à 08:45 le 17/08 —
+est **antérieur** au déploiement.
+
+### 🗓️ Test daté — au prochain passage
+
+Au premier retour de fix après une perte longue (FZ-862-VY est le candidat le plus probable), un
+`recoveredAt` doit apparaître. **S'il reste nul après un retour constaté dans
+`trackers.lastPositionAt`**, le raccroc à l'ingestion ne s'exécute pas — et la fiche véhicule
+continuera d'annoncer une durée qu'elle ne mesure pas, ce qui serait pire que l'écran muet d'avant.
+
+---
+
 ## TRK-027
 
 **Signature** — *(trou assumé, pas une erreur observée)* `gps-integrity | (aucune ligne, par
@@ -5278,6 +5466,7 @@ trame — n'a jamais été décodé. Contrôle terrain demandé depuis le 15/08.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-18 | 48 (2 sur 24 h, **toutes deux POSTERIEURES au deploiement de 15:54**, 0 CRITICAL) | 25 revues ; **le deploiement du 17/08 15:54 met en ligne les 3 correctifs de la veille** (6e image, `main` @ `5d10796`, migration appliquee) — et un seul est EXERCE : la regle du parking, **prouvee par le journal du cron** qui nomme les 2 vehicules silencies toutes les 5 min ; TRK-026 et TRK-028 sont deployes mais **sans occasion de s'executer** ; **TRK-001 : test date PASSE** sur FS-253-HR (aucune ligne le 17/08 vers 15:45, sous l'ancien code) ; **TRK-003 verifie en production** (1re occurrence depuis le 31/07, ecrite en `ERROR` et non `CRITICAL` — le calibrage tient) ; **TRK-025 : test date CONFIRME** (blocages 42 → **49**, toujours **0** ligne) ; TRK-017 **8e jour**, cle `vtx_48fe` inchangee ; TRK-018 **passe 7e fois** ; TRK-016 revient a **91,3 %** sur un lundi ouvre — la mise en garde d'hier sur l'echantillon du dimanche est validee ; TRK-014 **4e point** a 83/83 ; **la table `alerts` est muette depuis 60 h sur ses 9 types** — fait mesure, mesure discriminante datee, aucune conclusion | 2 (TRK-029, TRK-028) | agent d'audit |
 | 2026-08-17 | 46 (2 sur 24 h — **2 rappels `gps-integrity` attendus**, tous deux ANTÉRIEURS à la reconstruction de 16:03, 0 CRITICAL) | 23 revues ; **TRK-019 REFERMÉ** — production servie depuis `main` (5ᵉ image, 16/08 16:03), 3 marqueurs sur 3 mesurables présents + 2 preuves comportementales (silences 81 → **100**, trace allowlist horaire à nouveau) ; **TRK-002 rectifié : l'instrument était invalide** (variable de portée module cherchée dans un bundle minifié — le contrôle `shouldReportNetworkFailure`, en prod depuis des semaines, rend 0), 5 verdicts « régression » annulés ; **TRK-015 : test daté RÉPONDU** — le pic du 15/08 était une journée, et la baisse d'insertions est un **week-end** (73 trajets dimanche vs 195 vendredi) ; TRK-021 test daté **non déclenché** ; TRK-018 **passé 6ᵉ fois** ; TRK-017 **7ᵉ jour**, appelant revenu (3ᵉ fois après un silence) ; HD-779-MA a repris après 31 h **en rejouant un tampon** (317 rejets) | 1 (TRK-025) | agent d'audit |
 | 2026-08-16 | 44 (3 sur 24 h — **3 rappels `gps-integrity` attendus**, 0 CRITICAL) | 24 revues ; **TRK-019 : 4ᵉ reconstruction** (témoin web migré vers `chunk-XXNB5VTF.js` — l'artefact est neuf et le trou identique) ; **2 tests datés DÉCLENCHÉS** — TRK-021 passe en **gravité 1** (12 échecs, 3 jours sur 4) et TRK-013 franchit son seuil (8 → **11**, l'argument « numérateur figé » est mort) ; **TRK-015 : rejets ×3,5 ET insertions −18 %** le même jour, 3ᵉ point demandé ; tests datés TRK-001 (3ᵉ rappel) et TRK-018 **passés** ; TRK-017 **6ᵉ jour**, clé toujours vivante malgré 32 h de silence | 0 | agent d'audit |
 | 2026-08-15 | 41 (2 sur 24 h — 2 rappels GPS **attendus**) | 22 revues ; **le volet décisif de TRK-001 tranche par le COMPORTEMENT** sur 2 véhicules (le rappel de 48 h, et non celui de 72 h, était le discriminant) ; TRK-017 **35 blocages dont 11 le 14/08**, sa journée record ; TRK-021 6 → **10** ; **TRK-013 : le numérateur n'est plus figé** (7 → 8) ; TRK-024 voit son asymétrie « à sens unique » **tomber** (0 / 1, inversé) ; test daté TRK-018 **passé** | 0 | agent d'audit *(ligne ajoutée rétroactivement le 16/08 — elle manquait)* |
