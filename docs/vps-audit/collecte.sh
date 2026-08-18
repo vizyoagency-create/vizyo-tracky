@@ -975,6 +975,75 @@ else
   echo "  (jq absent — table de routage non calculable)"
 fi
 
+sub "Clients docker ORPHELINS — la cause de VPS-016, trouvee le 2026-08-18"
+# ⚠️⚠️ AJOUTE LE 2026-08-18 — CE BLOC AURAIT ECONOMISE SEPT JOURS A MOITIE DE MACHINE.
+#
+# La 3e occurrence de VPS-016 a dure du 2026-08-11 21h05 au 2026-08-18 05h47 — 152 heures a
+# ~100 % d'un coeur, puis ~170 % apres le 08-17. Le vidage des goroutines (kill -USR1) a montre
+# 66 goroutines bloquees dans `stream/bytespipe` et DEUX `httputils.WriteLogStream` actives.
+# Les deux clients, retrouves par leur inode de socket :
+#
+#   pid  986774  docker logs --tail 40 --since 30m foodsqan-traefik   demarre 2026-08-11 21:01:20
+#   pid 3191099  docker logs texto-relay --tail 400                   demarre 2026-08-17 09:17:08
+#
+# ⚠️ LES DEUX DATES TOMBENT DANS LES DEUX FENETRES DATEES PAR `sar`, A LA MINUTE : le debut de la
+# boucle (11-08 ~21h05) et la bascule du SECOND REGIME (17-08 entre 09h10 et 09h30). Deux
+# evenements independants, deux coincidences exactes.
+#
+# `kill 986774 3191099` a fait passer dockerd de **170 % a 1,5 % d'un coeur**, et la signature de
+# boucle de 1 316 459 read()/s a 0,0000 octet est tombee a 4 836 read()/s a 5 259 octets par
+# appel. AUCUNE COUPURE : 33/33 conteneurs debout, PID du demon inchange.
+#
+# ⚠️ NI L'UN NI L'AUTRE N'AVAIT `-f`. Ils ne suivaient donc pas les journaux : leurs shells
+# parents (`bash -c ...` lances par SSH) sont MORTS, et le client est reste bloque a ECRIRE vers
+# un canal SSH disparu. C'est VPS-M12 mot pour mot — « une commande envoyee a un demon ne doit
+# pas etre interrompue en cours de route : le client meurt, le travail cote serveur, NON » —
+# ecrit le 2026-08-05, jamais relie a VPS-016 pendant treize passages.
+#
+# ⚠️ COUT DU BLOC : un `pgrep` et une lecture de /proc par client trouve (il y en a 0 ou 1 en
+# temps normal). AUCUN appel a Docker — c'est deliberé : on ne diagnostique pas un demon malade
+# en lui parlant.
+ORPH=0
+for _p in $(pgrep -x docker 2>/dev/null); do
+  _pp=$(awk '{print $4}' /proc/$_p/stat 2>/dev/null) || continue
+  [ -z "$_pp" ] && continue
+  _args=$(tr '\0' ' ' < /proc/$_p/cmdline 2>/dev/null | cut -c1-95)
+  _et=$(ps -o etime= -p "$_p" 2>/dev/null | tr -d ' ')
+  if [ "$_pp" = "1" ]; then
+    ORPH=$((ORPH+1))
+    printf '  🔴 ORPHELIN  pid %-8s depuis %-12s %s\n' "$_p" "${_et:-?}" "$_args"
+  fi
+done
+if [ "$ORPH" -eq 0 ]; then
+  echo "  ✅ aucun client docker orphelin (parent = init)"
+else
+  printf '  🔴 %s client(s) docker ORPHELIN(S) — leur shell parent est mort et le demon\n' "$ORPH"
+  echo  "     tourne peut-etre en rond a leur ecrire. C EST LA CAUSE DE VPS-016 (2026-08-18)."
+  # ⚠️ GUILLEMETS SIMPLES OBLIGATOIRES : en guillemets doubles, les accents graves autour de
+  #    `kill <pid>` seraient une SUBSTITUTION DE COMMANDE — le collecteur EXECUTERAIT un kill
+  #    pour afficher une phrase. C'est le piege deja documente en tete de ce fichier pour
+  #    `docker stats` (2026-08-08), et il a ete re-tendu ici a l'ecriture, le 2026-08-18.
+  echo  '     Verifier dockerd juste au-dessus : s il brule un coeur, la remediation est'
+  echo  '     `kill <pid>` sur ces clients — 2 secondes, AUCUNE coupure, aucun conteneur touche.'
+  echo  '     ⚠️ NE PAS redemarrer Docker avant d avoir essaye ca : le redemarrage coute ~50 s'
+  echo  '        d interruption et efface l etat qui prouve la cause.'
+fi
+# ⚠️ Le denominateur, pour que ce bloc ne puisse pas rassurer par accident (lecon VPS-M08/M22).
+# ⚠️⚠️ ET SA PREMIERE ECRITURE ETAIT FAUSSE — `pgrep -xc docker 2>/dev/null || echo 0`.
+# `pgrep -c` ECRIT « 0 » sur stdout ET SORT EN STATUT 1 quand il ne compte rien : le `|| echo 0`
+# ajoutait donc une SECONDE ligne, et le denominateur s'affichait « 0\n0 » — sur le cas SAIN,
+# c'est-a-dire celui de tous les jours. C'est VPS-M33 MOT POUR MOT (`grep -c` avait exactement ce
+# comportement, et le meme repli avait produit exactement ce defaut le 2026-08-13).
+# ⚠️ Les QUATRE branches synthetiques etaient toutes passees : elles bouchonnaient `pgrep`, donc
+# elles ne pouvaient pas reproduire son STATUT DE SORTIE. Seule l'execution REELLE, sur la
+# machine, et sur le cas SAIN, l'a montre — les deux lecons du jour (VPS-M43 « essayer les
+# branches ne remplace pas essayer le montage » et VPS-M40 « tout detecteur doit voir un cas
+# sain ») verifiees dans la meme minute, sur le correctif qui les cite.
+# On n'interroge donc pas le statut : on assainit la valeur.
+NB_DOCK=$(pgrep -xc docker 2>/dev/null)
+case "${NB_DOCK:-}" in ''|*[!0-9]*) NB_DOCK=0 ;; esac
+printf '  (denominateur : %s processus client `docker` au total, orphelins compris)\n' "$NB_DOCK"
+
 sub "Consommation live"
 docker stats --no-stream --format '  {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.PIDs}}' 2>/dev/null | sort -t$'\t' -k3 -h -r | head -15
 sub "Images (les plus lourdes)"

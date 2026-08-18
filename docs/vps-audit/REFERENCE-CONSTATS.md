@@ -1244,8 +1244,94 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
-- **Domaine** : docker · **Gravité** : **1** (était 2) · **Statut** : `A_TRAITER` — **3e occurrence, TOUJOURS EN COURS au 2026-08-18 : 9e journée, ≥ 151 h. SECOND RÉGIME depuis le 2026-08-17 ~09 h 20 UTC**
-- **Vu** : 2026-08-18 · **Mesure du jour** : `dockerd` à **80,3 %** d'un cœur en instantané (04 h 00) et **52,5 % de la MACHINE** sur les 380 s de la collecte. PID **913 inchangé**, démarré `Tue Aug 4 21:32:45` (`ps` : `ELAPSED 13-06:35:01`, `TIME 9-04:28:20`). Cumul **220,47 h / 318,58 h = 69,2 %**. **62 threads** (42 la veille). ⚠️ **CONTINUITÉ : 37,08 h de processeur en 25,68 h écoulées = 144,4 %** — soit **72,2 % d'une machine à 2 vCPU, en moyenne, sur plus d'une journée.** *(mesure du 2026-08-17, conservée ci-dessous.)*
+- **Domaine** : docker · **Gravité** : 1 · **Statut** : ✅ **`APPLIQUE` — CAUSE ÉTABLIE ET SUPPRIMÉE le 2026-08-18 à 05 h 47 UTC, sans aucune interruption**
+- **Durée totale de la 3e occurrence** : du **2026-08-11 à 21 h 01** au **2026-08-18 à 05 h 47** — **152 h 46**, dont 20 h 30 en second régime.
+
+> ### ✅✅✅ 2026-08-18, 05 h 47 — LA CAUSE EST TROUVÉE, ET C'ÉTAIENT DEUX PROCESSUS CLIENTS
+>
+> Le `kill -USR1 913`, **perdu huit fois**, a enfin été lancé. Le vidage (408 Ko, 488 goroutines)
+> répond en trois lignes :
+>
+> | Ce que montre le vidage | Compte |
+> |---|---:|
+> | goroutines **`running`** | **1** — et c'est le vidage lui-même |
+> | bloquées dans `daemon/internal/stream/**bytespipe**` | **66** |
+> | **`httputils.WriteLogStream`** actives | **2** |
+>
+> **Rien ne tournait.** Les 170 % d'un cœur n'étaient pas du travail applicatif : c'était le démon
+> qui tournait en rond à écrire vers **deux clients qui ne lisaient plus**. Retrouvés par l'inode
+> de leur socket sur `/run/docker.sock` :
+>
+> ```
+> pid  986774   docker logs --tail 40 --since 30m foodsqan-traefik   démarré 2026-08-11 21:01:20
+> pid 3191099   docker logs texto-relay --tail 400                   démarré 2026-08-17 09:17:08
+> ```
+>
+> ### ⚠️ Les deux dates tombent dans les deux fenêtres datées par `sar`, À LA MINUTE
+>
+> | Événement | Daté par `sar` | Client lancé à | Écart |
+> |---|---|---|---|
+> | Début de la 3e occurrence | 2026-08-11 **~21 h 05** | **21 h 01 min 20** | **< 4 min** |
+> | Bascule du **second régime** | 2026-08-17 entre **09 h 10 et 09 h 30** | **09 h 17 min 08** | **dans la fenêtre** |
+>
+> **Deux événements indépendants, deux coïncidences exactes.** C'est ce qui transforme une
+> corrélation en cause : une seule aurait pu être un hasard.
+>
+> ### La preuve par l'effet — `kill` sur deux PID, et rien d'autre
+>
+> | Mesure | Avant (05 h 44) | Après (05 h 50) |
+> |---|---:|---:|
+> | `dockerd` | **170,3 %** d'un cœur | **1,0 %** |
+> | `read()` par seconde | **1 316 459** | **54** |
+> | Octets ramenés par appel | **0,0000** | — |
+> | Charge 1 min | **15,94** | **0,85** |
+> | PSI mémoire `full` avg10 | 0,85 | **0,00** |
+> | `WriteLogStream` actives | 2 | **0** |
+> | **Conteneurs** | **33 / 33** | **33 / 33** |
+>
+> **Aucune coupure, aucun conteneur touché, PID du démon inchangé.** Le `systemctl restart docker`
+> qui figurait au 4e rang du plan depuis huit passages — ~50 s d'interruption sur 25 domaines —
+> **n'a pas été nécessaire**.
+>
+> ### ⚠️ Ni l'un ni l'autre n'avait `-f` : ils ne SUIVAIENT pas les journaux
+>
+> C'est le point qui explique pourquoi la piste a été manquée treize jours. On cherchait un
+> *suiveur* de journal ; il n'y en avait pas. Les deux clients étaient bloqués **en écriture**,
+> vers un canal SSH disparu : leurs shells parents (`bash -c …`, des diagnostics lancés par SSH)
+> sont morts, les processus ont été **adoptés par `init`**, et le démon a continué de leur pousser
+> des octets que personne ne lisait. Le `json.log` de `texto-relay` faisait **0 octet** — le
+> descripteur pendait sur un fichier vidé par la rotation de minuit.
+>
+> ### ⚠️⚠️ Et la règle qui décrit exactement ça était écrite depuis le 2026-08-05
+>
+> **VPS-M12**, treize jours plus tôt :
+>
+> > *« Une commande envoyée à un démon ne doit pas être interrompue en cours de route — **le client
+> > meurt, le travail côté serveur, non**. »*
+>
+> Elle a été écrite pour un `docker system df -v` interrompu, classée `APPLIQUE`, et **jamais
+> appliquée à l'objet voisin** : personne n'a demandé *« reste-t-il des clients docker
+> orphelins ? »*. La question coûtait un `pgrep`. Voir **VPS-M45**.
+>
+> ### Ce qui reste vrai des trois occurrences
+>
+> | Occurrence | Début | Fin | Durée | Fin par |
+> |---|---|---|---|---|
+> | 1 — 2026-08-05 | ~02 h 23 | 2026-08-06 ~13 h 00 | 34 h 40 | seule (client mort ?) |
+> | 2 — 2026-08-10 | ~01 h 15 | ~14 h 45 | ~13 h 30 | seule (client mort ?) |
+> | **3 — 2026-08-11** | **21 h 01** | **2026-08-18 05 h 47** | **152 h 46** | **`kill` sur 2 clients** |
+>
+> Les deux premières se sont arrêtées **seules** : très probablement parce que leur client a fini
+> par mourir (délai TCP, `logrotate`, redémarrage du poste). ⚠️ **Ce n'est PAS établi** — les
+> journaux qui le diraient sont rotés. Ce qui est établi, c'est le mécanisme de la troisième.
+>
+> ### Seuil de réescalade, réécrit
+>
+> Rouvrir si `dockerd` repasse **au-dessus de 50 % d'un cœur en instantané**. La **première** chose
+> à regarder n'est plus le `wchan` ni les threads : c'est **la section « clients docker orphelins »
+> du collecteur** (posée ce jour), puis `kill` sur ce qu'elle nomme. Le `kill -USR1` reste utile
+> **si la liste est vide** — ce serait alors un mécanisme différent.
+- **Vu** : 2026-08-18 · **Mesure du jour, AVANT remédiation** : `dockerd` à **80,3 %** d'un cœur en instantané (04 h 00), **170,3 %** à 05 h 44, et **52,5 % de la MACHINE** sur les 380 s de la collecte. PID **913 inchangé**, démarré `Tue Aug 4 21:32:45` (`ps` : `ELAPSED 13-06:35:01`, `TIME 9-04:28:20`). Cumul **220,47 h / 318,58 h = 69,2 %**. **62 threads** (42 la veille). ⚠️ **CONTINUITÉ : 37,08 h de processeur en 25,68 h écoulées = 144,4 %** — soit **72,2 % d'une machine à 2 vCPU, en moyenne, sur plus d'une journée.** *(mesure du 2026-08-17, conservée ci-dessous.)*
 
 > ### 🔴🔴 2026-08-18 — LE CONSTAT PASSE EN GRAVITÉ 1 : UN SECOND RÉGIME, DATÉ À DIX MINUTES PRÈS
 >
@@ -2972,6 +3058,69 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M45 — Le collecteur n'a jamais regardé les CLIENTS de Docker, et la cause y était depuis treize jours
+
+- **Vu** : 2026-08-18 · **Statut** : `APPLIQUE` (bloc posé dans `collecte.sh` le jour même)
+
+**Quoi.** VPS-016 a coûté **152 heures à 1 à 1,7 cœur** sur une machine qui en a deux. Sa cause
+tenait dans deux processus, et la commande qui les trouve est un `pgrep` :
+
+```bash
+pgrep -x docker            # puis, pour chacun : son PPID vaut-il 1 ?
+```
+
+Le collecteur mesure `dockerd` sous tous les angles depuis le 2026-08-06 (VPS-M14) — CPU instantané,
+cumul/uptime, `read()` contre octets ramenés, `wchan`, threads, descripteurs. **Il n'a jamais compté
+les processus qui lui PARLENT.** Treize passages ont ausculté le serveur ; aucun n'a regardé les
+clients.
+
+### ⚠️ Et la règle qui désignait exactement ce défaut était écrite le 2026-08-05
+
+**VPS-M12** : *« une commande envoyée à un démon ne doit pas être interrompue en cours de route — le
+client meurt, le travail côté serveur, non. »* Écrite pour un `docker system df -v` interrompu par
+l'agent lui-même, classée `APPLIQUE`, et jamais transposée : la fiche disait de **ne pas créer** de
+clients orphelins, jamais de **vérifier s'il en existe**.
+
+C'est **VPS-M22 pour la quatrième fois** — *écrire qu'un piège existe ne le désarme pas sur les
+autres objets* — et c'est la plus chère des quatre : VPS-M38 coûtait une accusation fausse, VPS-M44
+un faux négatif rattrapé le jour même, celle-ci **152 heures de moitié de machine**.
+
+> **La leçon, plus large que Docker** : *quand on instrumente un service qui va mal, on mesure le
+> service. Ses **clients** sont hors du champ par construction — ils ne sont ni dans son journal, ni
+> dans ses métriques, ni dans son `status`.* Or un serveur qui brûle un cœur **sans qu'aucune de ses
+> tâches internes ne tourne** est, presque par définition, en train de servir quelqu'un qui n'écoute
+> plus.
+
+**Quoi faire — et c'est fait.** Un bloc en section 4 liste les clients `docker` dont le **PPID vaut
+1** (shell parent mort), avec leur âge et leur ligne de commande, et affiche son **dénominateur**
+dans tous les cas. **Aucun appel à Docker** : on ne diagnostique pas un démon malade en lui parlant.
+Coût : un `pgrep` et une lecture de `/proc` par client trouvé (0 ou 1 en temps normal).
+
+**Quatre branches synthétiques essayées** — aucun client · un client **légitime** au parent vivant ·
+les deux orphelins réels du jour · un mélange des deux. Le détecteur trie correctement.
+
+### ⚠️⚠️ Et les quatre branches ont TOUTES manqué un défaut du bloc — l'exécution réelle l'a vu
+
+Première écriture du dénominateur : `pgrep -xc docker 2>/dev/null || echo 0`.
+**`pgrep -c` écrit « 0 » sur `stdout` ET sort en statut 1 quand il ne compte rien** : le `|| echo 0`
+ajoutait une *seconde* ligne, et la sortie affichait `(denominateur : 0` puis `0 processus…)`.
+
+**C'est VPS-M33 mot pour mot** — le même piège avec `grep -c`, corrigé le 2026-08-13, re-tendu cinq
+jours plus tard sur `pgrep -c`. Les quatre branches ne pouvaient pas le voir : elles **bouchonnaient
+`pgrep`**, donc ne reproduisaient pas son **statut de sortie**. Seule l'exécution du bloc **sur la
+machine** et **sur le cas SAIN** l'a montré.
+
+> Les deux règles posées le matin même — **VPS-M43** (*essayer les branches ne remplace pas essayer
+> le montage*) et **VPS-M40** (*tout détecteur doit voir un cas sain*) — ont été vérifiées dans la
+> même minute, **sur le correctif qui les cite**. On n'interroge donc pas le statut : on assainit la
+> valeur (`case … *[!0-9]* … NB=0`), exactement comme VPS-M33 l'avait conclu.
+
+**À ne pas faire** : tuer un client `docker` sans regarder son **PPID**. Un `docker compose up
+--build` de déploiement a un parent vivant et doit être laissé tranquille — le détecteur les
+distingue, et c'est la seule chose qui l'empêche d'être dangereux.
+
+---
 
 ### VPS-M44 — L'audit a failli publier « la boucle s'est arrêtée » sur un démon qui brûlait 1,44 cœur
 
