@@ -202,6 +202,15 @@ export interface DispatchOptions {
    * qu'un destinataire aurait du recevoir. Restreint au push et contourne le cooldown.
    */
   replay?: boolean;
+  /**
+   * Restreint les destinataires a cette liste d'identifiants.
+   *
+   * Utilise par la sourdine POWER_CUT : l'alerte suit tout le chemin normal —
+   * permissions, perimetre vehicule, preferences, plafond, journalisation — mais
+   * n'atteint que les comptes cites. Filtrer ici plutot qu'en amont garde UNE SEULE
+   * porte d'envoi, celle que les garde-fous surveillent.
+   */
+  restreindreAuxUtilisateurs?: string[];
 }
 
 // ⚠️ RIEN ENTRE CE DECORATEUR ET SA CLASSE. Le lien decorateur -> cible est perdu a la
@@ -232,6 +241,29 @@ export class NotificationDispatchService {
     alert: AlertWithVehicle,
     opts: DispatchOptions = {},
   ): Promise<{ channels: AlertChannel[] }> {
+    /**
+     * ⚠️ SOURDINE SUR LES ALERTES D'ALIMENTATION (2026-08-19, TRK-030).
+     *
+     * 41 713 alertes « Alimentation coupee » etaient parties, dont 41 468 depuis un seul
+     * boitier defaillant. Les causes sont corrigees en amont — coupure moteur commandee,
+     * contact coupe sur montage commute, absence de deduplication — et l'enquete sur la
+     * sauvegarde a montre que TOUTES avaient une batterie entre 94 et 100 %.
+     *
+     * Cette sourdine est la CEINTURE par-dessus les bretelles : le temps de verifier sur
+     * plusieurs semaines que le bruit ne revient pas, on ne reveille plus les clients.
+     * Le SUPER_ADMIN continue de recevoir — c'est lui qui doit voir si ca reprend.
+     *
+     * ⚠️ L'ALERTE EST CREEE ET RESTE CONSULTABLE. Seule la NOTIFICATION est retenue :
+     * supprimer l'alerte fabriquerait une cecite a la place d'un bruit.
+     */
+    if (alert.type === 'POWER_CUT' && !opts.restreindreAuxUtilisateurs) {
+      const superAdmins = await this.prisma.user.findMany({
+        where: { role: UserRole.SUPER_ADMIN, isActive: true },
+        select: { id: true },
+      });
+      opts = { ...opts, restreindreAuxUtilisateurs: superAdmins.map((u) => u.id) };
+    }
+
     const rules = await this.findMatchingRules(alert);
     // ⚠️ REJEU — deux restrictions volontaires, chacune pour une raison differente.
     //
@@ -252,7 +284,13 @@ export class NotificationDispatchService {
     // Si une regle specifie escalateToUserId, on l'inclut aussi. Depuis le
     // correctif, s'y ajoutent les SUPER_ADMIN en perimetre 'GLOBAL' (push seul).
     const pushChannelActive = channels.includes('WEB_PUSH');
-    const resolved = await this.resolveRecipients(alert, rules, pushChannelActive);
+    let resolved = await this.resolveRecipients(alert, rules, pushChannelActive);
+    // Sourdine : on retire les destinataires hors liste APRES la resolution normale, pour
+    // que rien d'autre ne change (perimetre vehicule, preferences, journal).
+    if (opts.restreindreAuxUtilisateurs) {
+      const permis = new Set(opts.restreindreAuxUtilisateurs);
+      resolved = resolved.filter((r) => permis.has(r.user.id));
+    }
 
     // ══ A-T-IL LE DROIT DE SAVOIR ? ═══════════════════════════════════════════════
     //

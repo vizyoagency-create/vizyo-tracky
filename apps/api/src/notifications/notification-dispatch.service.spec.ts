@@ -765,10 +765,14 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
 
   function setup(opts: GuardOpts = {}) {
     const {
-      type = 'POWER_CUT',
+      // ⚠️ PLUS 'POWER_CUT' (2026-08-19). Ce type est desormais sous SOURDINE. Et pas 'SOS' non plus : il contourne le
+      // notifications ne partent qu'aux SUPER_ADMIN. L'utiliser comme fixture ici ferait
+      // echouer six garde-fous qui ne parlent pas d'alimentation — et, pire, masquerait
+      // une regression du jour ou la sourdine sera levee. On prend un type notifiable.
+      type = 'GEOFENCE_EXIT',
       severity = 'CRITICAL',
       vehicleId = 'v1',
-      // Une ligne EXISTANTE qui rallume tout : sans elle, POWER_CUT serait coupe par
+      // Une ligne EXISTANTE qui rallume tout : sans elle le type serait coupe par
       // defaut et aucun garde-fou de debit ne serait jamais atteint.
       preferences = [{ userId: superAdmin.id, pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [] }],
       deliveries = [],
@@ -930,7 +934,7 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       status: 'SENT',
       channel: 'WEB_PUSH',
       userId: superAdmin.id,
-      alertType: 'POWER_CUT',
+      alertType: 'GEOFENCE_EXIT',
       severity: 'CRITICAL',
       deviceCount: 3,
       sentCount: 2,
@@ -1022,7 +1026,7 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
   it('cooldown — un push recent sur le MEME type et le MEME vehicule replie l evenement', async () => {
     const t = setup({
       deliveries: [
-        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(3) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(3) },
       ],
     });
     const dispatch = await t.build();
@@ -1040,9 +1044,9 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     // dire « 1 » (premier retenu depuis cet envoi), pas « 3 ».
     const t = setup({
       deliveries: [
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(9) },
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(5) },
-        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-sent', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(2) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(9) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(5) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-sent', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
     });
     const dispatch = await t.build();
@@ -1060,7 +1064,7 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     const t = setup({
       vehicleId: 'v2',
       deliveries: [
-        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(3) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(3) },
       ],
     });
     const dispatch = await t.build();
@@ -1075,8 +1079,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     // depuis. Le push qui part doit dire qu'il en represente trois.
     const t = setup({
       deliveries: [
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(9) },
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(4) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(9) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(4) },
       ],
     });
     const dispatch = await t.build();
@@ -1155,7 +1159,7 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       rollout: 'ALL',
       preferences: [{ userId: 'esc-1', pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [] }],
       deliveries: [
-        { userId: 'esc-1', status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(2) },
+        { userId: 'esc-1', status: 'SENT', alertId: 'alert-old', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
     });
     const dispatch = await t.build();
@@ -1281,7 +1285,7 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       recipients: [{ id: 'fa-1', email: 'admin@f1.test', fleetId: 'f1', role: UserRole.FLEET_ADMIN, isActive: true }],
       preferences: [{ userId: 'fa-1', pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [] }],
       deliveries: [
-        { userId: 'fa-1', status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(1) },
+        { userId: 'fa-1', status: 'SENT', alertId: 'alert-old', alertType: 'GEOFENCE_EXIT', subjectKey: 'v1', createdAt: minutesAgo(1) },
       ],
     });
     const dispatch = await t.build();
@@ -1408,6 +1412,40 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       expect(t.emailSend).toHaveBeenCalledTimes(1);
     });
   });
+
+  /**
+   * ── SOURDINE POWER_CUT (2026-08-19, TRK-030) ───────────────────────────────────────
+   *
+   * 41 713 fausses alertes d'alimentation etaient parties aux clients. Les causes sont
+   * corrigees en amont ; cette sourdine est la ceinture par-dessus les bretelles, le
+   * temps de verifier sur plusieurs semaines que le bruit ne revient pas.
+   */
+  describe('sourdine POWER_CUT — les clients ne sont plus reveilles', () => {
+    it('le SUPER_ADMIN continue de recevoir — il doit voir si le bruit reprend', async () => {
+      const t = setup({
+        type: 'POWER_CUT',
+        preferences: [{ userId: superAdmin.id, pushEnabled: true, minSeverity: 'INFO', mutedTypes: [] }],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      expect(t.sendToUser).toHaveBeenCalledTimes(1);
+      expect(t.sendToUser.mock.calls[0][0]).toBe(superAdmin.id);
+    });
+
+    /**
+     * ⚠️ CE QUI N'EST PAS COUVERT ICI, ET C'EST DIT PLUTOT QUE MASQUE.
+     *
+     * Le pendant naturel — « un FLEET_ADMIN ne recoit RIEN » — demanderait une fixture
+     * ou un FLEET_ADMIN recoit deja quelque chose, pour que le refus prouve la sourdine
+     * et non l'inertie du montage. Ecrit sans ce temoin, le test passait pour la
+     * MAUVAISE raison : ce destinataire ne recevait rien de toute facon, sourdine ou pas.
+     *
+     * Un test vert qui ne prouve rien est pire qu'un test absent : il fait croire que la
+     * regle est verrouillee. La sourdine est donc verifiee cote SUPER_ADMIN et par la
+     * lecture du code ; son pendant reste a ecrire avec la bonne fixture.
+     */
+  });
+
 
 });
 
@@ -1670,4 +1708,5 @@ describe('NotificationDispatchService — le motif de retenue ne ment pas', () =
     await t.svc.dispatchAlert(alert as never);
     expect(reasonOf(t.deliveryCreate)).toBe('preference_disabled');
   });
+
 });
