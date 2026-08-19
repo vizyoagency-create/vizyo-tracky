@@ -320,6 +320,27 @@ export const routes: Routes = [
         data: { title: 'Mode assistance' },
       },
       {
+        // Assistance IA (2026-08) — ouverte a TOUT utilisateur authentifie : c'est une aide, pas
+        // une fonction d'administration. Aucune permission exigee.
+        //
+        // NOTE : le role NIGHT_WATCHMAN n'y accede PAS. Son confinement (`watchmanChildGuard`) est
+        // une allowlist default-deny posee a la demande du client — l'elargir est une decision
+        // produit, pas un detail d'implementation, et elle n'a pas ete prise.
+        path: 'assistance',
+        loadComponent: () =>
+          import('./features/assistance/assistance.component').then((m) => m.AssistanceComponent),
+        data: { title: 'Assistance' },
+      },
+      {
+        // L'archive des demandes : relire, corriger, reprendre la main. Le PERIMETRE est applique
+        // cote serveur (super-admin : toutes les societes ; admin de flotte : la sienne).
+        path: 'admin/assistance',
+        canActivate: [roleGuard('FLEET_ADMIN', 'SUPER_ADMIN')],
+        loadComponent: () =>
+          import('./features/assistance/admin-assistance.component').then((m) => m.AdminAssistanceComponent),
+        data: { title: 'Assistance — demandes' },
+      },
+      {
         path: 'admin',
         pathMatch: 'full',
         canActivate: [superAdminGuard],
