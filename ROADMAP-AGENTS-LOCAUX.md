@@ -74,19 +74,22 @@ Emplacement : `apps/web/src/app/features/reports/reports.component.ts` (bouton a
 ~ligne 285). L'endpoint `POST /api/trips/recompute` reste, il sert à l'automatisation.
 → **Contrôle navigateur à 375 px obligatoire** avant de considérer ce point terminé.
 
-### 3. Colonne `executor` sur `ai_usage_logs` + affichage « absorbé par l'abonnement local » — ☐ À FAIRE
+### 3. Colonne `executor` + affichage « absorbé par l'abonnement local » — 🔶 SERVEUR FAIT, UI À FAIRE
 
-Validé côté contrat d'API. Sans ça, un agent local travaille **sans laisser de trace** dans les
-écrans de coûts — l'inverse de ce qu'on veut.
+**Fait** : migration `20260819140000_qui_execute_l_appel_ia`, champ `executor` sur `AiUsageEntry`,
+`absorbed` calculé dans `summary()`, `executor` exposé sur les lignes du journal, et couple
+`executor` / `coutIa` sur les tâches de fond. Typecheck + 15 tests verts.
 
-- Migration Prisma : `executor` (`api` | `local`), défaut `api`, non nullable.
-- Les agents locaux écrivent leurs passages avec `costUsd = 0` et `executor = 'local'`.
-- Page **Coûts IA** (`admin-ai-usage.component.ts`) : distinguer visuellement les deux, et afficher
-  ce que l'abonnement local a **absorbé** (le coût qu'aurait eu le même travail via l'API).
-- Page **Crons** (`background-tasks.service.ts`) : chaque agent local y figure avec son état déduit
-  du travail écrit.
+Deux points de conception à ne pas défaire :
+- un appel local écrit `costUsd = 0`. Y inscrire le tarif théorique remplirait le budget mensuel
+  avec de l'argent que personne n'a payé, et `monthBudgetExhausted()` finirait par couper l'IA
+  payante à cause du travail gratuit ;
+- `executor` et `coutIa` sont **deux dimensions indépendantes**. L'agent de limites de vitesse
+  tourne en local ET ne coûte rien — parce qu'il interroge OpenStreetMap, pas parce qu'un
+  abonnement l'absorbe. Les confondre afficherait une économie qui n'a jamais existé.
 
-⚠️ Le champ ajouté au DTO doit être **optionnel** côté lecture pour ne pas casser un client déployé.
+**Reste** : l'encart « absorbé par l'abonnement » dans Coûts IA, et le badge d'exécutant sur la
+page Crons. → **contrôle navigateur à 375 px obligatoire.**
 
 ### 4. Table de conservation des couples (entrée, sortie) IA — ☐ À FAIRE
 
@@ -145,42 +148,58 @@ Le plus riche analytiquement, et sans aucun risque client (diagnostic interne).
 À concevoir : l'agent doit **distinguer** une zone morte (plusieurs véhicules, même endroit) d'un
 boîtier défaillant (un véhicule, partout). C'est la conclusion qui a de la valeur, pas le constat.
 
-### ☐ Agent « assistance différée » (helper) — priorité 3
+### ☐ Assistance IA en direct — priorité 3 · **VIA L'API PAYANTE**
 
-**Le principe : ce n'est PAS de l'assistance live.** Les gens n'aiment pas parler à un robot en
-direct. Ici l'agent sert les **questions curieuses** — « pourquoi mon score de conduite a baissé ? »,
-« à quoi sert cet écran ? », « pourquoi ce trajet est coupé en deux ? » — avec une réponse écrite,
-en français, rédigée pendant la nuit.
+> **Virage assumé du 19/08.** La conception « différée + brouillon validé » est ABANDONNÉE.
+> L'assistance répond en direct, via l'API Anthropic. C'est le seul poste de ce document qui
+> dépense volontairement de l'argent, et c'est un choix produit : une réponse dans la seconde
+> n'a rien à voir avec une réponse le lendemain.
 
-**Parcours utilisateur**
-1. L'utilisateur ouvre **Assistance**, écrit sa question. L'écran annonce clairement :
-   « Vous recevrez une réponse sous 24 h maximum. »
-2. Un bouton distinct **« Demander un rappel urgent »** : ne passe **pas** par l'agent, notifie
-   immédiatement le propriétaire et tous les super-admins. Un humain rappelle.
-3. La nuit, l'agent local lit les questions en attente, **analyse le code du dépôt** si nécessaire,
-   et rédige une réponse en français, dans le vocabulaire du client (jamais de chemin de fichier,
-   jamais de nom de classe).
-4. Notification push à l'utilisateur quand la réponse est disponible.
+**Contraintes non négociables**
+- Réponses **courtes** et en français.
+- **Lecture seule** : l'agent n'exécute aucune action, ne modifie rien.
+- **Ne sort jamais du périmètre de l'app** : une question hors-sujet est recadrée, pas traitée.
+- **Ne divulgue aucun secret** : ni chemin de fichier, ni nom de classe, ni variable
+  d'environnement, ni détail d'infrastructure, ni donnée d'une autre société.
+- **Tout est archivé** dans l'espace admin : relecture, correction, recontact.
 
-**Pourquoi cet agent ne peut tourner QUE en local** : il a besoin du dépôt pour répondre. L'API en
-production n'a pas le code source sous la main — le VPS n'héberge que le build. C'est le seul agent
-de la liste dont l'exécution locale est une nécessité technique, pas une économie.
+**Base de départ : `d:/www/livrasante/apps/api/src/app/support/`** (~1 290 lignes, à reprendre et
+améliorer — voir ci-dessous).
 
-**Décision prise (19/08) — BROUILLON VALIDÉ, jamais de publication directe.**
-L'agent rédige, le super-admin valide d'un clic avant envoi au client. Deux raisons : une réponse
-fausse à un client coûte plus cher qu'un délai, et un agent qui lit le code source peut laisser
-filer un détail interne (architecture, faiblesse, données d'un autre client). Même schéma que les
-propositions d'agenda (`pending` → `applied`), déjà éprouvé dans l'app.
+À reprendre tel quel, la structure est bonne :
+- prompt système sectionné : produit / rôle / ce que je PEUX / ce que je NE PEUX PAS / style /
+  sécurité / filtrage hors-sujet ;
+- **plafond de messages par conversation** + instruction de conclusion quand le quota approche —
+  c'est le garde-fou de coût, et il est bien pensé ;
+- balise d'escalade vers un humain ;
+- **rapport d'incident structuré en fin de conversation** (résumé, gravité, action humaine requise) :
+  exactement la matière dont l'espace admin a besoin pour la relecture ;
+- 3 réponses suggérées au conseiller humain ;
+- réponse en streaming.
 
-Conséquence à ne pas oublier au moment de l'écran : le délai annoncé au client (« sous 24 h ») court
-jusqu'à la **validation humaine**, pas jusqu'à la rédaction de l'agent. Si personne ne valide, la
-promesse est rompue — il faut donc une relance vers les super-admins sur les brouillons en attente.
+À corriger, livrasante s'en tire mal :
+| Faiblesse | Correction |
+|---|---|
+| **Aucune journalisation de coût.** Le service appelle le SDK en direct. | Passer par `AiRouter` + `AiUsageService.record({ action: 'support_chat', executor: 'api' })`. Sinon l'assistance devient le seul poste de dépense invisible — l'inverse du point 3. |
+| Modèle figé en dur (`claude-sonnet-4-20250514`) | Défaut configurable (Sonnet 5) + `effort` par appel, comme le reste de Tracky. |
+| Rien contre l'**injection de prompt** | Le message utilisateur est une DONNÉE, jamais une instruction. À écrire explicitement, et à tester. |
+| « Ne partage pas de données d'autres utilisateurs » posé en une ligne | Section refus explicite et énumérée, plus le scoping serveur — un prompt n'est pas un contrôle d'accès. |
+| Plafond par conversation seulement | Ajouter un plafond **par utilisateur et par jour** : sinon on rouvre une conversation à l'infini. |
+| Balise d'escalade fragile (le client peut l'écrire lui-même) | La retirer du texte affiché de façon robuste et ne la traiter que comme un signal serveur. |
 
-**Infrastructure existante réutilisable** : `notifications/web-push.service.ts` (VAPID déjà en
-place), `notification-center`, `notification-preferences`.
+**Décision en attente** : périmètre de lecture de l'agent (connaissances seules, ou contexte réel
+de l'utilisateur qui pose la question). Voir « Questions ouvertes ».
 
-**À créer** : table des questions (question, auteur, société, statut, urgence, brouillon, réponse
-publiée, horodatages), page Assistance côté client, page de validation côté admin.
+### ~~Agent « assistance différée » (helper)~~ — ABANDONNÉ le 19/08
+
+Conception initiale : questions posées le jour, réponses rédigées la nuit par un agent local, avec
+validation humaine avant envoi. Remplacée par l'assistance EN DIRECT ci-dessus.
+
+Ce qui survient de cette conception et reste à intégrer au direct :
+- le bouton **« demander un rappel urgent »**, qui court-circuite l'IA et notifie le propriétaire et
+  tous les super-admins. Une assistance en direct ne dispense pas d'une porte de sortie humaine ;
+- la **notification push** quand un conseiller humain reprend la main après l'IA ;
+- l'archivage intégral en espace admin — devenu une exigence explicite du direct.
 
 ### ☐ Agent « triage des propositions d'agenda » — priorité 4
 
@@ -210,15 +229,29 @@ vitesse connue, aucun excès n'est affirmable et le coaching porterait sur du vi
 de vitesse doit d'abord finir son rattrapage. **Ne pas démarrer celui-ci avant que ce ratio soit
 descendu sous ~20 %.**
 
-### ❌ Assistant conversationnel temps réel — écarté
+### ⚠️ Le direct ne rentre pas dans le modèle local — et c'est assumé
 
-Répondre en quelques secondes, 24/7, PC éteint compris : ne rentre pas dans le modèle local. Si ce
-besoin apparaît, c'est l'API payante ou rien. Ne pas le promettre.
+Répondre en quelques secondes, 24/7, PC éteint compris : un agent local ne sait pas le faire. C'est
+pourquoi l'assistance en direct passe par l'API payante. C'est le SEUL poste de ce document qui
+dépense volontairement, et il doit donc être le plus surveillé : plafond par conversation, plafond
+par utilisateur et par jour, et coût journalisé sous l'action `support_chat`.
+
+Corollaire à ne pas perdre de vue : cet agent ne pourra pas lire le code source pour répondre, là où
+la version nocturne locale l'aurait pu. Sa connaissance de l'app doit donc être ÉCRITE quelque part
+et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 
 ---
 
 ## Questions ouvertes
 
+- **Périmètre de lecture de l'assistance IA** — la question qui décide de l'architecture :
+  - *Connaissances seules* : l'agent explique comment l'app fonctionne, sans jamais voir les
+    données de personne. Simple, sûr, peu coûteux — mais il ne pourra pas répondre à
+    « pourquoi CE trajet est coupé en deux ? ».
+  - *Connaissances + contexte de l'utilisateur qui demande* : le serveur construit un contexte
+    borné (sa société, ses véhicules, ses alertes récentes), sous les mêmes gardes de cloisonnement
+    que le reste de l'API. Beaucoup plus utile, et beaucoup plus exposé : toute erreur de scoping
+    devient une fuite entre sociétés.
 - **Rétention** des traces IA (point 4) : plafond par action, ou purge à N mois ?
 - **`lookbackHours`** reste à 1200 (50 jours). Avec les tranches bornées c'est tenable — c'est cette
   valeur qui définit jusqu'où on rattrape.
