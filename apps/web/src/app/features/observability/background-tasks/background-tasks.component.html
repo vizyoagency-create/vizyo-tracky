@@ -65,6 +65,14 @@
                   <span class="dot" [ngClass]="critClass(t.criticality)" [title]="'Criticité : ' + t.criticality"></span>
                   <b>{{ t.label }}</b>
                   @if (t.antiOverlap) { <span class="tag" title="Un nouveau passage ne démarre pas si le précédent tourne encore">anti-chevauchement</span> }
+                  @if (t.executor === 'poste-local') {
+                    <span class="tag local" title="Ne tourne pas sur ce serveur : ce traitement s'exécute sur le poste du propriétaire. Son état est déduit du travail réellement écrit en base — si le poste est éteint, ça se voit ici.">poste local</span>
+                  }
+                  @if (t.coutIa === 'absorbe') {
+                    <span class="tag absorbe" title="Travail IA couvert par l'abonnement du poste : aucun crédit facturé.">IA absorbée</span>
+                  } @else if (t.coutIa === 'facture') {
+                    <span class="tag facture" title="Ce traitement peut consommer des crédits IA facturés.">IA facturée</span>
+                  }
                   @if (t.devOnly) { <span class="tag dev-tag">dev uniquement</span> }
                   @if (t.configurable && t.enabled === false) { <span class="tag pause">en pause</span> }
                 </div>

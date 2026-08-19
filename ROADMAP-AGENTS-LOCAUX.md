@@ -99,8 +99,12 @@ Deux points de conception à ne pas défaire :
   tourne en local ET ne coûte rien — parce qu'il interroge OpenStreetMap, pas parce qu'un
   abonnement l'absorbe. Les confondre afficherait une économie qui n'a jamais existé.
 
-**Reste** : l'encart « absorbé par l'abonnement » dans Coûts IA, et le badge d'exécutant sur la
-page Crons. → **contrôle navigateur à 375 px obligatoire.**
+**UI faite** : encart « Absorbé par l'abonnement local » dans Coûts IA (masqué tant qu'aucun
+appel local n'existe — il apparaîtra au premier passage d'un agent), et deux étiquettes sur la page
+Crons : « poste local » (où ça tourne) et « IA absorbée » / « IA facturée » (qui paie).
+
+⚠️ **Non vérifié à 375 px** — Docker Desktop n'était pas lancé, donc pas de pile locale. Typecheck
+et 5 gardes passent, mais aucun écran n'a été regardé dans un navigateur.
 
 ### 4. Table de conservation des couples (entrée, sortie) IA — ☐ À FAIRE
 

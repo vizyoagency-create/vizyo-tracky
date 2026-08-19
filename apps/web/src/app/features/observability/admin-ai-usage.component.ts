@@ -4,7 +4,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  LucideAngularModule, ChevronLeft, Zap, Wallet, Users, Building2, Layers, TrendingUp,
+  LucideAngularModule, ChevronLeft, Zap, Wallet, Users, Building2, Layers, TrendingUp, Laptop,
   RefreshCw, AlertTriangle, Loader, Check, Save, Cpu, Calendar, Power, Tag,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -277,6 +277,45 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
           </div>
         </section>
 
+        <!-- ── ABSORBE PAR L'ABONNEMENT LOCAL ── -->
+        <!--
+          Sans cet encart, basculer un traitement vers un agent sur le poste ferait simplement
+          TOMBER la depense, et cet ecran ne saurait pas distinguer « c'est devenu gratuit » de
+          « c'est en panne ». Les deux produisent exactement la meme courbe.
+        -->
+        @if (s.absorbed; as abs) {
+          @if (abs.localCalls > 0) {
+            <section class="au-absorbe">
+              <div class="au-f-tete">
+                <span class="au-f-kpil"><lucide-icon [img]="LaptopIcon" [size]="13"></lucide-icon> Absorbé par l'abonnement local</span>
+                <span class="au-abs-tag">{{ num(abs.localCalls) }} appel(s) hors facture</span>
+              </div>
+              @if (abs.estimatedCostEur !== null) {
+                <div class="au-f-montant">{{ eur(abs.estimatedCostEur) }}</div>
+                <div class="au-f-base">ce que ce travail aurait coûté via l'API</div>
+              } @else {
+                <div class="au-f-montant au-f-montant--nul">Montant non estimable</div>
+              }
+              @if (abs.localResults !== null) {
+                <div class="au-f-base">{{ num(abs.localResults) }} résultat(s) produit(s)</div>
+              }
+              <!--
+                On dit que c'est une ESTIMATION, et d'ou elle vient. Un agent local ne recoit
+                aucune facture : le chiffre est extrapole du cout moyen reellement constate pour
+                la meme action via l'API. Le presenter comme une mesure serait un faux.
+              -->
+              <p class="au-f-note">
+                Estimation, pas relevé&nbsp;: un agent sur le poste ne reçoit aucune facture. Le
+                montant est extrapolé du coût moyen réellement constaté pour les mêmes traitements
+                via l'API.
+                @if (abs.actionsSansReference.length > 0) {
+                  <strong>Non estimé faute de référence&nbsp;: {{ abs.actionsSansReference.join(', ') }}.</strong>
+                }
+              </p>
+            </section>
+          }
+        }
+
         <!-- ── RÉPARTITION ── -->
         <section class="au-panel">
           <div class="au-panel-head">
@@ -534,6 +573,21 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-f-ht { font-size: 13px; font-weight: 700; color: var(--fg-secondary); }
     .au-f-base { font-size: 12.5px; color: var(--fg-secondary); margin-top: 2px; }
     .au-f-note { margin: 9px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
+    /*
+     * L'encart « absorbe » emprunte la structure du forfait (meme vocabulaire visuel : un
+     * montant, une base, une note) mais s'en distingue par la bordure : ce n'est PAS une
+     * facture, c'est une depense EVITEE. Les confondre serait pire que ne rien afficher.
+     */
+    .au-absorbe {
+      display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 14px;
+      background: var(--bg-secondary);
+      border: 1px dashed color-mix(in srgb, var(--color-tracky-light) 34%, transparent);
+    }
+    .au-abs-tag {
+      display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 7px;
+      font-size: 11.5px; font-weight: 800; white-space: nowrap;
+      color: var(--texte-succes); background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+    }
     .au-budget-note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
     .au-budget-note strong { color: var(--fg-primary); }
 
@@ -573,6 +627,8 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly BackIcon = ChevronLeft;
   protected readonly ZapIcon = Zap;
   protected readonly WalletIcon = Wallet;
+  /** Encart « absorbe par l'abonnement local » : le travail qui ne passe pas par l'API. */
+  protected readonly LaptopIcon = Laptop;
   protected readonly UsersIcon = Users;
   protected readonly FleetIcon = Building2;
   protected readonly LayersIcon = Layers;

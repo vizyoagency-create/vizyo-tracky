@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search,} from 'lucide-angular';
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
 
@@ -124,6 +124,22 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+        <!-- ── CE QUE NOS SERVICES ONT RECUPERE ──
+             Ajoute apres avoir decouvert que 98,8 % du cache des limites de vitesse etait
+             faux pendant des semaines, sans que rien ne le montre. Une couche
+             d'enrichissement peut echouer en silence : cet ecran compare l'eligible a l'abouti. -->
+        <a routerLink="/admin/recuperation" class="card" style="--i:4">
+          <span class="accent accent-purple"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-purple"><lucide-icon [img]="Layers" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Ce que nos services ont récupéré</h3>
+            <p class="desc">Trajets et lieux : ce qui était éligible, ce qui a abouti, ce qui manque encore.</p>
+          </div>
+        </a>
+
 
         <!-- ── AUDIT DES ALERTES ──
              Ajoute apres l'incident des 41 713 fausses alertes : comprendre un deluge
@@ -664,6 +680,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Terminal = Terminal;
   protected readonly MessageSquare = MessageSquare;
   protected readonly Search = Search;
+  protected readonly Layers = Layers;
   protected readonly Users = Users;
   protected readonly Radio = Radio;
   protected readonly Shield = Shield;

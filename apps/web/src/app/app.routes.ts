@@ -370,6 +370,16 @@ export const routes: Routes = [
         data: { title: 'VPS — performances & données' },
       },
       {
+        // Ce que chaque couche d'enrichissement a REELLEMENT recupere. Ajoute apres avoir
+        // decouvert que 98,8 % du cache des limites de vitesse etait faux sans que rien ne
+        // le montre : une couche peut echouer en silence pendant des semaines.
+        path: 'admin/recuperation',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/recuperation.component').then((m) => m.RecuperationComponent),
+        data: { title: 'Ce que nos services ont recupere' },
+      },
+      {
         // Audit des alertes et de leurs trames — l'ecran qui permet de trancher un
         // deluge sans restaurer une sauvegarde ni ecrire de SQL.
         path: 'admin/audit-alertes',

@@ -71,6 +71,16 @@
 .tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--fg2); background: var(--bg2); border: 1px solid var(--b); border-radius: 6px; padding: 1px 6px; }
 .tag.dev-tag { color: var(--warn); border-color: var(--warn); }
 .tag.pause { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+/*
+ * OU ca tourne, et QUI paie — deux dimensions independantes, donc deux etiquettes.
+ * Les fondre en une seule ferait croire qu'un traitement local est forcement absorbe par
+ * l'abonnement : l'agent de limites de vitesse tourne sur le poste ET ne coute rien, parce
+ * qu'il interroge OpenStreetMap. Afficher « absorbe » sur lui annoncerait une economie qui
+ * n'a jamais existe.
+ */
+.tag.local { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.tag.absorbe { color: var(--accent); border-color: var(--accent); background: transparent; }
+.tag.facture { color: var(--fg2); border-style: dashed; }
 .row-purpose { margin: 5px 0 0; font-size: 12.5px; color: var(--fg2); line-height: 1.45; }
 .row-note { display: flex; align-items: center; gap: 5px; margin: 5px 0 0; font-size: 12px; color: var(--warn); font-weight: 600; }
 .row-settings { margin: 4px 0 0; font-size: 12px; color: var(--accent); font-weight: 600; }
