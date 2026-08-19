@@ -153,7 +153,15 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
         </div>
       } @else {
         <!-- ══ Table utilisateurs (réf. maquette Utilisateurs.dc.html) ══ -->
-        <div class="vt-card u-table">
+        <!--
+          La classe u-table--menu LEVE le rognage pendant qu'un menu est ouvert. La carte est
+          en overflow hidden pour que l'en-tete et les lignes epousent ses coins arrondis ;
+          mais le menu d'actions est en position absolue DANS cette carte, et se faisait donc
+          couper des qu'il depassait la derniere ligne. Sur une flotte a un seul membre — le
+          cas le plus courant chez un client qui demarre — seule la premiere entree restait
+          visible : les trois autres actions etaient inatteignables.
+        -->
+        <div class="vt-card u-table" [class.u-table--menu]="openMenuId() !== null">
           <div class="u-thead">
             <span class="u-th">Utilisateur</span>
             <span class="u-th">Rôle</span>
@@ -330,6 +338,8 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
 
     /* ─── Users table ─── */
     .u-table { position: relative; z-index: 1; overflow: hidden; padding: 0 }
+    /* Rognage leve UNIQUEMENT le temps d'un menu ouvert : hors de ce cas, rien ne change. */
+    .u-table--menu { overflow: visible }
     .u-thead, .u-row { display: grid; grid-template-columns: minmax(200px,2fr) 168px 1fr 128px 44px; align-items: center; gap: 14px; padding: 12px 18px }
     .u-thead { background: var(--surface-rail); border-bottom: 1px solid var(--border-subtle) }
     .u-th { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary) }
