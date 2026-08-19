@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AiTraceService } from '../ai-traces/ai-trace.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiRouter } from '../ai/ai-router.service';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -96,6 +97,7 @@ export class AssistanceAiService {
     private readonly aiUsage: AiUsageService,
     private readonly contexte: AssistanceContextService,
     private readonly errorLogger: ErrorLogger,
+    private readonly traces: AiTraceService,
   ) {}
 
   /** Vrai si un moteur est configuré côté serveur. L'écran s'en sert pour ne pas proposer un chat mort. */
@@ -145,7 +147,7 @@ export class AssistanceAiService {
         latencyMs: appel.latencyMs, ok: true,
       });
     } catch (e) {
-      await this.tracer(e, user, 'classement');
+      await this.tracerErreur(e, user, 'classement');
       return this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Classement indisponible');
     }
 
@@ -204,6 +206,7 @@ export class AssistanceAiService {
         cacheWriteTokens: appel.usage.cacheWriteTokens, cacheReadTokens: appel.usage.cacheReadTokens,
         latencyMs: appel.latencyMs, ok: true, resultCount: 1,
       });
+      void this.conserverTrace(user, demande, recents, plan, lots, appel.model, appel.latencyMs, r);
       return {
         ...r,
         titre: plan.titre || 'Demande d\'assistance',
@@ -215,7 +218,13 @@ export class AssistanceAiService {
         sansIa: false,
       };
     } catch (e) {
-      await this.tracer(e, user, 'redaction');
+      await this.tracerErreur(e, user, 'redaction');
+      void this.traces.record({
+        action: ACTION, executor: 'api', model: modele, fleetId: user.fleetId,
+        input: this.entreeTracable(demande, recents, plan, lots),
+        error: e instanceof Error ? e.message : String(e),
+        verdict: 'rejete', verdictNote: 'Appel de rédaction en échec',
+      });
       return {
         ...this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Rédaction indisponible'),
         titre: plan.titre || 'Demande d\'assistance',
@@ -279,7 +288,60 @@ export class AssistanceAiService {
     };
   }
 
-  private async tracer(e: unknown, user: AuthUser, phase: string): Promise<void> {
+  /**
+   * Ce qui part dans la trace.
+   *
+   * ⚠️ Les LOTS DE DONNÉES sont réduits à leur résumé d'audit — clé, volume, refus — et jamais
+   * recopiés. Ils contiennent l'activité réelle, les erreurs et les trajets d'une personne :
+   * les archiver ici en créerait une SECONDE COPIE, hors de sa table d'origine, hors des règles
+   * de rétention qui la gouvernent, et hors du mode vie privée.
+   *
+   * Ce qu'on perd : le rejeu à l'identique. Ce qu'on garde : la question, les sujets retenus et
+   * les lots consultés — c'est-à-dire ce qui permet de comprendre POURQUOI une réponse est
+   * mauvaise. Une réponse hors sujet vient presque toujours d'un mauvais classement ou d'une
+   * connaissance manquante, pas d'une valeur particulière dans les données du demandeur.
+   */
+  private entreeTracable(
+    question: string,
+    historique: Array<{ role: string; contenu: string }>,
+    plan: Classement,
+    lots: ContextBundle[],
+  ): unknown {
+    return {
+      question,
+      historique,
+      sujetsRetenus: plan.sujets,
+      horsSujet: plan.horsSujet,
+      lotsConsultes: lots.map((l) => ({ lot: l.key, volume: l.volume, refuse: l.refus ?? null })),
+    };
+  }
+
+  private async conserverTrace(
+    user: AuthUser,
+    question: string,
+    historique: Array<{ role: string; contenu: string }>,
+    plan: Classement,
+    lots: ContextBundle[],
+    model: string,
+    latencyMs: number,
+    reponse: { reponse: string; escalade: boolean; gravite: Gravite },
+  ): Promise<void> {
+    await this.traces.record({
+      action: ACTION,
+      executor: 'api',
+      model,
+      fleetId: user.fleetId,
+      input: this.entreeTracable(question, historique, plan, lots),
+      output: reponse,
+      latencyMs,
+      // Une escalade n'est pas un échec technique, mais c'est un cas à RELIRE : l'agent a rendu
+      // la main. C'est exactement le lot qu'on veut retrouver pour l'améliorer.
+      verdict: reponse.escalade ? 'rejete' : 'concluant',
+      verdictNote: reponse.escalade ? 'Reprise humaine demandée par l\'assistant' : null,
+    });
+  }
+
+  private async tracerErreur(e: unknown, user: AuthUser, phase: string): Promise<void> {
     const err = e instanceof Error ? e : new Error(String(e));
     this.logger.warn(`Assistance (${phase}) : ${err.message}`);
     await this.errorLogger

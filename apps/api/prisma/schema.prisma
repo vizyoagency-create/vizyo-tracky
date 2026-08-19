@@ -3938,3 +3938,48 @@ model AssistanceMessage {
   @@index([conversationId, createdAt])
   @@map("assistance_messages")
 }
+
+/// Ce qu'on a ENVOYÉ à un modèle, et ce qu'il a RENDU — le couple, pas seulement le résultat.
+///
+/// ── Pourquoi cette table ────────────────────────────────────────────────────────────
+/// L'application conservait déjà les RÉSULTATS : le récit d'un trajet, le contenu d'un rapport
+/// d'activité, les propositions d'agenda. Mais jamais l'ENTRÉE. Or on n'améliore pas un agent en
+/// relisant ses bonnes réponses : on l'améliore en retrouvant les payloads qui ont produit une
+/// réponse fausse, vide ou hors sujet. Sans l'entrée, un échec n'est pas reproductible, et la
+/// seule correction possible reste l'intuition.
+///
+/// ⚠️ CETTE TABLE DUPLIQUE DE LA DONNÉE MÉTIER hors de sa table d'origine — activité réelle
+///    d'utilisateurs, trajets, erreurs. C'est le prix à payer pour pouvoir rejouer un cas, mais ça
+///    en fait une seconde copie à protéger ET à purger. D'où `fleetId` (purger avec la société),
+///    un plafond par action, et des payloads bornés.
+model AiAgentTrace {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  /// Même vocabulaire que `ai_usage_logs.action` — les deux tables se lisent ensemble.
+  action String
+  /// `api` (crédits facturés) ou `local` (agent sur le poste). Cf. `AiExecutor`.
+  executor String  @default("api")
+  model    String?
+  /// Société concernée, quand l'appel en vise une. Sert au périmètre ET à la purge.
+  fleetId  String? @db.Uuid
+
+  /// Ce qui a été envoyé au modèle. Borné : au-delà, tronqué et MARQUÉ comme tel.
+  input Json
+  /// Ce qu'il a rendu, brut, avant tout assainissement. `null` si l'appel a échoué.
+  output Json?
+  /// Message d'échec, quand il n'y a pas de sortie à conserver.
+  error     String?
+  latencyMs Int?
+
+  /// `concluant` (le résultat a été retenu) ou `rejete` (écarté). C'est CE champ qui a de la
+  /// valeur : il sépare les cas à rejouer du bruit.
+  verdict String
+  /// Pourquoi rejeté, en clair. Vide sur un concluant.
+  verdictNote String?
+
+  @@index([action, createdAt(sort: Desc)])
+  @@index([verdict, createdAt(sort: Desc)])
+  @@index([fleetId])
+  @@map("ai_agent_traces")
+}

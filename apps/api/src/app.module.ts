@@ -11,6 +11,7 @@ import { AiCoreModule } from './ai/ai-core.module';
 import { AiModule } from './ai/ai.module';
 import { TripAnalysisModule } from './trip-analysis/trip-analysis.module';
 import { AiUsageModule } from './ai-usage/ai-usage.module';
+import { AiTracesModule } from './ai-traces/ai-traces.module';
 import { AssistanceModule } from './assistance/assistance.module';
 import { BillingModule } from './billing/billing.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
@@ -193,6 +194,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     BillingModule,
     // Palier « Coûts IA » — journalise l'usage/coût de chaque appel IA + budget (super-admin).
     AiUsageModule,
+    // Conservation des couples (entree, sortie) des appels IA — la matiere qui sert a AMELIORER
+    // les agents. On gardait les resultats, jamais ce qu'on avait envoye pour les obtenir.
+    AiTracesModule,
     // Assistance IA (2026-08) — repond EN DIRECT aux questions sur l'application, en lecture
     // seule, et archive tout pour relecture. Seul poste qui depense volontairement de l'IA.
     AssistanceModule,

@@ -52,12 +52,15 @@ describe('AssistanceAiService', () => {
       ),
     };
     const errorLogger = { record: jest.fn().mockResolvedValue('id') };
-    const svc = new AssistanceAiService(ai as never, aiUsage as never, contexte as never, errorLogger as never);
+    const traces = { record: jest.fn().mockResolvedValue(undefined) };
+    const svc = new AssistanceAiService(
+      ai as never, aiUsage as never, contexte as never, errorLogger as never, traces as never,
+    );
     const user: AuthUser = {
       id: 'u1', authUserId: 'a1', email: 'u@x.fr', firstName: null, lastName: null,
       role: UserRole.FLEET_MANAGER, isOwner: false, fleetId: 'f1', isActive: true, permissions: null,
     };
-    return { svc, ai, aiUsage, contexte, errorLogger, user };
+    return { svc, ai, aiUsage, contexte, errorLogger, traces, user };
   }
 
   // ─── Le chemin normal ──────────────────────────────────────────────────────
@@ -156,6 +159,48 @@ describe('AssistanceAiService', () => {
     const r = await svc.repondre(user, '   ');
     expect(ai.completeJson).not.toHaveBeenCalled();
     expect(r.sansIa).toBe(true);
+  });
+
+  // ─── Conservation des couples (entrée, sortie) ─────────────────────────────
+
+  describe('trace', () => {
+    it('conserve la question et la sortie, mais JAMAIS le contenu des lots', async () => {
+      const { svc, traces, user } = build({
+        lots: [{ key: 'erreurs', libelle: 'Les erreurs subies', data: [{ message: 'donnee-personnelle' }], volume: 1 }],
+      });
+      await svc.repondre(user, 'ma question');
+      const t = traces.record.mock.calls[0][0];
+      const entree = JSON.stringify(t.input);
+      // Recopier les lots creerait une SECONDE COPIE de donnees personnelles, hors de leur table
+      // d'origine et hors des regles de retention qui la gouvernent.
+      expect(entree).not.toContain('donnee-personnelle');
+      expect(entree).toContain('ma question');
+      expect(t.input.lotsConsultes).toEqual([{ lot: 'erreurs', volume: 1, refuse: null }]);
+      expect(t.verdict).toBe('concluant');
+    });
+
+    it('marque « rejete » une réponse qui rend la main à un humain', async () => {
+      const { svc, traces, user } = build({ redaction: { escalade: true } });
+      await svc.repondre(user, 'question');
+      // Une escalade n'est pas un echec technique, mais c'est LE lot a relire pour ameliorer.
+      expect(traces.record.mock.calls[0][0].verdict).toBe('rejete');
+    });
+
+    it('conserve l’entrée même quand la rédaction échoue', async () => {
+      const { svc, traces, user } = build({ echecRedaction: true });
+      await svc.repondre(user, 'question qui a echoue');
+      const t = traces.record.mock.calls[0][0];
+      // C'est le cas le PLUS utile a rejouer : on garde l'entree meme sans reponse.
+      expect(t.verdict).toBe('rejete');
+      expect(t.error).toBeTruthy();
+      expect(JSON.stringify(t.input)).toContain('question qui a echoue');
+    });
+
+    it('n’écrit aucune trace quand le classement échoue (rien à conserver)', async () => {
+      const { svc, traces, user } = build({ echecClassement: true });
+      await svc.repondre(user, 'question');
+      expect(traces.record).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Le schéma garantit la forme, pas le sens ──────────────────────────────
