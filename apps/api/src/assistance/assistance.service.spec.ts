@@ -42,7 +42,11 @@ describe('AssistanceService', () => {
         // 1er appel = réponses de CETTE conversation, 2e = réponses du jour.
         count: jest.fn().mockImplementation(() => Promise.resolve(compte++ === 0 ? (opts.reponsesConversation ?? 0) : (opts.reponsesJour ?? 0))),
       },
-      user: { findUnique: jest.fn().mockResolvedValue({ email: 'x@y.fr', role: 'VIEWER' }) },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ email: 'x@y.fr', role: 'VIEWER' }),
+        // Destinataires de la notification d'ouverture : les admins de la société.
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       fleet: { findUnique: jest.fn().mockResolvedValue({ name: 'Flotte' }), findMany: jest.fn().mockResolvedValue([]) },
     };
     const ia = {
@@ -56,13 +60,17 @@ describe('AssistanceService', () => {
     const aiUsage = { eurRate: jest.fn().mockReturnValue(0.92) };
     const systemActivity = { record: jest.fn() };
     const errorLogger = { record: jest.fn().mockResolvedValue('id') };
-    const svc = new AssistanceService(prisma as never, ia as never, aiUsage as never, systemActivity as never, errorLogger as never);
+    const notifications = { notifyUsers: jest.fn().mockResolvedValue(1) };
+    const svc = new AssistanceService(
+      prisma as never, ia as never, aiUsage as never, systemActivity as never,
+      errorLogger as never, notifications as never,
+    );
     const user: AuthUser = {
       id: MOI, authUserId: 'a', email: 'moi@x.fr', firstName: null, lastName: null,
       role: opts.role ?? UserRole.FLEET_MANAGER, isOwner: false,
       fleetId: opts.fleetId === undefined ? 'f1' : opts.fleetId, isActive: true, permissions: null,
     };
-    return { svc, prisma, ia, systemActivity, errorLogger, user };
+    return { svc, prisma, ia, systemActivity, errorLogger, notifications, user };
   }
 
   // ─── Propriété : la demande n'est jamais perdue ────────────────────────────
@@ -163,6 +171,63 @@ describe('AssistanceService', () => {
     expect(ia.repondre).not.toHaveBeenCalled();
     expect(errorLogger.record.mock.calls[0][3]).toBe('CRITICAL');
     expect(systemActivity.record.mock.calls[0][0].action).toBe('assistance_rappel_urgent');
+  });
+
+  // ─── Notifications ─────────────────────────────────────────────────────────
+
+  describe('notifications', () => {
+    it('prévient les admins de la société à l’OUVERTURE, pas à chaque message', async () => {
+      const { svc, prisma, notifications, user } = build();
+      prisma.user.findMany = jest.fn().mockResolvedValue([{ id: 'admin-1' }, { id: 'admin-2' }]);
+
+      await svc.poser(user, 'premiere question');
+      expect(notifications.notifyUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.notifyUsers.mock.calls[0][0]).toMatchObject({
+        userIds: ['admin-1', 'admin-2'], category: 'ASSISTANCE', kind: 'nouvelle', fleetId: 'f1',
+      });
+
+      notifications.notifyUsers.mockClear();
+      await svc.poser(user, 'question de suite', 'c1');
+      // Une conversation de dix échanges ne doit pas produire dix notifications.
+      expect(notifications.notifyUsers).not.toHaveBeenCalled();
+    });
+
+    it('n’avertit jamais l’auteur de sa propre demande', async () => {
+      const { svc, prisma, user } = build();
+      prisma.user.findMany = jest.fn().mockResolvedValue([]);
+      await svc.poser(user, 'question');
+      expect(prisma.user.findMany.mock.calls[0][0].where).toMatchObject({ id: { not: MOI } });
+    });
+
+    it('sans société, ne prévient PERSONNE (prévenir tous les admins serait une fuite)', async () => {
+      const { svc, notifications, user } = build({ fleetId: null });
+      await svc.poser(user, 'question');
+      expect(notifications.notifyUsers).not.toHaveBeenCalled();
+    });
+
+    it('l’anti-spam est cloisonné par conversation', async () => {
+      const { svc, prisma, notifications, user } = build();
+      prisma.user.findMany = jest.fn().mockResolvedValue([{ id: 'admin-1' }]);
+      await svc.poser(user, 'question');
+      // Deux demandes différentes le même jour doivent produire deux notifications.
+      expect(notifications.notifyUsers.mock.calls[0][0].subjectKey).toBe('c1');
+    });
+
+    it('quand un humain répond, c’est l’AUTEUR qui est prévenu — pas la flotte', async () => {
+      const { svc, notifications, user } = build({ role: UserRole.FLEET_ADMIN });
+      await svc.repondreEnHumain(user, 'c1', 'Bonjour, je reprends votre demande.');
+      expect(notifications.notifyUsers.mock.calls[0][0]).toMatchObject({
+        userIds: [MOI], category: 'ASSISTANCE', kind: 'reprise', fleetId: 'f1',
+      });
+    });
+
+    it('une notification en échec n’empêche pas de demander de l’aide', async () => {
+      const { svc, prisma, notifications, user } = build();
+      prisma.user.findMany = jest.fn().mockResolvedValue([{ id: 'admin-1' }]);
+      notifications.notifyUsers.mockRejectedValue(new Error('push casse'));
+      // Best-effort de bout en bout : le canal d'aide ne dépend pas du canal d'avertissement.
+      await expect(svc.poser(user, 'question')).resolves.toBeDefined();
+    });
   });
 
   // ─── Archive admin ─────────────────────────────────────────────────────────

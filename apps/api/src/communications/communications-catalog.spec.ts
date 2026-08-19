@@ -40,6 +40,8 @@ const EVERY_PUSH: Record<PushTemplateId, true> = {
   report_ready: true,
   validation_pending: true,
   system_notice: true,
+  // Assistance IA (2026-08) : demande d'aide ouverte, ou reprise par un conseiller.
+  assistance: true,
   admin_test: true,
 };
 

@@ -37,7 +37,15 @@ export type NotificationCategory =
   /** Quelque chose attend une décision humaine (valider un lieu, une réservation…). */
   | 'VALIDATION'
   /** Information de fonctionnement adressée à l'exploitant. */
-  | 'SYSTEM';
+  | 'SYSTEM'
+  /**
+   * Assistance : une demande d'aide vient d'être ouverte, ou un conseiller a repris la main.
+   *
+   * Catégorie DISTINCTE de `SYSTEM` à dessein. « Un conseiller vous a répondu » n'est pas une
+   * information de fonctionnement de la plateforme, et quelqu'un qui coupe le bruit système ne
+   * veut sûrement pas rater la réponse à sa propre question.
+   */
+  | 'ASSISTANCE';
 
 export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] = [
   'ALERT',
@@ -45,6 +53,7 @@ export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] = [
   'REPORT',
   'VALIDATION',
   'SYSTEM',
+  'ASSISTANCE',
 ];
 
 /** Libellés FR — jamais l'identifiant brut à l'écran. */
@@ -54,6 +63,7 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> 
   REPORT: 'Rapports',
   VALIDATION: 'À valider',
   SYSTEM: 'Système',
+  ASSISTANCE: 'Assistance',
 };
 
 /** Une phrase par catégorie : l'utilisateur doit savoir ce qu'il coupe. */
@@ -63,6 +73,7 @@ export const NOTIFICATION_CATEGORY_DESCRIPTIONS: Record<NotificationCategory, st
   REPORT: 'Rapports périodiques prêts à consulter.',
   VALIDATION: 'Ce qui attend une décision de votre part.',
   SYSTEM: 'Informations de fonctionnement de la plateforme.',
+  ASSISTANCE: 'Réponses à vos demandes d’aide, et demandes ouvertes par vos utilisateurs.',
 };
 
 /**

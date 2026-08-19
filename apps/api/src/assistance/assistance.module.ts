@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { AssistanceAiService } from './assistance-ai.service';
 import { AssistanceContextService } from './assistance-context.service';
 import { AssistanceController } from './assistance.controller';
@@ -15,7 +16,7 @@ import { AssistanceService } from './assistance.service';
  * faut extraire la connaissance, pas ouvrir ce module.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, NotificationsModule],
   controllers: [AssistanceController],
   providers: [AssistanceService, AssistanceAiService, AssistanceContextService],
 })

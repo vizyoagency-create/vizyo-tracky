@@ -185,6 +185,7 @@ const PUSH_TEMPLATE_PAR_CATEGORIE: Record<
   REPORT: 'report_ready',
   VALIDATION: 'validation_pending',
   SYSTEM: 'system_notice',
+  ASSISTANCE: 'assistance',
 };
 
 /** Alerte enrichie de son vehicule — exportee pour que le rejeu puisse la reconstituer. */

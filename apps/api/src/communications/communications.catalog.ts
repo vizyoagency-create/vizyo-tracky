@@ -52,6 +52,7 @@ export type PushTemplateId =
   | 'report_ready'
   | 'validation_pending'
   | 'system_notice'
+  | 'assistance'
   | 'admin_test';
 
 export interface CommTemplateMeta {
@@ -88,6 +89,7 @@ export const PUSH_TEMPLATE_META: (CommTemplateMeta & { id: PushTemplateId })[] =
   { channel: 'PUSH', id: 'report_ready', label: 'Rapport disponible', category: 'Rapports', trigger: 'Rapport périodique généré', description: 'Le rapport demandé est prêt à être consulté.' },
   { channel: 'PUSH', id: 'validation_pending', label: 'Validation attendue', category: 'Agenda', trigger: 'Demande en attente d’arbitrage', description: 'Une réservation ou une demande attend une décision.' },
   { channel: 'PUSH', id: 'system_notice', label: 'Information système', category: 'Technique', trigger: 'Événement de plateforme à porter à connaissance', description: 'Message de service — maintenance, incident, changement.' },
+  { channel: 'PUSH', id: 'assistance', label: 'Assistance', category: 'Assistance', trigger: 'Demande d’aide ouverte, ou reprise par un conseiller', description: 'Prévient l’exploitant qu’un utilisateur demande de l’aide, et l’utilisateur qu’un humain lui a répondu.' },
   { channel: 'PUSH', id: 'admin_test', label: 'Notification de test', category: 'Technique', trigger: 'Bouton de test dans l’espace admin', description: 'Vérifie qu’un appareil reçoit bien les notifications.' },
 ];
 

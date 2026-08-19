@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import type {
   AssistanceAdminDetailDto,
   AssistanceAdminListItemDto,
@@ -13,6 +13,7 @@ import type {
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveTenantScope } from '../common/tenant-scope';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -56,6 +57,7 @@ export class AssistanceService {
     private readonly aiUsage: AiUsageService,
     private readonly systemActivity: SystemActivityService,
     private readonly errorLogger: ErrorLogger,
+    private readonly notifications: NotificationDispatchService,
   ) {}
 
   // ─── Poser une question ────────────────────────────────────────────────────
@@ -81,6 +83,11 @@ export class AssistanceService {
     await this.prisma.assistanceMessage.create({
       data: { conversationId: conv.id, role: 'user', content: texte },
     });
+
+    // Prévenir les administrateurs de la société — à l'OUVERTURE seulement, jamais à chaque
+    // message. Une conversation de dix échanges ne doit pas produire dix notifications : ce
+    // qu'un exploitant a besoin de savoir, c'est qu'une demande existe.
+    if (!conversationId) await this.prevenirAdmins(user, conv.id, texte);
 
     const [dejaRepondu, aujourdHui] = await Promise.all([
       this.prisma.assistanceMessage.count({ where: { conversationId: conv.id, role: 'assistant' } }),
@@ -361,10 +368,72 @@ export class AssistanceService {
   async repondreEnHumain(viewer: AuthUser, id: string, message: string): Promise<AssistanceAdminDetailDto> {
     const texte = (message ?? '').trim().slice(0, MESSAGE_MAX);
     if (!texte) throw new BadRequestException('Message vide.');
-    await this.chargerScope(viewer, id);
+    const conv = await this.chargerScope(viewer, id);
     await this.prisma.assistanceMessage.create({ data: { conversationId: id, role: 'admin', content: texte } });
     await this.prisma.assistanceConversation.update({ where: { id }, data: { updatedAt: new Date() } });
+    await this.prevenirDemandeur(conv, texte);
     return this.adminDetail(viewer, id);
+  }
+
+  /**
+   * Prévient les administrateurs de la société qu'une demande d'aide vient d'être ouverte.
+   *
+   * L'AUTEUR est exclu : un administrateur qui pose lui-même une question n'a pas besoin qu'on
+   * l'avertisse de l'avoir posée. Best-effort de bout en bout — une notification qui échoue ne
+   * doit jamais empêcher quelqu'un de demander de l'aide.
+   */
+  private async prevenirAdmins(user: AuthUser, conversationId: string, question: string): Promise<void> {
+    try {
+      // Pas de société : personne à prévenir. Un super-admin sans société ne « relève » d'aucun
+      // exploitant, et prévenir tous les admins de toutes les sociétés serait une fuite.
+      if (!user.fleetId) return;
+      const admins = await this.prisma.user.findMany({
+        where: { fleetId: user.fleetId, role: UserRole.FLEET_ADMIN, isActive: true, id: { not: user.id } },
+        select: { id: true },
+      });
+      if (admins.length === 0) return;
+      await this.notifications.notifyUsers({
+        userIds: admins.map((a) => a.id),
+        category: 'ASSISTANCE',
+        kind: 'nouvelle',
+        // Cloisonne l'anti-spam PAR CONVERSATION : deux demandes différentes le même jour
+        // doivent produire deux notifications, pas une.
+        subjectKey: conversationId,
+        title: 'Nouvelle demande d’assistance',
+        body: `${user.firstName ?? user.email} : ${question.slice(0, 120)}`,
+        url: '/admin/assistance',
+        fleetId: user.fleetId,
+      });
+    } catch (e) {
+      this.logger.warn(`Notification d'ouverture non envoyée : ${(e as Error)?.message ?? e}`);
+    }
+  }
+
+  /**
+   * Prévient l'AUTEUR de la demande qu'un humain lui a répondu.
+   *
+   * Le destinataire est le COMPTE qui a posé la question, pas sa société : la réponse le concerne
+   * lui. Prévenir toute la flotte exposerait sa demande à des collègues qui n'ont pas à la lire.
+   */
+  private async prevenirDemandeur(
+    conv: { id: string; userId: string; fleetId: string | null; title: string },
+    reponse: string,
+  ): Promise<void> {
+    try {
+      await this.notifications.notifyUsers({
+        userIds: [conv.userId],
+        category: 'ASSISTANCE',
+        kind: 'reprise',
+        subjectKey: conv.id,
+        title: 'Un conseiller vous a répondu',
+        body: reponse.slice(0, 140),
+        url: `/assistance?conversation=${conv.id}`,
+        // Garde anti cross-tenant du chemin d'envoi : la société figée sur la conversation.
+        fleetId: conv.fleetId,
+      });
+    } catch (e) {
+      this.logger.warn(`Notification de reprise non envoyée : ${(e as Error)?.message ?? e}`);
+    }
   }
 
   private async chargerScope(viewer: AuthUser, id: string) {
