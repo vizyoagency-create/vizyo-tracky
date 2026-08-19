@@ -24,6 +24,29 @@ const SOURCE = 'TRIP_AUTOMATION';
 const RECOMPUTE_TAIL_MS = 10 * 60 * 1000;
 /** Marge amont quand on recompute le « tail sale » (rattrape un trajet frontière). */
 const RECOMPUTE_BACKOFF_MS = 30 * 60 * 1000;
+/**
+ * Amplitude MAXIMALE d'un seul recalcul.
+ *
+ * Sans ce plafond, un véhicule portant un vieux trajet non recalculé déclenchait un recompute sur
+ * TOUTE la fenêtre (`lookbackHours`, 50 jours en prod) : suppression puis re-segmentation de sept
+ * semaines de positions, plusieurs heures de travail — pendant lesquelles le verrou `running`
+ * faisait sauter chaque passage horaire suivant. Le passage finissait tué par un redémarrage AVANT
+ * d'avoir rien persisté, et le suivant repartait du même point : le retard ne se résorbait JAMAIS.
+ * Constat prod du 19/08 : 2 158 trajets encore bruts, dont 1 207 vieux de 30 à 50 jours, alors que
+ * la tranche 1-7 jours était propre — la signature d'un traitement qui n'atteint jamais le fond.
+ *
+ * Avec une tranche bornée, chaque passage avance le front d'un cran par véhicule. La reprise est
+ * GRATUITE et SANS ÉTAT : le passage suivant relit le plus vieux trajet encore brut, qui a avancé.
+ * Rien à mémoriser, rien à perdre si le processus redémarre au milieu.
+ */
+const RECOMPUTE_SLICE_MS = 48 * 60 * 60 * 1000;
+/**
+ * Budget de travail d'un passage. Au-delà, on ne DÉMARRE plus de nouveau véhicule (celui en cours
+ * va au bout) et le passage se clôture normalement : il persiste son bilan, met à jour `lastRunAt`,
+ * et le suivant reprend où il s'est arrêté. C'est ce qui garantit qu'un passage horaire ne peut
+ * plus déborder sur le suivant — la cause du blocage du 19/08.
+ */
+const RUN_BUDGET_MS = 20 * 60 * 1000;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
 const MAX_TRIPS_PER_VEHICLE = 500;
 /** Détail borné stocké par run (les trajets traités, cliquables). */
@@ -40,6 +63,10 @@ type MutableStats = {
   failed: number;
   /** Véhicules écartés d'entrée parce que leur boîtier s'est tu (cf. {@link DORMANT_STOP_ACTING_MS}). */
   skippedDormant: number;
+  /** Tranches non recalculées faute de position : recompute SUPPRIME avant de re-segmenter. */
+  skippedNoPositions: number;
+  /** Véhicules non abordés parce que le budget de temps du passage était épuisé. */
+  skippedBudget: number;
 };
 
 /**
@@ -51,7 +78,11 @@ type MutableStats = {
  * le nombre d'ignorés est en revanche écrit en toutes lettres dans le libellé d'activité, pour
  * qu'un chiffre qui baisse (moins de véhicules traités) soit toujours expliqué.
  */
-type TripAutomationRunStatsWithDormancy = TripAutomationRunStats & { skippedDormant: number };
+type TripAutomationRunStatsWithDormancy = TripAutomationRunStats & {
+  skippedDormant: number;
+  skippedNoPositions: number;
+  skippedBudget: number;
+};
 
 type RunItem = TripAutomationRunItemDto;
 
@@ -165,6 +196,13 @@ export class TripAutomationService {
           const analysisCapReached = stats.analyzed >= settings.maxAnalysesPerRun;
           const narrationCapReached = !aiOn || stats.narrated >= settings.maxNarrationsPerRun;
           if (analysisCapReached && narrationCapReached) break;
+          // BUDGET DE PASSAGE (cf. RUN_BUDGET_MS) — on ne démarre plus de véhicule au-delà. On
+          // COMPTE les véhicules laissés de côté au lieu de sortir en silence : un passage qui
+          // traite 12 véhicules sur 39 doit le dire, sinon il ressemble à un passage complet.
+          if (Date.now() - startMs > RUN_BUDGET_MS) {
+            stats.skippedBudget++;
+            continue;
+          }
           // DORMANCE (seuil « arrêter d'agir », 72 h) — un boîtier muet depuis 3 jours n'a produit
           // AUCUN trajet neuf : le recompute, le listing des trajets et la lecture des analyses
           // tournaient à vide, une fois par heure, pour chaque véhicule mort (en prod : FV-941-LZ,
@@ -189,7 +227,8 @@ export class TripAutomationService {
           }
           stats.vehicles++;
           await this.processVehicle(
-            user, { id: v.id, plate: v.plate, fleetId: fleet.id, fleetName: fleet.name },
+            user,
+            { id: v.id, plate: v.plate, fleetId: fleet.id, fleetName: fleet.name, trackerId: v.tracker?.id ?? null },
             aiOn, windowFrom, windowTo, settings, stats, items,
           );
         }
@@ -203,12 +242,17 @@ export class TripAutomationService {
         action: 'trip_automation_run',
         status: stats.failed > 0 ? 'FAILURE' : 'SUCCESS',
         actor: origin === 'manual' ? 'super-admin' : 'planning',
+        // Un chiffre client ne doit jamais baisser en silence : si des véhicules ont été écartés,
+        // le libellé le DIT (sinon « 12 analysés » au lieu de 30 passerait pour une panne). Les
+        // trois motifs d'exclusion sont distincts et se cumulent — les fondre en un seul total
+        // rendrait impossible de savoir s'il faut rallumer un boîtier ou élargir le budget.
         detail:
           `Automatisation trajets (${origin}) : ${stats.recomputed} recalculé(s) · ${stats.analyzed} analysé(s) · ` +
           `${stats.narrated} récit(s) IA · ${stats.failed} échec(s) sur ${stats.fleets} flotte(s)` +
-          // Un chiffre client ne doit jamais baisser en silence : si des véhicules ont été écartés,
-          // le libellé le DIT (sinon « 12 analysés » au lieu de 30 passerait pour une panne).
-          (stats.skippedDormant > 0 ? ` · ${stats.skippedDormant} véhicule(s) au boîtier muet ignoré(s).` : '.'),
+          (stats.skippedDormant > 0 ? ` · ${stats.skippedDormant} véhicule(s) au boîtier muet ignoré(s)` : '') +
+          (stats.skippedBudget > 0 ? ` · ${stats.skippedBudget} véhicule(s) reportés au passage suivant (budget de temps atteint)` : '') +
+          (stats.skippedNoPositions > 0 ? ` · ${stats.skippedNoPositions} recalcul(s) impossibles faute de position` : '') +
+          '.',
         meta: runStats as unknown as Record<string, unknown>,
       });
       return runStats;
@@ -222,7 +266,7 @@ export class TripAutomationService {
 
   private async processVehicle(
     user: AuthUser,
-    veh: { id: string; plate: string; fleetId: string; fleetName: string | null },
+    veh: { id: string; plate: string; fleetId: string; fleetName: string | null; trackerId: string | null },
     aiOn: boolean,
     windowFrom: Date,
     windowTo: Date,
@@ -248,11 +292,38 @@ export class TripAutomationService {
         });
         if (dirty) {
           const fromMs = Math.max(windowFrom.getTime(), dirty.startedAt.getTime() - RECOMPUTE_BACKOFF_MS);
-          const r = await this.trips.recompute(
-            { userId: user.id, role: user.role, fleetId: user.fleetId },
-            { vehicleId, from: new Date(fromMs).toISOString(), to: windowTo.toISOString() },
-          );
-          stats.recomputed += r.created;
+          // TRANCHE BORNÉE : `fromMs -> fromMs + 48 h`, JAMAIS « jusqu'à maintenant ». Le front
+          // avance d'une tranche par passage et par véhicule ; sur la queue fraîche (le cas
+          // courant, un trajet clôturé il y a quelques minutes) la borne haute retombe sur
+          // `windowTo` et le comportement est identique à avant.
+          const toMs = Math.min(fromMs + RECOMPUTE_SLICE_MS, windowTo.getTime());
+          // recompute() SUPPRIME la tranche avant de la re-segmenter. Sans position pour la
+          // reconstruire, il effacerait des trajets qu'il ne pourrait pas recréer : une tranche
+          // vide est un fait DOUTEUX, pas un fait. On ne touche à rien, on le compte, et on le
+          // remonte au centre d'alerte — le véhicule cale, mais il cale BRUYAMMENT. Un blocage
+          // visible vaut mieux qu'un historique détruit en silence.
+          const positions = veh.trackerId
+            ? await this.prisma.position.count({
+                where: { trackerId: veh.trackerId, timestamp: { gte: new Date(fromMs), lte: new Date(toMs) } },
+              })
+            : 0;
+          if (positions === 0) {
+            stats.skippedNoPositions++;
+            await this.errorLogger.record(
+              new Error(
+                `Recalcul impossible sur ${veh.plate} : aucune position entre ${new Date(fromMs).toISOString()} et ` +
+                  `${new Date(toMs).toISOString()}, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`,
+              ),
+              SOURCE,
+              { fleetId, vehicleId, phase: 'recompute:no-positions', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
+            );
+          } else if (toMs > fromMs) {
+            const r = await this.trips.recompute(
+              { userId: user.id, role: user.role, fleetId: user.fleetId },
+              { vehicleId, from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
+            );
+            stats.recomputed += r.created;
+          }
         }
       } catch (e) {
         stats.failed++;
@@ -491,7 +562,10 @@ export class TripAutomationService {
   }
 
   private emptyStats(): MutableStats {
-    return { fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0, skippedDormant: 0 };
+    return {
+      fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0,
+      skippedDormant: 0, skippedNoPositions: 0, skippedBudget: 0,
+    };
   }
 
   private finalStats(s: MutableStats, durationMs: number): TripAutomationRunStatsWithDormancy {

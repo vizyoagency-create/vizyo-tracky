@@ -34,6 +34,8 @@ describe('TripAutomationService', () => {
     trips?: { id: string }[];
     analyses?: { tripId: string; narrative: string | null }[];
     aiEnabled?: boolean;
+    /** Positions présentes sur la tranche à recalculer (0 = tranche irrécupérable). */
+    positions?: number;
   }) {
     const row = makeRow(opts.row);
     const prisma = {
@@ -48,7 +50,14 @@ describe('TripAutomationService', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       fleet: { findMany: jest.fn().mockResolvedValue(opts.fleets ?? [{ id: 'f1', name: 'Flotte A' }]) },
-      vehicle: { findMany: jest.fn().mockResolvedValue(opts.vehicles ?? [{ id: 'v1', plate: 'AA-001-BB' }]) },
+      // Le boîtier est fourni par défaut : la vraie requête le joint (`tracker: { select: … }`), et
+      // son id sert désormais à compter les positions de la tranche avant tout recalcul.
+      vehicle: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue(opts.vehicles ?? [{ id: 'v1', plate: 'AA-001-BB', tracker: { id: 'tk1', lastSeenAt: new Date() } }]),
+      },
+      position: { count: jest.fn().mockResolvedValue(opts.positions ?? 42) },
       trip: {
         findFirst: jest.fn().mockResolvedValue(opts.dirty ?? null),
         findMany: jest.fn().mockResolvedValue((opts.trips ?? []).map((t) => ({ startedAt: new Date('2026-07-08T07:00:00Z'), ...t }))),
@@ -143,6 +152,68 @@ describe('TripAutomationService', () => {
     });
     await svc.runNow();
     expect(trips.recompute).not.toHaveBeenCalled();
+  });
+
+  /**
+   * TRANCHE BORNÉE (incident du 19/08). Un vieux trajet brut déclenchait un recalcul sur TOUTE la
+   * fenêtre — 50 jours en prod : des heures de travail pendant lesquelles le verrou `running`
+   * faisait sauter chaque passage horaire, puis un processus tué au redémarrage sans rien avoir
+   * persisté. Le retard ne se résorbait jamais. Ce qui est verrouillé ici n'est donc pas « il
+   * recompute » (c'était déjà vrai) mais « il ne recompute JAMAIS plus de 48 h d'un coup ».
+   */
+  describe('recalcul par tranches bornées', () => {
+    const JOUR = 24 * 3600 * 1000;
+    const amplitudeH = (call: { from: string; to: string }) =>
+      (new Date(call.to).getTime() - new Date(call.from).getTime()) / 3_600_000;
+
+    it('un retard de 40 jours ne déclenche qu’une tranche de 48 h', async () => {
+      const vieuxTrajet = new Date(Date.now() - 40 * JOUR);
+      const { svc, trips } = build({
+        row: { lookbackHours: 1200 }, // 50 jours, la valeur de prod
+        dirty: { startedAt: vieuxTrajet },
+        trips: [],
+        analyses: [],
+      });
+      await svc.runNow();
+      expect(trips.recompute).toHaveBeenCalledTimes(1);
+      const call = trips.recompute.mock.calls[0][1];
+      expect(amplitudeH(call)).toBeCloseTo(48, 5);
+      // Le front part du trajet brut (moins la marge amont), pas du début de la fenêtre : c'est ce
+      // qui fait avancer la reprise d'un cran à chaque passage, sans rien mémoriser.
+      expect(new Date(call.from).getTime()).toBe(vieuxTrajet.getTime() - 30 * 60 * 1000);
+    });
+
+    it('sur la queue fraîche, la borne haute reste la fin de fenêtre (comportement inchangé)', async () => {
+      const { svc, trips } = build({
+        row: { lookbackHours: 26 },
+        dirty: { startedAt: new Date(Date.now() - 20 * 60 * 1000) },
+        trips: [],
+        analyses: [],
+      });
+      await svc.runNow();
+      expect(amplitudeH(trips.recompute.mock.calls[0][1])).toBeLessThan(48);
+    });
+
+    it('tranche sans position : rien n’est supprimé, l’anomalie est comptée ET remontée', async () => {
+      const { svc, trips, errorLogger } = build({
+        row: { lookbackHours: 1200 },
+        dirty: { startedAt: new Date(Date.now() - 40 * JOUR) },
+        positions: 0,
+        trips: [],
+        analyses: [],
+      });
+      const stats = await svc.runNow();
+      // recompute() SUPPRIME la tranche avant de la re-segmenter : sans position pour la
+      // reconstruire, il détruirait un historique qu'il ne saurait pas recréer.
+      expect(trips.recompute).not.toHaveBeenCalled();
+      expect(stats.skippedNoPositions).toBe(1);
+      // Le véhicule cale — mais BRUYAMMENT : un blocage visible vaut mieux qu'une perte silencieuse.
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.any(Error),
+        'TRIP_AUTOMATION',
+        expect.objectContaining({ phase: 'recompute:no-positions' }),
+      );
+    });
   });
 
   it('enregistre le passage dans l’historique avec les récits produits (cliquables)', async () => {
