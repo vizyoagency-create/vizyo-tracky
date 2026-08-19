@@ -529,6 +529,9 @@ model User {
   missionShareLinks      MissionShareLink[]      @relation("MissionShareAuthor")
   notificationPreference NotificationPreference?
   notificationDeliveries NotificationDelivery[]
+  /// Demandes d'assistance IA de ce compte. Supprimées avec lui (cascade) : les échanges
+  /// portent sur son activité et ses données, ils n'ont pas à lui survivre.
+  assistanceConversations AssistanceConversation[]
 
   @@index([fleetId])
   @@map("users")
@@ -3850,4 +3853,88 @@ model NotificationDelivery {
   /// Cooldown : « ce destinataire a-t-il déjà reçu CE sujet récemment ? »
   @@index([userId, category, subjectKey, createdAt(sort: Desc)])
   @@map("notification_deliveries")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Assistance IA (2026-08)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Une conversation d'assistance : la question d'un utilisateur, la réponse de l'agent, et
+/// tout ce qui a servi à la produire.
+///
+/// TOUT est conservé, et c'est le point : l'espace admin doit pouvoir relire une réponse des
+/// mois plus tard, la corriger, et recontacter la personne. Une assistance dont les échanges
+/// s'effacent ne permet ni de mesurer la qualité de l'agent, ni de réparer ce qu'il a raté.
+model AssistanceConversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Auteur de la demande. JAMAIS null : une assistance sans demandeur n'a aucun périmètre de
+  /// lecture, donc aucun moyen d'être cloisonnée.
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Société du demandeur AU MOMENT de la demande — figée volontairement. Un utilisateur peut
+  /// changer de société ; l'archive doit rester lisible sous le périmètre qui était le sien,
+  /// sinon on relit une réponse en croyant qu'elle portait sur d'autres données.
+  fleetId String? @db.Uuid
+
+  /// Titre déduit de la première question (liste admin).
+  title String
+
+  /// open | closed | escalated
+  status String @default("open")
+
+  /// Gravité estimée par l'agent : LOW | MEDIUM | HIGH | CRITICAL. Null tant qu'aucune
+  /// synthèse n'a été produite — `LOW` par défaut affirmerait « anodin » sans l'avoir jugé.
+  severity String?
+
+  /// Synthèse structurée de fin de conversation (résumé, problème, résolution, actions).
+  summary Json?
+
+  /// Un humain a repris la main (escalade IA, ou demande de rappel urgent).
+  escalatedAt     DateTime?
+  escalatedReason String?
+
+  /// Relecture admin : qui a relu, quand, et la correction éventuelle à retenir.
+  reviewedAt       DateTime?
+  reviewedByUserId String?   @db.Uuid
+  reviewNote       String?
+
+  messages AssistanceMessage[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([fleetId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("assistance_conversations")
+}
+
+/// Un message d'une conversation d'assistance.
+model AssistanceMessage {
+  id             String                 @id @default(uuid()) @db.Uuid
+  createdAt      DateTime               @default(now())
+  conversationId String                 @db.Uuid
+  conversation   AssistanceConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  /// user | assistant | admin
+  role    String
+  content String
+
+  /// Modèle ayant produit la réponse. Null pour un message humain (utilisateur ou conseiller).
+  model     String?
+  costUsd   Float   @default(0)
+  latencyMs Int?
+
+  /// QUELLES données ont réellement été montrées au modèle pour produire cette réponse.
+  ///
+  /// C'est la trace d'audit du cloisonnement, et elle n'est pas décorative : l'agent lit des
+  /// données réelles (activité, erreurs, trajets). Le jour où quelqu'un demande « qu'est-ce que
+  /// l'IA a vu de mon compte ? », la réponse doit être lisible en base, pas reconstituée de
+  /// mémoire. Ne contient que les CLÉS des lots consultés et leur volume — jamais les données
+  /// elles-mêmes, qui seraient alors dupliquées hors de leur table d'origine.
+  contextUsed Json?
+
+  @@index([conversationId, createdAt])
+  @@map("assistance_messages")
 }
