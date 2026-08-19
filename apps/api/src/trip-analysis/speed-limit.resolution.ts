@@ -106,11 +106,37 @@ export interface LimitePoint {
 /** Marge de rattachement (m). Overpass a filtré à 20 m ; on tolère l'arrondi de projection. */
 export const MATCH_M = 25;
 
+/**
+ * Cette voie porte-t-elle la limite d'une VOITURE ?
+ *
+ * Exposé parce que l'index OSM local (agent hors ligne) parcourt les routes une par une en
+ * flux, sans jamais construire de réponse Overpass. Il doit pourtant trancher exactement comme
+ * l'application : une seule définition de « routable », ici.
+ */
+export function estRoutable(highway: string | undefined): boolean {
+  return !!highway && !NON_DRIVABLE.has(highway);
+}
+
+/**
+ * Limite retenue pour une voie, selon les deux règles — dans cet ordre :
+ *   1. un `maxspeed` EXPLICITE prime : c'est une donnée, pas une hypothèse ;
+ *   2. à défaut, inférence par le TYPE de voie (défauts FR). Beaucoup de routes françaises
+ *      n'ont aucun tag `maxspeed` : la limite y est implicite, et c'est cette inférence qui
+ *      rattrape les 130 / 110 / 90.
+ *
+ * `null` = voie reconnue mais type non interprétable. C'est un VRAI négatif, légitime à cacher.
+ */
+export function limiteDeVoie(tags: Record<string, string> | undefined): number | null {
+  const explicite = parseMaxspeed(tags?.['maxspeed']);
+  if (explicite != null) return explicite;
+  return inferFromHighway(tags?.['highway']);
+}
+
 /** Ne garde que les voies exploitables : un `way` routable avec une géométrie utilisable. */
 export function voiesRoutables(json: OverpassReponse): OverpassWay[] {
   return (json.elements ?? [])
     .filter((e) => e.type === 'way' && Array.isArray(e.geometry) && e.geometry.length > 1)
-    .filter((e) => e.tags?.['highway'] && !NON_DRIVABLE.has(e.tags['highway']));
+    .filter((e) => estRoutable(e.tags?.['highway']));
 }
 
 /** Voie routable la plus proche du point, dans la limite de `MATCH_M`. */
@@ -153,9 +179,7 @@ export function resoudrePoints(
   return points.map((p) => {
     const proche = voieLaPlusProche(p, voies, matchM);
     if (!proche) return { limite: null, trouvee: false };
-    const explicite = parseMaxspeed(proche.tags?.['maxspeed']);
-    if (explicite != null) return { limite: explicite, trouvee: true };
-    return { limite: inferFromHighway(proche.tags?.['highway']), trouvee: true };
+    return { limite: limiteDeVoie(proche.tags), trouvee: true };
   });
 }
 

@@ -1,3 +1,5 @@
+import { RecuperationController } from './recuperation.controller';
+import { RecuperationService } from './recuperation.service';
 import { Global, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from '../auth/auth.module';
@@ -17,9 +19,12 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
 @Global()
 @Module({
   imports: [AuthModule],
-  controllers: [AdminLogsController, CentreAlerteWikiController, VpsAuditWikiController],
+  controllers: [AdminLogsController, CentreAlerteWikiController, VpsAuditWikiController, RecuperationController],
   providers: [
     CobanWireLogger,
+    // Tableau de ce que chaque couche d'enrichissement a REELLEMENT recupere : sans lui,
+    // une couche peut echouer en silence (98,8 % du cache des limites etait faux, invisible).
+    RecuperationService,
     ErrorLogger,
     // Documentation du centre d'alerte (référentiel, procédure, rapports d'audit) servie à
     // l'écran admin : on veut ces documents SOUS LES YEUX au moment où l'on regarde une alerte.

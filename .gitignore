@@ -50,3 +50,5 @@ apps/web/e2e-captures/
 apps/web/test-results/
 apps/web/playwright-report/
 outils/*.log
+outils/.osm/
+outils/node_modules/

@@ -1,4 +1,5 @@
 import { parseMaxspeed, inferFromHighway, distancePointSegment, estRejouable, SpeedLimitService } from './speed-limit.service';
+import { estRoutable, limiteDeVoie } from './speed-limit.resolution';
 
 describe('parseMaxspeed', () => {
   it('nombres, mph, catégories FR, cas spéciaux', () => {
@@ -28,6 +29,47 @@ describe('inferFromHighway', () => {
     expect(inferFromHighway('footway')).toBeNull();
     expect(inferFromHighway('unknown_type')).toBeNull();
     expect(inferFromHighway(undefined)).toBeNull();
+  });
+});
+
+/**
+ * `estRoutable` et `limiteDeVoie` sont exposés parce que l'index OSM LOCAL (agent hors ligne)
+ * parcourt les routes une par une en flux, sans jamais construire de réponse Overpass. Il doit
+ * pourtant trancher exactement comme l'application — d'où une seule définition, testée ici.
+ *
+ * L'accord entre les deux voies a été vérifié en conditions réelles le 2026-08-19 : 26 portions
+ * de production tirées au hasard, 26 réponses identiques, « aucune route à portée » compris.
+ */
+describe('estRoutable — une seule définition pour les deux voies', () => {
+  it('les voies carrossables comptent', () => {
+    for (const h of ['motorway', 'trunk', 'primary', 'residential', 'service']) {
+      expect(estRoutable(h)).toBe(true);
+    }
+  });
+  it('⚠️ un trottoir ne fixe pas la limite d’une voiture', () => {
+    for (const h of ['footway', 'cycleway', 'steps', 'pedestrian', 'construction']) {
+      expect(estRoutable(h)).toBe(false);
+    }
+    expect(estRoutable(undefined)).toBe(false);
+  });
+});
+
+describe('limiteDeVoie — le tag explicite prime, le type infère', () => {
+  it('⚠️ un maxspeed EXPLICITE prime sur l’inférence : c’est une donnée, pas une hypothèse', () => {
+    // Cas réel : une autoroute espagnole taguée 120 ne doit PAS devenir 130 par défaut français.
+    expect(limiteDeVoie({ highway: 'motorway', maxspeed: '120' })).toBe(120);
+    expect(limiteDeVoie({ highway: 'residential', maxspeed: '30' })).toBe(30);
+  });
+  it('sans tag, le type de voie donne la limite implicite', () => {
+    expect(limiteDeVoie({ highway: 'motorway' })).toBe(130);
+    expect(limiteDeVoie({ highway: 'primary' })).toBe(90);
+  });
+  it('type non interprétable → null, un VRAI négatif (la route existe)', () => {
+    expect(limiteDeVoie({ highway: 'bidule' })).toBeNull();
+    expect(limiteDeVoie(undefined)).toBeNull();
+  });
+  it('un maxspeed illisible retombe sur l’inférence plutôt que de renoncer', () => {
+    expect(limiteDeVoie({ highway: 'motorway', maxspeed: 'none' })).toBe(130);
   });
 });
 

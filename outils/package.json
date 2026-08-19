@@ -1,0 +1,9 @@
+{
+  "name": "vizyo-tracky-outils",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agents locaux (poste du proprietaire). Hors bundle API : ces dependances ne partent jamais en production.",
+  "dependencies": {
+    "osm-pbf-parser": "^2.3.0"
+  }
+}
