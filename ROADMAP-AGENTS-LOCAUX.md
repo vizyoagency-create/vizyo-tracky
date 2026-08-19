@@ -187,8 +187,40 @@ améliorer — voir ci-dessous).
 | Plafond par conversation seulement | Ajouter un plafond **par utilisateur et par jour** : sinon on rouvre une conversation à l'infini. |
 | Balise d'escalade fragile (le client peut l'écrire lui-même) | La retirer du texte affiché de façon robuste et ne la traiter que comme un signal serveur. |
 
-**Décision en attente** : périmètre de lecture de l'agent (connaissances seules, ou contexte réel
-de l'utilisateur qui pose la question). Voir « Questions ouvertes ».
+**Périmètre de lecture — décidé le 19/08 : le plus large.** L'agent analyse la question, identifie
+la fonctionnalité concernée, puis consulte l'activité du demandeur, les erreurs subies par son
+compte, ses véhicules et ses trajets s'il y a droit. Ouvert à **tous les utilisateurs connectés**.
+
+Architecture retenue, en **deux temps** plutôt qu'une boucle d'outils :
+
+```
+1. le modèle lit la question et choisit ce dont il a besoin -> sujets + lots de contexte
+2. le SERVEUR va chercher ces lots, scopés sur le demandeur
+3. le modèle répond avec les sujets retenus + les lots
+```
+
+Même capacité, mais **le modèle ne fournit jamais un identifiant** : il choisit des clés dans deux
+listes fermées. S'il pouvait passer un identifiant de véhicule, une phrase bien tournée — ou un
+texte piégé recopié depuis une alerte — suffirait à lui faire réclamer le véhicule d'une autre
+société. Ici le paramètre n'existe pas. Bonus : coût borné à 2 appels par question, au lieu d'une
+boucle dont on ignore la longueur.
+
+**Avancement**
+
+| Pièce | État |
+|---|---|
+| Tables `assistance_conversations` / `assistance_messages` + migration | ✅ |
+| Couche de cloisonnement des lectures (5 lots, gardes de l'API) — 15 tests | ✅ |
+| Base de connaissances (20 sujets) + 14 tests anti-divulgation | ✅ |
+| Service IA en 2 temps + prompt système | ☐ |
+| Plafonds (par conversation, par utilisateur/jour) + coût sous `support_chat` | ☐ |
+| Contrôleur + streaming | ☐ |
+| UI client (chat) + UI admin (archive, relecture, correction, recontact) | ☐ |
+| Bouton « rappel urgent » + notifications | ☐ |
+
+⚠️ **La base de connaissances est un engagement d'entretien.** Une fonctionnalité livrée sans y
+passer est une fonctionnalité sur laquelle l'agent répondra à côté, ou inventera. À traiter comme
+la documentation d'une API publique, pas comme un fichier annexe.
 
 ### ~~Agent « assistance différée » (helper)~~ — ABANDONNÉ le 19/08
 
@@ -244,14 +276,6 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 
 ## Questions ouvertes
 
-- **Périmètre de lecture de l'assistance IA** — la question qui décide de l'architecture :
-  - *Connaissances seules* : l'agent explique comment l'app fonctionne, sans jamais voir les
-    données de personne. Simple, sûr, peu coûteux — mais il ne pourra pas répondre à
-    « pourquoi CE trajet est coupé en deux ? ».
-  - *Connaissances + contexte de l'utilisateur qui demande* : le serveur construit un contexte
-    borné (sa société, ses véhicules, ses alertes récentes), sous les mêmes gardes de cloisonnement
-    que le reste de l'API. Beaucoup plus utile, et beaucoup plus exposé : toute erreur de scoping
-    devient une fuite entre sociétés.
 - **Rétention** des traces IA (point 4) : plafond par action, ou purge à N mois ?
 - **`lookbackHours`** reste à 1200 (50 jours). Avec les tranches bornées c'est tenable — c'est cette
   valeur qui définit jusqu'où on rattrape.
