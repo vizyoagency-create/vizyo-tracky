@@ -2,8 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send,
-} from 'lucide-angular';
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
 
@@ -123,6 +122,22 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
               <p class="desc">Tout ce que Tracky envoie à un humain, réuni : e-mails, SMS et notifications push. Volume et taux de succès par canal, journal unifié et catalogue des modèles — chaque message est identifiable, aucun envoi anonyme.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
+        <!-- ── AUDIT DES ALERTES ──
+             Ajoute apres l'incident des 41 713 fausses alertes : comprendre un deluge
+             demandait de restaurer une sauvegarde et d'ecrire du SQL. La donnee etait
+             pourtant deja en base — chaque alerte porte sa trame. -->
+        <a routerLink="/admin/audit-alertes" class="card" style="--i:4">
+          <span class="accent accent-purple"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-purple"><lucide-icon [img]="Search" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Audit des alertes</h3>
+            <p class="desc">Chaque alerte avec la trame brute qui l'a déclenchée, et le regroupement par cause.</p>
           </div>
         </a>
 
@@ -648,6 +663,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Activity = Activity;
   protected readonly Terminal = Terminal;
   protected readonly MessageSquare = MessageSquare;
+  protected readonly Search = Search;
   protected readonly Users = Users;
   protected readonly Radio = Radio;
   protected readonly Shield = Shield;

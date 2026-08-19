@@ -73,6 +73,7 @@ import { PublicStatsModule } from './public-stats/public-stats.module';
 import { ApiTrafficModule } from './api-traffic/api-traffic.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { DriverUnlockApiModule } from './driver-unlock/driver-unlock-api.module';
+import { AuditAlertesModule } from './audit-alertes/audit-alertes.module';
 import { TrackerOnboardingModule } from './tracker-onboarding/tracker-onboarding.module';
 import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
 
@@ -174,6 +175,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     SurveillanceModule,
     SystemMetricsModule,
     UserActivityModule,
+    AuditAlertesModule,
     TrackerOnboardingModule,
     UnknownTrackersModule,
     // Sprint 4 — écoute audio (micro embarqué), LÉGALEMENT CRITIQUE. Device MOCKÉ ;

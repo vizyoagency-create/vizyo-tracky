@@ -349,6 +349,15 @@ export const routes: Routes = [
         data: { title: 'VPS — performances & données' },
       },
       {
+        // Audit des alertes et de leurs trames — l'ecran qui permet de trancher un
+        // deluge sans restaurer une sauvegarde ni ecrire de SQL.
+        path: 'admin/audit-alertes',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/audit-alertes.component').then((m) => m.AuditAlertesComponent),
+        data: { title: 'Audit des alertes' },
+      },
+      {
         path: 'admin/sms',
         canActivate: [superAdminGuard],
         loadComponent: () =>
