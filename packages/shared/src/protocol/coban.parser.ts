@@ -114,7 +114,19 @@ function decodeRegularPosition(raw: string): CobanFrame {
 
   const alarm = decodeAlarm(parts[1] ?? '');
   const localDateRaw = parts[2] ?? '';
-  const rfid = parts[3] || undefined;
+  /**
+   * Le 4e champ : batterie OU badge RFID, selon le firmware.
+   *
+   * ⚠️ IL ÉTAIT LU COMME UN BADGE, TOUJOURS. Les boîtiers de ce parc y mettent « 100% » —
+   * un pourcentage de batterie rangé dans un champ de badge, donc perdu. Et sans lui,
+   * impossible de distinguer une vraie coupure d'alimentation d'un simple contact coupé.
+   * On teste donc la FORME plutôt que de présumer du firmware.
+   */
+  const champ4 = parts[3] || undefined;
+  const pourcentage = champ4 && /^\d{1,3}%$/.test(champ4.trim())
+    ? Math.min(100, Number.parseInt(champ4, 10))
+    : undefined;
+  const rfid = pourcentage === undefined ? champ4 : undefined;
   const utcTimeRaw = parts[5] ?? '';
   const validFlag = parts[6] ?? '';
 
@@ -193,6 +205,7 @@ function decodeRegularPosition(raw: string): CobanFrame {
     if (!isNaN(a)) result.altitude = a;
   }
   if (rfid) result.rfid = rfid;
+  if (pourcentage !== undefined) result.batteryPercent = pourcentage;
 
   const ignRaw = parts[14] ?? '';
   if (ignRaw === '0' || ignRaw === '1') result.ignition = ignRaw === '1';

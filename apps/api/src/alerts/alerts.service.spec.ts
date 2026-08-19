@@ -22,7 +22,7 @@ const tracker = {
 
 const trackerNoVehicle = { ...tracker, vehicle: null };
 
-function makeFrame(alarm: string): CobanPositionFrame {
+function makeFrame(alarm: string, extra: Partial<CobanPositionFrame> = {}): CobanPositionFrame {
   return {
     type: 'position',
     imei: '111111111111111',
@@ -33,6 +33,7 @@ function makeFrame(alarm: string): CobanPositionFrame {
     longitude: -7.5,
     speedKph: 10,
     raw: '[test]',
+    ...extra,
   };
 }
 
@@ -61,6 +62,8 @@ describe('AlertsService', () => {
     // V1.10 (Sprint 6) — findFirst pour le filtre tenant integre au where.
     alert: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock; count: jest.Mock };
     surveillanceProfile: { findUnique: jest.Mock };
+    tracker: { update: jest.Mock };
+    engineControlCommand: { findFirst: jest.Mock };
     surveillanceEvent: { create: jest.Mock };
   };
   let gateway: { broadcastAlert: jest.Mock; broadcastAlertAcknowledged: jest.Mock };
@@ -72,7 +75,10 @@ describe('AlertsService', () => {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(alertRecord(data))),
         findMany: jest.fn().mockResolvedValue([alertRecord()]),
         findUnique: jest.fn().mockResolvedValue(alertRecord()),
-        findFirst: jest.fn().mockResolvedValue(alertRecord()),
+        // ⚠️ `null` par defaut : c'est l'etat d'un vehicule sans alerte en cours, et
+        // c'est ce que la deduplication interroge. Rendre une alerte par defaut ferait
+        // croire a chaque test qu'un episode est deja ouvert — donc aucune creation.
+        findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(alertRecord(data))),
         updateMany: jest.fn().mockResolvedValue({ count: 3 }),
         count: jest.fn().mockResolvedValue(5),
@@ -83,6 +89,11 @@ describe('AlertsService', () => {
       surveillanceProfile: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      tracker: { update: jest.fn().mockResolvedValue({}) },
+      // ⚠️ `null` par defaut = aucune coupure moteur commandee. C'est l'etat normal ;
+      // rendre un CUT ferait croire a chaque test que nous avons coupe nous-memes,
+      // et plus aucune alerte d'alimentation ne serait creee.
+      engineControlCommand: { findFirst: jest.fn().mockResolvedValue(null) },
       surveillanceEvent: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'evt-1', ...data })),
       },
@@ -316,6 +327,89 @@ describe('AlertsService', () => {
       // Légitime pour un SOS, absurde pour un tarif non publié — qui attend très bien
       // l'ouverture du navigateur.
       expect(dispatch.dispatchAlert).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * ── LE DELUGE D'ALERTES D'ALIMENTATION (2026-08-19) ────────────────────────────────
+   *
+   * 202 alertes CRITIQUES « Alimentation coupée » en 24 h, pour DEUX véhicules garés la
+   * nuit. Deux causes cumulées, et ces tests verrouillent les deux corrections.
+   */
+  describe('alimentation : ne plus crier pour un contact coupé', () => {
+    it('⚠️ batterie pleine : AUCUNE alerte creee — c est le cas des 202', async () => {
+      const r = await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100, speedKph: 0 }),
+        tracker as any,
+      );
+      expect(r).toBeNull();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
+    it('mais l information est GARDEE sur le boitier — pas de cecite', async () => {
+      // Se taire sans laisser de trace remplacerait un bruit par un angle mort.
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100 }),
+        tracker as any,
+      );
+      expect(prisma.tracker.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ lastPowerNotice: expect.any(String) }) }),
+      );
+    });
+
+    it('batterie sous le seuil : l alerte part, avec un message NON VIDE', async () => {
+      // Les 202 alertes portaient un message vide : impossible de juger.
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 40 }),
+        tracker as any,
+      );
+      const appel = prisma.alert.create.mock.calls[0]?.[0] as { data: { message: string } };
+      expect(appel.data.message).toContain('40 %');
+    });
+
+    it('batterie inconnue : on alerte — le doute ne doit pas faire taire', async () => {
+      await service.createFromCobanFrame(makeFrame('power_cut'), tracker as any);
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+  });
+
+
+    it('⚠️ coupure commandee par le planificateur : AUCUNE alerte', async () => {
+      // Le cas reel de DZ-034-CA : l'automatisation coupe a 22:00, le boitier signale
+      // la perte du +12V, et l'application s'alarmait de sa propre action.
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce({ action: 'CUT' } as never);
+      const r = await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        tracker as any,
+      );
+      expect(r).toBeNull();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
+    it('moteur RETABLI puis vraie coupure : l alerte part', async () => {
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce({ action: 'RESTORE' } as never);
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        tracker as any,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+
+  describe('deduplication : une alerte par episode, pas par trame', () => {
+    it('⚠️ une alerte deja ouverte bloque le doublon', async () => {
+      // Le boitier repete son alarme a chaque trame : sans ceci, une alerte toutes
+      // les vingt secondes.
+      prisma.alert.findFirst.mockResolvedValueOnce({ id: 'deja-ouverte' } as never);
+      const r = await service.createFromCobanFrame(makeFrame('sos'), tracker as any);
+      expect(r).toBeNull();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    });
+
+    it('une alerte ACQUITTEE ne bloque pas : l exploitant a traite l episode', async () => {
+      // La recherche filtre sur acknowledgedAt: null — donc rien trouve ici.
+      prisma.alert.findFirst.mockResolvedValueOnce(null as never);
+      const r = await service.createFromCobanFrame(makeFrame('sos'), tracker as any);
+      expect(r).not.toBeNull();
     });
   });
 });

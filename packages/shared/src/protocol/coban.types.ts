@@ -58,6 +58,16 @@ export interface CobanPositionFrame {
   fuel2?: number;
   temperature?: number;
   rfid?: string;
+  /**
+   * Batterie interne du boîtier, en pourcentage — quand le firmware la transmet.
+   *
+   * ⚠️ CE CHAMP DÉCIDE SI UNE ALARME D'ALIMENTATION EST VRAIE. Un boîtier câblé sur du
+   * +12V commuté crie « ac alarm » à chaque coupure de contact, batterie pleine : c'est
+   * un stationnement, pas une panne. Une vraie coupure, elle, vide la batterie.
+   * Sans cette valeur on ne peut pas distinguer les deux — et on a envoyé 202 alertes
+   * critiques en 24 h pour deux véhicules garés (relevé du 2026-08-19).
+   */
+  batteryPercent?: number;
   raw: string;
 }
 

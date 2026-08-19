@@ -18,6 +18,7 @@ import { NotificationDispatchService } from '../notifications/notification-dispa
 import { PrismaService } from '../prisma/prisma.service';
 import { VEHICLE_GROUP_INCLUDE, flattenVehicleGroup } from '../common/vehicle-group';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { analyserAlimentation, messageCoupure } from './alarme-alimentation';
 import { mapCobanAlarm } from './alert-mapping';
 
 interface RequestedBy {
@@ -26,6 +27,14 @@ interface RequestedBy {
   fleetId: string | null;
   accessibleVehicleIds?: string[] | 'ALL';
 }
+
+/**
+ * Fenêtre de déduplication d'une alarme répétée par le boîtier.
+ *
+ * Six heures : assez long pour couvrir une nuit de stationnement sans rouvrir, assez
+ * court pour qu'un épisode du lendemain soit bien un nouvel épisode.
+ */
+const DEDUP_ALARME_MS = 6 * 60 * 60 * 1000;
 
 @Injectable()
 export class AlertsService {
@@ -68,7 +77,73 @@ export class AlertsService {
     }
 
     // Build contextual message based on alert type + frame data.
-    const contextMessage = buildAlertMessage(mapping.type, frame);
+    let contextMessage = buildAlertMessage(mapping.type, frame);
+
+    /**
+     * ── ALIMENTATION : ON VÉRIFIE AVANT DE CRIER (2026-08-19) ──────────────────────
+     *
+     * Un boîtier câblé sur du +12V commuté perd son alimentation à CHAQUE coupure de
+     * contact et le signale sincèrement. Batterie pleine, véhicule garé : ce n'est pas
+     * une panne. 202 alertes CRITIQUES sont parties en 24 h pour deux véhicules qui
+     * dormaient — et un client qui reçoit ça cesse de lire nos alertes.
+     */
+    if (mapping.type === AlertType.POWER_CUT) {
+      /**
+       * ⚠️ AVONS-NOUS COUPE NOUS-MEMES ? C'est la premiere question a poser.
+       *
+       * L'automatisation horaire coupe le moteur via le relais hors des heures de
+       * travail. On cherche donc la derniere commande CUT/RESTORE aboutie : si la
+       * derniere en date est un CUT, la perte d'alimentation est notre oeuvre.
+       */
+      const derniereCommande = await this.prisma.engineControlCommand.findFirst({
+        where: { trackerId: tracker.id, status: { in: ['ACKNOWLEDGED', 'SENT'] } },
+        orderBy: { createdAt: 'desc' },
+        select: { action: true },
+      });
+      const analyse = analyserAlimentation(frame, {
+        moteurCoupeParNous: derniereCommande?.action === 'CUT',
+      });
+      contextMessage = messageCoupure(analyse, frame);
+      if (!analyse.alerter) {
+        // On NE CRÉE PAS d'alerte, mais l'information n'est pas perdue : elle vit sur
+        // le tracker, lisible depuis la fiche véhicule. Se taire sans laisser de trace
+        // remplacerait un bruit par une cécité.
+        await this.prisma.tracker
+          .update({
+            where: { id: tracker.id },
+            data: { lastPowerNoticeAt: new Date(), lastPowerNotice: analyse.motif },
+          })
+          .catch(() => undefined);
+        return null;
+      }
+    }
+
+    /**
+     * ── UNE ALERTE PAR ÉPISODE, PAS PAR TRAME ─────────────────────────────────────
+     *
+     * Le boîtier répète son alarme dans chaque trame tant que l'état dure : à 20 s
+     * d'intervalle, cela faisait une alerte toutes les 20 s. Le GPS perdu avait déjà
+     * cette déduplication ; les alarmes ne l'avaient pas. C'est cette asymétrie qui a
+     * produit le déluge, pas le boîtier.
+     *
+     * On rouvre seulement si la précédente a été acquittée — l'exploitant a alors
+     * signifié qu'il avait traité l'épisode.
+     */
+    const dejaOuverte = await this.prisma.alert.findFirst({
+      where: {
+        vehicleId: tracker.vehicle.id,
+        type: mapping.type,
+        acknowledgedAt: null,
+        createdAt: { gte: new Date(Date.now() - DEDUP_ALARME_MS) },
+      },
+      select: { id: true },
+    });
+    if (dejaOuverte) {
+      this.logger.debug(
+        `Alerte ${mapping.type} deja ouverte pour ${tracker.vehicle.plate} — pas de doublon.`,
+      );
+      return null;
+    }
 
     const alert = await this.prisma.alert.create({
       data: {

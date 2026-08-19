@@ -191,3 +191,66 @@ describe('knotsToKph', () => {
     expect(knotsToKph(0.025)).toBeCloseTo(0.046, 3);
   });
 });
+
+/**
+ * ── LA BATTERIE, ET POURQUOI ELLE DÉCIDE DE TOUT ─────────────────────────────────────
+ *
+ * Trames RÉELLES du parc, relevées le 2026-08-19. Le 4e champ y porte « 100% » — un
+ * pourcentage de batterie, que le parseur rangeait dans le champ RFID et perdait donc.
+ *
+ * Sans cette valeur, une alarme `ac alarm` est indistinguable entre :
+ *   — un boîtier réellement débranché (batterie qui se vide, urgence réelle) ;
+ *   — un boîtier câblé sur du +12V commuté dont on vient de couper le contact
+ *     (batterie pleine, véhicule au parking, aucune importance).
+ *
+ * Faute de les séparer, 202 alertes CRITIQUES sont parties en 24 h pour deux véhicules
+ * garés la nuit. C'est ce que ces tests empêchent de revenir.
+ */
+describe('coban.parser — la batterie du 4e champ', () => {
+  const TRAME_AC = 'imei:864035054756177,ac alarm,260819005830,100%,F,005830.000,A,4340.05575,N,00126.35421,E,,,,0,0,0.00%,,';
+  const TRAME_POS = 'imei:864035054756177,tracker,260819010410,100%,F,010410.000,A,4340.05575,N,00126.35421,E,,,,0,0,0.00';
+
+  it('lit le pourcentage sur une trame d’alarme reelle', () => {
+    const f = decodeFrame(TRAME_AC);
+    expect(f.type).toBe('position');
+    if (f.type !== 'position') return;
+    expect(f.batteryPercent).toBe(100);
+    expect(f.alarm).toBe('power_cut');
+  });
+
+  it('le lit aussi sur une position ordinaire', () => {
+    const f = decodeFrame(TRAME_POS);
+    if (f.type !== 'position') return;
+    expect(f.batteryPercent).toBe(100);
+  });
+
+  it('⚠️ ne le range PLUS dans le champ RFID', () => {
+    // C'etait le defaut : « 100% » atterrissait dans `rfid`, donc la valeur existait
+    // mais aucun code metier ne pouvait s'en servir.
+    const f = decodeFrame(TRAME_AC);
+    if (f.type !== 'position') return;
+    expect(f.rfid).toBeUndefined();
+  });
+
+  it('un VRAI badge RFID reste un badge', () => {
+    // On teste la FORME, pas le firmware : sans le signe pourcent, c'est un badge.
+    const f = decodeFrame('imei:864035054756177,rfid,260819010410,A1B2C3D4,F,010410.000,A,4340.05575,N,00126.35421,E,,,,0,0,0.00');
+    if (f.type !== 'position') return;
+    expect(f.rfid).toBe('A1B2C3D4');
+    expect(f.batteryPercent).toBeUndefined();
+  });
+
+  it('champ vide : ni batterie ni badge, et surtout pas zero', () => {
+    // `0 %` signifierait « batterie a plat » et declencherait une alerte a tort.
+    const f = decodeFrame('imei:864035054756177,tracker,260819010410,,F,010410.000,A,4340.05575,N,00126.35421,E,,,,0,0,0.00');
+    if (f.type !== 'position') return;
+    expect(f.batteryPercent).toBeUndefined();
+    expect(f.rfid).toBeUndefined();
+  });
+
+  it('un pourcentage aberrant est borne a 100', () => {
+    const f = decodeFrame('imei:864035054756177,tracker,260819010410,255%,F,010410.000,A,4340.05575,N,00126.35421,E,,,,0,0,0.00');
+    if (f.type !== 'position') return;
+    expect(f.batteryPercent).toBe(100);
+  });
+});

@@ -901,6 +901,13 @@ model Tracker {
   // verboseUntil = override admin temporaire qui force l'INSERT de chaque trame (debugging).
   lastWriteAt            DateTime?
   lastSampledState       String?
+
+  /// TRK-030 — Alimentation externe absente SANS coupure reelle (batterie pleine).
+  /// L'information n'a pas a reveiller quelqu'un, mais elle ne doit pas disparaitre :
+  /// elle se lit sur la fiche vehicule. Se taire sans laisser de trace remplacerait
+  /// un bruit par une cecite.
+  lastPowerNoticeAt      DateTime?
+  lastPowerNotice        String?
   verboseUntil           DateTime?
   // V1.5 (Sprint H3) — pilotage du fix interval boitier (commande Coban `fix...***n`).
   // desired = ce que le serveur veut que le boitier emette ; current = ce qu'on observe
