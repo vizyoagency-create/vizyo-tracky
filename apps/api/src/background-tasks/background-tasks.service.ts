@@ -42,6 +42,11 @@ interface CatalogEntry {
   fire?: { tz: string; matcher: (w: Date) => boolean };
   /** Automatisation IA configurable : le « prochain » se calcule depuis ses réglages DB. */
   ai?: 'trip' | 'activity' | 'agenda' | 'place';
+  /**
+   * Traitement qui ne tourne PAS sur ce serveur — son état se déduit du travail qu'il a écrit
+   * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
+   */
+  externe?: 'limites-vitesse';
 }
 
 const CATALOG: CatalogEntry[] = [
@@ -304,6 +309,24 @@ const CATALOG: CatalogEntry[] = [
     purpose: 'Repousse les numéros SIM des boîtiers et des utilisateurs vers la passerelle SMS, pour qu\'un envoi ne soit jamais refusé faute de numéro autorisé.',
     periodic: { everyMs: 3_600_000, offsetMs: 1_500_000 },
   },
+  {
+    id: 'agent-limites-vitesse', label: 'Limites de vitesse OSM (agent sur poste)',
+    category: 'Maintenance données', kind: 'cron',
+    scheduleHuman: '04:30, 08:30, 14:00, 18:30 et 22:00 — sur le poste du propriétaire',
+    criticality: 'moyenne', antiOverlap: true,
+    note: "Ne tourne PAS sur ce serveur. L'IP du VPS s'est fait bannir d'overpass-api.de ; depuis le poste, la même requête passe et répond trois fois plus vite. Son état ci-contre est déduit des cellules réellement écrites, pas d'un simple signal de démarrage — si le poste est éteint, ça se voit.",
+    purpose: "Résout auprès d'OpenStreetMap la limite légale de chaque portion de route parcourue. Sans elle, aucun excès de vitesse n'est calculable et le score de conduite ne mesure rien. Gratuit : aucun crédit d'IA.",
+    externe: 'limites-vitesse',
+    fire: {
+      tz: SERVER_TZ,
+      matcher: (w) =>
+        (w.getHours() === 4 && w.getMinutes() === 30) ||
+        (w.getHours() === 8 && w.getMinutes() === 30) ||
+        (w.getHours() === 14 && w.getMinutes() === 0) ||
+        (w.getHours() === 18 && w.getMinutes() === 30) ||
+        (w.getHours() === 22 && w.getMinutes() === 0),
+    },
+  },
 ];
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
@@ -324,11 +347,12 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
       this.prisma.placeAutomationSettings.findFirst({ orderBy: { createdAt: 'asc' } }).catch(() => null),
+      this.etatAgentLimites(),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -343,6 +367,12 @@ export class BackgroundTasksService {
       if (e.continuous) return base; // flux continu → pas de compte-à-rebours daté
 
       if (e.ai) return { ...base, ...this.aiTask(e.ai, tripS, activityS, agendaS, placeS, nowMs) };
+
+      // Traitement externe : son etat vient du travail ECRIT en base, pas du registre local.
+      if (e.externe === 'limites-vitesse') {
+        const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
+        return { ...base, ...agentLimites, nextRunAt: next ? next.toISOString() : null };
+      }
 
       // Cron daté (heure fixe ou haute fréquence).
       const next = e.periodic
@@ -361,6 +391,39 @@ export class BackgroundTasksService {
     };
   }
 
+  /**
+   * État de l'agent de limites de vitesse, qui tourne sur le POSTE du propriétaire.
+   *
+   * ⚠️ On ne lui demande pas s'il va bien : on regarde ce qu'il a ÉCRIT. La date de la dernière
+   * cellule résolue prouve du travail réel — un agent qui démarre puis échoue silencieusement
+   * (poste éteint, Overpass qui refuse, session fermée) n'avancera pas cette date, et ça se verra
+   * ici. Un simple signal de démarrage aurait menti.
+   *
+   * `enabled` reflète la même chose : « a-t-il produit quelque chose récemment ? ». Le serveur ne
+   * peut pas savoir si la tâche planifiée existe encore sur le poste ; il peut savoir si elle
+   * travaille.
+   */
+  private async etatAgentLimites(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+    try {
+      const [dernier, resolues, restantes] = await Promise.all([
+        this.prisma.speedLimitCache.aggregate({ _max: { createdAt: true } }),
+        this.prisma.speedLimitCache.count({ where: { maxspeed: { not: null } } }),
+        this.prisma.tripAnalysis.count({ where: { limitsKnown: false } }),
+      ]);
+      const at = dernier._max.createdAt ?? null;
+      // Deux creneaux d'ecart (le plus long trou de la journee est 22:00 -> 04:30, soit 6h30) :
+      // au-dela, l'agent ne travaille plus et ce n'est pas un simple alea.
+      const frais = at !== null && Date.now() - at.getTime() < 13 * 3_600_000;
+      return {
+        enabled: at === null ? null : frais,
+        lastRunAt: at ? at.toISOString() : null,
+        settingsSummary: `${resolues.toLocaleString('fr-FR')} limites résolues · ${restantes.toLocaleString('fr-FR')} trajets encore sans limite`,
+      };
+    } catch {
+      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
+      return { enabled: null, lastRunAt: null, settingsSummary: null };
+    }
+  }
   /** Calcule enabled / prochain / dernier / résumé pour une automatisation IA depuis ses réglages. */
   private aiTask(
     kind: 'trip' | 'activity' | 'agenda' | 'place',

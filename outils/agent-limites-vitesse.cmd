@@ -12,5 +12,5 @@ REM ---------------------------------------------------------------------------
 cd /d "%~dp0.."
 echo. >> "%~dp0agent-limites-vitesse.log"
 echo ===== %DATE% %TIME% ===== >> "%~dp0agent-limites-vitesse.log"
-"C:\Program Files\nodejs\node.exe" "%~dp0agent-limites-vitesse.cjs" --minutes=50 >> "%~dp0agent-limites-vitesse.log" 2>&1
+"C:\Program Files\nodejs\node.exe" "%~dp0agent-limites-vitesse.cjs" --minutes=110 >> "%~dp0agent-limites-vitesse.log" 2>&1
 exit /b %ERRORLEVEL%
