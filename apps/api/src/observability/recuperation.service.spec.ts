@@ -14,7 +14,7 @@ import { RecuperationService } from './recuperation.service';
 function service(n: Partial<Record<string, number>> = {}) {
   const c = (v = 0) => jest.fn().mockResolvedValue(v);
   const prisma = {
-    trip: { count: c(n['trajets'] ?? 0) },
+    trip: { count: jest.fn().mockResolvedValueOnce(n['trajets'] ?? 0).mockResolvedValueOnce(n['horsRetention'] ?? 0) },
     tripAnalysis: {
       count: jest
         .fn()
@@ -35,7 +35,7 @@ function service(n: Partial<Record<string, number>> = {}) {
 
 /** Les chiffres réels du 2026-08-19, avant rattrapage. */
 const REEL = {
-  trajets: 14156, analyses: 7001, limites: 2559, recits: 2556, carburant: 6418,
+  trajets: 11465, horsRetention: 2691, analyses: 7001, limites: 2559, recits: 2556, carburant: 6418,
   lieux: 11, stations: 461, geocodages: 42, cacheTotal: 22416, cacheResolu: 22312,
 };
 
@@ -45,15 +45,15 @@ const ligne = async (svc: RecuperationService, id: string) =>
 describe('Récupération — compter, jamais estimer', () => {
   it('⚠️ le taux est le rapport EXACT obtenu/attendu, pas une moyenne', async () => {
     const l = await ligne(service(REEL), 'analyse');
-    expect(l.attendu).toBe(14156);
+    expect(l.attendu).toBe(11465);
     expect(l.obtenu).toBe(7001);
-    expect(l.taux).toBeCloseTo(49.5, 1); // 7001/14156
+    expect(l.taux).toBeCloseTo(61.1, 1); // 7001/11465
   });
 
-  it('⚠️ met en évidence le trou réel : la moitié des trajets n’a aucune analyse', async () => {
+  it('⚠️ met en évidence le trou réel : des milliers de trajets sans analyse', async () => {
     const l = await ligne(service(REEL), 'analyse');
-    expect(l.manque).toContain('7');
-    expect(l.taux!).toBeLessThan(50);
+    expect(l.manque).toContain('4');
+    expect(l.taux!).toBeLessThan(70);
   });
 
   it('les limites de vitesse se comparent aux ANALYSES, pas aux trajets bruts', async () => {
@@ -61,6 +61,39 @@ describe('Récupération — compter, jamais estimer', () => {
     const l = await ligne(service(REEL), 'limites');
     expect(l.attendu).toBe(REEL.analyses);
     expect(l.obtenu).toBe(REEL.limites);
+  });
+});
+
+/**
+ * ── LE DÉNOMINATEUR NE DOIT PAS CONTENIR L'IMPOSSIBLE ────────────────────────────────
+ *
+ * Les positions sont purgées au-delà de 60 jours. Relevé du 2026-08-19 : 2 691 trajets
+ * antérieurs au 18/06 n'ont plus AUCUN point — vérifié, zéro sur 2 691. Les compter comme
+ * « à rattraper » affichait un objectif inatteignable et un taux faussement bas ; les analyser
+ * de force aurait produit des analyses vides, indiscernables d'un vrai trajet immobile.
+ */
+describe('Récupération — l’impossible sort du dénominateur, mais reste visible', () => {
+  it('⚠️ les trajets dont les positions sont purgées ne comptent PAS comme un retard', async () => {
+    const l = await ligne(service(REEL), 'analyse');
+    expect(l.attendu).toBe(11465); // et non 14 156
+    expect(l.role).toContain('ENCORE ANALYSABLES');
+  });
+
+  it('⚠️ ils ne sont pas cachés pour autant : une ligne dédiée les montre et dit pourquoi', async () => {
+    const l = await ligne(service(REEL), 'hors-retention');
+    expect(l.obtenu).toBe(2691);
+    expect(l.taux).toBeNull(); // pas un retard : un fait
+    expect(l.role).toContain('purg');
+    expect(l.role).toContain('60 jours');
+  });
+
+  it('l’obtenu ne depasse jamais l’attendu, meme si des analyses survivent a la purge', async () => {
+    // Une analyse peut rester en base apres la purge de ses positions : le taux ne doit pas
+    // depasser 100 %, sinon l'ecran raconte n'importe quoi.
+    const l = await ligne(service({ trajets: 100, horsRetention: 50, analyses: 130 }), 'analyse');
+    expect(l.obtenu).toBe(100);
+    expect(l.taux).toBe(100);
+    expect(l.manque).toBeNull();
   });
 });
 

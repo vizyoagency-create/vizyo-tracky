@@ -54,8 +54,22 @@ export class RecuperationService {
   }
 
   async etat(): Promise<{ lignes: LigneRecuperation[]; mesureLe: string }> {
+    /**
+     * ⚠️ LE DÉNOMINATEUR HONNÊTE EXCLUT L'IMPOSSIBLE.
+     *
+     * Les positions sont purgées au-delà de 60 jours (`POSITIONS_RETENTION_DAYS`). Un trajet plus
+     * ancien n'a plus AUCUN point : il ne peut pas être analysé, et le forcer produirait une
+     * analyse vide — distance nulle, aucun arrêt — indiscernable d'un vrai trajet immobile.
+     *
+     * Relevé du 2026-08-19 : 2 691 trajets dans ce cas, tous antérieurs au 18/06. Les compter
+     * comme « à rattraper » affichait un objectif inatteignable et un taux faussement bas. On les
+     * sort du dénominateur, et on les montre sur une ligne à part qui dit pourquoi.
+     */
+    const limiteRetention = new Date(Date.now() - 60 * 86_400_000);
+
     const [
       trajets,
+      trajetsHorsRetention,
       analyses,
       avecLimites,
       avecRecit,
@@ -66,7 +80,8 @@ export class RecuperationService {
       cacheTotal,
       cacheResolu,
     ] = await Promise.all([
-      this.prisma.trip.count({ where: { endedAt: { not: null } } }),
+      this.prisma.trip.count({ where: { endedAt: { not: null }, startedAt: { gte: limiteRetention } } }),
+      this.prisma.trip.count({ where: { endedAt: { not: null }, startedAt: { lt: limiteRetention } } }),
       this.prisma.tripAnalysis.count(),
       this.prisma.tripAnalysis.count({ where: { limitsKnown: true } }),
       this.prisma.tripAnalysis.count({ where: { narrative: { not: null } } }),
@@ -85,11 +100,21 @@ export class RecuperationService {
         id: 'analyse',
         famille: 'Trajets',
         libelle: 'Analyse du trajet',
-        role: "Distance, durée, arrêts, freinages, score de conduite. Sans elle, un trajet n'est qu'une trace sur la carte.",
+        role: "Distance, durée, arrêts, freinages, score de conduite. Sans elle, un trajet n'est qu'une trace sur la carte. Compté sur les trajets ENCORE ANALYSABLES, c'est-à-dire dont les positions n'ont pas été purgées.",
         attendu: trajets,
-        obtenu: analyses,
-        taux: this.taux(analyses, trajets),
-        manque: reste(trajets - analyses),
+        obtenu: Math.min(analyses, trajets),
+        taux: this.taux(Math.min(analyses, trajets), trajets),
+        manque: reste(Math.max(0, trajets - analyses)),
+      },
+      {
+        id: 'hors-retention',
+        famille: 'Trajets',
+        libelle: 'Trajets définitivement inanalysables',
+        role: "Leurs positions ont été purgées au-delà de 60 jours (POSITIONS_RETENTION_DAYS). Sans points, une analyse serait vide — distance nulle, aucun arrêt — et indiscernable d'un vrai trajet immobile. On préfère l'absence à une donnée fausse.",
+        attendu: null,
+        obtenu: trajetsHorsRetention,
+        taux: null,
+        manque: null,
       },
       {
         id: 'limites',

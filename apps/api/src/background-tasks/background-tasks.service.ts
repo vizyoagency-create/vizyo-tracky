@@ -48,6 +48,19 @@ interface CatalogEntry {
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
   externe?: 'limites-vitesse';
+  /**
+   * Fichier source qui porte le `@Cron`, relatif a `apps/api/src`.
+   *
+   * ⚠️ CE CHAMP N'EST PAS DECORATIF : un test parcourt le code, releve tous les `@Cron` et
+   *    exige que chaque fichier qui en porte un soit revendique ici. C'est ce qui rend
+   *    l'audit MECANIQUE — sans lui, un traitement ajoute demain tournerait en silence et
+   *    personne ne s'en apercevrait avant l'incident. Verifie le 2026-08-19 : 34 crons dans
+   *    le code, et il en manquait un au catalogue — la sonde qui surveille les taches
+   *    silencieuses, precisement.
+   *
+   * Absent pour ce qui ne tourne pas sur ce serveur (agent sur poste).
+   */
+  source?: string;
   /** Qui paie le travail IA. Défaut déduit : `facture` pour une automatisation IA, `aucun` sinon. */
   coutIa?: BgTaskCoutIa;
 }
@@ -55,45 +68,52 @@ interface CatalogEntry {
 const CATALOG: CatalogEntry[] = [
   // ───────── Sécurité & moteur ─────────
   {
-    id: 'vehicle-schedules', label: 'Horaires véhicules (coupe/reprise auto)', category: 'Sécurité & moteur',
+    id: 'vehicle-schedules',
+    source: 'vehicle-schedules/schedule-cron.service.ts', label: 'Horaires véhicules (coupe/reprise auto)', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
     configurable: true, settingsRoute: '/fleet-schedules',
     purpose: 'Coupe ou rend le moteur selon les horaires programmés (jamais en mouvement ; attend 10 min d\'arrêt).',
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
   {
-    id: 'audio-auto-disarm', label: 'Auto-désarmement écoute audio', category: 'Sécurité & moteur',
+    id: 'audio-auto-disarm',
+    source: 'audio-monitoring/audio-auto-disarm.service.ts', label: 'Auto-désarmement écoute audio', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
     purpose: 'Filet de sécurité : remet un boîtier resté en écoute (micro) en mode suivi GPS pour qu\'il réapparaisse sur la carte.',
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
   {
-    id: 'surveillance-scheduler', label: 'Armement auto des surveillances', category: 'Sécurité & moteur',
+    id: 'surveillance-scheduler',
+    source: 'surveillance/surveillance-scheduler.service.ts', label: 'Armement auto des surveillances', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
     purpose: 'Arme/désarme automatiquement les profils de surveillance selon leurs plages horaires.',
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
   {
-    id: 'tracker-commands-scheduler', label: 'Envoi des commandes programmées', category: 'Sécurité & moteur',
+    id: 'tracker-commands-scheduler',
+    source: 'tracker-commands/tracker-commands-scheduler.service.ts', label: 'Envoi des commandes programmées', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'toutes les 30 s', criticality: 'moyenne', antiOverlap: false,
     purpose: 'Envoie aux boîtiers les commandes planifiées dont l\'heure est arrivée (10 par passage).',
     periodic: { everyMs: 30_000, offsetMs: 0 },
   },
   {
-    id: 'fix-command-expiry', label: 'Clôture des commandes de cadence sans réponse', category: 'Sécurité & moteur',
+    id: 'fix-command-expiry',
+    source: 'tracker-fix-mode/tracker-fix-mode.service.ts', label: 'Clôture des commandes de cadence sans réponse', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: true,
     purpose: 'Ferme les commandes de cadence GPS restées sans effet : le boîtier n\'accuse jamais réception, elles resteraient « en attente » indéfiniment au centre d\'alertes.',
     periodic: { everyMs: 600_000, offsetMs: 45_000 },
   },
   {
-    id: 'trips-timeout', label: 'Clôture des trajets en cours', category: 'Sécurité & moteur',
+    id: 'trips-timeout',
+    source: 'trips/trips.service.ts', label: 'Clôture des trajets en cours', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'moyenne', antiOverlap: false,
     purpose: 'Ferme les trajets restés « en cours » alors que le véhicule est à l\'arrêt depuis un moment.',
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
 
   {
-    id: 'error-rate-watchdog', label: "Vigie de saturation du centre d'alerte", category: 'Sécurité & moteur',
+    id: 'error-rate-watchdog',
+    source: 'observability/error-rate-watchdog.service.ts', label: "Vigie de saturation du centre d'alerte", category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: true,
     purpose: "Prévient par e-mail quand plus de 5 erreurs sont enregistrées sur l'heure glissante (1 e-mail/h max).",
     periodic: { everyMs: 600_000, offsetMs: 0 },
@@ -101,32 +121,37 @@ const CATALOG: CatalogEntry[] = [
 
   // ───────── IA & rapports ─────────
   {
-    id: 'trip-automation', label: 'Automatisation des trajets (analyse + récit IA)', category: 'IA & rapports',
+    id: 'trip-automation',
+    source: 'trip-analysis/trip-automation.service.ts', label: 'Automatisation des trajets (analyse + récit IA)', category: 'IA & rapports',
     kind: 'cron', scheduleHuman: 'toutes les heures à HH:45 (si réglé)', criticality: 'moyenne', antiOverlap: true,
     configurable: true, settingsRoute: '/admin/trip-automation', ai: 'trip',
     purpose: 'Recalcule les trajets, lance l\'analyse et le récit IA pour toutes les flottes, selon la cadence réglée.',
   },
   {
-    id: 'place-automation', label: 'Automatisation des analyses de lieux', category: 'IA & rapports',
+    id: 'place-automation',
+    source: 'fleet-places/place-automation.service.ts', label: 'Automatisation des analyses de lieux', category: 'IA & rapports',
     kind: 'cron', scheduleHuman: 'chaque jour à l\'heure réglée (sondé à HH:10)', criticality: 'basse', antiOverlap: true,
     configurable: true, settingsRoute: '/admin/place-automation', ai: 'place',
     purpose: 'Analyse les lieux clés dont les faits ont changé, sous plafonds de nombre et de dépense. Désactivé par défaut.',
   },
   {
-    id: 'activity-report', label: 'Rapport IA d\'activité utilisateurs', category: 'IA & rapports',
+    id: 'activity-report',
+    source: 'user-activity/activity-report.service.ts', label: 'Rapport IA d\'activité utilisateurs', category: 'IA & rapports',
     kind: 'cron', scheduleHuman: 'à échéance (vérifié chaque heure)', criticality: 'basse', antiOverlap: false,
     configurable: true, settingsRoute: '/admin/activity', ai: 'activity',
     purpose: 'Génère un rapport IA d\'observation de l\'activité (quotidien / hebdo / mensuel selon réglage).',
   },
   {
-    id: 'agenda-agent', label: 'Agent nocturne d\'optimisation d\'agenda', category: 'IA & rapports',
+    id: 'agenda-agent',
+    source: 'agenda/agenda-agent-runner.service.ts', label: 'Agent nocturne d\'optimisation d\'agenda', category: 'IA & rapports',
     kind: 'cron', scheduleHuman: 'chaque nuit à l\'heure réglée (par flotte)', criticality: 'moyenne', antiOverlap: true,
     configurable: true, settingsRoute: '/agenda', ai: 'agenda',
     note: 'Se règle dans l\'Agenda (par flotte), pas ici.',
     purpose: 'Détecte les trajets récurrents et propose (ou crée) des réservations, chaque nuit, par flotte.',
   },
   {
-    id: 'reports-weekly', label: 'E-mail hebdo du rapport PDF', category: 'IA & rapports',
+    id: 'reports-weekly',
+    source: 'reports/reports-cron.service.ts', label: 'E-mail hebdo du rapport PDF', category: 'IA & rapports',
     kind: 'cron', scheduleHuman: 'chaque lundi à 08:00', criticality: 'basse', antiOverlap: false,
     purpose: 'Envoie par e-mail le rapport PDF de la semaine passée à chaque flotte (destinataire réglé sur la fiche flotte).',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getDay() === 1 && w.getHours() === 8 && w.getMinutes() === 0 },
@@ -134,58 +159,67 @@ const CATALOG: CatalogEntry[] = [
 
   // ───────── Maintenance données ─────────
   {
-    id: 'log-cleanup', label: 'Purge des journaux', category: 'Maintenance données',
+    id: 'log-cleanup',
+    source: 'observability/log-cleanup.service.ts', label: 'Purge des journaux', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:00', criticality: 'moyenne', antiOverlap: false,
     purpose: 'Supprime les vieux journaux (wire / erreurs / audit) et les journaux SMS de plus de 90 jours (numéros + contenu).',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
-    id: 'mission-share-purge', label: 'Purge des liens de partage expirés', category: 'Maintenance données',
+    id: 'mission-share-purge',
+    source: 'depot/mission-share-purge.service.ts', label: 'Purge des liens de partage expirés', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:15', criticality: 'basse', antiOverlap: true,
     note: 'Purge REELLE. Les 30 jours de conservation servent l\'audit : qui a ouvert cet accès, quand, combien de fois.',
     purpose: 'Supprime les liens publics de suivi de mission expirés depuis plus de 30 jours (avec leurs empreintes d\'ouverture tronquées).',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 15 },
   },
   {
-    id: 'trips-retention', label: 'Rétention des trajets (RGPD)', category: 'Maintenance données',
+    id: 'trips-retention',
+    source: 'trips/trips-retention.service.ts', label: 'Rétention des trajets (RGPD)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:45', criticality: 'moyenne', antiOverlap: false,
     note: 'Purge REELLE et irreversible. Pour stopper : TRIPS_RETENTION_MONTHS=0.',
     purpose: 'Supprime définitivement les trajets de plus de 12 mois, avec leurs analyses IA et arrêts carburant liés.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 45 },
   },
   {
-    id: 'work-time-registry', label: 'Registre du temps de travail (RGPD)', category: 'Maintenance données',
+    id: 'work-time-registry',
+    source: 'drivers/work-time.service.ts', label: 'Registre du temps de travail (RGPD)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:00', criticality: 'basse', antiOverlap: false,
     purpose: 'Agrège chaque nuit les trajets attribués en un registre journalier par conducteur (sans positions, rétention 5 ans) et purge les entrées expirées.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 0 },
   },
   {
-    id: 'positions-retention', label: 'Rétention des positions GPS', category: 'Maintenance données',
+    id: 'positions-retention',
+    source: 'positions/data-retention.service.ts', label: 'Rétention des positions GPS', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:30', criticality: 'moyenne', antiOverlap: false,
     configurable: true, settingsRoute: '/admin/retention', note: 'Purge REELLE et irreversible. Pour stopper : POSITIONS_RETENTION_DAYS=0.',
     purpose: 'Supprime définitivement les positions GPS de plus de 60 jours (rétention CNIL), par lots bornés.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 30 },
   },
   {
-    id: 'user-activity-close', label: 'Clôture des sessions inactives', category: 'Maintenance données',
+    id: 'user-activity-close',
+    source: 'user-activity/user-activity.service.ts', label: 'Clôture des sessions inactives', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'toutes les 2 min', criticality: 'basse', antiOverlap: false,
     purpose: 'Ferme les sessions utilisateurs restées ouvertes sans signal (onglet fermé sans notification).',
     periodic: { everyMs: 120_000, offsetMs: 30_000 },
   },
   {
-    id: 'user-activity-purge', label: 'Purge de l\'historique d\'activité (>90j)', category: 'Maintenance données',
+    id: 'user-activity-purge',
+    source: 'user-activity/user-activity.service.ts', label: 'Purge de l\'historique d\'activité (>90j)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:15', criticality: 'basse', antiOverlap: false,
     purpose: 'Supprime l\'historique d\'activité utilisateurs de plus de 90 jours.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 15 },
   },
   {
-    id: 'security-login-purge', label: 'Purge des événements de connexion (>365j)', category: 'Maintenance données',
+    id: 'security-login-purge',
+    source: 'security/security-cleanup.service.ts', label: 'Purge des événements de connexion (>365j)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:00 (Paris)', criticality: 'basse', antiOverlap: false,
     purpose: 'Supprime les événements de connexion (carte des lieux, appareils) de plus d\'un an — rétention sécurité.',
     fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
-    id: 'sims-sync', label: 'Synchronisation du parc SIM', category: 'Maintenance données',
+    id: 'sims-sync',
+    source: 'sims/sims-sync.service.ts', label: 'Synchronisation du parc SIM', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'toutes les 30 min', criticality: 'basse', antiOverlap: false,
     purpose: 'Met à jour l\'état des cartes SIM depuis le fournisseur (consommation, statut).',
     periodic: { everyMs: 1_800_000, offsetMs: 0 },
@@ -193,38 +227,52 @@ const CATALOG: CatalogEntry[] = [
 
   // ───────── Système & observabilité ─────────
   {
-    id: 'metrics-purge', label: 'Purge des métriques système (>30j)', category: 'Système & observabilité',
+    id: 'metrics-purge',
+    source: 'system-metrics/metrics-collector.service.ts', label: 'Purge des métriques système (>30j)', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:30', criticality: 'basse', antiOverlap: false,
     purpose: 'Supprime les mesures de charge du serveur de plus de 30 jours.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 30 },
   },
   {
-    id: 'backup-health', label: 'Contrôle santé des sauvegardes', category: 'Système & observabilité',
+    id: 'backup-health',
+    source: 'backup-health/backup-health.service.ts', label: 'Contrôle santé des sauvegardes', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'chaque jour à 06:00', criticality: 'haute', antiOverlap: false,
     purpose: 'Vérifie qu\'une sauvegarde de la base a bien eu lieu dans les 30 dernières heures, sinon alerte.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 0 },
   },
   {
-    id: 'gps-integrity', label: 'Détection GPS perdu (boîtiers vivants sans position)', category: 'Système & observabilité',
+    id: 'gps-integrity',
+    source: 'gps-integrity/gps-integrity.service.ts', label: 'Détection GPS perdu (boîtiers vivants sans position)', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'toutes les 5 min', criticality: 'moyenne', antiOverlap: true,
     purpose: 'Repère les boîtiers qui communiquent encore mais n\'envoient plus de position GPS (antenne/ciel) et lève une alerte véhicule + centre d\'alertes.',
     periodic: { everyMs: 300_000, offsetMs: 15_000 },
   },
   {
-    id: 'metrics-collect', label: 'Collecte des métriques serveur (VPS)', category: 'Système & observabilité',
+    id: 'metrics-collect',
+    source: 'system-metrics/metrics-collector.service.ts', label: 'Collecte des métriques serveur (VPS)', category: 'Système & observabilité',
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'basse', antiOverlap: false,
     continuous: true, settingsRoute: '/admin/system',
     purpose: 'Enregistre en continu la charge CPU/mémoire/disque du serveur (monitoring VPS).',
   },
   {
-    id: 'dependency-heartbeat', label: 'Sonde active des dépendances externes', category: 'Système & observabilité',
+    id: 'scheduled-task-heartbeat', label: 'Sonde des taches planifiees', category: 'Système & observabilité',
+    source: 'observability/scheduled-task-heartbeat.service.ts',
+    kind: 'cron', scheduleHuman: 'toutes les heures (a h:35)', criticality: 'haute', antiOverlap: false,
+    note: "⚠️ ELLE MANQUAIT A CE CATALOGUE jusqu'au 2026-08-19. La sonde qui detecte les traitements devenus silencieux etait elle-meme invisible : si elle s'arretait, plus rien ne signalait les arrets — y compris le sien. C'est le point aveugle le plus couteux qu'un tableau de supervision puisse avoir.",
+    purpose: "Verifie que les automatisations configurees tournent vraiment. Tolerance de deux periodes manquees (plancher 4 h) : une seule est un alea, deux de suite ne s'expliquent plus. Remonte une alerte au centre d'alerte.",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getMinutes() === 35 },
+  },
+  {
+    id: 'dependency-heartbeat',
+    source: 'observability/dependency-heartbeat.service.ts', label: 'Sonde active des dépendances externes', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'toutes les 5 min (à :30 s)', criticality: 'haute', antiOverlap: true,
     note: 'Née de la panne Vizyo Auth du 18-21/07 restée invisible 3 jours. Sonde les adresses PUBLIQUES (jamais internes).',
     purpose: 'Vérifie que les services dont Tracky dépend (Vizyo Auth, passerelle SMS…) répondent réellement ; 2 échecs consécutifs ⇒ alerte au centre d\'alertes (panne signalée en ~10 min).',
     periodic: { everyMs: 300_000, offsetMs: 30_000 },
   },
   {
-    id: 'cache-cleanup', label: 'Nettoyage du cache mémoire', category: 'Système & observabilité',
+    id: 'cache-cleanup',
+    source: 'common/cache/in-memory-cache.service.ts', label: 'Nettoyage du cache mémoire', category: 'Système & observabilité',
     kind: 'setInterval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'basse', antiOverlap: false,
     continuous: true,
     purpose: 'Retire du cache interne les entrées expirées pour éviter que la mémoire grossisse.',
@@ -238,13 +286,15 @@ const CATALOG: CatalogEntry[] = [
     purpose: 'Regroupe et diffuse les positions aux écrans clients une fois par seconde (fluidité sous charge).',
   },
   {
-    id: 'position-batch', label: 'Enregistrement groupé des positions', category: 'Temps réel',
+    id: 'position-batch',
+    source: 'positions/position-batch-buffer.service.ts', label: 'Enregistrement groupé des positions', category: 'Temps réel',
     kind: 'setInterval', scheduleHuman: 'flux continu · toutes les 100 ms', criticality: 'moyenne', antiOverlap: true,
     continuous: true,
     purpose: 'Insère les positions reçues par paquets pour tenir la charge d\'ingestion GPS.',
   },
   {
-    id: 'ignition-cleanup', label: 'Extinction contact inféré', category: 'Temps réel',
+    id: 'ignition-cleanup',
+    source: 'positions/ignition-inferred-cleanup.service.ts', label: 'Extinction contact inféré', category: 'Temps réel',
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'moyenne', antiOverlap: false,
     continuous: true,
     purpose: 'Passe le contact à « éteint » pour les boîtiers sans fil ACC devenus silencieux (marqueur carte à jour).',
@@ -256,7 +306,8 @@ const CATALOG: CatalogEntry[] = [
     purpose: 'Déconnecte les sessions temps réel dont l\'utilisateur n\'est plus actif (sécurité).',
   },
   {
-    id: 'mock-emitter', label: 'Émetteur de positions factices', category: 'Temps réel',
+    id: 'mock-emitter',
+    source: 'realtime/mock-position-emitter.service.ts', label: 'Émetteur de positions factices', category: 'Temps réel',
     kind: 'setInterval', scheduleHuman: 'développement uniquement', criticality: 'basse', antiOverlap: false,
     continuous: true, devOnly: true, note: 'Inactif en production.',
     purpose: 'Simule le mouvement de véhicules pour les tests (jamais actif en production).',
@@ -264,14 +315,16 @@ const CATALOG: CatalogEntry[] = [
 
   // ───────── Intégration partenaire (Tracky × Maestroo) ─────────
   {
-    id: 'partner-sync', label: 'Synchro véhicules → Maestroo (merge à 3 voies)', category: 'Intégration partenaire',
+    id: 'partner-sync',
+    source: 'partner/partner-sync.service.ts', label: 'Synchro véhicules → Maestroo (merge à 3 voies)', category: 'Intégration partenaire',
     kind: 'cron', scheduleHuman: 'toutes les 30 min', criticality: 'moyenne', antiOverlap: true,
     settingsRoute: '/admin/partner-links',
     purpose: 'Re-pousse l\'identité des véhicules des liens partenaires ACTIFS, applique les corrections Tracky (fast-forward) et journalise les écarts détectés. Ne supprime jamais rien, respecte les catégories consenties.',
     periodic: { everyMs: 1_800_000, offsetMs: 0 },
   },
   {
-    id: 'partner-outbox', label: 'Rejeu des webhooks partenaires (révocations)', category: 'Intégration partenaire',
+    id: 'partner-outbox',
+    source: 'partner/partner-outbox.service.ts', label: 'Rejeu des webhooks partenaires (révocations)', category: 'Intégration partenaire',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
     settingsRoute: '/admin/partner-links',
     note: 'Un webhook de révocation perdu serait une révocation perdue : ce cron est le filet du levier commercial.',
@@ -281,32 +334,37 @@ const CATALOG: CatalogEntry[] = [
 
   // ───────── Notifications ─────────
   {
-    id: 'escalation', label: 'Escalade des alertes critiques', category: 'Notifications',
+    id: 'escalation',
+    source: 'notifications/escalation-cron.service.ts', label: 'Escalade des alertes critiques', category: 'Notifications',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
     purpose: 'Relance les destinataires quand une alerte critique n\'est pas acquittée à temps.',
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
   {
-    id: 'maintenance-reminder', label: 'Rappels d\'échéances de maintenance', category: 'Notifications',
+    id: 'maintenance-reminder',
+    source: 'agenda/maintenance-reminder.service.ts', label: 'Rappels d\'échéances de maintenance', category: 'Notifications',
     kind: 'cron', scheduleHuman: 'chaque jour à 07:00', criticality: 'moyenne', antiOverlap: true,
     purpose: 'Prévient les responsables quand une échéance d\'entretien approche (préavis réglé par plan).',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 7 && w.getMinutes() === 0 },
   },
   {
-    id: 'sms-heartbeat', label: 'Preuve de vie SMS (passerelle)', category: 'Notifications',
+    id: 'sms-heartbeat',
+    source: 'sms/sms-heartbeat.service.ts', label: 'Preuve de vie SMS (passerelle)', category: 'Notifications',
     kind: 'cron', scheduleHuman: 'chaque lundi à 09:00', criticality: 'moyenne', antiOverlap: false,
     purpose: 'Envoie un SMS de test aux admins pour vérifier que la chaîne SMS fonctionne.',
     fire: { tz: PARIS, matcher: (w) => w.getDay() === 1 && w.getHours() === 9 && w.getMinutes() === 0 },
   },
   {
-    id: 'notification-retention', label: 'Purge du journal de notifications', category: 'Notifications',
+    id: 'notification-retention',
+    source: 'notifications/notification-retention.service.ts', label: 'Purge du journal de notifications', category: 'Notifications',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:45', criticality: 'basse', antiOverlap: false,
     note: 'Retenues purgées à 30 j (volumineuses), envois réels conservés 180 j (trace d\'exploitation).',
     purpose: 'Purge le journal du centre de notifications : sans elle, ~300 000 lignes par mois une fois le push ouvert à tous les rôles.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 45 },
   },
   {
-    id: 'sms-allowlist-reconcile', label: 'Réconciliation de l\'allowlist SMS', category: 'Notifications',
+    id: 'sms-allowlist-reconcile',
+    source: 'sms/allowlist.service.ts', label: 'Réconciliation de l\'allowlist SMS', category: 'Notifications',
     kind: 'cron', scheduleHuman: 'toutes les heures (à h:25)', criticality: 'haute', antiOverlap: true,
     note: 'Un numéro absent de l\'allowlist = SMS refusé (403) — dont le repli du coupe-circuit.',
     purpose: 'Repousse les numéros SIM des boîtiers et des utilisateurs vers la passerelle SMS, pour qu\'un envoi ne soit jamais refusé faute de numéro autorisé.',
