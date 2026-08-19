@@ -10,6 +10,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { TripAnalysisService } from './trip-analysis.service';
 import { TRIP_NARRATIVE_SCHEMA, renderTripNarrativeSystem, renderTripSynthesisSystem } from './trip-analysis.prompt';
+// Module PUR, partage avec l'agent sur poste : le payload et l'assainissement ne doivent exister
+// qu'a UN endroit. Deux copies finiraient par ecrire des recits differents selon l'auteur.
+import { assainirRecit, construirePayloadRecit, type LigneAnalyse } from './trip-narrative.shared';
 
 type NarrativeOut = { narrative: string; advice: string; trustScore: number };
 type RunResult = NarrativeOut & { provider: AiProviderMode; model: string; costEur: number; latencyMs: number };
@@ -88,7 +91,7 @@ export class TripAnalysisLlmService {
   /** Agent de synthèse : combine 2 analyses en une finale (Claude). Récit homogène, sans marque. */
   private async synthesize(row: TripAnalysisRow, actorId: string, a: RunResult, b: RunResult): Promise<RunResult> {
     const payload = {
-      donnees: this.payload(row),
+      donnees: construirePayloadRecit(row as unknown as LigneAnalyse),
       analyses: [
         { source: 'A', narrative: a.narrative, advice: a.advice, trustScore: a.trustScore },
         { source: 'B', narrative: b.narrative, advice: b.advice, trustScore: b.trustScore },
@@ -115,12 +118,9 @@ export class TripAnalysisLlmService {
       cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
       latencyMs: call.latencyMs, ok: true,
     });
-    const res = call.result ?? ({} as NarrativeOut);
     return {
       provider: call.provider, model: call.model,
-      narrative: typeof res.narrative === 'string' ? res.narrative.slice(0, 1500) : '',
-      advice: typeof res.advice === 'string' ? res.advice.slice(0, 800) : '',
-      trustScore: clampScore(res.trustScore),
+      ...assainirRecit(call.result),
       costEur: round4(this.aiUsage.costOf(call.model, call.usage) * this.aiUsage.eurRate()),
       latencyMs: call.latencyMs,
     };
@@ -157,7 +157,7 @@ export class TripAnalysisLlmService {
 
   /** Un appel LLM sur un trajet : construit le payload compact, appelle le moteur, trace le coût. */
   private async run(row: TripAnalysisRow, actorId: string, preferProvider?: AiProviderId): Promise<RunResult> {
-    const payload = this.payload(row);
+    const payload = construirePayloadRecit(row as unknown as LigneAnalyse);
     let call;
     try {
       call = await this.ai.completeJson<NarrativeOut>(
@@ -181,53 +181,15 @@ export class TripAnalysisLlmService {
       cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
       latencyMs: call.latencyMs, ok: true,
     });
-    const res = call.result ?? ({} as NarrativeOut);
     return {
       provider: call.provider,
       model: call.model,
-      narrative: typeof res.narrative === 'string' ? res.narrative.slice(0, 1500) : '',
-      advice: typeof res.advice === 'string' ? res.advice.slice(0, 800) : '',
-      trustScore: clampScore(res.trustScore),
+      ...assainirRecit(call.result),
       costEur: round4(this.aiUsage.costOf(call.model, call.usage) * this.aiUsage.eurRate()),
       latencyMs: call.latencyMs,
     };
   }
 
-  /** Payload COMPACT (jamais les positions brutes) : le déterministe est déjà fait. */
-  private payload(row: TripAnalysisRow) {
-    const n = (k: string) => Number(row[k] ?? 0);
-    const detail = (row.detail as { stops?: { durationMin: number }[]; speeding?: { maxSpeedKmh: number; limitKmh: number; overKmh: number; durationSec: number }[] }) ?? {};
-    return {
-      vehicle: { type: undefined, energy: undefined }, // enrichi si besoin ; le résumé suffit au récit
-      summary: {
-        distanceKm: n('distanceKm'),
-        durationMin: Math.round(n('durationSec') / 60),
-        movingMin: Math.round(n('movingSec') / 60),
-        avgSpeedKmh: n('avgSpeedKmh'),
-        maxSpeedKmh: n('maxSpeedKmh'),
-        stopCount: n('stopCount'),
-        idleMin: Math.round(n('idleSec') / 60),
-      },
-      gpsQuality: { points: n('gpsPoints'), validRatio: n('gpsValidRatio'), lostSignals: n('gpsLostCount') },
-      speeding: {
-        count: n('speedingCount'),
-        durationSec: n('speedingSec'),
-        maxOverKmh: n('maxOverKmh'),
-        limitsKnown: !!row.limitsKnown,
-        segments: (detail.speeding ?? []).slice(0, 8).map((s) => ({ maxSpeedKmh: s.maxSpeedKmh, limitKmh: s.limitKmh, overKmh: s.overKmh, durationSec: s.durationSec })),
-      },
-      ecoDriving: {
-        harshAccel: n('harshAccel'), harshBrake: n('harshBrake'), ecoScore: n('ecoScore'),
-        fuelLiters: row.fuelLiters ?? null, co2Kg: row.co2Kg ?? null,
-      },
-      stops: (detail.stops ?? []).slice(0, 12).map((s) => ({ durationMin: s.durationMin })),
-    };
-  }
 }
 
-function clampScore(v: unknown): number {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n)) return 50;
-  return Math.max(0, Math.min(100, n));
-}
 function round4(v: number): number { return Math.round(v * 10000) / 10000; }

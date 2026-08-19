@@ -47,7 +47,7 @@ interface CatalogEntry {
    * Traitement qui ne tourne PAS sur ce serveur — son état se déduit du travail qu'il a écrit
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
-  externe?: 'limites-vitesse';
+  externe?: 'limites-vitesse' | 'recit-trajet';
   /**
    * Fichier source qui porte le `@Cron`, relatif a `apps/api/src`.
    *
@@ -401,6 +401,18 @@ const CATALOG: CatalogEntry[] = [
         (w.getHours() === 22 && w.getMinutes() === 0),
     },
   },
+  {
+    id: 'agent-recit-trajet', label: 'Recits de trajet (agent sur poste)',
+    category: 'IA & rapports', kind: 'cron',
+    scheduleHuman: '03:15 chaque nuit — sur le poste du proprietaire',
+    criticality: 'basse', antiOverlap: true,
+    note: "Ne tourne PAS sur ce serveur. Le recit passe par l'abonnement du poste au lieu des credits d'API : le meme travail coutait 45,89 $ sur le seul mois de juillet. Son etat ci-contre est deduit des recits reellement ecrits — si le poste est eteint ou la session expiree, ca se voit.",
+    purpose: "Met en mots l'analyse deja calculee de chaque trajet (allure, arrets, exces, conseils eco). Ne recalcule rien. Absorbe par l'abonnement : aucun credit d'IA facture.",
+    externe: 'recit-trajet',
+    coutIa: 'absorbe',
+    // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
+    fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 15 },
+  },
 ];
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
@@ -421,12 +433,13 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS, agentLimites] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
       this.prisma.placeAutomationSettings.findFirst({ orderBy: { createdAt: 'asc' } }).catch(() => null),
       this.etatAgentLimites(),
+      this.etatAgentRecit(),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -448,6 +461,10 @@ export class BackgroundTasksService {
       if (e.ai) return { ...base, ...this.aiTask(e.ai, tripS, activityS, agendaS, placeS, nowMs) };
 
       // Traitement externe : son etat vient du travail ECRIT en base, pas du registre local.
+      if (e.externe === 'recit-trajet') {
+        const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
+        return { ...base, ...agentRecit, nextRunAt: next ? next.toISOString() : null };
+      }
       if (e.externe === 'limites-vitesse') {
         const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
         return { ...base, ...agentLimites, nextRunAt: next ? next.toISOString() : null };
@@ -503,6 +520,39 @@ export class BackgroundTasksService {
       return { enabled: null, lastRunAt: null, settingsSummary: null };
     }
   }
+  /**
+   * État de l'agent de RÉCIT, qui tourne sur le POSTE du propriétaire.
+   *
+   * Même principe que pour les limites de vitesse : on ne lui demande pas s'il va bien, on regarde
+   * ce qu'il a ÉCRIT. `provider = 'local'` distingue ses récits de ceux produits par l'API — sans
+   * cette marque, un récit fait la nuit sur le poste serait indiscernable d'un récit facturé, et
+   * l'écran ne saurait pas dire si l'agent travaille encore.
+   *
+   * `enabled` répond à « a-t-il produit quelque chose récemment ? ». Le serveur ne peut pas savoir
+   * si la tâche planifiée existe toujours sur le poste, ni si la session Claude Code y est encore
+   * ouverte ; il peut savoir si des récits arrivent.
+   */
+  private async etatAgentRecit(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+    try {
+      const [dernier, ecrits, restants] = await Promise.all([
+        this.prisma.tripAnalysis.aggregate({ where: { provider: 'local' }, _max: { updatedAt: true } }),
+        this.prisma.tripAnalysis.count({ where: { provider: 'local' } }),
+        this.prisma.tripAnalysis.count({ where: { narrative: null } }),
+      ]);
+      const at = dernier._max.updatedAt ?? null;
+      // Un passage par nuit : au-delà de 36 h sans récit, ce n'est plus un aléa.
+      const frais = at !== null && Date.now() - at.getTime() < 36 * 3_600_000;
+      return {
+        enabled: at === null ? null : frais,
+        lastRunAt: at ? at.toISOString() : null,
+        settingsSummary: `${ecrits.toLocaleString('fr-FR')} récit(s) écrits sur le poste · ${restants.toLocaleString('fr-FR')} trajet(s) encore sans récit`,
+      };
+    } catch {
+      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
+      return { enabled: null, lastRunAt: null, settingsSummary: null };
+    }
+  }
+
   /** Calcule enabled / prochain / dernier / résumé pour une automatisation IA depuis ses réglages. */
   private aiTask(
     kind: 'trip' | 'activity' | 'agenda' | 'place',
