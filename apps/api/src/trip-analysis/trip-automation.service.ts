@@ -41,10 +41,17 @@ const RECOMPUTE_BACKOFF_MS = 30 * 60 * 1000;
  */
 const RECOMPUTE_SLICE_MS = 48 * 60 * 60 * 1000;
 /**
- * Budget de travail d'un passage. Au-delà, on ne DÉMARRE plus de nouveau véhicule (celui en cours
- * va au bout) et le passage se clôture normalement : il persiste son bilan, met à jour `lastRunAt`,
- * et le suivant reprend où il s'est arrêté. C'est ce qui garantit qu'un passage horaire ne peut
- * plus déborder sur le suivant — la cause du blocage du 19/08.
+ * Budget de travail d'un passage. Au-delà, on arrête de prendre du travail neuf et le passage se
+ * clôture normalement : il persiste son bilan, met à jour `lastRunAt`, et le suivant reprend où
+ * celui-ci s'est arrêté.
+ *
+ * ⚠️ MESURÉ LE 19/08, APRÈS UNE PREMIÈRE VERSION INSUFFISANTE. Le budget n'était vérifié qu'à
+ * l'entrée de chaque VÉHICULE. Or le temps ne part pas dans le nombre de véhicules : il part dans
+ * la boucle interne sur leurs TRAJETS, où chaque analyse interroge OpenStreetMap pour les limites
+ * de vitesse (lent, parfois en échec) et chaque trajet recalculé est recalé sur le réseau routier.
+ * Un seul véhicule portant 150 trajets à analyser tenait donc le passage bien au-delà du budget :
+ * observé à 31 minutes pour un plafond annoncé à 20. La borne doit être là où le temps se dépense,
+ * pas là où il est commode de la lire.
  */
 const RUN_BUDGET_MS = 20 * 60 * 1000;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
@@ -67,6 +74,8 @@ type MutableStats = {
   skippedNoPositions: number;
   /** Véhicules non abordés parce que le budget de temps du passage était épuisé. */
   skippedBudget: number;
+  /** Le passage s'est-il arrêté sur son budget plutôt qu'au bout de son travail ? */
+  budgetAtteint: boolean;
 };
 
 /**
@@ -82,6 +91,7 @@ type TripAutomationRunStatsWithDormancy = TripAutomationRunStats & {
   skippedDormant: number;
   skippedNoPositions: number;
   skippedBudget: number;
+  budgetAtteint: boolean;
 };
 
 type RunItem = TripAutomationRunItemDto;
@@ -164,6 +174,9 @@ export class TripAutomationService {
     this.running = true;
     const startedAt = new Date();
     const startMs = Date.now();
+    // Échéance ABSOLUE du passage, calculée une seule fois et descendue jusqu'à la boucle des
+    // trajets — c'est là que le temps se dépense, donc c'est là qu'il faut la lire.
+    const echeance = startMs + RUN_BUDGET_MS;
     const stats = this.emptyStats();
     const items: RunItem[] = [];
     try {
@@ -199,8 +212,9 @@ export class TripAutomationService {
           // BUDGET DE PASSAGE (cf. RUN_BUDGET_MS) — on ne démarre plus de véhicule au-delà. On
           // COMPTE les véhicules laissés de côté au lieu de sortir en silence : un passage qui
           // traite 12 véhicules sur 39 doit le dire, sinon il ressemble à un passage complet.
-          if (Date.now() - startMs > RUN_BUDGET_MS) {
+          if (Date.now() > echeance) {
             stats.skippedBudget++;
+            stats.budgetAtteint = true;
             continue;
           }
           // DORMANCE (seuil « arrêter d'agir », 72 h) — un boîtier muet depuis 3 jours n'a produit
@@ -229,7 +243,7 @@ export class TripAutomationService {
           await this.processVehicle(
             user,
             { id: v.id, plate: v.plate, fleetId: fleet.id, fleetName: fleet.name, trackerId: v.tracker?.id ?? null },
-            aiOn, windowFrom, windowTo, settings, stats, items,
+            aiOn, windowFrom, windowTo, settings, stats, items, echeance,
           );
         }
       }
@@ -252,6 +266,9 @@ export class TripAutomationService {
           (stats.skippedDormant > 0 ? ` · ${stats.skippedDormant} véhicule(s) au boîtier muet ignoré(s)` : '') +
           (stats.skippedBudget > 0 ? ` · ${stats.skippedBudget} véhicule(s) reportés au passage suivant (budget de temps atteint)` : '') +
           (stats.skippedNoPositions > 0 ? ` · ${stats.skippedNoPositions} recalcul(s) impossibles faute de position` : '') +
+          // Un passage écourté n'est pas un passage terminé : le dire évite de lire « 12 analysés »
+          // comme « il n'y avait que 12 choses à faire ».
+          (stats.budgetAtteint ? ' · passage ÉCOURTÉ sur son budget de temps, la suite au prochain' : '') +
           '.',
         meta: runStats as unknown as Record<string, unknown>,
       });
@@ -273,6 +290,7 @@ export class TripAutomationService {
     settings: TripAutomationSettings,
     stats: MutableStats,
     items: RunItem[],
+    echeance: number,
   ): Promise<void> {
     const { id: vehicleId, fleetId } = veh;
 
@@ -362,6 +380,15 @@ export class TripAutomationService {
     const narrativeByTrip = new Map(existing.map((e) => [e.tripId, !!e.narrative]));
 
     for (const t of trips) {
+      // LA garde qui manquait. Une analyse interroge OpenStreetMap et un recalcul recale le
+      // tracé sur le réseau routier : quelques secondes chacun, parfois davantage quand le
+      // service public répond mal. Sans ce contrôle ICI, un seul véhicule chargé tenait le
+      // passage une demi-heure et faisait sauter le suivant. Les trajets non traités n'ont pas
+      // d'analyse : le passage suivant les reprendra tels quels, sans rien mémoriser.
+      if (Date.now() > echeance) {
+        stats.budgetAtteint = true;
+        break;
+      }
       const hasAnalysis = narrativeByTrip.has(t.id);
       let hasNarrative = narrativeByTrip.get(t.id) ?? false;
       let didAnalyze = false;
@@ -564,7 +591,7 @@ export class TripAutomationService {
   private emptyStats(): MutableStats {
     return {
       fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0,
-      skippedDormant: 0, skippedNoPositions: 0, skippedBudget: 0,
+      skippedDormant: 0, skippedNoPositions: 0, skippedBudget: 0, budgetAtteint: false,
     };
   }
 

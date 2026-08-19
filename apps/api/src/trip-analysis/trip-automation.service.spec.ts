@@ -155,6 +155,65 @@ describe('TripAutomationService', () => {
   });
 
   /**
+   * BUDGET DE TEMPS — la garde posée AU BON ENDROIT.
+   *
+   * Première version : le budget n'était vérifié qu'à l'entrée de chaque VÉHICULE. Mesure de prod
+   * du 19/08 : un passage à 31 minutes pour un plafond annoncé à 20. Le temps ne part pas dans le
+   * nombre de véhicules, il part dans la boucle sur leurs TRAJETS — chaque analyse interroge
+   * OpenStreetMap, chaque recalcul recale le tracé sur le réseau routier.
+   */
+  describe('budget de temps du passage', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('un seul véhicule chargé ne peut plus tenir le passage au-delà du budget', async () => {
+      let horloge = 1_000_000;
+      jest.spyOn(Date, 'now').mockImplementation(() => horloge);
+      const { svc, analysis } = build({
+        trips: Array.from({ length: 40 }, (_, i) => ({ id: `t${i}` })),
+        analyses: [],
+        aiEnabled: false,
+      });
+      // Chaque analyse coûte 2 minutes : au bout de 10, le budget de 20 min est épuisé.
+      analysis.analyze.mockImplementation(async () => {
+        horloge += 2 * 60 * 1000;
+      });
+
+      const stats = await svc.runNow();
+
+      expect(stats.budgetAtteint).toBe(true);
+      // Sans la garde dans la boucle des trajets, les 40 y passaient — et le passage suivant
+      // sautait, verrou `running` oblige.
+      expect(analysis.analyze.mock.calls.length).toBeLessThan(40);
+      expect(analysis.analyze.mock.calls.length).toBeGreaterThan(0);
+    });
+
+    it('un passage écourté le DIT dans le journal d\'activité', async () => {
+      let horloge = 1_000_000;
+      jest.spyOn(Date, 'now').mockImplementation(() => horloge);
+      const { svc, analysis, systemActivity } = build({
+        trips: Array.from({ length: 40 }, (_, i) => ({ id: `t${i}` })),
+        analyses: [],
+        aiEnabled: false,
+      });
+      analysis.analyze.mockImplementation(async () => {
+        horloge += 2 * 60 * 1000;
+      });
+
+      await svc.runNow();
+
+      // « 10 analysés » ne doit pas pouvoir se lire comme « il n'y avait que 10 choses à faire ».
+      const detail = systemActivity.record.mock.calls[0][0].detail as string;
+      expect(detail).toMatch(/ÉCOURTÉ/);
+    });
+
+    it('un passage qui va au bout de son travail n\'est PAS marqué écourté', async () => {
+      const { svc } = build({ trips: [{ id: 't1' }], analyses: [], aiEnabled: false });
+      const stats = await svc.runNow();
+      expect(stats.budgetAtteint).toBe(false);
+    });
+  });
+
+  /**
    * TRANCHE BORNÉE (incident du 19/08). Un vieux trajet brut déclenchait un recalcul sur TOUTE la
    * fenêtre — 50 jours en prod : des heures de travail pendant lesquelles le verrou `running`
    * faisait sauter chaque passage horaire, puis un processus tué au redémarrage sans rien avoir
