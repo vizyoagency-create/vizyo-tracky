@@ -212,8 +212,9 @@ boucle dont on ignore la longueur.
 | Tables `assistance_conversations` / `assistance_messages` + migration | ✅ |
 | Couche de cloisonnement des lectures (5 lots, gardes de l'API) — 15 tests | ✅ |
 | Base de connaissances (20 sujets) + 14 tests anti-divulgation | ✅ |
-| Service IA en 2 temps + prompt système | ☐ |
-| Plafonds (par conversation, par utilisateur/jour) + coût sous `support_chat` | ☐ |
+| Service IA en 2 temps + prompts système — 14 tests | ✅ |
+| Coût journalisé sous `support_chat` / `executor: api` | ✅ |
+| Plafonds par conversation et par utilisateur/jour | ☐ |
 | Contrôleur + streaming | ☐ |
 | UI client (chat) + UI admin (archive, relecture, correction, recontact) | ☐ |
 | Bouton « rappel urgent » + notifications | ☐ |
