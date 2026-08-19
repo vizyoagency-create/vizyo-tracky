@@ -37,13 +37,34 @@ export class SpeedLimitService {
   private readonly logger = new Logger(SpeedLimitService.name);
   private lastCallAt = 0;
 
-  /** Points par requête Overpass groupée. */
-  private readonly CHUNK = 40;
   /**
-   * Plafond de requêtes GROUPÉES par analyse — soit 320 points, contre 12 auparavant. Le plafond
+   * Points par requête Overpass groupée. Calibré en mesurant l'instance publique :
+   *   40 points → 87 Ko en ~5 s ·  100 → 156 Ko en 9 s ·  200 → 198 Ko en 13 s ·  400 → HTTP 429.
+   * 200 est le meilleur rapport : cinq fois moins de requêtes qu'à 40, et on reste sous le quota.
+   */
+  private readonly CHUNK = 200;
+  /**
+   * Plafond de requêtes GROUPÉES par analyse — soit 1 600 points, contre 12 auparavant. Le plafond
    * borne toujours la charge sur l'instance publique, mais il ne coupe plus un trajet en deux.
    */
   private readonly MAX_CHUNKS = 8;
+  /**
+   * Attentes avant de rejouer un lot refusé. Overpass alloue des « slots » par IP : un 429 n'est
+   * pas une panne, c'est « reviens dans un instant ». Sans reprise, un quota momentané faisait
+   * perdre les 200 points du lot — et le trajet repartait sans limites.
+   */
+  private readonly BACKOFF_MS = [4_000, 12_000];
+  /**
+   * ⚠️ UNE indisponibilité Overpass est UNE information, pas une par trajet.
+   *
+   * Sans ce silence, le rattrapage de l'historique du 2026-08-19 a produit 39 alertes
+   * « Overpass injoignable » en onze minutes — et un mail au propriétaire. Le correctif qui
+   * rendait enfin les pannes visibles s'est mis à les crier. Une application qui spamme ses
+   * propres alertes cesse d'être lue, ce qui est exactement le défaut qu'on venait de réparer
+   * ailleurs. On trace donc au plus une fois par fenêtre, quel que soit le nombre de trajets.
+   */
+  private readonly SILENCE_ALERTE_MS = 30 * 60 * 1000;
+  private derniereAlerteAt = 0;
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
   /** Marge de rattachement local (m) : Overpass a filtré à RADIUS_M, on tolère l'arrondi. */
@@ -124,7 +145,9 @@ export class SpeedLimitService {
 
     // Overpass systématiquement injoignable → l'excès de vitesse n'a pas pu être affirmé : on TRACE
     // (une alerte, source `trip-analysis`, visible dans /admin/alerts). Best-effort : jamais bloquant.
-    if (requetes > 0 && echecs === requetes) {
+    const maintenant = Date.now();
+    if (requetes > 0 && echecs === requetes && maintenant - this.derniereAlerteAt >= this.SILENCE_ALERTE_MS) {
+      this.derniereAlerteAt = maintenant;
       // Le message porte la DÉPENDANCE et la CONSÉQUENCE. L'erreur brute du transport
       // (« fetch failed », « This operation was aborted ») ne disait ni ce qui était injoignable,
       // ni ce que ça coûtait — illisible au centre d'alerte, et impossible à trier d'une vraie panne.
@@ -153,13 +176,28 @@ export class SpeedLimitService {
    * une voie routable a réellement été rattachée. C'est `trouvee` qui autorise la mise en cache.
    */
   private async fetchLot(points: { lat: number; lng: number }[]): Promise<{ limite: number | null; trouvee: boolean }[]> {
+    for (let essai = 0; ; essai++) {
+      try {
+        return await this.tenterLot(points);
+      } catch (e) {
+        // Un refus de quota ou une passerelle saturée mérite une seconde chance ; une réponse
+        // applicative erronée (corps non-JSON, `remark`) aussi — c'est le même engorgement.
+        if (essai >= this.BACKOFF_MS.length || !estRejouable(e)) throw e;
+        await new Promise((r) => setTimeout(r, this.BACKOFF_MS[essai]));
+      }
+    }
+  }
+
+  /** Une tentative unique : construit la requête, la lit, rattache chaque point à sa route. */
+  private async tenterLot(points: { lat: number; lng: number }[]): Promise<{ limite: number | null; trouvee: boolean }[]> {
     await this.throttle();
     const base = (process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter').replace(/\/$/, '');
     const clauses = points.map((p) => `way(around:${this.RADIUS_M},${p.lat},${p.lng})[highway];`).join('');
     // `out tags geom` : la géométrie est indispensable pour savoir QUELLE route va avec QUEL point.
-    const q = `[out:json][timeout:60];(${clauses});out tags geom;`;
+    // Un lot de 200 points s'exécute en ~13 s à vide ; on laisse de la marge sous charge.
+    const q = `[out:json][timeout:180];(${clauses});out tags geom;`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 70_000);
+    const timer = setTimeout(() => ctrl.abort(), 190_000);
     try {
       const res = await fetch(base, {
         method: 'POST',
@@ -167,8 +205,9 @@ export class SpeedLimitService {
         body: 'data=' + encodeURIComponent(q),
         signal: ctrl.signal,
       });
-      // Échec TRANSPORT franc (Overpass down / throttlé / 5xx) → on LÈVE.
-      if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
+      // Échec TRANSPORT franc (Overpass down / throttlé / 5xx) → on LÈVE. 429 et 5xx sont
+      // REJOUABLES : le premier est un quota momentané, le second une passerelle saturée.
+      if (!res.ok) throw new ErreurOverpass(`Overpass HTTP ${res.status}`, res.status === 429 || res.status >= 500);
 
       const texte = await res.text();
       let json: OverpassReponse;
@@ -177,12 +216,12 @@ export class SpeedLimitService {
       } catch {
         // ⚠️ Overpass sert ses pages d'erreur EN HTTP 200 (« The server is probably too busy »).
         //    Un corps non-JSON est une panne, pas une absence de route.
-        throw new Error(`Overpass a répondu 200 avec un corps non-JSON (${texte.slice(0, 80).replace(/\s+/g, ' ')})`);
+        throw new ErreurOverpass(`Overpass a répondu 200 avec un corps non-JSON (${texte.slice(0, 80).replace(/\s+/g, ' ')})`, true);
       }
       // ⚠️ ET il sert aussi ses erreurs EN JSON VALIDE, avec `elements: []` et un `remark`. C'est CE
       //    cas qui a empoisonné le cache : lu comme « aucune route », mémorisé pour toujours.
       if (typeof json.remark === 'string' && json.remark.length > 0) {
-        throw new Error(`Overpass a répondu 200 avec une erreur applicative : ${json.remark.slice(0, 120)}`);
+        throw new ErreurOverpass(`Overpass a répondu 200 avec une erreur applicative : ${json.remark.slice(0, 120)}`, true);
       }
 
       const voies = (json.elements ?? [])
@@ -226,6 +265,24 @@ export class SpeedLimitService {
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     this.lastCallAt = Date.now();
   }
+}
+
+/** Erreur Overpass portant l'information « ça vaut le coup de réessayer ». */
+class ErreurOverpass extends Error {
+  constructor(message: string, readonly rejouable: boolean) {
+    super(message);
+    this.name = 'ErreurOverpass';
+  }
+}
+
+/**
+ * Une erreur mérite-t-elle une seconde tentative ? Les refus de quota, les passerelles saturées et
+ * les coupures réseau, oui. Une erreur de programmation, non — la rejouer ne ferait que la répéter.
+ */
+export function estRejouable(e: unknown): boolean {
+  if (e instanceof ErreurOverpass) return e.rejouable;
+  // Coupure réseau / abandon sur timeout : le transport a lâché, pas la logique.
+  return e instanceof Error && /fetch failed|aborted|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket/i.test(e.message);
 }
 
 interface OverpassWay {
