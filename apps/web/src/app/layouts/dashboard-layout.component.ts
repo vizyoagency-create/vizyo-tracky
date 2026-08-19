@@ -18,6 +18,7 @@ import {
   Activity,
   AlertTriangle,
   MessageSquare,
+  LifeBuoy,
   Terminal,
   ClipboardList,
   CreditCard,
@@ -1371,10 +1372,26 @@ export class DashboardLayoutComponent {
       // sortie n'est pas une promesse.
       ...(this.perms.can('integrations_manage') ? [{ label: 'Intégrations', route: '/integrations', icon: Plug }] : []),
     ];
+    /*
+     * ⚠️ MEME PIEGE QUE LES INTEGRATIONS CI-DESSUS, ET IL A ETE REFAIT LE 2026-08-19.
+     *
+     * L'assistance a ete livree avec sa route, son garde et ses deux ecrans — et AUCUN lien
+     * pour y aller. Une aide qu'il faut deja savoir trouver n'aide personne : c'est le seul
+     * ecran de l'application dont l'utilisateur a besoin PRECISEMENT parce qu'il est perdu.
+     *
+     * Aucune permission n'est exigee : c'est une aide, pas une fonction d'administration.
+     * L'archive, elle, n'apparait que pour les profils qui ont le droit de la lire.
+     */
+    const aide: NavItem[] = [
+      { label: 'Assistance', route: '/assistance', icon: LifeBuoy },
+      ...(this.auth.user()?.role === 'FLEET_ADMIN' || this.auth.user()?.role === 'SUPER_ADMIN'
+        ? [{ label: 'Demandes d’assistance', route: '/admin/assistance', icon: MessageSquare }] : []),
+    ];
     return ([
       { section: 'Supervision', items: supervision },
       { section: 'Analyse', items: analyse },
       { section: 'Administration', items: administration },
+      { section: 'Aide', items: aide },
     ] satisfies NavGroup[]).filter((g) => g.items.length > 0);
   }
 }

@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import type { AssistanceConversationDto, AssistanceListItemDto } from '@vizyo/tracky-shared';
@@ -125,7 +125,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                   class="w-full rounded-lg border border-border-subtle bg-bg-secondary px-3 py-2
                          text-sm text-fg-primary placeholder:text-fg-tertiary
                          focus:outline-none focus:border-border-strong disabled:opacity-40"></textarea>
-        <button type="button" (click)="envoyer()" [disabled]="!peutEnvoyer()"
+        <!-- Un bouton actif sur un champ vide promet une action qui n'arrivera pas -->
+        <button type="button" (click)="envoyer()" [disabled]="envoi() || !brouillon.trim()"
                 class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-tracky/20
                        border border-tracky/30 px-3 py-2 text-sm text-fg-primary
                        hover:bg-tracky/30 transition-colors disabled:opacity-40">
@@ -152,8 +153,6 @@ export class AssistanceComponent implements OnInit {
   protected readonly envoi = signal(false);
   protected readonly indisponible = signal(false);
   protected brouillon = '';
-
-  protected readonly peutEnvoyer = computed(() => !this.envoi());
 
   async ngOnInit(): Promise<void> {
     try {
