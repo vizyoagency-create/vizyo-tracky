@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   AiBudgetStatus,
+  AiExecutor,
+  AiUsageAbsorbedDto,
   AiUsageBreakdownRowDto,
   AiUsageBudgetDto,
   AiUsageLogsPageDto,
@@ -97,6 +99,12 @@ export interface AiUsageEntry {
    * mesuré », là où `0` affirmerait « rien produit ». La page préfère se taire.
    */
   resultCount?: number | null;
+  /**
+   * QUI a exécuté l'appel. Défaut `api` — c'est le cas de tous les points d'appel existants,
+   * et un oubli doit compter comme une dépense, jamais comme un travail gratuit : se tromper
+   * dans ce sens fait surestimer la facture, l'inverse la ferait disparaître.
+   */
+  executor?: AiExecutor;
 }
 
 /**
@@ -174,9 +182,19 @@ export class AiUsageService {
       const o = Math.max(0, entry.outputTokens | 0);
       const cw = Math.max(0, entry.cacheWriteTokens | 0);
       const cr = Math.max(0, entry.cacheReadTokens | 0);
-      const costUsd = this.computeCostUsd(entry.model, i, o, cw, cr);
+      // Défaut `api` : un point d'appel qui oublie de se déclarer compte comme une DÉPENSE. Se
+      // tromper dans ce sens surestime la facture ; l'inverse la ferait disparaître en silence.
+      const executor: AiExecutor = entry.executor === 'local' ? 'local' : 'api';
+      const tarifUsd = this.computeCostUsd(entry.model, i, o, cw, cr);
+      // ⚠️ Un appel LOCAL n'est pas facturé : `costUsd` doit rester ce qui a réellement été
+      // dépensé. Y inscrire le tarif théorique remplirait le budget mensuel avec de l'argent que
+      // personne n'a payé — et `monthBudgetExhausted()` finirait par couper l'IA payante à cause
+      // du travail gratuit. Ce que l'abonnement a absorbé se recalcule à la lecture, à partir des
+      // tokens conservés ci-dessous.
+      const costUsd = executor === 'local' ? 0 : tarifUsd;
       await this.prisma.aiUsageLog.create({
         data: {
+          executor,
           userId: entry.userId ?? null,
           fleetId: entry.fleetId ?? null,
           model: entry.model,
@@ -200,11 +218,15 @@ export class AiUsageService {
           action: `ai_${entry.action}`,
           status: entry.ok === false ? 'FAILURE' : 'SUCCESS',
           actor: entry.userId ? 'utilisateur' : 'system',
-          detail: `${ACTION_LABELS[entry.action] ?? entry.action} · ${entry.model}`,
+          detail:
+            `${ACTION_LABELS[entry.action] ?? entry.action} · ${entry.model}` +
+            // Le journal Système doit dire POURQUOI une ligne affiche 0 $ : sans ça, un appel
+            // gratuit est indiscernable d'un appel raté.
+            (executor === 'local' ? ' · poste local (absorbé par l\'abonnement)' : ''),
           fleetId: entry.fleetId ?? null,
           triggeredByUserId: entry.userId ?? null,
           durationMs: entry.latencyMs ?? null,
-          meta: { costUsd, model: entry.model },
+          meta: { costUsd, model: entry.model, executor, tarifUsd },
         });
       }
     } catch (e) {
@@ -330,7 +352,89 @@ export class AiUsageService {
       byDay,
       budget,
       scopedFleet: scopedFleet ?? null,
+      absorbed: await this.absorbedOnWindow(where, rate),
     };
+  }
+
+  /**
+   * Ce que l'abonnement local a ABSORBÉ sur la fenêtre — le pendant du coût facturé.
+   *
+   * Sans ce bloc, basculer un traitement vers un agent local ferait simplement TOMBER la dépense,
+   * et la page ne saurait pas distinguer « c'est devenu gratuit » de « c'est en panne ». Les deux
+   * produisent la même courbe.
+   *
+   * ── Ce qui est mesuré, ce qui est estimé ────────────────────────────────────────
+   * `localCalls` et `localResults` sont MESURÉS : ce sont des lignes en base.
+   * `estimatedCostUsd` est une ESTIMATION, et elle le reste. Deux sources, dans cet ordre :
+   *   1. les tokens réellement enregistrés sur la ligne → tarif exact (cas idéal) ;
+   *   2. à défaut, le coût moyen RÉELLEMENT constaté pour la même action via l'API — un agent
+   *      local ne reçoit pas de facture et ne connaît pas toujours ses tokens.
+   * Une action sans aucune référence API n'est PAS estimée : elle est nommée dans
+   * `actionsSansReference` et n'entre pas dans le total. Un total incomplet et annoncé vaut mieux
+   * qu'un chiffre rond inventé.
+   */
+  private async absorbedOnWindow(where: Prisma.AiUsageLogWhereInput, rate: number): Promise<AiUsageAbsorbedDto> {
+    const vide: AiUsageAbsorbedDto = {
+      localCalls: 0, localResults: null, estimatedCostUsd: null, estimatedCostEur: null, actionsSansReference: [],
+    };
+    try {
+      const local = await this.prisma.aiUsageLog.groupBy({
+        by: ['action', 'model'],
+        where: { ...where, executor: 'local' },
+        _count: { _all: true },
+        _sum: { inputTokens: true, outputTokens: true, cacheWriteTokens: true, cacheReadTokens: true, resultCount: true },
+      });
+      if (local.length === 0) return vide;
+
+      // Référence de repli : coût moyen par appel API, TOUTES périodes confondues. Se limiter à la
+      // fenêtre affichée priverait de référence toute fenêtre où l'API n'a rien tourné — c'est-à-dire
+      // exactement le cas qu'on cherche à décrire une fois la bascule terminée.
+      const refRows = await this.prisma.aiUsageLog.groupBy({
+        by: ['action'],
+        where: { executor: 'api', ok: true },
+        _avg: { costUsd: true },
+      });
+      const refByAction = new Map(refRows.map((r) => [r.action, r._avg.costUsd ?? 0]));
+
+      let calls = 0;
+      let results = 0;
+      let resultsMesures = false;
+      let estimation = 0;
+      const sansReference = new Set<string>();
+
+      for (const r of local) {
+        calls += r._count._all;
+        if (r._sum.resultCount != null) {
+          results += r._sum.resultCount;
+          resultsMesures = true;
+        }
+        const i = r._sum.inputTokens ?? 0;
+        const o = r._sum.outputTokens ?? 0;
+        const cw = r._sum.cacheWriteTokens ?? 0;
+        const cr = r._sum.cacheReadTokens ?? 0;
+        if (i + o + cw + cr > 0) {
+          estimation += this.computeCostUsd(r.model, i, o, cw, cr);
+          continue;
+        }
+        const moyenne = refByAction.get(r.action);
+        // `0` est une moyenne légitime (appels gratuits) : seul `undefined` signifie « aucune
+        // référence ». Confondre les deux ferait disparaître des actions du signalement.
+        if (moyenne === undefined) sansReference.add(ACTION_LABELS[r.action] ?? r.action);
+        else estimation += moyenne * r._count._all;
+      }
+
+      return {
+        localCalls: calls,
+        localResults: resultsMesures ? results : null,
+        estimatedCostUsd: estimation > 0 ? estimation : null,
+        estimatedCostEur: estimation > 0 ? estimation * rate : null,
+        actionsSansReference: [...sansReference].sort(),
+      };
+    } catch (e) {
+      // La page de coûts ne doit jamais tomber à cause de son propre encart d'information.
+      this.logger.warn(`Absorbé local non calculé : ${(e as Error)?.message ?? e}`);
+      return vide;
+    }
   }
 
   async logs(opts: { limit?: number; before?: string; after?: string; userId?: string; fleetId?: string; action?: string }, viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageLogsPageDto> {
@@ -382,6 +486,7 @@ export class AiUsageService {
         costEur: r.costUsd * rate,
         latencyMs: r.latencyMs,
         ok: r.ok,
+        executor: (r.executor === 'local' ? 'local' : 'api') as AiExecutor,
       })),
       nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
     };

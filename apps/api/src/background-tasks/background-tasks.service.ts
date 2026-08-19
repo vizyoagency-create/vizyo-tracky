@@ -4,6 +4,7 @@ import type {
   BackgroundTaskDto,
   BackgroundTasksResponse,
   BgTaskCategory,
+  BgTaskCoutIa,
   BgTaskCriticality,
   BgTaskKind,
 } from '@vizyo/tracky-shared';
@@ -47,6 +48,8 @@ interface CatalogEntry {
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
   externe?: 'limites-vitesse';
+  /** Qui paie le travail IA. Défaut déduit : `facture` pour une automatisation IA, `aucun` sinon. */
+  coutIa?: BgTaskCoutIa;
 }
 
 const CATALOG: CatalogEntry[] = [
@@ -365,6 +368,11 @@ export class BackgroundTasksService {
         antiOverlap: e.antiOverlap, continuous: !!e.continuous, devOnly: !!e.devOnly,
         configurable: !!e.configurable, settingsRoute: e.settingsRoute ?? null,
         settingsSummary: null, enabled: null, nextRunAt: null, lastRunAt: null, note: e.note ?? null,
+        // OÙ ça tourne et QUI paie — deux dimensions indépendantes. Un traitement peut tourner sur
+        // le poste sans rien absorber (l'agent de limites de vitesse interroge OpenStreetMap, qui
+        // est gratuit), et un traitement serveur peut ne consommer aucune IA.
+        executor: e.externe ? 'poste-local' : 'serveur',
+        coutIa: e.coutIa ?? (e.ai ? 'facture' : 'aucun'),
       };
 
       if (e.continuous) return base; // flux continu → pas de compte-à-rebours daté

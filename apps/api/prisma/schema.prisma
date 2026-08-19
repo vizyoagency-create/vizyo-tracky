@@ -2175,6 +2175,18 @@ model AiUsageLog {
   /// `null` dit « on ne l'a pas noté » — c'est le cas de toutes les lignes
   /// antérieures à ce champ, et on ne réécrit pas le passé.
   resultCount      Int?
+  /// QUI a réellement exécuté l'appel : `api` (crédits Anthropic, facturés) ou `local`
+  /// (agent sur le poste du propriétaire, absorbé par l'abonnement Claude Code).
+  ///
+  /// Sans ce champ, un agent local travaillerait SANS TRACE dans les écrans de coûts : le
+  /// travail disparaîtrait des tableaux au moment même où il cesse d'être facturé, et la
+  /// page « Coûts IA » montrerait une baisse de dépense sans pouvoir dire pourquoi.
+  ///
+  /// ⚠️ NON nullable avec défaut `api`, contrairement à `resultCount` juste au-dessus — et la
+  /// différence est délibérée. Toutes les lignes antérieures à ce champ ONT bien été facturées
+  /// par l'API : aucun autre exécutant n'existait. Écrire `api` sur le passé énonce un fait
+  /// vrai, là où un `0` sur `resultCount` en aurait inventé un.
+  executor         String   @default("api")
 
   @@index([createdAt])
   @@index([fleetId, createdAt])

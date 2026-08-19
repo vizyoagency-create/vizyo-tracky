@@ -12,6 +12,40 @@ export type AiUsageAction = 'capacity' | 'placement';
 /** État du budget mensuel vs dépense courante. */
 export type AiBudgetStatus = 'none' | 'ok' | 'warn' | 'over';
 
+/**
+ * QUI a exécuté un appel IA.
+ *
+ * - `api`   : crédits Anthropic consommés — c'est de l'argent réellement dépensé.
+ * - `local` : agent tournant sur le poste du propriétaire, absorbé par l'abonnement
+ *             Claude Code — rien n'est facturé.
+ *
+ * La distinction existe pour que basculer un traitement en local ne le fasse pas
+ * DISPARAÎTRE des écrans de coûts. Sans elle, la dépense baisserait sans que rien ne
+ * dise pourquoi, et le travail fourni gratuitement deviendrait invisible.
+ */
+export type AiExecutor = 'api' | 'local';
+
+/**
+ * Ce que l'abonnement local a absorbé sur la période.
+ *
+ * ⚠️ `estimatedCostUsd` est une ESTIMATION, jamais une mesure. Un agent local ne
+ * reçoit pas de facture : on extrapole depuis le coût moyen RÉELLEMENT constaté pour
+ * la même action via l'API. Quand aucune référence API n'existe pour une action, elle
+ * est listée dans `actionsSansReference` et n'entre PAS dans le total — mieux vaut un
+ * total incomplet et annoncé qu'un chiffre inventé.
+ */
+export interface AiUsageAbsorbedDto {
+  /** Appels réellement exécutés en local sur la période (donc non facturés). */
+  localCalls: number;
+  /** Ce que ces appels ont produit, quand c'est compté. `null` = non mesuré. */
+  localResults: number | null;
+  /** Estimation du coût évité, ou `null` si aucune action n'a de référence API. */
+  estimatedCostUsd: number | null;
+  estimatedCostEur: number | null;
+  /** Libellés des actions exécutées en local sans référence API : non estimables. */
+  actionsSansReference: string[];
+}
+
 export interface AiUsageBudgetDto {
   /** Plafond mensuel en € (0 = non défini). */
   monthlyBudgetEur: number;
@@ -79,6 +113,13 @@ export interface AiUsageSummaryDto {
    * Permet de piloter l'IA PAR SOCIÉTÉ directement depuis la page Coûts IA (opt-in owner).
    */
   scopedFleet: { id: string; name: string; aiEnabled: boolean } | null;
+  /**
+   * Part du travail absorbée par l'abonnement local sur la période.
+   *
+   * OPTIONNEL à la lecture : un client déployé avant ce champ doit continuer de fonctionner,
+   * et un client neuf face à une API plus ancienne doit se taire plutôt que d'afficher zéro.
+   */
+  absorbed?: AiUsageAbsorbedDto;
 }
 
 /** Une ligne du journal des appels (le plus récent d'abord). */
@@ -98,6 +139,8 @@ export interface AiUsageLogRowDto {
   costEur: number;
   latencyMs: number | null;
   ok: boolean;
+  /** Exécutant de l'appel. Optionnel à la lecture (cf. `AiUsageSummaryDto.absorbed`). */
+  executor?: AiExecutor;
 }
 
 export interface AiUsageLogsPageDto {

@@ -20,6 +20,34 @@ export type BgTaskCategory =
 export type BgTaskKind = 'cron' | 'interval' | 'setInterval';
 export type BgTaskCriticality = 'haute' | 'moyenne' | 'basse';
 
+/**
+ * OÙ le traitement s'exécute réellement.
+ *
+ * - `serveur`     : dans l'API, sur le VPS. Un appel IA y consomme des crédits facturés.
+ * - `poste-local` : agent sur le poste du propriétaire. Le travail est ABSORBÉ (abonnement
+ *                   Claude Code, ou service public gratuit comme Overpass) — mais il dépend
+ *                   d'un PC allumé, ce que le serveur ne peut ni garantir ni surveiller
+ *                   autrement qu'en regardant le travail réellement écrit en base.
+ *
+ * Cette distinction n'est pas cosmétique : elle explique pourquoi un traitement peut être
+ * « à l'arrêt » sans qu'aucune erreur serveur n'existe.
+ */
+export type BgTaskExecutor = 'serveur' | 'poste-local';
+
+/**
+ * QUI paie le travail IA d'un traitement. Volontairement distinct de `BgTaskExecutor` : les deux
+ * dimensions sont indépendantes, et les confondre produit des affirmations fausses.
+ *
+ * - `facture` : consomme des crédits Anthropic — de l'argent réellement dépensé.
+ * - `absorbe` : travail IA exécuté sur le poste, couvert par l'abonnement Claude Code. Gratuit
+ *               pour la société, mais suspendu à un PC allumé.
+ * - `aucun`   : aucune IA n'intervient. L'agent de limites de vitesse tourne sur le poste ET ne
+ *               coûte rien — non pas parce qu'un abonnement l'absorbe, mais parce qu'il
+ *               interroge OpenStreetMap, un service public gratuit. Le ranger dans `absorbe`
+ *               ferait croire à une dépense évitée qui n'a jamais existé.
+ */
+export type BgTaskCoutIa = 'facture' | 'absorbe' | 'aucun';
+
 export interface BackgroundTaskDto {
   id: string;
   label: string;
@@ -53,6 +81,15 @@ export interface BackgroundTaskDto {
 
   /** Remarque importante à afficher (ex. « DRY-RUN : n'efface rien », « dev uniquement »). */
   note: string | null;
+
+  /**
+   * Où le traitement tourne. Optionnel à la lecture : un client déployé avant ce champ doit
+   * continuer de fonctionner, et un client neuf face à une API plus ancienne retombe sur
+   * `serveur` — le cas de figure qui était vrai partout jusqu'ici.
+   */
+  executor?: BgTaskExecutor;
+  /** Qui paie le travail IA de ce traitement. Optionnel à la lecture, défaut `aucun`. */
+  coutIa?: BgTaskCoutIa;
 }
 
 export interface BackgroundTasksHealth {
