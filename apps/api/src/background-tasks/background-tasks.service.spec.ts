@@ -89,6 +89,18 @@ describe('Traitements de fond — l’agent sur poste n’est pas invisible', ()
     expect(reponse.tasks.find((t) => t.id === 'agent-limites-vitesse')!.enabled).toBeNull();
   });
 
+  /**
+   * Ce serveur tourne en UTC, le poste du proprietaire en heure de Paris. Avec le fuseau du
+   * serveur, l'ecran annoncait « prochain passage 14:00 » deux heures APRES le passage reel.
+   * Un ecran de supervision qui se trompe d'heure est pire que pas d'ecran du tout.
+   */
+  it('⚠️ le prochain passage est calculé en heure de PARIS, pas en heure serveur', async () => {
+    const agent = await agentDe(service({ dernier: new Date() }));
+    const heureParis = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(agent!.nextRunAt!));
+    expect(['04:30', '08:30', '14:00', '18:30', '22:00']).toContain(heureParis);
+  });
   it('un prochain passage est daté — sans lui, impossible de savoir si un trou est anormal', async () => {
     const agent = await agentDe(service({ dernier: new Date() }));
     expect(agent!.nextRunAt).not.toBeNull();

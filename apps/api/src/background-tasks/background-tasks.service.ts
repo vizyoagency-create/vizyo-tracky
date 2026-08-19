@@ -317,8 +317,11 @@ const CATALOG: CatalogEntry[] = [
     note: "Ne tourne PAS sur ce serveur. L'IP du VPS s'est fait bannir d'overpass-api.de ; depuis le poste, la même requête passe et répond trois fois plus vite. Son état ci-contre est déduit des cellules réellement écrites, pas d'un simple signal de démarrage — si le poste est éteint, ça se voit.",
     purpose: "Résout auprès d'OpenStreetMap la limite légale de chaque portion de route parcourue. Sans elle, aucun excès de vitesse n'est calculable et le score de conduite ne mesure rien. Gratuit : aucun crédit d'IA.",
     externe: 'limites-vitesse',
+    // ⚠️ PARIS, pas SERVER_TZ. Ce serveur tourne en UTC, le poste en heure de Paris : avec
+    //    SERVER_TZ l'ecran annoncait « prochain passage 14:00 » en UTC, soit deux heures APRES
+    //    le passage reel. Un ecran de supervision qui se trompe d'heure est pire que pas d'ecran.
     fire: {
-      tz: SERVER_TZ,
+      tz: PARIS,
       matcher: (w) =>
         (w.getHours() === 4 && w.getMinutes() === 30) ||
         (w.getHours() === 8 && w.getMinutes() === 30) ||
