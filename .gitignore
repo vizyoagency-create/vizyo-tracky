@@ -49,3 +49,4 @@ docs/review_loop/
 apps/web/e2e-captures/
 apps/web/test-results/
 apps/web/playwright-report/
+outils/*.log

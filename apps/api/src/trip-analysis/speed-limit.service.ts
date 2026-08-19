@@ -2,6 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { LimitResolver } from './trip-analysis.preprocessor';
+import {
+  cleCellule, panneDeguisee, requeteLot, resoudrePoints, MATCH_M,
+  type LimitePoint, type OverpassReponse,
+} from './speed-limit.resolution';
+
+// Réexporté pour les appelants historiques (ces symboles vivaient ici avant l'extraction).
+export { distancePointSegment, inferFromHighway, parseMaxspeed } from './speed-limit.resolution';
 
 /**
  * Limites de vitesse légales (OpenStreetMap `maxspeed` via Overpass) — pour transformer un « il
@@ -24,13 +31,17 @@ import type { LimitResolver } from './trip-analysis.preprocessor';
  * mémorisait DÉFINITIVEMENT « pour ne pas re-taper ». Une indisponibilité de quelques secondes
  * devenait une vérité permanente, et le point n'était plus jamais réinterrogé.
  *
- * LES TROIS GARDE-FOUS AJOUTÉS :
+ * LES GARDE-FOUS :
  *   1. `remark` / corps non-JSON → échec de TRANSPORT (on lève), jamais un « inconnu » mémorisé ;
  *   2. AUCUNE route trouvée → on ne cache PAS. Un point GPS de véhicule en mouvement est sur une
  *      route par construction : zéro voie à 20 m est le symptôme d'une mauvaise réponse, pas un
  *      fait. On réessaiera. Seul un « route trouvée mais type inconnu » est un vrai négatif ;
  *   3. requêtes GROUPÉES : un trajet entier part en 1 à 8 appels au lieu d'être coupé au 12e point.
- *      Le rattachement point → route se fait localement sur la géométrie renvoyée.
+ *
+ * ⚠️ LE RATTACHEMENT point → route vit dans `speed-limit.resolution.ts`, PAS ici : l'agent de
+ *    rattrapage qui tourne sur le poste du propriétaire consomme le même module. Dupliquer cette
+ *    logique ferait diverger les deux, et l'agent écrirait en base des limites que l'app n'aurait
+ *    jamais déduites — de fausses données, sans rien pour le signaler.
  */
 @Injectable()
 export class SpeedLimitService {
@@ -67,8 +78,6 @@ export class SpeedLimitService {
   private derniereAlerteAt = 0;
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
-  /** Marge de rattachement local (m) : Overpass a filtré à RADIUS_M, on tolère l'arrondi. */
-  private readonly MATCH_M = 25;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -77,7 +86,7 @@ export class SpeedLimitService {
 
   /** Clé de cache : coords arrondies à 4 décimales (~11 m) → mutualise un segment de route. */
   private key(lat: number, lng: number): string {
-    return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    return cleCellule(lat, lng);
   }
 
   /**
@@ -168,14 +177,8 @@ export class SpeedLimitService {
     };
   }
 
-  /**
-   * Interroge Overpass pour UN LOT de points, en une seule requête, et rattache chaque point à la
-   * route la plus proche via la géométrie renvoyée.
-   *
-   * Retourne, pour chaque point dans l'ordre : la limite (ou null) et `trouvee` — vrai seulement si
-   * une voie routable a réellement été rattachée. C'est `trouvee` qui autorise la mise en cache.
-   */
-  private async fetchLot(points: { lat: number; lng: number }[]): Promise<{ limite: number | null; trouvee: boolean }[]> {
+  /** Interroge Overpass pour UN LOT, en rejouant les refus de quota. */
+  private async fetchLot(points: { lat: number; lng: number }[]): Promise<LimitePoint[]> {
     for (let essai = 0; ; essai++) {
       try {
         return await this.tenterLot(points);
@@ -189,13 +192,11 @@ export class SpeedLimitService {
   }
 
   /** Une tentative unique : construit la requête, la lit, rattache chaque point à sa route. */
-  private async tenterLot(points: { lat: number; lng: number }[]): Promise<{ limite: number | null; trouvee: boolean }[]> {
+  private async tenterLot(points: { lat: number; lng: number }[]): Promise<LimitePoint[]> {
     await this.throttle();
     const base = (process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter').replace(/\/$/, '');
-    const clauses = points.map((p) => `way(around:${this.RADIUS_M},${p.lat},${p.lng})[highway];`).join('');
-    // `out tags geom` : la géométrie est indispensable pour savoir QUELLE route va avec QUEL point.
     // Un lot de 200 points s'exécute en ~13 s à vide ; on laisse de la marge sous charge.
-    const q = `[out:json][timeout:180];(${clauses});out tags geom;`;
+    const q = requeteLot(points, this.RADIUS_M, 180);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 190_000);
     try {
@@ -210,52 +211,17 @@ export class SpeedLimitService {
       if (!res.ok) throw new ErreurOverpass(`Overpass HTTP ${res.status}`, res.status === 429 || res.status >= 500);
 
       const texte = await res.text();
-      let json: OverpassReponse;
-      try {
-        json = JSON.parse(texte) as OverpassReponse;
-      } catch {
-        // ⚠️ Overpass sert ses pages d'erreur EN HTTP 200 (« The server is probably too busy »).
-        //    Un corps non-JSON est une panne, pas une absence de route.
-        throw new ErreurOverpass(`Overpass a répondu 200 avec un corps non-JSON (${texte.slice(0, 80).replace(/\s+/g, ' ')})`, true);
-      }
-      // ⚠️ ET il sert aussi ses erreurs EN JSON VALIDE, avec `elements: []` et un `remark`. C'est CE
-      //    cas qui a empoisonné le cache : lu comme « aucune route », mémorisé pour toujours.
-      if (typeof json.remark === 'string' && json.remark.length > 0) {
-        throw new ErreurOverpass(`Overpass a répondu 200 avec une erreur applicative : ${json.remark.slice(0, 120)}`, true);
-      }
+      // ⚠️ Overpass sert aussi ses erreurs SOUS un HTTP 200 : page HTML, ou JSON valide portant un
+      //    `remark`. Les lire comme « aucune route » et les mémoriser est ce qui avait marqué
+      //    98,8 % du cache « inconnu », définitivement.
+      const panne = panneDeguisee(texte);
+      if (panne) throw new ErreurOverpass(`Overpass a répondu 200 avec une ${panne.motif}`, true);
 
-      const voies = (json.elements ?? [])
-        .filter((e) => e.type === 'way' && Array.isArray(e.geometry) && e.geometry.length > 1)
-        // Voies ROUTABLES uniquement (exclut trottoirs/pistes/chemins qui fausseraient la limite).
-        .filter((e) => e.tags?.['highway'] && !NON_DRIVABLE.has(e.tags['highway']));
-
-      return points.map((p) => {
-        const proche = this.voieLaPlusProche(p, voies);
-        if (!proche) return { limite: null, trouvee: false };
-        // 1. Un maxspeed EXPLICITE prime (certain).
-        const explicite = parseMaxspeed(proche.tags?.['maxspeed']);
-        if (explicite != null) return { limite: explicite, trouvee: true };
-        // 2. Sinon, inférence par le type de voie (défauts FR). null ici est un VRAI négatif : la
-        //    route existe, son type n'est simplement pas interprétable — cache légitime.
-        return { limite: inferFromHighway(proche.tags?.['highway']), trouvee: true };
-      });
+      // Rattachement point → route : implémentation UNIQUE, partagée avec l'agent de rattrapage.
+      return resoudrePoints(points, JSON.parse(texte) as OverpassReponse, MATCH_M);
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  /** Voie routable la plus proche du point, dans la limite de MATCH_M. */
-  private voieLaPlusProche(p: { lat: number; lng: number }, voies: OverpassWay[]): OverpassWay | null {
-    let meilleure: OverpassWay | null = null;
-    let min = this.MATCH_M;
-    for (const v of voies) {
-      const g = v.geometry!;
-      for (let i = 1; i < g.length; i++) {
-        const d = distancePointSegment(p.lat, p.lng, g[i - 1]!.lat, g[i - 1]!.lon, g[i]!.lat, g[i]!.lon);
-        if (d < min) { min = d; meilleure = v; }
-      }
-    }
-    return meilleure;
   }
 
   /** Sérialise les appels Overpass (≤ ~1/s). */
@@ -283,70 +249,4 @@ export function estRejouable(e: unknown): boolean {
   if (e instanceof ErreurOverpass) return e.rejouable;
   // Coupure réseau / abandon sur timeout : le transport a lâché, pas la logique.
   return e instanceof Error && /fetch failed|aborted|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket/i.test(e.message);
-}
-
-interface OverpassWay {
-  type?: string;
-  tags?: Record<string, string>;
-  geometry?: { lat: number; lon: number }[];
-}
-interface OverpassReponse {
-  elements?: OverpassWay[];
-  /** Présent quand Overpass signale une erreur SOUS un HTTP 200 (timeout, surcharge). */
-  remark?: string;
-}
-
-/**
- * Distance (m) d'un point à un segment, en projection équirectangulaire locale. À l'échelle de
- * quelques dizaines de mètres l'approximation est négligeable devant la précision GPS.
- */
-export function distancePointSegment(
-  plat: number, plng: number,
-  alat: number, alng: number,
-  blat: number, blng: number,
-): number {
-  const R = 6_371_000;
-  const rad = Math.PI / 180;
-  const cosLat = Math.cos(plat * rad);
-  const px = plng * rad * cosLat * R, py = plat * rad * R;
-  const ax = alng * rad * cosLat * R, ay = alat * rad * R;
-  const bx = blng * rad * cosLat * R, by = blat * rad * R;
-  const dx = bx - ax, dy = by - ay;
-  const l2 = dx * dx + dy * dy;
-  let t = l2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / l2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-/**
- * Limite INFÉRÉE (km/h) par type de voie OSM `highway`, défauts FRANCE (fallback quand aucun tag
- * `maxspeed` explicite). Approximatif (l'urbain/rural sur primary/secondary reste ambigu) : à
- * considérer comme « probable ». motorway=130, trunk=110, voies structurantes=90/80, urbain=50/30/20.
- */
-/** Voies NON routables (à ignorer : elles ne portent pas la limite d'un véhicule). */
-const NON_DRIVABLE = new Set(['footway', 'path', 'cycleway', 'pedestrian', 'steps', 'bridleway', 'corridor', 'platform', 'construction', 'proposed']);
-
-const INFER: Record<string, number> = {
-  motorway: 130, motorway_link: 90, trunk: 110, trunk_link: 70,
-  primary: 90, primary_link: 50, secondary: 80, secondary_link: 50,
-  tertiary: 80, tertiary_link: 50, unclassified: 80,
-  residential: 50, living_street: 20, service: 30, road: 50,
-};
-export function inferFromHighway(highway: string | undefined): number | null {
-  return highway ? (INFER[highway] ?? null) : null;
-}
-
-/** Convertit une valeur OSM `maxspeed` en km/h. Gère les mph, les catégories FR, `none`, `walk`. */
-export function parseMaxspeed(v: string | undefined | null): number | null {
-  if (!v) return null;
-  const s = v.trim().toLowerCase();
-  if (s === 'none' || s === 'signals' || s === 'variable') return null;
-  if (s === 'walk') return 6;
-  // Catégories implicites françaises (zones/urban/rural/motorway).
-  const cat: Record<string, number> = { 'fr:urban': 50, 'fr:rural': 80, 'fr:trunk': 110, 'fr:motorway': 130, 'fr:living_street': 20, 'fr:zone30': 30, 'fr:walk': 6 };
-  if (cat[s] != null) return cat[s];
-  const mph = /mph/.test(s);
-  const num = parseFloat(s);
-  if (!Number.isFinite(num) || num <= 0) return null;
-  return Math.round(mph ? num * 1.60934 : num);
 }
