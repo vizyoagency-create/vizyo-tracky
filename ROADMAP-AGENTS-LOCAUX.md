@@ -106,15 +106,25 @@ Crons : « poste local » (où ça tourne) et « IA absorbée » / « IA factur�
 ⚠️ **Non vérifié à 375 px** — Docker Desktop n'était pas lancé, donc pas de pile locale. Typecheck
 et 5 gardes passent, mais aucun écran n'a été regardé dans un navigateur.
 
-### 4. Table de conservation des couples (entrée, sortie) IA — ☐ À FAIRE
+### 4. Table de conservation des couples (entrée, sortie) IA — ✅ FAIT
 
-Aujourd'hui on conserve le **résultat** (`activity_reports.content`, `trip_analyses.narrative`) mais
-**pas le payload envoyé au modèle**. Or c'est le couple qui permet d'améliorer un agent.
+`ai_agent_traces` + `AiTraceService` (@Global). Migration `20260819170000_traces_agents_ia`.
+10 tests sur le service, 82 sur les suites touchées.
 
-Table dédiée (nom proposé : `ai_agent_traces`) : action, executor, modèle, payload d'entrée, réponse
-brute, durée, verdict (concluant / rejeté), horodatage. Aucune table existante touchée.
+**Rétention tranchée : plafond de 200 PAR ACTION**, pas de purge par ancienneté. Une purge à N mois
+effacerait intégralement les traces d'une action rare — précisément celle dont on a le moins
+d'exemples et le plus besoin.
 
-À décider : la rétention. Ces lignes grossissent vite — un plafond par action, ou une purge à N mois.
+Trois points à ne pas défaire :
+- le **verdict** (`concluant` / `rejete`) est le champ qui a de la valeur : il sépare les cas à
+  rejouer du bruit. Une escalade de l'assistance compte comme `rejete` ;
+- un payload trop gros est **marqué tronqué**, jamais coupé en silence ;
+- pour l'assistance, les **lots de données du demandeur ne sont PAS recopiés** — seulement leur
+  résumé d'audit. On perd le rejeu à l'identique, on évite une seconde copie de données
+  personnelles hors de leurs règles de rétention.
+
+⚠️ Vérifiable seulement en production : en local aucune clé IA n'est configurée, donc aucun appel
+n'a lieu, donc aucune trace n'est écrite (comportement correct, verrouillé par un test).
 
 ### 5. Agents — voir le catalogue ci-dessous
 
