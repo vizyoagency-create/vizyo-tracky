@@ -61,8 +61,19 @@ redémarrage sans rien persister.
 - `RUN_BUDGET_MS` (20 min) : un passage ne peut plus déborder sur le suivant.
 - Tranche sans position → on ne supprime rien, on compte et on remonte au centre d'alerte.
 
-**Reste à observer** : que les tranches « 7-30 j » (854) et « 30-50 j » (1 207) baissent
-effectivement. Contrôles programmés le 19/08 à 13:52 et le 20/08 à 08:14.
+⚠️ **Correctif du correctif, le même jour (commit `5ec1804c`, PAS ENCORE DÉPLOYÉ).** Le budget
+n'était vérifié qu'à l'entrée de chaque VÉHICULE. Le temps ne part pas là : il part dans la boucle
+sur leurs TRAJETS (OpenStreetMap pour les limites, OSRM pour le calage sur route). Mesure après
+déploiement : passage démarré à 11:45 UTC, toujours en cours à 12:20 — **35 minutes pour un plafond
+annoncé à 20**. L'échéance est désormais lue dans la boucle des trajets, et un passage écourté le
+dit dans le journal d'activité.
+
+Leçon à garder : les deux versions passaient le typecheck et les tests. Seule la mesure en
+production a montré que la borne était au mauvais endroit.
+
+**Reste à observer** : que les tranches « 7-30 j » (854) et « 30-50 j » (1 190) baissent
+effectivement. Il reste par ailleurs **4 845 trajets sans analyse** dans la fenêtre de 50 jours —
+c'est ce retard-là qui fait durer les passages.
 
 ### 2. Retirer le bouton « Recalculer » de la page Rapports — ⏸ EN ATTENTE
 
@@ -214,10 +225,11 @@ boucle dont on ignore la longueur.
 | Base de connaissances (20 sujets) + 14 tests anti-divulgation | ✅ |
 | Service IA en 2 temps + prompts système — 14 tests | ✅ |
 | Coût journalisé sous `support_chat` / `executor: api` | ✅ |
-| Plafonds par conversation et par utilisateur/jour | ☐ |
-| Contrôleur + streaming | ☐ |
+| Plafonds par conversation et par utilisateur/jour | ✅ |
+| Contrôleur + persistance + archive admin — 18 tests | ✅ |
+| Bouton « rappel urgent » (côté serveur, alerte CRITICAL) | ✅ |
 | UI client (chat) + UI admin (archive, relecture, correction, recontact) | ☐ |
-| Bouton « rappel urgent » + notifications | ☐ |
+| Notification push quand un humain reprend la main | ☐ |
 
 ⚠️ **La base de connaissances est un engagement d'entretien.** Une fonctionnalité livrée sans y
 passer est une fonctionnalité sur laquelle l'agent répondra à côté, ou inventera. À traiter comme
