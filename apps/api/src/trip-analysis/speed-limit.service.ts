@@ -73,8 +73,13 @@ export class SpeedLimitService {
    * rendait enfin les pannes visibles s'est mis à les crier. Une application qui spamme ses
    * propres alertes cesse d'être lue, ce qui est exactement le défaut qu'on venait de réparer
    * ailleurs. On trace donc au plus une fois par fenêtre, quel que soit le nombre de trajets.
+   *
+   * Fenêtre portée de 30 min à 6 h le 2026-08-19, quand le gros du travail est passé sur l'agent
+   * du poste : le serveur ne résout plus que les points manquants d'un trajet frais, et ses échecs
+   * Overpass sont devenus un aléa attendu plutôt qu'un incident. Six heures laissent encore quatre
+   * signalements par jour — assez pour voir une panne durable, trop peu pour lasser.
    */
-  private readonly SILENCE_ALERTE_MS = 30 * 60 * 1000;
+  private readonly SILENCE_ALERTE_MS = 6 * 60 * 60 * 1000;
   private derniereAlerteAt = 0;
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
