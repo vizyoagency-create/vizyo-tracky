@@ -281,6 +281,7 @@ const CATALOG: CatalogEntry[] = [
   // ───────── Temps réel ─────────
   {
     id: 'position-broadcast', label: 'Diffusion temps réel des positions', category: 'Temps réel',
+    source: 'realtime/position-broadcast-buffer.service.ts',
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 1 s', criticality: 'moyenne', antiOverlap: false,
     continuous: true,
     purpose: 'Regroupe et diffuse les positions aux écrans clients une fois par seconde (fluidité sous charge).',
@@ -293,6 +294,14 @@ const CATALOG: CatalogEntry[] = [
     purpose: 'Insère les positions reçues par paquets pour tenir la charge d\'ingestion GPS.',
   },
   {
+    id: 'mission-status', label: 'Bascule des statuts de mission', category: 'Temps réel',
+    source: 'missions/mission-status.service.ts',
+    kind: 'interval', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
+    note: "⚠️ ELLE MANQUAIT A CE CATALOGUE jusqu'au 2026-08-19. Le premier garde ne relevait que les @Cron : ce traitement, declare en @Interval, passait au travers. Le garde couvre desormais les deux.",
+    purpose: "Fait passer les missions du depot d'un statut a l'autre a partir des faits (depart, arrivee, fin). Le statut est DERIVE, jamais saisi : sans ce passage, une mission resterait indefiniment « planifiee » alors que le vehicule est deja reparti.",
+    periodic: { everyMs: 60_000, offsetMs: 0 },
+  },
+  {
     id: 'ignition-cleanup',
     source: 'positions/ignition-inferred-cleanup.service.ts', label: 'Extinction contact inféré', category: 'Temps réel',
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'moyenne', antiOverlap: false,
@@ -301,6 +310,7 @@ const CATALOG: CatalogEntry[] = [
   },
   {
     id: 'realtime-revalidate', label: 'Revalidation des connexions live', category: 'Temps réel',
+    source: 'realtime/realtime.gateway.ts',
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'moyenne', antiOverlap: false,
     continuous: true,
     purpose: 'Déconnecte les sessions temps réel dont l\'utilisateur n\'est plus actif (sécurité).',

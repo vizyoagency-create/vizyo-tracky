@@ -35,8 +35,17 @@ function sourcesTs(dossier: string, acc: string[] = []): string[] {
   return acc;
 }
 
-/** Fichiers portant au moins un vrai `@Cron(` — les mentions en commentaire ne comptent pas. */
-function fichiersAvecCron(): string[] {
+/**
+ * Fichiers portant au moins un vrai `@Cron(` OU `@Interval(` — les mentions en commentaire ne
+ * comptent pas.
+ *
+ * ⚠️ LES DEUX DÉCORATEURS, ET C'EST UNE LEÇON PAYÉE. La première version de ce garde ne relevait
+ *    que les `@Cron`. Il annonçait donc un catalogue exhaustif alors que
+ *    `missions/mission-status.service.ts` — la bascule des statuts de mission, toutes les
+ *    minutes — passait au travers, déclarée en `@Interval`. Un garde qui ne couvre qu'une moitié
+ *    du problème est pire qu'un garde absent : il donne la certitude que tout va bien.
+ */
+function fichiersPlanifies(): string[] {
   const out: string[] = [];
   for (const f of sourcesTs(RACINE)) {
     if (f === CATALOGUE) continue;
@@ -44,7 +53,7 @@ function fichiersAvecCron(): string[] {
     const porte = lignes.some((l) => {
       const t = l.trim();
       if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return false;
-      return t.includes('@Cron(');
+      return t.includes('@Cron(') || t.includes('@Interval(');
     });
     if (porte) out.push(relative(RACINE, f).split(sep).join('/'));
   }
@@ -60,9 +69,9 @@ function sourcesCataloguees(): Set<string> {
 }
 
 describe('Catalogue des traitements de fond — exhaustif par construction', () => {
-  it('⚠️ CHAQUE fichier portant un @Cron est revendique par le catalogue', () => {
+  it('⚠️ CHAQUE fichier portant un @Cron OU un @Interval est revendique par le catalogue', () => {
     const cataloguees = sourcesCataloguees();
-    const oublies = fichiersAvecCron().filter((f) => !cataloguees.has(f));
+    const oublies = fichiersPlanifies().filter((f) => !cataloguees.has(f));
 
     expect(oublies).toEqual([]);
     // Si ce test tombe : un traitement planifie a ete ajoute sans etre inscrit au catalogue de
@@ -81,7 +90,7 @@ describe('Catalogue des traitements de fond — exhaustif par construction', () 
   it('le catalogue couvre un nombre plausible de traitements — la liste ne s’est pas videe', () => {
     // Garde-fou grossier contre une regression silencieuse du parseur ci-dessus : s'il cessait
     // de trouver les @Cron, les deux tests passeraient en ne verifiant plus rien.
-    expect(fichiersAvecCron().length).toBeGreaterThanOrEqual(30);
+    expect(fichiersPlanifies().length).toBeGreaterThanOrEqual(30);
     expect(sourcesCataloguees().size).toBeGreaterThanOrEqual(30);
   });
 
@@ -89,5 +98,11 @@ describe('Catalogue des traitements de fond — exhaustif par construction', () 
     // Le trou trouve le 2026-08-19. Nommement teste : c'est le traitement dont l'absence
     // masquerait toutes les autres absences.
     expect(sourcesCataloguees()).toContain('observability/scheduled-task-heartbeat.service.ts');
+  });
+
+  it('⚠️ la bascule des statuts de mission aussi — trouvee en etendant le garde aux @Interval', () => {
+    // Second trou du 2026-08-19 : un traitement METIER, toutes les minutes, invisible. Sans lui
+    // une mission resterait « planifiee » alors que le vehicule est deja parti.
+    expect(sourcesCataloguees()).toContain('missions/mission-status.service.ts');
   });
 });
