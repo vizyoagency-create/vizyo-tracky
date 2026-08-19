@@ -97,7 +97,7 @@ export class TripAnalysisLlmService {
     let call;
     try {
       call = await this.ai.completeJson<NarrativeOut>(
-        { system: renderTripSynthesisSystem(), userPayload: payload, schema: TRIP_NARRATIVE_SCHEMA, maxTokens: 1200 },
+        { system: renderTripSynthesisSystem(), userPayload: payload, schema: TRIP_NARRATIVE_SCHEMA, maxTokens: 1200, effort: 'low' },
         { preferProvider: 'claude' },
       );
     } catch (e) {
@@ -161,7 +161,7 @@ export class TripAnalysisLlmService {
     let call;
     try {
       call = await this.ai.completeJson<NarrativeOut>(
-        { system: renderTripNarrativeSystem(), userPayload: payload, schema: TRIP_NARRATIVE_SCHEMA, maxTokens: 1200 },
+        { system: renderTripNarrativeSystem(), userPayload: payload, schema: TRIP_NARRATIVE_SCHEMA, maxTokens: 1200, effort: 'low' },
         { preferProvider },
       );
     } catch (e) {

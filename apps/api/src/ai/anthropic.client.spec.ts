@@ -1,5 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common';
-import { AnthropicClient } from './anthropic.client';
+import { AnthropicClient, resolveModel } from './anthropic.client';
 
 /**
  * Sprint 9 — Couvre la couche WIRE (la plus à risque car non testée live) :
@@ -59,7 +59,7 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
     expect(opts.headers['x-api-key']).toBe('test-key');
     expect(opts.headers['anthropic-version']).toBe('2023-06-01');
     const body = JSON.parse(opts.body);
-    expect(body.model).toBe('claude-opus-4-8');
+    expect(body.model).toBe('claude-sonnet-5'); // defaut = le moins cher, cf. resolveModel
     expect(body.thinking).toEqual({ type: 'adaptive' });
     expect(body.output_config.effort).toBe('high');
     expect(body.output_config.format).toEqual({ type: 'json_schema', schema: REQ.schema });
@@ -128,5 +128,70 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
   it('rejet réseau -> 503 (injoignable)', async () => {
     fetchMock.mockRejectedValue(Object.assign(new Error('boom'), { name: 'TypeError' }));
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toThrow(/injoignable/i);
+  });
+});
+
+/**
+ * ── CE QUE CES TESTS EMPECHENT DE REVENIR ────────────────────────────────────────────
+ *
+ * Releve du 2026-08-19 : 51,65 $ de facture IA, dont 45,89 $ (89 %) pour 4 410 recits de
+ * trajet. Chacun passait par le modele le plus cher non par choix, mais parce qu'il etait
+ * ECRIT EN DUR dans ce fichier. Raconter un trajet ne demande pas la meme puissance
+ * qu'arbitrer un plan de tournee ; encore fallait-il pouvoir le dire.
+ */
+describe('AnthropicClient — choix du modele et de l’effort', () => {
+  const OLD_ENV = process.env.ANTHROPIC_MODEL;
+  afterEach(() => {
+    if (OLD_ENV === undefined) delete process.env.ANTHROPIC_MODEL;
+    else process.env.ANTHROPIC_MODEL = OLD_ENV;
+  });
+
+  it('par defaut : Sonnet 5, plus recent ET moins cher qu’Opus 4.8', () => {
+    delete process.env.ANTHROPIC_MODEL;
+    expect(resolveModel()).toBe('claude-sonnet-5');
+  });
+
+  it('l’appelant prime : une tache lourde peut demander un modele plus fort', () => {
+    delete process.env.ANTHROPIC_MODEL;
+    expect(resolveModel('claude-opus-5')).toBe('claude-opus-5');
+  });
+
+  it('ANTHROPIC_MODEL surcharge le defaut sans redeployer', () => {
+    process.env.ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+    expect(resolveModel()).toBe('claude-haiku-4-5-20251001');
+  });
+
+  it('le choix de l’appelant passe AVANT la variable d’env', () => {
+    process.env.ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+    expect(resolveModel('claude-opus-5')).toBe('claude-opus-5');
+  });
+});
+
+describe('AnthropicClient — l’effort part dans le body', () => {
+  const OLD_FETCH = global.fetch;
+  let fetchMock: jest.Mock;
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = 'test-key';
+    fetchMock = jest.fn().mockResolvedValue(res({ json: {
+      stop_reason: 'end_turn', model: 'claude-sonnet-5',
+      content: [{ type: 'text', text: '{}' }], usage: { input_tokens: 1, output_tokens: 1 },
+    } }));
+    global.fetch = fetchMock as never;
+  });
+  afterEach(() => { global.fetch = OLD_FETCH; });
+
+  it('⚠️ `effort: low` est bien transmis — la reflexion est facturee en SORTIE, 75 % du cout', async () => {
+    await new AnthropicClient().completeJson({ ...REQ, effort: 'low' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).output_config.effort).toBe('low');
+  });
+
+  it('sans precision, l’effort reste `high` : les appelants existants ne changent pas', async () => {
+    await new AnthropicClient().completeJson(REQ);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).output_config.effort).toBe('high');
+  });
+
+  it('le modele demande par l’appelant part dans le body', async () => {
+    await new AnthropicClient().completeJson({ ...REQ, model: 'claude-opus-5' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('claude-opus-5');
   });
 });

@@ -19,8 +19,14 @@ interface Pricing {
   cacheRead: number;
 }
 const PRICING: Record<string, Pricing> = {
-  // Anthropic — Opus 4.8 : input 5 $, output 25 $ ; cache write (5 min) 1,25× ; cache read 0,1×.
+  // Anthropic — cache write (5 min) = 1,25× l'input ; cache read = 0,1× l'input.
+  // ⚠️ Une grille MANQUANTE ne fait pas planter : elle retombe sur le repli le plus cher (Opus).
+  //    Sans la ligne Sonnet ci-dessous, passer les récits de trajet à Sonnet les aurait facturés
+  //    au tarif Opus dans les rapports — l'économie réelle serait restée invisible.
+  'claude-opus-5': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   'claude-opus-4-8': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  'claude-sonnet-5': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+  'claude-haiku-4-5': { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
   // OpenAI (couche multi-provider 2026-07) — tarifs / 1M tokens. cacheWrite=0 (OpenAI ne facture
   // pas l'écriture de cache) ; cacheRead = tarif « cached input ». Clés = préfixe de modèle (le
   // provider renvoie une version datée, ex. `gpt-4.1-2025-04-14` → résolu par préfixe, cf. resolvePricing).

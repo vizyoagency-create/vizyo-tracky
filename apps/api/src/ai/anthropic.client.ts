@@ -15,7 +15,25 @@ import { AiServiceError, describeProviderError, isTransientBadRequest } from './
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const MODEL = 'claude-opus-4-8';
+/**
+ * Modèle par défaut, quand l'appelant n'en impose pas.
+ *
+ * ── POURQUOI CE N'EST PLUS OPUS ──────────────────────────────────────────────────────
+ *
+ * Relevé du 2026-08-19 : 51,65 $ de facture IA, dont 45,89 $ (89 %) pour 4 410 récits de trajet.
+ * Chaque récit passait par `claude-opus-4-8` non par choix, mais parce que le modèle était écrit
+ * en dur ici. Raconter un trajet en trois phrases ne demande pas le modèle le plus cher.
+ *
+ * Sonnet 5 est à la fois PLUS RÉCENT et MOINS CHER qu'Opus 4.8 : 3/15 $ par million de jetons
+ * contre 5/25 $, soit 40 % de moins à volume identique. Surchargeable par `ANTHROPIC_MODEL`, et
+ * par appel via `AiJsonRequest.model` pour les tâches qui méritent vraiment davantage.
+ */
+const DEFAULT_MODEL = 'claude-sonnet-5';
+
+/** Modèle retenu pour un appel : choix de l'appelant, sinon variable d'env, sinon défaut. */
+export function resolveModel(demande?: string): string {
+  return demande || process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
+}
 /** Borne le temps d'attente (adaptive thinking + effort high peut être long). */
 const REQUEST_TIMEOUT_MS = 120_000;
 
@@ -44,12 +62,13 @@ export class AnthropicClient implements AiClient {
       throw new AiServiceError('no_key', 'Copilote IA non configuré (ANTHROPIC_API_KEY absente côté serveur).');
     }
 
+    const modele = resolveModel(req.model);
     const body = {
-      model: MODEL,
+      model: modele,
       max_tokens: req.maxTokens ?? 8192,
       thinking: { type: 'adaptive' },
       output_config: {
-        effort: 'high',
+        effort: req.effort ?? 'high',
         format: { type: 'json_schema', schema: req.schema },
       },
       system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
@@ -145,7 +164,7 @@ export class AnthropicClient implements AiClient {
         cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
         cacheReadTokens: u.cache_read_input_tokens ?? 0,
       },
-      model: data.model ?? MODEL,
+      model: data.model ?? modele,
       provider: 'claude',
       latencyMs: Date.now() - startedAt,
     };

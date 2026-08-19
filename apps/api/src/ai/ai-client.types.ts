@@ -104,6 +104,21 @@ export interface AiJsonRequest {
   /** JSON Schema de la sortie attendue (Structured Outputs). */
   schema: unknown;
   maxTokens?: number;
+  /**
+   * Modèle à employer, quand l'appelant sait que sa tâche ne mérite pas le plus cher.
+   *
+   * Relevé du 2026-08-19 : 4 410 récits de trajet à 0,0104 $ pièce, soit 45,89 $ — 89 % de la
+   * facture IA — tous passés par le modèle le plus coûteux parce qu'il était CODÉ EN DUR. Raconter
+   * un trajet en trois phrases et arbitrer un plan de tournée ne demandent pas la même puissance.
+   * Absent → défaut du client (surchargeable par `ANTHROPIC_MODEL`).
+   */
+  model?: string;
+  /**
+   * Effort de raisonnement. `high` fait réfléchir le modèle avant de répondre, et cette réflexion
+   * est facturée en SORTIE — le poste le plus cher (75 % du coût des récits de trajet). Un résumé
+   * factuel n'en a pas besoin. Absent → `high`, pour ne rien changer aux appelants existants.
+   */
+  effort?: 'low' | 'medium' | 'high';
 }
 
 /** Consommation de tokens renvoyée par le provider — base du calcul de coût (palier « Coûts IA »). */
