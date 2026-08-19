@@ -4,21 +4,50 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { LimitResolver } from './trip-analysis.preprocessor';
 
 /**
- * Limites de vitesse légales (OpenStreetMap `maxspeed` via Overpass) — pour transformer un « il roule
- * vite » en un EXCÈS CERTAIN (« 89 km/h en zone 50 »). Best-effort et NON bloquant : timeout/échec →
- * limite inconnue (l'analyse reste valable, l'excès juste non affirmé). Fortement caché en base
- * (`speed_limit_cache`, clé ~11 m) : un point déjà résolu ne re-tape jamais Overpass ; on mémorise
- * MÊME l'inconnu. Appels LIVE bornés + throttlés (respect du quota Overpass public).
+ * Limites de vitesse légales (OpenStreetMap `maxspeed` via Overpass) — pour transformer un « il
+ * roule vite » en un EXCÈS CERTAIN (« 89 km/h en zone 50 »). Best-effort et NON bloquant :
+ * timeout/échec → limite inconnue (l'analyse reste valable, l'excès juste non affirmé).
+ *
+ * ── CE QUI A ÉTÉ RÉPARÉ ICI, ET POURQUOI ─────────────────────────────────────────────
+ *
+ * Relevé du 2026-08-19 en production : le cache contenait 60 090 points dont 59 347 marqués
+ * « inconnu » — 98,8 %. Conséquence : 75,3 % des trajets n'avaient AUCUNE limite résolue, donc
+ * zéro excès calculable, donc un score de conduite moyen de 93,4/100 qui ne mesurait rien.
+ *
+ * Deux points tirés au hasard parmi ces « inconnus » se résolvaient pourtant parfaitement en les
+ * rejouant : `motorway_link maxspeed=70` et `highway=tertiary` (→ 80 par inférence). La donnée OSM
+ * était là depuis le début. C'est le cache qui mentait.
+ *
+ * LA CAUSE : Overpass sert ses erreurs de surcharge SOUS UN HTTP 200 — soit une page HTML, soit un
+ * JSON parfaitement valide avec `elements: []` et un champ `remark`. L'ancien code testait
+ * `if (!res.ok)`, qu'un 200 franchit ; il lisait la liste vide comme « aucune route ici » et la
+ * mémorisait DÉFINITIVEMENT « pour ne pas re-taper ». Une indisponibilité de quelques secondes
+ * devenait une vérité permanente, et le point n'était plus jamais réinterrogé.
+ *
+ * LES TROIS GARDE-FOUS AJOUTÉS :
+ *   1. `remark` / corps non-JSON → échec de TRANSPORT (on lève), jamais un « inconnu » mémorisé ;
+ *   2. AUCUNE route trouvée → on ne cache PAS. Un point GPS de véhicule en mouvement est sur une
+ *      route par construction : zéro voie à 20 m est le symptôme d'une mauvaise réponse, pas un
+ *      fait. On réessaiera. Seul un « route trouvée mais type inconnu » est un vrai négatif ;
+ *   3. requêtes GROUPÉES : un trajet entier part en 1 à 8 appels au lieu d'être coupé au 12e point.
+ *      Le rattachement point → route se fait localement sur la géométrie renvoyée.
  */
 @Injectable()
 export class SpeedLimitService {
   private readonly logger = new Logger(SpeedLimitService.name);
   private lastCallAt = 0;
 
-  /** Plafond d'appels Overpass LIVE par analyse (le reste vient du cache ou reste inconnu). */
-  private readonly MAX_LIVE = 12;
+  /** Points par requête Overpass groupée. */
+  private readonly CHUNK = 40;
+  /**
+   * Plafond de requêtes GROUPÉES par analyse — soit 320 points, contre 12 auparavant. Le plafond
+   * borne toujours la charge sur l'instance publique, mais il ne coupe plus un trajet en deux.
+   */
+  private readonly MAX_CHUNKS = 8;
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
+  /** Marge de rattachement local (m) : Overpass a filtré à RADIUS_M, on tolère l'arrondi. */
+  private readonly MATCH_M = 25;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -32,8 +61,8 @@ export class SpeedLimitService {
 
   /**
    * Pré-résout les limites pour un ensemble de points (dédupliqués par cellule), puis renvoie un
-   * RÉSOLVEUR SYNCHRONE (lookup en mémoire) consommable par le préprocesseur. Cache d'abord, Overpass
-   * ensuite (borné/throttlé). Les points non résolus renvoient null (limite inconnue).
+   * RÉSOLVEUR SYNCHRONE (lookup en mémoire) consommable par le préprocesseur. Cache d'abord,
+   * Overpass ensuite (groupé, borné, throttlé). Points non résolus → null (limite inconnue).
    */
   async buildResolver(points: { lat: number; lng: number }[]): Promise<LimitResolver> {
     const map = new Map<string, number | null>();
@@ -55,40 +84,58 @@ export class SpeedLimitService {
     }
     for (const c of cached) map.set(c.key, c.maxspeed);
 
-    // 2. Overpass pour les manquants (borné). On COMPTE les échecs de transport (Overpass down) pour
-    //    remonter UNE seule alerte par analyse (pas une par point) au centre d'alerte.
-    let live = 0;
-    let failures = 0;
+    // 2. Overpass GROUPÉ pour les manquants. On COMPTE les échecs de transport pour remonter UNE
+    //    seule alerte par analyse (pas une par point) au centre d'alerte.
+    const manquants = [...cells.entries()].filter(([k]) => !map.has(k));
+    let requetes = 0;
+    let echecs = 0;
     let lastError: unknown = null;
-    for (const [k, p] of cells) {
-      if (map.has(k)) continue;
-      if (live >= this.MAX_LIVE) { map.set(k, null); continue; } // au-delà du plafond → inconnu (non re-tapé)
-      live++;
+
+    for (let i = 0; i < manquants.length; i += this.CHUNK) {
+      if (requetes >= this.MAX_CHUNKS) {
+        // Au-delà du plafond → inconnu POUR CETTE ANALYSE, et surtout NON mémorisé : la prochaine
+        // analyse retentera. C'est ce « non mémorisé » qui manquait et qui figeait les trous.
+        for (const [k] of manquants.slice(i)) map.set(k, null);
+        break;
+      }
+      const lot = manquants.slice(i, i + this.CHUNK);
+      requetes++;
       try {
-        const limit = await this.fetchMaxspeed(p.lat, p.lng);
-        map.set(k, limit);
-        // Mémorise MÊME l'inconnu (route sans tag) pour ne pas re-taper ; un échec transport ne cache rien.
-        this.prisma.speedLimitCache.create({ data: { key: k, maxspeed: limit, lat: p.lat, lng: p.lng } }).catch(() => { /* course : sans gravité */ });
+        const resolus = await this.fetchLot(lot.map(([, p]) => p));
+        for (let j = 0; j < lot.length; j++) {
+          const k = lot[j]![0];
+          const r = resolus[j]!;
+          map.set(k, r.limite);
+          // ⚠️ On ne mémorise QUE ce qui est concluant. `trouvee === false` (aucune voie à 20 m)
+          //    n'est pas un fait sur le terrain : c'est le symptôme d'une réponse dégradée. Le
+          //    mémoriser est exactement le bug qui a stérilisé 59 347 points.
+          if (r.trouvee) {
+            this.prisma.speedLimitCache
+              .create({ data: { key: k, maxspeed: r.limite, lat: lot[j]![1].lat, lng: lot[j]![1].lng } })
+              .catch(() => { /* course : sans gravité */ });
+          }
+        }
       } catch (e) {
-        failures++;
+        echecs++;
         lastError = e;
-        map.set(k, null); // inconnu pour cette analyse (NON caché → sera re-tenté plus tard)
+        for (const [k] of lot) map.set(k, null); // inconnu ici, NON caché → sera retenté
       }
     }
+
     // Overpass systématiquement injoignable → l'excès de vitesse n'a pas pu être affirmé : on TRACE
     // (une alerte, source `trip-analysis`, visible dans /admin/alerts). Best-effort : jamais bloquant.
-    if (live > 0 && failures === live) {
+    if (requetes > 0 && echecs === requetes) {
       // Le message porte la DÉPENDANCE et la CONSÉQUENCE. L'erreur brute du transport
       // (« fetch failed », « This operation was aborted ») ne disait ni ce qui était injoignable,
       // ni ce que ça coûtait — illisible au centre d'alerte, et impossible à trier d'une vraie panne.
       const cause = lastError instanceof Error ? lastError.message : String(lastError ?? 'injoignable');
       void this.errorLogger.record(
         new Error(
-          `Limites de vitesse indisponibles : Overpass (OpenStreetMap) injoignable sur ${live} point(s) — ` +
+          `Limites de vitesse indisponibles : Overpass (OpenStreetMap) injoignable sur ${requetes} requête(s) — ` +
             `les excès de vitesse ne sont pas affirmés sur ce trajet, le reste de l'analyse est conservé. Cause : ${cause}`,
         ),
         'trip-analysis',
-        { feature: 'speed-limit-osm', pointsAttempted: live, overpass: process.env.OVERPASS_URL || 'public', cause },
+        { feature: 'speed-limit-osm', requetes, overpass: process.env.OVERPASS_URL || 'public', cause },
       );
     }
 
@@ -99,16 +146,20 @@ export class SpeedLimitService {
   }
 
   /**
-   * Interroge Overpass pour la limite de la route la plus proche. Priorité au tag `maxspeed`
-   * EXPLICITE (certain) ; à défaut, INFÉRENCE par type de voie (défauts FR) car beaucoup de routes
-   * n'ont pas de tag maxspeed (limite implicite). null si aucune route trouvée / Overpass indisponible.
+   * Interroge Overpass pour UN LOT de points, en une seule requête, et rattache chaque point à la
+   * route la plus proche via la géométrie renvoyée.
+   *
+   * Retourne, pour chaque point dans l'ordre : la limite (ou null) et `trouvee` — vrai seulement si
+   * une voie routable a réellement été rattachée. C'est `trouvee` qui autorise la mise en cache.
    */
-  private async fetchMaxspeed(lat: number, lng: number): Promise<number | null> {
+  private async fetchLot(points: { lat: number; lng: number }[]): Promise<{ limite: number | null; trouvee: boolean }[]> {
     await this.throttle();
     const base = (process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter').replace(/\/$/, '');
-    const q = `[out:json][timeout:10];way(around:${this.RADIUS_M},${lat},${lng})[highway];out tags 12;`;
+    const clauses = points.map((p) => `way(around:${this.RADIUS_M},${p.lat},${p.lng})[highway];`).join('');
+    // `out tags geom` : la géométrie est indispensable pour savoir QUELLE route va avec QUEL point.
+    const q = `[out:json][timeout:60];(${clauses});out tags geom;`;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12_000);
+    const timer = setTimeout(() => ctrl.abort(), 70_000);
     try {
       const res = await fetch(base, {
         method: 'POST',
@@ -116,21 +167,56 @@ export class SpeedLimitService {
         body: 'data=' + encodeURIComponent(q),
         signal: ctrl.signal,
       });
-      // Échec TRANSPORT (Overpass down / throttlé / 5xx) → on LÈVE pour que l'appelant compte l'échec
-      // et trace ; distinct d'une résolution légitime « aucune route » (null) qui, elle, est mémorisée.
+      // Échec TRANSPORT franc (Overpass down / throttlé / 5xx) → on LÈVE.
       if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-      const json = (await res.json()) as { elements?: Array<{ tags?: Record<string, string> }> };
-      // Voies ROUTABLES uniquement (exclut trottoirs/pistes/chemins qui fausseraient la limite).
-      const ways = (json.elements ?? []).map((e) => e.tags ?? {}).filter((t) => t.highway && !NON_DRIVABLE.has(t.highway));
-      if (ways.length === 0) return null;
-      // 1. Une route avec maxspeed EXPLICITE prime (certain).
-      for (const t of ways) { const m = parseMaxspeed(t.maxspeed); if (m != null) return m; }
-      // 2. Sinon, inférence par le type de la 1re route reconnue (défaut FR).
-      const drivable = ways.find((t) => INFER[t.highway] != null) ?? ways[0];
-      return inferFromHighway(drivable.highway);
+
+      const texte = await res.text();
+      let json: OverpassReponse;
+      try {
+        json = JSON.parse(texte) as OverpassReponse;
+      } catch {
+        // ⚠️ Overpass sert ses pages d'erreur EN HTTP 200 (« The server is probably too busy »).
+        //    Un corps non-JSON est une panne, pas une absence de route.
+        throw new Error(`Overpass a répondu 200 avec un corps non-JSON (${texte.slice(0, 80).replace(/\s+/g, ' ')})`);
+      }
+      // ⚠️ ET il sert aussi ses erreurs EN JSON VALIDE, avec `elements: []` et un `remark`. C'est CE
+      //    cas qui a empoisonné le cache : lu comme « aucune route », mémorisé pour toujours.
+      if (typeof json.remark === 'string' && json.remark.length > 0) {
+        throw new Error(`Overpass a répondu 200 avec une erreur applicative : ${json.remark.slice(0, 120)}`);
+      }
+
+      const voies = (json.elements ?? [])
+        .filter((e) => e.type === 'way' && Array.isArray(e.geometry) && e.geometry.length > 1)
+        // Voies ROUTABLES uniquement (exclut trottoirs/pistes/chemins qui fausseraient la limite).
+        .filter((e) => e.tags?.['highway'] && !NON_DRIVABLE.has(e.tags['highway']));
+
+      return points.map((p) => {
+        const proche = this.voieLaPlusProche(p, voies);
+        if (!proche) return { limite: null, trouvee: false };
+        // 1. Un maxspeed EXPLICITE prime (certain).
+        const explicite = parseMaxspeed(proche.tags?.['maxspeed']);
+        if (explicite != null) return { limite: explicite, trouvee: true };
+        // 2. Sinon, inférence par le type de voie (défauts FR). null ici est un VRAI négatif : la
+        //    route existe, son type n'est simplement pas interprétable — cache légitime.
+        return { limite: inferFromHighway(proche.tags?.['highway']), trouvee: true };
+      });
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /** Voie routable la plus proche du point, dans la limite de MATCH_M. */
+  private voieLaPlusProche(p: { lat: number; lng: number }, voies: OverpassWay[]): OverpassWay | null {
+    let meilleure: OverpassWay | null = null;
+    let min = this.MATCH_M;
+    for (const v of voies) {
+      const g = v.geometry!;
+      for (let i = 1; i < g.length; i++) {
+        const d = distancePointSegment(p.lat, p.lng, g[i - 1]!.lat, g[i - 1]!.lon, g[i]!.lat, g[i]!.lon);
+        if (d < min) { min = d; meilleure = v; }
+      }
+    }
+    return meilleure;
   }
 
   /** Sérialise les appels Overpass (≤ ~1/s). */
@@ -140,6 +226,39 @@ export class SpeedLimitService {
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     this.lastCallAt = Date.now();
   }
+}
+
+interface OverpassWay {
+  type?: string;
+  tags?: Record<string, string>;
+  geometry?: { lat: number; lon: number }[];
+}
+interface OverpassReponse {
+  elements?: OverpassWay[];
+  /** Présent quand Overpass signale une erreur SOUS un HTTP 200 (timeout, surcharge). */
+  remark?: string;
+}
+
+/**
+ * Distance (m) d'un point à un segment, en projection équirectangulaire locale. À l'échelle de
+ * quelques dizaines de mètres l'approximation est négligeable devant la précision GPS.
+ */
+export function distancePointSegment(
+  plat: number, plng: number,
+  alat: number, alng: number,
+  blat: number, blng: number,
+): number {
+  const R = 6_371_000;
+  const rad = Math.PI / 180;
+  const cosLat = Math.cos(plat * rad);
+  const px = plng * rad * cosLat * R, py = plat * rad * R;
+  const ax = alng * rad * cosLat * R, ay = alat * rad * R;
+  const bx = blng * rad * cosLat * R, by = blat * rad * R;
+  const dx = bx - ax, dy = by - ay;
+  const l2 = dx * dx + dy * dy;
+  let t = l2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
 /**
