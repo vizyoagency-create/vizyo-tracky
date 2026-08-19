@@ -52,8 +52,20 @@ const RECOMPUTE_SLICE_MS = 48 * 60 * 60 * 1000;
  * Un seul véhicule portant 150 trajets à analyser tenait donc le passage bien au-delà du budget :
  * observé à 31 minutes pour un plafond annoncé à 20. La borne doit être là où le temps se dépense,
  * pas là où il est commode de la lire.
+ *
+ * ── PORTE A 50 MIN LE 2026-08-19 ─────────────────────────────────────────────────────
+ *
+ * Le cron passe TOUTES LES HEURES, et un garde interdit deja le chevauchement : brider a
+ * 20 minutes laissait donc les deux tiers du temps disponible inutilises. Mesure du jour :
+ * un passage de 22,8 minutes traitait UN SEUL vehicule et reportait les 39 autres, alors que
+ * 11 300 analyses attendaient le rattrapage de l'historique. A ce rythme il aurait fallu
+ * soixante-six heures.
+ *
+ * 50 minutes laissent dix minutes de marge avant le tick suivant. Si un passage deborde
+ * malgre tout, le garde anti-chevauchement saute simplement le tick d'apres — le systeme se
+ * regule seul, il ne s'empile pas.
  */
-const RUN_BUDGET_MS = 20 * 60 * 1000;
+const RUN_BUDGET_MS = 50 * 60 * 1000;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
 const MAX_TRIPS_PER_VEHICLE = 500;
 /** Détail borné stocké par run (les trajets traités, cliquables). */
