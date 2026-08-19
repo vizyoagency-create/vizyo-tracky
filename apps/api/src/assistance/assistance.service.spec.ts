@@ -1,0 +1,187 @@
+import { UserRole } from '@prisma/client';
+import type { AuthUser } from '../auth/types/auth-user';
+import { AssistanceService } from './assistance.service';
+
+/**
+ * Assistance — conversations, plafonds et archive.
+ *
+ * Trois propriétés y sont verrouillées, dans cet ordre d'importance :
+ *   1. une conversation appartient à son auteur — un identifiant volé ne donne rien ;
+ *   2. le message de l'utilisateur est enregistré AVANT tout appel : une panne ou un quota ne
+ *      doit jamais faire perdre la demande, c'est elle qu'un humain reprendra ;
+ *   3. les plafonds sont ANNONCÉS, pas subis.
+ */
+describe('AssistanceService', () => {
+  const MOI = 'user-moi';
+
+  function build(opts: {
+    conv?: Record<string, unknown> | null;
+    reponsesConversation?: number;
+    reponsesJour?: number;
+    ia?: Record<string, unknown>;
+    role?: UserRole;
+    fleetId?: string | null;
+  } = {}) {
+    const conv = opts.conv === null ? null : {
+      id: 'c1', userId: MOI, fleetId: 'f1', title: 'Titre', status: 'open',
+      severity: null, escalatedAt: null, createdAt: new Date(), updatedAt: new Date(),
+      ...opts.conv,
+    };
+    let compte = 0;
+    const prisma = {
+      assistanceConversation: {
+        create: jest.fn().mockResolvedValue(conv),
+        findFirst: jest.fn().mockResolvedValue(conv),
+        findUnique: jest.fn().mockResolvedValue(conv),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue(conv),
+      },
+      assistanceMessage: {
+        create: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        // 1er appel = réponses de CETTE conversation, 2e = réponses du jour.
+        count: jest.fn().mockImplementation(() => Promise.resolve(compte++ === 0 ? (opts.reponsesConversation ?? 0) : (opts.reponsesJour ?? 0))),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ email: 'x@y.fr', role: 'VIEWER' }) },
+      fleet: { findUnique: jest.fn().mockResolvedValue({ name: 'Flotte' }), findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const ia = {
+      repondre: jest.fn().mockResolvedValue({
+        reponse: 'Voici la reponse.', escalade: false, motifEscalade: null, gravite: 'LOW',
+        titre: 'Titre deduit', sujets: ['trajets'], contextUsed: [{ key: 'erreurs', volume: 2, refuse: false }],
+        model: 'm', costUsd: 0.001, latencyMs: 800, sansIa: false,
+        ...opts.ia,
+      }),
+    };
+    const aiUsage = { eurRate: jest.fn().mockReturnValue(0.92) };
+    const systemActivity = { record: jest.fn() };
+    const errorLogger = { record: jest.fn().mockResolvedValue('id') };
+    const svc = new AssistanceService(prisma as never, ia as never, aiUsage as never, systemActivity as never, errorLogger as never);
+    const user: AuthUser = {
+      id: MOI, authUserId: 'a', email: 'moi@x.fr', firstName: null, lastName: null,
+      role: opts.role ?? UserRole.FLEET_MANAGER, isOwner: false,
+      fleetId: opts.fleetId === undefined ? 'f1' : opts.fleetId, isActive: true, permissions: null,
+    };
+    return { svc, prisma, ia, systemActivity, errorLogger, user };
+  }
+
+  // ─── Propriété : la demande n'est jamais perdue ────────────────────────────
+
+  it('enregistre le message de l\'utilisateur AVANT d\'appeler l\'IA', async () => {
+    const { svc, prisma, ia, user } = build();
+    const ordre: string[] = [];
+    prisma.assistanceMessage.create.mockImplementation(async (a: { data: { role: string } }) => {
+      ordre.push(`ecrit:${a.data.role}`);
+      return {};
+    });
+    ia.repondre.mockImplementation(async () => {
+      ordre.push('ia');
+      return { reponse: 'ok', escalade: false, motifEscalade: null, gravite: 'LOW', titre: 't', sujets: [], contextUsed: [], model: 'm', costUsd: 0, latencyMs: 1, sansIa: false };
+    });
+    await svc.poser(user, 'ma question');
+    // Si l'IA tombe, la question est déjà en base : c'est elle qu'un humain reprendra.
+    expect(ordre).toEqual(['ecrit:user', 'ia', 'ecrit:assistant']);
+  });
+
+  it('refuse un message vide sans rien écrire', async () => {
+    const { svc, prisma, user } = build();
+    await expect(svc.poser(user, '   ')).rejects.toThrow();
+    expect(prisma.assistanceMessage.create).not.toHaveBeenCalled();
+  });
+
+  it('fige la société du demandeur à la création', async () => {
+    const { svc, prisma, user } = build();
+    await svc.poser(user, 'question');
+    expect(prisma.assistanceConversation.create.mock.calls[0][0].data).toMatchObject({ userId: MOI, fleetId: 'f1' });
+  });
+
+  // ─── Propriété : une conversation appartient à son auteur ──────────────────
+
+  it('une conversation qui n\'est pas la mienne est INTROUVABLE (pas « interdite »)', async () => {
+    const { svc, prisma, user } = build({ conv: null });
+    // 404 et non 403 : distinguer les deux permettrait d'énumérer les identifiants valides.
+    await expect(svc.maConversation(user, 'c-inconnue')).rejects.toThrow(/introuvable/i);
+    expect(prisma.assistanceConversation.findFirst.mock.calls[0][0].where).toMatchObject({ userId: MOI });
+  });
+
+  it('la suite d\'une conversation vérifie la propriété avant d\'écrire', async () => {
+    const { svc, prisma, user } = build({ conv: null });
+    await expect(svc.poser(user, 'suite', 'c-volee')).rejects.toThrow(/introuvable/i);
+    expect(prisma.assistanceMessage.create).not.toHaveBeenCalled();
+  });
+
+  // ─── Propriété : les plafonds sont annoncés ────────────────────────────────
+
+  it('plafond de la conversation atteint : aucun appel IA, message explicite, escalade', async () => {
+    const { svc, ia, prisma, user } = build({ reponsesConversation: 10 });
+    const r = await svc.poser(user, 'encore une question');
+    expect(ia.repondre).not.toHaveBeenCalled();
+    expect(r.messages).toBeDefined();
+    // La réponse de quota est enregistrée comme un vrai message : affichée puis perdue, elle
+    // laisserait l'utilisateur sans trace de ce qu'on lui a dit.
+    expect(prisma.assistanceMessage.create).toHaveBeenCalledTimes(2);
+    expect(prisma.assistanceConversation.update.mock.calls[0][0].data.status).toBe('escalated');
+  });
+
+  it('plafond du JOUR atteint : aucun appel IA', async () => {
+    const { svc, ia, user } = build({ reponsesConversation: 0, reponsesJour: 30 });
+    await svc.poser(user, 'question');
+    expect(ia.repondre).not.toHaveBeenCalled();
+  });
+
+  it('le plafond quotidien se compte sur les MESSAGES, pas sur les conversations', async () => {
+    const { svc, prisma, user } = build();
+    await svc.poser(user, 'question');
+    const appelJour = prisma.assistanceMessage.count.mock.calls[1][0];
+    // Sinon, ouvrir une conversation neuve à chaque question contournerait le plafond.
+    expect(appelJour.where).toMatchObject({ role: 'assistant', conversation: { userId: MOI } });
+  });
+
+  it('annonce le nombre de réponses restantes', async () => {
+    const { svc, prisma, user } = build();
+    prisma.assistanceMessage.findMany.mockResolvedValue([
+      { id: 'm1', createdAt: new Date(), role: 'user', content: 'q', costUsd: 0 },
+      { id: 'm2', createdAt: new Date(), role: 'assistant', content: 'r', costUsd: 0 },
+    ]);
+    const r = await svc.poser(user, 'question');
+    // Arriver à zéro sans avertissement se lit comme une panne.
+    expect(r.reponsesRestantes).toBe(9);
+  });
+
+  // ─── Escalade et rappel urgent ─────────────────────────────────────────────
+
+  it('une escalade de l\'agent est portée au centre d\'alerte', async () => {
+    const { svc, errorLogger, user } = build({ ia: { escalade: true, motifEscalade: 'hors connaissance' } });
+    await svc.poser(user, 'question');
+    expect(errorLogger.record).toHaveBeenCalled();
+  });
+
+  it('le rappel urgent n\'appelle PAS l\'IA et alerte en CRITICAL', async () => {
+    const { svc, ia, errorLogger, systemActivity, user } = build();
+    await svc.rappelUrgent(user, 'c1', 'camion vole');
+    // Le jour où quelqu'un a vraiment besoin d'un humain est le pire jour pour lui opposer un quota.
+    expect(ia.repondre).not.toHaveBeenCalled();
+    expect(errorLogger.record.mock.calls[0][3]).toBe('CRITICAL');
+    expect(systemActivity.record.mock.calls[0][0].action).toBe('assistance_rappel_urgent');
+  });
+
+  // ─── Archive admin ─────────────────────────────────────────────────────────
+
+  it('un admin de société ne voit que sa société', async () => {
+    const { svc, prisma, user } = build({ role: UserRole.FLEET_ADMIN });
+    await svc.adminListe(user);
+    expect(prisma.assistanceConversation.findMany.mock.calls[0][0].where).toMatchObject({ fleetId: 'f1' });
+  });
+
+  it('un super-admin voit toutes les sociétés', async () => {
+    const { svc, prisma, user } = build({ role: UserRole.SUPER_ADMIN, fleetId: null });
+    await svc.adminListe(user);
+    expect(prisma.assistanceConversation.findMany.mock.calls[0][0].where.fleetId).toBeUndefined();
+  });
+
+  it('un compte sans société ne voit RIEN (fail-closed)', async () => {
+    const { svc, prisma, user } = build({ role: UserRole.FLEET_ADMIN, fleetId: null });
+    expect(await svc.adminListe(user)).toEqual([]);
+    expect(prisma.assistanceConversation.findMany).not.toHaveBeenCalled();
+  });
+});

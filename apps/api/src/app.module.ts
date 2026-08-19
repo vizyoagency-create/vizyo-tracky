@@ -11,6 +11,7 @@ import { AiCoreModule } from './ai/ai-core.module';
 import { AiModule } from './ai/ai.module';
 import { TripAnalysisModule } from './trip-analysis/trip-analysis.module';
 import { AiUsageModule } from './ai-usage/ai-usage.module';
+import { AssistanceModule } from './assistance/assistance.module';
 import { BillingModule } from './billing/billing.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
 import { ReservationBookingModule } from './reservation-booking/reservation-booking.module';
@@ -192,6 +193,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     BillingModule,
     // Palier « Coûts IA » — journalise l'usage/coût de chaque appel IA + budget (super-admin).
     AiUsageModule,
+    // Assistance IA (2026-08) — repond EN DIRECT aux questions sur l'application, en lecture
+    // seule, et archive tout pour relecture. Seul poste qui depense volontairement de l'IA.
+    AssistanceModule,
     // Traçabilité fine des trajets (Palier 2) — analyse déterministe (arrêts, excès OSM, éco) persistée.
     TripAnalysisModule,
     // Refonte agenda/IA (P3) — géocodage inverse (Nominatim) pour nommer les destinations récurrentes.
