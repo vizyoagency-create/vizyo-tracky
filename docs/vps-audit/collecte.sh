@@ -1647,6 +1647,53 @@ done
 sub "Services en echec"
 systemctl --failed --no-pager 2>/dev/null | head -8 | sed 's/^/  /'
 
+# ── LA QUATRIEME COUCHE : l HYPERVISEUR (VPS-027, ajoute le 2026-08-19) ──────────────────────
+# Trois couches de planification etaient catalogues — crons de la machine, timers systemd,
+# tache Claude Code cote poste. Il y en a une QUATRIEME, et elle execute du root : l hote KVM
+# envoie des `guest-exec` par le canal virtio-serial de `qemu-ga`. Elle echappe a TOUS les
+# gardes existants — pas d authentification SSH (donc rien dans auth.log, rien pour fail2ban),
+# pas de reseau (donc rien pour ufw), pas de cron local (donc rien dans cette section jusqu ici).
+# Decouverte par hasard le 2026-08-18 en cherchant autre chose ; elle est desormais mesuree.
+#
+# ⚠️⚠️ CE COMPTEUR A ETE ECRIT DEUX FOIS, ET LA PREMIERE VERSION SE TROMPAIT D UN FACTEUR 17.
+# `grep -c guest-exec` rend 5776 sur 6 jours — soit « ~930 executions/jour », un chiffre
+# alarmant et faux : `guest-exec-status` est le SONDAGE du resultat, repete des dizaines de
+# fois par execution. Les executions reelles (`guest-exec called`) sont 333, soit ~52/jour.
+# C est VPS-M01 et VPS-M46 une troisieme fois : un compteur doit prouver qu il compte ce qu il
+# pretend compter. Les deux nombres sont donc affiches COTE A COTE, jamais l un sans l autre.
+sub "Hyperviseur : ordres executes en root dans la machine, hors SSH (VPS-027)"
+if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
+  QGA=$(journalctl -t qemu-ga --no-pager -o short-iso 2>/dev/null)
+  QGA_EXEC=$(printf '%s\n' "$QGA" | grep -cF 'guest-exec called' || true)
+  QGA_POLL=$(printf '%s\n' "$QGA" | grep -cF 'guest-exec-status called' || true)
+  QGA_T0=$(printf '%s\n' "$QGA" | head -1 | cut -c1-19)
+  QGA_T1=$(printf '%s\n' "$QGA" | tail -1 | cut -c1-19)
+  # ⚠️ VPS-M02 : `journalctl` sort 0 avec « -- No entries -- ». Sans ce test, un journal VIDE
+  #    (rotation, filtre trop etroit, agent renomme) publierait « ✅ aucun ordre » — c est-a-dire
+  #    une AFFIRMATION rassurante tiree d une ABSENCE DE DONNEE. Les deux cas se disent autrement.
+  if [ -z "$QGA" ] || printf '%s' "$QGA" | grep -q '^-- No entries'; then
+    echo "  ⚠️ journal qemu-ga VIDE sur la fenetre conservee — ce n est PAS « aucun ordre recu »,"
+    echo "     c est « rien de conserve ». Le 2026-08-18 la rotation avait deja efface les 6 jours"
+    echo "     dont on avait besoin pour trancher une hypothese (VPS-027)."
+  elif [ "${QGA_EXEC:-0}" -eq 0 ]; then
+    echo "  ✅ aucun ordre d execution recu de l hyperviseur sur la fenetre conservee"
+    printf '     (fenetre : %s → %s ; %s sondages de statut, 0 execution)\n' "$QGA_T0" "$QGA_T1" "$QGA_POLL"
+  else
+    printf '  🟠 %s EXECUTIONS en root, fenetre %s → %s\n' "$QGA_EXEC" "$QGA_T0" "$QGA_T1"
+    printf '     denominateur honnete : %s sondages `guest-exec-status` pour ces %s executions.\n' "$QGA_POLL" "$QGA_EXEC"
+    echo  "     ⚠️ NE JAMAIS compter les sondages comme des executions : le ratio depasse 17 pour 1."
+    echo  "  ── executions par jour (une hausse se voit ici, jamais dans un total) ──"
+    printf '%s\n' "$QGA" | grep -F 'guest-exec called' | cut -c1-10 | uniq -c | sed 's/^/     /'
+    echo  "  ── les 3 dernieres lignes de commande RECUES (c est du root, il faut les lire) ──"
+    printf '%s\n' "$QGA" | grep -F 'guest-exec called' | tail -3 \
+      | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /     \1 \2  /' | cut -c1-150
+    echo  "     ⚠️ Une commande qui ECRIT (systemctl, echo > /sys, fstrim) n est plus de la lecture :"
+    echo  "        elle change l etat d une machine dont ce catalogue pretend tenir la liste."
+  fi
+else
+  echo "  (journal qemu-ga illisible ou agent absent — PAS « aucun ordre » : on ne sait pas)"
+fi
+
 # ── La charge de fond que PERSONNE ne planifie ────────────────────────────────────────────
 # Les crons et les timers se declarent ; les healthchecks, non. Ils sont pourtant la premiere
 # source de creation de processus de la machine : chaque passage lance une chaine `runc exec`
@@ -1707,16 +1754,38 @@ journalctl --disk-usage 2>/dev/null | sed 's/^/  /'
 timeout 20 $LOW du -sh /var/log/* 2>/dev/null | sort -rh | head -8
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
-section "9. HISTORIQUE 7 JOURS (sysstat)"
+section "9. HISTORIQUE (sysstat — TOUTES les journees conservees, jour en cours compris)"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # C'est LA section qui distingue un incident d'une habitude. Sans elle, un pic de charge
 # constate a l'instant T se raconte comme une derive alors que c'est peut-etre un build.
 if have sar; then
-  printf '  %-8s %8s %8s %8s %8s %10s %10s %s\n' jour user% sys% iowait% steal% pic_charge pic_ram% note
-  for i in $(seq 7 -1 1); do
-    f=/var/log/sysstat/sa$(date -d "-$i day" +%d 2>/dev/null)
+  # ⚠️⚠️ REECRIT LE 2026-08-19 — DEUX DEFAUTS, ET LE SECOND A COUTE SEPT PASSAGES DE DIAGNOSTIC.
+  #
+  # 1. `%idle` n etait PAS publie (angle mort n° 7 du 2026-08-18). C est pourtant l inactivite
+  #    qui date les bascules : la serie 38 → 19,5 → 66 → 84 raconte VPS-016 a elle seule, et il
+  #    a fallu une requete `sar` en marge, trois passages de suite, pour l obtenir. Cout : nul,
+  #    c est la meme commande et la meme sortie — seulement une colonne de plus ($8).
+  #
+  # 2. LA FENETRE ETAIT FIXEE A 7 JOURS ALORS QUE LES FICHIERS EN GARDENT DAVANTAGE, ET LE JOUR
+  #    EN COURS ETAIT IGNORE. `seq 7 -1 1` sautait sa19 (aujourd hui) et n atteignait jamais
+  #    sa11. Or le 2026-08-19, sa11 portait la SEULE journee calme conservee — idle 77,66 % —
+  #    et la 3e occurrence de VPS-016 a commence le 08-11 a 21 h 05. Autrement dit : l audit a
+  #    decrit pendant CINQ passages une machine a ~37 % d inactivite comme si c etait son etat
+  #    normal, alors que son etat normal est ~78 %. Un incident qui dure plus longtemps que la
+  #    fenetre d observation efface sa propre reference — et rien ne le signale, parce que la
+  #    fenetre glisse avec lui. On lit donc TOUS les `sa??` presents, jour en cours compris.
+  #
+  # ⚠️ La date NE PEUT PAS etre derivee du nom : `sa14` est le 14 de ce mois-ci OU du mois
+  #    dernier. On la lit dans l en-tete de `sar` lui-meme (`08/18/26`), qui ne ment pas.
+  printf '  %-8s %8s %8s %8s %8s %8s %10s %10s %s\n' jour user% sys% iowait% steal% idle% pic_charge pic_ram% note
+  NB_SA=0
+  # ⚠️ Ordre par DATE D ECRITURE, pas par nom : `sa28`..`sa31` peuvent venir du mois precedent,
+  #    et un tri lexical les placerait en tete. sysstat ecrit chaque fichier le jour meme.
+  for f in $(ls -tr /var/log/sysstat/sa[0-9][0-9] 2>/dev/null); do
     [ -f "$f" ] || continue
-    d=$(date -d "-$i day" +%m-%d)
+    d=$(LC_ALL=C sar -u -f "$f" 2>/dev/null | awk 'NR==1{n=split($4,x,"/"); if (n==3) printf "%s-%s", x[1], x[2]}')
+    [ -z "$d" ] && continue
+    NB_SA=$((NB_SA+1))
     # ⚠️ PIEGE PAYE LE 2026-08-05 : un jour ou la machine REDEMARRE, `sar` decoupe la journee
     # en segments et emet UNE ligne `Average:` PAR segment. Le `printf` cumulatif d'origine les
     # concatenait : la ligne du 08-04 affichait HUIT colonnes au lieu de quatre, totalement
@@ -1724,20 +1793,27 @@ if have sar; then
     # comptait le plus. On ne garde donc que le DERNIER segment (l'etat courant de la machine),
     # et on SIGNALE le redecoupage au lieu de le masquer.
     nseg=$(sar -u -f "$f" 2>/dev/null | grep -c '^Average:')
-    cpu=$(sar -u -f "$f" 2>/dev/null | awk '/^Average:/ {u=$3; s=$5; w=$6; t=$7} END {printf "%8.2f %8.2f %8.2f %8.2f", u,s,w,t}')
+    cpu=$(sar -u -f "$f" 2>/dev/null | awk '/^Average:/ {u=$3; s=$5; w=$6; t=$7; i=$8} END {printf "%8.2f %8.2f %8.2f %8.2f %8.2f", u,s,w,t,i}')
     if [ "${nseg:-1}" -gt 1 ]; then note="⚠️ REDEMARRAGE ce jour-la — $nseg segments, valeurs du DERNIER"; else note=""; fi
     chg=$(sar -q -f "$f" 2>/dev/null | awk '$1!="Average:" && $4 ~ /^[0-9.]+$/ {if ($4+0>m) m=$4+0} END {printf "%10.2f", m}')
     ram=$(sar -r -f "$f" 2>/dev/null | awk '$1!="Average:" && $5 ~ /^[0-9.]+$/ {if ($5+0>m) m=$5+0} END {printf "%10.1f", m}')
     printf '  %-8s %s %s %s %s\n' "$d" "$cpu" "$chg" "$ram" "$note"
   done
+  # ⚠️ Le DENOMINATEUR est affiche (lecon VPS-M08/M22) : sans lui, une journee absente du
+  # tableau se confond avec une journee calme. Et la derniere ligne est le jour EN COURS,
+  # donc partielle — le dire, sinon on compare un jour entier a quelques heures.
+  printf '  → %s journee(s) conservee(s) par sysstat, la derniere etant le jour EN COURS (partielle).\n' "$NB_SA"
+  echo  "     ⚠️ Un incident plus long que cette fenetre efface sa propre reference : comparer la"
+  echo  "        colonne idle% a la journee la PLUS ANCIENNE avant de parler d etat « normal »."
   sub "Ecriture disque moyenne par jour (revele les journees de build)"
-  for i in $(seq 7 -1 1); do
-    f=/var/log/sysstat/sa$(date -d "-$i day" +%d 2>/dev/null)
+  for f in $(ls -tr /var/log/sysstat/sa[0-9][0-9] 2>/dev/null); do
     [ -f "$f" ] || continue
     # Meme piege qu'au-dessus : un jour de redemarrage produisait DEUX lignes pour la meme
     # date (08-04 apparaissait deux fois le 2026-08-05), ce qui se lit comme une erreur de
     # collecte. On agrege sur le dernier segment, comme pour le CPU.
-    sar -b -f "$f" 2>/dev/null | awk -v d="$(date -d "-$i day" +%m-%d)" \
+    d=$(LC_ALL=C sar -b -f "$f" 2>/dev/null | awk 'NR==1{n=split($4,x,"/"); if (n==3) printf "%s-%s", x[1], x[2]}')
+    [ -z "$d" ] && continue
+    sar -b -f "$f" 2>/dev/null | awk -v d="$d" \
       '/^Average:/ {tps=$2; wr=$6} END {if (tps!="") printf "  %s : %.0f tps, ecriture %.0f blocs/s\n", d, tps, wr}'
   done
 else
@@ -2455,8 +2531,20 @@ else
       printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), l audit n y est que pour %.1f %% et\n     dockerd pour %.1f %%. Le consommateur n est NI l un NI l autre : le chercher dans\n     user %.1f %% + sys %.1f %% — sondes de sante, runc, backends PostgreSQL.\n", pidle, paudit, pdock, puser, psys
     else if (pidle < 10)
       printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), l audit n y est que pour %.1f %%, et la\n     part de dockerd N A PAS PU ETRE MESUREE ce passage. Le consommateur n est donc PAS\n     nomme — et surtout, ne pas lire cette absence comme « dockerd n y est pour rien ».\n", pidle, paudit
+    # ⚠️⚠️ CORRIGE LE 2026-08-19 (VPS-M47) — CETTE BRANCHE NOMMAIT UNE CAUSE QU ELLE NE MESURAIT PAS.
+    # Ecrite pendant VPS-016, elle attribuait la file d attente au « socket d un demon en boucle
+    # (VPS-016) » — en dur, quelle que soit la part mesuree de dockerd. Le 2026-08-19, VPS-016
+    # etait clos depuis 20 h, dockerd mesure a 5,7 % et la machine a 43,7 % d inactivite : la
+    # phrase s est publiee quand meme, et elle designait un phenomene DISPARU. Le chiffre etait
+    # juste, l EXPLICATION etait fausse — et une explication fausse dans une ligne ✅ ne rencontre
+    # aucun contradicteur (VPS-M21 : un defaut qui rassure n a pas de plaignant).
+    # La regle : une attribution se derive de la mesure de la MEME fenetre, ou ne s ecrit pas.
+    else if (l1-l0 > 1.0 && pdock >= 25)
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite. Et le consommateur est NOMME PAR LA MESURE : dockerd prend\n     %.1f %% de cette fenetre — les processus s empilent en sommeil ININTERRUPTIBLE sur son\n     socket, ils comptent dans loadavg sans bruler un cycle (signature VPS-016).\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle, pdock
+    else if (l1-l0 > 1.0 && pdock >= 0)
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite : des processus attendent sans bruler de cycle.\n     ⚠️ LA CAUSE N EST PAS NOMMEE, et c est voulu — dockerd n est mesure qu a %.1f %% sur\n        cette fenetre, donc ce n est PAS une boucle de demon.%s\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle, pdock, (pio >= 5.0 ? sprintf(" Candidat MESURE : iowait = %.1f %%\n        (le parcours /opt lit ~1,7 M inodes en priorite idle).", pio) : sprintf(" Et iowait ne l explique pas\n        non plus (%.1f %%) : AUCUN candidat n est designe. Le chercher, pas le deviner.", pio))
     else if (l1-l0 > 1.0)
-      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite. Les processus s empilent en sommeil ININTERRUPTIBLE sur le\n     socket d un demon en boucle (VPS-016) : ils comptent dans loadavg sans bruler un cycle.\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite : des processus attendent sans bruler de cycle.\n     ⚠️ LA CAUSE N EST PAS NOMMEE : la part de dockerd n a PAS pu etre mesuree ce passage,\n        donc on ne peut ni l accuser ni le disculper. iowait = %.1f %% sur la fenetre.\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle, pio
     else
       printf "  ✅ COUT CONFIRME FAIBLE : %.1f %% de la machine, %.1f %% d inactivite restante.\n", paudit, pidle
     printf "  ⚠️ PORTEE : « cout REEL » ne compte que les enfants DEJA attendus, et pas sshd cote\n     serveur. C est un PLANCHER — il ne peut pas disculper l audit a tort.\n"

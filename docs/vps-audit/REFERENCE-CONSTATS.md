@@ -1244,8 +1244,57 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
-- **Domaine** : docker · **Gravité** : 1 · **Statut** : ✅ **`APPLIQUE` — CAUSE ÉTABLIE ET SUPPRIMÉE le 2026-08-18 à 05 h 47 UTC, sans aucune interruption**
+- **Domaine** : docker · **Gravité** : 1 · **Statut** : ✅ **`APPLIQUE` — CAUSE ÉTABLIE ET SUPPRIMÉE le 2026-08-18 à 05 h 47 UTC, sans aucune interruption · VÉRIFIÉ À 24 H le 2026-08-19**
 - **Durée totale de la 3e occurrence** : du **2026-08-11 à 21 h 01** au **2026-08-18 à 05 h 47** — **152 h 46**, dont 20 h 30 en second régime.
+
+> ### ✅ 2026-08-19 — LA PREUVE À 24 H, ET ELLE EST ARITHMÉTIQUE
+>
+> Un jour après le `kill`, PID **913 inchangé** (`lstart` = 2026-08-04 21 h 32 min 45). Les deux
+> bornes viennent de la **même ligne du collecteur**, à deux jours d'intervalle — pas de mélange
+> de sources :
+>
+> ```
+> 08-18 04:00:34   cumul 220.3 h CPU / 318.5 h uptime
+> 08-19 02:31:03   cumul 223.6 h CPU / 341.0 h uptime
+> ```
+>
+> **Δuptime = 22,50 h** (exact — les horodatages donnent 22 h 30 min 29). **Δcumul = 3,3 h**, à
+> **±0,2 h** près : les deux cumuls sont arrondis au dixième d'heure, et cette imprécision se
+> propage. Si la coupure de 05 h 47 est bien la cause, la fenêtre se décompose en deux régimes :
+>
+> | Tranche | Durée | Régime | Processeur |
+> |---|---:|---:|---:|
+> | 04 h 00 min 34 → 05 h 47 (boucle active) | 1,77 h | 144,4 % | **2,56 h** |
+> | 05 h 47 → 02 h 31 (après le `kill`) | 20,73 h | **3,6 %** | **0,74 h** |
+> | **Total** | **22,50 h** | — | **3,3 h** = la mesure |
+>
+> **Facteur ~40 entre les deux régimes**, et la fourchette d'arrondi (**2,6 – 4,5 %** d'un cœur)
+> ne la remet pas en cause. Le résidu de 0,74 h est la consommation normale d'un démon servant
+> 33 conteneurs et 65 sondes/minute. Ce n'est plus une corrélation : c'est un bilan qui se ferme.
+>
+> **Contre-mesure indépendante, plus précise** : `ps -o time -p 913` à 02 h 25 donne
+> `9-07:38:22`, soit **223,64 h** — cohérent avec le 223,6 arrondi du collecteur, et obtenu
+> autrement. *Deux instruments, même valeur.*
+>
+> **Confirmations indépendantes** : `%idle` machine **84,02 %** (contre 19,54 le 08-17) ·
+> **0 client `docker` orphelin**, dénominateur affiché · les 4 points publics **sous 60 ms**
+> (27 à 32 ms contre 83 à 210 le 08-18) · PSI mémoire `full` retombée à **0,00** ·
+> `kcompactd0` disparu de la tête des processus de l'hôte.
+>
+> ### ⚠️ Ce que la clôture a révélé de PLUS grave que l'incident : voir VPS-M48
+>
+> L'inactivité du 2026-08-11 — la journée où la boucle a commencé, à 21 h 01 — vaut **77,66 %**.
+> Celle des cinq passages suivants, ~37 %. **La boucle confisquait ~45 points d'inactivité,
+> près de la moitié de la machine, et l'audit décrivait cet état comme le fond de référence** :
+> sa fenêtre de 7 jours glissait avec un incident de 7 jours. **VPS-M48.**
+>
+> ### ⚠️ Et le test écrit d'avance pour ce jour est SANS OBJET — ne pas le lire quand même
+>
+> Le 08-18 posait *« la continuité doit rester au-dessus de 130 % »*, **précondition : boucle en
+> cours**. Elle vaut **14,7 %**. Lu au pied de la lettre, le test est réfuté ; lu correctement,
+> **sa précondition a été détruite par le succès de la remédiation**. C'est **VPS-M41 dans sa
+> forme la plus piégeuse** : *un test conditionné à la persistance d'un incident doit dire ce
+> qu'on en fait quand l'incident cesse — sinon la réussite se présente comme une réfutation.*
 
 > ### ✅✅✅ 2026-08-18, 05 h 47 — LA CAUSE EST TROUVÉE, ET C'ÉTAIENT DEUX PROCESSUS CLIENTS
 >
@@ -3110,8 +3159,45 @@ que c'est lui, et le constat ci-dessus explique pourquoi cette certitude-là ét
 
 ## VPS-027 — L'hyperviseur exécute des commandes en root dans la machine, toutes les heures, et rien ne le regardait
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `SURVEILLANCE`
-- **Vu** : 2026-08-18 · **Mesure à la découverte** : **360 appels `guest-exec` conservés depuis le 2026-08-11**, soit ~50/jour, dont un script Python écrit à la racine et exécuté **toutes les heures**
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `SURVEILLANCE` — **désormais MESURÉ par le collecteur (section 7), depuis le 2026-08-19**
+- **Vu** : 2026-08-18 · **Vu dernière** : 2026-08-19 · **Mesure à la découverte** : **360 appels `guest-exec` conservés depuis le 2026-08-11**, soit ~50/jour
+- **Mesure au 2026-08-19** : **333 exécutions réelles** sur 6,25 jours = **~52/jour** — répartition **8 · 52 · 52 · 52 · 52 · 53 · 59 · 5**, régulière à l'unité près
+- **Seuil de réescalade** : passer en `A_TRAITER` si la cadence quotidienne **dépasse 70**, ou si une commande reçue **écrit ailleurs que dans `/sys` et `/.hstgr-*`** (les trois dernières lignes de commande sont publiées à chaque passage, précisément pour que ce soit lisible).
+
+> ### 🆕 2026-08-19 — le compteur a été écrit DEUX FOIS, et la première version se trompait ×17
+>
+> `grep -c 'guest-exec'` rend **5 776** sur la fenêtre conservée — soit *« ~930 exécutions root
+> par jour »*, un chiffre alarmant, publiable, et **faux**. `guest-exec-status` est le **sondage
+> du résultat**, répété des dizaines de fois pour une seule exécution :
+>
+> | Motif | Compte | Ce que c'est |
+> |---|---:|---|
+> | `guest-exec called` | **333** | ⬅️ les **exécutions**, ~52/jour |
+> | `guest-exec-status called` | **5 443** | le sondage du résultat — **ratio > 17 pour 1** |
+> | `guest-file-open called` | 451 | l'écriture du script |
+>
+> **C'est VPS-M01 et VPS-M46 une troisième fois** : *un compteur doit prouver qu'il compte ce
+> qu'il prétend compter.* Le collecteur affiche donc les deux nombres **côte à côte**, avec le
+> ratio en toutes lettres — un lecteur pressé ne peut plus refaire l'erreur en silence.
+>
+> **Et la mesure confirme l'estimation initiale** (« ~50/jour ») : elle était juste. C'est
+> l'estimation naïve qu'on aurait faite *en automatisant* qui était fausse — l'automatisation
+> d'un comptage est exactement le moment où le motif cesse d'être relu.
+
+> ### ❌ 2026-08-19 — une hypothèse contre l'hyperviseur, réfutée avant d'être publiée
+>
+> Le stamp du cache `apt` porte **2026-08-18 03 h 11 min 37**, et l'hyperviseur exécutait son lot
+> root à **03 h 11 min 29**. Huit secondes d'écart : l'hypothèse *« l'hébergeur rafraîchit notre
+> cache de paquets »* était séduisante et aurait fait un constat spectaculaire.
+>
+> `journalctl -u apt-daily.service` la réfute en une ligne : l'unité a démarré à **03 h 11
+> min 30** et consommé **21,392 s**. **C'est `apt-daily` qui a écrit le stamp. L'hyperviseur est
+> hors de cause.**
+>
+> **La leçon, symétrique de celle du 08-18** : VPS-027 rend toute coïncidence horaire suspecte —
+> et c'est un biais dans **les deux sens**. *Deux mécanismes qui se déclenchent dans la même
+> minute ne sont pas le même mécanisme.* Un constat récent et marquant devient le coupable par
+> défaut de tout ce qui arrive ensuite.
 
 **Quoi.** L'agent invité QEMU (`qemu-ga`, PID 3988652) reçoit de l'hôte des ordres d'exécution
 arbitraires, en **root**, et les exécute. Trois familles, relevées dans `journalctl -t qemu-ga` :
@@ -3321,7 +3407,165 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 
 ---
 
+## VPS-029 — Un second mécanisme gouverne le cache de build, posé hier après-midi, et le catalogue ne l'aurait pas montré
+
+- **Domaine** : docker · **Gravité** : 4 · **Statut** : `SURVEILLANCE`
+- **Vu** : 2026-08-19 · **Mesure** : `/etc/cron.d/docker-builder-prune`, créé le **2026-08-18 à 13 h 22 min 06**, **jamais exécuté à ce jour** — sa première échéance est le **jeudi 2026-08-20 à 05 h 33 UTC**
+
+```
+33 5 * * 4 root docker builder prune -f --filter "unused-for=168h" > /dev/null 2>&1
+```
+
+**Quoi.** Le cache de build Docker est le poste que cet audit suit de plus près : **VPS-001**, sept
+points consécutifs, chacun concluant que `Private` *« revient à sa borne grâce au ramasse-miettes
+de BuildKit »*. Depuis hier 13 h 22, **ce n'est plus le seul acteur** : un cron hebdomadaire purge
+le même objet.
+
+| Mécanisme | Où | Politique | Cadence |
+|---|---|---|---|
+| Ramasse-miettes BuildKit | `daemon.json` | `keepStorage 8 Go` + `unused-for=48h`, puis `10 Go` sur tout | **permanent**, à chaque build |
+| 🆕 `docker-builder-prune` | `/etc/cron.d` | `--filter unused-for=168h` | **hebdomadaire**, jeudi 05 h 33 |
+
+**Ce n'est très probablement pas nuisible, et il faut le dire aussi précisément que le reste** :
+le filtre du cron (**168 h**) est **plus faible** que celui du ramasse-miettes (**48 h**). Tout
+ce que le cron voudrait supprimer a déjà été supprimé cinq jours plus tôt. **Il ne devrait rien
+trouver.** Coût : quelques secondes par semaine.
+
+**Le coût réel n'est pas la ressource, c'est l'interprétation.** À partir de jeudi, la série
+`Private` de VPS-001 aura **deux causes candidates** au lieu d'une, et le rapport qui écrirait
+*« le ramasse-miettes a tourné »* ne pourrait plus le prouver par la seule valeur. C'est
+exactement ce que la doctrine §6 bis met en garde : *« préférer ce qui s'autorégule à ce qui se
+planifie — un mécanisme unique et permanent, donc aucun risque de doublon : le défaut VPS-003 »*.
+**VPS-003, c'était deux planificateurs pour la même sauvegarde.** Ici, deux pour le même cache.
+
+**`pourquoiInvisible`.** Il ne l'était pas — il est apparu **hier**, et il est relevé à son
+premier passage. Mais il a été trouvé **en relisant la section 7 à la main**, pas parce que
+quelque chose l'a signalé : *le catalogue `ordonnancement` liste ce qui se déclenche seul, et
+n'a aucune notion de « nouveau depuis le passage précédent »*. Un cron ajouté puis retiré entre
+deux passages ne laisserait aucune trace.
+
+**Quoi faire.** Rien dans l'immédiat — **le laisser tourner jeudi et mesurer**. C'est la seule
+manière de trancher entre « redondant et inoffensif » et « il fait quelque chose que le
+ramasse-miettes ne fait pas ». Décider avant la mesure, c'est le défaut VPS-011 (*un gain non
+mesurable n'est pas un gain*) pris à l'envers.
+
+> **Test écrit d'avance, avec sa précondition.** *Au passage du **2026-08-21**, `Private` doit
+> se trouver dans sa bande habituelle (10,3 – 12,6 Go). S'il est **nettement en dessous**, le
+> cron a retiré ce que le ramasse-miettes gardait, et l'attribution des sept points de VPS-001
+> doit être rouverte.* **Précondition** : au moins un build entre le 08-20 05 h 33 et la
+> collecte — sinon `Private` est figé et la mesure ne discrimine rien.
+
+**`aNePasFaire`.** ⚠️ **Ne pas supprimer ce cron sans demander pourquoi il a été posé.** Il a été
+créé par une action humaine délibérée le 08-18 à 13 h 22, hors de toute session d'audit *(le
+seul autre changement de configuration de la journée est `daemon.json` à 06 h 04, qui est le
+`live-restore` du rapport du 08-18 — celui-là est expliqué)*. ⚠️ **Et ne pas le confondre avec
+`/etc/cron.d/docker-image-prune`**, qui date du 2026-04-16, purge les **images** et non le
+**cache**, et dont le passage de 00 h 40 est ce qui a rendu 13 Go cette nuit.
+
+**Note de méthode, au passage** : les deux lignes de `/etc/cron.d/e2scrub_all` sont **inertes** —
+elles portent le garde `test -e /run/systemd/system ||`, et ce chemin existe. Seul
+`e2scrub_all.timer` agit. Le catalogue avait raison de ne lister que le timer ; c'est vérifié,
+pas supposé (même famille que VPS-M04, le crontab Alpine).
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M48 — La fenêtre d'observation glissait avec l'incident, et l'audit a pris le régime de panne pour la normale
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-19)
+- **Vu** : 2026-08-19 · **Coût** : **cinq passages** (08-13 → 08-17) ont décrit comme état normal une machine amputée de **~45 points d'inactivité**, et le plan d'action a classé le correctif au 4e rang pendant huit passages.
+
+**Quoi.** La section 9 lisait l'historique `sysstat` par `for i in $(seq 7 -1 1)`. Deux effets que
+personne n'avait regardés, parce qu'ils ne produisent **aucune anomalie visible** :
+
+1. le **jour en cours** n'était jamais lu (`i` s'arrête à 1) ;
+2. la fenêtre était figée à **7 jours** alors que `/var/log/sysstat` en gardait **9**.
+
+Et la colonne qui aurait tout dit — **`%idle`** — n'était pas publiée : la section affichait
+`%user`, `%system`, `%iowait`, `%steal`, jamais l'inactivité.
+
+En lisant les neuf journées et en publiant `idle%` :
+
+| Jour | idle % | Ce que c'est |
+|---|---:|---|
+| **08-11** | **77,66** | ⬅️ **la machine saine.** VPS-016 démarre ce soir-là à 21 h 01 |
+| 08-12 → 08-16 | 34,45 · 37,13 · 37,31 · 38,82 · 38,23 | **la boucle en régime permanent** |
+| 08-17 | 19,54 | boucle + second client (09 h 17) |
+| 08-18 | 66,05 | `kill` à 05 h 47 — journée à cheval |
+| **08-19** | **84,02** | ⬅️ **la machine saine, à nouveau** |
+
+**~38 % n'a jamais été la normale de cette machine.** Sa normale est **~78–84 %**.
+
+**Pourquoi c'était invisible, et ce n'est pas une inattention.** *Un incident qui dure plus
+longtemps que la fenêtre d'observation efface sa propre référence.* La boucle a duré 152 h ; la
+fenêtre en couvrait 168 — mais elle **glissait d'un jour chaque jour**. Dès le 08-18, `sa11`
+était sortie de la fenêtre **lue** alors qu'elle était encore sur le **disque**. Rien ne signale
+cette perte : le tableau reste plein, les chiffres restent cohérents **entre eux**, et ils sont
+tous faux *par rapport à quoi*.
+
+**Le coût réel n'est pas la description, c'est le classement.** `systemctl restart docker` est
+resté au 4e rang huit passages durant, derrière trois gestes à risque nul, avec pour argument
+*« ça ne coûte rien à la production »*. Il coûtait **la moitié du processeur**, en continu. Les
+latences publiques, seul indicateur consulté, n'ont bougé qu'au **15e jour** — parce qu'il
+restait de la marge.
+
+> **La leçon, et elle dépasse `sysstat`** : *un indicateur de bout-en-bout ne détecte pas une
+> perte de capacité tant qu'il reste de la marge ; il ne bascule qu'une fois la marge consommée.*
+> Surveiller la disponibilité ne remplace pas mesurer la capacité.
+
+**Quoi faire — FAIT.** Le collecteur lit **tous** les `sa??` présents, jour en cours compris,
+**triés par date d'écriture** (`ls -tr` — immunisé au changement de mois, où `sa28` peut venir du
+mois précédent), avec la date **dérivée de l'en-tête `sar`** et non du nom de fichier, la colonne
+`idle%`, le **compte de journées affiché** et l'avertissement en clair. Le titre de la section,
+qui annonçait *« 7 JOURS »*, a été corrigé — il contredisait son propre contenu.
+
+**`pourquoiInvisible`** : la fenêtre bougeait à la même vitesse que l'incident, donc l'écart
+n'apparaissait jamais dans le tableau. Une référence perdue ne laisse pas de trou : elle laisse
+une ligne plausible.
+
+**`aNePasFaire`** : ne pas dériver la date du **nom** du fichier (`sa14` peut être le 14 du mois
+dernier), et ne pas trier les fichiers par ordre **lexical** — un passage du 31 au 1er
+replacerait le mois précédent en tête sans rien signaler.
+
+---
+
+### VPS-M47 — Le verdict de charge nommait une cause disparue, dans une ligne verte
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-08-19)
+- **Vu** : 2026-08-19
+
+**Quoi.** Le bloc BUDGET a publié, en ligne **✅**, sur la collecte de 02 h 21 :
+
+```
+✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.
+   [...] Les processus s empilent en sommeil ININTERRUPTIBLE sur le
+   socket d un demon en boucle (VPS-016) [...]
+```
+
+**VPS-016 était clos depuis 20 heures**, et le même bloc mesurait `dockerd` à **5,7 %** trois
+lignes plus haut. **Le chiffre était juste ; l'explication désignait un phénomène disparu.**
+
+**La cause.** L'attribution était **écrite en dur dans le texte de la branche**, alors que la
+mesure qui l'aurait contredite (`pdock`) était déjà calculée et déjà affichée. Une explication
+figée survit indéfiniment à son objet.
+
+**`pourquoiInvisible`** : elle vivait dans une ligne **✅**. VPS-M21 le dit — *un défaut qui
+rassure n'a pas de plaignant*. Une explication fausse accolée à un chiffre juste, dans une ligne
+verte, ne rencontre aucun contradicteur.
+
+> **La règle** : *une attribution se dérive de la mesure de la même fenêtre, ou ne s'écrit pas.*
+
+**Quoi faire — FAIT.** Trois branches dérivées de la mesure : `pdock ≥ 25` nomme `dockerd` **en
+citant sa part** ; `pdock < 25` **refuse de nommer** et ne propose `iowait` comme candidat que
+s'il dépasse **5 %** ; `pdock` non mesurable dit qu'il ne peut **ni accuser ni disculper**.
+
+**`aNePasFaire`** : ne pas remplacer une attribution en dur par une autre attribution en dur.
+La première écriture du correctif proposait `iowait` **systématiquement** — et sur la passe
+d'essai `iowait` valait **0,4 %** : une piste que la ligne suivante démentait. *Un candidat
+qu'on ne mesure pas est le défaut qu'on vient de corriger, sous un autre nom.*
+
+---
 
 ### VPS-M46 — Mon détecteur de secrets comptait les URL, et il a produit un constat de gravité 1
 
