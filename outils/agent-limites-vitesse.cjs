@@ -192,7 +192,16 @@ async function voieLocale(cellules, journal) {
 
     journal(`${region.nom} : ${concluantes.length.toLocaleString('fr-FR')} resolues, ${sansReponse.size.toLocaleString('fr-FR')} sans route a portee`);
     if (!ESSAI) ecrites += ecrire(concluantes);
-    restantes = restantes.filter((c) => !couvre(region, c.lat, c.lng) || sansReponse.has(cleCellule(c.lat, c.lng)));
+
+    // ⚠️ « Sans route a portee » N'EST PAS un travail a refaire ailleurs. L'extrait local porte
+    //    exactement les memes donnees OpenStreetMap qu'Overpass : si aucune voie carrossable
+    //    n'est a 20 m ici, il n'y en aura pas davantage la-bas. Verifie le 2026-08-19 — les
+    //    1 310 portions concernees ont ete repassees a Overpass, resultat 0/50 a chaque lot,
+    //    onze lots d'affilee. Du temps perdu et des serveurs benevoles deranges pour rien.
+    //
+    //    Seules les portions qu'AUCUN extrait ne couvre meritent Overpass : la, on n'a
+    //    effectivement pas la carte.
+    restantes = restantes.filter((c) => !couvre(region, c.lat, c.lng));
   }
   return { restantes, ecrites };
 }
