@@ -53,6 +53,58 @@
       <div class="tile" [class.muted-tile]="summary().paused === 0"><span class="n">{{ summary().paused }}</span><span class="l">En pause</span></div>
     </div>
 
+    <!-- ── CHRONOLOGIE ──
+         Le regroupement par categorie dit ce qui EXISTE. Il ne dit pas ce qui ARRIVE.
+         Avec 41 traitements repartis en 7 familles, reconstituer l'ordre de passage a l'oeil
+         demandait de comparer 41 compte-a-rebours disperses dans la page. -->
+    <section class="chrono">
+      <h2 class="group-title">Prochains passages</h2>
+      <p class="chrono-sub">
+        Du plus imminent au plus lointain. Heures en heure de Paris — ce serveur, lui, tourne en UTC.
+      </p>
+
+      <div class="chrono-scroll">
+        <table class="chrono-t">
+          <thead>
+            <tr>
+              <th>Dans</th><th>Heure</th><th>Traitement</th><th>Ou</th><th>Cadence</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (t of chronologie(); track trackByTask($index, t)) {
+              <tr [class.imminent]="imminent(t.nextRunAt)">
+                <td class="c-dans">
+                  <span class="dot" [ngClass]="critClass(t.criticality)" [title]="'Criticite : ' + t.criticality"></span>
+                  {{ countdown(t.nextRunAt) }}
+                </td>
+                <td class="c-heure">{{ heureParis(t.nextRunAt) }}</td>
+                <td class="c-nom">
+                  {{ t.label }}
+                  @if (t.coutIa === 'facture') { <span class="tag facture">IA facturee</span> }
+                </td>
+                <td class="c-ou">
+                  @if (t.executor === 'poste-local') {
+                    <span class="tag local">poste local</span>
+                  } @else { <span class="c-serveur">serveur</span> }
+                </td>
+                <td class="c-cadence">{{ t.scheduleHuman }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Un traitement en pause n'a pas d'heure de passage : l'omettre le ferait passer pour
+           inexistant, alors qu'il est simplement eteint. -->
+      @if (enPause().length > 0) {
+        <p class="chrono-pause">
+          <lucide-icon [img]="AlertTriangleIcon" [size]="13" />
+          {{ enPause().length }} traitement(s) en pause, donc absent(s) de cette file :
+          {{ pauseNoms() }}
+        </p>
+      }
+    </section>
+
     <!-- Groupes -->
     @for (g of groups(); track trackByGroup($index, g)) {
       <section class="group">

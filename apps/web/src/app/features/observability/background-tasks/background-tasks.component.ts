@@ -67,6 +67,46 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       .map((c) => ({ category: c, items: byCat.get(c)! }));
   });
 
+  /**
+   * LA CHRONOLOGIE : ce qui va tourner, du plus imminent au plus lointain.
+   *
+   * Le regroupement par catégorie répond à « qu'est-ce qui existe ? ». Il ne répond pas à la
+   * question qu'on se pose devant un incident : « qu'est-ce qui vient de passer, et qu'est-ce
+   * qui arrive dans la minute ? ». Avec quarante et un traitements répartis en sept familles,
+   * reconstituer cet ordre à l'œil demandait de comparer quarante compte-à-rebours dispersés.
+   *
+   * Les flux continus n'y figurent pas : ils n'ont pas d'échéance, les mêler à une file
+   * chronologique reviendrait à leur inventer une heure de passage.
+   */
+  protected readonly chronologie = computed(() => {
+    return this.tasks()
+      .filter((t) => !t.continuous && t.nextRunAt && !(t.configurable && t.enabled === false))
+      .sort((a, b) => new Date(a.nextRunAt!).getTime() - new Date(b.nextRunAt!).getTime());
+  });
+
+  /** Traitements à échéance mais actuellement EN PAUSE — ils ne passeront pas, il faut le dire. */
+  protected readonly enPause = computed(() =>
+    this.tasks().filter((t) => t.configurable && t.enabled === false),
+  );
+
+  /** Noms des traitements en pause, pour la mention sous la chronologie. */
+  protected pauseNoms(): string {
+    return this.enPause().map((t) => t.label).join(', ');
+  }
+
+  /** Heure d'horloge du prochain passage, en heure de Paris (le serveur, lui, tourne en UTC). */
+  protected heureParis(iso: string | null): string {
+    if (!iso) return '—';
+    return new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(iso));
+  }
+
+  /** Vrai si le passage est dans moins de deux minutes — la ligne est alors mise en avant. */
+  protected imminent(iso: string | null): boolean {
+    if (!iso) return false;
+    return new Date(iso).getTime() - (this.nowMs() + this.skew()) < 120_000;
+  }
   /** Compteurs de synthèse. */
   protected readonly summary = computed(() => {
     const t = this.tasks();

@@ -102,3 +102,48 @@
   .row-side { align-items: flex-start; text-align: left; }
   .bgt-head { flex-direction: column; }
 }
+
+/* ── CHRONOLOGIE ─────────────────────────────────────────────────────────────
+   Le regroupement par categorie dit ce qui EXISTE ; ce tableau dit ce qui ARRIVE.
+   Avec 41 traitements sur 7 familles, l'ordre de passage n'etait reconstituable
+   qu'en comparant 41 compte-a-rebours disperses dans la page. */
+.chrono { margin-top: 18px }
+.chrono-sub { margin: 2px 0 8px; font-size: 12px; color: var(--fg-tertiary) }
+
+/* La table defile DANS sa boite : la page ne part jamais en travers a 375 px. */
+.chrono-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+.chrono-t { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 620px }
+.chrono-t th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; padding: 9px 10px; white-space: nowrap;
+  background: var(--bg-tertiary); color: var(--fg-tertiary);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+}
+.chrono-t td {
+  padding: 8px 10px; border-top: 1px solid var(--border-subtle);
+  color: var(--fg-secondary); vertical-align: middle;
+}
+
+.c-dans {
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+  font-weight: 600; color: var(--fg-primary);
+}
+.c-dans .dot { display: inline-block; margin-right: 6px; vertical-align: middle }
+.c-heure { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--fg-tertiary) }
+.c-nom { color: var(--fg-primary) }
+.c-cadence { color: var(--fg-tertiary) }
+.c-serveur { color: var(--fg-tertiary); font-size: 11px }
+
+/* Moins de deux minutes : la ligne se signale, c'est ce qu'on cherche en cas d'incident. */
+.chrono-t tr.imminent td { background: color-mix(in srgb, var(--tracky-light) 10%, transparent) }
+.chrono-t tr.imminent .c-dans { color: var(--texte-succes) }
+
+.chrono-pause {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin: 8px 2px 0; font-size: 11px; color: var(--fg-tertiary); line-height: 1.45;
+}
