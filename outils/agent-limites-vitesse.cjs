@@ -193,7 +193,28 @@ async function voieLocale(cellules, journal) {
     journal(`${region.nom} : ${concluantes.length.toLocaleString('fr-FR')} resolues, ${sansReponse.size.toLocaleString('fr-FR')} sans route a portee`);
     if (!ESSAI) ecrites += ecrire(concluantes);
 
-    // ⚠️ « Sans route a portee » N'EST PAS un travail a refaire ailleurs. L'extrait local porte
+    // ⚠️ NEGATIF VERIFIE : « aucune voie carrossable a 20 m » est ici un FAIT, pas un doute.
+    //    L'extrait local est la carte OSM COMPLETE de la region — pas une reponse d'API qui
+    //    peut arriver degradee. C'est toute la difference avec le bug d'origine, ou un Overpass
+    //    surcharge renvoyait une liste vide qu'on gravait comme une verite.
+    //
+    //    Ne PAS les inscrire coutait cher : l'application les reinterrogeait a chaque analyse,
+    //    attendait le delai d'Overpass (jusqu'a 190 s par lot) et epuisait son budget de passage
+    //    sur cinq trajets. Releve du 2026-08-19 : un passage de 22 minutes pour 5 analyses, 39
+    //    vehicules reportes.
+    //
+    //    Confirmation croisee avant d'ecrire quoi que ce soit : ces memes portions ont ete
+    //    repassees a Overpass, 0 route trouvee sur onze lots d'affilee. Les deux sources
+    //    independantes disent la meme chose.
+    const negatifsVerifies = dedans
+      .filter((c) => sansReponse.has(cleCellule(c.lat, c.lng)))
+      .map((c) => ({ ...c, limite: null }));
+    if (!ESSAI && negatifsVerifies.length > 0) {
+      ecrites += ecrire(negatifsVerifies);
+      journal(`${region.nom} : ${negatifsVerifies.length.toLocaleString('fr-FR')} negatif(s) VERIFIE(S) inscrits (aucune voie carrossable sur la carte complete)`);
+    }
+
+    // « Sans route a portee » n'est pas non plus un travail a refaire ailleurs. L'extrait local porte
     //    exactement les memes donnees OpenStreetMap qu'Overpass : si aucune voie carrossable
     //    n'est a 20 m ici, il n'y en aura pas davantage la-bas. Verifie le 2026-08-19 — les
     //    1 310 portions concernees ont ete repassees a Overpass, resultat 0/50 a chaque lot,
