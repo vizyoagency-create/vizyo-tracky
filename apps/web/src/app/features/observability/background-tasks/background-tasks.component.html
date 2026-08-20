@@ -51,6 +51,11 @@
       <div class="tile"><span class="n">{{ summary().continuous }}</span><span class="l">Flux continus</span></div>
       <div class="tile"><span class="n">{{ summary().configurable }}</span><span class="l">Réglables</span></div>
       <div class="tile" [class.muted-tile]="summary().paused === 0"><span class="n">{{ summary().paused }}</span><span class="l">En pause</span></div>
+      <!-- Les trois environnements, comptes en tete d'ecran : serveur (le reste), poste du
+           proprietaire, et ce qui consomme des credits d'API. Le detail par traitement est
+           porte par les etiquettes de chaque ligne. -->
+      <div class="tile"><span class="n">{{ summary().posteLocal }}</span><span class="l">Poste local</span></div>
+      <div class="tile" [class.muted-tile]="summary().iaFacturee === 0"><span class="n">{{ summary().iaFacturee }}</span><span class="l">IA facturée</span></div>
     </div>
 
     <!-- ── CHRONOLOGIE ──

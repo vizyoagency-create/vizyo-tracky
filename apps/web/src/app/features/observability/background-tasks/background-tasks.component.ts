@@ -116,6 +116,10 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       continuous: t.filter((x) => x.continuous).length,
       configurable: t.filter((x) => x.configurable).length,
       paused: t.filter((x) => x.configurable && x.enabled === false).length,
+      // Les trois environnements d'execution, comptes separement : c'est LA question qu'on se
+      // pose devant cet ecran — ou tourne ce traitement, et qui paie ?
+      posteLocal: t.filter((x) => x.executor === 'poste-local').length,
+      iaFacturee: t.filter((x) => x.coutIa === 'facture').length,
     };
   });
 

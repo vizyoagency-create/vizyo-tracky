@@ -47,7 +47,16 @@ interface CatalogEntry {
    * Traitement qui ne tourne PAS sur ce serveur — son état se déduit du travail qu'il a écrit
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
-  externe?: 'limites-vitesse' | 'recit-trajet' | 'qualite-gps';
+  externe?: 'limites-vitesse' | 'recit-trajet' | 'qualite-gps' | 'rattrapage-recits';
+  /**
+   * Lanceur .cmd du Planificateur de taches Windows, relatif a la racine du depot.
+   *
+   * MEME ROLE QUE `source` POUR LES CRONS SERVEUR : un garde scanne outils/*.cmd et exige
+   * que chaque lanceur soit revendique ici. Le 2026-08-21, une tache de rattrapage a ete
+   * creee sur le poste SANS etre cataloguee — elle tournait invisible, exactement le trou
+   * que l'ecran des traitements existe pour fermer. Obligatoire pour toute entree `externe`.
+   */
+  poste?: string;
   /**
    * Fichier source qui porte le `@Cron`, relatif a `apps/api/src`.
    *
@@ -388,6 +397,7 @@ const CATALOG: CatalogEntry[] = [
     note: "Ne tourne PAS sur ce serveur. L'IP du VPS s'est fait bannir d'overpass-api.de ; depuis le poste, la même requête passe et répond trois fois plus vite. Son état ci-contre est déduit des cellules réellement écrites, pas d'un simple signal de démarrage — si le poste est éteint, ça se voit.",
     purpose: "Résout auprès d'OpenStreetMap la limite légale de chaque portion de route parcourue. Sans elle, aucun excès de vitesse n'est calculable et le score de conduite ne mesure rien. Gratuit : aucun crédit d'IA.",
     externe: 'limites-vitesse',
+    poste: 'outils/agent-limites-vitesse.cmd',
     // ⚠️ PARIS, pas SERVER_TZ. Ce serveur tourne en UTC, le poste en heure de Paris : avec
     //    SERVER_TZ l'ecran annoncait « prochain passage 14:00 » en UTC, soit deux heures APRES
     //    le passage reel. Un ecran de supervision qui se trompe d'heure est pire que pas d'ecran.
@@ -409,6 +419,7 @@ const CATALOG: CatalogEntry[] = [
     note: "Ne tourne PAS sur ce serveur. Le recit passe par l'abonnement du poste au lieu des credits d'API : le meme travail coutait 45,89 $ sur le seul mois de juillet. Son etat ci-contre est deduit des recits reellement ecrits — si le poste est eteint ou la session expiree, ca se voit.",
     purpose: "Met en mots l'analyse deja calculee de chaque trajet (allure, arrets, exces, conseils eco). Ne recalcule rien. Absorbe par l'abonnement : aucun credit d'IA facture.",
     externe: 'recit-trajet',
+    poste: 'outils/agent-recit-trajet.cmd',
     coutIa: 'absorbe',
     // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
     fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 15 },
@@ -431,12 +442,35 @@ const CATALOG: CatalogEntry[] = [
     note: "Ne tourne PAS sur ce serveur, et n'appelle AUCUN modele : le diagnostic est un calcul geometrique. Son etat ci-contre vient de ses PASSAGES et non de ses trouvailles — contrairement aux deux autres agents locaux, celui-ci peut legitimement ne rien signaler d'une nuit, et une nuit sans rien a dire n'est pas une panne.",
     purpose: "Croise les zones de perte de signal entre vehicules d'une meme societe pour trancher : est-ce le LIEU qui est mauvais, ou le BOITIER ? Un lieu part dans l'ecran Qualite GPS, un boitier au centre d'alertes, et ce dont il n'est pas sur ne part nulle part.",
     externe: 'qualite-gps',
+    poste: 'outils/agent-qualite-gps.cmd',
     // Aucun modele appele : ce n'est ni facture ni absorbe, c'est simplement du calcul.
     coutIa: 'aucun',
     // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
     // 05:00 et non 03:15 : l'agent de recit occupe deja la tranche de 3 h et peut courir
     // jusqu'a 110 minutes. Les faire se chevaucher sur le meme poste ne servirait personne.
     fire: { tz: PARIS, matcher: (w) => w.getHours() === 5 && w.getMinutes() === 0 },
+  },
+  {
+    id: 'rattrapage-recits', label: 'Rattrapage des recits (agent sur poste, temporaire)',
+    category: 'IA & rapports', kind: 'cron',
+    scheduleHuman: 'toutes les 2 h aux heures paires (70 min max) — sur le poste du proprietaire',
+    criticality: 'basse', antiOverlap: true,
+    note: "TEMPORAIRE, et c'est son interet : la tache resorbe l'arriere de recits (fenetre de 1 500 h) puis devient un no-op — l'agent sort immediatement quand il n'y a plus rien a narrer. Creee le 2026-08-21 apres que le rattrapage a ete perdu TROIS fois en tournant sous une session interactive : ici c'est le Planificateur de Windows qui porte le processus, il survit aux fermetures de session et aux redemarrages.",
+    purpose: "Ecrit les recits manquants de l'HISTORIQUE (le creneau nocturne de 03:15 ne couvre que les 48 dernieres heures). Meme moteur, meme abonnement du poste : aucun credit d'API facture.",
+    externe: 'rattrapage-recits',
+    poste: 'outils/rattrapage-recits.cmd',
+    coutIa: 'absorbe',
+    // Heures PAIRES de Paris, pile — 02:00 Paris = 00:00 UTC, heure epoch paire, d'ou offset 0.
+    periodic: { everyMs: 7_200_000, offsetMs: 0 },
+  },
+  {
+    id: 'sms-heartbeat-verify', label: 'Verification de la preuve de vie SMS',
+    source: 'sms/sms-heartbeat.service.ts',
+    category: 'Notifications', kind: 'cron',
+    scheduleHuman: 'chaque lundi à 09:20', criticality: 'moyenne', antiOverlap: false,
+    note: "Second @Cron du MEME fichier que l'envoi de 09:00. Absent du catalogue jusqu'au 2026-08-21 : le garde d'exhaustivite raisonne PAR FICHIER, et un fichier deja revendique masquait son deuxieme traitement. C'est lui qui expliquait l'ecart permanent « 35 crons au runtime, 34 au catalogue ».",
+    purpose: "Verifie vingt minutes apres l'envoi que le SMS de preuve de vie est reellement arrive (accuse de la passerelle). Un envoi sans verification rassure a tort : la chaine peut casser APRES l'acceptation du message.",
+    fire: { tz: PARIS, matcher: (w) => w.getDay() === 1 && w.getHours() === 9 && w.getMinutes() === 20 },
   },
 ];
 
@@ -458,7 +492,7 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
@@ -466,6 +500,7 @@ export class BackgroundTasksService {
       this.etatAgentLimites(),
       this.etatAgentRecit(),
       this.etatAgentQualiteGps(),
+      this.etatRattrapageRecits(),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -494,6 +529,10 @@ export class BackgroundTasksService {
       if (e.externe === 'limites-vitesse') {
         const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
         return { ...base, ...agentLimites, nextRunAt: next ? next.toISOString() : null };
+      }
+      if (e.externe === 'rattrapage-recits') {
+        const next = e.periodic ? nextPeriodicTick(e.periodic.everyMs, e.periodic.offsetMs, nowMs) : null;
+        return { ...base, ...rattrapageRecits, nextRunAt: next ? next.toISOString() : null };
       }
       if (e.externe === 'qualite-gps') {
         const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
@@ -550,6 +589,42 @@ export class BackgroundTasksService {
       return { enabled: null, lastRunAt: null, settingsSummary: null };
     }
   }
+  /**
+   * État du RATTRAPAGE des récits — la tâche temporaire du poste (fenêtre 1 500 h).
+   *
+   * Même production que l'agent nocturne (des récits `provider = 'local'`), donc même preuve de
+   * travail. Ce qui change est la LECTURE DU ZÉRO : quand il ne reste plus rien à narrer, l'agent
+   * sort immédiatement sans rien écrire — le « dernier travail » stagne alors LÉGITIMEMENT. Sans
+   * ce cas, la tâche serait déclarée en panne précisément au moment où elle a fini son travail,
+   * et l'écran crierait sur un succès.
+   */
+  private async etatRattrapageRecits(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+    try {
+      const [dernier, restants] = await Promise.all([
+        this.prisma.tripAnalysis.aggregate({ where: { provider: 'local' }, _max: { updatedAt: true } }),
+        this.prisma.tripAnalysis.count({ where: { narrative: null } }),
+      ]);
+      const at = dernier._max.updatedAt ?? null;
+      if (restants === 0) {
+        return {
+          enabled: at !== null,
+          lastRunAt: at ? at.toISOString() : null,
+          settingsSummary: 'arriéré résorbé — la tâche est devenue sans objet et peut être désinscrite du poste',
+        };
+      }
+      // Trois creneaux de 2 h sans production alors qu'il reste du travail : ce n'est plus un alea.
+      const frais = at !== null && Date.now() - at.getTime() < 6 * 3_600_000;
+      return {
+        enabled: at === null ? null : frais,
+        lastRunAt: at ? at.toISOString() : null,
+        settingsSummary: restants.toLocaleString('fr-FR') + ' récit(s) encore à écrire (rattrapage + flux courant)',
+      };
+    } catch {
+      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
+      return { enabled: null, lastRunAt: null, settingsSummary: null };
+    }
+  }
+
   /**
    * État de l'agent de RÉCIT, qui tourne sur le POSTE du propriétaire.
    *
@@ -716,8 +791,13 @@ export class BackgroundTasksService {
       registeredIntervalCount = this.registry.getIntervals().length;
     } catch { /* idem */ }
 
-    const catalogCronCount = CATALOG.filter((e) => e.kind === 'cron').length;
-    const catalogIntervalCount = CATALOG.filter((e) => e.kind === 'interval').length;
+    // SANS le filtre `!e.externe`, les agents du poste comptaient comme des crons NestJS :
+    // le bandeau « ecart runtime/catalogue » etait affiche EN PERMANENCE (35 contre 37 releve
+    // en production le 2026-08-21). Un faux positif permanent apprend a ignorer l'alerte — le
+    // jour ou elle dit vrai, personne ne la lit. Les taches du poste ont leur PROPRE preuve de
+    // vie (le travail ecrit en base) ; elles n'ont rien a faire dans ce comptage-ci.
+    const catalogCronCount = CATALOG.filter((e) => !e.externe && e.kind === 'cron').length;
+    const catalogIntervalCount = CATALOG.filter((e) => !e.externe && e.kind === 'interval').length;
 
     // Les noms de jobs étant auto-générés (non nommés), on ne peut pas mapper 1:1. On signale
     // donc un drift UNIQUEMENT s'il y a PLUS de jobs enregistrés que catalogués, en listant les

@@ -100,6 +100,61 @@ describe('Catalogue des traitements de fond — exhaustif par construction', () 
     expect(sourcesCataloguees()).toContain('observability/scheduled-task-heartbeat.service.ts');
   });
 
+  /**
+   * ── LE MEME GARDE POUR LES AGENTS DU POSTE ─────────────────────────────────────────
+   *
+   * Les traitements ne tournent pas tous sur ce serveur : quatre taches du Planificateur de
+   * Windows travaillent sur le poste du proprietaire, lancees par les fichiers .cmd de outils/.
+   * Le 2026-08-21, une tache de rattrapage a ete creee SANS etre cataloguee — elle tournait
+   * invisible, quelques heures apres qu'on avait jure que rien ne pouvait plus l'etre. La
+   * vigilance ne suffit pas ; seul un garde mecanique tient.
+   *
+   * Chaque .cmd de outils/ est un point d'entree du Planificateur : il doit etre revendique par
+   * une entree du catalogue via son champ `poste`. Et chaque `poste` doit pointer vers un
+   * fichier existant — une entree qui survit a la suppression de son lanceur decrirait une tache
+   * qui ne tourne plus.
+   */
+  const OUTILS = join(__dirname, '..', '..', '..', '..', 'outils');
+
+  function lanceursDuPoste(): string[] {
+    return readdirSync(OUTILS)
+      .filter((f) => f.endsWith('.cmd'))
+      .map((f) => 'outils/' + f)
+      .sort();
+  }
+
+  function lanceursCatalogues(): Set<string> {
+    const texte = readFileSync(CATALOGUE, 'utf8');
+    const out = new Set<string>();
+    for (const m of texte.matchAll(/poste:\s*'([^']+)'/g)) out.add(m[1]!);
+    return out;
+  }
+
+  it('⚠️ CHAQUE lanceur .cmd du poste est revendique par le catalogue', () => {
+    const catalogues = lanceursCatalogues();
+    const oublies = lanceursDuPoste().filter((f) => !catalogues.has(f));
+    expect(oublies).toEqual([]);
+    // Si ce test tombe : une tache du Planificateur de Windows a ete creee sans etre inscrite
+    // au catalogue. Elle tournerait INVISIBLE dans /admin/background-tasks.
+  });
+
+  it('aucun lanceur catalogue ne pointe vers un fichier disparu', () => {
+    const presents = new Set(lanceursDuPoste());
+    const fantomes = [...lanceursCatalogues()].filter((f) => !presents.has(f));
+    expect(fantomes).toEqual([]);
+  });
+
+  it('⚠️ la tache de rattrapage — celle qui a tourne invisible — est cataloguee', () => {
+    expect(lanceursCatalogues()).toContain('outils/rattrapage-recits.cmd');
+  });
+
+  it('⚠️ le SECOND cron de sms-heartbeat est catalogue — le garde par fichier le masquait', () => {
+    // 35 crons au runtime, 34 au catalogue : l'ecart permanent venait de la, un fichier deja
+    // revendique cachant son deuxieme @Cron. Le drift avait raison, personne ne pouvait le voir.
+    const texte = readFileSync(CATALOGUE, 'utf8');
+    expect(texte).toContain("id: 'sms-heartbeat-verify'");
+  });
+
   it('⚠️ la bascule des statuts de mission aussi — trouvee en etendant le garde aux @Interval', () => {
     // Second trou du 2026-08-19 : un traitement METIER, toutes les minutes, invisible. Sans lui
     // une mission resterait « planifiee » alors que le vehicule est deja parti.
