@@ -22,7 +22,8 @@ déjà vu ça ? »* — et de reconnaître une rechute.
 ## VPS-001 — Le cache de build Docker n'est jamais purgé
 
 - **Domaine** : disque · **Gravité** : 1 · **Statut** : `APPLIQUE` (2026-08-04, 17 h 40)
-- **Vu** : 2026-08-20 · **Mesure du jour** : `Private` **9,568 Go** + `Shared` **1,806 Go** (total `docker system df` **11,37 Go / 74 entrees, 0 ACTIVE**). ✅ **HUITIEME POINT, ET IL EST SOUS LA BORNE** — serie **10,39 → 11,31 → 10,33 → 12,54 → 10,70 → 11,19 → 10,65 → 9,57**. Le mecanisme est verifie : `cache.db` ecrit **10 s** apres le build de `tracky-web` (08-19 17 h 21 min 39). 🔴 **MAIS CE POINT N EST PLUS ATTRIBUABLE AU RAMASSE-MIETTES SEUL** : un `docker builder prune -f` **NON FILTRE** a ete execute le 08-19 a 11 h 02 min 41 par le canal de l hyperviseur (**VPS-029**). Les deux ont agi ; leur part respective n est **pas mesurable**. ⚠️ **La bande « 10,3 – 12,6 Go » derivee des sept premiers points est donc morte au huitieme**, et elle l est **avant** que le cron n ait jamais tourne. **NE PAS purger** : 44 Go libres. *(mesure du 2026-08-18, conservee ci-dessous.)*
+- **Vu** : 2026-08-20 · **Mesure du soir (après le cron de 04 h 57)** : `Private` **5,057 Go**, total **6,863 Go / 60 entrees**. 🔴 **CE N'EST PAS LE RAMASSE-MIETTES** : le cron non filtré de VPS-029 a retiré 4,5 Go en 53 s, alors que `Private` était **déjà sous sa borne**. **La série de VPS-001 est rompue** — les huit premiers points décrivaient un mécanisme unique et auto-régulé ; à partir d'aujourd'hui deux acteurs agissent sur le même objet, et le second est hebdomadaire. *Ne plus écrire « `Private` revient à sa borne » sans dire lequel des deux l'y a ramené.*
+- **Mesure du matin (avant le cron)** : `Private` **9,568 Go** + `Shared` **1,806 Go** (total `docker system df` **11,37 Go / 74 entrees, 0 ACTIVE**). ✅ **HUITIEME POINT, ET IL EST SOUS LA BORNE** — serie **10,39 → 11,31 → 10,33 → 12,54 → 10,70 → 11,19 → 10,65 → 9,57**. Le mecanisme est verifie : `cache.db` ecrit **10 s** apres le build de `tracky-web` (08-19 17 h 21 min 39). 🔴 **MAIS CE POINT N EST PLUS ATTRIBUABLE AU RAMASSE-MIETTES SEUL** : un `docker builder prune -f` **NON FILTRE** a ete execute le 08-19 a 11 h 02 min 41 par le canal de l hyperviseur (**VPS-029**). Les deux ont agi ; leur part respective n est **pas mesurable**. ⚠️ **La bande « 10,3 – 12,6 Go » derivee des sept premiers points est donc morte au huitieme**, et elle l est **avant** que le cron n ait jamais tourne. **NE PAS purger** : 44 Go libres. *(mesure du 2026-08-18, conservee ci-dessous.)*
 - **Mesure du 2026-08-18, conservée** : `Private` **11,19 Go** + `Shared` **17,0 Go** (total `docker system df` **27,45 Go / 120 entrees, 17 ACTIVES**). ✅ **SIXIEME POINT, ET LA REGULATION TIENT** : la serie fait **10,39 -> 11,31 -> 10,33 -> 12,54 -> 10,70 -> 11,19**, soit une valeur qui revient toujours a sa borne apres excursion. Le ramasse-miettes tourne : `cache.db` a ete ecrit **368 s** apres le dernier build termine (`maalem-dev-api`, 08-17 a 23 h 16), mesure a 03 h 51. ⚠️ **La collecte archivee de 04 h 00 affiche un ecart de 17 186 s, et ce n'est PAS un mecanisme en retard** : `cache.db` porte **2026-08-18 04 h 02 min 54**, c'est-a-dire PENDANT la collecte — le build en cours l'a reecrit. Le detecteur compare au dernier build TERMINE et ne connait pas celui qui tourne ; c'est une limite a connaitre avant de lire un gros ecart comme une panne. ⚠️ **`Shared` bondit a 17,0 Go** (0,10 la veille) : c'est la contrepartie des **5 images construites en 24 h** (4,42 Go annonces) — des couches neuves encore referencees par des images vivantes, donc hors de portee du plafond, exactement ce que VPS-M25 a etabli. **NE PAS purger** : 31 Go libres, et un build tournait pendant la collecte. *(mesure du 2026-08-17, conservee ci-dessous.)*
 - **Mesure du 2026-08-17, conservée** : `Private` **10,70 Go** + `Shared` **0,10 Go** (total `docker system df` 10,80 Go / **75 entrees**). ✅ **LE TEST ECRIT D'AVANCE HIER EST TRANCHE, ET DANS LE BON SENS.** Le rapport du 08-16 posait : *« au prochain passage suivant un build, `Private` doit repasser sous ~11,5 Go ; s'il reste ≥ 12 Go ou monte, `keepStorage: 10GB, all: true` ne gouverne pas ce qu'on croit. »* **Deux builds ont eu lieu** (`tracky-web` le 08-16 a 15 h 59 min 24, `tracky-api` a 16 h 00 min 48), `cache.db` a ete ecrit **293 s** apres, et `Private` vaut **10,70 Go**. La serie fait **10,39 → 11,31 → 10,33 → 12,54 → 10,70** : une valeur qui **revient a sa borne** apres chaque excursion, c'est-a-dire la signature d'une **regulation**, pas d'une derive. **Le choix de `Private` comme grandeur de tendance (08-14), affaibli par le 4e point, est RETABLI par le 5e.** ⚠️ Et il aura fallu **cinq** points pour voir sur cette grandeur ce que VPS-001 ecrivait deja le 2026-08-06 : *une valeur regulee oscille autour de sa cible ; une valeur qui ne bouge pas d'un octet dit que son mecanisme est arrete.* **NE PAS purger** : 47 Go libres. *(mesure du 2026-08-16, conservee ci-dessous.)*
 - **Mesure du 2026-08-16, conservée** : `Private` **12,54 Go** + `Shared` **0,10 Go** (total `docker system df` 12,64 Go / 82 entrees). ⚠️ **`Private` est a sa valeur la PLUS HAUTE jamais mesuree — 25 % au-dessus du plafond de 10 Go** — deux heures apres un build dont le ramasse-miettes a demontrablement tourne (`cache.db` ecrit 402 s apres). La serie fait **10,39 → 11,31 → 10,33 → 12,54** : l'amplitude passe de 0,98 a **2,21 Go**, et le « `Private` est plate » du 08-15 est **affaibli par le 4e point**. Le verdict du collecteur reste vert parce que le seuil est le plafond **+ 50 %** (15 Go), marge posee par VPS-M10. **Test ecrit d'avance** : *au prochain passage suivant un build, `Private` doit repasser sous ~11,5 Go ; s'il reste ≥ 12 Go ou monte, `keepStorage: 10GB, all: true` ne gouverne pas ce qu'on croit, et le choix de `Private` comme grandeur de tendance (08-14) est a rouvrir.* **NE PAS purger** : 45 Go libres. *(mesure du 2026-08-15, conservee ci-dessous.)*
@@ -1254,7 +1255,40 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 
 ## VPS-016 — `dockerd` tourne en boucle et brûle un cœur depuis 24 heures
 
-- **Domaine** : docker · **Gravité** : 1 · **Statut** : 🔴 **`A_TRAITER` — ROUVERT le 2026-08-20 : QUATRIÈME OCCURRENCE, EN COURS, cause identifiée à la seconde pendant qu'elle dure**
+- **Domaine** : docker · **Gravité** : 1 · **Statut** : ✅ **`APPLIQUE` — 4e OCCURRENCE CLOSE le 2026-08-20 à 05 h 08 min 14, sans aucune interruption · ⚠️ MAIS LA PREMIÈRE REMÉDIATION A ÉCHOUÉ (VPS-M51)**
+- **Durée de la 4e occurrence** : **2026-08-20 01 h 13 min 57 → 05 h 08 min 14 — 3 h 54.**
+
+> ### ✅ 2026-08-20, 05 h 08 — CLOSE, ET LA PREMIÈRE TENTATIVE N'A RIEN DONNÉ
+>
+> | Heure UTC | Action | `dockerd` | `read()`/s |
+> |---|---|---:|---:|
+> | 05 h 02 min 55 | ❌ `kill 43987` — **le client seul** | **100,3 %** | **1 359 294** |
+> | 05 h 08 min 14 | ✅ `kill 43986 370554 370555` — **le parent d'abord** | **1,4 %** | **3** |
+> | 05 h 09 | confirmation | **0,8 %** | — |
+>
+> **Pourquoi le premier `kill` a échoué** : le `bash -c` parent contenait **deux** `docker logs`,
+> pas un — le second dans une substitution de commande (`L=$(docker logs … --tail 200000)`). En
+> tuant le premier, `bash` a exécuté le suivant : le remplaçant est né à **05 h 02 min 55, la
+> seconde exacte du `kill`**. **La boucle n'a pas été interrompue, elle a été transmise.**
+>
+> **Ce que la production a vu** : rien. 33/33 conteneurs, 0 anomalie, PID 913 inchangé, 62 threads,
+> les quatre points publics en **97 · 39 · 158 · 75 ms**, charge 1,60 → 0,80. **Deux occurrences
+> fermées sans une seconde d'indisponibilité, et `systemctl restart docker` n'a été nécessaire
+> ni le 08-18 ni aujourd'hui.**
+>
+> ### ⚠️ LA REMÉDIATION DE CETTE FICHE ÉTAIT INCOMPLÈTE — voir VPS-M51
+>
+> Elle disait : *« la remédiation est `kill <pid>` sur ces clients »*. **Vrai quand le parent est
+> mort, faux quand il est vivant** — et le 08-18 les deux parents étaient morts, donc rien ne
+> distinguait les deux cas.
+>
+> **La règle, réécrite pour être appliquée sans refaire l'enquête** :
+> 1. lister les clients bloqués **avec leur chaîne de parents complète**, pas seulement le PID ;
+> 2. parent = `init` (PPID 1) → `kill` le client suffit ;
+> 3. **parent vivant → `kill` LE PARENT D'ABORD**, puis les descendants ;
+> 4. vérifier en sortie : `pgrep -xc docker` = **0** et `dockerd` sous 5 %.
+>
+> ⚠️ **Ne pas `kill -9` d'emblée** : un `SIGTERM` a suffi sur les quatre processus.
 - **Vu** : 2026-08-20 · **Mesure du jour** : `dockerd` à **101,7 %** d'un cœur, **1 038 542 `read()`/s pour 0,0000 octet**, PID **913 inchangé**, **62 threads**. Cumul **225,7 h / 364,8 h**. **Continuité sur la fenêtre de 24 h : 8,8 %** — et c'est ce chiffre bas qui prouve que la boucle est **récente**.
 - **Durée totale de la 3e occurrence** : du **2026-08-11 à 21 h 01** au **2026-08-18 à 05 h 47** — **152 h 46**, dont 20 h 30 en second régime.
 
@@ -1309,12 +1343,15 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 > | 1 — 2026-08-05 | ~02 h 23 | 08-06 ~13 h 00 | 34 h 40 | non identifié | — |
 > | 2 — 2026-08-10 | ~01 h 15 | ~14 h 45 | ~13 h 30 | non identifié | — |
 > | 3 — 2026-08-11 | 21 h 01 | 08-18 05 h 47 | **152 h 46** | `docker logs` ×2 | **mort** |
-> | **4 — 2026-08-20** | **01 h 13 min 57** | **en cours** | **≥ 1 h 08** | `docker logs` ×1 | **vivant** |
+> | **4 — 2026-08-20** | **01 h 13 min 57** | **05 h 08 min 14** | **3 h 54** | `docker logs` ×1 (puis son clone) | **vivant** |
 >
 > **Trois clients sur trois identifiés sont des `docker logs` lancés en diagnostic par SSH.** Ce
 > n'est plus un accident, c'est une **classe**.
 >
-> ### La remédiation — ÉCRITE, PAS EXÉCUTÉE (garde-fou de lecture seule)
+> ### La remédiation — écrite ici à 02 h 30, ❌ RÉFUTÉE À L'EXÉCUTION À 05 h 02
+>
+> ⚠️ **Ce qui suit était faux sur son gain**, et l'encadré de clôture ci-dessus le corrige.
+> Conservé : un raisonnement erroné ne se supprime pas, il s'explique.
 >
 > `kill 43987` — **2 secondes, aucune coupure, aucun conteneur touché**, gain ~50 % de la machine.
 > ⚠️ Vérifier le PID d'abord : il n'est valable que pour cette collecte.
@@ -3548,7 +3585,8 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 ## VPS-029 — Un second mécanisme gouverne le cache de build, posé hier après-midi, et le catalogue ne l'aurait pas montré
 
 - **Domaine** : docker · **Gravité** : **3** (était 4) · **Statut** : `SURVEILLANCE` — 🔴 **PROVENANCE RÉFUTÉE et CONTENU MODIFIÉ le 2026-08-20**
-- **Vu** : 2026-08-20 · **Mesure du jour** : le fichier a été **RÉÉCRIT le 2026-08-19 à 11 h 02 min 38** — il a **perdu son filtre** et changé d'horaire. Prochaine échéance : **jeudi 2026-08-20 à 04 h 57 UTC**. Toujours jamais exécuté par `cron`.
+- **Vu** : 2026-08-20 · **Mesure du soir** : 🔴 **LE CRON A TOURNÉ À 04 h 57 min 01, PENDANT 53 SECONDES, ET IL N'EST PAS REDONDANT.** `Private` est passé de **9,568 Go à 5,057 Go** — il a retiré **4,5 Go que le ramasse-miettes gardait délibérément**, alors que `Private` était **sous** la borne `keepStorage` de 10 Go. Total `docker system df` 11,37 → **6,863 Go**, entrées 74 → **60**, disque 55 % → **50 %** (48 Go libres). La question que cette fiche posait — *« redondant et inoffensif » ou « il fait quelque chose que le ramasse-miettes ne fait pas » ?* — est **tranchée par les faits, et sans la précondition « au moins un build »** : c'est la seconde réponse. ⚠️ **Le coût, chiffré honnêtement** : 4,5 Go rendus sur une machine qui avait déjà 44 Go libres — *un gain dont personne n'avait besoin* — contre un premier build 2 à 4× plus long sur chaque projet, chaque jeudi. Sur 2 vCPU, c'est le mauvais côté de l'échange. ⚠️ Et `sar` en porte la trace : l'inactivité tombe à **11,25 %** sur la tranche 04 h 50 → 05 h 00, contre ~40 % les six tranches précédentes.
+- **Mesure du matin** : le fichier a été **RÉÉCRIT le 2026-08-19 à 11 h 02 min 38** — il a **perdu son filtre** et changé d'horaire. Prochaine échéance : **jeudi 2026-08-20 à 04 h 57 UTC**. Toujours jamais exécuté par `cron`.
 - **Mesure du 2026-08-19, conservée** : créé le 2026-08-18 à 13 h 22 min 06, jamais exécuté, première échéance annoncée au jeudi 2026-08-20 à 05 h 33 UTC.
 
 ```
@@ -3719,6 +3757,51 @@ Le correctif durable est le balayage proposé en angle mort n° 3 du rapport du 
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M51 — La remédiation écrite le 08-18 supposait un parent mort, et personne ne pouvait le voir
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-20, vérifié par l'exécution)
+- **Vu** : 2026-08-20 · **Coût** : une remédiation exécutée **pour rien** sur une machine qui perdait un cœur, et **5 min 19 de boucle en plus** entre les deux `kill`.
+
+**Quoi.** La fiche VPS-016 écrivait, depuis la 3e occurrence : *« la remédiation est `kill <pid>`
+sur ces clients — 2 secondes, aucune coupure »*. Exécutée le 2026-08-20 à 05 h 02 min 55, elle a
+tué sa cible **et n'a rien changé** : `dockerd` est resté à 100,3 %, avec 1 359 294 `read()`/s.
+
+**La cause.** Le `bash -c` parent contenait **deux** `docker logs`, le second dans une substitution
+de commande. En tuant le premier, `bash` a exécuté le suivant — le remplaçant est né à
+**05 h 02 min 55, la seconde exacte du `kill`**. *La boucle n'a pas été interrompue : elle a été
+transmise.*
+
+| | 3e occurrence (08-18) | 4e occurrence (08-20) |
+|---|---|---|
+| Parent du client | **mort** (adopté par init) | **vivant** |
+| Tuer la feuille suffit ? | **oui** — rien ne peut relancer | **non** — le parent enchaîne |
+| Bonne cible | le client | **le `bash -c` parent, en premier** |
+
+**Pourquoi c'était invisible.** Le 08-18 les deux parents étaient morts. **Rien, ce jour-là, ne
+distinguait « tuer le client » de « tuer ce qui tient le client »** — les deux formulations
+décrivaient la même action et donnaient le même résultat. Une remédiation validée sur un cas où
+deux hypothèses coïncident ne dit pas laquelle elle a vérifiée.
+
+> **La leçon, et c'est VPS-M49 d'un cran plus loin** : *le 08-18 a produit un **détecteur** et une
+> **remédiation**, tous deux calibrés sur un parent mort. On a corrigé le détecteur ce matin
+> (VPS-M49) — sans regarder la remédiation, qui souffrait du même défaut, pour la même raison, et
+> **dans le même paragraphe**.* **Corriger un défaut ne corrige pas ses voisins, même quand ils
+> partagent sa cause.** C'est VPS-M22 pour la cinquième fois, et la plus courte distance jamais
+> observée entre le défaut corrigé et son jumeau manqué : trois lignes de la même fiche.
+
+**Quoi faire — FAIT.** La fiche VPS-016 porte désormais une remédiation en **quatre étapes**, dont
+la troisième est *« parent vivant → `kill` LE PARENT D'ABORD »*, et le collecteur affiche déjà la
+chaîne de parents complète (correctif VPS-M49 du matin, qui sert ici une seconde fois).
+
+**`aNePasFaire`** : ⚠️ ne pas `kill -9` d'emblée — un `SIGTERM` a suffi sur les quatre processus.
+⚠️ Et ne pas conclure « il faut toujours tuer la session SSH » : c'est plus large que nécessaire,
+et le canal peut appartenir à quelqu'un qui travaille. Le `bash -c` est la bonne granularité.
+
+**Vérification** : `dockerd` 99,7 % → **1,4 %**, `read()` 1 326 127/s → **3**, 33/33 conteneurs,
+0 anomalie, PID du démon inchangé, quatre points publics en 97 · 39 · 158 · 75 ms.
+
+---
 
 ### VPS-M49 — Le détecteur de clients Docker exigeait un parent MORT, et la 4e occurrence a un parent VIVANT
 

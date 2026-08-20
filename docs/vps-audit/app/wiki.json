@@ -85,6 +85,25 @@
   ],
   "fiches": [
     {
+      "id": "VPS-M51",
+      "titre": "La remediation ecrite le 08-18 supposait un parent mort, et personne ne pouvait le voir",
+      "domaine": "methode",
+      "statut": "APPLIQUE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-20",
+      "vuDerniere": "2026-08-20",
+      "mesure": "Executee le 2026-08-20 a 05h02:55, la remediation « kill <pid> sur ces clients » a tue sa cible ET N A RIEN CHANGE : dockerd est reste a 100,3 % avec 1 359 294 read()/s. Cout : une remediation lancee POUR RIEN sur une machine qui perdait un coeur, et 5 min 19 de boucle en plus entre les deux kill.",
+      "quoi": "Le bash -c parent contenait DEUX docker logs, le second dans une substitution de commande. En tuant le premier, bash a execute le suivant : le remplacant est ne a 05h02:55, LA SECONDE EXACTE DU KILL. La boucle n a pas ete interrompue, elle a ete TRANSMISE. Il a fallu tuer le PARENT d abord (05h08:14) : dockerd 99,7 % → 1,4 %, read()/s 1 326 127 → 3.",
+      "gain": "Rend la remediation de VPS-016 applicable dans les DEUX cas au lieu d un seul. Cout : zero — c est une regle, pas un mecanisme.",
+      "quoiFaire": "FAIT. La fiche VPS-016 porte desormais une remediation en QUATRE etapes dont la troisieme est « parent vivant → kill LE PARENT D ABORD ». Et le collecteur affiche deja la chaine de parents complete — le correctif VPS-M49 du matin sert ici une seconde fois, le jour meme.",
+      "pourquoiInvisible": "Le 08-18 les DEUX parents etaient morts. Rien, ce jour-la, ne distinguait « tuer le client » de « tuer ce qui tient le client » : les deux formulations decrivaient la meme action et donnaient le meme resultat. UNE REMEDIATION VALIDEE SUR UN CAS OU DEUX HYPOTHESES COINCIDENT NE DIT PAS LAQUELLE ELLE A VERIFIEE.",
+      "aNePasFaire": "⚠️ NE PAS kill -9 d emblee : un SIGTERM a suffi sur les quatre processus et laisse le shell nettoyer ses tubes. ⚠️ NE PAS conclure « il faut toujours tuer la session SSH » : c est plus large que necessaire, et le canal peut appartenir a quelqu un qui travaille. Le bash -c est la bonne granularite.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m51-la-remediation-ecrite-le-08-18-supposait-un-parent-mort-et-personne-ne-pouvait-le-voir",
+      "piste": "C est VPS-M49 D UN CRAN PLUS LOIN, et c est la vraie lecon : le 08-18 a produit un DETECTEUR et une REMEDIATION, tous deux calibres sur un parent mort. Le detecteur a ete corrige le matin du 08-20 (VPS-M49) SANS QU ON REGARDE LA REMEDIATION, qui souffrait du meme defaut, pour la meme raison, et DANS LE MEME PARAGRAPHE. Corriger un defaut ne corrige pas ses voisins, meme quand ils partagent sa cause — VPS-M22 pour la cinquieme fois, et la plus courte distance jamais observee entre le defaut corrige et son jumeau manque : trois lignes de la meme fiche.",
+      "seuilReescalade": "Rouvrir si une remediation de ce referentiel est executee et ne produit pas l effet annonce — c est le signe qu elle a ete calibree sur un cas particulier presente comme general."
+    },
+    {
       "id": "VPS-M50",
       "titre": "Le catalogue n a aucune notion de « nouveau », et le journal de l hyperviseur n affichait que sa routine",
       "domaine": "methode",
@@ -149,8 +168,8 @@
       "gravite": 3,
       "vuPremiere": "2026-08-19",
       "vuDerniere": "2026-08-20",
-      "mesure": "🔴 PROVENANCE REFUTEE ET CONTENU MODIFIE le 2026-08-20. Le fichier a ete REECRIT le 2026-08-19 a 11h02:38 : il a PERDU son filtre « unused-for=168h » et son horaire est passe de jeudi 05h33 a jeudi 04h57. Contenu actuel : « 57 4 * * 4 root docker builder prune -f > /dev/null 2>&1 ». Toujours jamais execute par cron ; prochaine echeance jeudi 2026-08-20 a 04h57 UTC.",
-      "gain": "⚠️ LE RAISONNEMENT D ORIGINE EST RENVERSE. La fiche concluait : « le filtre du cron (168 h) est plus faible que celui du ramasse-miettes (48 h), il ne devrait rien trouver ». SANS FILTRE, c est l inverse : docker builder prune -f purge tout le cache inutilise quel que soit son age. Il est desormais PLUS AGRESSIF que le ramasse-miettes. Contrepartie chiffree : le premier build de chaque projet repart de zero (2 a 4x plus long), pour un disque qui a 44 Go libres.",
+      "mesure": "🔴 LE CRON A TOURNE LE 2026-08-20 A 04h57:01, PENDANT 53 SECONDES, ET IL N EST PAS REDONDANT. Private est passe de 9,568 Go a 5,057 Go — il a retire 4,5 Go que le ramasse-miettes gardait DELIBEREMENT, alors que Private etait SOUS la borne keepStorage de 10 Go. Total docker system df 11,37 → 6,863 Go, entrees 74 → 60, disque 55 % → 50 % (48 Go libres). Le fichier avait ete REECRIT le 08-19 a 11h02:38 par le canal de l hyperviseur : filtre « unused-for=168h » supprime, horaire passe de jeudi 05h33 a jeudi 04h57.",
+      "gain": "⚠️ LE COUT, CHIFFRE HONNETEMENT : 4,5 Go rendus sur une machine qui avait DEJA 44 Go libres — un gain dont personne n avait besoin — contre un premier build 2 a 4x plus long sur chaque projet, chaque jeudi. Sur 2 vCPU c est le mauvais cote de l echange. Et sar en porte la trace : l inactivite tombe a 11,25 % sur la tranche 04h50-05h00, contre ~40 % les six tranches precedentes.",
       "quoi": "Le journal qemu-ga — que la section 7 du collecteur LIT A CHAQUE PASSAGE — montre que le fichier a ete ecrit PAR LE CANAL DE L HYPERVISEUR, pas par SSH : « guest-exec: su - root -c echo '...' > /etc/cron.d/docker-builder-prune » le 08-18 a 13h22:05 puis le 08-19 a 11h02:38, chaque fois suivi d un « docker builder prune » lance a la main. La fiche affirmait hier une « action humaine deliberee hors de toute session d audit » : le mot humaine etait peut-etre juste, mais il a ete AFFIRME SANS ETRE MESURE — et l audit ne peut PAS distinguer ici l hebergeur d un humain utilisant la console web du panneau.",
       "quoiFaire": "TRANCHER AVANT 04h57 AUJOURD HUI, et c est une decision, pas une evidence. Option A — remettre le filtre : « echo '57 4 * * 4 root docker builder prune -f --filter \"unused-for=168h\" > /dev/null 2>&1' > /etc/cron.d/docker-builder-prune », ce qui retablit le raisonnement d origine et rend le cron redondant et inoffensif. Option B — le laisser tourner et MESURER, ce que la fiche recommandait et dont l argument tient toujours (decider avant la mesure, c est VPS-011 a l envers).",
       "pourquoiInvisible": "Le 08-19 il etait apparu la veille : trouve A LA MAIN en relisant la section 7. Le 08-20 le MEME fichier avait ete reecrit : trouve A LA MAIN, encore. Deux versions d un meme fichier se ressemblent dans une liste de quatre qu on relit chaque matin ; une DATE, non. Et la provenance etait lisible depuis le premier jour dans un journal deja collecte — elle n a pas ete cherchee parce que « les 3 dernieres lignes de commande » affichaient toujours de la routine. VPS-M50 corrige les deux.",
@@ -158,7 +177,7 @@
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-029-un-second-mecanisme-gouverne-le-cache-de-build-pose-hier-apres-midi-et-le-catalogue-ne-laurait-pas-montre",
       "piste": "CONSEQUENCE IMMEDIATE : le 8e point de VPS-001 n est plus attribuable. Private fait 10,39 -> 11,31 -> 10,33 -> 12,54 -> 10,70 -> 11,19 -> 10,65 -> 9,57. Sept passages ont attribue ce retour a la borne au ramasse-miettes ; le huitieme a DEUX causes candidates, et la seconde est datee — un « docker builder prune -f » non filtre le 08-19 a 11h02:41. Le ramasse-miettes a bien tourne aussi (cache.db ecrit 10 s apres le build de 17h21). Les deux ont agi ; leur part respective n est PAS mesurable.",
-      "seuilReescalade": "⚪ LE TEST ECRIT D AVANCE LE 08-19 EST CADUC, et il ne faut pas le lire quand meme. Il posait « au 08-21, Private dans 10,3 a 12,6 Go, precondition >= 1 build apres le 08-20 05h33 ». TROIS de ses termes sont morts : l heure (04h57), le filtre, et LA BANDE ELLE-MEME — Private vaut 9,57 Go aujourd hui, hors bande, AVANT que le cron n ait jamais tourne. Une bande derivee de sept points s est revelee trop etroite au huitieme. LECON : un test vaut par sa precondition, et il lui manquait la plus elementaire — que l objet mesure n ait pas change entre-temps. VPS-M41 disait « si l incident cesse, le test ne dit rien » ; il faut ajouter « si le MECANISME est reecrit, non plus »."
+      "seuilReescalade": "✅ TRANCHE PAR LES FAITS LE 2026-08-20, ET SANS SA PRECONDITION. Le test posait « au 08-21, Private dans 10,3-12,6 Go, precondition >= 1 build apres le cron ». Le cron a tourne le 08-20 et la reponse n a pas eu besoin du build : Private 9,57 → 5,06 Go. La fiche demandait de choisir entre « redondant et inoffensif » et « il fait quelque chose que le ramasse-miettes ne fait pas » — c est la SECONDE. Nouveau seuil : rouvrir en gravite 2 si le fichier est reecrit une TROISIEME fois, ou si un build echoue par manque de cache un vendredi."
     },
     {
       "id": "VPS-M47",
@@ -379,7 +398,7 @@
       "gravite": 1,
       "vuPremiere": "2026-08-04",
       "vuDerniere": "2026-08-19",
-      "mesure": "7e point consecutif ou Private revient a sa borne : 10,39 → 11,31 → 10,33 → 12,54 → 10,70 → 11,19 → 10,65 Go, pour un plafond keepStorage de 10 Go. Le ramasse-miettes a tourne 257 s apres le build de 01h55 — mecanisme verifie, pas seulement valeur stable. Shared retombe de 17,0 a 0,10 Go : les 17 Go du 08-18 etaient des couches neuves encore referencees par des images vivantes, rendues par le docker image prune -af --filter until=24h de 00h40 (VPS-M25 exactement).",
+      "mesure": "Private 5,057 Go apres le cron de 04h57 (9,568 Go avant), total 6,863 Go / 60 entrees. 🔴 LA SERIE EST ROMPUE : les huit premiers points decrivaient un mecanisme UNIQUE et auto-regule (10,39 → 11,31 → 10,33 → 12,54 → 10,70 → 11,19 → 10,65 → 9,57) ; a partir du 2026-08-20 DEUX acteurs agissent sur le meme objet, et le second est hebdomadaire et NON FILTRE (VPS-029). Ne plus ecrire « Private revient a sa borne » sans dire LEQUEL DES DEUX l y a ramene.",
       "gain": "32 Go rendus, 0 interruption (31/31 conteneurs sains apres purge)",
       "quoi": "Le ménage nocturne `docker image prune` range les images, pas le cache de build. Deux magasins distincts : la tâche tourne tous les jours sur la moitié qui n'avait pas de problème.",
       "quoiFaire": "NE PAS purger : 45 Go libres, et les 12,5 Go reviendraient au prochain build au prix d'un premier build 2 a 4x plus long. TEST ECRIT D'AVANCE, a trancher gratuitement au prochain passage : au prochain passage suivant un build, Private doit repasser sous ~11,5 Go. S'il reste >= 12 Go ou monte, alors keepStorage: 10GB / all: true ne gouverne pas ce qu'on croit, et le choix de Private comme grandeur de tendance (pose le 08-14) est a ROUVRIR.",
@@ -629,22 +648,22 @@
     },
     {
       "id": "VPS-016",
-      "titre": "dockerd tourne en boucle et brule un coeur — QUATRIEME occurrence, en cours",
+      "titre": "dockerd tourne en boucle et brule un coeur — 4e occurrence, CLOSE apres 3 h 54",
       "domaine": "docker",
-      "statut": "A_TRAITER",
+      "statut": "APPLIQUE",
       "gravite": 1,
       "vuPremiere": "2026-08-06",
       "vuDerniere": "2026-08-20",
-      "mesure": "4e OCCURRENCE, EN COURS. dockerd a 101,7 % d un coeur, 1 038 542 read()/s pour 0,0000 octet ramene, PID 913 inchange, 62 threads, cumul 225,7 h / 364,8 h. Continuite sur la fenetre de 24 h : 8,8 % — et c est ce chiffre BAS qui prouve que la boucle est RECENTE. DEBUT DATE A LA SECONDE : 2026-08-20 a 01h13:57. Trois methodes convergent — l arithmetique du cumul donne 01h06 (fourchette 00h53-01h15) ; sar en tranches de 10 min donne idle 90,51 -> 56,90 -> 37,83, soit une bascule DANS la tranche 01h10:20 -> 01h20:20, ~01h14 ; et ps -o lstart sur le seul client Docker de la machine donne 01h13:57.",
-      "gain": "~50 % de la machine, immediatement, pour 2 secondes et un risque nul. C est le meilleur rendement jamais inscrit a ce plan d action.",
+      "mesure": "4e OCCURRENCE : 2026-08-20 01h13:57 → 05h08:14, soit 3 h 54. Au plus fort : 101,7 % d un coeur, 1 038 542 read()/s pour 0,0000 octet, 62 threads, PID 913 inchange. ✅ CLOSE PAR kill, SANS AUCUNE INTERRUPTION : dockerd 99,7 % → 1,4 %, read()/s 1 326 127 → 3, charge 1,60 → 0,80, 33/33 conteneurs, 0 anomalie, quatre points publics en 97 · 39 · 158 · 75 ms. ⚠️ MAIS IL A FALLU DEUX TENTATIVES : le kill du CLIENT SEUL (05h02:55) a laisse dockerd a 100,3 % — voir VPS-M51.",
+      "gain": "~50 % de la machine, obtenu en 2 secondes, sans interruption. Mais uniquement en visant le PARENT : la meme commande sur la feuille a rendu ZERO.",
       "quoi": "Le client est « docker logs tracky-postgres --tail 200000 » (pid 43987), bloque dans futex_wait_queue avec 0 seconde de CPU consommee pendant que le demon en brule un. dockerd pousse des octets dans un tube que personne ne draine. TROIS clients identifies sur trois occurrences elucidees sont des « docker logs » lances en diagnostic par SSH : ce n est plus un accident, c est une CLASSE.",
-      "quoiFaire": "kill 43987 — 2 secondes, AUCUNE coupure, aucun conteneur touche, gain ~50 % de la machine. Verifier le PID d abord : il n est valable que pour cette collecte. ⚠️ NON EXECUTE : garde-fou de lecture seule de l audit.",
+      "quoiFaire": "REMEDIATION EN QUATRE ETAPES, reecrite le 2026-08-20 apres l echec de la premiere version : (1) lister les clients bloques AVEC LEUR CHAINE DE PARENTS COMPLETE, pas seulement le PID ; (2) si le parent est init (PPID 1) → kill le client suffit ; (3) SI LE PARENT EST VIVANT → kill LE PARENT D ABORD, puis les descendants, sinon on ne fait qu avancer un script fige jusqu a sa prochaine commande bloquante ; (4) verifier en sortie : pgrep -xc docker = 0 et dockerd sous 5 %.",
       "pourquoiInvisible": "⚠️ CE QUI CHANGE LE MECANISME : LE PARENT EST VIVANT. La 3e occurrence avait deux clients ORPHELINS (shell parent mort, adoptes par init). Ici la chaine 43987 -> 43986 (bash) -> 43921 (sshd, canal SSH encore ESTABLISHED) est ENTIEREMENT VIVANTE. Le detecteur pose le 2026-08-18 pour trouver exactement ca filtrait sur PPID == 1 : il a publie « aucun client docker orphelin » sur une machine dont un coeur brulait depuis une heure, AVEC LE COUPABLE DANS SON PROPRE DENOMINATEUR. « Parent mort » etait la FORME de la 3e occurrence, pas la CONDITION du defaut. Voir VPS-M49.",
-      "aNePasFaire": "⚠️ NE PAS « systemctl restart docker » : le 08-18 a prouve que le kill des clients suffit (170,3 % -> 1,0 % sans qu un conteneur bouge), et le redemarrage coute ~50 s d interruption sur 25 domaines ET efface l etat qui prouve la cause. ⚠️ FENETRE PERISSABLE : les occurrences 1 et 2 se sont refermees seules. Si celle-ci s arrete avant qu on agisse, NE PAS lire cet arret comme une confirmation du kill (VPS-M41) — la precondition du test aura ete detruite. ⚠️ Et si la section « clients bloques » est VIDE lors d une 5e occurrence, ne pas conclure qu il n y a pas de client : elle ne voit que les processus nommes exactement « docker ».",
+      "aNePasFaire": "⚠️ NE PAS tuer la feuille quand le parent est vivant : mesure le 2026-08-20, gain NUL — le bash parent contenait un SECOND docker logs et l a lance a la seconde du kill. ⚠️ NE PAS kill -9 d emblee : un SIGTERM a suffi sur les quatre processus. ⚠️ NE PAS « systemctl restart docker » : il n a ete necessaire NI le 08-18 NI le 08-20 — deux occurrences fermees sans une seconde d indisponibilite, alors qu il est reste huit passages au 4e rang du plan. ⚠️ NE PAS tuer la session SSH entiere par reflexe : c est plus large que necessaire et le canal peut appartenir a quelqu un qui travaille. Le bash -c est la bonne granularite.",
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-016-dockerd-tourne-en-boucle-et-brule-un-cur-depuis-24-heures",
       "piste": "Le client vient du DISPOSITIF D AUDIT lui-meme : le rapport du centre d alerte du 2026-08-20 declare sa fenetre de collecte « 01h11 -> 01h30 UTC », et le motif de recherche (delete from, truncate, DROP TABLE) correspond a son enquete sur les 41 709 alertes effacees. VPS-M12 — « une commande envoyee a un demon ne doit pas etre interrompue en cours de route » — est ecrite depuis le 2026-08-05, classee APPLIQUE, et a servi a TROUVER la cause de la 3e occurrence. Un AUTRE agent du meme dispositif, qui ne lit pas ce referentiel, vient de la violer une quatrieme fois.",
-      "seuilReescalade": "Rouvrir si dockerd repasse au-dessus de 50 % d un coeur en instantane. PREMIERE chose a regarder : la section « Clients docker BLOQUES » du collecteur — qui ne demande plus qu un parent soit mort — puis kill sur ce qu elle nomme. Si elle est vide, croiser ss -xp sur /run/docker.sock AVANT de sortir le kill -USR1."
+      "seuilReescalade": "Rouvrir si dockerd repasse au-dessus de 50 % d un coeur en instantane. PREMIERE chose a regarder : la section « Clients docker BLOQUES » du collecteur, QUI AFFICHE LA CHAINE DE PARENTS — puis kill sur le parent le plus haut de la chaine qui appartient au pipeline fautif. Si la section est vide, croiser ss -xp sur /run/docker.sock AVANT de sortir le kill -USR1."
     },
     {
       "id": "VPS-017",
@@ -1463,10 +1482,10 @@
   "passages": [
     {
       "date": "2026-08-20",
-      "verdict": "🔴 VPS-016 EST REVENU CE MATIN A 01h13:57, ET POUR LA PREMIERE FOIS LA CAUSE EST CONNUE PENDANT QUE L INCIDENT DURE. dockerd brule 101,7 % d un coeur avec sa signature exacte — 1 038 542 read()/s pour 0,0000 octet ramene. Trois methodes datent le debut et convergent : l arithmetique du cumul (2,1 h de CPU en 23,85 h) donne ~01h06 ; sar en tranches de 10 min montre l inactivite passer de 90,51 a 56,90 puis 37,83, soit une bascule DANS la tranche 01h10:20-01h20:20 ; et le seul client Docker de la machine, « docker logs tracky-postgres --tail 200000 », a demarre a 01h13:57. La remediation est kill 43987 : deux secondes, aucune coupure, aucun conteneur touche, ~50 % de la machine rendus. ELLE N A PAS ETE EXECUTEE — garde-fou de lecture seule. 🔴 ET LE CLIENT VIENT DE L AUDIT DU CENTRE D ALERTE, dont le rapport du jour declare sa fenetre de collecte « 01h11 -> 01h30 UTC » et dont le motif de recherche (delete from, truncate, DROP TABLE) correspond a son enquete sur les 41 709 alertes effacees. Le dispositif d audit est donc la cause de l incident le plus couteux de cette machine — 152 h a un coeur lors de la 3e occurrence — et VPS-M12 l interdisait depuis le 2026-08-05. 🔴 LE DETECTEUR POSE LE 08-18 POUR TROUVER EXACTEMENT CA A PUBLIE « aucun client orphelin » : son critere etait « parent mort », la FORME qu avait prise la 3e occurrence, pas la CONDITION du defaut. Ici la chaine de parents est entierement vivante et le tube est quand meme bloque. VPS-M49, corrige le jour meme — le discriminant est l AGE, pas le PPID — et reecrit, il nomme le coupable des sa premiere execution reelle. 🔴 TROISIEME POINT, ET IL TOUCHE A LA CONFIANCE DANS LE REFERENTIEL : la fiche VPS-029 affirmait hier que /etc/cron.d/docker-builder-prune avait ete cree par « une action humaine deliberee, hors de toute session d audit ». C est faux, et la preuve etait dans le journal que le collecteur LIT DEJA : il a ete ecrit PAR LE CANAL DE L HYPERVISEUR le 08-18 a 13h22, puis REECRIT le 08-19 a 11h02 SANS son filtre unused-for=168h, suivi d un docker builder prune non filtre. Sa prochaine echeance est aujourd hui a 04h57 UTC. VPS-027 franchit du meme coup son seuil de reescalade et passe en A_TRAITER. 🆕 VPS-030 : 1,66 Go de dumps de pre-deploiement empiles dans /root/backups en deux jours, hors retention et invisibles aux QUATRE controles de sauvegarde, tous definis par le chemin /var/backups. ✅ Et ce qui va bien tient malgre tout : les 4 points publics repondent en 44 · 37 · 50 · 94 ms PENDANT la boucle, 33/33 conteneurs, 0 OOM, PSI full a 0,00 sur les trois ressources, les trois retentions de tracky_prod ont avance d un jour, et les 3 unites de sauvegarde sont au vert avec 3 archives relues completes.",
+      "verdict": "✅ VPS-016 4e OCCURRENCE : OUVERTE A 01h13:57, CLOSE A 05h08:14 — 3 h 54, SANS AUCUNE INTERRUPTION. dockerd 99,7 % → 1,4 %, read()/s 1 326 127 → 3, charge 1,60 → 0,80, 33/33 conteneurs, 0 anomalie, quatre points publics en 97 · 39 · 158 · 75 ms. ⚠️ MAIS IL A FALLU DEUX TENTATIVES, ET LA PREMIERE ETAIT CELLE QUE CE REFERENTIEL RECOMMANDAIT : le kill du CLIENT SEUL a tue sa cible sans rien changer, parce que le bash -c parent contenait un SECOND docker logs et l a lance a la seconde du kill. La boucle n a pas ete interrompue, elle a ete TRANSMISE. VPS-M51 : la remediation du 08-18 supposait un parent MORT, et le 08-18 les deux parents l etaient — rien ne distinguait alors « tuer le client » de « tuer ce qui tient le client ». On a corrige le DETECTEUR le matin meme (VPS-M49) sans regarder la REMEDIATION, qui souffrait du meme defaut, dans le meme paragraphe. 🔴 LA CAUSE VIENT DE NOTRE PROPRE DISPOSITIF : le client a ete lance par l audit du centre d alerte (fenetre declaree 01h11 → 01h30 UTC), et VPS-M12 l interdisait depuis le 2026-08-05 — mais cet agent-la ne lit pas ce referentiel. 🔴 VPS-029 EST TRANCHE PAR LES FAITS, ET SANS SA PRECONDITION : le cron reecrit par le canal de l hyperviseur a tourne a 04h57:01 pendant 53 s et retire 4,5 Go que le ramasse-miettes gardait DELIBEREMENT (Private 9,57 → 5,06 Go, disque 55 % → 50 %). Il n est PAS redondant — et le gain n interessait personne : 44 Go etaient deja libres, contre un premier build 2 a 4x plus long chaque jeudi. La serie Private de VPS-001 est rompue : deux acteurs agissent desormais sur le meme objet. 🔴 Et la provenance du cron, affirmee hier comme « une action humaine deliberee hors de toute session d audit », etait FAUSSE : il a ete ecrit PAR LE CANAL DE L HYPERVISEUR, deux fois, et la preuve etait dans un journal que le collecteur lit deja. VPS-027 franchit son seuil et passe en A_TRAITER. 🆕 VPS-030 : 1,66 Go de dumps de pre-deploiement dans /root/backups, invisibles aux QUATRE controles de sauvegarde, tous definis par le chemin /var/backups.",
       "chiffres": {
-        "disqueUtilisePct": 55,
-        "disqueRecuperableGo": 9.57,
+        "disqueUtilisePct": 50,
+        "disqueRecuperableGo": 5.06,
         "ramUtiliseePct": 38,
         "swapUtiliseMo": 1223,
         "chargeMoyenne1m": 1.81,
@@ -1476,16 +1495,16 @@
         "echecsSshJour": 3,
         "healthchecksParMin": 65,
         "processusParMin": 1230,
-        "dockerdPctCoeur": 101.7,
+        "dockerdPctCoeur": 0.8,
         "collecteSecondes": 141,
-        "cacheBuildGo": 11.37,
-        "cacheBuildPrivateGo": 9.57,
-        "chargeApresCollecte": 3.02,
+        "cacheBuildGo": 6.86,
+        "cacheBuildPrivateGo": 5.06,
+        "chargeApresCollecte": 0.8,
         "dockerdHeuresCpuCumul": 225.7
       },
       "aTraiter": [
-        "🔴 POINT 0, PERISSABLE — kill 43987 : arrete VPS-016 EN COURS. ~50 % de la machine rendus, risque NUL, 2 secondes. NE PAS redemarrer Docker a la place.",
-        "Trancher le sort de /etc/cron.d/docker-builder-prune AVANT 04h57 aujourd hui (VPS-029) — il a perdu son filtre et devient plus agressif que le ramasse-miettes",
+        "✅ FAIT le 2026-08-20 a 05h08:14 — kill 43986 370554 370555 (le PARENT d abord). ⚠️ Le kill du CLIENT SEUL, tente a 05h02:55, n avait RIEN donne : VPS-M51.",
+        "Remettre le filtre du cron docker-builder-prune (VPS-029) — il a tourne a 04h57 et retire 4,5 Go dont personne n avait besoin. ⚠️ Mais il a ete reecrit DEUX FOIS par un canal hors SSH : le remettre en etat sans savoir qui l ecrit, c est se preparer a le retrouver modifie jeudi prochain.",
         "Timer systemd a 04h00 pour les 3 bases orphelines (VPS-013) — ferme LE SEUL risque de perte definitive, 17,5 Mo/j, 17e passage",
         "OnFailure= sur les 3 unites de sauvegarde — ramene le delai de detection d une panne de ~23 h a quelques minutes",
         "ExecStart=/bin/bash sur l unite Verify (VPS-015 point 3) — ferme la CAUSE du seul incident de sauvegarde jamais constate",
@@ -1499,7 +1518,7 @@
         "name: explicite dans les 2 compose du projet deploy (VPS-020) — APRES le timer de sauvegarde",
         "Sonde de sante sur foodsqan-traefik (VPS-021) — la panne du point d entree de 25 domaines est invisible a Docker"
       ],
-      "note": "TROIS collectes, toutes completes, stderr vide : 02h21:55 → 02h24:16 (141 s, collecteur de la veille — c est la MESURE DU JOUR) ; 02h33 → 02h34:59 (89 s, collecteur corrige, essai des trois blocs) ; 96 s pour la passe finale ARCHIVEE, apres correction du double denominateur. ⚠️ AUCUN gain de vitesse n est revendique entre 141 s et 89 s (VPS-M18) : la premiere a lu /opt A FROID sous une machine chargee, la seconde a chaud. Une duree n est pas une propriete du script. ⚠️ LE BUDGET EST DEPASSE (141 s pour 90, soit 1,6x) ET LE COLLECTEUR NOMME LUI-MEME LA CAUSE : audit 14,1 % de la machine, dockerd 49,1 %, inactif 10,4 %. La charge etait DEJA a 1,81 avant que la collecte ne commence. Le budget de 90 s a ete calibre le 2026-08-04 sur une machine a 0,38 de charge : il n est pas tenable sur une machine amputee d un coeur, et ce n est pas au script de le compenser. ✅ Le correctif VPS-M47 du 08-19 fonctionne exactement comme prevu : la branche « pdock >= 25 » s est declenchee et NOMME dockerd EN CITANT SA PART MESUREE, au lieu de l accuser en texte fige. Hier la meme ligne aurait ete fausse ; aujourd hui elle est vraie, et pour la bonne raison. ⚠️ Trois blocs ont ete ajoutes au collecteur ce passage, et l un d eux etait FAUX a sa premiere ecriture (compteur mal etiquete, VPS-M50) — attrape par l execution reelle, pas par la relecture."
+      "note": "TROIS collectes, toutes completes, stderr vide : 02h21:55 → 02h24:16 (141 s, collecteur de la veille — c est la MESURE DU JOUR) ; 02h33 → 02h34:59 (89 s, collecteur corrige, essai des trois blocs) ; 96 s pour la passe finale ARCHIVEE, apres correction du double denominateur. ⚠️ AUCUN gain de vitesse n est revendique entre 141 s et 89 s (VPS-M18) : la premiere a lu /opt A FROID sous une machine chargee, la seconde a chaud. Une duree n est pas une propriete du script. ⚠️ LE BUDGET EST DEPASSE (141 s pour 90, soit 1,6x) ET LE COLLECTEUR NOMME LUI-MEME LA CAUSE : audit 14,1 % de la machine, dockerd 49,1 %, inactif 10,4 %. La charge etait DEJA a 1,81 avant que la collecte ne commence. Le budget de 90 s a ete calibre le 2026-08-04 sur une machine a 0,38 de charge : il n est pas tenable sur une machine amputee d un coeur, et ce n est pas au script de le compenser. ✅ Le correctif VPS-M47 du 08-19 fonctionne exactement comme prevu : la branche « pdock >= 25 » s est declenchee et NOMME dockerd EN CITANT SA PART MESUREE, au lieu de l accuser en texte fige. Hier la meme ligne aurait ete fausse ; aujourd hui elle est vraie, et pour la bonne raison. ⚠️ Trois blocs ont ete ajoutes au collecteur ce passage, et l un d eux etait FAUX a sa premiere ecriture (compteur mal etiquete, VPS-M50) — attrape par l execution reelle, pas par la relecture. ⚠️ SUITE APRES PUBLICATION : sur decision humaine explicite, deux remediations ont ete EXECUTEES a 05h02:55 et 05h08:14. La premiere a echoue et c est le fait le plus instructif du passage — voir §12 du rapport et VPS-M51. Le garde-fou de lecture seule n a pas ete leve : il attendait une decision, elle est venue."
     },
     {
       "date": "2026-08-19",
@@ -2520,18 +2539,18 @@
   "previsions": {
     "disque": {
       "totalGo": 96,
-      "utiliseGo": 53,
-      "libreGo": 44,
-      "utilisePct": 55,
+      "utiliseGo": 48,
+      "libreGo": 48,
+      "utilisePct": 50,
       "seuilAlertePct": 90
     },
     "recuperable": [
       {
         "poste": "Cache de build Docker (Private)",
-        "go": 9.57,
-        "commande": "— AUCUNE, volontairement —",
-        "risque": "le gain est TEMPORAIRE : il revient integralement au prochain build",
-        "contrepartie": "NE PAS PURGER. HUITIEME point ou Private est a sa borne ou en dessous : 10,39 → 11,31 → 10,33 → 12,54 → 10,70 → 11,19 → 10,65 → 9,57 Go, pour un plafond keepStorage de 10 Go. ⚠️ MAIS CE POINT-CI N EST PLUS ATTRIBUABLE AU RAMASSE-MIETTES SEUL : un « docker builder prune -f » NON FILTRE a ete lance le 08-19 a 11h02:41 par le canal de l hyperviseur (VPS-029). Le ramasse-miettes a tourne aussi — cache.db ecrit 10 s apres le build de 17h21:39. Les deux ont agi, leur part respective n est pas mesurable, et la bande « 10,3 a 12,6 Go » derivee des sept premiers points est morte au huitieme."
+        "go": 5.06,
+        "commande": "— AUCUNE, et desormais DEUX mecanismes s en chargent —",
+        "risque": "⚠️ LE CRON HEBDOMADAIRE NON FILTRE PURGE DEJA PLUS QUE NECESSAIRE",
+        "contrepartie": "🔴 SERIE ROMPUE LE 2026-08-20. Les huit premiers points decrivaient un mecanisme unique et auto-regule ; le cron de VPS-029 a tourne a 04h57:01 pendant 53 s et fait tomber Private de 9,568 a 5,057 Go — 4,5 Go que le ramasse-miettes gardait DELIBEREMENT, alors que Private etait SOUS sa borne de 10 Go. Ne plus ecrire « Private revient a sa borne » sans dire lequel des deux l y a ramene. Le gain n interessait personne (44 Go deja libres) et la contrepartie est un premier build 2 a 4x plus long sur chaque projet, chaque jeudi."
       },
       {
         "poste": "Sauvegardes en double (heritage VPS-003)",
