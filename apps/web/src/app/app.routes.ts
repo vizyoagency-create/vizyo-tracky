@@ -356,6 +356,19 @@ export const routes: Routes = [
         data: { title: 'Diagnostic & Tests' },
       },
       {
+        // Qualite GPS. Super-admin SEULEMENT, et c'est deliberement provisoire : le diagnostic
+        // designe des boitiers, donc il accuse. Tant qu'on n'a pas verifie ses conclusions sur le
+        // terrain, un client ne doit pas lire « votre boitier est defaillant » sans qu'un humain
+        // soit passe derriere. Meme raisonnement que la mise en sourdine des coupures de courant.
+        path: 'admin/qualite-gps',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/gps-diagnostics.component').then(
+            (m) => m.GpsDiagnosticsComponent,
+          ),
+        data: { title: 'Qualite GPS' },
+      },
+      {
         path: 'admin/alerts',
         canActivate: [superAdminGuard],
         loadComponent: () =>

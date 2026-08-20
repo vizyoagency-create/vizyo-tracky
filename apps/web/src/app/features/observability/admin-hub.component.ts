@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers,} from 'lucide-angular';
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
 
@@ -103,6 +103,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             </div>
             <h3>Commandes tracker</h3>
             <p class="desc">Historique et monitoring des commandes TCP/SMS envoyées aux boîtiers.</p>
+          </div>
+        </a>
+
+        <!-- ── QUALITE GPS ── -->
+        <a routerLink="/admin/qualite-gps" class="card card-wide" style="--i:4">
+          <span class="accent accent-blue"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-blue"><lucide-icon [img]="SatelliteDish" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Qualité GPS — zones mortes</h3>
+            <p class="desc">Endroits où plusieurs véhicules perdent le signal. Un boîtier en cause part au centre d'alertes.</p>
           </div>
         </a>
 
@@ -700,6 +713,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Bot = Bot;
   protected readonly Globe = Globe;
   protected readonly BellRing = BellRing;
+  protected readonly SatelliteDish = SatelliteDish;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 

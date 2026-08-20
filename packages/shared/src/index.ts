@@ -13,6 +13,7 @@ export * from './dto/snapshot.dto';
 export * from './dto/fleet-schedule.dto';
 export * from './dto/background-task.dto';
 export * from './dto/assistance.dto';
+export * from './dto/gps-diagnostic.dto';
 export * from './dto/installation.dto';
 export * from './dto/installation-booking.dto';
 export * from './dto/privacy-mode.dto';

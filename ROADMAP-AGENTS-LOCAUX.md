@@ -160,7 +160,7 @@ Trois pièges mesurés, à ne pas réintroduire :
 **Coût du choix, assumé** : par unité de travail, l'agent local consomme ~3 à 4 fois plus de
 modèle que l'API ne coûterait. L'économie vient de ce que l'abonnement est déjà payé.
 
-### 🔶 Agent « qualité GPS / zones mortes » — CERVEAU FAIT, agent à écrire
+### 🔶 Agent « qualité GPS / zones mortes » — EN SERVICE, écran à vérifier
 
 Module PUR livré : `apps/api/src/gps-dead-zones/gps-diagnostic.shared.ts`, 11 tests.
 
@@ -179,7 +179,23 @@ recalculés et son boîtier muet depuis 5 jours.
 | Zone morte (lieu) | **table dédiée + écran** — qualification durable |
 | Indéterminé | nulle part : on ne remonte pas ce sur quoi on n'a pas conclu |
 
-Reste : la table, l'écran, l'agent, l'inscription au catalogue des tâches de fond.
+**État au 20/08 16 h :**
+
+| Pièce | État |
+|---|---|
+| Module pur + 11 tests | ✅ |
+| Agent `outils/agent-qualite-gps.cjs` | ✅ tourne, aucun modèle appelé |
+| Migration `20260820100000_diagnostics_zones_gps` | ✅ déployée en prod |
+| Alerte boîtier (KSR370, `GPS_QUALITE`) | ✅ en prod |
+| API `GET/POST /api/gps-diagnostics/zones` + 8 tests | ✅ |
+| Écran `/admin/qualite-gps` + carte dans le hub admin | ✅ écrit, **vérification navigateur EN ATTENTE** |
+| Tâche planifiée Windows | ☐ |
+
+Premier passage réel en production (20/08 13 h 44) : **1 lieu enregistré** — `FW-298-WV` et
+`GS-928-NX` perdent le signal au même endroit à Toulouse (43,5979 / 1,4300), 2 fois. Le boîtier
+KSR370 n'a PAS été re-signalé : la garde des 7 jours a fait son travail.
+
+Reste : la tâche planifiée, et la vérification de l'écran à 375 px.
 
 ### ☐ Assistance IA en direct — priorité 3 · **VIA L'API PAYANTE**
 
@@ -322,6 +338,41 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | D3 | **`BgTaskExecution` vs `BgTaskExecutor`** — deux types aux valeurs identiques dans le DTO des tâches de fond. Rien ne consomme `execution`. Un des deux doit partir. | 19/08 |
 | D4 | **Traces de l'assistance** : les lots de données du demandeur sont réduits à leur résumé, jamais recopiés. On perd le rejeu à l'identique, on évite une seconde copie de données personnelles. À confirmer ou inverser. | 19/08 |
 
+### Vérifications dues — rien ne les remplace
+
+| # | À vérifier | Bloqué par | Depuis |
+|---|---|---|---|
+| V1 | **Écran `/admin/qualite-gps` à 375 px** : rendu, bouton « marquer traité », réouverture, état vide. Le code compile, les 8 tests d'API passent, la carte est dans le hub — mais rien de tout ça ne prouve que l'écran s'affiche. | Docker Desktop planté le 20/08 vers 16 h (cf. ci-dessous). | 20/08 |
+
+**Ce qui est mesuré, et non supposé** (20/08, sondes au niveau protocole) :
+
+| Sonde | Résultat |
+|---|---|
+| Moteur Docker (`docker ps`, `docker version`) | HTTP 500 sur **toutes** les routes |
+| TCP vers `127.0.0.1:5436` et `:6381` | **accepté en 1-3 ms** — le proxy de ports répond |
+| `PING` Redis | aucune réponse en 6 s |
+| `SSLRequest` Postgres (8 octets du protocole) | aucune réponse en 8 s |
+| Processus `Docker Desktop`, WSL `docker-desktop` | en cours d'exécution |
+
+Le proxy accepte, le conteneur ne répond jamais : c'est le réseau de Docker Desktop qui est figé,
+pas les bases. Un simple test d'ouverture de port aurait conclu « tout va bien » — il fallait
+parler le protocole pour voir la panne.
+
+⚠️ **Ce que ce blocage révèle, et qui vaut pour la production.** L'API locale ne démarre pas :
+elle reste dans `PrismaService.onModuleInit()`, qui fait `await this.$connect()` — donc **pendant**
+`NestFactory.create`, bien avant `app.listen()`. Et comme `main.ts` crée l'application avec
+`bufferLogs: true`, les journaux ne sont vidés qu'après la construction : un démarrage bloqué
+n'écrit **rien du tout**, pas même la ligne qui dirait où il est bloqué. Symptôme observé :
+processus vivant, aucune sortie, port fermé.
+
+En production, une base injoignable au redémarrage donne donc une API muette et sans port ouvert,
+impossible à diagnostiquer depuis ses journaux. À arbitrer : délai maximum sur `$connect()` avec
+message explicite, ou vidage du tampon de journaux avant l'initialisation des modules.
+
+— Correction : j'avais d'abord écrit ici que le blocage venait de `connectToRedis()`. C'est faux :
+`new Redis(url)` ne bloque pas et l'adaptateur a déjà son repli mémoire en `catch`. La lecture du
+fichier a corrigé la supposition.
+
 ### Réglages modifiés sans décision tracée
 
 Constatés au contrôle du 20/08, non touchés :
@@ -401,10 +452,8 @@ commande, et la page « Commandes tracker » sait déjà le faire.
 - **Point 2** — retirer le bouton « Recalculer » de la page Rapports. Le retard se résorbe
   (2 158 → 1 339 trajets bruts au 20/08) mais n'est pas à zéro : le bouton reste le seul rattrapage
   manuel. À faire quand la tranche 30-50 j sera vidée.
-- **Agent qualité GPS** — agent écrit et vérifié (`outils/agent-qualite-gps.cjs`). L'alerte
-  boîtier est DÉJÀ en production (KSR370, niveau ERROR, source `GPS_QUALITE`). Restent : le
-  déploiement de la migration `20260820100000_diagnostics_zones_gps`, l'écran de relecture des
-  zones, et la tâche planifiée.
+- **Agent qualité GPS** — agent, migration, API et écran faits (cf. section dédiée). Restent la
+  **tâche planifiée Windows** et la **vérification navigateur à 375 px**, bloquée par Docker.
   ⚠️ Limite assumée : la corrélation se fait PAR SOCIÉTÉ. Une zone morte partagée par deux
   sociétés différentes ne sera pas détectée — mélanger leurs données pour gagner en détection
   n'est pas un arbitrage acceptable.
@@ -418,7 +467,7 @@ commande, et la page « Commandes tracker » sait déjà le faire.
 
 ### Défauts trouvés par la MESURE, pas par la relecture
 
-Trois, en deux jours. Tous passaient le typecheck et les tests :
+Six, en deux jours. Tous passaient le typecheck et les tests :
 
 1. **Budget borné au mauvais endroit** — vérifié à l'entrée d'un véhicule, alors que le temps part
    dans la boucle sur ses trajets. Observé : 31 min pour un plafond de 20.
@@ -430,5 +479,15 @@ Trois, en deux jours. Tous passaient le typecheck et les tests :
    comptaient comme écrit ce qui ne l'était pas. Observé le 20/08 : « 1 zone enregistrée » sur une
    table qui n'existait pas encore en production. Un agent qui se félicite d'un travail qu'il n'a
    pas fait est pire qu'un agent en panne — la panne, elle, se voit.
+
+5. **Tri ascendant sur une colonne nullable** — `orderBy: { traiteAt: 'asc' }` se lit très bien
+   et fait l'inverse de ce qu'on croit : Postgres range les NULL en DERNIER. L'écran des
+   diagnostics GPS aurait ouvert sur l'archive de ce qui est réglé, en enterrant dessous les
+   seules lignes qui attendent une décision. Corrigé par `nulls: 'first'`, avec un test qui
+   vérifie l'appel exact — un test sur le résultat n'aurait rien vu, le mock ne trie pas.
+6. **Une réouverture effaçait la note** — `note: (dto.note ?? '').trim() || null` écrit `null`
+   quand l'appelant ne fournit rien. Rouvrir un diagnostic classé par erreur aurait donc détruit,
+   sans retour, ce qu'un humain avait constaté sur place. La note n'est plus touchée que si elle
+   est explicitement fournie.
 
 C'est ce qui justifie le contrôle du matin, et la règle « pas de conclusion sur lecture de code ».

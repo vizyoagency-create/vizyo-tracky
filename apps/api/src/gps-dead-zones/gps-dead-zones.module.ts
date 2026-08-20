@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { GpsDeadZonesController } from './gps-dead-zones.controller';
+import { GpsDiagnosticController } from './gps-diagnostic.controller';
+import { GpsDiagnosticService } from './gps-diagnostic.service';
 import { GpsDeadZonesService } from './gps-dead-zones.service';
 
 /**
@@ -10,8 +12,8 @@ import { GpsDeadZonesService } from './gps-dead-zones.service';
  */
 @Module({
   imports: [AuthModule],
-  controllers: [GpsDeadZonesController],
-  providers: [GpsDeadZonesService],
+  controllers: [GpsDeadZonesController, GpsDiagnosticController],
+  providers: [GpsDeadZonesService, GpsDiagnosticService],
   exports: [GpsDeadZonesService],
 })
 export class GpsDeadZonesModule {}
