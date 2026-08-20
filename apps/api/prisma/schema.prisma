@@ -4027,3 +4027,47 @@ model GpsZoneDiagnostic {
   @@index([traiteAt])
   @@map("gps_zone_diagnostics")
 }
+
+/// PASSAGE d'un agent qui tourne sur le poste, et non sur ce serveur.
+///
+/// ── Le trou que cette table bouche ─────────────────────────────────────────────────
+/// Les deux premiers agents locaux déduisent leur état du travail qu'ils ont ÉCRIT : la dernière
+/// limite de vitesse résolue, le dernier récit rédigé. C'était juste pour eux — ils ont toujours
+/// du travail en attente, donc une date qui n'avance plus signifie vraiment une panne.
+///
+/// L'agent de qualité GPS, lui, peut légitimement ne RIEN écrire d'une nuit : s'il ne trouve
+/// aucune zone partagée par deux véhicules et aucun boîtier dispersé, il n'a rien à signaler, et
+/// c'est le résultat normal. Déduire sa santé de sa production annoncerait donc « agent à
+/// l'arrêt » précisément quand tout va bien — le contraire de ce qu'une supervision doit faire.
+///
+/// D'où la séparation, qui est tout l'intérêt de cette table :
+///   « a-t-il TOURNÉ ? »   -> cette table, une ligne par passage, même vide.
+///   « a-t-il TROUVÉ ? »   -> ses écritures métier, inchangées.
+///
+/// ⚠️ Un simple signal de démarrage mentirait de la même façon que le ferait un `psql` qui sort
+/// en 0 sur une erreur SQL : la ligne n'est écrite qu'à la FIN du passage, avec son issue.
+model PassageAgentLocal {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Identifiant de l'agent, aligné sur l'`id` du catalogue des tâches de fond
+  /// (`agent-qualite-gps`, `agent-recit-trajet`, …). C'est la clé de jointure entre le poste et
+  /// l'écran de supervision.
+  agent String
+
+  demarreA DateTime
+  finiA    DateTime @default(now())
+  dureeMs  Int      @default(0)
+
+  /// Issue réelle du passage. `false` sur une sortie en erreur — un agent qui échoue doit se voir.
+  succes Boolean
+
+  /// Ce que le passage a produit, en une phrase lisible sans contexte. Vaut aussi pour le rien :
+  /// « aucune zone à signaler » est une information, pas une absence d'information.
+  resume String
+
+  /// Message d'échec quand `succes` est faux. Tronqué à la source.
+  erreur String?
+
+  @@index([agent, finiA(sort: Desc)])
+  @@map("passages_agents_locaux")
+}

@@ -47,7 +47,7 @@ interface CatalogEntry {
    * Traitement qui ne tourne PAS sur ce serveur — son état se déduit du travail qu'il a écrit
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
-  externe?: 'limites-vitesse' | 'recit-trajet';
+  externe?: 'limites-vitesse' | 'recit-trajet' | 'qualite-gps';
   /**
    * Fichier source qui porte le `@Cron`, relatif a `apps/api/src`.
    *
@@ -413,6 +413,21 @@ const CATALOG: CatalogEntry[] = [
     // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
     fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 15 },
   },
+  {
+    id: 'agent-qualite-gps', label: 'Qualite GPS / zones mortes (agent sur poste)',
+    category: 'Maintenance données', kind: 'cron',
+    scheduleHuman: '05:00 chaque nuit — sur le poste du proprietaire',
+    criticality: 'basse', antiOverlap: true,
+    note: "Ne tourne PAS sur ce serveur, et n'appelle AUCUN modele : le diagnostic est un calcul geometrique. Son etat ci-contre vient de ses PASSAGES et non de ses trouvailles — contrairement aux deux autres agents locaux, celui-ci peut legitimement ne rien signaler d'une nuit, et une nuit sans rien a dire n'est pas une panne.",
+    purpose: "Croise les zones de perte de signal entre vehicules d'une meme societe pour trancher : est-ce le LIEU qui est mauvais, ou le BOITIER ? Un lieu part dans l'ecran Qualite GPS, un boitier au centre d'alertes, et ce dont il n'est pas sur ne part nulle part.",
+    externe: 'qualite-gps',
+    // Aucun modele appele : ce n'est ni facture ni absorbe, c'est simplement du calcul.
+    coutIa: 'aucun',
+    // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
+    // 05:00 et non 03:15 : l'agent de recit occupe deja la tranche de 3 h et peut courir
+    // jusqu'a 110 minutes. Les faire se chevaucher sur le meme poste ne servirait personne.
+    fire: { tz: PARIS, matcher: (w) => w.getHours() === 5 && w.getMinutes() === 0 },
+  },
 ];
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
@@ -433,13 +448,14 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
       this.prisma.placeAutomationSettings.findFirst({ orderBy: { createdAt: 'asc' } }).catch(() => null),
       this.etatAgentLimites(),
       this.etatAgentRecit(),
+      this.etatAgentQualiteGps(),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -468,6 +484,10 @@ export class BackgroundTasksService {
       if (e.externe === 'limites-vitesse') {
         const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
         return { ...base, ...agentLimites, nextRunAt: next ? next.toISOString() : null };
+      }
+      if (e.externe === 'qualite-gps') {
+        const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
+        return { ...base, ...agentQualiteGps, nextRunAt: next ? next.toISOString() : null };
       }
 
       // Cron daté (heure fixe ou haute fréquence).
@@ -546,6 +566,55 @@ export class BackgroundTasksService {
         enabled: at === null ? null : frais,
         lastRunAt: at ? at.toISOString() : null,
         settingsSummary: `${ecrits.toLocaleString('fr-FR')} récit(s) écrits sur le poste · ${restants.toLocaleString('fr-FR')} trajet(s) encore sans récit`,
+      };
+    } catch {
+      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
+      return { enabled: null, lastRunAt: null, settingsSummary: null };
+    }
+  }
+
+  /**
+   * État de l'agent de QUALITÉ GPS, qui tourne sur le POSTE du propriétaire.
+   *
+   * ⚠️ ET QUI NE SE DÉDUIT PAS DE LA MÊME FAÇON QUE LES DEUX AUTRES. Pour les limites de vitesse
+   * et les récits, on regarde ce que l'agent a ÉCRIT, parce qu'ils ont toujours du travail en
+   * attente : une date qui n'avance plus y signifie vraiment une panne.
+   *
+   * Celui-ci peut légitimement ne RIEN écrire d'une nuit. S'il ne trouve aucune zone partagée par
+   * deux véhicules et aucun boîtier dispersé, il n'a rien à signaler — et c'est le résultat
+   * normal, celui qu'on espère. Copier le raisonnement des deux autres ferait donc afficher
+   * « agent à l'arrêt » précisément quand le parc va bien. Une supervision qui crie au loup les
+   * bonnes nuits finit par ne plus être lue.
+   *
+   * D'où la séparation stricte :
+   *   « a-t-il TOURNÉ ? »  → `passages_agents_locaux`, une ligne par passage, même vide.
+   *   « a-t-il TROUVÉ ? »  → le résumé ci-dessous, qui compte les diagnostics ouverts.
+   *
+   * Et la ligne de passage n'est écrite qu'à la FIN, avec son issue : un signal de démarrage
+   * mentirait exactement comme le faisait `psql` en sortant en 0 sur une erreur SQL.
+   */
+  private async etatAgentQualiteGps(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+    try {
+      const [passage, ouverts] = await Promise.all([
+        this.prisma.passageAgentLocal.findFirst({
+          where: { agent: 'agent-qualite-gps' },
+          orderBy: { finiA: 'desc' },
+        }),
+        this.prisma.gpsZoneDiagnostic.count({ where: { traiteAt: null } }),
+      ]);
+      if (!passage) {
+        // Jamais vu passer : on ne prétend pas savoir. `null` affiche « inconnu », pas « en panne ».
+        return { enabled: null, lastRunAt: null, settingsSummary: `${ouverts} zone(s) en attente de relecture` };
+      }
+      // Un passage par nuit : au-delà de 36 h, ce n'est plus un aléa. Même seuil que le récit.
+      const frais = Date.now() - passage.finiA.getTime() < 36 * 3_600_000;
+      return {
+        // Un passage FRAIS mais en ÉCHEC reste un problème : l'agent tourne et n'aboutit pas.
+        enabled: frais && passage.succes,
+        lastRunAt: passage.finiA.toISOString(),
+        settingsSummary: passage.succes
+          ? `${passage.resume} · ${ouverts} zone(s) en attente de relecture`
+          : `Dernier passage en échec : ${passage.erreur ?? 'motif non consigné'}`,
       };
     } catch {
       // La supervision ne doit jamais faire tomber la page qu'elle supervise.

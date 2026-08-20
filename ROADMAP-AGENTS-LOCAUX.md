@@ -189,7 +189,47 @@ recalculés et son boîtier muet depuis 5 jours.
 | Alerte boîtier (KSR370, `GPS_QUALITE`) | ✅ en prod |
 | API `GET/POST /api/gps-diagnostics/zones` + 8 tests | ✅ |
 | Écran `/admin/qualite-gps` + carte dans le hub admin | ✅ **vérifié à 375 px le 20/08** |
-| Tâche planifiée Windows | ☐ |
+| Tâche planifiée `VizyoTracky-QualiteGPS` | ✅ 05:00 chaque nuit, lancée une fois pour vérifier |
+| Inscription au catalogue des tâches de fond | ✅ `agent-qualite-gps` |
+| Traçabilité des passages (`passages_agents_locaux`) | ✅ locale — **migration à déployer en prod** |
+
+**La tâche.** `VizyoTracky-QualiteGPS`, 05:00 chaque nuit, lanceur `outils/agent-qualite-gps.cmd`.
+05:00 et non 03:15 : l'agent de récit occupe déjà cette tranche et peut courir 110 minutes ; deux
+agents en même temps sur le même poste ne servent personne. `IgnoreNew` (un passage qui traîne
+n'est pas doublé), plafond 2 h, et `StartWhenAvailable` — contrairement à l'agent de récit :
+arriver en retard vaut mieux que sauter la nuit, alors que pour les récits le rattrapage se fait
+tout seul au passage suivant.
+
+Lancée une fois le 20/08 à 18 h 13 pour vérifier, pas pour supposer : `LastTaskResult = 0`,
+`NextRunTime = 21/08 05:00`, et le catalogue annonce le même instant (`nextRunAt` 03:00 UTC =
+05:00 Paris) — le fuseau `PARIS` est donc bien appliqué.
+
+**Pourquoi une table de passages, et pas la méthode des deux autres agents.** Les agents de
+limites de vitesse et de récit prouvent qu'ils vivent par ce qu'ils ÉCRIVENT. C'était juste pour
+eux : ils ont toujours du travail en attente, donc une date qui n'avance plus est vraiment une
+panne. **Celui-ci peut légitimement ne rien écrire d'une nuit** — aucune zone partagée, aucun
+boîtier dispersé — et c'est le résultat qu'on espère. Copier leur raisonnement aurait affiché
+« agent à l'arrêt » précisément les nuits où le parc va bien, et une supervision qui crie au loup
+quand tout va bien finit par ne plus être lue.
+
+D'où la séparation stricte, et c'est tout l'intérêt de la table :
+
+| Question | Réponse |
+|---|---|
+| a-t-il **tourné** ? | `passages_agents_locaux`, une ligne par passage, **même vide** |
+| a-t-il **trouvé** ? | ses écritures métier, inchangées |
+
+La ligne n'est écrite qu'à la **fin**, avec son issue : un marqueur posé au démarrage mentirait
+exactement comme le faisait `psql` en sortant en 0 sur une erreur SQL. Et son échec n'échoue
+jamais le passage : le travail métier est déjà en base, le perdre pour un problème de journal
+serait absurde. Vérifié pour de vrai — au premier lancement la table n'existait pas encore en
+production, l'agent a fait son travail, consigné l'échec de traçage en une ligne, et rendu 0.
+
+⚠️ **À déployer** : `20260820180000_passages_agents_locaux`. Tant qu'elle n'est pas en production,
+l'agent travaille normalement mais la page des tâches de fond affiche « inconnu » pour lui.
+
+☐ Retrofit des deux autres agents locaux sur cette même table — leur méthode actuelle marche,
+mais deux façons de répondre à « cet agent tourne-t-il ? » finiront par diverger.
 
 Premier passage réel en production (20/08 13 h 44) : **1 lieu enregistré** — `FW-298-WV` et
 `GS-928-NX` perdent le signal au même endroit à Toulouse (43,5979 / 1,4300), 2 fois. Le boîtier
@@ -472,8 +512,10 @@ commande, et la page « Commandes tracker » sait déjà le faire.
 - **Point 2** — retirer le bouton « Recalculer » de la page Rapports. Le retard se résorbe
   (2 158 → 1 339 trajets bruts au 20/08) mais n'est pas à zéro : le bouton reste le seul rattrapage
   manuel. À faire quand la tranche 30-50 j sera vidée.
-- **Agent qualité GPS** — agent, migration, API et écran faits et vérifiés (cf. section dédiée).
-  Reste la **tâche planifiée Windows**.
+- **Agent qualité GPS** — ✅ terminé : agent, migration, API, écran, tâche planifiée et
+  traçabilité des passages (cf. section dédiée). Reste à déployer la migration
+  `20260820180000_passages_agents_locaux`, sans quoi la page des tâches de fond affiche
+  « inconnu » pour lui.
   ⚠️ Limite assumée : la corrélation se fait PAR SOCIÉTÉ. Une zone morte partagée par deux
   sociétés différentes ne sera pas détectée — mélanger leurs données pour gagner en détection
   n'est pas un arbitrage acceptable.

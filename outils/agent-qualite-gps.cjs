@@ -153,14 +153,44 @@ function alerterBoitier(d) {
   psql(sql, { lecture: false });
 }
 
+/**
+ * Consigne le passage, QUELLE QUE SOIT sa recolte.
+ *
+ * C'est la piece qui manquait a la supervision. Les deux autres agents locaux prouvent qu'ils
+ * vivent par ce qu'ils ECRIVENT : une limite de vitesse resolue, un recit redige. Celui-ci peut
+ * legitimement ne rien trouver — aucune zone partagee, aucun boitier disperse — et c'est le
+ * resultat qu'on espere. Sans cette ligne, l'ecran annoncerait « agent a l'arret » precisement
+ * les nuits ou le parc va bien.
+ *
+ * Ecrite a la FIN et seulement a la fin, avec son issue reelle : un marqueur pose au demarrage
+ * mentirait exactement comme le faisait `psql` en sortant en 0 sur une erreur SQL.
+ */
+function consignerPassage(demarreA, succes, resume, erreur) {
+  if (ESSAI) return;
+  const dureeMs = Date.now() - demarreA;
+  const sql = `
+    INSERT INTO passages_agents_locaux (id,agent,"demarreA","finiA","dureeMs",succes,resume,erreur)
+    VALUES (gen_random_uuid(), ${q('agent-qualite-gps')}, to_timestamp(${demarreA} / 1000.0), now(),
+            ${dureeMs}, ${succes ? 'true' : 'false'}, ${q(resume)},
+            ${erreur ? q(String(erreur).slice(0, 500)) : 'NULL'});`;
+  try {
+    psql(sql, { lecture: false });
+  } catch (e) {
+    // Ne JAMAIS faire echouer un passage reussi a cause de sa propre tracabilite : le travail
+    // metier est deja en base, et le perdre pour un probleme de journal serait absurde.
+    console.error(`  (passage non consigne : ${String(e.message).split(String.fromCharCode(10))[0].slice(0, 120)})`);
+  }
+}
+
 // ── Passage ──────────────────────────────────────────────────────────────────────────
-function passage() {
+function passage(demarreA) {
   const h = () => new Date().toISOString().slice(11, 19);
   console.log(`[${h()}] agent qualite GPS${ESSAI ? ' (ESSAI, aucune ecriture)' : ''} — aucun modele appele`);
 
   const brutes = zones();
   if (brutes.length === 0) {
     console.log(`[${h()}] aucune zone connue — rien a diagnostiquer.`);
+    consignerPassage(demarreA, true, 'Aucune zone de perte connue');
     return;
   }
 
@@ -204,15 +234,26 @@ function passage() {
     `[${h()}] fini — ${lieux} zone(s) enregistree(s), ${boitiers} boitier(s) signale(s), ` +
       `${tus} cas laisses sans conclusion.`,
   );
+  // Le resume dit ce qui a ete FAIT, y compris quand c'est rien. « Aucune zone a signaler » est
+  // une information : elle distingue une nuit calme d'un agent qui n'a pas tourne.
+  const recolte =
+    lieux === 0 && boitiers === 0
+      ? `Aucune zone a signaler (${brutes.length} zone(s) examinee(s), ${tus} sans conclusion)`
+      : `${lieux} zone(s) enregistree(s), ${boitiers} boitier(s) signale(s)`;
+  consignerPassage(demarreA, true, recolte);
 }
 
+const DEMARRE_A = Date.now();
 try {
-  passage();
+  passage(DEMARRE_A);
 } catch (e) {
   // Un echec doit se lire en une ligne dans le journal de la tache planifiee, pas sous une pile
   // Node. Et il doit sortir en NON-ZERO : c'est ce que Windows retient pour dire « derniere
   // execution en echec ».
   const msg = (e && e.message ? e.message : String(e)).split(String.fromCharCode(10))[0];
+  // Un echec doit se voir sur l'ecran de supervision, pas seulement dans ce journal local :
+  // un agent qui plante toutes les nuits sans que personne ne le sache est un agent perdu.
+  consignerPassage(DEMARRE_A, false, 'Passage interrompu', msg);
   console.error(`ARRET : ${msg.slice(0, 300)}`);
   process.exit(1);
 }
