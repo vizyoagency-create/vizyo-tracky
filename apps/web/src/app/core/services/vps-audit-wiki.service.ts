@@ -109,7 +109,12 @@ export interface VpsWikiPrevisions {
     seuilAlertePct: number;
   };
   recuperable: VpsWikiRecuperable[];
-  chargeDeFond: {
+  /**
+   * FACULTATIF : l'API ne le construit pas encore. Le declarer obligatoire faisait croire au
+   * compilateur — et au gabarit — qu'il serait toujours la, d'ou un TypeError qui eteignait
+   * toute la page (releve au centre d'alerte le 2026-08-19).
+   */
+  chargeDeFond?: {
     processusParMinute: number;
     processusParJour: number;
     healthchecksParMinute: number;

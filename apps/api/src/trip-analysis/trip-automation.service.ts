@@ -195,6 +195,7 @@ export class TripAutomationService {
       const user = this.systemUser();
       const now = Date.now();
       const windowFrom = new Date(now - settings.lookbackHours * 3600 * 1000);
+
       const windowTo = new Date(now - RECOMPUTE_TAIL_MS);
 
       const fleets = await this.prisma.fleet.findMany({ select: { id: true, name: true } });
@@ -293,6 +294,21 @@ export class TripAutomationService {
     }
   }
 
+  /**
+   * Horizon au-dela duquel les positions ONT ETE PURGEES et ne reviendront pas.
+   *
+   * ⚠️ Lu depuis LA MEME variable d'environnement que la purge (`POSITIONS_RETENTION_DAYS`),
+   *    jamais d'une constante recopiee : deux valeurs qui divergent, et on se remettrait a
+   *    alerter sur une absence parfaitement normale — ou pire, a se taire sur une vraie
+   *    anomalie. Un jour de marge absorbe l'ecart entre l'heure de la purge et celle du passage.
+   */
+  private horizonRetention(now = Date.now()): number {
+    const jours = Number(process.env.POSITIONS_RETENTION_DAYS ?? 60);
+    // Retention desactivee (0 ou absurde) : rien n'est purge, donc toute absence est une anomalie.
+    if (!Number.isFinite(jours) || jours <= 0) return 0;
+    return now - (jours - 1) * 86_400_000;
+  }
+
   private async processVehicle(
     user: AuthUser,
     veh: { id: string; plate: string; fleetId: string; fleetName: string | null; trackerId: string | null },
@@ -339,14 +355,27 @@ export class TripAutomationService {
             : 0;
           if (positions === 0) {
             stats.skippedNoPositions++;
-            await this.errorLogger.record(
-              new Error(
-                `Recalcul impossible sur ${veh.plate} : aucune position entre ${new Date(fromMs).toISOString()} et ` +
-                  `${new Date(toMs).toISOString()}, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`,
-              ),
-              SOURCE,
-              { fleetId, vehicleId, phase: 'recompute:no-positions', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
-            );
+            // ⚠️ DEUX CAUSES TRES DIFFERENTES POUR UNE MEME TRANCHE VIDE.
+            //
+            //   — au-dela de l'horizon de retention, l'absence de positions est ATTENDUE : la
+            //     purge les a supprimees, c est la politique qui s applique. Alerter revient a
+            //     signaler chaque jour que le passe est passe ;
+            //   — en deca, c est une vraie anomalie : les positions devraient etre la.
+            //
+            // Releve du 2026-08-20 : en portant la fenetre a 1 500 h pour le rattrapage de
+            // l'historique, elle s'est mise a chevaucher la limite de retention. Resultat, trois
+            // alertes en quatre heures sur FZ-862-VY pour une tranche du 19 au 21 juin — vouee a
+            // se repeter a CHAQUE passage, indefiniment, pour un fait sans remede.
+            if (fromMs >= this.horizonRetention()) {
+              await this.errorLogger.record(
+                new Error(
+                  `Recalcul impossible sur ${veh.plate} : aucune position entre ${new Date(fromMs).toISOString()} et ` +
+                    `${new Date(toMs).toISOString()}, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`,
+                ),
+                SOURCE,
+                { fleetId, vehicleId, phase: 'recompute:no-positions', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
+              );
+            }
           } else if (toMs > fromMs) {
             const r = await this.trips.recompute(
               { userId: user.id, role: user.role, fleetId: user.fleetId },

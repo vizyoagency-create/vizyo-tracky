@@ -174,16 +174,22 @@ const STATUT_STYLE: Record<string, string> = {
                 </table>
               </div>
 
-              <div class="fond">
-                <lucide-icon [img]="Activity" [size]="14" />
-                <span>
-                  <b>Charge de fond permanente</b> — {{ p.chargeDeFond.healthchecksParMinute }} sondes/min
-                  sur {{ p.chargeDeFond.conteneursSondes }} conteneurs
-                  ({{ p.chargeDeFond.healthchecksParJour | number }}/jour), et
-                  {{ p.chargeDeFond.processusParMinute | number }} processus créés par minute au total.
-                  C'est le coût que personne ne planifie.
-                </span>
-              </div>
+              <!-- Bloc facultatif : l'API ne renvoie pas encore chargeDeFond, et y acceder
+                   sans garde faisait tomber TOUTE la page sur un TypeError (releve au centre
+                   d'alerte le 2026-08-19). Une section manquante doit degrader l'ecran, pas
+                   l'eteindre. -->
+              @if (p.chargeDeFond; as cf) {
+                <div class="fond">
+                  <lucide-icon [img]="Activity" [size]="14" />
+                  <span>
+                    <b>Charge de fond permanente</b> — {{ cf.healthchecksParMinute }} sondes/min
+                    sur {{ cf.conteneursSondes }} conteneurs
+                    ({{ cf.healthchecksParJour | number }}/jour), et
+                    {{ cf.processusParMinute | number }} processus créés par minute au total.
+                    C'est le coût que personne ne planifie.
+                  </span>
+                </div>
+              }
             </div>
           }
 
