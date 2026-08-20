@@ -258,7 +258,15 @@ function ecrire(tripId, ligne, payload, recit) {
        SET narrative = ${q(recit.narrative)},
            advice = ${q(recit.advice)},
            "trustScore" = ${Math.round(recit.trustScore)},
-           provider = 'local'
+           provider = 'local',
+           -- ⚠️ EXPLICITE, et ce n'est pas une precaution de style. L'annotation updatedAt de
+           --    Prisma est appliquee par le CLIENT, pas par la base : un UPDATE en SQL brut ne
+           --    la declenche pas. Or l'ecran des taches de fond deduit l'etat de cet agent du
+           --    plus recent updatedAt de ses lignes. Sans cela, l'horodatage n'avancait jamais
+           --    et la supervision affichait un agent a l'arret pendant qu'il travaillait —
+           --    exactement le mensonge que le principe « etat deduit du travail reellement
+           --    ecrit » doit empecher. Constate le 20/08 : 15 recits ecrits a 04:59, dates 04:45.
+           "updatedAt" = now()
      WHERE "tripId" = ${q(tripId)} AND narrative IS NULL;
 
     INSERT INTO ai_usage_logs
