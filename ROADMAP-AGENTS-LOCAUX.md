@@ -465,6 +465,103 @@ l'entrée.
 À décider : rejeter, ou marquer `valid = false`, au-delà d'un seuil par type de véhicule. Toucher
 l'ingestion demande de la prudence — c'est le chemin le plus critique de l'application.
 
+### ⚠️ SMS ou TCP — la question tranchée par la mesure (20/08)
+
+**Réponse : SMS. Et ce n'est pas une préférence, c'est constaté dans les deux sens.**
+
+| Mesure | Résultat |
+|---|---|
+| Trames TCP entrantes, 4 jours, 39 boîtiers | **625 155** |
+| …contenant un accusé de réception (`ok`) | **0** |
+| SMS entrants contenant `fix ok` | **6** |
+| Idem `admin ok!` / `adminip ok!` / `GPRS OK!` | 5 / 7 / 9 |
+
+`fix ok` est **exactement** le motif que le guetteur d'accusé attend (`/fix.*ok/i`) et sur lequel
+il expire depuis 4 769 commandes. Les boîtiers répondent — mais par SMS, jamais par TCP.
+
+**Et ils n'obéissent pas non plus en TCP.** Sur les 269 commandes de cadence envoyées, en ne
+gardant que les cas où le véhicule roulait encore après (sinon l'immobilisation fausse tout) :
+
+| Cadence demandée | n | Intervalle médian avant | après |
+|---|---|---|---|
+| 20 s | 12 | 26 s | 10 s |
+| 30 s | 9 | 11 s | 20 s |
+| **300 s** | 9 | 171 s | **12 s** |
+
+La ligne à 300 s est la plus parlante : on demande **un point toutes les 5 minutes**, on en obtient
+**un toutes les 12 secondes**. La cadence suit le mouvement du véhicule, pas nos commandes. Le
+« 5 min » qu'on croyait obtenir est le repos naturel du boîtier, pas notre effet.
+
+⚠️ Sans le filtre « le véhicule roulait-il après ? », la même mesure disait l'inverse (20 s
+demandé → 68 s observé). Le premier chiffre était un artefact : le service demande une cadence
+rapide quand il détecte un départ, et le véhicule s'était souvent déjà arrêté. **Une mesure non
+contrôlée aurait fait conclure exactement le contraire.**
+
+**Le défaut, en une phrase.** `TrackerCommandsService.dispatch()` envoie TOUT par
+`registry.send()`, c'est-à-dire en TCP, et ne lit jamais `template.availableVia` — alors que 19
+gabarits du catalogue le déclarent `['sms']`, dont les trois du capteur de choc, avec un
+commentaire qui annonce précisément ce qu'on observe.
+
+**Le canal SMS a une panne à lui, distincte.** 1 515 envois en échec, 343 bloqués en `queued`,
+zéro confirmé. Le motif dominant est massif et bête :
+
+> `Numéro invalide (format E.164 attendu, ex +33612345678) : 34` — **1 470 fois**
+
+Les succès (`fix ok`, `admin ok!`) datent tous de **juin**, pendant le provisionnement. Le canal a
+donc fonctionné, puis a cessé.
+
+**Conséquence sur les alertes accident.** Rien n'était réparable côté détection : aucune alerte
+ACCIDENT ni COLLISION n'a jamais existé, non parce que la correspondance manque — elle est
+correcte dans `alert-mapping.ts` — mais parce que **le capteur de choc n'a jamais été armé sur
+aucun boîtier**, et qu'il ne pouvait pas l'être : 17 tentatives, toutes envoyées sur le canal que
+ces boîtiers n'écoutent pas.
+
+**Rien n'a été envoyé.** Cette section est une analyse, pas une intervention.
+
+### Détection d'accident par télémétrie — les seuils, mesurés sur 30 jours de production
+
+Règle retenue (décision du 20/08) : **chute de vitesse ET boîtier qui se tait**. Les deux
+signaux pris isolément ont été mesurés avant d'être combinés :
+
+| Règle candidate | Déclenchements / 30 j | Verdict |
+|---|---|---|
+| Chute ≥ 50 km/h → 0 | **612** sur 34 boîtiers (~20/jour) | inutilisable seule — tous suivis d'une reprise de route |
+| … + immobilité 15 min | **0** | aucun faux positif, mais sensibilité non démontrée |
+| Boîtier muet > 2 h alors qu'il roulait ≥ 20 km/h | **3** | rare, et c'est la signature d'un boîtier arraché ou détruit |
+
+Les 3 cas du dernier signal : HD-779-MA (muet 6,3 h après 87 km/h), KSR370 (19,2 h après
+61 km/h, le 28/07), GS-014-NY (2,5 h après 21 km/h).
+
+⚠️ **Ce que je ne peux pas promettre** : aucun accident connu n'est présent dans la fenêtre de
+données conservée, donc **aucune de ces règles n'a pu être validée sur un vrai accident**. On
+mesure le taux de fausses alertes, pas le taux de détection. C'est exactement pourquoi la
+restriction aux super-admins est la bonne façon de démarrer.
+
+### KSR370 et FL-787-KV — ce que les données disent, et ce qu'elles ne disent pas
+
+**Le « 150 km/h → 0 » de KSR370 est du bruit du boîtier, pas un freinage.** Mesuré sur 70 811
+points : l'écart moyen entre la vitesse annoncée et celle déduite des coordonnées est de
+8,3 km/h, et **1,7 % des points s'en écartent de plus de 40 km/h**, jusqu'à 256 km/h annoncés.
+Sur le trajet du 12/08 à 23 h qui affiche 152 km/h, la séquence relevée est :
+
+> 12 → 56 → **142** → 32 → 29 → 35 → **153** → 32 km/h
+
+à 20 secondes d'intervalle, pour des positions qui bougent de 400 mètres. Aucun véhicule ne fait
+ça. À titre de comparaison, FL-787-KV a un écart moyen de 0,4 km/h.
+
+**Cela ne dit PAS que le véhicule n'est pas accidenté** — tu as la vérité terrain, moi seulement
+des relevés. Cela dit qu'on ne peut pas s'appuyer sur ce signal-là pour le prouver, ni pour
+déclencher une alerte.
+
+**Son dernier trajet se termine normalement** : 8 km/h → 0 à 00 h 27 le 13/08, puis immobile, puis
+le boîtier se tait 26 h plus tard (14/08 02 h 05) et ne parle plus depuis. Ce n'est pas une
+signature de choc dans les positions conservées.
+
+**L'accident du FL est irrécupérable.** La plus vieille position en base date du **21/06** : tout
+ce qui est antérieur est purgé. FL-787-KV n'a que 3 alertes, toutes d'août. Les 37 VIBRATION et
+3 SOS du 28/04 sont sur **EP-047-TY et FV-941-LZ**, en rafale tout un après-midi — cela ressemble
+à une journée d'installation, pas à un accident.
+
 ### Analyse des `wire_logs` (20/08) — ce qu'ils contiennent vraiment
 
 ⚠️ **Rétention courte** : `wire_logs` ne remonte qu'au **17/08** (601 914 trames, 39 boîtiers).
