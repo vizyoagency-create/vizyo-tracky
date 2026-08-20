@@ -502,13 +502,30 @@ contrôlée aurait fait conclure exactement le contraire.**
 gabarits du catalogue le déclarent `['sms']`, dont les trois du capteur de choc, avec un
 commentaire qui annonce précisément ce qu'on observe.
 
-**Le canal SMS a une panne à lui, distincte.** 1 515 envois en échec, 343 bloqués en `queued`,
-zéro confirmé. Le motif dominant est massif et bête :
+**⚠️ Ce que j'avais dit du canal SMS, et qui était faux.** J'ai d'abord annoncé « 1 515 échecs,
+343 bloqués, zéro confirmé — le SMS aussi est en panne ». En creusant :
 
-> `Numéro invalide (format E.164 attendu, ex +33612345678) : 34` — **1 470 fois**
+- Les **1 470** rejets `Numéro invalide (format E.164 attendu) : 34` sont **déjà corrigés**. Le
+  correctif (`common/utils/phone.ts`, `toE164`) date du **19/07**, cite en commentaire le numéro
+  exact qui échouait, et le dernier rejet de ce type date du même jour. Il n'y a rien à réparer.
+- Les **343 `queued`** ne sont **pas** des échecs. Preuve : `resume123456` envoyé le 19/08 à
+  04 h 39 est resté `queued`, et le boîtier a répondu **« Resume engine Succeed » à 08 h 28**. Le
+  SMS est bien parti, le boîtier a bien agi. Toute la séquence de mise en service de juin
+  (`begin`, `apn`, `admin`, `adminip`, `gprs`, `fix020s`) est également `queued` — et ces boîtiers
+  émettent depuis.
 
-Les succès (`fix ok`, `admin ok!`) datent tous de **juin**, pendant le provisionnement. Le canal a
-donc fonctionné, puis a cessé.
+Le vrai défaut restant est donc d'**observabilité, pas de livraison** : le statut final n'est
+jamais réconcilié, et l'écran d'administration montre tout bloqué en `queued` alors que ça passe.
+Distinct, moins grave, et à traiter séparément.
+
+**Et une leçon de méthode.** Deux fois dans la même analyse, la première lecture disait l'inverse
+de la vérité : la cadence TCP (avant le filtre « roulait-il ? ») et l'état du canal SMS (avant de
+regarder les réponses entrantes). Un chiffre agrégé qui va dans le sens de ce qu'on soupçonne
+mérite un contre-test avant d'être cité.
+
+**Le SMS met des heures.** 04 h 39 → 08 h 28 sur l'exemple ci-dessus. C'est acceptable pour armer
+un capteur une fois ; c'est inutilisable pour du temps réel. Le guetteur d'accusé de 15 secondes
+n'a donc pas lieu d'être sur ce canal — il ne fabriquerait que de faux échecs.
 
 **Conséquence sur les alertes accident.** Rien n'était réparable côté détection : aucune alerte
 ACCIDENT ni COLLISION n'a jamais existé, non parce que la correspondance manque — elle est

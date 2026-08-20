@@ -414,6 +414,16 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 15 },
   },
   {
+    id: 'veille-accident', label: 'Veille accident (boîtier muet après avoir roulé)',
+    source: 'alerts/detection-accident.service.ts',
+    category: 'Sécurité & moteur', kind: 'cron',
+    scheduleHuman: 'toutes les 30 minutes',
+    criticality: 'haute', antiOverlap: true,
+    note: "Notification restreinte aux SUPER-ADMINS, volontairement et provisoirement. L'alerte est créée et reste consultable ; seul l'envoi est retenu, le temps de vérifier sur le terrain que la règle dit vrai. Elle n'a jamais pu être validée sur un vrai accident — aucun ne figure dans la fenêtre de données conservée.",
+    purpose: "Cherche les boîtiers qui se sont TUS alors qu'ils roulaient : signature d'un arrachement, d'un écrasement ou d'une coupure d'alimentation. La chute de vitesse seule ne suffit pas — mesurée à 612 fois en 30 jours, toutes suivies d'une reprise de route.",
+    periodic: { everyMs: 1_800_000, offsetMs: 0 },
+  },
+  {
     id: 'agent-qualite-gps', label: 'Qualite GPS / zones mortes (agent sur poste)',
     category: 'Maintenance données', kind: 'cron',
     scheduleHuman: '05:00 chaque nuit — sur le poste du proprietaire',

@@ -20,6 +20,7 @@ import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { AckWaiterService } from './ack-waiter.service';
 
@@ -49,6 +50,10 @@ export class TrackerCommandsService {
     private readonly wireLogger: CobanWireLogger,
     private readonly gateway: RealtimeGateway,
     private readonly systemActivity: SystemActivityService,
+    // Le canal SMS n'est pas un repli exotique : c'est le SEUL que ces boitiers ecoutent pour
+    // 19 gabarits du catalogue, dont les trois du capteur de choc. Cf. le commentaire de
+    // `dispatch()` et la mesure qui l'appuie.
+    private readonly sms: SmsGatewayService,
   ) {}
 
   async request(
@@ -175,6 +180,30 @@ export class TrackerCommandsService {
     const resolvedImei = imei;
     const resolvedFleetId = fleetId ?? '';
 
+    // ══ LE CANAL EST UNE PROPRIÉTÉ DE LA COMMANDE, PAS UNE CONSTANTE ═══════════════
+    //
+    // ⚠️ CONSTAT DU 2026-08-20, mesuré et non supposé. Cette méthode envoyait TOUT par
+    // `registry.send()`, c'est-à-dire en TCP, sans jamais lire `template.availableVia` —
+    // alors que 19 gabarits du catalogue le déclarent `['sms']`, dont les trois du capteur
+    // de choc, avec un commentaire qui annonçait exactement ce qu'on observe.
+    //
+    // Ce que la mesure a montré, dans les deux sens :
+    //
+    //   625 155 trames TCP entrantes en 4 jours, 39 boîtiers  ->  ZÉRO accusé de réception.
+    //   Des SMS entrants « fix ok », « admin ok! », « Resume engine Succeed ».
+    //
+    // « fix ok » est EXACTEMENT le motif attendu par le guetteur, et sur lequel il expirait
+    // depuis 4 769 commandes. Ces boîtiers répondent — mais par SMS.
+    //
+    // Conséquence concrète : le capteur de choc n'a JAMAIS pu être armé (17 tentatives, toutes
+    // expirées), donc aucune alerte ACCIDENT n'a jamais pu exister. La correspondance était
+    // correcte depuis le début ; elle n'avait simplement rien à traduire.
+    const template = findTemplate(command.templateId);
+    if (template && !template.availableVia.includes('tcp')) {
+      await this.dispatchParSms(command, template, resolvedImei, fleetId);
+      return;
+    }
+
     // #20 — passe par registry.send() (verifie destroyed + writable + try/catch +
     // nettoie l'entree morte) au lieu d'ecrire directement sur la socket : une
     // socket demi-morte ne doit pas etre marquee SENT en laissant fuiter l'entree.
@@ -235,7 +264,6 @@ export class TrackerCommandsService {
     }
 
     // Background ACK wait
-    const template = findTemplate(command.templateId);
     if (template && template.expectedAckPattern) {
       this.ackWaiter
         .waitForAck(resolvedImei, template.expectedAckPattern, template.ackTimeoutMs, command.id)
@@ -268,6 +296,93 @@ export class TrackerCommandsService {
           });
           this.emitUpdate(command.id, resolvedFleetId);
         });
+    }
+  }
+
+  /**
+   * Envoi d'une commande que le boîtier n'accepte QUE par SMS.
+   *
+   * ── Trois différences avec le TCP, et aucune n'est cosmétique ────────────────────────
+   *
+   * 1. **On n'attend PAS d'accusé ici.** Mesuré en production : `resume123456` envoyé le
+   *    19/08 à 04 h 39, réponse « Resume engine Succeed » du boîtier à 08 h 28 — presque
+   *    QUATRE HEURES. Un guetteur de 15 secondes ne ferait que fabriquer un faux échec sur
+   *    une commande qui a parfaitement abouti. La commande reste donc `SENT` : c'est la
+   *    vérité (« partie, réponse pas encore revenue »), et le webhook SMS entrant la passera
+   *    en `ACKNOWLEDGED` quand la réponse arrivera.
+   *
+   * 2. **`SENT` ne veut pas dire « livré », et c'est assumé.** La passerelle rend `queued`
+   *    et ne réconcilie jamais le statut final : les 102 SMS sortants du mois sont tous
+   *    `queued`, alors qu'au moins un est prouvé livré (le boîtier a répondu). Un `queued`
+   *    éternel est un défaut d'OBSERVABILITÉ, pas de livraison — ne pas le confondre.
+   *
+   * 3. **Le boîtier n'a pas besoin d'être en ligne.** C'est même l'intérêt : un boîtier muet
+   *    en TCP reste joignable par SMS. La garde « tracker hors ligne » du chemin TCP n'a donc
+   *    pas lieu d'être ici.
+   */
+  private async dispatchParSms(
+    command: TrackerCommand,
+    template: { id: string; expectedAckPattern?: RegExp },
+    imei: string,
+    fleetId: string | null,
+  ): Promise<void> {
+    const resolvedFleetId = fleetId ?? '';
+    const echec = async (motif: string): Promise<never> => {
+      await this.prisma.trackerCommand.update({
+        where: { id: command.id },
+        data: { status: TrackerCommandStatus.FAILED, channel: 'SMS', lastError: motif },
+      });
+      this.emitUpdate(command.id, resolvedFleetId);
+      if (!SURVEILLANCE_TEMPLATES.has(command.templateId)) {
+        this.systemActivity.record({
+          category: 'TRACKER_CMD', action: 'tracker_command_sent', status: 'FAILURE',
+          actor: command.scheduledAt ? 'planning' : 'utilisateur', target: imei,
+          detail: `${command.templateId} — ${motif}`, fleetId,
+          triggeredByUserId: command.requestedBy,
+          meta: { error: motif, commandId: command.id, canal: 'SMS' },
+        });
+      }
+      throw new ServiceUnavailableException(motif);
+    };
+
+    if (!this.sms.isEnabled()) {
+      await echec('passerelle SMS non configurée — commande non envoyée');
+    }
+    const tracker = await this.prisma.tracker.findFirst({
+      where: { imei },
+      select: { simPhoneNumber: true },
+    });
+    // Le motif est explicite : « pas de numéro » et « numéro refusé » sont deux problèmes
+    // distincts, et les confondre a déjà fait chercher un numéro qui ne manquait pas
+    // (cf. le repli du coupe-circuit, constat du 25/07).
+    if (!tracker?.simPhoneNumber) {
+      await echec('aucun numéro SIM enregistré pour ce boîtier');
+    }
+    const envoi = await this.sms.send(tracker!.simPhoneNumber!, command.payload, {
+      imei,
+      commandId: command.id,
+      template: 'tracker_command_sms',
+      source: 'tracker-cmd-sms',
+    });
+    if (!envoi.ok) {
+      await echec(envoi.error ?? 'envoi SMS refusé par la passerelle');
+    }
+
+    await this.prisma.trackerCommand.update({
+      where: { id: command.id },
+      data: { status: TrackerCommandStatus.SENT, channel: 'SMS', sentAt: new Date() },
+    });
+    this.wireLogger.out(imei, command.payload, { commandId: command.id, source: 'tracker-cmd-sms' });
+    this.emitUpdate(command.id, resolvedFleetId);
+
+    if (!SURVEILLANCE_TEMPLATES.has(command.templateId)) {
+      this.systemActivity.record({
+        category: 'TRACKER_CMD', action: 'tracker_command_sent', status: 'SUCCESS',
+        actor: command.scheduledAt ? 'planning' : 'utilisateur', target: imei,
+        detail: `${command.templateId} (SMS)`, fleetId,
+        triggeredByUserId: command.requestedBy,
+        meta: { commandId: command.id, canal: 'SMS' },
+      });
     }
   }
 

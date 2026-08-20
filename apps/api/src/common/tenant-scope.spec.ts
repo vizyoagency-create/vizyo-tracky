@@ -142,6 +142,9 @@ describe('fail-closed endpoints (audit A3/B1/B2/D9)', () => {
         {} as never,
         {} as never,
         { record: jest.fn() } as never,
+        // Passerelle SMS : ces tests ne portent pas sur l'envoi, mais le canal SMS est
+        // desormais une dependance reelle du service (19 gabarits ne passent que par la).
+        { isEnabled: () => false, send: jest.fn() } as never,
       );
 
     it('list: non-super sans fleetId → [] et aucune requête DB', async () => {

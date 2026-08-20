@@ -6,7 +6,10 @@ import { ErrorLogger } from './error-logger.service';
 
 export interface WireLogContext {
   commandId?: string;
-  source?: 'engine' | 'tracker-cmd' | 'ack' | 'tcp-server' | 'fix-mode-adaptive';
+  // `tracker-cmd-sms` est distinct de `tracker-cmd` a dessein : en relisant le journal des
+  // trames, il faut pouvoir dire par quel canal une commande est partie. Les confondre
+  // masquerait precisement le defaut du 20/08 — tout partait en TCP sans qu'on le voie.
+  source?: 'engine' | 'tracker-cmd' | 'tracker-cmd-sms' | 'ack' | 'tcp-server' | 'fix-mode-adaptive';
   trackerId?: string;
   vehicleId?: string;
   fleetId?: string;

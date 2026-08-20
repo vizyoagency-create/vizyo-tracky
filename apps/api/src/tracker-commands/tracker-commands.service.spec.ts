@@ -13,6 +13,7 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
 import { AckWaiterService } from './ack-waiter.service';
 import { TrackerCommandsService } from './tracker-commands.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -60,17 +61,21 @@ function mockCommand(overrides: Record<string, unknown> = {}) {
 describe('TrackerCommandsService', () => {
   let service: TrackerCommandsService;
   let prisma: {
-    tracker: { findUnique: jest.Mock };
+    tracker: { findUnique: jest.Mock; findFirst: jest.Mock };
     trackerCommand: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
   };
   let registry: { send: jest.Mock };
   let ackWaiter: { waitForAck: jest.Mock };
   let wireLog: { out: jest.Mock; ackMatch: jest.Mock; ackTimeout: jest.Mock };
+  let sms: { isEnabled: jest.Mock; send: jest.Mock };
 
   beforeEach(async () => {
     commandCounter = 0;
     prisma = {
-      tracker: { findUnique: jest.fn() },
+      // `findFirst` sert au chemin SMS : depuis le 20/08, un gabarit declare
+      // `availableVia: ['sms']` part par SMS et non plus en TCP — il faut donc lire le
+      // numero SIM du boitier. Plusieurs gabarits de ces tests sont dans ce cas.
+      tracker: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue({ simPhoneNumber: '+33600000000' }) },
       trackerCommand: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(mockCommand(data))),
         update: jest.fn().mockResolvedValue(undefined),
@@ -81,6 +86,7 @@ describe('TrackerCommandsService', () => {
     registry = { send: jest.fn().mockReturnValue(false) };
     ackWaiter = { waitForAck: jest.fn().mockReturnValue(new Promise(() => {})) };
     wireLog = { out: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() };
+    sms = { isEnabled: jest.fn().mockReturnValue(true), send: jest.fn().mockResolvedValue({ ok: true }) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -91,6 +97,9 @@ describe('TrackerCommandsService', () => {
         { provide: CobanWireLogger, useValue: wireLog },
         { provide: RealtimeGateway, useValue: { server: { to: jest.fn().mockReturnThis(), emit: jest.fn() } } },
         { provide: SystemActivityService, useValue: { record: jest.fn() } },
+        // Passerelle SMS desactivee par defaut : ces tests portent sur le chemin TCP.
+        // Le canal SMS a ses propres tests, ou `isEnabled` rend true.
+        { provide: SmsGatewayService, useValue: sms },
       ],
     }).compile();
 
@@ -170,13 +179,58 @@ describe('TrackerCommandsService', () => {
     ).rejects.toThrow(ServiceUnavailableException);
   });
 
-  it('should allow SUPER_ADMIN to use factory template', async () => {
+  /**
+   * ⚠️ CE TEST A CHANGÉ DE SENS LE 2026-08-20, et le changement est le correctif.
+   *
+   * Il vérifiait que `factory` échouait quand le boîtier était hors ligne en TCP. Or `factory`
+   * est déclaré `availableVia: ['sms']` : ces boîtiers ne l'acceptent pas sur le canal TCP
+   * descendant. L'ancien comportement refusait donc une commande sur l'indisponibilité d'un
+   * canal qu'elle n'emprunte pas.
+   *
+   * Qu'un boîtier soit muet en TCP est même la raison d'être du SMS : c'est là qu'on en a le
+   * plus besoin.
+   */
+  it('un gabarit SMS part par SMS, meme quand le boitier est muet en TCP', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     registry.send.mockReturnValue(false);
 
+    const commande = await service.request(TRACKER_ID, 'factory', {}, null, superAdmin);
+
+    expect(commande).toBeDefined();
+    expect(registry.send).not.toHaveBeenCalled();
+    expect(sms.send).toHaveBeenCalledWith(
+      '+33600000000',
+      expect.any(String),
+      expect.objectContaining({ template: 'tracker_command_sms' }),
+    );
+  });
+
+  it('sans passerelle SMS, le motif le dit — au lieu d’accuser le boitier d’etre hors ligne', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    sms.isEnabled.mockReturnValue(false);
+
     await expect(
       service.request(TRACKER_ID, 'factory', {}, null, superAdmin),
-    ).rejects.toThrow(ServiceUnavailableException); // fails at dispatch, not at permission
+    ).rejects.toThrow(/passerelle SMS/);
+  });
+
+  it('sans numero SIM enregistre, le motif nomme CE qui manque', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: null });
+
+    await expect(
+      service.request(TRACKER_ID, 'factory', {}, null, superAdmin),
+    ).rejects.toThrow(/numéro SIM/);
+  });
+
+  it('⚠️ on n’attend PAS d’accuse sur le canal SMS : mesure prod, la reponse met des heures', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+
+    await service.request(TRACKER_ID, 'factory', {}, null, superAdmin);
+
+    // Un guetteur de 15 s ne ferait que fabriquer un faux echec sur une commande aboutie :
+    // `resume123456` envoye a 04 h 39 le 19/08, reponse du boitier a 08 h 28.
+    expect(ackWaiter.waitForAck).not.toHaveBeenCalled();
   });
 
   it('should validate required params', async () => {

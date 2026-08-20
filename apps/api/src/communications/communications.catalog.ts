@@ -25,6 +25,7 @@ export type SmsTemplateId =
   | 'admin_manual'
   | 'engine_control_fallback'
   | 'fix_mode_fallback'
+  | 'tracker_command_sms'
   | 'audio_arm'
   | 'audio_disarm'
   | 'audio_auto_disarm'
@@ -72,6 +73,11 @@ export const SMS_TEMPLATE_META: (CommTemplateMeta & { id: SmsTemplateId })[] = [
   { channel: 'SMS', id: 'alert_whatsapp', label: 'Alerte WhatsApp', category: 'Alerte', trigger: 'Alerte routée sur le canal WhatsApp', description: 'Même contenu que l’alerte SMS, remis via WhatsApp.' },
   { channel: 'SMS', id: 'engine_control_fallback', label: 'Coupe-circuit (repli)', category: 'Commande', trigger: 'Boîtier injoignable en TCP lors d’une coupure/restauration', description: 'Repli SMS du coupe-circuit — chemin critique antivol.' },
   { channel: 'SMS', id: 'fix_mode_fallback', label: 'Mode fix GPS (repli)', category: 'Commande', trigger: 'Boîtier injoignable en TCP lors d’un réglage de fix', description: 'Repli SMS pour forcer la cadence de position.' },
+  // ⚠️ Ce n'est PAS un repli, contrairement aux deux lignes précédentes : c'est le canal
+  // NORMAL de 19 gabarits du catalogue Coban, que ces boîtiers n'acceptent pas en TCP
+  // descendant. Mesuré le 20/08 : 625 155 trames TCP entrantes, zéro accusé — et des
+  // « fix ok » / « admin ok! » arrivant par SMS.
+  { channel: 'SMS', id: 'tracker_command_sms', label: 'Commande boîtier (canal SMS)', category: 'Commande', trigger: 'Gabarit déclaré `availableVia: [sms]` — capteur de choc, sensibilité, configuration', description: 'Seul canal que ces boîtiers écoutent pour ces commandes. L’accusé revient par SMS, parfois plusieurs heures après.' },
   { channel: 'SMS', id: 'audio_arm', label: 'Écoute audio — armement', category: 'Audio', trigger: 'Armement du micro embarqué (mode assistance)', description: 'Commande d’ouverture du micro, tracée et limitée dans le temps.' },
   { channel: 'SMS', id: 'audio_disarm', label: 'Écoute audio — désarmement', category: 'Audio', trigger: 'Désarmement manuel du micro embarqué', description: 'Referme le micro à la demande d’un opérateur.' },
   { channel: 'SMS', id: 'audio_auto_disarm', label: 'Écoute audio — désarmement auto', category: 'Audio', trigger: 'Garde-fou : 5 min après l’armement', description: 'Sécurité automatique — le micro ne peut pas rester ouvert.' },

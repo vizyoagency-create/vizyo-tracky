@@ -26,6 +26,7 @@ const EVERY_SMS: Record<SmsTemplateId, true> = {
   admin_manual: true,
   engine_control_fallback: true,
   fix_mode_fallback: true,
+  tracker_command_sms: true,
   audio_arm: true,
   audio_disarm: true,
   audio_auto_disarm: true,
