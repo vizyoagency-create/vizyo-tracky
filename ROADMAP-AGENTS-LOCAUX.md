@@ -188,7 +188,7 @@ recalculés et son boîtier muet depuis 5 jours.
 | Migration `20260820100000_diagnostics_zones_gps` | ✅ déployée en prod |
 | Alerte boîtier (KSR370, `GPS_QUALITE`) | ✅ en prod |
 | API `GET/POST /api/gps-diagnostics/zones` + 8 tests | ✅ |
-| Écran `/admin/qualite-gps` + carte dans le hub admin | ✅ écrit, **vérification navigateur EN ATTENTE** |
+| Écran `/admin/qualite-gps` + carte dans le hub admin | ✅ **vérifié à 375 px le 20/08** |
 | Tâche planifiée Windows | ☐ |
 
 Premier passage réel en production (20/08 13 h 44) : **1 lieu enregistré** — `FW-298-WV` et
@@ -342,7 +342,27 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 
 | # | À vérifier | Bloqué par | Depuis |
 |---|---|---|---|
-| V1 | **Écran `/admin/qualite-gps` à 375 px** : rendu, bouton « marquer traité », réouverture, état vide. Le code compile, les 8 tests d'API passent, la carte est dans le hub — mais rien de tout ça ne prouve que l'écran s'affiche. | Docker Desktop planté le 20/08 vers 16 h (cf. ci-dessous). | 20/08 |
+| ~~V1~~ | ~~**Écran `/admin/qualite-gps` à 375 px**~~ | — | **Fait le 20/08 17 h 45** |
+
+**V1 — vérifié dans le navigateur à 375 px, sur données réelles.** Rendu, carte du hub (343 px de
+large sur 375, aucun débordement horizontal), chargement, « marquer traité », bascule
+« afficher les traités », réouverture, état vide. Un défaut trouvé, que ni le typecheck ni les
+tests d'API ne pouvaient voir — cf. ci-dessous.
+
+**Le défaut que seule la vérification pouvait trouver.** Le serveur avait été corrigé pour ne pas
+effacer la note à la réouverture, et il la conservait bien : la base le confirmait. Mais l'écran
+ne la ré-affichait pas — une zone rouverte troque son bloc de relecture contre un champ de saisie,
+et ce champ revenait vide. Du point de vue du relecteur la note était donc perdue ; il en aurait
+tapé une autre et écrasé la première sans jamais avoir su qu'elle existait. **Une donnée conservée
+mais invisible est une donnée perdue.** Corrigé par `reporterNotes()`, fonction pure testée
+séparément (5 tests), qui ne remplace jamais un brouillon en cours de frappe.
+
+⚠️ **Limite de l'outillage, à savoir pour les prochaines vérifications** : dans le panneau
+navigateur, les clics de souris n'ont pas abouti (ils sélectionnaient le texte du bouton et
+expiraient au bout de 30 s). Les captures d'écran et la lecture de page fonctionnaient. Les
+interactions ont donc été déclenchées par `element.click()`, et leur effet confirmé par le trafic
+réseau (`POST … /traiter → 201`) puis par une lecture directe en base. La chaîne complète a bien
+été exercée — mais pas par un vrai clic.
 
 **Ce qui est mesuré, et non supposé** (20/08, sondes au niveau protocole) :
 
@@ -452,8 +472,8 @@ commande, et la page « Commandes tracker » sait déjà le faire.
 - **Point 2** — retirer le bouton « Recalculer » de la page Rapports. Le retard se résorbe
   (2 158 → 1 339 trajets bruts au 20/08) mais n'est pas à zéro : le bouton reste le seul rattrapage
   manuel. À faire quand la tranche 30-50 j sera vidée.
-- **Agent qualité GPS** — agent, migration, API et écran faits (cf. section dédiée). Restent la
-  **tâche planifiée Windows** et la **vérification navigateur à 375 px**, bloquée par Docker.
+- **Agent qualité GPS** — agent, migration, API et écran faits et vérifiés (cf. section dédiée).
+  Reste la **tâche planifiée Windows**.
   ⚠️ Limite assumée : la corrélation se fait PAR SOCIÉTÉ. Une zone morte partagée par deux
   sociétés différentes ne sera pas détectée — mélanger leurs données pour gagner en détection
   n'est pas un arbitrage acceptable.
@@ -467,7 +487,7 @@ commande, et la page « Commandes tracker » sait déjà le faire.
 
 ### Défauts trouvés par la MESURE, pas par la relecture
 
-Six, en deux jours. Tous passaient le typecheck et les tests :
+Sept, en deux jours. Tous passaient le typecheck et les tests :
 
 1. **Budget borné au mauvais endroit** — vérifié à l'entrée d'un véhicule, alors que le temps part
    dans la boucle sur ses trajets. Observé : 31 min pour un plafond de 20.
@@ -490,4 +510,11 @@ Six, en deux jours. Tous passaient le typecheck et les tests :
    sans retour, ce qu'un humain avait constaté sur place. La note n'est plus touchée que si elle
    est explicitement fournie.
 
+7. **Note conservée mais invisible** — le serveur gardait bien la note d'un diagnostic rouvert (la
+   base le confirmait, et un test le verrouillait), mais l'écran ne la ré-affichait pas. Le
+   relecteur aurait vu un champ vide, tapé autre chose, et écrasé la précédente sans savoir
+   qu'elle existait. **Le correctif serveur était juste et insuffisant** : aucun test d'API ne
+   pouvait voir ce trou, il fallait ouvrir l'écran, traiter, rouvrir, puis RECHARGER.
+
 C'est ce qui justifie le contrôle du matin, et la règle « pas de conclusion sur lecture de code ».
+Sept défauts, et pas un seul trouvé par le typecheck.

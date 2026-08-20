@@ -8,6 +8,31 @@ import { GpsDiagnosticApiService } from '../../core/services/gps-diagnostic.serv
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 /**
+ * Reporte dans les brouillons la note deja enregistree pour chaque zone.
+ *
+ * Pourquoi ce n'est pas un confort : une zone ROUVERTE garde sa note en base, mais son bloc de
+ * relecture disparait de l'ecran au profit du champ de saisie. Sans ce report, le relecteur voit
+ * un champ VIDE, en conclut que la note est perdue, en tape une autre — et ecrase la precedente
+ * sans jamais avoir su qu'elle existait. Le serveur la conservait ; l'ecran la rendait invisible.
+ * Constate dans le navigateur le 20/08, pas deduit du code.
+ *
+ * Un brouillon en cours de frappe l'emporte toujours : on ne remplace jamais ce que quelqu'un
+ * est en train d'ecrire.
+ *
+ * Mute `brouillons` et le renvoie — c'est le meme objet, pour rester utilisable tel quel avec
+ * `[(ngModel)]`.
+ */
+export function reporterNotes(
+  brouillons: Record<string, string>,
+  zones: ReadonlyArray<Pick<GpsZoneDiagnosticDto, 'id' | 'note'>>,
+): Record<string, string> {
+  for (const z of zones) {
+    if (z.note && !brouillons[z.id]) brouillons[z.id] = z.note;
+  }
+  return brouillons;
+}
+
+/**
  * Qualité GPS — les zones mortes diagnostiquées.
  *
  * Ce que cet écran apporte, et qui n'existait nulle part : la réponse à « est-ce le LIEU ou le
@@ -130,7 +155,9 @@ export class GpsDiagnosticsComponent implements OnInit {
 
   private async charger(): Promise<void> {
     try {
-      this.liste.set(await firstValueFrom(this.api.zones(this.tous())));
+      const zones = await firstValueFrom(this.api.zones(this.tous()));
+      this.liste.set(zones);
+      reporterNotes(this.notes, zones);
     } catch (err) {
       swallow('gps-diagnostics:charger', err);
     }
