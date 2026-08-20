@@ -174,10 +174,12 @@ const STATUT_STYLE: Record<string, string> = {
                 </table>
               </div>
 
-              <!-- Bloc facultatif : l'API ne renvoie pas encore chargeDeFond, et y acceder
-                   sans garde faisait tomber TOUTE la page sur un TypeError (releve au centre
-                   d'alerte le 2026-08-19). Une section manquante doit degrader l'ecran, pas
-                   l'eteindre. -->
+              <!-- Bloc facultatif. Y acceder sans garde faisait tomber TOUTE la page sur un
+                   TypeError, tableau du disque compris (releve au centre d'alerte le 2026-08-19).
+                   Une section manquante doit degrader l'ecran, pas l'eteindre.
+                   ⚠️ Rectifie le 2026-08-20 : ce n'est pas que « l'API ne le renvoie pas encore ».
+                   Le champ est ecrit par l'agent d'audit VPS dans son manifeste, il y etait a
+                   chaque passage du 11/08 au 17/08, et l'agent a cesse de l'ecrire le 18/08. -->
               @if (p.chargeDeFond; as cf) {
                 <div class="fond">
                   <lucide-icon [img]="Activity" [size]="14" />
