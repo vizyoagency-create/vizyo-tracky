@@ -334,6 +334,34 @@ Constatés au contrôle du 20/08, non touchés :
 | `maxAnalysesPerRun` | 150 → **5000** | passages de ~50 min, une heure sur deux |
 | `RUN_BUDGET_MS` | 20 → **50 min** | cohérent avec la garde anti double-run, également à 50 min |
 
+### Constat du 20/08 — vitesses impossibles acceptées à l'ingestion
+
+L'ingestion marque `valid = true` sur des vitesses **physiquement impossibles**. Relevé sur toute
+la flotte, positions valides uniquement :
+
+| plaque | > 200 km/h | > 150 km/h | max | positions |
+|---|---|---|---|---|
+| **KSR370** | **147** | **1 804** | **255,7** | 102 634 |
+| HD-779-MA | 0 | 745 | 179,6 | 152 890 |
+| FG-669-DQ | 0 | 86 | 174,3 | 94 769 |
+| EP-047-TY | 0 | 7 | 158,1 | 81 177 |
+| FM-772-JH | 0 | 3 | 154,0 | 57 005 |
+
+Conséquences : les trajets, les scores de conduite et la détection d'excès de KSR370 sont bâtis
+sur des données fausses — et rien ne le signale. Aucun garde-fou de plausibilité n'existe à
+l'entrée.
+
+À décider : rejeter, ou marquer `valid = false`, au-delà d'un seuil par type de véhicule. Toucher
+l'ingestion demande de la prudence — c'est le chemin le plus critique de l'application.
+
+### Ce que `jk` n'est PAS
+
+Code d'alarme Coban non reconnu, remonté en « Alarme inconnue ». **2 occurrences** en trois mois,
+sur 2 boîtiers. Dans les DEUX cas le véhicule roulait (31,8 et 109,8 km/h) et a continué à rouler
+ensuite. Ce n'est donc pas un signal d'accident, et le mapper vers ACCIDENT créerait de fausses
+alertes critiques. Le mapping `accident alarm` -> ACCIDENT et `collision` -> COLLISION existe déjà
+et fonctionne : ce qui manque, c'est que le boîtier émette ces codes.
+
 ### Chantiers restants
 
 - **Point 2** — retirer le bouton « Recalculer » de la page Rapports. Le retard se résorbe
