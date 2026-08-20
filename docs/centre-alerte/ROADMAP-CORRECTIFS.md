@@ -50,7 +50,7 @@ Puis créer chaque branche de lot **depuis `origin/main` à jour**, jamais depui
 
 | # | Lot | Fiche | Gravité | Effort | Risque | Dépend de |
 |---|---|---|---|---|---|---|
-| **1** | Borner dans le temps la garde « coupure commandée » | [TRK-032](./REFERENCE-ERREURS.md#trk-032) | 🔴 **1** | S | **Élevé** — garde de sécurité | — |
+| **1** | ✅ **FAIT** — Borner dans le temps la garde « coupure commandée » | [TRK-032](./REFERENCE-ERREURS.md#trk-032) | 🔴 **1** | S | **Élevé** — garde de sécurité | — |
 | **2** | Rattacher l'accusé de réception SMS à sa commande | [TRK-036](./REFERENCE-ERREURS.md#trk-036) | 2 | M | Faible | — |
 | **3** | Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
 | **4** | Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
@@ -72,6 +72,23 @@ d'exploitation qui remarche.
 # Lot 1 — Borner dans le temps la garde « coupure commandée »
 
 **Fiche : [TRK-032](./REFERENCE-ERREURS.md#trk-032) · Gravité 1 · Effort S · Risque ÉLEVÉ**
+
+> ## ✅ FAIT le 2026-08-20 — commit `e88a5eec`
+>
+> **Branche `fix/trk-032-borne-coupure-commandee`, partie d'`origin/main` @ `42dcdb38`. NON poussée,
+> NON déployée** — relecture humaine obligatoire (garde de sécurité).
+>
+> | | |
+> |---|---|
+> | Constante posée | `FENETRE_COUPURE_COMMANDEE_MS = 15 min`, dans `alerts.service.ts`, commentée avec la mesure qui la justifie |
+> | Décision | `select: { action, createdAt }` puis comparaison de date — le contrat de `analyserAlimentation` reste **pur et sans horloge** |
+> | `SENT` | **conservé** — voir la correction ci-dessous |
+> | Tests | **6 nouveaux**, dont **2 qui échouent sur le code d'avant** (CUT de 6 h, CUT de 3 jours) — vérifié en remettant le service dans son état d'origine |
+> | Vérifications | `tsc --noEmit` ✅ · **49 tests / 3 suites** ✅ (alerts, alarme-alimentation, **smoke-boot DI**) |
+> | Autres appelants | **aucun** — `analyserAlimentation` n'est utilisé nulle part ailleurs |
+>
+> ⚠️ **Reste à faire côté production** : la vérification prescrite ci-dessous (comptage de nuit)
+> **ne pourra être faite qu'après déploiement**. Elle est portée au prochain passage d'audit.
 
 ## Pourquoi
 
@@ -140,11 +157,33 @@ regarde le niveau de batterie — pas celle-ci.*
 2. **Choisir la fenêtre, et l'écrire comme une constante nommée**, avec en commentaire la mesure
    ci-dessus qui la justifie. **15 minutes** est un point de départ défendable : très au-dessus du
    temps de chute de l'alimentation, très en dessous des 4 h 32 observées.
-3. **Exclure le statut `SENT`.** Une commande simplement *émise* ne prouve rien : `ackedAt` vaut
-   **0 sur 4 733 commandes** ([TRK-014](./REFERENCE-ERREURS.md#trk-014)), et
-   [TRK-012](./REFERENCE-ERREURS.md#trk-012) montre que la trame part au mauvais format. *Ce geste
-   seul ne suffit pas — 30 des 33 boîtiers silenciés sont en `ACKNOWLEDGED` — mais il retire un
-   motif de silence qui ne repose sur rien.*
+3. ~~**Exclure le statut `SENT`.**~~ 🔴 **ABANDONNÉ à l'exécution — cette étape reposait sur une
+   citation fausse.** Voir l'encadré ci-dessous.
+
+> ### 🔴 Correction apportée pendant l'exécution — 2026-08-20
+>
+> La version initiale de ce lot prescrivait d'exclure `SENT`, au motif qu'« aucune commande n'est
+> jamais acquittée : `ackedAt` = 0 sur 4 733 », en citant [TRK-014](./REFERENCE-ERREURS.md#trk-014).
+> **La citation portait sur la mauvaise table.** TRK-014 décrit `tracker_commands` — les commandes de
+> cadence. Les commandes moteur vivent dans `engine_control_commands`, et **elles sont acquittées** :
+> **2 857 `ACKNOWLEDGED`** en base.
+>
+> Vérifié dans le code (`engine-control.service.ts`) : le chemin TCP passe bien en `ACKNOWLEDGED` à
+> la réception de l'accusé, **mais le repli SMS écrit `SENT` avec `lastError: 'Envoyé via SMS (TCP
+> indisponible)'` et n'en sort jamais** — c'est exactement
+> [TRK-036](./REFERENCE-ERREURS.md#trk-036).
+>
+> **Exclure `SENT` rendrait donc l'application aveugle à ses propres coupes sur le chemin le moins
+> fiable et le plus sensible** — le repli du coupe-circuit. `SENT` est **conservé**.
+>
+> 🔑 **La borne de temps ferme à elle seule le danger réel** : une coupe restée `SENT` pour toujours
+> qui ferait taire l'alarme à vie. *Le statut ne dit pas depuis quand — c'est la date qui tranche,
+> pas le statut.*
+>
+> **Leçon de méthode, à ne pas perdre** : une fiche de ce référentiel s'applique à **une table
+> nommée**, pas à une idée générale (« les commandes ne sont jamais acquittées »). Généraliser une
+> mesure au-delà de son périmètre fabrique un correctif qui a l'air fondé. *Relire la fiche citée
+> avant de s'appuyer dessus coûte une minute.*
 
 ## Tests
 

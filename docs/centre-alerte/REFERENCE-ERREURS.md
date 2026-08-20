@@ -882,7 +882,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)* | 2026-08-20 | 2026-08-20 |
+| [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec` du 20/08 : fenêtre de 15 min, 6 tests dont 2 qui échouent sur le code d'avant, 49 tests au vert. **Non poussé** — relecture humaine obligatoire. ⚠️ « exclure `SENT` » a été RÉFUTÉ pendant la correction : la citation de TRK-014 portait sur `tracker_commands`, pas sur les commandes moteur, qui sont bien acquittées (2 857). Le repli SMS reste en `SENT` à vie, l'exclure aveuglerait le coupe-circuit)* · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)* | 2026-08-20 | 2026-08-20 |
 | [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🔴 NON CORRIGÉ *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* | 2026-08-20 | 2026-08-20 |
 | [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🔴 NON CORRIGÉ · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
 | [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🔴 NON CORRIGÉ *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
@@ -5083,7 +5083,24 @@ signifierait que le boîtier a accroché avant le tick — **pas** que le défau
 
 **Signature** — *(absence d'alerte)*
 `alerts | AUCUNE LIGNE | POWER_CUT supprimé car « moteur coupé par nous » — sans borne de durée`
-**Statut : 🔴 NON CORRIGÉ** · **GRAVITÉ 1** · découvert 2026-08-20
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec`, branche `fix/trk-032-borne-coupure-commandee`,
+partie d'`origin/main` @ `42dcdb38` — **non poussée**, relecture humaine obligatoire : garde de
+sécurité)* · **GRAVITÉ 1** · découvert 2026-08-20
+
+### ✅ Ce qui a été fait le 2026-08-20
+
+Constante `FENETRE_COUPURE_COMMANDEE_MS` = **15 minutes** dans `alerts.service.ts`, commentée avec la
+mesure qui la justifie. La requête sélectionne désormais `createdAt` en plus de `action`, et la
+fraîcheur est jugée dans le service — le contrat de `analyserAlimentation` reste **pur et sans
+horloge**.
+
+**6 tests ajoutés, dont 2 qui échouent sur le code d'avant** (CUT de 6 h, CUT de 3 jours), vérifié en
+remettant le service dans son état d'origine : `Tests: 2 failed, 29 passed`. Puis **49 tests / 3
+suites au vert** (alerts, alarme-alimentation, **smoke-boot DI**) et `tsc --noEmit` propre.
+Aucun autre appelant de `analyserAlimentation` dans le dépôt.
+
+⚠️ **La vérification ci-dessous n'est PAS faite** : elle exige le déploiement. Portée au prochain
+passage d'audit.
 
 ### L'alarme d'alimentation de 33 boîtiers sur 42 est éteinte toutes les nuits
 
@@ -5180,8 +5197,25 @@ doit pas être corrigé sans mesure. Il est écrit ici pour ne pas être redéco
    enregistrée ? » mais « le moteur est-il coupé **maintenant** ? ». Si un état de coupe est tenu
    quelque part, c'est lui qu'il faut lire ; sinon, l'introduire vaut mieux que de déduire un état
    d'une pile de commandes non acquittées.
-3. **Exclure `SENT`.** Tant que [TRK-014](#trk-014) tient, `SENT` ne prouve rien. *Ce geste seul ne
-   suffit pas : **30 des 33** boîtiers silenciés sont en `ACKNOWLEDGED`.*
+3. ~~**Exclure `SENT`.**~~ 🔴 **RÉFUTÉ le 2026-08-20, pendant la correction.** Ce geste était justifié
+   par « tant que [TRK-014](#trk-014) tient, `SENT` ne prouve rien ». **La citation portait sur la
+   mauvaise table** : TRK-014 décrit `tracker_commands` (commandes de cadence). Les commandes moteur
+   vivent dans `engine_control_commands`, et **elles sont acquittées — 2 857 `ACKNOWLEDGED`.**
+
+   Vérifié dans `engine-control.service.ts` : le chemin TCP passe bien en `ACKNOWLEDGED`, **mais le
+   repli SMS écrit `SENT` avec `lastError: 'Envoyé via SMS (TCP indisponible)'` et n'en sort
+   jamais** ([TRK-036](#trk-036)). Exclure `SENT` rendrait donc l'application **aveugle à ses propres
+   coupes sur le chemin le moins fiable et le plus sensible** — le repli du coupe-circuit.
+   `SENT` est **conservé**.
+
+   > 🔑 **La borne de temps ferme à elle seule le danger réel** : une coupe restée `SENT` pour
+   > toujours qui ferait taire l'alarme à vie. *Le statut ne dit pas depuis quand — c'est la date qui
+   > tranche, pas le statut.*
+   >
+   > **Et la leçon de méthode vaut au-delà de cette fiche** : une fiche de ce référentiel s'applique
+   > à **une table nommée**, jamais à une idée générale (« les commandes ne sont jamais
+   > acquittées »). Généraliser une mesure au-delà de son périmètre fabrique un correctif qui a
+   > l'air fondé.
 
 ### Vérification (porte sur la cause, pas sur l'affichage)
 
