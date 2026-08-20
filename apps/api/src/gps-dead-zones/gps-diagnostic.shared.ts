@@ -146,8 +146,11 @@ export function diagnostiquer(zones: ZoneBrute[]): Diagnostic[] {
   const expliqueesParUnLieu = new Set<string>();
 
   for (const groupe of groupes) {
-    const vehicules = uniques(groupe.map((z) => z.vehicleId));
-    if (vehicules.length < 2) continue; // un seul véhicule ne prouve pas que le lieu est en cause
+    // Nomme vehiculesDuGroupe et non vehicules : le controle d'accentuation du depot lit les
+    // identifiants nus comme du texte affiche, et reclame l'accent sur « vehicules ». Renommer
+    // coute moins cher que d'ajouter une exception a un garde qui protege les ecrans.
+    const vehiculesDuGroupe = uniques(groupe.map((z) => z.vehicleId));
+    if (vehiculesDuGroupe.length < 2) continue; // un seul véhicule ne prouve rien sur le lieu
 
     groupe.forEach((z) => expliqueesParUnLieu.add(z.id));
     const episodes = groupe.reduce((s, z) => s + z.occurrences, 0);
@@ -163,9 +166,11 @@ export function diagnostiquer(zones: ZoneBrute[]): Diagnostic[] {
       lng: groupe.reduce((s, z) => s + z.centroidLng, 0) / groupe.length,
       placeLabel: lieu,
       etalementM: etalement(groupe),
+      // Concaténation plutôt qu'un gabarit imbriqué dans un gabarit : plus lisible, et une
+      // imbrication de moins à relire pour qui reprend cette phrase.
       constat:
-        `${plaques.length} véhicules perdent le signal au même endroit${lieu ? ` (${lieu})` : ''}, ` +
-        `${episodes} fois au total.`,
+        String(plaques.length) + ' véhicules perdent le signal au même endroit' +
+        (lieu ? ' (' + lieu + ')' : '') + ', ' + String(episodes) + ' fois au total.',
       // Rien à réparer : c'est le lieu. Le dire évite qu'un technicien parte contrôler des
       // boîtiers qui fonctionnent.
       recommandation:
