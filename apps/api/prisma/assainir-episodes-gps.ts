@@ -13,10 +13,21 @@
  * Sans ce script, ils ne se fermeront jamais — la borne du correctif les exclut par
  * construction, et c'est voulu : l'ingestion ne doit pas réparer le passé.
  *
- * ── CE QU'IL FAIT, ET CE QU'IL NE FAIT PAS ───────────────────────────────────────────
+ * ── DEUX POPULATIONS, ET LA SECONDE EST CELLE QUI FAIT LE DÉGÂT ──────────────────────
  *
- * Pour chaque épisode ouvert, il cherche **la première position valide postérieure à la
- * perte**. C'est la vraie date de retour, celle que le code aurait dû écrire.
+ * ⚠️ La version initiale de ce script ne traitait que les épisodes OUVERTS. C'était
+ * insuffisant, et la mesure le dit : au 2026-08-20, **13 des 20 épisodes CLOS portent une
+ * durée fabriquée**, et ce sont eux — pas les ouverts — qui alimentent la médiane affichée à
+ * l'exploitant. Assainir les seuls épisodes ouverts aurait laissé l'écran mentir.
+ *
+ *   1. **Épisodes ouverts** — jamais refermés, ils ne comptent pas encore dans la médiane
+ *      mais s'y inviteront au prochain retour du véhicule ;
+ *   2. **Épisodes clos à une date FAUSSE** — reconnaissables sans ambiguïté : le boîtier a
+ *      émis des positions PENDANT l'absence qu'ils déclarent. Ils faussent la médiane
+ *      aujourd'hui.
+ *
+ * Pour les deux, la vraie date de retour est la même : **la première position valide
+ * postérieure à la perte**. C'est ce que le code aurait dû écrire.
  *
  * ⚠️ Il ne ferme JAMAIS un épisode à `now()`. C'est exactement le défaut qu'on répare, et
  * l'appliquer en masse serait le rejouer vingt fois d'un coup.
@@ -55,7 +66,9 @@ type Ligne = {
   lostAt: Date;
   retour: Date | null;
   positionsPendant: number;
-  verdict: 'REPARABLE' | 'TOUJOURS_PERDU' | 'HORS_RETENTION';
+  verdict: 'A_FERMER' | 'DATE_A_CORRIGER' | 'TOUJOURS_PERDU' | 'HORS_RETENTION';
+  /** Date de retour actuellement inscrite, pour les épisodes déjà clos (donc faux). */
+  retourActuel: Date | null;
 };
 
 function jours(ms: number): string {
@@ -65,14 +78,14 @@ function jours(ms: number): string {
 async function main(): Promise<void> {
   const horizon = new Date(Date.now() - RETENTION_POSITIONS_JOURS * 86_400_000);
 
+  // Les DEUX populations d'un coup : ouverts, et clos (dont on vérifiera la date plus bas).
   const ouverts = await prisma.gpsLossEvent.findMany({
-    where: { recoveredAt: null },
     orderBy: [{ vehicleId: 'asc' }, { lostAt: 'asc' }],
-    select: { id: true, vehicleId: true, lostAt: true },
+    select: { id: true, vehicleId: true, lostAt: true, recoveredAt: true },
   });
 
   console.log(
-    `\n${APPLIQUER ? '⚠️  MODE ÉCRITURE' : '🔍 LECTURE SEULE (DRY-RUN)'} — ${ouverts.length} épisode(s) ouvert(s)\n`,
+    `\n${APPLIQUER ? '⚠️  MODE ÉCRITURE' : '🔍 LECTURE SEULE (DRY-RUN)'} — ${ouverts.length} épisode(s) examiné(s)\n`,
   );
   if (ouverts.length === 0) {
     console.log('Rien à assainir.');
@@ -99,7 +112,40 @@ async function main(): Promise<void> {
     const plaque = v?.plate ?? '(sans véhicule)';
 
     if (trackerIds.length === 0) {
-      lignes.push({ id: ep.id, plaque, lostAt: ep.lostAt, retour: null, positionsPendant: 0, verdict: 'TOUJOURS_PERDU' });
+      if (!ep.recoveredAt) {
+        lignes.push({ id: ep.id, plaque, lostAt: ep.lostAt, retour: null, retourActuel: null, positionsPendant: 0, verdict: 'TOUJOURS_PERDU' });
+      }
+      continue;
+    }
+
+    // ⚠️ Pour un épisode DÉJÀ CLOS, la seule question qui compte est : le boîtier a-t-il émis
+    // des positions PENDANT l'absence déclarée ? Si oui, la durée est fabriquée. Si non, la
+    // date en place est plausible et on n'y touche pas — on ne réécrit pas ce qui va bien.
+    if (ep.recoveredAt) {
+      const pendant = await prisma.position.count({
+        where: {
+          trackerId: { in: trackerIds },
+          valid: true,
+          timestamp: { gt: ep.lostAt, lt: ep.recoveredAt },
+        },
+      });
+      if (pendant === 0) continue;
+
+      const vraie = await prisma.position.findFirst({
+        where: { trackerId: { in: trackerIds }, valid: true, timestamp: { gt: ep.lostAt } },
+        orderBy: { timestamp: 'asc' },
+        select: { timestamp: true },
+      });
+      if (!vraie) continue; // ne devrait pas arriver : `pendant > 0` implique qu'il y en a une
+      lignes.push({
+        id: ep.id,
+        plaque,
+        lostAt: ep.lostAt,
+        retour: vraie.timestamp,
+        retourActuel: ep.recoveredAt,
+        positionsPendant: pendant,
+        verdict: 'DATE_A_CORRIGER',
+      });
       continue;
     }
 
@@ -118,19 +164,23 @@ async function main(): Promise<void> {
         plaque,
         lostAt: ep.lostAt,
         retour: null,
+        retourActuel: null,
         positionsPendant: 0,
         verdict: ep.lostAt < horizon ? 'HORS_RETENTION' : 'TOUJOURS_PERDU',
       });
       continue;
     }
 
-    // Combien de positions le boîtier a-t-il émises pendant la prétendue absence ? C'est
-    // la mesure qui a réfuté les 35,18 jours de FS-253-HR — on la garde pour le rapport.
     const positionsPendant = await prisma.position.count({
       where: { trackerId: { in: trackerIds }, valid: true, timestamp: { gt: ep.lostAt } },
     });
 
-    lignes.push({ id: ep.id, plaque, lostAt: ep.lostAt, retour: premiere.timestamp, positionsPendant, verdict: 'REPARABLE' });
+    lignes.push({ id: ep.id, plaque, lostAt: ep.lostAt, retour: premiere.timestamp, retourActuel: null, positionsPendant, verdict: 'A_FERMER' });
+  }
+
+  if (lignes.length === 0) {
+    console.log('Rien à assainir : aucun épisode ouvert réparable, aucune date fabriquée.');
+    return;
   }
 
   const largeur = Math.max(...lignes.map((l) => l.plaque.length), 8);
@@ -140,33 +190,47 @@ async function main(): Promise<void> {
   console.log('─'.repeat(largeur + 76));
   for (const l of lignes) {
     const duree = l.retour ? jours(l.retour.getTime() - l.lostAt.getTime()).padStart(8) : '       —';
+    const fautive = l.retourActuel ? `  (au lieu de ${l.retourActuel.toISOString().slice(0, 10)})` : '';
     console.log(
       `${l.plaque.padEnd(largeur)}  ${l.lostAt.toISOString().slice(0, 19)}  ` +
         `${(l.retour ? l.retour.toISOString().slice(0, 19) : '—').padEnd(20)}  ${duree}  ` +
-        `${String(l.positionsPendant).padStart(9)}  ${l.verdict}`,
+        `${String(l.positionsPendant).padStart(9)}  ${l.verdict}${fautive}`,
     );
   }
 
-  const reparables = lignes.filter((l) => l.verdict === 'REPARABLE');
+  const aFermer = lignes.filter((l) => l.verdict === 'A_FERMER');
+  const aCorriger = lignes.filter((l) => l.verdict === 'DATE_A_CORRIGER');
   const perdus = lignes.filter((l) => l.verdict === 'TOUJOURS_PERDU');
   const horsRetention = lignes.filter((l) => l.verdict === 'HORS_RETENTION');
 
   console.log(
-    `\n${reparables.length} réparable(s) · ${perdus.length} toujours perdu(s), laissé(s) ouvert(s) · ` +
+    `\n${aFermer.length} à fermer (ouverts) · ${aCorriger.length} date(s) FABRIQUÉE(S) à corriger · ` +
+      `${perdus.length} toujours perdu(s), laissé(s) ouvert(s) · ` +
       `${horsRetention.length} hors rétention (${RETENTION_POSITIONS_JOURS} j), laissé(s) ouvert(s)`,
   );
 
   if (!APPLIQUER) {
-    console.log('\n🔍 Rien n’a été écrit. Relancer avec --apply pour appliquer les lignes RÉPARABLE.');
+    console.log('\n🔍 Rien n’a été écrit. Relancer avec --apply pour appliquer.');
     return;
   }
 
   let ecrits = 0;
-  for (const l of reparables) {
+  for (const l of aFermer) {
     // ⚠️ `recoveredAt: null` dans le `where` : si un vrai retour est survenu entre la
     // lecture et l'écriture, on ne l'écrase pas. Le script est rejouable sans risque.
     const { count } = await prisma.gpsLossEvent.updateMany({
       where: { id: l.id, recoveredAt: null },
+      data: { recoveredAt: l.retour as Date },
+    });
+    ecrits += count;
+  }
+  for (const l of aCorriger) {
+    // ⚠️ Ici on RÉÉCRIT une date existante — le seul endroit de tout ce dossier où on touche
+    // à une valeur déjà posée. C'est justifié parce qu'elle est réfutée par la donnée
+    // elle-même : le boîtier a émis des positions pendant l'absence déclarée. Le `where`
+    // reprend la date fautive : si elle a changé depuis la lecture, on s'abstient.
+    const { count } = await prisma.gpsLossEvent.updateMany({
+      where: { id: l.id, recoveredAt: l.retourActuel as Date },
       data: { recoveredAt: l.retour as Date },
     });
     ecrits += count;
