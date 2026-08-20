@@ -57,7 +57,7 @@ PAYLOAD=$(jq -n \
   --arg text "$CORPS" \
   '{from:$from, to:[$to], subject:$subject, text:$text}')
 
-REPONSE=$(curl -s -w '\n%{http_code}' -X POST https://api.resend.com/emails \
+REPONSE=$(curl -s --max-time 30 --connect-timeout 10 -w '\n%{http_code}' -X POST https://api.resend.com/emails \
   -H "Authorization: Bearer $KEY" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" 2>&1)
