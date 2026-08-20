@@ -28,14 +28,30 @@
  *   — on ne touche jamais un trajet qui a DÉJÀ un récit (`narrative IS NULL` dans la requête ET
  *     dans l'UPDATE) : deux passages concurrents ne peuvent pas s'écraser.
  *
- * ── PÉRIMÈTRE ────────────────────────────────────────────────────────────────────────
+ * ── PÉRIMÈTRE : LE COURANT, PAS L'HISTORIQUE ─────────────────────────────────────────
  *
- * Seules les sociétés dont l'IA est ACTIVE (`fleets."aiEnabled"`) sont servies — la même porte
- * que l'application. Le fait que ce soit gratuit ne change pas ce à quoi un client a droit.
+ * Seules les sociétés dont l'IA est ACTIVE (`fleets."aiEnabled"`) sont servies — la même porte que
+ * l'application. Que ce soit absorbé par l'abonnement ne change pas ce à quoi un client a droit.
+ *
+ * Et seuls les trajets RÉCENTS sont narrés — la fenêtre porte sur la date du TRAJET
+ * (`trips."startedAt"`), pas sur celle de la ligne d'analyse. La nuance n'est pas cosmétique :
+ * l'analyse déterministe rattrape en ce moment son propre retard, donc `trip_analyses."updatedAt"`
+ * est frais sur des milliers de vieux trajets. Filtrer dessus ramenait 4 761 candidats au lieu
+ * de 234 — c'est-à-dire tout l'historique, exactement ce qu'on avait décidé de ne pas faire.
+ *
+ * Décision du 20/08 : le retard historique n'est PAS rattrapé. Un récit sur le trajet d'hier a une
+ * chance d'être lu ; sur un trajet d'il y a six semaines, aucune.
+ *
+ * ── UN APPEL, PLUSIEURS TRAJETS ──────────────────────────────────────────────────────
+ *
+ * Chaque invocation de la CLI renvoie son contexte complet, quel que soit le travail demandé :
+ * un péage fixe par appel. Mesuré le 20/08 : un trajet par appel revient à peu près au double
+ * de cinq trajets par appel. Grouper n'est donc pas une optimisation, c'est la condition pour
+ * que le passage tienne dans une nuit.
  *
  * ── USAGE ────────────────────────────────────────────────────────────────────────────
  *
- *   node outils/agent-recit-trajet.cjs [--minutes=50] [--lot=10] [--essai]
+ *   node outils/agent-recit-trajet.cjs [--minutes=110] [--lot=5] [--heures=48] [--modele=sonnet] [--essai]
  *
  *   --essai   n'écrit RIEN et n'appelle PAS le modèle : montre les trajets retenus et le payload
  *             exact qui serait envoyé. Sert à vérifier la sélection et le module partagé.
@@ -48,23 +64,42 @@ const path = require('node:path');
 const VPS = 'root@72.62.26.240';
 const CONTENEUR = 'tracky-postgres';
 const BASE = { user: 'tracky', db: 'tracky_prod' };
-/** Pause entre deux récits — on ne mitraille pas sa propre session. */
+/**
+ * Le BINAIRE de la CLI.
+ *
+ * ⚠️ Sous Windows, `claude` est un script (`.cmd`, `.ps1`) : `execFileSync('claude')` echoue en
+ *    ENOENT / EINVAL selon la variante. Node refuse de lancer un `.cmd` sans shell depuis 20.x,
+ *    et passer par un shell obligerait a echapper un prompt multiligne — la porte ouverte aux
+ *    injections. On vise donc le binaire reel.
+ */
+const CLI = process.platform === 'win32'
+  ? 'C:/Program Files/nodejs/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+  : 'claude';
+/** Pause entre deux lots — on ne mitraille pas sa propre session. */
 let PAUSE_MS = 1500;
 /** Attentes avant de rejouer un trajet refusé. */
 const BACKOFF_MS = [4000, 12000, 30000];
 /** Au-delà, on considère que quelque chose est cassé et on s'arrête proprement. */
 const ECHECS_CONSECUTIFS_MAX = 4;
-/** Temps maximum accordé à UN récit. Au-delà, on abandonne ce trajet, pas le passage. */
-const TIMEOUT_RECIT_MS = 180_000;
+/** Temps maximum accorde a UN LOT. Au-dela, on abandonne le lot, pas le passage. */
+const TIMEOUT_LOT_MS = 300_000;
 
 const args = process.argv.slice(2);
 const opt = (nom, defaut) => {
   const a = args.find((x) => x.startsWith(`--${nom}=`));
   return a ? Number(a.split('=')[1]) : defaut;
 };
+const texteOpt = (nom, defaut) => {
+  const a = args.find((x) => x.startsWith(`--${nom}=`));
+  return a ? a.split('=').slice(1).join('=') : defaut;
+};
 const ESSAI = args.includes('--essai');
-const MINUTES = opt('minutes', 50);
-const LOT = opt('lot', 10);
+const MINUTES = opt('minutes', 110);
+/** Trajets envoyes en UN appel. Au-dela, la reponse devient longue et le JSON plus fragile. */
+const LOT = opt('lot', 5);
+/** Fenetre du « courant ». Un passage par nuit couvre largement 48 h. */
+const HEURES = opt('heures', 48);
+const MODELE = texteOpt('modele', 'sonnet');
 PAUSE_MS = opt('pause', PAUSE_MS);
 
 // ── Les modules PARTAGÉS avec l'application ──────────────────────────────────────────
@@ -101,22 +136,23 @@ function psql(sql, { lecture = true } = {}) {
 const q = (s) => `'${String(s ?? '').replace(/'/g, "''")}'`;
 
 /**
- * Trajets a narrer : analyses SANS recit, dans une societe dont l'IA est active.
+ * Trajets a narrer : analyses SANS recit, societe a IA active, et RECENTES.
  *
- * Les PLUS RECENTS d'abord, volontairement : un recit sur le trajet d'hier a une chance d'etre lu,
- * un recit sur un trajet d'il y a six semaines n'en a aucune. Si l'agent ne rattrape jamais tout
- * l'historique, ce n'est pas grave — c'est meme le bon arbitrage.
+ * La fenetre est la decision de fond : on ne rattrape pas l'historique. Les plus recents d'abord,
+ * pour que le passage suivant reprenne naturellement la ou celui-ci s'est arrete.
  */
 function trajetsANarrer(limite) {
   const sql = `
     SELECT a."tripId", row_to_json(a)::text
     FROM trip_analyses a
+    JOIN trips    t ON t.id = a."tripId"
     JOIN vehicles v ON v.id = a."vehicleId"
-    JOIN fleets  f ON f.id = v."fleetId"
+    JOIN fleets   f ON f.id = v."fleetId"
     WHERE a.narrative IS NULL
       AND f."aiEnabled" = true
-    ORDER BY a."updatedAt" DESC
-    LIMIT ${Number(limite) || 10};`;
+      AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours'
+    ORDER BY t."startedAt" DESC
+    LIMIT ${Number(limite) || 5};`;
   return psql(sql)
     .split('\n')
     .map((l) => l.trim())
@@ -135,55 +171,75 @@ function trajetsANarrer(limite) {
 function resteAFaire() {
   const sql = `
     SELECT count(*) FROM trip_analyses a
+    JOIN trips    t ON t.id = a."tripId"
     JOIN vehicles v ON v.id = a."vehicleId"
-    JOIN fleets  f ON f.id = v."fleetId"
-    WHERE a.narrative IS NULL AND f."aiEnabled" = true;`;
+    JOIN fleets   f ON f.id = v."fleetId"
+    WHERE a.narrative IS NULL AND f."aiEnabled" = true
+      AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours';`;
   return Number(psql(sql).trim()) || 0;
 }
 
 // ── Le modele, via l'abonnement du poste ─────────────────────────────────────────────
 
 /**
- * Un recit. Renvoie null si la reponse est douteuse — jamais un recit approximatif.
+ * Un appel, PLUSIEURS recits. Renvoie une Map index -> recit assaini.
  *
- * `--max-turns 1` et aucun outil autorise : on veut UNE reponse a partir des donnees fournies,
- * pas un agent qui part explorer le disque. C'est aussi ce qui rend la duree previsible.
+ * Chaque invocation de la CLI renvoie son contexte complet : c'est un peage fixe, paye que l'on
+ * demande un trajet ou dix. Grouper est donc la condition pour que le passage tienne dans une nuit.
+ *
+ * `--max-turns 1` et aucun outil autorise : on veut UNE reponse a partir des donnees fournies, pas
+ * un agent qui part explorer le disque. C'est aussi ce qui rend la duree previsible.
+ *
+ * Un trajet dont le recit manque ou est illisible n'est PAS invente : il est simplement absent de
+ * la Map, et repassera au prochain creneau.
  */
-function demanderRecit(payload) {
+function demanderRecits(lot) {
   const consigne =
-    `Voici les donnees deterministes d'un trajet, deja calculees et fiables.\n\n` +
-    `${JSON.stringify(payload, null, 1)}\n\n` +
-    `Reponds UNIQUEMENT par un objet JSON valide conforme a ce schema, sans texte autour, ` +
-    `sans balise de code :\n${JSON.stringify(TRIP_NARRATIVE_SCHEMA)}`;
+    `Voici ${lot.length} trajet(s), chacun avec ses donnees deterministes deja calculees et fiables.
+
+` +
+    `${JSON.stringify(lot.map((x, i) => ({ index: i, donnees: x.payload })))}
+
+` +
+    `Pour CHAQUE trajet, produis un recit. Reponds UNIQUEMENT par un tableau JSON de ${lot.length} ` +
+    `objet(s), dans le meme ordre, chacun de la forme ` +
+    `{"index":<n>,"narrative":"...","advice":"...","trustScore":<0-100>}. ` +
+    `Aucun texte autour, aucune balise de code.`;
 
   const sortie = execFileSync(
-    'claude',
+    CLI,
     ['-p', '--output-format', 'json', '--max-turns', '1', '--allowed-tools', '',
-     '--append-system-prompt', renderTripNarrativeSystem()],
-    { input: consigne, encoding: 'utf8', timeout: TIMEOUT_RECIT_MS, maxBuffer: 16 * 1024 * 1024 },
+     '--model', MODELE, '--append-system-prompt', renderTripNarrativeSystem()],
+    { input: consigne, encoding: 'utf8', timeout: TIMEOUT_LOT_MS, maxBuffer: 32 * 1024 * 1024 },
   );
 
-  // La CLI rend une enveloppe JSON ; le texte du modele est dans `result`.
   let texte;
   try {
     const env = JSON.parse(sortie);
     if (env.is_error) throw new Error(env.result || 'erreur CLI');
     texte = typeof env.result === 'string' ? env.result : JSON.stringify(env.result);
   } catch (e) {
-    // Reponse non enveloppee (ancienne CLI) : on tente le texte brut.
-    texte = sortie;
-    if (/OAuth|authenticate|401/i.test(sortie)) throw new Error(`session Claude Code non authentifiee : ${sortie.trim().slice(0, 160)}`);
+    if (/OAuth|authenticate|401|revoked/i.test(sortie)) {
+      throw new Error(`session Claude Code non authentifiee : ${sortie.trim().slice(0, 160)}`);
+    }
     if (e && /erreur CLI/.test(e.message)) throw e;
+    texte = sortie;
   }
 
-  // Le modele encadre parfois son JSON malgre la consigne : on prend le premier objet complet.
-  const m = texte.match(/\{[\s\S]*\}/);
-  if (!m) return null;
+  const m = texte.match(/\[[\s\S]*\]/);
+  if (!m) return new Map();
+  let brut;
   try {
-    return assainirRecit(JSON.parse(m[0]));
+    brut = JSON.parse(m[0]);
   } catch {
-    return null;
+    return new Map();
   }
+  const out = new Map();
+  for (const r of Array.isArray(brut) ? brut : []) {
+    const i = Number(r && r.index);
+    if (Number.isInteger(i) && i >= 0 && i < lot.length) out.set(i, assainirRecit(r));
+  }
+  return out;
 }
 
 // ── Ecriture ─────────────────────────────────────────────────────────────────────────
@@ -228,83 +284,94 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
   const fin = debut + MINUTES * 60_000;
   const h = () => new Date().toISOString().slice(11, 19);
 
-  console.log(`[${h()}] agent recit de trajet — lots de ${LOT}, budget ${MINUTES} min${ESSAI ? ' (ESSAI, aucune ecriture, aucun appel)' : ''}`);
+  console.log(
+    `[${h()}] agent recit de trajet — lots de ${LOT}, fenetre ${HEURES} h, modele ${MODELE}, ` +
+      `budget ${MINUTES} min${ESSAI ? ' (ESSAI, aucune ecriture, aucun appel)' : ''}`,
+  );
   const avant = resteAFaire();
-  console.log(`[${h()}] trajets sans recit (societes IA active) : ${avant}`);
+  console.log(`[${h()}] trajets recents sans recit (societes IA active) : ${avant}`);
   if (avant === 0) {
     console.log(`[${h()}] rien a faire — termine.`);
     return;
   }
 
-  let ecrits = 0, refuses = 0, echecs = 0;
+  let ecrits = 0;
+  let refuses = 0;
+  let lotsRates = 0;
 
   while (Date.now() < fin) {
-    const lot = trajetsANarrer(LOT);
-    if (lot.length === 0) {
-      console.log(`[${h()}] plus aucun trajet a narrer — termine.`);
+    const brut = trajetsANarrer(LOT);
+    if (brut.length === 0) {
+      console.log(`[${h()}] plus aucun trajet recent a narrer — termine.`);
       break;
     }
+    const lot = brut.map((x) => ({ ...x, payload: construirePayloadRecit(x.ligne) }));
 
-    for (const { tripId, ligne } of lot) {
-      if (Date.now() >= fin) break;
-      const payload = construirePayloadRecit(ligne);
+    if (ESSAI) {
+      console.log(`[${h()}] ESSAI — ${lot.length} trajet(s) retenu(s), payload du premier :`);
+      console.log(JSON.stringify(lot[0].payload, null, 1).split(String.fromCharCode(10)).slice(0, 22).join(String.fromCharCode(10)));
+      console.log(`[${h()}] ESSAI : arret sans appel ni ecriture.`);
+      return;
+    }
 
-      if (ESSAI) {
-        console.log(`[${h()}] ESSAI ${tripId} — payload qui serait envoye :`);
-        console.log(JSON.stringify(payload, null, 1).split('\n').slice(0, 24).join('\n'));
-        console.log(`[${h()}] ESSAI : arret apres un trajet.`);
+    // Un seul appel pour tout le lot.
+    let recits = new Map();
+    const t0 = Date.now();
+    try {
+      recits = demanderRecits(lot);
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      if (/non authentifiee/i.test(msg)) {
+        console.error(
+          `[${h()}] ARRET : ${msg}` +
+            ` — l'agent depend de la session Claude Code du poste. Ouvrir un terminal (compte` +
+            ` YOUNESS, pas « en tant qu'administrateur »), lancer « claude » puis /login.`,
+        );
+        process.exit(3);
+      }
+      console.warn(`  lot abandonne : ${msg.slice(0, 140)}`);
+      if (++lotsRates >= ECHECS_CONSECUTIFS_MAX) {
+        console.error(`[${h()}] ${lotsRates} lots rates d'affilee — arret propre, rien de perdu.`);
         return;
       }
+      await dors(BACKOFF_MS[Math.min(lotsRates - 1, BACKOFF_MS.length - 1)]);
+      continue;
+    }
+    const secondes = Math.round((Date.now() - t0) / 1000);
 
-      let recit = null;
-      for (let essai = 0; essai <= BACKOFF_MS.length; essai++) {
-        try {
-          recit = demanderRecit(payload);
-          break;
-        } catch (e) {
-          const msg = (e && e.message) || String(e);
-          if (/non authentifiee/i.test(msg)) {
-            console.error(
-              `\n[${h()}] ARRET : ${msg}\n\n` +
-                `L'agent depend de la session Claude Code du poste. Ouvrir un terminal et se\n` +
-                `reconnecter (commande « claude », puis /login), puis relancer.\n`,
-            );
-            process.exit(3);
-          }
-          if (essai >= BACKOFF_MS.length) {
-            console.warn(`  ${tripId} abandonne : ${msg.slice(0, 140)}`);
-            recit = null;
-            break;
-          }
-          console.warn(`  reprise ${essai + 1}/${BACKOFF_MS.length} dans ${BACKOFF_MS[essai] / 1000}s : ${msg.slice(0, 100)}`);
-          await dors(BACKOFF_MS[essai]);
-        }
-      }
-
-      // ⚠️ On n'ecrit QUE le concluant. Un recit vide ou de trois mots condamnerait le trajet a
-      //    ne jamais etre repris : le pipeline considere qu'un trajet avec recit est traite.
+    // ⚠️ On n'ecrit QUE le concluant. Un trajet absent de la reponse, ou dont le recit est vide,
+    //    n'est pas ecrit : il repassera. L'ecrire condamnerait le trajet a ne jamais etre repris,
+    //    puisque le pipeline considere qu'un trajet avec recit est traite.
+    let ecritsLot = 0;
+    for (let i = 0; i < lot.length; i++) {
+      const recit = recits.get(i);
       if (!recit || !recitConcluant(recit)) {
         refuses++;
-        if (++echecs >= ECHECS_CONSECUTIFS_MAX) {
-          console.error(`[${h()}] ${echecs} refus consecutifs — arret propre, rien de perdu.`);
-          return;
-        }
-        await dors(PAUSE_MS);
         continue;
       }
-      echecs = 0;
-
       try {
-        ecrire(tripId, ligne, payload, recit);
+        ecrire(lot[i].tripId, lot[i].ligne, lot[i].payload, recit);
         ecrits++;
-        const reste = Math.max(0, Math.round((fin - Date.now()) / 60000));
-        console.log(`[${h()}] ${tripId} ecrit (${recit.narrative.length} car., confiance ${recit.trustScore}) — ${ecrits} au total, ${reste} min restantes`);
+        ecritsLot++;
       } catch (e) {
-        console.warn(`  ecriture refusee pour ${tripId} : ${(e && e.message ? e.message : e).toString().slice(0, 140)}`);
+        console.warn(`  ecriture refusee pour ${lot[i].tripId} : ${((e && e.message) || e).toString().slice(0, 120)}`);
         refuses++;
       }
-      await dors(PAUSE_MS);
     }
+
+    // Un lot entierement refuse est un symptome, pas un alea : on compte, et on s'arrete si ca dure.
+    if (ecritsLot === 0) {
+      if (++lotsRates >= ECHECS_CONSECUTIFS_MAX) {
+        console.error(`[${h()}] ${lotsRates} lots sans aucun recit retenu — arret propre.`);
+        return;
+      }
+    } else {
+      lotsRates = 0;
+    }
+
+    const reste = Math.max(0, Math.round((fin - Date.now()) / 60000));
+    console.log(`[${h()}] lot de ${lot.length} en ${secondes}s : ${ecritsLot} ecrit(s) — ${ecrits} au total, ${reste} min restantes`);
+    await dors(PAUSE_MS);
   }
 
   const apres = resteAFaire();
