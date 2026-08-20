@@ -52,7 +52,7 @@ Puis créer chaque branche de lot **depuis `origin/main` à jour**, jamais depui
 |---|---|---|---|---|---|---|
 | **1** | ✅ **FAIT** — Borner dans le temps la garde « coupure commandée » | [TRK-032](./REFERENCE-ERREURS.md#trk-032) | 🔴 **1** | S | **Élevé** — garde de sécurité | — |
 | **2** | Rattacher l'accusé de réception SMS à sa commande | [TRK-036](./REFERENCE-ERREURS.md#trk-036) | 2 | M | Faible | — |
-| **3** | Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
+| **3** | ✅ **FAIT** — Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
 | **4** | Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
 | **5** | ✅ **FAIT** — Réparer `/admin/vps` et le rendre tolérant | [TRK-033](./REFERENCE-ERREURS.md#trk-033) | 2 | XS | Nul | — |
 | **6** | Aligner la fenêtre de recalcul sur la rétention | [TRK-034](./REFERENCE-ERREURS.md#trk-034) | 3 | XS | Faible | — |
@@ -285,6 +285,41 @@ question « pourquoi seulement deux ? » reste entière et appartient à
 # Lot 3 — Assainir puis borner la fermeture des épisodes GPS
 
 **Fiche : [TRK-031](./REFERENCE-ERREURS.md#trk-031) · Gravité 2 · Effort M · Risque moyen**
+
+> ## ✅ FAIT le 2026-08-20 — commit `b28e389e`
+>
+> **Branche `fix/trk-031-episodes-gps-bornes`, partie d'`origin/main`. NON poussée.**
+>
+> 🔴 **Le défaut a rejoué pendant qu'on le corrigeait** : FZ-862-VY, ce matin à **08:16:31**,
+> 4 épisodes fermés à la même seconde dont **3 fabriquées** — réfutées par **539, 386 et 178**
+> positions. Troisième véhicule en trois jours. La mesure passe de **8 clos faux sur 14** hier à
+> **13 sur 19** ce jour, et une **seconde zone** affiche désormais une médiane fausse (**10,47 j**
+> pour une absence réelle de **2,83 j**).
+>
+> ### 🔴 La règle prescrite par ce lot était fausse — corrigée à l'exécution
+>
+> Le §3.b disait : ajouter `lostAt >= now() - <fenêtre max d'épisode>`, de l'ordre de **7 jours**.
+> **Faux** : un véhicule réellement absent cinq semaines *a* une absence de cinq semaines, et la
+> refuser laisserait son épisode ouvert **pour toujours** — une autre façon de mentir, plus discrète.
+>
+> 🔑 **La borne porte sur le fait qu'un épisode PLUS RÉCENT existe, pas sur l'ancienneté de la
+> perte.** On ferme le plus récent encore ouvert et ses doublons (marge 1 h). Vérifié sur les quatre
+> scénarios ; la fenêtre fixe échouait sur deux.
+>
+> ### Ce qui a été livré
+>
+> | | |
+> |---|---|
+> | Borne sur l'épisode courant | `recordRecovery`, avec `MARGE_DOUBLON_EPISODE_MS = 1 h` |
+> | 🆕 Garde-fou non prévu | un retour **antérieur** à la perte est refusé — trame Coban rejouée ([TRK-015](./REFERENCE-ERREURS.md#trk-015)) |
+> | Assainissement | `apps/api/prisma/assainir-episodes-gps.ts`, **DRY-RUN par défaut** |
+> | DRY-RUN joué contre la prod | **14 réparables** (durées réelles 0,00-0,80 j, dont les 9 de KSR370), **1** légitimement toujours perdu |
+> | Tests | **9**, dont **4 qui échouent sur le code d'avant**. ⚠️ un test existant **verrouillait le défaut** → recalibré, pas supprimé |
+> | Vérifications | `tsc --noEmit` ✅ · **95 tests / 6 suites** ✅ (gps-dead-zones, positions, **smoke-boot**) |
+>
+> ⚠️ **Le script n'a PAS été exécuté en écriture** : `--apply` touche la donnée de production, c'est
+> une décision humaine. L'ordre reste **assainir d'abord, déployer la borne ensuite** — l'inverse
+> laisserait les 14 épisodes ouverts pour toujours.
 
 ## Pourquoi
 

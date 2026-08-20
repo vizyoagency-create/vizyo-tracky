@@ -887,7 +887,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🔴 NON CORRIGÉ · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
 | [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
 | [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🔴 NON CORRIGÉ *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
-| [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🔴 NON CORRIGÉ · **CONFIRMÉE À L'ÉCHELLE** *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
+| [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `b28e389e` du 20/08. 🔴 **le défaut a rejoué une 3ᵉ fois pendant la correction** — FZ-862-VY, 4 épisodes à 08:16:31, 3 fabriquées réfutées par 539/386/178 positions ; **13 clos faux sur 19**, et une 2ᵉ zone empoisonnée à **10,47 j** pour 2,83 j réels. La borne retenue N'EST PAS la fenêtre fixe prévue : elle porte sur l'existence d'un épisode PLUS RÉCENT, pas sur l'ancienneté — sinon une absence réelle de 5 semaines resterait ouverte à vie. + script d'assainissement en DRY-RUN : **14 réparables**, durées réelles 0,00-0,80 j)* *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
 | [TRK-030](#trk-030) | `gps-integrity` | Le boîtier **neuf** est accusé de panne d'antenne **51 s avant son premier fix** — la branche « jamais localisé » n'a aucune borne de durée | 🔴 NON CORRIGÉ *(nouvelle ; login 01:09:36 → alerte 01:10:15 → fix 01:11:06 ; se rejouera **à chaque pose**, et le commentaire du code décrit une garde qui n'existe pas)* | 2026-08-19 | 2026-08-19 |
 | [TRK-029](#trk-029) | `schedule-cron` | Le report d'une coupe applique un **backoff exponentiel à une échéance connue** — et le message dit « impossible » pour une action qui a abouti | 🔴 NON CORRIGÉ *(**test daté nº 5 : aucun second cas** — 21 coupes normales le 18/08 à 20:00. La ligne de base des 25 min reste unique)* | 2026-08-18 | 2026-08-19 |
 | [TRK-028](#trk-028) | `gps-integrity` | La fiche véhicule promettait « le véhicule réapparaît en sortant » **sans jamais dire quand** | 🟠 DÉPLOYÉ ET EXERCÉ · ⚠️ **DONNE UN CHIFFRE FAUX** *(le raccroc s'exécute — 2 → **14** épisodes refermés. Mais le 20/08, l'écran créé par cette fiche pour répondre « quand revient-il ? » annonce une médiane de **16,03 j** sur le parking `79a8d0f2`, pour une absence réelle de **6,94 j** : 8 des 9 durées de l'échantillon sont fabriquées par [TRK-031](#trk-031))* | 2026-08-17 | 2026-08-20 |
@@ -5521,7 +5521,79 @@ lendemain : elle ne réapparaît que quand un véhicule concerné entre dans la 
 
 **Signature** — *(pas une ligne d'erreur : une durée fabriquée dans la donnée)*
 `gps-dead-zones | (aucune ligne) | recordRecovery ferme TOUS les épisodes ouverts du véhicule à la date du jour`
-**Statut : 🔴 NON CORRIGÉ — CONFIRMÉE À L'ÉCHELLE** · **gravité 2** · découvert 2026-08-19
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `b28e389e`, branche `fix/trk-031-episodes-gps-bornes`,
+partie d'`origin/main` — **non poussée**)* · **gravité 2** · découvert 2026-08-19
+
+### 🔴 Le défaut a rejoué UNE TROISIÈME FOIS — ce matin, pendant la correction
+
+| Jour | Véhicule | Épisodes fermés à la même seconde | Fabriquées |
+|---|---|---|---|
+| 18/08 | HD-779-MA | 2 | 1 (16,88 j) |
+| 19/08 | FS-253-HR | **9** | **8** (jusqu'à 35,18 j) |
+| **20/08 08:16:31** | **FZ-862-VY** | **4** | **3** — réfutées par **539 · 386 · 178** positions |
+
+**Un véhicule par jour, trois jours de suite.** La mesure prescrite par cette fiche est passée de
+**8 sur 14** hier à **13 épisodes clos faux sur 19** ce jour — soit **68 %**.
+
+**Et une SECONDE zone est désormais empoisonnée :**
+
+| Zone | Épisodes | Médiane affichée | Absence réelle la plus longue |
+|---|---|---|---|
+| `79a8d0f2` — parking de FS-253-HR | 9 | 🔴 **16,03 j** | 6,94 j |
+| `879699a3` — parking de FZ-862-VY | 4 | 🔴 **10,47 j** | **2,83 j** |
+
+### ✅ Corrigé le 2026-08-20 — mais PAS avec la fenêtre fixe prévue
+
+> 🔴 **Correction de la roadmap, faite à l'exécution.** Elle prescrivait d'ajouter
+> `lostAt >= now() - <fenêtre max d'épisode>`, avec une fenêtre de l'ordre de 7 jours lue dans la
+> donnée. **Cette règle est fausse** : un véhicule réellement absent cinq semaines *a* une absence de
+> cinq semaines. La refuser laisserait son épisode ouvert **pour toujours** — une autre façon de
+> mentir, plus discrète.
+>
+> 🔑 **La borne ne doit pas porter sur l'ANCIENNETÉ de la perte, mais sur le fait qu'un épisode
+> PLUS RÉCENT existe.** On ferme le plus récent encore ouvert et ses doublons (marge d'une heure —
+> les doublons du cron naissent à quelques minutes d'écart). Les plus anciens restent ouverts : ce
+> sont des restes d'avant le correctif, ils relèvent de l'assainissement, pas de l'ingestion.
+>
+> Vérifié sur les quatre scénarios : épisode courant seul ✅ · doublons du même épisode ✅ · épisode
+> d'un autre mois **laissé ouvert** ✅ · absence réelle de cinq semaines **fermée normalement** ✅.
+> *La fenêtre fixe échouait sur les deux derniers.*
+
+**Un garde-fou qui manquait, ajouté au passage** : un retour **antérieur** à la perte est refusé.
+`at` est l'heure **boîtier**, et un Coban qui rejoue son tampon après une coupure réseau émet des
+horodatages antérieurs au temps réel — c'est tout le sujet de [TRK-015](#trk-015). Sans ce contrôle :
+durée négative, écartée **en silence** du calcul de médiane, et un épisode marqué clos qui ne l'est pas.
+
+⚠️ **Un test existant VERROUILLAIT le défaut** : il attendait `where === { vehicleId, recoveredAt: null }`,
+c'est-à-dire l'absence de borne. **Recalibré, pas supprimé** — l'invariant qu'il défend (ne jamais
+réécrire une date déjà posée) reste vrai et reste vérifié. **4 des 9 tests échouent sur le code d'avant.**
+
+### ✅ L'assainissement du stock — `prisma/assainir-episodes-gps.ts`
+
+**DRY-RUN par défaut**, `--apply` pour écrire. Reconstitue la vraie date de retour depuis la
+**première position valide postérieure à la perte**.
+
+**DRY-RUN joué contre la production le 20/08 :**
+
+| Verdict | Épisodes | Détail |
+|---|---|---|
+| **RÉPARABLE** | **14** | durées réelles de **0,00 à 0,80 j** — dont les **9 de KSR370** |
+| TOUJOURS PERDU | 1 | FS-253-HR, reparti au parking le 19/08 à 15:05 — **doit rester ouvert** |
+| HORS RÉTENTION | 0 | — |
+
+> 🔑 **Les 9 épisodes de KSR370 valent 0,10 à 0,80 jour.** Fermés à `now()` au retour du boîtier,
+> ils auraient valu **plusieurs semaines chacun**. C'est la démonstration chiffrée de ce que le script
+> évite.
+
+⚠️ Il ne ferme **jamais** à `now()` — ce serait le défaut appliqué en masse. Un épisode sans position
+postérieure **reste ouvert** (le véhicule n'est pas revenu) ; un épisode antérieur à la rétention des
+positions est **nommé** plutôt que deviné. *Les laisser ouverts est honnête ; leur inventer une date
+ne le serait pas.*
+
+⚠️ **Limite assumée** : la relation `Vehicle → Tracker` est 1-1 et pointe le boîtier **actuel**. Si un
+boîtier a été remplacé depuis la perte, les positions de l'ancien ne sont plus atteignables par ce
+chemin et l'épisode sera classé « toujours perdu ». Le script n'écrit alors rien — mieux vaut un
+épisode ouvert qu'une date inventée.
 
 ### ⚠️ Mise à jour du 2026-08-20 — la prédiction s'est réalisée en douze heures
 
