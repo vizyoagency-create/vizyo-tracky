@@ -354,13 +354,47 @@ l'entrée.
 À décider : rejeter, ou marquer `valid = false`, au-delà d'un seuil par type de véhicule. Toucher
 l'ingestion demande de la prudence — c'est le chemin le plus critique de l'application.
 
+### Analyse des `wire_logs` (20/08) — ce qu'ils contiennent vraiment
+
+⚠️ **Rétention courte** : `wire_logs` ne remonte qu'au **17/08** (601 914 trames, 39 boîtiers).
+L'accident du FL-787-KV « il y a quelques mois » n'y est plus — il faudra le reconstituer depuis
+`alerts` et `positions`, qui vont plus loin.
+
+Inventaire des codes d'alarme sur 4 jours :
+
+| code | trames | boîtiers | ce que c'est |
+|---|---|---|---|
+| `tracker` | 535 760 | 39 | position normale |
+| `status` | 2 961 | 39 | état périodique |
+| `acc off` / `acc on` | 723 / 709 | 27 | contact |
+| **`ac alarm`** | **354** | **2** | alimentation perdue |
+| `kt` / `jt` | 267 / 261 | 36 | contact, codes courts |
+| `upgraderesult` | 39 | 35 | **non reconnu par l'analyseur** |
+| `speed` | 24 | 1 | excès |
+| `low battery` | 2 | 1 | |
+| **`jk`** | **2** | **1** | **non reconnu** |
+
+**Aucun code d'accident ou de choc n'apparaît nulle part.** Ni `accident alarm`, ni `collision`,
+ni `sensor alarm`. Les boîtiers n'en émettent pas — ce qui explique qu'aucune alerte accident
+n'ait jamais été levée.
+
 ### Ce que `jk` n'est PAS
 
-Code d'alarme Coban non reconnu, remonté en « Alarme inconnue ». **2 occurrences** en trois mois,
-sur 2 boîtiers. Dans les DEUX cas le véhicule roulait (31,8 et 109,8 km/h) et a continué à rouler
-ensuite. Ce n'est donc pas un signal d'accident, et le mapper vers ACCIDENT créerait de fausses
-alertes critiques. Le mapping `accident alarm` -> ACCIDENT et `collision` -> COLLISION existe déjà
-et fonctionne : ce qui manque, c'est que le boîtier émette ces codes.
+Code Coban non reconnu, remonté en « Alarme inconnue ». **2 occurrences**, sur 2 boîtiers.
+
+Le cas du 19/08 est documenté trame par trame : deux `jk` **identiques à 41 ms d'intervalle**
+(retransmission), puis le boîtier se déconnecte, puis se reconnecte 30 minutes plus tard — et
+entre les deux le véhicule a parcouru **29 km**. Sur ce cas, `jk` précède une coupure réseau, pas
+un choc.
+
+Le cas du 13/08 (KSR370) : `jk` à 31,8 km/h, le véhicule a continué à émettre normalement.
+
+Deux échantillons, deux comportements différents. **On ne mappe donc pas `jk` vers ACCIDENT** :
+sur cette base, ce serait fabriquer des alertes critiques sur des trajets normaux.
+
+Le mapping `accident alarm` -> ACCIDENT et `collision` -> COLLISION **existe déjà et fonctionne**.
+Ce qui manque, c'est que le boîtier émette ces codes — la détection de choc doit être armée par
+commande, et la page « Commandes tracker » sait déjà le faire.
 
 ### Chantiers restants
 
