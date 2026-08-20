@@ -127,9 +127,9 @@ describe('EngineControlService', () => {
   // appliquent maintenant le filtre tenant via la relation tracker.vehicle.fleetId
   // au lieu d'un check after-find.
   let prisma: {
-    tracker: { findUnique: jest.Mock; findFirst: jest.Mock };
+    tracker: { findUnique: jest.Mock; findFirst: jest.Mock; findMany: jest.Mock };
     position: { findFirst: jest.Mock; count: jest.Mock };
-    engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
+    engineControlCommand: { create: jest.Mock; update: jest.Mock; updateMany: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
     vehicleSchedule: { updateMany: jest.Mock; findFirst: jest.Mock };
   };
   let registry: { get: jest.Mock; send: jest.Mock };
@@ -139,11 +139,12 @@ describe('EngineControlService', () => {
 
   beforeEach(async () => {
     prisma = {
-      tracker: { findUnique: jest.fn(), findFirst: jest.fn() },
+      tracker: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       position: { findFirst: jest.fn(), count: jest.fn().mockResolvedValue(1) },
       engineControlCommand: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
         findFirst: jest.fn(),
@@ -1062,6 +1063,123 @@ describe('EngineControlService', () => {
     ).rejects.toThrow(ForbiddenException);
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ status: CommandStatus.REJECTED_SPEED, lastError: expect.stringContaining('Position trop ancienne') }),
+    });
+  });
+
+  /**
+   * ── TRK-036 : L'ACCUSE DU BOITIER ARRIVE PAR SMS, ET IL FAUT LE RAMASSER ────────────
+   *
+   * Le 2026-08-19 a 04:39:13, un RESTORE part vers GS-014-NY par le repli SMS. A 08:28:58 le
+   * boitier repond « Resume engine Succeed » depuis sa carte SIM. Le message est recu, ecrit
+   * dans `sms_logs`... et la commande reste au statut « envoye » 21 heures plus tard.
+   *
+   * Ces tests verrouillent le rapprochement ET ses abstentions — qui comptent autant : un
+   * accuse colle au mauvais vehicule ferait croire a une coupure moteur confirmee.
+   */
+  describe('TRK-036 — accuse SMS du boitier', () => {
+    const SIM = '+345901030609501';
+    const evt = (body: string, fromNumber = SIM) =>
+      ({ smsLogId: 'log-1', fromNumber, toNumber: '+33656691615', body, receivedAt: new Date().toISOString() }) as never;
+
+    const armerBoitier = () => {
+      prisma.tracker.findMany.mockResolvedValue([
+        { id: 'trk-1', imei: '864035054756169', vehicle: { fleetId: 'fleet-1' } },
+      ] as never);
+    };
+    const armerCommande = () => {
+      prisma.engineControlCommand.findFirst.mockResolvedValue({
+        id: 'cmd-1',
+        createdAt: new Date(Date.now() - 3 * 3600_000),
+      } as never);
+      prisma.engineControlCommand.findUnique.mockResolvedValue({ id: 'cmd-1', fleetId: 'fleet-1' } as never);
+    };
+
+    it('🔴 « Resume engine Succeed » acquitte le RESTORE resté en attente', async () => {
+      // LE test du correctif : il échoue sur le code d'avant, où ce chemin n'existait pas.
+      armerBoitier();
+      armerCommande();
+
+      await service.onAccuseSmsMoteur(evt('Resume engine Succeed'));
+
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'ACKNOWLEDGED' }),
+        }),
+      );
+    });
+
+    it('cherche la commande sur le COUPLE (boitier, action) — jamais sur le temps seul', async () => {
+      // ⚠️ 3 h 50 séparaient la commande de sa réponse. Une fenêtre temporelle assez large
+      // pour couvrir ce cas rattacherait n'importe quel accusé à n'importe quelle commande.
+      armerBoitier();
+      armerCommande();
+
+      await service.onAccuseSmsMoteur(evt('Stop engine Succeed'));
+
+      const where = prisma.engineControlCommand.findFirst.mock.calls[0][0].where;
+      expect(where).toMatchObject({ trackerId: 'trk-1', action: 'CUT', status: 'SENT' });
+    });
+
+    it('un SMS ordinaire ne touche à rien', async () => {
+      armerBoitier();
+      await service.onAccuseSmsMoteur(evt('Bonjour, je vois avec eux demain'));
+      expect(prisma.engineControlCommand.findFirst).not.toHaveBeenCalled();
+      expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('🔴 DEUX boitiers pour ce numero : on n acquitte RIEN', async () => {
+      // Confirmer une coupure moteur sur le mauvais véhicule est plus grave que ne rien
+      // confirmer : l'exploitant croirait le vehicule immobilise alors qu'il roule.
+      prisma.tracker.findMany.mockResolvedValue([
+        { id: 'trk-1', imei: '1', vehicle: { fleetId: 'f' } },
+        { id: 'trk-2', imei: '2', vehicle: { fleetId: 'f' } },
+      ] as never);
+      await service.onAccuseSmsMoteur(evt('Resume engine Succeed'));
+      expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('numero inconnu : aucune ecriture', async () => {
+      prisma.tracker.findMany.mockResolvedValue([] as never);
+      await service.onAccuseSmsMoteur(evt('Resume engine Succeed'));
+      expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('accuse sans commande en attente : aucune ecriture', async () => {
+      armerBoitier();
+      prisma.engineControlCommand.findFirst.mockResolvedValue(null as never);
+      await service.onAccuseSmsMoteur(evt('Resume engine Succeed'));
+      expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('IDEMPOTENT : un second SMS identique ne reecrit pas un acquittement pose', async () => {
+      armerBoitier();
+      armerCommande();
+      prisma.engineControlCommand.updateMany.mockResolvedValue({ count: 0 } as never);
+
+      await service.onAccuseSmsMoteur(evt('Resume engine Succeed'));
+
+      // `count: 0` = le statut n'etait plus SENT. On ne diffuse pas une mise a jour fantome.
+      expect(gateway.emitEngineCommandUpdate).not.toHaveBeenCalled();
+    });
+
+    it('🔴 une panne de ce chemin NE CASSE PAS le flux SMS entrant', async () => {
+      // ⚠️ Un ecouteur qui leve casse l'evenement pour TOUS les abonnes — dont la machine a
+      // etats de provisionnement, qui attend ses ACK sur le meme canal.
+      armerBoitier();
+      prisma.engineControlCommand.findFirst.mockRejectedValue(new Error('DB down') as never);
+
+      await expect(service.onAccuseSmsMoteur(evt('Resume engine Succeed'))).resolves.toBeUndefined();
+    });
+
+    it('le rapprochement tolere les variations d ecriture du numero', async () => {
+      // Le meme numero circule en `+33…`, `0033…` ou `0…` selon l'operateur qui le relaie.
+      armerBoitier();
+      armerCommande();
+
+      await service.onAccuseSmsMoteur(evt('Resume engine Succeed', '00345901030609501'));
+
+      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      expect(where.simPhoneNumber.endsWith).toBe('030609501');
     });
   });
 });

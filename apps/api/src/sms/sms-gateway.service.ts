@@ -689,6 +689,51 @@ export class SmsGatewayService implements OnModuleInit {
    * subscribes via TrackerProvisioningService.handleInbound() to advance steps
    * when the device replies "ok 123456".
    */
+  /**
+   * TRK-036 — de quel BOITIER vient ce SMS entrant ?
+   *
+   * ── LE DEFAUT, MESURE ────────────────────────────────────────────────────────────────
+   *
+   * Le 2026-08-19 a 04:39:13, une commande RESTORE part vers GS-014-NY par le repli SMS.
+   * A 08:28:58, le boitier repond « Resume engine Succeed » depuis SA carte SIM. Le message
+   * est bien recu, bien persiste ici — avec `imei` NULL. Vingt et une heures plus tard, la
+   * commande est toujours au statut « envoye ».
+   *
+   * 🔑 La preuve de remise n'etait pas absente : elle ARRIVAIT, elle etait RANGEE, et
+   * personne n'allait la chercher. Le repli SMS n'etait pas aveugle, il etait sourd d'une
+   * oreille — l'accuse etait classe a cote d'un message de particulier et d'un demarchage.
+   *
+   * ── LA REGLE DE RAPPROCHEMENT ────────────────────────────────────────────────────────
+   *
+   * Le numero emetteur EST le `simPhoneNumber` du boitier. On compare sur les 9 derniers
+   * chiffres — meme convention que la machine a etats de provisionnement — parce que le
+   * meme numero circule sous plusieurs formes (`+33…`, `0033…`, `0…`) selon l'operateur qui
+   * le relaie. Une comparaison stricte echouerait sur une variation d'ecriture.
+   *
+   * ⚠️ AMBIGUITE = ABSTENTION. Si deux boitiers matchent, on ne rattache rien : un accuse
+   * colle au mauvais vehicule serait pire que pas d'accuse du tout — il ferait croire qu'une
+   * coupure moteur a ete confirmee sur un vehicule qui n'a rien recu.
+   *
+   * ⚠️ Un echec de resolution laisse simplement `imei` a NULL, comme avant. Ce chemin ne
+   * doit JAMAIS faire echouer l'enregistrement du SMS : perdre le message pour cause de
+   * rattachement rate serait remplacer un angle mort par une perte de donnee.
+   */
+  private async resoudreImeiParSim(fromNumber: string): Promise<string | undefined> {
+    const cle = (fromNumber ?? '').replace(/\D/g, '').slice(-9);
+    if (cle.length < 9) return undefined;
+    try {
+      const candidats = await this.prisma.tracker.findMany({
+        where: { simPhoneNumber: { endsWith: cle } },
+        select: { imei: true },
+        take: 2,
+      });
+      if (candidats.length !== 1) return undefined;
+      return candidats[0].imei;
+    } catch {
+      return undefined;
+    }
+  }
+
   async recordInbound(payload: {
     fromNumber: string;
     toNumber: string;
@@ -696,6 +741,9 @@ export class SmsGatewayService implements OnModuleInit {
     twilioSid?: string;
     imei?: string;
   }): Promise<{ id: string }> {
+    // TRK-036 — RATTACHER L'EXPEDITEUR. Voir `resoudreImeiParSim`.
+    const imei = payload.imei ?? (await this.resoudreImeiParSim(payload.fromNumber));
+
     const log = await this.prisma.smsLog.create({
       data: {
         direction: 'IN',
@@ -704,7 +752,7 @@ export class SmsGatewayService implements OnModuleInit {
         body: payload.body,
         twilioSid: payload.twilioSid,
         status: 'received',
-        imei: payload.imei,
+        imei,
       },
     });
     // Notifie la state machine de provisioning (attente d'ACK) + tout autre listener.
