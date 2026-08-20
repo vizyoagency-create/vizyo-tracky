@@ -76,7 +76,46 @@ export function isPlausibleJump(
 export type IngestionRejectReason =
   | 'stale_devicetime'
   | 'implausible_jump'
-  | 'future_devicetime';
+  | 'future_devicetime'
+  | 'implausible_speed';
+
+/**
+ * Plafond de vitesse ANNONCEE par le boitier, au-dela duquel la trame n'est pas credible.
+ *
+ * ── Pourquoi ce controle manquait, et ce qu'il a coute ───────────────────────────────
+ * `isPlausibleJump` verifie la vitesse IMPLIQUEE par le deplacement entre deux points. Il ne
+ * regarde jamais le champ vitesse que le boitier ANNONCE. Un boitier peut donc rouler a 40 km/h,
+ * avec des positions parfaitement coherentes, et declarer 255 km/h : le saut est plausible, la
+ * trame passe, et le chiffre absurde part alimenter les trajets, les scores de conduite et la
+ * detection d'exces.
+ *
+ * ── Le seuil vient d'une mesure, pas d'une intuition ─────────────────────────────────
+ * Releve du 20/08 sur toute la flotte, positions valides uniquement :
+ *   KSR370      147 positions > 200 km/h, jusqu'a 255,7  (boitier defaillant, confirme par ailleurs)
+ *   HD-779-MA     0                                       max 179,6
+ *   FG-669-DQ     0                                       max 174,3
+ * Aucun autre vehicule ne depasse 180. 200 km/h laisse donc toute la marge aux vitesses reelles,
+ * y compris les plus mauvaises, et n'attrape que l'invraisemblable. C'est une flotte
+ * d'utilitaires : il n'y a pas de 200 km/h legitime.
+ *
+ * Volontairement PLUS BAS que le plafond de saut (250 km/h) : un saut se mesure sur une moyenne
+ * entre deux points, une vitesse annoncee est instantanee — elle doit etre plus severe.
+ */
+export const MAX_VITESSE_ANNONCEE_KMH = 200;
+
+/**
+ * La vitesse annoncee par le boitier est-elle credible ?
+ *
+ * On ne CORRIGE pas la valeur : inventer une vitesse serait pire que d'en rejeter une fausse.
+ * On dit seulement si on peut la croire ; l'appelant decide quoi en faire.
+ */
+export function isPlausibleReportedSpeed(
+  speedKmh: number,
+  maxKmh: number = MAX_VITESSE_ANNONCEE_KMH,
+): boolean {
+  if (!Number.isFinite(speedKmh)) return false;
+  return speedKmh >= 0 && speedKmh <= maxKmh;
+}
 
 /**
  * Avance maximale toleree de l'horloge boitier sur l'horloge de reception, au-dela de

@@ -5,6 +5,7 @@ import {
   haversineMeters,
   isAcceptableLiveFix,
   isPlausibleJump,
+  isPlausibleReportedSpeed,
   isValidLatLng,
   maxPlausibleJumpMeters,
   sanitizePositions,
@@ -478,5 +479,45 @@ describe('gps-sanity', () => {
       const out = douglasPeucker(path, 5);
       expect(out.length).toBeGreaterThanOrEqual(3);
     });
+  });
+});
+
+/**
+ * Vitesse ANNONCEE par le boitier — distincte de la vitesse impliquee par le deplacement.
+ *
+ * Le seuil vient d'une mesure du 20/08 sur la flotte : un seul boitier depasse 200 km/h
+ * (147 fois, jusqu'a 255,7), le vehicule suivant plafonne a 179,6. Ces tests verrouillent
+ * l'ecart entre ces deux mondes.
+ */
+describe('isPlausibleReportedSpeed', () => {
+  it('accepte les vitesses reelles de la flotte, meme les pires', () => {
+    expect(isPlausibleReportedSpeed(0)).toBe(true);
+    expect(isPlausibleReportedSpeed(90)).toBe(true);
+    // Releve reel du vehicule le plus rapide de la flotte : doit passer.
+    expect(isPlausibleReportedSpeed(179.6)).toBe(true);
+    expect(isPlausibleReportedSpeed(200)).toBe(true);
+  });
+
+  it('refuse ce qu’aucun utilitaire ne fait', () => {
+    // Releves reels du boitier defaillant.
+    expect(isPlausibleReportedSpeed(255.7)).toBe(false);
+    expect(isPlausibleReportedSpeed(250.1)).toBe(false);
+    expect(isPlausibleReportedSpeed(200.1)).toBe(false);
+  });
+
+  it('refuse une valeur negative ou non numerique', () => {
+    expect(isPlausibleReportedSpeed(-5)).toBe(false);
+    expect(isPlausibleReportedSpeed(Number.NaN)).toBe(false);
+    expect(isPlausibleReportedSpeed(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+
+  it('est plus severe que le plafond de saut, a dessein', () => {
+    // Un saut se mesure sur une MOYENNE entre deux points ; une vitesse annoncee est
+    // instantanee. 240 km/h passerait le controle de saut, pas celui-ci.
+    expect(isPlausibleReportedSpeed(240)).toBe(false);
+  });
+
+  it('accepte un plafond explicite (parc different, moto, vehicule rapide)', () => {
+    expect(isPlausibleReportedSpeed(240, 260)).toBe(true);
   });
 });

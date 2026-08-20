@@ -8,7 +8,7 @@ import {
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { Position, Tracker, Vehicle } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
-import { evaluateIngestionFix, isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
+import { evaluateIngestionFix, isPlausibleReportedSpeed, isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -185,10 +185,22 @@ export class PositionsService {
         tracker.lastLat != null && tracker.lastLng != null && lastDeviceTime != null
           ? { lat: tracker.lastLat, lng: tracker.lastLng, deviceTime: lastDeviceTime }
           : null;
-      const verdict = evaluateIngestionFix(
-        { lat: frame.latitude, lng: frame.longitude, deviceTime: frame.deviceTime },
-        prevFix,
-      );
+      const verdict = !isPlausibleReportedSpeed(frame.speedKph)
+        ? // ⚠️ LA VITESSE ANNONCEE PAR LE BOITIER, distincte de la vitesse IMPLIQUEE par le
+          //    deplacement que verifie deja `evaluateIngestionFix`. Un boitier peut rouler a
+          //    40 km/h, avec des positions parfaitement coherentes, et declarer 255 : le saut
+          //    est plausible, la trame passe, et le chiffre absurde alimente les trajets, les
+          //    scores de conduite et la detection d'exces. Releve du 20/08 : 147 positions
+          //    au-dessus de 200 km/h sur un seul boitier, aucune ailleurs dans la flotte.
+          //
+          //    On REJETTE la trame plutot que de corriger la vitesse : inventer un chiffre
+          //    serait pire que d'en refuser un faux. La position est perdue, l'historique garde
+          //    un trou honnete plutot qu'une donnee fausse.
+          ({ authoritative: false, reason: 'implausible_speed' as const })
+        : evaluateIngestionFix(
+            { lat: frame.latitude, lng: frame.longitude, deviceTime: frame.deviceTime },
+            prevFix,
+          );
       if (!verdict.authoritative) {
         const wasOffline = tracker.status !== 'ONLINE';
         // Liveness uniquement — le boitier communique bien, c'est la trame qui ment.
