@@ -51,7 +51,7 @@ Puis créer chaque branche de lot **depuis `origin/main` à jour**, jamais depui
 | # | Lot | Fiche | Gravité | Effort | Risque | Dépend de |
 |---|---|---|---|---|---|---|
 | **1** | ✅ **FAIT** — Borner dans le temps la garde « coupure commandée » | [TRK-032](./REFERENCE-ERREURS.md#trk-032) | 🔴 **1** | S | **Élevé** — garde de sécurité | — |
-| **2** | Rattacher l'accusé de réception SMS à sa commande | [TRK-036](./REFERENCE-ERREURS.md#trk-036) | 2 | M | Faible | — |
+| **2** | ✅ **FAIT** — Rattacher l'accusé de réception SMS à sa commande | [TRK-036](./REFERENCE-ERREURS.md#trk-036) | 2 | M | Faible | — |
 | **3** | ✅ **FAIT** — Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
 | **4** | Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
 | **5** | ✅ **FAIT** — Réparer `/admin/vps` et le rendre tolérant | [TRK-033](./REFERENCE-ERREURS.md#trk-033) | 2 | XS | Nul | — |
@@ -216,6 +216,31 @@ serait à zéro dans les deux cas.
 # Lot 2 — Rattacher l'accusé de réception SMS à sa commande
 
 **Fiche : [TRK-036](./REFERENCE-ERREURS.md#trk-036) · Gravité 2 · Effort M · Risque faible**
+
+> ## ✅ FAIT le 2026-08-20 — commit `435e65f2`
+>
+> **Branche `fix/trk-036-accuse-sms-rattache`, partie d'`origin/main`. NON poussée.**
+>
+> Les trois gestes prescrits ont été suivis tels quels — c'est le premier lot où la roadmap n'a rien
+> eu à corriger. L'ossature était déjà là : `recordInbound` acceptait **déjà** un `imei` optionnel
+> jamais renseigné, et un bus d'événements existait **déjà** avec un consommateur en production.
+>
+> | | |
+> |---|---|
+> | Résolution de l'émetteur | 9 derniers chiffres — le même numéro circule en `+33…` / `0033…` / `0…` |
+> | Rapprochement de la commande | sur le **couple (boîtier, action)**, jamais sur le temps |
+> | **3 abstentions testées** | ambiguïté (2 boîtiers) · panne de résolution · panne de l'écouteur |
+> | Tests | **16** ajoutés, dont un **nouveau fichier de spec** (`sms-gateway.service.spec.ts` n'existait pas) |
+> | Vérifications | `tsc --noEmit` ✅ · **127 tests / 8 suites** ✅ dont **smoke-boot DI** |
+>
+> 🔑 **Les abstentions comptent autant que le rapprochement.** Un accusé collé au mauvais
+> véhicule ferait croire à une coupure moteur confirmée sur un véhicule qui n'a rien reçu ; et un
+> `@OnEvent` qui lève casse le flux entrant pour **tous** les abonnés, dont la machine à états de
+> provisionnement qui attend ses ACK sur le même canal.
+>
+> ⚠️ **Ce lot n'a PAS réglé [TRK-018](./REFERENCE-ERREURS.md#trk-018)** : il explique pourquoi on ne
+> *voyait* pas les accusés, pas pourquoi il n'y en a que **deux en cinq semaines** pour 280
+> commandes. Une fois déployé, on saura enfin **combien** il en manque — ce qui est le vrai sujet.
 
 ## Pourquoi
 

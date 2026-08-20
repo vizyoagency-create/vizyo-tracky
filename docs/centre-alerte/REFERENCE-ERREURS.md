@@ -883,7 +883,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
 | [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec` du 20/08 : fenêtre de 15 min, 6 tests dont 2 qui échouent sur le code d'avant, 49 tests au vert. **Non poussé** — relecture humaine obligatoire. ⚠️ « exclure `SENT` » a été RÉFUTÉ pendant la correction : la citation de TRK-014 portait sur `tracker_commands`, pas sur les commandes moteur, qui sont bien acquittées (2 857). Le repli SMS reste en `SENT` à vie, l'exclure aveuglerait le coupe-circuit)* · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)* | 2026-08-20 | 2026-08-20 |
-| [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🔴 NON CORRIGÉ *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* | 2026-08-20 | 2026-08-20 |
+| [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2` du 20/08 : résolution de l'émetteur sur les 9 derniers chiffres + écouteur qui acquitte sur le COUPLE (boîtier, action), jamais sur le temps. **3 abstentions testées** : ambiguïté, panne de résolution, panne de l'écouteur. ⚠️ explique pourquoi on ne VOYAIT pas les accusés, PAS pourquoi il n'y en a que 2 en 5 semaines — [TRK-018](#trk-018) reste entière)* *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* | 2026-08-20 | 2026-08-20 |
 | [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🔴 NON CORRIGÉ · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
 | [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
 | [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🔴 NON CORRIGÉ *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
@@ -5236,7 +5236,48 @@ principe.**
 
 **Signature** — *(défaut de chaînage, pas une ligne d'erreur)*
 `sms_logs | AUCUNE LIGNE | SMS entrant « …engine Succeed » enregistré avec imei NULL, jamais rapproché de la commande`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · découvert 2026-08-20
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2`, branche
+`fix/trk-036-accuse-sms-rattache`, partie d'`origin/main` — **non poussée**)* · **gravité 2** ·
+découvert 2026-08-20
+
+### ✅ Corrigé le 2026-08-20 — deux gestes, et trois abstentions
+
+| Geste | Où |
+|---|---|
+| `recordInbound` résout l'émetteur → `sms_logs.imei` | `sms-gateway.service.ts` |
+| Un écouteur reconnaît l'accusé et acquitte la commande | `engine-control.service.ts` |
+
+**Le rapprochement se fait sur les 9 derniers chiffres** — même convention que la machine à états
+de provisionnement, parce que le même numéro circule en `+33…`, `0033…` ou `0…` selon l'opérateur
+qui le relaie. Une comparaison stricte échouerait sur une simple variation de forme.
+
+**Et la commande se retrouve par le COUPLE (boîtier, action), jamais par le temps.** 3 h 50
+séparaient la commande de sa réponse : une fenêtre temporelle assez large pour couvrir ce cas
+rattacherait n'importe quel accusé à n'importe quelle commande de la journée.
+
+> 🔑 **Les trois abstentions comptent autant que le rapprochement**, et chacune a son test :
+> 1. **Deux boîtiers pour un même numéro → on n'acquitte RIEN.** Un accusé collé au mauvais véhicule
+>    ferait croire à une coupure moteur confirmée sur un véhicule qui n'a rien reçu — strictement
+>    pire que pas d'accusé.
+> 2. **Une panne de résolution ne fait pas perdre le SMS.** Remplacer un angle mort par une perte de
+>    donnée serait pire que le défaut d'origine.
+> 3. **Une panne de l'écouteur ne casse pas le flux entrant.** Un `@OnEvent` qui lève casse
+>    l'événement pour **tous** les abonnés — dont la machine à états de provisionnement, qui attend
+>    ses ACK sur le même canal.
+
+**Vérifications** : `tsc --noEmit` ✅ · **127 tests / 8 suites** ✅ (engine-control, sms,
+**smoke-boot DI**) · les nouveaux tests **échouent sur le code d'avant** (la suite engine-control ne
+compile même pas : la méthode n'existait pas). Ajout de `sms-gateway.service.spec.ts`, **qui
+n'existait pas** — portée volontairement étroite, uniquement le rattachement.
+
+### ⚠️ Ce que ce correctif NE règle PAS, et qu'il ne faut pas confondre
+
+Il explique pourquoi on ne **voyait** pas les accusés. Il n'explique pas pourquoi il n'y en a que
+**deux en cinq semaines** pour 280 commandes `SENT`. **Les deux questions sont distinctes** et
+[TRK-018](#trk-018) reste entière : une fois les accusés ramassés, on saura enfin **combien** il en
+manque — ce qui est le vrai sujet.
+
+### Le constat d'origine (2026-08-20)
 
 ### L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché
 
