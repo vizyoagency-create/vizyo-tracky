@@ -975,7 +975,7 @@ else
   echo "  (jq absent — table de routage non calculable)"
 fi
 
-sub "Clients docker ORPHELINS — la cause de VPS-016, trouvee le 2026-08-18"
+sub "Clients docker BLOQUES — la cause de VPS-016 (orphelins le 08-18, parent VIVANT le 08-20)"
 # ⚠️⚠️ AJOUTE LE 2026-08-18 — CE BLOC AURAIT ECONOMISE SEPT JOURS A MOITIE DE MACHINE.
 #
 # La 3e occurrence de VPS-016 a dure du 2026-08-11 21h05 au 2026-08-18 05h47 — 152 heures a
@@ -1003,22 +1003,67 @@ sub "Clients docker ORPHELINS — la cause de VPS-016, trouvee le 2026-08-18"
 # ⚠️ COUT DU BLOC : un `pgrep` et une lecture de /proc par client trouve (il y en a 0 ou 1 en
 # temps normal). AUCUN appel a Docker — c'est deliberé : on ne diagnostique pas un demon malade
 # en lui parlant.
-ORPH=0
+# ⚠️⚠️⚠️ CORRIGE LE 2026-08-20 (VPS-M49) — CE DETECTEUR A MANQUE LA 4e OCCURRENCE, LE JOUR MEME.
+#
+# Ce matin a 01h13:57, `docker logs tracky-postgres --tail 200000` a rallume VPS-016 : dockerd
+# est passe a 101,7 % d'un coeur, et `sar` date la bascule entre 01h10:20 et 01h20:20 — LA SECONDE
+# du lancement du client. Le bloc ci-dessus a pourtant publie « ✅ aucun client docker orphelin ».
+#
+# LA RAISON EST DANS SON CRITERE : il ne comptait que les clients dont le PPID vaut 1. Or ici la
+# chaine de parents est ENTIEREMENT VIVANTE :
+#     43987  docker logs tracky-postgres --tail 200000   (Sl, futex_wait_queue, 0 s de CPU)
+#     43986  bash -c "docker logs ... | grep -i ... | tail -20"
+#     43921  sshd: root@notty          <- canal SSH encore ESTABLISHED
+# Le tube n'est pas casse, le shell n'est pas mort, PERSONNE n'est orphelin — et le demon brule
+# quand meme un coeur. « Parent mort » etait la forme qu'avait prise la 3e occurrence, pas la
+# CONDITION du defaut. On a code le symptome observe une fois, pas le phenomene.
+#
+# LE BON DISCRIMINANT EST L'AGE : un client `docker` en ligne de commande rend la main en moins
+# d'une seconde. Un client vivant depuis des MINUTES est bloque, que son parent respire ou non.
+# On liste donc TOUS les clients, on affiche age + CPU + wchan, et on signale sur l'AGE.
+# Le PPID reste imprime — c'est une information utile — mais il n'est plus un filtre.
+#
+# ⚠️ NE PAS S'ACCUSER SOI-MEME : la collecte lance elle-meme des clients docker. Ils sont ses
+# descendants, donc on remonte la chaine des parents et on ecarte tout ce qui descend de $$.
+# Sans ce garde, le bloc se denoncerait lui-meme a chaque passage un peu lent.
+#
+# ⚠️ COUT : un `pgrep` et quelques lectures de /proc. AUCUN appel a Docker — on ne diagnostique
+# pas un demon malade en lui parlant.
+SEUIL_AGE=60          # secondes : au-dela, un client en ligne de commande est BLOQUE
+SUSPECT=0; ORPH=0; NB_VU=0
 for _p in $(pgrep -x docker 2>/dev/null); do
-  _pp=$(awk '{print $4}' /proc/$_p/stat 2>/dev/null) || continue
+  [ -r "/proc/$_p/stat" ] || continue
+  _pp=$(awk '{print $4}' "/proc/$_p/stat" 2>/dev/null)
   [ -z "$_pp" ] && continue
-  _args=$(tr '\0' ' ' < /proc/$_p/cmdline 2>/dev/null | cut -c1-95)
-  _et=$(ps -o etime= -p "$_p" 2>/dev/null | tr -d ' ')
-  if [ "$_pp" = "1" ]; then
-    ORPH=$((ORPH+1))
-    printf '  🔴 ORPHELIN  pid %-8s depuis %-12s %s\n' "$_p" "${_et:-?}" "$_args"
+  # descend-il de la collecte elle-meme ? (remontee bornee a 8 crans)
+  _mien=0; _a=$_p
+  for _i in 1 2 3 4 5 6 7 8; do
+    [ "$_a" = "$$" ] && { _mien=1; break; }
+    [ "$_a" = "1" ] || [ -z "$_a" ] && break
+    _a=$(awk '{print $4}' "/proc/$_a/stat" 2>/dev/null)
+  done
+  [ "$_mien" = "1" ] && continue
+  NB_VU=$((NB_VU+1))
+  _args=$(tr '\0' ' ' < "/proc/$_p/cmdline" 2>/dev/null | cut -c1-88)
+  _age=$(ps -o etimes= -p "$_p" 2>/dev/null | tr -d ' '); case "${_age:-}" in ''|*[!0-9]*) _age=0 ;; esac
+  _cpu=$(ps -o time= -p "$_p" 2>/dev/null | tr -d ' ')
+  _wch=$(cat "/proc/$_p/wchan" 2>/dev/null); [ -z "$_wch" ] && _wch='-'
+  [ "$_pp" = "1" ] && { ORPH=$((ORPH+1)); _tag='ORPHELIN'; } || _tag="ppid=$_pp"
+  if [ "$_age" -ge "$SEUIL_AGE" ]; then
+    SUSPECT=$((SUSPECT+1))
+    printf '  🔴 BLOQUE   pid %-8s age %5ss  cpu %-9s %-13s %s\n' "$_p" "$_age" "${_cpu:-?}" "$_tag" "$_args"
+    printf '             bloque dans : %s\n' "$_wch"
+  else
+    printf '  ·  en cours pid %-8s age %5ss  %-13s %s\n' "$_p" "$_age" "$_tag" "$_args"
   fi
 done
-if [ "$ORPH" -eq 0 ]; then
-  echo "  ✅ aucun client docker orphelin (parent = init)"
+if [ "$SUSPECT" -eq 0 ]; then
+  printf '  ✅ aucun client docker bloque (aucun ne vit depuis plus de %s s)\n' "$SEUIL_AGE"
+  [ "$ORPH" -gt 0 ] && echo "  ⚠️ mais $ORPH client(s) ont pour parent init : a surveiller au prochain passage."
 else
-  printf '  🔴 %s client(s) docker ORPHELIN(S) — leur shell parent est mort et le demon\n' "$ORPH"
-  echo  "     tourne peut-etre en rond a leur ecrire. C EST LA CAUSE DE VPS-016 (2026-08-18)."
+  printf '  🔴 %s client(s) docker VIVANTS DEPUIS PLUS DE %s s (dont %s orphelin(s)) — un client\n' "$SUSPECT" "$SEUIL_AGE" "$ORPH"
+  echo  "     en ligne de commande rend la main en moins d une seconde. C EST LA CAUSE DE VPS-016,"
+  echo  "     etablie le 2026-08-18 (parent mort) PUIS le 2026-08-20 (parent vivant, tube bloque)."
   # ⚠️ GUILLEMETS SIMPLES OBLIGATOIRES : en guillemets doubles, les accents graves autour de
   #    `kill <pid>` seraient une SUBSTITUTION DE COMMANDE — le collecteur EXECUTERAIT un kill
   #    pour afficher une phrase. C'est le piege deja documente en tete de ce fichier pour
@@ -1042,7 +1087,12 @@ fi
 # On n'interroge donc pas le statut : on assainit la valeur.
 NB_DOCK=$(pgrep -xc docker 2>/dev/null)
 case "${NB_DOCK:-}" in ''|*[!0-9]*) NB_DOCK=0 ;; esac
-printf '  (denominateur : %s processus client `docker` au total, orphelins compris)\n' "$NB_DOCK"
+printf '  (denominateur : %s processus client `docker` au total, %s examine(s) hors collecte)\n' "$NB_DOCK" "$NB_VU"
+echo  '  ⚠️ PORTEE, ecrite le 2026-08-20 pour ne pas repayer VPS-M49 : ce bloc ne voit que les'
+echo  '     processus dont le NOM est exactement « docker ». Un client qui parle au socket sans'
+echo  '     s appeler ainsi — curl sur /run/docker.sock, un SDK dans un conteneur, un outil de'
+echo  '     supervision — reste invisible ici. Les deux occurrences connues etaient des'
+echo  '     `docker logs`, ce qui ne prouve pas que la troisieme le sera.'
 
 sub "Consommation live"
 docker stats --no-stream --format '  {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.PIDs}}' 2>/dev/null | sort -t$'\t' -k3 -h -r | head -15
@@ -1603,6 +1653,41 @@ sub "crontab root"
 crontab -l 2>/dev/null | grep -vE "^#|^$" | sed 's/^/  /' || echo "  (vide)"
 sub "cron.d"
 for f in /etc/cron.d/*; do [ -f "$f" ] && { echo "  $f :"; grep -vE "^#|^$" "$f" | sed 's/^/    /'; }; done
+# ⚠️⚠️ AJOUTE LE 2026-08-20 (VPS-M50) — L'ANGLE MORT N° 7 DU 08-19 A COUTE DEUX FOIS DE SUITE.
+#
+# Le catalogue `ordonnancement` liste ce qui se declenche seul, et n'a AUCUNE notion de
+# « nouveau depuis le passage precedent ». Consequences, deux passages d'affilee :
+#   08-19 : `docker-builder-prune` est apparu la veille — trouve A LA MAIN en relisant ce bloc.
+#   08-20 : le MEME fichier a ete REECRIT le 08-19 a 11h02 — son filtre `unused-for=168h` a
+#           disparu et son horaire a bouge de 05h33 a 04h57 — trouve A LA MAIN, encore.
+# Un contenu qui change ne saute pas aux yeux dans une liste de quatre fichiers qu'on relit
+# chaque matin : les deux versions se ressemblent. UNE DATE, elle, se compare sans effort.
+#
+# ⚠️ Ce controle date le FICHIER, pas la regle : un cron cree PUIS retire entre deux passages
+# ne laisse toujours aucune trace ici. C'est une reduction de l'angle mort, pas sa fermeture.
+sub "Fraicheur du catalogue : qu est-ce qui a CHANGE depuis le passage precedent ?"
+_recent=0
+for f in /etc/cron.d/* /etc/systemd/system/*.timer /etc/systemd/system/*.service; do
+  [ -f "$f" ] || continue
+  _m=$(stat -c %Y "$f" 2>/dev/null); case "${_m:-}" in ''|*[!0-9]*) continue ;; esac
+  _j=$(( ( $(date +%s) - _m ) / 86400 ))
+  if [ "$_j" -le 2 ]; then
+    _recent=$((_recent+1))
+    printf '  🆕 %s  (modifie il y a %s j) %s\n' "$(date -d "@$_m" '+%Y-%m-%d %H:%M' 2>/dev/null)" "$_j" "$f"
+  fi
+done
+if [ "$_recent" -eq 0 ]; then
+  echo "  ✅ aucun fichier de cron.d ni d unite systemd modifie dans les 2 derniers jours"
+else
+  printf '  🟠 %s fichier(s) de planification modifie(s) dans les 2 derniers jours.\n' "$_recent"
+  # ⚠️ GUILLEMETS SIMPLES : en guillemets doubles, les accents graves autour d ordonnancement
+  #    seraient une SUBSTITUTION DE COMMANDE. Piege deja documente deux fois dans ce fichier
+  #    (docker stats le 2026-08-08, kill le 2026-08-18) — et RE-TENDU ici a l ecriture, le
+  #    2026-08-20. Trois fois le meme piege, sur trois blocs differents : ce n est plus une
+  #    inattention, c est que le reflexe « accent grave = citation » vient du Markdown.
+  echo  '     Comparer leur CONTENU au catalogue `ordonnancement` du manifeste AVANT de conclure'
+  echo  '     que « rien n a bouge » : c est le seul endroit ou les collisions d horaires se voient.'
+fi
 sub "Timers systemd"
 # ⚠️ `head -12` CACHAIT DES TIMERS (corrige le 2026-08-06). La machine en a 13 ; le catalogue
 # `ordonnancement` du manifeste — dont le seul role est de reveler les collisions d'horaires —
@@ -1689,6 +1774,44 @@ if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
       | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /     \1 \2  /' | cut -c1-150
     echo  "     ⚠️ Une commande qui ECRIT (systemctl, echo > /sys, fstrim) n est plus de la lecture :"
     echo  "        elle change l etat d une machine dont ce catalogue pretend tenir la liste."
+    # ⚠️⚠️ AJOUTE LE 2026-08-20 (VPS-M50) — « LES 3 DERNIERES » NE MONTRAIENT QUE LA ROUTINE.
+    # Le scanner horaire et le `ps` horaire representent ~98 % des lignes : les trois dernieres
+    # sont donc, presque toujours, trois lignes de routine. Les commandes qui comptent — celles
+    # qui ECRIVENT — sont noyees et ne remontent jamais a la surface. C est ainsi que
+    # `/etc/cron.d/docker-builder-prune` a ete attribue a « une action humaine deliberee hors de
+    # toute session d audit » (fiche VPS-029, 2026-08-19) alors que le journal lu par CE BLOC
+    # portait la preuve du contraire : il a ete ecrit PAR CE CANAL, le 08-18 a 13h22, puis
+    # REECRIT le 08-19 a 11h02 sans son filtre. Une provenance affirmee sans etre mesuree, quand
+    # la mesure tenait dans un `grep -v` sur une sortie deja en memoire.
+    # ⚠️ DEUX DENOMINATEURS, ET C EST LE POINT. La premiere ecriture de ce bloc titrait
+    # « commandes NON ROUTINIERES » et comptait 39 — dont 32 etaient le lot TRIM de l hebergeur,
+    # qui tourne TOUS LES JOURS. Un compteur doit prouver qu il compte ce qu il pretend compter
+    # (VPS-M01, VPS-M46, VPS-027) : « hors sonde » et « hors routine » ne sont pas la meme chose,
+    # et c est la seconde qui interesse. Les deux sont donc publiees, jamais l une sans l autre.
+    # ⚠️ Le lot TRIM n est PAS masque pour autant : il est compte a part et son EXISTENCE est
+    # affichee. Le jour ou il changera de contenu, la difference des deux compteurs le dira.
+    echo  "  ── commandes hors sonde horaire (le scanner, le ps et /proc/meminfo sont ecartes) ──"
+    QGA_HORS=$(printf '%s\n' "$QGA" | grep -F 'guest-exec called' \
+      | grep -vE 'hstgr-[0-9]+\.scanner\.py|ps -eo vsz|/proc/meminfo')
+    QGA_NB_HORS=$(printf '%s\n' "$QGA_HORS" | grep -c '^..*$')
+    # le lot TRIM quotidien de l hebergeur : connu, documente, attendu (VPS-027)
+    QGA_INAT=$(printf '%s\n' "$QGA_HORS" \
+      | grep -vE 'systemctl enable fstrim\.timer|provisioning_mode|^.*fstrim (-v --minimum|--listed-in)')
+    QGA_NB_INAT=$(printf '%s\n' "$QGA_INAT" | grep -c '^..*$')
+    QGA_NB_TRIM=$(( ${QGA_NB_HORS:-0} - ${QGA_NB_INAT:-0} ))
+    printf '     hors sonde : %s  |  dont lot TRIM quotidien (connu, VPS-027) : %s  |  INATTENDUES : %s\n' \
+      "${QGA_NB_HORS:-0}" "$QGA_NB_TRIM" "${QGA_NB_INAT:-0}"
+    if [ "${QGA_NB_INAT:-0}" -eq 0 ]; then
+      echo "     ✅ aucune commande inattendue : l hyperviseur n a envoye que son lot TRIM connu."
+    else
+      printf '     🟠 %s commande(s) INATTENDUE(S) — les 12 dernieres :\n' "$QGA_NB_INAT"
+      printf '%s\n' "$QGA_INAT" | tail -12 \
+        | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /       \1 \2  /' | cut -c1-165
+      echo  "     ⚠️ Ce canal ne passe NI par SSH (rien dans auth.log, rien pour fail2ban), NI par"
+      echo  "        le reseau (virtio-serial, rien pour ufw). L audit ne peut PAS distinguer ici"
+      echo  "        l hebergeur d un humain utilisant la console web du panneau : les deux"
+      echo  "        arrivent par la meme porte. Ne pas attribuer une provenance qu on ne mesure pas."
+    fi
   fi
 else
   echo "  (journal qemu-ga illisible ou agent absent — PAS « aucun ordre » : on ne sait pas)"
