@@ -885,7 +885,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec` du 20/08 : fenêtre de 15 min, 6 tests dont 2 qui échouent sur le code d'avant, 49 tests au vert. **Non poussé** — relecture humaine obligatoire. ⚠️ « exclure `SENT` » a été RÉFUTÉ pendant la correction : la citation de TRK-014 portait sur `tracker_commands`, pas sur les commandes moteur, qui sont bien acquittées (2 857). Le repli SMS reste en `SENT` à vie, l'exclure aveuglerait le coupe-circuit)* · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)* | 2026-08-20 | 2026-08-20 |
 | [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🔴 NON CORRIGÉ *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* | 2026-08-20 | 2026-08-20 |
 | [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🔴 NON CORRIGÉ · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
-| [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🔴 NON CORRIGÉ *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
+| [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
 | [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🔴 NON CORRIGÉ *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
 | [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🔴 NON CORRIGÉ · **CONFIRMÉE À L'ÉCHELLE** *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
 | [TRK-030](#trk-030) | `gps-integrity` | Le boîtier **neuf** est accusé de panne d'antenne **51 s avant son premier fix** — la branche « jamais localisé » n'a aucune borne de durée | 🔴 NON CORRIGÉ *(nouvelle ; login 01:09:36 → alerte 01:10:15 → fix 01:11:06 ; se rejouera **à chaque pose**, et le commentaire du code décrit une garde qui n'existe pas)* | 2026-08-19 | 2026-08-19 |
@@ -5368,7 +5368,58 @@ portent trace — et c'est ce constat-là qui est son sujet.
 ## TRK-033
 
 **Signature** — `frontend | ERROR | [uncaught] TypeError: undefined is not an object (evaluating 'e.chargeDeFond.<CHAMP>')`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · découvert 2026-08-20
+**Statut : 🟢 CORRIGÉ ET DÉPLOYÉ** · **gravité 2** · découvert 2026-08-20
+
+### ✅ Résolu le 2026-08-20 — en trois morceaux, dont deux déjà faits
+
+| Geste | État |
+|---|---|
+| Garde `@if (p.chargeDeFond; as cf)` au gabarit | ✅ **déjà fait** (`42dcdb38`) et **déployé** — image `tracky-web` reconstruite le **20/08 04:56** |
+| Champ déclaré **facultatif** dans l'interface | ✅ **déjà fait** (`42dcdb38`) |
+| **L'agent d'audit VPS sait écrire le champ** | ✅ **fait ce jour** — la consigne n'existait **nulle part** |
+| Commentaires du code rectifiés | ✅ **fait ce jour** (`4849bb02`) |
+
+### 🔴 La cause écrite dans le code était FAUSSE — et elle envoyait au mauvais endroit
+
+Les deux commentaires posés avec la garde disaient : *« l'API ne le construit pas encore »*.
+**L'API ne construit rien ici** — elle sert le manifeste `docs/vps-audit/app/wiki.json`, **écrit par
+l'agent d'audit VPS**. Et l'historique du fichier est sans appel :
+
+| Passage de l'agent | `chargeDeFond` |
+|---|---|
+| 11/08 → **17/08** (7 passages consécutifs) | ✅ **PRÉSENT à chaque fois** |
+| **18/08** | ❌ **ABSENT** |
+| 19/08, 20/08 | ❌ absent |
+| **19/08 10:32** | 🔴 **l'écran tombe** |
+
+> 🔑 **Rien n'était « pas encore construit » : quelque chose a été PERDU.** Le champ vivait depuis
+> au moins une semaine, l'agent a cessé de l'écrire le 18/08, et l'écran est tombé le lendemain.
+> *Un commentaire qui affirme une cause fausse fait passer la relecture et envoie enquêter ailleurs —
+> il coûte plus cher qu'un commentaire absent.*
+
+**Et c'est ce qui rendait le correctif incomplet** : avec la seule garde, la ligne de charge de fond
+disparaît **en silence** à chaque passage de l'agent. La cause réelle — l'agent ne sait pas qu'il
+doit écrire ce champ — n'était traitée nulle part. Elle l'est désormais, dans sa consigne.
+
+### 🟢 La vérification prescrite est SUPERFLUE — il existe une garde plus forte qu'un test
+
+La fiche demandait d'ouvrir l'écran avec un manifeste amputé. Inutile : `apps/web/tsconfig.json`
+active **`strict: true` + `strictTemplates: true`**, donc un déréférencement non gardé d'un champ
+facultatif est une **erreur de compilation**.
+
+**Prouvé, pas supposé** — la garde a été retirée temporairement et `ng build` relancé :
+
+```
+X [ERROR] TS2532: Object is possibly 'undefined'   (x4, lignes 186-189)
+=== code de sortie : 1 ===
+```
+
+Garde restaurée : `ng build` -> **code 0**.
+
+> 🔑 **La panne ne peut plus être réintroduite en silence : le build refuse.** C'est une garde
+> strictement meilleure qu'un test — elle n'a pas besoin d'être écrite pour chaque nouveau champ,
+> elle s'applique à tous. *Aucun test n'a donc été ajouté, et c'est délibéré* : le dépôt teste la
+> logique sans DOM, et le défaut vit dans le gabarit — un test de logique ne l'aurait jamais vu.
 
 ### `/admin/vps` plante sur un champ que son propre manifeste ne contient pas
 

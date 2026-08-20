@@ -54,7 +54,7 @@ Puis créer chaque branche de lot **depuis `origin/main` à jour**, jamais depui
 | **2** | Rattacher l'accusé de réception SMS à sa commande | [TRK-036](./REFERENCE-ERREURS.md#trk-036) | 2 | M | Faible | — |
 | **3** | Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
 | **4** | Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
-| **5** | Réparer `/admin/vps` et le rendre tolérant | [TRK-033](./REFERENCE-ERREURS.md#trk-033) | 2 | XS | Nul | — |
+| **5** | ✅ **FAIT** — Réparer `/admin/vps` et le rendre tolérant | [TRK-033](./REFERENCE-ERREURS.md#trk-033) | 2 | XS | Nul | — |
 | **6** | Aligner la fenêtre de recalcul sur la rétention | [TRK-034](./REFERENCE-ERREURS.md#trk-034) | 3 | XS | Faible | — |
 
 **Les six lots sont indépendants.** Aucun ne bloque l'autre : ils peuvent être menés en parallèle ou
@@ -405,6 +405,24 @@ sans avoir à interroger les statistiques internes de PostgreSQL.
 # Lot 5 — Réparer `/admin/vps` et le rendre tolérant
 
 **Fiche : [TRK-033](./REFERENCE-ERREURS.md#trk-033) · Gravité 2 · Effort XS · Risque nul**
+
+> ## ✅ FAIT le 2026-08-20 — mais pas comme prévu
+>
+> **Deux des trois gestes étaient déjà faits** par une autre session (`42dcdb38`), et **déployés** :
+> l'image `tracky-web` a été reconstruite le **20/08 à 04:56**. L'écran ne plante donc plus.
+>
+> **Ce qui restait, et que ce lot a fait :**
+>
+> | | |
+> |---|---|
+> | 🔴 **La cause écrite dans le code était fausse** | « l'API ne le construit pas encore ». Faux : le champ est écrit par **l'agent d'audit VPS**, il était **présent à chaque passage du 11/08 au 17/08**, et l'agent a **cessé de l'écrire le 18/08** — la veille du plantage. Rectifié (`4849bb02`). |
+> | 🔴 **L'agent ne savait pas écrire le champ** | `chargeDeFond` n'apparaissait **nulle part** dans ses consignes. Sans ça, la ligne de charge de fond disparaît en silence à chaque passage. Consigne ajoutée. |
+> | ✅ **Garde définitive trouvée — meilleure qu'un test** | `strict` + `strictTemplates` font **échouer le build**. Prouvé en retirant la garde : `ng build` -> **TS2532 x4, code 1**. Restaurée -> **code 0**. |
+>
+> ⚠️ **Le manifeste publié sur le VPS n'a pas été corrigé à la main, délibérément.** La ligne de
+> charge de fond reste absente de l'écran jusqu'au prochain passage de l'agent, qui la réécrira
+> maintenant que sa consigne le dit. Écrire une donnée de production à la main, hors de tout
+> journal, serait exactement [TRK-035](./REFERENCE-ERREURS.md#trk-035).
 
 ## Pourquoi
 
