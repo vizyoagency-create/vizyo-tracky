@@ -3983,3 +3983,47 @@ model AiAgentTrace {
   @@index([fleetId])
   @@map("ai_agent_traces")
 }
+
+/// Diagnostic de ZONE MORTE — plusieurs véhicules perdent le signal au même endroit.
+///
+/// ── Pourquoi une table, et pas le champ `note` des zones existantes ─────────────────
+/// Une zone de perte est apprise PAR VÉHICULE : le même parking produit une ligne par véhicule
+/// qui y entre. Le diagnostic, lui, porte sur le LIEU — il agrège plusieurs zones et plusieurs
+/// véhicules. Il n'a donc pas de ligne d'accueil naturelle. Et `GpsDeadZone.note` appartient à la
+/// revue humaine : l'écraser chaque nuit effacerait le travail d'un opérateur.
+///
+/// Le diagnostic de BOÎTIER, lui, ne vient PAS ici : un boîtier défaillant demande une action
+/// datée, et il part au centre d'alerte, canal déjà surveillé.
+model GpsZoneDiagnostic {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  fleetId   String   @db.Uuid
+
+  /// Clé STABLE du lieu (société + coordonnées arrondies). C'est elle qui empêche l'agent de
+  /// recréer le même diagnostic chaque nuit : il met à jour la ligne existante.
+  cle String @unique
+
+  lat        Float
+  lng        Float
+  placeLabel String?
+
+  /// Plaques concernées, et volume observé. Dénormalisés à dessein : un diagnostic doit rester
+  /// lisible même si un véhicule est archivé entre-temps.
+  vehicules  String[]
+  episodes   Int      @default(0)
+  etalementM Int      @default(0)
+
+  /// Ce qu'on affirme, et ce qu'il faut faire — rédigés par l'agent, en français.
+  constat        String
+  recommandation String
+
+  /// Qualification humaine. Tant qu'elle est nulle, le diagnostic attend une décision.
+  traiteAt        DateTime?
+  traiteParUserId String?   @db.Uuid
+  note            String?
+
+  @@index([fleetId, createdAt(sort: Desc)])
+  @@index([traiteAt])
+  @@map("gps_zone_diagnostics")
+}

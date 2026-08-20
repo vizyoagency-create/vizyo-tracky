@@ -127,7 +127,11 @@ function psql(sql, { lecture = true } = {}) {
   return execFileSync(
     'ssh',
     ['-o', 'ConnectTimeout=20', '-o', 'BatchMode=yes', VPS,
-      `docker exec -i ${CONTENEUR} psql -U ${BASE.user} -d ${BASE.db} ${flags.join(' ')} -f -`],
+      // ⚠️ ON_ERROR_STOP=1 : sans lui, psql sort en 0 MEME quand le SQL echoue. L'agent
+      //    comptait alors comme ecrit ce qui ne l'etait pas — il annoncait « 1 zone
+      //    enregistree » sur une table inexistante. Un agent qui se felicite d'un travail
+      //    qu'il n'a pas fait est pire qu'un agent en panne : la panne, elle, se voit.
+      `docker exec -i ${CONTENEUR} psql -U ${BASE.user} -d ${BASE.db} -v ON_ERROR_STOP=1 ${flags.join(' ')} -f -`],
     { input: sql, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 },
   );
 }
