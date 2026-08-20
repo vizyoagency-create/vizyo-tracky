@@ -130,18 +130,34 @@ type RunItem = TripAutomationRunItemDto;
  * sont COMPTÉS (`skippedDormant`) et annoncés dans le journal d'activité.
  */
 /**
- * Amplitude maximale ACCEPTÉE À L'ÉCRITURE pour `lookbackHours`.
+ * Amplitude maximale ACCEPTÉE À L'ÉCRITURE pour `lookbackHours` — 90 jours.
  *
- * ⚠️ Cette borne n'était écrite qu'en dur dans le `clampInt` du réglage, et elle a dérivé sans
- * bruit : au 2026-08-20 la valeur EN BASE vaut **1 500 h**, soit plus du double de ce que l'API
- * accepterait aujourd'hui. Elle a donc été posée avant ce plafond, ou en le contournant.
+ * ── POURQUOI 2 160 ET PLUS 720 (tranché le 2026-08-20) ───────────────────────────────
  *
- * 🔑 Un plafond qui ne s'applique qu'aux écritures futures laisse les valeurs héritées agir
- * indéfiniment — c'est la leçon de TRK-008, où des cibles de cadence hors bornes continuaient de
- * produire des échecs longtemps après que le chemin d'écriture eut été borné. La parade est la
- * même : **clamper aussi à la LECTURE**, ce que fait `fenetreUtile()` ci-dessous.
+ * Cette borne n'était écrite qu'en dur dans le `clampInt` du réglage, et elle a dérivé sans
+ * bruit : la valeur EN BASE valait **1 500 h**, soit plus du double de ce que l'API acceptait.
+ * Deux issues possibles — ramener le réglage sous le plafond, ou relever le plafond. **C'est la
+ * seconde qui a été retenue, et la raison est dans les chiffres :**
+ *
+ * L'ancien plafond de **720 h = 30 jours** était **plus bas que la rétention des positions
+ * (60 jours)**. L'écran interdisait donc d'écrire une fenêtre de 45 jours que le système aurait
+ * parfaitement su honorer — le plafond ne protégeait rien, il amputait. Et ramener le réglage à
+ * 720 h aurait **divisé par deux la fenêtre d'analyse** d'une plateforme qui rattrape justement
+ * son historique : une régression déguisée en mise en conformité.
+ *
+ * 🔑 **La règle à retenir : ce plafond ne doit jamais descendre sous `POSITIONS_RETENTION_DAYS`**,
+ * sinon l'interface refuse des valeurs exploitables. 90 jours laisse la marge nécessaire si la
+ * rétention est un jour relevée.
+ *
+ * ⚠️ Relever ce plafond est sans danger **parce que `fenetreUtile()` existe** : le travail réel
+ * reste borné par la rétention, quelle que soit la valeur saisie. Sans lui, un plafond haut aurait
+ * autorisé des balayages profonds et vides. Les deux gestes vont ensemble.
+ *
+ * 🔑 Et la parade de fond reste celle de TRK-008 : un plafond qui ne s'applique qu'aux écritures
+ * futures laisse les valeurs héritées agir indéfiniment. **On clampe aussi à la LECTURE**, ce que
+ * fait `fenetreUtile()` ci-dessous.
  */
-const LOOKBACK_HEURES_MAX = 720;
+const LOOKBACK_HEURES_MAX = 2160;
 
 @Injectable()
 export class TripAutomationService {
@@ -209,9 +225,9 @@ export class TripAutomationService {
       const user = this.systemUser();
       const now = Date.now();
       const windowFrom = new Date(now - settings.lookbackHours * 3600 * 1000);
-      // TRK-034 — une dérive de réglage qui ne se voit nulle part finit par agir seule. Si la
-      // valeur en base dépasse ce que l'API accepterait, on le DIT à chaque passage plutôt que
-      // de la corriger en douce : le bon plafond est une décision, pas une supposition.
+      // TRK-034 — une dérive de réglage qui ne se voit nulle part finit par agir seule. La
+      // dérive constatée le 20/08 (1 500 h face à un plafond de 720) a été tranchée en relevant
+      // le plafond ; cette sentinelle reste armée pour la PROCHAINE, qui ne se verrait pas plus.
       if (settings.lookbackHours > LOOKBACK_HEURES_MAX) {
         this.logger.warn(
           `lookbackHours vaut ${settings.lookbackHours} h en base, au-dela du maximum accepte a ` +

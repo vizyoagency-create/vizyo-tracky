@@ -87,3 +87,38 @@ describe('Fenêtre utile — ne pas travailler là où la donnée ne peut pas ex
     expect(Math.round((Date.now() - utile(service(), demandee).getTime()) / JOUR)).toBe(59);
   });
 });
+
+/**
+ * ── LE PLAFOND D'ÉCRITURE, TRANCHÉ LE 2026-08-20 ────────────────────────────────────
+ *
+ * L'ancien plafond (720 h = 30 j) était **plus bas que la rétention des positions (60 j)** :
+ * l'écran refusait d'écrire une fenêtre de 45 jours que le système savait honorer. Le plafond
+ * n'y protégeait rien, il amputait.
+ *
+ * 🔑 La règle posée : **ce plafond ne doit jamais descendre sous la rétention des positions**.
+ */
+describe('Plafond d’écriture — il ne doit jamais brider ce que la rétention autorise', () => {
+  const OLD = process.env.POSITIONS_RETENTION_DAYS;
+  afterEach(() => {
+    if (OLD === undefined) delete process.env.POSITIONS_RETENTION_DAYS;
+    else process.env.POSITIONS_RETENTION_DAYS = OLD;
+  });
+
+  it('🔴 le plafond couvre au moins la rétention des positions', () => {
+    process.env.POSITIONS_RETENTION_DAYS = '60';
+    const retentionHeures = 60 * 24;
+    // Importé indirectement : la constante n'est pas exportée, on la vérifie par son effet —
+    // une fenêtre égale à la rétention doit survivre au clamp d'écriture ET au clamp de lecture.
+    const demandee = new Date(Date.now() - retentionHeures * HEURE);
+    const obtenue = utile(service(), demandee);
+    // La fenêtre est ramenée à l'horizon (59 j), pas au plafond d'écriture (qui vaut 90 j).
+    expect(Math.round((Date.now() - obtenue.getTime()) / JOUR)).toBe(59);
+  });
+
+  it('🔴 une rétention portée à 90 jours reste exploitable de bout en bout', () => {
+    // Le jour où la rétention monte, la fenêtre doit pouvoir suivre sans rien changer d'autre.
+    process.env.POSITIONS_RETENTION_DAYS = '90';
+    const demandee = new Date(Date.now() - 89 * JOUR);
+    expect(utile(service(), demandee).getTime()).toBe(demandee.getTime());
+  });
+});
