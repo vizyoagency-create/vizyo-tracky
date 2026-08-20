@@ -53,7 +53,7 @@ Puis créer chaque branche de lot **depuis `origin/main` à jour**, jamais depui
 | **1** | ✅ **FAIT** — Borner dans le temps la garde « coupure commandée » | [TRK-032](./REFERENCE-ERREURS.md#trk-032) | 🔴 **1** | S | **Élevé** — garde de sécurité | — |
 | **2** | ✅ **FAIT** — Rattacher l'accusé de réception SMS à sa commande | [TRK-036](./REFERENCE-ERREURS.md#trk-036) | 2 | M | Faible | — |
 | **3** | ✅ **FAIT** — Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
-| **4** | Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
+| **4** | ✅ **FAIT** — Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
 | **5** | ✅ **FAIT** — Réparer `/admin/vps` et le rendre tolérant | [TRK-033](./REFERENCE-ERREURS.md#trk-033) | 2 | XS | Nul | — |
 | **6** | ✅ **FAIT** — Aligner la fenêtre de recalcul sur la rétention | [TRK-034](./REFERENCE-ERREURS.md#trk-034) | 3 | XS | Faible | — |
 
@@ -419,6 +419,37 @@ plus jolie ». Relever aussi la médiane de la zone du parking **avant** et **ap
 # Lot 4 — Rendre visible toute disparition de lignes
 
 **Fiche : [TRK-035](./REFERENCE-ERREURS.md#trk-035) · Gravité 1 · Effort S · Risque nul**
+
+> ## ✅ FAIT le 2026-08-20 — commit `41c22081`
+>
+> **Branche `fix/trk-035-recensement-suppressions`, partie d'`origin/main`. NON poussée.**
+>
+> ### 🔴 Le défaut a rejoué pendant qu'on écrivait la sonde
+>
+> Mesuré à **14:50** : `error_logs` est passé de **14 lignes ce matin à 4**, sa borne basse a
+> avancé de **20 heures**, et `n_tup_del` a pris **17 unités** — pendant que la purge de 03:00
+> déclarait `errorDeleted: 0`. **Troisième jour de suite.** Vérifié à nouveau : toujours **un
+> seul** chemin de suppression dans le code servi, **aucun endpoint `DELETE`**.
+>
+> *La sonde écrite aujourd'hui aurait crié aujourd'hui.*
+>
+> ### Ce qui a été livré
+>
+> | | |
+> |---|---|
+> | La règle | pas « des lignes ont-elles disparu ? » mais **« la disparition est-elle EXPLIQUÉE ? »** |
+> | Deux signaux | le **nombre** qui baisse *(suppression ciblée)* **et** la **borne basse** qui avance *(DELETE par ancienneté)* |
+> | Où vit le relevé | dans le **journal des actions système** — rangé dans `error_logs`, il disparaîtrait avec ce qu'il compte |
+> | Quand | **03:15, après le ménage de 03:00** — recenser avant ferait crier la sonde chaque nuit |
+> | Tests | **10**, sur la règle sortie en **fonction pure** · **126 tests / 12 suites** ✅ dont **smoke-boot DI** |
+>
+> 🔑 **Ce n'est pas un garde-fou et ça ne peut pas en être un.** Aucun code n'arrête un
+> `DELETE` en base. La sonde n'empêche rien — elle empêche que ça passe inaperçu, ce qui était la
+> seule chose encore possible.
+>
+> ⚠️ **Le second geste de la fiche reste hors de portée du code** : documenter la manœuvre quand
+> elle est volontaire appartient à celui qui exécute le `DELETE`. La sonde rend simplement
+> l'omission coûteuse, puisqu'elle produit désormais une ligne `CRITICAL`.
 
 ## Pourquoi
 

@@ -884,7 +884,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 |---|---|---|---|---|---|
 | [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec` du 20/08 : fenêtre de 15 min, 6 tests dont 2 qui échouent sur le code d'avant, 49 tests au vert. **Non poussé** — relecture humaine obligatoire. ⚠️ « exclure `SENT` » a été RÉFUTÉ pendant la correction : la citation de TRK-014 portait sur `tracker_commands`, pas sur les commandes moteur, qui sont bien acquittées (2 857). Le repli SMS reste en `SENT` à vie, l'exclure aveuglerait le coupe-circuit)* · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)* | 2026-08-20 | 2026-08-20 |
 | [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2` du 20/08 : résolution de l'émetteur sur les 9 derniers chiffres + écouteur qui acquitte sur le COUPLE (boîtier, action), jamais sur le temps. **3 abstentions testées** : ambiguïté, panne de résolution, panne de l'écouteur. ⚠️ explique pourquoi on ne VOYAIT pas les accusés, PAS pourquoi il n'y en a que 2 en 5 semaines — [TRK-018](#trk-018) reste entière)* *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* | 2026-08-20 | 2026-08-20 |
-| [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🔴 NON CORRIGÉ · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
+| [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🟠 **SONDE ÉCRITE, NON DÉPLOYÉE** *(commit `41c22081` du 20/08 : recensement quotidien à 03:15, rangé HORS des tables surveillées. La règle n'est pas « des lignes ont-elles disparu » mais « la disparition est-elle EXPLIQUÉE » — deux signaux, le nombre ET la borne basse. 🔴 **le défaut a REJOUÉ le jour même** : `error_logs` 14 → 4 et borne +20 h à 14:50, pendant que la purge déclarait `errorDeleted: 0`. **La sonde aurait crié.** ⚠️ elle n'empêche RIEN — aucun code n'arrête un `DELETE` en base)* · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
 | [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
 | [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `638d16aa` du 20/08. Le BRUIT était déjà traité en amont ; ce qui restait était le TRAVAIL — un trajet au-delà de l'horizon était **analysé**, l'analyse relisait ses positions, n'en trouvait aucune et persistait une analyse VIDE, sur un budget **saturé** (3 712 trajets en 50 min, 6 véhicules laissés de côté). ⚠️ **la dérive 1 500 h vs plafond 720 h n'est pas corrigée en douce mais RENDUE VISIBLE** — le bon plafond est une décision)* *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
 | [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `b28e389e` du 20/08. 🔴 **le défaut a rejoué une 3ᵉ fois pendant la correction** — FZ-862-VY, 4 épisodes à 08:16:31, 3 fabriquées réfutées par 539/386/178 positions ; **13 clos faux sur 19**, et une 2ᵉ zone empoisonnée à **10,47 j** pour 2,83 j réels. La borne retenue N'EST PAS la fenêtre fixe prévue : elle porte sur l'existence d'un épisode PLUS RÉCENT, pas sur l'ancienneté — sinon une absence réelle de 5 semaines resterait ouverte à vie. + script d'assainissement en DRY-RUN : **14 réparables**, durées réelles 0,00-0,80 j)* *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
@@ -5332,7 +5332,67 @@ ce serait vrai aussi si on acquittait à l'aveugle.
 
 **Signature** — *(défaut de plateforme, pas une ligne d'erreur)*
 `plateforme | AUCUNE LIGNE | suppression de masse hors application — invisible de tous les journaux`
-**Statut : 🔴 NON CORRIGÉ** · **GRAVITÉ 1 (consigne) / 3 (technique)** · découvert 2026-08-20
+**Statut : 🟠 SONDE ÉCRITE, NON DÉPLOYÉE** *(commit `41c22081`, branche
+`fix/trk-035-recensement-suppressions`, partie d'`origin/main` — **non poussée**)* ·
+**GRAVITÉ 1 (consigne) / 3 (technique)** · découvert 2026-08-20
+
+### 🔴 LE DÉFAUT A REJOUÉ LE JOUR MÊME OÙ ON ÉCRIVAIT LA SONDE
+
+Mesuré à 14:50, pendant la rédaction du correctif :
+
+| | Ce matin 01:1x | **14:50** |
+|---|---|---|
+| Lignes `error_logs` | **14** | **4** |
+| Plus ancienne | 19/08 09:35 | **20/08 05:47** *(+20 h)* |
+| `pg_stat_user_tables.n_tup_del` | 3 695 | **3 712** *(+17)* |
+| Purge enregistrée à 03:00 | — | **`errorDeleted: 0`** |
+
+**Troisième jour de suite, et toujours aucune trace.** Vérifié à nouveau ce jour : il n'existe
+**toujours qu'un seul** chemin de suppression de lignes d'erreur dans le code servi (le cron), et
+**aucun endpoint `DELETE`** côté alertes ou observabilité. *La sonde écrite aujourd'hui aurait crié
+aujourd'hui.*
+
+### ✅ Ce qui a été livré — et ce que ça n'est pas
+
+> 🔑 **Ce n'est PAS un garde-fou, et ça ne peut pas en être un.** Aucun code applicatif
+> n'arrête un `DELETE` exécuté directement en base. La sonde n'empêche rien : elle fait la seule
+> chose qui reste possible — **empêcher que ça passe inaperçu**.
+
+**La règle n'est pas « des lignes ont-elles disparu ? » mais « la disparition est-elle
+EXPLIQUÉE ? »** — on compare la baisse au nombre de lignes que les purges **enregistrées**
+revendiquent. Ce qui dépasse n'a pas d'explication.
+
+**Deux signaux, pas un** :
+
+| Signal | Ce qu'il attrape |
+|---|---|
+| Le **nombre** qui baisse | une suppression ciblée **au milieu** de l'historique |
+| La **borne basse** qui avance | un `DELETE` par ancienneté — le cas du 19/08, +22 jours |
+
+*S'en remettre à la borne seule laisserait passer le premier cas entier.*
+
+**Le relevé vit ailleurs que dans les tables surveillées**, et c'est tout l'intérêt : rangé dans
+`error_logs`, il disparaîtrait avec les lignes qu'il compte. Il est écrit dans le journal des
+actions système — là où le ménage déclare déjà ses propres purges, et lisible depuis l'écran
+d'administration.
+
+**Cron à 03:15, APRÈS le ménage de 03:00**, et c'est délibéré : recenser avant produirait un écart
+d'un jour à chaque passage. *La sonde crierait tous les jours, on l'ignorerait, et le jour où elle
+aurait raison personne ne la lirait.*
+
+**Vérifications** : `tsc --noEmit` ✅ · **126 tests / 12 suites** ✅ dont le **smoke-boot DI** —
+obligatoire ici, un service mal câblé dans `observability` a déjà provoqué une boucle de crash.
+**10 tests** sur la règle de comparaison, sortie du service en **fonction pure** : elle se vérifie
+sans base, sans horloge et sans injection. Dont **le test qui protège la sonde d'elle-même** — une
+purge qui revendique sa baisse ne déclenche **rien**.
+
+### ⚠️ Ce qui reste hors de portée du code
+
+Le second geste de la fiche — **documenter la manœuvre quand elle est volontaire** — n'est pas
+livrable ici : il appartient à celui qui exécute le `DELETE`. La sonde le rend simplement
+coûteux à omettre, puisque l'omission produit désormais une ligne `CRITICAL`.
+
+### Le constat d'origine (2026-08-20)
 
 ### 41 709 alertes et au moins 89 lignes d'erreur effacées, sans aucune trace
 
