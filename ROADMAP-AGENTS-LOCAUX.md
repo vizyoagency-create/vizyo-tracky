@@ -339,7 +339,13 @@ Constatés au contrôle du 20/08, non touchés :
 - **Point 2** — retirer le bouton « Recalculer » de la page Rapports. Le retard se résorbe
   (2 158 → 1 339 trajets bruts au 20/08) mais n'est pas à zéro : le bouton reste le seul rattrapage
   manuel. À faire quand la tranche 30-50 j sera vidée.
-- **Agent qualité GPS** — table + écran pour les lieux, centre d'alerte pour les boîtiers.
+- **Agent qualité GPS** — agent écrit et vérifié (`outils/agent-qualite-gps.cjs`). L'alerte
+  boîtier est DÉJÀ en production (KSR370, niveau ERROR, source `GPS_QUALITE`). Restent : le
+  déploiement de la migration `20260820100000_diagnostics_zones_gps`, l'écran de relecture des
+  zones, et la tâche planifiée.
+  ⚠️ Limite assumée : la corrélation se fait PAR SOCIÉTÉ. Une zone morte partagée par deux
+  sociétés différentes ne sera pas détectée — mélanger leurs données pour gagner en détection
+  n'est pas un arbitrage acceptable.
 - **Agent triage des propositions d'agenda** — 1 328 propositions jamais triées au 19/08.
 - **Agent rapport d'activité** — sans objet tant que la planification est désactivée.
 - **Agent coaching conducteur** — bloqué tant que le ratio d'analyses sans limite de vitesse
@@ -358,5 +364,9 @@ Trois, en deux jours. Tous passaient le typecheck et les tests :
    pour y aller. Le dépôt documentait déjà ce piège pour un autre écran.
 3. **Horodatage jamais mis à jour** — l'agent écrit en SQL brut, donc l'annotation Prisma ne se
    déclenche pas ; la supervision aurait affiché un agent à l'arrêt pendant qu'il travaillait.
+4. **`psql` sort en 0 même quand le SQL échoue** — sans `ON_ERROR_STOP=1`, les deux agents
+   comptaient comme écrit ce qui ne l'était pas. Observé le 20/08 : « 1 zone enregistrée » sur une
+   table qui n'existait pas encore en production. Un agent qui se félicite d'un travail qu'il n'a
+   pas fait est pire qu'un agent en panne — la panne, elle, se voit.
 
 C'est ce qui justifie le contrôle du matin, et la règle « pas de conclusion sur lecture de code ».
