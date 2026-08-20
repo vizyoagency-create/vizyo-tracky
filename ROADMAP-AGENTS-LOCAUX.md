@@ -1,7 +1,7 @@
 # Roadmap — bascule des traitements IA vers des agents locaux
 
 > **Fichier de suivi temporaire.** À supprimer quand tout est livré.
-> Créé le 19/08/2026. Dernière mise à jour : 19/08/2026.
+> Créé le 19/08/2026. Dernière mise à jour : 20/08/2026.
 
 ## Pourquoi
 
@@ -85,7 +85,7 @@ Emplacement : `apps/web/src/app/features/reports/reports.component.ts` (bouton a
 ~ligne 285). L'endpoint `POST /api/trips/recompute` reste, il sert à l'automatisation.
 → **Contrôle navigateur à 375 px obligatoire** avant de considérer ce point terminé.
 
-### 3. Colonne `executor` + affichage « absorbé par l'abonnement local » — 🔶 SERVEUR FAIT, UI À FAIRE
+### 3. Colonne `executor` + affichage « absorbé par l'abonnement local » — ✅ FAIT
 
 **Fait** : migration `20260819140000_qui_execute_l_appel_ia`, champ `executor` sur `AiUsageEntry`,
 `absorbed` calculé dans `summary()`, `executor` exposé sur les lignes du journal, et couple
@@ -99,12 +99,10 @@ Deux points de conception à ne pas défaire :
   tourne en local ET ne coûte rien — parce qu'il interroge OpenStreetMap, pas parce qu'un
   abonnement l'absorbe. Les confondre afficherait une économie qui n'a jamais existé.
 
-**UI faite** : encart « Absorbé par l'abonnement local » dans Coûts IA (masqué tant qu'aucun
-appel local n'existe — il apparaîtra au premier passage d'un agent), et deux étiquettes sur la page
-Crons : « poste local » (où ça tourne) et « IA absorbée » / « IA facturée » (qui paie).
-
-⚠️ **Non vérifié à 375 px** — Docker Desktop n'était pas lancé, donc pas de pile locale. Typecheck
-et 5 gardes passent, mais aucun écran n'a été regardé dans un navigateur.
+**UI faite et VÉRIFIÉE à 375 px le 19/08** : encart « Absorbé par l'abonnement local » dans Coûts
+IA (exercé avec des lignes locales injectées puis supprimées — les deux branches passent : montant
+chiffré depuis les tokens, et action sans référence API nommée comme non estimable), et deux
+étiquettes sur la page Crons — « poste local » sur 1 tâche, « IA facturée » sur 4.
 
 ### 4. Table de conservation des couples (entrée, sortie) IA — ✅ FAIT
 
@@ -140,38 +138,48 @@ Le modèle de référence. Gratuit (Overpass), 5 créneaux quotidiens, tâche pl
 `VizyoTracky-LimitesVitesse`. **Toujours du travail** : 4 440 analyses sur 6 962 (64 %) n'ont pas
 de limite connue, donc aucun excès n'y est affirmable.
 
-### ☐ Agent « récit de trajet » — priorité 1
+### ✅ Agent « récit de trajet » — EN SERVICE depuis le 20/08
 
-| | |
+`outils/agent-recit-trajet.cjs` + `.cmd`, tâche planifiée **VizyoTracky-RecitTrajet** (03:15,
+compte YOUNESS). Module PUR partagé : `apps/api/src/trip-analysis/trip-narrative.shared.ts` — le
+service de l'API a été refactoré pour l'utiliser, il n'existe donc qu'une implémentation.
+
+**Périmètre arrêté : le COURANT seulement** (48 h), pas l'historique. Décision du 20/08.
+
+Trois pièges mesurés, à ne pas réintroduire :
+- la CLI ne se lance pas par `execFileSync('claude')` sous Windows — viser `claude.exe` ;
+- **un appel par trajet n'est pas tenable** : chaque invocation renvoie tout le contexte de la CLI.
+  Grouper (5 par appel) n'est pas une optimisation, c'est la condition pour tenir dans une nuit ;
+- la fenêtre porte sur `trips."startedAt"`, PAS sur `trip_analyses."updatedAt"` — l'analyse
+  rattrape son retard, donc les vieilles lignes ont une date fraîche : 4 761 candidats au lieu
+  de 234 ;
+- l'agent doit écrire `"updatedAt" = now()` LUI-MÊME. L'annotation Prisma est appliquée par le
+  client, pas par la base : sans ça la supervision affichait un agent à l'arrêt pendant qu'il
+  travaillait.
+
+**Coût du choix, assumé** : par unité de travail, l'agent local consomme ~3 à 4 fois plus de
+modèle que l'API ne coûterait. L'économie vient de ce que l'abonnement est déjà payé.
+
+### 🔶 Agent « qualité GPS / zones mortes » — CERVEAU FAIT, agent à écrire
+
+Module PUR livré : `apps/api/src/gps-dead-zones/gps-diagnostic.shared.ts`, 11 tests.
+
+Le manque comblé : les zones de perte sont apprises PAR VÉHICULE, donc personne ne pouvait
+répondre à « est-ce le LIEU ou le BOÎTIER ? ». Il faut croiser les véhicules entre eux.
+
+Sur les vraies données (18 zones, 10 véhicules) : **1 boîtier, 3 lieux, 5 indéterminés**. Le
+boîtier signalé est KSR370 — le même que celui repéré indépendamment par ses 599 trajets non
+recalculés et son boîtier muet depuis 5 jours.
+
+**Destination décidée le 20/08 :**
+
+| Nature | Où |
 |---|---|
-| Remplace | `trip_analysis` via l'API (45,89 $ en juillet, ~386 $/an si rallumé) |
-| Produit | `narrative` + `advice` + Trust Score sur `trip_analyses` |
-| Volume | 89 trajets/j (cdef31 seule) à 170/j (3 flottes) |
-| Cadence | **1 passage nocturne**, lots de ~20 trajets par invocation |
-| Module pur à extraire | `compactPayload()` + `renderTripNarrativeSystem()` + assainissement, depuis `trip-analysis-llm.service.ts` (privé, lié à Prisma) |
+| Boîtier défaillant | **centre d'alerte** — action datée, canal déjà surveillé |
+| Zone morte (lieu) | **table dédiée + écran** — qualification durable |
+| Indéterminé | nulle part : on ne remonte pas ce sur quoi on n'a pas conclu |
 
-**Améliorations à prévoir** (le budget de tokens n'est plus une contrainte) :
-- passer le trajet **entier** plutôt qu'un résumé compact ;
-- donner le contexte des trajets précédents du même véhicule (récurrence, habitudes) ;
-- croiser avec les géofences traversées et les lieux connus (`fleet_places`) ;
-- ne plus plafonner `maxTokens: 1200`.
-
-⚠️ Garder en tête : 5 consultations en tout à ce jour. Générer pour tout le monde n'a de sens que
-parce que c'est désormais gratuit — pas parce que c'est lu.
-
-### ☐ Agent « qualité GPS / zones mortes » — priorité 2
-
-Le plus riche analytiquement, et sans aucun risque client (diagnostic interne).
-
-| | |
-|---|---|
-| Matière première | `gps-integrity`, `gps-dead-zones`, `tracker-fix-mode`, `positions`, `trackers.lastSeenAt` |
-| Produit | Un diagnostic par boîtier douteux : nature du défaut, zone géographique concernée, antériorité, et **conclusion actionnable** (boîtier à remplacer / zone réellement sans couverture / défaut d'installation) |
-| Cadence | 1 passage nocturne |
-| Pourquoi un agent | Le croisement « trous de trame × géographie × historique du boîtier × modèle de tracker » est exactement ce qu'un humain fait mal et lentement, et qu'une règle déterministe fait mal aussi (une zone sans couverture et un boîtier mourant produisent la même trace brute). |
-
-À concevoir : l'agent doit **distinguer** une zone morte (plusieurs véhicules, même endroit) d'un
-boîtier défaillant (un véhicule, partout). C'est la conclusion qui a de la valeur, pas le constat.
+Reste : la table, l'écran, l'agent, l'inscription au catalogue des tâches de fond.
 
 ### ☐ Assistance IA en direct — priorité 3 · **VIA L'API PAYANTE**
 
@@ -301,10 +309,54 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 
 ---
 
-## Questions ouvertes
+## Registre des points ouverts
 
-- **Rétention** des traces IA (point 4) : plafond par action, ou purge à N mois ?
-- **`lookbackHours`** reste à 1200 (50 jours). Avec les tranches bornées c'est tenable — c'est cette
-  valeur qui définit jusqu'où on rattrape.
-- **`narrateEnabled`** reste à `false`. Il ne sera rebasculé que si l'agent local prend le relais,
-  jamais pour repasser par l'API.
+> Tenu à jour à chaque passage. Un point qui disparaît d'ici doit avoir été tranché, pas oublié.
+
+### Décisions en attente
+
+| # | Point | Depuis |
+|---|---|---|
+| D1 | **Rôle DEPOT et assistance.** Je l'ai écarté (allowlist default-deny, cohérent avec la décision déjà prise pour l'état IA), alors que la consigne était « tous les utilisateurs connectés ». Un décorateur suffit à l'ouvrir. | 19/08 |
+| D2 | **Rôle NIGHT_WATCHMAN et assistance.** Même situation : son confinement est une allowlist posée à la demande du client (« aucune donnée pour ce rôle »). Non élargie. | 19/08 |
+| D3 | **`BgTaskExecution` vs `BgTaskExecutor`** — deux types aux valeurs identiques dans le DTO des tâches de fond. Rien ne consomme `execution`. Un des deux doit partir. | 19/08 |
+| D4 | **Traces de l'assistance** : les lots de données du demandeur sont réduits à leur résumé, jamais recopiés. On perd le rejeu à l'identique, on évite une seconde copie de données personnelles. À confirmer ou inverser. | 19/08 |
+
+### Réglages modifiés sans décision tracée
+
+Constatés au contrôle du 20/08, non touchés :
+
+| Réglage | Valeur | Conséquence |
+|---|---|---|
+| `ai_feature_flags."agendaAgent"` | repassé à `true` | la couche IA de l'agenda a refacturé un appel à 00:01 le 20/08 |
+| `activity_report_schedule.enabled` | `false` | plus aucun rapport d'activité depuis le 12/08 |
+| `lookbackHours` | 1200 → **1500** | fenêtre de rattrapage élargie |
+| `maxAnalysesPerRun` | 150 → **5000** | passages de ~50 min, une heure sur deux |
+| `RUN_BUDGET_MS` | 20 → **50 min** | cohérent avec la garde anti double-run, également à 50 min |
+
+### Chantiers restants
+
+- **Point 2** — retirer le bouton « Recalculer » de la page Rapports. Le retard se résorbe
+  (2 158 → 1 339 trajets bruts au 20/08) mais n'est pas à zéro : le bouton reste le seul rattrapage
+  manuel. À faire quand la tranche 30-50 j sera vidée.
+- **Agent qualité GPS** — table + écran pour les lieux, centre d'alerte pour les boîtiers.
+- **Agent triage des propositions d'agenda** — 1 328 propositions jamais triées au 19/08.
+- **Agent rapport d'activité** — sans objet tant que la planification est désactivée.
+- **Agent coaching conducteur** — bloqué tant que le ratio d'analyses sans limite de vitesse
+  connue n'est pas descendu.
+- **`narrateEnabled`** reste à `false` et le restera : l'agent local produit les récits. Au 20/08,
+  8 973 analyses sur 10 070 n'ont pas de récit — l'analyse déterministe va bien plus vite que la
+  narration, et c'est attendu.
+
+### Défauts trouvés par la MESURE, pas par la relecture
+
+Trois, en deux jours. Tous passaient le typecheck et les tests :
+
+1. **Budget borné au mauvais endroit** — vérifié à l'entrée d'un véhicule, alors que le temps part
+   dans la boucle sur ses trajets. Observé : 31 min pour un plafond de 20.
+2. **Écran sans lien** — l'assistance livrée avec sa route, son garde et ses deux écrans, et rien
+   pour y aller. Le dépôt documentait déjà ce piège pour un autre écran.
+3. **Horodatage jamais mis à jour** — l'agent écrit en SQL brut, donc l'annotation Prisma ne se
+   déclenche pas ; la supervision aurait affiché un agent à l'arrêt pendant qu'il travaillait.
+
+C'est ce qui justifie le contrôle du matin, et la règle « pas de conclusion sur lecture de code ».
