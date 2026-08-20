@@ -3844,6 +3844,64 @@ Le correctif durable est le balayage proposé en angle mort n° 3 du rapport du 
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M52 — J'ai recommandé trois fois un réglage qui n'existe pas, sans jamais l'essayer
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (mesuré et rétracté le 2026-08-20)
+- **Vu** : 2026-08-20 · **Coût** : la recommandation figurait **trois fois** dans le rapport publié, comme *« la bonne réponse »* et *« ce qui fermerait la classe »*. Elle a été demandée à l'exécution — et il a suffi de deux mesures pour montrer qu'elle ne fait **rien**.
+
+**Quoi.** Le rapport du 2026-08-20 concluait, à trois reprises : *« la bonne réponse serait côté
+machine — un `DOCKER_CLIENT_TIMEOUT` global »*. **Cette variable n'est pas lue par ce client
+Docker.**
+
+| Méthode | Résultat |
+|---|---|
+| `strings $(command -v docker) \| grep -c '^DOCKER_CLIENT_TIMEOUT$'` | **0** — la chaîne n'est pas dans le binaire |
+| `DOCKER_CLIENT_TIMEOUT=1 docker system df` | **16,02 s, rc=0, aucune erreur** — la variable est ignorée |
+
+Client **Docker 29.1.3 (Go)**. `DOCKER_CLIENT_TIMEOUT` vient de **`docker-py` et de
+`docker-compose` v1**, tous deux en Python ; le CLI Go ne l'a jamais implémentée. *Deux méthodes
+indépendantes, comme la procédure l'exige pour un constat — sauf que je ne les avais appliquées ni
+l'une ni l'autre avant de l'écrire.*
+
+**Pourquoi c'était invisible — et c'est le pire mode d'échec du dispositif.** Une recommandation
+n'est pas une mesure : **rien dans l'audit ne vérifie les propositions qu'il émet.** Les constats
+portent une commande de vérification ; les *pistes* n'en portent aucune. Celle-ci était plausible
+(le nom est bien formé, la variable a réellement existé), écrite en position de conclusion, et
+répétée — la répétition lui a donné du poids sans lui donner de preuve.
+
+⚠️ **Ce que ça aurait coûté si elle avait été appliquée sans être mesurée** : un `export
+DOCKER_CLIENT_TIMEOUT=30` dans `/etc/environment`, un rapport annonçant « la classe est fermée »,
+et **aucune protection**. C'est exactement **VPS-M06** (*fail2ban tournait, s'annonçait actif, et
+ne surveillait rien*) et **VPS-M21** (*un défaut qui rassure n'a pas de plaignant*), appliqués
+cette fois non pas à une garde existante mais à une garde **qu'on venait de poser**.
+
+> **La règle, et elle vaut pour tout plan d'action** : *un constat doit prouver ce qu'il affirme ;
+> une **recommandation** doit prouver que son mécanisme **existe**.* Le coût de la vérification
+> était de deux commandes en lecture seule. Le coût de l'omission aurait été une fausse sécurité
+> permanente.
+
+**Quoi faire — et il n'y a pas d'équivalent global.** Docker n'offre **aucun** réglage côté client
+qui borne la durée d'une commande, et rien côté démon qui borne un client lent. Ce qui existe
+réellement, et qui est en place :
+
+| Levier | État | Portée |
+|---|---|---|
+| `timeout N docker …` par appel | ✅ posé dans les 2 procédures d'audit qui parlent à Docker | les dispositifs planifiés |
+| Détecteur de clients bloqués (section 4 du collecteur) | ✅ posé le 2026-08-20 (VPS-M49) | **détecte**, ne prévient pas |
+| `curl --max-time` dans `send-report-mail.sh` | ✅ posé le 2026-08-20 | le seul appel réseau non borné trouvé |
+
+**`aNePasFaire`** — ⚠️ **ne pas fabriquer un « global » en enveloppant `docker` dans une fonction
+shell qui appelle `timeout`.** Ça paraît séduisant et c'est dangereux : `docker compose up --build`
+dure **jusqu'à 27 minutes** sur cette machine (mesuré le 2026-08-19), et son processus s'appelle
+aussi `docker`. Un plafond global couperait les déploiements. ⚠️ **Et ne pas poser de cron
+« tueur de clients »** : la procédure d'audit interdit explicitement d'installer un cron, un timer
+ou un agent sur le VPS, et un tueur qui se trompe de cible coûte plus cher que le défaut.
+
+**Mesure recueillie au passage, et elle vaut d'être notée** : `docker system df` a pris
+**16,02 secondes** — sur une machine saine, sans boucle. Le collecteur l'appelle à chaque passage.
+
+---
+
 ### VPS-M51 — La remédiation écrite le 08-18 supposait un parent mort, et personne ne pouvait le voir
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-20, vérifié par l'exécution)
