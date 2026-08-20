@@ -46,9 +46,31 @@ class FakePrisma {
       return cur;
     },
     deleteMany: async () => ({ count: 0 }),
-    findMany: async () => [],
+    // Le recalcul releve d'abord les trajets de la fenetre pour nettoyer leurs dependances.
+    findMany: async () => [...this.trips.values()].map((t: AnyObj) => ({ id: t['id'] })),
     findUnique: async ({ where }: { where: { id: string } }) =>
       this.trips.get(where.id) ?? null,
+  };
+
+  /**
+   * Dependances que le recalcul doit nettoyer AVANT de supprimer les trajets. On enregistre les
+   * identifiants recus : c'est exactement ce que le test verifie.
+   */
+  analysesSupprimees: string[] = [];
+  arretsCarburantSupprimes: string[] = [];
+
+  tripAnalysis = {
+    deleteMany: async ({ where }: { where: { tripId: { in: string[] } } }) => {
+      this.analysesSupprimees.push(...where.tripId.in);
+      return { count: where.tripId.in.length };
+    },
+  };
+
+  tripFuelStop = {
+    deleteMany: async ({ where }: { where: { tripId: { in: string[] } } }) => {
+      this.arretsCarburantSupprimes.push(...where.tripId.in);
+      return { count: where.tripId.in.length };
+    },
   };
 
   vehicle = {
@@ -377,6 +399,48 @@ describe('TripsService — invariants rapports', () => {
       // Le claim synchrone garantit UN SEUL trip cree malgre la concurrence.
       expect(createCalls).toBe(1);
       expect((svc as any).openTrips.size).toBe(1);
+    });
+
+    /**
+     * ⚠️ 2 704 ANALYSES ORPHELINES, DONT 493 AVEC UN RECIT IA — releve du 2026-08-21.
+     *
+     * `TripAnalysis.tripId` n'a pas de relation en base : aucune cascade. Le recalcul supprimait
+     * les trajets en abandonnant leurs analyses derriere lui, pointant vers du vide. Invisibles
+     * dans l'application, mais bien presentes : elles faussaient les comptages, et surtout
+     * chaque recit orphelin represente des jetons depenses pour un texte que plus personne ne
+     * peut lire.
+     */
+    it('⚠️ le recalcul supprime les ANALYSES des trajets qu’il detruit, pas seulement les trajets', async () => {
+      const { svc, prisma } = buildService();
+      prisma.vehicles.set(VEHICLE_ID, {
+        id: VEHICLE_ID, fleetId: FLEET_ID, currentDriverId: null, tracker: { id: TRACKER_ID },
+      });
+      prisma.trips.set('t-1', { id: 't-1', vehicleId: VEHICLE_ID });
+      prisma.trips.set('t-2', { id: 't-2', vehicleId: VEHICLE_ID });
+
+      await svc.recompute(
+        { userId: 'u', role: 'SUPER_ADMIN' as any, fleetId: FLEET_ID },
+        { vehicleId: VEHICLE_ID, from: '2026-01-01T08:00:00Z', to: '2026-01-01T09:00:00Z' },
+      );
+
+      expect(prisma.analysesSupprimees.sort()).toEqual(['t-1', 't-2']);
+      // Les passages en station suivent la meme logique : ils decrivent un trajet qui n'existe plus.
+      expect(prisma.arretsCarburantSupprimes.sort()).toEqual(['t-1', 't-2']);
+    });
+
+    it('aucun trajet dans la fenetre → aucune suppression de dependance', async () => {
+      const { svc, prisma } = buildService();
+      prisma.vehicles.set(VEHICLE_ID, {
+        id: VEHICLE_ID, fleetId: FLEET_ID, currentDriverId: null, tracker: { id: TRACKER_ID },
+      });
+
+      await svc.recompute(
+        { userId: 'u', role: 'SUPER_ADMIN' as any, fleetId: FLEET_ID },
+        { vehicleId: VEHICLE_ID, from: '2026-01-01T08:00:00Z', to: '2026-01-01T09:00:00Z' },
+      );
+
+      expect(prisma.analysesSupprimees).toEqual([]);
+      expect(prisma.arretsCarburantSupprimes).toEqual([]);
     });
 
     it('recompute does not drop a live trip that started after the window (#16)', async () => {

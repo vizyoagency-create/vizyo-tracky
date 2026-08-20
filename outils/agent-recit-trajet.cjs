@@ -155,6 +155,11 @@ function trajetsANarrer(limite) {
     WHERE a.narrative IS NULL
       AND f."aiEnabled" = true
       AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours'
+      -- ⚠️ NE PAS NARRER UN TRAJET QUI VA ETRE DETRUIT. Le recalcul supprime les trajets encore
+      --    marques autrement que 'recompute' pour les re-segmenter : leur analyse, et le recit
+      --    ecrit dessus, partent avec eux. Releve du 2026-08-21 : 493 recits orphelins accumules,
+      --    autant de jetons depenses pour un texte que plus personne ne peut lire.
+      AND t."segmentationSource" = 'recompute'
     ORDER BY t."startedAt" DESC
     LIMIT ${Number(limite) || 5};`;
   return psql(sql)
@@ -179,7 +184,8 @@ function resteAFaire() {
     JOIN vehicles v ON v.id = a."vehicleId"
     JOIN fleets   f ON f.id = v."fleetId"
     WHERE a.narrative IS NULL AND f."aiEnabled" = true
-      AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours';`;
+      AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours'
+      AND t."segmentationSource" = 'recompute';`;
   return Number(psql(sql).trim()) || 0;
 }
 

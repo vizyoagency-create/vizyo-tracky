@@ -829,6 +829,32 @@ export class TripsService implements OnModuleInit {
       this.openTrips.delete(vehicle.tracker.id);
     }
 
+    /**
+     * ⚠️ SUPPRIMER LES TRAJETS SANS LEURS ANALYSES LES LAISSAIT ORPHELINES.
+     *
+     * `TripAnalysis.tripId` n'a PAS de relation en base (Uuid nu, cf. schema) : aucune cascade
+     * ne s'applique. Le recalcul detruisait donc les trajets en abandonnant derriere lui des
+     * analyses pointant vers du vide — invisibles dans l'application, mais bien presentes.
+     *
+     * Releve du 2026-08-21 : 2 704 analyses orphelines accumulees depuis le 8 juillet, dont
+     * 493 PORTAIENT UN RECIT IA. Autant de jetons depenses pour un texte que plus personne ne
+     * peut lire. Elles faussaient aussi tous les comptages — « analyses faites » incluait des
+     * lignes sans trajet.
+     *
+     * On nettoie donc comme le fait deja la purge de retention (`trips-retention.service.ts`) :
+     * les dependances d'abord, le trajet ensuite. Une analyse decrit un decoupage precis ; apres
+     * re-segmentation ce decoupage n'existe plus, la conserver n'aurait aucun sens.
+     */
+    const aSupprimer = await this.prisma.trip.findMany({
+      where: { vehicleId: dto.vehicleId, startedAt: { gte: fromDate, lte: toDate } },
+      select: { id: true },
+    });
+    const idsSupprimes = aSupprimer.map((t) => t.id);
+    if (idsSupprimes.length > 0) {
+      await this.prisma.tripFuelStop.deleteMany({ where: { tripId: { in: idsSupprimes } } });
+      await this.prisma.tripAnalysis.deleteMany({ where: { tripId: { in: idsSupprimes } } });
+    }
+
     const { count: deleted } = await this.prisma.trip.deleteMany({
       where: {
         vehicleId: dto.vehicleId,
