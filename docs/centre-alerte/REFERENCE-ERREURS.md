@@ -5122,6 +5122,35 @@ vieux d'une heure, d'un jour ou d'un mois continue d'affirmer « c'est nous ».
 > exactement pendant les heures où un véhicule est garé sans surveillance — c'est-à-dire la seule
 > fenêtre où une coupure d'alimentation réelle (vol, batterie débranchée, sabotage) est plausible.*
 
+### ⚠️ Ajout du 2026-08-20 — le délai réel est MESURÉ, et il retourne la lecture du défaut
+
+Avant de choisir une fenêtre au jugé, l'écart réel entre une coupe commandée et l'arrivée d'une
+alarme d'alimentation a été mesuré sur les **trames brutes** (`wire_logs`, 4 jours) :
+
+| Boîtier | Coupe commandée | 1ʳᵉ alarme d'alimentation ensuite | Écart |
+|---|---|---|---|
+| DZ-034-CA | 18/08 20:00:05 | 19/08 00:57:46 | **4 h 58** |
+| HD-292-SH | 18/08 20:00:06 | 19/08 00:32:34 | **4 h 32** |
+| DZ-034-CA | 17/08 20:00:05 | 18/08 07:56:36 | 11 h 56 |
+| HD-292-SH | 16/08 20:00:05 | 19/08 00:32:34 | 52 h |
+
+**L'écart le plus court de toute la fenêtre est de 4 h 32.** Aucune alarme n'arrive dans les minutes
+qui suivent une coupe commandée.
+
+> 🔑 **Deux conséquences, la seconde plus importante que la première.**
+> 1. **Une fenêtre de quelques minutes ne peut PAS ramener le déluge** qu'on voulait éteindre : les
+>    alarmes concernées sont toutes à plus de quatre heures de la coupe la plus proche. **Le
+>    correctif est donc beaucoup moins risqué qu'il n'en a l'air.**
+> 2. **Le motif « coupure commandée » n'a jamais été la bonne explication de ces alarmes.** Une perte
+>    d'alimentation causée par notre coupe apparaîtrait en secondes, pas en heures. Les **304 trames
+>    sur 19 heures d'affilée** de DZ-034-CA sont un défaut électrique réel, pas un effet de bord de
+>    l'automatisation. *Le « contact coupé sur montage commuté » relève de l'autre branche du code,
+>    celle du niveau de batterie — pas de celle-ci.*
+>
+> Et l'unique exercice réel de la garde le confirme : le 19/08 à **02:26:23**, elle a silencié une
+> alarme survenue **6 h 26 après** la coupe de 20:00, sur un véhicule qui alarmait sans interruption
+> depuis la veille au matin. **Son seul exercice connu est un faux silence.**
+
 ### Deux aggravants, déjà documentés ailleurs dans ce référentiel
 
 1. **`SENT` suffit.** [TRK-014](#trk-014) prouve qu'**aucun boîtier n'a jamais acquitté quoi que ce

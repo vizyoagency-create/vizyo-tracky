@@ -647,6 +647,13 @@
       "description": "Une mise en service répond à trois tests datés : fausse alarme d'antenne 51 s avant le premier fix, une absence de 16,9 jours fabriquée, et 202 coupures d'alimentation sans message."
     },
     {
+      "slug": "ROADMAP-CORRECTIFS.md",
+      "title": "Roadmap des correctifs — audit du 20/08",
+      "section": "guide",
+      "order": 0,
+      "description": "Plan d'exécution des six correctifs du 20/08 : pourquoi, où dans le code, le geste, et comment prouver que c'est réparé."
+    },
+    {
       "slug": "README.md",
       "title": "Vue d'ensemble",
       "section": "guide",
