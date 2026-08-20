@@ -3584,7 +3584,57 @@ contractuelle** — et on la découvrirait au pire moment, exactement comme `/op
 
 ## VPS-029 — Un second mécanisme gouverne le cache de build, posé hier après-midi, et le catalogue ne l'aurait pas montré
 
-- **Domaine** : docker · **Gravité** : **3** (était 4) · **Statut** : `SURVEILLANCE` — 🔴 **PROVENANCE RÉFUTÉE et CONTENU MODIFIÉ le 2026-08-20**
+- **Domaine** : docker · **Gravité** : **3** (était 4) · **Statut** : ✅ **volet SYMPTÔME `APPLIQUE` le 2026-08-20 à 05 h 39 (filtre remis, `RELOAD` confirmé) · volet CAUSE INTACT : on ignore toujours qui écrit ce fichier**
+
+> ### ✅ 2026-08-20, 05 h 39 min 05 — le filtre est remis, et la preuve est POSITIVE
+>
+> | | |
+> |---|---|
+> | Avant | `57 4 * * 4 root docker builder prune -f > /dev/null 2>&1` |
+> | Après | `57 4 * * 4 root docker builder prune -f --filter "unused-for=168h" > /dev/null 2>&1` |
+> | Sauvegarde | `/root/docker-builder-prune.bak-20260820-053905` (`cp -p`) |
+> | Droits | `644 root:root` — inchangés · fichier terminé par une nouvelle ligne (vérifié) |
+> | Prochaine échéance | **jeudi 2026-08-27 à 04 h 57 UTC** |
+>
+> **La confirmation ne vient PAS d'une absence d'erreur** — c'était le piège VPS-M02, et il était
+> tendu : `journalctl -u cron --since -2min` rendait `-- No entries --`. En attendant le scan
+> suivant :
+>
+> ```
+> 2026-08-20T05:40:01  cron[748]: (*system*docker-builder-prune) RELOAD (/etc/cron.d/docker-builder-prune)
+> ```
+>
+> `cron` relit `/etc/cron.d` chaque minute : aucun redémarrage. Et le même journal porte le
+> `RELOAD` du **08-19 à 11 h 03 min 01**, 23 s après l'écriture de l'hyperviseur — *le même
+> mécanisme observé deux fois, ce qui vaut mieux qu'une explication.*
+>
+> **Le fichier porte désormais un en-tête de commentaires** disant pourquoi le filtre est là et ce
+> qu'a coûté sa disparition. Même intention que le `NE-PAS-SUPPRIMER.txt` de VPS-021 : rendre le
+> piège lisible **là où quelqu'un ouvrira le fichier**. Le collecteur filtre les commentaires, donc
+> la section 7 continue d'afficher la seule ligne active.
+>
+> ### ⚠️ Ce correctif déclenchera le détecteur VPS-M50 au passage du 08-21 — et c'est NOUS
+>
+> Le bloc de fraîcheur posé le matin même signalera `🆕 2026-08-20 05:39 … docker-builder-prune`.
+> **Ne pas le lire comme une troisième réécriture par l'hyperviseur** : `journalctl -t qemu-ga |
+> grep cron.d` ne montre que les deux écritures des 08-18 et 08-19. *Un détecteur neuf produit son
+> premier signal sur le geste de celui qui l'a posé ; si ce n'est pas écrit, le passage suivant le
+> prend pour un incident.*
+>
+> ### ⚠️ Le volet CAUSE n'a pas bougé d'un octet
+>
+> Remettre le filtre traite la **conséquence**. Ce fichier a été écrit deux fois par un canal qui
+> n'apparaît dans **aucun** journal d'authentification (VPS-027), et rien n'empêche de le retrouver
+> modifié jeudi prochain.
+>
+> > **Test écrit d'avance, avec sa précondition.** *Au passage du **2026-08-28** — lendemain de
+> > l'échéance —, le fichier doit porter la date du 2026-08-20 et contenir toujours
+> > `--filter "unused-for=168h"`, et `Private` ne doit **pas** avoir chuté de plusieurs Go entre le
+> > 08-27 et le 08-28. Si le filtre a disparu, un tiers réécrit ce fichier de façon répétée et
+> > **VPS-027 passe en gravité 1**.* **Précondition** : que personne d'autre n'y ait touché entre
+> > temps — vérifiable par la date de modification, désormais publiée à chaque passage.
+
+- **Statut du matin du 2026-08-20** : `SURVEILLANCE` — 🔴 **PROVENANCE RÉFUTÉE et CONTENU MODIFIÉ**
 - **Vu** : 2026-08-20 · **Mesure du soir** : 🔴 **LE CRON A TOURNÉ À 04 h 57 min 01, PENDANT 53 SECONDES, ET IL N'EST PAS REDONDANT.** `Private` est passé de **9,568 Go à 5,057 Go** — il a retiré **4,5 Go que le ramasse-miettes gardait délibérément**, alors que `Private` était **sous** la borne `keepStorage` de 10 Go. Total `docker system df` 11,37 → **6,863 Go**, entrées 74 → **60**, disque 55 % → **50 %** (48 Go libres). La question que cette fiche posait — *« redondant et inoffensif » ou « il fait quelque chose que le ramasse-miettes ne fait pas » ?* — est **tranchée par les faits, et sans la précondition « au moins un build »** : c'est la seconde réponse. ⚠️ **Le coût, chiffré honnêtement** : 4,5 Go rendus sur une machine qui avait déjà 44 Go libres — *un gain dont personne n'avait besoin* — contre un premier build 2 à 4× plus long sur chaque projet, chaque jeudi. Sur 2 vCPU, c'est le mauvais côté de l'échange. ⚠️ Et `sar` en porte la trace : l'inactivité tombe à **11,25 %** sur la tranche 04 h 50 → 05 h 00, contre ~40 % les six tranches précédentes.
 - **Mesure du matin** : le fichier a été **RÉÉCRIT le 2026-08-19 à 11 h 02 min 38** — il a **perdu son filtre** et changé d'horaire. Prochaine échéance : **jeudi 2026-08-20 à 04 h 57 UTC**. Toujours jamais exécuté par `cron`.
 - **Mesure du 2026-08-19, conservée** : créé le 2026-08-18 à 13 h 22 min 06, jamais exécuté, première échéance annoncée au jeudi 2026-08-20 à 05 h 33 UTC.
