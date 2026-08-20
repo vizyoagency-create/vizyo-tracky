@@ -13,6 +13,7 @@ import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.servic
 import { ErrorLogger } from './error-logger.service';
 import { ErrorRateWatchdogService } from './error-rate-watchdog.service';
 import { LogCleanupService } from './log-cleanup.service';
+import { RecensementSuppressionsService } from './recensement-suppressions.service';
 import { VpsAuditWikiController } from './vps-audit-wiki.controller';
 import { VpsAuditWikiService } from './vps-audit-wiki.service';
 
@@ -41,6 +42,10 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
     // donc aucune alerte. Il faut aller chercher son silence (incident du 2026-08-03).
     ScheduledTaskHeartbeatService,
     LogCleanupService,
+    // TRK-035 — recensement quotidien des lignes conservees. Aucun code ne peut empecher un
+    // DELETE fait directement en base ; celui-ci ne l'empeche pas non plus, il empeche qu'il
+    // passe INAPERCU. 41 709 alertes ont disparu le 2026-08-19 sans qu'aucun journal ne le dise.
+    RecensementSuppressionsService,
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,
