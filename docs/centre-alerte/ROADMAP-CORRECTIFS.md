@@ -673,19 +673,79 @@ Trois sujets ouverts au rapport du 20/08 ne sont **pas** dans cette roadmap :
 
 | Sujet | Pourquoi pas ici |
 |---|---|
-| **[TRK-017](./REFERENCE-ERREURS.md#trk-017) — rotation de la clé d'API de la passerelle SMS** | **10ᵉ jour.** Ce n'est pas du code : c'est un geste d'exploitation (révoquer, rotationner, identifier l'instance hors serveur qui la porte). **Reste la priorité nº 1 de la plateforme**, devant tous les lots ci-dessus. 🔴 **Le mode opératoire est prêt et vérifié** *(voir plus bas)* — il attend un accord distinct, parce qu'il touche un secret de production sur le canal qui porte **le repli du coupe-circuit**. |
+| **[TRK-017](./REFERENCE-ERREURS.md#trk-017) — rotation de la clé d'API de la passerelle SMS** | **10ᵉ jour.** Ce n'est pas du code : c'est un geste d'exploitation (révoquer, rotationner, identifier l'instance hors serveur qui la porte). **Reste la priorité nº 1 de la plateforme**, devant tous les lots ci-dessus. ✅ **ROTATION EXÉCUTÉE le 20/08 à 13:34 UTC** — préfixe `vtx_48fe` → **`vtx_d4f3`**, ancienne clé rejetée en **401**, aucune copie résiduelle. *(compte-rendu et pièges plus bas)* |
 | **[TRK-012](./REFERENCE-ERREURS.md#trk-012) — mauvais format de trame** | Correctif écrit depuis le 11/08, **en attente d'un accord**, pas d'un développeur. |
 | **[TRK-022](./REFERENCE-ERREURS.md#trk-022) / [TRK-023](./REFERENCE-ERREURS.md#trk-023)** | Les correctifs sont **déjà déployés** — mais **non exercés**, faute de trames depuis le 19/08 02:26. Il n'y a rien à écrire : il y a à **mesurer** quand les trames reviendront. |
 
 ---
 
-# 🔴 TRK-017 — mode opératoire de la rotation de clé *(prêt, en attente d'accord)*
+# ✅ TRK-017 — ROTATION EXÉCUTÉE le 2026-08-20 à 13:34 UTC
 
-**Ce n'est pas un lot de la roadmap** : c'est un geste d'exploitation, et **la priorité nº 1 de la
-plateforme** — **10ᵉ jour**. Le mode opératoire ci-dessous a été **vérifié contre la production le
-2026-08-20**, en lecture seule. Il attend un accord **distinct** de celui donné pour
-l'assainissement, parce qu'il touche un secret de production **sur le canal qui porte le repli du
-coupe-circuit**.
+**Après dix jours.** Geste d'exploitation, hors roadmap, exécuté sur accord explicite dans un
+créneau calme (loin des coupes de 18:00/20:00 et des rétablissements de 03:00/06:00).
+
+| | Avant | **Après** |
+|---|---|---|
+| `tenants.apiKeyPrefix` | `vtx_48fe` | **`vtx_d4f3`** |
+| `tenants.updatedAt` | **05/06** *(figé depuis 76 jours)* | **20/08 13:34** |
+
+**Preuves, prises avec la clé que le conteneur porte réellement :**
+
+| Contrôle | Résultat |
+|---|---|
+| Clé du conteneur → `GET /v1/allowlist` | ✅ **HTTP 200** |
+| Ancien préfixe `vtx_48fe…` → même appel | ✅ **HTTP 401** |
+| Préfixe conteneur *vs* préfixe base | ✅ **concordants** |
+| `/api/health` après recréation | ✅ **HTTP 200** |
+| Copies de la clé hors `.env.prod` | ✅ **0** — `.env.prod.bak-1787111376` détruit au `shred` |
+
+⏳ **Une preuve arrive plus tard, et il faut l'attendre** : la réconciliation d'allowlist de
+l'application tourne à **h:25**. Celle de 13:25 portait encore `vtx_48fe`. **La première à porter
+`vtx_d4f3` est celle de 14:25** — c'est elle qui prouve la chaîne applicative de bout en bout, au-delà
+de la clé elle-même.
+
+## 🔴 Deux pièges de stdin ont fait échouer la première tentative — et laissé un état partiel
+
+À conserver : ils sont génériques et coûteux.
+
+1. **`docker exec -i` lit stdin.** Lancé via `ssh 'bash -s' <<EOF`, il **avale le reste du script**.
+   La première tentative s'est arrêtée net après sa première requête, sans erreur.
+   → **Exécuter par FICHIER** (`scp` puis `bash fichier`), et mettre `</dev/null` sur tout ce qui
+   lit stdin.
+2. **`python3 - <<'PY' … PY </dev/null` : la DERNIÈRE redirection gagne.** Python a donc lu
+   `/dev/null` au lieu du heredoc, **n'a rien fait, et est sorti 0**. Le garde-fou d'après (`grep`)
+   n'a pas arrêté le script.
+   → **Ne jamais mettre `</dev/null` après un heredoc.**
+
+**Conséquence réelle** : la base avait été mise à jour, `.env.prod` non → **la clé de Tracky ne
+correspondait plus**. Le conteneur n'ayant pas été recréé (échec compose, voir ci-dessous), la panne
+est restée théorique, et la reprise a consisté à **régénérer une clé et à écrire les deux côtés**.
+
+> 🔑 **L'ordre choisi a payé** : écrire `.env.prod` **avant** la base, et n'y toucher qu'après
+> vérification. Il n'a pas été respecté à la première tentative *parce que l'écriture avait
+> silencieusement échoué* — d'où le garde-fou dur ajouté en v2 : **si le préfixe n'est pas dans
+> `.env.prod`, on s'arrête AVANT de toucher à la base.**
+
+## 🔴 Le troisième piège : compose a besoin de son fichier d'environnement
+
+`docker compose -f docker-compose.prod.yml up -d api` échoue sur
+**`network declared as external, but could not be found`** — les variables `APP_DOMAIN`,
+`TRAEFIK_NETWORK`… viennent de `.env.prod`. **L'invocation correcte, celle des scripts de
+déploiement, est :**
+
+```
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --force-recreate --no-deps api
+```
+
+## Ce qui reste à faire, et qui n'est pas une rotation
+
+**Le déploiement recrée une sauvegarde `.env.prod.bak-*` à chaque passage**, et elle contient la
+clé. Celle du 19/08 a été détruite ; **la prochaine portera la nouvelle**. *Le geste durable n'est pas
+de supprimer ce fichier après coup, c'est que le déploiement cesse d'en produire.*
+
+⚠️ Et le motif dépasse Tracky : `/root` porte d'autres sauvegardes de secrets
+(`maalem-env-backup-*.tar.gz`, `vizyo-auth-env-backup`, `vizyo-auth-db-backup.sql`). **Hors périmètre
+de ce dossier**, mais c'est le même défaut, et il vaut un passage de l'audit VPS.
 
 ## Ce que la clé est, et où elle vit
 
