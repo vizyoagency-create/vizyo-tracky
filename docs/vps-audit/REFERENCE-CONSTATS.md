@@ -1348,6 +1348,42 @@ déploiement. C'est la différence entre fermer un incident et fermer sa cause.
 > **Trois clients sur trois identifiés sont des `docker logs` lancés en diagnostic par SSH.** Ce
 > n'est plus un accident, c'est une **classe**.
 >
+> ### 🔴 2026-08-20 — RÉTRO-ATTRIBUTION DE L'OCCURRENCE 2, et elle désigne le même audit
+>
+> En posant le garde-fou dans la procédure du centre d'alerte, son propre rapport du **2026-08-10**
+> a livré ceci, en toutes lettres :
+>
+> > *« `docker logs texto-relay` **ne rend jamais la main** sur cet hôte (deux tentatives, **150 s
+> > et 120 s**) »* — `docs/centre-alerte/rapports/2026-08-10.md`, ligne 160
+>
+> | Fait | Source |
+> |---|---|
+> | Fenêtre de collecte du centre d'alerte le 08-10 | **01 h 10 → 01 h 35 UTC** (en-tête du rapport) |
+> | Début de l'**occurrence 2** de VPS-016 | **~01 h 15 UTC** (`sar`, établi le 2026-08-10) |
+> | Deux `docker logs` qui ne rendent pas la main | **150 s et 120 s**, dans cette fenêtre |
+>
+> **C'est la signature de l'occurrence 4, dix jours plus tôt** : même audit, même heure, même
+> famille de commande, et le début de la boucle **à l'intérieur** de la fenêtre de collecte.
+>
+> ⚠️ **Ce qui n'est PAS établi, et ne le sera jamais** : que ces deux clients aient survécu à leur
+> session SSH et tenu le démon. Les journaux qui le diraient sont rotés depuis longtemps. *C'est
+> une rétro-attribution solide, pas une preuve* — et elle est écrite avec cette réserve plutôt que
+> passée sous silence, parce qu'elle change le classement du risque.
+>
+> ### Ce que le tableau des quatre occurrences devient
+>
+> | Occurrence | Déclencheur probable | Confiance |
+> |---|---|---|
+> | 1 — 2026-08-05 ~02 h 23 | **l'audit VPS lui-même** — `docker system df -v` interrompu, `dockerd` journalise `error reading preface from client` juste avant | **hypothèse** (VPS-M12 : *« on ne sait pas si c'est la cause, mais on cesse de la produire »*) |
+> | 2 — 2026-08-10 ~01 h 15 | **l'audit du centre d'alerte** — 2 `docker logs` de 150 s et 120 s dans sa fenêtre | **forte, non prouvée** (journaux rotés) |
+> | 3 — 2026-08-11 21 h 01 | diagnostics SSH manuels — 2 `docker logs` orphelins | **établie** (vidage de goroutines + inode de socket) |
+> | **4 — 2026-08-20 01 h 13 min 57** | **l'audit du centre d'alerte** — `docker logs … --tail 200000` | **établie à la seconde** |
+>
+> > **La conclusion qui compte** : *sur quatre occurrences, trois désignent notre propre outillage,
+> > et deux le même audit.* On a cherché treize jours une cause dans le démon. **Elle était dans
+> > nos procédures**, et la règle qui l'interdit (VPS-M12) était écrite dès la première.
+> > **Un incident dont l'outil de diagnostic est la cause se renouvelle à chaque diagnostic.**
+>
 > ### La remédiation — écrite ici à 02 h 30, ❌ RÉFUTÉE À L'EXÉCUTION À 05 h 02
 >
 > ⚠️ **Ce qui suit était faux sur son gain**, et l'encadré de clôture ci-dessus le corrige.
