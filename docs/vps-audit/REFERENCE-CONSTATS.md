@@ -3844,6 +3844,90 @@ Le correctif durable est le balayage proposé en angle mort n° 3 du rapport du 
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M54 — L'audit travaille dans un dépôt partagé dont la branche change sous lui, et il ne le voit pas
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `ACCEPTE` (compris, contourné le 2026-08-20)
+- **Vu** : 2026-08-20 · **Coût** : **une heure** passée à traquer un défaut qui n'existait pas, et un `git checkout --` qui a écrasé un fichier dans l'arbre d'une autre session.
+
+**Quoi.** Pendant la passe du 2026-08-20, le dépôt est passé de `perf/garde-fou-tests-et-workers`
+à `fix/trk-033-admin-vps-charge-de-fond`, puis à `fix/trk-031-episodes-gps-bornes` — trois branches
+en quelques heures, par d'autres sessions travaillant dans le **même arbre de travail**.
+
+**Ce que ça a produit, dans l'ordre :**
+
+| Geste | Conséquence |
+|---|---|
+| `git checkout -- docs/vps-audit/collecte.sh` | a restauré la version de **l'autre branche** (2 255 lignes) et non la mienne (2 714) |
+| trois exécutions du collecteur | ont fait tourner **le script de quelqu'un d'autre** sur la production |
+| diagnostic d'un `RPC_CACHE: unbound variable` | réel dans **leur** version, **inexistant dans la mienne** — `RPC_CACHE=''` y est ligne 1264 depuis le correctif VPS-M43 du 08-18 |
+| une heure d'enquête | pour un défaut que je n'avais pas, sur un fichier qui n'était pas le mien |
+
+**Et c'est ce qui explique le « mystère » que l'enquête n'arrivait pas à résoudre** : la collecte
+de **02 h 37 réussissait** et celle de **10 h 12 mourait**, avec ce que je croyais être le même
+script. *Ce n'était pas le même script.* J'ai cherché une cause côté machine pendant que la cause
+était côté dépôt.
+
+**Pourquoi c'était invisible.** L'audit lit des chemins (`docs/vps-audit/collecte.sh`), jamais un
+**état de dépôt**. Rien dans la procédure ne demande sur quelle branche on se trouve **avant** de
+lire un fichier — la seule vérification de branche existante est au moment de **committer** (§8
+bis), c'est-à-dire tout à la fin. *Un chemin est stable ; ce qu'il contient ne l'est pas.*
+
+> **La règle, transposable à tout agent travaillant dans un dépôt partagé** : *un fichier lu dans
+> un arbre de travail partagé n'est pas une donnée stable — c'est un instantané dont un tiers
+> détient le contrôle.* La branche doit être relevée **au début**, avec les chiffres, et non
+> seulement au moment du commit.
+
+**Quoi faire — appliqué ce passage.** Le travail s'est poursuivi dans un **worktree dédié**
+(`git worktree add`), hors du dépôt partagé : la branche y est stable, l'autre session n'est pas
+gênée, et le worktree est retiré à la fin.
+
+**`aNePasFaire`** : ⚠️ **ne jamais faire `git checkout <branche>` dans l'arbre partagé** pour
+récupérer sa branche — cela arrache l'arbre de travail à la session qui l'occupe, au milieu de son
+travail. ⚠️ **Et se méfier de `git checkout -- <fichier>`** : il restaure depuis le HEAD *courant*,
+qui n'est pas forcément celui qu'on croit. Ici il a détruit l'état d'un fichier dans l'arbre d'une
+autre session — sans que rien ne le signale.
+
+⚠️ **Ce qui n'est pas prouvé** : que ce `git checkout --` n'ait pas emporté des modifications non
+commitées de l'autre session sur ce fichier. Leur travail portait sur l'écran Angular, donc c'est
+peu probable — **mais ce n'est pas démontrable après coup**, et c'est le vrai coût du geste.
+
+---
+
+### VPS-M53 — Le collecteur appelait `docker system df` six fois, à six instants différents
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-08-20)
+- **Vu** : 2026-08-20 · **Mesure** : six appels (section 4, section 10, levier 1), à **~2 s pièce** sur machine saine — mesure de six appels consécutifs : **1,96 / 1,85 / 4,26 / 2,22 / 1,76 / 1,92 s**, et **3,05 s** après 30 s d'inactivité.
+
+**Quoi.** `docker system df` était invoqué **six fois** pour une valeur qui ne change pas pendant
+une collecte : une fois pour la table de la section 4, trois fois dans la section 10 (dont deux
+sous-shells imbriqués pour `Active` et `TotalCount`), et deux fois au levier 1.
+
+**Le gain de temps est le moindre des deux.** Les six appels avaient lieu à des **instants
+différents** — section 4 vers **t+50 s**, section 10 vers **t+110 s**, levier 1 vers **t+131 s**.
+Le 2026-08-14, le total est passé de **18,92 à 13,38 puis 17,35 et 16,57 Go à l'intérieur d'une
+même collecte**, et le rapport ne pouvait pas dire laquelle était « la » mesure.
+
+**Quoi faire — FAIT.** Une **capture unique** en tête de section 4, horodatée et affichée, relue
+par les sections 10 et 12. Six appels → **deux** (le tableau texte et la forme `--format`).
+Toutes les sections décrivent désormais **le même instant**.
+
+**Vérifié sur la machine, script entier** : `RC=0`, `FIN DE COLLECTE`, 6 bases, 14 sections,
+`stderr` vide, les trois consommateurs servis, `✅ 6 / 6 bases PostgreSQL examinees`.
+
+**`pourquoiInvisible`.** Chaque appel était **local et justifié** : celui de la section 4 affiche
+la table, ceux de la section 10 remplissent une ligne, ceux du levier 1 alimentent un verdict.
+*Aucun n'est faux ; c'est leur SOMME qui l'est, et personne ne lit un script en comptant les
+invocations d'une même commande.* Il a fallu chercher un chiffre — les 16 s — pour les voir.
+
+**`aNePasFaire`** : ⚠️ **ne pas revendiquer un gain de durée sur la foi de cette passe** (VPS-M18) :
+la machine portait un build et une charge de 2,34 au départ. Le gain structurel est de **~8 s**
+(4 appels × ~2 s) ; **la cohérence, elle, est acquise et ne dépend d'aucune mesure de temps.**
+⚠️ **Et le « 16,02 s » qui a lancé cette enquête était FAUX** : un échantillon unique, publié comme
+une propriété. Six appels consécutifs donnent ~2 s. *C'est VPS-M52 deux heures plus tard, sur un
+chiffre au lieu d'une recommandation — un nombre mesuré une seule fois n'est pas une mesure.*
+
+---
+
 ### VPS-M52 — J'ai recommandé trois fois un réglage qui n'existe pas, sans jamais l'essayer
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (mesuré et rétracté le 2026-08-20)

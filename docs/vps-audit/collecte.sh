@@ -728,7 +728,31 @@ fi
 section "4. DOCKER"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 have docker || { echo "docker absent"; }
-docker system df 2>/dev/null
+# CAPTURE UNIQUE, POSEE LE 2026-08-20 (VPS-M53) — CE COLLECTEUR APPELAIT `docker system df`
+# SIX FOIS (section 4, section 10, levier 1), pour une valeur qui ne change pas pendant une
+# collecte. Mesure sur machine SAINE, six appels consecutifs : 1,96 / 1,85 / 4,26 / 2,22 /
+# 1,76 / 1,92 s — soit ~14 s des 90 s de budget depenses a redemander la meme chose.
+#
+# ET LE GAIN DE TEMPS EST LE MOINDRE DES DEUX. Les six appels avaient lieu a des INSTANTS
+# DIFFERENTS : section 4 vers t+50 s, section 10 vers t+110 s, levier 1 vers t+131 s. Le
+# 2026-08-14, le total est passe de 18,92 a 13,38 puis 17,35 et 16,57 Go A L INTERIEUR D UNE
+# MEME COLLECTE, et le rapport ne pouvait pas dire laquelle etait « la » mesure. Une capture
+# unique rend les sections COHERENTES ENTRE ELLES : elles decrivent le meme instant.
+SYSDF_T=$(date -u '+%H:%M:%S')
+SYSDF_TXT=$(docker system df 2>/dev/null)
+SYSDF_FMT=$(docker system df --format '{{.Type}}|{{.Size}}|{{.Reclaimable}}|{{.Active}}|{{.TotalCount}}' 2>/dev/null)
+echo "$SYSDF_TXT"
+# Denominateur explicite (lecon VPS-M08/M22) : sans lui, une capture vide ferait afficher
+# « rien » aux trois consommateurs, en silence — et « rien » se lit comme « rien a signaler ».
+SYSDF_N=$(echo "$SYSDF_FMT" | grep -c "^..*$")
+case "${SYSDF_N:-}" in ''|*[!0-9]*) SYSDF_N=0 ;; esac
+if [ "$SYSDF_N" -eq 0 ]; then
+  echo "  🔴 LA CAPTURE docker system df EST VIDE — les sections 10 et 12 n auront PAS leurs"
+  echo "     chiffres, et leur silence ne voudra PAS dire « rien a recuperer »."
+else
+  echo "  (capture unique a $SYSDF_T UTC, $SYSDF_N lignes — relue par les sections 10 et 12,"
+  echo "   donc toutes les sections decrivent le MEME instant)"
+fi
 sub "Conteneurs par etat"
 docker ps -a --format '{{.State}}' 2>/dev/null | sort | uniq -c
 sub "Conteneurs ARRETES — toujours affiche, meme a zero"
@@ -1961,7 +1985,8 @@ echo "  ── recuperable, par poste ──"
 # ⚠️ On passe par `--format` et NON par le tableau texte : « Local Volumes » contient un
 # espace, donc les colonnes se decalent d'un cran sur cette ligne-la et un `$NF` en awk
 # ramenait « (100%) » au lieu de la taille (defaut VPS-M05, corrige le 2026-08-04).
-docker system df --format '{{.Type}}|{{.Reclaimable}}' 2>/dev/null | while IFS='|' read -r type recl; do
+echo "${SYSDF_FMT:-}" | while IFS='|' read -r type size recl active total; do
+  [ -n "$type" ] || continue
   case "$type" in
     "Build Cache")   printf '  %-28s %s\n' "cache de build" "$recl" ;;
     # ⚠️ NE PAS PRENDRE CE CHIFFRE POUR DE L'ESPACE RECUPERABLE (constate le 2026-08-05).
@@ -1971,8 +1996,8 @@ docker system df --format '{{.Type}}|{{.Reclaimable}}' 2>/dev/null | while IFS='
     # un plan d'action ferait promettre 24 Go que la commande ne rendrait jamais.
     "Images")        printf '  %-28s %s  (⚠️ CHIFFRE NON FIABLE : %s images sur %s sont ACTIVES —\n' \
                        "images" "$recl" \
-                       "$(docker system df --format '{{.Type}}|{{.Active}}' 2>/dev/null | awk -F'|' '/^Images/{print $2}')" \
-                       "$(docker system df --format '{{.Type}}|{{.TotalCount}}' 2>/dev/null | awk -F'|' '/^Images/{print $2}')"
+                       "$active" \
+                       "$total"
                      printf '  %-28s   docker compte des couches partagees, pas de l espace liberable)\n' "" ;;
     "Containers")    printf '  %-28s %s\n' "conteneurs arretes" "$recl" ;;
     "Local Volumes") printf '  %-28s %s  (⚠️ contient des BASES : ne pas purger a l aveugle)\n' "volumes non montes" "$recl" ;;
@@ -2368,8 +2393,9 @@ verdict() { # $1=libelle $2=actuel $3=vise $4=ok|ko $5=commentaire
 }
 
 sub "Levier 1 — cache de build Docker (le poste qui REVIENT)"
-BC=$(docker system df --format '{{.Type}}|{{.Size}}' 2>/dev/null | awk -F'|' '/Build Cache/{print $2}')
-BC_GO=$(docker system df --format '{{.Type}}|{{.Size}}' 2>/dev/null | awk -F'|' '/Build Cache/{gsub(/GB|MB/,"",$2); if ($2 ~ /^[0-9.]+$/) print int($2)}')
+# Relit la capture unique de la section 4 (VPS-M53) — le champ 2 reste la Taille.
+BC=$(echo "${SYSDF_FMT:-}" | awk -F'|' '/Build Cache/{print $2}')
+BC_GO=$(echo "${SYSDF_FMT:-}" | awk -F'|' '/Build Cache/{gsub(/GB|MB/,"",$2); if ($2 ~ /^[0-9.]+$/) print int($2)}')
 # ⚠️ Ce n'est PAS un defaut a corriger une fois : il se reconstitue a CHAQUE build (mesure :
 # +14 Go en 4 h pour 3 deploiements). Le seuil se juge donc a l'espace libre, pas au cache seul.
 #
