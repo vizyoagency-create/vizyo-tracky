@@ -886,7 +886,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2` du 20/08 : résolution de l'émetteur sur les 9 derniers chiffres + écouteur qui acquitte sur le COUPLE (boîtier, action), jamais sur le temps. **3 abstentions testées** : ambiguïté, panne de résolution, panne de l'écouteur. ⚠️ explique pourquoi on ne VOYAIT pas les accusés, PAS pourquoi il n'y en a que 2 en 5 semaines — [TRK-018](#trk-018) reste entière)* *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* | 2026-08-20 | 2026-08-20 |
 | [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🔴 NON CORRIGÉ · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
 | [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
-| [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🔴 NON CORRIGÉ *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
+| [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `638d16aa` du 20/08. Le BRUIT était déjà traité en amont ; ce qui restait était le TRAVAIL — un trajet au-delà de l'horizon était **analysé**, l'analyse relisait ses positions, n'en trouvait aucune et persistait une analyse VIDE, sur un budget **saturé** (3 712 trajets en 50 min, 6 véhicules laissés de côté). ⚠️ **la dérive 1 500 h vs plafond 720 h n'est pas corrigée en douce mais RENDUE VISIBLE** — le bon plafond est une décision)* *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
 | [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `b28e389e` du 20/08. 🔴 **le défaut a rejoué une 3ᵉ fois pendant la correction** — FZ-862-VY, 4 épisodes à 08:16:31, 3 fabriquées réfutées par 539/386/178 positions ; **13 clos faux sur 19**, et une 2ᵉ zone empoisonnée à **10,47 j** pour 2,83 j réels. La borne retenue N'EST PAS la fenêtre fixe prévue : elle porte sur l'existence d'un épisode PLUS RÉCENT, pas sur l'ancienneté — sinon une absence réelle de 5 semaines resterait ouverte à vie. + script d'assainissement en DRY-RUN : **14 réparables**, durées réelles 0,00-0,80 j)* *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
 | [TRK-030](#trk-030) | `gps-integrity` | Le boîtier **neuf** est accusé de panne d'antenne **51 s avant son premier fix** — la branche « jamais localisé » n'a aucune borne de durée | 🔴 NON CORRIGÉ *(nouvelle ; login 01:09:36 → alerte 01:10:15 → fix 01:11:06 ; se rejouera **à chaque pose**, et le commentaire du code décrit une garde qui n'existe pas)* | 2026-08-19 | 2026-08-19 |
 | [TRK-029](#trk-029) | `schedule-cron` | Le report d'une coupe applique un **backoff exponentiel à une échéance connue** — et le message dit « impossible » pour une action qui a abouti | 🔴 NON CORRIGÉ *(**test daté nº 5 : aucun second cas** — 21 coupes normales le 18/08 à 20:00. La ligne de base des 25 min reste unique)* | 2026-08-18 | 2026-08-19 |
@@ -5513,7 +5513,64 @@ défaut.
 ## TRK-034
 
 **Signature** — `TRIP_AUTOMATION | ERROR | Recalcul impossible sur <PLAQUE> : aucune position entre <DATE> et <DATE>, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 3** · découvert 2026-08-20
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `638d16aa`, branche
+`fix/trk-034-fenetre-recalcul`, partie d'`origin/main` — **non poussée**)* · **gravité 3** ·
+découvert 2026-08-20
+
+### ✅ Corrigé le 2026-08-20 — mais la moitié était déjà faite
+
+| Geste | État |
+|---|---|
+| Ne plus alerter sur une tranche vide **au-delà** de la rétention | ✅ **déjà fait en amont** — `horizonRetention()`, avec son propre fichier de tests |
+| Borner la fenêtre par la rétention | ✅ **fait ce jour** — `fenetreUtile()` |
+| Rendre visible la dérive du réglage | ✅ **fait ce jour** |
+
+### 🔑 Le bruit était traité, le TRAVAIL ne l'était pas
+
+Le signalement était déjà tu. Mais un trajet situé au-delà de l'horizon continuait d'être
+sélectionné, puis **analysé** — or l'analyse **relit les positions du trajet**, n'en trouve aucune,
+et persiste une **analyse vide**. Du budget dépensé pour un résultat qui ne peut rien contenir.
+
+**Et ce budget est saturé** : le passage du **2026-08-20 00:35** a analysé **3 712 trajets en
+50 minutes**, atteint son plafond de temps (`budgetAtteint`) et laissé **6 véhicules** de côté.
+Chaque trajet analysé au-delà de l'horizon est pris sur ceux-là.
+
+`fenetreUtile()` borne la **sélection** des trajets, et rien d'autre : le calcul de `fromMs` est
+inchangé, donc la garde d'alerte en aval reste intacte, en ceinture et bretelles.
+
+> 🔑 **Le correctif ne raccourcit RIEN d'exploitable** — il retire uniquement du travail
+> provablement vide. Deux tests verrouillent ce point : une fenêtre déjà dans la rétention n'est
+> **pas touchée**, et si la rétention est **désactivée** on ne borne **rien** (rien n'est purgé,
+> donc tout est exploitable). *Le piège symétrique — amputer la fenêtre sans raison — aurait fait
+> disparaître des trajets analysables en silence.*
+
+### ⚠️ La dérive de réglage n'est PAS corrigée en douce — elle est rendue visible
+
+`lookbackHours` vaut **1 500 h** en base, alors que l'API n'accepte que **720 h** à l'écriture : le
+réglage a été posé **avant** ce plafond, ou en le contournant.
+
+**Le bon plafond est une décision, pas une supposition.** Le passage le journalise donc à chaque
+tour au lieu de trancher seul :
+
+```
+lookbackHours vaut 1500 h en base, au-dela du maximum accepte a l'ecriture (720 h).
+Reglage herite d'avant ce plafond, ou pose en le contournant — a trancher.
+```
+
+Le plafond devient au passage une **constante nommée, partagée entre l'écriture et la lecture** —
+c'est la leçon de [TRK-008](#trk-008), où des valeurs hors bornes ont continué d'agir longtemps
+après que le chemin d'écriture eut été borné. *Un plafond qui ne s'applique qu'aux écritures futures
+laisse les valeurs héritées agir indéfiniment.*
+
+**🔴 Décision attendue de votre part** : soit relever le plafond d'écriture au besoin réel
+(le rattrapage d'historique justifiait 1 500 h), soit ramener le réglage sous 720 h. **Tant que les
+deux valeurs divergent, l'écran affiche un réglage que le code n'honore pas entièrement.**
+
+**Vérifications** : `tsc --noEmit` ✅ · **165 tests / 13 suites** ✅ (trip-analysis, trip-automation,
+horizon-retention, fenetre-utile, **smoke-boot DI**) · les 5 nouveaux tests **échouent sur le code
+d'avant**. Corrige aussi un commentaire périmé qui annonçait « 50 jours en prod ».
+
+### Le constat d'origine (2026-08-20)
 
 ### La fenêtre de recalcul dépasse de 2,5 jours la rétention des positions
 

@@ -55,7 +55,7 @@ Puis créer chaque branche de lot **depuis `origin/main` à jour**, jamais depui
 | **3** | ✅ **FAIT** — Assainir puis borner la fermeture des épisodes GPS | [TRK-031](./REFERENCE-ERREURS.md#trk-031) | 2 | M | Moyen — écriture de données | — |
 | **4** | Rendre visible toute disparition de lignes | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | 🔴 **1** | S | Nul — lecture seule | — |
 | **5** | ✅ **FAIT** — Réparer `/admin/vps` et le rendre tolérant | [TRK-033](./REFERENCE-ERREURS.md#trk-033) | 2 | XS | Nul | — |
-| **6** | Aligner la fenêtre de recalcul sur la rétention | [TRK-034](./REFERENCE-ERREURS.md#trk-034) | 3 | XS | Faible | — |
+| **6** | ✅ **FAIT** — Aligner la fenêtre de recalcul sur la rétention | [TRK-034](./REFERENCE-ERREURS.md#trk-034) | 3 | XS | Faible | — |
 
 **Les six lots sont indépendants.** Aucun ne bloque l'autre : ils peuvent être menés en parallèle ou
 dans n'importe quel ordre. L'ordre ci-dessus est celui de la **valeur décroissante**, pas d'une
@@ -537,6 +537,32 @@ erreur de gabarit y passerait inaperçue.
 # Lot 6 — Aligner la fenêtre de recalcul sur la rétention des positions
 
 **Fiche : [TRK-034](./REFERENCE-ERREURS.md#trk-034) · Gravité 3 · Effort XS · Risque faible**
+
+> ## ✅ FAIT le 2026-08-20 — commit `638d16aa`
+>
+> **Branche `fix/trk-034-fenetre-recalcul`, partie d'`origin/main`. NON poussée.**
+>
+> **Le geste 3 était déjà fait en amont** (ne plus alerter au-delà de la rétention), avec son propre
+> fichier de tests. Ce qui restait n'était pas le bruit, c'était **le travail** :
+>
+> | | |
+> |---|---|
+> | Le vrai coût | un trajet au-delà de l'horizon était **analysé** — l'analyse relit ses positions, n'en trouve aucune, et persiste une **analyse vide** |
+> | Sur un budget **saturé** | passage du 20/08 00:35 : **3 712 trajets en 50 min**, plafond atteint, **6 véhicules** laissés de côté |
+> | Le geste | `fenetreUtile()` borne la **sélection** des trajets, et rien d'autre — `fromMs` inchangé, garde d'alerte intacte |
+> | Tests | **5**, tous en échec sur le code d'avant · **165 tests / 13 suites** ✅ dont smoke-boot |
+>
+> 🔑 **Le correctif ne raccourcit rien d'exploitable** — deux tests verrouillent le piège
+> symétrique : fenêtre déjà dans la rétention → **intouchée** ; rétention désactivée → **on ne borne
+> rien**, puisque rien n'est purgé.
+>
+> ### 🔴 Une décision vous revient
+>
+> `lookbackHours` vaut **1 500 h** en base alors que l'API n'accepte que **720 h** à l'écriture.
+> **La dérive n'a pas été corrigée en douce** : le passage la journalise à chaque tour. Soit vous
+> relevez le plafond au besoin réel (le rattrapage d'historique justifiait 1 500 h), soit vous
+> ramenez le réglage sous 720 h. *Tant que les deux divergent, l'écran affiche un réglage que le
+> code n'honore pas entièrement.*
 
 ## Pourquoi
 
