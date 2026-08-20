@@ -36,6 +36,42 @@ interface RequestedBy {
  */
 const DEDUP_ALARME_MS = 6 * 60 * 60 * 1000;
 
+/**
+ * Depuis COMBIEN DE TEMPS une coupure moteur commandée explique-t-elle encore une perte
+ * d'alimentation ?
+ *
+ * ── POURQUOI CETTE BORNE EXISTE (2026-08-20) ─────────────────────────────────────────
+ *
+ * Sans elle, le motif « c'est nous qui avons coupé » se lisait sur la DERNIÈRE commande
+ * moteur enregistrée, quelle que soit sa date. Or l'automatisation horaire coupe la flotte
+ * le soir et la rétablit à 06:00 : entre les deux, la dernière commande de la quasi-totalité
+ * du parc est un CUT. Mesuré le 2026-08-20 à 01:10 UTC : **33 boîtiers sur 42** avaient donc
+ * leur alarme d'alimentation éteinte — toute la nuit, c'est-à-dire exactement pendant les
+ * heures où un véhicule est garé sans surveillance et où une coupure réelle (vol, batterie
+ * débranchée) est plausible.
+ *
+ * ── POURQUOI QUINZE MINUTES, ET PAS UN CHIFFRE AU HASARD ─────────────────────────────
+ *
+ * L'écart réel entre une coupe commandée et l'arrivée d'une `ac alarm` a été mesuré sur les
+ * trames brutes (`wire_logs`, 4 jours) : le plus COURT est de **4 h 32**, les autres vont
+ * jusqu'à 52 h. Aucune alarme n'arrive dans les minutes qui suivent une coupe.
+ *
+ * Deux conséquences, et la seconde compte plus que la première :
+ *   1. une fenêtre de quelques minutes ne peut pas ramener le déluge qu'on éteignait — les
+ *      alarmes concernées sont toutes à plus de quatre heures de la coupe la plus proche ;
+ *   2. le motif « coupure commandée » n'a jamais été la bonne explication de ces alarmes.
+ *      Une perte causée par notre relais apparaîtrait en secondes. Ce que DZ-034-CA a produit
+ *      — 304 trames sur 19 heures d'affilée — est un défaut électrique réel.
+ *
+ * C'est donc l'autre branche, celle du niveau de batterie, qui traite le « contact coupé sur
+ * montage commuté ». Celle-ci ne couvre que la seconde qui suit notre propre relais.
+ *
+ * Quinze minutes est large pour une chute d'alimentation (qui suit la commande de près) et
+ * très en deçà des 4 h 32 observées. ⚠️ Ne pas l'élargir « pour être sûr » : chaque heure
+ * ajoutée rend du silence à la nuit, c'est-à-dire précisément ce que cette borne répare.
+ */
+const FENETRE_COUPURE_COMMANDEE_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class AlertsService {
   private readonly logger = new Logger(AlertsService.name);
@@ -89,19 +125,34 @@ export class AlertsService {
      */
     if (mapping.type === AlertType.POWER_CUT) {
       /**
-       * ⚠️ AVONS-NOUS COUPE NOUS-MEMES ? C'est la premiere question a poser.
+       * ⚠️ AVONS-NOUS COUPE NOUS-MEMES, ET VIENT-ON DE LE FAIRE ?
        *
        * L'automatisation horaire coupe le moteur via le relais hors des heures de
        * travail. On cherche donc la derniere commande CUT/RESTORE aboutie : si la
-       * derniere en date est un CUT, la perte d'alimentation est notre oeuvre.
+       * derniere en date est un CUT, la perte d'alimentation peut etre notre oeuvre.
+       *
+       * ⚠️ MAIS « la derniere commande est un CUT » NE SUFFIT PAS, et c'est le defaut
+       * corrige le 2026-08-20 : entre la coupe du soir et le retablissement de 06:00,
+       * cette condition est vraie pour tout le parc pendant dix heures. Il faut que la
+       * coupe soit RECENTE — voir FENETRE_COUPURE_COMMANDEE_MS.
+       *
+       * ⚠️ On garde `SENT` en plus de `ACKNOWLEDGED`, deliberement : le repli SMS
+       * (`engine-control.service.ts`, « Envoye via SMS (TCP indisponible) ») laisse la
+       * commande en `SENT` DEFINITIVEMENT, faute d'accuse de reception exploite. L'exclure
+       * rendrait l'application aveugle a ses propres coupes sur le chemin justement le
+       * moins fiable. La borne de temps suffit a fermer le danger reel — une coupe restee
+       * `SENT` pour toujours qui ferait taire l'alarme a vie.
        */
       const derniereCommande = await this.prisma.engineControlCommand.findFirst({
         where: { trackerId: tracker.id, status: { in: ['ACKNOWLEDGED', 'SENT'] } },
         orderBy: { createdAt: 'desc' },
-        select: { action: true },
+        select: { action: true, createdAt: true },
       });
+      const coupeCommandeeRecente =
+        derniereCommande?.action === 'CUT' &&
+        Date.now() - derniereCommande.createdAt.getTime() <= FENETRE_COUPURE_COMMANDEE_MS;
       const analyse = analyserAlimentation(frame, {
-        moteurCoupeParNous: derniereCommande?.action === 'CUT',
+        moteurCoupeParNous: coupeCommandeeRecente,
       });
       contextMessage = messageCoupure(analyse, frame);
       if (!analyse.alerter) {
