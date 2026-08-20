@@ -887,7 +887,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** | 🟠 **SONDE ÉCRITE, NON DÉPLOYÉE** *(commit `41c22081` du 20/08 : recensement quotidien à 03:15, rangé HORS des tables surveillées. La règle n'est pas « des lignes ont-elles disparu » mais « la disparition est-elle EXPLIQUÉE » — deux signaux, le nombre ET la borne basse. 🔴 **le défaut a REJOUÉ le jour même** : `error_logs` 14 → 4 et borne +20 h à 14:50, pendant que la purge déclarait `errorDeleted: 0`. **La sonde aurait crié.** ⚠️ elle n'empêche RIEN — aucun code n'arrête un `DELETE` en base)* · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-20 |
 | [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
 | [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `638d16aa` du 20/08. Le BRUIT était déjà traité en amont ; ce qui restait était le TRAVAIL — un trajet au-delà de l'horizon était **analysé**, l'analyse relisait ses positions, n'en trouvait aucune et persistait une analyse VIDE, sur un budget **saturé** (3 712 trajets en 50 min, 6 véhicules laissés de côté). ⚠️ **la dérive 1 500 h vs plafond 720 h n'est pas corrigée en douce mais RENDUE VISIBLE** — le bon plafond est une décision)* *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-20 |
-| [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `b28e389e` du 20/08. 🔴 **le défaut a rejoué une 3ᵉ fois pendant la correction** — FZ-862-VY, 4 épisodes à 08:16:31, 3 fabriquées réfutées par 539/386/178 positions ; **13 clos faux sur 19**, et une 2ᵉ zone empoisonnée à **10,47 j** pour 2,83 j réels. La borne retenue N'EST PAS la fenêtre fixe prévue : elle porte sur l'existence d'un épisode PLUS RÉCENT, pas sur l'ancienneté — sinon une absence réelle de 5 semaines resterait ouverte à vie. + script d'assainissement en DRY-RUN : **14 réparables**, durées réelles 0,00-0,80 j)* *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
+| [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🟠 **DONNÉE ASSAINIE ✅ · CODE NON DÉPLOYÉ** *(assainissement **exécuté en prod le 20/08** : 14 épisodes fermés à leur vraie date + **13 dates fabriquées corrigées**. **Vérification prescrite : 13/20 → 0/34.** Médianes de zone 16,03 → **3,94 j** et 10,47 → **4,22 j**. ⚠️ le script initial ne traitait que les épisodes OUVERTS — insuffisant, ce sont les CLOS qui faussaient la médiane. ⚠️ la borne de code reste NON POUSSÉE : le défaut peut refabriquer au prochain retour de fix)* · ancien statut : *(commit `b28e389e` du 20/08. 🔴 **le défaut a rejoué une 3ᵉ fois pendant la correction** — FZ-862-VY, 4 épisodes à 08:16:31, 3 fabriquées réfutées par 539/386/178 positions ; **13 clos faux sur 19**, et une 2ᵉ zone empoisonnée à **10,47 j** pour 2,83 j réels. La borne retenue N'EST PAS la fenêtre fixe prévue : elle porte sur l'existence d'un épisode PLUS RÉCENT, pas sur l'ancienneté — sinon une absence réelle de 5 semaines resterait ouverte à vie. + script d'assainissement en DRY-RUN : **14 réparables**, durées réelles 0,00-0,80 j)* *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
 | [TRK-030](#trk-030) | `gps-integrity` | Le boîtier **neuf** est accusé de panne d'antenne **51 s avant son premier fix** — la branche « jamais localisé » n'a aucune borne de durée | 🔴 NON CORRIGÉ *(nouvelle ; login 01:09:36 → alerte 01:10:15 → fix 01:11:06 ; se rejouera **à chaque pose**, et le commentaire du code décrit une garde qui n'existe pas)* | 2026-08-19 | 2026-08-19 |
 | [TRK-029](#trk-029) | `schedule-cron` | Le report d'une coupe applique un **backoff exponentiel à une échéance connue** — et le message dit « impossible » pour une action qui a abouti | 🔴 NON CORRIGÉ *(**test daté nº 5 : aucun second cas** — 21 coupes normales le 18/08 à 20:00. La ligne de base des 25 min reste unique)* | 2026-08-18 | 2026-08-19 |
 | [TRK-028](#trk-028) | `gps-integrity` | La fiche véhicule promettait « le véhicule réapparaît en sortant » **sans jamais dire quand** | 🟠 DÉPLOYÉ ET EXERCÉ · ⚠️ **DONNE UN CHIFFRE FAUX** *(le raccroc s'exécute — 2 → **14** épisodes refermés. Mais le 20/08, l'écran créé par cette fiche pour répondre « quand revient-il ? » annonce une médiane de **16,03 j** sur le parking `79a8d0f2`, pour une absence réelle de **6,94 j** : 8 des 9 durées de l'échantillon sont fabriquées par [TRK-031](#trk-031))* | 2026-08-17 | 2026-08-20 |
@@ -5622,9 +5622,28 @@ c'est la leçon de [TRK-008](#trk-008), où des valeurs hors bornes ont continu�
 après que le chemin d'écriture eut été borné. *Un plafond qui ne s'applique qu'aux écritures futures
 laisse les valeurs héritées agir indéfiniment.*
 
-**🔴 Décision attendue de votre part** : soit relever le plafond d'écriture au besoin réel
-(le rattrapage d'historique justifiait 1 500 h), soit ramener le réglage sous 720 h. **Tant que les
-deux valeurs divergent, l'écran affiche un réglage que le code n'honore pas entièrement.**
+### ✅ TRANCHÉ le 2026-08-20 — le plafond est relevé, la fenêtre n'est pas amputée
+
+**Le plafond passe de 720 h (30 j) à 2 160 h (90 j)** *(commit `152883ec`)*, et la raison est dans
+les chiffres :
+
+> 🔑 **L'ancien plafond était PLUS BAS que la rétention des positions.** 720 h = 30 jours,
+> alors que les positions vivent **60 jours**. L'écran interdisait donc d'écrire une fenêtre de
+> 45 jours que le système aurait parfaitement su honorer : **ce plafond ne protégeait rien, il
+> amputait.**
+>
+> Et ramener le réglage à 720 h aurait **divisé par deux la fenêtre d'analyse** d'une plateforme qui
+> rattrape justement son historique — *une régression déguisée en mise en conformité*.
+
+**Règle posée** : ce plafond **ne doit jamais descendre sous `POSITIONS_RETENTION_DAYS`**, sinon
+l'interface refuse des valeurs exploitables. 90 jours laisse la marge si la rétention est relevée.
+
+⚠️ **Relever ce plafond n'est sans danger que PARCE QUE `fenetreUtile()` existe** : le travail réel
+reste borné par la rétention quelle que soit la valeur saisie. Sans lui, un plafond haut autoriserait
+des balayages profonds et vides. **Les deux gestes vont ensemble et ne doivent pas être séparés.**
+
+La sentinelle qui journalise la dérive **reste armée** — non plus pour celle-ci, qui est tranchée,
+mais pour la prochaine, qui ne se verrait pas davantage.
 
 **Vérifications** : `tsc --noEmit` ✅ · **165 tests / 13 suites** ✅ (trip-analysis, trip-automation,
 horizon-retention, fenetre-utile, **smoke-boot DI**) · les 5 nouveaux tests **échouent sur le code
@@ -5726,7 +5745,46 @@ durée négative, écartée **en silence** du calcul de médiane, et un épisode
 c'est-à-dire l'absence de borne. **Recalibré, pas supprimé** — l'invariant qu'il défend (ne jamais
 réécrire une date déjà posée) reste vrai et reste vérifié. **4 des 9 tests échouent sur le code d'avant.**
 
-### ✅ L'assainissement du stock — `prisma/assainir-episodes-gps.ts`
+### ✅✅ ASSAINISSEMENT EXÉCUTÉ EN PRODUCTION le 2026-08-20 — objectif atteint
+
+**Sur accord explicite**, en transaction, avec sauvegarde et script de retour arrière préparés
+avant l'écriture.
+
+> 🔴 **Le script initial était INSUFFISANT, et la mesure l'a dit avant l'exécution.** Il ne
+> traitait que les épisodes **ouverts** — or au 20/08, **13 des 20 épisodes CLOS portaient une durée
+> fabriquée**, et ce sont eux, pas les ouverts, qui alimentent la médiane affichée à l'exploitant.
+> *Assainir les seuls épisodes ouverts aurait laissé l'écran mentir exactement comme avant.*
+>
+> Un épisode clos à date fausse se reconnaît sans ambiguïté : **le boîtier a émis des positions
+> PENDANT l'absence qu'il déclare**. Le script a donc été étendu à cette seconde population
+> (commit `c8552d07`).
+
+| | Traité |
+|---|---|
+| Épisodes ouverts fermés à leur **vraie** date | **14** — durées réelles **0,00 → 0,80 j** |
+| **Dates fabriquées corrigées** | **13** — 35,18 j → **7,10** · 16,88 j → **0,10** · 16,03 j → **3,94** |
+| Laissés ouverts, légitimement | **2** — les véhicules ne sont pas revenus |
+
+**La vérification prescrite par cette fiche, celle qui porte sur la CAUSE :**
+
+| | Avant | **Après** |
+|---|---|---|
+| Épisodes clos couvrant un intervalle avec positions | **13 / 20** | ✅ **0 / 34** |
+
+**Et les médianes suivent** — c'est l'écran de [TRK-028](#trk-028) qui cesse enfin de mentir :
+
+| Zone | Avant | **Après** |
+|---|---|---|
+| `79a8d0f2` — parking de FS-253-HR | 16,03 j | **3,94 j** |
+| `879699a3` — parking de FZ-862-VY | 10,47 j | **4,22 j** |
+| `6c0ffca0` — HD-779-MA | 16,88 j | **0,10 j** |
+
+⚠️ **La borne de code n'est toujours PAS déployée** (branche `fix/trk-031-episodes-gps-bornes`, non
+poussée). L'ordre prescrit a été respecté — assainir d'abord — mais **tant que la borne n'est pas en
+ligne, le défaut peut refabriquer des durées au prochain retour de fix.** Il l'a fait trois jours de
+suite.
+
+### L'outil — `prisma/assainir-episodes-gps.ts`
 
 **DRY-RUN par défaut**, `--apply` pour écrire. Reconstitue la vraie date de retour depuis la
 **première position valide postérieure à la perte**.

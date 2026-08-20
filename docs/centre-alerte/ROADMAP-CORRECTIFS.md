@@ -342,9 +342,24 @@ question « pourquoi seulement deux ? » reste entière et appartient à
 > | Tests | **9**, dont **4 qui échouent sur le code d'avant**. ⚠️ un test existant **verrouillait le défaut** → recalibré, pas supprimé |
 > | Vérifications | `tsc --noEmit` ✅ · **95 tests / 6 suites** ✅ (gps-dead-zones, positions, **smoke-boot**) |
 >
-> ⚠️ **Le script n'a PAS été exécuté en écriture** : `--apply` touche la donnée de production, c'est
-> une décision humaine. L'ordre reste **assainir d'abord, déployer la borne ensuite** — l'inverse
-> laisserait les 14 épisodes ouverts pour toujours.
+> ### ✅✅ ASSAINISSEMENT EXÉCUTÉ EN PRODUCTION le 2026-08-20
+>
+> Sur accord explicite, en transaction, sauvegarde et script de retour arrière préparés avant.
+>
+> 🔴 **Le script initial était insuffisant, et la mesure l'a dit avant l'exécution** : il ne
+> traitait que les épisodes **ouverts**, or ce sont les **13 épisodes CLOS à date fabriquée** qui
+> alimentaient la médiane affichée. Étendu (`c8552d07`) puis exécuté.
+>
+> | | |
+> |---|---|
+> | Ouverts fermés à leur vraie date | **14** (0,00 → 0,80 j) |
+> | **Dates fabriquées corrigées** | **13** (35,18 → 7,10 · 16,88 → 0,10) |
+> | Laissés ouverts, légitimement | **2** |
+> | **Vérification prescrite** | **13/20 → ✅ 0/34** |
+> | Médianes de zone | 16,03 → **3,94 j** · 10,47 → **4,22 j** |
+>
+> ⚠️ **La borne de code reste NON POUSSÉE.** L'ordre prescrit a été respecté, mais tant qu'elle n'est
+> pas en ligne, le défaut peut refabriquer au prochain retour de fix — il l'a fait trois jours de suite.
 
 ## Pourquoi
 
@@ -587,13 +602,17 @@ erreur de gabarit y passerait inaperçue.
 > symétrique : fenêtre déjà dans la rétention → **intouchée** ; rétention désactivée → **on ne borne
 > rien**, puisque rien n'est purgé.
 >
-> ### 🔴 Une décision vous revient
+> ### ✅ La décision est tranchée — le plafond est relevé *(commit `152883ec`)*
 >
-> `lookbackHours` vaut **1 500 h** en base alors que l'API n'accepte que **720 h** à l'écriture.
-> **La dérive n'a pas été corrigée en douce** : le passage la journalise à chaque tour. Soit vous
-> relevez le plafond au besoin réel (le rattrapage d'historique justifiait 1 500 h), soit vous
-> ramenez le réglage sous 720 h. *Tant que les deux divergent, l'écran affiche un réglage que le
-> code n'honore pas entièrement.*
+> **720 h → 2 160 h (90 jours).** L'ancien plafond était **plus bas que la rétention des positions**
+> (30 j contre 60) : il interdisait d'écrire une fenêtre de 45 jours que le système savait honorer.
+> *Il ne protégeait rien, il amputait.* Et ramener le réglage à 720 h aurait **divisé par deux la
+> fenêtre d'analyse** — une régression déguisée en mise en conformité.
+>
+> **Règle posée** : ce plafond ne doit jamais descendre sous `POSITIONS_RETENTION_DAYS`.
+>
+> ⚠️ Ce n'est sans danger **que parce que `fenetreUtile()` existe** — le travail réel reste borné par
+> la rétention. **Les deux gestes ne doivent pas être séparés.**
 
 ## Pourquoi
 
@@ -654,9 +673,79 @@ Trois sujets ouverts au rapport du 20/08 ne sont **pas** dans cette roadmap :
 
 | Sujet | Pourquoi pas ici |
 |---|---|
-| **[TRK-017](./REFERENCE-ERREURS.md#trk-017) — rotation de la clé d'API de la passerelle SMS** | **10ᵉ jour.** Ce n'est pas du code : c'est un geste d'exploitation (révoquer, rotationner, identifier l'instance hors serveur qui la porte). **Reste la priorité nº 1 de la plateforme**, devant tous les lots ci-dessus. |
+| **[TRK-017](./REFERENCE-ERREURS.md#trk-017) — rotation de la clé d'API de la passerelle SMS** | **10ᵉ jour.** Ce n'est pas du code : c'est un geste d'exploitation (révoquer, rotationner, identifier l'instance hors serveur qui la porte). **Reste la priorité nº 1 de la plateforme**, devant tous les lots ci-dessus. 🔴 **Le mode opératoire est prêt et vérifié** *(voir plus bas)* — il attend un accord distinct, parce qu'il touche un secret de production sur le canal qui porte **le repli du coupe-circuit**. |
 | **[TRK-012](./REFERENCE-ERREURS.md#trk-012) — mauvais format de trame** | Correctif écrit depuis le 11/08, **en attente d'un accord**, pas d'un développeur. |
 | **[TRK-022](./REFERENCE-ERREURS.md#trk-022) / [TRK-023](./REFERENCE-ERREURS.md#trk-023)** | Les correctifs sont **déjà déployés** — mais **non exercés**, faute de trames depuis le 19/08 02:26. Il n'y a rien à écrire : il y a à **mesurer** quand les trames reviendront. |
+
+---
+
+# 🔴 TRK-017 — mode opératoire de la rotation de clé *(prêt, en attente d'accord)*
+
+**Ce n'est pas un lot de la roadmap** : c'est un geste d'exploitation, et **la priorité nº 1 de la
+plateforme** — **10ᵉ jour**. Le mode opératoire ci-dessous a été **vérifié contre la production le
+2026-08-20**, en lecture seule. Il attend un accord **distinct** de celui donné pour
+l'assainissement, parce qu'il touche un secret de production **sur le canal qui porte le repli du
+coupe-circuit**.
+
+## Ce que la clé est, et où elle vit
+
+| | |
+|---|---|
+| Format | `vtx_` + suite, **le préfixe est les 8 premiers caractères** (`apiKey.slice(0, 8)`) |
+| Côté passerelle | table `tenants` : `apiKeyHash` = **`sha256(clé)` en hexadécimal**, plus `apiKeyPrefix` |
+| Côté Tracky | `VIZYO_TEXTO_API_KEY` dans **`/opt/vizyo-tracky/deploy/vps/.env.prod`**, lue **au démarrage** |
+| Porteur inconnu | l'instance hors serveur qui frappe depuis une **adresse publique** — c'est elle qu'on coupe |
+
+⚠️ **Aucune route de rotation n'existe** côté passerelle (`/v1/allowlist` et `/v1/messages`
+seulement). La rotation se fait donc **en base**, ce qui impose de calculer le hachage soi-même.
+
+## 🔴 Le risque réel, à connaître avant de décider
+
+La passerelle ne connaît **qu'une seule clé valide à la fois** : il n'y a pas de période de
+recouvrement possible. Entre la mise à jour de la base et le redémarrage de `tracky-api`, **tout SMS
+sortant de Tracky est refusé** — y compris **le repli SMS d'une coupure ou d'un rétablissement
+moteur**.
+
+**La fenêtre vaut le temps d'un redémarrage de conteneur**, mais elle n'est pas nulle. Elle doit
+donc éviter les minutes où l'automatisation horaire agit : **coupes à 18:00 et 20:00, rétablissements
+à 03:00 et 06:00** (heures UTC observées). *Un créneau de milieu de matinée ou de milieu
+d'après-midi est le plus sûr.*
+
+## La séquence
+
+1. **Générer** une clé au format `vtx_…` et **en conserver le hachage sha256 hexadécimal**.
+2. **Passerelle** — mettre à jour le tenant : `apiKeyHash` = le hachage, `apiKeyPrefix` = les
+   8 premiers caractères, `updatedAt` = maintenant.
+3. **Tracky** — remplacer `VIZYO_TEXTO_API_KEY` dans `/opt/vizyo-tracky/deploy/vps/.env.prod`.
+4. **Recréer `tracky-api`** pour qu'il relise son environnement. *C'est ici que la fenêtre se
+   referme.*
+5. **Supprimer `/opt/vizyo-tracky/deploy/vps/.env.prod.bak-1787111376`** — voir ci-dessous.
+
+## La vérification, et elle porte sur la CAUSE
+
+Ce dossier a lu **sept fois** un silence de l'appelant comme une révocation ; il n'en était jamais
+une. **Le seul contrôle qui vaut est l'état de la clé, pas le compteur de frappes :**
+
+| Contrôle | Attendu |
+|---|---|
+| `tenants.apiKeyPrefix` | **≠ `vtx_48fe`**, et `updatedAt` du jour |
+| Prochaine réconciliation d'allowlist (à h:25) | `outcome = ok` **avec le nouveau préfixe** |
+| Appels de l'instance externe | **rejetés** — plus aucune ligne à son préfixe |
+| `allowlist_entries` | **44**, inchangé — la garde a tenu, la rotation ne doit rien casser |
+
+⚠️ **Ne pas conclure sur l'absence de frappes de l'appelant** : il s'est déjà tu 54 heures avant de
+revenir. *Un compteur de frappes mesure l'activité, jamais l'accès.*
+
+## 🔴 Une seconde copie de la clé est réapparue sur le disque
+
+`/opt/vizyo-tracky/deploy/vps/.env.prod.bak-1787111376`, créée le **2026-08-19 à 03:49 UTC** lors
+d'un déploiement, contient la clé. Les droits sont corrects (`600`, `root`), mais **c'est un second
+exemplaire du secret**, et exactement le motif qu'un audit VPS a déjà nettoyé une fois — treize
+sauvegardes `.env.*.bak` supprimées, la clé Anthropic passant de dix copies à une.
+
+**Le déploiement en recrée une à chaque passage.** Rotationner sans supprimer celle-ci laisse
+l'ancienne clé sur le disque ; et surtout, **la prochaine sauvegarde portera la nouvelle**. *Le geste
+durable n'est pas de supprimer ce fichier, c'est que le déploiement cesse d'en produire.*
 
 ---
 
