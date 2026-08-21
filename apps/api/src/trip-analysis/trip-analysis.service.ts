@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException , UnprocessableEntityException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -16,7 +16,7 @@ const MAX_POSITIONS = 5000;
 
 type TripRow = {
   id: string; fleetId: string; vehicleId: string; trackerId: string | null;
-  startedAt: Date; endedAt: Date | null;
+  startedAt: Date; endedAt: Date | null; distanceMeters: number | null;
   vehicle: { type: string; energy: string | null; fuelConsumptionL100km: number | null } | null;
 };
 
@@ -43,7 +43,7 @@ export class TripAnalysisService {
     const trip = (await this.prisma.trip.findUnique({
       where: { id: tripId },
       select: {
-        id: true, fleetId: true, vehicleId: true, trackerId: true, startedAt: true, endedAt: true,
+        id: true, fleetId: true, vehicleId: true, trackerId: true, startedAt: true, endedAt: true, distanceMeters: true,
         vehicle: { select: { type: true, energy: true, fuelConsumptionL100km: true } },
       },
     })) as TripRow | null;
@@ -109,6 +109,23 @@ export class TripAnalysisService {
         orderBy: { timestamp: 'asc' },
         take: MAX_POSITIONS,
       });
+      /**
+       * NE JAMAIS PERSISTER UNE ANALYSE VIDE SUR UN TRAJET QUI A ROULE.
+       *
+       * Zero position pour un trajet dont le compteur live affiche des centaines de metres n'a
+       * que deux causes : la purge de retention est passee (fait definitif), ou les points ne
+       * sont pas encore ecrits (buffer). Dans les deux cas, ecrire « distance 0, aucun arret »
+       * fabrique une donnee FAUSSE et indiscernable d'un vrai trajet immobile — 60 analyses de
+       * ce type retrouvees en base le 2026-08-21, toutes a la frontiere de purge du 18-19/06.
+       * Mieux vaut refuser : l'appelant decide (le cron saute et recommencera, l'humain voit
+       * un message honnete au lieu d'un zero invente).
+       */
+      if (positions.length === 0 && (trip.distanceMeters ?? 0) > 500) {
+        throw new UnprocessableEntityException(
+          'Analyse impossible : les positions de ce trajet ne sont plus disponibles (purge de retention probable). ' +
+            'Produire une analyse vide reviendrait a inventer un trajet immobile.',
+        );
+      }
       const raw: RawPosition[] = positions;
 
       // Limites OSM uniquement pour les points RAPIDES (candidats d'excès) — borne le coût Overpass.

@@ -331,7 +331,9 @@ export class TripAutomationService {
             endedAt: { not: null },
             startedAt: { gte: windowFrom },
             // segmentationSource est non-nullable (défaut 'live') : « sale » = pas encore recomputé.
-            segmentationSource: { not: 'recompute' },
+            // 'fige-retention' est EXCLU : ses positions sont purgées, le re-segmenter est
+            // impossible pour toujours — le laisser ici recréerait la famine qu'il résout.
+            segmentationSource: { notIn: ['recompute', 'fige-retention'] },
           },
           select: { startedAt: true },
           orderBy: { startedAt: 'asc' },
@@ -353,7 +355,38 @@ export class TripAutomationService {
                 where: { trackerId: veh.trackerId, timestamp: { gte: new Date(fromMs), lte: new Date(toMs) } },
               })
             : 0;
-          if (positions === 0) {
+          if (positions === 0 && fromMs < this.horizonRetention()) {
+            /**
+             * ⚠️ SOUS L'HORIZON DE RETENTION, UNE TRANCHE VIDE EST UN FAIT DEFINITIF — et le
+             * front doit AVANCER, pas attendre.
+             *
+             * L'ancien comportement se contentait de sauter la tranche. Or « dirty » retombe
+             * sur le MEME trajet a chaque passage : le vehicule etait en famine perpetuelle,
+             * silencieuse depuis que l'alerte est tue sous l'horizon. Mesure du 2026-08-21 :
+             * la convergence figee 24 h durant (906 -> 907 trajets a re-segmenter), pendant
+             * que la purge quotidienne creait de nouveaux affames a la frontiere.
+             *
+             * On FIGE donc les trajets de la tranche : leur version live devient la version
+             * definitive, puisque les positions qui permettraient de les re-segmenter
+             * n'existent plus. `fige-retention` les sort du front (le filtre dirty exclut
+             * deja tout ce qui n'est pas 'live'... non : il exclut 'recompute' — d'ou un
+             * marqueur DISTINCT, teste, pour ne pas les confondre avec un vrai recalcul).
+             */
+            const figes = await this.prisma.trip.updateMany({
+              where: {
+                vehicleId,
+                startedAt: { gte: new Date(fromMs), lte: new Date(toMs) },
+                endedAt: { not: null },
+                segmentationSource: { notIn: ['recompute', 'fige-retention'] },
+              },
+              data: { segmentationSource: 'fige-retention' },
+            });
+            stats.skippedNoPositions++;
+            this.logger.log(
+              `${veh.plate} : tranche ${new Date(fromMs).toISOString().slice(0, 10)} sans position (retention) — ` +
+              `${figes.count} trajet(s) fige(s), le front avance`,
+            );
+          } else if (positions === 0) {
             stats.skippedNoPositions++;
             // ⚠️ DEUX CAUSES TRES DIFFERENTES POUR UNE MEME TRANCHE VIDE.
             //
@@ -366,8 +399,7 @@ export class TripAutomationService {
             // l'historique, elle s'est mise a chevaucher la limite de retention. Resultat, trois
             // alertes en quatre heures sur FZ-862-VY pour une tranche du 19 au 21 juin — vouee a
             // se repeter a CHAQUE passage, indefiniment, pour un fait sans remede.
-            if (fromMs >= this.horizonRetention()) {
-              await this.errorLogger.record(
+            await this.errorLogger.record(
                 new Error(
                   `Recalcul impossible sur ${veh.plate} : aucune position entre ${new Date(fromMs).toISOString()} et ` +
                     `${new Date(toMs).toISOString()}, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`,
@@ -375,7 +407,6 @@ export class TripAutomationService {
                 SOURCE,
                 { fleetId, vehicleId, phase: 'recompute:no-positions', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
               );
-            }
           } else if (toMs > fromMs) {
             const r = await this.trips.recompute(
               { userId: user.id, role: user.role, fleetId: user.fleetId },
@@ -404,6 +435,55 @@ export class TripAutomationService {
       await this.errorLogger.record(e as Error, SOURCE, { fleetId, vehicleId, phase: 'listTrips' });
       return;
     }
+    /**
+     * ⚠️ LA BORNE DES 500 AFFAMAIT LE RATTRAPAGE.
+     *
+     * Le listing prend les 500 trajets les plus RECENTS — la bonne priorite au quotidien : le
+     * client regarde d'abord la journee en cours. Mais en rattrapage, les trajets encore sans
+     * analyse sont les plus ANCIENS : des que le front a recule au-dela de la borne, le cron
+     * terminait en quelques secondes en jurant qu'il n'y avait rien a faire. Mesure du
+     * 2026-08-21 : 2 235 trajets en attente, passages a 0-5 analyses.
+     *
+     * On complete donc par les plus anciens SANS analyse, en petit nombre : le courant garde
+     * la priorite, l'arriere s'ecoule. Les trajets figes par la retention sont exclus — les
+     * analyser produirait des analyses VIDES (60 retrouvees en base sur des trajets reels,
+     * toutes a la frontiere de purge du 18-19/06).
+     */
+    try {
+      const anciens = await this.prisma.trip.findMany({
+        where: {
+          vehicleId,
+          endedAt: { not: null },
+          startedAt: { gte: windowFrom },
+          segmentationSource: { not: 'fige-retention' },
+          id: { notIn: trips.map((t) => t.id) },
+        },
+        select: { id: true, startedAt: true },
+        orderBy: { startedAt: 'asc' },
+        take: 300,
+      });
+      if (anciens.length > 0) {
+        const dejaAnalyses = new Set(
+          (
+            await this.prisma.tripAnalysis.findMany({
+              where: { tripId: { in: anciens.map((t) => t.id) } },
+              select: { tripId: true },
+            })
+          ).map((a) => a.tripId),
+        );
+        // Les plus anciens D'ABORD en fin de liste : la boucle traite les recents en tete.
+        // ⚠️ DEDUPLIQUE PAR IDENTIFIANT, meme si le `notIn` de la requete rend le doublon
+        //    improbable : un trajet present deux fois serait ANALYSE DEUX FOIS dans la meme
+        //    boucle — et surtout NARRE deux fois, soit un appel modele paye pour rien. La
+        //    defense cote code ne depend pas de la bonne volonte de la requete.
+        const vus = new Set(trips.map((t) => t.id));
+        trips = trips.concat(anciens.filter((t) => !dejaAnalyses.has(t.id) && !vus.has(t.id)));
+      }
+    } catch (e) {
+      // Best-effort : sans le complement, on retombe sur l'ancien comportement (borne).
+      this.logger.warn(`complement anciens sans analyse : ${(e as Error)?.message ?? e}`);
+    }
+
     if (trips.length === 0) return;
 
     let existing: { tripId: string; narrative: string | null }[];

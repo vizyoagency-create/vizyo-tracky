@@ -267,7 +267,7 @@ const CATALOG: CatalogEntry[] = [
     id: 'scheduled-task-heartbeat', label: 'Sonde des taches planifiees', category: 'Système & observabilité',
     source: 'observability/scheduled-task-heartbeat.service.ts',
     kind: 'cron', scheduleHuman: 'toutes les heures (a h:35)', criticality: 'haute', antiOverlap: false,
-    note: "⚠️ ELLE MANQUAIT A CE CATALOGUE jusqu'au 2026-08-19. La sonde qui detecte les traitements devenus silencieux etait elle-meme invisible : si elle s'arretait, plus rien ne signalait les arrets — y compris le sien. C'est le point aveugle le plus couteux qu'un tableau de supervision puisse avoir.",
+    note: "DECISION D'ARCHITECTURE (proprietaire, 2026-08-21) : reste sur l'API, par exception a la regle « recurrent = agent local ». Ses propositions de reservation font partie des interactions que le proprietaire veut instantanees et coherentes avec l'agenda ; le passage nocturne prepare exactement ces propositions. Cout mesure : 1,35 $ en deux mois — migrer dupliquerait la detection de recurrences pour une economie de quelques euros par an.",
     purpose: "Verifie que les automatisations configurees tournent vraiment. Tolerance de deux periodes manquees (plancher 4 h) : une seule est un alea, deux de suite ne s'expliquent plus. Remonte une alerte au centre d'alerte.",
     fire: { tz: SERVER_TZ, matcher: (w) => w.getMinutes() === 35 },
   },
