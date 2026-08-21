@@ -376,6 +376,7 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | D1 | **Rôle DEPOT et assistance.** Je l'ai écarté (allowlist default-deny, cohérent avec la décision déjà prise pour l'état IA), alors que la consigne était « tous les utilisateurs connectés ». Un décorateur suffit à l'ouvrir. | 19/08 |
 | D2 | **Rôle NIGHT_WATCHMAN et assistance.** Même situation : son confinement est une allowlist posée à la demande du client (« aucune donnée pour ce rôle »). Non élargie. | 19/08 |
 | D3 | **`BgTaskExecution` vs `BgTaskExecutor`** — deux types aux valeurs identiques dans le DTO des tâches de fond. Rien ne consomme `execution`. Un des deux doit partir. | 19/08 |
+| D5 | **Agenda IA — réponse tronquée le 21/08 à 13 h** (« limite de jetons atteinte : requête trop volumineuse »). Une seule occurrence, sur la voie API que le propriétaire veut garder instantanée. Deux issues possibles : réduire la période envoyée au modèle, ou relever le plafond de jetons — la première coûte en qualité de proposition, la seconde en argent. À trancher avec lui, pas seul. | 21/08 |
 | D4 | **Traces de l'assistance** : les lots de données du demandeur sont réduits à leur résumé, jamais recopiés. On perd le rejeu à l'identique, on évite une seconde copie de données personnelles. À confirmer ou inverser. | 19/08 |
 
 ### Vérifications dues — rien ne les remplace
@@ -383,6 +384,7 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | # | À vérifier | Bloqué par | Depuis |
 |---|---|---|---|
 | ~~V1~~ | ~~**Écran `/admin/qualite-gps` à 375 px**~~ | — | **Fait le 20/08 17 h 45** |
+| **V3** | **Deux boîtiers vivants SANS position GPS — à voir sur le terrain.** `GS-014-NY` (IMEI 864035054756169) et `HD-686-QX` : le boîtier communique mais n'accroche aucun satellite. Antenne débranchée, mal placée ou HS. Relevé par `gps-integrity` les 20 et 21/08 — le seul sujet du centre d'alerte qui appelait une action humaine, conservé ici avant le nettoyage du 21/08. | Accès physique aux véhicules | 21/08 |
 | **V2** | **Véhicule HORS SERVICE — la recette sur données réelles.** Fiche véhicule, carte « Cas spécial » (super-admin) : déclarer KSR370 accidenté, vérifier que le sélecteur revient à sa valeur d'origine si on annule la confirmation, que la note facultative se range, puis **le remettre en service** et voir les traitements reprendre. À contrôler dans la foulée : un FLEET_ADMIN ne voit pas la carte, et l'action lui est refusée s'il appelle l'API directement. | — | 21/08 |
 
 **V2 — pourquoi cet état existe, et ce qu'il ne fait PAS.** Un véhicule qui ne roule plus reste
