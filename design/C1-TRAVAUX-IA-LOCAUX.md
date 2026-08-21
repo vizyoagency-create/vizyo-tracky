@@ -75,10 +75,33 @@ CREATE INDEX travaux_ia_locaux_statut_type ON travaux_ia_locaux (statut, type);
 
 - **Producteur / consommateur** : les crons horaires EXISTANTS des deux services (aucun
   nouveau `@Cron`, le garde d'exhaustivité reste vert par construction).
-- **Courrier** : UN passage par jour à 06:30, no-op immédiat si la file est vide.
-  Le rapport hebdo s'enfile le lundi à ~06:20, le courrier le rédige à 06:30, le
-  consommateur le range à 07:20 — prêt avant le café. Les analyses de lieux (~11/mois)
-  s'absorbent dans le même passage quotidien, **zéro lancement supplémentaire**.
+- **Courrier** : DEUX passages par jour, 06:30 et 14:30, no-op en deux secondes si la
+  file est vide (aucun modèle appelé — un passage inutile ne coûte rien).
+
+  *Pourquoi deux et pas un* : l'échéance du rapport tombe à la minute :20 d'une heure
+  **imprévisible** (le producteur compte 7 × 24 h depuis le dernier passage, et cet
+  ancrage dérive). Avec un seul passage, un rapport déjà prêt à rédiger pouvait attendre
+  jusqu'à 24 h. Deux passages couvrent matin et après-midi. Les analyses de lieux
+  (~11/mois) s'absorbent dedans, **zéro lancement supplémentaire**.
+
+## Vérifié en production le 2026-08-21
+
+Chaîne complète mesurée sur le rapport hebdomadaire réel :
+
+| Étape | Horodatage | Résultat |
+|---|---|---|
+| Producteur enfile | 09:20 | travail complet en file |
+| Courrier rédige | 09:20 → 09:24 (267 s) | réponse conforme au schéma |
+| Consommateur range | 10:20 | rapport `READY`, 8 utilisateurs, 8 recommandations |
+
+**Coût : 0 $** contre **0,264 $** et **0,248 $** pour les deux rapports précédents par
+l'API — l'économie est mesurée, pas estimée.
+
+Un défaut trouvé par cette vérification : quand la file se vidait, `psql` rendait le tag
+de commande (« UPDATE 0 ») là où le code attendait une ligne de travail. L'agent plantait
+**à la fin de chaque passage réussi**, avant de journaliser son passage — l'écran annonçait
+donc « jamais lancé » un agent qui venait de livrer. Corrigé, et le journal est désormais
+écrit dans un `finally` : même une panne imprévue laisse une trace.
 
 ## Visibilité admin (exigence explicite du propriétaire)
 

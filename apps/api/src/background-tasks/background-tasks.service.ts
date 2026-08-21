@@ -480,15 +480,19 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'courrier-ia', label: 'Courrier IA (agent sur poste)',
     category: 'IA & rapports', kind: 'cron',
-    scheduleHuman: 'chaque jour a 06:30 — sur le poste du proprietaire',
+    scheduleHuman: '06:30 et 14:30 chaque jour — sur le poste du proprietaire',
     criticality: 'moyenne', antiOverlap: true,
     poste: 'outils/agent-courrier-ia.cmd',
     note: "Ne tourne PAS sur ce serveur. C'est le maillon central de la bascule locale (design/C1) : le serveur PREPARE les travaux IA (rapport d'activite, analyse de lieux) dans une file, ce courrier les redige via l'abonnement du poste, le serveur VALIDE et range. Il ne connait aucun metier — ajouter un type de travail ne le modifie pas. File vide = no-op immediat.",
     purpose: "Porte les travaux IA recurrents prepares par le serveur vers le modele, sur l'abonnement du poste : 0 credit d'API. La file en attente et les echecs sont affiches ci-contre — un echec persistant se voit, il ne se devine pas.",
     externe: 'courrier-ia',
     coutIa: 'absorbe',
-    // 06:30 Paris = 04:30 UTC. Quotidien a heure fixe.
-    fire: { tz: PARIS, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 30 },
+    // DEUX passages, et c'est deliberement peu : le travail arrive a une heure imprevisible
+    // (le producteur declare l'echeance a la minute :20 de n'importe quelle heure). Un seul
+    // passage laissait jusqu'a 24 h de latence sur un rapport deja pret a rediger. Deux
+    // couvrent matin et apres-midi, et une file vide sort en deux secondes SANS appeler le
+    // moindre modele — le cout d'un passage inutile est nul.
+    fire: { tz: PARIS, matcher: (w) => (w.getHours() === 6 || w.getHours() === 14) && w.getMinutes() === 30 },
   },
 ];
 

@@ -76,7 +76,19 @@ function prendreUnTravail() {
     RETURNING id::text || '|' || type || '|' || encode(convert_to(payload::text,'UTF8'),'base64');`;
   const ligne = psql(sql).trim();
   if (!ligne) return null;
-  const [id, type, b64] = ligne.split('|');
+  const parts = ligne.split('|');
+  /**
+   * ⚠️ UNE SORTIE NON VIDE NE PROUVE PAS QU'UN TRAVAIL A ETE PRIS.
+   *
+   * Quand le `RETURNING` ne ramene aucune ligne, psql rend le TAG de commande (« UPDATE 0 »).
+   * L'ancien code le decoupait quand meme : `b64` valait undefined, `Buffer.from(undefined)`
+   * levait, et l'agent PLANTAIT — a la fin de chaque passage REUSSI, au moment ou la file se
+   * vide. Consequence mesuree le 2026-08-21 : le rapport etait bien livre, mais le passage
+   * n'etait jamais journalise, donc l'ecran de supervision annonçait « jamais lance » un agent
+   * qui venait de travailler. Exactement l'agent invisible qu'on traque depuis deux jours.
+   */
+  if (parts.length !== 3) return null;
+  const [id, type, b64] = parts;
   return { id, type, payload: JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) };
 }
 
@@ -182,6 +194,11 @@ function appelerModele(travail) {
 
   let faits = 0, erreurs = 0;
   let derniereErreur = null;
+  /**
+   * `finally` : le passage est journalise MEME sur une panne imprevue. Un agent qui meurt sans
+   * laisser de trace est un agent invisible — et l'ecran, faute de mieux, rassure a tort.
+   */
+  try {
   while (Date.now() < fin) {
     const travail = prendreUnTravail();
     if (!travail) break; // file vide : on ne tourne pas a vide, la tache est un no-op
@@ -202,10 +219,16 @@ function appelerModele(travail) {
     }
   }
 
-  const resume = `${faits} travail(aux) livre(s), ${erreurs} repose(s)`;
-  console.log(`[${h()}] fini — ${resume}`);
-  journaliserPassage(demarreA, erreurs === 0 || faits > 0, resume, derniereErreur);
+  } catch (e) {
+    erreurs++;
+    derniereErreur = e;
+    console.error(`[${h()}] ARRET sur erreur inattendue : ${e && e.message ? e.message : e}`);
+  } finally {
+    const resume = `${faits} travail(aux) livre(s), ${erreurs} repose(s)`;
+    console.log(`[${h()}] fini — ${resume}`);
+    journaliserPassage(demarreA, erreurs === 0, resume, derniereErreur);
+  }
 })().catch((e) => {
-  console.error('ARRET sur erreur inattendue :', e && e.message ? e.message : e);
+  console.error('ARRET :', e && e.message ? e.message : e);
   process.exit(1);
 });
