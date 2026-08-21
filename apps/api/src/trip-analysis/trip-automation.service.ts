@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole, type TripAutomationRun, type TripAutomationSettings } from '@prisma/client';
 import type {
@@ -68,6 +68,15 @@ const RECOMPUTE_SLICE_MS = 48 * 60 * 60 * 1000;
 const RUN_BUDGET_MS = 50 * 60 * 1000;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
 const MAX_TRIPS_PER_VEHICLE = 500;
+/**
+ * Duree minimale d'une tranche pour qu'une absence de position soit SIGNIFIANTE.
+ *
+ * Les boitiers emettent toutes les ~20 s. Une tranche de deux secondes ne peut donc PAS contenir
+ * de position, meme quand tout va bien : alerter dessus est un faux positif par construction.
+ * Releve du 2026-08-21 sur FV-941-LZ, fenetre [05:21:36.000 -> 05:21:38.041], declenchee par un
+ * micro-trajet d'allumage. 60 s = trois fois la cadence : assez large pour ne jamais crier a tort.
+ */
+const FENETRE_MIN_ALERTE_MS = 60_000;
 /** Détail borné stocké par run (les trajets traités, cliquables). */
 const MAX_ITEMS_PER_RUN = 300;
 /** Historique conservé (runs récents) — le reste est élagué à chaque insertion. */
@@ -399,7 +408,12 @@ export class TripAutomationService {
             // l'historique, elle s'est mise a chevaucher la limite de retention. Resultat, trois
             // alertes en quatre heures sur FZ-862-VY pour une tranche du 19 au 21 juin — vouee a
             // se repeter a CHAQUE passage, indefiniment, pour un fait sans remede.
-            await this.errorLogger.record(
+            if (toMs - fromMs < FENETRE_MIN_ALERTE_MS) {
+              // Trop courte pour conclure quoi que ce soit : on saute sans crier (cf. la
+              // constante ci-dessus — l'absence n'y est pas une information).
+              this.logger.debug(`${veh.plate} : tranche de ${toMs - fromMs} ms ignoree (sous la cadence)`);
+            } else {
+              await this.errorLogger.record(
                 new Error(
                   `Recalcul impossible sur ${veh.plate} : aucune position entre ${new Date(fromMs).toISOString()} et ` +
                     `${new Date(toMs).toISOString()}, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`,
@@ -407,6 +421,7 @@ export class TripAutomationService {
                 SOURCE,
                 { fleetId, vehicleId, phase: 'recompute:no-positions', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
               );
+            }
           } else if (toMs > fromMs) {
             const r = await this.trips.recompute(
               { userId: user.id, role: user.role, fleetId: user.fleetId },
@@ -454,7 +469,18 @@ export class TripAutomationService {
         where: {
           vehicleId,
           endedAt: { not: null },
-          startedAt: { gte: windowFrom },
+          /**
+           * ⚠️ PLANCHER DE RETENTION — on ne selectionne PAS ce qui ne peut plus etre analyse.
+           *
+           * La fenetre de rattrapage (1 500 h = 62 jours) DEBORDE l'horizon de retention
+           * (60 jours) : elle vise une zone ou les positions n'existent plus par construction.
+           * Sans ce plancher, le complement ramenait a chaque passage des trajets dont l'analyse
+           * ne peut que echouer — 82 trajets du 20 au 22 juin, tous 'recompute' (stabilises en
+           * juillet quand leurs positions vivaient encore), donc jamais « sales », donc jamais
+           * geles par le front de recalcul. Ni analysables, ni ecartes : re-selectionnes
+           * indefiniment.
+           */
+          startedAt: { gte: new Date(Math.max(windowFrom.getTime(), this.horizonRetention())) },
           segmentationSource: { not: 'fige-retention' },
           id: { notIn: trips.map((t) => t.id) },
         },
@@ -524,6 +550,34 @@ export class TripAutomationService {
           didAnalyze = true;
           hasNarrative = false; // désormais analysé, sans récit
         } catch (e) {
+          /**
+           * ⚠️ POSITIONS PURGEES : UN FAIT DEFINITIF, PAS UN INCIDENT A CRIER.
+           *
+           * L'analyse refuse d'ecrire un zero invente quand les positions d'un trajet qui a
+           * roule ont ete purgees (garde du 2026-08-21). C'est la bonne decision, mais la
+           * PREMIERE version se contentait d'alerter — et le cron reessayait les memes trajets
+           * a chaque passage : 26 alertes en dix heures pour DIX trajets du 19-20 juin, un fait
+           * sans remede possible. La cause : la fenetre du cron (1 500 h de rattrapage) deborde
+           * l'horizon de retention (60 jours), donc elle vise une zone ou les positions
+           * n'existent plus par construction.
+           *
+           * On FIGE donc le trajet, comme pour une tranche vide : il sort du perimetre et ne
+           * sera plus jamais represente. Aucune alerte — le figeage EST la trace, et il reste
+           * lisible en base. Le correctif tient meme si quelqu'un rouvre la fenetre demain.
+           *
+           * ⚠️ SOUS L'HORIZON SEULEMENT. Le meme refus AU-DESSUS de l'horizon ne dit pas la
+           *    meme chose : les positions DEVRAIENT etre la. C'est alors une vraie anomalie
+           *    (purge trop agressive, ingestion cassee), et elle doit crier. Figer les deux cas
+           *    sans distinction reviendrait a etouffer la panne avec le fait normal.
+           */
+          if (e instanceof UnprocessableEntityException && t.startedAt.getTime() < this.horizonRetention()) {
+            await this.prisma.trip
+              .update({ where: { id: t.id }, data: { segmentationSource: 'fige-retention' } })
+              .catch(() => undefined);
+            stats.skippedNoPositions++;
+            this.logger.log(`trajet ${t.id} fige : positions purgees, analyse impossible a jamais`);
+            continue;
+          }
           stats.failed++;
           await this.errorLogger.record(e as Error, SOURCE, { fleetId, vehicleId, tripId: t.id, phase: 'analyze' });
           continue; // pas d'analyse → pas de récit possible

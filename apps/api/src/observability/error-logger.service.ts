@@ -134,6 +134,21 @@ export class ErrorLogger {
 
     this.logger.error({ source, ...context, stack }, `[${source}] ${message}`);
 
+    /**
+     * ⚠️ MARQUER AVANT L'ECRITURE, ET NON APRES — c'etait une COURSE.
+     *
+     * `markRecorded` etait pose apres l'`await` de l'INSERT. Entre les deux, une couche
+     * superieure qui recevait la meme instance d'erreur voyait `alreadyRecorded === false` et
+     * ecrivait SA propre ligne. Mesure du 2026-08-21 : chaque refus d'analyse produisait deux
+     * lignes a la meme milliseconde (`trip-analysis` + `TRIP_AUTOMATION`), doublant le bruit
+     * du centre d'alerte — l'endroit meme qu'on protege.
+     *
+     * Le risque symetrique est assume : si l'INSERT echoue, l'incident reste marque et la couche
+     * du dessus n'ecrira pas. Il n'est pas perdu pour autant — la ligne de journal ci-dessus est
+     * deja partie. Et si la base refuse cette ecriture, elle refusera aussi celle du dessus.
+     */
+    markRecorded(error);
+
     try {
       const enrichedContext =
         suppressed > 0
@@ -151,7 +166,6 @@ export class ErrorLogger {
           context: enrichedContext ? (enrichedContext as any) : undefined,
         },
       });
-      markRecorded(error);
       return row.id;
     } catch (dbErr) {
       // Ne JAMAIS relancer : sinon un souci DB en écrivant l'erreur relance une erreur
