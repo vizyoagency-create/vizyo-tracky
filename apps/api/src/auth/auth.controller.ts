@@ -105,7 +105,9 @@ export class AuthController {
     // V1.10 (Sprint 6) — lit le refresh token depuis le cookie en priorite,
     // fallback body pour backward compat. Pose les nouveaux cookies dans tous
     // les cas (rotation refresh token cote Vizyo Auth).
-    const refreshToken = req.cookies?.['tracky_rt'] ?? dto.refreshToken;
+    // `dto?.` et non `dto.` : une requete SANS CORPS rend `dto` undefined, et la forme
+    // directe levait un TypeError — donc un 500 la ou la reponse juste est un 400.
+    const refreshToken = req.cookies?.['tracky_rt'] ?? dto?.refreshToken;
     if (!refreshToken) {
       throw new BadRequestException('Refresh token absent (ni cookie ni body)');
     }
@@ -123,8 +125,21 @@ export class AuthController {
     @Req() req: Request & { cookies?: Record<string, string> },
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req.cookies?.['tracky_rt'] ?? dto.refreshToken;
+    /**
+     * ⚠️ LES COOKIES SONT VIDES EN PREMIER, ET RIEN NE PEUT L'EMPECHER.
+     *
+     * Releve le 2026-08-21 : un appel `POST /api/auth/logout` SANS CORPS rendait `dto`
+     * undefined, `dto.refreshToken` levait un TypeError — et la levee se produisait AVANT
+     * `clearAuthCookies`. Resultat : 500, cookies intacts, utilisateur toujours connecte.
+     * C'est le pire endroit possible pour un defaut de robustesse : la deconnexion est
+     * precisement l'appel qui doit reussir quoi qu'il arrive, y compris quand la session
+     * est deja abimee — c'est meme SURTOUT dans ce cas qu'on l'appelle.
+     *
+     * Le corps est facultatif par contrat (le cookie prime) : un client qui n'en envoie pas
+     * fait quelque chose de parfaitement legitime.
+     */
     clearAuthCookies(res);
+    const refreshToken = req.cookies?.['tracky_rt'] ?? dto?.refreshToken;
     if (refreshToken) {
       // Best effort logout cote Vizyo Auth (revoque le refresh token).
       await this.authClient.logout(refreshToken).catch(() => undefined);
