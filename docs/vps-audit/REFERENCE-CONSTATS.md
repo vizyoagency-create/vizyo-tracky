@@ -3924,14 +3924,65 @@ qui compte.
 
 ## Constats de méthode (sur l'audit lui-même)
 
-### VPS-M56 — Le budget de 90 s est dépassé 8 fois sur 9, et cette fois sans aucune cause extérieure
+### VPS-M57 — Les deux audits planifiés ont collisionné, et le catalogue les déclarait à 3 h 20 d'écart
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-08-21 · **Mesure** : l'audit du centre d'alerte a collecté de **04 h 31 à 04 h 33** (déclaré par son propre rapport), précédé d'une rafale de **8 sessions SSH en 7 secondes** (04 h 30 min 04 → 04 h 30 min 11). La collecte VPS a tourné de **04 h 31 min 07 à 04 h 32 min 55** — **entièrement recouverte**. L'`ordonnancement` déclare pourtant **01 h 09 UTC** et **04 h 21 UTC** : 3 h 20 d'écart.
+
+**Quoi.** Deux dispositifs planifiés ont interrogé la même machine à 2 vCPU dans la même fenêtre de
+deux minutes. L'un parcourt `/opt` en priorité d'E/S `idle`, l'autre enchaîne des requêtes courtes
+sur `tracky-postgres`. **Un parcours en classe « idle » attend d'autant plus que quelqu'un d'autre
+lit le disque** (VPS-M16) : la collision explique à la fois les 35 s de `/opt` et la ligne
+« **reste 30,9 %** » du discriminant, anormalement grosse pour une machine au repos.
+
+**Pourquoi c'était invisible — et c'est le vrai constat.** L'`ordonnancement` existe **précisément**
+pour ça : *« c'est le seul endroit où l'on voit les collisions »*. Mais ses heures sont
+**déclaratives** — elles décrivent le déclenchement prévu, et **rien ne les vérifie**. Le rapport du
+centre d'alerte note lui-même que la veille sa collecte était à « 01:1x » et aujourd'hui à 04 h 33 :
+**son heure réelle dérive de plus de trois heures d'un jour à l'autre.**
+
+> *Un catalogue d'ordonnancement rempli à la main décrit les intentions, pas les exécutions. Il ne
+> peut pas signaler une collision entre deux tâches dont il tient les horaires **annoncés** plutôt
+> que les horaires **observés**.* Deux planificateurs qui vivent sur le même poste, et dont aucun ne
+> connaît l'heure réelle de l'autre, produisent une collision que **ni l'un ni l'autre ne peut
+> voir** — chacun n'a que sa propre fenêtre.
+
+**Quoi faire.** Le collecteur peut le détecter seul et **pour rien** : il lit déjà `auth.log`
+(section 6). Une rafale de sessions SSH encadrant la collecte, **hors** de celles qu'il a lui-même
+ouvertes, est le signal.
+
+```bash
+grep "$(date -u '+%Y-%m-%dT%H')" /var/log/auth.log | grep -c "Accepted publickey"
+```
+
+**`aNePasFaire`** : ⚠️ **ne pas décaler l'un des deux audits sans mesurer d'abord** — on corrigerait
+une collision observée **une fois**, sur des horaires dont on vient d'établir qu'ils dérivent.
+*Décaler une heure déclarée pour éviter une collision réelle, c'est traiter le catalogue au lieu de
+traiter la machine.* ⚠️ **Et ne pas en conclure que VPS-M56 est annulé** : le budget reste tenu
+1 fois sur 9, et les sept autres dépassements ne s'expliquent pas par cette collision.
+
+---
+
+### VPS-M56 — Le budget de 90 s est dépassé 8 fois sur 9 ~~sans aucune cause extérieure~~
 
 - **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` — **arbitrage humain requis, il n'est pas technique**
-- **Vu** : 2026-08-21 · **Mesure** : **108 s pour un budget de 90**, charge **0,50 → 2,41** sur une machine **sans build, sans boucle, à 88 % d'inactivité sur la journée**. Discriminant : **audit 20,0 %** · `dockerd` **4,9 %** · inactif **44,2 %**.
+- **Vu** : 2026-08-21 · **Mesure** : **108 s pour un budget de 90**, charge **0,50 → 2,41**. Discriminant : **audit 20,0 %** · `dockerd` **4,9 %** · **reste 30,9 %** · inactif **44,2 %**. Série des 9 passages : 224, 316, 186, 146, 175, 380, **71**, 141, **108 s** — **le budget a été tenu une fois sur neuf**.
+
+> ### ⚠️ CORRIGÉ LE JOUR MÊME — LE SOUS-TITRE D'ORIGINE ÉTAIT FAUX
+>
+> Ce constat a d'abord été publié sous le titre *« et cette fois sans aucune cause extérieure »*.
+> **Il y en avait une** : l'audit du centre d'alerte collectait **dans la même fenêtre**
+> (VPS-M57). Je n'avais pas cherché de seconde collecte concurrente, et le discriminant la
+> désignait pourtant — dans la ligne « reste 30,9 % » que je n'ai pas lue. *Le discriminant sépare
+> l'audit du démon ; il ne sépare pas l'audit d'un **autre audit**, qui tombe alors dans « reste ».*
+>
+> **Ce qui tombe** : la phrase « aucune cause extérieure ce matin ».
+> **Ce qui reste, et qui est le constat** : le budget est tenu **1 fois sur 9**, et les sept autres
+> dépassements ne s'expliquent pas par cette collision.
 
 **Quoi.** Les huit passages précédents avaient tous une cause externe à nommer — un build Docker,
-ou VPS-016. **Ce matin, il n'y en a aucune**, et le discriminant de VPS-M35 ne trouve personne
-d'autre que l'audit lui-même.
+ou VPS-016. Le 2026-08-21 en avait une aussi, mais d'un genre nouveau : **un autre dispositif
+d'audit**. Ce qui ne change pas, c'est qu'un budget dépassé huit fois sur neuf ne borne plus rien.
 
 Et le journal des passages montre que ce n'est pas un accident :
 
