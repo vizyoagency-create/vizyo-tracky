@@ -376,7 +376,7 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | D1 | **Rôle DEPOT et assistance.** Je l'ai écarté (allowlist default-deny, cohérent avec la décision déjà prise pour l'état IA), alors que la consigne était « tous les utilisateurs connectés ». Un décorateur suffit à l'ouvrir. | 19/08 |
 | D2 | **Rôle NIGHT_WATCHMAN et assistance.** Même situation : son confinement est une allowlist posée à la demande du client (« aucune donnée pour ce rôle »). Non élargie. | 19/08 |
 | D3 | **`BgTaskExecution` vs `BgTaskExecutor`** — deux types aux valeurs identiques dans le DTO des tâches de fond. Rien ne consomme `execution`. Un des deux doit partir. | 19/08 |
-| D5 | **Agenda IA — réponse tronquée le 21/08 à 13 h** (« limite de jetons atteinte : requête trop volumineuse »). Une seule occurrence, sur la voie API que le propriétaire veut garder instantanée. Deux issues possibles : réduire la période envoyée au modèle, ou relever le plafond de jetons — la première coûte en qualité de proposition, la seconde en argent. À trancher avec lui, pas seul. | 21/08 |
+| ~~D5~~ | ~~**Agenda IA — réponse tronquée**~~ — tranché par le propriétaire le 21/08 : **plafond relevé** à 16 000 jetons (et non période réduite). C'est un plafond, pas une réservation : les appels qui tenaient déjà coûtent identique. | ~~21/08~~ |
 | D4 | **Traces de l'assistance** : les lots de données du demandeur sont réduits à leur résumé, jamais recopiés. On perd le rejeu à l'identique, on évite une seconde copie de données personnelles. À confirmer ou inverser. | 19/08 |
 
 ### Vérifications dues — rien ne les remplace
@@ -385,7 +385,33 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 |---|---|---|---|
 | ~~V1~~ | ~~**Écran `/admin/qualite-gps` à 375 px**~~ | — | **Fait le 20/08 17 h 45** |
 | **V3** | **Deux boîtiers vivants SANS position GPS — à voir sur le terrain.** `GS-014-NY` (IMEI 864035054756169) et `HD-686-QX` : le boîtier communique mais n'accroche aucun satellite. Antenne débranchée, mal placée ou HS. Relevé par `gps-integrity` les 20 et 21/08 — le seul sujet du centre d'alerte qui appelait une action humaine, conservé ici avant le nettoyage du 21/08. | Accès physique aux véhicules | 21/08 |
-| **V2** | **Véhicule HORS SERVICE — la recette sur données réelles.** Fiche véhicule, carte « Cas spécial » (super-admin) : déclarer KSR370 accidenté, vérifier que le sélecteur revient à sa valeur d'origine si on annule la confirmation, que la note facultative se range, puis **le remettre en service** et voir les traitements reprendre. À contrôler dans la foulée : un FLEET_ADMIN ne voit pas la carte, et l'action lui est refusée s'il appelle l'API directement. | — | 21/08 |
+| ~~V2~~ | ~~**Véhicule HORS SERVICE — la recette sur données réelles**~~ | — | **Fait le 21/08 21 h 20** |
+
+**V2 — recette faite le 21/08, sur la production, avec ses témoins.** Ce qui a été exercé :
+
+| Contrôle | Résultat |
+|---|---|
+| 375 px, débordement horizontal | aucun — carte 343 px, bannière et note comprises |
+| Cible tactile du sélecteur | 44 px · contraste 8,28:1 au pire (seuil 4,5) |
+| Confirmation **annulée** | le sélecteur revient, **aucun appel réseau** |
+| Confirmation acceptée | carte en alerte, bannière datée, note rangée |
+| **Remise en service** | tout se retire, et aucune note n'est demandée |
+| Carte pour un FLEET_ADMIN | **absente** — et **présente** sur LA MÊME fiche en super-admin |
+| API forcée par un FLEET_ADMIN | **403** — son jeton passe en 200 ailleurs, donc c'est bien la garde |
+| Motif inventé · véhicule inconnu | **400** · **404** |
+| Agenda : véhicule réellement proposé | 34 → **33** une fois immobilisé → **34** après remise en service |
+
+⚠️ **Deux pièges rencontrés, notés pour les prochaines recettes.**
+1. **Le premier essai d'exclusion agenda portait sur KSR370 — et ne prouvait RIEN** : il est
+   dormant (boîtier muet depuis 7 j), donc déjà écarté pour une autre raison. Il a fallu prendre
+   un véhicule *réellement proposé* pour que le test ait un sens. Un témoin, toujours.
+2. **La carte ACC ne sert pas de témoin de rôle** : elle exige aussi un boîtier, donc son absence
+   peut venir du matériel et non du rôle. La comparaison valable est la même fiche vue par les
+   deux rôles.
+
+**Reste à faire par le propriétaire** : un passage à la main. Les interactions ont été déclenchées
+par script (le panneau navigateur ne compose pas les frames ici, cf. la limite notée en V1) — la
+chaîne complète est exercée, mais pas par un vrai clic.
 
 **V2 — pourquoi cet état existe, et ce qu'il ne fait PAS.** Un véhicule qui ne roule plus reste
 sinon dans le périmètre de tous les traitements. Mesure du 21/08 sur KSR370, accidenté : **843
