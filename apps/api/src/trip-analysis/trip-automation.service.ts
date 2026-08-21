@@ -77,6 +77,18 @@ const MAX_TRIPS_PER_VEHICLE = 500;
  * micro-trajet d'allumage. 60 s = trois fois la cadence : assez large pour ne jamais crier a tort.
  */
 const FENETRE_MIN_ALERTE_MS = 60_000;
+/**
+ * Marqueurs de trajets qu'on ne pourra PLUS JAMAIS re-segmenter, faute de positions.
+ *
+ * Deux valeurs et non une, parce que la CAUSE n'est pas la meme et que la confondre ferait
+ * perdre un signal :
+ *   — `fige-retention` : sous l'horizon, la purge a fait son travail. Fait normal, attendu.
+ *   — `fige-sans-positions` : AU-DESSUS de l'horizon. Les positions devraient etre la et n'y
+ *     sont pas — boitier qui emet l'allumage sans jamais accrocher le GPS, ou purge trop
+ *     agressive. Le trajet est fige pareil (le travail reste impossible), mais il reste
+ *     REPERABLE en base : « montre-moi les trajets recents figes » est une question utile.
+ */
+const SOURCES_FIGEES = ['fige-retention', 'fige-sans-positions'];
 /** Détail borné stocké par run (les trajets traités, cliquables). */
 const MAX_ITEMS_PER_RUN = 300;
 /** Historique conservé (runs récents) — le reste est élagué à chaque insertion. */
@@ -342,7 +354,7 @@ export class TripAutomationService {
             // segmentationSource est non-nullable (défaut 'live') : « sale » = pas encore recomputé.
             // 'fige-retention' est EXCLU : ses positions sont purgées, le re-segmenter est
             // impossible pour toujours — le laisser ici recréerait la famine qu'il résout.
-            segmentationSource: { notIn: ['recompute', 'fige-retention'] },
+            segmentationSource: { notIn: ['recompute', ...SOURCES_FIGEES] },
           },
           select: { startedAt: true },
           orderBy: { startedAt: 'asc' },
@@ -386,7 +398,7 @@ export class TripAutomationService {
                 vehicleId,
                 startedAt: { gte: new Date(fromMs), lte: new Date(toMs) },
                 endedAt: { not: null },
-                segmentationSource: { notIn: ['recompute', 'fige-retention'] },
+                segmentationSource: { notIn: ['recompute', ...SOURCES_FIGEES] },
               },
               data: { segmentationSource: 'fige-retention' },
             });
@@ -422,6 +434,33 @@ export class TripAutomationService {
                 { fleetId, vehicleId, phase: 'recompute:no-positions', from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() },
               );
             }
+            /**
+             * ⚠️ ET LE FRONT AVANCE QUAND MEME — l'alerte ne suffisait pas, elle BLOQUAIT.
+             *
+             * Alerter sans debloquer laissait le vehicule fige sur la meme tranche a chaque
+             * passage : `dirty` y retombait indefiniment, l'alerte se repetait, et TOUT ce qui
+             * suit la tranche restait a jamais non recalcule. Mesure du 2026-08-21 sur
+             * FZ-862-VY, tranche du 24 au 26 juin : 57 trajets posterieurs bloques derriere
+             * elle, une alerte par passage horaire pour un travail impossible.
+             *
+             * Impossible est le mot : sans position, on ne peut pas re-segmenter, que l'absence
+             * soit normale (purge) ou anormale (boitier muet). On fige donc ici AUSSI, mais sous
+             * un marqueur distinct — le signal reste lisible, et l'alerte ci-dessus ne se
+             * repetera pas puisque la tranche sort du perimetre.
+             */
+            const figesAnomalie = await this.prisma.trip.updateMany({
+              where: {
+                vehicleId,
+                startedAt: { gte: new Date(fromMs), lte: new Date(toMs) },
+                endedAt: { not: null },
+                segmentationSource: { notIn: ['recompute', ...SOURCES_FIGEES] },
+              },
+              data: { segmentationSource: 'fige-sans-positions' },
+            });
+            this.logger.warn(
+              `${veh.plate} : tranche ${new Date(fromMs).toISOString().slice(0, 10)} sans position AU-DESSUS de ` +
+                `l'horizon — ${figesAnomalie.count} trajet(s) fige(s) en anomalie, le front avance`,
+            );
           } else if (toMs > fromMs) {
             const r = await this.trips.recompute(
               { userId: user.id, role: user.role, fleetId: user.fleetId },
@@ -481,7 +520,7 @@ export class TripAutomationService {
            * indefiniment.
            */
           startedAt: { gte: new Date(Math.max(windowFrom.getTime(), this.horizonRetention())) },
-          segmentationSource: { not: 'fige-retention' },
+          segmentationSource: { notIn: SOURCES_FIGEES },
           id: { notIn: trips.map((t) => t.id) },
         },
         select: { id: true, startedAt: true },

@@ -164,7 +164,7 @@ describe('Complément des anciens sans analyse — le plancher de rétention', (
     const borne = complement.where.startedAt.gte as Date;
     const ageJours = (Date.now() - borne.getTime()) / JOUR;
     expect(ageJours).toBeLessThan(61);
-    expect(complement.where.segmentationSource).toEqual({ not: 'fige-retention' });
+    expect(complement.where.segmentationSource).toEqual({ notIn: ['fige-retention', 'fige-sans-positions'] });
   });
 });
 
@@ -207,5 +207,29 @@ describe('Tranche vide — le plancher de fenêtre', () => {
     await svc.runNow();
 
     expect(alertesNoPositions(errorLogger)).toHaveLength(1);
+  });
+
+  it('⚠️ … et le front AVANCE quand même : alerter sans débloquer condamnait tout ce qui suit', async () => {
+    /**
+     * Le défaut le plus coûteux de la série, parce qu'il était silencieux dans ses effets :
+     * l'alerte partait, mais rien n'avançait. `dirty` retombait sur la même tranche à chaque
+     * passage — alerte répétée, et TOUS les trajets postérieurs jamais recalculés. Mesuré sur
+     * FZ-862-VY, tranche du 24 au 26 juin : 57 trajets bloqués derrière elle.
+     *
+     * Marqueur DISTINCT de la rétention : ici les positions devraient être là. Le trajet est
+     * figé pareil (le travail est impossible dans les deux cas), mais reste repérable.
+     */
+    const { svc, prisma } = build({
+      lookbackHours: 6,
+      dirty: { startedAt: new Date(Date.now() - 30 * JOUR) },
+      positions: 0,
+      trips: [],
+    });
+
+    await svc.runNow();
+
+    expect(prisma.trip.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { segmentationSource: 'fige-sans-positions' } }),
+    );
   });
 });
