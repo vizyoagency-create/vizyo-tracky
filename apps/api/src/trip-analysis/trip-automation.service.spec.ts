@@ -82,6 +82,22 @@ describe('TripAutomationService', () => {
     return { svc, prisma, trips, analysis, llm, aiAvail, errorLogger, systemActivity };
   }
 
+  it('⚠️ les véhicules HORS SERVICE sortent du périmètre (accident, boîtier débranché)', async () => {
+    // Sans ce filtre, KSR370 — accidenté — portait à lui seul 843 trajets à re-segmenter et
+    // 1 309 à analyser : 99 % du reste-à-faire de la flotte pour un véhicule qui ne roulera
+    // plus. Chaque passage repayait ce travail sans issue, et le compteur de convergence ne
+    // voulait plus rien dire.
+    const { svc, prisma } = build({ trips: [] });
+
+    await svc.runNow();
+
+    expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ outOfServiceReason: null }),
+      }),
+    );
+  });
+
   it('ne fait rien quand désactivée (aucune itération de flotte)', async () => {
     const { svc, prisma } = build({ row: { enabled: false } });
     await svc.runScheduled();

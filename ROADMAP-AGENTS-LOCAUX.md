@@ -383,6 +383,19 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | # | À vérifier | Bloqué par | Depuis |
 |---|---|---|---|
 | ~~V1~~ | ~~**Écran `/admin/qualite-gps` à 375 px**~~ | — | **Fait le 20/08 17 h 45** |
+| **V2** | **Véhicule HORS SERVICE — la recette sur données réelles.** Fiche véhicule, carte « Cas spécial » (super-admin) : déclarer KSR370 accidenté, vérifier que le sélecteur revient à sa valeur d'origine si on annule la confirmation, que la note facultative se range, puis **le remettre en service** et voir les traitements reprendre. À contrôler dans la foulée : un FLEET_ADMIN ne voit pas la carte, et l'action lui est refusée s'il appelle l'API directement. | — | 21/08 |
+
+**V2 — pourquoi cet état existe, et ce qu'il ne fait PAS.** Un véhicule qui ne roule plus reste
+sinon dans le périmètre de tous les traitements. Mesure du 21/08 sur KSR370, accidenté : **843
+trajets à re-segmenter et 1 309 à analyser, soit 99 % du reste-à-faire de toute la flotte** pour un
+seul véhicule immobilisé — les compteurs de convergence ne voulaient plus rien dire, et chaque
+passage horaire repayait ce travail sans issue. L'état retire le véhicule du périmètre de l'analyse
+des trajets, de la veille accident et du détecteur de perte GPS.
+
+⚠️ **Il ne supprime RIEN et ne fige rien en base.** C'est un interrupteur : une remise en service
+fait tout reprendre où ça en était. C'est la condition pour que ce soit utilisable — un état dont
+on ne sait pas sortir ne serait jamais posé. Trois motifs distincts (accident, boîtier débranché,
+immobilisation) parce qu'ils ne se résolvent pas de la même façon.
 
 **V1 — vérifié dans le navigateur à 375 px, sur données réelles.** Rendu, carte du hub (343 px de
 large sur 375, aucun débordement horizontal), chargement, « marquer traité », bascule

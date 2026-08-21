@@ -28,6 +28,7 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { SetVehicleGroupDto } from './dto/set-vehicle-group.dto';
 import { SyncFromInstallationDto } from './dto/sync-from-installation.dto';
+import { SetOutOfServiceDto } from './dto/set-out-of-service.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import type { RequestedBy } from './vehicles.service';
 import { VehiclesService } from './vehicles.service';
@@ -177,6 +178,21 @@ export class VehiclesController {
       meta: { vehicleId: qr.vehicleId },
     });
     return qr;
+  }
+
+  /**
+   * Cas SPECIAUX : vehicule accidente, boitier debranche, immobilisation longue.
+   * `reason: null` remet en service. SUPER_ADMIN uniquement — cet etat fait TAIRE des
+   * traitements et des alertes, il ne doit pas etre a portee d'un gestionnaire de flotte.
+   */
+  @Patch(':id/out-of-service')
+  @Roles(UserRole.SUPER_ADMIN)
+  async setOutOfService(
+    @Param('id') id: string,
+    @Body() dto: SetOutOfServiceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.vehicles.setOutOfService(id, dto, await this.buildRequestedBy(req));
   }
 
   @Patch(':id')

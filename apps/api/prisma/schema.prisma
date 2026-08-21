@@ -621,6 +621,18 @@ model Invitation {
   @@map("invitations")
 }
 
+/// Pourquoi un vehicule est hors service. Le libelle exact est porte par l'interface ; ce qui
+/// compte ici est de distinguer les cas, parce qu'ils ne se resolvent pas pareil : un accident
+/// se solde par une reforme ou une remise en route, un boitier debranche par une reinstallation.
+enum VehicleOutOfServiceReason {
+  /// Accidente — le vehicule ne roule plus, ses donnees s'arretent la.
+  ACCIDENT
+  /// Boitier debranche ou depose (restitution, vente, panne materielle).
+  TRACKER_UNPLUGGED
+  /// Immobilise durablement pour toute autre raison (reparation longue, saisie, hivernage).
+  IMMOBILIZED
+}
+
 model Vehicle {
   id                          String                   @id @default(uuid()) @db.Uuid
   fleetId                     String                   @db.Uuid
@@ -684,6 +696,19 @@ model Vehicle {
   /// travail s'applique : hors plage, plus aucune position n'est collectée (RGPD/CNIL).
   /// Activé explicitement par le fleet-admin, véhicule par véhicule (proportionnalité).
   mixedUseEnabled             Boolean                  @default(false)
+  /// Cas SPECIAL declare par un super-admin : le vehicule n'est plus exploite (accident,
+  /// boitier debranche/depose, immobilisation longue). null = en service, valeur = hors service.
+  ///
+  /// Ce n'est PAS un statut cosmetique : tant qu'il est pose, les traitements de fond cessent de
+  /// travailler sur ce vehicule (analyse et recalcul des trajets) et les detecteurs cessent
+  /// d'alerter sur lui (perte de GPS, veille accident). Un vehicule accidente qui reste dans le
+  /// perimetre produit un flot d'alertes vraies-mais-inutiles et bloque la convergence — mesure
+  /// le 2026-08-21 sur KSR370 : 843 trajets a re-segmenter et 1 309 a analyser, soit 99 % du
+  /// reste-a-faire de toute la flotte pour un seul vehicule hors service.
+  outOfServiceReason          VehicleOutOfServiceReason?
+  outOfServiceSince           DateTime?
+  outOfServiceById            String?                  @db.Uuid
+  outOfServiceNote            String?
   privacyModeEnabled          Boolean                  @default(false)
   privacyModeSince            DateTime?
   privacyModeById             String?                  @db.Uuid

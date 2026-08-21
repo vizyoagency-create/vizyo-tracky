@@ -67,6 +67,9 @@ export class DetectionAccidentService {
       where: {
         lastSeenAt: { not: null, lt: limite },
         vehicleId: { not: null },
+        // Un vehicule DEJA declare accidente n'a pas a redeclencher la veille accident : on
+        // annoncerait un accident deja connu, et l'alerte perdrait son sens d'urgence.
+        vehicle: { outOfServiceReason: null },
       },
       select: {
         id: true,

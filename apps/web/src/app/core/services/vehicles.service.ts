@@ -10,6 +10,12 @@ import type {
 } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
+/**
+ * Pourquoi un vehicule est hors service. Aligne sur l'enum Prisma : toute valeur ajoutee
+ * cote base doit apparaitre ici, sinon l'interface affichera un motif vide.
+ */
+export type VehicleOutOfServiceReason = 'ACCIDENT' | 'TRACKER_UNPLUGGED' | 'IMMOBILIZED';
+
 export interface VehicleDetailDto {
   id: string;
   plate: string;
@@ -25,6 +31,13 @@ export interface VehicleDetailDto {
   childSeats: number | null;
   features: string[];
   fleetId: string;
+  /**
+   * Cas SPECIAL declare par un super-admin : null = en service. Quand il est pose, les
+   * traitements de fond et les detecteurs d'alerte cessent de travailler sur ce vehicule.
+   */
+  outOfServiceReason?: VehicleOutOfServiceReason | null;
+  outOfServiceSince?: string | null;
+  outOfServiceNote?: string | null;
   tracker: {
     id: string;
     imei: string;
@@ -99,6 +112,17 @@ export class VehiclesApiService {
    * Sprint 1 (Fondation Groupes) — définit/retire le groupe (single) du véhicule.
    * `groupId: null` retire le véhicule de son groupe (« sans groupe »).
    */
+  /**
+   * Cas SPECIAUX (super-admin) : declarer un vehicule hors service, ou l'y remettre.
+   * `reason: null` = remise en service.
+   */
+  setOutOfService(
+    id: string,
+    body: { reason: VehicleOutOfServiceReason | null; note?: string },
+  ): Observable<VehicleDetailDto> {
+    return this.http.patch<VehicleDetailDto>(`/api/vehicles/${id}/out-of-service`, body);
+  }
+
   setGroup(id: string, groupId: string | null): Observable<VehicleDetailDto> {
     return this.http.patch<VehicleDetailDto>(`/api/vehicles/${id}/group`, { groupId });
   }

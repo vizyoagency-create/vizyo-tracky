@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, Prisma, UserRole , VehicleOutOfServiceReason } from '@prisma/client';
 import type { Vehicle } from '@prisma/client';
 import type {
   VehicleCapacityRowDto,
@@ -25,6 +25,7 @@ import {
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
 import * as QRCode from 'qrcode';
 import type { CreateVehicleDto } from './dto/create-vehicle.dto';
@@ -189,6 +190,7 @@ export class VehiclesService {
     private readonly prisma: PrismaService,
     private readonly cache: InMemoryCacheService,
     private readonly unlockToken: UnlockTokenService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   /**
@@ -549,6 +551,74 @@ export class VehiclesService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Declare (ou leve) l'etat HORS SERVICE d'un vehicule — reserve au SUPER_ADMIN.
+   *
+   * ── POURQUOI CET ETAT EXISTE ─────────────────────────────────────────────────────
+   *
+   * Un vehicule qui ne roule plus reste dans le perimetre de tous les traitements de fond.
+   * Il y produit du travail impossible et des alertes vraies-mais-inutiles. Mesure du
+   * 2026-08-21 sur KSR370, accidente : 843 trajets a re-segmenter et 1 309 a analyser, soit
+   * 99 % du reste-a-faire de TOUTE la flotte pour un seul vehicule immobilise. Impossible,
+   * en lisant les compteurs, de savoir si la convergence avancait.
+   *
+   * ⚠️ AUCUNE DONNEE N'EST TOUCHEE. L'etat ne supprime rien, ne fige rien en base : il retire
+   *    seulement le vehicule du perimetre des traitements. Une remise en service le fait
+   *    reprendre exactement ou il en etait — c'est la condition pour que ce soit un
+   *    interrupteur et non une decision irreversible.
+   */
+  async setOutOfService(
+    id: string,
+    dto: { reason?: VehicleOutOfServiceReason | null; note?: string },
+    requestedBy: RequestedBy,
+  ): Promise<VehicleWithGroup> {
+    // Le controleur porte deja la garde de role. On la repose ici : un service qui ne se
+    // defend pas seul finit par etre appele depuis un endroit qui a oublie la garde.
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Action réservée au super-admin.');
+    }
+
+    const actuel = await this.prisma.vehicle.findUnique({
+      where: { id },
+      select: { id: true, plate: true, fleetId: true, outOfServiceReason: true },
+    });
+    if (!actuel) throw new NotFoundException('Véhicule introuvable');
+
+    const motif = dto.reason ?? null;
+    const note = (dto.note ?? '').trim() || null;
+    const changeDeMotif = actuel.outOfServiceReason !== motif;
+
+    await this.prisma.vehicle.update({
+      where: { id },
+      data: {
+        outOfServiceReason: motif,
+        // La date ne bouge QUE si le motif change : corriger une note ne doit pas faire croire
+        // que le vehicule vient d'etre immobilise.
+        ...(changeDeMotif ? { outOfServiceSince: motif ? new Date() : null } : {}),
+        outOfServiceById: motif ? (requestedBy.userId ?? null) : null,
+        outOfServiceNote: motif ? note : null,
+      },
+    });
+
+    // Le journal garde l'HISTORIQUE des bascules ; la fiche ne porte que l'etat courant.
+    // Sans lui, on saurait qu'un vehicule est hors service sans savoir depuis combien de
+    // bascules ni sur decision de qui.
+    this.systemActivity.record({
+      category: 'MUTATION',
+      action: motif ? 'vehicle_out_of_service' : 'vehicle_back_in_service',
+      status: 'SUCCESS',
+      actor: 'super-admin',
+      target: actuel.plate,
+      detail: motif
+        ? `${actuel.plate} déclaré hors service (${motif})${note ? ` — ${note}` : ''}`
+        : `${actuel.plate} remis en service`,
+      meta: { vehicleId: id, fleetId: actuel.fleetId, reason: motif, note },
+    });
+
+    this.invalidateKpiCache(actuel.fleetId);
+    return this.findOne(id, requestedBy);
   }
 
   async remove(id: string, requestedBy: RequestedBy): Promise<void> {

@@ -162,6 +162,10 @@ export class GpsIntegrityService {
       const suspects = await this.prisma.tracker.findMany({
         where: {
           vehicleId: { not: null },
+          // Boitier debranche ou vehicule accidente : la perte de GPS est la CONSEQUENCE de
+          // l'etat declare, pas une anomalie a signaler. Alerter reviendrait a repeter ce que
+          // le super-admin vient lui-meme de saisir.
+          vehicle: { outOfServiceReason: null },
           lastSeenAt: { gte: aliveSince },
           lastNoFixAt: { gte: aliveSince },
           OR: [{ lastPositionAt: null }, { lastPositionAt: { lt: posStaleBefore } }],

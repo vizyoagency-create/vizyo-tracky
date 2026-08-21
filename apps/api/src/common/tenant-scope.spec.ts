@@ -49,9 +49,11 @@ describe('fail-closed endpoints (audit A3/B1/B2/D9)', () => {
   const cache = { get: jest.fn().mockReturnValue(undefined), set: jest.fn() };
 
   describe('VehiclesService', () => {
-    // 3e arg = UnlockTokenService (feat/comptes-conducteurs) — stub : non utilisé sur les
-    // chemins fail-closed testés ici (retour [] avant toute génération de QR).
-    const make = (prisma: unknown) => new VehiclesService(prisma as never, cache as never, {} as never);
+    // 3e arg = UnlockTokenService (feat/comptes-conducteurs), 4e = SystemActivityService —
+    // stubs : non utilisés sur les chemins fail-closed testés ici (retour [] avant toute
+    // génération de QR, et aucune mutation donc aucune écriture au journal).
+    const make = (prisma: unknown) =>
+      new VehiclesService(prisma as never, cache as never, {} as never, { record: jest.fn() } as never);
 
     it('findAll: non-super sans fleetId → [] et aucune requête DB', async () => {
       const prisma = { vehicle: { findMany: jest.fn() } };

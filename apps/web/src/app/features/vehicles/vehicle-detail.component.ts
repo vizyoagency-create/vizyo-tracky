@@ -425,6 +425,61 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
           </div>
         }
 
+        <!--
+          Cas special (SUPER_ADMIN) : vehicule accidente, boitier debranche, immobilise.
+          Tant que l'etat est pose, les traitements de fond et les detecteurs d'alerte
+          cessent de travailler sur ce vehicule. Aucune donnee n'est touchee.
+        -->
+        @if (isSuperAdmin()) {
+          <div class="vd-admin-card" [class.vd-admin-card--warning]="!!v.outOfServiceReason">
+            <div class="vd-admin-card-header">
+              @if (v.outOfServiceReason) {
+                <lucide-icon [img]="ShieldAlert" [size]="14"></lucide-icon>
+              } @else {
+                <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
+              }
+              <span>Cas spécial &middot; super-admin</span>
+            </div>
+
+            <label class="vd-hs-field">
+              <span class="vd-hs-label">État d'exploitation</span>
+              <select
+                class="vd-hs-select"
+                [disabled]="hsUpdating()"
+                [value]="v.outOfServiceReason ?? ''"
+                (change)="changerEtatExploitation(v.id, $event)"
+                aria-label="État d'exploitation du véhicule"
+              >
+                <option value="">En service</option>
+                <option value="ACCIDENT">Accidenté</option>
+                <option value="TRACKER_UNPLUGGED">Boîtier débranché</option>
+                <option value="IMMOBILIZED">Immobilisé</option>
+              </select>
+              @if (hsUpdating()) {
+                <app-spinner [size]="14" />
+              }
+            </label>
+
+            @if (v.outOfServiceReason) {
+              <div class="vd-admin-warning">
+                <lucide-icon [img]="AlertTriangle" [size]="12"></lucide-icon>
+                <span>
+                  Hors service depuis {{ dateHorsService(v.outOfServiceSince) }} &mdash; analyse
+                  des trajets et alertes suspendues pour ce véhicule. Aucune donnée supprimée.
+                </span>
+              </div>
+              @if (v.outOfServiceNote) {
+                <p class="vd-hs-note">{{ v.outOfServiceNote }}</p>
+              }
+            } @else {
+              <p class="vd-hs-aide">
+                À cocher quand un véhicule ne roule plus : il sort du périmètre des traitements
+                et cesse de produire des alertes qui n'appellent aucune action.
+              </p>
+            }
+          </div>
+        }
+
         <!-- Zones mortes GPS (suivi FS-253) — endroits où ce véhicule perd récurremment le GPS. -->
         @if (deadZones().length) {
           <div class="vd-dz-card">
@@ -1136,6 +1191,43 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       align-items: flex-start;
       gap: 10px;
       cursor: pointer;
+    }
+    .vd-hs-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .vd-hs-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .vd-hs-select {
+      flex: 1 1 160px;
+      min-height: 44px;
+      padding: 8px 10px;
+      font-size: 14px;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+    }
+    .vd-hs-select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .vd-hs-note {
+      margin: 0;
+      font-size: 12px;
+      font-style: italic;
+      color: var(--text-secondary);
+    }
+    .vd-hs-aide {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text-secondary);
     }
     .vd-admin-toggle input[type='checkbox'] {
       margin-top: 3px;
@@ -1854,6 +1946,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly scheduleRevision = signal(0);
   /** V1.7 — flag de chargement pendant le PATCH /api/trackers/:id (toggle ACC). */
   protected readonly accUpdating = signal(false);
+  protected readonly hsUpdating = signal(false);
   /** V1.7 — vrai si l'utilisateur courant est SUPER_ADMIN (pour afficher la carte reglage materiel). */
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
@@ -2659,6 +2752,81 @@ export class VehicleDetailComponent implements OnInit {
     } catch (err) {
       // handled
       swallow('vehicle-detail:acknowledgeAlert', err);
+    }
+  }
+
+  /** Date de mise hors service, en clair. Jamais d'affichage vide : on dit « inconnue ». */
+  protected dateHorsService(iso: string | null | undefined): string {
+    if (!iso) return 'une date inconnue';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? 'une date inconnue'
+      : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  }
+
+  /**
+   * Bascule SUPER_ADMIN de l'etat d'exploitation (cas speciaux).
+   *
+   * Meme discipline que le reglage ACC : confirmation, remise en place du controle si
+   * l'utilisateur annule ou si l'API refuse, message d'erreur explicite. Un selecteur qui
+   * resterait sur la valeur choisie apres un echec ferait croire que l'etat est enregistre.
+   */
+  protected async changerEtatExploitation(vehicleId: string, ev: Event): Promise<void> {
+    const select = ev.target as HTMLSelectElement;
+    const precedent = this.vehicle()?.outOfServiceReason ?? '';
+    const choisi = select.value as '' | 'ACCIDENT' | 'TRACKER_UNPLUGGED' | 'IMMOBILIZED';
+    if (choisi === precedent) return;
+
+    const libelles: Record<string, string> = {
+      ACCIDENT: 'accidenté',
+      TRACKER_UNPLUGGED: 'boîtier débranché',
+      IMMOBILIZED: 'immobilisé',
+    };
+    const message = choisi
+      ? 'Déclarer ce véhicule hors service (' + libelles[choisi] + ') ?\n\n' +
+        "L'analyse de ses trajets et ses alertes seront suspendues. " +
+        'Aucune donnée existante ne sera supprimée, et la remise en service est immédiate.'
+      : 'Remettre ce véhicule en service ?\n\n' +
+        'Les traitements et les alertes reprendront normalement.';
+    if (!window.confirm(message)) {
+      select.value = precedent;
+      return;
+    }
+
+    // Note facultative. Annuler la saisie ne doit PAS annuler la bascule deja confirmee,
+    // d'ou le repli sur une chaine vide plutot qu'un retour anticipe.
+    const note = choisi
+      ? (window.prompt('Précision (facultatif) : date, n° de dossier, contexte…') ?? '')
+      : '';
+
+    this.hsUpdating.set(true);
+    try {
+      const maj = await firstValueFrom(
+        this.vehiclesApi.setOutOfService(vehicleId, { reason: choisi || null, note }),
+      );
+      this.vehicle.set(maj);
+      this.toast.success(
+        choisi ? 'Véhicule déclaré hors service' : 'Véhicule remis en service',
+        choisi
+          ? 'Ses traitements et alertes sont suspendus.'
+          : 'Ses traitements et alertes reprennent.',
+      );
+    } catch (err) {
+      swallow('vehicle-detail:changerEtatExploitation', err);
+      select.value = precedent; // l'ecran ne doit jamais montrer un etat non enregistre
+      const detail =
+        err instanceof HttpErrorResponse
+          ? err.status === 403
+            ? 'Action réservée au super-admin.'
+            : err.status === 404
+              ? 'Véhicule introuvable.'
+              : (err.error?.message ?? err.message ?? 'Erreur inconnue')
+          : err instanceof Error
+            ? err.message
+            : 'Erreur inconnue';
+      this.toast.error('Échec de la mise à jour', detail);
+    } finally {
+      this.hsUpdating.set(false);
     }
   }
 

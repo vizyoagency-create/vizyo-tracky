@@ -5,6 +5,7 @@ import { DORMANT_STOP_COUNTING_MS, MOVING_FRESHNESS_MS } from '@vizyo/tracky-sha
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehiclesService } from './vehicles.service';
 
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -99,6 +100,9 @@ describe('VehiclesService', () => {
             verifyVehicleToken: jest.fn(),
           },
         },
+        // Journal des actions systeme : le service y trace les bascules « hors service ».
+        // Non exerce par ces tests -> mock minimal (record est fire-and-forget).
+        { provide: SystemActivityService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

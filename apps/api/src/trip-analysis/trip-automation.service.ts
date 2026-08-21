@@ -227,7 +227,12 @@ export class TripAutomationService {
         let vehicles: { id: string; plate: string; tracker: { id: string; lastSeenAt: Date | null } | null }[];
         try {
           vehicles = await this.prisma.vehicle.findMany({
-            where: { fleetId: fleet.id, tracker: { isNot: null } },
+            // ⚠️ Les vehicules HORS SERVICE sortent du perimetre (accident, boitier debranche,
+            //    immobilisation). Sans ce filtre, KSR370 — accidente — portait a lui seul 843
+            //    trajets a re-segmenter et 1 309 a analyser : 99 % du reste-a-faire de la flotte
+            //    pour un vehicule qui ne roulera plus. Le compteur de convergence ne voulait
+            //    plus rien dire, et chaque passage repayait ce travail sans issue.
+            where: { fleetId: fleet.id, tracker: { isNot: null }, outOfServiceReason: null },
             // `lastSeenAt` est JOINT à la requête qui existait déjà (rien de nouveau à exécuter) :
             // il sert à ne pas relancer tout le pipeline sur un boîtier muet depuis des semaines.
             select: { id: true, plate: true, tracker: { select: { id: true, lastSeenAt: true } } },
