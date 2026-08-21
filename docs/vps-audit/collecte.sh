@@ -605,6 +605,13 @@ done
 
 sub "/opt sous-dossier par sous-dossier (le poste le plus lourd — VPS-M26/VPS-018)"
 T_OPT=$(date +%s); OPT_KO=0; OPT_N=0; OPT_TOT=0; OPT_RESTE=""
+# ⚠️⚠️ AJOUTE LE 2026-08-21 (VPS-M55) — LE COUT DE CHAQUE ENFANT EST DESORMAIS CUMULE.
+# Ces deux compteurs n'existent que pour DERIVER la part de /opt/vizyo-leads au lieu de
+# l'ecrire en dur : la phrase « ~25 % de ce parcours » etait figee depuis le 2026-08-11 et
+# valait 11,9 % le 2026-08-21. Une attribution derivee de la mesure survit au changement de
+# situation ; une attribution ecrite en dur devient fausse sans que rien ne le signale
+# (meme lecon que VPS-M47, au meme fichier, a un autre endroit).
+OPT_MS_TOT=0; OPT_MS_LEADS=""
 for d in /opt/*/; do
   OPT_TOT=$((OPT_TOT+1)); x=${d%/}
   # Plafond GLOBAL : au-dela, on n'entame pas un enfant de plus. Le budget de la section est
@@ -612,15 +619,17 @@ for d in /opt/*/; do
   if [ $(( $(date +%s) - T_OPT )) -ge 45 ]; then OPT_RESTE="$OPT_RESTE ${x##*/}"; continue; fi
   T0=$(date +%s%N)
   k=$(timeout 12 $LOW du -sk "$d" 2>/dev/null | awk '{print $1}')
+  D_MS=$(ms "$T0"); OPT_MS_TOT=$((OPT_MS_TOT+D_MS))
+  [ "${x##*/}" = "vizyo-leads" ] && OPT_MS_LEADS=$D_MS
   if [ -n "$k" ]; then
     OPT_KO=$((OPT_KO+k)); OPT_N=$((OPT_N+1))
     printf '  %8s  %-36s %6s ms\n' \
       "$(awk -v k="$k" 'BEGIN{ if (k>=1048576) printf "%.1fG", k/1048576;
                                else if (k>=1024) printf "%.0fM", k/1024;
                                else printf "%dK", k }')" \
-      "$x" "$(ms "$T0")"
+      "$x" "$D_MS"
   else
-    printf '  %8s  %-36s %6s ms\n' "(>12s)" "$x" "$(ms "$T0")"
+    printf '  %8s  %-36s %6s ms\n' "(>12s)" "$x" "$D_MS"
     OPT_RESTE="$OPT_RESTE ${x##*/}"
   fi
 done
@@ -629,9 +638,19 @@ done
 awk -v k="$OPT_KO" -v n="$OPT_N" -v t="$OPT_TOT" -v s="$(( $(date +%s) - T_OPT ))" 'BEGIN{
   printf "  → /opt = %.1f Go, mesures sur %d / %d sous-dossiers, en %d s\n", k/1048576, n, t, s }'
 [ -n "$OPT_RESTE" ] && echo "  ⚠️ NON MESURE (delai depasse — mesure NON FAITE, PAS un dossier vide) :$OPT_RESTE"
-echo "  ⚠️ Le cout suit les INODES, pas les octets : au 2026-08-11, /opt/maalem (1,6 Go) coute"
-echo "     ~1 s quand /opt/vizyo-leads (823 Mo, pile SUPPRIMEE le 2026-08-04) en coute ~6 —"
-echo "     soit ~25 % de ce parcours pour du code qui ne tourne plus (VPS-018)."
+echo "  ⚠️ Le cout suit les INODES, pas les octets — et la part ci-dessous est MESUREE ce passage,"
+echo "     pas recopiee : c'est ce que coute chaque nuit un depot dont la pile est SUPPRIMEE."
+awk -v l="$OPT_MS_LEADS" -v t="$OPT_MS_TOT" 'BEGIN{
+  if (l == "" || t <= 0) {
+    print "     /opt/vizyo-leads : NON MESURE ce passage — aucune part ne peut en etre derivee.";
+    print "     (absence de mesure, PAS une part nulle : si le dossier a disparu, VPS-018 est CLOS.)";
+  } else {
+    printf "     /opt/vizyo-leads (823 Mo, pile SUPPRIMEE le 2026-08-04) : %.1f s sur %.1f s\n", l/1000, t/1000;
+    printf "     = %.1f %% de ce parcours pour du code qui ne tourne plus (VPS-018).\n", 100*l/t;
+  } }'
+echo "     ⚠️ NE PAS comparer cette part a celle d un autre passage sans regarder les DUREES :"
+echo "        un parcours a froid et un parcours a chaud different d un facteur ~20 (VPS-M18),"
+echo "        et la part se deplace quand c est le DENOMINATEUR qui change, pas vizyo-leads."
 echo "  (+ ~4,5 Go d outillage de dev exclus du parcours : /root/.local, .npm, .cache, .claude —"
 echo "     mesures le 2026-08-06, ~155 000 inodes. Voir VPS-017 : ils n'ont rien a faire ici.)"
 # ⚠️ /opt est le PREMIER POSTE de la collecte, et il faut le dire ici plutot que de le
@@ -644,6 +663,19 @@ echo "     mesures le 2026-08-06, ~155 000 inodes. Voir VPS-017 : ils n'ont rien
 # Le compte n'est PAS recalcule a chaque passage, volontairement : `find /opt | wc -l` refait
 # exactement le parcours que `du` vient de faire, pour un chiffre qui ne bouge qu'a un deploiement.
 # Ajouter du travail a la machine pour documenter le travail qu'on lui ajoute serait absurde.
+#
+# ⚠️⚠️ /opt/maalem — MESURE LE 2026-08-21, apres SEPT passages a « (>12s) ».
+# Valeurs : 1 621 488 Ko (1,55 Go) et 135 099 inodes. Le `find` ne coute que 487 ms ; c'est le
+# `du` qui coute, parce qu'il faut stat() chaque inode.
+# ⚠️ ET CE QUI COMPTE ICI EST LA CAUSE, PAS LA TAILLE : le rapport du 2026-08-20 attribuait le
+# « 17/18 » a une machine occupee par VPS-016. C'EST REFUTE — le 2026-08-21 la machine est a
+# 0,50 de charge, 88 % d'inactivite, aucune boucle, et maalem depasse les 12 s a l'identique.
+# La cause est le cache FROID : relance immediatement apres l'abandon (donc a chaud), le meme
+# `du` rend 5,76 s. Le delai de 12 s n'est pas trop court pour la machine, il est trop court
+# pour un premier parcours de 135 099 inodes — ce qui est exactement le cas de chaque nuit.
+# ⚠️ NE PAS en conclure « il faut relever le delai a 20 s » : ce serait +8 s sur une collecte
+# qui depasse DEJA son budget (108 s pour 90 le 2026-08-21). L'arbitrage est ouvert, il est
+# ecrit dans le rapport du 2026-08-21, et il ne se tranche pas en changeant un chiffre ici.
 sub "Detail /var/lib/docker (dossiers legers uniquement)"
 # ⚠️ `rootfs` et `overlay2` sont VOLONTAIREMENT EXCLUS : les parcourir, c'est marcher sur
 # ~12 Go de couches empilees, soit plusieurs minutes d'E/S soutenues pour un chiffre que
