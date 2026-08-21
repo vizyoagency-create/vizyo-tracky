@@ -47,7 +47,7 @@ interface CatalogEntry {
    * Traitement qui ne tourne PAS sur ce serveur — son état se déduit du travail qu'il a écrit
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
-  externe?: 'limites-vitesse' | 'recit-trajet' | 'qualite-gps' | 'rattrapage-recits';
+  externe?: 'limites-vitesse' | 'recit-trajet' | 'qualite-gps' | 'rattrapage-recits' | 'courrier-ia';
   /**
    * Lanceur .cmd du Planificateur de taches Windows, relatif a la racine du depot.
    *
@@ -142,13 +142,18 @@ const CATALOG: CatalogEntry[] = [
     kind: 'cron', scheduleHuman: 'chaque jour à l\'heure réglée (sondé à HH:10)', criticality: 'basse', antiOverlap: true,
     configurable: true, settingsRoute: '/admin/place-automation', ai: 'place',
     purpose: 'Analyse les lieux clés dont les faits ont changé, sous plafonds de nombre et de dépense. Désactivé par défaut.',
+    // Bascule locale du 2026-08-21 (design/C1) : ce cron enfile, il ne paie plus.
+    coutIa: 'aucun',
   },
   {
+    // coutIa bascule 'facture' -> 'aucun' le 2026-08-21 : ce cron ne touche plus un modele,
+    // il PREPARE le rapport et l'enfile pour le courrier du poste (design/C1).
     id: 'activity-report',
     source: 'user-activity/activity-report.service.ts', label: 'Rapport IA d\'activité utilisateurs', category: 'IA & rapports',
     kind: 'cron', scheduleHuman: 'à échéance (vérifié chaque heure)', criticality: 'basse', antiOverlap: false,
     configurable: true, settingsRoute: '/admin/activity', ai: 'activity',
     purpose: 'Génère un rapport IA d\'observation de l\'activité (quotidien / hebdo / mensuel selon réglage).',
+    coutIa: 'aucun',
   },
   {
     id: 'agenda-agent',
@@ -472,6 +477,19 @@ const CATALOG: CatalogEntry[] = [
     purpose: "Verifie vingt minutes apres l'envoi que le SMS de preuve de vie est reellement arrive (accuse de la passerelle). Un envoi sans verification rassure a tort : la chaine peut casser APRES l'acceptation du message.",
     fire: { tz: PARIS, matcher: (w) => w.getDay() === 1 && w.getHours() === 9 && w.getMinutes() === 20 },
   },
+  {
+    id: 'courrier-ia', label: 'Courrier IA (agent sur poste)',
+    category: 'IA & rapports', kind: 'cron',
+    scheduleHuman: 'chaque jour a 06:30 — sur le poste du proprietaire',
+    criticality: 'moyenne', antiOverlap: true,
+    poste: 'outils/agent-courrier-ia.cmd',
+    note: "Ne tourne PAS sur ce serveur. C'est le maillon central de la bascule locale (design/C1) : le serveur PREPARE les travaux IA (rapport d'activite, analyse de lieux) dans une file, ce courrier les redige via l'abonnement du poste, le serveur VALIDE et range. Il ne connait aucun metier — ajouter un type de travail ne le modifie pas. File vide = no-op immediat.",
+    purpose: "Porte les travaux IA recurrents prepares par le serveur vers le modele, sur l'abonnement du poste : 0 credit d'API. La file en attente et les echecs sont affiches ci-contre — un echec persistant se voit, il ne se devine pas.",
+    externe: 'courrier-ia',
+    coutIa: 'absorbe',
+    // 06:30 Paris = 04:30 UTC. Quotidien a heure fixe.
+    fire: { tz: PARIS, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 30 },
+  },
 ];
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
@@ -492,7 +510,7 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits, courrierIa] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
@@ -501,6 +519,7 @@ export class BackgroundTasksService {
       this.etatAgentRecit(),
       this.etatAgentQualiteGps(),
       this.etatRattrapageRecits(),
+      this.etatCourrierIa(),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -529,6 +548,10 @@ export class BackgroundTasksService {
       if (e.externe === 'limites-vitesse') {
         const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
         return { ...base, ...agentLimites, nextRunAt: next ? next.toISOString() : null };
+      }
+      if (e.externe === 'courrier-ia') {
+        const next = e.fire ? nextFireInstant(e.fire.matcher, nowMs, e.fire.tz, nowMs) : null;
+        return { ...base, ...courrierIa, nextRunAt: next ? next.toISOString() : null };
       }
       if (e.externe === 'rattrapage-recits') {
         const next = e.periodic ? nextPeriodicTick(e.periodic.everyMs, e.periodic.offsetMs, nowMs) : null;
@@ -589,6 +612,40 @@ export class BackgroundTasksService {
       return { enabled: null, lastRunAt: null, settingsSummary: null };
     }
   }
+  /**
+   * État du COURRIER IA — le maillon central de la bascule locale (design/C1).
+   *
+   * Deux sources croisées, parce qu'aucune ne suffit seule : le JOURNAL DES PASSAGES dit s'il
+   * a tourné (il peut légitimement ne rien livrer — file vide un mardi), et la FILE dit si du
+   * travail attend ou a échoué. Un courrier « sain » avec des échecs en file est un mensonge ;
+   * une file vide avec un courrier muet depuis deux jours en est un autre.
+   */
+  private async etatCourrierIa(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+    try {
+      const [passage, aFaire, faits, echecs] = await Promise.all([
+        this.prisma.passageAgentLocal.findFirst({ where: { agent: 'agent-courrier-ia' }, orderBy: { finiA: 'desc' } }),
+        this.prisma.travailIaLocal.count({ where: { statut: 'a-faire' } }),
+        this.prisma.travailIaLocal.count({ where: { statut: 'fait' } }),
+        this.prisma.travailIaLocal.count({ where: { statut: 'echec' } }),
+      ]);
+      const resume =
+        `file : ${aFaire} en attente · ${faits} a ranger` +
+        (echecs > 0 ? ` · ⚠ ${echecs} en echec definitif` : '');
+      if (!passage) {
+        return { enabled: null, lastRunAt: null, settingsSummary: resume };
+      }
+      // Passage quotidien : 30 h de silence couvrent un creneau manque + la marge de rattrapage.
+      const frais = Date.now() - passage.finiA.getTime() < 30 * 3_600_000;
+      return {
+        enabled: frais && passage.succes && echecs === 0,
+        lastRunAt: passage.finiA.toISOString(),
+        settingsSummary: resume,
+      };
+    } catch {
+      return { enabled: null, lastRunAt: null, settingsSummary: null };
+    }
+  }
+
   /**
    * État du RATTRAPAGE des récits — la tâche temporaire du poste (fenêtre 1 500 h).
    *

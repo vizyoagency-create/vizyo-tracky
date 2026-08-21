@@ -4071,3 +4071,33 @@ model PassageAgentLocal {
   @@index([agent, finiA(sort: Desc)])
   @@map("passages_agents_locaux")
 }
+
+/// File de travaux IA executes sur le POSTE du proprietaire (design/C1-TRAVAUX-IA-LOCAUX.md).
+/// Le serveur PREPARE (payload complet : prompt, schema, donnees) et CONSOMME (validation +
+/// persistance par ses fonctions existantes) ; l'agent du poste n'est qu'un courrier qui
+/// remplit `resultat`. Aucune logique metier ne quitte le serveur.
+model TravailIaLocal {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// 'rapport-activite' | 'analyse-lieu' | futur type — l'agent n'en connait aucun.
+  type String
+
+  /// a-faire -> pris -> fait -> (consomme = ligne effacee) ; echec apres 3 tentatives.
+  statut String @default("a-faire")
+
+  /// { system, schema, userPayload, maxTokens } : tout ce qu'il faut pour l'appel modele.
+  payload  Json
+  /// Ce que le consommateur serveur doit savoir pour persister (ids, periode, titre...).
+  contexte Json
+
+  resultat   Json?
+  erreur     String?
+  tentatives Int     @default(0)
+
+  creeA DateTime  @default(now())
+  prisA DateTime?
+  finiA DateTime?
+
+  @@index([statut, type])
+  @@map("travaux_ia_locaux")
+}

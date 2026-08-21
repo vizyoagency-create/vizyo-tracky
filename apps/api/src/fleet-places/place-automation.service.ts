@@ -106,6 +106,14 @@ export class PlaceAutomationService {
    */
   @Cron('0 10 * * * *')
   async runScheduled(): Promise<void> {
+    // D'abord RANGER ce que le poste a produit — meme automatisation coupee : un travail
+    // deja redige doit etre persiste, pas abandonne dans la file (design/C1).
+    try {
+      await this.analysis.consommerTravauxLocaux();
+    } catch (e) {
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'consommer-travaux-locaux' });
+    }
+
     let settings: PlaceAutomationSettings;
     try {
       settings = await this.loadRow();
@@ -286,13 +294,23 @@ export class PlaceAutomationService {
             continue;
           }
 
-          const { costEur } = await this.analysis.analyzeFromFacts(
-            place as PlaceForAnalysis, facts, hash, 'scheduled', null,
-          );
-          stats.analyzed++;
-          consecutiveFailures = 0;
-          stats.costEur = round4(stats.costEur + costEur);
-          pushItem(items, { fleetName: fleet.name, placeId: place.id, placeName: place.name, action: 'analyzed', costEur });
+          /**
+           * ⚠️ PLUS AUCUN APPEL MODELE ICI — bascule locale du 2026-08-21 (design/C1).
+           * Le travail complet part vers le poste ; la redaction est absorbee par
+           * l'abonnement, d'ou un cout de 0. Le plafond de depense par passage reste en
+           * place mais ne mord plus — conserve pour le jour ou la voie API reviendrait.
+           * L'action reste 'analyzed' dans les items (DTO partage inchange, regle du
+           * chantier) : lire « analyse CONFIEE au poste », le resultat arrive au passage
+           * suivant du cron, une fois le courrier passe.
+           */
+          const enfile = await this.analysis.enfilerAnalyseLocale(place as PlaceForAnalysis, facts, hash);
+          if (enfile) {
+            stats.analyzed++;
+            consecutiveFailures = 0;
+            pushItem(items, { fleetName: fleet.name, placeId: place.id, placeName: place.name, action: 'analyzed', costEur: 0 });
+          } else {
+            stats.skippedUnchanged++; // deja en file pour ces memes faits : rien a refaire
+          }
         } catch (e) {
           // Un lieu qui échoue ne fait pas tomber le run : on le compte, on le remonte, on continue.
           stats.failed++;

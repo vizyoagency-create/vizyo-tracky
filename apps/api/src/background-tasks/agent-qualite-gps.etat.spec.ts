@@ -38,6 +38,9 @@ function service(opts: { passage?: Passage | null; ouverts?: number; casse?: boo
       count: jest.fn().mockResolvedValue(0),
     },
     tripAnalysis: { count: jest.fn().mockResolvedValue(0), aggregate: jest.fn().mockResolvedValue({ _max: { updatedAt: null } }) },
+    // Le catalogue lit desormais AUSSI la file des travaux IA locaux (courrier + rattrapage) :
+    // un faux prisma qui l'ignore fait exploser Promise.all en unhandled rejection sous Node 22.
+    travailIaLocal: { count: jest.fn().mockResolvedValue(0) },
     passageAgentLocal: {
       findFirst: opts.casse
         ? jest.fn().mockImplementation(rejette)

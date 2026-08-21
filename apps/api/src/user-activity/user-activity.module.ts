@@ -5,6 +5,7 @@ import { ActivityReportService } from './activity-report.service';
 import { PublicClientErrorController } from './public-client-error.controller';
 import { UserActivityController } from './user-activity.controller';
 import { UserActivityService } from './user-activity.service';
+import { TravauxIaModule } from '../travaux-ia/travaux-ia.module';
 
 /**
  * User activity tracking. PrismaService est global ; AuthModule fournit les guards.
@@ -12,7 +13,7 @@ import { UserActivityService } from './user-activity.service';
  * PublicClientErrorController = remontée PUBLIQUE des bugs JS pré-connexion (ErrorLogger @Global, aucun guard).
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TravauxIaModule],
   controllers: [UserActivityController, ActivityReportController, PublicClientErrorController],
   providers: [UserActivityService, ActivityReportService],
 })

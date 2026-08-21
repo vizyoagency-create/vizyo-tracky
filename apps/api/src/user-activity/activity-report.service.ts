@@ -22,6 +22,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ACTIVITY_REPORT_SCHEMA, ACTIVITY_REPORT_SYSTEM } from './activity-report.prompt';
+import { TravauxIaService } from '../travaux-ia/travaux-ia.service';
 
 /** Auteur d'une génération : un super-admin (id) ou le système (null, cas planifié). */
 type Actor = { id: string | null; fleetId: string | null };
@@ -69,6 +70,7 @@ export class ActivityReportService {
     private readonly ownerVis: OwnerVisibilityService,
     private readonly featureFlags: AiFeatureFlagsService,
     private readonly errorLogger: ErrorLogger,
+    private readonly travauxIa: TravauxIaService,
   ) {}
 
   /** Filtre Prisma masquant les rapports liés à un owner (créés-par OU ciblant) pour
@@ -236,6 +238,10 @@ export class ActivityReportService {
   @Cron('0 20 * * * *')
   async runScheduled(): Promise<void> {
     try {
+      // D'abord RANGER ce que le poste a produit — meme planification coupee : un travail
+      // deja redige doit etre persiste, pas abandonne dans la file.
+      await this.consommerTravauxLocaux();
+
       const row = await this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } });
       if (!row?.enabled) return;
       const periodDays = FREQ_DAYS[(row.frequency as ActivityReportFrequency)] ?? 7;
@@ -246,23 +252,112 @@ export class ActivityReportService {
       const from = new Date(to.getTime() - dueMs);
       const userIds = await this.pickScheduledUsers(row.scope as ActivityReportScope, from, to);
       if (userIds.length > 0) {
-        const report = await this.generate({ id: null, fleetId: null }, { userIds, from: from.toISOString(), to: to.toISOString() }, 'scheduled');
-        // Palier B — trace la génération PLANIFIÉE (action IA en arrière-plan). La génération
-        // manuelle (super-admin) est une action front, pas journalisée ici.
-        this.systemActivity.record({
-          category: 'AI_REPORT',
-          action: 'activity_report_generated',
-          status: report.status === 'FAILED' ? 'FAILURE' : 'SUCCESS',
-          actor: 'planning',
-          target: report.title ?? `${userIds.length} utilisateur(s)`,
-          detail: `Rapport IA ${row.frequency} — ${userIds.length} utilisateur(s) observé(s)`,
-          meta: { reportId: report.id, frequency: row.frequency, scope: row.scope, costUsd: report.costUsd },
-        });
+        /**
+         * ⚠️ PLUS AUCUN APPEL MODELE ICI — bascule locale du 2026-08-21 (design/C1).
+         *
+         * Ce cron etait le poste de depense le plus cher par appel de l'application
+         * (0,156 $ le rapport), coupe pour cette raison le 20/08. Il redevient utile en
+         * changeant de role : il PREPARE le travail complet (prompt, schema, donnees) et
+         * l'enfile pour l'agent du poste, qui le redige sur l'abonnement. La validation et
+         * la persistance restent ici, dans consommerTravauxLocaux() — l'agent ne touche
+         * jamais une table metier.
+         */
+        await this.enfilerRapportPlanifie(userIds, from, to, row.frequency as ActivityReportFrequency, row.scope as ActivityReportScope);
       }
       await this.prisma.activityReportSchedule.update({ where: { id: row.id }, data: { lastRunAt: to } });
     } catch (e) {
       this.logger.error('runScheduled failed', e as Error);
       this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'cron:activity-report');
+    }
+  }
+
+  /**
+   * PRODUCTEUR (design/C1) : prepare le rapport planifie et l'enfile pour le poste.
+   *
+   * Le travail porte TOUT (prompt systeme, schema, donnees, plafond de jetons) : l'agent du
+   * poste n'a aucune notion de « rapport ». Un rapport sans activite est persiste ICI, vide,
+   * sans passer par la file — il n'y a rien a rediger.
+   */
+  private async enfilerRapportPlanifie(
+    userIds: string[],
+    from: Date,
+    to: Date,
+    frequency: ActivityReportFrequency,
+    scope: ActivityReportScope,
+  ): Promise<void> {
+    const payload = await this.buildPayload(userIds, from, to);
+    const totalEvents = payload.users.reduce((s, u) => s + u.totalEvents + u.errorCount, 0);
+    const title = this.deriveTitle(payload.users.map((u) => u.name), from, to);
+
+    if (totalEvents === 0) {
+      const content: ActivityReportContent = {
+        summary: 'Aucune activité enregistrée pour cette sélection sur la période.',
+        journey: '—',
+        frictionPoints: [],
+        adoption: { used: [], ignored: [] },
+        recommendations: [],
+      };
+      await this.prisma.activityReport.create({
+        data: { createdByUserId: null, targetUserIds: userIds, fromAt: from, toAt: to, status: 'READY', origin: 'scheduled', title, content: content as unknown as Prisma.InputJsonValue, costUsd: 0 },
+      });
+      return;
+    }
+
+    const { enfile } = await this.travauxIa.enfiler(
+      'rapport-activite',
+      { system: ACTIVITY_REPORT_SYSTEM, schema: ACTIVITY_REPORT_SCHEMA, userPayload: payload, maxTokens: 16000 },
+      {
+        // Une cle par periode due : le cron horaire repassera AVANT le courrier sans creer
+        // un deuxieme travail — donc un deuxieme appel modele — par heure.
+        cleIdempotence: `rapport-activite:${from.toISOString().slice(0, 10)}:${to.toISOString().slice(0, 10)}`,
+        userIds, from: from.toISOString(), to: to.toISOString(), title, frequency, scope,
+      },
+    );
+    if (enfile) this.logger.log(`rapport planifie enfile pour le poste (${userIds.length} utilisateur(s))`);
+  }
+
+  /**
+   * CONSOMMATEUR (design/C1) : range ce que le poste a redige.
+   *
+   * Le resultat repasse par LE MEME `sanitize()` que la voie API d'origine : une reponse
+   * malformee du modele est rejetee a l'identique — l'agent n'a aucun moyen d'ecrire une
+   * donnee que ce service n'aurait pas acceptee hier.
+   */
+  private async consommerTravauxLocaux(): Promise<void> {
+    await this.travauxIa.reprendrePerimes();
+    const faits = await this.travauxIa.faits('rapport-activite');
+    for (const t of faits) {
+      const ctx = t.contexte as { userIds?: string[]; from?: string; to?: string; title?: string; frequency?: string; scope?: string };
+      const brut = t.resultat as { contenu?: unknown; modele?: string } | null;
+      try {
+        const content = this.sanitize(brut?.contenu as ActivityReportContent);
+        const row = await this.prisma.activityReport.create({
+          data: {
+            createdByUserId: null,
+            targetUserIds: ctx.userIds ?? [],
+            fromAt: new Date(ctx.from ?? Date.now()),
+            toAt: new Date(ctx.to ?? Date.now()),
+            status: 'READY',
+            origin: 'scheduled',
+            title: ctx.title ?? null,
+            content: content as unknown as Prisma.InputJsonValue,
+            model: brut?.modele ?? 'local',
+            costUsd: 0, // absorbe par l'abonnement du poste
+          },
+        });
+        this.systemActivity.record({
+          category: 'AI_REPORT',
+          action: 'activity_report_generated',
+          status: 'SUCCESS',
+          actor: 'planning',
+          target: row.title ?? `${(ctx.userIds ?? []).length} utilisateur(s)`,
+          detail: `Rapport ${ctx.frequency ?? ''} redige sur le poste (abonnement, 0 $)`,
+          meta: { reportId: row.id, frequency: ctx.frequency, scope: ctx.scope, costUsd: 0, executor: 'local' },
+        });
+        await this.travauxIa.consommer(t.id);
+      } catch (e) {
+        await this.travauxIa.rejeter(t.id, e instanceof Error ? e.message : String(e));
+      }
     }
   }
 

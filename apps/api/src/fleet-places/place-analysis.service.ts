@@ -9,6 +9,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { distanceMeters } from '../common/utils/haversine';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TravauxIaService } from '../travaux-ia/travaux-ia.service';
 import { FleetPlacesService } from './fleet-places.service';
 import { PlaceEnrichmentService, type PlaceFacts } from './place-enrichment.service';
 
@@ -75,6 +76,7 @@ export class PlaceAnalysisService {
     private readonly ai: AiRouter,
     private readonly aiUsage: AiUsageService,
     private readonly errorLogger: ErrorLogger,
+    private readonly travauxIa: TravauxIaService,
   ) {}
 
   /**
@@ -214,6 +216,66 @@ export class PlaceAnalysisService {
     }
   }
 
+  /**
+   * PRODUCTEUR (design/C1) : prépare l'analyse d'un lieu et l'enfile pour le poste.
+   * Les faits sont déjà collectés (gratuit — OSM + base) : le travail porte tout, l'agent du
+   * poste n'a aucune notion de « lieu ». L'empreinte des faits sert de clé d'idempotence : le
+   * même lieu avec les mêmes faits ne sera jamais enfilé deux fois.
+   */
+  async enfilerAnalyseLocale(place: PlaceForAnalysis, facts: Record<string, unknown>, hash: string): Promise<boolean> {
+    const { enfile } = await this.travauxIa.enfiler(
+      'analyse-lieu',
+      { system: SYSTEM, schema: SCHEMA, userPayload: facts, maxTokens: 900 },
+      { cleIdempotence: `analyse-lieu:${place.id}:${hash}`, placeId: place.id, fleetId: place.fleetId, hash },
+    );
+    return enfile;
+  }
+
+  /**
+   * CONSOMMATEUR (design/C1) : range ce que le poste a rédigé, via LE MÊME `persist()` que la
+   * voie API — mêmes bornes sur la sortie du modèle, même empreinte anti-redite, même écran.
+   * Un lieu supprimé entre l'enfilage et le rangement consomme le travail sans rien écrire.
+   */
+  async consommerTravauxLocaux(): Promise<{ ranges: number; rejetes: number }> {
+    await this.travauxIa.reprendrePerimes();
+    const faits = await this.travauxIa.faits('analyse-lieu');
+    let ranges = 0;
+    let rejetes = 0;
+    for (const t of faits) {
+      const ctx = t.contexte as { placeId?: string; hash?: string };
+      const brut = t.resultat as { contenu?: LlmOut; modele?: string } | null;
+      try {
+        const place = await this.prisma.fleetPlace.findUnique({ where: { id: String(ctx.placeId) } });
+        if (!place) {
+          await this.travauxIa.consommer(t.id); // lieu disparu : travail sans objet
+          continue;
+        }
+        await this.persist(
+          place as PlaceForAnalysis,
+          (t.payload['userPayload'] ?? {}) as Record<string, unknown>,
+          String(ctx.hash ?? ''),
+          'scheduled',
+          null,
+          {
+            model: brut?.modele ?? 'local',
+            provider: 'local',
+            usage: { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+            latencyMs: 0,
+            result: brut?.contenu,
+          },
+          0, // absorbé par l'abonnement du poste
+          'local',
+        );
+        ranges++;
+        await this.travauxIa.consommer(t.id);
+      } catch (e) {
+        rejetes++;
+        await this.travauxIa.rejeter(t.id, e instanceof Error ? e.message : String(e));
+      }
+    }
+    return { ranges, rejetes };
+  }
+
   /** Journalisation du coût + persistance. Isolé pour que son échec n'efface pas la dépense. */
   private async persist(
     place: PlaceForAnalysis,
@@ -223,6 +285,7 @@ export class PlaceAnalysisService {
     userId: string | null,
     res: { model: string; provider: string; usage: { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }; latencyMs: number; result?: LlmOut },
     costEur: number,
+    executor: 'api' | 'local' = 'api',
   ): Promise<{ analysis: PlaceAnalysisDto; costEur: number }> {
     // ── Coût : OBLIGATOIRE après chaque appel, sinon il n'apparaît pas dans « Coûts IA ».
     // `userId` null pour un run planifié → la ligne apparaît en « — (système) » dans le tableau.
@@ -231,6 +294,7 @@ export class PlaceAnalysisService {
       fleetId: place.fleetId,
       model: res.model,
       action: 'place_analysis',
+      executor,
       inputTokens: res.usage.inputTokens,
       outputTokens: res.usage.outputTokens,
       cacheWriteTokens: res.usage.cacheWriteTokens,

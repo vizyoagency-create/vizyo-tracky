@@ -5,6 +5,7 @@ import { FleetPlacesService } from './fleet-places.service';
 import { PlaceAnalysisService } from './place-analysis.service';
 import { PlaceAutomationService } from './place-automation.service';
 import { PlaceEnrichmentService } from './place-enrichment.service';
+import { TravauxIaModule } from '../travaux-ia/travaux-ia.module';
 
 /**
  * Lieux clés — stations-service validées par la flotte + parkings / stationnements récurrents.
@@ -13,7 +14,7 @@ import { PlaceEnrichmentService } from './place-enrichment.service';
  * importer pour l'analyse IA. On n'importe qu'AuthModule pour les guards du controller.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TravauxIaModule],
   controllers: [FleetPlacesController],
   providers: [FleetPlacesService, PlaceEnrichmentService, PlaceAnalysisService, PlaceAutomationService],
   exports: [FleetPlacesService, PlaceEnrichmentService, PlaceAnalysisService, PlaceAutomationService],

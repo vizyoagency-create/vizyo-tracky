@@ -99,6 +99,7 @@ describe('PlaceAnalysisService', () => {
     const svc = new PlaceAnalysisService(
       prisma as never, places as never, enrichment as never,
       aiAvail as never, ai as never, aiUsage as never, errorLogger as never,
+      { enfiler: jest.fn().mockResolvedValue({ enfile: true }), reprendrePerimes: jest.fn().mockResolvedValue({ repris: 0, abandonnes: 0 }), faits: jest.fn().mockResolvedValue([]), consommer: jest.fn(), rejeter: jest.fn() } as never,
     );
     return { svc, prisma, places, enrichment, aiAvail, ai, aiUsage, errorLogger };
   }

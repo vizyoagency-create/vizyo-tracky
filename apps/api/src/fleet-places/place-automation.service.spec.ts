@@ -69,6 +69,12 @@ describe('PlaceAutomationService', () => {
     const analysis = {
       gatherFacts: jest.fn().mockResolvedValue({ facts: { a: 1 }, hash: 'HASH_NEUF' }),
       analyzeFromFacts: over.analyzeImpl ?? jest.fn().mockResolvedValue({ analysis: {}, costEur: over.costPerCall ?? 0.02 }),
+      // Bascule locale (design/C1) : le run ENFILE au lieu d'appeler le modele. `analyzeImpl`
+      // des scenarios d'echec est rebranche ici — c'est l'enfilage qui echoue desormais.
+      enfilerAnalyseLocale: over.analyzeImpl
+        ? jest.fn().mockImplementation(async (...a: unknown[]) => { await over.analyzeImpl!(...a); return true; })
+        : jest.fn().mockResolvedValue(true),
+      consommerTravauxLocaux: jest.fn().mockResolvedValue({ ranges: 0, rejetes: 0 }),
       monthBudgetExhausted: jest.fn().mockResolvedValue(budgetExhausted),
     };
     const aiAvail = { isEnabledForFleet: jest.fn().mockImplementation((id: string) => Promise.resolve(over.aiOn ? over.aiOn(id) : true)) };
@@ -89,20 +95,20 @@ describe('PlaceAutomationService', () => {
     const { svc, analysis, prisma } = build({ settings: { enabled: false } });
     await svc.runScheduled();
     expect(analysis.gatherFacts).not.toHaveBeenCalled();
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
     expect(prisma.placeAutomationRun.create).not.toHaveBeenCalled();
   });
 
   it("ne fait rien en dehors de l'heure configurée", async () => {
     const { svc, analysis } = build({ settings: { hour: (parisHour() + 5) % 24 } });
     await svc.runScheduled();
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
   });
 
   it('refuse un second run dans les 22 h (anti double-run)', async () => {
     const { svc, analysis } = build({ settings: { hour: parisHour(), lastRunAt: new Date() } });
     await svc.runScheduled();
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
   });
 
   // ─── Garde-fou 2 : société sans IA ───────────────────────────────────────
@@ -115,7 +121,7 @@ describe('PlaceAutomationService', () => {
     expect(stats.analyzed).toBe(2); // seulement ceux de f1
     // La collecte (gratuite mais lente) n'est même pas tentée pour la société coupée.
     expect(analysis.gatherFacts).toHaveBeenCalledTimes(2);
-    for (const call of analysis.analyzeFromFacts.mock.calls) expect(call[0].fleetId).toBe('f1');
+    for (const call of analysis.enfilerAnalyseLocale.mock.calls) expect(call[0].fleetId).toBe('f1');
   });
 
   // ─── Garde-fou 3 : budget mensuel ────────────────────────────────────────
@@ -127,7 +133,7 @@ describe('PlaceAutomationService', () => {
     expect(stats.stopReason).toBe('month_budget');
     expect(stats.analyzed).toBe(0);
     expect(analysis.gatherFacts).not.toHaveBeenCalled();
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
   });
 
   it('budget illisible ⇒ fail-CLOSED : on ne dépense pas dans le doute', async () => {
@@ -137,14 +143,14 @@ describe('PlaceAutomationService', () => {
     const stats = await svc.runNow();
 
     expect(stats.stopReason).toBe('month_budget');
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
   });
 
   it('budget non défini (0) = pas de plafond, le run se fait', async () => {
     const { svc, analysis } = build({ budget: { monthlyBudgetEur: 0, spentThisMonthEur: 999 } });
     const stats = await svc.runNow();
     expect(stats.analyzed).toBe(4);
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(4);
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(4);
   });
 
   // ─── Garde-fou 4 : délai minimum par lieu ────────────────────────────────
@@ -158,7 +164,7 @@ describe('PlaceAutomationService', () => {
     expect(stats.skippedCooldown).toBe(4);
     expect(stats.analyzed).toBe(0);
     expect(analysis.gatherFacts).not.toHaveBeenCalled();
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
   });
 
   it('ré-analyse une fois le délai minimum écoulé', async () => {
@@ -167,7 +173,7 @@ describe('PlaceAutomationService', () => {
     });
     const stats = await svc.runNow();
     expect(stats.analyzed).toBe(4);
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(4);
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(4);
   });
 
   // ─── Garde-fou 5 : empreinte des faits ───────────────────────────────────
@@ -181,7 +187,7 @@ describe('PlaceAutomationService', () => {
     expect(stats.skippedUnchanged).toBe(4);
     expect(stats.analyzed).toBe(0);
     expect(analysis.gatherFacts).toHaveBeenCalledTimes(4); // collecte gratuite : normale
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled(); // appel payant : jamais
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled(); // appel payant : jamais
   });
 
   it('analyse quand même si l\'ancienne analyse n\'a pas d\'empreinte (antérieure au dispositif)', async () => {
@@ -190,7 +196,7 @@ describe('PlaceAutomationService', () => {
     });
     const stats = await svc.runNow();
     expect(stats.skippedUnchanged).toBe(0);
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(4);
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(4);
   });
 
   it('respecte le réglage skipUnchanged=false (re-analyse même si rien n\'a bougé)', async () => {
@@ -200,7 +206,7 @@ describe('PlaceAutomationService', () => {
     });
     const stats = await svc.runNow();
     expect(stats.analyzed).toBe(4);
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(4);
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(4);
   });
 
   // ─── Plafonds durs ───────────────────────────────────────────────────────
@@ -214,10 +220,13 @@ describe('PlaceAutomationService', () => {
 
     expect(stats.analyzed).toBe(3);
     expect(stats.stopReason).toBe('max_analyses');
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(3);
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(3);
   });
 
-  it('s\'arrête au plafond de DÉPENSE en euros par run', async () => {
+  it('⚠️ le plafond de DÉPENSE ne mord plus : la voie locale coûte zéro (design/C1)', async () => {
+    // Bascule du 2026-08-21 : le run ENFILE pour le poste au lieu d'appeler le modele. Meme
+    // avec un plafond minuscule, tous les lieux dus partent en file — la depense reste 0.
+    // Le plafond est CONSERVE dans les reglages pour le jour ou la voie API reviendrait.
     const { svc, analysis } = build({
       settings: { maxCostEurPerRun: 0.1, maxAnalysesPerRun: 100 },
       places: { f1: placesOf('f1', 20), f2: [] },
@@ -226,10 +235,9 @@ describe('PlaceAutomationService', () => {
 
     const stats = await svc.runNow();
 
-    // 0.04 × 3 = 0.12 ≥ 0.10 : on s'arrête au 4e test, donc 3 appels.
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(3);
-    expect(stats.stopReason).toBe('max_cost');
-    expect(stats.costEur).toBeCloseTo(0.12, 4);
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(20); // TOUS les lieux dus, plus 3
+    expect(stats.stopReason).not.toBe('max_cost');
+    expect(stats.costEur).toBe(0);
   });
 
   // ─── Robustesse ──────────────────────────────────────────────────────────
@@ -249,18 +257,20 @@ describe('PlaceAutomationService', () => {
     );
   });
 
-  it('COMPTE la dépense d\'un appel payé puis échoué (sinon les plafonds seraient aveugles)', async () => {
-    // Cas réel : l'IA a répondu (donc c'est facturé) mais l'écriture en base a échoué.
-    const paid = Object.assign(new Error('upsert failed'), { paidCostEur: 0.03 });
+  it('⚠️ un enfilage en échec n\'ajoute AUCUNE dépense : rien n\'a été payé (design/C1)', async () => {
+    // L'ancien monde devait compter « paye puis echoue » (l'IA avait repondu, la base non).
+    // Sur la voie locale, l'echec survient AVANT tout appel modele : la depense reste nulle,
+    // et l'echec reste compte + remonte — un lieu qui echoue ne disparait pas en silence.
+    const paid = Object.assign(new Error('enfilage failed'), { paidCostEur: 0.03 });
     const analyzeImpl = jest.fn().mockRejectedValueOnce(paid).mockResolvedValue({ analysis: {}, costEur: 0.02 });
     const { svc, errorLogger } = build({ analyzeImpl });
 
     const stats = await svc.runNow();
 
     expect(stats.failed).toBe(1);
-    expect(stats.costEur).toBeCloseTo(0.03 + 0.02 * 3, 4); // l'échec PAYÉ est bien dans le total
+    expect(stats.costEur).toBeCloseTo(0.03, 4); // seul le paidCostEur herite est conserve par prudence
     expect(errorLogger.record).toHaveBeenCalledWith(
-      expect.any(Error), 'PLACE_AUTOMATION', expect.objectContaining({ paidCostEur: 0.03 }), 'ERROR',
+      expect.any(Error), 'PLACE_AUTOMATION', expect.objectContaining({ phase: 'analyze' }), 'ERROR',
     );
   });
 
@@ -321,11 +331,11 @@ describe('PlaceAutomationService', () => {
     // passage est en train de dépenser en arrière-plan.
     expect(second.stopReason).toBe('already_running');
     expect(second.analyzed).toBe(0);
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(1); // le 2e n'a rien déclenché
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(1); // le 2e n'a rien déclenché
 
     release({ analysis: {}, costEur: 0.02 });
     await first;
-    expect(analysis.analyzeFromFacts).toHaveBeenCalledTimes(4); // le 1er run finit ses 4 lieux
+    expect(analysis.enfilerAnalyseLocale).toHaveBeenCalledTimes(4); // le 1er run finit ses 4 lieux
   });
 
   // ─── Simulation ──────────────────────────────────────────────────────────
@@ -337,7 +347,7 @@ describe('PlaceAutomationService', () => {
     expect(stats.dryRun).toBe(true);
     expect(stats.analyzed).toBe(4);
     expect(stats.costEur).toBeCloseTo(0.12, 4); // 4 × coût moyen observé (0.03)
-    expect(analysis.analyzeFromFacts).not.toHaveBeenCalled();
+    expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
     // Une simulation ne décale pas la cadence réelle.
     expect(prisma.placeAutomationSettings.update).not.toHaveBeenCalled();
   });
