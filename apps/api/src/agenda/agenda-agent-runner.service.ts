@@ -446,7 +446,21 @@ export class AgendaAgentRunnerService {
         system: renderAgendaAgentSystem(metier),
         userPayload: payload,
         schema: AGENDA_AGENT_SCHEMA,
-        maxTokens: 4096,
+        /**
+         * 16 000 et non 4 096 — releve le 2026-08-21 apres un refus en production
+         * (« Reponse IA tronquee : limite de jetons atteinte »).
+         *
+         * L'agent relit jusqu'a 30 motifs et rend pour CHACUN un verdict avec sa
+         * justification, bornee a 400 caracteres. Le pire cas depasse donc 12 000
+         * caracteres de sortie utile, sans compter la structure JSON ni le raisonnement
+         * adaptatif : 4 096 jetons ne pouvaient pas tenir, et le JSON tronque faisait
+         * echouer TOUT le passage — 30 motifs perdus pour un depassement.
+         *
+         * ⚠️ C'est un PLAFOND, pas une reservation : les appels qui tenaient deja dans
+         *    4 096 coutent exactement la meme chose qu'avant. Meme raisonnement et meme
+         *    valeur que le rapport d'activite, qui a connu le meme defaut.
+         */
+        maxTokens: 16000,
       });
       for (const r of call.result?.reviews ?? []) {
         if (typeof r?.index === 'number' && r.index >= 0 && r.index < capped.length) {

@@ -30,12 +30,19 @@ const TO = new Date(NOW).toISOString();
 const USER = { id: 'u1', role: 'ADMIN' } as never;
 
 /** Fabrique un parc : pour chaque véhicule, N analyses et M trajets réels. */
-function setup(specs: Array<{ id: string; plate: string; analyses: number; realTrips: number; score: number }>) {
+function setup(
+  specs: Array<{
+    id: string; plate: string; analyses: number; realTrips: number; score: number;
+    /** Motif hors service — null (defaut) = vehicule en service. */
+    horsService?: string | null;
+  }>,
+) {
   const vehicles = specs.map((s) => ({
     id: s.id,
     plate: s.plate,
     brand: 'X',
     model: 'Y',
+    outOfServiceReason: s.horsService ?? null,
     tracker: { id: `tk-${s.id}`, lastSeenAt: new Date(NOW - 3600 * 1000) },
     groups: [],
   }));
@@ -88,6 +95,41 @@ describe('DrivingScoreService — seuil de représentativité', () => {
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
   });
   afterEach(() => jest.restoreAllMocks());
+
+  it('⚠️ un véhicule HORS SERVICE sort du classement, sans attendre les 7 jours de dormance', async () => {
+    /**
+     * Un véhicule accidenté ou dont le boîtier est débranché au garage garde une note figée
+     * qui continue de peser sur le rang des autres ET sur la moyenne de flotte. La dormance
+     * finit par l'écarter — mais seulement après sept jours de silence. Le motif étant
+     * DÉCLARÉ et non déduit, il n'y a rien à attendre : ici les deux véhicules ont un boîtier
+     * qui a émis il y a une heure, donc aucun n'est dormant.
+     */
+    const { svc } = setup([
+      { id: 'v-accidente', plate: 'KSR370', analyses: 40, realTrips: 40, score: 100, horsService: 'ACCIDENT' },
+      { id: 'v-actif', plate: 'AL-927-QM', analyses: 40, realTrips: 40, score: 60 },
+    ]);
+
+    const res = await svc.scores(USER, 'vehicle', FROM, TO);
+
+    expect(res.rows.map((r) => r.id)).toEqual(['v-actif']);
+    // Et surtout : sa note de 100 ne tire plus la moyenne de flotte vers le haut.
+    expect(res.rows[0]!.score).toBe(60);
+  });
+
+  it('… mais il ne DISPARAÎT pas : sa note reste consultable à part', async () => {
+    // Ses trajets sont réels, sa note aussi. Ce qu'on lui retire est le rang et la
+    // comparaison — pas l'historique. Un dossier d'assurance après accident en dépend.
+    const { svc } = setup([
+      { id: 'v-accidente', plate: 'KSR370', analyses: 40, realTrips: 40, score: 100, horsService: 'ACCIDENT' },
+      { id: 'v-actif', plate: 'AL-927-QM', analyses: 40, realTrips: 40, score: 60 },
+    ]);
+
+    const res = await svc.scores(USER, 'vehicle', FROM, TO);
+
+    const ecarte = res.dormantRows?.find((r) => r.id === 'v-accidente');
+    expect(ecarte).toBeDefined();
+    expect(ecarte!.score).toBe(100);
+  });
 
   it('LE CAS SIGNALÉ : 1 analyse sur 75 trajets ne peut plus être 2ᵉ de la flotte', async () => {
     const { svc } = setup([

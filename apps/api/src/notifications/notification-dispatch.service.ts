@@ -214,6 +214,26 @@ export interface DispatchOptions {
   restreindreAuxUtilisateurs?: string[];
 }
 
+/**
+ * Types d'alerte dont la NOTIFICATION ne part qu'aux super-admins.
+ *
+ * ⚠️ L'alerte est CREEE et reste consultable dans tous les cas — seul l'ENVOI est retenu.
+ *    Supprimer l'alerte fabriquerait une cecite a la place d'un bruit.
+ *
+ *   POWER_CUT  — 41 713 alertes « alimentation coupee » parties, dont 41 468 depuis un seul
+ *                boitier defaillant (2026-08-19). Sourdine le temps de verifier sur plusieurs
+ *                semaines que le bruit ne revient pas.
+ *
+ *   GPS_LOST   — ajoute le 2026-08-21 a la demande du proprietaire. Un vehicule qui se gare
+ *                en parking souterrain ou passe sous un pont perd son lock GPS : c'est
+ *                normal, ca se repete tous les jours, et le client n'a RIEN a faire de cette
+ *                information. Le vrai cout n'est pas la gene : c'est qu'a force de recevoir
+ *                des notifications sans objet, il cesse de les lire — y compris celles qui
+ *                comptent. Le super-admin, lui, continue de les recevoir : c'est lui qui
+ *                distingue un parking couvert d'une antenne debranchee (cf. GS-014-NY).
+ */
+const TYPES_RESERVES_SUPER_ADMIN = new Set<string>(['POWER_CUT', 'GPS_LOST']);
+
 // ⚠️ RIEN ENTRE CE DECORATEUR ET SA CLASSE. Le lien decorateur -> cible est perdu a la
 // compilation : une declaration glissee entre les deux ne provoque aucune erreur, elle
 // deplace silencieusement le decorateur. Un @Interval a deja ete detache de cette facon
@@ -257,7 +277,7 @@ export class NotificationDispatchService {
      * ⚠️ L'ALERTE EST CREEE ET RESTE CONSULTABLE. Seule la NOTIFICATION est retenue :
      * supprimer l'alerte fabriquerait une cecite a la place d'un bruit.
      */
-    if (alert.type === 'POWER_CUT' && !opts.restreindreAuxUtilisateurs) {
+    if (TYPES_RESERVES_SUPER_ADMIN.has(alert.type) && !opts.restreindreAuxUtilisateurs) {
       const superAdmins = await this.prisma.user.findMany({
         where: { role: UserRole.SUPER_ADMIN, isActive: true },
         select: { id: true },

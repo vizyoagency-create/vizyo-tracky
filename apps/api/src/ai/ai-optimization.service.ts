@@ -182,7 +182,9 @@ export class AiOptimizationService {
     // muets — trou que plus rien ne viendrait combler, y compris après leur retour.
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     const ids = resolveReportVehicleScope(accessible, dto?.vehicleIds); // 403 si sous-ensemble hors périmètre
-    const where: Prisma.VehicleWhereInput = { fleetId };
+    // Un vehicule hors service ne doit pas etre PROPOSE : l'IA de placement repondrait a
+    // « quel vehicule pour cette demande ? » par une voiture au garage ou accidentee.
+    const where: Prisma.VehicleWhereInput = { fleetId, outOfServiceReason: null };
     if (ids !== 'ALL') where.id = { in: ids };
     const vehicles = await this.prisma.vehicle.findMany({
       where,

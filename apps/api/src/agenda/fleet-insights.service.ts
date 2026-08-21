@@ -237,7 +237,9 @@ export class FleetInsightsService {
     // Tous les véhicules du périmètre (inclut ceux sans trajet = 0 % utilisé = priorité mutualisation).
     // `tracker.lastSeenAt` est joint ICI (pas dans une seconde requête) : il tranche entre « peu
     // utilisé » et « plus joignable », deux situations que 0 % d'utilisation ne distingue pas.
-    const vehWhere: Prisma.VehicleWhereInput = {};
+    // Hors service : il afficherait 0 % d'utilisation et remonterait en tete des
+    // « a mutualiser », alors qu'il n'y a rien a mutualiser — il est au garage.
+    const vehWhere: Prisma.VehicleWhereInput = { outOfServiceReason: null };
     if (scope.fleetId) vehWhere.fleetId = scope.fleetId;
     if (scope.ids !== 'ALL') vehWhere.id = { in: scope.ids };
     const vehicles = await this.prisma.vehicle.findMany({

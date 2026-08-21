@@ -277,7 +277,17 @@ export class ReservationsService {
     const busyStatuses = opts?.excludeRequested ? [...BLOCKING, VehicleEventStatus.REQUESTED] : BLOCKING;
 
     const candidates = await this.prisma.vehicle.findMany({
-      where,
+      /**
+       * ⚠️ HORS SERVICE — ecarte EN AMONT, donc pour les quatre surfaces d'un coup
+       *    (disponibilite flotte, suggestion, lien public, attribution automatique).
+       *
+       * Proposer un vehicule accidente ou dont le boitier est debranche au garage, c'est
+       * promettre une voiture qui n'existe pas pour le client. Le motif est DECLARE par un
+       * super-admin, contrairement a la dormance qui est deduite : il n'y a donc aucun delai
+       * ni aucun doute a lever — l'exclusion est immediate et le vehicule revient au vivier
+       * a la seconde ou il est remis en service.
+       */
+      where: { ...where, outOfServiceReason: null },
       select: {
         id: true,
         plate: true,

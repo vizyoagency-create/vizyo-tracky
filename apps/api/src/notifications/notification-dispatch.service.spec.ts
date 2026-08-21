@@ -391,6 +391,81 @@ describe('NotificationDispatchService — aiguillage du push (correctif)', () =>
     return { alert, build, sendToUser, emailSend, smsSend, prefFindMany, userFindMany, userFindFirst, deliveryCreate, throttleEvaluate };
   }
 
+  /**
+   * ── SOURDINE « GPS PERDU » POUR LES CLIENTS (2026-08-21) ────────────────────────────
+   *
+   * Demande du proprietaire : un vehicule qui se gare en parking souterrain ou passe sous
+   * un pont perd son lock GPS. C'est normal, ca se repete tous les jours, et le client n'a
+   * RIEN a faire de cette information. Le vrai cout n'est pas la gene : c'est qu'a force de
+   * recevoir des notifications sans objet, il cesse de les lire — y compris celles qui
+   * comptent. Le super-admin continue de les recevoir : c'est lui qui distingue un parking
+   * couvert d'une antenne debranchee.
+   *
+   * ⚠️ CES TESTS PORTENT LEUR TEMOIN, et c'est le point qui manquait a la sourdine
+   *    POWER_CUT : ecrit sans lui, « le client ne recoit rien » passait pour la MAUVAISE
+   *    raison — ce destinataire ne recevait rien de toute facon. Le premier test prouve
+   *    donc que la MEME fixture delivre bien sur un type notifiable ; les suivants
+   *    prouvent que seul le type change le resultat.
+   */
+  describe('sourdine GPS_LOST — le client n\'est plus reveille pour un parking couvert', () => {
+    /** La fixture temoin : un FLEET_ADMIN qui recoit, sur un type qui doit passer. */
+    const fixtureClient = (type: string) => ({
+      type,
+      ruleChannels: ['WEB_PUSH'],
+      fleetAdmins: [fleetAdmin],
+      preferences: [{ userId: fleetAdmin.id, pushEnabled: true, minSeverity: 'INFO', mutedTypes: [] }],
+      rollout: 'ALL',
+    });
+
+    it('TEMOIN — sur un type notifiable, ce FLEET_ADMIN recoit bien', async () => {
+      // Sans ce test, celui d'apres serait vert meme si la fixture ne delivrait jamais rien.
+      const t = setup(fixtureClient('LOW_BATTERY'));
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert(t.alert as never);
+
+      expect(t.sendToUser).toHaveBeenCalledTimes(1);
+      expect(t.sendToUser.mock.calls[0][0]).toBe(fleetAdmin.id);
+    });
+
+    it('⚠️ MEME fixture, type GPS_LOST : le client ne recoit RIEN', async () => {
+      const t = setup(fixtureClient('GPS_LOST'));
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert(t.alert as never);
+
+      const versClient = t.sendToUser.mock.calls.filter((c) => c[0] === fleetAdmin.id);
+      expect(versClient).toHaveLength(0);
+    });
+
+    it('⚠️ le SUPER_ADMIN, lui, continue de recevoir les GPS_LOST', async () => {
+      // C'est la moitie qui compte : taire pour tout le monde remplacerait le bruit par une
+      // cecite. GS-014-NY — boitier vivant sans aucun satellite — doit rester visible.
+      const t = setup({
+        type: 'GPS_LOST',
+        ruleChannels: ['WEB_PUSH'],
+        superAdmins: [superAdmin],
+        preferences: [{ userId: superAdmin.id, pushEnabled: true, minSeverity: 'INFO', mutedTypes: [] }],
+        rollout: 'ALL',
+      });
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert(t.alert as never);
+
+      expect(t.sendToUser).toHaveBeenCalledTimes(1);
+      expect(t.sendToUser.mock.calls[0][0]).toBe(superAdmin.id);
+    });
+
+    it('POWER_CUT suit exactement la meme regle — les deux types partagent la sourdine', async () => {
+      const t = setup(fixtureClient('POWER_CUT'));
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert(t.alert as never);
+
+      expect(t.sendToUser.mock.calls.filter((c) => c[0] === fleetAdmin.id)).toHaveLength(0);
+    });
+  });
+
   it('cause #1 + #3 — pousse au SUPER_ADMIN alors que la seule regle liste EMAIL/WHATSAPP', async () => {
     // Configuration EXACTE de la prod : une regle sans 'WEB_PUSH', et un
     // super-admin sans flotte. Avant le correctif : zero push.

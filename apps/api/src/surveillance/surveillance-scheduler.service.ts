@@ -93,7 +93,13 @@ export class SurveillanceSchedulerService {
     // Sélectionne FULL_TIME et SCHEDULED — OFF est intentionnellement exclu :
     // pas d'auto-action mais le user peut toujours armer manuellement.
     const profiles = await this.prisma.surveillanceProfile.findMany({
-      where: { mode: { in: [SurveillanceMode.FULL_TIME, SurveillanceMode.SCHEDULED] } },
+      // Un vehicule declare hors service (accident, boitier debranche au garage) ne peut plus
+      // etre surveille utilement : soit il ne bouge pas, soit son boitier ne dit plus rien.
+      // Le profil est CONSERVE et reprend tel quel a la remise en service.
+      where: {
+        mode: { in: [SurveillanceMode.FULL_TIME, SurveillanceMode.SCHEDULED] },
+        vehicle: { outOfServiceReason: null },
+      },
       include: {
         vehicle: {
           select: {

@@ -185,7 +185,7 @@ export class DrivingScoreService {
     //    (VPS 2 vCPU déjà saturé).
     const vehIds = [...new Set(trips.map((t) => t.vehicleId))];
     const vehicles = vehIds.length
-      ? await this.prisma.vehicle.findMany({ where: { id: { in: vehIds } }, select: { id: true, plate: true, brand: true, model: true, tracker: { select: { id: true, lastSeenAt: true } }, groups: { select: { group: { select: { id: true, name: true } } } } } })
+      ? await this.prisma.vehicle.findMany({ where: { id: { in: vehIds } }, select: { id: true, plate: true, brand: true, model: true, outOfServiceReason: true, tracker: { select: { id: true, lastSeenAt: true } }, groups: { select: { group: { select: { id: true, name: true } } } } } })
       : [];
     const vehById = new Map(vehicles.map((v) => [v.id, v]));
 
@@ -205,7 +205,25 @@ export class DrivingScoreService {
     const dormantAt = Math.min(Date.now(), to.getTime());
     const dormantVehicles = new Map<string, Date | null>();
     for (const v of vehicles) {
-      if (isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null }, dormantAt)) {
+      /**
+       * ⚠️ HORS SERVICE — meme sortie du classement que la dormance, mais SANS DELAI.
+       *
+       * Un vehicule accidente ou dont le boitier est debranche au garage garde une note
+       * figee qui continue de peser sur le rang des autres ET sur la moyenne de flotte.
+       * La dormance finit par l'ecarter, mais seulement apres sept jours de silence :
+       * pendant une semaine, un vehicule qu'on SAIT hors service faussait le classement.
+       * Le motif etant DECLARE et non deduit, il n'y a rien a attendre.
+       *
+       * ⚠️ Sa NOTE reste affichee sur sa fiche : elle porte sur des trajets reels, elle
+       *    n'a rien d'invente. Ce qu'on retire, c'est le rang et la comparaison — pas
+       *    l'historique.
+       */
+      // ⚠️ `!= null` et NON `!== null` : la forme stricte est VRAIE pour `undefined`, donc un
+      //    champ absent d'un `select` aurait ecarte du classement la flotte ENTIERE, en
+      //    silence. Le repli doit toujours pencher du cote « en service » — un vehicule
+      //    manquant au classement se remarque bien moins qu'un vehicule en trop.
+      const horsService = v.outOfServiceReason != null;
+      if (horsService || isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null }, dormantAt)) {
         dormantVehicles.set(v.id, v.tracker?.lastSeenAt ?? null);
       }
     }

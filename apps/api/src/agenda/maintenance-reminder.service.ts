@@ -55,7 +55,9 @@ export class MaintenanceReminderService {
     // `tracker.lastSeenAt` est joint à la requête des plans (aucune requête en plus) : il sert à
     // repérer les échéances KILOMÉTRIQUES devenues inévaluables (cf. plus bas).
     const plans = await this.prisma.maintenancePlan.findMany({
-      where: { enabled: true },
+      // Rappeler une vidange sur un vehicule accidente ou immobilise au garage n'appelle
+      // aucune action : le plan reprend tout seul a la remise en service.
+      where: { enabled: true, vehicle: { outOfServiceReason: null } },
       include: { vehicle: { select: { plate: true, tracker: { select: { id: true, lastSeenAt: true } } } } },
     });
     const now = Date.now();
