@@ -1483,6 +1483,84 @@ if [ -n "$SRC" ]; then
   # par jour, elle, le dit — et c'est elle qui doit declencher une lecture, pas le total.
   echo "  ── repartition par jour (une attaque EN COURS se voit ici, jamais dans un total) ──"
   echo "$ECH" | grep "Failed password\|Invalid user" | cut -c1-10 | sort | uniq -c | sed 's/^/    /'
+  # ⚠️⚠️ AJOUTE LE 2026-08-22 (VPS-032 / angle mort de VPS-M57) — LE COLLECTEUR LISAIT DEJA CES
+  # LIGNES ET N EN COMPTAIT QUE LES ECHECS. Les connexions REUSSIES n etaient affichees que sous
+  # forme de « top 5 des IP », pour aider a reconnaitre ses propres acces. Personne ne regardait
+  # le NOMBRE. Il valait 7 385 sur 7 jours au 2026-08-22, dont 4 252 pour la seule journee du
+  # 08-20 — ~5 sessions par minute, quatorze heures d affilee, toutes depuis notre poste.
+  #
+  # Chaque session ouvre un sshd, un PAM, une session logind ET une instance systemd --user,
+  # puis referme le tout. COUT MESURE le 2026-08-22, contre un temoin de meme duree :
+  # 445 forks en 20 s a vide, 1 527 en 20 s pendant 20 sessions → ~54 processus par session.
+  # ⚠️ C est un PLANCHER issu d un temoin UNIQUE, pas une constante : une partie des 20 sessions
+  #    est tombee hors de la fenetre de 20 s, ce qui SOUS-estime le cout. Ne pas le republier
+  #    comme une propriete (VPS-M53 : un nombre mesure une seule fois n est pas une mesure).
+  #
+  # Pourquoi ce bloc et pas un detecteur de collision : VPS-M57 proposait de signaler « une
+  # rafale de sessions SSH encadrant la collecte ». La mesure ci-dessus REFUTE ce dessin — sur
+  # une journee de travail la rafale est PERMANENTE, et le detecteur crierait chaque apres-midi.
+  # On publie donc le CHIFFRE et son denominateur, et on laisse le lecteur trancher : c est la
+  # difference entre une mesure et une alarme qu on ne peut pas croire.
+  echo "  ── Sessions SSH REUSSIES : la charge de fond que personne ne compte (VPS-032) ──"
+  echo "$ECH" | grep -c "Accepted" | sed 's/^/    total sur la fenetre de 7 j : /'
+  echo "    par jour :"
+  echo "$ECH" | grep "Accepted" | cut -c1-10 | sort | uniq -c | sed 's/^/      /'
+  # La fenetre de MA collecte, bornee par T_DEBUT : qui d autre parlait a la machine pendant
+  # que je la mesurais ? Le denominateur est explicite, et ma propre session est RETIREE — mais
+  # seulement si j en ai une (VPS-M34 : un denominateur suppose est un denominateur faux).
+  # ⚠️⚠️ CE BLOC A ETE FAUX DEUX FOIS EN UNE HEURE, LE 2026-08-22, ET LES DEUX FOIS C EST
+  # L EXECUTION REELLE QUI L A DIT — jamais la relecture.
+  #
+  #  1. Borne arrondie a la MINUTE ('+%H:%M') : la fenetre commencait jusqu a 59 s AVANT la
+  #     collecte. L essai a compte 4 sessions la ou il y en avait 1. Sur une journee de travail
+  #     a ~5 sessions/min, cela FABRIQUAIT jusqu a cinq « autres sessions » qui n avaient jamais
+  #     recouvert la mesure. *Une borne arrondie dans le sens large ne rate rien : elle invente*,
+  #     et elle invente du cote qui ACCUSE — le defaut VPS-M01, reproduit par le bloc ecrit pour
+  #     l eviter.
+  #  2. Corrige a la seconde, il est devenu faux dans l autre sens : il a publie
+  #     « 0 session(s) … reste : -1 ». Cause : LA SESSION SSH EST ACCEPTEE AVANT QUE LE SCRIPT NE
+  #     DEMARRE. `T_DEBUT` est pris apres l ouverture de session, donc ma propre ligne `Accepted`
+  #     est TOUJOURS anterieure a la borne — et retrancher un 1 forfaitaire d un compte qui ne
+  #     me contient pas donne un negatif. *Un « reste » negatif est impossible : c est la seule
+  #     raison pour laquelle ce defaut-la s est vu, et le premier n avait pas cette chance.*
+  #
+  # On ne SUPPOSE donc plus sa propre session : on l IDENTIFIE. `SSH_CONNECTION` porte l IP et le
+  # PORT SOURCE du client, et sshd ecrit exactement ce couple dans « from <ip> port <port> ».
+  # La fenetre remonte 15 s avant T_DEBUT pour englober l ouverture de session, et la ligne qui
+  # porte mon port est retiree nominativement. Denominateur explicite des deux cotes (VPS-M34).
+  FEN_DEB=$(date -d "@$((T_DEBUT - 15))" '+%Y-%m-%dT%H:%M:%S' 2>/dev/null)
+  ACC_FEN=$(echo "$ECH" | grep "Accepted" | awk -v d="$FEN_DEB" '$1 >= d')
+  SESS_FEN=$(printf '%s' "$ACC_FEN" | grep -c "Accepted")
+  MON_IP=$(echo "${SSH_CONNECTION:-}" | awk '{print $1}')
+  MON_PORT=$(echo "${SSH_CONNECTION:-}" | awk '{print $2}')
+  if [ -n "$MON_PORT" ]; then
+    MIENNE=$(printf '%s' "$ACC_FEN" | grep -c "from $MON_IP port $MON_PORT ")
+    ORIG="identifiee par son port source $MON_PORT"
+  else
+    MIENNE=0
+    ORIG="ABSENTE — script lance hors SSH, rien a retrancher"
+  fi
+  printf '    pendant MA collecte (%s → maintenant, ouverture de session comprise) : %s session(s)\n' \
+    "$FEN_DEB" "$SESS_FEN"
+  printf '      dont la mienne : %s  (%s)  |  reste : %s\n' "$MIENNE" "$ORIG" "$((SESS_FEN - MIENNE))"
+  if [ "$MON_PORT" != "" ] && [ "$MIENNE" = "0" ]; then
+    echo "      ⚠️ MA PROPRE SESSION N A PAS ETE RETROUVEE dans la fenetre : le « reste »"
+    echo "         ci-dessus est donc SUR-EVALUE de 1. Ne pas le lire comme une collision."
+  fi
+  if [ "$((SESS_FEN - MIENNE))" -gt 0 ]; then
+    echo "      🟠 UNE AUTRE SESSION que celle qui execute ce script a parle a la machine"
+    echo "         pendant la mesure. Ce n est ni une faute ni une identification : ce bloc"
+    echo "         COMPTE des sessions, il ne dit pas QUI. Ce peut etre l autre audit, un"
+    echo "         deploiement — ou votre propre outillage, une commande plus tot (verifie le"
+    echo "         2026-08-22 : la « seconde session » etait mon propre essai, 25 s avant)."
+    echo "         A porter au dossier AVANT d imputer au script un depassement de budget ou"
+    echo "         une charge (VPS-M57, collision du 2026-08-21) — et VPS-M01 : une"
+    echo "         concomitance d horaire n est pas une identification."
+  else
+    echo "      ✅ ma collecte etait SEULE : aucune autre session pendant la fenetre."
+  fi
+  echo "    cout : ~54 processus par session (mesure du 2026-08-22 contre temoin — PLANCHER,"
+  echo "           temoin unique). A comparer aux ~93 600 invocations/j de healthchecks."
 fi
 # ⚠️ `fail2ban-client status` (sans nom de prison) ne dit QUE « il y a 1 prison ». Il ne dit ni
 # combien d'echecs la prison a VUS, ni combien d'IP elle a bannies. Or c'est exactement la
@@ -2010,8 +2088,30 @@ section "10. PREVISIONS — ce que chaque nettoyage rendrait"
 TOTAL_KB=$(df -k / | awk 'NR==2{print $2}')
 USED_KB=$(df -k / | awk 'NR==2{print $3}')
 FREE_KB=$(df -k / | awk 'NR==2{print $4}')
+# ⚠️⚠️ AJOUTE LE 2026-08-22 (VPS-M60) — DEUX POURCENTAGES DE DISQUE DANS LA MEME COLLECTE, ET
+# LA SERIE DU MANIFESTE PIOCHAIT DANS LES DEUX. La section 3 affiche le `Use%` de `df -h` ;
+# la ligne ci-dessous calcule le sien. Releve des cinq passages precedents : le 08-18 le
+# manifeste a copie 68 (section 10), le 08-19 54 (section 10), le 08-21 55 (df) — et le 08-20
+# un 50 qui ne vient d AUCUNE des deux, parce qu il a ete pris apres une purge, hors de la
+# collecte archivee. *La pente du disque affichee a l ecran se calcule sur cette serie.* Elle
+# avance d environ 0,1 point par jour : un ecart d un point vaut DIX JOURS de tendance.
+#
+# ⚠️ ET LA CAUSE DE L ECART N EST PAS CELLE QUE J AI CRUE. J avais d abord ecrit que `df`
+# comptait les 5 % de blocs RESERVES a root. Faux, et le controle l a dit tout de suite :
+# total=100476656 used=55459356 avail=45000916 → les DEUX formules donnent 55,20 %, et `df`
+# affiche 56 %. La difference est un ARRONDI : GNU `df` arrondit le pourcentage AU SUPERIEUR
+# (ceil), pas au plus proche. D ou `ceil()` ci-dessous, verifie contre `df -h` sur la machine.
+# *Deux chiffres qui different d un point n ont pas forcement deux definitions : ils peuvent
+# n avoir que deux arrondis — et on ne le sait qu en refaisant le calcul a la main.*
 awk -v t="$TOTAL_KB" -v u="$USED_KB" -v f="$FREE_KB" 'BEGIN {
-  printf "  disque : %.0f Go utilises / %.0f Go (%.0f%%), %.0f Go libres\n", u/1048576, t/1048576, 100*u/t, f/1048576 }'
+  p = 100*u/(u+f); c = (p == int(p)) ? p : int(p) + 1
+  printf "  disque : %.0f Go utilises / %.0f Go (%.0f%%), %.0f Go libres\n", u/1048576, t/1048576, 100*u/t, f/1048576
+  printf "  ── la valeur a reporter dans le manifeste (VPS-M60) ──\n"
+  printf "     disqueUtilisePct = %d   (identique au Use%% de `df` en section 3 : %.2f%% arrondi AU SUPERIEUR)\n", c, p
+  printf "     ⚠️ %.0f%% ci-dessus = le meme %.2f%% arrondi au PLUS PROCHE. Meme disque, meme\n", 100*u/t, p
+  printf "        formule, deux arrondis — et un point d ecart dans la serie de tendance.\n"
+  printf "     Copier TOUJOURS la valeur nommee ici : c est celle que `df` affiche, donc celle\n"
+  printf "     qu un humain relit. Melanger les deux fabrique une pente qui ne mesure que ca.\n" }'
 
 echo "  ── recuperable, par poste ──"
 # ⚠️ On passe par `--format` et NON par le tableau texte : « Local Volumes » contient un
@@ -2472,7 +2572,14 @@ fi
 if [ "${REF_BC:-0}" -ge "$SEUIL_BC" ]; then
   verdict "cache de build (Private)" "$MESURE_BC" "< ${SEUIL_BC} Go" ko "il ECHAPPE a son ramasse-miettes (plafond ${GC_GO:-?} Go) — docker buildx prune -af --filter until=168h"
 else
-  verdict "cache de build (Private)" "$MESURE_BC" "< ${SEUIL_BC} Go" ok "contenu par son ramasse-miettes (plafond ${GC_GO:-?} Go) ; total affiche par docker system df = $BC"
+  # ⚠️ CORRIGE LE 2026-08-22 — LA LIGNE VERTE SE CONTREDISAIT A L OEIL NU. Elle affichait
+  # « ✅ 10.42GB … plafond 10 Go » : une valeur AU-DESSUS du plafond qu elle cite, sous une coche
+  # verte. Le verdict, lui, etait JUSTE — il porte sur le seuil d alerte (plafond x 1,5 = 15 Go,
+  # correctif VPS-M10), pas sur le plafond. Mais ce seuil n etait ecrit NULLE PART dans la
+  # branche verte, donc le lecteur ne pouvait pas savoir a quoi 10,42 avait ete compare.
+  # *Un verdict juste dont on ne publie pas le critere se lit comme un verdict faux* — et le
+  # doute qu il installe coute autant qu une erreur : il a fallu relire le script pour l ecarter.
+  verdict "cache de build (Private)" "$MESURE_BC" "< ${SEUIL_BC} Go" ok "sous son seuil d alerte de ${SEUIL_BC} Go (= plafond ${GC_GO:-?} Go du ramasse-miettes + 50 % de marge, VPS-M10) ; total docker system df = $BC"
 fi
 # ⚠️ Chercher un CRON de purge serait chercher la mauvaise garde. La borne est posee dans
 # `/etc/docker/daemon.json` (ramasse-miettes de BuildKit) : un mecanisme PERMANENT, donc sans
