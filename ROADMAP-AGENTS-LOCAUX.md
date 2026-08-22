@@ -386,6 +386,7 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | ~~V1~~ | ~~**Écran `/admin/qualite-gps` à 375 px**~~ | — | **Fait le 20/08 17 h 45** |
 | **V3** | **Deux boîtiers vivants SANS position GPS — à voir sur le terrain.** `GS-014-NY` (IMEI 864035054756169) et `HD-686-QX` : le boîtier communique mais n'accroche aucun satellite. Antenne débranchée, mal placée ou HS. Relevé par `gps-integrity` les 20 et 21/08 — le seul sujet du centre d'alerte qui appelait une action humaine, conservé ici avant le nettoyage du 21/08. | Accès physique aux véhicules | 21/08 |
 | ~~V2~~ | ~~**Véhicule HORS SERVICE — la recette sur données réelles**~~ | — | **Fait le 21/08 21 h 20** |
+| **V4** | **Chaîne analyse-lieux de bout en bout, sur des faits.** L'automatisation a été **activée le 22/08 vers 8 h** (Paris) via l'écran `/admin/place-automation`, après simulation conforme : **2 candidats** (flotte cdef31), **8 lieux écartés** (société sans IA), 0 inchangé, 0 trop récent, coût estimé 0,04 €, arrêt « Terminé ». Reste à prouver le cycle complet du 23/08 : travail dans `travaux_ia_locaux` après 03:10, livré par le courrier après 06:30, rangé après 07:10 avec `costEur = 0`, `executor = local`, un résumé qui parle des vrais passages — puis l'écran `/places` à 375 px. Requêtes de vérification : `design/C2-ACTIVATION-ANALYSE-LIEUX.md` § 4, geste 3. | Cycle 03:10 → 07:10 du 23/08 | 22/08 |
 
 ### Deux pièges du Planificateur de Windows — relevés le 22/08 au matin
 
