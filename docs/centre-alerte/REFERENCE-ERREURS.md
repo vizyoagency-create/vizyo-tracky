@@ -1133,8 +1133,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-042](#trk-042) | `scheduled-task-heartbeat` | **Une tâche qu'on vient d'activer est déclarée « à l'arrêt »** — la branche « aucun passage enregistré » n'a aucune borne de durée | 🟢 **CORRIGÉ ET DÉPLOYÉ le 22/08 13:31** *(7 `CRITICAL` en une matinée sur « Automatisation des lieux », activée à 06:02 et quotidienne à **03:00** : premier passage possible 21 h plus tard, déclarée à l'arrêt **33 min** après l'activation puis **toutes les heures**. ✅ **Vérifié PAR LE COMPORTEMENT** : le passage de 13:35 — le premier après déploiement — n'a **rien écrit**. 🔑 **Même défaut que [TRK-030](#trk-030) sur un autre module** : une branche « ça n'est jamais arrivé » sans borne transforme une naissance en panne)* | 2026-08-22 | 2026-08-22 |
 | [TRK-040](#trk-040) | *alertes* | **Une alarme d'alimentation à batterie pleine est déclarée « contact coupé » — y compris quand c'est une vraie coupure qui commence** | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(nouvelle ; DZ-034-CA le 21/08 : `kt` **contact remis** 06:00:07, `ac alarm` 06:23:46 à **100 %** → `contact_coupe`, 0 alerte ; batterie 100 → 0 % ; `POWER_CUT` 12:36:14 ; **boîtier mort depuis 12:43:53**. **6 h 12 min 28 s** de retard, et `lastPowerNotice` affirme toujours « pas en péril ». Famille **mensonger**. ⚠️ **ne pas corriger en baissant le seuil de 90 %** — le discriminant manquant est **l'état du contact**, pas son réglage. Pas le chemin de [TRK-032](#trk-032) : 0 commande moteur sur ce tracker)* | 2026-08-22 | 2026-08-22 |
 | [TRK-041](#trk-041) | `sms-allowlist` | **La rotation de la clé a supprimé le seul témoin de l'intrus** — `allowlist_audit_logs.tenantId` est `NOT NULL`, donc une clé révoquée n'écrit aucune ligne | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(nouvelle ; rotation **confirmée** par les préfixes — `vtx_48fe` jusqu'au 20/08 13:25, `vtx_d4f3` dès 14:25. Mais blocages figés à **49**, dernier le 17/08 19:24:59 = **102,0 h**, le plus long silence de la série — et le premier qui **ne prouve même pas une absence**. Lié à [TRK-017](#trk-017) et [TRK-025](#trk-025))* | 2026-08-22 | 2026-08-22 |
-| [TRK-039](#trk-039) | `GPS_QUALITE` | **L'agent qualité GPS accuse l'antenne d'un boîtier hors ligne depuis 7 jours**, sur des zones vieilles de 19 jours — et son discriminant « aucun autre véhicule au même endroit » est **infranchissable** pour un véhicule qui roule seul et loin | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(nouvelle ; 20/08 10:01:52 sur KSR370 — 6 zones, **580 928 m** d'étalement soit **193×** le seuil `ETALEMENT_BOITIER_M`, dernière occurrence le 01/08, boîtier muet depuis le 14/08 02:05 et mort d'une **coupure d'alimentation** déjà documentée par [TRK-023](#trk-023). Famille **mensonger** : envoie contrôler une antenne. ⚠️ **ne pas corriger en montant le seuil** — c'est le critère qui est faux, pas son réglage. **Test daté 27/08** : `JOURS_SANS_REPETITION` = 7, la ligne doit réapparaître)* | 2026-08-21 | 2026-08-22 |
-| [TRK-038](#trk-038) | *plateforme* | **Quatre gardes anti-répétition d'alerte vivent en mémoire de processus** — chaque déploiement les remet à zéro | 🔴 NON CORRIGÉ *(nouvelle ; mesuré sur les 6 lignes du 20/08 : intervalles 5 h 00 · 3 h 59 · **6 h 02** · 1 h 57 · 1 h 03 pour une garde de 6 h. **La garde n'est pas cassée, elle est volatile** — l'intervalle de 6 h 02 prouve qu'elle tient quand le processus vit, et 3 des 4 trop courts suivent une remise en service. Jumeaux : `error-rate-watchdog` (**l'alarme de flambée d'erreurs**), `allowlist.service` ([TRK-017](#trk-017)), `surveillance-scheduler`. 🔴 **1 intervalle inexpliqué** : 10:47 → 14:46, aucun redémarrage connu — fait consigné, non expliqué)* | 2026-08-21 | 2026-08-22 |
+| [TRK-039](#trk-039) | `GPS_QUALITE` | **L'agent qualité GPS accuse l'antenne d'un boîtier hors ligne depuis 8 jours** — et sa récidive du 22/08 a une cause mesurée : **son anti-répétition a été EFFACÉE** | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(2ᵉ occurrence le 22/08 06:07, **2 jours** après la 1ʳᵉ et non 7. 🎯 **Cause trouvée** : `dejaSignalees()` lit `error_logs` LUI-MÊME ; la ligne du 20/08 a été supprimée dans la fenêtre des 73 effacements de [TRK-035](#trk-035), donc la requête a rendu `[]` et l'agent a réémis. Vérifié : elle rend `["KSR370"]` maintenant, et l'agent avait signalé **0** boîtier le 21/08. 🔴 **L'hypothèse « la clé inclut le compte d'épisodes » est RÉFUTÉE** — la clé est la plaque, rien d'autre. ⚠️ **Conséquence qui dépasse la fiche : effacer `error_logs` RÉARME les boucles d'alerte** — et le correctif proposé pour [TRK-038](#trk-038) hériterait du même défaut, sur 4 gardes au lieu d'1)* | 2026-08-21 | 2026-08-22 |
+| [TRK-038](#trk-038) | *plateforme* | **Quatre gardes anti-répétition d'alerte vivent en mémoire de processus** — chaque déploiement les remet à zéro | 🔴 NON CORRIGÉ *(nouvelle ; mesuré sur les 6 lignes du 20/08 : intervalles 5 h 00 · 3 h 59 · **6 h 02** · 1 h 57 · 1 h 03 pour une garde de 6 h. **La garde n'est pas cassée, elle est volatile** — l'intervalle de 6 h 02 prouve qu'elle tient quand le processus vit, et 3 des 4 trop courts suivent une remise en service. Jumeaux : `error-rate-watchdog` (**l'alarme de flambée d'erreurs**), `allowlist.service` ([TRK-017](#trk-017)), `surveillance-scheduler`. 🔴 **1 intervalle inexpliqué** : 10:47 → 14:46, aucun redémarrage connu — fait consigné, non expliqué)* | 2026-08-21 | 2026-08-22  · 🔴 **AMENDÉ le 22/08 : le correctif proposé NE DOIT PAS être appliqué tel quel** — ranger la mémoire des 4 gardes dans `error_logs` les exposerait à l'effaceur de [TRK-035](#trk-035), défaut mesuré sur [TRK-039](#trk-039) le jour même. *Un garde-fou ne doit pas ranger sa mémoire dans la pièce qu'il surveille.* |
 | [TRK-037](#trk-037) | `trip-analysis` | **Overpass (OpenStreetMap) injoignable** — les excès de vitesse ne sont plus affirmés, et l'analyse est rendue **sans mention de la lacune** | 🔵 TERRAIN / dépendance tierce *(nouvelle ; 6 occurrences le 20/08, HTTP 500 ×4 / 502 ×2, sur le miroir **public et gratuit** `overpass.kumi.systems`. Le code est soigné — cache, lots, plafond, backoff, et `trouvee === false` non mémorisé. **Ce n'est pas un défaut de fabrication : c'est une dépendance sans repli.** ⚠️ **sa date de première apparition est INCONNAISSABLE** — la plus ancienne ligne survivante de la table **est** l'une d'elles, cf. [TRK-035](#trk-035))* | 2026-08-21 | 2026-08-22 |
 | [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec` du 20/08 : fenêtre de 15 min, 6 tests dont 2 qui échouent sur le code d'avant, 49 tests au vert. **Poussé sur `origin` le 20/08, sans PR ni fusion** *(rectifié le 22/08)* — relecture humaine obligatoire. ⚠️ « exclure `SENT` » a été RÉFUTÉ pendant la correction : la citation de TRK-014 portait sur `tracker_commands`, pas sur les commandes moteur, qui sont bien acquittées (2 857). Le repli SMS reste en `SENT` à vie, l'exclure aveuglerait le coupe-circuit)* · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)*  · 🆕 **21/08 : 29 boîtiers sur 42 silenciés à 04:33, tous par un `CUT` vieux de 8,7 h.** ⚠️ **le 33 du 20/08 a été mesuré à 01:1x — deux heures différentes, AUCUNE tendance** ; ce qui compte n'est pas le nombre mais la **largeur de la fenêtre de silence**. Correctif **poussé sur `origin`, sans PR ni fusion** *(rectifié le 22/08)* | 2026-08-20 | 2026-08-22 |
 | [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2` du 20/08 : résolution de l'émetteur sur les 9 derniers chiffres + écouteur qui acquitte sur le COUPLE (boîtier, action), jamais sur le temps. **3 abstentions testées** : ambiguïté, panne de résolution, panne de l'écouteur. ⚠️ explique pourquoi on ne VOYAIT pas les accusés, PAS pourquoi il n'y en a que 2 en 5 semaines — [TRK-018](#trk-018) reste entière)* *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* *(🆕 **21/08 : ce n'est PAS un cas isolé** — **87 SMS entrants, 85 sans `imei`**, et outre « Resume engine Succeed » du 19/08, « **Stop engine Succeed** » du **13/07 04:17:38** est dans le même état. **Deux accusés moteur jetés**, pas un)* | 2026-08-20 | 2026-08-22 |
@@ -6825,6 +6825,17 @@ SELECT max("createdAt") FROM error_logs
 WHERE source = 'trip-analysis' AND context->>'feature' = 'speed-limit-osm';
 ```
 
+> 🔴 **AMENDEMENT DU 2026-08-22 — NE PAS APPLIQUER CE CORRECTIF TEL QUEL.** L'enquête sur
+> [TRK-039](#trk-039) a montré ce jour-là qu'un garde-fou dont la mémoire vit dans `error_logs`
+> **se fait réarmer par l'effaceur de [TRK-035](#trk-035)** : la ligne du 20/08 a disparu, et
+> l'agent a réémis deux jours plus tard au lieu de sept. Appliquer ce correctif tel quel
+> échangerait un défaut connu contre celui-là, **sur quatre gardes au lieu d'une**.
+>
+> Le principe reste juste — l'état doit vivre dans la **donnée**, pas dans un champ d'instance —
+> mais **pas dans la table que quelqu'un vide**. *Un garde-fou ne doit pas ranger sa mémoire dans
+> la pièce qu'il surveille.* Écrire l'état dans une table dédiée, ou attendre que TRK-035 soit
+> refermée.
+
 Coût : une requête **uniquement** quand toutes les requêtes ont échoué — c'est-à-dire rare.
 
 ### Ce qui reste ouvert
@@ -6903,37 +6914,90 @@ KSR370 et laisserait le défaut entier : le prochain véhicule qui descend en Es
 fiche sur un second point. *Condition de nullité : si KSR370 est déposé ou remis en service d'ici
 là, le test n'a plus d'objet.*
 
-### 🔴 2026-08-22 — LE TEST DATÉ RÉPOND, CINQ JOURS EN AVANCE, ET IL RÉFUTE SON PROPRE ÉNONCÉ
+### 🎯 2026-08-22 *(enquête)* — LA CAUSE EST TROUVÉE, ET CE N'EST PAS L'ANTI-RÉPÉTITION
 
-La ligne est réapparue le **22/08 à 06:07:25**, sur KSR370 — soit **2 jours** après celle du 20/08,
-et non 7. La condition de nullité ne s'applique pas : le boîtier n'a été ni déposé ni remis en
-service, il est toujours muet depuis le **14/08 02:05**.
+La ligne est réapparue le **22/08 à 06:07:25** sur KSR370, deux jours après celle du 20/08 et non
+sept. **Ce n'est pas le délai qui a failli : c'est sa mémoire qui a été effacée.**
 
-| | 20/08 | **22/08** |
-|---|---|---|
-| Zones distinctes | 6 | **6** |
-| Étalement | 580,9 km | **580,9 km** |
-| **Épisodes** | 2 | **9** |
+#### La mémoire de l'anti-répétition, c'est `error_logs` lui-même
 
-> 🔑 **Le fait constant n'était pas le bon.** Le test supposait que l'anti-répétition portait sur la
-> *ligne* — même véhicule, même verdict, donc silence pendant 7 jours. Les zones et l'étalement sont
-> restés rigoureusement identiques ; seul le **compte d'épisodes** a bougé, de 2 à 9. *Une clé
-> d'anti-répétition qui inclut une grandeur qui monte toute seule ne supprime rien : elle laisse
-> passer une ligne à chaque incrément.*
+`outils/agent-qualite-gps.cjs:99-107` — `dejaSignalees()` interroge la table des erreurs pour
+savoir qui a déjà été signalé :
 
-**Ce que ça change pour la fiche.** Le défaut de fond est **confirmé sur un second point** — le
-verdict « contrôler le boîtier » est réémis sur un tracker mort depuis 8 jours, dont la cause est
-documentée ailleurs ([TRK-023](#trk-023)). Mais le correctif nº 1 doit être élargi : borner
-`zones()` dans le temps **ne suffit pas** si la clé d'anti-répétition se renouvelle à chaque
-épisode. **Il faut identifier ce qui compose cette clé avant d'écrire quoi que ce soit.**
+```sql
+SELECT DISTINCT context->>'plaque' FROM error_logs
+WHERE source = 'GPS_QUALITE'
+  AND "createdAt" > now() - interval '7 days';
+```
 
-⚠️ **Ne pas conclure que `JOURS_SANS_REPETITION` est ignoré.** Il est peut-être parfaitement
-appliqué, sur une clé qui n'est simplement pas celle qu'on croyait. *Un test daté qui échoue
-désigne l'énoncé aussi souvent que le code.*
+**Le garde-fou n'a pas d'état à lui. Son état, c'est la ligne qu'il a écrite la fois d'avant.**
 
-**Nouveau test daté — 27/08.** Sous l'hypothèse « la clé inclut le compte d'épisodes », une nouvelle
-ligne doit apparaître dès que ce compte bouge, indépendamment des 7 jours. Relever le compte
-d'épisodes à chaque passage : s'il monte sans produire de ligne, l'hypothèse tombe.
+#### La chaîne, mesurée
+
+| Fait | Mesure |
+|---|---|
+| La ligne du 20/08 dans `error_logs` | **absente** — 1 seule ligne `GPS_QUALITE`, celle du 22/08 |
+| Dans la table d'archive | **absente** aussi |
+| Ce que `dejaSignalees()` aurait rendu à 06:07 | **`[]`** — vide |
+| Ce qu'elle rend maintenant | **`["KSR370"]`** |
+| Passage de l'agent le **21/08 04:27** | « **0** boîtier signalé » — la mémoire tenait |
+| Passage de l'agent le **22/08 06:07** | « **1** boîtier signalé » — la mémoire avait disparu |
+
+La suppression tombe dans la fenêtre des **73 lignes effacées** entre le 21/08 04:31 et le 22/08
+01:11 ([TRK-035](#trk-035)). *L'anti-répétition fonctionne exactement comme écrite ; elle a repris
+à zéro parce qu'on lui a retiré ce sur quoi elle comptait.*
+
+#### 🔴 L'hypothèse écrite quelques heures plus tôt est RÉFUTÉE
+
+Ce document a d'abord conclu que « la clé d'anti-répétition inclut le compte d'épisodes », sur la
+foi du seul chiffre qui avait bougé (2 → 9) pendant que zones et étalement restaient identiques.
+**C'est faux.** La clé est la **plaque**, rien d'autre. Le compte d'épisodes a changé dans la même
+période, sans lien de cause.
+
+> 🔑 **La seule variable qui bouge n'est pas forcément la cause — surtout quand on n'a pas cherché
+> celles qui ont disparu.** Le raisonnement portait sur ce que la table contenait ; l'explication
+> était dans ce qu'elle ne contenait **plus**. *Devant deux mesures qui diffèrent, se demander
+> d'abord si le référentiel de comparaison a survécu entre les deux.*
+
+#### Ce que ça révèle, et qui dépasse cette fiche
+
+**Effacer `error_logs` ne détruit pas seulement de la connaissance : ça RÉARME des boucles
+d'alerte.** Tout composant qui se sert de cette table comme mémoire voit sa déduplication remise à
+zéro par l'effaceur — et réémet. C'est une conséquence de second ordre de [TRK-035](#trk-035) que
+rien n'avait identifiée, et elle se paie en fausses alertes, pas seulement en oubli.
+
+> ⚠️ **CONSÉQUENCE DIRECTE POUR [TRK-038](#trk-038), À LIRE AVANT D'ÉCRIRE SON CORRECTIF.** Le
+> correctif proposé le 21/08 pour les quatre gardes anti-répétition « en mémoire de processus » est
+> précisément de **tirer la dernière émission de `error_logs`** :
+>
+> ```sql
+> SELECT max("createdAt") FROM error_logs
+> WHERE source = 'trip-analysis' AND context->>'feature' = 'speed-limit-osm';
+> ```
+>
+> **Ce correctif échangerait un défaut connu contre celui-ci, sur quatre gardes au lieu d'une.** Il
+> reste bon *sur le principe* — l'état doit vivre dans la donnée, pas dans un champ d'instance —
+> mais **pas dans la table que quelqu'un vide**. *Un garde-fou ne doit pas ranger sa mémoire dans
+> la pièce qu'il surveille.*
+
+#### Ce qui reste vrai de la fiche
+
+Le défaut de fond est **confirmé sur un second point** : le verdict « contrôler le boîtier » a été
+réémis sur un tracker mort depuis 8 jours, dont la cause est documentée ailleurs
+([TRK-023](#trk-023)). Les quatre correctifs proposés restent valables — **plus un cinquième** :
+donner à l'anti-répétition une mémoire qui ne soit pas `error_logs`.
+
+#### 🗓️ Test daté — ANNULÉ et remplacé
+
+Le test posé pour le 27/08 (« la ligne doit réapparaître ») **n'a plus d'objet** : il testait la
+durée, et la durée n'est pas en cause. Le test posé cet après-midi (« une ligne doit apparaître dès
+que le compte d'épisodes bouge ») est **retiré** — son hypothèse est réfutée.
+
+**Nouveau test, et il porte sur TRK-035 plutôt que sur cette fiche :** tant que `disparitions_lignes`
+reste vide, aucune ligne `GPS_QUALITE` ne doit apparaître sur KSR370 avant le **29/08** (7 jours
+après le 22/08). *Une ligne plus tôt, avec un constat de disparition entre les deux, confirmerait
+le mécanisme sur un second cas. Une ligne plus tôt SANS constat le réfuterait — et il faudrait
+alors chercher ailleurs.*
 
 ---
 
@@ -7166,6 +7230,7 @@ compris et classé, pas supprimé.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-22 *(soir, enquete TRK-039)* | 12 dont **4 actives** et **8 archivees** (les 7 fausses CRITICAL de TRK-042 classees, pas supprimees) | 🎯 **CAUSE TROUVEE, et elle refute l hypothese ecrite quelques heures plus tot** : la recidive de TRK-039 ne vient PAS d une cle d anti-repetition mal composee, elle vient de ce que **la memoire de cette anti-repetition a ete EFFACEE**. `dejaSignalees()` interroge `error_logs` LUI-MEME pour savoir qui a deja ete signale ; la ligne du 20/08 a disparu dans la fenetre des 73 effacements, donc la requete a rendu une liste VIDE et l agent a reemis. Verifie des deux cotes : elle rend KSR370 maintenant, et l agent avait signale ZERO boitier le 21/08 quand la ligne existait encore. 🔑 **La seule variable qui bouge n est pas forcement la cause — surtout quand on n a pas cherche celles qui ont DISPARU** : le raisonnement portait sur ce que la table contenait, l explication etait dans ce qu elle ne contenait plus. ⚠️ **CONSEQUENCE DE SECOND ORDRE DE TRK-035, que rien n avait identifiee** : effacer `error_logs` ne detruit pas seulement de la connaissance, ca REARME des boucles d alerte — et ca se paie en fausses alertes, pas seulement en oubli. 🔴 **TRK-038 AMENDE dans la foulee** : son correctif proposait de ranger la memoire des quatre gardes dans `error_logs`, ce qui echangerait un defaut connu contre celui-ci sur QUATRE gardes au lieu d une. Le principe reste juste — l etat doit vivre dans la donnee — mais pas dans la table que quelqu un vide. *Un garde-fou ne doit pas ranger sa memoire dans la piece qu il surveille.* ✅ **Archivage exerce en production** : 7 lignes classees, ZERO constat de disparition, `n_tup_del` inchange — *archiver n est pas supprimer* n est plus une affirmation de conception, c est une mesure | 0 *(TRK-039 et TRK-038 amendees)* | enquete |
 | 2026-08-22 *(après-midi, passe de LIVRAISON)* | 11 (10 actives, **1 archivee** — premier usage de l'archivage) | **9 PR fusionnees et DEPLOYEES en 4 vagues**, toutes verifiees sur l'artefact SERVI : les 6 correctifs qui dormaient sur `origin` depuis le 20/08 (#93→#98), la doc du 18 au 22/08 (#99), l'**archivage REVERSIBLE** (#100), le **temoin des disparitions** (#101), et TRK-042 (#102) ; 🔑 **« clear » ne veut pas dire supprimer** — decision du proprietaire, meilleure que la proposition initiale : une ligne archivee RESTE en base, sort de la vue par defaut, se rouvre, *et un archivage qui supprimerait rendrait le temoin incapable de distinguer nos archivages des suppressions de l'intrus* ; ⚠️ **le TRUNCATE est intercepte en BEFORE** — un AFTER compterait une table deja vidée et rendrait « 0 ligne », soit TRK-026 rejoue DANS l'instrument cense le reparer ; 🆕 **TRK-042 : le tableau propre paie des la premiere matinee** — 7 CRITICAL fausses, une tache activee a 06:02 et quotidienne a 03:00 declaree a l'arret 33 min plus tard puis toutes les heures, *une naissance lue comme une panne*, **meme defaut que TRK-030 sur un autre module** ; ✅ **verifie PAR LE COMPORTEMENT** : le passage de 13:35, premier apres deploiement, n'a RIEN ecrit ; 🔴 **TRK-039 : le test date repond CINQ JOURS EN AVANCE et refute son enonce** — zones et etalement identiques, seul le compte d'episodes bouge (2 → 9), *une cle d'anti-repetition qui inclut une grandeur qui monte toute seule ne supprime rien* ; ⚠️ **un piege de test corrige au passage** : le mock omettait `updatedAt` la ou Prisma en rend toujours un — vert en decrivant un comportement inexistant, exactement le piege du 17/08 ; **aucune disparition de la journee** (`n_tup_del` inchange a 3 785 sur 12 h) | **1** (TRK-042) | passe de livraison |
 | 2026-08-22 | **1** (1 sur 24 h, **0 CRITICAL**) — mais **66 ecrites et 73 supprimees en 20,7 h** | 23 revues ; 🎯 **TRK-035 : l'attribution cesse d'etre une hypothese** — le cron de retention consigne lui-meme `errorDeleted: 0` **cinq jours de suite** (17 au 21/08) alors qu'il supprime 170 000 `wire_logs` par nuit, et il n'existe **qu'un seul** `errorLog.deleteMany` dans la base servie : *il suffisait de demander a l'application ce qu'elle avait supprime, elle tenait deja le compte* ; l'ecart `ins-del-live` reste fige a **13 250** (prescription satisfaite, **pas de nouveau TRUNCATE**) pendant qu'un `DELETE` ordinaire emportait 73 lignes — **les deux natures d'effacement ont chacune leur instrument, et chacun est aveugle a l'autre** ; 🔴 **et personne ne pourra nommer l'auteur** : `log_statement=none`, `log_connections=off`, `logging_collector=off`, et **un seul role** porteur de `DELETE` ET `TRUNCATE` — *la commande qui a immobilise la moitie du VPS pendant 3 h 54 le 20/08 visait un journal vide par configuration* ; retention reelle mesuree a **90 j**, pas 30 : l'en-tete de ce fichier est corrige ; 🆕 **TRK-040 : DZ-034-CA meurt en 6 h 12 pendant que la fiche vehicule le dit « pas en peril »** — `kt` **contact REMIS** a 06:00:07 puis `ac alarm` a 06:23:46 avec **100 %** de batterie, verdict `contact_coupe`, 0 alerte ; batterie 100 vers 0 %, `POWER_CUT` a 12:36, **boitier mort a 12:43:53**. *Les deux cas que ce test doit separer sont identiques au moment ou il les separe : l'information est dans la PENTE, pas dans le niveau* — et le bon discriminant etait dans la trame precedente, un montage commute ne perd pas son alimentation 23 min apres que le contact a ete remis ; 🆕 **TRK-041 : on a repare la serrure et jete le judas** — rotation **confirmee** par les prefixes de cle (`vtx_48fe` jusqu'au 20/08 13:25, `vtx_d4f3` des 14:25), mais `allowlist_audit_logs.tenantId` est `NOT NULL` donc **une cle revoquee n'ecrit rien** : blocages figes a 49, **102,0 h** de silence, le premier qui ne prouve meme pas une absence ; 🟢 **TRK-023 EXERCE et il tient** — **0 alerte sans message depuis le 19/08 01:56**, 3 jours et 4 types ; 🟢 **TRK-019 verifie par l'EGALITE** — `git rev-list --count c9dc774..origin/main` rend **0** ; 🟢 **regle du parking exercee en production** (zone FL-787-KV auto-qualifiee, 6 occurrences, jamais revue) ; 🟢 **« 0 recit IA » est un REGLAGE** (`narrateEnabled=false`), verifie avant d'ouvrir une fiche ; TRK-034 **mesure dans les reglages** : `lookbackHours=1500` (62,5 j) contre 60 j de retention, **848 trajets recalcules en une heure**, un passage horaire de **14 min 56 s** ; TRK-018 **passe 11e fois** (289 vers 296) ; TRK-013 91 vers **101** / 19 vers **22** ; TRK-016 **91,9 %**, definition controlee a 92,4 % sur les trajets demarres ; TRK-024 **7e point** identique ; TRK-038 **test date NUL** (2 deploiements, clause de nullite), rearme ; 🔴 **les SIX correctifs restent absents de la PRODUCTION** malgre 2 deploiements — ⚠️ **RECTIFIE le meme jour** : ils sont POUSSES sur origin depuis le 20/08 (`git rev-list --count origin/<b>..<b>` rend 0 pour les six), le clone du serveur ne connaissait que `origin/main`. *On a change d instrument sans changer l erreur : `cat-file -e` confond jamais pousse et jamais rapatrie ici, exactement comme `merge-base` confondait absent et non fusionne la veille.* Ce qui manque, ce sont les REVUES : aucune des six branches n a de pull request, aucune n est dans `main` | **2** (TRK-040, TRK-041) | agent d'audit |
 | 2026-08-21 | **8** (8 sur 24 h, **0 CRITICAL**, **aucune connue**) — la plus ancienne du 20/08 05:47:16 | 21 revues ; 🔴 **TRK-035 : le temoin qui avait detecte l'effacement du 19/08 est AVEUGLE a celui de `error_logs`** — la verification prescrite est rendue et NEGATIVE dans le bon sens (`alerts.n_tup_del` inchange a **41 824**, borne basse immobile, **pas de recidive en 14 h**), mais **13 250 lignes manquent qu'aucun `DELETE` n'a comptees** (ins 16 970 moins del 3 712, pour 8 vivantes), soit un `TRUNCATE` ; **deux controles rendent le chiffre exploitable** : `stats_reset` NULL, et la meme arithmetique se referme EXACTEMENT sur `alerts` — *ce que `n_tup_del` mesure, ce ne sont pas les disparitions, ce sont les `DELETE`* ; 🆕 **TRK-039 : l'agent qualite GPS deploye la veille accuse l'antenne de KSR370**, boitier hors ligne depuis 7 j et mort d'une coupure d'alimentation deja documentee, sur des zones vieilles de 19 j — et son discriminant est **infranchissable** pour un vehicule qui roule seul et loin (Toulouse-Benidorm, **580 928 m** = 193x le seuil) ; 🆕 **TRK-038 : quatre gardes anti-repetition d'alerte vivent en memoire de processus**, dont celle de l'alarme de flambee d'erreurs — la garde n'est pas cassee, elle est **volatile** (6 h 02 prouve qu'elle tient ; 3 des 4 intervalles trop courts suivent une remise en service, **1 reste inexplique**) ; 🆕 **TRK-037 : Overpass injoignable**, et **sa date de premiere apparition est INCONNAISSABLE** — la plus ancienne ligne survivante EST l'une d'elles ; 🟢 **l'alarme d'alimentation est EXERCEE et JUSTE pour la 1re fois** (4 trames `ac alarm`, toutes a 100 % de batterie, 0 alerte — et **ce n'est PAS le chemin de TRK-032 qui les a tues**) ; 🟢 **TRK-031 : verification prescrite RENDUE et POSITIVE** — **0 duree fabriquee sur 35** (contre 13 sur 20), medianes 16,03 j vers **0,78 j** ; 🟢 **TRK-017 : chaine applicative PROUVEE avec la cle rotationnee** (reconciliation `ok` a 04:25) — mais **la rotation ne peut PAS etre creditee du silence de l'appelant**, tu depuis le 17/08, **3 jours AVANT** elle ; TRK-018 **passe 10e fois** (274 vers 289) ; TRK-036 **elargie a 2 accuses moteur jetes** (85 SMS entrants sur 87 sans `imei`) ; TRK-016 **91,1 %** — le creux a 87,0 ne s'est pas confirme ; TRK-032 **29 boitiers sur 42 silencies, par un CUT vieux de 8,7 h** (mesure a 04:33, contre 33 a 01:1x la veille : **heures differentes, aucune tendance**) ; ✅ **les 5 correctifs de cet audit sont INCONNUS du clone du serveur** (`git cat-file -e`), donc jamais pousses — la ou `merge-base` seul rendait le meme non pour deux situations opposees | **3** (TRK-037, TRK-038, TRK-039) | agent d'audit |
