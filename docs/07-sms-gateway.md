@@ -1,5 +1,10 @@
 # Phase 7 — Passerelle SMS (Twilio) pour recovery tracker offline
 
+> ⚠️ **Historique — jamais réalisé tel quel** *(bandeau posé le 2026-08-22)*. Le besoin a
+> été couvert autrement : l'envoi SMS passe par la **passerelle Vizyo Texto**
+> (`VIZYO_TEXTO_API_KEY`, cf. `docs/centre-alerte/ROADMAP-CORRECTIFS.md`), pas par
+> Twilio. Ne pas exécuter ce plan.
+
 **Objectif** : permettre d'envoyer les commandes Coban en SMS au numéro de la SIM du tracker, et parser les SMS de retour, quand le tracker n'est pas joignable en TCP (GPRS coupé, config initiale, reset après factory).
 
 **Durée estimée** : 2–3 jours de dev.

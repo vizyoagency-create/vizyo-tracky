@@ -1,5 +1,10 @@
 # 11 — Roadmap PWA Vizyo Tracky
 
+> ⚠️ **Historique — phases 0 à 5 livrées le 2026-04-26** *(bandeau posé le 2026-08-22)*.
+> Le § 0.1 « État actuel » décrit l'état **d'avant** les travaux (« rien n'est encore en
+> place ») — ne pas le lire comme l'état courant. Nota : le « 11 » du titre entre en
+> collision avec `11-roadmap-tracking-adaptatif.md`.
+
 > **Statut :** V1 — 2026-04-26 — **Phases 0 a 5 implementees** (branche `worktree-audit-pwa`).
 > **Perimetre :** audit qualite "experience web/PWA mobile" pour `apps/web` (Angular 20). Hors-perimetre : Capacitor / wrappers natifs (decision differee).
 > **Objectif :** atteindre une experience indistinguable d'une app native sur Chrome/Safari iOS, sans interferences du navigateur, fluide en 4G degradee, parfaitement habillee aux notches/Dynamic Island.

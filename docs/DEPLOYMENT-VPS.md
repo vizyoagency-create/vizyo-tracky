@@ -7,6 +7,12 @@
 > **Adresse publique** : `https://app-tracky.vizyoagency.com`.
 >
 > **En ligne au 2026-08-11 : `feat/depot-partage` (`68b9e49`).**
+>
+> **Mise à jour du 2026-08-22** : les branches de recette ont été **fusionnées dans
+> `main` le 2026-08-16** (via `essai/centralisation`) — on déploie désormais `main`.
+> Dernier déploiement attesté : 22/08 au matin. Les commits de l'après-midi du 22/08
+> (dont les correctifs UI `1a0e6f2b` et `d44feeef`) ne sont **pas** déployés. La section
+> « Choisir la branche » ci-dessous est conservée pour l'histoire de cette période.
 
 ## Choisir la branche — elles ne portent pas la même chose
 

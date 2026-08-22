@@ -1,5 +1,10 @@
 # 17 — Roadmap post-audit mobile (V1.8+)
 
+> ⚠️ **Historique — figé au 2026-05-03** *(bandeau posé le 2026-08-22)*. Le « EN COURS »
+> du § 1 n'a plus été suivi ici ; la question du rendu desktop/mobile a été reprise en
+> grand par la refonte v2 d'août 2026 (`REFONTE-TRACKY-V2.md`, fusionnée dans `main`
+> le 16/08).
+
 > Suivi des prochaines étapes après l'audit UX mobile complet livré dans
 > les commits `4fadc2b` → `7f1633a` (10 commits poussés le 2026-05-01).
 

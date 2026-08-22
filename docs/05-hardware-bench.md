@@ -1,5 +1,9 @@
 # Phase 5 — Bench hardware Coban GPS403C (Tracky V1)
 
+> ✅ **Historique — réalisé** *(bandeau posé le 2026-08-22)*. Bench validé sur le terrain
+> les 14-15 avril 2026 (cf. `EXECUTION-TRACKER.md`). Les cases non cochées ci-dessous
+> datent du plan, pas du résultat.
+
 **Objectif** : valider E2E `login + position + CUT/RESTORE` sur un vrai tracker Coban 403C connecté à l'API de prod (ou staging accessible en public).
 
 **Durée estimée** : 1 journée (setup + tests + rapport).

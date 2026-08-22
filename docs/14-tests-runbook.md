@@ -1,5 +1,11 @@
 # 14 — Runbook tests qualite
 
+> ⚠️ **Chiffres périmés** *(note du 2026-08-22)* : les compteurs et les « TODO V1.6 »
+> ci-dessous datent d'avril 2026. La suite compte aujourd'hui ~2 500 tests (dont une
+> large couverture API) et cinq gardes bloquants (`verif:accents/litteraux/variables/`
+> `contraste/confirmations`). Toujours vrai en revanche : **aucune CI** — le déploiement
+> est manuel (cf. `VERIFIER-AVANT-DE-DEPLOYER.md`).
+
 > **Statut :** V1 — 2026-04-26 (livre Sprint O)
 > **Public :** dev / QA Tracky
 

@@ -1,5 +1,11 @@
 # Reprise — lot B-pages
 
+> ⚠️ **Historique** *(bandeau posé le 2026-08-22)*. Fiche de reprise du lot B-pages,
+> augmentée jusqu'au 2026-08-14 — **le lot est clos depuis le 2026-08-14** et la refonte
+> fusionnée dans `main` le 2026-08-16. L'en-tête ci-dessous (« 46/57 », « rien en
+> attente ») décrit la séance du 11/08, pas l'état courant. Les décisions restées
+> ouvertes ici sont reprises dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+
 > Écrit le 2026-08-11, à la fin de la séance qui a livré les maquettes, **B0′**, **B-kit** et
 > les 23 premières lignes de **B-pages**.
 > Branche `feat/refonte-tracky-v2`, **40 commits**, poussée sur `origin`, rien en attente.

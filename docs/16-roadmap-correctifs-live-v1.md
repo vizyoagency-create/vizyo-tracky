@@ -1,5 +1,9 @@
 # 16 — Roadmap correctifs LIVE V1 (ACC + marker zoom + tracking présence)
 
+> ✅ **Historique — réalisé début mai 2026** *(bandeau posé le 2026-08-22)*. Notamment le
+> commit `4fadc2b3` du 01/05 (« live tracking cassé — POSITIONS_BATCH jamais émis +
+> traînée + drift zoom »). Le « 🔴 À implémenter » ci-dessous ne vaut plus.
+
 > **Statut :** 🔴 À implémenter — issue terrain remontée le 2026-04-28
 > **Auteur :** Younes (super-admin) — vehicule FL 787 KV testé en condition réelle
 > **Pré-requis :** Sprints H1/H3 livrés (sampling adaptatif + fix mode), V1.6 livré

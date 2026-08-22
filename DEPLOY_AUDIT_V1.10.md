@@ -1,5 +1,11 @@
 # Déploiement audit V1.10 — guide pas à pas
 
+> ⚠️ **Historique — déploiement V1.10 réalisé** *(bandeau posé le 2026-08-22)*. La
+> procédure courante est `docs/DEPLOYMENT-VPS.md`. En particulier : les migrations sont
+> appliquées par l'**entrypoint** au démarrage du conteneur — ne jamais rejouer
+> `prisma migrate deploy` ni du DDL à la main en production (P3009, API en boucle,
+> incident payé le 21/08).
+
 État local : commit merge `8d9e1ae` sur `main` qui rassemble 9 commits Sprint
 1→6 + le commit `d3dca0c` (reports modal) qui avait été poussé en parallèle.
 

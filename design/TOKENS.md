@@ -112,6 +112,13 @@ Le lavis d'accent (`--accent-soft`) n'est pas un jeton mais un **motif** déjà 
 `… 26-28%, transparent` pour une bordure. Voir `.vt-icon-tile` (`styles.css:1062`) et
 `.vt-status--on` (`styles.css:1081`). Reprendre ce motif, ne pas inventer d'opacité.
 
+> ⚠️ **Règle mesurée le 2026-08-22** (correctif `1a0e6f2b`, bandeaux de
+> `/admin/background-tasks`) : **`--tracky-light` est l'accent PLEIN — jamais en fond
+> sous du texte accent.** `background: var(--tracky-light)` sous un texte de la famille
+> verte donne du vert sur vert, illisible dans les deux thèmes. Un fond teinté se
+> fabrique **toujours** par le motif `color-mix` ci-dessus, et le texte posé dessus prend
+> **`--texte-succes`** (jamais `--tracky-light` ni un hex).
+
 ### Rouge — échec, danger, retard
 
 | Maquette | Application | Sombre | Clair |
@@ -164,6 +171,18 @@ famille porte la version assez foncée pour être lue.
 | bleu lisible | `--texte-info` | `--blue` | `--blue` |
 | violet lisible | `--texte-violet` | `--violet` | `--violet` |
 | gris lisible | `--texte-inactif` | `--text-secondary` | `--text-secondary` |
+| lime lisible *(note B)* | `--texte-lime` | `--lime` | `color-mix(--lime 55 %, #000)` |
+| orange lisible *(note D)* | `--texte-orange` | `--orange` | `color-mix(--orange 66 %, #000)` |
+
+*Ajout du 2026-08-22 (correctif `d44feeef`)* : les jetons de base `--lime` (`#84CC16`) et
+`--orange` (`#F97316`) portent l'échelle des notes de conduite A-E ; leurs pendants
+`--texte-*` suivent le même principe que le reste de la famille.
+
+**Bornes de lavis, mesurées et figées dans `verif:contraste`** *(2026-08-22)* : un fond en
+`color-mix` sous un texte `--texte-*` tient jusqu'à **18 %** de lavis pour les familles
+verte, rouge, ambre, lime et orange — mais **bleu ≤ 12 %** et **violet ≤ 10 %** seulement.
+Au-delà, le couple texte/fond passe sous 4,5:1 en thème clair. Ne pas dépasser ces
+pourcentages sans re-mesurer.
 
 **Quand employer laquelle.** `--danger` reste le rouge des barres, des liserés, des grandes
 icônes et des aplats — tout ce qui n'est pas du texte. `--texte-alerte` est le rouge des
@@ -172,7 +191,8 @@ chips, des libellés, des compteurs : dès que la couleur porte des caractères 
 Les pourcentages ne sont pas choisis à l'œil : chacun est **le plus clair qui passe encore
 4,6:1** sur le pire fond clair de l'application (un lavis de 12 % de la couleur elle-même
 sur `--surface-tertiary`). Un point de plus et le couple tombe sous le seuil. `pnpm
-verif:contraste` recalcule les 46 couples réellement employés, dans les deux thèmes.
+verif:contraste` recalcule les couples réellement employés, dans les deux thèmes
+(46 à la création de la famille ; **168 au 2026-08-22**).
 
 En thème sombre, rien n'est corrigé : un texte clair sur fond noir passe déjà de 5,5 à
 8,5:1. Assombrir y nuirait.
@@ -335,8 +355,8 @@ partout comme couleur de **texte**.
 | Sombre | `#69736E` | **3,75:1** | ❌ |
 
 C'est le **même problème que O2**, mais sur le neutre au lieu des couleurs d'alerte — et il
-est passé au travers parce que `verif:contraste` vérifie les **46 couples déclarés**, pas les
-usages réels d'un jeton dans les gabarits. Mesuré au navigateur : 24 textes en échec sur la
+est passé au travers parce que `verif:contraste` vérifie les **couples déclarés** (168 au
+2026-08-22), pas les usages réels d'un jeton dans les gabarits. Mesuré au navigateur : 24 textes en échec sur la
 seule page `/admin/ai-usage` (libellés de KPI, en-têtes de tableau, fil d'Ariane, états vides).
 
 ⚠️ **Noter que le thème SOMBRE échoue aussi.** La phrase du § « Petit texte » (« en thème

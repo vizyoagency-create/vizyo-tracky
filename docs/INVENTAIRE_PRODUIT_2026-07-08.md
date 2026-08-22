@@ -1,5 +1,10 @@
 # Inventaire produit Tracky — la vérité du code
 
+> ⚠️ **Instantané du 2026-07-08** *(note du 2026-08-22)*. Plusieurs constats ont bougé
+> depuis : les purges RGPD sont armées (21/07, cf. `rgpd-retention-donnees.md` et
+> `TACHES.md` § 4), et la refonte v2 d'août a retouché la quasi-totalité des écrans.
+> Vérifier avant de citer un statut de ce fichier comme courant.
+
 > **But** : base factuelle pour construire une présentation commerciale + une grille tarifaire.
 > **Date** : 2026-07-08. **Périmètre** : `apps/api` (NestJS), `apps/web` (Angular), `packages/shared`, `apps/api/prisma/schema.prisma`, landing page `lp/`.
 > **Méthode** : audit multi-agents (17 agents, ~2 M tokens, lecture réelle des fichiers) + passe critique de complétude et de vérification de statut. Rien n'est inventé : ce qui n'est pas dans le code est marqué « non trouvé dans le code ».

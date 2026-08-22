@@ -1,5 +1,15 @@
 # C2 — Activer l'analyse de lieux (passation vers une autre session)
 
+> ✅ **État au 2026-08-22 au soir** *(bandeau posé le 2026-08-22)*.
+> - **Geste 1 (simulation) : fait le 22/08** — conforme à l'attendu : **2 candidats**
+>   (flotte cdef31), **8 lieux écartés** (société sans IA), 0 inchangé, 0 trop récent,
+>   coût estimé **0,04 €**, arrêt « Terminé ».
+> - **Geste 2 (activation) : fait le 22/08 vers 8 h** (Paris), via l'écran
+>   `/admin/place-automation`.
+> - **Geste 3 (vérification de bout en bout) : DÛ le 23/08 après 07:10** — ne pas le
+>   faire avant que le cycle 03:10 → 06:30 → 07:10 soit passé. Consigné en **V4** au
+>   registre de `ROADMAP-AGENTS-LOCAUX.md` ; requêtes de vérification au § 4 ci-dessous.
+
 *Écrit le 2026-08-22. Tout ce qui suit est **mesuré en production**, pas estimé.*
 
 ---

@@ -1,5 +1,13 @@
 # Suivi de la refonte Tracky v2
 
+> ⚠️ **Historique — figé au 2026-08-16** *(bandeau posé le 2026-08-22)*. La branche
+> `feat/refonte-tracky-v2` a été **fusionnée dans `main` le 2026-08-16** (via
+> `essai/centralisation`, commits `d8bd237d`/`e884e1ba`) et est **déployée en production**
+> depuis. Les compteurs de ce fichier (« 35 commits non poussés », « PROD 0/28 — le seul
+> lot restant ») ne décrivent plus l'état courant. Le reliquat réel (écran veilleur et
+> `/driver` jamais mesurés, décisions d'écran en attente, `pnpm lint` cassé) est repris
+> dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+
 > **À quoi sert ce fichier.** C'est le point d'entrée unique pour reprendre le chantier
 > dans une nouvelle session, sans rien réapprendre et sans repayer un piège déjà payé.
 > Il remplace la lecture de tout l'historique.

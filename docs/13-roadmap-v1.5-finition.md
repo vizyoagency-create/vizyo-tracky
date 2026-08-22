@@ -1,5 +1,9 @@
 # 13 — Roadmap V1.5 Finition (production-ready avant clients payants)
 
+> ✅ **Historique — réalisé** *(bandeau posé le 2026-08-22)*. Les sprints I-O ont été
+> livrés (cf. `14-tests-runbook.md` « livré Sprint O » et `15-roadmap-v1.6-ui-tests.md`
+> « ✅ Livré »).
+
 > **Statut :** Draft — 2026-04-26
 > **Perimetre :** consolidation de toutes les taches restantes pour atteindre un produit production-ready, vendable et exploitable a echelle (5-50 clients) sans intervention manuelle. Sequence 7 sprints (I-O).
 > **Source :** demande utilisateur 2026-04-26 — apres livraison V1.4 (correctifs urgents) et V1.5 partielle (tracking adaptatif H1-H5).

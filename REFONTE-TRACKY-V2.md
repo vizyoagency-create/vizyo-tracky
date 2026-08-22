@@ -1,5 +1,12 @@
 # Refonte Tracky v2 — Roadmap d'implémentation
 
+> ⚠️ **Historique — journal arrêté au 2026-08-14** *(bandeau posé le 2026-08-22)*. La
+> refonte a été **fusionnée dans `main` le 2026-08-16** et déployée. Attention aux cases :
+> à partir des lots A, seuls le tableau de bord et le journal ont été tenus — des
+> centaines de cases restées décochées (A1/A2/A5, B-pages, B-mails) correspondent à du
+> travail **livré et recetté**. Ne pas s'y fier pour juger l'avancement ; le reliquat réel
+> est dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+
 > Fichier de suivi unique. Une case cochée = tâche **terminée et vérifiée**, pas « écrite ».
 > Branche : `feat/refonte-tracky-v2` (partie de `main` le 2026-08-09).
 > Spécifications source : `design/*.md` (livrable Claude Design du 2026-08-09).

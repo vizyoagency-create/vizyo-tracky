@@ -1,5 +1,11 @@
 # Déploiement Tracky sur VPS — v2 (pixel-perfect)
 
+> ⚠️ **Historique — guide d'installation initiale (avril 2026)** *(bandeau posé le
+> 2026-08-22)*. Ce fichier (double extension `.md.md`, artefact d'écriture — renommage à
+> décider par le propriétaire) décrit l'installation *from scratch* du VPS. La procédure
+> de déploiement **courante** est `docs/DEPLOYMENT-VPS.md`. Conserver : il contient les
+> Dockerfiles/compose et le contexte que l'autre n'a pas.
+
 > **Contexte** : VPS Ubuntu 24.04, Docker 29.1.3, Traefik v3.6.6 déjà en place (container `foodsqan-traefik`, réseau `foodsqan-public`, cert resolver `letsencrypt`). Pas de staging, pas de backup pour le moment. Repo Tracky à `/opt/vizyo-tracky`.
 >
 > **Décisions architecture figées** :

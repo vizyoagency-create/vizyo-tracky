@@ -1,5 +1,11 @@
 # A6 — Demandes de mission, devis et négociation
 
+> ⚠️ **Mise à jour d'état du 2026-08-22.** `feat/depot-partage` a été **fusionnée dans
+> `main` le 2026-08-16** (via `essai/centralisation`) : le « Rien n'est déployé »
+> ci-dessous ne vaut plus. Sur l'avancement, **l'en-tête (T4-T7 ✅) fait foi** : les
+> checklists correspondantes n'ont pas été recochées après livraison. Restent réellement
+> ouverts : la « dette restante, assumée » et la question Q5.
+
 > Fonctionnalité en construction sur `feat/depot-partage`. Ce fichier est le **plan
 > de référence** : on le suit, on coche, et on y consigne les décisions au fur et à
 > mesure. Toute session qui reprend le chantier commence ici.

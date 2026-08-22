@@ -1,5 +1,10 @@
 # 10 — Roadmap correctifs urgents (UX & fiabilite)
 
+> ✅ **Historique — livré** *(bandeau posé le 2026-08-22)*. La fin du fichier consigne la
+> livraison (tests 90/90 + 119/119, vérification preview). Les cases non cochées datent
+> du plan. L'impératif « avant déploiement, exécuter `prisma migrate deploy` » ne vaut
+> plus : les migrations sont appliquées par l'entrypoint.
+
 > **Statut :** Draft — 2026-04-26
 > **Perimetre :** 4 chantiers UX/fiabilite remontes par l'utilisateur final apres mise en production V1. Ces chantiers sont prioritaires sur la roadmap V2 (`09-roadmap-v2.md`) car ils touchent au coeur de la promesse produit (suivi temps reel fluide, fiabilite des donnees).
 > **Source :** retours utilisateur 2026-04-26 (4 points : chargement post-login, experience carte, traces live, rapports/replays).

@@ -1,5 +1,9 @@
 # Phase 6 — Console de commandes TCP (builder + templates + historique + scheduling)
 
+> ✅ **Historique — réalisé** *(bandeau posé le 2026-08-22)*. La console existe (page
+> « Commandes tracker », `apps/web/src/app/features/tracker-commands/`). Les cases non
+> cochées ci-dessous datent du plan, pas du résultat.
+
 **Objectif** : donner aux FLEET_ADMIN et SUPER_ADMIN un outil pour envoyer n'importe quelle commande Coban à un tracker connecté, avec parsing d'ACK, historique, templates et planification.
 
 **Durée estimée** : 3–5 jours de dev découpés en 6 sous-phases séquentielles.

@@ -1,7 +1,7 @@
 # Roadmap — bascule des traitements IA vers des agents locaux
 
 > **Fichier de suivi temporaire.** À supprimer quand tout est livré.
-> Créé le 19/08/2026. Dernière mise à jour : 20/08/2026.
+> Créé le 19/08/2026. Dernière mise à jour : 22/08/2026.
 
 ## Pourquoi
 
@@ -306,8 +306,8 @@ boucle dont on ignore la longueur.
 | Plafonds par conversation et par utilisateur/jour | ✅ |
 | Contrôleur + persistance + archive admin — 18 tests | ✅ |
 | Bouton « rappel urgent » (côté serveur, alerte CRITICAL) | ✅ |
-| UI client (chat) + UI admin (archive, relecture, correction, recontact) | ☐ |
-| Notification push quand un humain reprend la main | ☐ |
+| UI client (chat) + UI admin (archive, relecture, correction, recontact) | ✅ livrés le 19/08 (`6a83ec61`, lien d'accès corrigé par `07d4f94a`) |
+| Notification push quand un humain reprend la main | ✅ livrée le 19/08 (`ac171fae` — ouverture de demande + reprise humaine, via `NotificationDispatchService`) |
 
 ⚠️ **La base de connaissances est un engagement d'entretien.** Une fonctionnalité livrée sans y
 passer est une fonctionnalité sur laquelle l'agent répondra à côté, ou inventera. À traiter comme
@@ -375,9 +375,15 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 |---|---|---|
 | D1 | **Rôle DEPOT et assistance.** Je l'ai écarté (allowlist default-deny, cohérent avec la décision déjà prise pour l'état IA), alors que la consigne était « tous les utilisateurs connectés ». Un décorateur suffit à l'ouvrir. | 19/08 |
 | D2 | **Rôle NIGHT_WATCHMAN et assistance.** Même situation : son confinement est une allowlist posée à la demande du client (« aucune donnée pour ce rôle »). Non élargie. | 19/08 |
-| D3 | **`BgTaskExecution` vs `BgTaskExecutor`** — deux types aux valeurs identiques dans le DTO des tâches de fond. Rien ne consomme `execution`. Un des deux doit partir. | 19/08 |
+| ~~D3~~ | ~~**`BgTaskExecution` vs `BgTaskExecutor`**~~ — vérifié le **22/08** : **sans objet dans le code commité**. `BgTaskExecution` n'apparaît nulle part dans l'historique du code (`git log -S BgTaskExecution` ne trouve que l'ajout de cette ligne au registre) ; le DTO ne porte que `BgTaskExecutor` et `BgTaskCoutIa`, deux dimensions volontairement **distinctes** (`packages/shared/src/dto/background-task.dto.ts:35-49`). Le doublon décrit ici a vraisemblablement été purgé avant le commit du 19/08. Rien à retirer. | ~~19/08~~ |
 | ~~D5~~ | ~~**Agenda IA — réponse tronquée**~~ — tranché par le propriétaire le 21/08 : **plafond relevé** à 16 000 jetons (et non période réduite). C'est un plafond, pas une réservation : les appels qui tenaient déjà coûtent identique. | ~~21/08~~ |
 | D4 | **Traces de l'assistance** : les lots de données du demandeur sont réduits à leur résumé, jamais recopiés. On perd le rejeu à l'identique, on évite une seconde copie de données personnelles. À confirmer ou inverser. | 19/08 |
+
+Contrôle du **22/08** (audit des restes) : **D1, D2 et D4 restent en attente** — aucun
+commit ne les tranche. L'état du code correspond à leur description : pour D1, le
+commentaire de `assistance.controller.ts:31-35` documente l'écart et « un décorateur
+suffit à l'ouvrir » reste vrai. La liste complète des décisions en attente est
+consolidée dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
 
 ### Vérifications dues — rien ne les remplace
 
@@ -387,6 +393,23 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | **V3** | **Deux boîtiers vivants SANS position GPS — à voir sur le terrain.** `GS-014-NY` (IMEI 864035054756169) et `HD-686-QX` : le boîtier communique mais n'accroche aucun satellite. Antenne débranchée, mal placée ou HS. Relevé par `gps-integrity` les 20 et 21/08 — le seul sujet du centre d'alerte qui appelait une action humaine, conservé ici avant le nettoyage du 21/08. | Accès physique aux véhicules | 21/08 |
 | ~~V2~~ | ~~**Véhicule HORS SERVICE — la recette sur données réelles**~~ | — | **Fait le 21/08 21 h 20** |
 | **V4** | **Chaîne analyse-lieux de bout en bout, sur des faits.** L'automatisation a été **activée le 22/08 vers 8 h** (Paris) via l'écran `/admin/place-automation`, après simulation conforme : **2 candidats** (flotte cdef31), **8 lieux écartés** (société sans IA), 0 inchangé, 0 trop récent, coût estimé 0,04 €, arrêt « Terminé ». Reste à prouver le cycle complet du 23/08 : travail dans `travaux_ia_locaux` après 03:10, livré par le courrier après 06:30, rangé après 07:10 avec `costEur = 0`, `executor = local`, un résumé qui parle des vrais passages — puis l'écran `/places` à 375 px. Requêtes de vérification : `design/C2-ACTIVATION-ANALYSE-LIEUX.md` § 4, geste 3. | Cycle 03:10 → 07:10 du 23/08 | 22/08 |
+
+### Audit des restes et de la documentation — passage du 22/08 au soir
+
+**Fait** : chaque entrée du registre confrontée au code (D3 tranché sans objet ; D1, D2,
+D4, V3, V4 confirmés en attente), bandeaux d'état datés posés sur les documents
+historiques qui se présentaient comme courants (racine : `SUIVI-REFONTE.md`,
+`REFONTE-TRACKY-V2.md`, `REPRISE-A3.md`, `REPRISE-B-PAGES.md`, `TEST_PLAN.md`,
+`DEPLOY_AUDIT_V1.10.md`, `PERMISSIONS_AUDIT.md` ; et une douzaine sous `docs/`),
+`design/TOKENS.md` complété (règle `--tracky-light` jamais en fond, bornes de lavis
+bleu ≤ 12 % / violet ≤ 10 %, jetons `--texte-lime`/`--texte-orange`, garde à 168 couples),
+`design/C2-ACTIVATION-ANALYSE-LIEUX.md` daté (gestes 1-2 faits le 22/08, geste 3 dû le
+23/08 = V4), et les ~70 marqueurs « à faire » des `.md` classés fait / obsolète / encore dû.
+
+**Résultat consolidé** : **`ETAT-RESTE-A-FAIRE-2026-08-22.md`** à la racine — la synthèse
+priorisée de tout ce qui reste (décisions du propriétaire, vérifications datées, recette
+humaine, dette assumée, docs à trancher). C'est ce fichier qui fait foi sur « que
+reste-t-il ? » à cette date.
 
 ### Deux pièges du Planificateur de Windows — relevés le 22/08 au matin
 

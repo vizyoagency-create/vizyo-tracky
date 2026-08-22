@@ -1,5 +1,11 @@
 # Audit — Champ permissions sur User
 
+> ⚠️ **Historique — instantané du 2026-04-15** *(bandeau posé le 2026-08-22)*. Antérieur
+> à la refonte des permissions par périmètre (V1.11 phase 1, mai 2026 — cf.
+> `TEST_PLAN.md`). Les « questions ouvertes » du § 8 (enforcement backend des permissions
+> UI-only, duplication des défauts, `groups_manage` jamais lu) n'ont pas de trace de
+> décision — reprises dans `ETAT-RESTE-A-FAIRE-2026-08-22.md`.
+
 Date : 2026-04-15
 
 ---

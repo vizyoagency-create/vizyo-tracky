@@ -1,5 +1,9 @@
 # Phase 8 — Logs structurés & observabilité (cross-cutting)
 
+> ✅ **Historique — réalisé** *(bandeau posé le 2026-08-22)*. Le mode d'emploi de ce qui a
+> été livré est `docs/observability-guide.md`. Les cases non cochées ci-dessous datent du
+> plan, pas du résultat.
+
 **Objectif** : pouvoir diagnostiquer en moins de 2 minutes n'importe quel problème survenant pendant le bench 403C et la phase de tests réels — parsing qui échoue, commande qui ne part pas, ACK jamais reçu, tracker qui se déconnecte en boucle.
 
 **Durée estimée** : 1 jour, livré **en amont de Phase 5** (le bench en a besoin pour diagnostiquer vite).

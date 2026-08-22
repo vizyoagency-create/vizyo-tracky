@@ -5,7 +5,7 @@ Plateforme interne de gestion de flottes GPS. Monorepo Angular + NestJS + Postgr
 ## Stack
 
 - **API** : NestJS 11, Prisma 7 (`@prisma/adapter-pg`), PostgreSQL 16 + PostGIS, Redis, BullMQ, Socket.IO
-- **Web** : Angular 20 (standalone + signals), Tailwind 4, Leaflet
+- **Web** : Angular 20 (standalone + signals), Tailwind 4, MapLibre GL
 - **Shared** : types DTO + WS events partagés entre API et Web
 - **Infra** : Docker Compose (Postgres + Redis), Turborepo + pnpm workspaces
 

@@ -1,5 +1,10 @@
 # Reprise — Lot A3 : l'espace dépôt
 
+> ⚠️ **Historique — passation consommée** *(bandeau posé le 2026-08-22)*. A3 et A4 ont été
+> **livrés** (97/98 et 97/98 au tableau de bord de `REFONTE-TRACKY-V2.md`), le bloc B a
+> été débloqué le 2026-08-10, et la refonte est fusionnée dans `main` depuis le
+> 2026-08-16. Le prompt de démarrage ci-dessous ne doit plus être exécuté.
+
 > Document de passation, écrit le 2026-08-09 à la fin de la session qui a livré
 > l'Étape 0, A1, A2 et A5. **Tout ce qu'il faut pour reprendre sans relire 20 commits.**
 >
