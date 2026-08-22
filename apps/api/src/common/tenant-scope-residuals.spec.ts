@@ -77,7 +77,8 @@ describe('tenant-scope résiduels (fail-closed)', () => {
         trackerCommand: { findMany: jest.fn() },
         errorLog: { findMany: jest.fn(), count: jest.fn() },
       };
-      const ctrl = new AdminAlertsController(prisma as never);
+      const activity = { record: jest.fn() };
+      const ctrl = new AdminAlertsController(prisma as never, activity as never);
 
       const res = await ctrl.list({ user: denyUser } as never);
 
@@ -89,6 +90,8 @@ describe('tenant-scope résiduels (fail-closed)', () => {
         errorsPrev24h: 0,
         criticalLastHour: 0,
         errorsSinceLastVisit: null,
+        vueArchivage: 'actives',
+        errorsArchivees24h: 0,
       });
       expect(res.failing).toEqual([]);
       expect(res.offline).toEqual([]);
