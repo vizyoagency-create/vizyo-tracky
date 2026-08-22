@@ -110,9 +110,20 @@ export interface VpsWikiPrevisions {
   };
   recuperable: VpsWikiRecuperable[];
   /**
-   * FACULTATIF : l'API ne le construit pas encore. Le declarer obligatoire faisait croire au
-   * compilateur — et au gabarit — qu'il serait toujours la, d'ou un TypeError qui eteignait
-   * toute la page (releve au centre d'alerte le 2026-08-19).
+   * FACULTATIF, et la raison n'est pas celle qu'on croit.
+   *
+   * ⚠️ RECTIFICATION DU 2026-08-20 : ce commentaire disait « l'API ne le construit pas encore ».
+   * C'est FAUX, et l'explication envoyait chercher au mauvais endroit. L'API ne construit RIEN
+   * ici — elle sert le manifeste `docs/vps-audit/app/wiki.json` ecrit par l'agent d'audit VPS.
+   * Or ce champ y a ete present a CHAQUE passage du 11/08 au 17/08 ; l'agent a cesse de l'ecrire
+   * a partir de l'audit du 18/08, et l'ecran est tombe le 19/08 a 10:32. Rien n'etait « pas
+   * encore construit » : quelque chose a ete PERDU.
+   *
+   * Le declarer obligatoire faisait croire au compilateur — et au gabarit — qu'il serait toujours
+   * la, d'ou un TypeError qui eteignait toute la page. La cause de fond est que la valeur vient
+   * d'un JSON analyse SANS VALIDATION : un type pose sur une donnee externe non validee n'est pas
+   * une garantie, c'est une promesse que le compilateur n'a aucun moyen de tenir. Toute cle
+   * ajoutee ici doit donc etre facultative ET gardee au gabarit.
    */
   chargeDeFond?: {
     processusParMinute: number;
