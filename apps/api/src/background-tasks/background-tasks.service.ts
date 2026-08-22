@@ -180,6 +180,15 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
+    id: 'recensement-suppressions',
+    source: 'observability/recensement-suppressions.service.ts',
+    label: 'Recensement des disparitions de lignes', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour a 03:15', criticality: 'haute', antiOverlap: false,
+    note: "Nee de TRK-035 : 41 709 alertes puis des lignes d'erreur effacees hors application, sans aucune trace. Passe APRES la purge de 03:00 pour que la disparition attendue soit deja faite et deduite.",
+    purpose: "Releve le nombre de lignes et la borne basse des tables surveillees, et signale toute disparition que la retention n'explique pas. C'est le seul instrument qui distingue « purge normale » de « quelqu'un a vide la table ».",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 15 },
+  },
+  {
     id: 'mission-share-purge',
     source: 'depot/mission-share-purge.service.ts', label: 'Purge des liens de partage expirés', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 04:15', criticality: 'basse', antiOverlap: true,
