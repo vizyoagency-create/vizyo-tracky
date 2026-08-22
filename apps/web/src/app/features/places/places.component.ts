@@ -518,30 +518,32 @@ type OngletPlaces = 'valider' | 'valides' | 'zones';
     .lk-fact b { color: var(--fg-primary); font-weight: 600; }
     .lk-chips { display: flex; flex-wrap: wrap; gap: 5px; }
     .lk-chip { padding: 2px 9px; border-radius: 999px; font-size: 11px; background: color-mix(in srgb, var(--fg-tertiary) 15%, transparent); color: var(--fg-secondary); }
-    .lk-chip--svc { background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--tracky-light); }
-    .lk-chip--fuel { background: color-mix(in srgb, #A78BFA 20%, transparent); color: #A78BFA; }
+    /* Texte sur lavis accent : --texte-succes, comme .pl-av--pret et .lk-btn--ok
+       ci-dessus — le vert de marque tombe a ~2,8:1 en clair sur ces teintes. */
+    .lk-chip--svc { background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--texte-succes); }
+    .lk-chip--fuel { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); }
     .lk-facts-src { margin: 0; font-size: 10.5px; color: var(--fg-tertiary); font-style: italic; }
     .lk-facts-empty { margin: 0; font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; }
     .lk-vehicles { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-    .lk-veh { padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, #A78BFA 14%, transparent); color: var(--fg-secondary); font-size: 11px; }
+    .lk-veh { padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--fg-secondary); font-size: 11px; }
     .lk-veh b { color: var(--fg-primary); font-weight: 700; }
     .lk-kind { padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); color: var(--fg-secondary); flex-shrink: 0; }
-    .lk-kind[data-k='FUEL_STATION'] { background: color-mix(in srgb, #A78BFA 22%, transparent); color: #A78BFA; }
+    .lk-kind[data-k='FUEL_STATION'] { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); }
     .lk-kind[data-k='PARKING'] { background: color-mix(in srgb, #0ea5e9 22%, transparent); color: #0ea5e9; }
-    .lk-kind[data-k='DEPOT'] { background: color-mix(in srgb, var(--tracky-light) 22%, transparent); color: var(--tracky-light); }
+    .lk-kind[data-k='DEPOT'] { background: color-mix(in srgb, var(--tracky-light) 22%, transparent); color: var(--texte-succes); }
     .lk-badge { padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
-    .lk-badge--ok { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); color: var(--tracky-light); }
+    .lk-badge--ok { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); color: var(--texte-succes); }
     .lk-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--border-strong); background: transparent; color: var(--fg-secondary); font-size: 11.5px; font-weight: 600; cursor: pointer; }
     .lk-btn:disabled { opacity: .5; cursor: wait; }
     /* Le libelle prend --texte-succes (3,24:1 avec le vert de marque) ; la BORDURE
        garde --tracky-light, ce n'est pas du texte. Meme partage que .tab.active. */
     .lk-btn--ok { border-color: color-mix(in srgb, var(--tracky-light) 45%, var(--border-strong)); color: var(--texte-succes); }
-    .lk-btn--danger { border-color: color-mix(in srgb, #ef4444 40%, var(--border-strong)); color: var(--danger); }
+    .lk-btn--danger { border-color: color-mix(in srgb, var(--danger) 40%, var(--border-strong)); color: var(--texte-alerte); }
     /* Analyse IA — teinte violette, la même que les autres surfaces IA de l'app. */
-    .lk-btn--ai { border-color: color-mix(in srgb, #A78BFA 45%, var(--border-strong)); color: #A78BFA; }
-    .lk-ai { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, #A78BFA 22%, var(--border-subtle)); background: color-mix(in srgb, #A78BFA 6%, transparent); }
+    .lk-btn--ai { border-color: color-mix(in srgb, var(--violet) 45%, var(--border-strong)); color: var(--texte-violet); }
+    .lk-ai { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--violet) 22%, var(--border-subtle)); background: color-mix(in srgb, var(--violet) 6%, transparent); }
     .lk-ai-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .lk-ai-title { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: #A78BFA; }
+    .lk-ai-title { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--texte-violet); }
     .lk-ai-summary { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--fg-primary); }
     .lk-ai-list { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45; }
     .lk-ai-reco { display: flex; flex-direction: column; gap: 4px; }

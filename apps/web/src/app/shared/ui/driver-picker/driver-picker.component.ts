@@ -89,8 +89,10 @@ import { DriversApiService } from '../../../core/services/drivers.service';
                          bg-transparent hover:bg-bg-tertiary transition-colors cursor-pointer
                          border border-transparent hover:border-border-subtle"
                   [class.dp-row--current]="d.id === currentDriverId()">
+                  <!-- Repli sur le vert FONCE : les initiales sont blanches, et le
+                       blanc mesure 3,4:1 (clair) / 1,9:1 (sombre) sur l'accent plein. -->
                   <span class="dp-avatar"
-                        [style.background]="d.color ?? 'var(--color-tracky-light)'">
+                        [style.background]="d.color ?? 'var(--color-tracky-dark)'">
                     {{ initials(d) }}
                   </span>
                   <span class="flex-1 min-w-0">

@@ -66,6 +66,8 @@ const ASSOMBRISSEMENT = {
   '--texte-info': ['--blue', 1],
   '--texte-violet': ['--violet', 1],
   '--texte-inactif': ['--text-secondary', 1],
+  '--texte-lime': ['--lime', 0.55],
+  '--texte-orange': ['--orange', 0.66],
 };
 
 /** Résout un jeton `--texte-*` dans un thème donné. */
@@ -317,6 +319,52 @@ function couplesTracabilite(t, nomTheme) {
   ];
 }
 
+/**
+ * Chantier « littéraux hors famille verte » (2026-08-22) — les notes de conduite A→E
+ * et les chips ambre / rouge / violet / bleu qui écrivaient leur couleur en dur
+ * (#F59E0B, #EF4444, #A78BFA, #60A5FA…) comme couleur de TEXTE : 1,8 à 3,4:1 en
+ * thème clair. Le motif appliqué est celui du badge éco de l'analyse de trajet :
+ * lavis en color-mix de la couleur de BASE du thème, texte en jeton `--texte-*`.
+ *
+ * Bornes mesurées (pire des trois surfaces claires) : les familles succès, alerte,
+ * attente, lime et orange tiennent 4,5:1 jusqu'à un lavis de 18 % ; le BLEU ne
+ * tient que jusqu'à 12 % et le VIOLET jusqu'à 10 %. C'est pourquoi les chips info
+ * et violet du dépôt sont redescendues à ces lavis-là — éclaircir un des deux
+ * jetons ou remonter un lavis fera échouer la ligne correspondante ici.
+ */
+function couplesNotes(t, nomTheme) {
+  const surfaces = [t['--surface-secondary'], t['--surface-primary'], t['--surface-tertiary']].filter(Boolean);
+  const couple = (libelle, jeton, base, part) => {
+    const couleur = texte(t, nomTheme, jeton);
+    // Le pire des trois fonds : le lavis se compose sur chacun, on garde le plus faible.
+    const pire = surfaces
+      .map((s) => melange(t[base], s, part))
+      .reduce((a, b) => (ratio(couleur, a) <= ratio(couleur, b) ? a : b));
+    return [libelle, couleur, pire];
+  };
+  return [
+    couple('note A (succès sur lavis accent 18 %)', '--texte-succes', '--color-tracky-light', 0.18),
+    couple('note B (lime sur lavis 18 %)', '--texte-lime', '--lime', 0.18),
+    couple('note C (attente sur lavis 18 %)', '--texte-attente', '--warning', 0.18),
+    couple('note D (orange sur lavis 18 %)', '--texte-orange', '--orange', 0.18),
+    couple('note E (alerte sur lavis 18 %)', '--texte-alerte', '--danger', 0.18),
+    couple('chip d\'analyse « éco moyen » (attente sur lavis 16 %)', '--texte-attente', '--warning', 0.16),
+    couple('chip de fiabilité (info sur lavis 12 %)', '--texte-info', '--blue', 0.12),
+    couple('chip carburant IA (violet sur lavis 10 %)', '--texte-violet', '--violet', 0.10),
+    couple('statut « refusée » des rendez-vous (alerte sur lavis 15 %)', '--texte-alerte', '--danger', 0.15),
+    // Les pilules d'agenda fabriquent leur lavis depuis le JETON lui-même
+    // (color-mix sur var(--u) / var(--pill)) : à 14 % le pire couple (alerte)
+    // rend 4,58:1 — c'est pour cela que ces lavis sont à 14 et pas 16.
+    ...['--texte-alerte', '--texte-attente', '--texte-succes'].map((jeton) => {
+      const couleur = texte(t, nomTheme, jeton);
+      const pire = surfaces
+        .map((s) => melange(couleur, s, 0.14))
+        .reduce((a, b) => (ratio(couleur, a) <= ratio(couleur, b) ? a : b));
+      return [`pilule d'agenda (${jeton} sur sa teinte 14 %)`, couleur, pire];
+    }),
+  ];
+}
+
 const SECTIONS = [
   ['Espace dépôt', couplesDepot],
   ['Badge de présence', couplesBadge],
@@ -326,6 +374,7 @@ const SECTIONS = [
   ['Négociation (A6)', couplesNegociation],
   ['Traçabilité des tournées (A6)', couplesTracabilite],
   ['Grille tarifaire (A6)', couplesTarifs],
+  ['Notes de conduite et chips hors famille verte', couplesNotes],
 ];
 
 let echecs = 0;

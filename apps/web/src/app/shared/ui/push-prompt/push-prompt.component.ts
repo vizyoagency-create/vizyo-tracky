@@ -129,8 +129,10 @@ const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surpre
     }
     .prompt-cta {
       padding: 8px 14px; border-radius: 10px; border: none;
+      /* Ecart 2 (B0-SOCLE) : sur un fond accent l'encre est FONCEE. --bg-primary
+         vaut quasi-blanc en theme clair, soit 3,4:1 sur le vert. */
       background: var(--tracky-light);
-      color: var(--bg-primary);
+      color: var(--accent-ink);
       font-size: 12px; font-weight: 700; cursor: pointer;
       transition: transform 80ms, opacity 80ms, filter 120ms;
     }

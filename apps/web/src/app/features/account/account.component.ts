@@ -472,7 +472,9 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     .btn-link {
       background: transparent;
       border: none;
-      color: var(--tracky-light, #10E0A0);
+      /* Lien-texte de 12 px : --texte-succes (le vert de marque rend 3,43:1 en
+         clair). Le repli en dur saute : la variable est toujours definie. */
+      color: var(--texte-succes);
       font-size: 12px;
       cursor: pointer;
       display: inline-flex;
@@ -505,9 +507,9 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       padding: 2px 6px;
       border-radius: 6px;
     }
-    .status--pending { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #f59e0b; }
-    .status--ok { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); color: var(--tracky-light, #10E0A0); }
-    .status--expired { background: color-mix(in srgb, #ef4444 14%, transparent); color: #ef4444; }
+    .status--pending { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--texte-attente); }
+    .status--ok { background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--texte-succes); }
+    .status--expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
     .status--revoked { background: var(--bg-tertiary); color: var(--fg-tertiary); }
     .info-box {
       display: flex;

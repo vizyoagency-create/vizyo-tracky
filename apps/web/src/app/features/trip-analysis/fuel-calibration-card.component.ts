@@ -133,13 +133,13 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .fcal { display: flex; flex-direction: column; gap: 11px; padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
     .fcal-head { display: flex; align-items: center; justify-content: space-between; }
     .fcal-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
-    .fcal-title lucide-icon { color: #F59E0B; }
+    .fcal-title lucide-icon { color: var(--warning); }
     .fcal-conf { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--bg-tertiary); color: var(--fg-tertiary); }
-    .fcal-conf[data-conf="low"] { background: color-mix(in srgb,#F59E0B 15%,transparent); color: #F59E0B; }
-    .fcal-conf[data-conf="medium"] { background: color-mix(in srgb,#84CC16 15%,transparent); color: #84CC16; }
-    .fcal-conf[data-conf="high"] { background: color-mix(in srgb,#10E0A0 16%,transparent); color: #10E0A0; }
+    .fcal-conf[data-conf="low"] { background: color-mix(in srgb,var(--warning) 15%,transparent); color: var(--texte-attente); }
+    .fcal-conf[data-conf="medium"] { background: color-mix(in srgb,var(--lime) 15%,transparent); color: var(--texte-lime); }
+    .fcal-conf[data-conf="high"] { background: color-mix(in srgb,var(--tracky-light) 16%,transparent); color: var(--texte-succes); }
     .fcal-loading { display: flex; justify-content: center; padding: 16px; }
-    .fcal-spin { width: 22px; height: 22px; border: 3px solid var(--border-subtle); border-top-color: #F59E0B; border-radius: 50%; animation: fcal-rot .8s linear infinite; }
+    .fcal-spin { width: 22px; height: 22px; border: 3px solid var(--border-subtle); border-top-color: var(--warning); border-radius: 50%; animation: fcal-rot .8s linear infinite; }
     .fcal-spin--sm { width: 13px; height: 13px; border-width: 2px; }
     @keyframes fcal-rot { to { transform: rotate(360deg); } }
     .fcal-cons { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 6px 0; }
@@ -149,43 +149,43 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .fcal-cons-l { font-size: 11px; color: var(--fg-tertiary); margin-top: 3px; }
     .fcal-cons-l small { opacity: .8; }
     .fcal-cons-arrow { color: var(--fg-tertiary); font-size: 18px; }
-    .fcal-cons-col--real .fcal-cons-n { color: #10E0A0; }
+    .fcal-cons-col--real .fcal-cons-n { color: var(--texte-succes); }
     .fcal-cons-col--pending .fcal-cons-n { color: var(--fg-tertiary); }
     .fcal-delta { margin: 0; font-size: 12px; line-height: 1.45; padding: 8px 11px; border-radius: 10px; }
-    .fcal-delta[data-sign="up"] { background: color-mix(in srgb,#F59E0B 10%,transparent); color: #B45309; }
-    .fcal-delta[data-sign="down"] { background: color-mix(in srgb,#10E0A0 10%,transparent); color: #047857; }
-    :host-context(:root[data-theme="dark"]) .fcal-delta[data-sign="up"] { color: #FBBF24; }
-    :host-context(:root[data-theme="dark"]) .fcal-delta[data-sign="down"] { color: #10E0A0; }
+    /* Les jetons --texte-* suivent le theme d'eux-memes : les surcharges
+       :host-context sombres qui figeaient #FBBF24 et #10E0A0 sont devenues inutiles. */
+    .fcal-delta[data-sign="up"] { background: color-mix(in srgb,var(--warning) 10%,transparent); color: var(--texte-attente); }
+    .fcal-delta[data-sign="down"] { background: color-mix(in srgb,var(--tracky-light) 10%,transparent); color: var(--texte-succes); }
     .fcal-hint { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-tertiary); padding: 8px 11px; border-radius: 10px; background: var(--bg-tertiary); }
     .fcal-cost { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--fg-secondary); }
     .fcal-cost span { display: inline-flex; align-items: center; gap: 5px; }
-    .fcal-cost lucide-icon { color: #F59E0B; }
+    .fcal-cost lucide-icon { color: var(--warning); }
     .fcal-cost strong { font-size: 15px; font-weight: 800; color: var(--fg-primary); }
-    .fcal-cost--real strong { color: #10E0A0; }
-    .fcal-cost--real lucide-icon { color: #10E0A0; }
-    .fcal-add { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 10px; font-size: 12.5px; font-weight: 700; color: #F59E0B; background: color-mix(in srgb,#F59E0B 8%,transparent); border: 1px dashed color-mix(in srgb,#F59E0B 35%,transparent); cursor: pointer; }
-    .fcal-add:hover { background: color-mix(in srgb,#F59E0B 14%,transparent); }
+    .fcal-cost--real strong { color: var(--texte-succes); }
+    .fcal-cost--real lucide-icon { color: var(--texte-succes); }
+    .fcal-add { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 10px; font-size: 12.5px; font-weight: 700; color: var(--texte-attente); background: color-mix(in srgb,var(--warning) 8%,transparent); border: 1px dashed color-mix(in srgb,var(--warning) 35%,transparent); cursor: pointer; }
+    .fcal-add:hover { background: color-mix(in srgb,var(--warning) 14%,transparent); }
     .fcal-form { display: flex; flex-direction: column; gap: 8px; padding: 11px; border-radius: 11px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .fcal-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .fcal-form label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); }
     .fcal-form input[type=date], .fcal-form input[type=number] { padding: 7px 9px; border-radius: 8px; border: 1.5px solid var(--border-subtle); background: var(--bg-secondary); color: var(--fg-primary); font-size: 13px; font-family: inherit; }
     .fcal-form-check { flex-direction: row !important; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-secondary); }
     .fcal-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
-    .fcal-btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 800; cursor: pointer; background: #F59E0B; color: #1c1207; border: none; }
+    .fcal-btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 800; cursor: pointer; background: var(--warning); color: #1c1207; border: none; }
     .fcal-btn:disabled { opacity: .6; }
     .fcal-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
-    .fcal-err { margin: 0; font-size: 11.5px; color: #EF4444; }
+    .fcal-err { margin: 0; font-size: 11.5px; color: var(--texte-alerte); }
     .fcal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
     .fcal-fill { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 9px; background: var(--bg-tertiary); }
     .fcal-fill-main { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
     .fcal-fill-date { font-weight: 700; color: var(--fg-secondary); }
     .fcal-fill-liters { font-weight: 800; color: var(--fg-primary); }
     .fcal-fill-amount { color: var(--fg-tertiary); }
-    .fcal-fill-partial { font-size: 10px; font-weight: 700; color: #F59E0B; }
+    .fcal-fill-partial { font-size: 10px; font-weight: 700; color: var(--texte-attente); }
     .fcal-fill-sub { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--fg-tertiary); }
-    .fcal-fill-cons { color: #10E0A0; font-weight: 700; }
+    .fcal-fill-cons { color: var(--texte-succes); font-weight: 700; }
     .fcal-del { color: var(--fg-tertiary); padding: 2px; cursor: pointer; }
-    .fcal-del:hover { color: #EF4444; }
+    .fcal-del:hover { color: var(--texte-alerte); }
     .fcal-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); }
   `],
 })

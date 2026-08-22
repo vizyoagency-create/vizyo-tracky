@@ -188,8 +188,9 @@ type DetecteurCode = {
         width: 40px;
         height: 40px;
         border-radius: 50%;
+        /* Coche sur son propre lavis : le vert de marque tombe a ~2,9:1 en clair. */
         background: color-mix(in srgb, var(--tracky-light) 18%, transparent);
-        color: var(--tracky-light);
+        color: var(--texte-succes);
         font-size: 20px;
       }
 

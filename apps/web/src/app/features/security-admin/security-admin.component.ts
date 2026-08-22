@@ -118,7 +118,8 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
       .sa-row-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .sa-name { font-size: 13px; font-weight: 700; color: var(--fg-primary); }
       .sa-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 999px; background: var(--bg-tertiary); color: var(--fg-tertiary); }
-      .sa-badge.on { background: color-mix(in srgb, var(--tracky-light) 15%, transparent); color: var(--tracky-light); }
+      /* Texte sur lavis accent : --texte-succes, le vert de marque rend ~2,9:1 en clair. */
+      .sa-badge.on { background: color-mix(in srgb, var(--tracky-light) 15%, transparent); color: var(--texte-succes); }
       .sa-row-sub { display: flex; align-items: center; gap: 10px; margin-top: 5px; font-size: 11px; color: var(--fg-tertiary); flex-wrap: wrap; }
       .sa-loc { display: inline-flex; align-items: center; gap: 3px; }
       .sa-count { margin-left: auto; }

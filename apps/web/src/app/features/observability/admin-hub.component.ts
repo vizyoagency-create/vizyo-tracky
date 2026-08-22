@@ -499,7 +499,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
       background: rgba(16,224,160,.06); border: 1px solid rgba(16,224,160,.12);
       color: var(--tracky-light);
     }
-    .pulse-warn { background: rgba(239,68,68,.06); border-color: rgba(239,68,68,.15); color: #f87171; }
+    .pulse-warn { background: color-mix(in srgb, var(--danger) 6%, transparent); border-color: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--texte-alerte); }
     .pulse-dot {
       width: 7px; height: 7px; border-radius: 50%; background: currentColor;
       animation: pd 2s ease-in-out infinite;
@@ -632,16 +632,16 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .ico-lg { width: 52px; height: 52px; border-radius: 14px; }
     .card:hover .ico { transform: scale(1.08) rotate(-4deg); }
 
-    .ico-red    { background: rgba(239,68,68,.1);  color: #f87171; }
+    .ico-red    { background: color-mix(in srgb, var(--danger) 10%, transparent);  color: var(--danger); }
     .ico-green  { background: rgba(16,224,160,.1); color: var(--tracky-light); }
-    .ico-blue   { background: rgba(59,130,246,.1); color: #60a5fa; }
+    .ico-blue   { background: color-mix(in srgb, var(--blue) 10%, transparent); color: var(--blue); }
     .ico-indigo { background: rgba(99,102,241,.1); color: #818cf8; }
     .ico-purple { background: rgba(168,85,247,.1); color: #c084fc; }
     .ico-cyan   { background: rgba(6,182,212,.1);  color: #22d3ee; }
-    .ico-amber  { background: rgba(245,158,11,.1); color: #fbbf24; }
+    .ico-amber  { background: color-mix(in srgb, var(--warning) 10%, transparent); color: var(--warning); }
     .ico-teal   { background: rgba(20,184,166,.1); color: #2dd4bf; }
     .ico-rose   { background: rgba(244,63,94,.1);  color: #fb7185; }
-    .ico-violet { background: rgba(139,92,246,.1); color: #a78bfa; }
+    .ico-violet { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--violet); }
 
     /* ── HERO BG ── */
     .card-bg-hero {
@@ -672,7 +672,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
       font-size: 24px; font-weight: 800; line-height: 1;
       color: var(--fg-primary);
     }
-    .kpi-hot .kpi-n { color: #f87171; }
+    .kpi-hot .kpi-n { color: var(--texte-alerte); }
     .kpi-l {
       font-size: 9px; text-transform: uppercase; letter-spacing: .6px;
       color: var(--fg-tertiary); margin-top: 4px; font-weight: 600;

@@ -332,12 +332,12 @@ const STATUT_STYLE: Record<string, string> = {
   styles: [
     `
       .empty { display: flex; align-items: center; gap: 8px; justify-content: center; padding: 28px; color: var(--fg-tertiary); font-size: 13px; }
-      .empty.err { color: #f87171; }
+      .empty.err { color: var(--texte-alerte); }
 
       .banner { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
       .banner .mode { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px; white-space: nowrap; }
       .mode.dry { background: rgba(16, 224, 160, .12); color: var(--tracky-light); }
-      .mode.real { background: rgba(248, 113, 113, .13); color: #f87171; }
+      .mode.real { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--texte-alerte); }
       .banner .cfg { flex: 1; min-width: 220px; }
       .banner .verdict { font-size: 13px; color: var(--fg-secondary); line-height: 1.5; }
       .banner .when { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap; }
@@ -374,10 +374,10 @@ const STATUT_STYLE: Record<string, string> = {
       .tbl code { font-size: 11.5px; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
       .fname { color: var(--fg-primary); font-weight: 500; }
       .gain-total { color: var(--tracky-light); font-size: 14px; }
-      .red { color: #f87171; font-weight: 600; }
+      .red { color: var(--texte-alerte); font-weight: 600; }
       .small { font-size: 11.5px; }
       .fond { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 11px 13px; border-radius: 11px; background: var(--bg-tertiary); font-size: 12.5px; color: var(--fg-secondary); line-height: 1.55; }
-      .fond lucide-icon { color: #fbbf24; flex-shrink: 0; margin-top: 2px; }
+      .fond lucide-icon { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
 
       /* ── Ordonnancement ── */
       .ordo { display: flex; flex-direction: column; gap: 8px; }
@@ -390,12 +390,12 @@ const STATUT_STYLE: Record<string, string> = {
       .op .ligne1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
       .op .couche { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 1.5px 7px; border-radius: 999px; background: var(--bg-secondary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
       .op.c-vps .couche { color: #38bdf8; border-color: rgba(14,165,233,.35); }
-      .op.c-poste .couche { color: #a78bfa; border-color: rgba(139,92,246,.35); }
+      .op.c-poste .couche { color: var(--texte-violet); border-color: color-mix(in srgb, var(--violet) 35%, transparent); }
       .op .quoi { font-size: 13px; color: var(--fg-primary); font-weight: 500; }
       .op .ligne2 { margin-top: 3px; font-size: 11.5px; color: var(--fg-tertiary); }
       .op .note { margin: 5px 0 0; font-size: 12px; color: var(--fg-secondary); line-height: 1.5; }
       .c-vps { color: #38bdf8; }
-      .c-poste { color: #a78bfa; }
+      .c-poste { color: var(--texte-violet); }
 
       .filtres { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
       .chip { font-size: 12px; padding: 4px 11px; border-radius: 999px; cursor: pointer; background: var(--bg-tertiary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
@@ -419,7 +419,7 @@ const STATUT_STYLE: Record<string, string> = {
       .constat dd { margin: 0; font-size: 13px; color: var(--fg-secondary); line-height: 1.5; }
       .constat dd.action { color: var(--fg-primary); }
       .constat dd.gain { color: var(--tracky-light); font-weight: 500; }
-      .constat dd.danger-txt { color: #fbbf24; }
+      .constat dd.danger-txt { color: var(--texte-attente); }
 
       .split { display: grid; grid-template-columns: 258px 1fr; gap: 16px; min-height: 320px; }
       .split aside { border-right: 1px solid var(--border-subtle); padding-right: 14px; max-height: 620px; overflow-y: auto; }

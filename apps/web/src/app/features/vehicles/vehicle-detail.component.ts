@@ -270,7 +270,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                 } @else { — }
               } @else if (connectivity() === 'GPS_LOST') {
                 <!-- Incident FS-253 — GPS perdu : la vitesse est FIGÉE, on ne l'affiche PAS comme du live. -->
-                <span class="vdx-stat-v--sm" style="color:#ef4444;font-weight:700">GPS perdu</span>
+                <span class="vdx-stat-v--sm" style="color:var(--texte-alerte);font-weight:700">GPS perdu</span>
               } @else if (currentPosition(); as pos) {
                 {{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span>
               } @else { — }
@@ -1291,8 +1291,9 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-dz-now strong, .vd-dz-item-title strong { color: var(--fg-primary); }
     .vd-dz-item-title strong { font-size: 13px; font-weight: 600; }
     .vd-dz-badge { padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; background: color-mix(in srgb, var(--fg-tertiary) 18%, transparent); color: var(--fg-secondary); }
-    .vd-dz-badge[data-s='CONFIRMED_BENIGN'] { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); color: var(--tracky-light); }
-    .vd-dz-badge[data-s='SUSPECT'] { background: rgba(239,68,68,.16); color: var(--danger); }
+    /* Texte sur lavis accent : --texte-succes, le vert de marque rend ~2,8:1 en clair. */
+    .vd-dz-badge[data-s='CONFIRMED_BENIGN'] { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); color: var(--texte-succes); }
+    .vd-dz-badge[data-s='SUSPECT'] { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); }
     .vd-dz-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--fg-tertiary); font-size: 11px; }
     .vd-dz-note { color: var(--fg-secondary); font-size: 11px; font-style: italic; }
     /* La ligne qui dit que tout va bien : verte, discrete, jamais alarmante. Elle
@@ -1303,8 +1304,8 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-dz-actions { display: flex; gap: 6px; flex-wrap: wrap; }
     .vd-dz-btn { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--fg-secondary); font-size: 11px; font-weight: 600; cursor: pointer; }
     .vd-dz-btn:disabled { opacity: .5; cursor: wait; }
-    .vd-dz-btn--ok { border-color: color-mix(in srgb, var(--tracky-light) 45%, var(--border-strong)); color: var(--tracky-light); }
-    .vd-dz-btn--warn { border-color: color-mix(in srgb, #ef4444 40%, var(--border-strong)); color: var(--danger); }
+    .vd-dz-btn--ok { border-color: color-mix(in srgb, var(--tracky-light) 45%, var(--border-strong)); color: var(--texte-succes); }
+    .vd-dz-btn--warn { border-color: color-mix(in srgb, var(--danger) 40%, var(--border-strong)); color: var(--texte-alerte); }
 
     /* Ancienne stats-bar → remplacée par .vdx-stats (haut du fichier). Styles copie IMEI conservés : */
     .vd-stat-copy-icon { opacity: .5; color: var(--fg-tertiary); transition: opacity .15s, color .15s }

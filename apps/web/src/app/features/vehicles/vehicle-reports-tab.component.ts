@@ -566,7 +566,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
       outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
       outline-offset: 1px; border-color: var(--tracky-light, #10E0A0);
     }
-    .vrt-custom-error { font-size: 11px; color: #f87171; margin: 0; }
+    .vrt-custom-error { font-size: 11px; color: var(--texte-alerte); margin: 0; }
     .vrt-custom-actions {
       display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px;
     }
@@ -777,7 +777,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
       font-weight: 700;
       color: var(--fg-primary);
     }
-    .vrt-trip-stat-value--max { color: #f59e0b; }
+    .vrt-trip-stat-value--max { color: var(--texte-attente); }
 
     .vrt-trip-footer {
       display: flex;

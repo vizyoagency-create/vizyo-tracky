@@ -144,7 +144,9 @@ interface RowEdit {
   styles: [`
     .sb { max-width: 1080px; margin: 0 auto; padding: 20px 16px 60px; color: var(--fg-primary, #EAEFED); }
     .sb-head { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; justify-content:space-between; margin-bottom:18px; }
-    .sb-title { display:flex; align-items:center; gap:9px; font-size:20px; font-weight:800; margin:0; color:var(--tracky-light,#3EEBB8); }
+    /* Convention du kit (styles.css) : un libelle prend un jeton --texte-*, jamais
+       la couleur de marque — le vert plein rendait 3,43:1 en theme clair. */
+    .sb-title { display:flex; align-items:center; gap:9px; font-size:20px; font-weight:800; margin:0; color:var(--texte-succes); }
     .sb-title lucide-icon { color: var(--tracky,#10E0A0); }
     .sb-sub { margin:4px 0 0; font-size:12.5px; color:var(--fg-tertiary,#9BA5A1); }
     .sb-tabs { display:flex; gap:6px; background:var(--bg-secondary,#101514); border:1px solid var(--border-subtle,rgba(255,255,255,.1)); border-radius:11px; padding:4px; }
@@ -153,15 +155,15 @@ interface RowEdit {
     .sb-load { display:flex; justify-content:center; padding:60px; color:var(--tracky,#10E0A0); }
     .spin { animation:sb-spin 1s linear infinite; } @keyframes sb-spin { to { transform:rotate(360deg); } }
     .sb-total { padding:11px 14px; border-radius:11px; background:var(--bg-secondary,#101514); border:1px solid var(--border-subtle,rgba(255,255,255,.08)); font-size:13px; color:var(--fg-secondary,#C7CFCB); margin-bottom:14px; }
-    .sb-total strong { color:var(--tracky-light,#3EEBB8); }
+    .sb-total strong { color:var(--texte-succes); }
     .sb-row { border:1px solid var(--border-subtle,rgba(255,255,255,.08)); border-radius:13px; background:var(--bg-secondary,#101514); padding:13px 15px; margin-bottom:10px; }
     .sb-row--off { opacity:.85; }
     .sb-fleet { display:flex; align-items:center; gap:9px; margin-bottom:8px; }
     .sb-fleet-ic { color:var(--fg-tertiary,#69736E); }
     .sb-fleet-name { font-weight:700; font-size:14.5px; }
     .sb-fleet-meta { font-size:12px; color:var(--fg-tertiary,#9BA5A1); }
-    .sb-fleet-meta strong { color:var(--tracky-light,#3EEBB8); }
-    .sb-comp { display:inline-flex; align-items:center; gap:4px; margin-left:auto; font-size:11px; font-weight:700; color:#F5B33D; border:1px solid rgba(245,179,61,.35); border-radius:7px; padding:3px 8px; }
+    .sb-fleet-meta strong { color:var(--texte-succes); }
+    .sb-comp { display:inline-flex; align-items:center; gap:4px; margin-left:auto; font-size:11px; font-weight:700; color:var(--texte-attente); border:1px solid color-mix(in srgb, var(--warning) 35%, transparent); border-radius:7px; padding:3px 8px; }
     .sb-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
     .sb-controls label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--fg-tertiary,#9BA5A1); font-weight:600; }
     .sb-controls select, .sb-controls input[type=number], .sb-controls input[type=text] { background:var(--bg-tertiary,#161D1B); border:1px solid var(--border-subtle,rgba(255,255,255,.14)); border-radius:9px; color:var(--fg-primary,#EAEFED); padding:8px 9px; font-size:13px; min-width:110px; }
@@ -170,7 +172,7 @@ interface RowEdit {
     .sb-check { flex-direction:row !important; align-items:center; gap:6px !important; font-size:12.5px !important; color:var(--fg-secondary,#C7CFCB) !important; padding-bottom:9px; }
     .sb-check input { width:16px; height:16px; accent-color:var(--tracky,#10E0A0); }
     .sb-check--amber input { accent-color:#F5B33D; }
-    .sb-incl { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--tracky-light,#3EEBB8); padding-bottom:9px; }
+    .sb-incl { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--texte-succes); padding-bottom:9px; }
     .sb-save { display:inline-flex; align-items:center; gap:6px; padding:9px 14px; border-radius:10px; border:none; background:var(--tracky,#10E0A0); color:#04130D; font-size:13px; font-weight:700; cursor:pointer; }
     .sb-save:disabled { opacity:.6; }
     .sb-save--big { margin-top:14px; padding:12px 18px; }
@@ -178,7 +180,7 @@ interface RowEdit {
     .sb-grid-note { padding:11px 14px; border-radius:11px; background:rgba(16,224,160,.06); border:1px solid rgba(16,224,160,.25); font-size:12.5px; color:var(--fg-secondary,#C7CFCB); margin-bottom:14px; }
     .sb-gcards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
     .sb-gcard { border:1px solid var(--border-subtle,rgba(255,255,255,.08)); border-radius:13px; background:var(--bg-secondary,#101514); padding:14px; display:flex; flex-direction:column; gap:9px; }
-    .sb-gcard-t { font-weight:700; font-size:13.5px; color:var(--tracky-light,#3EEBB8); }
+    .sb-gcard-t { font-weight:700; font-size:13.5px; color:var(--texte-succes); }
     .sb-gcard label { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:var(--fg-tertiary,#9BA5A1); }
     .sb-gcard input { width:90px; background:var(--bg-tertiary,#161D1B); border:1px solid var(--border-subtle,rgba(255,255,255,.14)); border-radius:8px; color:var(--fg-primary,#EAEFED); padding:7px 8px; font-size:13px; }
   `],

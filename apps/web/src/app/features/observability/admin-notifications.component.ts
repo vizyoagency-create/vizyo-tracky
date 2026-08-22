@@ -1006,7 +1006,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
 
     .nc-refresh { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer; }
     .nc-refresh:disabled { opacity: .6; }
-    .nc-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: rgba(239,68,68,.1); color: #EF4444; font-size: 13px; }
+    .nc-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); font-size: 13px; }
 
     /* ── Bandeau de santé ── */
     .nc-health { padding: 18px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 14px; position: relative; overflow: hidden; }
@@ -1021,7 +1021,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     @keyframes nc-beat { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--tone) 0%, transparent); } }
     .nc-health-txt h2 { font-family: var(--font-display, Manrope, sans-serif); font-size: 17px; font-weight: 800; color: var(--tone); margin: 0; }
     .nc-health-txt p { font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); margin: 4px 0 0; max-width: 68ch; }
-    .nc-health-note { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.5; color: #fbbf24; margin: 0; padding: 9px 11px; border-radius: 10px; background: rgba(251,191,36,.09); }
+    .nc-health-note { display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.5; color: var(--texte-attente); margin: 0; padding: 9px 11px; border-radius: 10px; background: color-mix(in srgb, var(--warning) 9%, transparent); }
 
     .nc-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
     .nc-tile { padding: 11px 13px; border-radius: 12px; background: var(--bg-tertiary); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
@@ -1030,7 +1030,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-tile-v--sm { font-size: 13.5px; font-weight: 700; line-height: 1.35; }
     .nc-tile-sub { font-size: 11px; color: var(--fg-tertiary); }
     .nc-tile--bad { background: rgba(239,68,68,.08); }
-    .nc-tile--bad .nc-tile-v { color: #f87171; }
+    .nc-tile--bad .nc-tile-v { color: var(--texte-alerte); }
 
     .nc-roles { display: flex; flex-direction: column; gap: 7px; }
     .nc-roles-l { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); font-weight: 700; }
@@ -1038,7 +1038,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-rolechip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: var(--bg-tertiary); color: var(--fg-secondary); }
     .nc-rolechip b { font-weight: 800; color: var(--fg-primary); font-variant-numeric: tabular-nums; }
     .nc-rolechip-d { font-size: 11px; color: var(--fg-tertiary); }
-    .nc-rolechip em { font-style: normal; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px; background: rgba(251,191,36,.16); color: #fbbf24; }
+    .nc-rolechip em { font-style: normal; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px; background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
 
     /* ── KPIs ── */
     .nc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -1047,7 +1047,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-kpi-l { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); font-weight: 600; }
     .nc-kpi--sent .nc-kpi-n { color: var(--tracky-light, #10E0A0); }
     .nc-kpi--bad { border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.05); }
-    .nc-kpi--bad .nc-kpi-n { color: #f87171; }
+    .nc-kpi--bad .nc-kpi-n { color: var(--texte-alerte); }
 
     /* ── Panneaux ── */
     .nc-panel { padding: 16px 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
@@ -1129,7 +1129,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-pk { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--bg-tertiary); color: var(--fg-tertiary); white-space: nowrap; }
     .nc-person:hover .nc-pk, .nc-person.on .nc-pk { background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); }
     .nc-pk--sent { background: rgba(16,224,160,.14); color: var(--tracky-light, #10E0A0); }
-    .nc-pk--bad { background: rgba(239,68,68,.13); color: #f87171; }
+    .nc-pk--bad { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--texte-alerte); }
 
     /* ── Filtres ── */
     .nc-cat { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--bg-quaternary); color: var(--fg-secondary); }
@@ -1144,20 +1144,22 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-log { display: flex; flex-direction: column; gap: 8px; }
     .nc-card { position: relative; padding: 12px 14px 12px 16px; border-radius: 13px; background: var(--bg-tertiary); display: flex; flex-direction: column; gap: 6px; }
     .nc-card::before { content: ''; position: absolute; top: 10px; bottom: 10px; left: 0; width: 3px; border-radius: 0 3px 3px 0; background: var(--tone, #94a3b8); }
-    .nc-card[data-tone="sent"]       { --tone: #10E0A0; }
-    .nc-card[data-tone="failed"]     { --tone: #f87171; }
-    .nc-card[data-tone="suppressed"] { --tone: #a78bfa; }
-    .nc-card[data-tone="grouped"]    { --tone: #60a5fa; }
-    .nc-card[data-tone="unknown"]    { --tone: #94a3b8; }
+    /* --tone finit en couleur de TEXTE (.nc-badge) : jetons --texte-*, jamais les
+       vives — elles rendaient 1,8 a 3,4:1 en theme clair. */
+    .nc-card[data-tone="sent"]       { --tone: var(--texte-succes); }
+    .nc-card[data-tone="failed"]     { --tone: var(--texte-alerte); }
+    .nc-card[data-tone="suppressed"] { --tone: var(--texte-violet); }
+    .nc-card[data-tone="grouped"]    { --tone: var(--texte-info); }
+    .nc-card[data-tone="unknown"]    { --tone: var(--texte-inactif); }
 
     .nc-card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .nc-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent); }
     .nc-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
     .nc-chan { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--bg-secondary); color: var(--fg-tertiary); }
     .nc-sev { font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 6px; text-transform: uppercase; letter-spacing: .03em; }
-    .nc-sev[data-sev="critical"] { background: rgba(239,68,68,.14); color: #f87171; }
-    .nc-sev[data-sev="warning"]  { background: rgba(251,191,36,.14); color: #fbbf24; }
-    .nc-sev[data-sev="info"]     { background: rgba(96,165,250,.14); color: #60a5fa; }
+    .nc-sev[data-sev="critical"] { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
+    .nc-sev[data-sev="warning"]  { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente); }
+    .nc-sev[data-sev="info"]     { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--texte-info); }
     .nc-when { margin-left: auto; font-size: 11.5px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
     .nc-card-title { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); margin: 0; }

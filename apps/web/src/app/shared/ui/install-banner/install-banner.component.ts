@@ -95,7 +95,9 @@ import { InstallPromptService } from '../../../core/services/install-prompt.serv
     }
     .banner-cta {
       padding: 8px 14px; border-radius: 10px; border: none;
-      background: var(--tracky); color: white;
+      /* Ecart 2 (B0-SOCLE) : sur un fond accent l'encre est FONCEE. Le blanc
+         mesurait 3,4:1 en clair et 1,9:1 en sombre sur ce vert. */
+      background: var(--tracky); color: var(--accent-ink);
       font-size: 12px; font-weight: 600; cursor: pointer;
       transition: transform 80ms, opacity 80ms;
     }

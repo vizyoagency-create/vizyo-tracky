@@ -178,7 +178,9 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     @media (prefers-reduced-motion: reduce) { .ip-card { animation: none } }
     .ip-card--ok { text-align: center; }
     .ip-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-    .ip-ic { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--tracky-light); }
+    /* Pictogramme sur son propre lavis : le vert de marque tombe a ~3:1 en clair.
+       --texte-succes tient dans les deux themes (identique en sombre). */
+    .ip-ic { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes); }
     .ip-ic--ok { width: 48px; height: 48px; border-radius: 50%; margin-bottom: 12px; }
     .ip-card-t { font-size: 1rem; font-weight: 700; color: var(--fg-primary); }
     .ip-card-s { font-family: var(--font-mono, monospace); font-size: .72rem; color: var(--fg-tertiary); margin-top: 2px; }

@@ -112,7 +112,7 @@ export interface EditableAccessScope {
     .ame-scope { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:var(--fg-primary) }
     .ame-scope lucide-icon { color:var(--tracky-light) }
     .ame-del { padding:4px; border-radius:6px; border:none; background:transparent; color:var(--fg-tertiary); cursor:pointer }
-    .ame-del:hover { color:#f87171; background:rgba(248,113,113,.1) }
+    .ame-del:hover { color:var(--texte-alerte); background:color-mix(in srgb, var(--danger) 10%, transparent) }
     .ame-grp { margin-bottom:8px }
     .ame-grp:last-child { margin-bottom:0 }
     .ame-grp-title { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--fg-tertiary); margin:0 0 6px }

@@ -176,10 +176,10 @@ import {
 
     .st { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 6px; white-space: nowrap; flex-shrink: 0 }
     .st-draft { background: var(--bg-tertiary); color: var(--fg-tertiary) }
-    .st-published { background: rgba(59,130,246,.12); color: #60a5fa }
-    .st-progress { background: rgba(245,158,11,.12); color: #fbbf24 }
+    .st-published { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--texte-info) }
+    .st-progress { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente) }
     .st-done { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .st-cancel { background: rgba(239,68,68,.12); color: #f87171 }
+    .st-cancel { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--texte-alerte) }
 
     .day { margin-bottom: 16px }
     .day-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap }
@@ -210,12 +210,12 @@ import {
     .model { font-size: 12px; color: var(--fg-secondary) }
     .energy { font-size: 10px; color: var(--fg-tertiary); background: var(--bg-tertiary); padding: 2px 7px; border-radius: 5px }
     .tstatus { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px }
-    .ts-pending { background: rgba(245,158,11,.12); color: #fbbf24 }
+    .ts-pending { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente) }
     .ts-done { background: rgba(16,224,160,.12); color: var(--tracky-light) }
     .ts-skipped { background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .inst { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px }
     .inst-installed { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .inst-no-sim { background: rgba(245,158,11,.12); color: #fbbf24 }
+    .inst-no-sim { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente) }
     .row-proc { font-size: 11px; color: var(--fg-tertiary); margin-top: 5px; line-height: 1.4 }
     .row-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--fg-tertiary) }
     .row-meta .mono { font-family: var(--font-mono, monospace) }

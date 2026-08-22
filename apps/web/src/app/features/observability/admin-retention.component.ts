@@ -186,8 +186,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       .tile { display: flex; flex-direction: column; gap: 4px; background: var(--bg-tertiary); border-radius: 12px; padding: 14px; }
       .tile .num { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--fg-primary); }
       .tile .lbl { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); }
-      .tile.amber .num { color: #fbbf24; }
-      .tile.red .num { color: #f87171; }
+      .tile.amber .num { color: var(--texte-attente); }
+      .tile.red .num { color: var(--texte-alerte); }
 
       .meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 14px; font-size: 12.5px; color: var(--fg-secondary); }
       .meta b { color: var(--fg-primary); }
@@ -199,8 +199,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       .tbl td { padding: 9px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); }
       .tbl tr:last-child td { border-bottom: none; }
       .fname { color: var(--fg-primary); font-weight: 500; }
-      .amber { color: #fbbf24; font-weight: 600; }
-      .red { color: #f87171; font-weight: 600; }
+      .amber { color: var(--texte-attente); font-weight: 600; }
+      .red { color: var(--texte-alerte); font-weight: 600; }
       .small { font-size: 12.5px; }
 
       @media (max-width: 640px) {

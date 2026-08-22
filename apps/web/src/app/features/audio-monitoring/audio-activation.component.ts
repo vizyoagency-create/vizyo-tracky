@@ -194,12 +194,13 @@ const ATTESTATION_VERSION = 'v1';
     .s-card-title { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
     .s-card-body { padding: 18px; display: flex; flex-direction: column; gap: 14px }
     .s-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .s-icon.violet { background: rgba(139,92,246,.12); color: #a78bfa }
-    .s-icon.on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
+    .s-icon.violet { background: color-mix(in srgb, var(--violet) 12%, transparent); color: var(--violet) }
+    /* Sur lavis accent : --texte-succes, le vert de marque tombe a ~3:1 en clair. */
+    .s-icon.on { background: rgba(16,224,160,.12); color: var(--texte-succes) }
     .s-icon.off { background: rgba(148,163,184,.12); color: var(--fg-tertiary) }
 
     .state-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 10px; border-radius: 20px }
-    .state-pill.on { background: rgba(16,224,160,.15); color: var(--tracky-light) }
+    .state-pill.on { background: rgba(16,224,160,.15); color: var(--texte-succes) }
     .state-pill.off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
 
     .info-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--fg-secondary); line-height: 1.5 }

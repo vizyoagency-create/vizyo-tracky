@@ -275,7 +275,8 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
         font-weight: 800;
         color: var(--fg-primary);
       }
-      .brand-card-stats b.accent { color: var(--color-tracky-light); }
+      /* Chiffre-cle : --texte-succes, le vert de marque rend 3,43:1 en clair. */
+      .brand-card-stats b.accent { color: var(--texte-succes); }
       .brand-card-stats b.amber { color: var(--warning); }
 
       .brand-trust {

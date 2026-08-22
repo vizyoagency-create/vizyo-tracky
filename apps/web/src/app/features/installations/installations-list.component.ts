@@ -153,10 +153,10 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
 
     .ip-status { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 6px; white-space: nowrap; flex-shrink: 0 }
     .st-draft { background: var(--bg-tertiary); color: var(--fg-tertiary) }
-    .st-published { background: rgba(59,130,246,.12); color: #60a5fa }
-    .st-progress { background: rgba(245,158,11,.12); color: #fbbf24 }
+    .st-published { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--texte-info) }
+    .st-progress { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente) }
     .st-done { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .st-cancel { background: rgba(239,68,68,.12); color: #f87171 }
+    .st-cancel { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--texte-alerte) }
 
     /* overlay */
     .ov { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); padding: 16px }
@@ -166,7 +166,7 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
     .ov-x { padding: 6px; border-radius: 8px; background: none; border: none; color: var(--fg-tertiary); cursor: pointer }
     .ov-x:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
     .ov-body { padding: 18px 20px; overflow-y: auto }
-    .ov-err { padding: 10px 12px; border-radius: 10px; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.2); color: #f87171; font-size: 12px; margin-bottom: 12px }
+    .ov-err { padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent); color: var(--texte-alerte); font-size: 12px; margin-bottom: 12px }
     .ov-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-subtle) }
     .fl { display: block; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); margin: 12px 0 4px }
     .fl:first-child { margin-top: 0 }

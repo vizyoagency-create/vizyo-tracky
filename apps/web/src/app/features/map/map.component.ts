@@ -1028,7 +1028,7 @@ const RESYNC_RADIUS_M = 150;
         class="tracky-compass-btn"
         aria-label="Recentrer Nord">
         <span [style.transform]="'rotate(' + (-mapBearing()) + 'deg)'"
-              style="display:inline-block;font-size:18px;color:#EF4444;font-weight:700;
+              style="display:inline-block;font-size:18px;color:var(--texte-alerte);font-weight:700;
                      transition:transform 200ms ease">N</span>
       </button>
     }
@@ -1875,7 +1875,7 @@ const RESYNC_RADIUS_M = 150;
     @keyframes tracky-pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
     .tracky-status-text { font-size: 12px; }
     .tracky-status-follow {
-      color: #10E0A0;
+      color: var(--texte-succes);
       font-weight: 700;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1899,9 +1899,9 @@ const RESYNC_RADIUS_M = 150;
     }
     .tracky-mobile-fab-sm:active { transform: scale(.92); }
     .tracky-mobile-fab-sm--active {
-      background: rgba(16,224,160,.15);
-      border-color: rgba(16,224,160,.4);
-      color: #10E0A0;
+      background: color-mix(in srgb, var(--tracky-light) 15%, transparent);
+      border-color: color-mix(in srgb, var(--tracky-light) 40%, transparent);
+      color: var(--texte-succes);
     }
 
     /* Mobile search input (slides down from top) */
@@ -2074,9 +2074,9 @@ const RESYNC_RADIUS_M = 150;
     }
     .tracky-sheet-action:active { transform: scale(.96); }
     .tracky-sheet-action--active {
-      background: rgba(16,224,160,.15);
-      border-color: rgba(16,224,160,.4);
-      color: #10E0A0;
+      background: color-mix(in srgb, var(--tracky-light) 15%, transparent);
+      border-color: color-mix(in srgb, var(--tracky-light) 40%, transparent);
+      color: var(--texte-succes);
     }
 
     .tracky-sheet-pills {

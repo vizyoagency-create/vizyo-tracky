@@ -191,10 +191,12 @@ type Period = '7d' | '30d' | '90d';
     }
     .ds { max-width: 900px; margin: 0 auto; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
     .ds-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--fg-tertiary); width: fit-content; }
-    .ds-back:hover { color: var(--tracky-light, #10E0A0); }
+    .ds-back:hover { color: var(--texte-succes); }
     .ds-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .ds-title { display: flex; gap: 12px; align-items: center; }
-    .ds-ico { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, transparent); color: var(--tracky-light, #10E0A0); flex-shrink: 0; }
+    /* Pictogramme sur son propre lavis a 14 % : le vert de marque tombe a ~2,9:1
+       en clair. --texte-succes tient dans les deux themes. */
+    .ds-ico { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, transparent); color: var(--texte-succes); flex-shrink: 0; }
     .ds-head h1 { margin: 0; font-size: 20px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em; }
     .ds-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--fg-tertiary); }
     .ds-refresh { width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-secondary); background: var(--bg-secondary); border: 1px solid var(--border-subtle); flex-shrink: 0; }
@@ -219,20 +221,23 @@ type Period = '7d' | '30d' | '90d';
        de tete manque, et il aurait fige le theme sombre sur les deux themes. */
     .ds-seg button.on { background: var(--bg-secondary); color: var(--texte-succes); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
     .ds-seg--sm button { padding: 6px 11px; font-size: 12px; }
-    .ds-alert { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 10px; background: color-mix(in srgb, #EF4444 12%, transparent); color: #EF4444; font-size: 12.5px; }
+    .ds-alert { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--texte-alerte); font-size: 12.5px; }
     .ds-overall { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
     .ds-overall-txt { display: flex; flex-direction: column; }
     .ds-overall-n { font-size: 28px; font-weight: 800; color: var(--fg-primary); line-height: 1; }
     .ds-overall-n small { font-size: 14px; color: var(--fg-tertiary); font-weight: 600; }
     .ds-overall-l { font-size: 12px; color: var(--fg-tertiary); margin-top: 4px; }
-    /* Note lettrée (couleur par grade) */
+    /* Note lettrée (couleur par grade). La lettre est un TEXTE : elle prend le
+       jeton --texte-* de sa famille, jamais la couleur vive — le A en #10E0A0
+       rendait 1,8:1 en theme clair sur sa propre teinte. Le lavis vient de la
+       couleur de base du theme (verif:contraste, section « Notes de conduite »). */
     .ds-grade { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; font-size: 16px; font-weight: 800; flex-shrink: 0; }
     .ds-grade--lg { width: 52px; height: 52px; font-size: 26px; border-radius: 14px; }
-    .ds-grade[data-grade="A"] { background: color-mix(in srgb, #10E0A0 18%, transparent); color: #10E0A0; }
-    .ds-grade[data-grade="B"] { background: color-mix(in srgb, #84CC16 18%, transparent); color: #84CC16; }
-    .ds-grade[data-grade="C"] { background: color-mix(in srgb, #F59E0B 18%, transparent); color: #F59E0B; }
-    .ds-grade[data-grade="D"] { background: color-mix(in srgb, #F97316 18%, transparent); color: #F97316; }
-    .ds-grade[data-grade="E"] { background: color-mix(in srgb, #EF4444 18%, transparent); color: #EF4444; }
+    .ds-grade[data-grade="A"] { background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--texte-succes); }
+    .ds-grade[data-grade="B"] { background: color-mix(in srgb, var(--lime) 18%, transparent); color: var(--texte-lime); }
+    .ds-grade[data-grade="C"] { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--texte-attente); }
+    .ds-grade[data-grade="D"] { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--texte-orange); }
+    .ds-grade[data-grade="E"] { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--texte-alerte); }
     /* Podium (top 3) */
     .ds-podium-wrap { display: flex; flex-direction: column; gap: 10px; padding: 14px 12px 4px; border-radius: 14px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 5%, var(--bg-secondary)); border: 1px solid var(--border-subtle); }
     .ds-podium-cap { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-tertiary); }
@@ -244,8 +249,8 @@ type Period = '7d' | '30d' | '90d';
     .ds-pod-name { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; font-size: 12px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ds-pod-score { font-size: 15px; font-weight: 800; color: var(--fg-secondary); }
     .ds-pod-score small { font-size: 9px; color: var(--fg-tertiary); font-weight: 600; }
-    .ds-pod-score[data-grade="A"] { color: #10E0A0; } .ds-pod-score[data-grade="B"] { color: #84CC16; }
-    .ds-pod-score[data-grade="C"] { color: #F59E0B; } .ds-pod-score[data-grade="D"] { color: #F97316; } .ds-pod-score[data-grade="E"] { color: #EF4444; }
+    .ds-pod-score[data-grade="A"] { color: var(--texte-succes); } .ds-pod-score[data-grade="B"] { color: var(--texte-lime); }
+    .ds-pod-score[data-grade="C"] { color: var(--texte-attente); } .ds-pod-score[data-grade="D"] { color: var(--texte-orange); } .ds-pod-score[data-grade="E"] { color: var(--texte-alerte); }
     .ds-pod-step { width: 100%; border-radius: 10px 10px 0 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; font-size: 13px; font-weight: 800; color: var(--fg-secondary); background: var(--bg-tertiary); }
     .ds-pod-step sup { font-size: 8px; }
     .ds-pod[data-rank="1"] .ds-pod-step { height: 60px; background: linear-gradient(180deg, color-mix(in srgb, #F5B301 30%, var(--bg-tertiary)), var(--bg-tertiary)); color: #F5B301; }
@@ -264,11 +269,11 @@ type Period = '7d' | '30d' | '90d';
     .ds-row-score small { font-size: 10px; color: var(--fg-tertiary); font-weight: 600; }
     .ds-bar { height: 5px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; }
     .ds-bar-fill { height: 100%; border-radius: 3px; }
-    .ds-bar-fill[data-grade="A"] { background: #10E0A0; } .ds-bar-fill[data-grade="B"] { background: #84CC16; }
-    .ds-bar-fill[data-grade="C"] { background: #F59E0B; } .ds-bar-fill[data-grade="D"] { background: #F97316; } .ds-bar-fill[data-grade="E"] { background: #EF4444; }
+    .ds-bar-fill[data-grade="A"] { background: var(--tracky-light); } .ds-bar-fill[data-grade="B"] { background: var(--lime); }
+    .ds-bar-fill[data-grade="C"] { background: var(--warning); } .ds-bar-fill[data-grade="D"] { background: var(--orange); } .ds-bar-fill[data-grade="E"] { background: var(--danger); }
     .ds-row-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--fg-tertiary); }
     .ds-row-sub { font-weight: 600; }
-    .ds-warn { color: #EF4444; font-weight: 700; }
+    .ds-warn { color: var(--texte-alerte); font-weight: 700; }
     a.ds-warn-link { text-decoration: none; cursor: pointer; white-space: nowrap; }
     a.ds-warn-link:hover { text-decoration: underline; }
     .ds-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 40px 20px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); }

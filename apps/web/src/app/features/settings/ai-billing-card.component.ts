@@ -111,8 +111,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
     .abc-sub { font-size: 12px; color: var(--fg-tertiary); margin: 3px 0 0; line-height: 1.45; }
     .abc-badge { margin-left: auto; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 3px 9px; border-radius: 999px; background: var(--bg-tertiary); color: var(--fg-tertiary); white-space: nowrap; height: fit-content; }
     .abc-badge[data-st="ACTIVE"], .abc-badge[data-st="COMP"] { background: rgba(16,224,160,.16); color: var(--tracky-light, #10E0A0); }
-    .abc-badge[data-st="PAST_DUE"] { background: rgba(239,68,68,.16); color: #f87171; }
-    .abc-badge[data-st="INVOICE_PENDING"] { background: rgba(245,158,11,.16); color: #fbbf24; }
+    .abc-badge[data-st="PAST_DUE"] { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); }
+    .abc-badge[data-st="INVOICE_PENDING"] { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
     .abc-price { padding: 14px 16px; border-radius: 12px; background: var(--bg-tertiary); }
     .abc-price-main { font-family: var(--font-display); font-size: 26px; font-weight: 800; color: var(--fg-primary); }
     .abc-price-per { font-size: 14px; font-weight: 600; color: var(--fg-tertiary); margin-left: 4px; }
@@ -122,7 +122,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
     .abc-note a { color: var(--tracky-light, #10E0A0); }
     .abc-note--ok { background: rgba(16,224,160,.08); }
     .abc-note--warn { background: rgba(239,68,68,.08); color: #f0b8b8; }
-    .abc-warn { color: #fbbf24; }
+    .abc-warn { color: var(--texte-attente); }
     .abc-card-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-secondary); }
     .abc-cardbox { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--bg-primary); border: 1px solid var(--border-subtle); }
     .abc-stripe { padding: 12px; border-radius: 9px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }

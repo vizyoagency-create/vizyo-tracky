@@ -186,18 +186,18 @@ const TIME_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, hour: '2-digit
     .ib-client { font-size:13px; color:var(--fg-secondary,#9BA5A1); margin-top:5px; }
     .ib-client a { color:var(--tracky,#10E0A0); text-decoration:none; }
     .ib-meta { font-size:12.5px; color:var(--fg-tertiary,#69736E); margin-top:4px; }
-    .ib-opens { display:inline-flex; align-items:center; gap:5px; color:#10E0A0; }
+    .ib-opens { display:inline-flex; align-items:center; gap:5px; color:var(--texte-succes); }
     .ib-opens--none { color:var(--fg-tertiary,#69736E); }
     .ib-status { font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
     .ib-status--pending { background:rgba(245,179,61,.15); color:#F5B33D; }
-    .ib-status--confirmed { background:rgba(16,224,160,.15); color:#10E0A0; }
-    .ib-status--rejected { background:rgba(242,112,107,.15); color:#F2706B; }
+    .ib-status--confirmed { background:color-mix(in srgb, var(--tracky-light) 15%, transparent); color:var(--texte-succes); }
+    .ib-status--rejected { background:color-mix(in srgb, var(--danger) 15%, transparent); color:var(--texte-alerte); }
     .ib-status--cancelled { background:rgba(255,255,255,.08); color:#9BA5A1; }
     .ib-action { margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle,rgba(255,255,255,.07)); }
     .ib-action-btns { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
     .ib-btn { padding:9px 14px; border-radius:10px; border:1px solid transparent; font-size:13px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
     .ib-btn--ok { background:var(--tracky,#10E0A0); color:#04130D; }
-    .ib-btn--danger { background:rgba(242,112,107,.12); color:#F2706B; border-color:rgba(242,112,107,.3); }
+    .ib-btn--danger { background:color-mix(in srgb, var(--danger) 12%, transparent); color:var(--texte-alerte); border-color:color-mix(in srgb, var(--danger) 30%, transparent); }
     .ib-btn--ghost { background:transparent; color:var(--fg-secondary,#9BA5A1); border-color:var(--border-subtle,rgba(255,255,255,.12)); }
     .ib-btn:disabled { opacity:.5; cursor:default; }
     .ib-in { width:100%; box-sizing:border-box; padding:10px 12px; border-radius:10px; border:1px solid var(--border-subtle,rgba(255,255,255,.12)); background:var(--bg-primary,#0C1210); color:var(--fg-primary,#EAEFED); font-size:14px; }
@@ -214,8 +214,8 @@ const TIME_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, hour: '2-digit
     .ib-url { display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
     .ib-url code { flex:1; min-width:180px; font-size:12px; background:var(--bg-primary,#0C1210); padding:8px 10px; border-radius:8px; color:var(--tracky,#10E0A0); word-break:break-all; }
     .ib-copy { padding:7px 11px; border-radius:8px; border:1px solid var(--border-subtle,rgba(255,255,255,.12)); background:transparent; color:var(--fg-secondary,#9BA5A1); font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; }
-    .ib-off-tag { font-size:11px; color:#F2706B; font-weight:600; }
-    .ib-err { color:#F2706B; font-size:13px; }
+    .ib-off-tag { font-size:11px; color:var(--texte-alerte); font-weight:600; }
+    .ib-err { color:var(--texte-alerte); font-size:13px; }
     .ib-empty, .ib-loading { padding:28px; text-align:center; color:var(--fg-tertiary,#69736E); font-size:14px; }
     .ib-agenda-day { margin-bottom:16px; }
     .ib-agenda-date { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--fg-tertiary,#69736E); margin-bottom:8px; text-transform:capitalize; }

@@ -122,16 +122,16 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
     .frc { display: flex; flex-direction: column; gap: 11px; padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
     .frc-head { display: flex; align-items: center; justify-content: space-between; }
     .frc-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
-    .frc-title lucide-icon { color: #A78BFA; }
+    .frc-title lucide-icon { color: var(--violet); }
     .frc-period { font-size: 11px; color: var(--fg-tertiary); }
     .frc-loading { display: flex; justify-content: center; padding: 16px; }
-    .frc-spin { width: 22px; height: 22px; border: 3px solid var(--border-subtle); border-top-color: #A78BFA; border-radius: 50%; animation: frc-rot .8s linear infinite; }
+    .frc-spin { width: 22px; height: 22px; border: 3px solid var(--border-subtle); border-top-color: var(--violet); border-radius: 50%; animation: frc-rot .8s linear infinite; }
     @keyframes frc-rot { to { transform: rotate(360deg); } }
     .frc-freq { display: flex; align-items: baseline; gap: 9px; }
-    .frc-freq-n { font-size: 30px; font-weight: 800; color: #A78BFA; line-height: 1; }
+    .frc-freq-n { font-size: 30px; font-weight: 800; color: var(--texte-violet); line-height: 1; }
     .frc-freq-l { font-size: 12.5px; color: var(--fg-secondary); line-height: 1.4; }
     .frc-freq-l strong { color: var(--fg-primary); }
-    .frc-price { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 11px; background: color-mix(in srgb, #A78BFA 7%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #A78BFA 16%, transparent); }
+    .frc-price { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 11px; background: color-mix(in srgb, var(--violet) 7%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--violet) 16%, transparent); }
     .frc-price-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .frc-price-main { font-size: 20px; font-weight: 800; color: var(--fg-primary); line-height: 1; }
     .frc-price-main small { font-size: 12px; color: var(--fg-tertiary); font-weight: 600; }
@@ -145,24 +145,24 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
     .frc-cost-val { font-size: 18px; font-weight: 800; color: var(--fg-primary); }
     .frc-cost-cmp { margin: 0; display: inline-flex; align-items: baseline; gap: 5px; font-size: 11.5px; line-height: 1.45; color: var(--fg-tertiary); }
     .frc-cost-cmp lucide-icon { position: relative; top: 2px; flex-shrink: 0; }
-    .frc-cost-cmp[data-sign="up"] { color: #F59E0B; }
-    .frc-cost-cmp[data-sign="down"] { color: #10E0A0; }
+    .frc-cost-cmp[data-sign="up"] { color: var(--texte-attente); }
+    .frc-cost-cmp[data-sign="down"] { color: var(--texte-succes); }
     .frc-stations { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
     .frc-stations li { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); }
-    .frc-stations lucide-icon { color: #A78BFA; flex-shrink: 0; }
+    .frc-stations lucide-icon { color: var(--violet); flex-shrink: 0; }
     .frc-st-name { font-weight: 700; color: var(--fg-primary); }
     .frc-st-city { color: var(--fg-tertiary); }
     .frc-st-visits { color: var(--fg-tertiary); }
-    .frc-st-price { margin-left: auto; font-weight: 700; color: #A78BFA; }
+    .frc-st-price { margin-left: auto; font-weight: 700; color: var(--texte-violet); }
     .frc-visits { display: flex; flex-direction: column; gap: 4px; }
     .frc-visits-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); }
     .frc-visit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-secondary); padding: 4px 8px; border-radius: 8px; background: var(--bg-tertiary, rgba(148,163,184,.08)); }
-    .frc-visit--warn { background: color-mix(in srgb, #f59e0b 12%, transparent); }
+    .frc-visit--warn { background: color-mix(in srgb, var(--warning) 12%, transparent); }
     .frc-visit-when { color: var(--fg-tertiary); }
     .frc-visit-brand { font-weight: 700; color: var(--fg-primary); }
     .frc-visit-stop { color: var(--fg-tertiary); }
     .frc-visit-km { margin-left: auto; font-weight: 600; }
-    .frc-visit-flag { color: #b45309; background: color-mix(in srgb, #f59e0b 22%, transparent); padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+    .frc-visit-flag { color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 18%, transparent); padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
     .frc-help { margin: 0; font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); }
     .frc-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 16px 10px; color: var(--fg-tertiary); }
     .frc-empty p { margin: 0; font-weight: 700; color: var(--fg-secondary); }

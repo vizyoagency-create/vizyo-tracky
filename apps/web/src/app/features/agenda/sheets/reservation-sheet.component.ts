@@ -269,11 +269,11 @@ function toLocalInput(d: Date): string {
     .rs-plate { font-weight: 800; color: var(--fg-primary); letter-spacing: .3px; }
     .rs-chip { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px; }
     .rs-chip--hi { color: #10B981; background: rgba(16,185,129,.13); }
-    .rs-chip--mid { color: #F59E0B; background: rgba(245,158,11,.14); }
-    .rs-chip--lo { color: #EF4444; background: rgba(239,68,68,.13); }
+    .rs-chip--mid { color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+    .rs-chip--lo { color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 13%, transparent); }
     .rs-alert { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 10px; font-size: 12px; }
-    .rs-alert--err { background: rgba(239,68,68,.1); color: #EF4444; }
-    .rs-alert--warn { background: rgba(245,158,11,.12); color: #B45309; }
+    .rs-alert--err { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); }
+    .rs-alert--warn { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente); }
     .rs-alert--info { background: var(--bg-tertiary); color: var(--fg-secondary); }
     .rs-retro { display: flex; gap: 9px; align-items: flex-start; padding: 10px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); cursor: pointer; }
     .rs-retro--on { border-color: var(--tracky-light); background: color-mix(in srgb, var(--tracky-light) 8%, transparent); }

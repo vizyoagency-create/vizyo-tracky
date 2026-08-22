@@ -505,7 +505,8 @@ interface NavGroup {
     .ai-promo-head { display: flex; align-items: center; gap: 8px; color: var(--fg-primary); font-size: 13px; font-weight: 700 }
     .ai-promo-head lucide-icon { color: var(--tracky-light); display: flex }
     .ai-promo-text { display: block; margin: 7px 0 9px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45 }
-    .ai-promo-cta { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--tracky-light) }
+    /* Libelle de 10 px : --texte-succes, le vert de marque rend 3,2:1 en clair. */
+    .ai-promo-cta { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--texte-succes) }
 
     /* ─── MOBILE DRAWER ─── */
     /* Anciens drawers mobiles supprimes (remplaces par <app-bottom-sheet>). */

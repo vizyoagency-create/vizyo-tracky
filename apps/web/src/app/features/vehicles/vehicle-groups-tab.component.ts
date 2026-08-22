@@ -181,11 +181,13 @@ import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.direc
   styles: [`
     .gsc-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
     .gsc-badge sup { font-size: 8px; }
-    .gsc-badge[data-grade="A"] { background: color-mix(in srgb, #10E0A0 16%, transparent); color: #10E0A0; border-color: transparent; }
-    .gsc-badge[data-grade="B"] { background: color-mix(in srgb, #84CC16 16%, transparent); color: #84CC16; border-color: transparent; }
-    .gsc-badge[data-grade="C"] { background: color-mix(in srgb, #F59E0B 16%, transparent); color: #F59E0B; border-color: transparent; }
-    .gsc-badge[data-grade="D"] { background: color-mix(in srgb, #F97316 16%, transparent); color: #F97316; border-color: transparent; }
-    .gsc-badge[data-grade="E"] { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; border-color: transparent; }
+    /* La lettre est un TEXTE : jeton --texte-* de sa famille, lavis sur la couleur
+       de base du theme — les vives rendaient 1,8 a 3,4:1 en theme clair. */
+    .gsc-badge[data-grade="A"] { background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--texte-succes); border-color: transparent; }
+    .gsc-badge[data-grade="B"] { background: color-mix(in srgb, var(--lime) 16%, transparent); color: var(--texte-lime); border-color: transparent; }
+    .gsc-badge[data-grade="C"] { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); border-color: transparent; }
+    .gsc-badge[data-grade="D"] { background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--texte-orange); border-color: transparent; }
+    .gsc-badge[data-grade="E"] { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); border-color: transparent; }
   `],
 })
 export class VehicleGroupsTabComponent implements OnInit {

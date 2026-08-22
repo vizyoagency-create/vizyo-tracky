@@ -217,11 +217,12 @@ const STOP_LABELS: Record<string, string> = {
     .pa-back { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 18px; }
     .pa-back:hover { color: var(--fg-secondary); }
     .pa-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
-    .pa-ico { width: 48px; height: 48px; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: rgba(139,92,246,.12); color: #a78bfa; flex-shrink: 0; }
+    .pa-ico { width: 48px; height: 48px; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--violet) 12%, transparent); color: var(--violet); flex-shrink: 0; }
     .pa-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: -.4px; color: var(--fg-primary); margin: 0; }
     .pa-head p { color: var(--fg-tertiary); font-size: 13px; margin: 3px 0 0; }
     .pa-state { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
-    .pa-state.on { background: rgba(16,224,160,.08); color: var(--tracky-light); border-color: rgba(16,224,160,.18); }
+    /* Texte sur lavis accent : --texte-succes, le vert de marque rend ~3,2:1 en clair. */
+    .pa-state.on { background: rgba(16,224,160,.08); color: var(--texte-succes); border-color: rgba(16,224,160,.18); }
     .pa-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
     .pa-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 16px; padding: 20px 22px; margin-bottom: 16px; }
@@ -229,7 +230,7 @@ const STOP_LABELS: Record<string, string> = {
     .pa-explain { background: color-mix(in srgb, var(--tracky-light) 6%, var(--bg-secondary)); border-color: color-mix(in srgb, var(--tracky-light) 20%, transparent); }
     .pa-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
     .pa-steps li { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; line-height: 1.5; color: var(--fg-secondary); }
-    .pa-step-n { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--tracky-light); font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+    .pa-step-n { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--texte-succes); font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
     .pa-steps strong { color: var(--fg-primary); }
 
     .pa-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; border-top: 1px solid var(--border-subtle); }
@@ -245,7 +246,7 @@ const STOP_LABELS: Record<string, string> = {
     .pa-btn:disabled { opacity: .55; cursor: default; }
     .pa-btn--primary { background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); }
     .pa-btn--sim { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong); }
-    .pa-btn--run { background: transparent; color: #a78bfa; border: 1px solid color-mix(in srgb, #a78bfa 40%, transparent); }
+    .pa-btn--run { background: transparent; color: var(--texte-violet); border: 1px solid color-mix(in srgb, var(--violet) 40%, transparent); }
     .pa-hint { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; }
     .pa-worst { display: flex; align-items: flex-start; gap: 9px; margin-top: 14px; padding: 11px 13px; border-radius: 11px; background: color-mix(in srgb, var(--tracky-light) 8%, transparent); border: 1px solid color-mix(in srgb, var(--tracky-light) 20%, transparent); font-size: 12px; line-height: 1.5; color: var(--fg-secondary); }
     .pa-worst b { color: var(--fg-primary); }

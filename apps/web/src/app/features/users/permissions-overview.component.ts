@@ -307,8 +307,8 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
     }
     .po-scope-pill.all { background: rgba(16,224,160,.1); color: var(--tracky-light) }
     .po-scope-pill.group { background: var(--bg-tertiary); color: var(--fg-secondary) }
-    .po-scope-pill.vehicle { background: rgba(245,158,11,.1); color: #f59e0b }
-    .po-scope-pill.none { background: rgba(239,68,68,.08); color: #f87171 }
+    .po-scope-pill.vehicle { background: color-mix(in srgb, var(--warning) 10%, transparent); color: var(--texte-attente) }
+    .po-scope-pill.none { background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--texte-alerte) }
 
     /* Detail expanded */
     .po-user-detail { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px }

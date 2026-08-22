@@ -410,7 +410,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-back:hover { color: var(--fg-secondary); }
     .au-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
     .au-title { display: flex; align-items: center; gap: 12px; }
-    .au-ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(245,158,11,.12); color: #fbbf24; flex-shrink: 0; }
+    .au-ico { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning); flex-shrink: 0; }
     .au-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0; }
     .au-head p { font-size: 12.5px; color: var(--fg-secondary); margin: 3px 0 0; }
     .au-actions { display: flex; align-items: center; gap: 8px; }
@@ -419,7 +419,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-seg button.on { background: var(--bg-tertiary); color: var(--fg-primary); }
     .au-seg--sm button { padding: 5px 10px; font-size: 12px; }
     .au-refresh { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
-    .au-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: rgba(239,68,68,.1); color: #EF4444; font-size: 13px; }
+    .au-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); font-size: 13px; }
 
     /* Filtre JOUR précis */
     .au-day { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
@@ -432,7 +432,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-ai-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
     /* Pictogramme, pas du texte : le seuil qui s'applique est 3:1, que --fg-tertiary tient. */
     .au-ai-ico { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); color: var(--fg-tertiary); flex-shrink: 0; }
-    .au-ai-ico[data-on="true"] { background: rgba(16,224,160,.14); color: var(--tracky-light, #10E0A0); }
+    .au-ai-ico[data-on="true"] { background: rgba(16,224,160,.14); color: var(--texte-succes); }
     .au-ai-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .au-ai-title { font-size: 14.5px; font-weight: 800; color: var(--fg-primary); }
     .au-ai-sub { font-size: 12px; color: var(--fg-secondary); line-height: 1.4; }
@@ -460,8 +460,8 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-budget-of { font-size: 16px; font-weight: 600; color: var(--fg-secondary); }
     .au-budget-badge { font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 999px; height: fit-content; background: var(--bg-tertiary); color: var(--fg-secondary); }
     .au-budget-badge[data-status="ok"] { background: rgba(16,224,160,.14); color: var(--tracky-light); }
-    .au-budget-badge[data-status="warn"] { background: rgba(245,158,11,.16); color: #fbbf24; }
-    .au-budget-badge[data-status="over"] { background: rgba(239,68,68,.16); color: #f87171; }
+    .au-budget-badge[data-status="warn"] { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
+    .au-budget-badge[data-status="over"] { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); }
     .au-bar { height: 8px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; }
     .au-bar--thin { height: 6px; }
     .au-bar-fill { height: 100%; border-radius: 999px; background: var(--tracky-light); transition: width .4s; }
@@ -496,7 +496,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-prov-note { font-size: 11.5px; color: var(--fg-secondary); }
     .au-prov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     @media (max-width: 720px) { .au-prov-grid { grid-template-columns: 1fr; } }
-    .au-prov--mixte.on { border-color: #A78BFA; background: color-mix(in srgb, #A78BFA 9%, var(--bg-tertiary)); }
+    .au-prov--mixte.on { border-color: var(--violet); background: color-mix(in srgb, var(--violet) 9%, var(--bg-tertiary)); }
     .au-prov--mixte .au-prov-name { color: var(--fg-primary); }
     .au-prov { text-align: left; display: flex; flex-direction: column; gap: 5px; padding: 13px 14px; border-radius: 12px; border: 1.5px solid var(--border-subtle); background: var(--bg-tertiary); cursor: pointer; transition: border-color .15s, background .15s; }
     .au-prov:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 45%, transparent); }
@@ -508,7 +508,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-prov-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); color: var(--texte-succes); }
     .au-prov-badge--off { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
     .au-prov-hint { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.35; }
-    .au-prov-warn { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.4; color: var(--danger, #EF4444); background: color-mix(in srgb, var(--danger, #EF4444) 9%, transparent); border-radius: 9px; padding: 8px 10px; }
+    .au-prov-warn { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.4; color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 9%, transparent); border-radius: 9px; padding: 8px 10px; }
 
     /* KPIs */
     .au-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }

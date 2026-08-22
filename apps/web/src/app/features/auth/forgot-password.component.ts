@@ -30,7 +30,7 @@ import { RouterLink } from '@angular/router';
       <!-- ═══ État ENVOYÉ ═══ -->
       <div class="fp-pop text-center">
         <span class="inline-flex items-center justify-center w-16 h-16 rounded-full"
-              style="background:color-mix(in srgb, var(--tracky-light) 12%, transparent); color:var(--tracky-light)">
+              style="background:color-mix(in srgb, var(--tracky-light) 12%, transparent); color:var(--texte-succes)">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>
           </svg>

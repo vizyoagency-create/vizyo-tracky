@@ -219,19 +219,19 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
     .op-reason { font-size: 12px; color: var(--fg-secondary); margin-top: 7px; line-height: 1.4; }
     .op-chip { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px; }
     .op-chip--hi { color: #10B981; background: rgba(16,185,129,.13); }
-    .op-chip--mid { color: #F59E0B; background: rgba(245,158,11,.14); }
-    .op-chip--lo { color: #EF4444; background: rgba(239,68,68,.13); }
+    .op-chip--mid { color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 14%, transparent); }
+    .op-chip--lo { color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 13%, transparent); }
     .op-apply { display: flex; justify-content: flex-end; margin-top: 4px; }
     .op-under { display: grid; grid-template-columns: 1fr; gap: 8px; }
     @media (min-width: 560px) { .op-under { grid-template-columns: 1fr 1fr; } }
     .op-u { padding: 10px 11px; border-radius: 11px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .op-u-top { display: flex; align-items: center; justify-content: space-between; }
-    .op-u-pct { font-size: 12px; font-weight: 800; color: #F59E0B; }
+    .op-u-pct { font-size: 12px; font-weight: 800; color: var(--texte-attente); }
     .op-free { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
     .op-free-c { font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 6px; background: rgba(16,224,160,.12); color: var(--tracky-light); }
     .op-alert { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 10px; font-size: 12px; }
-    .op-alert--err { background: rgba(239,68,68,.1); color: #EF4444; }
-    .op-alert--warn { background: rgba(245,158,11,.12); color: #B45309; }
+    .op-alert--err { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); }
+    .op-alert--warn { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente); }
     .op-alert--info { background: var(--bg-secondary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
     .op-skel { height: 60px; border-radius: 12px; background: linear-gradient(90deg, var(--bg-secondary), var(--bg-tertiary), var(--bg-secondary)); background-size: 200% 100%; animation: op-sh 1.3s infinite; }
     @keyframes op-sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
@@ -242,8 +242,10 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
     .op-hero { display: flex; gap: 13px; padding: 14px 15px; border-radius: 14px; border: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--tracky) 5%, var(--bg-secondary)); }
     .op-hero-ico { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: var(--tracky); color: var(--accent-ink); flex-shrink: 0; }
     .op-hero-eye { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .op-hero-kick { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--tracky-light); }
-    .op-hero-live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--tracky-light); }
+    /* Petits libelles sur le hero teinte : --texte-succes, le vert de marque
+       rend ~3,3:1 en theme clair (convention du kit, styles.css). */
+    .op-hero-kick { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--texte-succes); }
+    .op-hero-live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--texte-succes); }
     .op-hero-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tracky-light); animation: op-blink 2s ease-in-out infinite; }
     @keyframes op-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
     .op-hero-lead { font-size: 12.5px; color: var(--fg-secondary); margin-top: 6px; line-height: 1.5; }
@@ -251,7 +253,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
     /* Comment ça marche */
     .op-steps { display: flex; flex-direction: column; gap: 9px; }
     .op-step { display: flex; gap: 10px; }
-    .op-step-n { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light); font-family: var(--font-mono); font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .op-step-n { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--texte-succes); font-family: var(--font-mono); font-size: 11px; font-weight: 700; flex-shrink: 0; }
     .op-step p { font-size: 12px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
   `],
 })

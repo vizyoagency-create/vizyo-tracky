@@ -156,7 +156,8 @@ import {
     .ca-lead { margin: 0; font-size: .92rem; color: var(--fg-tertiary); }
     .ca-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-card, 16px); margin-bottom: 20px; overflow: hidden; }
     .ca-card-h { display: flex; align-items: center; gap: 10px; padding: 15px 18px; font-weight: 700; font-size: .98rem; color: var(--fg-primary); border-bottom: 1px solid var(--border-subtle); }
-    .ca-count { margin-left: auto; font-size: .8rem; font-weight: 700; color: var(--tracky-light); background: color-mix(in srgb, var(--tracky-light) 14%, transparent); padding: 2px 10px; border-radius: 999px; }
+    /* Texte sur lavis accent : --texte-succes, jamais le vert de marque (~3:1 en clair). */
+    .ca-count { margin-left: auto; font-size: .8rem; font-weight: 700; color: var(--texte-succes); background: color-mix(in srgb, var(--tracky-light) 14%, transparent); padding: 2px 10px; border-radius: 999px; }
     .ca-muted { padding: 18px; margin: 0; color: var(--fg-tertiary); font-size: .9rem; }
     .ca-scroll { overflow-x: auto; }
     .ca-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
@@ -167,9 +168,9 @@ import {
     .ca-sub { font-size: .82rem; color: var(--fg-tertiary); }
     .ca-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: .82rem; color: var(--fg-secondary); }
     .ca-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .76rem; font-weight: 700; }
-    .ca-ok { background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--tracky-light); }
-    .ca-no { background: rgba(242,112,107,.16); color: #f2706b; }
-    .ca-wait { background: rgba(224,168,72,.16); color: #e0a848; }
+    .ca-ok { background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--texte-succes); }
+    .ca-no { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); }
+    .ca-wait { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); }
     `,
   ],
 })

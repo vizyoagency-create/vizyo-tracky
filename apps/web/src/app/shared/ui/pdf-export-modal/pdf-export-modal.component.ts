@@ -367,9 +367,10 @@ type Scope = 'all' | 'selected';
     }
     .pem-pill:hover { color: var(--fg-primary) }
     .pem-pill--active {
+      /* Etat actif : --texte-succes, le vert de marque rend ~3:1 en clair sur ce lavis. */
       background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
       border-color: color-mix(in srgb, var(--color-tracky-light) 35%, transparent);
-      color: var(--tracky-light);
+      color: var(--texte-succes);
     }
     .pem-pill-label { font-weight: 600 }
     .pem-pill-count {
@@ -382,7 +383,7 @@ type Scope = 'all' | 'selected';
     }
     .pem-pill--active .pem-pill-count {
       background: color-mix(in srgb, var(--color-tracky-light) 18%, transparent);
-      color: var(--tracky-light);
+      color: var(--texte-succes);
     }
 
     /* Lignes vehicule + lignes option */

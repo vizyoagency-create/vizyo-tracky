@@ -37,7 +37,7 @@ const CONFIRM_WINDOW_MS = 90_000;
             (click)="openAction('restore')"
             [attr.data-track]="trackLabel() ? trackLabel() + ' — rallumer' : null"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                   bg-tracky/20 text-tracky-light border border-tracky/30
+                   bg-tracky/20 text-texte-succes border border-tracky/30
                    hover:bg-tracky/30 transition-all cursor-pointer whitespace-nowrap"
           >
             <lucide-icon [img]="Power" [size]="14"></lucide-icon>

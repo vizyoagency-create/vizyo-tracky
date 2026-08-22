@@ -360,14 +360,14 @@ import {
     .btn-primary.sm { padding: 7px 12px }
     .btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .btn-ghost:hover { color: var(--fg-primary) } .btn-ghost:disabled { opacity: .5 }
-    .btn-danger { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25); color: #f87171; cursor: pointer }
+    .btn-danger { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent); color: var(--texte-alerte); cursor: pointer }
 
     .sp-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px }
     @media (max-width: 720px) { .sp-kpis { grid-template-columns: 1fr 1fr } }
     .kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 12px }
     .kpi-n { display: block; font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--fg-primary) }
     .kpi-l { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--fg-tertiary) }
-    .i-sky { color: #38bdf8 } .i-emerald { color: var(--tracky-light) } .i-amber { color: #fbbf24 } .i-purple { color: #c084fc }
+    .i-sky { color: var(--blue) } .i-emerald { color: var(--tracky-light) } .i-amber { color: var(--warning) } .i-purple { color: var(--violet) }
 
     .sp-filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px }
     .sp-search { position: relative; flex: 1; min-width: 220px; max-width: 380px; display: flex; align-items: center }
@@ -387,9 +387,9 @@ import {
 
     .badge { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 6px; white-space: nowrap }
     .st-active { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .st-suspended { background: rgba(245,158,11,.14); color: #fbbf24 }
-    .st-pending { background: rgba(59,130,246,.12); color: #60a5fa }
-    .st-inactive { background: rgba(239,68,68,.12); color: #f87171 }
+    .st-suspended { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente) }
+    .st-pending { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--texte-info) }
+    .st-inactive { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--texte-alerte) }
     .st-unknown { background: var(--bg-tertiary); color: var(--fg-tertiary) }
 
     .conso { min-width: 130px } .conso-txt { font-size: 11px; color: var(--fg-secondary) }
@@ -397,7 +397,7 @@ import {
     .conso-bar span { display: block; height: 100%; background: var(--tracky-light) } .conso-bar span.hot { background: #f87171 }
 
     .lnk { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg-tertiary); padding: 3px 6px; display: inline-flex; align-items: center; gap: 4px }
-    .lnk:hover { color: var(--fg-primary) } .lnk.green { color: var(--tracky-light) } .lnk.amber { color: #fbbf24 }
+    .lnk:hover { color: var(--fg-primary) } .lnk.green { color: var(--texte-succes) } .lnk.amber { color: var(--texte-attente) }
 
     .sp-loading { display: flex; justify-content: center; padding: 60px 0 }
     .spin { animation: vt-spin 1s linear infinite }
@@ -413,13 +413,13 @@ import {
     .ov-head h2 { font-size: 16px; font-weight: 700; color: var(--fg-primary) }
     .ov-x { padding: 6px; border-radius: 8px; background: none; border: none; color: var(--fg-tertiary); cursor: pointer } .ov-x:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
     .ov-body { padding: 18px 20px; overflow-y: auto }
-    .ov-err { padding: 10px 12px; border-radius: 10px; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.2); color: #f87171; font-size: 12px; margin-bottom: 12px }
+    .ov-err { padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent); color: var(--texte-alerte); font-size: 12px; margin-bottom: 12px }
     .ov-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-subtle) }
     .fl { display: block; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); margin: 12px 0 4px } .fl:first-child { margin-top: 0 }
     .fi { width: 100%; padding: 9px 12px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); border-radius: 10px; color: var(--fg-primary); font-size: 13px; outline: none }
     .fi:focus { border-color: var(--tracky) } .ta { resize: vertical; line-height: 1.5 }
     .hint { font-size: 11px; color: var(--fg-tertiary); margin: 6px 0 0; line-height: 1.45 } .hint code { background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px }
-    .bulk-res { margin-top: 12px; font-size: 12px } .bulk-res .ok { color: var(--tracky-light); font-weight: 700; margin-right: 10px } .bulk-res .ko { color: #fbbf24; font-weight: 700 }
+    .bulk-res { margin-top: 12px; font-size: 12px } .bulk-res .ok { color: var(--texte-succes); font-weight: 700; margin-right: 10px } .bulk-res .ko { color: var(--texte-attente); font-weight: 700 }
     .bulk-res .sk { color: var(--fg-tertiary); margin-top: 3px }
 
     .picker { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px }
@@ -442,7 +442,7 @@ import {
     .btn-row { display: flex; gap: 8px; flex-wrap: wrap }
     .chip { padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .chip:hover { border-color: var(--tracky); color: var(--fg-primary) } .chip:disabled { opacity: .5 }
-    .chip.danger { color: #f87171; border-color: rgba(239,68,68,.25) }
+    .chip.danger { color: var(--texte-alerte); border-color: color-mix(in srgb, var(--danger) 25%, transparent) }
     .spark { display: flex; align-items: flex-end; gap: 2px; height: 56px; padding: 4px 0 }
     .spark .bar { flex: 1; min-width: 2px; background: var(--tracky-light); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .85 }
     .evts { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px }

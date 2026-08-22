@@ -100,7 +100,9 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
     .ajp-ico {
       flex-shrink: 0; width: 32px; height: 32px; border-radius: 9px;
       display: inline-flex; align-items: center; justify-content: center;
-      background: var(--bg-tertiary); color: var(--tracky-light);
+      /* --texte-succes et non le vert de marque : a l'etat done l'icone se pose
+         sur un lavis a 16 % ou la marque tombe sous 3:1 en theme clair. */
+      background: var(--bg-tertiary); color: var(--texte-succes);
     }
     .ajp-card--done .ajp-ico { background: color-mix(in srgb, var(--tracky-light) 16%, transparent); }
     .ajp-card--err .ajp-ico { color: var(--danger, #EF4444); background: color-mix(in srgb, var(--danger, #EF4444) 12%, transparent); }
@@ -118,10 +120,10 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
     .ajp-badge {
       font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
       padding: 2px 7px; border-radius: 999px;
-      background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--tracky-light);
+      background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--texte-succes);
     }
     .ajp-badge--ok { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); }
-    .ajp-badge--err { background: color-mix(in srgb, var(--danger, #EF4444) 14%, transparent); color: var(--danger, #EF4444); }
+    .ajp-badge--err { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
     .ajp-sub { margin: 3px 0 0; font-size: 12px; color: var(--fg-secondary); line-height: 1.4; }
 
     /* Barre de progression indéterminée (va-et-vient) → « quelque chose se passe ». */

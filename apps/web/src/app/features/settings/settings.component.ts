@@ -642,7 +642,7 @@ interface GroupeSection {
     .s-plan-offre { color: var(--texte-succes); font-weight: 600 }
     .s-plan-note--sa { margin: 14px 0 0 }
     .s-lien-accent { color: var(--texte-succes) }
-    .s-opt-ico.on { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light) }
+    .s-opt-ico.on { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--texte-succes) }
     .s-opt-status { padding: 3px 10px; border-radius: 999px; font-size: .68rem; font-weight: 800; background: var(--bg-tertiary); color: var(--fg-secondary) }
     .s-opt-status.on { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--texte-succes) }
     .s-opt h4 { margin: 14px 0 0; font-size: 1rem; font-weight: 700; color: var(--fg-primary) }
@@ -660,7 +660,9 @@ interface GroupeSection {
     /* DS : accent émeraude unique — les sections se distinguent par leur icône,
        pas par une couleur différente (fin de l'arc-en-ciel violet/bleu/cyan). */
     .s-icon.green, .s-icon.purple, .s-icon.amber, .s-icon.blue, .s-icon.cyan, .s-icon.violet {
-      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); color: var(--color-tracky-light);
+      /* Pictogramme sur son propre lavis : le vert de marque tombe a ~3:1 en
+         clair, sous le seuil graphique. --texte-succes tient dans les deux themes. */
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); color: var(--texte-succes);
     }
 
     /* Account */

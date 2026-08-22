@@ -240,7 +240,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-x { width: 34px; height: 34px; border-radius: 9px; color: var(--fg-tertiary); display: inline-flex; align-items: center; justify-content: center; }
     .aas-x:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
     .aas-note, .aas-alert { margin: 12px 2px; padding: 12px; border-radius: 12px; background: rgba(56,189,248,.10); color: #38BDF8; font-size: 12.5px; }
-    .aas-alert { background: rgba(239,68,68,.10); color: #f87171; }
+    .aas-alert { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); }
     .aas-skel { height: 46px; border-radius: 12px; margin: 8px 2px; background: linear-gradient(90deg, var(--bg-tertiary), var(--bg-secondary), var(--bg-tertiary)); }
     .aas-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 62dvh; padding: 10px 2px 2px; }
     .aas-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -286,7 +286,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-run-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .aas-run-when { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace); }
     .aas-run-origin { padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); color: var(--fg-tertiary); font-family: var(--font-sans, sans-serif); }
-    .aas-run-ai { padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 800; background: rgba(167,139,250,.16); color: #A78BFA; font-family: var(--font-sans, sans-serif); }
+    .aas-run-ai { padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 800; background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); font-family: var(--font-sans, sans-serif); }
     .aas-run-detail { font-size: 11px; color: var(--fg-tertiary); line-height: 1.4; }
     .aas-run-detail--err { color: var(--danger); }
     .aas-run-dur { flex: 0 0 auto; font-size: 10.5px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace); }

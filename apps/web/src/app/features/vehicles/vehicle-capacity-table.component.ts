@@ -194,7 +194,7 @@ interface EditRow extends VehicleCapacityRowDto {
     .cap-src--none { color: var(--fg-tertiary); }
     .cap-src-label { color: var(--fg-tertiary); display: inline-flex; align-items: center; gap: 4px; }
     .cap-src-val { color: var(--fg-secondary); font-weight: 600; }
-    .cap-sync-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: #F59E0B; background: rgba(245,158,11,.12); border-radius: 8px; padding: 4px 9px; }
+    .cap-sync-btn { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--texte-attente); background: color-mix(in srgb, var(--warning) 12%, transparent); border-radius: 8px; padding: 4px 9px; }
     .cap-sync-ok { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--tracky-light); }
     .cap-sync-panel { display: flex; flex-direction: column; gap: 7px; padding: 10px; border-radius: 10px; background: var(--bg-primary); border: 1px dashed var(--border-strong); }
     .cap-sync-title { font-size: 11.5px; font-weight: 700; color: var(--fg-secondary); }
@@ -217,7 +217,7 @@ interface EditRow extends VehicleCapacityRowDto {
     .cap-btn--primary { background: var(--tracky, #10B981); color: #fff; }
     .cap-btn--primary:disabled { opacity: .5; }
     .cap-btn--ghost { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
-    .cap-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: rgba(239,68,68,.1); color: #EF4444; font-size: 13px; }
+    .cap-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); font-size: 13px; }
     .cap-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 36px; text-align: center; color: var(--fg-tertiary); font-size: 13px; }
     .cap-empty-ic { opacity: .3; }
     .cap-skel { height: 150px; border-radius: var(--radius-card, 16px); background: linear-gradient(90deg, var(--bg-secondary), var(--bg-tertiary), var(--bg-secondary)); background-size: 200% 100%; animation: cap-sh 1.3s infinite; }

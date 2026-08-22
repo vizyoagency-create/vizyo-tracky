@@ -64,8 +64,8 @@ import { RetentionService } from '../../core/services/retention.service';
       .r-stats { display: flex; gap: 22px; }
       .r-stat { display: flex; flex-direction: column; gap: 2px; }
       .rn { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--fg-primary); }
-      .rn.amber { color: #fbbf24; }
-      .rn.red { color: #f87171; }
+      .rn.amber { color: var(--texte-attente); }
+      .rn.red { color: var(--texte-alerte); }
       .rl { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-tertiary); }
       .r-next { font-size: 12px; color: var(--fg-secondary); margin: 12px 0 0; }
       .r-next b { color: var(--fg-primary); }

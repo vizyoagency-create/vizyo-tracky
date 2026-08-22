@@ -353,7 +353,7 @@ import {
     }
     .vmt-plan-btn:hover { color: var(--fg-primary); border-color: var(--border-strong); }
     .vmt-plan-btn--done:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3); background: rgba(16,224,160,.06); }
-    .vmt-plan-btn--del:hover { color: #ef4444; border-color: rgba(239,68,68,.3); background: rgba(239,68,68,.06); }
+    .vmt-plan-btn--del:hover { color: var(--texte-alerte); border-color: color-mix(in srgb, var(--danger) 30%, transparent); background: color-mix(in srgb, var(--danger) 6%, transparent); }
 
     /* ─── Event card ─── */
     .vmt-event {

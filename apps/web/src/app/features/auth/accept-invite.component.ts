@@ -181,11 +181,14 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
     .ai-head-ic {
       display: inline-flex; align-items: center; justify-content: center;
       width: 58px; height: 58px; border-radius: 50%; margin-bottom: 14px;
-      background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--tracky-light);
+      /* --tracky-light vaut l'accent PLEIN : pose sur son propre lavis a 12 %,
+         il tombe sous 3:1 en theme clair. --texte-succes est la valeur assombrie
+         prevue pour ca (identique en sombre). */
+      background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes);
     }
     .ai-eyebrow {
       font-family: var(--font-mono, monospace); font-size: .66rem; font-weight: 600;
-      letter-spacing: .16em; text-transform: uppercase; color: var(--tracky-light); margin-bottom: 8px;
+      letter-spacing: .16em; text-transform: uppercase; color: var(--texte-succes); margin-bottom: 8px;
     }
     .ai-head h1 { margin: 0; font-family: var(--font-display, inherit); font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; color: var(--fg-primary); }
     .ai-head p { margin: 9px 0 0; font-size: .92rem; color: var(--fg-secondary); line-height: 1.5; }
@@ -246,7 +249,7 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
     .ai-state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0; padding: 8px 0; }
     .ai-state-ic { display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: 50%; margin-bottom: 16px; }
-    .ai-state-ic--ok { background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--tracky-light); }
+    .ai-state-ic--ok { background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes); }
     .ai-state-ic--err { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
     .ai-state h1 { margin: 0; font-family: var(--font-display, inherit); font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; color: var(--fg-primary); }
     .ai-state p { margin: 12px 0 0; font-size: .95rem; color: var(--fg-secondary); line-height: 1.55; }

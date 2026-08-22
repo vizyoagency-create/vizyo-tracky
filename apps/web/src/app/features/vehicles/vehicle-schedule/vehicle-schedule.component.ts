@@ -545,9 +545,9 @@ const TIMEZONES = [
     .vsched-override {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 16px;
-      border-top: 1px solid rgba(245,158,11,.2);
-      background: rgba(245,158,11,.06);
-      color: #f59e0b;
+      border-top: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
+      background: color-mix(in srgb, var(--warning) 6%, transparent);
+      color: var(--texte-attente);
       font-size: 12px;
     }
 

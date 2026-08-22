@@ -497,7 +497,9 @@ interface WidgetMeta {
       color: var(--fg-secondary); font-size: 11px; font-weight: 600;
       cursor: pointer; transition: all .15s;
     }
-    .dash-customize-btn:hover { color: var(--tracky-light); border-color: var(--tracky) }
+    /* Libelles et petits textes : --texte-succes, jamais le vert de marque
+       (3,43:1 en clair sur fond clair, ~3:1 sur ses lavis). Cf. styles.css. */
+    .dash-customize-btn:hover { color: var(--texte-succes); border-color: var(--tracky) }
     .dash-customize-label { display: none }
     @media (min-width: 380px) { .dash-customize-label { display: inline } }
 
@@ -505,7 +507,7 @@ interface WidgetMeta {
     .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-tertiary); animation: pulse 2s ease infinite }
     .status-dot.online { background: var(--tracky-light) }
     .status-text { font-size: 10px; font-weight: 600; color: var(--fg-secondary) }
-    .status-text.online { color: var(--tracky-light) }
+    .status-text.online { color: var(--texte-succes) }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
     /* Metrics grid : 2x2 mobile, 4x1 desktop */
@@ -568,7 +570,7 @@ interface WidgetMeta {
     .dash-banner-icon {
       display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
       width: 46px; height: 46px; border-radius: 13px;
-      background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--tracky-light);
+      background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes);
     }
     .dash-banner-text { flex: 1; min-width: 200px }
     .dash-banner-title { font-size: 15px; font-weight: 700; color: var(--fg-primary); line-height: 1.3 }
@@ -712,7 +714,7 @@ interface WidgetMeta {
     .widget-schedule-icon {
       width: 36px; height: 36px; border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(16,224,160,.12); color: var(--tracky-light);
+      background: rgba(16,224,160,.12); color: var(--texte-succes);
       flex-shrink: 0;
     }
     .widget-schedule-info { flex: 1; min-width: 0 }
@@ -722,7 +724,7 @@ interface WidgetMeta {
     .widget-schedule-preset {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 12px; border-radius: 9999px;
-      background: rgba(16,224,160,.08); color: var(--tracky-light);
+      background: rgba(16,224,160,.08); color: var(--texte-succes);
       border: 1px solid rgba(16,224,160,.25);
       font-size: 11px; font-weight: 600;
       text-decoration: none; transition: all .2s;

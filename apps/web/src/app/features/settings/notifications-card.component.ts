@@ -1151,7 +1151,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-state-on { border-color: color-mix(in srgb, var(--tracky) 35%, var(--border-subtle)); }
       .nc-state-on lucide-icon { color: var(--tracky-light); }
       .nc-state-warn { border-color: color-mix(in srgb, #f59e0b 35%, var(--border-subtle)); }
-      .nc-state-warn lucide-icon { color: #f59e0b; }
+      .nc-state-warn lucide-icon { color: var(--warning); }
       .nc-state-off lucide-icon { color: var(--fg-tertiary); }
 
       /* Mode d'emploi iOS — la cause n°1 de « je ne recois rien » */
@@ -1163,7 +1163,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
 
       .nc-notice { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
       .nc-notice lucide-icon { flex-shrink: 0; margin-top: 2px; }
-      .nc-notice-warn { color: #f59e0b; }
+      .nc-notice-warn { color: var(--texte-attente); }
 
       /* Blocs */
       .nc-block { border-top: 1px solid var(--border-subtle); padding-top: 14px; }
@@ -1196,8 +1196,8 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; margin-left: 6px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); white-space: nowrap; }
       .nc-freq { color: var(--fg-secondary); }
       /* Au-dela d'une par jour, la frequence n'est plus un detail : elle doit sauter aux yeux. */
-      .nc-freq.loud { color: #f59e0b; font-weight: 700; }
-      .nc-blocked { color: #f59e0b; margin-left: 4px; }
+      .nc-freq.loud { color: var(--texte-attente); font-weight: 700; }
+      .nc-blocked { color: var(--texte-attente); margin-left: 4px; }
       .nc-row-note { font-size: 11px; color: var(--fg-secondary); line-height: 1.45; margin: 4px 0 0; }
       .nc-row-master { padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); }
       .nc-row-text { flex: 1; min-width: 0; }

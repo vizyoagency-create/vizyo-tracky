@@ -103,37 +103,39 @@ import { RealtimeService } from '../../core/services/realtime.service';
     .dsc-head { display: flex; align-items: center; justify-content: space-between; }
     .dsc-title { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
     .dsc-title lucide-icon { color: var(--tracky-light, #10E0A0); }
-    .dsc-link { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; color: var(--tracky-light, #10E0A0); }
+    /* Convention du kit (styles.css) : un libelle prend un jeton --texte-*,
+       jamais la couleur de marque — 3,43:1 en theme clair sinon. */
+    .dsc-link { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; color: var(--texte-succes); }
     .dsc-loading { display: flex; justify-content: center; padding: 16px; }
     .dsc-spinner { width: 22px; height: 22px; border: 3px solid var(--border-subtle); border-top-color: var(--tracky-light, #10E0A0); border-radius: 50%; animation: dsc-rot .8s linear infinite; }
     @keyframes dsc-rot { to { transform: rotate(360deg); } }
     .dsc-body { display: flex; align-items: center; gap: 13px; }
     .dsc-grade { display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; border-radius: 14px; font-size: 25px; font-weight: 800; flex-shrink: 0; }
-    .dsc-grade[data-grade="A"] { background: color-mix(in srgb, #10E0A0 18%, transparent); color: #10E0A0; }
-    .dsc-grade[data-grade="B"] { background: color-mix(in srgb, #84CC16 18%, transparent); color: #84CC16; }
-    .dsc-grade[data-grade="C"] { background: color-mix(in srgb, #F59E0B 18%, transparent); color: #F59E0B; }
-    .dsc-grade[data-grade="D"] { background: color-mix(in srgb, #F97316 18%, transparent); color: #F97316; }
-    .dsc-grade[data-grade="E"] { background: color-mix(in srgb, #EF4444 18%, transparent); color: #EF4444; }
+    .dsc-grade[data-grade="A"] { background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--texte-succes); }
+    .dsc-grade[data-grade="B"] { background: color-mix(in srgb, var(--lime) 18%, transparent); color: var(--texte-lime); }
+    .dsc-grade[data-grade="C"] { background: color-mix(in srgb, var(--warning) 18%, transparent); color: var(--texte-attente); }
+    .dsc-grade[data-grade="D"] { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--texte-orange); }
+    .dsc-grade[data-grade="E"] { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--texte-alerte); }
     .dsc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .dsc-score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .dsc-score { font-size: 26px; font-weight: 800; color: var(--fg-primary); line-height: 1; }
     .dsc-score small { font-size: 13px; color: var(--fg-tertiary); font-weight: 600; }
     .dsc-rank { font-size: 13px; font-weight: 800; color: var(--fg-secondary); white-space: nowrap; }
     .dsc-rank sup { font-size: 9px; }
-    .dsc-rank--podium { color: var(--tracky-light, #10E0A0); }
+    .dsc-rank--podium { color: var(--texte-succes); }
     .dsc-vs { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; }
-    .dsc-vs.up { color: #10E0A0; } .dsc-vs.down { color: #F59E0B; }
+    .dsc-vs.up { color: var(--texte-succes); } .dsc-vs.down { color: var(--texte-attente); }
     .dsc-motiv { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.4; padding: 9px 12px; border-radius: 10px; }
-    .dsc-motiv[data-tier="great"] { background: color-mix(in srgb, #10E0A0 12%, transparent); color: #10E0A0; }
-    .dsc-motiv[data-tier="good"] { background: color-mix(in srgb, #84CC16 12%, transparent); color: #84CC16; }
-    .dsc-motiv[data-tier="mid"] { background: color-mix(in srgb, #F59E0B 12%, transparent); color: #F59E0B; }
-    .dsc-motiv[data-tier="low"] { background: color-mix(in srgb, #F97316 12%, transparent); color: #F97316; }
+    .dsc-motiv[data-tier="great"] { background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes); }
+    .dsc-motiv[data-tier="good"] { background: color-mix(in srgb, var(--lime) 12%, transparent); color: var(--texte-lime); }
+    .dsc-motiv[data-tier="mid"] { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente); }
+    .dsc-motiv[data-tier="low"] { background: color-mix(in srgb, var(--orange) 12%, transparent); color: var(--texte-orange); }
     /* DORMANCE — ambre brûlé #d97706, même teinte que le badge « Dormant » du reste de l'app
        (délibérément plus soutenu que l'ambre « Hors ligne » : ce n'est pas la même urgence). */
     .dsc-dormant { margin: 0; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; font-weight: 600; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, #d97706 12%, transparent); color: #d97706; }
     .dsc-dormant lucide-icon { flex-shrink: 0; margin-top: 1px; }
     .dsc-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--fg-tertiary); }
-    .dsc-warn { color: #EF4444; font-weight: 700; }
+    .dsc-warn { color: var(--texte-alerte); font-weight: 700; }
     .dsc-help { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-tertiary); }
     .dsc-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 18px 10px; color: var(--fg-tertiary); }
     .dsc-empty p { margin: 0; font-weight: 700; color: var(--fg-secondary); }

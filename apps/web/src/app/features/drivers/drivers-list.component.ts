@@ -316,7 +316,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0;
     }
     .d-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .d-status.suspended { background: rgba(239,68,68,.1); color: #f87171 }
+    .d-status.suspended { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte) }
 
     /* V1.15 — Ligne meta : fleet badge + compteurs vehicules/trajets. */
     .d-meta-row {
@@ -372,7 +372,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
     }
     .d-action-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .d-action-btn.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .d-action-btn.danger:hover { color: var(--texte-alerte); border-color: color-mix(in srgb, var(--danger) 20%, transparent) }
 
     /* Marqueur de type « Conducteur » (différenciation vs cartes Compte). */
     .d-type-badge {

@@ -190,7 +190,7 @@ import { ThemeService } from '../../core/theme/theme.service';
           Authentification sécurisée par
           <span class="font-semibold text-fg-secondary">Vizyo&nbsp;Auth</span>
         </span>
-        <span class="text-[10px] text-fg-tertiary/70">
+        <span class="text-[10px] text-fg-tertiary">
           Plateforme d'identité dédiée à la sécurité des applications Vizyo
         </span>
       </div>

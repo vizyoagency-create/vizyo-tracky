@@ -1017,8 +1017,10 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
     .v-trow-model { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .v-trow-status { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
     .v-trow-speed { font-size: 14px; font-weight: 800; font-family: var(--font-display); color: var(--fg-secondary); white-space: nowrap }
-    .v-trow-speed.spd-move { color: var(--tracky-light) }
-    .v-trow-speed.spd-idle { color: var(--warning) }
+    /* Vitesse en mouvement : --texte-succes, la marque mesurait 3,43:1 en clair
+       (releve navigateur du 2026-08-22, vue tableau a 375 px). */
+    .v-trow-speed.spd-move { color: var(--texte-succes) }
+    .v-trow-speed.spd-idle { color: var(--texte-attente) }
     .v-trow-speed-u { font-size: 9px; font-weight: 600; color: var(--fg-tertiary) }
     .v-trow-drv { font-size: 13px; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .v-trow-drv.v-trow-dash { color: var(--fg-tertiary) }
@@ -1111,7 +1113,8 @@ type FiltreStatut = 'tous' | 'roulage' | 'arret' | 'hors-ligne' | 'sans-boitier'
     .v-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px }
     .v-plate-wrap { display: flex; align-items: center; gap: 8px }
     .v-type-icon { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center }
-    .v-type-icon.online { background: rgba(16,224,160,.15); color: var(--tracky-light) }
+    /* Pictogramme sur lavis accent : --texte-succes, la marque tombe a ~2,9:1 en clair. */
+    .v-type-icon.online { background: rgba(16,224,160,.15); color: var(--texte-succes) }
     .v-type-icon.offline { background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .v-type-icon :deep(svg) { width: 16px; height: 16px }
     .v-plate { font-size: 16px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-mono, monospace); letter-spacing: .03em }

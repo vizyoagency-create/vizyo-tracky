@@ -520,10 +520,13 @@ interface AlertCluster {
     .a-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px }
     .a-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .a-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
-    .a-sub-filter { color: var(--tracky-light); font-weight: 600; margin-left: 4px }
+    /* Meme regle que .bn-tab.active ci-dessus : un LIBELLE prend --texte-succes,
+       jamais le vert de marque — 3,43:1 en clair sur fond clair, ~3:1 sur ses
+       propres lavis. En sombre les deux jetons portent la meme valeur. */
+    .a-sub-filter { color: var(--texte-succes); font-weight: 600; margin-left: 4px }
     .a-ack-all {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
-      font-size: 12px; font-weight: 700; background: rgba(16,224,160,.1); color: var(--tracky-light);
+      font-size: 12px; font-weight: 700; background: rgba(16,224,160,.1); color: var(--texte-succes);
       border: 1px solid rgba(16,224,160,.2); cursor: pointer; transition: all .2s; white-space: nowrap;
     }
     .a-ack-all:hover { background: rgba(16,224,160,.18) }
@@ -583,7 +586,7 @@ interface AlertCluster {
       cursor: pointer; transition: all .2s;
     }
     .a-filter:hover { color: var(--fg-secondary) }
-    .a-filter.active { border-color: rgba(16,224,160,.3); color: var(--tracky-light); background: rgba(16,224,160,.08) }
+    .a-filter.active { border-color: rgba(16,224,160,.3); color: var(--texte-succes); background: rgba(16,224,160,.08) }
     .a-filter-select {
       appearance: none; -webkit-appearance: none;
       padding-right: 26px;
@@ -650,7 +653,9 @@ interface AlertCluster {
     .cfg-btn-add {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      background: var(--tracky); color: var(--bg-primary); border: none; cursor: pointer;
+      /* Ecart 2 (B0-SOCLE) : sur un fond accent l'encre est FONCEE. --bg-primary
+         vaut quasi-blanc en theme clair, soit 3,43:1 sur le vert. */
+      background: var(--tracky); color: var(--accent-ink); border: none; cursor: pointer;
       margin-left: auto; transition: background .2s;
     }
     .cfg-btn-add:hover { background: var(--tracky-light) }
@@ -690,11 +695,11 @@ interface AlertCluster {
     .cfg-sev-dot.sev-info { background: var(--fg-tertiary) }
     .cfg-sev-dot.sev-all { background: linear-gradient(135deg, var(--danger), var(--warning), var(--fg-tertiary)) }
     .cfg-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
-    .cfg-pill-on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
+    .cfg-pill-on { background: rgba(16,224,160,.12); color: var(--texte-succes) }
     .cfg-pill-off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .cfg-rule-body { display: flex; flex-direction: column; gap: 6px }
     .cfg-rule-vehicle { font-size: 11px; color: var(--fg-tertiary) }
-    .cfg-rule-vehicle.fleet-wide { color: var(--tracky-light); font-weight: 600 }
+    .cfg-rule-vehicle.fleet-wide { color: var(--texte-succes); font-weight: 600 }
     .cfg-rule-channels { display: flex; gap: 4px; flex-wrap: wrap }
     .cfg-ch-pill {
       display: inline-flex; align-items: center; gap: 4px;
@@ -753,7 +758,7 @@ interface AlertCluster {
       font-size: 12px; cursor: pointer;
     }
     .cfg-btn-primary {
-      background: var(--tracky); color: var(--bg-primary);
+      background: var(--tracky); color: var(--accent-ink);
       border: 0; padding: 8px 14px; border-radius: 8px;
       font-weight: 600; font-size: 12px; cursor: pointer;
     }
@@ -791,13 +796,15 @@ interface AlertCluster {
     .a-sum-tile { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0 }
     .a-sum-num { font-size: 20px; font-weight: 800; line-height: 1.1 }
     .a-sum-lbl { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 1px }
-    .a-sum-critical .a-sum-tile { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
-    .a-sum-critical .a-sum-num { color: var(--danger) }
-    .a-sum-warning .a-sum-tile { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
-    .a-sum-warning .a-sum-num { color: var(--warning) }
+    /* Les compteurs sont du TEXTE (20 px gras, seuil 3:1) : --warning tombait a
+       3,02:1 en theme clair. Les jetons --texte-* passent 4,5:1, tuile comprise. */
+    .a-sum-critical .a-sum-tile { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte) }
+    .a-sum-critical .a-sum-num { color: var(--texte-alerte) }
+    .a-sum-warning .a-sum-tile { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--texte-attente) }
+    .a-sum-warning .a-sum-num { color: var(--texte-attente) }
     .a-sum-info .a-sum-tile { background: var(--bg-tertiary); color: var(--fg-secondary) }
-    .a-sum-acked .a-sum-tile { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
-    .a-sum-acked .a-sum-num { color: var(--tracky-light) }
+    .a-sum-acked .a-sum-tile { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--texte-succes) }
+    .a-sum-acked .a-sum-num { color: var(--texte-succes) }
 
     /* ═══ Feed cards ═══ */
     .a-feed { display: flex; flex-direction: column; gap: 10px }
@@ -808,7 +815,7 @@ interface AlertCluster {
     .al-itile { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; margin-top: 1px }
     .al-itile.sev-critical { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
     .al-itile.sev-warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
-    .al-itile.sev-info { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light) }
+    .al-itile.sev-info { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--texte-succes) }
     .al-body { flex: 1; min-width: 0 }
     .al-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
     .al-title { font-size: 14px; font-weight: 700; color: var(--fg-primary) }
@@ -820,7 +827,7 @@ interface AlertCluster {
     .al-acked-tag { font-size: 11px; font-weight: 600; color: var(--fg-tertiary) }
     .al-meta { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 4px; line-height: 1.5 }
     .al-plate { color: var(--fg-secondary); font-weight: 600 }
-    .al-plate:hover { color: var(--tracky-light) }
+    .al-plate:hover { color: var(--texte-succes) }
     .al-sep { color: var(--fg-tertiary); opacity: .6; margin: 0 4px }
     .al-expand { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: color .15s, border-color .15s }
     .al-expand:hover { color: var(--fg-primary); border-color: var(--border-strong, var(--border-subtle)) }
@@ -830,9 +837,9 @@ interface AlertCluster {
     .al-occ.acked { opacity: .5 }
     .al-occ-time { color: var(--fg-tertiary) }
     .al-occ-speed { color: var(--fg-secondary); font-weight: 600 }
-    .al-occ-ack { color: var(--tracky-light) }
+    .al-occ-ack { color: var(--texte-succes) }
     .al-ack { flex-shrink: 0; align-self: center; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid var(--border-strong, var(--border-subtle)); background: transparent; color: var(--fg-secondary); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s }
-    .al-ack:hover { color: var(--tracky-light); border-color: color-mix(in srgb, var(--tracky) 40%, transparent) }
+    .al-ack:hover { color: var(--texte-succes); border-color: color-mix(in srgb, var(--tracky) 40%, transparent) }
 
     @media (max-width: 720px) {
       .a-summary { grid-template-columns: repeat(2, 1fr) }

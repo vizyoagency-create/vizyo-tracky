@@ -287,9 +287,9 @@ interface GroupOption {
           (dayClick)="onDayClick($event)"
         />
         <div class="flex flex-wrap gap-x-4 gap-y-1.5 px-1 pt-2.5 text-[11px] text-fg-tertiary">
-          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#10E0A0"></span>Maintenance</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#F59E0B"></span>Incident</span>
-          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#38BDF8"></span>Réservation</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:var(--tracky-light)"></span>Maintenance</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:var(--warning)"></span>Incident</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:var(--blue)"></span>Réservation</span>
           <!-- Deux styles EN LIGNE avec la couleur en dur : #38BDF8 et #A78BFA sont
                les valeurs SOMBRES de --blue et --violet, donc les glyphes gardaient
                la teinte du theme sombre en clair (2,08:1 et 2,65:1). Les jetons
@@ -903,7 +903,7 @@ interface GroupOption {
     .ag-up-type {
       display: inline-flex; align-items: center; justify-content: center;
       width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
-      color: var(--pill, #10E0A0); background: color-mix(in srgb, var(--pill, #10E0A0) 14%, transparent);
+      color: var(--pill, var(--texte-succes)); background: color-mix(in srgb, var(--pill, var(--texte-succes)) 14%, transparent);
     }
     .ag-up-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
     .ag-up-title {
@@ -920,7 +920,8 @@ interface GroupOption {
     .ag-up-badge {
       font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
       padding: 2px 7px; border-radius: 9999px;
-      color: var(--u, #10E0A0); background: color-mix(in srgb, var(--u, #10E0A0) 16%, transparent);
+      /* Lavis a 14 % et non 16 : le jeton alerte tombe sous 4,5:1 au-dela (verif:contraste). */
+      color: var(--u, var(--texte-succes)); background: color-mix(in srgb, var(--u, var(--texte-succes)) 14%, transparent);
       white-space: nowrap;
     }
 
@@ -964,13 +965,13 @@ interface GroupOption {
     .ag-day-card {
       padding: 12px; border-radius: 12px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      border-left: 3px solid var(--pill, #10E0A0);
+      border-left: 3px solid var(--pill, var(--texte-succes));
     }
     .ag-day-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .ag-day-card-type {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
-      color: var(--pill, #10E0A0);
+      color: var(--pill, var(--texte-succes));
     }
     .ag-day-card-title { font-size: 14px; font-weight: 700; color: var(--fg-primary); margin: 8px 0 0; }
     .ag-day-card-meta { font-size: 11px; color: var(--fg-tertiary); margin: 3px 0 0; }
@@ -1022,7 +1023,7 @@ interface GroupOption {
     }
     .ag-ctx[data-ctx="past"]   { color: #38BDF8; background: rgba(56,189,248,.12); }
     .ag-ctx[data-ctx="today"]  { color: var(--tracky-light); background: rgba(16,224,160,.12); }
-    .ag-ctx[data-ctx="future"] { color: #A78BFA; background: rgba(167,139,250,.12); }
+    .ag-ctx[data-ctx="future"] { color: var(--texte-violet); background: color-mix(in srgb, var(--violet) 10%, transparent); }
 
     .ag-sec { display: flex; flex-direction: column; gap: 6px; }
     .ag-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1031,13 +1032,13 @@ interface GroupOption {
       font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
       color: var(--fg-secondary);
     }
-    .ag-sec-titr--fc { color: #A78BFA; }
+    .ag-sec-titr--fc { color: var(--texte-violet); }
     .ag-sec-titr--act { color: #38BDF8; }
     .ag-sec-badge {
       font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px;
       background: var(--bg-tertiary); color: var(--fg-tertiary);
     }
-    .ag-sec-badge--fc { background: rgba(167,139,250,.14); color: #A78BFA; }
+    .ag-sec-badge--fc { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); }
     .ag-sec-badge--act { background: rgba(56,189,248,.14); color: #38BDF8; }
     .ag-cmp { font-size: 11px; font-weight: 700; color: var(--fg-tertiary); padding: 1px 8px; border-radius: 999px; background: var(--bg-tertiary); }
     .ag-sec-sub { font-size: 11px; color: var(--fg-tertiary); margin: -2px 0 2px; line-height: 1.4; }

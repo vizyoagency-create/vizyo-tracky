@@ -237,11 +237,12 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     .gf-name { font-size: 14px; font-weight: 700; color: var(--fg-primary) }
     .gf-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px }
     .gf-rule-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px }
-    .gf-rule-badge.enter { background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent); color: var(--color-tracky-light) }
+    /* Texte sur lavis accent : --texte-succes, le vert de marque rend ~3:1 en clair. */
+    .gf-rule-badge.enter { background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent); color: var(--texte-succes) }
     .gf-rule-badge.exit { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning) }
-    .gf-rule-badge.both { background: rgba(16,224,160,.1); color: var(--tracky-light) }
+    .gf-rule-badge.both { background: rgba(16,224,160,.1); color: var(--texte-succes) }
     .gf-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px }
-    .gf-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
+    .gf-status.active { background: rgba(16,224,160,.1); color: var(--texte-succes) }
     .gf-status.inactive { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger) }
     /* V1.15 — Chip "X véhicules ciblés" sur card geofence. */
     .gf-target-chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px;

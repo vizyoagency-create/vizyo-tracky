@@ -239,9 +239,11 @@ const FILTRES = [
     .mp-filtre { padding: 7px 14px; border-radius: 9999px; font-size: 12.5px; font-weight: 600;
                  background: var(--surface-secondary); border: 1px solid var(--border-color);
                  color: var(--text-secondary); cursor: pointer; }
+    /* Etat actif d'un segment : --texte-succes, jamais le vert de marque
+       (convention du kit, styles.css — 3:1 en clair sur ce lavis). */
     .mp-filtre--actif { background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
                         border-color: color-mix(in srgb, var(--color-tracky-light) 30%, transparent);
-                        color: var(--color-tracky-light); }
+                        color: var(--texte-succes); }
 
     /* Le tableau défile DANS son conteneur : la page ne défile jamais
        horizontalement (critère de recette B1 n° 5). */

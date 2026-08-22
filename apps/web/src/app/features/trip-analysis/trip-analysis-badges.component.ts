@@ -201,19 +201,25 @@ import { apiErrorMessage } from '../../core/error/api-error';
     }
     .tab-badge lucide-icon { flex-shrink: 0; }
     .tab-badge-sub { opacity: .8; font-weight: 800; margin-left: 1px; }
-    .tab-badge--eco[data-tier="good"] { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); color: var(--tracky-light, #10E0A0); border-color: transparent; }
-    .tab-badge--eco[data-tier="mid"]  { background: color-mix(in srgb, #F59E0B 16%, transparent); color: #F59E0B; border-color: transparent; }
-    .tab-badge--eco[data-tier="bad"]  { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; border-color: transparent; }
-    .tab-badge--danger { background: color-mix(in srgb, #EF4444 14%, transparent); color: #EF4444; border-color: transparent; }
-    .tab-badge--warn { background: color-mix(in srgb, #F59E0B 13%, transparent); color: #F59E0B; border-color: transparent; }
-    .tab-badge--fuel { background: color-mix(in srgb, #A78BFA 16%, transparent); color: #A78BFA; border-color: transparent; }
-    .tab-badge--trust[data-tier="good"] { background: color-mix(in srgb, #60A5FA 16%, transparent); color: #60A5FA; border-color: transparent; }
-    .tab-badge--trust[data-tier="mid"]  { background: color-mix(in srgb, #F59E0B 14%, transparent); color: #F59E0B; border-color: transparent; }
-    .tab-badge--trust[data-tier="bad"]  { background: color-mix(in srgb, #EF4444 14%, transparent); color: #EF4444; border-color: transparent; }
+    /* Texte sur lavis : jetons --texte-*, jamais la couleur vive — le vert de
+       marque rendait ~2,9:1 en theme clair sur sa propre teinte a 16 %, et les
+       litteraux ambre/rouge/violet/bleu 2,1 a 3,4:1. Le lavis se fabrique depuis
+       la couleur de BASE du theme ; le bleu ne tient 4,5:1 que jusqu'a 12 % de
+       lavis et le violet jusqu'a 10 % (verif:contraste, section « Notes de
+       conduite et chips hors famille verte »). */
+    .tab-badge--eco[data-tier="good"] { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); color: var(--texte-succes); border-color: transparent; }
+    .tab-badge--eco[data-tier="mid"]  { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); border-color: transparent; }
+    .tab-badge--eco[data-tier="bad"]  { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); border-color: transparent; }
+    .tab-badge--danger { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); border-color: transparent; }
+    .tab-badge--warn { background: color-mix(in srgb, var(--warning) 13%, transparent); color: var(--texte-attente); border-color: transparent; }
+    .tab-badge--fuel { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); border-color: transparent; }
+    .tab-badge--trust[data-tier="good"] { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--texte-info); border-color: transparent; }
+    .tab-badge--trust[data-tier="mid"]  { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente); border-color: transparent; }
+    .tab-badge--trust[data-tier="bad"]  { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); border-color: transparent; }
     .tab-analyze, .tab-refresh {
       display: inline-flex; align-items: center; gap: 5px;
       border-radius: 8px; cursor: pointer; font-weight: 700;
-      color: var(--tracky-light, #10E0A0);
+      color: var(--texte-succes);
       background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, transparent);
       border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 24%, transparent);
       transition: background .15s;
@@ -221,13 +227,13 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .tab-analyze { padding: 5px 11px; font-size: 11.5px; }
     .tab-refresh { padding: 4px 8px; font-size: 11px; }
     /* Teaser d'activation IA (option payante) — subtil, pointillés, couleur accent. */
-    .tab-teaser { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; text-decoration: none; color: var(--tracky-light, #10E0A0); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, transparent); border: 1px dashed color-mix(in srgb, var(--tracky-light, #10E0A0) 40%, transparent); }
+    .tab-teaser { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; text-decoration: none; color: var(--texte-succes); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, transparent); border: 1px dashed color-mix(in srgb, var(--tracky-light, #10E0A0) 40%, transparent); }
     .tab-teaser:hover { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
     .tab-analyze:hover:not(:disabled), .tab-refresh:hover:not(:disabled) { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
     .tab-analyze:disabled, .tab-refresh:disabled { opacity: .6; cursor: default; }
     .tab-spin { animation: tab-rot .9s linear infinite; }
     @keyframes tab-rot { to { transform: rotate(360deg); } }
-    .tab-err { font-size: 11px; color: #EF4444; }
+    .tab-err { font-size: 11px; color: var(--texte-alerte); }
 
     /* ── Modal détail IA ── */
     .taid-overlay { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
@@ -240,9 +246,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .taid-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
     .taid-trust { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .taid-trust-n { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
-    .taid-trust[data-tier="good"] .taid-trust-n { color: #60A5FA; }
-    .taid-trust[data-tier="mid"]  .taid-trust-n { color: #F59E0B; }
-    .taid-trust[data-tier="bad"]  .taid-trust-n { color: #EF4444; }
+    .taid-trust[data-tier="good"] .taid-trust-n { color: var(--texte-info); }
+    .taid-trust[data-tier="mid"]  .taid-trust-n { color: var(--texte-attente); }
+    .taid-trust[data-tier="bad"]  .taid-trust-n { color: var(--texte-alerte); }
     .taid-trust-l { display: flex; flex-direction: column; gap: 2px; }
     .taid-trust-l strong { font-size: 13.5px; font-weight: 800; color: var(--fg-primary); }
     .taid-trust-l small { font-size: 11.5px; color: var(--fg-tertiary); }
@@ -252,10 +258,10 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .taid-sec--advice p { color: var(--fg-primary); }
     .taid-empty { margin: 0; font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.5; }
     .taid-fuel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-    .taid-fuel-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, #A78BFA 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #A78BFA 20%, transparent); }
+    .taid-fuel-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--violet) 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--violet) 20%, transparent); }
     .taid-fuel-name { font-size: 13px; font-weight: 800; color: var(--fg-primary); }
-    .taid-fuel-price { font-size: 12.5px; font-weight: 700; color: #A78BFA; text-align: right; }
-    .taid-fuel-price strong { color: #A78BFA; }
+    .taid-fuel-price { font-size: 12.5px; font-weight: 700; color: var(--texte-violet); text-align: right; }
+    .taid-fuel-price strong { color: var(--texte-violet); }
     .taid-fuel-noprice { color: var(--fg-tertiary); font-weight: 600; }
     .taid-fuel-where { grid-column: 1; font-size: 11.5px; color: var(--fg-tertiary); }
     .taid-fuel-dur { grid-column: 2; text-align: right; font-size: 11.5px; color: var(--fg-tertiary); }
@@ -266,7 +272,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .taid-btn:disabled { opacity: .6; cursor: default; }
     .taid-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong, var(--border-subtle)); }
     .taid-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
-    .taid-err { margin: 0; font-size: 12px; color: #EF4444; }
+    .taid-err { margin: 0; font-size: 12px; color: var(--texte-alerte); }
   `],
 })
 export class TripAnalysisBadgesComponent {

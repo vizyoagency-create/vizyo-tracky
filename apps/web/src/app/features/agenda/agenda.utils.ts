@@ -21,31 +21,41 @@ import type {
  *   OPEN/retard  → plein rouge/ambre
  */
 
-/** Couleur principale (hex) d'un événement selon son type + sévérité. */
+/**
+ * Couleur principale d'un événement selon son type + sévérité.
+ *
+ * ⚠️ Des jetons `var(--texte-*)`, PAS des hexadécimaux : ces couleurs finissent en
+ * couleur de TEXTE via `[style.--pill]` / `[style.--u]`, et les valeurs vives
+ * d'avant (#F59E0B, #EF4444, #38BDF8…) rendaient 2,1 à 3,4:1 en thème clair.
+ * Les jetons basculent d'eux-mêmes entre les deux thèmes. Elles ne sont
+ * consommées que par des propriétés CSS — ne pas les passer à un canvas ni à un
+ * attribut SVG, où `var()` ne se résout pas.
+ */
 export function eventColor(ev: Pick<VehicleEventDto, 'type' | 'severity'>): string {
   switch (ev.type) {
     case 'MAINTENANCE':
-      return '#10E0A0'; // --tracky
+      return 'var(--texte-succes)';
     case 'INCIDENT':
       return severityColor(ev.severity);
     case 'RESERVATION':
-      return '#38BDF8'; // sky-400
+      return 'var(--texte-info)';
     default:
-      return '#94A3B8';
+      return 'var(--texte-inactif)';
   }
 }
 
-/** Couleur (hex) d'une sévérité d'incident. */
+/** Couleur d'une sévérité d'incident — mêmes règles que eventColor. */
 export function severityColor(severity: VehicleEventSeverity | null | undefined): string {
   switch (severity) {
     case 'HIGH':
-      return '#EF4444'; // red-500
+      return 'var(--texte-alerte)';
     case 'MEDIUM':
-      return '#F59E0B'; // amber-500
     case 'LOW':
-      return '#FBBF24'; // amber-400
+      // L'écart amber-400 / amber-500 ne survivait pas au thème clair : les deux
+      // sévérités partagent le jeton ambre, le libellé porte la nuance.
+      return 'var(--texte-attente)';
     default:
-      return '#F59E0B';
+      return 'var(--texte-attente)';
   }
 }
 
@@ -118,17 +128,17 @@ export function eventUrgency(ev: Pick<VehicleEventDto, 'status' | 'startAt'>, no
   return 'normal';
 }
 
-/** Couleur (hex) associée à une urgence (pour les listes à venir / en retard). */
+/** Couleur associée à une urgence (listes à venir / en retard) — mêmes règles que eventColor. */
 export function urgencyColor(urgency: EventUrgency): string {
   switch (urgency) {
     case 'overdue':
-      return '#EF4444';
+      return 'var(--texte-alerte)';
     case 'soon':
-      return '#F59E0B';
+      return 'var(--texte-attente)';
     case 'done':
-      return '#94A3B8';
+      return 'var(--texte-inactif)';
     default:
-      return '#10E0A0';
+      return 'var(--texte-succes)';
   }
 }
 

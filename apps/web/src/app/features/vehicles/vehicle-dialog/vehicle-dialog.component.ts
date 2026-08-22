@@ -353,7 +353,7 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     .vd-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border: 1.5px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }
     .vd-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 9px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--tracky-light, #10E0A0); background: rgba(16,224,160,.12) }
     .vd-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 5px; font-size: 14px; line-height: 1; color: var(--fg-tertiary); cursor: pointer }
-    .vd-chip-x:hover { color: #EF4444; background: rgba(239,68,68,.12) }
+    .vd-chip-x:hover { color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 12%, transparent) }
     /* 44 px : ce champ mesurait 20 de haut, noye dans la boite a etiquettes. */
     .vd-chip-input { flex: 1; min-width: 90px; min-height: 44px; background: transparent; border: none; outline: none; color: var(--fg-primary); font-size: 13px }
     .vd-chip-input::placeholder { color: var(--fg-tertiary) }

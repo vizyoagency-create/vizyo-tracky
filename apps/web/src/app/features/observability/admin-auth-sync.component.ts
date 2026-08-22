@@ -273,11 +273,11 @@ interface SyncData {
       display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
       border-radius: 10px; font-size: 12.5px; line-height: 1.5;
     }
-    .banner-warn { background: rgba(217,119,6,.10); border: 1px solid rgba(217,119,6,.35); color: #b45309 }
+    .banner-warn { background: color-mix(in srgb, var(--warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); color: var(--texte-attente) }
     .banner-danger { background: rgba(220,38,38,.10); border: 1px solid rgba(220,38,38,.35); color: #b91c1c }
     .row-mismatch { background: rgba(220,38,38,.05) }
     .pill-danger { background: rgba(220,38,38,.15); color: #b91c1c }
-    .pill-warn { background: rgba(217,119,6,.15); color: #b45309 }
+    .pill-warn { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--texte-attente) }
     .btn-realign {
       padding: 5px 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600;
       background: var(--bg-secondary); border: 1px solid var(--border-strong);
@@ -290,16 +290,16 @@ interface SyncData {
       background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 12px;
     }
     .stat-card.green { color: var(--tracky-light) }
-    .stat-card.amber { color: #f59e0b }
-    .stat-card.red { color: #ef4444 }
+    .stat-card.amber { color: var(--texte-attente) }
+    .stat-card.red { color: var(--texte-alerte) }
     .stat-value { display: block; font-size: 20px; font-weight: 700; color: var(--fg-primary) }
     .stat-label { display: block; font-size: 11px; color: var(--fg-tertiary) }
 
     .card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 16px }
     .card-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--fg-primary); margin: 0 0 4px }
     .card-title.green-text lucide-icon { color: var(--tracky-light) }
-    .card-title.amber-text lucide-icon { color: #f59e0b }
-    .card-title.red-text lucide-icon { color: #ef4444 }
+    .card-title.amber-text lucide-icon { color: var(--warning) }
+    .card-title.red-text lucide-icon { color: var(--danger) }
     .card-desc { font-size: 11px; color: var(--fg-tertiary); margin: 0 0 12px }
     .table-wrap { overflow-x: auto }
     table { width: 100%; border-collapse: collapse; font-size: 12px }
@@ -308,10 +308,10 @@ interface SyncData {
     .email-cell { font-family: var(--font-mono, monospace); font-size: 11px }
     .pill { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .pill-on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .pill-off { background: rgba(239,68,68,.1); color: #f87171 }
+    .pill-off { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte) }
     .btn-icon { background: transparent; border: 0; padding: 6px; border-radius: 4px; cursor: pointer; color: var(--fg-tertiary) }
     .btn-icon:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .btn-icon.danger:hover { color: #ef4444 }
+    .btn-icon.danger:hover { color: var(--texte-alerte) }
 
     @media (max-width: 640px) { .stats-row { grid-template-columns: 1fr } }
   `],

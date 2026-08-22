@@ -188,9 +188,10 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       font-size: 10px;
       font-weight: 600;
       line-height: 1.25;
-      color: var(--pill, #10E0A0);
-      background: color-mix(in srgb, var(--pill, #10E0A0) 16%, transparent);
-      border-left: 2px solid var(--pill, #10E0A0);
+      /* Lavis a 14 % et non 16 : le jeton alerte tombe sous 4,5:1 au-dela (verif:contraste). */
+      color: var(--pill, var(--texte-succes));
+      background: color-mix(in srgb, var(--pill, var(--texte-succes)) 14%, transparent);
+      border-left: 2px solid var(--pill, var(--texte-succes));
     }
     .cal-pill--muted {
       color: var(--fg-tertiary);
@@ -233,8 +234,8 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       font-weight: 700;
       line-height: 1.4;
       border-radius: 999px;
-      color: #A78BFA;
-      border: 1px dashed color-mix(in srgb, #A78BFA 45%, transparent);
+      color: var(--texte-violet);
+      border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent);
     }
     /* Pastilles compactes — affichées seulement en mobile (pilules texte masquées). */
     .cal-dots { display: none; gap: 3px; margin-top: auto; }

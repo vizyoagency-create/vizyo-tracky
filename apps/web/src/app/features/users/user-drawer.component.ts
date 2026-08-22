@@ -406,7 +406,7 @@ export interface UserDrawerResult {
     }
     .role-btn:hover { border-color: var(--border-strong) }
     .role-btn.active.viewer { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
-    .role-btn.active.manager { border-color: #3b82f6; color: #60a5fa; background: rgba(59,130,246,.06) }
+    .role-btn.active.manager { border-color: var(--blue); color: var(--texte-info); background: color-mix(in srgb, var(--blue) 6%, transparent) }
     .role-btn.active.admin-role { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
 
     .field-select {

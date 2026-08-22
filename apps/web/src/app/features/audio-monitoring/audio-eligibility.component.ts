@@ -171,7 +171,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
       padding: 3px 9px; border-radius: 20px; background: var(--bg-tertiary); color: var(--fg-tertiary);
     }
-    .client-badge.on { background: rgba(16,224,160,.15); color: var(--tracky-light) }
+    /* Texte sur lavis accent : --texte-succes, le vert de marque rend ~2,9:1 en clair. */
+    .client-badge.on { background: rgba(16,224,160,.15); color: var(--texte-succes) }
     .client-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8 }
 
     .fleet-action { display: flex; align-items: center; gap: 16px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end }
