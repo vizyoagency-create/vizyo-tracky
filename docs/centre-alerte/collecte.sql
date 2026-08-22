@@ -12,7 +12,14 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 \echo ### SECTION volumetrie
+-- ARCHIVAGE (22/08) : `resolvedAt` non nul = ligne CLASSEE par un humain. Elle reste
+-- en base — « clear » ne supprime rien — mais elle ne compte PLUS comme une erreur
+-- active. Un `count(*)` nu confondrait les deux et gonflerait le bilan de tout ce qui
+-- a deja ete traite.
 SELECT count(*) AS total,
+       count(*) FILTER (WHERE "resolvedAt" IS NULL)     AS actives,
+       count(*) FILTER (WHERE "resolvedAt" IS NOT NULL) AS archivees,
+       count(*) FILTER (WHERE "createdAt" > now() - interval '24 hours' AND "resolvedAt" IS NULL) AS actives_24h,
        count(*) FILTER (WHERE "createdAt" > now() - interval '24 hours') AS last_24h,
        count(*) FILTER (WHERE "createdAt" > now() - interval '7 days')   AS last_7d,
        min("createdAt") AS plus_ancienne,
@@ -21,22 +28,97 @@ FROM error_logs;
 
 \echo ### SECTION par_source
 SELECT source, level, count(*) AS n,
+       count(*) FILTER (WHERE "resolvedAt" IS NULL) AS actives,
        min("createdAt") AS premiere, max("createdAt") AS derniere
 FROM error_logs
 GROUP BY 1, 2
 ORDER BY n DESC;
 
 \echo ### SECTION erreurs_detail
--- Tout ce que la table contient encore (rétention = 30 j, cf. TRK-010).
--- `context` est tronqué : il sert à identifier la page/l'utilisateur, pas à tout relire.
-SELECT "createdAt", level, source,
+-- Tout ce que la table contient encore. La retention reelle est de **90 j**, pas 30
+-- (mesuree le 22/08 dans le `meta` du cron `logs_purged` : `errorDays: 90`).
+-- `context` est tronque : il sert a identifier la page/l'utilisateur, pas a tout relire.
+--
+-- `etat` distingue ACTIVE de ARCHIVEE, et les actives sortent EN PREMIER. Une ligne
+-- classee a deja ete jugee par un humain : elle n'est plus a instruire, mais elle reste
+-- LISIBLE — c'est toute la difference entre archiver et supprimer.
+SELECT CASE WHEN "resolvedAt" IS NULL THEN 'ACTIVE' ELSE 'ARCHIVEE' END AS etat,
+       "createdAt", level, source,
        coalesce(imei, '-')               AS imei,
        coalesce("userId"::text, '-')      AS user_id,
        replace(left(message, 400), E'\n', ' ')            AS message,
-       replace(left(coalesce(context::text, '-'), 500), E'\n', ' ') AS contexte
+       replace(left(coalesce(context::text, '-'), 500), E'\n', ' ') AS contexte,
+       coalesce("resolvedAt"::text, '-')  AS archivee_le,
+       coalesce("resolvedNote", '-')      AS motif_archivage
 FROM error_logs
-ORDER BY "createdAt" DESC
+ORDER BY ("resolvedAt" IS NOT NULL), "createdAt" DESC
 LIMIT 200;
+
+\echo ### SECTION disparitions
+-- TRK-035 — LE TEMOIN. Une ligne par INSTRUCTION de suppression sur error_logs ou
+-- alerts, ecrite par un declencheur PostgreSQL, jamais par le code applicatif.
+--
+-- POURQUOI CETTE SECTION EXISTE : le 22/08, 73 lignes ont disparu de error_logs en
+-- 20,7 h pendant que le cron de retention consignait `errorDeleted: 0` cinq jours de
+-- suite. La base ne journalise rien (`log_statement = none`) et un seul role porte
+-- DELETE et TRUNCATE : rien ne pouvait nommer l'auteur.
+--
+-- COMMENT LIRE `origine` — c'est le champ qui tranche :
+--   NULL / '(socket locale)' = connexion par socket UNIX, donc un shell DANS le
+--                              conteneur : un humain, ou un outil lance a la main.
+--   172.23.0.x               = l'API de production.
+--   toute autre adresse      = un tiers. A instruire immediatement.
+--
+-- ZERO LIGNE ICI EST UN BON RESULTAT — mais seulement si les declencheurs existent
+-- encore : la section `temoin_arme` juste apres le verifie. Un temoin desarme rend
+-- exactement le meme zero qu'une journee sans suppression.
+SELECT "createdAt", "tableCible", operation, lignes,
+       coalesce("adresseClient", '(socket locale)') AS origine,
+       coalesce(application, '-')                   AS application,
+       utilisateur, "pidBackend",
+       coalesce("plusAncienneSupprimee"::text, '-') AS plus_ancienne_supprimee,
+       coalesce("plusRecenteSupprimee"::text, '-')  AS plus_recente_supprimee,
+       replace(left(coalesce(requete, '-'), 300), E'\n', ' ') AS requete
+FROM disparitions_lignes
+ORDER BY "createdAt" DESC
+LIMIT 50;
+
+\echo ### SECTION temoin_arme
+-- Le controle qui rend la section precedente interpretable. On attend QUATRE lignes :
+-- AFTER DELETE + BEFORE TRUNCATE sur error_logs ET sur alerts, toutes `actif = O`.
+--
+-- Moins de quatre, ou un `moment` a AFTER sur un TRUNCATE, et le temoin est aveugle :
+-- un declencheur AFTER TRUNCATE compte une table DEJA VIDEE et rend « 0 ligne ».
+SELECT c.relname AS table_surveillee, t.tgname AS declencheur,
+       CASE WHEN (t.tgtype & 2) > 0 THEN 'BEFORE' ELSE 'AFTER' END AS moment,
+       CASE WHEN (t.tgtype & 8) > 0 THEN 'DELETE'
+            WHEN (t.tgtype & 32) > 0 THEN 'TRUNCATE' ELSE '?' END AS evenement,
+       t.tgenabled AS actif
+FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+WHERE NOT t.tgisinternal AND t.tgname LIKE 'trg_disparition%'
+ORDER BY c.relname, t.tgname;
+
+\echo ### SECTION comptes_disparition
+-- La mesure de repli, valable meme si le temoin venait a sauter. L'ecart
+-- `ins - del - live` ne doit JAMAIS croitre : il vaut 13 250 depuis le 21/08, et
+-- toute hausse signale un TRUNCATE (qui n'incremente pas `n_tup_del`).
+SELECT relname, n_tup_ins, n_tup_del, n_live_tup,
+       n_tup_ins - n_tup_del - n_live_tup AS ecart_hors_delete
+FROM pg_stat_user_tables
+WHERE relname IN ('error_logs', 'alerts')
+ORDER BY relname;
+
+\echo ### SECTION retention_declaree
+-- Ce que la purge dit avoir supprime, de sa propre main. A confronter aux sections
+-- ci-dessus : c'est ce `meta` qui a permis, le 22/08, d'ecarter l'application.
+SELECT "createdAt", target,
+       meta->>'errorDeleted' AS erreurs_supprimees,
+       meta->>'wireDeleted'  AS trames_supprimees,
+       meta->>'errorDays'    AS retention_erreurs_jours
+FROM system_activity_logs
+WHERE category = 'RETENTION' AND action = 'logs_purged'
+ORDER BY "createdAt" DESC
+LIMIT 5;
 
 \echo ### SECTION trackers_failing
 SELECT t.imei, coalesce(v.plate, '(sans vehicule)') AS plaque,
