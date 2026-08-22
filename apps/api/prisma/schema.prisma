@@ -2196,6 +2196,50 @@ model ErrorLog {
   @@map("error_logs")
 }
 
+/// TEMOIN DES DISPARITIONS — TRK-035.
+///
+/// Une ligne par INSTRUCTION de suppression (jamais une par ligne supprimee : un
+/// DELETE de 170 000 lignes ecrit UN constat, pas 170 000). Alimentee par deux
+/// declencheurs PostgreSQL, jamais par le code applicatif.
+///
+/// Pourquoi cette table existe : le 22/08, 73 lignes ont disparu de `error_logs` en
+/// 20,7 h alors que le cron de retention consignait `errorDeleted: 0` cinq jours de
+/// suite. La base ne journalise rien (`log_statement = none`, `logging_collector =
+/// off`) et un seul role porte DELETE et TRUNCATE : rien, nulle part, ne pouvait
+/// nommer l'auteur. La sonde de recensement voit qu'il MANQUE des lignes ; celle-ci
+/// dit QUI, QUAND, D'OU et AVEC QUELLE REQUETE.
+model DisparitionLignes {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Table visee : 'error_logs' | 'alerts'.
+  tableCible String
+  /// 'DELETE' | 'TRUNCATE'.
+  operation String
+  /// Nombre de lignes emportees par l'instruction.
+  lignes    Int
+  /// Role PostgreSQL effectif au moment du geste.
+  utilisateur String
+  /// Role de connexion (peut differer de `utilisateur` apres un SET ROLE).
+  utilisateurSession String
+  /// NULL = connexion par SOCKET LOCALE, donc depuis un shell dans le conteneur.
+  /// Non nul = connexion TCP (l'API de production se presente en 172.23.0.x).
+  adresseClient String?
+  /// `application_name` : 'psql' pour une session humaine, autre chose pour un client.
+  application String?
+  /// Le texte de l'instruction, tel que PostgreSQL l'execute.
+  requete   String?  @db.Text
+  /// PID du backend, pour recouper avec pg_stat_activity a chaud.
+  pidBackend Int?
+  /// Bornes de ce qui a disparu — un DELETE de rattrapage et un effacement total
+  /// ne laissent pas le meme intervalle.
+  plusAncienneSupprimee DateTime?
+  plusRecenteSupprimee  DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([tableCible, createdAt(sort: Desc)])
+  @@map("disparitions_lignes")
+}
+
 /// Palier « Coûts IA » — un enregistrement par appel Claude RÉUSSI (les échecs vont dans ErrorLog).
 /// Sert au tableau de bord super-admin : coût par requête / jour / mois / flotte / utilisateur.
 model AiUsageLog {
