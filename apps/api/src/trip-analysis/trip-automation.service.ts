@@ -28,7 +28,7 @@ const RECOMPUTE_BACKOFF_MS = 30 * 60 * 1000;
  * Amplitude MAXIMALE d'un seul recalcul.
  *
  * Sans ce plafond, un véhicule portant un vieux trajet non recalculé déclenchait un recompute sur
- * TOUTE la fenêtre (`lookbackHours`, 50 jours en prod) : suppression puis re-segmentation de sept
+ * TOUTE la fenêtre (`lookbackHours`, **62,5 jours en prod** au 2026-08-20) : suppression puis re-segmentation de sept
  * semaines de positions, plusieurs heures de travail — pendant lesquelles le verrou `running`
  * faisait sauter chaque passage horaire suivant. Le passage finissait tué par un redémarrage AVANT
  * d'avoir rien persisté, et le suivant repartait du même point : le retard ne se résorbait JAMAIS.
@@ -150,6 +150,36 @@ type RunItem = TripAutomationRunItemDto;
  * recréait ses vieux trajets, des appels IA facturés) pour un résultat toujours vide. Les exclus
  * sont COMPTÉS (`skippedDormant`) et annoncés dans le journal d'activité.
  */
+/**
+ * Amplitude maximale ACCEPTÉE À L'ÉCRITURE pour `lookbackHours` — 90 jours.
+ *
+ * ── POURQUOI 2 160 ET PLUS 720 (tranché le 2026-08-20) ───────────────────────────────
+ *
+ * Cette borne n'était écrite qu'en dur dans le `clampInt` du réglage, et elle a dérivé sans
+ * bruit : la valeur EN BASE valait **1 500 h**, soit plus du double de ce que l'API acceptait.
+ * Deux issues possibles — ramener le réglage sous le plafond, ou relever le plafond. **C'est la
+ * seconde qui a été retenue, et la raison est dans les chiffres :**
+ *
+ * L'ancien plafond de **720 h = 30 jours** était **plus bas que la rétention des positions
+ * (60 jours)**. L'écran interdisait donc d'écrire une fenêtre de 45 jours que le système aurait
+ * parfaitement su honorer — le plafond ne protégeait rien, il amputait. Et ramener le réglage à
+ * 720 h aurait **divisé par deux la fenêtre d'analyse** d'une plateforme qui rattrape justement
+ * son historique : une régression déguisée en mise en conformité.
+ *
+ * 🔑 **La règle à retenir : ce plafond ne doit jamais descendre sous `POSITIONS_RETENTION_DAYS`**,
+ * sinon l'interface refuse des valeurs exploitables. 90 jours laisse la marge nécessaire si la
+ * rétention est un jour relevée.
+ *
+ * ⚠️ Relever ce plafond est sans danger **parce que `fenetreUtile()` existe** : le travail réel
+ * reste borné par la rétention, quelle que soit la valeur saisie. Sans lui, un plafond haut aurait
+ * autorisé des balayages profonds et vides. Les deux gestes vont ensemble.
+ *
+ * 🔑 Et la parade de fond reste celle de TRK-008 : un plafond qui ne s'applique qu'aux écritures
+ * futures laisse les valeurs héritées agir indéfiniment. **On clampe aussi à la LECTURE**, ce que
+ * fait `fenetreUtile()` ci-dessous.
+ */
+const LOOKBACK_HEURES_MAX = 2160;
+
 @Injectable()
 export class TripAutomationService {
   private readonly logger = new Logger(TripAutomationService.name);
@@ -216,6 +246,16 @@ export class TripAutomationService {
       const user = this.systemUser();
       const now = Date.now();
       const windowFrom = new Date(now - settings.lookbackHours * 3600 * 1000);
+      // TRK-034 — une dérive de réglage qui ne se voit nulle part finit par agir seule. La
+      // dérive constatée le 20/08 (1 500 h face à un plafond de 720) a été tranchée en relevant
+      // le plafond ; cette sentinelle reste armée pour la PROCHAINE, qui ne se verrait pas plus.
+      if (settings.lookbackHours > LOOKBACK_HEURES_MAX) {
+        this.logger.warn(
+          `lookbackHours vaut ${settings.lookbackHours} h en base, au-dela du maximum accepte a ` +
+            `l'ecriture (${LOOKBACK_HEURES_MAX} h). Reglage herite d'avant ce plafond, ou pose en le ` +
+            `contournant — a trancher.`,
+        );
+      }
 
       const windowTo = new Date(now - RECOMPUTE_TAIL_MS);
 
@@ -328,6 +368,36 @@ export class TripAutomationService {
    *    alerter sur une absence parfaitement normale — ou pire, a se taire sur une vraie
    *    anomalie. Un jour de marge absorbe l'ecart entre l'heure de la purge et celle du passage.
    */
+  /**
+   * TRK-034 — la fenêtre RÉELLEMENT exploitable, bornée par la rétention des positions.
+   *
+   * ── LE DÉFAUT, MESURÉ LE 2026-08-20 ──────────────────────────────────────────────────
+   *
+   * `lookbackHours` vaut **1 500 h = 62,5 jours** ; les positions sont conservées **60 jours** ;
+   * les trajets, **12 mois**. L'automatisation allait donc chercher des trajets **2,5 jours
+   * au-delà de l'horizon où il peut exister une position** — une bande vide par construction,
+   * qui s'élargit dès que l'un des deux réglages bouge sans l'autre.
+   *
+   * ── POURQUOI CE N'EST PAS QUE DU BRUIT ───────────────────────────────────────────────
+   *
+   * Le signalement de la tranche vide est déjà tu (voir `horizonRetention`). Mais le TRAVAIL,
+   * lui, continuait : un trajet situé au-delà de l'horizon est sélectionné, compté, et surtout
+   * **analysé** — or l'analyse relit les positions du trajet, n'en trouve aucune, et persiste
+   * une analyse VIDE. C'est du budget dépensé pour un résultat qui ne peut rien contenir.
+   *
+   * Et ce budget est saturé : le passage du 2026-08-20 00:35 a analysé **3 712 trajets en
+   * 50 minutes**, atteint son plafond de temps (`budgetAtteint`) et laissé **6 véhicules** de
+   * côté. Chaque trajet analysé au-delà de l'horizon est pris sur ceux-là.
+   *
+   * ⚠️ On borne la SÉLECTION des trajets, pas le calcul de `fromMs` : la garde de
+   * `horizonRetention` en aval reste donc intacte, en ceinture et bretelles.
+   */
+  private fenetreUtile(windowFrom: Date): Date {
+    const horizon = this.horizonRetention();
+    if (horizon <= 0) return windowFrom;
+    return windowFrom.getTime() < horizon ? new Date(horizon) : windowFrom;
+  }
+
   private horizonRetention(now = Date.now()): number {
     const jours = Number(process.env.POSITIONS_RETENTION_DAYS ?? 60);
     // Retention desactivee (0 ou absurde) : rien n'est purge, donc toute absence est une anomalie.
@@ -355,7 +425,9 @@ export class TripAutomationService {
           where: {
             vehicleId,
             endedAt: { not: null },
-            startedAt: { gte: windowFrom },
+            // TRK-034 — bornée par la rétention : un trajet dont les positions ont été purgées
+            // ne peut être ni recalculé ni analysé. Le sélectionner ne produit que du travail vide.
+            startedAt: { gte: this.fenetreUtile(windowFrom) },
             // segmentationSource est non-nullable (défaut 'live') : « sale » = pas encore recomputé.
             // 'fige-retention' est EXCLU : ses positions sont purgées, le re-segmenter est
             // impossible pour toujours — le laisser ici recréerait la famine qu'il résout.
@@ -484,7 +556,9 @@ export class TripAutomationService {
     let trips: { id: string; startedAt: Date }[];
     try {
       trips = await this.prisma.trip.findMany({
-        where: { vehicleId, endedAt: { not: null }, startedAt: { gte: windowFrom } },
+        // TRK-034 — même borne : l'analyse relit les positions du trajet, donc au-delà de
+        // l'horizon de rétention elle ne peut produire qu'une analyse vide, au prix du budget.
+        where: { vehicleId, endedAt: { not: null }, startedAt: { gte: this.fenetreUtile(windowFrom) } },
         select: { id: true, startedAt: true },
         orderBy: { startedAt: 'desc' },
         take: MAX_TRIPS_PER_VEHICLE,
@@ -664,7 +738,8 @@ export class TripAutomationService {
     if (dto.enabled !== undefined) data.enabled = !!dto.enabled;
     if (dto.frequency !== undefined) data.frequency = dto.frequency === 'daily' ? 'daily' : 'hourly';
     if (dto.hour !== undefined) data.hour = this.clampInt(dto.hour, 0, 23);
-    if (dto.lookbackHours !== undefined) data.lookbackHours = this.clampInt(dto.lookbackHours, 1, 720);
+    if (dto.lookbackHours !== undefined)
+      data.lookbackHours = this.clampInt(dto.lookbackHours, 1, LOOKBACK_HEURES_MAX);
     if (dto.recomputeTrips !== undefined) data.recomputeTrips = !!dto.recomputeTrips;
     if (dto.narrateEnabled !== undefined) data.narrateEnabled = !!dto.narrateEnabled;
     if (dto.maxAnalysesPerRun !== undefined) data.maxAnalysesPerRun = this.clampInt(dto.maxAnalysesPerRun, 0, 5000);
