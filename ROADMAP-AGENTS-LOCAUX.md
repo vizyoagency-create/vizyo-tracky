@@ -387,6 +387,25 @@ et tenue à jour — c'est un travail de fond, pas un effet de bord du prompt.
 | **V3** | **Deux boîtiers vivants SANS position GPS — à voir sur le terrain.** `GS-014-NY` (IMEI 864035054756169) et `HD-686-QX` : le boîtier communique mais n'accroche aucun satellite. Antenne débranchée, mal placée ou HS. Relevé par `gps-integrity` les 20 et 21/08 — le seul sujet du centre d'alerte qui appelait une action humaine, conservé ici avant le nettoyage du 21/08. | Accès physique aux véhicules | 21/08 |
 | ~~V2~~ | ~~**Véhicule HORS SERVICE — la recette sur données réelles**~~ | — | **Fait le 21/08 21 h 20** |
 
+### Deux pièges du Planificateur de Windows — relevés le 22/08 au matin
+
+**Une tâche PONCTUELLE avec `DeleteExpiredTaskAfter` peut disparaître AVANT d'avoir tourné.**
+La tâche qui devait restaurer les réglages du cron (fenêtre 1 500 h → 26 h) le 22/08 à 21 h
+n'existait plus au matin, sans avoir jamais été déclenchée. Rien ne le signalait : une tâche
+absente ne produit aucune trace. Les réglages ont donc été restaurés à la main, une fois la
+convergence constatée finie. **Leçon : ne jamais confier une action importante à une tâche
+ponctuelle auto-supprimable — la vérifier, ou la faire tout de suite.**
+
+**`StartWhenAvailable` n'était pas posé sur `VizyoTracky-RecitTrajet`.** Son créneau de 03:15
+a donc été perdu dans la nuit du 21 au 22 (dernier passage le 21, prochain le 23 : le 22 sauté
+sans un mot). L'impact réel est faible — sa fenêtre couvre 48 h, donc la nuit suivante rattrape,
+et le rattrapage toutes les 2 h couvre de toute façon le même terrain. Corrigé le 22/08.
+
+⚠️ **Ce qu'aucun des deux ne dit tout seul** : un créneau manqué ne laisse AUCUNE trace côté
+application. L'écran des traitements montre « dernier passage » — encore faut-il le regarder.
+C'est la limite structurelle des agents sur poste, et la raison d'être de l'état déduit du
+travail écrit plutôt que d'un signal de démarrage.
+
 **V2 — recette faite le 21/08, sur la production, avec ses témoins.** Ce qui a été exercé :
 
 | Contrôle | Résultat |
