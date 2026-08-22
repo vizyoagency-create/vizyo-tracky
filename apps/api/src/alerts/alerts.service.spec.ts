@@ -374,10 +374,28 @@ describe('AlertsService', () => {
   });
 
 
-    it('⚠️ coupure commandee par le planificateur : AUCUNE alerte', async () => {
-      // Le cas reel de DZ-034-CA : l'automatisation coupe a 22:00, le boitier signale
-      // la perte du +12V, et l'application s'alarmait de sa propre action.
-      prisma.engineControlCommand.findFirst.mockResolvedValueOnce({ action: 'CUT' } as never);
+  /**
+   * ── LA COUPURE COMMANDEE DOIT ETRE RECENTE (2026-08-20) ────────────────────────────
+   *
+   * Le correctif du 19/08 se taisait des lors que la DERNIERE commande moteur du boitier
+   * etait un CUT, sans regarder sa date. Or l'automatisation horaire coupe la flotte le
+   * soir et la retablit a 06:00 : entre les deux, la condition etait vraie pour 33
+   * boitiers sur 42 — dix heures de silence par nuit, sur l'alarme d'alimentation.
+   *
+   * Ces tests verrouillent la borne de temps. Les deux « CUT ancien » ECHOUENT sur le
+   * code d'avant : ils sont la raison d'etre du lot.
+   */
+  describe('alimentation : la coupure commandee doit etre RECENTE', () => {
+    /** Une commande moteur telle que la rend Prisma, avec son age en minutes. */
+    const commande = (action: 'CUT' | 'RESTORE', ageMinutes: number) => ({
+      action,
+      createdAt: new Date(Date.now() - ageMinutes * 60 * 1000),
+    });
+
+    it('⚠️ coupure commandee a l instant : AUCUNE alerte', async () => {
+      // Le cas reel de DZ-034-CA : l'automatisation coupe, le boitier signale la perte
+      // du +12V dans la foulee, et l'application s'alarmait de sa propre action.
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(commande('CUT', 2) as never);
       const r = await service.createFromCobanFrame(
         makeFrame('power_cut', { batteryPercent: 35 }),
         tracker as any,
@@ -386,14 +404,62 @@ describe('AlertsService', () => {
       expect(prisma.alert.create).not.toHaveBeenCalled();
     });
 
-    it('moteur RETABLI puis vraie coupure : l alerte part', async () => {
-      prisma.engineControlCommand.findFirst.mockResolvedValueOnce({ action: 'RESTORE' } as never);
+    it('🔴 coupure commandee il y a SIX HEURES : l alerte PART', async () => {
+      // LE test du correctif. Une perte d'alimentation causee par notre relais arrive en
+      // secondes ; six heures plus tard, la coupe du soir n'explique plus rien. C'est
+      // exactement ce qui est arrive le 19/08 a 02:26:23 — une alarme silenciee 6 h 26
+      // apres la coupe de 20:00, sur un vehicule qui alarmait depuis la veille.
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(commande('CUT', 6 * 60) as never);
       await service.createFromCobanFrame(
         makeFrame('power_cut', { batteryPercent: 35 }),
         tracker as any,
       );
       expect(prisma.alert.create).toHaveBeenCalled();
     });
+
+    it('🔴 coupure restee SENT depuis trois jours : l alerte PART', async () => {
+      // Sans borne, une commande jamais acquittee silenciait le boitier A VIE. Un
+      // RESTORE bloque dans cet etat depuis 559 h existe deja en production.
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(
+        commande('CUT', 3 * 24 * 60) as never,
+      );
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        tracker as any,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+
+    it('la borne lit la DATE, pas le statut : un CUT recent non acquitte fait toujours taire', async () => {
+      // Le repli SMS laisse la commande en `SENT` definitivement. L'exclure rendrait
+      // l'application aveugle a ses propres coupes sur le chemin le moins fiable ; c'est
+      // la date qui tranche, pas le statut.
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(commande('CUT', 1) as never);
+      const r = await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        tracker as any,
+      );
+      expect(r).toBeNull();
+    });
+
+    it('moteur RETABLI puis vraie coupure : l alerte part', async () => {
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(commande('RESTORE', 2) as never);
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        tracker as any,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+
+    it('aucune commande moteur du tout : comportement inchange, l alerte part', async () => {
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce(null as never);
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        tracker as any,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+  });
 
   describe('deduplication : une alerte par episode, pas par trame', () => {
     it('⚠️ une alerte deja ouverte bloque le doublon', async () => {
