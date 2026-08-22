@@ -9,6 +9,10 @@ export interface AdminAlertSummary {
   errorsPrev24h: number;
   criticalLastHour: number;
   errorsSinceLastVisit: number | null;
+  /** Vue courante du centre d'alerte : actives (defaut), archivees, ou toutes. */
+  vueArchivage: 'actives' | 'archivees' | 'toutes';
+  /** Lignes archivees sur 24 h — sans ce chiffre, un ecran vide est ambigu. */
+  errorsArchivees24h: number;
 }
 
 export interface ErrorSourceGroup {
@@ -36,6 +40,10 @@ export interface ErrorCriticalEntry {
   userId: string | null;
   context: Record<string, unknown> | null;
   createdAt: string;
+  /** Non nul = archivee : hors de la vue par defaut, mais TOUJOURS en base. */
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  resolvedNote: string | null;
 }
 
 export interface ErrorAlertsSummary {
@@ -156,11 +164,39 @@ export interface FixModeTimelineEntry {
 export class AdminFixModeService {
   private readonly http = inject(HttpClient);
 
-  alerts(fleetId?: string, since?: string) {
+  alerts(fleetId?: string, since?: string, archivees?: 'actives' | 'archivees' | 'toutes') {
     const params: Record<string, string> = {};
     if (fleetId) params['fleetId'] = fleetId;
     if (since) params['since'] = since;
+    if (archivees && archivees !== 'actives') params['archivees'] = archivees === 'toutes' ? 'toutes' : 'true';
     return this.http.get<AdminAlertsDto>('/api/admin/alerts', { params });
+  }
+
+  /**
+   * ARCHIVAGE — « clear » ne supprime rien : la ligne sort de la vue par defaut et
+   * se rouvre. Voir TRK-035 : une ligne effacee est une connaissance perdue.
+   */
+  archiverErreur(id: string, note?: string) {
+    return this.http.post<{ ok: boolean; dejaArchivee?: boolean }>(
+      `/api/admin/alerts/errors/${id}/archiver`, { note },
+    );
+  }
+
+  rouvrirErreur(id: string) {
+    return this.http.post<{ ok: boolean; dejaActive?: boolean }>(
+      `/api/admin/alerts/errors/${id}/rouvrir`, {},
+    );
+  }
+
+  /**
+   * Le geste de fin de journee. `avant` porte l'instant ou l'ecran a ete LU : sans
+   * lui, une erreur arrivee entre l'affichage et le clic serait archivee sans avoir
+   * ete vue.
+   */
+  archiverEnMasse(avant: string, note?: string) {
+    return this.http.post<{ ok: boolean; archivees: number }>(
+      '/api/admin/alerts/errors/archiver-en-masse', { avant, note },
+    );
   }
 
   acknowledgeCommand(commandId: string, note?: string) {

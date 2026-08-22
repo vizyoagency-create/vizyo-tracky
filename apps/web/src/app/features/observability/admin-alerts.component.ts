@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookOpen,
+  Archive,
   Bug,
   CheckCircle,
   ChevronDown,
@@ -388,6 +389,40 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                class="text-xs text-tracky-light hover:underline">Voir les wire logs</a>
           </div>
 
+          <!-- ARCHIVAGE : filtre tri-etat + geste de fin de journee.
+               « Archiver » ne supprime RIEN : la ligne sort de la vue par defaut et
+               le filtre la ramene. Voir TRK-035 — une ligne effacee est une
+               connaissance perdue, et c'est deja ce qui arrive hors application. -->
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="inline-flex rounded-[--radius-card] border border-border-subtle overflow-hidden">
+              @for (v of vues; track v.cle) {
+                <button type="button" (click)="changerVue(v.cle)"
+                        class="px-3 py-1.5 text-xs transition-colors"
+                        [class]="vueArchivage() === v.cle
+                          ? 'bg-tracky text-white'
+                          : 'bg-bg-secondary text-fg-tertiary hover:text-fg-secondary'">
+                  {{ v.libelle }}
+                </button>
+              }
+            </div>
+
+            <div class="flex items-center gap-3">
+              @if (data()!.summary.errorsArchivees24h > 0 && vueArchivage() === 'actives') {
+                <span class="text-[11px] text-fg-tertiary">
+                  {{ data()!.summary.errorsArchivees24h }} archivee(s) masquee(s) sur 24 h
+                </span>
+              }
+              @if (vueArchivage() !== 'archivees' && data()!.errors.recent.length > 0) {
+                <button type="button" (click)="archiverTout()" [disabled]="archivageEnCours()"
+                        class="px-3 py-1.5 text-xs rounded-[--radius-card] border border-border-subtle
+                               bg-bg-secondary text-fg-secondary hover:text-fg-primary disabled:opacity-50">
+                  <lucide-icon [img]="Archive" [size]="12" class="inline-block align-[-2px]"></lucide-icon>
+                  Archiver les erreurs affichees
+                </button>
+              }
+            </div>
+          </div>
+
           <!-- CRITICAL récentes -->
           @if (data()!.errors.recentCritical.length > 0) {
             <div class="flex flex-col gap-2">
@@ -451,6 +486,21 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                   } @else if (e.imei) {
                     <div class="text-[11px] text-fg-tertiary mt-0.5"><lucide-icon [img]="Radio" [size]="11" class="inline-block align-[-2px]"></lucide-icon> {{ e.imei }} · erreur tracker (sans user)</div>
                   }
+                  <div class="flex items-center gap-3 mt-1.5">
+                    @if (e.resolvedAt) {
+                      <span class="text-[10px] text-emerald-400/90">
+                        Archivee le {{ e.resolvedAt | date: 'dd/MM HH:mm' }}
+                      </span>
+                      <button type="button" (click)="rouvrir(e.id)"
+                              class="text-[10px] text-tracky-light hover:underline">Rouvrir</button>
+                    } @else {
+                      <button type="button" (click)="archiver(e.id)"
+                              class="text-[10px] text-fg-tertiary hover:text-fg-secondary hover:underline">Archiver</button>
+                    }
+                    @if (e.resolvedNote) {
+                      <span class="text-[10px] text-fg-tertiary italic truncate">{{ e.resolvedNote }}</span>
+                    }
+                  </div>
                 </div>
               }
             </div>
@@ -552,6 +602,7 @@ export class AdminAlertsComponent implements OnInit {
   protected readonly RefreshCw = RefreshCw;
   protected readonly Wifi = Wifi;
   protected readonly User = User;
+  protected readonly Archive = Archive;
   protected readonly Radio = Radio;
   protected readonly WifiOff = WifiOff;
   protected readonly Zap = Zap;
@@ -566,6 +617,24 @@ export class AdminAlertsComponent implements OnInit {
   readonly lastVisitAt = signal<string | null>(null);
   /** Wiki `docs/centre-alerte/` : referentiel, procedure d'audit et rapports quotidiens. */
   readonly wikiOpen = signal(false);
+
+  /**
+   * ARCHIVAGE — vue courante. « actives » par defaut : une ligne archivee sort de
+   * l'ecran, elle n'est jamais supprimee, et ce filtre la ramene.
+   */
+  readonly vues = [
+    { cle: 'actives' as const, libelle: 'Actives' },
+    { cle: 'archivees' as const, libelle: 'Archivees' },
+    { cle: 'toutes' as const, libelle: 'Toutes' },
+  ];
+  readonly vueArchivage = signal<'actives' | 'archivees' | 'toutes'>('actives');
+  readonly archivageEnCours = signal(false);
+  /**
+   * Instant ou la liste affichee a ete CHARGEE. C'est lui qu'on envoie comme borne
+   * d'un archivage en masse : sans ca, une erreur arrivee entre l'affichage et le
+   * clic serait archivee sans avoir ete lue.
+   */
+  private readonly chargeeA = signal<string | null>(null);
 
   /** Tendance erreurs : delta entre 24h actuelles et 24h precedentes. */
   readonly errorTrend = computed(() => {
@@ -611,11 +680,13 @@ export class AdminAlertsComponent implements OnInit {
     this.loading.set(true);
     try {
       const since = this.lastVisitAt() ?? undefined;
+      const chargeA = new Date().toISOString();
       const [alertsData, timeline] = await Promise.all([
-        firstValueFrom(this.api.alerts(undefined, since)),
+        firstValueFrom(this.api.alerts(undefined, since, this.vueArchivage())),
         firstValueFrom(this.api.errorsTimeline()).catch(() => ({ buckets: [] })),
       ]);
       this.data.set(alertsData);
+      this.chargeeA.set(chargeA);
       this.timelineBuckets.set(timeline.buckets);
       // Sauvegarder la visite actuelle.
       const now = new Date().toISOString();
@@ -626,6 +697,67 @@ export class AdminAlertsComponent implements OnInit {
       this.toast.error('Échec du chargement des alertes');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  changerVue(v: 'actives' | 'archivees' | 'toutes'): void {
+    if (this.vueArchivage() === v) return;
+    this.vueArchivage.set(v);
+    this.reload();
+  }
+
+  /** Archiver une ligne : elle quitte la vue par defaut, elle reste en base. */
+  async archiver(id: string): Promise<void> {
+    try {
+      await firstValueFrom(this.api.archiverErreur(id));
+      this.toast.success('Erreur archivee — elle reste consultable via le filtre');
+      this.reload();
+    } catch (err) {
+      swallow('admin-alerts:archiver', err);
+      this.toast.error("Echec de l'archivage");
+    }
+  }
+
+  async rouvrir(id: string): Promise<void> {
+    try {
+      await firstValueFrom(this.api.rouvrirErreur(id));
+      this.toast.success('Erreur rouverte');
+      this.reload();
+    } catch (err) {
+      swallow('admin-alerts:rouvrir', err);
+      this.toast.error('Echec de la reouverture');
+    }
+  }
+
+  /**
+   * Le geste de fin de journee : archiver tout ce qui est AFFICHE.
+   *
+   * On envoie `chargeeA` — l'instant du chargement — et non `now`. Ce qui est arrive
+   * depuis reste actif : on n'archive que ce qu'on a effectivement eu sous les yeux.
+   */
+  async archiverTout(): Promise<void> {
+    const borne = this.chargeeA();
+    if (!borne) return;
+    if (!confirm(
+      `Archiver les erreurs affichees (chargees a ${new Date(borne).toLocaleTimeString('fr-FR')}) ?
+
+`
+      + `Rien n'est supprime : les lignes restent en base et le filtre « Archivees » les ramene. `
+      + `Ce qui est arrive depuis le chargement reste actif.`,
+    )) return;
+
+    this.archivageEnCours.set(true);
+    try {
+      const res = await firstValueFrom(this.api.archiverEnMasse(borne));
+      this.toast.success(
+        res.archivees === 0 ? 'Rien a archiver' : `${res.archivees} erreur(s) archivee(s)`,
+      );
+      this.reload();
+    } catch (err) {
+      swallow('admin-alerts:archiverTout', err);
+      this.toast.error("Echec de l'archivage en masse");
+    } finally {
+      this.archivageEnCours.set(false);
     }
   }
 

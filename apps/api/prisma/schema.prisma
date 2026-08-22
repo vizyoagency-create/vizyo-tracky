@@ -2171,10 +2171,28 @@ model ErrorLog {
   context   Json?
   createdAt DateTime @default(now())
 
+  // ── ARCHIVAGE REVERSIBLE (2026-08-22) ────────────────────────────────────────
+  // Decision du proprietaire : on n'EFFACE jamais une ligne du centre d'alerte, on
+  // la marque « resolue ». Elle sort de la vue par defaut, le filtre la ramene, et
+  // `resolvedAt = null` la rouvre.
+  //
+  // Pourquoi un marquage et pas une suppression : la regle « ne jamais vider
+  // error_logs » existe depuis l'origine, et TRK-035 montre ce que coute une ligne
+  // disparue — 66 ecrites, 73 effacees en 20,7 h le 22/08, et un audit qui ne sait
+  // plus ce que disaient les 65 manquantes. Un archivage qui SUPPRIME reproduirait
+  // volontairement le defaut qu'on cherche a attribuer.
+  resolvedAt   DateTime?
+  resolvedById String?   @db.Uuid
+  /** Rouvrir efface `resolvedAt` : on garde qui avait archive, et pourquoi. */
+  resolvedNote String?   @db.Text
+
   @@index([source, createdAt(sort: Desc)])
   @@index([imei])
   @@index([commandId])
   @@index([createdAt])
+  // La vue par defaut du centre d'alerte est « non resolues, les plus recentes
+  // d'abord » : sans cet index elle balaie toute la table a chaque ouverture.
+  @@index([resolvedAt, createdAt(sort: Desc)])
   @@map("error_logs")
 }
 

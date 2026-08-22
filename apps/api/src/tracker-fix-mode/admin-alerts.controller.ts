@@ -11,12 +11,14 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { BadRequestException, DefaultValuePipe, ParseBoolPipe } from '@nestjs/common';
 import { TrackerCommandStatus, UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 const OFFLINE_THRESHOLD_MS = 60 * 60 * 1000; // 1h
 const PENDING_THRESHOLD_MS = 10 * 60 * 1000; // 10 min
@@ -35,6 +37,15 @@ const CRITICAL_WINDOW_MS = 60 * 60 * 1000;   // 1h
  * ⚠️ Un boîtier jamais vu MAIS rattaché à un véhicule reste signalé : là, c'est une pose qui
  * a échoué, et c'est un vrai signal.
  */
+/**
+ * ARCHIVAGE — plafond d'un archivage en masse.
+ *
+ * Un « tout archiver » sans borne est une suppression deguisee : personne ne relit
+ * 5 000 lignes avant de cliquer. Au-dela, l'appel ECHOUE plutot que d'en faire une
+ * partie en silence — un archivage partiel qu'on croit total est pire que le refus.
+ */
+const ARCHIVAGE_MASSE_MAX = 500;
+
 const OFFLINE_NEVER_SEEN_CLAUSE = { lastSeenAt: null, vehicleId: { not: null } } as const;
 
 /**
@@ -51,7 +62,10 @@ const OFFLINE_NEVER_SEEN_CLAUSE = { lastSeenAt: null, vehicleId: { not: null } }
 @Controller('admin/alerts')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminAlertsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activity: SystemActivityService,
+  ) {}
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
@@ -59,6 +73,14 @@ export class AdminAlertsController {
     @Req() req: AuthenticatedRequest,
     @Query('fleetId') fleetIdFilter?: string,
     @Query('since') sinceRaw?: string,
+    /**
+     * ARCHIVAGE — vue par defaut = NON ARCHIVEES.
+     *
+     * `archivees=false` (defaut) : seules les lignes actives ; `true` : seulement les
+     * archivees ; `toutes` : les deux. L'archivage n'efface RIEN — il retire de la vue
+     * par defaut, et ce parametre est le seul moyen de le defaire cote lecture.
+     */
+    @Query('archivees') archiveesRaw?: string,
   ) {
     // V1.16 (audit residual) — fail-closed : un non-super sans fleetId ne voit RIEN.
     const scope = resolveTenantScope(req.user);
@@ -72,6 +94,8 @@ export class AdminAlertsController {
           errorsPrev24h: 0,
           criticalLastHour: 0,
           errorsSinceLastVisit: null,
+          vueArchivage: 'actives' as const,
+          errorsArchivees24h: 0,
         },
         failing: [],
         offline: [],
@@ -98,7 +122,17 @@ export class AdminAlertsController {
     const criticalCutoff = new Date(now - CRITICAL_WINDOW_MS);
     const sinceCutoff = sinceRaw ? new Date(sinceRaw) : null;
 
-    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount, errorsPrev24h, errorsSince] = await Promise.all([
+    // ARCHIVAGE — trois vues, une seule par defaut.
+    const vueArchivage: 'actives' | 'archivees' | 'toutes' =
+      archiveesRaw === 'true' ? 'archivees' : archiveesRaw === 'toutes' ? 'toutes' : 'actives';
+    const clauseArchivage =
+      vueArchivage === 'actives'
+        ? { resolvedAt: null }
+        : vueArchivage === 'archivees'
+          ? { resolvedAt: { not: null } }
+          : {};
+
+    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount, errorsPrev24h, errorsSince, archivees24h] = await Promise.all([
       this.prisma.tracker.findMany({
         where: { fixCommandFailing: true, ...fleetClause },
         include: { vehicle: { include: { fleet: true } } },
@@ -128,21 +162,26 @@ export class AdminAlertsController {
       }),
       // V1.14 — Erreurs applicatives (24h) pour le centre d'alertes.
       this.prisma.errorLog.findMany({
-        where: { createdAt: { gte: errorCutoff } },
+        where: { createdAt: { gte: errorCutoff }, ...clauseArchivage },
         orderBy: { createdAt: 'desc' },
         take: 500,
       }),
       this.prisma.errorLog.count({
-        where: { level: 'CRITICAL', createdAt: { gte: criticalCutoff } },
+        where: { level: 'CRITICAL', createdAt: { gte: criticalCutoff }, ...clauseArchivage },
       }),
       // Tendance : count erreurs 24h precedentes (pour comparaison).
       this.prisma.errorLog.count({
-        where: { createdAt: { gte: errorPrevCutoff, lt: errorCutoff } },
+        where: { createdAt: { gte: errorPrevCutoff, lt: errorCutoff }, ...clauseArchivage },
       }),
       // Count depuis derniere visite (si fourni).
       sinceCutoff
-        ? this.prisma.errorLog.count({ where: { createdAt: { gte: sinceCutoff } } })
+        ? this.prisma.errorLog.count({ where: { createdAt: { gte: sinceCutoff }, ...clauseArchivage } })
         : Promise.resolve(null as number | null),
+      // Combien de lignes sont MASQUEES par la vue actuelle : sans ce chiffre, un
+      // ecran vide ne dit pas s'il n'y a rien ou si tout a ete archive.
+      this.prisma.errorLog.count({
+        where: { createdAt: { gte: errorCutoff }, resolvedAt: { not: null } },
+      }),
     ]);
 
     // Agréger les erreurs par source.
@@ -205,6 +244,9 @@ export class AdminAlertsController {
       userId: e.userId,
       context: e.context,
       createdAt: e.createdAt.toISOString(),
+      resolvedAt: e.resolvedAt?.toISOString() ?? null,
+      resolvedById: e.resolvedById,
+      resolvedNote: e.resolvedNote,
     });
 
     // Dernières erreurs CRITICAL (10 max).
@@ -223,6 +265,8 @@ export class AdminAlertsController {
         errorsPrev24h,
         criticalLastHour: criticalCount,
         errorsSinceLastVisit: errorsSince,
+        vueArchivage,
+        errorsArchivees24h: archivees24h,
       },
       failing: failingTrackers.map((t) => ({
         kind: 'TRACKER_FAILING' as const,
@@ -465,6 +509,160 @@ export class AdminAlertsController {
         outcomeReason: body?.note ? `${command.outcomeReason ?? ''}\n[ACK] ${body.note}`.trim() : command.outcomeReason,
       },
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ARCHIVAGE REVERSIBLE DU CENTRE D'ALERTE (2026-08-22)
+  //
+  // « Clear » ne veut PAS dire supprimer. Une ligne archivee reste en base, sort de
+  // la vue par defaut, et se rouvre. Trois raisons, toutes payees :
+  //
+  //  1. La consigne du proprietaire depuis l'origine : une erreur reste visible tant
+  //     qu'elle n'est pas corrigee ET verifiee.
+  //  2. TRK-035 : des lignes disparaissent deja hors application (66 ecrites, 73
+  //     effacees en 20,7 h le 22/08). Un archivage qui SUPPRIME reproduirait
+  //     volontairement le defaut qu'on cherche a attribuer, et rendrait la sonde de
+  //     recensement inexploitable — elle ne saurait plus distinguer nos archivages
+  //     des suppressions de l'intrus.
+  //  3. Reversibilite : archiver a tort est le cas normal, pas l'exception. Une
+  //     archive qu'on ne peut pas rouvrir est une suppression avec un delai.
+  //
+  // SUPER_ADMIN uniquement : `error_logs` est GLOBAL (aucune colonne de flotte), donc
+  // un FLEET_ADMIN qui archiverait masquerait des lignes qui ne sont pas les siennes.
+  // Il les voit — c'est deja le cas aujourd'hui — mais il ne les classe pas.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Archiver UNE ligne : elle sort de la vue par defaut, elle reste en base. */
+  @Post('errors/:id/archiver')
+  @Roles(UserRole.SUPER_ADMIN)
+  async archiverErreur(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { note?: string },
+  ) {
+    const ligne = await this.prisma.errorLog.findUnique({ where: { id } });
+    if (!ligne) throw new NotFoundException('Ligne introuvable');
+    // Deja archivee : on ne re-date PAS. Sinon un double clic effacerait qui a
+    // archive en premier, et l'heure a laquelle la ligne a cesse d'etre lue.
+    if (ligne.resolvedAt) {
+      return { ok: true, dejaArchivee: true, resolvedAt: ligne.resolvedAt.toISOString() };
+    }
+
+    const maj = await this.prisma.errorLog.update({
+      where: { id },
+      data: {
+        resolvedAt: new Date(),
+        resolvedById: req.user.id,
+        resolvedNote: body?.note?.slice(0, 2000) ?? null,
+      },
+    });
+
+    this.activity.record({
+      category: 'ALERT',
+      action: 'error_log_archive',
+      status: 'SUCCESS',
+      actor: req.user.email ?? req.user.id,
+      triggeredByUserId: req.user.id,
+      target: `${ligne.source} — ${ligne.message.slice(0, 120)}`,
+      detail: body?.note ?? null,
+      meta: { errorLogId: id, level: ligne.level, source: ligne.source, createdAt: ligne.createdAt.toISOString() },
+    });
+
+    return { ok: true, resolvedAt: maj.resolvedAt?.toISOString() ?? null };
+  }
+
+  /** Rouvrir : `resolvedAt` repasse a null, la ligne revient dans la vue par defaut. */
+  @Post('errors/:id/rouvrir')
+  @Roles(UserRole.SUPER_ADMIN)
+  async rouvrirErreur(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const ligne = await this.prisma.errorLog.findUnique({ where: { id } });
+    if (!ligne) throw new NotFoundException('Ligne introuvable');
+    if (!ligne.resolvedAt) return { ok: true, dejaActive: true };
+
+    await this.prisma.errorLog.update({
+      where: { id },
+      // `resolvedNote` est CONSERVEE : elle dit pourquoi on avait cru pouvoir classer,
+      // et c'est precisement ce qu'on veut relire quand la ligne revient.
+      data: { resolvedAt: null, resolvedById: null },
+    });
+
+    this.activity.record({
+      category: 'ALERT',
+      action: 'error_log_reouverture',
+      status: 'SUCCESS',
+      actor: req.user.email ?? req.user.id,
+      triggeredByUserId: req.user.id,
+      target: `${ligne.source} — ${ligne.message.slice(0, 120)}`,
+      detail: ligne.resolvedNote,
+      meta: { errorLogId: id, archiveeLe: ligne.resolvedAt.toISOString() },
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Archivage en masse — le geste de fin de journee.
+   *
+   * ⚠️ `avant` est OBLIGATOIRE, et c'est le coeur de la correction : il porte l'instant
+   * ou l'operateur a regarde l'ecran. Sans lui, une ligne ecrite entre l'affichage et
+   * le clic serait archivee SANS AVOIR ETE LUE — exactement l'erreur qu'un archivage
+   * de fin de journee est cense eviter.
+   */
+  @Post('errors/archiver-en-masse')
+  @Roles(UserRole.SUPER_ADMIN)
+  async archiverEnMasse(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { avant?: string; note?: string; source?: string; level?: string },
+  ) {
+    const avant = body?.avant ? new Date(body.avant) : null;
+    if (!avant || Number.isNaN(avant.getTime())) {
+      throw new BadRequestException(
+        "`avant` est obligatoire : c'est l'instant ou l'ecran a ete lu. Sans lui, une erreur arrivee entre l'affichage et le clic serait archivee sans avoir ete vue.",
+      );
+    }
+    if (avant.getTime() > Date.now() + 60_000) {
+      throw new BadRequestException('`avant` est dans le futur : refus.');
+    }
+
+    const where = {
+      resolvedAt: null,
+      createdAt: { lte: avant },
+      ...(body?.source ? { source: body.source } : {}),
+      ...(body?.level ? { level: body.level } : {}),
+    };
+
+    const combien = await this.prisma.errorLog.count({ where });
+    if (combien > ARCHIVAGE_MASSE_MAX) {
+      throw new BadRequestException(
+        `${combien} lignes correspondent, au-dela du plafond de ${ARCHIVAGE_MASSE_MAX}. Affinez par source ou par niveau : un archivage en masse doit rester relisable.`,
+      );
+    }
+    if (combien === 0) return { ok: true, archivees: 0 };
+
+    const { count } = await this.prisma.errorLog.updateMany({
+      where,
+      data: {
+        resolvedAt: new Date(),
+        resolvedById: req.user.id,
+        resolvedNote: body?.note?.slice(0, 2000) ?? null,
+      },
+    });
+
+    this.activity.record({
+      category: 'ALERT',
+      action: 'error_log_archive_masse',
+      status: 'SUCCESS',
+      actor: req.user.email ?? req.user.id,
+      triggeredByUserId: req.user.id,
+      target: `${count} ligne(s) du centre d'alerte`,
+      detail: body?.note ?? `Archivage de tout ce qui precede ${avant.toISOString()}`,
+      meta: { count, avant: avant.toISOString(), source: body?.source ?? null, level: body?.level ?? null },
+    });
+
+    return { ok: true, archivees: count };
   }
 
   /**
