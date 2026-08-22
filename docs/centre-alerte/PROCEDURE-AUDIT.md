@@ -143,7 +143,11 @@ ssh root@72.62.26.240 'date -u; for c in tracky-api tracky-web; do printf "%s " 
 
 L'ordre compte : le plus révélateur vient en dernier.
 
-1. **`erreurs_detail`** — les lignes du centre d'alerte. Le point de départ, jamais l'arrivée.
+0. **`temoin_arme` PUIS `disparitions`** — *avant tout le reste, et dans cet ordre.*
+   Ces sections disent si les lignes qu'on s'apprête à compter sont **toutes celles qui ont
+   existé**. Sans elles, chaque compte de ce rapport est un plancher, pas une mesure.
+1. **`volumetrie` / `erreurs_detail`** — les lignes du centre d'alerte. Le point de départ,
+   jamais l'arrivée. ⚠️ **Lire la colonne `actives`, pas `total`** (voir ci-dessous).
 2. **`trackers_failing` / `trackers_offline` / `commandes_en_attente`** — le reste de l'écran
    « Centre d'alertes ». Une erreur applicative n'est qu'une moitié du sujet.
 3. **`commandes_sante_7j` / `commandes_motifs_7j` / `cadence_derive`** — **l'angle mort**.
@@ -154,6 +158,58 @@ L'ordre compte : le plus révélateur vient en dernier.
 > 🔑 **La question la plus rentable de tout l'audit** n'est pas « qu'est-ce qui a crié ? » mais
 > **« qu'est-ce qui casse sans crier ? »**. Un centre d'alerte vide n'est pas une preuve de
 > bonne santé — c'est peut-être juste un capteur éteint.
+
+### 3.a — Le témoin des disparitions : comment le lire (depuis le 2026-08-22)
+
+`error_logs` et `alerts` portent chacune deux déclencheurs qui consignent **toute suppression**,
+une ligne par instruction. Trois sections en découlent, et **l'ordre de lecture n'est pas
+négociable** :
+
+| Section | Ce qu'elle répond |
+|---|---|
+| **`temoin_arme`** | *Le témoin existe-t-il encore ?* On attend **4 lignes**, toutes `actif = O` |
+| **`disparitions`** | *Qui a supprimé, quand, depuis où, avec quelle requête ?* |
+| **`comptes_disparition`** | *Repli, valable même si le témoin saute* — l'écart `ins − del − live` |
+| **`retention_declaree`** | *Ce que la purge dit avoir supprimé, de sa propre main* |
+
+🔴 **`disparitions` à zéro ne veut rien dire tant que `temoin_arme` n'a pas rendu ses 4 lignes.**
+*Un témoin désarmé rend exactement le même zéro qu'une journée sans suppression.* C'est la leçon
+de [TRK-026](./REFERENCE-ERREURS.md#trk-026), et elle s'applique à l'instrument censé la réparer.
+
+**Lire `origine`, c'est trancher :**
+
+| Valeur | Lecture |
+|---|---|
+| `(socket locale)` | connexion par socket UNIX → **un shell DANS le conteneur** : un humain, ou un outil lancé à la main |
+| `172.23.0.x` | l'API de production |
+| toute autre adresse | **un tiers — à instruire immédiatement** |
+
+⚠️ **`ecart_hors_delete` ne doit JAMAIS croître.** Il vaut **13 250** depuis le 21/08. Une hausse
+signale un `TRUNCATE`, qui n'incrémente pas `n_tup_del` — c'est précisément ce qui rendait
+l'effacement du 20/08 invisible.
+
+⚠️ **Confronter systématiquement `retention_declaree`.** C'est ce `meta` qui a permis, le 22/08,
+d'écarter l'application en une requête : `errorDeleted: 0` cinq jours de suite pendant que
+170 000 `wire_logs` disparaissaient légitimement chaque nuit. *On avait passé trois jours à
+chercher qui supprimait ; il suffisait de demander à l'application ce qu'elle avait supprimé.*
+
+### 3.b — ARCHIVÉE n'est pas SUPPRIMÉE (depuis le 2026-08-22)
+
+Le centre d'alerte permet d'**archiver** une ligne : elle sort de la vue par défaut, **elle reste
+en base**, et elle se rouvre. C'est une décision du propriétaire, et elle est meilleure qu'une
+suppression — *un archivage qui supprimerait rendrait le témoin ci-dessus incapable de distinguer
+nos propres gestes des suppressions de l'intrus.*
+
+**Conséquence directe pour le comptage :**
+
+- `volumetrie` rend désormais `total`, **`actives`** et `archivees`. **Le chiffre du rapport est
+  `actives`.** Un `total` compterait comme erreurs des lignes déjà jugées par un humain.
+- `erreurs_detail` porte une colonne **`etat`**, et sort les `ACTIVE` **en premier**.
+- Une ligne `ARCHIVEE` **n'est pas à ré-instruire** — mais elle reste **lisible**, avec son
+  `archivee_le` et son `motif_archivage`. C'est toute la différence avec une ligne disparue.
+
+⚠️ **Un archivage ne produit AUCUN constat de disparition** — c'est un `UPDATE`. Si un constat
+apparaît le jour d'un archivage, ce n'est pas l'archivage : c'est autre chose, et il faut le lire.
 
 ---
 
@@ -319,7 +375,10 @@ Le jour où l'on passera à la correction automatique, la frontière sera :
 ## Chiffres
 | | |
 |---|---|
-| Lignes `error_logs` | <n> (dont <n> sur 24 h, <n> CRITICAL) |
+| Lignes `error_logs` **actives** | <n> (dont <n> sur 24 h, <n> CRITICAL) — **jamais `total`**, cf. §3.b |
+| Lignes archivées | <n> *(classées par un humain, toujours en base)* |
+| Constats de disparition | <n> — et **`temoin_arme` a-t-il rendu ses 4 lignes ?** cf. §3.a |
+| Écart `ins − del − live` | <n> *(ne doit jamais croître)* |
 | Trackers FAILING | <n> |
 | Trackers hors ligne > 1 h | <n> (dont <n> jamais mis en service) |
 | Commandes en attente > 10 min | <n> |
