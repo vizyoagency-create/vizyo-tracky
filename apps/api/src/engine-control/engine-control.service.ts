@@ -8,6 +8,7 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { CommandStatus, EngineAction, GpsDeadZoneStatus, Prisma, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
@@ -18,7 +19,8 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { SmsGatewayService } from '../sms/sms-gateway.service';
+import { SMS_INBOUND_EVENT, SmsGatewayService } from '../sms/sms-gateway.service';
+import type { SmsInboundEvent } from '../sms/sms-gateway.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
@@ -55,6 +57,19 @@ const WATCHMAN_HOLD_UNTIL = new Date('9999-12-31T23:59:59.000Z');
 const ENGINE_ACK_TIMEOUT_MS = 15_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
+
+/**
+ * TRK-036 — les accuses du boitier sur le canal SMS.
+ *
+ * ⚠️ RIEN A VOIR avec les deux patterns ci-dessus, et il ne faut pas les confondre : ceux-la
+ * lisent la TRAME TCP (`imei:…,J`), ceux-ci lisent un SMS en clair. Le boitier repond en
+ * anglais, gabarit fixe, observe deux fois en production : « Stop engine Succeed » le
+ * 2026-07-13 et « Resume engine Succeed » le 2026-08-19.
+ */
+const ACCUSE_SMS_MOTEUR: ReadonlyArray<{ motif: RegExp; action: EngineAction }> = [
+  { motif: /stop\s+engine\s+succeed/i, action: EngineAction.CUT },
+  { motif: /resume\s+engine\s+succeed/i, action: EngineAction.RESTORE },
+];
 /**
  * Priorite haute des ACK moteur (#7) : leurs patterns J/K sont specifiques, mais
  * une commande generique concurrente (status/position_single, pattern large) ne
@@ -106,6 +121,89 @@ export class EngineControlService implements OnModuleDestroy {
     private readonly deadZones: GpsDeadZonesService,
     private readonly systemActivity: SystemActivityService,
   ) {}
+
+  /**
+   * TRK-036 — un SMS entrant peut etre l'ACCUSE d'une commande moteur partie en repli SMS.
+   *
+   * ── CE QUE CE CHEMIN REPARE ──────────────────────────────────────────────────────────
+   *
+   * Le repli SMS n'avait AUCUNE preuve de remise ([TRK-018]) : 280 commandes au statut
+   * « envoye », dont 274 depuis plus de 24 h. Le 2026-08-19, le boitier de GS-014-NY a
+   * pourtant repondu « Resume engine Succeed » — recu par la passerelle, ecrit dans
+   * `sms_logs`, et jamais rapproche de la commande creee 3 h 50 plus tot.
+   *
+   * ── LE RAPPROCHEMENT SE FAIT SUR (BOITIER, ACTION), PAS SUR LE TEMPS ─────────────────
+   *
+   * ⚠️ 3 h 50 separaient la commande de sa reponse. Une fenetre temporelle assez large pour
+   * couvrir ce cas rattacherait n'importe quel accuse a n'importe quelle commande de la
+   * demi-journee. Le couple (boitier, action) est le bon discriminant : un « Resume » ne
+   * peut confirmer qu'un RESTORE, et seulement pour le boitier qui l'a envoye.
+   *
+   * ── CE QU'IL NE FAUT PAS EN CONCLURE ─────────────────────────────────────────────────
+   *
+   * ⚠️ Ce chemin explique pourquoi on ne VOYAIT pas les accuses. Il n'explique pas pourquoi
+   * il n'y en a que DEUX en cinq semaines pour 280 commandes. Les deux questions sont
+   * distinctes et [TRK-018] reste ouverte.
+   */
+  @OnEvent(SMS_INBOUND_EVENT)
+  async onAccuseSmsMoteur(evt: SmsInboundEvent): Promise<void> {
+    try {
+      const attendu = ACCUSE_SMS_MOTEUR.find((a) => a.motif.test(evt.body ?? ''));
+      if (!attendu) return;
+
+      const cle = (evt.fromNumber ?? '').replace(/\D/g, '').slice(-9);
+      if (cle.length < 9) return;
+
+      const trackers = await this.prisma.tracker.findMany({
+        where: { simPhoneNumber: { endsWith: cle } },
+        select: { id: true, imei: true, vehicle: { select: { fleetId: true } } },
+        take: 2,
+      });
+      // Ambiguite = abstention : cf. `resoudreImeiParSim`. Confirmer une coupure moteur sur
+      // le mauvais vehicule est plus grave que ne rien confirmer.
+      if (trackers.length !== 1) return;
+      const tracker = trackers[0];
+
+      const commande = await this.prisma.engineControlCommand.findFirst({
+        where: { trackerId: tracker.id, action: attendu.action, status: CommandStatus.SENT },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, createdAt: true },
+      });
+      if (!commande) {
+        this.logger.debug(
+          { imei: tracker.imei, action: attendu.action },
+          'Accuse SMS moteur recu, mais aucune commande en attente pour ce boitier',
+        );
+        return;
+      }
+
+      // `updateMany` avec le statut dans le `where` : un second SMS identique ne reecrit pas
+      // un acquittement deja pose. Le chemin est rejouable sans effet de bord.
+      const { count } = await this.prisma.engineControlCommand.updateMany({
+        where: { id: commande.id, status: CommandStatus.SENT },
+        data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
+      });
+      if (count === 0) return;
+
+      const latenceMs = Date.now() - new Date(commande.createdAt).getTime();
+      this.logger.log(
+        { commandId: commande.id, imei: tracker.imei, action: attendu.action, latenceMs },
+        'Commande moteur ACQUITTEE par accuse SMS du boitier',
+      );
+
+      const acked = await this.prisma.engineControlCommand.findUnique({
+        where: { id: commande.id },
+      });
+      if (acked && tracker.vehicle?.fleetId) this.emitUpdate(acked, tracker.vehicle.fleetId);
+    } catch (err) {
+      // Un ecouteur d'evenement qui leve casse le flux entrant pour TOUS les abonnes —
+      // dont la machine a etats de provisionnement. On journalise, on n'interrompt rien.
+      this.logger.error(
+        { error: err instanceof Error ? err.message : String(err) },
+        'Echec du rapprochement d\'un accuse SMS moteur',
+      );
+    }
+  }
 
   async requestCommand(
     trackerId: string,
