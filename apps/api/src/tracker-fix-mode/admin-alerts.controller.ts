@@ -620,7 +620,7 @@ export class AdminAlertsController {
     const avant = body?.avant ? new Date(body.avant) : null;
     if (!avant || Number.isNaN(avant.getTime())) {
       throw new BadRequestException(
-        "`avant` est obligatoire : c'est l'instant ou l'ecran a ete lu. Sans lui, une erreur arrivee entre l'affichage et le clic serait archivee sans avoir ete vue.",
+        "`avant` est obligatoire : c'est l'instant où l'écran a été lu. Sans lui, une erreur arrivée entre l'affichage et le clic serait archivée sans avoir été vue.",
       );
     }
     if (avant.getTime() > Date.now() + 60_000) {

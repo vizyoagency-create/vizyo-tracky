@@ -5,7 +5,12 @@
   --bg: var(--bg-secondary, #ffffff);
   --bg2: var(--bg-tertiary, #f5f8f6);
   --accent: var(--tracky, #0f766e);
-  --accent-soft: var(--tracky-light, #d9f2ec);
+  /* ⚠️ `--tracky-light` n'est PLUS une teinte pale : le kit l'a aligne sur l'accent plein
+     (#0A9E6C en clair). L'utiliser en fond posait du vert sur du vert — bandeau hero et
+     bandeau de sante ILLISIBLES en theme clair. La teinte est donc fabriquee ici, et le
+     texte pose dessus passe par `--texte-succes`, le jeton prevu pour rester lisible. */
+  --accent-soft: color-mix(in srgb, var(--tracky, #0f766e) 13%, var(--bg-secondary, #ffffff));
+  --accent-texte: var(--texte-succes, #0f766e);
   --warn: #b54708; --warn-soft: #fef0c7;
   --danger: #b42318; --danger-soft: #fde7e5;
   display: block; color: var(--fg);
@@ -13,7 +18,8 @@
 @media (prefers-color-scheme: dark) {
   :host {
     --b: #2f3b36; --fg: #e8efec; --fg2: #9aa8a2; --bg: #1d2621; --bg2: #161d1a;
-    --accent: #5eead4; --accent-soft: #123a34; --warn: #fdb022; --warn-soft: #3d2708;
+    --accent: #5eead4; --accent-soft: #123a34; --accent-texte: #5eead4;
+    --warn: #fdb022; --warn-soft: #3d2708;
     --danger: #fda29b; --danger-soft: #3f1815;
   }
 }
@@ -40,15 +46,15 @@
 .hero { display: flex; align-items: center; gap: 14px; background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 14px; padding: 14px 18px; }
 .hero-ico { width: 44px; height: 44px; border-radius: 12px; background: var(--bg); color: var(--accent); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
 .hero-txt { display: flex; flex-direction: column; }
-.hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); font-weight: 700; }
+.hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent-texte); font-weight: 700; }
 .hero-txt b { font-size: 15px; }
 .hero-cd { margin-left: auto; text-align: right; }
-.hero-cd-val { font-size: 22px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; display: block; }
+.hero-cd-val { font-size: 22px; font-weight: 800; color: var(--accent-texte); font-variant-numeric: tabular-nums; display: block; }
 .hero-cd-sub { font-size: 11px; color: var(--fg2); }
 
 /* Santé / drift */
 .health { display: flex; align-items: center; gap: 9px; border-radius: 12px; padding: 10px 14px; font-size: 13px; }
-.health.ok { background: var(--accent-soft); color: var(--accent); }
+.health.ok { background: var(--accent-soft); color: var(--accent-texte); }
 .health.warn { background: var(--warn-soft); color: var(--warn); }
 
 /* Tiles */
@@ -78,8 +84,8 @@
  * qu'il interroge OpenStreetMap. Afficher « absorbe » sur lui annoncerait une economie qui
  * n'a jamais existe.
  */
-.tag.local { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
-.tag.absorbe { color: var(--accent); border-color: var(--accent); background: transparent; }
+.tag.local { color: var(--accent-texte); background: var(--accent-soft); border-color: transparent; }
+.tag.absorbe { color: var(--accent-texte); border-color: var(--accent); background: transparent; }
 .tag.facture { color: var(--fg2); border-style: dashed; }
 .row-purpose { margin: 5px 0 0; font-size: 12.5px; color: var(--fg2); line-height: 1.45; }
 .row-note { display: flex; align-items: center; gap: 5px; margin: 5px 0 0; font-size: 12px; color: var(--warn); font-weight: 600; }
@@ -109,6 +115,27 @@
    qu'en comparant 41 compte-a-rebours disperses dans la page. */
 .chrono { margin-top: 18px }
 .chrono-sub { margin: 2px 0 8px; font-size: 12px; color: var(--fg-tertiary) }
+
+/* ── Legende des colonnes ──
+   VISIBLE plutot qu'en infobulle : a 375 px rien ne se survole, une infobulle y est
+   simplement inaccessible. Reprend les vraies etiquettes (.tag) pour que la legende
+   ressemble a ce qu'elle explique. */
+.chrono-legende {
+  margin: 0 0 10px; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--b); border-radius: 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.chrono-legende dl { margin: 0; display: flex; flex-direction: column; gap: 5px; }
+.leg-item { display: grid; grid-template-columns: 92px 1fr; gap: 8px; font-size: 12px; }
+.leg-item dt {
+  color: var(--fg); font-weight: 700; text-transform: uppercase;
+  font-size: 10.5px; letter-spacing: .04em; padding-top: 2px;
+}
+.leg-item dd { margin: 0; color: var(--fg2); line-height: 1.5; }
+.leg-note {
+  margin: 2px 0 0; padding-top: 8px; border-top: 1px dashed var(--b);
+  font-size: 12px; color: var(--fg2); line-height: 1.7;
+}
 
 /* La table defile DANS sa boite : la page ne part jamais en travers a 375 px. */
 .chrono-scroll {

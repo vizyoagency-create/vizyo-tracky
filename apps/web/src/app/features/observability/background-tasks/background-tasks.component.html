@@ -68,24 +68,54 @@
         Du plus imminent au plus lointain. Heures en heure de Paris — ce serveur, lui, tourne en UTC.
       </p>
 
+      <!-- Legende VISIBLE plutot qu'en infobulle : a 375 px rien ne se survole, et la colonne
+           « Ou » se lit mal sans explication — elle dit qui porte le declencheur, pas qui paie. -->
+      <div class="chrono-legende">
+        <dl>
+          <div class="leg-item">
+            <dt>Dans / Heure</dt>
+            <dd>compte à rebours puis heure de Paris du prochain passage. La pastille colorée donne la criticité : rouge = haute, orange = moyenne, gris = basse.</dd>
+          </div>
+          <div class="leg-item">
+            <dt>Traitement</dt>
+            <dd>le nom de la tâche — le même que dans les familles détaillées plus bas, où se lisent son rôle, ses réglages et son dernier état.</dd>
+          </div>
+          <div class="leg-item">
+            <dt>Où</dt>
+            <dd><b>qui porte le déclencheur</b> : <span class="c-serveur">serveur</span> = l'API Tracky sur le VPS (horloge UTC) ; <span class="tag local">poste local</span> = le poste du propriétaire, lancé par le Planificateur de tâches Windows. L'état d'un traitement du poste est déduit du travail réellement écrit en base — si le poste est éteint, ça se voit ici.</dd>
+          </div>
+          <div class="leg-item">
+            <dt>Cadence</dt>
+            <dd>la période en clair, telle que déclarée au catalogue des traitements.</dd>
+          </div>
+        </dl>
+        <p class="leg-note">
+          « Où » ne dit pas qui paie l'IA — ce sont deux dimensions indépendantes, portées par des étiquettes distinctes :
+          <span class="tag facture">IA facturée</span> = le traitement peut consommer des crédits d'API payants au moment où il tourne ;
+          <span class="tag absorbe">IA absorbée</span> = la rédaction passe par l'abonnement du poste, zéro crédit ;
+          aucune étiquette = aucun modèle appelé.
+          Exemple : l'analyse de lieux est déclenchée côté serveur, mais le serveur ne fait que préparer les faits puis ranger le résultat — la rédaction part dans la file du « Courrier IA », qui tourne sur le poste. D'où une ligne « serveur » sans étiquette de coût.
+        </p>
+      </div>
+
       <div class="chrono-scroll">
         <table class="chrono-t">
           <thead>
             <tr>
-              <th>Dans</th><th>Heure</th><th>Traitement</th><th>Ou</th><th>Cadence</th>
+              <th>Dans</th><th>Heure</th><th>Traitement</th><th>Où</th><th>Cadence</th>
             </tr>
           </thead>
           <tbody>
             @for (t of chronologie(); track trackByTask($index, t)) {
               <tr [class.imminent]="imminent(t.nextRunAt)">
                 <td class="c-dans">
-                  <span class="dot" [ngClass]="critClass(t.criticality)" [title]="'Criticite : ' + t.criticality"></span>
+                  <span class="dot" [ngClass]="critClass(t.criticality)" [title]="'Criticité : ' + t.criticality"></span>
                   {{ countdown(t.nextRunAt) }}
                 </td>
                 <td class="c-heure">{{ heureParis(t.nextRunAt) }}</td>
                 <td class="c-nom">
                   {{ t.label }}
-                  @if (t.coutIa === 'facture') { <span class="tag facture">IA facturee</span> }
+                  @if (t.coutIa === 'facture') { <span class="tag facture">IA facturée</span> }
                 </td>
                 <td class="c-ou">
                   @if (t.executor === 'poste-local') {
