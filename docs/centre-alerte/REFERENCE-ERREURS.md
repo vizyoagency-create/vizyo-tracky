@@ -5,13 +5,261 @@
 > **signature connue → on met à jour les compteurs ; signature inconnue → on enquête et on ajoute
 > une fiche.**
 >
-> Il existe parce que la table `error_logs` **ne garde rien** : `ERROR_LOGS_RETENTION_DAYS`
-> vaut 30 par défaut et n'est pas défini en prod, donc une erreur jamais corrigée s'efface
-> toute seule à J+30. Ce fichier, lui, survit à la purge.
+> Il existe parce que la table `error_logs` **ne garde rien**. ⚠️ **La justification chiffrée de
+> cette phrase est corrigée le 2026-08-22 : la rétention réelle en production est de 90 jours, pas
+> 30** — mesuré dans le `meta` du cron `logs_purged` (`errorDays: 90`). La conclusion, elle, est
+> pire que ce qu'on croyait : les lignes ne s'effacent pas à J+30 par rétention, elles disparaissent
+> **en quelques heures**, supprimées par une main extérieure à l'application ([TRK-035](#trk-035)).
+> Ce fichier, lui, survit à tout.
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-17**
+- Dernière mise à jour : **2026-08-22**
+
+---
+
+---
+
+## 🔴 2026-08-22 — le centre d'alerte affiche 1 ligne, il en a reçu 66, et l'application prouve qu'elle n'en a effacé aucune
+
+**Une seule ligne dans `error_logs`.** Et la même journée, les compteurs internes de PostgreSQL
+disent : **66 insertions, 73 suppressions, en 20,7 heures.** L'arithmétique se referme exactement
+(`8 + 66 − 73 = 1`), donc rien n'est perdu dans l'interprétation — c'est bien la table qui a été
+vidée, pas la plateforme qui a été calme.
+
+🎯 **L'attribution cesse d'être une hypothèse, et c'est le cron lui-même qui la donne.** Le service
+de rétention consigne le nombre de lignes qu'il supprime, table par table, dans son propre `meta` :
+
+| `logs_purged` | 17/08 | 18/08 | 19/08 | 20/08 | 21/08 |
+|---|---|---|---|---|---|
+| `errorDeleted` | **0** | **0** | **0** | **0** | **0** |
+| `wireDeleted` | 170 774 | 167 265 | 163 301 | 164 046 | 170 384 |
+
+Cinq jours, **zéro**. Et il n'existe qu'un seul `errorLog.deleteMany` dans toute la base servie. *On
+avait passé trois jours à chercher qui supprimait ; il suffisait de demander à l'application ce
+qu'elle avait supprimé, et elle tenait déjà le compte.*
+
+> 🔑 **Deux mesures qui bougent ensemble ne racontent pas forcément la même histoire.** L'écart
+> `ins − del − live` reste figé à **13 250** : la prescription d'hier (« il ne doit jamais croître »)
+> est **satisfaite**, aucun nouveau `TRUNCATE`. Pendant que, sur la même table, un `DELETE`
+> ordinaire emportait 73 lignes. *Les deux natures d'effacement ont chacune leur instrument, et
+> chacun est aveugle à l'autre : le succès de l'un ne dit rien de l'autre.*
+
+🔴 **Et personne ne pourra nommer l'auteur, pour deux raisons mesurées ce jour.** `log_statement`
+vaut `none`, `log_connections` `off`, `logging_collector` `off` : **la base ne journalise rien**. Et
+il n'existe **qu'un seul rôle**, `tracky`, porteur de `DELETE` **et** `TRUNCATE` — l'API, les crons,
+les agents locaux et toute session `psql` humaine partagent la même identité.
+
+> 🔑 **La commande qui a immobilisé la moitié du VPS pendant 3 h 54 visait un journal vide par
+> configuration.** Le `docker logs tracky-postgres` du 20/08 ne pouvait contenir aucune requête :
+> `logging_collector` est `off`. *Avant de payer pour lire un journal — et celui-là a coûté quatre
+> heures de production —, vérifier qu'il écrit ce qu'on croit y chercher.*
+
+### 🆕 [TRK-040](#trk-040) — le boîtier meurt en six heures, et la fiche véhicule le dit « pas en péril »
+
+DZ-034-CA, le 21/08, à la trame près : `kt` **contact REMIS** à 06:00:07 · 1ʳᵉ `ac alarm` à
+**06:23:46** avec **100 %** de batterie → verdict `contact_coupe`, **0 alerte** · batterie 100 → 83 →
+63 → 29 → 0 % · `POWER_CUT` à **12:36:14** · **dernière trame 12:43:53, boîtier mort depuis**.
+**6 h 12 min 28 s** entre l'annonce et l'alerte.
+
+> 🔑 **Les deux cas que ce test doit séparer sont identiques au moment où il les sépare.** Une vraie
+> coupure vide la batterie de secours — *à terme*. À l'instant zéro, elle est pleine **par
+> définition**. Le discriminant retenu est le **niveau**, alors que l'information est dans la
+> **pente**, qui n'existe pas encore. *Un critère qui a besoin de temps ne peut pas rendre un verdict
+> instantané ; il peut seulement décider d'attendre.*
+
+**Et le bon discriminant était déjà dans les trames.** Le module explique lui-même le mécanisme
+bénin : `jt` (contact coupé) **puis** `ac alarm`. Ici c'est `kt` (contact remis) à 06:00:07 **puis**
+`ac alarm` à 06:23:46. *Un montage sur +12 V commuté ne perd pas son alimentation 23 minutes après
+que le contact a été remis.* La prémisse du verdict était réfutée par la trame précédente.
+
+⚠️ **Ce n'est pas une condamnation du correctif du 19/08**, qui a supprimé 202 alertes inutiles et
+dont les 4 arbitrages du 20/08 étaient justes. **Il manque une entrée — l'état du contact — pas une
+refonte.** Et ce n'est pas non plus le chemin de [TRK-032](#trk-032) : ce tracker n'a **aucune**
+commande moteur dans tout l'historique.
+
+### 🆕 [TRK-041](#trk-041) — on a réparé la serrure et jeté le judas
+
+La rotation du 20/08 est **confirmée par la donnée de la passerelle** : `vtx_48fe` jusqu'au 20/08
+13:25, `vtx_d4f3` à partir de 14:25, bascule nette à 13:34, aucun chevauchement. Excellente
+nouvelle.
+
+Mais `allowlist_audit_logs.tenantId` est **`NOT NULL`** : une ligne d'audit ne s'écrit qu'**après**
+qu'une clé valide a résolu le locataire. **Une requête avec la clé révoquée est rejetée à
+l'authentification et ne laisse rien.**
+
+> 🔑 **Le compteur de blocages ne peut plus bouger, quoi qu'il arrive.** Les 49 blocages étaient la
+> seule preuve qu'un tiers détenait la clé. Après rotation, l'attaquant qui revient et celui qui a
+> renoncé produisent **exactement la même donnée : aucune**. *Un compteur figé se lit « il ne se
+> passe plus rien » ; celui-ci doit se lire « on ne peut plus rien voir ».* Silence de **102,0 h**,
+> le plus long de la série — et le premier qui ne prouve même pas une absence.
+
+### Ce qui va mieux, et qui ne produit aucune ligne
+
+- **[TRK-023](#trk-023) est EXERCÉ et il tient** : **0 alerte sans message depuis le 19/08 01:56**,
+  sur 3 jours et 4 types d'alerte. Les 556 lignes muettes restantes sont de l'historique.
+- **[TRK-019](#trk-019) vérifié par l'égalité, pas par des marqueurs** :
+  `git rev-list --count c9dc774..origin/main` rend **0**. La production est sur le sommet exact de
+  `main`, pas sur quelque chose qui lui ressemble.
+- **La règle du parking est exercée en production** : la zone de FL-787-KV (6 occurrences,
+  `reviewedAt` = jamais) a été qualifiée `UNDERGROUND_PARKING` **automatiquement**, et sa perte du
+  21/08 18:00 n'a produit aucune alerte.
+- **« 0 récit IA » à chaque passage est un RÉGLAGE** (`narrateEnabled = false`), pas une panne.
+  *Vérifié avant d'ouvrir une fiche : un zéro qui a une case à cocher n'est pas une alerte.*
+
+🔴 **Et les six correctifs écrits restent inconnus du serveur** — `git cat-file -e` rend **OBJET
+ABSENT** pour les six, y compris après **deux déploiements** hier (web 17:34, api 23:45). *Ce ne
+sont pas des correctifs en attente de déploiement : il leur manque un `git push`.*
+
+---
+
+---
+
+## 🔎 2026-08-21 — trois choses vont mieux sans produire une ligne, et le témoin de la disparition est pris en défaut
+
+**8 lignes, 0 CRITICAL, aucune connue.** Le centre d'alerte n'a jamais été aussi calme, et le calme
+vient de trois endroits qu'il ne sait pas nommer : l'alarme d'alimentation **correctement tue** pour
+la première fois, l'assainissement de [TRK-031](#trk-031) qui **a tenu**, et la clé rotationnée qui
+**fonctionne de bout en bout**. *Un centre d'alerte ne dit jamais qu'un correctif marche ; il ne
+peut que cesser de dire qu'il ne marche pas.*
+
+**Le témoin qui avait détecté l'effacement du 19/08 est aveugle à celui de `error_logs`.**
+La vérification prescrite est rendue et négative dans le bon sens — `alerts.n_tup_del` **inchangé à
+41 824**, `min("createdAt")` **immobile** au 20/08 05:47:16 : la suppression n'a pas rejoué en 14 h.
+Mais un second compte, ouvert ce jour, ne se referme pas : `error_logs` porte **16 970** insertions,
+**3 712** suppressions et **8** lignes vivantes — **13 250 lignes manquent, qu'aucun `DELETE` n'a
+comptées**.
+
+> 🔑 **Ce que `n_tup_del` mesure, ce ne sont pas les disparitions : ce sont les `DELETE`.**
+> `TRUNCATE` vide une table sans l'incrémenter. Et **deux contrôles rendent le chiffre exploitable
+> plutôt que curieux** : `pg_stat_database.stats_reset` est **NULL** (les compteurs n'ont jamais été
+> remis à zéro), et la même arithmétique se referme **exactement** sur `alerts` — 51 881 − 41 824 =
+> 10 057 = `n_live_tup`. *Un instrument validé sur un cas ne vaut que pour la classe d'événements de
+> ce cas.* La sonde de recensement de [TRK-035](#trk-035), elle, aurait vu celui-ci : elle relève
+> `count(*)` et `min("createdAt")`, qui chutent sous les deux opérations.
+
+**Trois signatures neuves, et la plus grave est celle d'un agent déployé la veille.**
+[TRK-039](#trk-039) — l'agent qualité GPS accuse l'antenne de **KSR370**, un boîtier **hors ligne
+depuis 7 jours** dont la mort est **déjà expliquée** au dossier (coupure d'alimentation, batterie
+vidée, cf. [TRK-023](#trk-023)), sur des zones vieilles de **19 jours** qu'aucune fenêtre ne borne.
+
+> 🔑 **La prémisse est juste, le discriminant ne la teste pas.** *« Un boîtier mourant perd le signal
+> PARTOUT »* est vrai — mais « partout » y est mesuré en **mètres d'étalement**, et l'étalement d'un
+> véhicule mesure d'abord **la distance qu'il parcourt**. KSR370 a fait Toulouse–Benidorm :
+> **580 928 m**, soit **193 fois** le seuil. Pire, la corroboration croisée — *« sans qu'aucun autre
+> véhicule n'ait le même problème à ces endroits »* — est **impossible à franchir** pour un véhicule
+> qui roule là où aucun autre de la flotte ne va. **Plus un véhicule voyage loin et seul, plus il est
+> certain d'être déclaré en panne.** *Une absence de preuve est retournée en preuve.*
+
+**Un défaut de famille, trouvé en enquêtant sur un autre.** [TRK-038](#trk-038) : la garde de 6 h qui
+espace les alertes Overpass vit dans un **champ d'instance**, donc en mémoire de processus. Les six
+lignes du 20/08 sont espacées de 5 h 00 · 3 h 59 · **6 h 02** · 1 h 57 · 1 h 03 — et trois des quatre
+intervalles trop courts tombent **après une remise en service** (trois le 20/08 : 10:19, 22:27,
+23:40). *La garde n'est pas cassée, elle est volatile : l'intervalle de 6 h 02 prouve qu'elle marche
+quand le processus vit.* **Trois jumeaux** portent le même défaut — et le plus embarrassant est
+l'alarme de **flambée d'erreurs**, dont l'anti-flambée est réarmé par le déploiement, c'est-à-dire
+par l'événement qui provoque le plus de flambées.
+
+⚠️ **[TRK-037](#trk-037) ne peut pas dater son premier cas** — la plus ancienne ligne survivante de
+toute la table **est** l'une d'elles. *Le coût de la suppression hors application ne se paie plus en
+théorie : il vient d'empêcher une fiche neuve de savoir depuis quand son défaut dure.*
+
+✅ **Et une méthode d'outillage a payé.** `merge-base --is-ancestor` rendait « non » pour les cinq
+correctifs écrits par cet audit — mais `git cat-file -e` rend **OBJET ABSENT DU CLONE** : ils ne sont
+pas non fusionnés, ils sont **inconnus du serveur**. *Les deux verdicts se ressemblent et appellent
+des actions opposées ; un seul les sépare.*
+
+---
+
+---
+
+## 🎯 2026-08-19 — une mise en service répond à trois tests datés, et en ouvre deux fiches
+
+Trois heures après le déploiement de la **7ᵉ image** (18/08 22:02, toujours `main` @ `2416331`), un
+boîtier a été posé chez un **client neuf**. Cette seule installation a produit plus d'information que
+la collecte entière.
+
+**Le boîtier a été accusé de panne d'antenne 51 secondes avant son premier point GPS.** Login TCP à
+01:09:36, ligne `gps-integrity` *« sans position GPS depuis toujours (jamais localisé). Antenne à
+vérifier »* à **01:10:15**, premier fix à **01:11:06**. La branche « jamais localisé » du cron
+(`gps-integrity.service.ts:167`) **ne porte aucune borne de durée** — et le commentaire deux lignes
+plus haut en décrit pourtant une : *« alors qu'ils émettent activement des no_fix depuis un
+moment »*. **L'intention a été écrite, jamais codée.** → [TRK-030](#trk-030).
+
+> 🔑 **Le délai de grâce est accordé au cas qui n'en a pas besoin et refusé à celui qui en a
+> besoin.** Un boîtier déjà localisé bénéficie de 2 heures de patience ; un boîtier qui n'a jamais eu
+> de fix — le seul cas où l'attente est *physiquement certaine*, un démarrage à froid Coban cherchant
+> le ciel — n'en reçoit aucune.
+
+**Le premier retour de fix a refermé deux épisodes, et l'un des deux est faux.** Le raccroc de
+[TRK-028](#trk-028) **s'exécute** (0 → 2), mais `recordRecovery` ferme **tous** les épisodes ouverts
+du véhicule à la date du jour : celui du **01/08** est déclaré long de **16,9 jours** sur un boîtier
+qui a émis **27 733 positions** pendant l'intervalle. **27 épisodes antérieurs au correctif
+attendent le même sort**, sur 8 véhicules — FS-253-HR en porte 9 à lui seul. → [TRK-031](#trk-031).
+
+> 🔑 **Un rattrapage sans date de coupure réécrit le passé avec le présent.** La fonction est
+> idempotente sur le flux qu'elle produit ; elle ne l'est pas sur le stock qu'elle n'a pas produit.
+> *Et le correctif écrit pour cesser de mentir à l'exploitant commence sa vie en lui montrant un
+> chiffre faux.*
+
+**La table `alerts` n'était pas un capteur éteint.** Après 60 h de silence : **202 `POWER_CUT` en
+24 h**, toutes `CRITICAL`, **toutes sans message** (2 véhicules, dont 49 alertes en 17 minutes). Le
+rapport d'hier a eu raison de ne rien conclure — et la question `POWER_CUT` est tranchée dans l'autre
+sens : les deux véhicules qui ont crié sont **vivants**, KSR370 est mort et **ne pouvait pas**
+crier. *L'hypothèse « la chaîne s'est tue le 13/08 » est réfutée ; le trou est structurel.*
+[TRK-023](#trk-023) passe de 42 038 à **42 240** — premier mouvement depuis le 13/08.
+
+**Le seul étage qui a tenu est le dernier** : 1 020 tentatives de notification, **10 réellement
+envoyées** (815 supprimées, 195 groupées). *La rafale n'a pas été empêchée — elle a été absorbée.*
+
+⚠️ **Deux fiches manquaient à l'index depuis leur création** : [TRK-026](#trk-026) et
+[TRK-027](#trk-027) existent, sont citées partout, et n'apparaissaient **nulle part** dans le
+tableau récapitulatif. Ajoutées ce jour. *Un index incomplet ne signale jamais son incomplétude.*
+
+---
+
+---
+
+## 🟢 2026-08-18 — les correctifs d'hier sont EN LIGNE, et un seul des trois a pu être vérifié
+
+Le déploiement du **17/08 15:54:49** (6ᵉ image, branche `main` @ `5d10796`, migration
+`20260817140000_retour_du_signal_gps` appliquée à 15:54:55) embarque les trois commits de la veille.
+Le référentiel enregistre donc, pour la première fois, le **passage en production** de son propre
+travail — et la distinction qui compte :
+
+| Correctif | En ligne | Exercé |
+|---|---|---|
+| Règle du parking souterrain | ✅ | ✅ **prouvé** — le journal du cron nomme les 2 véhicules silenciés, toutes les 5 min |
+| [TRK-026](#trk-026) — preuve de vie SMS | ✅ | ❌ cron hebdomadaire ; celui du 17/08 07:00 est **antérieur** au déploiement. Verdict réel : **lundi 24/08** |
+| [TRK-028](#trk-028) — durée d'absence | ✅ | ❌ `gps_loss_events` : **29 épisodes, 0 refermé** — aucun retour de fix depuis 15:54 |
+
+> 🔑 **« Déployé » et « vérifié » ne s'écrivent pas dans la même colonne.** C'est l'erreur exacte qui
+> a coûté cinq jours à [TRK-002](#trk-002). Deux des trois correctifs ne sont pas en défaut : ils
+> n'ont simplement pas encore eu d'occasion de s'exécuter, et le dire est une information.
+
+**La mesure qui qualifie un zéro.** 36 h sans une ligne `gps-integrity` auraient pu se lire comme une
+panne du détecteur. Le journal du conteneur dit le contraire, toutes les 5 minutes :
+*« 2 boîtier(s) vivant(s) sans position GPS (0 nouvelle(s) alerte(s), 2 en zone confirmée :
+FZ-862-VY (15 h, parking), FS-253-HR (5 j, parking)) »*. Le cron tourne, **voit** les deux véhicules,
+**nomme** leur durée, et décide de se taire. *Un compteur à zéro se qualifie en trouvant l'instrument
+qui explique le zéro — jamais en raisonnant sur le zéro.* C'est exactement la consultabilité que
+[TRK-027](#trk-027) exigeait en contrepartie, et elle est tenue.
+
+⚠️ **Et la contrepartie est devenue réelle le même jour** : **FS-253-HR**, 132,5 h sans fix, zone à
+9 occurrences qualifiée parking — **définitivement silencieux**. La fiche TRK-027 prescrit une
+surveillance manuelle au-delà de 7 jours ; il en est au 6ᵉ.
+
+**Une signature nouvelle — [TRK-029](#trk-029)** : le report d'une coupe moteur applique un backoff
+exponentiel (5 → 15 → 30 min) à une condition qui porte sa propre échéance (*« arrêté depuis 256 s,
+minimum 600 s »* = obstacle levé dans 344 s). HD-603-XY est devenu éligible à ~20:30 et a été coupé à
+**20:55** — 25 min d'immobilisation en trop. *Un backoff traite l'ignorance ; il ne doit pas traiter
+une échéance connue.*
+
+**Deux pièges d'outillage, tous deux fabriquant une catastrophe de toutes pièces :**
+`backup_runs.status` vaut **`OK`**, pas `SUCCESS` — un filtre d'exclusion a rendu « 112 sauvegardes,
+112 échecs » ; et `trips.polylineMatched` est **du texte** (la polyligne), pas un booléen — `IS NOT
+TRUE` a rendu « 100 % de trajets sans recalage sur cinq jours ». *Énumérer les valeurs d'une colonne
+d'état avant de filtrer dessus, jamais l'inverse.*
 
 ---
 
@@ -790,23 +1038,39 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-025](#trk-025) | `sms-allowlist` | **40 suppressions de masse retenues par la passerelle, 0 remontée** — le champ lu vient de la réponse au sync que l'API émet elle-même, où il vaut toujours 0 | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(nouvelle ; correctif redéployé le 16/08 16:03 et **prouvé incapable de se déclencher** : 2 blocages depuis, 0 ligne)* | 2026-08-17 | 2026-08-17 |
-| [TRK-023](#trk-023) | *alertes* | **42 038 alertes sur 51 531 (81,6 %) partent sans message** — dont **41 507 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🔴 NON CORRIGÉ *(numérateur inchangé ; **dormant sur 24 h** — 2 alertes, toutes `GPS_LOST` avec message. KSR370 mort depuis 71 h, ses 2 cartes rouges toujours vides)* | 2026-08-13 | 2026-08-17 |
-| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🟢 CORRIGÉ *(5ᵉ image, **servie depuis `main`** @ `3fccee5` — conteneurs recréés le 16/08 16:03. 3 marqueurs sur 3 mesurables PRÉSENTS + 2 preuves comportementales. ⚠️ réserve : le fait est réparé, la CAUSE n'a pas de garde — vérifier la branche à chaque image)* | 2026-08-12 | 2026-08-17 |
-| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(test daté RÉPONDU : **non**, aucun nouvel essai, compte figé à **12**. Gravité 1 maintenue — 3 journées distinctes sur 5)* | 2026-08-13 | 2026-08-17 |
-| [TRK-022](#trk-022) | *alertes* | Aucune déduplication des alarmes Coban : **1317 survitesses en un jour**, et **41 479 `POWER_CUT` en 15 jours** | 🔴 NON CORRIGÉ *(0 survitesse sur 24 h, **3ᵉ jour** consécutif — grandeur qui suit un seul chauffeur ; le fait structurel « 1 véhicule sur 43 » n'a pas bougé)* | 2026-08-13 | 2026-08-17 |
-| [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : des boîtiers marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🔴 NON CORRIGÉ *(**3ᵉ point identique** sur la définition écrite (5 min / 15 min) : **0 / 1**. Trois mesures concordantes)* | 2026-08-14 | 2026-08-17 |
-| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ *(`ackedAt` = 0 sur **4513**, `acknowledgedAt` = 30, inchangé)* | 2026-08-12 | 2026-08-17 |
-| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : commandes moteur `SENT`, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté **passé 6 fois** : 224 → 231 → 236 → 242 → **254** ; passerelle **328** `queued`, dernier empilé le 16/08 18:00)* | 2026-08-11 | 2026-08-17 |
-| [TRK-017](#trk-017) | `sms-allowlist` | Un appelant hors VPS efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🔴 NON CORRIGÉ *(clé `vtx_48fe` inchangée — `tenants.updatedAt` au 05/06 — **7ᵉ jour**. ⚠️ **35 → 40 blocages** : l'appelant EST REVENU après 32 h de silence, pour la **3ᵉ fois** — la leçon devient une règle. Sa remontée au centre d'alerte est morte, cf. [TRK-025](#trk-025))* | 2026-08-09 | 2026-08-17 |
-| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(**84,9 %** le 16/08 — plus bas point, mais sur **73 trajets** (dimanche) : échantillon, pas amélioration. Cumul 81,6 %)* | 2026-08-09 | 2026-08-17 |
-| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ *(**test daté RÉPONDU** : rejets 5497 → **2465**, le 15/08 était UNE JOURNÉE. La baisse d'insertions s'explique par le **week-end** (73 trajets dimanche vs 195 vendredi), pas par le garde-fou. 317 rejets = rejeu de tampon de HD-779-MA)* | 2026-08-08 | 2026-08-17 |
-| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(✅ **instrument RÉARMÉ** le 16/08 16:03 : silences 81 → **100**. Mais le défaut est intact — `ackedAt` = **0 sur 4513**)* | 2026-08-07 | 2026-08-17 |
-| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord depuis **6 jours** ; 288 échecs « intervalle observé 20 s » sur 7 j)* | 2026-08-05 | 2026-08-17 |
-| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(numérateur **11**, stable après son bond (7·7·7·8·11·11) ; dénominateur 54 → **58**. L'argument « figé » reste mort)* | 2026-08-06 | 2026-08-17 |
-| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(correctif **de retour en prod** le 16/08 16:03 ; les 2 rappels du 16/08 lui sont ANTÉRIEURS. Le vrai test échoit le 17/08. Épisodes à 112,3 h et 105,8 h, terrain demandé depuis le 03/08)* | 2026-07-28 | 2026-08-17 |
+| [TRK-040](#trk-040) | *alertes* | **Une alarme d'alimentation à batterie pleine est déclarée « contact coupé » — y compris quand c'est une vraie coupure qui commence** | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(nouvelle ; DZ-034-CA le 21/08 : `kt` **contact remis** 06:00:07, `ac alarm` 06:23:46 à **100 %** → `contact_coupe`, 0 alerte ; batterie 100 → 0 % ; `POWER_CUT` 12:36:14 ; **boîtier mort depuis 12:43:53**. **6 h 12 min 28 s** de retard, et `lastPowerNotice` affirme toujours « pas en péril ». Famille **mensonger**. ⚠️ **ne pas corriger en baissant le seuil de 90 %** — le discriminant manquant est **l'état du contact**, pas son réglage. Pas le chemin de [TRK-032](#trk-032) : 0 commande moteur sur ce tracker)* | 2026-08-22 | 2026-08-22 |
+| [TRK-041](#trk-041) | `sms-allowlist` | **La rotation de la clé a supprimé le seul témoin de l'intrus** — `allowlist_audit_logs.tenantId` est `NOT NULL`, donc une clé révoquée n'écrit aucune ligne | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(nouvelle ; rotation **confirmée** par les préfixes — `vtx_48fe` jusqu'au 20/08 13:25, `vtx_d4f3` dès 14:25. Mais blocages figés à **49**, dernier le 17/08 19:24:59 = **102,0 h**, le plus long silence de la série — et le premier qui **ne prouve même pas une absence**. Lié à [TRK-017](#trk-017) et [TRK-025](#trk-025))* | 2026-08-22 | 2026-08-22 |
+| [TRK-039](#trk-039) | `GPS_QUALITE` | **L'agent qualité GPS accuse l'antenne d'un boîtier hors ligne depuis 7 jours**, sur des zones vieilles de 19 jours — et son discriminant « aucun autre véhicule au même endroit » est **infranchissable** pour un véhicule qui roule seul et loin | 🔴 NON CORRIGÉ · **GRAVITÉ 2** *(nouvelle ; 20/08 10:01:52 sur KSR370 — 6 zones, **580 928 m** d'étalement soit **193×** le seuil `ETALEMENT_BOITIER_M`, dernière occurrence le 01/08, boîtier muet depuis le 14/08 02:05 et mort d'une **coupure d'alimentation** déjà documentée par [TRK-023](#trk-023). Famille **mensonger** : envoie contrôler une antenne. ⚠️ **ne pas corriger en montant le seuil** — c'est le critère qui est faux, pas son réglage. **Test daté 27/08** : `JOURS_SANS_REPETITION` = 7, la ligne doit réapparaître)* | 2026-08-21 | 2026-08-22 |
+| [TRK-038](#trk-038) | *plateforme* | **Quatre gardes anti-répétition d'alerte vivent en mémoire de processus** — chaque déploiement les remet à zéro | 🔴 NON CORRIGÉ *(nouvelle ; mesuré sur les 6 lignes du 20/08 : intervalles 5 h 00 · 3 h 59 · **6 h 02** · 1 h 57 · 1 h 03 pour une garde de 6 h. **La garde n'est pas cassée, elle est volatile** — l'intervalle de 6 h 02 prouve qu'elle tient quand le processus vit, et 3 des 4 trop courts suivent une remise en service. Jumeaux : `error-rate-watchdog` (**l'alarme de flambée d'erreurs**), `allowlist.service` ([TRK-017](#trk-017)), `surveillance-scheduler`. 🔴 **1 intervalle inexpliqué** : 10:47 → 14:46, aucun redémarrage connu — fait consigné, non expliqué)* | 2026-08-21 | 2026-08-22 |
+| [TRK-037](#trk-037) | `trip-analysis` | **Overpass (OpenStreetMap) injoignable** — les excès de vitesse ne sont plus affirmés, et l'analyse est rendue **sans mention de la lacune** | 🔵 TERRAIN / dépendance tierce *(nouvelle ; 6 occurrences le 20/08, HTTP 500 ×4 / 502 ×2, sur le miroir **public et gratuit** `overpass.kumi.systems`. Le code est soigné — cache, lots, plafond, backoff, et `trouvee === false` non mémorisé. **Ce n'est pas un défaut de fabrication : c'est une dépendance sans repli.** ⚠️ **sa date de première apparition est INCONNAISSABLE** — la plus ancienne ligne survivante de la table **est** l'une d'elles, cf. [TRK-035](#trk-035))* | 2026-08-21 | 2026-08-22 |
+| [TRK-032](#trk-032) | *alertes* | **33 boîtiers sur 42 ont leur alarme d'alimentation éteinte chaque nuit** — « coupure commandée par nous » déduit de la dernière commande moteur, **sans borne de temps** | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec` du 20/08 : fenêtre de 15 min, 6 tests dont 2 qui échouent sur le code d'avant, 49 tests au vert. **Non poussé** — relecture humaine obligatoire. ⚠️ « exclure `SENT` » a été RÉFUTÉ pendant la correction : la citation de TRK-014 portait sur `tracker_commands`, pas sur les commandes moteur, qui sont bien acquittées (2 857). Le repli SMS reste en `SENT` à vie, l'exclure aveuglerait le coupe-circuit)* · **GRAVITÉ 1** *(nouvelle ; mesuré à 01:1x le 20/08 : 30 `CUT`/`ACKNOWLEDGED` + 3 `CUT`/`SENT`. L'automatisation horaire coupe la flotte à 18:00-20:00 et la rétablit à 06:00 : la silenciation couvre exactement les heures de stationnement sans surveillance)*  · 🆕 **21/08 : 29 boîtiers sur 42 silenciés à 04:33, tous par un `CUT` vieux de 8,7 h.** ⚠️ **le 33 du 20/08 a été mesuré à 01:1x — deux heures différentes, AUCUNE tendance** ; ce qui compte n'est pas le nombre mais la **largeur de la fenêtre de silence**. Correctif non poussé | 2026-08-20 | 2026-08-22 |
+| [TRK-036](#trk-036) | `sms_logs` | **L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché** — `imei` NULL alors que `fromNumber` = `simPhoneNumber` | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2` du 20/08 : résolution de l'émetteur sur les 9 derniers chiffres + écouteur qui acquitte sur le COUPLE (boîtier, action), jamais sur le temps. **3 abstentions testées** : ambiguïté, panne de résolution, panne de l'écouteur. ⚠️ explique pourquoi on ne VOYAIT pas les accusés, PAS pourquoi il n'y en a que 2 en 5 semaines — [TRK-018](#trk-018) reste entière)* *(nouvelle ; « Resume engine Succeed » reçu le 19/08 08:28:58 depuis la SIM de GS-014-NY, commande `RESTORE` créée 3 h 50 plus tôt **toujours `SENT`** 21 h après. Précise [TRK-018](#trk-018) : la preuve n'est pas absente, elle est jetée)* *(🆕 **21/08 : ce n'est PAS un cas isolé** — **87 SMS entrants, 85 sans `imei`**, et outre « Resume engine Succeed » du 19/08, « **Stop engine Succeed** » du **13/07 04:17:38** est dans le même état. **Deux accusés moteur jetés**, pas un)* | 2026-08-20 | 2026-08-22 |
+| [TRK-035](#trk-035) | *plateforme* | **41 709 alertes et ≥ 89 lignes d'erreur supprimées hors application, sans aucune trace** — et **13 250 lignes de plus qu'aucun `DELETE` n'a comptées** | 🟠 **SONDE ÉCRITE, NON DÉPLOYÉE** *(🎯 **22/08 — L'ATTRIBUTION EST DÉMONTRÉE** : le cron de rétention consigne lui-même `errorDeleted: 0` **cinq jours de suite** (17→21/08) alors qu'il supprime 170 000 `wire_logs` par nuit, et il n'existe **qu'un seul** `errorLog.deleteMany` dans la base servie — **les 73 suppressions de la nuit viennent de l'extérieur de l'application**. L'écart `ins − del − live` reste figé à **13 250** : prescription satisfaite, **aucun nouveau `TRUNCATE`** — *les deux natures d'effacement ont chacune leur instrument, et chacun est aveugle à l'autre*. 🔴 **Et l'auteur restera innommable** : `log_statement=none`, `log_connections=off`, `logging_collector=off`, et **un seul rôle** porteur de `DELETE` ET `TRUNCATE`. ⚠️ **la sonde `41c22081` ne suffit pas** — elle voit l'effet, jamais l'auteur : y ajouter un **déclencheur au niveau instruction** sur `DELETE` **et** `TRUNCATE`. ⚠️ rétention réelle mesurée à **90 j**, pas 30)* · *(🆕 **21/08 — la vérification prescrite est rendue, et elle est NÉGATIVE dans le bon sens** : `alerts.n_tup_del` inchangé à **41 824**, `min("createdAt")` immobile au 20/08 05:47:16 — **la suppression n'a pas rejoué en 14 h**. 🔴 **Mais un second compte ne se referme pas** : `error_logs` porte **16 970** insertions, **3 712** suppressions, **8** lignes vivantes — **13 250 manquantes**. `TRUNCATE` ne touche pas `n_tup_del`. **Deux contrôles rendent le chiffre exploitable** : `stats_reset` est **NULL**, et la même arithmétique se referme **exactement** sur `alerts` (51 881 − 41 824 = 10 057 = live). 🔑 **Ce que `n_tup_del` mesure, ce ne sont pas les disparitions : ce sont les `DELETE`** — `pg_stat_user_tables` ne peut donc PAS servir de garde-fou. ✅ La sonde, elle, aurait vu celui-ci : elle relève `count(*)` et `min("createdAt")`. **Nouvelle vérification : `n_tup_ins − n_tup_del − n_live_tup` ne doit jamais croître ; 13 250 aujourd'hui, 1er point)* · ancien statut : *(commit `41c22081` du 20/08 : recensement quotidien à 03:15, rangé HORS des tables surveillées. La règle n'est pas « des lignes ont-elles disparu » mais « la disparition est-elle EXPLIQUÉE » — deux signaux, le nombre ET la borne basse. 🔴 **le défaut a REJOUÉ le jour même** : `error_logs` 14 → 4 et borne +20 h à 14:50, pendant que la purge déclarait `errorDeleted: 0`. **La sonde aurait crié.** ⚠️ elle n'empêche RIEN — aucun code n'arrête un `DELETE` en base)* · **GRAVITÉ 1 (consigne)** *(nouvelle ; ni la rétention — `errorDeleted: 0` —, ni un chemin applicatif — une seule `deleteMany`, aucune sur `alerts` —, ni la migration. Seul `pg_stat_user_tables` en témoigne. ⚠️ **rend le taux de [TRK-023](#trk-023) illisible** : 81,6 % → 5,5 % par effacement du dénominateur)* | 2026-08-20 | 2026-08-22 |
+| [TRK-033](#trk-033) | `frontend` | **`/admin/vps` plante sur `chargeDeFond`** — champ déclaré obligatoire par le type TypeScript, **absent du JSON réel**, déréférencé sans garde | 🟢 **CORRIGÉ ET DÉPLOYÉ** *(garde + type facultatif déjà en ligne le 20/08 04:56 ; 🔴 **mais la cause écrite dans le code était FAUSSE** — « l'API ne le construit pas encore » : le champ était PRÉSENT à chaque passage du 11/08 au 17/08 et l'agent a cessé de l'écrire le 18/08. Consigne ajoutée à l'agent + commentaires rectifiés, `4849bb02`. 🟢 garde définitive : `strictTemplates` fait **ÉCHOUER LE BUILD** — prouvé, TS2532, code 1)* *(nouvelle ; 19/08 10:32:05, iPhone Safari. Vérifié dans le dépôt, sur `/opt/tracky-vps-audit` et tel que l'API le voit. **Toute la carte « Prévisions » meurt**, tableau du disque compris)* | 2026-08-20 | 2026-08-20 |
+| [TRK-034](#trk-034) | `TRIP_AUTOMATION` | **La fenêtre de recalcul (1 500 h = 62,5 j) dépasse la rétention des positions (60 j)** — bande de 2,5 j sans donnée possible | 🟠 **CORRIGÉ, NON DÉPLOYÉ** *(🆕 **22/08 — mesuré dans les réglages de production eux-mêmes** : `lookbackHours = 1500` (**62,5 j**) contre **60 j** de rétention des positions, `recomputeTrips = true`, cadence **horaire**. Conséquence visible : **3 373 trajets `recompute` en 5 jours**, dont **848 en une seule heure** le 19/08 04:00, et un passage horaire qui a duré **14 min 56 s**. Commit `152883ec` sur `fix/trk-034-fenetre-recalcul`, **non poussé**)* · *(commit `638d16aa` du 20/08. Le BRUIT était déjà traité en amont ; ce qui restait était le TRAVAIL — un trajet au-delà de l'horizon était **analysé**, l'analyse relisait ses positions, n'en trouvait aucune et persistait une analyse VIDE, sur un budget **saturé** (3 712 trajets en 50 min, 6 véhicules laissés de côté). ⚠️ **la dérive 1 500 h vs plafond 720 h n'est pas corrigée en douce mais RENDUE VISIBLE** — le bon plafond est une décision)* *(nouvelle ; 20/08 00:32:01 sur FZ-862-VY, fenêtre 19/06 → 21/06. Bruit **structurel et permanent** : se rejouera à chaque passage. Le message, lui, est exact)* | 2026-08-20 | 2026-08-22 |
+| [TRK-031](#trk-031) | *zones mortes* | `recordRecovery` referme **TOUS** les épisodes ouverts d'un véhicule à la date du jour — un épisode du 01/08 déclaré long de **16,9 j** | 🟢 **ASSAINISSEMENT VÉRIFIÉ ✅ · CODE NON DÉPLOYÉ** *(🆕 **21/08 — vérification prescrite RENDUE et POSITIVE** : **35 épisodes clos, 3 de plus de 5 jours, et les 3 sont RÉELS** — FS-253-HR, **0 position** pendant chacun des intervalles (7,10 j · 6,94 j · 5,82 j). Prescrit « 13/20 → 0/34 » ; mesuré **0 fabriquée sur 35**. Médianes de zone : Toulouse **0,78 j**, Benidorm **0,59 j** — les 16,03 j et 10,47 j empoisonnés ont **disparu**. ⚠️ la borne de code reste NON POUSSÉE, mais avec **2 épisodes ouverts** seulement la surface de récidive est réduite, pas fermée)* · ancien statut : *(assainissement **exécuté en prod le 20/08** : 14 épisodes fermés à leur vraie date + **13 dates fabriquées corrigées**. **Vérification prescrite : 13/20 → 0/34.** Médianes de zone 16,03 → **3,94 j** et 10,47 → **4,22 j**. ⚠️ le script initial ne traitait que les épisodes OUVERTS — insuffisant, ce sont les CLOS qui faussaient la médiane. ⚠️ la borne de code reste NON POUSSÉE : le défaut peut refabriquer au prochain retour de fix)* · ancien statut : *(commit `b28e389e` du 20/08. 🔴 **le défaut a rejoué une 3ᵉ fois pendant la correction** — FZ-862-VY, 4 épisodes à 08:16:31, 3 fabriquées réfutées par 539/386/178 positions ; **13 clos faux sur 19**, et une 2ᵉ zone empoisonnée à **10,47 j** pour 2,83 j réels. La borne retenue N'EST PAS la fenêtre fixe prévue : elle porte sur l'existence d'un épisode PLUS RÉCENT, pas sur l'ancienneté — sinon une absence réelle de 5 semaines resterait ouverte à vie. + script d'assainissement en DRY-RUN : **14 réparables**, durées réelles 0,00-0,80 j)* *(🔴 **le 19/08 13:48:56, FS-253-HR revient et referme 9 épisodes à la même seconde** : durées de 6,94 à **35,18 j**, dont **8 fabriquées** — réfutées par **5 027 positions**. **La médiane de la zone `79a8d0f2` affiche 16,03 j pour une absence réelle de 6,94 j.** Dette : **20 épisodes ouverts sur 9 véhicules**, dont **9 sur KSR370**)* | 2026-08-19 | 2026-08-20 |
+| [TRK-030](#trk-030) | `gps-integrity` | Le boîtier **neuf** est accusé de panne d'antenne **51 s avant son premier fix** — la branche « jamais localisé » n'a aucune borne de durée | 🔴 NON CORRIGÉ *(nouvelle ; login 01:09:36 → alerte 01:10:15 → fix 01:11:06 ; se rejouera **à chaque pose**, et le commentaire du code décrit une garde qui n'existe pas)* | 2026-08-19 | 2026-08-19 |
+| [TRK-029](#trk-029) | `schedule-cron` | Le report d'une coupe applique un **backoff exponentiel à une échéance connue** — et le message dit « impossible » pour une action qui a abouti | 🔴 NON CORRIGÉ *(**test daté nº 5 : aucun second cas** — 21 coupes normales le 18/08 à 20:00. La ligne de base des 25 min reste unique)* | 2026-08-18 | 2026-08-19 |
+| [TRK-028](#trk-028) | `gps-integrity` | La fiche véhicule promettait « le véhicule réapparaît en sortant » **sans jamais dire quand** | 🟠 DÉPLOYÉ ET EXERCÉ · ⚠️ **DONNE UN CHIFFRE FAUX** *(le raccroc s'exécute — 2 → **14** épisodes refermés. Mais le 20/08, l'écran créé par cette fiche pour répondre « quand revient-il ? » annonce une médiane de **16,03 j** sur le parking `79a8d0f2`, pour une absence réelle de **6,94 j** : 8 des 9 durées de l'échantillon sont fabriquées par [TRK-031](#trk-031))* *(🟢 **21/08 : le chiffre est REDEVENU JUSTE** — épisodes refermés 14 → **35**, médiane de la zone parking **0,78 j**, 0 durée fabriquée sur 35. L'écran dit enfin la vérité qu'il promettait)* | 2026-08-17 | 2026-08-22 |
+| [TRK-027](#trk-027) | `gps-integrity` | **Contrepartie assumée de la règle du parking** : une antenne morte qui se tait au même endroit est silenciée dès la 2ᵉ fois | 🔵 TERRAIN · **surveillance manuelle** *(🟢 **FS-253-HR est revenu le 19/08 à 13:48:56, après 6,94 j — sous le seuil des 7 jours.** Le contrôle terrain demandé depuis le 03/08 n'a plus d'objet sur ce véhicule : le boîtier fonctionne, c'est bien le parking qui masquait le ciel. Il a reperdu son fix à 15:05 le même jour. Le garde-fou à écrire reste le CONTACT, bloqué par le même prérequis. **21/08 : 2 épisodes ouverts seulement** — FS-253-HR 1,57 j, FZ-862-VY 0,79 j, **tous deux sous le seuil de 7 jours** : aucune surveillance manuelle due)* | 2026-08-17 | 2026-08-22 |
+| [TRK-026](#trk-026) | `sms-heartbeat` | La sonde chargée d'annoncer la panne du canal de secours **ne pouvait pas rendre « en panne »** | 🟠 CORRIGÉ, EN LIGNE, **NON EXERCÉ** *(cron hebdomadaire ; premier verdict réel **lundi 24/08**. `INDETERMINE` sera le résultat ATTENDU, pas un échec)* | 2026-08-17 | 2026-08-19 |
+| [TRK-025](#trk-025) | `sms-allowlist` | **49 suppressions de masse retenues par la passerelle, 0 remontée** — ⚠️ **et désormais INEXERÇABLE** : après la rotation, l'appelant ne peut plus produire de blocage, cf. [TRK-041](#trk-041) — le champ lu vient de la réponse au sync que l'API émet elle-même, où il vaut toujours 0 | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(**non exercé le 19/08** : blocages inchangés à 49, donc aucune occasion nouvelle de prouver le silence. Ni confirmé ni infirmé ce jour)* | 2026-08-17 | 2026-08-22 |
+| [TRK-023](#trk-023) | *alertes* | **42 240 alertes sur 51 735 (81,6 %) partent sans message** — dont **41 709 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🟢 **CORRIGÉ — EXERCÉ ET VÉRIFIÉ le 22/08** *(**0 alerte sans message depuis le 19/08 01:56**, soit 3 jours pleins et **4 types** (`POWER_CUT`, `LOW_BATTERY`, `OVERSPEED`, `GPS_LOST`) ; le `POWER_CUT` du 21/08 12:36 porte un message complet — batterie, seuil, état du véhicule. Les 556 lignes muettes restantes sont **de l'historique**, dont les 24 de la salve du 19/08. ⚠️ **réserve maintenue** : le taux global reste illisible, son dénominateur ayant été effacé — cf. [TRK-035](#trk-035))* · ancien statut : *(⚠️ **le taux affiché le 20/08 est 556 / 10 055 = 5,5 % — NE PAS LIRE COMME UN PROGRÈS** : les 41 709 `POWER_CUT` du dénominateur ont été **effacées à la main**, cf. [TRK-035](#trk-035). Le correctif existe — `messageCoupure` pose enfin un message sur `POWER_CUT` — mais **aucune `POWER_CUT` n'a été créée depuis son déploiement le 19/08 01:56** : il n'est pas vérifié — **21/08 : toujours 0 `POWER_CUT` créée**, taux **556 / 10 057 = 5,5 %**, inchangé et toujours illisible)* | 2026-08-13 | 2026-08-22 |
+| [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🟢 CORRIGÉ *(**8ᵉ image** du 19/08 17:10, servie depuis `main` @ `f71ddc3` — **4ᵉ image consécutive conforme**. ⚠️ **réserve neuve du 20/08 : le tag `latest` détruit l'historique des déploiements.** `docker images` n'en montre qu'une alors que 3 vagues de migrations (01:56, 12:30, 17:12) en prouvent au moins trois le 19/08. Les migrations sont la seule horloge — et elles ne datent que les déploiements qui touchent le schéma)* | 2026-08-12 | 2026-08-22 |
+| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🔴 NON CORRIGÉ · **GRAVITÉ 1** *(test daté RÉPONDU **non** pour la 4ᵉ fois : aucun nouvel essai. 3 `shock_on` + 3 `sensitivity` `FAILED` sur 7 j — la baisse depuis 4+4 est la **fenêtre glissante**, pas une amélioration. Gravité 1 maintenue. **21/08 : test daté non déclenché pour la 5ᵉ fois** — 3 + 3 `FAILED` sur 7 j, aucun essai neuf)* | 2026-08-13 | 2026-08-22 |
+| [TRK-022](#trk-022) | *alertes* | Aucune déduplication des alarmes Coban : **1317 survitesses en un jour**, et **41 479 `POWER_CUT` en 15 jours** | 🟠 CORRECTIF DÉPLOYÉ, **NON EXERCÉ** *(🟢 **déduplication livrée le 19/08** : `DEDUP_ALARME_MS` = **6 h**, sur TOUS les types d'alarme — une alerte non acquittée du même type et du même véhicule bloque les suivantes. ⚠️ **aucune rafale depuis** : plus une seule trame `ac alarm` après le 19/08 02:26:23, donc rien à dédupliquer et **rien de prouvé**. **21/08 : 2 alertes en 24 h (1 OVERSPEED, 1 GPS_LOST), toutes deux AVEC message ; aucune rafale, 7ᵉ jour** — toujours rien à dédupliquer, donc toujours rien de prouvé)* | 2026-08-13 | 2026-08-22 |
+| [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : des boîtiers marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🔴 NON CORRIGÉ *(**7ᵉ point** sur la définition écrite (5 min / 15 min) : **0 / 2**, identique au 6ᵉ. Même sens depuis le 15/08)* | 2026-08-14 | 2026-08-22 |
+| [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟠 CORRECTIF PROPOSÉ *(`ackedAt` = 0 sur **4513**, `acknowledgedAt` = 30, inchangé)* | 2026-08-12 | 2026-08-22 |
+| [TRK-018](#trk-018) | *coupe-circuit* | Repli SMS : commandes moteur `SENT`, **0 confirmée**, aucun accusé de remise jamais écrit | 🔴 NON CORRIGÉ *(test daté **passé 9 fois** : 242 → 254 → 257 → 261 → 270 → 274 → **289** (**11ᵉ fois** le 22/08 : 289 → **296**) ; passerelle **349** `queued`, dernier empilé le 21/08 20:00. 🆕 **le 20/08, la NATURE du défaut change** : la preuve de remise n'est pas absente, elle est **jetée** — cf. [TRK-036](#trk-036). Le boîtier de GS-014-NY a répondu « Resume engine Succeed » par SMS le 19/08 08:28:58 ; Tracky l'a écrit dans `sms_logs` et laissé la commande en `SENT`)* | 2026-08-11 | 2026-08-22 |
+| [TRK-017](#trk-017) | `sms-allowlist` | Un appelant hors VPS efface 25 numéros à chaque h:25 avec la clé de PROD — **garde posée, clé NON rotationnée** | 🟢 **CLÉ ROTATIONNÉE le 2026-08-20 à 13:34 UTC**, après 10 jours *(préfixe `vtx_48fe` → **`vtx_d4f3`**, `updatedAt` figé au 05/06 → 20/08. Preuves : clé du conteneur → **HTTP 200**, ancien préfixe → **HTTP 401**, `/api/health` 200, **0 copie** de la clé hors `.env.prod`. 🟢 **CHAÎNE APPLICATIVE PROUVÉE le 21/08** : réconciliation `outcome = ok` à **04:25:00**, appels normaux 234 → **261**. ⚠️ **mais la rotation ne peut PAS être créditée du silence de l'appelant** : blocages **49 (+0)**, le dernier le **17/08 19:24:59** — il s'était tu **3 jours AVANT** la rotation. **102,0 h de silence au 22/08, le plus long de la série, 9ᵉ silence lu comme un silence** ; l'effet de la rotation reste **non testé** tant qu'il ne revient pas. 🆕 **Et il ne pourra plus l'être** : la rotation a supprimé le seul témoin — une clé révoquée n'écrit aucune ligne d'audit, cf. [TRK-041](#trk-041). ⚠️ 3 pièges payés : `docker exec -i` avale le script via `ssh bash -s` · `</dev/null` APRÈS un heredoc l'annule · compose exige `--env-file .env.prod`)* · ancien statut : *(clé `vtx_48fe` inchangée — `tenants.updatedAt` au 05/06 — **10ᵉ jour**. Blocages **49 (+0)** depuis le 17/08 19:24, appels normaux 208 → **234** : **54 h de silence** de l'appelant, le plus long de la série, **7ᵉ silence lu comme un silence**. Entrées **44**, aucune suppression depuis **231 h**. ⚠️ 9ᵉ jour : blocages **49 (+0)**, appels normaux 178 → **208** : 30 h de silence, 6ᵉ silence lu comme un silence. Entrées 42 → 44, les 2 neuves datées de la seconde du rattachement du boîtier neuf. ⚠️ **42 → 49 blocages**, appels normaux 159 → **178** ; 5ᵉ silence lu comme un silence, PAS comme une révocation. Entrées intactes depuis **181,4 h**. ⚠️ **35 → 40 blocages** : l'appelant EST REVENU après 32 h de silence, pour la **3ᵉ fois** — la leçon devient une règle. Sa remontée au centre d'alerte est morte, cf. [TRK-025](#trk-025))* | 2026-08-09 | 2026-08-22 |
+| [TRK-016](#trk-016) | *trajets* | Recalage cartographique en échec sur 9 trajets sur 10 | 🔴 NON CORRIGÉ *(**91,9 %** le 22/08 (204/222). Série ouvrée : 90,2 · 88,7 · 91,3 · 87,0 · 89,3 · 91,1 · **91,9** — le creux à 87,0 ne s'est pas confirmé. ✅ **Définition contrôlée le 22/08** : sur les trajets *démarrés* dans les 24 h (198), le taux est **92,4 %** — le recalcul de masse de [TRK-034](#trk-034) gonfle le dénominateur mais **ne fausse pas l'instrument**)* | 2026-08-09 | 2026-08-22 |
+| [TRK-015](#trk-015) | *ingestion* | Positions réelles écartées par le garde-fou anti-téléportation | 🔴 NON CORRIGÉ *(**test daté RÉPONDU** : rejets 5497 → **2465**, le 15/08 était UNE JOURNÉE. La baisse d'insertions s'explique par le **week-end** (73 trajets dimanche vs 195 vendredi), pas par le garde-fou. 317 rejets = rejeu de tampon de HD-779-MA)* | 2026-08-08 | 2026-08-22 |
+| [TRK-014](#trk-014) | *commandes* | Aucun accusé de réception boîtier — silence PROUVÉ, et **sa cause est trouvée** (mauvais format de trame) | 🔴 NON CORRIGÉ *(**6ᵉ point** : **74/75** commandes du jour portent l'indice ; silences tracés 243 → **651**. `ackedAt` = **0 sur 4 823** (21/08 : **73/74** commandes portent l'indice). 🆕 **92 trames `IN|ack` sont pourtant arrivées en 24 h — toutes pour les commandes MOTEUR** : le canal d'accusé fonctionne, seule la famille `fix_*` n'en reçoit jamais. 🆕 **devient un aggravant de [TRK-032](#trk-032)** : c'est parce qu'aucune commande n'est acquittée que « le moteur est coupé par nous » repose sur du vide)* | 2026-08-07 | 2026-08-22 |
+| [TRK-012](#trk-012) | *commandes* | Cadence d'arrêt (300 s) jamais appliquée — **trame au format SMS émise sur la socket TCP** | 🔴 NON CORRIGÉ *(**cause racine trouvée le 11/08** ; correctif écrit, en attente d'accord depuis **9 jours** ; 289 échecs « intervalle observé 20 s » sur 7 j. ⚠️ **preuve neuve du 19/08** : le boîtier posé cette nuit reçoit `fix030s***n123456` sur la socket TCP et ne répond pas — **2 `ACK timeout` en 6 minutes**. Chaque boîtier posé hérite du défaut à la minute où il se connecte. **11ᵉ jour d'attente d'accord le 21/08** : 277 échecs « intervalle observé 20 s » sur 7 j, et **71,3 échecs/jour** — le métronome n'a pas varié d'un dixième depuis dix jours)* | 2026-08-05 | 2026-08-22 |
+| [TRK-013](#trk-013) | *commandes* | Clôture par échéance : « sans effet » sans jamais comparer | 🔴 NON CORRIGÉ *(numérateur 19 → **22** (7·7·7·8·11·11·13·13·13·15·19·**22**) ; dénominateur 91 → **101**. Les deux montent pour le **2ᵉ jour** consécutif)* | 2026-08-06 | 2026-08-22 |
+| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN *(correctif de la fenêtre hebdomadaire **tient pour le 3ᵉ jour** : **1 seule ligne** en 24 h le 20/08 — FL-787-KV, 3 h sans fix — et **aucun rappel**. Elle est légitime : sa zone n'a été qualifiée `UNDERGROUND_PARKING` qu'à 21:55, 9 h plus tard. FS-253-HR **est revenu** à 6,94 j. **21/08 : 4ᵉ jour** — 1 seule ligne en 24 h (HD-686-QX, 2 h sans fix), aucun rappel)* | 2026-07-28 | 2026-08-22 |
 | [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🟢 CORRIGÉ *(déployé — `d5e5fb1` est sur `main`, branche servie depuis le 16/08 16:03. ⚠️ **le marqueur binaire est RETIRÉ** : invalide sur bundle minifié, réfuté par contrôle. 5 verdicts « régression » de 12→16/08 rectifiés ; seul un contrôle COMPORTEMENTAL vaut désormais)* | 2026-07-29 | 2026-08-17 |
-| [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ | 2026-07-31 | 2026-07-31 |
+| [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟢 CORRIGÉ *(**vérifié en production le 2026-08-18** : 1ʳᵉ occurrence depuis le 31/07, écrite en **`ERROR`** et non `CRITICAL` — `downMs=45 000`, `flaps=0` : exactement le calibrage prévu. La variante `ERROR` fait partie de la signature)* | 2026-07-31 | 2026-08-18 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟢 CORRIGÉ | 2026-07-28 | 2026-07-28 |
 | [TRK-006](#trk-006) | `frontend` | NG02100 sur `/admin/subscriptions` | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-30 |
@@ -4887,6 +5151,1101 @@ faux vert a simplement changé de place. Vérifier alors la valeur brute de `sms
 
 ---
 
+## TRK-030
+
+**Signature** — `gps-integrity | ERROR | GPS perdu : <PLAQUE> (<IMEI>) — boîtier vivant mais sans position GPS depuis toujours (jamais localisé). Antenne à vérifier.`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · 1 occurrence · découvert 2026-08-19
+
+> ⚠️ **Le texte est une variante de [TRK-001](#trk-001), la cause ne l'est pas.** TRK-001 décrit un
+> fait **terrain** — une antenne réellement masquée ou débranchée. Celle-ci est un **faux positif de
+> mise en service**. *Deux fiches valent mieux qu'une fusion qui masque une cause* (§5) : confondre
+> les deux enverrait un installateur vérifier une antenne qui fonctionne.
+
+### Ce que ça veut dire
+
+Un boîtier posé chez un **client neuf** est accusé de panne d'antenne **51 secondes avant son
+premier point GPS**.
+
+### La séquence, minute par minute
+
+| Heure (UTC) | Événement |
+|---|---|
+| **01:03:03** | Véhicule `FT000XX` créé — flotte « Ahmed », ouverte la veille |
+| **01:04:03** | Boîtier `864035054755856` rattaché par `admin@vizyoagency.com` |
+| **01:07:12** | Provisionnement SMS lancé, 6 étapes |
+| **01:09:36** | 🔌 Connexion TCP — trame de login `##,imei:…,A` |
+| **01:10:15** | 🔴 `error_logs` + alerte `GPS_LOST` : *« depuis toujours (jamais localisé). Antenne à vérifier. »* — **39 s après la connexion** |
+| **01:11:06** | 🛰️ **Premier point GPS** |
+
+### Cause racine
+
+`apps/api/src/gps-integrity/gps-integrity.service.ts:162` retient les boîtiers
+`lastSeenAt` récent **ET** `lastNoFixAt` récent **ET** `(lastPositionAt IS NULL OU périmée de 2 h)`.
+Un boîtier qui n'a **jamais** eu de position tombe dans la première branche du `OR` — **celle qui ne
+porte aucune borne de durée**. Il devient éligible dès sa première trame `no_fix`, au premier tick
+qui suit sa connexion.
+
+> 🔑 **L'asymétrie est exactement à l'envers de ce qu'il faudrait.** Un boîtier déjà localisé
+> bénéficie de **2 heures** de patience ; un boîtier qui n'a jamais eu de fix — le seul cas où
+> l'attente est *physiquement certaine*, un démarrage à froid Coban cherchant le ciel pendant une à
+> plusieurs minutes — n'en reçoit **aucune**. *Le délai de grâce est accordé au cas qui n'en a pas
+> besoin et refusé à celui qui en a besoin.*
+
+**Et le code le savait.** Le commentaire des lignes 160-161 annonce :
+*« ou jamais localisés **alors qu'ils émettent activement des no_fix depuis un moment** »*. Cette
+condition « depuis un moment » **n'existe nulle part dans la requête**. *L'intention a été écrite,
+jamais codée — et un commentaire qui décrit une garde absente est pire qu'un commentaire manquant :
+il fait passer la relecture.*
+
+**Famille : faux positif** (§7). Rien n'était en panne.
+
+### Ce que ça coûte
+
+La flotte « Ahmed » a été ouverte le 18/08 : **client neuf, en cours d'installation**. Sa toute
+première ligne au centre d'alerte est une fausse alarme, et une alerte `GPS_LOST` est partie sur son
+unique véhicule. **Le défaut se rejouera à chaque boîtier posé** — il n'y a rien d'aléatoire dedans.
+
+### Correctif proposé
+
+1. **Borner la branche « jamais localisé » par l'ancienneté du BOÎTIER**, pas par celle de sa
+   position (qui n'existe pas) : n'inclure un boîtier `lastPositionAt IS NULL` que si son premier
+   contact remonte à plus d'un seuil de démarrage à froid — `firstSeenAt`, à défaut
+   `tracker.createdAt`. **30 minutes** est large (un démarrage à froid dépasse rarement 5 min) et
+   reste très en deçà des 2 h accordées aux autres.
+2. **Ne pas se contenter d'un test sur `lastNoFixAt`** : il est réécrit à chaque trame et ne dit
+   rien de la durée. C'est bien l'ancienneté du boîtier qu'il faut lire.
+3. **Rédiger autrement le cas restant.** Un boîtier posé depuis 4 heures et toujours jamais localisé
+   est un **vrai** signal, mais son message doit dire *« jamais localisé depuis sa mise en service
+   il y a N heures »* — « depuis toujours » se lit comme un défaut ancien alors que la date de
+   naissance est connue.
+
+### ⛔ Ce qu'il ne faut PAS faire
+
+**Ne pas supprimer la branche « jamais localisé ».** Un boîtier posé la semaine dernière et jamais
+localisé est **le signal le plus utile de tout ce détecteur** — c'est l'antenne oubliée dans le
+carton. Et ne pas élargir la fenêtre des 2 h : elle n'a rien à voir avec ce défaut.
+
+### Vérification (porte sur la cause, pas sur l'affichage)
+
+À la prochaine mise en service, relever dans le journal l'écart **login TCP → première position
+valide**, et vérifier qu'**aucune** ligne `gps-integrity` n'a été écrite dans l'intervalle. Ligne de
+base du 19/08 : **login 01:09:36 → fix 01:11:06, soit 90 s**. **Ne pas** valider le correctif en
+constatant la disparition de la ligne sur un boîtier déjà localisé : ce cas n'a jamais été concerné.
+
+### 🗓️ Test daté — au prochain passage
+
+Le client est en cours d'installation, un second boîtier est probable. **Deux poses sur deux avec
+fausse alarme** transforment le défaut en certitude opérationnelle. Une pose **sans** alarme
+signifierait que le boîtier a accroché avant le tick — **pas** que le défaut n'existe pas.
+
+---
+
+## TRK-032
+
+**Signature** — *(absence d'alerte)*
+`alerts | AUCUNE LIGNE | POWER_CUT supprimé car « moteur coupé par nous » — sans borne de durée`
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `e88a5eec`, branche `fix/trk-032-borne-coupure-commandee`,
+partie d'`origin/main` @ `42dcdb38` — **non poussée**, relecture humaine obligatoire : garde de
+sécurité)* · **GRAVITÉ 1** · découvert 2026-08-20
+
+### ✅ Ce qui a été fait le 2026-08-20
+
+Constante `FENETRE_COUPURE_COMMANDEE_MS` = **15 minutes** dans `alerts.service.ts`, commentée avec la
+mesure qui la justifie. La requête sélectionne désormais `createdAt` en plus de `action`, et la
+fraîcheur est jugée dans le service — le contrat de `analyserAlimentation` reste **pur et sans
+horloge**.
+
+**6 tests ajoutés, dont 2 qui échouent sur le code d'avant** (CUT de 6 h, CUT de 3 jours), vérifié en
+remettant le service dans son état d'origine : `Tests: 2 failed, 29 passed`. Puis **49 tests / 3
+suites au vert** (alerts, alarme-alimentation, **smoke-boot DI**) et `tsc --noEmit` propre.
+Aucun autre appelant de `analyserAlimentation` dans le dépôt.
+
+⚠️ **La vérification ci-dessous n'est PAS faite** : elle exige le déploiement. Portée au prochain
+passage d'audit.
+
+### L'alarme d'alimentation de 33 boîtiers sur 42 est éteinte toutes les nuits
+
+Le correctif du 19/08 (`10fe7a8` + migration `20260819030000_alimentation_sans_coupure`) fait taire
+l'alarme `POWER_CUT` quand la coupure est **commandée par l'application**. L'intention est juste :
+couper le moteur coupe l'alimentation, s'en alarmer est absurde — 202 fausses alertes en une nuit le
+19/08. **C'est la façon de le savoir qui est fausse.**
+
+```js
+const derniereCommande = await this.prisma.engineControlCommand.findFirst({
+  where: { trackerId: tracker.id, status: { in: ['ACKNOWLEDGED', 'SENT'] } },
+  orderBy: { createdAt: 'desc' },
+  select: { action: true },
+});
+… analyserAlimentation(frame, { moteurCoupeParNous: derniereCommande?.action === 'CUT' })
+```
+
+### Cause racine
+
+La requête lit **la dernière commande moteur, sans aucune borne de temps**, et sans vérifier que la
+coupe est **encore en vigueur**. Tant qu'aucun `RESTORE` ne vient se placer après elle, un `CUT`
+vieux d'une heure, d'un jour ou d'un mois continue d'affirmer « c'est nous ».
+
+### Mesure du 2026-08-20 à 01:1x UTC
+
+| Dernière commande du boîtier | Boîtiers | Effet sur l'alarme d'alimentation |
+|---|---|---|
+| **`CUT` / `ACKNOWLEDGED`** | **30** | 🔇 éteinte |
+| **`CUT` / `SENT`** | **3** | 🔇 éteinte |
+| `RESTORE` / `ACKNOWLEDGED` | 5 | ✅ active |
+| `RESTORE` / `SENT` | 1 | ✅ active |
+
+> 🔑 **33 boîtiers sur 42 — 79 % du parc — ont leur alarme d'alimentation éteinte au moment de la
+> mesure.** Ce n'est pas un accident : c'est **l'automatisation horaire** qui les a coupés, à 18:00
+> et 20:00 la veille, et qui les rétablira à 06:00. *La flotte entière est silenciée chaque nuit,
+> exactement pendant les heures où un véhicule est garé sans surveillance — c'est-à-dire la seule
+> fenêtre où une coupure d'alimentation réelle (vol, batterie débranchée, sabotage) est plausible.*
+
+### ⚠️ Ajout du 2026-08-20 — le délai réel est MESURÉ, et il retourne la lecture du défaut
+
+Avant de choisir une fenêtre au jugé, l'écart réel entre une coupe commandée et l'arrivée d'une
+alarme d'alimentation a été mesuré sur les **trames brutes** (`wire_logs`, 4 jours) :
+
+| Boîtier | Coupe commandée | 1ʳᵉ alarme d'alimentation ensuite | Écart |
+|---|---|---|---|
+| DZ-034-CA | 18/08 20:00:05 | 19/08 00:57:46 | **4 h 58** |
+| HD-292-SH | 18/08 20:00:06 | 19/08 00:32:34 | **4 h 32** |
+| DZ-034-CA | 17/08 20:00:05 | 18/08 07:56:36 | 11 h 56 |
+| HD-292-SH | 16/08 20:00:05 | 19/08 00:32:34 | 52 h |
+
+**L'écart le plus court de toute la fenêtre est de 4 h 32.** Aucune alarme n'arrive dans les minutes
+qui suivent une coupe commandée.
+
+> 🔑 **Deux conséquences, la seconde plus importante que la première.**
+> 1. **Une fenêtre de quelques minutes ne peut PAS ramener le déluge** qu'on voulait éteindre : les
+>    alarmes concernées sont toutes à plus de quatre heures de la coupe la plus proche. **Le
+>    correctif est donc beaucoup moins risqué qu'il n'en a l'air.**
+> 2. **Le motif « coupure commandée » n'a jamais été la bonne explication de ces alarmes.** Une perte
+>    d'alimentation causée par notre coupe apparaîtrait en secondes, pas en heures. Les **304 trames
+>    sur 19 heures d'affilée** de DZ-034-CA sont un défaut électrique réel, pas un effet de bord de
+>    l'automatisation. *Le « contact coupé sur montage commuté » relève de l'autre branche du code,
+>    celle du niveau de batterie — pas de celle-ci.*
+>
+> Et l'unique exercice réel de la garde le confirme : le 19/08 à **02:26:23**, elle a silencié une
+> alarme survenue **6 h 26 après** la coupe de 20:00, sur un véhicule qui alarmait sans interruption
+> depuis la veille au matin. **Son seul exercice connu est un faux silence.**
+
+### Deux aggravants, déjà documentés ailleurs dans ce référentiel
+
+1. **`SENT` suffit.** [TRK-014](#trk-014) prouve qu'**aucun boîtier n'a jamais acquitté quoi que ce
+   soit** : `ackedAt` = **0 sur 4 733**. Une commande `SENT` n'est pas une commande exécutée, c'est
+   une commande **émise** — et [TRK-012](#trk-012) montre qu'elle part au mauvais format.
+   L'application éteint donc une alarme au motif d'une coupe dont elle n'a aucune preuve.
+2. **Un `RESTORE` resté `SENT` ne débloque rien — et ça arrive.** Un boîtier porte aujourd'hui un
+   `RESTORE / SENT` du **27/07, soit 559 heures**. Si la même chose arrivait à un `CUT` resté en
+   tête, ce véhicule serait silencié **définitivement**, sans que rien ne le signale.
+
+### Le second verdict de silence, à surveiller aussi
+
+`analyserAlimentation` se tait dans un **second** cas : `batteryPercent >= 90` → *« contact coupé sur
+un montage commuté »*. C'est un arbitrage délibéré et défendable (« le boîtier n'est pas en péril »),
+mais il a une conséquence à connaître : **une coupure d'alimentation réelle commence toujours avec
+une batterie pleine.** L'alerte n'arrive donc qu'une fois la batterie descendue sous 90 %, c'est-à-dire
+en retard — ou jamais si le boîtier s'éteint avant. *Ce point n'est pas le défaut de la fiche ; il ne
+doit pas être corrigé sans mesure. Il est écrit ici pour ne pas être redécouvert.*
+
+### Correctif proposé — trois gestes, du plus urgent au plus propre
+
+1. **Borner dans le temps.** N'accepter le motif « coupure commandée » que si le `CUT` est récent —
+   quelques minutes suffisent : la chute d'alimentation suit la commande de très près. Au-delà,
+   l'alarme redevient légitime, parce qu'un véhicule coupé depuis six heures qui perd son
+   alimentation ne la perd plus à cause de la coupe.
+2. **Lire l'état, pas l'historique.** La bonne question n'est pas « quelle est la dernière commande
+   enregistrée ? » mais « le moteur est-il coupé **maintenant** ? ». Si un état de coupe est tenu
+   quelque part, c'est lui qu'il faut lire ; sinon, l'introduire vaut mieux que de déduire un état
+   d'une pile de commandes non acquittées.
+3. ~~**Exclure `SENT`.**~~ 🔴 **RÉFUTÉ le 2026-08-20, pendant la correction.** Ce geste était justifié
+   par « tant que [TRK-014](#trk-014) tient, `SENT` ne prouve rien ». **La citation portait sur la
+   mauvaise table** : TRK-014 décrit `tracker_commands` (commandes de cadence). Les commandes moteur
+   vivent dans `engine_control_commands`, et **elles sont acquittées — 2 857 `ACKNOWLEDGED`.**
+
+   Vérifié dans `engine-control.service.ts` : le chemin TCP passe bien en `ACKNOWLEDGED`, **mais le
+   repli SMS écrit `SENT` avec `lastError: 'Envoyé via SMS (TCP indisponible)'` et n'en sort
+   jamais** ([TRK-036](#trk-036)). Exclure `SENT` rendrait donc l'application **aveugle à ses propres
+   coupes sur le chemin le moins fiable et le plus sensible** — le repli du coupe-circuit.
+   `SENT` est **conservé**.
+
+   > 🔑 **La borne de temps ferme à elle seule le danger réel** : une coupe restée `SENT` pour
+   > toujours qui ferait taire l'alarme à vie. *Le statut ne dit pas depuis quand — c'est la date qui
+   > tranche, pas le statut.*
+   >
+   > **Et la leçon de méthode vaut au-delà de cette fiche** : une fiche de ce référentiel s'applique
+   > à **une table nommée**, jamais à une idée générale (« les commandes ne sont jamais
+   > acquittées »). Généraliser une mesure au-delà de son périmètre fabrique un correctif qui a
+   > l'air fondé.
+
+### Vérification (porte sur la cause, pas sur l'affichage)
+
+Rejouer le comptage « dernière commande moteur par boîtier » **entre 20:00 et 06:00** : le nombre de
+boîtiers en `CUT` doit devenir **indépendant** du nombre de boîtiers dont l'alarme est éteinte.
+Aujourd'hui les deux valent 33. **Ne pas** valider en constatant qu'il n'y a plus de fausses
+`POWER_CUT` : il n'y en a plus parce que les trames ont cessé le 19/08 à 02:26:23, pas grâce à cette
+garde.
+
+### ⛔ Ce qu'il ne faut PAS faire
+
+Ne pas supprimer la garde : elle traite un vrai problème. **Le défaut est sa portée, pas son
+principe.**
+
+---
+
+## TRK-036
+
+**Signature** — *(défaut de chaînage, pas une ligne d'erreur)*
+`sms_logs | AUCUNE LIGNE | SMS entrant « …engine Succeed » enregistré avec imei NULL, jamais rapproché de la commande`
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `435e65f2`, branche
+`fix/trk-036-accuse-sms-rattache`, partie d'`origin/main` — **non poussée**)* · **gravité 2** ·
+découvert 2026-08-20
+
+### ✅ Corrigé le 2026-08-20 — deux gestes, et trois abstentions
+
+| Geste | Où |
+|---|---|
+| `recordInbound` résout l'émetteur → `sms_logs.imei` | `sms-gateway.service.ts` |
+| Un écouteur reconnaît l'accusé et acquitte la commande | `engine-control.service.ts` |
+
+**Le rapprochement se fait sur les 9 derniers chiffres** — même convention que la machine à états
+de provisionnement, parce que le même numéro circule en `+33…`, `0033…` ou `0…` selon l'opérateur
+qui le relaie. Une comparaison stricte échouerait sur une simple variation de forme.
+
+**Et la commande se retrouve par le COUPLE (boîtier, action), jamais par le temps.** 3 h 50
+séparaient la commande de sa réponse : une fenêtre temporelle assez large pour couvrir ce cas
+rattacherait n'importe quel accusé à n'importe quelle commande de la journée.
+
+> 🔑 **Les trois abstentions comptent autant que le rapprochement**, et chacune a son test :
+> 1. **Deux boîtiers pour un même numéro → on n'acquitte RIEN.** Un accusé collé au mauvais véhicule
+>    ferait croire à une coupure moteur confirmée sur un véhicule qui n'a rien reçu — strictement
+>    pire que pas d'accusé.
+> 2. **Une panne de résolution ne fait pas perdre le SMS.** Remplacer un angle mort par une perte de
+>    donnée serait pire que le défaut d'origine.
+> 3. **Une panne de l'écouteur ne casse pas le flux entrant.** Un `@OnEvent` qui lève casse
+>    l'événement pour **tous** les abonnés — dont la machine à états de provisionnement, qui attend
+>    ses ACK sur le même canal.
+
+**Vérifications** : `tsc --noEmit` ✅ · **127 tests / 8 suites** ✅ (engine-control, sms,
+**smoke-boot DI**) · les nouveaux tests **échouent sur le code d'avant** (la suite engine-control ne
+compile même pas : la méthode n'existait pas). Ajout de `sms-gateway.service.spec.ts`, **qui
+n'existait pas** — portée volontairement étroite, uniquement le rattachement.
+
+### ⚠️ Ce que ce correctif NE règle PAS, et qu'il ne faut pas confondre
+
+Il explique pourquoi on ne **voyait** pas les accusés. Il n'explique pas pourquoi il n'y en a que
+**deux en cinq semaines** pour 280 commandes `SENT`. **Les deux questions sont distinctes** et
+[TRK-018](#trk-018) reste entière : une fois les accusés ramassés, on saura enfin **combien** il en
+manque — ce qui est le vrai sujet.
+
+### Le constat d'origine (2026-08-20)
+
+### L'accusé de réception du boîtier arrive, est stocké par Tracky, et n'est jamais rattaché
+
+[TRK-018](#trk-018) dit depuis le 11/08 que le repli SMS n'a **aucune preuve de remise**. Le 19/08 a
+produit la preuve — **et elle était déjà dans la base de Tracky.**
+
+| Heure (UTC) | Où | Fait |
+|---|---|---|
+| 04:39:13.553 | Tracky | Commande `RESTORE` créée pour **GS-014-NY** |
+| 04:39:13.668 | Passerelle | `resume123456` empilé vers **+345901030609501** |
+| 04:39:14.040 | Tracky | Commande passée en **`SENT`** |
+| **08:28:58.320** | Passerelle | 🔔 **SMS entrant de +345901030609501 : « Resume engine Succeed »** |
+| **08:28:58.558** | **Tracky** | 🔔 **Le même SMS est écrit dans `sms_logs`** — `imei` **NULL**, `context` **NULL**, `template` **NULL** |
+| **+21 h** | Tracky | La commande est **toujours `SENT`** |
+
+Et `trackers.simPhoneNumber` pour GS-014-NY vaut **exactement `+345901030609501`**. Le boîtier est
+identifiable **par une seule jointure**, sur une colonne qui existe déjà.
+
+> 🔑 **Le défaut n'est pas que la preuve manque — c'est qu'elle est arrivée, a été rangée, et que
+> personne n'est allé la chercher.** Le repli SMS n'est pas aveugle : il est **sourd d'une oreille**.
+> Tracky reçoit « Resume engine Succeed » et la classe comme un SMS entrant anonyme, à côté d'un
+> « Binjour, je vois avec eux demain ! » et d'un démarchage commercial.
+
+### Une nuance qui doit rester distincte
+
+`messages` (côté passerelle) ne porte que **deux** accusés de ce type : « Stop engine Succeed » le
+**13/07** et « Resume engine Succeed » le **19/08**. Deux en cinq semaines, pour **1 602** commandes
+moteur `FAILED` et **280** `SENT`. *Le rattachement manquant explique pourquoi on ne les voit pas ;
+il n'explique pas pourquoi il n'y en a que deux.* **Les deux questions sont distinctes et doivent le
+rester** — corriger le rattachement ne fera pas apparaître les 278 autres.
+
+### Correctif proposé
+
+1. **À la réception d'un SMS entrant, résoudre l'émetteur** : `trackers.simPhoneNumber = fromNumber`
+   → renseigner `sms_logs.imei`. Geste isolé, sans effet de bord, utile même sans la suite.
+2. **Reconnaître les accusés** : le corps suit un gabarit fixe (`Stop engine Succeed`,
+   `Resume engine Succeed`). Les rapprocher de la dernière `engine_control_commands` `SENT` du même
+   boîtier et écrire l'acquittement.
+3. **Ne pas rapprocher à l'aveugle sur le temps seul** : 3 h 50 séparent ici la commande de sa
+   réponse. Une fenêtre trop large rattacherait un accusé à la mauvaise commande ; le couple
+   (boîtier, action) est le bon discriminant, pas la proximité horaire.
+
+### Vérification
+
+Tout `sms_logs` de direction `IN` dont le `fromNumber` correspond à un `simPhoneNumber` connu doit
+porter un `imei`. **Aujourd'hui : 0 sur 1.** Et **pas** « la commande est passée en `ACKNOWLEDGED` » :
+ce serait vrai aussi si on acquittait à l'aveugle.
+
+---
+
+## TRK-035
+
+**Signature** — *(défaut de plateforme, pas une ligne d'erreur)*
+`plateforme | AUCUNE LIGNE | suppression de masse hors application — invisible de tous les journaux`
+**Statut : 🟠 SONDE ÉCRITE, NON DÉPLOYÉE** *(commit `41c22081`, branche
+`fix/trk-035-recensement-suppressions`, partie d'`origin/main` — **non poussée**)* ·
+**GRAVITÉ 1 (consigne) / 3 (technique)** · découvert 2026-08-20
+
+### 🔴 LE DÉFAUT A REJOUÉ LE JOUR MÊME OÙ ON ÉCRIVAIT LA SONDE
+
+Mesuré à 14:50, pendant la rédaction du correctif :
+
+| | Ce matin 01:1x | **14:50** |
+|---|---|---|
+| Lignes `error_logs` | **14** | **4** |
+| Plus ancienne | 19/08 09:35 | **20/08 05:47** *(+20 h)* |
+| `pg_stat_user_tables.n_tup_del` | 3 695 | **3 712** *(+17)* |
+| Purge enregistrée à 03:00 | — | **`errorDeleted: 0`** |
+
+**Troisième jour de suite, et toujours aucune trace.** Vérifié à nouveau ce jour : il n'existe
+**toujours qu'un seul** chemin de suppression de lignes d'erreur dans le code servi (le cron), et
+**aucun endpoint `DELETE`** côté alertes ou observabilité. *La sonde écrite aujourd'hui aurait crié
+aujourd'hui.*
+
+### ✅ Ce qui a été livré — et ce que ça n'est pas
+
+> 🔑 **Ce n'est PAS un garde-fou, et ça ne peut pas en être un.** Aucun code applicatif
+> n'arrête un `DELETE` exécuté directement en base. La sonde n'empêche rien : elle fait la seule
+> chose qui reste possible — **empêcher que ça passe inaperçu**.
+
+**La règle n'est pas « des lignes ont-elles disparu ? » mais « la disparition est-elle
+EXPLIQUÉE ? »** — on compare la baisse au nombre de lignes que les purges **enregistrées**
+revendiquent. Ce qui dépasse n'a pas d'explication.
+
+**Deux signaux, pas un** :
+
+| Signal | Ce qu'il attrape |
+|---|---|
+| Le **nombre** qui baisse | une suppression ciblée **au milieu** de l'historique |
+| La **borne basse** qui avance | un `DELETE` par ancienneté — le cas du 19/08, +22 jours |
+
+*S'en remettre à la borne seule laisserait passer le premier cas entier.*
+
+**Le relevé vit ailleurs que dans les tables surveillées**, et c'est tout l'intérêt : rangé dans
+`error_logs`, il disparaîtrait avec les lignes qu'il compte. Il est écrit dans le journal des
+actions système — là où le ménage déclare déjà ses propres purges, et lisible depuis l'écran
+d'administration.
+
+**Cron à 03:15, APRÈS le ménage de 03:00**, et c'est délibéré : recenser avant produirait un écart
+d'un jour à chaque passage. *La sonde crierait tous les jours, on l'ignorerait, et le jour où elle
+aurait raison personne ne la lirait.*
+
+**Vérifications** : `tsc --noEmit` ✅ · **126 tests / 12 suites** ✅ dont le **smoke-boot DI** —
+obligatoire ici, un service mal câblé dans `observability` a déjà provoqué une boucle de crash.
+**10 tests** sur la règle de comparaison, sortie du service en **fonction pure** : elle se vérifie
+sans base, sans horloge et sans injection. Dont **le test qui protège la sonde d'elle-même** — une
+purge qui revendique sa baisse ne déclenche **rien**.
+
+### ⚠️ Ce qui reste hors de portée du code
+
+Le second geste de la fiche — **documenter la manœuvre quand elle est volontaire** — n'est pas
+livrable ici : il appartient à celui qui exécute le `DELETE`. La sonde le rend simplement
+coûteux à omettre, puisque l'omission produit désormais une ligne `CRITICAL`.
+
+### Le constat d'origine (2026-08-20)
+
+### 41 709 alertes et au moins 89 lignes d'erreur effacées, sans aucune trace
+
+| | 19/08 (mesuré à 01:32) | **20/08** |
+|---|---|---|
+| Lignes `error_logs` | **50**, la plus ancienne du **28/07** | **14**, la plus ancienne du **19/08 09:35:00** |
+| Lignes `alerts` | **51 735** | **10 055** |
+| Dont `POWER_CUT` | **41 733** | **24** |
+
+### Ce n'est ni la rétention, ni un chemin de l'application
+
+1. **La rétention n'a rien supprimé.** Le cron du 19/08 03:00:20 porte son propre compte-rendu :
+   `{"errorDeleted": 0, "sysActivityDeleted": 0, "wireDeleted": 163301}`. Seuls les journaux de trame
+   ont été purgés — et `ERROR_LOGS_RETENTION_DAYS` vaut bien **90** dans l'environnement du
+   conteneur, ce qui laissait le 28/07 très largement dans la fenêtre.
+2. **Aucun code applicatif ne peut le faire.** Une seule `errorLog.deleteMany` existe dans toute
+   l'image servie (`log-cleanup.service.js`), et **aucune** `alert.deleteMany` — nulle part. Le
+   bouton « tout acquitter » (`POST /api/alerts/acknowledge-all`, appelé 3 fois le 19/08, dont une à
+   **09:31:45**) fait un `updateMany` sur `acknowledgedAt` : **il ne supprime rien**, vérifié dans le
+   service.
+3. **La migration ne le fait pas non plus.** `20260819030000_alimentation_sans_coupure`, lue
+   intégralement, ajoute deux colonnes à `trackers`. Un point.
+
+**La seule trace est indirecte** : `pg_stat_user_tables` compte **41 824** suppressions cumulées sur
+`alerts`, et l'autovacuum de `error_logs` s'est déclenché le **19/08 à 09:35:15** — quinze secondes
+après l'horodatage de la plus ancienne ligne survivante.
+
+Le volume effacé de `error_logs` est **minoré** : aux 50 lignes mesurées la veille s'ajoutent les 39
+comptées par le courriel de synthèse du 19/08 04:10:00 (« 39 erreurs en 1 h »), toutes disparues.
+**Au moins 89 lignes.**
+
+> 🔑 **[TRK-010](#trk-010) avait fermé la mauvaise porte.** La fiche du 03/08 a identifié la
+> rétention automatique comme le moyen par lequel une erreur non corrigée s'efface, et l'a bouché en
+> portant la fenêtre à 90 jours. La porte réellement empruntée le 19/08 est une autre : **le SQL
+> direct sur la base de production**, qui ne passe ni par la rétention, ni par l'application, ni par
+> le journal des mutations. *Un garde-fou posé dans le code ne protège que ce qui passe par le code.*
+
+### Ce que ça coûte
+
+- **Les taux de ce référentiel deviennent illisibles sans avertissement.** [TRK-023](#trk-023)
+  affichait **42 240 / 51 735 = 81,6 %** ; il afficherait aujourd'hui **556 / 10 055 = 5,5 %**.
+  **Cette chute de 76 points ne doit rien à un correctif.** La reporter comme un progrès serait la
+  plus grosse erreur de lecture possible de tout le dossier.
+- La consigne explicite du propriétaire — *« une erreur reste visible tant qu'elle n'est pas corrigée
+  ET vérifiée »* — est contournable sans trace, y compris par mégarde.
+
+### Correctif proposé
+
+Il n'y en a pas côté code, et c'est le fond du sujet : **aucun garde-fou applicatif ne peut arrêter
+un `DELETE` en base.** Ce qui est possible :
+
+1. **Rendre la disparition visible plutôt que l'empêcher.** Un relevé quotidien de `count(*)` et
+   `min("createdAt")` sur `error_logs` et `alerts`, conservé **ailleurs que dans ces tables**,
+   transforme un effacement muet en fait daté. Le journal des passages de ce dossier fait déjà cela,
+   et **c'est lui qui a détecté celui-ci** — mais un jour plus tard.
+2. **Documenter la manœuvre quand elle est volontaire.** Une ligne dans `system_activity_logs`
+   (catégorie `RETENTION`) coûte une insertion et rend l'événement lisible depuis l'écran, comme le
+   fait déjà le cron.
+
+### Vérification
+
+`min("createdAt")` de `error_logs` ne doit jamais **avancer** sans qu'une purge soit inscrite quelque
+part. **Le 20/08, il a avancé de 22 jours sans aucune inscription.**
+
+### Note d'honnêteté
+
+Le 19/08 a vu au moins trois déploiements et une trentaine de commits, dont plusieurs sur le bruit du
+centre d'alerte. Un nettoyage délibéré pendant cette passe est l'hypothèse la plus simple. **Cette
+fiche ne l'affirme pas** : elle constate que ni l'application, ni la rétention, ni aucun journal n'en
+portent trace — et c'est ce constat-là qui est son sujet.
+
+---
+
+## TRK-033
+
+**Signature** — `frontend | ERROR | [uncaught] TypeError: undefined is not an object (evaluating 'e.chargeDeFond.<CHAMP>')`
+**Statut : 🟢 CORRIGÉ ET DÉPLOYÉ** · **gravité 2** · découvert 2026-08-20
+
+### ✅ Résolu le 2026-08-20 — en trois morceaux, dont deux déjà faits
+
+| Geste | État |
+|---|---|
+| Garde `@if (p.chargeDeFond; as cf)` au gabarit | ✅ **déjà fait** (`42dcdb38`) et **déployé** — image `tracky-web` reconstruite le **20/08 04:56** |
+| Champ déclaré **facultatif** dans l'interface | ✅ **déjà fait** (`42dcdb38`) |
+| **L'agent d'audit VPS sait écrire le champ** | ✅ **fait ce jour** — la consigne n'existait **nulle part** |
+| Commentaires du code rectifiés | ✅ **fait ce jour** (`4849bb02`) |
+
+### 🔴 La cause écrite dans le code était FAUSSE — et elle envoyait au mauvais endroit
+
+Les deux commentaires posés avec la garde disaient : *« l'API ne le construit pas encore »*.
+**L'API ne construit rien ici** — elle sert le manifeste `docs/vps-audit/app/wiki.json`, **écrit par
+l'agent d'audit VPS**. Et l'historique du fichier est sans appel :
+
+| Passage de l'agent | `chargeDeFond` |
+|---|---|
+| 11/08 → **17/08** (7 passages consécutifs) | ✅ **PRÉSENT à chaque fois** |
+| **18/08** | ❌ **ABSENT** |
+| 19/08, 20/08 | ❌ absent |
+| **19/08 10:32** | 🔴 **l'écran tombe** |
+
+> 🔑 **Rien n'était « pas encore construit » : quelque chose a été PERDU.** Le champ vivait depuis
+> au moins une semaine, l'agent a cessé de l'écrire le 18/08, et l'écran est tombé le lendemain.
+> *Un commentaire qui affirme une cause fausse fait passer la relecture et envoie enquêter ailleurs —
+> il coûte plus cher qu'un commentaire absent.*
+
+**Et c'est ce qui rendait le correctif incomplet** : avec la seule garde, la ligne de charge de fond
+disparaît **en silence** à chaque passage de l'agent. La cause réelle — l'agent ne sait pas qu'il
+doit écrire ce champ — n'était traitée nulle part. Elle l'est désormais, dans sa consigne.
+
+### 🟢 La vérification prescrite est SUPERFLUE — il existe une garde plus forte qu'un test
+
+La fiche demandait d'ouvrir l'écran avec un manifeste amputé. Inutile : `apps/web/tsconfig.json`
+active **`strict: true` + `strictTemplates: true`**, donc un déréférencement non gardé d'un champ
+facultatif est une **erreur de compilation**.
+
+**Prouvé, pas supposé** — la garde a été retirée temporairement et `ng build` relancé :
+
+```
+X [ERROR] TS2532: Object is possibly 'undefined'   (x4, lignes 186-189)
+=== code de sortie : 1 ===
+```
+
+Garde restaurée : `ng build` -> **code 0**.
+
+> 🔑 **La panne ne peut plus être réintroduite en silence : le build refuse.** C'est une garde
+> strictement meilleure qu'un test — elle n'a pas besoin d'être écrite pour chaque nouveau champ,
+> elle s'applique à tous. *Aucun test n'a donc été ajouté, et c'est délibéré* : le dépôt teste la
+> logique sans DOM, et le défaut vit dans le gabarit — un test de logique ne l'aurait jamais vu.
+
+### `/admin/vps` plante sur un champ que son propre manifeste ne contient pas
+
+Une ligne, le **19/08 à 10:32:05**, sur `/admin/vps`, iPhone Safari, compte
+`admin@vizyoagency.com`. **Reproductible depuis la donnée, et en ligne au moment où ceci est écrit.**
+
+### Cause racine
+
+Le gabarit ouvre une garde sur l'objet parent puis déréférence l'enfant sans garde :
+
+```
+@if (idx.previsions; as p) {                     ← garde sur previsions
+  … {{ p.chargeDeFond.healthchecksParMinute }}   ← chargeDeFond n'est pas gardé
+```
+
+Or `previsions` vient de `docs/vps-audit/app/wiki.json`, **écrit par l'agent d'audit VPS**, et ce
+fichier ne contient que deux clés : `disque` et `recuperable`. **`chargeDeFond` est absent.** Vérifié
+aux trois endroits : dans le dépôt, dans `/opt/tracky-vps-audit/app/wiki.json` publié sur le VPS, et
+tel que le conteneur `tracky-api` le voit.
+
+> 🔑 **L'interface TypeScript déclare `chargeDeFond` obligatoire, et le compilateur est satisfait —
+> mais la valeur vient d'un JSON analysé sans validation.** Un type posé sur du JSON non validé n'est
+> pas une garantie : c'est **une promesse que le compilateur n'a aucun moyen de tenir**. Ici la
+> promesse est faite au gabarit, qui y croit et déréférence.
+
+### Ce que ça casse
+
+Pas seulement la phrase sur la charge de fond : **le `@if` entier meurt, donc toute la carte
+« Prévisions » disparaît** — y compris le tableau du disque et le total récupérable, qui n'ont rien à
+voir avec le champ manquant.
+
+### Correctif proposé — deux gestes, et il faut les deux
+
+1. **Côté écran, rendre le champ facultatif** : `chargeDeFond?` dans l'interface, `@if
+   (p.chargeDeFond; as cf)` autour du seul bloc concerné. Le reste de la carte survit alors à
+   n'importe quel manifeste partiel.
+2. **Côté agent VPS, renseigner `chargeDeFond`** — les chiffres existent déjà (l'audit VPS mesure les
+   healthchecks et les processus par minute). *Ce second geste seul ne suffit pas : il répare la
+   donnée du jour, pas la fragilité du gabarit, et le prochain champ ajouté rejouera la même panne.*
+
+### Vérification
+
+Ouvrir `/admin/vps` avec un `wiki.json` **volontairement amputé** de `chargeDeFond` : la carte
+« Prévisions » doit s'afficher, sans la phrase de charge de fond, et la console doit rester muette.
+**Ne pas** valider en ajoutant le champ puis en constatant que la page marche — ça ne teste rien du
+défaut.
+
+---
+
+## TRK-034
+
+**Signature** — `TRIP_AUTOMATION | ERROR | Recalcul impossible sur <PLAQUE> : aucune position entre <DATE> et <DATE>, alors que des trajets bruts y subsistent. Rien n'a été supprimé.`
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `638d16aa`, branche
+`fix/trk-034-fenetre-recalcul`, partie d'`origin/main` — **non poussée**)* · **gravité 3** ·
+découvert 2026-08-20
+
+### ✅ Corrigé le 2026-08-20 — mais la moitié était déjà faite
+
+| Geste | État |
+|---|---|
+| Ne plus alerter sur une tranche vide **au-delà** de la rétention | ✅ **déjà fait en amont** — `horizonRetention()`, avec son propre fichier de tests |
+| Borner la fenêtre par la rétention | ✅ **fait ce jour** — `fenetreUtile()` |
+| Rendre visible la dérive du réglage | ✅ **fait ce jour** |
+
+### 🔑 Le bruit était traité, le TRAVAIL ne l'était pas
+
+Le signalement était déjà tu. Mais un trajet situé au-delà de l'horizon continuait d'être
+sélectionné, puis **analysé** — or l'analyse **relit les positions du trajet**, n'en trouve aucune,
+et persiste une **analyse vide**. Du budget dépensé pour un résultat qui ne peut rien contenir.
+
+**Et ce budget est saturé** : le passage du **2026-08-20 00:35** a analysé **3 712 trajets en
+50 minutes**, atteint son plafond de temps (`budgetAtteint`) et laissé **6 véhicules** de côté.
+Chaque trajet analysé au-delà de l'horizon est pris sur ceux-là.
+
+`fenetreUtile()` borne la **sélection** des trajets, et rien d'autre : le calcul de `fromMs` est
+inchangé, donc la garde d'alerte en aval reste intacte, en ceinture et bretelles.
+
+> 🔑 **Le correctif ne raccourcit RIEN d'exploitable** — il retire uniquement du travail
+> provablement vide. Deux tests verrouillent ce point : une fenêtre déjà dans la rétention n'est
+> **pas touchée**, et si la rétention est **désactivée** on ne borne **rien** (rien n'est purgé,
+> donc tout est exploitable). *Le piège symétrique — amputer la fenêtre sans raison — aurait fait
+> disparaître des trajets analysables en silence.*
+
+### ⚠️ La dérive de réglage n'est PAS corrigée en douce — elle est rendue visible
+
+`lookbackHours` vaut **1 500 h** en base, alors que l'API n'accepte que **720 h** à l'écriture : le
+réglage a été posé **avant** ce plafond, ou en le contournant.
+
+**Le bon plafond est une décision, pas une supposition.** Le passage le journalise donc à chaque
+tour au lieu de trancher seul :
+
+```
+lookbackHours vaut 1500 h en base, au-dela du maximum accepte a l'ecriture (720 h).
+Reglage herite d'avant ce plafond, ou pose en le contournant — a trancher.
+```
+
+Le plafond devient au passage une **constante nommée, partagée entre l'écriture et la lecture** —
+c'est la leçon de [TRK-008](#trk-008), où des valeurs hors bornes ont continué d'agir longtemps
+après que le chemin d'écriture eut été borné. *Un plafond qui ne s'applique qu'aux écritures futures
+laisse les valeurs héritées agir indéfiniment.*
+
+### ✅ TRANCHÉ le 2026-08-20 — le plafond est relevé, la fenêtre n'est pas amputée
+
+**Le plafond passe de 720 h (30 j) à 2 160 h (90 j)** *(commit `152883ec`)*, et la raison est dans
+les chiffres :
+
+> 🔑 **L'ancien plafond était PLUS BAS que la rétention des positions.** 720 h = 30 jours,
+> alors que les positions vivent **60 jours**. L'écran interdisait donc d'écrire une fenêtre de
+> 45 jours que le système aurait parfaitement su honorer : **ce plafond ne protégeait rien, il
+> amputait.**
+>
+> Et ramener le réglage à 720 h aurait **divisé par deux la fenêtre d'analyse** d'une plateforme qui
+> rattrape justement son historique — *une régression déguisée en mise en conformité*.
+
+**Règle posée** : ce plafond **ne doit jamais descendre sous `POSITIONS_RETENTION_DAYS`**, sinon
+l'interface refuse des valeurs exploitables. 90 jours laisse la marge si la rétention est relevée.
+
+⚠️ **Relever ce plafond n'est sans danger que PARCE QUE `fenetreUtile()` existe** : le travail réel
+reste borné par la rétention quelle que soit la valeur saisie. Sans lui, un plafond haut autoriserait
+des balayages profonds et vides. **Les deux gestes vont ensemble et ne doivent pas être séparés.**
+
+La sentinelle qui journalise la dérive **reste armée** — non plus pour celle-ci, qui est tranchée,
+mais pour la prochaine, qui ne se verrait pas davantage.
+
+**Vérifications** : `tsc --noEmit` ✅ · **165 tests / 13 suites** ✅ (trip-analysis, trip-automation,
+horizon-retention, fenetre-utile, **smoke-boot DI**) · les 5 nouveaux tests **échouent sur le code
+d'avant**. Corrige aussi un commentaire périmé qui annonçait « 50 jours en prod ».
+
+### Le constat d'origine (2026-08-20)
+
+### La fenêtre de recalcul dépasse de 2,5 jours la rétention des positions
+
+Une ligne, le 20/08 à 00:32:01, sur FZ-862-VY, pour la fenêtre **19/06 → 21/06**.
+
+| Réglage | Valeur | Portée |
+|---|---|---|
+| `trip_automation_settings.lookbackHours` | **1 500 h** = **62,5 jours** | jusqu'où le recalcul remonte |
+| `POSITIONS_RETENTION_DAYS` | **60 jours** | jusqu'où les positions existent |
+| rétention des trajets | **12 mois** | jusqu'où les trajets existent |
+
+L'automatisation va chercher des positions **2,5 jours au-delà de l'horizon où il peut y en avoir**,
+sur des trajets conservés vingt fois plus longtemps. Le 19/06 est à **62 jours** de la collecte : dans
+la fenêtre de recalcul, hors de la rétention des positions. Et la purge du 19/08 03:30 a justement
+retiré **22 674 positions** « > 60 j ».
+
+> 🔑 **Ce n'est pas un aléa, c'est une soustraction.** Tant que `lookbackHours` dépasse
+> `POSITIONS_RETENTION_DAYS`, la bande de recouvrement produit la même erreur **à chaque passage,
+> pour toujours** — et elle s'élargira si l'un des deux réglages bouge sans l'autre.
+
+### À porter au crédit du message
+
+Il est explicite, nomme le véhicule, donne les deux bornes et se termine par *« Rien n'a été
+supprimé »*. Ce n'est ni un message circulaire ni un message menteur au sens du §7 : il décrit
+exactement ce qui s'est passé. **Le défaut est le réglage, pas le cri.**
+
+### Correctif proposé
+
+1. **Borner la fenêtre de recalcul par la rétention des positions**, à la lecture du réglage plutôt
+   qu'en dur : `min(lookbackHours, POSITIONS_RETENTION_DAYS × 24)`, avec une marge d'un jour pour ne
+   pas courir après la purge nocturne.
+2. **Classer ce cas en information, pas en erreur.** Une fenêtre sans position parce que la rétention
+   est passée est un état **attendu** ; l'écrire en `ERROR` consomme l'attention qui doit aller
+   ailleurs *(§7 : « décrit un refus voulu → faux positif, ne doit pas être archivé »)*.
+
+### Vérification
+
+Après correction, relancer l'automatisation et vérifier qu'**aucune** ligne `TRIP_AUTOMATION` n'est
+écrite alors que des trajets antérieurs à 60 jours subsistent en base — il en subsiste, la rétention
+des trajets étant de 12 mois. **Ne pas** vérifier en constatant la disparition de la ligne le
+lendemain : elle ne réapparaît que quand un véhicule concerné entre dans la bande.
+
+---
+
+## TRK-031
+
+**Signature** — *(pas une ligne d'erreur : une durée fabriquée dans la donnée)*
+`gps-dead-zones | (aucune ligne) | recordRecovery ferme TOUS les épisodes ouverts du véhicule à la date du jour`
+**Statut : 🟠 CORRIGÉ, NON DÉPLOYÉ** *(commit `b28e389e`, branche `fix/trk-031-episodes-gps-bornes`,
+partie d'`origin/main` — **non poussée**)* · **gravité 2** · découvert 2026-08-19
+
+### 🔴 Le défaut a rejoué UNE TROISIÈME FOIS — ce matin, pendant la correction
+
+| Jour | Véhicule | Épisodes fermés à la même seconde | Fabriquées |
+|---|---|---|---|
+| 18/08 | HD-779-MA | 2 | 1 (16,88 j) |
+| 19/08 | FS-253-HR | **9** | **8** (jusqu'à 35,18 j) |
+| **20/08 08:16:31** | **FZ-862-VY** | **4** | **3** — réfutées par **539 · 386 · 178** positions |
+
+**Un véhicule par jour, trois jours de suite.** La mesure prescrite par cette fiche est passée de
+**8 sur 14** hier à **13 épisodes clos faux sur 19** ce jour — soit **68 %**.
+
+**Et une SECONDE zone est désormais empoisonnée :**
+
+| Zone | Épisodes | Médiane affichée | Absence réelle la plus longue |
+|---|---|---|---|
+| `79a8d0f2` — parking de FS-253-HR | 9 | 🔴 **16,03 j** | 6,94 j |
+| `879699a3` — parking de FZ-862-VY | 4 | 🔴 **10,47 j** | **2,83 j** |
+
+### ✅ Corrigé le 2026-08-20 — mais PAS avec la fenêtre fixe prévue
+
+> 🔴 **Correction de la roadmap, faite à l'exécution.** Elle prescrivait d'ajouter
+> `lostAt >= now() - <fenêtre max d'épisode>`, avec une fenêtre de l'ordre de 7 jours lue dans la
+> donnée. **Cette règle est fausse** : un véhicule réellement absent cinq semaines *a* une absence de
+> cinq semaines. La refuser laisserait son épisode ouvert **pour toujours** — une autre façon de
+> mentir, plus discrète.
+>
+> 🔑 **La borne ne doit pas porter sur l'ANCIENNETÉ de la perte, mais sur le fait qu'un épisode
+> PLUS RÉCENT existe.** On ferme le plus récent encore ouvert et ses doublons (marge d'une heure —
+> les doublons du cron naissent à quelques minutes d'écart). Les plus anciens restent ouverts : ce
+> sont des restes d'avant le correctif, ils relèvent de l'assainissement, pas de l'ingestion.
+>
+> Vérifié sur les quatre scénarios : épisode courant seul ✅ · doublons du même épisode ✅ · épisode
+> d'un autre mois **laissé ouvert** ✅ · absence réelle de cinq semaines **fermée normalement** ✅.
+> *La fenêtre fixe échouait sur les deux derniers.*
+
+**Un garde-fou qui manquait, ajouté au passage** : un retour **antérieur** à la perte est refusé.
+`at` est l'heure **boîtier**, et un Coban qui rejoue son tampon après une coupure réseau émet des
+horodatages antérieurs au temps réel — c'est tout le sujet de [TRK-015](#trk-015). Sans ce contrôle :
+durée négative, écartée **en silence** du calcul de médiane, et un épisode marqué clos qui ne l'est pas.
+
+⚠️ **Un test existant VERROUILLAIT le défaut** : il attendait `where === { vehicleId, recoveredAt: null }`,
+c'est-à-dire l'absence de borne. **Recalibré, pas supprimé** — l'invariant qu'il défend (ne jamais
+réécrire une date déjà posée) reste vrai et reste vérifié. **4 des 9 tests échouent sur le code d'avant.**
+
+### ✅✅ ASSAINISSEMENT EXÉCUTÉ EN PRODUCTION le 2026-08-20 — objectif atteint
+
+**Sur accord explicite**, en transaction, avec sauvegarde et script de retour arrière préparés
+avant l'écriture.
+
+> 🔴 **Le script initial était INSUFFISANT, et la mesure l'a dit avant l'exécution.** Il ne
+> traitait que les épisodes **ouverts** — or au 20/08, **13 des 20 épisodes CLOS portaient une durée
+> fabriquée**, et ce sont eux, pas les ouverts, qui alimentent la médiane affichée à l'exploitant.
+> *Assainir les seuls épisodes ouverts aurait laissé l'écran mentir exactement comme avant.*
+>
+> Un épisode clos à date fausse se reconnaît sans ambiguïté : **le boîtier a émis des positions
+> PENDANT l'absence qu'il déclare**. Le script a donc été étendu à cette seconde population
+> (commit `c8552d07`).
+
+| | Traité |
+|---|---|
+| Épisodes ouverts fermés à leur **vraie** date | **14** — durées réelles **0,00 → 0,80 j** |
+| **Dates fabriquées corrigées** | **13** — 35,18 j → **7,10** · 16,88 j → **0,10** · 16,03 j → **3,94** |
+| Laissés ouverts, légitimement | **2** — les véhicules ne sont pas revenus |
+
+**La vérification prescrite par cette fiche, celle qui porte sur la CAUSE :**
+
+| | Avant | **Après** |
+|---|---|---|
+| Épisodes clos couvrant un intervalle avec positions | **13 / 20** | ✅ **0 / 34** |
+
+**Et les médianes suivent** — c'est l'écran de [TRK-028](#trk-028) qui cesse enfin de mentir :
+
+| Zone | Avant | **Après** |
+|---|---|---|
+| `79a8d0f2` — parking de FS-253-HR | 16,03 j | **3,94 j** |
+| `879699a3` — parking de FZ-862-VY | 10,47 j | **4,22 j** |
+| `6c0ffca0` — HD-779-MA | 16,88 j | **0,10 j** |
+
+⚠️ **La borne de code n'est toujours PAS déployée** (branche `fix/trk-031-episodes-gps-bornes`, non
+poussée). L'ordre prescrit a été respecté — assainir d'abord — mais **tant que la borne n'est pas en
+ligne, le défaut peut refabriquer des durées au prochain retour de fix.** Il l'a fait trois jours de
+suite.
+
+### L'outil — `prisma/assainir-episodes-gps.ts`
+
+**DRY-RUN par défaut**, `--apply` pour écrire. Reconstitue la vraie date de retour depuis la
+**première position valide postérieure à la perte**.
+
+**DRY-RUN joué contre la production le 20/08 :**
+
+| Verdict | Épisodes | Détail |
+|---|---|---|
+| **RÉPARABLE** | **14** | durées réelles de **0,00 à 0,80 j** — dont les **9 de KSR370** |
+| TOUJOURS PERDU | 1 | FS-253-HR, reparti au parking le 19/08 à 15:05 — **doit rester ouvert** |
+| HORS RÉTENTION | 0 | — |
+
+> 🔑 **Les 9 épisodes de KSR370 valent 0,10 à 0,80 jour.** Fermés à `now()` au retour du boîtier,
+> ils auraient valu **plusieurs semaines chacun**. C'est la démonstration chiffrée de ce que le script
+> évite.
+
+⚠️ Il ne ferme **jamais** à `now()` — ce serait le défaut appliqué en masse. Un épisode sans position
+postérieure **reste ouvert** (le véhicule n'est pas revenu) ; un épisode antérieur à la rétention des
+positions est **nommé** plutôt que deviné. *Les laisser ouverts est honnête ; leur inventer une date
+ne le serait pas.*
+
+⚠️ **Limite assumée** : la relation `Vehicle → Tracker` est 1-1 et pointe le boîtier **actuel**. Si un
+boîtier a été remplacé depuis la perte, les positions de l'ancien ne sont plus atteignables par ce
+chemin et l'épisode sera classé « toujours perdu ». Le script n'écrit alors rien — mieux vaut un
+épisode ouvert qu'une date inventée.
+
+### ⚠️ Mise à jour du 2026-08-20 — la prédiction s'est réalisée en douze heures
+
+Le test daté écrit le 19/08 disait : *« FS-253-HR (9 épisodes ouverts) est un candidat. Au retour,
+compter les épisodes refermés à la même seconde : s'il y en a plus d'un, la fiche est confirmée une
+seconde fois. »*
+
+**FS-253-HR est revenu le 19/08 à 13:48:56. Neuf épisodes ont été refermés à cette seconde-là.**
+
+| Perte | Retour écrit | Durée déclarée | Réalité |
+|---|---|---|---|
+| **15/07 09:31:02** | 19/08 13:48:56 | 🔴 **35,18 j** | ❌ |
+| 22/07 13:35:53 | 19/08 13:48:56 | 🔴 28,01 j | ❌ |
+| 28/07 14:38:16 | 19/08 13:48:56 | 🔴 21,97 j | ❌ |
+| 29/07 14:39:11 | 19/08 13:48:56 | 🔴 20,97 j | ❌ |
+| 03/08 13:02:53 | 19/08 13:48:56 | 🔴 16,03 j | ❌ |
+| 07/08 13:50:49 | 19/08 13:48:56 | 🔴 12,00 j | ❌ |
+| 10/08 07:00:11 | 19/08 13:48:56 | 🔴 9,28 j | ❌ |
+| 10/08 15:03:19 | 19/08 13:48:56 | 🔴 8,95 j | ❌ |
+| **12/08 15:20:59** | 19/08 13:48:56 | **6,94 j** | ✅ **la seule vraie** |
+
+**Réfutation arithmétique** : pendant les « 35,18 jours » du premier épisode, le boîtier
+`864035054757027` a émis **5 027 positions**.
+
+**Et le dégât annoncé s'est matérialisé sur l'écran que [TRK-028](#trk-028) a créé :**
+
+| Zone | Épisodes clos | Médiane affichée | Absence réelle la plus longue |
+|---|---|---|---|
+| `79a8d0f2` — parking souterrain de FS-253-HR | **9** | 🔴 **16,03 j** | **6,94 j** |
+
+L'écran écrit pour cesser de dire « il réapparaîtra en sortant » sans dire quand répond désormais
+**« environ seize jours »** pour un parking dont le véhicule ressort en une semaine.
+
+**Dette restante : 20 épisodes ouverts sur 9 véhicules**, dont **KSR370 avec 9** (le plus ancien du
+15/07) et **FZ-862-VY avec 4**. KSR370 est mort depuis le 14/08 : le jour où il revient, il écrira
+neuf absences se terminant à la même seconde, dont une de plus d'un mois. **C'est le prochain
+déclencheur, et il est prévisible.**
+
+*L'ordre de correction écrit le 19/08 est confirmé : **assainir le stock d'abord, borner le
+`updateMany` ensuite.** L'inverse rejouerait la fabrication sur les 20 épisodes restants.*
+
+---
+
+### Le constat d'origine (2026-08-19)
+
+### Ce que ça veut dire
+
+Le raccroc à l'ingestion posé par [TRK-028](#trk-028) **s'exécute** — c'est la bonne nouvelle, et
+c'était le test daté nº 3. Mais il ferme **tous** les épisodes ouverts du véhicule, sans regarder
+leur date d'ouverture.
+
+| Véhicule | Perte | Retour écrit | Durée déclarée | Durée réelle |
+|---|---|---|---|---|
+| HD-779-MA | **15/08 10:37:22** | 18/08 11:02:52 | 3,0 j | ✅ **3,0 j** — plausible |
+| HD-779-MA | **01/08 13:54:55** | **18/08 11:02:52** | 🔴 **16,9 j** | ❌ **2 h 28** |
+
+**La réfutation est sans appel** : entre le 01/08 16:23 et le 15/08 03:16, ce boîtier a émis
+**27 733 positions**. Il n'a pas été perdu 16,9 jours ; il est revenu le 01/08 en fin d'après-midi.
+
+### Cause racine
+
+`apps/api/src/gps-dead-zones/gps-dead-zones.service.ts:168` fait un `updateMany` sur
+`{ vehicleId, recoveredAt: null }`. L'épisode du 01/08 était resté ouvert parce que
+**`recordRecovery` n'existait pas encore** — le code n'a été déployé que le 17/08 15:54. Le premier
+retour venu l'a trouvé ouvert et l'a estampillé à la date du jour.
+
+Le commentaire assume explicitement le choix : *« un véhicule peut porter plusieurs épisodes ouverts
+si le cron a tourné pendant que la donnée était incohérente. On les ferme tous plutôt que d'en
+laisser traîner un qui fausserait toutes les moyennes ensuite. »* **L'intention est juste pour des
+doublons du même épisode. Elle est fausse pour un épisode d'un autre mois** — et produit exactement
+ce qu'elle voulait éviter.
+
+> 🔑 **Un rattrapage sans date de coupure réécrit le passé avec le présent.** Le code suppose que
+> tout épisode ouvert appartient à la perte en cours. C'était vrai le jour où il a été écrit, parce
+> qu'il fermait tout au fil de l'eau. Ça ne l'a **jamais** été pour les lignes antérieures à son
+> déploiement, et personne ne les a regardées. *Une fonction idempotente sur un flux ne l'est pas
+> sur un stock qu'elle n'a pas produit.*
+
+### Ce que ça abîme, précisément
+
+La **durée médiane par zone** est exactement ce que [TRK-028](#trk-028) affiche sur la fiche véhicule
+pour répondre à « quand revient-il ? ». Une valeur de 16,9 jours dans l'échantillon décale la médiane
+vers le haut. *Le correctif livré pour cesser de mentir à l'exploitant commence sa vie en lui
+montrant un chiffre faux.*
+
+### La dette est chiffrée, pas hypothétique
+
+**28 épisodes ouverts, dont 27 antérieurs au déploiement**, sur **8 véhicules** :
+
+| Véhicule | Épisodes ouverts | Plus ancien |
+|---|---|---|
+| FS-253-HR | **9** | 15/07 09:31 |
+| KSR370 | **9** | 15/07 23:55 |
+| FZ-862-VY | **4** | 03/08 17:34 |
+| HD-292-SH · GS-187-NY · FW-298-WV · GS-928-NX · AL-927-QM | 1 chacun | 17/07 → 11/08 |
+| FL-787-KV | 1 | 18/08 09:22 *(le seul postérieur au correctif)* |
+
+Le jour où FS-253-HR ressort de son parking, il écrira **neuf** absences se terminant à la même
+seconde, dont une de plus d'un mois.
+
+### Correctif proposé — deux gestes, et l'ordre compte
+
+1. **Assainir le stock d'abord, une fois.** Les 27 épisodes antérieurs au 17/08 15:54 ne sont pas
+   récupérables tels quels : leur vraie date de retour n'a jamais été écrite. La déduire de la
+   **première position postérieure au `lostAt`**, lisible dans `positions` — ou, à défaut, poser un
+   drapeau les excluant du calcul de médiane. **Ne pas les fermer simplement à `now()`** : c'est le
+   défaut lui-même, appliqué en masse.
+2. **Borner le `updateMany` ensuite.** Ajouter `lostAt >= now() - <fenêtre max d'épisode>` au
+   `where`, pour que la fermeture ne puisse jamais atteindre un épisode étranger à la perte en cours.
+   La fenêtre se lit dans la donnée : le plus long épisode plausible du parc est de l'ordre de
+   **7 jours** (FS-253-HR).
+
+### ⛔ Ce qu'il ne faut PAS faire
+
+Ne pas revenir à `update` au lieu de `updateMany` : le cas des doublons du même épisode, que le
+commentaire décrit, est réel. Ne pas non plus supprimer les épisodes fautifs — un épisode effacé
+n'est plus auditable, et la perte du 01/08 a bel et bien eu lieu ; c'est sa **fin** qui est fausse.
+
+### Vérification
+
+Après assainissement, **aucun** épisode refermé ne doit afficher une durée pendant laquelle
+`positions` porte des points du même boîtier. La requête tient en une ligne et se rejoue : compter
+les épisodes clos dont l'intervalle `[lostAt, recoveredAt]` contient au moins une position.
+**Aujourd'hui : 1 sur 2.** L'objectif est **0** — et **pas** « la médiane a l'air plus jolie ».
+
+### 🗓️ Test daté — au prochain passage
+
+Au prochain retour de fix (FZ-862-VY, 4 épisodes ouverts, ou FS-253-HR, 9), compter les épisodes
+refermés **à la même seconde**. S'il y en a plus d'un, la fiche est confirmée une seconde fois et la
+dette commence à se matérialiser. Relever aussi la médiane de la zone concernée **avant** et
+**après**.
+
+---
+
+## TRK-029
+
+**Signature** — `schedule-cron | ERROR | Automatisation horaire : coupe/reprise impossible sur <PLAQUE> depuis <DURÉE> — Coupe auto différée : véhicule arrêté depuis seulement <N>s (minimum requis <N>s)`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · 1 occurrence · découvert 2026-08-18
+*(Première ligne de source `schedule-cron` depuis l'ouverture du référentiel le 28/07.)*
+
+### Ce que ça veut dire
+
+L'automatisation horaire doit couper le moteur de **HD-603-XY** à 20:00. Le véhicule roule encore.
+La garde refuse — **et elle a raison**. Le report est ensuite ré-espacé par un backoff exponentiel,
+qui fait attendre 30 minutes une condition dont le code connaît l'heure exacte de levée.
+
+### La séquence, reconstituée dans le journal du conteneur
+
+La ligne seule ne permet pas le diagnostic ; la séquence, oui.
+
+| Heure (UTC) | Tentative | Cause du report | Prochain essai |
+|---|---|---|---|
+| **20:03** | CUT | *véhicule en mouvement (32,4 km/h)* | +5 min |
+| **20:08** | CUT | *arrêté depuis seulement 41 s (min. 600 s)* | +15 min |
+| **20:24** | CUT | *arrêté depuis seulement 256 s (min. 600 s)* | **+30 min** |
+| **~20:30** | — | **le véhicule franchit les 600 s : il est éligible** | *(rien ne le voit)* |
+| **20:31** | — | 🔴 ligne `error_logs` : « coupe impossible depuis 31 min » | — |
+| **20:55** | CUT | ✅ **réussi** (`schedule_history` : `CUT / OUT_OF_WINDOW`, 20:55:00.317) | — |
+
+Les quatre jours précédents, la même coupe tombait à 20:00:04, 20:00:05, 20:25:00 et 20:00:05.
+
+### Cause racine
+
+Le backoff (5 → 15 → 30 min) est appliqué **indistinctement** à toutes les causes de report. Or
+*« arrêté depuis 256 s, minimum requis 600 s »* n'est pas une incertitude : c'est un compte à rebours
+de **344 secondes**, lisible dans la donnée qui vient d'être évaluée. Le code a la réponse et attend
+quand même une demi-heure. Coût mesuré : **25 minutes d'immobilisation en trop**.
+
+> 🔑 **Un backoff traite l'ignorance ; il ne doit pas traiter une échéance connue.** Le même délai
+> croissant est **juste** pour un boîtier qui ne répond pas — on ne sait pas quand il reviendra — et
+> **faux** pour un compte à rebours qu'on lit dans la trame. *Deux causes de report que rien ne
+> distingue dans le code reçoivent la même punition, et l'une des deux la subit pour rien.*
+
+### Le défaut second — celui qu'un exploitant voit
+
+Le message affirme *« coupe/reprise **impossible** »* alors que le contexte porte
+`waitingBackoff: true` : l'attente était **voulue**. Et **rien ne referme la ligne** —
+`clearDeferral()` (`apps/api/src/vehicle-schedules/schedule-cron.service.ts`) ne vide que des `Map`
+en mémoire, sans aucune écriture. Le centre d'alerte conserve donc indéfiniment un « impossible » qui
+décrit une action **qui a abouti 24 minutes plus tard**.
+
+**Famille : mensonger** (§7) — le message affirme une impossibilité là où il y a eu une attente
+délibérée et résolue.
+
+### Correctif proposé — trois gestes, aucun ne touche à la garde
+
+1. **Réessai à l'échéance connue.** Quand la cause de report porte un compte à rebours calculable
+   (`arrêté depuis N s / minimum M s`), programmer le prochain essai à `M − N` secondes (+ un tick de
+   marge) au lieu du pas de backoff. **Conserver le backoff exponentiel** pour les échecs de
+   transport et les causes inconnues : c'est là qu'il est justifié.
+2. **Ne pas écrire « impossible » quand `waitingBackoff` est vrai et l'échéance connue.** Rédiger
+   *« coupe différée, réessai à HH:MM — véhicule arrêté depuis N s sur M s requis »*. Un exploitant
+   qui lit « impossible » appelle le conducteur ; celui qui lit « différée à 20:30 » attend.
+3. **Écrire la clôture.** `clearDeferral()` doit tracer l'aboutissement — ligne de résolution, ou
+   champ de résolution sur la ligne d'origine. *Une alerte sans état de sortie reste vraie pour
+   toujours.*
+
+### ⛔ Ce qu'il ne faut PAS faire
+
+**Ne pas toucher au minimum de 600 s, ni au refus de couper un véhicule en mouvement.** Le véhicule
+roulait à 32,4 km/h quand la fenêtre s'est ouverte ; la garde a fait exactement son travail. *Si un
+garde-fou crie mal, on corrige le cri — pas le garde-fou* (§8). Ne pas non plus « corriger » en
+cessant d'écrire la ligne : le blocage de 31 minutes est une information réelle, c'est sa
+**rédaction** et son **absence de clôture** qui sont fautives.
+
+### Vérification (porte sur la cause, pas sur l'affichage)
+
+Sur un véhicule dont la coupe est différée pour « arrêté depuis N s », mesurer l'écart entre
+l'instant où il franchit les 600 s et l'instant de la coupe effective : il doit tomber **sous un tick
+de cron**. Le relever dans `schedule_history` contre le journal du conteneur — **et pas** en comptant
+les lignes `error_logs`, qui diminueront de toute façon.
+
+### 🗓️ Test daté — au prochain passage
+
+Relever, pour chaque coupe différée, le délai entre éligibilité et coupe effective. **Ligne de base
+du 17/08 : 25 min.** Le correctif n'étant pas écrit, un second cas confirmerait que ce jour n'était
+pas une singularité.
+
+---
+
+## TRK-028
+
+**Signature** — *(pas une erreur observée : une promesse d'écran sans mesure derrière)*
+`gps-integrity | (aucune ligne) | « le véhicule réapparaît en sortant » — sans jamais dire quand`
+**Statut : 🟠 DÉPLOYÉ, NON EXERCÉ** · ouvert 2026-08-17, mesuré 2026-08-18
+
+> ⚠️ **Fiche créée le 2026-08-18, après coup.** Le numéro TRK-028 était employé par le commit
+> `5d10796` **sans qu'aucune fiche existe** dans ce référentiel — l'audit du 18/08 l'a découvert en
+> cherchant le prochain numéro libre. *Un identifiant de fiche attribué dans un message de commit
+> mais absent du référentiel est un renvoi mort : la fiche est écrite ici pour que la trace tienne.*
+
+### Ce que ça veut dire
+
+Depuis la règle du parking souterrain ([TRK-027](#trk-027)), la fiche véhicule annonce que la
+position réapparaîtra à la sortie du parking — **sans dire quand**. L'exploitant devait choisir entre
+croire l'écran et rappeler le conducteur : précisément le coup de fil que cet écran existe pour
+éviter. Le correctif mesure la durée réelle des épisodes passés et l'annonce.
+
+### Ce qui a été livré (commit `5d10796`, déployé le 17/08 15:54)
+
+- **Table `gps_loss_events`** (`lostAt` · `detectedAt` · `recoveredAt` · `zoneId`), migration
+  `20260817140000_retour_du_signal_gps` appliquée en production le **17/08 15:54:55**.
+- **Le raccroc est à l'ingestion, pas au cron** — et c'est le point de conception : le cron
+  d'intégrité tourne **sur les boîtiers sans fix**, donc un véhicule ressorti du parking a déjà
+  quitté sa liste. Il ne peut structurellement pas refermer un épisode. Seule l'ingestion voit
+  l'instant du retour.
+- **`recordRecovery` n'est appelé que si le silence a dépassé le seuil du cron** : sur une trame
+  ordinaire il n'y a pas même une requête. Sans ce filtre, un `updateMany` par trame et par véhicule
+  sur la route la plus chaude du système.
+- **Médiane, pas moyenne** : un week-end au parking (72 h) gonflerait une moyenne jusqu'à une durée
+  que personne ne voit jamais. Sur `[180, 190, 200, 4320]` min la médiane rend 195, la moyenne 1222.
+- **`recoveredAt` nullable sans défaut** : `NULL` = épisode ouvert, et c'est aussi l'état honnête des
+  lignes déjà en base.
+
+### État mesuré en production — 2026-08-18
+
+| Mesure | Valeur |
+|---|---|
+| Épisodes dans `gps_loss_events` | **29** |
+| Épisodes refermés (`recoveredAt` non nul) | **0** |
+| Épisode le plus récent | FZ-862-VY, ouvert le **17/08 12:22:55** |
+
+**Ce n'est pas un défaut : c'est l'absence d'occasion.** Aucun boîtier n'a retrouvé son fix après une
+perte longue depuis le déploiement de 15:54. Le seul retour du jour — FZ-862-VY à 08:45 le 17/08 —
+est **antérieur** au déploiement.
+
+### 🗓️ Test daté — au prochain passage
+
+Au premier retour de fix après une perte longue (FZ-862-VY est le candidat le plus probable), un
+`recoveredAt` doit apparaître. **S'il reste nul après un retour constaté dans
+`trackers.lastPositionAt`**, le raccroc à l'ingestion ne s'exécute pas — et la fiche véhicule
+continuera d'annoncer une durée qu'elle ne mesure pas, ce qui serait pire que l'écran muet d'avant.
+
+---
+
 ## TRK-027
 
 **Signature** — *(trou assumé, pas une erreur observée)* `gps-integrity | (aucune ligne, par
@@ -5274,10 +6633,342 @@ trame — n'a jamais été décodé. Contrôle terrain demandé depuis le 15/08.
 
 ---
 
+## TRK-037
+
+**Signature** — `trip-analysis | ERROR | Limites de vitesse indisponibles : Overpass (OpenStreetMap) injoignable sur <N> requete(s) — les exces de vitesse ne sont pas affirmes sur ce trajet, le reste de l'analyse est conserve. Cause : Overpass HTTP <CODE>`
+**Statut : 🔵 TERRAIN / dépendance tierce** · **gravité 3** · découvert 2026-08-21
+
+**6 occurrences le 20/08** (05:47, 10:47, 14:46, 20:48, 22:45, 23:48) — causes **HTTP 500** (×4) et
+**HTTP 502** (×2). L'instance visée est `https://overpass.kumi.systems/api/interpreter` : **un miroir
+public et gratuit** d'OpenStreetMap, sans engagement de service.
+
+### Ce n'est pas un défaut de fabrication, et il faut le dire
+
+`speed-limit.service.ts` est soigné : déduplication par cellule, cache en base, lots de 200 points,
+plafond de 8 requêtes, backoff 4 s / 12 s avec rejeu des refus de quota, une seule alerte par
+analyse. Et `trouvee === false` n'est **pas** mémorisé — le commentaire nomme le bug que ça avait
+causé, *59 347 points stérilisés*. Le message porte la **dépendance** et la **conséquence**, ce que
+ce référentiel réclame depuis [TRK-005](#trk-005).
+
+### Le vrai préjudice n'est pas la panne : c'est le silence sur la panne
+
+Sur ces analyses, les excès de vitesse ne sont **pas affirmés** — mais le reste de l'analyse est
+conservé et **rendu sans mention de la lacune**. L'exploitant reçoit une notation A→E qui **paraît
+complète** et qui a été calculée sans l'un de ses critères.
+
+> 🔑 **Une dégradation qui ne se déclare pas au lecteur du résultat n'est pas une dégradation
+> gracieuse : c'est un résultat faux avec un air juste.** L'alerte existe, elle est exacte, elle est
+> au centre d'alerte — et elle s'adresse à l'exploitant du système, jamais au lecteur du trajet.
+
+### ⚠️ Cette fiche ne peut pas dater son premier cas
+
+La plus ancienne ligne survivante de toute la table `error_logs` **est l'une de ces six**
+(20/08 05:47:16). Tout ce qui précède a été effacé, cf. [TRK-035](#trk-035). *Le coût de la
+suppression hors application ne se paie plus en théorie : il vient d'empêcher une fiche neuve de
+savoir depuis quand son défaut dure.*
+
+### Correctif proposé — l'action n'est pas d'abord du code
+
+1. **Décider de l'instance Overpass.** Un miroir public gratuit n'offre aucun engagement ; une
+   instance dédiée ou un abonnement est une décision d'exploitation.
+2. **Repli sur une seconde instance** avant de renoncer — le code n'en connaît qu'une.
+3. **Marquer l'analyse comme incomplète** quand les limites sont inconnues. *C'est le seul des trois
+   qui répare le préjudice réel.*
+
+**Vérification.** Une analyse dont les limites n'ont pas pu être résolues doit être identifiable
+depuis l'écran de trajet, sans lire `error_logs`.
+
+---
+
+## TRK-038
+
+**Signature** — *(défaut de plateforme, pas une ligne d'erreur)*
+`plateforme | AUCUNE LIGNE | garde anti-repetition d'alerte tenue en memoire de processus — remise a zero par tout redemarrage`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 3** · découvert 2026-08-21 *(en enquêtant sur [TRK-037](#trk-037))*
+
+`SILENCE_ALERTE_MS` vaut **6 heures**. Les six lignes du 20/08 sont pourtant espacées de :
+
+| Intervalle | Durée | Explication |
+|---|---|---|
+| 05:47 → 10:47 | **5 h 00** | migration `diagnostics_zones_gps` à **10:19** |
+| 10:47 → 14:46 | **3 h 59** | 🔴 **aucun redémarrage connu** |
+| 14:46 → 20:48 | **6 h 02** | ✅ **la garde a tenu** |
+| 20:48 → 22:45 | **1 h 57** | migration `passages_agents_locaux` à **22:27** |
+| 22:45 → 23:48 | **1 h 03** | conteneurs recréés à **23:40** |
+
+`derniereAlerteAt` est un **champ d'instance** d'un service `@Injectable()` de portée singleton, et
+il n'y a **qu'une réplique** `tracky-api`. La garde n'a donc qu'un moyen de retomber à zéro : **le
+redémarrage du processus.**
+
+> 🔑 **La garde n'est pas cassée — elle est volatile.** L'intervalle de 6 h 02 le prouve : quand le
+> processus vit, elle fait exactement son travail. *Un garde-fou contre les rafales, remis à zéro par
+> l'événement qui provoque le plus de rafales.*
+
+### C'est une famille, pas un cas
+
+| Fichier | Champ | Ce qu'il protège |
+|---|---|---|
+| `trip-analysis/speed-limit.service.ts:83` | `derniereAlerteAt` | l'alerte Overpass ([TRK-037](#trk-037)) |
+| `observability/error-rate-watchdog.service.ts:34` | `lastAlertAt` + `COOLDOWN_MS` | l'alarme de **flambée d'erreurs** |
+| `sms/allowlist.service.ts:153` | `lastEpisodeAlertAt` | l'alarme du **trou d'allowlist** ([TRK-017](#trk-017)) |
+| `surveillance/surveillance-scheduler.service.ts:60` | `lastDormantSummaryAt` | la synthèse **véhicules dormants** |
+
+⚠️ **Ne pas y ajouter les `lastCallAt` / `lastPrune` voisins** : ce sont des limiteurs d'appels
+sortants, pas des refroidissements d'alerte. Un redémarrage les remet à zéro sans conséquence.
+*Deux champs qui se ressemblent au `grep` ne portent pas le même enjeu.*
+
+> 🔑 **Le cas le plus embarrassant est le deuxième.** L'instrument chargé de crier quand les erreurs
+> flambent porte son propre anti-flambée en mémoire — et se retrouve réarmé par le déploiement, qui
+> est précisément le moment où les erreurs flambent. *Il est le plus bruyant quand on a le moins
+> besoin de lui, et le plus calme quand on l'a déjà entendu.*
+
+### Correctif proposé
+
+Tirer la dernière émission de la **donnée** plutôt que d'un champ, pour les quatre. Pour
+`speed-limit`, la requête existe déjà en substance :
+
+```sql
+SELECT max("createdAt") FROM error_logs
+WHERE source = 'trip-analysis' AND context->>'feature' = 'speed-limit-osm';
+```
+
+Coût : une requête **uniquement** quand toutes les requêtes ont échoué — c'est-à-dire rare.
+
+### Ce qui reste ouvert
+
+L'intervalle **10:47 → 14:46** n'est expliqué par aucun redémarrage connu. Les migrations sont la
+seule horloge des déploiements sur cet hôte — le tag `latest` ayant détruit l'historique des images,
+cf. la réserve de [TRK-019](#trk-019) — et elles n'en datent aucun à cette heure. **Fait consigné,
+non expliqué.**
+
+**Test daté — 22/08.** Si aucun déploiement n'a lieu d'ici demain, deux lignes `speed-limit-osm`
+distantes de moins de 6 h prouveraient que le redémarrage n'est *pas* la seule cause.
+*Condition de nullité : si un déploiement a lieu, le test ne conclut rien et il est réarmé.*
+
+---
+
+## TRK-039
+
+**Signature** — `GPS_QUALITE | ERROR | <PLAQUE> perd le signal a <N> endroits distincts, repartis sur <DIST> km, sans qu'aucun autre vehicule n'ait le meme probleme a ces endroits (<N> episodes). Controler le boitier : antenne, fixation, alimentation.`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · découvert 2026-08-21
+
+Une occurrence, le **20/08 10:01:52**, sur **KSR370**. La source est neuve : l'agent qualité GPS
+(`outils/agent-qualite-gps.cjs`, commit `8c952067`) est en production depuis le 20/08.
+**Trois choses fausses se superposent dans une seule ligne.**
+
+### 1. La donnée a jusqu'à 19 jours, et rien ne la borne
+
+Les 6 zones de KSR370 ont pour dernière occurrence le **2026-08-01 00:15** — dix-neuf jours avant
+l'alerte. La fonction `zones()` de l'agent lit `gps_dead_zones` **sans aucune fenêtre temporelle**.
+
+### 2. Le boîtier est mort depuis sept jours, et sa mort est déjà expliquée ailleurs
+
+KSR370 (IMEI `864035053277480`) n'a plus émis depuis le **14/08 02:05:24**. Et le référentiel sait
+pourquoi : coupure d'alimentation le 13/08 à 20:44, batterie de secours à **5 %** à 00:57 puis
+**0 %** à 01:12, dernière trame à 02:05 — le cas concret de [TRK-023](#trk-023). *Envoyer un
+technicien contrôler une antenne est l'action la moins utile qu'on puisse tirer de ce dossier.*
+
+### 3. Le discriminant est infranchissable — et c'est le défaut de fond
+
+Le verdict « boîtier » exige `zones >= 4` **et** `étalement >= 3 000 m` (`ZONES_MIN_BOITIER`,
+`ETALEMENT_BOITIER_M`). KSR370 : **6 zones**, étalement **580 928 m** — **193 fois** le seuil. Ses
+lieux sont Toulouse, **Benidorm** (×2), Plaisance-du-Touch, Ramonville-Saint-Agne : un aller-retour
+Toulouse–Espagne.
+
+> 🔑 **La prémisse est juste, le discriminant ne la teste pas.** Le commentaire du module dit vrai —
+> *« un boîtier mourant perd le signal PARTOUT »*. Mais « partout » y est mesuré en **mètres
+> d'étalement**, et l'étalement d'un véhicule mesure d'abord **la distance qu'il parcourt**. Pire, la
+> corroboration croisée — *« sans qu'aucun autre véhicule n'ait le même problème à ces endroits »* —
+> est **impossible à franchir** pour un véhicule qui roule là où aucun autre de la flotte ne va.
+> Benidorm ne sera jamais corroboré. **Plus un véhicule voyage loin et seul, plus il est certain
+> d'être déclaré en panne.** *Une absence de preuve est retournée en preuve.*
+
+**Famille (§7) : mensonger** — il affirme une cause fausse et envoie enquêter au mauvais endroit,
+la catégorie que la procédure tient pour la plus grave.
+
+> ✅ **Le versant « lieu » du même agent, lui, se comporte correctement** : il exige **2 véhicules**
+> avant de conclure, et son unique diagnostic du jour (FW-298-WV + GS-928-NX, Toulouse) les a. *Le
+> défaut n'est pas dans l'agent : il est dans la branche qui n'a pas cette exigence.*
+
+### Correctif proposé
+
+1. **Borner `zones()` dans le temps** (30 j) — un diagnostic bâti sur des zones de trois semaines
+   décrit un passé révolu.
+2. **Contrôler la vie du boîtier** — ne pas diagnostiquer la qualité GPS d'un tracker `OFFLINE`
+   depuis plus de 24 h.
+3. **Cesser de conclure « boîtier » quand aucune zone n'a pu être corroborée** faute d'un autre
+   véhicule sur le secteur : c'est le cas `indeterminé`, pas le cas `boitier`.
+4. **Normaliser l'étalement** par la distance parcourue, ou exiger que les zones soient dispersées
+   *dans une même aire d'exploitation*.
+
+⚠️ **Ne pas corriger en montant le seuil.** Porter `ETALEMENT_BOITIER_M` à 600 km blanchirait
+KSR370 et laisserait le défaut entier : le prochain véhicule qui descend en Espagne le rejouera.
+*C'est le critère qui est faux, pas son réglage.*
+
+**Test daté — 27/08.** `JOURS_SANS_REPETITION` vaut 7 : sous le code actuel, la même ligne doit
+**réapparaître** le 27/08 sur KSR370, dont l'état n'aura pas changé. Sa réapparition confirme la
+fiche sur un second point. *Condition de nullité : si KSR370 est déposé ou remis en service d'ici
+là, le test n'a plus d'objet.*
+
+---
+
+## TRK-040
+
+**Signature** — ce n'est pas une ligne `error_logs` mais un **verdict de classement**, visible sur la
+fiche véhicule (`trackers.lastPowerNotice`) :
+`alarme-alimentation | contact_coupe | "Batterie interne à <N> % : alimentation externe absente, mais le boîtier n'est pas en péril. Typique d'un contact coupé sur un montage commuté."`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · 1 cas mesuré, 1 boîtier perdu · 2026-08-21
+
+### Le cas, à la trame près
+
+DZ-034-CA, IMEI `864035054756177`, le 2026-08-21 :
+
+| Heure | Fait | Batterie |
+|---|---|---|
+| **06:00:07** | trame **`kt` — contact REMIS** | 100 % |
+| **06:23:46** | 1ʳᵉ `ac alarm` → verdict **`contact_coupe`**, **0 alerte** | **100 %** |
+| 06:40 → 06:48:33 | salve de 7 `ac alarm` ; `lastPowerNotice` figée : *« pas en péril »* | 100 % |
+| 07:00 | — | 96 → 83 % |
+| 08:00 · 09:00 · 10:00 | — | 84 → 72 · 75 → 63 · 64 → 29 % |
+| **11:27:45** | `low battery` → 1ʳᵉ alerte, `LOW_BATTERY` **WARNING** | **12 %** |
+| 11:42:47 | `low battery` | 5 % |
+| 12:14:52 | `ac alarm` en `no_fix` | 0 % |
+| **12:36:14** | **`POWER_CUT` CRITICAL** (message complet, cf. [TRK-023](#trk-023)) | 0 % |
+| **12:43:53** | **dernière trame. `OFFLINE` depuis.** | 0 % |
+
+**6 h 12 min 28 s** entre la première trame qui annonçait la perte et la première alerte.
+
+### Cause racine — le discriminant est en retard sur ce qu'il doit trancher
+
+`apps/api/src/alerts/alarme-alimentation.ts` classe **chaque trame isolément**, sur le seul niveau de
+batterie : `>= SEUIL_BATTERIE_COUPURE (90) ⇒ contact_coupe`. Le commentaire du module énonce la
+prémisse : *« Une VRAIE coupure vide la batterie de secours. Un contact coupé la laisse pleine. »*
+C'est exact — **au bout d'un moment**.
+
+> 🔑 **À l'instant zéro d'une vraie coupure, la batterie de secours est pleine par définition.** Les
+> deux cas que ce test doit séparer sont donc **rigoureusement identiques au moment où il les
+> sépare**. Ce qui les distingue est la **pente**, et la pente n'existe pas encore. *Un critère qui a
+> besoin de temps ne peut pas rendre un verdict instantané — il peut seulement décider d'attendre.*
+
+### Le discriminant qui aurait tranché était déjà dans les trames
+
+Le module décrit lui-même le mécanisme bénin : *« `jt` (contact coupé) à 20:00, salve d'`ac alarm` à
+00:44, `kt` (contact remis) à 06:00 »*. Ici la séquence est **inversée** — `kt` à **06:00:07**, puis
+`ac alarm` à **06:23:46**. **Un montage sur +12 V commuté ne peut pas perdre son alimentation
+23 minutes après que le contact a été REMIS.** La prémisse du verdict était réfutée par la trame
+précédente, dans la même table.
+
+### Ce n'est pas [TRK-032](#trk-032)
+
+Vérifié : `engine_control_commands` rend **0 ligne** pour ce tracker, sur tout l'historique. Le
+garde `moteurCoupeParNous` n'a pas joué. **Deux mécanismes silencient au même endroit ; celui-ci est
+le test de batterie, seul.**
+
+### Famille — **mensonger** (§7)
+
+Il affirme une cause fausse (« typique d'un contact coupé »), et il l'affirme sur la surface que
+l'exploitant consulte pour juger. Aujourd'hui encore, 12 h après la mort du boîtier, la fiche
+véhicule porte la phrase écrite à 06:48.
+
+### Correctifs proposés
+
+1. **Croiser avec le contact — le geste le moins cher et le plus décisif.** `analyserAlimentation()`
+   reçoit déjà un `contexte` : y ajouter l'état du contact et **ne faire confiance au test de
+   batterie que lorsque le contact est coupé**. Contact ON + `ac alarm` → `coupure_reelle`, ou à
+   défaut `indetermine` — qui alerte, conformément au choix déjà écrit et commenté dans le module.
+2. **Différer au lieu de trancher.** Batterie ≥ 90 % **et** contact coupé → ne rien conclure,
+   réexaminer à T+30 min. Si l'alimentation manque toujours **et** que la batterie a baissé, c'est
+   une coupure — et l'alerte doit porter l'heure de la **première** trame (06:23), pas celle de la
+   découverte (12:36).
+3. **Périmer `lastPowerNotice`.** Une note qui affirme « pas en péril » doit être remplacée dès que
+   le même boîtier produit un `coupure_reelle`, ou expirer d'elle-même. Elle survit aujourd'hui à la
+   mort du boîtier et contredit le centre d'alerte.
+
+### ⚠️ Ne pas « corriger » en baissant le seuil
+
+Le seuil de 90 % est une décision du propriétaire et il fait son travail : 202 alertes inutiles
+supprimées en 24 h. Le passer à 80 % n'aurait gagné qu'environ une heure sur les 6 h 12 de ce cas,
+au prix du bruit revenu. *Ce n'est pas le réglage qui est faux, c'est le fait de conclure sans le
+contact.*
+
+### ⚠️ Ne pas lire ce cas comme une condamnation du correctif du 19/08
+
+Il reste juste et mesuré : les 4 `ac alarm` du 20/08 étaient bien bénignes, et sans lui DZ-034-CA
+aurait produit une salve de CRITICAL. **Il manque une entrée, pas une refonte.**
+
+### Vérification après correctif
+
+Rejouer la séquence du 21/08 (`kt` 06:00:07 → `ac alarm` 06:23:46 à 100 %) : l'analyse doit rendre
+`alerter: true`. Un cas témoin `jt` → `ac alarm` à 100 % doit continuer de rendre `contact_coupe`.
+*Les deux, sinon on a seulement déplacé le défaut.*
+
+---
+
+## TRK-041
+
+**Signature** — absence d'écriture, pas une ligne : `allowlist_audit_logs` n'enregistre **aucune**
+tentative dont la clé d'API n'est pas valide.
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · lié à [TRK-017](#trk-017) et [TRK-025](#trk-025) ·
+2026-08-22
+
+### Comment on est tombé dessus — en vérifiant une bonne nouvelle
+
+La rotation de clé du 20/08 est **confirmée par la donnée de la passerelle elle-même** :
+
+| Préfixe | Résultat | Origine | n | Première | Dernière |
+|---|---|---|---|---|---|
+| `vtx_48fe` | `ok` | `172.18.0.1` | 246 | 10/08 19:25 | **20/08 13:25** |
+| `vtx_d4f3` | `ok` | `172.18.0.1` | 35 | **20/08 14:25** | 22/08 00:25 |
+| `vtx_48fe` | `removals_blocked` | **`82.67.153.51`** | **49** | 10/08 19:25 | **17/08 19:24:59** |
+
+Bascule nette à 13:34 (`tenants.updatedAt`), aucun chevauchement, réconciliation horaire vivante.
+
+### Cause racine — le témoin était accroché au succès de l'authentification
+
+`allowlist_audit_logs.tenantId` est **`NOT NULL`**. La ligne d'audit ne peut être écrite qu'**après**
+qu'une clé valide a permis de résoudre le locataire. Une requête présentant la clé révoquée est
+rejetée en amont et **ne laisse aucune trace dans cette table**.
+
+> 🔑 **On a réparé la serrure et jeté le judas.** Les 49 blocages étaient la seule chose qui prouvait
+> qu'un tiers détenait la clé de production. Après rotation, l'attaquant qui revient et celui qui a
+> renoncé produisent **exactement la même donnée : rien**. *Un compteur figé se lit spontanément
+> « il ne se passe plus rien » ; celui-ci doit désormais se lire « on ne peut plus rien voir ».*
+
+### Ce que ça change pour la lecture des passages suivants
+
+Blocages **49 (+0)**, dernier le **17/08 19:24:59** — **102,0 h** de silence, le plus long de la
+série (32 h, 30 h, 54 h, 81 h auparavant). Ce record **ne peut pas** être porté au crédit de la
+rotation : l'appelant s'était tu **trois jours avant elle**. Et depuis, l'instrument est aveugle.
+**9ᵉ silence lu comme un silence — et le premier qui ne prouve même pas une absence.**
+
+### Correctif proposé
+
+Journaliser côté passerelle les **authentifications refusées** — préfixe de clé présenté, IP, route,
+horodatage — dans une table qui **n'exige pas de locataire résolu**. Sans elle, « 49, inchangé » sera
+rapporté comme rassurant indéfiniment.
+
+### ⚠️ Ne pas se contenter d'un compteur agrégé
+
+« N refus d'authentification » ne suffit pas. Ce qu'il faut savoir, c'est **quel préfixe** est
+présenté depuis **quelle IP** : c'est ce qui distinguera un client mal reconfiguré de l'instance qui
+portait `vtx_48fe`.
+
+### Vérification après correctif
+
+Une requête volontaire avec une clé invalide, depuis une IP connue, doit produire une ligne
+consultable — sans locataire.
+
+---
+
 ## Journal des passages
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-22 | **1** (1 sur 24 h, **0 CRITICAL**) — mais **66 ecrites et 73 supprimees en 20,7 h** | 23 revues ; 🎯 **TRK-035 : l'attribution cesse d'etre une hypothese** — le cron de retention consigne lui-meme `errorDeleted: 0` **cinq jours de suite** (17 au 21/08) alors qu'il supprime 170 000 `wire_logs` par nuit, et il n'existe **qu'un seul** `errorLog.deleteMany` dans la base servie : *il suffisait de demander a l'application ce qu'elle avait supprime, elle tenait deja le compte* ; l'ecart `ins-del-live` reste fige a **13 250** (prescription satisfaite, **pas de nouveau TRUNCATE**) pendant qu'un `DELETE` ordinaire emportait 73 lignes — **les deux natures d'effacement ont chacune leur instrument, et chacun est aveugle a l'autre** ; 🔴 **et personne ne pourra nommer l'auteur** : `log_statement=none`, `log_connections=off`, `logging_collector=off`, et **un seul role** porteur de `DELETE` ET `TRUNCATE` — *la commande qui a immobilise la moitie du VPS pendant 3 h 54 le 20/08 visait un journal vide par configuration* ; retention reelle mesuree a **90 j**, pas 30 : l'en-tete de ce fichier est corrige ; 🆕 **TRK-040 : DZ-034-CA meurt en 6 h 12 pendant que la fiche vehicule le dit « pas en peril »** — `kt` **contact REMIS** a 06:00:07 puis `ac alarm` a 06:23:46 avec **100 %** de batterie, verdict `contact_coupe`, 0 alerte ; batterie 100 vers 0 %, `POWER_CUT` a 12:36, **boitier mort a 12:43:53**. *Les deux cas que ce test doit separer sont identiques au moment ou il les separe : l'information est dans la PENTE, pas dans le niveau* — et le bon discriminant etait dans la trame precedente, un montage commute ne perd pas son alimentation 23 min apres que le contact a ete remis ; 🆕 **TRK-041 : on a repare la serrure et jete le judas** — rotation **confirmee** par les prefixes de cle (`vtx_48fe` jusqu'au 20/08 13:25, `vtx_d4f3` des 14:25), mais `allowlist_audit_logs.tenantId` est `NOT NULL` donc **une cle revoquee n'ecrit rien** : blocages figes a 49, **102,0 h** de silence, le premier qui ne prouve meme pas une absence ; 🟢 **TRK-023 EXERCE et il tient** — **0 alerte sans message depuis le 19/08 01:56**, 3 jours et 4 types ; 🟢 **TRK-019 verifie par l'EGALITE** — `git rev-list --count c9dc774..origin/main` rend **0** ; 🟢 **regle du parking exercee en production** (zone FL-787-KV auto-qualifiee, 6 occurrences, jamais revue) ; 🟢 **« 0 recit IA » est un REGLAGE** (`narrateEnabled=false`), verifie avant d'ouvrir une fiche ; TRK-034 **mesure dans les reglages** : `lookbackHours=1500` (62,5 j) contre 60 j de retention, **848 trajets recalcules en une heure**, un passage horaire de **14 min 56 s** ; TRK-018 **passe 11e fois** (289 vers 296) ; TRK-013 91 vers **101** / 19 vers **22** ; TRK-016 **91,9 %**, definition controlee a 92,4 % sur les trajets demarres ; TRK-024 **7e point** identique ; TRK-038 **test date NUL** (2 deploiements, clause de nullite), rearme ; 🔴 **les SIX correctifs restent OBJET ABSENT** du serveur malgre 2 deploiements — *il leur manque un `git push`* | **2** (TRK-040, TRK-041) | agent d'audit |
+| 2026-08-21 | **8** (8 sur 24 h, **0 CRITICAL**, **aucune connue**) — la plus ancienne du 20/08 05:47:16 | 21 revues ; 🔴 **TRK-035 : le temoin qui avait detecte l'effacement du 19/08 est AVEUGLE a celui de `error_logs`** — la verification prescrite est rendue et NEGATIVE dans le bon sens (`alerts.n_tup_del` inchange a **41 824**, borne basse immobile, **pas de recidive en 14 h**), mais **13 250 lignes manquent qu'aucun `DELETE` n'a comptees** (ins 16 970 moins del 3 712, pour 8 vivantes), soit un `TRUNCATE` ; **deux controles rendent le chiffre exploitable** : `stats_reset` NULL, et la meme arithmetique se referme EXACTEMENT sur `alerts` — *ce que `n_tup_del` mesure, ce ne sont pas les disparitions, ce sont les `DELETE`* ; 🆕 **TRK-039 : l'agent qualite GPS deploye la veille accuse l'antenne de KSR370**, boitier hors ligne depuis 7 j et mort d'une coupure d'alimentation deja documentee, sur des zones vieilles de 19 j — et son discriminant est **infranchissable** pour un vehicule qui roule seul et loin (Toulouse-Benidorm, **580 928 m** = 193x le seuil) ; 🆕 **TRK-038 : quatre gardes anti-repetition d'alerte vivent en memoire de processus**, dont celle de l'alarme de flambee d'erreurs — la garde n'est pas cassee, elle est **volatile** (6 h 02 prouve qu'elle tient ; 3 des 4 intervalles trop courts suivent une remise en service, **1 reste inexplique**) ; 🆕 **TRK-037 : Overpass injoignable**, et **sa date de premiere apparition est INCONNAISSABLE** — la plus ancienne ligne survivante EST l'une d'elles ; 🟢 **l'alarme d'alimentation est EXERCEE et JUSTE pour la 1re fois** (4 trames `ac alarm`, toutes a 100 % de batterie, 0 alerte — et **ce n'est PAS le chemin de TRK-032 qui les a tues**) ; 🟢 **TRK-031 : verification prescrite RENDUE et POSITIVE** — **0 duree fabriquee sur 35** (contre 13 sur 20), medianes 16,03 j vers **0,78 j** ; 🟢 **TRK-017 : chaine applicative PROUVEE avec la cle rotationnee** (reconciliation `ok` a 04:25) — mais **la rotation ne peut PAS etre creditee du silence de l'appelant**, tu depuis le 17/08, **3 jours AVANT** elle ; TRK-018 **passe 10e fois** (274 vers 289) ; TRK-036 **elargie a 2 accuses moteur jetes** (85 SMS entrants sur 87 sans `imei`) ; TRK-016 **91,1 %** — le creux a 87,0 ne s'est pas confirme ; TRK-032 **29 boitiers sur 42 silencies, par un CUT vieux de 8,7 h** (mesure a 04:33, contre 33 a 01:1x la veille : **heures differentes, aucune tendance**) ; ✅ **les 5 correctifs de cet audit sont INCONNUS du clone du serveur** (`git cat-file -e`), donc jamais pousses — la ou `merge-base` seul rendait le meme non pour deux situations opposees | **3** (TRK-037, TRK-038, TRK-039) | agent d'audit |
+| 2026-08-20 | **14** (14 sur 24 h, **4 CRITICAL**) — ⚠️ **la table a perdu son histoire** : plus rien avant le 19/08 09:35 | 30 revues ; 🔴 **41 709 alertes et >= 89 lignes d'erreur EFFACEES hors application, sans aucune trace** — ni la retention (`errorDeleted: 0`), ni un chemin applicatif, ni la migration ; seul `pg_stat_user_tables` en temoigne (TRK-035), et **le taux de TRK-023 tombe de 81,6 % a 5,5 % par effacement du DENOMINATEUR, pas par correction** ; 🔴 **TRK-032 : 33 boitiers sur 42 ont leur alarme d'alimentation eteinte chaque nuit** — « coupure commandee par nous » deduit de la derniere commande moteur SANS BORNE DE TEMPS, et l'automatisation horaire coupe la flotte de 18:00-20:00 a 06:00 ; 🔴 **TRK-031 CONFIRMEE A L'ECHELLE PREDITE** — FS-253-HR revient le 19/08 13:48:56 et **referme 9 episodes a la meme seconde** (6,94 a **35,18 j**, dont **8 fabriquees**, refutees par **5 027 positions**), et **la mediane de la zone affiche 16,03 j pour une absence reelle de 6,94 j** sur l'ecran meme cree par TRK-028 ; 🆕 **TRK-036 : l'accuse de reception du boitier ARRIVE et est JETE** — « Resume engine Succeed » recu le 19/08 08:28:58 depuis la SIM de GS-014-NY, ecrit dans `sms_logs` avec `imei` NULL, commande toujours `SENT` 21 h apres (TRK-018 change de nature) ; **le deluge POWER_CUT a cesse parce que les TRAMES ont cesse** — derniere `ac alarm` le 19/08 02:26:23, aucune depuis 23 h sur une fenetre `wire_logs` de 4 jours : les correctifs de TRK-022 (dedup 6 h) et TRK-023 (message) sont **deployes et NON EXERCES** ; 🟢 **la qualification automatique d'un parking est EXERCEE pour la 1re fois** (zone `55615ba3`, `reviewedAt` NULL, 19/08 21:55) ; 🟢 **une sonde neuve a detecte un vrai arret de 9 h** de l'automatisation des trajets et s'est tue au premier passage reussi ; 🟢 **FS-253-HR est revenu a 6,94 j**, sous le seuil de TRK-027 ; TRK-017 **10e jour**, cle `vtx_48fe` inchangee, 54 h de silence lues comme un silence (7e fois) ; TRK-018 **passe 9e fois** ; **>= 3 deploiements le 19/08** (3 vagues de migrations) — le tag `latest` empeche de les compter | **5** (TRK-032, TRK-033, TRK-034, TRK-035, TRK-036) | agent d'audit |
+| 2026-08-19 | 50 (2 sur 24 h, **aucune n'est un rappel** : 1 perte neuve + 1 faux positif de mise en service ; 0 CRITICAL) | 27 revues ; **7e image le 18/08 22:02, toujours `main` @ `2416331`** — 3e image consecutive conforme, marqueurs presents ; **la mise en service d'un boitier chez un client neuf repond a trois tests dates** : le boitier est accuse de panne d'antenne **51 s avant son premier fix** (TRK-030), le premier retour de fix **referme 2 episodes dont un du 01/08 declare long de 16,9 j** alors que 27 733 positions ont ete emises pendant l'intervalle (TRK-031 — et **TRK-028 est donc EXERCE**), et TRK-012 se rejoue en direct (`fix030s***n123456` sur socket TCP, **2 ACK timeout en 6 min** sur un boitier de 2 minutes) ; **la table `alerts` n'etait PAS un capteur eteint** — 202 `POWER_CUT` en 24 h, **toutes CRITICAL, toutes sans message** (TRK-023 +202, TRK-022 rejoue : 49 alertes en 17 min), et la question POWER_CUT est **tranchee dans l'autre sens** (les 2 vehicules qui ont crie sont VIVANTS, KSR370 est mort et ne pouvait pas crier) ; **1 020 notifications, 10 reellement envoyees** — le dernier etage a tenu ; TRK-029 **test date nº 5 : aucun second cas** (21 coupes normales) ; TRK-017 **9e jour**, cle `vtx_48fe` inchangee ; TRK-018 **passe 8e fois** ; TRK-025 **non exerce** ; parc 43 → 42, **explique et trace** (3 `DELETE /api/trackers/:id` dans `system_activity_logs`) ; **TRK-026 et TRK-027 ajoutees a l'index, ou elles manquaient depuis leur creation** | 2 (TRK-030, TRK-031) | agent d'audit |
+| 2026-08-18 | 48 (2 sur 24 h, **toutes deux POSTERIEURES au deploiement de 15:54**, 0 CRITICAL) | 25 revues ; **le deploiement du 17/08 15:54 met en ligne les 3 correctifs de la veille** (6e image, `main` @ `5d10796`, migration appliquee) — et un seul est EXERCE : la regle du parking, **prouvee par le journal du cron** qui nomme les 2 vehicules silencies toutes les 5 min ; TRK-026 et TRK-028 sont deployes mais **sans occasion de s'executer** ; **TRK-001 : test date PASSE** sur FS-253-HR (aucune ligne le 17/08 vers 15:45, sous l'ancien code) ; **TRK-003 verifie en production** (1re occurrence depuis le 31/07, ecrite en `ERROR` et non `CRITICAL` — le calibrage tient) ; **TRK-025 : test date CONFIRME** (blocages 42 → **49**, toujours **0** ligne) ; TRK-017 **8e jour**, cle `vtx_48fe` inchangee ; TRK-018 **passe 7e fois** ; TRK-016 revient a **91,3 %** sur un lundi ouvre — la mise en garde d'hier sur l'echantillon du dimanche est validee ; TRK-014 **4e point** a 83/83 ; **la table `alerts` est muette depuis 60 h sur ses 9 types** — fait mesure, mesure discriminante datee, aucune conclusion | 2 (TRK-029, TRK-028) | agent d'audit |
 | 2026-08-17 | 46 (2 sur 24 h — **2 rappels `gps-integrity` attendus**, tous deux ANTÉRIEURS à la reconstruction de 16:03, 0 CRITICAL) | 23 revues ; **TRK-019 REFERMÉ** — production servie depuis `main` (5ᵉ image, 16/08 16:03), 3 marqueurs sur 3 mesurables présents + 2 preuves comportementales (silences 81 → **100**, trace allowlist horaire à nouveau) ; **TRK-002 rectifié : l'instrument était invalide** (variable de portée module cherchée dans un bundle minifié — le contrôle `shouldReportNetworkFailure`, en prod depuis des semaines, rend 0), 5 verdicts « régression » annulés ; **TRK-015 : test daté RÉPONDU** — le pic du 15/08 était une journée, et la baisse d'insertions est un **week-end** (73 trajets dimanche vs 195 vendredi) ; TRK-021 test daté **non déclenché** ; TRK-018 **passé 6ᵉ fois** ; TRK-017 **7ᵉ jour**, appelant revenu (3ᵉ fois après un silence) ; HD-779-MA a repris après 31 h **en rejouant un tampon** (317 rejets) | 1 (TRK-025) | agent d'audit |
 | 2026-08-16 | 44 (3 sur 24 h — **3 rappels `gps-integrity` attendus**, 0 CRITICAL) | 24 revues ; **TRK-019 : 4ᵉ reconstruction** (témoin web migré vers `chunk-XXNB5VTF.js` — l'artefact est neuf et le trou identique) ; **2 tests datés DÉCLENCHÉS** — TRK-021 passe en **gravité 1** (12 échecs, 3 jours sur 4) et TRK-013 franchit son seuil (8 → **11**, l'argument « numérateur figé » est mort) ; **TRK-015 : rejets ×3,5 ET insertions −18 %** le même jour, 3ᵉ point demandé ; tests datés TRK-001 (3ᵉ rappel) et TRK-018 **passés** ; TRK-017 **6ᵉ jour**, clé toujours vivante malgré 32 h de silence | 0 | agent d'audit |
 | 2026-08-15 | 41 (2 sur 24 h — 2 rappels GPS **attendus**) | 22 revues ; **le volet décisif de TRK-001 tranche par le COMPORTEMENT** sur 2 véhicules (le rappel de 48 h, et non celui de 72 h, était le discriminant) ; TRK-017 **35 blocages dont 11 le 14/08**, sa journée record ; TRK-021 6 → **10** ; **TRK-013 : le numérateur n'est plus figé** (7 → 8) ; TRK-024 voit son asymétrie « à sens unique » **tomber** (0 / 1, inversé) ; test daté TRK-018 **passé** | 0 | agent d'audit *(ligne ajoutée rétroactivement le 16/08 — elle manquait)* |

@@ -16,6 +16,60 @@
 | **Modifier du code applicatif** | L'audit **propose**. Le passage à l'acte est une décision humaine (voir §8). |
 | **Redémarrer / rebuild un conteneur, toucher la prod** | Un audit lit. Il n'agit pas. |
 | **Écrire un secret, un mot de passe ou une URL de base complète** dans un rapport | Les rapports sont versionnés. |
+| 🔴 **Lancer un client Docker SANS `timeout` ET SANS `--tail` borné** | Voir ci-dessous — ça a immobilisé la moitié du VPS pendant 3 h 54 le 2026-08-20. |
+
+### 🔴 Le garde-fou ajouté le 2026-08-20 : tout client Docker est BORNÉ, deux fois
+
+**Toute** commande `docker` lancée par cet audit — `logs`, `exec`, `inspect`, `images` — porte
+**deux** bornes, et aucune ne remplace l'autre :
+
+```bash
+timeout 20 docker logs <conteneur> --tail 2000 2>&1
+#  ^^^^^^^^^^ borne de TEMPS            ^^^^^^^^^^^ borne de VOLUME
+```
+
+| Borne | Ce qu'elle empêche | Ce qu'elle n'empêche PAS |
+|---|---|---|
+| `--tail N` avec **N ≤ 2000** | que le démon ait des centaines de milliers de lignes à pousser | qu'un tube se bloque en aval |
+| `timeout` | qu'un client bloqué survive à la commande | que le client demande trop |
+
+**Et il faut vérifier en sortie, parce qu'une commande qui rend la main n'a pas forcément tout
+nettoyé** :
+
+```bash
+ssh root@72.62.26.240 'pgrep -x docker || echo "aucun client docker residuel"'
+```
+
+#### Ce que ça a coûté, et pourquoi c'est écrit ici plutôt qu'en note de bas de page
+
+Le **2026-08-20 à 01 h 13 min 57**, pendant la fenêtre de collecte de cet audit
+(01 h 11 → 01 h 30 UTC), la commande du §2 ci-dessous — alors écrite avec `--tail 200000` — a été
+adaptée à `tracky-postgres` et **s'est bloquée**. `dockerd` est monté à **101 %** d'un cœur sur une
+machine qui en a deux, avec **1 038 542 `read()`/s pour zéro octet ramené**, et y est resté
+**3 h 54**. C'est la 4ᵉ occurrence de l'incident le plus coûteux de ce serveur (la 3ᵉ a duré
+**152 heures**). Diagnostic complet côté VPS : `docs/vps-audit/REFERENCE-CONSTATS.md`, constat
+**VPS-016**.
+
+⚠️ **Trois choses rendent ce défaut instructif plutôt qu'anecdotique :**
+
+1. **L'agent n'a pas improvisé — il a appliqué cette procédure.** La commande fautive est celle
+   du §2, au mot près sur sa partie dangereuse. *Un garde-fou absent d'une procédure est un défaut
+   de la procédure, pas de celui qui l'exécute.*
+2. **Ce dispositif SAVAIT déjà que `docker logs` ne rend pas la main sur cet hôte.** C'est écrit
+   **deux fois** dans son propre référentiel — *« `docker logs texto-relay` ne rend jamais la main
+   sur cet hôte (deux essais, sortie vide) »* (08/08/2026), et repris en tableau d'instruments :
+   *« `docker logs` du relais — **ne rend pas la main** »*. **Le savoir et l'instruction vivaient
+   dans le même dossier, dans deux fichiers différents, et ne se sont jamais rencontrés.**
+3. **`--tail 200000` n'apportait rien.** Le tableau de mesure du §2 établit que cette commande
+   rend **3 714 lignes** — la lecture bute sur la rotation `max-size=10m / max-file=3` bien avant.
+   *On payait un risque maximal pour un gain nul, et la mesure qui le prouvait était deux
+   paragraphes plus haut.*
+
+> **La règle, transposable au-delà de Docker** : *une commande envoyée à un démon ne doit pas
+> pouvoir durer indéfiniment — **le client meurt, le travail côté serveur, non**.* Elle est écrite
+> au référentiel VPS depuis le **2026-08-05** (VPS-M12). Cet audit ne le lisait pas. **Deux
+> dispositifs qui partagent une machine, un démon et un compte root doivent partager leurs
+> garde-fous** — c'est pourquoi celui-ci est recopié ici, et pas seulement référencé.
 
 ---
 
@@ -35,7 +89,7 @@ lancement suivant de Claude si le poste était éteint, sans jamais produire deu
 Depuis la racine du dépôt (`D:\www\vizyo-agency\vizyo-tracky\vizyo-tracky`) :
 
 ```bash
-ssh root@72.62.26.240 'docker exec -i tracky-postgres psql -U tracky -d tracky_prod -X -A -F "|" -q' < docs/centre-alerte/collecte.sql
+ssh root@72.62.26.240 'timeout 120 docker exec -i tracky-postgres psql -U tracky -d tracky_prod -X -A -F "|" -q' < docs/centre-alerte/collecte.sql
 ```
 
 Le SQL est versionné dans [`collecte.sql`](./collecte.sql) et découpé en sections `### SECTION …`.
@@ -44,7 +98,7 @@ Il passe par **stdin**, ce qui évite l'enfer de l'échappement de quotes à tra
 Puis la corrélation avec les redémarrages — **indispensable**, voir §4 :
 
 ```bash
-ssh root@72.62.26.240 'date -u; for c in tracky-api tracky-web; do printf "%s " $c; docker inspect $c --format "{{.State.StartedAt}} restarts={{.RestartCount}}"; done; docker images --format "{{.Repository}}:{{.Tag}} {{.CreatedAt}}" | grep -i tracky'
+ssh root@72.62.26.240 'date -u; for c in tracky-api tracky-web; do printf "%s " $c; timeout 15 docker inspect $c --format "{{.State.StartedAt}} restarts={{.RestartCount}}"; done; timeout 15 docker images --format "{{.Repository}}:{{.Tag}} {{.CreatedAt}}" | grep -i tracky'
 ```
 
 ### Pièges d'outillage, déjà payés
@@ -71,10 +125,17 @@ ssh root@72.62.26.240 'date -u; for c in tracky-api tracky-web; do printf "%s " 
   **premier et le dernier horodatage réellement observés**, jamais la fenêtre demandée — et si
   cette fenêtre ne va pas jusqu'à l'heure de collecte, il le dit.
   ```bash
-  ssh root@72.62.26.240 'L=$(docker logs tracky-api --tail 200000 2>&1); echo "$L" | head -1; echo "$L" | tail -1; docker logs tracky-api --tail 1'
+  ssh root@72.62.26.240 'L=$(timeout 20 docker logs tracky-api --tail 2000 2>&1); echo "$L" | head -1; echo "$L" | tail -1; timeout 10 docker logs tracky-api --tail 1'
   ```
   *Un compteur sur une fenêtre qu'on n'a pas vérifiée est un compteur inventé — y compris quand on
   croit avoir déjà corrigé le piège.*
+
+  > 🔴 **`--tail 200000` a été retiré de cette commande le 2026-08-20, et il n'était pas seulement
+  > dangereux : il était INUTILE.** Le tableau ci-dessus, mesuré le 08/09 par cette procédure
+  > elle-même, dit que `--tail 200000` rend **3 714 lignes** — la lecture bute sur la frontière de
+  > rotation bien avant 200 000. **Demander 200 000 lignes pour en obtenir 3 714 ne coûte rien de
+  > moins qu'un `--tail 2000`, et ça a coûté la moitié du VPS pendant 3 h 54.** Voir le garde-fou
+  > obligatoire au §0.
 
 ---
 
@@ -111,7 +172,7 @@ Avant de qualifier quoi que ce soit, poser ces quatre questions :
    citent des chunks (`chunk-XXXX.js`). S'ils sont absents du bundle servi, l'erreur vient d'une
    version qui n'est plus en ligne — donc déjà corrigée.
    ```bash
-   ssh root@72.62.26.240 'docker exec tracky-web sh -c "test -f /usr/share/nginx/html/chunk-XXXX.js && echo PRESENT || echo ABSENT"'
+   ssh root@72.62.26.240 'timeout 15 docker exec tracky-web sh -c "test -f /usr/share/nginx/html/chunk-XXXX.js && echo PRESENT || echo ABSENT"'
    ```
    ⚠️ **Vérifier le bundle SERVI, pas le commit.** Un correctif commité n'est pas un correctif déployé.
 4. **L'état incriminé est-il encore vrai maintenant ?** Une alerte « GPS perdu il y a 2 h » se
@@ -325,7 +386,7 @@ scp -r docs/centre-alerte/. root@72.62.26.240:/opt/tracky-centre-alerte/
 Puis vérifier que le serveur voit bien le nouveau rapport :
 
 ```bash
-ssh root@72.62.26.240 "ls /opt/tracky-centre-alerte/rapports/ && docker exec tracky-api ls /app/docs/centre-alerte/rapports/"
+ssh root@72.62.26.240 "ls /opt/tracky-centre-alerte/rapports/ && timeout 15 docker exec tracky-api ls /app/docs/centre-alerte/rapports/"
 ```
 
 Les deux listes doivent être identiques. Aucun redémarrage n'est nécessaire : le service lit
