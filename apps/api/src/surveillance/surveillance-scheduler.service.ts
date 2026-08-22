@@ -1,3 +1,4 @@
+import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SurveillanceMode, UserRole } from '@prisma/client';
@@ -52,12 +53,15 @@ export class SurveillanceSchedulerService {
     private readonly errorLogger: ErrorLogger,
     // Journal Système — module @Global, aucun import à ajouter au SurveillanceModule.
     private readonly systemActivity: SystemActivityService,
+    // Refroidissements d'alerte — ObservabilityModule est @Global, aucun import a ajouter.
+    private readonly refroidissement: RefroidissementAlerteService,
   ) {}
 
   private running = false;
 
   /** Dernier résumé « boîtiers muets » écrit — cf. DORMANT_SUMMARY_THROTTLE_MS. */
-  private lastDormantSummaryAt = 0;
+  // TRK-038 — refroidissement EN BASE. Ce resume ne va qu'au journal d'exploitation, mais
+  // il souffrait du meme defaut : redemarrage = compteur remis a zero.
 
   /**
    * Dernière ligne de journal écrite PAR PROFIL — même palier horaire que le résumé.
@@ -250,8 +254,9 @@ export class SurveillanceSchedulerService {
     // l'exploitant) et ce résumé chiffré, destiné à l'exploitation (`docker logs`) pour
     // voir d'un coup d'œil combien de profils sont en attente. Écrit au plus une fois par
     // heure — le fait, lui, dure des semaines.
-    if (dormantSkipped > 0 && Date.now() - this.lastDormantSummaryAt >= DORMANT_SUMMARY_THROTTLE_MS) {
-      this.lastDormantSummaryAt = Date.now();
+    if (dormantSkipped > 0
+        && (await this.refroidissement.tenterEmission(
+              CLES_REFROIDISSEMENT.SURVEILLANCE_DORMANTS, DORMANT_SUMMARY_THROTTLE_MS))) {
       const suffix = dormantSkipped > dormantSamples.length ? ', …' : '';
       this.logger.warn(
         `[scheduler] ${dormantSkipped} profil(s) non armés/désarmés — boîtier muet > 72 h : ${dormantSamples.join(', ')}${suffix}`,

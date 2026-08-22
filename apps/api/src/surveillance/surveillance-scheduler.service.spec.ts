@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { SurveillanceService } from './surveillance.service';
 import { SurveillanceSchedulerService } from './surveillance-scheduler.service';
+import { RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-0000000000aa';
 const VEHICLE_ID = '00000000-0000-0000-0000-0000000000bb';
@@ -59,6 +60,10 @@ describe('SurveillanceSchedulerService — porte « boîtier muet » (72 h)', ()
   let surveillance: { armProfile: jest.Mock; disarmProfile: jest.Mock };
   let errorLogger: { recordBackground: jest.Mock };
   let systemActivity: { record: jest.Mock };
+  // TRK-038 — le refroidissement du resume « dormants » vit desormais en base. Faux AVEC
+  // ETAT et lisant `Date.now()` : la spec voyage dans le temps pour verifier qu'il n'ecrit
+  // qu'une ligne par heure, et un faux sans memoire viderait ce test de son objet.
+  let refroidissement: { tenterEmission: jest.Mock; derniereEmission: jest.Mock; marquerEmission: jest.Mock; oublier: jest.Mock };
 
   beforeEach(async () => {
     prisma = { surveillanceProfile: { findMany: jest.fn().mockResolvedValue([]) } };
@@ -68,12 +73,28 @@ describe('SurveillanceSchedulerService — porte « boîtier muet » (72 h)', ()
     };
     errorLogger = { recordBackground: jest.fn() };
     systemActivity = { record: jest.fn() };
+    const memoire = new Map<string, number>();
+    refroidissement = {
+      tenterEmission: jest.fn(async (cle: string, fenetreMs: number) => {
+        const precedent = memoire.get(cle);
+        if (precedent !== undefined && Date.now() - precedent < fenetreMs) return false;
+        memoire.set(cle, Date.now());
+        return true;
+      }),
+      derniereEmission: jest.fn(async (cle: string) => {
+        const t = memoire.get(cle);
+        return t === undefined ? null : new Date(t);
+      }),
+      marquerEmission: jest.fn(async (cle: string, quand?: Date) => { memoire.set(cle, quand ? quand.getTime() : Date.now()); }),
+      oublier: jest.fn(async (cle: string) => { memoire.delete(cle); }),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
         SurveillanceSchedulerService,
         { provide: PrismaService, useValue: prisma },
         { provide: SurveillanceService, useValue: surveillance },
+        { provide: RefroidissementAlerteService, useValue: refroidissement },
         { provide: ErrorLogger, useValue: errorLogger },
         { provide: SystemActivityService, useValue: systemActivity },
       ],

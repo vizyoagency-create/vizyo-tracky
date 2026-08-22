@@ -1,3 +1,4 @@
+import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from './refroidissement-alerte.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -31,13 +32,17 @@ const TOP_SOURCES = 5;
 @Injectable()
 export class ErrorRateWatchdogService {
   private readonly logger = new Logger(ErrorRateWatchdogService.name);
-  private lastAlertAt = 0;
+  // TRK-038 — refroidissement EN BASE. Cette vigie est le cas le plus embarrassant du lot :
+  // l'instrument charge de crier quand les erreurs flambent portait son propre anti-flambee
+  // en memoire, donc REARME par le deploiement — l'instant ou les erreurs flambent.
   private running = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    // Refroidissements d'alerte — ObservabilityModule est @Global, aucun import a ajouter.
+    private readonly refroidissement: RefroidissementAlerteService,
   ) {}
 
   private get threshold(): number {
@@ -79,7 +84,12 @@ export class ErrorRateWatchdogService {
     if (total <= this.threshold) return;
 
     // Cooldown : la tempête continue ? On le saura à la prochaine fenêtre, pas 6 fois par heure.
-    if (now - this.lastAlertAt < COOLDOWN_MS) {
+    //
+    // ⚠️ Lecture et pose sont SEPAREES ici, volontairement : le refroidissement ne doit etre
+    // pose que si l'e-mail est REELLEMENT parti (voir plus bas). Une forme atomique
+    // « je demande et je consomme » nous rendrait muets une heure sur une panne d'e-mail.
+    const derniereAlerteAt = await this.refroidissement.derniereEmission(CLES_REFROIDISSEMENT.VIGIE_SATURATION);
+    if (derniereAlerteAt && now - derniereAlerteAt.getTime() < COOLDOWN_MS) {
       this.logger.warn(`${total} erreurs sur l'heure — e-mail déjà envoyé récemment, pas de relance.`);
       return;
     }
@@ -108,7 +118,7 @@ export class ErrorRateWatchdogService {
     // On ne pose le cooldown QUE si l'envoi est parti : sinon une panne d'e-mail nous rendrait
     // muets pendant une heure alors que rien n'a été signalé.
     if (res.ok) {
-      this.lastAlertAt = now;
+      await this.refroidissement.marquerEmission(CLES_REFROIDISSEMENT.VIGIE_SATURATION, new Date(now));
       this.logger.warn(`Centre d'alerte : ${total} erreurs en 1 h — e-mail envoyé à ${this.recipient}.`);
     } else {
       this.logger.error(`Alerte de saturation NON envoyée (${res.error ?? 'erreur inconnue'})`);

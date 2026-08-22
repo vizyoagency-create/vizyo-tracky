@@ -1,6 +1,35 @@
 import { parseMaxspeed, inferFromHighway, distancePointSegment, estRejouable, SpeedLimitService } from './speed-limit.service';
 import { estRoutable, limiteDeVoie } from './speed-limit.resolution';
 
+/**
+ * TRK-038 — faux refroidissement AVEC ETAT.
+ *
+ * ⚠️ Un faux sans memoire (qui rendrait toujours « tu peux emettre ») VIDERAIT de leur objet
+ * les tests qui verifient justement qu'on n'emet qu'une fois par fenetre : ils resteraient
+ * verts en ne prouvant plus rien. C'est le piege du 17/08, dans l'autre sens — un mock qui
+ * diverge de la production ment, qu'il soit trop permissif ou trop strict.
+ *
+ * Il lit `Date.now()`, donc il suit l'horloge simulee comme la vraie table suit `now()`.
+ */
+const refroidissementOuvert = () => {
+  const memoire = new Map<string, number>();
+  return {
+    tenterEmission: jest.fn(async (cle: string, fenetreMs: number) => {
+      const precedent = memoire.get(cle);
+      if (precedent !== undefined && Date.now() - precedent < fenetreMs) return false;
+      memoire.set(cle, Date.now());
+      return true;
+    }),
+    derniereEmission: jest.fn(async (cle: string) => {
+      const t = memoire.get(cle);
+      return t === undefined ? null : new Date(t);
+    }),
+    marquerEmission: jest.fn(async (cle: string, quand?: Date) => { memoire.set(cle, quand ? quand.getTime() : Date.now()); }),
+    oublier: jest.fn(async (cle: string) => { memoire.delete(cle); }),
+  } as never;
+};
+
+
 describe('parseMaxspeed', () => {
   it('nombres, mph, catégories FR, cas spéciaux', () => {
     expect(parseMaxspeed('50')).toBe(50);
@@ -123,7 +152,7 @@ describe('SpeedLimitService — ne JAMAIS graver un échec Overpass dans le cach
   const reponse = (corps: unknown) => ({ ok: true, text: async () => (typeof corps === 'string' ? corps : JSON.stringify(corps)) });
   const svcAvec = (fetchImpl: unknown, prisma: ReturnType<typeof makePrisma>, errorLogger = { record: jest.fn().mockResolvedValue('id') }) => {
     global.fetch = fetchImpl as typeof fetch;
-    return { svc: new SpeedLimitService(prisma as never, errorLogger as never), errorLogger };
+    return { svc: new SpeedLimitService(prisma as never, errorLogger as never, refroidissementOuvert()), errorLogger };
   };
 
   /** Ces deux cas passent par les reprises : minuteurs simulés, sinon 16 s d’attente réelle. */
@@ -226,7 +255,7 @@ describe('SpeedLimitService — résoudre pour de vrai', () => {
   });
   const build = (elements: unknown[], prisma: ReturnType<typeof makePrisma>) => {
     global.fetch = jest.fn().mockResolvedValue(reponse({ elements })) as unknown as typeof fetch;
-    return new SpeedLimitService(prisma as never, { record: jest.fn() } as never);
+    return new SpeedLimitService(prisma as never, { record: jest.fn() } as never, refroidissementOuvert());
   };
 
   it('un maxspeed EXPLICITE prime et est mémorisé', async () => {
@@ -308,7 +337,7 @@ describe('SpeedLimitService — résoudre pour de vrai', () => {
         .mockResolvedValueOnce({ ok: false, status: 429 })
         .mockResolvedValueOnce(reponse({ elements: [voie(43.6, 1.44, { highway: 'motorway' })] }));
       global.fetch = fetchMock as unknown as typeof fetch;
-      const svc = new SpeedLimitService(prisma as never, { record: jest.fn() } as never);
+      const svc = new SpeedLimitService(prisma as never, { record: jest.fn() } as never, refroidissementOuvert());
 
       const promesse = svc.buildResolver([{ lat: 43.6, lng: 1.44 }]);
       await jest.advanceTimersByTimeAsync(30_000);
@@ -328,7 +357,7 @@ describe('SpeedLimitService — résoudre pour de vrai', () => {
       const prisma = makePrisma();
       const fetchMock = jest.fn().mockResolvedValue({ ok: false, status: 429 });
       global.fetch = fetchMock as unknown as typeof fetch;
-      const svc = new SpeedLimitService(prisma as never, { record: jest.fn() } as never);
+      const svc = new SpeedLimitService(prisma as never, { record: jest.fn() } as never, refroidissementOuvert());
 
       const promesse = svc.buildResolver([{ lat: 43.6, lng: 1.44 }]);
       await jest.advanceTimersByTimeAsync(60_000);
@@ -346,7 +375,7 @@ describe('SpeedLimitService — résoudre pour de vrai', () => {
     const prisma = makePrisma();
     const fetchMock = jest.fn().mockResolvedValue({ ok: false, status: 400 });
     global.fetch = fetchMock as unknown as typeof fetch;
-    const svc = new SpeedLimitService(prisma as never, { record: jest.fn() } as never);
+    const svc = new SpeedLimitService(prisma as never, { record: jest.fn() } as never, refroidissementOuvert());
 
     await svc.buildResolver([{ lat: 43.6, lng: 1.44 }]);
 

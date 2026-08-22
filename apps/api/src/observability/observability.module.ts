@@ -9,6 +9,7 @@ import { CentreAlerteWikiController } from './centre-alerte-wiki.controller';
 import { CentreAlerteWikiService } from './centre-alerte-wiki.service';
 import { CobanWireLogger } from './coban-wire-logger.service';
 import { DependencyHeartbeatService } from './dependency-heartbeat.service';
+import { RefroidissementAlerteService } from './refroidissement-alerte.service';
 import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.service';
 import { ErrorLogger } from './error-logger.service';
 import { ErrorRateWatchdogService } from './error-rate-watchdog.service';
@@ -22,6 +23,7 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
   imports: [AuthModule],
   controllers: [AdminLogsController, CentreAlerteWikiController, VpsAuditWikiController, RecuperationController],
   providers: [
+    RefroidissementAlerteService,
     CobanWireLogger,
     // Tableau de ce que chaque couche d'enrichissement a REELLEMENT recupere : sans lui,
     // une couche peut echouer en silence (98,8 % du cache des limites etait faux, invisible).
@@ -51,6 +53,10 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
       useClass: AllExceptionsFilter,
     },
   ],
-  exports: [CobanWireLogger, ErrorLogger],
+  exports: [
+    RefroidissementAlerteService,
+    CobanWireLogger,
+    ErrorLogger,
+  ],
 })
 export class ObservabilityModule {}

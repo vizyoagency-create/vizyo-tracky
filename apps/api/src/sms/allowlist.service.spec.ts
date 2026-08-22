@@ -1,6 +1,36 @@
 import { AllowlistService, type AllowlistSyncResult } from './allowlist.service';
 
 /**
+ * TRK-038 — faux refroidissement AVEC ETAT, et c'est indispensable ici.
+ *
+ * Ces tests voyagent dans le temps (`jest.spyOn(Date, 'now')`) pour verifier qu'un rappel
+ * n'est pas reemis avant son delai. Un mock qui rendrait toujours `null` rendrait
+ * `dueForReminder` toujours vrai et VIDERAIT ces tests de leur objet — ils resteraient verts
+ * en ne prouvant plus rien.
+ *
+ * Ce faux lit `Date.now()`, donc il suit l'horloge simulee, exactement comme la vraie table
+ * suit `now()` en base.
+ */
+function refroidissementEnMemoire() {
+  const etat = new Map<string, number>();
+  return {
+    tenterEmission: jest.fn(async (cle: string, fenetreMs: number) => {
+      const precedent = etat.get(cle);
+      if (precedent !== undefined && Date.now() - precedent < fenetreMs) return false;
+      etat.set(cle, Date.now());
+      return true;
+    }),
+    derniereEmission: jest.fn(async (cle: string) => {
+      const t = etat.get(cle);
+      return t === undefined ? null : new Date(t);
+    }),
+    marquerEmission: jest.fn(async (cle: string, quand?: Date) => { etat.set(cle, quand ? quand.getTime() : Date.now()); }),
+    oublier: jest.fn(async (cle: string) => { etat.delete(cle); }),
+  };
+}
+
+
+/**
  * Ce que ces tests verrouillent (TRK-017, 2026-08-10) :
  *
  *  1. Une réconciliation qui ne change RIEN laisse quand même une trace d'exécution.
@@ -30,6 +60,7 @@ function makeService() {
     config as never,
     errorLogger as never,
     systemActivity as never,
+    refroidissementEnMemoire() as never,
   );
   return { service, errorLogger, systemActivity };
 }
@@ -155,6 +186,7 @@ describe('AllowlistService — d’ou viennent les numeros autorises', () => {
       { get: jest.fn(() => 'x') } as never,
       { record: jest.fn(), recordBackground: jest.fn() } as never,
       systemActivity as never,
+      refroidissementEnMemoire() as never,
     );
     // On intercepte l'appel reseau : ce qui compte ici, c'est la LISTE poussee.
     const envoye: { entries: { phone: string; label: string }[] }[] = [];
@@ -276,6 +308,7 @@ describe('AllowlistService — status() reste en lecture seule', () => {
       { get: jest.fn(() => 'x') } as never,
       { record: jest.fn(), recordBackground: jest.fn() } as never,
       systemActivity as never,
+      refroidissementEnMemoire() as never,
     );
     jest.spyOn(service, 'list').mockResolvedValue([]);
 

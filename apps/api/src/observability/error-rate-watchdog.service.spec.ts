@@ -1,6 +1,35 @@
 import { ErrorRateWatchdogService, WATCHDOG_SOURCE } from './error-rate-watchdog.service';
 
 /**
+ * TRK-038 — faux refroidissement AVEC ETAT.
+ *
+ * ⚠️ Un faux sans memoire (qui rendrait toujours « tu peux emettre ») VIDERAIT de leur objet
+ * les tests qui verifient justement qu'on n'emet qu'une fois par fenetre : ils resteraient
+ * verts en ne prouvant plus rien. C'est le piege du 17/08, dans l'autre sens — un mock qui
+ * diverge de la production ment, qu'il soit trop permissif ou trop strict.
+ *
+ * Il lit `Date.now()`, donc il suit l'horloge simulee comme la vraie table suit `now()`.
+ */
+const refroidissementOuvert = () => {
+  const memoire = new Map<string, number>();
+  return {
+    tenterEmission: jest.fn(async (cle: string, fenetreMs: number) => {
+      const precedent = memoire.get(cle);
+      if (precedent !== undefined && Date.now() - precedent < fenetreMs) return false;
+      memoire.set(cle, Date.now());
+      return true;
+    }),
+    derniereEmission: jest.fn(async (cle: string) => {
+      const t = memoire.get(cle);
+      return t === undefined ? null : new Date(t);
+    }),
+    marquerEmission: jest.fn(async (cle: string, quand?: Date) => { memoire.set(cle, quand ? quand.getTime() : Date.now()); }),
+    oublier: jest.fn(async (cle: string) => { memoire.delete(cle); }),
+  } as never;
+};
+
+
+/**
  * Vigie de saturation du centre d'alerte. Ce qui est protégé ici :
  *  1. on prévient AU-DESSUS du seuil, pas en dessous (sinon l'alerte devient du bruit) ;
  *  2. **pas de boucle de rétroaction** — les erreurs de la vigie elle-même sont exclues du comptage ;
@@ -24,7 +53,8 @@ describe('ErrorRateWatchdogService', () => {
     const config = {
       get: jest.fn().mockImplementation((k: string) => (k === 'ERROR_RATE_ALERT_THRESHOLD' ? over.threshold : undefined)),
     };
-    const svc = new ErrorRateWatchdogService(prisma as never, email as never, config as never);
+    const refroidissement = refroidissementOuvert();
+    const svc = new ErrorRateWatchdogService(prisma as never, email as never, config as never, refroidissement);
     return { svc, prisma, email, config };
   }
 
