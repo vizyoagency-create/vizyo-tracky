@@ -326,8 +326,17 @@ describe('GpsDeadZonesService', () => {
    * fermer l'épisode au bon instant, et n'annoncer une durée que lorsqu'on en a une.
    */
   describe('recordRecovery — refermer un épisode', () => {
-    const buildAvecRecovery = () => {
+    const PERTE = new Date('2026-08-16T21:00:00Z');
+
+    /**
+     * @param lostAtCourant la perte de l'épisode ouvert le PLUS RÉCENT, ou `null` si le
+     *                      véhicule n'en porte aucun.
+     */
+    const buildAvecRecovery = (lostAtCourant: Date | null = PERTE) => {
       const prisma = buildPrisma();
+      prisma.gpsLossEvent.findFirst = jest
+        .fn()
+        .mockResolvedValue(lostAtCourant ? { lostAt: lostAtCourant } : null);
       prisma.gpsLossEvent.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       const svc = new GpsDeadZonesService(prisma, { label: jest.fn() } as any);
       return { svc, prisma };
@@ -337,13 +346,19 @@ describe('GpsDeadZonesService', () => {
       // ⚠️ C'est l'invariant central. La PREMIÈRE position valide après la perte est la
       // bonne ; si un appel ultérieur pouvait écraser la date, chaque trame suivante
       // allongerait l'absence et la durée médiane deviendrait un pur artefact.
+      //
+      // ⚠️ TEST RECALIBRÉ le 2026-08-20 (TRK-031), PAS supprimé : il attendait
+      // `where === { vehicleId, recoveredAt: null }` — c'est-à-dire qu'il VERROUILLAIT
+      // l'absence de borne, donc le défaut lui-même. L'invariant qu'il défend (ne pas
+      // réécrire une date posée) reste vrai et reste vérifié ici.
       const { svc, prisma } = buildAvecRecovery();
       const at = new Date('2026-08-17T09:30:00Z');
 
       await svc.recordRecovery({ vehicleId: 'v1', at });
 
       const appel = prisma.gpsLossEvent.updateMany.mock.calls[0][0];
-      expect(appel.where).toEqual({ vehicleId: 'v1', recoveredAt: null });
+      expect(appel.where.vehicleId).toBe('v1');
+      expect(appel.where.recoveredAt).toBeNull();
       expect(appel.data).toEqual({ recoveredAt: at });
     });
 
@@ -357,6 +372,70 @@ describe('GpsDeadZonesService', () => {
     it('refuse une date invalide sans toucher à la base', async () => {
       const { svc, prisma } = buildAvecRecovery();
       const n = await svc.recordRecovery({ vehicleId: 'v1', at: new Date('pas une date') });
+      expect(n).toBe(0);
+      expect(prisma.gpsLossEvent.updateMany).not.toHaveBeenCalled();
+    });
+
+    /**
+     * ── TRK-031 : NE PAS FABRIQUER D'ABSENCE (2026-08-20) ────────────────────────────
+     *
+     * Le cas réel : FS-253-HR ressort de son parking le 19/08 à 13:48:56 et NEUF épisodes
+     * se referment à cette seconde, dont un ouvert le 15/07 — déclaré long de 35,18 jours
+     * alors que le boîtier a émis 5 027 positions pendant l'intervalle.
+     */
+    it('🔴 ne referme PAS un épisode d’un autre mois — il borne sur le plus récent', async () => {
+      // LE test du correctif : il échoue sur le code d'avant, qui ne posait aucune borne.
+      const { svc, prisma } = buildAvecRecovery(new Date('2026-08-12T15:20:59Z'));
+
+      await svc.recordRecovery({ vehicleId: 'v1', at: new Date('2026-08-19T13:48:56Z') });
+
+      const where = prisma.gpsLossEvent.updateMany.mock.calls[0][0].where;
+      expect(where.lostAt).toBeDefined();
+      // Un épisode du 15/07 est HORS de la fenêtre : il reste ouvert.
+      expect(new Date('2026-07-15T09:31:02Z').getTime()).toBeLessThan(where.lostAt.gte.getTime());
+    });
+
+    it('mais ferme bien les DOUBLONS de la même perte — c’était l’intention d’origine', async () => {
+      // Le cron peut ouvrir plusieurs épisodes pour une seule perte s'il tourne pendant
+      // que la donnée est incohérente. Ceux-là naissent à quelques minutes d'écart.
+      const { svc, prisma } = buildAvecRecovery(new Date('2026-08-12T15:20:59Z'));
+
+      await svc.recordRecovery({ vehicleId: 'v1', at: new Date('2026-08-19T13:48:56Z') });
+
+      const where = prisma.gpsLossEvent.updateMany.mock.calls[0][0].where;
+      // Un doublon né 3 minutes avant l'épisode courant est DANS la fenêtre.
+      expect(new Date('2026-08-12T15:17:59Z').getTime()).toBeGreaterThanOrEqual(
+        where.lostAt.gte.getTime(),
+      );
+    });
+
+    it('🔴 une absence de cinq semaines se ferme NORMALEMENT — la borne n’est pas une ancienneté', async () => {
+      // ⚠️ Le piège qu'une « fenêtre max de 7 jours » aurait créé : un véhicule réellement
+      // absent cinq semaines a une absence de cinq semaines. La refuser laisserait son
+      // épisode ouvert pour toujours, ce qui est une autre façon de mentir.
+      const { svc, prisma } = buildAvecRecovery(new Date('2026-07-15T09:31:02Z'));
+
+      const n = await svc.recordRecovery({ vehicleId: 'v1', at: new Date('2026-08-19T13:48:56Z') });
+
+      expect(n).toBe(1);
+      expect(prisma.gpsLossEvent.updateMany).toHaveBeenCalled();
+    });
+
+    it('aucun épisode ouvert : aucune écriture', async () => {
+      const { svc, prisma } = buildAvecRecovery(null);
+      const n = await svc.recordRecovery({ vehicleId: 'v1', at: new Date('2026-08-19T13:48:56Z') });
+      expect(n).toBe(0);
+      expect(prisma.gpsLossEvent.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('🔴 un retour ANTÉRIEUR à la perte est refusé — trame rejouée après coupure réseau', async () => {
+      // Un Coban qui rejoue son tampon émet des horodatages antérieurs au temps réel
+      // (TRK-015). Sans ce garde-fou : durée négative, écartée en silence du calcul de
+      // médiane, et un épisode marqué clos qui ne l'est pas.
+      const { svc, prisma } = buildAvecRecovery(new Date('2026-08-16T21:00:00Z'));
+
+      const n = await svc.recordRecovery({ vehicleId: 'v1', at: new Date('2026-08-16T20:45:00Z') });
+
       expect(n).toBe(0);
       expect(prisma.gpsLossEvent.updateMany).not.toHaveBeenCalled();
     });

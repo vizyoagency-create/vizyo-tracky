@@ -31,6 +31,18 @@ import { ReverseGeocodeService } from '../geocoding/reverse-geocode.service';
  * chaque tick (contrainte unique `(vehicleId, lostAt)`). Deux stationnements distincts ont un
  * `lostAt` différent → deux occurrences.
  */
+/**
+ * Marge de regroupement des DOUBLONS d'un même épisode de perte.
+ *
+ * Le cron d'intégrité peut ouvrir plusieurs épisodes pour une seule perte s'il tourne
+ * pendant que la donnée est incohérente. Ces doublons naissent à quelques minutes les uns
+ * des autres : une heure les couvre très largement.
+ *
+ * ⚠️ Ce n'est PAS une durée maximale d'absence — voir le commentaire de `recordRecovery`.
+ * Un épisode de cinq semaines est parfaitement légitime et doit se fermer normalement.
+ */
+const MARGE_DOUBLON_EPISODE_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class GpsDeadZonesService {
   private readonly logger = new Logger(GpsDeadZonesService.name);
@@ -146,27 +158,80 @@ export class GpsDeadZonesService {
   }
 
   /**
-   * TRK-028 — le RETOUR du signal. Ferme les épisodes encore ouverts d'un véhicule.
+   * TRK-028 — le RETOUR du signal. Ferme l'épisode que ce retour termine réellement.
    *
    * ⚠️ APPELÉ DEPUIS LE CHEMIN D'INGESTION, donc sous contrainte de coût. L'appelant
    * (`positions.service`) ne déclenche cette écriture QUE lorsqu'une position valide
    * arrive après un silence assez long pour qu'un épisode ait pu être ouvert — sur une
-   * trame ordinaire, il n'y a même pas de requête. Sans ce filtre, on paierait un
-   * `updateMany` par trame et par véhicule, sur la route la plus chaude du système.
+   * trame ordinaire, il n'y a même pas de requête. Sans ce filtre, on paierait deux
+   * requêtes par trame et par véhicule, sur la route la plus chaude du système.
    *
-   * IDEMPOTENT par construction : le `where` ne retient que `recoveredAt: null`. Un
-   * second appel ne trouve plus rien et n'écrase aucune date déjà posée — la PREMIÈRE
-   * position valide après la perte est la bonne, pas la dixième.
+   * IDEMPOTENT : le `where` ne retient que `recoveredAt: null`. Un second appel ne trouve
+   * plus rien et n'écrase aucune date déjà posée — la PREMIÈRE position valide après la
+   * perte est la bonne, pas la dixième.
    *
-   * `updateMany` et non `update` : un véhicule peut porter plusieurs épisodes ouverts si
-   * le cron a tourné pendant que la donnée était incohérente. On les ferme tous plutôt
-   * que d'en laisser traîner un qui fausserait toutes les moyennes ensuite.
+   * ── TRK-031 : POURQUOI CE N'EST PLUS « TOUS LES ÉPISODES OUVERTS » (2026-08-20) ──────
+   *
+   * Ce code fermait TOUS les épisodes ouverts du véhicule à la date du jour. Le
+   * commentaire assumait ce choix : « un véhicule peut porter plusieurs épisodes ouverts
+   * si le cron a tourné pendant que la donnée était incohérente ; on les ferme tous
+   * plutôt que d'en laisser traîner un qui fausserait toutes les moyennes ensuite. »
+   *
+   * L'intention est juste pour des DOUBLONS DU MÊME ÉPISODE. Elle est fausse pour un
+   * épisode d'un autre mois — et elle produit précisément ce qu'elle voulait éviter.
+   * Mesuré le 2026-08-19 : FS-253-HR ressort de son parking à 13:48:56 et **neuf**
+   * épisodes se referment à cette seconde, avec des durées de 6,94 à **35,18 jours**.
+   * Huit sont fabriquées : pendant les prétendus 35 jours, le boîtier a émis **5 027
+   * positions**. La médiane de la zone est passée à 16 jours pour un parking dont le
+   * véhicule ressort en une semaine — sur l'écran même que TRK-028 avait créé pour
+   * cesser de rester vague avec l'exploitant.
+   *
+   * 🔑 Un rattrapage sans date de coupure réécrit le passé avec le présent. Une fonction
+   * idempotente sur le flux qu'elle produit ne l'est pas sur le stock qu'elle n'a pas
+   * produit.
+   *
+   * ── LA RÈGLE RETENUE, ET POURQUOI PAS UNE FENÊTRE FIXE ───────────────────────────────
+   *
+   * L'épisode que ce retour referme est **le plus récent encore ouvert**. On ferme celui-là
+   * et ses doublons — les épisodes ouverts dans la MARGE qui le précède, qui décrivent la
+   * même perte. Les plus anciens restent ouverts : ce sont des restes d'avant le correctif,
+   * ils relèvent de l'assainissement (`prisma/assainir-episodes-gps.ts`), pas de l'ingestion.
+   *
+   * ⚠️ Une fenêtre fixe du type « ne fermer que si la perte a moins de 7 jours » aurait été
+   * FAUSSE : un véhicule réellement absent cinq semaines a une absence de cinq semaines, et
+   * la refuser laisserait son épisode ouvert pour toujours. La borne ne doit pas porter sur
+   * l'ANCIENNETÉ de la perte, mais sur le fait qu'un épisode plus récent existe.
    */
   async recordRecovery(input: { vehicleId: string; at: Date }): Promise<number> {
     const { vehicleId, at } = input;
     if (!(at instanceof Date) || Number.isNaN(at.getTime())) return 0;
-    const { count } = await this.prisma.gpsLossEvent.updateMany({
+
+    const courant = await this.prisma.gpsLossEvent.findFirst({
       where: { vehicleId, recoveredAt: null },
+      orderBy: { lostAt: 'desc' },
+      select: { lostAt: true },
+    });
+    if (!courant) return 0;
+
+    /**
+     * ⚠️ UN RETOUR NE PEUT PAS PRÉCÉDER LA PERTE, et ce n'est pas théorique : `at` est
+     * l'heure BOÎTIER de la trame, et un Coban qui rejoue son tampon après une coupure
+     * réseau émet des horodatages antérieurs au temps réel (c'est tout le sujet de
+     * TRK-015). Sans ce garde-fou, une trame rejouée poserait une date de retour AVANT
+     * la perte : durée négative, silencieusement écartée du calcul de médiane, et un
+     * épisode marqué clos qui ne l'est pas.
+     */
+    if (at.getTime() <= courant.lostAt.getTime()) {
+      this.logger.debug(
+        `Vehicule ${vehicleId} : retour a ${at.toISOString()} anterieur a la perte ` +
+          `(${courant.lostAt.toISOString()}) — ignore, trame probablement rejouee.`,
+      );
+      return 0;
+    }
+
+    const seuilDoublon = new Date(courant.lostAt.getTime() - MARGE_DOUBLON_EPISODE_MS);
+    const { count } = await this.prisma.gpsLossEvent.updateMany({
+      where: { vehicleId, recoveredAt: null, lostAt: { gte: seuilDoublon } },
       data: { recoveredAt: at },
     });
     if (count > 0) {
