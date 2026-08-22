@@ -88,6 +88,17 @@ const TOLERES = new Set([
   // Signal `evenements()` du rejeu de trajet : un identifiant, jamais affiche.
   // Le commentaire francais qui le suit, lui, est bien accentue.
   'apps/web/src/app/features/reports/trip-replay.component.ts|evenements',
+  // ── Deux faux positifs apparus le 2026-08-22 avec les correctifs TRK-033/036. ──
+  //
+  // `engine-control` : le motif « gabarit » (texte entre > et <) attrape une ligne de CODE,
+  // la fleche de `(a) => a.motif...` fournissant le « > ». C'est une variable `cle`, pas un
+  // mot francais a accentuer.
+  'apps/api/src/engine-control/engine-control.service.ts|cle',
+  // `recensement-suppressions` : c'est un `logger.error`, donc un JOURNAL TECHNIQUE — hors
+  // perimetre par la regle en tete de ce fichier. Le motif « toast » l'attrape quand meme
+  // parce que la forme est identique. Accentuer une ligne de journal n'apporte rien a
+  // personne ; la tolerer ici la rend visible plutot que de detendre le motif pour tous.
+  'apps/api/src/observability/recensement-suppressions.service.ts|echec',
 ]);
 
 const fichiers = [];
