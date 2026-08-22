@@ -25,10 +25,27 @@ describe('ScheduledTaskHeartbeatService', () => {
   const NOW = new Date('2026-08-03T18:00:00Z').getTime();
   const ilYA = (heures: number): Date => new Date(NOW - heures * 3_600_000);
 
-  type Etat = { enabled: boolean; lastRunAt: Date | null; frequency?: string };
+  type Etat = { enabled: boolean; lastRunAt: Date | null; frequency?: string; updatedAt?: Date | null };
+
+  /**
+   * ⚠️ `updatedAt` est injecte PAR DEFAUT, et c'est volontaire.
+   *
+   * Prisma rend TOUJOURS cette colonne : un mock qui l'omet vaut `undefined` la ou la
+   * production a une date, et le test decrirait alors un comportement qui n'existe nulle
+   * part. C'est exactement le piege paye le 2026-08-17 (garde ecrite sur `reviewedAt ===
+   * null`, verte en test, divergente en base). Un test doit pouvoir CHOISIR cette valeur,
+   * jamais l'oublier.
+   */
+  const CONFIGUREE_DEPUIS_LONGTEMPS = new Date(NOW - 1000 * 3_600_000);
 
   function setup(etats: Record<string, Etat | null>) {
-    const rows = (k: string) => ({ findFirst: jest.fn().mockResolvedValue(etats[k] ?? null) });
+    const rows = (k: string) => {
+      const e = etats[k];
+      const valeur = e === null || e === undefined
+        ? null
+        : { updatedAt: CONFIGUREE_DEPUIS_LONGTEMPS, ...e };
+      return { findFirst: jest.fn().mockResolvedValue(valeur) };
+    };
     const prisma = {
       tripAutomationSettings: rows('trip'),
       agendaAgentSettings: rows('agenda'),
@@ -145,6 +162,50 @@ describe('ScheduledTaskHeartbeatService', () => {
     // Le cas le plus discret : ni succès, ni échec, aucune trace d'aucune sorte.
     const { svc, recordBackground } = setup({
       report: { enabled: true, lastRunAt: null, frequency: 'weekly' },
+    });
+    await svc.check(NOW);
+
+    expect(recordBackground).toHaveBeenCalledTimes(1);
+    expect((recordBackground.mock.calls[0]![0] as Error).message).toContain('aucun passage enregistré');
+  });
+
+  it("🔑 NE crie PAS sur une tâche qu'on VIENT d'activer — le faux positif du 22/08", async () => {
+    // Le cas réel : « Automatisation des lieux » activée à 06:02, quotidienne à 03:00, donc
+    // premier passage possible 21 h plus tard. L'ancienne version l'a déclarée à l'arrêt
+    // 33 min après l'activation, puis TOUTES LES HEURES — 7 CRITICAL en une matinée.
+    const { svc, recordBackground } = setup({
+      place: { enabled: true, lastRunAt: null, updatedAt: ilYA(0.55) },
+    });
+    await svc.check(NOW);
+
+    expect(recordBackground).not.toHaveBeenCalled();
+  });
+
+  it("tolère l'attente jusqu'au seuil, puis signale au-delà", async () => {
+    // Quotidienne ⇒ tolérance 48 h. À 47 h on attend encore ; à 49 h, elle n'a jamais démarré.
+    const avant = setup({ place: { enabled: true, lastRunAt: null, updatedAt: ilYA(47) } });
+    await avant.svc.check(NOW);
+    expect(avant.recordBackground).not.toHaveBeenCalled();
+
+    const apres = setup({ place: { enabled: true, lastRunAt: null, updatedAt: ilYA(49) } });
+    await apres.svc.check(NOW);
+    expect(apres.recordBackground).toHaveBeenCalledTimes(1);
+  });
+
+  it("le message DATE l'attente — « aucun passage » seul ne dit pas si c'est grave", async () => {
+    const { svc, recordBackground } = setup({
+      place: { enabled: true, lastRunAt: null, updatedAt: ilYA(200) },
+    });
+    await svc.check(NOW);
+
+    const msg = (recordBackground.mock.calls[0]![0] as Error).message;
+    expect(msg).toContain('aucun passage enregistré depuis son activation il y a 200 h');
+  });
+
+  it("⚠️ sans repère de configuration, on SIGNALE — se taire masquerait une vraie panne", async () => {
+    // Repli défensif : si `updatedAt` venait à manquer, l'ancien comportement reprend.
+    const { svc, recordBackground } = setup({
+      place: { enabled: true, lastRunAt: null, updatedAt: null },
     });
     await svc.check(NOW);
 

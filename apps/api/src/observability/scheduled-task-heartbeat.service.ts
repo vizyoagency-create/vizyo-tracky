@@ -11,6 +11,13 @@ interface TaskState {
   periodHours: number;
   /** Cadence en toutes lettres, reprise dans le message d'alerte. */
   cadence: string;
+  /**
+   * Depuis quand la tache est dans sa configuration actuelle (`updatedAt` des reglages).
+   *
+   * Sert UNIQUEMENT quand `lastRunAt` est nul : une tache qu'on vient d'activer n'a pas
+   * encore eu l'occasion de tourner, et l'accuser d'etre « a l'arret » est faux.
+   */
+  configureeDepuis: Date | null;
 }
 
 /** Cadences nommées → période en heures. Inconnue → quotidienne (repli le plus courant). */
@@ -94,18 +101,18 @@ export class ScheduledTaskHeartbeatService {
       name: 'Automatisation des trajets',
       read: async (p) => {
         const r = await p.tripAutomationSettings.findFirst({
-          select: { enabled: true, lastRunAt: true, frequency: true },
+          select: { enabled: true, lastRunAt: true, frequency: true, updatedAt: true },
         });
-        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: periodOf(r.frequency), cadence: labelOf(r.frequency) };
+        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: periodOf(r.frequency), cadence: labelOf(r.frequency), configureeDepuis: r.updatedAt };
       },
     },
     {
       name: 'Agent d’agenda',
       read: async (p) => {
         const r = await p.agendaAgentSettings.findFirst({
-          select: { enabled: true, lastRunAt: true, frequency: true },
+          select: { enabled: true, lastRunAt: true, frequency: true, updatedAt: true },
         });
-        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: periodOf(r.frequency), cadence: labelOf(r.frequency) };
+        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: periodOf(r.frequency), cadence: labelOf(r.frequency), configureeDepuis: r.updatedAt };
       },
     },
     {
@@ -113,9 +120,9 @@ export class ScheduledTaskHeartbeatService {
       read: async (p) => {
         // ⚠️ LA tâche qui a produit la fausse alerte : réglée en hebdomadaire, jugée quotidienne.
         const r = await p.activityReportSchedule.findFirst({
-          select: { enabled: true, lastRunAt: true, frequency: true },
+          select: { enabled: true, lastRunAt: true, frequency: true, updatedAt: true },
         });
-        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: periodOf(r.frequency), cadence: labelOf(r.frequency) };
+        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: periodOf(r.frequency), cadence: labelOf(r.frequency), configureeDepuis: r.updatedAt };
       },
     },
     {
@@ -125,9 +132,9 @@ export class ScheduledTaskHeartbeatService {
         // (un passage à l'heure `hour`), et `minIntervalDays` ne borne que le RE-traitement
         // d'un même lieu, pas la fréquence du passage.
         const r = await p.placeAutomationSettings.findFirst({
-          select: { enabled: true, lastRunAt: true },
+          select: { enabled: true, lastRunAt: true, updatedAt: true },
         });
-        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: 24, cadence: 'quotidienne' };
+        return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: 24, cadence: 'quotidienne', configureeDepuis: r.updatedAt };
       },
     },
   ];
@@ -170,8 +177,32 @@ export class ScheduledTaskHeartbeatService {
 
       // Activée mais aucun passage enregistré : elle n'a jamais démarré. C'est le cas le
       // plus discret — aucune trace d'échec, aucune trace de succès, rien du tout.
+      //
+      // ⚠️ MAIS « pas encore » n'est pas « en panne ». Mesuré le 2026-08-22 : « Automatisation
+      // des lieux » a été activée à 06:02, elle est quotidienne à 03:00 — son premier passage
+      // possible était 21 h plus tard. La sonde l'a déclarée à l'arrêt 33 min après
+      // l'activation, puis TOUTES LES HEURES : 7 CRITICAL pour une tâche qui n'avait rien
+      // fait de mal.
+      //
+      // 🔑 C'est le même défaut que TRK-030, sur un autre module : là, un boîtier neuf était
+      // accusé de panne d'antenne 51 s avant son premier fix. Une branche « ça n'est jamais
+      // arrivé » sans borne de durée transforme une naissance en panne.
+      //
+      // On laisse donc à la tâche la MÊME tolérance qu'aux autres, comptée depuis sa
+      // configuration. ⚠️ Réserve assumée : `updatedAt` bouge à chaque édition des réglages,
+      // donc modifier une tâche qui n'a jamais tourné lui redonne une fenêtre. La portée est
+      // bornée — dès qu'un passage existe, c'est `lastRunAt` qui fait foi et cette branche
+      // n'est plus empruntée.
       if (!state.lastRunAt) {
-        this.report(task.name, state.cadence, null, maxSilenceHours);
+        const depuisConfigHours = state.configureeDepuis
+          ? (now - state.configureeDepuis.getTime()) / 3_600_000
+          : null;
+
+        // Pas de repère de configuration : on ne peut pas dater l'attente, donc on signale
+        // (l'ancien comportement) plutôt que de se taire sur une vraie panne.
+        if (depuisConfigHours !== null && depuisConfigHours <= maxSilenceHours) continue;
+
+        this.report(task.name, state.cadence, null, maxSilenceHours, depuisConfigHours);
         continue;
       }
 
@@ -187,10 +218,15 @@ export class ScheduledTaskHeartbeatService {
     cadence: string,
     silenceHours: number | null,
     maxSilenceHours: number,
+    depuisConfigHours: number | null = null,
   ): void {
+    // « aucun passage » sans durée ne dit pas si c'est grave. Avec la durée, le lecteur
+    // tranche seul : 3 h d'attente sur une tâche quotidienne, ou 200 h ?
     const depuis =
       silenceHours === null
-        ? 'aucun passage enregistré depuis son activation'
+        ? depuisConfigHours === null
+          ? 'aucun passage enregistré depuis son activation'
+          : `aucun passage enregistré depuis son activation il y a ${Math.round(depuisConfigHours)} h`
         : `dernier passage il y a ${Math.round(silenceHours)} h`;
 
     // Le message porte la CADENCE RÉELLEMENT CONFIGURÉE : sans elle, « 121 h » ne dit pas si
