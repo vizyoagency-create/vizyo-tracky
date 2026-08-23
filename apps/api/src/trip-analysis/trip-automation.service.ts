@@ -1,3 +1,4 @@
+import { heureParis } from '../common/utils/datetime';
 import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole, type TripAutomationRun, type TripAutomationSettings } from '@prisma/client';
@@ -861,19 +862,14 @@ export class TripAutomationService {
     };
   }
 
-  /** Heure courante à Paris (0-23), robuste au DST via Intl. */
+  /**
+   * Heure courante à Paris (0-23). Délégué à l'util commun `heureParis` (TRK-044) :
+   * cette copie-ci était saine (`en-GB` + `parseInt`), mais sa jumelle des lieux ne
+   * l'était pas — deux implémentations privées du même calcul, c'est l'écart qui a
+   * rendu une tâche à jamais muette. Une seule implémentation, un seul jeu de tests.
+   */
   private parisHour(): number {
-    try {
-      const s = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/Paris',
-        hour: '2-digit',
-        hour12: false,
-      }).format(new Date());
-      const h = parseInt(s, 10);
-      return Number.isFinite(h) ? h % 24 : new Date().getHours();
-    } catch {
-      return new Date().getHours();
-    }
+    return heureParis();
   }
 
   private clampInt(n: number, min: number, max: number): number {

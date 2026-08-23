@@ -74,3 +74,34 @@ export function formatFleetDateTimeLong(date: Date | string | number): string {
     timeZone: FLEET_TIME_ZONE,
   });
 }
+
+/**
+ * Heure courante à Paris (0-23) — pour comparer à un réglage « heure du jour ».
+ *
+ * ⚠️ POURQUOI `formatToParts` ET JAMAIS `Number(format(...))` : en `fr-FR`, un format à
+ * heure SEULE rend « 04 h » — et `Number("04 h")` vaut `NaN`, qui n'est égal à AUCUNE
+ * heure. C'est TRK-044, mesuré en production le 2026-08-23 : la porte
+ * `parisHour() !== settings.hour` de l'automatisation des lieux était vraie à toute
+ * heure, en silence — la tâche ne s'est JAMAIS déclenchée sur son planning, et rien ne
+ * l'a dit. `formatToParts` rend le champ heure isolé, sans habillage de locale.
+ *
+ * `hourCycle: 'h23'` : minuit = « 0 », jamais « 24 » (cycle h24 de certains ICU — un
+ * réglage minuit ne partirait jamais, même famille de silence).
+ *
+ * ⚠️ Le REPLI émet plutôt qu'il ne se tait : si le parse échoue, on rend l'heure UTC du
+ * serveur — décalée de 1-2 h, donc un run éventuellement décalé, MAIS un run. Un run
+ * décalé se voit au journal ; un run absent ne se voit nulle part.
+ */
+export function heureParis(instant: Date = new Date()): number {
+  try {
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: FLEET_TIME_ZONE,
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(instant);
+    const h = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '', 10);
+    return Number.isFinite(h) ? h % 24 : instant.getUTCHours();
+  } catch {
+    return instant.getUTCHours();
+  }
+}

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { heureParis } from '../common/utils/datetime';
 import { Cron } from '@nestjs/schedule';
 import type { PlaceAutomationSettings } from '@prisma/client';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
@@ -406,11 +407,18 @@ export class PlaceAutomationService {
     return this.prisma.placeAutomationSettings.create({ data: {} });
   }
 
-  /** Heure courante à Paris (le VPS est en UTC — sans ça le run tomberait à côté en été). */
+  /**
+   * Heure courante à Paris (le VPS est en UTC — sans ça le run tomberait à côté en été).
+   *
+   * 🔴 TRK-044 — l'ancienne version faisait `Number(format(...))` sur un format à heure
+   * seule : en `fr-FR` il rend « 04 h », donc `NaN`, donc une porte fermée À TOUTE HEURE.
+   * Cette tâche ne s'est JAMAIS déclenchée sur son planning entre son activation et le
+   * 23/08 — et aucun des trois filets (erreurs, journal, sonde) ne pouvait le voir, le
+   * `return` étant muet. Délégué à l'util COMMUN et testé : deux copies privées de ce
+   * calcul avaient déjà divergé (celle des trajets était saine, celle-ci non).
+   */
   private parisHour(): number {
-    return Number(
-      new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }).format(new Date()),
-    );
+    return heureParis();
   }
 }
 

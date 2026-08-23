@@ -71,3 +71,36 @@ describe('formatage des dates client — toujours en heure de Paris', () => {
     }
   });
 });
+
+/**
+ * TRK-044 — `heureParis`, et POURQUOI ces tests figent l'instant.
+ *
+ * Le bug d'origine : `Number(format(heure seule))` en `fr-FR` rend « 04 h » → NaN →
+ * une porte `heure !== reglage` fermée à toute heure, en silence. Les tests existants
+ * ne l'attrapaient pas parce qu'ils recalculaient l'heure avec LA MÊME fonction
+ * cassée : NaN comparé à NaN+5 passait « pour la bonne raison apparente ».
+ * Un instant FIGÉ compare le résultat à une valeur connue d'avance — c'est la seule
+ * forme qui aurait crié.
+ */
+describe('heureParis (TRK-044)', () => {
+  const { heureParis } = require('./datetime') as typeof import('./datetime');
+
+  it("rend un ENTIER, jamais NaN — le bug d'origine", () => {
+    const h = heureParis();
+    expect(Number.isInteger(h)).toBe(true);
+    expect(h).toBeGreaterThanOrEqual(0);
+    expect(h).toBeLessThanOrEqual(23);
+  });
+
+  it('ete (CEST) : 01:10 UTC = 3 h a Paris — le creneau reel de « Automatisation des lieux »', () => {
+    expect(heureParis(new Date('2026-08-23T01:10:00Z'))).toBe(3);
+  });
+
+  it('hiver (CET) : 02:10 UTC = 3 h a Paris — le meme reglage, l autre moitie de l annee', () => {
+    expect(heureParis(new Date('2026-12-23T02:10:00Z'))).toBe(3);
+  });
+
+  it('minuit rend 0, jamais 24 — le piege du cycle h24 de certains ICU', () => {
+    expect(heureParis(new Date('2026-08-23T22:10:00Z'))).toBe(0);
+  });
+});

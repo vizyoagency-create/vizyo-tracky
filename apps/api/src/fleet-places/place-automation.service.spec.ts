@@ -390,3 +390,54 @@ describe('PlaceAutomationService', () => {
     expect(data).toEqual({ enabled: true, updatedByUserId: 'u1' });
   });
 });
+
+/**
+ * TRK-044 — la porte planifiée, jugée à INSTANT FIGÉ.
+ *
+ * Les tests historiques recalculaient parisHour() côté test : ils prouvaient l'égalité
+ * « même fonction = même fonction », vraie AUSSI quand la fonction rend NaN. Résultat
+ * mesuré en production : la tâche activée le 22/08 n'a jamais tourné à son créneau, et
+ * aucun filet ne l'a vu. Ici l'horloge est posée sur le créneau réel (01:10 UTC =
+ * 03:10 Paris en été) et on exige que la porte S'OUVRE pour hour=3.
+ */
+describe('PlaceAutomationService — porte planifiée à instant figé (TRK-044)', () => {
+  afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
+  function monterPorte(hour: number) {
+    const settings = {
+      id: 's1', enabled: true, hour, minIntervalDays: 30, skipUnchanged: true,
+      maxAnalysesPerRun: 20, maxCostEurPerRun: 1, lastRunAt: null,
+      lastRunStats: null, updatedByUserId: null,
+      createdAt: new Date('2026-07-19T16:10:00Z'), updatedAt: new Date('2026-08-22T06:02:23Z'),
+    };
+    const prisma = {
+      placeAutomationSettings: {
+        findFirst: jest.fn().mockResolvedValue(settings),
+        create: jest.fn(), update: jest.fn().mockResolvedValue(settings),
+      },
+      placeAutomationRun: { create: jest.fn().mockResolvedValue({}), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
+    };
+    const analysis = { consommerTravauxLocaux: jest.fn().mockResolvedValue(0) };
+    const svc = new PlaceAutomationService(prisma as never, analysis as never, {} as never, {} as never, { record: jest.fn() } as never);
+    // On intercepte run() : ce test juge la PORTE, pas le passage lui-même.
+    const run = jest.spyOn(svc as never as { run: (...a: unknown[]) => Promise<unknown> }, 'run').mockResolvedValue({} as never);
+    return { svc, run };
+  }
+
+  it("🔑 s'OUVRE à 01:10 UTC pour hour=3 (03:10 Paris, été) — le créneau qui n'a jamais eu lieu", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1787533800000); // 2026-08-24T01:10:00Z — apres useFakeTimers(), new Date() fabrique une FakeDate que setSystemTime refuse : epoch numerique obligatoire
+    const { svc, run } = monterPorte(3);
+    await svc.runScheduled();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith(expect.anything(), 'scheduled');
+  });
+
+  it('reste FERMÉE à 03:10 UTC pour hour=3 — 03:10 UTC n est PAS 3 h à Paris en été', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1787541000000); // 2026-08-24T03:10:00Z
+    const { svc, run } = monterPorte(3);
+    await svc.runScheduled();
+    expect(run).not.toHaveBeenCalled();
+  });
+});
