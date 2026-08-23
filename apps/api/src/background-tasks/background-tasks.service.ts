@@ -180,6 +180,15 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
+    id: 'power-cut-recheck',
+    source: 'alerts/power-cut-recheck.service.ts',
+    label: "Réexamen des alarmes d'alimentation", category: 'Sécurité & moteur',
+    kind: 'cron', scheduleHuman: 'toutes les 5 min (à :45 s)', criticality: 'haute', antiOverlap: true,
+    note: "Née de TRK-040 : DZ-034-CA mort en 6 h 12 pendant que sa fiche disait « pas en péril ». À l'instant zéro d'une vraie coupure, la batterie de secours est pleine par définition — le premier examen ne peut pas trancher.",
+    purpose: "Relit la PENTE de batterie des soupçons ouverts à batterie pleine (verdict différé) : passée sous le seuil du propriétaire, la coupure est confirmée et l'alerte porte l'heure de la PREMIÈRE trame de l'épisode.",
+    periodic: { everyMs: 300_000, offsetMs: 45_000 },
+  },
+  {
     id: 'recensement-suppressions',
     source: 'observability/recensement-suppressions.service.ts',
     label: 'Recensement des disparitions de lignes', category: 'Maintenance données',

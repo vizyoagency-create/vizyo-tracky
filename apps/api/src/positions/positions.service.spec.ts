@@ -623,4 +623,38 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
 
     expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * TRK-040 — la pente de batterie se persiste à CHAQUE trame, et seul un contact
+   * EXPLICITE referme le soupçon de coupure.
+   */
+  describe('batterie persistée et soupçon refermé (TRK-040)', () => {
+    it('une trame qui porte la batterie écrit lastBatteryPercent/lastBatteryAt', async () => {
+      trackerRow = makeTracker();
+      await service.ingest(makeFrame({ batteryPercent: 83 }));
+      await new Promise((r) => setTimeout(r, 20));
+      const data = prisma.tracker.update.mock.calls[0][0].data;
+      expect(data.lastBatteryPercent).toBe(83);
+      expect(data.lastBatteryAt).toBeInstanceOf(Date);
+    });
+
+    it('un contact remis EXPLICITE (bit ignition) referme le soupçon', async () => {
+      trackerRow = makeTracker({ lastKnownIgnition: false, lastIgnition: false });
+      await service.ingest(makeFrame({ ignition: true }));
+      await new Promise((r) => setTimeout(r, 20));
+      const data = prisma.tracker.update.mock.calls[0][0].data;
+      expect(data.powerLossSuspectAt).toBeNull();
+      expect(data.powerLossSuspectBattery).toBeNull();
+    });
+
+    it("⚠️ l'ignition INFÉRÉE de la vitesse ne referme RIEN — un véhicule remorqué « roule » aussi", async () => {
+      trackerRow = makeTracker({ accConnected: false, lastKnownIgnition: null, lastIgnition: null });
+      // `ignition: undefined` : le makeFrame par defaut porte ignition:true — or l'inference
+      // vitesse ne s'applique QUE sans bit ACC dans la trame.
+      await service.ingest(makeFrame({ speedKph: 40, ignition: undefined }));
+      await new Promise((r) => setTimeout(r, 20));
+      const data = prisma.tracker.update.mock.calls[0][0].data;
+      expect(data.powerLossSuspectAt).toBeUndefined();
+    });
+  });
 });

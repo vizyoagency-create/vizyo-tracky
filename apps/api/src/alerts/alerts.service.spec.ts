@@ -17,6 +17,11 @@ const USER_ID = '00000000-0000-0000-0000-000000000030';
 const tracker = {
   id: TRACKER_ID,
   imei: '111111111111111',
+  // TRK-040 — Prisma rend TOUJOURS ces colonnes (leçon du 17/08 : un mock qui les omet
+  // décrit un comportement qui n'existe nulle part). `null` = jamais vu d'ignition.
+  lastKnownIgnition: null as boolean | null,
+  powerLossSuspectAt: null as Date | null,
+  powerLossSuspectBattery: null as number | null,
   vehicle: { id: VEHICLE_ID, plate: 'AB-123', fleetId: FLEET_ID, fleet: { id: FLEET_ID } },
 };
 
@@ -476,6 +481,92 @@ describe('AlertsService', () => {
       prisma.alert.findFirst.mockResolvedValueOnce(null as never);
       const r = await service.createFromCobanFrame(makeFrame('sos'), tracker as any);
       expect(r).not.toBeNull();
+    });
+  });
+
+  /** TRK-040 — contact allumé = on ne croit plus la batterie pleine. */
+  describe("TRK-040 : le contact départage, le soupçon s'arme", () => {
+    it('🔑 le verrou anti-DZ-034-CA : lastKnownIgnition=true + batterie 100 → ALERTE', async () => {
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100, speedKph: 0 }),
+        { ...tracker, lastKnownIgnition: true } as never,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+
+    it('la trame elle-même prouve le contact : frame.ignition=true + lastKnownIgnition=null → alerte', async () => {
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100, ignition: true }),
+        { ...tracker, lastKnownIgnition: null } as never,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+
+    it("⚠️ un false de trame n'éteint JAMAIS un true connu — le fil ACC meurt pendant une vraie coupure", async () => {
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100, ignition: false }),
+        { ...tracker, lastKnownIgnition: true } as never,
+      );
+      expect(prisma.alert.create).toHaveBeenCalled();
+    });
+
+    it("contact coupé + batterie pleine : pas d'alerte, mais le SOUPÇON s'arme", async () => {
+      const res = await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100 }),
+        { ...tracker, lastKnownIgnition: false } as never,
+      );
+      expect(res).toBeNull();
+      expect(prisma.tracker.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            lastPowerNotice: expect.any(String),
+            powerLossSuspectAt: expect.any(Date),
+            powerLossSuspectBattery: 100,
+          }),
+        }),
+      );
+    });
+
+    it("soupçon déjà ouvert : l'heure de la PREMIÈRE trame ne bouge pas au fil de la salve", async () => {
+      const premiere = new Date('2026-08-21T06:23:46Z');
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100 }),
+        { ...tracker, lastKnownIgnition: false, powerLossSuspectAt: premiere, powerLossSuspectBattery: 100 } as never,
+      );
+      expect(prisma.tracker.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ powerLossSuspectAt: premiere }),
+        }),
+      );
+    });
+
+    it('correctif 3 : le verdict qui ALERTE remplace la note « pas en péril » et referme le soupçon', async () => {
+      await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 100 }),
+        { ...tracker, lastKnownIgnition: true, powerLossSuspectAt: new Date(), powerLossSuspectBattery: 100 } as never,
+      );
+      expect(prisma.tracker.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            lastPowerNotice: expect.stringContaining('ALLUMÉ'),
+            powerLossSuspectAt: null,
+            powerLossSuspectBattery: null,
+          }),
+        }),
+      );
+    });
+
+    it('⚠️ la fenêtre TRK-032 passe AVANT le croisement contact : CUT récent → silence total', async () => {
+      prisma.engineControlCommand.findFirst.mockResolvedValueOnce({
+        action: 'CUT',
+        createdAt: new Date(Date.now() - 2 * 60_000),
+      } as never);
+      const res = await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 35 }),
+        { ...tracker, lastKnownIgnition: true } as never,
+      );
+      expect(res).toBeNull();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
     });
   });
 });

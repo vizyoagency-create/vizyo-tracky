@@ -936,6 +936,17 @@ model Tracker {
   /// un bruit par une cecite.
   lastPowerNoticeAt      DateTime?
   lastPowerNotice        String?
+  /// TRK-040 — soupçon de coupure réelle ouvert à batterie pleine. À l'instant zéro
+  /// d'une vraie coupure la batterie est pleine PAR DÉFINITION : on ne tranche pas,
+  /// on note l'heure de la PREMIÈRE trame et la batterie du moment, et le cron
+  /// power-cut-recheck réexamine à partir de T+30 min. Refermé par un contact remis
+  /// (kt) ou par l'alerte confirmée.
+  powerLossSuspectAt      DateTime?
+  powerLossSuspectBattery Int?
+  /// TRK-040 — dernière batterie interne transmise par le boîtier (toute trame
+  /// position, pas seulement les alarmes) : c'est la pente que le réexamen lit.
+  lastBatteryPercent     Int?
+  lastBatteryAt          DateTime?
   verboseUntil           DateTime?
   // V1.5 (Sprint H3) — pilotage du fix interval boitier (commande Coban `fix...***n`).
   // desired = ce que le serveur veut que le boitier emette ; current = ce qu'on observe
