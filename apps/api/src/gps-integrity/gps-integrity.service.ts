@@ -157,8 +157,9 @@ export class GpsIntegrityService {
       const aliveSince = new Date(now - TRACKER_ONLINE_THRESHOLD_MS); // 15 min
       const posStaleBefore = new Date(now - this.alertStaleMs); // 2 h par défaut
 
-      // Boîtiers vivants + no_fix récents + position périmée (ou jamais localisés alors
-      // qu'ils émettent activement des no_fix depuis un moment).
+      // Boîtiers vivants + no_fix récents + position périmée — ou jamais localisés DEPUIS
+      // PLUS LONGTEMPS que la même tolérance (TRK-030 : la garde « depuis un moment » était
+      // écrite ici en commentaire mais absente de la requête ; elle est codée ci-dessous).
       const suspects = await this.prisma.tracker.findMany({
         where: {
           vehicleId: { not: null },
@@ -168,7 +169,20 @@ export class GpsIntegrityService {
           vehicle: { outOfServiceReason: null },
           lastSeenAt: { gte: aliveSince },
           lastNoFixAt: { gte: aliveSince },
-          OR: [{ lastPositionAt: null }, { lastPositionAt: { lt: posStaleBefore } }],
+          // TRK-030 — la branche « jamais localisé » est bornée par l'ancienneté du BOÎTIER
+          // (createdAt, faute de firstSeenAt sur Tracker), pas par celle d'une position qui
+          // n'existe pas. Sans borne, un boîtier NEUF était accusé de panne d'antenne au
+          // premier tick suivant sa connexion (mesuré le 19/08 : alerte 39 s après le login
+          // TCP, premier fix 51 s plus tard). Même tolérance que le régime établi
+          // (posStaleBefore, 2 h par défaut) : le délai de grâce revient enfin au seul cas
+          // où l'attente est physiquement certaine — le démarrage à froid Coban.
+          // ⚠️ Surtout PAS `updatedAt` comme repère de naissance : il bouge à CHAQUE trame
+          // (lastSeenAt/lastNoFixAt), la branche ne s'ouvrirait plus jamais et l'antenne
+          // oubliée dans le carton — le signal le plus utile du détecteur — disparaîtrait.
+          OR: [
+            { lastPositionAt: null, createdAt: { lt: posStaleBefore } },
+            { lastPositionAt: { lt: posStaleBefore } },
+          ],
         },
         select: {
           id: true,
@@ -176,6 +190,10 @@ export class GpsIntegrityService {
           lastLat: true,
           lastLng: true,
           lastPositionAt: true,
+          // TRK-030 — date de mise en service : le message d'un « jamais localisé » dit
+          // depuis quand il attend, au lieu d'un « depuis toujours » qui se lit comme un
+          // défaut ancien alors que la date de naissance est connue.
+          createdAt: true,
           vehicle: { select: { id: true, plate: true, fleetId: true } },
         },
       });
@@ -187,7 +205,7 @@ export class GpsIntegrityService {
       for (const t of suspects) {
         if (!t.vehicle) continue;
         try {
-          const agoLabel = this.ageLabel(t.lastPositionAt, now);
+          const agoLabel = this.ageLabel(t.lastPositionAt, now, t.createdAt);
 
           // Zones mortes GPS : enregistrer la perte (idempotent par épisode via `lostAt`) et
           // récupérer le contexte de récurrence. Nécessite une dernière position (point d'ancrage) —
@@ -292,8 +310,11 @@ export class GpsIntegrityService {
           // Un épisode qui DURE ne doit pas réécrire une ligne chaque jour indéfiniment
           // (cf. `shouldRemindAdmin`). L'alerte flotte, elle, garde sa cadence : c'est le
           // canal de l'exploitant, et l'acquitter la fait taire.
+          // TRK-030 — un épisode « jamais localisé » est daté par la mise en service : sans
+          // ça, `null` court-circuitait le backoff et l'antenne au carton réécrivait une
+          // ligne PAR JOUR indéfiniment (exactement le motif FZ-862-VY du 2026-08-10).
           const remind = shouldErrorLog
-            ? await this.shouldRemindAdmin(t.imei, t.lastPositionAt, now)
+            ? await this.shouldRemindAdmin(t.imei, t.lastPositionAt ?? t.createdAt, now)
             : false;
           if (created && shouldErrorLog && remind) {
             raised++;
@@ -344,9 +365,20 @@ export class GpsIntegrityService {
     }
   }
 
-  private ageLabel(lastPositionAt: Date | null, now: number): string {
-    if (!lastPositionAt) return 'toujours (jamais localisé)';
-    const min = Math.floor((now - lastPositionAt.getTime()) / 60_000);
+  private ageLabel(lastPositionAt: Date | null, now: number, createdAt?: Date): string {
+    // TRK-030 (point 3 de la fiche) — un boîtier jamais localisé est daté depuis sa MISE EN
+    // SERVICE : « depuis toujours » se lisait comme un défaut ancien alors que la date de
+    // naissance est connue. Le repli « toujours » ne survit que si createdAt manque.
+    if (!lastPositionAt) {
+      return createdAt
+        ? `sa mise en service il y a ${this.durationLabel(now - createdAt.getTime())} (jamais localisé)`
+        : 'toujours (jamais localisé)';
+    }
+    return this.durationLabel(now - lastPositionAt.getTime());
+  }
+
+  private durationLabel(ms: number): string {
+    const min = Math.floor(ms / 60_000);
     if (min < 60) return `${min} min`;
     const h = Math.floor(min / 60);
     if (h < 48) return `${h} h`;

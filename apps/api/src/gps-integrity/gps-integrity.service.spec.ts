@@ -107,7 +107,16 @@ describe('GpsIntegrityService', () => {
     expect(where.vehicleId).toEqual({ not: null });
     expect(where.lastSeenAt.gte).toBeInstanceOf(Date);
     expect(where.lastNoFixAt.gte).toBeInstanceOf(Date);
-    expect(where.OR).toEqual([{ lastPositionAt: null }, { lastPositionAt: { lt: expect.any(Date) } }]);
+    // TRK-030 — la branche « jamais localisé » porte une borne d'ancienneté du boîtier.
+    expect(where.OR).toEqual([
+      { lastPositionAt: null, createdAt: { lt: expect.any(Date) } },
+      { lastPositionAt: { lt: expect.any(Date) } },
+    ]);
+    // 🔑 MÊME tolérance des deux côtés (le délai de grâce du régime établi, 2 h par défaut) :
+    // c'est l'asymétrie inversée de la fiche qu'on verrouille ici.
+    expect((where.OR[0].createdAt.lt as Date).getTime()).toBe(
+      (where.OR[1].lastPositionAt.lt as Date).getTime(),
+    );
   });
 
   // --- Zones mortes GPS -----------------------------------------------------------------
@@ -400,5 +409,50 @@ describe('GpsIntegrityService', () => {
       expect(Math.round(windowMs / DAY)).toBe(30); // borné, mais fini
       expect(errorLogger.record).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('TRK-030 — un boîtier jamais localisé est daté depuis sa MISE EN SERVICE, pas « depuis toujours »', async () => {
+    const { svc, prisma, alerts, deadZones, errorLogger } = build();
+    prisma.tracker.findMany.mockResolvedValue([
+      makeTracker({ lastLat: null, lastLng: null, lastPositionAt: null, createdAt: new Date(Date.now() - 4 * 3600_000) }),
+    ]);
+    alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+    await svc.tick();
+
+    // Pas d'ancre géographique → pas de rattachement à une zone morte (comportement existant).
+    expect(deadZones.recordLoss).not.toHaveBeenCalled();
+    const message = (errorLogger.record.mock.calls[0][0] as Error).message;
+    expect(message).toContain('mise en service');
+    expect(message).toContain('4 h');
+    expect(message).toContain('jamais localisé');
+    expect(message).not.toContain('depuis toujours');
+  });
+
+  it('TRK-030 — repli sans createdAt (donnée legacy) : « toujours (jamais localisé) », sans crash', async () => {
+    const { svc, prisma, alerts, errorLogger } = build();
+    prisma.tracker.findMany.mockResolvedValue([
+      makeTracker({ lastLat: null, lastLng: null, lastPositionAt: null, createdAt: undefined }),
+    ]);
+    alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+    await svc.tick();
+
+    const message = (errorLogger.record.mock.calls[0][0] as Error).message;
+    expect(message).toContain('toujours (jamais localisé)');
+  });
+
+  it('TRK-030 — un jamais-localisé qui DURE espace ses rappels comme les autres (backoff daté par la naissance)', async () => {
+    const DAY = 24 * 3600_000;
+    const { svc, prisma, alerts, errorLogger } = build();
+    prisma.tracker.findMany.mockResolvedValue([
+      makeTracker({ lastLat: null, lastLng: null, lastPositionAt: null, createdAt: new Date(Date.now() - 3 * DAY) }),
+    ]);
+    alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+    prisma.errorLog.findFirst.mockResolvedValue({ id: 'e1' }); // rappel récent déjà écrit
+
+    await svc.tick();
+
+    expect(errorLogger.record).not.toHaveBeenCalled(); // avant le fix : une ligne par jour, pour toujours
   });
 });
