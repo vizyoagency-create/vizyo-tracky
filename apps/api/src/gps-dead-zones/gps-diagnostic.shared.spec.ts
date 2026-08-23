@@ -77,15 +77,18 @@ describe('gps-diagnostic.shared', () => {
 
   // ─── Le boîtier ────────────────────────────────────────────────────────────
 
-  it('un véhicule qui perd le signal PARTOUT : c’est le BOÎTIER', () => {
+  it('un véhicule qui perd le signal PARTOUT — là où la flotte circule : c’est le BOÎTIER', () => {
+    // TRK-039 : les zones portent désormais leur corroboration — d'autres véhicules passent
+    // ici sans perdre le signal, donc la contre-preuve est TESTABLE et elle accuse l'appareil.
     const zones = [0, 4000, 9000, 15_000].map((m, i) => {
       const p = decale(TOULOUSE, m);
-      return zone({ id: `z${i}`, vehicleId: 'zz', centroidLat: p.lat, centroidLng: p.lng, occurrences: 4 });
+      return zone({ id: `z${i}`, vehicleId: 'zz', centroidLat: p.lat, centroidLng: p.lng, occurrences: 4, vehiculesTiersSurSecteur: 2 });
     });
     const d = diagnostiquer(zones);
     const b = d.find((x) => x.nature === 'boitier');
     expect(b).toBeDefined();
     expect(b!.recommandation).toMatch(/antenne|fixation|alimentation/i);
+    expect(b!.constat).toMatch(/d'autres véhicules de la flotte circulent/);
     // 16 episodes : c'est serieux.
     expect(b!.gravite).toBe('haute');
   });
@@ -134,7 +137,7 @@ describe('gps-diagnostic.shared', () => {
     //    Comportement correct de l'algorithme — mais jeu de données trompeur.
     const eparpille = [30_000, 35_000, 41_000, 47_000].map((m, i) => {
       const p = decale(TOULOUSE, m);
-      return zone({ id: `g${i}`, vehicleId: 'zz', centroidLat: p.lat, centroidLng: p.lng, occurrences: 5 });
+      return zone({ id: `g${i}`, vehicleId: 'zz', centroidLat: p.lat, centroidLng: p.lng, occurrences: 5, vehiculesTiersSurSecteur: 1 });
     });
     const partage = [zone({ id: 'p1', vehicleId: 'aa' }), zone({ id: 'p2', vehicleId: 'bb' })];
     const d = diagnostiquer([...partage, ...eparpille]);
@@ -143,5 +146,67 @@ describe('gps-diagnostic.shared', () => {
 
   it('rend une liste vide sans zones', () => {
     expect(diagnostiquer([])).toEqual([]);
+  });
+
+  // ─── TRK-039 — la corroboration rend la contre-preuve testable ────────────
+
+  it('🔑 le cas KSR370 : des zones que personne d’autre ne fréquente ne font plus un boîtier', () => {
+    // 6 zones, ~580 km d'étalement (Toulouse–Benidorm), AUCUNE corroboration : personne
+    // d'autre de la flotte ne va là-bas. « Sans qu'aucun autre véhicule n'ait le même
+    // problème » y est invérifiable — une absence de preuve n'est pas une preuve.
+    // C'est le test qui aurait attrapé l'incident du 21/08.
+    const points = [0, 500, 1000, 579_000, 580_000, 580_500].map((m) => decale(TOULOUSE, m));
+    const zones = points.map((p, i) =>
+      zone({ id: `k${i}`, vehicleId: 'ksr370', centroidLat: p.lat, centroidLng: p.lng, occurrences: 2 }),
+    );
+    const d = diagnostiquer(zones);
+    expect(d.filter((x) => x.nature === 'boitier')).toHaveLength(0);
+    expect(d[0].nature).toBe('indetermine');
+    expect(diagnosticsActionnables(d)).toHaveLength(0);
+  });
+
+  it('l’étalement se mesure sur l’aire d’exploitation partagée, pas sur la distance parcourue', () => {
+    // 4 zones corroborées resserrées (< 2 km) + 2 zones lointaines non corroborées à 500 km :
+    // les lointaines ne comptent ni pour le seuil ni pour l'étalement.
+    const proches = [0, 600, 1200, 1800].map((m, i) => {
+      const p = decale(TOULOUSE, m);
+      return zone({ id: `p${i}`, vehicleId: 'aa', centroidLat: p.lat, centroidLng: p.lng, vehiculesTiersSurSecteur: 1 });
+    });
+    const lointaines = [500_000, 501_000].map((m, i) => {
+      const p = decale(TOULOUSE, m);
+      return zone({ id: `l${i}`, vehicleId: 'aa', centroidLat: p.lat, centroidLng: p.lng });
+    });
+    const d = diagnostiquer([...proches, ...lointaines]);
+    expect(d.filter((x) => x.nature === 'boitier')).toHaveLength(0);
+  });
+
+  it('les zones corroborées suffisent, même mêlées à des zones lointaines non corroborées', () => {
+    const corroborees = [0, 4000, 9000, 15_000].map((m, i) => {
+      const p = decale(TOULOUSE, m);
+      return zone({ id: `c${i}`, vehicleId: 'aa', centroidLat: p.lat, centroidLng: p.lng, occurrences: 3, vehiculesTiersSurSecteur: 1 });
+    });
+    const lointaines = [500_000, 501_000].map((m, i) => {
+      const p = decale(TOULOUSE, m);
+      return zone({ id: `x${i}`, vehicleId: 'aa', centroidLat: p.lat, centroidLng: p.lng, occurrences: 9 });
+    });
+    const d = diagnostiquer([...corroborees, ...lointaines]);
+    const b = d.find((x) => x.nature === 'boitier');
+    expect(b).toBeDefined();
+    // Le diagnostic ne référence QUE ce qui fonde le verdict — compter Benidorm dans les
+    // épisodes referait mentir le constat par la bande.
+    expect(b!.zoneIds).toHaveLength(4);
+    expect(b!.etalementM).toBeLessThan(20_000);
+    expect(b!.episodes).toBe(12);
+  });
+
+  it('corroboration ABSENTE = corroboration NULLE — le défaut sûr', () => {
+    // Fige la sémantique `undefined ?? 0` : une corroboration qu'on n'a pas mesurée
+    // n'est pas une preuve.
+    const zones = [0, 4000, 9000, 15_000].map((m, i) => {
+      const p = decale(TOULOUSE, m);
+      return zone({ id: `u${i}`, vehicleId: 'aa', centroidLat: p.lat, centroidLng: p.lng });
+    });
+    const d = diagnostiquer(zones);
+    expect(d.filter((x) => x.nature === 'boitier')).toHaveLength(0);
   });
 });

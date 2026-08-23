@@ -51,6 +51,23 @@ const SOURCE_ALERTE = 'GPS_QUALITE';
  * digne de confiance. Sept jours laissent le temps d'aller voir le véhicule.
  */
 const JOURS_SANS_REPETITION = 7;
+/**
+ * TRK-039 (1) — fenetre d'observation. Les 6 zones qui ont fait accuser KSR370 avaient jusqu'a
+ * 19 jours ; un diagnostic bati sur des zones de trois semaines decrit un passe revolu.
+ */
+const FENETRE_ZONES_JOURS = 30;
+/**
+ * TRK-039 (2) — un tracker OFFLINE depuis plus longtemps n'a plus de qualite GPS a diagnostiquer :
+ * sa mort est un fait, deja couvert ailleurs (POWER_CUT, TRK-023). Envoyer controler l'antenne
+ * d'un boitier mort est l'action la moins utile qu'on puisse tirer du dossier.
+ */
+const HEURES_OFFLINE_EXCLUSION = 24;
+/**
+ * TRK-039 (3) — rayon autour du centroide d'une zone dans lequel on cherche le passage d'AUTRES
+ * vehicules : leur presence rend la corroboration croisee TESTABLE. Personne dans ce rayon en
+ * 30 jours = la zone ne peut rien corroborer.
+ */
+const RAYON_CORROBORATION_M = 500;
 
 const ESSAI = process.argv.slice(2).includes('--essai');
 
@@ -71,8 +88,11 @@ try {
 const { diagnostiquer, diagnosticsActionnables } = partage;
 
 // ── Accès base ───────────────────────────────────────────────────────────────────────
-function psql(sql, { lecture = true } = {}) {
+function psql(sql, { lecture = true, timeoutMs = 0 } = {}) {
   const flags = lecture ? ['-t', '-A'] : ['-q'];
+  // Le timeout passe par PGOPTIONS et non par `SET statement_timeout; ...` : psql imprimerait
+  // le tag « SET » AVANT le resultat, et JSON.parse mangerait du bruit.
+  const env = timeoutMs > 0 ? `-e PGOPTIONS='-c statement_timeout=${timeoutMs}' ` : '';
   return execFileSync(
     'ssh',
     ['-o', 'ConnectTimeout=20', '-o', 'BatchMode=yes', VPS,
@@ -80,30 +100,81 @@ function psql(sql, { lecture = true } = {}) {
       //    comptait alors comme ecrit ce qui ne l'etait pas — il annoncait « 1 zone
       //    enregistree » sur une table inexistante. Un agent qui se felicite d'un travail
       //    qu'il n'a pas fait est pire qu'un agent en panne : la panne, elle, se voit.
-      `docker exec -i ${CONTENEUR} psql -U ${BASE.user} -d ${BASE.db} -v ON_ERROR_STOP=1 ${flags.join(' ')} -f -`],
+      `docker exec -i ${env}${CONTENEUR} psql -U ${BASE.user} -d ${BASE.db} -v ON_ERROR_STOP=1 ${flags.join(' ')} -f -`],
     { input: sql, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
   );
 }
 const q = (s) => `'${String(s ?? '').replace(/'/g, "''")}'`;
 const tableau = (v) => `ARRAY[${v.map(q).join(',')}]::text[]`;
 
-/** Toutes les zones connues, avec la plaque du vehicule — de quoi rendre un diagnostic lisible. */
+/** Zones RECENTES, avec la plaque du vehicule et la vie de son boitier. */
 function zones() {
+  // TRK-039 (1) : sans fenetre, l'agent a diagnostique KSR370 sur des zones vieilles de 19 jours.
+  // TRK-039 (2) : le statut du tracker est RAPPORTE, pas filtre — la jointure est LEFT et le WHERE
+  //   ne touche que l'age des zones. Les zones d'un boitier mort restent dans le jeu : elles
+  //   corroborent les LIEUX (la branche saine de l'agent, celle qui exige 2 vehicules).
   const sql = `SELECT coalesce(json_agg(row_to_json(x)),'[]')::text FROM (
     SELECT z.id, z."vehicleId", v.plate AS plaque, z."fleetId", z."centroidLat", z."centroidLng",
-           z."radiusM", z.occurrences, z."firstSeenAt", z."lastSeenAt", z."placeLabel"
-    FROM gps_dead_zones z JOIN vehicles v ON v.id = z."vehicleId") x;`;
+           z."radiusM", z.occurrences, z."firstSeenAt", z."lastSeenAt", z."placeLabel",
+           t.status::text AS "trackerStatus", t."lastSeenAt" AS "trackerLastSeenAt"
+    FROM gps_dead_zones z
+    JOIN vehicles v ON v.id = z."vehicleId"
+    LEFT JOIN trackers t ON t."vehicleId" = z."vehicleId"
+    WHERE z."lastSeenAt" > now() - interval '${FENETRE_ZONES_JOURS} days') x;`;
   return JSON.parse(psql(sql).trim() || '[]');
 }
 
+/** Prefixe des cles de refroidissement de CET agent — une cle par plaque signalee. */
+const PREFIXE_REFROIDISSEMENT = 'gps-qualite:';
+
 /** Plaques deja signalees recemment : on ne re-alerte pas tant que le delai n'est pas ecoule. */
 function dejaSignalees() {
-  const sql = `SELECT coalesce(json_agg(DISTINCT context->>'plaque'),'[]')::text
-    FROM error_logs
-    WHERE source = ${q(SOURCE_ALERTE)}
-      AND "createdAt" > now() - interval '${JOURS_SANS_REPETITION} days'
-      AND context->>'plaque' IS NOT NULL;`;
+  // TRK-039 (5) : la memoire vivait dans error_logs — la piece meme que l'effaceur de TRK-035
+  // vide. La ligne temoin du 20/08 a disparu, la garde a rendu [] et l'agent a reemis a J+2 au
+  // lieu de J+7. Elle vit desormais dans refroidissements_alerte (TRK-038), creee precisement
+  // hors de portee des purges : un garde-fou ne range pas sa memoire dans la piece qu'il
+  // surveille.
+  const sql = `SELECT coalesce(json_agg(substr("cle", ${PREFIXE_REFROIDISSEMENT.length + 1})),'[]')::text
+    FROM refroidissements_alerte
+    WHERE "cle" LIKE ${q(PREFIXE_REFROIDISSEMENT + '%')}
+      AND "derniereEmissionAt" > now() - interval '${JOURS_SANS_REPETITION} days';`;
   return new Set(JSON.parse(psql(sql).trim() || '[]'));
+}
+
+/**
+ * Pour chaque zone candidate, combien d'AUTRES vehicules ont circule sur son secteur (fenetre
+ * de FENETRE_ZONES_JOURS jours).
+ *
+ * N'est interrogee QUE pour les zones des candidats « boitier » — une poignee, la plupart des
+ * nuits zero : `positions` n'a plus d'index spatial, et ce cadre lat/lng se paie en lecture
+ * sequentielle. Le statement_timeout borne le cout sur la prod ; en cas d'echec on rend une
+ * carte VIDE, donc « non corrobore », donc silence. C'est le sens meme du correctif TRK-039 :
+ * une corroboration qu'on n'a pas pu mesurer n'est pas une preuve.
+ */
+function corroborations(cibles) {
+  if (cibles.length === 0) return new Map();
+  const demiLatDeg = (RAYON_CORROBORATION_M / 111_320).toFixed(6);
+  const valeurs = cibles
+    .map((c) => `(${q(c.zoneId)}, ${q(c.vehicleId)}::uuid, ${c.lat}::float8, ${c.lng}::float8)`)
+    .join(',');
+  const sql = `SELECT coalesce(json_agg(row_to_json(x)),'[]')::text FROM (
+    SELECT c.zone_id AS "zoneId", count(DISTINCT t."vehicleId")::int AS tiers
+    FROM (VALUES ${valeurs}) AS c(zone_id, vehicle_id, lat, lng)
+    JOIN trackers t ON t."vehicleId" IS NOT NULL AND t."vehicleId" <> c.vehicle_id
+    JOIN positions p ON p."trackerId" = t.id
+      AND p."createdAt" > now() - interval '${FENETRE_ZONES_JOURS} days'
+      AND p.valid
+      AND p.lat BETWEEN c.lat - ${demiLatDeg} AND c.lat + ${demiLatDeg}
+      AND p.lng BETWEEN c.lng - ${demiLatDeg} / cos(radians(c.lat))
+                    AND c.lng + ${demiLatDeg} / cos(radians(c.lat))
+    GROUP BY c.zone_id) x;`;
+  try {
+    const lignes = JSON.parse(psql(sql, { timeoutMs: 60_000 }).trim() || '[]');
+    return new Map(lignes.map((r) => [r.zoneId, r.tiers]));
+  } catch (e) {
+    console.error(`  (corroboration impossible : ${String(e.message).split(String.fromCharCode(10))[0].slice(0, 120)})`);
+    return new Map();
+  }
 }
 
 /**
@@ -146,10 +217,25 @@ function alerterBoitier(d) {
     zones: d.zoneIds.length,
     recommandation: d.recommandation,
   });
+  // BEGIN/COMMIT explicite : psql -f - execute les instructions UNE PAR UNE, pas en transaction.
+  // L'alerte et sa memoire de refroidissement doivent partir ensemble ou pas du tout — une
+  // memoire posee sans alerte ferait 7 jours de silence sur rien, une alerte sans memoire
+  // referait le doublon de TRK-039.
   const sql = `
+    BEGIN;
     INSERT INTO error_logs (id,level,source,message,context,"createdAt")
     VALUES (gen_random_uuid(), ${q(niveau)}, ${q(SOURCE_ALERTE)},
-            ${q(`${d.constat} ${d.recommandation}`)}, ${q(contexte)}::jsonb, now());`;
+            ${q(`${d.constat} ${d.recommandation}`)}, ${q(contexte)}::jsonb, now());
+    -- TRK-039 (5) : la memoire de l'anti-repetition vit ICI, pas dans error_logs que l'effaceur
+    -- de TRK-035 vide. Meme table et memes colonnes que RefroidissementAlerteService (TRK-038) ;
+    -- "updatedAt" n'a pas de trigger, on le pose nous-memes.
+    INSERT INTO refroidissements_alerte ("cle","derniereEmissionAt","emissions","createdAt","updatedAt")
+    VALUES (${q(PREFIXE_REFROIDISSEMENT + d.vehicules[0])}, now(), 1, now(), now())
+    ON CONFLICT ("cle") DO UPDATE SET
+      "derniereEmissionAt" = now(),
+      "emissions" = refroidissements_alerte."emissions" + 1,
+      "updatedAt" = now();
+    COMMIT;`;
   psql(sql, { lecture: false });
 }
 
@@ -206,13 +292,44 @@ function passage(demarreA) {
   let lieux = 0;
   let boitiers = 0;
   let tus = 0;
+  let morts = 0;
   const deja = ESSAI ? new Set() : dejaSignalees();
+  // TRK-039 (2) : un boitier OFFLINE depuis plus de 24 h n'a plus de qualite GPS a diagnostiquer.
+  // Sa mort est deja couverte (POWER_CUT, OFFLINE) — KSR370 a valu un « controler l'antenne »
+  // huit jours apres sa derniere trame. Ses zones restent examinees : elles corroborent les lieux.
+  const seuilVie = Date.now() - HEURES_OFFLINE_EXCLUSION * 3_600_000;
+  const boitiersMorts = new Set(
+    brutes
+      .filter((z) => z.trackerStatus === 'OFFLINE'
+        && (!z.trackerLastSeenAt || Date.parse(z.trackerLastSeenAt) < seuilVie))
+      .map((z) => z.plaque),
+  );
 
   for (const [, zonesFlotte] of parFlotte) {
-    const tous = diagnostiquer(zonesFlotte);
+    // TRK-039 (3) — passe 1 : reperer les CANDIDATS « boitier » avec une corroboration fictive.
+    // Elle ne sert qu'a savoir pour QUELLES zones interroger `positions` ; aucun verdict n'en
+    // sort. La plupart des nuits, zero candidat = zero requete spatiale.
+    const candidats = diagnostiquer(zonesFlotte.map((z) => ({ ...z, vehiculesTiersSurSecteur: 1 })))
+      .filter((d) => d.nature === 'boitier');
+    const aCorroborer = new Set(candidats.flatMap((d) => d.zoneIds));
+    const tiers = corroborations(
+      zonesFlotte
+        .filter((z) => aCorroborer.has(z.id))
+        .map((z) => ({ zoneId: z.id, vehicleId: z.vehicleId, lat: z.centroidLat, lng: z.centroidLng })),
+    );
+    // Passe 2 : le verdict, sur la corroboration REELLE. Zone jamais interrogee = 0 = rien.
+    const tous = diagnostiquer(
+      zonesFlotte.map((z) => ({ ...z, vehiculesTiersSurSecteur: tiers.get(z.id) ?? 0 })),
+    );
     tus += tous.length - diagnosticsActionnables(tous).length;
 
     for (const d of diagnosticsActionnables(tous)) {
+      if (d.nature === 'boitier' && boitiersMorts.has(d.vehicules[0])) {
+        // Mort depuis plus de 24 h : l'accusation d'antenne est interdite (TRK-039, cas KSR370).
+        if (ESSAI) console.log(`  [ignore] ${d.vehicules[0]} — boitier OFFLINE > 24 h, deja couvert ailleurs`);
+        morts++;
+        continue;
+      }
       if (ESSAI) {
         console.log(`  [${d.gravite.toUpperCase()}] ${d.nature} — ${d.constat}`);
         if (d.nature === 'lieu') lieux++;
@@ -232,14 +349,14 @@ function passage(demarreA) {
 
   console.log(
     `[${h()}] fini — ${lieux} zone(s) enregistree(s), ${boitiers} boitier(s) signale(s), ` +
-      `${tus} cas laisses sans conclusion.`,
+      `${morts} boitier(s) mort(s) ignore(s), ${tus} cas laisses sans conclusion.`,
   );
   // Le resume dit ce qui a ete FAIT, y compris quand c'est rien. « Aucune zone a signaler » est
   // une information : elle distingue une nuit calme d'un agent qui n'a pas tourne.
   const recolte =
     lieux === 0 && boitiers === 0
-      ? `Aucune zone a signaler (${brutes.length} zone(s) examinee(s), ${tus} sans conclusion)`
-      : `${lieux} zone(s) enregistree(s), ${boitiers} boitier(s) signale(s)`;
+      ? `Aucune zone a signaler (${brutes.length} zone(s) examinee(s), ${tus} sans conclusion, ${morts} boitier(s) mort(s) ignore(s))`
+      : `${lieux} zone(s) enregistree(s), ${boitiers} boitier(s) signale(s), ${morts} mort(s) ignore(s)`;
   consignerPassage(demarreA, true, recolte);
 }
 
