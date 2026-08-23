@@ -523,7 +523,7 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits, courrierIa] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS, agentLimites, agentRecit, agentQualiteGps, rattrapageRecits, courrierIa, tripGarde] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
@@ -533,6 +533,7 @@ export class BackgroundTasksService {
       this.etatAgentQualiteGps(),
       this.etatRattrapageRecits(),
       this.etatCourrierIa(),
+      this.gardeTrajets(nowMs),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -551,7 +552,7 @@ export class BackgroundTasksService {
 
       if (e.continuous) return base; // flux continu → pas de compte-à-rebours daté
 
-      if (e.ai) return { ...base, ...this.aiTask(e.ai, tripS, activityS, agendaS, placeS, nowMs) };
+      if (e.ai) return { ...base, ...this.aiTask(e.ai, tripS, activityS, agendaS, placeS, tripGarde, nowMs) };
 
       // Traitement externe : son etat vient du travail ECRIT en base, pas du registre local.
       if (e.externe === 'recit-trajet') {
@@ -784,6 +785,7 @@ export class BackgroundTasksService {
     activityS: { enabled: boolean; frequency: string; lastRunAt: Date | null } | null,
     agendaS: Array<{ enabled: boolean; nightlyHour: number; frequency: string; triggerNightly: boolean; lastRunAt: Date | null }>,
     placeS: { enabled: boolean; hour: number; minIntervalDays: number; maxAnalysesPerRun: number; maxCostEurPerRun: number; lastRunAt: Date | null } | null,
+    tripGarde: { dernierDepart: Date | null; ticksAnnules24h: number },
     nowMs: number,
   ): Partial<BackgroundTaskDto> {
     if (kind === 'place') {
@@ -801,17 +803,25 @@ export class BackgroundTasksService {
     }
     if (kind === 'trip') {
       if (!tripS?.enabled) return { enabled: false, settingsSummary: 'En pause', lastRunAt: tripS?.lastRunAt?.toISOString() ?? null };
-      const lastMs = tripS.lastRunAt?.getTime() ?? 0;
       const daily = tripS.frequency === 'daily';
       const guardMs = daily ? 22 * 3600_000 : 50 * 60_000;
-      const earliest = lastMs ? lastMs + guardMs : nowMs;
+      // TRK-043 — la garde runtime mesure l'espacement depuis le DÉPART du dernier passage,
+      // plus depuis sa fin : l'écran doit prédire le MÊME prochain tick, sinon il annonce une
+      // heure de retard qui n'existe plus. Repli sur la fin (`lastRunAt`) si l'historique des
+      // passages est illisible — le même repli que la garde elle-même.
+      const refMs = tripGarde.dernierDepart?.getTime() ?? tripS.lastRunAt?.getTime() ?? 0;
+      const earliest = refMs ? refMs + guardMs : nowMs;
       const matcher = daily
         ? (w: Date) => w.getHours() === tripS.hour && w.getMinutes() === 45
         : (w: Date) => w.getMinutes() === 45;
       const next = nextFireInstant(matcher, earliest, PARIS, nowMs);
+      // Correctif n°4 de TRK-043 : les ticks annulés s'affichent À CÔTÉ de la cadence déclarée.
+      // « Actif · chaque heure » qui n'exécute que 14 passages sur 24 ne doit plus pouvoir se
+      // lire comme un traitement sain.
+      const annules = tripGarde.ticksAnnules24h > 0 ? ` · ${tripGarde.ticksAnnules24h} tick(s) annulé(s) sur 24 h` : '';
       return {
         enabled: true, nextRunAt: next?.toISOString() ?? null, lastRunAt: tripS.lastRunAt?.toISOString() ?? null,
-        settingsSummary: `Actif · ${daily ? `quotidien à ${tripS.hour}h` : 'chaque heure'}`,
+        settingsSummary: `Actif · ${daily ? `quotidien à ${tripS.hour}h` : 'chaque heure'}${annules}`,
       };
     }
     if (kind === 'activity') {
@@ -845,6 +855,29 @@ export class BackgroundTasksService {
       lastRunAt: lastMax ? new Date(lastMax).toISOString() : null,
       settingsSummary: `${eligible.length} flotte(s) active(s)`,
     };
+  }
+
+  /**
+   * TRK-043 — ce que l'écran doit savoir de la garde anti double-run des trajets : le DERNIER
+   * DÉPART persisté (`trip_automation_runs`) et le nombre de ticks annulés sur 24 h (lignes
+   * `trip_automation_tick_annule` que la garde écrit désormais au journal système).
+   *
+   * Défensif de bout en bout (même style que les `etat*` ci-dessus) : un échec de lecture rend
+   * { null, 0 } et l'écran retombe sur l'affichage d'avant — jamais d'écran cassé pour une
+   * décoration. C'est aussi ce qui laisse vivre les specs à mock prisma partiel.
+   */
+  private async gardeTrajets(nowMs: number): Promise<{ dernierDepart: Date | null; ticksAnnules24h: number }> {
+    try {
+      const [depart, annules] = await Promise.all([
+        this.prisma.tripAutomationRun.findFirst({ orderBy: { startedAt: 'desc' }, select: { startedAt: true } }),
+        this.prisma.systemActivityLog.count({
+          where: { action: 'trip_automation_tick_annule', createdAt: { gte: new Date(nowMs - 24 * 3600_000) } },
+        }),
+      ]);
+      return { dernierDepart: depart?.startedAt ?? null, ticksAnnules24h: annules };
+    } catch {
+      return { dernierDepart: null, ticksAnnules24h: 0 };
+    }
   }
 
   /** Croise le catalogue avec le SchedulerRegistry runtime pour détecter un drift (job non catalogué). */
