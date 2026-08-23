@@ -37,6 +37,14 @@ export interface ZoneBrute {
   firstSeenAt: Date | string;
   lastSeenAt: Date | string;
   placeLabel?: string | null;
+  /**
+   * TRK-039 — combien d'AUTRES véhicules de la flotte ont circulé sur le secteur de cette zone
+   * pendant la fenêtre d'observation. C'est ce qui rend la phrase « sans qu'aucun autre véhicule
+   * n'ait le même problème à ces endroits » TESTABLE : personne d'autre sur le secteur = la
+   * contre-preuve n'existe pas, et la zone ne peut porter aucun verdict « boîtier ».
+   * `undefined` vaut 0 — une corroboration qu'on n'a pas mesurée n'est pas une preuve.
+   */
+  vehiculesTiersSurSecteur?: number;
 }
 
 export type NatureDiagnostic = 'lieu' | 'boitier' | 'indetermine';
@@ -71,7 +79,14 @@ export interface Diagnostic {
  * accuse les boîtiers ; trop large, on fusionne un quartier entier en une seule « zone morte ».
  */
 export const RAYON_CORRELATION_M = 300;
-/** Au-delà, les pertes d'UN véhicule ne désignent plus un endroit mais un comportement. */
+/**
+ * Au-delà, les pertes d'UN véhicule ne désignent plus un endroit mais un comportement.
+ *
+ * ⚠️ TRK-039 — ne pas « corriger » en montant ce seuil : mesuré sur toutes les zones, l'étalement
+ * mesure d'abord la distance parcourue (KSR370 : 580 km = 193× le seuil, un simple aller-retour
+ * en Espagne). C'est le critère qui était faux, pas son réglage : depuis, il ne se mesure que sur
+ * les zones CORROBORÉES — celles où d'autres véhicules de la flotte circulent réellement.
+ */
 export const ETALEMENT_BOITIER_M = 3000;
 /** En dessous, un véhicule seul ne prouve rien : c'est probablement son parking habituel. */
 export const ZONES_MIN_BOITIER = 4;
@@ -205,18 +220,34 @@ export function diagnostiquer(zones: ZoneBrute[]): Diagnostic[] {
     };
 
     // Perd le signal en de nombreux endroits ÉLOIGNÉS : ce n'est plus un lieu, c'est l'appareil.
-    if (zonesVehicule.length >= ZONES_MIN_BOITIER && etal >= ETALEMENT_BOITIER_M) {
+    //
+    // TRK-039 — le verdict ne se construit QUE sur les zones CORROBORÉES : celles où d'autres
+    // véhicules de la flotte circulent (sans y perdre le signal). Une zone où personne d'autre
+    // ne va ne prouve rien — « sans qu'aucun autre véhicule n'ait le même problème » y est
+    // invérifiable, et une absence de preuve n'est pas une preuve. C'est aussi ce qui borne
+    // l'étalement à l'aire d'exploitation PARTAGÉE : mesuré sur toutes les zones, il mesurait
+    // d'abord la distance parcourue, et plus un véhicule voyageait loin et seul, plus il était
+    // certain d'être déclaré en panne.
+    const zonesCorroborees = zonesVehicule.filter((z) => (z.vehiculesTiersSurSecteur ?? 0) >= 1);
+    const etalCorrobore = etalement(zonesCorroborees);
+    if (zonesCorroborees.length >= ZONES_MIN_BOITIER && etalCorrobore >= ETALEMENT_BOITIER_M) {
+      const episodesCorrobores = zonesCorroborees.reduce((s, z) => s + z.occurrences, 0);
       diagnostics.push({
         ...base,
         nature: 'boitier',
+        // Le diagnostic ne référence QUE ce qui fonde le verdict : compter les zones de Benidorm
+        // dans `zones:` ou `episodes:` referait mentir le constat par la bande.
+        zoneIds: zonesCorroborees.map((z) => z.id),
+        episodes: episodesCorrobores,
+        etalementM: etalCorrobore,
         constat:
-          `${plaque} perd le signal à ${zonesVehicule.length} endroits distincts, répartis sur ` +
-          `${(etal / 1000).toFixed(1)} km, sans qu'aucun autre véhicule n'ait le même problème ` +
-          `à ces endroits (${episodes} épisodes).`,
+          `${plaque} perd le signal à ${zonesCorroborees.length} endroits distincts où d'autres ` +
+          `véhicules de la flotte circulent sans le perdre, répartis sur ` +
+          `${(etalCorrobore / 1000).toFixed(1)} km (${episodesCorrobores} épisodes).`,
         recommandation:
           'Contrôler le boîtier : antenne, fixation, alimentation. Des pertes dispersées ne ' +
           's\'expliquent pas par la couverture réseau.',
-        gravite: episodes >= 10 ? 'haute' : 'moyenne',
+        gravite: episodesCorrobores >= 10 ? 'haute' : 'moyenne',
       });
       continue;
     }
