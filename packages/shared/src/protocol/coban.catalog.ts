@@ -10,6 +10,8 @@
  * Do NOT add engine commands here — redirect users to /engine-control.
  */
 
+import { encodeCommand } from './coban.encoder';
+
 export type CobanCommandCategory =
   | 'config_initial'
   | 'reporting'
@@ -40,6 +42,13 @@ export interface CobanCommandTemplate {
   dangerous: boolean;
   params: CommandParamSpec[];
   buildPayload: (imei: string, params: Record<string, unknown>) => string;
+  /**
+   * TRK-012 — enveloppe TCP quand elle diffère de la forme SMS. Les deux canaux n'ont
+   * pas la même grammaire : `buildPayload` est la forme texte SMS (mot de passe inclus),
+   * `buildTcpPayload` la trame `**,imei:<IMEI>,…;` que le parseur TCP du Coban lit.
+   * Absent = `buildPayload` vaut pour les deux (cas des trames déjà en `**,imei:`).
+   */
+  buildTcpPayload?: (imei: string, params: Record<string, unknown>) => string;
   expectedAckPattern: RegExp;
   ackTimeoutMs: number;
   availableVia: ('tcp' | 'sms')[];
@@ -54,6 +63,16 @@ const RAW_PAYLOAD_MAX_LEN = 120;
 // Charset autorisé : alphanum + espace + , . * + - . Exclut ":" (donc pas
 // d'override "imei:") et ";" / CR / LF (donc pas d'injection de trame).
 const RAW_PAYLOAD_ALLOWED = /^[A-Za-z0-9 ,.*+\-]+$/;
+
+// TRK-012 — '005m'/'030s' (forme SMS à trois chiffres) → secondes. L'enveloppe TCP
+// repasse ensuite par formatFrequency (DEUX chiffres, fidèle au `%02d` de Traccar) :
+// reprendre la forme du catalogue telle quelle dans la trame TCP reproduirait le
+// défaut sous une autre forme (REFERENCE-ERREURS.md § TRK-012, 2026-08-11).
+function intervalParamToSeconds(interval: string): number {
+  const m = /^(\d{1,3})([sm])$/.exec(interval);
+  if (!m) throw new Error(`Intervalle Coban illisible: "${interval}"`);
+  return m[2] === 'm' ? Number(m[1]) * 60 : Number(m[1]);
+}
 
 export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
   // ─── INFO ───
@@ -174,6 +193,14 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       },
     ],
     buildPayload: (_imei, params) => `fix${params['interval'] as string}***n123456`,
+    // TRK-012 — la trame TCP n'est PAS la forme SMS : 4 120 commandes au format texte
+    // émises sur la socket depuis le 2026-04-27, 0 réponse. Le parseur TCP attend
+    // `**,imei:<IMEI>,C,05m;` — fréquence sur DEUX chiffres (Traccar `%02d`).
+    buildTcpPayload: (imei, params) =>
+      encodeCommand(imei, {
+        type: 'position_periodic',
+        frequencySeconds: intervalParamToSeconds(params['interval'] as string),
+      }),
     expectedAckPattern: /fix.*ok/i,
     ackTimeoutMs: 15000,
     // Disponible via TCP (canal descendant deja ouvert par le boitier) ET SMS.

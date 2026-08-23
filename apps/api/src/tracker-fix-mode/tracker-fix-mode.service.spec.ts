@@ -341,6 +341,34 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
       expect(res.failingCleared).toBe(true);
     });
   });
+
+  describe("TRK-012 — l'enveloppe suit le canal", () => {
+    it('émet la trame TCP `**,imei:…,C,05m;` sur la socket — jamais la forme SMS', async () => {
+      registry.send.mockReturnValue(true);
+      const out = await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
+      expect(registry.send).toHaveBeenCalledWith('123456789012345', '**,imei:123456789012345,C,05m;');
+      expect(prisma.trackerCommand.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ payload: '**,imei:123456789012345,C,05m;', channel: 'TCP' }),
+        }),
+      );
+      expect(out?.sent).toBe(true);
+    });
+
+    it("le repli SMS garde la forme texte ET la consigne dans la ligne d'audit", async () => {
+      // registry.send rend false par défaut : la commande bascule sur le SMS. La trame TCP
+      // dans un SMS serait TRK-012 en miroir — le firmware ne lit que la forme texte.
+      const out = await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'fix005m***n123456', expect.any(Object));
+      expect(prisma.trackerCommand.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ channel: 'SMS', payload: 'fix005m***n123456' }),
+        }),
+      );
+      expect(out?.sent).toBe(true);
+    });
+  });
+
 });
 
 /**

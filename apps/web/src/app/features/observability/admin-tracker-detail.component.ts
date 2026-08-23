@@ -101,7 +101,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
         <div class="rounded-[--radius-card] bg-bg-secondary border border-border-subtle p-4">
           <h3 class="text-xs font-semibold text-fg-tertiary uppercase tracking-wide mb-3">Commandes</h3>
-          <app-commands-panel [trackerId]="t.id" />
+          <app-commands-panel [trackerId]="t.id" [simPhoneNumber]="t.simPhoneNumber ?? null" />
         </div>
       } @else {
         <p class="text-fg-tertiary text-sm">Tracker introuvable.</p>

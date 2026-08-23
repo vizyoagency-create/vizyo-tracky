@@ -67,7 +67,9 @@ const STATUS_LABELS: Record<string, string> = {
                     class="cmd-select cmd-select--flex">
               <option value="">Commande...</option>
               @for (tpl of filteredTemplates(); track tpl.id) {
-                <option [value]="tpl.id">{{ tpl.label }}</option>
+                <option [value]="tpl.id" [disabled]="smsOnlySansSim(tpl)">
+                  {{ tpl.label }}{{ smsOnlySansSim(tpl) ? ' — SMS requis, aucune SIM enregistrée' : '' }}
+                </option>
               }
             </select>
           }
@@ -243,6 +245,8 @@ const STATUS_LABELS: Record<string, string> = {
 })
 export class CommandsPanelComponent implements OnInit {
   trackerId = input.required<string>();
+  /** TRK-021 (correctif #3) — sans numéro de SIM, un gabarit SMS-only ne peut pas partir. */
+  simPhoneNumber = input<string | null>(null);
 
   private readonly api = inject(TrackerCommandsApiService);
   private readonly auth = inject(AuthService);
@@ -319,6 +323,11 @@ export class CommandsPanelComponent implements OnInit {
     if (status === 'CANCELLED') return 'bg-fg-tertiary/10 text-fg-tertiary';
     if (status === 'SCHEDULED') return 'bg-sky-500/10 text-sky-400';
     return 'bg-bg-tertiary text-fg-tertiary';
+  }
+
+  /** TRK-021 (correctif #3) — gabarit déclaré SMS-only ET boîtier sans numéro de SIM. */
+  protected smsOnlySansSim(tpl: CatalogTemplate): boolean {
+    return !tpl.availableVia.includes('tcp') && !this.simPhoneNumber();
   }
 
   protected onCategoryChange(): void {

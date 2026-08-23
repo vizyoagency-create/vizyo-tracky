@@ -800,7 +800,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
 
         @if (activeTab() === 'commands') {
           @if (v.tracker) {
-            <app-commands-panel [trackerId]="v.tracker.id" />
+            <app-commands-panel [trackerId]="v.tracker.id" [simPhoneNumber]="v.tracker.simPhoneNumber ?? null" />
           } @else {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                         bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">

@@ -642,7 +642,13 @@ export class TrackerFixModeService {
       this.logger.error('Template fix_continuous introuvable dans COBAN_COMMAND_CATALOG');
       return null;
     }
-    const payload = template.buildPayload(tracker.imei, { interval });
+    // TRK-012 — deux canaux, deux grammaires. La socket TCP reçoit `**,imei:<IMEI>,C,05m;`
+    // (fréquence sur DEUX chiffres, fidèle à Traccar) ; le repli SMS garde la forme texte
+    // `fix005m***n123456`, la seule que le firmware lit dans un SMS.
+    const payloadTcp = template.buildTcpPayload
+      ? template.buildTcpPayload(tracker.imei, { interval })
+      : template.buildPayload(tracker.imei, { interval });
+    const payloadSms = template.buildPayload(tracker.imei, { interval });
 
     // Persist command + snapshot before any wire IO.
     const command = await this.prisma.trackerCommand.create({
@@ -651,7 +657,7 @@ export class TrackerFixModeService {
         templateId: 'fix_continuous',
         category: 'reporting',
         params: { interval } as object,
-        payload,
+        payload: payloadTcp,
         channel: 'TCP',
         status: TrackerCommandStatus.PENDING,
         requestedBy: SYSTEM_USER_ID,
@@ -662,7 +668,7 @@ export class TrackerFixModeService {
     });
 
     // Send via TCP socket (canal descendant deja ouvert par le boitier).
-    const sent = this.registry.send(tracker.imei, payload);
+    const sent = this.registry.send(tracker.imei, payloadTcp);
     const diagnosticHint = TrackerFixModeService.buildDiagnosticHint({
       sentViaSocket: sent,
       failureCount: tracker.fixCommandFailureCount,
@@ -675,7 +681,7 @@ export class TrackerFixModeService {
       // Tentative fallback SMS si tracker offline > 5min ET simPhoneNumber connu.
       // `force` traverse la porte « boitier muet » du repli : un override admin explicite
       // reste autorise a sonder un boitier silencieux, l'automate non.
-      const smsSent = await this.tryFallbackSms(tracker, payload, command.id, force);
+      const smsSent = await this.tryFallbackSms(tracker, payloadSms, command.id, force);
       if (smsSent) {
         await this.prisma.trackerCommand.update({
           where: { id: command.id },
@@ -683,6 +689,9 @@ export class TrackerFixModeService {
             status: TrackerCommandStatus.SENT,
             sentAt: new Date(),
             channel: 'SMS',
+            // TRK-012 — la ligne d'audit porte la trame RÉELLEMENT partie : créée avec
+            // l'enveloppe TCP, la commande a finalement pris le canal SMS.
+            payload: payloadSms,
             diagnosticHint,
           },
         });
@@ -721,7 +730,7 @@ export class TrackerFixModeService {
       },
     });
 
-    this.wireLogger.out(tracker.imei, payload, {
+    this.wireLogger.out(tracker.imei, payloadTcp, {
       commandId: command.id,
       source: 'fix-mode-adaptive',
     });

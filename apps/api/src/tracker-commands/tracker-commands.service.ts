@@ -137,7 +137,34 @@ export class TrackerCommandsService {
       );
     }
 
-    const payload = template.buildPayload(tracker.imei, params);
+    // ─── TRK-021 (correctif #2) — refuser TÔT une commande SMS-only impossible ────────
+    // Un gabarit sans 'tcp' ne partira QUE par SMS (aiguillage de dispatch(), 2026-08-20).
+    // Si le SMS est impossible, refuser ICI, avant le create : aucune ligne FAILED
+    // fabriquée, et un motif qui nomme CE qui manque au lieu de ressembler à une panne
+    // matérielle. Même geste que la porte « boîtier muet » ci-dessus : sortie sèche.
+    // `scheduledAt` est épargné (un numéro peut être provisionné d'ici l'échéance) —
+    // les contrôles de dispatchParSms restent le filet du dépilage planifié.
+    if (!scheduledAt && !template.availableVia.includes('tcp')) {
+      if (!this.sms.isEnabled()) {
+        throw new ServiceUnavailableException(
+          'passerelle SMS non configurée — commande non envoyée',
+        );
+      }
+      if (!tracker.simPhoneNumber) {
+        throw new BadRequestException(
+          "Cette commande n'existe pas sur le canal TCP de ce boîtier : elle ne part que " +
+            "par SMS, et aucun numéro SIM n'est enregistré pour ce boîtier.",
+        );
+      }
+    }
+
+    // TRK-012 — l'enveloppe suit le canal. dispatch() route en TCP tout gabarit qui
+    // déclare 'tcp' : le payload persisté doit être la trame TCP quand elle existe,
+    // la forme texte restant réservée au canal SMS.
+    const payload =
+      template.availableVia.includes('tcp') && template.buildTcpPayload
+        ? template.buildTcpPayload(tracker.imei, params)
+        : template.buildPayload(tracker.imei, params);
 
     const command = await this.prisma.trackerCommand.create({
       data: {

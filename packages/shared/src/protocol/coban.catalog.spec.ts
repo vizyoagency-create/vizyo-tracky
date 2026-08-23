@@ -193,4 +193,23 @@ describe('CobanCommandCatalog', () => {
     expect(ids).toContain('protocol_18');
     expect(ids).toContain('raw');
   });
+
+  it("fix_continuous: buildTcpPayload émet l'enveloppe TCP `,C,` à DEUX chiffres (TRK-012)", () => {
+    // 4 120 commandes au format SMS émises sur la socket TCP depuis le 2026-04-27, 0 réponse :
+    // le parseur TCP du Coban ne lit QUE `**,imei:<IMEI>,C,<NN><s|m>;`. La fréquence passe par
+    // formatFrequency (DEUX chiffres, fidèle au `%02d` de Traccar) — reprendre la forme à trois
+    // chiffres du catalogue reproduirait le défaut sous une autre forme.
+    const tpl = findTemplate('fix_continuous')!;
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '005m' })).toBe(`**,imei:${IMEI},C,05m;`);
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '030s' })).toBe(`**,imei:${IMEI},C,30s;`);
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '010s' })).toBe(`**,imei:${IMEI},C,10s;`);
+    // Traccar écrase les restes : 60 s passe en minutes (`%02dm`) — comportement assumé, documenté.
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '060s' })).toBe(`**,imei:${IMEI},C,01m;`);
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '010m' })).toBe(`**,imei:${IMEI},C,10m;`);
+  });
+
+  it('fix_continuous: la forme SMS reste inchangée — chaque canal garde sa grammaire (TRK-012)', () => {
+    const tpl = findTemplate('fix_continuous')!;
+    expect(tpl.buildPayload(IMEI, { interval: '005m' })).toBe('fix005m***n123456');
+  });
 });
