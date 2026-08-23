@@ -12,7 +12,7 @@ describe('TcpServerService — débounce OFFLINE', () => {
 
   let service: TcpServerService;
   let registry: { get: jest.Mock; has: jest.Mock; unregister: jest.Mock };
-  let prisma: { tracker: { findUnique: jest.Mock; update: jest.Mock } };
+  let prisma: { tracker: { findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock } };
   let gateway: { emitTrackerStatus: jest.Mock };
   let ackWaiter: { cancelAll: jest.Mock };
   let errorLogger: { record: jest.Mock };
@@ -30,6 +30,9 @@ describe('TcpServerService — débounce OFFLINE', () => {
       tracker: {
         findUnique: jest.fn().mockResolvedValue(trackerRow),
         update: jest.fn().mockResolvedValue({}),
+        // TRK-024 : l'écriture OFFLINE passe par updateMany conditionnel.
+        // count: 1 = le WHERE de fraîcheur a matché (cas nominal).
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     gateway = { emitTrackerStatus: jest.fn() };
@@ -56,13 +59,16 @@ describe('TcpServerService — débounce OFFLINE', () => {
   });
 
   it('marque OFFLINE après le délai de grâce si pas de reconnexion', async () => {
+    const t0 = Date.now(); // fake timers modernes : Date.now est piloté par l'horloge factice
     (service as any).scheduleOffline(IMEI);
-    expect(prisma.tracker.update).not.toHaveBeenCalled(); // rien avant le délai
+    expect(prisma.tracker.updateMany).not.toHaveBeenCalled(); // rien avant le délai
 
     await jest.advanceTimersByTimeAsync(GRACE_MS);
 
-    expect(prisma.tracker.update).toHaveBeenCalledWith({
-      where: { id: trackerRow.id },
+    // TRK-024 : la condition de fraîcheur voyage DANS le WHERE, même instruction
+    // que l'écriture. Seuil attendu = instant du tir (t0+90s) - grâce (90s) = t0.
+    expect(prisma.tracker.updateMany).toHaveBeenCalledWith({
+      where: { id: trackerRow.id, lastSeenAt: { lt: new Date(t0) } },
       data: { status: TrackerStatus.OFFLINE },
     });
     expect(gateway.emitTrackerStatus).toHaveBeenCalledWith(
@@ -77,7 +83,7 @@ describe('TcpServerService — débounce OFFLINE', () => {
 
     await jest.advanceTimersByTimeAsync(GRACE_MS);
 
-    expect(prisma.tracker.update).not.toHaveBeenCalled();
+    expect(prisma.tracker.updateMany).not.toHaveBeenCalled();
     expect(gateway.emitTrackerStatus).not.toHaveBeenCalled();
   });
 
@@ -88,7 +94,7 @@ describe('TcpServerService — débounce OFFLINE', () => {
     await jest.advanceTimersByTimeAsync(GRACE_MS);
 
     expect(prisma.tracker.findUnique).not.toHaveBeenCalled();
-    expect(prisma.tracker.update).not.toHaveBeenCalled();
+    expect(prisma.tracker.updateMany).not.toHaveBeenCalled();
   });
 
   it('handleSocketClose ignore un socket périmé quand un plus récent est enregistré (race)', () => {
@@ -112,7 +118,7 @@ describe('TcpServerService — débounce OFFLINE', () => {
     expect(ackWaiter.cancelAll).toHaveBeenCalledWith(IMEI);
 
     await jest.advanceTimersByTimeAsync(GRACE_MS);
-    expect(prisma.tracker.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tracker.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('scheduleOffline appelé deux fois ne déclenche qu\'un seul passage OFFLINE', async () => {
@@ -120,7 +126,7 @@ describe('TcpServerService — débounce OFFLINE', () => {
     (service as any).scheduleOffline(IMEI);
 
     await jest.advanceTimersByTimeAsync(GRACE_MS);
-    expect(prisma.tracker.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tracker.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('markOffline catche les erreurs DB et les enregistre sans throw', async () => {
@@ -144,7 +150,35 @@ describe('TcpServerService — débounce OFFLINE', () => {
 
     await (service as any).markOffline(IMEI);
 
-    expect(prisma.tracker.update).not.toHaveBeenCalled();
+    expect(prisma.tracker.updateMany).not.toHaveBeenCalled();
     expect(gateway.emitTrackerStatus).not.toHaveBeenCalled();
+  });
+
+  // ─── TRK-024 — l'écriture OFFLINE ne survit plus aux trames ───
+
+  it("TRK-024 : n'émet PAS d'event WS « offline » quand le WHERE de fraîcheur n'a rien écrit (count=0)", async () => {
+    // Boîtier ravivé pendant la grâce (login/position/no_fix a rafraîchi
+    // lastSeenAt) : l'updateMany conditionnel ne matche pas → rien en base,
+    // donc rien sur le WS (sinon l'UI afficherait un offline que la DB dément).
+    prisma.tracker.updateMany.mockResolvedValue({ count: 0 });
+
+    (service as any).scheduleOffline(IMEI);
+    await jest.advanceTimersByTimeAsync(GRACE_MS);
+
+    expect(prisma.tracker.updateMany).toHaveBeenCalledTimes(1); // la tentative a bien eu lieu
+    expect(gateway.emitTrackerStatus).not.toHaveBeenCalled();   // mais rien n'est diffusé
+  });
+
+  it("TRK-024 : le seuil du WHERE est la grâce (90 s), pas un seuil d'affichage (5/15 min)", async () => {
+    // Si on prenait 5 ou 15 min : un boîtier mort dont la socket tombe vite (RST)
+    // arriverait ici avec un lastSeenAt de ~90 s → pas d'écriture, et RIEN ne
+    // re-programme jamais ce passage → ONLINE fantôme permanent, compteur
+    // /admin/alerts aveugle (il exige status=OFFLINE). Le seuil DOIT rester ≤ grâce.
+    const t0 = Date.now();
+    (service as any).scheduleOffline(IMEI);
+    await jest.advanceTimersByTimeAsync(GRACE_MS);
+
+    const arg = prisma.tracker.updateMany.mock.calls[0][0];
+    expect(arg.where.lastSeenAt.lt.getTime()).toBe(t0); // tir (t0+90s) − grâce (90s) = t0
   });
 });
