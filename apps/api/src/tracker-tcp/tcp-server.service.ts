@@ -287,6 +287,18 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
           { imei: frame.imei, lat: frame.latitude, lng: frame.longitude, speed: frame.speedKph, valid: frame.valid },
           `Position from ${frame.imei}`,
         );
+        // TRK-040 — snapshot du tracker AVANT l'ingestion de la trame : l'état du
+        // contact qui départage une alarme d'alimentation est celui d'AVANT cette
+        // trame (le `kt` de 06:00), pas celui qu'elle est en train d'écrire. Une
+        // trame de vraie coupure peut porter ignition=0 (fil ACC mort) : lue après
+        // ingestion, elle effacerait le discriminant qu'elle doit subir.
+        const trackerAvantTrame =
+          frame.alarm && frame.alarm !== 'none'
+            ? await this.prisma.tracker.findUnique({
+                where: { imei: frame.imei },
+                include: { vehicle: { include: { fleet: true } } },
+              })
+            : null;
         await this.positions.ingest(frame);
 
         // #10 — un ACK de commande (ex position_single) peut decoder comme une
@@ -296,10 +308,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         this.ackWaiter.tryMatch(currentImei, frame.raw);
 
         if (frame.alarm && frame.alarm !== 'none') {
-          const tracker = await this.prisma.tracker.findUnique({
-            where: { imei: frame.imei },
-            include: { vehicle: { include: { fleet: true } } },
-          });
+          const tracker = trackerAvantTrame;
           if (tracker) {
             await this.alertsService.createFromCobanFrame(frame, tracker as any).catch((err) => {
               this.logger.error('Failed to create alert', err);

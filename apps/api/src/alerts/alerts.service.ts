@@ -151,22 +151,67 @@ export class AlertsService {
       const coupeCommandeeRecente =
         derniereCommande?.action === 'CUT' &&
         Date.now() - derniereCommande.createdAt.getTime() <= FENETRE_COUPURE_COMMANDEE_MS;
+      /**
+       * TRK-040 — l'état du contact au moment de l'alarme. `tracker` est le snapshot
+       * d'AVANT la trame (tcp-server le lit avant ingestion) : c'est le `kt` de 06:00
+       * qui parle, pas la trame de coupure elle-même. Un `ignition === true` porté par
+       * la trame vaut aussi preuve de contact mis ; un `false`, lui, ne prouve RIEN
+       * (une vraie coupure tue le fil ACC) et ne doit jamais éteindre un `true` connu.
+       */
+      const contactAllume: boolean | null =
+        frame.ignition === true || tracker.lastKnownIgnition === true
+          ? true
+          : frame.ignition === false || tracker.lastKnownIgnition === false
+            ? false
+            : null;
       const analyse = analyserAlimentation(frame, {
         moteurCoupeParNous: coupeCommandeeRecente,
+        contactAllume,
       });
       contextMessage = messageCoupure(analyse, frame);
       if (!analyse.alerter) {
         // On NE CRÉE PAS d'alerte, mais l'information n'est pas perdue : elle vit sur
         // le tracker, lisible depuis la fiche véhicule. Se taire sans laisser de trace
         // remplacerait un bruit par une cécité.
+        //
+        // TRK-040 — « contact coupé » n'est plus un verdict, c'est un SURSIS : on note
+        // l'heure de la PREMIÈRE trame de l'épisode et la batterie du moment, et le
+        // cron power-cut-recheck réexamine à partir de T+30 min. L'heure du SERVEUR,
+        // pas le deviceTime : les horloges des boîtiers mentent (garde anti-replay).
+        const suspicion =
+          analyse.verdict === 'contact_coupe'
+            ? {
+                powerLossSuspectAt: tracker.powerLossSuspectAt ?? new Date(),
+                powerLossSuspectBattery: tracker.powerLossSuspectBattery ?? analyse.batterie,
+              }
+            : {};
         await this.prisma.tracker
           .update({
             where: { id: tracker.id },
-            data: { lastPowerNoticeAt: new Date(), lastPowerNotice: analyse.motif },
+            data: { lastPowerNoticeAt: new Date(), lastPowerNotice: analyse.motif, ...suspicion },
           })
           .catch(() => undefined);
         return null;
       }
+      /**
+       * TRK-040 (correctif 3) — le verdict ALERTE : la note « pas en péril » écrite
+       * plus tôt ne doit pas lui survivre. Sur DZ-034-CA la fiche véhicule affirmait
+       * encore « typique d'un contact coupé » 12 h après la mort du boîtier. On la
+       * remplace AVANT la déduplication : même si l'alerte est dédupliquée, la fiche
+       * doit dire la vérité du moment. On referme aussi le soupçon : l'épisode est
+       * désormais porté par une alerte, plus par le sursis.
+       */
+      await this.prisma.tracker
+        .update({
+          where: { id: tracker.id },
+          data: {
+            lastPowerNoticeAt: new Date(),
+            lastPowerNotice: analyse.motif,
+            powerLossSuspectAt: null,
+            powerLossSuspectBattery: null,
+          },
+        })
+        .catch(() => undefined);
     }
 
     /**
@@ -347,6 +392,64 @@ export class AlertsService {
     // doit pas casser le détecteur.
     this.dispatch.dispatchAlert(alert).catch((err) => {
       this.logger.warn(`Notification dispatch failed for GPS_LOST alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
+    });
+    return alert;
+  }
+
+  /**
+   * TRK-040 — coupure réelle CONFIRMÉE PAR LA PENTE, créée par le cron
+   * power-cut-recheck : un soupçon ouvert à batterie pleine (verdict différé) dont la
+   * batterie est depuis passée sous le seuil. Le MESSAGE porte l'heure de la PREMIÈRE
+   * trame de l'épisode — pas celle de la découverte : 6 h 12 d'écart sur DZ-034-CA.
+   * `createdAt` reste l'heure de création, exprès : l'antidater fausserait la fenêtre
+   * de dédup et le tri du centre — l'heure vraie vit dans le message et `payload`.
+   * Dédupliquée comme le chemin trame (POWER_CUT ouverte < 6 h).
+   */
+  async createPowerCutConfirmedAlert(
+    tracker: { id: string; imei: string; lastLat: number | null; lastLng: number | null },
+    vehicle: { id: string; plate: string; fleetId: string },
+    suspicion: { suspectAt: Date; suspectBattery: number | null; currentBattery: number },
+  ): Promise<Alert | null> {
+    const dejaOuverte = await this.prisma.alert.findFirst({
+      where: {
+        vehicleId: vehicle.id,
+        type: AlertType.POWER_CUT,
+        acknowledgedAt: null,
+        createdAt: { gte: new Date(Date.now() - DEDUP_ALARME_MS) },
+      },
+      select: { id: true },
+    });
+    if (dejaOuverte) return null;
+
+    const depuis = suspicion.suspectAt.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' });
+    const alert = await this.prisma.alert.create({
+      data: {
+        fleetId: vehicle.fleetId,
+        vehicleId: vehicle.id,
+        trackerId: tracker.id,
+        type: AlertType.POWER_CUT,
+        severity: AlertSeverity.CRITICAL,
+        title: 'Alimentation coupée',
+        message:
+          `Alimentation externe perdue depuis ${depuis} — la batterie interne est passée de ` +
+          `${suspicion.suspectBattery ?? '?'} % à ${suspicion.currentBattery} % : elle se vide, ` +
+          `c'est une coupure réelle (classée « contact coupé » au premier examen, confirmée au réexamen).`,
+        payload: {
+          imei: tracker.imei,
+          suspectAt: suspicion.suspectAt.toISOString(),
+          suspectBattery: suspicion.suspectBattery,
+          currentBattery: suspicion.currentBattery,
+          source: 'power-cut-recheck',
+        } as object,
+        latitude: tracker.lastLat,
+        longitude: tracker.lastLng,
+      },
+      include: { vehicle: true, tracker: true },
+    });
+    this.gateway.broadcastAlert(alert);
+    this.logger.warn(`[ALERT] CRITICAL POWER_CUT (différé confirmé) for ${vehicle.plate}`);
+    this.dispatch.dispatchAlert(alert).catch((err) => {
+      this.logger.warn(`Notification dispatch failed for POWER_CUT alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
     });
     return alert;
   }

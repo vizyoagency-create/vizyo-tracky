@@ -272,6 +272,23 @@ export class PositionsService {
       }
     }
 
+    // TRK-040 — la batterie interne est la pente que le réexamen différé lit : on la
+    // persiste à CHAQUE trame qui la porte (les trames position ordinaires, pas
+    // seulement les alarmes — c'est ce qui aurait montré 96→83 % dès 07:00 sur
+    // DZ-034-CA, cinq heures avant la première alerte).
+    if (frame.batteryPercent !== undefined) {
+      trackerUpdate.lastBatteryPercent = frame.batteryPercent;
+      trackerUpdate.lastBatteryAt = new Date();
+    }
+    // TRK-040 — contact remis EXPLICITE (bit ignition ou trame kt) : sur un montage
+    // commuté, le +12V revient avec le contact, l'épisode bénin se referme et le
+    // soupçon avec. PAS sur l'inférence vitesse : un véhicule remorqué « roule »
+    // aussi, et c'est précisément un cas de vol.
+    if (resolvedIgnition === true && !ignitionInferredFromSpeed) {
+      trackerUpdate.powerLossSuspectAt = null;
+      trackerUpdate.powerLossSuspectBattery = null;
+    }
+
     // V1.4 (Sprint 1 — hydratation au login) : denormalisation derniere position
     // connue. Mise à jour seulement quand la trame GPS est valide pour ne pas
     // ecraser une position fraiche par un fix degrade.

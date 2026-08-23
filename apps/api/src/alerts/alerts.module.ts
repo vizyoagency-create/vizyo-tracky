@@ -5,11 +5,12 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
 import { DetectionAccidentService } from './detection-accident.service';
+import { PowerCutRecheckService } from './power-cut-recheck.service';
 
 @Module({
   imports: [AuthModule, forwardRef(() => RealtimeModule), NotificationsModule],
   controllers: [AlertsController],
-  providers: [AlertsService, DetectionAccidentService],
+  providers: [AlertsService, DetectionAccidentService, PowerCutRecheckService],
   exports: [AlertsService],
 })
 export class AlertsModule {}

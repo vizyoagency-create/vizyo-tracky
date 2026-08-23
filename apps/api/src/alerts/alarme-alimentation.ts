@@ -60,7 +60,7 @@ export interface AnalyseAlimentation {
  */
 export function analyserAlimentation(
   frame: CobanPositionFrame,
-  contexte: { moteurCoupeParNous?: boolean } = {},
+  contexte: { moteurCoupeParNous?: boolean; contactAllume?: boolean | null } = {},
 ): AnalyseAlimentation {
   const batterie = frame.batteryPercent ?? null;
 
@@ -92,6 +92,26 @@ export function analyserAlimentation(
       batterie: null,
       alerter: true,
       motif: "Le boîtier ne transmet pas son niveau de batterie : coupure impossible à confirmer.",
+    };
+  }
+
+  /**
+   * ── TRK-040 : LE TEST DE BATTERIE N'A LE DROIT DE CONCLURE QUE CONTACT COUPÉ ──────
+   *
+   * À l'instant zéro d'une vraie coupure, la batterie de secours est pleine PAR
+   * DÉFINITION : les deux cas que le seuil doit séparer sont identiques au moment où
+   * il les sépare. Le discriminant est ailleurs : un montage sur +12V commuté ne peut
+   * pas perdre son alimentation contact MIS. DZ-034-CA (21/08) : `kt` à 06:00:07,
+   * `ac alarm` à 06:23:46 batterie 100 % → classé « pas en péril », boîtier mort à
+   * 12:43. Contact allumé + alimentation perdue = coupure réelle ou arrachage — on
+   * alerte, conformément au choix déjà écrit ici : l'indéterminé ALERTE.
+   */
+  if (contexte.contactAllume === true && batterie >= SEUIL_BATTERIE_COUPURE) {
+    return {
+      verdict: 'indetermine',
+      batterie,
+      alerter: true,
+      motif: `Alimentation externe perdue alors que le contact est ALLUMÉ (batterie interne à ${batterie} %) : un montage commuté ne peut pas perdre son +12V contact mis — coupure réelle possible.`,
     };
   }
 

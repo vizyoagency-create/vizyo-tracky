@@ -122,3 +122,57 @@ describe('messageCoupure — de quoi juger sans aller chercher', () => {
     }
   });
 });
+
+/**
+ * TRK-040 — le contact départage ce que la batterie ne peut pas.
+ *
+ * DZ-034-CA (21/08) : `kt` contact REMIS à 06:00:07, `ac alarm` à 06:23:46 batterie
+ * 100 % → classé « pas en péril », boîtier mort à 12:43. À l'instant zéro d'une vraie
+ * coupure la batterie de secours est pleine PAR DÉFINITION : les deux cas que le seuil
+ * doit séparer sont identiques au moment où il les sépare. Le discriminant est le
+ * CONTACT — un montage commuté ne peut pas perdre son +12V contact mis.
+ */
+describe('analyserAlimentation — le contact départage (TRK-040)', () => {
+  it('🔑 LE cas DZ-034-CA : contact ALLUMÉ + batterie pleine → on ALERTE', () => {
+    const a = analyserAlimentation(trame({ batteryPercent: 100 }), { contactAllume: true });
+    expect(a.verdict).toBe('indetermine');
+    expect(a.alerter).toBe(true);
+    expect(a.motif).toContain('ALLUMÉ');
+  });
+
+  it('le cas témoin jt→ac alarm reste bénin : contact COUPÉ + batterie pleine → contact_coupe', () => {
+    // « Les deux, sinon on a seulement déplacé le défaut. »
+    const a = analyserAlimentation(trame({ batteryPercent: 100 }), { contactAllume: false });
+    expect(a.verdict).toBe('contact_coupe');
+    expect(a.alerter).toBe(false);
+  });
+
+  it('contact INCONNU : comportement du 19/08 conservé — il manque une entrée, pas une refonte', () => {
+    for (const ctx of [{ contactAllume: null }, {}]) {
+      const a = analyserAlimentation(trame({ batteryPercent: 100 }), ctx);
+      expect(a.verdict).toBe('contact_coupe');
+      expect(a.alerter).toBe(false);
+    }
+  });
+
+  it('⚠️ la fenêtre TRK-032 passe AVANT tout : coupure commandée + contact allumé → silence', () => {
+    const a = analyserAlimentation(trame({ batteryPercent: 100 }), {
+      moteurCoupeParNous: true,
+      contactAllume: true,
+    });
+    expect(a.verdict).toBe('coupure_commandee');
+    expect(a.alerter).toBe(false);
+  });
+
+  it('contact allumé + batterie sous le seuil : coupure_reelle, comme avant', () => {
+    const a = analyserAlimentation(trame({ batteryPercent: 40 }), { contactAllume: true });
+    expect(a.verdict).toBe('coupure_reelle');
+    expect(a.alerter).toBe(true);
+  });
+
+  it('contact allumé + batterie inconnue : la branche nulle alerte, comme avant', () => {
+    const a = analyserAlimentation(trame({ batteryPercent: undefined }), { contactAllume: true });
+    expect(a.verdict).toBe('indetermine');
+    expect(a.alerter).toBe(true);
+  });
+});
