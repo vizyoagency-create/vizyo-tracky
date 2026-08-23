@@ -75,12 +75,44 @@ machine qui en a deux, avec **1 038 542 `read()`/s pour zéro octet ramené**, e
 
 ## 1. Anti-doublon — à faire en premier
 
-Un seul rapport par jour. Si `docs/centre-alerte/rapports/<AAAA-MM-JJ>.md` existe déjà pour la
-date **du jour**, s'arrêter immédiatement et répondre :
+Un seul rapport par jour — et le rapport du jour peut vivre **ailleurs que dans l'arbre de
+travail courant**. Constaté le 2026-08-23 : la tâche planifiée avait commité son rapport sur la
+branche sortie à 03 h ; la seconde passe a basculé sur `main`, n'y a rien vu, et deux audits du
+même jour ont coexisté sans jamais se voir. *Le contrôle porte sur un fichier ; le fait qu'il
+cherche à établir porte sur le dépôt entier.*
+
+Trois contrôles, dans cet ordre — le premier qui répond « déjà fait » arrête tout :
+
+1. **L'arbre courant** (le moins cher) : `docs/centre-alerte/rapports/<AAAA-MM-JJ>.md` existe ?
+
+2. **Toutes les branches** — un rapport commité ailleurs compte autant :
+
+   ```bash
+   git log --all --oneline -- docs/centre-alerte/rapports/<AAAA-MM-JJ>.md
+   ```
+
+   Une seule ligne suffit : déjà fait (et la sortie dit sur quel commit).
+
+3. **Le VPS** — il porte la réponse quel que soit l'état des branches, puisque la publication
+   du §11.a est faite par tous les passages :
+
+   ```bash
+   ssh root@72.62.26.240 'ls /opt/tracky-centre-alerte/rapports/<AAAA-MM-JJ>.md'
+   ```
+
+   Si le SSH échoue, ne pas conclure « pas fait » d'une commande qui n'a pas pu répondre :
+   les contrôles 1 et 2 font foi.
+
+Si l'un des trois répond « déjà fait » : s'arrêter immédiatement et répondre :
 « Audit du centre d'alerte déjà effectué le \<date\> — rien à refaire aujourd'hui. »
 
 C'est ce qui rend le rattrapage sûr : la tâche planifiée peut se déclencher à 3 h, ou au
 lancement suivant de Claude si le poste était éteint, sans jamais produire deux rapports.
+
+⚠️ Un commit du jour qu'on ne reconnaît pas n'est **pas** un doublon parasite : dans un dépôt
+partagé, il appartient probablement à un autre passage. On l'**identifie avant** de le déplacer,
+jamais après — aucune réécriture de référence de branche (`git branch -f`) n'a sa place ici.
+Le 2026-08-23, ce geste a fait écraser sur le VPS le rapport de la première passe par la seconde.
 
 ---
 
