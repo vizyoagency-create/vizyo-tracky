@@ -1,5 +1,5 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
-import { ScheduleCronService } from './schedule-cron.service';
+import { parseKnownCountdown, ScheduleCronService } from './schedule-cron.service';
 import type { VehicleSchedule } from '@prisma/client';
 
 /** Helper to build a schedule with defaults. */
@@ -448,7 +448,7 @@ describe('ScheduleCronService — backoff des coupes', () => {
       // Le même véhicule devient dormant : les suivis doivent être purgés.
       await service.evaluateOne(DORMANT());
 
-      for (const nom of ['deferredSince', 'lastStuckAlertAt', 'cutRetryAfter', 'cutFailures', 'lastFailureReason']) {
+      for (const nom of ['deferredSince', 'lastStuckAlertAt', 'cutRetryAfter', 'cutFailures', 'cutRetryDeadline', 'lastFailureReason', 'stuckAlertLogIds']) {
         expect(maps[nom].has('v-1')).toBe(false);
       }
     });
@@ -503,5 +503,164 @@ describe('ScheduleCronService.evaluateOne override', () => {
     await service.evaluateOne(schedule);
 
     expect(engine.requestCommand).not.toHaveBeenCalled();
+  });
+
+  describe("TRK-029 — réessai à l'échéance connue, rédaction, clôture", () => {
+    const COUNTDOWN_MSG = 'Coupe auto différée : véhicule arrêté depuis seulement 256s (minimum requis 600s)';
+    const ALERT_UUID = '3f2c8a5e-0000-4abc-9def-0123456789ab';
+
+    // Fixture DUPLIQUÉE du describe backoff (volontairement : ses tests sont verrouillés,
+    // on ne les touche pas) — hors plage quel que soit le jour du test.
+    const HORS_PLAGE = () => ({
+      ...makeSchedule({
+        lastEvaluatedState: 'IN_WINDOW',
+        mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+        thursdayEnabled: false, fridayEnabled: false,
+      }),
+      vehicle: { id: 'v-1', fleetId: 'f-1', plate: 'DZ-034-CA', tracker: { id: 't-1', imei: '123', status: 'OFFLINE' } },
+    } as any);
+
+    function buildTrk029(failWith?: Error) {
+      const prisma = {
+        vehicleSchedule: { update: jest.fn().mockResolvedValue({}) },
+        scheduleHistory: { create: jest.fn().mockResolvedValue({}) },
+        errorLog: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      } as any;
+      const engine = {
+        requestCommand: failWith ? jest.fn().mockRejectedValue(failWith) : jest.fn().mockResolvedValue({}),
+      } as any;
+      const errorLogger = { record: jest.fn().mockResolvedValue(ALERT_UUID) } as any;
+      const service = new ScheduleCronService(prisma, engine, errorLogger, { emit: jest.fn() } as any);
+      return { service, engine, prisma, errorLogger };
+    }
+
+    const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+    afterEach(() => jest.useRealTimers());
+
+    it('🔑 programme le réessai à M − N (+ un tick), pas au palier de backoff', async () => {
+      jest.useFakeTimers();
+      const { service, engine } = buildTrk029(new ForbiddenException(COUNTDOWN_MSG));
+      const schedule = HORS_PLAGE();
+
+      await service.evaluateOne(schedule); // échec : compte à rebours lisible → réessai programmé
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+
+      // LE discriminant : au palier 1 du backoff (2 min), l'ancien code retentait — plus ici.
+      jest.advanceTimersByTime(2 * 60 * 1000 + 1000);
+      await service.evaluateOne(schedule);
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+
+      // À l'échéance (344 s restants + 60 s de marge), l'essai part — jamais 30 min d'attente.
+      engine.requestCommand.mockResolvedValue({});
+      jest.advanceTimersByTime((344 + 60) * 1000 + 1000 - (2 * 60 * 1000 + 1000));
+      await service.evaluateOne(schedule);
+      expect(engine.requestCommand).toHaveBeenCalledTimes(2);
+    });
+
+    it("l'alerte dit « différée, réessai à HH:MM » — jamais « impossible » — quand l'échéance est connue", async () => {
+      jest.useFakeTimers();
+      const { service, errorLogger } = buildTrk029(new ForbiddenException(COUNTDOWN_MSG));
+      const schedule = HORS_PLAGE();
+
+      for (let i = 0; i < 35; i++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+
+      expect(errorLogger.record).toHaveBeenCalled();
+      const [err, , ctx] = errorLogger.record.mock.calls[0];
+      expect((err as Error).message).toContain('coupe différée');
+      expect((err as Error).message).toContain('réessai à');
+      expect((err as Error).message).not.toContain('impossible');
+      expect((err as Error).message).toContain('256 s sur 600 s requis');
+      expect(ctx).toMatchObject({ knownDeadline: true, phase: 'stuck-schedule-action' });
+      expect(ctx.deferredUntil).toEqual(expect.any(String));
+    });
+
+    it("clôt la ligne d'origine quand la coupe aboutit", async () => {
+      jest.useFakeTimers();
+      const { service, engine, prisma } = buildTrk029(new ServiceUnavailableException('Tracker hors ligne'));
+      const schedule = HORS_PLAGE();
+
+      for (let i = 0; i < 31; i++) {
+        await service.evaluateOne(schedule);
+        await flush(); // le .then de capture d'id est fire-and-forget
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      engine.requestCommand.mockResolvedValue({});
+      for (let i = 0; i < 35; i++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      await flush();
+
+      expect(prisma.errorLog.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: [ALERT_UUID] }, resolvedAt: null },
+        data: expect.objectContaining({
+          resolvedAt: expect.any(Date),
+          resolvedNote: expect.stringContaining('coupe aboutie'),
+        }),
+      });
+    });
+
+    it("ne clôt RIEN si aucune alerte n'a été écrite", async () => {
+      jest.useFakeTimers();
+      const { service, engine, prisma } = buildTrk029(new ServiceUnavailableException('Tracker hors ligne'));
+      const schedule = HORS_PLAGE();
+
+      await service.evaluateOne(schedule); // un seul échec, sous le seuil des 30 min
+      engine.requestCommand.mockResolvedValue({});
+      jest.advanceTimersByTime(3 * 60 * 1000);
+      await service.evaluateOne(schedule);
+      await flush();
+
+      expect(prisma.errorLog.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("⚠️ les sentinelles d'ErrorLogger ne deviennent pas des ids à clore", async () => {
+      jest.useFakeTimers();
+      const { service, engine, prisma, errorLogger } = buildTrk029(new ServiceUnavailableException('Tracker hors ligne'));
+      errorLogger.record.mockResolvedValue('deduped');
+      const schedule = HORS_PLAGE();
+
+      for (let i = 0; i < 31; i++) {
+        await service.evaluateOne(schedule);
+        await flush();
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      engine.requestCommand.mockResolvedValue({});
+      for (let i = 0; i < 35; i++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      await flush();
+
+      expect(prisma.errorLog.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('le parseur : compte à rebours lisible, sinon null — jamais de devinette', () => {
+      expect(parseKnownCountdown(COUNTDOWN_MSG)).toEqual({ stoppedS: 256, minS: 600 });
+      expect(parseKnownCountdown('Coupe auto différée : véhicule en mouvement (32,4 km/h)')).toBeNull();
+      expect(parseKnownCountdown('Tracker hors ligne')).toBeNull();
+    });
+
+    it('⚠️ une cause qui perd son échéance perd sa promesse — plus de « réessai à » mensonger', async () => {
+      jest.useFakeTimers();
+      const { service, engine, errorLogger } = buildTrk029(new ForbiddenException(COUNTDOWN_MSG));
+      const schedule = HORS_PLAGE();
+
+      await service.evaluateOne(schedule); // échéance connue mémorisée
+      // Au réessai, l'engine change de refus : plus d'échéance lisible.
+      engine.requestCommand.mockRejectedValue(new ForbiddenException('Coupe auto différée : véhicule en mouvement (32,4 km/h)'));
+      for (let i = 0; i < 70; i++) {
+        jest.advanceTimersByTime(60 * 1000);
+        await service.evaluateOne(schedule);
+      }
+
+      expect(errorLogger.record).toHaveBeenCalled();
+      const derniers = errorLogger.record.mock.calls.map((c: unknown[]) => (c[0] as Error).message);
+      expect(derniers[derniers.length - 1]).not.toContain('réessai à');
+    });
   });
 });
