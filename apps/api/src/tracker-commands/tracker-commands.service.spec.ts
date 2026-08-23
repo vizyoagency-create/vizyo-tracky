@@ -26,6 +26,9 @@ const trackerWithVehicle = {
   model: 'COBAN_GPS403D',
   status: 'ONLINE',
   vehicleId: 'v-1',
+  // TRK-021 (correctif #2) — la porte précoce lit le numéro sur la ligne déjà chargée
+  // par findUnique ; sans ce champ, tout gabarit SMS-only serait refusé avant le create.
+  simPhoneNumber: '+33600000000',
   vehicle: { id: 'v-1', fleetId: FLEET_ID, plate: 'AB-123-CD' },
 };
 
@@ -424,5 +427,38 @@ describe('TrackerCommandsService', () => {
       1500,
     );
     jest.useRealTimers();
+  });
+
+  describe('TRK-012 / TRK-021 — enveloppe TCP et porte SMS-only', () => {
+    it("TRK-012 — fix_continuous manuel part en TCP avec l'enveloppe `,C,` à deux chiffres", async () => {
+      prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+      registry.send.mockReturnValue(true);
+      const result = await service.request(TRACKER_ID, 'fix_continuous', { interval: '030s' }, null, fleetAdmin);
+      expect(result.payload).toBe('**,imei:123456789012345,C,30s;');
+      expect(registry.send).toHaveBeenCalledWith('123456789012345', '**,imei:123456789012345,C,30s;');
+    });
+
+    it('TRK-021 #2 — SMS-only sans numéro SIM : refus sec AVANT le create, motif lisible', async () => {
+      // L'ancien chemin fabriquait une ligne FAILED qui ressemblait à une panne matérielle.
+      prisma.tracker.findUnique.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: null });
+      await expect(service.request(TRACKER_ID, 'factory', {}, null, superAdmin)).rejects.toThrow(/numéro SIM/);
+      expect(prisma.trackerCommand.create).not.toHaveBeenCalled();
+    });
+
+    it('TRK-021 #2 — sans passerelle SMS : refus sec AVANT le create', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+      sms.isEnabled.mockReturnValue(false);
+      await expect(service.request(TRACKER_ID, 'factory', {}, null, superAdmin)).rejects.toThrow(/passerelle SMS/);
+      expect(prisma.trackerCommand.create).not.toHaveBeenCalled();
+    });
+
+    it("TRK-021 #2 — une commande PLANIFIÉE SMS-only sans SIM reste acceptée (provisionnable d'ici là)", async () => {
+      // La porte précoce épargne `scheduledAt` : les contrôles de dispatchParSms restent le
+      // filet du dépilage planifié — un numéro peut être provisionné d'ici l'échéance.
+      prisma.tracker.findUnique.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: null });
+      const future = new Date(Date.now() + 3600_000);
+      const result = await service.request(TRACKER_ID, 'factory', {}, future, superAdmin);
+      expect(result.status).toBe(TrackerCommandStatus.SCHEDULED);
+    });
   });
 });
