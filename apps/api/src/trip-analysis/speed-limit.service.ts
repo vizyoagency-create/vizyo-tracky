@@ -1,3 +1,4 @@
+import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -80,13 +81,17 @@ export class SpeedLimitService {
    * signalements par jour — assez pour voir une panne durable, trop peu pour lasser.
    */
   private readonly SILENCE_ALERTE_MS = 6 * 60 * 60 * 1000;
-  private derniereAlerteAt = 0;
+  // TRK-038 — le refroidissement vit desormais EN BASE, plus dans ce service : un champ
+  // d'instance retombait a zero a chaque redemarrage, c'est-a-dire a l'evenement qui
+  // provoque le plus de rafales. Voir `RefroidissementAlerteService`.
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly errorLogger: ErrorLogger,
+    // Refroidissements d'alerte — ObservabilityModule est @Global, aucun import a ajouter.
+    private readonly refroidissement: RefroidissementAlerteService,
   ) {}
 
   /** Clé de cache : coords arrondies à 4 décimales (~11 m) → mutualise un segment de route. */
@@ -159,9 +164,12 @@ export class SpeedLimitService {
 
     // Overpass systématiquement injoignable → l'excès de vitesse n'a pas pu être affirmé : on TRACE
     // (une alerte, source `trip-analysis`, visible dans /admin/alerts). Best-effort : jamais bloquant.
-    const maintenant = Date.now();
-    if (requetes > 0 && echecs === requetes && maintenant - this.derniereAlerteAt >= this.SILENCE_ALERTE_MS) {
-      this.derniereAlerteAt = maintenant;
+    // `tenterEmission` demande le droit d'ecrire ET le consomme dans la meme instruction :
+    // deux analyses concurrentes ne peuvent pas franchir la garde ensemble. Emettre ici ne
+    // peut pas echouer (on ecrit une ligne), donc la forme atomique convient.
+    if (requetes > 0 && echecs === requetes
+        && (await this.refroidissement.tenterEmission(
+              CLES_REFROIDISSEMENT.SPEED_LIMIT_OSM, this.SILENCE_ALERTE_MS))) {
       // Le message porte la DÉPENDANCE et la CONSÉQUENCE. L'erreur brute du transport
       // (« fetch failed », « This operation was aborted ») ne disait ni ce qui était injoignable,
       // ni ce que ça coûtait — illisible au centre d'alerte, et impossible à trier d'une vraie panne.

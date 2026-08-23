@@ -2240,6 +2240,31 @@ model DisparitionLignes {
   @@map("disparitions_lignes")
 }
 
+/// REFROIDISSEMENTS D ALERTE — TRK-038.
+///
+/// « Depuis quand n a-t-on pas crie ? », pour les gardes anti-repetition qui vivaient
+/// jusque-la dans un champ d instance — donc remis a zero par CHAQUE redemarrage,
+/// c est-a-dire par l evenement qui provoque le plus de rafales.
+///
+/// ⚠️ POURQUOI UNE TABLE DEDIEE ET PAS `error_logs`. Le correctif d origine proposait
+/// de lire `max("createdAt")` dans la table des erreurs. Mesure du 22/08 sur
+/// TRK-039 : un garde-fou dont la memoire vit dans `error_logs` SE FAIT REARMER par
+/// l effaceur de TRK-035 — la ligne temoin disparait, la deduplication repart a zero,
+/// et l alerte se rejoue. Un garde-fou ne doit pas ranger sa memoire dans la piece
+/// qu il surveille.
+model RefroidissementAlerte {
+  /// Identifiant stable du garde ('speed-limit-osm', 'error-rate-watchdog', ...).
+  cle                String   @id
+  derniereEmissionAt DateTime
+  /// Combien de fois ce garde a laisse passer une emission. Utile pour juger si un
+  /// refroidissement est bien dimensionne, sans relire les alertes elles-memes.
+  emissions          Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now())
+
+  @@map("refroidissements_alerte")
+}
+
 /// Palier « Coûts IA » — un enregistrement par appel Claude RÉUSSI (les échecs vont dans ErrorLog).
 /// Sert au tableau de bord super-admin : coût par requête / jour / mois / flotte / utilisateur.
 model AiUsageLog {

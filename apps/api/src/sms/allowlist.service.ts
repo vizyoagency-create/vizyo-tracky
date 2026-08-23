@@ -1,3 +1,4 @@
+import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -53,6 +54,8 @@ export class AllowlistService {
     private readonly config: ConfigService<Env, true>,
     private readonly errorLogger: ErrorLogger,
     private readonly systemActivity: SystemActivityService,
+    // Refroidissements d'alerte — ObservabilityModule est @Global, aucun import a ajouter.
+    private readonly refroidissement: RefroidissementAlerteService,
   ) {
     this.baseUrl = (this.config.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
     this.apiKey = this.config.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
@@ -131,7 +134,7 @@ export class AllowlistService {
         meta: { ...result, episodeRepairs: this.episodeRepairs },
       });
 
-      this.reportCoverage(result);
+      await this.reportCoverage(result);
     } catch (err) {
       this.logger.warn(`reconciliation allowlist échouée: ${err instanceof Error ? err.message : err}`);
       this.errorLogger.recordBackground(
@@ -150,7 +153,8 @@ export class AllowlistService {
   /** Nombre de réparations depuis l'ouverture de l'épisode. */
   private episodeRepairs = 0;
   /** Dernière remontée au centre d'alerte pour cet épisode. */
-  private lastEpisodeAlertAt = 0;
+  // TRK-038 — refroidissement EN BASE. L'episode, lui, reste en memoire : il decrit un
+  // etat courant, pas une derniere emission.
   /** Un état qui dure se CONSULTE ; on ne le re-notifie qu'une fois par jour. */
   private static readonly EPISODE_REMINDER_MS = 24 * 60 * 60 * 1000;
 
@@ -167,7 +171,9 @@ export class AllowlistService {
    * épisode alerte toujours, immédiatement ; un épisode qui persiste réalerte chaque jour ;
    * et la fermeture est tracée. On corrige le cri, pas le garde-fou.
    */
-  private reportCoverage(result: AllowlistSyncResult, now = Date.now()): void {
+  // TRK-038 — devenue `async` : le refroidissement de l'episode vit maintenant en base et
+  // non dans un champ d'instance, donc sa lecture est une requete. L'appelant l'attend.
+  private async reportCoverage(result: AllowlistSyncResult, now = Date.now()): Promise<void> {
     // Une suppression de masse retenue par la passerelle est un fait NEUF et grave : quelque
     // chose a demandé le retrait d'une large part de la couverture SMS. Toujours remonté.
     if ((result.removalsBlocked ?? 0) > 0) {
@@ -195,7 +201,9 @@ export class AllowlistService {
         });
         this.episodeOpenedAt = null;
         this.episodeRepairs = 0;
-        this.lastEpisodeAlertAt = 0;
+        // L'episode se referme : on OUBLIE le refroidissement. Ce qui rouvrira ensuite est un
+        // fait NOUVEAU, et le taire au motif qu'on a crie pendant l'episode precedent serait faux.
+        await this.refroidissement.oublier(CLES_REFROIDISSEMENT.ALLOWLIST_EPISODE);
       }
       return;
     }
@@ -207,7 +215,9 @@ export class AllowlistService {
     if (isNewEpisode) this.episodeOpenedAt = now;
     const openedAt = this.episodeOpenedAt ?? now;
 
-    const dueForReminder = now - this.lastEpisodeAlertAt >= AllowlistService.EPISODE_REMINDER_MS;
+    const derniereAlerteAt = await this.refroidissement.derniereEmission(CLES_REFROIDISSEMENT.ALLOWLIST_EPISODE);
+    const dueForReminder =
+      !derniereAlerteAt || now - derniereAlerteAt.getTime() >= AllowlistService.EPISODE_REMINDER_MS;
     if (!isNewEpisode && !dueForReminder) {
       this.logger.warn(
         `Allowlist SMS : ${result.added} numéro(s) rétablis (réparation n°${this.episodeRepairs} ` +
@@ -215,7 +225,7 @@ export class AllowlistService {
       );
       return;
     }
-    this.lastEpisodeAlertAt = now;
+    await this.refroidissement.marquerEmission(CLES_REFROIDISSEMENT.ALLOWLIST_EPISODE);
 
     const recurrence =
       this.episodeRepairs > 1
