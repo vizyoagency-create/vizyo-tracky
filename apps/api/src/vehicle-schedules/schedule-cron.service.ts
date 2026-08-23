@@ -61,6 +61,25 @@ const STUCK_REALERT_MS = 3 * 60 * 60 * 1000;
  */
 const CUT_BACKOFF_MS = [2, 5, 15, 30].map((m) => m * 60 * 1000);
 
+/** Période du cron (`@Cron` chaque minute) — sert de marge au réessai à échéance connue. */
+const CRON_TICK_MS = 60 * 1000;
+
+/**
+ * TRK-029 — reconnaît, dans la CAUSE d'un report, un compte à rebours CALCULABLE :
+ * « …arrêté depuis seulement N s (minimum requis M s) » (garde SCHEDULER d'engine-control).
+ * Un backoff traite l'ignorance ; il ne doit pas traiter une échéance connue : ici le code
+ * a la réponse (M − N secondes) dans la donnée qu'il vient d'évaluer.
+ * ⚠️ Couplage textuel ASSUMÉ avec engine-control.service.ts (SCHEDULE_CUT_MIN_STOPPED_MS) :
+ * si le libellé change, on retombe sur le backoff exponentiel — dégradation sûre, jamais fausse.
+ */
+const KNOWN_COUNTDOWN_RE = /arrêté depuis seulement (\d+)\s*s.*?minimum requis (\d+)\s*s/;
+
+export function parseKnownCountdown(msg: string): { stoppedS: number; minS: number } | null {
+  const m = KNOWN_COUNTDOWN_RE.exec(msg);
+  if (!m) return null;
+  return { stoppedS: Number(m[1]), minS: Number(m[2]) };
+}
+
 /** Ré-alerte « planning suspendu pour dormance » : hebdomadaire (l'état est stable). */
 const DORMANT_REALERT_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -95,6 +114,10 @@ export class ScheduleCronService {
    * toujours pendant l'attente, jamais sur le tick qui a réellement échoué.
    */
   private readonly lastFailureReason = new Map<string, string>();
+  /** TRK-029 — échéance CONNUE du prochain essai de coupe (réessai programmé, pas backoff). */
+  private readonly cutRetryDeadline = new Map<string, { at: number; stoppedS: number; minS: number }>();
+  /** TRK-029 — ids des lignes « différée/impossible » écrites, pour les CLORE à l'aboutissement. */
+  private readonly stuckAlertLogIds = new Map<string, string[]>();
   /** Dernière alerte « planning suspendu pour dormance » par véhicule (anti-répétition). */
   private readonly lastDormantAlertAt = new Map<string, number>();
 
@@ -169,12 +192,12 @@ export class ScheduleCronService {
     // reçue, `lastSeenAt` redevient frais et le véhicule réintègre le flux au tick
     // suivant, en moins d'une minute, sans aucun geste d'exploitant.
     //
-    // ⚠️ Le `clearDeferral` est OBLIGATOIRE : sans lui, les 4 Map de suivi
-    // (report, backoff, compteur d'échecs, dernière cause) garderaient une entrée
-    // par véhicule dormant indéfiniment — une fuite mémoire lente.
+    // ⚠️ Le `clearDeferral` est OBLIGATOIRE : sans lui, les Map de suivi (report, backoff,
+    // compteur d'échecs, échéance connue, dernière cause, ids d'alerte) garderaient une
+    // entrée par véhicule dormant indéfiniment — une fuite mémoire lente.
     const silentMs = trackerSilenceMs(tracker.lastSeenAt);
     if (silentMs != null && silentMs > DORMANT_STOP_ACTING_MS) {
-      this.clearDeferral(schedule.vehicleId);
+      this.clearDeferral(schedule.vehicleId, 'planning suspendu (boîtier muet — dormance)');
       this.reportDormant(schedule, tracker.lastSeenAt ?? null);
       return;
     }
@@ -195,7 +218,7 @@ export class ScheduleCronService {
     const state = evaluation.state;
 
     // No change → skip (schedule en phase avec l'état voulu → pas de coupe bloquée)
-    if (state === schedule.lastEvaluatedState) { this.clearDeferral(schedule.vehicleId); return; }
+    if (state === schedule.lastEvaluatedState) { this.clearDeferral(schedule.vehicleId, 'coupe devenue sans objet (planning revenu en phase)'); return; }
 
     // Premier tick apres activation : si IN_WINDOW, le vehicule roule deja.
     // On initialise le baseline sans envoyer de RESTORE inutile.
@@ -269,15 +292,32 @@ export class ScheduleCronService {
       const isDeferrable =
         err instanceof ForbiddenException || err instanceof ServiceUnavailableException;
       if (isDeferrable) {
-        // Mémorise la cause RÉELLE : les ticks suivants tombent dans le backoff et ne la
-        // reverront pas, alors que c'est elle qu'il faut rapporter (cf. lastFailureReason).
+        // Mémorise la cause RÉELLE : les ticks suivants tombent dans la fenêtre d'attente et
+        // ne la reverront pas, alors que c'est elle qu'il faut rapporter (cf. lastFailureReason).
         this.lastFailureReason.set(schedule.vehicleId, msg);
+        // TRK-029 — deux familles de report, deux traitements :
+        //  • échéance CONNUE (« arrêté depuis N s, minimum M s ») → réessai programmé à M − N
+        //    (+ un tick de marge) : le compte à rebours est lisible dans la cause elle-même,
+        //    attendre un palier de backoff coûtait 25 min d'immobilisation mesurées (17/08) ;
+        //  • cause inconnue ou panne de transport → backoff exponentiel (incident 2026-07-19) :
+        //    le délai croissant traite l'ignorance, pas une échéance.
+        // Une RESTAURATION n'est JAMAIS retardée (cf. CUT_BACKOFF_MS — asymétrie volontaire).
+        const countdown = action === EngineAction.CUT ? parseKnownCountdown(msg) : null;
+        let nextIn = 0;
+        if (countdown) {
+          nextIn = this.scheduleCutRetryAtDeadline(schedule.vehicleId, countdown);
+        } else {
+          // Cause sans échéance : l'éventuelle échéance mémorisée est périmée — la rédaction
+          // d'alerte ne doit plus promettre un « réessai à HH:MM » qu'on ne tient plus.
+          this.cutRetryDeadline.delete(schedule.vehicleId);
+          if (action === EngineAction.CUT) nextIn = this.scheduleCutRetry(schedule.vehicleId);
+        }
         // Suivi : si la coupe reste bloquée trop longtemps, on la remonte au centre d'alertes.
+        // APRÈS l'armement du réessai : l'alerte émise sur le tick d'échec lui-même doit déjà
+        // pouvoir dire « réessai à HH:MM » quand l'échéance est connue.
         this.trackDeferral(schedule, msg);
-        // Une COUPE en échec est espacée ; une RESTAURATION est retentée au tick suivant.
-        const nextIn = action === EngineAction.CUT ? this.scheduleCutRetry(schedule.vehicleId) : 0;
         this.logger.warn(
-          { vehicleId: schedule.vehicleId, error: msg, action, retryInMin: nextIn / 60000 },
+          { vehicleId: schedule.vehicleId, error: msg, action, retryInMin: nextIn / 60000, knownDeadline: countdown != null },
           nextIn > 0
             ? `Coupe reportée — nouvelle tentative dans ${Math.round(nextIn / 60000)} min`
             : 'Schedule action deferred (retry next tick)',
@@ -307,7 +347,7 @@ export class ScheduleCronService {
     }
 
     // Action aboutie → la coupe/reprise n'est plus « bloquée » pour ce véhicule.
-    this.clearDeferral(schedule.vehicleId);
+    this.clearDeferral(schedule.vehicleId, action === EngineAction.CUT ? 'coupe aboutie' : 'reprise aboutie');
 
     // Persister la transition dans schedule_history (audit + UI timeline)
     const occurredAt = new Date();
@@ -343,6 +383,15 @@ export class ScheduleCronService {
    * Enregistre un report ; remonte UNE alerte (ré-espacée) si la coupe/reprise reste bloquée trop
    * longtemps. `waitingBackoff` indique qu'on est dans une fenêtre d'attente — la CAUSE rapportée
    * reste celle du dernier échec réel, l'attente n'étant qu'une précision de contexte.
+   *
+   * TRK-029 — deux rédactions, selon ce qu'on SAIT :
+   *  • échéance connue → « coupe différée…, réessai à HH:MM » : l'attente est un choix, pas une
+   *    panne. Un exploitant qui lit « impossible » appelle le conducteur ; celui qui lit
+   *    « différée à 20:30 » attend.
+   *  • cause inconnue → « impossible depuis N min — <cause> » (inchangé) : là, c'est vrai.
+   * L'id de chaque ligne écrite est conservé pour que clearDeferral() la CLÔTURE — une alerte
+   * sans état de sortie reste vraie pour toujours (le centre d'alerte a gardé un « impossible »
+   * décrivant une coupe qui avait abouti 24 minutes plus tard).
    */
   private trackDeferral(schedule: ScheduleWithVehicle, reason: string, waitingBackoff = false): void {
     const vid = schedule.vehicleId;
@@ -358,9 +407,27 @@ export class ScheduleCronService {
     // Le véhicule est nommé par sa PLAQUE : une alerte qui ne porte qu'un UUID oblige à ouvrir la
     // base pour savoir de quel véhicule on parle (les alertes GPS, elles, nomment déjà la plaque).
     const who = schedule.vehicle.plate ? `${schedule.vehicle.plate} ` : '';
+    const deadline = this.cutRetryDeadline.get(vid);
+    let headline: string;
+    if (deadline) {
+      // HH:MM dans le fuseau du planning : c'est l'heure que l'exploitant a sous les yeux.
+      let retryAtLocal: string;
+      try {
+        retryAtLocal = new Intl.DateTimeFormat('fr-FR', {
+          timeZone: schedule.timezone, hour: '2-digit', minute: '2-digit',
+        }).format(new Date(deadline.at));
+      } catch {
+        retryAtLocal = `${new Date(deadline.at).toISOString().slice(11, 16)} UTC`;
+      }
+      headline =
+        `Automatisation horaire : coupe différée sur ${who}depuis ${minutes} min, ` +
+        `réessai à ${retryAtLocal} — véhicule arrêté depuis ${deadline.stoppedS} s sur ${deadline.minS} s requis`;
+    } else {
+      headline = `Automatisation horaire : coupe/reprise impossible sur ${who}depuis ${minutes} min — ${reason}`;
+    }
     this.errorLogger
       .record(
-        new Error(`Automatisation horaire : coupe/reprise impossible sur ${who}depuis ${minutes} min — ${reason}`),
+        new Error(headline),
         'schedule-cron',
         {
           vehicleId: vid,
@@ -369,9 +436,20 @@ export class ScheduleCronService {
           stuckMinutes: minutes,
           cause: reason,
           waitingBackoff,
+          knownDeadline: !!deadline,
+          deferredUntil: deadline ? new Date(deadline.at).toISOString() : null,
           phase: 'stuck-schedule-action',
         },
       )
+      .then((id) => {
+        // Ne garder que de VRAIS ids : ErrorLogger renvoie des sentinelles ('deduped',
+        // 'transient', 'already-recorded', 'persist-failed') quand rien n'a été écrit.
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+          const ids = this.stuckAlertLogIds.get(vid) ?? [];
+          ids.push(id);
+          this.stuckAlertLogIds.set(vid, ids);
+        }
+      })
       .catch(() => { /* best-effort */ });
   }
 
@@ -424,12 +502,48 @@ export class ScheduleCronService {
     return delay;
   }
 
-  /** La coupe/reprise a abouti (ou n'est plus attendue) → on oublie le report ET le backoff. */
-  private clearDeferral(vehicleId: string): void {
+  /**
+   * TRK-029 — réessai à l'échéance CONNUE. « Arrêté depuis N s, minimum M s » n'est pas une
+   * incertitude : c'est un compte à rebours de M − N secondes, lisible dans la donnée qui vient
+   * d'être évaluée. Le tick de marge n'est pas décoratif : la fenêtre du garde est bornée par
+   * `gte` et N est arrondi à la seconde — un essai qui tombe PILE sur l'échéance serait
+   * re-différé pour rien.
+   * ⚠️ Ne touche PAS au compteur d'échecs : les paliers exponentiels (CUT_BACKOFF_MS) restent
+   * réservés aux pannes de transport et aux causes inconnues — c'est là qu'ils sont justifiés.
+   */
+  private scheduleCutRetryAtDeadline(vehicleId: string, countdown: { stoppedS: number; minS: number }): number {
+    const delay = Math.max(0, countdown.minS - countdown.stoppedS) * 1000 + CRON_TICK_MS;
+    const at = Date.now() + delay;
+    this.cutRetryAfter.set(vehicleId, at);
+    this.cutRetryDeadline.set(vehicleId, { at, stoppedS: countdown.stoppedS, minS: countdown.minS });
+    return delay;
+  }
+
+  /**
+   * La coupe/reprise a abouti (ou n'est plus attendue) → on oublie le report ET le backoff,
+   * et l'on CLÔT les lignes d'alerte écrites pendant le blocage (TRK-029 : une alerte sans
+   * état de sortie reste vraie pour toujours). Champ de résolution sur la ligne d'origine —
+   * `resolvedAt`/`resolvedNote` existent depuis l'archivage réversible du 22/08.
+   * `resolvedAt: null` dans le where : on n'écrase JAMAIS une résolution posée par un humain.
+   * Fire-and-forget assumé : la clôture est un confort de lecture, pas un invariant — elle ne
+   * doit ni retarder ni faire échouer le tick.
+   */
+  private clearDeferral(vehicleId: string, outcome = 'coupe/reprise plus attendue'): void {
+    const alertIds = this.stuckAlertLogIds.get(vehicleId);
+    if (alertIds?.length) {
+      this.prisma.errorLog
+        .updateMany({
+          where: { id: { in: alertIds }, resolvedAt: null },
+          data: { resolvedAt: new Date(), resolvedNote: `Clôture automatique (schedule-cron) : ${outcome}.` },
+        })
+        .catch((e: unknown) => this.logger.warn(`Clôture d'alertes de coupe échouée : ${(e as Error).message}`));
+    }
+    this.stuckAlertLogIds.delete(vehicleId);
     this.deferredSince.delete(vehicleId);
     this.lastStuckAlertAt.delete(vehicleId);
     this.cutRetryAfter.delete(vehicleId);
     this.cutFailures.delete(vehicleId);
+    this.cutRetryDeadline.delete(vehicleId);
     this.lastFailureReason.delete(vehicleId);
   }
 

@@ -366,6 +366,9 @@ export class EngineControlService implements OnModuleDestroy {
           });
           if (recentMovement) {
             const stoppedForMs = Date.now() - recentMovement.timestamp.getTime();
+            // ⚠️ Libellé PARSÉ par schedule-cron (TRK-029, parseKnownCountdown) : N et M y
+            // deviennent un réessai programmé à M − N s. Reformuler ici = retomber en silence
+            // sur le backoff exponentiel (dégradation sûre, mais 25 min de coupe en trop).
             throw new ForbiddenException(
               `Coupe auto différée : véhicule arrêté depuis seulement ${Math.round(stoppedForMs / 1000)}s ` +
                 `(minimum requis ${Math.round(SCHEDULE_CUT_MIN_STOPPED_MS / 1000)}s)`,
