@@ -397,7 +397,10 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
   const staleCommand = (over: Record<string, unknown> = {}) => ({
     id: 'c1',
     createdAt: new Date(Date.now() - 200 * 60_000), // 200 min
-    tracker: { imei: '864035052915643', currentFixIntervalS: 3600, desiredFixIntervalS: 20 },
+    // TRK-013 — `params.interval` porte la cible DEMANDÉE ; `desiredFixIntervalS` n'est
+    // plus chargé par le select (la cible courante du boîtier ne doit plus être citée).
+    params: { interval: '020s' },
+    tracker: { imei: '864035052915643', currentFixIntervalS: 3600 },
     ...over,
   });
 
@@ -433,12 +436,111 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
   it('dit « inconnue » plutôt que d\'inventer une cadence', async () => {
     const { svc, prisma } = build();
     prisma.trackerCommand.findMany.mockResolvedValue([
-      staleCommand({ tracker: { imei: 'x', currentFixIntervalS: null, desiredFixIntervalS: 20 } }),
+      staleCommand({ tracker: { imei: 'x', currentFixIntervalS: null } }),
     ]);
 
     await svc.expireStaleFixCommands();
 
     expect(prisma.trackerCommand.update.mock.calls[0][0].data.observedResult).toContain('inconnue');
+  });
+
+  describe("TRK-013 — le verdict COMPARE avant d'affirmer", () => {
+    it("clôt en ACKNOWLEDGED quand la cadence réelle égale la cible demandée — sans fabriquer d'accusé", async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([
+        staleCommand({ params: { interval: '020s' }, tracker: { imei: 'x', currentFixIntervalS: 20 } }),
+      ]);
+      await svc.expireStaleFixCommands();
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      expect(data.status).toBe('ACKNOWLEDGED');
+      expect(data.observedResult).toContain('Cible atteinte');
+      expect(data.observedResult).toContain('20s');
+      // ⚠️ TRK-014 mesure « 0 accusé depuis l'origine » via la nullité d'ackedAt : un faux
+      // accusé synthétique détruirait cette mesure. La clôture n'écrit QUE status + verdict.
+      expect(data.ackedAt).toBeUndefined();
+      expect(data.ackResponse).toBeUndefined();
+      expect(data.acknowledgedAt).toBeUndefined();
+    });
+
+    it("la bande ±20 % de reconcile, pas l'égalité stricte", async () => {
+      const { svc, prisma } = build();
+      // 21 s pour 20 s demandés : le boîtier honore sa consigne (cas FS-253-HR du 07/08).
+      prisma.trackerCommand.findMany.mockResolvedValue([
+        staleCommand({ params: { interval: '020s' }, tracker: { imei: 'x', currentFixIntervalS: 21 } }),
+        staleCommand({ id: 'c2', params: { interval: '020s' }, tracker: { imei: 'x', currentFixIntervalS: 24 } }),
+        staleCommand({ id: 'c3', params: { interval: '020s' }, tracker: { imei: 'x', currentFixIntervalS: 25 } }),
+      ]);
+      await svc.expireStaleFixCommands();
+      const statuts = prisma.trackerCommand.update.mock.calls.map((c: never[]) => (c[0] as { data: { status: string } }).data.status);
+      expect(statuts).toEqual(['ACKNOWLEDGED', 'ACKNOWLEDGED', 'FAILED']); // 24 = borne incluse, 25 dehors
+    });
+
+    it("cite l'intervalle demandé, jamais la cible courante du boîtier", async () => {
+      const { svc, prisma } = build();
+      // Cas FS-253-HR du 11:39 : demandé 30 s, le message d'époque disait « cible de 20 s ».
+      prisma.trackerCommand.findMany.mockResolvedValue([
+        staleCommand({ params: { interval: '030s' }, tracker: { imei: 'x', currentFixIntervalS: 17 } }),
+      ]);
+      await svc.expireStaleFixCommands();
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      expect(data.status).toBe('FAILED');
+      expect(data.observedResult).toContain('30s');
+      expect(data.observedResult).not.toContain('20s');
+    });
+
+    it("une vraie non-conformité reste un échec — le balayage n'est pas supprimé, il est corrigé", async () => {
+      const { svc, prisma } = build();
+      // Cas EY-613-MF : 3600 s pour 300 s demandés. Un correctif qui ferait tout passer en
+      // ACKNOWLEDGED aurait supprimé le balayage, pas le défaut.
+      prisma.trackerCommand.findMany.mockResolvedValue([
+        staleCommand({ params: { interval: '005m' }, tracker: { imei: 'x', currentFixIntervalS: 3600 } }),
+      ]);
+      await svc.expireStaleFixCommands();
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      expect(data.status).toBe('FAILED');
+      expect(data.observedResult).toContain('3600s');
+      expect(data.observedResult).toContain('300s');
+    });
+
+    it('sans cible demandée lisible, pas de verdict de succès', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([
+        staleCommand({ params: { interval: 'garbage' }, tracker: { imei: 'x', currentFixIntervalS: 20 } }),
+      ]);
+      await svc.expireStaleFixCommands();
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      expect(data.status).toBe('FAILED');
+      expect(data.observedResult).toContain('illisible');
+    });
+
+    it('le select charge params et ne charge plus la cible courante du boîtier', async () => {
+      const { svc, prisma } = build();
+      await svc.expireStaleFixCommands();
+      const select = prisma.trackerCommand.findMany.mock.calls[0][0].select;
+      expect(select.params).toBe(true);
+      expect(select.tracker.select.desiredFixIntervalS).toBeUndefined();
+    });
+  });
+
+  describe('intervalSeconds (TRK-013)', () => {
+    const { TrackerFixModeService } = require('./tracker-fix-mode.service') as typeof import('./tracker-fix-mode.service');
+    it('relit la forme du catalogue', () => {
+      expect(TrackerFixModeService.intervalSeconds('020s')).toBe(20);
+      expect(TrackerFixModeService.intervalSeconds('030s')).toBe(30);
+      expect(TrackerFixModeService.intervalSeconds('005m')).toBe(300);
+      expect(TrackerFixModeService.intervalSeconds('010m')).toBe(600);
+      expect(TrackerFixModeService.intervalSeconds('060s')).toBe(60);
+    });
+    it("rend null sur tout ce qui n'est pas une cible — jamais de cible devinée", () => {
+      for (const mauvais of [null, undefined, '', '20', 'abc', '000s', 42]) {
+        expect(TrackerFixModeService.intervalSeconds(mauvais)).toBeNull();
+      }
+    });
+    it('aller-retour avec intervalLabel', () => {
+      for (const x of [20, 30, 300]) {
+        expect(TrackerFixModeService.intervalSeconds(TrackerFixModeService.intervalLabel(x))).toBe(x);
+      }
+    });
   });
 
   it('respecte FIX_COMMAND_EXPIRY_MIN', async () => {
