@@ -74,7 +74,22 @@ function prendreUnTravail() {
       ORDER BY "creeA" ASC LIMIT 1 FOR UPDATE SKIP LOCKED
     )
     RETURNING id::text || '|' || type || '|' || encode(convert_to(payload::text,'UTF8'),'base64');`;
-  const ligne = psql(sql).trim();
+  /**
+   * ⚠️ LE TAG DE COMMANDE (« UPDATE 1 ») SUIT LA DONNEE dans la sortie psql — et les
+   * caracteres U-P-D-A-T-E et le chiffre appartiennent a l'ALPHABET BASE64. Quand le
+   * payload encode tombe sur une longueur SANS padding « = », Node decode le tag en
+   * octets parasites colles au JSON : « Unexpected non-whitespace character after JSON
+   * at position N ». Mesure le 2026-08-23 : l'analyse de Toulouse (1 945 octets, pas de
+   * padding) plantait, celle d'Auchan (padding « = », qui stoppe le decodeur) passait.
+   * Un bogue dependant de la taille du payload modulo 3 — on retire donc les lignes de
+   * tag AVANT tout decodage. Le filtre recolle aussi le base64 que psql replie a 76
+   * colonnes.
+   */
+  const ligne = psql(sql)
+    .split(/\r?\n/)
+    .filter((l) => !/^[A-Z]+ \d+$/.test(l.trim()))
+    .join('')
+    .trim();
   if (!ligne) return null;
   const parts = ligne.split('|');
   /**
@@ -89,7 +104,20 @@ function prendreUnTravail() {
    */
   if (parts.length !== 3) return null;
   const [id, type, b64] = parts;
-  return { id, type, payload: JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) };
+  /**
+   * ⚠️ LA LIGNE EST DEJA MARQUEE `pris` A CE STADE. Un payload illisible doit donc etre
+   * REPOSE avant de lever — sinon le travail reste orphelin : aucun passage ne reprend
+   * une ligne `pris`. Paye le 2026-08-23 (analyse de lieu de Toulouse) : le crash de
+   * decodage laissait la ligne en `pris`, et le resume du passage comptait « repose »
+   * un travail qui ne l'etait pas.
+   */
+  try {
+    return { id, type, payload: JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) };
+  } catch (e) {
+    const motif = e instanceof Error ? e.message : String(e);
+    reposer(id, `payload illisible au decodage : ${motif}`);
+    throw new Error(`travail ${id.slice(0, 8)} repose — payload illisible (${motif})`);
+  }
 }
 
 /** La reponse du modele part en base64 : aucun echappement SQL a negocier. */
