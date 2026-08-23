@@ -163,6 +163,21 @@ export class TrackerFixModeService {
   }
 
   /**
+   * TRK-013 — inverse d'`intervalLabel` : relit l'intervalle DEMANDÉ depuis
+   * `TrackerCommand.params.interval` ('020s' → 20, '005m' → 300). Retourne null quand le
+   * paramètre est absent ou illisible (anciennes lignes, JSON inattendu) : on ne devine
+   * jamais une cible — et sans cible demandée, aucun verdict de succès n'est prononçable.
+   */
+  static intervalSeconds(label: unknown): number | null {
+    if (typeof label !== 'string') return null;
+    const m = /^(\d{1,3})([sm])$/.exec(label.trim());
+    if (!m) return null;
+    const n = Number(m[1]);
+    if (n <= 0) return null;
+    return m[2] === 'm' ? n * 60 : n;
+  }
+
+  /**
    * Generate an actionable diagnostic hint based on the current tracker state.
    * Used to populate `TrackerCommand.diagnosticHint` so an admin sees a concrete
    * suggestion in the UI without having to reason about the failure pattern.
@@ -337,9 +352,17 @@ export class TrackerFixModeService {
    * a laissé la commande ouverte. Une commande sans accusé de réception doit avoir une fin
    * qui ne dépend que de l'horloge.
    *
-   * On ferme en `FAILED` — pas en `CANCELLED` : la commande a bien été émise et n'a pas
-   * abouti, l'audit doit le refléter. `observedResult` porte la cadence réellement constatée,
-   * pour que la ligne dise ce qui s'est passé et non ce qu'on espérait.
+   * ══ TRK-013 — le verdict COMPARE avant d'affirmer ═════════════════════════════════════
+   *
+   * Ce balayage écrivait `FAILED` sans jamais comparer la cadence réelle à celle demandée :
+   * des clôtures « cadence réelle 20s pour une cible de 20s » archivées en échec, alors que
+   * la commande avait RÉUSSI. Pire : la « cible » citée était `desiredFixIntervalS`, lue au
+   * moment du balayage — pas celle de la commande (`params.interval`), réécrite entre-temps.
+   * Désormais : cadence réelle dans la bande ±20 % (RECONCILE_TOLERANCE, la même que
+   * `reconcile`) de l'intervalle DEMANDÉ → `ACKNOWLEDGED` « cible atteinte » ; sinon
+   * `FAILED` — pas `CANCELLED` : la commande a bien été émise et n'a pas abouti — en citant
+   * l'intervalle demandé. `observedResult` dit ce qui s'est passé, pas ce qu'on espérait.
+   * Le QUAND de la clôture, lui, reste purement temporel (cf. ci-dessus).
    */
   @Cron('45 */10 * * * *')
   async expireStaleFixCommands(): Promise<void> {
@@ -361,25 +384,59 @@ export class TrackerFixModeService {
         select: {
           id: true,
           createdAt: true,
-          tracker: { select: { imei: true, currentFixIntervalS: true, desiredFixIntervalS: true } },
+          // TRK-013 — `params.interval` est la cible DEMANDÉE par la commande : c'est elle
+          // qu'on compare et qu'on cite. `desiredFixIntervalS` (cible COURANTE du boîtier,
+          // réécrite entre-temps par les commandes suivantes) n'est volontairement plus
+          // chargée : la citer était le second défaut, on rend la récidive impossible.
+          params: true,
+          tracker: { select: { imei: true, currentFixIntervalS: true } },
         },
         take: 200,
       });
       if (!stale.length) return;
 
+      let atteintes = 0;
       for (const c of stale) {
         const ageMin = Math.round((Date.now() - c.createdAt.getTime()) / 60_000);
         const reel = c.tracker.currentFixIntervalS;
+        // TRK-013 — la cible est l'intervalle DEMANDÉ par la commande (params.interval),
+        // jamais la cible courante du boîtier, réécrite entre-temps par d'autres commandes.
+        const demandeS = TrackerFixModeService.intervalSeconds(
+          (c.params as Record<string, unknown> | null)?.['interval'],
+        );
+        // Même bande ±20 % que `reconcile` (bornes incluses) : c'est déjà elle qui juge la
+        // convergence trame par trame — juger autrement ici fabriquerait deux vérités.
+        // À l'égalité stricte, 21 s pour 20 s demandés passerait pour un échec alors que le
+        // boîtier honore sa consigne (cas FS-253-HR du 07/08).
+        const cibleAtteinte =
+          demandeS != null &&
+          reel != null &&
+          reel >= demandeS * (1 - RECONCILE_TOLERANCE) &&
+          reel <= demandeS * (1 + RECONCILE_TOLERANCE);
+        if (cibleAtteinte) atteintes += 1;
+        // ⚠️ Le QUAND de la clôture reste PUREMENT temporel (leçon TRK-007) ; la comparaison
+        // ne décide que du QUOI — le verdict écrit. Et on ne touche ni à `ackedAt` /
+        // `ackResponse` (réservés à une vraie réponse du boîtier : TRK-014 mesure leur
+        // absence, un faux ackedAt truquerait cette mesure) ni à `acknowledgedAt` (réservé
+        // à l'acquittement manuel d'un admin).
         await this.prisma.trackerCommand
           .update({
             where: { id: c.id },
-            data: {
-              status: TrackerCommandStatus.FAILED,
-              observedResult:
-                `Sans effet constaté après ${ageMin} min : cadence réelle ` +
-                `${reel != null ? `${reel}s` : 'inconnue'} pour une cible de ` +
-                `${c.tracker.desiredFixIntervalS}s. Le boîtier n'acquitte pas ; commande close par échéance.`,
-            },
+            data: cibleAtteinte
+              ? {
+                  status: TrackerCommandStatus.ACKNOWLEDGED,
+                  observedResult:
+                    `Cible atteinte : cadence réelle ${reel}s pour ${demandeS}s demandés — ` +
+                    `sans accusé de réception du boîtier. Close par échéance après ${ageMin} min.`,
+                }
+              : {
+                  status: TrackerCommandStatus.FAILED,
+                  observedResult:
+                    `Sans effet constaté après ${ageMin} min : cadence réelle ` +
+                    `${reel != null ? `${reel}s` : 'inconnue'} pour ` +
+                    `${demandeS != null ? `${demandeS}s demandés` : 'une cible demandée illisible'}. ` +
+                    `Le boîtier n'acquitte pas ; commande close par échéance.`,
+                },
           })
           .catch(() => undefined);
       }
