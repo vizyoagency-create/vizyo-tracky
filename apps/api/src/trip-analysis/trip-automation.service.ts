@@ -63,8 +63,13 @@ const RECOMPUTE_SLICE_MS = 48 * 60 * 60 * 1000;
  * soixante-six heures.
  *
  * 50 minutes laissent dix minutes de marge avant le tick suivant. Si un passage deborde
- * malgre tout, le garde anti-chevauchement saute simplement le tick d'apres — le systeme se
+ * malgre tout, le verrou `running` empeche le chevauchement en memoire — le systeme se
  * regule seul, il ne s'empile pas.
+ *
+ * ⚠️ TRK-043 : la garde persistee mesure l'espacement entre DEPARTS (voir `runScheduled`).
+ * Un passage a budget plein (depart :45, fin :35) n'annule PLUS le tick suivant — les deux
+ * departs restent espaces de 60 min. L'ancienne mesure (depuis la FIN, `lastRunAt`) faisait
+ * sauter un tick des que le passage durait plus de 10 min : 14 passages sur 24 le 2026-08-23.
  */
 const RUN_BUDGET_MS = 50 * 60 * 1000;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
@@ -209,13 +214,39 @@ export class TripAutomationService {
     if (!settings.enabled) return;
 
     const parisHour = this.parisHour();
-    if (settings.frequency === 'daily') {
-      if (parisHour !== settings.hour) return;
-      // Anti double-run quotidien (marge 22h).
-      if (settings.lastRunAt && Date.now() - settings.lastRunAt.getTime() < 22 * 3600 * 1000) return;
-    } else {
-      // Horaire : garde anti double-run rapproché (< 50 min).
-      if (settings.lastRunAt && Date.now() - settings.lastRunAt.getTime() < 50 * 60 * 1000) return;
+    if (settings.frequency === 'daily' && parisHour !== settings.hour) return;
+
+    /**
+     * TRK-043 — la garde anti double-run mesure l'espacement entre DÉPARTS, comme son intitulé
+     * l'annonce. L'ancienne version comparait le tick à `lastRunAt` — écrit à la CLÔTURE du
+     * passage : tout passage de plus de 10 min emportait le tick suivant (14 passages sur 24
+     * mesurés le 2026-08-23), et un passage à budget plein (50 min) GARANTISSAIT l'annulation
+     * du suivant — le frein serrait le plus fort exactement quand la charge montait.
+     *
+     * ⚠️ La garde n'est PAS supprimée pour autant : `this.running` bloque la ré-entrance en
+     * mémoire mais ne survit pas à un redémarrage de conteneur ; celle-ci est PERSISTÉE.
+     * Mesurée depuis le départ, elle protège le redémarrage aussi bien — et deux départs
+     * légitimes du cron horaire étant espacés de 60 min, elle ne se déclenche plus jamais à tort.
+     */
+    const dernierDepart = await this.dernierDepartPersiste(settings.lastRunAt);
+    const margeMs = settings.frequency === 'daily' ? 22 * 3600 * 1000 : 50 * 60 * 1000;
+    if (dernierDepart && Date.now() - dernierDepart.getTime() < margeMs) {
+      // TRK-043 (correctif n°4) — un tick annulé doit laisser une TRACE : dix ticks sur 24
+      // disparaissaient chaque jour sans une ligne nulle part. Le journal d'activité rend le
+      // compte possible, et l'écran des tâches de fond l'affiche à côté de la cadence déclarée.
+      const minutes = Math.round((Date.now() - dernierDepart.getTime()) / 60_000);
+      this.logger.warn(
+        `Tick annulé par la garde anti double-run : dernier départ il y a ${minutes} min (seuil ${Math.round(margeMs / 60_000)} min).`,
+      );
+      this.systemActivity.record({
+        category: 'AI',
+        action: 'trip_automation_tick_annule',
+        status: 'SKIPPED',
+        actor: 'planning',
+        detail: `Automatisation trajets : tick annulé par la garde anti double-run (dernier départ il y a ${minutes} min, seuil ${Math.round(margeMs / 60_000)} min).`,
+        meta: { dernierDepart: dernierDepart.toISOString(), margeMs },
+      });
+      return;
     }
 
     await this.run(settings, 'scheduled');
@@ -760,6 +791,32 @@ export class TripAutomationService {
     const existing = await this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } });
     if (existing) return existing;
     return this.prisma.tripAutomationSettings.create({ data: {} });
+  }
+
+  /**
+   * TRK-043 — le DERNIER DÉPART persisté, relu depuis l'historique des passages.
+   *
+   * `trip_automation_runs.startedAt` est écrit à la clôture avec l'heure de DÉPART réelle du
+   * passage (cf. `recordRun`) : exactement le point de mesure que la garde annonce, sans
+   * colonne ni migration. La table est élaguée à `KEEP_RUNS` (100) lignes — plus de quatre
+   * jours à cadence horaire — et indexée `startedAt desc` : la lecture est gratuite.
+   *
+   * Un passage TUÉ avant sa clôture n'y laisse rien : le tick suivant part, ce qui est le
+   * comportement voulu (observé le 22/08 : tick de 12:45 tué à 12:48, celui de 13:45 a tourné).
+   *
+   * Repli : si l'historique est illisible, on retombe sur `lastRunAt` — l'ancien point de
+   * mesure, trop prudent mais jamais dangereux. La garde ne disparaît dans aucun cas.
+   */
+  private async dernierDepartPersiste(replis: Date | null): Promise<Date | null> {
+    try {
+      const r = await this.prisma.tripAutomationRun.findFirst({
+        orderBy: { startedAt: 'desc' },
+        select: { startedAt: true },
+      });
+      return r?.startedAt ?? replis;
+    } catch {
+      return replis;
+    }
   }
 
   private async persistRun(id: string, runStats: TripAutomationRunStatsWithDormancy): Promise<void> {
