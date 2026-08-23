@@ -3989,9 +3989,197 @@ légitimement besoin.* ⚠️ **Ne pas conclure que le 08-20 est une anomalie** 
 prendre le 08-22 pour référence** : l'audit du jour a lui-même porté ce compte de ~46 à 81 en
 mesurant le phénomène (VPS-M12, nouvelle forme).
 
+### Suivi
+
+- **2026-08-23** — **7 737 sessions** sur la fenêtre de 7 jours. ⚠️ **Et le chiffre du 08-22 publié
+  hier était faux d'un facteur 5** : le rapport a écrit **72**, la journée complète en vaut
+  **360**. La cause est VPS-M61, découvert le lendemain : le dernier jour d'un histogramme
+  glissant n'a pas eu lieu, et rien ne le disait. *Le « ~46 par journée calme » de la fiche
+  ci-dessus est donc lui aussi à relire avec précaution : 44 et 46 étaient les valeurs des 08-15
+  et 08-16 lues au **bord gauche** de leur fenêtre, donc amputées.* Le régime réel d'une journée
+  sans intervention reste à établir sur un jour **complet et central**.
+- **2026-08-23** — journée partielle à **87** sessions à 02 h 22, dont **54 entre 01 h 30 et
+  02 h 10** : c'est le déploiement manuel de Tracky, pas un régime de fond.
+
+---
+
+## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
+
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-08-23 · **Mesure à la découverte** : **4 des 5 derniers passages** ont publié
+  `NON MESURABLE` faute d'un cache `apt` de moins de 6 h.
+
+**QUAND.** Établi sur les cinq collectes archivées :
+
+| Passage | Heure de collecte (UTC) | Cache apt écrit le | Âge | Verdict |
+|---|---|---|---:|---|
+| 08-19 | 02:31 | 08-18 03:11 | 23 h | 🟠 NON MESURABLE |
+| 08-20 | 02:35 | 08-19 03:05 | 23 h | 🟠 NON MESURABLE |
+| **08-21** | **04:31** | **08-21 03:04** | **1 h** | **✅ VALIDE — 85 paquets** |
+| 08-22 | 02:23 | 08-21 03:04 | 23 h | 🟠 NON MESURABLE |
+| 08-23 | 02:22 | 08-22 02:59 | 23 h | 🟠 NON MESURABLE |
+
+**QUOI — la cause, et ce n'est pas un horaire mal choisi.**
+
+```
+OnCalendar=*-*-* 6,18:00
+RandomizedDelaySec=12h
+Persistent=true
+```
+
+`apt-daily.timer` tire son heure **au hasard dans une fenêtre de douze heures**, deux fois par
+jour. Les exécutions réellement journalisées : **09:15, 18:23, 10:39, 03:04, 13:30, 02:59,
+09:11**. Le passage du 08-21 n'a pas mesuré parce qu'il était mieux placé — il est tombé du bon
+côté du tirage.
+
+> ⚠️ **La cause d'abord écrite était fausse, et elle était plausible.** Les quatre horodatages que
+> le collecteur avait rapportés — 03:11, 03:05, 03:04, 02:59 — tiennent dans une bande de douze
+> minutes sur quatre jours, d'où la conclusion « le rafraîchissement a lieu vers 03 h 00, l'audit
+> passe 37 min trop tôt ». *Quatre points dans une bande étroite ne sont pas une régularité : sur
+> un tirage uniforme, c'est ce qui arrive de temps en temps.* Le démenti est venu de
+> `systemctl cat`, pas de la relecture : **quatre lectures de la TRACE et zéro de l'UNITÉ qui la
+> produit** — VPS-M15, treize passages plus tard, sur un autre objet.
+
+**Pourquoi c'était invisible.** VPS-M21 avait décrit ce défaut comme *« la section sécurité
+devient aveugle **un jour sur sept** »*. La mesure dit **quatre sur cinq**. *La fiche n'a jamais
+été relue contre la série réelle : on a fait confiance à une fréquence estimée une seule fois, et
+elle est restée dans le référentiel comme un fait.*
+
+**QUOI FAIRE.** Figer le délai aléatoire — c'est la **seule** correction déterministe :
+
+```bash
+systemctl edit apt-daily.timer   # [Timer] / RandomizedDelaySec=30m
+```
+
+**Gain** : restaure une mesure perdue 4 fois sur 5. **Risque** : faible. **Contrepartie réelle** :
+le délai aléatoire existe pour **étaler la charge sur les miroirs Ubuntu** — le réduire sur une
+machine est sans effet mesurable, le généraliser ne le serait pas. Préférer `30m` à `0`.
+
+**`aNePasFaire`** : ⚠️ **ne pas lancer `apt update` depuis le collecteur** — ce serait une
+**écriture** et un accès réseau sortant dans un audit déclaré en lecture seule. ⚠️ **Ne pas
+promettre qu'un décalage de l'audit règle le problème** : chiffré sur la série, un passage à
+03 h 30 UTC aurait rattrapé **3 des 4 échecs** (08-21, 08-22, 08-23) et **pas** le 08-20, dont le
+premier rafraîchissement n'a eu lieu qu'à 10 h 39. ⚠️ **Ne jamais lire un `0 paquet de sécurité`
+sur cache périmé comme une bonne nouvelle** : c'est l'écart exact qui a masqué 11 correctifs
+(VPS-010).
+
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M63 — Le manifeste republie, dans sa série de tendance, le nombre que le collecteur lui interdit de reporter
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-23)
+- **Vu** : 2026-08-23 · **Mesure** : **2 passages sur 5** portent dans `paquetsEnRetard` une
+  valeur que le collecteur avait marquée « à titre indicatif SEULEMENT ».
+
+**Ce que le collecteur écrit**, depuis sa correction du 08-19 (VPS-M29) :
+
+```
+  🟠 NON MESURABLE — le cache apt a 23 h (seuil de validite : 6 h).
+     Ce que le cache PERIME affiche, a titre indicatif SEULEMENT : 68 paquets en retard,
+     dont 0 estampilles securite. NE PAS reporter ces deux nombres comme une mesure.
+```
+
+**Ce que le manifeste a enregistré :**
+
+| Passage | Verdict du collecteur | `chiffres.paquetsEnRetard` |
+|---|---|---|
+| 08-19 | NON MESURABLE — *indicatif* : 70 | `70` ❌ |
+| 08-20 | NON MESURABLE — *indicatif* : 64 | `64` ❌ |
+| 08-21 | ✅ mesure valide : 85 | `85` ✅ |
+| 08-22 | NON MESURABLE | chaîne explicite ✅ |
+
+**Les deux ❌ sont POSTÉRIEURS à la correction du collecteur.** L'endroit où le mauvais nombre est
+**produit** a été réparé ; l'endroit où il est **recopié** ne l'a pas été.
+
+**Pourquoi c'était invisible.** L'avertissement est **du texte à côté du nombre**, et le nombre
+voyage seul. Une recopie machinale prend `70`, qui est un entier plausible, et laisse derrière
+elle la phrase qui l'invalidait.
+
+> *Marquer une valeur comme invalide ne la protège que de quelqu'un qui lit la marque. Contre
+> l'automatisme, il faut que la valeur elle-même devienne inutilisable.*
+
+**Correctif appliqué** : les deux valeurs sont remplacées dans le manifeste par une chaîne
+explicite portant leur origine. Aucune n'est supprimée — elles deviennent lisibles pour ce
+qu'elles sont.
+
+**`aNePasFaire`** : ⚠️ ne pas se contenter de corriger les deux points passés. La **piste** posée
+pour le passage suivant est de préfixer les valeurs invalides dans la sortie du collecteur
+(`⛔70` plutôt que `70`), pour qu'une recopie machinale produise une chaîne visiblement fausse au
+lieu d'un entier plausible.
+
+### VPS-M62 — Dix-neuf passages de « production 🟢 » sans jamais mesurer la capacité
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-08-23)
+- **Vu** : 2026-08-23 · **Angle mort reporté 4 fois** avant d'être traité.
+
+**Quoi.** Le rapport concluait « production 🟢 » sur des temps de réponse (28 ms sur quatre
+points). *La disponibilité est un indicateur **binaire et tardif** : il bascule quand c'est déjà
+arrivé.* Rien ne disait s'il restait de la marge.
+
+**Correctif.** Un bloc en section 9 qui compare l'inactivité de **la veille** à la **plus ancienne
+journée conservée**, publie l'étendue des journées complètes, et porte **ses seuils de réescalade
+écrits** — 🟠 sous 50 % sur une journée entière, 🔴 sous 25 % ou 🟠 trois jours de suite. Première
+mesure : **87,93 %** la veille contre **38,82 %** pour la plus ancienne, étendue 19,54 % →
+87,93 %.
+
+**Coût : nul.** La donnée était déjà lue par le tableau ; elle est relue depuis une variable, sans
+un appel `sar` de plus.
+
+**Pourquoi maintenant.** Quatre journées calmes d'affilée donnent une référence **saine**. Un
+indicateur né le jour d'un incident naîtrait avec le régime de panne pour normale — VPS-M48.
+
+**`aNePasFaire`** : ⚠️ **ne pas lire `idle%` comme une garantie d'absence de saturation** : c'est
+une moyenne sur 24 h, aveugle à un pic de vingt minutes. Le 08-17 l'illustre — 19,54 %
+d'inactivité **et** un pic de charge à 17,35. La portée est écrite dans la sortie elle-même.
+⚠️ **Exclure le jour en cours par règle et non par distraction** : il est partiel (VPS-M61), et le
+comparer aux jours complets ferait dire n'importe quoi à l'écart.
+
+### VPS-M61 — Les deux bords de chaque histogramme « par jour » sont partiels, et le manifeste l'a publié comme une preuve de régularité
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-23)
+- **Vu** : 2026-08-23 · **Mesure** : la même journée vaut **52** puis **27** ; une autre **52**
+  puis **8** ; une troisième **72** puis **360**.
+
+**QUOI.** Les histogrammes « par jour » sont découpés dans une fenêtre de **7 jours glissante**,
+qui commence et finit **à l'heure de la collecte**. Le premier jour est amputé de son début, le
+dernier n'a pas eu lieu. Trois paires, prises sur les collectes archivées :
+
+| Journée | passe du 08-21 | du 08-22 | du 08-23 | bloc |
+|---|---:|---:|---:|---|
+| 08-15 | **52** | **27** | — | hyperviseur |
+| 08-16 | 52 | **52** | **8** | hyperviseur |
+| 08-16 | — | **46** | **30** | sessions SSH |
+| 08-22 | — | **72** | **360** | sessions SSH |
+
+Les journées du **milieu** sont identiques à l'unité près (08-17 → 08-21 : 109, 175, 630, 4 252,
+2 094 des deux côtés) : **le compteur est sain, seuls les deux bords mentent.**
+
+La démonstration s'est rejouée à huit minutes d'intervalle le 08-23 : la collecte de 02:22 donne
+**30** pour le 08-16, la vérification de 02:30 donne **27**.
+
+**Pourquoi c'était invisible — et c'est la partie qui compte.** *Le collecteur portait déjà la
+leçon, à un seul endroit* : la section 9 écrit depuis le premier jour *« la dernière étant le jour
+EN COURS (partielle) »*. Trois autres blocs avaient le même défaut et ne l'ont jamais reçue.
+
+> *Une leçon apprise localement ne se propage pas toute seule. Tant qu'elle reste un commentaire à
+> côté d'un bloc, elle protège ce bloc et rien d'autre — il faut la **factoriser** pour qu'elle
+> devienne une propriété du collecteur.*
+
+**Ce que ça a coûté.** Le manifeste décrit `8 · 52 · 52 · 52 · 52 · 53 · 59 · 5` comme
+**« régulière à l'unité près »** : le `8` et le `5` sont les deux seuls nombres de la série qui ne
+mesurent rien. La conclusion (~52/jour) reste **juste**, mais elle l'est *malgré* sa preuve.
+
+**Correctif appliqué.** Une fonction unique `hist_jour`, appelée par les **trois** histogrammes
+(échecs SSH, sessions SSH, hyperviseur) : elle marque les deux bords, nomme la fenêtre, et publie
+le nombre de jours réellement comparables. **Coût nul** — aucune commande, aucune lecture de plus.
+**Vérifiée sur la machine**, cas limites compris (histogramme vide ; histogramme de 2 lignes,
+c'est-à-dire *que* des bords).
+
+**`aNePasFaire`** : ⚠️ **ne pas « corriger » en élargissant la fenêtre à 8 jours** — cela déplace
+les bords, ça ne les supprime pas. ⚠️ **Ne pas comparer un bord d'un passage au même jour vu par
+un autre passage** : c'est ce qui fabrique des tendances qui n'existent pas.
 
 ### VPS-M60 — Deux pourcentages de disque dans la même collecte, et la série de tendance piochait dans les deux
 

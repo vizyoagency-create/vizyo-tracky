@@ -177,6 +177,52 @@ ms() { echo $(( ( $(date +%s%N) - $1 ) / 1000000 )); }
 # et fausse sa propre mesure.
 LOW="nice -n 19 ionice -c3"
 
+# ⚠️⚠️ AJOUTE LE 2026-08-23 — VPS-M61. LES DEUX BORNES DE TOUT HISTOGRAMME « PAR JOUR » SONT
+# PARTIELLES, ET AUCUNE NE LE DISAIT.
+#
+# Ces histogrammes sont decoupes dans une fenetre de 7 jours GLISSANTE, qui commence et finit a
+# l heure de la collecte. Le PREMIER jour est donc ampute de son debut, et le DERNIER n a pas eu
+# lieu. Les jours du MILIEU, eux, sont exacts a l unite pres. Trois preuves, prises sur le meme
+# journal a trois passages differents :
+#
+#   journee   vue par la passe du 08-21   du 08-22   du 08-23
+#   08-15                            52          27          —      (hyperviseur)
+#   08-16                            52          52           8     (hyperviseur)
+#   08-16                             —          46          30      (sessions SSH)
+#
+# Le meme jour vaut 52 puis 27, ou 52 puis 8 : ce n est pas la machine qui a change, c est la
+# borne qui a coupe ailleurs. Et le rapport du 08-22 a publie « 72 » pour le 08-22 — jour lu
+# alors qu il etait ecoule a 1,9 % ; il en valait 360 une fois complet, soit un facteur 5.
+#
+# ⚠️ CE DEFAUT A DEJA CONTAMINE LE MANIFESTE : `ordonnancement.hyperviseur-ps` y decrit la
+#    repartition « 8 · 52 · 52 · 52 · 52 · 53 · 59 · 5 — reguliere a l unite pres ». Le 8 et le 5
+#    sont les deux bords, c est-a-dire les deux seuls nombres de la serie qui ne mesurent rien.
+#
+# ⚠️ ET LA LECON EST QUE LE COLLECTEUR SAVAIT DEJA : la section 9 porte cet avertissement depuis
+#    le premier jour (« la derniere etant le jour EN COURS (partielle) »). Une lecon apprise a un
+#    endroit ne se propage pas toute seule aux trois autres qui en ont besoin — il faut la
+#    FACTORISER, sinon elle reste une note locale. D ou cette fonction, unique, appelee par les
+#    trois blocs.
+#
+# Cout : nul. Aucune commande de plus, aucune lecture de plus — uniquement des libelles.
+hist_jour() { # $1=indentation  $2=debut de fenetre (lisible)  $3=fin de fenetre (lisible)
+  awk -v pre="$1" -v deb="$2" -v fin="$3" '
+    { l[NR] = $0 }
+    END {
+      if (NR == 0) { print pre "(aucune ligne sur la fenetre)"; exit }
+      for (i = 1; i <= NR; i++) {
+        m = ""
+        if (i == 1)  m = "   ⚠️ BORD — jour AMPUTE de son debut (fenetre ouverte a " deb ")"
+        if (i == NR) m = "   ⚠️ BORD — jour EN COURS, arrete a " fin
+        print pre l[i] m
+      }
+      if (NR <= 2)
+        print pre "⚠️ TOUTES les lignes sont des bords : cette serie ne porte AUCUN jour complet."
+      else
+        printf "%s→ %d jour(s) COMPLET(s) au milieu — seuls ceux-la se comparent d un passage a l autre.\n", pre, NR - 2
+    }'
+}
+
 printf 'COLLECTE AUDIT VPS — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 printf 'hote=%s  noyau=%s\n' "$(hostname)" "$(uname -r)"
 
@@ -1482,7 +1528,8 @@ if [ -n "$SRC" ]; then
   # Un total de 7 jours ne distingue pas « 188 etales » de « 188 hier soir ». La repartition
   # par jour, elle, le dit — et c'est elle qui doit declencher une lecture, pas le total.
   echo "  ── repartition par jour (une attaque EN COURS se voit ici, jamais dans un total) ──"
-  echo "$ECH" | grep "Failed password\|Invalid user" | cut -c1-10 | sort | uniq -c | sed 's/^/    /'
+  echo "$ECH" | grep "Failed password\|Invalid user" | cut -c1-10 | sort | uniq -c \
+    | hist_jour '    ' "$DEPUIS" "$(date '+%Y-%m-%dT%H:%M')"
   # ⚠️⚠️ AJOUTE LE 2026-08-22 (VPS-032 / angle mort de VPS-M57) — LE COLLECTEUR LISAIT DEJA CES
   # LIGNES ET N EN COMPTAIT QUE LES ECHECS. Les connexions REUSSIES n etaient affichees que sous
   # forme de « top 5 des IP », pour aider a reconnaitre ses propres acces. Personne ne regardait
@@ -1504,7 +1551,8 @@ if [ -n "$SRC" ]; then
   echo "  ── Sessions SSH REUSSIES : la charge de fond que personne ne compte (VPS-032) ──"
   echo "$ECH" | grep -c "Accepted" | sed 's/^/    total sur la fenetre de 7 j : /'
   echo "    par jour :"
-  echo "$ECH" | grep "Accepted" | cut -c1-10 | sort | uniq -c | sed 's/^/      /'
+  echo "$ECH" | grep "Accepted" | cut -c1-10 | sort | uniq -c \
+    | hist_jour '      ' "$DEPUIS" "$(date '+%Y-%m-%dT%H:%M')"
   # La fenetre de MA collecte, bornee par T_DEBUT : qui d autre parlait a la machine pendant
   # que je la mesurais ? Le denominateur est explicite, et ma propre session est RETIREE — mais
   # seulement si j en ai une (VPS-M34 : un denominateur suppose est un denominateur faux).
@@ -1902,7 +1950,8 @@ if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
     printf '     denominateur honnete : %s sondages `guest-exec-status` pour ces %s executions.\n' "$QGA_POLL" "$QGA_EXEC"
     echo  "     ⚠️ NE JAMAIS compter les sondages comme des executions : le ratio depasse 17 pour 1."
     echo  "  ── executions par jour (une hausse se voit ici, jamais dans un total) ──"
-    printf '%s\n' "$QGA" | grep -F 'guest-exec called' | cut -c1-10 | uniq -c | sed 's/^/     /'
+    printf '%s\n' "$QGA" | grep -F 'guest-exec called' | cut -c1-10 | uniq -c \
+      | hist_jour '     ' "$QGA_T0" "$QGA_T1"
     echo  "  ── les 3 dernieres lignes de commande RECUES (c est du root, il faut les lire) ──"
     printf '%s\n' "$QGA" | grep -F 'guest-exec called' | tail -3 \
       | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /     \1 \2  /' | cut -c1-150
@@ -2055,6 +2104,10 @@ if have sar; then
     chg=$(sar -q -f "$f" 2>/dev/null | awk '$1!="Average:" && $4 ~ /^[0-9.]+$/ {if ($4+0>m) m=$4+0} END {printf "%10.2f", m}')
     ram=$(sar -r -f "$f" 2>/dev/null | awk '$1!="Average:" && $5 ~ /^[0-9.]+$/ {if ($5+0>m) m=$5+0} END {printf "%10.1f", m}')
     printf '  %-8s %s %s %s %s\n' "$d" "$cpu" "$chg" "$ram" "$note"
+    # VPS-M62 : la serie d inactivite est MEMORISEE ici pour l indicateur de CAPACITE plus bas.
+    # Elle est extraite de "$cpu" (5e champ), donc sans un seul appel `sar` de plus.
+    IDLE_SERIE="${IDLE_SERIE:-}${d} $(printf '%s' "$cpu" | awk '{print $5}')
+"
   done
   # ⚠️ Le DENOMINATEUR est affiche (lecon VPS-M08/M22) : sans lui, une journee absente du
   # tableau se confond avec une journee calme. Et la derniere ligne est le jour EN COURS,
@@ -2062,6 +2115,47 @@ if have sar; then
   printf '  → %s journee(s) conservee(s) par sysstat, la derniere etant le jour EN COURS (partielle).\n' "$NB_SA"
   echo  "     ⚠️ Un incident plus long que cette fenetre efface sa propre reference : comparer la"
   echo  "        colonne idle% a la journee la PLUS ANCIENNE avant de parler d etat « normal »."
+  # ⚠️⚠️ AJOUTE LE 2026-08-23 — VPS-M62, angle mort n° 10 reporte QUATRE fois : « aucun indicateur
+  # ne mesure la CAPACITE, seulement la disponibilite ». Les quatre points publics repondent en
+  # 28 ms depuis dix-neuf passages, et le rapport ecrit « production 🟢 » chaque matin — ce qui
+  # resterait vrai jusqu au jour ou il n y a plus de marge du tout. La disponibilite est un
+  # indicateur BINAIRE et TARDIF : il bascule quand c est deja arrive.
+  #
+  # Pourquoi maintenant, et pourquoi ca ne coute rien : la donnee est deja lue ci-dessus (la
+  # colonne idle% du tableau), et trois journees calmes d affilee donnent une reference SAINE.
+  # Un indicateur ne naitrait pas au bon moment le jour d un incident : il naitrait avec le
+  # regime de panne pour normale, ce qui est exactement VPS-M48.
+  #
+  # ⚠️ LE JOUR EN COURS EST EXCLU — il est partiel, et c est VPS-M61 trois blocs plus haut :
+  #    le comparer aux jours complets ferait dire n importe quoi a l ecart.
+  if [ "${NB_SA:-0}" -ge 3 ]; then
+    printf '%s' "${IDLE_SERIE:-}" | awk '
+      NF == 2 { d[++k] = $1; v[k] = $2 + 0 }
+      END {
+        if (k < 3) {
+          print "\n  ── CAPACITE ── pas assez de journees conservees (" k ") pour une reference."
+          exit
+        }
+        # bornes calculees sur les jours COMPLETS uniquement : 1 .. k-1
+        mn = v[1]; mx = v[1]; jmn = d[1]
+        for (i = 1; i < k; i++) { if (v[i] < mn) { mn = v[i]; jmn = d[i] } ; if (v[i] > mx) mx = v[i] }
+        veille = v[k-1]; anc = v[1]
+        print  "\n  ── CAPACITE : reste-t-il de la MARGE ? (et non « est-ce que ca repond ? ») ──"
+        printf "     jour en cours (%s) EXCLU : partiel (VPS-M61).\n", d[k]
+        printf "     inactivite de la veille           (%s) : %6.2f %%\n", d[k-1], veille
+        printf "     journee la PLUS ANCIENNE conservee (%s) : %6.2f %%\n", d[1], anc
+        printf "     etendue des %d journees COMPLETES        : %6.2f %% (%s) a %6.2f %%\n", k-1, mn, jmn, mx
+        printf "     ecart veille - plus ancienne            : %+6.2f pt\n", veille - anc
+        # Seuils ECRITS, parce qu un « on surveille » sans seuil ne declenche jamais rien
+        # (barème du referentiel, § SURVEILLANCE).
+        if      (veille < 25) print  "     🔴 MARGE CRITIQUE — moins de 25 % d inactivite sur une journee ENTIERE."
+        else if (veille < 50) print  "     🟠 MARGE ENTAMEE — moins de 50 % d inactivite sur une journee ENTIERE."
+        else                  print  "     ✅ MARGE CONFORTABLE — la veille garde plus de 50 % d inactivite."
+        print  "     seuils de reescalade : 🟠 < 50 % un jour entier  |  🔴 < 25 %, ou 🟠 trois jours de suite."
+        print  "     ⚠️ PORTEE : `idle%` est une moyenne sur 24 h. Elle ne voit PAS une saturation"
+        print  "        de 20 min a 14 h — pour cela, c est la colonne pic_charge du tableau."
+      }'
+  fi
   sub "Ecriture disque moyenne par jour (revele les journees de build)"
   for f in $(ls -tr /var/log/sysstat/sa[0-9][0-9] 2>/dev/null); do
     [ -f "$f" ] || continue
