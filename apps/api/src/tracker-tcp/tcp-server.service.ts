@@ -188,7 +188,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Écrit le statut OFFLINE + diffuse l'event WS. Erreurs catchées + loguées. */
+  /** Écrit OFFLINE si lastSeenAt est plus vieux que la grâce (TRK-024) + diffuse l'event WS si écrit. Erreurs catchées + loguées. */
   private async markOffline(imei: string): Promise<void> {
     try {
       const tracker = await this.prisma.tracker.findUnique({
@@ -198,12 +198,30 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
       if (!tracker) return;
       // Garde anti-TOCTOU (#11) : si le boîtier s'est reconnecté pendant la
       // lecture ci-dessus (login → ONLINE + lastSeenAt), ne pas écraser ce
-      // statut ONLINE tout neuf par un OFFLINE périmé.
+      // statut ONLINE tout neuf par un OFFLINE périmé. TRK-024 : cette garde
+      // consulte le REGISTRE, or seul un login y passe — positions.service
+      // écrit ONLINE+lastSeenAt à CHAQUE trame sans que le registre le sache.
+      // Elle reste donc comme optimisation (évite un aller-retour DB inutile),
+      // plus comme protection : la vraie protection est le WHERE ci-dessous.
       if (this.registry.has(imei)) return;
-      await this.prisma.tracker.update({
-        where: { id: tracker.id },
+      // TRK-024 — écriture CONDITIONNELLE : la condition de fraîcheur voyage
+      // dans la MÊME instruction que l'écriture (updateMany + WHERE) ; aucune
+      // fenêtre ne subsiste entre le test et l'UPDATE. Seuil = OFFLINE_GRACE_MS :
+      // quand ce timer sonne, la socket est fermée depuis 90 s ; un lastSeenAt
+      // plus frais prouve qu'un autre chemin (login, position, no_fix) a ravivé
+      // le boîtier APRÈS la fermeture → cet OFFLINE est périmé, on ne l'écrit pas.
+      // NB : lastSeenAt NULL ne matche pas `lt` → pas d'écriture, sans gravité
+      // (jamais vu = déjà OFFLINE par défaut de schéma, et markOffline n'est
+      // atteignable qu'après un login, qui écrit lastSeenAt).
+      const seuilOffline = new Date(Date.now() - TcpServerService.OFFLINE_GRACE_MS);
+      const res = await this.prisma.tracker.updateMany({
+        where: { id: tracker.id, lastSeenAt: { lt: seuilOffline } },
         data: { status: TrackerStatus.OFFLINE },
       });
+      // Rien écrit = OFFLINE périmé écarté : ne pas diffuser un event WS
+      // « offline » que la base ne porte pas — rien ne réémettrait « online »
+      // ensuite (positions.service n'émet que sur wasOffline lu en DB).
+      if (res.count === 0) return;
       if (tracker.vehicle) {
         this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
           trackerId: tracker.id,
