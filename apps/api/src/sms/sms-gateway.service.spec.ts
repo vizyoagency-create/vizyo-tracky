@@ -101,3 +101,125 @@ describe('SmsGatewayService — rattachement du SMS entrant (TRK-036)', () => {
     expect(emitter.emit).toHaveBeenCalled();
   });
 });
+
+/**
+ * ── TRK-026 : ALLER CHERCHER L'ACCUSÉ AU LIEU DE L'ATTENDRE ─────────────────────────
+ *
+ * `reconcileOutboundStatus` existait depuis le 17/08 et n'avait JAMAIS rien réconcilié :
+ * son seul appelant l'invoquait sans `providerStatus`, et personne ne lui en fournissait.
+ * 365 sortants figés en `queued` depuis le 03/06, et un verdict `INDETERMINE` permanent.
+ *
+ * 🔑 Mesuré le 24/08 : l'information existait depuis le début. Interrogé directement,
+ * capcom6 répondait `Delivered` pour un message que le propriétaire avait bien reçu.
+ * Personne ne le lui demandait.
+ */
+describe('SmsGatewayService — réconciliation du sortant (TRK-026)', () => {
+  const build = (log: Record<string, unknown> | null) => {
+    const update = jest.fn().mockImplementation(({ data }) => Promise.resolve({ status: data.status }));
+    const prisma = { smsLog: { findUnique: jest.fn().mockResolvedValue(log), update } };
+    // La passerelle n'est lue que si son URL et sa clef sont configurées : sans ce mock
+    // de config, `lireStatutPasserelle` sortirait immédiatement et le test passerait au
+    // vert en ne testant rien.
+    const config = {
+      get: (k: string) =>
+        k === 'VIZYO_TEXTO_URL' ? 'https://texto.example' : k === 'VIZYO_TEXTO_API_KEY' ? 'k' : undefined,
+    };
+    const service = new SmsGatewayService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { emit: jest.fn() } as never,
+      { record: jest.fn() } as never,
+      config as never,
+    );
+    return { service, prisma, update };
+  };
+  const sortant = (over: Record<string, unknown> = {}) =>
+    ({ id: 'log-1', status: 'queued', direction: 'OUT', twilioSid: 'cap-123', ...over });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('🔴 va LIRE la passerelle quand aucun statut ne lui est fourni', async () => {
+    // LE test du correctif : avant, l'absence de `providerStatus` faisait sortir la
+    // méthode immédiatement — donc le statut restait `queued` à vie.
+    const { service, update } = build(sortant());
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 'delivered' }), { status: 200 }) as never,
+    );
+
+    const out = await service.reconcileOutboundStatus('log-1');
+
+    expect(out).toEqual({ outcome: 'delivered', status: 'delivered' });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'delivered' } }),
+    );
+  });
+
+  it('🔴 une passerelle injoignable NE DEVIENT PAS une preuve de remise', async () => {
+    // La moitié qui compte : ne jamais transformer une absence de réponse en preuve.
+    // C'est le défaut même que TRK-026 décrit, et il serait facile de le réintroduire ici.
+    const { service, update } = build(sortant());
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+
+    const out = await service.reconcileOutboundStatus('log-1');
+
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('un 404 de la passerelle laisse la ligne intacte', async () => {
+    const { service, update } = build(sortant());
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('', { status: 404 }) as never);
+
+    const out = await service.reconcileOutboundStatus('log-1');
+
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('un statut de soumission rendu par la passerelle reste SANS preuve', async () => {
+    const { service, update } = build(sortant());
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ status: 'queued' }), { status: 200 }) as never,
+    );
+
+    const out = await service.reconcileOutboundStatus('log-1');
+
+    expect(out?.outcome).toBe('accepted');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('un statut TERMINAL n\'est jamais réécrit, et la passerelle n\'est pas interrogée', async () => {
+    // Une preuve de remise ne se dégrade pas — et inutile d'appeler pour rien.
+    const { service, update } = build(sortant({ status: 'delivered' }));
+    const spy = jest.spyOn(global, 'fetch');
+
+    const out = await service.reconcileOutboundStatus('log-1');
+
+    expect(out).toEqual({ outcome: 'delivered', status: 'delivered' });
+    expect(spy).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('un statut explicitement fourni court-circuite la lecture', async () => {
+    const { service, update } = build(sortant());
+    const spy = jest.spyOn(global, 'fetch');
+
+    const out = await service.reconcileOutboundStatus('log-1', 'failed');
+
+    expect(out?.outcome).toBe('failed');
+    expect(spy).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalled();
+  });
+
+  it('un sortant sans identifiant fournisseur n\'appelle pas la passerelle', async () => {
+    const { service } = build(sortant({ twilioSid: null }));
+    const spy = jest.spyOn(global, 'fetch');
+
+    const out = await service.reconcileOutboundStatus('log-1');
+
+    expect(out).toEqual({ outcome: 'accepted', status: 'queued' });
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
