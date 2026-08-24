@@ -136,21 +136,100 @@ describe('AllowlistService — un trou qui se rouvre ne spamme plus', () => {
   });
 });
 
-describe('AllowlistService — suppression de masse retenue', () => {
+describe('AllowlistService — suppression de masse retenue (TRK-025)', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('alerte dès qu’une synchro aurait retiré la couverture de plusieurs destinataires', async () => {
-    const { service, errorLogger } = makeService();
-    await runAt(service, { ...OK, removalsBlocked: 25 }, 0);
-
-    expect(errorLogger.recordBackground).toHaveBeenCalledTimes(1);
-    expect(errorLogger.recordBackground.mock.calls[0][0]).toContain('25 suppression(s) retenues');
+  /** Une ligne du journal d'appels de la passerelle, telle que `GET /v1/allowlist/audit` la rend. */
+  const blocage = (quand: number, over: Record<string, unknown> = {}) => ({
+    outcome: 'removals_blocked',
+    createdAt: new Date(quand).toISOString(),
+    ip: '82.67.153.51',
+    forwardedFor: '82.67.153.51',
+    apiKeyPrefix: 'vtx_48fe',
+    route: 'PUT /v1/allowlist/sync',
+    blockedPhones: ['+33600000001', '+33600000002', '+33600000003'],
+    ...over,
   });
 
-  it('reste silencieux avec une passerelle ancienne qui ne renvoie pas le champ', async () => {
+  /** Mocke la reponse de la passerelle au journal d'audit. */
+  const passerelleRend = (lignes: unknown[]) =>
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(lignes), { status: 200 }) as never);
+
+  it('🔴 alerte en NOMMANT l appelant, en lisant le journal de la passerelle', async () => {
+    // LE test du correctif. Avant, cette branche lisait `removalsBlocked` de NOTRE propre
+    // synchronisation — qui ne demande jamais de suppression, donc valait toujours zero.
     const { service, errorLogger } = makeService();
-    await runAt(service, OK, 0);
+    passerelleRend([blocage(10 * HOUR), blocage(9 * HOUR)]);
+
+    await runAt(service, OK, 10 * HOUR);
+
+    expect(errorLogger.recordBackground).toHaveBeenCalledTimes(1);
+    const [message, source, meta] = errorLogger.recordBackground.mock.calls[0];
+    expect(message).toContain('2 tentative(s)');
+    expect(message).toContain('82.67.153.51');
+    expect(message).toContain('vtx_48fe');
+    expect(source).toBe('sms-allowlist');
+    expect(meta).toEqual(expect.objectContaining({ tentatives24h: 2, numerosVises: 3 }));
+  });
+
+  it('🔴 IGNORE `removalsBlocked` de la synchro — c est le compteur mort', async () => {
+    // Verrou anti-regression : ce champ ne concerne QUE la requete qu on vient d emettre,
+    // et notre synchro ne demande jamais de suppression. S y fier de nouveau reproduirait
+    // exactement TRK-025 : une branche qui a l air de marcher et n ecrit jamais rien.
+    const { service, errorLogger } = makeService();
+    passerelleRend([]);
+
+    await runAt(service, { ...OK, removalsBlocked: 25 }, 10 * HOUR);
+
     expect(errorLogger.recordBackground).not.toHaveBeenCalled();
+  });
+
+  it('reste silencieux quand la passerelle n a rien retenu', async () => {
+    const { service, errorLogger } = makeService();
+    passerelleRend([{ outcome: 'ok', createdAt: new Date(10 * HOUR).toISOString() }]);
+
+    await runAt(service, OK, 10 * HOUR);
+
+    expect(errorLogger.recordBackground).not.toHaveBeenCalled();
+  });
+
+  it('ignore un episode vieux de plus de 24 h', async () => {
+    // Sans borne, chaque passage horaire re-alerterait sur les 49 blocages d aout — pour
+    // toujours. On regarde une fenetre glissante, pas tout l historique.
+    const { service, errorLogger } = makeService();
+    passerelleRend([blocage(0)]);
+
+    await runAt(service, OK, 30 * HOUR);
+
+    expect(errorLogger.recordBackground).not.toHaveBeenCalled();
+  });
+
+  it('une seule alerte par episode, puis un rappel quotidien', async () => {
+    // Un episode se compte en dizaines de tentatives horaires (49 entre le 10 et le 17/08) :
+    // une ligne par tentative repeterait quarante-neuf fois le meme fait.
+    const { service, errorLogger } = makeService();
+    passerelleRend([blocage(10 * HOUR)]);
+    await runAt(service, OK, 10 * HOUR);
+    expect(errorLogger.recordBackground).toHaveBeenCalledTimes(1);
+
+    jest.restoreAllMocks();
+    passerelleRend([blocage(11 * HOUR)]);
+    await runAt(service, OK, 11 * HOUR);
+    expect(errorLogger.recordBackground).toHaveBeenCalledTimes(1); // toujours 1
+  });
+
+  it('🔴 une passerelle injoignable ne fait PAS echouer la reconciliation', async () => {
+    // Cette lecture s execute au milieu du cron qui REPARE la couverture SMS. La faire
+    // echouer couterait la reparation elle-meme — bien plus cher que l alerte perdue.
+    const { service, errorLogger, systemActivity } = makeService();
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+
+    await expect(runAt(service, OK, 10 * HOUR)).resolves.toBeUndefined();
+
+    expect(errorLogger.recordBackground).not.toHaveBeenCalled();
+    expect(systemActivity.record).toHaveBeenCalled(); // la reconciliation est allee au bout
   });
 });
 
