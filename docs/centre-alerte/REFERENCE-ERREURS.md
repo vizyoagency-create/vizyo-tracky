@@ -4364,8 +4364,75 @@ mauvaise table — et `information_schema` les sépare en une requête.*
 **Signature** — *(absence de preuve, pas une ligne d'erreur)* `engine_control_commands | status =
 SENT | ackedAt IS NULL | lastError = "Envoyé via SMS (TCP indisponible)"` + `messages | status =
 queued` — **définitivement, des deux côtés**
-**Statut : 🔴 NON CORRIGÉ** · **112 commandes moteur reparties en SMS depuis le 2026-06-03 ·
-0 acquittée · 0 message jamais sorti de `queued` sur 310** · découvert 2026-08-11
+**Statut : 🟠 CORRECTIFS 1 À 3 LIVRÉS ET DÉPLOYÉS le 2026-08-24** (PR #129 + [TRK-026](#trk-026)) ·
+**correctif nº 4 non livré · preuve terrain en attente des coupes de 18:00 UTC** ·
+découvert 2026-08-11 · **re-mesuré le 24/08 : 313 commandes `SENT`, 307 de plus de 24 h, 0 acquittée**
+
+---
+
+## 🟠 2026-08-24 — les trois quarts du chemin, et la moitié de la preuve
+
+### La mesure refaite le jour du correctif — la file continuait de grossir
+
+| | 13/08 | **24/08** |
+|---|---|---|
+| Commandes moteur `SENT` | 230 | **313** |
+| …de plus de 24 h | 224 | **307** |
+| …acquittées | 0 | **0** |
+| Reparties en SMS | 112 | **153** |
+
+*Le test daté du 12/08 prédisait « stable ou croissant tant qu'aucune fin de vie n'existe ».
+Onze jours plus tard, +83.*
+
+### Ce qui est livré
+
+**Correctif nº 1 — l'accusé de remise. LE préalable, livré le matin même** par
+[TRK-026](#trk-026) : les webhooks `sms:sent` / `sms:delivered` / `sms:failed` sont abonnés côté
+capcom6, et Tracky va lire l'état auprès de la passerelle. *Sans lui, aucune des questions
+suivantes n'était décidable — la fiche le disait, et c'est ce qui a dicté l'ordre de la journée.*
+
+**Correctif nº 2 — la fin de vie.** Statut neuf `SENT_UNCONFIRMED`, échéance **purement
+temporelle** (`ENGINE_COMMAND_EXPIRY_MIN`, défaut 30 min), balayage toutes les 10 min.
+
+> ⚠️ **Distinct de `FAILED`, et ce n'est pas un détail de vocabulaire.** « A échoué » et « nul ne
+> sait » ne sont pas la même information. Le coupe-circuit est une garde de sécurité : *une garde
+> qu'on croit armée sans preuve est plus dangereuse qu'une garde qu'on sait muette.*
+
+⚠️ **L'échéance ne regarde QUE l'horloge** — leçon de [TRK-007], déjà payée. La conditionner à un
+état du boîtier la ferait retomber dans le piège qu'elle prétend fermer : on attendrait une
+confirmation qui n'arrive jamais pour fermer une ligne ouverte faute de confirmation. **Un test
+verrouille le `where`** : `status`, `ackedAt`, `sentAt`, rien d'autre.
+
+⚠️ **`ackedAt` n'est JAMAIS écrit.** Marquer ces commandes acquittées d'office ferait disparaître
+les 313 lignes et supprimerait la seule trace de la question. *Le témoin n'est pas le défaut.*
+
+**Correctif nº 3 — le canal sort du champ d'erreur.** Colonne `channel` (`TCP` / `SMS`). Les
+commandes neuves l'écrivent et laissent `lastError` vide.
+
+⚠️ **Rétro-remplissage volontairement conservateur** : seules les **153** lignes portant le
+marqueur SMS deviennent `channel = 'SMS'`. Les **5 191** autres restent `NULL` — *inconnu*, qui
+est la vérité. Les marquer `TCP` par défaut fabriquerait une donnée que personne n'a observée, et
+*un chiffre faux qui persiste finit par être cru*. Et `lastError` **n'est pas effacé** : détruire
+une donnée pour corriger un **nom** serait pire que le nom.
+
+### 🔑 Le câblage front — cinq points, et c'est le dernier qui comptait
+
+Enum Prisma · DTO partagé · événements WS · service web · **et DEUX rendus**. Sans le dernier, le
+nouvel état serait tombé dans un `default` muet et se serait affiché **`SENT_UNCONFIRMED` brut à
+l'écran**. Le ton retenu est *attente*, pas *alerte* : **ce n'est pas une panne.**
+
+### ⚠️ Ce qui N'EST PAS livré, et ce qui n'est pas prouvé
+
+- **Correctif nº 4 (écran « immobilisations non confirmées ») : non livré.** Les trois autres
+  rendent l'état lisible en base ; l'écran reste à faire.
+- **La vérification prescrite n'a pas pu s'exercer.** Elle demande qu'« au moins un message porte
+  un état postérieur à `queued` » : aucun SMS moteur n'est parti depuis l'abonnement des webhooks
+  à 08:20. **Les coupes de 18:00 UTC seront le premier test réel de la chaîne complète.**
+
+🗓️ **Test daté — au prochain audit.** Deux conditions **simultanées**, et la seconde est le
+garde-fou : le nombre de commandes `SENT` de plus de 24 h doit tendre vers 0, **sans** que le
+nombre de coupures demandées ait baissé. *Si les deux tombent ensemble, on a supprimé la
+fonctionnalité, pas le défaut.*
 
 > ### Un véhicule est immobilisé et redémarré chaque nuit par un canal dont personne, à aucun étage, ne peut dire s'il transmet.
 
