@@ -3437,6 +3437,36 @@ valeur est dans les RAFALES* (1 643 trames en un bloc le 08/08, 15,7 km perdus d
 **Ne pas conclure de chiffres bas que le correctif ne sert à rien** : il sert précisément les
 jours de coupure 2G, qui sont rares et coûteux.
 
+### ✅ Test prescrit — RÉPONDU 15 minutes après le déploiement (12:08 UTC)
+
+La fiche exigeait deux conditions **simultanées**, précisément pour distinguer un garde-fou
+*réparé* d'un garde-fou *supprimé* :
+
+| Ce qui était prescrit | Mesuré |
+|---|---|
+| Les rejets **sans jumeau** tombent vers 0 | **0** ✅ |
+| Les rejets **avec jumeau** se maintiennent | **109** `SKIPPED_REPLAY` ✅ |
+| *(nouveau)* positions récupérées | **69** `RECOVERED_BUFFER` |
+
+**Les deux conditions sont remplies.** Si `SKIPPED_REPLAY` était tombé à zéro lui aussi, le
+garde-fou aurait été supprimé et non réparé — c'est ce que la double condition protège.
+
+Répartition des 69 récupérations, pour savoir *ce qu'on récupère vraiment* :
+
+| Classe | Trames |
+|---|---|
+| Vrai rattrapage de tampon (retour > 60 s) | **45** |
+| Retour ≤ 60 s | 24 |
+| Horodatage **identique** à la baseline | **1** |
+
+⚠️ **La réserve, petite mais réelle : le cas « horodatage identique » contourne
+l'échantillonnage adaptatif.** Une trame acceptée comme autoritaire mais NON persistée (jetée
+par le throttle) ne laisse aucune ligne ; la trame suivante au même horodatage ne trouve donc
+aucun jumeau et se fait récupérer — on réécrit ce que le sampler avait décidé d'omettre.
+Mesuré à **1 sur 69 (1,4 %)**, et le volume de `positions` ne s'emballe pas (~1 130/h après,
+contre 1 452/h avant). *Consigné pour ne pas le redécouvrir : si cette part monte, c'est ici
+qu'il faudra regarder, et le remède serait de ne récupérer qu'au-delà d'un écart non nul.*
+
 ### Constat
 
 `evaluateIngestionFix` refuse toute trame dont l'horodatage boîtier n'est pas **strictement**
