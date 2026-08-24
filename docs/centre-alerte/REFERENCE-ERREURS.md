@@ -5267,11 +5267,70 @@ jamais bougé.
 
 **Signature** — *(absence de ligne, pas une erreur)* `sms-heartbeat | (aucune ligne, jamais) |
 preuve de vie hebdomadaire dont l'échec est structurellement impossible`
-**Statut : 🟠 CORRECTIF ÉCRIT ET TESTÉ, non déployé** · **0 ligne `sms-heartbeat` depuis la mise en
-service · 332 SMS sortants figés en `queued` · aucun état terminal depuis le 2026-07-25** ·
-découvert 2026-08-17 *(2ᵉ passage)* · corrigé le 2026-08-17 *(voir « Correctif appliqué » en bas)*
+**Statut : 🟢 RÉSOLU LE 2026-08-24 — les trois maillons de la chaîne sont posés** ·
+découvert 2026-08-17 *(2ᵉ passage)* · sonde corrigée le 2026-08-17 · **chaîne de bout en bout
+rétablie le 24/08** (webhooks capcom6 + `vizyo-texto#8` + `vizyo-tracky#122`)
 
 > ### La sonde chargée d'annoncer la panne du canal de repli du coupe-circuit ne peut pas rendre « en panne ».
+
+---
+
+## 🟢 2026-08-24 — RÉSOLU, et le diagnostic a changé grâce à une phrase du propriétaire
+
+⚠️ **Le statut ci-dessus disait « CORRECTIF ÉCRIT ET TESTÉ, non déployé ». C'était FAUX** : le
+correctif de la *sonde* était en ligne depuis le 17/08 et il fonctionnait — elle a produit sa
+première ligne le 24/08 à 07:20, un `INDETERMINE` honnête au lieu d'un faux vert. *Un statut
+périmé fait rouvrir une enquête close* — même piège que les cinq statuts rectifiés le 23/08.
+
+### La phrase qui a réorienté l'enquête
+
+> « **J'ai bien reçu le message**, donc il faut trouver un moyen de recevoir le SMS retour. »
+
+Ce n'était donc **ni** un problème de livraison, **ni** un problème de passerelle : *un tuyau de
+retour que personne n'avait branché.* Sans cette observation, l'enquête serait partie vers la
+SIM, le forfait ou l'opérateur — les quatre pannes que l'en-tête du heartbeat nomme.
+
+### La mesure — l'information existait depuis le début
+
+| | |
+|---|---|
+| Sortants figés `queued` (Tracky **et** passerelle) | **365**, depuis le 03/06 |
+| États `sent` / `delivered` jamais écrits | **0**, jamais |
+| Entrants reçus | **231** — le webhook marche… pour **un seul** événement |
+| capcom6 interrogé sur le message de 07:00 | **`state: "Delivered"`**, horodaté |
+
+**capcom6 savait.** Personne ne le lui demandait.
+
+### Trois maillons — deux existaient déjà sans jamais servir
+
+| # | Maillon | Avant le 24/08 | Correctif |
+|---|---|---|---|
+| 1 | capcom6 → passerelle | **un seul** webhook abonné : `sms:received` | `sms:sent`, `sms:delivered`, `sms:failed` enregistrés (config, pas du code) |
+| 2 | passerelle : `handleStatus` | **existait**, jamais déclenché | rien à écrire — il attendait depuis l'origine |
+| 3 | Tracky : relire l'état | **jamais appelé** — `reconcileOutboundStatus` invoqué sans statut | `lireStatutPasserelle()` → `GET /v1/texto/:id` |
+
+Plus un maillon d'assemblage : Tracky persiste `providerId ?? id`, donc l'identifiant **capcom6** ;
+la recherche côté passerelle acceptait le sien seulement → **404 sur une ligne qui existe**. Elle
+accepte désormais les deux clefs, `tenantId` conservé dans les deux branches.
+
+> 🔑 **Trois pièces sur quatre étaient déjà là.** Le catalogue capcom6 mappait `Delivered`, la
+> passerelle traitait l'événement, la méthode de réconciliation existait. *Ce qui manquait n'était
+> pas du code : c'était de demander.* Une chaîne dont chaque maillon est écrit mais qu'aucun bout
+> ne relie ne transporte rien — et rien ne le signale, puisque chaque pièce, isolée, a l'air juste.
+
+⚠️ **La garde à ne jamais retirer** : toute panne de lecture (passerelle injoignable, 404, JSON
+illisible, délai dépassé) laisse le verdict à `INDETERMINE`. *Ne jamais transformer une absence de
+réponse en preuve de remise* — c'est le défaut que cette fiche décrit, et il serait facile de le
+réintroduire en voulant bien faire. Un test le verrouille.
+
+⚠️ **Les 365 lignes historiques restent `queued`** : les correctifs réparent le flux, pas le passé.
+Un rattrapage est possible — capcom6 répond encore sur leurs identifiants — mais il **réécrirait
+de l'historique** : décision séparée, non prise.
+
+🗓️ **Test daté — prochain heartbeat (lundi 09:00 Paris)** : le verdict doit passer de
+`INDETERMINE` à **`OK`**, et `sms_logs.status` porter `delivered`. ⚠️ Si le verdict reste
+`INDETERMINE`, vérifier D'ABORD que capcom6 a bien poussé l'événement (webhook abonné ≠ webhook
+reçu) avant de soupçonner le code.
 
 ### Ce que le code promet
 
