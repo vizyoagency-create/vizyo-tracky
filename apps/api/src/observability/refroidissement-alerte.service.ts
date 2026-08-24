@@ -142,6 +142,13 @@ export const CLES_REFROIDISSEMENT = {
   VIGIE_SATURATION: 'error-rate-watchdog',
   /** Trou d'allowlist SMS : rappel périodique tant que l'épisode dure. */
   ALLOWLIST_EPISODE: 'sms-allowlist-episode',
+  /**
+   * TRK-025 — suppressions de masse retenues par la passerelle. Un épisode d'effacement
+   * se compte en dizaines de tentatives horaires (49 entre le 10 et le 17/08) : une ligne
+   * par tentative répéterait quarante-neuf fois le même fait. Une alerte à la première,
+   * puis un rappel quotidien tant que ça dure — la cadence déjà retenue pour cette source.
+   */
+  ALLOWLIST_SUPPRESSIONS_BLOQUEES: 'sms-allowlist-removals-blocked',
   /** Résumé des profils de surveillance dormants (journal d'exploitation). */
   SURVEILLANCE_DORMANTS: 'surveillance-dormants',
 } as const;

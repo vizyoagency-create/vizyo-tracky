@@ -24,8 +24,34 @@ export interface AllowlistSyncResult {
   /**
    * Suppressions RETENUES par la garde anti-suppression de masse de la passerelle
    * (V1.20). Optionnel : une passerelle anterieure au 2026-08-10 ne renvoie pas ce champ.
+   *
+   * ⚠️ TRK-025 — NE PAS S'EN SERVIR POUR ALERTER. Ce compteur ne concerne QUE la requête
+   * qui vient d'être émise, et notre synchronisation ne demande jamais de suppression : il
+   * vaut structurellement zéro. Les tentatives qui comptent viennent d'un tiers et ne se
+   * lisent que dans le journal de la passerelle — cf. `remonterBlocagesPasserelle`.
    */
   removalsBlocked?: number;
+}
+
+/**
+ * Une ligne du journal d'appels de la passerelle (`GET /v1/allowlist/audit`) — TRK-025.
+ *
+ * On n'y déclare que ce qu'on lit. Le journal en dit plus (numéros supprimés, compteurs
+ * détaillés) ; y toucher depuis ici ferait dépendre l'API d'un schéma qu'elle ne possède pas.
+ */
+interface AllowlistAuditEntry {
+  /** `'ok'` | `'removals_blocked'`. */
+  outcome: string;
+  createdAt: string;
+  /** IP résolue après `trust proxy` — peut être celle du reverse proxy. */
+  ip?: string | null;
+  /** En-tête brut : la seule donnée fiable quand le proxy est mal réglé. */
+  forwardedFor?: string | null;
+  /** 8 premiers caractères de la clé utilisée — jamais la clé. */
+  apiKeyPrefix?: string | null;
+  route?: string | null;
+  /** Numéros que l'appel voulait retirer et que la garde a retenus. */
+  blockedPhones?: unknown[] | null;
 }
 
 export interface AllowlistStatus {
@@ -174,17 +200,23 @@ export class AllowlistService {
   // TRK-038 — devenue `async` : le refroidissement de l'episode vit maintenant en base et
   // non dans un champ d'instance, donc sa lecture est une requete. L'appelant l'attend.
   private async reportCoverage(result: AllowlistSyncResult, now = Date.now()): Promise<void> {
-    // Une suppression de masse retenue par la passerelle est un fait NEUF et grave : quelque
-    // chose a demandé le retrait d'une large part de la couverture SMS. Toujours remonté.
-    if ((result.removalsBlocked ?? 0) > 0) {
-      this.errorLogger.recordBackground(
-        `Allowlist SMS : ${result.removalsBlocked} suppression(s) retenues par la passerelle — ` +
-          `cette synchronisation aurait retiré le repli SMS à autant de destinataires. ` +
-          `Vérifier le journal des appels de la passerelle avant de débloquer.`,
-        'sms-allowlist',
-        { trigger: 'reconcile-cron', removalsBlocked: result.removalsBlocked },
-      );
-    }
+    // ══ TRK-025 — LA REMONTÉE LISAIT LE MAUVAIS COMPTEUR ═══════════════════════════════
+    //
+    // Cette branche existait depuis le 10/08 et n'a jamais rien écrit. Elle lisait
+    // `result.removalsBlocked`, c'est-à-dire la réponse à la synchronisation que CETTE API
+    // vient d'émettre — or cette synchronisation ne demande JAMAIS de suppression (le
+    // journal système le montre à chaque heure : `-0`). La passerelle n'a donc rien à
+    // retenir pour cette requête-là, et le champ vaut structurellement **zéro**.
+    //
+    // Les suppressions qui comptent sont celles d'un TIERS porteur de la clé de production
+    // (49 tentatives entre le 10 et le 17/08, toutes depuis 82.67.153.51). Elles n'existent
+    // que dans `allowlist_audit_logs` **côté passerelle** — table qu'aucun code de l'API ne
+    // lisait. On va donc la chercher.
+    //
+    // 🔑 *Un canal qui n'écrit jamais ressemble exactement à un canal sur lequel rien
+    // n'arrive.* C'est ce qui a rendu ce défaut invisible pendant sept jours : le garde-fou
+    // fonctionnait parfaitement (42 numéros intacts), et son silence passait pour du calme.
+    await this.remonterBlocagesPasserelle(now);
 
     if (result.added === 0) {
       // Couverture complète. Si un épisode était ouvert, il se referme : on le trace au
@@ -245,6 +277,86 @@ export class AllowlistService {
         episodeOpenedAt: new Date(openedAt).toISOString(),
       },
     );
+  }
+
+  /**
+   * TRK-025 — va LIRE, chez la passerelle, les suppressions de masse qu'elle a retenues.
+   *
+   * ── Pourquoi une lecture, et pas un compteur rendu par la synchronisation ───────────
+   * Le correctif du 10/08 remontait `removalsBlocked`, le compteur de la réponse à NOTRE
+   * synchronisation. Mais notre synchronisation ne demande jamais de suppression : ce
+   * compteur ne pouvait pas être autre chose que zéro. Les tentatives qui comptent viennent
+   * d'un tiers, et ne laissent de trace que dans le journal de la passerelle.
+   *
+   * ── Fenêtre et cadence ──────────────────────────────────────────────────────────────
+   * On regarde les 24 dernières heures et on remonte UNE fois, puis une fois par jour tant
+   * que ça dure. Un épisode se compte en dizaines de tentatives horaires (49 entre le 10 et
+   * le 17/08) : une ligne par tentative répéterait quarante-neuf fois le même fait, ce qui
+   * est précisément le défaut d'origine de [TRK-017]. *Un état qui dure se consulte ; il ne
+   * se notifie pas en boucle.*
+   *
+   * ⚠️ NE LÈVE JAMAIS, et ne doit pas. Cette lecture s'exécute au milieu du cron de
+   * réconciliation : une passerelle injoignable ne doit pas empêcher la réconciliation
+   * elle-même de se terminer — c'est elle qui répare la couverture SMS. Un échec de lecture
+   * laisse donc l'alerte muette, ce qui est un moindre mal, ET il est journalisé.
+   *
+   * ⚠️ On alerte sur la TENTATIVE, pas sur un dégât : la garde a tenu, aucun numéro n'a été
+   * perdu. C'est bien le sujet — quelqu'un a demandé le retrait du repli SMS pour une large
+   * part du parc, et personne ne le savait.
+   */
+  private async remonterBlocagesPasserelle(now: number): Promise<void> {
+    if (!this.baseUrl || !this.apiKey) return;
+    try {
+      const journal = await this.call<AllowlistAuditEntry[]>('/v1/allowlist/audit?limit=200');
+      if (!Array.isArray(journal)) return;
+
+      const depuis = now - 24 * 60 * 60 * 1000;
+      const blocages = journal.filter(
+        (l) => l?.outcome === 'removals_blocked' && new Date(l.createdAt).getTime() >= depuis,
+      );
+      if (blocages.length === 0) return;
+
+      // Une seule alerte par épisode, puis un rappel quotidien tant qu'il dure.
+      const doitCrier = await this.refroidissement.tenterEmission(
+        CLES_REFROIDISSEMENT.ALLOWLIST_SUPPRESSIONS_BLOQUEES,
+        AllowlistService.EPISODE_REMINDER_MS,
+      );
+      if (!doitCrier) return;
+
+      // Le plus récent porte l'appelant ; c'est lui qu'on nomme.
+      const dernier = blocages[0]!;
+      const nbNumeros = Array.isArray(dernier.blockedPhones) ? dernier.blockedPhones.length : null;
+      const appelant = dernier.forwardedFor ?? dernier.ip ?? 'origine inconnue';
+
+      this.errorLogger.recordBackground(
+        `Allowlist SMS : ${blocages.length} tentative(s) de suppression de masse retenues par la ` +
+          `passerelle sur 24 h — appelant ${appelant}` +
+          (dernier.apiKeyPrefix ? ` (clé ${dernier.apiKeyPrefix})` : '') +
+          `. ` +
+          (nbNumeros != null
+            ? `La dernière aurait retiré le repli SMS à ${nbNumeros} destinataire(s). `
+            : '') +
+          `Aucun numéro n'a été perdu — la garde a tenu. Vérifier le journal des appels de la ` +
+          `passerelle avant de débloquer quoi que ce soit.`,
+        'sms-allowlist',
+        {
+          trigger: 'reconcile-cron',
+          tentatives24h: blocages.length,
+          appelant,
+          ip: dernier.ip ?? undefined,
+          apiKeyPrefix: dernier.apiKeyPrefix ?? undefined,
+          route: dernier.route ?? undefined,
+          numerosVises: nbNumeros ?? undefined,
+          premiere: blocages[blocages.length - 1]?.createdAt ?? undefined,
+          derniere: dernier.createdAt,
+        },
+      );
+    } catch (err) {
+      // Journalisé, jamais propagé : la réconciliation doit aller au bout.
+      this.logger.warn(
+        `TRK-025 : lecture du journal d'allowlist impossible — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async call<T>(path: string, init?: RequestInit): Promise<T> {
