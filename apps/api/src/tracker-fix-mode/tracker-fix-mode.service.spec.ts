@@ -9,11 +9,21 @@ import { TrackerFixModeService } from './tracker-fix-mode.service';
 describe('TrackerFixModeService.intervalLabel', () => {
   it('formats sub-minute intervals with `s` suffix and zero-padding', () => {
     expect(TrackerFixModeService.intervalLabel(30)).toBe('030s');
-    expect(TrackerFixModeService.intervalLabel(60)).toBe('001m');
     expect(TrackerFixModeService.intervalLabel(45)).toBe('045s');
   });
 
+  // TRK-045 — ce test exigeait `intervalLabel(60) === '001m'`. Passée dans
+  // `formatFrequency`, cette forme donnait `,C,01m;` que le firmware lit **1 seconde** :
+  // une cible d'une minute partait en demandant une seconde. Le seuil de bascule est
+  // remonté à 100 s, donc tout ce qui est exprimable en TCP reste en secondes.
+  it('TRK-045 — reste en secondes jusqu\'au plafond de 99 s (jamais `001m` pour 60 s)', () => {
+    expect(TrackerFixModeService.intervalLabel(60)).toBe('060s');
+    expect(TrackerFixModeService.intervalLabel(99)).toBe('099s');
+  });
+
   it('formats minute-scale intervals with `m` suffix', () => {
+    // Au-delà de 99 s la forme en minutes reste juste — mais elle n'est plus atteignable
+    // par le pilotage adaptatif, qui est plafonné à HARD_CAP_S = 99 s.
     expect(TrackerFixModeService.intervalLabel(120)).toBe('002m');
     expect(TrackerFixModeService.intervalLabel(300)).toBe('005m');
   });
@@ -124,10 +134,13 @@ describe('TrackerFixModeService.desiredIntervalFor', () => {
       .toBe(30);
   });
 
-  it('switches to 300s for STOPPED when ignition has been OFF > 10 minutes', () => {
+  // TRK-045 — la cadence d'économie passe de 300 s à 99 s : c'est le maximum que la trame
+  // `,C,` sait exprimer sur ce firmware. Demander 300 s n'obtenait pas 300 s, ça obtenait
+  // 5 s (`05m` lu « 05 ») — d'où 28 boîtiers à 4-6 s le 2026-08-24.
+  it('TRK-045 — passe à 99 s (plafond matériel) pour STOPPED, contact coupé depuis > 10 min', () => {
     const oldOff = new Date(NOW.getTime() - 15 * 60 * 1000);
     expect(service.desiredIntervalFor('STOPPED', { lastIgnitionChangeAt: oldOff, lastKnownIgnition: false }, NOW))
-      .toBe(300);
+      .toBe(99);
   });
 
   it('keeps 30s for STOPPED when ignition history is unknown', () => {
@@ -343,26 +356,47 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
   });
 
   describe("TRK-012 — l'enveloppe suit le canal", () => {
-    it('émet la trame TCP `**,imei:…,C,05m;` sur la socket — jamais la forme SMS', async () => {
+    // ⚠️ TRK-045 — CES DEUX TESTS ATTENDAIENT `,C,05m;` ET `fix005m`, POUR UNE DEMANDE DE
+    // 300 s. Ils décrivaient fidèlement le code… et le code demandait 5 SECONDES au boîtier,
+    // qui jette la lettre d'unité. `requestChange` plafonne désormais à HARD_CAP_S = 99 s,
+    // le seul intervalle lent que la trame `,C,` sache exprimer.
+    it('émet la trame TCP `**,imei:…,C,99s;` sur la socket — jamais la forme SMS, jamais de minutes', async () => {
       registry.send.mockReturnValue(true);
       const out = await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
-      expect(registry.send).toHaveBeenCalledWith('123456789012345', '**,imei:123456789012345,C,05m;');
+      expect(registry.send).toHaveBeenCalledWith('123456789012345', '**,imei:123456789012345,C,99s;');
       expect(prisma.trackerCommand.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ payload: '**,imei:123456789012345,C,05m;', channel: 'TCP' }),
+          data: expect.objectContaining({ payload: '**,imei:123456789012345,C,99s;', channel: 'TCP' }),
         }),
       );
       expect(out?.sent).toBe(true);
     });
 
+    it('TRK-045 — la trame émise ne porte JAMAIS de suffixe `m` ni `h`', async () => {
+      // La garde structurelle sur le chemin réel : c'est l'unité jetée par le firmware qui
+      // divisait l'intervalle par 60. On la vérifie sur toute la plage demandable.
+      registry.send.mockReturnValue(true);
+      // 30 s est exclu : c'est la cible COURANTE du boîtier de test, donc `requestChange`
+      // n'émet rien (pas de changement à demander) — et un test qui n'émet pas ne prouve rien.
+      for (const demande of [20, 60, 99, 120, 300, 3600]) {
+        registry.send.mockClear();
+        await service.requestChange(
+          tracker({ failing: false }) as never, demande, 'TEST', {}, { force: true },
+        );
+        const trame = registry.send.mock.calls[0]?.[1] as string;
+        expect(trame).toMatch(/^\*\*,imei:\d{15},C,\d{2}s;$/);
+      }
+    });
+
     it("le repli SMS garde la forme texte ET la consigne dans la ligne d'audit", async () => {
       // registry.send rend false par défaut : la commande bascule sur le SMS. La trame TCP
       // dans un SMS serait TRK-012 en miroir — le firmware ne lit que la forme texte.
+      // TRK-045 : la consigne citée est celle réellement demandée (99 s), pas 300 s.
       const out = await service.requestChange(tracker({ failing: false }) as never, 300, 'TEST', {});
-      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'fix005m***n123456', expect.any(Object));
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'fix099s***n123456', expect.any(Object));
       expect(prisma.trackerCommand.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ channel: 'SMS', payload: 'fix005m***n123456' }),
+          data: expect.objectContaining({ channel: 'SMS', payload: 'fix099s***n123456' }),
         }),
       );
       expect(out?.sent).toBe(true);
@@ -577,9 +611,12 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
       where: { desiredFixIntervalS: { lt: 20 } },
       data: { desiredFixIntervalS: 20 },
     });
+    // TRK-045 — le plafond passe de 300 s à 99 s (maximum exprimable dans `,C,`). Ce
+    // balayage est donc aussi ce qui RÉPARE le parc sans migration : les cibles héritées à
+    // 300 s redescendent à 99 s au prochain passage.
     expect(prisma.tracker.updateMany).toHaveBeenCalledWith({
-      where: { desiredFixIntervalS: { gt: 300 } },
-      data: { desiredFixIntervalS: 300 },
+      where: { desiredFixIntervalS: { gt: 99 } },
+      data: { desiredFixIntervalS: 99 },
     });
   });
 
@@ -820,7 +857,7 @@ describe('TrackerFixModeService.reconcile', () => {
 
   it('l\'auto-alignement reste possible sur un intervalle tenable', () => {
     const prev = new Date('2026-04-26T12:00:00Z');
-    const next = new Date('2026-04-26T12:04:10Z'); // 250 s observé pour une cible de 30 s
+    const next = new Date('2026-04-26T12:01:30Z'); // 90 s observé pour une cible de 30 s
     const out = service.reconcile(
       {
         ...baseTracker,
@@ -832,7 +869,10 @@ describe('TrackerFixModeService.reconcile', () => {
       { deviceTime: next, speedKmh: 50, ignition: true, lat: 48, lng: 2 },
     );
     expect(out.nextFailing).toBe(true);
-    expect(out.autoAlignDesiredS).toBe(250); // dans [20, 300] : on accepte le comportement réel
+    // TRK-045 — la plage tenable est [20, 99] s, plus [20, 300] : au-delà de 99 s le
+    // boîtier ne sait pas exprimer la cible, donc s'aligner dessus écrirait une consigne
+    // inatteignable. Le cas « 250 s observé » était l'ancienne valeur de ce test.
+    expect(out.autoAlignDesiredS).toBe(90); // dans [20, 99] : on accepte le comportement réel
   });
 
   // V1.18 — Exemption "véhicule garé" : un boîtier qui émet plus lentement que la

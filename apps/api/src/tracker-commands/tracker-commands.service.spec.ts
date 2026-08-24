@@ -173,9 +173,13 @@ describe('TrackerCommandsService', () => {
     expect(registry.send).not.toHaveBeenCalled();
   });
 
-  it('should fail dispatch when tracker offline', async () => {
+  it('should fail dispatch when tracker offline (et AUCUN repli possible)', async () => {
+    // TRK-045 — depuis le repli SMS « option A », une socket morte ne suffit plus à faire
+    // échouer la commande : le SMS la rattrape. Ce test garde son sens en fermant les DEUX
+    // canaux, ce qui est le seul cas où la commande n'a effectivement nulle part à aller.
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     registry.send.mockReturnValue(false);
+    sms.isEnabled.mockReturnValue(false);
 
     await expect(
       service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
@@ -349,6 +353,10 @@ describe('TrackerCommandsService', () => {
     it('ne bloque pas un boîtier qui n\'a jamais émis (lastSeenAt null)', async () => {
       prisma.tracker.findUnique.mockResolvedValue(withLastSeen(null));
       registry.send.mockReturnValue(false);
+      // TRK-045 — on ferme aussi le SMS : ce test porte sur la PORTE « boîtier muet »
+      // (elle ne doit pas bloquer un boîtier jamais vu), pas sur le repli de canal. Laisser
+      // le SMS ouvert ferait réussir la commande et le test ne testerait plus sa porte.
+      sms.isEnabled.mockReturnValue(false);
 
       await expect(
         service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
@@ -459,6 +467,53 @@ describe('TrackerCommandsService', () => {
       const future = new Date(Date.now() + 3600_000);
       const result = await service.request(TRACKER_ID, 'factory', {}, future, superAdmin);
       expect(result.status).toBe(TrackerCommandStatus.SCHEDULED);
+    });
+  });
+
+  // ══ TRK-045 — REPLI SMS « OPTION A » : LE TCP D'ABORD, LE SMS EN RATTRAPAGE ═══════════
+  describe('TRK-045 — repli SMS quand la socket a échoué (option A)', () => {
+    it('socket fermée → le SMS part, avec la forme TEXTE et non la trame TCP', async () => {
+      // Le piège : `command.payload` porte `**,imei:…,C,30s;`. L'envoyer par SMS serait
+      // TRK-012 en miroir — le firmware ne lit que `fix030s***n123456` dans un texto.
+      prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+      registry.send.mockReturnValue(false); // socket morte
+      await service.request(TRACKER_ID, 'fix_continuous', { interval: '030s' }, null, fleetAdmin);
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33600000000',
+        'fix030s***n123456',
+        expect.any(Object),
+      );
+    });
+
+    it("la ligne d'audit porte la trame RÉELLEMENT partie, et le canal SMS", async () => {
+      prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+      registry.send.mockReturnValue(false);
+      await service.request(TRACKER_ID, 'fix_continuous', { interval: '030s' }, null, fleetAdmin);
+      expect(prisma.trackerCommand.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ channel: 'SMS', payload: 'fix030s***n123456' }),
+        }),
+      );
+    });
+
+    it('socket VIVANTE → AUCUN SMS : le TCP est gratuit, le SMS ne l\'est pas', async () => {
+      // La moitié qui coûte de l'argent si on se trompe. Le critère de repli est
+      // « l'écriture socket a échoué », JAMAIS « pas d'accusé de réception » : ces boîtiers
+      // n'acquittent jamais en TCP (625 155 trames en 4 jours, zéro accusé), donc un repli
+      // sur l'absence d'accusé enverrait ~70 SMS par jour.
+      prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+      registry.send.mockReturnValue(true);
+      await service.request(TRACKER_ID, 'fix_continuous', { interval: '030s' }, null, fleetAdmin);
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    it('socket fermée ET aucun numéro SIM → la commande échoue en nommant ce qui manque', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+      prisma.tracker.findFirst.mockResolvedValue({ simPhoneNumber: null });
+      registry.send.mockReturnValue(false);
+      await expect(
+        service.request(TRACKER_ID, 'fix_continuous', { interval: '030s' }, null, fleetAdmin),
+      ).rejects.toThrow(/numéro SIM/);
     });
   });
 });

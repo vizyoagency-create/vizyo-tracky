@@ -194,18 +194,44 @@ describe('CobanCommandCatalog', () => {
     expect(ids).toContain('raw');
   });
 
-  it("fix_continuous: buildTcpPayload émet l'enveloppe TCP `,C,` à DEUX chiffres (TRK-012)", () => {
-    // 4 120 commandes au format SMS émises sur la socket TCP depuis le 2026-04-27, 0 réponse :
-    // le parseur TCP du Coban ne lit QUE `**,imei:<IMEI>,C,<NN><s|m>;`. La fréquence passe par
-    // formatFrequency (DEUX chiffres, fidèle au `%02d` de Traccar) — reprendre la forme à trois
-    // chiffres du catalogue reproduirait le défaut sous une autre forme.
+  it("fix_continuous: buildTcpPayload émet l'enveloppe TCP `,C,` en SECONDES (TRK-012 + TRK-045)", () => {
+    // TRK-012 (2026-08-23) : 4 120 commandes au format SMS émises sur la socket TCP depuis
+    // le 2026-04-27, 0 réponse — le parseur TCP ne lit que `**,imei:<IMEI>,C,<NN>s;`.
+    //
+    // ⚠️ TRK-045 (2026-08-24) : CE TEST VERROUILLAIT LE DÉFAUT SUIVANT. Il exigeait
+    // `060s → ,C,01m;` en qualifiant l'écrasement de « comportement assumé, documenté ».
+    // Or le firmware JETTE la lettre d'unité : `01m` vaut **1 seconde**, pas 1 minute. La
+    // ligne qui affirmait le plus fort — commentaire à l'appui — était la plus fausse : une
+    // cible de 60 s partait en demandant 1 s. Mesuré en production sur 38 boîtiers.
     const tpl = findTemplate('fix_continuous')!;
-    expect(tpl.buildTcpPayload!(IMEI, { interval: '005m' })).toBe(`**,imei:${IMEI},C,05m;`);
-    expect(tpl.buildTcpPayload!(IMEI, { interval: '030s' })).toBe(`**,imei:${IMEI},C,30s;`);
     expect(tpl.buildTcpPayload!(IMEI, { interval: '010s' })).toBe(`**,imei:${IMEI},C,10s;`);
-    // Traccar écrase les restes : 60 s passe en minutes (`%02dm`) — comportement assumé, documenté.
-    expect(tpl.buildTcpPayload!(IMEI, { interval: '060s' })).toBe(`**,imei:${IMEI},C,01m;`);
-    expect(tpl.buildTcpPayload!(IMEI, { interval: '010m' })).toBe(`**,imei:${IMEI},C,10m;`);
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '030s' })).toBe(`**,imei:${IMEI},C,30s;`);
+    // 60 s reste 60 SECONDES : plus jamais `01m` (que le boîtier lit « 1 s »).
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '060s' })).toBe(`**,imei:${IMEI},C,60s;`);
+    expect(tpl.buildTcpPayload!(IMEI, { interval: '099s' })).toBe(`**,imei:${IMEI},C,99s;`);
+  });
+
+  it('fix_continuous: TRK-045 — les intervalles au-delà de 99 s sont REFUSÉS, pas déformés', () => {
+    // `005m` partait en `,C,05m;` et le boîtier appliquait 5 SECONDES au lieu de 5 minutes :
+    // 28 boîtiers dans cet état le 2026-08-24, et le débit de la flotte multiplié par 2,9.
+    // Refuser est le seul comportement honnête — un plafonnement silencieux laisserait
+    // l'interface promettre 5 minutes pour une trame qui en demande 99 secondes.
+    const tpl = findTemplate('fix_continuous')!;
+    for (const interval of ['002m', '005m', '010m']) {
+      expect(() => tpl.buildTcpPayload!(IMEI, { interval })).toThrow(/non exprimable en TCP/);
+    }
+  });
+
+  it('fix_continuous: TRK-045 — le catalogue ne propose plus AUCUN intervalle inexprimable', () => {
+    // La garde qui empêche la récidive par l'interface : tout intervalle offert à
+    // l'opérateur doit pouvoir partir tel quel sur la socket. Un menu qui propose
+    // « 10 minutes » pour livrer 10 secondes est un piège, pas une option.
+    const tpl = findTemplate('fix_continuous')!;
+    const options = tpl.params[0]?.options ?? [];
+    expect(options.length).toBeGreaterThan(0);
+    for (const opt of options) {
+      expect(() => tpl.buildTcpPayload!(IMEI, { interval: opt.value })).not.toThrow();
+    }
   });
 
   it('fix_continuous: la forme SMS reste inchangée — chaque canal garde sa grammaire (TRK-012)', () => {

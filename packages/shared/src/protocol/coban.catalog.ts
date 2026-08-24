@@ -183,12 +183,23 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
           // Le minimum Coban officiel varie par modele : 10s pour GPS302/303/408/BN-311,
           // 20s pour TK104/GPS305/GPS403D. Le boitier rejettera la commande si trop bas
           // pour son modele — reconcile detectera et passera FAILING.
+          //
+          // ⚠️ TRK-045 (2026-08-24) — LES TROIS OPTIONS EN MINUTES ONT ETE RETIREES.
+          // `2 minutes`, `5 minutes` et `10 minutes` partaient en `,C,02m;`, `,C,05m;` et
+          // `,C,10m;`. Le firmware de ce parc lit DEUX CHIFFRES et JETTE la lettre
+          // d'unite : l'operateur qui choisissait « 10 minutes » pour economiser la
+          // batterie obtenait **10 SECONDES**, soit 60 fois plus de trafic. Mesure sur
+          // 38 boitiers ; 28 d'entre eux etaient a 4-6 s le 2026-08-24.
+          //
+          // Le plafond exprimable est 99 s (TCP_MAX_FREQUENCY_S) : un troisieme chiffre
+          // casse l'analyse du firmware, qui retombe alors sur son defaut de 60 s (mesure
+          // au canari le 2026-08-24 avec `,C,300s;`). Ne RIEN ajouter ici au-dela de
+          // `099s` — le test « ne propose plus AUCUN intervalle inexprimable » le verrouille.
           { value: '010s', label: '10 secondes' },
+          { value: '020s', label: '20 secondes (minimum GPS403D)' },
           { value: '030s', label: '30 secondes' },
           { value: '060s', label: '1 minute' },
-          { value: '002m', label: '2 minutes' },
-          { value: '005m', label: '5 minutes' },
-          { value: '010m', label: '10 minutes' },
+          { value: '099s', label: '99 secondes (maximum du boîtier)' },
         ],
       },
     ],

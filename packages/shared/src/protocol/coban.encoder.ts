@@ -22,6 +22,11 @@ export function encodeCommand(imei: string, cmd: CobanCommand): string {
     case 'position_single':
       return `${prefix},B;`;
     case 'position_periodic': {
+      // TRK-045 — la borne haute RÉELLE est celle du firmware, pas celle d'une journée :
+      // `formatFrequency` refuse au-delà de TCP_MAX_FREQUENCY_S (99 s) parce que ce
+      // boîtier lit deux chiffres et jette l'unité. On laisse ce garde-fou attraper les
+      // valeurs absurdes, et c'est `formatFrequency` qui prononce la vraie limite — son
+      // message nomme la cause, celui-ci ne saurait pas le faire.
       if (cmd.frequencySeconds <= 0 || cmd.frequencySeconds > 86400) {
         throw new Error(
           `Invalid frequency: ${cmd.frequencySeconds}s (must be 1-86400)`,

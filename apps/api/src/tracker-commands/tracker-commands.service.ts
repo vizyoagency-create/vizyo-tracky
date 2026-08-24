@@ -235,6 +235,49 @@ export class TrackerCommandsService {
     // nettoie l'entree morte) au lieu d'ecrire directement sur la socket : une
     // socket demi-morte ne doit pas etre marquee SENT en laissant fuiter l'entree.
     const sentOk = this.registry.send(resolvedImei, command.payload);
+
+    // ══ TRK-045 — REPLI SMS : LE TCP D'ABORD, LE SMS SEULEMENT S'IL A ÉCHOUÉ ═══════════
+    //
+    // Décision du propriétaire le 2026-08-24 (« option A ») : le TCP est prioritaire parce
+    // qu'il est GRATUIT, le SMS ne part qu'en rattrapage. Jusqu'ici ce chemin manuel ne
+    // faisait ni l'un ni l'autre — une socket fermée donnait « Tracker offline » et la
+    // commande mourait là, alors que le boîtier était joignable par texto.
+    //
+    // ⚠️ LE CRITÈRE DE REPLI EST « L'ÉCRITURE SOCKET A ÉCHOUÉ », JAMAIS « PAS D'ACCUSÉ ».
+    // Mesuré le 2026-08-20 : 625 155 trames TCP entrantes en 4 jours pour **zéro** accusé
+    // de réception — ces boîtiers n'acquittent pas en TCP, ils répondent par SMS. Un repli
+    // déclenché sur l'absence d'accusé enverrait donc un SMS à CHAQUE commande, soit ~70
+    // par jour : exactement le coût qu'on cherche à éviter. `registry.send()` vérifie la
+    // socket (détruite / non inscriptible) — c'est le seul signal honnête dont on dispose.
+    //
+    // ⚠️ ET LE CORPS DU SMS N'EST PAS LE PAYLOAD PERSISTÉ. `command.payload` porte
+    // l'enveloppe TCP (`**,imei:…,C,99s;`) que le firmware ne lit pas dans un texto : on
+    // reconstruit la forme SMS depuis le gabarit. Envoyer la trame TCP par SMS serait
+    // TRK-012 à l'envers — le défaut qu'on vient de passer quatre mois à trouver.
+    if (!sentOk && template?.availableVia.includes('sms')) {
+      let payloadSms: string | null = null;
+      try {
+        payloadSms = template.buildPayload(
+          resolvedImei,
+          (command.params ?? {}) as Record<string, unknown>,
+        );
+      } catch {
+        // Gabarit dont la forme SMS n'est pas reconstructible sans ses paramètres : on ne
+        // devine pas un corps de commande. On retombe sur l'échec « hors ligne » ci-dessous.
+        payloadSms = null;
+      }
+      if (payloadSms) {
+        this.logger.warn(
+          `Socket fermée pour ${resolvedImei} — repli SMS de ${command.templateId} (TRK-045, option A).`,
+        );
+        // dispatchParSms se charge du statut, du canal, du journal de trames et de l'audit ;
+        // il lève si le SMS échoue à son tour, ce qui est le bon comportement (la commande
+        // n'est pas partie, et le motif nomme ce qui manque : numéro, passerelle, refus).
+        await this.dispatchParSms(command, template, resolvedImei, fleetId, payloadSms);
+        return;
+      }
+    }
+
     if (!sentOk) {
       await this.prisma.trackerCommand.update({
         where: { id: command.id },
@@ -352,8 +395,16 @@ export class TrackerCommandsService {
     template: { id: string; expectedAckPattern?: RegExp },
     imei: string,
     fleetId: string | null,
+    /**
+     * Corps du SMS, quand il DIFFÈRE du payload persisté. Indispensable au repli du canal
+     * TCP : `command.payload` porte alors la trame `**,imei:…,C,99s;`, que le firmware ne
+     * lit PAS dans un texto — ce serait TRK-012 en miroir. L'appelant reconstruit donc la
+     * forme SMS (`buildPayload`) et la passe ici.
+     */
+    payloadSms?: string,
   ): Promise<void> {
     const resolvedFleetId = fleetId ?? '';
+    const corps = payloadSms ?? command.payload;
     const echec = async (motif: string): Promise<never> => {
       await this.prisma.trackerCommand.update({
         where: { id: command.id },
@@ -385,7 +436,7 @@ export class TrackerCommandsService {
     if (!tracker?.simPhoneNumber) {
       await echec('aucun numéro SIM enregistré pour ce boîtier');
     }
-    const envoi = await this.sms.send(tracker!.simPhoneNumber!, command.payload, {
+    const envoi = await this.sms.send(tracker!.simPhoneNumber!, corps, {
       imei,
       commandId: command.id,
       template: 'tracker_command_sms',
@@ -397,9 +448,11 @@ export class TrackerCommandsService {
 
     await this.prisma.trackerCommand.update({
       where: { id: command.id },
-      data: { status: TrackerCommandStatus.SENT, channel: 'SMS', sentAt: new Date() },
+      // La ligne d'audit porte la trame RÉELLEMENT partie : sur un repli, la commande a
+      // été créée avec l'enveloppe TCP et c'est la forme SMS qui a quitté le serveur.
+      data: { status: TrackerCommandStatus.SENT, channel: 'SMS', sentAt: new Date(), payload: corps },
     });
-    this.wireLogger.out(imei, command.payload, { commandId: command.id, source: 'tracker-cmd-sms' });
+    this.wireLogger.out(imei, corps, { commandId: command.id, source: 'tracker-cmd-sms' });
     this.emitUpdate(command.id, resolvedFleetId);
 
     if (!SURVEILLANCE_TEMPLATES.has(command.templateId)) {

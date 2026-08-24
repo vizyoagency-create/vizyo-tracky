@@ -1,9 +1,9 @@
 import { swallow } from '../../core/error/swallow';
-import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, input, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import {
-  LucideAngularModule, Send, Clock, X, Terminal, AlertTriangle,
+  LucideAngularModule, Send, Clock, X, Terminal, AlertTriangle, Loader, Check, Minus,
   ChevronDown, RefreshCw, Eye,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -121,14 +121,64 @@ const STATUS_LABELS: Record<string, string> = {
           <div class="flex items-center gap-3">
             <button (click)="onSend()"
                     [disabled]="sending()"
-                    class="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 cursor-pointer"
+                    class="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 cursor-pointer
+                           disabled:opacity-60 disabled:cursor-not-allowed"
                     [class]="tpl.dangerous
                       ? 'bg-red-600 hover:bg-red-700 text-white'
                       : 'bg-tracky hover:bg-tracky-dark text-white'">
               <lucide-icon [img]="Send" [size]="14"></lucide-icon>
-              {{ sending() ? 'Envoi...' : 'Envoyer maintenant' }}
+              {{ sending() ? 'Envoi en cours…' : 'Envoyer maintenant' }}
             </button>
           </div>
+
+          <!-- ══ TRK-045 — SUIVI D'ENVOI PAR ÉTAPES ═══════════════════════════════════
+               Le bouton passait à « Envoi... » et plus rien ne bougeait jusqu'au toast :
+               sur un boîtier injoignable, l'attente peut durer et l'écran donnait
+               l'impression d'être figé. On nomme désormais CE QUI SE PASSE, dans l'ordre
+               réel : liaison directe (gratuite) d'abord, SMS en rattrapage seulement.
+
+               ⚠️ On n'invente aucune progression. L'API répond en une fois : on ne peut
+               donc pas OBSERVER le passage d'une étape à l'autre. Ce panneau affiche donc
+               l'étape en cours d'après ce qu'on sait avec certitude (la requête est
+               partie), un chronomètre qui prouve que l'application vit, et — à l'arrivée —
+               le canal RÉELLEMENT emprunté, lu dans la réponse. Une barre qui avancerait
+               toute seule serait une animation, pas une information. -->
+          @if (sending() || dernierEnvoi()) {
+            <div class="rounded-[--radius-card] border border-border-subtle bg-bg-secondary p-3 space-y-2">
+              @for (e of etapes(); track e.cle) {
+                <div class="flex items-start gap-2.5 text-xs">
+                  <span class="mt-0.5 shrink-0">
+                    @switch (e.etat) {
+                      @case ('en-cours') {
+                        <lucide-icon [img]="Loader" [size]="14" class="animate-spin text-tracky"></lucide-icon>
+                      }
+                      @case ('fait') {
+                        <lucide-icon [img]="Check" [size]="14" class="text-tracky"></lucide-icon>
+                      }
+                      @case ('echoue') {
+                        <lucide-icon [img]="X" [size]="14" class="text-red-400"></lucide-icon>
+                      }
+                      @case ('ignore') {
+                        <lucide-icon [img]="Minus" [size]="14" class="text-fg-tertiary opacity-50"></lucide-icon>
+                      }
+                    }
+                  </span>
+                  <span class="flex-1">
+                    <span [class]="e.etat === 'ignore' ? 'text-fg-tertiary opacity-60' : 'text-fg-primary'">
+                      {{ e.titre }}
+                    </span>
+                    <span class="block text-fg-tertiary">{{ e.detail }}</span>
+                  </span>
+                </div>
+              }
+              @if (sending()) {
+                <p class="text-[11px] text-fg-tertiary pt-1 border-t border-border-subtle">
+                  {{ secondesEcoulees() }} s écoulées — l'application n'est pas bloquée, elle
+                  attend la réponse du serveur. Ne fermez pas la page.
+                </p>
+              }
+            </div>
+          }
         }
       </div>
 
@@ -243,7 +293,7 @@ const STATUS_LABELS: Record<string, string> = {
     .cmd-select--flex { flex: 1; min-width: 0; }
   `],
 })
-export class CommandsPanelComponent implements OnInit {
+export class CommandsPanelComponent implements OnInit, OnDestroy {
   trackerId = input.required<string>();
   /** TRK-021 (correctif #3) — sans numéro de SIM, un gabarit SMS-only ne peut pas partir. */
   simPhoneNumber = input<string | null>(null);
@@ -256,6 +306,10 @@ export class CommandsPanelComponent implements OnInit {
   protected readonly Clock = Clock;
   protected readonly X = X;
   protected readonly Terminal = Terminal;
+  // TRK-045 — icônes du suivi d'envoi par étapes.
+  protected readonly Loader = Loader;
+  protected readonly Check = Check;
+  protected readonly Minus = Minus;
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly ChevronDown = ChevronDown;
   protected readonly RefreshCw = RefreshCw;
@@ -266,6 +320,72 @@ export class CommandsPanelComponent implements OnInit {
   protected readonly history = signal<TrackerCommandDto[]>([]);
   protected readonly sending = signal(false);
   protected readonly showConfirm = signal(false);
+
+  // ══ TRK-045 — état du suivi d'envoi par étapes ════════════════════════════════════════
+  /** Résultat du dernier envoi : le canal réellement emprunté, lu dans la réponse. */
+  protected readonly dernierEnvoi = signal<{ canal: string | null; statut: string; erreur?: string } | null>(null);
+  /** Chronomètre : la seule preuve honnête que l'application vit pendant l'attente. */
+  protected readonly secondesEcoulees = signal(0);
+  private chrono: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Les étapes affichées, dérivées de l'état réel — jamais d'une animation.
+   *
+   * Pendant l'envoi on ne sait qu'une chose : la requête est partie. On dit donc « liaison
+   * directe en cours » et on laisse les suivantes en attente. À l'arrivée, la réponse nous
+   * apprend le canal EMPRUNTÉ (`channel`) : on marque alors le TCP réussi et le SMS
+   * « non nécessaire », ou le TCP échoué et le SMS emprunté. C'est rétrospectif, et c'est
+   * assumé : mieux vaut une étape nommée en retard qu'une barre qui ment en temps réel.
+   */
+  protected readonly etapes = computed<{ cle: string; titre: string; detail: string; etat: 'attente' | 'en-cours' | 'fait' | 'echoue' | 'ignore' }[]>(() => {
+    const fini = this.dernierEnvoi();
+    const enCours = this.sending();
+
+    if (enCours || !fini) {
+      return [
+        {
+          cle: 'tcp', titre: 'Liaison directe (TCP)', etat: 'en-cours',
+          detail: 'La trame part sur la connexion que le boîtier tient ouverte. Ce canal est gratuit — c\'est pourquoi il est essayé en premier.',
+        },
+        {
+          cle: 'reponse', titre: 'Réponse du boîtier', etat: 'attente',
+          detail: 'Le firmware Coban n\'accuse pas toujours réception : l\'effet se vérifie sur les trames suivantes, pas sur une réponse immédiate.',
+        },
+        {
+          cle: 'sms', titre: 'Repli SMS', etat: 'attente',
+          detail: 'Uniquement si la liaison directe est fermée. Un SMS est facturé, donc il ne part qu\'en rattrapage.',
+        },
+      ];
+    }
+
+    const parSms = fini.canal === 'SMS';
+    const echec = fini.statut === 'FAILED' || !!fini.erreur;
+    return [
+      {
+        cle: 'tcp', titre: 'Liaison directe (TCP)',
+        etat: parSms ? 'echoue' : echec ? 'echoue' : 'fait',
+        detail: parSms
+          ? 'Socket fermée : le boîtier n\'était pas joignable en direct.'
+          : echec
+            ? (fini.erreur ?? 'La trame n\'a pas pu être écrite sur la socket.')
+            : 'Trame écrite sur la socket du boîtier.',
+      },
+      {
+        cle: 'reponse', titre: 'Réponse du boîtier',
+        etat: echec ? 'ignore' : 'fait',
+        detail: echec
+          ? 'Non applicable : la commande n\'est pas partie.'
+          : `Commande enregistrée avec le statut « ${fini.statut} ». L'effet réel se lit sur les trames suivantes.`,
+      },
+      {
+        cle: 'sms', titre: 'Repli SMS',
+        etat: parSms ? 'fait' : 'ignore',
+        detail: parSms
+          ? 'La commande est partie par SMS, en forme texte (la trame TCP n\'est pas lisible dans un texto).'
+          : 'Non nécessaire — la liaison directe a suffi, donc aucun SMS facturé.',
+      },
+    ];
+  });
   protected readonly expandedId = signal<string | null>(null);
 
   protected readonly selectedCategory = signal('');
@@ -355,6 +475,10 @@ export class CommandsPanelComponent implements OnInit {
 
     this.sending.set(true);
     this.showConfirm.set(false);
+    // TRK-045 — on repart d'un suivi vierge et on démarre le chronomètre : c'est lui qui
+    // dit à l'opérateur que l'attente est normale et que l'écran n'est pas figé.
+    this.dernierEnvoi.set(null);
+    this.demarrerChrono();
 
     try {
       const result = await firstValueFrom(this.api.create({
@@ -362,17 +486,44 @@ export class CommandsPanelComponent implements OnInit {
         templateId: tpl.id,
         params: this.paramValues,
       }));
-      this.toast.success('Commande envoyée', `${tpl.label} — ${result.status}`);
+      // Le canal est lu dans la RÉPONSE, jamais deviné : c'est la seule source qui sache
+      // si le SMS de rattrapage a servi.
+      const canal = (result as { channel?: string | null }).channel ?? null;
+      this.dernierEnvoi.set({ canal, statut: result.status });
+      this.toast.success(
+        canal === 'SMS' ? 'Commande envoyée par SMS' : 'Commande envoyée',
+        `${tpl.label} — ${result.status}${canal === 'SMS' ? ' (liaison directe indisponible)' : ''}`,
+      );
       this.selectedTemplateId.set('');
       this.paramValues = {};
       await this.loadHistory();
     } catch (err: unknown) {
       swallow('commands-panel:doSend', err);
       const msg = (err as any)?.error?.message ?? (err as any)?.error?.error?.message ?? 'Erreur inconnue';
+      this.dernierEnvoi.set({ canal: null, statut: 'FAILED', erreur: msg });
       this.toast.error('Erreur', msg);
     } finally {
       this.sending.set(false);
+      this.arreterChrono();
     }
+  }
+
+  private demarrerChrono(): void {
+    this.arreterChrono();
+    this.secondesEcoulees.set(0);
+    this.chrono = setInterval(() => this.secondesEcoulees.update((n) => n + 1), 1000);
+  }
+
+  /** ⚠️ Appelé aussi à la destruction : un intervalle qui survit au composant fuit. */
+  private arreterChrono(): void {
+    if (this.chrono !== null) {
+      clearInterval(this.chrono);
+      this.chrono = null;
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.arreterChrono();
   }
 
   protected async cancelCommand(id: string): Promise<void> {

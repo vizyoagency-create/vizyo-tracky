@@ -54,7 +54,26 @@ const FLAPPING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FLAPPING_MAX_CHANGES = 2;
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 min minimum entre deux commandes
 const HARD_CAP_MIN_S = 20;
-const HARD_CAP_S = 300;
+// ══ TRK-045 (2026-08-24) — 300 s → 99 s : le plafond n'est plus un choix, c'est le matériel.
+//
+// Cette borne valait 300 s (« anti-spam économie batterie »), une valeur de confort. Mesuré
+// le 2026-08-24 : le firmware de ce parc lit DEUX chiffres dans la trame `,C,` et JETTE la
+// lettre d'unité. `05m` ne vaut donc pas 5 minutes mais **5 secondes**, et un troisième
+// chiffre (`300s`) casse son analyse — il retombe alors sur son défaut de 60 s (canari
+// mesuré sur BP-434-RD : 9 écarts, tous multiples de 60).
+//
+// **Le maximum réellement atteignable est donc 99 s** (`TCP_MAX_FREQUENCY_S` côté shared).
+// Demander plus n'obtient pas plus : ça obtient 60 s, ou pire. Aligner ce plafond sur la
+// réalité fait trois choses d'un coup :
+//   1. `normalizeDriftedTargets` ramène les cibles héritées à 300 s vers 99 s, sans migration ;
+//   2. `requestChange` ne peut plus produire une trame que `formatFrequency` refuserait ;
+//   3. la cible CITÉE dans `params.interval` devient celle qu'on peut vérifier — sans quoi
+//      TRK-013 comparerait éternellement une cadence réelle de 99 s à une cible de 300 s.
+//
+// ⚠️ Ne pas remonter cette valeur sans changer de commande : pour un véhicule garé, la piste
+// à instruire est `**,imei:<IMEI>,D;` (ARRÊTER le suivi périodique), pas un intervalle plus
+// lent que le boîtier ne sait pas exprimer.
+const HARD_CAP_S = 99;
 // V1.15 — Plancher d'auto-alignement. Quand un boitier emet plus vite que le
 // minimum hardware (observe en prod : 2s, 10s), on accepte quand meme son
 // intervalle reel pour le sortir de la boucle FAILING (cf reconcile()).
@@ -153,11 +172,22 @@ export class TrackerFixModeService {
   }
 
   /**
-   * Convert an interval in seconds to the Coban param string ('030s', '005m', etc.).
-   * Coban supports `NNNs` (1-999s) and `NNNm` (1-999m). Past 60s, prefer minutes.
+   * Convert an interval in seconds to the Coban param string ('030s', '099s', '005m'…).
+   * Coban supports `NNNs` (1-999s) and `NNNm` (1-999m) — c'est la grammaire **SMS**, la
+   * seule que le firmware lise dans un texto, et elle est éprouvée (« fix ok » en retour).
+   *
+   * ⚠️ TRK-045 — le seuil de bascule vers les minutes passe de 60 s à 100 s. Avec
+   * `HARD_CAP_S = 99`, l'ancien seuil rendait `002m` pour une cible de 99 s : la valeur
+   * citée dans `params.interval` (donc celle que TRK-013 relit pour juger la réussite)
+   * aurait dit « 120 s demandées » pour une commande qui demandait 99 s. On ne compare
+   * bien que ce qu'on a nommé juste.
+   *
+   * La forme en minutes reste atteignable au-dessus de 99 s : elle n'est pas fausse *en
+   * SMS*. Elle l'est seulement sur la socket TCP, et c'est `formatFrequency` qui l'y
+   * interdit — chaque canal garde sa grammaire.
    */
   static intervalLabel(seconds: number): string {
-    if (seconds < 60) return `${String(seconds).padStart(3, '0')}s`;
+    if (seconds <= 99) return `${String(seconds).padStart(3, '0')}s`;
     const minutes = Math.round(seconds / 60);
     return `${String(minutes).padStart(3, '0')}m`;
   }
@@ -310,11 +340,16 @@ export class TrackerFixModeService {
     if (state === 'MOVING') return HARD_CAP_MIN_S;
     if (state === 'IDLE_ENGINE_ON') return 30;
 
-    // STOPPED — only switch to 300s if ignition has been OFF for > 10 min.
-    // This avoids flipping during a short stop (e.g., red light, brief delivery).
+    // STOPPED — on ne passe à la cadence d'économie que si le contact est coupé depuis
+    // plus de 10 min, pour ne pas basculer sur un arrêt bref (feu rouge, livraison).
+    //
+    // TRK-045 — c'était `return 300;` en dur. Un nombre magique qui contredisait
+    // silencieusement `HARD_CAP_S` dès que celui-ci a changé : la cible s'écrivait à 300 s
+    // puis `requestChange` la ramenait à 99 s, et la fiche véhicule affichait une cible que
+    // personne n'avait demandée. On délègue à la constante — une seule source de vérité.
     const ignitionOffSince = tracker.lastKnownIgnition === false ? tracker.lastIgnitionChangeAt : null;
     if (ignitionOffSince && now.getTime() - ignitionOffSince.getTime() > STOPPED_GRACE_MS) {
-      return 300;
+      return HARD_CAP_S;
     }
     return 30;
   }
@@ -635,7 +670,7 @@ export class TrackerFixModeService {
     options?: { force?: boolean },
   ): Promise<{ commandId: string; sent: boolean } | null> {
     // V1.14 — Hard cap : intervalle clampe entre 20s (minimum hardware Coban
-    // GPS403D) et 300s (HARD_CAP_S, anti-spam economie batterie).
+    // GPS403D) et 99s (HARD_CAP_S — maximum exprimable dans la trame `,C,`, TRK-045).
     const target = Math.min(Math.max(HARD_CAP_MIN_S, desiredS), HARD_CAP_S);
     const force = options?.force === true;
 
