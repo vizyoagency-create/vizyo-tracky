@@ -3370,10 +3370,72 @@ dont la remise en service ne dépend pas d'un tiers.
 
 **Signature** — `positions | SKIPPED_REPLAY | garde-fou ingestion (stale_devicetime) : deviceTime
 <DATE> vs dernier <DATE>` — **en volume, et sans aucune alerte**
-**Statut : 🔴 NON CORRIGÉ** · **8360 trames écartées / 4 j · 37 boîtiers (tout le parc) ·
-3466 trous réels** · découvert 2026-08-08
+**Statut : 🟢 CORRIGÉ ET DÉPLOYÉ le 2026-08-24** (PR #124) · découvert 2026-08-08 ·
+**re-mesuré le 24/08 : 10 015 trames écartées / 4 j, dont 5 908 trous réels** *(3 466 au 08/08 —
+la perte avait AUGMENTÉ, conséquence directe de [TRK-045](#trk-045) qui a triplé le débit)*
 
 > ### Le garde-fou qui empêche la téléportation efface aussi des positions que la base n'a nulle part ailleurs.
+
+---
+
+## 🟢 2026-08-24 — CORRIGÉ ET DÉPLOYÉ (PR #124)
+
+### La mesure refaite le jour du correctif — la perte avait grossi
+
+| Classe de rejet | Trames | Jumeau *(rejet correct)* | **Sans jumeau = TROU** |
+|---|---|---|---|
+| Doublon exact (0 s) | 1 302 | **1 287 (99 %)** | 15 |
+| Retour arrière ≤ 60 s | 851 | 422 | **429** |
+| Retour arrière 1-60 min | 7 861 | 2 397 | **5 464** |
+| **Total / 4 j** | **10 015** | 4 106 | **5 908** |
+
+**5 908 contre 3 466 au 08/08.** Conséquence directe de [TRK-045](#trk-045) : le débit triplé a
+multiplié les trames, donc les rejeux de tampon. *Un défaut non corrigé en aggrave un autre.*
+
+Et le discriminant annoncé par la fiche se vérifie **des deux côtés** : 99 % des doublons exacts
+ont leur jumeau — le garde-fou avait raison ; la majorité des retours en arrière n'en a aucun —
+il avait tort.
+
+### Le correctif — une phrase
+
+> **Persister n'est pas faire autorité.** Le code prenait ces deux décisions en une seule.
+
+Avant de rejeter sur `stale_devicetime`, chercher une position à cet horodatage **exact**.
+Jumeau → fantôme, comportement d'avant strictement inchangé. Aucun jumeau → écrire la ligne
+`positions`, **et rien d'autre** : ni dénormalisation (`lastLat` / `lastPositionAt` /
+`lastValidFrameAt`), ni ignition, ni trip en direct, ni diffusion temps réel. Les trajets
+récupèrent l'historique au recalcul du segmenteur, qui relit `positions` dans l'ordre.
+
+Nouvelle décision d'audit **`RECOVERED_BUFFER`**, distincte de `SKIPPED_REPLAY` — sans elle, on
+ne pourrait plus mesurer ce qu'on récupère **ni** ce qu'on continue d'écarter.
+
+⚠️ **Horodatage exact, jamais une fenêtre.** Le ± 60 s sert à MESURER (il sur-compte les jumeaux,
+donc 5 908 est un **plancher**). Le retenir comme test rejetterait des trames tamponnées
+légitimes : à 5 s de cadence, 60 s en couvre douze.
+
+⚠️ **Seul `stale_devicetime` est récupérable.** Un saut infaisable n'est pas un retard.
+
+### 🔑 Le troisième piège de test de la journée
+
+Le harnais du bloc « garde-fou replay » n'avait **aucun** mock `position`. La récupération levait
+donc sur `prisma.position` undefined, son `catch` avalait l'erreur, et les **27 tests restaient
+verts en décrivant une récupération qui ne tournait pas**.
+
+**Vérifié par mutation**, et le résultat a corrigé le correctif : en neutralisant la récupération,
+**un seul** test cassait — les quatre autres étaient des garde-fous, pas des preuves. Le test de
+la baseline a donc reçu une assertion « la récupération a bien eu lieu » : sans elle il était vert
+pour la mauvaise raison, *puisqu'un correctif désactivé ne touche pas non plus la baseline*.
+Après correction : 2 tests cassent sous mutation.
+
+### ⚠️ Le profil a changé le jour même du correctif
+
+Mesuré à 11:47, juste avant le déploiement : **57 trames écartées sur l'heure, dont seulement
+3 trous**. TRK-045 corrigé, les boîtiers sont passés de 5 s à 20-99 s — donc beaucoup moins de
+trames et beaucoup moins de rejeux. *L'effet immédiat de ce correctif sera donc modeste ; sa
+valeur est dans les RAFALES* (1 643 trames en un bloc le 08/08, 15,7 km perdus d'un coup).
+
+**Ne pas conclure de chiffres bas que le correctif ne sert à rien** : il sert précisément les
+jours de coupure 2G, qui sont rares et coûteux.
 
 ### Constat
 
