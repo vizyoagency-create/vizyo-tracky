@@ -4065,7 +4065,301 @@ sur cache périmé comme une bonne nouvelle** : c'est l'écart exact qui a masqu
 
 ---
 
+## VPS-034 — Le conteneur le plus exposé de la machine pilote le démon Docker, et personne ne l'avait écrit
+
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-08-24 · **Mesure** : `foodsqan-traefik` monte `/var/run/docker.sock` (`RW=false`),
+  publie `0.0.0.0:80` et `0.0.0.0:443`, sert **25 domaines**, tourne sur l'étiquette **`traefik:latest`**
+  et n'a **aucune sonde de santé**. Seul conteneur des 33 dans ce cas.
+
+**Quoi — et d'abord ce que ce n'est PAS.** Ce n'est **pas une porte ouverte** et **pas une erreur
+de configuration**. Traefik a besoin de cette socket : il tourne avec `--providers.docker=true`,
+c'est-à-dire qu'il découvre les routes en lisant l'API Docker. Des dizaines de milliers
+d'installations font exactement cela. **Le constat ne porte pas sur la présence du montage, il
+porte sur son rayon d'explosion — que rien n'avait chiffré en vingt passages.**
+
+**Ce que ce montage donne réellement.** Qui obtient l'exécution de code dans ce conteneur obtient
+l'API Docker complète, donc `root` sur l'hôte en une requête (créer un conteneur privilégié qui
+monte `/`). **Le `ro` n'y change rien** — et c'est le point contre-intuitif qui mérite d'être
+écrit noir sur blanc : le montage en lecture seule protège le **fichier** socket contre son
+remplacement, pas l'**API** contre ses écritures. On parle au démon par `connect()`, jamais par
+`write()` sur l'inode.
+
+**Pourquoi ça compte ici plus qu'ailleurs.** C'est la conjonction, pas le montage :
+
+1. c'est le **seul** point d'entrée HTTP/HTTPS de **toute** la production (VPS-021) ;
+2. il est **exposé à Internet** sur 80 et 443, sans rien devant lui ;
+3. il tourne sur **`traefik:latest`** — étiquette flottante : la prochaine recréation change la
+   version du composant qui termine le TLS de 25 domaines, **sans que personne ne le décide** ;
+4. il **n'a aucune sonde** : sa panne est invisible à Docker (14ᵉ report, point 6 du plan) ;
+5. il appartient à `/opt/foodsqan`, la pile déclarée morte que VPS-021 interdit de supprimer
+   précisément parce qu'elle tient ces ports.
+
+**Pourquoi c'était invisible.** L'audit lisait `.Mounts` depuis le 2026-08-12 — `INSPECT_JSON`
+sérialise l'état complet des 33 conteneurs à chaque passage — et **ne lui avait jamais posé cette
+question**. C'est mot pour mot la famille de VPS-M45 et de VPS-032 : *la donnée était sous les
+yeux du collecteur, la question ne lui avait pas été posée.* Elle ne l'a été que parce que le
+bloc des clients Docker a été instrumenté ce passage (VPS-M65) et qu'il fallait bien nommer les
+clients permanents.
+
+**Quoi faire — la moitié gratuite d'abord.**
+
+Épingler l'étiquette. Effet : la version du proxy ne change plus qu'à la demande. Risque : nul.
+Contrepartie : les correctifs de sécurité de Traefik demandent désormais un geste explicite —
+c'est le but, mais il faut que quelqu'un le fasse.
+
+```bash
+docker inspect foodsqan-traefik --format '{{.Image}}'   # relever le digest ACTUEL avant tout
+```
+
+**La seconde moitié n'est PAS gratuite, et il faut le dire.** Le correctif de manuel est un
+mandataire de socket (`tecnativa/docker-socket-proxy`) qui n'expose que `GET /containers`. Il
+réduit le rayon d'explosion à une lecture — mais il **ajoute un conteneur** sur une machine à
+2 vCPU dont les healthchecks sont déjà la 1ʳᵉ source de forks, et il **insère un saut de plus
+devant l'unique point d'entrée de la production**. *Un composant ajouté devant le point de panne
+unique est lui-même un point de panne.* À arbitrer, pas à appliquer par réflexe.
+
+**`aNePasFaire`** : ⚠️ **ne pas retirer le montage** — Traefik perdrait toute découverte de
+routes et **les 25 domaines tomberaient**. ⚠️ **Ne pas passer le montage en `rw`/`ro` en croyant
+changer quelque chose** : mesuré ci-dessus, `ro` ne restreint pas l'API. ⚠️ **Ne pas traiter ceci
+comme une urgence** : il n'y a **aucune intrusion constatée**, `Currently banned: 0`, 27 échecs
+SSH en 7 jours et 0 sur `root`. Le surclasser en gravité 1 rejouerait VPS-M46, où un détecteur a
+produit un constat de gravité 1 sur une chaîne qui n'était pas un secret.
+
+---
+
+## VPS-035 — Le débit d'ingestion de Tracky a triplé le 08-23, et deux tables de journal vont vers le triple de leur taille
+
+- **Domaine** : données · **Gravité** : 2 · **Statut** : `A_TRAITER` — **la cause est applicative, la facture est ici**
+- **Vu** : 2026-08-24 · **Mesure** : `wire_logs` **+115 634 lignes en 24 h** (708 320 → 823 954,
+  **+16,3 %**) et `position_sampling_decisions` **+145 774** (581 918 → 727 692, **+25,1 %**),
+  **à fenêtre de rétention inchangée**. Débit horaire mesuré ligne à ligne : **7 213/h le 08-22**
+  → **20 296/h le 08-24 à 01 h** = **×2,81**.
+
+**Quoi — la cause est datée à l'heure.** Le comptage heure par heure de `wire_logs` ne laisse
+aucune place au doute :
+
+```
+08-22 (journée entière) : ~7 000/h, plat du début à la fin
+08-23 03:59:29          : image tracky-api reconstruite   <- le déploiement
+08-23 04h : 7 850   05h : 9 420   06h : 11 029   ...  15h : 11 709
+08-23 16h : 13 470  19h : 15 857  22h : 18 610   23h : 19 852
+08-24 00h : 19 796  01h : 20 296
+```
+
+La rupture tombe **dans l'heure qui suit la reconstruction de l'image**, et la montée est
+**progressive** — signature d'un parc d'émetteurs qui adopte une nouvelle cadence boîtier par
+boîtier, au fil des reconnexions, et non d'un basculement serveur. `position_sampling_decisions`
+suit la même courbe (**×2,01** sur 24 h).
+
+> **Ce n'est pas un défaut du VPS, et l'audit n'a pas à le corriger.** La cause est un correctif
+> applicatif déployé le 08-23, suivi côté produit sous **TRK-045**. Le rôle de ce constat est de
+> chiffrer **ce que ça coûte à la machine, et à quelle échéance** — ce que le centre d'alerte ne
+> mesure pas.
+
+**La rétention fonctionne, et c'est justement le piège.** Les deux fenêtres sont **inchangées** :
+`2026-08-20 03:00 → 2026-08-24 02:28`, soit **3,98 jours**, purgées chaque nuit à 03 h 00 et
+03 h 30. *À durée constante, le volume est le produit de la durée par le débit* — la rétention
+borne le premier facteur et ne dit rien du second. C'est le défaut de méthode VPS-M64, trouvé
+en écrivant ce constat.
+
+**Ce que ça coûte, avec ses deux hypothèses écrites.**
+
+| | aujourd'hui | à fenêtre pleine, au débit des **24 h écoulées** | à fenêtre pleine, au débit de la **dernière heure** |
+|---|---:|---:|---:|
+| `wire_logs` | 266,5 Mo | 404 Mo | 619 Mo |
+| `position_sampling_decisions` | 229,3 Mo | 369 Mo | 581 Mo |
+| **somme** | **496 Mo** | **773 Mo** (+277) | **1 200 Mo** (+704) |
+| `tracky_prod` | 1 182 Mo | ~1,46 Go | ~1,89 Go |
+
+La colonne du milieu est un **plancher** : la moyenne des 24 h écoulées inclut la montée. La
+colonne de droite suppose que le débit se stabilise à son niveau actuel. **L'échéance est de
+~4 jours** — le temps que la fenêtre se renouvelle entièrement au nouveau régime, soit autour du
+**2026-08-28**.
+
+**Et la facture ne s'arrête pas à la base.** Le dump quotidien pèse **150,6 Mo** pour une base de
+1 182 Mo (**7,85:1**). En supposant que ces lignes de journal compressent *au moins* aussi bien —
+hypothèse conservatrice, ce sont des enregistrements très répétitifs — chaque dump prend **+35 à
++90 Mo**, et **52 copies sont conservées** : `/var/backups/vizyo-tracky` passerait de **6,8 Go** à
+**8,6–11,5 Go**. Total durable sur ~7 semaines : **+2,1 à +5,4 Go**, soit **5 à 13 % des 41 Go
+libres**.
+
+**Ce qui va bien, et qu'il faut dire.** `positions` — la donnée **métier** — **n'a pas bougé** :
+**×0,77** sur 24 h, fenêtre stable à 62 jours, 446 Mo inchangés. *La couche de décision
+d'échantillonnage absorbe donc les trames supplémentaires et ne les promeut pas en positions.*
+Le triplement coûte du **journal**, pas de la donnée utile — c'est la meilleure nouvelle de ce
+constat, et elle borne l'enjeu.
+
+**Pourquoi c'était invisible.** Le bloc de rétention affichait, **le jour même**, son verdict
+rassurant : *« fenêtre COURTE et STABLE = rétention active, rien à faire »*. Il était exact sur
+ce qu'il mesurait et faux dans ce qu'il concluait. Voir VPS-M64.
+
+**Quoi faire.** Rien sur le VPS aujourd'hui — **41 Go libres, et l'échéance est en semaines.**
+La décision appartient au produit :
+
+1. **Trancher TRK-045** (ramener les boîtiers à leur cadence) : supprime la cause. Gain : la
+   totalité des +2,1 à +5,4 Go. Aucun coût VPS.
+2. **Sinon, raccourcir la rétention de ces deux tables** de 4 jours à 2 : gain ~50 % du
+   surcoût, sans toucher aux émetteurs.
+
+⚠️ **Contrepartie de la seconde option, et elle est réelle** : `wire_logs` est **la pièce qui a
+permis de dater cette rupture à l'heure près**. C'est aussi elle qui, le 2026-08-20, a servi à
+établir qu'un déluge d'alertes s'était arrêté *parce que les trames avaient cessé*. Raccourcir
+sa fenêtre, c'est raccourcir la mémoire de diagnostic **au moment précis où l'on en a besoin**.
+
+**`aNePasFaire`** : ⚠️ **ne pas purger ces tables à la main** — elles ont une rétention qui
+fonctionne, et une purge manuelle ne fait que déplacer la date sans changer le régime.
+⚠️ **Ne pas conclure « le disque monte » sans le décomposer** : les **+2 Go** de disque de ce
+passage viennent des **8 images reconstruites** le 08-23 (8,73 Go annoncés) et du cache de build,
+**pas** de ces tables — qui n'ont pris que 55 Mo. Les deux phénomènes sont indépendants et
+confondre les deux ferait accuser le mauvais coupable.
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M66 — Le plan d'action a republié pendant sept passages un gain que le collecteur, deux lignes plus bas, déclarait non durable
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-08-24)
+- **Vu** : 2026-08-24 · **Mesure** : la mémoire de `dockerd` passe de **1 377 Mo à 510 Mo
+  (−63 %) sans aucun redémarrage** — même processus, `uptime` continu de 436,9 h à 460,9 h.
+
+**Quoi.** Le point 5 du plan (« Redémarrer pour prendre le noyau ») porte depuis sept passages
+l'argument : *« Rend aussi la mémoire de `dockerd` (1 377 Mo) »*. Or le levier 7 du collecteur
+imprime, **sur la ligne même où il donne ce nombre** :
+
+```
+memoire de dockerd  1377 Mo (uptime 436.9 h) -> viser < 400 Mo :
+suit les BUILDS, pas l'uptime — un redemarrage ne regle rien de durable
+```
+
+**Le collecteur disait donc explicitement de ne pas en faire un gain de redémarrage, et le plan
+en a fait un gain de redémarrage.** La série mesurée le confirme :
+
+```
+08-17  08-18  08-19  08-20  08-21  08-22  08-23  08-24
+1211   1427   1333   1744   1486   1562   1377    510   Mo
+```
+
+Le **510** est une rupture nette, à `uptime` strictement croissant : la mémoire est revenue
+**toute seule**, après le build du 08-23. Ce n'est plus une mise en garde, c'est une réfutation.
+
+**Pourquoi c'était invisible.** *Un avertissement placé à côté d'un nombre ne voyage pas avec le
+nombre.* Le plan recopiait la valeur ; la phrase qui en interdisait cette lecture restait dans la
+collecte. **C'est exactement VPS-M63**, où `paquetsEnRetard` a voyagé sans son « à titre
+indicatif SEULEMENT » — et c'est la question ouverte du rapport du 08-23, *« qui garantit qu'un
+chiffre marqué invalide à la production le reste à la recopie ? »*, dont voici la **troisième**
+occurrence en deux passages. La réponse empirique est : **personne**.
+
+**Quoi faire.** Fait ce passage : le point 5 du plan ne porte plus de gain mémoire, et son gain
+est désormais le seul qui résiste — **prendre le noyau 6.8.0-138**. Le reste du travail est celui
+que la question ouverte du 08-23 désignait déjà : marquer les valeurs invalides **dans la sortie
+elle-même**, pas à côté.
+
+**`aNePasFaire`** : ⚠️ **ne pas en conclure que le redémarrage est inutile** — il reste requis
+pour le noyau (deux versions de retard) et pour les 4 services sur bibliothèque remplacée. C'est
+**l'argument mémoire** qui tombe, pas l'action.
+
+### VPS-M65 — L'angle mort n° 4 était documenté depuis quatre passages, et une portée écrite avait pris la place de la mesure
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-08-24)
+- **Vu** : 2026-08-24 · **Mesure** : le bloc des clients Docker publiait **« 0 processus client
+  `docker` au total »** chaque nuit, suivi de cinq lignes disant que ce 0 ne couvrait pas les
+  clients anonymes — **sans jamais dire combien il y en avait**.
+
+**Quoi.** La portée était juste, écrite le 2026-08-20 après VPS-M49, et re-signalée comme angle
+mort n° 4 dans **quatre** rapports consécutifs (08-19 → 08-23), le dernier la qualifiant de
+*« le moins cher des angles morts restants et le seul qui touche le constat de gravité 1 le plus
+récent »*. Elle n'a jamais été mesurée.
+
+> *Un avertissement qui remplace une mesure finit par se lire comme la mesure.* Le lecteur voit
+> un `0`, une case verte, et cinq lignes de prose — il retient le `0`.
+
+**Le correctif compte les CONNEXIONS, pas les noms** : côté serveur, tout client de l'API tient
+une socket unix ÉTABLIE sur `/run/docker.sock`, qu'il s'appelle `docker`, `curl`, `traefik` ou
+rien du tout.
+
+**⚠️ Et le premier piège a été tendu à l'écriture même.** `ss -x` **seul ne rend rien** pour
+`/run/docker.sock` : il faut `-p`. Vérifié sur la machine — la même commande sans `-p` rend
+**zéro ligne**, avec `-p` elle les rend toutes. Écrire `ss -x` aurait donc produit un **`0`
+permanent et faux, du côté rassurant** : la famille VPS-M28 exactement, un détecteur qui n'a
+jamais rien pu voir. *Seul l'essai avec un témoin l'a montré* — la lecture du code ne pouvait
+pas.
+
+**⚠️⚠️ Et le second piège : c'est un ÉCHANTILLON.** Le compte valait **8** à 02 h 40 et **0** à
+02 h 55 le jour de son écriture. Publier le second comme un fait aurait rejoué **VPS-M36**
+(« le `wchan` est un échantillon, et il sert de preuve »). On prend donc **trois sondages sur
+1,1 s** et on publie l'étendue. La portée est alignée sur le défaut recherché **et elle est
+dite** : 1,1 s attrape un client qui **dure** — la cible, puisque VPS-016 est causé par des
+clients qui vivent des **minutes** ; elle rate un client éclair, qui ne bloque rien.
+
+**Vérification.** Deux cas exécutés sur la machine, dont un **témoin actif** :
+
+```
+CAS 1 (repos)  : aucune connexion ETABLIE sur /run/docker.sock (3 sondages sur 1,1 s)
+CAS 2 (témoin) : 1 connexion(s) ETABLIE(S) ... pour 0 processus nomme(s) « docker »
+```
+
+Le témoin est un `curl --unix-socket` : **un client que l'ancien détecteur ne pouvait pas voir,
+et que le nouveau voit.** L'angle mort est fermé et la fermeture est prouvée, pas affirmée.
+
+**Bénéfice imprévu.** Nommer les clients permanents a produit **VPS-034** : `foodsqan-traefik`
+monte la socket. La donnée était dans `INSPECT_JSON` depuis le 08-12.
+
+**Coût** : ~1,2 s, dont 1,0 s d'attente délibérée. Aucun appel à Docker.
+
+### VPS-M64 — La fenêtre de rétention prouvait une DURÉE et concluait sur un VOLUME
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-24)
+- **Vu** : 2026-08-24 · **Mesure** : le bloc a imprimé *« fenêtre COURTE et STABLE = rétention
+  active, rien à faire »* sur `wire_logs` (**+16,3 % en 24 h**) et sur
+  `position_sampling_decisions` (**+25,1 %**), le jour même.
+
+**Quoi.** Le bloc lisait `min(date)`, `max(date)` et le nombre de jours distincts, puis tranchait
+la question qu'il s'était posée — *« accumulation ou régime permanent ? »*. Les deux fenêtres
+étaient identiques à la veille. Le verdict rassurant est donc tombé, **exact sur ce qu'il
+mesurait**.
+
+**Le verdict était un non-sequitur.** Une fenêtre borne une **durée**, jamais un **volume** : à
+rétention constante, le volume est le produit de la durée **par le débit d'arrivée** — et le
+débit n'était mesuré nulle part. Les émetteurs ont triplé leur cadence le 08-23 (VPS-035) : la
+fenêtre n'a pas bougé d'une minute et les tables vont vers le triple de leur taille.
+
+> C'est la règle du §0 de la procédure — *« un compteur doit prouver qu'il compte ce qu'il
+> prétend compter »* — prise en défaut sur le mot le plus discret de la phrase : le compteur
+> comptait des **jours** et répondait sur des **octets**.
+
+**Pourquoi c'était invisible.** Parce que le bloc **avait raison tous les jours précédents**. Un
+détecteur qui vérifie A et conclut B est indiscernable d'un détecteur correct **tant que A et B
+varient ensemble** — ici, tant que le débit est stable, c'est-à-dire depuis toujours. Il ne se
+trompe que le jour où il faudrait qu'il parle. *La famille est celle de VPS-M10 : un seuil qui
+ne peut se tromper que le jour où il compte.*
+
+**Le correctif.** Deux agrégats `FILTER` de plus **sur le parcours de table qui avait déjà lieu**
+— arrivées des 24 h contre arrivées des 24 h précédentes — plus la taille lue au catalogue, et
+une projection à fenêtre pleine. **Coût : nul** ; aucune requête ni `docker exec` de plus.
+
+**⚠️ La comparaison est INTERNE à la passe.** Le collecteur n'a aucune mémoire d'un passage à
+l'autre, et un détecteur qui exige cette mémoire **ne se déclenche jamais le jour où il
+faudrait** — c'est la leçon de VPS-M50 (« le catalogue n'a aucune notion de nouveau »).
+
+**Vérification, cas sain compris (discipline VPS-M40).** Exécuté sur la machine :
+
+```
+wire_logs    x1.84  LE DEBIT MONTE       projection 404 Mo (266,5 aujourd hui)
+psd          x2.01  LE DEBIT MONTE       projection 369 Mo (229,3 aujourd hui)
+positions    x0.77  debit stable         fenetre 62 j, 446 Mo — INCHANGEE
+table vide   ->     (debit non comparable : 0 arrivee sur les 24 h PRECEDENTES)
+```
+
+`positions` est le **cas sain** : même bloc, même passage, verdict vert. Un détecteur qui n'a
+jamais vu un cas sain n'est pas un détecteur, c'est une alarme.
+
+**`aNePasFaire`** : ⚠️ **ne pas lire la projection comme une prévision** — elle suppose le débit
+des 24 h écoulées constant, et le collecteur l'imprime explicitement comme un **plancher**.
+⚠️ **Ne pas retirer les bornes de fenêtre** : elles restent le seul détecteur d'une rétention
+qui **s'arrête**. Les deux mesures répondent à deux questions différentes ; c'est de les avoir
+confondues que venait le défaut.
 
 ### VPS-M63 — Le manifeste republie, dans sa série de tendance, le nombre que le collecteur lui interdit de reporter
 

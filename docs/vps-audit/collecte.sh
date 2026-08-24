@@ -1190,11 +1190,75 @@ fi
 NB_DOCK=$(pgrep -xc docker 2>/dev/null)
 case "${NB_DOCK:-}" in ''|*[!0-9]*) NB_DOCK=0 ;; esac
 printf '  (denominateur : %s processus client `docker` au total, %s examine(s) hors collecte)\n' "$NB_DOCK" "$NB_VU"
-echo  '  ⚠️ PORTEE, ecrite le 2026-08-20 pour ne pas repayer VPS-M49 : ce bloc ne voit que les'
-echo  '     processus dont le NOM est exactement « docker ». Un client qui parle au socket sans'
-echo  '     s appeler ainsi — curl sur /run/docker.sock, un SDK dans un conteneur, un outil de'
-echo  '     supervision — reste invisible ici. Les deux occurrences connues etaient des'
+echo  '  ⚠️ PORTEE du comptage ci-dessus, ecrite le 2026-08-20 pour ne pas repayer VPS-M49 : il ne'
+echo  '     voit que les processus dont le NOM est exactement « docker ». Un client qui parle au'
+echo  '     socket sans s appeler ainsi — curl sur /run/docker.sock, un SDK dans un conteneur, un'
+echo  '     outil de supervision — lui est invisible. Les deux occurrences connues etaient des'
 echo  '     `docker logs`, ce qui ne prouve pas que la troisieme le sera.'
+# ⚠️ AJOUTE LE 2026-08-24 — ANGLE MORT N° 4 DES RAPPORTS DU 08-19 AU 08-23, REPORTE QUATRE FOIS.
+#
+# La portee ci-dessus etait ECRITE depuis le 08-20 et n'etait pas MESUREE : on publiait chaque
+# nuit « 0 processus client docker » en sachant que ce 0 ne couvrait pas les clients anonymes,
+# sans jamais dire combien il y en avait. Un avertissement qui remplace une mesure finit par se
+# lire comme la mesure.
+#
+# ON COMPTE DONC LES CONNEXIONS, PAS LES NOMS : cote serveur, chaque client de l'API tient une
+# socket unix ETABLIE sur /run/docker.sock, qu'il s'appelle docker, curl, traefik ou rien.
+#
+# ⚠️ `ss -x` SEUL NE REND RIEN ICI — il faut `-p`. Verifie sur la machine le 2026-08-24 : la
+# meme commande sans `-p` rend zero ligne pour /run/docker.sock, avec `-p` elle les rend toutes.
+# Ecrire `ss -x` aurait donc produit un « 0 » PERMANENT et FAUX, du cote rassurant : exactement
+# la famille VPS-M28 (un detecteur qui n'a jamais rien pu voir).
+#
+# ⚠️⚠️ ET C'EST UN ECHANTILLON, DONC ON EN PREND TROIS. Un sondage unique valait 8 a 02h40 et
+# 0 a 02h55 le jour de son ecriture : publier le second comme un fait aurait rejoue VPS-M36
+# (« le wchan est un echantillon, et il sert de preuve »). On publie l'ETENDUE des trois.
+# Ce que 1,1 s d'echantillonnage attrape : un client VIVANT — et c'est la cible, puisque
+# VPS-016 est cause par des clients qui durent des MINUTES. Ce qu'il rate : un client eclair,
+# qui ne bloque rien. La portee est donc alignee sur le defaut recherche, et elle est dite.
+# ⚠️ COUT MESURE : 3 x 40 ms de `ss` + 1,0 s d'attente = ~1,1 s. Aucun appel a Docker.
+SOCK_MIN=''; SOCK_MAX=''
+for _s in 1 2 3; do
+  _n=$(ss -xp 2>/dev/null | awk '$2=="ESTAB" && $5=="/run/docker.sock"' | wc -l)
+  case "${_n:-}" in ''|*[!0-9]*) _n=0 ;; esac
+  [ -z "$SOCK_MIN" ] && { SOCK_MIN=$_n; SOCK_MAX=$_n; }
+  [ "$_n" -lt "$SOCK_MIN" ] && SOCK_MIN=$_n
+  [ "$_n" -gt "$SOCK_MAX" ] && SOCK_MAX=$_n
+  [ "$_s" != 3 ] && sleep 0.5
+done
+if [ "$SOCK_MAX" -eq 0 ]; then
+  echo "  ✅ 0 connexion ETABLIE sur /run/docker.sock (3 sondages sur 1,1 s) — donc AUCUN client"
+  echo "     de l API a cet instant, nomme « docker » ou non. Le 0 ci-dessus est desormais MESURE"
+  echo "     sur les connexions, plus seulement sur les noms de processus."
+elif [ "$SOCK_MIN" -eq "$SOCK_MAX" ]; then
+  printf '  🟠 %s connexion(s) ETABLIE(S) sur /run/docker.sock aux 3 sondages, pour %s processus\n' "$SOCK_MAX" "$NB_DOCK"
+  echo  "     nomme(s) « docker ». L ECART est le nombre de clients que le comptage par NOM ne"
+  echo  "     voit pas. Stable sur 1,1 s = client DURABLE, donc candidat au blocage (VPS-016)."
+else
+  printf '  ·  connexions ETABLIES sur /run/docker.sock : %s a %s selon le sondage (3 sur 1,1 s),\n' "$SOCK_MIN" "$SOCK_MAX"
+  printf '     pour %s processus nomme(s) « docker ». Un compte QUI VARIE = trafic d API normal,\n' "$NB_DOCK"
+  echo  "     pas un client installe. C est un compte STABLE et NON NUL qui doit inquieter."
+fi
+echo  "  ── conteneurs qui MONTENT la socket (clients permanents par construction) ──"
+if [ -n "${INSPECT_JSON:-}" ] && have jq; then
+  # ⚠️ Derive de INSPECT_JSON, deja capture par la carte des domaines : ZERO appel docker de plus
+  # (discipline VPS-M30). Un conteneur qui monte la socket peut piloter TOUT le demon : c'est une
+  # elevation de privilege de fait, et `ro` n'y change rien — l API est en ecriture par la requete,
+  # pas par le montage.
+  MONTEURS=$(printf '%s' "$INSPECT_JSON" | jq -r '.[]
+      | select([.Mounts[]?.Source] | any(. == "/var/run/docker.sock" or . == "/run/docker.sock"))
+      | "    \(.Name[1:])  (projet \(.Config.Labels["com.docker.compose.project"] // "-"))  monte en \([.Mounts[] | select(.Source | test("docker[.]sock")) | if .RW then "LECTURE-ECRITURE" else "lecture seule" end] | join(","))"' 2>/dev/null)
+  if [ -n "$MONTEURS" ]; then
+    printf '%s\n' "$MONTEURS"
+    printf '    → %s conteneur(s). Un montage « lecture seule » NE limite RIEN : qui atteint la\n' "$(printf '%s\n' "$MONTEURS" | grep -c '^..*$')"
+    echo  "      socket pilote le demon (creer, supprimer, monter /). C est le compromettre qui"
+    echo  "      compromet la machine — a garder en tete pour la surface d attaque, section 6."
+  else
+    echo "    ✅ aucun conteneur ne monte /run/docker.sock"
+  fi
+else
+  echo "    (non mesure : INSPECT_JSON absent ou jq indisponible — PAS « aucun »)"
+fi
 
 sub "Consommation live"
 docker stats --no-stream --format '  {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.PIDs}}' 2>/dev/null | sort -t$'\t' -k3 -h -r | head -15
@@ -1431,14 +1495,68 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
       if [ -z "$COL" ]; then
         printf '       %-30s (aucune colonne horodatee — fenetre indeterminable)\n' "$t"
       else
-        docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
-          "SELECT '       '||rpad('$t',30)||coalesce(min(\"$COL\")::date::text,'vide')||' -> '
-                  ||coalesce(max(\"$COL\")::date::text,'vide')||'  = '
-                  ||count(DISTINCT \"$COL\"::date)||' jours  (colonne $COL)'
-           FROM \"$t\";" 2>/dev/null
+        # ⚠️⚠️ CORRIGE LE 2026-08-24 (VPS-M64) — CE BLOC A DIT « RIEN A FAIRE » SUR UNE TABLE
+        # QUI AVAIT GROSSI DE 16 % EN 24 h, ET IL AVAIT RAISON SUR CE QU'IL MESURAIT.
+        #
+        # Le 2026-08-24, `wire_logs` passe de 708 320 a 823 954 lignes (+16,3 %) et
+        # `position_sampling_decisions` de 581 918 a 727 692 (+25,1 %). Les DEUX fenetres sont
+        # restees a 5 jours, identiques a la veille — donc le bloc a imprime son verdict
+        # rassurant : « fenetre COURTE et STABLE = retention active, rien a faire ».
+        #
+        # LE VERDICT ETAIT UN NON-SEQUITUR. Une fenetre borne une DUREE, jamais un VOLUME :
+        # a retention constante, le volume est le produit de la duree PAR LE DEBIT D'ARRIVEE —
+        # et le debit n'etait mesure nulle part. Les emetteurs ont triple leur cadence apres un
+        # deploiement le 08-23 a 03h59 (6 850 lignes/h -> 20 300/h, verifie heure par heure) :
+        # la fenetre n'a pas bouge d'une minute, et la table va vers le TRIPLE de sa taille.
+        #
+        # C'est la regle du §0 de la procedure — « un compteur doit prouver qu'il compte ce
+        # qu'il pretend compter » — prise en defaut : celui-ci pretendait trancher « accumulation
+        # ou regime permanent ? » en ne regardant QUE les bornes de la fenetre.
+        #
+        # ⚠️ COUT : NUL. Le `min/max/count(DISTINCT)` ci-dessous etait DEJA un parcours complet
+        # de la table ; on ajoute deux agregats FILTER et une lecture de catalogue SUR LE MEME
+        # PARCOURS. Aucune requete de plus, aucun `docker exec` de plus.
+        # ⚠️ La comparaison est INTERNE a la passe (24 h contre les 24 h precedentes) : le
+        # collecteur n'a pas de memoire d'un passage a l'autre, et un detecteur qui exige cette
+        # memoire ne se declenche jamais le jour ou il faudrait.
+        docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
+          "SELECT coalesce(min(\"$COL\")::date::text,'vide'),
+                  coalesce(max(\"$COL\")::date::text,'vide'),
+                  count(DISTINCT \"$COL\"::date),
+                  count(*),
+                  round(extract(epoch from (max(\"$COL\")-min(\"$COL\")))/86400.0, 2),
+                  count(*) FILTER (WHERE \"$COL\" >  now() - interval '24 hours'),
+                  count(*) FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
+                                     AND \"$COL\" <= now() - interval '24 hours'),
+                  round(pg_total_relation_size('\"$t\"')/1048576.0, 1)
+           FROM \"$t\";" 2>/dev/null |
+        awk -F'|' -v t="$t" -v c="$COL" 'NF>=8 {
+            deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
+            printf "       %-30s%s -> %s  = %s jours, %.1f Mo  (colonne %s)\n", t, deb, fin, jours, mo, c;
+            if (j1 <= 0) {
+              printf "         (debit non comparable : 0 arrivee sur les 24 h PRECEDENTES)\n";
+              next;
+            }
+            r = j0 / j1;
+            printf "         debit : %d arrivees sur 24 h  contre  %d les 24 h precedentes  = x%.2f\n", j0, j1, r;
+            if (wj > 0 && n > 0) {
+              proj_n = wj * j0; proj_mo = mo * proj_n / n;
+              printf "         projection a fenetre PLEINE (%.2f j x le debit du jour) : %.0f Mo\n", wj, proj_mo;
+              printf "           ⚠️ PLANCHER, pas une prevision : si le debit monte encore, la projection\n";
+              printf "              monte avec lui. Elle suppose le debit des 24 h ECOULEES constant.\n";
+            }
+            if (r >= 1.5)
+              printf "         🔴 LE DEBIT MONTE (x%.2f) — UNE FENETRE STABLE NE GARDE PAS UN VOLUME STABLE.\n         La retention fonctionne ET la table grossit : ce ne sont pas des enonces contraires.\n", r;
+            else if (r <= 0.67)
+              printf "         🟠 le debit BAISSE (x%.2f) : a fenetre pleine, le volume decroitra.\n", r;
+            else
+              printf "         ✅ debit stable (x%.2f, dans la bande 0,67-1,50) : le volume l est aussi.\n", r;
+          }'
       fi
     done
-    echo "       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active, rien a faire."
+    echo "       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active."
+    echo "          Elle ne dit RIEN du volume : a duree constante, le volume suit le DEBIT."
+    echo "          C'est la ligne « debit » ci-dessus qui tranche, pas les bornes (VPS-M64)."
     echo "          Une date de debut qui NE BOUGE PAS pendant que la fin avance = accumulation sans borne."
   fi
   # ⚠️ AJOUTE LE 2026-08-17 — angle mort n° 3 des rapports du 08-13 au 08-16, REPORTE CINQ FOIS.
