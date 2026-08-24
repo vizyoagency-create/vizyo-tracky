@@ -7560,18 +7560,69 @@ enveloppe : `**,imei:<IMEI>,C,05m;`. Les boîtiers la lisent — **et n'applique
 24/08 00 h  19 794            ← × 2,90, et 6 boîtiers n'ont pas encore reçu leur trame
 ```
 
-**4. Le partage n'est pas uniforme** — 9 boîtiers honorent la consigne **exactement**
-(20 → 20 s, 30 → 30 s). Seul motif net que la mesure donne :
+**4. LE MODÈLE — « deux chiffres, unité jetée »**, vérifié sur **cinq** formes.
 
-| Forme envoyée | Boîtiers | Résultat |
+> 🔴 **La première lecture de ce point, écrite le matin du 24/08, était FAUSSE** : elle
+> concluait « la forme secondes est mitigée (9 obéissent, 15 s'effondrent) ». C'était un
+> **artefact de tri** — les boîtiers étaient comptés d'après une trame quelconque de leur
+> historique au lieu de la **dernière reçue**. Réparti par dernière trame, il n'y a **aucune
+> exception**. *Un comptage sans ordre sur des événements datés ne mesure pas ce qu'il croit
+> mesurer — et il se raconte très bien.*
+
+| Dernière trame `,C,` reçue | Boîtiers | Cadence obtenue |
 |---|---|---|
-| `,C,05m;` (300 s, forme **minutes**) | 8 | **8 sur 8** à 4–6 s |
-| `,C,NNs;` (forme **secondes**) | 24 | 9 honorent, 15 s'effondrent |
+| `,C,05m;` | 28 | **4–6 s** |
+| `,C,20s;` | 4 | **19–20 s** |
+| `,C,30s;` | 6 | **30 s** |
 
-⚠️ **La forme minutes échoue à 100 %, la forme secondes est mitigée.** Un firmware qui lit « 05 »
-et ignore le `m` appliquerait 5 **secondes** — ce qu'on observe. Mais cette hypothèse **n'explique
-pas** les 15 boîtiers commandés en secondes qui s'effondrent aussi, ni pourquoi trois boîtiers
-commandés `,C,20s;` obéissent quand quatre autres non. *Fait mesuré, pas théorie du firmware.*
+**Le firmware lit DEUX chiffres, jette la lettre d'unité, et traite le nombre comme des
+secondes.** Les cinq formes mesurées s'y rangent sans exception :
+
+| Envoyé | Lu par le boîtier | Mesuré |
+|---|---|---|
+| `,C,20s;` | « 20 » → 20 s | 20 s ✅ |
+| `,C,30s;` | « 30 » → 30 s | 30 s ✅ |
+| `,C,05m;` | « 05 » → 5 s *(le `m` est jeté)* | 4–6 s ✅ |
+| `,C,300s;` | « 30 » puis `0` au lieu de l'unité → échec → défaut firmware | **60 s** ✅ |
+| `,C,99s;` | « 99 » → 99 s | **99 s** ✅ |
+
+**Conséquence structurelle : le maximum exprimable est 99 s.** La cible de 300 s était
+**inatteignable par construction** sur ce matériel — et le paramètre `HARD_CAP_S = 300` demandait
+donc depuis toujours une valeur que le boîtier ne pouvait pas honorer.
+
+### 🐤 Les deux canaris du 24/08 — BP-434-RD, garé, cadence de départ 5,00 s
+
+Émis depuis `/admin/trackers/:id` → *Personnalisé* → *Commande brute*.
+
+**Canari 1, `,C,300s;` à 04:56:41 UTC** — neuf écarts, **tous multiples de 60**, trames toutes à
+`:44/:45` : `180 · 120 · 60 · 180 · 60 · 120 · 180 · 180`. Le boîtier applique **60 s**, son
+défaut. *`300s` n'obtient pas 300 s.*
+
+**Canari 2, `,C,99s;` à 05:51:26 UTC** — six écarts : `99 · 81+18 · 99 · 63+36` (le boîtier émet
+par **paires**, espacées de 99 s pile). Et immédiatement en base : `currentFixIntervalS = 99`,
+`desiredFixIntervalS = 99`, **`fixCommandFailing = false`** — *le boîtier a convergé et est sorti
+de FAILING tout seul.* Validation complète.
+
+### 🔴 Le défaut n'était pas que dans l'automate : il était dans le MENU de l'opérateur
+
+Quatre des six intervalles proposés au catalogue étaient des pièges :
+
+| Il choisissait | Trame émise | Appliqué |
+|---|---|---|
+| 10 secondes / 30 secondes | `,C,10s;` / `,C,30s;` | 10 s / 30 s ✅ |
+| **1 minute** | `,C,01m;` | **1 s** ❌ |
+| **2 minutes** | `,C,02m;` | **2 s** ❌ |
+| **5 minutes** | `,C,05m;` | **5 s** ❌ |
+| **10 minutes** | `,C,10m;` | **10 s** ❌ |
+
+Le pire est « 1 minute » : `intervalLabel(60)` rendait `001m`, donc la trame demandait **une
+seconde**. *Un opérateur qui cherchait à économiser la batterie multipliait le trafic par 60.*
+
+> 🔑 **Trois tests verrouillaient ce défaut, et le plus affirmatif était le plus faux.** Le spec du
+> catalogue disait : *« Traccar écrase les restes : 60 s passe en minutes (`%02dm`) — comportement
+> assumé, documenté. »* Il décrivait fidèlement le code, et le code demandait 1 s. *Un test qui
+> explique longuement pourquoi il attend cette valeur-là mérite d'être relu en premier.* En
+> corrigeant, **8 tests ont cassé** : c'est la preuve que le correctif touche le chemin réel.
 
 **5. Aucun accusé, jamais** — 100 % des commandes finissent en `ACK_TIMEOUT pattern=fix.*ok`. Le
 motif attendu est celui de la forme **SMS** ; une réponse TCP `,C,` n'y correspondrait pas.
@@ -7601,7 +7652,38 @@ motif attendu est celui de la forme **SMS** ; une réponse TCP `,C,` n'y corresp
    d'émettre vers un boîtier FAILING. **Le rattrapage automatique est hors circuit sur ces 23
    boîtiers** — il faudra une action explicite.
 
-### Correctif proposé — NON APPLIQUÉ (l'audit propose, il ne corrige pas)
+### ✅ Correctif ÉCRIT ET VÉRIFIÉ le 24/08 — NON DÉPLOYÉ
+
+Demandé par le propriétaire dans la journée. Remplace la proposition initiale, qui visait `300s` :
+le canari 1 a montré que cette valeur n'était pas atteignable.
+
+| Fichier | Changement |
+|---|---|
+| `coban.utils.ts` | `formatFrequency` → **deux chiffres + `s` toujours** ; **lève** au-delà de 99 s. Constante `TCP_MAX_FREQUENCY_S = 99`. |
+| `coban.catalog.ts` | les **4 options trompeuses retirées** ; ajout `020s` et `099s`. |
+| `tracker-fix-mode.service.ts` | `HARD_CAP_S` **300 → 99** · `return 300` en dur → la constante · `intervalLabel` en secondes jusqu'à 99. |
+| `tracker-commands.service.ts` | **repli SMS « option A »** — TCP d'abord, SMS **seulement si la socket a échoué**. |
+| `commands-panel.component.ts` | **suivi d'envoi par étapes** + chronomètre. |
+| `vehicle-detail.component.ts` | onglet « Commandes » **retiré** (la console reste dans l'Admin). |
+
+⚠️ **Lever plutôt que plafonner** : un plafonnement silencieux laisserait l'interface promettre
+« 10 minutes » pour une trame qui demande 99 s — un mensonge de 6× à la place d'un de 60×. Le seul
+endroit qui connaisse la limite du matériel est l'encodeur.
+
+⚠️ **Le critère du repli SMS est « l'écriture socket a échoué », JAMAIS « pas d'accusé ».** Ces
+boîtiers n'acquittent pas en TCP (625 155 trames en 4 jours, zéro accusé) : un repli sur l'absence
+d'accusé enverrait ~70 SMS/jour.
+
+**Effet attendu au déploiement** : `normalizeDriftedTargets` ramène les cibles de 300 s à 99 s
+**sans migration**, et l'automate émet `,C,99s;` — honoré au centième. Par boîtier garé : **873
+trames/jour au lieu de 17 280**, mieux que le régime d'avant l'incident (4 320 à 20 s).
+
+**Vérifié** : `shared` 332/332 · API 171/171 · `onglets-familles` 10/10 · `tsc` ✅ · `ng build` ✅.
+**8 tests réécrits**, dont deux gardes structurelles : *aucune valeur acceptable ne produit autre
+chose qu'un suffixe `s`* (sur 1→99 et sur le chemin réel d'émission), et *le catalogue ne propose
+plus aucun intervalle inexprimable*.
+
+### Correctif proposé initialement — conservé pour mémoire
 
 Par ordre de sûreté :
 

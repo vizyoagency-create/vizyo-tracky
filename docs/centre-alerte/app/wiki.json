@@ -46,15 +46,15 @@
       "id": "TRK-045",
       "titre": "La commande de cadence arrive enfin, et le boitier fait l inverse",
       "source": "commandes / debit",
-      "statut": "NON_CORRIGE",
+      "statut": "CORRECTIF_PROPOSE",
       "gravite": 1,
       "vuPremiere": "2026-08-24",
       "vuDerniere": "2026-08-24",
-      "occurrences": 23,
-      "occurrencesLibelle": "23 boitiers sur 43 emettent desormais toutes les 4 a 6 secondes, et le debit de la flotte a ete multiplie par 2,9 en 21 heures",
-      "quoi": "LE CORRECTIF A REUSSI CE QU IL VISAIT, ET C EST LA LE PROBLEME. Depuis le 27 avril, les commandes de cadence partaient sur la socket TCP au format SMS, que le boitier ignore : elles n avaient AUCUN effet, et le parc tournait a sa cadence d usine d environ 20 secondes. Le correctif deploye le 23 aout a 04h01 fait partir la bonne enveloppe. Les boitiers la lisent, et n appliquent pas la valeur demandee : au lieu des 300 secondes reclamees, ils emettent toutes les 4 a 6 secondes. Mesure au centieme sur un boitier : 5,00 secondes pour une cible de 20. La preuve est une correlation directe : sur les 32 boitiers qui ont recu une trame depuis le deploiement, 23 ont change de cadence ; sur les 6 qui n en ont pas recu, 1 seul. Et la montee du trafic est une rampe MONOTONE qui commence a l heure exacte du deploiement, chaque boitier basculant apres SA propre premiere trame : de 6 826 a 19 794 trames par heure. CE QUE CA COUTE : trois fois plus de donnees mobiles sur 43 cartes SIM, trois fois plus d ecritures en base sur un serveur a deux coeurs qui porte toute la production, et POUR MOINS DE POSITIONS ENREGISTREES qu avant, parce que l echantillonnage jette les trames d un vehicule a l arret. On paie trois fois le transport pour stocker moins. La plateforme allait mieux quand ses commandes etaient ignorees.",
-      "quoiFaire": "ARRETER L HEMORRAGIE D ABORD, COMPRENDRE ENSUITE. Poser un interrupteur d environnement qui suspend l envoi des commandes de cadence sur le canal TCP : la flotte revient a son regime d avant-hier en un redemarrage, et c est la SEULE action urgente. Ensuite, et seulement apres revue : n emettre que la forme en secondes (300s au lieu de 05m), la forme en minutes ayant echoue 8 fois sur 8, a verifier sur UN SEUL boitier avant toute generalisation. Rendre BLOQUANT un test canari avant tout deploiement qui change une trame sortante : un boitier, dix minutes, l intervalle mesure, et on n etend au parc qu au vu du resultat. Ajouter une sonde de debit : un facteur 2,9 sur le trafic de la flotte doit alerter par lui-meme, aucun instrument existant ne regarde cette grandeur. Enfin corriger le motif d accuse de reception attendu sur le canal TCP, pour qu un succes puisse etre constate autrement que par deduction.",
-      "aNePasFaire": "NE PAS juger cette fiche au compteur de boitiers en echec : il depend de l HEURE de la mesure, car un boitier qui emet vite EN MOUVEMENT est volontairement exonere. A 1 h du matin toute la flotte est a l arret et ils comptent tous ; en journee le nombre baissera sans que rien ne se soit ameliore. Les seules grandeurs stables sont le debit horaire et le nombre de boitiers sous 10 secondes. NE PAS utiliser le critere de succes ecrit dans la fiche TRK-012 (le ratio commandes par boitier doit decrocher de 2) : il est egalement satisfait par le pire echec, des boitiers baillonnes en etat d echec. Un critere de reussite que le pire echec satisfait ne mesure rien. NE PAS attendre que la plateforme se repare seule : l auto-alignement a un plancher a 20 secondes et refuse d accepter 5, et l emission de commandes s arrete vers un boitier en echec, donc le rattrapage automatique est hors circuit sur ces 23 boitiers. Et NE PAS conclure du silence du centre d alerte : ce defaut n a produit AUCUNE ligne d erreur.",
+      "occurrences": 28,
+      "occurrencesLibelle": "28 boitiers a 4-6 s le 24 aout au matin ; correctif ecrit et verifie le meme jour, PAS ENCORE DEPLOYE",
+      "quoi": "LE FIRMWARE LIT DEUX CHIFFRES ET JETTE LA LETTRE D UNITE. Voila tout le defaut, et il a ete verifie sur CINQ formes de trame : 20s donne 20 s, 30s donne 30 s, mais 05m donne 5 SECONDES (le m est jete) et 300s donne 60 s (le troisieme chiffre casse l analyse, le boitier retombe sur son defaut). Le maximum exprimable est donc 99 secondes, et la cible de 300 s configuree dans la plateforme etait INATTEIGNABLE PAR CONSTRUCTION. Le correctif de transport deploye le 23 aout a rendu ces trames effectives pour la premiere fois en quatre mois : le debit de la flotte est passe de 6 826 a 19 794 trames par heure, POUR MOINS DE POSITIONS ENREGISTREES qu avant, l echantillonnage jetant les trames d un vehicule a l arret. ET LE DEFAUT N ETAIT PAS QUE DANS L AUTOMATE : quatre des six intervalles proposes dans le menu de l operateur etaient des pieges. Le pire etait 1 minute, qui partait en demandant UNE SECONDE. Un operateur qui cherchait a economiser la batterie multipliait le trafic par 60.",
+      "quoiFaire": "CORRECTIF ECRIT ET VERIFIE LE 24 AOUT, PAS ENCORE DEPLOYE. La fonction d encodage n emet plus que deux chiffres suivis de s, et elle LEVE UNE ERREUR au-dela de 99 s au lieu de plafonner en silence : plafonner laisserait l interface promettre 10 minutes pour une trame qui demande 99 s. Le catalogue perd ses quatre options trompeuses et gagne 20s (minimum materiel) et 99s (maximum du boitier). Le plafond interne passe de 300 a 99 s, ce qui repare le parc SANS MIGRATION : le balayage de normalisation ramene les cibles heritees au prochain passage. Le repli SMS suit l option choisie par le proprietaire : le TCP d abord parce qu il est gratuit, le SMS uniquement si l ecriture sur la socket a echoue. Verifie : 332 tests partages, 171 tests API, 10 tests de familles d onglets, typage et build web au vert. Effet attendu par boitier gare : 873 trames par jour au lieu de 17 280, soit mieux que le regime d avant l incident.",
+      "aNePasFaire": "NE PAS declencher le repli SMS sur l absence d accuse de reception : ces boitiers n acquittent JAMAIS en TCP (625 155 trames en quatre jours pour zero accuse), donc un SMS partirait a chaque commande, environ 70 par jour. Le seul critere honnete est l echec d ecriture sur la socket. NE PAS envoyer la trame TCP dans un SMS : le firmware ne lit que la forme texte dans un texto, ce serait le defaut TRK-012 en miroir. NE PAS remonter le plafond de 99 s sans changer de commande : pour un vehicule gare, la piste a instruire est l ARRET du suivi periodique, pas un intervalle plus lent que le boitier ne sait pas exprimer. NE PAS juger cette fiche au compteur de boitiers en echec, qui depend de l heure de la mesure. Et NE PAS se fier au statut Confirmee d une commande brute : son motif d accuse accepte n importe quelle trame, donc il affirme ce qu il n a pas vu.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-045"
     },
@@ -1007,11 +1007,19 @@
         "passagesAutomatisationLieuxReels": 1,
         "heuresDepuisDeploiement": 21,
         "intervalleSpeedLimitOsmMinutes": 360.2,
-        "trackersTotal": 43
+        "trackersTotal": 43,
+        "canari1TramesEnvoyees": 300,
+        "canari1CadenceObtenue": 60,
+        "canari2TramesEnvoyees": 99,
+        "canari2CadenceObtenue": 99,
+        "plafondExprimableS": 99,
+        "optionsCatalogueTrompeuses": 4,
+        "testsCassesEnCorrigeant": 8,
+        "smsEngineControl7j": 20
       },
       "fiches": {
         "nouvelles": 1,
-        "misesAJour": 9
+        "misesAJour": 10
       },
       "aTraiter": [
         "TRK-045",
@@ -1019,7 +1027,7 @@
         "TRK-008",
         "TRK-035"
       ],
-      "note": "Premier audit apres la mise en ligne de la campagne des onze lots (conteneur demarre le 23/08 a 04h01min07, sans redemarrage depuis). Cinq correctifs sont VERIFIES sur le terrain : TRK-044, TRK-029, TRK-013, TRK-038 et TRK-042. Un sixieme, TRK-012, a repare ce qu il visait au prix d un effet non anticipe qui devient la priorite 1 du jour. Deux pieges de lecture consignes : le compteur de boitiers en echec depend de l heure de la mesure (0 hier, 24 cette nuit, sans que la cause ait empire dans ce rapport), et les 24 passages sur 24 de l automatisation des trajets ne prouvent PAS le correctif TRK-043, la journee ayant ete trop facile pour l exercer."
+      "note": "Premier audit apres la mise en ligne de la campagne des onze lots (conteneur demarre le 23/08 a 04h01min07, sans redemarrage depuis). Cinq correctifs sont VERIFIES sur le terrain : TRK-044, TRK-029, TRK-013, TRK-038 et TRK-042. Un sixieme, TRK-012, a repare ce qu il visait au prix d un effet non anticipe qui devient la priorite 1 du jour. Deux pieges de lecture consignes : le compteur de boitiers en echec depend de l heure de la mesure (0 hier, 24 cette nuit, sans que la cause ait empire dans ce rapport), et les 24 passages sur 24 de l automatisation des trajets ne prouvent PAS le correctif TRK-043, la journee ayant ete trop facile pour l exercer. SUITE DANS LA JOURNEE, a la demande du proprietaire : le modele est TROUVE et verifie sur CINQ formes — le firmware lit deux chiffres et JETTE la lettre d unite, donc 05m vaut 5 secondes et 300s vaut 60 s (troisieme chiffre = echec d analyse). Le maximum exprimable est 99 s : la cible de 300 s etait inatteignable par construction. DEUX CANARIS sur BP-434-RD : 300s a donne 60 s (neuf ecarts tous multiples de 60), 99s a donne 99 s au centieme ET a fait SORTIR le boitier de l etat FAILING tout seul. Le defaut etait aussi dans le MENU de l operateur : quatre des six intervalles proposes etaient des pieges, dont 1 minute qui partait en demandant UNE SECONDE. Correctif ecrit et verifie (332 + 171 + 10 tests, typage et build au vert), NON DEPLOYE. ⚠️ UNE CONCLUSION DU MATIN A ETE CORRIGEE : « la forme secondes est mitigee » etait un artefact de tri (comptage sur une trame quelconque au lieu de la DERNIERE recue) — un comptage sans ordre sur des evenements dates ne mesure pas ce qu il croit mesurer. ⚠️ Trois tests VERROUILLAIENT le defaut, et le plus affirmatif etait le plus faux : « Traccar ecrase les restes, comportement assume, documente ». Huit tests ont casse en corrigeant."
     },
     {
       "date": "2026-08-23",
