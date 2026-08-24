@@ -414,7 +414,13 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
   const build = () => {
     const prisma = {
       trackerCommand: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
-      tracker: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // TRK-045 — `findMany` alimente le balayage de recuperation. Sans lui dans le mock,
+      // le balayage leverait et son `catch` avalerait l'erreur : les tests resteraient
+      // verts en decrivant un balayage qui ne tourne pas. Par defaut : parc sain.
+      tracker: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     } as any;
     const svc = new TrackerFixModeService(
       prisma,
@@ -617,6 +623,78 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
     expect(prisma.tracker.updateMany).toHaveBeenCalledWith({
       where: { desiredFixIntervalS: { gt: 99 } },
       data: { desiredFixIntervalS: 99 },
+    });
+  });
+
+  // ══ TRK-045, second correctif — le balayage qui SORT LES VICTIMES DU PIÈGE ═══════════
+  describe('recuperation des boitiers empoisonnes', () => {
+    const bloque = (over: Record<string, unknown> = {}) => ({
+      id: 't-bloque', imei: '864035054756789',
+      desiredFixIntervalS: 99, currentFixIntervalS: 5,
+      fixCommandFailing: true, fixCommandFailureCount: 3,
+      lastSeenAt: new Date(), simPhoneNumber: '+33600000000',
+      vehicle: { id: 'v1', fleetId: 'f1', fleet: { adaptiveFixModeEnabled: true } },
+      ...over,
+    });
+
+    it('ne vise QUE les boitiers FAILING sous le plancher d\'auto-alignement', async () => {
+      const { svc, prisma } = build();
+      await svc.expireStaleFixCommands();
+
+      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      expect(where.fixCommandFailing).toBe(true);
+      // C'est la signature exacte d'une victime : elle ne peut ni converger ni s'aligner.
+      expect(where.currentFixIntervalS).toEqual({ lt: 20, not: null });
+    });
+
+    it('🔴 BORNE lastSeenAt — c\'est la garde qui empeche un SMS FACTURE', async () => {
+      // requestChange bascule sur un repli SMS quand la socket est fermee. La garde de
+      // tryFallbackSms refuse d'emettre vers un boitier vu il y a moins de 5 min : en ne
+      // selectionnant QUE ceux-la, le repli devient structurellement impossible. Sans cette
+      // borne, un boitier hors ligne couterait un SMS toutes les 10 minutes, indefiniment.
+      const { svc, prisma } = build();
+      await svc.expireStaleFixCommands();
+
+      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      expect(where.lastSeenAt?.gt).toBeInstanceOf(Date);
+      const ageMs = Date.now() - (where.lastSeenAt.gt as Date).getTime();
+      expect(ageMs).toBeGreaterThan(4.5 * 60 * 1000);
+      expect(ageMs).toBeLessThanOrEqual(5 * 60 * 1000);
+    });
+
+    it('force une commande vers la cible COURANTE, deja normalisee a <= 99 s', async () => {
+      const { svc, prisma } = build();
+      prisma.tracker.findMany.mockResolvedValue([bloque()]);
+      const spy = jest.spyOn(svc, 'requestChange').mockResolvedValue({ commandId: 'c', sent: true });
+
+      await svc.expireStaleFixCommands();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const [, cible, motif, , options] = spy.mock.calls[0];
+      expect(cible).toBe(99);
+      expect(motif).toBe('RECUPERATION_TRK045');
+      // `force` est indispensable : sans lui, la garde FAILING refuse l'envoi — c'est
+      // exactement le verrou qu'on cherche a franchir.
+      expect(options).toEqual(expect.objectContaining({ force: true }));
+    });
+
+    it('n\'emet RIEN sur un parc sain', async () => {
+      const { svc, prisma } = build();
+      prisma.tracker.findMany.mockResolvedValue([]);
+      const spy = jest.spyOn(svc, 'requestChange');
+
+      await svc.expireStaleFixCommands();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('un echec de recuperation n\'empeche pas la cloture des commandes perimees', async () => {
+      // Les deux balayages partagent le meme cron : l'un ne doit pas emporter l'autre.
+      const { svc, prisma } = build();
+      prisma.tracker.findMany.mockRejectedValue(new Error('DB down'));
+
+      await expect(svc.expireStaleFixCommands()).resolves.toBeUndefined();
+      expect(prisma.trackerCommand.findMany).toHaveBeenCalled();
     });
   });
 
