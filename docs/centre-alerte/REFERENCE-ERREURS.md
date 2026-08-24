@@ -7683,6 +7683,43 @@ trames/jour au lieu de 17 280**, mieux que le régime d'avant l'incident (4 320 
 chose qu'un suffixe `s`* (sur 1→99 et sur le chemin réel d'émission), et *le catalogue ne propose
 plus aucun intervalle inexprimable*.
 
+### 🔴 DÉPLOYÉ le 24/08 à 06:37 — et la mesure dit que ça NE SUFFIT PAS
+
+Marqueurs vérifiés **dans l'artefact servi** : `HARD_CAP_S = 99`, `formatFrequency` qui lève,
+catalogue réduit à `010s · 020s · 030s · 060s · 099s`. `tracky-api` *healthy*, `restarts=0`.
+
+**Cinquante minutes plus tard :** plus une seule trame `,C,05m;` ✅, cibles à 300 s ramenées de
+16 à 3 ✅ — mais **22 boîtiers sur 38 toujours bloqués à 4–6 s**, seulement **2 commandes émises
+en 50 minutes**, et un débit **inchangé** à ≈380 tr/min.
+
+> 🔑 **Le correctif a arrêté la CAUSE sans soigner une seule VICTIME.** Leçon plus large que ce
+> défaut : *un correctif qui empêche un état d'être atteint ne fait rien pour ceux qui y sont
+> déjà.* La fiche disait « ces boîtiers ne se réparent pas seuls » — sans en tirer la
+> conséquence. **Constater un piège ne le désamorce pas.**
+
+**Le verrou est double, et chaque moitié est raisonnable prise seule** — `requestChange` refuse
+de parler à un boîtier FAILING (ne pas marteler), `reconcile` refuse de s'aligner sous 20 s (ne
+pas inscrire une cible intenable, TRK-008). Ensemble, sur un boîtier que **notre propre défaut**
+a mis à 5 s : ni convergence, ni alignement, ni commande. **Il reste à 5 s à vie.**
+
+⚠️ **Un déblocage manuel ne suffirait pas** — vérifié avant d'écrire le correctif :
+`clear-failing` rouvre la porte, mais `reconcile` remonte le compteur à FAILING en **trois
+trames (15 s)** contre **cinq minutes** de cooldown. *Un geste qui a l'air de marcher et qui ne
+marche pas.*
+
+**Second correctif — PR #120** : `recupererBoitiersEmpoisonnes()`, même cron que la
+normalisation. Pour tout boîtier FAILING dont la cadence observée est **sous le plancher
+d'auto-alignement** (signature exacte d'une victime), forcer **une** commande vers la cible
+courante. Le boîtier converge et sort de FAILING seul — la séquence du canari 2.
+
+⚠️ **La borne `lastSeenAt` de ce balayage empêche une facture SMS** : `tryFallbackSms` refuse
+d'émettre vers un boîtier vu il y a moins de 5 min, donc en ne sélectionnant que ceux-là le
+repli devient structurellement impossible. Sans elle, un boîtier hors ligne coûterait un SMS
+toutes les 10 minutes — *réparer une facture en en ouvrant une autre.* Un test la verrouille.
+
+🗓️ **Test daté — prochain audit** : débit retombé de ≈380 tr/min vers ≈**60 tr/min**.
+⚠️ **Le compteur FAILING seul ne prouvera rien** — il retombe aussi quand la flotte roule.
+
 ### Correctif proposé initialement — conservé pour mémoire
 
 Par ordre de sûreté :
