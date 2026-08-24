@@ -100,7 +100,8 @@ export interface EngineCommandUpdatedEvent {
   commandId: string;
   trackerId: string;
   action: 'CUT' | 'RESTORE';
-  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
+  /** TRK-018 — `SENT_UNCONFIRMED` : partie, echeance passee, NUL NE SAIT si elle a abouti. */
+  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED' | 'SENT_UNCONFIRMED';
   lastError: string | null;
   /** Sprint 2 — true si une chute d'ignition est attendable comme preuve (CUT en marche). */
   confirmationExpected?: boolean;

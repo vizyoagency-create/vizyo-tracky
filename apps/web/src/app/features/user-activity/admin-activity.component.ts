@@ -1144,6 +1144,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'PENDING': return 'En attente';
       case 'FAILED': return 'Échec';
       case 'REJECTED_SPEED': return 'Refusé (vitesse)';
+      // TRK-018 — distinct d'« Échec » : nul ne sait si la commande a abouti.
+      case 'SENT_UNCONFIRMED': return 'Non confirmé';
       default: return s;
     }
   }

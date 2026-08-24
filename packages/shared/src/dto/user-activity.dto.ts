@@ -105,7 +105,8 @@ export interface ActivityStatsDto {
 export interface EngineCommandAuditDto {
   id: string;
   action: 'CUT' | 'RESTORE';
-  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
+  /** TRK-018 — `SENT_UNCONFIRMED` : partie, echeance passee, NUL NE SAIT si elle a abouti. */
+  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED' | 'SENT_UNCONFIRMED';
   vehiclePlate: string | null;
   trackerImei: string;
   requestedByName: string;
@@ -113,6 +114,13 @@ export interface EngineCommandAuditDto {
   source: string;
   reason: string | null;
   confirmationExpected: boolean;
+  /**
+   * TRK-018 — canal REELLEMENT emprunte : 'TCP' | 'SMS', ou null pour les lignes
+   * anterieures au 2026-08-24 dont on ne sait rien. Le routage vivait jusque-la dans
+   * `lastError`, un champ dont le nom annonce une erreur : 153 lignes y portaient
+   * « Envoyé via SMS », comptees comme des echecs par quiconque triait dessus.
+   */
+  channel: string | null;
   lastError: string | null;
   createdAt: string;
   sentAt: string | null;

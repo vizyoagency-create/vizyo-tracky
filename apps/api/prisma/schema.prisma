@@ -178,6 +178,12 @@ enum CommandStatus {
   ACKNOWLEDGED
   FAILED
   REJECTED_SPEED
+  /// TRK-018 — la commande est partie, son echeance est passee, et NUL NE SAIT si elle a
+  /// abouti. Volontairement DISTINCT de FAILED : « a echoue » et « nul ne sait » ne sont
+  /// pas la meme information, et les confondre ferait croire a une panne la ou il n'y a
+  /// qu'une absence de preuve. Le coupe-circuit est une garde de securite : une garde
+  /// qu'on croit armee sans preuve est plus dangereuse qu'une garde qu'on sait muette.
+  SENT_UNCONFIRMED
 }
 
 // V1.15 — Plannings d'installation de boitiers GPS.
@@ -2983,9 +2989,22 @@ model EngineControlCommand {
   // preuve reelle de coupure (CUT d'un vehicule en marche). false pour RESTORE ou
   // CUT a l'arret => etat affiche "non verifiable" (pas de transition observable).
   confirmationExpected Boolean       @default(false)
+  /// TRK-018 — canal REELLEMENT emprunte : 'TCP' | 'SMS'. Jusqu'au 2026-08-24, cette
+  /// information de ROUTAGE etait ecrite dans `lastError` (« Envoyé via SMS (TCP
+  /// indisponible) ») — un champ dont le nom annonce une erreur et le contenu livre autre
+  /// chose. Consequence mesuree : un lecteur qui trie sur `lastError IS NOT NULL` comptait
+  /// 153 echecs qui n'en sont pas. Meme defaut que `outcomeReason` (TRK-007).
+  /// Les lignes anterieures sont retro-remplies depuis `lastError` par la migration ;
+  /// `lastError` n'est PAS efface — detruire une donnee pour corriger un nom serait pire
+  /// que le nom.
+  channel              String?
   lastError            String?
   sentAt               DateTime?
   ackedAt              DateTime?
+  /// TRK-018 — instant de cloture par ECHEANCE (statut SENT_UNCONFIRMED). Purement
+  /// temporel : la lecon de TRK-007 est qu'une echeance conditionnee a un etat du boitier
+  /// retombe dans le piege qu'elle pretend fermer.
+  expiredAt            DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 

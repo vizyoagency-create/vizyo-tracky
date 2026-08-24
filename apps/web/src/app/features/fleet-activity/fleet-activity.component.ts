@@ -739,6 +739,18 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
         return { mot: 'Échec', detail: c.lastError ?? "le boîtier n'a pas répondu", ton: 'alerte', probleme: true };
       case 'REJECTED_SPEED':
         return { mot: 'Refusée', detail: c.lastError ?? 'véhicule en mouvement', ton: 'attente', probleme: true };
+      // TRK-018 — « nul ne sait » n'est NI un succes NI un echec. Le ton reste `attente` et
+      // `probleme` reste false : ce n'est pas une panne, c'est une absence de preuve. La
+      // ranger en echec ferait croire a un incident ; la ranger en succes serait un mensonge.
+      case 'SENT_UNCONFIRMED':
+        return {
+          mot: 'Non confirmée',
+          detail: c.channel === 'SMS'
+            ? "partie par SMS, aucun retour du boîtier — impossible de dire si elle a abouti"
+            : "échéance passée sans réponse du boîtier — impossible de dire si elle a abouti",
+          ton: 'attente',
+          probleme: false,
+        };
       default:
         return { mot: c.status, detail: c.lastError, ton: 'inactif', probleme: false };
     }
