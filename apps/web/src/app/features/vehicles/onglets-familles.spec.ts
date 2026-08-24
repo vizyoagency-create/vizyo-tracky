@@ -11,12 +11,18 @@ import { rangerEnFamilles, type OngletRangeable } from './onglets-familles';
  *
  * D'où le test central : pour n'importe quel profil de permission, l'union des familles
  * doit redonner la liste d'entrée, à l'identique.
+ *
+ * ⚠️ 2026-08-24 — « Commandes » ne fait plus partie de cette fiche (décision du
+ * propriétaire) : la console d'envoi vit sur `/admin/trackers/:id`. Ce n'est pas une
+ * exception à la propriété ci-dessus, c'est un onglet qui n'entre plus : la fonction
+ * continue de ne RIEN perdre de ce qu'on lui donne, et le test « RATTRAPE un onglet
+ * inconnu » reste le garde-fou contre l'oubli de rangement.
  */
-describe('rangerEnFamilles — les 10 onglets en 4 familles', () => {
+describe('rangerEnFamilles — les onglets de la fiche en 4 familles', () => {
   const o = (key: string): OngletRangeable => ({ key, label: key });
 
   /** L'ensemble complet, tel qu'un administrateur de flotte le voit. */
-  const TOUS = ['map', 'reports', 'history', 'alerts', 'surveillance', 'maintenance', 'geofences', 'schedule', 'commands'].map(o);
+  const TOUS = ['map', 'reports', 'history', 'alerts', 'surveillance', 'maintenance', 'geofences', 'schedule'].map(o);
 
   const clesDe = (familles: { onglets: OngletRangeable[] }[]) =>
     familles.flatMap((f) => f.onglets.map((t) => t.key));
@@ -37,7 +43,18 @@ describe('rangerEnFamilles — les 10 onglets en 4 familles', () => {
     expect(par['suivi']).toEqual(['map', 'history']);
     expect(par['analyse']).toEqual(['reports']);
     expect(par['securite']).toEqual(['alerts', 'surveillance', 'geofences']);
-    expect(par['exploitation']).toEqual(['maintenance', 'schedule', 'commands']);
+    expect(par['exploitation']).toEqual(['maintenance', 'schedule']);
+  });
+
+  it('2026-08-24 — « Commandes » n\'est plus rangé ici : il rejoint le repli, il ne disparaît pas', () => {
+    // Si quelqu'un remet un onglet `commands` dans la fiche sans le déclarer, le repli le
+    // fait apparaître sous « Suivi » plutôt que de l'escamoter. C'est voulu : le retrait
+    // est une décision de PRODUIT (la console est dans l'admin), pas un trou dans le
+    // classement — et un trou dans le classement doit rester visible.
+    const rendu = clesDe(rangerEnFamilles([...TOUS, o('commands')]));
+    expect(rendu).toContain('commands');
+    expect(rangerEnFamilles([...TOUS, o('commands')]).find((f) => f.cle === 'suivi')?.onglets.map((t) => t.key))
+      .toEqual(['map', 'history', 'commands']);
   });
 
   it('ne perd rien non plus sur un profil restreint', () => {

@@ -1,5 +1,5 @@
 import { encodeCommand } from './coban.encoder';
-import { formatFrequency } from './coban.utils';
+import { formatFrequency, TCP_MAX_FREQUENCY_S } from './coban.utils';
 
 const IMEI = '864035050002451';
 
@@ -40,22 +40,39 @@ describe('encodeCommand', () => {
       .toBe(`**,imei:${IMEI},C,30s;`);
   });
 
-  // 7. position_periodic 120s → 02m
-  it('should encode position_periodic 120s as 02m', () => {
-    expect(encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 120 }))
-      .toBe(`**,imei:${IMEI},C,02m;`);
+  // 7. TRK-045 — 120s n'est PAS exprimable : `02m` serait lu « 2 secondes ».
+  //    Ce test attendait `,C,02m;` jusqu'au 2026-08-24. Il verrouillait le défaut.
+  it('TRK-045 — refuse 120s au lieu d\'émettre `02m` (lu 2 s par le firmware)', () => {
+    expect(() => encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 120 }))
+      .toThrow(/non exprimable en TCP: 120s/);
   });
 
-  // 8. position_periodic 3600s → 01h
-  it('should encode position_periodic 3600s as 01h', () => {
-    expect(encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 3600 }))
-      .toBe(`**,imei:${IMEI},C,01h;`);
+  // 8. TRK-045 — idem pour l'heure : `01h` serait lu « 1 seconde ».
+  it('TRK-045 — refuse 3600s au lieu d\'émettre `01h` (lu 1 s par le firmware)', () => {
+    expect(() => encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 3600 }))
+      .toThrow(/non exprimable en TCP: 3600s/);
   });
 
-  // 9. position_periodic 90s → 01m (truncates like Traccar)
-  it('should encode position_periodic 90s as 01m (truncates)', () => {
+  // 9. TRK-045 — 90 s tient sur deux chiffres : plus de troncature vers `01m` (= 1 s).
+  it('should encode position_periodic 90s as 90s (plus de troncature vers 01m)', () => {
     expect(encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 90 }))
-      .toBe(`**,imei:${IMEI},C,01m;`);
+      .toBe(`**,imei:${IMEI},C,90s;`);
+  });
+
+  // 9 bis. TRK-045 — LE CAS DU CANARI du 2026-08-24 : `300s` a un troisième chiffre,
+  // le firmware échoue à l'analyser et retombe sur son défaut de 60 s. On a mesuré
+  // 9 écarts, tous multiples de 60, là où 300 s était demandé.
+  it('TRK-045 — refuse 300s (trois chiffres : le boîtier retombe à 60 s)', () => {
+    expect(() => encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 300 }))
+      .toThrow(/non exprimable en TCP: 300s/);
+  });
+
+  // 9 ter. Le plafond exact, et le plancher matériel du GPS403D.
+  it('encode le plafond 99s et le minimum matériel 20s', () => {
+    expect(encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 99 }))
+      .toBe(`**,imei:${IMEI},C,99s;`);
+    expect(encodeCommand(IMEI, { type: 'position_periodic', frequencySeconds: 20 }))
+      .toBe(`**,imei:${IMEI},C,20s;`);
   });
 
   // 10. position_stop
@@ -103,7 +120,38 @@ describe('encodeCommand', () => {
 
 describe('formatFrequency', () => {
   it('should format 30 as 30s', () => expect(formatFrequency(30)).toBe('30s'));
-  it('should format 120 as 02m', () => expect(formatFrequency(120)).toBe('02m'));
-  it('should format 3600 as 01h', () => expect(formatFrequency(3600)).toBe('01h'));
   it('should format 5 as 05s', () => expect(formatFrequency(5)).toBe('05s'));
+
+  // ══ TRK-045 — les quatre formes MESURÉES en production le 2026-08-24 ══════════════
+  // Le firmware lit deux chiffres et jette la lettre d'unité. `02m` vaut donc 2 s et
+  // `01h` vaut 1 s : ces deux assertions attendaient exactement ça avant ce jour-là.
+  it('TRK-045 — refuse toute valeur au-delà du plafond de 99 s', () => {
+    expect(() => formatFrequency(120)).toThrow(/non exprimable en TCP/);
+    expect(() => formatFrequency(300)).toThrow(/non exprimable en TCP/);
+    expect(() => formatFrequency(3600)).toThrow(/non exprimable en TCP/);
+  });
+
+  it('TRK-045 — le message nomme la cause et la limite, pas seulement le refus', () => {
+    expect(() => formatFrequency(300)).toThrow(/deux chiffres/);
+    expect(() => formatFrequency(300)).toThrow(/maximum est 99s/);
+  });
+
+  it('TRK-045 — n\'émet JAMAIS de suffixe `m` ni `h` sur toute la plage utile', () => {
+    // La garde structurelle : c'est l'unité jetée par le firmware qui divisait
+    // l'intervalle par 60. Aucune valeur acceptable ne doit produire autre chose que `s`.
+    for (let s = 1; s <= TCP_MAX_FREQUENCY_S; s += 1) {
+      expect(formatFrequency(s)).toMatch(/^\d{2}s$/);
+    }
+  });
+
+  it('TRK-045 — le plafond vaut 99 s et il est exprimable', () => {
+    expect(TCP_MAX_FREQUENCY_S).toBe(99);
+    expect(formatFrequency(TCP_MAX_FREQUENCY_S)).toBe('99s');
+  });
+
+  it('refuse 0, les négatifs et les non-entiers', () => {
+    expect(() => formatFrequency(0)).toThrow(/invalide/);
+    expect(() => formatFrequency(-5)).toThrow(/invalide/);
+    expect(() => formatFrequency(20.5)).toThrow(/invalide/);
+  });
 });

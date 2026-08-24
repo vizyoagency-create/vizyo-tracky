@@ -15,6 +15,17 @@
  * │ l'identique, pour tous les profils de permission.                          │
  * └───────────────────────────────────────────────────────────────────────────┘
  *
+ * ⚠️ UNE EXCEPTION, DÉCIDÉE PAR LE PROPRIÉTAIRE LE 2026-08-24 : l'onglet « Commandes »
+ * a été RETIRÉ de la fiche véhicule. Ce n'est pas un oubli de rangement, et ce n'est pas
+ * une perte de fonctionnalité : le même panneau d'envoi (`CommandsPanelComponent`) vit
+ * aussi dans l'espace d'administration, sur `/admin/trackers/:id`, et les deux étaient
+ * STRICTEMENT identiques — vérifié à l'écran le jour de la décision. Le pilotage d'un
+ * boîtier est un geste d'administration, pas une action de fiche véhicule.
+ *
+ * La règle « rien n'est supprimé » garde tout son sens pour les autres : elle protège
+ * contre la disparition ACCIDENTELLE. Ici le retrait est explicite, motivé, et la
+ * fonction reste joignable — c'est la différence entre ranger mal et décider.
+ *
  * Extrait du composant pour être testable sans monter la fiche véhicule entière —
  * elle demande une carte MapLibre, un socle temps réel et une dizaine de services.
  */
@@ -42,7 +53,9 @@ const FAMILLES = [
   { cle: 'suivi', libelle: 'Suivi', onglets: ['map', 'history'] },
   { cle: 'analyse', libelle: 'Analyse', onglets: ['reports'] },
   { cle: 'securite', libelle: 'Sécurité', onglets: ['alerts', 'surveillance', 'geofences'] },
-  { cle: 'exploitation', libelle: 'Exploitation', onglets: ['maintenance', 'schedule', 'commands'] },
+  // 'commands' retiré le 2026-08-24 (décision du propriétaire) — voir l'en-tête. La
+  // console d'envoi reste sur /admin/trackers/:id, à l'identique.
+  { cle: 'exploitation', libelle: 'Exploitation', onglets: ['maintenance', 'schedule'] },
 ] as const;
 
 const RANGEES: ReadonlySet<string> = new Set(FAMILLES.flatMap((f) => f.onglets as readonly string[]));
