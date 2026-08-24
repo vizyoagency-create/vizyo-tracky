@@ -6,7 +6,8 @@ export interface EngineControlCommandDto {
   id: string;
   trackerId: string;
   action: 'CUT' | 'RESTORE';
-  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
+  /** TRK-018 — `SENT_UNCONFIRMED` : partie, echeance passee, NUL NE SAIT si elle a abouti. */
+  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED' | 'SENT_UNCONFIRMED';
   reason: string | null;
   source: 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED';
   lastError: string | null;

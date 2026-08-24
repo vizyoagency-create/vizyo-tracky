@@ -433,6 +433,7 @@ export class UserActivityService {
         source: c.source,
         reason: c.reason,
         confirmationExpected: c.confirmationExpected,
+        channel: c.channel,
         lastError: c.lastError,
         createdAt: c.createdAt.toISOString(),
         sentAt: c.sentAt ? c.sentAt.toISOString() : null,

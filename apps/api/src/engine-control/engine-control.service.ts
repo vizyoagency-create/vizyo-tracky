@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, GpsDeadZoneStatus, Prisma, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
@@ -86,6 +87,18 @@ const ENGINE_ACK_PRIORITY = 10;
 const ENGINE_CONFIRM_WINDOW_MS =
   Math.max(10, Number(process.env.ENGINE_CONFIRM_WINDOW_S) || 90) * 1000;
 
+/**
+ * TRK-018 — échéance d'une commande moteur restée `SENT` sans accusé.
+ *
+ * Env `ENGINE_COMMAND_EXPIRY_MIN`, défaut **30 min**. Très au-delà de la fenêtre d'ACK
+ * (15 s) et de la fenêtre de confirmation par ignition (90 s) : passé ce délai, plus aucun
+ * mécanisme existant ne peut confirmer la commande, et la laisser ouverte ne fait
+ * qu'allonger une file que rien ne solde. Mesuré le 24/08 : **313 commandes `SENT`, dont
+ * 307 de plus de 24 h, 0 acquittée depuis l'origine.**
+ */
+const ENGINE_COMMAND_EXPIRY_MS =
+  Math.max(1, Number(process.env.ENGINE_COMMAND_EXPIRY_MIN) || 30) * 60 * 1000;
+
 interface RequestedBy {
   userId: string;
   role: UserRole;
@@ -121,6 +134,61 @@ export class EngineControlService implements OnModuleDestroy {
     private readonly deadZones: GpsDeadZonesService,
     private readonly systemActivity: SystemActivityService,
   ) {}
+
+  /**
+   * ══ TRK-018 — DONNER UNE FIN DE VIE AUX COMMANDES MOTEUR ═══════════════════════════════
+   *
+   * Rien ne soldait jamais ces lignes : la file n'était plus une file. Mesuré le 2026-08-24 :
+   * **313 commandes `SENT`, dont 307 de plus de 24 h, et 0 acquittée depuis l'origine** —
+   * 153 d'entre elles parties par le repli SMS. Un véhicule est immobilisé et redémarré
+   * chaque nuit par un canal dont aucun étage ne peut dire s'il transmet.
+   *
+   * ── POURQUOI `SENT_UNCONFIRMED` ET PAS `FAILED` ────────────────────────────────────────
+   *
+   * « A échoué » et « nul ne sait » ne sont pas la même information. Les confondre ferait
+   * croire à une panne là où il n'y a qu'une absence de preuve — et le coupe-circuit est une
+   * garde de sécurité : *une garde qu'on croit armée sans preuve est plus dangereuse qu'une
+   * garde qu'on sait muette.* L'état neuf dit exactement ce qu'on sait, ni plus ni moins.
+   *
+   * ── L'ÉCHÉANCE EST PUREMENT TEMPORELLE ─────────────────────────────────────────────────
+   *
+   * ⚠️ C'est la leçon de [TRK-007], et elle a déjà été payée : conditionner la clôture à un
+   * état du boîtier la ferait retomber dans le piège qu'elle prétend fermer — on attendrait
+   * une confirmation qui n'arrive jamais pour fermer une ligne ouverte faute de confirmation.
+   * Le `where` ci-dessous ne regarde donc QUE l'horloge et le statut.
+   *
+   * ⚠️ Et on ne conclut RIEN sur l'issue réelle. C'est la leçon de [TRK-013] en miroir : là
+   * le défaut était d'affirmer un échec sans comparer ; ici, il n'y a rien à comparer, donc
+   * on n'affirme rien. `lastError` reste vide — il n'y a pas d'erreur.
+   *
+   * ⚠️ **NE PAS marquer ces commandes acquittées d'office.** Écrire `ackedAt` ferait
+   * disparaître les 313 lignes et supprimerait la seule trace de la question. *Le témoin
+   * n'est pas le défaut.*
+   */
+  @Cron('0 */10 * * * *')
+  async cloturerCommandesPerimees(): Promise<void> {
+    try {
+      const echeance = new Date(Date.now() - ENGINE_COMMAND_EXPIRY_MS);
+      const { count } = await this.prisma.engineControlCommand.updateMany({
+        where: {
+          status: CommandStatus.SENT,
+          ackedAt: null,
+          sentAt: { lt: echeance },
+        },
+        data: { status: CommandStatus.SENT_UNCONFIRMED, expiredAt: new Date() },
+      });
+      if (count > 0) {
+        this.logger.log(
+          `TRK-018 : ${count} commande(s) moteur close(s) en SENT_UNCONFIRMED (échéance ${ENGINE_COMMAND_EXPIRY_MS / 60000} min).`,
+        );
+      }
+    } catch (err) {
+      // Journalisé, jamais propagé : un balayage qui échoue ne doit pas emporter le cron.
+      this.logger.warn(
+        `TRK-018 : clôture des commandes périmées impossible — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   /**
    * TRK-036 — un SMS entrant peut etre l'ACCUSE d'une commande moteur partie en repli SMS.
@@ -595,7 +663,22 @@ export class EngineControlService implements OnModuleDestroy {
       if (smsSent.ok) {
         const updated = await this.prisma.engineControlCommand.update({
           where: { id: command.id },
-          data: { status: CommandStatus.SENT, sentAt: new Date(), lastError: 'Envoyé via SMS (TCP indisponible)' },
+          // TRK-018 — le ROUTAGE sort du champ d'erreur. `lastError` portait « Envoyé via
+          // SMS (TCP indisponible) » : un champ dont le nom annonce une erreur et le contenu
+          // livre une information de routage. Conséquence mesurée le 24/08 : un lecteur qui
+          // trie sur `lastError IS NOT NULL` comptait 153 échecs qui n'en sont pas — le
+          // défaut exact que TRK-007 dénonçait sur `outcomeReason`.
+          //
+          // ⚠️ `lastError` est mis à `null` ICI, sur les commandes NEUVES seulement : il n'y
+          // a pas d'erreur, donc le champ doit être vide. Les lignes historiques gardent
+          // leur texte (la migration rétro-remplit `channel` sans rien effacer) — détruire
+          // une donnée pour corriger un nom serait pire que le nom.
+          data: {
+            status: CommandStatus.SENT,
+            sentAt: new Date(),
+            channel: 'SMS',
+            lastError: null,
+          },
         });
         this.emitUpdate(updated, fleetId);
         this.logger.log({ commandId: command.id, imei, channel: 'SMS' }, 'Command dispatched via SMS fallback');
@@ -623,7 +706,10 @@ export class EngineControlService implements OnModuleDestroy {
 
     const updated = await this.prisma.engineControlCommand.update({
       where: { id: command.id },
-      data: { status: CommandStatus.SENT, sentAt: new Date() },
+      // TRK-018 — le canal est écrit ICI aussi, pas seulement sur le repli. Ne le renseigner
+      // que sur le chemin SMS aurait laissé `channel = NULL` sur le chemin nominal : on ne
+      // saurait toujours pas distinguer « parti en TCP » de « on ne sait pas ».
+      data: { status: CommandStatus.SENT, sentAt: new Date(), channel: 'TCP' },
     });
     this.emitUpdate(updated, fleetId);
 

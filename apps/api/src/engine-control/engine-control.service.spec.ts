@@ -1182,4 +1182,66 @@ describe('EngineControlService', () => {
       expect(where.simPhoneNumber.endsWith).toBe('030609501');
     });
   });
+
+  /**
+   * ── TRK-018 : UNE COMMANDE MOTEUR N'AVAIT PAS DE FIN DE VIE ────────────────────────
+   *
+   * Mesure du 2026-08-24 : 313 commandes `SENT`, dont 307 de plus de 24 h, 0 acquittee
+   * depuis l'origine. Rien ne soldait jamais ces lignes — la file n'etait plus une file.
+   *
+   * 🔑 `SENT_UNCONFIRMED` est VOLONTAIREMENT distinct de `FAILED` : « a echoue » et « nul
+   * ne sait » ne sont pas la meme information. Le coupe-circuit est une garde de securite,
+   * et une garde qu'on croit armee sans preuve est plus dangereuse qu'une garde qu'on sait
+   * muette.
+   */
+  describe('cloture par echeance des commandes moteur (TRK-018)', () => {
+    it('🔴 ferme en SENT_UNCONFIRMED, jamais en FAILED', async () => {
+      await service.cloturerCommandesPerimees();
+
+      expect(prisma.engineControlCommand.updateMany).toHaveBeenCalledTimes(1);
+      const arg = prisma.engineControlCommand.updateMany.mock.calls[0][0];
+      expect(arg.data.status).toBe('SENT_UNCONFIRMED');
+      expect(arg.data.expiredAt).toBeInstanceOf(Date);
+    });
+
+    it('🔴 l echeance est PUREMENT TEMPORELLE — lecon de TRK-007', async () => {
+      // La conditionner a un etat du boitier la ferait retomber dans le piege qu'elle
+      // pretend fermer : on attendrait une confirmation qui n'arrive jamais pour fermer
+      // une ligne ouverte faute de confirmation.
+      await service.cloturerCommandesPerimees();
+
+      const where = prisma.engineControlCommand.updateMany.mock.calls[0][0].where;
+      expect(Object.keys(where).sort()).toEqual(['ackedAt', 'sentAt', 'status']);
+      expect(where.status).toBe('SENT');
+      expect(where.ackedAt).toBeNull();
+      expect(where.sentAt.lt).toBeInstanceOf(Date);
+    });
+
+    it('🔴 n ecrit JAMAIS ackedAt — le temoin n est pas le defaut', async () => {
+      // Marquer ces commandes acquittees d office ferait disparaitre les 313 lignes et
+      // supprimerait la seule trace de la question.
+      await service.cloturerCommandesPerimees();
+
+      const data = prisma.engineControlCommand.updateMany.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('ackedAt');
+      expect(data).not.toHaveProperty('lastError');
+    });
+
+    it('l echeance est tres au-dela de la fenetre de confirmation', async () => {
+      // 30 min par defaut, contre 15 s d'ACK et 90 s de confirmation par ignition : passe
+      // ce delai, aucun mecanisme existant ne peut plus confirmer la commande.
+      const avant = Date.now();
+      await service.cloturerCommandesPerimees();
+
+      const seuil = prisma.engineControlCommand.updateMany.mock.calls[0][0].where.sentAt.lt as Date;
+      const ecartMin = (avant - seuil.getTime()) / 60000;
+      expect(ecartMin).toBeGreaterThanOrEqual(29);
+      expect(ecartMin).toBeLessThanOrEqual(31);
+    });
+
+    it('un echec de balayage ne remonte pas', async () => {
+      prisma.engineControlCommand.updateMany.mockRejectedValue(new Error('DB down'));
+      await expect(service.cloturerCommandesPerimees()).resolves.toBeUndefined();
+    });
+  });
 });
