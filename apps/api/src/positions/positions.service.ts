@@ -202,6 +202,45 @@ export class PositionsService {
             prevFix,
           );
       if (!verdict.authoritative) {
+        // ══ TRK-015 — CE QU'ON PERSISTE ET CE QUI FAIT AUTORITÉ SONT DEUX DÉCISIONS ═════
+        //
+        // Le garde-fou ci-dessus est juste, et il doit rester : une trame antérieure prise
+        // pour référence empoisonne la baseline, et c'est ce qui a produit la téléportation
+        // en live, les distances négatives et les polylignes triangulaires (incident des
+        // 10-11/06). Mais il prenait EN UNE SEULE décision deux questions distinctes :
+        // « cette trame fait-elle foi ? » et « faut-il la garder ? ». La réponse à la
+        // première est non ; à la seconde, souvent si.
+        //
+        // Mesuré en production sur 4 jours (24/08) : 10 015 trames écartées en
+        // `stale_devicetime`, dont **5 908 SANS AUCUNE position à ± 60 s** — de la donnée
+        // que la base n'a nulle part ailleurs. Un Coban qui tamponne pendant une coupure
+        // 2G puis rejoue son tampon APRÈS que la trame temps réel a rétabli la baseline
+        // voit tout son rattrapage déclaré « antérieur ». Épisode de bout en bout le
+        // 08/08 : HD-779-MA entre dans un trou à 87 km/h, en ressort à 127 km/h six heures
+        // plus tard, 1 643 trames rejetées, 15,7 km absents des rapports.
+        //
+        // LE DISCRIMINANT EST DANS LA DONNÉE, et il est net : un rejeu fantôme porte
+        // EXACTEMENT l'horodatage d'une position déjà stockée ; un rattrapage n'a aucun
+        // jumeau. Mesuré : sur les doublons exacts, 1 287 sur 1 302 ont leur jumeau (99 %)
+        // — le garde-fou avait raison. Sur les retours en arrière, la majorité n'en a
+        // aucun — il avait tort.
+        //
+        // ⚠️ HORODATAGE EXACT, PAS UNE FENÊTRE. Le ± 60 s ci-dessus sert à MESURER (il
+        // sur-compte les jumeaux, donc sous-estime la perte : 5 908 est un plancher). Le
+        // retenir comme test rejetterait des trames tamponnées légitimes — à 5 s de
+        // cadence, une fenêtre de 60 s en couvre douze.
+        //
+        // ⚠️ CE QUE CETTE BRANCHE NE FAIT PAS, et c'est l'essentiel : elle n'écrit QUE la
+        // ligne `positions`. Pas de dénormalisation (`lastLat`/`lastPositionAt`/
+        // `lastValidFrameAt`), pas d'ignition — un fantôme `ignition=false` déclencherait
+        // une fausse coupe externe —, pas de trip en direct, pas de diffusion temps réel.
+        // La baseline reste protégée : c'est elle, et elle seule, que l'incident de juin a
+        // empoisonnée. Les trajets récupèrent l'historique au recalcul du segmenteur, qui
+        // relit `positions` dans l'ordre.
+        const recuperee =
+          verdict.reason === 'stale_devicetime'
+            ? await this.recupererTrameTamponnee(tracker.id, frame, resolvedIgnition)
+            : false;
         const wasOffline = tracker.status !== 'ONLINE';
         // Liveness uniquement — le boitier communique bien, c'est la trame qui ment.
         await this.prisma.tracker.update({
@@ -231,9 +270,14 @@ export class PositionsService {
             tracker.id,
             {
               shouldInsert: false,
-              decision: 'SKIPPED_REPLAY',
+              // TRK-015 — deux décisions distinctes, pour que la mesure reste possible :
+              // ce qu'on a RÉCUPÉRÉ et ce qu'on continue d'ÉCARTER. Si les deux tombaient
+              // à zéro, le garde-fou aurait été supprimé et non réparé.
+              decision: recuperee ? 'RECOVERED_BUFFER' : 'SKIPPED_REPLAY',
               state,
-              reason: `garde-fou ingestion (${verdict.reason}) : deviceTime ${frame.deviceTime.toISOString()} vs dernier ${lastDeviceTime?.toISOString() ?? '?'}`,
+              reason:
+                `garde-fou ingestion (${verdict.reason}) : deviceTime ${frame.deviceTime.toISOString()} vs dernier ${lastDeviceTime?.toISOString() ?? '?'}` +
+                (recuperee ? ' — RECUPEREE (aucune position a cet horodatage), non autoritaire' : ''),
               distanceM,
             },
             frame.speedKph,
@@ -243,7 +287,7 @@ export class PositionsService {
             /* swallowed in service */
           });
         this.logger.warn(
-          `Trame non autoritaire ignoree pour ${frame.imei} (${verdict.reason}) — ` +
+          `Trame non autoritaire ${recuperee ? 'RECUPEREE' : 'ignoree'} pour ${frame.imei} (${verdict.reason}) — ` +
             `deviceTime ${frame.deviceTime.toISOString()}` +
             (distanceM != null ? `, saut ${(distanceM / 1000).toFixed(2)} km vs derniere position` : ''),
         );
@@ -623,6 +667,67 @@ export class PositionsService {
    * preuve physique que la coupure a fonctionné → on passe la commande ACKNOWLEDGED
    * (état « confirmée », distinct de « envoyée ») + WS. Jamais de faux succès.
    */
+  /**
+   * TRK-015 — récupère une trame antérieure QUAND elle n'est pas un fantôme.
+   *
+   * Le test qui sépare les deux tient en une requête : un rejeu fantôme porte
+   * **exactement** l'horodatage d'une position déjà stockée ; un rattrapage de tampon n'a
+   * aucun jumeau. Mesuré le 24/08 sur 4 jours de production : 1 287 des 1 302 doublons
+   * exacts ont leur jumeau (99 % — le garde-fou avait raison), tandis que 5 908 trames
+   * écartées n'ont aucune position à ± 60 s (le garde-fou avait tort).
+   *
+   * @returns `true` si une ligne `positions` a été écrite (rattrapage), `false` si la
+   *   trame est un fantôme prouvé, ou si l'écriture a échoué.
+   *
+   * ⚠️ ÉCRIT LA POSITION, ET RIEN D'AUTRE. Aucune dénormalisation sur le tracker, aucune
+   * ignition, aucun trip, aucune diffusion : c'est ce qui distingue « persister » de
+   * « faire autorité ». L'appelant conserve son comportement de liveness inchangé.
+   *
+   * ⚠️ NE LÈVE JAMAIS. Une récupération est un bonus : si elle échoue, on retombe
+   * exactement sur le comportement d'avant ce correctif — la trame est écartée et
+   * journalisée. Laisser une exception remonter ferait perdre AUSSI la mise à jour de
+   * liveness, donc ferait passer un boîtier bien vivant pour hors ligne.
+   *
+   * ⚠️ Il n'existe pas de contrainte d'unicité sur `(trackerId, timestamp)` : deux trames
+   * identiques traitées en parallèle pourraient toutes deux passer le test et créer un
+   * doublon. La fenêtre est de quelques millisecondes et les deux lignes porteraient la
+   * même donnée — c'est un prix très inférieur à la perte qu'on répare ici. À reconsidérer
+   * si la mesure montre des doublons réels.
+   */
+  private async recupererTrameTamponnee(
+    trackerId: string,
+    frame: CobanPositionFrame,
+    ignition: boolean | undefined,
+  ): Promise<boolean> {
+    try {
+      const jumeau = await this.prisma.position.findFirst({
+        where: { trackerId, timestamp: frame.deviceTime },
+        select: { id: true },
+      });
+      // Fantôme prouvé : la position existe déjà. Comportement d'avant, strictement.
+      if (jumeau) return false;
+
+      await this.prisma.position.create({
+        data: {
+          trackerId,
+          lat: frame.latitude,
+          lng: frame.longitude,
+          speedKmh: frame.speedKph,
+          heading: frame.course ?? 0,
+          valid: frame.valid,
+          ignition: ignition ?? null,
+          timestamp: frame.deviceTime,
+        },
+      });
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `TRK-015 : récupération de trame tamponnée impossible pour ${frame.imei} — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+
   private async handleIgnitionTransition(
     tracker: Tracker & { vehicle: Vehicle },
     previousIgnition: boolean,
