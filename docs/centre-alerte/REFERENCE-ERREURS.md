@@ -5293,9 +5293,71 @@ chemin `OVERSPEED`.
 ## TRK-025
 
 **Signature** — `sms-allowlist | (aucune ligne) | suppressions de masse retenues par la passerelle, jamais remontées au centre d'alerte`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 1** · **40 blocages, 0 ligne** · découvert 2026-08-17
+**Statut : 🟢 CORRIGÉ ET DÉPLOYÉ le 2026-08-24** (PR #127) · découvert 2026-08-17 ·
+**re-mesuré le 24/08 : 49 blocages, 0 ligne — et plus aucune tentative depuis le 17/08**
 
-> ### Le garde-fou retient 40 tentatives d'effacement de masse. Le centre d'alerte n'en affiche aucune.
+> ### Le garde-fou retient 49 tentatives d'effacement de masse. Le centre d'alerte n'en affiche aucune.
+
+---
+
+## 🟢 2026-08-24 — CORRIGÉ ET DÉPLOYÉ (PR #127)
+
+### La mesure refaite le jour du correctif — et une nouvelle qui n'était pas dans la fiche
+
+| | |
+|---|---|
+| Tentatives `removals_blocked` | **49**, toutes depuis `82.67.153.51`, clé `vtx_48fe` |
+| Première · **dernière** | 10/08 19:25 · **17/08 19:24** |
+| Appels `ok` sur la même période | 342 |
+| Numéros perdus | **0** — la garde a tenu, 42 numéros intacts |
+| Refus d'authentification depuis la rotation | **2**, le 23/08 à 04:11:58, même IP |
+
+**Le tiers a cessé le 17/08 — trois jours AVANT la rotation de clé du 20/08**
+([TRK-017](#trk-017)). L'arrêt ne peut donc pas être crédité à la rotation, et la fiche ne le
+prétend pas : *deux faits qui se suivent ne s'expliquent pas l'un l'autre.*
+
+> ⚠️ **La menace est DORMANTE, pas éteinte.** Ce qui était corrigé ici, c'est une **cécité** :
+> un nouvel épisode serait passé inaperçu comme les 49 précédents.
+
+### Cause racine — confirmée mot pour mot
+
+La branche d'alerte lisait `result.removalsBlocked`, le compteur de la réponse à la
+synchronisation que **l'API émet elle-même** — laquelle ne demande jamais de suppression. Le
+champ valait **structurellement zéro**. Les tentatives qui comptent ne vivent que dans
+`allowlist_audit_logs`, **côté passerelle**.
+
+### Le correctif
+
+`remonterBlocagesPasserelle` lit `GET /v1/allowlist/audit` à chaque réconciliation, retient les
+`removals_blocked` des **24 dernières heures**, et remonte au centre d'alerte **en nommant
+l'appelant** : IP, en-tête brut, préfixe de clé, route, nombre de numéros visés.
+
+**L'endpoint existait déjà côté passerelle** — c'est le correctif nº 1 que cette fiche
+préconisait, et il ne restait qu'à l'appeler. *Troisième chaîne de la journée dont un seul
+maillon manquait*, après [TRK-026](#trk-026) et [TRK-045](#trk-045).
+
+**Cadence** : une alerte au premier blocage, puis un rappel quotidien tant que ça dure — via le
+refroidissement **en base**, donc un redémarrage ne re-alerte pas.
+
+⚠️ **Fenêtre glissante de 24 h, pas tout l'historique.** Sans borne, chaque passage horaire
+re-alerterait sur les 49 blocages d'août, pour toujours.
+
+⚠️ **La lecture ne lève jamais.** Elle s'exécute au milieu du cron qui *répare* la couverture
+SMS : la faire échouer coûterait la réparation elle-même, bien plus cher que l'alerte perdue.
+
+⚠️ **Verrou anti-régression** : un test vérifie que `removalsBlocked` de la synchro est
+**ignoré**. S'y fier de nouveau reproduirait exactement ce défaut — *une branche qui a l'air de
+marcher et n'écrit jamais rien.*
+
+### ⚠️ Ce qui n'est PAS prouvé, et ne peut pas l'être aujourd'hui
+
+La vérification prescrite — *« à la prochaine tentative retenue, une ligne doit apparaître dans
+l'heure »* — **n'a pas pu être exercée** : il n'y a plus de tentative depuis le 17/08. Les tests
+couvrent le mécanisme (6 neufs, dont 2 qui cassent sous mutation) ; **la preuve terrain viendra
+au prochain épisode, s'il y en a un.**
+
+*Différence réelle avec TRK-045 et TRK-015, vérifiés sur des mesures avant/après. Mieux vaut le
+dire que laisser croire à une preuve équivalente.*
 
 ### Ce que le correctif promettait
 
