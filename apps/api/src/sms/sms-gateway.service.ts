@@ -348,24 +348,84 @@ export class SmsGatewayService implements OnModuleInit {
    * @param providerStatus statut terminal observé côté fournisseur, si on en a un.
    * @returns l'issue à trois états après réconciliation, ou `null` si la ligne est introuvable.
    */
+  /**
+   * Lit l'état d'un sortant auprès de la passerelle vizyo-texto — TRK-026.
+   *
+   * `GET /v1/texto/:id`. L'identifiant passé est celui que `sendViaVizyoTexto` a persisté
+   * dans `twilioSid`, c'est-à-dire `data.providerId ?? data.id` : le plus souvent celui de
+   * **capcom6**, pas celui de la passerelle. La recherche côté passerelle accepte les deux
+   * clefs (même correctif, dépôt `vizyo-texto`) — sans quoi cet appel rendrait 404 sur une
+   * ligne qui existe.
+   *
+   * ⚠️ Ne lève JAMAIS. Un échec de lecture doit laisser l'appelant sur « pas de preuve »,
+   * pas le faire tomber : la preuve de vie tourne dans un cron, et une passerelle
+   * injoignable est précisément l'un des cas qu'elle est censée signaler.
+   */
+  private async lireStatutPasserelle(providerId: string): Promise<string | null> {
+    if (!this.textoUrl || !this.textoApiKey) return null;
+    try {
+      const res = await fetch(`${this.textoUrl}/v1/texto/${encodeURIComponent(providerId)}`, {
+        headers: { Authorization: `Bearer ${this.textoApiKey}` },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { status?: string | null };
+      return typeof data?.status === 'string' && data.status.length > 0 ? data.status : null;
+    } catch (err) {
+      // Volontairement silencieux au niveau `debug` : cette lecture est un CONFORT. La
+      // journaliser en erreur ferait du bruit à chaque passage de cron quand la passerelle
+      // est en panne — or cette panne-là a déjà son propre signal, la preuve de vie.
+      this.logger.debug(
+        `Lecture du statut passerelle impossible pour ${providerId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
   async reconcileOutboundStatus(
     smsLogId: string,
     providerStatus?: string | null,
   ): Promise<{ outcome: SmsOutcome; status: string | null } | null> {
     const log = await this.prisma.smsLog.findUnique({
       where: { id: smsLogId },
-      select: { id: true, status: true, direction: true },
+      select: { id: true, status: true, direction: true, twilioSid: true },
     });
     if (!log || log.direction !== 'OUT') return null;
 
-    // Rien de neuf à écrire : on rend l'état courant tel quel. Un statut déjà terminal n'est
-    // JAMAIS réécrit — une preuve de remise ne se dégrade pas.
+    // Un statut déjà terminal n'est JAMAIS réécrit — une preuve de remise ne se dégrade pas.
     const current = smsOutcomeFromStatus(log.status);
-    if (!providerStatus || current !== 'accepted') {
+    if (current !== 'accepted') {
       return { outcome: current, status: log.status };
     }
 
-    const next = String(providerStatus).toLowerCase();
+    // ══ TRK-026 (2026-08-24) — ON VA CHERCHER L'ACCUSÉ AU LIEU DE L'ATTENDRE ═══════════
+    //
+    // Cette méthode existait depuis le 17/08 et n'avait jamais rien réconcilié : son seul
+    // appelant (la preuve de vie) l'invoquait SANS `providerStatus`, et personne ne lui en
+    // fournissait. Elle rendait donc invariablement l'état de soumission — d'où un verdict
+    // `INDETERMINE` permanent et 365 sortants figés en `queued` depuis le 03/06.
+    //
+    // Mesuré le 24/08 : **l'information existait depuis le début.** Interrogé directement,
+    // capcom6 répond `state: "Delivered"` — horodatage compris — pour le message de 07:00
+    // que le propriétaire avait bien reçu sur son téléphone. Personne ne le lui demandait.
+    // Deux maillons manquaient, tous deux posés ce jour :
+    //   1. capcom6 n'avait qu'un webhook abonné (`sms:received`) ; `sms:sent`,
+    //      `sms:delivered` et `sms:failed` ont été enregistrés côté passerelle ;
+    //   2. Tracky ne relisait jamais l'état — c'est ce que fait le repli ci-dessous.
+    //
+    // ⚠️ BEST-EFFORT, ET C'EST VOULU. Toute panne de lecture (passerelle injoignable, 404,
+    // JSON illisible, délai dépassé) laisse le statut indéfini, donc l'issue reste
+    // `accepted` et le verdict `INDETERMINE`. *Ne jamais transformer une absence de réponse
+    // en preuve de remise* — c'est exactement le défaut que TRK-026 décrit.
+    let statutFournisseur = providerStatus ?? null;
+    if (!statutFournisseur && log.twilioSid) {
+      statutFournisseur = await this.lireStatutPasserelle(log.twilioSid);
+    }
+    if (!statutFournisseur) {
+      return { outcome: current, status: log.status };
+    }
+
+    const next = String(statutFournisseur).toLowerCase();
     if (smsOutcomeFromStatus(next) === 'accepted') {
       // Le fournisseur répond encore un statut de soumission → toujours aucune preuve.
       return { outcome: 'accepted', status: log.status };
