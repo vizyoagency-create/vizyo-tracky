@@ -407,6 +407,7 @@ export class TrackerFixModeService {
     // rien à fermer — le cas NORMAL. Placée après, la normalisation n'aurait tourné que les
     // jours où une commande traînait, c'est-à-dire presque jamais.
     await this.normalizeDriftedTargets();
+    await this.recupererBoitiersEmpoisonnes();
     try {
       const cutoff = new Date(Date.now() - this.commandExpiryMs);
       const stale = await this.prisma.trackerCommand.findMany({
@@ -497,6 +498,81 @@ export class TrackerFixModeService {
    * Écriture idempotente et bornée aux valeurs hors plage : sur un parc sain, ces deux
    * requêtes ne touchent aucune ligne.
    */
+  /**
+   * ══ TRK-045 (2026-08-24, second correctif) — SORTIR LES VICTIMES DU PIÈGE ══════════════
+   *
+   * Le premier correctif a arrêté la CAUSE : plus aucune trame en minutes ne part, donc
+   * aucun boîtier ne sera plus poussé à 5 s. Mesuré 50 min après son déploiement : il n'a
+   * soigné personne. **22 boîtiers sur 38 sont restés bloqués à 4-6 s**, et l'automate n'a
+   * émis que 2 commandes en 50 minutes.
+   *
+   * LE VERROU EST DOUBLE, et chaque moitié est raisonnable prise seule :
+   *
+   *   requestChange() : `if (fixCommandFailing && !force) return;`
+   *       — ne pas marteler un boîtier qui ignore déjà nos commandes.
+   *   reconcile()     : auto-alignement seulement si `observé >= AUTO_ALIGN_FLOOR_S` (20 s)
+   *       — ne jamais inscrire une cible que le matériel ne peut pas tenir (TRK-008).
+   *
+   * Ensemble, sur un boîtier que NOTRE PROPRE défaut a mis à 5 s, elles forment une nasse :
+   * il ne peut ni converger (5 s est hors bande), ni s'aligner (5 s < 20 s), ni recevoir la
+   * commande qui le sauverait (il est FAILING). *Il reste à 5 s à vie.*
+   *
+   * ⚠️ UN DÉBLOCAGE MANUEL NE SUFFIT PAS, et c'est contre-intuitif : remettre le compteur à
+   * zéro rouvre la porte, mais `reconcile` le remonte à FAILING_THRESHOLD en **trois
+   * trames — 15 secondes** — alors que le cooldown de l'automate est de **5 minutes**. Le
+   * boîtier redevient muet bien avant qu'on ait pu lui parler. *Un geste qui a l'air de
+   * marcher et qui ne marche pas.* D'où un balayage qui ÉMET, au lieu d'un qui déverrouille.
+   *
+   * CE QU'IL FAIT : pour chaque boîtier FAILING dont la cadence observée est SOUS le
+   * plancher d'auto-alignement — la signature exacte d'une victime de TRK-045 — il force UNE
+   * commande vers la cible courante (déjà normalisée à ≤ 99 s par le balayage ci-dessus).
+   * Le boîtier converge, `reconcile` remet le compteur à zéro, et il sort de FAILING seul :
+   * exactement la séquence observée sur BP-434-RD au canari du 24/08.
+   *
+   * ⚠️ POURQUOI `lastSeenAt` DANS LE `where` — CE N'EST PAS DÉCORATIF. `requestChange` bascule
+   * sur un repli SMS quand la socket est fermée, et un SMS est **facturé**. La garde de
+   * `tryFallbackSms` refuse d'émettre vers un boîtier vu il y a moins de 5 min : en ne
+   * sélectionnant QUE ces boîtiers-là, on rend le repli SMS structurellement impossible sur
+   * ce chemin. Sans cette borne, un boîtier hors ligne coûterait un SMS toutes les 10
+   * minutes, indéfiniment — on aurait réparé une facture en en ouvrant une autre.
+   *
+   * Idempotent par construction : un boîtier qui converge quitte le `where` dès la trame
+   * suivante. Sur un parc sain, cette requête ne rend aucune ligne.
+   */
+  private async recupererBoitiersEmpoisonnes(): Promise<void> {
+    try {
+      const bloques = await this.prisma.tracker.findMany({
+        where: {
+          fixCommandFailing: true,
+          currentFixIntervalS: { lt: AUTO_ALIGN_FLOOR_S, not: null },
+          // Socket vivante : seule condition sous laquelle le repli SMS est impossible.
+          lastSeenAt: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+        },
+        include: { vehicle: { include: { fleet: true } } },
+        take: 50,
+      });
+      if (!bloques.length) return;
+
+      let emises = 0;
+      for (const t of bloques) {
+        const out = await this.requestChange(
+          t as Tracker & { vehicle: (Vehicle & { fleet: Fleet }) | null },
+          t.desiredFixIntervalS,
+          'RECUPERATION_TRK045',
+          { cadenceObservee: t.currentFixIntervalS, cible: t.desiredFixIntervalS },
+          { force: true },
+        );
+        if (out?.sent) emises += 1;
+      }
+      this.logger.log(
+        `Fix-mode TRK-045: ${emises}/${bloques.length} commande(s) de recuperation emise(s) ` +
+          `vers des boitiers bloques sous le plancher d'auto-alignement (${AUTO_ALIGN_FLOOR_S}s).`,
+      );
+    } catch (err) {
+      this.logger.warn(`Fix-mode: echec de la recuperation TRK-045: ${err}`);
+    }
+  }
+
   private async normalizeDriftedTargets(): Promise<void> {
     try {
       const [tooFast, tooSlow] = await Promise.all([
