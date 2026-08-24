@@ -45,7 +45,7 @@ describe('PositionsService.list', () => {
   let prisma: {
     vehicle: { findUnique: jest.Mock; findFirst: jest.Mock };
     tracker: { findUnique: jest.Mock; update: jest.Mock };
-    position: { findMany: jest.Mock; create: jest.Mock; createMany: jest.Mock };
+    position: { findMany: jest.Mock; findFirst: jest.Mock; create: jest.Mock; createMany: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -60,6 +60,8 @@ describe('PositionsService.list', () => {
       },
       position: {
         findMany: jest.fn().mockResolvedValue([posRecord(1), posRecord(2), posRecord(3)]),
+        // TRK-015 — present par symetrie avec le harnais du bloc « garde-fou replay ».
+        findFirst: jest.fn().mockResolvedValue({ id: 'position-existante' }),
         create: jest.fn(),
         createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -227,6 +229,19 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       trackerCommand: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // TRK-015 — c'est CE mock qui decide si une trame anterieure est un FANTOME (un
+      // jumeau existe deja a cet horodatage) ou un RATTRAPAGE de tampon (aucun jumeau).
+      //
+      // /!\ Il manquait entierement : `recupererTrameTamponnee` levait alors sur
+      // `prisma.position` undefined, son `catch` avalait l'erreur, et les 27 tests de ce
+      // bloc restaient VERTS en decrivant une recuperation qui ne tournait pas. Meme piege
+      // que le mock incomplet du 17/08.
+      //
+      // Defaut = FANTOME, pour que les tests d'origine gardent exactement leur sens.
+      position: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'position-existante' }),
+        create: jest.fn().mockResolvedValue({ id: 'position-creee' }),
+      },
       engineControlCommand: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'cmd', action: 'CUT', status: 'ACKNOWLEDGED' }),
@@ -655,6 +670,136 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       await new Promise((r) => setTimeout(r, 20));
       const data = prisma.tracker.update.mock.calls[0][0].data;
       expect(data.powerLossSuspectAt).toBeUndefined();
+    });
+  });
+
+
+  /**
+   * ── TRK-015 : LE GARDE-FOU EFFAÇAIT AUSSI DES POSITIONS RÉELLES ────────────────────
+   *
+   * Mesuré en production le 24/08, sur 4 jours : 10 015 trames écartées en
+   * `stale_devicetime`, dont **5 908 sans aucune position à ± 60 s** — de la donnée que la
+   * base n'a nulle part ailleurs. Un Coban qui tamponne pendant une coupure 2G puis rejoue
+   * son tampon APRÈS que la trame temps réel a rétabli la baseline voit tout son rattrapage
+   * déclaré « antérieur ».
+   *
+   * 🔑 Le discriminant est dans la donnée : un fantôme porte EXACTEMENT l'horodatage d'une
+   * position déjà stockée ; un rattrapage n'a aucun jumeau. Mesuré : 1 287 des 1 302
+   * doublons exacts ont leur jumeau (99 %) — sur cette classe, le garde-fou avait raison.
+   *
+   * ⚠️ Ce bloc teste autant ce que le correctif ÉCRIT que ce qu'il NE TOUCHE PAS. La
+   * baseline est ce que l'incident des 10-11/06 a empoisonné ; la relâcher rouvrirait la
+   * téléportation en live, les distances négatives et les polylignes triangulaires.
+   */
+  describe('PositionsService — récupération du tampon boîtier (TRK-015)', () => {
+    // Réutilise le harnais du bloc principal via une trame antérieure de 30 s.
+    const anterieure = () => ({
+      deviceTime: new Date('2026-06-11T00:59:30Z'),
+      latitude: 33.51,
+      longitude: -7.51,
+      speedKph: 62,
+      ignition: true,
+    });
+
+    it('🔴 AUCUN jumeau → la position est PERSISTÉE (rattrapage de tampon)', async () => {
+      // LE test du correctif : avant, cette trame était perdue définitivement.
+      prisma.position.findFirst.mockResolvedValue(null);
+
+      await service.ingest(makeFrame(anterieure()));
+
+      expect(prisma.position.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            lat: 33.51,
+            lng: -7.51,
+            timestamp: new Date('2026-06-11T00:59:30Z'),
+          }),
+        }),
+      );
+      expect(sampling.recordDecision).toHaveBeenCalledWith(
+        TRACKER_ID,
+        expect.objectContaining({ decision: 'RECOVERED_BUFFER', shouldInsert: false }),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('🔴 la récupération NE TOUCHE PAS la baseline — c\'est tout l\'enjeu', async () => {
+      // Persister n'est pas faire autorité. Si cette assertion tombe, la téléportation
+      // de juin revient : distances négatives, polylignes triangulaires, saut en live.
+      prisma.position.findFirst.mockResolvedValue(null);
+
+      await service.ingest(makeFrame(anterieure()));
+
+      // D'ABORD : la récupération a bien eu lieu. Sans cette assertion, tout ce qui suit
+      // serait vert pour la mauvaise raison — un correctif désactivé ne touche pas non
+      // plus la baseline. C'est la combinaison « on a écrit ET on n'a rien dénormalisé »
+      // qui est l'objet du test. (Vérifié par mutation le 24/08.)
+      expect(prisma.position.create).toHaveBeenCalledTimes(1);
+      expect(prisma.tracker.update).toHaveBeenCalledTimes(1);
+      expect(prisma.tracker.update).toHaveBeenCalledWith({
+        where: { id: TRACKER_ID },
+        data: { lastSeenAt: expect.any(Date), status: 'ONLINE' },
+      });
+      const arg = prisma.tracker.update.mock.calls[0][0];
+      for (const champ of ['lastLat', 'lastLng', 'lastPositionAt', 'lastValidFrameAt', 'lastKnownIgnition']) {
+        expect(arg.data).not.toHaveProperty(champ);
+      }
+      // Ni diffusion temps réel, ni trajet en direct : le segmenteur relira `positions`.
+      expect(gateway.broadcastPosition).not.toHaveBeenCalled();
+      expect(trips.processPosition).not.toHaveBeenCalled();
+    });
+
+    it('un jumeau EXISTE → fantôme prouvé, comportement d\'avant strictement inchangé', async () => {
+      // La moitié où le garde-fou avait raison : 99 % des doublons exacts.
+      prisma.position.findFirst.mockResolvedValue({ id: 'deja-la' });
+
+      await service.ingest(makeFrame(anterieure()));
+
+      expect(prisma.position.create).not.toHaveBeenCalled();
+      expect(sampling.recordDecision).toHaveBeenCalledWith(
+        TRACKER_ID,
+        expect.objectContaining({ decision: 'SKIPPED_REPLAY' }),
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('un saut INFAISABLE n\'est JAMAIS récupéré — seul `stale_devicetime` l\'est', async () => {
+      // Un rattrapage est en retard, pas téléporté. Récupérer un saut impossible
+      // réintroduirait précisément la donnée que ce garde-fou existe pour écarter.
+      prisma.position.findFirst.mockResolvedValue(null);
+
+      await service.ingest(
+        makeFrame({
+          deviceTime: new Date('2026-06-11T01:00:30Z'), // 30 s APRÈS
+          latitude: 33.59,
+          longitude: -7.5, // ~10 km en 30 s
+          speedKph: 0,
+        }),
+      );
+
+      expect(prisma.position.create).not.toHaveBeenCalled();
+    });
+
+    it('un échec d\'écriture ne fait pas perdre la LIVENESS', async () => {
+      // Une récupération est un bonus. Si elle échoue, on doit retomber exactement sur le
+      // comportement d'avant — sinon un boîtier bien vivant passerait pour hors ligne.
+      prisma.position.findFirst.mockResolvedValue(null);
+      prisma.position.create.mockRejectedValue(new Error('DB down'));
+
+      await expect(service.ingest(makeFrame(anterieure()))).resolves.toBeUndefined();
+
+      expect(prisma.tracker.update).toHaveBeenCalledWith({
+        where: { id: TRACKER_ID },
+        data: { lastSeenAt: expect.any(Date), status: 'ONLINE' },
+      });
+      expect(sampling.recordDecision).toHaveBeenCalledWith(
+        TRACKER_ID,
+        expect.objectContaining({ decision: 'SKIPPED_REPLAY' }),
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 });

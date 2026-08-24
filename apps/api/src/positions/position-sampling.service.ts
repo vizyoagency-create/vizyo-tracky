@@ -29,7 +29,14 @@ export type SamplingDecision =
   | 'SKIPPED_THROTTLE'
   // Trame non autoritaire rejetee par le garde-fou d'ingestion (replay buffer
   // boitier : deviceTime anterieur, ou saut infaisable). Cf. PositionsService.ingest.
-  | 'SKIPPED_REPLAY';
+  | 'SKIPPED_REPLAY'
+  // TRK-015 — trame anterieure PERSISTEE parce qu'aucune position n'existait a cet
+  // horodatage : c'est un rattrapage de tampon, pas un fantome. La ligne `positions` est
+  // ecrite, la baseline du tracker n'est PAS touchee. Volontairement distincte de
+  // SKIPPED_REPLAY : sans quoi on ne pourrait plus mesurer ce qu'on a recupere, ni ce
+  // qu'on continue d'ecarter — et c'est cette mesure qui prouve que le garde-fou vit
+  // encore. Cf. PositionsService.recupererTrameTamponnee.
+  | 'RECOVERED_BUFFER';
 
 export interface SamplingOutcome {
   shouldInsert: boolean;
