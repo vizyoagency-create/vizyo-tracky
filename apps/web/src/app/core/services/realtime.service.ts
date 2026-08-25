@@ -13,6 +13,50 @@ import { NotificationsApiService } from './notifications.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
 
+/**
+ * ══ TRK-050 — CE QU'IL FAUT FAIRE D'UN RAFRAÎCHISSEMENT QUI A ÉCHOUÉ ═══════════════════════
+ *
+ * `tryRefresh()` rend `null` pour DEUX situations que rien ne distingue à l'appel :
+ *   — le jeton de rafraîchissement est refusé (expiré, révoqué) → la session est morte ;
+ *   — l'API ne répond pas (redéploiement, hoquet réseau) → la session est intacte.
+ *
+ * Les confondre déconnectait TOUS les utilisateurs à CHAQUE redéploiement : mesuré 5 fois le
+ * 2026-08-24 et 2 fois le 2026-08-25. Les jetons n'étaient pourtant jamais invalides — Vizyo
+ * Auth, qui les émet, ne redémarrait pas. *C'est le client qui jetait ses propres identifiants.*
+ *
+ * ⚠️ **CE GARDE EXISTAIT DÉJÀ, D'UN SEUL CÔTÉ.** `auth.interceptor.ts` porte le même
+ * raisonnement depuis le 2026-08-03, avec le même incident en commentaire — mais il n'avait
+ * jamais été branché sur le chemin WebSocket, qui a sa propre logique de déconnexion.
+ * *Un raisonnement corrigé à un endroit n'est corrigé nulle part tant qu'on n'a pas cherché
+ * ses jumeaux.*
+ *
+ * ⚠️ EXPORTÉE pour être testée DIRECTEMENT, et APPELÉE par le handler — jamais recopiée.
+ * Un test qui duplique la règle qu'il vérifie ne vérifie que sa propre copie (leçon déjà
+ * écrite au-dessus de `shouldAnnounce`).
+ */
+export type DecisionEchecRafraichissement = 'reinitialiser' | 'ignorer' | 'compter' | 'expirer';
+
+export function deciderApresTentativeDeRafraichissement(etat: {
+  /** Le rafraîchissement a-t-il rendu un jeton utilisable ? */
+  refreshReussi: boolean;
+  /** Le serveur est-il injoignable (statut 0 ou 5xx) plutôt que refusant ? */
+  serveurInjoignable: boolean;
+  /** Échecs déjà cumulés, AVANT celui-ci. */
+  echecsCumules: number;
+  /** Seuil au-delà duquel on déclare la session expirée. */
+  seuil: number;
+}): DecisionEchecRafraichissement {
+  if (etat.refreshReussi) return 'reinitialiser';
+  // ── LE CŒUR DU CORRECTIF ──────────────────────────────────────────────────────────────
+  // Une panne de transport ne prouve RIEN sur la validité de la session : on ne compte pas,
+  // donc on n'atteint jamais le seuil, donc on ne déconnecte jamais. La requête suivante
+  // retentera d'elle-même une fois l'API revenue.
+  if (etat.serveurInjoignable) return 'ignorer';
+  // Refus RÉEL : le comportement d'origine (#9) est conservé intégralement — sans lui, un
+  // onglet laissé ouvert avec un refresh mort martèlerait `/auth/refresh` à l'infini.
+  return etat.echecsCumules + 1 >= etat.seuil ? 'expirer' : 'compter';
+}
+
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
   readonly positions = signal<Map<string, PositionUpdateEvent>>(new Map());
@@ -237,6 +281,26 @@ export class RealtimeService {
     return false;
   }
 
+  /**
+   * TRK-050 — couture de test. La création du socket est isolée ici pour qu'une suite puisse
+   * la remplacer par un faux et exercer les HANDLERS RÉELS. Sans cette couture, la logique de
+   * déconnexion du chemin WebSocket n'était couverte par aucun test — et c'est précisément ce
+   * qui a permis au correctif du 03/08 de n'en traiter que la moitié pendant trois semaines.
+   */
+  protected creerSocket(token: string): Socket {
+    // Transport : on tente WebSocket d'abord (connexion rapide), MAIS avec repli polling si
+    // l'upgrade WS echoue. Sans `tryAllTransports`, socket.io-client >=4.8 (defaut false) ne
+    // tente JAMAIS le transport suivant : un upgrade WS qui echoue (proxy capricieux,
+    // redemarrage API sous CPU sature) coupe le live en TOTALITE au lieu de degrader en
+    // polling. Cf. Sprint 0.1 DIAGNOSTIC.
+    return io('/realtime', {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      tryAllTransports: true,
+      reconnection: true,
+    });
+  }
+
   connect(token: string): void {
     if (this.socket?.connected) return;
 
@@ -249,12 +313,7 @@ export class RealtimeService {
     // >=4.8 (defaut false) ne tente JAMAIS le transport suivant : un upgrade WS
     // qui echoue (proxy capricieux, redemarrage API sous CPU sature) coupe le
     // live en TOTALITE au lieu de degrader en polling. Cf. Sprint 0.1 DIAGNOSTIC.
-    this.socket = io('/realtime', {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-      tryAllTransports: true,
-      reconnection: true,
-    });
+    this.socket = this.creerSocket(token);
     // Armer la surveillance dès l'ouverture : couvre aussi le cas « jamais
     // connecté » (API injoignable au login) en plus des coupures ultérieures.
     this.startIncidentWatch();
@@ -263,6 +322,12 @@ export class RealtimeService {
       this.connected.set(true);
       this.everConnected = true;
       this.serverKickReconnects = 0; // reconnexion réussie → on ré-autorise le self-heal
+      // TRK-050 — ce compteur-ci ne redescendait JAMAIS : il ne se remettait à zéro que sur un
+      // refresh réussi ou sur la déconnexion elle-même, donc il s'accumulait sur toute la durée
+      // de vie de l'onglet. Trois micro-coupures espacées de plusieurs heures suffisaient alors
+      // à éjecter l'utilisateur, sans le moindre redémarrage d'API. Une connexion qui aboutit
+      // est la preuve que les échecs précédents sont soldés.
+      this.connectErrorRefreshFailures = 0;
       this.clearIncidentWatch();
       this.loadInitialAlerts();
     });
@@ -305,8 +370,18 @@ export class RealtimeService {
       // reconnection:true : sans garde on boucle (connect_error -> tryRefresh ->
       // echec -> connect_error...) a l'infini, sans jamais deconnecter l'user (cas
       // d'un onglet carte live laisse ouvert). Apres MAX echecs, session expiree.
+      //
+      // TRK-050 — mais SEULEMENT sur un refus reel : la decision est deleguee a la fonction
+      // pure ci-dessus, qui distingue « jeton refuse » de « serveur injoignable ».
+      const decision = deciderApresTentativeDeRafraichissement({
+        refreshReussi: false,
+        serveurInjoignable: this.auth.refreshUnavailable(),
+        echecsCumules: this.connectErrorRefreshFailures,
+        seuil: RealtimeService.MAX_CONNECT_REFRESH_FAILURES,
+      });
+      if (decision === 'ignorer') return; // panne de transport : la session reste en place
       this.connectErrorRefreshFailures++;
-      if (this.connectErrorRefreshFailures >= RealtimeService.MAX_CONNECT_REFRESH_FAILURES) {
+      if (decision === 'expirer') {
         this.handleSessionExpired();
       }
     });
@@ -475,6 +550,10 @@ export class RealtimeService {
   private scheduleReconnectAfterServerKick(): void {
     if (this.serverKickTimer) return; // déjà programmé
     if (this.serverKickReconnects >= RealtimeService.MAX_SERVER_KICK_RECONNECTS) {
+      // TRK-050 — MÊME GARDE QUE CI-DESSUS, et pour la même raison : une API injoignable
+      // n'est pas un refus. Sans ce test, un redéploiement un peu long éjectait l'utilisateur
+      // par ce chemin-ci alors même que l'autre venait d'être protégé. *Le jumeau du jumeau.*
+      if (this.auth.refreshUnavailable()) return;
       this.handleSessionExpired();
       return;
     }
