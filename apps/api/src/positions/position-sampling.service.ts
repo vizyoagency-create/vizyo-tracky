@@ -58,7 +58,13 @@ interface ClassifyInput {
 const MOVING_SPEED_KMH = 3;
 const MOVING_DISTANCE_M = 15;
 const IDLE_THROTTLE_MS = 90 * 1000;
-const STOPPED_THROTTLE_MS = 300 * 1000;
+/**
+ * Espacement des ÉCRITURES à l'arrêt. Exporté (TRK-047) : c'est LA constante qui sépare
+ * « ce que le boîtier envoie » (une trame / ~20 s) de « ce que la base garde » (une position /
+ * 5 min à l'arrêt — 87 % des trames sont volontairement écartées). Tout seuil qui juge une
+ * absence de POSITIONS doit se calibrer sur elle, jamais sur la cadence des trames.
+ */
+export const STOPPED_THROTTLE_MS = 300 * 1000;
 
 @Injectable()
 export class PositionSamplingService {

@@ -84,6 +84,24 @@ const MAX_TRIPS_PER_VEHICLE = 500;
  */
 const FENETRE_MIN_ALERTE_MS = 60_000;
 /**
+ * TRK-047 — un trou n'est anormal que rapporte au REGIME DE STOCKAGE local.
+ *
+ * Le plancher ci-dessus est calibre sur la cadence des TRAMES (~20 s) ; or la grandeur jugee
+ * ici est l'espacement des positions STOCKEES — et l'echantillonnage adaptatif ecarte 87 %
+ * des trames (mesure du 24/08 : 178 610 SKIPPED_THROTTLE pour 27 787 INSERTED). A l'arret,
+ * une position n'est ecrite que toutes les 300 s (STOPPED_THROTTLE_MS) : une tranche vide de
+ * 3 min 47 s y est le REGIME, pas une anomalie — c'est exactement la fausse alerte du 24/08
+ * sur GS-878-NX (11 positions/h autour de la tranche incriminee).
+ *
+ * La regle : le trou doit depasser FACTEUR x l'espacement MEDIAN des positions voisines
+ * (mesure sur les stockages reels, jamais suppose). Deux cadences portent le meme nom —
+ * celle des trames et celle du stockage — et tout seuil calibre sur la premiere puis
+ * applique a la seconde est faux d'un facteur quinze.
+ */
+const FACTEUR_TROU_ANORMAL = 3;
+/** Voisinage examine de part et d'autre de la tranche pour mesurer le regime local. */
+const VOISINAGE_POSITIONS = 6;
+/**
  * Marqueurs de trajets qu'on ne pourra PLUS JAMAIS re-segmenter, faute de positions.
  *
  * Deux valeurs et non une, parce que la CAUSE n'est pas la meme et que la confondre ferait
@@ -437,6 +455,61 @@ export class TripAutomationService {
     return now - (jours - 1) * 86_400_000;
   }
 
+  /**
+   * TRK-047 — la tranche vide est-elle NORMALE au regime de stockage LOCAL ?
+   *
+   * On mesure l'espacement MEDIAN des positions reellement stockees autour de la tranche
+   * (VOISINAGE_POSITIONS de part et d'autre) : a l'arret il vaut ~300 s (STOPPED_THROTTLE_MS),
+   * en roulant ~35 s. Un trou plus court que FACTEUR x cette mediane est le regime, pas une
+   * anomalie. La mediane est MESUREE et jamais supposee : un reglage d'echantillonnage modifie
+   * demain ne re-fabriquera pas de fausses alertes.
+   *
+   * Fail-open VERS LE SIGNAL : sans tracker, sans voisinage mesurable ou sur erreur, on repond
+   * `false` et l'alerte part — mieux vaut une alerte de trop qu'un vrai trou tu par accident.
+   * (Deux requetes indexees [trackerId, timestamp], payees uniquement dans la branche rare
+   * « tranche vide au-dessus de l'horizon ».)
+   */
+  private async trouNormalAuRegimeDeStockage(
+    trackerId: string | null,
+    fromMs: number,
+    toMs: number,
+  ): Promise<boolean> {
+    if (!trackerId) return false;
+    try {
+      const [avantDesc, apres] = await Promise.all([
+        this.prisma.position.findMany({
+          where: { trackerId, timestamp: { lt: new Date(fromMs) } },
+          orderBy: { timestamp: 'desc' },
+          take: VOISINAGE_POSITIONS,
+          select: { timestamp: true },
+        }),
+        this.prisma.position.findMany({
+          where: { trackerId, timestamp: { gt: new Date(toMs) } },
+          orderBy: { timestamp: 'asc' },
+          take: VOISINAGE_POSITIONS,
+          select: { timestamp: true },
+        }),
+      ]);
+      const ecarts: number[] = [];
+      const collecter = (liste: { timestamp: Date }[]) => {
+        for (let i = 1; i < liste.length; i++) {
+          const ecart = Math.abs(liste[i].timestamp.getTime() - liste[i - 1].timestamp.getTime());
+          if (ecart > 0) ecarts.push(ecart);
+        }
+      };
+      collecter(avantDesc);
+      collecter(apres);
+      if (ecarts.length === 0) return false;
+      ecarts.sort((a, b) => a - b);
+      const milieu = Math.floor(ecarts.length / 2);
+      const medianeMs =
+        ecarts.length % 2 === 1 ? ecarts[milieu] : (ecarts[milieu - 1] + ecarts[milieu]) / 2;
+      return toMs - fromMs < FACTEUR_TROU_ANORMAL * medianeMs;
+    } catch {
+      return false;
+    }
+  }
+
   private async processVehicle(
     user: AuthUser,
     veh: { id: string; plate: string; fleetId: string; fleetName: string | null; trackerId: string | null },
@@ -533,6 +606,15 @@ export class TripAutomationService {
               // Trop courte pour conclure quoi que ce soit : on saute sans crier (cf. la
               // constante ci-dessus — l'absence n'y est pas une information).
               this.logger.debug(`${veh.plate} : tranche de ${toMs - fromMs} ms ignoree (sous la cadence)`);
+            } else if (await this.trouNormalAuRegimeDeStockage(veh.trackerId, fromMs, toMs)) {
+              // TRK-047 — le trou est NORMAL a l'echelle du STOCKAGE : autour de la tranche,
+              // les positions sont espacees de plusieurs minutes (vehicule a l'arret, une
+              // ecriture toutes les 300 s). Zero position sur 3 min 47 s n'y est pas une
+              // anomalie, c'est le regime — la fausse alerte du 24/08 sur GS-878-NX.
+              this.logger.debug(
+                `${veh.plate} : tranche de ${Math.round((toMs - fromMs) / 1000)} s sans position, ` +
+                  `dans un regime de stockage espace (stationnement) — pas une anomalie`,
+              );
             } else {
               await this.errorLogger.record(
                 new Error(
