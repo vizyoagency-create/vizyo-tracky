@@ -6105,9 +6105,115 @@ ce serait vrai aussi si on acquittait à l'aveugle.
 
 **Signature** — *(défaut de plateforme, pas une ligne d'erreur)*
 `plateforme | AUCUNE LIGNE | suppression de masse hors application — invisible de tous les journaux`
-**Statut : 🟠 SONDE ÉCRITE, NON DÉPLOYÉE** *(commit `41c22081`, branche
-`fix/trk-035-recensement-suppressions`, partie d'`origin/main` — **poussée sur `origin`, sans PR ni fusion** *(rectifié le 22/08)*)* ·
-**GRAVITÉ 1 (consigne) / 3 (technique)** · découvert 2026-08-20
+**Statut : 🟠 SONDE DÉPLOYÉE ET ACTIVE · l'incident est CLOS · la prévention reste entière** ·
+**GRAVITÉ 1 (consigne) / 3 (technique)** · découvert 2026-08-20 · re-instruit le 2026-08-25
+
+---
+
+## 🟠 2026-08-25 — l'incident est clos, et le correctif proposé était impossible
+
+### ⚠️ Le statut de cette fiche était FAUX — cinquième cas en deux jours
+
+Elle portait « **SONDE ÉCRITE, NON DÉPLOYÉE**, poussée sur `origin` sans PR ni fusion ».
+Vérifié dans l'**artefact servi**, pas dans le commit : `recensement-suppressions.service.js`
+est présent dans `/app/apps/api/dist/observability/`, et la sonde **a tourné deux fois**
+(23/08 et 24/08 à 03:15, `SUCCESS`). *Un statut périmé fait rouvrir une enquête close.*
+
+### ✅ L'incident actif est TERMINÉ — trois instruments indépendants le disent
+
+| Instrument | Mesure |
+|---|---|
+| La sonde (23/08 → 24/08) | `error_logs` **13 → 17** : le compte **monte** |
+| Borne basse (`min(createdAt)`) | **22/08 00:47, STABLE** — elle n'a pas avancé |
+| `n_tup_del` · écart `ins−del−live` | **3 785** · **13 250**, tous deux **inchangés** (5ᵉ point) |
+| Témoin des disparitions | **0 constat**, 4 déclencheurs armés |
+
+**Trois jours pleins sans le moindre effacement.** La convergence de trois instruments qui ne
+partagent aucun mécanisme est ce qui rend ce résultat solide — *un seul aurait pu être une
+panne de l'instrument.*
+
+### 🔴 LE CORRECTIF « SÉPARER LES RÔLES » NE PEUT PAS SE FAIRE PAR `REVOKE`
+
+C'est le résultat principal de cette passe, et il **invalide la formulation qui traînait
+depuis le 23/08**. Mesuré :
+
+| | |
+|---|---|
+| Rôles pouvant se connecter | **un seul : `tracky`** |
+| `rolsuper` | **`t`** — c'est un **superutilisateur** |
+| Propriétaire des tables sensibles | `tracky` |
+
+**Un superutilisateur PostgreSQL contourne toutes les vérifications de droits**, et un
+propriétaire peut se re-accorder ce qu'on lui retire. Retirer `TRUNCATE` ou `DELETE` à
+`tracky` serait donc **un geste strictement sans effet** — *exactement le genre de correctif
+qui a l'air de marcher et ne marche pas*, et qui aurait en plus donné le sentiment que le
+sujet était traité.
+
+⚠️ **Ne pas proposer un `REVOKE` sur cette base tant que l'application se connecte en
+superutilisateur.** La question n'est pas les droits : c'est **qui est le rôle**.
+
+### Les deux voies réelles, avec leur coût honnête
+
+**1. Séparer vraiment les rôles — correct, mais c'est un chantier.** Créer un rôle applicatif
+NON superutilisateur, lui accorder le strict nécessaire (dont `DELETE` sur `wire_logs`,
+`positions` et `error_logs` — la rétention en a besoin), transférer la propriété des objets,
+changer `DATABASE_URL`, et réserver le superutilisateur à la maintenance. Demande une fenêtre
+de maintenance et une répétition : un droit oublié casse l'ingestion.
+
+**2. Rendre l'auteur NOMMABLE — petit, sûr, réversible.** C'est l'autre moitié du constat
+d'origine : *« personne ne pourra nommer l'auteur »* (`log_connections=off`,
+`log_statement=none`, `logging_collector=off`).
+
+```sql
+ALTER SYSTEM SET log_connections = on;
+ALTER SYSTEM SET log_line_prefix = '%m [%p] %u@%d %h ';
+SELECT pg_reload_conf();
+```
+
+`log_connections` est en contexte **`superuser-backend`** : effet immédiat sur les nouvelles
+connexions, **sans redémarrage**, et annulable par `ALTER SYSTEM RESET`.
+
+### ✅ APPLIQUÉ le 2026-08-25 à 00:0x — et vérifié
+
+`postgresql.auto.conf` porte les deux réglages, une **connexion neuve** les voit actifs, et
+`tracky-postgres` tourne **toujours depuis le 2026-08-04** : aucun redémarrage, aucune coupure.
+`tracky-api` reste *healthy*, `restarts=0`.
+
+La ligne produite est exactement celle qui manquait :
+
+```
+2026-08-25 00:13:00.099 UTC [754828] tracky@tracky_prod 172.23.0.3 LOG:  connection authorized: user=tracky database=tracky_prod
+```
+
+Horodatage · PID · **utilisateur@base** · **adresse du client**. Et l'attribution discrimine
+déjà, sur les premières minutes :
+
+| Origine | Connexions | Lecture |
+|---|---|---|
+| `172.23.0.3` | 22 | le conteneur API — trafic normal |
+| `[local]` | 8 | **un shell DANS le conteneur** (sonde de santé, sessions d'admin) |
+
+Une suppression venue de l'extérieur porterait une **troisième adresse** — immédiatement
+identifiable. C'est le même vocabulaire que le témoin des disparitions (§3.a), et les deux se
+recoupent désormais.
+
+⚠️ **VOLUME RÉEL, plus élevé que l'estimation.** Annoncé ~700 Ko/jour ; mesuré **~240 octets par
+ligne pour ~5 760 lignes/jour, soit ≈ 1,4 Mo/jour** — la sonde de santé produit **deux** lignes
+par connexion (`authenticated` puis `authorized`), pas une. Sur la rotation existante (30 Mo),
+cela donne **~21 jours de rétention** et non 40. Reste très acceptable, mais *l'estimation était
+optimiste d'un facteur deux et il vaut mieux l'écrire que la laisser courir.*
+
+🔑 **Piège d'outillage payé au passage : `docker logs tracky-postgres` a rendu du VIDE** alors
+que le fichier contenait les lignes. Le référentiel VPS documente déjà que `docker logs` est peu
+fiable sur cet hôte — **lire le fichier `LogPath` directement** est le seul chemin sûr. Sans
+cette vérification, on aurait conclu que le réglage était inerte, et on l'aurait « re-corrigé ».
+
+⚠️ **Ne PAS activer `log_statement = 'mod'`** pour autant : il journaliserait chaque écriture,
+dont les 25 000 positions et les 170 000 `wire_logs` quotidiens. *On chercherait une aiguille
+en ajoutant du foin.*
+
+⚠️ **Ne pas toucher `logging_collector`** : contexte `postmaster`, donc redémarrage de la base
+— un coût sans rapport avec le gain, les journaux partant déjà vers Docker.
 
 ### 🔴 LE DÉFAUT A REJOUÉ LE JOUR MÊME OÙ ON ÉCRIVAIT LA SONDE
 
