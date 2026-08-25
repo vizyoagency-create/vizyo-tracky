@@ -70,6 +70,12 @@ export interface VehicleDetailDto {
    * (qui ne reçoit aucune position) pour griser le bouton « Couper ».
    */
   moving?: boolean;
+  /**
+   * TRK-046 — libellé du lieu quand le véhicule est CONSIDÉRÉ STATIONNÉ (hors champ GPS,
+   * dernière position dans un parking validé). null/absent sinon. Dérivé serveur : les
+   * surfaces UI substituent alors l'état `PRESUMED_PARKED` au tri-état calculé.
+   */
+  presumedParkedZone?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })

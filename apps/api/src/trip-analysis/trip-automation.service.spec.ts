@@ -36,6 +36,8 @@ describe('TripAutomationService', () => {
     aiEnabled?: boolean;
     /** Positions présentes sur la tranche à recalculer (0 = tranche irrécupérable). */
     positions?: number;
+    /** TRK-047 — positions voisines de la tranche vide (regime de stockage local). */
+    voisinage?: { timestamp: Date }[];
   }) {
     const row = makeRow(opts.row);
     const prisma = {
@@ -58,7 +60,12 @@ describe('TripAutomationService', () => {
           .fn()
           .mockResolvedValue(opts.vehicles ?? [{ id: 'v1', plate: 'AA-001-BB', tracker: { id: 'tk1', lastSeenAt: new Date() } }]),
       },
-      position: { count: jest.fn().mockResolvedValue(opts.positions ?? 42) },
+      position: {
+        count: jest.fn().mockResolvedValue(opts.positions ?? 42),
+        // TRK-047 — voisinage lu par trouNormalAuRegimeDeStockage. Defaut [] : aucun ecart
+        // mesurable -> fail-open vers le signal (l'alerte part), comme en production.
+        findMany: jest.fn().mockResolvedValue(opts.voisinage ?? []),
+      },
       trip: {
         findFirst: jest.fn().mockResolvedValue(opts.dirty ?? null),
         findMany: jest.fn().mockResolvedValue((opts.trips ?? []).map((t) => ({ startedAt: new Date('2026-07-08T07:00:00Z'), ...t }))),
@@ -284,6 +291,74 @@ describe('TripAutomationService', () => {
       expect(trips.recompute).not.toHaveBeenCalled();
       expect(stats.skippedNoPositions).toBe(1);
       // Le véhicule cale — mais BRUYAMMENT : un blocage visible vaut mieux qu'une perte silencieuse.
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.any(Error),
+        'TRIP_AUTOMATION',
+        expect.objectContaining({ phase: 'recompute:no-positions' }),
+      );
+    });
+
+    /**
+     * TRK-047 — le seuil se juge au REGIME DE STOCKAGE local, jamais a la cadence des trames.
+     * Fausse alerte du 24/08 (GS-878-NX) : tranche vide de 3 min 47 s pendant un stationnement
+     * ou la base n'ecrit qu'une position toutes les ~5 min — zero position y est le regime.
+     */
+    it('TRK-047 : une tranche vide dans un regime de stockage ESPACE (stationnement) ne crie pas', async () => {
+      const now = Date.now();
+      const H = 3600 * 1000;
+      // Vehicule au heartbeat : positions voisines espacees d'UNE HEURE de part et d'autre.
+      const voisinage = [0, 1, 2, 3].map((i) => ({ timestamp: new Date(now - i * H) }));
+      const { svc, trips, errorLogger } = build({
+        row: { lookbackHours: 26 },
+        // Tranche ~65 min (dirty - backoff 30 min -> maintenant) : au-dessus du plancher de
+        // 60 s, mais bien SOUS 3 x la mediane locale (3 h) -> pas une anomalie.
+        dirty: { startedAt: new Date(now - 35 * 60 * 1000) },
+        positions: 0,
+        voisinage,
+        trips: [],
+        analyses: [],
+      });
+      const stats = await svc.runNow();
+      expect(trips.recompute).not.toHaveBeenCalled();
+      // Le fait reste COMPTE (et la tranche figee, le front avance) — il cesse juste de crier.
+      expect(stats.skippedNoPositions).toBe(1);
+      expect(errorLogger.record).not.toHaveBeenCalledWith(
+        expect.any(Error),
+        'TRIP_AUTOMATION',
+        expect.objectContaining({ phase: 'recompute:no-positions' }),
+      );
+    });
+
+    it('TRK-047 : le meme trou dans un stockage DENSE (roulage, ~35 s) reste une anomalie criee', async () => {
+      const now = Date.now();
+      const voisinage = [0, 1, 2, 3].map((i) => ({ timestamp: new Date(now - i * 35_000) }));
+      const { svc, errorLogger } = build({
+        row: { lookbackHours: 26 },
+        dirty: { startedAt: new Date(now - 35 * 60 * 1000) },
+        positions: 0,
+        voisinage,
+        trips: [],
+        analyses: [],
+      });
+      await svc.runNow();
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.any(Error),
+        'TRIP_AUTOMATION',
+        expect.objectContaining({ phase: 'recompute:no-positions' }),
+      );
+    });
+
+    it('TRK-047 : sans voisinage mesurable, fail-open VERS LE SIGNAL — l alerte part', async () => {
+      // C'est le comportement du test historique ci-dessus (voisinage vide par defaut) :
+      // mieux vaut une alerte de trop qu'un vrai trou tu par accident.
+      const { svc, errorLogger } = build({
+        row: { lookbackHours: 1200 },
+        dirty: { startedAt: new Date(Date.now() - 40 * JOUR) },
+        positions: 0,
+        trips: [],
+        analyses: [],
+      });
+      await svc.runNow();
       expect(errorLogger.record).toHaveBeenCalledWith(
         expect.any(Error),
         'TRIP_AUTOMATION',

@@ -1,4 +1,5 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { PresumedParkedException } from '../engine-control/engine-control.service';
 import { parseKnownCountdown, ScheduleCronService } from './schedule-cron.service';
 import type { VehicleSchedule } from '@prisma/client';
 
@@ -661,6 +662,124 @@ describe('ScheduleCronService.evaluateOne override', () => {
       expect(errorLogger.record).toHaveBeenCalled();
       const derniers = errorLogger.record.mock.calls.map((c: unknown[]) => (c[0] as Error).message);
       expect(derniers[derniers.length - 1]).not.toContain('réessai à');
+    });
+  });
+
+  /**
+   * ── TRK-046 — « considéré stationné » : un ÉTAT calme, jamais un échec ────────────────────
+   *
+   * Un véhicule hors champ GPS dans un parking VALIDÉ ne doit produire NI alerte « coupe
+   * impossible », NI backoff d'échec, NI martèlement de commandes — et il doit REFERMER les
+   * lignes de blocage antérieures (il n'est plus bloqué : il est stationné). Discriminé par
+   * TYPE d'exception, jamais par texte (même revue que isDeferrable).
+   */
+  describe('TRK-046 — véhicule considéré stationné (PresumedParkedException)', () => {
+    const PARKED_MSG =
+      'Coupe auto en veille : véhicule hors champ GPS dans un lieu validé (parking souterrain) — considéré stationné, sortie surveillée';
+    const ALERT_UUID = '3f2c8a5e-0000-4abc-9def-0123456789ab';
+
+    const HORS_PLAGE = () => ({
+      ...makeSchedule({
+        lastEvaluatedState: 'IN_WINDOW',
+        mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+        thursdayEnabled: false, fridayEnabled: false,
+      }),
+      vehicle: { id: 'v-1', fleetId: 'f-1', plate: 'FZ-862-VY', tracker: { id: 't-1', imei: '123', status: 'ONLINE' } },
+    } as any);
+
+    function buildParked(failWith: Error) {
+      const prisma = {
+        vehicleSchedule: { update: jest.fn().mockResolvedValue({}) },
+        scheduleHistory: { create: jest.fn().mockResolvedValue({}) },
+        errorLog: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      } as any;
+      const engine = { requestCommand: jest.fn().mockRejectedValue(failWith) } as any;
+      const errorLogger = { record: jest.fn().mockResolvedValue(ALERT_UUID) } as any;
+      const service = new ScheduleCronService(prisma, engine, errorLogger, { emit: jest.fn() } as any);
+      return { service, engine, prisma, errorLogger };
+    }
+
+    const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+
+    afterEach(() => jest.useRealTimers());
+
+    it("n'écrit JAMAIS d'alerte « coupe impossible » pour un véhicule considéré stationné — même après des heures", async () => {
+      jest.useFakeTimers();
+      const { service, errorLogger } = buildParked(new PresumedParkedException(PARKED_MSG));
+      const schedule = HORS_PLAGE();
+
+      // 6 h de ticks minute : l'ancien traitement (ForbiddenException générique) aurait
+      // déclenché l'alerte à 30 min puis toutes les 3 h. Ici : RIEN, c'est un état.
+      for (let minute = 0; minute < 360; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('re-vérifie calmement (10 min), sans marteler le moteur de commande à chaque tick', async () => {
+      jest.useFakeTimers();
+      const { service, engine } = buildParked(new PresumedParkedException(PARKED_MSG));
+      const schedule = HORS_PLAGE();
+
+      await service.evaluateOne(schedule);
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+
+      // Les 9 ticks suivants tombent dans la fenêtre de re-vérification : aucun appel.
+      for (let minute = 0; minute < 9; minute++) {
+        jest.advanceTimersByTime(60 * 1000);
+        await service.evaluateOne(schedule);
+      }
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+
+      // Passée la fenêtre, on re-vérifie — la présomption n'est jamais définitive.
+      jest.advanceTimersByTime(2 * 60 * 1000);
+      await service.evaluateOne(schedule);
+      expect(engine.requestCommand).toHaveBeenCalledTimes(2);
+    });
+
+    it('REFERME les lignes de blocage antérieures : « stationné » résout « coupe impossible »', async () => {
+      jest.useFakeTimers();
+      const { service, engine, prisma } = buildParked(new ServiceUnavailableException('Tracker hors ligne'));
+      const schedule = HORS_PLAGE();
+
+      // 31 min d'échecs réels → une alerte « impossible » est écrite (id capturé).
+      for (let minute = 0; minute < 31; minute++) {
+        await service.evaluateOne(schedule);
+        await flush();
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      // Puis le lieu est qualifié : le véhicule devient « considéré stationné ».
+      engine.requestCommand.mockRejectedValue(new PresumedParkedException(PARKED_MSG));
+      for (let minute = 0; minute < 31; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      await flush();
+
+      expect(prisma.errorLog.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: [ALERT_UUID] }, resolvedAt: null },
+        data: expect.objectContaining({
+          resolvedNote: expect.stringContaining('considéré stationné'),
+        }),
+      });
+    });
+
+    it("une ForbiddenException ORDINAIRE garde le traitement d'échec (le type est le seul discriminant)", async () => {
+      jest.useFakeTimers();
+      const { service, errorLogger } = buildParked(
+        new ForbiddenException("Coupe auto différée : véhicule hors champ GPS depuis 212 min — dernière vitesse connue (27.15 km/h) datée d'avant la perte, non probante"),
+      );
+      const schedule = HORS_PLAGE();
+
+      for (let minute = 0; minute < 35; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+      // L'alerte « impossible » part bien — c'est elle qui pousse à VALIDER le lieu.
+      expect(errorLogger.record).toHaveBeenCalled();
+      const [err] = errorLogger.record.mock.calls[0];
+      expect((err as Error).message).toContain('hors champ GPS');
     });
   });
 });

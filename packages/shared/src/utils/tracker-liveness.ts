@@ -323,7 +323,27 @@ export function formatSilenceLabel(
  * à l'union existante leur ferait rendre « Non configuré » en silence, SANS la
  * moindre erreur de compilation pour le signaler.
  */
-export type VehiclePresenceState = VehicleConnectivityState | 'DORMANT';
+export type VehiclePresenceState = VehicleConnectivityState | 'DORMANT' | 'PRESUMED_PARKED';
+
+/**
+ * TRK-046 — « considéré stationné » : hors champ GPS (GPS_LOST, ou silence prolongé) avec la
+ * dernière position dans un parking VALIDÉ. L'état n'est PAS calculé ici : la qualification
+ * du lieu vit côté serveur (zones par véhicule) et arrive par les DTO (`presumedParkedZone`).
+ * Les surfaces UI SUBSTITUENT alors cet état au tri-état calculé — même philosophie opt-in
+ * que `lastNoFixAt` : un appelant qui l'ignore garde le comportement d'aujourd'hui.
+ */
+export function overlayPresumedParked(
+  base: VehiclePresenceState,
+  presumedParkedZone: string | null | undefined,
+): VehiclePresenceState {
+  if (!presumedParkedZone) return base;
+  // La présomption ne maquille JAMAIS un état plus grave qu'une perte de champ : un véhicule
+  // dormant (muet > 7 j) ou jamais configuré reste affiché tel quel.
+  if (base === 'GPS_LOST' || base === 'OFFLINE' || base === 'PARKED' || base === 'ONLINE') {
+    return 'PRESUMED_PARKED';
+  }
+  return base;
+}
 
 /**
  * Compose la dormance avec le tri-état existant — qui n'est PAS remplacé.

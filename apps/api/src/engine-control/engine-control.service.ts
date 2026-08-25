@@ -11,10 +11,15 @@ import {
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, GpsDeadZoneStatus, Prisma, UserRole } from '@prisma/client';
-import type { EngineControlCommand } from '@prisma/client';
+import type { EngineControlCommand, GpsDeadZone } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
 import { DORMANT_STOP_ACTING_MS, encodeCommand, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
+import {
+  estHorsChampGps,
+  estZoneParkingValidee,
+  libelleZoneParking,
+} from '../gps-dead-zones/presomption-stationnement';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { resolveTenantScope } from '../common/tenant-scope';
@@ -104,6 +109,18 @@ interface RequestedBy {
   role: UserRole;
   fleetId: string | null;
 }
+
+/**
+ * ══ TRK-046 — le refus « véhicule considéré stationné » a son PROPRE TYPE ═══════════════════
+ *
+ * Le cron des horaires ne discrimine les refus QUE par type d'exception (revue de
+ * schedule-cron : les `msg.includes(...)` avalaient des erreurs par coïncidence de
+ * sous-chaîne). Un état bénin qui mérite un traitement différent — pas de compteur de
+ * blocage, pas d'alerte « coupe impossible », re-vérification espacée — doit donc être un
+ * TYPE, pas un préfixe de message. Hérite de ForbiddenException : tout appelant qui ignore
+ * cette nuance retombe sur le comportement « report » sûr d'aujourd'hui.
+ */
+export class PresumedParkedException extends ForbiddenException {}
 
 @Injectable()
 export class EngineControlService implements OnModuleDestroy {
@@ -412,6 +429,48 @@ export class EngineControlService implements OnModuleDestroy {
       // sur rejectSpeed() qui PERSISTE une commande + émet un WS à chaque tick → le bloat qu'on
       // voulait éviter. Ici, TOUT véhicule en mouvement (> 5 km/h) en SCHEDULER = throw sec.
       if (source === 'SCHEDULER') {
+        // ══ TRK-046 — VÉHICULE HORS CHAMP GPS : la vitesse figée ne décide plus ══════════
+        //
+        // Mesuré le 25/08 sur FZ-862-VY : entré dans un souterrain à 27,15 km/h, plus un
+        // seul fix pendant 7,7 h — et 13 refus « Vitesse trop élevée : 27.15 km/h »
+        // d'affilée, sur une vitesse datée de la veille. Le garde stale ci-dessus avait
+        // reçu l'exemption SCHEDULER en juillet avec EXACTEMENT le bon raisonnement
+        // (« une vitesse figée ne prouve AUCUN mouvement ») ; le garde de vitesse, lui,
+        // relisait la même valeur périmée soixante lignes plus bas. Deux issues, décidées
+        // par le LIEU de la perte (décision du propriétaire, 25/08) :
+        //
+        //  1. Le lieu est un parking VALIDÉ (souterrain/couvert, auto-qualifié ou revu) →
+        //     comportement NORMAL d'un GPS sous terre : le véhicule est CONSIDÉRÉ
+        //     STATIONNÉ. Aucune commande (elle n'atteindrait pas le boîtier), aucun refus
+        //     persisté, aucune alerte « coupe impossible » — le type d'exception dédié
+        //     dit au cron de re-vérifier calmement. Le filet de sécurité est la SORTIE :
+        //     réapparaître en roulant hors horaire déclenche l'alerte OFF_SCHEDULE_MOVEMENT.
+        //  2. Lieu inconnu → on ne coupe PAS à l'aveugle (un tunnel ne produit aucune
+        //     position : le scan d'immobilité ci-dessous serait aveugle à un véhicule qui
+        //     roule sans ciel), on DIFFÈRE avec la cause honnête. L'alerte « coupe
+        //     impossible » reste — c'est elle qui pousse à qualifier le lieu.
+        //
+        // ⚠️ Un véhicule hors champ dont la dernière vitesse était ≤ 5 km/h (perdu À
+        // L'ARRÊT) suit le chemin historique : le scan d'immobilité ne trouve rien et la
+        // coupe part — comportement de juillet (FS-253), conservé.
+        if (estHorsChampGps(tracker, Date.now())) {
+          if (tracker.powerLossSuspectAt == null) {
+            const zone = await this.zoneParkingValideePourAncre(tracker.vehicleId, tracker.lastLat, tracker.lastLng);
+            if (zone) {
+              throw new PresumedParkedException(
+                `Coupe auto en veille : véhicule hors champ GPS dans un lieu validé (${libelleZoneParking(zone)}) — ` +
+                  `considéré stationné, sortie surveillée`,
+              );
+            }
+          }
+          if (!isAtRest) {
+            const horsChampMin = Math.round(ageMs / 60000);
+            throw new ForbiddenException(
+              `Coupe auto différée : véhicule hors champ GPS depuis ${horsChampMin} min — ` +
+                `dernière vitesse connue (${lastPosition.speedKmh} km/h) datée d'avant la perte, non probante`,
+            );
+          }
+        }
         // 1) En mouvement RÉELLEMENT (position FRAÎCHE > 5 km/h) → jamais de coupe auto, on diffère.
         // La fraîcheur (age ≤ STALE_THRESHOLD_MOVING_MS) est exigée : une dernière vitesse PÉRIMÉE
         // (boîtier silencieux depuis des heures = garé, cf incident FS-253) ne prouve pas un mouvement
@@ -445,6 +504,11 @@ export class EngineControlService implements OnModuleDestroy {
         }
       }
 
+      // ⚠️ TRK-046 — pour la source SCHEDULER, ce garde est un FILET, plus jamais le juge :
+      // un véhicule en mouvement FRAIS est déjà différé plus haut (> 5 km/h), et une vitesse
+      // PÉRIMÉE est traitée par le bloc « hors champ » (considéré stationné ou report
+      // honnête). S'il se déclenche encore en SCHEDULER, c'est qu'un chemin a été oublié —
+      // le REJECTED_SPEED persisté rendra alors l'oubli visible au lieu de le masquer.
       if (lastPosition.speedKmh > MAX_SPEED_FOR_CUT) {
         return this.rejectSpeed(
           { trackerId, action, reason, userId: requestedBy.userId, source },
@@ -851,6 +915,26 @@ export class EngineControlService implements OnModuleDestroy {
    * connue, service indisponible), on répond `false` et l'alerte part. Mieux vaut une
    * alerte de trop qu'une coupure invérifiable passée sous silence par accident.
    */
+  /**
+   * TRK-046 — la dernière position valide (l'ancre, figée à l'ENTRÉE du lieu) tombe-t-elle
+   * dans une zone parking VALIDÉE (souterrain/couvert) ? Même doctrine fail-open que
+   * `isInBenignDeadZone` : dans le doute, on répond null et la coupe suit le chemin normal —
+   * mieux vaut un report honnête de trop qu'une présomption de stationnement par accident.
+   */
+  private async zoneParkingValideePourAncre(
+    vehicleId: string | null,
+    lastLat: number | null,
+    lastLng: number | null,
+  ): Promise<{ label: GpsDeadZone['label']; placeLabel: string | null } | null> {
+    try {
+      if (!vehicleId || lastLat == null || lastLng == null) return null;
+      const zone = await this.deadZones.matchZoneForPoint(vehicleId, lastLat, lastLng);
+      return estZoneParkingValidee(zone) && zone ? zone : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async isInBenignDeadZone(trackerId: string): Promise<boolean> {
     try {
       const tracker = await this.prisma.tracker.findUnique({

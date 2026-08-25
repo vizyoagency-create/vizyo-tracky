@@ -256,6 +256,49 @@ describe('AlertsService', () => {
     expect(prisma.alert.create).not.toHaveBeenCalled();
   });
 
+  /**
+   * TRK-046 — « Sortie hors horaire » : le filet de la présomption de stationnement.
+   * Même régime de dédup que GPS_LOST (avec ou sans acquittement), CRITICAL, et le message
+   * dit ce qui s'est passé ET quoi faire (couper à la main depuis la fiche boîtier).
+   */
+  it('createSortieHorsHoraireAlert creates a CRITICAL OFF_SCHEDULE_MOVEMENT alert with an actionable message', async () => {
+    prisma.alert.findFirst.mockResolvedValue(null);
+    const result = await service.createSortieHorsHoraireAlert(
+      { id: TRACKER_ID, imei: '111111111111111' },
+      { id: VEHICLE_ID, plate: 'FZ-862-VY', fleetId: FLEET_ID },
+      { sombreMin: 480, speedKmh: 32, lat: 43.6, lng: 1.45, lieuValide: true, windowDesc: '08:00–22:00' },
+    );
+    expect(result).not.toBeNull();
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'OFF_SCHEDULE_MOVEMENT',
+          severity: 'CRITICAL',
+          vehicleId: VEHICLE_ID,
+          message: expect.stringContaining('hors horaire autorisé'),
+        }),
+      }),
+    );
+    const data = prisma.alert.create.mock.calls[0][0].data;
+    expect(data.message).toContain('480 min');
+    expect(data.message).toContain('considéré stationné');
+    expect(gateway.broadcastAlert).toHaveBeenCalled();
+  });
+
+  it('createSortieHorsHoraireAlert dedups within the window, acknowledged or not', async () => {
+    prisma.alert.findFirst.mockResolvedValue(alertRecord({ type: 'OFF_SCHEDULE_MOVEMENT', acknowledgedAt: new Date() }));
+    const result = await service.createSortieHorsHoraireAlert(
+      { id: TRACKER_ID, imei: '111111111111111' },
+      { id: VEHICLE_ID, plate: 'FZ-862-VY', fleetId: FLEET_ID },
+      { sombreMin: 480, speedKmh: 32, lat: null, lng: null, lieuValide: false, windowDesc: null },
+    );
+    expect(result).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    const where = prisma.alert.findFirst.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('acknowledgedAt');
+    expect(where).toMatchObject({ vehicleId: VEHICLE_ID, type: 'OFF_SCHEDULE_MOVEMENT' });
+  });
+
   // 14. GPS_LOST — anti-régression (revue 2026-07-09) : une alerte ACQUITTÉE récente
   // dédup AUSSI. Sinon acquitter recréerait une alerte au tick suivant (re-spam).
   it('createGpsLostAlert dedups even against an ACKNOWLEDGED recent alert (no re-spawn on ack)', async () => {

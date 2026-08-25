@@ -67,6 +67,9 @@ export interface FailingTrackerAlert {
   fixCommandFailureCount: number;
   desiredFixIntervalS: number;
   currentFixIntervalS: number | null;
+  /** TRK-048 — mesure sans trame valide recente : afficher « non mesurable », jamais le vestige. */
+  currentFixIntervalPerime: boolean;
+  lastValidFrameAt: string | null;
   lastSeenAt: string | null;
   lastFixIntervalSyncAt: string | null;
 }
@@ -128,6 +131,8 @@ export interface FixModeStateDto {
   vehiclePlate: string | null;
   desiredFixIntervalS: number;
   currentFixIntervalS: number | null;
+  /** TRK-048 — mesure sans trame valide recente : afficher « non mesurable », jamais le vestige. */
+  currentFixIntervalPerime: boolean;
   lastFixIntervalSyncAt: string | null;
   lastValidFrameAt: string | null;
   lastSeenAt: string | null;

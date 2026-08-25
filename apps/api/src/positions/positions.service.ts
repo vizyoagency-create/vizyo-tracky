@@ -9,8 +9,14 @@ import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { Position, Tracker, Vehicle } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { evaluateIngestionFix, isPlausibleReportedSpeed, isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GeofencesService } from '../geofences/geofences.service';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
+import {
+  estZoneParkingValidee,
+  RESURFACE_SOMBRE_MIN_MS,
+} from '../gps-dead-zones/presomption-stationnement';
+import { SORTIE_HORS_CHAMP_EVENT, type SortieHorsChampEvent } from './sortie-hors-champ.event';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
@@ -57,6 +63,8 @@ export class PositionsService {
     private readonly fixMode: TrackerFixModeService,
     private readonly batchBuffer: PositionBatchBufferService,
     private readonly deadZones: GpsDeadZonesService,
+    // TRK-046 — sortie hors champ : émission d'événement, l'écouteur vit côté horaires.
+    private readonly events: EventEmitter2,
   ) {
     const min = Number(process.env.GPS_LOST_ALERT_MIN);
     this.seuilEpisodeMs = (Number.isFinite(min) && min > 0 ? min : 120) * 60_000;
@@ -369,6 +377,38 @@ export class PositionsService {
           });
       }
 
+      // ══ TRK-046 — SORTIE HORS CHAMP : la réapparition EN MOUVEMENT se détecte ICI ══════
+      //
+      // Même logique de gratuité que le bloc TRK-028 ci-dessus : la transition « sans
+      // position → position valide » n'existe qu'à CETTE trame, et le filtre (trou ≥ 10 min
+      // ET vitesse > 5 km/h) écarte l'écrasante majorité des trames sans une seule requête.
+      // Deux signatures de « hors champ », et seulement deux :
+      //  - le boîtier émettait des trames `no_fix` pendant le trou (lastNoFixAt a avancé
+      //    au-delà de la position figée) — parking où le GSM passe, tunnel ;
+      //  - silence complet, mais l'ancre (lastLat/lastLng, figée à l'entrée) tombe dans un
+      //    parking VALIDÉ — parking profond où le GSM meurt aussi. La requête de zone n'est
+      //    payée QUE dans ce cas résiduel.
+      // Un trou ≥ 10 min SANS ces signatures (ex. heartbeat horaire d'un véhicule garé
+      // dehors) n'est PAS une sortie de champ : on n'émet rien.
+      //
+      // ⚠️ Limite assumée : si la PREMIÈRE trame de réapparition est à l'arrêt (barrière de
+      // sortie) et que le véhicule ne roule que quelques trames plus tard, la transition est
+      // consommée et la sortie n'est pas vue. En pratique une sortie de parking se fait en
+      // roulant ; on documente plutôt que de persister un état par trame.
+      if (
+        tracker.vehicleId &&
+        tracker.vehicle &&
+        tracker.lastPositionAt &&
+        frame.speedKph > 5 &&
+        frame.deviceTime.getTime() - tracker.lastPositionAt.getTime() >= RESURFACE_SOMBRE_MIN_MS
+      ) {
+        void this.detecterSortieHorsChamp(tracker as Tracker & { vehicle: Vehicle }, frame).catch((err) => {
+          this.logger.warn(
+            `TRK-046 : détection de sortie hors champ impossible pour ${frame.imei} — ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      }
+
       trackerUpdate.lastLat = frame.latitude;
       trackerUpdate.lastLng = frame.longitude;
       trackerUpdate.lastSpeedKmh = frame.speedKph;
@@ -649,6 +689,50 @@ export class PositionsService {
         });
       }
     }
+  }
+
+  /**
+   * TRK-046 — qualifie une réapparition en mouvement (trou ≥ 10 min) et émet l'événement
+   * de sortie hors champ si — et seulement si — le trou était bien du HORS CHAMP :
+   * trames `no_fix` pendant le trou, ou silence complet ancré dans un parking VALIDÉ.
+   * L'écouteur (sortie-hors-horaire.service) décide seul du volet planning.
+   *
+   * Appelé AVANT l'écriture du trackerUpdate : tous les champs lus ici sont l'état
+   * d'AVANT la trame (l'ancre lastLat/lastLng est encore le point d'entrée du lieu).
+   */
+  private async detecterSortieHorsChamp(
+    tracker: Tracker & { vehicle: Vehicle },
+    frame: CobanPositionFrame,
+  ): Promise<void> {
+    const sombreDepuis = tracker.lastPositionAt as Date; // garanti par l'appelant
+    const signatureNoFix =
+      tracker.lastNoFixAt != null && tracker.lastNoFixAt.getTime() > sombreDepuis.getTime();
+
+    // La zone n'est interrogée qu'ici — jamais sur le chemin chaud : on est déjà sur la
+    // trame rare d'une réapparition après ≥ 10 min de trou.
+    const zone =
+      tracker.vehicleId && tracker.lastLat != null && tracker.lastLng != null
+        ? await this.deadZones.matchZoneForPoint(tracker.vehicleId, tracker.lastLat, tracker.lastLng)
+        : null;
+    const lieuValide = estZoneParkingValidee(zone);
+
+    if (!signatureNoFix && !lieuValide) return; // trou sans signature hors champ : rien à dire
+
+    const evt: SortieHorsChampEvent = {
+      trackerId: tracker.id,
+      imei: tracker.imei,
+      vehicleId: tracker.vehicleId as string,
+      fleetId: tracker.vehicle.fleetId,
+      plate: tracker.vehicle.plate,
+      at: frame.deviceTime.toISOString(),
+      sombreDepuis: sombreDepuis.toISOString(),
+      sombreMs: frame.deviceTime.getTime() - sombreDepuis.getTime(),
+      speedKmh: frame.speedKph,
+      lat: frame.latitude,
+      lng: frame.longitude,
+      lieuValide,
+    };
+    this.events.emit(SORTIE_HORS_CHAMP_EVENT, evt);
   }
 
   /**

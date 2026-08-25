@@ -5,7 +5,7 @@ import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/clien
 import { DORMANT_STOP_ACTING_MS, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { EngineControlService } from '../engine-control/engine-control.service';
+import { EngineControlService, PresumedParkedException } from '../engine-control/engine-control.service';
 import { evaluateSchedule, type EvaluationResult } from './schedule-evaluator';
 
 const DAYS = [
@@ -83,6 +83,16 @@ export function parseKnownCountdown(msg: string): { stoppedS: number; minS: numb
 /** Ré-alerte « planning suspendu pour dormance » : hebdomadaire (l'état est stable). */
 const DORMANT_REALERT_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * TRK-046 — re-vérification d'un véhicule CONSIDÉRÉ STATIONNÉ (hors champ GPS dans un
+ * parking validé). Ce n'est PAS un backoff d'échec : rien n'a échoué, on attend juste que
+ * le véhicule ressorte. 10 min suffisent — la SORTIE, elle, est détectée à la trame près
+ * par l'ingestion (alerte OFF_SCHEDULE_MOVEMENT), pas par ce cron.
+ */
+const PARKED_RECHECK_MS = 10 * 60 * 1000;
+/** Journal « considéré stationné » : une ligne à l'entrée dans l'état, puis toutes les 6 h. */
+const PARKED_RELOG_MS = 6 * 60 * 60 * 1000;
+
 @Injectable()
 export class ScheduleCronService {
   private readonly logger = new Logger(ScheduleCronService.name);
@@ -120,6 +130,16 @@ export class ScheduleCronService {
   private readonly stuckAlertLogIds = new Map<string, string[]>();
   /** Dernière alerte « planning suspendu pour dormance » par véhicule (anti-répétition). */
   private readonly lastDormantAlertAt = new Map<string, number>();
+  /**
+   * TRK-046 — véhicules CONSIDÉRÉS STATIONNÉS (hors champ GPS, parking validé) : instant
+   * avant lequel on ne re-vérifie pas. Volontairement EN MÉMOIRE et sans conséquence
+   * utilisateur : au pire un redémarrage coûte UN appel moteur de plus (qui re-répond
+   * « stationné » sans rien écrire) — rien à voir avec les anti-répétitions d'ALERTE,
+   * qui elles doivent survivre au processus (TRK-038).
+   */
+  private readonly parkedRecheckAfter = new Map<string, number>();
+  /** Journal « considéré stationné » : dernière ligne écrite, pour espacer (PARKED_RELOG_MS). */
+  private readonly lastParkedLogAt = new Map<string, number>();
 
   /** Runs every minute. */
   @Cron('0 * * * * *')
@@ -242,6 +262,12 @@ export class ScheduleCronService {
     // n'est pas écoulé (c'est l'appel lui-même qui crée une commande, tente TCP puis SMS, et
     // journalise). La RESTAURATION n'est jamais retardée — cf. CUT_BACKOFF_MS.
     if (action === EngineAction.CUT) {
+      // TRK-046 — véhicule considéré stationné (hors champ GPS, parking validé) : on attend
+      // sa sortie SANS rien compter. Ni deferredSince, ni backoff, ni alerte : ce n'est pas
+      // un échec, c'est un état. La sortie est surveillée par l'ingestion, pas par ce tick.
+      const parkedUntil = this.parkedRecheckAfter.get(schedule.vehicleId);
+      if (parkedUntil && Date.now() < parkedUntil) return;
+
       const retryAfter = this.cutRetryAfter.get(schedule.vehicleId);
       if (retryAfter && Date.now() < retryAfter) {
         // On continue de suivre le blocage : l'alerte « coupe impossible depuis X min » doit
@@ -277,6 +303,26 @@ export class ScheduleCronService {
       );
     } catch (err) {
       const msg = (err as Error).message ?? '';
+      // ══ TRK-046 — CONSIDÉRÉ STATIONNÉ : un état, pas un échec ═══════════════════════════
+      // Le véhicule est hors champ GPS dans un parking validé (souterrain/couvert). Décision
+      // du propriétaire (25/08) : c'est le comportement NORMAL d'un GPS sous terre — aucune
+      // alerte « coupe impossible », aucun backoff d'échec, et l'on CLÔT les lignes de
+      // blocage antérieures (le véhicule n'est plus « bloqué », il est stationné). La sortie
+      // hors horaire, elle, est détectée par l'ingestion → alerte OFF_SCHEDULE_MOVEMENT.
+      // Discriminé par TYPE, jamais par texte (même revue que isDeferrable ci-dessous).
+      if (err instanceof PresumedParkedException && action === EngineAction.CUT) {
+        this.clearDeferral(schedule.vehicleId, 'véhicule considéré stationné (hors champ GPS, parking validé)');
+        this.parkedRecheckAfter.set(schedule.vehicleId, Date.now() + PARKED_RECHECK_MS);
+        const lastLog = this.lastParkedLogAt.get(schedule.vehicleId) ?? 0;
+        if (Date.now() - lastLog >= PARKED_RELOG_MS) {
+          this.lastParkedLogAt.set(schedule.vehicleId, Date.now());
+          this.logger.log(
+            { vehicleId: schedule.vehicleId, plate: schedule.vehicle.plate ?? null, detail: msg },
+            'Coupe auto en veille : véhicule considéré stationné (hors champ GPS, parking validé) — sortie surveillée',
+          );
+        }
+        return;
+      }
       // REPORT (defer) : la commande ne peut pas s'appliquer MAINTENANT mais devra être
       // retentée — véhicule en mouvement, arrêt trop récent (règle 10 min CDEF), position
       // périmée/invalide, ou tracker hors ligne. Tous ces refus sont des ForbiddenException
@@ -545,6 +591,11 @@ export class ScheduleCronService {
     this.cutFailures.delete(vehicleId);
     this.cutRetryDeadline.delete(vehicleId);
     this.lastFailureReason.delete(vehicleId);
+    // TRK-046 — l'état « considéré stationné » se referme avec le reste : une coupe aboutie,
+    // une reprise ou un planning revenu en phase rendent la présomption sans objet. (La
+    // branche stationné re-pose son entrée juste APRÈS avoir appelé clearDeferral.)
+    this.parkedRecheckAfter.delete(vehicleId);
+    this.lastParkedLogAt.delete(vehicleId);
   }
 
   /** Compute whether the current time is inside the allowed window. */

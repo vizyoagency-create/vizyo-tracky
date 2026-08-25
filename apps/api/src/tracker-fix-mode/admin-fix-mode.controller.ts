@@ -17,6 +17,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { cadenceMesurePerimee } from './peremption-cadence';
 import { TrackerFixModeService } from './tracker-fix-mode.service';
 
 /**
@@ -47,6 +48,9 @@ export class AdminFixModeController {
       vehiclePlate: tracker.vehicle?.plate ?? null,
       desiredFixIntervalS: tracker.desiredFixIntervalS,
       currentFixIntervalS: tracker.currentFixIntervalS,
+      // TRK-048 — vrai tant qu'aucune trame valide récente ne soutient la mesure : l'écran
+      // affiche alors « non mesurable » au lieu du vestige (cf. peremption-cadence.ts).
+      currentFixIntervalPerime: cadenceMesurePerimee(tracker),
       lastFixIntervalSyncAt: tracker.lastFixIntervalSyncAt?.toISOString() ?? null,
       lastValidFrameAt: tracker.lastValidFrameAt?.toISOString() ?? null,
       lastSeenAt: tracker.lastSeenAt?.toISOString() ?? null,

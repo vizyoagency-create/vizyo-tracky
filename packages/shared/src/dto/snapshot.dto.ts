@@ -80,6 +80,13 @@ export interface VehicleSnapshotDto {
    * groupe. Optionnel pour la backward-compat des consommateurs existants.
    */
   group?: { id: string; name: string } | null;
+
+  /**
+   * TRK-046 — libellé du lieu quand le véhicule est CONSIDÉRÉ STATIONNÉ : hors champ GPS,
+   * dernière position dans un parking VALIDÉ (souterrain/couvert), aucun soupçon de coupure
+   * d'alimentation. `null`/absent sinon. Dérivé serveur au read-time, jamais persisté.
+   */
+  presumedParkedZone?: string | null;
 }
 
 export interface FleetSnapshotResponse {

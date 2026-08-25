@@ -6,6 +6,7 @@ import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { VehiclesService } from './vehicles.service';
 
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -103,6 +104,15 @@ describe('VehiclesService', () => {
         // Journal des actions systeme : le service y trace les bascules « hors service ».
         // Non exerce par ces tests -> mock minimal (record est fire-and-forget).
         { provide: SystemActivityService, useValue: { record: jest.fn() } },
+        // TRK-046 — présomption de stationnement : aucune zone par défaut, la dérivation
+        // rend null et les DTO gardent leur forme d'avant.
+        {
+          provide: GpsDeadZonesService,
+          useValue: {
+            zonesParkingParVehicule: jest.fn().mockResolvedValue(new Map()),
+            matchAmong: jest.fn().mockReturnValue(null),
+          },
+        },
       ],
     }).compile();
 

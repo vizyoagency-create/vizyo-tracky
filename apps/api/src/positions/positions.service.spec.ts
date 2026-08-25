@@ -3,7 +3,9 @@ import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import type { CobanPositionFrame } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
+import { SORTIE_HORS_CHAMP_EVENT } from './sortie-hors-champ.event';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
@@ -92,7 +94,9 @@ describe('PositionsService.list', () => {
           reconcile: jest.fn().mockReturnValue({ nextCurrentFixIntervalS: 30, nextFailureCount: 0, nextFailing: false }),
           requestChange: jest.fn().mockResolvedValue(null),
         } },
-        { provide: GpsDeadZonesService, useValue: { recordRecovery: jest.fn().mockResolvedValue(0) } },
+        { provide: GpsDeadZonesService, useValue: { recordRecovery: jest.fn().mockResolvedValue(0), matchZoneForPoint: jest.fn().mockResolvedValue(null) } },
+        // TRK-046 — émetteur d'événement de sortie hors champ (non exercé par ce bloc).
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
@@ -162,7 +166,8 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     emitEngineCommandUpdate: jest.Mock;
     emitVehicleMovement: jest.Mock;
   };
-  let deadZones: { recordRecovery: jest.Mock };
+  let deadZones: { recordRecovery: jest.Mock; matchZoneForPoint: jest.Mock };
+  let events: { emit: jest.Mock };
   let trackerRow: Record<string, unknown>;
 
   const IMEI = '359339074500001';
@@ -272,7 +277,12 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       emitEngineCommandUpdate: jest.fn(),
       emitVehicleMovement: jest.fn(),
     };
-    deadZones = { recordRecovery: jest.fn().mockResolvedValue(0) };
+    deadZones = {
+      recordRecovery: jest.fn().mockResolvedValue(0),
+      // TRK-046 — zone interrogée par la détection de sortie hors champ. Défaut : aucune.
+      matchZoneForPoint: jest.fn().mockResolvedValue(null),
+    };
+    events = { emit: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -302,6 +312,8 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
           },
         },
         { provide: GpsDeadZonesService, useValue: deadZones },
+        // TRK-046 — émetteur d'événement de sortie hors champ.
+        { provide: EventEmitter2, useValue: events },
       ],
     }).compile();
 
@@ -637,6 +649,75 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     await service.ingest(makeFrame({ deviceTime: new Date('2026-06-11T04:00:00Z') }));
 
     expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * ── TRK-046 : LA SORTIE HORS CHAMP S'ÉMET À LA RÉAPPARITION, ET SEULEMENT LÀ ─────────
+   *
+   * Même économie que TRK-028 : la transition n'existe qu'à la première trame valide, et le
+   * filtre (trou ≥ 10 min + vitesse > 5) écarte l'écrasante majorité des trames sans une
+   * requête. Deux signatures qualifient le trou : trames no_fix pendant l'obscurité, ou
+   * silence complet ancré dans un parking VALIDÉ. Un trou sans signature (heartbeat horaire
+   * d'un véhicule garé dehors) n'émet RIEN.
+   */
+  describe('sortie hors champ (TRK-046)', () => {
+    const SORTIE_A_4H = () => makeFrame({ deviceTime: new Date('2026-06-11T04:00:00Z'), speedKph: 32 });
+
+    it("émet l'événement quand un véhicule à trames no_fix réapparaît EN ROULANT après ≥ 10 min", async () => {
+      // Obscurité 01:00 → 04:00 avec des trames L pendant (lastNoFixAt > lastPositionAt).
+      trackerRow = makeTracker({ lastNoFixAt: new Date('2026-06-11T03:59:40Z') });
+
+      await service.ingest(SORTIE_A_4H());
+      await new Promise((r) => setTimeout(r, 20)); // détection fire-and-forget
+
+      expect(events.emit).toHaveBeenCalledTimes(1);
+      const [nom, evt] = events.emit.mock.calls[0];
+      expect(nom).toBe(SORTIE_HORS_CHAMP_EVENT);
+      expect(evt).toMatchObject({
+        vehicleId: VEHICLE_ID,
+        plate: 'HD-779-MA',
+        speedKmh: 32,
+        lieuValide: false,
+        sombreDepuis: '2026-06-11T01:00:00.000Z',
+        at: '2026-06-11T04:00:00.000Z',
+      });
+      // 3 h d'obscurité, à la milliseconde — depuis les données, jamais une horloge locale.
+      expect(evt.sombreMs).toBe(3 * 3600 * 1000);
+    });
+
+    it("n'émet RIEN si la réapparition est à l'arrêt (barrière de sortie, véhicule garé)", async () => {
+      trackerRow = makeTracker({ lastNoFixAt: new Date('2026-06-11T03:59:40Z') });
+      await service.ingest(makeFrame({ deviceTime: new Date('2026-06-11T04:00:00Z'), speedKph: 3 }));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it("n'émet RIEN pour un trou court (< 10 min) — simple perte de couverture en roulant", async () => {
+      trackerRow = makeTracker({ lastNoFixAt: new Date('2026-06-11T01:07:00Z') });
+      await service.ingest(makeFrame({ deviceTime: new Date('2026-06-11T01:08:00Z'), speedKph: 60 }));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(events.emit).not.toHaveBeenCalled();
+    });
+
+    it('silence complet + ancre dans un parking VALIDÉ → émet avec lieuValide=true (parking profond)', async () => {
+      // Aucune trame L (lastNoFixAt antérieur), mais l'ancre est un parking validé.
+      trackerRow = makeTracker({ lastNoFixAt: new Date('2026-06-11T00:00:00Z') });
+      deadZones.matchZoneForPoint.mockResolvedValue({ status: 'CONFIRMED_BENIGN', label: 'UNDERGROUND_PARKING' });
+
+      await service.ingest(SORTIE_A_4H());
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(deadZones.matchZoneForPoint).toHaveBeenCalledWith(VEHICLE_ID, 33.5, -7.5); // l'ANCRE pré-trou
+      expect(events.emit).toHaveBeenCalledTimes(1);
+      expect(events.emit.mock.calls[0][1]).toMatchObject({ lieuValide: true });
+    });
+
+    it("silence complet SANS signature (ni trames L, ni parking validé) → RIEN — le heartbeat d'un garé dehors n'est pas une sortie", async () => {
+      trackerRow = makeTracker({ lastNoFixAt: new Date('2026-06-11T00:00:00Z') });
+      await service.ingest(SORTIE_A_4H());
+      await new Promise((r) => setTimeout(r, 20));
+      expect(events.emit).not.toHaveBeenCalled();
+    });
   });
 
   /**

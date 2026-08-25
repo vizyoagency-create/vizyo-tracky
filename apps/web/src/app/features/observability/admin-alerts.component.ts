@@ -200,7 +200,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                   <span class="text-rose-400 font-mono text-sm font-bold">{{ a.fixCommandFailureCount }}</span>
                 </div>
                 <div class="flex items-center gap-3 mt-2 text-xs text-fg-tertiary">
-                  <span>{{ a.desiredFixIntervalS }}s / {{ a.currentFixIntervalS ?? '?' }}s</span>
+                  <span>{{ a.desiredFixIntervalS }}s / {{ a.currentFixIntervalPerime ? 'non mesurable' : (a.currentFixIntervalS ?? '?') + 's' }}</span>
                   <span>{{ a.lastSeenAt ? (a.lastSeenAt | date: 'dd/MM HH:mm') : 'jamais' }}</span>
                 </div>
                 <div class="flex gap-3 mt-2">
@@ -234,7 +234,8 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                     <td class="p-3 text-fg-tertiary text-xs">{{ a.fleetName ?? '—' }}</td>
                     <td class="p-3 text-right font-mono text-rose-400">{{ a.fixCommandFailureCount }}</td>
                     <td class="p-3 text-right font-mono text-xs">
-                      {{ a.desiredFixIntervalS }}s / {{ a.currentFixIntervalS ?? '?' }}s
+                      <!-- TRK-048 — vestige ≠ mesure : « non mesurable » quand aucune trame valide recente. -->
+                      {{ a.desiredFixIntervalS }}s / {{ a.currentFixIntervalPerime ? 'non mesurable' : (a.currentFixIntervalS ?? '?') + 's' }}
                     </td>
                     <td class="p-3 text-fg-tertiary text-xs">
                       {{ a.lastSeenAt ? (a.lastSeenAt | date: 'dd/MM HH:mm') : 'jamais' }}
