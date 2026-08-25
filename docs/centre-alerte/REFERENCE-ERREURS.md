@@ -14,7 +14,7 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-25 (soir)** *(🧹 **RÉCONCILIATION DES STATUTS** — 18 en-têtes de fiche étaient restés figés à leur rédaction initiale ; index et manifeste, eux, concordaient. Les trois surfaces sont désormais alignées : **40 corrigées, 5 correctifs proposés, 3 terrain, 2 non corrigées**. Tranché par le CODE DÉPLOYÉ et la MESURE, jamais par une autre fiche)* *(🟢 [TRK-050](#trk-050) CORRIGÉ, TESTÉ ET DÉPLOYÉ — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
+- Dernière mise à jour : **2026-08-25 20:05 UTC** *(✅ **[TRK-046](#trk-046) EXERCÉ ET PROUVÉ** à la coupe de 20:00 — preuve directe au journal, 0 refus là où il y en avait 13 la veille à la même heure)* *(🧹 **RÉCONCILIATION DES STATUTS** — 18 en-têtes de fiche étaient restés figés à leur rédaction initiale ; index et manifeste, eux, concordaient. Les trois surfaces sont désormais alignées : **40 corrigées, 5 correctifs proposés, 3 terrain, 2 non corrigées**. Tranché par le CODE DÉPLOYÉ et la MESURE, jamais par une autre fiche)* *(🟢 [TRK-050](#trk-050) CORRIGÉ, TESTÉ ET DÉPLOYÉ — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
   🆕 [TRK-046](#trk-046) gravité 1, [TRK-047](#trk-047), [TRK-048](#trk-048) ; **5 statuts d'index
   périmés rectifiés** — TRK-015, TRK-018, TRK-025, TRK-026, TRK-045)*
 
@@ -8480,10 +8480,45 @@ seule partie du correctif qui ne s'automatise pas.
 ---
 
 ## TRK-046
-
 **Signature** — `schedule-cron | ERROR | Automatisation horaire : coupe/reprise impossible sur
 <PLAQUE> depuis <DURÉE> — Vitesse trop élevée : <N> km/h`
 **Statut : 🟢 CORRIGÉ** · *(🧹 en-tête rectifié le 2026-08-25 — il était resté figé à sa rédaction initiale, alors que l'index ET le manifeste disent CORRIGÉ. **Les sections datées ci-dessous font foi.** Ancien en-tête : « 🟠 CORRECTIF PROPOSÉ — PR #133 (`fix/trk046-coupe-hors-champ-gps`), 25/08** · **gravité 1** · famille **mensonger** · 2026-08-25 »)*
+
+
+> ## 🟢 2026-08-25 20:00 UTC — LE TEST DATÉ RÉPOND, ET IL RÉPOND PAR LE COMPORTEMENT
+>
+> La bascule de 22:00 Paris a eu lieu. **26 coupes demandées, 25 acquittées, 1 envoyée — et
+> les deux véhicules hors champ n'ont produit ni commande, ni refus, ni ligne d'erreur.**
+>
+> **Preuve directe, relevée dans le journal du conteneur à la milliseconde :**
+>
+> ```
+> 20:00:04.437  from:"IN_WINDOW" to:"OUT_OF_WINDOW" action:"CUT"   ← la coupe EST bien tentée
+> 20:00:04.481  plate:"FZ-862-VY"  « Coupe auto en veille : véhicule hors champ GPS dans un
+>                lieu validé (parking souterrain — Toulouse) — considéré stationné »
+> 20:00:04.528  idem pour FS-253-HR
+> ```
+>
+> Ce n'est donc pas un silence par omission : le cron a **évalué la transition**, demandé la
+> coupe, et le garde a répondu. `lastEvaluatedState` reste volontairement à `IN_WINDOW` — la
+> présomption n'écrit rien, exactement comme prévu.
+>
+> **Le avant/après est propre, même véhicule, même heure, même état :**
+>
+> | | 24/08 à 20:00:11 | 25/08 à 20:00:04 |
+> |---|---|---|
+> | FZ-862-VY, hors champ | **1ᵉʳ de 13 `REJECTED_SPEED`** | **0 commande** |
+> | Lignes « coupe impossible » | 2, backoff 31 → 212 min | **0** |
+> | Journal | rien d'explicite | une ligne calme qui nomme le lieu |
+>
+> ✅ En prime, la sonde d'intégrité GPS concorde : *« 2 boîtiers vivants sans position GPS
+> (0 nouvelle alerte, 2 en zone confirmée : FZ-862-VY (10 h, parking), FS-253-HR (3 h, parking)) »*.
+>
+> ⚠️ **Ce qui reste non exercé** : le filet de sécurité — l'alerte `OFF_SCHEDULE_MOVEMENT` — n'a
+> pas encore eu l'occasion de partir (0 à ce jour). Il faudra qu'un de ces véhicules **ressorte en
+> roulant** avant 07:00 Paris. C'est le prochain test daté de cette fiche.
+
+
 
 > 🟠 **25/08 (après-midi) — CORRECTIF ÉCRIT, TESTÉ, EN ATTENTE DE RELECTURE.** La politique a été
 > ÉLARGIE par le propriétaire : un lieu de perte VALIDÉ comme parking (souterrain/couvert) rend le
