@@ -24,6 +24,12 @@ import {
 } from '@vizyo/tracky-shared';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { resolveTenantScope } from '../common/tenant-scope';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
+import {
+  estStationnementPresume,
+  libelleZoneParking,
+  type TrackerPourPresomption,
+} from '../gps-dead-zones/presomption-stationnement';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
@@ -102,7 +108,16 @@ export interface RequestedBy {
 
 /** Sprint 1 (Fondation Groupes) — référence groupe (single) attachée aux réponses véhicule. */
 export type VehicleGroupRef = { id: string; name: string } | null;
-export type VehicleWithGroup = Vehicle & { group: VehicleGroupRef; moving?: boolean };
+export type VehicleWithGroup = Vehicle & {
+  group: VehicleGroupRef;
+  moving?: boolean;
+  /**
+   * TRK-046 — libellé du lieu quand le véhicule est CONSIDÉRÉ STATIONNÉ (hors champ GPS,
+   * dernière position dans un parking validé, aucun soupçon d'alimentation). `null` sinon.
+   * Dérivé au read-time — jamais persisté : à la première position valide, il disparaît.
+   */
+  presumedParkedZone?: string | null;
+};
 
 @Injectable()
 export class VehiclesService {
@@ -137,6 +152,9 @@ export class VehiclesService {
     lastPositionAt: true,
     // Incident FS-253 — dernière trame no_fix : permet à la LISTE de détecter GPS_LOST.
     lastNoFixAt: true,
+    // TRK-046 — entrées de la présomption de stationnement (et du tri-état côté client).
+    lastKnownIgnition: true,
+    powerLossSuspectAt: true,
     accConnected: true,
     // V1.15 — expose la SIM pour le badge "Installe" (IMEI + SIM presents) cote liste.
     simPhoneNumber: true,
@@ -191,7 +209,29 @@ export class VehiclesService {
     private readonly cache: InMemoryCacheService,
     private readonly unlockToken: UnlockTokenService,
     private readonly systemActivity: SystemActivityService,
+    // TRK-046 — présomption de stationnement : zones parking validées + rattachement spatial.
+    private readonly deadZones: GpsDeadZonesService,
   ) {}
+
+  /**
+   * TRK-046 — libellé « considéré stationné » d'un véhicule, ou null. Les zones arrivent
+   * pré-chargées EN LOT (une requête pour toute la liste) ; le rattachement spatial reste
+   * celui de GpsDeadZonesService. Fail-open : le moindre doute rend null et l'affichage
+   * retombe sur le tri-état classique.
+   */
+  private presumedParkedLabel(
+    tracker: TrackerPourPresomption | null | undefined,
+    zonesDuVehicule: Awaited<ReturnType<GpsDeadZonesService['zonesParkingParVehicule']>> extends Map<string, infer Z> ? Z : never,
+  ): string | null {
+    try {
+      if (!tracker || !zonesDuVehicule?.length) return null;
+      const zone = this.deadZones.matchAmong(zonesDuVehicule, tracker.lastLat, tracker.lastLng);
+      if (!zone) return null;
+      return estStationnementPresume(tracker, zone) ? libelleZoneParking(zone) : null;
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Build une cle de cache stable pour les KPI. On ne cache que quand le
@@ -343,11 +383,17 @@ export class VehiclesService {
     // hydrater l'état « en mouvement » côté client (le veilleur grise alors le bouton
     // « Couper » dès l'ouverture, sans attendre une transition WS). Seuil aligné sur
     // REST_SPEED_KMH (5 km/h) du garde coupe-moteur.
+    // TRK-046 — zones parking validées chargées EN LOT (une requête), jamais par véhicule.
+    const zonesParVehicule = await this.deadZones.zonesParkingParVehicule(rows.map((v) => v.id));
     return rows.map((v) => {
       const withGroup = VehiclesService.withGroup(v);
       const moving =
         !!v.tracker && v.tracker.lastIgnition === true && (v.tracker.lastSpeedKmh ?? 0) > 5;
-      return { ...withGroup, moving };
+      const presumedParkedZone = this.presumedParkedLabel(
+        v.tracker as TrackerPourPresomption | null,
+        zonesParVehicule.get(v.id) ?? [],
+      );
+      return { ...withGroup, moving, presumedParkedZone };
     }) as VehicleWithGroup[];
   }
 
@@ -384,7 +430,13 @@ export class VehiclesService {
       throw new ForbiddenException('Accès refusé à ce véhicule');
     }
 
-    return VehiclesService.withGroup(vehicle);
+    // TRK-046 — même dérivation que la liste (fiche et liste ne doivent jamais se contredire).
+    const zonesParVehicule = await this.deadZones.zonesParkingParVehicule([vehicle.id]);
+    const presumedParkedZone = this.presumedParkedLabel(
+      vehicle.tracker as TrackerPourPresomption | null,
+      zonesParVehicule.get(vehicle.id) ?? [],
+    );
+    return { ...VehiclesService.withGroup(vehicle), presumedParkedZone };
   }
 
   /**
@@ -1025,6 +1077,9 @@ export class VehiclesService {
             lastValid: true,
             lastPositionAt: true,
             lastNoFixAt: true,
+            // TRK-046 — entrées de la présomption de stationnement.
+            lastKnownIgnition: true,
+            powerLossSuspectAt: true,
             accConnected: true,
             createdAt: true,
           },
@@ -1036,6 +1091,10 @@ export class VehiclesService {
       orderBy: { createdAt: 'desc' },
       take: 2000,
     });
+
+    // TRK-046 — zones parking validées EN LOT (le snapshot est déjà caché 15 s : une
+    // requête de plus par rafraîchissement, jamais une par véhicule).
+    const zonesParkingSnapshot = await this.deadZones.zonesParkingParVehicule(vehicles.map((v) => v.id));
 
     // Sprint 2 (Obj 3 + revue #2) — etat coupe TRI-ETAT par tracker :
     //   'cut'     = coupure CONFIRMEE (ACKNOWLEDGED, toutes sources dont DEVICE_OBSERVED
@@ -1110,6 +1169,10 @@ export class VehiclesService {
         privacyModeEnabled: v.privacyModeEnabled,
         privacyModeSince: v.privacyModeSince ? v.privacyModeSince.toISOString() : null,
         group: v.groups?.[0]?.group ?? null,
+        presumedParkedZone: this.presumedParkedLabel(
+          t as TrackerPourPresomption | null,
+          zonesParkingSnapshot.get(v.id) ?? [],
+        ),
       };
     });
 

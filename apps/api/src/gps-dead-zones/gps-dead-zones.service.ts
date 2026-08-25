@@ -367,6 +367,40 @@ export class GpsDeadZonesService {
     return this.nearestZone(zones, lat, lng);
   }
 
+  /**
+   * TRK-046 — variante SANS requête de `matchZoneForPoint`, pour les appelants qui ont déjà
+   * chargé les zones en lot (liste/snapshot véhicules : une requête pour N véhicules, jamais
+   * N requêtes). Même juge, même rayon : le rattachement spatial reste défini ICI et nulle
+   * part ailleurs.
+   */
+  matchAmong(zones: GpsDeadZone[], lat: number | null, lng: number | null): GpsDeadZone | null {
+    if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return this.nearestZone(zones, lat, lng);
+  }
+
+  /**
+   * TRK-046 — zones « parking validé » (bénignes + nature parking) de N véhicules, en UNE
+   * requête, groupées par véhicule. Sert aux points d'assemblage DTO (liste, fiche, snapshot)
+   * pour dériver « considéré stationné » sans N+1.
+   */
+  async zonesParkingParVehicule(vehicleIds: string[]): Promise<Map<string, GpsDeadZone[]>> {
+    const parVehicule = new Map<string, GpsDeadZone[]>();
+    if (vehicleIds.length === 0) return parVehicule;
+    const zones = await this.prisma.gpsDeadZone.findMany({
+      where: {
+        vehicleId: { in: vehicleIds },
+        status: GpsDeadZoneStatus.CONFIRMED_BENIGN,
+        label: { in: [GpsDeadZoneLabel.UNDERGROUND_PARKING, GpsDeadZoneLabel.COVERED_PARKING] },
+      },
+    });
+    for (const z of zones) {
+      const liste = parVehicule.get(z.vehicleId) ?? [];
+      liste.push(z);
+      parVehicule.set(z.vehicleId, liste);
+    }
+    return parVehicule;
+  }
+
   /** Liste des zones mortes d'un véhicule (scopée par accès), triées par récurrence. */
   async listForVehicle(vehicleId: string, requestedBy: RequestedBy): Promise<GpsDeadZoneDto[]> {
     await this.assertVehicleAccess(vehicleId, requestedBy);

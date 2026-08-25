@@ -47,7 +47,7 @@ describe('connectivityMeta / connectivityTitle — état DORMANT', () => {
    */
   it('ne rend AUCUNE couleur en dur : tout passe par un jeton', () => {
     const states: VehiclePresenceState[] = [
-      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'OFFLINE', 'DORMANT', 'NOT_CONFIGURED',
+      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'PRESUMED_PARKED', 'OFFLINE', 'DORMANT', 'NOT_CONFIGURED',
     ];
     for (const s of states) {
       const m = connectivityMeta(s);
@@ -60,7 +60,7 @@ describe('connectivityMeta / connectivityTitle — état DORMANT', () => {
 
   it('réserve le contour tireté au seul « Non configuré »', () => {
     const states: VehiclePresenceState[] = [
-      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'OFFLINE', 'DORMANT',
+      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'PRESUMED_PARKED', 'OFFLINE', 'DORMANT',
     ];
     // « Stationné » et « Non configuré » partagent le gris : les deux sont calmes. Seul
     // le contour dit lequel est un état de terrain et lequel est une absence d'installation.
@@ -68,6 +68,26 @@ describe('connectivityMeta / connectivityTitle — état DORMANT', () => {
     expect(connectivityMeta('PARKED').color).toBe(connectivityMeta('NOT_CONFIGURED').color);
     expect(connectivityMeta('PARKED').borderStyle).toBe('solid');
     for (const s of states) expect(connectivityMeta(s).borderStyle).toBe('solid');
+  });
+
+  /**
+   * TRK-046 — « Considéré stationné » est une VARIANTE calme du stationnement, pas une
+   * alarme : même gris que « Stationné », libellé qui nomme le lieu, infobulle qui explique
+   * la présomption ET son filet de sécurité (l'alerte de sortie). Un état ajouté à
+   * VehiclePresenceState sans son `case` retomberait sur « Non configuré » en silence —
+   * ces assertions rendent l'oubli visible.
+   */
+  it('affiche « considéré stationné » comme un stationnement calme, jamais comme une panne', () => {
+    const m = connectivityMeta('PRESUMED_PARKED');
+    expect(m.label).toBe('Stationné · parking souterrain');
+    expect(m.color).toBe(connectivityMeta('PARKED').color); // même calme que « Stationné »
+    expect(m.borderStyle).toBe('solid');
+    expect(m.label).not.toBe(connectivityMeta('NOT_CONFIGURED').label);
+    const titre = connectivityTitle('PRESUMED_PARKED');
+    expect(titre).toContain('parking');
+    expect(titre).toContain('normal');
+    expect(titre).toContain('Sortie hors horaire');
+    expect(titre).not.toBe(connectivityTitle('PARKED'));
   });
 
   it('donne une infobulle propre au dormant, distincte de « non configuré »', () => {
@@ -80,10 +100,10 @@ describe('connectivityMeta / connectivityTitle — état DORMANT', () => {
 
   it('couvre tous les états de présence : aucun ne retombe sur « Non configuré » par hasard', () => {
     const states: VehiclePresenceState[] = [
-      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'OFFLINE', 'DORMANT', 'NOT_CONFIGURED',
+      'ONLINE', 'AWAITING_GPS', 'GPS_LOST', 'PARKED', 'PRESUMED_PARKED', 'OFFLINE', 'DORMANT', 'NOT_CONFIGURED',
     ];
     const labels = states.map((s) => connectivityMeta(s).label);
-    // 7 états → 7 libellés distincts. Un état oublié ferait doublon avec « Non configuré ».
+    // 8 états → 8 libellés distincts. Un état oublié ferait doublon avec « Non configuré ».
     expect(new Set(labels).size).toBe(states.length);
   });
 });

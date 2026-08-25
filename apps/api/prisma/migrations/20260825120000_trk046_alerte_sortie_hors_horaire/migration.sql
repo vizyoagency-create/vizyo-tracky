@@ -1,0 +1,12 @@
+-- TRK-046 — nouveau type d'alerte : « véhicule hors champ GPS roule hors horaire autorisé ».
+--
+-- C'est le filet de sécurité de la présomption de stationnement (décision du propriétaire,
+-- 25/08) : un véhicule qui perd son fix dans un parking validé est CONSIDÉRÉ STATIONNÉ et la
+-- coupe programmée ne lui est plus martelée — en contrepartie, sa RÉAPPARITION en mouvement
+-- pendant la plage de coupure doit être criée immédiatement.
+--
+-- /!\ `ALTER TYPE ... ADD VALUE` : autorisé dans une transaction depuis PostgreSQL 12 (la
+-- production est en 16.4), à la condition que la valeur ne soit PAS UTILISÉE dans la même
+-- transaction. Cette migration ne fait que l'ajouter — aucun UPDATE ne s'en sert.
+-- (Même précédent que 20260824150000_trk018 : SQL aligné sur `prisma migrate diff`.)
+ALTER TYPE "AlertType" ADD VALUE 'OFF_SCHEDULE_MOVEMENT';

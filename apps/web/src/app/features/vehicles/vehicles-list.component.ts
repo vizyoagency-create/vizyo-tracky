@@ -37,6 +37,7 @@ import {
   getVehiclePresenceState,
   isInstallationToReview,
   isVehicleDormant,
+  overlayPresumedParked,
   type VehicleConnectivityState,
   type VehiclePresenceState,
 } from '@vizyo/tracky-shared';
@@ -1566,13 +1567,18 @@ export class VehiclesListComponent implements OnInit {
    * Les GARDES DE BOUTON, elles, doivent rester sur 72 h — exactement comme le serveur.
    */
   protected presence(v: VehicleDetailDto): VehiclePresenceState {
-    return getVehiclePresenceState({
-      trackerId: v.tracker?.id ?? null,
-      lastSeenAt: this.freshestLastSeen(v),
-      lastPositionAt: v.tracker?.lastPositionAt ?? null,
-      lastNoFixAt: v.tracker?.lastNoFixAt ?? null,
-      lastIgnition: v.tracker?.lastKnownIgnition ?? null,
-    });
+    // TRK-046 — le serveur a qualifié le lieu : « considéré stationné » remplace alors le
+    // tri-état calculé (un « GPS perdu » rouge sur un parking validé est un faux problème).
+    return overlayPresumedParked(
+      getVehiclePresenceState({
+        trackerId: v.tracker?.id ?? null,
+        lastSeenAt: this.freshestLastSeen(v),
+        lastPositionAt: v.tracker?.lastPositionAt ?? null,
+        lastNoFixAt: v.tracker?.lastNoFixAt ?? null,
+        lastIgnition: v.tracker?.lastKnownIgnition ?? null,
+      }),
+      v.presumedParkedZone,
+    );
   }
 
   /** Dernier signal du boîtier, pour que le badge affiche « Dormant · 89 j ». */

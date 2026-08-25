@@ -397,6 +397,85 @@ export class AlertsService {
   }
 
   /**
+   * ══ TRK-046 — « VÉHICULE HORS CHAMP ROULE HORS HORAIRE AUTORISÉ » ══════════════════════
+   *
+   * Le filet de sécurité de la présomption de stationnement (décision du propriétaire,
+   * 25/08) : un véhicule hors champ GPS dans un parking validé est considéré stationné et
+   * la coupe programmée ne lui est plus martelée. En contrepartie, sa RÉAPPARITION en
+   * mouvement pendant la plage où le planning le veut immobilisé est le signal qui compte —
+   * quelqu'un a sorti un véhicule qui aurait dû être coupé.
+   *
+   * DÉDUPLIQUÉE comme `createGpsLostAlert` (même raison structurelle) : au plus UNE par
+   * véhicule sur la fenêtre, QUEL QUE SOIT l'acquittement — le détecteur (l'ingestion) peut
+   * revoir la condition à chaque trame d'un trajet nocturne entier ; ne dédupliquer que les
+   * alertes ouvertes ferait renaître l'alerte à chaque acquittement.
+   */
+  async createSortieHorsHoraireAlert(
+    tracker: { id: string; imei: string },
+    vehicle: { id: string; plate: string; fleetId: string },
+    contexte: {
+      /** Durée de l'obscurité GPS qui vient de se refermer (min). */
+      sombreMin: number;
+      /** Vitesse de la trame de réapparition (km/h). */
+      speedKmh: number;
+      /** Position de réapparition. */
+      lat: number | null;
+      lng: number | null;
+      /** Le lieu de la perte était-il un parking validé (présomption de stationnement active) ? */
+      lieuValide: boolean;
+      /** Description de la plage du planning (windowDesc de l'évaluateur), si disponible. */
+      windowDesc: string | null;
+    },
+    dedupWindowMs = DEDUP_ALARME_MS,
+  ): Promise<Alert | null> {
+    const since = new Date(Date.now() - dedupWindowMs);
+    const existing = await this.prisma.alert.findFirst({
+      where: { vehicleId: vehicle.id, type: AlertType.OFF_SCHEDULE_MOVEMENT, createdAt: { gte: since } },
+      select: { id: true },
+    });
+    if (existing) return null;
+
+    const title = `🚨 Sortie hors horaire — ${vehicle.plate}`;
+    const message =
+      `Véhicule hors champ GPS ressorti EN ROULANT hors horaire autorisé : réapparu à ` +
+      `${Math.round(contexte.speedKmh)} km/h après ${contexte.sombreMin} min sans position, pendant la plage ` +
+      `où le planning le veut immobilisé${contexte.windowDesc ? ` (${contexte.windowDesc})` : ''}. ` +
+      (contexte.lieuValide
+        ? `Il était considéré stationné (lieu validé) et la coupe programmée ne l'a pas atteint : `
+        : `La coupe programmée n'a pas pu être confirmée pendant la perte : `) +
+      `vérifier qui conduit, et couper à la main depuis la fiche boîtier si nécessaire.`;
+
+    const alert = await this.prisma.alert.create({
+      data: {
+        fleetId: vehicle.fleetId,
+        vehicleId: vehicle.id,
+        trackerId: tracker.id,
+        type: AlertType.OFF_SCHEDULE_MOVEMENT,
+        severity: AlertSeverity.CRITICAL,
+        title,
+        message,
+        payload: {
+          imei: tracker.imei,
+          sombreMin: contexte.sombreMin,
+          speedKmh: contexte.speedKmh,
+          lieuValide: contexte.lieuValide,
+          windowDesc: contexte.windowDesc,
+        } as any,
+        latitude: contexte.lat,
+        longitude: contexte.lng,
+      },
+      include: { vehicle: true, tracker: true },
+    });
+
+    this.gateway.broadcastAlert(alert);
+    this.logger.warn(`[ALERT] CRITICAL OFF_SCHEDULE_MOVEMENT for ${vehicle.plate} (${contexte.sombreMin} min hors champ, ${Math.round(contexte.speedKmh)} km/h)`);
+    this.dispatch.dispatchAlert(alert).catch((err) => {
+      this.logger.warn(`Notification dispatch failed for OFF_SCHEDULE_MOVEMENT alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
+    });
+    return alert;
+  }
+
+  /**
    * TRK-040 — coupure réelle CONFIRMÉE PAR LA PENTE, créée par le cron
    * power-cut-recheck : un soupçon ouvert à batterie pleine (verdict différé) dont la
    * batterie est depuis passée sous le seuil. Le MESSAGE porte l'heure de la PREMIÈRE

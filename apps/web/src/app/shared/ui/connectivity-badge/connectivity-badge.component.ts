@@ -66,6 +66,13 @@ export function connectivityMeta(state: VehiclePresenceState, silenceLabel?: str
     case 'PARKED':
       // Garé en veille : gris = inactif, pas alarmant — comportement normal.
       return { label: 'Stationné', ...teintes('--texte-inactif'), borderStyle: 'solid', icon: Moon };
+    case 'PRESUMED_PARKED':
+      // TRK-046 — hors champ GPS dans un parking VALIDÉ : c'est le comportement normal de
+      // tous les GPS sous terre, PAS une panne. Même gris calme que « Stationné » (l'état
+      // est une variante de stationnement, pas un problème), même icône Moon — le libellé
+      // porte la nuance. Reprend la formulation déjà posée par la carte (« À l'arrêt ·
+      // parking souterrain ») pour ne pas créer une troisième écriture du même état.
+      return { label: 'Stationné · parking souterrain', ...teintes('--texte-inactif'), borderStyle: 'solid', icon: Moon };
     case 'OFFLINE':
       return { label: 'Hors ligne', ...teintes('--texte-attente'), borderStyle: 'solid', icon: WifiOff };
     case 'DORMANT':
@@ -109,6 +116,11 @@ export function connectivityTitle(state: VehiclePresenceState, silenceLabel?: st
     case 'AWAITING_GPS': return 'Connecté — en attente du fix GPS : le boîtier émet mais n\'a pas encore de lock satellite (intérieur / démarrage à froid / antenne). Mets-le à ciel ouvert.';
     case 'GPS_LOST': return 'GPS perdu — le boîtier communique toujours (réseau OK) mais n\'envoie plus de position GPS depuis un moment. Antenne débranchée/masquée ou véhicule sans vue ciel : à vérifier physiquement.';
     case 'PARKED': return 'Stationné — contact coupé, boîtier en veille (dernier signal > 15 min). Normal.';
+    case 'PRESUMED_PARKED':
+      return "Considéré stationné — le véhicule a perdu le GPS dans un lieu validé comme parking "
+        + "(souterrain/couvert) : comportement normal de tous les GPS sous terre, ce n'est pas une panne. "
+        + "La dernière vitesse affichée date d'AVANT l'entrée. S'il ressort en roulant hors horaire "
+        + "autorisé, une alerte « Sortie hors horaire » partira immédiatement.";
     case 'OFFLINE': return 'Hors ligne — coupé en roulant / débranché ou sans réseau depuis > 15 min';
     case 'DORMANT':
       // On DATE, on ne masque pas : le véhicule reste partout, avec la raison affichée.

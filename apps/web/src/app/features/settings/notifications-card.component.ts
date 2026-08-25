@@ -231,6 +231,10 @@ export const ALERT_TYPE_GROUPS: readonly AlertTypeGroup[] = [
       { type: 'GEOFENCE_ENTER', label: 'Entrée dans une zone', severity: 'warning', frequency: per30Days(27) },
       { type: 'GEOFENCE_EXIT', label: 'Sortie de zone', severity: 'warning', frequency: per30Days(27) },
       { type: 'MOVEMENT_IDLE', label: 'Mouvement moteur éteint', severity: 'warning', frequency: NEVER_OBSERVED },
+      // TRK-046 — filet de la présomption de stationnement (parking souterrain validé) :
+      // le véhicule hors champ GPS ressort en roulant pendant sa plage de coupure. Type
+      // neuf (2026-08-25), aucune fréquence encore mesurée par construction.
+      { type: 'OFF_SCHEDULE_MOVEMENT', label: 'Sortie hors horaire (hors champ GPS)', severity: 'critical', frequency: NEVER_OBSERVED },
       { type: 'IDLE_TIME', label: 'Arrêt prolongé', severity: 'info', frequency: NEVER_OBSERVED },
       { type: 'SURVEILLANCE_TRIGGERED', label: 'Surveillance déclenchée', severity: 'critical', frequency: NEVER_OBSERVED },
       { type: 'VIBRATION', label: 'Vibration détectée', severity: 'info', frequency: NEVER_OBSERVED },
