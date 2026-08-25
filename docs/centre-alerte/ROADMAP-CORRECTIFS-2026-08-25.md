@@ -191,8 +191,12 @@ Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
 4. 🗓️ **Test daté de l'option (b)** : recompter les connexions/minute au prochain audit. Si le
    churn est inchangé (~5-7/min), la cause n'est pas la taille du pool — le consigner, ne pas
    re-régler à l'aveugle.
-5. ⚠️ **Chaque redémarrage d'API déconnecte tous les utilisateurs** (`localStorage` perd jeton et
-   refresh) — c'est arrivé à 09:22. Défaut préexistant **non instruit** ; il mériterait sa fiche.
+5. ✅ ~~Chaque redémarrage d'API déconnecte tous les utilisateurs~~ — **instruit le 25/08 :
+   [TRK-050](REFERENCE-ERREURS.md#trk-050)**. Cause racine trouvée : le garde « un serveur
+   injoignable ne doit pas déconnecter » existe depuis le 03/08 mais n'est branché que sur le
+   chemin HTTP ; le chemin WebSocket (`realtime.service.ts:309-311`) l'ignore et jette des
+   identifiants parfaitement valides. 🔴 **Correctif écrit dans la fiche, PAS encore appliqué** —
+   c'est le prochain lot naturel.
 
 ## Journal de session
 
@@ -241,3 +245,6 @@ Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
   git y est propre et doit le rester). Smoke-boot avant bascule, orphelin nettoyé, API `healthy`.
   Attribution **prouvée** dans le journal et `pg_stat_activity`. ⚠️ L'effet sur le churn n'est PAS
   prouvé — le pool n'était pas saturé (0 erreur en 90 j) : dit tel quel plutôt que promis.
+- 2026-08-25 — **TRK-050 ouverte** : la déconnexion au redéploiement est instruite jusqu au code.
+  Diagnostic par ÉLIMINATION (Vizyo Auth, Redis et cookies tous intacts) : c est le client qui
+  efface ses propres identifiants valides. Correctif proposé, non appliqué.

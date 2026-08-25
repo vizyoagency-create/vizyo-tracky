@@ -43,6 +43,22 @@
   ],
   "fiches": [
     {
+      "id": "TRK-050",
+      "titre": "Chaque redemarrage de l API deconnecte tous les utilisateurs",
+      "source": "realtime-client",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-25",
+      "vuDerniere": "2026-08-25",
+      "occurrences": 7,
+      "occurrencesLibelle": "5 occurrences le 24 aout, 2 le 25. Mesure sur trois redemarrages : deux cas exploitables, ZERO session survivante (une seule session vivante a chaque fois — le fait mesure est deux sur deux, pas cent pour cent des utilisateurs).",
+      "quoi": "LE SERVEUR N A JAMAIS REFUSE LE JETON — C EST LE CLIENT QUI LE JETTE. Chaque redeploiement ejecte tous les utilisateurs vers la page de connexion, et leur navigateur perd a la fois le jeton et le refresh. L elimination est plus parlante que la mesure : le service qui EMET les jetons (Vizyo Auth) tourne sans interruption depuis le 24 aout, Redis depuis le 4 aout, le refresh vit dans un cookie, et cette API ne signe meme pas les jetons de session — elle delegue. Les identifiants etaient donc parfaitement valides pendant toute la panne. LA CAUSE EXACTE : quand le socket temps reel n arrive pas a se connecter, il tente un rafraichissement de jeton. Celui-ci rend la meme reponse vide pour deux situations tres differentes — un jeton refuse, et une API simplement injoignable. Le code compte ces echecs et, au troisieme, declare la session expiree et vide le stockage. Avec les delais de reconnexion par defaut, ces trois echecs tombent en environ sept secondes, largement sous les quinze secondes d une bascule. Et comme le socket est ouvert des la racine de l application, tout utilisateur connecte suit ce chemin. CE N EST PAS UN DEFAUT INCONNU, C EST UNE COUVERTURE INCOMPLETE. Le garde qui manque existe deja a dix metres, sur le chemin HTTP, avec un commentaire qui decrit mot pour mot ce defaut et le date du 3 aout : un serveur injoignable ne doit pas deconnecter. La lecon a ete apprise, ecrite, et appliquee a UN SEUL des deux chemins qui peuvent deconnecter. AGGRAVANT : le compteur d echecs n est jamais remis a zero lors d une reconnexion reussie. Il s accumule sur toute la duree de vie de l onglet, donc trois micro-coupures reseau espacees de plusieurs heures produisent la meme ejection, SANS aucun redemarrage.",
+      "quoiFaire": "CORRECTIF PAR SYMETRIE EXACTE AVEC LE CHEMIN HTTP, en trois points. UN : dans le gestionnaire d erreur de connexion du socket, ne pas compter un echec quand le drapeau serveur injoignable est leve — la session reste alors en place et la requete suivante retentera une fois l API revenue. DEUX : remettre le compteur d echecs a zero a chaque reconnexion reussie, a cote du compteur voisin qui l est deja. TROIS : poser le meme garde sur le second chemin de reconnexion, qui declare lui aussi la session expiree sans consulter le drapeau. VERIFICATION QUI PORTE SUR LA CAUSE : au prochain redeploiement, une session ouverte avant la bascule doit rester ouverte apres. La requete qui tranche compte les sessions demarrees avant la bascule et encore vues une minute apres ; elle rend zero aujourd hui, elle doit rendre plus que zero. NE PAS juger sur l absence de plainte : le defaut est silencieux, il n ecrit aucune ligne au centre d alerte et ne se voit que si quelqu un est connecte au moment exact de la bascule.",
+      "aNePasFaire": "NE PAS supprimer la declaration de session expiree du chemin temps reel : elle traite un cas reel, celui d un onglet carte laisse ouvert avec un refresh mort, sans lequel on boucle a l infini sur le rafraichissement. C est le DISCRIMINANT qui manque, pas la garde. NE PAS augmenter le seuil de trois echecs : cela deplacerait le probleme sans le traiter — un redeploiement plus long, ou trois hoquets cumules, le reproduiraient. NE PAS se fier a la fonction qui filtre les pannes reseau pour le SIGNALEMENT au centre d alerte : elle ne gouverne pas la decision de deconnecter. Deux garde-fous distincts existent contre le meme piege, et celui qui compte ici est le drapeau serveur injoignable. NE PAS conclure qu un test couvre ce chemin : aucun test ne porte aujourd hui sur le rafraichissement indisponible, la deconnexion ou l erreur de connexion du socket — c est ce qui a permis a la correction du 3 aout de laisser la moitie du probleme en place.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-050"
+    },
+    {
       "id": "TRK-049",
       "titre": "Un traitement de fond tournait invisible depuis la veille",
       "source": "observabilite",
@@ -1053,6 +1069,28 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-08-25",
+      "origine": "enquete",
+      "rapport": "REFERENCE-ERREURS.md",
+      "verdict": "La deconnexion au redeploiement est instruite (TRK-050) : le serveur n a jamais refuse les jetons — Vizyo Auth, Redis et les cookies etaient intacts — c est le client qui efface ses propres identifiants valides. Le garde qui l en empeche existe depuis le 3 aout, mais uniquement sur le chemin HTTP ; le chemin WebSocket l ignore.",
+      "chiffres": {
+        "redemarragesMesures": 3,
+        "casExploitables": 2,
+        "sessionsSurvivantes": 0,
+        "seuilEchecsAvantDeconnexion": 3,
+        "secondesAvantDeconnexion": 7,
+        "cheminsDeDeconnexionSansGarde": 2
+      },
+      "fiches": {
+        "nouvelles": 1,
+        "misesAJour": 0
+      },
+      "aTraiter": [
+        "TRK-050"
+      ],
+      "note": "Diagnostic obtenu par ELIMINATION plutot que par lecture de journal : le service qui emet les jetons tournait sans interruption, Redis aussi, et l API ne signe meme pas les jetons de session. Restait le client. Le motif est le meme que TRK-046 trouve la veille : un raisonnement corrige a un endroit et pas cherche ailleurs. Aggravant decouvert en route : le compteur d echecs n est jamais remis a zero a la reconnexion, donc trois micro-coupures espacees de plusieurs heures suffisent — sans aucun redemarrage. Aucun test ne couvre ce chemin."
+    },
     {
       "date": "2026-08-25",
       "origine": "passe de livraison",

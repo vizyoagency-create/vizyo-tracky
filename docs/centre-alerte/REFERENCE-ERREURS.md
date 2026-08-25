@@ -14,7 +14,7 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-25 (déploiement)** *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
+- Dernière mise à jour : **2026-08-25 (soir)** *(🆕 [TRK-050](#trk-050) — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
   🆕 [TRK-046](#trk-046) gravité 1, [TRK-047](#trk-047), [TRK-048](#trk-048) ; **5 statuts d'index
   périmés rectifiés** — TRK-015, TRK-018, TRK-025, TRK-026, TRK-045)*
 
@@ -1258,6 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-050](#trk-050) | `realtime-client` | **Chaque redémarrage d'API déconnecte TOUS les utilisateurs** — le garde « un serveur injoignable ne doit pas déconnecter » existe depuis le 03/08, mais uniquement sur le chemin HTTP : le chemin WebSocket l'ignore | 🔴 **NON CORRIGÉ · GRAVITÉ 2** *(nouvelle ; mesuré sur 3 redémarrages — 24/08 15:08, 25/08 09:22, 25/08 12:25 : **2 exploitables, 0 session survivante**. 🎯 **Les jetons n'ont JAMAIS été invalides** : Vizyo Auth (l'émetteur) tourne sans interruption depuis le 24/08 15:14, Redis depuis le 04/08, le refresh vit dans un cookie `tracky_rt` — c'est le CLIENT qui jette ses propres identifiants valides. Cause exacte : `realtime.service.ts:309-311`, le handler `connect_error` compte les échecs de `tryRefresh()` et appelle `handleSessionExpired()` au 3ᵉ (`MAX_CONNECT_REFRESH_FAILURES = 3`) **sans jamais tester `auth.refreshUnavailable()`** — le drapeau que l'intercepteur HTTP consulte, lui, en `auth.interceptor.ts:174`. `logout()` vide `TOKEN_KEY`/`REFRESH_KEY`/`USER_KEY` dans **les deux** stores, d'où « localStorage perd jeton ET refresh ». Avec les délais par défaut de socket.io (~1 s, 2 s, 4 s), les 3 échecs tombent en **~7 s** — largement sous les ~15 s d'un redéploiement. ⚠️ **Aggravant** : le handler `connect` remet `serverKickReconnects` à zéro mais **pas** `connectErrorRefreshFailures` — le compteur s'accumule sur toute la vie de l'onglet, donc trois micro-coupures espacées de plusieurs heures produisent la même déconnexion, sans aucun redémarrage. ⚠️ **Second chemin, même défaut** : `:477`. 🔑 **Ce n'est pas un défaut inconnu, c'est une COUVERTURE INCOMPLÈTE** — le commentaire de `auth.interceptor.ts:165-172` décrit ce défaut exact, corrigé pour HTTP après l'avoir constaté deux fois le 03/08)* | 2026-08-25 | 2026-08-25 |
 | [TRK-049](#trk-049) | *observabilité* | **La clôture des commandes moteur tournait INVISIBLE depuis le 24/08** — `@Cron` ajouté sans être inscrit au catalogue des traitements de fond | 🟢 **CORRIGÉ ET DÉPLOYÉ le 25/08** *(trouvé par le garde d'exhaustivité `catalogue-exhaustif.spec.ts`, **rouge depuis le déploiement du 24/08** : la campagne TRK-018 a ajouté `@Cron('0 */10 * * * *')` dans `engine-control.service.ts` sans l'inscrire. Vérifié sur la version SERVIE d'avant (`f508405`) : le cron y est, le catalogue ne le revendique pas → **défaut PRÉEXISTANT**, pas une régression de ce jour. Conséquence : la clôture des commandes moteur — le cœur de TRK-018, qui solde toutes les 10 min les coupures sans accusé — n'apparaissait pas dans `/admin/background-tasks` : personne ne pouvait voir qu'elle existait, donc personne n'aurait remarqué son arrêt. 🔑 **Profil exact de [TRK-008](#trk-008) et [TRK-043](#trk-043)** — un traitement qui travaille sans que son silence soit visible. ⚠️ **Le garde existait, il était rouge, et le déploiement du 24/08 est passé quand même** : *un test de complétude ne protège que si on lit son verdict*)* | 2026-08-25 | 2026-08-25 |
 | [TRK-046](#trk-046) | `schedule-cron` | **La coupe programmée est refusée sur une vitesse vieille de 7,7 h** — le garde `MAX_SPEED_FOR_CUT` lit `lastPosition.speedKmh` sans aucun test de fraîcheur | 🟢 **CORRIGÉ, FUSIONNÉ ET DÉPLOYÉ le 25/08 09:22 UTC** (PR #133) · ⚠️ **NON EXERCÉ — test daté ce soir** *(marqueurs vérifiés dans le `dist/` SERVI : `presomption-stationnement.js` présent, `PresumedParkedException` ×4, `sortie-hors-horaire.service.js` présent, `OFF_SCHEDULE_MOVEMENT` ×4 ; migration `20260825120000` appliquée, valeur d'enum présente en base ; api `healthy`, `restarts=0`. **0 `REJECTED_SPEED` depuis la bascule — mais ce zéro ne prouve RIEN encore** : FZ-862-VY a retrouvé son fix à 09:26 et il est 09:26 UTC, donc dans la plage autorisée — aucune coupe n'est tentée. 🗓️ **LE test daté : la coupe de 18:00 UTC ce soir.** 1 véhicule est hors champ à cette heure, 6 zones parking validées sur 6 véhicules)* · ancien statut : *(🟠 CORRECTIF PROPOSÉ — PR #133 *(politique élargie par le propriétaire : lieu VALIDÉ parking → CONSIDÉRÉ STATIONNÉ (exception typée, zéro commande, zéro alerte), lieu inconnu → report honnête « hors champ GPS depuis N min » — ⚠️ le correctif proposé initialement par l'audit (« autoriser la coupe si périmé ») était INSUFFISANT : un tunnel ne produit aucune position, le scan d'immobilité y est aveugle, donc jamais de coupe à l'aveugle en mouvement ; + alerte CRITICAL `OFF_SCHEDULE_MOVEMENT` à la réapparition en roulant hors plage (migration enum), état « Stationné · parking souterrain » liste/fiche/snapshot ; 4 tests vérifiés EN ÉCHEC sur l'ancien code)* · ancien statut : *(🔴 NON CORRIGÉ · GRAVITÉ 1 — nouvelle ; FZ-862-VY, **13 `REJECTED_SPEED` d'affilée du 24/08 20:00:11 au 25/08 01:02**, toutes citant `27.15 km/h` — la vitesse de sa **dernière position, datée du 24/08 17:29:47**. Le boîtier est ONLINE et émet, mais **sans fix GPS depuis 7,7 h** : l'horloge de sa vitesse s'est arrêtée. 🔑 **Jumeau exact du défaut FS-253 corrigé à moitié le 08/07** (commit `9ca272c1`) : le garde « stale » de `:388` exempte le SCHEDULER en expliquant qu'une vitesse figée « ne prouve AUCUN mouvement », et le garde `:448` relit la même valeur périmée soixante lignes plus bas, sans exemption. **Le raisonnement était juste, il n'a été appliqué qu'à un garde sur deux.** ⚠️ **PAS une régression du 24/08** — le code date du 08/07 ; ce qui est neuf est l'OCCASION (perdre son fix pendant que la dernière vitesse dépasse 20 km/h) : 0 `REJECTED_SPEED` les 8 jours précédents, puis 10 le 24/08 et 3 le 25/08. ⚠️ **TRK-029 ne rattrape pas** : `knownDeadline = false`, le libellé n'est pas un compte à rebours → backoff exponentiel, `stuckMinutes` 31 → **212**. ⚠️ **ne pas juger à la disparition des lignes `schedule-cron`** — elles disparaîtraient aussi si l'on cessait de demander la coupe)* | 2026-08-25 | 2026-08-25 |
 | [TRK-048](#trk-048) | *trackers* | **Un boîtier qui émet toutes les 20 s est enregistré à 1 s** — `currentFixIntervalS` n'est plus rafraîchi dès qu'il n'y a plus de fix GPS | 🟢 **CORRIGÉ, FUSIONNÉ, DÉPLOYÉ ET EXERCÉ le 25/08** (PR #134) *(marqueurs servis : `peremption-cadence.js` présent, `lastValidFrameAt` ×5 dans le balayage fix-mode. ✅ **EXERCÉ IMMÉDIATEMENT, sur le cas d'école lui-même** : FS-253-HR est toujours sans trame valide depuis **18,8 h** et porte toujours `currentFixIntervalS = 1` en base — le champ n'est volontairement PAS réécrit —, et la nouvelle section `cadence_reelle` le classe correctement : **5 émetteurs rapides RÉELS** (flotte en mouvement de jour, exonérés par la garde V1.19) et **2 vestiges** séparés. Le compteur naïf les aurait mélangés)* · ancien statut : *(🟠 CORRECTIF PROPOSÉ — PR #134 *(prédicat pur `cadenceMesurePerimee` — péremption = 3 × l'intervalle mesuré, plancher 3 min ; écrans admin : « non mesurable » au lieu du vestige ; balayage de récupération TRK-045 borné par `lastValidFrameAt` ≤ 5 min ; JAMAIS de réécriture du champ ; + section `cadence_reelle` ajoutée au SQL de collecte pour que l'audit cesse de compter les vestiges)* · ancien statut : *(🔴 NON CORRIGÉ · GRAVITÉ 2 · angle mort — nouvelle ; FS-253-HR mesuré à **200 trames/h pendant 10 h**, quatre trames consécutives à **20 s pile**, cible **20 s** — et `currentFixIntervalS` **= 1**. `lastValidFrameAt` figé au 24/08 14:40:03, `lastNoFixAt` qui avance à chaque trame : les trames sont des `L` sans fix. `reconcile()` ne recalcule que depuis `lastValidFrameAt` (`tracker-fix-mode.service.ts:609-619`), donc le champ dit « cadence au dernier fix », pas « cadence actuelle » — et rien ne distingue les deux. 🔑 **Le critère d'acceptation de TRK-045 est passé pour la MAUVAISE RAISON** : « boîtiers à ≤ 6 s : 0 ou 1 » a rendu **1**, mais ce 1 est un vestige, pas un émetteur rapide. *Un critère satisfait par une valeur périmée ne mesure rien.* Portée : **3 boîtiers sur 43** sous le plancher d'auto-alignement. Même famille que [TRK-024](#trk-024) — un état qui survit aux trames qui le démentent)* | 2026-08-25 | 2026-08-25 |
@@ -8232,6 +8233,152 @@ Après toute action : **l'intervalle entre deux trames d'un boîtier donné**, m
 revenir à la valeur demandée (± 20 %), **et** le débit horaire de la flotte doit retomber vers
 ~7 000 trames/h. ⚠️ **Un `trackersFailing` revenu à 0 ne prouve rien** — il retombe aussi quand la
 flotte roule, et il retomberait encore si l'on baissait simplement la cible.
+
+---
+
+## TRK-050
+
+**Signature** — *(aucune ligne d'erreur — la déconnexion est silencieuse)*
+`realtime-client | (aucune) | handleSessionExpired() sur API injoignable`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-08-25
+
+> ### Le serveur n'a jamais refusé le jeton. C'est le client qui le jette.
+
+### Ce que ça veut dire
+
+Chaque redéploiement de l'API éjecte **tous** les utilisateurs connectés vers `/login`, et leur
+`localStorage` perd à la fois le jeton et le refresh. Signalé comme « défaut préexistant non
+instruit » depuis le 24/08 (5 occurrences ce jour-là), il s'est reproduit **deux fois le 25/08**
+pendant les déploiements de cette journée. C'est ce qui a motivé cette fiche.
+
+### Ce qui est mesuré — et l'élimination est plus parlante que la mesure
+
+| Redémarrage | Sessions vivantes avant | Ont survécu |
+|---|---|---|
+| 24/08 15:08:43 *(déploiement TRK-018)* | 1 | **0** |
+| 25/08 09:22:13 *(déploiement des 3 PR)* | 0 *(non informatif)* | — |
+| 25/08 12:25:33 *(option (b) TRK-035)* | 1 | **0** |
+
+⚠️ **Échantillon petit — 1 session à chaque fois.** Le fait mesuré est « 2 cas exploitables sur 2 »,
+pas « 100 % des utilisateurs » : la plateforme compte 55 sessions par 24 h, mais peu de
+simultanéité. *Le fait vaut mieux que l'extrapolation.*
+
+**Ce qui rend le diagnostic certain, c'est l'élimination :**
+
+| Suspect | Verdict | Preuve |
+|---|---|---|
+| Le secret JWT change au boot | ❌ | Cette API **ne signe pas** les jetons de session : elle délègue à Vizyo Auth (`auth-client.service.ts`). Et `VIZYO_AUTH_JWT_ACCESS_SECRET` est un `z.string().min(1)` **sans défaut** — absent, l'API ne démarrerait pas |
+| Vizyo Auth a redémarré | ❌ | **debout sans interruption depuis le 24/08 15:14**, `restarts=0` |
+| Les refresh tokens vivaient en mémoire | ❌ | Ils vivent chez Vizyo Auth et dans un cookie `tracky_rt` ; aucun modèle Prisma, aucune `Map` en mémoire (`UserSession` est de la **télémétrie de présence**, pas de l'authentification) |
+| Redis a été vidé | ❌ | `tracky-redis` debout depuis le **04/08**, jamais redémarré |
+
+> 🎯 **Les identifiants étaient parfaitement valides pendant toute la panne.** Aucun étage serveur
+> ne les a refusés. C'est le client qui les a effacés — et c'est pour cela que le symptôme se lit
+> « déconnexion » alors qu'il n'y a jamais eu d'expiration.
+
+### Cause racine — le garde existe, il n'est branché que d'un côté
+
+`apps/web/src/app/core/services/realtime.service.ts:284-311` — handler `connect_error` :
+
+```ts
+const newToken = await this.auth.tryRefresh();   // → null si l'API est injoignable
+...
+if (refreshed) { this.connectErrorRefreshFailures = 0; return; }
+this.connectErrorRefreshFailures++;
+if (this.connectErrorRefreshFailures >= RealtimeService.MAX_CONNECT_REFRESH_FAILURES) {
+  this.handleSessionExpired();                    // ⬅ aucun test de refreshUnavailable()
+}
+```
+
+`handleSessionExpired()` (`:461-466`) appelle `auth.logout()`, qui efface `TOKEN_KEY`,
+`REFRESH_KEY` et `USER_KEY` dans **localStorage ET sessionStorage** (`auth.service.ts:256-268`) —
+exactement le symptôme rapporté.
+
+**Or le garde qui manque ici existe déjà à dix mètres**, dans `auth.interceptor.ts:174` :
+
+```ts
+// ⚠️ UN SERVEUR INJOIGNABLE NE DOIT PAS DÉCONNECTER.
+// `tryRefresh()` rend `null` aussi bien pour un jeton refusé que pour une API qui ne
+// répond pas. Traiter les deux pareil éjectait tous les utilisateurs connectés à CHAQUE
+// redéploiement — constaté deux fois le 2026-08-03 — et au moindre hoquet de réseau.
+if (auth.refreshUnavailable()) return throwError(() => error);
+```
+
+> 🔑 **Ce n'est pas un défaut inconnu : c'est une couverture incomplète.** Le commentaire ci-dessus
+> décrit *mot pour mot* le défaut d'aujourd'hui, et le nomme dès le 03/08. La leçon a été apprise,
+> écrite, testée — et appliquée à **un seul des deux chemins** qui peuvent déconnecter. *Un
+> raisonnement corrigé à un endroit n'est corrigé nulle part tant qu'on n'a pas cherché ses
+> jumeaux.* Même famille que [TRK-046](#trk-046), trouvé la veille sur le même motif.
+
+### Enchaînement, seconde par seconde
+
+1. L'API tombe → le socket casse → `reconnection: true` (aucun délai personnalisé, donc défauts
+   socket.io ≈ **1 s, 2 s, 4 s**) ;
+2. chaque `connect_error` appelle `tryRefresh()` → API injoignable → `null`, et
+   `_refreshUnavailable` est bien posé à `true` (`auth.service.ts:239`) — **mais personne ne le lit
+   sur ce chemin** ;
+3. `connectErrorRefreshFailures` atteint 3 en **~7 s**, bien avant la fin des ~15 s de bascule ;
+4. `handleSessionExpired()` → `logout()` → stores vidés → redirection `/login`.
+
+**Pourquoi TOUS les utilisateurs** : `app.ts:80` appelle `realtime.connect(token)` à la racine de
+l'application — pas seulement sur la carte. Tout utilisateur connecté a ce socket ouvert.
+
+### ⚠️ Aggravant : le compteur ne redescend jamais
+
+Le handler `connect` (`:262-268`) remet `serverKickReconnects` à zéro à chaque reconnexion
+réussie, mais **oublie `connectErrorRefreshFailures`**. Ce dernier n'est remis à zéro que par un
+refresh réussi ou par la déconnexion elle-même : **il s'accumule sur toute la durée de vie de
+l'onglet**. Trois micro-coupures réseau espacées de plusieurs heures produisent donc la même
+éjection — *sans aucun redémarrage d'API*. Cela élargit la fiche au-delà des déploiements.
+
+### Correctif proposé — par symétrie exacte avec le chemin HTTP
+
+1. **Ne pas compter un échec quand le serveur est injoignable**, dans `connect_error` :
+
+```ts
+if (this.auth.refreshUnavailable()) return;   // panne de transport : la session reste en place
+this.connectErrorRefreshFailures++;
+```
+
+2. **Remettre le compteur à zéro à la reconnexion**, aux côtés de `serverKickReconnects` :
+
+```ts
+this.socket.on('connect', () => {
+  this.serverKickReconnects = 0;
+  this.connectErrorRefreshFailures = 0;   // ⬅ manquant aujourd'hui
+  ...
+});
+```
+
+3. **Le même garde en `:477`** (`scheduleReconnectAfterServerKick`), qui appelle aussi
+   `handleSessionExpired()` sans consulter le drapeau.
+
+### 🗓️ Vérification — porte sur la CAUSE, pas sur l'affichage
+
+Au prochain redéploiement d'API, une session ouverte avant la bascule doit **rester ouverte**
+après : `SELECT count(*) FROM user_sessions WHERE "startedAt" < <bascule> AND "lastSeenAt" >
+<bascule> + 1 min` doit rendre **> 0** alors qu'il rend 0 aujourd'hui.
+
+⚠️ **Ne pas juger sur l'absence de plainte** : le défaut est silencieux (aucune ligne au centre
+d'alerte) et n'apparaît que si quelqu'un est connecté au moment exact de la bascule. C'est la
+requête ci-dessus qui tranche, pas le ressenti.
+
+### Ce qu'il ne faut PAS faire
+
+- ⚠️ **Ne pas supprimer `handleSessionExpired()` du chemin WebSocket** : il traite un cas réel
+  (refresh token mort sur un onglet carte laissé ouvert — commentaire `#9`, `:305-308`). Sans lui,
+  on boucle à l'infini sur `/auth/refresh`. C'est le **discriminant** qui manque, pas la garde.
+- ⚠️ **Ne pas augmenter `MAX_CONNECT_REFRESH_FAILURES`** : cela déplacerait le seuil sans traiter
+  la cause — un redéploiement plus long, ou trois hoquets cumulés, reproduiraient le défaut.
+- ⚠️ **Ne pas se fier à `shouldReportNetworkFailure`** (`api-fetch.ts:73`) : elle gouverne le
+  *signalement au centre d'alerte*, pas la décision de déconnecter. Deux garde-fous distincts
+  existent contre le même piège ; celui qui compte ici est `refreshUnavailable`.
+
+### Note de couverture
+
+`auth.interceptor.spec.ts` ne contient **aucun** test portant sur `refreshUnavailable`, `logout`
+ou `connect_error`. Le chemin WebSocket n'est retenu par aucun test — c'est ce qui a permis à la
+correction du 03/08 de laisser la moitié du problème en place sans que rien ne le signale.
 
 ---
 
