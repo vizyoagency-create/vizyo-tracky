@@ -203,6 +203,25 @@ WHERE t."desiredFixIntervalS" < 20
 GROUP BY 1, 2
 ORDER BY cible_s;
 
+\echo ### SECTION cadence_reelle
+-- TRK-048 — émetteurs réellement RAPIDES, mesure fraîche exigée.
+--
+-- ⚠️ `currentFixIntervalS` n'est recalculé qu'à partir de `lastValidFrameAt` : un boîtier hors
+-- champ GPS garde une valeur FIGÉE sur son dernier régime (FS-253-HR le 25/08 : « 1 s »
+-- enregistré en émettant à 20 s pile — et le critère de contrôle de TRK-045 est passé pour la
+-- mauvaise raison). Une cadence < 20 s implique une trame VALIDE toutes les < 20 s : on n'admet
+-- donc ici que les mesures soutenues par une trame valide de moins de 5 min. La colonne
+-- `dont_mesure_perimee` compte les VESTIGES — c'est elle qui dit combien le compteur naïf ment.
+SELECT count(*) FILTER (WHERE "currentFixIntervalS" < 20
+                          AND "lastValidFrameAt" > now() - interval '5 minutes') AS emetteurs_rapides_reels,
+       count(*) FILTER (WHERE "currentFixIntervalS" <= 6
+                          AND "lastValidFrameAt" > now() - interval '5 minutes') AS dont_a_6s_ou_moins,
+       count(*) FILTER (WHERE "currentFixIntervalS" < 20
+                          AND ("lastValidFrameAt" IS NULL
+                               OR "lastValidFrameAt" <= now() - interval '5 minutes')) AS dont_mesure_perimee,
+       count(*) FILTER (WHERE "currentFixIntervalS" IS NOT NULL) AS mesures_totales
+FROM trackers;
+
 \echo ### SECTION gps_sans_fix
 -- Boîtier vivant (trame récente) mais position figée > 1 h → famille TRK-001.
 SELECT t.imei, coalesce(v.plate, '-') AS plaque,
