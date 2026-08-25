@@ -16,7 +16,7 @@
 | 1 | Coupe programmée vs véhicule hors champ GPS : présomption de stationnement (parking validé), report honnête ailleurs, alerte de sortie hors horaire | TRK-046 | PR #133 | 🚀 **FUSIONNÉE ET DÉPLOYÉE** le 25/08 09:22 UTC · ⚠️ non exercé, test daté ce soir 18:00 |
 | 2 | Cadence enregistrée périmée : « non mesurable » plutôt qu'un chiffre faux | TRK-048 | PR #134 | 🚀 **DÉPLOYÉE ET EXERCÉE** — 5 émetteurs réels / 2 vestiges séparés |
 | 3 | Seuil anti-fausse-alerte du recalcul calibré sur les positions stockées | TRK-047 | PR #135 | 🚀 **FUSIONNÉE ET DÉPLOYÉE** · ⚠️ non exercé, test daté à 7 j |
-| 4 | Enquête : journalisation des connexions (volume ×3,4, fenêtre d'enquête) | TRK-035 (volet) | — (enquête) | ✅ **rendue** — 3 remèdes proposés, AUCUN appliqué (décision propriétaire) |
+| 4 | Enquête : journalisation des connexions (volume ×3,4, fenêtre d'enquête) | TRK-035 (volet) | — (enquête) | 🚀 **REMÈDE APPLIQUÉ le 25/08** — `rotate 14`, validé à blanc (exit 0) · ⚠️ 1ʳᵉ rotation réelle demain 00:00 UTC |
 | 5 🆕 | **Traitement de fond invisible depuis le 24/08** — trouvé en vérifiant le cumul | TRK-049 | `a8300adb` | 🚀 **CORRIGÉ ET DÉPLOYÉ** |
 
 ## 🚀 Déploiement du 25/08 — ce qui s'est passé
@@ -130,9 +130,42 @@ sur une fenêtre de 8 h 29 (2,06 Mo mesurés) :
 
 | Option | Effet | Coût / risque |
 |---|---|---|
-| **(a) Stanza logrotate dédiée** `tracky-postgres` (`rotate 14`) | témoin TRK-035 : ~2 semaines de mémoire | ~60-70 Mo de disque, zéro redémarrage — **la plus simple** |
-| (b) `application_name=tracky-api` (+ `connection_limit` calibré) dans `DATABASE_URL` | attribution nette ; moins de churn | redémarrage API (à coupler à un déploiement) ; calibrage du pool à mesurer (risque de famine sur les rafales) |
-| (c) Statu quo + moisson quotidienne par l'audit | mémoire longue déjà dans les rapports git | aucun — comportement actuel |
+| **(a) `rotate 14`** — ✅ **APPLIQUÉ le 25/08** | témoin TRK-035 : ~2 semaines de mémoire | ~130-250 Mo de disque sur 45 Go libres, zéro redémarrage |
+| (b) `application_name=tracky-api` (+ `connection_limit` calibré) dans `DATABASE_URL` | attribution nette ; moins de churn | redémarrage API (à coupler à un déploiement) ; calibrage du pool à mesurer (risque de famine sur les rafales) — **non appliqué** |
+| (c) Statu quo + moisson quotidienne par l'audit | mémoire longue déjà dans les rapports git | aucun — **conservé en complément** |
+
+### ✅ Remède (a) appliqué le 25/08 — mais PAS sous la forme annoncée, et voici pourquoi
+
+La recommandation initiale disait « **stanza dédiée** à `tracky-postgres` ». Testée à blanc avant
+toute écriture, elle a été **écartée sur deux mesures** :
+
+| Mesure | Verdict |
+|---|---|
+| `logrotate -d` avec les deux stanzas | `error: duplicate log entry` → **exit code 1 à chaque passage** |
+| Le chemin d'une stanza dédiée | embarque **l'ID du conteneur** |
+
+La seconde est la décisive : au premier `recreate` de `tracky-postgres` (mise à jour, changement
+de compose), la stanza pointerait dans le vide, `missingok` l'avalerait **en silence**, et la
+fenêtre retomberait à 3 jours **sans que rien ne le signale**. *Un correctif qui se désarme tout
+seul est pire que pas de correctif* — et un échec quotidien en code 1 masquerait de vraies pannes.
+
+**Appliqué à la place : `rotate 3` → `rotate 14` sur la stanza générique existante**
+(`/etc/logrotate.d/docker-containers`), qui est un **glob** : elle suit le conteneur quel que soit
+son ID, et couvre du même coup les 33 conteneurs de l'hôte (l'audit VPS y gagne aussi).
+
+| Contrôle | Résultat |
+|---|---|
+| Sauvegarde avant modification | `/root/backups-config/docker-containers.avant-rotate14.2026-08-25` |
+| `logrotate -d /etc/logrotate.conf` (config entière, à blanc) | **exit 0**, aucune erreur, aucun doublon |
+| Règle vue par logrotate | `after 1 days (14 rotations)` |
+| Journal de `tracky-postgres` couvert | ✅ |
+| Déclencheur | `logrotate.timer` **enabled + active**, dernier passage `SUCCESS` |
+| Coût projeté | 11 Mo courants (33 conteneurs) + ~8,7 Mo/génération → **~130 Mo**, jusqu'à ~250 Mo si le rythme actuel de postgres tient. **45 Go libres.** |
+
+⚠️ **Ce qui n'est pas encore prouvé** : la validation est un **essai à blanc**. La première
+rotation réelle a lieu **demain 00:00 UTC**. 🗓️ **Test daté** : à partir du 27/08, le journal de
+`tracky-postgres` doit porter des fichiers `.log.4` et au-delà — aujourd'hui il s'arrête à `.log.3`.
+Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
 
 ## Ce qui reste ouvert par ailleurs (non demandé explicitement dans cette session)
 
@@ -150,8 +183,11 @@ sur une fenêtre de 8 h 29 (2,06 Mo mesurés) :
 2. 🗓️ **Lire le verdict du test daté après la coupe de 18:00 UTC** (l'audit de cette nuit le fera).
    FZ-862-VY est ressorti seul ce matin ; son lieu de perte n'a pas encore de zone validée, il
    passera donc au report honnête tant que le lieu n'est pas qualifié.
-3. **Choisir un remède de journalisation** (a/b/c ci-dessus) — recommandation : (a), simple et
-   sans redémarrage. *Seul point encore ouvert de cette session.*
+3. ✅ ~~Choisir un remède de journalisation~~ — **(a) appliqué le 25/08** (`rotate 14`, glob
+   générique plutôt que stanza dédiée : voir le pourquoi ci-dessus). 🗓️ À confirmer le 27/08 :
+   des fichiers `.log.4` et au-delà doivent apparaître. L'option (b) — `application_name` et
+   calibrage du pool dans `DATABASE_URL` — **reste ouverte** : elle exige un redémarrage d'API et
+   une mesure dédiée du pool, à coupler à un prochain déploiement.
 4. ⚠️ **Chaque redémarrage d'API déconnecte tous les utilisateurs** (`localStorage` perd jeton et
    refresh) — c'est arrivé à 09:22. Défaut préexistant **non instruit** ; il mériterait sa fiche.
 
@@ -194,3 +230,6 @@ sur une fenêtre de 8 h 29 (2,06 Mo mesurés) :
 - 2026-08-25 — **DÉPLOIEMENT** : 3 PR fusionnées, cumul vérifié (181 suites / 2 709 tests),
   TRK-049 trouvée et corrigée en route, build séquentiel + smoke-boot jetable, api/web basculés,
   marqueurs vérifiés sur l'artefact servi, migration appliquée. Documentation republiée.
+- 2026-08-25 — **Remède journalisation appliqué** : `rotate 3` → `rotate 14` sur la stanza
+  générique (la stanza dédiée a été testée puis écartée — doublon en exit 1 et fragilité à l'ID
+  du conteneur). Sauvegarde posée, config validée à blanc en exit 0. Test daté au 27/08.

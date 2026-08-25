@@ -6143,13 +6143,38 @@ la causalité était fausse.**
 `log_statement=none` — les requêtes ratées de la collecte du matin ont écrit ~630 Ko à elles
 seules. Une raison de plus de tester le SQL d'audit avant de le lancer.)*
 
-### Remèdes possibles — décision du propriétaire, rien n'a été touché
+### Remèdes possibles — décision du propriétaire
 
 | Option | Effet | Coût / risque |
 |---|---|---|
-| **(a) Stanza logrotate dédiée** pour `tracky-postgres` (`rotate 14`) | fenêtre du témoin TRK-035 portée à ~2 semaines | ~60-70 Mo de disque, zéro redémarrage — **la plus simple** |
-| (b) `application_name=tracky-api` (+ éventuel `connection_limit`) dans `DATABASE_URL` | attribution nette dans les journaux et `pg_stat_activity` ; moins de churn si le pool est calibré | redémarrage API requis (à coupler au prochain déploiement) ; le calibrage du pool demande une mesure dédiée (risque de famine sur les rafales de crons) |
-| (c) Statu quo + moisson quotidienne par l'audit | la mémoire longue vit déjà dans les rapports git | aucun — c'est le comportement actuel |
+| **(a) `rotate 14`** — ✅ **APPLIQUÉ le 25/08** | fenêtre du témoin TRK-035 portée à ~2 semaines | ~130-250 Mo sur 45 Go libres, zéro redémarrage |
+| (b) `application_name=tracky-api` (+ éventuel `connection_limit`) dans `DATABASE_URL` | attribution nette dans les journaux et `pg_stat_activity` ; moins de churn si le pool est calibré | redémarrage API requis (à coupler au prochain déploiement) ; le calibrage du pool demande une mesure dédiée (risque de famine sur les rafales de crons) — **non appliqué** |
+| (c) Statu quo + moisson quotidienne par l'audit | la mémoire longue vit déjà dans les rapports git | **conservé en complément** |
+
+### ✅ Le remède appliqué — et pourquoi PAS sous la forme recommandée
+
+La recommandation disait « stanza dédiée à `tracky-postgres` ». **Testée à blanc avant toute
+écriture, elle a été écartée sur deux mesures** :
+
+1. `logrotate -d` avec les deux stanzas rend `error: duplicate log entry` et **sort en code 1** —
+   un échec quotidien qui masquerait de vraies pannes ;
+2. le chemin d'une stanza dédiée **embarque l'ID du conteneur**. Au premier `recreate` de
+   `tracky-postgres`, elle pointerait dans le vide, `missingok` l'avalerait **en silence**, et la
+   fenêtre retomberait à 3 jours sans que rien ne le signale.
+
+> 🔑 **Un correctif qui se désarme tout seul est pire que pas de correctif.** C'est la même famille
+> que les cinq statuts périmés du 24/08 et que le garde rouge de [TRK-049](#trk-049) : un
+> dispositif qui a l'air en place et ne l'est plus.
+
+Appliqué à la place : **`rotate 3` → `rotate 14` sur la stanza générique** — un **glob**, donc
+insensible à l'ID du conteneur, et qui couvre les 33 conteneurs de l'hôte. Sauvegarde posée
+(`/root/backups-config/docker-containers.avant-rotate14.2026-08-25`), config entière validée à
+blanc : **exit 0**, `after 1 days (14 rotations)`, journal de `tracky-postgres` couvert,
+`logrotate.timer` actif.
+
+⚠️ **La validation est un essai à blanc — la première rotation réelle a lieu le 26/08 à 00:00 UTC.**
+🗓️ **Test daté au 27/08** : le journal de `tracky-postgres` doit porter des fichiers `.log.4` et
+au-delà. Il s'arrête aujourd'hui à `.log.3` ; si le compte y reste, la ligne n'a pas pris effet.
 
 ---
 
