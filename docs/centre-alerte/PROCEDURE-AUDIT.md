@@ -597,6 +597,31 @@ disparaît en silence**. Après édition, vérifier :
 node -e "JSON.parse(require('fs').readFileSync('docs/centre-alerte/app/wiki.json','utf8')); console.log('JSON valide')"
 ```
 
+### ⚠️ Et les TROIS surfaces doivent dire la même chose (depuis le 2026-08-25)
+
+Le statut d'une fiche est écrit à TROIS endroits qu'aucun mécanisme ne relie : **l'index**
+(tenu à l'étape 10), **l'en-tête de la fiche** (`**Statut : …`, écrit à sa CRÉATION) et
+**`app/wiki.json`**. Le 25/08, **24 fiches se contredisaient** : TRK-021 était faux *dans les
+deux sens*, TRK-027 annoncé corrigé sans que rien ne l'ait été, et TRK-012 donnait **trois
+réponses en même temps**. Un statut faux ne fait pas perdre du temps : il fait PRENDRE UNE
+DÉCISION FAUSSE, car on ne rouvre pas une fiche qu'on croit close.
+
+🚨 **Mettre à jour l'index et le manifeste NE SUFFIT PAS : retoucher aussi l'en-tête de la
+fiche.** C'est la seule surface qui ne se met jamais à jour toute seule — quand un correctif
+arrive, on pose une *section datée* sous la fiche, et l'en-tête reste figé à sa rédaction
+initiale, parfois plusieurs semaines.
+
+Un test le vérifie mécaniquement. **À lancer après toute modification de statut :**
+
+```bash
+cd apps/api && npx jest src/observability/centre-alerte-coherence.spec.ts -w=1
+```
+
+S'il tombe, il **nomme** chaque fiche et ses trois valeurs. Trancher alors par le **code
+déployé** (`git merge-base --is-ancestor <commit-de-la-PR> HEAD`) et par la **mesure en
+base** — jamais par une autre fiche. Conserver l'ancien libellé en clair dans l'en-tête
+rectifié : on corrige la surface, on n'efface pas l'historique.
+
 ---
 
 ## 12. Restituer
