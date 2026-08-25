@@ -97,7 +97,21 @@ services:
       - .env.prod
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tracky-postgres:5432/${POSTGRES_DB}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tracky-postgres:5432/${POSTGRES_DB}?schema=public&application_name=tracky-api&connection_limit=10
+      # TRK-035 — application_name : SANS LUI, LE JOURNAL NE PEUT PAS NOMMER L APPELANT.
+      # La journalisation des connexions posee le 25/08 sert a identifier un tiers apres coup.
+      # Elle montrait 544 connexions depuis 172.23.0.3 sans pouvoir dire QUI : la sonde de sante,
+      # elle, se nommait deja (pg_isready). Postgres inscrit application_name sur chaque ligne
+      # << connection authorized >>, donc ce simple libelle rend le trafic applicatif attribuable.
+      #
+      # connection_limit : la valeur EXPLICITE remplace un defaut DERIVE DU NOMBRE DE COEURS
+      # (Prisma : 2*cpus+1, soit 5 sur ce VPS a 2 vCPU). Un redimensionnement du VPS changerait
+      # donc le pool en silence. 10 sur 97 connexions utilisables (max_connections=100 moins 3
+      # reservees) laisse une marge confortable.
+      # /!\ CE N EST PAS UN CORRECTIF DE PANNE : mesure le 25/08, le pool de 5 n etait PAS sature
+      # (0 erreur << timed out fetching a connection >> dans les journaux API, 0 en 90 jours de
+      # error_logs). L effet sur le churn de connexions (~5-7/min) est une HYPOTHESE a mesurer,
+      # pas une promesse.
       REDIS_URL: redis://redis:6379
       API_PORT: 3000
       TRACKER_TCP_PORT: 5023
