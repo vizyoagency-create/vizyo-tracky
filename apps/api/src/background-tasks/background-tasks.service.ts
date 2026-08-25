@@ -113,6 +113,23 @@ const CATALOG: CatalogEntry[] = [
     periodic: { everyMs: 600_000, offsetMs: 45_000 },
   },
   {
+    /**
+     * TRK-018 — inscrit le 2026-08-25, alors que le cron tourne en production depuis le 24/08.
+     *
+     * ⚠️ Le garde d'exhaustivité (`catalogue-exhaustif.spec.ts`) était ROUGE depuis ce
+     * déploiement : la campagne du 24/08 a ajouté ce `@Cron` sans l'inscrire ici, et la
+     * clôture des commandes moteur — le cœur même de TRK-018 — tournait donc INVISIBLE sur
+     * `/admin/background-tasks`. Exactement ce que ce garde existe pour empêcher, et exactement
+     * le profil de TRK-008/TRK-043 : un traitement qui travaille sans que personne puisse voir
+     * qu'il s'est arrêté. *Un test de complétude ne protège que si on lit son verdict.*
+     */
+    id: 'engine-command-expiry',
+    source: 'engine-control/engine-control.service.ts', label: 'Fin de vie des commandes moteur', category: 'Sécurité & moteur',
+    kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: false,
+    purpose: 'Solde les coupures/rétablissements moteur restés « envoyés » sans accusé au-delà de 30 min : ils passent en « envoyée, non confirmée ». Sans lui, la file ne se vide jamais (313 commandes ouvertes mesurées le 24/08) et l\'écran ne distingue plus « a échoué » de « nul ne sait ».',
+    periodic: { everyMs: 600_000, offsetMs: 0 },
+  },
+  {
     id: 'trips-timeout',
     source: 'trips/trips.service.ts', label: 'Clôture des trajets en cours', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'moyenne', antiOverlap: false,
