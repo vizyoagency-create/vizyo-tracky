@@ -662,6 +662,22 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
       expect(ageMs).toBeLessThanOrEqual(5 * 60 * 1000);
     });
 
+    it('🔴 TRK-048 — BORNE lastValidFrameAt : la MESURE doit etre fraiche, pas seulement le boitier', async () => {
+      // FS-253-HR, mesure le 25/08 : hors champ GPS (trames L), il emettait a 20 s pile et
+      // gardait un `currentFixIntervalS` FIGE a 1 s — le vestige de l'episode TRK-045. Sans
+      // cette borne, le balayage lui envoyait une commande de « recuperation » pour un etat
+      // qui n'existait plus. Une cadence < 20 s implique une trame VALIDE toutes les < 20 s :
+      // si la derniere date de plus de 5 min, la valeur ne decrit plus le present.
+      const { svc, prisma } = build();
+      await svc.expireStaleFixCommands();
+
+      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      expect(where.lastValidFrameAt?.gt).toBeInstanceOf(Date);
+      const ageMs = Date.now() - (where.lastValidFrameAt.gt as Date).getTime();
+      expect(ageMs).toBeGreaterThan(4.5 * 60 * 1000);
+      expect(ageMs).toBeLessThanOrEqual(5 * 60 * 1000);
+    });
+
     it('force une commande vers la cible COURANTE, deja normalisee a <= 99 s', async () => {
       const { svc, prisma } = build();
       prisma.tracker.findMany.mockResolvedValue([bloque()]);

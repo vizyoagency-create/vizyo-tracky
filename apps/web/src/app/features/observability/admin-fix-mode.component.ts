@@ -95,9 +95,16 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             </div>
             <div>
               <div class="text-xs text-fg-tertiary uppercase">Réel observe</div>
-              <div class="font-mono font-bold">
-                {{ s.currentFixIntervalS ?? '—' }}{{ s.currentFixIntervalS != null ? 's' : '' }}
-              </div>
+              <!-- TRK-048 — une mesure sans trame valide recente est un VESTIGE (FS-253-HR :
+                   « 1 s » affiche en emettant a 20 s pile). On ecrit « non mesurable »,
+                   jamais un chiffre faux : l'information juste est l'absence d'information. -->
+              @if (s.currentFixIntervalPerime) {
+                <div class="font-bold text-fg-tertiary" title="Aucune trame GPS valide récente : la dernière mesure ne décrit plus le présent (boîtier hors champ ou muet).">non mesurable</div>
+              } @else {
+                <div class="font-mono font-bold">
+                  {{ s.currentFixIntervalS ?? '—' }}{{ s.currentFixIntervalS != null ? 's' : '' }}
+                </div>
+              }
             </div>
             <div>
               <div class="text-xs text-fg-tertiary uppercase">Dernière sync</div>
@@ -306,6 +313,9 @@ export class AdminFixModeComponent implements OnInit {
   readonly pendingDelta = computed(() => {
     const s = this.state();
     if (!s) return false;
+    // TRK-048 — un ecart calcule sur une mesure perimee accuserait un boitier sur un
+    // vestige : pas de delta tant que la mesure ne decrit pas le present.
+    if (s.currentFixIntervalPerime) return false;
     return s.currentFixIntervalS != null && s.desiredFixIntervalS !== s.currentFixIntervalS;
   });
 

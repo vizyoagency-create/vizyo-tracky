@@ -547,6 +547,13 @@ export class TrackerFixModeService {
           currentFixIntervalS: { lt: AUTO_ALIGN_FLOOR_S, not: null },
           // Socket vivante : seule condition sous laquelle le repli SMS est impossible.
           lastSeenAt: { gt: new Date(Date.now() - 5 * 60 * 1000) },
+          // TRK-048 — la MESURE doit être fraîche, pas seulement le boîtier : un tracker
+          // hors champ GPS (trames L) garde un `currentFixIntervalS` FIGÉ sur son dernier
+          // régime — FS-253-HR affichait 1 s en émettant à 20 s pile. Lui envoyer une
+          // commande de « récupération » traiterait un vestige, pas un état. Une cadence
+          // sous le plancher (< 20 s) implique une trame valide toutes les < 20 s : si la
+          // dernière date de plus de 5 min, la valeur ne décrit plus le présent.
+          lastValidFrameAt: { gt: new Date(Date.now() - 5 * 60 * 1000) },
         },
         include: { vehicle: { include: { fleet: true } } },
         take: 50,

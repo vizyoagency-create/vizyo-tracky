@@ -19,6 +19,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { cadenceMesurePerimee } from './peremption-cadence';
 
 const OFFLINE_THRESHOLD_MS = 60 * 60 * 1000; // 1h
 const PENDING_THRESHOLD_MS = 10 * 60 * 1000; // 10 min
@@ -279,6 +280,11 @@ export class AdminAlertsController {
         fixCommandFailureCount: t.fixCommandFailureCount,
         desiredFixIntervalS: t.desiredFixIntervalS,
         currentFixIntervalS: t.currentFixIntervalS,
+        // TRK-048 — la cadence est une MESURE : sans trame valide récente, elle est un
+        // vestige (FS-253-HR : « 1 s » affiché en émettant à 20 s pile). L'écran doit
+        // rendre « non mesurable », jamais un chiffre faux.
+        currentFixIntervalPerime: cadenceMesurePerimee(t),
+        lastValidFrameAt: t.lastValidFrameAt?.toISOString() ?? null,
         lastSeenAt: t.lastSeenAt?.toISOString() ?? null,
         lastFixIntervalSyncAt: t.lastFixIntervalSyncAt?.toISOString() ?? null,
       })),
