@@ -70,6 +70,11 @@ enum AlertType {
   IDLE_TIME
   SURVEILLANCE_TRIGGERED
   MAINTENANCE_DUE
+  /// TRK-046 — un vehicule HORS CHAMP GPS (parking souterrain valide, tunnel...) reapparait
+  /// EN ROULANT pendant la plage ou son planning le veut immobilise. C'est le filet de
+  /// securite de la presomption de stationnement : la coupe programmee ne l'a pas atteint
+  /// (on le savait), sa sortie hors horaire, elle, ne passe pas inapercue.
+  OFF_SCHEDULE_MOVEMENT
   /// A6 arbitrage J — la flotte n'a pas de grille tarifaire active. Seule alerte de
   /// ce catalogue qui ne vienne PAS d'un boîtier : elle porte donc un `vehicleId`
   /// nul, ce que le centre d'alertes sait déjà afficher. Elle n'immobilise rien —

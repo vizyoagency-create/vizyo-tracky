@@ -19,6 +19,10 @@ export type AlertType =
   | 'FATIGUE'
   | 'ILLEGAL_IGNITION'
   | 'GPS_LOST'
+  // TRK-046 — filet de la présomption de stationnement : un véhicule hors champ GPS
+  // (parking souterrain validé) réapparaît EN ROULANT pendant la plage où son planning
+  // le veut immobilisé. CRITICAL, produit par l'ingestion (sortie-hors-horaire.service).
+  | 'OFF_SCHEDULE_MOVEMENT'
   | 'IDLE_TIME'
   | 'SURVEILLANCE_TRIGGERED'
   // Présent dans l'enum Prisma `AlertType` mais absent ici jusqu'ici : une alerte

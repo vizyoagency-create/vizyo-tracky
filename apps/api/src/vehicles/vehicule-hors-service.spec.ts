@@ -35,6 +35,8 @@ function build(vehiculeExistant: Record<string, unknown> | null = {
   const systemActivity = { record: jest.fn() };
   const svc = new VehiclesService(
     prisma as never, cache as never, {} as never, systemActivity as never,
+    // TRK-046 — GpsDeadZonesService : aucune zone dans ces scénarios hors-service.
+    { zonesParkingParVehicule: jest.fn().mockResolvedValue(new Map()), matchAmong: jest.fn().mockReturnValue(null) } as never,
   );
   return { svc, prisma, cache, systemActivity, update };
 }

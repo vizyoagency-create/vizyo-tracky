@@ -15,7 +15,7 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
-import { EngineControlService } from './engine-control.service';
+import { EngineControlService, PresumedParkedException } from './engine-control.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { computeNextTransition } from '../vehicle-schedules/schedule-evaluator';
 
@@ -1063,6 +1063,134 @@ describe('EngineControlService', () => {
     ).rejects.toThrow(ForbiddenException);
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ status: CommandStatus.REJECTED_SPEED, lastError: expect.stringContaining('Position trop ancienne') }),
+    });
+  });
+
+  /**
+   * ── TRK-046 : LA VITESSE FIGÉE D'UN VÉHICULE HORS CHAMP NE DÉCIDE PLUS ──────────────────
+   *
+   * Mesuré en production le 25/08 (FZ-862-VY) : entré dans un souterrain à 27,15 km/h, plus
+   * un fix pendant 7,7 h, et 13 refus « Vitesse trop élevée : 27.15 km/h » d'affilée sur une
+   * vitesse datée de la veille. Le lieu de la perte décide désormais :
+   *   parking VALIDÉ → considéré stationné (exception typée, rien de persisté) ;
+   *   lieu inconnu   → report honnête (jamais de coupe à l'aveugle : un tunnel ne produit
+   *                    AUCUNE position, le scan d'immobilité y est aveugle par construction).
+   *
+   * ⚠️ Les fixtures portent les champs TRACKER réels du hors-champ (lastNoFixAt frais +
+   * lastPositionAt périmé) : SCH-5 ci-dessus reste sur l'ancien chemin précisément parce que
+   * sa fixture n'a PAS ces champs — un harnais qui les omettrait rendrait cette logique
+   * invisible (le piège « mock manquant » payé trois fois le 24/08).
+   */
+  const horsChampTracker = (overrides: Record<string, unknown> = {}) => ({
+    ...trackerWithVehicle,
+    status: 'ONLINE',
+    lastSeenAt: new Date(),                                     // le boîtier parle (trames L)
+    lastNoFixAt: new Date(),                                    // ...sans lock satellite
+    lastPositionAt: new Date(Date.now() - 7.7 * 3600 * 1000),   // dernière position : 7,7 h
+    lastKnownIgnition: true,
+    lastLat: 33.5,
+    lastLng: -7.6,
+    powerLossSuspectAt: null,
+    ...overrides,
+  });
+  const zoneParkingValidee = {
+    id: '00000000-0000-0000-0000-000000000070',
+    vehicleId: VEHICLE_ID,
+    fleetId: FLEET_ID,
+    status: 'CONFIRMED_BENIGN',
+    label: 'UNDERGROUND_PARKING',
+    placeLabel: 'Centre commercial',
+    centroidLat: 33.5,
+    centroidLng: -7.6,
+    radiusM: 40,
+  };
+
+  // SCH-7 (le bug TRK-046, test écrit AVANT le correctif et vérifié EN ÉCHEC sur l'ancien
+  // code : il persistait une REJECTED_SPEED « Vitesse trop élevée : 27.15 km/h »).
+  it('TRK-046: defers (no REJECTED_SPEED) a SCHEDULER CUT on a GPS-dark vehicle with stale speed > 20', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(horsChampTracker());
+    prisma.position.findFirst.mockResolvedValue(recentPosition(27.15, 7.7 * 3600 * 1000));
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(/hors champ GPS/);
+    // La cause honnête nomme la durée et disqualifie la vitesse — plus jamais « Vitesse trop élevée ».
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
+  // SCH-8. Lieu VALIDÉ parking → considéré stationné : exception TYPÉE (le cron la traite
+  // comme un état calme), aucune commande, aucun refus persisté.
+  it('TRK-046: presumes PARKED (typed exception, nothing persisted) when the loss anchor is a validated parking', async () => {
+    const deadZones = testModule.get(GpsDeadZonesService) as { matchZoneForPoint: jest.Mock };
+    deadZones.matchZoneForPoint.mockResolvedValue(zoneParkingValidee);
+    prisma.tracker.findFirst.mockResolvedValue(horsChampTracker());
+    prisma.position.findFirst.mockResolvedValue(recentPosition(27.15, 7.7 * 3600 * 1000));
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(PresumedParkedException);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(/considéré stationné/);
+    expect(deadZones.matchZoneForPoint).toHaveBeenCalledWith(VEHICLE_ID, 33.5, -7.6);
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
+  // SCH-9. Soupçon de coupure d'alimentation (TRK-040) → JAMAIS de présomption, même en zone
+  // validée : un boîtier peut-être en train de mourir débranché n'est pas « stationné ».
+  it('TRK-046: never presumes parked while a power-loss suspicion is open (falls back to honest deferral)', async () => {
+    const deadZones = testModule.get(GpsDeadZonesService) as { matchZoneForPoint: jest.Mock };
+    deadZones.matchZoneForPoint.mockResolvedValue(zoneParkingValidee);
+    prisma.tracker.findFirst.mockResolvedValue(horsChampTracker({ powerLossSuspectAt: new Date() }));
+    prisma.position.findFirst.mockResolvedValue(recentPosition(27.15, 7.7 * 3600 * 1000));
+    const err: unknown = await service
+      .requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER')
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err).not.toBeInstanceOf(PresumedParkedException); // report honnête, pas une présomption
+    expect((err as Error).message).toMatch(/hors champ GPS/);
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
+  // SCH-10. Zone bénigne mais PAS parking (tunnel) → pas de présomption : seul un parking
+  // rend la perte attendue sans limite (même sémantique que gps-integrity / le front).
+  it('TRK-046: a benign non-parking zone (TUNNEL) does not presume parked', async () => {
+    const deadZones = testModule.get(GpsDeadZonesService) as { matchZoneForPoint: jest.Mock };
+    deadZones.matchZoneForPoint.mockResolvedValue({ ...zoneParkingValidee, label: 'TUNNEL' });
+    prisma.tracker.findFirst.mockResolvedValue(horsChampTracker());
+    prisma.position.findFirst.mockResolvedValue(recentPosition(27.15, 7.7 * 3600 * 1000));
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(/hors champ GPS/);
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
+  // SCH-11. Hors champ mais perdu À L'ARRÊT (vitesse figée ≤ 5), lieu inconnu → chemin de
+  // juillet (FS-253) CONSERVÉ : le scan d'immobilité ne trouve rien, la coupe part.
+  it('TRK-046: still ALLOWS the cut when the vehicle went dark at rest (July behaviour preserved)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(horsChampTracker());
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0, 7.7 * 3600 * 1000)) // perdu à l'arrêt
+      .mockResolvedValueOnce(null); // aucun mouvement dans la fenêtre 10 min
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ServiceUnavailableException); // passe les gardes → échoue au dispatch offline
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING, source: 'SCHEDULER' }),
+    });
+  });
+
+  // SCH-12. ASYMÉTRIE SACRÉE : un RESTORE n'est JAMAIS retenu par la présomption — rater une
+  // coupe est un désagrément, rater une restauration immobilise un véhicule.
+  it('TRK-046: RESTORE is never held back by the parked presumption', async () => {
+    const deadZones = testModule.get(GpsDeadZonesService) as { matchZoneForPoint: jest.Mock };
+    deadZones.matchZoneForPoint.mockResolvedValue(zoneParkingValidee);
+    prisma.tracker.findFirst.mockResolvedValue(horsChampTracker());
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ServiceUnavailableException); // la commande PART (échec dispatch offline)
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING, action: EngineAction.RESTORE }),
     });
   });
 

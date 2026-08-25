@@ -59,6 +59,7 @@ import {
   formatSilenceLabel,
   getVehicleConnectivityState,
   getVehiclePresenceState,
+  overlayPresumedParked,
   isInstallationToReview,
   isVehicleDormant,
   type VehicleConnectivityState,
@@ -267,6 +268,10 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                 @if (currentPosition(); as pos) {
                   <span class="vdx-stat-v--sm vdx-stale-v">{{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span></span>
                 } @else { — }
+              } @else if (presence() === 'PRESUMED_PARKED') {
+                <!-- TRK-046 — considéré stationné (parking validé) : la vitesse d'entrée est un
+                     vestige (27 km/h figés sur FZ-862-VY), on affiche l'état réel, calmement. -->
+                <span class="vdx-stat-v--sm" style="color:var(--texte-inactif);font-weight:700">À l'arrêt</span>
               } @else if (connectivity() === 'GPS_LOST') {
                 <!-- Incident FS-253 — GPS perdu : la vitesse est FIGÉE, on ne l'affiche PAS comme du live. -->
                 <span class="vdx-stat-v--sm" style="color:var(--texte-alerte);font-weight:700">GPS perdu</span>
@@ -2423,13 +2428,18 @@ export class VehicleDetailComponent implements OnInit {
    */
   protected readonly presence = computed<VehiclePresenceState>(() => {
     const v = this.vehicle();
-    return getVehiclePresenceState({
-      trackerId: v?.tracker?.id ?? null,
-      lastSeenAt: this.freshestLastSeen(),
-      lastPositionAt: v?.tracker?.lastPositionAt ?? null,
-      lastNoFixAt: v?.tracker?.lastNoFixAt ?? null,
-      lastIgnition: this.currentPosition()?.ignition ?? v?.tracker?.lastKnownIgnition ?? null,
-    });
+    // TRK-046 — le serveur a qualifié le lieu : « considéré stationné » remplace le
+    // tri-état calculé (fiche et liste ne doivent jamais se contredire).
+    return overlayPresumedParked(
+      getVehiclePresenceState({
+        trackerId: v?.tracker?.id ?? null,
+        lastSeenAt: this.freshestLastSeen(),
+        lastPositionAt: v?.tracker?.lastPositionAt ?? null,
+        lastNoFixAt: v?.tracker?.lastNoFixAt ?? null,
+        lastIgnition: this.currentPosition()?.ignition ?? v?.tracker?.lastKnownIgnition ?? null,
+      }),
+      v?.presumedParkedZone,
+    );
   });
 
   /** Le boîtier parlait puis s'est tu depuis plus d'une semaine. */

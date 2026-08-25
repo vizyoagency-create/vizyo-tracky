@@ -34,6 +34,7 @@ const ALERT_TYPES: { value: string; label: string }[] = [
   { value: '*', label: 'Tous les types' },
   { value: 'SOS', label: 'SOS conducteur' },
   { value: 'POWER_CUT', label: 'Coupure d’alimentation' },
+  { value: 'OFF_SCHEDULE_MOVEMENT', label: 'Sortie hors horaire (hors champ GPS)' },
   { value: 'ACCIDENT', label: 'Accident' },
   { value: 'COLLISION', label: 'Collision' },
   { value: 'TOW', label: 'Remorquage' },

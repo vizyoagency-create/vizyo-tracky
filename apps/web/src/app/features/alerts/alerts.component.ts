@@ -45,6 +45,9 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: '*', label: 'Tous les types', severity: '' },
   { value: 'SOS', label: 'SOS', severity: 'critical' },
   { value: 'POWER_CUT', label: 'Coupure alimentation', severity: 'critical' },
+  // TRK-046 — filet de la présomption de stationnement : un véhicule hors champ GPS
+  // ressort en roulant pendant la plage où son planning le veut immobilisé.
+  { value: 'OFF_SCHEDULE_MOVEMENT', label: 'Sortie hors horaire', severity: 'critical' },
   { value: 'ACCIDENT', label: 'Accident', severity: 'critical' },
   { value: 'COLLISION', label: 'Collision', severity: 'critical' },
   { value: 'TOW', label: 'Remorquage', severity: 'critical' },
@@ -875,6 +878,7 @@ export class AlertsComponent implements OnInit {
   private static readonly ALERT_LABELS_FR: Record<string, string> = {
     SOS: 'SOS',
     POWER_CUT: 'Coupure d\'alimentation',
+    OFF_SCHEDULE_MOVEMENT: 'Sortie hors horaire',
     ACCIDENT: 'Accident',
     COLLISION: 'Collision',
     LOW_BATTERY: 'Batterie faible',
