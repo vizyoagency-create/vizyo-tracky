@@ -3833,9 +3833,21 @@ pas supposé (même famille que VPS-M04, le crontab Alpine).
 
 ---
 
-## VPS-030 — 1,66 Go de sauvegardes empilées hors de toute rétention, et hors de tous les contrôles
+## VPS-030 — 1,70 Go de sauvegardes empilées hors de toute rétention, dans **deux** dossiers, et hors de tous les contrôles
 
 - **Domaine** : disque · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-08-25 — IL Y A UN SECOND DOSSIER, ET LE CONSTAT NE LE NOMMAIT PAS.** Le balayage **par contenu** ajouté ce passage (angle mort n° 4, fermé au 5ᵉ report) rend **13 fichiers, 1,70 Go, en DEUX endroits** :
+
+  ```
+  /root/backups          1 679,3 Mo en 12 fichiers   (18-19 aout, deja connus)
+  /opt/backups/tracky       57,0 Mo en  1 fichier    <- 2026-07-21, 35 JOURS, JAMAIS SIGNALE
+  ```
+
+  Le fichier neuf est `positions-avant-purge60j-20260721-163020.sql.gz` : un instantané pris avant une purge de la table `positions`, oublié depuis cinq semaines.
+
+  **⚠️ ET LES OCTETS ÉTAIENT AFFICHÉS DEPUIS TOUJOURS.** La section 3 du même collecteur imprime `58M /opt/backups` à chaque passage, dans la répartition de `/opt`. Ce qui manquait n'était pas la donnée, **c'était la question** : personne n'avait demandé *« ce dossier contient-il des sauvegardes ? »*, il était lu comme un poste de disque parmi seize. *Troisième occurrence en quatre passages — VPS-034 (la socket Docker était dans `INSPECT_JSON`), VPS-M45 (les clients Docker), celui-ci. Un audit ne bute pas sur ce qu'il ne collecte pas, il bute sur ce qu'il collecte sans l'interroger.*
+
+  ⚠️ **`/opt/backups/tracky` NE SE TRAITE PAS COMME `/root/backups`** : c'est l'instantané d'avant une purge de `positions`, donc **la seule trace connue des lignes purgées**. Le supprimer se décide côté produit, pas côté disque. Le gain récupérable reste chiffré à **~1,5 Go**, sur `/root/backups` seul.
 - **Vu** : 2026-08-20 · **Mesure à la découverte** : `/root/backups` = **1,7 Go, 15 fichiers**, dont **11 dumps `tracky-avant-graphiques-*.sql.gz` de 138 à 152 Mo, tous des 18 et 19 août** (~1,63 Go). `/root` mesuré passe de **1,4 à 1,7 Go en 24 h**.
 
 **Quoi.** Onze sauvegardes de pré-déploiement de `tracky_prod`, prises à chaque itération d'une
@@ -4128,10 +4140,23 @@ produit un constat de gravité 1 sur une chaîne qui n'était pas un secret.
 
 ---
 
-## VPS-035 — Le débit d'ingestion de Tracky a triplé le 08-23, et deux tables de journal vont vers le triple de leur taille
+## VPS-035 — Le débit d'ingestion de Tracky a triplé le 08-23 → **INVERSÉ le 08-24 : aucun boîtier perdu, facture retirée, cadence à décider**
 
-- **Domaine** : données · **Gravité** : 2 · **Statut** : `A_TRAITER` — **la cause est applicative, la facture est ici**
-- **Vu** : 2026-08-24 · **Mesure** : `wire_logs` **+115 634 lignes en 24 h** (708 320 → 823 954,
+- **Domaine** : données · **Gravité** : 3 (était 2) · **Statut** : `SURVEILLANCE` — **le déluge est terminé, la facture est retirée, la cadence reste à décider**
+- ✅ **Vu : 2026-08-25 — INVERSÉ, ET AUCUN BOÎTIER N'A ÉTÉ PERDU.** Le débit a culminé le **08-24 à 05-06 h** (23 210/h, **610,8 trames/h/boîtier**, soit une toutes les **5,9 s**) puis s'est effondré **en deux heures** : 16 968/h à 07 h, **6 442/h à 08 h**. Sur 24 h glissantes : `wire_logs` **×0,67** (212 056 contre 317 886), `position_sampling_decisions` **×0,63** (188 211 contre 296 759).
+
+  **🔑 LA VÉRIFICATION QUI DÉCIDAIT DE TOUT.** Un déluge qui s'arrête peut vouloir dire *« on l'a corrigé »* ou *« les émetteurs se sont tus »* — **la même courbe descendante, et la seconde est un incident majeur déguisé en bonne nouvelle**. Le discriminant est le compte d'émetteurs **distincts, heure par heure** : **37 avant la rampe, 38 pendant, 38 après, sans un seul trou**. Toute la variation est portée par les trames **par boîtier**. *Rien dans le collecteur ne posait cette question ; elle a été posée à la main, et c'est le premier angle mort du rapport du 2026-08-25.*
+
+  **LA FACTURE EST RETIRÉE.** Les projections à fenêtre pleine tombent à **272 Mo** (`wire_logs`) et **236 Mo** (`position_sampling_decisions`), soit **508 Mo** contre les **773 à 1 200 Mo** annoncés la veille — et **moins que leur taille actuelle** (282 et 245 Mo). Les **+2,1 à +5,4 Go durables** annoncés le 08-24, sauvegardes comprises, **n'auront pas lieu**. ⚠️ Ces deux projections sont désormais des **PLAFONDS** et non des planchers, la moyenne des 24 h écoulées contenant encore le haut de la rampe — c'est le défaut de méthode **VPS-M67**, trouvé en écrivant cette ligne.
+
+  ⚠️ **La base grossit encore : 1 182 → 1 215 Mo (+33 Mo en 24 h), et ce n'est PAS une contradiction.** La fenêtre de rétention de 3,98 jours **contient encore les heures du déluge** ; elle finira de les évacuer vers le **2026-08-28**. *Ne pas lire ce +33 Mo comme la poursuite du problème — ni, à l'inverse, s'en servir pour rouvrir le constat.*
+
+  🔴 **CE QUI RESTE OUVERT, ET QUI N'EST PAS UNE BONNE NOUVELLE** : le régime **n'est pas revenu à son niveau d'avant l'incident, il est 40 % EN DESSOUS et il baisse encore.** Base du 08-22 : **184,0** trames/h/boîtier (une toutes les 19,6 s). Maintenant : **110,7** (une toutes les 32,5 s), après une pente monotone sur 17 h (169,5 → 149,0 → 139,1 → … → 110,7). Deux lectures, et **l'audit ne peut pas trancher depuis la machine** : soit la correction est allée au-delà de sa cible, soit la cadence continue de s'allonger seule. *Pour le VPS, moins de trames est un gain ; pour le produit, une cadence qui dérive sans qu'on l'ait décidée est le défaut de TRK-045 avec un signe différent.*
+
+  **🆕 ET LA RUPTURE NE VIENT PAS D'UN DÉPLOIEMENT.** `tracky-api` a été recréé le **08-24 à 15:08:43** — **sept heures APRÈS** la rupture de 07-08 h. Le conteneur qui tournait à 08 h était celui de 06 h. Le changement vient donc des **boîtiers**, pas du serveur : la montée était une **rampe** de 22 h (adoption boîtier par boîtier), la descente est une **marche** de 2 h (une commande à la flotte). *C'est l'inverse de ce que le constat affirmait le 08-24, où la rampe avait été attribuée au build de 03:59:29 — l'attribution tenait à une coïncidence d'horaire, et elle ne se reproduit pas.*
+
+- **Seuil de réescalade** (exigé pour tout `SURVEILLANCE`) : repasser en `A_TRAITER` si le débit remonte **au-dessus de 300 trames/h/boîtier**, ou s'il descend **sous 60** (une trame par minute).
+- **Vu** : 2026-08-24 · **Mesure à la découverte** : `wire_logs` **+115 634 lignes en 24 h** (708 320 → 823 954,
   **+16,3 %**) et `position_sampling_decisions` **+145 774** (581 918 → 727 692, **+25,1 %**),
   **à fenêtre de rétention inchangée**. Débit horaire mesuré ligne à ligne : **7 213/h le 08-22**
   → **20 296/h le 08-24 à 01 h** = **×2,81**.
@@ -4217,6 +4242,97 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M68 — `processusParMin` est publié en série de tendance depuis vingt passages, et c'est du bruit de mesure
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-08-25)
+- **Vu** : 2026-08-25 · **Mesure** : l'étendue **à l'intérieur** de la fenêtre de 10 s vaut
+  **80 %** de la valeur publiée (sous-fenêtres 3 s/3 s/4 s : **1 220 · 480 · 1 305** /min pour une
+  valeur publiée de **1 032**). Et **cinq sondages consécutifs en quinze minutes**, machine
+  inchangée : **942 · 1 446 · 1 278 · 1 296 · 1 500** — **étendue ×1,59**.
+
+**Quoi.** Le manifeste publie `processusParMin` parmi ses `chiffres` de tendance depuis vingt
+passages. La série vaut **1 230 · 762 · 1 374 · 786 · 1 224**, soit un facteur **1,8** entre
+passages. **La dispersion de cinq mesures prises de suite couvre ×1,59.** *La « tendance » de vingt
+jours tient presque entièrement dans ce qu'on obtient en mesurant cinq fois d'affilée.*
+
+**Ce que ça a produit.** Le champ `previsions.chargeDeFond.note` portait l'affirmation inverse,
+écrite noir sur blanc et republiée à chaque passage :
+
+> *« La variance est entre les JOURS, pas dans la mesure (témoin indépendant le 08-22 : 3 % d'écart
+> avec le collecteur). »*
+
+**Pourquoi c'était invisible — et c'est la partie qui instruit.** Le témoin du 08-22 comparait
+**deux instruments sur la même fenêtre**, et trouvait 3 % d'écart. C'est une mesure d'**accord
+entre instruments**, pas de **reproductibilité de la grandeur**. *Deux thermomètres qui s'accordent
+à 3 % ne disent rien de la stabilité de la température.* La preuve avait la **forme** d'une
+validation — un témoin indépendant, un écart chiffré, une conclusion — et elle validait une autre
+proposition que celle qu'elle servait à défendre. C'est la famille de VPS-M64, appliquée non plus à
+un verdict du collecteur mais à une **preuve écrite dans le manifeste**.
+
+**Quoi faire — fait.** La même fenêtre de 10 s est découpée en **trois** (3+3+4). La valeur
+publiée **ne change pas** — vingt passages de comparaison sont préservés, ce qu'un renommage aurait
+cassé sans prévenir (VPS-M60, VPS-M63) — et l'**étendue** est imprimée à côté, avec un verdict.
+**Coût : zéro seconde**, deux lectures de `/proc/stat` en plus.
+
+**`pourquoiInvisible`** : parce que personne n'avait mesuré la **dispersion** de la grandeur. Sa
+*définition* est correcte, son *instrument* est correct, son *témoin* était correct — seule la
+question « combien varie-t-elle si je la mesure deux fois de suite ? » n'avait jamais été posée.
+
+**`aNePasFaire`** : ⚠️ **ne pas allonger la fenêtre** pour « mieux mesurer » — à 20 s, la collecte
+dépassait déjà 90 s (VPS-M05), et le budget est une règle de la procédure, pas un confort. ⚠️ **Ne
+pas retirer la clef du manifeste** : une série de vingt points, même bruitée, garde sa valeur
+d'archive ; ce qu'il faut retirer, c'est la **lecture en tendance**. ⚠️ **Ne pas lire une étendue
+intra-fenêtre faible comme une preuve de reproductibilité inter-jours** : elle éliminerait
+seulement la rafale courte. Le collecteur l'écrit dans ses deux branches.
+
+---
+
+### VPS-M67 — La borne de la projection de volume était écrite en dur, et elle se trompait de sens le jour où le débit baissait
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-08-25)
+- **Vu** : 2026-08-25 · **Mesure** : sur `wire_logs` à **×0,67** et
+  `position_sampling_decisions` à **×0,63**, le collecteur imprimait *« ⚠️ PLANCHER »* sur des
+  projections qui sont des **plafonds**.
+
+**Quoi.** Le bloc de projection — **posé la veille**, en correctif de VPS-M64 — annonçait :
+
+```
+⚠️ PLANCHER, pas une prevision : si le debit monte encore, la projection monte avec lui.
+```
+
+La mention était **codée en dur**, et elle a été écrite **un jour où le débit montait**. Or la
+projection est bâtie sur la moyenne des 24 h écoulées :
+
+| tendance du débit | ce que la moyenne des 24 h contient | la projection est un… |
+|---|---|---|
+| montant | le **bas** de la rampe | **plancher** ✅ |
+| descendant | le **haut** de la rampe | **plafond** ❌ *annoncé « plancher »* |
+
+**Pourquoi c'était invisible.** Le bloc n'avait vécu qu'**un seul jour**, et ce jour-là le débit
+montait : l'étiquette et la réalité coïncidaient. **Il ne pouvait se tromper que le jour où le
+débit baisserait** — c'est-à-dire le jour où l'on annonce une amélioration. Et une amélioration
+**sous-estimée ne se fait jamais contredire** : personne ne rouvre un constat pour signaler que la
+bonne nouvelle était meilleure que prévu.
+
+> C'est **VPS-M64 dans la même section, un jour plus tard, à l'intérieur de son propre correctif**.
+> *Le correctif d'un défaut de raisonnement peut porter le même défaut de raisonnement.*
+
+**Quoi faire — fait.** La borne suit désormais le **signe** de la tendance (`r > 1.05` → plancher,
+`r < 0.95` → plafond), avec un troisième cas pour le débit plat. **Coût nul.** **Vérifié sur les
+quatre branches** — montant, descendant, plat, et dénominateur nul — en rejouant hors ligne les
+lignes réelles du jour.
+
+**`pourquoiInvisible`** : un bloc d'un jour d'âge n'a été confronté qu'à un seul régime. *Toute
+étiquette conditionnelle écrite en dur est vraie jusqu'au premier changement de régime, et c'est
+exactement là qu'on la lit.*
+
+**`aNePasFaire`** : ⚠️ **ne pas présenter la projection à débit descendant comme « le gain
+acquis »** — elle le sous-estime. ⚠️ Et ⚠️ **ne pas supprimer la borne pour éviter le problème** :
+une projection sans borne annoncée est pire qu'une borne du mauvais côté, parce qu'elle ne se
+laisse pas réfuter.
+
+---
 
 ### VPS-M66 — Le plan d'action a republié pendant sept passages un gain que le collecteur, deux lignes plus bas, déclarait non durable
 

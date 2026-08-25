@@ -1542,8 +1542,31 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
             if (wj > 0 && n > 0) {
               proj_n = wj * j0; proj_mo = mo * proj_n / n;
               printf "         projection a fenetre PLEINE (%.2f j x le debit du jour) : %.0f Mo\n", wj, proj_mo;
-              printf "           ⚠️ PLANCHER, pas une prevision : si le debit monte encore, la projection\n";
-              printf "              monte avec lui. Elle suppose le debit des 24 h ECOULEES constant.\n";
+              # CORRIGE LE 2026-08-25 — VPS-M67. Cette etiquette etait ecrite EN DUR a
+              # « PLANCHER », et elle a ete ecrite la VEILLE, un jour ou le debit MONTAIT.
+              # Le sens de la borne SUIT LE SIGNE de la tendance : a debit qui monte, la
+              # projection (batie sur la moyenne des 24 h ECOULEES, qui inclut le BAS de la
+              # rampe) est un PLANCHER ; a debit qui BAISSE, la meme moyenne inclut le HAUT
+              # de la rampe et la projection devient un PLAFOND. Ecrire « PLANCHER » les deux
+              # jours, c est se tromper de borne exactement le jour ou l on annonce une
+              # amelioration — et une amelioration sur-estimee ne se fait jamais contredire.
+              # Cest VPS-M64 dans la MEME section, un jour plus tard : un mot juste tant que
+              # les deux grandeurs varient ensemble.
+              # ⚠️ AUCUNE APOSTROPHE dans ce bloc : il vit dans un programme awk delimite par
+              # des quotes simples. Une apostrophe y ferme la chaine et casse tout le script —
+              # attrape par `bash -n` a l ecriture meme de ce correctif.
+              if (r > 1.05) {
+                printf "           ⚠️ PLANCHER (le debit MONTE) : la moyenne des 24 h ecoulees inclut le BAS\n";
+                printf "              de la rampe. Si le debit monte encore, la projection monte avec lui.\n";
+              } else if (r < 0.95) {
+                printf "           ⚠️ PLAFOND (le debit BAISSE) : la moyenne des 24 h ecoulees inclut encore le\n";
+                printf "              HAUT de la rampe. Le regime reel est SOUS cette valeur — ne pas la\n";
+                printf "              presenter comme le gain acquis, elle le SOUS-estime.\n";
+              } else {
+                printf "           ⚠️ Estimation a debit CONSTANT : la moyenne des 24 h ecoulees est plate,\n";
+                printf "              la borne na donc pas de sens privilegie.\n";
+              }
+              printf "              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.\n";
             }
             if (r >= 1.5)
               printf "         🔴 LE DEBIT MONTE (x%.2f) — UNE FENETRE STABLE NE GARDE PAS UN VOLUME STABLE.\n         La retention fonctionne ET la table grossit : ce ne sont pas des enonces contraires.\n", r;
@@ -2138,16 +2161,54 @@ printf '%s\n' "$CADENCES" | awk -v tot="$NB_PS" '
   END {printf "  → %d invocations/min, soit ~%d/jour (chacune ~5 processus via runc)\n", n, n*1440
        printf "     %d conteneurs sondes sur %d ; %d SANS AUCUNE SONDE (leur panne est invisible a Docker)\n", s, tot, tot-s}'
 
-sub "Creations de processus par minute (mesure de 10 s)"
+sub "Creations de processus par minute (fenetre de 10 s, DECOUPEE en 3 sous-fenetres)"
 # Le compteur `processes` de /proc/stat est cumulatif depuis le demarrage : la difference sur
 # une fenetre donne le taux reel, healthchecks compris. A l'arret, c'est eux qui dominent.
 #
 # ⚠️ FENETRE DE 10 s, PAS PLUS : a 20 s, la collecte complete depassait 90 s — le budget que
 # cette meme procedure impose. Un audit qui viole sa propre regle pour mieux mesurer se trompe
 # de priorite (defaut VPS-M05, corrige le 2026-08-04).
-p1=$(awk '/^processes/{print $2}' /proc/stat); sleep 10
-p2=$(awk '/^processes/{print $2}' /proc/stat)
-awk -v d="$((p2-p1))" 'BEGIN {printf "  %d processus en 10 s = %d/min = ~%.1f millions/jour\n", d, d*6, d*6*1440/1000000}'
+#
+# ⚠️⚠️ CORRIGE LE 2026-08-25 — ANGLE MORT N° 2, REPORTE TROIS FOIS : UN ECHANTILLON DE 10 s
+# PUBLIE COMME UNE CONSTANTE. La serie inter-passages fait 1 230 · 762 · 1 374 · 786 · 1 224,
+# soit un facteur 1,8 — et pendant vingt passages rien ne disait si cet ecart vient de la
+# MACHINE (des jours reellement differents) ou de la MESURE (une fenetre trop courte pour un
+# phenomene en rafales : les healthchecks se declenchent par paquets alignes sur leur cadence).
+# La question se tranche SANS allonger la fenetre : on decoupe la MEME fenetre de 10 s en trois.
+#
+# ⚠️ CE QUE CE BLOC MESURE vs CE QU'IL AFFIRME (discipline posee par VPS-M64) :
+#   il mesure  : la dispersion INTRA-fenetre, sur 3 s / 3 s / 4 s ;
+#   il affirme : « la valeur de 10 s est/n'est pas un echantillon stable ». Une etendue faible
+#                ne prouve PAS que la valeur est reproductible d'un JOUR a l'autre — elle
+#                elimine seulement la rafale courte comme explication. Le dire, sinon on
+#                republiera « mesure stable » sur une grandeur qui varie de 80 % en 24 h.
+#
+# ⚠️ COUT : ZERO seconde de plus (3+3+4 = les memes 10 s), deux lectures de /proc/stat en plus.
+# ⚠️ La valeur PUBLIEE dans la serie reste celle des 10 s pleines : c'est elle qui alimente
+# `processusParMin` depuis vingt passages, et changer la grandeur d'une serie de tendance sans
+# le dire casse la comparaison au moment ou elle sert (VPS-M60, VPS-M63).
+p1=$(awk '/^processes/{print $2}' /proc/stat); sleep 3
+p2=$(awk '/^processes/{print $2}' /proc/stat); sleep 3
+p3=$(awk '/^processes/{print $2}' /proc/stat); sleep 4
+p4=$(awk '/^processes/{print $2}' /proc/stat)
+awk -v a="$((p2-p1))" -v b="$((p3-p2))" -v c="$((p4-p3))" -v tot="$((p4-p1))" 'BEGIN {
+  r[1]=a*20; r[2]=b*20; r[3]=c*15          # 3 s -> x20, 3 s -> x20, 4 s -> x15
+  mn=r[1]; mx=r[1]
+  for (i=2; i<=3; i++) { if (r[i]<mn) mn=r[i]; if (r[i]>mx) mx=r[i] }
+  printf "  %d processus en 10 s = %d/min = ~%.1f millions/jour   <- LA VALEUR DE LA SERIE\n", tot, tot*6, tot*6*1440/1000000
+  if (tot <= 0) { print "  🔴 COMPTEUR NON AVANCE : /proc/stat illisible ou fenetre nulle — ne pas lire « machine au repos »."; exit }
+  printf "  sous-fenetres 3 s / 3 s / 4 s : %d, %d, %d /min\n", r[1], r[2], r[3]
+  printf "  etendue intra-fenetre : %d/min, soit %.0f %% de la valeur publiee\n", mx-mn, 100*(mx-mn)/(tot*6)
+  if (mx-mn > 0.5*tot*6) {
+    print "  ⚠️ L ETENDUE DEPASSE LA MOITIE DE LA VALEUR PUBLIEE : 10 s ne suffisent pas a"
+    print "     caracteriser ce taux. La rafale courte suffit alors a expliquer le facteur 1,8"
+    print "     entre passages — NE PAS chercher une cause metier avant d avoir allonge la fenetre."
+  } else {
+    print "  ✅ Etendue sous la moitie de la valeur publiee : la rafale courte n EXPLIQUE PAS le"
+    print "     facteur 1,8 observe entre passages. Chercher la cause du cote de ce qui tourne CE"
+    print "     jour-la (build, sauvegarde, session SSH) — pas du cote de l instrument."
+  }
+}'
 
 sub "Crons INTERNES aux conteneurs (verifier que crond ne tourne pas)"
 # ⚠️ PIEGE : toute image Alpine embarque un /etc/crontabs/root avec des `run-parts
@@ -2526,6 +2587,69 @@ for d in /var/backups/*/; do
   esac
   printf '  %-26s %3s h  %-42s %2d copies, %s  %s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")"
 done
+
+# ── Ce qui RESSEMBLE a une sauvegarde et vit HORS de tout controle ────────────────────────
+# ⚠️⚠️ AJOUTE LE 2026-08-25 — ANGLE MORT N° 4, OUVERT LE 2026-08-20 ET REPORTE QUATRE FOIS.
+#
+# Les QUATRE controles ci-dessus sont definis par un CHEMIN — ils enumerent /var/backups/*.
+# VPS-030 a chiffre ce que ca coute : 1,66 Go de dumps dans /root/backups, presents sur le
+# disque, couverts par AUCUNE retention, et absents des quatre controles a la fois. Aucun
+# d'eux ne signalait qu'il n'en disait rien : une absence se lit « rien a signaler ».
+# C'est VPS-013 dans l'autre sens, et c'est la meme lecon que VPS-004/VPS-M06/VPS-M13 —
+# verifier du cote de l'EFFET (des octets de sauvegarde existent-ils quelque part ?) et pas
+# du cote de la trace (le dossier que j'ai decide de regarder est-il a jour ?).
+#
+# On cherche donc par CONTENU — extension d'archive + taille — et pas par emplacement.
+#
+# ⚠️ CE QUE CE BLOC MESURE vs CE QU'IL AFFIRME (discipline posee par VPS-M64) :
+#   il mesure  : les fichiers > 50 Mo portant une extension d'archive, hors des chemins elagues ;
+#   il affirme : « ces octets ne sont sous aucune retention connue ». C'est vrai des chemins
+#                listes ci-dessous, et FAUX le jour ou quelqu'un pose une retention ailleurs.
+#                La liste couverte est donc IMPRIMEE avec le resultat, pas cachee ici en
+#                commentaire — un lecteur doit pouvoir refuter le verdict sans lire le code.
+#
+# ⚠️ BORNES, et elles ne sont pas negociables (regle n° 2 du §1 de la procedure) :
+#   • `-xdev`      : une seule partition ;
+#   • profondeur 5 : VPS-030 vivait a la profondeur 3 ; /opt/maalem porte 135 099 inodes et ne
+#                    doit pas etre descendu entierement ;
+#   • `-prune` AVANT descente sur /var/lib/docker (~12 Go de couches), /proc, /sys, /snap, /run ;
+#   • `$LOW` + `timeout` : priorite idle, et une borne dure.
+# ⚠️ Le timeout est traite EXPLICITEMENT : un `timeout` qui expire rend du vide, et du vide se
+# lit « rien a signaler » (VPS-M02, le tout premier defaut de methode de cet audit).
+sub "Sauvegardes HORS de /var/backups — balayage par CONTENU (angle mort n° 4, 5e report)"
+echo "  couvert par les controles ci-dessus : /var/backups/*"
+echo "  elague du balayage (non pertinent)  : /var/backups, /var/lib/docker, /proc, /sys, /snap, /run"
+echo "  critere : fichier > 50 Mo, extension .sql .sql.gz .sql.bz2 .dump .tar .tar.gz .tgz .gpg .bak"
+ERRANTS=$(timeout 25 $LOW find / -xdev -maxdepth 5 \
+    \( -path /var/backups -o -path /var/lib/docker -o -path /proc -o -path /sys \
+       -o -path /snap -o -path /run \) -prune -o \
+    -type f -size +50M \
+    \( -name '*.sql' -o -name '*.sql.gz' -o -name '*.sql.bz2' -o -name '*.dump' \
+       -o -name '*.tar' -o -name '*.tar.gz' -o -name '*.tgz' -o -name '*.gpg' -o -name '*.bak' \) \
+    -printf '%s\t%TY-%Tm-%Td %TH:%TM\t%p\n' 2>/dev/null)
+RC_ERRANTS=$?
+if [ "$RC_ERRANTS" -eq 124 ]; then
+  echo "  🔴 BALAYAGE INTERROMPU (timeout 25 s) — le resultat ci-dessous est PARTIEL."
+  echo "     NE PAS le lire comme « rien a signaler » : c'est « on ne sait pas »."
+fi
+if [ -z "$ERRANTS" ]; then
+  [ "$RC_ERRANTS" -eq 124 ] || \
+    echo "  ✅ AUCUN fichier d'archive > 50 Mo hors des chemins couverts. VPS-030 serait donc soit"
+  [ "$RC_ERRANTS" -eq 124 ] || \
+    echo "     traite, soit descendu sous 50 Mo — verifier laquelle des deux avant de le clore."
+else
+  printf '%s\n' "$ERRANTS" | sort -rn | awk -F'\t' '
+    { mo=$1/1048576; tot+=mo; n++
+      if (n<=20) printf "  %8.1f Mo  %s  %s\n", mo, $2, $3
+      d=$3; sub(/\/[^\/]*$/, "", d); par[d]+=mo; nb[d]++ }
+    END {
+      if (n>20) printf "  … %d fichiers supplementaires non detailles (les 20 plus gros ci-dessus)\n", n-20
+      printf "  ── %d fichiers, %.2f Go au total, sous AUCUNE retention connue ──\n", n, tot/1024
+      for (k in par) printf "     %-34s %8.1f Mo en %d fichiers\n", k, par[k], nb[k]
+      print  "  ⚠️ Ces octets ne seront enleves par RIEN : aucune des retentions de la machine ne"
+      print  "     couvre ces chemins. Lire VPS-030 avant tout geste — certains sont les SEULES"
+      print  "     copies connues d un etat de base (le dossier n est pas jetable en bloc)." }'
+fi
 
 # ── L'archive est-elle LISIBLE ? (angle mort du rapport du 2026-08-04) ────────────────────
 # On verifiait qu'une sauvegarde EXISTE et qu'elle PESE 130 Mo. Une archive tronquee — pipe
