@@ -6148,7 +6148,7 @@ seules. Une raison de plus de tester le SQL d'audit avant de le lancer.)*
 | Option | Effet | Coût / risque |
 |---|---|---|
 | **(a) `rotate 14`** — ✅ **APPLIQUÉ le 25/08** | fenêtre du témoin TRK-035 portée à ~2 semaines | ~130-250 Mo sur 45 Go libres, zéro redémarrage |
-| (b) `application_name=tracky-api` (+ éventuel `connection_limit`) dans `DATABASE_URL` | attribution nette dans les journaux et `pg_stat_activity` ; moins de churn si le pool est calibré | redémarrage API requis (à coupler au prochain déploiement) ; le calibrage du pool demande une mesure dédiée (risque de famine sur les rafales de crons) — **non appliqué** |
+| **(b) `application_name` + `connection_limit`** — ✅ **APPLIQUÉ le 25/08 12:25** | attribution **prouvée** : les connexions de l'API portent `tracky-api` dans le journal ET dans `pg_stat_activity` | API recréée (tous les utilisateurs déconnectés) ; ⚠️ **l'effet sur le churn reste une hypothèse** — voir ci-dessous |
 | (c) Statu quo + moisson quotidienne par l'audit | la mémoire longue vit déjà dans les rapports git | **conservé en complément** |
 
 ### ✅ Le remède appliqué — et pourquoi PAS sous la forme recommandée
@@ -6175,6 +6175,39 @@ blanc : **exit 0**, `after 1 days (14 rotations)`, journal de `tracky-postgres` 
 ⚠️ **La validation est un essai à blanc — la première rotation réelle a lieu le 26/08 à 00:00 UTC.**
 🗓️ **Test daté au 27/08** : le journal de `tracky-postgres` doit porter des fichiers `.log.4` et
 au-delà. Il s'arrête aujourd'hui à `.log.3` ; si le compte y reste, la ligne n'a pas pris effet.
+
+### ✅ Remède (b) appliqué le 25/08 à 12:25 — et ce qu'il prouve exactement
+
+`DATABASE_URL` gagne `application_name=tracky-api` et `connection_limit=10`. Le changement vit
+dans `deploy/vps/docker-compose.prod.yml` (fichier **versionné**) — l'éditer directement sur le
+VPS aurait sali l'arbre git et cassé le prochain `git pull`.
+
+| Contrôle | Résultat |
+|---|---|
+| `docker compose config` (URL résolue) | ✅ valide, exit 0 |
+| Smoke-boot jetable AVANT bascule | ✅ `SMOKE_OK`, **0 erreur de connexion** — une URL malformée aurait mis l'API en boucle de redémarrage |
+| Orphelin `api-run` | produit et **nettoyé** (2ᵉ fois de la journée que ce garde paie) |
+| API après recréation | `healthy`, `restarts=0`, `/api/health` ok, base connectée |
+| **Journal PostgreSQL** | les lignes `connection authorized` portent **`application_name=tracky-api`** |
+| **`pg_stat_activity`** | 3 connexions nommées `tracky-api` depuis `172.23.0.3` |
+
+**C'est la moitié qui compte, et elle est prouvée** : le trafic applicatif est désormais
+attribuable. Avant, le témoin de TRK-035 voyait 544 connexions depuis `172.23.0.3` sans pouvoir
+dire *qui* — seule la sonde de santé se nommait.
+
+> 🔴 **Ce que ce remède NE prouve PAS, et il faut le dire.** J'avais annoncé « moins de churn si
+> le pool est calibré ». **Mesuré avant le changement : le pool de 5 n'était PAS saturé** —
+> 0 erreur « timed out fetching a connection » dans les journaux de l'API, **0 en 90 jours**
+> d'`error_logs`. Le calibrage n'est donc *pas* un correctif de panne, et son effet sur le churn
+> (~5-7 connexions/min) est une **hypothèse**, pas un résultat. La justification qui tient est
+> autre : `connection_limit` valait implicitement **2 × cœurs + 1 = 5**, une valeur *dérivée du
+> matériel* qui changerait en silence si le VPS était redimensionné. La rendre explicite supprime
+> cette dépendance cachée. *Annoncer un bénéfice qu'on n'a pas mesuré est la façon la plus simple
+> de fabriquer un faux correctif.*
+
+🗓️ **Test daté au prochain audit** : recompter les connexions/minute depuis le journal. Si le
+churn est inchangé (~5-7/min), c'est que la cause est ailleurs (fermeture des connexions oisives
+par le pool, et non saturation) — et il faudra le consigner plutôt que de re-régler à l'aveugle.
 
 ---
 

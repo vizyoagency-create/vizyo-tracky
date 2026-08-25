@@ -131,7 +131,7 @@ sur une fenêtre de 8 h 29 (2,06 Mo mesurés) :
 | Option | Effet | Coût / risque |
 |---|---|---|
 | **(a) `rotate 14`** — ✅ **APPLIQUÉ le 25/08** | témoin TRK-035 : ~2 semaines de mémoire | ~130-250 Mo de disque sur 45 Go libres, zéro redémarrage |
-| (b) `application_name=tracky-api` (+ `connection_limit` calibré) dans `DATABASE_URL` | attribution nette ; moins de churn | redémarrage API (à coupler à un déploiement) ; calibrage du pool à mesurer (risque de famine sur les rafales) — **non appliqué** |
+| **(b) `application_name` + `connection_limit`** — ✅ **APPLIQUÉ le 25/08 12:25** | attribution **prouvée** (journal + `pg_stat_activity`) | API recréée ; ⚠️ effet sur le churn **non prouvé** — le pool n'était pas saturé |
 | (c) Statu quo + moisson quotidienne par l'audit | mémoire longue déjà dans les rapports git | aucun — **conservé en complément** |
 
 ### ✅ Remède (a) appliqué le 25/08 — mais PAS sous la forme annoncée, et voici pourquoi
@@ -188,7 +188,10 @@ Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
    des fichiers `.log.4` et au-delà doivent apparaître. L'option (b) — `application_name` et
    calibrage du pool dans `DATABASE_URL` — **reste ouverte** : elle exige un redémarrage d'API et
    une mesure dédiée du pool, à coupler à un prochain déploiement.
-4. ⚠️ **Chaque redémarrage d'API déconnecte tous les utilisateurs** (`localStorage` perd jeton et
+4. 🗓️ **Test daté de l'option (b)** : recompter les connexions/minute au prochain audit. Si le
+   churn est inchangé (~5-7/min), la cause n'est pas la taille du pool — le consigner, ne pas
+   re-régler à l'aveugle.
+5. ⚠️ **Chaque redémarrage d'API déconnecte tous les utilisateurs** (`localStorage` perd jeton et
    refresh) — c'est arrivé à 09:22. Défaut préexistant **non instruit** ; il mériterait sa fiche.
 
 ## Journal de session
@@ -233,3 +236,8 @@ Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
 - 2026-08-25 — **Remède journalisation appliqué** : `rotate 3` → `rotate 14` sur la stanza
   générique (la stanza dédiée a été testée puis écartée — doublon en exit 1 et fragilité à l'ID
   du conteneur). Sauvegarde posée, config validée à blanc en exit 0. Test daté au 27/08.
+- 2026-08-25 12:25 — **Option (b) appliquée** : `application_name=tracky-api` +
+  `connection_limit=10` dans le compose **versionné** (jamais éditer directement le VPS : l'arbre
+  git y est propre et doit le rester). Smoke-boot avant bascule, orphelin nettoyé, API `healthy`.
+  Attribution **prouvée** dans le journal et `pg_stat_activity`. ⚠️ L'effet sur le churn n'est PAS
+  prouvé — le pool n'était pas saturé (0 erreur en 90 j) : dit tel quel plutôt que promis.
