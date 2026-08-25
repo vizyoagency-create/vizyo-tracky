@@ -5,6 +5,33 @@
 
 ---
 
+## 🔴 PASSAGE DU 2026-08-25 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
+
+**Sept correctifs ont été déployés en production le 24/08**, dont un avec migration de base.
+Ce passage n'est donc pas un audit ordinaire : il doit **vérifier que ces correctifs font
+réellement ce qu'on croit**.
+
+👉 **[`CONTROLE-CORRECTIFS-2026-08-25.md`](./CONTROLE-CORRECTIFS-2026-08-25.md)** — à lire
+**après cette procédure et avant la collecte**. Il donne, pour chaque correctif, la requête de
+contrôle, le résultat attendu, et surtout **la condition de faux succès** : cinq d'entre eux ont
+une mesure qui *semble* prouver que ça marche alors qu'elle prouve autre chose.
+
+**Les trois pièges à connaître avant même de commencer :**
+
+1. **Vérifier contre l'ARTEFACT SERVI, jamais contre la fiche.** Cinq statuts de fiches
+   annonçaient l'inverse de la réalité en deux jours. Si fiche et artefact se contredisent,
+   **l'artefact a raison, et la fiche se corrige dans le même passage.**
+2. **Deux correctifs ont une DOUBLE condition** (TRK-015, TRK-018) : un compteur doit tomber
+   **pendant qu'un autre se maintient**. *Si les deux tombent ensemble, on a supprimé la
+   fonctionnalité, pas le défaut.*
+3. **`docker logs` est peu fiable sur cet hôte** — il a rendu du VIDE le 25/08 alors que le
+   fichier contenait les lignes. Pour les journaux PostgreSQL, **lire le fichier `LogPath`**.
+
+⚠️ **Deux sources d'erreur NEUVES** (`schedule-cron`, `TRIP_AUTOMATION`) sont apparues le 24/08 :
+elles sont la priorité d'enquête, après les contrôles de correctifs.
+
+---
+
 ## 0. Garde-fous — non négociables
 
 | 🚫 Interdit | Pourquoi |

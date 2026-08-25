@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-08-24",
+  "updatedAt": "2026-08-25",
   "title": "Centre d'alerte — documentation & audits",
   "intro": "Tout ce qui a été observé, diagnostiqué et corrigé sur le centre d'alerte. Le référentiel garde la mémoire des erreurs au-delà de la purge de 30 jours ; les rapports gardent la trace de chaque passage.",
   "_comment": "Fichier LU PAR L'APPLICATION (GET /api/admin/alerts/wiki). Les documents sont découverts automatiquement sur le disque : ce manifeste ne fait qu'ajouter titres, ordre et descriptions. Un fichier absent d'ici apparaît quand même — il ne disparaît jamais faute de déclaration. En revanche `fiches` et `passages` sont tenus à la main par l'agent d'audit : l'état d'un défaut et ce qu'il faut en faire ne se devinent pas d'une liste de fichiers.",
@@ -775,6 +775,13 @@
   ],
   "documents": [
     {
+      "slug": "CONTROLE-CORRECTIFS-2026-08-25.md",
+      "title": "Contrôle des correctifs déployés — 25 août",
+      "section": "procedure",
+      "order": -100,
+      "description": "Consignes pour le passage du 25/08 : sept correctifs déployés la veille, avec pour chacun la requête de contrôle, le résultat attendu, et la condition de FAUX SUCCÈS — cinq d'entre eux ont une mesure qui semble prouver que ça marche alors qu'elle prouve autre chose."
+    },
+    {
       "slug": "rapports/2026-08-24.md",
       "title": "Audit du 24 août 2026",
       "section": "rapports",
@@ -968,6 +975,37 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-08-24",
+      "origine": "campagne de correctifs",
+      "rapport": "CONTROLE-CORRECTIFS-2026-08-25.md",
+      "verdict": "SEPT DEPLOIEMENTS EN UNE JOURNEE, dont un avec migration de base. Cinq fiches traitees et verifiees par une mesure avant/apres : TRK-045 (le firmware lit deux chiffres et jette l unite — debit de la flotte 380 vers 100 trames/min, zero boitier en echec), TRK-026 (un tuyau de retour que personne n avait branche — lecture de l accuse prouvee), TRK-015 (persister n est pas faire autorite — zero trou restant, garde-fou toujours vivant), TRK-025 (la remontee lisait le compteur de notre propre requete, structurellement nul), TRK-018 (313 commandes moteur ouvertes depuis toujours, closes par une echeance purement temporelle). TRK-035 re-instruite : l incident est CLOS (trois instruments independants), et le correctif qui trainait — separer les roles par REVOKE — est IMPOSSIBLE, le role applicatif etant superutilisateur ET proprietaire. La journalisation des connexions a ete activee a la place, sans redemarrage. ⚠️ CE QUI RESTE A PROUVER : qu un webhook ABONNE soit un webhook RECU (aucun SMS sortant depuis 08h20), et que les deux sources d erreur NEUVES du 24/08 (schedule-cron, TRIP_AUTOMATION) ne soient pas un effet de la campagne du 23/08.",
+      "chiffres": {
+        "correctifsDeployes": 7,
+        "fichesFermees": 4,
+        "fichesOuvertes": 10,
+        "debitFlotteAvant": 380,
+        "debitFlotteApres": 73,
+        "boitiersFailingAvant": 29,
+        "boitiersFailingApres": 0,
+        "commandesMoteurOuvertesAvant": 313,
+        "commandesMoteurOuvertesApres": 0,
+        "positionsRecupereesParJourEstimees": 1477,
+        "lignesActives": 15,
+        "statutsPerimesRencontres": 5,
+        "piegesDeTestsTrouves": 3,
+        "migrationsAppliquees": 1
+      },
+      "fiches": {
+        "nouvelles": 0,
+        "misesAJour": 6
+      },
+      "aTraiter": [
+        "TRK-018",
+        "TRK-035"
+      ],
+      "note": "Trois motifs se sont repetes assez pour meriter d etre nommes. UN : une chaine dont chaque maillon existe mais qu aucun bout ne relie ne transporte rien — TRK-045, TRK-026 et TRK-025 etaient toutes dans ce cas, et chaque piece isolee avait l air juste. DEUX : un correctif de cause ne soigne pas les victimes — le premier correctif de TRK-045 a supprime la cause sans debloquer un seul boitier, il a fallu un second correctif non prevu. TROIS : trois harnais de test sur trois avaient un mock manquant, chacun rendant une suite VERTE sur du code mort ; d ou une mutation systematique sur chaque correctif a partir de TRK-015, et sur TRK-015 elle a corrige le correctif lui-meme. Enfin, CINQ statuts de fiches annoncaient l inverse de la realite : c est le seul chantier d outillage a envisager avant de reprendre des correctifs."
+    },
     {
       "date": "2026-08-24",
       "origine": "agent",
