@@ -13,13 +13,56 @@
 
 | # | Lot | Fiche(s) | Branche | Statut |
 |---|---|---|---|---|
-| 1 | Coupe programmée vs véhicule hors champ GPS : présomption de stationnement (parking validé), report honnête ailleurs, alerte de sortie hors horaire | TRK-046 | `fix/trk046-coupe-hors-champ-gps` | ✅ **PR #133 ouverte** — en attente de relecture |
-| 2 | Cadence enregistrée périmée : « non mesurable » plutôt qu'un chiffre faux | TRK-048 | `fix/trk048-cadence-perimee` | ✅ **PR #134 ouverte** — en attente de relecture |
-| 3 | Seuil anti-fausse-alerte du recalcul calibré sur les positions stockées | TRK-047 | `fix/trk047-seuil-recalcul` | ✅ **PR #135 ouverte** — en attente de relecture |
+| 1 | Coupe programmée vs véhicule hors champ GPS : présomption de stationnement (parking validé), report honnête ailleurs, alerte de sortie hors horaire | TRK-046 | PR #133 | 🚀 **FUSIONNÉE ET DÉPLOYÉE** le 25/08 09:22 UTC · ⚠️ non exercé, test daté ce soir 18:00 |
+| 2 | Cadence enregistrée périmée : « non mesurable » plutôt qu'un chiffre faux | TRK-048 | PR #134 | 🚀 **DÉPLOYÉE ET EXERCÉE** — 5 émetteurs réels / 2 vestiges séparés |
+| 3 | Seuil anti-fausse-alerte du recalcul calibré sur les positions stockées | TRK-047 | PR #135 | 🚀 **FUSIONNÉE ET DÉPLOYÉE** · ⚠️ non exercé, test daté à 7 j |
 | 4 | Enquête : journalisation des connexions (volume ×3,4, fenêtre d'enquête) | TRK-035 (volet) | — (enquête) | ✅ **rendue** — 3 remèdes proposés, AUCUN appliqué (décision propriétaire) |
+| 5 🆕 | **Traitement de fond invisible depuis le 24/08** — trouvé en vérifiant le cumul | TRK-049 | `a8300adb` | 🚀 **CORRIGÉ ET DÉPLOYÉ** |
 
-**Aucun merge, aucun déploiement** : les trois PR attendent une relecture humaine. La migration
-(`ALTER TYPE "AlertType" ADD VALUE`) part avec la PR #133.
+## 🚀 Déploiement du 25/08 — ce qui s'est passé
+
+Les trois PR ont été fusionnées puis déployées à **09:22 UTC**. Séquence et résultats :
+
+| Étape | Résultat |
+|---|---|
+| Vérification du **cumul** (les 3 lots ensemble, jamais testés ainsi) | 🔴 **1 échec** → TRK-049, voir ci-dessous |
+| Après correctif : typecheck · smoke-boot DI · suite API · `ng build` · Karma | ✅ 5/5 · **181 suites / 2 709 tests** · ✅ · 11/11 |
+| Build **séquentiel** api puis web (jamais en parallèle sur 2 vCPU) | ✅ codes retour 0 |
+| Smoke-boot jetable AVANT bascule | ✅ `SMOKE_OK` — **1 orphelin `api-run` produit et nettoyé** (sans ça : 2ᵉ instance d'API, tous les crons en double) |
+| Bascule api + web | ✅ `healthy`, `restarts=0`, `/api/health` ok, base connectée |
+| Migration `20260825120000_trk046…` | ✅ appliquée, `rolled_back_at` NULL, valeur d'enum présente en base |
+| Marqueurs dans le `dist/` **servi** | ✅ les 8 vérifiés (règle nº 0 : jamais sur le commit) |
+
+### 🆕 TRK-049 — ce que la vérification du cumul a trouvé
+
+La suite complète est passée de « 181 suites vertes » à **un échec** : le garde d'exhaustivité du
+catalogue des traitements de fond. Diagnostic : **la campagne TRK-018 du 24/08 avait ajouté un
+`@Cron` sans l'inscrire au catalogue**. Vérifié sur la version *servie* d'avant (`f508405`) : le
+cron y est, le catalogue ne le revendique pas — **défaut préexistant, garde rouge depuis 24 h**.
+La clôture des commandes moteur, cœur même de TRK-018, tournait **invisible** dans
+`/admin/background-tasks`.
+
+> 🔑 **Un test de complétude ne protège que si on lit son verdict.** Ce garde avait été écrit le
+> 19/08 après *exactement* le même oubli — sur la sonde chargée de détecter les tâches
+> silencieuses. Cinq jours plus tard, l'oubli se répète, le garde crie, et le déploiement passe
+> outre. Corrigé et déployé dans la foulée.
+
+### ⚠️ Ce qui n'est PAS encore prouvé — et c'est le plus important
+
+**0 `REJECTED_SPEED` depuis la bascule ne prouve rien.** FZ-862-VY a retrouvé son fix à 09:26, et
+il est 09:26 UTC — donc dans la plage autorisée : *aucune coupe n'est tentée*. Un compteur à zéro
+peut être un capteur éteint.
+
+🗓️ **Le test daté de TRK-046 est la coupe de 18:00 UTC ce soir.** À vérifier au prochain audit :
+- un véhicule hors champ **dans un lieu validé** → journal « considéré stationné », **zéro**
+  `REJECTED_SPEED`, **zéro** ligne « coupe impossible » ;
+- un véhicule hors champ **en lieu inconnu** → report honnête « hors champ GPS depuis N min » ;
+- une **sortie en roulant hors plage** → alerte `OFF_SCHEDULE_MOVEMENT`.
+
+Contexte à la bascule : **6 zones parking validées sur 6 véhicules**, **1 véhicule hors champ**.
+TRK-047 court sur 7 jours. TRK-048, lui, **est déjà exercé** : FS-253-HR, sans trame valide depuis
+18,8 h, porte toujours `1 s` en base (champ volontairement non réécrit) et la nouvelle section
+`cadence_reelle` le classe juste — **5 émetteurs rapides réels, 2 vestiges séparés**.
 
 ## Lot 1 — TRK-046 et le système « parking souterrain » (spécification validée par le propriétaire)
 
@@ -101,16 +144,16 @@ sur une fenêtre de 8 h 29 (2,06 Mo mesurés) :
 | TRK-013 / TRK-014 / TRK-016 / TRK-024 | backlog ancien (clôture par échéance, ACK `fix_*`, map-matching, OFFLINE qui survit aux trames) | suivis par l'audit quotidien |
 | TRK-035 (moitié restante) | Séparation réelle des rôles PostgreSQL — impossible par `REVOKE` (rôle superutilisateur et propriétaire), chantier avec fenêtre de maintenance | décision/planification propriétaire |
 
-## Ce que le propriétaire doit décider maintenant
+## Ce qui reste à décider / à surveiller
 
-1. **Relire et fusionner (ou amender) les PR #133, #134, #135** — puis déployer (la #133 porte
-   une migration d'enum, même précédent que TRK-018).
-2. **FZ-862-VY n'est toujours pas immobilisé** (l'alerte de blocage court depuis le 24/08
-   20:00) : coupe manuelle depuis la fiche boîtier si souhaité — un admin n'est pas soumis à la
-   règle du scheduler. Après déploiement, valider le lieu de sa perte (ou laisser
-   l'auto-qualification faire à la 2ᵉ occurrence) activera la présomption de stationnement.
+1. ✅ ~~Relire et fusionner les PR~~ — **fait le 25/08**, déployé et vérifié sur l'artefact servi.
+2. 🗓️ **Lire le verdict du test daté après la coupe de 18:00 UTC** (l'audit de cette nuit le fera).
+   FZ-862-VY est ressorti seul ce matin ; son lieu de perte n'a pas encore de zone validée, il
+   passera donc au report honnête tant que le lieu n'est pas qualifié.
 3. **Choisir un remède de journalisation** (a/b/c ci-dessus) — recommandation : (a), simple et
-   sans redémarrage.
+   sans redémarrage. *Seul point encore ouvert de cette session.*
+4. ⚠️ **Chaque redémarrage d'API déconnecte tous les utilisateurs** (`localStorage` perd jeton et
+   refresh) — c'est arrivé à 09:22. Défaut préexistant **non instruit** ; il mériterait sa fiche.
 
 ## Journal de session
 
@@ -148,3 +191,6 @@ sur une fenêtre de 8 h 29 (2,06 Mo mesurés) :
   logrotate de l'hôte, pas du volume ; 3 remèdes proposés, aucun appliqué.
 - 2026-08-25 — référentiel, wiki.json et collecte.sql mis à jour (statuts 🟠 CORRECTIF PROPOSÉ,
   passage « passe de correction », section `cadence_reelle`) ; publication VPS refaite.
+- 2026-08-25 — **DÉPLOIEMENT** : 3 PR fusionnées, cumul vérifié (181 suites / 2 709 tests),
+  TRK-049 trouvée et corrigée en route, build séquentiel + smoke-boot jetable, api/web basculés,
+  marqueurs vérifiés sur l'artefact servi, migration appliquée. Documentation republiée.
