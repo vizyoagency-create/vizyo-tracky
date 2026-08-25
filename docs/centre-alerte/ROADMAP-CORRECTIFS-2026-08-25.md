@@ -195,8 +195,9 @@ Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
    [TRK-050](REFERENCE-ERREURS.md#trk-050)**. Cause racine trouvée : le garde « un serveur
    injoignable ne doit pas déconnecter » existe depuis le 03/08 mais n'est branché que sur le
    chemin HTTP ; le chemin WebSocket (`realtime.service.ts:309-311`) l'ignore et jette des
-   identifiants parfaitement valides. 🔴 **Correctif écrit dans la fiche, PAS encore appliqué** —
-   c'est le prochain lot naturel.
+   identifiants parfaitement valides. 🟢 **CORRIGÉ, TESTÉ ET DÉPLOYÉ** le 25/08 14:58 (PR #136) — 8 tests neufs dont 4 sur le vrai
+   handler, 453 verts, déploiement WEB seul (l'API n'a pas redémarré). ⚠️ non exercé : test daté
+   au prochain redémarrage d'API.
 
 ## Journal de session
 
@@ -248,3 +249,6 @@ Si le compte reste bloqué à 3, la ligne n'a pas pris effet.
 - 2026-08-25 — **TRK-050 ouverte** : la déconnexion au redéploiement est instruite jusqu au code.
   Diagnostic par ÉLIMINATION (Vizyo Auth, Redis et cookies tous intacts) : c est le client qui
   efface ses propres identifiants valides. Correctif proposé, non appliqué.
+- 2026-08-25 14:58 — **TRK-050 corrigé, testé et déployé** (PR #136). 3 points, 8 tests neufs dont
+  4 exerçant le vrai handler ; test-first refait après avoir constaté que le premier échec venait
+  d'une erreur d'injection et non du défaut. Web seul : l'API n'a pas redémarré.

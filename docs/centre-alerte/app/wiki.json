@@ -46,14 +46,14 @@
       "id": "TRK-050",
       "titre": "Chaque redemarrage de l API deconnecte tous les utilisateurs",
       "source": "realtime-client",
-      "statut": "NON_CORRIGE",
+      "statut": "CORRIGE",
       "gravite": 2,
       "vuPremiere": "2026-08-25",
       "vuDerniere": "2026-08-25",
       "occurrences": 7,
-      "occurrencesLibelle": "5 occurrences le 24 aout, 2 le 25. Mesure sur trois redemarrages : deux cas exploitables, ZERO session survivante (une seule session vivante a chaque fois — le fait mesure est deux sur deux, pas cent pour cent des utilisateurs).",
+      "occurrencesLibelle": "5 occurrences le 24 aout, 2 le 25. Mesure sur trois redemarrages : deux cas exploitables, ZERO session survivante (une seule session vivante a chaque fois — le fait mesure est deux sur deux, pas cent pour cent des utilisateurs). CORRIGE ET DEPLOYE le 25 aout a 14h58 (PR 136), non encore exerce.",
       "quoi": "LE SERVEUR N A JAMAIS REFUSE LE JETON — C EST LE CLIENT QUI LE JETTE. Chaque redeploiement ejecte tous les utilisateurs vers la page de connexion, et leur navigateur perd a la fois le jeton et le refresh. L elimination est plus parlante que la mesure : le service qui EMET les jetons (Vizyo Auth) tourne sans interruption depuis le 24 aout, Redis depuis le 4 aout, le refresh vit dans un cookie, et cette API ne signe meme pas les jetons de session — elle delegue. Les identifiants etaient donc parfaitement valides pendant toute la panne. LA CAUSE EXACTE : quand le socket temps reel n arrive pas a se connecter, il tente un rafraichissement de jeton. Celui-ci rend la meme reponse vide pour deux situations tres differentes — un jeton refuse, et une API simplement injoignable. Le code compte ces echecs et, au troisieme, declare la session expiree et vide le stockage. Avec les delais de reconnexion par defaut, ces trois echecs tombent en environ sept secondes, largement sous les quinze secondes d une bascule. Et comme le socket est ouvert des la racine de l application, tout utilisateur connecte suit ce chemin. CE N EST PAS UN DEFAUT INCONNU, C EST UNE COUVERTURE INCOMPLETE. Le garde qui manque existe deja a dix metres, sur le chemin HTTP, avec un commentaire qui decrit mot pour mot ce defaut et le date du 3 aout : un serveur injoignable ne doit pas deconnecter. La lecon a ete apprise, ecrite, et appliquee a UN SEUL des deux chemins qui peuvent deconnecter. AGGRAVANT : le compteur d echecs n est jamais remis a zero lors d une reconnexion reussie. Il s accumule sur toute la duree de vie de l onglet, donc trois micro-coupures reseau espacees de plusieurs heures produisent la meme ejection, SANS aucun redemarrage.",
-      "quoiFaire": "CORRECTIF PAR SYMETRIE EXACTE AVEC LE CHEMIN HTTP, en trois points. UN : dans le gestionnaire d erreur de connexion du socket, ne pas compter un echec quand le drapeau serveur injoignable est leve — la session reste alors en place et la requete suivante retentera une fois l API revenue. DEUX : remettre le compteur d echecs a zero a chaque reconnexion reussie, a cote du compteur voisin qui l est deja. TROIS : poser le meme garde sur le second chemin de reconnexion, qui declare lui aussi la session expiree sans consulter le drapeau. VERIFICATION QUI PORTE SUR LA CAUSE : au prochain redeploiement, une session ouverte avant la bascule doit rester ouverte apres. La requete qui tranche compte les sessions demarrees avant la bascule et encore vues une minute apres ; elle rend zero aujourd hui, elle doit rendre plus que zero. NE PAS juger sur l absence de plainte : le defaut est silencieux, il n ecrit aucune ligne au centre d alerte et ne se voit que si quelqu un est connecte au moment exact de la bascule.",
+      "quoiFaire": "CORRIGE, TESTE ET DEPLOYE LE 25 AOUT A 14H58. Les trois points sont en ligne : la decision est extraite dans une fonction PURE et EXPORTEE qui distingue un refus d une injoignabilite, le compteur d echecs est remis a zero a chaque reconnexion reussie, et le second chemin d ejection serveur recoit le meme garde. Le comportement d origine est preserve : un refus REEL expire toujours la session au troisieme echec. HUIT TESTS NEUFS, dont quatre qui exercent le VRAI gestionnaire d evenement grace a une couture sur la creation du socket — ce chemin n avait aucun test, et c est precisement ce qui avait permis a la correction du 3 aout de n en traiter que la moitie. Verification test-first : trois echouent sur l ancien code, dont celui qui dit que dix echecs de connexion ne doivent jamais deconnecter ; et le contrepoint sur le refus reel passe sur les DEUX versions, ce qui prouve que les tests ne sont pas tautologiques. Suite web complete : 453 verts. Marqueurs confirmes dans le paquet REELLEMENT SERVI grace a des litteraux de chaine, jamais par un nom de variable — un nom de variable est invalide sur un paquet minifie, lecon deja payee. LE DEPLOIEMENT N A TOUCHE QUE LE WEB : l API n a pas redemarre, donc le correctif de la deconnexion n a deconnecte personne. C est aussi pour cela qu il reste NON EXERCE : la preuve comportementale demande une vraie bascule d API. TEST DATE au prochain redemarrage : une session ouverte avant la bascule doit rester ouverte apres — elle ne survivait a aucun des trois redemarrages mesures.",
       "aNePasFaire": "NE PAS supprimer la declaration de session expiree du chemin temps reel : elle traite un cas reel, celui d un onglet carte laisse ouvert avec un refresh mort, sans lequel on boucle a l infini sur le rafraichissement. C est le DISCRIMINANT qui manque, pas la garde. NE PAS augmenter le seuil de trois echecs : cela deplacerait le probleme sans le traiter — un redeploiement plus long, ou trois hoquets cumules, le reproduiraient. NE PAS se fier a la fonction qui filtre les pannes reseau pour le SIGNALEMENT au centre d alerte : elle ne gouverne pas la decision de deconnecter. Deux garde-fous distincts existent contre le meme piege, et celui qui compte ici est le drapeau serveur injoignable. NE PAS conclure qu un test couvre ce chemin : aucun test ne porte aujourd hui sur le rafraichissement indisponible, la deconnexion ou l erreur de connexion du socket — c est ce qui a permis a la correction du 3 aout de laisser la moitie du probleme en place.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-050"
@@ -1069,6 +1069,26 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-08-25",
+      "origine": "passe de correction",
+      "rapport": "REFERENCE-ERREURS.md",
+      "verdict": "TRK-050 corrige, teste et deploye : le garde qui existait depuis le 3 aout sur le chemin HTTP est enfin branche sur le chemin WebSocket, avec la remise a zero du compteur et le second chemin que l enquete avait mis au jour. Huit tests neufs verrouillent desormais ce chemin, qui n en avait aucun.",
+      "chiffres": {
+        "testsNeufs": 8,
+        "testsExercantLeVraiHandler": 4,
+        "echecsSurAncienCode": 3,
+        "suiteWebVerte": 453,
+        "pointsDeCorrectif": 3,
+        "apiRedemarree": 0
+      },
+      "fiches": {
+        "nouvelles": 0,
+        "misesAJour": 1
+      },
+      "aTraiter": [],
+      "note": "Deux lecons de methode. UNE : la premiere verification test-first montrait cinq echecs sur l ancien code — mais pour une erreur d INJECTION, pas pour le defaut. Un test qui echoue pour la mauvaise raison ne prouve rien, et il est tentant de le lire comme une preuve ; le harnais a ete complete et la verification refaite. DEUX : les marqueurs de deploiement ont ete cherches dans des litteraux de chaine et non dans des noms de variables — sur un paquet minifie, un nom de variable ne prouve rien, ce que le referentiel avait deja paye. Enfin, le deploiement n a touche que le web : l API n a pas redemarre, donc le correctif de la deconnexion n a deconnecte personne — mais il reste NON EXERCE tant qu une vraie bascule d API n a pas eu lieu."
+    },
     {
       "date": "2026-08-25",
       "origine": "enquete",
