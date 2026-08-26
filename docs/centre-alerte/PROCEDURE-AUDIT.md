@@ -33,26 +33,33 @@ attendre en silence, c'est le transformer en fausse bonne nouvelle.
 ⚠️ **Recalculer la colonne « en attente depuis » à chaque passage**, et faire monter la fiche en
 tête du rapport quand elle franchit 7 jours.
 
-### 📦 Écrits le 26/08, à vérifier DÉPLOYÉS puis à exercer
+### 📦 DÉPLOYÉS le 26/08 à 05:55-05:57 — à EXERCER
 
-| Fiche | Ce qui a été écrit | Comment vérifier qu'il est en ligne |
+| Fiche | Ce qui est en ligne | Le geste qui le prouvera |
 |---|---|---|
-| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | `ACKNOWLEDGED` scindé sur `ackResponse` | l'écran mode fix affiche « CIBLE ATTEINTE (mesurée) » en **ambre**, plus de vert sans réponse matérielle |
-| [TRK-018](./REFERENCE-ERREURS.md#trk-018) nº 4 | écran `/admin/immobilisations` | la route répond, et la carte est dans le hub admin |
-| [TRK-037](./REFERENCE-ERREURS.md#trk-037) | niveau `DEGRADATION` | une **nouvelle** ligne Overpass porte `level = 'DEGRADATION'` en base |
-| [TRK-020](./REFERENCE-ERREURS.md#trk-020) | colonnes d'acquittement nommées | ✅ **déjà effectif** — `collecte.sql`, vérifié le 26/08 |
+| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | `ACKNOWLEDGED` scindé sur `ackResponse` | ouvrir le **mode fix** d'un boîtier : badge **AMBRE** « CIBLE ATTEINTE (mesurée) », plus aucun vert sans réponse matérielle |
+| [TRK-018](./REFERENCE-ERREURS.md#trk-018) nº 4 | écran `/admin/immobilisations` | l'ouvrir : 316 lignes `SENT_UNCONFIRMED`, ventilées par canal et par véhicule |
+| [TRK-037](./REFERENCE-ERREURS.md#trk-037) | niveau `DEGRADATION` | 🗓️ **la PROCHAINE ligne Overpass doit porter `level = 'DEGRADATION'`** — et ne plus compter comme un défaut |
+| [TRK-020](./REFERENCE-ERREURS.md#trk-020) | colonnes d'acquittement nommées | ✅ déjà vérifié le 26/08 |
 
-### 🎯 L'objectif du propriétaire : **le centre d'alerte doit afficher 0**
+⚠️ **Marqueurs vérifiés sur l'ARTEFACT SERVI**, en littéraux de chaîne. L'orphelin `api-run` a été
+produit **et nettoyé** — le vérifier reste obligatoire après tout `docker compose run`.
 
-Au 26/08 : **18 lignes actives**, dont **14 Overpass** (TRK-037), **3 TRIP_AUTOMATION** toutes
-antérieures au correctif de 09:22, et **1 sms-heartbeat** dont le verdict `INDETERMINE` est le
-résultat *attendu*.
+### ✅ LE CENTRE D'ALERTE EST À **0** DEPUIS LE 26/08 — ce que ça change pour ce passage
 
-🔴 **Mais le centre ne se VIDE pas — il doit cesser d'avoir des raisons d'écrire.** Le garde-fou
-n° 1 tient : on n'efface rien, on n'acquitte rien pour faire baisser un compteur. Les lignes
-ci-dessus sont **archivables** — geste réversible, prévu pour ça — **uniquement parce que leur
-cause est corrigée ET vérifiée**. C'est une décision humaine : *l'audit ne l'a jamais prise et ne
-la prend pas.*
+**19 lignes archivées** le 26/08 à la demande du propriétaire (15 Overpass + 3 TRIP_AUTOMATION
+antérieures à leur correctif + 1 `sms-heartbeat` au verdict attendu). **`actives = 0`**, et les
+**32 lignes sont TOUJOURS en base** : un archivage est un `UPDATE` réversible, chaque ligne porte
+son motif. Témoin intact — **4 déclencheurs, 0 constat de disparition**.
+
+🔴 **Conséquence directe pour la lecture de ce passage : le point de départ n'est plus « combien de
+lignes ? » mais « QUELLE EST LA PREMIÈRE ? ».** Toute ligne active trouvée aujourd'hui est
+**postérieure au 26/08 05:57** et mérite d'être instruite, sans exception — elle ne peut plus être
+noyée dans un fond d'écran ancien.
+
+⚠️ **Et un zéro ne dit toujours pas que la plateforme est saine.** Il dit qu'aucune ligne n'attend
+d'action. **10 fiches restent ouvertes**, dont **5 correctifs en production que rien n'a jamais
+exercés** (table ci-dessus). Les angles morts du §3.3 restent la partie la plus rentable de l'audit.
 
 ### Les trois pièges intemporels
 
