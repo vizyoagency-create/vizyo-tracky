@@ -152,7 +152,10 @@ JOIN trackers t ON t.id = tc."trackerId"
 LEFT JOIN vehicles v ON v.id = t."vehicleId"
 WHERE tc.status IN ('PENDING', 'SENT')
   AND tc."createdAt" < now() - interval '10 minutes'
+  -- TRK-020 : « en attente » = aucun acquittement D'AUCUNE SORTE. Filtrer sur le seul
+  -- `acknowledgedAt` (humain) laissait passer une commande deja acquittee par le boitier.
   AND tc."acknowledgedAt" IS NULL
+  AND tc."ackedAt" IS NULL
 ORDER BY tc."createdAt" DESC
 LIMIT 50;
 
@@ -172,9 +175,19 @@ LIMIT 50;
 -- a 15/j en trois jours pendant que ACKNOWLEDGED montait de 0 a 61 : le TOTAL,
 -- lui, n'a pas bouge (69 a 79/j sur neuf jours). C'etait un RE-ETIQUETAGE, pas
 -- une amelioration. `total_famille` rend la comparaison possible d'un coup d'oeil.
+--
+-- 🔴 TRK-020 (corrige le 2026-08-26) : `tracker_commands` porte DEUX colonnes
+-- d'acquittement de sens OPPOSES, et l'ancienne etiquette « acquittees » ne disait pas
+-- laquelle elle comptait :
+--   * `ackedAt` / `ackResponse`      = l'accuse de reception DU BOITIER ;
+--   * `acknowledgedAt` / `...By`     = un acquittement HUMAIN, parfois de masse (27 lignes
+--                                      partagent la meme milliseconde le 04/06).
+-- Elles sont desormais nommees et rendues SEPAREMENT. `acquittees_boitier` est la seule
+-- qui autorise a dire qu'un boitier a repondu.
 SELECT "templateId", status, count(*) AS n,
-       count("acknowledgedAt") AS acquittees,
-       count("ackResponse")    AS reponse_boitier,
+       count("ackResponse")     AS acquittees_boitier,
+       count("ackedAt")         AS horodatage_boitier,
+       count("acknowledgedAt")  AS acquittees_humain,
        round(count(*)::numeric / 7, 1) AS par_jour,
        sum(count(*)) OVER (PARTITION BY "templateId") AS total_famille
 FROM tracker_commands
