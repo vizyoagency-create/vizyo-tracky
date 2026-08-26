@@ -5,30 +5,54 @@
 
 ---
 
-## 🔴 PASSAGE DU 2026-08-25 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
+## 🟢 PASSAGE DU 2026-08-26 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
 
-**Sept correctifs ont été déployés en production le 24/08**, dont un avec migration de base.
-Ce passage n'est donc pas un audit ordinaire : il doit **vérifier que ces correctifs font
-réellement ce qu'on croit**.
+**Le passage d'hier est CLOS. Ne pas le refaire.** `CONTROLE-CORRECTIFS-2026-08-25.md` est un
+document daté du 25/08 : ses contrôles ont été exécutés, leurs verdicts sont dans les sections
+datées de `REFERENCE-ERREURS.md`. Le relire ferait dépenser le passage à confirmer l'acquis.
 
-👉 **[`CONTROLE-CORRECTIFS-2026-08-25.md`](./CONTROLE-CORRECTIFS-2026-08-25.md)** — à lire
-**après cette procédure et avant la collecte**. Il donne, pour chaque correctif, la requête de
-contrôle, le résultat attendu, et surtout **la condition de faux succès** : cinq d'entre eux ont
-une mesure qui *semble* prouver que ça marche alors qu'elle prouve autre chose.
+**Cinq correctifs ont été déployés le 25/08** (TRK-046, 047, 048, 049, 050). Deux sont déjà
+prouvés par le comportement — TRK-046 à la coupe de 20:00 UTC, TRK-048 le jour même.
 
-**Les trois pièges à connaître avant même de commencer :**
+⚠️ **Les deux sources « neuves » désignées hier comme prioritaires sont ÉTEINTES.** Ne pas
+partir à leur recherche : `schedule-cron` n'a plus produit une seule ligne depuis son correctif,
+et `TRIP_AUTOMATION` s'arrête à **09:10, soit AVANT le déploiement de 09:22**. Relevé du 26/08 à
+00:35 UTC : **18 lignes actives, 0 CRITICAL, et plus aucune erreur depuis le 25/08 à 17:47.**
+Le seul bruit résiduel est `trip-analysis` (TRK-037, dépendance Overpass) — **2 lignes** depuis
+le déploiement, contrepartie assumée par le propriétaire.
 
-1. **Vérifier contre l'ARTEFACT SERVI, jamais contre la fiche.** Cinq statuts de fiches
-   annonçaient l'inverse de la réalité en deux jours. Si fiche et artefact se contredisent,
-   **l'artefact a raison, et la fiche se corrige dans le même passage.**
-2. **Deux correctifs ont une DOUBLE condition** (TRK-015, TRK-018) : un compteur doit tomber
-   **pendant qu'un autre se maintient**. *Si les deux tombent ensemble, on a supprimé la
-   fonctionnalité, pas le défaut.*
+### 🎯 Les tests datés à lire cette nuit — par ordre d'intérêt
+
+1. **`OFF_SCHEDULE_MOVEMENT` — le seul morceau de TRK-046 encore NON PROUVÉ.** Compteur à
+   **0**. Le filet ne peut partir que si un véhicule hors champ GPS **ressort EN ROULANT**
+   pendant la plage de coupure (avant 07:00 Paris). *Un zéro ne prouve rien tant qu'aucun
+   véhicule n'est ressorti* : vérifier d'abord s'il y a eu une occasion, avant de conclure.
+2. **TRK-050** — au **prochain redémarrage d'API** : personne ne doit être déconnecté.
+   Chercher une reconnexion WebSocket sans purge de session.
+3. **TRK-021** — **aucun essai de template SMS-only depuis le 15/08.** Le correctif est en
+   production et n'a JAMAIS été exercé. Un compteur à zéro est ici un *oubli d'essayer*, pas
+   une réussite.
+4. **logrotate `rotate 14`** — à partir du **27/08**, `.log.4` et au-delà doivent apparaître
+   dans `/var/lib/docker/containers/*/`. Rien à conclure avant cette date.
+
+### 🛡️ NOUVEAU — le statut d'une fiche vit sur TROIS surfaces
+
+Depuis le 25/08, un test **fait échouer la construction** si l'index, l'en-tête de la fiche et
+`app/wiki.json` ne disent pas la même chose (24 fiches se contredisaient). **Toute création ou
+modification de fiche doit être portée sur les trois**, et le contrôle lancé — voir §11.
+
+### Les trois pièges intemporels
+
+1. **Vérifier contre l'ARTEFACT SERVI, jamais contre la fiche.** Si fiche et artefact se
+   contredisent, **l'artefact a raison, et la fiche se corrige dans le même passage.**
+   *(Le garde ci-dessus rend l'oubli impossible, mais il ne dit pas qui a raison — c'est la
+   mesure qui tranche.)*
+2. **Une double condition n'est franchie que si UN SEUL compteur tombe.** Si les deux tombent
+   ensemble, on a supprimé la fonctionnalité, pas le défaut.
 3. **`docker logs` est peu fiable sur cet hôte** — il a rendu du VIDE le 25/08 alors que le
-   fichier contenait les lignes. Pour les journaux PostgreSQL, **lire le fichier `LogPath`**.
+   fichier contenait les lignes. Pour PostgreSQL, **lire le fichier `LogPath`**.
 
-⚠️ **Deux sources d'erreur NEUVES** (`schedule-cron`, `TRIP_AUTOMATION`) sont apparues le 24/08 :
-elles sont la priorité d'enquête, après les contrôles de correctifs.
+⚠️ **10 fiches restent ouvertes** : TRK-001, 014, 016, 018, 020, 021, 022, 027, 035, 037.
 
 ---
 
