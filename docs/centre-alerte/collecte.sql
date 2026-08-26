@@ -159,9 +159,24 @@ LIMIT 50;
 \echo ### SECTION commandes_sante_7j
 -- Angle mort connu (TRK-008) : les FAILED n'apparaissent NULLE PART au centre
 -- d'alerte. C'est ici qu'on les voit.
+--
+-- 🔴 LIRE `reponse_boitier`, PAS `status` (TRK-051, 2026-08-26). Le statut
+-- `ACKNOWLEDGED` NE VEUT PAS DIRE « acquitte par le boitier » : depuis PR #111
+-- (23/08), la cloture par echeance ecrit ce statut des que la cadence MESUREE
+-- rejoint la cadence demandee, en le disant dans `observedResult` (« ... sans
+-- accuse de reception du boitier »). Sur 120 ACKNOWLEDGED des 7 derniers jours,
+-- **2** portaient une vraie reponse de boitier. Deux passages d'affilee (24 et
+-- 25/08) ont failli en conclure que les boitiers repondaient enfin.
+--
+-- ⚠️ ET COMPARER LE TOTAL, PAS `FAILED` SEUL. Le 23/08, FAILED est tombe de ~72
+-- a 15/j en trois jours pendant que ACKNOWLEDGED montait de 0 a 61 : le TOTAL,
+-- lui, n'a pas bouge (69 a 79/j sur neuf jours). C'etait un RE-ETIQUETAGE, pas
+-- une amelioration. `total_famille` rend la comparaison possible d'un coup d'oeil.
 SELECT "templateId", status, count(*) AS n,
        count("acknowledgedAt") AS acquittees,
-       round(count(*)::numeric / 7, 1) AS par_jour
+       count("ackResponse")    AS reponse_boitier,
+       round(count(*)::numeric / 7, 1) AS par_jour,
+       sum(count(*)) OVER (PARTITION BY "templateId") AS total_famille
 FROM tracker_commands
 WHERE "createdAt" > now() - interval '7 days'
 GROUP BY 1, 2
