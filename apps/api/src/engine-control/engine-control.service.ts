@@ -1057,4 +1057,159 @@ export class EngineControlService implements OnModuleDestroy {
     }
     return command;
   }
+
+  /**
+   * ══ TRK-018 nº 4 — LES IMMOBILISATIONS QUE PERSONNE NE PEUT CONFIRMER ═══════════════════
+   *
+   * Les correctifs 1 à 3 ont rendu l'état LISIBLE EN BASE : les commandes moteur sans preuve
+   * de remise ne pourrissent plus en `SENT` à vie, elles portent `SENT_UNCONFIRMED` — « nul ne
+   * sait » — et le canal réellement emprunté est écrit dans `channel`. Il manquait l'écran :
+   * un exploitant n'ouvre pas psql.
+   *
+   * 🔑 **Ce que cet écran montre est une CÉCITÉ, pas une panne.** Rien ici ne prouve qu'un
+   * véhicule n'a pas été immobilisé — seulement que *personne ne peut l'affirmer*. Le
+   * coupe-circuit est une garde de sécurité : une garde qu'on croit armée sans preuve est plus
+   * dangereuse qu'une garde qu'on sait muette. Le vocabulaire de la réponse suit cette règle et
+   * n'emploie jamais « échec ».
+   *
+   * ⚠️ `ackedAt` n'est jamais écrit par ce chemin, et cette méthode est en LECTURE SEULE :
+   * faire disparaître ces lignes supprimerait la seule trace de la question.
+   */
+  async listUnconfirmedImmobilisations(
+    requestedBy: RequestedBy,
+    filters?: { days?: number },
+  ): Promise<{
+    fenetreJours: number;
+    resume: {
+      total: number;
+      dernieres24h: number;
+      derniers7j: number;
+      parCanal: { TCP: number; SMS: number; INCONNU: number };
+      vehiculesConcernes: number;
+      plusAncienneHeures: number | null;
+    };
+    parVehicule: {
+      vehicleId: string | null;
+      plaque: string;
+      total: number;
+      viaSms: number;
+      canalInconnu: number;
+      derniere: string;
+    }[];
+    recentes: {
+      id: string;
+      creeLe: string;
+      action: string;
+      statut: string;
+      canal: 'TCP' | 'SMS' | 'INCONNU';
+      plaque: string;
+      origine: string;
+      ageHeures: number;
+    }[];
+  }> {
+    // Fail-closed, exactement comme `listCommands` : un non-super sans flotte ne voit RIEN.
+    const scope = resolveTenantScope(requestedBy);
+    const vide = {
+      fenetreJours: 0,
+      resume: {
+        total: 0, dernieres24h: 0, derniers7j: 0,
+        parCanal: { TCP: 0, SMS: 0, INCONNU: 0 },
+        vehiculesConcernes: 0, plusAncienneHeures: null,
+      },
+      parVehicule: [],
+      recentes: [],
+    };
+    if (scope.mode === 'DENY') return vide;
+
+    const days = Math.min(Math.max(filters?.days ?? 30, 1), 365);
+    const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+
+    const where: Prisma.EngineControlCommandWhereInput = {
+      // « Nul ne sait » = la fin de vie du correctif nº 2, plus les `SENT` d'avant sa mise en
+      // ligne qui n'ont jamais été balayés. Jamais `FAILED` : un échec CONNU n'est pas une cécité.
+      status: { in: [CommandStatus.SENT_UNCONFIRMED, CommandStatus.SENT] },
+      ackedAt: null,
+      createdAt: { gte: since },
+    };
+    if (scope.mode === 'FLEET') {
+      where.tracker = { vehicle: { fleetId: scope.fleetId } };
+    }
+
+    const lignes = await this.prisma.engineControlCommand.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: { tracker: { include: { vehicle: true } } },
+      // Borne dure : cet écran informe, il ne pagine pas. Le résumé, lui, porte sur ce lot.
+      take: 500,
+    });
+
+    const maintenant = Date.now();
+    const heures = (d: Date) => Math.round(((maintenant - d.getTime()) / 3600_000) * 10) / 10;
+    const canalDe = (c: string | null): 'TCP' | 'SMS' | 'INCONNU' =>
+      c === 'TCP' || c === 'SMS' ? c : 'INCONNU';
+
+    const parCanal = { TCP: 0, SMS: 0, INCONNU: 0 };
+    const parVehicule = new Map<
+      string,
+      { vehicleId: string | null; plaque: string; total: number; viaSms: number; canalInconnu: number; derniere: Date }
+    >();
+
+    for (const l of lignes) {
+      const canal = canalDe(l.channel);
+      parCanal[canal] += 1;
+      const v = l.tracker?.vehicle ?? null;
+      const cle = v?.id ?? `imei:${l.tracker?.imei ?? l.trackerId}`;
+      const courant = parVehicule.get(cle);
+      if (courant) {
+        courant.total += 1;
+        if (canal === 'SMS') courant.viaSms += 1;
+        if (canal === 'INCONNU') courant.canalInconnu += 1;
+        if (l.createdAt > courant.derniere) courant.derniere = l.createdAt;
+      } else {
+        parVehicule.set(cle, {
+          vehicleId: v?.id ?? null,
+          plaque: v?.plate ?? '(sans véhicule)',
+          total: 1,
+          viaSms: canal === 'SMS' ? 1 : 0,
+          canalInconnu: canal === 'INCONNU' ? 1 : 0,
+          derniere: l.createdAt,
+        });
+      }
+    }
+
+    const seuil24 = maintenant - 24 * 3600_000;
+    const seuil7j = maintenant - 7 * 24 * 3600_000;
+
+    return {
+      fenetreJours: days,
+      resume: {
+        total: lignes.length,
+        dernieres24h: lignes.filter((l) => l.createdAt.getTime() >= seuil24).length,
+        derniers7j: lignes.filter((l) => l.createdAt.getTime() >= seuil7j).length,
+        parCanal,
+        vehiculesConcernes: parVehicule.size,
+        plusAncienneHeures: lignes.length ? heures(lignes[lignes.length - 1].createdAt) : null,
+      },
+      parVehicule: [...parVehicule.values()]
+        .sort((a, b) => b.total - a.total || b.derniere.getTime() - a.derniere.getTime())
+        .map((v) => ({
+          vehicleId: v.vehicleId,
+          plaque: v.plaque,
+          total: v.total,
+          viaSms: v.viaSms,
+          canalInconnu: v.canalInconnu,
+          derniere: v.derniere.toISOString(),
+        })),
+      recentes: lignes.slice(0, 60).map((l) => ({
+        id: l.id,
+        creeLe: l.createdAt.toISOString(),
+        action: l.action,
+        statut: l.status,
+        canal: canalDe(l.channel),
+        plaque: l.tracker?.vehicle?.plate ?? '(sans véhicule)',
+        origine: l.source,
+        ageHeures: heures(l.createdAt),
+      })),
+    };
+  }
 }

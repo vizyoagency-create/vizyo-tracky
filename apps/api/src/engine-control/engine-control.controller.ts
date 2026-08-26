@@ -73,6 +73,24 @@ export class EngineControlController {
     );
   }
 
+  /**
+   * TRK-018 nº 4 — l'écran « immobilisations non confirmées ».
+   *
+   * Volontairement AVANT `commands/:id` : Nest résout dans l'ordre de déclaration, et une route
+   * littérale placée après une route paramétrée serait avalée par elle (`:id` = 'unconfirmed').
+   *
+   * Ouvert aux mêmes rôles que la liste des commandes. Le cloisonnement est fait dans le service
+   * par `resolveTenantScope` (fail-closed).
+   */
+  @Get('unconfirmed')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  listUnconfirmed(@Req() req: AuthenticatedRequest, @Query('days') days?: string) {
+    return this.engineControl.listUnconfirmedImmobilisations(
+      { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId },
+      { days: days ? parseInt(days, 10) : undefined },
+    );
+  }
+
   @Get('commands/:id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   getCommand(@Param('id') id: string, @Req() req: AuthenticatedRequest) {

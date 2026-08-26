@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish,} from 'lucide-angular';
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish, ShieldQuestion,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
 
@@ -167,6 +167,22 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             </div>
             <h3>Audit des alertes</h3>
             <p class="desc">Chaque alerte avec la trame brute qui l'a déclenchée, et le regroupement par cause.</p>
+          </div>
+        </a>
+
+        <!-- ── IMMOBILISATIONS NON CONFIRMEES ──
+             TRK-018 : pendant dix semaines, un vehicule etait immobilise et redemarre chaque
+             nuit par un canal dont personne, a aucun etage, ne pouvait dire s'il transmettait.
+             L'etat est lisible en base depuis le 24/08 ; cet ecran le rend lisible tout court. -->
+        <a routerLink="/admin/immobilisations" class="card" style="--i:4">
+          <span class="accent accent-purple"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-purple"><lucide-icon [img]="ShieldQuestion" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Immobilisations non confirmées</h3>
+            <p class="desc">Les coupures et redémarrages moteur dont aucun accusé n'est jamais revenu. Une cécité, pas une panne.</p>
           </div>
         </a>
 
@@ -693,6 +709,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Terminal = Terminal;
   protected readonly MessageSquare = MessageSquare;
   protected readonly Search = Search;
+  protected readonly ShieldQuestion = ShieldQuestion;
   protected readonly Layers = Layers;
   protected readonly Users = Users;
   protected readonly Radio = Radio;

@@ -393,6 +393,18 @@ export const routes: Routes = [
         data: { title: 'Ce que nos services ont recupere' },
       },
       {
+        // TRK-018 nº 4 — les immobilisations que personne ne peut confirmer. Le coupe-circuit
+        // est une garde de securite : une garde qu'on croit armee sans preuve est plus
+        // dangereuse qu'une garde qu'on sait muette. L'ecran montre une CECITE, pas une panne.
+        path: 'admin/immobilisations',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/immobilisations-non-confirmees.component').then(
+            (m) => m.ImmobilisationsNonConfirmeesComponent,
+          ),
+        data: { title: 'Immobilisations non confirmees' },
+      },
+      {
         // Audit des alertes et de leurs trames — l'ecran qui permet de trancher un
         // deluge sans restaurer une sauvegarde ni ecrire de SQL.
         path: 'admin/audit-alertes',

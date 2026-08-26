@@ -1372,4 +1372,153 @@ describe('EngineControlService', () => {
       await expect(service.cloturerCommandesPerimees()).resolves.toBeUndefined();
     });
   });
+
+  /**
+   * ══ TRK-018 nº 4 — l'écran « immobilisations non confirmées » ═══════════════════════════
+   *
+   * Ce que ces tests verrouillent avant tout : le CLOISONNEMENT (une flotte ne voit jamais les
+   * immobilisations d'une autre) et le VOCABULAIRE (`FAILED` n'est PAS une cécité).
+   */
+  describe('TRK-018 nº 4 — immobilisations non confirmées', () => {
+    const ligne = (o: Partial<{ id: string; status: CommandStatus; action: EngineAction; channel: string | null; ageH: number; plate: string | null; source: string }> = {}) => ({
+      id: o.id ?? 'c1',
+      status: o.status ?? CommandStatus.SENT_UNCONFIRMED,
+      action: o.action ?? EngineAction.CUT,
+      channel: o.channel === undefined ? 'TCP' : o.channel,
+      source: o.source ?? 'SCHEDULER',
+      ackedAt: null,
+      trackerId: TRACKER_ID,
+      createdAt: new Date(Date.now() - (o.ageH ?? 1) * 3600_000),
+      tracker: {
+        imei: '123456789012345',
+        // ⚠️ L'id doit SUIVRE la plaque : le regroupement se fait par identifiant de véhicule
+        // (plus juste qu'une plaque, qui peut changer). Un fixture qui donne le même id à deux
+        // plaques différentes les ferait fusionner — et ferait passer le test pour une raison
+        // fausse. Constaté à l'écriture de ce test.
+        vehicle:
+          o.plate === null
+            ? null
+            : { id: `veh-${o.plate ?? 'AB-123-CD'}`, plate: o.plate ?? 'AB-123-CD' },
+      },
+    });
+
+    it('ne demande QUE des commandes sans accusé, jamais les FAILED', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([]);
+
+      await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      const where = prisma.engineControlCommand.findMany.mock.calls[0][0].where;
+      expect(where.ackedAt).toBeNull();
+      expect(where.status.in).toEqual(
+        expect.arrayContaining([CommandStatus.SENT_UNCONFIRMED, CommandStatus.SENT]),
+      );
+      // « A échoué » et « nul ne sait » ne sont pas la même information.
+      expect(where.status.in).not.toContain(CommandStatus.FAILED);
+    });
+
+    /** 🔴 Le test qui compte : une flotte ne doit jamais voir les immobilisations d'une autre. */
+    it('cloisonne un FLEET_ADMIN sur SA flotte', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([]);
+
+      await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID });
+
+      const where = prisma.engineControlCommand.findMany.mock.calls[0][0].where;
+      expect(where.tracker).toEqual({ vehicle: { fleetId: FLEET_ID } });
+      expect(where.tracker.vehicle.fleetId).not.toBe(OTHER_FLEET_ID);
+    });
+
+    it('ne pose AUCUN filtre de flotte pour un SUPER_ADMIN', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([]);
+
+      await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      expect(prisma.engineControlCommand.findMany.mock.calls[0][0].where.tracker).toBeUndefined();
+    });
+
+    /** Fail-closed : un non-super sans flotte ne voit RIEN, et la base n'est même pas interrogée. */
+    it('rend un résultat vide SANS requêter pour un non-super sans flotte', async () => {
+      const r = await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: null });
+
+      expect(prisma.engineControlCommand.findMany).not.toHaveBeenCalled();
+      expect(r.resume.total).toBe(0);
+      expect(r.parVehicule).toEqual([]);
+      expect(r.recentes).toEqual([]);
+    });
+
+    it('ventile par canal et compte INCONNU quand le canal n a jamais été observé', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([
+        ligne({ id: 'a', channel: 'TCP' }),
+        ligne({ id: 'b', channel: 'SMS' }),
+        ligne({ id: 'c', channel: null }),
+        ligne({ id: 'd', channel: null }),
+      ]);
+
+      const r = await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      expect(r.resume.parCanal).toEqual({ TCP: 1, SMS: 1, INCONNU: 2 });
+      expect(r.resume.total).toBe(4);
+    });
+
+    it('regroupe par véhicule, trie par volume et compte les envois SMS', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([
+        ligne({ id: 'a', plate: 'EY-613-MF', channel: 'SMS', ageH: 1 }),
+        ligne({ id: 'b', plate: 'EY-613-MF', channel: 'SMS', ageH: 5 }),
+        ligne({ id: 'c', plate: 'EY-613-MF', channel: null, ageH: 9 }),
+        ligne({ id: 'd', plate: 'FS-253-HR', channel: 'TCP', ageH: 2 }),
+      ]);
+
+      const r = await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      expect(r.parVehicule[0]).toMatchObject({ plaque: 'EY-613-MF', total: 3, viaSms: 2, canalInconnu: 1 });
+      expect(r.parVehicule[1]).toMatchObject({ plaque: 'FS-253-HR', total: 1, viaSms: 0 });
+      expect(r.resume.vehiculesConcernes).toBe(2);
+    });
+
+    it('compte les fenêtres 24 h et 7 j sur les horodatages réels', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([
+        ligne({ id: 'a', ageH: 2 }),
+        ligne({ id: 'b', ageH: 20 }),
+        ligne({ id: 'c', ageH: 50 }),
+        ligne({ id: 'd', ageH: 400 }),
+      ]);
+
+      const r = await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      expect(r.resume.dernieres24h).toBe(2);
+      expect(r.resume.derniers7j).toBe(3);
+      expect(r.resume.total).toBe(4);
+    });
+
+    it('supporte un boîtier sans véhicule sans planter', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([ligne({ id: 'a', plate: null })]);
+
+      const r = await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      expect(r.parVehicule[0].plaque).toBe('(sans véhicule)');
+      expect(r.parVehicule[0].vehicleId).toBeNull();
+    });
+
+    it('borne la fenêtre demandée entre 1 et 365 jours', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([]);
+
+      const trop = await service.listUnconfirmedImmobilisations(
+        { userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null }, { days: 9999 });
+      expect(trop.fenetreJours).toBe(365);
+
+      const peu = await service.listUnconfirmedImmobilisations(
+        { userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null }, { days: 0 });
+      expect(peu.fenetreJours).toBe(1);
+    });
+
+    /** ⚠️ Cet écran informe. Il ne doit jamais écrire — surtout pas `ackedAt` (cf. TRK-014). */
+    it('est en LECTURE SEULE — aucune écriture, aucun acquittement', async () => {
+      prisma.engineControlCommand.findMany.mockResolvedValue([ligne({ id: 'a' })]);
+
+      await service.listUnconfirmedImmobilisations({ userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null });
+
+      expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+      expect(prisma.engineControlCommand.updateMany).not.toHaveBeenCalled();
+      expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    });
+  });
 });
