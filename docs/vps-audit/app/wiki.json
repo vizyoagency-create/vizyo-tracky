@@ -1,7 +1,7 @@
 {
   "title": "Audit VPS — performances, données et sécurité",
   "intro": "Ce que la machine encaisse : disque, mémoire, conteneurs, données, sécurité. Un passage par jour, en lecture seule — l'agent observe et propose, il ne touche à rien.",
-  "updatedAt": "2026-08-25",
+  "updatedAt": "2026-08-26",
   "sections": [
     {
       "key": "guide",
@@ -85,6 +85,42 @@
   ],
   "fiches": [
     {
+      "id": "VPS-M69",
+      "titre": "Un debit lu a UNE SEULE HEURE, publie comme un regime, sur une grandeur qui venait d acquerir un cycle diurne",
+      "domaine": "methode",
+      "statut": "APPLIQUE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-26",
+      "vuDerniere": "2026-08-26",
+      "mesure": "Le rapport du 08-25 a publie « 40 % sous son niveau d avant, ET IL BAISSE ENCORE » sur un debit qui valait 104,4 trames/h/boitier une heure plus tard (son minimum quotidien) puis 164,5 le meme apres-midi. A heure comparable il etait +15 % AU-DESSUS du jour precedent (110,7 -> 127,2 a 01 h). Amplitude jour/nuit : x1,19 avant l incident, x1,58 apres.",
+      "quoi": "Deux termes mal apparies : 110,7 etait le creux nocturne du NOUVEAU regime, releve 38 min avant son minimum ; 184,0 etait une valeur de l ANCIEN regime, qui etait plat jour et nuit. Le piege tient a un fait que personne ne pouvait deviner : la grandeur a CHANGE DE NATURE pendant l incident. Une moyenne journaliere et une valeur nocturne etaient interchangeables dans l ancien regime ; elles ne le sont plus dans le nouveau — et c est exactement au moment de la bascule qu on les a comparees. La baisse reelle des moyennes journalieres est de 196,0 -> 136,7 = -30 %.",
+      "gain": "Retire une alarme fausse (« la cadence derive vers le bas ») et rend au constat VPS-035 un seuil qui ne se declenche plus tout seul a chaque passage.",
+      "quoiFaire": "FAIT, en trois endroits. 1) Le collecteur publie le taux PAR EMETTEUR sur 24 h glissantes — une moyenne qui integre le cycle complet — et ecrit dans sa sortie POURQUOI c est une moyenne. 2) Le seuil de VPS-035 est reecrit sur cette moyenne, jamais sur une heure. 3) La fiche VPS-035 porte desormais le tableau moyenne / min / max / AMPLITUDE par journee : sans l amplitude, un changement de nature du signal reste invisible derriere une moyenne.",
+      "pourquoiInvisible": "Parce que la methode avait toujours marche. Tant que la grandeur est plate, lire une heure au hasard EST lire le regime. Le defaut ne pouvait apparaitre que le jour ou le regime cesse d etre plat — c est-a-dire le jour meme ou l on cherchait a le caracteriser. C est la famille de VPS-M64 : un detecteur qui verifie A et conclut B est indiscernable d un detecteur correct tant que A et B varient ensemble.",
+      "aNePasFaire": "⚠️ NE PAS « corriger » en prenant toujours l heure la plus haute ou la plus basse : on remplacerait un biais par un autre et on perdrait le cycle. ⚠️ NE PAS lire la moyenne 24 h comme une garantie d absence de pic — elle est aveugle a une rafale d une heure, exactement comme idle% est aveugle a une saturation de vingt minutes (VPS-M62) ; c est pour cela que min et max sont publies A COTE de la moyenne, pas a sa place. ⚠️ NE PAS conclure que la baisse de 30 % est benigne parce que celle de 40 % etait fausse : la question produit — quelle cadence veut-on ? — reste entiere.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m69-un-debit-lu-a-une-seule-heure-publie-comme-un-regime-sur-une-grandeur-qui-venait-dacquerir-un-cycle-diurne",
+      "piste": "Le second defaut est structurel et vaut au-dela de cette grandeur : la DERNIERE HEURE de toute fenetre est partielle (VPS-M61), donc tout seuil ecrit sur « la derniere valeur » se declenche a tort a chaque passage. Ici la derniere heure affichait 56,8 pour un seuil a 60."
+    },
+    {
+      "id": "VPS-M70",
+      "titre": "Le filtre de la sonde horaire de l hyperviseur etait cable sur un NOM de fichier, et l hyperviseur l a renomme",
+      "domaine": "methode",
+      "statut": "APPLIQUE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-26",
+      "vuDerniere": "2026-08-26",
+      "mesure": "scanner.py : 264 executions, derniere le 2026-08-25 a 07:18:01. usage-telemetry.py : 38 executions, PREMIERE le 2026-08-25 a 08:14:26 — le remplacement a eu lieu entre 07 h 18 et 08 h 14. Le collecteur a publie 🟠 19 commandes INATTENDUES dont LES DIX-NEUF etaient cette sonde renommee. Contre-epreuve sur le meme journal : ancien filtre 19 INATTENDUES, nouveau filtre 0.",
+      "quoi": "Le bloc VPS-027 ecarte la routine horaire de l hyperviseur pour faire remonter les commandes qui ECRIVENT. Il l ecartait par un motif cable sur le NOM du fichier. L hebergeur a remplace son script ; du jour au lendemain une sonde parfaitement routiniere est tombee dans la categorie « inattendue », sur le seul canal par lequel un tiers execute du root dans cette machine. Le filtre porte desormais sur la FORME du chemin (le script auto-detruit depose puis execute), pas sur un nom.",
+      "gain": "Supprime 19 fausses alertes par passage sur le canal le plus sensible de la machine, et rend VISIBLE un evenement qui ne l etait pas : le remplacement du script que l hebergeur execute en root chez nous.",
+      "quoiFaire": "FAIT. Filtre par forme, ET — parce qu un filtre plus large est un risque — inventaire des noms de sonde publie DANS TOUS LES CAS avec leur compte, plus un signalement 🟠 des qu il y a plus d un nom dans la fenetre. On ecarte le bruit sans perdre la capacite de voir qu il a change.",
+      "pourquoiInvisible": "Le defaut ne pouvait pas se manifester tant que le nom tenait. Il n a pas ete trouve en relisant le code : il a ete trouve parce que l objet a change de nom et que l alarme a crie. Un filtre par nom est un pari silencieux sur la stabilite d un nom que l on ne controle pas. Et ce filtre avait ete ecrit le 2026-08-20 PRECISEMENT pour corriger ce genre de defaut (VPS-M50) : il etait juste, et il l est reste jusqu a la seconde ou l objet qu il nommait a change de nom.",
+      "aNePasFaire": "⚠️ NE PAS se contenter d ajouter usage-telemetry a la liste des noms : ce serait rejouer le meme defaut au prochain renommage, et la liste grandirait sans jamais proteger. ⚠️ NE PAS masquer l inventaire au motif qu il est verbeux : c est lui qui rend le filtre elargi refutable. ⚠️ NE PAS conclure de ce renommage que l hebergeur fait quelque chose de nouveau : le nom est tout ce qu on en voit, le script s autodetruit, et lire son contenu demanderait une ecriture.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m70-le-filtre-de-la-sonde-horaire-de-lhyperviseur-etait-cable-sur-un-nom-de-fichier-et-lhyperviseur-la-renomme",
+      "piste": "Un filtre qui identifie le bruit par son NOM est vrai jusqu au jour ou le bruit est renomme — et ce jour-la il ne se tait pas : il crie. C est la famille de VPS-M55 (une attribution ecrite en dur qui devient fausse sans que rien ne le signale), en plus couteux : le defaut est bruyant du cote ALARMANT, donc il consomme l attention au lieu de l endormir."
+    },
+    {
       "id": "VPS-M67",
       "titre": "La borne de la projection de volume etait ecrite en dur, et elle se trompait de sens le jour ou le debit baissait",
       "domaine": "methode",
@@ -107,7 +143,7 @@
       "statut": "APPLIQUE",
       "gravite": 2,
       "vuPremiere": "2026-08-25",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "L etendue A L INTERIEUR de la fenetre de 10 s vaut 80 % de la valeur publiee (sous-fenetres 3 s/3 s/4 s : 1 220 · 480 · 1 305 /min pour une valeur publiee de 1 032). Et CINQ sondages consecutifs en quinze minutes, machine inchangee : 942 · 1 446 · 1 278 · 1 296 · 1 500 — etendue x1,59, contre x1,8 pour les VINGT passages de la serie.",
       "quoi": "Le manifeste publie processusParMin parmi ses chiffres de tendance depuis vingt passages (1 230 · 762 · 1 374 · 786 · 1 224, facteur 1,8 « que rien n explique »). La dispersion de cinq mesures prises de suite couvre x1,59 : la « tendance » de vingt jours tient presque entierement dans ce qu on obtient en mesurant cinq fois d affilee. Le champ previsions.chargeDeFond.note portait l affirmation INVERSE, republiee a chaque passage : « la variance est entre les JOURS, pas dans la mesure ».",
       "pourquoiInvisible": "Le temoin du 08-22 comparait DEUX INSTRUMENTS sur la MEME fenetre et trouvait 3 % d ecart. C est une mesure d ACCORD ENTRE INSTRUMENTS, pas de REPRODUCTIBILITE de la grandeur : deux thermometres qui s accordent a 3 % ne disent rien de la stabilite de la temperature. La preuve avait la FORME d une validation — temoin independant, ecart chiffre, conclusion — et elle validait une autre proposition que celle qu elle servait a defendre. Sa definition est correcte, son instrument est correct, son temoin etait correct : seule la question « combien varie-t-elle si je la mesure deux fois de suite ? » n avait jamais ete posee.",
@@ -123,7 +159,7 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-24",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "foodsqan-traefik monte /var/run/docker.sock (RW=false), publie 0.0.0.0:80 et 0.0.0.0:443, sert 25 domaines, tourne sur l etiquette flottante traefik:latest et n a AUCUNE sonde de sante. Seul conteneur des 33 dans ce cas. Provider : --providers.docker=true, --api.dashboard=false.",
       "quoi": "Ce n est PAS une porte ouverte et PAS une erreur de configuration : Traefik decouvre ses routes en lisant l API Docker, le montage lui est necessaire, et des dizaines de milliers d installations font exactement cela. Le constat porte sur le RAYON D EXPLOSION. Qui obtient l execution de code dans ce conteneur obtient l API Docker complete, donc root sur l hote en une requete (creer un conteneur privilegie qui monte /). LE « ro » N Y CHANGE RIEN : il protege le FICHIER socket contre son remplacement, pas l API contre ses ecritures — on parle au demon par connect(), jamais par write() sur l inode. Ce qui rend la conjonction notable : seul point d entree 80/443 de TOUTE la production (VPS-021), expose a Internet sans rien devant lui, etiquette FLOTTANTE (la prochaine recreation change la version du composant qui termine le TLS de 25 domaines sans que personne ne le decide), aucune sonde (sa panne est invisible a Docker), et il appartient a la pile /opt/foodsqan declaree morte que VPS-021 interdit de supprimer precisement parce qu elle tient ces ports.",
       "gain": "Epingler l etiquette : le composant qui termine le TLS de 25 domaines ne change plus de version sans qu on le decide. Risque nul, 5 minutes.",
@@ -142,8 +178,8 @@
       "statut": "SURVEILLANCE",
       "gravite": 3,
       "vuPremiere": "2026-08-24",
-      "vuDerniere": "2026-08-25",
-      "mesure": "✅ 2026-08-25 — INVERSE. Pic le 08-24 a 05-06 h (23 210/h, 610,8 trames/h/boitier = une toutes les 5,9 s), effondrement EN DEUX HEURES : 16 968/h a 07 h, 6 442/h a 08 h. Sur 24 h glissantes : wire_logs x0,67 (212 056 contre 317 886), position_sampling_decisions x0,63 (188 211 contre 296 759). 🔑 AUCUN BOITIER PERDU : 37 emetteurs distincts avant la rampe, 38 pendant, 38 apres, sans un seul trou — toute la variation est portee par les trames PAR BOITIER. FACTURE RETIREE : projections a fenetre pleine 272 Mo et 236 Mo (508 Mo au total) contre 773 a 1 200 Mo annonces la veille, et MOINS que la taille actuelle (282 et 245 Mo) : les +2,1 a +5,4 Go durables n auront pas lieu. ⚠️ La base grossit encore (1 182 -> 1 215 Mo) parce que la fenetre de 3,98 j CONTIENT ENCORE les heures du deluge — evacuees vers le 2026-08-28. 🔴 RESTE OUVERT : le regime n est pas revenu a son niveau d avant, il est 40 % EN DESSOUS et il baisse encore (184,0 -> 110,7 trames/h/boitier, pente monotone sur 17 h). 🆕 ET LA RUPTURE NE VIENT PAS D UN DEPLOIEMENT : tracky-api a ete recree le 08-24 a 15:08:43, SEPT HEURES APRES la rupture de 07-08 h — la montee etait une RAMPE de 22 h, la descente est une MARCHE de 2 h. L attribution du 08-24 au build de 03:59:29 tenait a une coincidence d horaire et ne se reproduit pas.",
+      "vuDerniere": "2026-08-26",
+      "mesure": "✅ 2026-08-26 — LE REGIME EST STABLE ET MODULE ; le « il baisse encore » du 08-25 etait un CREUX DE NUIT. Mesure heure par heure sur 30 h : plancher a 104,4 trames/h/boitier le 08-25 a 03 h — UNE HEURE APRES la collecte du 08-25 — puis remontee jusqu a 164,5 a 15 h. A heure comparable le debit est AU-DESSUS d hier : 110,7 -> 129,5 a 00 h (+17 %) et 110,7 -> 127,2 a 01 h (+15 %). PAR JOURNEE (moy. / min / max / amplitude) : 08-22 avant 196,0 / 180,2 / 214,5 / x1,19 ; 08-25 premier jour plein du nouveau regime 136,7 / 104,4 / 164,5 / x1,58. AVANT L INCIDENT L EMISSION ETAIT PLATE JOUR ET NUIT, DEPUIS LE CORRECTIF ELLE EST MODULEE — le comportement d une cadence qui suit l activite du vehicule, c est-a-dire tres probablement ce que TRK-045 visait. La baisse reelle est de 196,0 -> 136,7 = -30 %, et non les -40 % publies la veille, dont les deux termes etaient mal apparies (VPS-M69). ✅ 38 emetteurs distincts chaque heure des 30 dernieres, sans un trou (un 37 isole a 08-25 13 h) : aucun emetteur perdu, 9e jour — et ce discriminant est desormais DANS le collecteur. Moyenne 24 h publiee : 138,3 trames/h/boitier pour 38 emetteurs.",
       "quoi": "Le comptage heure par heure date la rupture dans l HEURE qui suit la reconstruction de l image tracky-api (08-23 03:59:29), et la montee est PROGRESSIVE sur 22 h — signature d un parc d emetteurs qui adopte une nouvelle cadence boitier par boitier, au fil des reconnexions, et non d un basculement serveur. La cause est APPLICATIVE et suivie cote produit sous TRK-045 ; ce constat ne la corrige pas, il chiffre ce qu elle coute a la machine et a quelle echeance. Projection : les deux tables passent de 496 Mo a 773 Mo (debit des 24 h ecoulees, PLANCHER) ou 1 200 Mo (debit de la derniere heure), soit tracky_prod de 1 182 Mo a 1,46-1,89 Go, echeance ~4 jours (vers le 2026-08-28). Sauvegardes : le dump quotidien passerait de 150,6 Mo a 185-240 Mo et, sur 52 copies conservees, /var/backups/vizyo-tracky de 6,8 Go a 8,6-11,5 Go. TOTAL DURABLE : +2,1 a +5,4 Go sur ~7 semaines, soit 5 a 13 % des 41 Go libres. ✅ ET LA DONNEE METIER EST INTACTE : positions ne bouge pas (x0,77, fenetre 62 jours, 446 Mo) — l echantillonneur absorbe les trames en trop et ne les promeut pas en positions. Le triplement coute du JOURNAL, pas de la donnee utile.",
       "gain": "Trancher TRK-045 supprime la totalite des +2,1 a +5,4 Go durables. Aucun geste sur le VPS, aucune interruption.",
       "quoiFaire": "1. Trancher TRK-045 (ramener les boitiers a leur cadence) : supprime la cause. 2. Sinon, raccourcir la retention de ces deux tables de 4 jours a 2 : gain ~50 % du surcout sans toucher aux emetteurs. CONTREPARTIE REELLE de la 2e option : wire_logs est la piece qui a permis de dater cette rupture a l heure pres, et celle qui a servi le 2026-08-20 a etablir qu un deluge d alertes s etait arrete parce que les TRAMES avaient cesse. Raccourcir sa fenetre, c est raccourcir la memoire de diagnostic au moment precis ou l on en a besoin. RIEN A FAIRE SUR LE VPS AUJOURD HUI : 41 Go libres, echeance en semaines.",
@@ -152,7 +188,7 @@
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-035-le-debit-dingestion-de-tracky-a-triple-le-08-23-inverse-le-08-24-aucun-boitier-perdu-facture-retiree-cadence-a-decider",
       "piste": "Ma premiere estimation valait +746 Mo : elle etait batie sur la difference de LIGNES entre deux passages, c est-a-dire sur un NET (arrivees moins purges) traite comme un BRUT. Le collecteur corrige mesure les arrivees directement : +277 Mo au debit des 24 h ecoulees, +704 Mo au debit de la derniere heure. Le bon chiffre n etait pas loin du mauvais — et c est exactement ce qui rend ce genre d erreur durable.",
-      "seuilReescalade": "Repasser en A_TRAITER si le debit remonte AU-DESSUS de 300 trames/h/boitier, ou s il descend SOUS 60 (une trame par minute)."
+      "seuilReescalade": "⚠️ REECRIT le 2026-08-26 — l ancienne formulation etait piegee. Repasser en A_TRAITER si la MOYENNE DES 24 h GLISSANTES PAR EMETTEUR — la grandeur que le collecteur publie desormais — depasse 300 trames/h/boitier ou descend sous 60. Au 2026-08-26 : 138,3. NE JAMAIS lire ce seuil sur une heure isolee : la derniere heure de toute fenetre est partielle (VPS-M61) et affichait ce matin 56,8, sous le seuil de 60 — l ancien seuil se serait donc declenche a tort des le lendemain de son ecriture, puis a chaque passage, par construction."
     },
     {
       "id": "VPS-033",
@@ -161,7 +197,7 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-23",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "Cache apt a 23 h pour le 6e passage sur 7 (le seul valide reste le 08-21 a 04 h 31 : 85 paquets). Dernier declenchement d apt-daily : 2026-08-24 19:20:56 ; prochain annonce a 08:51 — apres l audit une fois de plus. RandomizedDelaySec=12h : l heure est ALEATOIRE PAR CONCEPTION.",
       "quoi": "apt-daily.timer porte OnCalendar=*-*-* 6,18:00 et RandomizedDelaySec=12h : l heure du rafraichissement est TIREE AU HASARD dans une fenetre de douze heures, deux fois par jour. Executions reellement journalisees : 09:15, 18:23, 10:39, 03:04, 13:30, 02:59, 09:11. Le seul passage qui a mesure (08-21) est celui qui est tombe du bon cote du tirage.",
       "gain": "Restaure une mesure de securite perdue 4 fois sur 5. C est la seule grandeur de l audit qui porte sur des vulnerabilites CONNUES et CORRIGEABLES.",
@@ -286,7 +322,7 @@
       "statut": "A_TRAITER",
       "gravite": 3,
       "vuPremiere": "2026-08-22",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "8 011 sessions SSH acceptees sur 7 jours glissants, dont 8 006 depuis 82.67.153.51 (notre poste). Par jour, journees COMPLETES seulement : 175 · 630 · 4 252 · 2 094 · 360 · 378. Le pic des 08-20/08-21 sort progressivement de la fenetre ; le regime des deux derniers jours est revenu vers ~370.",
       "quoi": "Notre outillage parle au VPS en ouvrant UNE SESSION SSH PAR COMMANDE. Chaque session ouvre un sshd, un PAM, une session logind ET une instance systemd --user, puis referme le tout en ~0,9 s. Le profil horaire etablit que ce ne sont pas les audits planifies (01 h et 02 h) : c est de l outillage interactif, etale sur quatorze heures de journee.",
       "gain": "Rendre lisible le journal de securite : auth.log fait 7,4 Mo et porte 7 385 lignes « Accepted » pour 17 echecs, soit un rapport signal/bruit de 1 POUR 434. Et ~1 h d attente en moins par jour de travail cote poste (4 252 poignees de main a ~0,9 s).",
@@ -400,7 +436,7 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-21",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "13e depassement sur 13 : 142 s pour un budget de 90 s (+52 s, 1,6x). ⚠️ MAIS 6 s DE MOINS QU HIER (148 s) AVEC 5,7 s DE CODE EN PLUS — l ecart vient de la machine, pas du script : section 3 (parcours /opt) 48 s, section 4 (Docker) 30 s contre 41 s hier. Discriminant : l audit consomme 23,4 % pendant que la machine garde 38,0 % d inactivite et que dockerd n est qu a 2,9 % — la charge annoncee (0,22 -> 1,98) est une FILE D ATTENTE. Candidat mesure : iowait a 6,6 %.",
       "quoi": "Les huit passages precedents avaient tous une cause externe a nommer — un build Docker, ou VPS-016. Ce matin il n y en a aucune, et le discriminant ne trouve personne d autre que l audit lui-meme. Ou va le temps (jalons t+Ns) : section 3 = 38 s, dont /opt 35 s (un tiers de la collecte) et 12 de ces 35 s depensees SANS RIEN RENDRE (/opt/maalem abandonne) ; section 4 = 25 s ; section 7 = 12 s ; tout le reste 33 s.",
       "gain": "Rendre au budget sa fonction de garde-fou. Aujourd hui il ne borne rien : il publie un depassement que personne ne lit.",
@@ -552,7 +588,7 @@
       "statut": "A_TRAITER",
       "gravite": 3,
       "vuPremiere": "2026-08-20",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "🔴 2026-08-25 — IL Y A UN SECOND DOSSIER, ET LE CONSTAT NE LE NOMMAIT PAS. Le balayage PAR CONTENU ajoute ce passage (angle mort n° 4, ferme au 5e report) rend 13 fichiers, 1,70 Go, en DEUX endroits : /root/backups 1 679,3 Mo en 12 fichiers (18-19 aout, deja connus) et /opt/backups/tracky 57,0 Mo en 1 fichier — positions-avant-purge60j-20260721-163020.sql.gz, du 2026-07-21, soit 35 JOURS, JAMAIS SIGNALE. ⚠️ ET LES OCTETS ETAIENT AFFICHES DEPUIS TOUJOURS : la section 3 du meme collecteur imprime « 58M /opt/backups » a chaque passage. Ce qui manquait n etait pas la donnee, c etait LA QUESTION — le dossier etait lu comme un poste de disque parmi seize. Troisieme occurrence en quatre passages (VPS-034, VPS-M45, celui-ci) : un audit ne bute pas sur ce qu il ne collecte pas, il bute sur ce qu il collecte sans l interroger. ⚠️ /opt/backups/tracky NE SE TRAITE PAS COMME /root/backups : c est l instantane d avant une purge de positions, donc la SEULE TRACE connue des lignes purgees. Le gain recuperable reste ~1,5 Go, sur /root/backups seul.",
       "quoi": "Onze sauvegardes de pre-deploiement de tracky_prod, prises a chaque iteration d une meme session de travail — 03h59, 05h31, 05h46, 13h51, 21h13, 21h32, 21h50, 21h57 le 18 aout, puis 01h49 et 02h50 le 19. Elles sont dans /root/backups, pas dans /var/backups.",
       "gain": "~1,5 Go en gardant la plus recente. Et surtout : un poste qui grossit sans qu aucun controle ne le voie.",
@@ -714,7 +750,7 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-18",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "341 executions en root sur la fenetre 08-16 → 08-23, pour 3 348 sondages guest-exec-status (ratio 1 pour 9,8). AUCUNE commande inattendue depuis le 2026-08-19 11:02 : les 11 recensees sont toutes anterieures. ⚠️ Les bords de la repartition par jour (8 le 08-16, 5 le 08-23) sont des artefacts de fenetre — VPS-M61.",
       "gain": "Rend visible une quatrieme couche d ordonnancement que le dispositif ignorait, et corrige la portee de VPS-012 : « aucune cle inconnue » ne couvre que les acces SSH.",
       "quoi": "L agent invite QEMU (qemu-ga, PID 3988652) recoit de l hote des ordres d execution arbitraires, en root, et les execute. L hebergeur active un timer systemd et ecrit dans /sys, sur une machine dont l audit pretend tenir le catalogue de tout ce qui se declenche seul. ⚠️ CE QUE CA COUTE DEJA : le rapport du 2026-08-17 a ferme l hypothese « fstrim declenche la boucle de dockerd » par un argument CHRONOLOGIQUE — « fstrim.timer est hebdomadaire le LUNDI, or l occurrence 1 a demarre un mercredi et la 3 un mardi ». LA PREMISSE EST FAUSSE : l hyperviseur declenche fstrim n importe quel jour, et l a fait ce matin, un MARDI, a 03h11:34. L argument ne tient plus. ⚠️ Et il ne peut plus etre refait : journalctl -t qemu-ga ne remonte qu au 2026-08-11 alors que les occurrences 1 et 2 datent des 08-05 et 08-10 — la donnee qui trancherait a ete ROTEE. La piste fstrim repasse de FERMEE a NON TRANCHEE, definitivement.",
@@ -869,7 +905,7 @@
       "statut": "SURVEILLANCE",
       "gravite": 2,
       "vuPremiere": "2026-08-04",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "30 conteneurs sur 33 sans limite memoire (inchange). 0 conteneur sur 33 avec limite CPU. 0 OOM en 30 jours, PSI full memoire a 0,00.",
       "gain": "la base et l'API de production ne peuvent plus etre emportees par un voisin",
       "quoi": "Si un conteneur s'emballe, l'OOM killer choisit sa victime selon un score de mémoire, pas selon l'importance métier. Une fuite en développement peut faire tomber tracky-postgres.",
@@ -937,7 +973,7 @@
       "statut": "ACCEPTE",
       "gravite": 4,
       "vuPremiere": "2026-08-04",
-      "vuDerniere": "2026-08-18",
+      "vuDerniere": "2026-08-26",
       "mesure": "13 volumes, 421,5 Mo — stabilise pour le 14e passage, a l octet pres. Le seuil de reexamen (« si le disque repasse au-dessus de 80 % ») est a 12 points (68 %), contre 28 la veille — et ce recul de 16 points en 24 h est EXACTEMENT l oscillation de VPS-025, pas une degradation. Il ne faut PAS le lire comme une tendance. La decision ne change pas : 421 Mo de bases non reconstituables contre 31 Go libres.",
       "gain": "204 Mo — volontairement non pris",
       "quoi": "Treize volumes ne sont montes par aucun conteneur. Le doublement du 2026-08-05 est une consequence DIRECTE de VPS-006 : supprimer les 17 conteneurs morts a detache leurs volumes le jour meme (foodsqan-postgres-data 71 Mo, maalem-postgres-data 65 Mo, deploy_vizyo-leads-postgres-data 64 Mo).",
@@ -953,7 +989,7 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-04",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "Noyau actif 6.8.0-136 ; DEUX versions d avance installees et non prises (6.8.0-137 ET 6.8.0-138). 4 services tournent sur une bibliotheque remplacee. ⚠️ L argument memoire de dockerd est RETIRE de ce point (VPS-M66) : 1 377 -> 510 Mo sans aucun redemarrage. Le gain restant est le noyau, et lui seul.",
       "gain": "correctifs noyau actifs (durable). Les 730 Mo de dockerd et le 1 Go de swap sont revenus en 5 heures (VPS-014)",
       "quoi": "unattended-upgrades installe bien les paquets, mais le noyau ne devient actif qu'au redémarrage. libc6 et linux-base attendent aussi.",
@@ -1006,7 +1042,7 @@
       "statut": "A_TRAITER",
       "gravite": 1,
       "vuPremiere": "2026-08-05",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "21e passage. vizyo-manager sans copie depuis 130 jours ; texto-postgres et capcom6-mysql n en ont jamais eu. Cout total mesure : ~17,7 Mo/jour avant compression (8 396 ko + 8 916 ko + 0,4 Mo), sur 41 Go libres.",
       "gain": "ferme le seul risque de perte de donnees definitive de la machine",
       "quoi": "Sur 7 moteurs de base en service, deux seulement sont sauvegardes (tracky, verify) et deux sont du developpement. Restent vizyo-manager-postgres (abonnements Stripe, factures, clients — derniere copie le 2026-04-15), texto-postgres (passerelle SMS : messages, allowlist) et capcom6-mysql (relais SMS). Pour vizyo-manager le dossier existe avec 25 copies, mais plus aucun timer ne les produit : la sauvegarde n'a pas echoue, elle a ete DEBRANCHEE, et les fichiers restants donnent l'apparence contraire.",
@@ -1057,7 +1093,7 @@
       "statut": "APPLIQUE",
       "gravite": 1,
       "vuPremiere": "2026-08-06",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "ETEINTE, 7e jour. dockerd passe de 230,6 h de CPU cumule (08-23 02:22) a 231,1 h (08-24 02:22) = +0,5 h en 24,0 h = 2,1 % d un coeur (fourchette 1,7-2,5 %, les cumuls etant arrondis au dixieme d heure). Le plus bas de la serie. 🆕 0 connexion cliente ETABLIE sur /run/docker.sock, MESUREE pour la premiere fois (3 sondages sur 1,1 s) et plus seulement deduite des noms de processus (VPS-M65).",
       "gain": "~50 % de la machine, obtenu en 2 secondes, sans interruption. Mais uniquement en visant le PARENT : la meme commande sur la feuille a rendu ZERO.",
       "quoi": "Le client est « docker logs tracky-postgres --tail 200000 » (pid 43987), bloque dans futex_wait_queue avec 0 seconde de CPU consommee pendant que le demon en brule un. dockerd pousse des octets dans un tube que personne ne draine. TROIS clients identifies sur trois occurrences elucidees sont des « docker logs » lances en diagnostic par SSH : ce n est plus un accident, c est une CLASSE.",
@@ -1361,7 +1397,7 @@
       "statut": "A_TRAITER",
       "gravite": 4,
       "vuPremiere": "2026-08-07",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "/opt/vizyo-leads : 823 Mo et 4,7 s sur les 43,0 s du parcours de /opt = 10,9 % de ce parcours chaque nuit, pour une pile supprimee le 2026-08-04.",
       "gain": "~25 % du parcours /opt de chaque nuit (mesure, plus estime), 823 Mo de disque, et une machine de production qui cesse d heberger le code d un projet abandonne.",
       "quoi": "`du /opt` est la commande la plus lente du collecteur (27 a 50 s a froid selon les jours). La cause n est pas la taille — 5,4 Go — mais le nombre d inodes : ce sont des depots complets, node_modules compris. /opt/vizyo-leads en represente 68 681 pour du code qui ne tourne plus.",
@@ -1446,7 +1482,7 @@
       "statut": "APPLIQUE",
       "gravite": 2,
       "vuPremiere": "2026-08-08",
-      "vuDerniere": "2026-08-19",
+      "vuDerniere": "2026-08-26",
       "mesure": "✅ APPLIQUE le 2026-08-18 : /opt/foodsqan/NE-PAS-SUPPRIMER.txt pose, 2 665 octets, mode 644, TROISIEME ENTREE d un ls — impossible a manquer en ouvrant le dossier. Il dit que le nom MENT SUR LE ROLE, que ce dossier definit foodsqan-traefik (unique tenant des ports 80/443), liste les 25 domaines qui en dependent, donne la commande qui le verifie (docker compose ls), les TROIS gestes a ne pas faire (rm -rf, toucher au volume foodsqan-letsencrypt qui n est dans aucune sauvegarde, renommer le reseau foodsqan-public), et POURQUOI il existe — le plan d audit du 2026-08-07 avait lui-meme propose de supprimer ce dossier. ⚠️ Il rend le piege LISIBLE, il ne le desarme pas : le deplacement vers /opt/infra-proxy/ avec un name: explicite reste ouvert, et ne se fait qu en fenetre.",
       "gain": "—",
       "quoi": "Le reverse proxy de TOUTE la production (app-tracky.vizyoagency.com, tracky.vizyoagency.com, auth, verify, dg-epaviste) porte le nom d une pile declaree abandonnee le 2026-08-04. Le danger n est pas dans la machine, il est dans le RAPPORT : le point 8 du plan d action du 2026-08-07 proposait de supprimer /opt/foodsqan.",
@@ -1514,7 +1550,7 @@
       "statut": "ACCEPTE",
       "gravite": 4,
       "vuPremiere": "2026-08-09",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "36 certificats, 25 domaines routes par un conteneur vivant, 16 orphelins — inchange, 5e passage a l identique. acme.json toujours date du 2026-08-12 a 21h33.",
       "gain": "—",
       "quoi": "Le volume ACME survit aux piles qu il a servies. Traefik continue de renouveler des certificats pour des domaines dont plus aucun conteneur ne repond. Etabli au passage : la production Maalem/Slahni n est PAS sur cette machine (seuls les conteneurs -dev- y tournent), et le volume ACME n est dans AUCUNE sauvegarde.",
@@ -1733,7 +1769,7 @@
       "statut": "ACCEPTE",
       "gravite": 4,
       "vuPremiere": "2026-08-13",
-      "vuDerniere": "2026-08-18",
+      "vuDerniere": "2026-08-26",
       "mesure": "65 Go (68 %), 31 Go libres — le disque a REPRIS 15 Go en 24 h, et l oscillation se poursuit : 76 → 59 → 72 → 54 → 52 → 68 %. Inodes 2 679 705 (21 %). La cause est datee et legitime : 5 IMAGES CONSTRUITES EN 24 H (maalem-dev-api 2,33 Go a 23h16, tracky-api 1,82 Go a 15h51, plus trois frontaux), 4,42 Go annonces, confirmes independamment par sysstat — 748 blocs/s ecrits le 08-17 contre 271 le 08-16. ⚠️ 31 Go libres, soit 6 Go SEULEMENT au-dessus du seuil revise (25 Go) : la marge la plus faible depuis le creux du 08-13, et un build tournait ENCORE pendant la collecte.",
       "gain": "~3,6 Go durables disponibles (2,8 Go de sauvegardes en double + 0,8 Go de /opt/vizyo-leads), pour 23 Go libres.",
       "quoi": "Huit images ont ete construites le 2026-08-12 entre 07h08 et 17h01 sur quatre projets (tracky-api 1,8 Go, vizyo-verify-app 1 Go, maalem-dev-api 2,33 Go, deploy-api 3,49 Go et quatre frontaux). sysstat le confirme sans passer par Docker : 1 137 blocs/s ecrits le 08-12 contre 23 les jours calmes. Ces 23 Go sont un cout NET : le menage nocturne a tourne (CRON 00h40:01) et il ne reste 0 image pendante ; 26 des 27 images sont actives.",
@@ -1751,7 +1787,7 @@
       "statut": "A_TRAITER",
       "gravite": 3,
       "vuPremiere": "2026-08-13",
-      "vuDerniere": "2026-08-25",
+      "vuDerniere": "2026-08-26",
       "mesure": "10e passage consecutif : alpine:latest ABSENT au moment de la collecte — la sauvegarde de 03 h 31 tirera l image depuis Docker Hub. Le cron docker-image-prune de 00 h 40 en est la cause mecanique, 10 fois sur 10.",
       "gain": "—",
       "quoi": "Le journal de la premiere execution reussie de vizyo-verify-backup.service montre « Unable to find image 'alpine:latest' locally » puis un tirage complet. Le seul dispositif de sauvegarde de PIECES D IDENTITE de la machine depend donc, a 03h30, que registry-1.docker.io reponde. Il repond aujourd hui (401 en 249 ms, sonde de dependances) — mais une panne, ou la limite de debit des tirages anonymes, suffirait a faire echouer un chemin qui vient deja d echouer huit jours en silence (VPS-015).",
@@ -1884,6 +1920,41 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-08-26",
+      "verdict": "✅ MACHINE AU PLUS CALME JAMAIS MESURE : inactivite de la veille 88,05 % contre 66,05 % pour la plus ancienne journee conservee, 4 points publics en 57 · 53 · 82 · 144 ms, 33/33 conteneurs, 0 OOM en 30 j, PSI full 0,00 sur les TROIS ressources. VPS-016 eteint pour le 9e jour et le chiffre s ameliore encore : dockerd a 1,7 % d un cœur contre 3,7 % la veille. 🔴 LA CONCLUSION LA PLUS VISIBLE DU RAPPORT D HIER ETAIT FAUSSE : le debit ne baissait pas, il passait par son creux de nuit — il a touche 104,4 trames/h/boitier une heure APRES la collecte du 08-25, puis est remonte a 164,5 l apres-midi, et il est +15 % au-dessus d hier a heure comparable. La baisse reelle est de 30 % (196,0 -> 136,7 de moyenne journaliere), pas 40 %, et le regime est STABLE et MODULE la ou il etait PLAT. 🆕 VPS-M69 : un debit lu a UNE SEULE HEURE, publie comme un regime, sur une grandeur qui venait d acquerir un cycle diurne — et un seuil de reescalade qui se serait declenche a tort des le lendemain de son ecriture, la derniere heure de toute fenetre etant partielle. 🆕 VPS-M70 : l hyperviseur a renomme sa sonde horaire le 08-25, le filtre du collecteur etait cable sur l ancien nom, et 19 fausses « commandes INATTENDUES » ont ete publiees sur le seul canal par lequel un tiers execute du root chez nous — corrige et contre-eprouve, 19 -> 0. ✅ Mesure de securite VALIDE pour la 2e fois en 7 passages, et pour la PREMIERE FOIS deux points comparables : 85/17 le 08-21, 79/10 aujourd hui — les 17 ont bien ete installes, le canal automatique n est PAS en panne, c est l audit qui regarde entre le rafraichissement de 00 h 06 et l installateur de 06 h 46.",
+      "chiffres": {
+        "disqueUtilisePct": 54,
+        "disqueRecuperableGo": 10.44,
+        "ramUtiliseePct": 33,
+        "swapUtiliseMo": 1038,
+        "chargeMoyenne1m": 0.45,
+        "conteneursActifs": 33,
+        "conteneursMorts": 0,
+        "paquetsEnRetard": 79,
+        "echecsSshJour": 3,
+        "healthchecksParMin": 65,
+        "processusParMin": 1122,
+        "dockerdPctCoeur": 1.7,
+        "collecteSecondes": 137,
+        "cacheBuildGo": 10.46,
+        "cacheBuildPrivateGo": 10.44,
+        "chargeApresCollecte": 1.57,
+        "dockerdHeuresCpuCumul": 232.4,
+        "sessionsSshReussies7j": 8592,
+        "sessionsSshPicJour": 4252,
+        "emetteursDistincts24h": 38,
+        "tramesParHeureParBoitier24h": 138.3
+      },
+      "aTraiter": [
+        "VPS-013 — sauvegarder texto-postgres, capcom6-mysql et vizyo-manager-postgres (~17,7 Mo/jour, 23e passage sans filet ; vizyo-manager a 132 jours)",
+        "VPS-035 — ECRIRE LA CADENCE CIBLE des boitiers. Le motif change : le debit ne s effondre plus (stable a 136,7 trames/h/boitier de moyenne), mais l emission a change de NATURE — plate avant l incident (amplitude x1,19), modulee depuis (x1,58) — et aucune valeur cible n est ecrite nulle part.",
+        "🆕 VPS-010 — VERIFIER AU PASSAGE DU 08-27 que les 10 correctifs de securite sont passes (openssl doit etre en 3.0.13-0ubuntu3.15). Gratuit, et il tranche entre « l audit regarde au mauvais moment » et « le canal automatique echoue sur la securite » (gravite 2). PRECONDITION : que apt-daily-upgrade.timer se declenche a 06 h 46 ET que la mesure du 08-27 soit elle-meme valide.",
+        "VPS-030 — retirer les 12 dumps de /root/backups sauf le plus recent (~1,5 Go), sans toucher /opt/backups/tracky",
+        "VPS-034 — epingler traefik:latest sur un digest : le TLS de 25 domaines ne doit pas changer de version tout seul",
+        "VPS-033 — figer RandomizedDelaySec a 30m sur apt-daily.timer. Ce passage montre ce que le defaut coute : il a fallu attendre deux mesures valides pour trancher une question restee ouverte cinq passages."
+      ]
+    },
     {
       "date": "2026-08-25",
       "verdict": "✅ LE DELUGE DE VPS-035 EST TERMINE, LA FACTURE DE +2,1 A +5,4 Go EST RETIREE, ET AUCUN BOITIER N A ETE PERDU AU PASSAGE — 38 emetteurs avant, pendant et apres. Le disque REND 4 Go (57 % -> 53 %), entierement attribues au cache de build. VPS-016 eteint pour le 8e jour, 0 OOM en 30 j, 33/33 conteneurs. 🆕 VPS-M68 : processusParMin n a jamais ete une serie de tendance — l etendue INTRA-fenetre vaut 80 % de la valeur, et cinq sondages en quinze minutes couvrent x1,59 quand vingt passages couvrent x1,8. 🆕 VPS-M67 : la projection de volume s etiquetait « PLANCHER » le jour ou elle etait un PLAFOND. 🆕 VPS-030 s aggrave d un lieu : un SECOND dossier de sauvegardes hors controle. ⚠️ RESTE OUVERT : le debit est 40 % SOUS son niveau d avant l incident, et il baisse encore.",
@@ -2806,10 +2877,10 @@
       "heureLocale": "toutes les heures, ~:15",
       "heureUtc": "toutes les heures, ~:15",
       "cadence": "horaire",
-      "quoi": "Hyperviseur Hostinger : ecrit /.hstgr-<epoch>.scanner.py a la RACINE et l execute en root via qemu-ga (guest-exec), sous timeout 3600, avec un trap qui le supprime en sortant",
+      "quoi": "Hyperviseur Hostinger : ecrit /.hstgr-<epoch>.<nom>.py a la RACINE et l execute en root via qemu-ga (guest-exec), sous timeout 3600, avec un trap qui le supprime en sortant. ⚠️ LE NOM DU SCRIPT A CHANGE le 2026-08-25 entre 07 h 18 et 08 h 14 : scanner.py (264 executions, derniere le 08-25 a 07:18:01) est devenu usage-telemetry.py (38 executions, premiere le 08-25 a 08:14:26).",
       "duree": "jusqu a 1 h (plafond du timeout)",
       "cout": "NON MESURE — le script s autodetruit, son contenu n a jamais ete lu. La CADENCE, elle, est desormais mesuree : ~52 executions/jour toutes familles confondues (voir hyperviseur-ps).",
-      "note": "⚠️ QUATRIEME COUCHE D ORDONNANCEMENT, decouverte le 2026-08-18 et absente de ce catalogue pendant quinze passages. Elle n entre par AUCUNE des portes que l audit garde : guest-exec ne passe pas par SSH (rien dans auth.log, donc invisible a VPS-012 et a fail2ban), le canal est un virtio-serial (donc invisible au pare-feu), et l ordre vient de l EXTERIEUR de la machine (donc invisible a la section 7). ✅ MESUREE PAR LE COLLECTEUR DEPUIS LE 2026-08-19 : 333 EXECUTIONS reelles sur 6,25 jours, soit ~52/jour, repartition 8 · 52 · 52 · 52 · 52 · 53 · 59 · 5 — reguliere a l unite pres. ⚠️ LE COMPTEUR A FAILLI SE TROMPER D UN FACTEUR 17 : grep -c « guest-exec » rend 5 776, parce que guest-exec-status est le SONDAGE du resultat (5 443 sondages pour 333 executions) — VPS-M01/M46 une troisieme fois. ⚠️ CE N EST PAS QUE DE LA LECTURE : le 2026-08-18 entre 03h11:29 et 03h12:30, quatre ordres ont ACTIVE un timer systemd (systemctl enable fstrim.timer), ecrit « unmap » dans provisioning_mode, et lance deux fstrim — ce sont les 7 commandes qui expliquent le 59 du 08-18. ⚠️ SUSPECT INNOCENTE (2026-08-18) : ce scanner s executait a la minute de la bascule de VPS-016, mais il tourne toutes les heures — il ne peut pas expliquer une transition unique ; et la cause reelle a depuis ete etablie (deux clients docker orphelins). ❌ SECONDE INNOCENTATION (2026-08-19) : le stamp du cache apt (03h11:37) n a PAS ete ecrit par l hyperviseur malgre 8 secondes d ecart avec son lot — apt-daily.service a demarre a 03h11:30 et consomme 21,392 s. Deux mecanismes qui se declenchent dans la meme minute ne sont pas le meme mecanisme.",
+      "note": "⚠️ QUATRIEME COUCHE D ORDONNANCEMENT — elle n entre par AUCUNE des portes que l audit garde : guest-exec ne passe pas par SSH (rien dans auth.log, donc invisible a VPS-012 et a fail2ban), le canal est un virtio-serial (invisible au pare-feu), et l ordre vient de l EXTERIEUR de la machine (invisible a la section 7). ✅ CADENCE MESUREE ET STABLE : 52 executions/jour, regulier a l unite pres sur les 6 journees completes du 2026-08-26 (52 · 52 · 52 · 52 · 52 · 52) ; le seuil de reescalade de 70/jour n est pas approche. ⚠️ LE COMPTEUR AVAIT FAILLI SE TROMPER D UN FACTEUR 17 : guest-exec-status est le SONDAGE du resultat (2 161 sondages pour 325 executions au 08-26) — VPS-M01/M46. 🆕 2026-08-26 — LE SCRIPT A ETE REMPLACE, ET LE FILTRE DU COLLECTEUR ETAIT CABLE SUR SON ANCIEN NOM : 19 fausses « commandes INATTENDUES » ont ete publiees sur ce canal, corrigees et contre-eprouvees le jour meme (19 -> 0, voir VPS-M70). Le filtre porte desormais sur la FORME du chemin, et l INVENTAIRE des noms de sonde est publie a chaque passage pour qu un prochain remplacement se voie au lieu de declencher une alarme. ⚠️ CE QUE L AUDIT NE PEUT PAS DIRE : ce que fait usage-telemetry.py. Le script s autodetruit ; le lire demanderait de le copier PENDANT son execution, donc une ecriture. Son nom evoque de la telemetrie d usage — c est une lecture de son nom, pas une mesure. ⚠️ CE N EST PAS QUE DE LA LECTURE : le 2026-08-18, quatre ordres ont ACTIVE un timer systemd, ecrit dans provisioning_mode et lance deux fstrim ; et les 08-18/08-19 ce canal a ecrit deux fois dans /etc/cron.d (VPS-029). ✅ Aucune ecriture inattendue depuis le 2026-08-19 11:02 — 7e jour.",
       "constat": "VPS-027"
     },
     {
@@ -3137,25 +3208,25 @@
   "previsions": {
     "disque": {
       "totalGo": 96,
-      "utiliseGo": 51,
+      "utiliseGo": 52,
       "libreGo": 45,
-      "utilisePct": 53,
+      "utilisePct": 54,
       "seuilAlertePct": 90
     },
     "recuperable": [
       {
         "poste": "Cache de build Docker (Private)",
-        "go": 9.795,
+        "go": 10.44,
         "commande": "docker builder prune -f --filter unused-for=168h",
         "risque": "faible",
-        "contrepartie": "Le premier build de chaque projet redevient 2 a 4x plus long, et le cache se reconstitue au deploiement suivant (VPS-031 : 4,49 Go rendus en 23 h). NE PAS purger : 45 Go libres, et le ramasse-miettes de BuildKit le borne deja."
+        "contrepartie": "Le premier build de chaque projet redevient 2 a 4x plus long, et le cache se reconstitue au deploiement suivant (VPS-031 : 4,49 Go rendus en 23 h). NE PAS purger : 45 Go libres, et le ramasse-miettes de BuildKit le borne deja — verifie ce passage, cache.db reecrit 25 s apres le dernier build."
       },
       {
         "poste": "Sauvegardes en double (heritage VPS-003)",
-        "go": 2.6,
+        "go": 2.5,
         "commande": "(retention du script backup-db.sh)",
         "risque": "nul",
-        "contrepartie": "20 fichiers en trop sur 16 journees ; le dernier doublon a 2 jours et partira seul a la retention."
+        "contrepartie": "19 fichiers en trop sur 15 journees ; le dernier doublon a 3 jours (08-23, deux copies a 81 min d ecart, donc lancee a la main et NON un second planificateur — VPS-M31) et partira seul a la retention."
       },
       {
         "poste": "/root/backups — dumps de pre-deploiement empiles (VPS-030)",
@@ -3169,7 +3240,7 @@
         "go": 0.82,
         "commande": "rm -rf /opt/vizyo-leads",
         "risque": "faible",
-        "contrepartie": "19,2 % du parcours de /opt chaque nuit. ⚠️ Verifier d abord que le depot distant existe."
+        "contrepartie": "15,9 % du parcours de /opt chaque nuit, mesure ce passage. ⚠️ Verifier d abord que le depot distant existe."
       },
       {
         "poste": "Volumes Docker orphelins (VPS-009)",
@@ -3194,12 +3265,12 @@
       }
     ],
     "chargeDeFond": {
-      "processusParMinute": 1032,
-      "processusParJour": 1486080,
+      "processusParMinute": 1122,
+      "processusParJour": 1615680,
       "healthchecksParMinute": 65,
       "healthchecksParJour": 93600,
       "conteneursSondes": 24,
-      "note": "⚠️⚠️ CE CHAMP N EST AFFICHE PAR AUCUN GABARIT — VPS-M59, 4e report : admin-vps.component.ts n utilise que les cinq nombres ci-dessus. Ce qui suit est ecrit pour les passages FUTURS et pour qui lit le JSON. 24 conteneurs sondes sur 33 — les 9 restants n ont AUCUNE sonde, donc leur panne est invisible a Docker, dont foodsqan-traefik qui tient les ports 80 et 443 de 25 domaines (VPS-021) ET monte la socket Docker (VPS-034). Les healthchecks restent la 1re source de forks : ~5 processus par invocation via runc, ~93 600 executions/jour pour la seule surveillance ; sonder les 9 restants ajouterait ~18 invocations/min (+28 %), donc ne sonder QUE les 3 qui servent du trafic. 2e source, c est NOUS : VPS-032 — 8 387 sessions SSH acceptees sur 7 jours a ~54 processus par session ; le pic des 08-20/08-21 (4 252 et 2 094) sort progressivement de la fenetre, les trois derniers jours sont a 360 · 378 · 446. 3e source, apparue le 08-23 et ce n est PAS un fork : VPS-035, l ingestion de trames — ✅ ELLE EST RETOMBEE le 08-24 entre 07 h et 08 h, x0,67 sur 24 h, et AUCUN boitier n a ete perdu (38 emetteurs distincts avant, pendant, apres). 🔴🔴 CORRECTION MAJEURE DU 2026-08-25 — VPS-M68 : LA PHRASE QUI OCCUPAIT CETTE PLACE DEPUIS DES PASSAGES ETAIT FAUSSE. Elle affirmait « la variance est entre les JOURS, pas dans la mesure (temoin independant le 08-22 : 3 % d ecart) ». C EST L INVERSE : l etendue A L INTERIEUR de la fenetre de 10 s vaut 80 % de la valeur publiee (sous-fenetres 1 220 · 480 · 1 305 /min), et CINQ sondages consecutifs en quinze minutes couvrent x1,59 — quand les VINGT passages de la serie couvrent x1,8. Le temoin du 08-22 mesurait l ACCORD ENTRE DEUX INSTRUMENTS sur la meme fenetre, pas la REPRODUCTIBILITE de la grandeur : deux thermometres qui s accordent a 3 % ne disent rien de la stabilite de la temperature. ⚠️ DONC : processusParMinute ci-dessus est un ECHANTILLON, il ne porte PAS de tendance, et une variation d un passage a l autre ne doit etre interpretee comme rien du tout. La valeur est conservee (serie de vingt points, valeur d archive) et le collecteur publie desormais son etendue a cote. ⚠️ ET une machine SATUREE ralentit la creation de processus au lieu de l augmenter : un chiffre BAS n est pas une bonne nouvelle en soi."
+      "note": "⚠️ processusParMinute EST DU BRUIT, PAS UNE TENDANCE — et ce passage le confirme au-dela de ce qui avait ete mesure (VPS-M68). L etendue INTRA-fenetre vaut 2 040/min, soit 182 % de la valeur publiee (sous-fenetres 3 s/3 s/4 s : 400 · 2 440 · 675) : entre deux sous-fenetres distantes de trois secondes, le taux varie d un facteur 6,1. La serie de vingt passages (facteur 1,8) tient tres largement dans le bruit de la mesure elle-meme. NE PAS chercher une cause metier a une variation de cette serie avant d avoir allonge la fenetre — et ne pas l allonger sans compter le budget de collecte, deja depasse 14 fois sur 14. Les healthchecks, eux, restent la 1re source de forks : 65 invocations/min sur 24 conteneurs sondes, 9 des 33 n ayant AUCUNE sonde — dont foodsqan-traefik, qui tient les ports 80/443 de toute la production."
     }
   }
 }

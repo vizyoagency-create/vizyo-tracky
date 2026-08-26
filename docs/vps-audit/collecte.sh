@@ -1519,6 +1519,39 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
         # ⚠️ La comparaison est INTERNE a la passe (24 h contre les 24 h precedentes) : le
         # collecteur n'a pas de memoire d'un passage a l'autre, et un detecteur qui exige cette
         # memoire ne se declenche jamais le jour ou il faudrait.
+        # ⚠️⚠️ AJOUTE LE 2026-08-26 — ANGLE MORT N° 1 DU RAPPORT DU 2026-08-25, FERME ICI.
+        # Ce bloc savait dire « le debit a ete divise par 1,5 ». Il ne savait PAS dire si
+        # c etait « par la MEME flotte » ou « par une flotte REDUITE » — c est-a-dire la
+        # difference entre un correctif qui a marche et une panne majeure deguisee en bonne
+        # nouvelle : les deux produisent exactement la meme courbe descendante.
+        # Le 2026-08-25 la question a ete posee A LA MAIN (38 boitiers avant, 38 apres) ; sans
+        # elle, le rapport publiait « le debit revient a la normale ✅ » sur une flotte qui
+        # aurait pu etre a moitie muette. Elle entre donc dans le script.
+        # ⚠️ COUT : +0,40 s, MESURE, PAS ESTIME — et ce nest PAS « nul », contrairement a ce que
+        # javais ecrit en posant ce bloc. Trois paires de mesures consecutives sur wire_logs
+        # (291 Mo, 825 000 lignes) le 2026-08-26 : 272/270/246 ms sans les deux agregats,
+        # 655/671/655 ms avec. Le parcours est bien le meme, mais `count(DISTINCT)` ajoute un
+        # tri/hachage de 126 000 valeurs. Une seule table de la machine porte une colonne
+        # demetteur, donc la facture totale est de +0,4 s sur une passe de ~137 s.
+        # (Le 2026-08-25, un angle mort annonce a ~2 s en a coute 5,7 : une estimation non
+        #  recalee devient un argument. Celle-ci est donc mesuree avant detre ecrite.)
+        # ⚠️ La colonne d emetteur est cherchee par HEURISTIQUE (elle s appelle `imei` ici) :
+        # quand elle est absente, le bloc le DIT au lieu de se taire — une absence de mesure et
+        # une mesure nulle ne doivent pas se lire pareil (VPS-M02).
+        EMCOL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+          "SELECT column_name FROM information_schema.columns
+            WHERE table_name='$t' AND data_type IN ('text','character varying')
+              AND lower(column_name) IN ('imei','deviceid','device_id','serial','serialnumber','msisdn','tracker','boitier')
+            ORDER BY CASE lower(column_name) WHEN 'imei' THEN 1 WHEN 'deviceid' THEN 2
+                                             WHEN 'device_id' THEN 3 ELSE 9 END
+            LIMIT 1;" 2>/dev/null)
+        if [ -n "$EMCOL" ]; then
+          EMSEL="count(DISTINCT \"$EMCOL\") FILTER (WHERE \"$COL\" >  now() - interval '24 hours'),
+                 count(DISTINCT \"$EMCOL\") FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
+                                                      AND \"$COL\" <= now() - interval '24 hours')"
+        else
+          EMSEL="-1, -1"
+        fi
         docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
           "SELECT coalesce(min(\"$COL\")::date::text,'vide'),
                   coalesce(max(\"$COL\")::date::text,'vide'),
@@ -1528,10 +1561,12 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                   count(*) FILTER (WHERE \"$COL\" >  now() - interval '24 hours'),
                   count(*) FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
                                      AND \"$COL\" <= now() - interval '24 hours'),
-                  round(pg_total_relation_size('\"$t\"')/1048576.0, 1)
+                  round(pg_total_relation_size('\"$t\"')/1048576.0, 1),
+                  $EMSEL
            FROM \"$t\";" 2>/dev/null |
-        awk -F'|' -v t="$t" -v c="$COL" 'NF>=8 {
+        awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" 'NF>=10 {
             deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
+            e0=$9+0; e1=$10+0;
             printf "       %-30s%s -> %s  = %s jours, %.1f Mo  (colonne %s)\n", t, deb, fin, jours, mo, c;
             if (j1 <= 0) {
               printf "         (debit non comparable : 0 arrivee sur les 24 h PRECEDENTES)\n";
@@ -1539,6 +1574,28 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
             }
             r = j0 / j1;
             printf "         debit : %d arrivees sur 24 h  contre  %d les 24 h precedentes  = x%.2f\n", j0, j1, r;
+            # ── LE DISCRIMINANT : moins de trames, ou moins d emetteurs ? (angle mort n° 1) ──
+            # Sans cette ligne, une flotte a moitie muette et un correctif reussi rendent la
+            # MEME courbe. Elle a ete posee a la main le 2026-08-25 ; elle est dans le script
+            # depuis le 2026-08-26. Aucune apostrophe ici : programme awk en quotes simples.
+            if (e0 < 0) {
+              printf "         (emetteurs NON MESURES : aucune colonne didentifiant reconnue sur cette\n";
+              printf "          table — ce nest PAS « un seul emetteur », cest une mesure NON FAITE.)\n";
+            } else if (e0 > 0 && e1 > 0) {
+              pb0 = j0 / e0 / 24.0; pb1 = j1 / e1 / 24.0; re = e0 / e1;
+              printf "         emetteurs DISTINCTS : %d sur 24 h  contre  %d les 24 h precedentes  (colonne %s)\n", e0, e1, em;
+              printf "         par emetteur : %.1f trames/h  contre  %.1f  = x%.2f\n", pb0, pb1, (pb1>0 ? pb0/pb1 : 0);
+              if (re < 0.90)
+                printf "         🔴 %d EMETTEUR(S) ONT DISPARU (x%.2f) — la baisse du debit vient de la FLOTTE,\n            pas de la cadence. Une panne dingestion se lit comme une amelioration.\n", e1-e0, re;
+              else if (re > 1.10)
+                printf "         🟠 la flotte a GRANDI (x%.2f) : une hausse de debit est attendue, la juger par emetteur.\n", re;
+              else
+                printf "         ✅ flotte STABLE (%d contre %d) : toute la variation est portee par la CADENCE,\n            pas par le nombre demetteurs. Cest ce qui distingue un correctif dune panne.\n", e0, e1;
+              printf "         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une\n";
+              printf "            SEULE heure, il confond le creux de la nuit avec une derive du regime.\n";
+            } else {
+              printf "         (emetteurs : %d sur 24 h, %d les 24 h precedentes — taux par emetteur non calculable)\n", e0, e1;
+            }
             if (wj > 0 && n > 0) {
               proj_n = wj * j0; proj_mo = mo * proj_n / n;
               printf "         projection a fenetre PLEINE (%.2f j x le debit du jour) : %.0f Mo\n", wj, proj_mo;
@@ -2114,9 +2171,41 @@ if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
     # et c est la seconde qui interesse. Les deux sont donc publiees, jamais l une sans l autre.
     # ⚠️ Le lot TRIM n est PAS masque pour autant : il est compte a part et son EXISTENCE est
     # affichee. Le jour ou il changera de contenu, la difference des deux compteurs le dira.
-    echo  "  ── commandes hors sonde horaire (le scanner, le ps et /proc/meminfo sont ecartes) ──"
+    # ⚠️⚠️ CORRIGE LE 2026-08-26 (VPS-M70) — LE FILTRE ETAIT CABLE SUR UN NOM DE FICHIER.
+    # Il ecartait `hstgr-<epoch>.scanner.py`. L hebergeur a renomme sa sonde horaire en
+    # `usage-telemetry.py` le 2026-08-25 entre 07h18 et 08h14 : du jour au lendemain, une sonde
+    # horaire parfaitement routiniere est devenue « INATTENDUE », et le bloc a publie
+    # « 🟠 19 commande(s) INATTENDUE(S) » dont les DIX-NEUF etaient cette sonde. Le compteur ne
+    # comptait plus ce qu il pretendait compter — VPS-M01 / VPS-M46 / VPS-M50, quatrieme fois.
+    # Le filtre porte desormais sur la FORME (`hstgr-<epoch>.<nom>.py`, le script auto-detruit
+    # que l hyperviseur depose puis execute), pas sur un nom precis.
+    # ⚠️ CE FILTRE EST PLUS LARGE, ET C EST UN RISQUE QU IL FAUT COMPENSER, PAS TAIRE : un script
+    # reellement nouveau passant par le meme chemin serait desormais ecarte lui aussi. La
+    # contrepartie est donc obligatoire — l INVENTAIRE des noms de sonde est publie ci-dessous
+    # dans TOUS les cas, avec son compte, et tout changement de nom est signale. On ecarte le
+    # BRUIT sans perdre la capacite de voir qu il a change (leçon VPS-M50 sur le lot TRIM).
+    echo  "  ── inventaire des sondes horaires deposees par l hyperviseur (VPS-M70) ──"
+    QGA_SONDES=$(printf '%s\n' "$QGA" | grep -F 'guest-exec called' \
+      | grep -oE 'hstgr-[0-9]+\.[A-Za-z0-9_.-]+\.py' | sed -E 's/^hstgr-[0-9]+\.//' \
+      | sort | uniq -c | sort -rn)
+    if [ -z "$QGA_SONDES" ]; then
+      echo "     (aucun script hstgr-*.py dans la fenetre — PAS « rien a signaler » : soit la"
+      echo "      sonde a change de forme, soit elle a cesse. Les deux meritent un regard.)"
+    else
+      printf '%s\n' "$QGA_SONDES" | sed 's/^/       /'
+      QGA_NB_NOMS=$(printf '%s\n' "$QGA_SONDES" | grep -c '^..*$')
+      if [ "${QGA_NB_NOMS:-0}" -gt 1 ]; then
+        echo "     🟠 $QGA_NB_NOMS noms de sonde DIFFERENTS dans la fenetre : l hyperviseur a"
+        echo "        renomme ou remplace son script pendant la periode observee. Ce n est pas"
+        echo "        anodin — c est du code execute en root chez nous, et son nom est tout ce"
+        echo "        que l on en voit (le script s auto-detruit par son propre trap de sortie)."
+      else
+        echo "     ✅ un seul nom de sonde sur la fenetre : pas de remplacement observe."
+      fi
+    fi
+    echo  "  ── commandes hors sonde horaire (le script hstgr-*.py, le ps et /proc/meminfo ecartes) ──"
     QGA_HORS=$(printf '%s\n' "$QGA" | grep -F 'guest-exec called' \
-      | grep -vE 'hstgr-[0-9]+\.scanner\.py|ps -eo vsz|/proc/meminfo')
+      | grep -vE 'hstgr-[0-9]+\.[A-Za-z0-9_.-]+\.py|ps -eo vsz|/proc/meminfo')
     QGA_NB_HORS=$(printf '%s\n' "$QGA_HORS" | grep -c '^..*$')
     # le lot TRIM quotidien de l hebergeur : connu, documente, attendu (VPS-027)
     QGA_INAT=$(printf '%s\n' "$QGA_HORS" \
