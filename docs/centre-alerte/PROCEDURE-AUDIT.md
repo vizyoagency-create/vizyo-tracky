@@ -5,54 +5,75 @@
 
 ---
 
-## 🟢 PASSAGE DU 2026-08-26 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
+## 🟢 PASSAGE DU 2026-08-27 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
 
-**Le passage d'hier est CLOS. Ne pas le refaire.** `CONTROLE-CORRECTIFS-2026-08-25.md` est un
-document daté du 25/08 : ses contrôles ont été exécutés, leurs verdicts sont dans les sections
-datées de `REFERENCE-ERREURS.md`. Le relire ferait dépenser le passage à confirmer l'acquis.
+**La journée du 26/08 est CLOSE.** Audit du matin + **deux passes de correction** demandées par le
+propriétaire. Quatre correctifs sont **écrits, testés et commités** sur la branche
+`fix/trk-051-acknowledged-sans-accuse` — **non poussée**. Ne pas les réécrire : vérifier s'ils ont
+été déployés, et **si oui, les exercer**.
 
-**Cinq correctifs ont été déployés le 25/08** (TRK-046, 047, 048, 049, 050). Deux sont déjà
-prouvés par le comportement — TRK-046 à la coupe de 20:00 UTC, TRK-048 le jour même.
+### 🎯 LA TABLE DES TESTS EN ATTENTE — le cœur de ce passage
 
-⚠️ **Les deux sources « neuves » désignées hier comme prioritaires sont ÉTEINTES.** Ne pas
-partir à leur recherche : `schedule-cron` n'a plus produit une seule ligne depuis son correctif,
-et `TRIP_AUTOMATION` s'arrête à **09:10, soit AVANT le déploiement de 09:22**. Relevé du 26/08 à
-00:35 UTC : **18 lignes actives, 0 CRITICAL, et plus aucune erreur depuis le 25/08 à 17:47.**
-Le seul bruit résiduel est `trip-analysis` (TRK-037, dépendance Overpass) — **2 lignes** depuis
-le déploiement, contrepartie assumée par le propriétaire.
+Un correctif en production que rien n'a jamais mis à l'épreuve rend **exactement le même zéro**
+qu'un correctif qui marche. C'est le piège le plus coûteux de ce dispositif : TRK-021 est en ligne
+depuis le 23/08 et n'a **jamais** été essayé — onze jours pendant lesquels son compteur à zéro
+ressemblait à une réussite.
 
-### 🎯 Les tests datés à lire cette nuit — par ordre d'intérêt
+**Règle : un test qui attend depuis plus de 7 jours doit être PROVOQUÉ ou REQUALIFIÉ.** Le laisser
+attendre en silence, c'est le transformer en fausse bonne nouvelle.
 
-1. **`OFF_SCHEDULE_MOVEMENT` — le seul morceau de TRK-046 encore NON PROUVÉ.** Compteur à
-   **0**. Le filet ne peut partir que si un véhicule hors champ GPS **ressort EN ROULANT**
-   pendant la plage de coupure (avant 07:00 Paris). *Un zéro ne prouve rien tant qu'aucun
-   véhicule n'est ressorti* : vérifier d'abord s'il y a eu une occasion, avant de conclure.
-2. **TRK-050** — au **prochain redémarrage d'API** : personne ne doit être déconnecté.
-   Chercher une reconnexion WebSocket sans purge de session.
-3. **TRK-021** — **aucun essai de template SMS-only depuis le 15/08.** Le correctif est en
-   production et n'a JAMAIS été exercé. Un compteur à zéro est ici un *oubli d'essayer*, pas
-   une réussite.
-4. **logrotate `rotate 14`** — à partir du **27/08**, `.log.4` et au-delà doivent apparaître
-   dans `/var/lib/docker/containers/*/`. Rien à conclure avant cette date.
+| Fiche | Ce qu'il faut provoquer | Preuve attendue | En attente depuis |
+|---|---|---|---|
+| [TRK-021](./REFERENCE-ERREURS.md#trk-021) | une commande d'un template **SMS-only** (`shock_on`) | elle part **en SMS** — `channel = 'SMS'` | 🔴 **11 j** (15/08) |
+| [TRK-022](./REFERENCE-ERREURS.md#trk-022) | deux alarmes du même type, même véhicule, < 6 h | la seconde **ne crée pas** d'alerte | 🟠 7 j |
+| [TRK-032](./REFERENCE-ERREURS.md#trk-032) | une trame `ac alarm` pendant une coupure programmée | l'alarme **n'est plus éteinte** hors fenêtre | 🟠 4 j |
+| [TRK-050](./REFERENCE-ERREURS.md#trk-050) | un **redémarrage d'API** avec une session ouverte | la session **survit** | 🔵 1 j |
+| [TRK-046](./REFERENCE-ERREURS.md#trk-046) *(filet)* | un véhicule qui **ressort en roulant** d'un parking validé, en plage de coupure | alerte `OFF_SCHEDULE_MOVEMENT` **CRITICAL** — 0 depuis toujours | 🔵 1 j |
 
-### 🛡️ NOUVEAU — le statut d'une fiche vit sur TROIS surfaces
+⚠️ **Recalculer la colonne « en attente depuis » à chaque passage**, et faire monter la fiche en
+tête du rapport quand elle franchit 7 jours.
 
-Depuis le 25/08, un test **fait échouer la construction** si l'index, l'en-tête de la fiche et
-`app/wiki.json` ne disent pas la même chose (24 fiches se contredisaient). **Toute création ou
-modification de fiche doit être portée sur les trois**, et le contrôle lancé — voir §11.
+### 📦 Écrits le 26/08, à vérifier DÉPLOYÉS puis à exercer
+
+| Fiche | Ce qui a été écrit | Comment vérifier qu'il est en ligne |
+|---|---|---|
+| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | `ACKNOWLEDGED` scindé sur `ackResponse` | l'écran mode fix affiche « CIBLE ATTEINTE (mesurée) » en **ambre**, plus de vert sans réponse matérielle |
+| [TRK-018](./REFERENCE-ERREURS.md#trk-018) nº 4 | écran `/admin/immobilisations` | la route répond, et la carte est dans le hub admin |
+| [TRK-037](./REFERENCE-ERREURS.md#trk-037) | niveau `DEGRADATION` | une **nouvelle** ligne Overpass porte `level = 'DEGRADATION'` en base |
+| [TRK-020](./REFERENCE-ERREURS.md#trk-020) | colonnes d'acquittement nommées | ✅ **déjà effectif** — `collecte.sql`, vérifié le 26/08 |
+
+### 🎯 L'objectif du propriétaire : **le centre d'alerte doit afficher 0**
+
+Au 26/08 : **18 lignes actives**, dont **14 Overpass** (TRK-037), **3 TRIP_AUTOMATION** toutes
+antérieures au correctif de 09:22, et **1 sms-heartbeat** dont le verdict `INDETERMINE` est le
+résultat *attendu*.
+
+🔴 **Mais le centre ne se VIDE pas — il doit cesser d'avoir des raisons d'écrire.** Le garde-fou
+n° 1 tient : on n'efface rien, on n'acquitte rien pour faire baisser un compteur. Les lignes
+ci-dessus sont **archivables** — geste réversible, prévu pour ça — **uniquement parce que leur
+cause est corrigée ET vérifiée**. C'est une décision humaine : *l'audit ne l'a jamais prise et ne
+la prend pas.*
 
 ### Les trois pièges intemporels
 
 1. **Vérifier contre l'ARTEFACT SERVI, jamais contre la fiche.** Si fiche et artefact se
    contredisent, **l'artefact a raison, et la fiche se corrige dans le même passage.**
-   *(Le garde ci-dessus rend l'oubli impossible, mais il ne dit pas qui a raison — c'est la
-   mesure qui tranche.)*
 2. **Une double condition n'est franchie que si UN SEUL compteur tombe.** Si les deux tombent
-   ensemble, on a supprimé la fonctionnalité, pas le défaut.
-3. **`docker logs` est peu fiable sur cet hôte** — il a rendu du VIDE le 25/08 alors que le
-   fichier contenait les lignes. Pour PostgreSQL, **lire le fichier `LogPath`**.
+   ensemble, on a supprimé la fonctionnalité, pas le défaut. *(Appliqué avec succès le 26/08 sur
+   TRK-046 et TRK-018 — les deux compteurs relevés séparément.)*
+3. **`docker logs` est peu fiable sur cet hôte.** Pour PostgreSQL, lire le fichier `LogPath`.
 
-⚠️ **10 fiches restent ouvertes** : TRK-001, 014, 016, 018, 020, 021, 022, 027, 035, 037.
+### 🆕 Le piège découvert le 26/08 — le RÉ-ÉTIQUETAGE
+
+Le « métronome de 72 échecs de commande par jour », rapporté comme un fait solide pendant dix
+jours, était un **artefact d'étiquetage** : `FAILED` est tombé de 72 à 15/jour pendant que
+`ACKNOWLEDGED` montait de 0 à 61, et le **TOTAL n'a pas bougé** (69-79/j sur neuf jours).
+
+> 🔑 **Quand un compteur tombe, vérifier que la catégorie VOISINE n'a pas monté d'autant.**
+> Comparer le **total de la famille**, pas la classe qu'on surveille. Un ré-étiquetage ressemble
+> trait pour trait à une amélioration — et se raconte encore mieux.
+
+⚠️ **10 fiches restent ouvertes** : TRK-001, 014, 016, 018, 021, 022, 027, 035, 037, 051 — dont **4 écrites le 26/08 en attente de déploiement** et **3 en action TERRAIN** (001, 027, 037).
 
 ---
 
