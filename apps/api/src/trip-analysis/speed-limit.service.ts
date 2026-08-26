@@ -1,4 +1,5 @@
 import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
+import { NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { Injectable, Logger } from '@nestjs/common';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -181,6 +182,11 @@ export class SpeedLimitService {
         ),
         'trip-analysis',
         { feature: 'speed-limit-osm', requetes, overpass: process.env.OVERPASS_URL || 'public', cause },
+        // TRK-037 — DÉGRADATION, pas défaut. Le repli est propre (le reste de l'analyse est
+        // conservé, seuls les excès ne sont pas affirmés), la perte est bornée, et le
+        // propriétaire a accepté la contrepartie de ce miroir public et gratuit. La ligne reste
+        // écrite et consultable ; elle cesse simplement de compter comme une erreur à traiter.
+        NIVEAU_DEGRADATION,
       );
     }
 

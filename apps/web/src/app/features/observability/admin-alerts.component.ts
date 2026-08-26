@@ -413,6 +413,14 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                   {{ data()!.summary.errorsArchivees24h }} archivee(s) masquee(s) sur 24 h
                 </span>
               }
+              <!-- TRK-037 — les degradations assumees ne comptent plus comme des defauts, mais
+                   elles restent VISIBLES : les taire serait vider l'ecran, pas corriger. -->
+              @if ((data()!.summary.degradations24h ?? 0) > 0) {
+                <span class="text-[11px] text-fg-tertiary"
+                      title="Dependance tierce momentanement injoignable, repli fonctionnel, contrepartie assumee. Aucune action attendue.">
+                  {{ data()!.summary.degradations24h }} degradation(s) assumee(s) sur 24 h
+                </span>
+              }
               @if (vueArchivage() !== 'archivees' && data()!.errors.recent.length > 0) {
                 <button type="button" (click)="archiverTout()" [disabled]="archivageEnCours()"
                         class="px-3 py-1.5 text-xs rounded-[--radius-card] border border-border-subtle

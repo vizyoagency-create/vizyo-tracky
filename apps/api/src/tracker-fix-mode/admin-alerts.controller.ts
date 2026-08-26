@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { BadRequestException, DefaultValuePipe, ParseBoolPipe } from '@nestjs/common';
 import { TrackerCommandStatus, UserRole } from '@prisma/client';
+import { HORS_DEGRADATION, NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -133,7 +134,7 @@ export class AdminAlertsController {
           ? { resolvedAt: { not: null } }
           : {};
 
-    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount, errorsPrev24h, errorsSince, archivees24h] = await Promise.all([
+    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount, errorsPrev24h, errorsSince, archivees24h, degradations24h] = await Promise.all([
       this.prisma.tracker.findMany({
         where: { fixCommandFailing: true, ...fleetClause },
         include: { vehicle: { include: { fleet: true } } },
@@ -162,8 +163,11 @@ export class AdminAlertsController {
         take: 200,
       }),
       // V1.14 — Erreurs applicatives (24h) pour le centre d'alertes.
+      // TRK-037 — les DEGRADATIONS assumees sortent du compte des defauts. Elles restent
+      // ecrites, consultables et rendues a part (bloc `degradations` ci-dessous) : on nomme,
+      // on ne cache pas. 14 des 18 lignes actives du 26/08 etaient de cette espece.
       this.prisma.errorLog.findMany({
-        where: { createdAt: { gte: errorCutoff }, ...clauseArchivage },
+        where: { createdAt: { gte: errorCutoff }, ...clauseArchivage, ...HORS_DEGRADATION },
         orderBy: { createdAt: 'desc' },
         take: 500,
       }),
@@ -172,16 +176,24 @@ export class AdminAlertsController {
       }),
       // Tendance : count erreurs 24h precedentes (pour comparaison).
       this.prisma.errorLog.count({
-        where: { createdAt: { gte: errorPrevCutoff, lt: errorCutoff }, ...clauseArchivage },
+        where: { createdAt: { gte: errorPrevCutoff, lt: errorCutoff }, ...clauseArchivage, ...HORS_DEGRADATION },
       }),
       // Count depuis derniere visite (si fourni).
       sinceCutoff
-        ? this.prisma.errorLog.count({ where: { createdAt: { gte: sinceCutoff }, ...clauseArchivage } })
+        ? this.prisma.errorLog.count({
+            where: { createdAt: { gte: sinceCutoff }, ...clauseArchivage, ...HORS_DEGRADATION },
+          })
         : Promise.resolve(null as number | null),
       // Combien de lignes sont MASQUEES par la vue actuelle : sans ce chiffre, un
       // ecran vide ne dit pas s'il n'y a rien ou si tout a ete archive.
       this.prisma.errorLog.count({
         where: { createdAt: { gte: errorCutoff }, resolvedAt: { not: null } },
+      }),
+      // TRK-037 — les degradations assumees, rendues A PART pour rester consultables.
+      this.prisma.errorLog.findMany({
+        where: { createdAt: { gte: errorCutoff }, ...clauseArchivage, level: NIVEAU_DEGRADATION },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
       }),
     ]);
 
@@ -268,7 +280,12 @@ export class AdminAlertsController {
         errorsSinceLastVisit: errorsSince,
         vueArchivage,
         errorsArchivees24h: archivees24h,
+        // TRK-037 — comptees a part : une dependance tierce degradee dont le repli a
+        // fonctionne n'appelle aucune action. Le chiffre reste affiche pour qu'un ecran
+        // vide ne puisse jamais faire croire qu'on a cesse de mesurer.
+        degradations24h: degradations24h.length,
       },
+      degradations: degradations24h.map(mapError),
       failing: failingTrackers.map((t) => ({
         kind: 'TRACKER_FAILING' as const,
         trackerId: t.id,

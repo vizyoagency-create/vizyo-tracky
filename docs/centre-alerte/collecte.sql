@@ -16,9 +16,21 @@
 -- en base — « clear » ne supprime rien — mais elle ne compte PLUS comme une erreur
 -- active. Un `count(*)` nu confondrait les deux et gonflerait le bilan de tout ce qui
 -- a deja ete traite.
+--
+-- 🔴 TRK-037 (2026-08-26) : `defauts_actifs` est LE chiffre du rapport, pas `actives`.
+-- Le niveau `DEGRADATION` marque une dependance tierce degradee dont le repli a FONCTIONNE
+-- et dont le proprietaire a accepte la contrepartie : la ligne reste ecrite et consultable,
+-- mais personne n'a rien a faire. Le 26/08, **14 des 18 lignes actives** etaient de cette
+-- espece (Overpass injoignable) — un exploitant lisait « 18 erreurs » sans pouvoir savoir
+-- que 14 n'appelaient aucune action.
+-- ⚠️ Ce n'est PAS un correctif qui vide l'ecran : rien n'est supprime ni archive, et
+-- `degradations` reste rendu ci-dessous. On NOMME, on ne cache pas.
 SELECT count(*) AS total,
        count(*) FILTER (WHERE "resolvedAt" IS NULL)     AS actives,
+       count(*) FILTER (WHERE "resolvedAt" IS NULL AND level <> 'DEGRADATION') AS defauts_actifs,
+       count(*) FILTER (WHERE "resolvedAt" IS NULL AND level =  'DEGRADATION') AS degradations,
        count(*) FILTER (WHERE "resolvedAt" IS NOT NULL) AS archivees,
+       count(*) FILTER (WHERE "createdAt" > now() - interval '24 hours' AND "resolvedAt" IS NULL AND level <> 'DEGRADATION') AS defauts_24h,
        count(*) FILTER (WHERE "createdAt" > now() - interval '24 hours' AND "resolvedAt" IS NULL) AS actives_24h,
        count(*) FILTER (WHERE "createdAt" > now() - interval '24 hours') AS last_24h,
        count(*) FILTER (WHERE "createdAt" > now() - interval '7 days')   AS last_7d,
@@ -27,6 +39,7 @@ SELECT count(*) AS total,
 FROM error_logs;
 
 \echo ### SECTION par_source
+-- ⚠️ Lire la colonne `level` : `DEGRADATION` (TRK-037) n'est pas un defaut a traiter.
 SELECT source, level, count(*) AS n,
        count(*) FILTER (WHERE "resolvedAt" IS NULL) AS actives,
        min("createdAt") AS premiere, max("createdAt") AS derniere

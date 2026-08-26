@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { NiveauErreur } from './niveaux-erreur';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -95,7 +96,7 @@ export class ErrorLogger {
     error: Error | string,
     source: string,
     context?: ErrorLogContext,
-    level: 'ERROR' | 'CRITICAL' = 'ERROR',
+    level: NiveauErreur = 'ERROR',
   ): Promise<string> {
     const message = typeof error === 'string' ? error : error.message;
     const stack = typeof error === 'string' ? undefined : error.stack;
@@ -184,7 +185,7 @@ export class ErrorLogger {
     error: Error | string,
     source: string,
     context?: ErrorLogContext,
-    level: 'ERROR' | 'CRITICAL' = 'ERROR',
+    level: NiveauErreur = 'ERROR',
   ): void {
     try {
       void this.record(error, source, context, level).catch(() => undefined);

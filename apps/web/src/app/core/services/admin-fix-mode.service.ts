@@ -13,6 +13,13 @@ export interface AdminAlertSummary {
   vueArchivage: 'actives' | 'archivees' | 'toutes';
   /** Lignes archivees sur 24 h — sans ce chiffre, un ecran vide est ambigu. */
   errorsArchivees24h: number;
+  /**
+   * TRK-037 — dependances tierces degradees sur 24 h, COMPTEES A PART.
+   * Le repli a fonctionne et le proprietaire a accepte la contrepartie : personne n'a rien a
+   * faire. Le chiffre reste affiche pour qu'un ecran vide ne fasse jamais croire qu'on a cesse
+   * de mesurer.
+   */
+  degradations24h: number;
 }
 
 export interface ErrorSourceGroup {
