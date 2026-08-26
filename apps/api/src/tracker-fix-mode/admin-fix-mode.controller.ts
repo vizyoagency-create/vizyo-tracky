@@ -17,6 +17,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  confirmationDeCommande,
+  ventilerConfirmations,
+} from './confirmation-commande';
 import { cadenceMesurePerimee } from './peremption-cadence';
 import { TrackerFixModeService } from './tracker-fix-mode.service';
 
@@ -92,6 +96,9 @@ export class AdminFixModeController {
 
     return {
       days,
+      // TRK-051 — la ventilation qui remplace tout `count(status = 'ACKNOWLEDGED')`.
+      // `acquitteesBoitier` est la seule réponse à « combien de boîtiers ont répondu ? ».
+      confirmations: ventilerConfirmations(items),
       items: items.map((c) => ({
         id: c.id,
         templateId: c.templateId,
@@ -108,6 +115,10 @@ export class AdminFixModeController {
         sentAt: c.sentAt?.toISOString() ?? null,
         ackedAt: c.ackedAt?.toISOString() ?? null,
         ackResponse: c.ackResponse,
+        // TRK-051 — ce qui a confirmé la commande, dérivé de la PREUVE présente et jamais du
+        // seul statut : 'BOITIER' (une trame est revenue) ou 'MESURE' (cadence constatée,
+        // aucune réponse du matériel). L'écran doit lire CE champ, pas `status`.
+        confirmation: confirmationDeCommande(c),
         acknowledgedBy: c.acknowledgedBy,
         acknowledgedAt: c.acknowledgedAt?.toISOString() ?? null,
         createdAt: c.createdAt.toISOString(),

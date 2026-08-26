@@ -227,9 +227,22 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                       {{ e.createdAt | date: 'dd/MM HH:mm:ss' }}
                     </span>
                     <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md font-mono"
-                          [class]="statusBadgeClass(e.status)">
-                      {{ e.status }}
+                          [class]="statusBadgeClass(e.status, e.confirmation)"
+                          [title]="statusTitre(e.status, e.confirmation)">
+                      {{ statusLibelle(e.status, e.confirmation) }}
                     </span>
+                    <!--
+                      TRK-051 — une commande close par la MESURE ne doit pas pouvoir se lire comme
+                      un acquittement du boitier. Le badge le dit, en toutes lettres et sans vert.
+                    -->
+                    @if (e.confirmation === 'MESURE') {
+                      <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md
+                                   bg-amber-500/10 text-amber-400"
+                            title="Le boitier n'a envoye aucune reponse. L'effet est constate par la
+                                   cadence mesuree, pas confirme par le materiel.">
+                        sans accuse du boitier
+                      </span>
+                    }
                     @if (e.outcomeReason) {
                       <span class="text-xs text-fg-tertiary">{{ e.outcomeReason }}</span>
                     }
@@ -443,8 +456,36 @@ export class AdminFixModeComponent implements OnInit {
     }
   }
 
-  statusBadgeClass(status: string): string {
-    if (status === 'ACKNOWLEDGED') return 'bg-emerald-500/10 text-emerald-400';
+  /**
+   * TRK-051 — le vert (succes confirme) est RESERVE a une vraie reponse du boitier.
+   * Un `ACKNOWLEDGED` obtenu par la mesure passe en ambre : l'effet est constate, il n'est
+   * pas confirme par le materiel. Peindre les deux en vert etait exactement ce qui faisait
+   * lire « 120 acquittements » la ou il y en a 2.
+   */
+  /**
+   * TRK-051 — le libelle affiche. `ACKNOWLEDGED` seul est ambigu : il recouvre « le boitier a
+   * repondu » et « la cadence mesuree a rejoint la cible, sans aucune reponse ». On ecrit lequel.
+   */
+  statusLibelle(status: string, confirmation?: 'BOITIER' | 'MESURE' | null): string {
+    if (status !== 'ACKNOWLEDGED') return status;
+    return confirmation === 'BOITIER' ? 'ACQUITTEE (boitier)' : 'CIBLE ATTEINTE (mesuree)';
+  }
+
+  /** Infobulle : dit la preuve sur laquelle repose le verdict. */
+  statusTitre(status: string, confirmation?: 'BOITIER' | 'MESURE' | null): string {
+    if (status !== 'ACKNOWLEDGED') return status;
+    return confirmation === 'BOITIER'
+      ? 'Le boitier a renvoye une trame de reponse : confirmation materielle.'
+      : 'Cloture par echeance : la cadence mesuree a rejoint la cadence demandee. '
+        + 'Le boitier n a envoye aucun accuse de reception (TRK-051).';
+  }
+
+  statusBadgeClass(status: string, confirmation?: 'BOITIER' | 'MESURE' | null): string {
+    if (status === 'ACKNOWLEDGED') {
+      return confirmation === 'BOITIER'
+        ? 'bg-emerald-500/10 text-emerald-400'
+        : 'bg-amber-500/10 text-amber-400';
+    }
     if (status === 'SENT') return 'bg-sky-500/10 text-sky-400';
     if (status === 'FAILED') return 'bg-rose-500/10 text-rose-400';
     if (status === 'PENDING') return 'bg-amber-500/10 text-amber-400';

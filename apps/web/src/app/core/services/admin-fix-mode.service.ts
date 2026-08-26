@@ -163,6 +163,24 @@ export interface FixModeTimelineEntry {
   acknowledgedBy: string | null;
   acknowledgedAt: string | null;
   createdAt: string;
+  /**
+   * TRK-051 — ce qui a confirme la commande, calcule par l'API a partir de la PREUVE presente :
+   * 'BOITIER' = une trame de reponse est revenue ; 'MESURE' = la cadence constatee a rejoint la
+   * cadence demandee SANS aucune reponse du materiel (cloture par echeance) ; null = non confirmee.
+   *
+   * A lire a la place de `status` : `ACKNOWLEDGED` recouvre les deux premiers cas, et sur 120
+   * commandes du 26/08 il n'y en avait que 2 du premier.
+   */
+  confirmation: 'BOITIER' | 'MESURE' | null;
+}
+
+/** TRK-051 — ventilation d'un lot, a utiliser au lieu de compter les `ACKNOWLEDGED`. */
+export interface VentilationConfirmations {
+  total: number;
+  /** La SEULE reponse a « combien de boitiers ont repondu ? ». */
+  acquitteesBoitier: number;
+  cibleAtteinteMesuree: number;
+  nonConfirmees: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -222,7 +240,11 @@ export class AdminFixModeService {
   timeline(trackerId: string, days = 90, outcome?: 'failed' | 'pending') {
     const params: Record<string, string> = { days: String(days) };
     if (outcome) params['outcome'] = outcome;
-    return this.http.get<{ days: number; items: FixModeTimelineEntry[] }>(
+    return this.http.get<{
+      days: number;
+      confirmations: VentilationConfirmations;
+      items: FixModeTimelineEntry[];
+    }>(
       `/api/admin/trackers/${trackerId}/fix-mode/timeline`,
       { params },
     );
