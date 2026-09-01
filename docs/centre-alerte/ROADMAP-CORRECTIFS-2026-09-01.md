@@ -144,6 +144,23 @@ invisibles, pas pour être exécutés automatiquement.
 
 ---
 
+## ✅ État final de la passe — 2026-09-01 09:36 UTC
+
+| | |
+|---|---|
+| Image `tracky-api:latest` servie | **v3**, validée par le **code embarqué** (`premiereApres` présent) |
+| `tracky-api` | démarré **09:35:48**, `restarts=0`, **1 seul** boot, `/api/health` ok |
+| Orphelin `api-run` | **aucun** |
+| Client Docker résiduel | **aucun** — `pgrep -x docker` vide, charge 1,47 |
+| Idempotence de la rétractation | ✅ la ligne du 09:30 **n'a pas été réécrite** par le nouveau code, et l'acquittement du 31/08 19:15 est toujours là |
+| Témoin TRK-053 | **7** alertes depuis déclaration — **inchangé**, c'est le compteur à surveiller |
+| Centre d'alerte | **4** défauts actifs · **23** `DEGRADATION` |
+
+**Deux déploiements d'API dans la passe** (09:17 puis 09:35), tous deux séquentiels, API seule,
+web jamais touché. **Trois commits de code, trois de documentation**, tous poussés sur `main`.
+
+---
+
 ## 🔁 Le troisième défaut, trouvé en vérifiant le correctif lui-même
 
 La rétractation de HD-779-MA est tombée à 09:30:00 — et son motif était faux :
