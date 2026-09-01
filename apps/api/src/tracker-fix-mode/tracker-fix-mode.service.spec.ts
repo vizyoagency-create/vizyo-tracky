@@ -832,6 +832,48 @@ describe('TrackerFixModeService.reconcile', () => {
     expect(out.autoAlignDesiredS).toBe(60);
   });
 
+  // ── TRK-058 — une trame d'EVENEMENT n'est pas une mesure de cadence ──────────────────
+  //
+  // Cas reel, GS-909-NX le 01/09 : deux trames a 0,6 s d'ecart, MEME horodatage boitier et
+  // MEME position — un `acc off` suivi de son `acc on`. Le boitier n'a pas emis deux fois en
+  // 0,6 s au sens de la cadence : il a signale deux evenements.
+
+  it('TRK-058 : une trame d evenement n entre PAS dans la fenetre', () => {
+    const prev = new Date('2026-09-01T14:53:31Z');
+    const out = service.reconcile(
+      { ...baseTracker, desiredFixIntervalS: 20, lastValidFrameAt: prev,
+        recentFixIntervalsS: [20, 20, 20, 20, 20, 20] } as never,
+      { deviceTime: new Date(prev.getTime() + 600), speedKmh: 0, ignition: false,
+        lat: 43, lng: 1, alarm: 'acc_on' },
+    );
+    // La fenetre est inchangee : le 0,6 s (arrondi a 1) n'y figure pas.
+    expect(out.nextRecentFixIntervalsS).toEqual([20, 20, 20, 20, 20, 20]);
+    expect(out.nextCurrentFixIntervalS).toBe(20);
+  });
+
+  it('TRK-058 : une trame de cadence entre bien, elle', () => {
+    const prev = new Date('2026-09-01T14:53:31Z');
+    const out = service.reconcile(
+      { ...baseTracker, desiredFixIntervalS: 20, lastValidFrameAt: prev,
+        recentFixIntervalsS: [20, 20, 20, 20, 20, 20] } as never,
+      { deviceTime: new Date(prev.getTime() + 20000), speedKmh: 0, ignition: false,
+        lat: 43, lng: 1, alarm: 'none' },
+    );
+    expect(out.nextRecentFixIntervalsS).toHaveLength(7);
+  });
+
+  // ⚠️ CONTREPOINT : sans information d'alarme, on suppose une cadence — le comportement
+  // d'avant. Un appelant qui ne fournit pas le champ ne doit rien casser.
+  it('TRK-058 : sans champ alarme, la trame compte comme une cadence', () => {
+    const prev = new Date('2026-09-01T14:53:31Z');
+    const out = service.reconcile(
+      { ...baseTracker, desiredFixIntervalS: 20, lastValidFrameAt: prev,
+        recentFixIntervalsS: [20, 20] } as never,
+      { deviceTime: new Date(prev.getTime() + 20000), speedKmh: 0, ignition: false, lat: 43, lng: 1 },
+    );
+    expect(out.nextRecentFixIntervalsS).toEqual([20, 20, 20]);
+  });
+
   it('confirms current interval when delta is within ±20% of desired', () => {
     const prev = new Date('2026-04-26T12:00:00Z');
     const next = new Date('2026-04-26T12:00:32Z'); // 32s delta vs target 30s -> within 20%

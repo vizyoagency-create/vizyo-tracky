@@ -1258,6 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-058](#trk-058) | *cadence* | **Une trame d'ÉVÉNEMENT compte comme une mesure de cadence** — un `acc off` suivi de son `acc on` injecte un écart de 0,6 s dans la fenêtre | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 3** · famille **bruit de mesure** *(⚠️ ampleur mesurée AVANT de corriger, et elle contredit l'intuition : ces trames ne pèsent que **42 sur 3 447** positions en 1 h, soit **1,2 %**. Elles sont bien plus souvent courtes que les autres — 57 % contre 26 % — mais elles n'expliquent PAS les salves. Correction de précision, pas de cause)* | 2026-09-01 | 2026-09-01 |
 | [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:50:45** *(les 4 cibles réparées au premier passage du balayage, 44/44 canoniques ; HD-964-XY passe DANS LA BANDE sans qu'aucune commande soit envoyée)* · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
 | [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
 | [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:26** *(la mesure renverse la conclusion du matin : FM-772-JH passe de « 2 s » affiché à **99 s mesuré pour 99 s demandés**, FG-669-DQ et GS-878-NX à **20 s pour 20 s**. Trois des quatre « émetteurs rapides » accusés le matin étaient exactement sur leur cible)* · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
@@ -8731,6 +8732,87 @@ laisser.
 Ouvrir la fiche d'un tracker ayant des `fix_continuous` closes par échéance : **aucun badge vert**
 ne doit subsister tant que la colonne RÉPONSE est vide. Et le compte : **0** commande verte sans
 réponse, contre 394 sur les 7 derniers jours.
+
+---
+
+## TRK-058
+
+**Signature** — *(aucune ligne d'erreur — une trame comptée pour ce qu'elle n'est pas)*
+`wire_logs | position | acc on/off ou alarme` entrant dans la fenêtre de cadence de
+[TRK-056](#trk-056)
+**Statut : 🟢 CORRIGÉ le 2026-09-01** · **gravité 3** · famille **bruit de mesure** · 2026-09-01
+
+> ### Le boîtier n'a pas émis deux fois en 0,6 seconde. Il a signalé deux événements.
+
+### Comment on est tombé dessus
+
+**En instruisant les quatre boîtiers « hors bande » — dont aucun ne s'est révélé fautif.** La
+trame brute de GS-909-NX :
+
+```
+14:53:31.878  acc off  …145331…  4341.76064,00126.73328  0.00 km/h
+14:53:32.480  acc on   …145331…  4341.76064,00126.73328  0.00 km/h
+```
+
+**Même horodatage boîtier, même position au dix-millième de minute d'arc.** Ce ne sont pas deux
+points de trajet séparés de 0,6 s : c'est une coupure de contact suivie de sa remise, chacune
+annoncée par sa trame. Elles portent une position — donc elles sont `valid`, donc elles entraient
+dans la fenêtre de cadence.
+
+### ⚠️ L'ampleur, mesurée AVANT de corriger — et elle contredit l'intuition
+
+| Sur 1 h, trames `position` entrantes | |
+|---|---|
+| trames de **cadence** (`,tracker,`) | **3 405** |
+| trames d'**événement** (`acc`, alarmes) | **42** — soit **1,2 %** |
+
+| Écarts sous 10 s | |
+|---|---|
+| quand la trame est un **événement** | **57,1 %** |
+| quand la trame est une **cadence** | **25,8 %** — soit **870 écarts courts** |
+
+🔑 **Les trames d'événement sont bien plus souvent courtes, et elles n'expliquent rien.** Elles
+sont trop peu nombreuses : l'essentiel des écarts courts vient de trames de cadence authentiques.
+*C'est une correction de PRÉCISION, pas de cause — et l'écrire évite qu'un lecteur futur croie
+avoir trouvé l'explication des salves.*
+
+### Correctif livré
+
+`reconcile` reçoit désormais l'alarme portée par la trame. Une trame dont l'alarme n'est ni absente
+ni `none` **n'alimente pas la fenêtre** : elle reste comptée pour tout le reste (position, état,
+bande de tolérance), simplement elle ne prétend plus mesurer une cadence.
+
+⚠️ **Repli explicite** : sans champ d'alarme fourni, la trame compte comme une cadence — le
+comportement d'avant. Un appelant qui ne renseigne pas le champ ne casse rien. Un test le
+verrouille.
+
+**Vérifications :** 3 tests neufs, dont celui vérifié **en échec par mutation**.
+
+### 🔵 Ce que l'enquête a établi sur les quatre boîtiers, et qui compte plus que ce correctif
+
+**Aucun des quatre n'était en faute.** Mesure sur 1 h, trames de cadence seules :
+
+| Véhicule | Cible | Médiane réelle | Verdict |
+|---|---|---|---|
+| **GS-909-NX** | 99 s | **98,9 s** | ✅ **sur sa cible** — sa fenêtre de 12 disait 25 s |
+| **GR-294-VW** | 20 s | **19,8 s** | ✅ **sur sa cible** |
+| **HD-443-QY** | 99 s | 12,0 s | 🔵 contact coupé à **14:55:25**, soit quelques minutes plus tôt — sa fenêtre porte encore le régime « en mouvement ». Sa dernière commande `,C,99s;` était acquittée « cadence réelle 99 s pour 99 s demandés » |
+| **GA-490-SJ** | 20 s | 9,2 s | 🔵 **à 54 km/h** — et « émettre plus vite que demandé, EN MOUVEMENT, n'est pas une faute » est une règle explicite du reconciler depuis TRK-008 |
+
+> 🔑 **« Hors bande » n'est pas « en faute ».** `fixCommandFailing` vaut **false** sur les quarante-
+> quatre boîtiers du parc. Comparer `currentFixIntervalS` à `desiredFixIntervalS` sans lire l'état
+> ni la règle de tolérance produit un compte alarmant qui ne décrit rien — *c'est exactement le
+> compte que j'ai publié une heure plus tôt sous le nom de « 6 boîtiers hors bande ».*
+>
+> ⚠️ **Et ce nombre bougeait déjà** : six au moment de l'écrire, quatre vingt minutes plus tard.
+> Le §4 bis de la procédure le dit — *deux mesures ne font pas une tendance, et une liste réécrite
+> en continu n'est pas un inventaire.*
+
+### 🗓️ Vérification
+
+La fenêtre d'un boîtier dont le contact vient d'être coupé ou remis ne doit plus contenir d'écart
+inférieur à la seconde. Et le compte de boîtiers « hors bande » doit cesser d'être publié sans son
+état d'échantillonnage à côté.
 
 ---
 

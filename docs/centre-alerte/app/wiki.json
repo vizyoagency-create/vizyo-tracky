@@ -43,6 +43,22 @@
   ],
   "fiches": [
     {
+      "id": "TRK-058",
+      "titre": "Une trame d evenement comptee comme une mesure de cadence",
+      "source": "cadence",
+      "statut": "CORRIGE",
+      "gravite": 3,
+      "vuPremiere": "2026-09-01",
+      "vuDerniere": "2026-09-01",
+      "occurrences": 42,
+      "occurrencesLibelle": "Quarante-deux trames d evenement sur 3447 positions entrantes en une heure, soit 1,2 pour cent. Elles sont bien plus souvent courtes que les autres — 57 pour cent d ecarts sous dix secondes contre 26 — mais elles n expliquent PAS les salves : l essentiel des 870 ecarts courts vient de trames de cadence authentiques. Cas de reference GS-909-NX : un acc off a 14h53m31s878 suivi d un acc on a 14h53m32s480, meme horodatage boitier et meme position au dix-millieme.",
+      "quoi": "LE BOITIER N A PAS EMIS DEUX FOIS EN 0,6 SECONDE, IL A SIGNALE DEUX EVENEMENTS. Trouve en instruisant les quatre boitiers dits hors bande, dont aucun ne s est revele fautif. Une coupure de contact suivie de sa remise produit deux trames, chacune portant une position — donc valides, donc entrant dans la fenetre de cadence de TRK-056. AMPLEUR MESUREE AVANT DE CORRIGER, ET ELLE CONTREDIT L INTUITION : ces trames ne pesent que 1,2 pour cent des positions. Elles sont plus souvent courtes mais trop peu nombreuses pour expliquer quoi que ce soit. C est une correction de PRECISION et non de cause, et l ecrire evite qu un lecteur futur croie avoir trouve l explication des salves.",
+      "quoiFaire": "CORRIGE LE 01 SEPTEMBRE. La fonction reconcile recoit desormais l alarme portee par la trame ; une trame dont l alarme n est ni absente ni none n alimente pas la fenetre. Elle reste comptee pour tout le reste — position, etat, bande de tolerance — elle ne pretend simplement plus mesurer une cadence. REPLI EXPLICITE : sans champ d alarme fourni, la trame compte comme une cadence, soit le comportement d avant, et un test le verrouille. Verifications : 3 tests neufs dont un verifie EN ECHEC par mutation. CE QUE L ENQUETE A ETABLI ET QUI COMPTE PLUS QUE CE CORRECTIF : aucun des quatre boitiers n etait en faute. Sur une heure, trames de cadence seules, GS-909-NX rend 98,9 s pour 99 demandes et GR-294-VW 19,8 s pour 20 — tous deux sur leur cible. HD-443-QY a eu son contact coupe a 14h55m25s, quelques minutes plus tot, et sa fenetre porte encore le regime en mouvement ; sa derniere commande etait acquittee avec cadence reelle 99 s pour 99 demandes. GA-490-SJ roule a 54 km/h, et emettre plus vite que demande EN MOUVEMENT est une regle explicite du reconciler depuis TRK-008, pas une faute. HORS BANDE N EST PAS EN FAUTE : fixCommandFailing vaut false sur les quarante-quatre boitiers.",
+      "aNePasFaire": "NE PAS croire que les trames d evenement expliquent les salves : elles pesent 1,2 pour cent. NE PAS publier un compte de boitiers hors bande sans leur etat d echantillonnage a cote — c est exactement ce que j ai fait une heure plus tot en annoncant six boitiers hors bande, alors qu ils etaient quatre vingt minutes plus tard et qu aucun n etait en faute. NE PAS traiter un boitier qui emet plus vite que demande EN MOUVEMENT comme un defaut : la regle est explicite depuis TRK-008.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-058"
+    },
+    {
       "id": "TRK-057",
       "titre": "Des cibles de cadence que personne n a jamais demandees",
       "source": "cadence",

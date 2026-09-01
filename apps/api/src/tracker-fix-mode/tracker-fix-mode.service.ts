@@ -117,6 +117,16 @@ interface FrameContext {
   ignition: boolean | null | undefined;
   lat: number;
   lng: number;
+  /**
+   * TRK-058 — l'alarme portée par la trame, si elle en porte une.
+   *
+   * Sert à distinguer une trame de CADENCE (le boîtier émet parce que l'intervalle est
+   * écoulé) d'une trame d'ÉVÉNEMENT (il émet parce qu'il vient de se passer quelque chose :
+   * contact mis ou coupé, alarme). Les secondes sont asynchrones par nature et n'ont rien à
+   * dire sur la cadence. `undefined` = information non fournie par l'appelant : on suppose
+   * alors une trame de cadence, c'est-à-dire le comportement d'avant.
+   */
+  alarm?: string | null;
 }
 
 @Injectable()
@@ -702,6 +712,7 @@ export class TrackerFixModeService {
     /** TRK-056 — fenetre glissante mise a jour, a persister par l'appelant. */
     nextRecentFixIntervalsS: number[];
   } {
+    const ctx = frame;
     const fenetreCourante = tracker.recentFixIntervalsS ?? [];
     const prev = tracker.lastValidFrameAt;
     if (!prev) {
@@ -731,7 +742,29 @@ export class TrackerFixModeService {
      * la seule valeur de ce module qui change de nature ; les compteurs d'échec et la bande de
      * tolérance continuent de travailler sur l'échantillon.
      */
-    const fenetre = pousserEcart(fenetreCourante, observedS);
+    /**
+     * TRK-058 — UNE TRAME D'ÉVÉNEMENT N'EST PAS UNE MESURE DE CADENCE.
+     *
+     * Constaté sur GS-909-NX le 01/09, deux trames consécutives à **0,6 s** d'écart :
+     *
+     *     14:53:31.878  acc off  …145331…  4341.76064,00126.73328  0.00 km/h
+     *     14:53:32.480  acc on   …145331…  4341.76064,00126.73328  0.00 km/h
+     *
+     * **Même horodatage boîtier, même position au dix-millième.** Ce ne sont pas deux points
+     * de trajet : c'est une coupure de contact suivie de sa remise, chacune annoncée par une
+     * trame. Le boîtier n'a pas « émis deux fois en 0,6 s » au sens de la cadence — il a
+     * signalé deux événements.
+     *
+     * ⚠️ **Et il faut dire l'ampleur, parce qu'elle contredit l'intuition** : ces trames ne
+     * pèsent que **42 sur 3 447 positions** en une heure, soit **1,2 %**. Elles sont bien plus
+     * souvent courtes que les autres (57 % d'écarts sous 10 s contre 26 %), mais elles
+     * n'expliquent **pas** les salves — l'essentiel des écarts courts vient de trames de
+     * cadence authentiques. *Ceci corrige une mesure de précision, pas une cause.*
+     */
+    const estTrameEvenement = ctx.alarm != null && ctx.alarm !== 'none';
+    const fenetre = estTrameEvenement
+      ? [...fenetreCourante]
+      : pousserEcart(fenetreCourante, observedS);
     const mesureS = medianeCadence(fenetre) ?? observedS;
     // V1.19 (TRK-008) — cible EFFECTIVE, clampée EXACTEMENT comme dans `requestChange`.
     //

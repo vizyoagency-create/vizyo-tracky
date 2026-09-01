@@ -451,6 +451,8 @@ export class PositionsService {
         ignition: resolvedIgnition,
         lat: frame.latitude,
         lng: frame.longitude,
+        // TRK-058 — une trame d'evenement (acc on/off, alarme) ne mesure pas une cadence.
+        alarm: frame.alarm,
       });
       trackerUpdate.currentFixIntervalS = reconciled.nextCurrentFixIntervalS;
       // TRK-056 — la fenetre glissante suit la mesure : sans elle, la mediane repartirait
