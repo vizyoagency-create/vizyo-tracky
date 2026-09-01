@@ -13,7 +13,7 @@
 
 | | Lots | État |
 |---|---|---|
-| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 · **TRK-055** · **TRK-056** | ✅ **CINQ correctifs** — les deux derniers nés de la vérification des deux premiers |
+| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 · TRK-055 · TRK-056 · **TRK-057** | ✅ **SIX correctifs** — les trois derniers nés de la vérification des précédents, aucun d'une nouvelle collecte |
 | ✋ **Gestes humains** | ~~TRK-021~~ ✅ · ~~TRK-051~~ ✅ · ~~TRK-045~~ 🔵 requalifié | 🟢 **les trois traités** — et deux d'entre eux ont produit une fiche neuve |
 | 💰 **Décisions** — coût ou métier, pas une ligne de code | TRK-016 · TRK-035 · TRK-022 *(volets 2-3)* · TRK-014 | ⚪ en attente d'arbitrage |
 
@@ -255,6 +255,46 @@ l'exactitude mais la **stabilité** — l'échantillon balaie un facteur 50, la 
 **7/7** · `ng build` vert · **23 tests neufs**. Le test d'intégration de `reconcile` **vérifié en
 échec par mutation**. Marqueur sur le **bundle construit** : **0** « Confirmée », « Cible
 atteinte » dans 2 chunks.
+
+---
+
+## 🛠️ Troisième lot — TRK-057, trouvé en allant corriger un boîtier qui n'avait rien
+
+**GR-294-VW n'avait aucun défaut.** Deux heures après TRK-056, sa fenêtre valait
+`{20 ×12}` pour une cible de 20 s, et sa médiane sur **2 h** valait **20,0 s**. La fenêtre
+erratique du matin était une transition *roulant → arrêté* capturée minutes après la bascule.
+
+Mais le même relevé, passé au parc entier avec l'instrument devenu honnête, a montré autre chose :
+`desiredIntervalFor` ne sait produire que **20, 30 et 99 s**, or **quatre boîtiers sur 44**
+portent **21, 28, 43 et 56 s**.
+
+**HD-964-XY résume tout :**
+
+| | |
+|---|---|
+| Dernière commande | `,C,99s;` — **acquittée** |
+| Cadence mesurée | `{99, 100, 99, 99, 99, 99, 99, 99, 99}` |
+| Cible en base | **43 s** |
+
+Il obéit parfaitement **et** il est hors bande en permanence. Et il le resterait : le clamp de
+TRK-008 borne l'intervalle dans `[20, 99]`, **il ne répare pas la valeur** — une cible absurde
+*située dans* la bande y survit indéfiniment.
+
+> 🔑 **Un correctif de CAUSE ne soigne pas les VICTIMES.** TRK-056 empêche de nouvelles cibles
+> absurdes d'apparaître ; il ne touche pas à celles déjà écrites. *Le dépôt connaît cette leçon
+> depuis la campagne du 24/08 — et elle vient de se reproduire sur le correctif écrit le jour
+> même.*
+
+⚠️ **On recalcule, on n'arrondit pas.** La valeur canonique la plus *proche* de 43 est **30**
+(écart 13 contre 56) — or le boîtier est à l'arrêt contact coupé, donc attendu à **99**. Arrondir
+aurait remplacé une valeur fausse par une autre **et** déclenché une commande vouée à l'échec.
+Un test verrouille ce piège. Les overrides manuels sont épargnés *(0 actif au moment du correctif)*.
+
+**Vérifications :** typecheck 3/3 · **188 suites / 2 789 tests** · smoke 5/5 · cohérence 7/7 ·
+5 tests neufs, dont celui qui **interdit à la liste canonique de diverger de
+`desiredIntervalFor`**. 🔵 Trois tests existants rendus robustes : ils lisaient
+`findMany.mock.calls[0]` et cassaient au premier appel ajouté en amont, *pour une raison sans
+rapport avec leur sujet*.
 
 ---
 
