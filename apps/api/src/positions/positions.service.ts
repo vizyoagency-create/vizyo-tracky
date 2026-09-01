@@ -453,6 +453,9 @@ export class PositionsService {
         lng: frame.longitude,
       });
       trackerUpdate.currentFixIntervalS = reconciled.nextCurrentFixIntervalS;
+      // TRK-056 — la fenetre glissante suit la mesure : sans elle, la mediane repartirait
+      // de zero a chaque trame et `currentFixIntervalS` redeviendrait un echantillon.
+      trackerUpdate.recentFixIntervalsS = reconciled.nextRecentFixIntervalsS;
       trackerUpdate.fixCommandFailureCount = reconciled.nextFailureCount;
       trackerUpdate.fixCommandFailing = reconciled.nextFailing;
       trackerUpdate.lastValidFrameAt = frame.deviceTime;

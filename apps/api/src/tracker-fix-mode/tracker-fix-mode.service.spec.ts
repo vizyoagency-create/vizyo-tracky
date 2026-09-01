@@ -763,6 +763,60 @@ describe('TrackerFixModeService.reconcile', () => {
     expect(out.nextFailing).toBe(false);
   });
 
+  // ── TRK-056 — reconcile MESURE sur une fenetre, il ne persiste plus un tirage ────────
+  //
+  // Le cas reel : FM-772-JH, gare, cible 99 s, affichait 2 s parce que la derniere trame etait
+  // tombee dans une salve. La fenetre glissante rend la mediane des douze derniers ecarts.
+
+  it('TRK-056 : persiste la MEDIANE de la fenetre, pas le dernier ecart', () => {
+    const prev = new Date('2026-09-01T12:00:00Z');
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 99,
+        lastValidFrameAt: prev,
+        // Onze ecarts deja observes, majoritairement lents.
+        recentFixIntervalsS: [40, 42, 38, 41, 39, 43, 40, 41, 38, 42, 40],
+      } as never,
+      // …et une trame qui arrive 2 s apres la precedente : une salve.
+      { deviceTime: new Date(prev.getTime() + 2000), speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+    );
+    // L'ancien code aurait ecrit 2. La mediane, elle, reste dans le regime observe.
+    expect(out.nextCurrentFixIntervalS).not.toBe(2);
+    expect(out.nextCurrentFixIntervalS).toBeGreaterThanOrEqual(38);
+    // Et la fenetre est rendue a l'appelant, avec le nouvel echantillon dedans.
+    expect(out.nextRecentFixIntervalsS).toContain(2);
+    expect(out.nextRecentFixIntervalsS.length).toBeLessThanOrEqual(12);
+  });
+
+  it('TRK-056 : sur la toute premiere trame mesurable, la mediane VAUT l echantillon', () => {
+    const prev = new Date('2026-09-01T12:00:00Z');
+    const out = service.reconcile(
+      { ...baseTracker, desiredFixIntervalS: 30, lastValidFrameAt: prev, recentFixIntervalsS: [] } as never,
+      { deviceTime: new Date(prev.getTime() + 32000), speedKmh: 5, ignition: true, lat: 48, lng: 2 },
+    );
+    expect(out.nextCurrentFixIntervalS).toBe(32);
+    expect(out.nextRecentFixIntervalsS).toEqual([32]);
+  });
+
+  // ⚠️ LE CONTREPOINT : sous six echantillons, l'auto-alignement retombe sur l'ancien
+  // comportement. Une mesure partielle s'affiche, elle ne DECIDE pas.
+  it('TRK-056 : une fenetre trop courte ne sert pas a decider', () => {
+    const prev = new Date('2026-09-01T12:00:00Z');
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 30,
+        lastValidFrameAt: prev,
+        fixCommandFailureCount: 99,
+        recentFixIntervalsS: [40, 41],
+      } as never,
+      { deviceTime: new Date(prev.getTime() + 60000), speedKmh: 20, ignition: true, lat: 48, lng: 2 },
+    );
+    // Trois echantillons : on aligne sur l'observe (60), pas sur la mediane (41).
+    expect(out.autoAlignDesiredS).toBe(60);
+  });
+
   it('confirms current interval when delta is within ±20% of desired', () => {
     const prev = new Date('2026-04-26T12:00:00Z');
     const next = new Date('2026-04-26T12:00:32Z'); // 32s delta vs target 30s -> within 20%

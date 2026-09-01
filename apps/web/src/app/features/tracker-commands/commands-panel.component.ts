@@ -1,3 +1,4 @@
+import { libelleStatutCommande, tonStatutCommande } from '@vizyo/tracky-shared';
 import { swallow } from '../../core/error/swallow';
 import { Component, computed, inject, input, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -27,13 +28,22 @@ const CATEGORY_LABELS: Record<string, string> = {
   custom: 'Personnalisé',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'En attente',
-  SCHEDULED: 'Planifiée',
-  SENT: 'Envoyée',
-  ACKNOWLEDGED: 'Confirmée',
-  FAILED: 'Échouée',
-  CANCELLED: 'Annulée',
+/**
+ * TRK-055 — les libellés et la couleur viennent de `@vizyo/tracky-shared`, PAS d'une table
+ * locale. L'ancienne table mappait `ACKNOWLEDGED` sur « Confirmée » et le peignait en vert :
+ * 394 commandes sur 7 jours, dont ZÉRO avec réponse de boîtier. Le mot « Confirmée » et le
+ * vert affirmaient tous deux une confirmation sans dire par quoi.
+ *
+ * ⚠️ Ne pas réintroduire de table locale : c'est le placement de la règle, et non l'oubli,
+ * qui avait laissé cet écran diverger de celui du mode fix.
+ */
+const CLASSE_PAR_TON: Record<string, string> = {
+  succes: 'bg-tracky/10 text-tracky-light',
+  mesure: 'bg-amber-500/10 text-amber-400',
+  echec: 'bg-red-600/10 text-red-400',
+  attente: 'bg-bg-tertiary text-fg-tertiary',
+  planifie: 'bg-sky-500/10 text-sky-400',
+  neutre: 'bg-fg-tertiary/10 text-fg-tertiary',
 };
 
 @Component({
@@ -226,8 +236,8 @@ const STATUS_LABELS: Record<string, string> = {
                     </span>
                   </td>
                   <td class="p-3">
-                    <span class="px-2 py-0.5 text-xs rounded-md" [class]="statusClass(cmd.status)">
-                      {{ statusLabel(cmd.status) }}
+                    <span class="px-2 py-0.5 text-xs rounded-md" [class]="statusClass(cmd)">
+                      {{ statusLabel(cmd) }}
                     </span>
                   </td>
                   <td class="p-3 text-xs text-fg-tertiary">{{ cmd.requestedByUser?.email ?? '—' }}</td>
@@ -433,16 +443,17 @@ export class CommandsPanelComponent implements OnInit, OnDestroy {
     return CATEGORY_LABELS[cat] ?? cat;
   }
 
-  protected statusLabel(status: string): string {
-    return STATUS_LABELS[status] ?? status;
+  /**
+   * TRK-055 — prend la COMMANDE, jamais le seul statut. C'est parce que ces deux méthodes ne
+   * recevaient que `status` qu'elles ne pouvaient pas distinguer une vraie réponse de boîtier
+   * d'une cible atteinte par la mesure — et qu'elles peignaient les deux en vert.
+   */
+  protected statusLabel(cmd: { status: string; ackResponse?: string | null }): string {
+    return libelleStatutCommande(cmd);
   }
 
-  protected statusClass(status: string): string {
-    if (status === 'SENT' || status === 'ACKNOWLEDGED') return 'bg-tracky/10 text-tracky-light';
-    if (status === 'FAILED') return 'bg-red-600/10 text-red-400';
-    if (status === 'CANCELLED') return 'bg-fg-tertiary/10 text-fg-tertiary';
-    if (status === 'SCHEDULED') return 'bg-sky-500/10 text-sky-400';
-    return 'bg-bg-tertiary text-fg-tertiary';
+  protected statusClass(cmd: { status: string; ackResponse?: string | null }): string {
+    return CLASSE_PAR_TON[tonStatutCommande(cmd)] ?? CLASSE_PAR_TON['neutre'];
   }
 
   /** TRK-021 (correctif #3) — gabarit déclaré SMS-only ET boîtier sans numéro de SIM. */

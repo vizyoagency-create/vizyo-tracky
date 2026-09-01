@@ -9,14 +9,20 @@ import {
   type TrackerCommandDto,
 } from '../../core/services/tracker-commands.service';
 import { relativeTime } from '../../shared/utils/relative-time';
+import { libelleStatutCommande, tonStatutCommande } from '@vizyo/tracky-shared';
 
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'En attente',
-  SCHEDULED: 'Planifiée',
-  SENT: 'Envoyée',
-  ACKNOWLEDGED: 'Confirmée',
-  FAILED: 'Échouée',
-  CANCELLED: 'Annulée',
+/**
+ * TRK-055 — libellés et couleur dérivés de `@vizyo/tracky-shared`, jamais d'une table locale.
+ * L'ancienne table peignait `ACKNOWLEDGED` en vert sous le mot « Confirmée » : 394 commandes
+ * sur 7 jours, dont ZÉRO avec réponse de boîtier.
+ */
+const CLASSE_PAR_TON: Record<string, string> = {
+  succes: 'bg-tracky/10 text-tracky-light',
+  mesure: 'bg-amber-500/10 text-amber-400',
+  echec: 'bg-red-600/10 text-red-400',
+  attente: 'bg-bg-tertiary text-fg-tertiary',
+  planifie: 'bg-sky-500/10 text-sky-400',
+  neutre: 'bg-fg-tertiary/10 text-fg-tertiary',
 };
 
 @Component({
@@ -50,7 +56,7 @@ const STATUS_LABELS: Record<string, string> = {
             <option value="">Tous</option>
             <option value="PENDING">En attente</option>
             <option value="SENT">Envoyée</option>
-            <option value="ACKNOWLEDGED">Confirmée</option>
+            <option value="ACKNOWLEDGED">Cible atteinte / acquittée</option>
             <option value="FAILED">Échouée</option>
             <option value="SCHEDULED">Planifiée</option>
             <option value="CANCELLED">Annulée</option>
@@ -102,8 +108,8 @@ const STATUS_LABELS: Record<string, string> = {
                   <td class="p-3 text-fg-primary text-xs font-medium">{{ cmd.templateId }}</td>
                   <td class="p-3 text-xs text-fg-tertiary">{{ cmd.category }}</td>
                   <td class="p-3">
-                    <span class="px-2 py-0.5 text-xs rounded-md" [class]="statusClass(cmd.status)">
-                      {{ statusLabel(cmd.status) }}
+                    <span class="px-2 py-0.5 text-xs rounded-md" [class]="statusClass(cmd)">
+                      {{ statusLabel(cmd) }}
                     </span>
                   </td>
                   <td class="p-3 font-mono text-xs text-fg-tertiary truncate max-w-[200px]">{{ cmd.payload }}</td>
@@ -155,15 +161,12 @@ export class AdminCommandsComponent implements OnInit {
     }
   }
 
-  protected statusLabel(status: string): string {
-    return STATUS_LABELS[status] ?? status;
+  /** TRK-055 — prend la COMMANDE, jamais le seul statut. */
+  protected statusLabel(cmd: { status: string; ackResponse?: string | null }): string {
+    return libelleStatutCommande(cmd);
   }
 
-  protected statusClass(status: string): string {
-    if (status === 'SENT' || status === 'ACKNOWLEDGED') return 'bg-tracky/10 text-tracky-light';
-    if (status === 'FAILED') return 'bg-red-600/10 text-red-400';
-    if (status === 'CANCELLED') return 'bg-fg-tertiary/10 text-fg-tertiary';
-    if (status === 'SCHEDULED') return 'bg-sky-500/10 text-sky-400';
-    return 'bg-bg-tertiary text-fg-tertiary';
+  protected statusClass(cmd: { status: string; ackResponse?: string | null }): string {
+    return CLASSE_PAR_TON[tonStatutCommande(cmd)] ?? CLASSE_PAR_TON['neutre'];
   }
 }

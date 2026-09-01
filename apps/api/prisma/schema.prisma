@@ -965,6 +965,10 @@ model Tracker {
   // d'echec et on marque le tracker FAILING.
   desiredFixIntervalS    Int                        @default(30)
   currentFixIntervalS    Int?
+  /// TRK-056 — fenetre glissante des 12 derniers ecarts entre trames valides (secondes).
+  /// `currentFixIntervalS` en est la MEDIANE, et non le dernier echantillon : sur un
+  /// boitier qui emet par salves, un echantillon unique est un tirage, pas une mesure.
+  recentFixIntervalsS    Int[]                      @default([])
   lastFixIntervalSyncAt  DateTime?
   // Compteur d'echecs consecutifs (commande envoyee non prise en compte par le boitier).
   fixCommandFailureCount Int                        @default(0)

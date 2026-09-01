@@ -1,3 +1,8 @@
+import {
+  fenetreExploitable,
+  medianeCadence,
+  pousserEcart,
+} from './fenetre-cadence';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import type { Fleet, Tracker, Vehicle } from '@prisma/client';
@@ -604,7 +609,8 @@ export class TrackerFixModeService {
   }
 
   reconcile(
-    tracker: Pick<Tracker, 'desiredFixIntervalS' | 'currentFixIntervalS' | 'fixCommandFailureCount' | 'lastValidFrameAt' | 'lastFixIntervalSyncAt'>,
+    tracker: Pick<Tracker, 'desiredFixIntervalS' | 'currentFixIntervalS' | 'fixCommandFailureCount' | 'lastValidFrameAt' | 'lastFixIntervalSyncAt'> &
+      Partial<Pick<Tracker, 'recentFixIntervalsS'>>,
     frame: FrameContext,
   ): {
     nextCurrentFixIntervalS: number | null;
@@ -612,7 +618,10 @@ export class TrackerFixModeService {
     nextFailing: boolean;
     /** V1.14 — Si le boitier ignore les commandes, on aligne desired sur l'observe. */
     autoAlignDesiredS: number | null;
+    /** TRK-056 — fenetre glissante mise a jour, a persister par l'appelant. */
+    nextRecentFixIntervalsS: number[];
   } {
+    const fenetreCourante = tracker.recentFixIntervalsS ?? [];
     const prev = tracker.lastValidFrameAt;
     if (!prev) {
       return {
@@ -620,10 +629,29 @@ export class TrackerFixModeService {
         nextFailureCount: tracker.fixCommandFailureCount,
         nextFailing: tracker.fixCommandFailureCount >= FAILING_THRESHOLD,
         autoAlignDesiredS: null,
+        nextRecentFixIntervalsS: [...fenetreCourante],
       };
     }
 
     const observedS = Math.max(1, Math.round((frame.deviceTime.getTime() - prev.getTime()) / 1000));
+
+    /**
+     * ══ TRK-056 — L'ÉCHANTILLON SERT À DÉCIDER, LA FENÊTRE SERT À MESURER ═════════════
+     *
+     * `observedS` reste l'écart de CETTE trame, et c'est légitime pour la question « cette
+     * trame est-elle dans la bande ? » — un test par trame a besoin d'une valeur par trame.
+     *
+     * Mais il ne peut pas décrire une CADENCE. Mesuré le 01/09 : FM-772-JH, garé, cible 99 s,
+     * affichait **2 s** alors que la médiane de ses écarts valait **47 s**, parce qu'il émet
+     * par salves — et 24,5 % des écarts du parc sont sous 10 s, soit une chance sur quatre que
+     * l'échantillon tombe dans une rafale.
+     *
+     * `currentFixIntervalS` devient donc la **médiane d'une fenêtre de douze écarts**. C'est
+     * la seule valeur de ce module qui change de nature ; les compteurs d'échec et la bande de
+     * tolérance continuent de travailler sur l'échantillon.
+     */
+    const fenetre = pousserEcart(fenetreCourante, observedS);
+    const mesureS = medianeCadence(fenetre) ?? observedS;
     // V1.19 (TRK-008) — cible EFFECTIVE, clampée EXACTEMENT comme dans `requestChange`.
     //
     // `desiredFixIntervalS` avait deux auteurs et un seul bornait ce qu'il écrivait :
@@ -643,10 +671,11 @@ export class TrackerFixModeService {
     if (observedS >= lower && observedS <= upper) {
       // Convergence: the device is honouring the target interval.
       return {
-        nextCurrentFixIntervalS: observedS,
+        nextCurrentFixIntervalS: mesureS,
         nextFailureCount: 0,
         nextFailing: false,
         autoAlignDesiredS: null,
+        nextRecentFixIntervalsS: fenetre,
       };
     }
 
@@ -660,6 +689,7 @@ export class TrackerFixModeService {
         nextFailureCount: tracker.fixCommandFailureCount,
         nextFailing: tracker.fixCommandFailureCount >= FAILING_THRESHOLD,
         autoAlignDesiredS: null,
+        nextRecentFixIntervalsS: fenetre,
       };
     }
 
@@ -674,10 +704,11 @@ export class TrackerFixModeService {
     const movingNow = frame.ignition === true || frame.speedKmh > PARKED_SPEED_KMH;
     if (observedS > upper && !movingNow) {
       return {
-        nextCurrentFixIntervalS: observedS,
+        nextCurrentFixIntervalS: mesureS,
         nextFailureCount: 0,
         nextFailing: false,
         autoAlignDesiredS: null,
+        nextRecentFixIntervalsS: fenetre,
       };
     }
 
@@ -699,10 +730,11 @@ export class TrackerFixModeService {
     // `currentFixIntervalS` et s'affiche sur la fiche. On cesse de la qualifier de panne.
     if (observedS < lower && movingNow) {
       return {
-        nextCurrentFixIntervalS: observedS,
+        nextCurrentFixIntervalS: mesureS,
         nextFailureCount: 0,
         nextFailing: false,
         autoAlignDesiredS: null,
+        nextRecentFixIntervalsS: fenetre,
       };
     }
 
@@ -719,16 +751,31 @@ export class TrackerFixModeService {
     // minimum hardware (boitiers qui emettent plus vite que demande, ex. 2s/10s) :
     // sans ca ils restaient FAILING a vie, incapables de converger (reel != desired)
     // comme de s'aligner (l'ancien plancher etait HARD_CAP_MIN_S = 20s).
+    /**
+     * TRK-056 — L'AUTO-ALIGNEMENT NE DÉCIDE PLUS SUR UN TIRAGE.
+     *
+     * C'est déjà la racine de [TRK-008] : « l'auto-alignement inscrivait l'observé BRUT »,
+     * d'où des cibles à 1 s et 2 s installées en base, et des boîtiers condamnés à être
+     * FAILING pour une cadence que le matériel ne pouvait pas tenir. Le clamp posé alors a
+     * borné les dégâts **sans corriger l'échantillonnage** : une salve suffisait encore à
+     * écrire une cible absurde.
+     *
+     * ⚠️ **Repli explicite sous six échantillons.** Tant que la fenêtre n'est pas exploitable,
+     * on retombe sur `observedS`, c'est-à-dire sur le comportement d'avant : aucune régression
+     * possible, et la nouvelle mesure ne s'impose que lorsqu'elle vaut mieux que l'ancienne.
+     */
+    const baseAlignement = fenetreExploitable(fenetre) ? mesureS : observedS;
     const autoAlignDesiredS =
-      nextFailing && observedS >= AUTO_ALIGN_FLOOR_S && observedS <= HARD_CAP_S
-        ? observedS
+      nextFailing && baseAlignement >= AUTO_ALIGN_FLOOR_S && baseAlignement <= HARD_CAP_S
+        ? baseAlignement
         : null;
 
     return {
-      nextCurrentFixIntervalS: observedS,
+      nextCurrentFixIntervalS: mesureS,
       nextFailureCount,
       nextFailing,
       autoAlignDesiredS,
+      nextRecentFixIntervalsS: fenetre,
     };
   }
 
