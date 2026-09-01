@@ -4352,7 +4352,213 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
+## VPS-036 — Un tiers exécute `kill -KILL` en root sur la production, par un canal qui ne passe ni par SSH ni par le pare-feu
+
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `SURVEILLANCE`
+- **Vu** : 2026-09-01 · **Mesure à la découverte** : **une** occurrence, le **2026-08-28 à
+  13 h 48 min 37 UTC**, sur toute la fenêtre conservée par `journalctl -t qemu-ga`. Reçue par
+  `guest-exec`, exécutée en root, **1 420 caractères** encodés en base64.
+
+  Contenu décodé (extraits fidèles) :
+
+  ```
+  snap=$(ps -eo pid,etimes,comm,args --no-headers | grep -v '<defunct>')
+  r1=  ... docker (service |container )?(logs|stats)|docker[ -]compose( .*)? logs ...
+         ... etimes > 21600  et NI (flock|timeout) NI --follow NI -f
+  r2=  ... comm ~ /^(more|less|sngrep|htop|ugrep)$/ ... etimes > 21600
+  for p in $pids; do kill -TERM "$p"; done; sleep 3; for p in $pids; do kill -KILL "$p"; done
+  exit 10
+  ```
+
+- **QUOI — la cause** : le canal `guest-exec` de l'hyperviseur (déjà catalogué **VPS-027**) n'est
+  pas un canal de lecture. Il porte des ordres arbitraires en root, et celui-ci **tue des
+  processus**. Le catalogue d'ordonnancement de cet audit prétend tenir la liste de ce qui se
+  déclenche sur la machine : une quatrième couche capable de `kill` y appartient.
+
+- **Ce que ce constat N'EST PAS, et il faut le dire aussi nettement** : ce n'est **pas une
+  intrusion**. La cible (`sngrep`, outil SIP, à côté de `htop`, `less`, `more`, `ugrep`) est celle
+  d'un **balai d'hébergeur contre les sessions interactives abandonnées**. Aucune persistance,
+  aucun téléchargement, aucune écriture de fichier, aucune modification de configuration.
+
+- **🔑 L'ironie utile** : ce script vise **exactement la cause de VPS-016** — les clients
+  `docker logs` bloqués, qui ont coûté 1,44 cœur pendant treize jours. Et **nos propres audits en
+  sont exclus par construction** : le filtre `r1` écarte tout ce qui est enveloppé dans `flock` ou
+  `timeout`, et le garde-fou `timeout` posé sur l'audit du centre d'alerte le **2026-08-20** nous
+  place dans l'exclusion. *Vérifié en lisant le filtre, pas supposé.*
+
+- **`pourquoiInvisible`** : le collecteur **avait signalé la commande** — le compteur a
+  parfaitement fonctionné, et il l'a comptée en `🟠 1 commande INATTENDUE`. Ce qu'il en publiait
+  était tronqué à 165 caractères, et ces 165 caractères étaient du **base64**. Voir **VPS-M72** :
+  un filtre juste ne suffit pas si ce qu'il donne à lire ne porte pas l'information.
+
+- **QUOI FAIRE** : ouvrir un ticket à l'hébergeur pour faire **confirmer la paternité** de ce
+  balai et **obtenir sa cadence** — une occurrence unique ne dit pas s'il est manuel, réactif ou
+  périodique.
+
+  ```bash
+  journalctl -t qemu-ga --since '30 days ago' | grep -c 'guest-exec called'
+  ```
+
+- **`aNePasFaire`** : ⚠️ **ne pas désactiver `qemu-guest-agent` pour « fermer le canal »**. On
+  perdrait les sauvegardes-images et la console de secours de l'hébergeur — pour empêcher une
+  commande qui, en l'état, tue exactement ce que VPS-016 nous a coûté treize jours.
+  ⚠️ **Ne pas attribuer une provenance qu'on ne mesure pas** : sur ce canal, l'audit ne peut PAS
+  distinguer l'hébergeur d'un humain utilisant la console web du panneau. Les deux arrivent par la
+  même porte (VPS-M01).
+
+- **Seuil de réescalade** (exigé pour tout `SURVEILLANCE`) : passer en `A_TRAITER` **à la deuxième
+  occurrence**, ou dès qu'un ordre de ce canal touche autre chose que des clients Docker et des
+  pagers — un conteneur, un service, un fichier.
+
+---
+
+## VPS-037 — La copie hors-site des sauvegardes dépend du même poste de travail que l'audit, et elle a dépassé son seuil
+
+- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-09-01 · **Mesure à la découverte** : copie hors-site de `vizyo-verify` à **51 h**,
+  seuil de péremption **48 h**. Destination : **PC local (D:)**. Contenu copié : 4 h — *la copie
+  ne peut pas être plus fraîche que sa source, et la source, elle, est à jour.*
+- **QUOI — la cause** : le **seul exemplaire des sauvegardes qui ne vive pas sur le VPS** a pour
+  dépositaire un poste de travail — le même que celui qui porte la planification de cet audit.
+  Cinq passages ont été manqués (27 → 31 août) ; la copie a vieilli au-delà de son seuil.
+- **⚠️ Ce que l'audit ne peut PAS dire** : quelle tâche du poste effectue cette copie. Elle date
+  de 51 h, soit le **08-30 vers 04 h 40** — donc **quelque chose a tourné le 08-30**, et ce
+  n'était pas cet audit. Imputer la panne à l'absence de *ce* passage serait une concomitance
+  d'horaire prise pour une identification (**VPS-M01**). **Le fait établi est le couplage** : les
+  deux dépendent du même poste, et l'un des deux est une sauvegarde.
+- **QUOI FAIRE** : donner un **second dépositaire** à la copie hors-site, indépendant du poste.
+- **`aNePasFaire`** : ⚠️ **ne pas remonter le seuil de 48 h à 96 h pour éteindre l'alerte.** C'est
+  le motif exact du correctif anti-bruit qui, sur le centre d'alerte de Tracky, a éteint l'alarme
+  d'alimentation de 33 boîtiers sur 42 chaque nuit.
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M73 — Cinq passages manqués, et une conséquence que le raisonnement écrit n'avait pas prévue
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-09-01 · **Mesure** : dernier rapport le **2026-08-26**. Les **27, 28, 29, 30 et
+  31 août** n'ont **aucun passage**. Conséquence mesurée le même matin : **copie hors-site à 51 h,
+  périmée** (VPS-037).
+- **QUOI — la cause** : la procédure prévoit ce cas et le déclare acceptable — *« si le poste est
+  éteint, l'audit ne tourne pas ; un jour manqué se voit dans le journal des passages, alors qu'un
+  doublon silencieux ne se voit nulle part »*. **Ce raisonnement reste juste**, et le choix de
+  planifier côté poste plutôt que sur le VPS reste le bon (c'est lui qui garantit l'absence du
+  doublon VPS-003). **Mais il n'envisageait qu'une seule conséquence : l'absence de mesure.** Il y
+  en a une seconde, et c'est une **sauvegarde**.
+- **`pourquoiInvisible`** : rien dans le dispositif ne signale une **absence**. Le journal des
+  passages liste ce qui a eu lieu ; un trou de cinq jours n'y produit aucun signal, seulement une
+  ligne manquante que personne ne compte. *Un mécanisme qui rend une absence visible « par
+  déduction » ne la rend pas visible.*
+- **QUOI FAIRE** : afficher, à l'écran `/admin` → Audit VPS, **l'écart en jours depuis le dernier
+  passage**, et le marquer au-delà de 2 jours. La donnée est déjà là — c'est la date du premier
+  élément de `passages`.
+- **`aNePasFaire`** : ⚠️ **ne pas déplacer la planification sur le VPS** pour « garantir » les
+  passages. Ce serait rejouer **VPS-003** : deux planificateurs pour la même tâche, et un doublon
+  silencieux coûte plus cher qu'un jour manqué visible.
+
+### VPS-M72 — Une charge utile en base64 est illisible à la troncature, et l'audit a publié « 1 commande INATTENDUE » sans pouvoir dire qu'elle TUAIT
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-09-01)
+- **Vu** : 2026-09-01 · **Mesure** : le **2026-08-28**, le bloc des ordres de l'hyperviseur a
+  publié `🟠 1 commande(s) INATTENDUE(S)` suivie de la ligne tronquée à **165 caractères** :
+
+  ```
+  2026-08-28 13:48:37  "/bin/sh -c echo c25hcD0kKHBzIC1lbyBwaWQsZXRpbWVzLGNvbW0sYXJncyAtLW5vLWhlYWRlcnMgMj4vZGV2L251bGwgfCBncmVwIC12ICc8ZGVmdW5jdD4nKQpyMT0kKHBy
+  ```
+
+  Décodés le 2026-09-01 : **1 420 caractères** qui envoient `kill -TERM` puis `kill -KILL` en root
+  (**VPS-036**).
+
+- **QUOI — la cause** : **le compteur avait raison, c'est l'affichage qui était aveugle.** Une
+  charge utile encodée est le seul cas où une troncature ne coupe pas « la fin d'une phrase » :
+  elle coupe **la phrase entière**. Ce que l'audit publiait de cette commande était exactement la
+  partie dépourvue d'information — l'invocation `/bin/sh -c echo <blob>`.
+
+- **`pourquoiInvisible`** : la famille **VPS-M22 / VPS-M46** — un extracteur qui rend du vide en
+  silence — avec une variante plus retorse : **le texte était PRÉSENT**. Il y avait 165 caractères
+  à l'écran. Rien n'avait l'air cassé ; c'était simplement illisible, et « illisible » ne
+  déclenche aucune alarme.
+
+- **Correctif (posé et contre-éprouvé le 2026-09-01)** : détection d'un blob
+  `[A-Za-z0-9+/]{40,}={0,2}`, décodage, publication bornée (**25 lignes × 200 caractères**) et
+  **relevé des verbes d'écriture** (`kill -*`, `pkill`, `rm -rf`, `systemctl`, `chmod`, `chown`,
+  `mkfs`, `dd if=`, `iptables`, `ufw`, `crontab`, `docker rm|stop|kill|prune`).
+
+  **Contre-épreuve sur trois cas, exécutée sur la machine** :
+
+  | cas | attendu | obtenu |
+  |---|---|---|
+  | le blob réel du 08-28 | décodé et signalé | **9 lignes rendues, `🔴 kill -KILL kill -TERM`** |
+  | une commande **sans** base64 | rien du tout | **silence complet** (le `grep` ne rend rien, la boucle ne tourne pas) |
+  | un blob **binaire** (90 o d'aléatoire) | refus de lire | **« decode en BINAIRE (non textuel) — contenu NON LU »** |
+
+  **Coût : nul en l'absence de base64.**
+
+- **`aNePasFaire`** : ⚠️ **ne pas lire l'absence de verbe comme une garantie de lecture seule.**
+  Le relevé dit ce que le texte **contient**, pas ce qu'il **fait** ; un script peut écrire sans
+  aucun de ces mots. La sortie est libellée « aucun verbe RELEVÉ », jamais « lecture seule » —
+  discipline **VPS-M28** (réparer un silence en fausse rassurance est pire que le silence).
+
+### VPS-M71 — Le rapport « 24 h contre les 24 h précédentes » compare un jour ouvré à un DIMANCHE une fois sur deux
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-09-01)
+- **Vu** : 2026-09-01 · **Mesure** : le collecteur publiait
+
+  ```
+  positions   debit : 23183 arrivees sur 24 h  contre  15498 les 24 h precedentes  = x1.50
+              ✅ debit stable (x1.50, dans la bande 0,67-1,50)
+  ```
+
+  **×1,50 est exactement le bord de la bande** — le seuil rouge est `r >= 1.5`. Un point de plus
+  et l'audit ouvrait un constat 🔴 *« LE DÉBIT MONTE »* sur l'ingestion de Tracky, **un lundi
+  matin parfaitement normal**.
+
+- **QUOI — la cause** : profil journalier mesuré sur les dix journées conservées —
+
+  | jour | `positions` | `wire_logs` | trame → position |
+  |---|---:|---:|---:|
+  | 08-28 Ven | 26 101 | — | — |
+  | 08-29 Sam | 23 797 | 101 571 | **23,4 %** |
+  | **08-30 Dim** | **15 024** | 100 125 | **15,0 %** |
+  | 08-31 Lun | 22 211 | 97 184 | **22,9 %** |
+
+  La fenêtre « 24 h précédentes » était presque entièrement ce **dimanche** ; la fenêtre courante
+  est un **lundi**. **Et `wire_logs` ne bouge quasiment pas** (−4 % le dimanche) : les boîtiers
+  émettent que le véhicule roule ou non. **Les deux tables ne mesurent pas la même chose** —
+  l'émission d'un côté, le mouvement de l'autre — d'où une divergence sans que rien ne soit cassé.
+
+- **Sa parenté — c'est VPS-M69 à la période supérieure.** M69 : *une grandeur qui vient
+  d'acquérir un cycle **diurne** ne se lit pas à une seule heure.* M71 dit la même chose du cycle
+  **hebdomadaire** : une grandeur cyclique comparée sur une fenêtre plus courte que son cycle
+  **fabrique une variation qui n'existe pas**. Même mode d'échec, et il frappe **dans le sens
+  accusateur**, un lundi matin sur deux.
+
+- **Correctif (posé et contre-éprouvé le 2026-09-01)** : une troisième fenêtre — les **24 h d'il y
+  a une semaine** — entre dans la **même requête**, avec l'étiquette du jour de semaine des deux
+  fenêtres et un verdict croisé quand les deux comparaisons se contredisent.
+
+  ```
+  positions   debit : 23226 sur 24 h  contre  15609 les 24 h precedentes  = x1.49
+              meme jour de semaine (J-7) : 23684 arrivees = x0.98  [fenetre J = Mon, fenetre J-1 = Sun]
+  ```
+
+  **Coût : +90 ms par table, MESURÉ** sur trois paires appariées d'`EXPLAIN ANALYZE`
+  (246/192/182 ms sans, 311/311/270 ms avec), soit **~+0,27 s** sur une passe de 138 s. *Le
+  premier jet annonçait « coût nul » au motif que le parcours de table était déjà fait : juste sur
+  les E/S, faux sur le processeur — l'erreur exacte déjà payée le 2026-08-26.*
+
+- **⚠️ Le piège adjacent, attrapé AU MONTAGE et non en relisant le code** : `wire_logs` et
+  `position_sampling_decisions` n'ont qu'une rétention de **3,2 jours**. J-7 y est **hors
+  fenêtre**. Sans garde, elles auraient affiché **« 0 arrivée il y a 7 jours »** — un effondrement,
+  sur les tables les plus surveillées de la machine. C'est **VPS-M02 à l'identique**, et dans le
+  sens accusateur. Le bloc dit désormais *« Comparaison à même jour de semaine IMPOSSIBLE : mesure
+  NON FAITE, PAS un débit nul »*.
+
+- **`aNePasFaire`** : ⚠️ **ne pas élargir la bande 0,67-1,50 pour « éviter les faux positifs ».**
+  Le défaut n'était pas le seuil, c'était la **référence**. Élargir la bande aurait aussi masqué
+  les vraies excursions — dont le déluge de TRK-045, qui a culminé à ×2,92.
 
 ### VPS-M70 — Le filtre de la sonde horaire de l'hyperviseur était câblé sur un NOM de fichier, et l'hyperviseur l'a renommé
 

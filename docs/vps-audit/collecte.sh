@@ -1538,6 +1538,11 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
         # ⚠️ La colonne d emetteur est cherchee par HEURISTIQUE (elle s appelle `imei` ici) :
         # quand elle est absente, le bloc le DIT au lieu de se taire — une absence de mesure et
         # une mesure nulle ne doivent pas se lire pareil (VPS-M02).
+        # Jour de la semaine au MILIEU de chaque fenetre de 24 h — le milieu, pas le bord, pour
+        # qu une collecte lancee a 02 h ne soit pas etiquetee du jour precedent (VPS-M61).
+        # `:=` n affecte qu une fois : deux forks pour toute la section, pas deux par table.
+        : "${JOUR_J0:=$(date -u -d '-12 hours' '+%a' 2>/dev/null || echo '?')}"
+        : "${JOUR_J1:=$(date -u -d '-36 hours' '+%a' 2>/dev/null || echo '?')}"
         EMCOL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
           "SELECT column_name FROM information_schema.columns
             WHERE table_name='$t' AND data_type IN ('text','character varying')
@@ -1562,11 +1567,14 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                   count(*) FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
                                      AND \"$COL\" <= now() - interval '24 hours'),
                   round(pg_total_relation_size('\"$t\"')/1048576.0, 1),
-                  $EMSEL
+                  $EMSEL,
+                  count(*) FILTER (WHERE \"$COL\" >  now() - interval '8 days'
+                                     AND \"$COL\" <= now() - interval '7 days')
            FROM \"$t\";" 2>/dev/null |
-        awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" 'NF>=10 {
+        awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" \
+                  -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" 'NF>=11 {
             deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
-            e0=$9+0; e1=$10+0;
+            e0=$9+0; e1=$10+0; j7=$11+0;
             printf "       %-30s%s -> %s  = %s jours, %.1f Mo  (colonne %s)\n", t, deb, fin, jours, mo, c;
             if (j1 <= 0) {
               printf "         (debit non comparable : 0 arrivee sur les 24 h PRECEDENTES)\n";
@@ -1574,6 +1582,30 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
             }
             r = j0 / j1;
             printf "         debit : %d arrivees sur 24 h  contre  %d les 24 h precedentes  = x%.2f\n", j0, j1, r;
+            # ── AJOUTE LE 2026-09-01 (VPS-M71) : LA VEILLE NEST PAS UNE REFERENCE ──
+            # Ce rapport compare un JOUR OUVRE a un DIMANCHE une fois sur deux, et rien ne le
+            # disait. Le 2026-09-01, positions affichait x1.50 — exactement le bord de la bande,
+            # donc a un point de publier un 🔴 sur un lundi parfaitement normal. Mesure du jour :
+            # 15 024 lignes le dimanche 08-30 contre 22 211 le lundi 08-31 et 26 101 le vendredi
+            # 08-28, et le taux trame->position tombe a 15,0 % le dimanche contre 21,7-23,4 % en
+            # semaine. Rien navait bouge dans la chaine : la flotte ne roule pas le dimanche.
+            # Cest VPS-M69 (cycle DIURNE) a la periode SUPERIEURE — et le meme piege : une
+            # grandeur cyclique lue sur une fenetre plus courte que son cycle fabrique une
+            # variation qui nexiste pas.
+            if (j7 > 0) {
+              r7 = j0 / j7;
+              printf "         meme jour de semaine (J-7) : %d arrivees  = x%.2f   [fenetre J = %s, fenetre J-1 = %s]\n", j7, r7, jour0, jour1;
+              h1 = (r  >= 1.5 || r  <= 0.67);
+              h7 = (r7 >= 1.5 || r7 <= 0.67);
+              if (h1 && !h7)
+                printf "         🟠 LES DEUX COMPARAISONS SE CONTREDISENT : x%.2f contre la VEILLE (%s),\n            x%.2f contre le MEME JOUR de la semaine passee. Quand lactivite a un cycle\n            HEBDOMADAIRE, la veille nest pas une reference : cest le CALENDRIER, pas le\n            debit (VPS-M71). Ne pas ouvrir de constat sur le seul rapport a la veille.\n", r, jour1, r7;
+              else if (!h1 && h7)
+                printf "         🟠 STABLE contre la veille (x%.2f) mais HORS BANDE contre J-7 (x%.2f) :\n            une derive LENTE est invisible a une comparaison de 24 h. Cest ici quon la voit.\n", r, r7;
+              else if (h1 && h7)
+                printf "         ⚠️ les DEUX comparaisons sortent de la bande (x%.2f veille, x%.2f J-7) :\n            lexcursion nest PAS un effet de calendrier.\n", r, r7;
+            } else {
+              printf "         (J-7 : 0 arrivee — la fenetre de retention de cette table (%.2f j) ne remonte\n          PAS a 7 jours. Comparaison a meme jour de semaine IMPOSSIBLE : mesure NON\n          FAITE, PAS un debit nul (VPS-M02). Le rapport a la veille reste seul juge ici.)\n", wj;
+            }
             # ── LE DISCRIMINANT : moins de trames, ou moins d emetteurs ? (angle mort n° 1) ──
             # Sans cette ligne, une flotte a moitie muette et un correctif reussi rendent la
             # MEME courbe. Elle a ete posee a la main le 2026-08-25 ; elle est dans le script
@@ -2220,6 +2252,57 @@ if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
       printf '     🟠 %s commande(s) INATTENDUE(S) — les 12 dernieres :\n' "$QGA_NB_INAT"
       printf '%s\n' "$QGA_INAT" | tail -12 \
         | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /       \1 \2  /' | cut -c1-165
+      # ⚠️⚠️ AJOUTE LE 2026-09-01 (VPS-M72) — LA TRONCATURE A 165 CARACTERES REND UNE CHARGE
+      # UTILE EN BASE64 STRICTEMENT ILLISIBLE, ET C EST ARRIVE LE 2026-08-28.
+      # Ce jour-la, ce bloc a publie « 🟠 1 commande INATTENDUE » suivie de 120 caracteres de
+      # base64. Un humain lisant le rapport ne pouvait RIEN en conclure — ni que c etait anodin,
+      # ni que c etait grave. Decode a la main le 2026-09-01, le contenu etait un script de
+      # 1 420 caracteres qui parcourt `ps`, selectionne les `docker logs` / `docker stats` de
+      # plus de 6 h ainsi que les pagers (less, more, htop, sngrep, ugrep), puis leur envoie
+      # `kill -TERM` PUIS `kill -KILL`. C est-a-dire du code TIERS qui TUE des processus en root
+      # sur la production, arrive par un canal qui ne passe ni par SSH ni par le pare-feu.
+      # Le defaut n est PAS d avoir signale la commande — le compteur a fait son travail. C est
+      # que la seule chose publiee de cette commande etait la partie DEPOURVUE d information :
+      # l invocation `/bin/sh -c echo <blob>`. Une charge utile encodee est exactement le cas ou
+      # une troncature ne coupe pas « la fin d une phrase » : elle coupe LA PHRASE ENTIERE.
+      # Famille VPS-M22 / VPS-M46 — un extracteur qui rend de l illisible en silence.
+      # ⚠️ COUT : NUL en l absence de base64 — le `grep -oE` ne rend rien et la boucle ne tourne
+      # pas. Un seul blob a decoder sur la fenetre de 7 jours du 2026-09-01.
+      QGA_B64=$(printf '%s\n' "$QGA_INAT" | grep -oE '[A-Za-z0-9+/]{40,}={0,2}' | sort -u)
+      if [ -n "$QGA_B64" ]; then
+        printf '     ── %s charge(s) utile(s) encodee(s), DECODEE(S) ici (VPS-M72) ──\n' \
+          "$(printf '%s\n' "$QGA_B64" | grep -c '^..*$')"
+        printf '%s\n' "$QGA_B64" | while IFS= read -r b; do
+          CLAIR=$(printf '%s' "$b" | base64 -d 2>/dev/null)
+          if [ -z "$CLAIR" ]; then
+            printf '       blob de %s caracteres : NON DECODABLE — mesure NON FAITE, PAS « inoffensif » (VPS-M02).\n' "${#b}"
+            continue
+          fi
+          # Un blob qui decode en BINAIRE n est pas du script : le dire, au lieu de deverser des
+          # octets illisibles dans le rapport et de faire croire a une lecture.
+          if [ -n "$(printf '%s' "$CLAIR" | LC_ALL=C tr -d '[:print:][:space:]')" ]; then
+            printf '       blob de %s caracteres : decode en BINAIRE (non textuel) — contenu NON LU.\n' "${#b}"
+            continue
+          fi
+          printf '       blob de %s caracteres, %s ligne(s) de texte en clair :\n' \
+            "${#b}" "$(printf '%s\n' "$CLAIR" | grep -c '^')"
+          printf '%s\n' "$CLAIR" | cut -c1-200 | head -25 | sed 's/^/         | /'
+          # ⚠️ Ce releve de verbes ne PROUVE aucune intention : il dit ce que le texte CONTIENT.
+          # Un script peut ecrire sans aucun de ces mots. Un vide ici se lit « aucun verbe
+          # releve », JAMAIS « lecture seule garantie » — c est la discipline VPS-M28.
+          VERBES=$(printf '%s\n' "$CLAIR" \
+            | grep -oE '(kill -[A-Za-z0-9]+|pkill|killall|rm -[rfRv]+|systemctl (start|stop|restart|enable|disable|mask)|chmod|chown|mkfs|dd if=|iptables|ufw |crontab|docker (rm|stop|kill|prune))' \
+            | sort -u | paste -sd' ')
+          if [ -n "$VERBES" ]; then
+            printf '         🔴 CETTE CHARGE ECRIT OU TUE — verbes releves : %s\n' "$VERBES"
+            echo  "            Ce n est plus de la lecture : un tiers agit sur l etat d une machine"
+            echo  "            dont ce catalogue pretend tenir la liste de ce qui s y declenche."
+          else
+            echo  "         (aucun verbe d ecriture ni de signal RELEVE dans le texte decode —"
+            echo  "          ce n est pas une garantie de lecture seule, seulement une absence.)"
+          fi
+        done
+      fi
       echo  "     ⚠️ Ce canal ne passe NI par SSH (rien dans auth.log, rien pour fail2ban), NI par"
       echo  "        le reseau (virtio-serial, rien pour ufw). L audit ne peut PAS distinguer ici"
       echo  "        l hebergeur d un humain utilisant la console web du panneau : les deux"
