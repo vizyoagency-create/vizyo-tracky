@@ -1259,7 +1259,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
 | [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
-| [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
+| [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:26** *(la mesure renverse la conclusion du matin : FM-772-JH passe de « 2 s » affiché à **99 s mesuré pour 99 s demandés**, FG-669-DQ et GS-878-NX à **20 s pour 20 s**. Trois des quatre « émetteurs rapides » accusés le matin étaient exactement sur leur cible)* · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
 | [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
 | [TRK-054](#trk-054) | *alertes* | **La veille accident ne se rétracte JAMAIS** — aucun chemin ne referme l'alerte quand le boîtier reprend l'émission, alors que le dispositif sait déjà le faire pour les coupures d'alimentation | 🟢 **CORRIGÉ, DÉPLOYÉ ET PROUVÉ PAR LE COMPORTEMENT le 2026-09-01 à 09:30:00** · **gravité 2** *(la rétractation de HD-779-MA est tombée au premier passage du cron qui a suivi le déploiement, avec son motif au journal et en base ; l'acquittement de l'exploitant du 31/08 19:15 est resté INTACT. ⚠️ Un second défaut a été trouvé SUR cette première rétractation réelle — le motif datait la reprise sur `lastSeenAt`, donc sur la dernière trame et non la première d'après l'alerte : il annonçait 960 min de silence là où il y en avait 150. Corrigé et redéployé dans la foulée)* | 2026-09-01 | 2026-09-01 · famille **mensonger** *(le SEUL déclenchement de l'histoire du parc, HD-779-MA le 31/08 17:30, est un faux positif : le boîtier est revenu à 20:00 avec une rafale bufferisée de 686 trames, il est **ONLINE**, batterie **100 %**, et il a parcouru **~180 km** depuis le point de l'alerte. L'alerte `CRITICAL` est toujours ouverte. `power-cut-recheck.service.ts:143` porte deja une methode `refermer()` — le meme geste n'a jamais ete ecrit ici)* | 2026-09-01 | 2026-09-01 |
 | [TRK-052](#trk-052) | *alertes* | **Acquitter une alerte RÉ-ARME l'alarme** — le prédicat de déduplication porte `acknowledgedAt: null`, donc le geste de triage de l'exploitant lève la garde de 6 h et la trame suivante rouvre une alerte | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 2** · famille **faux positif** *(corrélation mesurée le 01/09 : **2 doublons sur 2**, et ce sont exactement les 2 véhicules dont la 1ʳᵉ alerte a été acquittée AVANT la fin de la condition physique — FS-808-CE acquittée **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de [TRK-022](#trk-022), dont la garde ne protège que tant que personne n'acquitte)* | 2026-09-01 | 2026-09-01 |
@@ -8243,6 +8243,27 @@ dry-run) lancé après le 23/08 03:10 UTC recale la garde des 22 h et reporterai
 seuil franchi. Profil exact de [TRK-008](#trk-008).
 **Statut : 🟢 CORRIGÉ** · *(🧹 en-tête rectifié le 2026-08-25 — il était resté figé à sa rédaction initiale, alors que l'index ET le manifeste disent CORRIGÉ. **Les sections datées ci-dessous font foi.** Ancien en-tête : « 🔴 NON CORRIGÉ · GRAVITÉ 1 · en cours depuis le 23/08 04:01 UTC** · 2026-08-24 »)*
 
+> ### 🟢 2026-09-01 (soir) — LE MODÈLE EST CONFIRMÉ, et la section ci-dessous était fausse
+>
+> La section datée qui suit accusait quatre boîtiers d'émettre 14 à 50 fois trop vite malgré une
+> trame `,C,99s;`. **Elle reposait entièrement sur `currentFixIntervalS`, qui était un échantillon
+> unique** — voir [TRK-056](#trk-056). Une fois la mesure corrigée et déployée, le 01/09 à 14:26 :
+>
+> | Véhicule | Trame reçue | **Cadence réellement mesurée** |
+> |---|---|---|
+> | FM-772-JH | `,C,99s;` | **99 s** *(affichait 2 s)* |
+> | FG-669-DQ | `,C,20s;` | **20 s** *(affichait 7 s)* |
+> | GS-878-NX | `,C,20s;` | **20 s** *(affichait 5 s)* |
+> | GR-294-VW | `,C,20s;` | 17 s *(affichait 2 s)* |
+>
+> **Le modèle « deux chiffres, unité jetée » tient donc exactement**, et il tient sur le parc et
+> pas seulement sur le canari du 24/08. *Un seul boîtier sur quarante-quatre reste erratique.*
+>
+> 🔑 **Le canari demandé le 01/09 n'aurait rien appris.** Il devait trancher « le boîtier
+> obéit-il ? » en lisant un instrument incapable de répondre. *La bonne question n'était pas
+> celle-là : c'était « sait-on le voir ? ».* Ne pas l'envoyer était le bon geste, et corriger la
+> mesure a donné la réponse gratuitement.
+
 > ### ⚠️ 2026-09-01 — le modèle « deux chiffres, unité jetée » ne couvre pas quatre boîtiers
 >
 > Détail relevé à **07:45 UTC** *(⚠️ ces valeurs bougent en permanence — un point, pas une tendance)* :
@@ -8718,6 +8739,34 @@ réponse, contre 394 sur les 7 derniers jours.
 `trackers.currentFixIntervalS` = écart entre **les deux dernières trames**, sur une émission qui se
 fait par **salves**
 **Statut : 🟢 CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** · 2026-09-01 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### 🟢 2026-09-01 14:26 — PROUVÉ EN PRODUCTION, et la mesure RENVERSE la conclusion du matin
+>
+> Trente minutes après la bascule, la fenêtre s'était remplie sur **32 boîtiers sur 44** *(les 12
+> restants sont ceux qui sont hors ligne)*. Les quatre « émetteurs rapides » que le rapport du
+> matin accusait :
+>
+> | Véhicule | Cible | **Mesure (médiane)** | Fenêtre observée | Ce que l'échantillon affichait le matin |
+> |---|---|---|---|---|
+> | **FM-772-JH** | 99 s | **99 s** | `{99, 99}` | **2 s** |
+> | **FG-669-DQ** | 20 s | **20 s** | `{62, 20, 20, 20, 20}` | 7 s |
+> | **GS-878-NX** | 20 s | **20 s** | `{60, 20, 20, 20, 20}` | 5 s |
+> | GR-294-VW | 20 s | 17 s | `{50, 2, 8, 20, 19, 1, 20, 3, 17}` | 2 s |
+>
+> 🔴 **Trois boîtiers sur quatre sont EXACTEMENT sur leur cible, et le quatrième en est proche.**
+> Le rapport du matin écrivait « quatre boîtiers émettent 14 à 50 fois plus vite que la trame
+> qu'ils viennent de recevoir ». **C'était faux, entièrement.** Ces boîtiers obéissaient déjà ;
+> seul l'instrument disait le contraire.
+>
+> 🔑 **Et la conséquence dépasse cette fiche : le modèle de [TRK-045](#trk-045) est CONFIRMÉ.**
+> `,C,99s;` donne bien 99 s, `,C,20s;` donne bien 20 s — exactement ce que « deux chiffres, unité
+> jetée » prédisait, et exactement ce que le canari du 24/08 avait mesuré à la main. Le canari
+> demandé le 01/09 n'aurait donc rien appris de neuf : *la question n'était pas « le boîtier
+> obéit-il ? » mais « sait-on le voir ? ».*
+>
+> ⚠️ **GR-294-VW reste réellement erratique** — sa fenêtre mêle 1 s, 2 s, 3 s et 50 s. Un boîtier
+> sur quarante-quatre a un comportement à instruire, contre quatre annoncés le matin. *Le
+> correctif n'a pas fait disparaître un problème : il a séparé le seul vrai des trois faux.*
 
 > ### ✅ 2026-09-01 — CORRIGÉ : une fenêtre glissante remplace le tirage
 >
