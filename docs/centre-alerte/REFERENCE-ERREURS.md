@@ -1258,9 +1258,9 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🔴 **NON CORRIGÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
-| [TRK-054](#trk-054) | *alertes* | **La veille accident ne se rétracte JAMAIS** — aucun chemin ne referme l'alerte quand le boîtier reprend l'émission, alors que le dispositif sait déjà le faire pour les coupures d'alimentation | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(le SEUL déclenchement de l'histoire du parc, HD-779-MA le 31/08 17:30, est un faux positif : le boîtier est revenu à 20:00 avec une rafale bufferisée de 686 trames, il est **ONLINE**, batterie **100 %**, et il a parcouru **~180 km** depuis le point de l'alerte. L'alerte `CRITICAL` est toujours ouverte. `power-cut-recheck.service.ts:143` porte deja une methode `refermer()` — le meme geste n'a jamais ete ecrit ici)* | 2026-09-01 | 2026-09-01 |
-| [TRK-052](#trk-052) | *alertes* | **Acquitter une alerte RÉ-ARME l'alarme** — le prédicat de déduplication porte `acknowledgedAt: null`, donc le geste de triage de l'exploitant lève la garde de 6 h et la trame suivante rouvre une alerte | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **faux positif** *(corrélation mesurée le 01/09 : **2 doublons sur 2**, et ce sont exactement les 2 véhicules dont la 1ʳᵉ alerte a été acquittée AVANT la fin de la condition physique — FS-808-CE acquittée **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de [TRK-022](#trk-022), dont la garde ne protège que tant que personne n'acquitte)* | 2026-09-01 | 2026-09-01 |
+| [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
+| [TRK-054](#trk-054) | *alertes* | **La veille accident ne se rétracte JAMAIS** — aucun chemin ne referme l'alerte quand le boîtier reprend l'émission, alors que le dispositif sait déjà le faire pour les coupures d'alimentation | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, VÉRIFICATION EN COURS** · **gravité 2** · famille **mensonger** *(le SEUL déclenchement de l'histoire du parc, HD-779-MA le 31/08 17:30, est un faux positif : le boîtier est revenu à 20:00 avec une rafale bufferisée de 686 trames, il est **ONLINE**, batterie **100 %**, et il a parcouru **~180 km** depuis le point de l'alerte. L'alerte `CRITICAL` est toujours ouverte. `power-cut-recheck.service.ts:143` porte deja une methode `refermer()` — le meme geste n'a jamais ete ecrit ici)* | 2026-09-01 | 2026-09-01 |
+| [TRK-052](#trk-052) | *alertes* | **Acquitter une alerte RÉ-ARME l'alarme** — le prédicat de déduplication porte `acknowledgedAt: null`, donc le geste de triage de l'exploitant lève la garde de 6 h et la trame suivante rouvre une alerte | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 2** · famille **faux positif** *(corrélation mesurée le 01/09 : **2 doublons sur 2**, et ce sont exactement les 2 véhicules dont la 1ʳᵉ alerte a été acquittée AVANT la fin de la condition physique — FS-808-CE acquittée **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de [TRK-022](#trk-022), dont la garde ne protège que tant que personne n'acquitte)* | 2026-09-01 | 2026-09-01 |
 | [TRK-051](#trk-051) | *commandes* | **`ACKNOWLEDGED` ne veut pas dire « acquitté par le boîtier »** — la clôture par échéance écrit ce statut dès que la cadence MESURÉE rejoint la cadence demandée, sans aucune confirmation du matériel | 🟢 **CORRIGÉ, DÉPLOYÉ ET VÉRIFIÉ le 26/08 à 05:57** (option 2, sans migration) · **gravité 2** *(marqueurs confirmés dans l'artefact SERVI par des LITTÉRAUX : « CIBLE ATTEINTE » et « sans accuse du boitier » présents dans le bundle minifié ; `confirmation-commande.js` dans le `dist` de l'API. ⚠️ **NON EXERCÉ à l'écran** : ouvrir le mode fix d'un boîtier doit montrer un badge AMBRE « CIBLE ATTEINTE (mesurée) », plus aucun vert sans réponse matérielle)* | 2026-08-26 | 2026-08-26 |
 | [TRK-050](#trk-050) | `realtime-client` | **Chaque redémarrage d'API déconnecte TOUS les utilisateurs** — le garde « un serveur injoignable ne doit pas déconnecter » existe depuis le 03/08, mais uniquement sur le chemin HTTP : le chemin WebSocket l'ignore | 🟢 **CORRIGÉ ET DÉPLOYÉ le 25/08 14:58** (PR #136) · ⚠️ **NON EXERCÉ — test daté au prochain redémarrage d'API** *(correctif en 3 points : décision extraite en fonction PURE qui distingue « refus » de « injoignable », compteur remis à zéro à la reconnexion, et même garde sur le 2ᵉ chemin `:477`. **8 tests neufs, dont 4 qui exercent le VRAI handler** via une couture de création de socket — vérification test-first honnête : **3 échouent sur l'ancien code**, dont « API injoignable : dix échecs ne déconnectent JAMAIS » (*Expected spy logout not to have been called*), et le contrepoint « refus réel expire au 3ᵉ » passe sur LES DEUX versions — les tests ne sont pas tautologiques. Suite web complète **453 verts**, `ng build` OK. Marqueurs vérifiés dans le bundle SERVI par les **littéraux de chaîne** `reinitialiser`/`ignorer`/`expirer` — ⚠️ jamais par un nom de variable, invalide sur bundle minifié, leçon de [TRK-002](#trk-002). 🔑 **Changement WEB uniquement : l'API n'a PAS redémarré** — le correctif de la déconnexion n'a déconnecté personne)* · ancien statut : *(🔴 NON CORRIGÉ · GRAVITÉ 2 — mesuré sur 3 redémarrages — 24/08 15:08, 25/08 09:22, 25/08 12:25 : **2 exploitables, 0 session survivante**. 🎯 **Les jetons n'ont JAMAIS été invalides** : Vizyo Auth (l'émetteur) tourne sans interruption depuis le 24/08 15:14, Redis depuis le 04/08, le refresh vit dans un cookie `tracky_rt` — c'est le CLIENT qui jette ses propres identifiants valides. Cause exacte : `realtime.service.ts:309-311`, le handler `connect_error` compte les échecs de `tryRefresh()` et appelle `handleSessionExpired()` au 3ᵉ (`MAX_CONNECT_REFRESH_FAILURES = 3`) **sans jamais tester `auth.refreshUnavailable()`** — le drapeau que l'intercepteur HTTP consulte, lui, en `auth.interceptor.ts:174`. `logout()` vide `TOKEN_KEY`/`REFRESH_KEY`/`USER_KEY` dans **les deux** stores, d'où « localStorage perd jeton ET refresh ». Avec les délais par défaut de socket.io (~1 s, 2 s, 4 s), les 3 échecs tombent en **~7 s** — largement sous les ~15 s d'un redéploiement. ⚠️ **Aggravant** : le handler `connect` remet `serverKickReconnects` à zéro mais **pas** `connectErrorRefreshFailures` — le compteur s'accumule sur toute la vie de l'onglet, donc trois micro-coupures espacées de plusieurs heures produisent la même déconnexion, sans aucun redémarrage. ⚠️ **Second chemin, même défaut** : `:477`. 🔑 **Ce n'est pas un défaut inconnu, c'est une COUVERTURE INCOMPLÈTE** — le commentaire de `auth.interceptor.ts:165-172` décrit ce défaut exact, corrigé pour HTTP après l'avoir constaté deux fois le 03/08)* | 2026-08-25 | 2026-08-25 |
 | [TRK-049](#trk-049) | *observabilité* | **La clôture des commandes moteur tournait INVISIBLE depuis le 24/08** — `@Cron` ajouté sans être inscrit au catalogue des traitements de fond | 🟢 **CORRIGÉ ET DÉPLOYÉ le 25/08** *(trouvé par le garde d'exhaustivité `catalogue-exhaustif.spec.ts`, **rouge depuis le déploiement du 24/08** : la campagne TRK-018 a ajouté `@Cron('0 */10 * * * *')` dans `engine-control.service.ts` sans l'inscrire. Vérifié sur la version SERVIE d'avant (`f508405`) : le cron y est, le catalogue ne le revendique pas → **défaut PRÉEXISTANT**, pas une régression de ce jour. Conséquence : la clôture des commandes moteur — le cœur de TRK-018, qui solde toutes les 10 min les coupures sans accusé — n'apparaissait pas dans `/admin/background-tasks` : personne ne pouvait voir qu'elle existait, donc personne n'aurait remarqué son arrêt. 🔑 **Profil exact de [TRK-008](#trk-008) et [TRK-043](#trk-043)** — un traitement qui travaille sans que son silence soit visible. ⚠️ **Le garde existait, il était rouge, et le déploiement du 24/08 est passé quand même** : *un test de complétude ne protège que si on lit son verdict*)* | 2026-08-25 | 2026-08-25 |
@@ -8462,7 +8462,27 @@ flotte roule, et il retomberait encore si l'on baissait simplement la cible.
 
 **Signature** — `alerts | <TYPE> | alerte créée sur un véhicule dont
 `vehicles.outOfServiceReason` est NON NUL`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 1** · famille **faux positif** · 2026-09-01
+**Statut : 🟠 CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** · 2026-09-01 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### ✅ 2026-09-01 (apres-midi) — CORRECTIF LIVRE, sur les DEUX chemins
+>
+> Garde posee dans `alerts.service.ts` (chemin trame, apres l'ecriture de `lastPowerNotice`)
+> **et** dans `createPowerCutConfirmedAlert` (chemin du cron de reexamen). La donnee etait
+> deja chargee des deux cotes : **aucune requete ajoutee**.
+>
+> **On suspend l'ALERTE, jamais la CONNAISSANCE** — un test verrouille le fait que
+> `lastPowerNotice` continue d'etre ecrit sur un vehicule hors service.
+>
+> **Verifications :** 6 tests neufs, dont 3 verifies EN ECHEC sur l'ancien code. Les
+> contrepoints — « le meme vehicule EN SERVICE alerte toujours », « la note reste ecrite » —
+> passent sur les deux versions : c'est leur role, ils empechent de « corriger » en eteignant
+> le detecteur.
+>
+> 🗓️ **TEST DATE — et il ne peut PAS etre passe aujourd'hui.** Les 9 vehicules hors service
+> sont **tous hors ligne** : aucun n'emet plus une trame, donc rien ne vient exercer la garde.
+> *Le correctif est livre, il n'est pas prouve.* Le compteur a surveiller est
+> `alertes_depuis_declaration` de la section `hors_service` : il vaut **7** et **ne doit plus
+> jamais croitre**. S'il augmente, la garde n'a pas tenu.
 
 > ### L'écran promet « alertes suspendues pour ce véhicule ». Sept alertes sur huit sont parties après la promesse.
 
@@ -8554,7 +8574,38 @@ WHERE a."createdAt" > now() - interval '7 days' GROUP BY 1;
 **Signature** — `alerts | ACCIDENT | CRITICAL | « <PLAQUE> roulait à <N> km/h et son boîtier
 n'émet plus depuis <DURÉE> » — et le boîtier a repris l'émission depuis, sans que rien ne referme
 l'alerte`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-01
+**Statut : 🟠 CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, VÉRIFICATION EN COURS** · **gravité 2** · famille **mensonger** · 2026-09-01 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### ✅ 2026-09-01 (apres-midi) — CORRECTIF LIVRE, et un defaut de conception trouve avant le deploiement
+>
+> La veille se retracte : toute alerte `ACCIDENT` de cette veille dont le boitier a **reemis
+> apres** sa creation est annotee d'un motif — heure de reprise, silence reel, batterie — dans
+> `payload.retractation`, et refermee si elle etait encore ouverte.
+>
+> 🔴 **LE DEFAUT TROUVE EN VERIFIANT LA PRODUCTION AVANT DE DEPLOYER.** La premiere version ne
+> reprenait que les alertes NON acquittees. Or l'alerte de HD-779-MA **avait ete acquittee par
+> un exploitant a 19:15**, quarante-cinq minutes AVANT le retour du boitier : le correctif
+> n'aurait donc jamais pu s'exercer sur son propre cas de reference. Et le fond compte plus que
+> l'anecdote — *une fausse alerte acquittee est indiscernable d'un vrai accident traite* : le
+> registre garde « accident critique, acquitte par untel », et l'information qu'il n'y a jamais
+> eu de choc est perdue. **Acquitter dit QUI A REGARDE ; se retracter dit CE QUI ETAIT VRAI.**
+> Desormais on annote toujours, on ne referme que ce qui est ouvert, et l'acquittement humain
+> n'est jamais reecrit.
+>
+> 🔴 **ET LA GARDE QUI A FAILLI MANQUER.** Le type `ACCIDENT` a DEUX emetteurs : cette veille
+> (qui infere d'un SILENCE) et le **capteur de choc** du boitier. Un boitier qui signale un choc
+> CONTINUE d'emettre — une retractation aveugle aurait donc referme **toutes les alertes de choc
+> reelles** en moins de trente minutes, en ecrivant « aucun choc confirme » sur la seule alerte
+> du systeme qui en ait mesure un. Seules les alertes `detection: 'telemetrie'` sont
+> retractables, et un test le verrouille. *Le correctif d'un faux positif ne doit jamais pouvoir
+> eteindre un vrai positif.*
+>
+> ⚠️ **Le seuil de 2 h n'a PAS ete releve**, contre l'option 2 proposee par cette fiche : on ne
+> ralentit pas un filet de securite pour corriger un defaut d'affichage. Un accident annonce six
+> heures apres n'est plus une alerte, c'est un constat.
+>
+> **Verifications :** 9 tests neufs sur un fichier de specification cree pour l'occasion, qui
+> rejouent le cas HD-779-MA a l'heure pres.
 
 > ### La seule alerte accident de l'histoire du parc est un faux positif, et elle est toujours ouverte.
 
@@ -8631,7 +8682,32 @@ Rejouer le cas HD-779-MA — un boîtier silencieux 2 h après avoir roulé, qui
 
 **Signature** — `alerts | <TYPE> | seconde alerte du même type sur le même véhicule à <DURÉE> < 6 h,
 créée immédiatement après l'ACQUITTEMENT de la première`
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **faux positif** · 2026-09-01
+**Statut : 🟠 CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 2** · famille **faux positif** · 2026-09-01 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### ✅ 2026-09-01 (apres-midi) — CORRECTIF LIVRE, et ce n'est PAS l'option 1
+>
+> L'option 1 de cette fiche — « retirer `acknowledgedAt: null` » — a ete **ecartee telle
+> quelle**, parce qu'elle aurait aussi musele le bouton de detresse : un conducteur appuie sur
+> `SOS`, l'exploitant acquitte, le conducteur rappuie vingt minutes plus tard pour une AUTRE
+> urgence — et plus rien ne part pendant six heures.
+>
+> Le correctif livre distingue donc **alarmes d'ETAT** et **alarmes PONCTUELLES** :
+>
+> | Famille | Types | Comportement |
+> |---|---|---|
+> | **ETAT** *(l'alarme se repete parce que l'etat dure)* | `POWER_CUT`, `LOW_BATTERY`, `OVERSPEED`, `GEOFENCE_EXIT`, `MOVEMENT_IDLE`, `BONNET`, `DOOR`, `IDLE_TIME`, `GPS_LOST`, `FATIGUE` | la fenetre de 6 h decide **seule** — l'acquittement ne re-arme plus |
+> | **PONCTUELLE** *(elle se repete parce qu'il se passe du neuf)* | `SOS`, `ACCIDENT`, `COLLISION`, `TOW`, `TAMPER`, `ILLEGAL_IGNITION`, surveillance, evenements de conduite | comportement d'origine **conserve** |
+>
+> ⚠️ **Un type d'alerte ajoute plus tard tombe du cote PONCTUEL**, c'est-a-dire du cote qui
+> alerte le plus. **Fail-open vers le signal**, meme doctrine que TRK-047.
+>
+> Applique aussi au chemin du cron (`createPowerCutConfirmedAlert`), qui portait le meme
+> predicat. **Verifications :** 5 tests, dont celui qui verrouille que **`SOS` acquitte rouvre
+> toujours**.
+>
+> 🗓️ **TEST DATE :** la prochaine alarme d'etat acquittee en cours d'episode ne doit produire
+> qu'**une** ligne. Le candidat naturel est `OVERSPEED` sur FG-669-DQ, seul vehicule du parc qui
+> en produise, a raison de 1 a 2 par jour.
 
 > ### La déduplication des alarmes tient six heures — sauf si l'exploitant regarde son écran.
 
