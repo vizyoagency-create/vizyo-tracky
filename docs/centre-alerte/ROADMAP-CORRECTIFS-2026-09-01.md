@@ -14,7 +14,7 @@
 | | Lots | État |
 |---|---|---|
 | 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 | ✅ **DÉPLOYÉ** — TRK-054 **prouvé en production**, TRK-053 et TRK-052 déployés mais **non exerçables aujourd'hui** |
-| ✋ **Gestes humains** — une minute chacun, aucun code | ~~TRK-021~~ ✅ · TRK-051 · TRK-045 | 🟢 **1 sur 3 fait** — TRK-021 prouvé le 01/09 |
+| ✋ **Gestes humains** | ~~TRK-021~~ ✅ · ~~TRK-051~~ ✅ · ~~TRK-045~~ 🔵 requalifié | 🟢 **les trois traités** — et deux d'entre eux ont produit une fiche neuve |
 | 💰 **Décisions** — coût ou métier, pas une ligne de code | TRK-016 · TRK-035 · TRK-022 *(volets 2-3)* · TRK-014 | ⚪ en attente d'arbitrage |
 
 > 🔑 **Les trois colonnes ne sont pas des degrés d'importance, ce sont des natures différentes.**
@@ -119,8 +119,8 @@ d'implémentation. C'est écrit ici parce que c'est reproductible, pas parce que
 | Fiche | Le geste | La preuve attendue | En attente |
 |---|---|---|---|
 | ~~[TRK-021](./REFERENCE-ERREURS.md#trk-021)~~ | ~~émettre un `shock_on`~~ | ✅ **`channel = SMS`** | 🟢 **FAIT le 01/09 à 10:10** — voir ci-dessous |
-| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | ouvrir le mode fix d'un boîtier | badge **AMBRE** « CIBLE ATTEINTE (mesurée) », plus aucun vert sans réponse matérielle | 🟠 6 j |
-| [TRK-045](./REFERENCE-ERREURS.md#trk-045) | commande brute `,C,99s;` sur **GR-294-VW** *(mesuré à 2 s)* | douze écarts de **99 s** dans `wire_logs` | 🔵 posé le 01/09 |
+| ~~[TRK-051](./REFERENCE-ERREURS.md#trk-051)~~ | ~~ouvrir le mode fix~~ | ✅ **badge AMBRE confirmé**, aucun vert | 🟢 **FAIT le 01/09** — mais il a révélé [TRK-055](./REFERENCE-ERREURS.md#trk-055) |
+| ~~[TRK-045](./REFERENCE-ERREURS.md#trk-045)~~ | ~~commande brute `,C,99s;`~~ | 🔵 **REQUALIFIÉ — non envoyé, et c'est le bon résultat** | voir [TRK-056](./REFERENCE-ERREURS.md#trk-056) |
 
 ⚠️ **Ces trois-là touchent du matériel réel** — un SMS part, un boîtier change de cadence.
 **L'audit ne les déclenche pas seul** : ce sont des commandes vers des équipements en
@@ -157,6 +157,59 @@ armée sur `sms_logs` en entrée.
 > le cas qu'il traite — **son zéro ressemblait trait pour trait à une réussite.** Il a suffi d'un
 > clic pour transformer ce zéro en preuve. *C'est le meilleur argument possible pour la règle des
 > sept jours : le correctif était bon depuis le 23/08, et personne ne pouvait le savoir.*
+
+---
+
+## 🔬 Les deux gestes du 01/09 (après-midi) — et ce qu'ils ont trouvé
+
+### ✅ TRK-051 — le badge est bon, l'inventaire des surfaces ne l'était pas
+
+Écran du mode fix de **GS-187-NY**, ouvert et lu : chaque `fix_continuous` close par échéance porte
+un badge **AMBRE** « CIBLE ATTEINTE (mesurée) » avec la pastille « sans accusé du boîtier ».
+**Aucun vert.** Le correctif fait exactement ce qu'il annonce.
+
+🔴 **Mais la page juste au-dessus le contredit.** La fiche du tracker affiche pour les mêmes
+commandes « **Confirmée** » **en vert**, avec la colonne RÉPONSE vide à côté. TRK-051 annonçait
+« trois surfaces corrigées » ; le web en compte **deux autres**, et le compte est de **394
+commandes peintes en vert sur 7 jours, dont 0 avec réponse de boîtier**.
+→ 🆕 [TRK-055](./REFERENCE-ERREURS.md#trk-055)
+
+### 🔵 TRK-045 — le canari n'a PAS été envoyé, et c'est le bon résultat
+
+En relevant la ligne de base **avant** d'envoyer, sur **FM-772-JH** *(cible 99 s, affiché 2 s,
+garé)* :
+
+```
+1,53 · 3,00 · 9,39 · 98,91 · 20,15 · 1,92 · 37,43 · 35,20 · 4,30 · 4,06 · 1,62 …
+```
+
+Ce n'est pas « 2 s » : c'est une **émission par salves**. Et la cause est dans le code —
+`currentFixIntervalS` vaut l'écart entre **les deux dernières trames**, un échantillon unique.
+Sur le parc, **24,5 % des écarts sont sous 10 s** : une chance sur quatre de tomber dans une salve.
+
+**Deux raisons de ne pas envoyer, et la seconde suffit :**
+1. FM-772-JH porte **déjà** une cible de 99 s depuis des jours — la commande est en vigueur,
+   la renvoyer ne mesure rien de neuf ;
+2. le critère annoncé par la fiche se lit sur un instrument qui ne mesure pas — **la réponse aurait
+   été illisible quelle qu'elle soit.**
+→ 🆕 [TRK-056](./REFERENCE-ERREURS.md#trk-056), et le canari est reposé **après** son correctif.
+
+> 🔑 **On ne sollicite pas du matériel pour lire un instrument cassé.** Le geste demandé était
+> « envoie et mesure » ; la préparation a montré que la mesure ne tenait pas. *Vérifier
+> l'instrument avant de conclure vaut aussi avant d'agir* — et ça satisfait au passage la consigne
+> « ne rien laisser dans les tests », puisque rien n'a été envoyé.
+
+### 🧹 BP-434-RD — désarmé, le test ne laisse rien derrière lui
+
+`shock_off` émis le 01/09 à **13:36:43** · `channel = SMS` · `payload = noshock123456` ·
+`status = SENT`. Le capteur de choc armé par le test de TRK-021 est **désarmé**, et l'envoi est
+au passage une **seconde confirmation** de TRK-021 sur un autre gabarit SMS-only.
+
+⚠️ **Ce que ça retire, et il faut le savoir :** le capteur de choc était le seul signal de
+référence dont dispose la veille accident de [TRK-054](./REFERENCE-ERREURS.md#trk-054), qui ne
+fait qu'*inférer* un choc à partir d'un silence. **L'armer durablement est une décision
+d'exploitation, pas un résidu de test** — c'est pour ça qu'il a été retiré, et pour ça qu'il
+mérite d'être reposé délibérément si on le veut.
 
 ---
 

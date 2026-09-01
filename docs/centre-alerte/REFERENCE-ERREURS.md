@@ -1258,6 +1258,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
+| [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
 | [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
 | [TRK-054](#trk-054) | *alertes* | **La veille accident ne se rétracte JAMAIS** — aucun chemin ne referme l'alerte quand le boîtier reprend l'émission, alors que le dispositif sait déjà le faire pour les coupures d'alimentation | 🟢 **CORRIGÉ, DÉPLOYÉ ET PROUVÉ PAR LE COMPORTEMENT le 2026-09-01 à 09:30:00** · **gravité 2** *(la rétractation de HD-779-MA est tombée au premier passage du cron qui a suivi le déploiement, avec son motif au journal et en base ; l'acquittement de l'exploitant du 31/08 19:15 est resté INTACT. ⚠️ Un second défaut a été trouvé SUR cette première rétractation réelle — le motif datait la reprise sur `lastSeenAt`, donc sur la dernière trame et non la première d'après l'alerte : il annonçait 960 min de silence là où il y en avait 150. Corrigé et redéployé dans la foulée)* | 2026-09-01 | 2026-09-01 · famille **mensonger** *(le SEUL déclenchement de l'histoire du parc, HD-779-MA le 31/08 17:30, est un faux positif : le boîtier est revenu à 20:00 avec une rafale bufferisée de 686 trames, il est **ONLINE**, batterie **100 %**, et il a parcouru **~180 km** depuis le point de l'alerte. L'alerte `CRITICAL` est toujours ouverte. `power-cut-recheck.service.ts:143` porte deja une methode `refermer()` — le meme geste n'a jamais ete ecrit ici)* | 2026-09-01 | 2026-09-01 |
 | [TRK-052](#trk-052) | *alertes* | **Acquitter une alerte RÉ-ARME l'alarme** — le prédicat de déduplication porte `acknowledgedAt: null`, donc le geste de triage de l'exploitant lève la garde de 6 h et la trame suivante rouvre une alerte | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 2** · famille **faux positif** *(corrélation mesurée le 01/09 : **2 doublons sur 2**, et ce sont exactement les 2 véhicules dont la 1ʳᵉ alerte a été acquittée AVANT la fin de la condition physique — FS-808-CE acquittée **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de [TRK-022](#trk-022), dont la garde ne protège que tant que personne n'acquitte)* | 2026-09-01 | 2026-09-01 |
@@ -8610,6 +8612,152 @@ WHERE a."createdAt" > now() - interval '7 days' GROUP BY 1;
 
 ---
 
+## TRK-055
+
+**Signature** — *(aucune ligne d'erreur — un LIBELLÉ et une COULEUR)*
+`tracker_commands.status = ACKNOWLEDGED` rendu « **Confirmée** » en **vert** sur les écrans que
+[TRK-051](#trk-051) n'a pas touchés
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-01
+
+> ### Le correctif de TRK-051 a nommé trois surfaces. Il en existait cinq.
+
+### Comment on est tombé dessus
+
+**En allant vérifier TRK-051 à l'écran**, précisément parce que sa fiche disait « NON EXERCÉ à
+l'écran ». L'écran du mode fix est correct — badge **ambre** « CIBLE ATTEINTE (mesurée) » avec la
+pastille « sans accusé du boîtier », vérifié sur GS-187-NY le 01/09. Mais la page **juste
+au-dessus**, la fiche du tracker, affiche pour les mêmes commandes :
+
+```
+COMMANDE          STATUT        UTILISATEUR           RÉPONSE
+fix_continuous    Confirmée     system@tracky.local      —
+fix_continuous    Échouée       system@tracky.local      —
+```
+
+**« Confirmée », en vert, avec la colonne RÉPONSE vide juste à côté.** C'est mot pour mot le
+défaut que TRK-051 existe pour tuer — *« peindre les deux en vert était exactement ce qui faisait
+lire 120 acquittements là où il y en a 2 »* — et il est resté vivant sur les autres écrans.
+
+### Où, exactement
+
+| Fichier | Ce qu'il fait | Écrans concernés |
+|---|---|---|
+| `commands-panel.component.ts:34` | `ACKNOWLEDGED: 'Confirmée'` | **fiche tracker** ET **fiche véhicule** *(le panneau est partagé)* |
+| `commands-panel.component.ts:441` | rend le **vert de marque** pour `SENT` comme pour `ACKNOWLEDGED` | idem |
+| `admin-commands.component.ts:17` et `:53` | `ACKNOWLEDGED: 'Confirmée'`, y compris dans le **filtre** | écran d'administration des commandes |
+
+### Ce que ça affiche aujourd'hui
+
+| Sur 7 jours | Sur toute la table |
+|---|---|
+| **394** commandes peintes « Confirmée » en vert | **496** vertes sans réponse |
+| dont **0** porte une réponse de boîtier | pour **2** vraies réponses sur **5 659** |
+
+> 🔑 **La leçon, et c'est la troisième fois de la journée.** TRK-050 : le garde existait sur le
+> chemin HTTP, pas sur le WebSocket. TRK-053 : `outOfServiceReason` honoré par sept détecteurs,
+> pas par le huitième. Ici : trois surfaces corrigées sur cinq. **Un correctif qui énumère ses
+> surfaces doit d'abord énumérer TOUTES les surfaces** — sinon il documente sa propre couverture
+> partielle en la présentant comme complète. *La question à poser n'est pas « ai-je corrigé les
+> endroits que je connais ? » mais « combien y a-t-il d'endroits ? ».*
+
+### Correctif proposé
+
+Réutiliser la règle **déjà écrite, exportée et testée** par TRK-051 —
+`apps/api/src/tracker-fix-mode/confirmation-commande.ts` — au lieu d'un second mapping de libellés :
+
+1. l'endpoint qui alimente ces écrans rend le champ `confirmation` (`BOITIER` / `MESURE` / `null`),
+   comme le fait déjà la timeline du mode fix ;
+2. les deux composants web affichent « **ACQUITTÉE (boîtier)** » en vert ou « **CIBLE ATTEINTE
+   (mesurée)** » en ambre, et **jamais** le statut brut ;
+3. le filtre de l'écran d'administration filtre sur la **confirmation**, pas sur le statut.
+
+⚠️ **Ne pas dupliquer la logique dans le composant** : c'est ce qui a produit deux définitions
+divergentes de la même question. La règle vit à un seul endroit depuis le 26/08 ; il faut l'y
+laisser.
+
+### 🗓️ Vérification
+
+Ouvrir la fiche d'un tracker ayant des `fix_continuous` closes par échéance : **aucun badge vert**
+ne doit subsister tant que la colonne RÉPONSE est vide. Et le compte : **0** commande verte sans
+réponse, contre 394 sur les 7 derniers jours.
+
+---
+
+## TRK-056
+
+**Signature** — *(aucune ligne d'erreur — un INSTRUMENT)*
+`trackers.currentFixIntervalS` = écart entre **les deux dernières trames**, sur une émission qui se
+fait par **salves**
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-01
+
+> ### Un échantillon unique ne peut pas mesurer une cadence qui alterne salves et longues attentes.
+
+### Comment on est tombé dessus
+
+**En préparant le canari demandé par [TRK-045](#trk-045)** — envoyer `,C,99s;` à un boîtier mesuré
+à 2 s pour trancher s'il obéit. Avant d'envoyer, relevé de la ligne de base sur FM-772-JH
+*(cible 99 s, `currentFixIntervalS` = 2 s, garé)*. Les treize derniers écarts :
+
+```
+1,53 · 3,00 · 9,39 · 98,91 · 20,15 · 1,92 · 37,43 · 35,20 · 4,30 · 4,06 · 1,62 …
+```
+
+**Ce n'est pas « 2 s ».** C'est une alternance de longues attentes et de salves rapprochées — et
+elle porte sur des trames `position`, pas sur des heartbeats *(vérifié : 64 positions et 10
+heartbeats sur 30 min ; les écarts courts sont bien entre positions)*.
+
+### La cause, dans le code
+
+`tracker-fix-mode.service.ts`, méthode `reconcile` :
+
+```ts
+const observedS = Math.max(1, Math.round((frame.deviceTime.getTime() - prev.getTime()) / 1000));
+```
+
+`prev` est `lastValidFrameAt`. **La cadence « observée » est donc l'écart entre les deux dernières
+trames — un seul échantillon.** Ni médiane, ni fenêtre, ni dispersion.
+
+### Ce que ça donne, mesuré
+
+| Mesure | Valeur |
+|---|---|
+| Parc entier, 1 h : écarts entre positions consécutives **sous 10 s** | **24,5 %** *(879 sur 3 584, 32 boîtiers)* |
+| FM-772-JH sur 2 h : écarts **< 10 s** / **>= 10 s** | **114** / **122** |
+| …médiane des écarts longs | **47 s** |
+| …et `currentFixIntervalS` affiche | **2 s** |
+
+**Une chance sur quatre que l'échantillon tombe dans une salve.** Le nombre affiché n'est ni la
+cadence commandée (99 s), ni la médiane observée (47 s) : c'est le dernier tirage.
+
+> 🔴 **Conséquence directe sur une conclusion déjà publiée.** Le rapport du 01/09 écrivait :
+> *« quatre boîtiers émettent 14 à 50 fois plus vite que la trame qu'ils viennent de recevoir »*,
+> et en tirait que le modèle de [TRK-045](#trk-045) ne couvrait pas ces cas. **Ce constat repose
+> entièrement sur `currentFixIntervalS`.** Il ne prouve donc pas que le boîtier désobéit — il
+> montre qu'un échantillon unique est tombé dans une salve. *L'écart mesuré était réel ; ce qu'on
+> lui a fait dire ne l'était pas.*
+
+⚠️ **Et ce qui reste vrai malgré tout, sans surinterprétation.** La médiane des écarts longs de
+FM-772-JH vaut **47 s** pour une cible de **99 s** : elle n'est pas conforme non plus. *Le boîtier
+n'est donc pas disculpé — il est simplement impossible de l'accuser avec cet instrument.*
+
+### Correctif proposé
+
+1. **Mesurer sur une fenêtre, pas sur un couple** : médiane des écarts sur les N dernières trames
+   valides (N ≈ 12, le lot déjà utilisé par les canaris) ou sur les 10 dernières minutes.
+2. **Rendre la dispersion lisible** : exposer médiane **et** part d'écarts courts. Un boîtier
+   bimodal doit se voir comme bimodal, pas se résumer à un nombre.
+3. **Ne pas laisser un échantillon unique décider d'une action.** C'est déjà la racine de
+   [TRK-008](#trk-008) — *« l'auto-alignement inscrivait l'observé BRUT »*, d'où des cibles à
+   1 s et 2 s en base. Le clamp posé alors a borné les dégâts **sans corriger l'échantillonnage**.
+
+### 🗓️ Vérification — double condition
+
+Après correctif, `currentFixIntervalS` doit égaler la médiane mesurée sur la fenêtre **et** cesser
+de varier d'un facteur 20 entre deux trames consécutives d'un même boîtier au repos. Si la valeur
+se stabilise mais s'éloigne de la médiane réelle, on a lissé au lieu de mesurer.
+
+---
+
 ## TRK-054
 
 **Signature** — `alerts | ACCIDENT | CRITICAL | « <PLAQUE> roulait à <N> km/h et son boîtier
@@ -8885,6 +9033,23 @@ GROUP BY 1, 2 HAVING count(*) > 1;
 ---
 
 ## TRK-051
+
+> ### 2026-09-01 — EXERCÉ À L'ÉCRAN, et l'inventaire des surfaces était incomplet
+>
+> Le test daté est **passé** : sur l'écran du mode fix de GS-187-NY, chaque `fix_continuous` close
+> par échéance porte un badge **AMBRE** « CIBLE ATTEINTE (mesurée) » et la pastille « sans accusé
+> du boîtier ». **Aucun vert.** Le correctif fait exactement ce qu'il annonce, là où il a été posé.
+>
+> 🔴 **Mais il n'a pas été posé partout.** Cette fiche annonçait « trois surfaces corrigées » —
+> API, écran du mode fix, collecte. Le web en compte **deux autres** qui affichent le statut de
+> commande, et toutes deux peignent encore `ACKNOWLEDGED` en **vert** sous le libellé
+> « Confirmée » : le panneau de commandes *(fiche tracker et fiche véhicule)* et l'écran
+> d'administration des commandes. **394 commandes sur 7 jours**, dont **0** avec réponse de
+> boîtier. Ouvert en [TRK-055](#trk-055).
+>
+> *La fiche ne mentait pas sur ce qu'elle avait corrigé ; elle se trompait sur le nombre d'endroits
+> à corriger. Un correctif qui énumère ses surfaces doit d'abord énumérer TOUTES les surfaces.*
+
 
 **Signature** — *(aucune ligne d'erreur — le défaut est dans une COLONNE, pas dans un message)*
 `tracker_commands | status = ACKNOWLEDGED | ackResponse IS NULL`
