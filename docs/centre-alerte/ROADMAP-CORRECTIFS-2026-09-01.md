@@ -14,7 +14,7 @@
 | | Lots | État |
 |---|---|---|
 | 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 | ✅ **DÉPLOYÉ** — TRK-054 **prouvé en production**, TRK-053 et TRK-052 déployés mais **non exerçables aujourd'hui** |
-| ✋ **Gestes humains** — une minute chacun, aucun code | TRK-021 · TRK-051 · TRK-045 | 🔵 à déclencher |
+| ✋ **Gestes humains** — une minute chacun, aucun code | ~~TRK-021~~ ✅ · TRK-051 · TRK-045 | 🟢 **1 sur 3 fait** — TRK-021 prouvé le 01/09 |
 | 💰 **Décisions** — coût ou métier, pas une ligne de code | TRK-016 · TRK-035 · TRK-022 *(volets 2-3)* · TRK-014 | ⚪ en attente d'arbitrage |
 
 > 🔑 **Les trois colonnes ne sont pas des degrés d'importance, ce sont des natures différentes.**
@@ -118,7 +118,7 @@ d'implémentation. C'est écrit ici parce que c'est reproductible, pas parce que
 
 | Fiche | Le geste | La preuve attendue | En attente |
 |---|---|---|---|
-| [TRK-021](./REFERENCE-ERREURS.md#trk-021) | émettre un `shock_on` depuis `/admin/trackers/:id` sur un boîtier vivant | `channel = 'SMS'` *(et non `TCP`)* | 🔴 **17 j** |
+| ~~[TRK-021](./REFERENCE-ERREURS.md#trk-021)~~ | ~~émettre un `shock_on`~~ | ✅ **`channel = SMS`** | 🟢 **FAIT le 01/09 à 10:10** — voir ci-dessous |
 | [TRK-051](./REFERENCE-ERREURS.md#trk-051) | ouvrir le mode fix d'un boîtier | badge **AMBRE** « CIBLE ATTEINTE (mesurée) », plus aucun vert sans réponse matérielle | 🟠 6 j |
 | [TRK-045](./REFERENCE-ERREURS.md#trk-045) | commande brute `,C,99s;` sur **GR-294-VW** *(mesuré à 2 s)* | douze écarts de **99 s** dans `wire_logs` | 🔵 posé le 01/09 |
 
@@ -127,9 +127,36 @@ d'implémentation. C'est écrit ici parce que c'est reproductible, pas parce que
 exploitation, et la décision appartient au propriétaire. Ils sont listés ici pour cesser d'être
 invisibles, pas pour être exécutés automatiquement.
 
+### 🟢 TRK-021 — fait le 01/09 à 10:10:09, après dix-sept jours
+
+`shock_on` émis sur **BP-434-RD** depuis l'écran. **Chaîne prouvée sur quatre couches**, pas
+seulement par la colonne finale :
+
+| Couche | Ce qu'elle montre |
+|---|---|
+| Journal API | `Command created` · `payload: shock123456` |
+| Aiguillage | `CobanWire` · `OUT` · **`source: "tracker-cmd-sms"`** |
+| Passerelle | `sms_logs` OUT · `status: queued` · identifiant rendu |
+| Commande | **`channel = SMS`** · `status = SENT` · **aucune erreur** |
+
+Contre **8 tentatives** précédentes, toutes `TCP` et toutes `FAILED` sur `ACK timeout`.
+Le corps envoyé est `shock123456` — la **forme SMS**, ce qui vérifie du même coup l'autre moitié
+du correctif de TRK-012 (« l'enveloppe suit le canal »).
+
+🔵 **Deux acquis incidents :** le numéro est passé l'allowlist sans `403` — confirmation
+indépendante que le trou de TRK-017 ne s'est pas rouvert ; et **le capteur de choc est armé pour
+la première fois du parc**, or c'est précisément le signal de référence qui manque à la veille
+accident de TRK-054, laquelle ne fait qu'*inférer* un choc à partir d'un silence.
+
+🗓️ **Test daté ouvert :** un SMS entrant `shock ok` serait la **première réponse matérielle**
+jamais reçue sur cette famille — un fait neuf pour TRK-014 (`ackResponse` = 0 sur 513). Veille
+armée sur `sms_logs` en entrée.
+
 > 🔑 **La règle qui les fait remonter :** *un test en attente depuis plus de 7 jours doit être
-> PROVOQUÉ ou REQUALIFIÉ.* TRK-021 est en production depuis le 23/08 et n'a jamais rencontré le
-> cas qu'il traite — **son zéro ressemble trait pour trait à une réussite.**
+> PROVOQUÉ ou REQUALIFIÉ.* TRK-021 est resté dix-sept jours en production sans jamais rencontrer
+> le cas qu'il traite — **son zéro ressemblait trait pour trait à une réussite.** Il a suffi d'un
+> clic pour transformer ce zéro en preuve. *C'est le meilleur argument possible pour la règle des
+> sept jours : le correctif était bon depuis le 23/08, et personne ne pouvait le savoir.*
 
 ---
 

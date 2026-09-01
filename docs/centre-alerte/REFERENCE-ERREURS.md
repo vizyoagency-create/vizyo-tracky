@@ -1290,7 +1290,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 | [TRK-025](#trk-025) | `sms-allowlist` | **49 suppressions de masse retenues par la passerelle, 0 remontée** — ⚠️ **et désormais INEXERÇABLE** : après la rotation, l'appelant ne peut plus produire de blocage, cf. [TRK-041](#trk-041) — le champ lu vient de la réponse au sync que l'API émet elle-même, où il vaut toujours 0 | 🟢 **CORRIGÉ ET DÉPLOYÉ le 24/08** (PR #127) · **CÂBLAGE REVÉRIFIÉ le 25/08** *(⚠️ statut d'index périmé rectifié — il portait encore « NON CORRIGÉ · GRAVITÉ 1 ». Contrôle refait depuis le conteneur `tracky-api` : lecture de `/v1/allowlist/audit` → **HTTP 200**, **7 blocages**, tous **hors** de la fenêtre de 24 h. **Le dernier blocage reste daté du 17/08 19:24:59**, soit 8 jours de silence : le tiers n'est pas revenu. ⚠️ **NE PAS ATTENDRE D'ALERTE** — une absence de ligne `sms-allowlist` est ici le comportement CORRECT, pas un échec du correctif ; un blocage postérieur au 17/08 serait, lui, un fait grave)* | 2026-08-17 | 2026-08-25 |
 | [TRK-023](#trk-023) | *alertes* | **42 240 alertes sur 51 735 (81,6 %) partent sans message** — dont **41 709 `CRITICAL` « Alimentation coupée »** et **3 `SOS`** | 🟢 **CORRIGÉ — EXERCÉ ET VÉRIFIÉ le 22/08** *(**0 alerte sans message depuis le 19/08 01:56**, soit 3 jours pleins et **4 types** (`POWER_CUT`, `LOW_BATTERY`, `OVERSPEED`, `GPS_LOST`) ; le `POWER_CUT` du 21/08 12:36 porte un message complet — batterie, seuil, état du véhicule. Les 556 lignes muettes restantes sont **de l'historique**, dont les 24 de la salve du 19/08. ⚠️ **réserve maintenue** : le taux global reste illisible, son dénominateur ayant été effacé — cf. [TRK-035](#trk-035))* · ancien statut : *(⚠️ **le taux affiché le 20/08 est 556 / 10 055 = 5,5 % — NE PAS LIRE COMME UN PROGRÈS** : les 41 709 `POWER_CUT` du dénominateur ont été **effacées à la main**, cf. [TRK-035](#trk-035). Le correctif existe — `messageCoupure` pose enfin un message sur `POWER_CUT` — mais **aucune `POWER_CUT` n'a été créée depuis son déploiement le 19/08 01:56** : il n'est pas vérifié — **21/08 : toujours 0 `POWER_CUT` créée**, taux **556 / 10 057 = 5,5 %**, inchangé et toujours illisible)* | 2026-08-13 | 2026-08-22 |
 | [TRK-019](#trk-019) | *livraison* | Un déploiement depuis une branche forkée **efface des correctifs vérifiés**, sans aucun signal | 🟢 CORRIGÉ *(**8ᵉ image** du 19/08 17:10, servie depuis `main` @ `f71ddc3` — **4ᵉ image consécutive conforme**. ⚠️ **réserve neuve du 20/08 : le tag `latest` détruit l'historique des déploiements.** `docker images` n'en montre qu'une alors que 3 vagues de migrations (01:56, 12:30, 17:12) en prouvent au moins trois le 19/08. Les migrations sont la seule horloge — et elles ne datent que les déploiements qui touchent le schéma)* | 2026-08-12 | 2026-08-22 |
-| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🟠 **CORRECTIF DÉPLOYÉ le 23/08 (PR #110), NON EXERCÉ** · **GRAVITÉ 1** *(🧹 statut rectifié le 25/08 dans les DEUX sens : l'index disait « non corrigé » (périmé — la porte SMS-only est en production) et le manifeste disait « corrigé » (rien ne l'a prouvé). **Mesure du 25/08 : AUCUN essai de template SMS-only depuis le correctif**, les derniers datent du 15/08. *Ce n'est pas une amélioration, c'est un oubli d'essayer.* Ancien relevé : test daté RÉPONDU **non** pour la 4ᵉ fois : aucun nouvel essai. 3 `shock_on` + 3 `sensitivity` `FAILED` sur 7 j — la baisse depuis 4+4 est la **fenêtre glissante**, pas une amélioration. Gravité 1 maintenue. **21/08 : test daté non déclenché pour la 5ᵉ fois** — 3 + 3 `FAILED` sur 7 j, aucun essai neuf)* | 2026-08-13 | 2026-08-22 |
+| [TRK-021](#trk-021) | *commandes* | **19 templates sur 23 sont déclarés SMS-only et partent en TCP** — `availableVia` n'est lu nulle part | 🟢 **CORRIGÉ, DÉPLOYÉ ET PROUVÉ PAR LE COMPORTEMENT le 2026-09-01 à 10:10:09** *(après **17 jours** d'attente. `shock_on` émis sur BP-434-RD depuis l'écran : `channel = SMS`, `status = SENT`, corps `shock123456` — la **forme SMS**, pas l'enveloppe TCP. Chaîne prouvée sur quatre couches : `Command created` → `CobanWire source: tracker-cmd-sms` → `sms_logs` OUT `queued` avec identifiant passerelle → `channel = SMS`. À comparer aux **8 tentatives précédentes**, toutes `TCP` et toutes `FAILED` sur `ACK timeout after 15000ms`)* | 2026-08-13 | 2026-09-01 |
 | [TRK-022](#trk-022) | *alertes* | Aucune déduplication des alarmes Coban : **1317 survitesses en un jour**, et **41 479 `POWER_CUT` en 15 jours** | 🟠 CORRECTIF DÉPLOYÉ, **NON EXERCÉ** *(🟢 **déduplication livrée le 19/08** : `DEDUP_ALARME_MS` = **6 h**, sur TOUS les types d'alarme — une alerte non acquittée du même type et du même véhicule bloque les suivantes. ⚠️ **aucune rafale depuis** : plus une seule trame `ac alarm` après le 19/08 02:26:23, donc rien à dédupliquer et **rien de prouvé**. **21/08 : 2 alertes en 24 h (1 OVERSPEED, 1 GPS_LOST), toutes deux AVEC message ; aucune rafale, 7ᵉ jour** — toujours rien à dédupliquer, donc toujours rien de prouvé)* | 2026-08-13 | 2026-08-22 |
 | [TRK-024](#trk-024) | *trackers* | Le statut `OFFLINE` **survit aux trames** : des boîtiers marqués hors ligne alors qu'ils émettaient il y a < 5 min | 🟢 **CORRIGÉ, DÉPLOYÉ le 23/08 (PR #113) ET VÉRIFIÉ le 25/08** *(🧹 statut rectifié le 25/08 — index et corps figés au 22/08. PR #113 (« l'écriture OFFLINE devient conditionnelle : fraîcheur dans le `WHERE` ») vérifiée ancêtre de `HEAD`. **Mesure directe du 25/08 à 19:2x : 0 boîtier `OFFLINE` ayant émis dans les 15 dernières minutes** — le défaut n'est plus réalisé. Ancien relevé : 7ᵉ point sur la définition écrite, 0 / 2)* | 2026-08-14 | 2026-08-22 |
 | [TRK-020](#trk-020) | *outillage* | Deux colonnes d'acquittement : la collecte lit celle qui **ne vient pas du boîtier** | 🟢 **CORRIGÉ ET VÉRIFIÉ EN PRODUCTION le 26/08** *(les deux colonnes nommées et rendues séparément — `acquittees_boitier` / `horodatage_boitier` / `acquittees_humain` ; `commandes_en_attente` exige les deux nuls. Vérifié à 04:26 UTC : `fix_continuous` **0 sur 510**, `raw` **2 sur 2**. La réserve qui le bloquait est levée par [TRK-051](#trk-051))* | 2026-08-12 | 2026-08-26 |
@@ -5154,7 +5154,48 @@ maintenant coûte zéro, le changer après une écriture de masse fabriquerait u
 
 **Signature** — `tracker_commands | FAILED | lastError = "ACK timeout: ACK timeout after <DURÉE>ms"`
 sur un template dont le catalogue déclare `availableVia: ['sms']`, émis avec `channel = TCP`
-**Statut : 🟠 CORRECTIF DÉPLOYÉ le 2026-08-23 (PR #110), NON EXERCÉ — 17 JOURS au 2026-09-01** · découvert 2026-08-13
+**Statut : 🟢 CORRIGÉ, DÉPLOYÉ ET PROUVÉ PAR LE COMPORTEMENT le 2026-09-01 à 10:10:09** · découvert 2026-08-13 · *anciens statuts : 🔴 NON CORRIGÉ, puis 🟠 déployé le 23/08 et NON EXERCÉ pendant 17 jours*
+
+> ### 🟢 2026-09-01 10:10:09 — PROUVÉ, après dix-sept jours d'attente
+>
+> Le propriétaire a émis un `shock_on` sur **BP-434-RD** depuis l'écran d'administration. **La
+> chaîne est prouvée sur quatre couches indépendantes**, et pas seulement par la colonne finale :
+>
+> | Couche | Ce qu'elle montre |
+> |---|---|
+> | Journal API | `Command created` · `templateId: shock_on` · `payload: shock123456` |
+> | Aiguillage | `CobanWire` · `direction: OUT` · **`source: "tracker-cmd-sms"`** |
+> | Passerelle | `sms_logs` · `direction: OUT` · `body: shock123456` · `status: queued` · identifiant passerelle rendu |
+> | Commande | **`channel = SMS`** · `status = SENT` · **aucune erreur** |
+>
+> **Le corps envoyé est `shock123456` — la forme SMS, pas l'enveloppe TCP.** C'est l'autre moitié
+> du correctif de [TRK-012](#trk-012) (« l'enveloppe suit le canal ») vérifiée sur le terrain :
+> envoyer la trame TCP par texto aurait été TRK-012 à l'envers.
+>
+> **Le contraste avec les huit tentatives précédentes ne laisse pas de place au doute :**
+>
+> | Date | `channel` | `status` | `lastError` |
+> |---|---|---|---|
+> | **01/09 10:10** | **`SMS`** | **`SENT`** | **—** |
+> | 15/08 13:26 | `TCP` | `FAILED` | ACK timeout after 15000 ms |
+> | 15/08 13:26 | `TCP` | `FAILED` | ACK timeout after 15000 ms |
+> | 14/08 21:02 ×2 · 14/08 21:01 ×2 · 12/08 06:10 ×2 | `TCP` | `FAILED` | *(idem)* |
+>
+> ⚠️ **`SENT` est l'état terminal attendu sur ce chemin, pas un envoi resté en suspens** : le canal
+> SMS n'exploite aucun accusé de remise, la commande n'a donc pas de `FAILED` à atteindre.
+> L'accusé du boîtier, lui, revient par SMS entrant — *parfois plusieurs heures après*.
+>
+> 🔵 **Deux acquis incidents, à ne pas laisser passer :**
+> 1. **le numéro est passé l'allowlist** — aucun `403` de la passerelle : confirmation
+>    indépendante que le trou de [TRK-017](#trk-017) ne s'est pas rouvert ;
+> 2. **le capteur de choc de BP-434-RD est armé**, pour la première fois du parc. C'est le signal
+>    de référence qui manque à la veille accident de [TRK-054](#trk-054), laquelle ne fait
+>    qu'*inférer* un choc à partir d'un silence.
+>
+> 🗓️ **Test daté ouvert dans la foulée** — un SMS entrant `shock ok` de ce boîtier serait **la
+> première réponse matérielle jamais reçue** par la plateforme sur cette famille de commandes, et
+> apporterait un fait neuf à [TRK-014](#trk-014) (`ackResponse` = 0 sur 513). Veille armée sur
+> `sms_logs` en entrée.
 
 > ### 🔴 2026-09-01 — dix-sept jours, et la règle des sept est dépassée de dix
 >
