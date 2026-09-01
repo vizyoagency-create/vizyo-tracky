@@ -13,7 +13,7 @@
 
 | | Lots | État |
 |---|---|---|
-| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 | ✅ **DÉPLOYÉ le 01/09 à 09:17** — `restarts=0`, marqueurs vérifiés sur le dist servi |
+| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 | ✅ **DÉPLOYÉ** — TRK-054 **prouvé en production**, TRK-053 et TRK-052 déployés mais **non exerçables aujourd'hui** |
 | ✋ **Gestes humains** — une minute chacun, aucun code | TRK-021 · TRK-051 · TRK-045 | 🔵 à déclencher |
 | 💰 **Décisions** — coût ou métier, pas une ligne de code | TRK-016 · TRK-035 · TRK-022 *(volets 2-3)* · TRK-014 | ⚪ en attente d'arbitrage |
 
@@ -86,7 +86,7 @@ d'implémentation. C'est écrit ici parce que c'est reproductible, pas parce que
 - [x] déploiement **séquentiel** — jamais `up -d --build`, ce VPS a 2 vCPU
 - [x] ⚠️ tuer l'orphelin `api-run` laissé par `docker compose run` *(2ᵉ instance d'API, crons en double)*
 - [x] marqueurs vérifiés sur l'**artefact SERVI**, en littéraux de chaîne
-- [ ] vérification **par le comportement** en production — *une seule des trois est exerçable aujourd'hui*
+- [x] vérification **par le comportement** en production — *une seule des trois était exerçable aujourd'hui, et elle est passée*
 
 ### Le déploiement, en clair
 
@@ -104,7 +104,7 @@ d'implémentation. C'est écrit ici parce que c'est reproductible, pas parce que
 | Fiche | État réel | Le compteur à surveiller |
 |---|---|---|
 | **TRK-053** | 🟠 déployé, **NON EXERCÉ — et impossible à exercer aujourd'hui** : les 9 véhicules hors service sont **tous hors ligne**, aucun n'émet plus une trame | `alertes_depuis_declaration` de la section `hors_service` : vaut **7**, **ne doit plus croître** |
-| **TRK-054** | *(en cours de vérification — le cron passe toutes les 30 min)* | `payload ? 'retractation'` sur l'alerte de HD-779-MA |
+| **TRK-054** | 🟢 **PROUVÉ le 01/09 à 09:30:00** — le tout premier passage du cron après le déploiement a rétracté l'alerte, sans intervention. Acquittement humain du 31/08 **intact** | ✅ ; ⚠️ un **second défaut** trouvé sur cette rétractation même — le motif datait la reprise sur la dernière trame (960 min) au lieu de la première d'après l'alerte (150 min). Corrigé et redéployé |
 | **TRK-052** | 🟠 déployé, **NON EXERCÉ** — attend une alarme d'état acquittée en cours d'épisode | `OVERSPEED` sur FG-669-DQ : 1 à 2 par jour, jamais 2 dans la même fenêtre de 6 h |
 | **TRK-050** *(bonus)* | 🟠 **encore sans occasion** — l'API a redémarré à 09:17:41 mais `user_sessions` rendait **0 session ouverte** | 3ᵉ redémarrage d'affilée sans personne à déconnecter |
 
@@ -141,6 +141,30 @@ invisibles, pas pour être exécutés automatiquement.
 | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | le rôle applicatif est **superutilisateur ET propriétaire** | Séparer les rôles touche une **garde de sécurité** et exige une fenêtre de maintenance. *Le témoin, lui, tient : 10 journées pleines sans disparition, 4 déclencheurs armés.* |
 | [TRK-022](./REFERENCE-ERREURS.md#trk-022) *(volet 2)* | **1 véhicule sur 44** peut alerter en survitesse | L'alarme est un **réglage embarqué**, configuré sur un seul boîtier. Soit on la provisionne sur tout le parc *(dépend de TRK-021)*, soit on écrit une **règle serveur** sur la vitesse des positions reçues. **Choix métier.** |
 | [TRK-014](./REFERENCE-ERREURS.md#trk-014) | `ackResponse` = **0 sur 513** commandes | Établir si le Coban GPS403D **accuse ce type de commande tout court**. Ce n'est pas un défaut logiciel — c'est une question au matériel. |
+
+---
+
+## 🔁 Le troisième défaut, trouvé en vérifiant le correctif lui-même
+
+La rétractation de HD-779-MA est tombée à 09:30:00 — et son motif était faux :
+
+> « le boîtier a repris l'émission le **01/09 à 11:29**, soit **960 min** après cette alerte »
+
+Or il a repris le **31/08 à 20:00**, après **150 minutes**. `lastSeenAt` avance à chaque trame :
+il désigne la **dernière**, jamais la première d'après l'alerte.
+
+**Le chiffre faux transformait un trou de 2 h 30 en un silence de seize heures** — et aurait fait
+chercher pourquoi une alerte d'accident était restée seize heures sans suite.
+
+> 🔑 **Le correctif reproduisait le défaut qu'il corrigeait.** TRK-054 est de la famille
+> « mensonger » — *affirme une cause fausse, envoie enquêter au mauvais endroit*. Son propre
+> message de rétractation en était un. *On ne trouve ce genre de chose qu'en regardant ce que le
+> correctif a réellement écrit, pas en vérifiant qu'il s'est exécuté.*
+
+Corrigé : la reprise est lue sur la **première position postérieure** à l'alerte ; à défaut, le
+motif dit que l'heure **n'est pas mesurable** au lieu d'en inventer une, et le compteur vaut
+`null` plutôt qu'un nombre faux. **Trois passes de vérification, trois défauts trouvés** — deux
+avant le déploiement, un après.
 
 ---
 
