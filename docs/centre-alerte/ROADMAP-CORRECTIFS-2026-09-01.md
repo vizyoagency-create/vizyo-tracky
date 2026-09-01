@@ -13,7 +13,7 @@
 
 | | Lots | État |
 |---|---|---|
-| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 · TRK-055 · TRK-056 · **TRK-057** | ✅ **SIX correctifs** — les trois derniers nés de la vérification des précédents, aucun d'une nouvelle collecte |
+| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 · TRK-055 · TRK-056 · TRK-057 · **TRK-058** | ✅ **SEPT correctifs** — les quatre derniers nés de la vérification des précédents, aucun d'une nouvelle collecte |
 | ✋ **Gestes humains** | ~~TRK-021~~ ✅ · ~~TRK-051~~ ✅ · ~~TRK-045~~ 🔵 requalifié | 🟢 **les trois traités** — et deux d'entre eux ont produit une fiche neuve |
 | 💰 **Décisions** — coût ou métier, pas une ligne de code | TRK-016 · TRK-035 · TRK-022 *(volets 2-3)* · TRK-014 | ⚪ en attente d'arbitrage |
 
@@ -295,6 +295,38 @@ Un test verrouille ce piège. Les overrides manuels sont épargnés *(0 actif au
 `desiredIntervalFor`**. 🔵 Trois tests existants rendus robustes : ils lisaient
 `findMany.mock.calls[0]` et cassaient au premier appel ajouté en amont, *pour une raison sans
 rapport avec leur sujet*.
+
+---
+
+## 🔎 Quatrième lot — TRK-058, et la leçon qui vaut plus que le correctif
+
+**Demandé : « corriger les 6 restants ». Résultat : ils n'étaient ni 6, ni en faute.**
+
+Ils étaient **4** au moment de les regarder — la liste se réécrit en continu, exactement ce que le
+§4 bis de la procédure interdit de lire comme un inventaire. Et mesurés sur **1 h**, trames de
+cadence seules :
+
+| Véhicule | Cible | Médiane réelle | Verdict |
+|---|---|---|---|
+| **GS-909-NX** | 99 s | **98,9 s** | ✅ sur sa cible — sa fenêtre de 12 disait **25 s** |
+| **GR-294-VW** | 20 s | **19,8 s** | ✅ sur sa cible |
+| HD-443-QY | 99 s | 12,0 s | 🔵 contact coupé **quelques minutes plus tôt** — la fenêtre porte encore le régime « en mouvement » |
+| GA-490-SJ | 20 s | 9,2 s | 🔵 **à 54 km/h** — émettre plus vite que demandé EN MOUVEMENT est explicitement toléré depuis TRK-008 |
+
+> 🔑 **« Hors bande » n'est pas « en faute ».** `fixCommandFailing` vaut **false** sur les 44
+> boîtiers. Mon compte de « 6 boîtiers hors bande » comparait deux colonnes **sans lire l'état ni
+> la règle de tolérance** — il ne décrivait rien. *Publier un compte, c'est publier la définition
+> qui va avec ; sans elle, un nombre alarmant se fabrique tout seul.*
+
+### Le correctif quand même livré
+
+Trame brute de GS-909-NX : `acc off` à 14:53:31.878, `acc on` à 14:53:32.480 — **même horodatage
+boîtier, même position**. Deux événements, pas deux points de trajet. Ils entraient dans la fenêtre.
+
+⚠️ **Ampleur chiffrée AVANT de corriger, et elle contredit l'intuition** : **42 trames sur 3 447**
+(1,2 %). Plus souvent courtes (57 % contre 26 %), mais **elles n'expliquent pas les salves**.
+*Correction de précision, pas de cause* — écrit dans la fiche pour qu'un lecteur futur ne croie pas
+avoir trouvé l'explication.
 
 ---
 
