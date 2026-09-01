@@ -22,6 +22,8 @@ const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const ALERTE_A = new Date('2026-08-31T17:30:00.000Z');
 /** 31/08 20:00 UTC — la reprise réelle, 150 min plus tard. */
 const REPRISE_A = new Date('2026-08-31T20:00:00.000Z');
+/** 01/09 09:30 UTC — la DERNIERE trame au moment de la rétractation, 960 min après l'alerte. */
+const DERNIERE_TRAME_A = new Date('2026-09-01T09:30:00.000Z');
 
 describe('DetectionAccidentService — rétractation (TRK-054)', () => {
   let service: DetectionAccidentService;
@@ -72,6 +74,7 @@ describe('DetectionAccidentService — rétractation (TRK-054)', () => {
       lastBatteryPercent: 100,
       vehicle: { plate: 'HD-779-MA' },
     });
+    prisma.position.findFirst.mockResolvedValue({ timestamp: REPRISE_A });
 
     const n = await service.retracterLesRevenus(new Date('2026-08-31T20:15:00.000Z'));
 
@@ -83,10 +86,11 @@ describe('DetectionAccidentService — rétractation (TRK-054)', () => {
   it('écrit le MOTIF, la reprise et le silence réel — une rétractation muette est pire que rien', async () => {
     prisma.alert.findMany.mockResolvedValue([alerteOuverte()]);
     prisma.tracker.findUnique.mockResolvedValue({
-      lastSeenAt: REPRISE_A,
+      lastSeenAt: DERNIERE_TRAME_A,
       lastBatteryPercent: 100,
       vehicle: { plate: 'HD-779-MA' },
     });
+    prisma.position.findFirst.mockResolvedValue({ timestamp: REPRISE_A });
 
     await service.retracterLesRevenus();
 
@@ -94,9 +98,58 @@ describe('DetectionAccidentService — rétractation (TRK-054)', () => {
     expect(data.payload.retractation.silenceApresAlerteMin).toBe(150);
     expect(data.payload.retractation.batteriePct).toBe(100);
     expect(data.payload.retractation.repriseA).toBe(REPRISE_A.toISOString());
+    expect(data.payload.retractation.repriseMesuree).toBe(true);
     expect(String(data.payload.retractation.motif)).toContain('a repris');
     // Le payload d'origine n'est pas écrasé : la vitesse constatée reste lisible.
     expect(data.payload.derniereVitesseKmh).toBe(113.268);
+  });
+
+  // 🔴 LE DEFAUT TROUVE SUR LA TOUTE PREMIERE RETRACTATION REELLE, le 01/09.
+  //
+  // Le motif annoncait « a repris l'emission le 01/09 a 11:29, soit 960 min apres cette
+  // alerte » — alors que HD-779-MA avait repris le 31/08 a 20:00, apres 150 minutes.
+  // `lastSeenAt` avance a chaque trame : il designe la DERNIERE, jamais la premiere
+  // d'apres l'alerte. Le chiffre faux transformait un trou de 2 h 30 en seize heures.
+  it('date la reprise sur la PREMIERE position postérieure, pas sur la dernière trame', async () => {
+    prisma.alert.findMany.mockResolvedValue([alerteOuverte()]);
+    prisma.tracker.findUnique.mockResolvedValue({
+      // Le boitier emet encore aujourd hui : lastSeenAt est 16 h apres l'alerte.
+      lastSeenAt: DERNIERE_TRAME_A,
+      lastBatteryPercent: 100,
+      vehicle: { plate: 'HD-779-MA' },
+    });
+    // Mais sa premiere position d'apres l'alerte date de 150 min apres elle.
+    prisma.position.findFirst.mockResolvedValue({ timestamp: REPRISE_A });
+
+    await service.retracterLesRevenus();
+
+    const r = prisma.alert.update.mock.calls[0][0].data.payload.retractation;
+    expect(r.silenceApresAlerteMin).toBe(150);
+    expect(r.silenceApresAlerteMin).not.toBe(960);
+    expect(String(r.motif)).toContain('150 min');
+    // Et la requete cherche bien la PREMIERE, par ordre croissant.
+    const appel = prisma.position.findFirst.mock.calls[0][0];
+    expect(appel.orderBy).toEqual({ timestamp: 'asc' });
+    expect(appel.where.timestamp.gt).toEqual(ALERTE_A);
+  });
+
+  // Sans position posterieure, on ne PRETEND PAS connaitre l'heure de reprise.
+  it('n invente pas une heure de reprise quand aucune position ne la mesure', async () => {
+    prisma.alert.findMany.mockResolvedValue([alerteOuverte()]);
+    prisma.tracker.findUnique.mockResolvedValue({
+      lastSeenAt: DERNIERE_TRAME_A,
+      lastBatteryPercent: 100,
+      vehicle: { plate: 'HD-779-MA' },
+    });
+    prisma.position.findFirst.mockResolvedValue(null);
+
+    await service.retracterLesRevenus();
+
+    const r = prisma.alert.update.mock.calls[0][0].data.payload.retractation;
+    expect(r.repriseMesuree).toBe(false);
+    expect(r.silenceApresAlerteMin).toBeNull();
+    expect(String(r.motif)).toContain("n'est pas mesurable");
+    expect(String(r.motif)).toContain('aucun choc');
   });
 
   it('referme SANS attribuer l acquittement à un humain — c est le système qui se dédit', async () => {

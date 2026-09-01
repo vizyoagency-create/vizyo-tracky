@@ -161,15 +161,46 @@ export class DetectionAccidentService {
       // normal, et c'est celui qu'il ne faut surtout pas refermer.
       if (!t?.lastSeenAt || t.lastSeenAt <= a.createdAt) continue;
 
-      const repriseA = t.lastSeenAt;
+      /**
+       * ⚠️ `lastSeenAt` DIT QUE LE BOÎTIER ÉMET, PAS QUAND IL A REPRIS.
+       *
+       * Défaut constaté sur la toute première rétractation réelle, le 01/09 : le motif
+       * annonçait « a repris l'émission le 01/09 à 11:29 — soit 960 min après cette
+       * alerte », alors que HD-779-MA avait en réalité repris le **31/08 à 20:00**, après
+       * 150 minutes de silence. `lastSeenAt` avance à chaque trame : il désigne la
+       * DERNIÈRE, jamais la première d'après l'alerte.
+       *
+       * Le chiffre faux n'était pas anodin — il transformait un trou de 2 h 30 en un
+       * silence de seize heures, et aurait fait chercher pourquoi une alerte d'accident
+       * était restée seize heures sans suite. *Un motif de rétractation qui affirme une
+       * heure fausse est de la famille « mensonger » : il envoie enquêter au mauvais
+       * endroit, et c'est pire que de ne rien dire.*
+       *
+       * On va donc chercher la PREMIÈRE position postérieure à l'alerte — une requête
+       * indexée, sur un chemin qui ne s'emprunte qu'une fois par rétractation. À défaut
+       * (position purgée, boîtier revenu sans fix), on retombe sur `lastSeenAt` et le
+       * message dit alors ce qu'il sait, sans inventer de reprise.
+       */
+      const premiereApres = await this.prisma.position.findFirst({
+        where: { trackerId: a.trackerId!, timestamp: { gt: a.createdAt } },
+        orderBy: { timestamp: 'asc' },
+        select: { timestamp: true },
+      });
+      const repriseA = premiereApres?.timestamp ?? t.lastSeenAt;
+      const repriseMesuree = premiereApres != null;
       const silenceMin = Math.round((repriseA.getTime() - a.createdAt.getTime()) / 60_000);
       const batterie = t.lastBatteryPercent;
-      const motif =
-        `Rétractée automatiquement : le boîtier a repris l'émission le ` +
-        `${repriseA.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}, ` +
-        `soit ${silenceMin} min après cette alerte` +
-        (batterie != null ? `, batterie à ${batterie} %` : '') +
-        `. Aucun choc confirmé — un boîtier arraché ou écrasé ne revient pas.`;
+      const heure = (d: Date) => d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris' });
+      const motif = repriseMesuree
+        ? `Rétractée automatiquement : le boîtier a repris l'émission le ${heure(repriseA)}, ` +
+          `soit ${silenceMin} min après cette alerte` +
+          (batterie != null ? `, batterie à ${batterie} %` : '') +
+          `. Aucun choc confirmé — un boîtier arraché ou écrasé ne revient pas.`
+        : `Rétractée automatiquement : le boîtier émet à nouveau, dernière trame le ` +
+          `${heure(repriseA)}` +
+          (batterie != null ? `, batterie à ${batterie} %` : '') +
+          `. L'heure exacte de la reprise n'est pas mesurable (aucune position postérieure ` +
+          `à l'alerte), mais aucun choc n'est confirmé — un boîtier arraché ou écrasé ne revient pas.`;
 
       const maj = await this.prisma.alert.update({
         where: { id: a.id },
@@ -189,7 +220,8 @@ export class DetectionAccidentService {
             retractation: {
               motif,
               repriseA: repriseA.toISOString(),
-              silenceApresAlerteMin: silenceMin,
+              repriseMesuree,
+              silenceApresAlerteMin: repriseMesuree ? silenceMin : null,
               batteriePct: batterie ?? null,
               par: 'detection-accident/retractation',
             },
@@ -200,7 +232,8 @@ export class DetectionAccidentService {
 
       this.gateway.broadcastAlertAcknowledged(maj);
       this.logger.warn(
-        `[ACCIDENT] rétractation ${t.vehicle?.plate ?? a.trackerId} — reprise après ${silenceMin} min` +
+        `[ACCIDENT] rétractation ${t.vehicle?.plate ?? a.trackerId} — ` +
+          (repriseMesuree ? `reprise après ${silenceMin} min` : `reprise non mesurable`) +
           (batterie != null ? `, batterie ${batterie} %` : ''),
       );
       retractees += 1;
