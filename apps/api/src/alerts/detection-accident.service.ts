@@ -87,16 +87,35 @@ export class DetectionAccidentService {
    * sans commune mesure avec celui d'un vrai accident annoncé quatre heures trop tard, et la
    * notification est de toute façon restreinte aux super-administrateurs.
    *
-   * ⚠️ ON REFERME, ON N'EFFACE PAS. `acknowledgedAt` est posé — c'est la seule clôture que
-   * porte le modèle — mais `acknowledgedBy` reste NUL : personne n'a acquitté, c'est le
-   * système qui se dédit, et la distinction doit rester lisible. Le motif est écrit dans
-   * `payload.retractation` avec l'heure du retour et la durée réelle du silence. *Une alerte
-   * qu'on retire sans dire pourquoi apprend à l'exploitant à ne plus les croire.*
+   * ⚠️ ON ANNOTE TOUJOURS, ON NE REFERME QUE CE QUI EST OUVERT. Le motif part dans
+   * `payload.retractation` — heure du retour, durée réelle du silence, batterie — même sur
+   * une alerte qu'un exploitant a déjà acquittée : son geste reste intact, l'alerte gagne
+   * seulement le fait qu'elle était fausse. Quand la clôture revient au système,
+   * `acknowledgedAt` est posé mais `acknowledgedBy` reste NUL : personne n'a acquitté, et la
+   * distinction doit rester lisible. *Une alerte qu'on retire sans dire pourquoi apprend à
+   * l'exploitant à ne plus les croire.*
    */
   async retracterLesRevenus(maintenant = new Date()): Promise<number> {
+    /**
+     * ⚠️ ON NE FILTRE PAS SUR `acknowledgedAt`, ET C'EST LE CŒUR DU CORRECTIF.
+     *
+     * La première version de cette méthode ne reprenait que les alertes NON acquittées.
+     * Elle aurait raté le cas même qui l'a fait écrire : l'alerte de HD-779-MA avait été
+     * **acquittée par un exploitant à 19:15**, quarante-cinq minutes avant que le boîtier
+     * ne revienne. Filtrer dessus, c'était livrer un correctif qui ne pouvait pas être
+     * exercé sur son propre cas de référence.
+     *
+     * Et le fond compte plus que l'anecdote : une fausse alerte acquittée devient
+     * **indiscernable d'un vrai accident traité**. Le registre garde « accident critique,
+     * acquitté par untel » — l'information qu'il n'y avait jamais eu de choc est perdue,
+     * définitivement. *Acquitter dit qui a regardé ; se rétracter dit ce qui était vrai.
+     * Les deux doivent coexister.*
+     *
+     * Donc : on ANNOTE toujours, et on ne referme que ce qui est encore ouvert.
+     */
     const ouvertes = await this.prisma.alert.findMany({
-      where: { type: AlertType.ACCIDENT, acknowledgedAt: null, trackerId: { not: null } },
-      select: { id: true, trackerId: true, createdAt: true, payload: true },
+      where: { type: AlertType.ACCIDENT, trackerId: { not: null } },
+      select: { id: true, trackerId: true, createdAt: true, acknowledgedAt: true, payload: true },
     });
     if (ouvertes.length === 0) return 0;
 
@@ -126,6 +145,14 @@ export class DetectionAccidentService {
        */
       if (ancien.detection !== 'telemetrie') continue;
 
+      /**
+       * Idempotence. Elle reposait sur `acknowledgedAt: null` ; puisque la requête ne
+       * filtre plus dessus, c'est la PRÉSENCE DE LA RÉTRACTATION qui l'assure. Une alerte
+       * déjà annotée ne repasse jamais — sans quoi le cron réécrirait le même motif toutes
+       * les trente minutes, indéfiniment.
+       */
+      if (ancien.retractation != null) continue;
+
       const t = await this.prisma.tracker.findUnique({
         where: { id: a.trackerId! },
         select: { lastSeenAt: true, lastBatteryPercent: true, vehicle: { select: { plate: true } } },
@@ -147,9 +174,16 @@ export class DetectionAccidentService {
       const maj = await this.prisma.alert.update({
         where: { id: a.id },
         data: {
-          // Seule clôture que porte le modèle. `acknowledgedBy` reste NUL : c'est le
-          // système qui se dédit, pas un exploitant qui a traité.
-          acknowledgedAt: maintenant,
+          /**
+           * On ne referme QUE ce qui est encore ouvert. Si un exploitant a déjà acquitté,
+           * son horodatage et son nom restent intacts — c'est son geste, il a eu lieu, et
+           * l'écraser réécrirait l'histoire. L'alerte gagne seulement le fait qu'elle
+           * était fausse.
+           *
+           * `acknowledgedBy` n'est jamais renseigné ici : quand c'est le système qui
+           * referme, personne n'a acquitté, et la distinction doit rester lisible.
+           */
+          ...(a.acknowledgedAt == null ? { acknowledgedAt: maintenant } : {}),
           payload: {
             ...ancien,
             retractation: {

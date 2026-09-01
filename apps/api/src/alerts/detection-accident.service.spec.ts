@@ -169,13 +169,56 @@ describe('DetectionAccidentService — rétractation (TRK-054)', () => {
     expect(prisma.alert.update).not.toHaveBeenCalled();
   });
 
-  // Idempotence : la requête ne ramène que les alertes NON acquittées, donc une alerte déjà
-  // rétractée ne repasse pas au tick suivant. Le test verrouille le `where`, pas le résultat.
-  it('ne repasse jamais sur une alerte déjà refermée', async () => {
+  // ── Le cas REEL, et il a failli passer a travers ────────────────────────────────────
+  //
+  // L'alerte de HD-779-MA avait ete ACQUITTEE par un exploitant a 19:15, quarante-cinq
+  // minutes AVANT que le boitier ne revienne. Une retractation qui ne reprendrait que les
+  // alertes non acquittees n'aurait jamais pu s'exercer sur son propre cas de reference —
+  // et surtout, une fausse alerte acquittee reste indiscernable d'un vrai accident traite.
+  it('annote une alerte DEJA ACQUITTEE sans toucher au geste de l exploitant', async () => {
+    const acquitteeA = new Date('2026-08-31T19:15:38.593Z');
+    prisma.alert.findMany.mockResolvedValue([alerteOuverte({ acknowledgedAt: acquitteeA })]);
+    prisma.tracker.findUnique.mockResolvedValue({
+      lastSeenAt: REPRISE_A,
+      lastBatteryPercent: 100,
+      vehicle: { plate: 'HD-779-MA' },
+    });
+
+    const n = await service.retracterLesRevenus();
+
+    expect(n).toBe(1);
+    const data = prisma.alert.update.mock.calls[0][0].data;
+    // L'annotation est ecrite...
+    expect(data.payload.retractation).toBeDefined();
+    // ...et l'acquittement humain n'est PAS reecrit.
+    expect(data.acknowledgedAt).toBeUndefined();
+  });
+
+  // Idempotence : elle ne repose plus sur `acknowledgedAt` (la requete ne filtre plus
+  // dessus) mais sur la PRESENCE de la retractation. Sans elle, le cron reecrirait le meme
+  // motif toutes les trente minutes, indefiniment.
+  it('ne repasse jamais sur une alerte déjà rétractée', async () => {
+    prisma.alert.findMany.mockResolvedValue([
+      alerteOuverte({
+        payload: { detection: 'telemetrie', retractation: { motif: 'deja fait' } },
+      }),
+    ]);
+    prisma.tracker.findUnique.mockResolvedValue({
+      lastSeenAt: REPRISE_A,
+      lastBatteryPercent: 100,
+      vehicle: { plate: 'HD-779-MA' },
+    });
+
+    expect(await service.retracterLesRevenus()).toBe(0);
+    expect(prisma.alert.update).not.toHaveBeenCalled();
+    expect(prisma.tracker.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('reprend TOUTES les alertes accident, acquittées ou non', async () => {
     await service.retracterLesRevenus();
     const where = prisma.alert.findMany.mock.calls[0][0].where;
-    expect(where.acknowledgedAt).toBeNull();
     expect(where.type).toBe('ACCIDENT');
+    expect(where).not.toHaveProperty('acknowledgedAt');
   });
 
   it('le balayage rétracte AVANT d examiner — ce qui se referme passe avant ce qui s ouvre', async () => {
