@@ -38,7 +38,9 @@ describe('PowerCutRecheckService (TRK-040)', () => {
     powerLossSuspectBattery: 100,
     lastBatteryPercent: 83,
     lastBatteryAt: ilYA(5),
-    vehicle: { id: 'v1', plate: 'DZ-034-CA', fleetId: 'f1' },
+    // TRK-053 — Prisma rend TOUJOURS la colonne. Le cron charge le vehicule ENTIER
+    // (`include: { vehicle: true }`), donc la garde du service en dispose sans requete.
+    vehicle: { id: 'v1', plate: 'DZ-034-CA', fleetId: 'f1', outOfServiceReason: null },
     ...over,
   });
 

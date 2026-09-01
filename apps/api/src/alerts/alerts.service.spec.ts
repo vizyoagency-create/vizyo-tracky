@@ -22,10 +22,24 @@ const tracker = {
   lastKnownIgnition: null as boolean | null,
   powerLossSuspectAt: null as Date | null,
   powerLossSuspectBattery: null as number | null,
-  vehicle: { id: VEHICLE_ID, plate: 'AB-123', fleetId: FLEET_ID, fleet: { id: FLEET_ID } },
+  // TRK-053 — Prisma rend TOUJOURS `outOfServiceReason`. Un mock qui l'omet decrit un
+  // vehicule qui n'existe nulle part, et laisserait passer la garde sans la tester.
+  vehicle: {
+    id: VEHICLE_ID,
+    plate: 'AB-123',
+    fleetId: FLEET_ID,
+    outOfServiceReason: null as string | null,
+    fleet: { id: FLEET_ID },
+  },
 };
 
 const trackerNoVehicle = { ...tracker, vehicle: null };
+
+/** TRK-053 — le meme boitier, sur un vehicule declare hors service. */
+const trackerHorsService = (motif = 'TRACKER_UNPLUGGED') => ({
+  ...tracker,
+  vehicle: { ...tracker.vehicle, outOfServiceReason: motif },
+});
 
 function makeFrame(alarm: string, extra: Partial<CobanPositionFrame> = {}): CobanPositionFrame {
   return {
@@ -151,6 +165,140 @@ describe('AlertsService', () => {
         data: expect.objectContaining({ type: 'LOW_BATTERY', severity: 'WARNING' }),
       }),
     );
+  });
+
+  // ── TRK-053 — un vehicule declare HORS SERVICE ne produit plus d'alarme ───────────
+  //
+  // La fiche vehicule promet « alertes suspendues pour ce vehicule ». Mesure du 31/08 :
+  // 7 des 8 alertes LOW_BATTERY de la journee ont ete ecrites APRES la declaration.
+
+  it('TRK-053 : ne cree AUCUNE alerte sur un vehicule hors service', async () => {
+    const result = await service.createFromCobanFrame(
+      makeFrame('low_battery'),
+      trackerHorsService() as any,
+    );
+    expect(result).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    expect(gateway.broadcastAlert).not.toHaveBeenCalled();
+  });
+
+  it('TRK-053 : la garde vaut pour les TROIS motifs, pas seulement le boitier debranche', async () => {
+    for (const motif of ['TRACKER_UNPLUGGED', 'ACCIDENT', 'IMMOBILIZED']) {
+      jest.clearAllMocks();
+      const result = await service.createFromCobanFrame(
+        makeFrame('power_cut', { batteryPercent: 20 } as any),
+        trackerHorsService(motif) as any,
+      );
+      expect(result).toBeNull();
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+    }
+  });
+
+  // ⚠️ LE CONTREPOINT, et c'est lui qui empeche de « corriger » en eteignant le detecteur.
+  it('TRK-053 : le meme vehicule EN SERVICE alerte toujours', async () => {
+    const result = await service.createFromCobanFrame(makeFrame('low_battery'), tracker as any);
+    expect(result).not.toBeNull();
+    expect(prisma.alert.create).toHaveBeenCalled();
+  });
+
+  // ⚠️ ON SUSPEND L'ALERTE, JAMAIS LA CONNAISSANCE. La fiche vehicule doit continuer de
+  // dire la verite du moment meme sur un vehicule sorti du parc — sinon on remplace un
+  // bruit par une cecite.
+  it('TRK-053 : la note d alimentation reste ecrite sur un vehicule hors service', async () => {
+    await service.createFromCobanFrame(
+      makeFrame('power_cut', { batteryPercent: 20 } as any),
+      trackerHorsService() as any,
+    );
+    expect(prisma.tracker.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lastPowerNotice: expect.any(String) }),
+      }),
+    );
+  });
+
+  // ── TRK-052 — l'acquittement ne doit pas RE-ARMER une alarme d'ETAT ───────────────
+  //
+  // Mesure du 31/08 : deux doublons sur deux, et ce sont exactement les deux vehicules
+  // dont la premiere alerte a ete acquittee avant la fin de la condition physique —
+  // l'un 19 SECONDES apres sa creation, alors que sa batterie mettrait deux heures a
+  // se vider.
+
+  it('TRK-052 : LOW_BATTERY deja ouverte ET ACQUITTEE ne rouvre pas', async () => {
+    prisma.alert.findFirst.mockResolvedValue(alertRecord({ acknowledgedAt: new Date() }));
+    const result = await service.createFromCobanFrame(makeFrame('low_battery'), tracker as any);
+    expect(result).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    // La requete de deduplication ne doit PLUS filtrer sur l'acquittement.
+    const where = prisma.alert.findFirst.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('acknowledgedAt');
+  });
+
+  // ⚠️ LE CONTREPOINT QUI COMPTE LE PLUS DE TOUTE LA PASSE.
+  //
+  // Retirer `acknowledgedAt: null` pour TOUS les types muselerait le bouton de detresse :
+  // un conducteur appuie sur SOS, l'exploitant acquitte, le conducteur rappuie vingt
+  // minutes plus tard pour une AUTRE urgence — et plus rien ne part pendant six heures.
+  // Une alarme d'ETAT se repete parce que l'etat dure ; une alarme PONCTUELLE se repete
+  // parce qu'il se passe quelque chose de neuf.
+  it('TRK-052 : un SOS ACQUITTE rouvre bien — la garde ne touche pas au bouton de detresse', async () => {
+    // La deduplication cherche une alerte NON acquittee : il n'y en a pas.
+    prisma.alert.findFirst.mockResolvedValue(null);
+    const result = await service.createFromCobanFrame(makeFrame('sos'), tracker as any);
+    expect(result).not.toBeNull();
+    expect(prisma.alert.create).toHaveBeenCalled();
+    // Et pour SOS, le filtre sur l'acquittement est TOUJOURS present.
+    const where = prisma.alert.findFirst.mock.calls[0][0].where;
+    expect(where).toHaveProperty('acknowledgedAt', null);
+  });
+
+  it('TRK-052 : un SOS deja ouvert et NON acquitte reste deduplique', async () => {
+    prisma.alert.findFirst.mockResolvedValue(alertRecord());
+    const result = await service.createFromCobanFrame(makeFrame('sos'), tracker as any);
+    expect(result).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+  });
+
+  // ── TRK-053 — LE SECOND CHEMIN : la coupure confirmee par le cron de reexamen ─────
+  //
+  // Ce depot a deja paye deux fois le « deuxieme chemin invisible » (TRK-050, TRK-031).
+  // Une garde posee sur un seul appelant n'est pas une garde.
+
+  const vehiculeEnService = { id: VEHICLE_ID, plate: 'AB-123', fleetId: FLEET_ID, outOfServiceReason: null };
+  const trackerNu = { id: TRACKER_ID, imei: '111111111111111', lastLat: 33.5, lastLng: -7.5 };
+  const suspicion = { suspectAt: new Date(), suspectBattery: 100, currentBattery: 83 };
+
+  it('TRK-053 (2e chemin) : aucune coupure confirmee sur un vehicule hors service', async () => {
+    const r = await service.createPowerCutConfirmedAlert(
+      trackerNu as any,
+      { ...vehiculeEnService, outOfServiceReason: 'TRACKER_UNPLUGGED' } as any,
+      suspicion,
+    );
+    expect(r).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+  });
+
+  it('TRK-053 (2e chemin) : le meme vehicule EN SERVICE alerte toujours', async () => {
+    const r = await service.createPowerCutConfirmedAlert(
+      trackerNu as any,
+      vehiculeEnService as any,
+      suspicion,
+    );
+    expect(r).not.toBeNull();
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ type: 'POWER_CUT' }) }),
+    );
+  });
+
+  it('TRK-052 (2e chemin) : une POWER_CUT ACQUITTEE ne rouvre pas non plus', async () => {
+    prisma.alert.findFirst.mockResolvedValue(alertRecord({ acknowledgedAt: new Date() }));
+    const r = await service.createPowerCutConfirmedAlert(
+      trackerNu as any,
+      vehiculeEnService as any,
+      suspicion,
+    );
+    expect(r).toBeNull();
+    const where = prisma.alert.findFirst.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('acknowledgedAt');
   });
 
   // 5. list: multi-tenant

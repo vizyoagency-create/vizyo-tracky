@@ -5,7 +5,14 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
-import type { Alert, Fleet, SurveillanceProfile, Tracker, Vehicle } from '@prisma/client';
+import type {
+  Alert,
+  Fleet,
+  SurveillanceProfile,
+  Tracker,
+  Vehicle,
+  VehicleOutOfServiceReason,
+} from '@prisma/client';
 import {
   AlertSeverity,
   AlertType,
@@ -35,6 +42,40 @@ interface RequestedBy {
  * court pour qu'un épisode du lendemain soit bien un nouvel épisode.
  */
 const DEDUP_ALARME_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * TRK-052 — les alarmes qui décrivent un ÉTAT QUI DURE, par opposition à un ÉVÉNEMENT.
+ *
+ * Le boîtier répète son alarme dans chaque trame tant que la condition physique tient :
+ * la batterie reste basse, l'alimentation reste coupée, le véhicule reste au-dessus du
+ * seuil. Une deuxième ligne n'apporte aucune information neuve — même acquittée, la
+ * première décrit toujours le même épisode. Pour ces types-là, la fenêtre de six heures
+ * décide seule, et l'acquittement ne la lève pas.
+ *
+ * ⚠️ TOUT CE QUI N'EST PAS DANS CET ENSEMBLE GARDE LE COMPORTEMENT D'ORIGINE — un
+ * acquittement rouvre. C'est délibéré et c'est le sens de la sécurité : `SOS`,
+ * `ACCIDENT`, `COLLISION`, `TOW`, `TAMPER`, `ILLEGAL_IGNITION`, les déclenchements de
+ * surveillance et les événements de conduite sont PONCTUELS. Leur répétition signale un
+ * fait NEUF, et un exploitant qui vient d'acquitter doit pouvoir en être averti à
+ * nouveau. *Le défaut à corriger est le bruit d'une batterie ; il ne doit rien coûter au
+ * bouton de détresse.*
+ *
+ * ⚠️ Un type d'alerte ajouté plus tard tombe donc par défaut du côté PONCTUEL, c'est-à-dire
+ * du côté qui alerte le plus. **Fail-open vers le signal** — même doctrine que TRK-047 :
+ * en cas de doute, on préfère une alerte de trop à un silence.
+ */
+const ALARMES_D_ETAT: ReadonlySet<AlertType> = new Set<AlertType>([
+  AlertType.POWER_CUT,
+  AlertType.LOW_BATTERY,
+  AlertType.OVERSPEED,
+  AlertType.GEOFENCE_EXIT,
+  AlertType.MOVEMENT_IDLE,
+  AlertType.BONNET,
+  AlertType.DOOR,
+  AlertType.IDLE_TIME,
+  AlertType.GPS_LOST,
+  AlertType.FATIGUE,
+]);
 
 /**
  * Depuis COMBIEN DE TEMPS une coupure moteur commandée explique-t-elle encore une perte
@@ -215,6 +256,40 @@ export class AlertsService {
     }
 
     /**
+     * ── TRK-053 — UN VÉHICULE DÉCLARÉ HORS SERVICE NE PRODUIT PLUS D'ALARME ────────
+     *
+     * La fiche véhicule promet, en toutes lettres : « analyse des trajets et ALERTES
+     * SUSPENDUES pour ce véhicule » et « il sort du périmètre des traitements et cesse
+     * de produire des alertes qui n'appellent aucune action ».
+     *
+     * Tous les détecteurs honorent `outOfServiceReason` — veille accident, intégrité
+     * GPS, ordonnanceur de surveillance, automatisation des trajets, rappels de
+     * maintenance, réservations, indicateurs, optimiseur. CE CHEMIN-CI était le seul à
+     * l'ignorer, et c'est celui qui parle le plus. Mesuré le 31/08 : six véhicules
+     * rendus en fin de LLD, boîtiers déposés, état posé à 11:36-11:39 — et **7 des 8
+     * alertes LOW_BATTERY de la journée ont été écrites APRÈS la déclaration**.
+     *
+     * ⚠️ POURQUOI LA GARDE EST ICI, ET PAS EN TÊTE DE MÉTHODE. Tout ce qui précède —
+     * l'analyse d'alimentation, `lastPowerNotice`, l'ouverture ou la fermeture du
+     * soupçon TRK-040 — doit continuer de s'exécuter. On suspend l'ALERTE et la
+     * NOTIFICATION, jamais la CONNAISSANCE : la fiche véhicule doit dire la vérité du
+     * moment même sur un véhicule sorti du parc. C'est la règle déjà tranchée pour les
+     * coupures d'alimentation — « se taire sans laisser de trace remplacerait un bruit
+     * par une cécité ».
+     *
+     * Le prix est deux requêtes inutiles (profil de surveillance, dernière commande
+     * moteur) sur un véhicule hors service. C'est délibéré, et c'est bon marché : ces
+     * véhicules ne produisent presque plus de trames, par construction.
+     */
+    if (tracker.vehicle.outOfServiceReason != null) {
+      this.logger.debug(
+        `Alerte ${mapping.type} supprimee pour ${tracker.vehicle.plate} — vehicule hors service ` +
+          `(${tracker.vehicle.outOfServiceReason}).`,
+      );
+      return null;
+    }
+
+    /**
      * ── UNE ALERTE PAR ÉPISODE, PAS PAR TRAME ─────────────────────────────────────
      *
      * Le boîtier répète son alarme dans chaque trame tant que l'état dure : à 20 s
@@ -222,14 +297,33 @@ export class AlertsService {
      * cette déduplication ; les alarmes ne l'avaient pas. C'est cette asymétrie qui a
      * produit le déluge, pas le boîtier.
      *
-     * On rouvre seulement si la précédente a été acquittée — l'exploitant a alors
-     * signifié qu'il avait traité l'épisode.
+     * ── TRK-052 — ET L'ACQUITTEMENT NE DOIT PAS RÉ-ARMER UNE ALARME D'ÉTAT ────────
+     *
+     * La condition d'origine portait `acknowledgedAt: null`, au motif que « l'exploitant
+     * a signifié qu'il avait traité l'épisode ». L'hypothèse est fausse en exploitation :
+     * acquitter veut dire « j'ai vu », pas « j'ai traité ». Mesuré le 31/08 — deux
+     * doublons sur deux, et ce sont exactement les deux véhicules dont la première
+     * alerte a été acquittée AVANT la fin de la condition physique, l'un **19 secondes**
+     * après sa création, alors que sa batterie mettrait encore deux heures à se vider.
+     *
+     * La garde ne tenait donc que tant que personne ne regardait son écran — c'est le
+     * mécanisme qui ramènerait le déluge de 1 317 alertes de TRK-022.
+     *
+     * ⚠️ MAIS LA DISTINCTION EST NÉCESSAIRE, ET C'EST TOUT L'INTÉRÊT DU CORRECTIF.
+     * Retirer `acknowledgedAt: null` pour TOUS les types muselerait le bouton de
+     * détresse : un conducteur appuie sur SOS, l'exploitant acquitte, le conducteur
+     * rappuie vingt minutes plus tard pour une AUTRE urgence — et plus rien ne part
+     * pendant six heures. Une alarme d'ÉTAT se répète parce que l'état dure ; une
+     * alarme PONCTUELLE se répète parce qu'il se passe quelque chose de neuf.
      */
+    const estAlarmeDEtat = ALARMES_D_ETAT.has(mapping.type);
     const dejaOuverte = await this.prisma.alert.findFirst({
       where: {
         vehicleId: tracker.vehicle.id,
         type: mapping.type,
-        acknowledgedAt: null,
+        // Alarme d'ÉTAT : la fenêtre seule décide, acquittée ou non. Alarme PONCTUELLE :
+        // comportement d'origine conservé — l'acquittement rouvre.
+        ...(estAlarmeDEtat ? {} : { acknowledgedAt: null }),
         createdAt: { gte: new Date(Date.now() - DEDUP_ALARME_MS) },
       },
       select: { id: true },
@@ -486,14 +580,42 @@ export class AlertsService {
    */
   async createPowerCutConfirmedAlert(
     tracker: { id: string; imei: string; lastLat: number | null; lastLng: number | null },
-    vehicle: { id: string; plate: string; fleetId: string },
+    vehicle: {
+      id: string;
+      plate: string;
+      fleetId: string;
+      outOfServiceReason?: VehicleOutOfServiceReason | null;
+    },
     suspicion: { suspectAt: Date; suspectBattery: number | null; currentBattery: number },
   ): Promise<Alert | null> {
+    /**
+     * TRK-053 — LE SECOND CHEMIN, et il porte le même défaut que le premier.
+     *
+     * Ce dépôt a déjà payé deux fois le « deuxième chemin invisible » : le garde
+     * anti-déconnexion de TRK-050 existait sur le chemin HTTP et manquait sur le chemin
+     * WebSocket ; l'aiguillage de notification de TRK-031 avait un jumeau qui ignorait
+     * le drapeau de déploiement. Une garde posée sur un seul appelant n'est pas une
+     * garde. L'appelant (`power-cut-recheck`) charge déjà le véhicule entier
+     * (`include: { vehicle: true }`) : aucune requête ne s'ajoute.
+     *
+     * ⚠️ Le cron continue d'écrire `lastPowerNotice` et de refermer le soupçon APRÈS cet
+     * appel, et il le fait déjà que l'alerte soit créée ou non (`if (alerte)`). La
+     * connaissance reste donc écrite sur la fiche véhicule — seule l'alerte est suspendue.
+     */
+    if (vehicle.outOfServiceReason != null) {
+      this.logger.debug(
+        `Coupure confirmee non alertee pour ${vehicle.plate} — vehicule hors service ` +
+          `(${vehicle.outOfServiceReason}).`,
+      );
+      return null;
+    }
+
     const dejaOuverte = await this.prisma.alert.findFirst({
       where: {
         vehicleId: vehicle.id,
         type: AlertType.POWER_CUT,
-        acknowledgedAt: null,
+        // TRK-052 — `POWER_CUT` est une alarme d'ÉTAT : la fenêtre décide seule, et
+        // l'acquittement ne ré-arme pas. Aligné sur le chemin trame ci-dessus.
         createdAt: { gte: new Date(Date.now() - DEDUP_ALARME_MS) },
       },
       select: { id: true },
