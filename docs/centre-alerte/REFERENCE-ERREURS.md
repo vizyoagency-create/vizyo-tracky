@@ -1258,7 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
+| [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:50:45** *(les 4 cibles réparées au premier passage du balayage, 44/44 canoniques ; HD-964-XY passe DANS LA BANDE sans qu'aucune commande soit envoyée)* · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
 | [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
 | [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:26** *(la mesure renverse la conclusion du matin : FM-772-JH passe de « 2 s » affiché à **99 s mesuré pour 99 s demandés**, FG-669-DQ et GS-878-NX à **20 s pour 20 s**. Trois des quatre « émetteurs rapides » accusés le matin étaient exactement sur leur cible)* · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
 | [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
@@ -8794,6 +8794,30 @@ updateMany({ where: { desiredFixIntervalS: { gt: HARD_CAP_S } },     data: { des
 > nouvelles cibles absurdes d'apparaître ; il ne touche pas à celles qui sont déjà en base. Le
 > dispositif connaît cette leçon depuis la campagne du 24/08 — et elle vient de se reproduire à
 > l'identique, sur le correctif écrit **le jour même**.
+
+### 🟢 PROUVÉ EN PRODUCTION — 2026-09-01 14:50:45
+
+Déploiement à **14:46:56**. Le premier passage du balayage, à **14:50:45**, a réparé les quatre,
+et le journal les nomme un par un :
+
+```
+TRK-057: cible non canonique reparee pour 864035054756706 — 43s -> 99s (etat STOPPED)
+TRK-057: cible non canonique reparee pour 863378070030776 — 28s -> 20s (etat MOVING)
+TRK-057: cible non canonique reparee pour 864035054756714 — 56s -> 99s (etat STOPPED)
+TRK-057: cible non canonique reparee pour 864035054756177 — 21s -> 99s (etat STOPPED)
+```
+
+**Distribution des cibles après réparation :** 20 s ×16 · 30 s ×4 · 99 s ×24 — **44 sur 44, plus
+aucune valeur hors canon.**
+
+🔑 **Et le cas de référence se referme SANS AUCUNE COMMANDE.** HD-964-XY passe de
+`cible 43 / mesure 99 / hors bande` à `cible 99 / mesure 99 / **DANS LA BANDE**`, `failing = false`.
+Le boîtier n'a rien reçu : *il était déjà à la bonne cadence, c'est la cible qui mentait.*
+
+⚠️ **C'est exactement ce que « recalculer plutôt qu'arrondir » achetait.** L'arrondi aurait écrit
+**30 s**, laissant le boîtier hors bande et déclenchant une commande vers une cadence qu'il
+n'aurait pas tenue. *Le bon correctif ne se contentait pas de remplacer un chiffre absurde : il
+devait remplacer le bon.*
 
 ### ✅ Correctif livré le 2026-09-01
 
