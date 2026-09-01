@@ -13,7 +13,7 @@
 
 | | Lots | État |
 |---|---|---|
-| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 | ✅ **DÉPLOYÉ** — TRK-054 **prouvé en production**, TRK-053 et TRK-052 déployés mais **non exerçables aujourd'hui** |
+| 🛠️ **Code — cette passe** | TRK-053 · TRK-054 · TRK-052 · **TRK-055** · **TRK-056** | ✅ **CINQ correctifs** — les deux derniers nés de la vérification des deux premiers |
 | ✋ **Gestes humains** | ~~TRK-021~~ ✅ · ~~TRK-051~~ ✅ · ~~TRK-045~~ 🔵 requalifié | 🟢 **les trois traités** — et deux d'entre eux ont produit une fiche neuve |
 | 💰 **Décisions** — coût ou métier, pas une ligne de code | TRK-016 · TRK-035 · TRK-022 *(volets 2-3)* · TRK-014 | ⚪ en attente d'arbitrage |
 
@@ -210,6 +210,51 @@ référence dont dispose la veille accident de [TRK-054](./REFERENCE-ERREURS.md#
 fait qu'*inférer* un choc à partir d'un silence. **L'armer durablement est une décision
 d'exploitation, pas un résidu de test** — c'est pour ça qu'il a été retiré, et pour ça qu'il
 mérite d'être reposé délibérément si on le veut.
+
+---
+
+## 🛠️ Second lot de code — TRK-055 et TRK-056
+
+Nés l'un et l'autre **de la vérification du premier lot**, pas d'une nouvelle collecte.
+
+### TRK-055 — la règle déménage dans `shared`
+
+**La cause n'était pas l'oubli, c'était le PLACEMENT.** La règle de TRK-051 vivait dans
+`apps/api` : inatteignable depuis le web. Le seul moyen de l'y appliquer était de la réécrire —
+donc de créer une deuxième définition, exactement ce que TRK-051 existait pour empêcher.
+
+| | |
+|---|---|
+| Règle | remontée dans `packages/shared` — **une définition, deux consommateurs** |
+| Fichier API | devient un **relais** qui ré-exporte : aucun import ne casse, les tests de TRK-051 passent inchangés |
+| Fonctions neuves | `libelleStatutCommande` / `tonStatutCommande`, qui prennent **la commande entière et jamais le seul statut** |
+| Écrans | le cas mesuré passe en **AMBRE**, le vert est réservé à une réponse matérielle, le filtre cesse de s'appeler « Confirmée » |
+
+🔵 **Défaut voisin corrigé au passage :** `SENT` partageait le vert avec `ACKNOWLEDGED` — une
+commande **partie mais non confirmée** s'affichait comme un succès.
+
+### TRK-056 — la cadence devient une mesure
+
+`currentFixIntervalS` = **médiane des douze derniers écarts** (colonne `recentFixIntervalsS`,
+migration en ajout de colonne à défaut non volatile : métadonnées seules, pas de réécriture de
+`trackers`).
+
+| Choix | Pourquoi |
+|---|---|
+| **médiane**, pas moyenne | la moyenne d'une bimodale tombe **entre** les deux modes — 1,5 s et 99 s donnent 50 s, une valeur que rien n'a produite |
+| l'échantillon **reste** pour la bande et le compteur d'échec | « cette trame est-elle dans la bande ? » a besoin d'une valeur **par trame** |
+| repli sur l'échantillon **sous 6 mesures** | montrer une mesure partielle est honnête, **agir** dessus ne l'est pas — sous le seuil, comportement d'avant |
+
+🔴 **Et une correction à ma propre fiche :** les « 47 s » citées sont la médiane des écarts
+**longs** ; celle de **tous** les écarts vaut **4 s**. Le correctif n'apporte donc pas
+l'exactitude mais la **stabilité** — l'échantillon balaie un facteur 50, la médiane reste sous 5.
+
+### Vérifications
+
+`typecheck` 3/3 · suite API **187 suites / 2 785 tests** · smoke-boot DI **5/5** · cohérence
+**7/7** · `ng build` vert · **23 tests neufs**. Le test d'intégration de `reconcile` **vérifié en
+échec par mutation**. Marqueur sur le **bundle construit** : **0** « Confirmée », « Cible
+atteinte » dans 2 chunks.
 
 ---
 

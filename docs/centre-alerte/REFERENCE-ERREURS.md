@@ -1258,8 +1258,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
-| [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
+| [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
+| [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
 | [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
 | [TRK-054](#trk-054) | *alertes* | **La veille accident ne se rétracte JAMAIS** — aucun chemin ne referme l'alerte quand le boîtier reprend l'émission, alors que le dispositif sait déjà le faire pour les coupures d'alimentation | 🟢 **CORRIGÉ, DÉPLOYÉ ET PROUVÉ PAR LE COMPORTEMENT le 2026-09-01 à 09:30:00** · **gravité 2** *(la rétractation de HD-779-MA est tombée au premier passage du cron qui a suivi le déploiement, avec son motif au journal et en base ; l'acquittement de l'exploitant du 31/08 19:15 est resté INTACT. ⚠️ Un second défaut a été trouvé SUR cette première rétractation réelle — le motif datait la reprise sur `lastSeenAt`, donc sur la dernière trame et non la première d'après l'alerte : il annonçait 960 min de silence là où il y en avait 150. Corrigé et redéployé dans la foulée)* | 2026-09-01 | 2026-09-01 · famille **mensonger** *(le SEUL déclenchement de l'histoire du parc, HD-779-MA le 31/08 17:30, est un faux positif : le boîtier est revenu à 20:00 avec une rafale bufferisée de 686 trames, il est **ONLINE**, batterie **100 %**, et il a parcouru **~180 km** depuis le point de l'alerte. L'alerte `CRITICAL` est toujours ouverte. `power-cut-recheck.service.ts:143` porte deja une methode `refermer()` — le meme geste n'a jamais ete ecrit ici)* | 2026-09-01 | 2026-09-01 |
 | [TRK-052](#trk-052) | *alertes* | **Acquitter une alerte RÉ-ARME l'alarme** — le prédicat de déduplication porte `acknowledgedAt: null`, donc le geste de triage de l'exploitant lève la garde de 6 h et la trame suivante rouvre une alerte | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 2** · famille **faux positif** *(corrélation mesurée le 01/09 : **2 doublons sur 2**, et ce sont exactement les 2 véhicules dont la 1ʳᵉ alerte a été acquittée AVANT la fin de la condition physique — FS-808-CE acquittée **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de [TRK-022](#trk-022), dont la garde ne protège que tant que personne n'acquitte)* | 2026-09-01 | 2026-09-01 |
@@ -8617,7 +8617,36 @@ WHERE a."createdAt" > now() - interval '7 days' GROUP BY 1;
 **Signature** — *(aucune ligne d'erreur — un LIBELLÉ et une COULEUR)*
 `tracker_commands.status = ACKNOWLEDGED` rendu « **Confirmée** » en **vert** sur les écrans que
 [TRK-051](#trk-051) n'a pas touchés
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-01
+**Statut : 🟢 CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** · 2026-09-01 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### ✅ 2026-09-01 — CORRIGÉ : la règle a déménagé dans `shared`
+>
+> **La cause n'était pas l'oubli, c'était le PLACEMENT.** La règle de TRK-051 vivait dans
+> `apps/api/src/tracker-fix-mode/` — **inatteignable depuis le web**. Le seul moyen de l'y
+> appliquer était de la réécrire, donc de créer une deuxième définition : exactement ce que
+> TRK-051 existait pour empêcher. *Une règle rangée là où tous ses lecteurs ne peuvent pas
+> l'atteindre n'est pas partagée ; elle est simplement écrite une fois de plus que les autres.*
+>
+> **Ce qui a été fait :**
+>
+> 1. la règle est remontée dans **`packages/shared/src/dto/confirmation-commande.ts`** —
+>    une seule définition, deux consommateurs ;
+> 2. le fichier API devient un **relais** qui ré-exporte : aucun import existant ne casse, et
+>    les tests de TRK-051 passent inchangés ;
+> 3. deux fonctions neuves y sont ajoutées, `libelleStatutCommande` et `tonStatutCommande`, qui
+>    prennent **la commande entière et jamais le seul statut** — c'est précisément parce que les
+>    écrans n'avaient que `status` sous la main qu'ils ont tous écrit « Confirmée » ;
+> 4. les deux composants web les appellent. **Le cas mesuré passe en AMBRE**, le vert est
+>    réservé à une réponse matérielle, et le filtre de l'écran d'administration cesse de
+>    s'appeler « Confirmée ».
+>
+> 🔵 **Un défaut voisin corrigé au passage :** `SENT` partageait le vert avec `ACKNOWLEDGED`.
+> Une commande **partie mais non confirmée** s'affichait donc comme un succès — la moitié
+> silencieuse du même défaut. Elle prend désormais le ton « attente ».
+>
+> **Vérifications :** 7 tests neufs, dont celui qui **interdit au mot « Confirmée » de
+> réapparaître** sur n'importe quel statut. Marqueur contrôlé sur le **bundle construit** :
+> **0 occurrence** de « Confirmée », et « Cible atteinte » présente dans 2 chunks.
 
 > ### Le correctif de TRK-051 a nommé trois surfaces. Il en existait cinq.
 
@@ -8688,7 +8717,35 @@ réponse, contre 394 sur les 7 derniers jours.
 **Signature** — *(aucune ligne d'erreur — un INSTRUMENT)*
 `trackers.currentFixIntervalS` = écart entre **les deux dernières trames**, sur une émission qui se
 fait par **salves**
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-01
+**Statut : 🟢 CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** · 2026-09-01 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### ✅ 2026-09-01 — CORRIGÉ : une fenêtre glissante remplace le tirage
+>
+> `currentFixIntervalS` est désormais la **médiane des douze derniers écarts**, conservés dans
+> une colonne `recentFixIntervalsS` (migration `20260901140000_trk056_fenetre_cadence`, ajout de
+> colonne avec défaut non volatile — opération de métadonnées, sans réécriture de `trackers`).
+>
+> **Trois choix qui méritent d'être écrits :**
+>
+> | Choix | Pourquoi |
+> |---|---|
+> | **médiane**, pas moyenne | la moyenne d'une distribution bimodale tombe **entre** les deux modes, là où le boîtier n'émet jamais : 1,5 s et 99 s donnent 50 s, une valeur que rien n'a produite. La médiane choisit un écart **réellement observé** |
+> | l'échantillon **reste** pour la bande de tolérance et le compteur d'échec | la question « cette trame est-elle dans la bande ? » a légitimement besoin d'une valeur **par trame**. Seule la MESURE change de nature |
+> | l'auto-alignement se replie sur l'échantillon **sous 6 mesures** | montrer une mesure partielle est honnête, **agir** dessus ne l'est pas. Sous le seuil, c'est le comportement d'avant — aucune régression possible |
+>
+> 🔴 **Et une correction à ma propre fiche.** Le tableau ci-dessous cite « médiane **47 s** » :
+> c'est la médiane des écarts **longs seulement**. La médiane de **tous** les écarts de
+> FM-772-JH vaut **4 s**. Les deux sont exactes, elles ne mesurent pas la même chose — et le
+> correctif rend la seconde. *Ce que le correctif apporte n'est donc pas l'exactitude, c'est la
+> **stabilité** : sur la séquence réelle, l'échantillon balaie un facteur 50 (2 s → 99 s) là où
+> la médiane reste dans un rapport inférieur à 5.* Un test verrouille exactement cela.
+>
+> ⚠️ **La dispersion est exposée à côté** (`partEcartsCourts`) : une médiane seule redirait le
+> défaut d'origine sous une forme plus propre — un nombre unique pour une émission qui n'en a
+> pas.
+>
+> **Vérifications :** 16 tests neufs. Le test d'intégration de `reconcile` a été **vérifié en
+> échec** par mutation — en remettant l'échantillon à la place de la médiane, il tombe.
 
 > ### Un échantillon unique ne peut pas mesurer une cadence qui alterne salves et longues attentes.
 
