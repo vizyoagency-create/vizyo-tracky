@@ -133,6 +133,36 @@ WHERE category = 'RETENTION' AND action = 'logs_purged'
 ORDER BY "createdAt" DESC
 LIMIT 5;
 
+\echo ### SECTION hors_service
+-- 🔴 TRK-053 (2026-09-01) — A LIRE AVANT trackers_offline, TOUJOURS.
+--
+-- Un boitier muet n'est une anomalie que si PERSONNE ne l'a declare. Le 31/08, six
+-- vehicules sont sortis du parc en fin de LLD, boitiers deposes, etat pose dans la fiche
+-- vehicule a 11h36-11h39 — et l'audit du 01/09 a bati une « action TERRAIN urgente » sur
+-- leur silence, parce que sa collecte ne lisait PAS cette colonne. Toutes ses mesures
+-- etaient exactes ; la donnee manquante n'etait pas une mesure de plus, c'etait la
+-- DECLARATION DE L'EXPLOITANT.
+--
+--   ACCIDENT          = le vehicule ne roule plus, ses donnees s'arretent la
+--   TRACKER_UNPLUGGED = boitier debranche ou depose (restitution, vente, panne materielle)
+--   IMMOBILIZED       = immobilise durablement (reparation longue, saisie, hivernage)
+--
+-- ⚠️ Un vehicule qui figure ICI et dans `trackers_offline` n'est PAS une panne : c'est le
+-- fonctionnement attendu. En revanche, toute ALERTE portant sur l'un d'eux est un defaut
+-- (TRK-053) — l'ecran promet « alertes suspendues pour ce vehicule ».
+SELECT v.plate,
+       v."outOfServiceReason"                       AS etat,
+       v."outOfServiceSince"                        AS depuis,
+       coalesce(v."outOfServiceNote", '-')          AS note,
+       coalesce(t.imei, '-')                        AS imei,
+       coalesce(t."lastSeenAt"::text, 'JAMAIS')     AS derniere_trame,
+       (SELECT count(*) FROM alerts a
+         WHERE a."vehicleId" = v.id
+           AND a."createdAt" > v."outOfServiceSince") AS alertes_depuis_declaration
+FROM vehicles v LEFT JOIN trackers t ON t."vehicleId" = v.id
+WHERE v."outOfServiceReason" IS NOT NULL
+ORDER BY v."outOfServiceSince" DESC;
+
 \echo ### SECTION trackers_failing
 SELECT t.imei, coalesce(v.plate, '(sans vehicule)') AS plaque,
        t."fixCommandFailureCount" AS echecs,

@@ -43,6 +43,38 @@
   ],
   "fiches": [
     {
+      "id": "TRK-053",
+      "titre": "Boitier debranche ne fait pas taire les alarmes du boitier",
+      "source": "alertes",
+      "statut": "NON_CORRIGE",
+      "gravite": 1,
+      "vuPremiere": "2026-09-01",
+      "vuDerniere": "2026-09-01",
+      "occurrences": 7,
+      "occurrencesLibelle": "Sept alertes LOW_BATTERY sur huit, le 31 aout, ont ete ecrites APRES la declaration. Six vehicules rendus en fin de LLD, boitiers deposes volontairement, etat TRACKER_UNPLUGGED pose entre 11h36m30 et 11h39m24 avec la note Retour de LLD : FR-629-AD declare a 11h36 recoit une alerte a 13h21, FS-808-CE declare a 11h37 en recoit deux a 11h50 et 12h05, FZ-862-VY declare a 11h37 en recoit une a 12h28, FZ-731-YF declare a 11h38 en recoit deux a 11h55 et 12h10, FW-298-WV declare a 11h38 en recoit une a 13h10. Seule celle de FS-253-HR, a 11h19, precede sa declaration et reste legitime. Les six POWER_CUT de 08h15 a 09h30 sont egalement legitimes : elles precedent la declaration de trois heures.",
+      "quoi": "L ECRAN PROMET LE SILENCE ET NE LE TIENT PAS. La fiche vehicule propose a un super-administrateur trois etats d exploitation — Accidente, Boitier debranche, Immobilise — et affiche en toutes lettres : hors service depuis telle date, analyse des trajets et ALERTES SUSPENDUES pour ce vehicule, aucune donnee supprimee ; puis, quand aucun etat n est pose : a cocher quand un vehicule ne roule plus, il sort du perimetre des traitements et CESSE DE PRODUIRE DES ALERTES qui n appellent aucune action. CAUSE RACINE : la colonne outOfServiceReason est honoree par TOUS les detecteurs sauf un. La veille accident la lit, l integrite GPS la lit, l ordonnanceur de surveillance la lit, l automatisation des trajets la lit, comme les rappels de maintenance, les reservations, les indicateurs de flotte et l optimiseur. Le chemin des ALARMES, lui, ne la lit nulle part : ni createFromCobanFrame, qui traite chaque trame d alarme du boitier, ni createPowerCutConfirmedAlert, appele par le cron de reexamen. C est le detecteur qui parle le plus, et c est le seul qui ait ete oublie. CE N EST PAS UNE OMISSION DE CONCEPTION MAIS UNE COUVERTURE INCOMPLETE, le profil exact de TRK-050 ou le garde existait sur le chemin HTTP et manquait sur le chemin WebSocket : quand une regle transversale est posee detecteur par detecteur, elle finit par manquer celui qu on a ecrit en premier.",
+      "quoiFaire": "POSER UNE GARDE DE DEUX LIGNES, ET LA DONNEE EST DEJA CHARGEE. createFromCobanFrame recoit tracker.vehicle en entier, et power-cut-recheck fait deja include vehicle : AUCUNE requete supplementaire n est necessaire. Il suffit de rendre null quand tracker.vehicle.outOfServiceReason n est pas null. OU LA POSER EXACTEMENT : APRES l ecriture de lastPowerNotice sur le tracker, jamais avant — la fiche vehicule doit continuer a dire la verite du moment. On suspend l ALERTE et la NOTIFICATION, jamais la CONNAISSANCE : c est la regle deja tranchee pour les coupures d alimentation, ou le code dit que se taire sans laisser de trace remplacerait un bruit par une cecite. NE PAS OUBLIER LE SECOND CHEMIN : createPowerCutConfirmedAlert porte le meme defaut et doit porter la meme garde ; ce depot a deja paye deux fois le deuxieme chemin invisible. VERIFICATION EN DOUBLE CONDITION : apres correctif, zero alerte sur un vehicule hors service PENDANT QUE le nombre d alertes sur les vehicules en service reste identique. Si les deux tombent, on a eteint le detecteur et pas le bruit.",
+      "aNePasFaire": "NE PAS supprimer les alertes deja ecrites sur ces vehicules : elles sont la mesure du defaut, et le centre d alerte ne se vide pas. NE PAS traiter le silence de ces six boitiers comme un incident : ils sont deposes volontairement, ils DOIVENT rester muets, et l audit du 01 septembre a bati une action terrain urgente sur ce silence faute de lire cette colonne. NE PAS etendre la garde a la CONNAISSANCE : lastPowerNotice et les compteurs du tracker doivent continuer d etre ecrits, sinon on remplace un bruit par une cecite. NE PAS croire que le probleme se limite a LOW_BATTERY : le chemin couvre toutes les alarmes du boitier, donc POWER_CUT, OVERSPEED, SOS et les declenchements de surveillance.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-053"
+    },
+    {
+      "id": "TRK-054",
+      "titre": "La veille accident ne se retracte jamais",
+      "source": "alertes",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-09-01",
+      "vuDerniere": "2026-09-01",
+      "occurrences": 1,
+      "occurrencesLibelle": "Une seule alerte ACCIDENT dans toute l histoire du parc, le 31 aout a 17h30 sur HD-779-MA, et c est un faux positif. Elle annonce que le vehicule roulait a 113 km/h et que son boitier n emet plus depuis 2,2 heures, a la position 42,4532 nord et 2,8674 est, soit la zone du Perthus a la frontiere espagnole. Escaladee a 17h41, acquittee a 19h15. Aujourd hui le boitier est ONLINE, il a emis a 08h01 le 01 septembre, sa batterie est a 100 pour cent, il est le troisieme emetteur du parc avec 4390 trames sur 24 heures, et sa position est 43,6111 nord et 1,3234 est — Toulouse, soit environ 180 km du point de l alerte. Le vehicule n a jamais ete marque accidente en base. L alerte CRITICAL n a jamais ete retractee.",
+      "quoi": "LE DEFAUT N EST PAS LE DECLENCHEMENT, C EST L ABSENCE DE CHEMIN DE RETOUR. La regle a fonctionne comme specifie : elle exige deux signaux independants, une derniere vitesse superieure a 20 km/h ET un silence d au moins deux heures, les deux etaient vrais, et son constat est honnetement redige puisqu il dit choc, arrachement ou coupure d alimentation, a verifier sur place. Sa propre documentation annonce la limite : on a mesure le taux de FAUSSES alertes, jamais le taux de detection. Le boitier s est tu de 15h20 a 20h00 puis est revenu avec une rafale de 686 trames en une heure, un vidage de tampon — la signature d une zone blanche et non d un choc, car un boitier arrache ou ecrase ne revient pas a 100 pour cent de batterie avec son historique intact. TROIS DEFAUTS SE COMPOSENT. Premier : rien ne retracte l alerte quand le boitier revient, alors qu a 20h00 le silence est fini et que l information qui le prouve est en base ; l alerte CRITICAL reste telle quelle indefiniment. Le dispositif sait pourtant deja faire l inverse — power-cut-recheck porte une methode refermer qui annule un soupcon d alimentation des que le contact revient, et le meme geste n a jamais ete ecrit ici. Deuxieme : le verdict est immediat la ou le voisin est differe ; TRK-040 a appris a la coupure d alimentation a ouvrir un soupcon puis le trancher sur la pente, avec six confirmations et zero faux positif le 31 aout, tandis que la veille accident affirme au premier examen. Troisieme : la garde dejaAlerte compte les alertes creees depuis la derniere trame, donc quand le boitier revient cette date avance et la garde se rearme ; elle empeche la repetition pendant le silence, pas la survie de l alerte apres lui.",
+      "quoiFaire": "TROIS CORRECTIFS, ET LE SECOND EST CELUI QUI COMPTE. Un, RETRACTER AU RETOUR : dans le balayage des 30 minutes, toute alerte ACCIDENT non resolue dont le boitier porte une derniere trame POSTERIEURE a sa creation est refermee, avec un motif explicite du type le boitier a repris l emission a telle heure, silence de N heures, aucun choc confirme. C est la symetrique de la methode refermer deja en production pour les coupures d alimentation. Deux, DIFFERER LE VERDICT COMME TRK-040 : ouvrir un soupcon a deux heures, ne creer l alerte qu a six heures de silence continu, et l abandonner si le boitier revient entre-temps. Sur le seul cas connu ce delai suffisait, puisque le boitier est revenu a 4 heures 40. Une regle qui n a jamais ete validee sur un vrai accident ne perd rien a attendre quatre heures de plus, et elle gagne de ne pas crier sur une zone blanche. Trois, DEUX DISCRIMINANTS GRATUITS DEJA EN BASE : un boitier qui revient a 100 pour cent de batterie n a pas ete arrache, et une rafale bufferisee au retour signe une coupure reseau. VERIFICATION : rejouer le cas HD-779-MA, un boitier silencieux deux heures apres avoir roule qui revient a 4 heures 40 — aucune alerte ne doit subsister ouverte, et le journal doit porter la retractation avec son motif.",
+      "aNePasFaire": "NE PAS supprimer la veille accident : elle est la seule detection d accident du parc tant que le capteur de choc n est pas arme, ce qui depend de TRK-021. NE PAS relever le seuil de vitesse ni allonger la duree de silence sans ecrire le chemin de retour : cela deplacerait le silence, pas le defaut. NE PAS conclure que la regle est mauvaise : elle a respecte sa specification a la lettre, et sa restriction de notification aux super-administrateurs a fait son travail puisque aucun client n a ete reveille. NE PAS marquer le vehicule comme accidente pour faire disparaitre l alerte : HD-779-MA roule, et poser un etat hors service sur un vehicule en service le sortirait de tous les traitements.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-054"
+    },
+    {
       "id": "TRK-052",
       "titre": "Acquitter une alerte RE-ARME l alarme",
       "source": "alertes",
@@ -891,7 +923,7 @@
       "title": "Audit du 1er septembre",
       "section": "rapports",
       "order": -11,
-      "description": "4 defauts actifs et 0 sur 24 h, mais six vehicules ont perdu leur alimentation le 31 aout et leurs boitiers sont muets depuis 18 h (38 a 32 emetteurs) ; nouvelle fiche TRK-052 : acquitter une alerte re-arme l alarme ; trois tests dates repondus OUI (TRK-037, TRK-022 volet 1, TRK-040) et TRK-021 attend depuis 17 jours."
+      "description": "Rapport corrige le jour meme : les six boitiers muets du 31 aout sont un retour de LLD declare, pas un incident. Restent trois fiches neuves — TRK-053 (le hors-service ne suspend pas les alarmes : 7 alertes sur 8 posterieures a la declaration), TRK-054 (la veille accident ne se retracte jamais, son seul declenchement est un faux positif) et TRK-052 (acquitter re-arme l alarme) — plus trois tests dates repondus OUI et TRK-021 en attente depuis 17 jours."
     },
     {
       "slug": "rapports/2026-08-26.md",
@@ -1119,7 +1151,7 @@
       "date": "2026-09-01",
       "origine": "agent",
       "rapport": "rapports/2026-09-01.md",
-      "verdict": "Le centre d alerte est presque vide — 4 defauts actifs, 0 sur 24 h — et il a raison, mais il ne raconte pas la journee qui compte : le 31 aout, six vehicules ont perdu leur alimentation en deux heures, leur batterie de secours s est videe jusqu a 0 pour cent, et leurs six boitiers sont muets depuis 18 heures — la flotte est passee de 38 a 32 emetteurs et n est pas remontee.",
+      "verdict": "Les six boitiers muets depuis le 31 aout sont un retour de LLD assume et declare — ce qui reste, c est que l ecran a promis le silence et ne l a pas tenu : 7 des 8 alertes LOW_BATTERY ont ete ecrites APRES la declaration Boitier debranche, parce que le chemin des alarmes est le seul detecteur du dispositif a ignorer outOfServiceReason ; et l unique alerte ACCIDENT de l histoire du parc est un faux positif jamais retracte — le vehicule a repris la route et roule encore.",
       "chiffres": {
         "erreurs": 4,
         "critical": 0,
@@ -1144,20 +1176,23 @@
         "emetteurs24h": 32,
         "positions24h": 23182,
         "boitiersPerdus3108": 6,
-        "immobilisationsNonConfirmees": 333
+        "immobilisationsNonConfirmees": 333,
+        "trackersHorsLigneInexpliques": 0,
+        "vehiculesHorsService": 9,
+        "alertesApresDeclaration": 7
       },
       "fiches": {
-        "nouvelles": 1,
+        "nouvelles": 3,
         "misesAJour": 14
       },
       "aTraiter": [
+        "TRK-053",
+        "TRK-054",
         "TRK-052",
         "TRK-021",
-        "TRK-022",
-        "TRK-016",
-        "TRK-014"
+        "TRK-022"
       ],
-      "note": "LE FAIT DU JOUR N EST PAS DANS error_logs. Le 31 aout entre 07h29 et 09h00 UTC, six vehicules ont perdu leur alimentation externe a quinze ou trente minutes d ecart ; six alertes POWER_CUT CRITICAL confirmees par la pente, batteries tombees a zero pour cent, boitiers eteints entre 11h53 et 13h50 dans l ordre exact ou ils avaient ete coupes. Six coupures en deux heures sur des vehicules a l arret au meme endroit ne sont pas six pannes independantes : action TERRAIN urgente, identifier ce qui les a debranches et les remettre en service. Consequence encore active : douze des quinze immobilisations non confirmees des trois derniers jours visent ces six vehicules, la coupe programmee continue de commander des boitiers morts. TROIS TESTS DATES REPONDUS OUI : TRK-037 rend 22 lignes DEGRADATION et ZERO ligne ERROR depuis le deploiement du 26 aout ; TRK-022 volet 1 est enfin exerce et passe de 1317 alertes en un jour a une ou deux par jour, intervalles toujours superieurs a six heures dix ; TRK-040 a ete exerce six fois avec zero faux positif. Mais TRK-021 attend depuis DIX-SEPT JOURS : les huit dernieres tentatives SMS-only sont toutes anterieures au correctif et toutes parties en canal TCP, et cette fiche bloque le volet 3 de TRK-022. LECON DU PASSAGE : un filtre qui exige vivant rend zero sur un mort. La section gps_sans_fix rend zero ligne parce que les six vehicules perdus n emettent plus du tout — la panne la plus grave de la semaine est invisible dans la section concue pour voir les pannes GPS. Verifier ce qu un filtre EXCLUT avant de lire son zero. Premier passage depuis le 26 aout : six jours sans audit."
+      "note": "RAPPORT CORRIGE LE JOUR MEME SUR RETOUR DU PROPRIETAIRE, et les deux corrections retournent le diagnostic. UN : les six vehicules muets du 31 aout n avaient rien d un incident — ils sont rendus en fin de LLD, boitiers deposes, et l etat TRACKER_UNPLUGGED avait ete pose dans la fiche vehicule entre 11h36 et 11h39, trois heures avant la collecte. La premiere redaction en avait tire une action terrain urgente. Toutes ses mesures etaient exactes ; la donnee manquante n etait pas une mesure de plus, c etait la DECLARATION DE L EXPLOITANT, dans une colonne que la collecte ne lisait pas. Le meme angle mort avait deja produit, deux rapports de suite, un controler antenne fixation alimentation sur KSR-370, vehicule declare accidente et ecarte des traitements dix jours plus tot par la meme personne. Sur les 12 boitiers hors ligne, 9 sont declares et 3 sont du stock : AUCUN n est inexplique. DEUX : l alerte ACCIDENT sur HD-779-MA est un faux positif etabli — le boitier est ONLINE, batterie 100 pour cent, et il a parcouru environ 180 km depuis le point de l alerte ; elle n a jamais ete retractee. TROIS FICHES NEUVES : TRK-053 gravite 1 (le hors-service ne suspend pas les alarmes, correctif de deux lignes, donnee deja chargee), TRK-054 (la veille accident ne se retracte jamais), TRK-052 (acquitter re-arme l alarme). OUTILLAGE : la section hors_service est ajoutee a collecte.sql AVANT trackers_offline — avant de qualifier un silence d anomalie, demander si quelqu un l a declare."
     },
     {
       "date": "2026-08-26",
