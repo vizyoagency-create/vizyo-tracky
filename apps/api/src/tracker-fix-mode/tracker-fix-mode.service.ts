@@ -90,6 +90,19 @@ const HARD_CAP_S = 99;
 // pas pouvoir s'écrire. Défense en profondeur : avec la nouvelle garde, l'auto-alignement ne
 // voit de toute façon plus que des intervalles supérieurs à la cible.
 const AUTO_ALIGN_FLOOR_S = HARD_CAP_MIN_S;
+
+/**
+ * TRK-057 — LES SEULES CIBLES QUE `desiredIntervalFor` SAIT PRODUIRE.
+ *
+ * 20 s en MOVING, 30 s en IDLE_ENGINE_ON ou arrêt bref, 99 s à l'arrêt prolongé. Toute autre
+ * valeur en base est un résidu de l'ancien auto-alignement, qui inscrivait un ÉCHANTILLON
+ * UNIQUE de l'intervalle observé ([TRK-056]) — donc un tirage.
+ *
+ * ⚠️ Cette liste doit rester le miroir exact de `desiredIntervalFor`. Un test le verrouille :
+ * si l'un des deux change sans l'autre, la réparation se mettrait à corriger des cibles
+ * parfaitement légitimes — le pire résultat possible pour un nettoyage.
+ */
+const CIBLES_CANONIQUES = [HARD_CAP_MIN_S, 30, HARD_CAP_S];
 // V1.18 — Au-dela de cette vitesse (km/h) on considere le vehicule en mouvement :
 // un intervalle plus lent que la cible devient alors un vrai echec (le boitier
 // devrait emettre vite). En dessous, contact coupe = veille attendue, pas un echec.
@@ -603,8 +616,76 @@ export class TrackerFixModeService {
           `Fix-mode: ${total} cible(s) de cadence ramenée(s) dans [${HARD_CAP_MIN_S}, ${HARD_CAP_S}]s (héritage de l'ancien auto-alignement).`,
         );
       }
+      await this.reparerCiblesNonCanoniques();
     } catch (err) {
       this.logger.warn(`Fix-mode: échec de la normalisation des cibles: ${err}`);
+    }
+  }
+
+  /**
+   * ══ TRK-057 — RÉPARER LES CIBLES QUE PERSONNE N'A JAMAIS DEMANDÉES ═══════════════════
+   *
+   * `desiredIntervalFor` ne peut produire que **trois** valeurs : 20 s en MOVING, 30 s en
+   * IDLE_ENGINE_ON ou arrêt bref, 99 s à l'arrêt prolongé. Toute autre valeur en base est un
+   * résidu de l'ancien auto-alignement, qui inscrivait l'intervalle OBSERVÉ — et l'observé
+   * était un échantillon unique, donc un tirage ([TRK-056]).
+   *
+   * ── Ce que la production montrait le 2026-09-01, une fois la mesure devenue honnête ───
+   *
+   * Sur 44 boîtiers, 40 portaient l'une des trois valeurs canoniques. **Quatre portaient
+   * 21, 28, 43 et 56 s** — des nombres qu'aucun chemin du code ne sait choisir.
+   *
+   * Le cas HD-964-XY dit tout : sa dernière commande était `,C,99s;`, **acquittée**, et il
+   * émet effectivement à 99 s (fenêtre `{99,100,99,99,99,99}`). Mais sa cible dit **43**.
+   * Il est donc hors bande **en permanence**, alors qu'il obéit parfaitement à la dernière
+   * commande reçue — et il le restera, puisque rien ne répare une cible située à l'intérieur
+   * de `[20, 99]`.
+   *
+   * 🔑 **Le clamp de [TRK-008] bornait l'intervalle ; il ne réparait pas la VALEUR.** Un
+   * correctif de cause ne soigne pas les victimes déjà créées : TRK-056 empêche de nouvelles
+   * cibles absurdes d'apparaître, celle-ci nettoie celles qui sont déjà là.
+   *
+   * ⚠️ **ON RECALCULE, ON N'ARRONDIT PAS.** Prendre la valeur canonique la plus proche
+   * donnerait 30 s pour HD-964-XY (43 est plus près de 30 que de 99) — alors que le boîtier
+   * est à l'arrêt contact coupé, donc attendu à 99 s. On aurait remplacé une valeur fausse par
+   * une autre, et déclenché une commande vouée à l'échec. La cible est donc redemandée à
+   * `desiredIntervalFor`, la seule source de vérité.
+   *
+   * ⚠️ **Les overrides manuels sont ÉPARGNÉS.** Un opérateur qui fige un boîtier à 60 s fait
+   * un choix délibéré et daté ; ce n'est pas une dérive. On ne touche qu'aux boîtiers dont
+   * `fixModeOverrideUntil` est absent ou périmé.
+   */
+  private async reparerCiblesNonCanoniques(): Promise<void> {
+    const maintenant = new Date();
+    const suspects = await this.prisma.tracker.findMany({
+      where: {
+        desiredFixIntervalS: { notIn: CIBLES_CANONIQUES },
+        OR: [{ fixModeOverrideUntil: null }, { fixModeOverrideUntil: { lt: maintenant } }],
+      },
+      select: {
+        id: true,
+        imei: true,
+        desiredFixIntervalS: true,
+        lastSampledState: true,
+        lastKnownIgnition: true,
+        lastIgnitionChangeAt: true,
+      },
+      take: 100,
+    });
+    if (suspects.length === 0) return;
+
+    for (const t of suspects) {
+      // Sans état d'échantillonnage connu, on ne devine pas : STOPPED est le régime le plus
+      // économe, et la première trame le corrigera de toute façon.
+      const etat = (t.lastSampledState as AdaptiveTrackerState | null) ?? 'STOPPED';
+      const cible = this.desiredIntervalFor(etat, t, maintenant);
+      await this.prisma.tracker
+        .update({ where: { id: t.id }, data: { desiredFixIntervalS: cible } })
+        .catch(() => undefined);
+      this.logger.warn(
+        `Fix-mode TRK-057: cible non canonique reparee pour ${t.imei} — ` +
+          `${t.desiredFixIntervalS}s -> ${cible}s (etat ${etat}, residu de l'ancien auto-alignement).`,
+      );
     }
   }
 

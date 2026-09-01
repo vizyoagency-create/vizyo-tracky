@@ -1258,6 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
 | [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
 | [TRK-056](#trk-056) | *cadence* | **`currentFixIntervalS` est un ÉCHANTILLON UNIQUE, pas une mesure** — l'écart entre les deux dernières trames, sur une émission qui se fait par salves | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:26** *(la mesure renverse la conclusion du matin : FM-772-JH passe de « 2 s » affiché à **99 s mesuré pour 99 s demandés**, FG-669-DQ et GS-878-NX à **20 s pour 20 s**. Trois des quatre « émetteurs rapides » accusés le matin étaient exactement sur leur cible)* · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : sur tout le parc en 1 h, **24,5 %** des écarts entre positions consécutives sont sous 10 s, sur 32 boîtiers. Un échantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche **2 s** alors que la médiane de ses écarts longs est **47 s** sur 2 h)* | 2026-09-01 | 2026-09-01 |
 | [TRK-053](#trk-053) | *alertes* | **« Boîtier débranché » ne fait pas taire les alarmes du boîtier** — `outOfServiceReason` est honoré par tous les détecteurs SAUF le chemin des alarmes, alors que la fiche véhicule promet « alertes suspendues pour ce véhicule » | 🟠 **CORRECTIF DÉPLOYÉ le 2026-09-01 à 09:17, NON EXERCÉ** · **gravité 1** · famille **faux positif** *(mesuré le 01/09 : **7 des 8 alertes `LOW_BATTERY` du 31/08 ont été écrites APRÈS** la déclaration `TRACKER_UNPLUGGED` posée entre 11:36 et 11:39 sur six véhicules rendus en fin de LLD. Le correctif est une garde de DEUX LIGNES : `tracker.vehicle` est déjà chargé entier dans `createFromCobanFrame`, et `power-cut-recheck` fait déjà `include: vehicle`. Aucune requête a ajouter)* | 2026-09-01 | 2026-09-01 |
@@ -8730,6 +8731,91 @@ laisser.
 Ouvrir la fiche d'un tracker ayant des `fix_continuous` closes par échéance : **aucun badge vert**
 ne doit subsister tant que la colonne RÉPONSE est vide. Et le compte : **0** commande verte sans
 réponse, contre 394 sur les 7 derniers jours.
+
+---
+
+## TRK-057
+
+**Signature** — *(aucune ligne d'erreur — une VALEUR en base)*
+`trackers.desiredFixIntervalS` ∉ {20, 30, 99}, alors que `desiredIntervalFor` ne sait produire
+que ces trois-là
+**Statut : 🟢 CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** · 2026-09-01
+
+> ### Le clamp bornait l'intervalle. Il ne réparait pas la valeur — et une cible absurde SITUÉE DANS la bande y survit pour toujours.
+
+### Comment on est tombé dessus
+
+**En allant corriger GR-294-VW, qui n'avait rien.** Le rapport du matin le citait comme le dernier
+des quatre « émetteurs rapides » ; deux heures après le correctif de [TRK-056](#trk-056), sa
+fenêtre valait `{20,20,20,20,20,20,20,20,20,20,20,20}` pour une cible de 20 s, et sa médiane sur
+**2 h** valait **20,0 s**. *Il n'y avait rien à corriger : la fenêtre erratique du matin avait été
+capturée pendant une transition roulant → arrêté, minutes après la bascule.*
+
+Mais le même relevé, passé au parc entier avec l'instrument devenu honnête, a montré autre chose.
+
+### Ce qui est mesuré
+
+`desiredIntervalFor` ne peut produire que **trois** valeurs :
+
+| État | Cible |
+|---|---|
+| `MOVING` | **20 s** *(minimum matériel Coban GPS403D)* |
+| `IDLE_ENGINE_ON`, ou arrêt de moins de 10 min | **30 s** |
+| `STOPPED` au-delà du délai de grâce | **99 s** *(maximum exprimable, TRK-045)* |
+
+Or, sur 44 boîtiers : **40 portent l'une des trois**, et **quatre portent 21, 28, 43 et 56 s** —
+des nombres qu'aucun chemin du code ne sait choisir.
+
+**Le cas HD-964-XY dit tout :**
+
+| | |
+|---|---|
+| Dernière commande | `**,imei:…,C,99s;` — **`ACKNOWLEDGED`** |
+| Cadence réellement mesurée | fenêtre `{99, 100, 99, 99, 99, 99, 99, 99, 99}` |
+| Cible en base | **43 s** |
+
+**Il obéit parfaitement à la dernière commande reçue, et il est hors bande en permanence.** Et il
+le resterait : rien ne répare une cible située *à l'intérieur* de `[20, 99]`.
+
+### Cause racine
+
+L'ancien auto-alignement inscrivait l'intervalle **observé** — et l'observé était un
+**échantillon unique**, donc un tirage ([TRK-056](#trk-056)). `normalizeDriftedTargets`, écrite
+pour [TRK-008](#trk-008), ne fait que **clamper** :
+
+```ts
+updateMany({ where: { desiredFixIntervalS: { lt: HARD_CAP_MIN_S } }, data: { desiredFixIntervalS: HARD_CAP_MIN_S } })
+updateMany({ where: { desiredFixIntervalS: { gt: HARD_CAP_S } },     data: { desiredFixIntervalS: HARD_CAP_S } })
+```
+
+21, 28, 43 et 56 sont tous **dans** `[20, 99]`. Ils passent la garde sans être vus.
+
+> 🔑 **Un correctif de CAUSE ne soigne pas les VICTIMES.** [TRK-056](#trk-056) empêche de
+> nouvelles cibles absurdes d'apparaître ; il ne touche pas à celles qui sont déjà en base. Le
+> dispositif connaît cette leçon depuis la campagne du 24/08 — et elle vient de se reproduire à
+> l'identique, sur le correctif écrit **le jour même**.
+
+### ✅ Correctif livré le 2026-09-01
+
+`reparerCiblesNonCanoniques` : toute cible hors de {20, 30, 99} est **recalculée** par
+`desiredIntervalFor` à partir de l'état d'échantillonnage courant.
+
+⚠️ **ON RECALCULE, ON N'ARRONDIT PAS — et c'est le cœur du correctif.** La valeur canonique la
+plus *proche* de 43 est **30** (écart 13, contre 56 pour 99). Or HD-964-XY est à l'arrêt contact
+coupé : sa cible attendue est **99**. Arrondir aurait remplacé une valeur fausse par une autre,
+**et déclenché une commande vouée à l'échec.** Un test verrouille exactement ce piège.
+
+⚠️ **Les overrides manuels sont épargnés.** Un opérateur qui fige un boîtier à 60 s fait un choix
+délibéré et daté : seuls les boîtiers dont `fixModeOverrideUntil` est absent ou périmé sont
+touchés. *(Mesuré au moment du correctif : 0 override actif sur le parc.)*
+
+**Vérifications :** 5 tests neufs, dont celui qui **interdit à la liste canonique de diverger de
+`desiredIntervalFor`** — si l'une gagne une valeur sans l'autre, la réparation se mettrait à
+corriger des cibles parfaitement légitimes, le pire résultat possible pour un nettoyage.
+
+🔵 **Trois tests existants ont été rendus robustes au passage** : ils lisaient
+`findMany.mock.calls[0]`, donc ils cassaient au premier appel ajouté en amont — *pour une raison
+sans rapport avec leur sujet*. Ils visent désormais leur propre requête.
 
 ---
 

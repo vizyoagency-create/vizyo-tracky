@@ -641,7 +641,12 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
       const { svc, prisma } = build();
       await svc.expireStaleFixCommands();
 
-      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      // TRK-057 — on vise LA requete du balayage, pas la premiere venue : `normalizeDriftedTargets`
+      // en emet une autre en amont. Un test qui s'appuie sur l'ordre des appels casse au premier
+      // ajout, et il casse pour une raison qui n'a rien a voir avec son sujet.
+      const where = prisma.tracker.findMany.mock.calls
+        .map((c: unknown[]) => (c[0] as { where: Record<string, unknown> }).where)
+        .find((w: Record<string, unknown>) => 'fixCommandFailing' in w)!;
       expect(where.fixCommandFailing).toBe(true);
       // C'est la signature exacte d'une victime : elle ne peut ni converger ni s'aligner.
       expect(where.currentFixIntervalS).toEqual({ lt: 20, not: null });
@@ -655,7 +660,12 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
       const { svc, prisma } = build();
       await svc.expireStaleFixCommands();
 
-      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      // TRK-057 — on vise LA requete du balayage, pas la premiere venue : `normalizeDriftedTargets`
+      // en emet une autre en amont. Un test qui s'appuie sur l'ordre des appels casse au premier
+      // ajout, et il casse pour une raison qui n'a rien a voir avec son sujet.
+      const where = prisma.tracker.findMany.mock.calls
+        .map((c: unknown[]) => (c[0] as { where: Record<string, unknown> }).where)
+        .find((w: Record<string, unknown>) => 'fixCommandFailing' in w)!;
       expect(where.lastSeenAt?.gt).toBeInstanceOf(Date);
       const ageMs = Date.now() - (where.lastSeenAt.gt as Date).getTime();
       expect(ageMs).toBeGreaterThan(4.5 * 60 * 1000);
@@ -671,7 +681,12 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
       const { svc, prisma } = build();
       await svc.expireStaleFixCommands();
 
-      const where = prisma.tracker.findMany.mock.calls[0][0].where;
+      // TRK-057 — on vise LA requete du balayage, pas la premiere venue : `normalizeDriftedTargets`
+      // en emet une autre en amont. Un test qui s'appuie sur l'ordre des appels casse au premier
+      // ajout, et il casse pour une raison qui n'a rien a voir avec son sujet.
+      const where = prisma.tracker.findMany.mock.calls
+        .map((c: unknown[]) => (c[0] as { where: Record<string, unknown> }).where)
+        .find((w: Record<string, unknown>) => 'fixCommandFailing' in w)!;
       expect(where.lastValidFrameAt?.gt).toBeInstanceOf(Date);
       const ageMs = Date.now() - (where.lastValidFrameAt.gt as Date).getTime();
       expect(ageMs).toBeGreaterThan(4.5 * 60 * 1000);
