@@ -1258,7 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-059](#trk-059) | *commandes* | **La « cible atteinte » qui suit un échec porte une AUTRE cible** — le boîtier n’a pas rejoint la cible, c’est la cible qui est descendue jusqu’à lui | 🟠 **CORRIGÉ ET TESTÉ le 02/09, NON DÉPLOYÉ** (branche `fix/trk-059-cible-revisee`, non poussée) · **gravité 2** · famille **mensonger** *(mesuré le 02/09 sur 7 j : **46 paires « échec puis cible atteinte » séparées de moins de 30 min, et 46 sur 46 portent une cible DIFFÉRENTE** ; délai moyen **6,6 min**. Sur HD-964-XY, GR-898-HY, EZ-259-DB et EY-613-MF, la cadence réelle est le MÊME nombre — 99 s — dans la ligne d’échec et dans celle de réussite. Cause : `desiredIntervalFor` recale la cible quand le véhicule s’arrête (20 s → 99 s), et la clôture par échéance de [TRK-051](#trk-051) compare la mesure à la NOUVELLE cible. Chaque ligne est vraie prise seule ; c’est leur succession qui ment. ⚠️ Ne contredit PAS [TRK-057](#trk-057) : les 44 cibles sont canoniques, le réglage est juste — c’est le récit qu’on en fait qui est faux)*  Correctif : la clôture nomme la RÉVISION de cible au lieu d’affirmer une convergence, et refuse la conclusion sans prétendre à la place du lecteur que le boîtier n’a rien fait — la cadence de l’échec précédent n’est portée par aucune colonne. Statut ACKNOWLEDGED CONSERVÉ (double condition) : sans la clôture les commandes revivraient en `SENT`. 9 tests neufs dont 3 vérifiés EN ÉCHEC sur l’ancien code ; 188 suites / 2 801 tests verts.)* | 2026-09-02 | 2026-09-02 |
+| [TRK-059](#trk-059) | *commandes* | **La « cible atteinte » qui suit un échec porte une AUTRE cible** — le boîtier n’a pas rejoint la cible, c’est la cible qui est descendue jusqu’à lui | 🟠 **DÉPLOYÉ EN PRODUCTION le 02/09 à 08:03, NON EXERCÉ** (`main` @ `24c03b5d`, marqueur `Cible RÉVISÉE` vérifié sur l’artefact SERVI avec son témoin de contrôle ; repli `tracky-api:avant-trk059`) · **gravité 2** · famille **mensonger** *(mesuré le 02/09 sur 7 j : **46 paires « échec puis cible atteinte » séparées de moins de 30 min, et 46 sur 46 portent une cible DIFFÉRENTE** ; délai moyen **6,6 min**. Sur HD-964-XY, GR-898-HY, EZ-259-DB et EY-613-MF, la cadence réelle est le MÊME nombre — 99 s — dans la ligne d’échec et dans celle de réussite. Cause : `desiredIntervalFor` recale la cible quand le véhicule s’arrête (20 s → 99 s), et la clôture par échéance de [TRK-051](#trk-051) compare la mesure à la NOUVELLE cible. Chaque ligne est vraie prise seule ; c’est leur succession qui ment. ⚠️ Ne contredit PAS [TRK-057](#trk-057) : les 44 cibles sont canoniques, le réglage est juste — c’est le récit qu’on en fait qui est faux)*  Correctif : la clôture nomme la RÉVISION de cible au lieu d’affirmer une convergence, et refuse la conclusion sans prétendre à la place du lecteur que le boîtier n’a rien fait — la cadence de l’échec précédent n’est portée par aucune colonne. Statut ACKNOWLEDGED CONSERVÉ (double condition) : sans la clôture les commandes revivraient en `SENT`. 9 tests neufs dont 3 vérifiés EN ÉCHEC sur l’ancien code ; 188 suites / 2 801 tests verts.)* | 2026-09-02 | 2026-09-02 |
 | [TRK-060](#trk-060) | `system-metrics` | **La collecte de métriques rend l’erreur de transport BRUTE** — `getaddrinfo EAI_AGAIN tracky-postgres`, sans dire ni ce qui a échoué, ni la conséquence, ni qu’elle est sans gravité | 🔴 **NON CORRIGÉ** · **gravité 3** · famille **brut** *(une seule ligne, la seule de son espèce en 90 j de rétention. **Conséquence mesurée : 1 437 points de métrique sur les 1 440 attendus en 24 h** — le collecteur `@Interval(60_000)` attrape, enregistre et continue. L’incident est bénin ; le défaut est le message, qui envoie instruire une panne de base qui n’a jamais eu lieu. Le même jour, `trip-analysis` écrit une dégradation exemplaire qui nomme dépendance, conséquence et ce qui survit — le savoir-faire existe dans ce dépôt, il n’est pas appliqué ici. ⚠️ Le correctif doit BORNER : `CRITICAL` au-delà de 5 échecs consécutifs, sinon on remplace un cri par un silence)* | 2026-09-02 | 2026-09-02 |
 | [TRK-058](#trk-058) | *cadence* | **Une trame d'ÉVÉNEMENT compte comme une mesure de cadence** — un `acc off` suivi de son `acc on` injecte un écart de 0,6 s dans la fenêtre | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 3** · famille **bruit de mesure** *(⚠️ ampleur mesurée AVANT de corriger, et elle contredit l'intuition : ces trames ne pèsent que **42 sur 3 447** positions en 1 h, soit **1,2 %**. Elles sont bien plus souvent courtes que les autres — 57 % contre 26 % — mais elles n'expliquent PAS les salves. Correction de précision, pas de cause)* | 2026-09-01 | 2026-09-01 |
 | [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:50:45** *(les 4 cibles réparées au premier passage du balayage, 44/44 canoniques ; HD-964-XY passe DANS LA BANDE sans qu'aucune commande soit envoyée)* · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
@@ -8532,11 +8532,36 @@ flotte roule, et il retomberait encore si l'on baissait simplement la cible.
 `tracker_commands | FAILED` puis, sur le **même boîtier** en moins de 30 min,
 `ACKNOWLEDGED | observedResult = "Cible atteinte : cadence réelle <N>s pour <M>s demandés"` —
 **avec `<M>` différent de la cible qui vient d'échouer, et `<N>` identique dans les deux lignes**
-**Statut : 🟠 CORRIGÉ ET TESTÉ le 2026-09-02, NON DÉPLOYÉ** · **gravité 2** · famille **mensonger** · 2026-09-02 · *ancien statut : 🔴 NON CORRIGÉ*
+**Statut : 🟠 DÉPLOYÉ EN PRODUCTION le 2026-09-02 à 08:03, NON EXERCÉ** · **gravité 2** · famille **mensonger** · 2026-09-02 · *anciens statuts : 🔴 NON CORRIGÉ, puis 🟠 corrigé et testé, non déployé*
+
+> ### 🚀 2026-09-02 08:03 — DÉPLOYÉ EN PRODUCTION
+>
+> `main` @ `24c03b5d`, image `tracky-api:latest` reconstruite, conteneur recréé à
+> **08:03:15**, `restarts=0`, `health=healthy`, `/api/health` → `{"status":"ok",
+> "database":"connected"}`. Repli disponible : image `tracky-api:avant-trk059`.
+>
+> **Marqueur vérifié sur l'ARTEFACT SERVI**, par **littéral de chaîne** et non par nom de
+> variable (leçon [TRK-002](#trk-002)) : `Cible RÉVISÉE` **présent** dans
+> `dist/tracker-fix-mode/tracker-fix-mode.service.js` — et le **témoin de contrôle**
+> `Cible atteinte` y est **aussi**, ce qui prouve qu'on lit le bon fichier et que les deux
+> branches du verdict coexistent. *Un grep vide peut vouloir dire « absent » ou « mauvais
+> chemin » : il en faut toujours deux.*
+>
+> ⚠️ **Le smoke-boot jetable a produit l'orphelin `api-run` attendu** (`tracky-prod-api-run-55d659e21e95`,
+> UP 44 s) — **une 2ᵉ instance d'API, crons en double**. Détecté et supprimé dans le même
+> passage. *Ce piège se reproduit à CHAQUE `docker compose run` : le vérifier n'est pas
+> optionnel.*
+>
+> 🗓️ **TEST DATÉ OUVERT — le correctif n'a rien exercé encore.** Le motif se produit environ
+> **6 à 7 fois par jour** ; la première clôture concernée devrait tomber dans les heures qui
+> suivent. **Vérification en DOUBLE CONDITION** : le compte de paires « cible changée » doit
+> rester **≈ 46 sur 7 j** — le phénomène physique ne change pas — pendant qu'**aucune** ne
+> porte plus le libellé « Cible atteinte ». *Si les deux tombent ensemble, on a supprimé la
+> clôture au lieu du mensonge.*
 
 > ### ✅ 2026-09-02 — CORRECTIF ÉCRIT, à la demande du propriétaire
 >
-> Branche `fix/trk-059-cible-revisee`, **non poussée**. Le libellé de la clôture par
+> Branche `fix/trk-059-cible-revisee`, **fusionnée en `main` et déployée** (cf. ci-dessus). Le libellé de la clôture par
 > échéance distingue désormais une **convergence** d'une **révision de cible** :
 >
 > ```
