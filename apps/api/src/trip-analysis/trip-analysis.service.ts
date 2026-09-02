@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException , UnprocessableEntityException } 
 import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -13,6 +14,12 @@ import { analyzeTrip, type RawPosition, type TripAnalysisResult } from './trip-a
 const SPEEDING_CANDIDATE_KMH = 33; // couvre les zones 30 (avec marge)
 /** Borne dure de positions lues par trajet (perf + coût). */
 const MAX_POSITIONS = 5000;
+/**
+ * Borne dure du lot d'ids acceptés par `listForTrips`. Aligne sur la page de trajets la
+ * plus large de l'app (100 lignes) avec une marge : au-delà, c'est une liste inventée par
+ * l'appelant, pas un écran.
+ */
+const MAX_TRIP_IDS_PER_BATCH = 200;
 
 type TripRow = {
   id: string; fleetId: string; vehicleId: string; trackerId: string | null;
@@ -73,6 +80,39 @@ export class TripAnalysisService {
     if (!row) return null;
     if (!(await this.vehicleAccess.hasAccessToVehicle(user, row.vehicleId))) throw new NotFoundException('Trajet introuvable');
     return this.toDto(row, this.maskFor(user));
+  }
+
+  /**
+   * Analyses de trajets DÉSIGNÉS, en un appel. Scopé (anti-IDOR) : une analyse hors
+   * périmètre est omise du résultat, jamais renvoyée.
+   *
+   * ⚠️ Pourquoi cette route existe alors que `listForVehicle` existait déjà : l'écran
+   * Rapports liste les trajets de PLUSIEURS véhicules dès qu'on filtre par société ou
+   * par groupe. Faute de pouvoir charger les analyses correspondantes, il masquait
+   * purement et simplement la colonne « Analyse » — récits IA compris — dans tous ces
+   * cas. Et `listForVehicle` ne prend pas de période : il rend les 200 analyses les plus
+   * récemment CALCULÉES du véhicule, qui ne recouvrent pas forcément les trajets listés.
+   * Ici, on demande exactement les trajets affichés.
+   */
+  async listForTrips(user: AuthUser, tripIds: string[]): Promise<TripAnalysisDto[]> {
+    const ids = [...new Set(tripIds.filter((t) => typeof t === 'string' && t.length > 0))];
+    if (ids.length === 0) return [];
+
+    const where: Prisma.TripAnalysisWhereInput = { tripId: { in: ids.slice(0, MAX_TRIP_IDS_PER_BATCH) } };
+    const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
+    if (accessible !== 'ALL') {
+      where.vehicleId = { in: accessible };
+    } else {
+      // 'ALL' = « aucune restriction PAR VÉHICULE », PAS « toute la base » : la borne
+      // société reste indispensable (cf. vehicle-access.service, même piège d'IDOR).
+      const scope = resolveTenantScope(user);
+      if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
+      else if (scope.mode === 'DENY') return [];
+    }
+
+    const rows = await this.prisma.tripAnalysis.findMany({ where });
+    const mask = this.maskFor(user);
+    return rows.map((r) => this.toDto(r, mask));
   }
 
   /** Analyses récentes d'un véhicule (onglet Trajets / rapports). Scopé véhicule. */

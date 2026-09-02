@@ -6,7 +6,7 @@ import {
   BarChart3, Calendar, Clock, Download, Gauge, LucideAngularModule,
   MessageSquare, Pencil, Play, Route, UserRound,
 } from 'lucide-angular';
-import type { DriverDto, TripAnalysisDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
+import type { DriverDto, TripAnalysisDto, TripDailySummaryDto, TripDto, TripPeriodChartsDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -28,12 +28,21 @@ import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/ch
 import { PeriodReplayComponent } from '../reports/period-replay.component';
 import { TripReplayComponent } from '../reports/trip-replay.component';
 import {
-  aggregateKpis,
+  aggregateKpisFromDaily,
   clampSpeed as clampSpeedFn,
   formatDuration as formatDurationFn,
   max0 as max0Fn,
 } from '../reports/reports.utils';
 import { relativeTime } from '../../shared/utils/relative-time';
+
+/**
+ * Taille d'une page de trajets. Plafonnée à 100 côté API (`trips.service.list`) : au-delà,
+ * la valeur serait silencieusement ramenée à 100 et la pagination sauterait des lignes.
+ */
+const VEHICLE_TRIPS_PAGE_SIZE = 100;
+
+/** Taille d'un lot d'analyses demandées — aligne sur `MAX_TRIP_IDS_PER_BATCH` côté API. */
+const ANALYSES_BATCH_SIZE = 200;
 
 /**
  * Onglet "Rapports" affiche dans `vehicle-detail`. Reprend visuellement la
@@ -239,10 +248,18 @@ import { relativeTime } from '../../shared/utils/relative-time';
             <app-line-bar-chart [data]="lineBarData()" [height]="220" />
           </section>
 
+          <!-- Ces deux graphiques se calculaient depuis les trajets CHARGÉS (plafonnés)
+               tout en annonçant « sur la période » — même écart que celui corrigé côté
+               Rapports. Ils viennent maintenant de l'agrégat serveur ; le repli sur
+               l'échantillon reste possible et se NOMME. -->
           <section class="vrt-chart-card">
             <header class="vrt-chart-head">
               <h2>Vitesses max</h2>
-              <p>Distribution sur la période</p>
+              @if (periodCharts() || !tripsTruncated()) {
+                <p>Distribution sur la période</p>
+              } @else {
+                <p>Sur les {{ listedTripCount() }} trajets chargés — pas toute la période</p>
+              }
             </header>
             <app-histogram-chart [values]="histoValues()" [height]="200" />
           </section>
@@ -250,7 +267,11 @@ import { relativeTime } from '../../shared/utils/relative-time';
           <section class="vrt-chart-card">
             <header class="vrt-chart-head">
               <h2>Fréquentation</h2>
-              <p>24h × 7j</p>
+              @if (periodCharts() || !tripsTruncated()) {
+                <p>24h × 7j — sur toute la période</p>
+              } @else {
+                <p>Sur les {{ listedTripCount() }} trajets chargés — pas toute la période</p>
+              }
             </header>
             <app-heatmap-chart [data]="heatmapData()" />
           </section>
@@ -269,6 +290,16 @@ import { relativeTime } from '../../shared/utils/relative-time';
           <p>Aucun trajet sur cette période</p>
         </div>
       } @else {
+        @if (tripsTruncated()) {
+          <!-- Les KPI portent sur la période entière, la liste sur une page. Sans cette
+               phrase, un utilisateur qui compte les cartes tombe sur un autre chiffre que
+               le compteur juste au-dessus — et cesse de croire les deux. -->
+          <p class="text-xs text-fg-tertiary mb-2">
+            {{ listedTripCount() }} trajets affichés sur {{ kpis().tripCount }} —
+            « Charger plus » en bas de liste pour la suite.
+            Les indicateurs ci-dessus portent bien sur la période complète.
+          </p>
+        }
         <div class="vrt-trips-list">
           @for (trip of trips(); track trip.id) {
             <article class="vrt-trip-card" [id]="'trip-' + trip.id" [class.vrt-trip-card--focus]="trip.id === openTripId()">
@@ -362,18 +393,37 @@ import { relativeTime } from '../../shared/utils/relative-time';
                   }
                 </div>
 
-                @if (trip.polyline) {
-                  <button type="button" (click)="openReplay(trip)"
-                          class="vrt-trip-replay-btn"
-                          title="Replay du trajet">
-                    <lucide-icon [img]="Play" [size]="13"></lucide-icon>
-                    <span>Replay</span>
-                  </button>
-                }
+                <!-- Toujours proposé : la liste allégée ne porte plus le tracé, il est demandé au
+                     clic. Un trajet sans aucune position tombe sur le segment droit du replay. -->
+                <button type="button" (click)="openReplay(trip)"
+                        class="vrt-trip-replay-btn"
+                        title="Replay du trajet">
+                  <lucide-icon [img]="Play" [size]="13"></lucide-icon>
+                  <span>Replay</span>
+                </button>
               </footer>
             </article>
           }
         </div>
+
+        <!-- Pagination : la page suivante s'AJOUTE à la liste. Sans ce bouton, les
+             trajets au-delà du plafond n'étaient atteignables qu'en rétrécissant la
+             période jusqu'à repasser sous les cent. -->
+        @if (nextCursor()) {
+          <div class="vrt-more">
+            <button type="button" class="btn-secondary text-xs"
+                    (click)="loadMoreTrips()" [disabled]="loadingMore()">
+              @if (loadingMore()) {
+                <span class="vrt-more-spinner"></span> Chargement…
+              } @else {
+                Charger plus
+                @if (kpis().tripCount > listedTripCount()) {
+                  <span class="vrt-more-rest">({{ kpis().tripCount - listedTripCount() }} restants)</span>
+                }
+              }
+            </button>
+          </div>
+        }
       }
     </div>
 
@@ -390,7 +440,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
     <app-period-replay
       [open]="periodReplayOpen()"
-      [trips]="trips()"
+      [trips]="periodReplayTrips()"
       [vehicleType]="vehicleType()"
       [vehiclePlate]="vehiclePlate()"
       (closed)="periodReplayOpen.set(false)"
@@ -708,6 +758,21 @@ import { relativeTime } from '../../shared/utils/relative-time';
       flex-direction: column;
       gap: 10px;
     }
+
+    /* ─── Pagination de la liste (« Charger plus ») ─── */
+    .vrt-more { display: flex; justify-content: center; margin-top: 12px; }
+    .vrt-more button { display: inline-flex; align-items: center; gap: 8px; }
+    .vrt-more-rest { color: var(--fg-tertiary); font-weight: 500; }
+    .vrt-more-spinner {
+      width: 12px; height: 12px; border-radius: 999px;
+      border: 2px solid var(--border-subtle);
+      border-top-color: var(--tracky-light, #10E0A0);
+      animation: vrt-more-spin .7s linear infinite;
+    }
+    @keyframes vrt-more-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .vrt-more-spinner { animation-duration: 2s; }
+    }
     .vrt-trip-card {
       display: flex;
       flex-direction: column;
@@ -931,6 +996,12 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   readonly openTripDate = input<string | null>(null);
 
   protected readonly trips = signal<TripDto[]>([]);
+  /** Curseur de la page suivante (`null` = tout est chargé). */
+  protected readonly nextCursor = signal<string | null>(null);
+  /** Chargement d'une page SUPPLÉMENTAIRE (distinct de `loading`, qui repeint tout). */
+  protected readonly loadingMore = signal(false);
+  /** Garde anti-course : une réponse périmée ne doit pas écraser une plus fraîche. */
+  private loadSeq = 0;
   protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
   /** Analyses de trajets pré-chargées en LOT (par tripId) — badges éco/excès/arrêts sur chaque card. */
   protected readonly analysesMap = signal<Map<string, TripAnalysisDto>>(new Map());
@@ -1060,7 +1131,31 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   });
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
-  protected readonly kpis = computed(() => aggregateKpis(this.trips()));
+  /**
+   * KPI de la période — depuis l'AGRÉGAT SERVEUR, comme l'écran Rapports.
+   *
+   * ⚠️ C'était `aggregateKpis(this.trips())`, la liste AFFICHÉE, demandée avec
+   * `limit: '100'`. Sur un véhicule qui roule (EP-047-TY, EZ-259-DB… chez mh cars),
+   * 30 jours dépassent largement cent trajets : les quatre cartes plafonnaient donc à
+   * « 100 trajets », avec une distance et une durée amputées d'autant, et la vitesse max
+   * était celle des cent derniers trajets — pas celle de la période.
+   *
+   * Pire, le symptôme le plus déroutant : passer de 7 à 30 jours ne changeait RIEN aux
+   * chiffres, puisqu'on retombait sur les mêmes cent trajets les plus récents. Le filtre
+   * de période avait l'air cassé alors qu'il marchait. Exactement le bug déjà corrigé
+   * côté Rapports ; il vivait encore ici.
+   *
+   * `dailySummary` est agrégé côté serveur sur les mêmes filtres, sans plafond.
+   */
+  protected readonly kpis = computed(() => aggregateKpisFromDaily(this.dailySummary()));
+
+  /** Nombre de trajets réellement listés (page courante). */
+  protected readonly listedTripCount = computed(() => this.trips().length);
+
+  /** Vrai quand la liste ne montre qu'une partie des trajets de la période. */
+  protected readonly tripsTruncated = computed(
+    () => this.kpis().tripCount > this.trips().length,
+  );
 
   protected readonly speedDotColor = computed(() => {
     const max = this.kpis().maxSpeed;
@@ -1104,11 +1199,21 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
     return { labels, tripCounts, distancesKm, durationsHours };
   });
 
-  protected readonly histoValues = computed<number[]>(() =>
-    this.trips().map((t) => this.clampSpeed(t.maxSpeed)),
-  );
+  /**
+   * Agrégat SERVEUR des deux graphiques de période (vitesses + fréquentation), comme sur
+   * l'écran Rapports. Null tant qu'il n'est pas arrivé (ou s'il a échoué) → repli sur
+   * l'échantillon chargé, annoncé comme tel par le sous-titre.
+   */
+  protected readonly periodCharts = signal<TripPeriodChartsDto | null>(null);
+
+  protected readonly histoValues = computed<number[]>(() => {
+    const agg = this.periodCharts();
+    return agg ? agg.speeds : this.trips().map((t) => this.clampSpeed(t.maxSpeed));
+  });
 
   protected readonly heatmapData = computed<number[][]>(() => {
+    const agg = this.periodCharts();
+    if (agg) return agg.heatmap;
     const matrix: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
     for (const t of this.trips()) {
       if (!t.startedAt) continue;
@@ -1270,24 +1375,34 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   }
 
   // ─── Data loading ───────────────────────────────────────────────────────
+  /** Filtres actifs (véhicule + période) en query params — partagés liste / agrégats. */
+  private buildFilterParams(): {
+    tripParams: Record<string, string>;
+    summaryParams: Record<string, string>;
+  } {
+    const tripParams: Record<string, string> = {
+      vehicleId: this.vehicleId(),
+      limit: String(VEHICLE_TRIPS_PAGE_SIZE),
+      // Charge allégée : les tracés sont demandés au replay, trajet par trajet.
+      light: '1',
+    };
+    const summaryParams: Record<string, string> = { vehicleId: this.vehicleId() };
+    if (this.periodFrom) {
+      tripParams['from'] = this.periodFrom;
+      summaryParams['from'] = this.periodFrom;
+    }
+    if (this.periodTo) {
+      tripParams['to'] = this.periodTo;
+      summaryParams['to'] = this.periodTo;
+    }
+    return { tripParams, summaryParams };
+  }
+
   private async loadData(): Promise<void> {
+    const seq = ++this.loadSeq;
     this.loading.set(true);
     try {
-      const tripParams: Record<string, string> = {
-        vehicleId: this.vehicleId(),
-        limit: '100',
-      };
-      const summaryParams: Record<string, string> = {
-        vehicleId: this.vehicleId(),
-      };
-      if (this.periodFrom) {
-        tripParams['from'] = this.periodFrom;
-        summaryParams['from'] = this.periodFrom;
-      }
-      if (this.periodTo) {
-        tripParams['to'] = this.periodTo;
-        summaryParams['to'] = this.periodTo;
-      }
+      const { tripParams, summaryParams } = this.buildFilterParams();
       const [tripsRes, summary] = await Promise.all([
         firstValueFrom(this.tripsApi.list(tripParams)).catch(
           () => ({ items: [] as TripDto[], nextCursor: null }),
@@ -1296,29 +1411,92 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
           () => [] as TripDailySummaryDto[],
         ),
       ]);
+      if (seq !== this.loadSeq) return;
       this.trips.set(tripsRes.items);
+      this.nextCursor.set(tripsRes.nextCursor);
       this.dailySummary.set(summary);
       // Deep-link : scroll vers le trajet ciblé une fois la liste chargée.
       this.maybeDeepLinkScroll();
+      // Graphiques de période (serveur) — non bloquant : un échec laisse le repli sur
+      // l'échantillon, annoncé par le sous-titre.
+      void this.loadPeriodCharts(seq, summaryParams);
       // Analyses de trajets pré-chargées en LOT (best-effort, non bloquant) → badges sur les cards.
       void this.loadAnalyses();
     } catch (err) {
       swallow('vehicle-reports-tab:loadData', err);
-      this.trips.set([]);
-      this.dailySummary.set([]);
+      if (seq === this.loadSeq) {
+        this.trips.set([]);
+        this.nextCursor.set(null);
+        this.dailySummary.set([]);
+      }
     } finally {
-      this.loading.set(false);
+      if (seq === this.loadSeq) this.loading.set(false);
     }
   }
 
-  /** Charge en une fois les analyses persistées du véhicule (les cards non analysées gardent leur bouton). */
-  private async loadAnalyses(): Promise<void> {
+  /** Page SUIVANTE de trajets, ajoutée à la liste courante. */
+  protected async loadMoreTrips(): Promise<void> {
+    const cursor = this.nextCursor();
+    if (!cursor || this.loadingMore() || this.loading()) return;
+    const seq = this.loadSeq;
+    this.loadingMore.set(true);
     try {
-      const list = await firstValueFrom(this.analysisApi.listForVehicle(this.vehicleId(), 200));
-      this.analysesMap.set(new Map(list.map((a) => [a.tripId, a])));
+      const { tripParams } = this.buildFilterParams();
+      const res = await firstValueFrom(this.tripsApi.list({ ...tripParams, cursor }));
+      // Un changement de période pendant la requête invalide cette page.
+      if (seq !== this.loadSeq) return;
+      this.trips.set([...this.trips(), ...res.items]);
+      this.nextCursor.set(res.nextCursor);
+      void this.loadAnalyses();
+    } catch (err) {
+      swallow('vehicle-reports-tab:loadMoreTrips', err);
+    } finally {
+      this.loadingMore.set(false);
+    }
+  }
+
+  /** Agrégat serveur des graphiques de période. Best-effort (cf. `periodCharts`). */
+  private async loadPeriodCharts(seq: number, params: Record<string, string>): Promise<void> {
+    this.periodCharts.set(null);
+    try {
+      const agg = await firstValueFrom(this.tripsApi.periodCharts(params));
+      if (seq === this.loadSeq) this.periodCharts.set(agg);
+    } catch (err) {
+      swallow('vehicle-reports-tab:loadPeriodCharts', err);
+    }
+  }
+
+  /**
+   * Charge en lot les analyses des trajets AFFICHÉS (les cards non analysées gardent leur bouton).
+   *
+   * ⚠️ Ce chargement passait par `listForVehicle`, qui rend les 200 analyses les plus
+   * récemment CALCULÉES du véhicule — sans tenir compte de la période consultée. Sur un
+   * mois ancien, les badges pouvaient donc manquer alors que les analyses existaient : on
+   * avait rapporté celles d'autres trajets. On demande maintenant exactement les trajets
+   * listés.
+   */
+  private async loadAnalyses(): Promise<void> {
+    const trips = this.trips();
+    if (trips.length === 0) { this.analysesMap.set(new Map()); return; }
+    const known = this.analysesMap();
+    const missing = trips.map((t) => t.id).filter((id) => !known.has(id));
+    if (missing.length === 0) return;
+    try {
+      const pages: TripAnalysisDto[][] = [];
+      for (let i = 0; i < missing.length; i += ANALYSES_BATCH_SIZE) {
+        pages.push(await firstValueFrom(
+          this.analysisApi.listForTrips(missing.slice(i, i + ANALYSES_BATCH_SIZE)),
+        ));
+      }
+      this.analysesMap.update((m) => {
+        const next = new Map(m);
+        for (const a of pages.flat()) next.set(a.tripId, a);
+        return next;
+      });
     } catch (err) {
       swallow('vehicle-reports-tab:loadAnalyses', err);
-      this.analysesMap.set(new Map());
+      // On GARDE ce qui était déjà chargé : vider la table transformerait une page
+      // d'analyses manquantes en « aucune analyse nulle part ».
     }
   }
 
@@ -1358,13 +1536,49 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   }
 
   // ─── Trip actions ───────────────────────────────────────────────────────
-  protected onOpenPeriodReplay(): void {
-    if (!this.canPeriodReplay()) return;
-    this.periodReplayOpen.set(true);
+  /** Trajets COMPLETS (avec tracés) du replay de période — chargés à l'ouverture seulement. */
+  protected readonly periodReplayTrips = signal<TripDto[]>([]);
+  protected readonly periodReplayLoading = signal(false);
+
+  /** Replay de période : recharge les trajets AVEC tracés (toutes pages), cf. écran Rapports. */
+  protected async onOpenPeriodReplay(): Promise<void> {
+    if (!this.canPeriodReplay() || this.periodReplayLoading()) return;
+    this.periodReplayLoading.set(true);
+    try {
+      const { tripParams } = this.buildFilterParams();
+      const params: Record<string, string> = { ...tripParams, sortBy: 'startedAt', sortDir: 'asc' };
+      delete params['light'];
+      const all: TripDto[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < 20; page++) {
+        const res: { items: TripDto[]; nextCursor: string | null } = await firstValueFrom(
+          this.tripsApi.list(cursor ? { ...params, cursor } : params),
+        );
+        all.push(...res.items);
+        cursor = res.nextCursor;
+        if (!cursor) break;
+      }
+      this.periodReplayTrips.set(all);
+      this.periodReplayOpen.set(true);
+    } catch (err) {
+      swallow('vehicle-reports-tab:onOpenPeriodReplay', err);
+      this.toast.error('Replay indisponible', 'Les tracés de la période n\'ont pas pu être chargés.');
+    } finally {
+      this.periodReplayLoading.set(false);
+    }
   }
 
-  protected openReplay(trip: TripDto): void {
+  /** Ouvre le replay : la liste est sans tracé (charge allégée), on demande le trajet complet au clic. */
+  protected async openReplay(trip: TripDto): Promise<void> {
     this.replayTrip.set(trip);
+    if (trip.polyline) return;
+    try {
+      const full = await firstValueFrom(this.tripsApi.findOne(trip.id));
+      if (this.replayTrip()?.id === trip.id) this.replayTrip.set(full);
+    } catch (err) {
+      swallow('vehicle-reports-tab:openReplay', err);
+      this.toast.error('Tracé indisponible', 'Le tracé du trajet n\'a pas pu être chargé.');
+    }
   }
 
   protected openNoteEdit(trip: TripDto): void {

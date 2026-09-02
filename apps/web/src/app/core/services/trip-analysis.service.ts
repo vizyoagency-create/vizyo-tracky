@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationBacklogDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -25,6 +25,15 @@ export class TripAnalysisApiService {
   /** Analyses récentes d'un véhicule (pour pré-charger l'onglet Trajets d'un coup). */
   listForVehicle(vehicleId: string, limit = 100): Observable<TripAnalysisDto[]> {
     return this.http.get<TripAnalysisDto[]>(`/api/trip-analysis/vehicle/${encodeURIComponent(vehicleId)}`, { params: { limit: String(limit) } });
+  }
+
+  /**
+   * Analyses des trajets AFFICHÉS, en un appel — quel que soit le nombre de véhicules
+   * concernés (filtre société / groupe). POST parce que 100 UUID ne tiennent pas
+   * confortablement dans une URL ; c'est bien une lecture, sans effet de bord.
+   */
+  listForTrips(tripIds: string[]): Observable<TripAnalysisDto[]> {
+    return this.http.post<TripAnalysisDto[]>('/api/trip-analysis/by-trips', { tripIds });
   }
 
   /** Génère (ou régénère) le récit IA + Trust Score + conseils d'un trajet. `provider` optionnel. */
@@ -104,5 +113,9 @@ export class TripAnalysisApiService {
   /** Historique des passages (audit : quand / pour qui / quoi + récits cliquables). */
   listAutomationRuns(limit = 30): Observable<TripAutomationRunDto[]> {
     return this.http.get<TripAutomationRunDto[]>('/api/trip-analysis/automation/runs', { params: { limit: String(limit) } });
+  }
+  /** Reste à faire par société (sans analyse / sans récit / figés) — le chiffre qui doit baisser. */
+  getAutomationBacklog(): Observable<TripAutomationBacklogDto> {
+    return this.http.get<TripAutomationBacklogDto>('/api/trip-analysis/automation/backlog');
   }
 }

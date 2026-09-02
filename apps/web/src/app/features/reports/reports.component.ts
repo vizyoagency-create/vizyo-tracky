@@ -41,11 +41,21 @@ import {
   kpiToSortColumn,
   max0 as max0Fn,
   normalizeCustomRange,
-  sortTrips,
   todayIsoLocal,
   type SortDirection,
   type TripSortColumn,
 } from './reports.utils';
+
+/**
+ * Taille d'une page de trajets. Plafonnée à 100 côté API (`trips.service.list`) : au-delà,
+ * la valeur serait silencieusement ramenée à 100 et la pagination sauterait des lignes.
+ * ~430 Ko par page en production, dont plus de la moitié de polylignes — d'où la
+ * pagination plutôt qu'un chargement intégral.
+ */
+const REPORTS_TRIPS_PAGE_SIZE = 100;
+
+/** Taille d'un lot d'analyses demandées — aligne sur `MAX_TRIP_IDS_PER_BATCH` côté API. */
+const ANALYSES_BATCH_SIZE = 200;
 
 @Component({
   selector: 'app-reports',
@@ -106,7 +116,13 @@ import {
         </div>
       </div>
 
-      <div class="flex items-center gap-2 flex-wrap">
+      <!-- Barre de filtres — MOBILE D'ABORD. Trois groupes réels dans le DOM (sélecteurs,
+           périodes, actions) ; en large ils sont « display: contents » et la barre reste la
+           ligne fluide d'origine. Sous 640 px : sélecteurs en pleine largeur, périodes en
+           rangée défilante au pouce, actions en dernière ligne — au lieu de onze pastilles
+           empilées sur quatre lignes. -->
+      <div class="rep-filters">
+        <div class="rep-selectors">
         <!-- Filtre groupe : restreint la liste de véhicules du sélecteur à un groupe. -->
         @if (groupOptions().length > 0) {
           <div class="rep-dropdown-wrapper">
@@ -186,6 +202,9 @@ import {
           }
         </div>
 
+        </div>
+
+        <div class="rep-periods">
         @for (p of periods; track p.label) {
           <button (click)="setPeriod(p.from, p.to); customRangeOpen.set(false)"
                   class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
@@ -267,10 +286,13 @@ import {
           }
         </div>
 
+        </div>
+
+        <div class="rep-actions">
         <!-- Replay periode : actif uniquement si un vehicule est selectionne
              ET qu'au moins 1 trip existe sur la periode. Sinon tooltip explicatif. -->
         <button (click)="onOpenPeriodReplay()"
-                [disabled]="!canPeriodReplay()"
+                [disabled]="!canPeriodReplay() || periodReplayLoading()"
                 [title]="canPeriodReplay() ? 'Replay de tous les trajets de la période'
                                             : 'Sélectionne un véhicule avec des trajets sur la période'"
                 class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-tracky/30
@@ -278,7 +300,7 @@ import {
                        transition-colors cursor-pointer disabled:opacity-40
                        inline-flex items-center gap-1.5">
           <lucide-icon [img]="Play" [size]="12"></lucide-icon>
-          Replay période
+          @if (periodReplayLoading()) { Chargement… } @else { Replay période }
         </button>
 
         @if (isAdmin()) {
@@ -299,6 +321,7 @@ import {
           <lucide-icon [img]="RotateCcwIcon" [size]="13"></lucide-icon>
           <span>Réinitialiser</span>
         </button>
+        </div>
       </div>
 
       <!-- Sparkline KPI cards : compactes, lecture rapide -->
@@ -413,7 +436,7 @@ import {
               @if (periodCharts()) {
                 <p>Distribution sur la période</p>
               } @else if (tripsTruncated()) {
-                <p>Sur les {{ listedTripCount() }} trajets les plus récents — pas toute la période</p>
+                <p>Sur les {{ listedTripCount() }} trajets chargés — pas toute la période</p>
               } @else {
                 <p>Distribution sur la période</p>
               }
@@ -427,7 +450,7 @@ import {
               @if (periodCharts()) {
                 <p>24h × 7j — sur toute la période</p>
               } @else if (tripsTruncated()) {
-                <p>Sur les {{ listedTripCount() }} trajets les plus récents — pas toute la période</p>
+                <p>Sur les {{ listedTripCount() }} trajets chargés — pas toute la période</p>
               } @else {
                 <p>24h × 7j</p>
               }
@@ -443,7 +466,14 @@ import {
         <section class="rep-vsum">
           <header class="rep-chart-head rep-vsum-head">
             <h2>Par véhicule</h2>
-            <p>Synthèse de la période — cliquez « Voir » pour le détail</p>
+            <!-- Ce rollup agrège les trajets CHARGÉS (cf. vehicleSummary), pas la période
+                 entière : tant que le tableau est paginé, il faut le dire, sinon deux
+                 totaux différents cohabitent sur le même écran sans explication. -->
+            @if (tripsTruncated()) {
+              <p>Sur les {{ listedTripCount() }} trajets chargés sur {{ kpis().tripCount }} — cliquez « Voir » pour le détail</p>
+            } @else {
+              <p>Synthèse de la période — cliquez « Voir » pour le détail</p>
+            }
           </header>
           <div class="rep-vtable">
             <div class="rep-vt-head">
@@ -511,18 +541,21 @@ import {
       } @else {
         @if (tripsTruncated()) {
           <!--
-            Le tableau est borne a 100 lignes (voir loadData) alors que les
-            KPI couvrent toute la periode. Le dire est le minimum : un utilisateur qui
-            compte les lignes et tombe sur un autre chiffre que le compteur cesse de
-            croire la page entiere.
+            Le tableau se charge par pages alors que les KPI couvrent toute la periode.
+            Le dire est le minimum : un utilisateur qui compte les lignes et tombe sur un
+            autre chiffre que le compteur cesse de croire la page entiere. Depuis que
+            « Charger plus » existe, la phrase indique aussi comment atteindre le reste —
+            avant, elle constatait un manque sans offrir d'issue.
           -->
           <p class="text-xs text-fg-tertiary mb-2">
             {{ listedTripCount() }} trajets affichés sur {{ kpis().tripCount }} —
-            affinez la période ou le véhicule pour voir les autres.
+            « Charger plus » sous le tableau pour la suite.
             Les indicateurs ci-dessus portent bien sur la période complète.
           </p>
         }
-        <div #tripsTable class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+        <div #tripsTable class="rep-list" [class.rep-table-wrap--busy]="tripsBusy()" [attr.aria-busy]="tripsBusy() ? 'true' : null">
+        @if (isDesktop()) {
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto rep-table-wrap">
           <table class="w-full text-sm" style="min-width:880px">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
               <tr>
@@ -564,7 +597,11 @@ import {
                 </th>
                 <th class="p-3 text-left">Conducteur</th>
                 <th class="p-3 text-left">Note</th>
-                @if (selectedVehicleId()) { <th class="p-3 text-left">Analyse</th> }
+                <!-- Colonne « Analyse » : plus conditionnée au choix d'un véhicule unique.
+                     Les analyses sont désormais chargées par trajet (cf. loadAnalyses), donc
+                     elles existent aussi en filtre société / groupe — où la colonne
+                     disparaissait purement et simplement. -->
+                <th class="p-3 text-left">Analyse</th>
                 <th class="p-3 text-center">Replay</th>
               </tr>
             </thead>
@@ -635,22 +672,20 @@ import {
                       <span class="text-fg-tertiary text-xs">—</span>
                     }
                   </td>
-                  @if (selectedVehicleId()) {
-                    <td class="p-3 max-w-[280px]">
-                      <app-trip-analysis-badges
-                        [tripId]="trip.id"
-                        [analysis]="analysisFor(trip.id)"
-                        (analyzed)="onAnalyzed($event)"
-                      />
-                    </td>
-                  }
+                  <td class="p-3 max-w-[280px] rep-analysis-cell">
+                    <app-trip-analysis-badges
+                      [tripId]="trip.id"
+                      [analysis]="analysisFor(trip.id)"
+                      (analyzed)="onAnalyzed($event)"
+                    />
+                  </td>
                   <td class="p-3 text-center">
                     <div class="flex items-center justify-center gap-1.5">
-                      @if (trip.polyline) {
-                        <button (click)="openReplay(trip)" class="rep-ligne-action text-tracky-light hover:underline cursor-pointer" title="Replay">
-                          <lucide-icon [img]="Play" [size]="16"></lucide-icon>
-                        </button>
-                      }
+                      <!-- Toujours proposé : la liste allégée ne porte plus le tracé, il est
+                           demandé au clic (cf. openReplay). -->
+                      <button (click)="openReplay(trip)" class="rep-ligne-action text-tracky-light hover:underline cursor-pointer" title="Replay">
+                        <lucide-icon [img]="Play" [size]="16"></lucide-icon>
+                      </button>
                       @if (isAdmin() && trip.maxSpeed > 90) {
                         <button (click)="downloadSpeedReport(trip)"
                                 class="text-fg-tertiary hover:text-tracky-light cursor-pointer transition-colors"
@@ -665,6 +700,143 @@ import {
             </tbody>
           </table>
         </div>
+        } @else {
+          <!-- MOBILE : une carte par trajet. Le tableau de 880 px imposait un défilement
+               horizontal au pouce pour lire une vitesse ; ici tout se lit en une colonne,
+               les actions ont 44 px, et le tri passe par un sélecteur puisqu'il n'y a plus
+               d'en-têtes. Même source de données, même tri serveur, même surlignage. -->
+          <div class="rep-sortbar" role="group" aria-label="Tri des trajets">
+            <label class="rep-sortbar-label" for="rep-sort-select">Trier par</label>
+            <select id="rep-sort-select" class="rep-sortbar-select"
+                    [value]="sortBy()" (change)="setSort($any($event.target).value, sortDir())">
+              @for (o of sortOptions; track o.col) {
+                <option [value]="o.col" [selected]="sortBy() === o.col">{{ o.label }}</option>
+              }
+            </select>
+            <button type="button" class="rep-sortbar-dir"
+                    (click)="setSort(sortBy(), sortDir() === 'desc' ? 'asc' : 'desc')"
+                    [title]="sortDir() === 'desc' ? 'Décroissant — passer en croissant' : 'Croissant — passer en décroissant'">
+              <lucide-icon [img]="sortDir() === 'desc' ? ArrowDownIcon : ArrowUpIcon" [size]="14"></lucide-icon>
+              {{ sortDir() === 'desc' ? 'Décroissant' : 'Croissant' }}
+            </button>
+          </div>
+          <div class="rep-cards">
+            @for (trip of sortedTrips(); track trip.id) {
+              <article class="rep-card" [class.rep-row--highlight]="highlightTripId() === trip.id">
+                <header class="rep-card-head">
+                  <div class="rep-card-when">
+                    <span class="rep-card-date">{{ trip.startedAt | date:'EEE d MMM' }}</span>
+                    <span class="rep-card-times">{{ trip.startedAt | date:'HH:mm' }} → {{ trip.endedAt | date:'HH:mm' }}</span>
+                  </div>
+                  @if (vehiclePlate(trip.vehicleId); as plate) {
+                    <span class="rep-card-plate" [vehicleLink]="trip.vehicleId" [attr.title]="'Voir ' + plate">{{ plate }}</span>
+                  }
+                </header>
+                @if (vehicleGroup(trip.vehicleId); as g) {
+                  <div class="rep-card-group"><app-group-badge [group]="g" /></div>
+                }
+                <div class="rep-card-stats">
+                  <div class="rep-card-stat">
+                    <span class="rep-card-stat-label">Distance</span>
+                    <span class="rep-card-stat-value">{{ (max0(trip.distanceMeters) / 1000) | number:'1.1-1' }} <small>km</small></span>
+                  </div>
+                  <div class="rep-card-stat">
+                    <span class="rep-card-stat-label">Durée</span>
+                    <span class="rep-card-stat-value">{{ formatDuration(trip.durationSeconds) }}</span>
+                  </div>
+                  <div class="rep-card-stat">
+                    <span class="rep-card-stat-label">V. max</span>
+                    <span class="rep-card-stat-value" [class.rep-card-stat-value--warn]="clampSpeed(trip.maxSpeed) > 110">
+                      {{ clampSpeed(trip.maxSpeed) | number:'1.0-0' }} <small>km/h</small>
+                    </span>
+                  </div>
+                  <div class="rep-card-stat">
+                    <span class="rep-card-stat-label">V. moy</span>
+                    <span class="rep-card-stat-value">{{ clampSpeed(trip.avgSpeed) | number:'1.0-0' }} <small>km/h</small></span>
+                  </div>
+                </div>
+                <div class="rep-card-analysis">
+                  <app-trip-analysis-badges
+                    [tripId]="trip.id"
+                    [analysis]="analysisFor(trip.id)"
+                    (analyzed)="onAnalyzed($event)"
+                  />
+                </div>
+                <footer class="rep-card-foot">
+                  <div class="rep-card-foot-left">
+                    @if (trip.driver) {
+                      <button type="button"
+                              (click)="canManageDrivers() ? openDriverPickerForTrip(trip) : null"
+                              [disabled]="!canManageDrivers()"
+                              class="rep-driver"
+                              [class.cursor-default]="!canManageDrivers()"
+                              [style.--driver-color]="trip.driver.color || '#10E0A0'">
+                        <span class="rep-driver-dot"></span>
+                        <span class="rep-driver-name">{{ trip.driver.firstName }} {{ trip.driver.lastName }}</span>
+                      </button>
+                    } @else if (canManageDrivers()) {
+                      <button type="button" (click)="openDriverPickerForTrip(trip)" class="rep-driver rep-driver--add">
+                        <lucide-icon [img]="UserRoundIcon" [size]="11"></lucide-icon>
+                        Conducteur
+                      </button>
+                    }
+                    @if (trip.notes) {
+                      <button type="button"
+                              (click)="canEditNotes() ? openNoteEdit(trip) : null"
+                              [disabled]="!canEditNotes()"
+                              [title]="trip.notes"
+                              class="rep-note rep-note--filled"
+                              [class.cursor-default]="!canEditNotes()">
+                        <lucide-icon [img]="MessageSquareIcon" [size]="12"></lucide-icon>
+                        <span class="rep-note-text">{{ trip.notes }}</span>
+                      </button>
+                    } @else if (canEditNotes()) {
+                      <button type="button" (click)="openNoteEdit(trip)" class="rep-note rep-note--add">
+                        <lucide-icon [img]="MessageSquareIcon" [size]="12"></lucide-icon>
+                        Note
+                      </button>
+                    }
+                  </div>
+                  <div class="rep-card-foot-right">
+                    @if (isAdmin() && trip.maxSpeed > 90) {
+                      <button type="button" (click)="downloadSpeedReport(trip)" class="rep-card-action" title="Rapport vitesse">
+                        <lucide-icon [img]="FileTextIcon" [size]="15"></lucide-icon>
+                      </button>
+                    }
+                    <button type="button" (click)="openReplay(trip)" class="rep-card-action rep-card-action--replay" title="Replay">
+                      <lucide-icon [img]="Play" [size]="14"></lucide-icon>
+                      Replay
+                    </button>
+                  </div>
+                </footer>
+              </article>
+            }
+          </div>
+        }
+        </div>
+
+        <!-- Pagination : la page suivante s'AJOUTE au tableau (le tri reste celui
+             demandé au serveur, donc « plus » veut bien dire « la suite », pas
+             « d'autres trajets pris ailleurs »). Le bouton reste la commande explicite ;
+             la sentinelle en dessous charge d'elle-même quand on arrive en bas — au pouce,
+             c'est ce qu'on attend d'une liste. -->
+        @if (nextCursor()) {
+          <div #moreSentinel class="rep-more-sentinel" aria-hidden="true"></div>
+          <div class="rep-more">
+            <button type="button" class="btn-secondary text-xs"
+                    (click)="loadMoreTrips()" [disabled]="loadingMore()"
+                    trackClick="rapport-charger-plus">
+              @if (loadingMore()) {
+                <span class="rep-more-spinner"></span> Chargement…
+              } @else {
+                Charger plus
+                @if (kpis().tripCount > listedTripCount()) {
+                  <span class="rep-more-rest">({{ kpis().tripCount - listedTripCount() }} restants)</span>
+                }
+              }
+            </button>
+          </div>
+        }
       }
     </div>
 
@@ -680,7 +852,7 @@ import {
 
     <app-period-replay
       [open]="periodReplayOpen()"
-      [trips]="trips()"
+      [trips]="periodReplayTrips()"
       [vehicleType]="periodReplayVehicleType()"
       [vehiclePlate]="periodReplayPlate()"
       (closed)="periodReplayOpen.set(false)"
@@ -814,8 +986,14 @@ import {
       flex-shrink: 0;
       overflow: visible;
     }
-    @media (max-width: 380px) {
-      .rep-kpi-value { font-size: 18px; }
+    /* Sous 480 px, une carte KPI fait ~134 px de large utile : « 33 171,4 km » et sa
+       courbe ne tiennent pas côte à côte, et la valeur s'affichait « 33171,… ». Le chiffre
+       est la raison d'être de la carte : il ne se tronque JAMAIS. La courbe et la mention
+       passent à la ligne quand il n'y a plus de place. */
+    @media (max-width: 480px) {
+      .rep-kpi-body { flex-wrap: wrap; row-gap: 4px; }
+      .rep-kpi-value { font-size: 20px; overflow: visible; text-overflow: clip; }
+      .rep-kpi-meta { white-space: normal; line-height: 1.3; }
       .rep-spark { width: 60px; height: 22px; }
     }
     /* KPI cliquable (Vitesse max → drilldown tableau). Reset des defauts <button>
@@ -916,8 +1094,10 @@ import {
     }
     /* Mobile : repli en colonne unique, ancre en fixed bottom pour eviter
      * tout debordement (le wrapper .rep-custom-wrapper peut etre place
-     * n'importe ou dans la barre de filtres horizontale). */
-    @media (max-width: 480px) {
+     * n'importe ou dans la barre de filtres horizontale).
+     * 640 px et non 480 : sous 640, la rangee des periodes defile horizontalement
+     * (overflow), et un panneau en position absolue y serait rogne. */
+    @media (max-width: 640px) {
       .rep-custom-panel {
         position: fixed;
         top: auto;
@@ -935,7 +1115,7 @@ import {
       background: var(--bg-tertiary);
       border-right: 1px solid var(--border-subtle);
     }
-    @media (max-width: 480px) {
+    @media (max-width: 640px) {
       .rep-custom-presets { border-right: none; border-bottom: 1px solid var(--border-subtle) }
     }
     .rep-custom-section {
@@ -1322,6 +1502,168 @@ import {
       100% { background: color-mix(in srgb, var(--tracky, #10E0A0) 16%, transparent); }
     }
 
+    /* Re-tri serveur : les lignes restent lisibles, estompées et non cliquables, plutôt
+       que de céder la place à un spinner (qui démonterait les en-têtes sous le curseur). */
+    /* Pas de pointer-events:none ici : un second clic sur le même en-tête (pour inverser
+       la direction) tomberait pendant la requête et serait perdu. La course est déjà
+       arbitrée côté composant par loadSeq. */
+    .rep-table-wrap { transition: opacity .15s ease; }
+    .rep-table-wrap--busy { opacity: .55; }
+
+    /* ─── Colonne « Analyse » ───
+       Elle n'apparaissait qu'avec un véhicule unique sélectionné ; elle est maintenant
+       toujours là (les analyses sont chargées par trajet). Sur un écran large la cellule
+       fait ~300 px et les badges tiennent sur trois lignes : 61 → 107 px par ligne, sans
+       conséquence. Sous 900 px en revanche, la cellule retombe à sa largeur minimale et
+       les huit badges s'empilent : la ligne passe à plus de 300 px, soit un tableau
+       quatre fois plus long à parcourir. On borne donc la hauteur ici — le reste des
+       badges reste atteignable en faisant défiler la cellule, là où un display:none
+       les aurait supprimés du mobile, ce qui est précisément le manque qu'on répare. */
+    @media (max-width: 900px) {
+      .rep-analysis-cell > * {
+        display: block;
+        max-height: 96px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+    }
+
+    /* ─── Pagination du tableau (« Charger plus ») ─── */
+    .rep-more { display: flex; justify-content: center; margin-top: 12px; }
+    .rep-more button { display: inline-flex; align-items: center; gap: 8px; }
+    .rep-more-rest { color: var(--fg-tertiary); font-weight: 500; }
+    .rep-more-spinner {
+      width: 12px; height: 12px; border-radius: 999px;
+      border: 2px solid var(--border-subtle);
+      border-top-color: var(--tracky-light, #10E0A0);
+      animation: rep-more-spin .7s linear infinite;
+    }
+    @keyframes rep-more-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .rep-more-spinner { animation-duration: 2s; }
+    }
+    /* Sentinelle de pagination : 1 px, invisible, placée juste au-dessus du bouton. */
+    .rep-more-sentinel { height: 1px; }
+
+    /* ─── Barre de filtres — MOBILE D'ABORD ───
+       Trois groupes réels dans le DOM. En large ils s'effacent (display: contents) et la
+       barre redevient la ligne fluide d'origine, pixel pour pixel. Sous 640 px : sélecteurs
+       en pleine largeur, périodes en rangée défilante au pouce (pas de retour à la ligne),
+       actions sur une dernière rangée. Avant : onze pastilles empilées sur quatre lignes. */
+    .rep-filters { display: flex; flex-direction: column; gap: 10px; }
+    .rep-selectors { display: flex; gap: 8px; }
+    .rep-selectors .rep-dropdown-wrapper { flex: 1; min-width: 0; }
+    .rep-selectors .rep-dropdown-trigger { width: 100%; }
+    .rep-periods {
+      display: flex; gap: 6px; flex-wrap: nowrap;
+      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      /* Marge négative + padding : les pastilles filent jusqu'au bord de l'écran, l'ombre
+         de focus n'est pas rognée. */
+      margin: 0 -4px; padding: 2px 4px;
+    }
+    .rep-periods::-webkit-scrollbar { display: none; }
+    .rep-periods > * { flex: 0 0 auto; }
+    .rep-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    @media (min-width: 641px) {
+      .rep-filters { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+      .rep-selectors, .rep-periods, .rep-actions { display: contents; }
+    }
+
+    /* ─── Liste des trajets : conteneur commun tableau / cartes ─── */
+    .rep-list { transition: opacity .15s ease; }
+
+    /* ─── Tri mobile ─── */
+    .rep-sortbar {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 10px;
+    }
+    .rep-sortbar-label { font-size: 12px; font-weight: 600; color: var(--fg-tertiary); white-space: nowrap; }
+    .rep-sortbar-select {
+      flex: 1; min-width: 0; min-height: 44px;
+      padding: 8px 12px; border-radius: 10px;
+      background: var(--bg-secondary); color: var(--fg-primary);
+      border: 1px solid var(--border-subtle);
+      font-size: 13px; font-weight: 600; font-family: inherit;
+    }
+    .rep-sortbar-dir {
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 44px; padding: 8px 12px; border-radius: 10px;
+      background: var(--bg-secondary); color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+      font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .rep-sortbar-dir lucide-icon { color: var(--tracky-light); }
+
+    /* ─── Cartes trajet (mobile) ─── */
+    .rep-cards { display: flex; flex-direction: column; gap: 10px; }
+    .rep-card {
+      display: flex; flex-direction: column; gap: 10px;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card, 16px);
+      min-width: 0;
+    }
+    /* Le surlignage KPI (rep-row--highlight) est partagé avec le tableau : même flash,
+       même bordure d'accent, pour que le geste ait le même retour quel que soit l'écran. */
+    .rep-card.rep-row--highlight { border-color: var(--tracky-light, #10E0A0); }
+    .rep-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .rep-card-when { display: flex; flex-direction: column; min-width: 0; }
+    .rep-card-date { font-size: 14px; font-weight: 700; color: var(--fg-primary); text-transform: capitalize; }
+    .rep-card-times { font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+    .rep-card-plate {
+      flex-shrink: 0;
+      font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 700;
+      letter-spacing: .06em; color: var(--fg-secondary);
+      padding: 4px 8px; border-radius: 8px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      cursor: pointer;
+    }
+    .rep-card-group { display: flex; }
+    .rep-card-stats {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+    }
+    @media (max-width: 380px) {
+      .rep-card-stats { grid-template-columns: repeat(2, 1fr); }
+    }
+    .rep-card-stat {
+      display: flex; flex-direction: column; gap: 2px; min-width: 0;
+      padding: 8px 10px; border-radius: 10px;
+      background: var(--bg-tertiary);
+    }
+    .rep-card-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
+    .rep-card-stat-value { font-size: 15px; font-weight: 800; color: var(--fg-primary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rep-card-stat-value small { font-size: 10px; font-weight: 600; color: var(--fg-tertiary); }
+    .rep-card-stat-value--warn { color: var(--texte-alerte, var(--danger)); }
+    .rep-card-analysis { min-width: 0; }
+    .rep-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .rep-card-foot-left { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    .rep-card-foot-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .rep-card-action {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 44px; min-width: 44px; padding: 8px 12px; border-radius: 10px;
+      background: var(--bg-tertiary); color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+      font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .rep-card-action--replay {
+      color: var(--texte-succes);
+      background: rgba(16,224,160,.08); border-color: rgba(16,224,160,.22);
+    }
+    .rep-card-action--replay lucide-icon { color: var(--tracky-light); }
+    /* Les chips conducteur / note viennent du tableau : au doigt, 44 px de haut. */
+    .rep-card .rep-driver, .rep-card .rep-note { min-height: 44px; }
+
+    /* ─── Exports : une rangée défilante au doigt plutôt que quatre lignes ─── */
+    @media (max-width: 640px) {
+      .rep-export-group {
+        flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+        max-width: 100%; padding-bottom: 2px;
+      }
+      .rep-export-group::-webkit-scrollbar { display: none; }
+      .rep-export-btn { flex: 0 0 auto; }
+    }
+
     /* ─── Synthèse par véhicule (réf. maquette Rapports) ─── */
     .rep-vsum { margin-bottom: 16px; }
     .rep-vsum-head { margin-bottom: 12px; }
@@ -1342,6 +1684,16 @@ import {
     @media (max-width: 1000px) {
       .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr 70px; }
       .rep-vt-hide { display: none !important; }
+    }
+    /* Sous 480 px, quatre colonnes ne tiennent plus : la ligne devient une carte à deux
+       colonnes (plaque en tête, chiffres dessous), le chevron reste à droite. */
+    @media (max-width: 480px) {
+      .rep-vt-head { display: none; }
+      .rep-vrow { grid-template-columns: 1fr 1fr 28px; grid-template-areas: 'veh veh chev' 'dist meta chev'; gap: 6px 10px; padding: 12px 14px; }
+      .rep-vrow > .rep-vveh { grid-area: veh; }
+      .rep-vrow > .rep-vchev { grid-area: chev; align-self: center; }
+      .rep-vrow > :nth-child(2) { grid-area: dist; }
+      .rep-vrow > :nth-child(3) { grid-area: meta; }
     }
   `],
 })
@@ -1704,11 +2056,37 @@ export class ReportsComponent implements OnInit, OnDestroy {
     () => this.kpis().tripCount > this.trips().length,
   );
 
-  // ─── Tri du tableau (Sprint 5, client-side) ─────────────────────────────
-  /** Colonne de tri active. Defaut : depart (ordre chronologique inverse). */
+  // ─── Tri du tableau (SERVEUR — porte sur toute la période) ───────────────
+  /**
+   * ⚠️ Le tri était fait EN MÉMOIRE sur la page chargée, et c'est ce qui cassait le
+   * drilldown de la carte « Vitesse max ».
+   *
+   * Mesure en production (2026-09-02, flotte « mh cars », 30 jours) : la carte annonçait
+   * 180 km/h — chiffre juste, il vient de l'agrégat serveur — et le clic surlignait un
+   * trajet à **139 km/h**, le plus rapide des cent trajets chargés sur 1 896. Le trajet à
+   * 180 n'était tout simplement pas dans la page. Rien ne le disait : le tableau se
+   * réordonnait, une ligne s'allumait, tout avait l'air de marcher. C'est la pire forme
+   * d'erreur — celle qui répond à côté avec l'assurance d'une bonne réponse.
+   *
+   * Le tri part donc en base (`sortBy`/`sortDir` sur `GET /trips`), sur les mêmes filtres
+   * que les KPI. Toutes les colonnes sont concernées, pas seulement la vitesse : trier par
+   * distance donnait « le plus long des cent derniers », jamais celui de la période.
+   */
   protected readonly sortBy = signal<TripSortColumn>('startedAt');
   /** Direction de tri active. */
   protected readonly sortDir = signal<SortDirection>('desc');
+  /** Curseur de la page suivante (`null` = tout est chargé). */
+  protected readonly nextCursor = signal<string | null>(null);
+  /** Chargement d'une page SUPPLÉMENTAIRE (distinct de `loading`, qui repeint tout). */
+  protected readonly loadingMore = signal(false);
+  /** Re-tri en cours : le tableau reste affiché, estompé (cf. `loadTrips`). */
+  protected readonly tripsBusy = signal(false);
+  /**
+   * Surligner la 1ʳᵉ ligne au prochain chargement — armé par le clic sur la carte KPI,
+   * consommé une seule fois. Le trajet le plus rapide n'est connu qu'APRÈS la réponse
+   * serveur, donc on ne peut pas le viser par son id au moment du clic.
+   */
+  private highlightTopAfterLoad = false;
   /** Id du trajet a surligner brievement (clic KPI « Vitesse max »). */
   protected readonly highlightTripId = signal<string | null>(null);
   /** Handle du timer de highlight, nettoye en ngOnDestroy / re-clic. */
@@ -1717,19 +2095,67 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly tableEl = viewChild<ElementRef<HTMLElement>>('tripsTable');
 
   /**
-   * Trajets affichés dans le tableau, triés en mémoire (~100 lignes déjà
-   * chargées → zéro serveur). `trips()` reste la source non triée pour les
-   * KPIs / charts / replay (qui n'ont pas besoin d'ordre). Nouvelle référence
-   * à chaque tri → re-render Angular.
+   * Sentinelle de pagination : quand elle entre dans la fenêtre, on charge la page
+   * suivante — au pouce, « Charger plus » toutes les cent lignes est une corvée.
+   * L'élément n'existe que tant qu'il reste une page ; l'observateur suit son apparition
+   * et sa disparition via le signal de requête de vue.
    */
-  protected readonly sortedTrips = computed(() =>
-    sortTrips(this.trips(), this.sortBy(), this.sortDir()),
-  );
+  private readonly moreSentinel = viewChild<ElementRef<HTMLElement>>('moreSentinel');
+  private moreObserver: IntersectionObserver | null = null;
+  private readonly moreSentinelEffect = effect(() => {
+    const el = this.moreSentinel()?.nativeElement;
+    this.moreObserver?.disconnect();
+    this.moreObserver = null;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    this.moreObserver = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) void this.loadMoreTrips(); },
+      { rootMargin: '240px 0px' },
+    );
+    this.moreObserver.observe(el);
+  });
+
+  /**
+   * Après une page ajoutée, la sentinelle peut être restée visible (page courte) : un
+   * observateur ne re-signale pas un état inchangé. Le ré-observer rejoue la notification
+   * initiale, et la page suivante part si on est toujours en bas.
+   */
+  private rearmMoreSentinel(): void {
+    const el = this.moreSentinel()?.nativeElement;
+    if (!el || !this.moreObserver) return;
+    this.moreObserver.unobserve(el);
+    this.moreObserver.observe(el);
+  }
+
+  /**
+   * Trajets affichés dans le tableau. Le serveur renvoie déjà la page dans l'ordre
+   * demandé ; un re-tri local ne ferait que réordonner l'échantillon et ré-introduirait
+   * le mensonge qu'on vient d'enlever. `sortTrips` reste utilisé et testé pour les
+   * listes complètes (cf. `reports.utils.spec.ts`).
+   */
+  protected readonly sortedTrips = computed(() => this.trips());
+
+  /** Tri MOBILE (sélecteur + bouton de sens) : la vue en cartes n'a pas d'en-têtes à cliquer. */
+  protected setSort(col: TripSortColumn, dir: SortDirection): void {
+    if (this.sortBy() === col && this.sortDir() === dir) return;
+    this.sortBy.set(col);
+    this.sortDir.set(dir);
+    void this.loadTrips();
+  }
+
+  /** Libellés du sélecteur de tri mobile — mêmes colonnes que les en-têtes du tableau. */
+  protected readonly sortOptions: ReadonlyArray<{ col: TripSortColumn; label: string }> = [
+    { col: 'startedAt', label: 'Date' },
+    { col: 'maxSpeed', label: 'Vitesse max' },
+    { col: 'distanceMeters', label: 'Distance' },
+    { col: 'durationSeconds', label: 'Durée' },
+    { col: 'avgSpeed', label: 'Vitesse moyenne' },
+  ];
 
   /**
    * Clic sur un en-tête de colonne : si déjà active → inverse la direction ;
    * sinon active la colonne avec une direction par défaut sensée (date/vitesses/
-   * distance/durée = desc d'abord, plus parlant).
+   * distance/durée = desc d'abord, plus parlant). Recharge depuis le serveur : le
+   * tri porte sur la période entière, pas sur la page affichée.
    */
   protected onSort(col: TripSortColumn): void {
     if (this.sortBy() === col) {
@@ -1738,6 +2164,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.sortBy.set(col);
       this.sortDir.set('desc');
     }
+    void this.loadTrips();
   }
 
   /** Direction affichée pour la flèche d'un en-tête (null si colonne inactive). */
@@ -1764,10 +2191,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!col) return;
     this.sortBy.set(col);
     this.sortDir.set('desc');
-    // La 1ʳᵉ ligne du tri desc = le trajet à la vitesse max.
-    const top = this.sortedTrips()[0];
-    if (top) this.flashHighlight(top.id);
-    // Scroll vers le tableau (après le re-render du tri).
+    // Le trajet le plus rapide de la PÉRIODE n'est connu qu'après la réponse serveur :
+    // on arme le surlignage, `loadTrips` l'applique sur la 1ʳᵉ ligne reçue.
+    this.highlightTopAfterLoad = true;
+    void this.loadTrips();
+    // Scroll tout de suite : le tableau est déjà à l'écran, l'attente de la réponse
+    // se voit alors sur les lignes qu'on regarde plutôt qu'en haut de page.
     queueMicrotask(() => {
       this.tableEl()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -1959,19 +2388,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   protected vehiclePlate(vehicleId: string | null | undefined): string | null {
     if (!vehicleId) return null;
-    const v = this.vehicles().find((x) => x.id === vehicleId);
-    return v?.plate ?? null;
+    return this.vehicleById().get(vehicleId)?.plate ?? null;
   }
 
   /** Groupe du véhicule d'un trajet, résolu depuis la liste déjà chargée. */
   protected vehicleGroup(vehicleId: string | null | undefined): { id: string; name: string } | null {
     if (!vehicleId) return null;
-    return this.vehicles().find((x) => x.id === vehicleId)?.group ?? null;
+    return this.vehicleById().get(vehicleId)?.group ?? null;
   }
 
   /** Marque + modèle d'un véhicule (ligne secondaire du tableau par véhicule). */
   protected vehicleModelLabel(vehicleId: string): string {
-    const v = this.vehicles().find((x) => x.id === vehicleId);
+    const v = this.vehicleById().get(vehicleId);
     if (!v) return '—';
     return [v.brand, v.model].filter(Boolean).join(' ') || '—';
   }
@@ -2031,16 +2459,51 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return v?.plate ?? null;
   });
 
-  protected onOpenPeriodReplay(): void {
-    if (!this.canPeriodReplay()) return;
-    this.periodReplayOpen.set(true);
+  /**
+   * Replay de période : recharge les trajets AVEC leurs tracés, toutes pages confondues,
+   * sur les mêmes filtres que la liste. C'est le seul moment où les polylignes sont
+   * nécessaires — les charger ici plutôt qu'avec la liste divise par trois le poids de
+   * chaque page du tableau. Borné à 20 pages (2 000 trajets) : au-delà, un replay n'est
+   * plus lisible de toute façon.
+   */
+  protected async onOpenPeriodReplay(): Promise<void> {
+    if (!this.canPeriodReplay() || this.periodReplayLoading()) return;
+    this.periodReplayLoading.set(true);
+    try {
+      const { tripParams } = this.buildFilterParams();
+      const params: Record<string, string> = { ...tripParams, sortBy: 'startedAt', sortDir: 'asc' };
+      delete params['light'];
+      const all: TripDto[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < 20; page++) {
+        const res: { items: TripDto[]; nextCursor: string | null } = await firstValueFrom(
+          this.tripsApi.list(cursor ? { ...params, cursor } : params),
+        );
+        all.push(...res.items);
+        cursor = res.nextCursor;
+        if (!cursor) break;
+      }
+      this.periodReplayTrips.set(all);
+      this.periodReplayOpen.set(true);
+    } catch (err) {
+      swallow('reports:onOpenPeriodReplay', err);
+      this.toast.error('Replay indisponible', httpFailureMessage(err, 'les tracés de la période'));
+    } finally {
+      this.periodReplayLoading.set(false);
+    }
   }
+
+  /**
+   * Index des véhicules par id. Les résolutions plaque / groupe / modèle se faisaient par
+   * `find()` sur la liste, à chaque ligne ET à chaque cycle de détection : 400 lignes × 3
+   * lookups × 44 véhicules à chaque frappe — invisible sur un portable, sensible au pouce.
+   */
+  protected readonly vehicleById = computed(() => new Map(this.vehicles().map((v) => [v.id, v])));
 
   protected readonly replayVehicleType = computed(() => {
     const trip = this.replayTrip();
     if (!trip) return 'OTHER';
-    const v = this.vehicles().find((v) => v.id === trip.vehicleId);
-    return v?.type ?? 'OTHER';
+    return this.vehicleById().get(trip.vehicleId)?.type ?? 'OTHER';
   });
 
   protected readonly isAdmin = computed(() => {
@@ -2061,6 +2524,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.desktopMql?.removeEventListener('change', this.desktopMqlListener);
     if (this.highlightTimer) clearTimeout(this.highlightTimer);
+    this.moreObserver?.disconnect();
+    this.moreObserver = null;
   }
 
   /** Ferme le panel custom à Escape (cf. a11y picker calendrier). */
@@ -2225,40 +2690,147 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** #40 — sequence anti-race : une reponse perimee ne doit pas ecraser une fraiche. */
   private loadSeq = 0;
 
+  /**
+   * Filtres actifs (véhicule / groupe / société / période) sous forme de query params.
+   *
+   * `summaryParams` sert aux agrégats (résumé journalier, graphiques de période) ;
+   * `tripParams` y ajoute la pagination et le tri de la LISTE. Les deux sont construits
+   * au même endroit pour qu'un filtre ne puisse pas s'appliquer aux chiffres sans
+   * s'appliquer aux lignes — l'écart des deux périmètres est exactement ce qui rendait
+   * les incohérences de cette page indéchiffrables.
+   */
+  private buildFilterParams(): {
+    tripParams: Record<string, string>;
+    summaryParams: Record<string, string>;
+  } {
+    const id = this.selectedVehicleId();
+    const gid = this.selectedGroupId();
+    const tripParams: Record<string, string> = {
+      limit: String(REPORTS_TRIPS_PAGE_SIZE),
+      sortBy: this.sortBy(),
+      sortDir: this.sortDir(),
+      // Charge allégée : ni polylignes ni fiche véhicule complète (430 → ~120 Ko la page).
+      // Le tracé est demandé au moment du replay, trajet par trajet.
+      light: '1',
+    };
+    const summaryParams: Record<string, string> = {};
+    if (id) {
+      tripParams['vehicleId'] = id;
+      summaryParams['vehicleId'] = id;
+    } else if (gid) {
+      // Filtre groupe sans véhicule unique → scope les KPI/trajets sur les véhicules du groupe.
+      const ids = this.visibleVehicles().map((v) => v.id).join(',');
+      if (ids) {
+        tripParams['vehicleIds'] = ids;
+        summaryParams['vehicleIds'] = ids;
+      }
+    }
+    // Filtre société GLOBAL (sélecteur super-admin) : scope le rapport entier (KPI + trajets
+    // + charts) à la flotte choisie, côté serveur (les agrégats ne sont pas filtrables client).
+    const fleet = this.fleetFilter.selectedFleetId();
+    if (fleet) {
+      tripParams['fleetId'] = fleet;
+      summaryParams['fleetId'] = fleet;
+    }
+    if (this.periodFrom) {
+      tripParams['from'] = this.periodFrom;
+      summaryParams['from'] = this.periodFrom;
+    }
+    if (this.periodTo) {
+      tripParams['to'] = this.periodTo;
+      summaryParams['to'] = this.periodTo;
+    }
+    return { tripParams, summaryParams };
+  }
+
+  /**
+   * Recharge la SEULE liste de trajets (nouveau tri), sans retoucher aux KPI ni aux
+   * graphiques : ils ne dépendent pas de l'ordre et les repeindre ferait clignoter la
+   * moitié de l'écran pour un clic sur un en-tête de colonne.
+   */
+  private async loadTrips(): Promise<void> {
+    const seq = ++this.loadSeq;
+    // ⚠️ PAS `loading` : ce signal fait disparaître le tableau au profit d'un spinner.
+    // Sur un clic d'en-tête, ça démonte les boutons de tri sous le curseur — un double
+    // clic pour inverser la direction tombait alors dans le vide — et ça fait sauter la
+    // position de défilement à chaque tri. `tripsBusy` garde les lignes à l'écran,
+    // simplement estompées, le temps de la réponse.
+    this.tripsBusy.set(true);
+    try {
+      const { tripParams } = this.buildFilterParams();
+      const res = await firstValueFrom(this.tripsApi.list(tripParams));
+      if (seq !== this.loadSeq) return;
+      this.loadError.set(null);
+      this.applyTripsPage(res, /* append */ false);
+      void this.loadAnalyses(seq);
+    } catch (err) {
+      swallow('reports:loadTrips', err);
+      if (seq === this.loadSeq) {
+        this.trips.set([]);
+        this.nextCursor.set(null);
+        this.loadError.set(httpFailureMessage(err, 'les trajets'));
+      }
+    } finally {
+      if (seq === this.loadSeq) this.tripsBusy.set(false);
+    }
+  }
+
+  /**
+   * Page SUIVANTE de trajets, ajoutée à la liste courante.
+   *
+   * ⚠️ C'est la seule façon d'atteindre les trajets au-delà du plafond de page : le
+   * tableau annonçait « 100 trajets affichés sur 1 896 » et n'offrait aucun moyen de
+   * voir les 1 796 autres, à part rétrécir la période jusqu'à passer sous le plafond.
+   */
+  protected async loadMoreTrips(): Promise<void> {
+    const cursor = this.nextCursor();
+    // Un « charger plus » lancé pendant un re-tri paginerait sur l'ANCIEN ordre et
+    // collerait deux jeux de résultats bout à bout.
+    if (!cursor || this.loadingMore() || this.loading() || this.tripsBusy()) return;
+    const seq = this.loadSeq;
+    this.loadingMore.set(true);
+    try {
+      const { tripParams } = this.buildFilterParams();
+      const res = await firstValueFrom(this.tripsApi.list({ ...tripParams, cursor }));
+      // Un changement de filtre/tri pendant la requête invalide cette page : l'ajouter
+      // mélangerait deux jeux de résultats dans le même tableau.
+      if (seq !== this.loadSeq) return;
+      this.applyTripsPage(res, /* append */ true);
+      void this.loadAnalyses(seq);
+    } catch (err) {
+      swallow('reports:loadMoreTrips', err);
+      if (seq === this.loadSeq) {
+        this.toast.error('Chargement interrompu', httpFailureMessage(err, 'les trajets'));
+      }
+    } finally {
+      this.loadingMore.set(false);
+      // Après le rendu de la page ajoutée (d'où le report à la tâche suivante).
+      setTimeout(() => this.rearmMoreSentinel(), 0);
+    }
+  }
+
+  /**
+   * Applique une page reçue : liste + curseur + surlignage éventuel de la 1ʳᵉ ligne
+   * (drilldown « Vitesse max »).
+   */
+  private applyTripsPage(
+    res: { items: TripDto[]; nextCursor: string | null },
+    append: boolean,
+  ): void {
+    this.trips.set(append ? [...this.trips(), ...res.items] : res.items);
+    this.nextCursor.set(res.nextCursor);
+    if (!append && this.highlightTopAfterLoad) {
+      this.highlightTopAfterLoad = false;
+      const top = res.items[0];
+      if (top) this.flashHighlight(top.id);
+    }
+  }
+
   protected async loadData(): Promise<void> {
     const seq = ++this.loadSeq;
     this.loading.set(true);
     try {
-      const id = this.selectedVehicleId();
-      const gid = this.selectedGroupId();
-      const tripParams: Record<string, string> = { limit: '100' };
-      const summaryParams: Record<string, string> = {};
-      if (id) {
-        tripParams['vehicleId'] = id;
-        summaryParams['vehicleId'] = id;
-      } else if (gid) {
-        // Filtre groupe sans véhicule unique → scope les KPI/trajets sur les véhicules du groupe.
-        const ids = this.visibleVehicles().map((v) => v.id).join(',');
-        if (ids) {
-          tripParams['vehicleIds'] = ids;
-          summaryParams['vehicleIds'] = ids;
-        }
-      }
-      // Filtre société GLOBAL (sélecteur super-admin) : scope le rapport entier (KPI + trajets
-      // + charts) à la flotte choisie, côté serveur (les agrégats ne sont pas filtrables client).
-      const fleet = this.fleetFilter.selectedFleetId();
-      if (fleet) {
-        tripParams['fleetId'] = fleet;
-        summaryParams['fleetId'] = fleet;
-      }
-      if (this.periodFrom) {
-        tripParams['from'] = this.periodFrom;
-        summaryParams['from'] = this.periodFrom;
-      }
-      if (this.periodTo) {
-        tripParams['to'] = this.periodTo;
-        summaryParams['to'] = this.periodTo;
-      }
+      const { tripParams, summaryParams } = this.buildFilterParams();
 
       // Fetch trips + daily summary en parallele : meme periode, meme vehicule.
       // Si l'un fail, l'autre peut quand meme alimenter ses charts — mais on RETIENT
@@ -2281,7 +2853,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // resultat perime (sinon une reponse lente ecrase des donnees plus fraiches).
       if (seq !== this.loadSeq) return;
       this.loadError.set(failure ? httpFailureMessage(failure, 'les trajets') : null);
-      this.trips.set(tripsRes.items);
+      this.applyTripsPage(tripsRes, /* append */ false);
       this.dailySummary.set(summary);
       // Agrégat des deux graphiques de période. Chargé À PART et sans bloquer : il porte
       // le confort (deux graphiques), pas les chiffres — les KPI viennent du résumé
@@ -2295,6 +2867,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       swallow('reports:loadData', err);
       if (seq === this.loadSeq) {
         this.trips.set([]);
+        this.nextCursor.set(null);
         this.dailySummary.set([]);
         this.loadError.set(httpFailureMessage(err, 'les trajets'));
       }
@@ -2303,16 +2876,41 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Charge en lot les analyses du véhicule sélectionné (vide sinon). Best-effort, non bloquant. */
+  /**
+   * Charge en lot les analyses des trajets AFFICHÉS (arrêts, excès, éco-conduite, récit IA).
+   * Best-effort, non bloquant.
+   *
+   * ⚠️ Ce chargement était conditionné à la sélection d'un véhicule UNIQUE, parce qu'il
+   * passait par `listForVehicle`. Conséquence : filtrer par société ou par groupe — le cas
+   * le plus courant — faisait disparaître la colonne « Analyse » entière, récits IA compris,
+   * sans un mot. On demande maintenant les analyses des trajets de la page, quels que
+   * soient leurs véhicules.
+   */
   private async loadAnalyses(seq: number): Promise<void> {
-    const vId = this.selectedVehicleId();
-    if (!vId) { this.analysesMap.set(new Map()); return; }
+    const trips = this.trips();
+    if (trips.length === 0) { this.analysesMap.set(new Map()); return; }
+    // Seuls les trajets pas encore connus : après un « Charger plus », re-demander les
+    // pages déjà chargées serait du gaspillage pur (et dépasserait vite le lot max).
+    const known = this.analysesMap();
+    const missing = trips.map((t) => t.id).filter((id) => !known.has(id));
+    if (missing.length === 0) return;
     try {
-      const list = await firstValueFrom(this.analysisApi.listForVehicle(vId, 200));
-      if (seq === this.loadSeq) this.analysesMap.set(new Map(list.map((a) => [a.tripId, a])));
+      const pages: TripAnalysisDto[][] = [];
+      for (let i = 0; i < missing.length; i += ANALYSES_BATCH_SIZE) {
+        pages.push(await firstValueFrom(
+          this.analysisApi.listForTrips(missing.slice(i, i + ANALYSES_BATCH_SIZE)),
+        ));
+        if (seq !== this.loadSeq) return;
+      }
+      this.analysesMap.update((m) => {
+        const next = new Map(m);
+        for (const a of pages.flat()) next.set(a.tripId, a);
+        return next;
+      });
     } catch (err) {
       swallow('reports:loadAnalyses', err);
-      if (seq === this.loadSeq) this.analysesMap.set(new Map());
+      // On GARDE ce qui était déjà chargé : vider la table transformerait une page
+      // d'analyses manquantes en « aucune analyse nulle part ».
     }
   }
 
@@ -2324,9 +2922,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.analysesMap.update((m) => { const n = new Map(m); n.set(a.tripId, a); return n; });
   }
 
-  protected openReplay(trip: TripDto): void {
+  /**
+   * Ouvre le replay d'un trajet. La liste est chargée SANS tracé (charge allégée) : on
+   * demande le trajet complet ici, au clic — un seul tracé transféré au lieu de cent.
+   * La modal s'ouvre tout de suite avec ce qu'on a (en-tête, chiffres) ; le tracé arrive
+   * juste derrière, ce que le composant de replay sait déjà faire (tracé absent → segment
+   * droit, puis vrai tracé).
+   */
+  protected async openReplay(trip: TripDto): Promise<void> {
     this.replayTrip.set(trip);
+    if (trip.polyline) return; // déjà complet (ex. trajet rafraîchi après une note)
+    try {
+      const full = await firstValueFrom(this.tripsApi.findOne(trip.id));
+      // L'utilisateur a pu fermer ou changer de trajet pendant la requête.
+      if (this.replayTrip()?.id === trip.id) this.replayTrip.set(full);
+    } catch (err) {
+      swallow('reports:openReplay', err);
+      this.toast.error('Tracé indisponible', httpFailureMessage(err, 'le tracé du trajet'));
+    }
   }
+
+  /** Trajets COMPLETS (avec tracés) du replay de période — chargés à l'ouverture seulement. */
+  protected readonly periodReplayTrips = signal<TripDto[]>([]);
+  protected readonly periodReplayLoading = signal(false);
 
   protected async downloadSpeedReport(trip: TripDto): Promise<void> {
     try {

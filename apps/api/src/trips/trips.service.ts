@@ -17,6 +17,7 @@ import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import type { TripSortColumn } from './dto/list-trips.dto';
 import { MapMatchingService } from './map-matching.service';
 import { TripSegmenterService } from './trip-segmenter.service';
 import {
@@ -516,6 +517,21 @@ export class TripsService implements OnModuleInit {
   } as const;
 
   /**
+   * Colonnes scalaires d'un trajet en charge ALLÉGÉE : tout sauf les deux polylignes.
+   * Liste explicite plutôt qu'une exclusion : Prisma n'a pas d'« omit » stable en 6.x et une
+   * colonne ajoutée au modèle doit être ajoutée ici EXPRÈS (le contrat léger est un contrat).
+   */
+  private static readonly LIGHT_TRIP_SELECT = {
+    id: true, vehicleId: true, trackerId: true, fleetId: true,
+    startedAt: true, endedAt: true, durationSeconds: true,
+    startLat: true, startLng: true, endLat: true, endLng: true,
+    distanceKm: true, distanceMeters: true, maxSpeed: true, avgSpeed: true,
+    positionCount: true, segmentationSource: true, missionId: true,
+    notes: true, notesUpdatedAt: true, notesUpdatedById: true,
+    driverId: true, driverSource: true, createdAt: true,
+  } as const;
+
+  /**
    * Résout le filtre `where.vehicleId` depuis un véhicule unique OU une liste
    * (filtre groupe), borné au périmètre véhicules de l'appelant.
    *
@@ -541,9 +557,40 @@ export class TripsService implements OnModuleInit {
     return scope.length === 1 ? scope[0] : { in: scope };
   }
 
+  /**
+   * Ordre de tri d'une page de trajets.
+   *
+   * ⚠️ Le `id` en second critère n'est PAS cosmétique : `startedAt` et `maxSpeed` ne
+   * sont pas uniques (deux trajets peuvent démarrer à la même seconde, et des dizaines
+   * plafonnent à la même vitesse). Sans départage unique, l'ordre de deux lignes ex
+   * aequo n'est pas garanti d'une requête à l'autre — et la pagination par curseur, qui
+   * reprend « après cette ligne », sauterait ou répéterait des trajets à chaque page.
+   * Même direction que le critère principal pour que la comparaison reste un simple
+   * ordre lexicographique du couple (colonne, id).
+   */
+  private static tripOrderBy(
+    sortBy: TripSortColumn | undefined,
+    sortDir: 'asc' | 'desc' | undefined,
+  ): Prisma.TripOrderByWithRelationInput[] {
+    const col: TripSortColumn = sortBy ?? 'startedAt';
+    const dir: Prisma.SortOrder = sortDir === 'asc' ? 'asc' : 'desc';
+    return [{ [col]: dir } as Prisma.TripOrderByWithRelationInput, { id: dir }];
+  }
+
   async list(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; limit?: string; cursor?: string; fleetId?: string },
+    filters: {
+      vehicleId?: string;
+      vehicleIds?: string;
+      from?: string;
+      to?: string;
+      limit?: string;
+      cursor?: string;
+      fleetId?: string;
+      sortBy?: TripSortColumn;
+      sortDir?: 'asc' | 'desc';
+      light?: string;
+    },
   ): Promise<{ items: Trip[]; nextCursor: string | null }> {
     // Mode vie privée (RGPD) : masque les trajets d'un véhicule actuellement en mode privé.
     const where: Prisma.TripWhereInput = { endedAt: { not: null }, NOT: { vehicle: { privacyModeEnabled: true } } };
@@ -567,13 +614,32 @@ export class TripsService implements OnModuleInit {
     }
 
     const limit = Math.min(filters.limit ? parseInt(filters.limit, 10) : 20, 100);
-    const items = await this.prisma.trip.findMany({
-      where,
-      include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
-      orderBy: { startedAt: 'desc' },
+    const pagination = {
+      orderBy: TripsService.tripOrderBy(filters.sortBy, filters.sortDir),
       take: limit + 1,
       ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
-    });
+    };
+    const light = filters.light === '1' || filters.light === 'true';
+    const items = light
+      // Charge allégée (cf. `ListTripsDto.light`) : les polylignes et la fiche véhicule
+      // complète restent en base. `select` et `include` s'excluent chez Prisma, d'où les
+      // deux branches ; le résultat est typé `Trip` par commodité de contrat — les champs
+      // omis sont simplement ABSENTS du JSON, jamais renvoyés à null (un `null` dirait
+      // « ce trajet n'a pas de tracé », ce qui est faux).
+      ? ((await this.prisma.trip.findMany({
+          where,
+          select: {
+            ...TripsService.LIGHT_TRIP_SELECT,
+            vehicle: { select: { id: true, fleetId: true, plate: true, type: true, brand: true, model: true } },
+            ...TripsService.NOTES_AUTHOR_INCLUDE,
+          },
+          ...pagination,
+        })) as unknown as Trip[])
+      : await this.prisma.trip.findMany({
+          where,
+          include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
+          ...pagination,
+        });
 
     const hasMore = items.length > limit;
     const page = hasMore ? items.slice(0, limit) : items;

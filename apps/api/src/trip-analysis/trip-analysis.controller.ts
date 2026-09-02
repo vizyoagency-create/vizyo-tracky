@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationBacklogDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DepotScopeGuard } from '../depot/depot-scope.guard';
+import { ListTripAnalysesDto } from './dto/list-trip-analyses.dto';
 import { DrivingScoreService } from './driving-score.service';
 import { FuelCalibrationService } from './fuel-calibration.service';
 import { FuelReportService } from './fuel-report.service';
@@ -80,6 +81,13 @@ export class TripAnalysisController {
     return this.automation.listRuns(limit ? parseInt(limit, 10) : 30);
   }
 
+  /** Reste à faire du pipeline par société (sans analyse / sans récit / figés) — le chiffre qui doit baisser. */
+  @Get('automation/backlog')
+  @Roles(UserRole.SUPER_ADMIN)
+  automationBacklog(): Promise<TripAutomationBacklogDto> {
+    return this.automation.backlog();
+  }
+
   /**
    * GET /api/trip-analysis/scores — CLASSEMENT noté du score de conduite, agrégé par véhicule /
    * conducteur / groupe sur une période. Scopé au périmètre véhicules de l'utilisateur (anti-IDOR).
@@ -123,6 +131,20 @@ export class TripAnalysisController {
   @RequirePermissions('trips_view')
   listForVehicle(@Req() req: AuthenticatedRequest, @Param('vehicleId') vehicleId: string, @Query('limit') limit?: string): Promise<TripAnalysisDto[]> {
     return this.svc.listForVehicle(req.user, vehicleId, limit ? parseInt(limit, 10) : 50);
+  }
+
+  /**
+   * POST /api/trip-analysis/by-trips — analyses des trajets AFFICHÉS, en un appel.
+   * Lecture seule malgré le POST (cf. `ListTripAnalysesDto`). Scopée : les trajets hors
+   * périmètre sont omis, jamais renvoyés.
+   *
+   * ⚠️ DOIT rester déclarée AVANT `@Post(':tripId')`, sinon Nest y voit un trajet
+   * nommé « by-trips » et déclenche une (ré)analyse.
+   */
+  @Post('by-trips')
+  @RequirePermissions('trips_view')
+  listForTrips(@Req() req: AuthenticatedRequest, @Body() dto: ListTripAnalysesDto): Promise<TripAnalysisDto[]> {
+    return this.svc.listForTrips(req.user, dto.tripIds);
   }
 
   /**
