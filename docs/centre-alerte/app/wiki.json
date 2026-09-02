@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-09-01",
+  "updatedAt": "2026-09-02",
   "title": "Centre d'alerte — documentation & audits",
   "intro": "Tout ce qui a été observé, diagnostiqué et corrigé sur le centre d'alerte. Le référentiel garde la mémoire des erreurs au-delà de la purge de 30 jours ; les rapports gardent la trace de chaque passage.",
   "_comment": "Fichier LU PAR L'APPLICATION (GET /api/admin/alerts/wiki). Les documents sont découverts automatiquement sur le disque : ce manifeste ne fait qu'ajouter titres, ordre et descriptions. Un fichier absent d'ici apparaît quand même — il ne disparaît jamais faute de déclaration. En revanche `fiches` et `passages` sont tenus à la main par l'agent d'audit : l'état d'un défaut et ce qu'il faut en faire ne se devinent pas d'une liste de fichiers.",
@@ -43,6 +43,38 @@
   ],
   "fiches": [
     {
+      "id": "TRK-060",
+      "titre": "La collecte de metriques rend l erreur de transport brute",
+      "source": "system-metrics",
+      "statut": "NON_CORRIGE",
+      "gravite": 3,
+      "vuPremiere": "2026-09-02",
+      "vuDerniere": "2026-09-02",
+      "occurrences": 1,
+      "occurrencesLibelle": "Une seule ligne, le 2 septembre a 00h00m38, et la seule de son espece en quatre-vingt-dix jours de retention. CONSEQUENCE MESUREE AVANT DE QUALIFIER : la table des metriques porte 1437 points sur les 1440 attendus en vingt-quatre heures. Le collecteur tourne toutes les soixante secondes, attrape son exception, l enregistre et continue ; le passage suivant a reussi. Aucun redemarrage ne l explique : la base tourne sans interruption depuis le 4 aout, zero redemarrage.",
+      "quoi": "L INCIDENT EST BENIN, LE DEFAUT EST LE MESSAGE. Une resolution de nom Docker qui bafouille une seconde a coute un point de mesure sur mille quatre cent quarante. Mais la ligne ecrite recopie telle quelle l erreur de transport, a travers l enveloppe d erreur de Prisma : elle ne dit ni ce qui a echoue, la collecte de metriques systeme, ni la consequence, un point de graphe manquant, ni qu elle est sans gravite. Ce qu un exploitant lit a huit heures du matin, c est ERROR suivi du nom du conteneur de base de donnees, et il instruit une panne de base qui n a jamais eu lieu. Le contraste est net dans la meme collecte le meme jour : l analyse de trajets ecrit une degradation exemplaire qui nomme la dependance, la consequence et ce qui survit. Le savoir-faire existe dans ce depot, il n est pas applique ici.",
+      "quoiFaire": "Reecrire le message dans les DEUX blocs catch du collecteur, lignes 41 et 57 du fichier metrics-collector, en nommant la collecte, la perte d un point et la reprise au passage suivant. CHERCHER LES JUMEAUX : les deux blocs portent le meme defaut, corriger un seul le laisserait vivant. ET SURTOUT BORNER, SINON ON REMPLACE UN CRI PAR UN SILENCE : n ecrire cette ligne rassurante que si le passage precedent a reussi, et passer en CRITICAL au-dela de cinq echecs consecutifs, soit cinq minutes sans metrique, ce qui signifie que la base est vraiment partie.",
+      "aNePasFaire": "NE PAS archiver cette ligne comme du bruit : elle est le seul temoin d une resolution de nom qui a fauté, et sa famille merite d etre suivie. NE PAS adoucir le message sans poser le compteur d echecs consecutifs : un message apaisant sans borne est exactement le profil de TRK-008, un defaut qui casse sans crier. NE PAS conclure a une panne de base sur cette ligne seule : la mesure dit 1437 points sur 1440.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-060"
+    },
+    {
+      "id": "TRK-059",
+      "titre": "La cible atteinte qui suit un echec porte une AUTRE cible",
+      "source": "commandes",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-09-02",
+      "vuDerniere": "2026-09-02",
+      "occurrences": 46,
+      "occurrencesLibelle": "Quarante-six paires sur sept jours, sur la definition un echec suivi d une cible atteinte sur le MEME boitier en moins de trente minutes. QUARANTE-SIX SUR QUARANTE-SIX portent une cible DIFFERENTE de celle qui vient d echouer ; ZERO porte la meme. Delai moyen entre les deux : 6,6 minutes. Cas de reference HD-964-XY, le boitier meme de TRK-057 : a 00h28m24 echec avec 99 s reel pour 20 s demande, a 00h33m29 cible atteinte avec 99 s reel pour 99 s demande. La cadence reelle est le MEME nombre des deux cotes. Meme motif sur GR-898-HY, EZ-259-DB, EY-613-MF, AL-927-QM et GS-138-LT.",
+      "quoi": "LE BOITIER N A PAS REJOINT LA CIBLE, C EST LA CIBLE QUI EST DESCENDUE JUSQU A LUI. La fonction qui choisit la cible la recalcule depuis l etat d echantillonnage : vingt secondes en mouvement, trente a l arret contact mis, quatre-vingt-dix-neuf a l arret. Un vehicule qui s arrete juste apres une commande a vingt secondes voit donc sa cible passer a quatre-vingt-dix-neuf, cadence que le boitier tenait deja puisqu il n avait jamais suivi les vingt. La cloture par echeance de TRK-051 compare alors la mesure a la NOUVELLE cible, la trouve egale, et ecrit cible atteinte. Prise seule chaque ligne est vraie ; c est leur SUCCESSION qui raconte une reparation qui n a pas eu lieu, et aucune des deux ne signale que la cible a change. CE QUE LE MOTIF CACHE EST LE VRAI SUJET : sur ces quarante-six transitions, une demande a vingt secondes adressee a un boitier deja a quatre-vingt-dix-neuf n a JAMAIS abouti. C est la question de TRK-008, entiere, recouverte d une reussite toutes les six minutes.",
+      "quoiFaire": "Faire dire a la cloture par echeance ce qu elle sait deja : si la cible a change depuis la commande precedente sur ce boitier, ecrire cible REVISEE de tant a tant, vehicule passe a tel etat, le boitier est reste a telle cadence, il n a pas change de regime. Reserver le libelle cible atteinte au cas ou la demande n a pas bouge. CORRIGER LE MESSAGE, PAS LA CLOTURE : sans elle les commandes resteraient en attente indefiniment, faute d accuse materiel, cf TRK-018. On corrige le cri, pas le garde-fou. VERIFICATION EN DOUBLE CONDITION : apres deploiement le nombre de paires a cible changee doit rester autour de quarante-six sur sept jours, le phenomene physique ne changeant pas, mais aucune ne doit plus porter le libelle cible atteinte. Si les DEUX compteurs tombent ensemble, on a supprime la cloture et non le mensonge.",
+      "aNePasFaire": "NE PAS lire cette fiche comme une contradiction de TRK-057 : les quarante-quatre cibles sont canoniques et le reglage est juste, c est le recit qu on en fait qui est faux. NE PAS conclure d une reussite qui suit un echec que le reessai a fonctionne, sans avoir compare les DEUX nombres de cible : ils different quarante-six fois sur quarante-six. NE PAS supprimer la cloture par echeance pour faire disparaitre le libelle.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-059"
+    },
+    {
       "id": "TRK-058",
       "titre": "Une trame d evenement comptee comme une mesure de cadence",
       "source": "cadence",
@@ -65,14 +97,15 @@
       "statut": "CORRIGE",
       "gravite": 2,
       "vuPremiere": "2026-09-01",
-      "vuDerniere": "2026-09-01",
+      "vuDerniere": "2026-09-02",
       "occurrences": 4,
       "occurrencesLibelle": "Quatre boitiers sur quarante-quatre portent une cible de 21, 28, 43 et 56 secondes, alors que le code ne sait produire que 20, 30 et 99. Le cas HD-964-XY resume tout : sa derniere commande demandait 99 s et a ete acquittee, il emet effectivement a 99 s avec une fenetre de neuf mesures a 99 ou 100, et sa cible en base dit 43. Il est donc hors bande en permanence alors qu il obeit parfaitement.",
       "quoi": "LE CLAMP BORNAIT L INTERVALLE, IL NE REPARAIT PAS LA VALEUR. Trouve en allant corriger GR-294-VW, qui lui n avait rien : deux heures apres le correctif de TRK-056 sa fenetre valait douze fois 20 s pour une cible de 20 s, et sa mediane sur deux heures valait 20,0 s. La fenetre erratique du matin avait ete capturee pendant une transition roulant vers arrete, minutes apres la bascule. Mais le meme releve passe au parc entier avec l instrument devenu honnete a montre autre chose. La fonction desiredIntervalFor ne peut produire que trois valeurs : 20 s en MOVING, 30 s en IDLE_ENGINE_ON ou arret bref, 99 s a l arret prolonge. Or quarante boitiers portent l une des trois et QUATRE portent 21, 28, 43 et 56 — des nombres qu aucun chemin du code ne sait choisir. CAUSE : l ancien auto-alignement inscrivait l intervalle observe, et l observe etait un echantillon unique donc un tirage, voir TRK-056. La normalisation ecrite pour TRK-008 ne fait que CLAMPER dans l intervalle 20 a 99 : 21, 28, 43 et 56 sont tous DANS cet intervalle, ils passent la garde sans etre vus. UN CORRECTIF DE CAUSE NE SOIGNE PAS LES VICTIMES : TRK-056 empeche de nouvelles cibles absurdes d apparaitre mais ne touche pas a celles deja en base. Le dispositif connait cette lecon depuis la campagne du 24 aout, et elle vient de se reproduire a l identique sur le correctif ecrit le jour meme.",
       "quoiFaire": "CORRIGE LE 01 SEPTEMBRE. Toute cible hors de 20, 30 et 99 est RECALCULEE par desiredIntervalFor a partir de l etat d echantillonnage courant. ON RECALCULE, ON N ARRONDIT PAS, et c est le coeur du correctif : la valeur canonique la plus PROCHE de 43 est 30, avec un ecart de 13 contre 56 pour 99, or HD-964-XY est a l arret contact coupe donc sa cible attendue est 99. Arrondir aurait remplace une valeur fausse par une autre ET declenche une commande vouee a l echec. Un test verrouille exactement ce piege. LES OVERRIDES MANUELS SONT EPARGNES : un operateur qui fige un boitier a 60 s fait un choix delibere et date, donc seuls les boitiers dont l override est absent ou perime sont touches — mesure au moment du correctif, zero override actif sur le parc. VERIFICATIONS : 5 tests neufs dont celui qui INTERDIT a la liste canonique de diverger de desiredIntervalFor, car si l une gagne une valeur sans l autre la reparation se mettrait a corriger des cibles parfaitement legitimes — le pire resultat possible pour un nettoyage. Trois tests existants ont ete rendus robustes au passage : ils lisaient le premier appel a findMany, donc ils cassaient au premier appel ajoute en amont, pour une raison sans rapport avec leur sujet. PROUVE EN PRODUCTION LE 01 SEPTEMBRE A 14H50M45 : deploiement a 14h46m56, et le premier passage du balayage a repare les quatre en les nommant au journal — 43 vers 99 en STOPPED, 28 vers 20 en MOVING, 56 vers 99 en STOPPED, 21 vers 99 en STOPPED. Distribution apres reparation : 20 s seize fois, 30 s quatre fois, 99 s vingt-quatre fois, soit 44 sur 44 sans aucune valeur hors canon. ET LE CAS DE REFERENCE SE REFERME SANS AUCUNE COMMANDE : HD-964-XY passe de cible 43 mesure 99 hors bande a cible 99 mesure 99 DANS LA BANDE, failing faux, sans que le boitier ait rien recu — il etait deja a la bonne cadence, c est la cible qui mentait. C est exactement ce que recalculer plutot qu arrondir achetait : l arrondi aurait ecrit 30 s, laissant le boitier hors bande et declenchant une commande vers une cadence qu il n aurait pas tenue.",
       "aNePasFaire": "NE PAS arrondir a la valeur canonique la plus proche : sur le seul cas reel connu, cela donnait 30 la ou il fallait 99. NE PAS toucher aux boitiers sous override manuel actif : c est un choix delibere et date, pas une derive. NE PAS considerer que TRK-056 suffisait : il empeche la cause, il ne repare pas les valeurs deja ecrites. NE PAS accuser GR-294-VW, qui etait sain — sa fenetre erratique du matin etait une transition capturee trop tot.",
       "doc": "REFERENCE-ERREURS.md",
-      "ancre": "trk-057"
+      "ancre": "trk-057",
+      "note": "Deuxieme point a J+1 : 44 cibles sur 44 canoniques, 20 s fois 18, 30 s fois 3, 99 s fois 23. Aucune valeur n est ressortie de la bande dix heures apres le balayage."
     },
     {
       "id": "TRK-055",
@@ -97,14 +130,15 @@
       "statut": "CORRIGE",
       "gravite": 2,
       "vuPremiere": "2026-09-01",
-      "vuDerniere": "2026-09-01",
+      "vuDerniere": "2026-09-02",
       "occurrences": 32,
       "occurrencesLibelle": "Sur tout le parc en une heure, 24,5 pour cent des ecarts entre positions consecutives sont sous 10 secondes — 879 sur 3584, repartis sur 32 boitiers. Un echantillon unique a donc une chance sur quatre de tomber dans une salve. FM-772-JH affiche 2 secondes alors que sur deux heures il compte 114 ecarts sous 10 secondes et 122 au-dessus, avec une mediane des ecarts longs a 47 secondes, pour une cible de 99 secondes.",
       "quoi": "UN ECHANTILLON UNIQUE NE PEUT PAS MESURER UNE CADENCE QUI ALTERNE SALVES ET LONGUES ATTENTES. Decouvert en preparant le canari demande par TRK-045 : avant d envoyer quoi que ce soit, le releve de la ligne de base sur FM-772-JH — cible 99 secondes, currentFixIntervalS a 2 secondes, vehicule gare — donne des ecarts de 1,53 puis 3,00 puis 9,39 puis 98,91 puis 20,15 puis 1,92 puis 37,43. Ce n est pas 2 secondes : c est une alternance, et elle porte sur des trames position et non sur des heartbeats, verifie a 64 positions contre 10 heartbeats sur trente minutes. CAUSE : dans la methode reconcile, la cadence observee est calculee comme l ecart entre deviceTime de la trame courante et lastValidFrameAt, c est-a-dire entre les DEUX DERNIERES trames. Un seul echantillon, ni mediane ni fenetre ni dispersion. CONSEQUENCE DIRECTE SUR UNE CONCLUSION DEJA PUBLIEE : le rapport du 01 septembre ecrivait que quatre boitiers emettent 14 a 50 fois plus vite que la trame qu ils viennent de recevoir, et en tirait que le modele de TRK-045 ne couvrait pas ces cas. Ce constat repose entierement sur currentFixIntervalS : il ne prouve donc pas que le boitier desobeit, il montre qu un echantillon unique est tombe dans une salve. ET CE QUI RESTE VRAI SANS SURINTERPRETATION : la mediane des ecarts longs de FM-772-JH vaut 47 secondes pour une cible de 99, elle n est pas conforme non plus. Le boitier n est pas disculpe, il est simplement impossible de l accuser avec cet instrument.",
       "quoiFaire": "CORRIGE, DEPLOYE ET PROUVE EN PRODUCTION LE 01 SEPTEMBRE A 14H26 — et la mesure RENVERSE la conclusion du matin. Trente minutes apres la bascule, la fenetre s etait remplie sur 32 boitiers sur 44, les 12 restants etant hors ligne. Les quatre emetteurs rapides que le rapport du matin accusait : FM-772-JH, cible 99 s, mesure 99 s, fenetre 99 et 99, alors que l echantillon affichait 2 s ; FG-669-DQ, cible 20 s, mesure 20 s ; GS-878-NX, cible 20 s, mesure 20 s ; GR-294-VW, cible 20 s, mesure 17 s. TROIS BOITIERS SUR QUATRE SONT EXACTEMENT SUR LEUR CIBLE et le quatrieme en est proche. Le rapport du matin ecrivait que quatre boitiers emettaient 14 a 50 fois plus vite que la trame recue : c etait faux entierement, ces boitiers obeissaient deja et seul l instrument disait le contraire. CONSEQUENCE QUI DEPASSE CETTE FICHE : le modele deux chiffres unite jetee de TRK-045 est CONFIRME, puisque la trame 99s donne 99 s et la trame 20s donne 20 s. Le canari demande le 01 septembre n aurait donc rien appris : la question n etait pas le boitier obeit-il mais sait-on le voir. GR-294-VW reste reellement erratique, avec une fenetre melant 1, 2, 3 et 50 secondes : un boitier sur quarante-quatre a un comportement a instruire, contre quatre annonces le matin. Le correctif n a pas fait disparaitre un probleme, il a separe le seul vrai des trois faux. MISE EN OEUVRE : mediane des douze derniers ecarts dans la colonne recentFixIntervalsS, migration en ajout de colonne a defaut non volatile ; l echantillon reste pour la bande de tolerance et le compteur d echec ; l auto-alignement se replie sur l echantillon sous six mesures.",
       "aNePasFaire": "NE PAS conclure que les boitiers obeissent : la mediane observee reste loin de la cible. NE PAS conclure non plus qu ils desobeissent : l instrument ne permet pas de trancher. NE PAS envoyer un canari de plus tant que la mesure est un echantillon unique — la reponse serait illisible quelle qu elle soit. NE PAS lisser la valeur pour la rendre stable : on veut une mesure, pas un calme apparent.",
       "doc": "REFERENCE-ERREURS.md",
-      "ancre": "trk-056"
+      "ancre": "trk-056",
+      "note": "Mesure independante a J+1 : 32 boitiers sur 32 a mesure FRAICHE sont exactement sur leur cible. Les six ecarts residuels, 19, 21, 51 et 331 s, portent tous une mesure PERIMEE et appartiennent aux boitiers hors service. L instrument separe enfin le vestige de la mesure."
     },
     {
       "id": "TRK-053",
@@ -113,14 +147,15 @@
       "statut": "CORRECTIF_PROPOSE",
       "gravite": 1,
       "vuPremiere": "2026-09-01",
-      "vuDerniere": "2026-09-01",
+      "vuDerniere": "2026-09-02",
       "occurrences": 7,
       "occurrencesLibelle": "Sept alertes LOW_BATTERY sur huit, le 31 aout, ont ete ecrites APRES la declaration. Six vehicules rendus en fin de LLD, boitiers deposes volontairement, etat TRACKER_UNPLUGGED pose entre 11h36m30 et 11h39m24 avec la note Retour de LLD : FR-629-AD declare a 11h36 recoit une alerte a 13h21, FS-808-CE declare a 11h37 en recoit deux a 11h50 et 12h05, FZ-862-VY declare a 11h37 en recoit une a 12h28, FZ-731-YF declare a 11h38 en recoit deux a 11h55 et 12h10, FW-298-WV declare a 11h38 en recoit une a 13h10. Seule celle de FS-253-HR, a 11h19, precede sa declaration et reste legitime. Les six POWER_CUT de 08h15 a 09h30 sont egalement legitimes : elles precedent la declaration de trois heures.",
       "quoi": "L ECRAN PROMET LE SILENCE ET NE LE TIENT PAS. La fiche vehicule propose a un super-administrateur trois etats d exploitation — Accidente, Boitier debranche, Immobilise — et affiche en toutes lettres : hors service depuis telle date, analyse des trajets et ALERTES SUSPENDUES pour ce vehicule, aucune donnee supprimee ; puis, quand aucun etat n est pose : a cocher quand un vehicule ne roule plus, il sort du perimetre des traitements et CESSE DE PRODUIRE DES ALERTES qui n appellent aucune action. CAUSE RACINE : la colonne outOfServiceReason est honoree par TOUS les detecteurs sauf un. La veille accident la lit, l integrite GPS la lit, l ordonnanceur de surveillance la lit, l automatisation des trajets la lit, comme les rappels de maintenance, les reservations, les indicateurs de flotte et l optimiseur. Le chemin des ALARMES, lui, ne la lit nulle part : ni createFromCobanFrame, qui traite chaque trame d alarme du boitier, ni createPowerCutConfirmedAlert, appele par le cron de reexamen. C est le detecteur qui parle le plus, et c est le seul qui ait ete oublie. CE N EST PAS UNE OMISSION DE CONCEPTION MAIS UNE COUVERTURE INCOMPLETE, le profil exact de TRK-050 ou le garde existait sur le chemin HTTP et manquait sur le chemin WebSocket : quand une regle transversale est posee detecteur par detecteur, elle finit par manquer celui qu on a ecrit en premier.",
       "quoiFaire": "CORRECTIF DEPLOYE LE 01 SEPTEMBRE A 09H17, NON EXERCE. Garde outOfServiceReason posee sur les DEUX chemins d alarme : celui des trames (createFromCobanFrame) et celui du cron de reexamen (createPowerCutConfirmedAlert). Posee APRES l ecriture de lastPowerNotice : on suspend l ALERTE et la NOTIFICATION, jamais la CONNAISSANCE — un test verrouille le fait que la fiche vehicule continue de dire la verite du moment. Aucune requete ajoutee : le vehicule etait deja charge entier des deux cotes. Verifications : 6 tests neufs dont 3 verifies EN ECHEC sur l ancien code, suite alerts 99/99, suite API 185 suites et 2759 tests, smoke-boot DI 5/5, marqueurs confirmes sur le dist SERVI. TEST DATE, ET IL NE PEUT PAS ETRE PASSE AUJOURD HUI : les 9 vehicules hors service sont TOUS hors ligne, aucun n emet plus une trame, donc rien ne vient exercer la garde. Le correctif est livre, il n est pas prouve. Le compteur temoin est alertes_depuis_declaration de la section hors_service : il vaut 7 et ne doit plus jamais croitre.",
       "aNePasFaire": "NE PAS supprimer les alertes deja ecrites sur ces vehicules : elles sont la mesure du defaut, et le centre d alerte ne se vide pas. NE PAS traiter le silence de ces six boitiers comme un incident : ils sont deposes volontairement, ils DOIVENT rester muets, et l audit du 01 septembre a bati une action terrain urgente sur ce silence faute de lire cette colonne. NE PAS etendre la garde a la CONNAISSANCE : lastPowerNotice et les compteurs du tracker doivent continuer d etre ecrits, sinon on remplace un bruit par une cecite. NE PAS croire que le probleme se limite a LOW_BATTERY : le chemin couvre toutes les alarmes du boitier, donc POWER_CUT, OVERSPEED, SOS et les declenchements de surveillance.",
       "doc": "REFERENCE-ERREURS.md",
-      "ancre": "trk-053"
+      "ancre": "trk-053",
+      "note": "TOUJOURS NON EXERCE au 2 septembre, et par absence d OCCASION et non par reussite : une seule alerte ecrite depuis le correctif de 09h17, un exces de vitesse sur un vehicule EN SERVICE, et les neuf boitiers hors service sont muets. Un correctif qui fait taire des boitiers deja silencieux ne prouve rien. Les sept alertes fautives restent celles du 31 aout, toutes anterieures au correctif."
     },
     {
       "id": "TRK-054",
@@ -145,14 +180,15 @@
       "statut": "CORRECTIF_PROPOSE",
       "gravite": 2,
       "vuPremiere": "2026-09-01",
-      "vuDerniere": "2026-09-01",
+      "vuDerniere": "2026-09-02",
       "occurrences": 2,
       "occurrencesLibelle": "Deux doublons sur deux, le 31 aout. Huit alertes LOW_BATTERY sont sorties de la perte d alimentation de six vehicules ; deux vehicules en ont recu DEUX, et ce sont exactement les deux dont la premiere alerte avait ete acquittee avant la fin de la condition physique. FS-808-CE : alerte a 11h50m37, acquittee a 11h50m56 soit 19 secondes plus tard, seconde alerte a 12h05m38. FZ-731-YF : alerte a 11h55m34, acquittee a 12h05m59, seconde alerte a 12h10m36. Les quatre autres vehicules, acquittes plus tard, n en ont recu qu une seule alors que leur batterie se vidait tout autant.",
       "quoi": "LA DEDUPLICATION DES ALARMES TIENT SIX HEURES, SAUF SI L EXPLOITANT REGARDE SON ECRAN. Le predicat de deduplication d alerts.service.ts ligne 229 porte DEUX conditions : le type doit etre deja ouvert sur le meme vehicule depuis moins de six heures, ET la ligne precedente ne doit pas avoir ete acquittee. Le commentaire assume la seconde condition en toutes lettres : on rouvre seulement si la precedente a ete acquittee, l exploitant a alors signifie qu il avait traite l episode. CAUSE RACINE : cette hypothese est fausse en exploitation. Acquitter ne veut pas dire j ai traite, cela veut dire j ai vu — mesure ici a DIX-NEUF SECONDES apres la creation, sur une condition physique qui allait durer deux heures de plus. La fonction createPowerCutConfirmedAlert, ligne 494, porte le meme predicat donc le meme defaut. POURQUOI C EST PLUS GRAVE QUE DEUX DOUBLONS : c est exactement le mecanisme qui ramenerait le deluge de TRK-022. Le 12 aout, un seul vehicule avait produit 1317 alertes de survitesse en une journee, une toutes les 24 secondes. La garde de six heures posee le 19 aout l a ramene a une ou deux par jour — mais elle ne protege que tant que PERSONNE n acquitte pendant l episode. Un exploitant qui nettoie son ecran pendant que le vehicule roule encore a 135 km/h rouvre le robinet a la trame suivante. La protection depend donc d un geste humain qu aucune fiche n avait jamais nomme comme condition.",
       "quoiFaire": "CORRECTIF DEPLOYE LE 01 SEPTEMBRE A 09H17, NON EXERCE. Ce n est PAS l option 1 de la fiche : retirer la condition sur l acquittement pour TOUS les types aurait musele le bouton de detresse, puisqu un conducteur qui rappuie sur SOS vingt minutes apres un acquittement n aurait plus rien declenche pendant six heures. Le correctif distingue donc les alarmes d ETAT — POWER_CUT, LOW_BATTERY, OVERSPEED, GEOFENCE_EXIT, MOVEMENT_IDLE, BONNET, DOOR, IDLE_TIME, GPS_LOST, FATIGUE, pour lesquelles la fenetre de six heures decide seule — des alarmes PONCTUELLES, qui gardent le comportement d origine. Un type d alerte ajoute plus tard tombe du cote PONCTUEL, c est-a-dire du cote qui alerte le plus : fail-open vers le signal. Applique aussi au chemin du cron. TEST DATE : la prochaine alarme d etat acquittee en cours d episode ne doit produire qu UNE ligne ; le candidat naturel est OVERSPEED sur FG-669-DQ, seul vehicule du parc qui en produise, a raison de 1 a 2 par jour.",
       "aNePasFaire": "NE PAS corriger en retirant la fenetre de six heures : c est elle qui a divise le volume par mille, et le defaut est dans la seconde condition, pas dans la premiere. NE PAS conclure que la deduplication ne marche pas : elle a ete exercee le 31 aout et elle a tenu quatre fois sur six, et sur la survitesse elle tient depuis le 19 aout avec des intervalles toujours superieurs a six heures dix. NE PAS demander a l exploitant d acquitter moins vite : un garde-fou dont l efficacite est inversement proportionnelle a l attention de l exploitant lache exactement le jour ou quelqu un regarde. NE PAS traiter les deux doublons du 31 aout comme du bruit : ils sont la seule preuve disponible du mecanisme, et ils sont corroles a deux cas sur deux.",
       "doc": "REFERENCE-ERREURS.md",
-      "ancre": "trk-052"
+      "ancre": "trk-052",
+      "note": "TOUJOURS NON EXERCE au 2 septembre, faute d occasion : il faut une alerte acquittee par l exploitant PUIS une seconde trame du meme type en moins de six heures, et aucun acquittement n a eu lieu depuis le deploiement."
     },
     {
       "id": "TRK-051",
@@ -383,14 +419,15 @@
       "statut": "TERRAIN",
       "gravite": 3,
       "vuPremiere": "2026-08-21",
-      "vuDerniere": "2026-09-01",
+      "vuDerniere": "2026-09-02",
       "occurrences": 22,
       "occurrencesLibelle": "12 lignes au total dont 11 ACTIVES au 25 aout, du 22 aout au 24 aout 21:48, en HTTP 500 et 502 sur le miroir public et gratuit d Overpass. LAISSEES ACTIVES SUR DECISION EXPLICITE DU PROPRIETAIRE : dependance tierce, aucun correctif pousse, et les archiver ferait baisser un compteur sans rien corriger.",
       "quoi": "Six lignes le 20 aout, a 05h47, 10h47, 14h46, 20h48, 22h45 et 23h48, causes HTTP 500 quatre fois et HTTP 502 deux fois. L instance visee est un MIROIR PUBLIC ET GRATUIT d OpenStreetMap, sans aucun engagement de service. CE N EST PAS UN DEFAUT DE FABRICATION, ET IL FAUT LE DIRE : le service est soigne — deduplication par cellule, cache en base, lots de 200 points, plafond de huit requetes, temporisation de 4 puis 12 secondes avec rejeu des refus de quota, une seule alerte par analyse. Et une reponse degradee n est PAS memorisee, le commentaire nommant precisement le bug que cela avait cause, 59 347 points sterilises. Le message porte la DEPENDANCE et la CONSEQUENCE, ce que ce referentiel reclame depuis la fiche TRK-005. LE VRAI PREJUDICE N EST PAS LA PANNE, C EST LE SILENCE SUR LA PANNE : sur ces analyses les exces de vitesse ne sont PAS affirmes, mais le reste de l analyse est conserve et RENDU SANS MENTION DE LA LACUNE. L exploitant recoit une notation de A a E qui PARAIT COMPLETE et qui a ete calculee sans l un de ses criteres. UNE DEGRADATION QUI NE SE DECLARE PAS AU LECTEUR DU RESULTAT N EST PAS UNE DEGRADATION GRACIEUSE : C EST UN RESULTAT FAUX AVEC UN AIR JUSTE. L alerte existe, elle est exacte, elle est au centre d alerte — et elle s adresse a l exploitant du systeme, jamais au lecteur du trajet. ENFIN, CETTE FICHE NE PEUT PAS DATER SON PREMIER CAS : la plus ancienne ligne survivante de toute la table des erreurs EST l une de ces six, celle de 05h47m16s. Tout ce qui precede a ete efface, voir la fiche TRK-035. Le cout de la suppression hors application ne se paie plus en theorie : il vient d empecher une fiche neuve de savoir depuis quand son defaut dure.",
       "quoiFaire": "LE BRUIT NE COMPTE PLUS COMME UN DEFAUT depuis le 26 aout — DEPLOYE ET VERIFIE EN PRODUCTION a 05h55. Un niveau DEGRADATION distingue desormais deux choses que rien ne separait : un DEFAUT, ou quelqu un doit agir, et une DEGRADATION ASSUMEE, ou une dependance tierce gratuite est momentanement injoignable, le repli fonctionne et le proprietaire a accepte la contrepartie — personne n a rien a faire. Le 26 aout, 14 des 18 lignes actives etaient de cette seconde espece : un exploitant lisait 18 erreurs sans pouvoir savoir que 14 n appelaient aucune action. CE N EST PAS UN CORRECTIF QUI VIDE L ECRAN : la ligne est toujours ecrite, toujours consultable, toujours horodatee, son refroidissement reste en place, et elle est rendue A PART — bloc degradations de l API, mention sur l ecran du centre d alerte, colonne degradations de la collecte. On NOMME, on ne cache pas. La clause exclut par NOT et jamais par liste blanche : la colonne level est une chaine libre en base, et une liste blanche ferait disparaitre en silence tout niveau futur que personne n aurait pense a y ajouter. Aucune migration, la colonne est deja du texte. ATTENTION, POINT IMPORTANT : les 15 lignes DEJA en base restent au niveau ERROR. Ce correctif vaut pour les lignes A VENIR, il ne reecrit pas l historique. Pour que le centre d alerte affiche zero, ces lignes anciennes doivent etre ARCHIVEES depuis l ecran — c est une decision humaine, reversible, et l audit ne la prend jamais de lui-meme. ARCHIVAGE DU 26 AOUT : les 15 lignes anterieures au deploiement ont ete ARCHIVEES a la demande du proprietaire, avec un motif explicite et REVERSIBLE. Elles restent EN BASE — rien n a ete supprime, le temoin des disparitions rend toujours ses 4 declencheurs et compte ZERO constat, ce qui confirme qu un archivage est bien un UPDATE.",
       "aNePasFaire": "Ne PAS traiter cette ligne comme du bruit a faire taire : elle est exacte, utile, et deja espacee — la faire taire supprimerait la seule trace d une degradation du produit. Ne PAS non plus lire les six occurrences comme un debut : la table a ete videe, la serie commence peut-etre bien avant, et rien dans les donnees ne permet de le savoir. Et ne PAS corriger en supprimant l appel a Overpass : les limites de vitesse sont un critere de la notation, les retirer degraderait le produit au lieu de reparer la dependance.",
       "doc": "REFERENCE-ERREURS.md",
-      "ancre": "trk-037"
+      "ancre": "trk-037",
+      "note": "Vingt-cinq lignes DEGRADATION et ZERO ligne ERROR de la famille Overpass depuis le deploiement du 26 aout. Le niveau tient."
     },
     {
       "id": "TRK-032",
@@ -607,14 +644,15 @@
       "statut": "CORRIGE",
       "gravite": 1,
       "vuPremiere": "2026-08-13",
-      "vuDerniere": "2026-09-01",
+      "vuDerniere": "2026-09-02",
       "occurrences": 12,
       "occurrencesLibelle": "test date repondu NON pour la 3e fois : aucun nouvel essai, 4 shock_on et 4 sensitivity en echec sur 7 jours, inchanges STATUT RECTIFIE LE 25 AOUT, DANS LES DEUX SENS : l index le disait non corrige (perime — la porte SMS-only est en production depuis le 23 aout) et ce manifeste le disait corrige (trop optimiste — rien ne l a prouve). Mesure du 25 aout : AUCUN essai de template SMS-only depuis le correctif, les derniers datent du 15 aout. Le test date ne s est toujours pas declenche : ce n est pas une amelioration, c est un oubli d essayer.",
       "quoi": "19 des 23 modeles de commande sont declares SMS-only et partent quand meme en TCP : le champ availableVia n est lu nulle part, ni cote API ni cote web. L operateur attend 15 secondes puis voit un echec.",
       "quoiFaire": "CORRIGE, DEPLOYE ET PROUVE PAR LE COMPORTEMENT LE 01 SEPTEMBRE A 10H10M09, apres DIX-SEPT JOURS d attente. Un shock_on emis sur BP-434-RD depuis l ecran d administration rend channel = SMS, status = SENT, aucune erreur, et un corps shock123456 — la FORME SMS et non l enveloppe TCP, ce qui verifie du meme coup l autre moitie du correctif de TRK-012 : l enveloppe suit le canal. La chaine est prouvee sur QUATRE couches independantes et pas seulement par la colonne finale : journal API Command created, aiguillage CobanWire avec source tracker-cmd-sms, passerelle sms_logs en sortie au statut queued avec identifiant rendu, puis la commande elle-meme. Le contraste avec les huit tentatives precedentes ne laisse aucun doute : toutes en TCP, toutes FAILED sur ACK timeout apres 15000 ms. ATTENTION : SENT est l etat terminal attendu sur ce chemin et non un envoi en suspens, car le canal SMS n exploite aucun accuse de remise. DEUX ACQUIS INCIDENTS : le numero est passe l allowlist sans 403, ce qui confirme independamment que le trou de TRK-017 ne s est pas rouvert ; et le capteur de choc de BP-434-RD est arme pour la premiere fois du parc, or c est le signal de reference qui manque a la veille accident de TRK-054, laquelle ne fait qu inferer un choc a partir d un silence. TEST DATE OUVERT : un SMS entrant shock ok de ce boitier serait la premiere reponse materielle jamais recue sur cette famille de commandes et apporterait un fait neuf a TRK-014.",
       "aNePasFaire": "Ne pas retirer du catalogue les modeles SMS-only : ils decrivent de vraies fonctions du boitier — capteur de choc, sensibilite, zone geographique — et le module de surveillance s'appuie dessus. Les retirer supprimerait la fonctionnalite au lieu de la brancher. Ne pas non plus declarer le canal TCP sur ces modeles pour faire passer l'aiguillage : le commentaire du catalogue dit pourquoi ils sont SMS-only, le boitier ne les supporte pas sur ce canal. Elargir la declaration ferait disparaitre le refus sans rien faire marcher, et rendrait le catalogue faux — donc inutilisable comme source de verite pour le correctif suivant. Enfin, ne pas fondre cette fiche dans TRK-012 : celle-la est bon canal mauvaise enveloppe, celle-ci est mauvais canal alors que la donnee qui dit lequel choisir est deja la. Deux gestes distincts, et fusionner masquerait l'un des deux.",
       "doc": "REFERENCE-ERREURS.md",
-      "ancre": "trk-021"
+      "ancre": "trk-021",
+      "note": "Deuxieme point sur SMS : le shock_off du 1er septembre a 13h36m43 est parti en canal SMS, comme le shock_on de 10h10 qui a ferme la fiche. Deux sur deux. Les deux commandes restent SENT sans accuse, ce qui est le blocage connu de TRK-018 et non un defaut de routage."
     },
     {
       "id": "TRK-022",
@@ -1208,9 +1246,67 @@
       "section": "rapports",
       "order": 9,
       "description": "Le deploiement du 17/08 15:54 met les 3 correctifs en production ; la regle du parking est prouvee par le journal du cron, TRK-029 est ouverte, et la table des alertes est muette depuis 60 h."
+    },
+    {
+      "slug": "rapports/2026-09-02.md",
+      "title": "Audit du 2 septembre",
+      "section": "rapports",
+      "order": -12,
+      "description": "Premiere mesure independante des cinq correctifs du 1er septembre, et ils tiennent : 44 cibles canoniques sur 44, 32 boitiers sur 32 exactement sur leur cible. La trouvaille du jour est une SEQUENCE et non une ligne — 46 paires echec puis cible atteinte sur sept jours, dont 46 sur 46 ont vu la cible changer pendant que la cadence du boitier restait identique. Plus TRK-060 sur un message d erreur brut, et trois tests dates qui depassent sept jours sans avoir jamais ete provoques."
     }
   ],
   "passages": [
+    {
+      "date": "2026-09-02",
+      "origine": "agent",
+      "rapport": "rapports/2026-09-02.md",
+      "verdict": "Le parc n a jamais ete aussi bien regle — 44 cibles sur 44 canoniques et 32 boitiers sur 32 mesures exactement sur leur cible — mais l ecran des commandes raconte toujours l inverse de ce qui se passe : 46 fois sur 46 en sept jours, la cible atteinte qui suit un echec de six minutes porte une cible DIFFERENTE de celle qui vient d echouer, sur un boitier dont la cadence n a pas bouge d une seconde. Ce n est pas le boitier qui a rejoint la cible, c est la cible qui est descendue jusqu au boitier.",
+      "chiffres": {
+        "erreurs": 5,
+        "critical": 0,
+        "degradations": 25,
+        "actives": 30,
+        "archivees": 32,
+        "erreurs24h": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 12,
+        "commandesEnAttente": 2,
+        "echecsCommandesParJour": 72.1,
+        "cadenceSousMinimum": 0,
+        "constatsDisparition": 0,
+        "temoinArme": 4,
+        "ecartHorsDelete": 13250,
+        "commandesTotalFamille7j": 505,
+        "commandesAvecReponseBoitier7j": 0,
+        "paireEchecPuisCibleAtteinte7j": 46,
+        "dontCibleChangee": 46,
+        "ciblesCanoniques": 44,
+        "ciblesTotal": 44,
+        "boitiersSurCibleMesureFraiche": 32,
+        "boitiersMesureFraiche": 32,
+        "tramesRecues24h": 87108,
+        "emetteurs24h": 32,
+        "tramesParEmetteur24h": 2722,
+        "pointsMetrique24h": 1437,
+        "pointsMetriqueAttendus24h": 1440,
+        "vehiculesHorsService": 10,
+        "trackersHorsLigneInexpliques": 0,
+        "alertesApresDeclarationDepuisCorrectif": 0,
+        "testsEnAttentePlusDe7j": 3
+      },
+      "fiches": {
+        "nouvelles": 2,
+        "misesAJour": 6
+      },
+      "aTraiter": [
+        "TRK-059",
+        "TRK-022",
+        "TRK-032",
+        "TRK-053",
+        "TRK-060"
+      ],
+      "note": "PREMIERE MESURE INDEPENDANTE DES CINQ CORRECTIFS DU 1er SEPTEMBRE, dix heures apres le dernier deploiement, et ils tiennent : TRK-057 rend 44 cibles canoniques sur 44 et TRK-056 rend 32 boitiers sur 32 exactement sur leur cible, les six ecarts residuels portant tous une mesure PERIMEE de boitier hors service. LA TROUVAILLE DU JOUR EST UNE SEQUENCE, PAS UNE LIGNE : sur sept jours, 46 paires echec puis cible atteinte separees de 6,6 minutes en moyenne, et 46 sur 46 portent une cible differente, la cadence reelle etant le MEME nombre des deux cotes. Le boitier n a rien fait ; c est la demande qui est descendue de 20 s a 99 s parce que le vehicule s est arrete. Chaque ligne est vraie prise seule, c est leur succession qui ment — et ce qu elle recouvre est la question entiere de TRK-008 : une demande a 20 s adressee a un boitier deja a 99 s n a JAMAIS abouti sur ces 46 transitions. DEUX FICHES A NE PAS LIRE COMME DES REUSSITES : TRK-053 et TRK-052 sont deployees depuis le 1er septembre 09h17 et restent NON EXERCEES par absence d OCCASION — une seule alerte depuis, sur un vehicule en service, et les neuf boitiers hors service sont muets. Un correctif qui fait taire des boitiers deja silencieux ne prouve rien. TROIS TESTS DEPASSENT SEPT JOURS et sont a provoquer ou requalifier : TRK-022 quatorze jours, TRK-032 onze jours, TRK-051 sept jours. ENFIN, le zero de la section gps sans fix est a lire avec sa reserve : le filtre exige une trame de moins de trente minutes, donc il EXCLUT par construction les douze boitiers muets — il dit qu aucun boitier VIVANT n a perdu son fix, pas que tout le monde en a un."
+    },
     {
       "date": "2026-09-01",
       "origine": "agent",

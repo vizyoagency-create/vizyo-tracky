@@ -14,7 +14,7 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-09-01 07:56 UTC** *(🔵 **Le fait du jour n'est pas dans `error_logs`** : le **31/08 entre 07:29 et 09:00 UTC, six véhicules ont perdu leur alimentation externe** ; leur batterie interne est tombée à **0 %** et **les six boîtiers sont muets depuis 18 h** — la flotte émettrice est passée de **38 à 32**. Action TERRAIN, toujours en cours)* *(🆕 **[TRK-052](#trk-052)** — **acquitter une alerte RÉ-ARME l'alarme** : le prédicat de déduplication porte `acknowledgedAt: null`, corrélation **2 doublons sur 2** le 31/08, dont un acquitté **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de TRK-022)* *(✅ **3 tests datés RÉPONDUS OUI** : [TRK-037](#trk-037) — 22 lignes `DEGRADATION` / **0 `ERROR`** depuis le déploiement ; [TRK-022](#trk-022) volet 1 — **1 317 → 1-2 par jour**, intervalles toujours ≥ 6 h 10 ; [TRK-040](#trk-040) — **exercé six fois, 0 faux positif**, les 6 coupures confirmées par la pente ont fini à 0 % de batterie)* *(🔴 **[TRK-021](#trk-021) : 17 jours sans le moindre essai** — les 8 dernières tentatives SMS-only sont toutes antérieures au correctif et toutes parties en `channel = TCP`. La règle des 7 jours est dépassée de dix)* *(⚠️ **Un filtre qui exige « vivant » rend zéro sur un mort** : `gps_sans_fix` rend **0 ligne** parce que les six véhicules perdus n'émettent plus du tout. Vérifier ce qu'un filtre EXCLUT avant de lire son zéro)* · **précédemment, le 2026-08-26 à 01:15 UTC :** *(🆕 **[TRK-051](#trk-051)** — le statut `ACKNOWLEDGED` n'a jamais voulu dire « acquitté par le boîtier » : **120 sur 7 j, 2 seulement portent une vraie réponse matérielle**. Corollaire : le « métronome de 72 échecs/jour » rapporté depuis dix jours était un **artefact d'étiquetage** — le TOTAL `fix_continuous` est resté plat à 69-79/j pendant que `FAILED` tombait de 72 à 15. `collecte.sql` durci le jour même)* *(✅ **[TRK-046](#trk-046) PROUVÉ par la DOUBLE CONDITION** : 31 coupes exécutées ce soir, **0 refus sur vitesse périmée depuis le 25/08 04:37** — un seul compteur est tombé)* *(⚠️ **3 tests datés sur 5 sans réponse, aucun par échec d'un correctif** : `OFF_SCHEDULE_MOVEMENT` sans occasion, TRK-050 sans redémarrage d'API, **TRK-021 jamais tenté depuis 11 jours**)* · **précédemment, le 2026-08-25 à 20:05 UTC :** *(✅ **[TRK-046](#trk-046) EXERCÉ ET PROUVÉ** à la coupe de 20:00 — preuve directe au journal, 0 refus là où il y en avait 13 la veille à la même heure)* *(🧹 **RÉCONCILIATION DES STATUTS** — 18 en-têtes de fiche étaient restés figés à leur rédaction initiale ; index et manifeste, eux, concordaient. Les trois surfaces sont désormais alignées : **40 corrigées, 5 correctifs proposés, 3 terrain, 2 non corrigées**. Tranché par le CODE DÉPLOYÉ et la MESURE, jamais par une autre fiche)* *(🟢 [TRK-050](#trk-050) CORRIGÉ, TESTÉ ET DÉPLOYÉ — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
+- Dernière mise à jour : **2026-09-02 01:25 UTC** *(🆕 **[TRK-059](#trk-059)** — **la « cible atteinte » qui suit un échec porte une AUTRE cible** : sur 7 jours, **46 paires « échec puis réussite » en moins de 30 min, et 46 sur 46 ont vu la cible changer**, délai moyen 6,6 min. La cadence réelle est le MÊME nombre des deux côtés — le boîtier n’a pas bougé, c’est la demande qui est descendue jusqu’à lui)* *(🆕 **[TRK-060](#trk-060)** — `system-metrics` rend `EAI_AGAIN` brut ; incident bénin **mesuré** (1 437 points sur 1 440 en 24 h), défaut réel = le message, qui envoie instruire une panne de base inexistante)* *(✅ **Les correctifs du 01/09 tiennent, mesurés à J+1 indépendamment** : [TRK-057](#trk-057) **44 cibles / 44 canoniques** ; [TRK-056](#trk-056) **32 boîtiers sur 32 à mesure fraîche exactement sur leur cible**, les 6 écarts résiduels portant tous une mesure PÉRIMÉE de boîtier hors service ; [TRK-021](#trk-021) 2ᵉ commande SMS-only partie en `channel = SMS`)* *(⚠️ **[TRK-053](#trk-053) et [TRK-052](#trk-052) restent NON EXERCÉS — par absence d’OCCASION, pas par réussite** : une seule alerte écrite depuis le correctif de 09:17, sur un véhicule EN SERVICE, et les 9 boîtiers hors service sont muets. *Un correctif qui fait taire des boîtiers déjà silencieux ne prouve rien.*)* *(🔴 **Trois tests dépassent 7 jours** : [TRK-022](#trk-022) **14 j**, [TRK-032](#trk-032) **11 j**, [TRK-051](#trk-051) **7 j** — à PROVOQUER ou REQUALIFIER, pas à laisser vieillir un passage de plus)* · **précédemment, le **2026-09-01 07:56 UTC** *(🔵 **Le fait du jour n'est pas dans `error_logs`** : le **31/08 entre 07:29 et 09:00 UTC, six véhicules ont perdu leur alimentation externe** ; leur batterie interne est tombée à **0 %** et **les six boîtiers sont muets depuis 18 h** — la flotte émettrice est passée de **38 à 32**. Action TERRAIN, toujours en cours)* *(🆕 **[TRK-052](#trk-052)** — **acquitter une alerte RÉ-ARME l'alarme** : le prédicat de déduplication porte `acknowledgedAt: null`, corrélation **2 doublons sur 2** le 31/08, dont un acquitté **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de TRK-022)* *(✅ **3 tests datés RÉPONDUS OUI** : [TRK-037](#trk-037) — 22 lignes `DEGRADATION` / **0 `ERROR`** depuis le déploiement ; [TRK-022](#trk-022) volet 1 — **1 317 → 1-2 par jour**, intervalles toujours ≥ 6 h 10 ; [TRK-040](#trk-040) — **exercé six fois, 0 faux positif**, les 6 coupures confirmées par la pente ont fini à 0 % de batterie)* *(🔴 **[TRK-021](#trk-021) : 17 jours sans le moindre essai** — les 8 dernières tentatives SMS-only sont toutes antérieures au correctif et toutes parties en `channel = TCP`. La règle des 7 jours est dépassée de dix)* *(⚠️ **Un filtre qui exige « vivant » rend zéro sur un mort** : `gps_sans_fix` rend **0 ligne** parce que les six véhicules perdus n'émettent plus du tout. Vérifier ce qu'un filtre EXCLUT avant de lire son zéro)* · **précédemment, le 2026-08-26 à 01:15 UTC :** *(🆕 **[TRK-051](#trk-051)** — le statut `ACKNOWLEDGED` n'a jamais voulu dire « acquitté par le boîtier » : **120 sur 7 j, 2 seulement portent une vraie réponse matérielle**. Corollaire : le « métronome de 72 échecs/jour » rapporté depuis dix jours était un **artefact d'étiquetage** — le TOTAL `fix_continuous` est resté plat à 69-79/j pendant que `FAILED` tombait de 72 à 15. `collecte.sql` durci le jour même)* *(✅ **[TRK-046](#trk-046) PROUVÉ par la DOUBLE CONDITION** : 31 coupes exécutées ce soir, **0 refus sur vitesse périmée depuis le 25/08 04:37** — un seul compteur est tombé)* *(⚠️ **3 tests datés sur 5 sans réponse, aucun par échec d'un correctif** : `OFF_SCHEDULE_MOVEMENT` sans occasion, TRK-050 sans redémarrage d'API, **TRK-021 jamais tenté depuis 11 jours**)* · **précédemment, le 2026-08-25 à 20:05 UTC :** *(✅ **[TRK-046](#trk-046) EXERCÉ ET PROUVÉ** à la coupe de 20:00 — preuve directe au journal, 0 refus là où il y en avait 13 la veille à la même heure)* *(🧹 **RÉCONCILIATION DES STATUTS** — 18 en-têtes de fiche étaient restés figés à leur rédaction initiale ; index et manifeste, eux, concordaient. Les trois surfaces sont désormais alignées : **40 corrigées, 5 correctifs proposés, 3 terrain, 2 non corrigées**. Tranché par le CODE DÉPLOYÉ et la MESURE, jamais par une autre fiche)* *(🟢 [TRK-050](#trk-050) CORRIGÉ, TESTÉ ET DÉPLOYÉ — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
   🆕 [TRK-046](#trk-046) gravité 1, [TRK-047](#trk-047), [TRK-048](#trk-048) ; **5 statuts d'index
   périmés rectifiés** — TRK-015, TRK-018, TRK-025, TRK-026, TRK-045)*
 
@@ -1258,6 +1258,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-059](#trk-059) | *commandes* | **La « cible atteinte » qui suit un échec porte une AUTRE cible** — le boîtier n’a pas rejoint la cible, c’est la cible qui est descendue jusqu’à lui | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(mesuré le 02/09 sur 7 j : **46 paires « échec puis cible atteinte » séparées de moins de 30 min, et 46 sur 46 portent une cible DIFFÉRENTE** ; délai moyen **6,6 min**. Sur HD-964-XY, GR-898-HY, EZ-259-DB et EY-613-MF, la cadence réelle est le MÊME nombre — 99 s — dans la ligne d’échec et dans celle de réussite. Cause : `desiredIntervalFor` recale la cible quand le véhicule s’arrête (20 s → 99 s), et la clôture par échéance de [TRK-051](#trk-051) compare la mesure à la NOUVELLE cible. Chaque ligne est vraie prise seule ; c’est leur succession qui ment. ⚠️ Ne contredit PAS [TRK-057](#trk-057) : les 44 cibles sont canoniques, le réglage est juste — c’est le récit qu’on en fait qui est faux)* | 2026-09-02 | 2026-09-02 |
+| [TRK-060](#trk-060) | `system-metrics` | **La collecte de métriques rend l’erreur de transport BRUTE** — `getaddrinfo EAI_AGAIN tracky-postgres`, sans dire ni ce qui a échoué, ni la conséquence, ni qu’elle est sans gravité | 🔴 **NON CORRIGÉ** · **gravité 3** · famille **brut** *(une seule ligne, la seule de son espèce en 90 j de rétention. **Conséquence mesurée : 1 437 points de métrique sur les 1 440 attendus en 24 h** — le collecteur `@Interval(60_000)` attrape, enregistre et continue. L’incident est bénin ; le défaut est le message, qui envoie instruire une panne de base qui n’a jamais eu lieu. Le même jour, `trip-analysis` écrit une dégradation exemplaire qui nomme dépendance, conséquence et ce qui survit — le savoir-faire existe dans ce dépôt, il n’est pas appliqué ici. ⚠️ Le correctif doit BORNER : `CRITICAL` au-delà de 5 échecs consécutifs, sinon on remplace un cri par un silence)* | 2026-09-02 | 2026-09-02 |
 | [TRK-058](#trk-058) | *cadence* | **Une trame d'ÉVÉNEMENT compte comme une mesure de cadence** — un `acc off` suivi de son `acc on` injecte un écart de 0,6 s dans la fenêtre | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 3** · famille **bruit de mesure** *(⚠️ ampleur mesurée AVANT de corriger, et elle contredit l'intuition : ces trames ne pèsent que **42 sur 3 447** positions en 1 h, soit **1,2 %**. Elles sont bien plus souvent courtes que les autres — 57 % contre 26 % — mais elles n'expliquent PAS les salves. Correction de précision, pas de cause)* | 2026-09-01 | 2026-09-01 |
 | [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:50:45** *(les 4 cibles réparées au premier passage du balayage, 44/44 canoniques ; HD-964-XY passe DANS LA BANDE sans qu'aucune commande soit envoyée)* · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
 | [TRK-055](#trk-055) | *commandes* | **TRK-051 n'a corrigé qu'un écran sur trois** — le panneau de commandes (fiche tracker ET fiche véhicule) et l'écran d'administration des commandes peignent toujours `ACKNOWLEDGED` en **VERT** sous le libellé « Confirmée » | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 2** · famille **mensonger** *(mesuré le 01/09 : **394** commandes peintes en vert sur 7 jours, dont **0** porte une réponse de boîtier. Sur toute la table : **496** vertes sans réponse pour **2** vraies réponses sur 5 659. Constaté À L'ÉCRAN pendant la vérification de TRK-051, colonne RÉPONSE vide en face de chaque « Confirmée »)* | 2026-09-01 | 2026-09-01 |
@@ -8524,6 +8526,185 @@ flotte roule, et il retomberait encore si l'on baissait simplement la cible.
 
 ---
 
+## TRK-059
+
+**Signature** — *(aucune ligne d'erreur — une SÉQUENCE de deux commandes)*
+`tracker_commands | FAILED` puis, sur le **même boîtier** en moins de 30 min,
+`ACKNOWLEDGED | observedResult = "Cible atteinte : cadence réelle <N>s pour <M>s demandés"` —
+**avec `<M>` différent de la cible qui vient d'échouer, et `<N>` identique dans les deux lignes**
+**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-02
+
+> ### Le boîtier n'a pas rejoint la cible. C'est la cible qui est descendue jusqu'au boîtier.
+
+### Comment on est tombé dessus
+
+En relisant le journal des commandes après les correctifs du 01/09, pour vérifier que
+[TRK-056](#trk-056) et [TRK-057](#trk-057) tenaient. Deux lignes consécutives sur **HD-964-XY** —
+le boîtier de référence de TRK-057 — se contredisaient à cinq minutes d'intervalle :
+
+```
+02/09 00:28:24  FAILED        « Sans effet constaté après 32 min : cadence réelle 99s pour 20s demandés »
+02/09 00:33:29  ACKNOWLEDGED  « Cible atteinte : cadence réelle 99s pour 99s demandés »
+```
+
+**La cadence réelle est le même nombre des deux côtés : 99 s.** Le boîtier n'a pas bougé d'une
+seconde entre l'échec et la réussite. Seule la **demande** a changé.
+
+### Ce qui est mesuré
+
+Définition : *un `FAILED` suivi d'un `ACKNOWLEDGED` sur le même boîtier en moins de 30 minutes*,
+sur les sept derniers jours, template `fix_continuous`.
+
+| | |
+|---|---|
+| Paires trouvées | **46** |
+| Dont la cible a **changé** entre l'échec et la réussite | **46** |
+| Dont la cible est **restée la même** | **0** |
+| Délai moyen | **6,6 min** |
+
+| Boîtier | Échec | Cinq minutes plus tard |
+|---|---|---|
+| HD-964-XY | `99s réel / **20s** demandé` | `99s réel / **99s** demandé` |
+| GR-898-HY | `99s réel / **20s** demandé` | `99s réel / **99s** demandé` |
+| EZ-259-DB | `99s réel / **20s** demandé` | `99s réel / **99s** demandé` |
+| EY-613-MF | `99s réel / **20s** demandé` | `99s réel / **99s** demandé` |
+| AL-927-QM | `100s réel / **20s** demandé` | `100s réel / **99s** demandé` |
+| GS-138-LT | `99s réel / **20s** demandé` | `99s réel / **99s** demandé` |
+
+> 🔑 **Quarante-six sur quarante-six.** Sur sept jours, il n'existe **pas un seul cas** où un
+> boîtier ait échoué puis réussi *sur la même demande*. Toute « réussite » qui suit un échec porte
+> une autre cible.
+
+### Cause racine
+
+**Deux écritures correctes qui, mises bout à bout, mentent.**
+
+`desiredIntervalFor` recalcule la cible depuis l'état d'échantillonnage — `MOVING` → 20 s,
+`IDLE_ENGINE_ON` → 30 s, `STOPPED` → 99 s. Un véhicule qui **s'arrête** juste après une commande à
+20 s voit donc sa cible passer à 99 s. Or le boîtier était déjà à 99 s, puisqu'il n'avait jamais
+suivi les 20 s. La clôture par échéance ([TRK-051](#trk-051)) compare la cadence mesurée à la
+**nouvelle** cible, la trouve égale, et écrit « Cible atteinte ».
+
+Prise seule, chaque ligne est vraie. **C'est leur succession qui raconte une réparation qui n'a pas
+eu lieu** — et aucune des deux ne signale que la cible a changé : il faut comparer le `20` de la
+première au `99` de la seconde, dans deux lignes distinctes d'un tableau, pour s'en apercevoir.
+
+### 🔴 Ce que le motif cache, et qui est le vrai sujet
+
+Sur ces 46 transitions, **une demande à 20 s adressée à un boîtier déjà à 99 s n'a jamais abouti**.
+C'est la question de [TRK-008](#trk-008), et elle reste entière — mais l'écran la recouvre d'une
+« réussite » toutes les six minutes.
+
+⚠️ **Cette fiche ne contredit pas [TRK-057](#trk-057), elle en est le complément.** TRK-057 a réparé
+les cibles *absurdes* (21, 28, 43, 56 s) et le parc est à **44/44 canoniques**. TRK-059 porte sur des
+cibles parfaitement légitimes : 20 s pour un véhicule qui roule, 99 s pour un véhicule arrêté. *Le
+réglage est juste ; c'est le récit qu'on en fait qui est faux.*
+
+### ✅ Correctif proposé
+
+La clôture par échéance connaît les deux cibles — il suffit qu'elle le dise :
+
+```ts
+// Si la cible a changé depuis la commande précédente sur ce boîtier, la cadence n'a pas été
+// « atteinte » : c'est la cible qui a bougé. Le dire, sinon la succession ment.
+const cibleRevisee = commandePrecedente && commandePrecedente.cibleS !== cibleS;
+observedResult = cibleRevisee
+  ? `Cible RÉVISÉE ${commandePrecedente.cibleS}s → ${cibleS}s (véhicule passé à ${etat}) : `
+    + `le boîtier est resté à ${mesureeS}s, il n'a pas changé de cadence.`
+  : `Cible atteinte : cadence réelle ${mesureeS}s pour ${cibleS}s demandés — sans accusé du boîtier.`;
+```
+
+⚠️ **Corriger le message, pas la clôture.** La clôture par échéance est utile : sans elle, les
+commandes resteraient `SENT` indéfiniment, faute d'accusé matériel ([TRK-018](#trk-018)). *On
+corrige le cri, pas le garde-fou.*
+
+### 🗓️ Vérification — porte sur la CAUSE, pas sur l'affichage
+
+Après déploiement, rejouer la requête de paires. **Le compte de paires « cible changée » doit
+rester ≈ 46 sur 7 j** — le phénomène physique ne change pas — mais **aucune** ne doit plus porter le
+libellé « Cible atteinte ».
+
+⚠️ **Double condition, leçon du 26/08 :** si les **deux** compteurs tombent ensemble, on a supprimé
+la clôture et non le mensonge. Un seul doit tomber.
+
+---
+
+## TRK-060
+
+**Signature** — `system-metrics | ERROR | Invalid prisma.$queryRaw() invocation: getaddrinfo
+EAI_AGAIN <HOTE>`
+**Statut : 🔴 NON CORRIGÉ** · **gravité 3** · famille **brut** · 2026-09-02
+
+> ### L'incident est bénin. C'est le message qui envoie enquêter sur une panne de base qui n'a jamais eu lieu.
+
+### Ce qui est mesuré
+
+Une seule ligne, **la seule de son espèce en 90 jours de rétention** :
+
+```
+02/09 00:00:38 · ERROR · system-metrics
+ Invalid `prisma.$queryRaw()` invocation:   getaddrinfo EAI_AGAIN tracky-postgres
+```
+
+**Et la conséquence réelle est chiffrée :** `system_metrics` porte **1 437 points sur les 1 440**
+attendus en 24 h. Le collecteur tourne toutes les 60 s
+(`metrics-collector.service.ts:24`, `@Interval(60_000)`), attrape son exception, l'enregistre et
+continue ; le passage suivant a réussi. *Une résolution DNS Docker qui bafouille une seconde a coûté
+un point de mesure sur mille quatre cent quarante.*
+
+Aucun redémarrage ne l'explique : `tracky-postgres` tourne sans interruption **depuis le 04/08**,
+`restarts = 0`, et `tracky-api` depuis le 01/09 15:10.
+
+### Cause racine
+
+**Le défaut n'est pas l'incident, c'est le message.** `EAI_AGAIN` est un code de résolution de nom
+recopié tel quel depuis la couche transport, à travers l'enveloppe d'erreur de Prisma. Il ne dit :
+
+- **ni ce qui a échoué** — la collecte de métriques système ;
+- **ni la conséquence** — un point de graphe manquant ;
+- **ni qu'il est sans gravité** — le passage suivant répare tout seul.
+
+Ce que lit un exploitant à 8 h du matin, c'est `ERROR` + le nom du conteneur de base de données. Il
+instruit une panne de base. *Le message envoie enquêter au mauvais endroit — c'est la définition de
+la famille **brut**, et le voisinage de la famille **mensonger**.*
+
+⚠️ **Le contraste, dans la même collecte, le même jour :** `trip-analysis` écrit
+*« Limites de vitesse indisponibles : Overpass injoignable sur 1 requête(s) — les excès de vitesse
+ne sont pas affirmés sur ce trajet, **le reste de l'analyse est conservé** »*. Elle nomme la
+dépendance, la conséquence, et ce qui survit. **Le savoir-faire existe dans ce dépôt ; il n'est pas
+appliqué ici.**
+
+### ✅ Correctif proposé
+
+Dans les **deux** `catch` de `metrics-collector.service.ts` (lignes 41 et 57 — *chercher les
+jumeaux*, §7.5 de la procédure) :
+
+```ts
+await this.errorLogger.record(
+  new Error(
+    `Collecte de métriques système impossible : base injoignable (${nomCourt(e)}). `
+    + `Un point de mesure est perdu ; la collecte reprend au passage suivant (60 s). `
+    + `Sans conséquence sur l'exploitation.`,
+  ),
+  'system-metrics',
+);
+```
+
+⚠️ **Et il faut une borne, sinon on remplace un cri par un silence.** Une panne de base *réelle*
+doit crier. N'écrire cette ligne rassurante que si le passage précédent a réussi, et **passer en
+`CRITICAL` au-delà de 5 échecs consécutifs** (5 min sans métrique = la base est vraiment partie).
+*Un message apaisant sans compteur, c'est le profil exact de [TRK-008](#trk-008) : un défaut qui
+casse sans crier.*
+
+### 🗓️ Vérification
+
+À la prochaine occurrence : la ligne doit nommer la collecte et sa conséquence, et **rester
+`ERROR`**. Puis provoquer 5 échecs consécutifs (couper la résolution du nom dans un environnement de
+test) : la 5ᵉ doit sortir en **`CRITICAL`**. ⚠️ *Sans ce second volet, le correctif ne fait
+qu'adoucir le message d'une vraie panne.*
+
+---
+
 ## TRK-053
 
 **Signature** — `alerts | <TYPE> | alerte créée sur un véhicule dont
@@ -9997,6 +10178,7 @@ tomber à **0**.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-09-02 | **5 défauts actifs** (1 sur 24 h) + 25 `DEGRADATION` — 30 actives, 32 archivées | 4 revues ; **TRK-057 (44/44 canoniques) et TRK-056 (32/32 sur cible) confirmés à J+1 par mesure indépendante** ; TRK-021 2ᵉ point SMS ; TRK-053 et TRK-052 toujours **non exercés faute d’occasion** | 2 (TRK-059, TRK-060) | agent d’audit |
 | 2026-09-01 | **58 dont 26 actives (4 defauts + 22 DEGRADATION) et 32 archivees** — **0 defaut sur 24 h**, derniere ligne le 01/09 01:45 (une DEGRADATION) | 13 revues ; 🔵 **LE FAIT DU JOUR N EST PAS DANS `error_logs`** : le 31/08 entre 07:29 et 09:00 UTC, **six vehicules ont perdu leur alimentation externe** a 15-30 min d ecart ; six `POWER_CUT` CRITICAL confirmees par la pente, batteries tombees a **0 %**, et **les six boitiers sont muets depuis 18 h** — la flotte emettrice passe de **38 a 32**, et **12 des 15 immobilisations non confirmees des 3 derniers jours visent ces six vehicules**. Action TERRAIN, toujours en cours. ✅ **TROIS tests dates REPONDUS OUI** : TRK-037 (22 lignes `DEGRADATION` / **0 `ERROR`** depuis le deploiement du 26/08 — bascule nette sur 6 jours), TRK-022 volet 1 (**1 317 alertes/jour → 1-2/jour**, intervalles toujours ≥ 6 h 10 ; volets 2 et 3 ENTIERS), TRK-040 (**exercé six fois, 0 faux positif** — les 6 coupures confirmees ont fini a 0 % de batterie). ✅ TRK-047 mesure : **1,5/j → 0,29/j**, les 2 lignes restantes sont le fail-open voulu sur des vehicules sans position. 🔴 **TRK-021 : 17 JOURS sans le moindre essai** — les 8 dernieres tentatives SMS-only sont toutes anterieures au correctif et toutes parties en `channel = TCP` ; la regle des 7 jours est depassee de dix, et cette fiche bloque le volet 3 de TRK-022. ⚠️ TRK-045 : le modele « deux chiffres » **ne couvre pas 4 boitiers** (`,C,99s;` recu, 2 a 7 s mesures) — mais **pas de deluge** : 2 813 trames/emetteur contre 3 300 le 26/08. ⚠️ TRK-017 reapparait a **1 numero** le 30/08 puis 32 h a zero sur 46 — test date a 7 jours pose. 🔑 **Lecon du passage : un filtre qui exige « vivant » rend zero sur un mort** — `gps_sans_fix` rend **0 ligne** parce que les six vehicules perdus n emettent plus du tout ; la panne la plus grave de la semaine est invisible dans la section concue pour voir les pannes GPS. **Verifier ce qu un filtre EXCLUT avant de lire son zero.** ⚠️ Premier passage depuis le 26/08 — six jours sans audit | **1 (TRK-052)** | agent d'audit |
 | 2026-08-26 | **31 dont 18 actives et 13 archivees** (5 sur 24 h, **0 CRITICAL active**) — derniere erreur le 25/08 17:47, soit **7 h 24 de silence** | 10 revues ; ✅ **TRK-046 PROUVE PAR LA DOUBLE CONDITION, et le piege annonce par la fiche a ete evite** : les deux compteurs ont ete releves SEPAREMENT dans `engine_control_commands` — **31 coupes commandees ce soir** (18:00 et 20:00, motif « sortie de la plage autorisee », 30 acquittees + 1 SENT_UNCONFIRMED) et **0 REJECTED_SPEED depuis le 25/08 04:37**, contre 10 le 24/08 et 10 le 25/08 avant le correctif de 09:22. *Un seul compteur est tombe : c est le defaut qui a ete retire, pas la fonctionnalite.* ✅ **Le centre d alerte vide a ete VERIFIE, pas suppose** — 0 alerte de tout type en 24 h alors que 2 vehicules sont sans fix depuis 15,7 h et 8,6 h ; le journal du conteneur montre le detecteur GPS **actif toutes les 5 minutes**, qui NOMME les deux vehicules et se tait volontairement (zones `UNDERGROUND_PARKING` / `CONFIRMED_BENIGN` **revues par un operateur reel**, 15/07 et 03/08). ⚠️ **Trois tests dates sur cinq sans reponse, et aucun parce qu un correctif aurait echoue** : le filet `OFF_SCHEDULE_MOVEMENT` n a eu **AUCUNE OCCASION** (ni FZ-862-VY ni FS-253-HR n est ressorti — plus une seule position depuis le 25/08 09:30 et 16:34, **les deux episodes de perte sont toujours ouverts**) ; TRK-050 attend un redemarrage d API qui n a pas eu lieu depuis le correctif de 14:58 (`restarts=0`, API demarree a 12:25, soit AVANT) ; **TRK-021 n a JAMAIS ete tente depuis le 15/08 — 11 jours**, dernier essai `shock_on` + `sensitivity` a 13:26, tous deux FAILED **sur le canal TCP**. 🔵 Mesure au passage et **chiffre pour la premiere fois** : **2 des 6 zones qui font taire le GPS** (GS-014-NY, FL-787-KV) ont ete qualifiees parking **AUTOMATIQUEMENT**, `reviewedById` NULL — ce n est PAS un defaut mais la decision du proprietaire du 17/08, dont le cout est ecrit noir sur blanc dans le code ; rattache a [TRK-027](#trk-027). Angles morts : temoin arme **4/4**, **0 constat** (4ᵉ journee pleine), ecart **13 250** inchange (7ᵉ point), `errorDeleted = 0` **10ᵉ jour**, `trackers_failing` **0**, `commandes_en_attente` **0**, `cadence_resume` **0** (3ᵉ point), `cadence_derive` **0 ligne**, TRK-016 **89,2 %** (8ᵉ point, plateau), debit **125 414 trames / 38 emetteurs / 24 579 positions** | **1** ([TRK-051](#trk-051)) | audit quotidien |
 | 2026-08-25 *(soir, CORRECTIF TRK-050)* | — *(passe de correction)* | **TRK-050 CORRIGE, TESTE ET DEPLOYE** (PR #136, 14:58). Le garde « un serveur injoignable ne doit pas deconnecter » existait depuis le 03/08 sur le chemin HTTP ; il est desormais branche sur le chemin WebSocket, avec deux corrections que l enquete avait mises au jour : le compteur d echecs est **remis a zero a la reconnexion** (il ne redescendait JAMAIS, donc trois micro-coupures espacees de plusieurs heures suffisaient SANS aucun redemarrage) et le **second chemin d ejection serveur** recoit le meme garde. La decision est extraite en fonction PURE et EXPORTEE, puis APPELEE par le handler — jamais recopiee (motif de `shouldAnnounce`, dont le commentaire previent qu un test qui duplique sa regle ne verifie que sa propre copie). 🔑 **8 tests neufs, dont 4 qui exercent le VRAI handler** via une couture de creation de socket : le chemin WS n avait AUCUN test, et c est exactement ce qui a permis a la correction du 03/08 de n en traiter que la moitie pendant trois semaines. ⚠️ **Verification test-first refaite APRES coup, et c est une lecon** : la premiere passe montrait 5 echecs sur l ancien code — mais pour une erreur d INJECTION (`SwPush` absent), pas pour le defaut. *Un test qui echoue pour la mauvaise raison ne prouve rien, et il est tentant de le lire comme une preuve.* Harnais complete, puis re-verification : **3 echecs sur l ancien code**, dont « API injoignable : dix echecs ne deconnectent JAMAIS » avec le message exact `Expected spy logout not to have been called` ; et le contrepoint « refus reel expire au 3e » **passe sur les DEUX versions** — les tests ne sont donc pas tautologiques et le comportement #9 est preserve. Suite web complete **453 verts**, `ng build` OK. Marqueurs verifies dans le bundle SERVI par des **litteraux de chaine** (`reinitialiser`/`ignorer`/`expirer`) et jamais par un nom de variable, invalide sur bundle minifie (lecon TRK-002). 🔑 **Deploiement WEB UNIQUEMENT : l API n a PAS redemarre** — le correctif de la deconnexion n a deconnecte personne, et c est aussi pourquoi il reste NON EXERCE. 🗓️ Test date au prochain redemarrage d API : une session ouverte avant la bascule doit rester ouverte apres (0 aux trois redemarrages mesures) | **0** | passe de correction |
