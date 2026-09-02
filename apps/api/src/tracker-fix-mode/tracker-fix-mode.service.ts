@@ -109,6 +109,14 @@ const CIBLES_CANONIQUES = [HARD_CAP_MIN_S, 30, HARD_CAP_S];
 // Aligne sur PositionSamplingService.MOVING_SPEED_KMH.
 const PARKED_SPEED_KMH = 3;
 
+/**
+ * TRK-059 — au-delà de cette durée, deux commandes ne forment plus une SÉQUENCE aux yeux
+ * d'un lecteur : un « échec » d'avant-hier et une « réussite » d'aujourd'hui ne se lisent
+ * pas l'un après l'autre. Le motif mesuré en production tient dans 6,6 min de moyenne ;
+ * six heures laissent une marge confortable sans rendre la mise en garde absurde.
+ */
+const FENETRE_CIBLE_REVISEE_MS = 6 * 60 * 60 * 1000;
+
 export type AdaptiveTrackerState = 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED';
 
 interface FrameContext {
@@ -453,6 +461,9 @@ export class TrackerFixModeService {
           // réécrite entre-temps par les commandes suivantes) n'est volontairement plus
           // chargée : la citer était le second défaut, on rend la récidive impossible.
           params: true,
+          // TRK-059 — pour retrouver la commande PRÉCÉDENTE sur le même boîtier, et savoir
+          // si la cible a changé entre son échec et cette clôture.
+          trackerId: true,
           tracker: { select: { imei: true, currentFixIntervalS: true } },
         },
         take: 200,
@@ -478,6 +489,55 @@ export class TrackerFixModeService {
           reel >= demandeS * (1 - RECONCILE_TOLERANCE) &&
           reel <= demandeS * (1 + RECONCILE_TOLERANCE);
         if (cibleAtteinte) atteintes += 1;
+        // ══ TRK-059 — une « cible atteinte » qui suit un ÉCHEC sur une AUTRE cible ═══════
+        //
+        // Mesuré le 2026-09-02 sur 7 jours de production : 46 paires « FAILED puis
+        // ACKNOWLEDGED sur le même boîtier en moins de 30 min », et **46 sur 46** portaient
+        // une cible DIFFÉRENTE — délai moyen 6,6 min, cadence réelle IDENTIQUE des deux
+        // côtés. Cas HD-964-XY : « 99s réel pour 20s demandés » → FAILED à 00:28, puis
+        // « 99s réel pour 99s demandés » → CIBLE ATTEINTE à 00:33. Le boîtier n'a pas
+        // bougé d'une seconde : le véhicule s'est arrêté, `desiredIntervalFor` a recalé la
+        // cible de 20 s à 99 s, et cette clôture a comparé la mesure à la NOUVELLE cible.
+        //
+        // Chaque ligne est vraie prise seule ; c'est leur SUCCESSION qui raconte une
+        // réparation qui n'a pas eu lieu. On nomme donc la révision.
+        //
+        // ⚠️ Ce qu'on écrit ici est strictement ce qu'on peut PROUVER. On ne dispose pas de
+        // la cadence mesurée au moment de l'échec précédent (aucune colonne ne la porte, et
+        // une migration n'est pas justifiée pour un libellé) : on affirme donc que la CIBLE
+        // a changé — ce qui est certain — et on refuse la conclusion que le lecteur tirait
+        // seul, sans prétendre à sa place que le boîtier n'a rien fait.
+        const precedente =
+          cibleAtteinte && c.trackerId
+            ? await this.prisma.trackerCommand
+                .findFirst({
+                  where: {
+                    trackerId: c.trackerId,
+                    templateId: 'fix_continuous',
+                    createdAt: { lt: c.createdAt },
+                  },
+                  orderBy: { createdAt: 'desc' },
+                  select: { status: true, createdAt: true, params: true },
+                })
+                .catch(() => null)
+            : null;
+        const demandePrecedenteS =
+          precedente == null
+            ? null
+            : TrackerFixModeService.intervalSeconds(
+                (precedente.params as Record<string, unknown> | null)?.['interval'],
+              );
+        // Une RÉUSSITE précédente sur une autre cible ne révise rien : deux convergences
+        // successives sont deux vraies convergences, pas un renoncement.
+        const cibleRevisee =
+          precedente != null &&
+          precedente.status === TrackerCommandStatus.FAILED &&
+          demandePrecedenteS != null &&
+          demandePrecedenteS !== demandeS &&
+          Date.now() - precedente.createdAt.getTime() <= FENETRE_CIBLE_REVISEE_MS;
+        const ecartMin = precedente
+          ? Math.round((c.createdAt.getTime() - precedente.createdAt.getTime()) / 60_000)
+          : 0;
         // ⚠️ Le QUAND de la clôture reste PUREMENT temporel (leçon TRK-007) ; la comparaison
         // ne décide que du QUOI — le verdict écrit. Et on ne touche ni à `ackedAt` /
         // `ackResponse` (réservés à une vraie réponse du boîtier : TRK-014 mesure leur
@@ -488,10 +548,19 @@ export class TrackerFixModeService {
             where: { id: c.id },
             data: cibleAtteinte
               ? {
+                  // ⚠️ Le STATUT ne change pas, et c'est délibéré : sans cette clôture les
+                  // commandes resteraient `SENT` à vie, faute d'accusé matériel (TRK-018).
+                  // On corrige le cri, jamais le garde-fou — et si les deux tombaient
+                  // ensemble, on aurait supprimé la clôture au lieu du mensonge.
                   status: TrackerCommandStatus.ACKNOWLEDGED,
-                  observedResult:
-                    `Cible atteinte : cadence réelle ${reel}s pour ${demandeS}s demandés — ` +
-                    `sans accusé de réception du boîtier. Close par échéance après ${ageMin} min.`,
+                  observedResult: cibleRevisee
+                    ? `Cible RÉVISÉE ${demandePrecedenteS}s → ${demandeS}s après l'échec ` +
+                      `précédent (il y a ${ecartMin} min) : cadence réelle ${reel}s. ` +
+                      `La cible demandée a CHANGÉ entre les deux commandes — cette ` +
+                      `concordance ne prouve pas que le boîtier a suivi une consigne. ` +
+                      `Close par échéance après ${ageMin} min, sans accusé du boîtier.`
+                    : `Cible atteinte : cadence réelle ${reel}s pour ${demandeS}s demandés — ` +
+                      `sans accusé de réception du boîtier. Close par échéance après ${ageMin} min.`,
                 }
               : {
                   status: TrackerCommandStatus.FAILED,

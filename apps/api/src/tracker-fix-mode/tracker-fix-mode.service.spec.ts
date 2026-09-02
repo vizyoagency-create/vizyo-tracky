@@ -413,7 +413,14 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
 describe('TrackerFixModeService.expireStaleFixCommands', () => {
   const build = () => {
     const prisma = {
-      trackerCommand: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
+      trackerCommand: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
+        // TRK-059 — la commande PRÉCÉDENTE sur le même boîtier. Par défaut : aucune, donc
+        // le libellé d'origine. ⚠️ Absent du mock, le balayage lèverait et son `catch`
+        // avalerait l'erreur : la suite resterait verte sur un correctif MORT (leçon TRK-045).
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       // TRK-045 — `findMany` alimente le balayage de recuperation. Sans lui dans le mock,
       // le balayage leverait et son `catch` avalerait l'erreur : les tests resteraient
       // verts en decrivant un balayage qui ne tourne pas. Par defaut : parc sain.
@@ -436,6 +443,9 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
 
   const staleCommand = (over: Record<string, unknown> = {}) => ({
     id: 'c1',
+    // TRK-059 — le select charge desormais trackerId : en production il est TOUJOURS
+    // present (cle etrangere non nulle). Un helper sans lui decrirait un cas impossible.
+    trackerId: 't1',
     createdAt: new Date(Date.now() - 200 * 60_000), // 200 min
     // TRK-013 — `params.interval` porte la cible DEMANDÉE ; `desiredFixIntervalS` n'est
     // plus chargé par le select (la cible courante du boîtier ne doit plus être citée).
@@ -562,6 +572,148 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
     });
   });
 
+  /**
+   * TRK-059 — « Cible atteinte » qui suit un ÉCHEC sur une AUTRE cible.
+   *
+   * Mesuré en production le 2026-09-02 : sur 7 jours, 46 paires « FAILED puis ACKNOWLEDGED
+   * sur le même boîtier en moins de 30 min », et 46 sur 46 portaient une cible DIFFÉRENTE
+   * — délai moyen 6,6 min, cadence réelle identique des deux côtés. Le boîtier n'a pas
+   * rejoint la cible : la cible est descendue jusqu'à lui (le véhicule s'est arrêté, donc
+   * 20 s → 99 s, cadence qu'il tenait déjà).
+   *
+   * ⚠️ On corrige le LIBELLÉ, jamais la clôture : sans elle les commandes resteraient
+   * `SENT` à vie faute d'accusé matériel (TRK-018). Le statut reste `ACKNOWLEDGED`.
+   */
+  describe('TRK-059 — une cible RÉVISÉE n\'est pas une cible atteinte', () => {
+    const precedente = (over: Record<string, unknown> = {}) => ({
+      id: 'p1',
+      status: 'FAILED',
+      createdAt: new Date(Date.now() - 206 * 60_000), // 6 min avant la commande close
+      params: { interval: '020s' },
+      ...over,
+    });
+
+    // Le cas HD-964-XY du 02/09 : échec à 00:28 sur 20 s, « cible atteinte » à 00:33 sur
+    // 99 s, et 99 s mesurés DES DEUX CÔTÉS.
+    const cas = { params: { interval: '099s' }, tracker: { imei: 'x', currentFixIntervalS: 99 } };
+
+    it('dit RÉVISÉE, et ne dit plus « Cible atteinte », quand la cible a changé depuis l\'échec', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand(cas)]);
+      prisma.trackerCommand.findFirst.mockResolvedValue(precedente());
+
+      await svc.expireStaleFixCommands();
+
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      expect(data.observedResult).toContain('RÉVISÉE');
+      expect(data.observedResult).not.toContain('Cible atteinte');
+      // Les DEUX cibles sont nommées : c'est la comparaison qui manquait au lecteur.
+      expect(data.observedResult).toContain('20s');
+      expect(data.observedResult).toContain('99s');
+      // Et la mise en garde explicite, qui est tout l'objet du correctif.
+      expect(data.observedResult).toMatch(/ne prouve pas/i);
+    });
+
+    it('ne touche PAS à la clôture — le statut reste ACKNOWLEDGED (double condition)', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand(cas)]);
+      prisma.trackerCommand.findFirst.mockResolvedValue(precedente());
+
+      await svc.expireStaleFixCommands();
+
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      // ⚠️ Si le statut tombait AUSSI, on aurait supprimé la clôture et non le mensonge :
+      // les commandes repartiraient pour une vie de `SENT` (TRK-007/TRK-018).
+      expect(data.status).toBe('ACKNOWLEDGED');
+      // Et toujours aucun accusé fabriqué (TRK-014 mesure leur absence).
+      expect(data.ackedAt).toBeUndefined();
+      expect(data.ackResponse).toBeUndefined();
+      expect(data.acknowledgedAt).toBeUndefined();
+    });
+
+    it('sur la MÊME cible, une cible atteinte reste une cible atteinte', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand(cas)]);
+      // L'échec précédent portait la MÊME consigne : le boîtier a bel et bien convergé.
+      prisma.trackerCommand.findFirst.mockResolvedValue(precedente({ params: { interval: '099s' } }));
+
+      await svc.expireStaleFixCommands();
+
+      const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+      expect(data.observedResult).toContain('Cible atteinte');
+      expect(data.observedResult).not.toContain('RÉVISÉE');
+    });
+
+    it('sans commande précédente, le libellé d\'origine est conservé', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand(cas)]);
+      prisma.trackerCommand.findFirst.mockResolvedValue(null);
+
+      await svc.expireStaleFixCommands();
+
+      expect(prisma.trackerCommand.update.mock.calls[0][0].data.observedResult).toContain('Cible atteinte');
+    });
+
+    it('une RÉUSSITE précédente sur une autre cible ne révise rien — le boîtier a vraiment bougé', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand(cas)]);
+      // 20 s ATTEINTS puis 99 s atteints : deux convergences réelles, pas un renoncement.
+      prisma.trackerCommand.findFirst.mockResolvedValue(
+        precedente({ status: 'ACKNOWLEDGED', params: { interval: '020s' } }),
+      );
+
+      await svc.expireStaleFixCommands();
+
+      expect(prisma.trackerCommand.update.mock.calls[0][0].data.observedResult).toContain('Cible atteinte');
+    });
+
+    it('un échec trop ancien ne révise rien : deux commandes espacées ne sont pas une séquence', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand(cas)]);
+      prisma.trackerCommand.findFirst.mockResolvedValue(
+        precedente({ createdAt: new Date(Date.now() - 30 * 60 * 60_000) }), // 30 h avant
+      );
+
+      await svc.expireStaleFixCommands();
+
+      expect(prisma.trackerCommand.update.mock.calls[0][0].data.observedResult).toContain('Cible atteinte');
+    });
+
+    it('cherche la précédente sur le MÊME boîtier, avant la commande close, la plus récente', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([staleCommand({ ...cas, trackerId: 't-42' })]);
+
+      await svc.expireStaleFixCommands();
+
+      // ⚠️ Cette assertion est aussi le garde-fou anti-« suite verte sur code mort » :
+      // elle échoue si le correctif ne consulte jamais la commande précédente.
+      expect(prisma.trackerCommand.findFirst).toHaveBeenCalledTimes(1);
+      const arg = prisma.trackerCommand.findFirst.mock.calls[0][0];
+      expect(arg.where.trackerId).toBe('t-42');
+      expect(arg.where.templateId).toBe('fix_continuous');
+      expect(arg.where.createdAt.lt).toBeInstanceOf(Date);
+      expect(arg.orderBy).toEqual({ createdAt: 'desc' });
+    });
+
+    it('ne consulte RIEN quand la cadence n\'est pas atteinte — un échec n\'a rien à réviser', async () => {
+      const { svc, prisma } = build();
+      prisma.trackerCommand.findMany.mockResolvedValue([
+        staleCommand({ params: { interval: '020s' }, tracker: { imei: 'x', currentFixIntervalS: 3600 } }),
+      ]);
+
+      await svc.expireStaleFixCommands();
+
+      expect(prisma.trackerCommand.findFirst).not.toHaveBeenCalled();
+      expect(prisma.trackerCommand.update.mock.calls[0][0].data.status).toBe('FAILED');
+    });
+
+    it('le select charge trackerId — sans lui, aucune commande précédente n\'est trouvable', async () => {
+      const { svc, prisma } = build();
+      await svc.expireStaleFixCommands();
+      expect(prisma.trackerCommand.findMany.mock.calls[0][0].select.trackerId).toBe(true);
+    });
+  });
+
   describe('intervalSeconds (TRK-013)', () => {
     const { TrackerFixModeService } = require('./tracker-fix-mode.service') as typeof import('./tracker-fix-mode.service');
     it('relit la forme du catalogue', () => {
@@ -667,9 +819,14 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
         .map((c: unknown[]) => (c[0] as { where: Record<string, unknown> }).where)
         .find((w: Record<string, unknown>) => 'fixCommandFailing' in w)!;
       expect(where.lastSeenAt?.gt).toBeInstanceOf(Date);
+      // ⚠️ 2026-09-02 — CE TEST ETAIT INSTABLE, et sa mesure est prise APRES l appel :
+      // ageMs vaut 5 min PLUS le temps ecoule entre le service et cette ligne, donc la borne
+      // stricte a 5 min ne passait que si les deux tombaient dans la MEME milliseconde
+      // (mesure : passe / echoue / passe sur du code identique). Ce qu il faut verrouiller,
+      // c est l ordre de grandeur de la borne — 5 min, pas 1 ni 10 — pas la milliseconde.
       const ageMs = Date.now() - (where.lastSeenAt.gt as Date).getTime();
       expect(ageMs).toBeGreaterThan(4.5 * 60 * 1000);
-      expect(ageMs).toBeLessThanOrEqual(5 * 60 * 1000);
+      expect(ageMs).toBeLessThanOrEqual(5.5 * 60 * 1000);
     });
 
     it('🔴 TRK-048 — BORNE lastValidFrameAt : la MESURE doit etre fraiche, pas seulement le boitier', async () => {
