@@ -1258,7 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-059](#trk-059) | *commandes* | **La « cible atteinte » qui suit un échec porte une AUTRE cible** — le boîtier n’a pas rejoint la cible, c’est la cible qui est descendue jusqu’à lui | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **mensonger** *(mesuré le 02/09 sur 7 j : **46 paires « échec puis cible atteinte » séparées de moins de 30 min, et 46 sur 46 portent une cible DIFFÉRENTE** ; délai moyen **6,6 min**. Sur HD-964-XY, GR-898-HY, EZ-259-DB et EY-613-MF, la cadence réelle est le MÊME nombre — 99 s — dans la ligne d’échec et dans celle de réussite. Cause : `desiredIntervalFor` recale la cible quand le véhicule s’arrête (20 s → 99 s), et la clôture par échéance de [TRK-051](#trk-051) compare la mesure à la NOUVELLE cible. Chaque ligne est vraie prise seule ; c’est leur succession qui ment. ⚠️ Ne contredit PAS [TRK-057](#trk-057) : les 44 cibles sont canoniques, le réglage est juste — c’est le récit qu’on en fait qui est faux)* | 2026-09-02 | 2026-09-02 |
+| [TRK-059](#trk-059) | *commandes* | **La « cible atteinte » qui suit un échec porte une AUTRE cible** — le boîtier n’a pas rejoint la cible, c’est la cible qui est descendue jusqu’à lui | 🟠 **CORRIGÉ ET TESTÉ le 02/09, NON DÉPLOYÉ** (branche `fix/trk-059-cible-revisee`, non poussée) · **gravité 2** · famille **mensonger** *(mesuré le 02/09 sur 7 j : **46 paires « échec puis cible atteinte » séparées de moins de 30 min, et 46 sur 46 portent une cible DIFFÉRENTE** ; délai moyen **6,6 min**. Sur HD-964-XY, GR-898-HY, EZ-259-DB et EY-613-MF, la cadence réelle est le MÊME nombre — 99 s — dans la ligne d’échec et dans celle de réussite. Cause : `desiredIntervalFor` recale la cible quand le véhicule s’arrête (20 s → 99 s), et la clôture par échéance de [TRK-051](#trk-051) compare la mesure à la NOUVELLE cible. Chaque ligne est vraie prise seule ; c’est leur succession qui ment. ⚠️ Ne contredit PAS [TRK-057](#trk-057) : les 44 cibles sont canoniques, le réglage est juste — c’est le récit qu’on en fait qui est faux)*  Correctif : la clôture nomme la RÉVISION de cible au lieu d’affirmer une convergence, et refuse la conclusion sans prétendre à la place du lecteur que le boîtier n’a rien fait — la cadence de l’échec précédent n’est portée par aucune colonne. Statut ACKNOWLEDGED CONSERVÉ (double condition) : sans la clôture les commandes revivraient en `SENT`. 9 tests neufs dont 3 vérifiés EN ÉCHEC sur l’ancien code ; 188 suites / 2 801 tests verts.)* | 2026-09-02 | 2026-09-02 |
 | [TRK-060](#trk-060) | `system-metrics` | **La collecte de métriques rend l’erreur de transport BRUTE** — `getaddrinfo EAI_AGAIN tracky-postgres`, sans dire ni ce qui a échoué, ni la conséquence, ni qu’elle est sans gravité | 🔴 **NON CORRIGÉ** · **gravité 3** · famille **brut** *(une seule ligne, la seule de son espèce en 90 j de rétention. **Conséquence mesurée : 1 437 points de métrique sur les 1 440 attendus en 24 h** — le collecteur `@Interval(60_000)` attrape, enregistre et continue. L’incident est bénin ; le défaut est le message, qui envoie instruire une panne de base qui n’a jamais eu lieu. Le même jour, `trip-analysis` écrit une dégradation exemplaire qui nomme dépendance, conséquence et ce qui survit — le savoir-faire existe dans ce dépôt, il n’est pas appliqué ici. ⚠️ Le correctif doit BORNER : `CRITICAL` au-delà de 5 échecs consécutifs, sinon on remplace un cri par un silence)* | 2026-09-02 | 2026-09-02 |
 | [TRK-058](#trk-058) | *cadence* | **Une trame d'ÉVÉNEMENT compte comme une mesure de cadence** — un `acc off` suivi de son `acc on` injecte un écart de 0,6 s dans la fenêtre | 🟢 **CORRIGÉ le 2026-09-01** · **gravité 3** · famille **bruit de mesure** *(⚠️ ampleur mesurée AVANT de corriger, et elle contredit l'intuition : ces trames ne pèsent que **42 sur 3 447** positions en 1 h, soit **1,2 %**. Elles sont bien plus souvent courtes que les autres — 57 % contre 26 % — mais elles n'expliquent PAS les salves. Correction de précision, pas de cause)* | 2026-09-01 | 2026-09-01 |
 | [TRK-057](#trk-057) | *cadence* | **Quatre boîtiers portent une cible que personne n'a jamais demandée** — 21, 28, 43 et 56 s, alors que le code ne sait produire que 20, 30 et 99 | 🟢 **CORRIGÉ ET PROUVÉ EN PRODUCTION le 2026-09-01 à 14:50:45** *(les 4 cibles réparées au premier passage du balayage, 44/44 canoniques ; HD-964-XY passe DANS LA BANDE sans qu'aucune commande soit envoyée)* · **gravité 2** · famille **mensonger** *(trouvé en instruisant GR-294-VW, qui lui n'avait rien. Le clamp de TRK-008 bornait l'intervalle dans [20, 99] mais ne réparait pas la VALEUR : une cible absurde SITUÉE DANS la bande y survivait indéfiniment. HD-964-XY émet à 99 s, sa dernière commande acquittée demandait 99 s, et sa cible disait 43 — hors bande en permanence alors qu'il obéit parfaitement)* | 2026-09-01 | 2026-09-01 |
@@ -8532,7 +8532,50 @@ flotte roule, et il retomberait encore si l'on baissait simplement la cible.
 `tracker_commands | FAILED` puis, sur le **même boîtier** en moins de 30 min,
 `ACKNOWLEDGED | observedResult = "Cible atteinte : cadence réelle <N>s pour <M>s demandés"` —
 **avec `<M>` différent de la cible qui vient d'échouer, et `<N>` identique dans les deux lignes**
-**Statut : 🔴 NON CORRIGÉ** · **gravité 2** · famille **mensonger** · 2026-09-02
+**Statut : 🟠 CORRIGÉ ET TESTÉ le 2026-09-02, NON DÉPLOYÉ** · **gravité 2** · famille **mensonger** · 2026-09-02 · *ancien statut : 🔴 NON CORRIGÉ*
+
+> ### ✅ 2026-09-02 — CORRECTIF ÉCRIT, à la demande du propriétaire
+>
+> Branche `fix/trk-059-cible-revisee`, **non poussée**. Le libellé de la clôture par
+> échéance distingue désormais une **convergence** d'une **révision de cible** :
+>
+> ```
+> Cible RÉVISÉE 20s → 99s après l'échec précédent (il y a 6 min) : cadence réelle 99s.
+> La cible demandée a CHANGÉ entre les deux commandes — cette concordance ne prouve pas
+> que le boîtier a suivi une consigne. Close par échéance après 32 min, sans accusé du boîtier.
+> ```
+>
+> **Condition retenue** : la commande `fix_continuous` précédente sur le **même boîtier** est
+> `FAILED`, porte une cible **différente**, et date de moins de **6 h**
+> (`FENETRE_CIBLE_REVISEE_MS` — le motif mesuré tient dans 6,6 min de moyenne ; au-delà de six
+> heures, deux commandes ne se lisent plus l'une après l'autre).
+>
+> ⚠️ **Une RÉUSSITE précédente sur une autre cible ne révise rien** : 20 s atteints puis 99 s
+> atteints, ce sont deux vraies convergences, pas un renoncement. Un test le verrouille.
+>
+> 🔑 **Le statut reste `ACKNOWLEDGED` — c'est la DOUBLE CONDITION du 26/08.** Sans la clôture,
+> les commandes repartiraient pour une vie de `SENT`, faute d'accusé matériel ([TRK-018](#trk-018)).
+> *On corrige le cri, jamais le garde-fou* — et si les deux compteurs tombaient ensemble, on
+> aurait supprimé la clôture au lieu du mensonge. Un test l'exige explicitement.
+>
+> ⚠️ **On n'affirme QUE ce qu'on peut prouver.** La cadence mesurée au moment de l'échec
+> précédent n'est portée par **aucune colonne**, et une migration ne se justifie pas pour un
+> libellé. Le message affirme donc que **la cible a changé** — ce qui est certain — et refuse
+> la conclusion que le lecteur tirait seul, **sans prétendre à sa place** que le boîtier n'a
+> rien fait. *C'est moins spectaculaire que la fiche, et c'est tout ce qui est démontrable.*
+>
+> **Vérifications** : **9 tests neufs**, dont **3 vérifiés EN ÉCHEC sur l'ancien code** avant
+> écriture du correctif (les 6 autres sont les contrepoints « rien ne change » — ils passaient
+> déjà, et c'est normal : ils décrivent le comportement conservé). Suite `tracker-fix-mode`
+> **132/132**, lancée **trois fois** ; suite API complète **188 suites / 2 801 tests** ;
+> `pnpm -w typecheck` ✅.
+>
+> 🔵 **Au passage, un test INSTABLE de la même suite a été borné** — « BORNE lastSeenAt »
+> comparait une échéance calculée dans le service à un `Date.now()` pris **après** l'appel :
+> il ne passait que si les deux tombaient dans la **même milliseconde** (mesuré : passe /
+> échoue / passe sur du code identique). Ce qu'il doit verrouiller est l'**ordre de grandeur**
+> de la borne, pas la milliseconde. *Un test instable dans la suite qui valide un correctif
+> rend ce correctif indémontrable.*
 
 > ### Le boîtier n'a pas rejoint la cible. C'est la cible qui est descendue jusqu'au boîtier.
 
