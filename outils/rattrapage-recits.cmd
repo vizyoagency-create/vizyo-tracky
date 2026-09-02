@@ -22,5 +22,17 @@ REM ---------------------------------------------------------------------------
 cd /d "%~dp0.."
 echo. >> "%~dp0rattrapage-recits.log"
 echo ===== %DATE% %TIME% ===== >> "%~dp0rattrapage-recits.log"
-"C:\Program Files\nodejs\node.exe" "%~dp0agent-recit-trajet.cjs" --heures=1500 --minutes=70 --lot=10 >> "%~dp0rattrapage-recits.log" 2>&1
+REM ── FENETRE : TOUT L'HISTORIQUE CONSERVE, PAS 62 JOURS ────────────────────
+REM
+REM 1 500 h laissaient hors de portee tout trajet de plus de 62 jours : au
+REM 2026-09-02, 552 analyses de mh cars et 205 d'A2R restaient sans recit pour
+REM cette seule raison — des trajets qu'on conserve douze mois (retention des
+REM trajets) mais qu'on ne mettait jamais en mots. Un recit n'a besoin que de
+REM la ligne d'analyse, pas des positions GPS : rien n'empeche de le produire.
+REM 9 000 h (~375 j) couvre la retention entiere. La tache reste un no-op des
+REM qu'il n'y a plus rien a narrer.
+REM
+REM 100 min et non 70 : la tache passe toutes les 2 h, il reste 20 min de marge
+REM avant la suivante, et l'anti-chevauchement du Planificateur fait le reste.
+"C:\Program Files\nodejs\node.exe" "%~dp0agent-recit-trajet.cjs" --heures=9000 --minutes=100 --lot=10 >> "%~dp0rattrapage-recits.log" 2>&1
 exit /b %ERRORLEVEL%
