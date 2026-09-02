@@ -1,13 +1,13 @@
 import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, Bot, ChevronLeft, Loader, Play, Save, Info, CheckCircle2, Gauge,
-  History, ChevronDown, Truck, ArrowUpRight, Sparkles,
+  History, ChevronDown, Truck, ArrowUpRight, Sparkles, ListChecks, RefreshCw,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { SetTripAutomationSettingsDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
+import type { SetTripAutomationSettingsDto, TripAutomationBacklogDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../core/error/api-error';
@@ -21,7 +21,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
   selector: 'app-trip-automation',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, RouterLink, LucideAngularModule],
+  imports: [DatePipe, DecimalPipe, RouterLink, LucideAngularModule],
   template: `
     <div class="ta">
       <a routerLink="/admin/observability" class="ta-back">
@@ -158,6 +158,46 @@ import { apiErrorMessage } from '../../core/error/api-error';
           }
         </section>
 
+        <!-- Reste à faire — le chiffre qui doit BAISSER. Les compteurs d'un passage disent ce
+             qui a été fait ; celui-ci dit ce qui reste, société par société, et pourquoi. -->
+        <section class="ta-card">
+          <div class="ta-card-h">
+            <lucide-icon [img]="BacklogIcon" [size]="15"></lucide-icon> Reste à faire
+            <button type="button" class="ta-refresh" (click)="loadBacklog()" [disabled]="backlogLoading()" title="Actualiser">
+              <lucide-icon [img]="RefreshIcon" [size]="13" [class.spin]="backlogLoading()"></lucide-icon>
+            </button>
+          </div>
+          <p class="ta-hint">
+            <strong>Sans analyse</strong> : le passage serveur doit passer. <strong>Sans récit</strong> : l'agent sur poste
+            doit passer — il ne sert que les sociétés à IA active. <strong>Bruts</strong> : sans récit possible tant que le
+            recalcul n'est pas passé. <strong>Figés</strong> : positions purgées, jamais analysables — un fait, pas un retard.
+          </p>
+          @if (backlog(); as b) {
+            <div class="ta-bl">
+              <div class="ta-bl-head" aria-hidden="true">
+                <span>Société</span><span>IA</span><span>Sans analyse</span><span>Sans récit</span><span>Bruts</span><span>Figés</span>
+              </div>
+              @for (f of b.fleets; track f.fleetId) {
+                <div class="ta-bl-row">
+                  <span class="ta-bl-name" data-label="Société">{{ f.fleetName }}</span>
+                  <span class="ta-bl-ia" [class.on]="f.aiEnabled" data-label="IA">{{ f.aiEnabled ? 'active' : 'coupée' }}</span>
+                  <span class="ta-bl-n" [class.zero]="f.sansAnalyse === 0" data-label="Sans analyse">{{ f.sansAnalyse | number }}</span>
+                  <span class="ta-bl-n" [class.zero]="f.sansRecit === 0" [class.bloque]="f.sansRecit > 0 && !f.aiEnabled" data-label="Sans récit">{{ f.sansRecit | number }}</span>
+                  <span class="ta-bl-n" [class.zero]="f.sansRecitBruts === 0" data-label="Bruts">{{ f.sansRecitBruts | number }}</span>
+                  <span class="ta-bl-n ta-bl-n--fait" data-label="Figés">{{ f.figes | number }}</span>
+                </div>
+              }
+              <p class="ta-bl-at">
+                Calculé à {{ b.at | date:'HH:mm:ss' }}@if (b.horizon) { · analysables depuis le {{ b.horizon | date:'dd/MM' }} (rétention des positions) }
+              </p>
+            </div>
+          } @else if (backlogLoading()) {
+            <div class="ta-loading sm"><lucide-icon [img]="LoaderIcon" [size]="18" class="spin"></lucide-icon></div>
+          } @else {
+            <p class="ta-empty">Reste à faire indisponible — réessaie.</p>
+          }
+        </section>
+
         <!-- Historique / audit — tout sous contrôle -->
         <section class="ta-card">
           <div class="ta-card-h"><lucide-icon [img]="HistoryIcon" [size]="15"></lucide-icon> Historique des passages</div>
@@ -259,6 +299,37 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-kpi.err span { color: var(--texte-alerte); }
 
     .ta-loading { display: flex; justify-content: center; padding: 40px; color: var(--fg-tertiary); }
+    .ta-loading.sm { padding: 16px; }
+
+    /* Reste à faire — mobile d'abord : une carte par société, les colonnes n'arrivent qu'en large. */
+    .ta-refresh { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-tertiary); color: var(--fg-tertiary); cursor: pointer; }
+    .ta-refresh:hover:not(:disabled) { color: var(--fg-primary); }
+    .ta-refresh:disabled { opacity: .5; cursor: default; }
+    .ta-card-h:has(.ta-refresh) { display: flex; width: 100%; }
+    .ta-bl { display: flex; flex-direction: column; gap: 8px; }
+    .ta-bl-head { display: none; }
+    .ta-bl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .ta-bl-row > span::before { content: attr(data-label); display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-tertiary); margin-bottom: 2px; }
+    .ta-bl-name { grid-column: 1 / -1; font-size: 14px; font-weight: 800; color: var(--fg-primary); }
+    .ta-bl-name::before { display: none !important; }
+    .ta-bl-ia { font-size: 12px; font-weight: 700; color: var(--fg-tertiary); }
+    .ta-bl-ia.on { color: var(--texte-succes); }
+    .ta-bl-n { font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--fg-primary); font-variant-numeric: tabular-nums; }
+    .ta-bl-n.zero { color: var(--fg-tertiary); font-weight: 600; }
+    /* Un retard que RIEN ne peut résorber en l'état (IA coupée) : c'est celui-là qu'il faut voir. */
+    .ta-bl-n.bloque { color: var(--texte-attente); }
+    .ta-bl-n--fait { color: var(--fg-tertiary); font-weight: 600; }
+    .ta-bl-at { font-size: 11.5px; color: var(--fg-tertiary); margin: 4px 0 0; }
+    @media (min-width: 640px) {
+      .ta-bl { gap: 0; }
+      .ta-bl-head, .ta-bl-row { display: grid; grid-template-columns: 1.6fr .8fr 1fr 1fr .8fr .8fr; align-items: center; gap: 10px; }
+      .ta-bl-head { padding: 0 12px 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-tertiary); }
+      .ta-bl-head span:not(:first-child), .ta-bl-row > span:not(.ta-bl-name) { text-align: right; }
+      .ta-bl-row { border-radius: 0; border: none; border-top: 1px solid var(--border-subtle); background: transparent; padding: 10px 12px; }
+      .ta-bl-row > span::before { display: none; }
+      .ta-bl-name { grid-column: auto; font-size: 13.5px; }
+      .ta-bl-n { font-size: 16px; }
+    }
     .spin { animation: taspin .8s linear infinite; }
     @keyframes taspin { to { transform: rotate(360deg); } }
 
@@ -303,6 +374,9 @@ export class TripAutomationComponent implements OnInit {
   protected readonly lastRun = signal<TripAutomationRunStats | null>(null);
   protected readonly runs = signal<TripAutomationRunDto[]>([]);
   protected readonly expandedRun = signal<string | null>(null);
+  /** Reste à faire par société — rechargé après chaque run (c'est lui qui doit baisser). */
+  protected readonly backlog = signal<TripAutomationBacklogDto | null>(null);
+  protected readonly backlogLoading = signal(false);
 
   /** Le formulaire diffère-t-il des réglages enregistrés ? (active le bouton Enregistrer). */
   protected readonly dirty = computed(() => {
@@ -325,8 +399,23 @@ export class TripAutomationComponent implements OnInit {
   protected readonly TruckIcon = Truck;
   protected readonly LinkIcon = ArrowUpRight;
   protected readonly SparklesIcon = Sparkles;
+  protected readonly BacklogIcon = ListChecks;
+  protected readonly RefreshIcon = RefreshCw;
 
-  ngOnInit(): void { void this.load(); void this.loadRuns(); }
+  ngOnInit(): void { void this.load(); void this.loadRuns(); void this.loadBacklog(); }
+
+  protected async loadBacklog(): Promise<void> {
+    if (this.backlogLoading()) return;
+    this.backlogLoading.set(true);
+    try {
+      this.backlog.set(await firstValueFrom(this.api.getAutomationBacklog()));
+    } catch (err) {
+      // Non bloquant : les réglages et l'historique restent utilisables sans le compteur.
+      swallow('trip-automation:loadBacklog', err);
+    } finally {
+      this.backlogLoading.set(false);
+    }
+  }
 
   private async load(): Promise<void> {
     this.loading.set(true);
@@ -403,6 +492,7 @@ export class TripAutomationComponent implements OnInit {
       this.toast.success('Run terminé', `${stats.analyzed} analysé(s) · ${stats.narrated} récit(s) IA`);
       void this.load();
       void this.loadRuns();
+      void this.loadBacklog();
     } catch (e) {
       swallow('trip-automation:runNow', e);
       this.toast.error('Le run a échoué', apiErrorMessage(e, ''));

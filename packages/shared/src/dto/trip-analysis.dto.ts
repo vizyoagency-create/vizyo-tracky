@@ -484,6 +484,36 @@ export interface SetTripAutomationSettingsDto {
   maxNarrationsPerRun?: number;
 }
 
+/**
+ * Reste à faire du pipeline, par société — ce que les compteurs d'un passage ne disent pas.
+ *
+ * « 8 analysés, 0 échec » décrit ce qu'un passage a FAIT, jamais ce qu'il RESTE : le 2026-09-02,
+ * A2R affichait ce bilan rassurant toutes les heures avec 784 trajets jamais analysés derrière.
+ * Un retard qui ne se voit nulle part ne se résorbe jamais — il faut un chiffre qui baisse.
+ */
+export interface TripAutomationBacklogFleetDto {
+  fleetId: string;
+  fleetName: string;
+  /** L'IA est-elle active pour cette société (sinon : aucun récit, ni serveur ni agent local). */
+  aiEnabled: boolean;
+  /** Trajets clos, dans l'horizon de rétention des positions, non figés, SANS analyse. */
+  sansAnalyse: number;
+  /** Analyses SANS récit sur des trajets narrables (recalculés, donc stables). */
+  sansRecit: number;
+  /** Analyses sans récit sur des trajets encore BRUTS : narrables seulement après recalcul. */
+  sansRecitBruts: number;
+  /** Trajets figés (positions purgées ou absentes) : ne seront jamais analysés. Fait, pas retard. */
+  figes: number;
+}
+
+export interface TripAutomationBacklogDto {
+  /** ISO — instant du calcul. */
+  at: string;
+  /** Borne basse des trajets encore analysables (horizon de rétention des positions), ISO ou null. */
+  horizon: string | null;
+  fleets: TripAutomationBacklogFleetDto[];
+}
+
 /** Un trajet traité par un run (analysé et/ou récit IA) — pour retrouver + cliquer. */
 export interface TripAutomationRunItemDto {
   fleetId: string;

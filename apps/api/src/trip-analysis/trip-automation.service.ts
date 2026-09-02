@@ -4,6 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole, type TripAutomationRun, type TripAutomationSettings } from '@prisma/client';
 import type {
   SetTripAutomationSettingsDto,
+  TripAutomationBacklogDto,
   TripAutomationRunDto,
   TripAutomationRunItemDto,
   TripAutomationRunStats,
@@ -448,6 +449,32 @@ export class TripAutomationService {
     return windowFrom.getTime() < horizon ? new Date(horizon) : windowFrom;
   }
 
+  /**
+   * Plancher du RATTRAPAGE (front de recalcul + complement « anciens sans analyse ») :
+   * l'horizon de retention, et lui seul.
+   *
+   * ⚠️ DISTINCT DE `fenetreUtile`, ET CE N'EST PAS UNE NUANCE.
+   *
+   * `fenetreUtile` borne le COURANT : « les trajets des `lookbackHours` dernieres heures,
+   * sans descendre sous l'horizon ». C'est la bonne regle pour lister ce qui vient d'arriver.
+   * Le rattrapage, lui, doit atteindre le plus ANCIEN travail encore faisable — et le plus
+   * ancien travail faisable est borne par l'horizon (au-dessous, plus de positions), pas par
+   * la fenetre du courant.
+   *
+   * Tant que la fenetre valait 1 500 h, les deux bornes se confondaient et personne ne l'a
+   * vu. Le jour ou la fenetre est redescendue a 26 h, le rattrapage s'est mis a chercher de
+   * l'ancien... a l'interieur des 26 dernieres heures. Mesure en production le 2026-09-02 :
+   * 784 trajets d'A2R sur 60 jours sans analyse, dont 310 jamais recalcules, pendant que le
+   * passage horaire annoncait « 8 analyses, 0 echec » et paraissait tenir le rythme.
+   *
+   * Retention desactivee (0) → aucune position n'est purgee, donc rien ne borne le
+   * rattrapage a part la fenetre : on la garde.
+   */
+  private plancherRattrapage(windowFrom: Date): Date {
+    const horizon = this.horizonRetention();
+    return horizon > 0 ? new Date(horizon) : windowFrom;
+  }
+
   private horizonRetention(now = Date.now()): number {
     const jours = Number(process.env.POSITIONS_RETENTION_DAYS ?? 60);
     // Retention desactivee (0 ou absurde) : rien n'est purge, donc toute absence est une anomalie.
@@ -532,7 +559,13 @@ export class TripAutomationService {
             endedAt: { not: null },
             // TRK-034 — bornée par la rétention : un trajet dont les positions ont été purgées
             // ne peut être ni recalculé ni analysé. Le sélectionner ne produit que du travail vide.
-            startedAt: { gte: this.fenetreUtile(windowFrom) },
+            //
+            // ⚠️ Plancher du RATTRAPAGE (l'horizon), pas la fenetre du courant : le front doit
+            //    pouvoir remonter jusqu'au plus vieux trajet brut encore recalculable, sinon un
+            //    trajet reste brut pour toujours des qu'il a plus de `lookbackHours` — et un
+            //    trajet brut n'est jamais narre (l'agent de recit exige 'recompute', pour ne pas
+            //    ecrire un recit que le recalcul detruirait). Cf. `plancherRattrapage`.
+            startedAt: { gte: this.plancherRattrapage(windowFrom) },
             // segmentationSource est non-nullable (défaut 'live') : « sale » = pas encore recomputé.
             // 'fige-retention' est EXCLU : ses positions sont purgées, le re-segmenter est
             // impossible pour toujours — le laisser ici recréerait la famine qu'il résout.
@@ -711,8 +744,27 @@ export class TripAutomationService {
            * juillet quand leurs positions vivaient encore), donc jamais « sales », donc jamais
            * geles par le front de recalcul. Ni analysables, ni ecartes : re-selectionnes
            * indefiniment.
+           *
+           * ⚠️ ET LE PLANCHER EST L'HORIZON SEUL — PAS « le plus recent des deux ».
+           *
+           * L'ancienne borne `max(windowFrom, horizon)` datait d'une fenetre de 1 500 h, plus
+           * large que l'horizon : le max retombait sur l'horizon et tout allait bien. Depuis
+           * que la fenetre est redescendue a 26 h, le max retombe sur... la fenetre elle-meme.
+           * Le complement « les plus anciens sans analyse » ne pouvait donc plus rien
+           * completer : il cherchait de l'ancien a l'interieur des 26 dernieres heures, et le
+           * commentaire au-dessus decrivait un rattrapage qui n'existait plus.
+           *
+           * Mesure en production le 2026-09-02 : 784 trajets d'A2R sur les 60 derniers jours
+           * sans analyse — et donc sans recit possible — pendant que chaque passage horaire
+           * annoncait « 8 analyses, 0 echec » et avait l'air de tenir le rythme. Le retard ne se
+           * resorbait pas ; il ne se voyait simplement plus.
+           *
+           * L'horizon de retention est la seule borne qui ait un sens ici : au-dessous, les
+           * positions n'existent plus ; au-dessus, toute analyse manquante est du travail a
+           * faire, quel que soit l'age du trajet. Retention desactivee (0) → on garde la
+           * fenetre, faute de mieux.
            */
-          startedAt: { gte: new Date(Math.max(windowFrom.getTime(), this.horizonRetention())) },
+          startedAt: { gte: this.plancherRattrapage(windowFrom) },
           segmentationSource: { notIn: SOURCES_FIGEES },
           id: { notIn: trips.map((t) => t.id) },
         },
@@ -838,6 +890,59 @@ export class TripAutomationService {
         });
       }
     }
+  }
+
+  // ── Reste à faire ───────────────────────────────────────────────────────
+
+  /**
+   * Le RETARD du pipeline, par société — le chiffre qui doit baisser.
+   *
+   * Les compteurs d'un passage (« 8 analysés, 0 échec ») décrivent ce qui a été fait, jamais
+   * ce qui reste. Le 2026-09-02, A2R affichait ce bilan toutes les heures avec 784 trajets
+   * jamais analysés derrière, parce que le rattrapage était borné à 26 h (cf.
+   * `plancherRattrapage`). Personne ne pouvait le voir : aucun écran ne comptait le reste.
+   *
+   * Quatre chiffres, parce que quatre CAUSES différentes, et qu'on n'agit pas pareil :
+   *   — sans analyse : le cron serveur doit passer (positions encore là) ;
+   *   — sans récit (trajets recalculés) : l'agent sur poste doit passer — et il ne sert que
+   *     les sociétés à IA active, d'où la colonne `aiEnabled` juste à côté ;
+   *   — sans récit sur trajets BRUTS : ni l'un ni l'autre tant que le recalcul n'est pas
+   *     passé (l'agent refuse de narrer ce que le recalcul détruirait) ;
+   *   — figés : positions purgées ou absentes, ne seront jamais analysés. Un FAIT, pas un
+   *     retard — les compter évite de croire qu'il reste du travail là où il n'y en a plus.
+   *
+   * SQL brut : ni `Trip` ↔ `TripAnalysis` ni le NOT EXISTS ne s'expriment avec le client
+   * Prisma. Les comptes sont castés en int : un `count(*)` Postgres arrive en BigInt, que
+   * JSON ne sait pas sérialiser.
+   */
+  async backlog(): Promise<TripAutomationBacklogDto> {
+    const horizonMs = this.horizonRetention();
+    const horizon = horizonMs > 0 ? new Date(horizonMs) : new Date(0);
+    const rows = await this.prisma.$queryRaw<
+      Array<{ fleetId: string; fleetName: string; aiEnabled: boolean; sansAnalyse: number; sansRecit: number; sansRecitBruts: number; figes: number }>
+    >`
+      SELECT f.id AS "fleetId", f.name AS "fleetName", f."aiEnabled" AS "aiEnabled",
+        (SELECT count(*) FROM trips t
+          WHERE t."fleetId" = f.id AND t."endedAt" IS NOT NULL AND t."startedAt" >= ${horizon}
+            AND t."segmentationSource" NOT IN ('fige-retention', 'fige-sans-positions')
+            AND NOT EXISTS (SELECT 1 FROM trip_analyses a WHERE a."tripId" = t.id))::int AS "sansAnalyse",
+        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
+          WHERE a."fleetId" = f.id AND a.narrative IS NULL AND t."segmentationSource" = 'recompute')::int AS "sansRecit",
+        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
+          WHERE a."fleetId" = f.id AND a.narrative IS NULL AND t."segmentationSource" <> 'recompute')::int AS "sansRecitBruts",
+        (SELECT count(*) FROM trips t
+          WHERE t."fleetId" = f.id AND t."segmentationSource" IN ('fige-retention', 'fige-sans-positions'))::int AS "figes"
+      FROM fleets f
+      ORDER BY f.name`;
+    return {
+      at: new Date().toISOString(),
+      horizon: horizonMs > 0 ? horizon.toISOString() : null,
+      fleets: rows.map((r) => ({
+        fleetId: r.fleetId, fleetName: r.fleetName, aiEnabled: !!r.aiEnabled,
+        sansAnalyse: Number(r.sansAnalyse), sansRecit: Number(r.sansRecit),
+        sansRecitBruts: Number(r.sansRecitBruts), figes: Number(r.figes),
+      })),
+    };
   }
 
   // ── Réglages (singleton) ────────────────────────────────────────────────
