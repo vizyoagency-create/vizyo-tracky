@@ -1550,12 +1550,30 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
             ORDER BY CASE lower(column_name) WHEN 'imei' THEN 1 WHEN 'deviceid' THEN 2
                                              WHEN 'device_id' THEN 3 ELSE 9 END
             LIMIT 1;" 2>/dev/null)
+        # ⚠️⚠️ TROISIEME AGREGAT AJOUTE LE 2026-09-02 — VPS-M75. UNE FENETRE DE 24 h RETARDE LA
+        # DETECTION D UN ARRET DE 24 h, ET LE RAPPORT PUBLIE CE RETARD COMME UN ETAT COURANT.
+        # Le 2026-09-01 a 07:39, ce bloc a publie « ✅ flotte STABLE (38 contre 38) » et le
+        # rapport en a tire « la flotte est intacte, 15e jour sans perte ». Mesure faite le
+        # lendemain : SIX emetteurs avaient cesse d emettre le 08-31 entre 11 h 53 et 13 h 50,
+        # soit DIX-HUIT HEURES avant cette phrase. Le compteur n avait pas tort — leurs dernieres
+        # trames tombaient encore dans sa fenetre de 24 h. Le defaut est que la sortie ne dit pas
+        # qu elle decrit une FENETRE et se lit comme un ETAT.
+        # Le correctif ne remplace pas la comparaison de fenetres : il ajoute la seule grandeur
+        # qui n a pas de retard, la FRAICHEUR de la derniere trame de chaque emetteur.
+        # ⚠️ PORTEE, ecrite ici pour qu on ne la redecouvre pas : cet agregat ne voit que les
+        #    emetteurs presents dans la table, donc dans la fenetre de RETENTION (~4 j sur
+        #    wire_logs). Un boitier muet depuis six jours en a disparu et n est PAS compte —
+        #    c est un PLANCHER du nombre de silencieux, jamais un total. Six des douze traceurs
+        #    silencieux du 2026-09-02 etaient dans ce cas.
         if [ -n "$EMCOL" ]; then
           EMSEL="count(DISTINCT \"$EMCOL\") FILTER (WHERE \"$COL\" >  now() - interval '24 hours'),
                  count(DISTINCT \"$EMCOL\") FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
-                                                      AND \"$COL\" <= now() - interval '24 hours')"
+                                                      AND \"$COL\" <= now() - interval '24 hours'),
+                 (SELECT count(*)::text || '/' || coalesce(to_char(max(d),'MM-DD HH24:MI'),'-')
+                    FROM (SELECT max(\"$COL\") d FROM \"$t\" GROUP BY \"$EMCOL\") g
+                   WHERE d <= now() - interval '6 hours')"
         else
-          EMSEL="-1, -1"
+          EMSEL="-1, -1, ''"
         fi
         docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
           "SELECT coalesce(min(\"$COL\")::date::text,'vide'),
@@ -1572,9 +1590,9 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                                      AND \"$COL\" <= now() - interval '7 days')
            FROM \"$t\";" 2>/dev/null |
         awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" \
-                  -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" 'NF>=11 {
+                  -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" 'NF>=12 {
             deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
-            e0=$9+0; e1=$10+0; j7=$11+0;
+            e0=$9+0; e1=$10+0; muets=$11; j7=$12+0;
             printf "       %-30s%s -> %s  = %s jours, %.1f Mo  (colonne %s)\n", t, deb, fin, jours, mo, c;
             if (j1 <= 0) {
               printf "         (debit non comparable : 0 arrivee sur les 24 h PRECEDENTES)\n";
@@ -1625,6 +1643,16 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                 printf "         ✅ flotte STABLE (%d contre %d) : toute la variation est portee par la CADENCE,\n            pas par le nombre demetteurs. Cest ce qui distingue un correctif dune panne.\n", e0, e1;
               printf "         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une\n";
               printf "            SEULE heure, il confond le creux de la nuit avec une derive du regime.\n";
+              # ── VPS-M75 : la FRAICHEUR, qui na pas le retard de 24 h de la comparaison ci-dessus ──
+              nm = 0; qd = "-";
+              if (muets != "" && index(muets, "/") > 0) {
+                split(muets, mm, "/"); nm = mm[1]+0; qd = mm[2];
+                if (nm > 0)
+                  printf "         🔴 SILENCE : %d emetteur(s) nont plus emis depuis plus de 6 h (dernier arret : %s UTC).\n            Cette ligne na PAS le retard de 24 h de la comparaison ci-dessus : un arret y\n            apparait des la 7e heure, la ou la fenetre de 24 h peut le cacher un jour entier\n            et publier « flotte STABLE » (VPS-M75, mesure du 2026-09-02).\n", nm, qd;
+                else
+                  printf "         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,\n            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.\n";
+                printf "         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de\n            retention (%.2f j). Un boitier muet depuis plus longtemps a disparu de la table\n            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».\n", wj;
+              }
             } else {
               printf "         (emetteurs : %d sur 24 h, %d les 24 h precedentes — taux par emetteur non calculable)\n", e0, e1;
             }
@@ -1896,6 +1924,43 @@ NB_SEC=$(printf '%s\n' "$APT_LIST" | grep -icE "security")
 if [ "${APT_STAMP:-0}" -gt 0 ] && [ "$APT_AGE_H" -le 6 ]; then
   printf '  paquets en retard : %s\n' "$NB_UPG"
   printf '  dont estampilles securite : %s   ✅ cache de %s h — MESURE VALIDE\n' "$NB_SEC" "$APT_AGE_H"
+  # ⚠️⚠️ AJOUTE LE 2026-09-02 — VPS-M74. UN COMPTE VALIDE N EST PAS ENCORE UNE INFORMATION.
+  # Ce matin le garde VPS-M29 a laisse passer un compte PARFAITEMENT valide — cache de 1 h, deux
+  # sources independantes d accord — et ce compte disait « 109 paquets, 34 estampilles securite ».
+  # Lu seul, il annonce sept jours de correctifs non appliques sur une machine qui porte sept
+  # bases de production. J ai failli l ecrire.
+  #
+  # LA MESURE QUI L A REFUTE : les index eux-memes. `noble-security_main` porte la date
+  # 2026-09-01 17:10 et `noble-updates_main` 18:26 — le lot a ete PUBLIE hier soir. Le
+  # rafraichissement l a vu a 00:48:53, et l INSTALLATEUR passe a 06:52:59. La collecte est tombee
+  # a 02:22, c est-a-dire dans le seul creneau ou le compte est a la fois exact et trompeur :
+  # APRES la decouverte, AVANT l installation.
+  #
+  # La lecon depasse apt et vaut pour toute file d attente : un compte d EN-ATTENTE ne se lit pas
+  # sans la POSITION de la mesure dans le cycle qui la vide. VPS-033 disait « l audit ne mesure
+  # qu un jour sur cinq » ; ceci dit que meme le jour ou il mesure, il peut conclure a l envers.
+  # Cout : deux `systemctl show`, aucune E/S disque.
+  APT_INST_LAST=$(systemctl show apt-daily-upgrade.timer -p LastTriggerUSec --value 2>/dev/null)
+  APT_INST_NEXT=$(systemctl show apt-daily-upgrade.timer -p NextElapseUSecRealtime --value 2>/dev/null)
+  echo  '  ── position de CETTE mesure dans le cycle rafraichir → installer (VPS-M74) ──'
+  printf '     derniere INSTALLATION declenchee : %s\n' "${APT_INST_LAST:-inconnue}"
+  printf '     prochaine INSTALLATION prevue    : %s\n' "${APT_INST_NEXT:-inconnue}"
+  APT_INST_TS=$(date -d "${APT_INST_LAST:-@0}" +%s 2>/dev/null || echo 0)
+  if [ "${APT_INST_TS:-0}" -gt 0 ] && [ "${APT_STAMP:-0}" -gt "${APT_INST_TS:-0}" ]; then
+    printf '     🟠 CE COMPTE N EST PAS (ENCORE) UN RETARD : le cache a ete rafraichi %s h APRES le\n' \
+           "$(( ( ${APT_STAMP:-0} - ${APT_INST_TS:-0} ) / 3600 ))"
+    echo  "        dernier passage de l installateur. Ces paquets ont ete DECOUVERTS depuis, et"
+    echo  "        l installateur ne les a pas encore vus. NE PAS conclure que le canal est en panne."
+    echo  "        ⚠️ Et l inverse est le vrai test : si au passage suivant l installation a eu lieu"
+    echo  "           ET que le compte n a pas baisse, alors la panne est etablie. C est ce test-la"
+    echo  "           qui tranche, jamais le compte seul."
+  elif [ "${APT_INST_TS:-0}" -gt 0 ]; then
+    echo  "     ✅ l installateur est passe APRES le dernier rafraichissement : le compte ci-dessus"
+    echo  "        est bien un RESTE, pas une file en attente de son tour. Un reste non nul se traite."
+  else
+    echo  "     ⚠️ horodatage de l installateur ILLISIBLE : la position de cette mesure dans le cycle"
+    echo  "        n est PAS etablie. Ne pas trancher entre « retard » et « file en attente » (VPS-M02)."
+  fi
 else
   printf '  🟠 NON MESURABLE — le cache apt a %s h (seuil de validite : 6 h).\n' "$APT_AGE_H"
   printf '     Ce que le cache PERIME affiche, a titre indicatif SEULEMENT : %s paquets en retard,\n' "$NB_UPG"
@@ -3311,6 +3376,28 @@ else
         printf "  part de dockerd      : %.1f s de CPU sur la MEME fenetre = %.1f %% de la machine\n", dock_s, pdock
         printf "  → repartition : audit %.1f %%  |  dockerd %.1f %%  |  reste %.1f %%  |  inactif %.1f %%\n", \
                paudit, pdock, preste, pidle
+        # ── AJOUTE LE 2026-09-02 : LE « RESTE » EST ENFIN VENTILE (angle mort n° 1, 3e report) ──
+        # La ligne ci-dessus publiait « reste 33,4 % » depuis des semaines sans jamais dire de
+        # quoi ce reste etait fait, et trois rapports de suite ont reporte l angle mort au lieu
+        # de le fermer — alors que les deux tiers de la reponse etaient DEJA calcules quatre
+        # lignes plus haut, sur exactement la meme fenetre. `iowait` et `steal` sont du temps ou
+        # AUCUN processus de cette machine ne brule de cycle : le premier attend le disque, le
+        # second est pris par l hyperviseur. Les compter dans « reste » les fait passer pour de
+        # la consommation locale non identifiee, ce qu ils ne sont pas.
+        # ⚠️ Ce n est pas une soustraction exacte et il faut le dire : `iowait` est deja compte
+        #    dans `idle` par le noyau sur certaines versions, et le cout de l audit mesure par
+        #    /proc/$$/stat recouvre une partie de `user`+`sys`. La ventilation ci-dessous BORNE
+        #    le reste inexplique, elle ne le partitionne pas. Un ordre de grandeur honnete vaut
+        #    mieux qu un silence de trois passages. Cout : nul, les valeurs sont deja en memoire.
+        pattente = pio + psteal
+        pinconnu = preste - pattente
+        if (pinconnu < 0) pinconnu = 0
+        printf "     dont ATTENTE (personne ne brule de cycle) : iowait %.1f %% + steal %.1f %% = %.1f %%\n", \
+               pio, psteal, pattente
+        if (preste > 0)
+          printf "     reste INEXPLIQUE apres ventilation : %.1f %% (soit %.0f %% du « reste »)\n", \
+                 pinconnu, 100*pinconnu/preste
+        printf "     ⚠️ BORNE, pas partition : iowait peut deja etre compte dans idle, et le cout de\n        l audit recouvre une part de user+sys. A lire comme un ordre de grandeur.\n"
       }
     } else
       printf "  ⚠️ part de dockerd NON MESUREE (pid introuvable ou /proc illisible) : le verdict\n     ci-dessous ne peut donc PAS nommer le consommateur, seulement disculper l audit.\n"

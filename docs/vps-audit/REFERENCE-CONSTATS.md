@@ -4091,7 +4091,21 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
-- **Vu : 2026-08-26** · **Mesure du jour** : ✅ **VALIDE — cache de 2 h** (rafraîchi à 00 h 06,
+- ✅ **Vu : 2026-09-02 — 3ᵉ MESURE VALIDE EN 9 PASSAGES, ET ELLE A FAILLI PRODUIRE UN CONSTAT
+  FAUX.** Cache de **1 h** (rafraîchi à 00 h 48 min 58), seconde source de **1 h**, les deux
+  d'accord : **109 paquets en retard, dont 34 estampillés sécurité**. Série des neuf derniers :
+  ❌ ❌ ✅ ❌ ❌ ❌ ✅ ❌ ✅. **Le défaut n'est pas corrigé, le tirage est tombé du bon côté pour
+  la troisième fois.**
+
+  🔑 **Et ce passage ajoute au dossier un argument que les précédents n'avaient pas.** Lu seul, ce
+  compte valide annonçait *« cinq jours de correctifs de sécurité non appliqués »* — **et c'était
+  faux** : les index sont datés du 09-01 au soir, le rafraîchissement les a vus à 00 h 48, et
+  **l'installateur passe à 06 h 52**, soit 4 h 30 après la collecte (voir **VPS-M74**). *Un tirage
+  aléatoire ne dégrade donc pas seulement la DISPONIBILITÉ de la mesure : il rend sa POSITION dans
+  le cycle imprévisible, ce qui maximise la chance de mesurer au pire moment.* Un rafraîchissement
+  à heure fixe rendrait aussi cette position **constante d'un passage à l'autre** — c'est un second
+  bénéfice du même correctif, et il n'avait jamais été écrit.
+- **Vu : 2026-08-26** · **Mesure** : ✅ **VALIDE — cache de 2 h** (rafraîchi à 00 h 06,
   soit 2 h 16 avant la collecte). **2ᵉ mesure valide en 7 passages** ; le tirage aléatoire est
   simplement tombé du bon côté, exactement comme le 08-21. **Le défaut n'est pas corrigé, il est
   en congé.** Série des sept derniers : ❌ ❌ ✅ ❌ ❌ ❌ ✅.
@@ -4354,7 +4368,55 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-036 — Un tiers exécute `kill -KILL` en root sur la production, par un canal qui ne passe ni par SSH ni par le pare-feu
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `SURVEILLANCE`
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` *(était `SURVEILLANCE` —
+  monté le 2026-09-02)*
+- 🔴 **Vu : 2026-09-02 — DEUXIÈME OCCURRENCE, ET CELLE-CI MASQUE UN SERVICE SYSTEMD. LE SEUIL
+  ÉCRIT D'AVANCE EST FRANCHI DEUX FOIS.**
+
+  Le **2026-09-01 à 15 h 16 min 24 UTC**, le même canal a livré **1 104 caractères** de base64.
+  Décodés :
+
+  ```
+  systemctl cat multipathd.service >/dev/null 2>&1 || { echo "R state=absent ..."; exit 0; }
+  DEV=$(multipath -ll 2>/dev/null | grep -c .)
+  if [ "$DEV" -gt 0 ]; then echo "R state=has-devices ..."; exit 0; fi
+  if [ "$ACT" != active ]; then echo "R state=not-running ..."; exit 0; fi
+  if [ "apply" = apply ]; then
+      systemctl mask --now multipathd.socket  >/dev/null 2>&1
+      systemctl mask --now multipathd.service >/dev/null 2>&1
+  ```
+
+  **L'ordre a abouti, et l'effet est DURABLE — vérifié en lecture seule le 2026-09-02 :**
+
+  ```
+  systemctl is-enabled multipathd.service  →  masked
+  systemctl is-active  multipathd.service  →  inactive
+  /etc/systemd/system/multipathd.service -> /dev/null   (lien créé le Sep  1 15:16)
+  /etc/systemd/system/multipathd.socket  -> /dev/null   (lien créé le Sep  1 15:16)
+  ```
+
+  *L'horodatage du lien symbolique et celui de l'ordre `guest-exec` coïncident à la minute. Ce
+  n'est pas une concomitance d'horaire prise pour une identification (VPS-M01) : c'est le fichier
+  que la commande crée, portant l'heure de la commande.*
+
+  **Le seuil de réescalade écrit le 2026-09-01 exigeait `A_TRAITER` « à la deuxième occurrence,
+  ou dès qu'un ordre de ce canal touche autre chose que des clients Docker et des pagers — un
+  conteneur, un SERVICE, un fichier ». Les deux conditions sont remplies le même jour.** Le
+  constat monte sans arbitrage — *c'est le propre d'un seuil rédigé avant l'événement, et c'est
+  la deuxième fois en deux passages qu'un test écrit d'avance tranche seul.*
+
+  ⚠️ **L'acte lui-même est défendable, et il faut le dire aussi nettement que le reste** :
+  `multipathd` gère les disques à chemins multiples, cette machine n'en a aucun — le script le
+  teste (`DEV=0`) avant d'agir. Le masquer rend quelques mégaoctets et supprime un démon inutile.
+  **Le constat ne porte pas sur cet usage-là, il porte sur la CAPACITÉ** : un tiers modifie
+  durablement la configuration système d'une machine qui porte sept bases de production, sans
+  passer par SSH, sans trace dans `auth.log`, et sans que personne côté Vizyo ne l'ait décidé.
+
+  ✅ **Et le correctif de la veille a payé dès son premier cas neuf** : sans le décodage base64
+  posé le 09-01 (VPS-M72), cet ordre se serait affiché `/bin/sh -c echo c3lzdGVtY3Rs…` et l'audit
+  aurait publié *« 🟠 2 commandes INATTENDUES »* sans savoir que l'une masquait un service.
+  *Le correctif a été écrit pour un cas passé ; il a attrapé un cas futur, cinq jours plus tard.*
+
 - **Vu** : 2026-09-01 · **Mesure à la découverte** : **une** occurrence, le **2026-08-28 à
   13 h 48 min 37 UTC**, sur toute la fenêtre conservée par `journalctl -t qemu-ga`. Reçue par
   `guest-exec`, exécutée en root, **1 420 caractères** encodés en base64.
@@ -4391,9 +4453,11 @@ confondre les deux ferait accuser le mauvais coupable.
   était tronqué à 165 caractères, et ces 165 caractères étaient du **base64**. Voir **VPS-M72** :
   un filtre juste ne suffit pas si ce qu'il donne à lire ne porte pas l'information.
 
-- **QUOI FAIRE** : ouvrir un ticket à l'hébergeur pour faire **confirmer la paternité** de ce
-  balai et **obtenir sa cadence** — une occurrence unique ne dit pas s'il est manuel, réactif ou
-  périodique.
+- **QUOI FAIRE** — ⚠️ **élargi le 2026-09-02** : ouvrir **un seul** ticket à l'hébergeur couvrant
+  **les deux** ordres (le balai `kill` du 08-28, le masquage du 09-01), pour obtenir dans cet
+  ordre : la **paternité**, la **cadence**, puis **la liste des actions que ce canal s'autorise
+  sans préavis**. *Les deux premières sont des faits du passé ; la troisième est la seule qui
+  protège l'avenir.*
 
   ```bash
   journalctl -t qemu-ga --since '30 days ago' | grep -c 'guest-exec called'
@@ -4405,16 +4469,31 @@ confondre les deux ferait accuser le mauvais coupable.
   ⚠️ **Ne pas attribuer une provenance qu'on ne mesure pas** : sur ce canal, l'audit ne peut PAS
   distinguer l'hébergeur d'un humain utilisant la console web du panneau. Les deux arrivent par la
   même porte (VPS-M01).
+  ⚠️ **Ajouté le 2026-09-02 — ne pas « démasquer » `multipathd` par réflexe.** Il ne sert à rien
+  sur cette machine, et le remettre en route ajouterait un démon sur 2 vCPU dont les healthchecks
+  sont déjà la 1ʳᵉ source de forks. **Le défaut est le canal, pas son effet du jour** — annuler
+  l'effet donnerait le sentiment d'avoir traité le constat sans rien changer à ce qui le produit.
 
-- **Seuil de réescalade** (exigé pour tout `SURVEILLANCE`) : passer en `A_TRAITER` **à la deuxième
-  occurrence**, ou dès qu'un ordre de ce canal touche autre chose que des clients Docker et des
-  pagers — un conteneur, un service, un fichier.
+- **Seuil de réescalade** — ⚠️ **RÉÉCRIT le 2026-09-02, l'ancien ayant été franchi.** L'ancienne
+  formulation (*« passer en `A_TRAITER` à la deuxième occurrence, ou dès qu'un ordre touche autre
+  chose que des clients Docker et des pagers — un conteneur, un service, un fichier »*) a
+  fonctionné exactement comme prévu et a produit la montée du 2026-09-02. Le nouveau seuil :
+  **passer en gravité 1 si un ordre de ce canal touche un conteneur, un volume, une base, une
+  règle de pare-feu ou un fichier de `/opt`** — c'est-à-dire la production elle-même, et non
+  l'outillage système de l'hôte. **Rester en gravité 2** tant que la cible reste l'hygiène de
+  l'hôte (démons inutiles, sessions abandonnées).
 
 ---
 
 ## VPS-037 — La copie hors-site des sauvegardes dépend du même poste de travail que l'audit, et elle a dépassé son seuil
 
 - **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-02 — AGGRAVÉ : la copie passe de 51 h à 69 h.** L'écart au seuil de 48 h
+  passe de **3 h à 21 h en un seul passage**, et la source, elle, est à jour (**22 h**). *Ce
+  n'est donc pas la sauvegarde qui manque, c'est son unique exemplaire hors machine qui ne se met
+  plus à jour.* Le couplage établi le 09-01 tient : le poste de travail est dépositaire à la fois
+  de la planification de cet audit et de la seule copie qui ne vive pas sur le VPS. **Rien ne
+  vieillit plus vite qu'une sauvegarde dont le dépositaire est éteint.**
 - **Vu** : 2026-09-01 · **Mesure à la découverte** : copie hors-site de `vizyo-verify` à **51 h**,
   seuil de péremption **48 h**. Destination : **PC local (D:)**. Contenu copié : 4 h — *la copie
   ne peut pas être plus fraîche que sa source, et la source, elle, est à jour.*
@@ -4433,7 +4512,228 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
+## VPS-038 — Six boîtiers se sont tus le dimanche en deux heures, tous dans la même flotte
+
+- **Domaine** : données · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-09-02 · **Mesure à la découverte** : `wire_logs` passe de **38 à 32 émetteurs
+  distincts** sur 24 h (×0,84), et `positions` de **38 à 32 traceurs distincts** par jour. Les six
+  dernières trames tombent entre le **2026-08-31 11 h 53 min 43** et le **2026-08-31 13 h 50 min 47
+  UTC**, soit une fenêtre de **1 h 57**. Les six sont **tous rattachés à la flotte `2ad69ac1…`**
+  (30 boîtiers) et **tous marqués `OFFLINE`** dans `trackers`.
+
+  ```
+  864035054757027  2026-08-31 11:53:43      864035054756102  2026-08-31 13:15:45
+  864035054756755  2026-08-31 12:30:40      864035054756714  2026-08-31 13:50:25
+  864035054756763  2026-08-31 12:48:28      864035054489431  2026-08-31 13:50:47
+  ```
+
+  Comptage horaire : **38 → 37 → 35 → 32 → 31 → 30** entre 11 h et 16 h le 08-31, puis **plat à
+  32 pendant 27 heures** (09-01 00 h → 09-02 02 h).
+
+- **🔑 LA CONTRE-ÉPREUVE QUI DÉCIDAIT DE TOUT.** Un compteur d'émetteurs qui baisse peut vouloir
+  dire « six boîtiers sont morts » **ou** « la colonne `imei` a cessé d'être remplie » — et la
+  seconde hypothèse fabriquerait un incident majeur à partir d'un défaut d'écriture. Le
+  discriminant est une **seconde table alimentée par un autre chemin de code** : `positions`
+  compte **38 traceurs distincts du 08-27 au 08-31, puis 32 les 09-01 et 09-02**. Les deux tables
+  donnent le même nombre le même jour. *La perte est réelle.*
+
+- **⚠️ ET LE DÉBIT TOTAL NE LA MONTRE PAS** : `positions` fait **23 952 lignes le 09-01** contre
+  **22 211 le 08-31** — *plus* de lignes avec *moins* de traceurs. C'est le mode d'échec exact que
+  le discriminant de flotte existe pour empêcher : **une flotte amputée de 16 % se lit comme une
+  journée normale** si l'on ne regarde que le volume.
+
+- **QUOI — la cause** : **six arrêts indépendants ne tombent pas dans une fenêtre de deux heures.**
+  Il y a une cause commune, et l'appartenance des six à une **seule flotte** la resserre encore.
+  ⚠️ **Ce que l'audit ne peut PAS dire depuis la machine, et ne dira donc pas** : laquelle. Un
+  site partagé (dépôt, parking), une coupure d'opérateur ou de SIM, une action de flotte et une
+  panne d'alimentation groupée produisent **la même trace ici**. Nommer l'une d'elles serait
+  VPS-M01 — une plausibilité présentée comme une identification.
+  ⚠️ **Ce n'est pas un déploiement** : les quatre reconstructions de `tracky-api` du 09-01
+  (09 h 35, 14 h 23, 14 h 46, 15 h 09) sont **postérieures de 20 à 25 heures** au dernier arrêt.
+
+- **`pourquoiInvisible`** : le rapport du **2026-09-01 à 07 h 39** a publié *« la flotte est
+  intacte : 38 émetteurs distincts sur 24 h contre 38 les 24 h précédentes, 15ᵉ jour sans
+  perte »* — **dix-huit heures après** l'arrêt des six. Le compteur n'avait pas tort : sa fenêtre
+  de 24 h remontait au 08-31 07 h 39 et contenait encore leurs dernières trames. **Une comparaison
+  « 24 h contre 24 h » ne peut structurellement pas détecter un arrêt de moins de 24 heures**, et
+  rien dans la sortie ne le disait. Voir **VPS-M75**, corrigé le jour de la découverte.
+
+- **Le décompte complet est pire que six.** La mesure de fraîcheur ajoutée par VPS-M75 compte
+  **7 émetteurs muets depuis plus de 6 h** dans `wire_logs` : le septième
+  (`864035054755856`) s'est tu le **2026-08-29 à 21 h 15**, donc **hors des deux fenêtres de
+  24 h** — invisible à la comparaison par construction. Et `trackers` en dénombre **12 silencieux
+  sur 44** (32 vus dans les 6 dernières heures), dont **8 des 30 de la flotte `2ad69ac1…`, soit
+  27 %** : les six du 08-31, plus `864035054756730` (08-19) et `864035054756177` (08-21).
+
+- **Ce que ce constat N'EST PAS** : **ni un défaut du VPS, ni un angle mort de l'application.** Les
+  six sont marqués `OFFLINE` dans `trackers`, donc le centre d'alerte de Tracky dispose de
+  l'information. Le rôle de ce constat est de **dater la perte à l'heure**, d'établir qu'elle est
+  **groupée** et **mono-flotte**, et de fournir les six IMEI — ce que ni le centre d'alerte ni
+  l'écran ne produisent sous cette forme.
+
+- **QUOI FAIRE** : **rien sur le VPS.** La chaîne d'ingestion est saine, et c'est mesuré : les 32
+  boîtiers restants émettent **113,2 trames/h chacun** contre 104,2 la veille, et `positions` est
+  à **×1,03** contre la veille et **×0,95** contre J-7. L'action est côté produit : porter ces six
+  IMEI et l'heure de leur dernière trame à l'exploitant de la flotte `2ad69ac1…`, et **chercher ce
+  qu'ils ont en commun** — site, lot d'installation, opérateur SIM.
+
+- **`aNePasFaire`** : ⚠️ **ne pas lire la hausse de 104,2 → 113,2 trames/h/boîtier comme une
+  amélioration de cadence.** Le numérateur n'a pas monté, **le dénominateur a baissé** — c'est
+  VPS-M71 sous une autre forme : une moyenne dont on ne surveille pas l'effectif.
+  ⚠️ **Ne pas lire le seuil de VPS-035 comme rassurant** : 113,2 est bien dans la bande 60–300,
+  mais ce seuil est écrit **par boîtier** et ne dit rien du **nombre** de boîtiers. *Un seuil par
+  tête ne voit pas une flotte qui rétrécit.*
+  ⚠️ **Ne pas purger ni archiver ces boîtiers** dans l'application pour « nettoyer » le compte :
+  ils sortiraient du dénominateur et le constat se refermerait tout seul, sans qu'un seul véhicule
+  ait été retrouvé.
+
+- **Seuil de réescalade** : passer en **gravité 1** si un septième boîtier de la flotte
+  `2ad69ac1…` se tait, **ou** si les six ne sont pas revenus au passage du **2026-09-05** (cinq
+  jours de silence). Redescendre en `SURVEILLANCE` dès que le compte d'émetteurs de `wire_logs`
+  repasse à 38 sur 24 h.
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M75 — Une comparaison de fenêtres de 24 h publiée comme un état courant, et six boîtiers morts sous une ligne verte
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-09-02)
+- **Vu** : 2026-09-02 · **Mesure** : le rapport du **2026-09-01 à 07 h 39** publie *« la flotte est
+  intacte : 38 émetteurs distincts sur 24 h contre 38 les 24 h précédentes, 15ᵉ jour sans perte »*.
+  **Six boîtiers étaient muets depuis dix-huit heures** (dernières trames le 08-31 entre 11 h 53
+  et 13 h 50). Voir **VPS-038**.
+
+**QUOI — la cause, et ce n'est pas une erreur de calcul.** Le compteur est **juste**. À 07 h 39 le
+09-01, sa fenêtre de 24 h remontait au 08-31 07 h 39 et contenait encore les dernières trames des
+six. **Une comparaison « 24 h contre 24 h » ne peut structurellement pas voir un arrêt de moins de
+24 heures**, et selon l'heure de la collecte elle peut le cacher **jusqu'à un jour entier**.
+
+Le défaut est que la sortie **ne dit pas qu'elle décrit une fenêtre**. *« ✅ flotte STABLE (38
+contre 38) »* se lit comme un état présent, et c'est ainsi que le rapport l'a repris.
+
+**Sa parenté.** C'est la **troisième période** de la même famille :
+
+| | ce qui manque | ce que ça produit |
+|---|---|---|
+| **VPS-M69** | le cycle **diurne** est plus long que la lecture | un débit lu à une heure, publié comme un régime |
+| **VPS-M71** | le cycle **hebdomadaire** est plus long que la fenêtre | un lundi comparé à un dimanche, ×1,50 sur une chaîne saine |
+| **VPS-M75** | l'événement est plus **court** que la fenêtre | un état périmé de 18 h publié comme courant |
+
+*Les deux premiers fabriquent une variation qui n'existe pas ; celui-ci cache une variation qui
+existe. Le remède n'est pas le même : là il fallait une seconde fenêtre, ici il faut une grandeur
+**sans fenêtre**.*
+
+**QUOI FAIRE — appliqué le 2026-09-02.** Le collecteur mesure désormais, dans la **même requête**,
+le nombre d'émetteurs dont la **dernière trame** date de plus de 6 h, et l'horodatage du dernier
+arrêt. Cette grandeur n'a **aucune latence** : un arrêt y apparaît dès la 7ᵉ heure.
+
+**Contre-épreuve sur les 3 tables réelles**, rejouée sur la machine :
+
+- `wire_logs` → **🔴 7 émetteurs muets, dernier arrêt 08-31 13:50** — soit **un de plus** que ce
+  que la comparaison de fenêtres a trouvé ;
+- `positions` et `position_sampling_decisions` → branche *« colonne d'émetteur non reconnue,
+  mesure NON FAITE »*, sans rien inventer (VPS-M02).
+
+**🔑 Le septième est la preuve que ce correctif n'est pas une redondance.** `864035054755856` s'est
+tu le **2026-08-29 à 21 h 15**, donc **hors des deux fenêtres de 24 h** : la comparaison ne pouvait
+pas le voir, et ne le verrait jamais, quel que soit le jour. *Le correctif attrape une classe de
+cas que la mesure existante exclut par construction.*
+
+**COÛT : +55 ms, MESURÉ** sur 5 paires appariées, la première jetée (cache froid) : 0,16/0,18/0,17/0,17 s
+sans, 0,23/0,23/0,22/0,23 s avec. `wire_logs` étant la seule table portant une colonne d'émetteur,
+c'est **+55 ms sur toute la collecte**.
+
+**`aNePasFaire`** : ⚠️ **ne pas remplacer la comparaison de fenêtres par cette mesure.** Elles ne
+disent pas la même chose : l'une donne une **tendance** (la flotte grandit-elle ?), l'autre un
+**état** (qui est muet maintenant ?). Supprimer la première pour « simplifier » perdrait la
+détection d'une flotte qui rétrécit lentement, sans arrêt franc.
+⚠️ **Ne jamais lire un « 0 muet » comme « aucun boîtier perdu ».** L'agrégat ne voit que les
+émetteurs encore présents dans la fenêtre de rétention (**3,98 j** sur `wire_logs`) : un boîtier
+muet depuis six jours en a disparu et n'est **pas compté**. **C'est un plancher, jamais un total**
+— six des douze traceurs silencieux du 2026-09-02 étaient dans ce cas. La portée est écrite dans
+la sortie elle-même, pour qu'on ne la redécouvre pas.
+
+---
+
+### VPS-M74 — Un compte d'en-attente valide, publié sans sa position dans le cycle qui le vide
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-09-02)
+- **Vu** : 2026-09-02 · **Mesure** : la section sécurité rend une mesure que le garde VPS-M29
+  **accepte** — cache apt de **1 h**, seconde source (`update-notifier`) de **1 h**, les deux
+  d'accord : **109 paquets en retard, dont 34 estampillés sécurité**, contre 79/10 le 08-26. Et
+  `dpkg.log` ne montre **aucune** installation depuis le **08-28**.
+
+**Le constat était écrit** : *« le canal automatique de correctifs a cessé d'installer depuis cinq
+jours, et 34 correctifs de sécurité se sont accumulés »*. **Gravité 2, sur une machine qui porte
+sept bases de production. Il était faux.**
+
+**LES TROIS MESURES QUI L'ONT RÉFUTÉ.**
+
+**1. La date des index eux-mêmes** — les fichiers `Packages` portent la date de publication du
+miroir :
+
+```
+noble-security_universe  2026-09-01 16:22      noble-updates_universe  2026-09-01 17:48
+noble-security_main      2026-09-01 17:10      noble-updates_main      2026-09-01 18:26
+```
+
+Le lot **a douze heures**, pas cinq jours.
+
+**2. La position de la collecte dans le cycle :**
+
+```
+dernier RAFRAICHISSEMENT (apt-daily)        : 2026-09-02 00:48:53
+    ↓  1 h 34
+CETTE COLLECTE                              : 2026-09-02 02:22:18
+    ↓  4 h 30
+prochaine INSTALLATION (apt-daily-upgrade)  : 2026-09-02 06:52:59
+```
+
+**La collecte est tombée dans le seul créneau où le compte est à la fois exact et trompeur :
+après la découverte, avant l'installation.**
+
+**3. Le journal de l'installateur, qui n'a jamais échoué.** `apt-daily-upgrade.service` a tourné
+**tous les jours** du 08-27 au 09-01, terminé par `Deactivated successfully` à chaque fois, et le
+09-01 à 06 h 39 `unattended-upgrades` conclut *« No packages found that can be upgraded
+unattended »* — **correct ce jour-là**. Le **temps CPU** le confirme sans ambiguïté : **18,4 s le
+08-27** et **31,6 s le 08-28** (jours où il a installé 4 puis 9 paquets) contre **3,1 à 4,2 s** les
+jours vides. `apt-mark showhold` ne retient que `cloud-init` ; **zéro** paquet différé pour
+*phasing*.
+
+**QUOI — la cause.** Le garde VPS-M29 pose **une seule** question — *« ce chiffre est-il
+frais ? »* — et il la pose bien. Mais un compte d'**en-attente** en exige une **seconde** :
+*« où est cette mesure dans le cycle qui vide la file ? »* Sans elle, un compte frais et exact
+conduit à la conclusion **inverse** de la réalité.
+
+> **La leçon dépasse `apt`.** Ce collecteur publie plusieurs compteurs de file d'attente —
+> paquets en retard, doublons de sauvegarde, volumes orphelins, certificats orphelins — et
+> **aucun ne déclarait quand son videur passe**. C'est la même famille que la question ouverte du
+> 2026-09-01 (une comparaison qui ne déclare pas la période du phénomène) : **une mesure sans son
+> cadre temporel n'est pas une mesure, c'est un nombre.**
+
+**QUOI FAIRE — appliqué le 2026-09-02.** Sous tout compte valide, le collecteur publie désormais la
+**dernière** et la **prochaine** installation, et **tranche** entre « retard » et « file en
+attente ». **Contre-éprouvé sur deux branches, sur la machine** : le cas réel (*« 🟠 CE COMPTE
+N'EST PAS (ENCORE) UN RETARD : le cache a été rafraîchi 18 h APRÈS le dernier passage de
+l'installateur »*) et le cas dégénéré, horodatage illisible (*« la position de cette mesure dans
+le cycle n'est PAS établie. Ne pas trancher »*) — il **avoue** au lieu de rassurer, discipline
+VPS-M28. **COÛT : deux `systemctl show`, aucune E/S disque.**
+
+**🧪 Test écrit d'avance pour le passage suivant** : `/var/log/apt/history.log` doit porter une
+entrée `Commandline: /usr/bin/unattended-upgrade` datée du **2026-09-02 vers 06 h 53**, et le
+compte doit être **nettement tombé sous 109**. **Si l'installation a eu lieu et que le compte n'a
+pas baissé, le canal est bien en panne** et le constat monte en gravité 2 — c'est ce test-là qui
+tranche, jamais le compte seul.
+
+**`aNePasFaire`** : ⚠️ **ne pas élargir le seuil de fraîcheur de 6 h pour « avoir plus de
+mesures ».** Le problème de ce passage n'est pas que la mesure manquait, c'est qu'**elle était
+là et mal cadrée**. Élargir le seuil ajouterait des mesures moins fiables au même défaut de
+lecture — et c'est exactement ce que VPS-M31 punit.
+⚠️ **Ne pas lancer `apt update` depuis le collecteur** pour « se placer au bon moment » : c'est une
+**écriture** et un accès réseau sortant dans un audit déclaré en lecture seule.
+
+---
 
 ### VPS-M73 — Cinq passages manqués, et une conséquence que le raisonnement écrit n'avait pas prévue
 
