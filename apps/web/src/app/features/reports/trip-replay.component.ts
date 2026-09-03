@@ -117,8 +117,9 @@ interface RecitTrajet {
                      n'affichait ni à-coups, ni ralenti, ni fiabilité : on croyait qu'un
                      des deux écrans mentait. -->
                 <div class="tr-analysis-summary">
-                  <span class="tr-as-chip" [attr.data-tier]="ecoTier(a.ecoScore)">
-                    <b>{{ note(a.ecoScore) }}</b> Conduite {{ a.ecoScore }}
+                  <span class="tr-as-chip" [attr.data-tier]="ecoTier(a.ecoScore ?? 0)">
+                    @if (a.ecoScore !== null) { <b>{{ note(a.ecoScore) }}</b> Conduite {{ a.ecoScore }} }
+                    @else { Note non calculable }
                   </span>
                   @if (a.speedingCount > 0) {
                     <span class="tr-as-chip tr-as-chip--speed">

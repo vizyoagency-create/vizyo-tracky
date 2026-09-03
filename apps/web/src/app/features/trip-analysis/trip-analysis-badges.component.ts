@@ -81,10 +81,16 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
         <div class="tab" [class.tab--row]="layout() === 'row'" role="group" aria-label="Analyse du trajet">
           <!-- L1 — note + le seul badge d'alerte -->
           <div class="tab-l1">
-            <span class="tab-grade" [attr.data-grade]="grade()" [attr.aria-label]="'Conduite notée ' + grade() + ', ' + a.ecoScore + ' sur 100'">
-              <lucide-icon [img]="LeafIcon" [size]="12"></lucide-icon>
-              <b>{{ grade() }}</b> Conduite {{ a.ecoScore }}
-            </span>
+            @if (a.ecoScore !== null) {
+              <span class="tab-grade" [attr.data-grade]="grade()" [attr.aria-label]="'Conduite notée ' + grade() + ', ' + a.ecoScore + ' sur 100'">
+                <lucide-icon [img]="LeafIcon" [size]="12"></lucide-icon>
+                <b>{{ grade() }}</b> Conduite {{ a.ecoScore }}
+              </span>
+            } @else {
+              <span class="tab-grade" title="Aucune position exploitable : la note n'est pas calculable pour ce trajet.">
+                <lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon> Note non calculable
+              </span>
+            }
             @if (a.speedingCount > 0) {
               <span class="tab-alert" [attr.aria-label]="speedingTitle(a)">
                 <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
@@ -194,7 +200,27 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
               <section class="taid-sec">
                 <h4><lucide-icon [img]="GaugeIcon" [size]="13"></lucide-icon> Chiffres clés</h4>
                 <dl class="taid-kv">
-                  <div><dt>Conduite</dt><dd><b>{{ grade() }}</b> · {{ a.ecoScore }}/100 <small>souplesse des accélérations et freinages</small></dd></div>
+                  <div>
+                    <dt>Conduite</dt>
+                    <dd>
+                      @if (a.ecoScore !== null) {
+                        <b>{{ grade() }}</b> · {{ a.ecoScore }}/100
+                        @if (penalites().length > 0) {
+                          <small>Points retirés :</small>
+                          <ul class="taid-note">
+                            @for (p of penalites(); track p.code) {
+                              <li>−{{ p.points }} · {{ p.phrase }}</li>
+                            }
+                          </ul>
+                        } @else {
+                          <small>aucun point retiré sur ce trajet</small>
+                        }
+                        @if (plafondNote(); as pl) { <small class="taid-note-plafond">{{ pl }}</small> }
+                      } @else {
+                        Non calculable <small>aucune position exploitable : une note inventée vaudrait moins que pas de note</small>
+                      }
+                    </dd>
+                  </div>
                   <div><dt>Excès de vitesse</dt><dd>{{ a.speedingCount }} <small>@if (!a.limitsKnown) { limites légales non résolues sur ce trajet } @else if (a.speedingCount === 0) { aucun dépassement de la limite légale relevé } @else { au-dessus de la limite légale — plus fort dépassement +{{ a.maxOverKmh | number:'1.0-0' }} km/h }</small></dd></div>
                   <div><dt>Arrêts</dt><dd>{{ a.stopCount }} <small>arrêts d'au moins 4 minutes</small></dd></div>
                   <div><dt>À-coups</dt><dd>{{ a.harshAccel + a.harshBrake }} <small>{{ a.harshAccel }} accélérations, {{ a.harshBrake }} freinages brusques</small></dd></div>
@@ -342,6 +368,9 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
     .taid-kv > div:first-child { border-top: none; }
     .taid-kv dt { font-size: 11.5px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .03em; padding-top: 2px; }
     .taid-kv dd { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--fg-primary); }
+    .taid-note { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+    .taid-note li { font-size: 12px; font-weight: 500; color: var(--fg-secondary); }
+    .taid-note-plafond { color: var(--texte-attente) !important; }
     .taid-kv dd small { display: block; font-size: 11.5px; font-weight: 500; color: var(--fg-tertiary); margin-top: 1px; }
     .taid-fuel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
     .taid-fuel-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
@@ -415,6 +444,17 @@ export class TripAnalysisBadgesComponent {
   });
 
   protected readonly grade = computed(() => gradeOf(this.current()?.ecoScore ?? 0));
+
+  /**
+   * Les points retirés, du plus lourd au plus léger. C'est la raison d'être du lot : une note
+   * qu'on peut défendre devant un client se lit, elle ne s'assène pas.
+   */
+  protected readonly penalites = computed(() =>
+    [...(this.current()?.detail?.note?.penalites ?? [])].sort((a, b) => b.points - a.points),
+  );
+
+  /** Raison du plafonnement de la note, quand les limites étaient trop peu connues. */
+  protected readonly plafondNote = computed<string | null>(() => this.current()?.detail?.note?.plafond?.raison ?? null);
 
   /**
    * Pointe annoncée par le boîtier que la trajectoire contredit, en km/h, ou `null`.

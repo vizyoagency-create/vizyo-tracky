@@ -89,11 +89,20 @@ const RANKING_CONFIDENCE = MIN_ANALYSES_FOR_RANKING;
  */
 const RANKING_TIE_POINTS = 1;
 
+/**
+ * Poids plancher d'un trajet dans la moyenne, en kilomètres.
+ *
+ * La note est pondérée par la distance : un aller-retour de 2 km ne peut pas peser autant que
+ * 300 km d'autoroute. Mais un trajet de 200 mètres ne doit pas non plus disparaître de la
+ * moyenne — sinon une conduite fautive sur un parking ne compterait littéralement pour rien.
+ */
+const POIDS_MIN_KM = 1;
+
 type SpeedingRef = { tripId: string; vehicleId: string; startedAt: Date };
 
 type Agg = {
   id: string; label: string; sublabel: string | null; color: string | null;
-  sumScore: number; trips: number; distanceKm: number; speedingTrips: number; harshCount: number; fuelLiters: number; co2Kg: number;
+  sumScore: number; poids: number; trips: number; distanceKm: number; speedingTrips: number; harshCount: number; fuelLiters: number; co2Kg: number;
   speedingRefs: SpeedingRef[];
   /** true = entité SORTIE du classement parce que son boîtier s'est tu (scope `vehicle` uniquement). */
   dormant: boolean;
@@ -294,9 +303,25 @@ export class DrivingScoreService {
       const dormant = scope === 'vehicle' && dormantVehicles.has(t.vehicleId);
 
       let g = map.get(key);
-      if (!g) { g = { id: key, label, sublabel, color, sumScore: 0, trips: 0, distanceKm: 0, speedingTrips: 0, harshCount: 0, fuelLiters: 0, co2Kg: 0, speedingRefs: [], dormant, lastSeenAt: dormant ? (dormantVehicles.get(t.vehicleId) ?? null) : null }; map.set(key, g); }
-      g.sumScore += a.ecoScore;
-      g.trips += 1;
+      if (!g) { g = { id: key, label, sublabel, color, sumScore: 0, poids: 0, trips: 0, distanceKm: 0, speedingTrips: 0, harshCount: 0, fuelLiters: 0, co2Kg: 0, speedingRefs: [], dormant, lastSeenAt: dormant ? (dormantVehicles.get(t.vehicleId) ?? null) : null }; map.set(key, g); }
+      /**
+       * ⚠️ NOTE PONDÉRÉE PAR LES KILOMÈTRES, pas par le nombre de trajets.
+       *
+       * La moyenne était simple : un aller-retour de 2 km pesait autant que 300 km d'autoroute.
+       * Combiné à une pénalité ramenée aux 100 km, cela produisait 27 points d'écart pour une
+       * conduite identique selon la seule distance — puis moyennait les deux notes à parts
+       * égales. La note doit refléter les kilomètres parcourus, pas le nombre de fois où le
+       * conducteur a tourné la clé.
+       *
+       * Une note ABSENTE (analyse sans position exploitable) n'entre pas dans la moyenne : elle
+       * ne vaut ni zéro ni cent. Le kilométrage, lui, reste compté — le trajet a bien eu lieu.
+       */
+      if (a.ecoScore != null) {
+        const poids = Math.max(a.distanceKm, POIDS_MIN_KM);
+        g.sumScore += a.ecoScore * poids;
+        g.poids += poids;
+        g.trips += 1;
+      }
       g.distanceKm += a.distanceKm;
       if (a.speedingCount > 0) {
         g.speedingTrips += 1;
@@ -311,7 +336,8 @@ export class DrivingScoreService {
     }
 
     const toRow = (g: Agg): DrivingScoreRowDto => {
-      const score = Math.round(g.sumScore / g.trips);
+      // `poids` vaut zéro quand aucune analyse du groupe n'avait de note calculable.
+      const score = g.poids > 0 ? Math.round(g.sumScore / g.poids) : 0;
       return {
         id: g.id, label: g.label, sublabel: g.sublabel, color: g.color,
         score, grade: grade(score), tripCount: g.trips,
@@ -352,9 +378,12 @@ export class DrivingScoreService {
     //
     // La moyenne de flotte se calcule AVANT le tri, sur les seules lignes classables :
     // c'est le point d'ancrage vers lequel les petits échantillons sont ramenés.
+    // ⚠️ MÊME pondération que les notes de ligne : la moyenne se divise par les KILOMÈTRES,
+    // pas par les trajets. Diviser une somme pondérée par un nombre de trajets produisait des
+    // valeurs sans aucun sens (relevé à −5 677 en test).
     const fleetSum = classables.reduce((s, g) => s + g.sumScore, 0);
-    const fleetTrips = classables.reduce((s, g) => s + g.trips, 0);
-    const fleetMean = fleetTrips > 0 ? fleetSum / fleetTrips : 0;
+    const fleetPoids = classables.reduce((s, g) => s + g.poids, 0);
+    const fleetMean = fleetPoids > 0 ? fleetSum / fleetPoids : 0;
 
     /**
      * Score de CLASSEMENT — jamais affiché, il ne sert qu'à ordonner.
@@ -364,9 +393,10 @@ export class DrivingScoreService {
      * Ici, chaque entité part de la moyenne de flotte et gagne le droit de s'en écarter à
      * mesure qu'elle accumule des trajets.
      */
-    const rankingScore = (g: Agg): number =>
-      (g.trips * (g.sumScore / g.trips) + RANKING_CONFIDENCE * fleetMean) /
-      (g.trips + RANKING_CONFIDENCE);
+    const rankingScore = (g: Agg): number => {
+      const observee = g.poids > 0 ? g.sumScore / g.poids : fleetMean;
+      return (g.trips * observee + RANKING_CONFIDENCE * fleetMean) / (g.trips + RANKING_CONFIDENCE);
+    };
 
     const rows: DrivingScoreRowDto[] = classables
       .map((g) => ({ row: toRow(g), rank: rankingScore(g), trips: g.trips }))
@@ -410,8 +440,11 @@ export class DrivingScoreService {
     // véhicules à une valeur ne correspondant à aucune ligne visible — le défaut que le
     // commentaire de la boucle cherchait justement à éviter.
     const rankedSum = classables.reduce((s, g) => s + g.sumScore, 0);
+    const rankedPoids = classables.reduce((s, g) => s + g.poids, 0);
     const rankedTrips = classables.reduce((s, g) => s + g.trips, 0);
-    const overallScore = rankedTrips > 0 ? Math.round(rankedSum / rankedTrips) : null;
+    // Pondérée par les kilomètres, comme chaque ligne : sans quoi la moyenne affichée ne
+    // correspondrait à aucune note du tableau.
+    const overallScore = rankedPoids > 0 ? Math.round(rankedSum / rankedPoids) : null;
     return {
       scope, from: from.toISOString(), to: to.toISOString(), rows,
       overallScore, overallGrade: overallScore != null ? grade(overallScore) : null, totalTrips: rankedTrips,

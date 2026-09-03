@@ -267,7 +267,7 @@ export class TripAnalysisService {
     gpsPoints: number; gpsValidRatio: number; gpsLostCount: number;
     speedingCount: number; speedingSec: number; maxOverKmh: number; limitsKnown: boolean;
     limitsCoverage?: number | null;
-    harshAccel: number; harshBrake: number; ecoScore: number; fuelLiters: number | null; co2Kg: number | null;
+    harshAccel: number; harshBrake: number; ecoScore: number | null; fuelLiters: number | null; co2Kg: number | null;
     detail: unknown; provider: string | null; narrative: string | null; advice: string | null; trustScore: number | null;
     narratedAt?: Date | null;
   }, maskProvider = false, showNarrative = true): TripAnalysisDto {

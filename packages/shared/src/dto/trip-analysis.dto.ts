@@ -75,6 +75,15 @@ export interface TripAnalysisDetailDto {
    * effacé est un doute que personne ne pourra lever.
    */
   aVerifier?: (SpeedingSegmentDto & { motif: 'limite-invraisemblable' | 'point-unique' })[];
+  /**
+   * Ce qui a été retiré à la note, une phrase par pénalité, plus l'éventuel plafond et sa
+   * raison. Permet à l'écran d'EXPLIQUER la note au lieu de l'asséner : chaque point perdu
+   * doit pouvoir se lire par le conducteur.
+   */
+  note?: {
+    penalites: { code: string; points: number; phrase: string }[];
+    plafond?: { note: number; raison: string };
+  };
   /** Passages en station-service détectés (arrêts tombant sur une station). Optionnel. */
   fuelStops?: TripFuelStopDto[];
 }
@@ -107,7 +116,12 @@ export interface TripAnalysisDto {
   // Éco-conduite
   harshAccel: number;
   harshBrake: number;
-  ecoScore: number;
+  /**
+   * Note de conduite 0..100, ou `null` quand elle n'est PAS CALCULABLE — aucune position
+   * exploitable sur le trajet. Elle valait 100 en dur dans ce cas : un trajet dont on ne savait
+   * rien décrochait la note maximale, et remontait au classement pour cette raison même.
+   */
+  ecoScore: number | null;
   fuelLiters: number | null;
   co2Kg: number | null;
 

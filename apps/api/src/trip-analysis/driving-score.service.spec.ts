@@ -146,7 +146,10 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     expect(res.dormantRows[0]).toMatchObject({ id: 'v-dorm', label: 'FV-941-LZ', score: 50, silenceLabel: '89 j' });
     expect(res.dormantRows[0].lastSeenAt).toBe(new Date(NOW - 89 * DAY).toISOString());
     // La moyenne affichée ne doit contenir QUE les lignes visibles : (90+70+60)/3.
-    expect(res.overallScore).toBe(73);
+    // Moyenne pondérée par les KILOMÈTRES depuis le 3 septembre :
+    // (90×100 + 70×50 + 60×80) / 230 km = 75,2. En moyenne simple, elle valait 73 — et un
+    // aller-retour de 2 km y pesait autant que 300 km d'autoroute.
+    expect(res.overallScore).toBe(75);
     expect(res.totalTrips).toBe(3 * REPS);
   });
 
@@ -178,7 +181,8 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     expect(res.dormantExcludedCount).toBe(0);
     expect(res.dormantRows).toEqual([]);
     expect(res.totalTrips).toBe(4 * REPS);
-    expect(res.overallScore).toBe(68); // (90+70+60+50)/4 = 67,5 → 68
+    // Pondérée : (90×100 + 70×50 + 60×80 + 50×200) / 430 km = 63,5. En moyenne simple : 68.
+    expect(res.overallScore).toBe(63);
   });
 
   it('PIÈGE — classement CONDUCTEUR : les trajets du véhicule dormant restent comptés (le boîtier est tombé, pas le conducteur)', async () => {
@@ -189,7 +193,9 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     expect(karim).toBeDefined();
     // Ses DEUX trajets comptent, dont celui fait sur FV-941-LZ avant la panne du boîtier.
     expect(karim!.tripCount).toBe(2 * REPS);
-    expect(karim!.score).toBe(70); // (90+50)/2
+    // Pondérée : (90×100 + 50×200) / 300 km = 63,3. En moyenne simple : 70 — le trajet de
+    // 200 km comptait autant que celui de 100.
+    expect(karim!.score).toBe(63);
     // Rien n'est jamais écarté hors du scope « vehicle ».
     expect(res.dormantExcludedCount).toBe(0);
     expect(res.dormantRows).toEqual([]);
@@ -203,7 +209,8 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     const g1 = res.rows.find((r) => r.id === 'g1');
     expect(g1).toBeDefined();
     expect(g1!.tripCount).toBe(2 * REPS);
-    expect(g1!.score).toBe(70); // (90+50)/2
+    // Pondérée : (90×100 + 50×200) / 300 km = 63,3. En moyenne simple : 70.
+    expect(g1!.score).toBe(63);
     expect(res.dormantExcludedCount).toBe(0);
     expect(res.totalTrips).toBe(2 * REPS);
   });
@@ -240,7 +247,9 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     const res = await svc.entityScore(USER, 'vehicle', 'v-live', FROM, TO);
     expect(res.dormant).toBe(false);
     expect(res.rank).toBe(1);
-    expect(res.vsOverall).toBe(90 - 73);
+    // La moyenne de flotte est pondérée par les kilomètres depuis le 3 septembre : 75, et non
+    // plus 73. L'écart du véhicule à cette moyenne suit.
+    expect(res.vsOverall).toBe(90 - 75);
   });
 
   it('le « / N » de la fiche rétrécit AVEC son explication (nb d\'écartés)', async () => {

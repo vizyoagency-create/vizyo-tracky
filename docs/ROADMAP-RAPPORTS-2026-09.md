@@ -271,16 +271,19 @@ d'excès de MH Cars sur 30 jours est comparé avant/après et l'écart est expli
 **Recette** : le trajet de référence, réanalysé, fait apparaître le passage à 110 km/h que la limite du
 30 août rend désormais calculable.
 
-#### Lot V4 — Un score qu'on peut défendre devant un client · **M**
+#### Lot V4 — Un score qu'on peut défendre devant un client · **FAIT le 3 septembre**
 
 | Item | Fichier et ligne |
 |---|---|
-| Pénaliser le **temps passé** en excès et sa **gravité**, pas le nombre de segments — deux valeurs déjà calculées et jamais lues | `trip-analysis.preprocessor.ts:188` (utiliser `speedingSec` et `maxOverKmh`, calculés `:169-170`) |
-| Ajouter un garde-fou de vitesse absolue, indépendant d'OSM : aucune route française n'autorise plus de 130 | `trip-analysis.preprocessor.ts:185-190` |
-| Plafonner la note quand la couverture des limites est faible, au lieu d'accorder un A par ignorance | idem, avec le taux du lot V3 |
-| Pondérer le classement par les kilomètres, pas par le nombre de trajets | `driving-score.service.ts:298, 314, 367-369, 412-414` |
-| Ne plus écrire 100/100 sur une analyse sans aucune position | `trip-analysis.preprocessor.ts:223` |
-| Corriger le libellé : la note ne mesure pas « la souplesse des accélérations et freinages » | `trip-analysis-badges.component.ts:197` |
+| ~~FAIT~~ La note pénalise la part du temps de conduite passée en excès et la gravité du pire dépassement. Le nombre de segments, qui mesurait surtout la fragmentation d'OpenStreetMap, n'entre plus dans le calcul | `trip-analysis.preprocessor.ts:188` (utiliser `speedingSec` et `maxOverKmh`, calculés `:169-170`) |
+| ~~FAIT~~ Une pointe au-dessus de 130 coûte jusqu'à 25 points, sans consulter la moindre carte | `trip-analysis.preprocessor.ts:185-190` |
+| ~~FAIT~~ Sous 50 % de couverture, la note est plafonnée à 69 avec sa raison écrite ; un trajet lent n'est pas concerné | idem, avec le taux du lot V3 |
+| ~~FAIT~~ Note de ligne, moyenne de flotte, score de classement et moyenne affichée : tous pondérés par les kilomètres | `driving-score.service.ts:298, 314, 367-369, 412-414` |
+| ~~FAIT~~ La note vaut désormais `null` — non calculable. La reprise a effacé les 100 inventés de l'existant | `trip-analysis.preprocessor.ts:223` |
+| ~~FAIT~~ Le libellé mensonger est remplacé par le détail réel : « −25 · pointe à 168 km/h, aucune route française n'autorise plus de 130 » | `trip-analysis-badges.component.ts:197` |
+
+> **Reste ouvert dans V4** : les paliers de couleur du replay (trois niveaux) ne suivent pas encore
+> les cinq notes lettrées, contrairement à la fiche d'entité, désormais alignée.
 
 **Recette** : le trajet à 131 km/h de moyenne ne peut plus obtenir A ; chaque point perdu s'énonce en une
 phrase lisible par le conducteur.

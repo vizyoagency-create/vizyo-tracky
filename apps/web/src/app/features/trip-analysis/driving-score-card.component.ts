@@ -130,6 +130,8 @@ import { RealtimeService } from '../../core/services/realtime.service';
     .dsc-motiv[data-tier="good"] { background: color-mix(in srgb, var(--lime) 12%, transparent); color: var(--texte-lime); }
     .dsc-motiv[data-tier="mid"] { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--texte-attente); }
     .dsc-motiv[data-tier="low"] { background: color-mix(in srgb, var(--orange) 12%, transparent); color: var(--texte-orange); }
+    /* Cinquième palier (note E) : distinct du D, qui portait la même couleur. */
+    .dsc-motiv[data-tier="bad"] { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
     /* DORMANCE — ambre brûlé #d97706, même teinte que le badge « Dormant » du reste de l'app
        (délibérément plus soutenu que l'ambre « Hors ligne » : ce n'est pas la même urgence). */
     .dsc-dormant { margin: 0; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; font-weight: 600; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, #d97706 12%, transparent); color: #d97706; }
@@ -209,9 +211,15 @@ export class DrivingScoreCardComponent {
     return this.scope() === 'driver' ? 'ce conducteur' : this.scope() === 'group' ? 'ce groupe' : 'ce véhicule';
   }
 
-  protected readonly tier = computed<'great' | 'good' | 'mid' | 'low'>(() => {
+  /**
+   * Palier de couleur, aligné sur les CINQ notes lettrées A-E de `gradeOf`.
+   *
+   * Quatre paliers cohabitaient ici pour cinq lettres : un D à 45 et un E à 10 recevaient la
+   * même couleur, si bien que la lettre distinguait ce que la couleur confondait.
+   */
+  protected readonly tier = computed<'great' | 'good' | 'mid' | 'low' | 'bad'>(() => {
     const s = this.data()?.row?.score ?? 0;
-    return s >= 85 ? 'great' : s >= 70 ? 'good' : s >= 55 ? 'mid' : 'low';
+    return s >= 85 ? 'great' : s >= 70 ? 'good' : s >= 55 ? 'mid' : s >= 40 ? 'low' : 'bad';
   });
 
   protected readonly motivation = computed<string>(() => {

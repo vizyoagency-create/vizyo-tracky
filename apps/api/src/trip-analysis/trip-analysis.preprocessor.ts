@@ -69,7 +69,12 @@ export interface TripAnalysisResult {
    * à 2 % lui répondait oui, exactement comme un trajet couvert à 100 %.
    */
   limitsCoverage: number | null;
-  ecoScore: number;
+  /**
+   * Note de conduite 0..100, ou `null` quand elle n'est PAS CALCULABLE — aucune position
+   * exploitable. Elle valait 100 en dur dans ce cas : un trajet dont on ne savait rien
+   * décrochait la note maximale.
+   */
+  ecoScore: number | null;
   fuelLiters: number | null;
   co2Kg: number | null;
   detail: {
@@ -85,6 +90,8 @@ export interface TripAnalysisResult {
     vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
     /** Pointes que l'on refuse d'affirmer, avec le motif du doute. */
     aVerifier?: PointeAVerifier[];
+    /** Ce qui a ete retire a la note, et pourquoi — une phrase par penalite. */
+    note?: DetailNote;
     /** Passages en station détectés — ajoutés par le service (le préprocesseur pur laisse ce champ absent). */
     fuelStops?: FuelStopOut[];
   };
@@ -316,14 +323,11 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
   const fuelLiters = electric ? null : Math.round((distanceKm / 100) * l100 * 100) / 100;
   const co2Kg = fuelLiters == null ? null : Math.round(fuelLiters * (CO2_PER_L[(vehicle.energy ?? 'DIESEL').toUpperCase()] ?? 2.4) * 100) / 100;
 
-  const per100 = distanceKm > 0 ? 100 / distanceKm : 0; // normalise les événements « aux 100 km »
-  const idleMin = idleSec / 60;
-  const ecoScore = clamp(Math.round(
-    100
-    - Math.min(30, (harshAccel + harshBrake) * per100 * 2)  // conduite nerveuse
-    - Math.min(35, speeding.length * per100 * 3)             // excès de vitesse
-    - Math.min(20, idleMin * 1.5),                           // ralenti (gaspillage)
-  ), 0, 100);
+  const { ecoScore, note } = calculerNote({
+    distanceKm, durationSec, movingSec, speedingSec, maxOverKmh,
+    maxSpeedKmh: maxSpeed, harshAccel, harshBrake, idleSec,
+    limitsCoverage: pointsInterroges > 0 ? pointsResolus / pointsInterroges : null,
+  });
 
   // 5. Tracé simplifié (Douglas-Peucker) — borne le payload (replay/LLM) sans perdre la forme.
   const track = simplify(pts, 60).map((p) => ({ lat: round(p.lat, 5), lng: round(p.lng, 5), t: iso(p.timestamp), speedKmh: Math.round(p.speedKmh) }));
@@ -360,6 +364,7 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
       },
       // Pointes non affirmées : rattachement douteux ou dépassement vu sur un seul point.
       aVerifier,
+      note,
     },
   };
 }
@@ -369,9 +374,111 @@ function empty(total: number): TripAnalysisResult {
     distanceKm: 0, durationSec: 0, movingSec: 0, avgSpeedKmh: 0, maxSpeedKmh: 0, stopCount: 0, idleSec: 0,
     gpsPoints: 0, gpsValidRatio: 0, gpsLostCount: 0, speedingCount: 0, speedingSec: 0, maxOverKmh: 0, limitsKnown: false,
     limitsCoverage: null,
-    harshAccel: 0, harshBrake: 0, ecoScore: 100, fuelLiters: null, co2Kg: null,
+    harshAccel: 0, harshBrake: 0, ecoScore: null, fuelLiters: null, co2Kg: null,
     detail: { stops: [], speeding: [], gpsGaps: [], track: [] },
   };
+}
+
+// ── NOTE DE CONDUITE ────────────────────────────────────────────────────────────────────
+//
+// ⚠️ CE QUE L'ANCIENNE FORMULE MESURAIT VRAIMENT. Elle valait
+//     100 − à-coups×(100/km)×2 − NOMBRE d'excès×(100/km)×3 − minutes de ralenti×1,5
+// et ne regardait donc NI la vitesse, NI la gravité d'un excès, NI sa durée. Un trajet à
+// 131 km/h de moyenne avec une pointe à 168 obtenait 96 sur 100. Un dépassement de +72 km/h
+// coûtait exactement autant qu'un dépassement de +6. Et parce que tout était ramené aux
+// 100 km, la même conduite valait 69 sur 22 km et 96 sur 164 : vingt-sept points d'écart pour
+// le seul effet de la distance. Le plancher était 15 : aucune conduite ne pouvait descendre
+// plus bas.
+//
+// LA RÈGLE MAINTENANT : une pénalité = une phrase que le conducteur peut lire. Chaque
+// composante est rendue avec son libellé, pour que l'écran explique la note au lieu de
+// l'asséner. Les grandeurs sont des PARTS (du temps de conduite, du temps de trajet) ou des
+// « aux 100 km », jamais un mélange des deux comme auparavant.
+
+/** Une pénalité appliquée à la note, avec de quoi l'expliquer sans contexte. */
+export interface PenaliteNote { code: 'exces-duree' | 'exces-gravite' | 'vitesse-absolue' | 'a-coups' | 'ralenti'; points: number; phrase: string; }
+
+/** Le détail d'une note : ce qui a été retiré, et pourquoi elle a éventuellement été plafonnée. */
+export interface DetailNote { penalites: PenaliteNote[]; plafond?: { note: number; raison: string }; }
+
+/**
+ * Aucune route française n'autorise plus de 130 km/h. Ce garde-fou ne dépend d'AUCUNE donnée
+ * cartographique : il tient même quand OpenStreetMap n'a rien répondu, et c'est la phrase la
+ * plus facile à défendre devant un client.
+ */
+const VITESSE_MAX_LEGALE_FR = 130;
+
+/** En dessous de cette couverture, la note est plafonnée : on ne décerne pas un A par ignorance. */
+const COUVERTURE_MIN_POUR_A = 0.5;
+/** Plafond appliqué dans ce cas : le haut de la note « C ». */
+const PLAFOND_COUVERTURE_FAIBLE = 69;
+
+function calculerNote(x: {
+  distanceKm: number; durationSec: number; movingSec: number;
+  speedingSec: number; maxOverKmh: number; maxSpeedKmh: number;
+  harshAccel: number; harshBrake: number; idleSec: number;
+  limitsCoverage: number | null;
+}): { ecoScore: number; note: DetailNote } {
+  const penalites: PenaliteNote[] = [];
+  const ajouter = (code: PenaliteNote['code'], points: number, phrase: string) => {
+    const p = Math.round(points * 10) / 10;
+    if (p > 0) penalites.push({ code, points: p, phrase });
+  };
+
+  // 1. TEMPS passé au-dessus de la limite — et non plus le nombre de segments, qui mesurait
+  //    surtout la fragmentation de la couverture OpenStreetMap.
+  const partExces = x.movingSec > 0 ? x.speedingSec / x.movingSec : 0;
+  const penExces = Math.min(30, partExces * 60);
+  ajouter('exces-duree', penExces,
+    `${Math.round(partExces * 100)} % du temps de conduite au-dessus de la limite`);
+
+  // 2. GRAVITÉ du pire dépassement : +6 km/h et +72 ne peuvent pas coûter la même chose.
+  const penGravite = Math.min(15, Math.max(0, x.maxOverKmh) * 0.5);
+  ajouter('exces-gravite', penGravite,
+    `dépassement le plus fort : +${Math.round(x.maxOverKmh)} km/h au-dessus de la limite`);
+
+  // 3. VITESSE ABSOLUE, indépendante de la carte.
+  const exces130 = Math.max(0, x.maxSpeedKmh - VITESSE_MAX_LEGALE_FR);
+  const penVitesse = Math.min(25, exces130 * 0.7);
+  ajouter('vitesse-absolue', penVitesse,
+    `pointe à ${Math.round(x.maxSpeedKmh)} km/h — aucune route française n'autorise plus de ${VITESSE_MAX_LEGALE_FR}`);
+
+  // 4. À-COUPS, ramenés aux 100 km : plus on roule, plus les occasions sont nombreuses.
+  const per100 = x.distanceKm > 0 ? 100 / x.distanceKm : 0;
+  const acoups = x.harshAccel + x.harshBrake;
+  const penAcoups = Math.min(20, acoups * per100 * 2);
+  ajouter('a-coups', penAcoups,
+    `${acoups} accélération(s) ou freinage(s) brusque(s)${x.distanceKm > 0 ? `, soit ${Math.round(acoups * per100)} aux 100 km` : ''}`);
+
+  // 5. RALENTI, en part du temps de trajet — l'ancienne formule comptait des minutes absolues,
+  //    ce qui pénalisait un long trajet deux fois plus qu'un court à comportement identique.
+  const partRalenti = x.durationSec > 0 ? x.idleSec / x.durationSec : 0;
+  const penRalenti = Math.min(15, partRalenti * 50);
+  ajouter('ralenti', penRalenti,
+    `${Math.round(x.idleSec / 60)} min moteur tournant à l'arrêt, soit ${Math.round(partRalenti * 100)} % du trajet`);
+
+  const brut = 100 - penalites.reduce((s, p) => s + p.points, 0);
+  let ecoScore = clamp(Math.round(brut), 0, 100);
+  const note: DetailNote = { penalites };
+
+  /**
+   * PLAFOND PAR IGNORANCE. Quand presque aucune limite n'a pu être retrouvée, la note ne
+   * repose sur rien : la décerner pleine reviendrait à récompenser l'absence de données.
+   * Un trajet lent n'est pas concerné — aucune limite ne lui était nécessaire.
+   */
+  const couvertureFaible = x.limitsCoverage == null || x.limitsCoverage < COUVERTURE_MIN_POUR_A;
+  if (couvertureFaible && x.maxSpeedKmh > SPEEDING_CANDIDATE_KMH && ecoScore > PLAFOND_COUVERTURE_FAIBLE) {
+    const part = x.limitsCoverage == null ? 0 : Math.round(x.limitsCoverage * 100);
+    note.plafond = {
+      note: PLAFOND_COUVERTURE_FAIBLE,
+      raison: x.limitsCoverage == null
+        ? 'note plafonnée : les limites légales n\'ont pas pu être consultées sur ce trajet'
+        : `note plafonnée : les limites légales n'ont été retrouvées que sur ${part} % des points rapides`,
+    };
+    ecoScore = PLAFOND_COUVERTURE_FAIBLE;
+  }
+
+  return { ecoScore, note };
 }
 
 // ── Arrêts (regroupement stationnaire ≥ 4 min dans un rayon), aligné sur TripStopDetectorService ──

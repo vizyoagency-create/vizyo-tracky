@@ -2404,7 +2404,12 @@ model TripAnalysis {
   // Éco-conduite
   harshAccel Int
   harshBrake Int
-  ecoScore   Int // 0..100 (100 = conduite souple/éco)
+  /// Note de conduite 0..100. `null` = NON CALCULABLE (aucune position exploitable).
+  ///
+  /// ⚠️ Valait 100 en dur sur une analyse vide : un trajet dont on ne savait rien décrochait la
+  /// note maximale et remontait au podium précisément parce qu'il était mal suivi. Une note
+  /// absente est une information ; une note inventée n'en est pas une.
+  ecoScore   Int?
   fuelLiters Float? // conso estimée
   co2Kg      Float?
 
