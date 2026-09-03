@@ -12,7 +12,9 @@ Sur ces 56 bugs, **22 sont entièrement réparés, 6 partiellement, 28 restent o
 
 Le reste tient en trois familles : la **supervision** (un agent à l'arrêt ou un export refusé restent invisibles), la **lisibilité au doigt et en thème clair**, et la **transformation en outil de gestion** (coût carburant, alertes, taux d'utilisation — que l'API calcule déjà sans que la page les demande).
 
-> **À traiter d'abord** : ce travail est présent dans l'arbre mais **n'est ni compilé ni livré** (25 fichiers modifiés, 8 non suivis, dernier commit `5adcac3c`). C'est le lot 0.
+> **Livré et déployé en production le 3 septembre 2026 à 07:15** (`2f42801b`, `d00cd9ea`, `b36e8102`) — migrations `trk057` et `trk058` appliquées, 7 614 récits datés rétroactivement, routes de réglage du rapport hebdomadaire en ligne. Le lot 0 est donc clos, et une partie des lots 1 à 3, 4, 5 et 7 est partie avec : borne haute de période exclusive, en-têtes des CSV positions et commandes, périodes de la fiche véhicule alignées sur celles de la page Rapports, exports en échec tracés, analyses vides exclues du classement, datation du récit, compteur de reste à faire unifié, agents du poste qui journalisent leur passage. Les lots ci-dessous ont été relus en conséquence : ce qui reste marqué « à faire » l'est vraiment.
+>
+> ⚠️ **Conséquence à connaître** : le premier envoi automatique partira **lundi 8 septembre à 08:00, heure de Paris**, vers les administrateurs actifs de chaque société ayant roulé sur la semaine — y compris les sociétés d'essai (`Client test`, `cdef31`). Aucune n'a d'adresse dédiée renseignée. Pour en couper une, il suffit de basculer l'interrupteur de sa carte « Rapport hebdomadaire par e-mail » sur sa page Rapports.
 
 ---
 
@@ -77,17 +79,17 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 ---
 
-### Lot 0 — Livrer ce qui est écrit · **S** · préalable à tous les autres
+### Lot 0 — Livrer ce qui est écrit · **FAIT le 3 septembre 2026**
 
 **Objectif** : rien de ce qui précède n'existe pour un client tant que ce n'est pas compilé, testé et livré.
 
-| Item | Fichier |
+| Item | Issue |
 |---|---|
-| Compiler l'API et relancer, les binaires compilés étant antérieurs aux sources | `apps/api/dist/**` |
-| Exécuter les jeux d'essai neufs et adapter les deux jeux devenus faux (vitesse pondérée, pied de page numéroté) | `jour-civil-paris.spec.ts`, `recit-masque-option-coupee.spec.ts`, `report-excel.service.spec.ts`, `trips-period-charts.spec.ts`, `reports-stats.service.spec.ts`, `report-pdf.service.spec.ts` |
-| Livrer par thème : jours civils, périmètre CSV, sorties PDF/Excel/vitesse, blocs d'analyse, rapport hebdomadaire | 25 fichiers modifiés, 8 non suivis |
+| Compiler l'API, relancer, exécuter les jeux d'essai | 197 suites, 2 860 tests au vert ; `ng build` sans erreur ni avertissement |
+| Adapter les jeux devenus faux (vitesse pondérée, pied de page numéroté, borne exclusive, sonde des tâches) | fait, plus un test instable réparé (`tracker-fix-mode`, course sur l'horloge à 2 ms) |
+| Livrer par thème | `2f42801b` API et migrations · `d00cd9ea` web · `b36e8102` agents du poste et documentation |
 
-**Comment on saura que c'est bon** : `pnpm verify` au vert, `git status` propre, et un export CSV filtré sur un véhicule qui renvoie exactement le nombre de trajets affiché par le compteur de l'écran.
+**Vérifié après livraison** : un export CSV filtré sur un véhicule renvoie ce véhicule seul ; le PDF d'un véhicule s'appelle `tracky-rapport-EP-047-TY-2026-08-27_2026-09-02.pdf`, avec la vraie date de fin.
 
 ---
 
@@ -97,13 +99,13 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 | Item | Fichier et ligne | Effort |
 |---|---|---|
-| La borne haute de période est encore inclusive (`lte`) : un trajet de minuit pile est compté dans deux périodes voisines. Extraire un `buildTripPeriodWhere(from, to)` unique (`gte from`, `lt to`) et l'utiliser partout | `apps/api/src/trips/trips.service.ts:615,756` | S |
-| Le PDF compte les trajets « qui chevauchent » la période, l'écran ceux qui y démarrent : un trajet parti à 23 h 50 la veille apparaît dans l'un et pas dans l'autre | `apps/api/src/reports/reports-stats.service.ts:277-284` | S |
-| L'onglet Rapports d'une **fiche véhicule** est resté sur l'ancienne définition : « 7 jours » y couvre 8 jours, « 30 jours » en couvre 31 | `apps/web/.../vehicles/vehicle-reports-tab.component.ts:1069-1070` | S |
-| L'export CSV « positions » et « commandes » sort toujours un fichier vide de 3 octets sans en-tête quand la période ne contient rien | `apps/api/src/reports/report-csv.service.ts:87,199` | S |
+| ~~FAIT~~ La borne haute de période est devenue exclusive (`lt`) partout — trajets, résumé, graphiques, CSV, Excel. Reste à extraire un `buildTripPeriodWhere` unique pour empêcher la divergence de revenir : un trajet de minuit pile est compté dans deux périodes voisines. Extraire un `buildTripPeriodWhere(from, to)` unique (`gte from`, `lt to`) et l'utiliser partout | `apps/api/src/trips/trips.service.ts:615,756` | S |
+| ~~FAIT~~ Le PDF retient désormais les trajets qui DÉMARRENT dans la période, comme l'écran, l'écran ceux qui y démarrent : un trajet parti à 23 h 50 la veille apparaît dans l'un et pas dans l'autre | `apps/api/src/reports/reports-stats.service.ts:277-284` | S |
+| ~~FAIT~~ La fiche véhicule utilise la même définition que la page Rapports (J−6 / J−29) : « 7 jours » y couvre 8 jours, « 30 jours » en couvre 31 | `apps/web/.../vehicles/vehicle-reports-tab.component.ts:1069-1070` | S |
+| ~~FAIT~~ Les CSV positions et commandes sortent avec leur en-tête même sans une seule ligne sans en-tête quand la période ne contient rien | `apps/api/src/reports/report-csv.service.ts:87,199` | S |
 | Les périodes sont calculées en millisecondes (`− N × 86 400 000`) : aux week-ends de changement d'heure, « 30 jours » en fait 29 ou 31 | `reports.component.ts:2068-2069`, `vehicle-reports-tab.component.ts:1069-1070` | S |
 | Avant un export, `refreshPeriodIfStalePreset` réaligne la période en silence sans recharger : le fichier exporté peut couvrir une autre période que celle affichée | `reports.component.ts:2599-2612` | S |
-| Les libellés de période passent par `new Date('AAAA-MM-JJ')`, interprété en UTC : décalés d'un jour pour une flotte aux Antilles ou en Guyane | `reports.component.ts:1811` | S |
+| ~~FAIT~~ Les libellés de période ne sont plus lus en UTC, interprété en UTC : décalés d'un jour pour une flotte aux Antilles ou en Guyane | `reports.component.ts:1811` | S |
 
 **Comment on saura que c'est bon** : sur une même journée, le nombre de trajets est identique dans le tableau, le CSV, l'Excel et le PDF ; l'onglet Rapports d'une fiche véhicule annonce « 7 jours » dans la modale comme sur `/reports` ; un jeu d'essai avec le fuseau forcé à Paris passe les 30 mars et 20 avril sans écart.
 
@@ -115,11 +117,11 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 | Item | Fichier et ligne | Effort |
 |---|---|---|
-| **T01 (bloquant)** — `/admin/background-tasks` promet « si le poste est éteint, ça se voit ici », mais n'affiche ni le dernier passage ni l'arrêt d'un agent local : la condition d'arrêt est gardée par `configurable`, donc jamais vraie pour un agent de poste. Afficher `lastRunAt` sur chaque ligne, un badge « à l'arrêt » dès `enabled === false`, et « jamais vu » quand aucun passage n'est enregistré | `apps/web/.../observability/background-tasks/background-tasks.component.html:164,175` | S |
-| Faire écrire à l'agent local une ligne de passage à chaque exécution, y compris quand il sort sur session expirée — sans quoi l'écran n'a rien à lire | `outils/agent-recit-trajet.cjs` | M |
-| **T03** — le compteur « trajets encore sans récit » est faux : il ignore la segmentation et le fait que l'agent narre désormais toutes les sociétés. L'agent est déclaré en panne précisément quand il n'a plus rien à faire | `apps/api/src/background-tasks/background-tasks.service.ts:742` | S |
-| **T08** — un export qui échoue ne laisse aucune trace : `recordExport` inscrit toujours `SUCCESS`. Entourer les trois routes d'export d'un `try/catch` et enregistrer `FAILURE` avec le code HTTP | `apps/api/src/reports/reports.controller.ts:79,138,204,239` | S |
-| **T10** — les exports Excel et rapport de vitesse sont journalisés sans société : le filtre par flotte du Journal Système ne les retrouve pas | `reports.controller.ts:273,366` | S |
+| ~~FAIT (T01)~~ `/admin/background-tasks` affiche le dernier passage, l'ancienneté et l'état de chaque agent du poste ; `/admin/background-tasks` promettait « si le poste est éteint, ça se voit ici », mais n'affiche ni le dernier passage ni l'arrêt d'un agent local : la condition d'arrêt est gardée par `configurable`, donc jamais vraie pour un agent de poste. Afficher `lastRunAt` sur chaque ligne, un badge « à l'arrêt » dès `enabled === false`, et « jamais vu » quand aucun passage n'est enregistré | `apps/web/.../observability/background-tasks/background-tasks.component.html:164,175` | S |
+| ~~FAIT~~ L'agent de récits et celui des limites de vitesse écrivent leur passage à chaque exécution, issue comprise, y compris quand il sort sur session expirée — sans quoi l'écran n'a rien à lire | `outils/agent-recit-trajet.cjs` | M |
+| ~~FAIT (T03)~~ Le compteur suit la requête exacte de l'agent, et sa définition est affichée sous le tableau : il ignore la segmentation et le fait que l'agent narre désormais toutes les sociétés. L'agent est déclaré en panne précisément quand il n'a plus rien à faire | `apps/api/src/background-tasks/background-tasks.service.ts:742` | S |
+| ~~FAIT (T08)~~ Un export en échec inscrit une trace FAILURE avec sa raison : `recordExport` inscrit toujours `SUCCESS`. Entourer les trois routes d'export d'un `try/catch` et enregistrer `FAILURE` avec le code HTTP | `apps/api/src/reports/reports.controller.ts:79,138,204,239` | S |
+| ~~FAIT (T10)~~ L'Excel et le rapport de vitesse portent la société du véhicule ou du trajet : le filtre par flotte du Journal Système ne les retrouve pas | `reports.controller.ts:273,366` | S |
 | **T04** — le catalogue décrit un rattrapage (1 500 h / 70 min) qui n'existe plus ; le script réel couvre toute la rétention | `background-tasks.service.ts:496` | S |
 | Journaliser le recalcul de trajets : combien de trajets supprimés, recréés, et combien de récits perdus | `trips.service.ts` (après les suppressions du recalcul) | S |
 
@@ -133,18 +135,18 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 | Item | Fichier et ligne | Effort |
 |---|---|---|
-| **A01 (bloquant, côté serveur)** — l'écran refuse désormais d'afficher une analyse sans position, mais l'API la produit toujours et le score de conduite l'intègre à 100/100 : un trajet dont on ne sait rien peut hisser un véhicule au podium. Refuser l'analyse sur un trajet de plus de 500 m sans position, et exclure `gpsPoints = 0` de la moyenne | `apps/api/src/trip-analysis/trip-analysis.service.ts:171` ; `driving-score.service.ts` (le champ n'y est même pas sélectionné) | S |
-| **A11** — après un recalcul, le récit reste celui d'avant : les badges disent « 0 excès » pendant que le texte parle de deux excès. Dater le récit (`narratedAt`, migration Prisma) et l'effacer quand un chiffre cité change, pour que l'agent local le réécrive | `trip-analysis.service.ts:229` | M |
+| ~~FAIT côté classement (A01)~~ Les analyses sans position sont exclues de la moyenne ; reste à refuser de PRODUIRE l'analyse. L'écran refuse déjà d'afficher une analyse sans position, mais l'API la produit toujours et le score de conduite l'intègre à 100/100 : un trajet dont on ne sait rien peut hisser un véhicule au podium. Refuser l'analyse sur un trajet de plus de 500 m sans position, et exclure `gpsPoints = 0` de la moyenne | `apps/api/src/trip-analysis/trip-analysis.service.ts:171` ; `driving-score.service.ts` (le champ n'y est même pas sélectionné) | S |
+| ~~FAIT en partie (A11)~~ Le récit porte sa date (`narratedAt`) et l'écran signale un texte antérieur au recalcul ; reste à faire reprendre ces récits périmés par l'agent. Avant : : les badges disent « 0 excès » pendant que le texte parle de deux excès. Dater le récit (`narratedAt`, migration Prisma) et l'effacer quand un chiffre cité change, pour que l'agent local le réécrive | `trip-analysis.service.ts:229` | M |
 | **A09** — trois calculs de distance et de vitesse maximale coexistent avec des seuils différents (tableau, analyse, récit). Une constante partagée, le même filtre de sauts GPS, et une mention « analyse partielle » quand le trajet dépasse le plafond de positions | `trip-analysis.preprocessor.ts:77` | M |
 | **A05** — indiquer d'où vient la consommation affichée (valeur du véhicule ou valeur par défaut de 7 L/100), avec un lien vers la fiche véhicule quand elle n'est pas renseignée | DTO `trip-analysis.dto.ts` | S |
 | **A23** — un lien profond depuis `/scores` ouvre une modale vide quand l'analyse n'est pas encore chargée : afficher « Chargement… » puis « Ce trajet n'a pas encore été analysé » | `trip-analysis-badges.component.ts:307` | S |
-| Verrouiller le recalcul derrière un droit plus fort que la simple consultation des trajets | `trip-analysis.controller.ts:145-167` | S |
+| ~~FAIT~~ Le recalcul est réservé aux rôles de gestion (super-admin, admin, gestionnaire de flotte) | `trip-analysis.controller.ts:145-167` | S |
 
 **Comment on saura que c'est bon** : un recalcul demandé sur un trajet sans position renvoie un refus explicite ; la moyenne de `/scores` ne bouge plus quand on supprime les analyses vides ; recalculer un trajet narré dont les chiffres changent fait disparaître le récit, qui revient au passage nocturne de l'agent local — sans aucun appel de modèle facturé côté API.
 
 ---
 
-### Lot 4 — Une seule modale « Exporter », compréhensible · **L**
+### Lot 4 — Une seule modale « Exporter », compréhensible · **L** · *une grande partie livrée le 3 septembre*
 
 **Objectif** : remplacer quatre boutons et des curseurs abstraits par un choix en trois blocs — Format, Périmètre, Contenu — dont le client comprend le résultat avant de cliquer.
 
@@ -161,7 +163,7 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 ---
 
-### Lot 5 — Mobile 375 px, thème clair, clavier · **L**
+### Lot 5 — Mobile 375 px, thème clair, clavier · **L** · *l'essentiel livré le 3 septembre (MOB-01 à MOB-15)*
 
 **Objectif** : que la page reste utilisable au doigt, en thème clair et au lecteur d'écran — aujourd'hui elle échoue aux trois.
 
@@ -198,15 +200,15 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 ---
 
-### Lot 7 — Replays cohérents avec l'analyse · **M**
+### Lot 7 — Replays cohérents avec l'analyse · **M** · *livré le 3 septembre pour le replay d'un trajet ; le replay de période attend encore ses analyses*
 
 **Objectif** : que l'écran où l'on regarde le trajet montre ce que l'on sait de ce trajet.
 
 | Item | Fichier et ligne | Effort |
 |---|---|---|
-| **A06 / A21** — le replay reçoit l'analyse mais n'affiche ni récit, ni conseils, ni fiabilité, et résume le trajet autrement que le tableau. Réutiliser le composant de badges en lecture seule et ajouter une section « Récit » | `trip-replay.component.ts:73-83,239-269` | M |
-| **A07** — la « Vitesse » affichée est la moyenne du trajet, constante du début à la fin : pendant un excès à 124 km/h, le bandeau affiche 62 km/h. Interpoler depuis la trace horodatée de l'analyse, ou renommer « V. moyenne » et griser | `period-replay.component.ts:794` | M |
-| **A08** — cliquer un événement recentre la caméra au bon endroit mais laisse le marqueur ailleurs, et la lecture ignore le temps réel | `trip-replay.component.ts:493` | M |
+| ~~FAIT (A06 / A21)~~ Le replay d'un trajet affiche récit, conseils et fiabilité, et reprend les fonctions du tableau. Avant : le replay recevait l'analyse mais n'affichait ni récit, ni conseils, ni fiabilité, et résume le trajet autrement que le tableau. Réutiliser le composant de badges en lecture seule et ajouter une section « Récit » | `trip-replay.component.ts:73-83,239-269` | M |
+| ~~FAIT pour le replay d'un trajet (A07)~~ La vitesse vient des relevés horodatés ; à défaut, l'écran affiche la moyenne EN LE DISANT. Le replay de PÉRIODE, lui, ne reçoit pas les analyses : il annonce « V. moyenne » sans mentir, mais reste à brancher. Avant : la « Vitesse » était la moyenne du trajet, constante du début à la fin : pendant un excès à 124 km/h, le bandeau affiche 62 km/h. Interpoler depuis la trace horodatée de l'analyse, ou renommer « V. moyenne » et griser | `period-replay.component.ts:794` | M |
+| ~~FAIT (A08)~~ La lecture est pilotée par le temps ; cliquer un événement place curseur, marqueur et caméra au même point | `trip-replay.component.ts:493` | M |
 | Le total kilométrique du replay période est calculé sur la trace simplifiée et ne correspond pas à l'indicateur Distance | `period-replay.component.ts:1057-1093` | S |
 
 **Comment on saura que c'est bon** : ouvrir le replay d'un trajet avec récit affiche récit et conseils dans le panneau latéral, les mêmes badges qu'au tableau, une vitesse supérieure à 90 km/h pendant l'excès, et un marqueur posé sous la pastille rouge quand on clique dessus.
