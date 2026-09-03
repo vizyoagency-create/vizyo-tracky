@@ -202,6 +202,21 @@ pourtant déjà : `/vehicles/<id>?tab=reports&trip=<tripId>&tripDate=<date>`
 zéro n'a jamais été acquittée**. Et le repli hors application est cassé : le service worker ouvre
 `/alerts?ack=<id>` (`sw.js:180`), paramètre qu'aucun écran ne lit.
 
+**11 bis. Des excès structurellement invisibles.** Seuls les points au-dessus de **33 km/h** sont soumis
+à la résolution de limite (`SPEEDING_CANDIDATE_KMH`, `trip-analysis.service.ts:15`). Un excès en zone 20
+(voie partagée) ou en zone piétonne ne peut donc **jamais** être détecté. Le seuil a été posé pour
+« couvrir les zones 30 avec marge » et exclut tout ce qui est en dessous.
+
+**11 ter. Les longs trajets ne sont analysés qu'en partie.** L'analyse lit au plus **5 000 positions**
+(`trip-analysis.service.ts:17, 179`), triées du début à la fin, sans échantillonnage : au-delà, **la fin
+du trajet est absente de l'analyse**, alors que la vitesse maximale du trajet, elle, est calculée sur la
+totalité. Rien ne signale cette troncature à l'écran.
+
+**11 quater. Le plafond de résolution OSM est atteint en silence.** Une analyse ne peut interroger que
+**1 600 cellules** (`speed-limit.service.ts:63`, 8 lots de 200). Au-delà, les cellules restantes sont
+traitées comme « sans limite » **et ne sont pas mémorisées** : elles ne seront ni réessayées, ni
+signalées.
+
 **11. Quatre définitions concurrentes d'un « excès » cohabitent** : le bit du boîtier ; l'analyse de
 trajet (limite OSM + 5 km/h) ; le rapport de vitesse, qui utilise un seuil **fixe à 90 km/h** sans
 aucune limite légale (`speed-report.service.ts:102`) alors qu'il sert de pièce disciplinaire ; et les
@@ -232,6 +247,7 @@ parcourue, ou porte une réserve visible.
 | Départager à distance comparable par la classe de voie : une rocade l'emporte sur une voie résidentielle | `speed-limit.resolution.ts:129-158` |
 | Refuser une limite invraisemblable au regard de la vitesse observée, et la classer « à vérifier » au lieu d'« excès confirmé » | `trip-analysis.preprocessor.ts:136` |
 | Exiger une durée ou un nombre de points minimal avant de parler d'excès | `trip-analysis.preprocessor.ts:121-126` |
+| Abaisser le seuil de candidature à la résolution : à 33 km/h, un excès en zone 20 est indétectable | `trip-analysis.service.ts:15` |
 | À terme : appariement de la trace entière plutôt que point par point — le service existe déjà et n'est pas utilisé pour cela | `apps/api/src/trips/map-matching.service.ts:50` |
 
 **Recette** : sur la portion de rocade du trajet de référence, plus aucune limite à 30 km/h ; le nombre
@@ -243,6 +259,7 @@ d'excès de MH Cars sur 30 jours est comparé avant/après et l'écart est expli
 |---|---|
 | Marquer les analyses dont des points n'ont pas obtenu de limite, avec le taux de couverture réel (aujourd'hui `limitsKnown` est un booléen vrai dès **un seul** point résolu) | `trip-analysis.preprocessor.ts:118, 134-135` |
 | Rejouer ces analyses une fois les cellules OSM renseignées par l'agent du poste | `trip-automation.service.ts`, `outils/agent-limites-vitesse.cjs` |
+| Signaler la troncature à 5 000 positions et le plafond de 1 600 cellules au lieu de rendre une analyse partielle muette | `trip-analysis.service.ts:17, 179` ; `speed-limit.service.ts:63, 135-141` |
 | Rendre réversibles les cellules gravées « sans limite » : une fois écrites à NULL elles ne sont plus jamais réinterrogées | `speed-limit.service.ts:126, 130`, `outils/agent-limites-vitesse.cjs:242-248` |
 
 **Recette** : le trajet de référence, réanalysé, fait apparaître le passage à 110 km/h que la limite du
@@ -296,6 +313,20 @@ pour ne pas écrire une ligne par trajet.
 
 **Recette** : chaque sentinelle sait produire une ligne de test à partir d'un cas réel de production, et
 le centre d'alerte reste lisible — une ligne par incohérence et par jour, pas une par trajet.
+
+#### Lot V7 — Une seule définition de l'excès dans tout le produit · **M**
+
+Quatre définitions cohabitent aujourd'hui (cf. constat 11). Tant qu'elles coexistent, deux écrans
+donneront toujours deux réponses à la même question.
+
+| Item | Fichier et ligne |
+|---|---|
+| Le rapport de vitesse, présenté comme pièce disciplinaire, retient un seuil **fixe à 90 km/h** sans aucune limite légale | `speed-report.service.ts:102` |
+| Faire dériver ce rapport des excès réellement établis par l'analyse, une fois les lots V1 à V3 livrés | idem |
+| Partager une seule fonction « ceci est-il un excès ? » entre l'analyse, le rapport de vitesse et l'affichage | à extraire vers `packages/shared` |
+
+**Recette** : pour un même trajet, le nombre d'excès est identique dans le replay, dans le rapport de
+vitesse et dans le PDF.
 
 ### C. Points annexes remontés le même jour
 

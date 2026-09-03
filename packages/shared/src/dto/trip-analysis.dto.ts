@@ -57,6 +57,16 @@ export interface TripAnalysisDetailDto {
   gpsGaps: { atSec: number; gapSec: number }[];
   /** Tracé simplifié (pour le replay / la carte) : lat/lng/temps/vitesse. */
   track: { lat: number; lng: number; t: string; speedKmh: number }[];
+  /**
+   * Réserve sur la vitesse annoncée par le boîtier.
+   *
+   * `pointeBruteKmh` est la plus haute valeur annoncée, corroborée ou non ; `pointsEcartes`
+   * compte ceux que la trajectoire contredit — un point annoncé à 180 km/h alors que le
+   * véhicule a parcouru 727 mètres en vingt secondes. Ces points ne font ni la vitesse
+   * maximale ni un excès, mais on les montre : effacer un chiffre sans le dire déplacerait
+   * simplement le mensonge. Absent des analyses calculées avant le 3 septembre 2026.
+   */
+  vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
   /** Passages en station-service détectés (arrêts tombant sur une station). Optionnel. */
   fuelStops?: TripFuelStopDto[];
 }

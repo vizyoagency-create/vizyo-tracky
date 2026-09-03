@@ -118,6 +118,111 @@ export function isPlausibleReportedSpeed(
 }
 
 /**
+ * ── CORROBORATION D'UNE VITESSE ANNONCEE PAR LE DEPLACEMENT REELLEMENT OBSERVE ──────────
+ *
+ * `isPlausibleReportedSpeed` ne repond qu'a « ce nombre est-il absurde dans l'absolu ? ».
+ * Elle laisse passer tout ce qui tient sous 200 km/h, meme quand la trajectoire dit le
+ * contraire. Constat du 2026-09-03, trajet EY-613-MF du 29 aout :
+ *
+ *   14:22:18   boitier 126 km/h   684 m parcourus en 20 s  ->  123 km/h reels
+ *   14:22:38   boitier 180 km/h   727 m parcourus en 20 s  ->  131 km/h reels
+ *   14:22:58   boitier 122 km/h   702 m parcourus en 20 s  ->  126 km/h reels
+ *
+ * Le « 180 » est parti en base, s'est affiche en rouge sur la page Rapports, a nourri le
+ * score de conduite et le rapport de vitesse — piece disciplinaire. Le vehicule roulait a 131.
+ *
+ * ⚠️ ON NE CORRIGE RIEN, on dit seulement si la valeur est SOUTENUE par le deplacement.
+ * Inventer une vitesse serait pire que d'en signaler une fausse. L'appelant decide.
+ *
+ * ⚠️ ON NE JUGE QUE SUR PREUVE. Une moyenne sur un intervalle est necessairement inferieure
+ * a la pointe instantanee qu'il contient : la tolerance doit laisser passer une acceleration
+ * franche. Et un intervalle trop long ne prouve rien du tout — un vehicule qui roule cinq
+ * minutes puis se gare rend une moyenne basse sans qu'aucune vitesse ne soit fausse. Sans
+ * intervalle court exploitable, on s'abstient.
+ */
+
+/** Marge fixe accordee a la pointe instantanee au-dessus de la moyenne observee. */
+export const CORROBORATION_MARGE_KMH = 10;
+/** Marge proportionnelle : une pointe peut depasser la moyenne de l'intervalle qui la contient. */
+export const CORROBORATION_RATIO = 1.15;
+/**
+ * Au-dela de cette duree, l'intervalle ne prouve plus rien sur la vitesse instantanee :
+ * trop de choses ont pu s'y passer (arret, detour, perte de signal).
+ */
+export const CORROBORATION_INTERVALLE_MAX_SEC = 60;
+
+/** Vitesse moyenne impliquee par le deplacement entre deux points, ou `null` si non exploitable. */
+export function vitesseObservee(
+  a: { lat: number; lng: number; timestamp: Date | string | number },
+  b: { lat: number; lng: number; timestamp: Date | string | number },
+  intervalleMaxSec: number = CORROBORATION_INTERVALLE_MAX_SEC,
+): number | null {
+  const dtSec = (toMs(b.timestamp) - toMs(a.timestamp)) / 1000;
+  if (!Number.isFinite(dtSec) || dtSec <= 0 || dtSec > intervalleMaxSec) return null;
+  if (!isValidLatLng(a.lat, a.lng) || !isValidLatLng(b.lat, b.lng)) return null;
+  const metres = haversineMeters(a.lat, a.lng, b.lat, b.lng);
+  return (metres / dtSec) * 3.6;
+}
+
+/**
+ * La vitesse annoncee est-elle soutenue par au moins un intervalle voisin ?
+ *
+ * @param vitesseAnnonceeKmh valeur du champ vitesse du boitier au point juge.
+ * @param observees vitesses moyennes des intervalles voisins exploitables (avant, apres).
+ *                  Les `null` sont ignores : ils ne sont pas des preuves a charge.
+ * @returns `true` s'il n'y a pas de preuve du contraire — le doute profite a la donnee.
+ */
+export function vitesseEstCorroboree(
+  vitesseAnnonceeKmh: number,
+  observees: Array<number | null>,
+  opts: { margeKmh?: number; ratio?: number } = {},
+): boolean {
+  if (!Number.isFinite(vitesseAnnonceeKmh) || vitesseAnnonceeKmh <= 0) return true;
+  const marge = opts.margeKmh ?? CORROBORATION_MARGE_KMH;
+  const ratio = opts.ratio ?? CORROBORATION_RATIO;
+  const preuves = observees.filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0);
+  // Aucun intervalle court exploitable : on ne dispose d'aucune preuve, donc on n'accuse pas.
+  if (preuves.length === 0) return true;
+  const meilleure = Math.max(...preuves);
+  return vitesseAnnonceeKmh <= meilleure * ratio + marge;
+}
+
+/**
+ * Vitesse maximale d'une suite de positions ordonnees, en n'y retenant que les points dont la
+ * vitesse est corroboree par le deplacement.
+ *
+ * Rend AUSSI la pointe brute et le nombre de points ecartes : la reserve doit rester visible.
+ * Effacer un chiffre sans le dire deplacerait simplement le mensonge.
+ */
+export function vitesseMaxCorroboree<
+  T extends { lat: number; lng: number; speedKmh: number; timestamp: Date | string | number },
+>(
+  positions: T[],
+  opts: { margeKmh?: number; ratio?: number; intervalleMaxSec?: number } = {},
+): { maxCorroboreeKmh: number; pointeBruteKmh: number; pointsEcartes: number } {
+  let maxCorroboree = 0;
+  let pointeBrute = 0;
+  let ecartes = 0;
+
+  for (let i = 0; i < positions.length; i++) {
+    const p = positions[i]!;
+    const v = Number.isFinite(p.speedKmh) && p.speedKmh > 0 ? p.speedKmh : 0;
+    if (v > pointeBrute) pointeBrute = v;
+
+    const avant = i > 0 ? vitesseObservee(positions[i - 1]!, p, opts.intervalleMaxSec) : null;
+    const apres = i + 1 < positions.length ? vitesseObservee(p, positions[i + 1]!, opts.intervalleMaxSec) : null;
+
+    if (vitesseEstCorroboree(v, [avant, apres], opts)) {
+      if (v > maxCorroboree) maxCorroboree = v;
+    } else {
+      ecartes++;
+    }
+  }
+
+  return { maxCorroboreeKmh: maxCorroboree, pointeBruteKmh: pointeBrute, pointsEcartes: ecartes };
+}
+
+/**
  * Avance maximale toleree de l'horloge boitier sur l'horloge de reception, au-dela de
  * laquelle une trame ne peut plus faire autorite (cf. {@link evaluateIngestionFix}).
  *

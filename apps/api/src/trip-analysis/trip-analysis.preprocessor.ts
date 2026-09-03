@@ -1,3 +1,4 @@
+import { MAX_VITESSE_ANNONCEE_KMH, vitesseEstCorroboree, vitesseObservee } from '@vizyo/tracky-shared';
 import { haversineMeters } from '../agenda/trip-stop-detector.service';
 
 /**
@@ -60,6 +61,12 @@ export interface TripAnalysisResult {
     speeding: SpeedingSegment[];
     gpsGaps: { atSec: number; gapSec: number }[];
     track: TrackPoint[];
+    /**
+     * Réserve sur la vitesse : la pointe BRUTE annoncée par le boîtier et le nombre de points
+     * dont la trajectoire contredit la vitesse. Permet d'afficher « pointe non corroborée »
+     * plutôt que de faire disparaître un chiffre sans explication.
+     */
+    vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
     /** Passages en station détectés — ajoutés par le service (le préprocesseur pur laisse ce champ absent). */
     fuelStops?: FuelStopOut[];
   };
@@ -74,7 +81,15 @@ export interface VehicleFuel {
 
 // ── Seuils (alignés sur les règles anti-bruit de l'app) ─────────────────────────────────
 const STOP_SPEED_KMH = 4;            // sous ce seuil = à l'arrêt (bruit GPS)
-const IMPOSSIBLE_SPEED_KMH = 220;    // au-dessus = trame corrompue → jetée
+/**
+ * Au-dessus = trame corrompue → jetée.
+ *
+ * ⚠️ ALIGNÉ sur `MAX_VITESSE_ANNONCEE_KMH` (200), le plafond appliqué à l'ingestion. Trois
+ * plafonds différents cohabitaient pour la même grandeur : 200 à l'ingestion, 220 ici, 250 sur
+ * le trajet. Une vitesse de 210 était donc refusée à l'entrée, acceptée par l'analyse, et
+ * conservée telle quelle par le trajet — trois écrans, trois vérités.
+ */
+const IMPOSSIBLE_SPEED_KMH = MAX_VITESSE_ANNONCEE_KMH;
 const SPEED_TOLERANCE_KMH = 5;       // marge (bruit GPS + tolérance) avant de compter un excès
 const GPS_GAP_SEC = 300;             // > 5 min entre 2 points = perte de signal
 const HARSH_ACCEL_MS2 = 2.5;         // accélération brusque
@@ -109,6 +124,10 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
   let movingSec = 0;
   let idleSec = 0;
   let maxSpeed = 0;
+  /** Pointe brute annoncée par le boîtier, corroborée ou non : la réserve doit rester lisible. */
+  let pointeBrute = 0;
+  /** Points dont la vitesse annoncée n'était soutenue par aucun intervalle voisin exploitable. */
+  let pointsVitesseEcartes = 0;
   let harshAccel = 0;
   let harshBrake = 0;
   const gpsGaps: { atSec: number; gapSec: number }[] = [];
@@ -127,10 +146,34 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
 
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    maxSpeed = Math.max(maxSpeed, p.speedKmh);
 
-    // Excès de vitesse (si limite connue à ce point).
-    const lim = limit ? limit(p.lat, p.lng) : null;
+    /**
+     * ⚠️ UNE VITESSE QUE LA TRAJECTOIRE CONTREDIT N'EST PAS UNE VITESSE.
+     *
+     * Le champ vitesse du boîtier alimentait directement `maxSpeed`, et un excès s'appuyait
+     * dessus sans qu'aucun contrôle ne le confronte au déplacement. Le 29 août, sur
+     * EY-613-MF : 180 km/h annoncés pendant que le véhicule parcourait 727 m en vingt
+     * secondes, soit 131 km/h. Le point écarté reste compté dans `pointeBrute` — on ne
+     * dissimule rien, on refuse seulement de l'ériger en fait.
+     */
+    const corrobore = vitesseEstCorroboree(p.speedKmh, [
+      i > 0 ? vitesseObservee(pts[i - 1], p) : null,
+      i + 1 < pts.length ? vitesseObservee(p, pts[i + 1]) : null,
+    ]);
+    if (p.speedKmh > pointeBrute) pointeBrute = p.speedKmh;
+    if (!corrobore) {
+      pointsVitesseEcartes++;
+      // Ni vitesse maximale, ni excès : ce point ne prouve rien. Il ferme le segment courant,
+      // comme le ferait une limite inconnue.
+      flushSpeeding();
+      if (i === 0) continue;
+      // On poursuit quand même la géométrie (distance, durée, à-coups) plus bas.
+    } else {
+      maxSpeed = Math.max(maxSpeed, p.speedKmh);
+    }
+
+    // Excès de vitesse (si limite connue à ce point ET vitesse corroborée).
+    const lim = corrobore && limit ? limit(p.lat, p.lng) : null;
     if (lim != null) {
       limitsKnown = true;
       if (p.speedKmh > lim + SPEED_TOLERANCE_KMH) {
@@ -212,7 +255,16 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
     ecoScore,
     fuelLiters,
     co2Kg,
-    detail: { stops, speeding, gpsGaps, track },
+    detail: {
+      stops, speeding, gpsGaps, track,
+      // Réserve sur la vitesse : ce que le boîtier a annoncé, et combien de points la
+      // trajectoire contredit. Écrire dans `detail` évite une migration et rend la réserve
+      // affichable — effacer un chiffre sans le dire déplacerait simplement le mensonge.
+      vitesse: {
+        pointeBruteKmh: round(pointeBrute, 1),
+        pointsEcartes: pointsVitesseEcartes,
+      },
+    },
   };
 }
 

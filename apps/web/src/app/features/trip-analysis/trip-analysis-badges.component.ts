@@ -202,6 +202,9 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                   @if (a.fuelLiters != null) {
                     <div><dt>Carburant</dt><dd>≈ {{ a.fuelLiters | number:'1.1-1' }} L @if (a.co2Kg != null) { · ≈ {{ a.co2Kg | number:'1.0-0' }} kg CO₂ } <small>estimation d'après la consommation du véhicule, pas une mesure</small></dd></div>
                   }
+                  @if (pointeNonCorroboree(); as pointe) {
+                    <div><dt>Pointe écartée</dt><dd>{{ pointe }} km/h <small>annoncés par le boîtier, mais la distance réellement parcourue ne les soutient pas. Cette valeur n'est retenue ni comme vitesse maximale, ni comme excès.</small></dd></div>
+                  }
                   <div><dt>Fiabilité GPS</dt><dd>@if (a.trustScore != null) { {{ a.trustScore }}/100 } @else { {{ (a.gpsValidRatio * 100) | number:'1.0-0' }} % de mesures valides } <small>{{ a.gpsPoints }} positions@if (a.gpsLostCount > 0) { , {{ a.gpsLostCount }} perte(s) de signal }</small></dd></div>
                 </dl>
               </section>
@@ -412,6 +415,20 @@ export class TripAnalysisBadgesComponent {
   });
 
   protected readonly grade = computed(() => gradeOf(this.current()?.ecoScore ?? 0));
+
+  /**
+   * Pointe annoncée par le boîtier que la trajectoire contredit, en km/h, ou `null`.
+   *
+   * On l'affiche au lieu de la faire disparaître : le client a vu « 180 km/h » sur son écran,
+   * lui retirer le chiffre sans explication reviendrait à déplacer le problème. On ne la montre
+   * que si elle dépasse nettement la vitesse retenue, sinon la mention n'apprend rien.
+   */
+  protected readonly pointeNonCorroboree = computed<number | null>(() => {
+    const a = this.current();
+    const v = a?.detail?.vitesse;
+    if (!a || !v || v.pointsEcartes <= 0) return null;
+    return v.pointeBruteKmh > a.maxSpeedKmh + 1 ? Math.round(v.pointeBruteKmh) : null;
+  });
 
   /**
    * Récit écrit AVANT le dernier recalcul des chiffres. Le recalcul remplace toutes les

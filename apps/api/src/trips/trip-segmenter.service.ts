@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { sanitizePositions } from '@vizyo/tracky-shared';
+import { Injectable, Logger } from '@nestjs/common';
+import { sanitizePositions, vitesseMaxCorroboree } from '@vizyo/tracky-shared';
 import { distanceMeters } from '../common/utils/haversine';
 import {
   TRIP_MIN_DISTANCE_METERS,
@@ -24,7 +24,15 @@ export interface TripDraft {
   endLat: number;
   endLng: number;
   distanceMeters: number;
+  /**
+   * Vitesse maximale CORROBORÉE par le déplacement : les points dont le boîtier annonce une
+   * vitesse que la trajectoire contredit n'y entrent pas (cf. `vitesseMaxCorroboree`).
+   */
   maxSpeed: number;
+  /** Pointe brute annoncée par le boîtier, conservée pour ne rien effacer en silence. */
+  maxSpeedBrute: number;
+  /** Nombre de points dont la vitesse annoncée n'était soutenue par aucun intervalle voisin. */
+  pointsVitesseEcartes: number;
   avgSpeed: number;
   durationSeconds: number;
   positionCount: number;
@@ -34,6 +42,8 @@ export interface TripDraft {
 
 @Injectable()
 export class TripSegmenterService {
+  private readonly logger = new Logger(TripSegmenterService.name);
+
   segmentPositions(positions: SegmenterPosition[]): TripDraft[] {
     if (positions.length < 2) return [];
 
@@ -54,14 +64,33 @@ export class TripSegmenterService {
       if (tripPositions.length < 2) { tripPositions = []; return; }
 
       let dist = 0;
-      let maxSpd = 0;
       let spdSum = 0;
       for (let i = 1; i < tripPositions.length; i++) {
         const prev = tripPositions[i - 1]!;
         const cur = tripPositions[i]!;
         dist += distanceMeters(prev.lat, prev.lng, cur.lat, cur.lng);
-        maxSpd = Math.max(maxSpd, cur.speedKmh);
         spdSum += cur.speedKmh;
+      }
+
+      /**
+       * ⚠️ LA VITESSE MAXIMALE NE PEUT PAS ÊTRE CELLE QUE LA TRAJECTOIRE CONTREDIT.
+       *
+       * Elle était jusqu'ici le simple maximum du champ vitesse du boîtier. Le 29 août, sur
+       * EY-613-MF, ce champ a annoncé 180 km/h pendant que le véhicule parcourait 727 mètres
+       * en vingt secondes, soit 131 km/h. Le 180 est parti en base, s'est affiché en rouge et
+       * a nourri le score de conduite comme le rapport de vitesse — qui sert de pièce
+       * disciplinaire.
+       *
+       * On ne corrige aucune valeur : on retient la plus haute vitesse que le déplacement
+       * SOUTIENT, et on conserve la pointe brute pour que la réserve reste visible.
+       */
+      const vitesses = vitesseMaxCorroboree(tripPositions);
+      const maxSpd = vitesses.maxCorroboreeKmh;
+      if (vitesses.pointsEcartes > 0) {
+        this.logger.warn(
+          `Trajet ${source} : ${vitesses.pointsEcartes} point(s) de vitesse non corroborés par la trajectoire ` +
+            `(pointe brute ${Math.round(vitesses.pointeBruteKmh)} km/h, retenu ${Math.round(maxSpd)} km/h).`,
+        );
       }
 
       if (dist < TRIP_MIN_DISTANCE_METERS) { tripPositions = []; return; }
@@ -86,6 +115,8 @@ export class TripSegmenterService {
         endLng: end.lng,
         distanceMeters: Math.max(0, Math.round(dist)),
         maxSpeed: Math.max(0, Math.round(maxSpd * 100) / 100),
+        maxSpeedBrute: Math.max(0, Math.round(vitesses.pointeBruteKmh * 100) / 100),
+        pointsVitesseEcartes: vitesses.pointsEcartes,
         avgSpeed: Math.max(0, Math.round((spdSum / tripPositions.length) * 100) / 100),
         durationSeconds: dur,
         positionCount: tripPositions.length,
