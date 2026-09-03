@@ -288,17 +288,21 @@ d'excès de MH Cars sur 30 jours est comparé avant/après et l'écart est expli
 **Recette** : le trajet à 131 km/h de moyenne ne peut plus obtenir A ; chaque point perdu s'énonce en une
 phrase lisible par le conducteur.
 
-#### Lot V5 — Alerter sur ce que Tracky mesure, et prévenir vraiment · **L**
+#### Lot V5 — Alerter sur ce que Tracky mesure, et prévenir vraiment · **FAIT le 3 septembre**
 
 | Item | Fichier et ligne |
 |---|---|
-| Créer l'alerte d'excès **depuis l'analyse de trajet** : le maillon n'existe pas du tout aujourd'hui | `trip-analysis/` (aucune référence à `AlertsService`), producteurs existants `alerts.service.ts:127, 417, 507, 581, 686` |
-| Ajouter le réglage manquant : seuil et activation des alertes de vitesse par société, surchargeables par véhicule | `schema.prisma` (aucune colonne de seuil aujourd'hui) |
-| Rattacher l'alerte au trajet (`tripId`) pour que le clic ouvre le trajet | `schema.prisma:1758-1793`, `notification-dispatch.service.ts:1178-1187` |
-| Construire l'URL au format déjà supporté `/vehicles/<id>?tab=reports&trip=<id>&tripDate=<date>` | `driving-scores.component.ts:136`, `vehicle-reports-tab.component.ts:994-996` |
-| Réparer l'acquittement depuis la notification quand l'application est fermée | `sw.js:180` puis lecture du paramètre dans `alerts.component.ts` |
-| Dire à l'utilisateur qu'il n'a **aucun appareil abonné** au lieu d'étouffer 4 866 notifications en silence | motif `no_device`, `notification-dispatch.service.ts` |
-| Revoir la déduplication de 6 h et le regroupement de 15 min une fois l'alerte devenue « par trajet » | `alerts.service.ts:44, 70, 326`, `notification-guardrails.ts:96, 106` |
+| ~~FAIT~~ `SpeedAlertService` évalue chaque analyse écrite (première comme ré-analyse) et crée l'alerte `OVERSPEED` rattachée au trajet, dédupliquée par trajet ; un trajet de plus de 48 h n'est pas notifié | `trip-analysis/` (aucune référence à `AlertsService`), producteurs existants `alerts.service.ts:127, 417, 507, 581, 686` |
+| ~~FAIT~~ Réglage par société (activation, dépassement minimal, plafond absolu 130) surchargeable par véhicule, depuis Alertes › Réglages en suivant le sélecteur de société ; auteur et date conservés, activité utilisateur tracée. **OPT-IN : à activer société par société** | `schema.prisma` (aucune colonne de seuil aujourd'hui) |
+| ~~FAIT~~ Colonne `alerts.tripId` (TRK-061), lien « Voir le trajet » dans le centre d'alertes | `schema.prisma:1758-1793`, `notification-dispatch.service.ts:1178-1187` |
+| ~~FAIT~~ `urlDuTrajet` partagé serveur/écran ; la notification ouvre le trajet et propose « Marquer comme vue » sur place. **Constat en passant** : sous ngsw (la prod), un clic sur une notification n'ouvrait RIEN — `onActionClick` manquait au payload ; corrigé pour toutes les notifications | `driving-scores.component.ts:136`, `vehicle-reports-tab.component.ts:994-996` |
+| ~~FAIT~~ `/alerts?ack=<id>` est lu au chargement de la page des alertes | `sw.js:180` puis lecture du paramètre dans `alerts.component.ts` |
+| ~~FAIT~~ Réglages › Notifications affiche « N notifications n'ont pas pu vous être remises ces 7 derniers jours » quand aucun appareil n'est abonné | motif `no_device`, `notification-dispatch.service.ts` |
+| ~~FAIT~~ pour la partie déterministe : les alertes de trajet se dédupliquent par trajet, et la fenêtre de 6 h du boîtier ne les voit plus (`tripId: null`) — deux chaînes indépendantes. Le regroupement push de 15 min par (utilisateur, type, véhicule) est conservé tel quel | `alerts.service.ts:44, 70, 326`, `notification-guardrails.ts:96, 106` |
+
+> **Reste ouvert dans V5** : les alertes ne naissent que des trajets analysés APRÈS l'activation ;
+> l'existant n'est pas rejoué. Et le bit d'alarme du boîtier continue de produire ses propres
+> alertes `OVERSPEED`, sans limite légale — les retirer relève du lot V7.
 
 **Recette** : un trajet avec un excès réel produit une alerte, une notification arrive sur un appareil
 abonné, le clic ouvre le trajet, et l'acquittement fonctionne application fermée.

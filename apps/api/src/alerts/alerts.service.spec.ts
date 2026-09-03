@@ -760,4 +760,50 @@ describe('AlertsService', () => {
       expect(prisma.alert.create).not.toHaveBeenCalled();
     });
   });
+  describe('Lot V5 — excès de vitesse établi par l’analyse de trajet', () => {
+    const decision = {
+      motif: 'limite' as const, severity: 'WARNING' as const,
+      speedKmh: 125, limitKmh: 90, overKmh: 35, durationSec: 45, segmentCount: 1,
+      lat: 43.6, lng: 1.4, startAt: null, endAt: null,
+    };
+    const entree = () => ({
+      trip: { id: 'trip-1', trackerId: TRACKER_ID, startedAt: new Date('2026-08-29T12:12:00Z'), endedAt: new Date('2026-08-29T13:03:00Z') },
+      vehicle: { id: VEHICLE_ID, plate: 'AB-123', fleetId: FLEET_ID },
+      decision,
+      reglage: { enabled: true, overKmh: 20, absoluteKmh: 130 },
+    });
+
+    it('crée l’alerte rattachée au trajet, la diffuse et la notifie', async () => {
+      const alert = await service.createSpeedingAlert(entree());
+
+      expect(alert).not.toBeNull();
+      const data = prisma.alert.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({ type: 'OVERSPEED', severity: 'WARNING', tripId: 'trip-1', vehicleId: VEHICLE_ID, fleetId: FLEET_ID, latitude: 43.6 });
+      expect(data.payload).toMatchObject({ source: 'trip-analysis', tripStartedAt: '2026-08-29T12:12:00.000Z', speedKmh: 125, overKmh: 35 });
+      expect(data.message).toContain('125 km/h relevés sur une voie limitée à 90 (+35 km/h)');
+      expect(gateway.broadcastAlert).toHaveBeenCalledTimes(1);
+      expect(dispatch.dispatchAlert).toHaveBeenCalledTimes(1);
+    });
+
+    it('un trajet ré-analysé ne produit pas de seconde alerte, acquittée ou non', async () => {
+      prisma.alert.findFirst.mockResolvedValue({ id: 'deja' });
+
+      expect(await service.createSpeedingAlert(entree())).toBeNull();
+      expect(prisma.alert.findFirst.mock.calls[0][0].where).toEqual({ tripId: 'trip-1', type: 'OVERSPEED' });
+      expect(prisma.alert.create).not.toHaveBeenCalled();
+      expect(dispatch.dispatchAlert).not.toHaveBeenCalled();
+    });
+
+    it('est CRITIQUE quand la décision l’est', async () => {
+      await service.createSpeedingAlert({ ...entree(), decision: { ...decision, severity: 'CRITICAL', overKmh: 58 } });
+      expect(prisma.alert.create.mock.calls[0][0].data.severity).toBe('CRITICAL');
+    });
+
+    it('la déduplication du boîtier ignore les alertes nées d’un trajet', async () => {
+      // Sans cette borne, une alerte d’analyse écrite à 15 h ferait taire six heures durant
+      // les alarmes du boîtier — deux chaînes indépendantes se museleraient l’une l’autre.
+      await service.createFromCobanFrame(makeFrame('overspeed'), tracker as any);
+      expect(prisma.alert.findFirst.mock.calls[0][0].where).toMatchObject({ type: 'OVERSPEED', tripId: null });
+    });
+  });
 });

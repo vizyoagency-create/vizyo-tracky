@@ -20,7 +20,7 @@ import {
   SurveillanceEventTrigger,
   UserRole,
 } from '@prisma/client';
-import type { CobanAlarmType, CobanPositionFrame } from '@vizyo/tracky-shared';
+import type { CobanAlarmType, CobanPositionFrame, DecisionAlerteVitesse, ReglageAlerteVitesse } from '@vizyo/tracky-shared';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VEHICLE_GROUP_INCLUDE, flattenVehicleGroup } from '../common/vehicle-group';
@@ -325,6 +325,11 @@ export class AlertsService {
         // comportement d'origine conservé — l'acquittement rouvre.
         ...(estAlarmeDEtat ? {} : { acknowledgedAt: null }),
         createdAt: { gte: new Date(Date.now() - DEDUP_ALARME_MS) },
+        // Lot V5 — les alertes nées d'un TRAJET (analyse) vivent sur leur propre
+        // déduplication, par trajet. Sans cette borne, une alerte d'analyse écrite à
+        // 15 h ferait taire six heures durant les alarmes du boîtier, et inversement :
+        // deux chaînes indépendantes ne doivent pas se museler l'une l'autre.
+        tripId: null,
       },
       select: { id: true },
     });
@@ -714,6 +719,77 @@ export class AlertsService {
     return alert;
   }
 
+  /**
+   * Lot V5 (2026-09-03) — EXCÈS DE VITESSE ÉTABLI PAR L'ANALYSE DE TRAJET.
+   *
+   * La seule alerte d'excès venait jusqu'ici du bit d'alarme du boîtier : seuil fixe, aucune
+   * limite légale, 1 627 alertes en un mois pour une seule société, acquittées en bloc. Celle-ci
+   * naît de la comparaison entre la vitesse MESURÉE ET CORROBORÉE et la limite légale de la
+   * voie — ou du plafond absolu quand la carte n'a rien dit.
+   *
+   * DÉDUPLIQUÉE PAR TRAJET, acquittée ou non : un trajet ré-analysé ne produit pas une seconde
+   * alerte. Elle porte `tripId` : c'est ce lien qui permet au clic sur la notification d'ouvrir
+   * le trajet, et à l'écran de proposer « Voir le trajet ».
+   *
+   * `createdAt` est l'heure de création, pas celle du trajet — exprès, comme pour la coupure
+   * confirmée : antidater fausserait le tri du centre. L'heure vraie vit dans le message et
+   * dans `payload.tripStartedAt`.
+   */
+  async createSpeedingAlert(input: {
+    trip: { id: string; trackerId: string | null; startedAt: Date; endedAt: Date | null };
+    vehicle: { id: string; plate: string; fleetId: string };
+    decision: DecisionAlerteVitesse;
+    reglage: ReglageAlerteVitesse;
+  }): Promise<Alert | null> {
+    const { trip, vehicle, decision, reglage } = input;
+    const deja = await this.prisma.alert.findFirst({
+      where: { tripId: trip.id, type: AlertType.OVERSPEED },
+      select: { id: true },
+    });
+    if (deja) return null;
+
+    const alert = await this.prisma.alert.create({
+      data: {
+        fleetId: vehicle.fleetId,
+        vehicleId: vehicle.id,
+        trackerId: trip.trackerId,
+        tripId: trip.id,
+        type: AlertType.OVERSPEED,
+        severity: decision.severity === 'CRITICAL' ? AlertSeverity.CRITICAL : AlertSeverity.WARNING,
+        title: 'Excès de vitesse',
+        message: messageExcesTrajet(decision, trip, reglage),
+        payload: {
+          source: 'trip-analysis',
+          tripId: trip.id,
+          tripStartedAt: trip.startedAt.toISOString(),
+          tripEndedAt: trip.endedAt?.toISOString() ?? null,
+          motif: decision.motif,
+          speedKmh: decision.speedKmh,
+          limitKmh: decision.limitKmh,
+          overKmh: decision.overKmh,
+          durationSec: decision.durationSec,
+          segmentCount: decision.segmentCount,
+          seuilKmh: reglage.overKmh,
+          plafondKmh: reglage.absoluteKmh,
+          startAt: decision.startAt,
+          endAt: decision.endAt,
+        } as Prisma.InputJsonValue,
+        latitude: decision.lat,
+        longitude: decision.lng,
+      },
+      include: { vehicle: true, tracker: true },
+    });
+
+    this.gateway.broadcastAlert(alert);
+    this.logger.warn(
+      `[ALERT] ${alert.severity} OVERSPEED (trajet) for ${vehicle.plate} — ${decision.speedKmh} km/h, +${decision.overKmh}`,
+    );
+    this.dispatch.dispatchAlert(alert).catch((err) => {
+      this.logger.warn(`Notification dispatch failed for OVERSPEED alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
+    });
+    return alert;
+  }
+
   async list(
     requestedBy: RequestedBy,
     filters: {
@@ -833,6 +909,29 @@ export class AlertsService {
     });
     return { count: result.count };
   }
+}
+
+
+/**
+ * Phrase de l'alerte d'excès sur trajet — en français, avec l'heure du trajet, parce que
+ * `createdAt` est l'heure de l'analyse et non celle de la faute.
+ */
+export function messageExcesTrajet(
+  decision: DecisionAlerteVitesse,
+  trip: { startedAt: Date; endedAt: Date | null },
+  reglage: ReglageAlerteVitesse,
+): string {
+  const heure = (d: Date) => d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+  const jour = trip.startedAt.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long' });
+  const periode = `trajet du ${jour}, ${heure(trip.startedAt)}${trip.endedAt ? ` → ${heure(trip.endedAt)}` : ''}`;
+  if (decision.motif === 'absolu') {
+    return `${decision.speedKmh} km/h relevés — aucune route française n'autorise plus de ${reglage.absoluteKmh} km/h. ${periode.charAt(0).toUpperCase()}${periode.slice(1)}.`;
+  }
+  const duree = decision.durationSec >= 60
+    ? `${Math.round(decision.durationSec / 60)} min`
+    : `${Math.max(1, Math.round(decision.durationSec))} s`;
+  const autres = decision.segmentCount > 1 ? ` ${decision.segmentCount} excès confirmés sur ce trajet.` : '';
+  return `${decision.speedKmh} km/h relevés sur une voie limitée à ${decision.limitKmh} (+${decision.overKmh} km/h) pendant ${duree} — ${periode}.${autres}`;
 }
 
 /**

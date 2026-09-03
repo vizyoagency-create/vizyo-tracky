@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AlertsModule } from '../alerts/alerts.module';
 import { TripsModule } from '../trips/trips.module';
 import { TripAnalysisController } from './trip-analysis.controller';
 import { TripAnalysisService } from './trip-analysis.service';
@@ -18,7 +19,9 @@ import { FuelCalibrationService } from './fuel-calibration.service';
  * ErrorLogger sont globaux ; le préprocesseur est une fonction pure (pas un provider).
  */
 @Module({
-  imports: [AuthModule, TripsModule],
+  // AlertsModule (lot V5) : l'analyse alerte sur les excès qu'elle mesure. Aucun cycle —
+  // ni AlertsModule ni ses imports ne remontent vers ce module.
+  imports: [AuthModule, TripsModule, AlertsModule],
   controllers: [TripAnalysisController],
   providers: [TripAnalysisService, TripAnalysisLlmService, TripAutomationService, DrivingScoreService, SpeedLimitService, FuelStationService, FuelReportService, FuelCalibrationService],
   // `TripAutomationService` est exporté pour l'écran des tâches de fond : il y lit le reste à

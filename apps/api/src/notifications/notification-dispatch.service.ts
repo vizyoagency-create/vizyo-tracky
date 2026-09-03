@@ -13,6 +13,7 @@ import {
   resolveReceivesFleetAlerts,
   shouldPushAlert,
   shouldPushNotification,
+  urlDuTrajet,
 } from '@vizyo/tracky-shared';
 import { formatFleetTime } from '../common/utils/datetime';
 import type { Env } from '../config/env.validation';
@@ -1175,7 +1176,7 @@ export class NotificationDispatchService {
         template: 'alert',
         title,
         body,
-        url: '/alerts',
+        url: this.urlPourAlerte(alert),
         data: {
           alertId: alert.id,
           escalation: isEscalation,
@@ -1273,6 +1274,23 @@ export class NotificationDispatchService {
    * doit dire combien d'evenements la notification represente, sinon le regroupement
    * devient une perte d'information silencieuse — ce qu'on cherche justement a eviter.
    */
+  /**
+   * Lot V5 — une alerte née d'un TRAJET s'ouvre SUR le trajet, pas sur la liste des alertes.
+   *
+   * L'adresse était codée en dur sur `/alerts` : le clic sur « 168 km/h » débouchait sur
+   * un centre d'alertes où il fallait retrouver le véhicule, puis le trajet, puis la
+   * pointe. L'adresse reprend le format déjà servi par les scores (`urlDuTrajet`), avec
+   * l'identifiant de l'alerte pour pouvoir la marquer « vue » depuis le trajet.
+   */
+  private urlPourAlerte(alert: AlertWithVehicle): string {
+    const payload = (alert.payload ?? {}) as Record<string, unknown>;
+    const startedAt = typeof payload['tripStartedAt'] === 'string' ? payload['tripStartedAt'] : null;
+    if (alert.tripId && alert.vehicleId && startedAt) {
+      return urlDuTrajet(alert.vehicleId, alert.tripId, startedAt, alert.id);
+    }
+    return '/alerts';
+  }
+
   private buildPushContent(
     alert: AlertWithVehicle,
     isEscalation: boolean,

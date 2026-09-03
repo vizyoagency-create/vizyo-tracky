@@ -27,7 +27,7 @@ import {
   XCircle,
 } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
-import { getVehicleConnectivityState, isInstallationToReview } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isInstallationToReview, parametresTrajet } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
@@ -41,6 +41,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GeofencesListComponent } from '../geofences/geofences-list.component';
+import { SpeedAlertCardComponent } from './speed-alert-card.component';
 const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: '*', label: 'Tous les types', severity: '' },
   { value: 'SOS', label: 'SOS', severity: 'critical' },
@@ -109,7 +110,7 @@ interface AlertCluster {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent, VehicleLinkDirective],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent, VehicleLinkDirective, SpeedAlertCardComponent],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -326,6 +327,9 @@ interface AlertCluster {
                   @if (cluster.vehicleId) {
                     <a [routerLink]="['/vehicles', cluster.vehicleId]" class="al-plate">{{ alertVehiclePlate(cluster.lead) }}</a>
                   }
+                  @if (lienTrajet(cluster.lead); as lt) {
+                    <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-trip">Voir le trajet →</a>
+                  }
                   @if (cluster.lead.message) { <span class="al-sep">·</span> {{ cluster.lead.message }} }
                   <span class="al-sep">·</span> {{ relativeTime(cluster.newestAt) }}
                 </div>
@@ -341,6 +345,7 @@ interface AlertCluster {
                         <div class="al-occ" [class.acked]="isAcknowledged(it)">
                           <span class="al-occ-time">{{ occTime(it.createdAt) }}</span>
                           @if (alertSpeed(it); as sp) { <span class="al-occ-speed">{{ sp }} km/h</span> }
+                          @if (lienTrajet(it); as lt) { <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-occ-trip">trajet →</a> }
                           @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="al-occ-ack"></lucide-icon> }
                         </div>
                       }
@@ -381,6 +386,14 @@ interface AlertCluster {
           dans Paramètres ; on lit ici, on modifie là-bas. Un seul endroit qui écrit.
         -->
         <div class="cfg-section">
+          <!-- Lot V5 — la seule alerte d'excès venait du boîtier ; celle-ci naît de l'analyse
+               de trajet et se règle ICI, par société, en suivant le sélecteur du haut. -->
+          <app-speed-alert-card
+            [fleetId]="speedFleetId()"
+            [editable]="perms.can('alerts_configure')"
+            [needsFleetChoice]="speedNeedsFleetChoice()"
+          />
+
           <div class="rules-summary">
             <h3>Règles d’envoi de la flotte</h3>
 
@@ -830,6 +843,10 @@ interface AlertCluster {
     .al-acked-tag { font-size: 11px; font-weight: 600; color: var(--fg-tertiary) }
     .al-meta { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 4px; line-height: 1.5 }
     .al-plate { color: var(--fg-secondary); font-weight: 600 }
+    /* Lot V5 — une alerte née d'un trajet mène au trajet, pas seulement au véhicule. */
+    .al-trip { display: inline-flex; align-items: center; min-height: 44px; color: var(--texte-succes); font-weight: 700; white-space: nowrap }
+    .al-trip:hover, .al-occ-trip:hover { text-decoration: underline }
+    .al-occ-trip { color: var(--texte-succes); font-weight: 700; font-size: 11px }
     .al-plate:hover { color: var(--texte-succes) }
     .al-sep { color: var(--fg-tertiary); opacity: .6; margin: 0 4px }
     .al-expand { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: color .15s, border-color .15s }
@@ -859,6 +876,40 @@ export class AlertsComponent implements OnInit {
   private readonly notifApi = inject(NotificationsApiService);
   protected readonly perms = inject(PermissionsService);
   private readonly fleetFilter = inject(FleetFilterService);
+
+  // ── Lot V5 — réglage des alertes de vitesse : suit le sélecteur de société ──────────
+  protected readonly speedFleetId = computed(() =>
+    this.auth.user()?.role === 'SUPER_ADMIN' ? this.fleetFilter.selectedFleetId() : (this.auth.user()?.fleetId ?? null),
+  );
+  protected readonly speedNeedsFleetChoice = computed(() =>
+    this.auth.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId(),
+  );
+
+  /** Lien « Voir le trajet » : seules les alertes nées d'un trajet (analyse) en ont un. */
+  protected lienTrajet(a: AlertEvent | null | undefined): { vehicleId: string; params: Record<string, string> } | null {
+    if (!a?.tripId || !a.vehicleId) return null;
+    const brut = a.payload?.['tripStartedAt'];
+    const debut = a.tripStartedAt ?? (typeof brut === 'string' ? brut : null);
+    if (!debut) return null;
+    return { vehicleId: a.vehicleId, params: parametresTrajet(a.tripId, debut, a.id) };
+  }
+
+  /**
+   * Acquittement demandé depuis une notification système, APPLICATION FERMÉE : le service
+   * worker ouvre `/alerts?ack=<id>` faute d'onglet à qui confier le geste. Personne ne
+   * lisait ce paramètre — le bouton « Acquitter » de la notification ne faisait rien.
+   */
+  private async acquitterDepuisNotification(alertId: string): Promise<void> {
+    try {
+      await firstValueFrom(this.alertsApi.acknowledge(alertId));
+      this.toast.success('Alerte acquittée');
+    } catch {
+      this.toast.error("Impossible d'acquitter cette alerte");
+    } finally {
+      void this.router.navigate([], { relativeTo: this.route, queryParams: { ack: null }, queryParamsHandling: 'merge', replaceUrl: true });
+      this.loadAlerts();
+    }
+  }
 
   // V1.12 — Mode Baanool
   protected readonly isBaanoolMode = computed(() => this.auth.user()?.preferences?.uiMode === 'baanool');
@@ -1108,6 +1159,9 @@ export class AlertsComponent implements OnInit {
       // Accès géofences sans accès aux événements : ouvrir directement l'onglet disponible.
       this.activeTab.set('geofences');
     }
+    // Lot V5 — « Acquitter » depuis la notification, application fermée.
+    const ack = this.route.snapshot.queryParamMap.get('ack');
+    if (ack && this.perms.can('alerts_acknowledge')) void this.acquitterDepuisNotification(ack);
   }
 
   protected isAcknowledged(alert: any): boolean {

@@ -551,6 +551,15 @@ export class NotificationsApiService {
   }
 
   /**
+   * Lot V5 — notifications que l'utilisateur n'a PAS reçues faute d'appareil abonné,
+   * sur sept jours. Le chiffre qui transforme « abonnez cet appareil » en « vous avez
+   * manqué seize alertes cette semaine ».
+   */
+  undelivered(): Promise<{ noDevice7d: number; since: string }> {
+    return firstValueFrom(this.http.get<{ noDevice7d: number; since: string }>('/api/notifications/push/undelivered'));
+  }
+
+  /**
    * Supprime une subscription par id. Owner ou SUPER_ADMIN cote backend.
    */
   async deleteDevice(id: string): Promise<void> {

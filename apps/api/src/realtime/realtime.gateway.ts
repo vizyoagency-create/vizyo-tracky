@@ -568,6 +568,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       createdAt: alert.createdAt.toISOString(),
       vehiclePlate: (alert as any).vehicle?.plate,
       speedKmh: typeof payload['speedKmh'] === 'number' ? payload['speedKmh'] : undefined,
+      // Lot V5 — le trajet d'origine, pour le lien « Voir le trajet » sans rechargement.
+      tripId: alert.tripId ?? null,
+      tripStartedAt: typeof payload['tripStartedAt'] === 'string' ? payload['tripStartedAt'] : null,
     };
     // Salon DEDIE (`alerts_view`) + raccordements restreints ayant droit a CE vehicule.
     this.emitScoped(alert.fleetId, alert.vehicleId, WS_EVENTS.ALERT_NEW, event, [

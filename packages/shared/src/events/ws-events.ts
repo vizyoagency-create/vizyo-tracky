@@ -84,6 +84,15 @@ export interface AlertEvent {
   /** Speed at the time of the alert (km/h), when available (e.g. OVERSPEED). */
   speedKmh?: number;
   /**
+   * Lot V5 — trajet d'où l'alerte est née (excès mesuré par l'analyse). Absent ou nul pour
+   * les alarmes de boîtier. Avec `tripStartedAt`, c'est ce qui permet le lien « Voir le
+   * trajet » et l'ouverture du trajet au clic sur la notification.
+   */
+  tripId?: string | null;
+  tripStartedAt?: string | null;
+  /** Charge utile brute (réponses REST) — `speedKmh`, `tripStartedAt`, `source`… */
+  payload?: Record<string, unknown> | null;
+  /**
    * Présent sur les réponses REST (liste d'alertes) : véhicule lié + son groupe,
    * pour afficher le badge groupe sans requête supplémentaire. Absent de l'event WS.
    */

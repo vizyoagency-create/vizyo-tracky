@@ -789,6 +789,36 @@ describe('NotificationDispatchService — aiguillage du push (correctif)', () =>
     expect(t.sendToUser).not.toHaveBeenCalled();
     expect(t.emailSend).toHaveBeenCalledTimes(1);
   });
+
+  describe('Lot V5 — le clic sur la notification ouvre le trajet', () => {
+    const admin = { ...fleetAdmin, id: 'fa-v5', email: 'fa-v5@client' };
+    const fixture = () => ({
+      type: 'OVERSPEED',
+      ruleChannels: ['WEB_PUSH'],
+      fleetAdmins: [admin],
+      preferences: [{ userId: admin.id, pushEnabled: true, minSeverity: 'INFO', mutedTypes: [] }],
+      rollout: 'ALL',
+    });
+
+    it('une alerte née d’un trajet pousse l’adresse du trajet, alerte comprise', async () => {
+      const t = setup(fixture());
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert({ ...t.alert, tripId: 'trip-1', payload: { tripStartedAt: '2026-08-29T12:12:00.000Z' } } as never);
+
+      expect(t.sendToUser).toHaveBeenCalledTimes(1);
+      expect(t.sendToUser.mock.calls[0][1].url).toBe('/vehicles/v1?tab=reports&trip=trip-1&tripDate=2026-08-29T12%3A12%3A00.000Z&alert=alert-1');
+    });
+
+    it('une alarme de boîtier ouvre toujours le centre d’alertes', async () => {
+      const t = setup(fixture());
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert({ ...t.alert, tripId: null, payload: { speedKmh: 120 } } as never);
+
+      expect(t.sendToUser.mock.calls[0][1].url).toBe('/alerts');
+    });
+  });
 });
 
 /**

@@ -775,6 +775,13 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
               </p>
             </div>
           </div>
+          @if (manquees() > 0 && devices().length === 0) {
+            <p class="nc-state-desc nc-state-manquees">
+              <b>{{ manquees() }} notification{{ manquees() > 1 ? 's' : '' }}</b>
+              {{ manquees() > 1 ? "n’ont" : "n’a" }} pas pu vous être remise{{ manquees() > 1 ? 's' : '' }} ces 7 derniers jours :
+              aucun de vos appareils n'est abonné.
+            </p>
+          }
         } @else if (deviceState().banner === 'not-subscribed') {
           <div class="nc-state nc-state-off">
             <lucide-icon [img]="BellOffIcon" [size]="18" />
@@ -783,6 +790,13 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
               <p class="nc-state-desc">Une autorisation vous sera demandée par le navigateur.</p>
             </div>
           </div>
+          @if (manquees() > 0 && devices().length === 0) {
+            <p class="nc-state-desc nc-state-manquees">
+              <b>{{ manquees() }} notification{{ manquees() > 1 ? 's' : '' }}</b>
+              {{ manquees() > 1 ? "n’ont" : "n’a" }} pas pu vous être remise{{ manquees() > 1 ? 's' : '' }} ces 7 derniers jours :
+              aucun de vos appareils n'est abonné.
+            </p>
+          }
           <button type="button" class="nc-btn nc-btn-primary" [disabled]="busyDevice()" (click)="enable()">
             {{ busyDevice() ? 'Activation…' : 'Activer sur cet appareil' }}
           </button>
@@ -1152,6 +1166,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
       .nc-state-text { min-width: 0; }
       .nc-state-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); margin: 0 0 2px; }
       .nc-state-desc { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
+      .nc-state-manquees { margin-top: 8px; color: var(--texte-attente); font-weight: 600; }
       .nc-state-on { border-color: color-mix(in srgb, var(--tracky) 35%, var(--border-subtle)); }
       .nc-state-on lucide-icon { color: var(--tracky-light); }
       .nc-state-warn { border-color: color-mix(in srgb, #f59e0b 35%, var(--border-subtle)); }
@@ -1291,6 +1306,8 @@ export class NotificationsCardComponent implements OnInit {
   protected readonly prefsUnavailable = this.api.preferencesUnavailable;
   /** Jamais `api.devices` brut : ce signal est partagé avec Observabilité (`scope=all`). */
   protected readonly devices = computed(() => ownDevices(this.api.devices()));
+  /** Lot V5 — notifications non remises faute d'appareil abonné, sur sept jours. */
+  protected readonly manquees = signal(0);
 
   protected readonly busyDevice = signal(false);
   protected readonly saving = signal(false);
@@ -1375,6 +1392,7 @@ export class NotificationsCardComponent implements OnInit {
   protected readonly savingEscalation = signal(false);
 
   async ngOnInit(): Promise<void> {
+    void this.api.undelivered().then((r) => this.manquees.set(r.noDevice7d)).catch(() => undefined);
     this.refreshPermission();
     // loadStatus() interroge le serveur (VAPID actif ?) et resynchronise l'abonnement
     // local — il peut avoir ete revoque silencieusement par iOS depuis la derniere visite.

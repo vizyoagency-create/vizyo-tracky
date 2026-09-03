@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, HostListener, inject, inp
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
+  AlertTriangle,
   BarChart3, Calendar, Clock, Download, Gauge, LucideAngularModule,
   MessageSquare, Pencil, Play, Route, UserRound,
 } from 'lucide-angular';
@@ -18,6 +19,7 @@ import { FuelCalibrationCardComponent } from '../trip-analysis/fuel-calibration-
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { TripsApiService } from '../../core/services/trips.service';
+import { AlertsApiService } from '../../core/services/alerts.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-note-modal.component';
@@ -320,6 +322,24 @@ const ANALYSES_BATCH_SIZE = 200;
                   <span class="vrt-trip-distance-unit">km</span>
                 </div>
               </header>
+
+              <!-- Lot V5 — arrivée depuis une notification d'excès : l'alerte se marque « vue » ICI,
+                   sur le trajet qu'elle désigne, sans repasser par le centre d'alertes. -->
+              @if (trip.id === openTripId() && openAlertId(); as aid) {
+                <div class="vrt-alert-banner" [class.vrt-alert-banner--vue]="alerteVue()" role="status">
+                  <lucide-icon [img]="AlertIcon" [size]="14"></lucide-icon>
+                  @if (alerteVue()) {
+                    <span>Alerte marquée comme vue.</span>
+                  } @else {
+                    <span>Vous arrivez depuis une alerte d'excès de vitesse sur ce trajet.</span>
+                    @if (perms.can('alerts_acknowledge')) {
+                      <button type="button" class="vrt-alert-btn" (click)="marquerAlerteVue(aid)" [disabled]="alerteBusy()">
+                        {{ alerteBusy() ? 'Enregistrement…' : 'Marquer comme vue' }}
+                      </button>
+                    }
+                  }
+                </div>
+              }
 
               <div class="vrt-trip-stats">
                 <div class="vrt-trip-stat">
@@ -786,6 +806,11 @@ const ANALYSES_BATCH_SIZE = 200;
     .vrt-trip-card:hover { border-color: var(--border-strong); }
     /* Deep-link « N avec excès » : met en évidence le trajet ciblé. */
     .vrt-trip-card--focus { border-color: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,.25); }
+    .vrt-alert-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 0; padding: 8px 12px; border-radius: 10px;
+      background: color-mix(in srgb, var(--orange, #f59e0b) 12%, transparent); color: var(--texte-orange, #b45309); font-size: 12.5px; font-weight: 600; }
+    .vrt-alert-banner--vue { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, transparent); color: var(--texte-succes); }
+    .vrt-alert-btn { margin-left: auto; min-height: 36px; padding: 6px 12px; border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .vrt-alert-btn:disabled { opacity: .55; cursor: default; }
     .vrt-trip-head {
       display: flex;
       align-items: center;
@@ -976,9 +1001,13 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   private readonly driversApi = inject(DriversApiService);
   private readonly reportsApi = inject(ReportsApiService);
   private readonly analysisApi = inject(TripAnalysisApiService);
-  private readonly perms = inject(PermissionsService);
+  protected readonly perms = inject(PermissionsService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
+  private readonly alertsApi = inject(AlertsApiService);
+  protected readonly alerteVue = signal(false);
+  protected readonly alerteBusy = signal(false);
+  protected readonly AlertIcon = AlertTriangle;
 
   /** ID du vehicule dont on affiche le rapport. */
   readonly vehicleId = input.required<string>();
@@ -994,6 +1023,8 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   readonly openTripId = input<string | null>(null);
   /** ISO de début du trajet ciblé : sert à cadrer la période sur SON jour pour être sûr de le charger. */
   readonly openTripDate = input<string | null>(null);
+  /** Lot V5 — alerte d'où l'on vient (notification push) : à marquer « vue » depuis le trajet. */
+  readonly openAlertId = input<string | null>(null);
 
   protected readonly trips = signal<TripDto[]>([]);
   /** Curseur de la page suivante (`null` = tout est chargé). */
@@ -1302,6 +1333,21 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
       this.setPeriod(this.periods[0]!.from, this.periods[0]!.to);
     }
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
+  }
+
+  /** Lot V5 — acquitte l'alerte d'où l'on vient, depuis le trajet qu'elle désigne. */
+  protected async marquerAlerteVue(alertId: string): Promise<void> {
+    if (this.alerteBusy()) return;
+    this.alerteBusy.set(true);
+    try {
+      await firstValueFrom(this.alertsApi.acknowledge(alertId));
+      this.alerteVue.set(true);
+      this.toast.success('Alerte marquée comme vue');
+    } catch {
+      this.toast.error("Impossible de marquer l'alerte comme vue");
+    } finally {
+      this.alerteBusy.set(false);
+    }
   }
 
   /** Deep-link : scrolle vers le trajet ciblé une fois chargé (le récit IA s'ouvre via `autoOpen`). */

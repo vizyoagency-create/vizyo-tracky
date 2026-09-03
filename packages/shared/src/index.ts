@@ -35,6 +35,7 @@ export * from './dto/billing.dto';
 export * from './dto/trip-analysis.dto';
 export * from './dto/activity-report.dto';
 export * from './dto/report-schedule.dto';
+export * from './dto/speed-alert.dto';
 export * from './dto/system-activity.dto';
 export * from './dto/api-traffic.dto';
 // Espace dépôt (2026-08) — contrat de ce qu'un compte DEPOT reçoit.
@@ -46,6 +47,8 @@ export * from './partner';
 export * from './permissions';
 export * from './protocol';
 export * from './utils/gps-sanity';
+export * from './utils/alerte-exces';
+export * from './utils/lien-trajet';
 export * from './utils/plaque';
 export * from './utils/live-motion';
 export * from './utils/tracker-liveness';

@@ -266,6 +266,22 @@ model Fleet {
   // = NON IA, jamais coupés). Togglable par le FLEET_ADMIN depuis ses réglages (et par un super-admin).
   // OPT-IN (2026-07-14) : défaut OFF — aucune flotte n'a l'IA tant qu'un admin ne l'active pas.
   aiEnabled               Boolean     @default(false)
+  // Lot V5 (2026-09-03) — ALERTES DE VITESSE NÉES DE L'ANALYSE DE TRAJET.
+  //
+  // Jusqu'ici, la seule alerte d'excès venait d'un bit d'alarme du boîtier, réglé sur un seuil
+  // fixe et sans limite légale : 1 627 alertes en un mois pour une seule société, toutes
+  // acquittées en bloc, et pas une pour un trajet à 168 km/h dont la limite était connue.
+  // Ces réglages gouvernent la NOUVELLE alerte, celle qui compare la vitesse mesurée à la
+  // limite légale de la voie. OPT-IN : défaut coupé, aucune société n'est arrosée au déploiement.
+  //   · speedAlertOverKmh    : dépassement minimal de la limite pour alerter (km/h) ;
+  //   · speedAlertAbsoluteKmh: plafond ABSOLU, indépendant de la carte — aucune route française
+  //                            n'autorise plus de 130 ; nul = pas de plafond.
+  // Surchargeables par véhicule (`Vehicle.speedAlert*`, nul = hérite de la société).
+  speedAlertEnabled       Boolean     @default(false)
+  speedAlertOverKmh       Int         @default(20)
+  speedAlertAbsoluteKmh   Int?        @default(130)
+  speedAlertUpdatedAt     DateTime?
+  speedAlertUpdatedById   String?     @db.Uuid
   // Facturation (2026-07) — Stripe. L'IA est une OPTION PAYANTE. L'interrupteur runtime `aiEnabled`
   // est PILOTÉ par l'abonnement (`AiSubscription`) : statut ACTIVE ou COMP → aiEnabled=true, sinon false.
   // `stripeCustomerId` = client Stripe de la société (créé à la 1re carte / au 1er abonnement).
@@ -710,6 +726,9 @@ model Vehicle {
   /// travail s'applique : hors plage, plus aucune position n'est collectée (RGPD/CNIL).
   /// Activé explicitement par le fleet-admin, véhicule par véhicule (proportionnalité).
   mixedUseEnabled             Boolean                  @default(false)
+  // Lot V5 — surcharge des alertes de vitesse de la société (nul = hérite, cf. Fleet.speedAlert*).
+  speedAlertEnabled           Boolean?
+  speedAlertOverKmh           Int?
   /// Cas SPECIAL declare par un super-admin : le vehicule n'est plus exploite (accident,
   /// boitier debranche/depose, immobilisation longue). null = en service, valeur = hors service.
   ///
@@ -1096,6 +1115,8 @@ model Trip {
   /// Editable a posteriori par les admins/managers (`driverSource='MANUAL'`).
   driverId           String?   @db.Uuid
   driver             Driver?   @relation("TripDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  /// Lot V5 — alertes nées de l'analyse de ce trajet (excès de vitesse).
+  alerts             Alert[]
   /// 'AUTO' = snape depuis Vehicle.currentDriver au finalize.
   /// 'MANUAL' = modifie manuellement par un admin/manager.
   /// null = pas de driver (jamais assigne).
@@ -1763,6 +1784,13 @@ model Alert {
   vehicle           Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   trackerId         String?            @db.Uuid
   tracker           Tracker?           @relation(fields: [trackerId], references: [id], onDelete: SetNull)
+  /// Lot V5 (2026-09-03) — TRAJET d'où l'alerte est née. Renseigné par les seules alertes
+  /// produites par l'ANALYSE de trajet (excès de vitesse mesuré contre la limite légale) ;
+  /// nul pour les alarmes de boîtier, qui décrivent un instant et non un trajet. C'est ce
+  /// lien qui permet au clic sur la notification d'ouvrir le trajet, et à la déduplication
+  /// de raisonner par trajet (une alerte par trajet, ré-analyse comprise).
+  tripId            String?            @db.Uuid
+  trip              Trip?              @relation(fields: [tripId], references: [id], onDelete: SetNull)
   type              AlertType
   severity          AlertSeverity      @default(WARNING)
   title             String
@@ -1788,6 +1816,7 @@ model Alert {
   @@index([fleetId, severity, createdAt(sort: Desc)])
   @@index([vehicleId])
   @@index([trackerId])
+  @@index([tripId])
   @@map("alerts")
 }
 

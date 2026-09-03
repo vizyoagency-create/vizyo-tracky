@@ -840,6 +840,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
             [fleetId]="v.fleetId"
             [openTripId]="openTripId()"
             [openTripDate]="openTripDate()"
+            [openAlertId]="openAlertId()"
           />
         }
 
@@ -1914,6 +1915,8 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly activeTab = signal<string>('map');
   /** Deep-link `?trip=<id>` (depuis les scores « N avec excès ») → onglet Rapports scrolle vers ce trajet + ouvre son récit IA. */
   protected readonly openTripId = signal<string | null>(null);
+  /** Lot V5 — alerte d'où l'on vient (`?alert=`), pour la marquer « vue » depuis le trajet. */
+  protected readonly openAlertId = signal<string | null>(null);
   /** ISO du trajet ciblé (`?tripDate=`) → cadre la période de l'onglet Rapports sur son jour. */
   protected readonly openTripDate = signal<string | null>(null);
 
@@ -2614,6 +2617,7 @@ export class VehicleDetailComponent implements OnInit {
     // Deep-link vers un trajet précis (lien « N avec excès » des scores) → scroll + récit IA.
     if (typeof qp['trip'] === 'string' && qp['trip']) this.openTripId.set(qp['trip']);
     if (typeof qp['tripDate'] === 'string' && qp['tripDate']) this.openTripDate.set(qp['tripDate']);
+    if (typeof qp['alert'] === 'string' && qp['alert']) this.openAlertId.set(qp['alert']);
 
     const id = this.route.snapshot.params['id'];
     if (!id) { this.router.navigate(['/vehicles']); return; }

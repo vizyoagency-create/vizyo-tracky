@@ -409,6 +409,17 @@ export class WebPushService {
         url: payload.url,
         severity: payload.severity,
         appBadge: payload.appBadge,
+        // Lot V5 — SANS `onActionClick`, le service worker Angular n'ouvre RIEN au clic :
+        // il ferme la notification et diffuse l'événement à un onglet déjà ouvert, que
+        // personne n'écoutait. Application fermée, la notification se refermait sur
+        // elle-même — c'est la raison pour laquelle « cliquer ouvre le trajet » n'a jamais
+        // pu marcher en production, où ngsw est le service worker actif.
+        // `navigateLastFocusedOrOpen` ramène l'onglet existant sur l'adresse, ou en ouvre un.
+        // L'action « Acquitter » reste servie par notre /sw.js, qui a besoin du jeton.
+        onActionClick: {
+          default: { operation: 'navigateLastFocusedOrOpen', url: payload.url ?? '/' },
+          view: { operation: 'navigateLastFocusedOrOpen', url: payload.url ?? '/' },
+        },
       },
       tag: payload.tag,
       requireInteraction: isCritical,

@@ -184,6 +184,9 @@ self.addEventListener('notificationclick', (event) => {
   }
 
   // Pour action='view' ou clic body : si ngsw est charge, il s'en charge.
+  // Lot V5 — il ne le faisait PAS : sans `data.onActionClick` dans le payload, ngsw se
+  // contentait de fermer la notification. Le serveur envoie desormais `onActionClick`
+  // (default/view -> navigateLastFocusedOrOpen vers l'adresse du trajet ou des alertes).
   // Sinon (dev), on fait nous-meme : focus client ou openWindow.
   if (ngswLoaded) return;
 

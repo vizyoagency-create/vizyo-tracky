@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, Optional, UnprocessableEntityExc
 import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
+import { SpeedAlertService } from '../alerts/speed-alert.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -47,6 +48,8 @@ export class TripAnalysisService {
     private readonly errorLogger: ErrorLogger,
     /** Optionnel pour les tests unitaires historiques ; absent = récits visibles. */
     @Optional() private readonly aiAvail?: AiAvailabilityService,
+    // Lot V5 — facultatif pour que les jeux d'essai du service restent minimaux.
+    @Optional() private readonly speedAlerts?: SpeedAlertService,
   ) {}
 
   /**
@@ -253,12 +256,36 @@ export class TripAnalysisService {
       harshAccel: r.harshAccel, harshBrake: r.harshBrake, ecoScore: r.ecoScore, fuelLiters: r.fuelLiters, co2Kg: r.co2Kg,
       detail: r.detail as unknown as Prisma.InputJsonValue,
     };
-    return this.prisma.tripAnalysis.upsert({
+    const row = await this.prisma.tripAnalysis.upsert({
       where: { tripId: trip.id },
       create: { tripId: trip.id, ...data },
       // La ré-analyse REMPLACE le déterministe mais N'EFFACE PAS le récit LLM (Palier 3) déjà calculé.
       update: data,
     });
+    await this.alerterSiExces(trip, r);
+    return row;
+  }
+
+  /**
+   * Lot V5 — LE MAILLON : de l'analyse à l'alerte. Appelé après CHAQUE écriture, première
+   * analyse comme ré-analyse — c'est la ré-analyse qui rattrape le trajet dont la limite n'a
+   * été connue que le lendemain. Jamais bloquant : une analyse réussie reste réussie même si
+   * l'alerte échoue, et l'échec part au centre d'erreur avec le trajet en contexte.
+   */
+  private async alerterSiExces(trip: TripRow, r: TripAnalysisResult): Promise<void> {
+    if (!this.speedAlerts) return;
+    try {
+      await this.speedAlerts.evaluer(
+        { id: trip.id, vehicleId: trip.vehicleId, trackerId: trip.trackerId, startedAt: trip.startedAt, endedAt: trip.endedAt },
+        { maxSpeedKmh: r.maxSpeedKmh, speeding: r.detail.speeding, track: r.detail.track },
+      );
+    } catch (e) {
+      void this.errorLogger.record(
+        e instanceof Error ? e : new Error(String(e)),
+        'trip-analysis',
+        { tripId: trip.id, vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'speed-alert' },
+      );
+    }
   }
 
   private toDto(row: {

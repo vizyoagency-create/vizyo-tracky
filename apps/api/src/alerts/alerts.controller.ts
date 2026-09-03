@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -16,6 +18,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { AlertsService } from './alerts.service';
 import { ListAlertsDto } from './dto/list-alerts.dto';
+import { SetSpeedAlertSettingsDto, SetVehicleSpeedAlertOverrideDto } from './dto/set-speed-alert-settings.dto';
+import { SpeedAlertSettingsService } from './speed-alert-settings.service';
 
 @Controller('alerts')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -23,6 +27,7 @@ export class AlertsController {
   constructor(
     private readonly alerts: AlertsService,
     private readonly vehicleAccess: VehicleAccessService,
+    private readonly speedSettings: SpeedAlertSettingsService,
   ) {}
 
   private async rb(req: AuthenticatedRequest) {
@@ -42,6 +47,39 @@ export class AlertsController {
   @RequirePermissions('alerts_view')
   async count(@Req() req: AuthenticatedRequest) {
     return this.alerts.countUnacknowledged(await this.rb(req));
+  }
+
+  // ── Lot V5 — réglage des alertes de vitesse (société, surcharge véhicule) ──────────
+  // Un super-admin passe `?fleetId=` (la société du sélecteur) ; les autres règlent la leur.
+
+  @Get('speed-settings')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_view')
+  speedSettingsGet(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.speedSettings.get(req.user, fleetId);
+  }
+
+  @Put('speed-settings')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_configure')
+  speedSettingsSet(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SetSpeedAlertSettingsDto,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.speedSettings.set(req.user, body, fleetId);
+  }
+
+  @Put('speed-settings/vehicles/:vehicleId')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_configure')
+  speedSettingsSetVehicle(
+    @Req() req: AuthenticatedRequest,
+    @Param('vehicleId') vehicleId: string,
+    @Body() body: SetVehicleSpeedAlertOverrideDto,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.speedSettings.setVehicle(req.user, vehicleId, body, fleetId);
   }
 
   @Post(':id/acknowledge')

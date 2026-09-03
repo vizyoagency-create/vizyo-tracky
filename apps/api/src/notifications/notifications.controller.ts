@@ -210,6 +210,21 @@ export class NotificationsController {
    *   - SUPER_ADMIN peut supprimer celles de n'importe quel user (pour purger
    *     les zombies depuis Observabilite).
    */
+  /**
+   * Lot V5 — combien de notifications n'ont PAS pu être remises à l'utilisateur faute
+   * d'appareil abonné, sur sept jours. Le motif `no_device` étouffait 4 866 envois en
+   * silence : l'intéressé voyait « abonnez cet appareil », jamais « vous avez manqué
+   * seize alertes cette semaine ». Le chiffre, lui, décide.
+   */
+  @Get('push/undelivered')
+  async undelivered(@Req() req: AuthenticatedRequest) {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const noDevice7d = await this.prisma.notificationDelivery.count({
+      where: { userId: req.user.id, status: 'SUPPRESSED', reason: 'no_device', createdAt: { gte: since } },
+    });
+    return { noDevice7d, since: since.toISOString() };
+  }
+
   @Delete('push/subscriptions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteSub(
