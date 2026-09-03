@@ -259,12 +259,12 @@ parcourue, ou porte une réserve visible.
 **Recette** : sur la portion de rocade du trajet de référence, plus aucune limite à 30 km/h ; le nombre
 d'excès de MH Cars sur 30 jours est comparé avant/après et l'écart est expliqué véhicule par véhicule.
 
-#### Lot V3 — Rejouer l'analyse quand la limite arrive après coup · **M**
+#### Lot V3 — Rejouer l'analyse quand la limite arrive après coup · **FAIT le 3 septembre** pour l'essentiel
 
 | Item | Fichier et ligne |
 |---|---|
-| Marquer les analyses dont des points n'ont pas obtenu de limite, avec le taux de couverture réel (aujourd'hui `limitsKnown` est un booléen vrai dès **un seul** point résolu) | `trip-analysis.preprocessor.ts:118, 134-135` |
-| Rejouer ces analyses une fois les cellules OSM renseignées par l'agent du poste | `trip-automation.service.ts`, `outils/agent-limites-vitesse.cjs` |
+| ~~FAIT~~ `limitsCoverage` mesure la part des points RAPIDES ayant obtenu une limite, persistée et indexée. `null` quand aucune résolution n'a été tentée — on ne confond pas « rien trouvé » et « pas cherché » | `trip-analysis.preprocessor.ts:118, 134-135` |
+| ~~FAIT~~ L'automatisation reprend, après les trajets neufs, les analyses les moins couvertes de plus de 12 h, 25 par passage au maximum | `trip-automation.service.ts`, `outils/agent-limites-vitesse.cjs` |
 | Signaler la troncature à 5 000 positions et le plafond de 1 600 cellules au lieu de rendre une analyse partielle muette | `trip-analysis.service.ts:17, 179` ; `speed-limit.service.ts:63, 135-141` |
 | Rendre réversibles les cellules gravées « sans limite » : une fois écrites à NULL elles ne sont plus jamais réinterrogées | `speed-limit.service.ts:126, 130`, `outils/agent-limites-vitesse.cjs:242-248` |
 

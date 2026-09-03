@@ -2392,6 +2392,14 @@ model TripAnalysis {
   speedingSec   Int // durée cumulée en excès
   maxOverKmh    Float // plus gros dépassement (km/h au-dessus de la limite)
   limitsKnown   Boolean @default(false) // au moins une limite OSM résolue
+  /// Part des points RAPIDES ayant obtenu une limite (0..1). `null` = aucun point assez rapide
+  /// pour qu'une limite soit demandée, ou analyse antérieure à la mesure.
+  ///
+  /// ⚠️ `limitsKnown` ne dit que « au moins UN point résolu » : un trajet couvert à 2 % et un
+  /// trajet couvert à 100 % lui répondaient tous deux oui. C'est cette colonne qui permet de
+  /// repérer les analyses à rejouer quand les limites arrivent après coup — cas constaté le
+  /// 2026-09-03, où la limite d'un point est entrée en cache le LENDEMAIN du trajet.
+  limitsCoverage Float?
 
   // Éco-conduite
   harshAccel Int

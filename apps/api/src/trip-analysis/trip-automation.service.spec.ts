@@ -33,6 +33,8 @@ describe('TripAutomationService', () => {
     dirty?: { startedAt: Date } | null;
     trips?: { id: string }[];
     analyses?: { tripId: string; narrative: string | null }[];
+    /** Analyses à REJOUER : limites de vitesse arrivées après le calcul initial. */
+    aRejouer?: { tripId: string; vehicleId: string; fleetId: string; limitsCoverage: number }[];
     aiEnabled?: boolean;
     /** Positions présentes sur la tranche à recalculer (0 = tranche irrécupérable). */
     positions?: number;
@@ -70,7 +72,18 @@ describe('TripAutomationService', () => {
         findFirst: jest.fn().mockResolvedValue(opts.dirty ?? null),
         findMany: jest.fn().mockResolvedValue((opts.trips ?? []).map((t) => ({ startedAt: new Date('2026-07-08T07:00:00Z'), ...t }))),
       },
-      tripAnalysis: { findMany: jest.fn().mockResolvedValue(opts.analyses ?? []) },
+      /**
+       * Deux lectures distinctes passent par `tripAnalysis.findMany` :
+       *   1. les analyses EXISTANTES des trajets de la fenêtre (a-t-il déjà une analyse, un récit ?) ;
+       *   2. les analyses à REJOUER parce que leurs limites de vitesse sont arrivées après coup.
+       * Le mock répond selon le `where` : sans cela, il rendait les mêmes lignes aux deux appels
+       * et l'automatisation ré-analysait chaque trajet une seconde fois.
+       */
+      tripAnalysis: {
+        findMany: jest.fn(async (args?: { where?: Record<string, unknown> }) =>
+          args?.where && 'limitsCoverage' in args.where ? (opts.aRejouer ?? []) : (opts.analyses ?? []),
+        ),
+      },
     };
     const trips = { recompute: jest.fn().mockResolvedValue({ deleted: 0, created: 2 }) };
     const analysis = { analyze: jest.fn().mockResolvedValue({}) };

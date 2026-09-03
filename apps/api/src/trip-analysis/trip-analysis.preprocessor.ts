@@ -60,6 +60,15 @@ export interface TripAnalysisResult {
   limitsKnown: boolean;
   harshAccel: number;
   harshBrake: number;
+  /**
+   * Part des points RAPIDES qui ont obtenu une limite, entre 0 et 1. `null` quand aucun point
+   * n'était assez rapide pour qu'une limite soit demandée — cas d'un trajet entièrement lent,
+   * qu'il ne faut pas confondre avec une couverture nulle.
+   *
+   * `limitsKnown` ne répond qu'à « au moins un point a-t-il été résolu ? » : un trajet couvert
+   * à 2 % lui répondait oui, exactement comme un trajet couvert à 100 %.
+   */
+  limitsCoverage: number | null;
   ecoScore: number;
   fuelLiters: number | null;
   co2Kg: number | null;
@@ -130,6 +139,17 @@ function ecartCredible(limiteKmh: number, vitesseKmh: number): boolean {
  */
 const EXCES_DUREE_MIN_SEC = 1;
 const GPS_GAP_SEC = 300;             // > 5 min entre 2 points = perte de signal
+
+/**
+ * Vitesse au-dessus de laquelle un point peut constituer un excès, et à partir de laquelle une
+ * limite est donc interrogée. Défini ICI, et importé par le service qui bâtit le résolveur :
+ * les deux DOIVENT parler de la même population, sinon le taux de couverture ci-dessous compare
+ * des points interrogés à des points qui ne l'ont jamais été.
+ *
+ * ⚠️ 33 km/h « couvre les zones 30 avec marge » — et rend du même coup indétectable tout excès
+ * en zone 20 ou en zone piétonne. Constat ouvert (lot V2).
+ */
+export const SPEEDING_CANDIDATE_KMH = 33;
 const HARSH_ACCEL_MS2 = 2.5;         // accélération brusque
 const HARSH_BRAKE_MS2 = 3.0;         // freinage brusque
 const MIN_DT_S = 0.5;                // intervalle plausible min pour dériver une accélération
@@ -166,6 +186,9 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
   let pointeBrute = 0;
   /** Points dont la vitesse annoncée n'était soutenue par aucun intervalle voisin exploitable. */
   let pointsVitesseEcartes = 0;
+  /** Points rapides pour lesquels une limite a été demandée, et ceux qui en ont obtenu une. */
+  let pointsInterroges = 0;
+  let pointsResolus = 0;
   let harshAccel = 0;
   let harshBrake = 0;
   const gpsGaps: { atSec: number; gapSec: number }[] = [];
@@ -223,6 +246,19 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
 
     // Excès de vitesse (si limite connue à ce point ET vitesse corroborée).
     const lim = corrobore && limit ? limit(p.lat, p.lng) : null;
+    /**
+     * Taux de couverture des limites, mesuré sur les seuls points RAPIDES — ceux pour lesquels
+     * une limite a réellement été demandée. `limitsKnown` était un booléen vrai dès UN SEUL
+     * point résolu : un trajet couvert à 2 % et un trajet couvert à 100 % étaient
+     * indiscernables, et le second pouvait décrocher un A par ignorance.
+     */
+    // ⚠️ `limit` absent = on n'a PAS cherché (Overpass indisponible). Compter ces points ferait
+    // dire au taux « cherché partout, rien trouvé », ce qui est faux et déclencherait des rejeux
+    // sans objet. On ne mesure une couverture que là où une résolution a été tentée.
+    if (limit && corrobore && p.speedKmh > SPEEDING_CANDIDATE_KMH) {
+      pointsInterroges++;
+      if (lim != null) pointsResolus++;
+    }
     if (lim != null) {
       limitsKnown = true;
       if (p.speedKmh > lim + SPEED_TOLERANCE_KMH) {
@@ -307,6 +343,7 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
     speedingSec,
     maxOverKmh: round(maxOverKmh, 1),
     limitsKnown,
+    limitsCoverage: pointsInterroges > 0 ? round(pointsResolus / pointsInterroges, 3) : null,
     harshAccel,
     harshBrake,
     ecoScore,
@@ -331,6 +368,7 @@ function empty(total: number): TripAnalysisResult {
   return {
     distanceKm: 0, durationSec: 0, movingSec: 0, avgSpeedKmh: 0, maxSpeedKmh: 0, stopCount: 0, idleSec: 0,
     gpsPoints: 0, gpsValidRatio: 0, gpsLostCount: 0, speedingCount: 0, speedingSec: 0, maxOverKmh: 0, limitsKnown: false,
+    limitsCoverage: null,
     harshAccel: 0, harshBrake: 0, ecoScore: 100, fuelLiters: null, co2Kg: null,
     detail: { stops: [], speeding: [], gpsGaps: [], track: [] },
   };

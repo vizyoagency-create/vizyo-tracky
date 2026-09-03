@@ -111,6 +111,17 @@ export interface TripAnalysisDto {
   fuelLiters: number | null;
   co2Kg: number | null;
 
+  /**
+   * Part des points RAPIDES ayant obtenu une limite légale, entre 0 et 1. `null` quand aucun
+   * point n'était assez rapide pour qu'une limite soit demandée, ou pour une analyse antérieure
+   * à cette mesure.
+   *
+   * `limitsKnown` ne répond qu'à « au moins un point résolu ? » : un trajet couvert à 2 % lui
+   * répondait oui comme un trajet couvert à 100 %, et pouvait décrocher la meilleure note par
+   * ignorance. Ce taux permet de le dire, et de retrouver les analyses à rejouer.
+   */
+  limitsCoverage: number | null;
+
   detail: TripAnalysisDetailDto;
 
   // Couche LLM (Palier 3) — null tant que non générée
@@ -472,6 +483,12 @@ export interface TripAutomationRunStats {
   analyzed: number;
   /** Récits IA générés. */
   narrated: number;
+  /**
+   * Analyses REJOUÉES parce que leurs limites de vitesse sont arrivées après le calcul initial.
+   * Une analyse fige les limites connues à l'instant où elle tourne ; l'agent du poste remplit
+   * le cache en continu, parfois le lendemain du trajet. Absent des passages antérieurs.
+   */
+  rejouees?: number;
   failed: number;
   durationMs: number;
   /** ISO date de fin du run. */

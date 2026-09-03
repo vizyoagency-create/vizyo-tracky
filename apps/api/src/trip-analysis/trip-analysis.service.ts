@@ -9,10 +9,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { FuelStationService } from './fuel-station.service';
 import { SpeedLimitService } from './speed-limit.service';
-import { analyzeTrip, type RawPosition, type TripAnalysisResult } from './trip-analysis.preprocessor';
+import { analyzeTrip, SPEEDING_CANDIDATE_KMH, type RawPosition, type TripAnalysisResult } from './trip-analysis.preprocessor';
 
-/** Vitesse (km/h) au-dessus de laquelle un point peut constituer un excès → candidat à la résolution OSM. */
-const SPEEDING_CANDIDATE_KMH = 33; // couvre les zones 30 (avec marge)
+// `SPEEDING_CANDIDATE_KMH` vient du préprocesseur : c'est LUI qui mesure le taux de couverture,
+// et les deux doivent parler de la même population de points. Deux constantes jumelles auraient
+// fini par diverger, et le taux aurait comparé des points interrogés à d'autres qui ne l'ont jamais été.
 /** Borne dure de positions lues par trajet (perf + coût). */
 const MAX_POSITIONS = 5000;
 /**
@@ -248,6 +249,7 @@ export class TripAnalysisService {
       stopCount: r.stopCount, idleSec: r.idleSec,
       gpsPoints: r.gpsPoints, gpsValidRatio: r.gpsValidRatio, gpsLostCount: r.gpsLostCount,
       speedingCount: r.speedingCount, speedingSec: r.speedingSec, maxOverKmh: r.maxOverKmh, limitsKnown: r.limitsKnown,
+      limitsCoverage: r.limitsCoverage,
       harshAccel: r.harshAccel, harshBrake: r.harshBrake, ecoScore: r.ecoScore, fuelLiters: r.fuelLiters, co2Kg: r.co2Kg,
       detail: r.detail as unknown as Prisma.InputJsonValue,
     };
@@ -264,6 +266,7 @@ export class TripAnalysisService {
     distanceKm: number; durationSec: number; movingSec: number; avgSpeedKmh: number; maxSpeedKmh: number; stopCount: number; idleSec: number;
     gpsPoints: number; gpsValidRatio: number; gpsLostCount: number;
     speedingCount: number; speedingSec: number; maxOverKmh: number; limitsKnown: boolean;
+    limitsCoverage?: number | null;
     harshAccel: number; harshBrake: number; ecoScore: number; fuelLiters: number | null; co2Kg: number | null;
     detail: unknown; provider: string | null; narrative: string | null; advice: string | null; trustScore: number | null;
     narratedAt?: Date | null;
@@ -282,6 +285,7 @@ export class TripAnalysisService {
       stopCount: row.stopCount, idleSec: row.idleSec,
       gpsPoints: row.gpsPoints, gpsValidRatio: row.gpsValidRatio, gpsLostCount: row.gpsLostCount,
       speedingCount: row.speedingCount, speedingSec: row.speedingSec, maxOverKmh: row.maxOverKmh, limitsKnown: row.limitsKnown,
+      limitsCoverage: row.limitsCoverage ?? null,
       harshAccel: row.harshAccel, harshBrake: row.harshBrake, ecoScore: row.ecoScore, fuelLiters: row.fuelLiters, co2Kg: row.co2Kg,
       detail: row.detail as TripAnalysisDto['detail'],
       provider, narrative: row.narrative, advice: row.advice, trustScore: row.trustScore,

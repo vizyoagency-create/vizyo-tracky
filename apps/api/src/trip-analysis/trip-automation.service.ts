@@ -188,6 +188,8 @@ type MutableStats = {
   skippedNoPositions: number;
   /** Véhicules non abordés parce que le budget de temps du passage était épuisé. */
   skippedBudget: number;
+  /** Analyses REJOUÉES parce que leurs limites de vitesse sont arrivées après coup. */
+  rejouees: number;
   /** Le passage s'est-il arrêté sur son budget plutôt qu'au bout de son travail ? */
   budgetAtteint: boolean;
 };
@@ -434,6 +436,9 @@ export class TripAutomationService {
         }
       }
 
+      // Après les trajets neufs : les analyses dont les limites sont arrivées depuis.
+      await this.rejouerAnalysesIncompletes(user, stats, echeance);
+
       const runStats = this.finalStats(stats, Date.now() - startMs);
       await this.persistRun(settings.id, runStats);
       await this.recordRun(origin, startedAt, runStats, items);
@@ -452,6 +457,7 @@ export class TripAutomationService {
           (stats.skippedDormant > 0 ? ` · ${stats.skippedDormant} véhicule(s) au boîtier muet ignoré(s)` : '') +
           (stats.skippedBudget > 0 ? ` · ${stats.skippedBudget} véhicule(s) reportés au passage suivant (budget de temps atteint)` : '') +
           (stats.skippedNoPositions > 0 ? ` · ${stats.skippedNoPositions} recalcul(s) impossibles faute de position` : '') +
+          (stats.rejouees > 0 ? ` · ${stats.rejouees} analyse(s) rejouée(s) (limites arrivées après coup)` : '') +
           // Un passage écourté n'est pas un passage terminé : le dire évite de lire « 12 analysés »
           // comme « il n'y avait que 12 choses à faire ».
           (stats.budgetAtteint ? ' · passage ÉCOURTÉ sur son budget de temps, la suite au prochain' : '') +
@@ -1249,7 +1255,72 @@ export class TripAutomationService {
     return {
       fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0,
       skippedDormant: 0, skippedNoPositions: 0, skippedBudget: 0, budgetAtteint: false,
+      rejouees: 0,
     };
+  }
+
+  /**
+   * ── REJOUER LES ANALYSES DONT LES LIMITES SONT ARRIVÉES APRÈS COUP ──────────────────────
+   *
+   * Une analyse fige les limites connues À L'INSTANT où elle tourne. L'agent du poste, lui,
+   * remplit le cache OpenStreetMap en continu. Cas mesuré le 2026-09-03 : un point à 131 km/h
+   * réels n'a produit aucun excès parce que la limite de sa cellule — 110 km/h — est entrée en
+   * cache LE LENDEMAIN du trajet. La donnée existe, l'écran ne la verra jamais : rien ne
+   * rejouait l'analyse.
+   *
+   * On reprend donc les analyses les moins couvertes, les plus anciennes d'abord, dans une
+   * enveloppe volontairement petite : ce travail passe APRÈS les trajets qui n'ont aucune
+   * analyse, qui restent prioritaires.
+   *
+   * ⚠️ On ne rejoue que ce qui a une CHANCE de changer : une analyse déjà bien couverte ne
+   * gagnera rien à être recalculée, et une analyse rejouée trop tôt le sera pour rien.
+   */
+  private async rejouerAnalysesIncompletes(
+    user: AuthUser,
+    stats: MutableStats,
+    echeance: number,
+  ): Promise<void> {
+    /** En dessous de ce taux, il reste assez de points sans limite pour que le rejeu paie. */
+    const COUVERTURE_INSUFFISANTE = 0.8;
+    /** Laisser à l'agent du poste le temps de renseigner les cellules avant de rejouer. */
+    const AGE_MIN_HEURES = 12;
+    /** Enveloppe par passage : le rejeu ne doit jamais manger le budget des trajets neufs. */
+    const MAX_PAR_PASSAGE = 25;
+
+    let candidates;
+    try {
+      candidates = await this.prisma.tripAnalysis.findMany({
+        where: {
+          limitsCoverage: { not: null, lt: COUVERTURE_INSUFFISANTE },
+          computedAt: { lt: new Date(Date.now() - AGE_MIN_HEURES * 3_600_000) },
+        },
+        orderBy: [{ limitsCoverage: 'asc' }, { computedAt: 'asc' }],
+        take: MAX_PAR_PASSAGE,
+        select: { tripId: true, vehicleId: true, fleetId: true, limitsCoverage: true },
+      });
+    } catch (e) {
+      stats.failed++;
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'rejeu-limites' });
+      return;
+    }
+
+    for (const a of candidates) {
+      if (Date.now() > echeance) { stats.budgetAtteint = true; break; }
+      try {
+        await this.analysis.analyze(user, a.tripId);
+        stats.rejouees++;
+      } catch (e) {
+        /**
+         * Un rejeu qui échoue n'est pas un incident : les positions ont pu être purgées depuis
+         * (l'analyse refuse alors d'écrire un zéro inventé, et elle a raison). On n'alerte pas,
+         * sinon le centre d'alerte se remplirait d'un fait sans remède.
+         */
+        this.logger.debug(`rejeu impossible pour ${a.tripId} : ${(e as Error)?.message ?? e}`);
+      }
+    }
+    if (stats.rejouees > 0) {
+      this.logger.log(`${stats.rejouees} analyse(s) rejouée(s) — limites de vitesse arrivées après le calcul initial.`);
+    }
   }
 
   private finalStats(s: MutableStats, durationMs: number): TripAutomationRunStatsWithDormancy {
