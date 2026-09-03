@@ -298,9 +298,14 @@ describe('DrivingScoreService — taux d’analyse', () => {
 
     const whereAnalyses = prisma.tripAnalysis.findMany.mock.calls[0][0].where;
     const whereReal = prisma.trip.groupBy.mock.calls[0][0].where;
-    for (const cle of Object.keys(whereAnalyses)) {
+    // `gpsPoints` est un filtre de QUALITÉ de la donnée, pas de périmètre : il n'existe que
+    // sur l'analyse (un trajet n'a pas cette colonne). Il est vérifié à part, juste après.
+    for (const cle of Object.keys(whereAnalyses).filter((k) => k !== 'gpsPoints')) {
       expect(whereReal[cle]).toEqual(whereAnalyses[cle]);
     }
+    // Une analyse sans aucune position vaut 100/100 par construction : la laisser entrer
+    // dans la moyenne faisait monter au podium les véhicules les plus mal suivis.
+    expect(whereAnalyses.gpsPoints).toEqual({ gt: 0 });
     // …et il ne compte que les trajets TERMINÉS, comme le reste des agrégats.
     expect(whereReal.endedAt).toEqual({ not: null });
   });

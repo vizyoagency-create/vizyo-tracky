@@ -49,7 +49,7 @@ function service(opts: { passage?: Passage | null; ouverts?: number; casse?: boo
     gpsZoneDiagnostic: { count: jest.fn().mockResolvedValue(opts.ouverts ?? 0) },
   };
   const registry = { getCronJobs: () => new Map(), getIntervals: () => [] };
-  return new BackgroundTasksService(prisma as never, registry as never);
+  return new BackgroundTasksService(prisma as never, registry as never, { resteRecitTotal: async () => ({ aNarrer: 0, enAttenteDeRecalcul: 0, libelle: 'analyses sans recit que l agent prendra' }) } as never);
 }
 
 const agentDe = async (svc: BackgroundTasksService) =>

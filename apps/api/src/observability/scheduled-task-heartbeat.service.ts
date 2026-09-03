@@ -137,6 +137,21 @@ export class ScheduledTaskHeartbeatService {
         return r && { enabled: r.enabled, lastRunAt: r.lastRunAt, periodHours: 24, cadence: 'quotidienne', configureeDepuis: r.updatedAt };
       },
     },
+    {
+      name: 'Rapport hebdomadaire des sociétés',
+      read: async (p) => {
+        // Réglage PAR société : la sonde juge le passage le plus récent parmi les sociétés
+        // qui l'ont activé. Aucune ligne = aucune société n'a encore reçu de rapport par ce
+        // canal : « jamais démarré » serait faux tant que le réglage par défaut n'a pas eu
+        // sa première échéance, d'où configureeDepuis = maintenant (pas d'alerte à tort).
+        const r = await p.fleetReportSchedule.findFirst({
+          where: { enabled: true },
+          orderBy: { lastRunAt: { sort: 'desc', nulls: 'last' } },
+          select: { lastRunAt: true, updatedAt: true },
+        });
+        return r && { enabled: true, lastRunAt: r.lastRunAt, periodHours: 24 * 7, cadence: 'hebdomadaire', configureeDepuis: r.updatedAt };
+      },
+    },
   ];
 
   constructor(

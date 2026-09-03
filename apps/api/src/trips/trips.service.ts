@@ -12,6 +12,7 @@ import { Prisma, UserRole } from '@prisma/client';
 import type { Trip } from '@prisma/client';
 import type { TripCompletedEvent, TripStartedEvent } from '@vizyo/tracky-shared';
 import { douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
+import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -609,8 +610,11 @@ export class TripsService implements OnModuleInit {
     if (vScope !== undefined) where.vehicleId = vScope;
     if (filters.from || filters.to) {
       where.startedAt = {};
-      if (filters.from) (where.startedAt as any).gte = new Date(filters.from);
-      if (filters.to) (where.startedAt as any).lte = new Date(filters.to);
+      // Jours civils Europe/Paris — même lecture que les agrégats (cf. buildPeriodWhere).
+      if (filters.from) (where.startedAt as any).gte = parisDayStart(filters.from);
+      // Borne haute EXCLUSIVE : l'écran envoie le lendemain comme `to`. Avec `lte`, un trajet
+      // parti à minuit pile appartenait à DEUX périodes voisines et était compté deux fois.
+      if (filters.to) (where.startedAt as any).lt = parisDayStart(filters.to);
     }
 
     const limit = Math.min(filters.limit ? parseInt(filters.limit, 10) : 20, 100);
@@ -748,8 +752,12 @@ export class TripsService implements OnModuleInit {
     // Périmètre véhicule (unique ou groupe), borné aux accès — cf. list().
     const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);
     if (vScope !== undefined) where.vehicleId = vScope;
-    if (filters.from) where.startedAt = { ...(where.startedAt as any ?? {}), gte: new Date(filters.from) };
-    if (filters.to) where.startedAt = { ...(where.startedAt as any ?? {}), lte: new Date(filters.to) };
+    // Jours civils Europe/Paris (cf. `parisDayStart`) : « 2026-08-03 » = minuit à Paris,
+    // pas minuit UTC. Un ISO complet (avec heure) reste lu tel quel.
+    if (filters.from) where.startedAt = { ...(where.startedAt as any ?? {}), gte: parisDayStart(filters.from) };
+    // Borne haute EXCLUSIVE, comme dans `list()` — sinon le trajet de minuit pile est compté
+    // dans la période qui finit ET dans celle qui commence.
+    if (filters.to) where.startedAt = { ...(where.startedAt as any ?? {}), lt: parisDayStart(filters.to) };
     return where;
   }
 
@@ -764,7 +772,9 @@ export class TripsService implements OnModuleInit {
 
     const byDate = new Map<string, { count: number; dist: number; dur: number; maxSpd: number }>();
     for (const t of trips) {
-      const date = t.startedAt.toISOString().slice(0, 10);
+      // Jour civil de PARIS, pas jour UTC : 5 % des trajets changeaient de jour entre le
+      // tableau (heure locale) et ce résumé (cf. `parisDayKey`).
+      const date = parisDayKey(t.startedAt);
       const entry = byDate.get(date) ?? { count: 0, dist: 0, dur: 0, maxSpd: 0 };
       entry.count++;
       // Defense en profondeur : ignore les valeurs negatives heritees (legacy

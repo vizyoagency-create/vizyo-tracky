@@ -110,6 +110,11 @@ export interface SendEmailParams {
   /** Flotte concernée si connue (sinon lue depuis context.fleetId). */
   fleetId?: string | null;
   context?: Record<string, unknown>;
+  /**
+   * Pièces jointes (rapport hebdomadaire PDF). Le courrier hebdo annonçait « en pièce
+   * jointe » depuis 2026-01 sans que rien ne soit joint : le paramètre n'existait pas.
+   */
+  attachments?: { filename: string; content: Buffer }[];
 }
 
 @Injectable()
@@ -160,6 +165,9 @@ export class EmailService {
         subject: params.subject,
         html: params.html,
         text: params.text,
+        attachments: params.attachments?.length
+          ? params.attachments.map((a) => ({ filename: a.filename, content: a.content }))
+          : undefined,
       });
       if (result.error) {
         this.logger.warn(`Email send failed to ${params.to}: ${result.error.message}`);

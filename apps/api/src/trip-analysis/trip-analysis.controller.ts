@@ -230,8 +230,17 @@ export class TripAnalysisController {
     return this.svc.get(req.user, tripId);
   }
 
-  /** POST /api/trip-analysis/:tripId — (ré)analyse le trajet et persiste. */
+  /**
+   * POST /api/trip-analysis/:tripId — (ré)analyse le trajet et persiste.
+   *
+   * ⚠️ ÉCRITURE, pas lecture : l'appel relit jusqu'à cinq mille positions, réinterroge les
+   * limites de vitesse, et ÉCRASE tous les chiffres de l'analyse existante. Il était ouvert à
+   * `trips_view`, c'est-à-dire à quiconque peut simplement consulter un trajet — un rôle de
+   * lecture pouvait donc remplacer les chiffres d'une analyse pour toute la société. Réservé
+   * aux rôles qui gèrent la flotte, comme la suppression ou la réaffectation d'un trajet.
+   */
   @Post(':tripId')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('trips_view')
   analyze(@Req() req: AuthenticatedRequest, @Param('tripId') tripId: string): Promise<TripAnalysisDto> {
     return this.svc.analyze(req.user, tripId);

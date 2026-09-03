@@ -58,7 +58,9 @@ export class TripAnalysisLlmService {
     const r = useMixte ? await this.runEnsemble(row, user.id) : await this.run(row, user.id, preferProvider);
     await this.prisma.tripAnalysis.update({
       where: { tripId },
-      data: { narrative: r.narrative, advice: r.advice, trustScore: r.trustScore, provider: r.provider },
+      // `narratedAt` : date du TEXTE. Un recalcul ultérieur remplacera les chiffres sans y
+      // toucher, et l'écran pourra dire que le récit décrit un état antérieur.
+      data: { narrative: r.narrative, advice: r.advice, trustScore: r.trustScore, provider: r.provider, narratedAt: new Date() },
     });
     const dto = await this.analysis.get(user, tripId);
     if (!dto) throw new NotFoundException('Trajet introuvable');

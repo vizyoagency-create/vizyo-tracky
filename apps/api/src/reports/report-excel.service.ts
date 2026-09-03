@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
+import { formatFleetDate, formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
@@ -97,7 +98,7 @@ export class ReportExcelService {
 
     // 3) Trajets du véhicule sur la période (capés, triés). PAS de positions.
     const trips = await this.prisma.trip.findMany({
-      where: { vehicleId, startedAt: { gte: from, lte: to }, endedAt: { not: null } },
+      where: { vehicleId, startedAt: { gte: from, lt: to }, endedAt: { not: null } },
       select: {
         startedAt: true,
         endedAt: true,
@@ -223,8 +224,9 @@ export class ReportExcelService {
       ['Plaque', vehicle.plate],
       ['Marque / modèle', marqueModele],
       ['Flotte', vehicle.fleet?.name ?? '—'],
-      ['Période (du)', fmtDate(from)],
-      ['Période (au)', fmtDate(to)],
+      // Fin INCLUSE : la borne `to` est le lendemain minuit, « au 03/09 » aurait promis un jour de plus.
+      ['Période (du)', formatFleetDate(from)],
+      ['Période (au, inclus)', formatFleetDate(new Date(to.getTime() - 1))],
     ];
     let r = 3;
     for (const [label, value] of headerRows) {
@@ -290,8 +292,11 @@ export class ReportExcelService {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
     ws.columns = [
-      { header: 'Départ', key: 'start', width: 20, style: { numFmt: 'yyyy-mm-dd hh:mm' } },
-      { header: 'Arrivée', key: 'end', width: 20, style: { numFmt: 'yyyy-mm-dd hh:mm' } },
+      // Heure de PARIS, écrite en texte : une cellule Date passe à Excel un instant UTC, que
+      // le tableur affiche sans fuseau — un départ à 07:30 se lisait 05:30, alors que le PDF
+      // du même véhicule disait 07:30.
+      { header: 'Départ (heure de Paris)', key: 'start', width: 20 },
+      { header: 'Arrivée (heure de Paris)', key: 'end', width: 20 },
       { header: 'Durée', key: 'dur', width: 12 },
       { header: 'Distance (km)', key: 'km', width: 14, style: { numFmt: '#,##0.0' } },
       { header: 'V. moy (km/h)', key: 'avg', width: 14, style: { numFmt: '#,##0.0' } },
@@ -309,8 +314,8 @@ export class ReportExcelService {
       sumKm += km;
       sumDur += dur;
       ws.addRow({
-        start: t.startedAt,
-        end: t.endedAt,
+        start: formatFleetDateTime(t.startedAt),
+        end: t.endedAt ? formatFleetDateTime(t.endedAt) : '',
         dur: fmtDuration(dur),
         km,
         avg: round1(Math.max(0, t.avgSpeed)),
@@ -357,7 +362,8 @@ export class ReportExcelService {
 
     const byDate = new Map<string, { count: number; km: number; dur: number; max: number }>();
     for (const t of trips) {
-      const date = t.startedAt.toISOString().slice(0, 10);
+      // Jour civil de Paris — même règle que le résumé journalier de l'écran.
+      const date = parisDayKey(t.startedAt);
       const e = byDate.get(date) ?? { count: 0, km: 0, dur: 0, max: 0 };
       e.count++;
       e.km += Math.max(0, t.distanceKm);
@@ -456,8 +462,9 @@ export class ReportExcelService {
     return plate.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'vehicule';
   }
 
+  /** Jours civils de Paris, fin INCLUSE (la borne `to` est le lendemain minuit). */
   private dateSuffix(from: Date, to: Date): string {
-    return `${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}`;
+    return `${parisDayKey(from)}_${parisDayKey(new Date(to.getTime() - 1))}`;
   }
 }
 
@@ -528,7 +535,7 @@ function fmtDuration(totalSeconds: number): string {
   return `${m}min`;
 }
 
-/** Date ISO courte lisible `yyyy-mm-dd HH:MM` (UTC). */
+/** Date lisible « 24/07/2026 07:38 », heure de Paris — comme le PDF et les e-mails. */
 function fmtDate(d: Date): string {
-  return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`;
+  return formatFleetDateTime(d);
 }

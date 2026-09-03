@@ -13,13 +13,16 @@ import { ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { ReportExcelService } from './report-excel.service';
+import { parisDayStart } from '../common/utils/datetime';
 import type { AuthUser } from '../auth/types/auth-user';
 
 const FLEET_ID = 'fleet-1';
 const VEH_A = 'veh-a';
 const VEH_X = 'veh-x'; // hors périmètre
-const FROM = new Date('2026-06-01T00:00:00.000Z');
-const TO = new Date('2026-06-30T23:59:59.000Z');
+// Bornes telles que le contrôleur les produit : jours civils de Paris, fin EXCLUSIVE
+// (lendemain minuit). Le nom de fichier, lui, affiche la fin INCLUSE : 2026-06-30.
+const FROM = parisDayStart('2026-06-01');
+const TO = parisDayStart('2026-07-01');
 
 function makeUser(role: UserRole, fleetId: string | null = FLEET_ID): AuthUser {
   return {
@@ -92,7 +95,7 @@ describe('ReportExcelService.generate', () => {
     const trajets = wb.getWorksheet('Trajets')!;
     const header = (trajets.getRow(1).values as unknown[]).slice(1); // index 0 vide chez exceljs
     expect(header).toEqual([
-      'Départ', 'Arrivée', 'Durée', 'Distance (km)',
+      'Départ (heure de Paris)', 'Arrivée (heure de Paris)', 'Durée', 'Distance (km)',
       'V. moy (km/h)', 'V. max (km/h)', 'Conducteur', 'Notes',
     ]);
 

@@ -40,7 +40,7 @@ describe("BackgroundTasksService — la garde des trajets vue de l'écran (TRK-0
       prisma['systemActivityLog'] = { count: jest.fn().mockResolvedValue(opts.ticksAnnules ?? 0) };
     }
     const registry = { getCronJobs: () => new Map(), getIntervals: () => [] };
-    return new BackgroundTasksService(prisma as never, registry as never);
+    return new BackgroundTasksService(prisma as never, registry as never, { resteRecitTotal: async () => ({ aNarrer: 0, enAttenteDeRecalcul: 0, libelle: 'analyses sans recit que l agent prendra' }) } as never);
   }
 
   async function tacheTrip(svc: BackgroundTasksService) {

@@ -138,7 +138,7 @@ export class ReportsStatsService {
     from: Date,
     to: Date,
     requestedBy?: { role: UserRole | string; fleetId: string | null; accessibleVehicleIds?: string[] | 'ALL' },
-    filters?: { vehicleIds?: string[]; maxRecentTrips?: number },
+    filters?: { vehicleIds?: string[]; maxRecentTrips?: number; topN?: number },
   ): Promise<FleetStatsReport> {
     if (requestedBy && requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (requestedBy.fleetId !== fleetId) {
@@ -272,16 +272,24 @@ export class ReportsStatsService {
     // Mode vie privée (RGPD) : exclut de TOUTES les agrégations les véhicules
     // actuellement en mode privé (trajets + alertes portant une localisation).
     const privacyExclude = { NOT: { vehicle: { privacyModeEnabled: true } } } as const;
+    // ⚠️ UN TRAJET APPARTIENT AU JOUR OÙ IL PART.
+    //
+    // Cette requête retenait les trajets qui CHEVAUCHENT la période (`startedAt <= to` et
+    // `endedAt >= from`), alors que l'écran, le CSV et l'Excel retiennent ceux qui y
+    // DÉMARRENT. Un trajet parti à 23 h 50 la veille entrait donc dans le PDF sans figurer
+    // dans la liste qui l'avait produit — et le total de kilomètres ne tombait jamais juste.
+    // Même convention partout : `startedAt` dans [from, to[, trajet terminé.
     const tripWhere = {
       fleetId,
       ...tripVehicleFilter,
-      startedAt: { lte: to },
-      endedAt: { gte: from, not: null },
+      startedAt: { gte: from, lt: to },
+      endedAt: { not: null },
       ...privacyExclude,
     } as const;
     const alertWhere = {
       fleetId,
-      createdAt: { gte: from, lte: to },
+      // Borne haute exclusive, comme les trajets : `to` est le lendemain minuit.
+      createdAt: { gte: from, lt: to },
       // Quand un filtre vehicleIds est actif, les alertes sans vehicleId
       // (ex. tracker isole) sont exclues par definition du sous-ensemble.
       ...(isVehicleScopeRestricted ? { vehicleId: { in: scopedVehicleIds } } : {}),
@@ -345,7 +353,12 @@ export class ReportsStatsService {
     const tripCount = tripAgg._count._all;
     const totalKm = tripAgg._sum.distanceKm ?? 0;
     const totalSeconds = tripAgg._sum.durationSeconds ?? 0;
-    const avgSpeedKmh = tripAgg._avg.avgSpeed ?? 0;
+    // ⚠️ Vitesse moyenne = km parcourus / heures de conduite, PAS la moyenne des moyennes
+    //    de trajet (`_avg.avgSpeed`). Un trajet de 400 m à 8 km/h pesait autant qu'un
+    //    trajet de 180 km à 110 km/h : le PDF disait 45,1 km/h là où l'Excel (pondéré par
+    //    la durée) disait 39,3 pour le même véhicule et la même période. Une seule
+    //    définition, celle qu'un gestionnaire comprend, partagée par tous les exports.
+    const avgSpeedKmh = totalSeconds > 0 ? totalKm / (totalSeconds / 3600) : 0;
     const maxSpeedKmh = tripAgg._max.maxSpeed ?? 0;
     const activeVehicleIds = new Set(tripsByVehicle.map((g) => g.vehicleId));
 
@@ -456,7 +469,9 @@ export class ReportsStatsService {
         estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(totalLiters * observedPriceEurL * 100) / 100 : null,
         observedSampleCount,
       },
-      topVehicles: topVehicles.slice(0, 10),
+      // Le curseur « Top N » de la modale ne pouvait rien au-delà de 10 : tranché ici avant
+      // que le PDF ne le lise. Plafond 50, comme le DTO.
+      topVehicles: topVehicles.slice(0, Math.min(50, Math.max(1, Math.trunc(filters?.topN ?? 10)))),
       // V1.10 (Sprint 2 perf) — pas de slice ici, le take=recentTripsCap dans
       // le findMany ci-dessus a deja limite cote DB.
       recentTrips: recentTripsRaw.map((t) => ({

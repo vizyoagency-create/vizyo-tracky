@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { formatFleetDate, formatFleetTime, parisDayKey } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface RequestedBy {
@@ -31,7 +32,7 @@ export class SpeedReportService {
 
     const trip = await this.prisma.trip.findFirst({
       where,
-      include: { vehicle: { include: { fleet: true } } },
+      include: { vehicle: { include: { fleet: true, tracker: { select: { id: true, imei: true } } } } },
     });
     if (!trip) throw new NotFoundException('Trajet introuvable');
 
@@ -48,27 +49,28 @@ export class SpeedReportService {
       throw new ForbiddenException('Véhicule en mode vie privée : rapport indisponible tant que le mode privé est actif.');
     }
 
-    // Resolve tracker IMEI via separate query (Trip has no tracker relation).
-    let imei = 'N/A';
-    if (trip.trackerId) {
-      const tracker = await this.prisma.tracker.findUnique({
-        where: { id: trip.trackerId },
-        select: { imei: true },
-      });
+    // Boîtier du trajet, sinon boîtier ACTUEL du véhicule : les trajets recalculés portent
+    // parfois un trackerId nul, et le rapport sortait alors « 0 mesure, graphe vide » sur un
+    // trajet à 180 km/h — présenté comme pièce disciplinaire. Le repli est borné à la fenêtre
+    // du trajet, donc sans risque de mélanger deux véhicules.
+    const trackerId = trip.trackerId ?? trip.vehicle?.tracker?.id ?? null;
+    let imei = trip.vehicle?.tracker?.imei ?? 'N/A';
+    if (trip.trackerId && trip.trackerId !== trip.vehicle?.tracker?.id) {
+      const tracker = await this.prisma.tracker.findUnique({ where: { id: trip.trackerId }, select: { imei: true } });
       if (tracker) imei = tracker.imei;
     }
 
     // #22 — borne anti-OOM : sans `take`, un trip tres long chargeait potentiellement
     // 100k+ positions (puis 1 <tr> HTML par point). 5000 couvre ~40h a 30s = la
     // quasi-totalite des trajets reels.
-    // #24 — si le trip n'a pas de trackerId, NE PAS requeter avec trackerId=undefined :
-    // Prisma ignorerait le filtre -> dump cross-tracker de toutes les positions de la
-    // fenetre temporelle. On renvoie alors un rapport sans positions.
+    // #24 — sans aucun trackerId, NE PAS requeter avec trackerId=undefined : Prisma
+    // ignorerait le filtre -> dump cross-tracker de toutes les positions de la fenetre
+    // temporelle. On renvoie alors un rapport sans positions, qui le DIT.
     const SPEED_REPORT_MAX_POSITIONS = 5000;
-    const positions: PositionRow[] = trip.trackerId
+    const positions: PositionRow[] = trackerId
       ? await this.prisma.position.findMany({
           where: {
-            trackerId: trip.trackerId,
+            trackerId,
             timestamp: { gte: trip.startedAt, lte: trip.endedAt ?? new Date() },
           },
           orderBy: { timestamp: 'asc' },
@@ -90,10 +92,12 @@ export class SpeedReportService {
     const model = trip.vehicle?.model ?? '';
     const vehicleName = `${brand} ${model}`.trim() || plate;
     const fleetName = trip.vehicle?.fleet?.name ?? 'N/A';
-    const startDate = trip.startedAt.toISOString().slice(0, 10);
-    const startTime = trip.startedAt.toISOString().slice(11, 19);
-    const endTime = trip.endedAt?.toISOString().slice(11, 19) ?? '—';
-    const now = new Date().toISOString().slice(0, 10);
+    // Heure de PARIS partout : le document est lu par un employeur français, et un départ
+    // à 07:30 s'y affichait 05:30 — dans une pièce censée être opposable.
+    const startDate = formatFleetDate(trip.startedAt);
+    const startTime = formatFleetTime(trip.startedAt);
+    const endTime = trip.endedAt ? formatFleetTime(trip.endedAt) : '—';
+    const now = formatFleetDate(new Date());
 
     const speedPositions = positions.filter((p) => p.speedKmh > 90);
     const avgSpeedExcess = speedPositions.length > 0
@@ -120,7 +124,7 @@ export class SpeedReportService {
       avgSpeedExcess,
     });
 
-    const filename = `rapport-vitesse-${plate.replace(/\s/g, '-')}-${startDate}.html`;
+    const filename = `rapport-vitesse-${plate.replace(/\s/g, '-')}-${parisDayKey(trip.startedAt)}.html`;
     return { html, filename };
   }
 
@@ -138,10 +142,13 @@ export class SpeedReportService {
     speedExcessCount: number;
     avgSpeedExcess: number;
   }): string {
+    // Le pic est la mesure la plus rapide PARMI LES POSITIONS (argmax) : comparer à
+    // `trip.maxSpeed` (calculé ailleurs, arrondi autrement) ne surlignait jamais rien.
+    const peakSpeed = d.positions.reduce((m, p) => Math.max(m, p.speedKmh), 0);
     const positionRows = d.positions.map((p) => {
-      const t = p.timestamp.toISOString().slice(11, 19);
+      const t = formatFleetTime(p.timestamp);
       const over = p.speedKmh > 90;
-      const peak = p.speedKmh === d.trip.maxSpeed;
+      const peak = d.positions.length > 0 && p.speedKmh === peakSpeed && peakSpeed > 0;
       const cls = peak ? 'speed-peak' : over ? 'speed-over' : '';
       const ign = p.ignition === true ? 'ON' : p.ignition === false ? 'OFF' : '—';
       return `<tr class="${cls}"><td>${t}</td><td>${p.speedKmh.toFixed(1)}</td><td>${p.lat.toFixed(5)}</td><td>${p.lng.toFixed(5)}</td><td>${p.valid ? '✓' : '✗'}</td><td>${ign}</td></tr>`;
@@ -152,10 +159,23 @@ export class SpeedReportService {
       .filter((_, i) => i % Math.max(1, Math.floor(d.positions.length / 80)) === 0)
       .map((p) => {
         const pct = (p.speedKmh / maxBarSpeed) * 100;
-        const color = p.speedKmh > 90 ? (p.speedKmh === d.trip.maxSpeed ? '#991b1b' : '#dc2626') : '#059669';
-        const t = p.timestamp.toISOString().slice(11, 16);
+        const color = p.speedKmh > 90 ? (p.speedKmh === peakSpeed ? '#991b1b' : '#dc2626') : '#059669';
+        const t = formatFleetTime(p.timestamp);
         return `<div class="bar" style="height:${pct}%" title="${t} — ${p.speedKmh.toFixed(1)} km/h"><div class="bar-fill" style="background:${color}"></div></div>`;
       }).join('\n');
+
+    // Sans position, les sections 2 et 3 (profil, chronologie) n'ont rien à montrer : un
+    // graphe vide et un tableau vide dans une pièce disciplinaire, c'est pire qu'une absence.
+    const hasPositions = d.positions.length > 0;
+    const noPositionsBanner = hasPositions ? '' : `
+<div class="warning-box" style="border-color:#dc2626;background:#fef2f2">
+<strong style="color:#991b1b">Positions GPS indisponibles pour ce trajet.</strong> Le profil de vitesse et la chronologie ne peuvent pas être établis : seules les valeurs de synthèse du trajet (vitesse maximale et moyenne, distance) sont disponibles. Les positions détaillées ont pu être purgées (rétention) ou ne pas être rattachées à ce boîtier.
+</div>`;
+    const consecutiveNote = d.speedExcessCount > 1
+      ? `${d.speedExcessCount} mesures au-dessus de 90 km/h rendent improbable un artefact GPS isolé.`
+      : d.speedExcessCount === 1
+        ? 'Une seule mesure au-dessus de 90 km/h : un artefact GPS isolé ne peut pas être exclu.'
+        : 'Aucune mesure au-dessus de 90 km/h parmi les positions disponibles.';
 
     return `<!DOCTYPE html>
 <html lang="fr">
@@ -163,14 +183,12 @@ export class SpeedReportService {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rapport Vitesse — ${d.plate} — ${d.startDate} — Vizyo Tracky</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{--green:#059669;--green-light:#10E0A0;--red:#dc2626;--red-bg:#fef2f2;--orange:#ea580c;--text:#1e293b;--text-light:#64748b;--border:#e2e8f0;--bg-alt:#f8fafc}
 @page{size:A4;margin:20mm 18mm 25mm 18mm}
 @media print{body{font-size:9pt;margin:0;padding:0}.page-break{page-break-before:always}.no-break{page-break-inside:avoid}.cover-page{page-break-after:always}table{font-size:7.5pt}h2{page-break-after:avoid}}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',system-ui,sans-serif;color:var(--text);background:#fff;line-height:1.6;font-size:10.5pt}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--text);background:#fff;line-height:1.6;font-size:10.5pt}
 .container{max-width:210mm;margin:0 auto;padding:0 15mm}
 .cover-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border-bottom:4px solid var(--green)}
 .cover-page h1{font-size:2rem;font-weight:800;margin:.5rem 0}
@@ -237,14 +255,15 @@ tr.speed-peak{background:#991b1b;color:#fff;font-weight:700}
 <table>
 <tr><td style="font-weight:600;width:40%">Plaque d'immatriculation</td><td>${d.plate}</td></tr>
 <tr><td style="font-weight:600">Véhicule</td><td>${d.vehicleName}</td></tr>
-<tr><td style="font-weight:600">Heure de départ (UTC)</td><td>${d.startTime}</td></tr>
-<tr><td style="font-weight:600">Heure d'arrivée (UTC)</td><td>${d.endTime}</td></tr>
+<tr><td style="font-weight:600">Heure de départ (heure de Paris)</td><td>${d.startTime}</td></tr>
+<tr><td style="font-weight:600">Heure d'arrivée (heure de Paris)</td><td>${d.endTime}</td></tr>
 <tr><td style="font-weight:600">Mesures > 90 km/h</td><td style="color:var(--red);font-weight:700">${d.speedExcessCount} positions</td></tr>
 <tr><td style="font-weight:600">Vitesse moyenne durant excès</td><td style="color:var(--red);font-weight:700">${d.avgSpeedExcess.toFixed(1)} km/h</td></tr>
 </table>
+${noPositionsBanner}
 </section>
 
-<section class="page-break">
+${hasPositions ? `<section class="page-break">
 <h2>2. Profil de vitesse</h2>
 <div class="chart-container">
 <div class="chart" style="position:relative">
@@ -263,12 +282,12 @@ ${chartBars}
 <section class="page-break">
 <h2>3. Chronologie détaillée</h2>
 <table>
-<thead><tr><th>Heure (UTC)</th><th>Vitesse (km/h)</th><th>Latitude</th><th>Longitude</th><th>GPS</th><th>Contact</th></tr></thead>
+<thead><tr><th>Heure (Paris)</th><th>Vitesse (km/h)</th><th>Latitude</th><th>Longitude</th><th>GPS</th><th>Contact</th></tr></thead>
 <tbody>
 ${positionRows}
 </tbody>
 </table>
-</section>
+</section>` : ''}
 
 <section class="page-break no-break">
 <h2>4. Fiabilité de la mesure GPS</h2>
@@ -282,8 +301,8 @@ ${positionRows}
 <tr class="speed-over"><td><strong>Total pire cas</strong></td><td><strong>±3 km/h</strong></td><td><strong>${(d.trip.maxSpeed - 3).toFixed(1)} à ${(d.trip.maxSpeed + 3).toFixed(1)} km/h</strong></td></tr>
 </tbody>
 </table>
-<p style="margin-top:1rem"><strong>Garanties d'intégrité :</strong> données brutes (aucun lissage serveur), horodatage double (GPS + serveur), seules les positions avec fix GPS valide sont incluses, conversion par facteur exact international 1.852.</p>
-<p style="margin-top:.5rem">${d.speedExcessCount} mesures consécutives au-dessus de 90 km/h excluent un artefact GPS isolé.</p>
+<p style="margin-top:1rem"><strong>Garanties d'intégrité :</strong> données brutes (aucun lissage serveur), horodatage double (GPS + serveur), la colonne « GPS » indique pour chaque mesure si le fix satellite était valide, conversion par facteur exact international 1.852.</p>
+<p style="margin-top:.5rem">${consecutiveNote}</p>
 </section>
 
 <section class="page-break no-break">

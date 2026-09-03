@@ -119,6 +119,62 @@ const MAX_ITEMS_PER_RUN = 300;
 /** Historique conservé (runs récents) — le reste est élagué à chaque insertion. */
 const KEEP_RUNS = 100;
 
+/**
+ * FENÊTRE DE NARRATION — la borne basse des trajets que l'agent local ira réellement chercher.
+ *
+ * ⚠️ CE N'EST PAS UN RÉGLAGE DE CET ÉCRAN, C'EST LA COPIE D'UN PARAMÈTRE QUI VIT AILLEURS.
+ *
+ * Le récit n'est pas écrit par l'API : il est écrit par `outils/agent-recit-trajet.cjs`, sur un
+ * poste, et cet agent choisit ses trajets avec `trips."startedAt" > now() - interval '<H> hours'`
+ * (option `--heures`). Le compteur « reste à faire » de cet écran doit donc appliquer LA MÊME
+ * borne, sinon il annonce un travail que personne ne fera — ou tait celui qui reste.
+ *
+ * 9 000 h (~375 j) est la valeur de la tâche planifiée qui couvre l'historique
+ * (`outils/rattrapage-recits.cmd`, toutes les 2 h), et non les 48 h par défaut du passage de nuit
+ * (`outils/agent-recit-trajet.cmd`) : les deux tâches tournent, le travail restant est donc
+ * l'UNION des deux, c'est-à-dire la plus large des deux fenêtres. 375 j dépassent la rétention des
+ * trajets (`TRIPS_RETENTION_MONTHS`, 12 mois) : en pratique, tout trajet encore en base est dans
+ * la fenêtre — c'est voulu, un récit ne demande que la ligne d'analyse.
+ *
+ * ⚠️ AUCUN PLANCHER DE RÉTENTION ICI, contrairement à `sansAnalyse`. `horizonRetention()` borne ce
+ * qui est encore ANALYSABLE (l'analyse relit les positions GPS, purgées à 60 j). Narrer ne relit
+ * rien d'autre que `trip_analyses` : appliquer ce plancher au récit masquerait du travail bien
+ * réel — au 2026-09-02, 552 analyses de « mh cars » et 205 d'A2R, toutes au-delà de 62 jours,
+ * que le rattrapage a précisément pour mission de reprendre.
+ *
+ * `NARRATION_WINDOW_HOURS` permet de recoller sans redéploiement si la tâche planifiée change de
+ * `--heures` — la valeur par défaut reste la vérité tant que personne n'y touche.
+ */
+const FENETRE_RECIT_HEURES_DEFAUT = 9000;
+
+/**
+ * La fenêtre de narration effective, en heures. Bornée à [1, 87 600] (10 ans) : une valeur
+ * absente, nulle ou absurde dans l'environnement ne doit pas transformer le compteur en zéro
+ * silencieux — le défaut est plus juste qu'un réglage cassé.
+ */
+export function fenetreRecitHeures(): number {
+  const brut = Number(process.env.NARRATION_WINDOW_HOURS ?? FENETRE_RECIT_HEURES_DEFAUT);
+  if (!Number.isFinite(brut) || brut <= 0) return FENETRE_RECIT_HEURES_DEFAUT;
+  return Math.min(Math.round(brut), 87_600);
+}
+
+/**
+ * Ce que le compteur « sans récit » compte, en UNE PHRASE.
+ *
+ * Un nombre sans définition se fait interpréter : « 132 récits à écrire » a déjà été lu comme
+ * « l'agent est en panne » alors qu'il n'avait rien à faire (les 132 portaient sur des trajets
+ * bruts, que l'agent refuse de narrer). La phrase voyage avec le nombre — ici pour le journal et
+ * l'écran de supervision des tâches, qui affichent le même total.
+ */
+export function libelleResteRecit(heures = fenetreRecitHeures()): string {
+  const jours = Math.round(heures / 24);
+  return (
+    `analyses sans récit dont le trajet a été recalculé (segmentation stable) et a démarré ` +
+    `il y a moins de ${jours} j — le périmètre exact de l'agent local, toutes sociétés, ` +
+    `que l'option IA soit active ou non`
+  );
+}
+
 type MutableStats = {
   fleets: number;
   vehicles: number;
@@ -904,20 +960,49 @@ export class TripAutomationService {
    *
    * Quatre chiffres, parce que quatre CAUSES différentes, et qu'on n'agit pas pareil :
    *   — sans analyse : le cron serveur doit passer (positions encore là) ;
-   *   — sans récit (trajets recalculés) : l'agent sur poste doit passer — et il ne sert que
-   *     les sociétés à IA active, d'où la colonne `aiEnabled` juste à côté ;
+   *   — sans récit (trajets recalculés, dans la fenêtre de narration) : l'agent sur poste doit
+   *     passer. Il narre TOUTES les sociétés, option IA active ou non (décision 2026-09-02) :
+   *     `aiEnabled` est affiché à côté parce qu'il gouverne la LECTURE du récit par le client,
+   *     jamais sa rédaction. Filtrer ce compteur dessus afficherait « 0 » là où l'agent a du
+   *     travail — l'agent lui-même le faisait avant le 2026-09-02, et 5 128 analyses sont
+   *     restées sans récit chez les sociétés à option coupée, sans que rien ne le montre ;
    *   — sans récit sur trajets BRUTS : ni l'un ni l'autre tant que le recalcul n'est pas
    *     passé (l'agent refuse de narrer ce que le recalcul détruirait) ;
    *   — figés : positions purgées ou absentes, ne seront jamais analysés. Un FAIT, pas un
    *     retard — les compter évite de croire qu'il reste du travail là où il n'y en a plus.
+   *
+   * ── « SANS RÉCIT » EST LA COPIE EXACTE DE LA REQUÊTE DE L'AGENT ──────────────────────
+   *
+   * Ce nombre n'a de sens que s'il annonce le travail que l'agent local FERA. Sa définition est
+   * donc décalquée de `resteAFaire()` / `trajetsANarrer()` (`outils/agent-recit-trajet.cjs`),
+   * clause par clause, et pas « les analyses sans récit » au sens large :
+   *   — `a.narrative IS NULL` — le seul état que l'agent regarde (un récit écrit n'est jamais
+   *     repris, même périmé) ;
+   *   — `t."segmentationSource" = 'recompute'` — l'agent ne narre pas un trajet que le recalcul
+   *     détruira (relevé du 21/08 : 493 récits orphelins) ;
+   *   — `t."startedAt" > now() - <fenêtre>` — la fenêtre de l'agent, sur la date du TRAJET et
+   *     non celle de la ligne d'analyse (cf. `FENETRE_RECIT_HEURES_DEFAUT`) ;
+   *   — les jointures `vehicles` puis `fleets` — l'agent les fait aussi : une analyse dont le
+   *     véhicule ou la société n'existe plus n'est ramenée par personne, la compter serait un
+   *     reste-à-faire immortel.
+   *
+   * La société est celle du VÉHICULE (`v."fleetId"`), pas la colonne dénormalisée
+   * `trip_analyses."fleetId"` : c'est le chemin que l'agent emprunte, et c'est la seule façon
+   * que la SOMME des lignes de ce tableau égale le nombre que l'agent lit en base.
+   *
+   * Les trajets bruts subissent la MÊME fenêtre : hors fenêtre, ni le recalcul ni le récit ne
+   * viendront, et les afficher comme « à faire » ferait ré-attendre un travail qui n'arrivera pas.
    *
    * SQL brut : ni `Trip` ↔ `TripAnalysis` ni le NOT EXISTS ne s'expriment avec le client
    * Prisma. Les comptes sont castés en int : un `count(*)` Postgres arrive en BigInt, que
    * JSON ne sait pas sérialiser.
    */
   async backlog(): Promise<TripAutomationBacklogDto> {
-    const horizonMs = this.horizonRetention();
+    const maintenant = new Date();
+    const horizonMs = this.horizonRetention(maintenant.getTime());
     const horizon = horizonMs > 0 ? new Date(horizonMs) : new Date(0);
+    // Même instant de référence que `at` : la fenêtre annoncée est celle qui a été mesurée.
+    const depuisRecit = new Date(maintenant.getTime() - fenetreRecitHeures() * 3_600_000);
     const rows = await this.prisma.$queryRaw<
       Array<{ fleetId: string; fleetName: string; aiEnabled: boolean; sansAnalyse: number; sansRecit: number; sansRecitBruts: number; figes: number }>
     >`
@@ -926,22 +1011,60 @@ export class TripAutomationService {
           WHERE t."fleetId" = f.id AND t."endedAt" IS NOT NULL AND t."startedAt" >= ${horizon}
             AND t."segmentationSource" NOT IN ('fige-retention', 'fige-sans-positions')
             AND NOT EXISTS (SELECT 1 FROM trip_analyses a WHERE a."tripId" = t.id))::int AS "sansAnalyse",
-        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
-          WHERE a."fleetId" = f.id AND a.narrative IS NULL AND t."segmentationSource" = 'recompute')::int AS "sansRecit",
-        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
-          WHERE a."fleetId" = f.id AND a.narrative IS NULL AND t."segmentationSource" <> 'recompute')::int AS "sansRecitBruts",
+        (SELECT count(*) FROM trip_analyses a
+          JOIN trips t ON t.id = a."tripId"
+          JOIN vehicles v ON v.id = a."vehicleId"
+          WHERE v."fleetId" = f.id AND a.narrative IS NULL
+            AND t."segmentationSource" = 'recompute'
+            AND t."startedAt" > ${depuisRecit})::int AS "sansRecit",
+        (SELECT count(*) FROM trip_analyses a
+          JOIN trips t ON t.id = a."tripId"
+          JOIN vehicles v ON v.id = a."vehicleId"
+          WHERE v."fleetId" = f.id AND a.narrative IS NULL
+            AND t."segmentationSource" <> 'recompute'
+            AND t."startedAt" > ${depuisRecit})::int AS "sansRecitBruts",
         (SELECT count(*) FROM trips t
           WHERE t."fleetId" = f.id AND t."segmentationSource" IN ('fige-retention', 'fige-sans-positions'))::int AS "figes"
       FROM fleets f
       ORDER BY f.name`;
     return {
-      at: new Date().toISOString(),
+      at: maintenant.toISOString(),
       horizon: horizonMs > 0 ? horizon.toISOString() : null,
+      // La définition voyage AVEC le nombre : « 132 sans récit » sans dire ce qui est compté
+      // se fait interpréter, et c'est exactement l'origine de l'écart entre les deux écrans.
+      resteRecitLibelle: libelleResteRecit(),
       fleets: rows.map((r) => ({
         fleetId: r.fleetId, fleetName: r.fleetName, aiEnabled: !!r.aiEnabled,
         sansAnalyse: Number(r.sansAnalyse), sansRecit: Number(r.sansRecit),
         sansRecitBruts: Number(r.sansRecitBruts), figes: Number(r.figes),
       })),
+    };
+  }
+
+  /**
+   * Le total « encore à narrer », toutes sociétés — le nombre que l'agent local lit en base.
+   *
+   * ⚠️ POINT D'ENTRÉE UNIQUE POUR LES ÉCRANS QUI RÉSUMENT L'AGENT (supervision des tâches).
+   * Un second comptage écrit ailleurs — `tripAnalysis.count({ where: { narrative: null } })` —
+   * annonçait 132 récits à écrire pendant que cet écran-ci en comptait 0 : il ignorait la
+   * segmentation ET la fenêtre, donc comptait du travail que l'agent ne prendra jamais. Deux
+   * chiffres contradictoires pour la même question, et la branche « arriéré résorbé » jamais
+   * atteinte : la tâche était déclarée en panne au moment précis où elle avait fini.
+   *
+   * Somme des lignes de `backlog()` : une seule définition du travail restant, donc aucun risque
+   * de divergence — quitte à payer une requête un peu plus large qu'un `count` direct, sur un
+   * écran d'administration consulté à la main.
+   *
+   * `enAttenteDeRecalcul` est rendu à part et n'est PAS ajouté : ces trajets ne sont pas du
+   * travail pour l'agent tant que le recalcul serveur n'est pas passé. Les additionner ferait
+   * accuser l'agent d'un retard qui n'est pas le sien.
+   */
+  async resteRecitTotal(): Promise<{ aNarrer: number; enAttenteDeRecalcul: number; libelle: string }> {
+    const { fleets } = await this.backlog();
+    return {
+      aNarrer: fleets.reduce((n, f) => n + f.sansRecit, 0),
+      enAttenteDeRecalcul: fleets.reduce((n, f) => n + f.sansRecitBruts, 0),
+      libelle: libelleResteRecit(),
     };
   }
 

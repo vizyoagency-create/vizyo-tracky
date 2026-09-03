@@ -103,12 +103,17 @@ describe('TripsService.periodCharts', () => {
       expect(findMany.mock.calls[0][0].where.NOT).toEqual({ vehicle: { privacyModeEnabled: true } });
     });
 
-    it('applique les bornes de période', async () => {
+    it('applique les bornes de période — en jours civils de Paris, pas en minuit UTC', async () => {
       const { service, findMany } = setup([]);
       await service.periodCharts(ADMIN, { from: '2026-07-01', to: '2026-07-31' });
       const startedAt = findMany.mock.calls[0][0].where.startedAt;
-      expect(startedAt.gte).toEqual(new Date('2026-07-01'));
-      expect(startedAt.lte).toEqual(new Date('2026-07-31'));
+      // « 2026-07-01 » = minuit à Paris = 22:00Z la veille (heure d'été). L'ancienne lecture
+      // (minuit UTC = 02:00 à Paris) excluait les départs entre minuit et deux heures.
+      expect(startedAt.gte).toEqual(new Date('2026-06-30T22:00:00.000Z'));
+      // Borne haute EXCLUSIVE (`lt`) : l'écran envoie le lendemain comme `to`, et un trajet
+      // parti à minuit pile appartenait sinon à deux périodes voisines à la fois.
+      expect(startedAt.lt).toEqual(new Date('2026-07-30T22:00:00.000Z'));
+      expect(startedAt.lte).toBeUndefined();
     });
   });
 

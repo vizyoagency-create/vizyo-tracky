@@ -149,6 +149,13 @@ const envSchema = z.object({
   // Garde-fou commun : toute fenetre effective < 30 j fait ECHOUER le job (retention-guard.ts).
   SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),
   POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(60),
+  // Fenetre de NARRATION (heures) : borne basse des trajets que l'agent du poste ira chercher.
+  // Doit refleter le `--heures` de outils/rattrapage-recits.cmd (9 000 h, soit environ 375 jours,
+  // toute la retention des trajets). Sert au compteur « encore sans recit » de l'espace admin :
+  // il doit annoncer le travail que l'agent PRENDRA, ni plus ni moins. Si la tache de rattrapage
+  // est un jour desinscrite du poste, poser 48 ici, sinon l'ecran annoncera de l'ancien travail
+  // que plus personne ne fera.
+  NARRATION_WINDOW_HOURS: z.coerce.number().int().positive().default(9000),
   // RGPD — retention des TRAJETS (mois). 0 = desactive. Meme regle d'armement que les positions
   // (production = toujours arme). La purge emporte aussi TripAnalysis + TripFuelStop des trajets
   // purges (narratifs de localisation — pas de FK en base, nettoyage explicite).

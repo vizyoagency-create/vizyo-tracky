@@ -38,10 +38,44 @@ export interface PdfReportOptions {
   topN?: number;
   /** Sous-titre informatif (ex: "3 vehicules selectionnes") affiche sous le nom de flotte. */
   scopeLabel?: string;
+  /** Titre sous le logo — « Rapport de flotte » par défaut, « Rapport véhicule » pour un seul. */
+  title?: string;
 }
 
 const DEFAULT_MAX_TRIPS = 30;
 const DEFAULT_TOP_N = 10;
+
+/** Dernier jour INCLUS d'une période dont la borne haute est exclusive (lendemain minuit). */
+function inclusiveEnd(toIso: string): Date {
+  return new Date(new Date(toIso).getTime() - 1);
+}
+
+/** Libellés lisibles des types et sévérités d'alerte — le PDF sortait « OVERSPEED », « WARNING ». */
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  OVERSPEED: 'Excès de vitesse',
+  GEOFENCE_EXIT: 'Sortie de zone',
+  GEOFENCE_ENTER: 'Entrée de zone',
+  GPS_LOST: 'Signal GPS perdu',
+  LOW_BATTERY: 'Batterie faible',
+  POWER_CUT: 'Alimentation coupée',
+  SOS: 'Appel SOS',
+  OFF_SCHEDULE_MOVEMENT: 'Déplacement hors horaires',
+  TOWING: 'Remorquage suspecté',
+  ACCIDENT: 'Accident suspecté',
+  ENGINE_CUT: 'Moteur coupé à distance',
+  UNKNOWN: 'Autre',
+};
+const ALERT_SEVERITY_LABELS: Record<string, string> = {
+  CRITICAL: 'Critique',
+  WARNING: 'Avertissement',
+  INFO: 'Information',
+};
+function alertTypeLabel(type: string): string {
+  return ALERT_TYPE_LABELS[type] ?? type.toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+}
+function alertSeverityLabel(sev: string): string {
+  return ALERT_SEVERITY_LABELS[sev] ?? sev;
+}
 
 @Injectable()
 export class ReportPdfService {
@@ -55,6 +89,11 @@ export class ReportPdfService {
         const doc = new PDFDocument({
           size: 'A4',
           margin: 40,
+          // ⚠️ bufferPages : sans lui, `bufferedPageRange()` ne connaît que la page
+          //    courante — le pied de page n'était écrit que sur la dernière, et comme il
+          //    était posé à 800 pt (sous la marge basse), PDFKit ouvrait une page de plus
+          //    pour l'y loger : chaque rapport finissait par une page blanche.
+          bufferPages: true,
           info: {
             Title: `Vizyo Tracky — Rapport ${report.fleet.name}`,
             Author: 'Vizyo Tracky',
@@ -66,7 +105,7 @@ export class ReportPdfService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
 
-        this.renderHeader(doc, report, options?.scopeLabel);
+        this.renderHeader(doc, report, options?.scopeLabel, options?.title);
         // Rendue AVANT les sections, et hors du bloc `kpi` : la base de calcul du
         // parc exploité vaut pour tout le document (top véhicules compris), et un
         // rapport dont on aurait décoché la section KPI ne doit pas perdre la
@@ -97,22 +136,25 @@ export class ReportPdfService {
     return Math.min(max, Math.max(min, Math.trunc(value)));
   }
 
-  private renderHeader(doc: PDFKit.PDFDocument, report: FleetStatsReport, scopeLabel?: string): void {
+  private renderHeader(doc: PDFKit.PDFDocument, report: FleetStatsReport, scopeLabel?: string, title?: string): void {
     // Logo / nom Tracky en haut-gauche
     doc.fillColor(COLOR_TRACKY).fontSize(20).font('Helvetica-Bold')
       .text('Vizyo Tracky', 40, 40);
     doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
-      .text('Rapport de flotte', 40, 65);
+      .text(title ?? 'Rapport de flotte', 40, 65);
 
-    // Bandeau periode en haut-droite
+    // Bandeau période en haut-droite.
+    // ⚠️ « du … au … inclus », pas « → » : Helvetica (WinAnsi) n'a pas la flèche, elle
+    //    s'imprimait « !' ». Et la borne `to` de l'API est EXCLUSIVE (lendemain minuit) :
+    //    affichée telle quelle, un rapport du 3 au 9 se lisait « 03/08 → 10/08 ».
     const fromStr = formatFleetDate(report.period.from);
-    const toStr = formatFleetDate(report.period.to);
+    const toStr = formatFleetDate(inclusiveEnd(report.period.to));
     doc.fillColor(COLOR_FG).fontSize(11).font('Helvetica')
-      .text(`${fromStr} → ${toStr}`, 400, 42, { width: 155, align: 'right' });
+      .text(`du ${fromStr} au ${toStr} inclus`, 340, 42, { width: 215, align: 'right' });
     doc.fillColor(COLOR_FG_MUTED).fontSize(9)
-      .text(`${report.period.days} jours`, 400, 60, { width: 155, align: 'right' });
+      .text(`${report.period.days} jour${report.period.days > 1 ? 's' : ''}`, 340, 60, { width: 215, align: 'right' });
 
-    // Fleet name + sous-titre scope (ex: "3 vehicules selectionnes")
+    // Fleet name + sous-titre scope (ex: "3 véhicules sélectionnés")
     doc.fillColor(COLOR_FG).fontSize(16).font('Helvetica-Bold')
       .text(report.fleet.name, 40, 95);
     if (scopeLabel) {
@@ -160,11 +202,13 @@ export class ReportPdfService {
 
   private renderKpis(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
-      .text('Indicateurs cles', 40, doc.y);
+      .text('Indicateurs clés', 40, doc.y);
     doc.moveDown(0.4);
 
     const kpis: { label: string; value: string }[] = [
-      { label: 'Véhicules actifs', value: `${report.vehicles.activeDuringPeriod} / ${report.vehicles.total}` },
+      // « ayant roulé » et non « actifs » : l'encart du dessus peut dire, juste avant, que des
+      // véhicules sont sortis du parc exploité — « 6 actifs / 6 » se lisait comme une contradiction.
+      { label: 'Véhicules ayant roulé', value: `${report.vehicles.activeDuringPeriod} / ${report.vehicles.total}` },
       { label: 'Trajets', value: report.trips.count.toString() },
       { label: 'Distance totale', value: `${report.trips.totalKm.toFixed(1)} km` },
       // La moyenne par vehicule etait absente du PDF alors que c'est elle que le
@@ -173,26 +217,28 @@ export class ReportPdfService {
       // ici, adossee a l'encart « parc exploite » rendu juste au-dessus.
       { label: 'Distance moy./véhicule', value: `${report.trips.avgKmPerVehicle.toFixed(1)} km` },
       { label: 'Durée totale', value: `${report.trips.totalDurationHours.toFixed(1)} h` },
-      { label: 'Vitesse moy.', value: `${report.trips.avgSpeedKmh.toFixed(1)} km/h` },
+      { label: 'Vitesse moy. (km / h de conduite)', value: `${report.trips.avgSpeedKmh.toFixed(1)} km/h` },
       { label: 'Vitesse max', value: `${report.trips.maxSpeedKmh.toFixed(0)} km/h` },
-      { label: 'Conso estimee', value: `${report.consumption.estimatedLiters.toFixed(1)} L` },
+      { label: 'Conso estimée', value: `${report.consumption.estimatedLiters.toFixed(1)} L` },
       { label: 'Coût carburant', value: `${report.consumption.estimatedCostEur.toFixed(2)} EUR` },
     ];
-    // P3 carburant — prix REELLEMENT CONSTATE en station (si des passages ont ete captes).
+    // P3 carburant — prix RÉELLEMENT CONSTATÉ en station (si des passages ont été captés).
     if (report.consumption.observedPriceEurL != null) {
-      kpis.push({ label: 'Prix constate', value: `${report.consumption.observedPriceEurL.toFixed(3)} EUR/L` });
+      kpis.push({ label: 'Prix constaté', value: `${report.consumption.observedPriceEurL.toFixed(3)} EUR/L` });
       if (report.consumption.estimatedCostAtObservedEur != null) {
-        kpis.push({ label: 'Coût au prix constate', value: `${report.consumption.estimatedCostAtObservedEur.toFixed(2)} EUR` });
+        kpis.push({ label: 'Coût au prix constaté', value: `${report.consumption.estimatedCostAtObservedEur.toFixed(2)} EUR` });
       }
     }
 
-    const cardW = 124;
-    const cardH = 56;
+    // Grille 3 × 3 : neuf cartes (onze avec le prix constaté) sur quatre colonnes laissaient
+    // une carte orpheline sur la dernière ligne.
+    const cols = 3;
     const gap = 8;
     const startX = 40;
+    const cardW = Math.floor((515 - gap * (cols - 1)) / cols);
+    const cardH = 56;
     let x = startX;
     let y = doc.y;
-    const cols = 4;
 
     for (let i = 0; i < kpis.length; i++) {
       const kpi = kpis[i]!;
@@ -215,8 +261,8 @@ export class ReportPdfService {
     if (c.observedPriceEurL != null && c.estimatedCostAtObservedEur != null) {
       const delta = Math.round((c.estimatedCostAtObservedEur - c.estimatedCostEur) * 100) / 100;
       const passages = `${c.observedSampleCount} passage${c.observedSampleCount > 1 ? 's' : ''} station`;
-      const txt = `Prix carburant constate en station (${passages}) : ${c.observedPriceEurL.toFixed(3)} EUR/L, contre ${c.fuelPriceEurL.toFixed(2)} EUR/L parametre. `
-        + `Cout estime au prix reel : ${c.estimatedCostAtObservedEur.toFixed(2)} EUR (${delta >= 0 ? '+' : ''}${delta.toFixed(2)} EUR vs parametre).`;
+      const txt = `Prix carburant constaté en station (${passages}) : ${c.observedPriceEurL.toFixed(3)} EUR/L, contre ${c.fuelPriceEurL.toFixed(2)} EUR/L paramétré. `
+        + `Coût estimé au prix réel : ${c.estimatedCostAtObservedEur.toFixed(2)} EUR (${delta >= 0 ? '+' : ''}${delta.toFixed(2)} EUR vs paramétré).`;
       doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica').text(txt, 40, doc.y, { width: 515 });
       doc.y += 6;
       doc.moveDown(1);
@@ -230,7 +276,7 @@ export class ReportPdfService {
 
     if (report.alerts.total === 0) {
       doc.fillColor(COLOR_FG_MUTED).fontSize(10).font('Helvetica')
-        .text('Aucune alerte sur la periode.', 40, doc.y);
+        .text('Aucune alerte sur la période.', 40, doc.y);
       doc.moveDown();
       return;
     }
@@ -248,17 +294,17 @@ export class ReportPdfService {
     leftY += 14;
     for (const t of report.alerts.byType.slice(0, 8)) {
       doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica')
-        .text(`${t.type}`, 40, leftY, { continued: true })
+        .text(alertTypeLabel(t.type), 40, leftY, { width: 200, continued: true })
         .fillColor(COLOR_FG_MUTED).text(`  ${t.count}`, { align: 'right' });
       leftY += 12;
     }
 
     doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica-Bold')
-      .text('PAR SEVERITE', 300, rightY);
+      .text('PAR SÉVÉRITÉ', 300, rightY);
     rightY += 14;
     for (const s of report.alerts.bySeverity) {
       doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica')
-        .text(`${s.severity}`, 300, rightY, { continued: true })
+        .text(alertSeverityLabel(s.severity), 300, rightY, { width: 200, continued: true })
         .fillColor(COLOR_FG_MUTED).text(`  ${s.count}`, { align: 'right' });
       rightY += 12;
     }
@@ -270,7 +316,7 @@ export class ReportPdfService {
     if (doc.y > 700) doc.addPage();
 
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
-      .text('Top vehicules (km parcourus)', 40, doc.y);
+      .text('Top véhicules (km parcourus)', 40, doc.y);
     doc.moveDown(0.4);
 
     // Table header
@@ -320,11 +366,11 @@ export class ReportPdfService {
     const trips = report.recentTrips.slice(0, maxTrips);
 
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
-      .text('Trajets recents', 40, doc.y);
+      .text('Trajets récents', 40, doc.y);
     doc.moveDown(0.4);
     doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
       .text(
-        `${trips.length} derniers trajets sur la periode` +
+        `${trips.length} derniers trajets sur la période, du plus récent au plus ancien` +
         (report.trips.count > trips.length
           ? ` (sur ${report.trips.count} au total)`
           : ''),
@@ -341,7 +387,7 @@ export class ReportPdfService {
       doc.fillColor(COLOR_FG_MUTED).fontSize(8).font('Helvetica-Bold')
         .text('DATE', colX.date, y)
         .text('PLAQUE', colX.plate, y)
-        .text('DUREE', colX.duration, y)
+        .text('DURÉE', colX.duration, y)
         .text('DISTANCE', colX.distance, y)
         .text('CONDUCTEUR', colX.driver, y)
         .text('NOTE', colX.notes, y);
@@ -409,13 +455,15 @@ export class ReportPdfService {
 
   private renderFooter(doc: PDFKit.PDFDocument): void {
     const range = doc.bufferedPageRange();
+    const generated = formatFleetDateTime(new Date());
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
+      // Dans la marge basse, SANS retour à la ligne : un texte qui déborde de la zone
+      // imprimable déclenche une nouvelle page — c'était la page blanche finale.
+      const y = doc.page.height - 30;
       doc.fontSize(8).fillColor(COLOR_FG_MUTED).font('Helvetica')
-        .text(
-          `Genere automatiquement par Vizyo Tracky — ${formatFleetDateTime(new Date())}`,
-          40, 800, { width: 515, align: 'center' },
-        );
+        .text(`Généré automatiquement par Vizyo Tracky — ${generated}`, 40, y, { width: 400, align: 'left', lineBreak: false })
+        .text(`Page ${i + 1} / ${range.count}`, 440, y, { width: 115, align: 'right', lineBreak: false });
     }
   }
 }

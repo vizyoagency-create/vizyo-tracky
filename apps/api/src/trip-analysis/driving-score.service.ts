@@ -164,7 +164,11 @@ export class DrivingScoreService {
 
     // 2. Analyses (bornées) → métriques par trajet.
     const analyses = await this.prisma.tripAnalysis.findMany({
-      where: vehicleWhere,
+      // ⚠️ `gpsPoints: { gt: 0 }` — une analyse SANS aucune position est remplie de zéros par
+      // le préprocesseur, et son éco-score vaut alors 100 : la note maximale, pour un trajet
+      // dont on ne sait rien. Ces analyses vides gonflaient la moyenne du classement, et un
+      // véhicule mal suivi remontait au podium précisément parce qu'il était mal suivi.
+      where: { ...vehicleWhere, gpsPoints: { gt: 0 } },
       select: { tripId: true, vehicleId: true, ecoScore: true, distanceKm: true, speedingCount: true, harshAccel: true, harshBrake: true, fuelLiters: true, co2Kg: true },
       orderBy: { computedAt: 'desc' },
       take: MAX_ANALYSES,

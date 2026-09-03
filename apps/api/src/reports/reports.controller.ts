@@ -3,9 +3,11 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -18,12 +20,16 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { GenerateExcelDto } from './dto/generate-excel.dto';
 import { GeneratePdfDto } from './dto/generate-pdf.dto';
+import { SetReportScheduleDto } from './dto/set-report-schedule.dto';
 import { ReportCsvService } from './report-csv.service';
+import { ReportScheduleService } from './report-schedule.service';
 import { ReportExcelService } from './report-excel.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
@@ -48,6 +54,7 @@ export class ReportsController {
     private readonly csv: ReportCsvService,
     private readonly excel: ReportExcelService,
     private readonly speedReport: SpeedReportService,
+    private readonly schedule: ReportScheduleService,
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly systemActivity: SystemActivityService,
@@ -79,12 +86,55 @@ export class ReportsController {
   }
 
   /**
+   * Un export qui ÉCHOUE ne laissait AUCUNE trace : le client voyait un bandeau rouge, et
+   * l'espace admin ne voyait rien du tout. Une société incapable de sortir ses rapports
+   * depuis trois jours était donc invisible — seuls les téléchargements RÉUSSIS étaient
+   * journalisés. Même journal, statut FAILURE, avec la raison.
+   *
+   * Ne change rien au comportement HTTP : l'erreur est relancée telle quelle.
+   */
+  private async traceEchec<T>(
+    req: AuthenticatedRequest,
+    action: string,
+    fleetId: string | null,
+    meta: Record<string, unknown>,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await run();
+    } catch (err) {
+      const raison = err instanceof Error ? err.message : String(err);
+      const u = req.user;
+      this.systemActivity.record({
+        category: 'EXPORT',
+        action,
+        status: 'FAILURE',
+        actor: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || 'utilisateur',
+        target: raison.slice(0, 200),
+        fleetId: fleetId ?? u.fleetId ?? null,
+        triggeredByUserId: u.id,
+        meta: { ...meta, erreur: raison },
+      });
+      throw err;
+    }
+  }
+
+  /**
    * 🔒 Sprint 5 — borne de perimetre transmise a chaque service de rapport :
    * 'ALL' pour les admins, sinon la liste des vehicules accessibles de l'user.
    * Memoise par requete (cf. VehicleAccessService).
    */
   private accessibleVehicleIds(req: AuthenticatedRequest): Promise<string[] | 'ALL'> {
     return this.vehicleAccess.getAccessibleVehicleIds(req.user);
+  }
+
+  /**
+   * Dates du nom de fichier, en jours civils de Paris et fin INCLUSE : la borne `to` de
+   * l'API est le lendemain minuit, et « rapport-2026-08-03_2026-09-03 » faisait croire
+   * que le 3 septembre était dedans.
+   */
+  private fileDates(from: Date, to: Date): string {
+    return `${parisDayKey(from)}_${parisDayKey(new Date(to.getTime() - 1))}`;
   }
 
   @Get('stats')
@@ -111,15 +161,17 @@ export class ReportsController {
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
   ): Promise<void> {
-    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
-    const accessibleVehicleIds = await this.accessibleVehicleIds(req);
-    const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds });
-    const buffer = await this.pdf.generate(report);
-    const filename = `tracky-rapport-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(buffer);
-    this.recordExport(req, 'export_pdf', filename, fleetId, { from: fromRaw, to: toRaw });
+    await this.traceEchec(req, 'export_pdf', fleetIdQ ?? null, { from: fromRaw, to: toRaw }, async () => {
+      const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+      const accessibleVehicleIds = await this.accessibleVehicleIds(req);
+      const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds });
+      const buffer = await this.pdf.generate(report);
+      const filename = `tracky-rapport-${this.fileDates(from, to)}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+      this.recordExport(req, 'export_pdf', filename, fleetId, { from: fromRaw, to: toRaw });
+    });
   }
 
   /**
@@ -129,6 +181,7 @@ export class ReportsController {
    * sent immediatement le scope qu'il a configure.
    */
   @Post('pdf')
+  @HttpCode(200)
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('reports_export')
   async pdfDownloadConfigured(
@@ -136,12 +189,42 @@ export class ReportsController {
     @Res() res: Response,
     @Body() body: GeneratePdfDto,
   ): Promise<void> {
+    await this.traceEchec(req, 'export_pdf', body.fleetId ?? null, { from: body.from, to: body.to, vehicleIds: body.vehicleIds?.length || undefined }, () =>
+      this.genererPdfConfigure(req, res, body));
+  }
+
+  /** Corps du POST /pdf — extrait pour que l'échec comme la réussite soient journalisés. */
+  private async genererPdfConfigure(
+    req: AuthenticatedRequest,
+    res: Response,
+    body: GeneratePdfDto,
+  ): Promise<void> {
     const { from, to, fleetId } = await this.parseRange(req, body.fleetId, body.from, body.to, body.vehicleIds);
 
     const vehicleIds = (body.vehicleIds ?? []).filter((id) => !!id);
-    const scopeLabel = vehicleIds.length > 0
-      ? `${vehicleIds.length} vehicule${vehicleIds.length > 1 ? 's' : ''} selectionne${vehicleIds.length > 1 ? 's' : ''}`
-      : undefined;
+
+    // Un rapport sur UN véhicule s'appelait « Rapport de flotte » et n'affichait pas la
+    // plaque ; jusqu'à cinq véhicules, les plaques sont listées ; au-delà, un compte.
+    let scopeLabel: string | undefined;
+    let title: string | undefined;
+    let fileScope = '';
+    if (vehicleIds.length > 0) {
+      const plates = await this.prisma.vehicle.findMany({
+        where: { id: { in: vehicleIds } },
+        select: { plate: true, brand: true, model: true },
+        orderBy: { plate: 'asc' },
+      });
+      if (plates.length === 1) {
+        const v = plates[0]!;
+        title = 'Rapport véhicule';
+        scopeLabel = [v.plate, [v.brand, v.model].filter(Boolean).join(' ')].filter(Boolean).join(' — ');
+        fileScope = `${v.plate.replace(/[^A-Za-z0-9-]+/g, '-')}-`;
+      } else if (plates.length <= 5) {
+        scopeLabel = `${plates.length} véhicules : ${plates.map((v) => v.plate).join(', ')}`;
+      } else {
+        scopeLabel = `${plates.length} véhicules sélectionnés`;
+      }
+    }
 
     const accessibleVehicleIds = await this.accessibleVehicleIds(req);
     const report = await this.stats.compute(
@@ -149,7 +232,7 @@ export class ReportsController {
       from,
       to,
       { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds },
-      { vehicleIds, maxRecentTrips: body.maxTrips },
+      { vehicleIds, maxRecentTrips: body.maxTrips, topN: body.topN },
     );
 
     const buffer = await this.pdf.generate(report, {
@@ -157,9 +240,10 @@ export class ReportsController {
       maxTrips: body.maxTrips,
       topN: body.topN,
       scopeLabel,
+      title,
     });
 
-    const filename = `tracky-rapport-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`;
+    const filename = `tracky-rapport-${fileScope}${this.fileDates(from, to)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
@@ -178,22 +262,29 @@ export class ReportsController {
     @Query('fleetId') fleetIdQ: string | undefined,
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
+    @Query('vehicleIds') vehicleIdsRaw?: string,
   ): Promise<void> {
-    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
-    const ids = await this.accessibleVehicleIds(req);
-    let result;
-    switch (type) {
-      case 'positions': result = await this.csv.positions(fleetId, from, to, ids); break;
-      case 'trips': result = await this.csv.trips(fleetId, from, to, ids); break;
-      case 'alerts': result = await this.csv.alerts(fleetId, from, to, ids); break;
-      case 'commands': result = await this.csv.commands(fleetId, from, to, ids); break;
-      default:
-        throw new BadRequestException('type doit valoir positions / trips / alerts / commands');
-    }
-    res.setHeader('Content-Type', result.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-    res.send(result.body);
-    this.recordExport(req, `export_csv_${type}`, result.filename, fleetId, { from: fromRaw, to: toRaw });
+    await this.traceEchec(req, `export_csv_${type}`, fleetIdQ ?? null, { from: fromRaw, to: toRaw }, async () => {
+      const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+      // Périmètre de l'ÉCRAN (véhicule ou groupe sélectionné), borné aux accès de l'appelant :
+      // un CSV « trajets » demandé depuis un rapport filtré sur un véhicule exportait toute la
+      // flotte. `resolveReportVehicleScope` rejette (403) toute demande hors périmètre.
+      const wanted = (vehicleIdsRaw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+      const ids = resolveReportVehicleScope(await this.accessibleVehicleIds(req), wanted);
+      let result;
+      switch (type) {
+        case 'positions': result = await this.csv.positions(fleetId, from, to, ids); break;
+        case 'trips': result = await this.csv.trips(fleetId, from, to, ids); break;
+        case 'alerts': result = await this.csv.alerts(fleetId, from, to, ids); break;
+        case 'commands': result = await this.csv.commands(fleetId, from, to, ids); break;
+        default:
+          throw new BadRequestException('type doit valoir positions / trips / alerts / commands');
+      }
+      res.setHeader('Content-Type', result.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.send(result.body);
+      this.recordExport(req, `export_csv_${type}`, result.filename, fleetId, { from: fromRaw, to: toRaw, vehicules: ids === 'ALL' ? undefined : ids.length });
+    });
   }
 
   /**
@@ -203,6 +294,7 @@ export class ReportsController {
    * l'appelant) → 403 sinon. Même périmètre d'auth que les autres exports.
    */
   @Post('excel')
+  @HttpCode(200)
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('reports_export')
   async excelDownload(
@@ -210,24 +302,94 @@ export class ReportsController {
     @Res() res: Response,
     @Body() body: GenerateExcelDto,
   ): Promise<void> {
-    const from = new Date(body.from);
-    const to = new Date(body.to);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      throw new BadRequestException('from et to doivent être des dates ISO valides');
-    }
-    if (from.getTime() >= to.getTime()) {
-      throw new BadRequestException('from doit etre strictement avant to');
-    }
-    const { buffer, filename } = await this.excel.generate(body.vehicleId, from, to, req.user);
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(buffer);
-    this.recordExport(req, 'export_excel', filename, null, {
-      vehicleId: body.vehicleId, from: body.from, to: body.to,
+    await this.traceEchec(req, 'export_excel', null, { vehicleId: body.vehicleId, from: body.from, to: body.to }, async () => {
+      // Jours civils de Paris, comme le PDF et les listes (cf. parisDayStart).
+      const from = parisDayStart(body.from);
+      const to = parisDayStart(body.to);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+        throw new BadRequestException('from et to doivent être des dates ISO valides');
+      }
+      if (from.getTime() >= to.getTime()) {
+        throw new BadRequestException('from doit etre strictement avant to');
+      }
+      // La flotte du véhicule, pas celle de l'appelant : un super-admin exporte pour autrui.
+      const veh = await this.prisma.vehicle.findUnique({ where: { id: body.vehicleId }, select: { fleetId: true } });
+      const { buffer, filename } = await this.excel.generate(body.vehicleId, from, to, req.user);
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+      this.recordExport(req, 'export_excel', filename, veh?.fleetId ?? null, {
+        vehicleId: body.vehicleId, from: body.from, to: body.to,
+      });
     });
+  }
+
+  // ─── Rapport hebdomadaire : réglage par société + journal des envois ───────────────
+
+  /** Réglage effectif (valeurs par défaut si rien n'est enregistré) + prochaine échéance. */
+  @Get('schedule')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('reports_view')
+  getSchedule(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.schedule.get(req.user, fleetId);
+  }
+
+  @Put('schedule')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('reports_export')
+  async setSchedule(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SetReportScheduleDto,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    const dto = await this.schedule.set(req.user, body, fleetId);
+    this.systemActivity.record({
+      category: 'EXPORT',
+      action: 'weekly_report_settings',
+      status: 'SUCCESS',
+      actor: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email || 'utilisateur',
+      target: dto.fleetName,
+      fleetId: dto.fleetId,
+      triggeredByUserId: req.user.id,
+      meta: { enabled: dto.enabled, weekday: dto.weekday, hour: dto.hour, recipients: dto.recipients.length, sections: dto.sections, vehicles: dto.vehicleIds.length },
+    });
+    return dto;
+  }
+
+  /** Envoi immédiat des 7 derniers jours révolus — journalisé comme un passage manuel. */
+  @Post('schedule/send-now')
+  @HttpCode(200)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('reports_export')
+  async sendScheduleNow(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    const dispatch = await this.schedule.sendNow(req.user, fleetId);
+    this.systemActivity.record({
+      category: 'EXPORT',
+      action: 'weekly_report_send_now',
+      status: dispatch.status === 'FAILED' ? 'FAILURE' : 'SUCCESS',
+      actor: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email || 'utilisateur',
+      target: dispatch.fleetName,
+      fleetId: dispatch.fleetId,
+      triggeredByUserId: req.user.id,
+      meta: { status: dispatch.status, recipients: dispatch.recipients.length, tripsCount: dispatch.tripsCount, pdfBytes: dispatch.pdfBytes, error: dispatch.error ?? undefined },
+    });
+    return { dispatch };
+  }
+
+  /** Journal des envois (société courante ; toutes les sociétés pour un super-admin sans fleetId). */
+  @Get('schedule/dispatches')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('reports_view')
+  listScheduleDispatches(
+    @Req() req: AuthenticatedRequest,
+    @Query('fleetId') fleetId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const n = Number(limit);
+    return this.schedule.listDispatches(req.user, fleetId, Number.isFinite(n) && n > 0 ? n : 20);
   }
 
   /**
@@ -245,15 +407,23 @@ export class ReportsController {
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
   ): Promise<void> {
-    const { html, filename } = await this.speedReport.generate(tripId, {
-      userId: req.user.id,
-      role: req.user.role,
-      fleetId: req.user.fleetId,
+    await this.traceEchec(req, 'export_speed', null, { tripId }, async () => {
+      const { html, filename } = await this.speedReport.generate(tripId, {
+        userId: req.user.id,
+        role: req.user.role,
+        fleetId: req.user.fleetId,
+      });
+      // La flotte du TRAJET : le journal était écrit sans flotte, donc invisible au filtre
+      // par société de l'espace admin (un super-admin exporte pour n'importe quelle société).
+      const trip = await this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { vehicle: { select: { fleetId: true } } },
+      });
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(html);
+      this.recordExport(req, 'export_speed', filename, trip?.vehicle?.fleetId ?? null, { tripId });
     });
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(html);
-    this.recordExport(req, 'export_speed', filename, null, { tripId });
   }
 
   private async parseRange(
@@ -266,8 +436,11 @@ export class ReportsController {
     if (!fromRaw || !toRaw) {
       throw new BadRequestException('from et to (ISO date) requis');
     }
-    const from = new Date(fromRaw);
-    const to = new Date(toRaw);
+    // Jours civils Europe/Paris (« 2026-08-03 » = minuit à Paris), comme les listes et les
+    // agrégats de trajets : un PDF « du 3 au 9 » doit contenir exactement les trajets que
+    // l'écran affiche pour ces jours-là. Un ISO complet (avec heure) reste lu tel quel.
+    const from = parisDayStart(fromRaw);
+    const to = parisDayStart(toRaw);
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
       throw new BadRequestException('from et to doivent être des dates ISO valides');
     }

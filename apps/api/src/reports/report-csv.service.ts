@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
+import { formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 
@@ -32,12 +33,22 @@ export class ReportCsvService {
     return scope === 'ALL' ? null : scope;
   }
 
-  private wrap(rows: Record<string, string | number | null | undefined>[], filename: string, truncated = false): {
+  private wrap(
+    rows: Record<string, string | number | null | undefined>[],
+    filename: string,
+    truncated = false,
+    fields: string[] = [],
+  ): {
     filename: string;
     contentType: string;
     body: string;
   } {
-    const csv = Papa.unparse(rows, { delimiter: ';', header: true });
+    // ⚠️ Colonnes EXPLICITES : sans elles, un export vide (aucune alerte sur la période)
+    //    produisait un fichier de trois octets — le BOM seul, pas même l'en-tête — que
+    //    l'utilisateur prenait pour un téléchargement raté.
+    const csv = fields.length > 0
+      ? Papa.unparse({ fields, data: rows.map((r) => fields.map((f) => r[f] ?? '')) }, { delimiter: ';', header: true })
+      : Papa.unparse(rows, { delimiter: ';', header: true });
     // #23 — troncature VISIBLE : si l'export a atteint son cap memoire (tout est
     // bufferise en RAM), on suffixe le nom `-PARTIEL` pour que l'utilisateur sache
     // qu'il manque des lignes (avant : troncature silencieuse) et resserre la periode.
@@ -53,7 +64,7 @@ export class ReportCsvService {
     const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const positions = await this.prisma.position.findMany({
       where: {
-        timestamp: { gte: from, lte: to },
+        timestamp: { gte: from, lt: to },
         // Borne flotte (defense en profondeur) + perimetre user via le vehicule
         // du tracker. `positions`/`commands` n'ont pas de vehicleId direct.
         // Mode vie privée (RGPD) : on exclut les véhicules actuellement en mode privé.
@@ -72,15 +83,20 @@ export class ReportCsvService {
       heading: p.heading,
       ignition: p.ignition === null ? '' : p.ignition ? 'on' : 'off',
       valid: p.valid ? 'yes' : 'no',
+      timestamp_local: formatFleetDateTime(p.timestamp),
     }));
-    return this.wrap(rows, `tracky-positions-${this.dateSuffix(from, to)}.csv`, rows.length >= 100_000);
+    // Colonnes déclarées : sans elles, une période SANS position produisait un fichier de
+    // 3 octets (le seul marqueur d'encodage), sans même une ligne d'en-tête — illisible.
+    return this.wrap(rows, `tracky-positions-${this.dateSuffix(from, to)}.csv`, rows.length >= 100_000, [
+      'timestamp', 'timestamp_local', 'plate', 'lat', 'lng', 'speed_kmh', 'heading', 'ignition', 'valid',
+    ]);
   }
 
   async trips(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
     const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const trips = await this.prisma.trip.findMany({
       // Mode vie privée (RGPD) : exclut les trajets d'un véhicule actuellement en mode privé.
-      where: { fleetId, startedAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
+      where: { fleetId, startedAt: { gte: from, lt: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
       orderBy: { startedAt: 'desc' },
       include: {
         vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } },
@@ -93,6 +109,9 @@ export class ReportCsvService {
       trip_id: t.id,
       plate: t.vehicle?.plate ?? '',
       group: vehicleGroupOf(t.vehicle)?.name ?? '',
+      // Heure de Paris lisible pour Excel FR, à côté de l'ISO (UTC) qui reste la référence.
+      started_at_local: formatFleetDateTime(t.startedAt),
+      ended_at_local: t.endedAt ? formatFleetDateTime(t.endedAt) : '',
       started_at: t.startedAt.toISOString(),
       ended_at: t.endedAt?.toISOString() ?? '',
       duration_seconds: t.durationSeconds,
@@ -111,7 +130,12 @@ export class ReportCsvService {
       notes_author: this.formatAuthor(t.notesUpdatedBy),
       notes_updated_at: t.notesUpdatedAt?.toISOString() ?? '',
     }));
-    return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000);
+    return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000, [
+      'trip_id', 'plate', 'group', 'started_at_local', 'ended_at_local', 'started_at', 'ended_at',
+      'duration_seconds', 'distance_km', 'max_speed_kmh', 'avg_speed_kmh', 'position_count',
+      'start_lat', 'start_lng', 'end_lat', 'end_lng', 'driver_id', 'driver_name', 'driver_source',
+      'notes', 'notes_author', 'notes_updated_at',
+    ]);
   }
 
   /** Formate l'auteur de note pour l'export : "Prenom Nom" sinon email sinon vide. */
@@ -131,12 +155,13 @@ export class ReportCsvService {
       // Quand un perimetre est actif, les alertes sans vehicleId (tracker isole)
       // sont exclues par definition du sous-ensemble (cf. reports-stats).
       // Mode vie privée (RGPD) : exclut les alertes d'un véhicule en mode privé (garde les alertes flotte sans véhicule).
-      where: { fleetId, createdAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
+      where: { fleetId, createdAt: { gte: from, lt: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
       orderBy: { createdAt: 'desc' },
       include: { vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } } },
       take: 50_000,
     });
     const rows = alerts.map((a) => ({
+      created_at_local: formatFleetDateTime(a.createdAt),
       created_at: a.createdAt.toISOString(),
       plate: a.vehicle?.plate ?? '',
       group: vehicleGroupOf(a.vehicle)?.name ?? '',
@@ -148,14 +173,17 @@ export class ReportCsvService {
       latitude: a.latitude ?? '',
       longitude: a.longitude ?? '',
     }));
-    return this.wrap(rows, `tracky-alerts-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000);
+    return this.wrap(rows, `tracky-alerts-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000, [
+      'created_at_local', 'created_at', 'plate', 'group', 'type', 'severity', 'title', 'message',
+      'acknowledged_at', 'latitude', 'longitude',
+    ]);
   }
 
   async commands(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
     const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const commands = await this.prisma.engineControlCommand.findMany({
       where: {
-        createdAt: { gte: from, lte: to },
+        createdAt: { gte: from, lt: to },
         tracker: { vehicle: ids ? { fleetId, id: { in: ids } } : { fleetId } },
       },
       orderBy: { createdAt: 'desc' },
@@ -172,13 +200,16 @@ export class ReportCsvService {
       acked_at: c.ackedAt?.toISOString() ?? '',
       reason: c.reason ?? '',
       last_error: c.lastError ?? '',
+      created_at_local: formatFleetDateTime(c.createdAt),
     }));
-    return this.wrap(rows, `tracky-commands-${this.dateSuffix(from, to)}.csv`, rows.length >= 20_000);
+    // Idem : l'en-tête doit exister même sans une seule commande sur la période.
+    return this.wrap(rows, `tracky-commands-${this.dateSuffix(from, to)}.csv`, rows.length >= 20_000, [
+      'created_at', 'created_at_local', 'plate', 'action', 'status', 'source', 'sent_at', 'acked_at', 'reason', 'last_error',
+    ]);
   }
 
+  /** Jours civils de Paris, fin INCLUSE (la borne `to` de l'API est le lendemain minuit). */
   private dateSuffix(from: Date, to: Date): string {
-    const f = from.toISOString().slice(0, 10);
-    const t = to.toISOString().slice(0, 10);
-    return `${f}_${t}`;
+    return `${parisDayKey(from)}_${parisDayKey(new Date(to.getTime() - 1))}`;
   }
 }

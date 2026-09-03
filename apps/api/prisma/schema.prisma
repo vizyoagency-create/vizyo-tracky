@@ -299,6 +299,9 @@ model Fleet {
   // + l'historique des liens revoques. Cf. PartnerLink.
   partnerLinks             PartnerLink[]
   partnerInvitations       PartnerInvitation[]
+  // Rapport hebdomadaire (2026-09) — réglage par société + journal des envois.
+  reportSchedule           FleetReportSchedule?
+  reportDispatches         FleetReportDispatch[]
   // Espace dépôt (2026-08) — les missions de la flotte (séquence `ref` par flotte).
   missions                 Mission[]
   missionRequests          MissionRequest[]
@@ -2401,10 +2404,15 @@ model TripAnalysis {
   detail Json
 
   // Couche LLM optionnelle (Palier 3) — récit + Trust Score, sans recalcul du déterministe
-  provider   String? // 'claude' | 'gpt' | null (déterministe seul)
+  provider   String? // 'claude' | 'gpt' | 'local' (agent du poste) | null (déterministe seul)
   narrative  String?
   advice     String?
   trustScore Int? // Tracky Trust Score 0..100
+  /// Date d'écriture du RÉCIT, distincte de `computedAt` (chiffres) et de `updatedAt` (ligne).
+  /// Un recalcul remplace tous les chiffres et CONSERVE le récit : sans cette colonne, rien ne
+  /// permettait de savoir que le texte affiché décrivait un état antérieur — ni à l'écran, ni
+  /// à l'agent local, dont la reprise ne regarde que `narrative IS NULL`.
+  narratedAt DateTime?
 
   computedAt DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -4251,4 +4259,62 @@ model TravailIaLocal {
 
   @@index([statut, type])
   @@map("travaux_ia_locaux")
+}
+
+/// Rapport hebdomadaire (2026-09) — réglage PAR SOCIÉTÉ de l'envoi automatique du rapport PDF.
+///
+/// Avant : un cron unique (lundi 08:00 UTC), un destinataire (`Fleet.weeklyReportEmail` ou le
+/// premier admin), un contenu figé, et un PDF annoncé « en pièce jointe » jamais joint. Rien
+/// de réglable, rien de visible par le client. Une société SANS ligne ici garde l'ancien
+/// comportement (lundi 08:00 Paris, administrateurs actifs, toutes les sections) — cf.
+/// ReportScheduleService.effective().
+model FleetReportSchedule {
+  fleetId         String    @id @db.Uuid
+  fleet           Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  enabled         Boolean   @default(true)
+  /// Jour d'envoi, 1 = lundi … 7 = dimanche (Europe/Paris).
+  weekday         Int       @default(1)
+  /// Heure d'envoi, 0-23 (Europe/Paris).
+  hour            Int       @default(8)
+  /// Destinataires choisis. Vide = les administrateurs actifs de la société.
+  recipients      String[]  @default([])
+  /// Sections du PDF : 'kpi' | 'alerts' | 'topVehicles' | 'trips' (mêmes que l'export à la main).
+  sections        String[]  @default(["kpi", "alerts", "topVehicles", "trips"])
+  /// Périmètre véhicules. Vide = tous les véhicules de la société.
+  vehicleIds      String[]  @default([])
+  maxTrips        Int       @default(30)
+  topN            Int       @default(10)
+  /// Dernier passage (cron OU envoi manuel) et son issue — lus par la sonde des tâches.
+  lastRunAt       DateTime?
+  lastStatus      String?
+  lastError       String?
+  updatedAt       DateTime  @updatedAt
+  updatedByUserId String?   @db.Uuid
+
+  @@map("fleet_report_schedules")
+}
+
+/// Journal des envois du rapport hebdomadaire — un enregistrement par passage, réussi ou non,
+/// pour que la société ET l'admin voient ce qui est parti, à qui, et pourquoi ça n'est pas parti.
+model FleetReportDispatch {
+  id                String   @id @default(uuid()) @db.Uuid
+  fleetId           String   @db.Uuid
+  fleet             Fleet    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  /// 'cron' | 'manual'
+  trigger           String
+  /// 'SENT' | 'FAILED' | 'SKIPPED'
+  status            String
+  /// Période couverte, bornes API (fin exclusive = lendemain minuit Paris).
+  periodFrom        DateTime
+  periodTo          DateTime
+  recipients        String[] @default([])
+  tripsCount        Int      @default(0)
+  pdfBytes          Int      @default(0)
+  error             String?
+  requestedByUserId String?  @db.Uuid
+  createdAt         DateTime @default(now())
+
+  @@index([fleetId, createdAt])
+  @@index([createdAt])
+  @@map("fleet_report_dispatches")
 }

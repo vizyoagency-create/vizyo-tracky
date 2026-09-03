@@ -48,6 +48,55 @@ export type BgTaskExecutor = 'serveur' | 'poste-local';
  */
 export type BgTaskCoutIa = 'facture' | 'absorbe' | 'aucun';
 
+/**
+ * ÉTAT D'UN AGENT QUI TOURNE SUR LE POSTE, tel qu'un humain doit le lire en une seconde.
+ *
+ * `enabled` (booléen) ne suffit pas : il confond « je n'ai jamais rien vu » et « il est en
+ * panne », et il ne dit jamais DEPUIS QUAND. Un agent arrêté depuis trois jours y ressemble
+ * exactement à un agent arrêté depuis une heure — donc personne ne remarque les trois jours.
+ *
+ * - `sain`       : passage récent, issue correcte.
+ * - `retard`     : plus de trace depuis plus longtemps que sa cadence annoncée, sans être encore
+ *                  anormal au point de crier. On surveille.
+ * - `silencieux` : plus rien depuis plus de DEUX fois sa cadence. Là, on le dit fort.
+ * - `echec`      : il a bien tourné, et il a échoué. Différent d'un silence : le poste répond.
+ * - `inconnu`    : jamais vu passer. On n'accuse pas sans preuve.
+ * - `sans-objet` : silence NORMAL — la tâche n'a plus rien à traiter (arriéré résorbé) ou a été
+ *                  volontairement coupée. Crier ici apprendrait à ignorer l'écran.
+ */
+export type BgTaskEtatLocal = 'sain' | 'retard' | 'silencieux' | 'echec' | 'inconnu' | 'sans-objet';
+
+/** D'où vient la preuve de vie affichée — les deux ne valent pas la même chose. */
+export type BgTaskPreuveLocale =
+  /** Journal dédié des passages : dit « a-t-il TOURNÉ ? », même quand il n'a rien trouvé. */
+  | 'journal-passages'
+  /** Travail réellement écrit en base : dit « a-t-il PRODUIT ? ». Repli quand aucun passage n'est journalisé. */
+  | 'travail-ecrit'
+  /** Aucune trace exploitable (table absente, lecture en échec, agent jamais lancé). */
+  | 'aucune';
+
+/** Traçabilité d'un agent du poste : quand est-il passé, avec quelle issue, et depuis combien de temps. */
+export interface BgTaskTraceLocale {
+  etat: BgTaskEtatLocal;
+  /** ISO du dernier passage connu (identique à `lastRunAt`, repris ici pour que le bloc se lise seul). */
+  dernierPassageAt: string | null;
+  /** Écart en millisecondes depuis ce passage. `null` = jamais vu passer. */
+  depuisMs: number | null;
+  /** Le même écart en français prêt à lire : « 3 jours », « 5 heures », « 12 min ». */
+  depuis: string | null;
+  /** Écart NORMAL maximal entre deux passages, déclaré au catalogue (ms). */
+  cadenceMs: number;
+  /** Au-delà de cet écart, le silence n'est plus un aléa (ms) — deux fois la cadence, au minimum. */
+  seuilSilenceMs: number;
+  /** Issue du dernier passage. `inconnu` quand la preuve est un travail écrit (elle ne dit pas l'échec). */
+  issue: 'succes' | 'echec' | 'inconnu';
+  /** Ce que le dernier passage a produit, en une phrase lisible sans contexte. */
+  resume: string | null;
+  preuve: BgTaskPreuveLocale;
+  /** Phrase à afficher telle quelle, déjà écrite pour un humain. */
+  message: string;
+}
+
 export interface BackgroundTaskDto {
   id: string;
   label: string;
@@ -67,7 +116,14 @@ export interface BackgroundTaskDto {
 
   /** Réglable par un admin (activer/fréquence) ? */
   configurable: boolean;
-  /** Route de la page de réglage existante, ou null. */
+  /**
+   * Écran dédié à ce traitement, ou null.
+   *
+   * ⚠️ PAS FORCÉMENT UN ÉCRAN DE RÉGLAGE, et c'est volontaire. Un agent du poste ne se règle pas
+   * depuis le serveur, mais ce qu'il produit se CONSTATE quelque part (ses diagnostics, son
+   * arriéré). Le lien mène donc à l'écran qui parle de lui ; c'est `configurable` qui dit si on
+   * peut y toucher un réglage. Les fondre laissait trois entrées avec une route jamais affichée.
+   */
   settingsRoute: string | null;
   /** Résumé du réglage courant : « Actif · quotidien à 02:00 » / « En pause ». Null si non configurable. */
   settingsSummary: string | null;
@@ -90,6 +146,15 @@ export interface BackgroundTaskDto {
   executor?: BgTaskExecutor;
   /** Qui paie le travail IA de ce traitement. Optionnel à la lecture, défaut `aucun`. */
   coutIa?: BgTaskCoutIa;
+
+  /**
+   * Traçabilité d'un agent du POSTE : dernier passage, issue, ancienneté, et le mot à afficher.
+   *
+   * Renseigné pour les seuls `executor === 'poste-local'` — un cron du serveur a le registre
+   * NestJS pour preuve de vie, un agent du poste n'a que ce qu'il a laissé en base. `null` quand
+   * la lecture a échoué : la supervision ne fait jamais tomber la page qu'elle supervise.
+   */
+  traceLocale?: BgTaskTraceLocale | null;
 }
 
 export interface BackgroundTasksHealth {

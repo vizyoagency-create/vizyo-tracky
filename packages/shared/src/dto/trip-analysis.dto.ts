@@ -100,6 +100,12 @@ export interface TripAnalysisDto {
   narrative: string | null;
   advice: string | null;
   trustScore: number | null;
+  /**
+   * Date d'écriture du RÉCIT. Un recalcul remplace les chiffres et garde le texte : quand
+   * cette date précède `computedAt`, le récit décrit un état antérieur, et l'écran le dit.
+   * `null` pour les analyses sans récit, et pour celles écrites avant l'ajout de la colonne.
+   */
+  narratedAt: string | null;
 }
 
 /* ── Carburant — suivi des passages station & coûts par véhicule (P3) ── */
@@ -494,7 +500,10 @@ export interface SetTripAutomationSettingsDto {
 export interface TripAutomationBacklogFleetDto {
   fleetId: string;
   fleetName: string;
-  /** L'IA est-elle active pour cette société (sinon : aucun récit, ni serveur ni agent local). */
+  /**
+   * Option IA de la société — gouverne la VISIBILITÉ des récits par le client, pas leur
+   * rédaction : l'agent sur poste rédige pour toutes les sociétés (décision 2026-09-02).
+   */
   aiEnabled: boolean;
   /** Trajets clos, dans l'horizon de rétention des positions, non figés, SANS analyse. */
   sansAnalyse: number;
@@ -511,6 +520,12 @@ export interface TripAutomationBacklogDto {
   at: string;
   /** Borne basse des trajets encore analysables (horizon de rétention des positions), ISO ou null. */
   horizon: string | null;
+  /**
+   * Ce que la colonne « sans récit » compte, en une phrase — affiché sous le tableau.
+   * Un nombre sans définition se fait interpréter : deux écrans ont longtemps affiché deux
+   * totaux différents pour la même question, sans que ni l'un ni l'autre ne dise ce qu'il comptait.
+   */
+  resteRecitLibelle: string;
   fleets: TripAutomationBacklogFleetDto[];
 }
 

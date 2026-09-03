@@ -25,6 +25,50 @@
 /** Fuseau de référence de la flotte. Les clients sont en France métropolitaine. */
 export const FLEET_TIME_ZONE = 'Europe/Paris';
 
+/**
+ * Clé de JOUR CIVIL Europe/Paris d'un instant : « 2026-08-11 ».
+ *
+ * ⚠️ Pas `toISOString().slice(0, 10)` : c'est le jour UTC. Un départ à 23:30 heure de Paris
+ * en été est 21:30Z — même jour ; mais un départ à 00:40 est 22:40Z LA VEILLE. Le résumé
+ * journalier des rapports classait ainsi 5 % des trajets de la recette dans le mauvais jour
+ * (21 sur 391), et le graphique « Activité » ne collait pas au tableau.
+ */
+export function parisDayKey(instant: Date): string {
+  // fr-CA rend « AAAA-MM-JJ » tel quel — c'est sa seule vertu ici.
+  return new Intl.DateTimeFormat('fr-CA', {
+    timeZone: FLEET_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(instant);
+}
+
+/** Décalage Europe/Paris ↔ UTC (ms) à un instant donné : +1 h l'hiver, +2 h l'été. */
+function parisOffsetMs(instant: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: FLEET_TIME_ZONE, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instant);
+  const n = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? '0');
+  const wall = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'));
+  return wall - instant.getTime();
+}
+
+/**
+ * Instant (UTC) du MINUIT Europe/Paris d'un jour civil « AAAA-MM-JJ ».
+ *
+ * L'écran envoie des jours civils ; l'API les lisait avec `new Date('2026-08-03')`, soit
+ * minuit UTC = 02:00 à Paris l'été. « Aujourd'hui » excluait donc les départs entre minuit
+ * et deux heures, et incluait ceux de la nuit suivante. Deux évaluations pour le changement
+ * d'heure : le décalage lu à la première estimation peut différer de celui du résultat.
+ */
+export function parisDayStart(isoDay: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDay);
+  if (!m) return new Date(isoDay);
+  const wallUtc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0);
+  let instant = new Date(wallUtc - parisOffsetMs(new Date(wallUtc)));
+  const again = wallUtc - parisOffsetMs(instant);
+  if (again !== instant.getTime()) instant = new Date(again);
+  return instant;
+}
+
 /** « 24/07/2026 07:38 » — le format par défaut des e-mails et PDF. */
 export function formatFleetDateTime(date: Date | string | number): string {
   return new Date(date).toLocaleString('fr-FR', {

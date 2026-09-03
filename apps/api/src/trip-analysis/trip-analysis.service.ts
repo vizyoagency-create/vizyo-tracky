@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException , UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
+import { AiAvailabilityService } from '../ai/ai-availability.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -43,7 +44,29 @@ export class TripAnalysisService {
     private readonly speedLimits: SpeedLimitService,
     private readonly fuelStations: FuelStationService,
     private readonly errorLogger: ErrorLogger,
+    /** Optionnel pour les tests unitaires historiques ; absent = récits visibles. */
+    @Optional() private readonly aiAvail?: AiAvailabilityService,
   ) {}
+
+  /**
+   * Le client voit-il les récits IA de cette société ?
+   *
+   * ── Décision du 2026-09-02 ──────────────────────────────────────────────────────────
+   * L'agent sur poste rédige les récits de TOUTES les sociétés, option IA active ou non
+   * (il ne coûte rien). Ce que le client a le droit de VOIR, lui, dépend de son option :
+   * option coupée = récit, conseils et Trust Score masqués — la ligne d'analyse reste, ses
+   * chiffres déterministes ne sont pas de l'IA. Le jour où l'option est activée, tout
+   * l'historique déjà rédigé apparaît d'un coup, au lieu d'un compteur qui repart de zéro.
+   *
+   * Le super-admin voit tout : c'est lui qui vérifie que l'agent fait son travail.
+   * Masquage SERVEUR, pas seulement UI : un écran qui cache un champ présent dans le JSON
+   * ne protège rien.
+   */
+  private async narrativeVisible(user: AuthUser, fleetId: string): Promise<boolean> {
+    if (user.role === UserRole.SUPER_ADMIN) return true;
+    if (!this.aiAvail) return true;
+    return this.aiAvail.isEnabledForFleet(fleetId);
+  }
 
   /** Analyse (ou ré-analyse) un trajet et persiste le résultat. */
   async analyze(user: AuthUser, tripId: string): Promise<TripAnalysisDto> {
@@ -61,7 +84,7 @@ export class TripAnalysisService {
     try {
       const result = await this.compute(trip);
       const row = await this.persist(trip, result);
-      return this.toDto(row, this.maskFor(user));
+      return this.toDto(row, this.maskFor(user), await this.narrativeVisible(user, trip.fleetId));
     } catch (e) {
       // Échec du calcul déterministe (positions / préprocesseur / persistance) → centre d'alerte,
       // avec le contexte du trajet. On re-lève ensuite (le client reçoit bien l'erreur).
@@ -79,7 +102,7 @@ export class TripAnalysisService {
     const row = await this.prisma.tripAnalysis.findUnique({ where: { tripId } });
     if (!row) return null;
     if (!(await this.vehicleAccess.hasAccessToVehicle(user, row.vehicleId))) throw new NotFoundException('Trajet introuvable');
-    return this.toDto(row, this.maskFor(user));
+    return this.toDto(row, this.maskFor(user), await this.narrativeVisible(user, row.fleetId));
   }
 
   /**
@@ -112,7 +135,12 @@ export class TripAnalysisService {
 
     const rows = await this.prisma.tripAnalysis.findMany({ where });
     const mask = this.maskFor(user);
-    return rows.map((r) => this.toDto(r, mask));
+    // Un client n'a qu'une société ; un super-admin peut en voir plusieurs d'un coup.
+    const visible = new Map<string, boolean>();
+    for (const fleetId of new Set(rows.map((r) => r.fleetId))) {
+      visible.set(fleetId, await this.narrativeVisible(user, fleetId));
+    }
+    return rows.map((r) => this.toDto(r, mask, visible.get(r.fleetId) ?? true));
   }
 
   /** Analyses récentes d'un véhicule (onglet Trajets / rapports). Scopé véhicule. */
@@ -124,7 +152,8 @@ export class TripAnalysisService {
       take: Math.min(Math.max(limit, 1), 200),
     });
     const mask = this.maskFor(user);
-    return rows.map((r) => this.toDto(r, mask));
+    const showNarrative = rows.length > 0 ? await this.narrativeVisible(user, rows[0]!.fleetId) : true;
+    return rows.map((r) => this.toDto(r, mask, showNarrative));
   }
 
   /**
@@ -237,7 +266,13 @@ export class TripAnalysisService {
     speedingCount: number; speedingSec: number; maxOverKmh: number; limitsKnown: boolean;
     harshAccel: number; harshBrake: number; ecoScore: number; fuelLiters: number | null; co2Kg: number | null;
     detail: unknown; provider: string | null; narrative: string | null; advice: string | null; trustScore: number | null;
-  }, maskProvider = false): TripAnalysisDto {
+    narratedAt?: Date | null;
+  }, maskProvider = false, showNarrative = true): TripAnalysisDto {
+    // Option IA coupée pour la société : la couche IA (récit, conseils, Trust Score, moteur)
+    // sort du DTO. Les chiffres déterministes restent — ce ne sont pas de l'IA.
+    if (!showNarrative) {
+      return { ...this.toDto({ ...row, provider: null, narrative: null, advice: null, trustScore: null, narratedAt: null }, maskProvider, true) };
+    }
     // Marque blanche : le client ne voit qu'« agent Tracky » (jamais le moteur réel). On garde un
     // marqueur générique 'tracky' quand un récit existe (pour afficher « par l'agent Tracky »).
     const provider = maskProvider ? (row.provider ? 'tracky' : null) : row.provider;
@@ -250,6 +285,7 @@ export class TripAnalysisService {
       harshAccel: row.harshAccel, harshBrake: row.harshBrake, ecoScore: row.ecoScore, fuelLiters: row.fuelLiters, co2Kg: row.co2Kg,
       detail: row.detail as TripAnalysisDto['detail'],
       provider, narrative: row.narrative, advice: row.advice, trustScore: row.trustScore,
+      narratedAt: row.narratedAt?.toISOString() ?? null,
     };
   }
 }

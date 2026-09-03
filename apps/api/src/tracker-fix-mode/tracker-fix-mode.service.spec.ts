@@ -845,9 +845,14 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
         .map((c: unknown[]) => (c[0] as { where: Record<string, unknown> }).where)
         .find((w: Record<string, unknown>) => 'fixCommandFailing' in w)!;
       expect(where.lastValidFrameAt?.gt).toBeInstanceOf(Date);
+      // ⚠️ `Date.now()` est relu APRÈS l'appel : le temps écoulé entre les deux s'ajoute à
+      // l'âge mesuré. Une borne à exactement 5 min faisait échouer ce test sur une machine
+      // chargée (300 002 ms relevés le 2026-09-03), pour deux millisecondes de vie réelle —
+      // un rouge qui ne dit rien du code et qu'on finit par ignorer. Une seconde de battement
+      // laisse passer l'ordonnancement sans rien relâcher sur ce que le test vérifie.
       const ageMs = Date.now() - (where.lastValidFrameAt.gt as Date).getTime();
       expect(ageMs).toBeGreaterThan(4.5 * 60 * 1000);
-      expect(ageMs).toBeLessThanOrEqual(5 * 60 * 1000);
+      expect(ageMs).toBeLessThanOrEqual(5 * 60 * 1000 + 1000);
     });
 
     it('force une commande vers la cible COURANTE, deja normalisee a <= 99 s', async () => {

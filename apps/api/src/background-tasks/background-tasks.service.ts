@@ -7,8 +7,10 @@ import type {
   BgTaskCoutIa,
   BgTaskCriticality,
   BgTaskKind,
+  BgTaskTraceLocale,
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { TripAutomationService } from '../trip-analysis/trip-automation.service';
 import { nextFireInstant, nextPeriodicTick, SERVER_TZ } from './next-run.util';
 
 const PARIS = 'Europe/Paris';
@@ -48,6 +50,26 @@ interface CatalogEntry {
    * en base, pas du registre local. Sans cette entrée, il travaillerait en silence.
    */
   externe?: 'limites-vitesse' | 'recit-trajet' | 'qualite-gps' | 'rattrapage-recits' | 'courrier-ia';
+  /**
+   * Écart NORMAL MAXIMAL entre deux passages, en millisecondes — la « cadence annoncée ».
+   *
+   * ⚠️ Ce n'est PAS la période moyenne, c'est le PLUS LONG TROU légitime de la journée. L'agent
+   * de limites de vitesse passe cinq fois, mais son plus grand intervalle est 22:00 → 04:30 :
+   * prendre 24 h / 5 aurait crié « à l'arrêt » toutes les nuits, et prendre 24 h n'aurait jamais
+   * rien vu. Le seuil d'alerte en découle (deux fois cette valeur), donc s'en écarter revient à
+   * régler l'alarme au hasard.
+   *
+   * Obligatoire pour toute entrée `externe` — un garde le vérifie.
+   */
+  cadenceMs?: number;
+  /**
+   * Fenêtre au-delà de laquelle l'agent est considéré « plus frais » (ms), et donc `enabled: false`.
+   *
+   * Séparée de `cadenceMs` parce qu'elle répond à une autre question : la cadence dit ce qui est
+   * NORMAL, la fraîcheur dit à partir de quand on cesse d'affirmer que tout va bien. Elle reprend
+   * exactement les seuils historiques de chaque agent, pour ne pas déplacer un contrat existant.
+   */
+  fraicheurMs?: number;
   /**
    * Lanceur .cmd du Planificateur de taches Windows, relatif a la racine du depot.
    *
@@ -183,9 +205,11 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'reports-weekly',
     source: 'reports/reports-cron.service.ts', label: 'E-mail hebdo du rapport PDF', category: 'IA & rapports',
-    kind: 'cron', scheduleHuman: 'chaque lundi à 08:00', criticality: 'basse', antiOverlap: false,
-    purpose: 'Envoie par e-mail le rapport PDF de la semaine passée à chaque flotte (destinataire réglé sur la fiche flotte).',
-    fire: { tz: SERVER_TZ, matcher: (w) => w.getDay() === 1 && w.getHours() === 8 && w.getMinutes() === 0 },
+    kind: 'cron', scheduleHuman: 'à échéance par société (vérifié chaque heure à :05)', criticality: 'basse', antiOverlap: false,
+    configurable: true, settingsRoute: '/reports',
+    purpose: 'Envoie par e-mail, avec le PDF joint, le rapport de la semaine écoulée à chaque société — jour, heure (Paris), destinataires, contenu et périmètre réglés par la société sur sa page Rapports. Journal des envois : GET /api/reports/schedule/dispatches.',
+    note: 'Sans réglage enregistré : lundi 08:00 (Paris), administrateurs actifs, toutes les sections.',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getMinutes() === 5 },
   },
 
   // ───────── Maintenance données ─────────
@@ -438,6 +462,13 @@ const CATALOG: CatalogEntry[] = [
     purpose: "Résout auprès d'OpenStreetMap la limite légale de chaque portion de route parcourue. Sans elle, aucun excès de vitesse n'est calculable et le score de conduite ne mesure rien. Gratuit : aucun crédit d'IA.",
     externe: 'limites-vitesse',
     poste: 'outils/agent-limites-vitesse.cmd',
+    // Le plus long trou legitime de la journee est 22:00 -> 04:30, soit 6 h 30 : c'est LUI la
+    // cadence a surveiller, pas la moyenne de cinq passages.
+    cadenceMs: 6.5 * 3_600_000,
+    fraicheurMs: 13 * 3_600_000,
+    // « Ce que nos services ont recupere » : l'ecran ne le regle pas, il MONTRE ce que cet agent
+    // a rempli — c'est la page nee du cache de limites faux a 98,8 % sans que rien ne le montre.
+    settingsRoute: '/admin/recuperation',
     // ⚠️ PARIS, pas SERVER_TZ. Ce serveur tourne en UTC, le poste en heure de Paris : avec
     //    SERVER_TZ l'ecran annoncait « prochain passage 14:00 » en UTC, soit deux heures APRES
     //    le passage reel. Un ecran de supervision qui se trompe d'heure est pire que pas d'ecran.
@@ -461,6 +492,12 @@ const CATALOG: CatalogEntry[] = [
     externe: 'recit-trajet',
     poste: 'outils/agent-recit-trajet.cmd',
     coutIa: 'absorbe',
+    // Un passage par nuit : la cadence annoncee est 24 h, l'alarme se declenche donc a 48 h.
+    cadenceMs: DAY_MS,
+    fraicheurMs: 36 * 3_600_000,
+    // L'ecran d'automatisation des trajets compte les trajets « sans recit » : c'est la que se
+    // constate ce que cet agent a livre, et ce qu'il lui reste.
+    settingsRoute: '/admin/trip-automation',
     // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
     fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 15 },
   },
@@ -485,6 +522,11 @@ const CATALOG: CatalogEntry[] = [
     poste: 'outils/agent-qualite-gps.cmd',
     // Aucun modele appele : ce n'est ni facture ni absorbe, c'est simplement du calcul.
     coutIa: 'aucun',
+    cadenceMs: DAY_MS,
+    fraicheurMs: 36 * 3_600_000,
+    // L'ecran « Qualite GPS » porte les diagnostics que cet agent ecrit — le seul endroit ou
+    // l'on peut verifier ce qu'il a trouve, et trancher.
+    settingsRoute: '/admin/qualite-gps',
     // ⚠️ PARIS, pas SERVER_TZ : ce serveur tourne en UTC, le poste en heure de Paris.
     // 05:00 et non 03:15 : l'agent de recit occupe deja la tranche de 3 h et peut courir
     // jusqu'a 110 minutes. Les faire se chevaucher sur le meme poste ne servirait personne.
@@ -500,6 +542,9 @@ const CATALOG: CatalogEntry[] = [
     externe: 'rattrapage-recits',
     poste: 'outils/rattrapage-recits.cmd',
     coutIa: 'absorbe',
+    cadenceMs: 2 * 3_600_000,
+    fraicheurMs: 6 * 3_600_000,
+    settingsRoute: '/admin/trip-automation',
     // Heures PAIRES de Paris, pile — 02:00 Paris = 00:00 UTC, heure epoch paire, d'ou offset 0.
     periodic: { everyMs: 7_200_000, offsetMs: 0 },
   },
@@ -522,6 +567,9 @@ const CATALOG: CatalogEntry[] = [
     purpose: "Porte les travaux IA recurrents prepares par le serveur vers le modele, sur l'abonnement du poste : 0 credit d'API. La file en attente et les echecs sont affiches ci-contre — un echec persistant se voit, il ne se devine pas.",
     externe: 'courrier-ia',
     coutIa: 'absorbe',
+    // Deux passages par jour, mais 14:30 -> 06:30 fait 16 h : c'est ce trou-la qu'il faut tolerer.
+    cadenceMs: 16 * 3_600_000,
+    fraicheurMs: 30 * 3_600_000,
     // DEUX passages, et c'est deliberement peu : le travail arrive a une heure imprevisible
     // (le producteur declare l'echeance a la minute :20 de n'importe quelle heure). Un seul
     // passage laissait jusqu'a 24 h de latence sur un rapport deja pret a rediger. Deux
@@ -533,6 +581,50 @@ const CATALOG: CatalogEntry[] = [
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
 
+/** Ce qu'un agent du poste inscrit à la FIN de son passage (`passages_agents_locaux`). */
+interface PassageLocal {
+  finiA: Date;
+  succes: boolean;
+  resume: string | null;
+  erreur: string | null;
+}
+
+/** Bloc d'état d'un agent du poste, fusionné tel quel dans le DTO par `list()`. */
+interface EtatLocal {
+  enabled: boolean | null;
+  lastRunAt: string | null;
+  settingsSummary: string | null;
+  traceLocale: BgTaskTraceLocale | null;
+}
+
+/**
+ * Cadence et fraîcheur d'un agent du poste, LUES AU CATALOGUE.
+ *
+ * Les recopier ici en dur aurait créé une seconde vérité : le jour où l'on change l'horaire du
+ * poste, on modifie `scheduleHuman` — qui est juste à côté de `cadenceMs` — et pas une constante
+ * enfouie trois cents lignes plus bas. Un seuil d'alerte qui se périme sans qu'on le voie est
+ * exactement le défaut que cet écran existe pour corriger.
+ */
+function surveillanceDe(id: string): { cadenceMs: number; fraicheurMs: number } {
+  const e = CATALOG.find((c) => c.id === id);
+  return { cadenceMs: e?.cadenceMs ?? DAY_MS, fraicheurMs: e?.fraicheurMs ?? 36 * 3_600_000 };
+}
+
+/**
+ * Une durée telle qu'un humain la dit d'un retard : « 3 jours », « 5 heures », « 12 min ».
+ *
+ * Granularité volontairement grossière au-delà de deux jours : « 3 jours » se comprend d'un
+ * coup d'œil, « 74 h 12 min » demande un calcul mental avant de savoir si c'est grave.
+ */
+function dureeFr(ms: number): string {
+  const min = Math.floor(Math.max(0, ms) / 60_000);
+  if (min < 1) return 'moins d’une minute';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return h <= 1 ? '1 heure' : `${h} heures`;
+  return `${Math.floor(h / 24)} jours`;
+}
+
 @Injectable()
 export class BackgroundTasksService {
   private readonly logger = new Logger(BackgroundTasksService.name);
@@ -540,6 +632,8 @@ export class BackgroundTasksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: SchedulerRegistry,
+    // Reste à faire des récits : une seule définition dans l'application, celle de l'agent.
+    private readonly tripAutomation: TripAutomationService,
   ) {}
 
   async list(): Promise<BackgroundTasksResponse> {
@@ -554,11 +648,13 @@ export class BackgroundTasksService {
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
       this.prisma.placeAutomationSettings.findFirst({ orderBy: { createdAt: 'asc' } }).catch(() => null),
-      this.etatAgentLimites(),
-      this.etatAgentRecit(),
-      this.etatAgentQualiteGps(),
-      this.etatRattrapageRecits(),
-      this.etatCourrierIa(),
+      // `nowMs` traverse jusqu'ici : l'ancienneté affichée (« depuis 3 jours ») doit être mesurée
+      // sur LA MÊME horloge que `serverNow`, sinon le client corrige un décalage déjà appliqué.
+      this.etatAgentLimites(nowMs),
+      this.etatAgentRecit(nowMs),
+      this.etatAgentQualiteGps(nowMs),
+      this.etatRattrapageRecits(nowMs),
+      this.etatCourrierIa(nowMs),
       this.gardeTrajets(nowMs),
     ]);
 
@@ -574,6 +670,9 @@ export class BackgroundTasksService {
         // est gratuit), et un traitement serveur peut ne consommer aucune IA.
         executor: e.externe ? 'poste-local' : 'serveur',
         coutIa: e.coutIa ?? (e.ai ? 'facture' : 'aucun'),
+        // Renseignée uniquement pour les agents du poste (voir les `e.externe` plus bas) : un cron
+        // du serveur a le registre NestJS pour preuve de vie, eux n'ont que leurs traces en base.
+        traceLocale: null,
       };
 
       if (e.continuous) return base; // flux continu → pas de compte-à-rebours daté
@@ -620,6 +719,145 @@ export class BackgroundTasksService {
   }
 
   /**
+   * Dernier PASSAGE journalisé d'un agent du poste — la meilleure preuve de vie disponible.
+   *
+   * Meilleure que le travail écrit, parce qu'elle répond à « a-t-il TOURNÉ ? » et non à « a-t-il
+   * TROUVÉ ? ». Un agent qui n'avait rien à faire cette nuit-là écrit quand même sa ligne ; son
+   * silence de production ne prouve donc plus rien contre lui. C'est aussi la seule source qui
+   * porte une ISSUE : un passage qui échoue se voit, là où l'absence de production se confond
+   * avec l'absence de travail.
+   *
+   * Requête bornée : lecture d'UNE ligne sur l'index (`agent`, `finiA` desc) — pas de balayage.
+   * Défensive de bout en bout : la table peut ne pas exister sur un environnement ancien, et un
+   * écran de supervision qui tombe faute de supervision serait un comble.
+   *
+   * ⚠️ `agent` EST LA CLÉ ÉCRITE PAR LE POSTE, pas forcément l'id du catalogue. Ils coïncident
+   *    partout SAUF pour le courrier : catalogue `courrier-ia`, base `agent-courrier-ia`. Se
+   *    fier à l'id aurait rendu ce seul agent muet, en silence — la panne exacte que cet écran
+   *    doit rendre impossible. Un agent qui se mettra à journaliser ses passages devra employer
+   *    la clé passée ici par son `etat*`, sinon sa preuve de vie n'atteindra jamais l'écran.
+   */
+  private async dernierPassage(agent: string): Promise<PassageLocal | null> {
+    try {
+      const p = await this.prisma.passageAgentLocal.findFirst({
+        where: { agent },
+        orderBy: { finiA: 'desc' },
+        select: { finiA: true, succes: true, resume: true, erreur: true },
+      });
+      return p ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * COMPOSE l'état d'un agent du poste à partir des deux preuves possibles, et écrit la phrase.
+   *
+   * ── Ce que ce point unique répare ────────────────────────────────────────────────────
+   * Chaque agent déduisait son état à sa façon, avec son propre seuil en dur, et aucun ne disait
+   * DEPUIS QUAND. L'écran affichait donc un booléen : « en panne » ressemblait exactement à « en
+   * panne », qu'il s'agisse d'une heure ou de trois jours — et un agent arrêté depuis trois jours
+   * passait inaperçu, ce qui est précisément l'incident qu'on voulait voir.
+   *
+   * Deux seuils, deux questions distinctes :
+   *   `fraicheurMs`  → « puis-je encore affirmer que tout va bien ? » (c'est `enabled`, inchangé)
+   *   2 × `cadenceMs`→ « dois-je le dire FORT ? » (c'est l'état `silencieux`)
+   * Le second ne descend jamais sous le premier : une alarme qui crie avant que l'agent ne soit
+   * même considéré en retard se contredirait elle-même à l'écran.
+   *
+   * Et `sansObjet` existe pour ne PAS crier sur un silence normal — une tâche qui a fini son
+   * arriéré n'a plus rien à écrire. Une supervision qui hurle sur un succès finit par ne plus
+   * être lue, et c'est alors la vraie panne qui passe.
+   */
+  private etatLocal(opts: {
+    id: string;
+    nowMs: number;
+    /** Passage journalisé, s'il en existe un. Prioritaire sur la production. */
+    passage: PassageLocal | null;
+    /** Date du dernier travail réellement écrit, quand aucun passage n'est journalisé. */
+    productionAt: Date | null;
+    /** Ce qui reste à faire / ce qui a été produit, en une phrase. Affiché quoi qu'il arrive. */
+    production: string | null;
+    /** Silence LÉGITIME (plus rien à traiter, tâche volontairement coupée) → aucune alarme. */
+    sansObjet?: boolean;
+    /** Défaut connu par une autre voie (file en échec…) : interdit d'annoncer « sain ». */
+    anomalie?: string | null;
+  }): EtatLocal {
+    const { cadenceMs, fraicheurMs } = surveillanceDe(opts.id);
+    const seuilSilenceMs = Math.max(2 * cadenceMs, fraicheurMs);
+    const passage = opts.passage;
+    const at = passage?.finiA ?? opts.productionAt ?? null;
+    const preuve: BgTaskTraceLocale['preuve'] = passage
+      ? 'journal-passages'
+      : opts.productionAt
+        ? 'travail-ecrit'
+        : 'aucune';
+
+    // Le résumé affiché : l'issue du passage d'abord (elle prime), le reste-à-faire ensuite.
+    const echec = !!passage && !passage.succes;
+    const motif = passage?.erreur ?? 'motif non consigné';
+    const resume = echec
+      ? `Dernier passage en échec : ${motif}`
+      : [passage?.resume, opts.production].filter((s): s is string => !!s).join(' · ') || null;
+
+    if (at === null) {
+      // Jamais vu passer : on ne prétend pas savoir. `null` affiche « inconnu », pas « en panne ».
+      return {
+        enabled: null,
+        lastRunAt: null,
+        settingsSummary: resume,
+        traceLocale: {
+          etat: 'inconnu',
+          dernierPassageAt: null, depuisMs: null, depuis: null,
+          cadenceMs, seuilSilenceMs, issue: 'inconnu', resume, preuve,
+          message: 'Aucun passage jamais observé — la tâche est-elle inscrite au Planificateur du poste ?',
+        },
+      };
+    }
+
+    const depuisMs = Math.max(0, opts.nowMs - at.getTime());
+    const depuis = dureeFr(depuisMs);
+    const frais = depuisMs < fraicheurMs;
+    const issue: BgTaskTraceLocale['issue'] = passage ? (passage.succes ? 'succes' : 'echec') : 'inconnu';
+
+    let etat: BgTaskTraceLocale['etat'];
+    let message: string;
+    if (opts.sansObjet) {
+      etat = 'sans-objet';
+      message = `Plus rien à traiter depuis ${depuis} — ce silence est normal, la tâche peut être désinscrite du poste.`;
+    } else if (depuisMs > seuilSilenceMs) {
+      etat = 'silencieux';
+      message = `Aucun passage depuis ${depuis} — la tâche tourne-t-elle sur le poste ?`;
+    } else if (echec) {
+      etat = 'echec';
+      message = `Dernier passage il y a ${depuis}, en échec : ${motif}`;
+    } else if (opts.anomalie) {
+      etat = 'echec';
+      message = opts.anomalie;
+    } else if (!frais) {
+      etat = 'retard';
+      message = `Dernier passage il y a ${depuis}, soit plus que sa cadence annoncée (${dureeFr(cadenceMs)}) — à surveiller.`;
+    } else {
+      etat = 'sain';
+      message = `Dernier passage il y a ${depuis}.`;
+    }
+
+    return {
+      // `enabled` garde EXACTEMENT sa sémantique d'avant (fraîcheur + issue du passage) : c'est un
+      // contrat déjà lu ailleurs. La nouveauté est à côté, pas à la place.
+      enabled: opts.sansObjet ? true : frais && !echec && !opts.anomalie,
+      lastRunAt: at.toISOString(),
+      settingsSummary: resume,
+      traceLocale: { etat, dernierPassageAt: at.toISOString(), depuisMs, depuis, cadenceMs, seuilSilenceMs, issue, resume, preuve, message },
+    };
+  }
+
+  /** Aucune trace exploitable (lecture en échec) : l'écran s'affiche sans état, jamais cassé. */
+  private etatIndisponible(): EtatLocal {
+    return { enabled: null, lastRunAt: null, settingsSummary: null, traceLocale: null };
+  }
+
+  /**
    * État de l'agent de limites de vitesse, qui tourne sur le POSTE du propriétaire.
    *
    * ⚠️ On ne lui demande pas s'il va bien : on regarde ce qu'il a ÉCRIT. La date de la dernière
@@ -630,26 +868,29 @@ export class BackgroundTasksService {
    * `enabled` reflète la même chose : « a-t-il produit quelque chose récemment ? ». Le serveur ne
    * peut pas savoir si la tâche planifiée existe encore sur le poste ; il peut savoir si elle
    * travaille.
+   *
+   * ⚠️ Depuis 2026-09, le JOURNAL DES PASSAGES prime dès qu'il en contient un : lui seul dit « il
+   * a tourné et n'a rien trouvé », que la production ne sait pas distinguer d'une panne. Le
+   * travail écrit reste le repli tant que cet agent n'inscrit pas ses passages.
    */
-  private async etatAgentLimites(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+  private async etatAgentLimites(nowMs: number): Promise<EtatLocal> {
+    const passage = await this.dernierPassage('agent-limites-vitesse');
     try {
       const [dernier, resolues, restantes] = await Promise.all([
         this.prisma.speedLimitCache.aggregate({ _max: { createdAt: true } }),
         this.prisma.speedLimitCache.count({ where: { maxspeed: { not: null } } }),
         this.prisma.tripAnalysis.count({ where: { limitsKnown: false } }),
       ]);
-      const at = dernier._max.createdAt ?? null;
-      // Deux creneaux d'ecart (le plus long trou de la journee est 22:00 -> 04:30, soit 6h30) :
-      // au-dela, l'agent ne travaille plus et ce n'est pas un simple alea.
-      const frais = at !== null && Date.now() - at.getTime() < 13 * 3_600_000;
-      return {
-        enabled: at === null ? null : frais,
-        lastRunAt: at ? at.toISOString() : null,
-        settingsSummary: `${resolues.toLocaleString('fr-FR')} limites résolues · ${restantes.toLocaleString('fr-FR')} trajets encore sans limite`,
-      };
+      return this.etatLocal({
+        id: 'agent-limites-vitesse', nowMs, passage,
+        productionAt: dernier._max.createdAt ?? null,
+        production: `${resolues.toLocaleString('fr-FR')} limites résolues · ${restantes.toLocaleString('fr-FR')} trajets encore sans limite`,
+      });
     } catch {
-      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
-      return { enabled: null, lastRunAt: null, settingsSummary: null };
+      // La supervision ne doit jamais faire tomber la page qu'elle supervise. Un passage déjà lu
+      // reste affiché : perdre le compteur du reste-à-faire n'oblige pas à perdre la preuve de vie.
+      if (passage) return this.etatLocal({ id: 'agent-limites-vitesse', nowMs, passage, productionAt: null, production: null });
+      return this.etatIndisponible();
     }
   }
   /**
@@ -660,29 +901,26 @@ export class BackgroundTasksService {
    * travail attend ou a échoué. Un courrier « sain » avec des échecs en file est un mensonge ;
    * une file vide avec un courrier muet depuis deux jours en est un autre.
    */
-  private async etatCourrierIa(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+  private async etatCourrierIa(nowMs: number): Promise<EtatLocal> {
+    const passage = await this.dernierPassage('agent-courrier-ia');
     try {
-      const [passage, aFaire, faits, echecs] = await Promise.all([
-        this.prisma.passageAgentLocal.findFirst({ where: { agent: 'agent-courrier-ia' }, orderBy: { finiA: 'desc' } }),
+      const [aFaire, faits, echecs] = await Promise.all([
         this.prisma.travailIaLocal.count({ where: { statut: 'a-faire' } }),
         this.prisma.travailIaLocal.count({ where: { statut: 'fait' } }),
         this.prisma.travailIaLocal.count({ where: { statut: 'echec' } }),
       ]);
-      const resume =
-        `file : ${aFaire} en attente · ${faits} a ranger` +
-        (echecs > 0 ? ` · ⚠ ${echecs} en echec definitif` : '');
-      if (!passage) {
-        return { enabled: null, lastRunAt: null, settingsSummary: resume };
-      }
-      // Passage quotidien : 30 h de silence couvrent un creneau manque + la marge de rattrapage.
-      const frais = Date.now() - passage.finiA.getTime() < 30 * 3_600_000;
-      return {
-        enabled: frais && passage.succes && echecs === 0,
-        lastRunAt: passage.finiA.toISOString(),
-        settingsSummary: resume,
-      };
+      return this.etatLocal({
+        id: 'courrier-ia', nowMs, passage, productionAt: null,
+        production:
+          `file : ${aFaire} en attente · ${faits} a ranger` +
+          (echecs > 0 ? ` · ⚠ ${echecs} en echec definitif` : ''),
+        // Un courrier « frais et réussi » avec des travaux morts en file serait un mensonge : le
+        // dernier passage va bien, mais la chaîne, elle, ne livre plus.
+        anomalie: echecs > 0 ? `${echecs} travail(aux) en échec définitif dans la file — le courrier passe, mais la chaîne ne livre plus.` : null,
+      });
     } catch {
-      return { enabled: null, lastRunAt: null, settingsSummary: null };
+      if (passage) return this.etatLocal({ id: 'courrier-ia', nowMs, passage, productionAt: null, production: null });
+      return this.etatIndisponible();
     }
   }
 
@@ -695,30 +933,35 @@ export class BackgroundTasksService {
    * ce cas, la tâche serait déclarée en panne précisément au moment où elle a fini son travail,
    * et l'écran crierait sur un succès.
    */
-  private async etatRattrapageRecits(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+  private async etatRattrapageRecits(nowMs: number): Promise<EtatLocal> {
+    const passage = await this.dernierPassage('rattrapage-recits');
     try {
-      const [dernier, restants] = await Promise.all([
+      const [dernier, reste] = await Promise.all([
         this.prisma.tripAnalysis.aggregate({ where: { provider: 'local' }, _max: { updatedAt: true } }),
-        this.prisma.tripAnalysis.count({ where: { narrative: null } }),
+        // ⚠️ UNE SEULE définition du reste à faire, celle de l'agent (cf. `resteRecitTotal`).
+        // Un `count({ narrative: null })` écrit ici annonçait 132 récits à écrire pendant que
+        // l'écran d'automatisation en comptait 0 : il ignorait la segmentation et la fenêtre,
+        // donc comptait du travail que l'agent ne prendra jamais — et la branche « arriéré
+        // résorbé » n'était jamais atteinte, si bien que la tâche passait pour en panne au
+        // moment précis où elle avait fini.
+        this.tripAutomation.resteRecitTotal(),
       ]);
-      const at = dernier._max.updatedAt ?? null;
-      if (restants === 0) {
-        return {
-          enabled: at !== null,
-          lastRunAt: at ? at.toISOString() : null,
-          settingsSummary: 'arriéré résorbé — la tâche est devenue sans objet et peut être désinscrite du poste',
-        };
-      }
-      // Trois creneaux de 2 h sans production alors qu'il reste du travail : ce n'est plus un alea.
-      const frais = at !== null && Date.now() - at.getTime() < 6 * 3_600_000;
-      return {
-        enabled: at === null ? null : frais,
-        lastRunAt: at ? at.toISOString() : null,
-        settingsSummary: restants.toLocaleString('fr-FR') + ' récit(s) encore à écrire (rattrapage + flux courant)',
-      };
+      return this.etatLocal({
+        id: 'rattrapage-recits', nowMs, passage,
+        productionAt: dernier._max.updatedAt ?? null,
+        // Zéro reste = le silence est LE RÉSULTAT, pas la panne : l'agent sort immédiatement
+        // quand il n'y a plus rien à narrer. Crier ici accuserait la tâche d'avoir réussi.
+        sansObjet: reste.aNarrer === 0,
+        production: reste.aNarrer === 0
+          ? 'arriéré résorbé — la tâche est devenue sans objet et peut être désinscrite du poste'
+            + (reste.enAttenteDeRecalcul > 0
+                ? ` (${reste.enAttenteDeRecalcul.toLocaleString('fr-FR')} analyse(s) attendent d'abord le recalcul serveur)`
+                : '')
+          : `${reste.aNarrer.toLocaleString('fr-FR')} à écrire — ${reste.libelle}`,
+      });
     } catch {
-      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
-      return { enabled: null, lastRunAt: null, settingsSummary: null };
+      if (passage) return this.etatLocal({ id: 'rattrapage-recits', nowMs, passage, productionAt: null, production: null });
+      return this.etatIndisponible();
     }
   }
 
@@ -734,24 +977,23 @@ export class BackgroundTasksService {
    * si la tâche planifiée existe toujours sur le poste, ni si la session Claude Code y est encore
    * ouverte ; il peut savoir si des récits arrivent.
    */
-  private async etatAgentRecit(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+  private async etatAgentRecit(nowMs: number): Promise<EtatLocal> {
+    const passage = await this.dernierPassage('agent-recit-trajet');
     try {
-      const [dernier, ecrits, restants] = await Promise.all([
+      const [dernier, ecrits, reste] = await Promise.all([
         this.prisma.tripAnalysis.aggregate({ where: { provider: 'local' }, _max: { updatedAt: true } }),
         this.prisma.tripAnalysis.count({ where: { provider: 'local' } }),
-        this.prisma.tripAnalysis.count({ where: { narrative: null } }),
+        // Même source que le rattrapage et que l'écran d'automatisation : un seul chiffre.
+        this.tripAutomation.resteRecitTotal(),
       ]);
-      const at = dernier._max.updatedAt ?? null;
-      // Un passage par nuit : au-delà de 36 h sans récit, ce n'est plus un aléa.
-      const frais = at !== null && Date.now() - at.getTime() < 36 * 3_600_000;
-      return {
-        enabled: at === null ? null : frais,
-        lastRunAt: at ? at.toISOString() : null,
-        settingsSummary: `${ecrits.toLocaleString('fr-FR')} récit(s) écrits sur le poste · ${restants.toLocaleString('fr-FR')} trajet(s) encore sans récit`,
-      };
+      return this.etatLocal({
+        id: 'agent-recit-trajet', nowMs, passage,
+        productionAt: dernier._max.updatedAt ?? null,
+        production: `${ecrits.toLocaleString('fr-FR')} récit(s) écrits sur le poste · ${reste.aNarrer.toLocaleString('fr-FR')} encore à écrire — ${reste.libelle}`,
+      });
     } catch {
-      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
-      return { enabled: null, lastRunAt: null, settingsSummary: null };
+      if (passage) return this.etatLocal({ id: 'agent-recit-trajet', nowMs, passage, productionAt: null, production: null });
+      return this.etatIndisponible();
     }
   }
 
@@ -775,32 +1017,20 @@ export class BackgroundTasksService {
    * Et la ligne de passage n'est écrite qu'à la FIN, avec son issue : un signal de démarrage
    * mentirait exactement comme le faisait `psql` en sortant en 0 sur une erreur SQL.
    */
-  private async etatAgentQualiteGps(): Promise<{ enabled: boolean | null; lastRunAt: string | null; settingsSummary: string | null }> {
+  private async etatAgentQualiteGps(nowMs: number): Promise<EtatLocal> {
+    const passage = await this.dernierPassage('agent-qualite-gps');
     try {
-      const [passage, ouverts] = await Promise.all([
-        this.prisma.passageAgentLocal.findFirst({
-          where: { agent: 'agent-qualite-gps' },
-          orderBy: { finiA: 'desc' },
-        }),
-        this.prisma.gpsZoneDiagnostic.count({ where: { traiteAt: null } }),
-      ]);
-      if (!passage) {
-        // Jamais vu passer : on ne prétend pas savoir. `null` affiche « inconnu », pas « en panne ».
-        return { enabled: null, lastRunAt: null, settingsSummary: `${ouverts} zone(s) en attente de relecture` };
-      }
-      // Un passage par nuit : au-delà de 36 h, ce n'est plus un aléa. Même seuil que le récit.
-      const frais = Date.now() - passage.finiA.getTime() < 36 * 3_600_000;
-      return {
-        // Un passage FRAIS mais en ÉCHEC reste un problème : l'agent tourne et n'aboutit pas.
-        enabled: frais && passage.succes,
-        lastRunAt: passage.finiA.toISOString(),
-        settingsSummary: passage.succes
-          ? `${passage.resume} · ${ouverts} zone(s) en attente de relecture`
-          : `Dernier passage en échec : ${passage.erreur ?? 'motif non consigné'}`,
-      };
+      const ouverts = await this.prisma.gpsZoneDiagnostic.count({ where: { traiteAt: null } });
+      return this.etatLocal({
+        id: 'agent-qualite-gps', nowMs, passage,
+        // Aucune date de production : c'est TOUT L'INTÉRÊT de cet agent. Sa preuve de vie ne peut
+        // venir que de ses passages — ses trouvailles, elles, ont le droit d'être vides.
+        productionAt: null,
+        production: `${ouverts} zone(s) en attente de relecture`,
+      });
     } catch {
-      // La supervision ne doit jamais faire tomber la page qu'elle supervise.
-      return { enabled: null, lastRunAt: null, settingsSummary: null };
+      if (passage) return this.etatLocal({ id: 'agent-qualite-gps', nowMs, passage, productionAt: null, production: null });
+      return this.etatIndisponible();
     }
   }
 

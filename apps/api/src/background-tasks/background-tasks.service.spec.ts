@@ -30,7 +30,7 @@ function service(opts: { dernier?: Date | null; resolues?: number; restantes?: n
     tripAnalysis: { count: jest.fn().mockResolvedValue(opts.restantes ?? 0) },
   };
   const registry = { getCronJobs: () => new Map(), getIntervals: () => [] };
-  return new BackgroundTasksService(prisma as never, registry as never);
+  return new BackgroundTasksService(prisma as never, registry as never, { resteRecitTotal: async () => ({ aNarrer: 0, enAttenteDeRecalcul: 0, libelle: 'analyses sans recit que l agent prendra' }) } as never);
 }
 
 const agentDe = async (svc: BackgroundTasksService) =>

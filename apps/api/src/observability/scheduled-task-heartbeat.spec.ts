@@ -51,6 +51,11 @@ describe('ScheduledTaskHeartbeatService', () => {
       agendaAgentSettings: rows('agenda'),
       activityReportSchedule: rows('report'),
       placeAutomationSettings: rows('place'),
+      // Rapport hebdomadaire des sociétés (2026-09) : par défaut AUCUNE ligne, donc rien
+      // à surveiller. ⚠️ Un modèle absent du mock fait échouer la LECTURE de la tâche, et la
+      // sonde journalise alors une erreur de lecture — ce qui ajoutait un appel parasite à
+      // chacun des tests ci-dessous. Toute tâche ajoutée à la sonde doit apparaître ici.
+      fleetReportSchedule: rows('hebdo'),
     } as never;
     const recordBackground = jest.fn();
     const svc = new ScheduledTaskHeartbeatService(prisma, { recordBackground } as never);
@@ -231,6 +236,7 @@ describe('ScheduledTaskHeartbeatService', () => {
       agendaAgentSettings: { findFirst: jest.fn().mockResolvedValue(null) },
       activityReportSchedule: { findFirst: jest.fn().mockResolvedValue(null) },
       placeAutomationSettings: { findFirst: jest.fn().mockResolvedValue(null) },
+      fleetReportSchedule: { findFirst: jest.fn().mockResolvedValue(null) },
     } as never;
     const recordBackground = jest.fn();
     const svc = new ScheduledTaskHeartbeatService(prisma, { recordBackground } as never);

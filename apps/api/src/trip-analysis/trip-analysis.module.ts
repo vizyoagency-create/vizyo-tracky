@@ -21,6 +21,8 @@ import { FuelCalibrationService } from './fuel-calibration.service';
   imports: [AuthModule, TripsModule],
   controllers: [TripAnalysisController],
   providers: [TripAnalysisService, TripAnalysisLlmService, TripAutomationService, DrivingScoreService, SpeedLimitService, FuelStationService, FuelReportService, FuelCalibrationService],
-  exports: [TripAnalysisService],
+  // `TripAutomationService` est exporté pour l'écran des tâches de fond : il y lit le reste à
+  // faire des récits par `resteRecitTotal()`, seule définition de ce chiffre dans l'application.
+  exports: [TripAnalysisService, TripAutomationService],
 })
 export class TripAnalysisModule {}

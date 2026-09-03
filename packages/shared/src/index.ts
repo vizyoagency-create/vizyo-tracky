@@ -34,6 +34,7 @@ export * from './dto/ai-usage.dto';
 export * from './dto/billing.dto';
 export * from './dto/trip-analysis.dto';
 export * from './dto/activity-report.dto';
+export * from './dto/report-schedule.dto';
 export * from './dto/system-activity.dto';
 export * from './dto/api-traffic.dto';
 // Espace dépôt (2026-08) — contrat de ce qu'un compte DEPOT reçoit.
