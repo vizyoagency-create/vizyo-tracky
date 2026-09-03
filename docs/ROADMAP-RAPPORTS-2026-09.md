@@ -10,6 +10,12 @@ Un audit croisé en 7 lectures indépendantes a produit **154 constats** (65 bug
 
 Au moment où ce document a été écrit, 22 de ces bugs étaient réparés, 6 partiellement, 28 ouverts. Deux lots livrés dans la foulée en ont refermé une grande partie : **chaque ligne de la section « Ce qui reste » a été relue une par une et porte la mention FAIT quand elle l'est**. Se fier aux lignes, pas à un total. Le réparé touche ce que le client voit le plus : les journées se comptent en jours civils de Paris partout, le PDF ne finit plus par une page blanche et annonce « du … au … inclus », le CSV respecte le véhicule filtré à l'écran, l'Excel et le PDF donnent la même vitesse moyenne, et le rapport hebdomadaire est réglable par société avec son PDF réellement joint.
 
+> ⚠️ **3 septembre, en fin de matinée — un chantier plus grave a été ouvert.** Le propriétaire a
+> signalé que les excès de vitesse sont faux, que les notifications n'arrivent pas et que le score de
+> conduite ne veut rien dire. L'enquête sur les données de production lui donne raison sur tous les
+> points, et en révèle d'autres. Voir **« Chantier prioritaire — les excès de vitesse et leurs
+> alertes »** plus bas : c'est désormais la priorité devant tout le reste de ce document.
+
 Le reste tient en trois familles : la **supervision** (un agent à l'arrêt ou un export refusé restent invisibles), la **lisibilité au doigt et en thème clair**, et la **transformation en outil de gestion** (coût carburant, alertes, taux d'utilisation — que l'API calcule déjà sans que la page les demande).
 
 > **Livré et déployé en production le 3 septembre 2026 à 07:15** (`2f42801b`, `d00cd9ea`, `b36e8102`) — migrations `trk057` et `trk058` appliquées, 7 614 récits datés rétroactivement, routes de réglage du rapport hebdomadaire en ligne. Le lot 0 est donc clos, et une partie des lots 1 à 3, 4, 5 et 7 est partie avec : borne haute de période exclusive, en-têtes des CSV positions et commandes, périodes de la fiche véhicule alignées sur celles de la page Rapports, exports en échec tracés, analyses vides exclues du classement, datation du récit, compteur de reste à faire unifié, agents du poste qui journalisent leur passage. Les lots ci-dessous ont été relus en conséquence : ce qui reste marqué « à faire » l'est vraiment.
@@ -89,6 +95,215 @@ Corrections vérifiées dans le code, groupées par famille. Colonne de droite :
 | Toute modification du réglage, et tout envoi immédiat, apparaissent dans **l'activité utilisateur** avec la société et le détail de ce qui a changé — pas seulement un clic sur « Enregistrer ». | `report-schedule-card.component.ts` (`resumeReglage`), en plus du Journal Système côté API |
 | Un tout premier passage enregistré sans envoi ne s'affiche plus comme un échec sans raison. | `report-schedule-card.component.ts` (branche `lastStatus` nulle) |
 | L'entrée « rapport hebdomadaire » du catalogue des traitements de fond et de la sonde des tâches planifiées a été corrigée. | `background-tasks.service.ts:184`, `scheduled-task-heartbeat.service.ts:144` |
+
+---
+
+## ⚠️ Chantier prioritaire — les excès de vitesse et leurs alertes
+
+*Ouvert le 3 septembre 2026, sur signalement du propriétaire, avec l'accord de MH Cars pour travailler
+sur leurs données réelles. C'est le cœur du produit : une flotte achète Tracky pour savoir qui roule
+trop vite et être prévenue. Aujourd'hui, aucun des trois maillons — mesurer, juger, prévenir — ne tient.*
+
+### A. Ce qui est PROUVÉ sur les données de production
+
+Tout ce qui suit est mesuré, pas supposé. Trajet de référence : `75e8d5bf-4177-4ff5-9d44-ba493923b929`,
+EY-613-MF, MH Cars, 29 août 14:20, 22,5 km, affiché « V. MAX 180 km/h · 8 excès ».
+
+**1. Le pic à 180 km/h n'a jamais eu lieu.** Les positions se contredisent d'elles-mêmes :
+
+| Heure | Vitesse annoncée par le boîtier | Distance réellement parcourue | Vitesse déduite |
+|---|---|---|---|
+| 14:22:18 | 126 km/h | 684 m en 20 s | 123 km/h |
+| 14:22:38 | **180 km/h** | 727 m en 20 s | **131 km/h** |
+| 14:22:58 | 122 km/h | 702 m en 20 s | 126 km/h |
+
+Le véhicule a couvert 727 m en 20 secondes. Aucun contrôle ne confronte la vitesse annoncée à la
+distance parcourue : `gps-sanity.ts:369-390` ne teste que la validité du point et la plausibilité du
+saut, **jamais `speedKmh`**. Le seul garde-fou est un plafond absolu de 200 km/h à l'ingestion
+(`gps-sanity.ts:104`). Le chiffre est ensuite affiché en rouge, sans réserve, et sert de « vitesse max »
+partout.
+
+**2. Pourquoi le 180 n'est pas dans la liste des excès — et c'est pire qu'un oubli.** La cellule OSM de
+ce point (`43.5895,1.2728`) porte bien une limite de **110 km/h**… enregistrée le **30 août à 06:30**,
+soit **le lendemain du trajet**. Au moment de l'analyse, la limite n'était pas connue, donc
+`trip-analysis.preprocessor.ts:141` a fermé le segment sans rien émettre. L'analyse n'est jamais
+rejouée : l'excès n'apparaîtra donc **jamais**, alors que la donnée qui permettrait de le voir existe
+depuis le lendemain.
+
+**3. Le faux excès en zone 30 est un rattachement raté, pas une faute du conducteur.** L'événement
+« Limite 30 · dépassement +72 » porte les coordonnées `43.61009, 1.38539`. La cellule correspondante est
+bien en cache à 30 km/h. Sur deux minutes de rocade, les limites retenues sautent de 90 à 30 puis 50
+puis 90. `speed-limit.resolution.ts:143-158` choisit **la voie la plus proche en 2D, un point à la
+fois** : ni `layer`, ni `bridge`, ni `tunnel`, ni classe de voie, ni cap du véhicule, ni altitude, ni
+continuité du tracé. Un pont qui franchit la rocade est souvent plus proche du point GPS que l'axe de la
+rocade. Autour de cette portion, la base contient **2 149 cellules à 30 km/h** contre 53 à 110 : le
+terrain est un piège permanent.
+
+Les tags qui trancheraient sont **déjà dans la réponse Overpass** (`out tags geom`,
+`speed-limit.resolution.ts:193-196`) et ne sont jamais lus. Le cap du véhicule est **déjà lu en base**
+(`trip-analysis.service.ts:177`) et **jeté** à la ligne 203.
+
+**4. Un excès est bâti sur un seul point.** `trip-analysis.preprocessor.ts:121-126` n'impose ni durée
+minimale, ni nombre de points minimal : les huit excès de ce trajet ont une durée de 0 ou 20 secondes.
+Un point mal rattaché suffit à produire un « excès confirmé ».
+
+**5. Le score de conduite ne regarde pas la vitesse.** Formule unique,
+`trip-analysis.preprocessor.ts:183-190` :
+
+```
+ecoScore = 100 − min(30 ; à-coups × 100/km × 2)
+               − min(35 ; NOMBRE d'excès × 100/km × 3)
+               − min(20 ; minutes de ralenti × 1,5)
+```
+
+Ni `maxSpeedKmh`, ni `avgSpeedKmh`, ni `maxOverKmh`, ni `speedingSec` n'entrent dans le calcul. Les deux
+trajets signalés se reproduisent au point près : celui à **131 km/h de moyenne et 168 de pointe** perd
+4,3 points et obtient **96/100**, celui à 22,5 km avec 8 excès plafonne à 65 dès le troisième excès —
+le dépassement de +72 km/h ne coûte rien. À conduite identique, 22 km donnent 69 et 164 km donnent 96 :
+**27 points d'écart pour le seul effet de la distance**. Le classement moyenne ensuite ces notes sans
+pondérer par les kilomètres (`driving-score.service.ts:298, 314`).
+
+Et l'écran affirme au client que la note mesure « la souplesse des accélérations et freinages »
+(`trip-analysis-badges.component.ts:197`) : c'est faux dans les deux sens.
+
+**6. Aucune alerte d'excès n'est produite par Tracky.** Les 7 031 alertes `OVERSPEED` des 60 derniers
+jours viennent **toutes du bit d'alarme du boîtier** (`tcp-server.service.ts:328`,
+`coban.parser.ts:34`). Leur contenu porte la trame brute du traceur. L'analyse de trajet, elle, ne crée
+aucune alerte : aucune référence à `AlertsService` dans tout `apps/api/src/trip-analysis/`. Les deux
+mécanismes ne se parlent nulle part. **3 392 trajets contenant un excès n'ont aucune alerte** (cdef31
+1 776, MH Cars 1 140, A2R 453, Ahmed 23).
+
+**7. Il n'existe aucun réglage d'alerte de vitesse.** Ni sur la société, ni sur le véhicule : aucune
+colonne de seuil dans `schema.prisma`. Le seuil vit dans le firmware du boîtier et ne se pose que par
+SMS (`coban.catalog.ts:266-289`). La condition « si l'utilisateur a activé les alertes de vitesse »
+demandée par le propriétaire **n'est pas exprimable en base aujourd'hui**.
+
+**8. Pourquoi aucune notification n'arrive.** Sur 30 jours, pour les excès :
+
+| Issue | Motif enregistré | Nombre |
+|---|---|---|
+| Étouffée | `no_device` — le destinataire n'a **aucun appareil abonné** | 4 866 |
+| Regroupée | `cooldown` — 15 minutes par véhicule et par type | 3 186 |
+| **Envoyée** | — | **78** |
+
+Le rollout push est bien ouvert en production (`PUSH_ROLLOUT=ALL`, vérifié sur le VPS) et les clés VAPID
+sont présentes. La cause majoritaire est donc ailleurs : **le destinataire n'a pas d'abonnement push
+valide, et rien ne le lui dit**. Un compte sans appareil abonné ne reçoit rien, en silence, pour
+toujours.
+
+**9. Le clic sur une notification ne peut pas ouvrir le trajet.** L'URL est écrite en dur
+(`notification-dispatch.service.ts:1178`, `url: '/alerts'`), et le rattachement est impossible : la table
+`alerts` n'a **aucune colonne `tripId`** (`schema.prisma:1758-1793`). Le format de lien profond existe
+pourtant déjà : `/vehicles/<id>?tab=reports&trip=<tripId>&tripDate=<date>`
+(`driving-scores.component.ts:136`).
+
+**10. L'acquittement existe mais n'a jamais servi.** Les colonnes, l'API et les boutons sont là
+(`alerts.controller.ts:47-67`, `alerts.service.ts:788-817`). Sur **7 148 alertes de tous types en base,
+zéro n'a jamais été acquittée**. Et le repli hors application est cassé : le service worker ouvre
+`/alerts?ack=<id>` (`sw.js:180`), paramètre qu'aucun écran ne lit.
+
+**11. Quatre définitions concurrentes d'un « excès » cohabitent** : le bit du boîtier ; l'analyse de
+trajet (limite OSM + 5 km/h) ; le rapport de vitesse, qui utilise un seuil **fixe à 90 km/h** sans
+aucune limite légale (`speed-report.service.ts:102`) alors qu'il sert de pièce disciplinaire ; et les
+trois plafonds de vitesse maximale, à 200 (ingestion), 220 (analyse) et 250 (trajet).
+
+### B. Les lots de correction
+
+Ordre imposé par les dépendances : on ne peut pas alerter juste tant qu'on ne mesure pas juste.
+
+#### Lot V1 — Ne plus affirmer une vitesse que le trajet contredit · **M**
+
+| Item | Fichier et ligne |
+|---|---|
+| Confronter la vitesse annoncée à la distance réellement parcourue entre deux points ; au-delà d'un écart net, marquer le point « non corroboré » au lieu de l'ériger en vitesse maximale | `packages/shared/src/utils/gps-sanity.ts:369-390`, `apps/api/src/trips/trips.service.ts:231, 941-947` |
+| Unifier les trois plafonds de vitesse (200 / 220 / 250) sur une seule constante partagée | `gps-sanity.ts:104`, `trip-analysis.preprocessor.ts:77`, `trips.service.ts:45` |
+| Aligner le filtre `valid` entre le recalcul de trajet et l'analyse | `trips.service.ts:941-947` vs `trip-analysis.preprocessor.ts:101` |
+| Afficher la réserve à l'écran plutôt que de la taire : « pointe non corroborée par la trajectoire » | `reports.component.ts:711`, `trip-replay.component.ts:734-756` |
+
+**Recette** : sur le trajet de référence, la vitesse maximale affichée est cohérente avec la distance
+parcourue, ou porte une réserve visible.
+
+#### Lot V2 — Rattacher le bon morceau de route · **L** · le cœur du sujet
+
+| Item | Fichier et ligne |
+|---|---|
+| Lire `layer`, `bridge`, `tunnel` — déjà présents dans la réponse Overpass, jamais lus — et pénaliser une voie d'un autre niveau que ses voisines | `speed-limit.resolution.ts:143-158, 193-196` ; même score dans `outils/osm-index.cjs:204-217` |
+| Réinjecter le cap du véhicule, lu puis jeté, et écarter les voies dont l'azimut s'écarte de plus de 40° | `trip-analysis.service.ts:203` (le `heading` est perdu ici), `speed-limit.resolution.ts:143-158` |
+| Départager à distance comparable par la classe de voie : une rocade l'emporte sur une voie résidentielle | `speed-limit.resolution.ts:129-158` |
+| Refuser une limite invraisemblable au regard de la vitesse observée, et la classer « à vérifier » au lieu d'« excès confirmé » | `trip-analysis.preprocessor.ts:136` |
+| Exiger une durée ou un nombre de points minimal avant de parler d'excès | `trip-analysis.preprocessor.ts:121-126` |
+| À terme : appariement de la trace entière plutôt que point par point — le service existe déjà et n'est pas utilisé pour cela | `apps/api/src/trips/map-matching.service.ts:50` |
+
+**Recette** : sur la portion de rocade du trajet de référence, plus aucune limite à 30 km/h ; le nombre
+d'excès de MH Cars sur 30 jours est comparé avant/après et l'écart est expliqué véhicule par véhicule.
+
+#### Lot V3 — Rejouer l'analyse quand la limite arrive après coup · **M**
+
+| Item | Fichier et ligne |
+|---|---|
+| Marquer les analyses dont des points n'ont pas obtenu de limite, avec le taux de couverture réel (aujourd'hui `limitsKnown` est un booléen vrai dès **un seul** point résolu) | `trip-analysis.preprocessor.ts:118, 134-135` |
+| Rejouer ces analyses une fois les cellules OSM renseignées par l'agent du poste | `trip-automation.service.ts`, `outils/agent-limites-vitesse.cjs` |
+| Rendre réversibles les cellules gravées « sans limite » : une fois écrites à NULL elles ne sont plus jamais réinterrogées | `speed-limit.service.ts:126, 130`, `outils/agent-limites-vitesse.cjs:242-248` |
+
+**Recette** : le trajet de référence, réanalysé, fait apparaître le passage à 110 km/h que la limite du
+30 août rend désormais calculable.
+
+#### Lot V4 — Un score qu'on peut défendre devant un client · **M**
+
+| Item | Fichier et ligne |
+|---|---|
+| Pénaliser le **temps passé** en excès et sa **gravité**, pas le nombre de segments — deux valeurs déjà calculées et jamais lues | `trip-analysis.preprocessor.ts:188` (utiliser `speedingSec` et `maxOverKmh`, calculés `:169-170`) |
+| Ajouter un garde-fou de vitesse absolue, indépendant d'OSM : aucune route française n'autorise plus de 130 | `trip-analysis.preprocessor.ts:185-190` |
+| Plafonner la note quand la couverture des limites est faible, au lieu d'accorder un A par ignorance | idem, avec le taux du lot V3 |
+| Pondérer le classement par les kilomètres, pas par le nombre de trajets | `driving-score.service.ts:298, 314, 367-369, 412-414` |
+| Ne plus écrire 100/100 sur une analyse sans aucune position | `trip-analysis.preprocessor.ts:223` |
+| Corriger le libellé : la note ne mesure pas « la souplesse des accélérations et freinages » | `trip-analysis-badges.component.ts:197` |
+
+**Recette** : le trajet à 131 km/h de moyenne ne peut plus obtenir A ; chaque point perdu s'énonce en une
+phrase lisible par le conducteur.
+
+#### Lot V5 — Alerter sur ce que Tracky mesure, et prévenir vraiment · **L**
+
+| Item | Fichier et ligne |
+|---|---|
+| Créer l'alerte d'excès **depuis l'analyse de trajet** : le maillon n'existe pas du tout aujourd'hui | `trip-analysis/` (aucune référence à `AlertsService`), producteurs existants `alerts.service.ts:127, 417, 507, 581, 686` |
+| Ajouter le réglage manquant : seuil et activation des alertes de vitesse par société, surchargeables par véhicule | `schema.prisma` (aucune colonne de seuil aujourd'hui) |
+| Rattacher l'alerte au trajet (`tripId`) pour que le clic ouvre le trajet | `schema.prisma:1758-1793`, `notification-dispatch.service.ts:1178-1187` |
+| Construire l'URL au format déjà supporté `/vehicles/<id>?tab=reports&trip=<id>&tripDate=<date>` | `driving-scores.component.ts:136`, `vehicle-reports-tab.component.ts:994-996` |
+| Réparer l'acquittement depuis la notification quand l'application est fermée | `sw.js:180` puis lecture du paramètre dans `alerts.component.ts` |
+| Dire à l'utilisateur qu'il n'a **aucun appareil abonné** au lieu d'étouffer 4 866 notifications en silence | motif `no_device`, `notification-dispatch.service.ts` |
+| Revoir la déduplication de 6 h et le regroupement de 15 min une fois l'alerte devenue « par trajet » | `alerts.service.ts:44, 70, 326`, `notification-guardrails.ts:96, 106` |
+
+**Recette** : un trajet avec un excès réel produit une alerte, une notification arrive sur un appareil
+abonné, le clic ouvre le trajet, et l'acquittement fonctionne application fermée.
+
+#### Lot V6 — Des sentinelles qui remontent les incohérences · **M**
+
+Demandé explicitement : que le centre d'alerte signale les incohérences au lieu de les laisser dormir.
+Le point d'entrée existe et est trivial à appeler — `ErrorLogger.record(message, source, { fleetId,
+vehicleId, tripId }, 'ERROR')` (`error-logger.service.ts:95`), sur le modèle de
+`backup-health.service.ts:66-76`, avec le refroidissement de `refroidissement-alerte.service.ts:104`
+pour ne pas écrire une ligne par trajet.
+
+| Sentinelle | Ce qu'elle signale |
+|---|---|
+| Excès sans alerte | Un trajet contient un excès, la société a les alertes de vitesse activées, aucune alerte n'existe sur la fenêtre du trajet. **Dépend des lots V5 et de son réglage** — sans eux elle signalerait 100 % des trajets |
+| Vitesse non corroborée | La vitesse annoncée dépasse nettement celle que permet la distance parcourue |
+| Limite invraisemblable | Un excès s'appuie sur une limite ≤ 30 km/h avec une vitesse relevée au-delà de 80 |
+| Analyse à couverture faible | Une part importante des points rapides n'a obtenu aucune limite |
+| Destinataire sans appareil | Des notifications sont étouffées en `no_device` pour un compte censé être prévenu |
+| Alerte jamais acquittée | Des alertes anciennes non acquittées s'accumulent, signe que personne ne les lit |
+
+**Recette** : chaque sentinelle sait produire une ligne de test à partir d'un cas réel de production, et
+le centre d'alerte reste lisible — une ligne par incohérence et par jour, pas une par trajet.
+
+### C. Points annexes remontés le même jour
+
+| Constat | État |
+|---|---|
+| La page « Couverture vie privée » affiche 44 véhicules et des plaques d'une autre société alors que le filtre est sur MH Cars, qui n'en a que 7 | à corriger — la page ignore le filtre société |
+| La page Rapports n'affiche aucune liste d'excès ni d'alertes, alors que l'API les calcule | rejoint le manque F05 du lot 9 |
+| La modale du récit passe sous l'en-tête | signalé sur la version d'avant le 3 septembre ; **non reproduit** sur la version actuelle en local, où la modale couvre bien l'en-tête. À revérifier sur la production d'aujourd'hui |
 
 ---
 
