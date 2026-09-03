@@ -16,6 +16,20 @@ Le reste tient en trois familles : la **supervision** (un agent à l'arrêt ou u
 >
 > ⚠️ **Conséquence à connaître** : le premier envoi automatique partira **lundi 8 septembre à 08:00, heure de Paris**, vers les administrateurs actifs de chaque société ayant roulé sur la semaine — y compris les sociétés d'essai (`Client test`, `cdef31`). Aucune n'a d'adresse dédiée renseignée. Pour en couper une, il suffit de basculer l'interrupteur de sa carte « Rapport hebdomadaire par e-mail » sur sa page Rapports.
 
+### Recette du 3 septembre, 08:06 — premier passage des agents avec le nouveau code
+
+| Contrôle | Résultat |
+|---|---|
+| Récits écrits par l'agent du poste dans les 10 dernières minutes | 30, dont **30 datés** (`narratedAt`) — la datation fonctionne |
+| Récits écrits 10 à 40 minutes plus tôt | 70, dont 0 datés — passage encore en cours avec l'ANCIEN code au moment du déploiement, cas unique |
+| Reste à écrire, toutes sociétés | 3 947, contre 4 099 au déploiement |
+| Ligne de passage du rattrapage en base | pas encore : elle s'écrit à la FIN du passage, et celui-ci dure 100 minutes (fin vers 09:40) |
+
+⚠️ **Limite assumée, à connaître** : un agent qui tourne 100 minutes ne prouve son passage qu'à la fin. C'est
+volontaire — un marqueur posé au démarrage mentirait sur un agent mort en route — mais la supervision reste donc
+aveugle pendant la durée du passage. La tolérance de la sonde (deux fois la cadence) absorbe ce trou ; si un jour
+la cadence se resserre, il faudra une trace de DÉBUT distincte de la trace de FIN.
+
 ---
 
 ## 1. Ce qui est réparé
