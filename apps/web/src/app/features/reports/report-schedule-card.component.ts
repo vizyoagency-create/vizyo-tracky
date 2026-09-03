@@ -7,6 +7,7 @@ import {
 } from 'lucide-angular';
 import type { FleetReportDispatchDto, FleetReportScheduleDto, FleetReportSection } from '@vizyo/tracky-shared';
 import type { VehicleDetailDto } from '../../core/services/vehicles.service';
+import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../core/error/api-error';
@@ -43,14 +44,20 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
           <span class="rsc-icon"><lucide-icon [img]="CalendarIcon" [size]="18"></lucide-icon></span>
           <div class="rsc-head-text">
             <h2 id="rsc-title">Rapport hebdomadaire par e-mail</h2>
-            @if (schedule(); as s) {
+            @if (needsFleetChoice()) {
+              <p class="rsc-next rsc-next--off">Choisissez une société dans le sélecteur, en haut de l'écran, pour régler son rapport hebdomadaire.</p>
+            } @else if (schedule(); as s) {
               @if (s.enabled) {
                 <p class="rsc-next">
                   <strong>Prochain rapport {{ nextIn() }}</strong>
                   <span> · {{ s.nextDueAt | date:'EEEE d MMM' }} à {{ s.nextDueAt | date:'HH:mm' }} · période du {{ periodFromLabel() }} au {{ periodToLabel() }}</span>
+                  <span class="rsc-fleet"> · {{ s.fleetName }}</span>
                 </p>
               } @else {
-                <p class="rsc-next rsc-next--off">Envoi automatique désactivé — personne ne reçoit ce rapport.</p>
+                <p class="rsc-next rsc-next--off">Envoi automatique désactivé pour {{ s.fleetName }} — personne ne reçoit ce rapport.</p>
+              }
+              @if (!editable()) {
+                <p class="rsc-readonly">Lecture seule : le droit d'export des rapports est nécessaire pour modifier ce réglage.</p>
               }
             } @else if (loading()) {
               <p class="rsc-next">Chargement du réglage…</p>
@@ -59,22 +66,31 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
             }
           </div>
         </div>
-        @if (schedule(); as s) {
+        @if (schedule() && editable()) {
           <label class="rsc-switch" [class.rsc-switch--on]="enabled()">
-            <input type="checkbox" [checked]="enabled()" (change)="enabled.set(!enabled()); markDirty()" [attr.aria-label]="enabled() ? 'Désactiver l’envoi automatique' : 'Activer l’envoi automatique'" />
+            <input type="checkbox" [checked]="enabled()" (change)="basculerActif()" [attr.aria-label]="enabled() ? 'Désactiver l’envoi automatique' : 'Activer l’envoi automatique'" />
             <span class="rsc-switch-track"><span class="rsc-switch-knob"></span></span>
             <span class="rsc-switch-label">{{ enabled() ? 'Actif' : 'Coupé' }}</span>
           </label>
+        } @else if (schedule()) {
+          <span class="rsc-etat" [class.rsc-etat--on]="enabled()">{{ enabled() ? 'Actif' : 'Coupé' }}</span>
         }
       </header>
 
       @if (schedule(); as s) {
         <!-- Dernier passage : la réponse à « je n'ai rien reçu » sans ouvrir les journaux. -->
         @if (s.lastRunAt) {
-          <p class="rsc-last" [attr.data-status]="s.lastStatus">
+          <p class="rsc-last" [attr.data-status]="s.lastStatus ?? 'none'">
             @if (s.lastStatus === 'SENT') { <lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Dernier envoi le {{ s.lastRunAt | date:'d MMM à HH:mm' }} }
             @else if (s.lastStatus === 'SKIPPED') { <lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon> Dernier passage le {{ s.lastRunAt | date:'d MMM' }} — rien envoyé : {{ s.lastError }} }
-            @else { <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> Échec le {{ s.lastRunAt | date:'d MMM à HH:mm' }} — {{ s.lastError }} }
+            @else if (s.lastStatus === 'FAILED') { <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> Échec le {{ s.lastRunAt | date:'d MMM à HH:mm' }} — {{ s.lastError }} }
+            @else {
+              <!-- Passage enregistré SANS issue : le tout premier, celui qui refuse de rattraper
+                   une échéance antérieure au réglage. Ce n'est ni un envoi ni un échec, et
+                   l'afficher comme « Échec — » (sans raison) faisait peur pour rien. -->
+              <lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon>
+              Aucun envoi encore — le premier partira à la prochaine échéance
+            }
           </p>
         } @else {
           <p class="rsc-last" data-status="none"><lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon> Aucun envoi enregistré pour l'instant.</p>
@@ -87,13 +103,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
             <div class="rsc-when">
               <label class="rsc-sel">
                 <span>Jour</span>
-                <select [ngModel]="weekday()" (ngModelChange)="weekday.set(+$event); markDirty()" [disabled]="!enabled()">
+                <select [ngModel]="weekday()" (ngModelChange)="weekday.set(+$event); markDirty()" [disabled]="verrouille()">
                   @for (d of weekdays; track d.value) { <option [ngValue]="d.value">{{ d.label }}</option> }
                 </select>
               </label>
               <label class="rsc-sel">
                 <span>Heure (Paris)</span>
-                <select [ngModel]="hour()" (ngModelChange)="hour.set(+$event); markDirty()" [disabled]="!enabled()">
+                <select [ngModel]="hour()" (ngModelChange)="hour.set(+$event); markDirty()" [disabled]="verrouille()">
                   @for (h of hours; track h) { <option [ngValue]="h">{{ heureLabel(h) }}</option> }
                 </select>
               </label>
@@ -108,7 +124,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
               @for (r of recipients(); track r) {
                 <span class="rsc-chip">
                   {{ r }}
-                  <button type="button" class="rsc-chip-x" (click)="removeRecipient(r)" [attr.aria-label]="'Retirer ' + r" [disabled]="!enabled()"><lucide-icon [img]="XIcon" [size]="12"></lucide-icon></button>
+                  <button type="button" class="rsc-chip-x" (click)="removeRecipient(r)" [attr.aria-label]="'Retirer ' + r" [disabled]="verrouille()"><lucide-icon [img]="XIcon" [size]="12"></lucide-icon></button>
                 </span>
               }
               @if (recipients().length === 0) {
@@ -119,8 +135,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
               }
             </div>
             <div class="rsc-add">
-              <input type="email" [(ngModel)]="newRecipient" (keydown.enter)="addRecipient(); $event.preventDefault()" placeholder="Ajouter une adresse" [disabled]="!enabled()" aria-label="Adresse e-mail à ajouter" />
-              <button type="button" class="rsc-btn rsc-btn--ghost rsc-btn--sm" (click)="addRecipient()" [disabled]="!enabled() || !newRecipient.trim()">
+              <input type="email" [(ngModel)]="newRecipient" (keydown.enter)="addRecipient(); $event.preventDefault()" placeholder="Ajouter une adresse" [disabled]="verrouille()" aria-label="Adresse e-mail à ajouter" />
+              <button type="button" class="rsc-btn rsc-btn--ghost rsc-btn--sm" (click)="addRecipient()" [disabled]="verrouille() || !newRecipient.trim()">
                 <lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon> Ajouter
               </button>
             </div>
@@ -136,7 +152,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
             <div class="rsc-options">
               @for (sec of sectionDefs; track sec.key) {
                 <label class="rsc-opt" [class.rsc-opt--on]="sections().has(sec.key)">
-                  <input type="checkbox" [checked]="sections().has(sec.key)" (change)="toggleSection(sec.key)" [disabled]="!enabled()" />
+                  <input type="checkbox" [checked]="sections().has(sec.key)" (change)="toggleSection(sec.key)" [disabled]="verrouille()" />
                   <span class="rsc-opt-text"><b>{{ sec.label }}</b><small>{{ sec.hint }}</small></span>
                 </label>
               }
@@ -148,10 +164,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
           <fieldset class="rsc-field">
             <legend>Véhicules</legend>
             <div class="rsc-scope">
-              <button type="button" class="rsc-pill" [class.rsc-pill--on]="vehicleIds().size === 0" (click)="toutLesVehicules()" [disabled]="!enabled()">
+              <button type="button" class="rsc-pill" [class.rsc-pill--on]="vehicleIds().size === 0" (click)="toutLesVehicules()" [disabled]="verrouille()">
                 Tous <span class="rsc-pill-n">{{ vehicles().length }}</span>
               </button>
-              <button type="button" class="rsc-pill" [class.rsc-pill--on]="vehicleIds().size > 0" (click)="startSelection()" [disabled]="!enabled() || vehicles().length === 0">
+              <button type="button" class="rsc-pill" [class.rsc-pill--on]="vehicleIds().size > 0" (click)="startSelection()" [disabled]="verrouille() || vehicles().length === 0">
                 Sélection <span class="rsc-pill-n">{{ vehicleIds().size }}</span>
               </button>
             </div>
@@ -159,7 +175,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
               <div class="rsc-vlist" role="group" aria-label="Véhicules inclus dans le rapport">
                 @for (v of vehicles(); track v.id) {
                   <label class="rsc-vrow">
-                    <input type="checkbox" [checked]="vehicleIds().has(v.id)" (change)="toggleVehicle(v.id)" [disabled]="!enabled()" />
+                    <input type="checkbox" [checked]="vehicleIds().has(v.id)" (change)="toggleVehicle(v.id)" [disabled]="verrouille()" />
                     <span class="rsc-vplate">{{ v.plate }}</span>
                     <span class="rsc-vmodel">{{ v.brand }} {{ v.model }}</span>
                   </label>
@@ -171,14 +187,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
         <footer class="rsc-foot">
           <div class="rsc-foot-actions">
-            <button type="button" class="rsc-btn rsc-btn--primary" (click)="save()" [disabled]="saving() || !dirty() || !valid()">
-              @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="rsc-spin"></lucide-icon> Enregistrement… }
-              @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> Enregistrer }
-            </button>
-            <button type="button" class="rsc-btn rsc-btn--ghost" (click)="sendNow()" [disabled]="sending() || dirty()" [title]="dirty() ? 'Enregistrez d’abord vos modifications' : 'Envoie le rapport des 7 derniers jours aux destinataires réglés'">
-              @if (sending()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="rsc-spin"></lucide-icon> Envoi… }
-              @else { <lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Envoyer maintenant }
-            </button>
+            @if (editable()) {
+              <button type="button" class="rsc-btn rsc-btn--primary" (click)="save()" [disabled]="saving() || !dirty() || !valid()">
+                @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="rsc-spin"></lucide-icon> Enregistrement… }
+                @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> Enregistrer }
+              </button>
+              <button type="button" class="rsc-btn rsc-btn--ghost" (click)="sendNow()" [disabled]="sending() || dirty()" [title]="dirty() ? 'Enregistrez d’abord vos modifications' : 'Envoie le rapport des 7 derniers jours aux destinataires réglés'">
+                @if (sending()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="rsc-spin"></lucide-icon> Envoi… }
+                @else { <lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Envoyer maintenant }
+              </button>
+            }
           </div>
           <button type="button" class="rsc-link" (click)="toggleHistory()" [attr.aria-expanded]="historyOpen()">
             Historique des envois
@@ -228,6 +246,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     .rsc-next { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--fg-secondary); }
     .rsc-next strong { color: var(--texte-succes); font-weight: 800; }
     .rsc-next--off { color: var(--texte-attente); font-weight: 600; }
+    .rsc-fleet { font-weight: 700; color: var(--fg-primary); }
+    .rsc-readonly { margin: 4px 0 0; font-size: 11.5px; color: var(--fg-tertiary); }
+    /* État en lecture seule : même information que l'interrupteur, sans laisser croire qu'on peut agir. */
+    .rsc-etat { display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
+      background: var(--bg-tertiary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
+    .rsc-etat--on { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, transparent); color: var(--texte-succes); border-color: transparent; }
 
     /* Interrupteur — 44 px de haut au doigt, libellé explicite. */
     .rsc-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; min-height: 44px; user-select: none; }
@@ -318,11 +342,29 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export class ReportScheduleCardComponent {
   private readonly api = inject(ReportsApiService);
   private readonly toast = inject(ToastService);
+  /**
+   * Journal d'activité utilisateur : un réglage du rapport hebdomadaire touche de vraies
+   * boîtes aux lettres. La capture automatique des clics n'enregistrerait que « Enregistrer »,
+   * sans dire QUOI a changé ni pour quelle société — inutile le jour où quelqu'un demande
+   * pourquoi le rapport ne part plus.
+   */
+  private readonly tracker = inject(ActivityTrackerService);
 
   /** Société affichée (super-admin) — null = celle de l'utilisateur. */
   readonly fleetId = input<string | null>(null);
   /** Véhicules de la société, pour le périmètre. */
   readonly vehicles = input<VehicleDetailDto[]>([]);
+  /**
+   * Droit de MODIFIER (`reports_export`, celui qu'exige l'API). À faux, la carte reste
+   * lisible — prochaine échéance, contenu, destinataires — mais aucune commande n'apparaît.
+   * Montrer un bouton qui répondra 403 apprend à se méfier de l'écran.
+   */
+  readonly editable = input(true);
+  /**
+   * Super-admin sur « toutes les sociétés » : il n'y a pas de rapport à régler tant qu'aucune
+   * société n'est choisie. On invite à en choisir une plutôt que d'appeler l'API pour rien.
+   */
+  readonly needsFleetChoice = input(false);
 
   protected readonly weekdays = WEEKDAYS;
   protected readonly hours = Array.from({ length: 24 }, (_, i) => i);
@@ -350,6 +392,13 @@ export class ReportScheduleCardComponent {
   protected readonly dispatches = signal<FleetReportDispatchDto[]>([]);
 
   protected readonly valid = computed(() => this.sections().size > 0);
+
+  /**
+   * Un champ est verrouillé soit parce que l'envoi est coupé (rien à régler), soit parce que
+   * la personne n'a pas le droit de modifier. Un seul calcul : deux conditions écrites à neuf
+   * endroits finissent par diverger, et un champ resterait actif là où l'API refusera.
+   */
+  protected readonly verrouille = computed(() => !this.editable() || !this.enabled());
 
   /** « dans 4 jours » / « demain » / « dans 3 heures » — le chiffre que le client attend. */
   protected readonly nextIn = computed(() => {
@@ -379,9 +428,12 @@ export class ReportScheduleCardComponent {
   protected readonly PlusIcon = Plus;
 
   constructor() {
-    // Recharge à chaque changement de société (sélecteur super-admin).
+    // Recharge à chaque changement de société dans le sélecteur du haut — y compris le
+    // passage à « toutes les sociétés », qui doit vider la carte au lieu de garder à l'écran
+    // le réglage de la société précédente.
     effect(() => {
       const fleetId = this.fleetId();
+      this.needsFleetChoice();
       untracked(() => void this.load(fleetId));
     });
   }
@@ -398,6 +450,14 @@ export class ReportScheduleCardComponent {
   }
 
   private async load(fleetId: string | null): Promise<void> {
+    // Super-admin sur « toutes les sociétés » : il n'y a rien à charger, et l'API répondrait
+    // par un refus. La carte invite à choisir une société, sans appel inutile.
+    if (this.needsFleetChoice()) {
+      this.schedule.set(null);
+      this.loadError.set(null);
+      this.loading.set(false);
+      return;
+    }
     this.loading.set(true);
     this.loadError.set(null);
     this.historyOpen.set(false);
@@ -426,6 +486,21 @@ export class ReportScheduleCardComponent {
   }
 
   protected markDirty(): void { this.dirty.set(true); }
+
+  /** Le réglage en une ligne, pour le journal d'activité : « coupé » ou le détail utile. */
+  private resumeReglage(s: FleetReportScheduleDto): string {
+    if (!s.enabled) return 'envoi automatique COUPÉ';
+    const jour = WEEKDAYS.find((d) => d.value === s.weekday)?.label ?? `jour ${s.weekday}`;
+    const qui = s.recipients.length ? `${s.recipients.length} adresse(s)` : 'administrateurs de la société';
+    const quoi = s.vehicleIds.length ? `${s.vehicleIds.length} véhicule(s)` : 'tous les véhicules';
+    return `${jour} ${this.heureLabel(s.hour)} · ${qui} · ${s.sections.length} section(s) · ${quoi}`;
+  }
+
+  /** Interrupteur principal. En méthode pour rester lisible dans le gabarit. */
+  protected basculerActif(): void {
+    this.enabled.set(!this.enabled());
+    this.markDirty();
+  }
 
   protected toggleSection(key: FleetReportSection): void {
     const next = new Set(this.sections());
@@ -482,6 +557,8 @@ export class ReportScheduleCardComponent {
         topN: this.schedule()?.topN ?? 10,
       });
       this.apply(s);
+      // Trace lisible dans l'activité utilisateur : QUI, pour QUELLE société, et QUOI.
+      this.tracker.trackClick(`Rapport hebdo · ${s.fleetName} · ${this.resumeReglage(s)}`);
       this.toast.success(s.enabled ? 'Rapport hebdomadaire réglé' : 'Envoi automatique désactivé', s.enabled ? `Prochain envoi ${this.nextIn()}.` : undefined);
     } catch (e) {
       swallow('report-schedule-card:save', e);
@@ -496,6 +573,7 @@ export class ReportScheduleCardComponent {
     this.sending.set(true);
     try {
       const { dispatch } = await this.api.sendReportNow(this.fleetId());
+      this.tracker.trackClick(`Rapport hebdo · ${dispatch.fleetName} · envoi immédiat (${dispatch.status === 'SENT' ? `${dispatch.recipients.length} destinataire(s)` : dispatch.status.toLowerCase()})`);
       if (dispatch.status === 'SENT') {
         this.toast.success('Rapport envoyé', `${dispatch.recipients.length} destinataire${dispatch.recipients.length > 1 ? 's' : ''} · ${dispatch.tripsCount} trajets · PDF joint.`);
       } else if (dispatch.status === 'SKIPPED') {

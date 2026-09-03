@@ -138,6 +138,51 @@ describe('ReportScheduleService — calendrier en heure de Paris', () => {
   });
 });
 
+describe('ReportScheduleService — qui peut régler', () => {
+  /**
+   * ⚠️ Le gestionnaire de flotte règle le rapport de SA société — c'est de la gestion de
+   * flotte, pas de l'administration de plateforme. Mais il ne doit jamais pouvoir viser une
+   * autre société : le périmètre est verrouillé ici, pas seulement à l'écran.
+   */
+  function gestionnaire(fleetId: string | null = FLEET_ID): AuthUser {
+    return { ...admin(), id: 'user-2', role: UserRole.FLEET_MANAGER, fleetId };
+  }
+
+  it('un gestionnaire de flotte règle le rapport de SA société', async () => {
+    const { svc, scheduleUpsert } = build(null);
+    await svc.set(gestionnaire(), {
+      enabled: true, weekday: 5, hour: 18, recipients: [], sections: ['kpi'], vehicleIds: [], maxTrips: 30, topN: 10,
+    });
+    // On vérifie ce qui est ÉCRIT : le DTO rendu relit la base, que le mock fige.
+    expect(scheduleUpsert).toHaveBeenCalledTimes(1);
+    const ecrit = scheduleUpsert.mock.calls[0]![0] as { where: { fleetId: string }; update: Record<string, unknown> };
+    expect(ecrit.where.fleetId).toBe(FLEET_ID);
+    expect(ecrit.update['weekday']).toBe(5);
+    expect(ecrit.update['hour']).toBe(18);
+    // La signature de l'auteur : c'est elle qui distingue un réglage CHOISI d'une ligne
+    // créée par le passage du cron (cf. `isDefault`).
+    expect(ecrit.update['updatedByUserId']).toBe('user-2');
+  });
+
+  it('un gestionnaire ne peut PAS viser une autre société, même en la nommant', async () => {
+    const { svc } = build(null);
+    await expect(
+      svc.get(gestionnaire(), 'bbbbbbbb-0000-4000-8000-000000000002'),
+    ).rejects.toThrow(/hors périmètre/i);
+  });
+
+  it('un utilisateur sans société rattachée est refusé', async () => {
+    const { svc } = build(null);
+    await expect(svc.get(gestionnaire(null))).rejects.toThrow(/société/i);
+  });
+
+  it('un super-admin sans société courante reçoit une consigne lisible, pas un code', async () => {
+    const { svc } = build(null);
+    const sansFlotte = { ...admin(), role: UserRole.SUPER_ADMIN, fleetId: null };
+    await expect(svc.get(sansFlotte)).rejects.toThrow(/Choisissez une société/i);
+  });
+});
+
 describe('ReportScheduleService — envoi', () => {
   const REGLAGE_DU = {
     enabled: true, weekday: 1, hour: 8, recipients: ['patron@societe.fr'],

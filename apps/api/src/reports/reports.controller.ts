@@ -337,8 +337,15 @@ export class ReportsController {
     return this.schedule.get(req.user, fleetId);
   }
 
+  /**
+   * ⚠️ FLEET_MANAGER est ici volontairement : régler le rapport hebdomadaire de SA société
+   * relève de la gestion de flotte, pas de l'administration de la plateforme. Le droit
+   * `reports_export` reste exigé — un gestionnaire à qui on l'a retiré reçoit un 403, et
+   * l'écran ne lui montre pas les commandes. Le périmètre société, lui, est verrouillé dans
+   * `resolveFleetId` : un non-super-admin ne peut régler que sa propre société.
+   */
   @Put('schedule')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('reports_export')
   async setSchedule(
     @Req() req: AuthenticatedRequest,
@@ -362,7 +369,7 @@ export class ReportsController {
   /** Envoi immédiat des 7 derniers jours révolus — journalisé comme un passage manuel. */
   @Post('schedule/send-now')
   @HttpCode(200)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('reports_export')
   async sendScheduleNow(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
     const dispatch = await this.schedule.sendNow(req.user, fleetId);

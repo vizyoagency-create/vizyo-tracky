@@ -69,6 +69,11 @@ Corrections vérifiées dans le code, groupées par famille. Colonne de droite :
 | Un bouton envoie le rapport immédiatement, pour vérifier avant de s'engager. | `reports.controller.ts:318-334` |
 | Chaque passage laisse une trace consultable, y compris quand il a été sauté et pourquoi (aucun destinataire, aucun trajet). | `report-schedule.service.ts:238-256,316-324` ; modèles `FleetReportSchedule` / `FleetReportDispatch`, `schema.prisma:4266,4294` |
 | Le déclencheur passe toutes les heures et n'envoie que ce qui est dû, au lieu d'un tir unique le lundi à 08:00 UTC (soit 10:00 à Paris l'été). | `reports-cron.service.ts:25-31` |
+| La carte suit le sélecteur de société du haut : un super-admin règle chaque société en la choisissant, et « toutes les sociétés » invite à en choisir une au lieu d'afficher un refus. | `reports.component.ts` (`scheduleNeedsFleetChoice`), `report-schedule-card.component.ts` (`needsFleetChoice`) |
+| Les **gestionnaires de flotte** règlent le rapport de leur société, comme les administrateurs — le droit d'export reste exigé, et le périmètre société est verrouillé côté serveur. | API `reports.controller.ts` (`@Roles` du `PUT /schedule`), `report-schedule.service.ts` (`resolveFleetId`) |
+| Sans le droit d'export, la carte reste LISIBLE (prochaine échéance, contenu, destinataires) mais sans aucune commande : plus de bouton qui répondrait 403. | `report-schedule-card.component.ts` (`editable`, `verrouille`) |
+| Toute modification du réglage, et tout envoi immédiat, apparaissent dans **l'activité utilisateur** avec la société et le détail de ce qui a changé — pas seulement un clic sur « Enregistrer ». | `report-schedule-card.component.ts` (`resumeReglage`), en plus du Journal Système côté API |
+| Un tout premier passage enregistré sans envoi ne s'affiche plus comme un échec sans raison. | `report-schedule-card.component.ts` (branche `lastStatus` nulle) |
 | L'entrée « rapport hebdomadaire » du catalogue des traitements de fond et de la sonde des tâches planifiées a été corrigée. | `background-tasks.service.ts:184`, `scheduled-task-heartbeat.service.ts:144` |
 
 ---
@@ -124,6 +129,8 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 | ~~FAIT (T10)~~ L'Excel et le rapport de vitesse portent la société du véhicule ou du trajet : le filtre par flotte du Journal Système ne les retrouve pas | `reports.controller.ts:273,366` | S |
 | **T04** — le catalogue décrit un rattrapage (1 500 h / 70 min) qui n'existe plus ; le script réel couvre toute la rétention | `background-tasks.service.ts:496` | S |
 | Journaliser le recalcul de trajets : combien de trajets supprimés, recréés, et combien de récits perdus | `trips.service.ts` (après les suppressions du recalcul) | S |
+
+| Vue d'ensemble des rapports hebdomadaires : aujourd'hui un super-admin doit changer de société dans le sélecteur pour lire chaque réglage. Un tableau unique (société · actif · jour et heure · destinataires · dernier envoi) éviterait de découvrir un rapport coupé par hasard | nouvel écran admin, alimenté par `GET /api/reports/schedule/dispatches` sans `fleetId` (déjà multi-sociétés) | M |
 
 **Comment on saura que c'est bon** : poste éteint 25 heures → `/admin/background-tasks` affiche « à l'arrêt — dernier passage il y a 25 h » et le centre d'alerte remonte un incident ; un export refusé pour cause de droits apparaît en échec dans le Journal Système, avec le nom de la société.
 

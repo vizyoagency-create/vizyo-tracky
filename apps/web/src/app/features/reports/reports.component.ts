@@ -515,8 +515,14 @@ const ANALYSES_BATCH_SIZE = 200;
 
       <!-- Rapport hebdomadaire par e-mail : réglage par société (admins). Placé avant la
            synthèse : c'est ce que le client règle une fois, pas ce qu'il lit chaque jour. -->
-      @if (canConfigureSchedule()) {
-        <app-report-schedule-card class="rep-sched" [fleetId]="fleetFilter.selectedFleetId()" [vehicles]="pdfModalVehicles()" />
+      @if (canSeeSchedule()) {
+        <app-report-schedule-card
+          class="rep-sched"
+          [fleetId]="fleetFilter.selectedFleetId()"
+          [vehicles]="pdfModalVehicles()"
+          [editable]="canEditSchedule()"
+          [needsFleetChoice]="scheduleNeedsFleetChoice()"
+        />
       }
 
       <!-- Synthèse par véhicule (réf. maquette Rapports) — rollup de la période,
@@ -1888,11 +1894,31 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
 
-  /** Le rapport hebdomadaire se règle par les administrateurs (société ou plateforme). */
-  protected readonly canConfigureSchedule = computed(() => {
+  /**
+   * Qui VOIT la carte du rapport hebdomadaire : les rôles qui pilotent une flotte, à condition
+   * de pouvoir consulter les rapports. Même périmètre que `GET /api/reports/schedule` — un écran
+   * qui montre une carte dont l'API refusera la lecture ne fait qu'afficher une erreur.
+   */
+  protected readonly canSeeSchedule = computed(() => {
     const r = this.authService.user()?.role;
-    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
+    return (r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN' || r === 'FLEET_MANAGER') && this.perms.can('reports_view');
   });
+
+  /**
+   * Qui peut le MODIFIER : le droit d'export, celui-là même qu'exige l'API. Un gestionnaire à
+   * qui on l'a retiré voit le réglage et la prochaine échéance, sans les commandes — plutôt
+   * qu'un bouton qui échouerait en 403.
+   */
+  protected readonly canEditSchedule = computed(() => this.perms.can('reports_export'));
+
+  /**
+   * Un super-admin qui regarde « toutes les sociétés » n'a pas de société courante, et le
+   * rapport hebdomadaire n'a de sens que pour une : la carte invite alors à en choisir une
+   * dans le sélecteur du haut, au lieu d'afficher le refus de l'API.
+   */
+  protected readonly scheduleNeedsFleetChoice = computed(() =>
+    this.authService.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId(),
+  );
   private readonly reportsApi = inject(ReportsApiService);
   /** `protected` : le gabarit passe la société courante à la carte de réglage
    *  hebdomadaire, et un gabarit Angular ne peut pas lire un membre privé. */
