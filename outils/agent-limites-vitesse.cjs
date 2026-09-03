@@ -102,6 +102,39 @@ function psql(sql, { lecture = true } = {}) {
   );
 }
 
+/** Echappe une chaine pour un litteral SQL (standard_conforming_strings actif). */
+const q = (s) => `'${String(s ?? '').replace(/'/g, "''")}'`;
+
+// ── Trace du PASSAGE ─────────────────────────────────────────────────────────────────
+//
+// ⚠️ POURQUOI. La supervision deduisait l'etat de cet agent de la derniere limite ECRITE.
+// Elle confondait donc « il a tourne et tout etait deja resolu » avec « il ne tourne
+// plus » — et c'est arrive : la tache a echoue chaque jour pendant des semaines sur une
+// dependance jamais installee, sans qu'aucun ecran ne le montre. Une ligne par passage,
+// ecrite A LA FIN avec son issue reelle, repond a la seule question qui compte : a-t-il
+// tourne ?
+const DEMARRE_A = Date.now();
+let passageSucces = false;
+let passageResume = 'passage interrompu avant la fin';
+let passageErreur = null;
+let passageConsigne = false;
+
+function consignerPassage() {
+  if (ESSAI || passageConsigne) return;
+  passageConsigne = true;
+  const sql = `
+    INSERT INTO passages_agents_locaux (id,agent,"demarreA","finiA","dureeMs",succes,resume,erreur)
+    VALUES (gen_random_uuid(), ${q('agent-limites-vitesse')}, to_timestamp(${DEMARRE_A} / 1000.0), now(),
+            ${Date.now() - DEMARRE_A}, ${passageSucces ? 'true' : 'false'}, ${q(passageResume)},
+            ${passageErreur ? q(String(passageErreur).slice(0, 500)) : 'NULL'});`;
+  try {
+    psql(sql, { lecture: false });
+  } catch (e) {
+    console.error(`  (passage non consigne : ${String((e && e.message) || e).slice(0, 120)})`);
+  }
+}
+process.on('exit', consignerPassage);
+
 /** Toutes les portions restant à résoudre. UNE colonne concaténée : robuste à travers ssh. */
 function cellulesARésoudre(limite = 400000) {
   const sql = `
@@ -329,7 +362,13 @@ async function lotOverpass(points) {
   const apres = compteCache();
   journal(`fini - cache ${avant.toLocaleString('fr-FR')} -> ${apres.toLocaleString('fr-FR')} (+${(apres - avant).toLocaleString('fr-FR')})`);
   if (lots > 0) journal(`miroirs : ${pool.resume()}`);
+  // Passage mene a son terme : c'est CE cas, et lui seul, qui vaut un succes.
+  passageSucces = true;
+  passageResume = `cache ${avant} -> ${apres} (+${apres - avant} portion(s) resolue(s))`;
 })().catch((e) => {
+  const msg = e && e.message ? e.message : String(e);
+  passageErreur = msg;
+  passageResume = 'arret sur erreur inattendue';
   console.error('ARRET sur erreur inattendue :', e && e.stack ? e.stack : e);
   process.exit(1);
 });

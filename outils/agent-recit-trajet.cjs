@@ -28,12 +28,16 @@
  *   — on ne touche jamais un trajet qui a DÉJÀ un récit (`narrative IS NULL` dans la requête ET
  *     dans l'UPDATE) : deux passages concurrents ne peuvent pas s'écraser.
  *
- * ── PÉRIMÈTRE : LE COURANT, PAS L'HISTORIQUE ─────────────────────────────────────────
+ * ── PÉRIMÈTRE : TOUTES LES SOCIÉTÉS, LE COURANT PAR DÉFAUT ───────────────────────────
  *
- * Seules les sociétés dont l'IA est ACTIVE (`fleets."aiEnabled"`) sont servies — la même porte que
- * l'application. Que ce soit absorbé par l'abonnement ne change pas ce à quoi un client a droit.
+ * Décision du 2026-09-02 : l'agent narre TOUTES les sociétés, option IA active ou non. Ce que
+ * le client a le droit de VOIR est tranché à la lecture, par l'API (`fleets."aiEnabled"` :
+ * option coupée = récit masqué). Découpler les deux permet d'activer l'option pour un client
+ * et de lui montrer un historique déjà rédigé, au lieu d'un compteur qui repart de zéro.
+ * Avant : le filtre `aiEnabled = true` ici même laissait 5 128 analyses sans récit chez les
+ * sociétés dont l'option était coupée.
  *
- * Et seuls les trajets RÉCENTS sont narrés — la fenêtre porte sur la date du TRAJET
+ * Seuls les trajets RÉCENTS sont narrés par défaut — la fenêtre porte sur la date du TRAJET
  * (`trips."startedAt"`), pas sur celle de la ligne d'analyse. La nuance n'est pas cosmétique :
  * l'analyse déterministe rattrape en ce moment son propre retard, donc `trip_analyses."updatedAt"`
  * est frais sur des milliers de vieux trajets. Filtrer dessus ramenait 4 761 candidats au lieu
@@ -139,11 +143,52 @@ function psql(sql, { lecture = true } = {}) {
 /** Echappe une chaine pour un litteral SQL. `standard_conforming_strings` est actif : seule la quote compte. */
 const q = (s) => `'${String(s ?? '').replace(/'/g, "''")}'`;
 
+// ── Trace du PASSAGE (et pas seulement du travail ecrit) ─────────────────────────────
+//
+// ⚠️ POURQUOI. L'ecran de supervision deduisait l'etat de cet agent du dernier recit
+// ECRIT. Il ne savait donc pas distinguer « il a tourne et n'avait rien a faire » de
+// « il ne tourne plus depuis trois jours » : dans les deux cas, aucune ecriture recente.
+// Le jour ou l'arriere de recits sera resorbe, l'agent en bonne sante passerait pour mort.
+// Une ligne par passage, ecrite A LA FIN avec son issue reelle, tranche la question.
+//
+// La MEME source sert DEUX taches planifiees : le creneau nocturne (fenetre 48 h) et le
+// rattrapage (--heures=9000). Une cle unique les confondrait, et l'arret de l'une se
+// cacherait derriere les passages de l'autre.
+const CLE_AGENT = HEURES > 200 ? 'rattrapage-recits' : 'agent-recit-trajet';
+const DEMARRE_A = Date.now();
+let passageSucces = false;
+let passageResume = 'passage interrompu avant la fin';
+let passageErreur = null;
+let passageConsigne = false;
+
 /**
- * Trajets a narrer : analyses SANS recit, societe a IA active, et RECENTES.
+ * Ecrit la trace du passage. Posee sur `process.on('exit')` : toutes les sorties sont
+ * couvertes, y compris `process.exit(3)` (session Claude expiree) et l'erreur inattendue.
+ * Un marqueur pose au DEMARRAGE mentirait — il dirait « passe » d'un agent mort en route.
+ */
+function consignerPassage() {
+  if (ESSAI || passageConsigne) return;
+  passageConsigne = true;
+  const sql = `
+    INSERT INTO passages_agents_locaux (id,agent,"demarreA","finiA","dureeMs",succes,resume,erreur)
+    VALUES (gen_random_uuid(), ${q(CLE_AGENT)}, to_timestamp(${DEMARRE_A} / 1000.0), now(),
+            ${Date.now() - DEMARRE_A}, ${passageSucces ? 'true' : 'false'}, ${q(passageResume)},
+            ${passageErreur ? q(String(passageErreur).slice(0, 500)) : 'NULL'});`;
+  try {
+    psql(sql, { lecture: false });
+  } catch (e) {
+    // Ne JAMAIS faire echouer un passage reussi a cause de sa propre tracabilite.
+    console.error(`  (passage non consigne : ${String((e && e.message) || e).slice(0, 120)})`);
+  }
+}
+process.on('exit', consignerPassage);
+
+/**
+ * Trajets a narrer : analyses SANS recit, toutes societes, et RECENTES (fenetre).
  *
- * La fenetre est la decision de fond : on ne rattrape pas l'historique. Les plus recents d'abord,
- * pour que le passage suivant reprenne naturellement la ou celui-ci s'est arrete.
+ * Les plus recents d'abord, pour que le passage suivant reprenne naturellement la ou
+ * celui-ci s'est arrete. La visibilite cote client (`fleets."aiEnabled"`) n'est PAS un
+ * critere ici : elle se joue a la lecture, dans l'API.
  */
 function trajetsANarrer(limite) {
   const sql = `
@@ -153,7 +198,6 @@ function trajetsANarrer(limite) {
     JOIN vehicles v ON v.id = a."vehicleId"
     JOIN fleets   f ON f.id = v."fleetId"
     WHERE a.narrative IS NULL
-      AND f."aiEnabled" = true
       AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours'
       -- ⚠️ NE PAS NARRER UN TRAJET QUI VA ETRE DETRUIT. Le recalcul supprime les trajets encore
       --    marques autrement que 'recompute' pour les re-segmenter : leur analyse, et le recit
@@ -183,7 +227,7 @@ function resteAFaire() {
     JOIN trips    t ON t.id = a."tripId"
     JOIN vehicles v ON v.id = a."vehicleId"
     JOIN fleets   f ON f.id = v."fleetId"
-    WHERE a.narrative IS NULL AND f."aiEnabled" = true
+    WHERE a.narrative IS NULL
       AND t."startedAt" > now() - interval '${Number(HEURES) || 48} hours'
       AND t."segmentationSource" = 'recompute';`;
   return Number(psql(sql).trim()) || 0;
@@ -276,7 +320,11 @@ function ecrire(tripId, ligne, payload, recit) {
            --    et la supervision affichait un agent a l'arret pendant qu'il travaillait —
            --    exactement le mensonge que le principe « etat deduit du travail reellement
            --    ecrit » doit empecher. Constate le 20/08 : 15 recits ecrits a 04:59, dates 04:45.
-           "updatedAt" = now()
+           "updatedAt" = now(),
+           -- Date du TEXTE, distincte de celle des chiffres (computedAt). Un recalcul de
+           -- l'analyse remplace les mesures et conserve le recit : sans cette date, rien ne
+           -- permettait de dire que le texte affiche decrivait un etat anterieur.
+           "narratedAt" = now()
      WHERE "tripId" = ${q(tripId)} AND narrative IS NULL;
 
     INSERT INTO ai_usage_logs
@@ -307,7 +355,7 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
       `budget ${MINUTES} min${ESSAI ? ' (ESSAI, aucune ecriture, aucun appel)' : ''}`,
   );
   const avant = resteAFaire();
-  console.log(`[${h()}] trajets recents sans recit (societes IA active) : ${avant}`);
+  console.log(`[${h()}] trajets recents sans recit (toutes societes) : ${avant}`);
   if (avant === 0) {
     console.log(`[${h()}] rien a faire — termine.`);
     return;
@@ -340,6 +388,8 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
     } catch (e) {
       const msg = (e && e.message) || String(e);
       if (/non authentifiee/i.test(msg)) {
+        passageErreur = msg;
+        passageResume = 'session Claude Code du poste expiree';
         console.error(
           `[${h()}] ARRET : ${msg}` +
             ` — l'agent depend de la session Claude Code du poste. Ouvrir un terminal (compte` +
@@ -349,6 +399,8 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
       }
       console.warn(`  lot abandonne : ${msg.slice(0, 140)}`);
       if (++lotsRates >= ECHECS_CONSECUTIFS_MAX) {
+        passageErreur = msg;
+        passageResume = `${lotsRates} lots rates d'affilee — arret apres ${ecrits} recit(s)`;
         console.error(`[${h()}] ${lotsRates} lots rates d'affilee — arret propre, rien de perdu.`);
         return;
       }
@@ -380,6 +432,8 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
     // Un lot entierement refuse est un symptome, pas un alea : on compte, et on s'arrete si ca dure.
     if (ecritsLot === 0) {
       if (++lotsRates >= ECHECS_CONSECUTIFS_MAX) {
+        passageResume = `${lotsRates} lots sans aucun recit retenu — arret apres ${ecrits} recit(s)`;
+        passageErreur = 'aucun recit concluant sur les derniers lots';
         console.error(`[${h()}] ${lotsRates} lots sans aucun recit retenu — arret propre.`);
         return;
       }
@@ -394,7 +448,13 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const apres = resteAFaire();
   console.log(`[${h()}] fini — ${ecrits} recit(s) ecrit(s), ${refuses} refuse(s). Reste ${apres} (etait ${avant}).`);
+  // Passage mene a son terme : c'est CE cas, et lui seul, qui vaut un succes.
+  passageSucces = true;
+  passageResume = `${ecrits} recit(s) ecrit(s), ${refuses} refuse(s), reste ${apres}`;
 })().catch((e) => {
-  console.error('ARRET sur erreur inattendue :', e && e.message ? e.message : e);
+  const msg = e && e.message ? e.message : String(e);
+  passageErreur = msg;
+  passageResume = 'arret sur erreur inattendue';
+  console.error('ARRET sur erreur inattendue :', msg);
   process.exit(1);
 });
