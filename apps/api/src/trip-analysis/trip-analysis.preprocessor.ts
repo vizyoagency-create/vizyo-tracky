@@ -28,6 +28,13 @@ export type LimitResolver = (lat: number, lng: number) => number | null;
 
 export interface TripStopOut { lat: number; lng: number; arrivedAt: string; leftAt: string; durationMin: number; }
 export interface SpeedingSegment { startAt: string; endAt: string; durationSec: number; maxSpeedKmh: number; limitKmh: number; overKmh: number; lat: number; lng: number; }
+/**
+ * Pointe que l'on refuse d'affirmer comme un excès, avec la raison du doute.
+ *   · `limite-invraisemblable` : 102 km/h sur une voie à 30 — le point a été rattaché au pont
+ *     qui franchit la rocade, pas à la rocade ;
+ *   · `point-unique` : le dépassement n'a été vu que sur une seule position.
+ */
+export interface PointeAVerifier extends SpeedingSegment { motif: 'limite-invraisemblable' | 'point-unique'; }
 export interface TrackPoint { lat: number; lng: number; t: string; speedKmh: number; }
 /** Passage station-service (rempli par FuelStationService APRÈS le préprocesseur, jamais par la fonction pure). */
 export interface FuelStopOut {
@@ -67,6 +74,8 @@ export interface TripAnalysisResult {
      * plutôt que de faire disparaître un chiffre sans explication.
      */
     vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
+    /** Pointes que l'on refuse d'affirmer, avec le motif du doute. */
+    aVerifier?: PointeAVerifier[];
     /** Passages en station détectés — ajoutés par le service (le préprocesseur pur laisse ce champ absent). */
     fuelStops?: FuelStopOut[];
   };
@@ -91,6 +100,35 @@ const STOP_SPEED_KMH = 4;            // sous ce seuil = à l'arrêt (bruit GPS)
  */
 const IMPOSSIBLE_SPEED_KMH = MAX_VITESSE_ANNONCEE_KMH;
 const SPEED_TOLERANCE_KMH = 5;       // marge (bruit GPS + tolérance) avant de compter un excès
+
+/**
+ * ── UN DÉPASSEMENT ÉNORME EST UN RATTACHEMENT RATÉ, PAS UNE FAUTE ──────────────────────
+ *
+ * Constat du 2026-09-03 : « Limite 30 · dépassement +72 » sur la rocade toulousaine. Personne
+ * ne roule à 102 km/h dans une rue à 30 : c'est le point qui a été rattaché au pont qui franchit
+ * la rocade, pas le conducteur qui a fauté. Le malus de niveau (`malusVoie`) supprime la plupart
+ * de ces cas à la source ; ce garde-fou attrape le reste, car aucune donnée cartographique n'est
+ * parfaite.
+ *
+ * ⚠️ On ne remonte PAS la limite et on n'invente pas d'excès plus doux : on refuse seulement
+ * d'affirmer. Le point sort des excès confirmés et rejoint les pointes à vérifier — le doute
+ * doit se voir, pas disparaître.
+ */
+const LIMITE_LENTE_KMH = 50;         // au-delà, un gros écart reste plausible (90 sur une voie à 80)
+const ECART_INVRAISEMBLABLE_KMH = 40; // sur une voie lente, +40 km/h ne s'explique plus par la conduite
+
+/** Le couple (limite, vitesse) est-il crédible, ou trahit-il un mauvais rattachement ? */
+function ecartCredible(limiteKmh: number, vitesseKmh: number): boolean {
+  if (limiteKmh > LIMITE_LENTE_KMH) return true;
+  return vitesseKmh - limiteKmh <= ECART_INVRAISEMBLABLE_KMH;
+}
+
+/**
+ * Durée minimale d'un excès. Un segment bâti sur UN SEUL point ne prouve rien : une position
+ * aberrante suffisait à produire un « excès confirmé ». On exige que le dépassement soit vu sur
+ * au moins deux points, donc sur une durée non nulle.
+ */
+const EXCES_DUREE_MIN_SEC = 1;
 const GPS_GAP_SEC = 300;             // > 5 min entre 2 points = perte de signal
 const HARSH_ACCEL_MS2 = 2.5;         // accélération brusque
 const HARSH_BRAKE_MS2 = 3.0;         // freinage brusque
@@ -136,10 +174,21 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
   // Excès : on regroupe les points consécutifs au-dessus de la limite en segments.
   let limitsKnown = false;
   const speeding: SpeedingSegment[] = [];
+  /**
+   * Pointes que l'on refuse d'affirmer : rattachement douteux ou observation trop courte.
+   * Elles ne comptent ni dans `speedingCount` ni dans le score, mais restent visibles — un
+   * doute effacé est un doute qu'on ne pourra jamais lever.
+   */
+  const aVerifier: PointeAVerifier[] = [];
   let cur: { startAt: Date; endAt: Date; maxSpeed: number; limit: number; over: number; lat: number; lng: number } | null = null;
   const flushSpeeding = () => {
     if (cur) {
-      speeding.push({ startAt: iso(cur.startAt), endAt: iso(cur.endAt), durationSec: Math.round((cur.endAt.getTime() - cur.startAt.getTime()) / 1000), maxSpeedKmh: Math.round(cur.maxSpeed), limitKmh: cur.limit, overKmh: Math.round(cur.over), lat: cur.lat, lng: cur.lng });
+      const durationSec = Math.round((cur.endAt.getTime() - cur.startAt.getTime()) / 1000);
+      const segment: SpeedingSegment = { startAt: iso(cur.startAt), endAt: iso(cur.endAt), durationSec, maxSpeedKmh: Math.round(cur.maxSpeed), limitKmh: cur.limit, overKmh: Math.round(cur.over), lat: cur.lat, lng: cur.lng };
+      // Un excès vu sur UN SEUL point ne prouve rien : une position aberrante suffisait à
+      // produire un « excès confirmé ». Il rejoint les pointes à vérifier, il ne disparaît pas.
+      if (durationSec >= EXCES_DUREE_MIN_SEC) speeding.push(segment);
+      else aVerifier.push({ ...segment, motif: 'point-unique' });
       cur = null;
     }
   };
@@ -178,7 +227,15 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
       limitsKnown = true;
       if (p.speedKmh > lim + SPEED_TOLERANCE_KMH) {
         const over = p.speedKmh - lim;
-        if (cur && cur.limit === lim) { cur.endAt = p.timestamp; cur.maxSpeed = Math.max(cur.maxSpeed, p.speedKmh); cur.over = Math.max(cur.over, over); }
+        if (!ecartCredible(lim, p.speedKmh)) {
+          // Rattachement douteux : on ferme ce qui précède et on range la pointe à part.
+          flushSpeeding();
+          aVerifier.push({
+            startAt: iso(p.timestamp), endAt: iso(p.timestamp), durationSec: 0,
+            maxSpeedKmh: Math.round(p.speedKmh), limitKmh: lim, overKmh: Math.round(over),
+            lat: p.lat, lng: p.lng, motif: 'limite-invraisemblable',
+          });
+        } else if (cur && cur.limit === lim) { cur.endAt = p.timestamp; cur.maxSpeed = Math.max(cur.maxSpeed, p.speedKmh); cur.over = Math.max(cur.over, over); }
         else { flushSpeeding(); cur = { startAt: p.timestamp, endAt: p.timestamp, maxSpeed: p.speedKmh, limit: lim, over, lat: p.lat, lng: p.lng }; }
       } else flushSpeeding();
     } else flushSpeeding();
@@ -264,6 +321,8 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
         pointeBruteKmh: round(pointeBrute, 1),
         pointsEcartes: pointsVitesseEcartes,
       },
+      // Pointes non affirmées : rattachement douteux ou dépassement vu sur un seul point.
+      aVerifier,
     },
   };
 }

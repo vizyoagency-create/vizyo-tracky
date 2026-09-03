@@ -139,20 +139,94 @@ export function voiesRoutables(json: OverpassReponse): OverpassWay[] {
     .filter((e) => estRoutable(e.tags?.['highway']));
 }
 
-/** Voie routable la plus proche du point, dans la limite de `MATCH_M`. */
+/**
+ * ── POURQUOI LE « PLUS PROCHE » NE SUFFIT PAS ───────────────────────────────────────────
+ *
+ * Constat du 2026-09-03, rocade toulousaine : un véhicule à 102 km/h s'est vu attribuer une
+ * limite de 30 km/h, soit « +72 km/h » présenté comme un excès confirmé. Le conducteur roulait
+ * sur la rocade ; la voie à 30 est un PONT qui la franchit, projeté au même endroit en deux
+ * dimensions. La sélection ne regardait que la distance : à erreur GPS égale, le tablier du
+ * pont peut être plus près du point que l'axe de la rocade.
+ *
+ * Les tags qui tranchent — `bridge`, `tunnel`, `layer` — sont DÉJÀ dans la réponse Overpass
+ * (`out tags geom`) et n'étaient jamais lus.
+ *
+ * ⚠️ POURQUOI UN MALUS EN MÈTRES, ET PAS LE CAP DU VÉHICULE. Le cap trancherait mieux — un pont
+ * perpendiculaire à la rocade disparaîtrait aussitôt — mais le cache des limites est indexé par
+ * CELLULE, sans direction : une même cellule sert des véhicules qui la traversent dans tous les
+ * sens. Une sélection dépendant du cap rendrait le cache faux pour le passage suivant. Le malus,
+ * lui, est déterministe : la même cellule donne toujours la même limite.
+ *
+ * Le malus n'interdit rien : un pont réellement sous le point, à deux mètres, l'emporte toujours
+ * sur une rocade à vingt. Il ne fait que dire qu'à distances comparables, une voie d'un autre
+ * niveau est le choix le moins probable.
+ */
+
+/** Malus (m) appliqué à une voie qui n'est pas au niveau du sol : pont, tunnel, `layer` ≠ 0. */
+export const MALUS_NIVEAU_M = 15;
+/** Malus (m) des voies de desserte, souvent parallèles à un axe rapide (contre-allées, parkings). */
+export const MALUS_DESSERTE_M = 10;
+/** Malus (m) plus léger pour les voies résidentielles, fréquentes le long des axes urbains. */
+export const MALUS_RESIDENTIEL_M = 5;
+
+const DESSERTE = new Set(['service', 'living_street', 'track']);
+
+/**
+ * La voie est-elle à un autre niveau que le sol ? `bridge`/`tunnel` valent tout sauf `no`,
+ * et `layer` compte dès qu'il n'est ni absent ni nul.
+ */
+export function estHorsNiveauSol(tags: Record<string, string> | undefined): boolean {
+  if (!tags) return false;
+  const pont = tags['bridge'];
+  const tunnel = tags['tunnel'];
+  if ((pont && pont !== 'no') || (tunnel && tunnel !== 'no')) return true;
+  const couche = tags['layer'];
+  return !!couche && Number.parseInt(couche, 10) !== 0;
+}
+
+/**
+ * Plafond du malus cumulé.
+ *
+ * ⚠️ Un malus doit DÉPARTAGER à distances comparables, jamais opposer un veto. Sans plafond,
+ * un pont de desserte cumulait 25 m — soit la distance de rattachement entière : un point posé
+ * à un mètre d'un tel pont se voyait attribuer une route à vingt mètres. Le plafond garantit
+ * qu'une voie nettement plus proche que les autres l'emporte toujours.
+ */
+export const MALUS_MAX_M = MALUS_NIVEAU_M;
+
+/** Malus de vraisemblance d'une voie, en mètres, ajouté à sa distance réelle. */
+export function malusVoie(tags: Record<string, string> | undefined): number {
+  let malus = 0;
+  if (estHorsNiveauSol(tags)) malus += MALUS_NIVEAU_M;
+  const highway = tags?.['highway'];
+  if (highway && DESSERTE.has(highway)) malus += MALUS_DESSERTE_M;
+  else if (highway === 'residential') malus += MALUS_RESIDENTIEL_M;
+  return Math.min(malus, MALUS_MAX_M);
+}
+
+/**
+ * Voie routable la plus vraisemblable pour ce point, dans la limite de `MATCH_M`.
+ *
+ * La distance RÉELLE reste bornée par `matchM` — le malus ne sert qu'à départager, jamais à
+ * rattacher une voie trop lointaine.
+ */
 export function voieLaPlusProche(
   p: { lat: number; lng: number },
   voies: OverpassWay[],
   matchM: number = MATCH_M,
 ): OverpassWay | null {
   let meilleure: OverpassWay | null = null;
-  let min = matchM;
+  let meilleurScore = Number.POSITIVE_INFINITY;
   for (const v of voies) {
     const g = v.geometry!;
+    let distance = Number.POSITIVE_INFINITY;
     for (let i = 1; i < g.length; i++) {
       const d = distancePointSegment(p.lat, p.lng, g[i - 1]!.lat, g[i - 1]!.lon, g[i]!.lat, g[i]!.lon);
-      if (d < min) { min = d; meilleure = v; }
+      if (d < distance) distance = d;
     }
+    if (distance >= matchM) continue;
+    const score = distance + malusVoie(v.tags);
+    if (score < meilleurScore) { meilleurScore = score; meilleure = v; }
   }
   return meilleure;
 }

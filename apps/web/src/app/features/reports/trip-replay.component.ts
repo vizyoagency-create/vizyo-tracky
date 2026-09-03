@@ -828,6 +828,23 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
         lat: e.lat, lng: e.lng,
       });
     }
+    /**
+     * Pointes que l'analyse REFUSE d'affirmer. Elles ne comptent ni dans le nombre d'excès ni
+     * dans le score, mais elles restent visibles ici : un doute effacé est un doute que
+     * personne ne pourra lever, et le conducteur mérite de savoir ce qui a été écarté.
+     */
+    for (const e of a.detail?.aVerifier ?? []) {
+      const ms = Date.parse(e.startAt);
+      if (!Number.isFinite(ms)) continue;
+      const pourquoi = e.motif === 'limite-invraisemblable'
+        ? `Limite ${Math.round(e.limitKmh)} relevée à cet endroit — invraisemblable à cette vitesse, la carte a probablement retenu une voie voisine (pont, contre-allée)`
+        : 'Dépassement vu sur un seul point : trop court pour être affirmé';
+      out.push({
+        type: 'exces', at: ms, fraction: situe(ms), heure: this.heure(ms),
+        titre: `Pointe à vérifier · ${Math.round(e.maxSpeedKmh)} km/h`,
+        detail: pourquoi, lat: e.lat, lng: e.lng,
+      });
+    }
     return out.sort((x, y) => x.at - y.at);
   });
 

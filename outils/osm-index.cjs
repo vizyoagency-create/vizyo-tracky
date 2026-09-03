@@ -39,7 +39,7 @@ const path = require('node:path');
 const parseOsm = require('osm-pbf-parser');
 
 const R = path.join(__dirname, '..', 'apps', 'api', 'dist', 'trip-analysis', 'speed-limit.resolution.js');
-const { estRoutable, limiteDeVoie, distancePointSegment, MATCH_M, cleCellule } = require(R);
+const { estRoutable, limiteDeVoie, distancePointSegment, MATCH_M, cleCellule, malusVoie } = require(R);
 
 /** Coordonnées stockées en entiers : 10^7 conserve ~1 cm, et tient dans un int32. */
 const ECHELLE = 1e7;
@@ -202,6 +202,12 @@ function resoudreDepuisExtrait(cheminPbf, cellules, { journal = () => {} } = {})
         if (candidats.length === 0) continue;
 
         const limite = limiteDeVoie(it.tags);
+        // MEME regle de departage que l'application (`malusVoie`) : a distances comparables,
+        // un pont, un tunnel ou une voie de desserte est le choix le moins probable. Sans cela
+        // l'agent graverait en cache des limites que l'application n'aurait jamais deduites —
+        // et c'est le cache qui fait foi ensuite. Constat du 03/09 : 102 km/h attribues a une
+        // voie a 30 qui est un pont au-dessus de la rocade.
+        const malus = malusVoie(it.tags);
         for (const idx of candidats) {
           const c = cellules[idx];
           let d = Infinity;
@@ -211,8 +217,10 @@ function resoudreDepuisExtrait(cheminPbf, cellules, { journal = () => {} } = {})
             const dd = distancePointSegment(c.lat, c.lng, a.lat, a.lng, b.lat, b.lng);
             if (dd < d) d = dd;
           }
-          if (d < MATCH_M && (meilleur[idx] === null || d < meilleur[idx].d)) {
-            meilleur[idx] = { d, limite };
+          if (d >= MATCH_M) continue;
+          const score = d + malus;
+          if (meilleur[idx] === null || score < meilleur[idx].score) {
+            meilleur[idx] = { d, score, limite };
           }
         }
       }

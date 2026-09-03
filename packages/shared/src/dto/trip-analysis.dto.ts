@@ -67,6 +67,14 @@ export interface TripAnalysisDetailDto {
    * simplement le mensonge. Absent des analyses calculées avant le 3 septembre 2026.
    */
   vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
+  /**
+   * Pointes que l'analyse REFUSE d'affirmer comme des excès, avec le motif du doute :
+   * `limite-invraisemblable` (102 km/h sur une voie à 30 — le point a été rattaché au pont qui
+   * franchit la rocade) ou `point-unique` (dépassement vu sur une seule position). Elles ne
+   * comptent ni dans `speedingCount` ni dans le score, mais restent affichables : un doute
+   * effacé est un doute que personne ne pourra lever.
+   */
+  aVerifier?: (SpeedingSegmentDto & { motif: 'limite-invraisemblable' | 'point-unique' })[];
   /** Passages en station-service détectés (arrêts tombant sur une station). Optionnel. */
   fuelStops?: TripFuelStopDto[];
 }

@@ -226,29 +226,35 @@ trois plafonds de vitesse maximale, à 200 (ingestion), 220 (analyse) et 250 (tr
 
 Ordre imposé par les dépendances : on ne peut pas alerter juste tant qu'on ne mesure pas juste.
 
-#### Lot V1 — Ne plus affirmer une vitesse que le trajet contredit · **M**
+#### Lot V1 — Ne plus affirmer une vitesse que le trajet contredit · **FAIT le 3 septembre** (`ef7518a5`)
 
 | Item | Fichier et ligne |
 |---|---|
-| Confronter la vitesse annoncée à la distance réellement parcourue entre deux points ; au-delà d'un écart net, marquer le point « non corroboré » au lieu de l'ériger en vitesse maximale | `packages/shared/src/utils/gps-sanity.ts:369-390`, `apps/api/src/trips/trips.service.ts:231, 941-947` |
-| Unifier les trois plafonds de vitesse (200 / 220 / 250) sur une seule constante partagée | `gps-sanity.ts:104`, `trip-analysis.preprocessor.ts:77`, `trips.service.ts:45` |
+| ~~FAIT~~ `vitesseEstCorroboree` compare la vitesse annoncée aux intervalles voisins ; le point non corroboré ne fait ni la vitesse maximale ni un excès | `packages/shared/src/utils/gps-sanity.ts:369-390`, `apps/api/src/trips/trips.service.ts:231, 941-947` |
+| ~~FAIT en partie~~ L'analyse utilise désormais le plafond de l'ingestion (200). Reste le clamp à 250 du trajet | `gps-sanity.ts:104`, `trip-analysis.preprocessor.ts:77`, `trips.service.ts:45` |
 | Aligner le filtre `valid` entre le recalcul de trajet et l'analyse | `trips.service.ts:941-947` vs `trip-analysis.preprocessor.ts:101` |
-| Afficher la réserve à l'écran plutôt que de la taire : « pointe non corroborée par la trajectoire » | `reports.component.ts:711`, `trip-replay.component.ts:734-756` |
+| ~~FAIT~~ La fenêtre d'analyse affiche « pointe écartée : N km/h annoncés, la distance parcourue ne les soutient pas » | `reports.component.ts:711`, `trip-replay.component.ts:734-756` |
 
 **Recette** : sur le trajet de référence, la vitesse maximale affichée est cohérente avec la distance
 parcourue, ou porte une réserve visible.
 
-#### Lot V2 — Rattacher le bon morceau de route · **L** · le cœur du sujet
+#### Lot V2 — Rattacher le bon morceau de route · **FAIT le 3 septembre** pour la part déterministe
 
 | Item | Fichier et ligne |
 |---|---|
-| Lire `layer`, `bridge`, `tunnel` — déjà présents dans la réponse Overpass, jamais lus — et pénaliser une voie d'un autre niveau que ses voisines | `speed-limit.resolution.ts:143-158, 193-196` ; même score dans `outils/osm-index.cjs:204-217` |
+| ~~FAIT~~ `malusVoie` pénalise le hors-sol, la desserte et le résidentiel, plafonné pour rester un départage. Même règle dans l'agent du poste | `speed-limit.resolution.ts:143-158, 193-196` ; même score dans `outils/osm-index.cjs:204-217` |
 | Réinjecter le cap du véhicule, lu puis jeté, et écarter les voies dont l'azimut s'écarte de plus de 40° | `trip-analysis.service.ts:203` (le `heading` est perdu ici), `speed-limit.resolution.ts:143-158` |
-| Départager à distance comparable par la classe de voie : une rocade l'emporte sur une voie résidentielle | `speed-limit.resolution.ts:129-158` |
-| Refuser une limite invraisemblable au regard de la vitesse observée, et la classer « à vérifier » au lieu d'« excès confirmé » | `trip-analysis.preprocessor.ts:136` |
-| Exiger une durée ou un nombre de points minimal avant de parler d'excès | `trip-analysis.preprocessor.ts:121-126` |
+| ~~FAIT~~ Compris dans `malusVoie` | `speed-limit.resolution.ts:129-158` |
+| ~~FAIT~~ Au-delà de +40 km/h sur une voie à 50 ou moins, la pointe passe en « à vérifier » et s'affiche comme telle dans le replay | `trip-analysis.preprocessor.ts:136` |
+| ~~FAIT~~ Un dépassement vu sur un seul point rejoint les pointes à vérifier | `trip-analysis.preprocessor.ts:121-126` |
 | Abaisser le seuil de candidature à la résolution : à 33 km/h, un excès en zone 20 est indétectable | `trip-analysis.service.ts:15` |
 | À terme : appariement de la trace entière plutôt que point par point — le service existe déjà et n'est pas utilisé pour cela | `apps/api/src/trips/map-matching.service.ts:50` |
+
+> **Reste ouvert dans V2** : le cap du véhicule, qui trancherait le mieux, ne peut pas entrer dans la
+> sélection tant que le cache des limites est indexé par cellule sans direction — une même cellule sert
+> des véhicules qui la traversent dans tous les sens. Il faudra soit un cache par (cellule, cap), soit
+> une résolution non cachée pour les points litigieux. L'appariement de la trace entière (map-matching)
+> reste la vraie réponse.
 
 **Recette** : sur la portion de rocade du trajet de référence, plus aucune limite à 30 km/h ; le nombre
 d'excès de MH Cars sur 30 jours est comparé avant/après et l'écart est expliqué véhicule par véhicule.
