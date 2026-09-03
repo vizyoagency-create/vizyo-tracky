@@ -31,6 +31,88 @@
       </div>
     }
 
+    <!-- ── LES AGENTS DU POSTE ──
+         Ils sont les seuls a pouvoir disparaitre SANS QUE RIEN N'ECHOUE cote serveur : un PC
+         eteint ou une tache planifiee supprimee ne produisent aucune erreur, aucun journal.
+         Noyes dans quarante lignes classees par famille, un agent arrete depuis trois jours
+         etait indiscernable d'un agent arrete depuis une heure. -->
+    @if (agentsPoste().length > 0) {
+      <section class="poste">
+        <h2 class="group-title">Agents sur le poste du propriétaire</h2>
+
+        @if (agentsEnAlerte().length > 0) {
+          <div class="poste-alerte">
+            <lucide-icon [img]="AlertTriangleIcon" [size]="16" />
+            <span>
+              <b>{{ agentsEnAlerte().length }} agent(s) ne donnent plus signe de vie.</b>
+              Ces traitements ne tournent pas sur ce serveur : rien ici ne les redémarrera.
+              Vérifier que le poste est allumé et que la tâche existe toujours dans le Planificateur de Windows.
+            </span>
+          </div>
+        }
+
+        <div class="poste-grille">
+          @for (t of agentsPoste(); track trackByTask($index, t)) {
+            <article class="agent" [ngClass]="etatLocalClass(t.traceLocale?.etat)">
+              <div class="agent-tete">
+                <lucide-icon [img]="PosteIcon" [size]="15" />
+                <b>{{ t.label }}</b>
+                <span class="etat-pastille">{{ etatLocalLabel(t.traceLocale?.etat) }}</span>
+              </div>
+
+              @if (t.traceLocale; as tr) {
+                <p class="agent-msg">{{ tr.message }}</p>
+                <dl class="agent-faits">
+                  <div>
+                    <dt>Dernier passage</dt>
+                    <dd>
+                      @if (tr.dernierPassageAt) {
+                        {{ dateHeureParis(tr.dernierPassageAt) }}
+                        <span class="agent-depuis">il y a {{ tr.depuis }}</span>
+                      } @else { jamais observé }
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Issue</dt>
+                    <dd>
+                      @switch (tr.issue) {
+                        @case ('succes') { passage abouti }
+                        @case ('echec') { passage en échec }
+                        @default { non consignée }
+                      }
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Preuve</dt>
+                    <dd>
+                      @switch (tr.preuve) {
+                        @case ('journal-passages') { journal des passages — dit s'il a TOURNÉ, même sans rien trouver }
+                        @case ('travail-ecrit') { travail écrit en base — ne distingue pas « rien à faire » de « à l'arrêt » }
+                        @default { aucune trace exploitable }
+                      }
+                    </dd>
+                  </div>
+                </dl>
+                @if (tr.resume) { <p class="agent-resume">{{ tr.resume }}</p> }
+              } @else {
+                <p class="agent-msg">
+                  État illisible pour l'instant — la page reste affichée plutôt que de tomber.
+                  Rien ne prouve que cet agent va mal : rien ne prouve non plus qu'il va bien.
+                </p>
+              }
+
+              <div class="agent-pied">
+                <span class="agent-cadence">{{ t.scheduleHuman }}</span>
+                @if (t.settingsRoute) {
+                  <a [routerLink]="t.settingsRoute" class="cfg">{{ lienLabel(t) }} <lucide-icon [img]="ChevronRightIcon" [size]="13" /></a>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+    }
+
     <!-- Santé / drift -->
     @if (health(); as h) {
       <div class="health" [class.ok]="driftOk()" [class.warn]="!driftOk()">
@@ -55,6 +137,10 @@
            proprietaire, et ce qui consomme des credits d'API. Le detail par traitement est
            porte par les etiquettes de chaque ligne. -->
       <div class="tile"><span class="n">{{ summary().posteLocal }}</span><span class="l">Poste local</span></div>
+      <!-- Le compteur qui manquait : un agent muet depuis trois jours se lit ici avant tout le reste. -->
+      <div class="tile" [class.muted-tile]="summary().posteEnAlerte === 0" [class.tile-alerte]="summary().posteEnAlerte > 0">
+        <span class="n">{{ summary().posteEnAlerte }}</span><span class="l">Agents muets</span>
+      </div>
       <div class="tile" [class.muted-tile]="summary().iaFacturee === 0"><span class="n">{{ summary().iaFacturee }}</span><span class="l">IA facturée</span></div>
     </div>
 
@@ -82,7 +168,7 @@
           </div>
           <div class="leg-item">
             <dt>Où</dt>
-            <dd><b>qui porte le déclencheur</b> : <span class="c-serveur">serveur</span> = l'API Tracky sur le VPS (horloge UTC) ; <span class="tag local">poste local</span> = le poste du propriétaire, lancé par le Planificateur de tâches Windows. L'état d'un traitement du poste est déduit du travail réellement écrit en base — si le poste est éteint, ça se voit ici.</dd>
+            <dd><b>qui porte le déclencheur</b> : <span class="c-serveur">serveur</span> = l'API Tracky sur le VPS (horloge UTC) ; <span class="tag local">poste local</span> = le poste du propriétaire, lancé par le Planificateur de tâches Windows. Ces traitements sont détaillés en haut de page, avec leur dernier passage et depuis combien de temps : ce sont les seuls qui peuvent s'arrêter sans qu'aucune erreur serveur ne le signale.</dd>
           </div>
           <div class="leg-item">
             <dt>Cadence</dt>
@@ -153,7 +239,7 @@
                   <b>{{ t.label }}</b>
                   @if (t.antiOverlap) { <span class="tag" title="Un nouveau passage ne démarre pas si le précédent tourne encore">anti-chevauchement</span> }
                   @if (t.executor === 'poste-local') {
-                    <span class="tag local" title="Ne tourne pas sur ce serveur : ce traitement s'exécute sur le poste du propriétaire. Son état est déduit du travail réellement écrit en base — si le poste est éteint, ça se voit ici.">poste local</span>
+                    <span class="tag local" title="Ne tourne pas sur ce serveur : ce traitement s'exécute sur le poste du propriétaire. Son état vient de ses passages journalisés, ou à défaut du travail réellement écrit en base — si le poste est éteint, ça se voit ici.">poste local</span>
                   }
                   @if (t.coutIa === 'absorbe') {
                     <span class="tag absorbe" title="Travail IA couvert par l'abonnement du poste : aucun crédit facturé.">IA absorbée</span>
@@ -162,10 +248,25 @@
                   }
                   @if (t.devOnly) { <span class="tag dev-tag">dev uniquement</span> }
                   @if (t.configurable && t.enabled === false) { <span class="tag pause">en pause</span> }
+                  <!-- L'etat du poste EN TETE DE LIGNE : c'est ce qu'on cherche, pas une note de bas de page. -->
+                  @if (t.traceLocale; as tr) {
+                    <span class="tag etat" [ngClass]="etatLocalClass(tr.etat)">{{ etatLocalLabel(tr.etat) }}</span>
+                  }
                 </div>
                 <p class="row-purpose">{{ t.purpose }}</p>
                 @if (t.note) { <p class="row-note"><lucide-icon [img]="ShieldAlertIcon" [size]="12" /> {{ t.note }}</p> }
-                @if (t.settingsSummary) { <p class="row-settings">Réglage : {{ t.settingsSummary }}</p> }
+                <!-- Un agent du poste ne se « regle » pas depuis ici : ce qu'on affiche est un
+                     CONSTAT (quand, avec quelle issue), pas un reglage. Les nommer pareil faisait
+                     chercher un bouton qui n'existe pas. -->
+                @if (t.traceLocale; as tr) {
+                  <p class="row-trace" [ngClass]="etatLocalClass(tr.etat)">
+                    {{ tr.message }}
+                    @if (tr.dernierPassageAt) { <span class="row-trace-date">({{ dateHeureParis(tr.dernierPassageAt) }}, heure de Paris)</span> }
+                  </p>
+                  @if (tr.resume) { <p class="row-settings">Bilan : {{ tr.resume }}</p> }
+                } @else if (t.settingsSummary) {
+                  <p class="row-settings">Réglage : {{ t.settingsSummary }}</p>
+                }
               </div>
 
               <div class="row-side">
@@ -179,8 +280,16 @@
                 } @else {
                   <div class="cd off">—</div>
                 }
-                @if (t.configurable && t.settingsRoute) {
-                  <a [routerLink]="t.settingsRoute" class="cfg">Configurer <lucide-icon [img]="ChevronRightIcon" [size]="13" /></a>
+                <!-- DERNIER PASSAGE, pour TOUS les traitements qui en tracent un. Il manquait :
+                     l'ecran ne savait dire que « prochain dans X », donc un traitement qui n'etait
+                     jamais passe ressemblait a un traitement passe il y a cinq minutes. -->
+                @if (t.lastRunAt) {
+                  <div class="last"><span class="last-verb">dernier</span> {{ dateHeureParis(t.lastRunAt) }}</div>
+                }
+                <!-- Le lien suit la ROUTE, plus le drapeau `configurable` : trois entrees
+                     declaraient un ecran que ce filtre rendait inatteignable. -->
+                @if (t.settingsRoute) {
+                  <a [routerLink]="t.settingsRoute" class="cfg">{{ lienLabel(t) }} <lucide-icon [img]="ChevronRightIcon" [size]="13" /></a>
                 }
               </div>
             </div>

@@ -60,12 +60,17 @@ export interface LineBarChartData {
   imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <!-- ⚠️ role="figure" et NON role="img". « img » porte
+         « children presentational: true » : le lecteur d'écran expose alors une image
+         unique nommée par l'aria-label et IGNORE le tableau ci-dessous — celui dont le
+         commentaire dit qu'il est « LU par les lecteurs d'écran », et qui était donc
+         soigné pour personne. C'est le canvas SEUL qu'on masque, pas son conteneur. -->
     <div
       class="lbc-wrapper"
-      role="img"
+      role="figure"
       [attr.aria-label]="ariaLabel()"
     >
-      <canvas #canvas></canvas>
+      <canvas #canvas aria-hidden="true"></canvas>
       <table class="sr-only">
         <caption>{{ ariaLabel() }}</caption>
         <thead>

@@ -16,6 +16,7 @@ import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
+import { ReportScheduleCardComponent } from './report-schedule-card.component';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -23,6 +24,7 @@ import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { AuthService } from '../../core/services/auth.service';
+import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-note-modal.component';
 import { DateRangePickerComponent } from '../../shared/ui/date-range-picker/date-range-picker.component';
@@ -70,6 +72,7 @@ const ANALYSES_BATCH_SIZE = 200;
     DatePipe,
     DecimalPipe,
     TripAnalysisBadgesComponent,
+    ReportScheduleCardComponent,
     TripReplayComponent,
     TripNoteModalComponent,
     DriverPickerComponent,
@@ -79,6 +82,7 @@ const ANALYSES_BATCH_SIZE = 200;
     HeatmapChartComponent,
     PeriodReplayComponent,
     PdfExportModalComponent,
+    ConfirmModalComponent,
   ],
   template: `
     <div class="flex flex-col gap-6">
@@ -126,20 +130,27 @@ const ANALYSES_BATCH_SIZE = 200;
         <!-- Filtre groupe : restreint la liste de véhicules du sélecteur à un groupe. -->
         @if (groupOptions().length > 0) {
           <div class="rep-dropdown-wrapper">
-            <button type="button"
+            <!-- ⚠️ aria-haspopup / aria-expanded : sans eux, un lecteur d'écran annonçait
+                 un bouton ordinaire et ne disait jamais que le menu venait de s'ouvrir. -->
+            <button type="button" #groupTrigger
                     (click)="groupDropdownOpen.set(!groupDropdownOpen())"
                     class="rep-dropdown-trigger"
+                    aria-haspopup="listbox"
+                    aria-controls="rep-menu-groupe"
+                    [attr.aria-expanded]="groupDropdownOpen()"
                     [class.rep-dropdown-trigger--open]="groupDropdownOpen()">
               <lucide-icon [img]="LayersIcon" [size]="14"></lucide-icon>
               <span class="rep-dropdown-label">{{ selectedGroupLabel() }}</span>
               <lucide-icon [img]="ChevronDown" [size]="14" class="rep-dropdown-chevron"></lucide-icon>
             </button>
             @if (groupDropdownOpen()) {
-              <div class="rep-dropdown-backdrop" (click)="groupDropdownOpen.set(false)"></div>
-              <div class="rep-dropdown-menu">
+              <div class="rep-dropdown-backdrop" (click)="fermerMenuGroupe()"></div>
+              <div class="rep-dropdown-menu" id="rep-menu-groupe" role="listbox" aria-label="Filtrer par groupe">
                 <button type="button"
                         (click)="onSelectGroup('')"
                         class="rep-dropdown-item"
+                        role="option"
+                        [attr.aria-selected]="!selectedGroupId()"
                         [class.rep-dropdown-item--active]="!selectedGroupId()">
                   <span>Tous les groupes</span>
                   @if (!selectedGroupId()) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
@@ -149,6 +160,8 @@ const ANALYSES_BATCH_SIZE = 200;
                   <button type="button"
                           (click)="onSelectGroup(g.id)"
                           class="rep-dropdown-item"
+                          role="option"
+                          [attr.aria-selected]="selectedGroupId() === g.id"
                           [class.rep-dropdown-item--active]="selectedGroupId() === g.id">
                     <span class="rep-dropdown-item-content">
                       <app-group-badge [group]="g" />
@@ -162,20 +175,28 @@ const ANALYSES_BATCH_SIZE = 200;
         }
         <!-- Dropdown véhicule custom -->
         <div class="rep-dropdown-wrapper">
-          <button type="button"
+          <button type="button" #vehicleTrigger
                   (click)="vehicleDropdownOpen.set(!vehicleDropdownOpen())"
+                  [disabled]="vehiclesLoading()"
                   class="rep-dropdown-trigger"
+                  aria-haspopup="listbox"
+                  aria-controls="rep-menu-vehicule"
+                  [attr.aria-expanded]="vehicleDropdownOpen()"
                   [class.rep-dropdown-trigger--open]="vehicleDropdownOpen()">
             <lucide-icon [img]="TruckIcon" [size]="14"></lucide-icon>
-            <span class="rep-dropdown-label">{{ selectedVehicleLabel() }}</span>
+            <span class="rep-dropdown-label">
+              @if (vehiclesLoading()) { Chargement… } @else { {{ selectedVehicleLabel() }} }
+            </span>
             <lucide-icon [img]="ChevronDown" [size]="14" class="rep-dropdown-chevron"></lucide-icon>
           </button>
           @if (vehicleDropdownOpen()) {
-            <div class="rep-dropdown-backdrop" (click)="vehicleDropdownOpen.set(false)"></div>
-            <div class="rep-dropdown-menu">
+            <div class="rep-dropdown-backdrop" (click)="fermerMenuVehicule()"></div>
+            <div class="rep-dropdown-menu" id="rep-menu-vehicule" role="listbox" aria-label="Filtrer par véhicule">
               <button type="button"
                       (click)="onSelectVehicle('')"
                       class="rep-dropdown-item"
+                      role="option"
+                      [attr.aria-selected]="!selectedVehicleId()"
                       [class.rep-dropdown-item--active]="!selectedVehicleId()">
                 <span>Tous les véhicules</span>
                 @if (!selectedVehicleId()) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
@@ -187,6 +208,8 @@ const ANALYSES_BATCH_SIZE = 200;
                 <button type="button"
                         (click)="onSelectVehicle(v.id)"
                         class="rep-dropdown-item"
+                        role="option"
+                        [attr.aria-selected]="selectedVehicleId() === v.id"
                         [class.rep-dropdown-item--active]="selectedVehicleId() === v.id">
                   <span class="rep-dropdown-item-content">
                     <span class="rep-dropdown-item-plate">{{ v.plate }}</span>
@@ -198,6 +221,11 @@ const ANALYSES_BATCH_SIZE = 200;
                   @if (selectedVehicleId() === v.id) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
                 </button>
               }
+              @if (!vehiclesLoading() && visibleVehicles().length === 0) {
+                <p class="rep-dropdown-vide">
+                  @if (vehiclesError()) { Liste indisponible. } @else { Aucun véhicule dans ce périmètre. }
+                </p>
+              }
             </div>
           }
         </div>
@@ -205,7 +233,9 @@ const ANALYSES_BATCH_SIZE = 200;
         </div>
 
         <div class="rep-periods">
-        @for (p of periods; track p.label) {
+        <!-- periods() et non un tableau figé : une tablette laissée ouverte après
+             minuit chargeait « Aujourd'hui » = hier (cf. le signal jourCourant). -->
+        @for (p of periods(); track p.label) {
           <button (click)="setPeriod(p.from, p.to); customRangeOpen.set(false)"
                   class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
                   [class]="periodFrom === p.from && periodTo === p.to && !isCustomRange()
@@ -217,8 +247,10 @@ const ANALYSES_BATCH_SIZE = 200;
 
         <!-- Pill personnalise — ouvre un panel avec presets + 2 inputs date -->
         <div class="rep-custom-wrapper">
-          <button type="button"
-                  (click)="customRangeOpen.set(!customRangeOpen())"
+          <button type="button" #customTrigger
+                  (click)="toggleCustomRange()"
+                  aria-haspopup="dialog"
+                  [attr.aria-expanded]="customRangeOpen()"
                   class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
                   [class]="isCustomRange()
                     ? 'bg-tracky/20 text-texte-succes border-tracky/30'
@@ -227,7 +259,7 @@ const ANALYSES_BATCH_SIZE = 200;
             @if (isCustomRange()) { {{ customRangeLabel() }} } @else { Personnalisé }
           </button>
           @if (customRangeOpen()) {
-            <div class="rep-custom-backdrop" (click)="customRangeOpen.set(false)"></div>
+            <div class="rep-custom-backdrop" (click)="fermerPlagePerso()"></div>
             <div class="rep-custom-panel" role="dialog" aria-label="Période personnalisée">
               <div class="rep-custom-presets">
                 <p class="rep-custom-section">Raccourcis</p>
@@ -273,7 +305,7 @@ const ANALYSES_BATCH_SIZE = 200;
                   <p class="rep-custom-hint">« Jusqu'à » sera fixé à aujourd'hui.</p>
                 }
                 <div class="rep-custom-actions">
-                  <button type="button" (click)="customRangeOpen.set(false)" class="rep-custom-cancel">Annuler</button>
+                  <button type="button" (click)="fermerPlagePerso()" class="rep-custom-cancel">Annuler</button>
                   <button type="button"
                           (click)="applyCustomRange()"
                           [disabled]="!customRangeValid()"
@@ -304,10 +336,15 @@ const ANALYSES_BATCH_SIZE = 200;
         </button>
 
         @if (isAdmin()) {
+          <!-- ⚠️ Le libellé prend --texte-attente (cf. .rep-recalc-btn) et non
+               l'utilitaire text-amber-400 : #FBBF24 sur blanc donne 1,7:1, et 1,2:1 une fois
+               l'opacité de l'état désactivé appliquée. L'administrateur ne lisait
+               simplement pas le mot « Recalculer » en thème clair. Le lavis et le
+               liseré ambre, eux, ne portent pas de texte et restent. -->
           <button (click)="onRecompute()" [disabled]="!selectedVehicleId() || recomputing()"
-                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
-                         bg-amber-500/10 text-amber-400 hover:bg-amber-500/20
-                         transition-colors cursor-pointer disabled:opacity-40">
+                  class="rep-recalc-btn rep-periode px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
+                         bg-amber-500/10 hover:bg-amber-500/20
+                         transition-colors cursor-pointer disabled:opacity-60">
             @if (recomputing()) { Recalcul... } @else { Recalculer }
           </button>
         }
@@ -323,6 +360,20 @@ const ANALYSES_BATCH_SIZE = 200;
         </button>
         </div>
       </div>
+
+      <!--
+        Panne de la liste des VÉHICULES. Elle échouait en silence : plus une seule plaque
+        dans le tableau, plus de filtre par groupe, un sélecteur vide — c'est-à-dire
+        l'image exacte d'une flotte sans véhicule. Un 401, un 403 ou un 5xx sur /vehicles
+        ressemblait donc à une réponse métier plausible, et personne ne le signalait.
+      -->
+      @if (vehiclesError(); as err) {
+        <div class="rep-bandeau-vehicules" role="status">
+          <span>{{ err }} Les plaques et le filtre par véhicule sont indisponibles.</span>
+          <button type="button" class="btn-secondary text-xs shrink-0"
+                  [disabled]="vehiclesLoading()" (click)="loadVehicles()">Réessayer</button>
+        </div>
+      }
 
       <!-- Sparkline KPI cards : compactes, lecture rapide -->
       <div class="rep-kpi-grid">
@@ -401,8 +452,10 @@ const ANALYSES_BATCH_SIZE = 200;
         </button>
       </div>
 
-      <!-- Charts : full-width line+bar puis 2 demi-largeur en grid -->
-      @if (!loading() && trips().length > 0) {
+      <!-- Charts : full-width line+bar puis 2 demi-largeur en grid.
+           Condition sur l'AGRÉGAT (période entière), pas sur la page de trajets chargée :
+           une liste vide (échec, tri) masquait des graphiques qui avaient des données. -->
+      @if (!loading() && (kpis().tripCount > 0 || trips().length > 0)) {
         <div class="rep-charts-grid">
           <section class="rep-chart-card rep-chart-card--full">
             <header class="rep-chart-head">
@@ -460,6 +513,12 @@ const ANALYSES_BATCH_SIZE = 200;
         </div>
       }
 
+      <!-- Rapport hebdomadaire par e-mail : réglage par société (admins). Placé avant la
+           synthèse : c'est ce que le client règle une fois, pas ce qu'il lit chaque jour. -->
+      @if (canConfigureSchedule()) {
+        <app-report-schedule-card class="rep-sched" [fleetId]="fleetFilter.selectedFleetId()" [vehicles]="pdfModalVehicles()" />
+      }
+
       <!-- Synthèse par véhicule (réf. maquette Rapports) — rollup de la période,
            complémentaire du tableau détaillé par trajet ci-dessous. -->
       @if (!loading() && vehicleSummary().length > 0) {
@@ -469,10 +528,15 @@ const ANALYSES_BATCH_SIZE = 200;
             <!-- Ce rollup agrège les trajets CHARGÉS (cf. vehicleSummary), pas la période
                  entière : tant que le tableau est paginé, il faut le dire, sinon deux
                  totaux différents cohabitent sur le même écran sans explication. -->
+            <!-- ⚠️ La phrase disait « cliquez « Voir » pour le détail » alors qu'AUCUN
+                 contrôle nommé « Voir » n'existait : la ligne entière était un lien, et
+                 le seul indice visible était un chevron gris de 16 px. Sur un téléphone,
+                 l'utilisateur cherchait un bouton absent. « Voir › » est désormais écrit
+                 en toutes lettres au bout de chaque ligne — la consigne est vraie. -->
             @if (tripsTruncated()) {
-              <p>Sur les {{ listedTripCount() }} trajets chargés sur {{ kpis().tripCount }} — cliquez « Voir » pour le détail</p>
+              <p>Sur les {{ listedTripCount() }} trajets chargés sur {{ kpis().tripCount }} — « Voir » ouvre la fiche du véhicule</p>
             } @else {
-              <p>Synthèse de la période — cliquez « Voir » pour le détail</p>
+              <p>Synthèse de la période — « Voir » ouvre la fiche du véhicule</p>
             }
           </header>
           <div class="rep-vtable">
@@ -485,7 +549,10 @@ const ANALYSES_BATCH_SIZE = 200;
               <span></span>
             </div>
             @for (v of vehicleSummary(); track v.vehicleId) {
-              <div class="rep-vrow" [vehicleLink]="v.vehicleId" [attr.title]="'Voir ' + vehiclePlate(v.vehicleId)">
+              <!-- Le nom accessible du lien était la concaténation « AB-123-CD Renault Clio
+                   152 km 3h12 », sans verbe, et l'attribut title ne servait qu'à la souris. -->
+              <div class="rep-vrow" [vehicleLink]="v.vehicleId"
+                   [attr.aria-label]="'Voir la fiche du véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')">
                 <div class="rep-vveh">
                   <div class="rep-vplate">{{ vehiclePlate(v.vehicleId) || '—' }}</div>
                   <div class="rep-vmodel">{{ vehicleModelLabel(v.vehicleId) }}</div>
@@ -493,8 +560,15 @@ const ANALYSES_BATCH_SIZE = 200;
                 <span class="rep-vdist">{{ (v.distance / 1000) | number:'1.0-0' }} <span class="rep-vunit">km</span></span>
                 <span class="rep-vmeta">{{ formatDuration(v.duration) }}</span>
                 <span class="rep-vmeta rep-vt-hide">{{ v.trips }}</span>
-                <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">{{ v.avgSpeed }} km/h</span>
-                <lucide-icon [img]="ChevronRightIcon" [size]="16" class="rep-vchev" aria-hidden="true"></lucide-icon>
+                <!-- Le glyphe ▲ double la couleur : l'alerte « vitesse moyenne élevée » ne
+                     doit pas reposer sur la seule teinte (WCAG 1.4.1). Le mot, lui, est
+                     dit au lecteur d'écran — un aria-label sur un span générique n'est pas
+                     restitué de façon fiable, une mention masquée l'est. -->
+                <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">
+                  @if (v.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
+                  {{ v.avgSpeed }} km/h
+                </span>
+                <span class="rep-vgo">Voir <lucide-icon [img]="ChevronRightIcon" [size]="14" class="rep-vchev" aria-hidden="true"></lucide-icon></span>
               </div>
             }
           </div>
@@ -612,8 +686,11 @@ const ANALYSES_BATCH_SIZE = 200;
                   <td class="p-3 text-fg-primary">
                     <div>{{ trip.startedAt | date:'dd/MM HH:mm' }}</div>
                     @if (vehiclePlate(trip.vehicleId); as plate) {
+                      <!-- Nom accessible avec un VERBE : « AB-123-CD » seul ne dit pas
+                           qu'on peut l'activer, et l'attribut title ne parlait qu'à la souris. -->
                       <div class="text-[10px] font-bold uppercase tracking-wider text-fg-tertiary mt-0.5"
-                           [vehicleLink]="trip.vehicleId" [attr.title]="'Voir ' + plate">
+                           [vehicleLink]="trip.vehicleId"
+                           [attr.aria-label]="'Voir la fiche du véhicule ' + plate">
                         {{ plate }}
                       </div>
                     }
@@ -651,12 +728,16 @@ const ANALYSES_BATCH_SIZE = 200;
                   </td>
                   <td class="p-3 max-w-[260px]">
                     @if (trip.notes) {
+                      <!-- ⚠️ Le texte complet n'existait que dans l'attribut title et le bouton était
+                           DÉSACTIVÉ pour un rôle sans droit d'édition : un conducteur ou un
+                           lecteur voyait « Livraison chez Dup… » sans aucun moyen d'en lire
+                           la suite. Le bouton reste actif en lecture seule et déplie la note
+                           sur place. -->
                       <button type="button"
-                              (click)="canEditNotes() ? openNoteEdit(trip) : null"
-                              [disabled]="!canEditNotes()"
-                              [title]="trip.notes"
+                              (click)="canEditNotes() ? openNoteEdit(trip) : basculerNote(trip.id)"
+                              [attr.aria-expanded]="canEditNotes() ? null : noteDepliee() === trip.id"
                               class="rep-note rep-note--filled"
-                              [class.cursor-default]="!canEditNotes()">
+                              [class.rep-note--depliee]="noteDepliee() === trip.id">
                         <lucide-icon [img]="MessageSquareIcon" [size]="12"></lucide-icon>
                         <span class="rep-note-text">{{ trip.notes }}</span>
                         @if (canEditNotes()) {
@@ -672,10 +753,11 @@ const ANALYSES_BATCH_SIZE = 200;
                       <span class="text-fg-tertiary text-xs">—</span>
                     }
                   </td>
-                  <td class="p-3 max-w-[280px] rep-analysis-cell">
+                  <td class="p-3 max-w-[320px] rep-analysis-cell">
                     <app-trip-analysis-badges
                       [tripId]="trip.id"
                       [analysis]="analysisFor(trip.id)"
+                      layout="row"
                       (analyzed)="onAnalyzed($event)"
                     />
                   </td>
@@ -729,7 +811,10 @@ const ANALYSES_BATCH_SIZE = 200;
                     <span class="rep-card-times">{{ trip.startedAt | date:'HH:mm' }} → {{ trip.endedAt | date:'HH:mm' }}</span>
                   </div>
                   @if (vehiclePlate(trip.vehicleId); as plate) {
-                    <span class="rep-card-plate" [vehicleLink]="trip.vehicleId" [attr.title]="'Voir ' + plate">{{ plate }}</span>
+                    <!-- Seule porte vers la fiche véhicule depuis une carte : elle vaut
+                         44 px au doigt (cf. .rep-card-plate) et porte un nom avec verbe. -->
+                    <span class="rep-card-plate" [vehicleLink]="trip.vehicleId"
+                          [attr.aria-label]="'Voir la fiche du véhicule ' + plate">{{ plate }}</span>
                   }
                 </header>
                 @if (vehicleGroup(trip.vehicleId); as g) {
@@ -781,12 +866,14 @@ const ANALYSES_BATCH_SIZE = 200;
                       </button>
                     }
                     @if (trip.notes) {
+                      <!-- Même règle que dans le tableau : au doigt il n'y a pas de survol,
+                           donc pas d'attribut title. La note se déplie sur trois lignes, et le tap
+                           l'ouvre en entier pour un rôle sans droit d'édition. -->
                       <button type="button"
-                              (click)="canEditNotes() ? openNoteEdit(trip) : null"
-                              [disabled]="!canEditNotes()"
-                              [title]="trip.notes"
+                              (click)="canEditNotes() ? openNoteEdit(trip) : basculerNote(trip.id)"
+                              [attr.aria-expanded]="canEditNotes() ? null : noteDepliee() === trip.id"
                               class="rep-note rep-note--filled"
-                              [class.cursor-default]="!canEditNotes()">
+                              [class.rep-note--depliee]="noteDepliee() === trip.id">
                         <lucide-icon [img]="MessageSquareIcon" [size]="12"></lucide-icon>
                         <span class="rep-note-text">{{ trip.notes }}</span>
                       </button>
@@ -865,6 +952,19 @@ const ANALYSES_BATCH_SIZE = 200;
       (saved)="onNoteSaved($event)"
     />
 
+    <app-confirm-modal
+      [open]="recomputeConfirmOpen()"
+      title="Recalculer les trajets de la période ?"
+      description="Le recalcul redécoupe les trajets depuis les positions GPS brutes. Utile quand des trajets sont fragmentés ou manquants."
+      [consequences]="recomputeConsequences()"
+      [irreversible]="true"
+      [danger]="true"
+      confirmLabel="Recalculer"
+      [loading]="recomputing()"
+      (confirmed)="confirmRecompute()"
+      (cancelled)="recomputeConfirmOpen.set(false)"
+    />
+
     <app-driver-picker
       [open]="!!driverPickerTrip()"
       [currentDriverId]="driverPickerTrip()?.driver?.id ?? null"
@@ -875,8 +975,11 @@ const ANALYSES_BATCH_SIZE = 200;
     />
 
     <app-pdf-export-modal
+      [preselectedVehicleIds]="pdfPreselectedVehicleIds()"
+      [tripCount]="kpis().tripCount"
+      [fileDateRange]="pdfFileDateRange()"
       [open]="pdfModalOpen()"
-      [vehicles]="vehicles()"
+      [vehicles]="pdfModalVehicles()"
       [periodLabel]="pdfPeriodLabel()"
       [loading]="exporting() === 'pdf'"
       (closed)="pdfModalOpen.set(false)"
@@ -1130,8 +1233,13 @@ const ANALYSES_BATCH_SIZE = 200;
       cursor: pointer; transition: all .15s;
     }
     .rep-custom-preset:hover { background: var(--bg-secondary); color: var(--fg-primary) }
+    /* ⚠️ --texte-succes, pas le vert de MARQUE : c'est du texte de 12 px, et
+       --tracky-light y donne 3,3:1 en thème clair (styles.css § « état actif d'un
+       segment » l'interdit nommément). Le lavis dérive du jeton au lieu d'être écrit
+       en rgba(), sinon il ne suit pas le vert clair #0A9E6C. */
     .rep-custom-preset--active {
-      background: rgba(16,224,160,.12); color: var(--tracky-light);
+      background: color-mix(in srgb, var(--tracky-light) 12%, transparent);
+      color: var(--texte-succes);
     }
     .rep-custom-fields { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px }
     .rep-custom-field { display: flex; flex-direction: column; gap: 4px }
@@ -1263,6 +1371,25 @@ const ANALYSES_BATCH_SIZE = 200;
     }
     .rep-reset-btn:disabled { opacity: .4; cursor: not-allowed; }
 
+    /* ─── Bouton admin « Recalculer » ───
+       Le libellé porte --texte-attente (l'ambre assombri pour le thème clair) et non
+       l'utilitaire text-amber-400 : #FBBF24 sur blanc rendait 1,7:1, et 1,2:1 à
+       l'opacité de l'état désactivé. Le fond et le liseré ambre restent — ils ne portent
+       pas de caractères. */
+    .rep-recalc-btn { color: var(--texte-attente); }
+
+    /* ─── Bandeau : liste des véhicules indisponible ─── */
+    .rep-bandeau-vehicules {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+      padding: 10px 16px;
+      border-radius: var(--radius-card, 16px);
+      background: var(--bg-secondary);
+      border: 1px solid color-mix(in srgb, var(--texte-attente) 40%, transparent);
+      color: var(--fg-secondary);
+      font-size: 13px;
+    }
+
     /* ─── Dropdown véhicule custom ─── */
     .rep-dropdown-wrapper {
       position: relative;
@@ -1341,12 +1468,20 @@ const ANALYSES_BATCH_SIZE = 200;
       transition: all .12s;
     }
     .rep-dropdown-item:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
+    /* La plaque du véhicule sélectionné est l'endroit où l'on vérifie « qu'est-ce que je
+       regarde ? ». Elle passait sous 4,5:1 en thème clair : --tracky-light est une
+       couleur de FOND ou de filet, jamais de texte à 13 px. L'icône, elle, n'est pas du
+       texte et garde l'accent. */
     .rep-dropdown-item--active {
-      background: rgba(16,224,160,.10);
-      color: var(--tracky-light);
+      background: color-mix(in srgb, var(--tracky-light) 10%, transparent);
+      color: var(--texte-succes);
       font-weight: 700;
     }
     .rep-dropdown-item--active lucide-icon { color: var(--tracky-light) }
+    .rep-dropdown-vide {
+      margin: 0; padding: 10px 12px;
+      font-size: 12px; color: var(--fg-tertiary);
+    }
     .rep-dropdown-item-content {
       display: flex; flex-direction: column;
       min-width: 0; flex: 1;
@@ -1407,6 +1542,15 @@ const ANALYSES_BATCH_SIZE = 200;
       white-space: nowrap;
       max-width: 180px;
     }
+    /* Note dépliée : la suite du texte, à la place de l'attribut title, qui n'existe pas au doigt. */
+    .rep-note--depliee { align-items: flex-start; }
+    .rep-note--depliee .rep-note-text {
+      white-space: normal;
+      max-width: 100%;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 1.45;
+    }
     .rep-note-edit-icon { color: var(--fg-tertiary) !important; opacity: .7 }
 
     .rep-note--add {
@@ -1414,10 +1558,12 @@ const ANALYSES_BATCH_SIZE = 200;
       border-color: var(--border-subtle);
       border-style: dashed;
     }
+    /* Meme famille que MOB-09 : du texte de 11 px ne prend pas le vert de MARQUE.
+       Le lavis derive du jeton, sinon il ne suit pas le vert clair. */
     .rep-note--add:hover {
-      color: var(--tracky-light);
-      border-color: rgba(16,224,160,.30);
-      background: rgba(16,224,160,.05);
+      color: var(--texte-succes);
+      border-color: color-mix(in srgb, var(--tracky-light) 30%, transparent);
+      background: color-mix(in srgb, var(--tracky-light) 5%, transparent);
     }
 
     /* ─── Cellule conducteur dans la table ─── */
@@ -1461,9 +1607,9 @@ const ANALYSES_BATCH_SIZE = 200;
       color: var(--fg-tertiary);
     }
     .rep-driver--add:hover {
-      color: var(--tracky-light);
-      border-color: rgba(16,224,160,.30);
-      background: rgba(16,224,160,.05);
+      color: var(--texte-succes);
+      border-color: color-mix(in srgb, var(--tracky-light) 30%, transparent);
+      background: color-mix(in srgb, var(--tracky-light) 5%, transparent);
     }
     .rep-driver--add lucide-icon { color: inherit; flex-shrink: 0 }
 
@@ -1519,14 +1665,9 @@ const ANALYSES_BATCH_SIZE = 200;
        quatre fois plus long à parcourir. On borne donc la hauteur ici — le reste des
        badges reste atteignable en faisant défiler la cellule, là où un display:none
        les aurait supprimés du mobile, ce qui est précisément le manque qu'on répare. */
-    @media (max-width: 900px) {
-      .rep-analysis-cell > * {
-        display: block;
-        max-height: 96px;
-        overflow-y: auto;
-        overscroll-behavior: contain;
-      }
-    }
+    /* La variante « rangée » du bloc d'analyse tient sur une ligne : plus de bride de
+       hauteur ni d'ascenseur interne (qui cachait les boutons entre 768 et 900 px). */
+    .rep-analysis-cell { min-width: 220px; }
 
     /* ─── Pagination du tableau (« Charger plus ») ─── */
     .rep-more { display: flex; justify-content: center; margin-top: 12px; }
@@ -1611,8 +1752,16 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-card-when { display: flex; flex-direction: column; min-width: 0; }
     .rep-card-date { font-size: 14px; font-weight: 700; color: var(--fg-primary); text-transform: capitalize; }
     .rep-card-times { font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+    /* ⚠️ 44 px, même si la règle globale ne l'atteint pas. La plaque porte
+       role="link" (directive [vehicleLink]), et la liste de styles.css qui impose la
+       cible tactile énumère [role='button'] et [role='tab'], mais pas [role='link'].
+       Résultat : la SEULE porte vers la fiche véhicule depuis une carte de trajet était
+       aussi la plus petite cible de la carte (≈ 24 px). La marge négative rend la
+       hauteur ajoutée à l'en-tête, qui ne grandit donc pas. */
     .rep-card-plate {
       flex-shrink: 0;
+      display: inline-flex; align-items: center; align-self: center;
+      min-height: 44px; margin: -6px 0;
       font-family: var(--font-mono, monospace); font-size: 12px; font-weight: 700;
       letter-spacing: .06em; color: var(--fg-secondary);
       padding: 4px 8px; border-radius: 8px;
@@ -1653,6 +1802,20 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-card-action--replay lucide-icon { color: var(--tracky-light); }
     /* Les chips conducteur / note viennent du tableau : au doigt, 44 px de haut. */
     .rep-card .rep-driver, .rep-card .rep-note { min-height: 44px; }
+    /* ⚠️ Sur une carte, la note prend sa propre ligne et se lit sur trois lignes plutôt
+       que de se couper à 180 px derrière un attribut title que le doigt n'atteint jamais.
+       Le tap la déplie en entier (cf. basculerNote). */
+    .rep-card .rep-note--filled { flex: 1 1 100%; min-width: 0; align-items: flex-start; }
+    .rep-card .rep-note-text {
+      white-space: normal;
+      max-width: none;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.45;
+    }
+    .rep-card .rep-note--depliee .rep-note-text { display: block; overflow: visible; }
 
     /* ─── Exports : une rangée défilante au doigt plutôt que quatre lignes ─── */
     @media (max-width: 640px) {
@@ -1678,20 +1841,40 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vdist { font-size: 15px; font-weight: 800; color: var(--fg-primary); }
     .rep-vunit { font-size: 10px; font-weight: 600; color: var(--fg-tertiary); }
     .rep-vmeta { font-size: 13px; color: var(--fg-secondary); }
-    .rep-vspeed-warn { color: var(--warning); font-weight: 600; }
-    .rep-vchev { color: var(--fg-tertiary); justify-self: end; transition: color .15s ease, transform .15s ease; }
-    .rep-vrow:hover .rep-vchev { color: var(--tracky-light); transform: translateX(2px); }
+    /* ⚠️ --warning (#C98708 en clair) sur du texte de 13 px donne 2,68:1 — c'est
+       exactement le cas pour lequel --texte-attente a été créé. Et le signal « vitesse
+       moyenne ≥ 50 km/h » est une alerte métier : il ne peut pas être le texte le moins
+       lisible de la ligne. Le triangle double la couleur, pour ne pas reposer sur elle
+       seule. */
+    .rep-vspeed-warn { color: var(--texte-attente); font-weight: 600; }
+    .rep-vspeed-warn::before { content: '▲'; font-size: 9px; margin-right: 3px; }
+    /* « Voir › » écrit en toutes lettres : le chevron seul n'était l'indice de rien, et
+       l'en-tête de la section promettait un contrôle nommé « Voir » qui n'existait pas. */
+    .rep-vgo {
+      display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px;
+      justify-self: end;
+      min-width: 44px;
+      font-size: 12px; font-weight: 700; color: var(--texte-succes);
+      white-space: nowrap;
+    }
+    /* Au doigt seulement : à la souris, 44 px de haut allongeraient inutilement chaque
+       ligne de la synthèse. */
+    @media (max-width: 768px) {
+      .rep-vgo { min-height: 44px; }
+    }
+    .rep-vchev { color: inherit; transition: transform .15s ease; }
+    .rep-vrow:hover .rep-vchev { transform: translateX(2px); }
     @media (max-width: 1000px) {
-      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr 70px; }
+      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr 74px; }
       .rep-vt-hide { display: none !important; }
     }
     /* Sous 480 px, quatre colonnes ne tiennent plus : la ligne devient une carte à deux
        colonnes (plaque en tête, chiffres dessous), le chevron reste à droite. */
     @media (max-width: 480px) {
       .rep-vt-head { display: none; }
-      .rep-vrow { grid-template-columns: 1fr 1fr 28px; grid-template-areas: 'veh veh chev' 'dist meta chev'; gap: 6px 10px; padding: 12px 14px; }
+      .rep-vrow { grid-template-columns: 1fr 1fr 56px; grid-template-areas: 'veh veh voir' 'dist meta voir'; gap: 6px 10px; padding: 12px 14px; }
       .rep-vrow > .rep-vveh { grid-area: veh; }
-      .rep-vrow > .rep-vchev { grid-area: chev; align-self: center; }
+      .rep-vrow > .rep-vgo { grid-area: voir; align-self: center; }
       .rep-vrow > :nth-child(2) { grid-area: dist; }
       .rep-vrow > :nth-child(3) { grid-area: meta; }
     }
@@ -1704,8 +1887,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly perms = inject(PermissionsService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
+
+  /** Le rapport hebdomadaire se règle par les administrateurs (société ou plateforme). */
+  protected readonly canConfigureSchedule = computed(() => {
+    const r = this.authService.user()?.role;
+    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
+  });
   private readonly reportsApi = inject(ReportsApiService);
-  private readonly fleetFilter = inject(FleetFilterService);
+  /** `protected` : le gabarit passe la société courante à la carte de réglage
+   *  hebdomadaire, et un gabarit Angular ne peut pas lire un membre privé. */
+  protected readonly fleetFilter = inject(FleetFilterService);
   private readonly analysisApi = inject(TripAnalysisApiService);
   protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary' | 'excel'>(null);
 
@@ -1737,8 +1928,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * la reponse metier d'une periode reellement sans trajet. Le gestionnaire en concluait
    * que ses vehicules n'avaient pas roule.
    */
-  protected readonly loadError = signal<string | null>(null);
+  /**
+   * ⚠️ DEUX pannes distinctes, et non une seule.
+   *
+   * `loadData` lance deux requêtes indépendantes : la LISTE de trajets et le RÉSUMÉ
+   * journalier (d'où viennent tous les KPI et le graphique d'activité). Un seul signal
+   * les confondait, et `loadTrips` — le re-tri — le remettait à `null` dès que la liste
+   * répondait. Conséquence mesurée : résumé en panne, KPI à zéro, bandeau ambre ; un clic
+   * sur un en-tête de colonne faisait disparaître le bandeau, les KPI restaient à zéro et
+   * plus rien ne disait que la vue était incomplète. Un tri réussi effaçait le seul
+   * avertissement de l'écran.
+   */
+  private readonly tripsError = signal<string | null>(null);
+  private readonly summaryError = signal<string | null>(null);
+  /** Message affiché : la panne de la liste prime, elle est la plus visible. */
+  protected readonly loadError = computed(() => this.tripsError() ?? this.summaryError());
   protected readonly recomputing = signal(false);
+  /**
+   * Liste des véhicules : état de chargement et panne éventuelle (cf. `loadVehicles`).
+   * Tout le rendu des plaques, des groupes, du sélecteur et de la modale PDF en dépend.
+   */
+  protected readonly vehiclesLoading = signal(true);
+  protected readonly vehiclesError = signal<string | null>(null);
+  /** Note dépliée sur place (rôle sans droit d'édition) — cf. `basculerNote`. */
+  protected readonly noteDepliee = signal<string | null>(null);
   protected readonly replayTrip = signal<TripDto | null>(null);
   protected readonly noteEditTrip = signal<TripDto | null>(null);
   protected readonly driverPickerTrip = signal<TripDto | null>(null);
@@ -1783,9 +1996,77 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly customRangeOpen = signal(false);
   protected readonly customFrom = signal('');
   protected readonly customTo = signal('');
+  /**
+   * LE JOUR CIVIL COURANT (AAAA-MM-JJ, heure locale), en SIGNAL.
+   *
+   * ⚠️ Tout ce qui est daté sur cet écran en descend : les pastilles de période, les
+   * raccourcis du panneau « Personnalisé » et la borne « pas de futur » du calendrier.
+   * Ces trois-là étaient figés à la construction du composant — et cet écran vit dans
+   * une PWA qu'on laisse ouverte sur une tablette d'atelier. Le lendemain matin :
+   * « Aujourd'hui » chargeait la veille, le calendrier refusait de choisir aujourd'hui,
+   * et l'export partait sur une période différente de celle affichée.
+   *
+   * Le signal est rafraîchi à trois moments : au retour dans l'onglet
+   * (`visibilitychange`), à minuit par une minuterie, et avant tout export.
+   */
+  private readonly jourCourant = signal(todayIsoLocal());
+
   /** Aujourd'hui au format YYYY-MM-DD heure LOCALE (limite haute du date picker
    *  + borne no-future). Local pour rester cohérent avec localIso/buildPeriods. */
-  protected readonly todayIso = todayIsoLocal();
+  protected get todayIso(): string { return this.jourCourant(); }
+
+  /** Minuterie qui bascule le jour à minuit passé, sans attendre une interaction. */
+  private minuitTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private armerBasculeDeMinuit(): void {
+    if (this.minuitTimer) clearTimeout(this.minuitTimer);
+    const maintenant = new Date();
+    // Cinq secondes après minuit : on veut être du bon côté de la frontière, pas dessus.
+    const minuit = new Date(
+      maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate() + 1, 0, 0, 5,
+    );
+    this.minuitTimer = setTimeout(() => {
+      this.rafraichirJour();
+      this.armerBasculeDeMinuit();
+    }, Math.max(1000, minuit.getTime() - maintenant.getTime()));
+  }
+
+  /**
+   * Réaligne le jour courant, et AVEC LUI la période affichée si elle correspondait à
+   * une pastille.
+   *
+   * ⚠️ Le réalignement passe par `setPeriod`, donc RECHARGE. L'ancien
+   * `refreshPeriodIfStalePreset` se contentait de réécrire `periodFrom`/`periodTo` en
+   * silence juste avant un export : le fichier couvrait alors une période que l'écran
+   * n'avait jamais montrée.
+   */
+  private rafraichirJour(): void {
+    const jour = todayIsoLocal();
+    if (jour === this.jourCourant()) return;
+    const index = this.periods().findIndex(
+      (p) => p.from === this.periodFrom && p.to === this.periodTo,
+    );
+    this.jourCourant.set(jour);
+    if (index >= 0) {
+      const frais = this.periods()[index]!;
+      this.setPeriod(frais.from, frais.to);
+    }
+  }
+
+  /** Ouvre / ferme le panneau « Personnalisé » en rafraîchissant les raccourcis datés. */
+  protected toggleCustomRange(): void {
+    if (!this.customRangeOpen()) {
+      this.rafraichirJour();
+      this.presetsNow.update((n) => n + 1);
+    }
+    this.customRangeOpen.set(!this.customRangeOpen());
+  }
+
+  /** Ferme le panneau de plage personnalisée en rendant le focus à son déclencheur. */
+  protected fermerPlagePerso(): void {
+    this.customRangeOpen.set(false);
+    this.rendreLeFocus(this.customTriggerEl());
+  }
 
   /** True quand viewport >= 768px : calendrier inline. Sinon : inputs natifs.
    *  Mis a jour live via matchMedia. */
@@ -1800,16 +2081,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly isCustomRange = computed(() => {
     this.periodKey(); // dependance explicite pour declencher le re-calcul
     if (!this.periodFrom || !this.periodTo) return false;
-    return !this.periods.some((p) => p.from === this.periodFrom && p.to === this.periodTo);
+    return !this.periods().some((p) => p.from === this.periodFrom && p.to === this.periodTo);
   });
+
+  /**
+   * Une date CIVILE (AAAA-MM-JJ) lue en heure LOCALE.
+   *
+   * ⚠️ `new Date('2026-03-12')` vaut minuit UTC, c'est-à-dire la VEILLE au soir pour un
+   * utilisateur à l'ouest de Greenwich. Aux Antilles ou en Guyane (UTC−4 / UTC−3, des
+   * flottes françaises), « 12 mars → 18 mars » s'affichait « 11 mars → 17 mars ». Le
+   * défaut est invisible en métropole, ce qui le rend durable. Midi local met la valeur
+   * à l'abri de tout fuseau et de tout changement d'heure.
+   */
+  private dateCivileLocale(iso: string): Date {
+    return new Date(`${iso}T12:00:00`);
+  }
 
   /** Label compact de la plage active (ex: "12 mars → 18 mars"). */
   protected readonly customRangeLabel = computed(() => {
     this.periodKey(); // dependance explicite pour declencher le re-calcul
     if (!this.isCustomRange()) return '';
     try {
-      const f = new Date(this.periodFrom);
-      const t = new Date(this.periodTo);
+      const f = this.dateCivileLocale(this.periodFrom);
+      const t = this.dateCivileLocale(this.periodTo);
       const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
       // Le `to` est toujours +1 jour (exclusif) cote periods → on retire 1 jour pour l'affichage.
       const tDisplay = new Date(t.getTime() - 86400000);
@@ -1833,10 +2127,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly customRangeValid = computed(() => this.normalizedCustomRange().valid);
 
   /** Presets dynamiques (calculés au render pour rester relatifs à aujourd'hui). */
+  /**
+   * Ré-évalué à chaque OUVERTURE du panneau (cf. `openCustomRange`) : une PWA laissée
+   * ouverte après minuit proposait « Hier » et « 7 derniers jours » d'hier.
+   */
+  private readonly presetsNow = signal(0);
+
   protected readonly customPresets = computed(() => {
+    this.presetsNow();
+    // Dépendance explicite au jour civil : après minuit, « Hier » désignait avant-hier.
+    this.jourCourant();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    // ⚠️ HEURE LOCALE, pas toISOString (UTC) : en France, minuit local = 22:00 ou 23:00 UTC
+    //    la veille, donc « Hier » tombait sur avant-hier et « 7 derniers jours » excluait
+    //    aujourd'hui. Même convention que `localIso` et que les pastilles de la barre.
+    const iso = (d: Date) => this.localIso(d);
     const tomorrow = new Date(today.getTime() + 86400000);
     const yesterday = new Date(today.getTime() - 86400000);
     const startOfWeek = new Date(today);
@@ -1844,8 +2150,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const days7 = new Date(today.getTime() - 7 * 86400000);
-    const days30 = new Date(today.getTime() - 30 * 86400000);
+    // 7 et 30 jours civils, aujourd'hui compris — même règle que les pastilles.
+    const days7 = new Date(today.getTime() - 6 * 86400000);
+    const days30 = new Date(today.getTime() - 29 * 86400000);
     return [
       { label: "Hier", from: iso(yesterday), to: iso(today) },
       { label: "Cette semaine", from: iso(startOfWeek), to: iso(tomorrow) },
@@ -1910,6 +2217,33 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected readonly vehicleDropdownOpen = signal(false);
 
+  /**
+   * Déclencheurs des trois panneaux, pour LEUR RENDRE LE FOCUS à la fermeture.
+   *
+   * ⚠️ Le menu est retiré du DOM quand on choisit un item : le focus retombait alors sur
+   * `<body>`, et la navigation au clavier repartait du haut de la page. On ne « perd »
+   * pas le focus par distraction — on le perd parce que l'élément qui le portait n'existe
+   * plus, et personne ne l'a repris.
+   */
+  private readonly groupTriggerEl = viewChild<ElementRef<HTMLButtonElement>>('groupTrigger');
+  private readonly vehicleTriggerEl = viewChild<ElementRef<HTMLButtonElement>>('vehicleTrigger');
+  private readonly customTriggerEl = viewChild<ElementRef<HTMLButtonElement>>('customTrigger');
+
+  /** Le déclencheur peut ne pas exister (filtre groupe masqué quand il n'y a pas de groupe). */
+  private rendreLeFocus(ref: ElementRef<HTMLElement> | undefined): void {
+    ref?.nativeElement?.focus();
+  }
+
+  protected fermerMenuGroupe(): void {
+    this.groupDropdownOpen.set(false);
+    this.rendreLeFocus(this.groupTriggerEl());
+  }
+
+  protected fermerMenuVehicule(): void {
+    this.vehicleDropdownOpen.set(false);
+    this.rendreLeFocus(this.vehicleTriggerEl());
+  }
+
   /** Label affiché dans le bouton du dropdown selon la sélection courante. */
   protected readonly selectedVehicleLabel = computed(() => {
     const id = this.selectedVehicleId();
@@ -1920,7 +2254,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected onSelectVehicle(id: string): void {
     this.selectedVehicleId.set(id);
-    this.vehicleDropdownOpen.set(false);
+    this.fermerMenuVehicule();
     this.loadData();
   }
 
@@ -1952,7 +2286,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected onSelectGroup(id: string): void {
     this.selectedGroupId.set(id);
-    this.groupDropdownOpen.set(false);
+    this.fermerMenuGroupe();
     // Si le véhicule sélectionné ne fait pas partie du groupe filtré, on revient
     // à « tous les véhicules » (sinon le rapport montrerait un véhicule hors filtre).
     const selV = this.selectedVehicleId();
@@ -1976,9 +2310,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.customRangeOpen.set(false);
     this.customFrom.set('');
     this.customTo.set('');
-    // Realigne les presets (anti-stale) puis applique « 7 jours » (index 1).
-    this.periods = this.buildPeriods();
-    const sevenDays = this.periods[1]!;
+    // Realigne le jour courant (anti-stale) puis applique « 7 jours » (index 1).
+    this.jourCourant.set(todayIsoLocal());
+    const sevenDays = this.periods()[1]!;
     this.setPeriod(sevenDays.from, sevenDays.to);
   }
 
@@ -1990,7 +2324,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly filtersDirty = computed(() => {
     this.periodKey();
     if (this.selectedGroupId() || this.selectedVehicleId()) return true;
-    const sevenDays = this.periods[1];
+    const sevenDays = this.periods()[1];
     return !sevenDays || this.periodFrom !== sevenDays.from || this.periodTo !== sevenDays.to;
   });
 
@@ -2017,16 +2351,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrow = new Date(today.getTime() + 86400000);
-    const minus7 = new Date(today.getTime() - 7 * 86400000);
-    const minus30 = new Date(today.getTime() - 30 * 86400000);
+    // « 7 jours » = 7 jours civils, aujourd'hui compris (J-6 → J). L'ancien J-7 → J+1
+    // couvrait HUIT jours : la modale PDF affichait « 8 jours » sous une pastille « 7 jours »,
+    // et le calendrier « 7 derniers jours » comptait, lui, autrement. Même règle pour 30.
+    const minus6 = new Date(today.getTime() - 6 * 86400000);
+    const minus29 = new Date(today.getTime() - 29 * 86400000);
     return [
       { label: 'Aujourd\'hui', from: this.localIso(today), to: this.localIso(tomorrow) },
-      { label: '7 jours', from: this.localIso(minus7), to: this.localIso(tomorrow) },
-      { label: '30 jours', from: this.localIso(minus30), to: this.localIso(tomorrow) },
+      { label: '7 jours', from: this.localIso(minus6), to: this.localIso(tomorrow) },
+      { label: '30 jours', from: this.localIso(minus29), to: this.localIso(tomorrow) },
     ];
   }
 
-  protected periods = this.buildPeriods();
+  /**
+   * Les trois pastilles de période, DÉRIVÉES du jour civil courant.
+   *
+   * ⚠️ C'était un tableau construit une seule fois, à la création du composant. Sur une
+   * PWA laissée ouverte, un clic sur « Aujourd'hui » chargeait donc la veille — et rien
+   * ne le disait, puisque la pastille s'allumait normalement.
+   */
+  protected readonly periods = computed(() => {
+    this.jourCourant();
+    return this.buildPeriods();
+  });
 
   /**
    * KPI de la periode — calcules depuis l'AGREGAT SERVEUR.
@@ -2108,7 +2455,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.moreObserver = null;
     if (!el || typeof IntersectionObserver === 'undefined') return;
     this.moreObserver = new IntersectionObserver(
-      (entries) => { if (entries.some((e) => e.isIntersecting)) void this.loadMoreTrips(); },
+      (entries) => { if (!this.moreAutoPaused && entries.some((e) => e.isIntersecting)) void this.loadMoreTrips(); },
       { rootMargin: '240px 0px' },
     );
     this.moreObserver.observe(el);
@@ -2121,10 +2468,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   private rearmMoreSentinel(): void {
     const el = this.moreSentinel()?.nativeElement;
-    if (!el || !this.moreObserver) return;
+    if (!el || !this.moreObserver || this.moreAutoPaused) return;
     this.moreObserver.unobserve(el);
     this.moreObserver.observe(el);
   }
+
+  /** Chargement automatique suspendu après un échec réseau (cf. loadMoreTrips). */
+  private moreAutoPaused = false;
 
   /**
    * Trajets affichés dans le tableau. Le serveur renvoie déjà la page dans l'ordre
@@ -2227,7 +2577,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const durationsHours: number[] = [];
     for (const d of dates) {
       const entry = map.get(d);
-      labels.push(fmt.format(new Date(d)));
+      // Midi et non minuit : `new Date('AAAA-MM-JJ')` est minuit UTC, soit la VEILLE au soir
+      // pour un utilisateur à l'ouest de Greenwich — l'axe se décalait d'un jour.
+      labels.push(fmt.format(new Date(`${d}T12:00:00`)));
       tripCounts.push(entry?.tripCount ?? 0);
       distancesKm.push(entry ? Math.round(entry.totalDistanceMeters / 100) / 10 : 0);
       durationsHours.push(entry ? Math.round((entry.totalDurationSeconds / 3600) * 100) / 100 : 0);
@@ -2516,22 +2868,43 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // (periods[0]) : la majorite des flottes n'ont pas encore de trajets en
     // debut de journee, ce qui rendait la page Reports vide a l'ouverture
     // (impression d'UI cassee). 7j montre du contenu immediatement.
-    this.setPeriod(this.periods[1]!.from, this.periods[1]!.to);
+    this.setPeriod(this.periods()[1]!.from, this.periods()[1]!.to);
     this.loadVehicles();
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
+    this.armerBasculeDeMinuit();
   }
 
   ngOnDestroy(): void {
     this.desktopMql?.removeEventListener('change', this.desktopMqlListener);
     if (this.highlightTimer) clearTimeout(this.highlightTimer);
+    if (this.minuitTimer) clearTimeout(this.minuitTimer);
     this.moreObserver?.disconnect();
     this.moreObserver = null;
   }
 
-  /** Ferme le panel custom à Escape (cf. a11y picker calendrier). */
+  /**
+   * Retour dans l'onglet : le jour a pu changer pendant que l'application dormait.
+   * C'est le cas réel d'une tablette d'atelier laissée allumée toute la nuit.
+   */
+  @HostListener('document:visibilitychange')
+  protected onVisibiliteChangee(): void {
+    if (typeof document !== 'undefined' && !document.hidden) this.rafraichirJour();
+  }
+
+  /**
+   * Échap ferme le panneau ou le menu OUVERT, du plus récent au plus ancien, et rend le
+   * focus à son déclencheur.
+   *
+   * ⚠️ Seul le panneau « Personnalisé » était traité. Les deux menus déroulants, eux, ne
+   * se fermaient qu'en tabulant hors d'eux — et leur fond `rep-dropdown-backdrop`
+   * (position: fixed, z-index 50) restait posé sur la page entière, donc plus rien
+   * n'était cliquable derrière.
+   */
   @HostListener('document:keydown.escape')
   protected onEscape(): void {
-    if (this.customRangeOpen()) this.customRangeOpen.set(false);
+    if (this.groupDropdownOpen()) { this.fermerMenuGroupe(); return; }
+    if (this.vehicleDropdownOpen()) { this.fermerMenuVehicule(); return; }
+    if (this.customRangeOpen()) this.fermerPlagePerso();
   }
 
   protected setPeriod(from: string, to: string): void {
@@ -2541,20 +2914,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
-  /** Si la periode active est un preset stale (ex: PWA restee ouverte apres minuit),
-   *  on la realigne sur le preset frais correspondant avant export. */
+  /**
+   * Si la période active est une pastille périmée (PWA restée ouverte après minuit), on
+   * la réaligne sur la pastille fraîche AVANT l'export.
+   *
+   * ⚠️ Ce réalignement passe désormais par `setPeriod`, donc par un rechargement (cf.
+   * `rafraichirJour`). Il se contentait de réécrire `periodFrom`/`periodTo` en silence :
+   * le fichier exporté couvrait une période que l'écran, lui, n'avait jamais affichée.
+   */
   private refreshPeriodIfStalePreset(): void {
-    const fresh = this.buildPeriods();
-    const matchedStale = this.periods.findIndex(
-      (p) => p.from === this.periodFrom && p.to === this.periodTo,
-    );
-    this.periods = fresh;
-    if (matchedStale >= 0) {
-      const refreshed = fresh[matchedStale]!;
-      this.periodFrom = refreshed.from;
-      this.periodTo = refreshed.to;
-      this.periodKey.set(`${refreshed.from}|${refreshed.to}`);
-    }
+    this.rafraichirJour();
   }
 
   /** Label "01 mai → 20 mai · 20 jours" affiche en sous-titre de la modal PDF. */
@@ -2562,15 +2931,55 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.periodKey();
     if (!this.periodFrom || !this.periodTo) return '';
     try {
-      const fDate = new Date(this.periodFrom);
+      // Dates civiles lues en LOCAL (cf. `dateCivileLocale`) : parsées en UTC, elles
+      // reculaient d'un jour à l'ouest de Greenwich, et le sous-titre de la modale PDF
+      // annonçait une période décalée par rapport au fichier produit.
+      const fDate = this.dateCivileLocale(this.periodFrom);
       // 'to' est exclusif (+1 jour cote periods) — on retire 1 jour pour l'affichage.
-      const tDate = new Date(new Date(this.periodTo).getTime() - 86400000);
+      const tDate = new Date(this.dateCivileLocale(this.periodTo).getTime() - 86400000);
       const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
       const days = Math.max(1, Math.round((tDate.getTime() - fDate.getTime()) / 86400000) + 1);
       return `${fmt(fDate)} → ${fmt(tDate)} · ${days} jour${days > 1 ? 's' : ''}`;
     } catch {
       return '';
     }
+  });
+
+  /**
+   * Périmètre de l'écran transmis à la modale PDF — même règle que le CSV : le véhicule
+   * choisi, sinon les véhicules du groupe filtré, sinon rien (= toute la société).
+   *
+   * En `computed` et non en méthode privée : un template Angular ne peut pas appeler un
+   * membre privé. La modale s'ouvrait jusqu'ici sur « Tous » quoi qu'affiche l'écran — le
+   * client filtrait sur un véhicule et repartait avec le PDF de toute la flotte.
+   */
+  protected readonly pdfPreselectedVehicleIds = computed(() => {
+    const id = this.selectedVehicleId();
+    if (id) return [id];
+    if (this.selectedGroupId()) return this.visibleVehicles().map((v) => v.id);
+    return [];
+  });
+
+  /**
+   * Véhicules proposés dans la modale : ceux de la société courante, SANS le filtre de
+   * groupe — c'est exactement le périmètre de la pastille « Tous ». Pour un super-admin,
+   * `vehicles()` contient les véhicules de toutes les sociétés, et le compte affiché
+   * n'était donc pas celui de l'écran.
+   */
+  protected readonly pdfModalVehicles = computed(() =>
+    this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId)),
+  );
+
+  /**
+   * Plage de dates du nom de fichier, dans le format composé par l'API
+   * (`tracky-rapport-<plaque>-<du>_<au>.pdf`). `periodTo` est EXCLUSIF : on retire un jour
+   * pour retomber sur le dernier jour inclus, comme le fait le PDF lui-même.
+   */
+  protected readonly pdfFileDateRange = computed(() => {
+    this.periodKey();
+    if (!this.periodFrom || !this.periodTo) return '';
+    const last = new Date(this.dateCivileLocale(this.periodTo).getTime() - 86400000);
+    return `${this.periodFrom}_${this.localIso(last)}`;
   });
 
   /** Ouvre la modal de configuration PDF. Le download lui-meme est declenche
@@ -2615,6 +3024,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /** Export CSV — `kind` détermine le contenu (trips: liste de trajets, alerts: liste d'alertes). */
+  /**
+   * Périmètre véhicule de l'écran pour un export : le véhicule sélectionné, sinon les
+   * véhicules du groupe filtré, sinon rien (= toute la société). C'est ce que l'écran
+   * montre ; un export doit montrer la même chose.
+   */
+  private exportVehicleIds(): string[] {
+    // Une seule définition du périmètre, partagée avec la modale PDF : deux copies auraient
+    // fini par diverger, et le CSV n'aurait plus exporté ce que le PDF exporte.
+    return this.pdfPreselectedVehicleIds();
+  }
+
   protected async onExportCsv(kind: 'trips' | 'alerts'): Promise<void> {
     if (this.exporting()) return;
     this.refreshPeriodIfStalePreset();
@@ -2624,7 +3044,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
     this.exporting.set(kind === 'trips' ? 'csv-trips' : 'csv-summary');
     try {
-      await this.reportsApi.downloadCsv(kind, this.fleetFilter.selectedFleetId(), this.periodFrom, this.periodTo);
+      await this.reportsApi.downloadCsv(
+        kind, this.fleetFilter.selectedFleetId(), this.periodFrom, this.periodTo,
+        // Même périmètre que l'écran : le véhicule choisi, sinon les véhicules du groupe.
+        this.exportVehicleIds(),
+      );
       this.toast.success(kind === 'trips' ? 'CSV trajets téléchargé' : 'CSV alertes téléchargé');
     } catch (err) {
       this.toast.error('Échec export CSV', err instanceof Error ? err.message : '');
@@ -2760,18 +3184,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const { tripParams } = this.buildFilterParams();
       const res = await firstValueFrom(this.tripsApi.list(tripParams));
       if (seq !== this.loadSeq) return;
-      this.loadError.set(null);
+      // ⚠️ SEULE la panne de la liste est levée ici : un re-tri ne rejoue pas le résumé
+      // journalier, donc il n'a rien appris sur son état. Effacer son bandeau reviendrait
+      // à déclarer réparé ce qu'on n'a pas retesté.
+      this.tripsError.set(null);
       this.applyTripsPage(res, /* append */ false);
       void this.loadAnalyses(seq);
     } catch (err) {
       swallow('reports:loadTrips', err);
+      // Un surlignage armé pour CE chargement ne doit pas se poser sur le suivant.
+      this.highlightTopAfterLoad = false;
       if (seq === this.loadSeq) {
         this.trips.set([]);
         this.nextCursor.set(null);
-        this.loadError.set(httpFailureMessage(err, 'les trajets'));
+        this.tripsError.set(httpFailureMessage(err, 'les trajets'));
       }
     } finally {
-      if (seq === this.loadSeq) this.tripsBusy.set(false);
+      // ⚠️ Les DEUX verrous, pas seulement le sien. Si ce re-tri a supplanté un chargement
+      //    complet (ou l'inverse), le verrou de l'autre n'a jamais été relâché : tableau
+      //    estompé à vie, ou spinner infini. Le dernier arrivé remet tout au propre.
+      if (seq === this.loadSeq) { this.tripsBusy.set(false); this.loading.set(false); }
     }
   }
 
@@ -2799,6 +3231,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       void this.loadAnalyses(seq);
     } catch (err) {
       swallow('reports:loadMoreTrips', err);
+      // ⚠️ Plus de chargement AUTOMATIQUE après un échec : la sentinelle restait visible,
+      //    se ré-armait, relançait la même requête, qui échouait, qui affichait un toast…
+      //    en boucle, tant que le réseau était tombé. Le bouton reste ; c'est l'humain
+      //    qui relance, et un succès (ou un changement de filtre) réactive l'automatique.
+      this.moreAutoPaused = true;
       if (seq === this.loadSeq) {
         this.toast.error('Chargement interrompu', httpFailureMessage(err, 'les trajets'));
       }
@@ -2819,6 +3256,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   ): void {
     this.trips.set(append ? [...this.trips(), ...res.items] : res.items);
     this.nextCursor.set(res.nextCursor);
+    // Une page reçue = le réseau répond : l'automatique reprend.
+    this.moreAutoPaused = false;
     if (!append && this.highlightTopAfterLoad) {
       this.highlightTopAfterLoad = false;
       const top = res.items[0];
@@ -2840,19 +3279,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // « Aucun trajet pour cette periode », c'est-a-dire une reponse metier plausible,
       // pour une panne serveur ou une session expiree. Une panne muette qui ressemble a
       // une reponse valide est pire qu'une erreur affichee : personne ne la signale.
-      let failure: unknown = null;
+      // Les deux échecs sont retenus SÉPARÉMENT : un re-tri ultérieur ne rejoue que la
+      // liste, et il ne doit donc lever que l'avertissement de la liste (cf. `loadTrips`).
+      let tripsFailure: unknown = null;
+      let summaryFailure: unknown = null;
       const [tripsRes, summary] = await Promise.all([
         firstValueFrom(this.tripsApi.list(tripParams)).catch(
-          (err: unknown) => { failure ??= err; return { items: [] as TripDto[], nextCursor: null }; },
+          (err: unknown) => { tripsFailure ??= err; return { items: [] as TripDto[], nextCursor: null }; },
         ),
         firstValueFrom(this.tripsApi.dailySummary(summaryParams)).catch(
-          (err: unknown) => { failure ??= err; return [] as TripDailySummaryDto[]; },
+          (err: unknown) => { summaryFailure ??= err; return [] as TripDailySummaryDto[]; },
         ),
       ]);
       // #40 — une requete plus recente a ete lancee entre-temps : on ignore ce
       // resultat perime (sinon une reponse lente ecrase des donnees plus fraiches).
       if (seq !== this.loadSeq) return;
-      this.loadError.set(failure ? httpFailureMessage(failure, 'les trajets') : null);
+      this.tripsError.set(tripsFailure ? httpFailureMessage(tripsFailure, 'les trajets') : null);
+      this.summaryError.set(
+        summaryFailure ? httpFailureMessage(summaryFailure, 'le résumé de la période') : null,
+      );
       this.applyTripsPage(tripsRes, /* append */ false);
       this.dailySummary.set(summary);
       // Agrégat des deux graphiques de période. Chargé À PART et sans bloquer : il porte
@@ -2869,10 +3314,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.trips.set([]);
         this.nextCursor.set(null);
         this.dailySummary.set([]);
-        this.loadError.set(httpFailureMessage(err, 'les trajets'));
+        this.tripsError.set(httpFailureMessage(err, 'les trajets'));
+        this.summaryError.set(httpFailureMessage(err, 'le résumé de la période'));
       }
     } finally {
-      if (seq === this.loadSeq) this.loading.set(false);
+      // Même règle que loadTrips : le dernier chargement relâche les deux verrous.
+      if (seq === this.loadSeq) { this.loading.set(false); this.tripsBusy.set(false); }
     }
   }
 
@@ -2949,8 +3396,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected async downloadSpeedReport(trip: TripDto): Promise<void> {
     try {
       await this.reportsApi.downloadSpeedAnalysis(trip.id);
-    } catch {
-      // Silently fail — the user will see no file downloaded.
+      this.toast.success('Rapport vitesse téléchargé');
+    } catch (err) {
+      // Avant : échec avalé, l'utilisateur cliquait, rien ne se passait, sans un mot.
+      this.toast.error('Échec du rapport vitesse', err instanceof Error ? err.message : '');
     }
   }
 
@@ -3011,7 +3460,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected async onRecompute(): Promise<void> {
+  /** Confirmation avant recalcul : ouverte par le bouton admin, fermée par la modale. */
+  protected readonly recomputeConfirmOpen = signal(false);
+
+  /** Ce que le recalcul va détruire, chiffré — pour la modale de confirmation. */
+  protected readonly recomputeConsequences = computed(() => {
+    const n = this.kpis().tripCount;
+    const plate = this.selectedVehicleLabel();
+    return `Les ${n} trajets de ${plate} sur la période seront supprimés puis redécoupés depuis les positions GPS. ` +
+      `Leurs analyses et leurs récits IA seront perdus ; l'agent les réécrira au fil des prochains passages.`;
+  });
+
+  /**
+   * Le bouton « Recalculer » ouvre une CONFIRMATION. Avant, un clic supprimait sans un mot
+   * les trajets de la période avec leurs analyses et leurs récits — produits par l'agent
+   * sur poste, donc irrécupérables autrement qu'en attendant qu'il repasse.
+   */
+  protected onRecompute(): void {
+    if (!this.selectedVehicleId() || !this.periodFrom || !this.periodTo) return;
+    this.recomputeConfirmOpen.set(true);
+  }
+
+  protected async confirmRecompute(): Promise<void> {
+    this.recomputeConfirmOpen.set(false);
     const id = this.selectedVehicleId();
     if (!id || !this.periodFrom || !this.periodTo) return;
     this.recomputing.set(true);
@@ -3033,13 +3504,41 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return formatDurationFn(seconds);
   }
 
-  private async loadVehicles(): Promise<void> {
+  /**
+   * Liste des véhicules — plaques, groupes, sélecteur, modale PDF.
+   *
+   * ⚠️ L'échec était AVALÉ EN SILENCE (« // silent »). Un 401, un 403 ou un 5xx sur
+   * /vehicles laissait donc une page de trajets sans une seule plaque, sans filtre par
+   * groupe et avec un sélecteur vide : l'image exacte d'une flotte qui n'aurait aucun
+   * véhicule. Une panne qui ressemble à une réponse métier plausible n'est jamais
+   * signalée par personne — c'est le même piège que les KPI muets corrigés au-dessus.
+   *
+   * `protected` : le bandeau de l'écran offre « Réessayer », qui rappelle cette méthode.
+   */
+  protected async loadVehicles(): Promise<void> {
+    this.vehiclesLoading.set(true);
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
+      this.vehiclesError.set(null);
     } catch (err) {
-      // silent
       swallow('reports:loadVehicles', err);
+      const message = httpFailureMessage(err, 'les véhicules');
+      this.vehiclesError.set(message);
+      this.toast.error('Véhicules indisponibles', message);
+    } finally {
+      this.vehiclesLoading.set(false);
     }
+  }
+
+  /**
+   * Déplie / replie une note sur place.
+   *
+   * ⚠️ C'est le seul moyen de LIRE une note complète pour un rôle sans droit d'édition :
+   * le texte entier n'existait que dans un attribut `title`, c'est-à-dire nulle part sur
+   * un écran tactile, et le bouton était désactivé.
+   */
+  protected basculerNote(tripId: string): void {
+    this.noteDepliee.update((courant) => (courant === tripId ? null : tripId));
   }
 }

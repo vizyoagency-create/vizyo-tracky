@@ -233,8 +233,14 @@ interface TimelineState {
 
                 <div class="mt-2 grid grid-cols-3 gap-2">
                   <div>
-                    <div class="text-[9px] text-fg-secondary uppercase tracking-wider">Vitesse</div>
-                    <div class="font-mono text-fg-primary text-sm flex items-baseline gap-0.5">
+                    <!-- « Vitesse » était un mensonge : c'est la moyenne du trajet, constante
+                         du départ à l'arrivée. Ce replay ne charge pas les relevés GPS des
+                         trajets (seul le replay d'UN trajet les reçoit avec son analyse), donc
+                         il ne peut pas afficher une vitesse instantanée — il le DIT. -->
+                    <div class="text-[9px] text-fg-secondary uppercase tracking-wider">{{ libelleVitesse() }}</div>
+                    <div class="font-mono text-sm flex items-baseline gap-0.5"
+                         [class.text-fg-primary]="currentState() === 'stop'"
+                         [class.pr-hud-moyenne]="currentState() !== 'stop'">
                       <span>{{ currentSpeedKmh() | number:'1.0-0' }}</span>
                       <span class="text-[9px] text-fg-secondary">km/h</span>
                     </div>
@@ -260,6 +266,11 @@ interface TimelineState {
                     }
                   </div>
                 </div>
+
+                <p class="pr-hud-note">
+                  Vitesse moyenne du trajet en cours, pas une mesure à cet instant.
+                  Le détail d'un trajet s'ouvre depuis sa ligne.
+                </p>
               </div>
             }
           </div>
@@ -462,6 +473,9 @@ interface TimelineState {
     .pr-trajet-c { display: grid; gap: 1px; min-width: 0; }
     .pr-trajet-h { font-size: 12px; font-weight: 600; color: var(--fg-primary); text-transform: capitalize; }
     .pr-trajet-d { font-size: 11px; color: var(--fg-secondary); }
+    /* Une valeur qui n'est PAS une mesure ne prend pas l'encre d'une mesure. */
+    .pr-hud-moyenne { color: var(--fg-secondary); }
+    .pr-hud-note { margin: 8px 0 0; font-size: 10.5px; line-height: 1.35; color: var(--fg-tertiary); }
     /* Mobile : reduit le HUD pour ne pas couvrir trop de carte */
     @media (max-width: 640px) {
       .pr-hud { font-size: 12px; }
@@ -511,6 +525,17 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   protected readonly cumulDistanceM = signal(0);
   /** Si en arret, ms restant avant fin de l'arret. */
   protected readonly currentStopRemainingMs = signal(0);
+
+  /**
+   * Ce que la case de vitesse affirme.
+   *
+   * À l'arrêt, 0 km/h est un FAIT (le véhicule est entre deux trajets). En roulant,
+   * la valeur est la moyenne du trajet — la nommer « Vitesse » laissait croire à une
+   * mesure prise à l'instant affiché, y compris pendant un excès.
+   */
+  protected readonly libelleVitesse = computed(
+    () => (this.currentState() === 'stop' ? 'À l\'arrêt' : 'V. moyenne'),
+  );
 
   protected readonly speedPresets = [
     { label: '60×', factor: 60 },     // 1 min reelle / sec
@@ -651,6 +676,33 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private animId: number | null = null;
   private lastFrameTime = 0;
   private resizeObserver: ResizeObserver | null = null;
+  /**
+   * Toutes les minuteries armées par cet écran (init différée, resize défensifs).
+   *
+   * Elles étaient des variables locales que personne n'annulait : fermer puis rouvrir
+   * le replay en moins de 3 s laissait la minuterie de garde de l'ouverture précédente
+   * tirer sur la nouvelle carte et afficher « la carte n'a pas pu se charger » alors
+   * qu'elle arrivait.
+   */
+  private minuteries: number[] = [];
+  /** La minuterie de garde du chargement de carte — annulée dès que 'load' arrive. */
+  private loadGuardId: number | null = null;
+
+  /** Arme une minuterie SUIVIE : elle se retire de la liste en tirant. */
+  private armer(fn: () => void, delaiMs: number): void {
+    const id = window.setTimeout(() => {
+      this.minuteries = this.minuteries.filter((x) => x !== id);
+      fn();
+    }, delaiMs);
+    this.minuteries.push(id);
+  }
+
+  /** Annule toute minuterie en attente — fermeture, ou nouvelle ouverture. */
+  private annulerMinuteries(): void {
+    for (const id of this.minuteries) window.clearTimeout(id);
+    this.minuteries = [];
+    if (this.loadGuardId != null) { window.clearTimeout(this.loadGuardId); this.loadGuardId = null; }
+  }
 
   // --- Lifecycle ---
 
@@ -672,7 +724,9 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
     // Approche simple, calquee sur trip-replay (qui marche) : setTimeout 200ms
     // pour laisser Angular finir le rendu du modal, puis init. ResizeObserver
     // posterieur gere les changements de taille (rotation, animation modal).
-    setTimeout(() => this.initMap(), 200);
+    // La minuterie est SUIVIE : deux ouvertures rapprochees en armaient deux.
+    this.annulerMinuteries();
+    this.armer(() => this.initMap(), 200);
   });
 
   @HostListener('document:keydown.escape')
@@ -871,6 +925,9 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   // --- Map init ---
 
   private initMap(): void {
+    // Une init chasse l'autre : la garde et les resize de la precedente n'ont plus
+    // rien a surveiller.
+    this.annulerMinuteries();
     const tl = this.timeline();
     const el = this.mapRef()?.nativeElement;
     this.mapError.set(null);
@@ -902,7 +959,8 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
     }
 
     // Garde-fou : si 'load' n'a pas fire en 3s, affiche un encart d'erreur.
-    const loadGuardId = window.setTimeout(() => {
+    this.loadGuardId = window.setTimeout(() => {
+      this.loadGuardId = null;
       if (!this.mapReady()) {
         const w = el.clientWidth, h = el.clientHeight;
         this.mapError.set(
@@ -935,7 +993,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
      this.map.on('load', () => {
       if (!this.map) return;
       this.mapReady.set(true);
-      window.clearTimeout(loadGuardId);
+      if (this.loadGuardId != null) { window.clearTimeout(this.loadGuardId); this.loadGuardId = null; }
       // Polylignes en fond : toutes les lignes des trips.
       for (const line of tl.tripLines) {
         const srcId = `pr-line-${line.tripId}`;
@@ -980,12 +1038,14 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
 
     // Triple resize defensif : couvre les cas de transition CSS qui finissent
     // apres l'init, et l'animation d'apparition du modal.
-    setTimeout(() => this.map?.resize(), 50);
-    setTimeout(() => this.map?.resize(), 250);
-    setTimeout(() => this.map?.resize(), 600);
+    this.armer(() => this.map?.resize(), 50);
+    this.armer(() => this.map?.resize(), 250);
+    this.armer(() => this.map?.resize(), 600);
   }
 
   private disposeMap(): void {
+    // La carte s'en va : plus rien a surveiller ni a redimensionner.
+    this.annulerMinuteries();
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     if (this.resizeObserver) {
       try { this.resizeObserver.disconnect(); } catch { /* */ }

@@ -4,6 +4,7 @@ import {
   Component,
   ElementRef,
   OnDestroy,
+  computed,
   effect,
   input,
   viewChild,
@@ -37,8 +38,22 @@ export interface ErrorBucket {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="etc-wrapper" role="img" [attr.aria-label]="'Erreurs par heure sur les dernieres 24h'">
-      <canvas #canvas></canvas>
+    <!-- ⚠️ role="figure" et NON role="img" : « img » porte
+         « children presentational: true » et referme le conteneur sur un seul nom. Le
+         défaut était pire ici que sur les deux autres graphiques — il n'y avait AUCUNE
+         alternative textuelle derrière : un lecteur d'écran n'apprenait rien de plus
+         que « erreurs par heure ». Le tableau ci-dessous répare cela. -->
+    <div class="etc-wrapper" role="figure" [attr.aria-label]="ariaLabel()">
+      <canvas #canvas aria-hidden="true"></canvas>
+      <table class="sr-only">
+        <caption>{{ ariaLabel() }}</caption>
+        <thead><tr><th>Heure</th><th>Erreurs</th><th>Critiques</th></tr></thead>
+        <tbody>
+          @for (b of buckets(); track b.hour) {
+            <tr><td>{{ libelleHeure(b.hour) }}</td><td>{{ b.error }}</td><td>{{ b.critical }}</td></tr>
+          }
+        </tbody>
+      </table>
     </div>
   `,
   styles: [`
@@ -48,6 +63,11 @@ export interface ErrorBucket {
       width: 100%;
       height: var(--chart-height, 180px);
     }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
   `],
 })
 export class ErrorTimelineChartComponent implements AfterViewInit, OnDestroy {
@@ -56,6 +76,22 @@ export class ErrorTimelineChartComponent implements AfterViewInit, OnDestroy {
 
   private readonly canvasRef = viewChild<ElementRef<HTMLCanvasElement>>('canvas');
   private chart: Chart | null = null;
+
+  /** Heure lisible d'un créneau — le gabarit du tableau accessible s'en sert aussi. */
+  protected libelleHeure(iso: string): string {
+    return formatHour(iso);
+  }
+
+  /**
+   * Nom accessible du graphique. Il annonce les TOTAUX : sans eux, « erreurs par heure »
+   * ne dit pas s'il s'en est produit une ou trois cents.
+   */
+  protected readonly ariaLabel = computed(() => {
+    const b = this.buckets();
+    const erreurs = b.reduce((a, x) => a + x.error, 0);
+    const critiques = b.reduce((a, x) => a + x.critical, 0);
+    return `Erreurs par heure sur les dernières 24 h : ${erreurs} erreur${erreurs > 1 ? 's' : ''}, ${critiques} critique${critiques > 1 ? 's' : ''}.`;
+  });
 
   private readonly updateOnDataChange = effect(() => {
     const data = this.buckets();

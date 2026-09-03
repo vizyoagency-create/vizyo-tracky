@@ -7,9 +7,9 @@ import {
 import { RouterLink } from '@angular/router';
 import {
   AlarmClock, AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, LucideAngularModule,
-  RefreshCw, ShieldAlert, Timer,
+  MonitorSmartphone, RefreshCw, ShieldAlert, Timer,
 } from 'lucide-angular';
-import type { BackgroundTaskDto, BgTaskCategory } from '@vizyo/tracky-shared';
+import type { BackgroundTaskDto, BgTaskCategory, BgTaskEtatLocal } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { BackgroundTasksApiService } from './background-tasks.service';
 
@@ -34,6 +34,7 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
   protected readonly ArrowLeftIcon = ArrowLeft;
   protected readonly CheckIcon = CheckCircle2;
   protected readonly ChevronRightIcon = ChevronRight;
+  protected readonly PosteIcon = MonitorSmartphone;
   protected readonly RefreshCwIcon = RefreshCw;
   protected readonly ShieldAlertIcon = ShieldAlert;
   protected readonly TimerIcon = Timer;
@@ -94,6 +95,67 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
     return this.enPause().map((t) => t.label).join(', ');
   }
 
+  /**
+   * LES AGENTS DU POSTE, réunis en haut de page — parce qu'ils sont les seuls à pouvoir
+   * disparaître SANS QUE RIEN N'ÉCHOUE côté serveur.
+   *
+   * Un cron du VPS qui s'arrête laisse une trace : le registre NestJS le montre, le bandeau de
+   * drift le signale. Un agent du poste, lui, s'arrête parce qu'un PC est éteint ou qu'une tâche
+   * planifiée a été supprimée — aucune erreur, aucun journal, rien. Noyés parmi quarante lignes
+   * classées par famille, ils étaient donc invisibles précisément là où ils sont fragiles.
+   */
+  protected readonly agentsPoste = computed(() =>
+    this.tasks().filter((t) => t.executor === 'poste-local'),
+  );
+
+  /** Ceux qui réclament une action : silencieux ou en échec. Un « sans objet » n'en fait pas partie. */
+  protected readonly agentsEnAlerte = computed(() =>
+    this.agentsPoste().filter((t) => t.traceLocale?.etat === 'silencieux' || t.traceLocale?.etat === 'echec'),
+  );
+
+  /** Ceux dont on ne sait rien : jamais vus, ou trace illisible. On ne les accuse pas, on les signale. */
+  protected readonly agentsSansTrace = computed(() =>
+    this.agentsPoste().filter((t) => !t.traceLocale || t.traceLocale.etat === 'inconnu'),
+  );
+
+  /** Libellé court de l'état d'un agent du poste — la pastille qu'on lit avant la phrase. */
+  protected etatLocalLabel(etat: BgTaskEtatLocal | undefined): string {
+    switch (etat) {
+      case 'sain': return 'à jour';
+      case 'retard': return 'en retard';
+      case 'silencieux': return 'aucun passage';
+      case 'echec': return 'en échec';
+      case 'sans-objet': return 'sans objet';
+      default: return 'jamais vu passer';
+    }
+  }
+
+  /** Classe de couleur de l'état. `retard` et `silencieux` ne partagent pas la même urgence. */
+  protected etatLocalClass(etat: BgTaskEtatLocal | undefined): string {
+    switch (etat) {
+      case 'sain': return 'et-ok';
+      case 'retard': return 'et-warn';
+      case 'silencieux': case 'echec': return 'et-bad';
+      case 'sans-objet': return 'et-mute';
+      default: return 'et-unknown';
+    }
+  }
+
+  /**
+   * Date ET heure de Paris — « 02/09 à 03:15 ».
+   *
+   * Deux formateurs plutôt qu'un seul : la forme combinée de `fr-FR` insère un séparateur qui
+   * varie selon la version d'ICU du navigateur, et un affichage de supervision ne peut pas
+   * dépendre de ça. La date compte autant que l'heure : « 03:15 » seul laisse croire à ce matin.
+   */
+  protected dateHeureParis(iso: string | null): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const jour = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' }).format(d);
+    const heure = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+    return `${jour} à ${heure}`;
+  }
+
   /** Heure d'horloge du prochain passage, en heure de Paris (le serveur, lui, tourne en UTC). */
   protected heureParis(iso: string | null): string {
     if (!iso) return '—';
@@ -120,6 +182,8 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       // pose devant cet ecran — ou tourne ce traitement, et qui paie ?
       posteLocal: t.filter((x) => x.executor === 'poste-local').length,
       iaFacturee: t.filter((x) => x.coutIa === 'facture').length,
+      // Le compteur qui manquait : combien d'agents du poste ne donnent plus signe de vie.
+      posteEnAlerte: this.agentsEnAlerte().length,
     };
   });
 
@@ -192,6 +256,18 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
     if (h > 0) return `${h} h ${String(m).padStart(2, '0')} min`;
     if (m > 0) return `${m} min ${String(sec).padStart(2, '0')} s`;
     return `${sec} s`;
+  }
+
+  /**
+   * Ce que promet le lien de la colonne de droite.
+   *
+   * Le lien n'était affiché que pour les tâches `configurable`, si bien que trois entrées
+   * déclaraient une route que personne ne pouvait suivre — et les agents du poste, eux, n'en
+   * déclaraient aucune alors que leurs écrans existent. Le lien suit donc la ROUTE, et c'est le
+   * libellé qui dit la vérité : on règle, ou on constate.
+   */
+  protected lienLabel(t: BackgroundTaskDto): string {
+    return t.configurable ? 'Configurer' : 'Voir l’écran';
   }
 
   protected critClass(c: BackgroundTaskDto['criticality']): string {

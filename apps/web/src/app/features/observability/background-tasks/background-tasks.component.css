@@ -98,8 +98,83 @@
 .cd-val { font-weight: 800; font-variant-numeric: tabular-nums; }
 .cd.continuous { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-weight: 700; }
 .cd.off { color: var(--fg2); }
-.cfg { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; color: var(--accent); text-decoration: none; margin-top: 2px; }
+/* Cible tactile de 44 px : a 375 px c'est le doigt qui vise, et un lien de 16 px de haut
+   se rate. La hauteur est portee par le lien lui-meme, pas par un padding de la ligne. */
+.cfg { display: inline-flex; align-items: center; gap: 2px; min-height: 44px; font-size: 12px; font-weight: 700; color: var(--accent); text-decoration: none; }
 .cfg:hover { text-decoration: underline; }
+
+.last { font-size: 11.5px; color: var(--fg2); font-variant-numeric: tabular-nums; }
+.last-verb { text-transform: uppercase; letter-spacing: .04em; font-size: 10px; font-weight: 700; }
+
+/* ── AGENTS DU POSTE ─────────────────────────────────────────────────────────
+   Reunis en haut de page parce qu'ils sont les seuls a pouvoir disparaitre SANS
+   qu'aucune erreur ne soit levee : un PC eteint ne produit pas de journal. */
+.poste { display: flex; flex-direction: column; gap: 8px; }
+.poste-alerte {
+  display: flex; align-items: flex-start; gap: 9px;
+  border-radius: 12px; padding: 11px 14px; font-size: 13px; line-height: 1.5;
+  background: color-mix(in srgb, var(--texte-alerte) 12%, transparent);
+  color: var(--texte-alerte);
+}
+.poste-alerte lucide-icon { flex: 0 0 auto; margin-top: 1px; }
+.poste-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+
+.agent {
+  background: var(--bg); border: 1px solid var(--b); border-radius: 12px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 7px;
+  /* Le bord gauche porte l'etat : lisible d'un coup d'oeil, et il ne depend pas
+     de la couleur seule — la pastille en toutes lettres dit la meme chose. */
+  border-left-width: 3px;
+}
+.agent-tete { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 14px; }
+.agent-tete lucide-icon { color: var(--fg2); flex: 0 0 auto; }
+.agent-tete b { flex: 1 1 auto; min-width: 0; }
+.etat-pastille {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  border-radius: 6px; padding: 2px 7px; white-space: nowrap;
+}
+.agent-msg { margin: 0; font-size: 12.5px; line-height: 1.5; }
+.agent-faits { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.agent-faits > div { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 11.5px; }
+.agent-faits dt { color: var(--fg2); text-transform: uppercase; font-size: 10px; letter-spacing: .04em; font-weight: 700; padding-top: 1px; }
+.agent-faits dd { margin: 0; color: var(--fg); line-height: 1.45; }
+.agent-depuis { color: var(--fg2); }
+.agent-depuis::before { content: ' · '; }
+.agent-resume { margin: 0; font-size: 12px; color: var(--fg2); line-height: 1.45; }
+.agent-pied {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-top: 2px; padding-top: 7px; border-top: 1px dashed var(--b);
+}
+.agent-cadence { font-size: 11.5px; color: var(--fg2); }
+
+/* ── Les etats, en jetons de texte lisibles dans les deux themes ──
+   Jamais `--tracky-light` ni `--danger` bruts en couleur de texte : le kit les a alignes
+   sur l'accent plein, et du vert sur vert clair ne se lit pas. */
+.et-ok { border-left-color: var(--texte-succes); }
+.et-ok .etat-pastille, .tag.etat.et-ok { color: var(--texte-succes); background: color-mix(in srgb, var(--texte-succes) 14%, transparent); border-color: transparent; }
+.et-ok .agent-msg { color: var(--fg2); }
+
+.et-warn { border-left-color: var(--texte-attente); }
+.et-warn .etat-pastille, .tag.etat.et-warn { color: var(--texte-attente); background: color-mix(in srgb, var(--texte-attente) 16%, transparent); border-color: transparent; }
+.et-warn .agent-msg, p.row-trace.et-warn { color: var(--texte-attente); font-weight: 600; }
+
+.et-bad { border-left-color: var(--texte-alerte); }
+.et-bad .etat-pastille, .tag.etat.et-bad { color: var(--texte-alerte); background: color-mix(in srgb, var(--texte-alerte) 14%, transparent); border-color: transparent; }
+.et-bad .agent-msg, p.row-trace.et-bad { color: var(--texte-alerte); font-weight: 700; }
+
+/* Silence VOULU : gris franc, aucune alarme. Crier sur une tache qui a fini son travail
+   apprend a ignorer l'ecran, et c'est alors la vraie panne qui passe inapercue. */
+.et-mute { border-left-color: var(--b); }
+.et-mute .etat-pastille, .tag.etat.et-mute { color: var(--fg2); background: var(--bg2); border-color: transparent; }
+.et-mute .agent-msg { color: var(--fg2); }
+
+.et-unknown { border-left-color: var(--fg2); }
+.et-unknown .etat-pastille, .tag.etat.et-unknown { color: var(--fg2); background: var(--bg2); border-color: transparent; }
+.et-unknown .agent-msg { color: var(--fg2); }
+
+.tile-alerte .n { color: var(--texte-alerte); }
+.row-trace { margin: 5px 0 0; font-size: 12px; line-height: 1.45; color: var(--fg2); }
+.row-trace-date { color: var(--fg2); font-weight: 400; }
 
 .foot { text-align: center; color: var(--fg2); font-size: 12px; margin-top: 6px; }
 
@@ -107,6 +182,10 @@
   .row { flex-direction: column; gap: 8px; }
   .row-side { align-items: flex-start; text-align: left; }
   .bgt-head { flex-direction: column; }
+  /* A 375 px, une colonne d'intitules de 96 px ecrase la valeur : les faits passent
+     l'un sous l'autre plutot que de deborder. */
+  .poste-grille { grid-template-columns: 1fr; }
+  .agent-faits > div { grid-template-columns: 1fr; gap: 1px; }
 }
 
 /* ── CHRONOLOGIE ─────────────────────────────────────────────────────────────

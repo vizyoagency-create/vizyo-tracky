@@ -1,19 +1,59 @@
 import { swallow } from '../../core/error/swallow';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, MapPin, Lock } from 'lucide-angular';
+import {
+  LucideAngularModule, Leaf, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, MapPin, Lock,
+  Clock, RefreshCw, ArrowRight, OctagonX, Info,
+} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { AiProviderId, TripAnalysisDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
+import { AuthService } from '../../core/services/auth.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { apiErrorMessage } from '../../core/error/api-error';
 
 /**
- * Traçabilité fine (Palier 4 + 3) — RANGÉE DE BADGES d'analyse d'un trajet, RÉUTILISABLE (fiche
- * véhicule, Rapports, Replay). Affiche l'éco-conduite / excès / arrêts / conso (déterministe) + le
- * Trust Score si présent, et ouvre un DÉTAIL IA (récit + conseils + génération LLM).
- * Reçoit l'analyse pré-chargée en lot ; « Analyser » (POST) si absente.
+ * Note lettrée du score de conduite — MÊMES paliers que le classement (/scores,
+ * `driving-score.service.ts#grade`). Trois échelles cohabitaient (éco 80/50, fiabilité 75/45,
+ * notes 85/70/55) avec les mêmes trois couleurs : « Éco 74 » ambre à côté d'un « 82 » bleu.
+ */
+export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
+  if (score >= 85) return 'A';
+  if (score >= 70) return 'B';
+  if (score >= 55) return 'C';
+  if (score >= 40) return 'D';
+  return 'E';
+}
+
+/**
+ * Bloc « Analyse » d'un trajet — RÉUTILISABLE (cartes Rapports, cellule du tableau, fiche
+ * véhicule, replay).
+ *
+ * ── CE QUI A CHANGÉ (2026-09-02) ─────────────────────────────────────────────────────
+ *
+ * Avant : une rangée plate de huit à dix pastilles de même poids (Éco 74 · 3 excès +2 ·
+ * 2 arrêts · 3 à-coups · ⏱ ralenti 3 min · 9,5 L · 82 · [Récit IA] · [✦]), sans hiérarchie
+ * ni état, dont un « 82 » sans libellé et une étincelle qui RECALCULAIT les chiffres à côté
+ * d'un bouton « Récit IA » qui ne faisait que les LIRE — même style, même icône. Le
+ * propriétaire ne voyait pas la différence ; personne ne pouvait.
+ *
+ * Maintenant, trois lignes hiérarchisées et UNE action :
+ *   L1  note de conduite (A-E, comme le classement) + le seul badge d'alerte (excès) ;
+ *   L2  faits secondaires en texte : arrêts, à-coups, ralenti, passage en station ;
+ *   L3  estimations et fiabilité, en gris : « ≈ 9,5 L · ≈ 25 kg CO₂ · fiabilité GPS 82 » ;
+ *   L4  extrait du récit (deux lignes) quand il existe ;
+ *   →   « Lire le récit » (plein) ou « Voir l'analyse » (discret).
+ *
+ * Six états : pas analysé · analysé sans récit (récit en préparation) · récit disponible ·
+ * option IA coupée sans récit · option coupée avec récit (le récit appartient au client) ·
+ * analyse vide (aucune position exploitable).
+ *
+ * Le recalcul des chiffres devient une action SECONDAIRE, nommée, dans la modale, réservée
+ * aux gestionnaires. Aucune génération de récit côté API : les récits sont rédigés chaque
+ * nuit par l'agent sur poste (coût zéro) — proposer un bouton « Générer » ici reviendrait
+ * à facturer un appel modèle pour un travail déjà planifié.
  */
 @Component({
   selector: 'app-trip-analysis-badges',
@@ -22,111 +62,149 @@ import { apiErrorMessage } from '../../core/error/api-error';
   imports: [LucideAngularModule, DecimalPipe, RouterLink],
   template: `
     @if (current(); as a) {
-      <div class="tab-badges" role="group" aria-label="Analyse du trajet">
-        <span class="tab-badge tab-badge--eco" [attr.data-tier]="ecoTier()" [title]="'Score éco-conduite : ' + a.ecoScore + '/100'">
-          <lucide-icon [img]="LeafIcon" [size]="12"></lucide-icon> Éco {{ a.ecoScore }}
-        </span>
+      @if (isEmptyAnalysis()) {
+        <!-- ÉTAT 6 — analyse vide : aucune position pour un trajet qui a roulé. Un « Éco 100 »
+             vert s'affichait ici sur 157 km sans une seule mesure. -->
+        <div class="tab" [class.tab--row]="layout() === 'row'" role="group" aria-label="Analyse du trajet">
+          <p class="tab-empty-line">
+            <lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon>
+            Aucune position exploitable pour ce trajet
+          </p>
+          @if (canRecompute()) {
+            <button type="button" class="tab-btn tab-btn--ghost" (click)="runAnalyze()" [disabled]="busy()">
+              @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="13" class="tab-spin"></lucide-icon> Analyse… }
+              @else { <lucide-icon [img]="RefreshIcon" [size]="13"></lucide-icon> Réanalyser }
+            </button>
+          }
+        </div>
+      } @else {
+        <div class="tab" [class.tab--row]="layout() === 'row'" role="group" aria-label="Analyse du trajet">
+          <!-- L1 — note + le seul badge d'alerte -->
+          <div class="tab-l1">
+            <span class="tab-grade" [attr.data-grade]="grade()" [attr.aria-label]="'Conduite notée ' + grade() + ', ' + a.ecoScore + ' sur 100'">
+              <lucide-icon [img]="LeafIcon" [size]="12"></lucide-icon>
+              <b>{{ grade() }}</b> Conduite {{ a.ecoScore }}
+            </span>
+            @if (a.speedingCount > 0) {
+              <span class="tab-alert" [attr.aria-label]="speedingTitle(a)">
+                <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
+                {{ a.speedingCount }} excès
+                @if (a.limitsKnown && a.maxOverKmh > 0) { <span class="tab-alert-sub">· +{{ a.maxOverKmh | number:'1.0-0' }} km/h</span> }
+                @else if (!a.limitsKnown) { <span class="tab-alert-sub">· limites inconnues</span> }
+              </span>
+            }
+          </div>
 
-        @if (a.speedingCount > 0) {
-          <span class="tab-badge tab-badge--danger" [title]="speedingTitle(a)">
-            <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
-            {{ a.speedingCount }} excès@if (a.limitsKnown && a.maxOverKmh > 0) { <span class="tab-badge-sub">+{{ a.maxOverKmh | number:'1.0-0' }}</span> }
-          </span>
-        }
+          <!-- L2 — faits secondaires, en texte -->
+          @if (facts().length > 0) {
+            <p class="tab-l2">{{ facts().join(' · ') }}</p>
+          }
 
-        @if (a.stopCount > 0) {
-          <span class="tab-badge" title="Arrêts significatifs (≥ 4 min)">
-            <lucide-icon [img]="StopIcon" [size]="12"></lucide-icon> {{ a.stopCount }} arrêt{{ a.stopCount > 1 ? 's' : '' }}
-          </span>
-        }
+          <!-- L3 — estimations et fiabilité, en gris -->
+          @if (estimates().length > 0 && layout() !== 'row') {
+            <p class="tab-l3">{{ estimates().join(' · ') }}</p>
+          }
 
-        @if (a.harshAccel + a.harshBrake > 0) {
-          <span class="tab-badge tab-badge--warn" title="Accélérations / freinages brusques">
-            <lucide-icon [img]="GaugeIcon" [size]="12"></lucide-icon> {{ a.harshAccel + a.harshBrake }} à-coup{{ (a.harshAccel + a.harshBrake) > 1 ? 's' : '' }}
-          </span>
-        }
+          <!-- L4 — extrait du récit -->
+          @if (a.narrative && layout() !== 'row') {
+            <p class="tab-l4">« {{ a.narrative }} »</p>
+          }
 
-        @if (a.idleSec >= 60) {
-          <span class="tab-badge" title="Temps moteur tournant à l'arrêt (gaspillage)">⏱ ralenti {{ minutes(a.idleSec) }} min</span>
-        }
-
-        @if (a.fuelLiters != null) {
-          <span class="tab-badge" [title]="'Consommation estimée · ' + (a.co2Kg | number:'1.1-1') + ' kg CO₂'">
-            <lucide-icon [img]="FuelIcon" [size]="12"></lucide-icon> {{ a.fuelLiters | number:'1.1-1' }} L
-          </span>
-        }
-
-        <!-- Passage(s) en station-service détecté(s) (P2 stations) : marque + prix capté. -->
-        @for (fs of fuelStops(); track fs.stationId + fs.arrivedAt) {
-          <span class="tab-badge tab-badge--fuel" [title]="fuelStopTitle(fs)">
-            <lucide-icon [img]="PumpIcon" [size]="12"></lucide-icon>
-            {{ fs.brand || 'Station' }}@if (fs.unitPriceEur != null) { <span class="tab-badge-sub">{{ fs.unitPriceEur | number:'1.3-3' }} €</span> }
-          </span>
-        }
-
-        @if (a.trustScore != null) {
-          <span class="tab-badge tab-badge--trust" [attr.data-tier]="trustTier(a.trustScore)" title="Tracky Trust Score — fiabilité de la donnée GPS">
-            <lucide-icon [img]="ShieldIcon" [size]="12"></lucide-icon> {{ a.trustScore }}
-          </span>
-        }
-
-        <!-- Entrée IA (récit/conseils/comparaison). Si l'IA est coupée : TEASER d'activation (les
-             chiffres déterministes ci-dessus donnent envie ; ici le CTA vers l'option payante). -->
-        <!--
-          ⚠️ LIRE CE QUI EXISTE ≠ EN GÉNÉRER DU NOUVEAU (constat du 2026-08-03).
-
-          Ce bouton était la SEULE porte vers les récits déjà produits, et il était
-          conditionné au seul interrupteur d'achat. Couper l'IA ne masquait donc pas la
-          génération : ça cachait 4 409 récits déjà générés, déjà payés, toujours en base
-          (1 790 chez cdef31, 1 709 chez MH Cars, 910 chez A2R) — avec, à la place, une
-          invitation à acheter l'option pour obtenir ce qu'on possédait déjà.
-
-          La règle est désormais explicite : on peut TOUJOURS relire une analyse existante ;
-          seule la génération dépend de l'option active.
-        -->
-        @if (aiEnabled() || hasNarrative()) {
-          <button type="button" class="tab-refresh" (click)="openDetail()" title="Récit IA, conseils & comparaison">
-            <lucide-icon [img]="FileIcon" [size]="12"></lucide-icon> Récit IA
-          </button>
-        } @else {
-          <a routerLink="/settings" class="tab-teaser" title="Activer l'option IA : récit vulgarisé du trajet, conseils d'éco-conduite et Trust Score">
-            <lucide-icon [img]="LockIcon" [size]="11"></lucide-icon> Récit IA — activer l'option
-          </a>
-        }
-        <button type="button" class="tab-refresh" (click)="runAnalyze()" [disabled]="busy()" title="Recalculer l'analyse (chiffres)">
-          @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="tab-spin"></lucide-icon> }
-          @else { <lucide-icon [img]="SparklesIcon" [size]="12"></lucide-icon> }
-        </button>
-      </div>
+          <!-- L'ACTION, une seule -->
+          <div class="tab-action">
+            @if (a.narrative) {
+              <button type="button" class="tab-btn tab-btn--primary" (click)="openDetail()">
+                <lucide-icon [img]="FileIcon" [size]="14"></lucide-icon> Lire le récit
+                <lucide-icon [img]="ArrowIcon" [size]="14" class="tab-btn-arrow"></lucide-icon>
+              </button>
+            } @else {
+              <button type="button" class="tab-btn tab-btn--ghost" (click)="openDetail()">
+                Voir l'analyse
+                <lucide-icon [img]="ArrowIcon" [size]="13" class="tab-btn-arrow"></lucide-icon>
+              </button>
+              @if (aiEnabled()) {
+                <span class="tab-pending"><lucide-icon [img]="ClockIcon" [size]="12"></lucide-icon> Récit en préparation</span>
+              } @else if (canConfigureAi()) {
+                <a routerLink="/settings" class="tab-locked"><lucide-icon [img]="LockIcon" [size]="11"></lucide-icon> Récit IA — option désactivée</a>
+              }
+            }
+          </div>
+        </div>
+      }
     } @else {
-      <button type="button" class="tab-analyze" (click)="runAnalyze()" [disabled]="busy()" title="Analyser ce trajet (arrêts, excès, éco-conduite)">
-        @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="13" class="tab-spin"></lucide-icon> Analyse… }
-        @else { <lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Analyser }
-      </button>
+      <!-- ÉTAT 1 — pas encore analysé : l'analyse tourne chaque heure côté serveur. -->
+      <div class="tab tab--todo" [class.tab--row]="layout() === 'row'" role="group" aria-label="Analyse du trajet">
+        <p class="tab-empty-line">
+          <lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon>
+          Pas encore analysé · analyse automatique chaque heure
+        </p>
+        @if (canRecompute()) {
+          <button type="button" class="tab-btn tab-btn--ghost" (click)="runAnalyze()" [disabled]="busy()">
+            @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="13" class="tab-spin"></lucide-icon> Analyse… }
+            @else { Analyser maintenant }
+          </button>
+        }
+      </div>
     }
     @if (error(); as e) { <span class="tab-err">{{ e }}</span> }
 
-    <!-- ── Détail IA (récit + conseils + génération + comparaison) ── -->
+    <!-- ── Détail : récit, conseils, chiffres expliqués, recalcul ── -->
     @if (detailOpen()) {
       <div class="taid-overlay" (click)="closeDetail()">
-        <div class="taid-card" (click)="$event.stopPropagation()" role="dialog" aria-label="Analyse IA du trajet">
+        <div class="taid-card" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-label="Analyse du trajet">
           <header class="taid-head">
-            <h3><lucide-icon [img]="SparklesIcon" [size]="16"></lucide-icon> Analyse IA du trajet</h3>
+            <h3><lucide-icon [img]="SparklesIcon" [size]="16"></lucide-icon> Analyse du trajet</h3>
             <button type="button" class="taid-x" (click)="closeDetail()" aria-label="Fermer"><lucide-icon [img]="XIcon" [size]="18"></lucide-icon></button>
           </header>
           <div class="taid-body">
             @if (current(); as a) {
-              <p class="taid-intro">
-                L'agent Tracky lit les positions GPS de ce trajet et le résume en clair : ce qui s'est passé,
-                les <strong>excès de vitesse</strong> et à-coups, la <strong>consommation</strong>, un <strong>score de fiabilité</strong>
-                des données, et des <strong>conseils</strong> pour mieux conduire.
-              </p>
-              @if (a.trustScore != null) {
-                <div class="taid-trust" [attr.data-tier]="trustTier(a.trustScore)">
-                  <span class="taid-trust-n">{{ a.trustScore }}</span>
-                  <span class="taid-trust-l"><strong>Tracky Trust Score</strong><small>Fiabilité de la donnée GPS de ce trajet</small></span>
-                </div>
+              @if (a.narrative) {
+                <section class="taid-sec taid-sec--recit">
+                  <h4>Récit @if (a.provider) { <span class="taid-prov">par {{ providerLabel(a.provider) }}</span> }</h4>
+                  @if (recitPerime()) {
+                    <p class="taid-perime">
+                      <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon>
+                      Ce récit a été écrit avant le dernier recalcul des chiffres. Il décrit le trajet
+                      tel qu'il était analysé auparavant.
+                    </p>
+                  }
+                  <p>{{ a.narrative }}</p>
+                </section>
+                @if (a.advice) {
+                  <section class="taid-sec taid-sec--advice">
+                    <h4><lucide-icon [img]="LeafIcon" [size]="13"></lucide-icon> Conseils d'éco-conduite</h4>
+                    @for (line of adviceLines(); track $index) { <p>{{ line }}</p> }
+                  </section>
+                }
+              } @else if (isEmptyAnalysis()) {
+                <p class="taid-empty">Aucune position GPS exploitable n'a été trouvée pour ce trajet : les chiffres ci-dessous ne sont pas significatifs.</p>
+              } @else if (aiEnabled()) {
+                <p class="taid-empty">
+                  <lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon>
+                  Récit en préparation — il est rédigé automatiquement chaque nuit à partir des chiffres ci-dessous.
+                </p>
+              } @else {
+                <p class="taid-empty">
+                  <lucide-icon [img]="LockIcon" [size]="13"></lucide-icon>
+                  Le récit rédigé de ce trajet fait partie de l'option IA, désactivée pour votre société.
+                </p>
               }
+
+              <!-- Chiffres expliqués : ce que les badges disaient en infobulle, invisible au doigt. -->
+              <section class="taid-sec">
+                <h4><lucide-icon [img]="GaugeIcon" [size]="13"></lucide-icon> Chiffres clés</h4>
+                <dl class="taid-kv">
+                  <div><dt>Conduite</dt><dd><b>{{ grade() }}</b> · {{ a.ecoScore }}/100 <small>souplesse des accélérations et freinages</small></dd></div>
+                  <div><dt>Excès de vitesse</dt><dd>{{ a.speedingCount }} <small>@if (!a.limitsKnown) { limites légales non résolues sur ce trajet } @else if (a.speedingCount === 0) { aucun dépassement de la limite légale relevé } @else { au-dessus de la limite légale — plus fort dépassement +{{ a.maxOverKmh | number:'1.0-0' }} km/h }</small></dd></div>
+                  <div><dt>Arrêts</dt><dd>{{ a.stopCount }} <small>arrêts d'au moins 4 minutes</small></dd></div>
+                  <div><dt>À-coups</dt><dd>{{ a.harshAccel + a.harshBrake }} <small>{{ a.harshAccel }} accélérations, {{ a.harshBrake }} freinages brusques</small></dd></div>
+                  <div><dt>Ralenti</dt><dd>{{ minutes(a.idleSec) }} min <small>moteur tournant à l'arrêt</small></dd></div>
+                  @if (a.fuelLiters != null) {
+                    <div><dt>Carburant</dt><dd>≈ {{ a.fuelLiters | number:'1.1-1' }} L @if (a.co2Kg != null) { · ≈ {{ a.co2Kg | number:'1.0-0' }} kg CO₂ } <small>estimation d'après la consommation du véhicule, pas une mesure</small></dd></div>
+                  }
+                  <div><dt>Fiabilité GPS</dt><dd>@if (a.trustScore != null) { {{ a.trustScore }}/100 } @else { {{ (a.gpsValidRatio * 100) | number:'1.0-0' }} % de mesures valides } <small>{{ a.gpsPoints }} positions@if (a.gpsLostCount > 0) { , {{ a.gpsLostCount }} perte(s) de signal }</small></dd></div>
+                </dl>
+              </section>
 
               @if (fuelStops().length) {
                 <section class="taid-sec">
@@ -144,45 +222,20 @@ import { apiErrorMessage } from '../../core/error/api-error';
                       </li>
                     }
                   </ul>
-                  <p class="taid-fuel-note">Prix relevé au moment du passage (source : prix officiels des carburants en France). Alimente le suivi des coûts et de la consommation dans les rapports.</p>
+                  <p class="taid-fuel-note">Prix relevé au moment du passage (prix officiels des carburants en France). Alimente le suivi des coûts dans les rapports.</p>
                 </section>
               }
 
-              @if (a.narrative) {
-                <section class="taid-sec">
-                  <h4>Récit @if (a.provider) { <span class="taid-prov">par {{ providerLabel(a.provider) }}</span> }</h4>
-                  <p>{{ a.narrative }}</p>
-                </section>
-                @if (a.advice) {
-                  <section class="taid-sec taid-sec--advice">
-                    <h4><lucide-icon [img]="LeafIcon" [size]="13"></lucide-icon> Conseils d'éco-conduite</h4>
-                    <p>{{ a.advice }}</p>
-                  </section>
-                }
-              } @else if (aiEnabled()) {
-                <p class="taid-empty">Les chiffres du trajet sont déjà calculés. Générez le récit IA ci-dessous pour une lecture vulgarisée + des conseils.</p>
-              }
-
-              <!--
-                ⚠️ LA GÉNÉRATION, elle, dépend bien de l'option : c'est elle qui consomme.
-                Sans cette garde, le bouton restait cliquable option coupée — l'appel
-                partait, le serveur le refusait, et l'utilisateur recevait une erreur pour
-                une action que l'écran lui avait proposée.
-              -->
-              @if (aiEnabled()) {
+              @if (canRecompute()) {
                 <div class="taid-actions">
-                  <button type="button" class="taid-btn" (click)="runNarrate()" [disabled]="busyNarrate()">
-                    @if (busyNarrate()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Génération… }
-                    @else { <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> {{ a.narrative ? 'Régénérer' : 'Générer le récit IA' }} }
+                  <button type="button" class="taid-btn taid-btn--ghost" (click)="runAnalyze()" [disabled]="busy()">
+                    @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Recalcul… }
+                    @else { <lucide-icon [img]="RefreshIcon" [size]="14"></lucide-icon> Recalculer les chiffres }
                   </button>
+                  <span class="taid-actions-note">Relit les positions GPS et les limites de vitesse. Le récit n'est pas modifié.</span>
                 </div>
-              } @else {
-                <p class="taid-empty">
-                  Ce récit a été produit lorsque l'option IA était active — il reste consultable.
-                  Réactivez l'option pour en générer de nouveaux.
-                </p>
               }
-              @if (detailError(); as e) { <p class="taid-err">{{ e }}</p> }
+              @if (error(); as e) { <p class="taid-err">{{ e }}</p> }
             }
           </div>
         </div>
@@ -190,85 +243,114 @@ import { apiErrorMessage } from '../../core/error/api-error';
     }
   `,
   styles: [`
-    :host { display: block; }
-    .tab-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-    .tab-badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 8px; border-radius: 999px;
-      font-size: 11px; font-weight: 700;
-      background: var(--bg-tertiary); color: var(--fg-secondary);
-      border: 1px solid var(--border-subtle);
+    :host { display: block; min-width: 0; }
+
+    /* ── Bloc carte (mobile d'abord) ── */
+    .tab {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 10px 12px; border-radius: 12px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      min-width: 0;
     }
-    .tab-badge lucide-icon { flex-shrink: 0; }
-    .tab-badge-sub { opacity: .8; font-weight: 800; margin-left: 1px; }
-    /* Texte sur lavis : jetons --texte-*, jamais la couleur vive — le vert de
-       marque rendait ~2,9:1 en theme clair sur sa propre teinte a 16 %, et les
-       litteraux ambre/rouge/violet/bleu 2,1 a 3,4:1. Le lavis se fabrique depuis
-       la couleur de BASE du theme ; le bleu ne tient 4,5:1 que jusqu'a 12 % de
-       lavis et le violet jusqu'a 10 % (verif:contraste, section « Notes de
-       conduite et chips hors famille verte »). */
-    .tab-badge--eco[data-tier="good"] { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); color: var(--texte-succes); border-color: transparent; }
-    .tab-badge--eco[data-tier="mid"]  { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); border-color: transparent; }
-    .tab-badge--eco[data-tier="bad"]  { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); border-color: transparent; }
-    .tab-badge--danger { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); border-color: transparent; }
-    .tab-badge--warn { background: color-mix(in srgb, var(--warning) 13%, transparent); color: var(--texte-attente); border-color: transparent; }
-    .tab-badge--fuel { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); border-color: transparent; }
-    .tab-badge--trust[data-tier="good"] { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--texte-info); border-color: transparent; }
-    .tab-badge--trust[data-tier="mid"]  { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--texte-attente); border-color: transparent; }
-    .tab-badge--trust[data-tier="bad"]  { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); border-color: transparent; }
-    .tab-analyze, .tab-refresh {
+    .tab--todo { background: transparent; border-style: dashed; border-color: var(--border-strong, var(--border-subtle)); }
+    .tab-l1 { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    /* Note lettrée : lavis de la couleur de base + texte en jeton --texte-* (jamais la couleur vive). */
+    .tab-grade {
       display: inline-flex; align-items: center; gap: 5px;
-      border-radius: 8px; cursor: pointer; font-weight: 700;
-      color: var(--texte-succes);
-      background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, transparent);
-      border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 24%, transparent);
-      transition: background .15s;
+      padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
+      background: var(--bg-secondary); color: var(--fg-secondary); border: 1px solid var(--border-subtle);
     }
-    .tab-analyze { padding: 5px 11px; font-size: 11.5px; }
-    .tab-refresh { padding: 4px 8px; font-size: 11px; }
-    /* Teaser d'activation IA (option payante) — subtil, pointillés, couleur accent. */
-    .tab-teaser { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; text-decoration: none; color: var(--texte-succes); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, transparent); border: 1px dashed color-mix(in srgb, var(--tracky-light, #10E0A0) 40%, transparent); }
-    .tab-teaser:hover { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
-    .tab-analyze:hover:not(:disabled), .tab-refresh:hover:not(:disabled) { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
-    .tab-analyze:disabled, .tab-refresh:disabled { opacity: .6; cursor: default; }
+    .tab-grade b { font-size: 13px; font-weight: 900; }
+    .tab-grade[data-grade="A"], .tab-grade[data-grade="B"] { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); color: var(--texte-succes); border-color: transparent; }
+    .tab-grade[data-grade="C"] { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--texte-attente); border-color: transparent; }
+    .tab-grade[data-grade="D"], .tab-grade[data-grade="E"] { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--texte-alerte); border-color: transparent; }
+    .tab-alert {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
+      background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte);
+    }
+    .tab-alert-sub { font-weight: 600; opacity: .9; }
+    .tab-l2 { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--fg-secondary); }
+    .tab-l3 { margin: 0; font-size: 11px; line-height: 1.4; color: var(--fg-tertiary); }
+    .tab-l4 {
+      margin: 2px 0 0; font-size: 12px; line-height: 1.45; font-style: italic; color: var(--fg-secondary);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .tab-action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 2px; }
+    .tab-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      min-height: 40px; padding: 8px 14px; border-radius: 10px;
+      font-size: 12.5px; font-weight: 800; cursor: pointer; border: 1px solid transparent;
+      transition: background .15s, border-color .15s;
+    }
+    .tab-btn--primary { flex: 1 1 auto; background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); }
+    .tab-btn--primary:hover:not(:disabled) { filter: brightness(1.04); }
+    .tab-btn--ghost { background: transparent; color: var(--fg-secondary); border-color: var(--border-strong, var(--border-subtle)); }
+    .tab-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
+    .tab-btn:disabled { opacity: .6; cursor: default; }
+    .tab-btn-arrow { margin-left: auto; }
+    .tab-pending { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--fg-tertiary); }
+    .tab-locked { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--fg-tertiary); text-decoration: none; border-bottom: 1px dashed var(--border-strong, var(--border-subtle)); }
+    .tab-locked:hover { color: var(--fg-primary); }
+    .tab-empty-line { margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); }
     .tab-spin { animation: tab-rot .9s linear infinite; }
     @keyframes tab-rot { to { transform: rotate(360deg); } }
-    .tab-err { font-size: 11px; color: var(--texte-alerte); }
+    @media (prefers-reduced-motion: reduce) { .tab-spin { animation-duration: 2s; } }
+    .tab-err { display: block; margin-top: 4px; font-size: 11px; color: var(--texte-alerte); }
 
-    /* ── Modal détail IA ── */
-    .taid-overlay { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
-    .taid-card { width: 100%; max-width: 720px; max-height: 88vh; display: flex; flex-direction: column; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden; }
+    /* ── Variante RANGÉE (cellule du tableau en large) : tout sur une ligne, sans fond. ── */
+    .tab--row { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 0; background: transparent; border: none; }
+    .tab--row .tab-l1 { flex-wrap: nowrap; }
+    .tab--row .tab-l2 { flex: 1 1 140px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab--row .tab-action { margin: 0; }
+    .tab--row .tab-btn { min-height: 32px; padding: 5px 10px; font-size: 12px; }
+    .tab--row .tab-btn--primary { flex: 0 0 auto; }
+    .tab--row.tab--todo { padding: 0; border: none; }
+
+    /* ── Modale détail ── */
+    .taid-overlay { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: flex-end; justify-content: center; padding: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
+    .taid-card {
+      width: 100%; max-width: 720px; max-height: 92dvh; display: flex; flex-direction: column;
+      border-radius: 18px 18px 0 0; background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    @media (min-width: 640px) {
+      .taid-overlay { align-items: center; padding: 16px; }
+      .taid-card { border-radius: 16px; max-height: 88vh; padding-bottom: 0; }
+    }
     .taid-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle); }
     .taid-head h3 { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; color: var(--fg-primary); }
     .taid-head h3 lucide-icon { color: var(--tracky-light, #10E0A0); }
-    .taid-x { width: 32px; height: 32px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-tertiary); }
+    .taid-x { width: 44px; height: 44px; margin: -8px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-tertiary); background: none; border: none; cursor: pointer; }
     .taid-x:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
-    .taid-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-    .taid-trust { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
-    .taid-trust-n { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
-    .taid-trust[data-tier="good"] .taid-trust-n { color: var(--texte-info); }
-    .taid-trust[data-tier="mid"]  .taid-trust-n { color: var(--texte-attente); }
-    .taid-trust[data-tier="bad"]  .taid-trust-n { color: var(--texte-alerte); }
-    .taid-trust-l { display: flex; flex-direction: column; gap: 2px; }
-    .taid-trust-l strong { font-size: 13.5px; font-weight: 800; color: var(--fg-primary); }
-    .taid-trust-l small { font-size: 11.5px; color: var(--fg-tertiary); }
-    .taid-sec h4 { margin: 0 0 5px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800; color: var(--fg-primary); text-transform: uppercase; letter-spacing: .03em; }
+    .taid-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .taid-sec h4 { margin: 0 0 6px; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800; color: var(--fg-primary); text-transform: uppercase; letter-spacing: .03em; }
     .taid-prov { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11px; color: var(--fg-tertiary); }
     .taid-sec p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--fg-secondary); white-space: pre-line; }
-    .taid-sec--advice p { color: var(--fg-primary); }
-    .taid-empty { margin: 0; font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.5; }
+    .taid-sec--recit p { font-size: 14px; color: var(--fg-primary); }
+    .taid-sec--advice p { color: var(--fg-primary); padding-left: 14px; position: relative; margin-bottom: 4px; }
+    .taid-sec--advice p::before { content: '•'; position: absolute; left: 2px; color: var(--tracky-light, #10E0A0); }
+    .taid-empty { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.5; padding: 10px 12px; border-radius: 10px; background: var(--bg-tertiary); }
+    .taid-perime { margin: 0 0 8px !important; display: flex; align-items: flex-start; gap: 7px; font-size: 12px !important; line-height: 1.45; color: var(--texte-attente) !important; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--warning) 12%, transparent); }
+    .taid-perime lucide-icon { flex-shrink: 0; margin-top: 1px; }
+    .taid-kv { margin: 0; display: grid; grid-template-columns: 1fr; gap: 6px; }
+    .taid-kv > div { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+    .taid-kv > div:first-child { border-top: none; }
+    .taid-kv dt { font-size: 11.5px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .03em; padding-top: 2px; }
+    .taid-kv dd { margin: 0; font-size: 13.5px; font-weight: 700; color: var(--fg-primary); }
+    .taid-kv dd small { display: block; font-size: 11.5px; font-weight: 500; color: var(--fg-tertiary); margin-top: 1px; }
     .taid-fuel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-    .taid-fuel-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--violet) 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--violet) 20%, transparent); }
+    .taid-fuel-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .taid-fuel-name { font-size: 13px; font-weight: 800; color: var(--fg-primary); }
-    .taid-fuel-price { font-size: 12.5px; font-weight: 700; color: var(--texte-violet); text-align: right; }
-    .taid-fuel-price strong { color: var(--texte-violet); }
+    .taid-fuel-price { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); text-align: right; }
     .taid-fuel-noprice { color: var(--fg-tertiary); font-weight: 600; }
     .taid-fuel-where { grid-column: 1; font-size: 11.5px; color: var(--fg-tertiary); }
     .taid-fuel-dur { grid-column: 2; text-align: right; font-size: 11.5px; color: var(--fg-tertiary); }
     .taid-fuel-note { margin: 8px 0 0; font-size: 11px; line-height: 1.45; color: var(--fg-tertiary); }
-    .taid-intro { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--fg-secondary); padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 7%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
-    .taid-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
-    .taid-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 800; cursor: pointer; background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); border: none; }
+    .taid-actions { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; border-top: 1px solid var(--border-subtle); }
+    .taid-actions-note { font-size: 11.5px; color: var(--fg-tertiary); }
+    .taid-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 9px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 800; cursor: pointer; background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); border: none; }
     .taid-btn:disabled { opacity: .6; cursor: default; }
     .taid-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong, var(--border-subtle)); }
     .taid-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
@@ -278,33 +360,29 @@ import { apiErrorMessage } from '../../core/error/api-error';
 export class TripAnalysisBadgesComponent {
   private readonly api = inject(TripAnalysisApiService);
   private readonly aiStatus = inject(AiStatusService);
+  private readonly auth = inject(AuthService);
+  private readonly perms = inject(PermissionsService);
 
   /**
-   * Récit de trajet disponible ? Conditionne la GÉNÉRATION, jamais la lecture.
-   * ⚠️ `can('tripAnalysis')` et non `enabled()` : l'interrupteur maître ignore le kill-switch
-   * global par fonction, donc le bouton restait affiché alors que le serveur refusait le clic.
+   * Option IA de la SOCIÉTÉ (interrupteur maître), pas le drapeau global de génération :
+   * c'est elle qui dit si le client verra le récit une fois rédigé par l'agent. La génération
+   * côté API est coupée exprès (zéro coût) et n'est plus proposée nulle part ici.
    */
-  protected readonly aiEnabled = computed(() => this.aiStatus.can('tripAnalysis'));
-
-  /**
-   * Ce trajet a-t-il DÉJÀ un récit en base ?
-   *
-   * ⚠️ Sépare « je peux relire » de « je peux produire ». Un récit déjà généré appartient
-   * au client : il reste lisible même après la fin de l'option, comme une facture reste
-   * consultable après la fin d'un abonnement.
-   */
-  protected readonly hasNarrative = computed(() => {
-    const a = this.current();
-    return !!(a?.narrative || a?.advice || a?.trustScore != null);
+  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
+  /** Le rôle peut activer l'option (fleet admin) : lui seul reçoit le lien vers les réglages. */
+  protected readonly canConfigureAi = computed(() => this.perms.can('ai_configure'));
+  /** Recalcul des chiffres : gestionnaires et admins — pas un lecteur. */
+  protected readonly canRecompute = computed(() => {
+    const role = this.auth.user()?.role;
+    return role === 'SUPER_ADMIN' || role === 'FLEET_ADMIN' || role === 'FLEET_MANAGER';
   });
 
   constructor() {
     this.aiStatus.ensureLoaded();
-    // Deep-link (scores « N avec excès » → ?trip=…) : ouvre AUTOMATIQUEMENT le récit IA de ce
-    // trajet une seule fois. Si l'analyse n'est pas encore chargée, la modal se remplit ensuite
-    // réactivement (current() suit l'input `analysis`).
+    // Deep-link (scores « N avec excès » → ?trip=…) : ouvre AUTOMATIQUEMENT le détail de ce
+    // trajet une seule fois, dès que l'analyse est là (current() suit l'input `analysis`).
     effect(() => {
-      if (this.autoOpen() && !this.autoOpened) {
+      if (this.autoOpen() && !this.autoOpened && this.current()) {
         this.autoOpened = true;
         this.openDetail();
       }
@@ -313,28 +391,75 @@ export class TripAnalysisBadgesComponent {
 
   readonly tripId = input.required<string>();
   readonly analysis = input<TripAnalysisDto | null>(null);
-  /** Deep-link : ouvre automatiquement la modal « Récit IA » de ce trajet (une seule fois). */
+  /** Deep-link : ouvre automatiquement le détail de ce trajet (une seule fois). */
   readonly autoOpen = input<boolean>(false);
+  /** 'card' (défaut) = bloc à trois lignes ; 'row' = une ligne compacte pour une cellule de tableau. */
+  readonly layout = input<'card' | 'row'>('card');
   readonly analyzed = output<TripAnalysisDto>();
   private autoOpened = false;
 
   private readonly fresh = signal<TripAnalysisDto | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
-
-  // Détail IA (récit + conseils)
   protected readonly detailOpen = signal(false);
-  protected readonly busyNarrate = signal(false);
-  protected readonly detailError = signal<string | null>(null);
 
   protected readonly current = computed(() => this.fresh() ?? this.analysis());
+
+  /** Analyse persistée sans aucune position : les chiffres sont des zéros inventés, pas des faits. */
+  protected readonly isEmptyAnalysis = computed(() => {
+    const a = this.current();
+    return !!a && a.gpsPoints === 0 && a.distanceKm === 0;
+  });
+
+  protected readonly grade = computed(() => gradeOf(this.current()?.ecoScore ?? 0));
+
+  /**
+   * Récit écrit AVANT le dernier recalcul des chiffres. Le recalcul remplace toutes les
+   * mesures et conserve le texte : sans ce repère, un récit qui parle de « deux freinages
+   * appuyés » pouvait accompagner des chiffres qui n'en comptent plus aucun.
+   *
+   * Une minute de battement : l'analyse et le récit s'écrivent à quelques secondes d'écart
+   * lors d'un passage normal de l'agent, et cet écart-là n'est pas une péremption.
+   */
+  protected readonly recitPerime = computed(() => {
+    const a = this.current();
+    if (!a?.narrative || !a.narratedAt) return false;
+    return new Date(a.computedAt).getTime() - new Date(a.narratedAt).getTime() > 60_000;
+  });
 
   /** Passages en station-service détectés sur ce trajet (P2 stations). */
   protected readonly fuelStops = computed(() => this.current()?.detail?.fuelStops ?? []);
 
-  protected readonly ecoTier = computed(() => {
-    const s = this.current()?.ecoScore ?? 100;
-    return s >= 80 ? 'good' : s >= 50 ? 'mid' : 'bad';
+  /** L2 — faits secondaires, en texte. */
+  protected readonly facts = computed<string[]>(() => {
+    const a = this.current();
+    if (!a) return [];
+    const out: string[] = [];
+    if (a.stopCount > 0) out.push(`${a.stopCount} arrêt${a.stopCount > 1 ? 's' : ''}`);
+    const jolts = a.harshAccel + a.harshBrake;
+    if (jolts > 0) out.push(`${jolts} à-coup${jolts > 1 ? 's' : ''}`);
+    if (a.idleSec >= 60) out.push(`ralenti ${this.minutes(a.idleSec)} min`);
+    for (const fs of this.fuelStops().slice(0, 2)) {
+      out.push(`station ${fs.brand || ''}${fs.unitPriceEur != null ? ` ${fs.unitPriceEur.toFixed(3)} €` : ''}`.replace(/\s+/g, ' ').trim());
+    }
+    return out;
+  });
+
+  /** L3 — estimations (toujours « ≈ ») et fiabilité de la donnée. */
+  protected readonly estimates = computed<string[]>(() => {
+    const a = this.current();
+    if (!a) return [];
+    const out: string[] = [];
+    if (a.fuelLiters != null) out.push(`≈ ${a.fuelLiters.toFixed(1).replace('.', ',')} L`);
+    if (a.co2Kg != null) out.push(`≈ ${Math.round(a.co2Kg)} kg CO₂`);
+    if (a.trustScore != null) out.push(`fiabilité GPS ${a.trustScore}`);
+    return out;
+  });
+
+  /** Les conseils arrivent en un paragraphe ; le schéma impose des puces « • ». */
+  protected readonly adviceLines = computed<string[]>(() => {
+    const raw = this.current()?.advice ?? '';
+    return raw.split(/\s*(?:^|\n)\s*[•\-–]\s+|\n+/).map((s) => s.trim()).filter(Boolean);
   });
 
   protected readonly LeafIcon = Leaf;
@@ -349,9 +474,12 @@ export class TripAnalysisBadgesComponent {
   protected readonly FileIcon = FileText;
   protected readonly LockIcon = Lock;
   protected readonly XIcon = X;
+  protected readonly ClockIcon = Clock;
+  protected readonly RefreshIcon = RefreshCw;
+  protected readonly ArrowIcon = ArrowRight;
+  protected readonly InfoIcon = Info;
 
   protected minutes(sec: number): number { return Math.round(sec / 60); }
-  protected trustTier(s: number): 'good' | 'mid' | 'bad' { return s >= 75 ? 'good' : s >= 45 ? 'mid' : 'bad'; }
 
   /** Libellé lisible d'un carburant de l'API (gazole → « Gazole », gplc → « GPL »…). */
   protected fuelTypeLabel(t: string | null): string {
@@ -369,16 +497,17 @@ export class TripAnalysisBadgesComponent {
   protected fuelWhere(fs: { address: string | null; city: string | null }): string {
     return [fs.address, fs.city].filter(Boolean).join(', ');
   }
-  /** Tooltip d'un passage station (lieu + prix + durée). */
-  protected fuelStopTitle(fs: { brand: string | null; city: string | null; address: string | null; fuelType: string | null; unitPriceEur: number | null; durationSec: number }): string {
-    const where = [fs.brand, fs.address, fs.city].filter(Boolean).join(', ') || 'Station-service';
-    const price = fs.unitPriceEur != null ? ` — ${this.fuelTypeLabel(fs.fuelType)} ${fs.unitPriceEur.toFixed(3)} €/L` : '';
-    return `Passage station : ${where}${price} — arrêt ${Math.round(fs.durationSec / 60)} min`;
-  }
-  /** Libellé du moteur. MARQUE BLANCHE : tout ce qui n'est pas un moteur nommé (le backend masque en
-   *  'tracky' pour les clients) s'affiche « l'agent Tracky ». Seul le super-admin voit Claude/GPT/Mixte. */
+  /**
+   * Libellé du moteur. MARQUE BLANCHE : tout ce qui n'est pas un moteur nommé s'affiche
+   * « l'agent Tracky » ; 'local' (agent sur poste) aussi — pour le client c'est le même agent.
+   * Seul le super-admin voit Claude/GPT/Mixte, et « agent local » pour reconnaître le poste.
+   */
   protected providerLabel(p: AiProviderId | string): string {
-    return p === 'gpt' ? 'GPT (OpenAI)' : p === 'claude' ? 'Claude' : p === 'both' ? 'Mixte (les 2 IA)' : 'l\'agent Tracky';
+    if (p === 'gpt') return 'GPT (OpenAI)';
+    if (p === 'claude') return 'Claude';
+    if (p === 'both') return 'Mixte (les 2 IA)';
+    if (p === 'local') return this.auth.user()?.role === 'SUPER_ADMIN' ? 'l\'agent Tracky (poste local)' : 'l\'agent Tracky';
+    return 'l\'agent Tracky';
   }
   protected speedingTitle(a: TripAnalysisDto): string {
     return a.limitsKnown
@@ -386,9 +515,14 @@ export class TripAnalysisBadgesComponent {
       : `${a.speedingCount} pointe(s) de vitesse (limites légales non résolues — excès probable)`;
   }
 
-  protected openDetail(): void { this.detailError.set(null); this.detailOpen.set(true); }
+  protected openDetail(): void { this.error.set(null); this.detailOpen.set(true); }
   protected closeDetail(): void { this.detailOpen.set(false); }
 
+  /** Échap ferme le détail (aria-modal sans piège de focus : l'overlay reste cliquable). */
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void { if (this.detailOpen()) this.closeDetail(); }
+
+  /** (Re)calcule l'analyse déterministe — positions + limites OSM. Le récit est conservé. */
   protected async runAnalyze(): Promise<void> {
     if (this.busy()) return;
     this.busy.set(true);
@@ -404,22 +538,4 @@ export class TripAnalysisBadgesComponent {
       this.busy.set(false);
     }
   }
-
-  /** Génère le récit IA (LLM) + Trust Score + conseils, persistés. */
-  protected async runNarrate(): Promise<void> {
-    if (this.busyNarrate()) return;
-    this.busyNarrate.set(true);
-    this.detailError.set(null);
-    try {
-      const res = await firstValueFrom(this.api.narrate(this.tripId()));
-      this.fresh.set(res);
-      this.analyzed.emit(res);
-    } catch (e) {
-      swallow('trip-analysis-badges:runNarrate', e);
-      this.detailError.set(apiErrorMessage(e, 'Génération du récit impossible.'));
-    } finally {
-      this.busyNarrate.set(false);
-    }
-  }
-
 }

@@ -1066,12 +1066,15 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrow = new Date(today.getTime() + 86400000);
-    const minus7 = new Date(today.getTime() - 7 * 86400000);
-    const minus30 = new Date(today.getTime() - 30 * 86400000);
+    // « 7 jours » = aujourd'hui COMPRIS plus les six précédents. J−7 avec une borne haute à
+    // demain en couvrait huit : la fiche véhicule et la page Rapports annonçaient la même
+    // période et n'affichaient pas les mêmes totaux.
+    const minus6 = new Date(today.getTime() - 6 * 86400000);
+    const minus29 = new Date(today.getTime() - 29 * 86400000);
     return [
       { label: "Aujourd'hui", from: this.localIso(today), to: this.localIso(tomorrow) },
-      { label: '7 jours', from: this.localIso(minus7), to: this.localIso(tomorrow) },
-      { label: '30 jours', from: this.localIso(minus30), to: this.localIso(tomorrow) },
+      { label: '7 jours', from: this.localIso(minus6), to: this.localIso(tomorrow) },
+      { label: '30 jours', from: this.localIso(minus29), to: this.localIso(tomorrow) },
     ];
   }
 

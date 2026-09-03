@@ -49,8 +49,13 @@ export interface SpeedBin {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="hc-wrapper" role="img" [attr.aria-label]="ariaLabel()">
-      <canvas #canvas></canvas>
+    <!-- ⚠️ role="figure" et NON role="img". « img » porte
+         « children presentational: true » : le lecteur d'écran annonce alors une image
+         unique nommée par l'aria-label et IGNORE le tableau ci-dessous — celui qui
+         porte les chiffres, et qui n'existe que pour lui. C'est le canvas SEUL qui est
+         masqué, pas son conteneur. -->
+    <div class="hc-wrapper" role="figure" [attr.aria-label]="ariaLabel()">
+      <canvas #canvas aria-hidden="true"></canvas>
       <table class="sr-only">
         <caption>{{ ariaLabel() }}</caption>
         <thead><tr><th>Tranche</th><th>Trajets</th></tr></thead>

@@ -415,7 +415,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
               }
               <!-- TRK-037 — les degradations assumees ne comptent plus comme des defauts, mais
                    elles restent VISIBLES : les taire serait vider l'ecran, pas corriger. -->
-              @if ((data()!.summary.degradations24h ?? 0) > 0) {
+              @if (data()!.summary.degradations24h > 0) {
                 <span class="text-[11px] text-fg-tertiary"
                       title="Dependance tierce momentanement injoignable, repli fonctionnel, contrepartie assumee. Aucune action attendue.">
                   {{ data()!.summary.degradations24h }} degradation(s) assumee(s) sur 24 h

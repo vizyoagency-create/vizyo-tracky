@@ -169,8 +169,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
           </div>
           <p class="ta-hint">
             <strong>Sans analyse</strong> : le passage serveur doit passer. <strong>Sans récit</strong> : l'agent sur poste
-            doit passer — il ne sert que les sociétés à IA active. <strong>Bruts</strong> : sans récit possible tant que le
-            recalcul n'est pas passé. <strong>Figés</strong> : positions purgées, jamais analysables — un fait, pas un retard.
+            doit passer — il rédige pour toutes les sociétés, option IA ou non. <strong>IA</strong> : le client voit-il
+            ses récits (option activée) ; coupée, ils sont rédigés mais masqués. <strong>Bruts</strong> : sans récit possible
+            tant que le recalcul n'est pas passé. <strong>Figés</strong> : positions purgées, jamais analysables — un fait, pas un retard.
           </p>
           @if (backlog(); as b) {
             <div class="ta-bl">
@@ -180,13 +181,17 @@ import { apiErrorMessage } from '../../core/error/api-error';
               @for (f of b.fleets; track f.fleetId) {
                 <div class="ta-bl-row">
                   <span class="ta-bl-name" data-label="Société">{{ f.fleetName }}</span>
-                  <span class="ta-bl-ia" [class.on]="f.aiEnabled" data-label="IA">{{ f.aiEnabled ? 'active' : 'coupée' }}</span>
+                  <span class="ta-bl-ia" [class.on]="f.aiEnabled" data-label="IA"
+                        [title]="f.aiEnabled ? 'Le client voit ses récits' : 'Récits rédigés mais masqués au client'">{{ f.aiEnabled ? 'visible' : 'masquée' }}</span>
                   <span class="ta-bl-n" [class.zero]="f.sansAnalyse === 0" data-label="Sans analyse">{{ f.sansAnalyse | number }}</span>
-                  <span class="ta-bl-n" [class.zero]="f.sansRecit === 0" [class.bloque]="f.sansRecit > 0 && !f.aiEnabled" data-label="Sans récit">{{ f.sansRecit | number }}</span>
+                  <span class="ta-bl-n" [class.zero]="f.sansRecit === 0" data-label="Sans récit">{{ f.sansRecit | number }}</span>
                   <span class="ta-bl-n" [class.zero]="f.sansRecitBruts === 0" data-label="Bruts">{{ f.sansRecitBruts | number }}</span>
                   <span class="ta-bl-n ta-bl-n--fait" data-label="Figés">{{ f.figes | number }}</span>
                 </div>
               }
+              <!-- La définition sous le nombre : sans elle, « 132 sans récit » se fait
+                   interpréter, et deux écrans ont affiché deux totaux pour la même question. -->
+              <p class="ta-bl-note"><strong>Sans récit</strong> compte les {{ b.resteRecitLibelle }}</p>
               <p class="ta-bl-at">
                 Calculé à {{ b.at | date:'HH:mm:ss' }}@if (b.horizon) { · analysables depuis le {{ b.horizon | date:'dd/MM' }} (rétention des positions) }
               </p>
@@ -307,6 +312,8 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-refresh:disabled { opacity: .5; cursor: default; }
     .ta-card-h:has(.ta-refresh) { display: flex; width: 100%; }
     .ta-bl { display: flex; flex-direction: column; gap: 8px; }
+    .ta-bl-note { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--fg-tertiary); }
+    .ta-bl-note strong { color: var(--fg-secondary); }
     .ta-bl-head { display: none; }
     .ta-bl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .ta-bl-row > span::before { content: attr(data-label); display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-tertiary); margin-bottom: 2px; }

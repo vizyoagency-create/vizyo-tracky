@@ -3,6 +3,12 @@ import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angula
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from './activity-tracker.service';
+import type {
+  FleetReportDispatchDto,
+  FleetReportScheduleDto,
+  SendFleetReportNowResultDto,
+  SetFleetReportScheduleDto,
+} from '@vizyo/tracky-shared';
 
 export interface FleetStatsReportDto {
   fleet: { id: string; name: string };
@@ -116,9 +122,15 @@ export class ReportsApiService {
     }
   }
 
-  async downloadCsv(type: CsvType, fleetId: string | null, from: string, to: string): Promise<void> {
+  /**
+   * `vehicleIds` : périmètre véhicule / groupe de l'écran. Sans lui, un CSV « trajets »
+   * demandé depuis un rapport filtré sur EP-047-TY exportait toute la flotte — le fichier
+   * ne correspondait pas à l'écran qui l'avait produit.
+   */
+  async downloadCsv(type: CsvType, fleetId: string | null, from: string, to: string, vehicleIds: string[] = []): Promise<void> {
     let params = new HttpParams().set('type', type).set('from', from).set('to', to);
     if (fleetId) params = params.set('fleetId', fleetId);
+    if (vehicleIds.length > 0) params = params.set('vehicleIds', vehicleIds.join(','));
     try {
       const blob = await firstValueFrom(
         this.http.get('/api/reports/csv', { params, responseType: 'blob' }),
@@ -130,15 +142,43 @@ export class ReportsApiService {
     }
   }
 
+  // ─── Rapport hebdomadaire : réglage par société + journal des envois ───────────────
+
+  private scheduleParams(fleetId: string | null, extra: Record<string, string> = {}): HttpParams {
+    let params = new HttpParams();
+    if (fleetId) params = params.set('fleetId', fleetId);
+    for (const [k, v] of Object.entries(extra)) params = params.set(k, v);
+    return params;
+  }
+
+  getReportSchedule(fleetId: string | null): Promise<FleetReportScheduleDto> {
+    return firstValueFrom(this.http.get<FleetReportScheduleDto>('/api/reports/schedule', { params: this.scheduleParams(fleetId) }));
+  }
+
+  setReportSchedule(fleetId: string | null, body: SetFleetReportScheduleDto): Promise<FleetReportScheduleDto> {
+    return firstValueFrom(this.http.put<FleetReportScheduleDto>('/api/reports/schedule', body, { params: this.scheduleParams(fleetId) }));
+  }
+
+  sendReportNow(fleetId: string | null): Promise<SendFleetReportNowResultDto> {
+    return firstValueFrom(this.http.post<SendFleetReportNowResultDto>('/api/reports/schedule/send-now', {}, { params: this.scheduleParams(fleetId) }));
+  }
+
+  listReportDispatches(fleetId: string | null, limit = 20): Promise<FleetReportDispatchDto[]> {
+    return firstValueFrom(this.http.get<FleetReportDispatchDto[]>('/api/reports/schedule/dispatches', { params: this.scheduleParams(fleetId, { limit: String(limit) }) }));
+  }
+
   async downloadSpeedAnalysis(tripId: string): Promise<void> {
     try {
-      const blob = await firstValueFrom(
-        this.http.get(`/api/reports/speed-analysis/${tripId}`, { responseType: 'blob' }),
+      const res = await firstValueFrom(
+        this.http.get(`/api/reports/speed-analysis/${tripId}`, { responseType: 'blob', observe: 'response' }),
       );
-      this.triggerDownload(blob, `rapport-vitesse-${tripId.slice(0, 8)}.html`);
+      // Le serveur nomme le fichier par plaque et date (« rapport-vitesse-EP-047-TY-2026-08-11 ») :
+      // on le reprend, au lieu d'un identifiant tronqué qui ne disait rien.
+      const filename = this.filenameFromResponse(res, `rapport-vitesse-${tripId.slice(0, 8)}.html`);
+      this.triggerDownload(res.body ?? new Blob(), filename);
     } catch (err) {
       swallow('reports:downloadSpeedAnalysis', err);
-      throw new Error(await this.formatHttpError(err, 'PDF'));
+      throw new Error(await this.formatHttpError(err, 'Rapport vitesse'));
     }
   }
 
@@ -189,7 +229,7 @@ export class ReportsApiService {
    *   - { message: "string" }                          (BadRequestException simple)
    *   - { message: ["err1", "err2"] }                  (class-validator)
    *   - { message: [{ constraints: {...}, property }] } (class-validator detaille) */
-  private async formatHttpError(err: unknown, kind: 'PDF' | 'CSV' | 'Excel'): Promise<string> {
+  private async formatHttpError(err: unknown, kind: 'PDF' | 'CSV' | 'Excel' | 'Rapport vitesse'): Promise<string> {
     if (err instanceof HttpErrorResponse) {
       const detail = await this.extractErrorDetail(err);
       return `Echec export ${kind} (${err.status})${detail ? ' : ' + detail : ''}`;
