@@ -616,6 +616,19 @@ cache jetable et une base de données.
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER` — **désaggravé le 2026-08-12 sur le volet paquets, toujours ouvert sur le noyau**
+- 🔴 **Vu : 2026-09-03 — LE VOLET « BIBLIOTHÈQUE REMPLACÉE » PASSE DE 4 À 6 SERVICES, ET LA CAUSE
+  EST DATÉE.** `needrestart` nomme désormais : `dbus.service`, **`docker.service`**,
+  `getty@tty1.service`, `serial-getty@ttyS0.service`, `systemd-logind.service`,
+  `unattended-upgrades.service`. La cause est l'installation du **2026-09-02 à 06 h 15 min 49**
+  (34 paquets, VPS-033), dont **neuf sont des bibliothèques partagées** — `libssh-4`, `zlib1g`,
+  `libgcrypt20`, `libuuid1`, `libblkid1`, `libmount1`, `libtinfo6`, `libattr1`, `libbz2-1.0`.
+  **Le correctif de sécurité est sur le disque et n'est pas dans le processus** — et cette fois
+  ce n'est plus une phrase générale, c'est un lot nominatif et daté.
+  Noyau actif **6.8.0-136**, installés **-137** et **-138** ; uptime **700,8 h** (29 j).
+  ⚠️ **Ce que ça change à l'arbitrage du redémarrage, et ce que ça ne change pas** : ça lui donne
+  une raison neuve et mesurée — six services, dont le démon qui porte 33 conteneurs. Ça ne change
+  **rien** au reste : **VPS-014** a établi que la mémoire rendue par `dockerd` revient en cinq
+  heures, et elle ne doit toujours pas entrer dans la justification.
 - ✅ **Vu : 2026-08-26 — MESURE VALIDE, ET POUR LA PREMIÈRE FOIS DEUX POINTS COMPARABLES.**
   Cache apt de **2 h** (rafraîchi à 00 h 06 min 05) → **79 paquets en retard, dont 10 estampillés
   sécurité**. 2ᵉ source (`update-notifier`, 2 h elle aussi) : **78 dont 10** — *les deux sources
@@ -919,8 +932,74 @@ c'est là que la détection rapide sert vraiment.
 
 ## VPS-012 — Trois clés GitHub Actions ont un accès root complet
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-08-04, 22 h 15)
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : 🔴 **`A_TRAITER` — ROUVERT le 2026-09-03**
+  *(était `APPLIQUE` depuis le 2026-08-04)*
 - **Vu** : 2026-08-04 · **Mesure à la découverte** : 3 des 4 clés de `/root/.ssh/authorized_keys`
+
+> ### 🔴 2026-09-03 — LE CONSTAT ROUVRE : UNE TROISIÈME CLÉ ROOT, SANS RESTRICTION, DEPUIS DIX-NEUF JOURS
+>
+> ```
+> declarees et ACTIVES : 3
+>   vizyo-vps-hostinger          SHA256:cdd9XFoV…  connexions=6310  🟠 AUCUNE option de restriction
+>   github-actions-deploy-maalem SHA256:Y/gE+zS4…  connexions=0     ✅ restreinte (no-port-forwarding,…)
+>   github-actions-vizyo-auth    SHA256:OTSnEmsW…  connexions=0     🟠 AUCUNE option de restriction
+> ```
+>
+> **`github-actions-vizyo-auth` n'apparaît nulle part dans ce référentiel.** Première utilisation
+> le **2026-08-23 à 10 h 58 min 33 depuis `82.67.153.51`** — le poste d'administration, donc la
+> signature d'une clé qu'on installe et qu'on essaie — puis depuis **douze IP Azure** les 23 et
+> 24 août. **15 connexions au total, aucune depuis le 2026-08-24.**
+>
+> ### Ce que ce constat N'EST PAS
+>
+> **Ce n'est pas une intrusion.** La clé est **déclarée** dans `authorized_keys`, son commentaire
+> la nomme, et son usage est celui d'une clé de déploiement GitHub Actions parfaitement ordinaire.
+>
+> ### Ce qu'il EST
+>
+> **Le correctif du 2026-08-04 a régressé sur une clé ajoutée dix-neuf jours après lui.** Ce
+> correctif consistait à poser `no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc`
+> sur les clés de CI, pour qu'une clé volée ne serve pas de **tunnel** vers Postgres, Redis ou
+> MinIO. Le gain tient toujours sur `github-actions-deploy-maalem` ; il n'a jamais existé sur
+> celle-ci.
+>
+> ### `pourquoiInvisible` — et c'est la partie qui instruit
+>
+> **Le collecteur n'a JAMAIS lu une seule empreinte.** Il publie, depuis le premier passage, un
+> *« top 5 des IP dont des connexions ont RÉUSSI »* — et une adresse Azure ressemble à une autre
+> adresse Azure. La phrase *« aucune clé inconnue »* a été vérifiée **à la main** aux passages des
+> 08-09, 08-11 et 08-16 à 08-20 — **tous antérieurs au 08-23** — puis plus jamais.
+>
+> **Un statut `APPLIQUE` n'est plus relu : c'est le sens même du statut.** VPS-007 l'avait déjà
+> payé (clos neuf passages sur un dénominateur tronqué), VPS-022 aussi (onze passages sur un
+> périmètre de trois fichiers). **Celui-ci est le troisième**, et le premier où l'objet du constat
+> a *changé* après la fermeture plutôt que d'avoir été mal mesuré à l'origine.
+> *Un correctif qui vit dans un fichier, sans rien qui le vérifie, ne survit pas au prochain ajout.*
+> Corrigé dans le collecteur le jour même — **VPS-M77**.
+>
+> ### QUOI FAIRE
+>
+> Poser sur la clé les mêmes options que sur l'autre clé de CI — dix secondes, aucun effet de bord,
+> et c'est le geste **déjà prouvé** le 2026-08-04 sur une clé de test jetable.
+>
+> ```bash
+> grep -n 'github-actions-vizyo-auth' /root/.ssh/authorized_keys   # relever la ligne AVANT
+> ```
+>
+> ⚠️ **À ne pas faire : retirer la clé.** `connexions=0` sur une fenêtre de 7 jours ne veut pas
+> dire « inutilisée », mais « elle n'a pas servi ces sept jours-là » — `auth.log` ne garde pas
+> davantage. Le déploiement de `vizyo-auth`, qui porte l'authentification de **toutes** les
+> applications, en dépend peut-être.
+> ⚠️ **À ne pas faire non plus : poser `command="…"`.** VPS-012 l'a mesuré et écarté le 2026-08-04 :
+> les workflows envoient des scripts shell multi-lignes.
+> ⚠️ **Et ne pas « corriger » la clé humaine** : elle est **volontairement** non restreinte, c'est
+> écrit dans `authorized_keys` depuis le 2026-08-04. Le 🟠 en face d'elle est le comportement voulu
+> du détecteur.
+>
+> ### Seuil de réescalade
+>
+> Passer en **gravité 1** si une empreinte **non déclarée** apparaît dans `auth.log`, ou si une clé
+> de CI sans restriction est utilisée depuis une adresse **hors** des plages de son fournisseur.
 - ✅ **2026-08-20 — 17e passage, aucune clé inconnue, et le périmètre est désormais écrit noir sur blanc.** **1 183 connexions acceptées** en 7 jours glissants depuis `82.67.153.51` (clé humaine `cdd9XFoV…`), plus 4 connexions isolées d'adresses Azure (CI). **22 échecs sur 7 jours, 0 sur `root`**, `Currently banned: 0`. ⚠️ **Et il faut rappeler ce que ce contrôle ne couvre pas, parce que le rappel a servi ce matin** : **VPS-027 passe en `A_TRAITER` aujourd'hui** — le canal de l'hyperviseur a écrit dans `/etc/cron.d` et lancé un `docker builder prune`, **sans une ligne dans `auth.log`, sans empreinte à compter**. Dix-sept passages ont conclu « aucune clé inconnue » sur les accès **SSH**, et c'est vrai. *La conclusion est juste sur son périmètre ; le périmètre n'est pas celui qu'on croirait.*
 - ✅ **2026-08-18 — 15e passage, et la vérification prend un sens nouveau.** Sur **1 095 connexions acceptées en 7 jours glissants, DEUX empreintes**, les deux déclarées : `cdd9XFoV…` (humaine, **1 064**) et `Y/gE+zS4…` (CI restreinte, **31 — soit +3 depuis hier**, donc la CI a déployé, ce que confirment les 5 images construites). Les **quatre IP inhabituelles** du jour — `64.236.169.3`, `52.182.171.82`, `52.161.56.65`, `52.160.224.98` — portent **toutes** l'empreinte de la clé CI, vérifiée nommément dans `auth.log`. ⚠️⚠️ **ET IL FAUT DÉSORMAIS ÉCRIRE CE QUE CETTE VÉRIFICATION NE COUVRE PAS.** Quinze passages ont conclu « aucune clé inconnue » sur les accès **SSH**, et c'est vrai. Mais **VPS-027**, découvert ce matin, établit qu'un tiers exécute des commandes **en root** dans la machine ~50 fois par jour **sans passer par SSH** — donc sans laisser une ligne dans `auth.log`, sans empreinte à compter, et sans que ce contrôle puisse le voir. *La conclusion était juste sur son périmètre ; c'est le périmètre qui n'était pas celui qu'on croyait.*
 - ✅ **2026-08-17 — 14e passage, la même vérification, le même résultat.** Sur **983 connexions acceptées en 7 jours glissants, DEUX empreintes**, les deux déclarées : `cdd9XFoV…` (humaine, **955**) et `Y/gE+zS4…` (CI restreinte, **28 — inchangé depuis hier**, donc la CI n'a pas déployé). Les **quatre IP inhabituelles** du jour — `52.182.171.82`, `52.161.57.34`, `64.236.200.85`, `64.236.169.3` — portent **toutes** l'empreinte `Y/gE+zS4…`, la clé `github-actions-deploy-maalem`. ⚠️ **La clé révoquée `ulkonmDi…` reste hors de la fenêtre de 7 jours** : son absence n'est plus une preuve, seulement une conséquence de la fenêtre glissante — treize jours après sa révocation.
@@ -4091,6 +4170,35 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-03 — 8ᵉ ÉCHEC EN 10 PASSAGES (cache apt à 25 h), MAIS LE TEST ÉCRIT D'AVANCE
+  EST TRANCHÉ, ET DANS LE BON SENS.** Le rapport du 09-02 exigeait : *« si l'installation a eu lieu
+  et que le compte n'a pas baissé, le canal est en panne et le constat monte en gravité 2 »*.
+
+  ```
+  2026-09-02 06:15:49 → 06:18:03   unattended-upgrade, 34 paquets, « All upgrades installed »
+                                    apt-daily-upgrade.service : 1 min 55,183 s de CPU
+  ```
+
+  **Compte relevé par `update-notifier` deux minutes après la fin : 109 → 75 paquets, et
+  34 → 1 de sécurité.** *109 − 75 = 34, exactement le nombre installé et exactement le nombre
+  d'estampillés sécurité.* **Le canal fonctionne ; VPS-033 ne monte PAS en gravité 2.** Le temps
+  CPU le confirme indépendamment et **échelonne** : 3,1 à 4,2 s les jours vides, 18,4 s le 08-27
+  (4 paquets), 31,6 s le 08-28 (9), **115 s** ici (34).
+
+  ⚠️ **Ce 109 → 75 ne vient PAS de la mesure du jour**, qui est `NON MESURABLE` (cache de 25 h) et
+  dont les « 75 paquets, dont 0 sécurité » ne doivent pas être reportés. Il vient de
+  `unattended-upgrades.log` et du fichier d'`update-notifier` écrit à 06 h 18 min 01 le 09-02 —
+  une source **datée d'avant et d'après** l'installation, qui est l'instrument que le test
+  demandait. *Publier le chiffre du cache périmé au motif qu'il confirme ce qu'on espère serait le
+  mode d'échec de VPS-010.*
+
+  🔴 **ET L'INSTALLATION A UNE CONSÉQUENCE QUE PERSONNE N'AVAIT ÉCRITE** : les services tournant
+  sur une bibliothèque **remplacée** passent de **4 à 6**, et **`docker.service` en fait partie**
+  (avec `dbus`, `systemd-logind`, `unattended-upgrades` et deux `getty`). Neuf des 34 paquets sont
+  des bibliothèques partagées — `libssh-4`, `zlib1g`, `libgcrypt20`, `libuuid1`, `libblkid1`,
+  `libmount1`, `libtinfo6`, `libattr1`, `libbz2-1.0` — échangées sous les pieds des démons qui les
+  avaient chargées. **Voir VPS-010** : *un paquet installé n'est pas un service redémarré*, et
+  c'est la première fois que ce constat est **daté et attribué** à une installation précise.
 - ✅ **Vu : 2026-09-02 — 3ᵉ MESURE VALIDE EN 9 PASSAGES, ET ELLE A FAILLI PRODUIRE UN CONSTAT
   FAUX.** Cache de **1 h** (rafraîchi à 00 h 48 min 58), seconde source de **1 h**, les deux
   d'accord : **109 paquets en retard, dont 34 estampillés sécurité**. Série des neuf derniers :
@@ -4487,7 +4595,18 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-037 — La copie hors-site des sauvegardes dépend du même poste de travail que l'audit, et elle a dépassé son seuil
 
-- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER` — **volet SYMPTÔME refermé
+  le 2026-09-03, volet CAUSE intact**
+- ✅ **Vu : 2026-09-03 — LA COPIE RENTRE DANS SON SEUIL : 69 h → 21 h.** Contenu copié : 22 h,
+  14 copies locales, destination inchangée (PC local `D:`). **Le symptôme est fermé.**
+  ⚠️ **Et la cause n'a pas bougé d'un octet** : le seul exemplaire qui ne vive pas sur le VPS a
+  toujours pour **unique dépositaire un poste de travail** — le même que celui qui porte la
+  planification de cet audit. *Il ne s'est refermé par aucun correctif : il s'est refermé parce que
+  le dépositaire est revenu.* C'est exactement le motif de **VPS-015**, dont le symptôme s'est
+  refermé deux fois par accident et jamais par correction — et qui a rechuté. **Un symptôme qui se
+  referme tout seul se rouvrira tout seul.** Le constat reste `A_TRAITER`.
+  ⚠️ **Ce que l'audit ne peut PAS dire** : ce qui a tourné, ni quand exactement. Le seul fait
+  établi reste le couplage.
 - 🟠 **Vu : 2026-09-02 — AGGRAVÉ : la copie passe de 51 h à 69 h.** L'écart au seuil de 48 h
   passe de **3 h à 21 h en un seul passage**, et la source, elle, est à jour (**22 h**). *Ce
   n'est donc pas la sauvegarde qui manque, c'est son unique exemplaire hors machine qui ne se met
@@ -4515,6 +4634,18 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-038 — Six boîtiers se sont tus le dimanche en deux heures, tous dans la même flotte
 
 - **Domaine** : données · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-03 — LES SIX SONT MUETS DEPUIS 60 h 30, ET AUCUN SEPTIÈME NE S'EST AJOUTÉ.**
+  Dernières trames inchangées à la seconde (08-31, 11 h 53 min 43 → 13 h 50 min 47). **La flotte
+  est stable à 32 contre 32** sur les deux fenêtres de 24 h, et `positions` le confirme désormais
+  **par un chemin de code indépendant** (32 contre 32) — le discriminant y est automatique depuis
+  ce passage. Débit par boîtier **111,0 trames/h** contre 113,2 : stable à 2 %.
+  **Le seuil de réescalade n'est pas atteint** — il exige un septième boîtier de la flotte, ou
+  l'absence de retour au passage du **2026-09-05**. Il reste deux jours.
+  ⚠️⚠️ **ET IL NE FAUT SURTOUT PAS LIRE « 6 MUETS » CONTRE « 7 HIER » COMME UN PROGRÈS.** Le
+  septième (`864035054755856`) n'est pas revenu : il a **0 ligne** dans `wire_logs`, dont la borne
+  basse est passée au 08-30 03 h 00. Le registre `trackers`, sans rétention, compte **12
+  silencieux sur 44 les deux jours**. Voir **VPS-M76**, écrit ce passage : *un compteur de silence
+  borné par une rétention décroît à mesure que la panne dure.*
 - **Vu** : 2026-09-02 · **Mesure à la découverte** : `wire_logs` passe de **38 à 32 émetteurs
   distincts** sur 24 h (×0,84), et `positions` de **38 à 32 traceurs distincts** par jour. Les six
   dernières trames tombent entre le **2026-08-31 11 h 53 min 43** et le **2026-08-31 13 h 50 min 47
@@ -4595,6 +4726,135 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M77 — L'audit comptait des IP et jamais des empreintes, et une troisième clé root est passée dix-neuf jours sans être nommée
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-09-03)
+- **Vu** : 2026-09-03 · **Mesure** : `authorized_keys` porte **trois** clés actives, dont
+  `github-actions-vizyo-auth` (`SHA256:OTSnEmsW…`) **sans aucune option de restriction**, active
+  depuis le **2026-08-23**. Voir **VPS-012**, rouvert le même jour.
+
+**QUOI — la cause.** Le bloc de sécurité publie depuis le premier passage :
+
+```
+IP dont des connexions ont REUSSI (a reconnaitre : ce sont vos acces) :
+     6251 82.67.153.51
+       20 37.167.61.43
+```
+
+**Des adresses. Jamais une empreinte.** Or c'est l'empreinte qui identifie une clé : les douze
+adresses Azure de la clé neuve sont indiscernables des adresses Azure de l'autre clé de CI, et le
+`head -5` les écrase de toute façon. Le libellé du bloc dit d'ailleurs exactement ce qu'il fait —
+*« à reconnaître : ce sont vos accès »* — c'est une **aide à la lecture**, jamais un contrôle.
+
+**`pourquoiInvisible`.** C'est la famille de **VPS-032** (*« le collecteur lisait déjà ces lignes
+et n'en comptait que les échecs »*) et de **VPS-M45** (*« la donnée était sous les yeux, la
+question ne lui avait pas été posée »*) — avec une aggravation : ici la question **avait** été
+posée, dans VPS-012, et sa réponse avait été jugée assez solide pour **fermer** le constat. La
+vérification a ensuite été refaite à la main jusqu'au 08-20, puis plus du tout, et l'objet a changé
+trois jours après.
+
+> **La leçon, et elle dépasse les clés SSH.** *Une vérification faite à la main ne se distingue pas,
+> dans un rapport, d'une vérification faite par le collecteur — les deux produisent la même phrase.*
+> La première s'arrête le jour où personne ne la refait, et rien ne le signale. C'est ce qui a
+> permis à VPS-007, VPS-022 et maintenant VPS-012 de vivre fermés sur une affirmation qui n'était
+> plus mesurée.
+
+**QUOI FAIRE — appliqué le 2026-09-03.** Inventaire croisé **déclarées / vues** : pour chaque clé
+active, son empreinte, son commentaire, ses options de restriction et son nombre de connexions sur
+la fenêtre ; puis toute empreinte **vue dans `auth.log` sans être déclarée** en 🔴.
+
+**Contre-épreuve sur trois branches, exécutée sur la machine :**
+
+| cas | attendu | obtenu |
+|---|---|---|
+| réel | 3 clés, dont 2 sans restriction | **3 déclarées, 2 en 🟠, 0 empreinte non déclarée** |
+| `authorized_keys` illisible | refus de conclure | *« inventaire NON FAIT, ce n'est pas “aucune clé” »* |
+| témoin amputé de la clé **qui a servi** | 🔴 | **🔴 EMPREINTE NON DÉCLARÉE : SHA256:cdd9XFoV…** |
+
+⚠️ **Le premier cas dégénéré que j'avais écrit ne testait pas ce que je croyais** : j'avais retiré
+du témoin la clé `vizyo-auth`, qui a **zéro** connexion dans la fenêtre de 7 jours — le détecteur
+ne pouvait donc pas crier, et son silence ne prouvait rien. Refait en retirant la clé aux 6 310
+connexions. *Un cas dégénéré qui passe pour la mauvaise raison est pire qu'un cas dégénéré absent :
+il fabrique une confiance.*
+
+**COÛT : un `ssh-keygen -lf` et des `grep` sur des lignes déjà en mémoire. Aucune E/S disque,
+aucun fork Docker.**
+
+**`aNePasFaire`** : ⚠️ **ne pas faire de ce bloc un juge de légitimité** — il ne peut pas l'être.
+Une clé inconnue peut être un provisionnement légitime non documenté, et une clé déclarée peut être
+de trop. Il rend deux inventaires et signale les écarts ; nommer un coupable serait VPS-M01.
+⚠️ **Ne pas lire `connexions=0` comme « clé inutilisée »** : `auth.log` ne garde que 7 jours. Les
+**deux** clés de CI affichent 0 ce passage, et l'une a servi 15 fois les 23 et 24 août.
+⚠️ **Ne pas lire « 0 empreinte non déclarée » comme « aucun accès inconnu »** : le canal `guest-exec`
+de l'hyperviseur (VPS-027 / VPS-036) exécute du root **sans passer par SSH** et ne laisse aucune
+ligne ici. La portée est écrite dans la sortie elle-même.
+
+---
+
+### VPS-M76 — Le compteur de boîtiers muets DÉCROÎT à mesure que la panne dure, et sa série se lit comme un rétablissement
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-09-03)
+- **Vu** : 2026-09-03 · **Mesure** :
+
+  | | 2026-09-02 | 2026-09-03 |
+  |---|---:|---:|
+  | `wire_logs` — muets > 6 h | **7** | **6** |
+  | `trackers` — silencieux / 44 (**aucune rétention**) | **12** | **12** |
+
+  **Aucun boîtier n'est revenu.** Le septième (`864035054755856`, muet depuis le 2026-08-29 à
+  21 h 15) a **0 ligne** dans `wire_logs`, dont la borne basse est passée au **2026-08-30 à
+  03 h 00** : il est **sorti de la fenêtre**.
+
+**QUOI — la cause, et elle est pire qu'un plancher.** L'agrégat de fraîcheur posé la veille
+(VPS-M75) portait la mention *« c'est un PLANCHER : il ne voit que les émetteurs encore présents
+dans la fenêtre de rétention »*. **Cette mention était juste, et insuffisante.**
+
+Un plancher suggère une borne prudente, qu'on peut lire dans le bon sens. Celui-ci ne l'est pas :
+
+> **Plus un boîtier se tait longtemps, plus il est CERTAIN de disparaître du compte.** Le compteur
+> est **anti-corrélé** à la gravité qu'il mesure. Sa série — 7, puis 6, puis 5 — se lit exactement
+> comme une flotte qui se rétablit **pendant qu'elle s'éteint**.
+
+*C'est la famille de VPS-M31 : un garde-fou qui se dégrade dans le sens rassurant est plus
+dangereux qu'un garde-fou absent.* Et un avertissement de plus n'y pouvait rien — il en portait
+déjà un, écrit la veille, par moi, et je l'ai relu **après** avoir écrit la phrase qu'il devait
+empêcher.
+
+**Les quatre instruments s'ordonnent par la longueur de leur fenêtre**, mesuré ce passage sur la
+même question :
+
+| instrument | fenêtre | muets > 6 h |
+|---|---:|---:|
+| `wire_logs` | 3,97 j | **6** |
+| `position_sampling_decisions` | 3,95 j | **6** |
+| `positions` | **62 j** | **10** |
+| **`trackers`** (registre) | **aucune** | **12** |
+
+**Quatre réponses, rangées exactement par la taille de la fenêtre.** Ce n'est pas une contradiction
+entre les tables : c'est la démonstration que le nombre publié dépendait de **l'instrument**, pas
+de la flotte.
+
+**QUOI FAIRE — appliqué le 2026-09-03.** Le collecteur cherche, dans la même base, une table de
+**registre** — petite (`reltuples < 10000`, ce qui interdit de parcourir un journal), portant la
+même colonne d'émetteur **et** un horodatage de dernière vue — et publie son compte à côté, avec
+l'écart en toutes lettres et la consigne : *c'est CE chiffre-ci, et lui seul, qui se compare d'un
+jour à l'autre.*
+
+**Contre-épreuve sur les deux branches** : `wire_logs` → `trackers (lastSeenAt)` → **12|44** ;
+`positions` → *« AUCUN REGISTRE trouvé »*, qui **le dit** au lieu de retomber en silence sur le
+plancher (VPS-M02).
+
+**COÛT : 0,08 s MESURÉ** (3 mesures : 0,10 / 0,08 / 0,08 s) — la table fait 44 lignes.
+
+**`aNePasFaire`** : ⚠️ **ne pas supprimer l'agrégat de `wire_logs` au motif que le registre est
+meilleur.** Ils ne disent pas la même chose : le journal date l'arrêt **à la minute** (c'est lui
+qui a donné 08-31 13 h 50), le registre donne le **total**. ⚠️ **Ne pas relever le seuil de 6 h
+pour « lisser » la série** — ce serait le motif exact de VPS-M31. ⚠️ **Et ne pas conclure qu'un
+registre est toujours meilleur** : il n'a pas de fenêtre, donc il ne peut pas dire *quand*, et un
+enregistrement supprimé de l'application en sort sans laisser de trace.
+
+---
 
 ### VPS-M75 — Une comparaison de fenêtres de 24 h publiée comme un état courant, et six boîtiers morts sous une ligne verte
 

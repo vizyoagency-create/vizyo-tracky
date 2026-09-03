@@ -1543,6 +1543,39 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
         # `:=` n affecte qu une fois : deux forks pour toute la section, pas deux par table.
         : "${JOUR_J0:=$(date -u -d '-12 hours' '+%a' 2>/dev/null || echo '?')}"
         : "${JOUR_J1:=$(date -u -d '-36 hours' '+%a' 2>/dev/null || echo '?')}"
+        # ⚠️⚠️ HEURISTIQUE ELARGIE LE 2026-09-03 — ANGLE MORT N° 2, FERME AU 4e REPORT.
+        # Elle ne connaissait que des colonnes TEXTE (`imei`, `deviceid`...). `positions` — la
+        # plus grosse table de la production, 459 Mo — porte son emetteur en `trackerId`, une
+        # cle etrangere UUID vers `trackers.id`. Elle etait donc « emetteurs NON MESURES »
+        # depuis toujours, et c est precisement cette table qui a du servir A LA MAIN de
+        # contre-epreuve a VPS-038 le 2026-09-02 : sans une SECONDE table alimentee par un
+        # AUTRE chemin de code, « six emetteurs ont disparu » et « la colonne imei a cesse
+        # d etre remplie » rendent la meme sortie — et la seconde fabriquerait un incident
+        # majeur a partir d un defaut d ecriture.
+        #
+        # Le piege annonce des le 2026-09-02 est desarme par la clause `est_cle_primaire` :
+        # sans elle, `positions.id` (uuid, cle primaire) serait retenu et le collecteur
+        # publierait « 1,5 million d emetteurs distincts » — un compteur qui compte les LIGNES
+        # en se presentant comme un compte d emetteurs, soit VPS-M01 sous sa forme la plus pure.
+        # Le controle se fait contre `key_column_usage`, donc sur le catalogue, pas sur le nom.
+        #
+        # ⚠️ COUT : +0,84 s au total, MESURE sur l EMSEL COMPLET (les trois agregats, tel qu il
+        #    tourne reellement) — 5 paires appariees le 2026-09-03, la premiere jetee :
+        #      positions                   0,26/0,25/0,24/0,28 s sans  →  0,97/0,90/0,97/1,06 avec  = +0,72 s
+        #      position_sampling_decisions 0,13/0,13/0,11 s sans       →  0,25/0,25/0,24 avec       = +0,12 s
+        #    ⚠️⚠️ UN PREMIER JET AVAIT ECRIT « +0,48 s », ET CE CHIFFRE ETAIT FAUX DE 43 % : il
+        #    ne chronometrait que les DEUX `count(DISTINCT)`, en oubliant le 3e agregat de
+        #    fraicheur (le `GROUP BY` de VPS-M75), qui est un SECOND parcours. C est l erreur
+        #    du 2026-09-01 a l identique — « juste sur les E/S, faux sur le processeur ». Mesurer
+        #    un correctif AMPUTE de la moitie qu on vient d ajouter est le defaut le plus facile
+        #    a commettre, parce que la mesure repond quand meme.
+        #    Un jet plus ancien encore chronometrait une requete qui ECHOUAIT (0,72 s) : les DEUX
+        #    requetes sont desormais controlees rendre une VALEUR avant d etre chronometrees —
+        #    un chronometre sur une erreur mesure la vitesse de l erreur.
+        # ⚠️ Cette seconde est ajoutee a une collecte DEJA hors budget (VPS-M56, 17e
+        #    depassement ce passage). C est un echange assume et il faut l ecrire : 0,67 % de
+        #    la duree contre la capacite de distinguer une flotte amputee d un defaut
+        #    d ecriture, sur la table qui porte la donnee METIER.
         EMCOL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
           "SELECT column_name FROM information_schema.columns
             WHERE table_name='$t' AND data_type IN ('text','character varying')
@@ -1550,6 +1583,21 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
             ORDER BY CASE lower(column_name) WHEN 'imei' THEN 1 WHEN 'deviceid' THEN 2
                                              WHEN 'device_id' THEN 3 ELSE 9 END
             LIMIT 1;" 2>/dev/null)
+        if [ -z "$EMCOL" ]; then
+          EMCOL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+            "SELECT c.column_name FROM information_schema.columns c
+              WHERE c.table_name='$t' AND c.data_type='uuid'
+                AND (c.column_name ~ 'Id\$' OR c.column_name ~ '_id\$')
+                AND c.column_name NOT IN (
+                      SELECT k.column_name FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage k
+                          ON k.constraint_name = tc.constraint_name
+                       WHERE tc.table_name='$t' AND tc.constraint_type='PRIMARY KEY')
+              ORDER BY CASE WHEN lower(c.column_name) LIKE '%tracker%' THEN 1
+                            WHEN lower(c.column_name) LIKE '%device%'  THEN 2 ELSE 9 END,
+                       c.ordinal_position
+              LIMIT 1;" 2>/dev/null)
+        fi
         # ⚠️⚠️ TROISIEME AGREGAT AJOUTE LE 2026-09-02 — VPS-M75. UNE FENETRE DE 24 h RETARDE LA
         # DETECTION D UN ARRET DE 24 h, ET LE RAPPORT PUBLIE CE RETARD COMME UN ETAT COURANT.
         # Le 2026-09-01 a 07:39, ce bloc a publie « ✅ flotte STABLE (38 contre 38) » et le
@@ -1575,6 +1623,53 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
         else
           EMSEL="-1, -1, ''"
         fi
+        # ⚠️⚠️ AJOUTE LE 2026-09-03 — VPS-M76. LE COMPTEUR DE SILENCE DECROIT QUAND LA PANNE DURE.
+        # L agregat de fraicheur pose la veille (VPS-M75) porte la mention « c est un PLANCHER,
+        # il ne voit que les emetteurs encore presents dans la fenetre de retention ». Cette
+        # mention etait juste — et INSUFFISANTE, ce que le passage suivant a montre en un jour :
+        #
+        #   2026-09-02 : 🔴 7 emetteurs muets      2026-09-03 : 🔴 6 emetteurs muets
+        #
+        # Rien ne s est ameliore. Le 7e (864035054755856, muet depuis le 08-29 21 h 15) est
+        # simplement SORTI de la fenetre de retention de wire_logs (borne basse : 08-30 03 h 00,
+        # verifie — il a 0 ligne dans la table). Le registre `trackers`, lui, qui n a AUCUNE
+        # retention, compte 12 silencieux sur 44 les DEUX jours.
+        #
+        # 🔑 LE DEFAUT EST PIRE QU UN PLANCHER : plus un boitier se tait longtemps, plus il est
+        # CERTAIN de disparaitre du compte. Le compteur est donc ANTI-CORRELE a la gravite qu il
+        # mesure, et sa serie (7 → 6 → 5...) se lit exactement comme une flotte qui se retablit
+        # pendant qu elle s eteint. Un plancher qui SE DEGRADE avec le temps n est pas une borne
+        # prudente, c est un indicateur qui ment dans le sens rassurant — la famille VPS-M31.
+        #
+        # Le remede n est pas un avertissement de plus : c est une source SANS fenetre. On
+        # cherche donc, dans la MEME base, une table de REGISTRE — petite, portant la meme
+        # colonne d emetteur ET un horodatage de derniere vue — et on publie son compte a cote.
+        # ⚠️ COUT : 0,08 s MESURE (3 mesures : 0,10 / 0,08 / 0,08 s le 2026-09-03) — la table
+        #    fait 44 lignes. Le `reltuples < 10000` garantit qu on ne parcourt jamais un journal.
+        # ⚠️ PORTEE : ce recoupement n existe que si un registre est trouve. Quand il ne l est
+        #    pas, le bloc le DIT — il ne retombe pas silencieusement sur le plancher (VPS-M02).
+        REGSIL=""
+        if [ -n "$EMCOL" ]; then
+          REG=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+            "SELECT c.table_name || '|' || ts.column_name
+               FROM information_schema.columns c
+               JOIN pg_class pc ON pc.relname = c.table_name
+               JOIN LATERAL (SELECT column_name FROM information_schema.columns
+                              WHERE table_name = c.table_name
+                                AND data_type LIKE 'timestamp%'
+                                AND (column_name ~* '^last.*(seen|frame|contact)' )
+                              ORDER BY ordinal_position LIMIT 1) ts ON true
+              WHERE c.column_name = '$EMCOL' AND c.table_schema='public'
+                AND c.table_name <> '$t' AND pc.reltuples BETWEEN 0 AND 10000
+              ORDER BY pc.reltuples LIMIT 1;" 2>/dev/null)
+          if [ -n "$REG" ]; then
+            RT=${REG%%|*}; RC=${REG##*|}
+            REGSIL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
+              "SELECT count(*) FILTER (WHERE \"$RC\" <= now() - interval '6 hours' OR \"$RC\" IS NULL),
+                      count(*) FROM \"$RT\";" 2>/dev/null)
+            [ -n "$REGSIL" ] && REGSIL="$RT|$REGSIL"
+          fi
+        fi
         docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
           "SELECT coalesce(min(\"$COL\")::date::text,'vide'),
                   coalesce(max(\"$COL\")::date::text,'vide'),
@@ -1589,7 +1684,7 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                   count(*) FILTER (WHERE \"$COL\" >  now() - interval '8 days'
                                      AND \"$COL\" <= now() - interval '7 days')
            FROM \"$t\";" 2>/dev/null |
-        awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" \
+        awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" -v regsil="${REGSIL:-}" \
                   -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" 'NF>=12 {
             deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
             e0=$9+0; e1=$10+0; muets=$11; j7=$12+0;
@@ -1652,6 +1747,16 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                 else
                   printf "         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,\n            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.\n";
                 printf "         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de\n            retention (%.2f j). Un boitier muet depuis plus longtemps a disparu de la table\n            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».\n", wj;
+                # ── VPS-M76 : la source SANS fenetre, qui seule permet de lire la SERIE ──
+                if (regsil != "" && split(regsil, rr, "|") == 3) {
+                  printf "         📋 REGISTRE %s (AUCUNE retention) : %d silencieux sur %d enregistres.\n", rr[1], rr[2]+0, rr[3]+0;
+                  if (rr[2]+0 > nm)
+                    printf "            🔴 LE REGISTRE EN COMPTE %d DE PLUS que la ligne ci-dessus. Lecart nest PAS\n               une contradiction : cest exactement le nombre de boitiers muets depuis si\n               longtemps quils ont quitte la fenetre de retention. ⚠️ CONSEQUENCE A LIRE\n               AVANT DE COMPARER DEUX PASSAGES : le compteur du journal DECROIT a mesure que\n               la panne DURE — sa serie se lit comme un retablissement pendant que la flotte\n               steint. Cest CE chiffre-ci, et lui seul, qui se compare dun jour a lautre\n               (VPS-M76, mesure du 2026-09-03 : 7 → 6 cote journal, 12 → 12 cote registre).\n", (rr[2]+0) - nm;
+                  else if (rr[2]+0 == nm)
+                    printf "            ✅ les deux sources saccordent : aucun boitier muet nest sorti de la fenetre.\n";
+                } else {
+                  printf "         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « %s » et un\n            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI\n            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre\n            passage (VPS-M76).\n", em;
+                }
               }
             } else {
               printf "         (emetteurs : %d sur 24 h, %d les 24 h precedentes — taux par emetteur non calculable)\n", e0, e1;
@@ -1777,6 +1882,66 @@ if [ -n "$SRC" ]; then
   echo "  IP dont des connexions ont REUSSI (a reconnaitre : ce sont vos acces) :"
   echo "$ECH" | grep "Accepted" \
     | grep -oE "([0-9]{1,3}\.){3}[0-9]{1,3}" | sort | uniq -c | sort -rn | head -5 | sed 's/^/    /'
+  # ⚠️⚠️ AJOUTE LE 2026-09-03 — VPS-M77. L AUDIT NE COMPTAIT QUE DES IP, JAMAIS DES CLES,
+  # ET UNE TROISIEME CLE ROOT EST APPARUE LE 2026-08-23 SANS QUE ONZE PASSAGES NE LA NOMMENT.
+  #
+  # VPS-012 est classe APPLIQUE depuis le 2026-08-04 sur la phrase « aucune cle inconnue ».
+  # Cette phrase a ete verifiee A LA MAIN a quelques passages (08-09, 08-11, 08-16 a 08-20),
+  # puis plus du tout — et le collecteur, lui, ne l a JAMAIS verifiee : il affiche un top 5
+  # des IP, ce qui aide a reconnaitre ses acces et ne dit RIEN de la cle employee. Une IP
+  # d Azure ressemble a une autre IP d Azure.
+  #
+  # Mesure du 2026-09-03 : `github-actions-vizyo-auth` (SHA256:OTSnEmsW...) est ACTIVE dans
+  # authorized_keys, premiere utilisation le 2026-08-23 a 10 h 58 depuis le poste d admin puis
+  # depuis douze IP Azure — et elle ne porte AUCUNE des options de restriction que VPS-012
+  # avait posees sur l autre cle de CI le 2026-08-04. Le durcissement a donc regresse, sur une
+  # cle ajoutee APRES lui, et rien ne l a dit.
+  #
+  # ⚠️ CE BLOC NE JUGE PAS DE LA LEGITIMITE D UNE CLE — il ne peut pas. Il rend deux
+  #    inventaires cote a cote (declarees / vues) et signale les ecarts. C est au lecteur de
+  #    trancher : une cle inconnue peut etre un provisionnement legitime non documente, et une
+  #    cle declaree peut etre de trop. Nommer un coupable ici serait VPS-M01.
+  # ⚠️ COUT : un `ssh-keygen -lf` et un `grep` sur des lignes DEJA en memoire ($ECH). Aucune
+  #    E/S disque supplementaire, aucun fork Docker.
+  echo "  ── Cles SSH : ce qui est DECLARE contre ce qui a SERVI (VPS-012 / VPS-M77) ──"
+  AK=/root/.ssh/authorized_keys
+  if [ -r "$AK" ]; then
+    # Empreintes DECLAREES et actives, avec leur commentaire et leurs options.
+    # Une ligne dont le 1er champ commence par ssh-/ecdsa-/sk- ne porte AUCUNE option.
+    DECL=$(awk '!/^[[:space:]]*#/ && NF>0 {
+             opt = ($1 ~ /^(ssh-|ecdsa-|sk-)/) ? "-" : $1;
+             print $NF "\t" opt }' "$AK" 2>/dev/null)
+    NB_DECL=$(printf '%s\n' "$DECL" | grep -c . )
+    printf '    declarees et ACTIVES : %s\n' "$NB_DECL"
+    ssh-keygen -lf "$AK" 2>/dev/null | while read -r _bits fp comment _type; do
+      o=$(printf '%s\n' "$DECL" | awk -F'\t' -v c="$comment" '$1==c {print $2; exit}')
+      vue=$(echo "$ECH" | grep -c "$fp")
+      if [ "$o" = "-" ]; then
+        printf '      %-28s %s  connexions=%-5s 🟠 AUCUNE option de restriction\n' "$comment" "$fp" "$vue"
+      else
+        printf '      %-28s %s  connexions=%-5s ✅ restreinte (%s)\n' "$comment" "$fp" "$vue" "$o"
+      fi
+    done
+    # L ecart qui compte : une empreinte qui a SERVI et qui n est pas declaree.
+    VUES=$(echo "$ECH" | grep -oE 'SHA256:[A-Za-z0-9+/]+' | sort -u)
+    NB_VUES=$(printf '%s\n' "$VUES" | grep -c . )
+    INC=0
+    for f in $VUES; do
+      ssh-keygen -lf "$AK" 2>/dev/null | grep -q "$f" || { INC=$((INC+1)); printf '      🔴 EMPREINTE NON DECLAREE : %s\n' "$f"; }
+    done
+    printf '    empreintes VUES sur la fenetre : %s  |  non declarees : %s\n' "$NB_VUES" "$INC"
+    if [ "$INC" -eq 0 ]; then
+      echo "    ✅ toute empreinte ayant servi est declaree dans authorized_keys."
+      echo "       ⚠️ PORTEE : ceci ne dit PAS « aucun acces inconnu ». Le canal guest-exec de"
+      echo "          l hyperviseur (VPS-027/VPS-036) execute du root SANS passer par SSH — il ne"
+      echo "          laisse aucune ligne ici. Cette conclusion vaut sur les acces SSH, et sur eux seuls."
+    fi
+    echo "       ⚠️ Une empreinte ABSENTE de la fenetre de 7 j n est pas une cle inutilisee :"
+    echo "          c est une cle qui n a pas servi CES 7 JOURS. connexions=0 n autorise donc"
+    echo "          aucun retrait sans une autre verification (VPS-M02)."
+  else
+    echo "    (authorized_keys illisible — inventaire NON FAIT, ce n est pas « aucune cle »)"
+  fi
   # ⚠️ AJOUTE LE 2026-08-05. Le compte d'echecs porte sur TOUTE la fenetre : 176 echecs se lit
   # comme « on est attaque en ce moment » alors que le dernier datait de 22 heures. La DATE du
   # dernier echec est l'information qui manquait — c'est elle qui dit si l'attaque est en
