@@ -46,7 +46,7 @@
       "id": "TRK-063",
       "titre": "Une plaque avec un point median fait tomber TOUS les telechargements du vehicule",
       "source": "http",
-      "statut": "CORRECTIF_PROPOSE",
+      "statut": "CORRIGE",
       "gravite": 1,
       "vuPremiere": "2026-09-04",
       "vuDerniere": "2026-09-04",
@@ -62,7 +62,7 @@
       "id": "TRK-064",
       "titre": "La chaine d alerte de vitesse est deployee, et activee nulle part",
       "source": "angle mort - aucune ligne",
-      "statut": "NON_CORRIGE",
+      "statut": "CORRECTIF_PROPOSE",
       "gravite": 1,
       "vuPremiere": "2026-09-04",
       "vuDerniere": "2026-09-04",
@@ -78,7 +78,7 @@
       "id": "TRK-065",
       "titre": "42 notifications non remises faute d appareil abonne, dont 21 pour un compte technique",
       "source": "sentinelles",
-      "statut": "TERRAIN",
+      "statut": "CORRECTIF_PROPOSE",
       "gravite": 3,
       "vuPremiere": "2026-09-04",
       "vuDerniere": "2026-09-04",
@@ -94,7 +94,7 @@
       "id": "TRK-061",
       "titre": "Le compte du fournisseur IA est a sec, et le dispositif dit appel malforme",
       "source": "AI_OPTIMIZER / http",
-      "statut": "NON_CORRIGE",
+      "statut": "CORRECTIF_PROPOSE",
       "gravite": 1,
       "vuPremiere": "2026-09-03",
       "vuDerniere": "2026-09-04",
@@ -126,7 +126,7 @@
       "id": "TRK-060",
       "titre": "La collecte de metriques rend l erreur de transport brute",
       "source": "system-metrics",
-      "statut": "NON_CORRIGE",
+      "statut": "CORRECTIF_PROPOSE",
       "gravite": 3,
       "vuPremiere": "2026-09-02",
       "vuDerniere": "2026-09-04",
@@ -1188,7 +1188,7 @@
       "slug": "ROADMAP-CORRECTIFS.md",
       "title": "Roadmap des correctifs — audit du 20/08",
       "section": "guide",
-      "order": 0,
+      "order": 3,
       "description": "Plan d'exécution des six correctifs du 20/08 : pourquoi, où dans le code, le geste, et comment prouver que c'est réparé."
     },
     {
@@ -1350,6 +1350,33 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-09-04",
+      "origine": "agent",
+      "rapport": "ROADMAP-CORRECTIFS.md",
+      "verdict": "Passe de correction demandee par le proprietaire apres l audit du matin : les 17 fiches ouvertes sont classees dans une roadmap, et cinq ont ete executees dans l ordre. Quatre correctifs sont ecrits, testes et commites sur une branche non poussee ; le cinquieme est requalifie parce qu il exige une migration, exclue d une passe automatique. Suite API complete verte, 207 suites et 2979 tests.",
+      "chiffres": {
+        "fichesOuvertesAuDepart": 17,
+        "correctifsCommites": 4,
+        "requalifiees": 1,
+        "testsNeufs": 12,
+        "suitesApi": 207,
+        "testsApi": 2979,
+        "testsApiEnEchec": 0
+      },
+      "fiches": {
+        "nouvelles": 0,
+        "misesAJour": 6
+      },
+      "aTraiter": [
+        "TRK-063",
+        "TRK-061",
+        "TRK-064",
+        "TRK-062",
+        "TRK-032"
+      ],
+      "note": "CINQ TACHES EXECUTEES DANS L ORDRE DE LA ROADMAP. TRK-064 : la sentinelle qui devait dire qu un exces n a pas produit son alerte sortait sur sa premiere ligne parce qu aucune societe n avait le reglage actif — elle rendait le MEME silence qu une chaine en parfait etat. Elle sait desormais dire qu elle n a rien a garder, en DEGRADATION et une fois par semaine. TRK-061 : un compte sans credit n est plus classe faute d appel ; il sort en provider_unfunded, niveau DEGRADATION, avec un message qui NOMME L ACTION et ne cite aucun sous-traitant, le motif du fournisseur partant dans le contexte. Le meme correctif est applique au client GPT, jumeau exact — un defaut corrige d un seul cote revient toujours par l autre. Et la cause du un incident deux lignes est trouvee : l appelant passait la CHAINE du message au journal, jamais l instance, or le marqueur anti-doublon ne peut se poser que sur un objet. TRK-060 : le message dit desormais la consequence avant la pile de transport, et le motif technique est conserve en fin de phrase — on change l ordre, on n efface rien. TRK-065 : les comptes techniques sont ecartes du decompte, le nombre d ecartes restant visible au contexte. TRK-062 EST REQUALIFIE ET C EST LA DECISION LA PLUS UTILE DE LA PASSE : l etat terminal cherche existe deja dans le produit, SENT_UNCONFIRMED, pose pour les commandes moteur avec exactement le bon raisonnement — mais il vit dans une AUTRE enumeration, et l ajouter demande une migration, que le paragraphe 8 exclut d une passe automatique au meme titre qu une garde de securite. La passe s arrete donc et le DIT, plutot que de choisir en douce un statut existant qui mentirait. CE QUE LA PASSE A APPRIS : la premiere version du correctif TRK-064 declenchait dans SIX mondes de test des AUTRES sentinelles. La tentation etait d ajuster les six fixtures ; la verite etait que le correctif confondait aucune societe armee et aucune societe du tout, qui ne veulent pas du tout dire la meme chose. Les tests des autres sentinelles ont trouve un defaut de conception que le test de celle-ci ne pouvait pas voir. ENFIN, UN STATUT RECTIFIE : TRK-063 est passe a CORRIGE apres verification sur l ARTEFACT SERVI — l image a ete reconstruite a 01h14m35, quatre minutes apres la collecte de l audit, et le marqueur du correctif y est bien present. Le rapport du matin disait donc vrai a 01h10 et faux a 01h15."
+    },
     {
       "date": "2026-09-04",
       "origine": "agent",

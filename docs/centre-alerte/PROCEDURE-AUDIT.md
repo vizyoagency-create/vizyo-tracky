@@ -5,82 +5,88 @@
 
 ---
 
-## 🟢 PASSAGE DU 2026-08-27 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
+## 🟢 PASSAGE DU 2026-09-05 — CONSIGNE PARTICULIÈRE, À LIRE AVANT LA COLLECTE
 
-**La journée du 26/08 est CLOSE.** Audit du matin + **deux passes de correction** demandées par le
-propriétaire. Quatre correctifs sont **écrits, testés et commités** sur la branche
-`fix/trk-051-acknowledged-sans-accuse` — **non poussée**. Ne pas les réécrire : vérifier s'ils ont
-été déployés, et **si oui, les exercer**.
+**La journée du 04/09 est CLOSE.** Audit du matin **+ une passe de correction** demandée par le
+propriétaire, qui a produit une **[roadmap des correctifs](./ROADMAP-CORRECTIFS.md)** — les 17
+fiches ouvertes, classées, avec pour chacune l'état `FAIT` / `WARN` / `HUMAIN`.
 
-### 🎯 LA TABLE DES TESTS EN ATTENTE — le cœur de ce passage
+👉 **Lire [`ROADMAP-CORRECTIFS.md`](./ROADMAP-CORRECTIFS.md) avant la collecte.** Ce fichier
+remplace la liste éparse des correctifs en attente : il dit ce qui est en ligne, ce qui est
+commité sans être déployé, et ce qui attend une décision humaine.
 
-Un correctif en production que rien n'a jamais mis à l'épreuve rend **exactement le même zéro**
-qu'un correctif qui marche. C'est le piège le plus coûteux de ce dispositif : TRK-021 est en ligne
-depuis le 23/08 et n'a **jamais** été essayé — onze jours pendant lesquels son compteur à zéro
-ressemblait à une réussite.
+### 📦 QUATRE CORRECTIFS COMMITÉS ET NON DÉPLOYÉS — branche `fix/roadmap-trk-064-061-062-060-065`
 
-**Règle : un test qui attend depuis plus de 7 jours doit être PROVOQUÉ ou REQUALIFIÉ.** Le laisser
-attendre en silence, c'est le transformer en fausse bonne nouvelle.
+⚠️ **Ils ne sont PAS en production.** Vérifier sur l'artefact servi avant de conclure quoi que ce
+soit sur leur effet. Si un redéploiement a eu lieu entre-temps, ils deviennent exerçables :
 
-| Fiche | Ce qu'il faut provoquer | Preuve attendue | En attente depuis |
-|---|---|---|---|
-| [TRK-021](./REFERENCE-ERREURS.md#trk-021) | une commande d'un template **SMS-only** (`shock_on`) | elle part **en SMS** — `channel = 'SMS'` | 🔴 **11 j** (15/08) |
-| [TRK-022](./REFERENCE-ERREURS.md#trk-022) | deux alarmes du même type, même véhicule, < 6 h | la seconde **ne crée pas** d'alerte | 🟠 7 j |
-| [TRK-032](./REFERENCE-ERREURS.md#trk-032) | une trame `ac alarm` pendant une coupure programmée | l'alarme **n'est plus éteinte** hors fenêtre | 🟠 4 j |
-| [TRK-050](./REFERENCE-ERREURS.md#trk-050) | un **redémarrage d'API** avec une session ouverte | la session **survit** | 🔵 1 j |
-| [TRK-046](./REFERENCE-ERREURS.md#trk-046) *(filet)* | un véhicule qui **ressort en roulant** d'un parking validé, en plage de coupure | alerte `OFF_SCHEDULE_MOVEMENT` **CRITICAL** — 0 depuis toujours | 🔵 1 j |
-
-⚠️ **Recalculer la colonne « en attente depuis » à chaque passage**, et faire monter la fiche en
-tête du rapport quand elle franchit 7 jours.
-
-### 📦 DÉPLOYÉS le 26/08 à 05:55-05:57 — à EXERCER
-
-| Fiche | Ce qui est en ligne | Le geste qui le prouvera |
+| Fiche | Commit | Le geste qui le prouvera |
 |---|---|---|
-| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | `ACKNOWLEDGED` scindé sur `ackResponse` | ouvrir le **mode fix** d'un boîtier : badge **AMBRE** « CIBLE ATTEINTE (mesurée) », plus aucun vert sans réponse matérielle |
-| [TRK-018](./REFERENCE-ERREURS.md#trk-018) nº 4 | écran `/admin/immobilisations` | l'ouvrir : 316 lignes `SENT_UNCONFIRMED`, ventilées par canal et par véhicule |
-| [TRK-037](./REFERENCE-ERREURS.md#trk-037) | niveau `DEGRADATION` | 🗓️ **la PROCHAINE ligne Overpass doit porter `level = 'DEGRADATION'`** — et ne plus compter comme un défaut |
-| [TRK-020](./REFERENCE-ERREURS.md#trk-020) | colonnes d'acquittement nommées | ✅ déjà vérifié le 26/08 |
+| **TRK-064** | `bacc9b44` | 🗓️ **Une ligne `DEGRADATION` de source `sentinelles`** doit apparaître : « les alertes de vitesse ne sont activées sur AUCUNE des N sociétés ». Refroidissement **hebdomadaire** — une seule ligne, pas une par jour. |
+| **TRK-061** | `eadc0e72` | 🗓️ Le prochain échec IA facturé doit porter `level = 'DEGRADATION'`, `kind = 'provider_unfunded'`, un `motifFournisseur` dans le contexte — et **UNE seule ligne**, plus deux. |
+| **TRK-060** | `3c36cce0` | 🗓️ Une ligne `system-metrics` doit désormais commencer par « Un point de mesure système n'a pas pu être enregistré », pas par `Invalid prisma.$queryRaw()`. |
+| **TRK-065** | `68034a1d` | 🗓️ La ligne hebdomadaire de la sentinelle nº 5 doit tomber de **42 à ~21** et ne plus citer `system@tracky.local`, avec `comptesTechniquesEcartes: 1` au contexte. |
 
-⚠️ **Marqueurs vérifiés sur l'ARTEFACT SERVI**, en littéraux de chaîne. L'orphelin `api-run` a été
-produit **et nettoyé** — le vérifier reste obligatoire après tout `docker compose run`.
+🔴 **La double condition de TRK-061 vaut d'être relevée séparément** : le compteur `ERROR` doit
+tomber **sans** que le total de la famille bouge — la ligne existe toujours, en `DEGRADATION`.
+*Si les deux tombent, on a supprimé l'alerte, pas le défaut.*
 
-### ✅ LE CENTRE D'ALERTE EST À **0** DEPUIS LE 26/08 — ce que ça change pour ce passage
+### 🎯 LES SEPT LOTS DU 04/09 N'AVAIENT RIEN EXERCÉ — c'est LA mesure du jour
 
-**19 lignes archivées** le 26/08 à la demande du propriétaire (15 Overpass + 3 TRIP_AUTOMATION
-antérieures à leur correctif + 1 `sms-heartbeat` au verdict attendu). **`actives = 0`**, et les
-**32 lignes sont TOUJOURS en base** : un archivage est un `UPDATE` réversible, chaque ligne porte
-son motif. Témoin intact — **4 déclencheurs, 0 constat de disparition**.
+Au moment de l'audit du 04/09, **0 analyse de trajet** avait tourné sous le nouveau code (bascule
+à 01:03, premier passage attendu ~03:47). Quatre sentinelles sur six étaient donc muettes **par
+calendrier**, pas par bonne santé. Ce passage-ci est le premier qui peut les juger :
 
-🔴 **Conséquence directe pour la lecture de ce passage : le point de départ n'est plus « combien de
-lignes ? » mais « QUELLE EST LA PREMIÈRE ? ».** Toute ligne active trouvée aujourd'hui est
-**postérieure au 26/08 05:57** et mérite d'être instruite, sans exception — elle ne peut plus être
-noyée dans un fond d'écran ancien.
+| À relever | Attendu | Ce que ça tranche |
+|---|---|---|
+| `limitsCoverage` sur les analyses postérieures au 04/09 01:03 | **non NULL** | 🔴 **Encore 0 = le lot V3 n'écrit JAMAIS**, et la note plafonnée du lot V4 comme la sentinelle nº 4 sont sans matière. C'était 0 sur 641 analyses / 3 jours. |
+| Sentinelles nº 2 et nº 3 | une ligne, ou un silence **expliqué** | Elles dépendent de `detail.vitesse.pointsEcartes` et `aVerifier`, écrits par les lots V1/V2. |
+| [TRK-016](./REFERENCE-ERREURS.md#trk-016) — recalage cartographique | taux mesuré **sous le nouveau code** | Le chantier croise les lots V2/V3. *Un chantier ouvert sur une mesure périmée est un chantier ouvert pour rien.* |
 
-⚠️ **Et un zéro ne dit toujours pas que la plateforme est saine.** Il dit qu'aucune ligne n'attend
-d'action. **10 fiches restent ouvertes**, dont **5 correctifs en production que rien n'a jamais
-exercés** (table ci-dessus). Les angles morts du §3.3 restent la partie la plus rentable de l'audit.
+### 🗓️ LES TESTS DATÉS — deux dépassent la règle des 7 jours
+
+| Fiche | En attente | Décision proposée dans la roadmap |
+|---|---|---|
+| [TRK-032](./REFERENCE-ERREURS.md#trk-032) | 🔴 **14 j** | **REQUALIFIER** — 7 coupures d'alimentation cette semaine, toutes hors plage. L'occasion ne viendra pas seule. |
+| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | 🟠 **10 j** | **CONFIER À UN HUMAIN** — geste d'interface, impossible à provoquer en lecture seule. |
+| [TRK-053](./REFERENCE-ERREURS.md#trk-053) | 4 j | Comparer `alertes_depuis_declaration` à **7** (valeur du 04/09). Toute alerte neuve sur un véhicule déclaré = **régression**. |
+| [TRK-052](./REFERENCE-ERREURS.md#trk-052) | 4 j | Chercher deux alertes de même type et même véhicule dont la première est acquittée : la seconde à moins de 6 h = le correctif n'a pas tenu. |
+| [TRK-059](./REFERENCE-ERREURS.md#trk-059) | 3 j | Les 2 commandes ouvertes le 04/09 à 00:55 et 00:58 sont postérieures au correctif : lire leur motif de clôture. |
+
+### 🤝 CE QUI ATTEND UN HUMAIN — à rappeler dans le rapport tant que ce n'est pas fait
+
+1. 🔴 **Recharger le compte Anthropic.** À sec depuis le 03/09 00:13. Aucun correctif ne le fera —
+   le nôtre ne fait que le DIRE correctement.
+2. **Décider du réglage par défaut des alertes de vitesse** (TRK-064). Les activer partout sans
+   seuil réfléchi ramènerait le déluge de 1 317 alertes de TRK-022.
+3. **Prévenir le second titulaire de compte sans appareil** (TRK-065) — 21 notifications perdues.
+4. **Trancher la migration de TRK-062** : `SENT_UNCONFIRMED` existe pour les commandes moteur, pas
+   pour celles des boîtiers. Spec prête dans la roadmap.
 
 ### Les trois pièges intemporels
 
 1. **Vérifier contre l'ARTEFACT SERVI, jamais contre la fiche.** Si fiche et artefact se
    contredisent, **l'artefact a raison, et la fiche se corrige dans le même passage.**
+   *Payé encore le 04/09 : le correctif de TRK-063 était commité neuf minutes après la
+   construction de l'image, et quatre minutes plus tard un second déploiement l'a embarqué —
+   le rapport du matin disait donc vrai à 01:10 et faux à 01:15.*
 2. **Une double condition n'est franchie que si UN SEUL compteur tombe.** Si les deux tombent
-   ensemble, on a supprimé la fonctionnalité, pas le défaut. *(Appliqué avec succès le 26/08 sur
-   TRK-046 et TRK-018 — les deux compteurs relevés séparément.)*
+   ensemble, on a supprimé la fonctionnalité, pas le défaut.
 3. **`docker logs` est peu fiable sur cet hôte.** Pour PostgreSQL, lire le fichier `LogPath`.
 
-### 🆕 Le piège découvert le 26/08 — le RÉ-ÉTIQUETAGE
+### 🆕 Le piège du 04/09 — UN SILENCE STRUCTUREL
 
-Le « métronome de 72 échecs de commande par jour », rapporté comme un fait solide pendant dix
-jours, était un **artefact d'étiquetage** : `FAILED` est tombé de 72 à 15/jour pendant que
-`ACKNOWLEDGED` montait de 0 à 61, et le **TOTAL n'a pas bougé** (69-79/j sur neuf jours).
+La sentinelle censée dire « un excès n'a pas produit son alerte » sortait sur sa première ligne
+parce qu'aucune société n'avait le réglage actif. **Elle rendait exactement le même silence
+qu'une chaîne d'alerte en parfait état de marche.**
 
-> 🔑 **Quand un compteur tombe, vérifier que la catégorie VOISINE n'a pas monté d'autant.**
-> Comparer le **total de la famille**, pas la classe qu'on surveille. Un ré-étiquetage ressemble
-> trait pour trait à une amélioration — et se raconte encore mieux.
+> 🔑 **Avant de lire un zéro, vérifier que l'instrument était capable de rendre autre chose.**
+> C'est la leçon du témoin désarmé (TRK-026), repayée ici sur l'instrument neuf censé la porter.
+> Un garde-fou doit savoir dire qu'il n'a rien à garder.
 
-⚠️ **10 fiches restent ouvertes** : TRK-001, 014, 016, 018, 021, 022, 027, 035, 037, 051 — dont **4 écrites le 26/08 en attente de déploiement** et **3 en action TERRAIN** (001, 027, 037).
+⚠️ **17 fiches restaient ouvertes au 04/09.** Après cette passe : 4 correctifs commités non
+déployés, 1 requalifiée faute de migration, le reste en attente d'occasion ou de décision humaine.
+Le détail vit dans [`ROADMAP-CORRECTIFS.md`](./ROADMAP-CORRECTIFS.md).
 
 ---
 

@@ -8,6 +8,12 @@
 > vit dans `TACHES-AMELIORATION.md` sous des clés `AM-NNN`, avec sa propre règle « une tâche ne
 > disparaît jamais ». Ici, uniquement les défauts **vus en production** par le centre d'alerte,
 > sous leurs clés `TRK-NNN`. Croisements signalés, jamais dupliqués.
+>
+> 📌 **Ce fichier est le SEUL sans date dans son nom, et c'est délibéré : c'est la roadmap
+> VIVANTE.** `ROADMAP-CORRECTIFS-2026-08-25.md` et `ROADMAP-CORRECTIFS-2026-09-01.md` sont les
+> plans de deux passes de correction passées — ils décrivent ce qui a été fait ces jours-là et ne
+> se mettent plus à jour. *Un dossier qui contient trois roadmaps doit dire laquelle fait foi,
+> sans quoi la plus récemment ouverte gagne — et ce n'est pas un critère.*
 
 ---
 
@@ -97,7 +103,7 @@ générique pour le client, motif du fournisseur dans les métadonnées de la li
 
 ## P1 — défaut réel, correctif écrit, preuve manquante
 
-### TRK-062 · gravité 2 · ✅ FAIT
+### TRK-062 · gravité 2 · 🗓️ WARN *(bloqué sur une migration — spec prête)*
 
 **Ce qui se passe** — Conséquence du **succès** de [TRK-021](./REFERENCE-ERREURS.md#trk-021) : les
 commandes SMS-only partent enfin par SMS, mais elles n'ont plus aucun état terminal. Deux d'entre
@@ -109,6 +115,33 @@ neuf sans jamais croiser sa correction.
 (réponse réelle mesurée à ~4 h le 19/08). Ce qui manque est une **borne supérieure** : au-delà de
 24 h — six fois le pire délai observé — une commande SMS `SENT` devient terminale dans un état
 **distinct de `FAILED`** : la commande *est partie*, c'est la réponse qui manque.
+
+**🔴 POURQUOI CE N'EST PAS FAIT AUJOURD'HUI — et c'est une bonne nouvelle déguisée**
+
+L'état terminal cherché **existe déjà dans le produit** : `SENT_UNCONFIRMED`, posé pour
+[TRK-018](./REFERENCE-ERREURS.md#trk-018) sur les commandes MOTEUR, avec exactement le bon
+commentaire — « *`SENT_UNCONFIRMED` est VOLONTAIREMENT distinct de `FAILED` : « a échoué » et
+« nul ne sait » ne sont pas la même chose* ». Le remède est écrit, testé, en production.
+
+**Mais il vit dans une AUTRE énumération.** `CommandStatus` (moteur) le possède ;
+`TrackerCommandStatus` (boîtiers) ne connaît que `PENDING`, `SCHEDULED`, `SENT`, `ACKNOWLEDGED`,
+`FAILED`, `CANCELLED`. L'ajouter demande une **migration de schéma**.
+
+> ⚠️ La politique de correction (§8 de la procédure) exclut explicitement les migrations d'une
+> passe automatique, au même titre que les gardes de sécurité et les chemins de paiement. Cette
+> passe s'arrête donc ici **et le dit**, plutôt que de choisir en douce un statut existant qui
+> mentirait — `CANCELLED` dirait « annulée » d'une commande bel et bien partie.
+
+*C'est le même motif que la fiche décrit déjà : un remède existe, un chemin neuf ne l'a jamais
+croisé. Il n'est cette fois séparé que par une valeur d'énumération.*
+
+**Spec prête à appliquer** (30 minutes, une fois la migration décidée) :
+
+1. `TrackerCommandStatus` reçoit `SENT_UNCONFIRMED` *(migration Prisma générée, jamais écrite à la main)*.
+2. Un passage périodique — le `@Cron('*/30 * * * * *')` de `TrackerCommandsSchedulerService` fait
+   déjà l'affaire — bascule en `SENT_UNCONFIRMED` toute commande `channel = 'SMS'`, `status = 'SENT'`,
+   sans `ackedAt`, de plus de **24 h**. Six fois le pire délai de réponse jamais observé (~4 h le 19/08).
+3. `collecte.sql` et l'écran « commandes en attente » cessent de compter cet état.
 
 **Vérification, double condition** — les commandes SMS de plus de 24 h quittent
 `commandes_en_attente`, **et** le total de la famille `shock_*` reste inchangé.
@@ -271,10 +304,26 @@ exercé rend exactement le même zéro qu'un correctif qui marche.*
 
 *(rempli au fil de la passe du 2026-09-04)*
 
+Branche : **`fix/roadmap-trk-064-061-062-060-065`** — commitée, **non poussée, non déployée**.
+
 | # | Fiche | État | Preuve |
 |---|---|---|---|
-| 1 | TRK-064 | ⏳ en cours | — |
-| 2 | TRK-061 | ⏳ en cours | — |
-| 3 | TRK-062 | ⏳ en cours | — |
-| 4 | TRK-060 | ⏳ en cours | — |
-| 5 | TRK-065 | ⏳ en cours | — |
+| 1 | **TRK-064** | ✅ **FAIT** | `bacc9b44` · 2 tests neufs, **vérifiés non tautologiques** (ils tombent sur l'ancien code, passent sur le nouveau) · suite sentinelles **28/28** |
+| 2 | **TRK-061** | ✅ **FAIT** *(volet code)* | `eadc0e72` · 5 tests neufs sur les 2 clients + les 2 chemins de journalisation · **69/69** sur `ai/` + agenda |
+| 3 | **TRK-062** | 🗓️ **REQUALIFIÉ** | Bloqué sur une **migration d'énumération** — hors du périmètre d'une passe automatique. Spec prête ci-dessus. |
+| 4 | **TRK-060** | ✅ **FAIT** | `3c36cce0` · spec neuve (le fichier n'en avait aucune) · **10/10** |
+| 5 | **TRK-065** | ✅ **FAIT** | `68034a1d` · couple crie/se-tait · suite observabilité **187/187** |
+
+### Ce que cette passe a appris
+
+**Un correctif qui crie trop est un correctif qui n'est pas fini.** La première version de
+TRK-064 déclenchait dans **six** mondes de test des *autres* sentinelles — dont les fixtures ne
+déclarent aucune société parce qu'elles ne s'y intéressent pas. La tentation était d'ajuster les
+six fixtures ; la vérité était que le correctif confondait deux situations que rien ne
+distinguait dans une requête filtrée : **« aucune société armée » et « aucune société du tout »**.
+Sur une plateforme vide, il n'y a rien à armer et rien à signaler. *Les tests des autres
+sentinelles ont trouvé un défaut de conception que le test de celle-ci ne pouvait pas voir.*
+
+**Et un défaut se corrige des deux côtés à la fois.** Le client GPT est le jumeau exact du client
+Claude : le compte à sec y aurait été classé « faute d'appel » à l'identique. Les deux sont
+traités dans le même commit — *un défaut corrigé d'un seul côté revient toujours par l'autre.*
