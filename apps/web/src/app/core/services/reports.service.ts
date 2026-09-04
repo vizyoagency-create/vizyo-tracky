@@ -13,7 +13,18 @@ import type {
 export interface FleetStatsReportDto {
   fleet: { id: string; name: string };
   period: { from: string; to: string; days: number };
-  vehicles: { total: number; activeDuringPeriod: number };
+  vehicles: {
+    total: number;
+    activeDuringPeriod: number;
+    /**
+     * Les véhicules du périmètre qui n'ont AUCUN trajet sur la période — nommés, pas
+     * seulement comptés. `silencieux` distingue « il n'a pas servi » de « son boîtier
+     * s'est tu » : le premier se mutualise, le second se répare.
+     */
+    idleVehicles: { vehicleId: string; plate: string; group: { id: string; name: string } | null; silencieux: boolean }[];
+    /** Compte RÉEL des immobiles ; la liste ci-dessus est plafonnée. */
+    idleTotal: number;
+  };
   trips: {
     count: number;
     totalKm: number;

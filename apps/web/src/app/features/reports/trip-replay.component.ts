@@ -13,7 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil } from 'lucide-angular';
+import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2 } from 'lucide-angular';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { SpeedingSegmentDto, TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
 import { excesDuTrajet } from '@vizyo/tracky-shared';
@@ -176,6 +176,23 @@ interface RecitTrajet {
                 }
               </div>
             </div>
+            <!-- ══ CITER CE TRAJET AILLEURS (F10) ═══════════════════════════════════
+                 Un trajet précis ne pouvait pas se citer dans un courriel ou un ticket :
+                 il fallait demander à son interlocuteur de le retrouver lui-même dans un
+                 tableau paginé, à partir d'une date et d'une plaque. -->
+            @if (lienPartage()) {
+              <button type="button" (click)="copierLien.emit()"
+                      aria-label="Copier le lien de ce trajet"
+                      title="Copier le lien de ce trajet"
+                      class="tr-replay-lien shrink-0 inline-flex items-center justify-center gap-1.5
+                             h-11 px-3 rounded-full bg-bg-tertiary/80 backdrop-blur-sm
+                             text-fg-secondary hover:text-fg-primary hover:bg-bg-tertiary
+                             border border-border-subtle cursor-pointer transition-colors
+                             text-[11.5px] font-semibold">
+                <lucide-icon [img]="LinkIcon" [size]="15"></lucide-icon>
+                <span class="hidden sm:inline">Copier le lien</span>
+              </button>
+            }
             <button (click)="onClose()"
                     aria-label="Fermer le replay"
                     class="tr-replay-close shrink-0 inline-flex items-center justify-center
@@ -528,11 +545,21 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly vehicleType = input<string>('OTHER');
   /** Si true, affiche le bouton crayon "Modifier la note". */
   readonly canEditNote = input<boolean>(false);
+  /**
+   * Lien PARTAGEABLE de ce trajet, ou `null` quand l'écran hôte n'en fabrique pas.
+   *
+   * ⚠️ Le lien est construit par le PARENT, qui seul connaît l'URL de la page et ses
+   * filtres. Le fabriquer ici obligerait ce composant à connaître la route qui l'affiche —
+   * il est utilisé aussi bien depuis la page Rapports que depuis une fiche véhicule.
+   */
+  readonly lienPartage = input<string | null>(null);
+  readonly copierLien = output<void>();
   readonly closed = output<void>();
   /** Demande au parent d'ouvrir le modal d'edition pour le trip courant. */
   readonly editNote = output<TripDto>();
 
   /** Exposé au template : la légende doit porter la couleur RÉELLE des couches de carte. */
+  protected readonly LinkIcon = Link2;
   protected readonly couleursCarte = COULEURS_CARTE;
   /**
    * Les chiffres de l'en-tête passent par les MÊMES fonctions que le tableau. Une

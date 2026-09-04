@@ -24,7 +24,7 @@ function makeReport(overrides: Partial<FleetStatsReport> = {}): FleetStatsReport
       exploited: 5,
       dormant: 0,
       withoutTracker: 0,
-      dormantVehicles: [],
+      dormantVehicles: [], idleVehicles: [], idleTotal: 0,
     },
     trips: {
       count: 12,
@@ -62,7 +62,7 @@ const REPORT_AVEC_DORMANTS = makeReport({
     dormantVehicles: [
       { vehicleId: 'v4', plate: 'FV-941-LZ', silenceLabel: '89 j' },
       { vehicleId: 'v5', plate: 'FL-787-KV', silenceLabel: '52 j' },
-    ],
+    ], idleVehicles: [], idleTotal: 0,
   },
   trips: {
     count: 12, totalKm: 200, totalDurationHours: 9,
@@ -137,7 +137,7 @@ describe('ReportPdfService — mention « parc exploité »', () => {
         dormantVehicles: [
           { vehicleId: 'v1', plate: 'AA-111-AA', silenceLabel: '90 j' },
           { vehicleId: 'v2', plate: 'AA-222-AA', silenceLabel: '60 j' },
-        ],
+        ], idleVehicles: [], idleTotal: 0,
       },
       trips: {
         count: 0, totalKm: 0, totalDurationHours: 0,

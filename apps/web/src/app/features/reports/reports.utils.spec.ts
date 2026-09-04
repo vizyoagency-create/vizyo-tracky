@@ -24,6 +24,7 @@ import {
   type TripSortShape,
   aggregateKpisFromDaily,
   type DailySummaryShape,
+  estJourIso,
 } from './reports.utils';
 
 describe('reports.utils — formatDuration', () => {
@@ -344,8 +345,15 @@ describe('reports.utils — kpiToSortColumn (mapping KPI→colonne)', () => {
   it('Duree → durationSeconds', () => {
     expect(kpiToSortColumn('totalDuration')).toBe('durationSeconds');
   });
-  it('Trajets → null (non triable)', () => {
-    expect(kpiToSortColumn('tripCount')).toBeNull();
+  /**
+   * ⚠️ ATTENTE INVERSÉE LE 2026-09-04 (F18).
+   *
+   * `null` faisait de la carte « Trajets » une IMPASSE : trois cartes sur quatre affichaient
+   * un nombre et n'offraient rien à en faire. Un compte n'a certes pas de colonne à trier —
+   * mais il a une destination : la liste des trajets, dans son ordre naturel.
+   */
+  it('Trajets → startedAt (la liste, dans son ordre naturel)', () => {
+    expect(kpiToSortColumn('tripCount')).toBe('startedAt');
   });
 });
 
@@ -415,5 +423,42 @@ describe('aggregateKpisFromDaily — les KPI portent sur la période ENTIÈRE', 
     const k = aggregateKpisFromDaily([jour({ totalDistanceMeters: -500, tripCount: -3 })]);
     expect(k.totalDistance).toBe(0);
     expect(k.tripCount).toBe(0);
+  });
+});
+
+/**
+ * ── LA PÉRIODE ARRIVE MAINTENANT PAR L'URL, ET L'URL SE BRICOLE ─────────────────────
+ *
+ * Depuis le 2026-09-04, la page Rapports lit `?from=…&to=…` au démarrage. Un lien tronqué
+ * dans un courriel, un copier-coller de travers ou un paramètre tapé à la main doivent être
+ * IGNORÉS — pas interprétés de travers. Une période fausse ne se voit pas : l'écran affiche
+ * des chiffres parfaitement crédibles pour des dates que personne n'a demandées.
+ */
+describe('estJourIso — ce qu’on accepte de lire dans une URL', () => {
+  it('accepte un jour civil réel', () => {
+    expect(estJourIso('2026-09-04')).toBe(true);
+    expect(estJourIso('2028-02-29')).toBe(true); // année bissextile
+  });
+
+  it('refuse ce qui n’a pas la forme d’un jour civil', () => {
+    expect(estJourIso(null)).toBe(false);
+    expect(estJourIso('')).toBe(false);
+    expect(estJourIso('2026-9-4')).toBe(false);
+    expect(estJourIso('04/09/2026')).toBe(false);
+    expect(estJourIso('2026-09-04T12:00:00Z')).toBe(false);
+    expect(estJourIso('hier')).toBe(false);
+  });
+
+  /**
+   * ⚠️ LE CŒUR DE LA VÉRIFICATION. Ces trois chaînes passent l'expression régulière et
+   * donnent une date VALIDE, mais pas celle qui est écrite : `new Date('2026-02-31')` rend
+   * un 3 mars. Sans ce contrôle, un rapport « du 31 février » s'affichait sur mars.
+   */
+  it('refuse une date bien formée mais inexistante', () => {
+    expect(estJourIso('2026-02-31')).toBe(false);
+    expect(estJourIso('2026-02-30')).toBe(false);
+    expect(estJourIso('2027-02-29')).toBe(false); // 2027 n'est pas bissextile
+    expect(estJourIso('2026-13-01')).toBe(false);
+    expect(estJourIso('2026-04-31')).toBe(false);
   });
 });

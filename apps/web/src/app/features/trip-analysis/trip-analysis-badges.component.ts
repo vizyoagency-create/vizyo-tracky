@@ -233,7 +233,7 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                            alors sur un défaut de type. Le client ne pouvait pas savoir que le
                            chiffre reposait sur une valeur qu'il n'avait jamais donnée — ni qu'il
                            pouvait l'améliorer en trente secondes. -->
-                      @if (a.detail?.carburant; as c) {
+                      @if (a.detail.carburant; as c) {
                         @if (c.source === 'vehicule') {
                           <small>estimation d'après la consommation renseignée sur la fiche du véhicule ({{ c.l100km | number:'1.1-1' }} L/100 km), pas une mesure</small>
                         } @else {

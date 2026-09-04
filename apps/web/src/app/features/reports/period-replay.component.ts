@@ -109,7 +109,25 @@ interface Journee {
 interface TimelineState {
   segments: Segment[];
   totalMs: number;
+  /**
+   * ── LE TOTAL DU REPLAY NE DOIT PAS CONTREDIRE L'INDICATEUR « DISTANCE » ────────────
+   *
+   * Il était re-mesuré sur la trace SIMPLIFIÉE : quelques points suffisent à dessiner un
+   * trajet, pas à en mesurer les kilomètres. Le bandeau du replay affichait donc un total
+   * inférieur à celui de la page qui venait de l'ouvrir, sans que rien ne l'explique — deux
+   * chiffres pour le même mois, sur deux écrans superposés.
+   *
+   * C'est désormais la somme des distances ENREGISTRÉES des trajets rejoués, celle-là même
+   * qu'additionne l'indicateur.
+   */
   totalDistanceMeters: number;
+  /**
+   * Trajets écartés du replay faute de trace exploitable (moins de deux points), et leurs
+   * kilomètres. ⚠️ Comptés, jamais tus : sans eux, un replay de 3 trajets sur 5 passerait
+   * pour un mois de 3 trajets — et l'écart avec l'indicateur redeviendrait inexplicable.
+   */
+  trajetsSansTrace: number;
+  metresSansTrace: number;
   /** Premier point map (pour init du marker). */
   firstLngLat: [number, number] | null;
   /** Tous les points pour fitBounds initial. */
@@ -149,6 +167,12 @@ interface TimelineState {
                   {{ tl.segments.length }} étape{{ tl.segments.length > 1 ? 's' : '' }} ·
                   {{ tripCount() }} trajet{{ tripCount() > 1 ? 's' : '' }} ·
                   {{ (tl.totalDistanceMeters / 1000) | number:'1.1-1' }} km
+                  @if (tl.trajetsSansTrace > 0) {
+                    <!-- ⚠️ Sans cette mention, l'écart avec l'indicateur « Distance » de la
+                         page serait inexplicable : on croirait l'un des deux faux. -->
+                    · {{ tl.trajetsSansTrace }} trajet{{ tl.trajetsSansTrace > 1 ? 's' : '' }}
+                    ({{ (tl.metresSansTrace / 1000) | number:'1.1-1' }} km) sans trace GPS, non rejoué{{ tl.trajetsSansTrace > 1 ? 's' : '' }}
+                  }
                 </div>
               }
             </div>
@@ -707,10 +731,31 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   // --- Lifecycle ---
 
   /** Effect : recompute la timeline a chaque changement d'open/trips. */
+  /** Le replay a-t-il été ouvert depuis le dernier nettoyage ? */
+  private ouvertPrecedemment = false;
+
   private initEffect = effect(() => {
     const isOpen = this.open();
     const trips = this.trips();
-    if (!isOpen) return;
+    if (!isOpen) {
+      /**
+       * ⚠️ FERMETURE PAR LE PARENT, sans passer par le bouton.
+       *
+       * `onClose()` nettoie déjà — mais il n'est appelé que par le bouton et par Échap. Si
+       * l'écran repasse `open` à faux autrement, la timeline restait en mémoire : pour un
+       * mois de trajets, c'est plusieurs mégaoctets de points GPS conservés par une modale
+       * que plus personne ne regarde.
+       *
+       * Le drapeau évite de relire un signal écrit par `cleanup()` — ce qui rendrait cet
+       * effet dépendant de sa propre écriture.
+       */
+      if (this.ouvertPrecedemment) {
+        this.ouvertPrecedemment = false;
+        this.cleanup();
+      }
+      return;
+    }
+    this.ouvertPrecedemment = true;
     const tl = buildTimeline(trips);
     this.timeline.set(tl);
     this.virtualMs.set(0);
@@ -1086,6 +1131,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
 function buildTimeline(trips: TripDto[]): TimelineState {
   const empty: TimelineState = {
     segments: [], totalMs: 0, totalDistanceMeters: 0,
+    trajetsSansTrace: 0, metresSansTrace: 0,
     firstLngLat: null, allPoints: [], tripLines: [],
   };
   if (!trips || trips.length === 0) return empty;
@@ -1109,20 +1155,41 @@ function buildTimeline(trips: TripDto[]): TimelineState {
 
   const STOP_MIN_MS = 30 * 1000; // gap mini pour creer un stop visible
 
+  let trajetsSansTrace = 0;
+  let metresSansTrace = 0;
+
   for (let i = 0; i < valid.length; i++) {
     const { t, startMs, endMs } = valid[i]!;
     const points = parseTripPolyline(t);
-    if (points.length < 2) continue; // pas exploitable
+    if (points.length < 2) {
+      // Rien à dessiner — mais le trajet a bien eu lieu, et ses kilomètres comptent
+      // dans l'indicateur de la page. On les retient pour pouvoir l'expliquer.
+      trajetsSansTrace++;
+      metresSansTrace += max0(t.distanceMeters);
+      continue;
+    }
 
     const cumul = computeCumulDistMeters(points);
+    const geometrique = cumul[cumul.length - 1] ?? 0;
+    /**
+     * ⚠️ LA FORME VIENT DE LA TRACE, LA GRANDEUR VIENT DU TRAJET.
+     *
+     * Le compteur qui défile pendant la lecture suivait la géométrie simplifiée ; il
+     * finissait donc sous le total, et sous l'indicateur de la page. On met la distance
+     * cumulée À L'ÉCHELLE de la distance enregistrée : le tracé reste le même, mais le
+     * chiffre qui court sous les yeux atterrit exactement sur celui du bandeau.
+     */
+    const declaree = max0(t.distanceMeters);
+    const facteur = geometrique > 0 && declaree > 0 ? declaree / geometrique : 1;
+    const cumulEchelle = facteur === 1 ? cumul : cumul.map((m) => m * facteur);
     const seg: TripSegment = {
       kind: 'trip',
       trip: t,
       startMs, endMs,
       durationMs: endMs - startMs,
       points,
-      cumulDistMeters: cumul,
-      totalDistMeters: cumul[cumul.length - 1] ?? 0,
+      cumulDistMeters: cumulEchelle,
+      totalDistMeters: cumulEchelle[cumulEchelle.length - 1] ?? 0,
     };
     segments.push(seg);
     tripLines.push({ tripId: t.id, points });
@@ -1148,12 +1215,15 @@ function buildTimeline(trips: TripDto[]): TimelineState {
   if (segments.length === 0) return empty;
 
   const totalMs = segments[segments.length - 1]!.endMs - segments[0]!.startMs;
+  // Somme des distances ENREGISTRÉES des trajets rejoués — la même grandeur que
+  // l'indicateur « Distance », aux trajets sans trace près, qui sont annoncés à part.
   const totalDistanceMeters = segments
     .filter((s): s is TripSegment => s.kind === 'trip')
     .reduce((sum, s) => sum + max0(s.totalDistMeters), 0);
 
   return {
     segments, totalMs, totalDistanceMeters,
+    trajetsSansTrace, metresSansTrace,
     firstLngLat: allPoints[0] ?? null,
     allPoints, tripLines,
   };

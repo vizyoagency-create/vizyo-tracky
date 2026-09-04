@@ -1,4 +1,5 @@
 import { swallow } from '../../core/error/swallow';
+import { ActivatedRoute } from '@angular/router';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
@@ -39,6 +40,7 @@ import { TripReplayComponent } from './trip-replay.component';
 import { PeriodReplayComponent } from './period-replay.component';
 import {
   aggregateKpisFromDaily,
+  estJourIso,
   clampSpeed as clampSpeedFn,
   formatDuration as formatDurationFn,
   kpiToSortColumn,
@@ -64,6 +66,24 @@ const REPORTS_TRIPS_PAGE_SIZE = 100;
  * tronquée en silence laisserait croire que le total ne se décompose qu'en cinq lignes.
  */
 const MAX_TYPES_ALERTE_AFFICHES = 5;
+
+/**
+ * L'ordre de départ du tableau — du plus récent au plus ancien.
+ *
+ * ⚠️ Nommé, parce qu'il sert à DEUX endroits qui doivent rester d'accord : l'état initial du
+ * tri, et la définition de « les filtres sont revenus à leur point de départ ». Écrit deux
+ * fois, il se serait désaccordé au premier changement d'ordre par défaut, et le bouton
+ * « Réinitialiser » se serait mis à mentir dans un sens ou dans l'autre.
+ */
+/**
+ * Combien de jours le graphique d'activité peut montrer avant de devenir illisible.
+ *
+ * ⚠️ Le plafond n'est pas le problème ; son SILENCE l'était. Une période de six mois n'en
+ * affichait que trois, sous un titre qui promettait la période entière.
+ */
+const MAX_JOURS_GRAPHIQUE = 90;
+
+const TRI_PAR_DEFAUT: { col: TripSortColumn; dir: SortDirection } = { col: 'startedAt', dir: 'desc' };
 
 /** Taille d'un lot d'analyses demandées — aligne sur `MAX_TRIP_IDS_PER_BATCH` côté API. */
 const ANALYSES_BATCH_SIZE = 200;
@@ -386,10 +406,18 @@ const ANALYSES_BATCH_SIZE = 200;
 
       <!-- Sparkline KPI cards : compactes, lecture rapide -->
       <div class="rep-kpi-grid">
-        <div class="rep-kpi-card">
+        <!-- ══ CHAQUE NOMBRE MÈNE À SES LIGNES (F18) ════════════════════════════════
+             Trois cartes sur quatre étaient des impasses : un chiffre, et rien à faire
+             avec. Elles ouvrent maintenant la liste, triée sur la grandeur qu'elles
+             affichent — la carte Trajets sur la date, faute de colonne « nombre ». -->
+        <button type="button" class="rep-kpi-card rep-kpi-card--clickable"
+                (click)="onKpiClick('tripCount')" [disabled]="trips().length === 0"
+                trackClick="rapport-kpi-trajets"
+                title="Voir la liste des trajets (du plus récent au plus ancien)">
           <div class="rep-kpi-head">
             <lucide-icon [img]="Route" [size]="14"></lucide-icon>
             <span>Trajets</span>
+            <lucide-icon [img]="MousePointerClickIcon" [size]="12" class="rep-kpi-click-hint"></lucide-icon>
           </div>
           <div class="rep-kpi-body">
             <p class="rep-kpi-value">{{ kpis().tripCount }}</p>
@@ -402,12 +430,16 @@ const ANALYSES_BATCH_SIZE = 200;
               </svg>
             }
           </div>
-        </div>
+        </button>
 
-        <div class="rep-kpi-card">
+        <button type="button" class="rep-kpi-card rep-kpi-card--clickable"
+                (click)="onKpiClick('totalDistance')" [disabled]="trips().length === 0"
+                trackClick="rapport-kpi-distance"
+                title="Voir les trajets les plus longs (trie le tableau par distance)">
           <div class="rep-kpi-head">
             <lucide-icon [img]="BarChart3" [size]="14"></lucide-icon>
             <span>Distance</span>
+            <lucide-icon [img]="MousePointerClickIcon" [size]="12" class="rep-kpi-click-hint"></lucide-icon>
           </div>
           <div class="rep-kpi-body">
             <p class="rep-kpi-value">
@@ -422,12 +454,16 @@ const ANALYSES_BATCH_SIZE = 200;
               </svg>
             }
           </div>
-        </div>
+        </button>
 
-        <div class="rep-kpi-card">
+        <button type="button" class="rep-kpi-card rep-kpi-card--clickable"
+                (click)="onKpiClick('totalDuration')" [disabled]="trips().length === 0"
+                trackClick="rapport-kpi-duree"
+                title="Voir les trajets les plus longs en durée (trie le tableau)">
           <div class="rep-kpi-head">
             <lucide-icon [img]="Clock" [size]="14"></lucide-icon>
             <span>Durée totale</span>
+            <lucide-icon [img]="MousePointerClickIcon" [size]="12" class="rep-kpi-click-hint"></lucide-icon>
           </div>
           <div class="rep-kpi-body">
             <!-- Tronque a 375 px sans attribut title : « 24h18 » se coupait sans que la
@@ -435,7 +471,7 @@ const ANALYSES_BATCH_SIZE = 200;
             <p class="rep-kpi-value" [title]="formatDuration(kpis().totalDuration)">{{ formatDuration(kpis().totalDuration) }}</p>
             <span class="rep-kpi-meta">~{{ avgDurationPerActiveDay() }} / jour actif</span>
           </div>
-        </div>
+        </button>
 
         <!-- Sprint 5 — KPI « Vitesse max » CLIQUABLE : trie le tableau par
              vitesse max desc + scrolle + surligne la 1ʳᵉ ligne (le trajet le
@@ -469,6 +505,15 @@ const ANALYSES_BATCH_SIZE = 200;
            ⚠️ Les deux blocs ne s'affichent QUE lorsque l'agrégat de période est là. Les
            déduire des trajets chargés donnerait un coût calculé sur cent trajets sur 391 :
            exactement le défaut qu'on vient de retirer du récapitulatif par véhicule. -->
+      @if (!synthesePeriodePossible()) {
+        <!-- ⚠️ Une absence INEXPLIQUÉE se lit comme une panne. On dit pourquoi les trois
+             cartes manquent, et ce qu'il faut faire pour les obtenir. -->
+        <p class="rep-synthese-absente">
+          <lucide-icon [img]="LayersIcon" [size]="13"></lucide-icon>
+          Coût carburant, parc actif et alertes se calculent société par société.
+          Choisissez une société dans le sélecteur en haut de page pour les afficher.
+        </p>
+      }
       @if (statsPeriode(); as st) {
         <div class="rep-synthese-grid">
           <section class="rep-synthese-card">
@@ -506,6 +551,48 @@ const ANALYSES_BATCH_SIZE = 200;
             </p>
           </section>
 
+          <!-- ══ PARC ACTIF ET VÉHICULES IMMOBILES (F11) ═══════════════════════════════
+               Le récapitulatif par véhicule ne liste que ceux qui ont ROULÉ : un véhicule
+               immobile n'y a aucune ligne, et l'écran ne pouvait donc structurellement pas
+               montrer ce qu'un gestionnaire cherche quand il envisage une mutualisation ou
+               une restitution. Le serveur les connaissait ; personne ne les demandait. -->
+          <section class="rep-synthese-card">
+            <header class="rep-synthese-head">
+              <lucide-icon [img]="TruckIcon" [size]="14"></lucide-icon>
+              <h2>Parc actif sur la période</h2>
+            </header>
+            <p class="rep-synthese-valeur">
+              {{ st.vehicles.activeDuringPeriod }}<span class="rep-synthese-unite">/ {{ st.vehicles.total }}</span>
+            </p>
+            <p class="rep-synthese-detail">
+              {{ tauxUtilisation() }} % du parc a roulé au moins une fois.
+            </p>
+            @if (st.vehicles.idleTotal === 0) {
+              <p class="rep-synthese-detail rep-synthese-detail--fort">Aucun véhicule immobile : tout le parc a servi.</p>
+            } @else {
+              <p class="rep-synthese-detail rep-synthese-detail--fort">
+                {{ st.vehicles.idleTotal }} véhicule{{ st.vehicles.idleTotal > 1 ? 's n’ont' : ' n’a' }} fait aucun trajet :
+              </p>
+              <ul class="rep-parc-liste">
+                @for (v of st.vehicles.idleVehicles; track v.vehicleId) {
+                  <li>
+                    <a [vehicleLink]="v.vehicleId">{{ v.plate }}</a>
+                    @if (v.group) { <span class="rep-parc-groupe">{{ v.group.name }}</span> }
+                    <!-- ⚠️ Les deux situations ne se traitent pas pareil : un véhicule qui
+                         n'a pas servi se mutualise, un boîtier muet se répare. Les confondre
+                         ferait rendre un véhicule qui roule peut-être très bien. -->
+                    @if (v.silencieux) { <b class="rep-parc-muet">boîtier muet</b> }
+                  </li>
+                }
+              </ul>
+              @if (st.vehicles.idleTotal > st.vehicles.idleVehicles.length) {
+                <p class="rep-synthese-detail">
+                  et {{ st.vehicles.idleTotal - st.vehicles.idleVehicles.length }} autre{{ st.vehicles.idleTotal - st.vehicles.idleVehicles.length > 1 ? 's' : '' }}, non listé{{ st.vehicles.idleTotal - st.vehicles.idleVehicles.length > 1 ? 's' : '' }} ici.
+                </p>
+              }
+            }
+          </section>
+
           <section class="rep-synthese-card">
             <header class="rep-synthese-head">
               <lucide-icon [img]="AlertTriangleIcon" [size]="14"></lucide-icon>
@@ -537,7 +624,16 @@ const ANALYSES_BATCH_SIZE = 200;
           <section class="rep-chart-card rep-chart-card--full">
             <header class="rep-chart-head">
               <h2>Activité</h2>
-              <p>Distance &amp; trajets par jour</p>
+              @if (joursTronques() > 0) {
+                <!-- ⚠️ Le graphique tronquait EN SILENCE au-delà de 90 jours : une période de
+                     six mois n'en affichait que les trois derniers, sous un titre qui
+                     promettait la période. Les mois manquants passaient pour vides. -->
+                <p>Distance &amp; trajets par jour — les {{ maxJoursGraphique }} derniers jours seulement
+                  ({{ joursTronques() }} jour{{ joursTronques() > 1 ? 's' : '' }} plus anciens non affichés ; les
+                  indicateurs et la synthèse, eux, couvrent toute la période)</p>
+              } @else {
+                <p>Distance &amp; trajets par jour</p>
+              }
             </header>
             <app-line-bar-chart [data]="lineBarData()" [height]="260" />
           </section>
@@ -616,8 +712,14 @@ const ANALYSES_BATCH_SIZE = 200;
                  le seul indice visible était un chevron gris de 16 px. Sur un téléphone,
                  l'utilisateur cherchait un bouton absent. « Voir › » est désormais écrit
                  en toutes lettres au bout de chaque ligne — la consigne est vraie. -->
-            @if (recapPartiel() && tripsTruncated()) {
+            @if (!synthesePeriodePossible()) {
+              <!-- ⚠️ Ce repli ne DOIT PAS s'annoncer « synthèse de toute la période » : sur
+                   « toutes les sociétés », il additionne les trajets chargés, pas la période. -->
+              <p>Sur les {{ listedTripCount() }} trajets chargés — la synthèse complète se calcule société par société</p>
+            } @else if (recapPartiel() && tripsTruncated()) {
               <p>Sur les {{ listedTripCount() }} trajets chargés sur {{ kpis().tripCount }} — synthèse complète en cours de chargement</p>
+            } @else if (recapPartiel()) {
+              <p>Sur les {{ listedTripCount() }} trajets chargés — synthèse complète en cours de chargement</p>
             } @else {
               <p>Synthèse de TOUTE la période — « Voir » ouvre la fiche du véhicule</p>
             }
@@ -630,6 +732,7 @@ const ANALYSES_BATCH_SIZE = 200;
               <span class="rep-vt-hide">Trajets</span>
               <span class="rep-vt-hide">V. moy</span>
               <span class="rep-vexces-h">Excès</span>
+              <span></span>
               <span></span>
             </div>
             @for (v of vehicleSummary(); track v.vehicleId) {
@@ -674,6 +777,15 @@ const ANALYSES_BATCH_SIZE = 200;
                     <small aria-hidden="true">+{{ v.worstOverKmh | number:'1.0-0' }} km/h</small>
                   }
                 </span>
+                <!-- ⚠️ Bouton À PART, qui arrête la propagation : la ligne entière est un lien
+                     vers la fiche véhicule. Sans cela, filtrer la page quitterait la page —
+                     et c'est exactement ce que ce récapitulatif ne permettait pas d'éviter :
+                     regarder un véhicule de plus près obligeait à sortir du rapport. -->
+                <button type="button" class="rep-vfiltre"
+                        (click)="$event.preventDefault(); $event.stopPropagation(); filtrerSurVehicule(v.vehicleId)"
+                        trackClick="rapport-recap-filtrer"
+                        [attr.aria-label]="'Filtrer le rapport sur le véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')"
+                        title="Filtrer tout le rapport sur ce véhicule">Filtrer</button>
                 <span class="rep-vgo">Voir <lucide-icon [img]="ChevronRightIcon" [size]="14" class="rep-vchev" aria-hidden="true"></lucide-icon></span>
               </div>
             }
@@ -1034,12 +1146,14 @@ const ANALYSES_BATCH_SIZE = 200;
     </div>
 
     <app-trip-replay
+      [lienPartage]="lienDuTrajetOuvert()"
+      (copierLien)="copierLienTrajet()"
       [open]="!!replayTrip()"
       [trip]="replayTrip()"
       [analysis]="replayTrip() ? analysisFor(replayTrip()!.id) : null"
       [vehicleType]="replayVehicleType()"
       [canEditNote]="canEditNotes()"
-      (closed)="replayTrip.set(null)"
+      (closed)="fermerReplay()"
       (editNote)="onEditNoteFromReplay($event)"
     />
 
@@ -1455,8 +1569,12 @@ const ANALYSES_BATCH_SIZE = 200;
     @keyframes rep-export-spin { to { transform: rotate(360deg); } }
 
     /* ─── Coût et alertes de la période (F02 / F05) ─── */
+    .rep-synthese-absente { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 14px;
+                            border: 1px dashed var(--border-subtle); border-radius: 12px;
+                            font-size: 12.5px; color: var(--fg-tertiary); }
     .rep-synthese-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 16px; }
     @media (min-width: 720px) { .rep-synthese-grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1120px) { .rep-synthese-grid { grid-template-columns: repeat(3, 1fr); } }
     .rep-synthese-card { padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-secondary); }
     .rep-synthese-head { display: flex; align-items: center; gap: 8px; color: var(--fg-tertiary); }
     .rep-synthese-head h2 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
@@ -1469,6 +1587,13 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-synthese-liste { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
     .rep-synthese-liste li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--fg-secondary); }
     .rep-synthese-liste b { color: var(--fg-primary); font-variant-numeric: tabular-nums; }
+    .rep-parc-liste { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+    .rep-parc-liste li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px;
+                         border: 1px solid var(--border-subtle); background: var(--bg-tertiary); font-size: 12px; }
+    .rep-parc-liste a { color: var(--fg-primary); font-weight: 700; text-decoration: none; }
+    .rep-parc-liste a:hover { text-decoration: underline; }
+    .rep-parc-groupe { color: var(--fg-tertiary); font-size: 11px; }
+    .rep-parc-muet { color: var(--texte-attente); font-size: 11px; font-weight: 700; }
 
     /* ─── Bouton Réinitialiser (filtres) ─── */
     .rep-reset-btn {
@@ -1953,7 +2078,7 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vsum { margin-bottom: 16px; }
     .rep-vsum-head { margin-bottom: 12px; }
     .rep-vtable { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-card, 16px); overflow: hidden; }
-    .rep-vt-head, .rep-vrow { display: grid; grid-template-columns: minmax(160px,1.8fr) 1fr 1fr .9fr 1fr .9fr 70px; align-items: center; gap: 14px; padding: 12px 18px; }
+    .rep-vt-head, .rep-vrow { display: grid; grid-template-columns: minmax(160px,1.8fr) 1fr 1fr .9fr 1fr .9fr 76px 70px; align-items: center; gap: 14px; padding: 12px 18px; }
     .rep-vt-head { background: var(--surface-rail); border-bottom: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary); }
     .rep-vrow { border-top: 1px solid var(--border-subtle); transition: background .15s; }
     .rep-vrow:hover { background: var(--bg-tertiary); }
@@ -1992,29 +2117,35 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vexces--fort b { color: var(--texte-alerte); }
     .rep-vexces-vide { color: var(--fg-tertiary); }
     .rep-vexces-h { font: inherit; }
+    .rep-vfiltre { min-height: 32px; padding: 5px 10px; border-radius: 8px; font-size: 11.5px; font-weight: 700;
+                   background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-subtle); cursor: pointer; }
+    .rep-vfiltre:hover { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
     .rep-vchev { color: inherit; transition: transform .15s ease; }
     .rep-vrow:hover .rep-vchev { transform: translateX(2px); }
     /* La colonne Excès reste visible sur tablette : c'est la question qu'on vient poser
        à ce tableau, pas un détail qu'on masque au premier resserrement. */
     @media (max-width: 1000px) {
-      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr .9fr 74px; }
+      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr .9fr 76px 74px; }
       .rep-vt-hide { display: none !important; }
     }
     /* Sous 480 px, quatre colonnes ne tiennent plus : la ligne devient une carte à deux
        colonnes (plaque en tête, chiffres dessous), le chevron reste à droite. */
     @media (max-width: 480px) {
       .rep-vt-head { display: none; }
-      .rep-vrow { grid-template-columns: 1fr 1fr 56px; grid-template-areas: 'veh veh voir' 'dist meta voir' 'exces exces voir'; gap: 6px 10px; padding: 12px 14px; }
+      .rep-vrow { grid-template-columns: 1fr 1fr 56px; grid-template-areas: 'veh veh voir' 'dist meta voir' 'exces filtre voir'; gap: 6px 10px; padding: 12px 14px; }
       .rep-vrow > .rep-vveh { grid-area: veh; }
       .rep-vrow > .rep-vgo { grid-area: voir; align-self: center; }
       .rep-vrow > :nth-child(2) { grid-area: dist; }
       .rep-vrow > :nth-child(3) { grid-area: meta; }
       .rep-vrow > .rep-vexces { grid-area: exces; justify-self: start; }
+      .rep-vrow > .rep-vfiltre { grid-area: filtre; justify-self: start; }
     }
   `],
 })
 export class ReportsComponent implements OnInit, OnDestroy {
   private readonly tripsApi = inject(TripsApiService);
+  /** Lue UNE fois au démarrage (cf. `ngOnInit`) ; l'écriture passe par `majParametresUrl`. */
+  private readonly route = inject(ActivatedRoute);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly driversApi = inject(DriversApiService);
   private readonly perms = inject(PermissionsService);
@@ -2428,6 +2559,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected onSelectVehicle(id: string): void {
     this.selectedVehicleId.set(id);
     this.fermerMenuVehicule();
+    this.ecrireEtatDansUrl();
     this.loadData();
   }
 
@@ -2466,6 +2598,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (selV && id && !this.vehicles().some((v) => v.id === selV && v.group?.id === id)) {
       this.selectedVehicleId.set('');
     }
+    this.ecrireEtatDansUrl();
     // Recharge KPI + trajets scopés sur le groupe (ou toute la flotte si « tous »).
     this.loadData();
   }
@@ -2483,6 +2616,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.customRangeOpen.set(false);
     this.customFrom.set('');
     this.customTo.set('');
+    // Le tri revient à son point de départ, comme le reste : sinon « Réinitialiser » rendait
+    // les filtres mais laissait le tableau classé par vitesse max, sans plus rien pour le dire.
+    this.sortBy.set(TRI_PAR_DEFAUT.col);
+    this.sortDir.set(TRI_PAR_DEFAUT.dir);
     // Realigne le jour courant (anti-stale) puis applique « 7 jours » (index 1).
     this.jourCourant.set(todayIsoLocal());
     const sevenDays = this.periods()[1]!;
@@ -2497,6 +2634,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly filtersDirty = computed(() => {
     this.periodKey();
     if (this.selectedGroupId() || this.selectedVehicleId()) return true;
+    /**
+     * ⚠️ LE TRI COMPTE AUTANT QUE LES FILTRES.
+     *
+     * Cliquer un indicateur trie le tableau sur une autre colonne, et le bouton
+     * « Réinitialiser » restait GRISÉ : le seul geste qui aurait remis la page dans son
+     * état d'origine était refusé, précisément après le geste qui l'en avait sortie. Il
+     * fallait retrouver le sélecteur de tri et deviner la valeur de départ.
+     */
+    if (this.sortBy() !== TRI_PAR_DEFAUT.col || this.sortDir() !== TRI_PAR_DEFAUT.dir) return true;
     const sevenDays = this.periods()[1];
     return !sevenDays || this.periodFrom !== sevenDays.from || this.periodTo !== sevenDays.to;
   });
@@ -2592,9 +2738,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * que les KPI. Toutes les colonnes sont concernées, pas seulement la vitesse : trier par
    * distance donnait « le plus long des cent derniers », jamais celui de la période.
    */
-  protected readonly sortBy = signal<TripSortColumn>('startedAt');
+  protected readonly sortBy = signal<TripSortColumn>(TRI_PAR_DEFAUT.col);
   /** Direction de tri active. */
-  protected readonly sortDir = signal<SortDirection>('desc');
+  protected readonly sortDir = signal<SortDirection>(TRI_PAR_DEFAUT.dir);
   /** Curseur de la page suivante (`null` = tout est chargé). */
   protected readonly nextCursor = signal<string | null>(null);
   /** Chargement d'une page SUPPLÉMENTAIRE (distinct de `loading`, qui repeint tout). */
@@ -2662,10 +2808,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.sortBy() === col && this.sortDir() === dir) return;
     this.sortBy.set(col);
     this.sortDir.set(dir);
+    this.ecrireEtatDansUrl();
     void this.loadTrips();
   }
 
   /** Libellés du sélecteur de tri mobile — mêmes colonnes que les en-têtes du tableau. */
+  /** Exposé au gabarit pour ne pas écrire « 90 » à la main dans une phrase. */
+  protected readonly maxJoursGraphique = MAX_JOURS_GRAPHIQUE;
+
   protected readonly sortOptions: ReadonlyArray<{ col: TripSortColumn; label: string }> = [
     { col: 'startedAt', label: 'Date' },
     { col: 'maxSpeed', label: 'Vitesse max' },
@@ -2687,6 +2837,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.sortBy.set(col);
       this.sortDir.set('desc');
     }
+    this.ecrireEtatDansUrl();
     void this.loadTrips();
   }
 
@@ -2709,11 +2860,40 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * scrolle vers le tableau et surligne brièvement la 1ʳᵉ ligne (le trajet le
    * plus rapide) ~2,5 s. Drilldown KPI→trajet (objectif #4).
    */
+  /**
+   * Ramène TOUT le rapport (indicateurs, graphiques, synthèse, liste) sur un seul véhicule.
+   *
+   * ⚠️ Le groupe est effacé en même temps : un véhicule sélectionné dans un groupe qui ne le
+   * contient pas donnerait un rapport vide, et l'utilisateur croirait le véhicule à l'arrêt.
+   */
+  protected filtrerSurVehicule(vehicleId: string): void {
+    if (this.selectedVehicleId() === vehicleId) return;
+    this.selectedGroupId.set('');
+    this.selectedVehicleId.set(vehicleId);
+    this.oublierStatsPeriode();
+    this.ecrireEtatDansUrl();
+    void this.loadData();
+    queueMicrotask(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
+
   protected onMaxSpeedKpiClick(): void {
-    const col = kpiToSortColumn('maxSpeed');
+    this.onKpiClick('maxSpeed');
+  }
+
+  /**
+   * ── UN INDICATEUR EST UN POINT D'ENTRÉE, PAS UNE IMPASSE (F18) ─────────────────────
+   *
+   * Chaque carte désigne exactement les lignes qui sont en dessous ; cliquer trie la liste
+   * sur cette grandeur et y amène. Le tri part EN BASE, donc il porte sur toute la période
+   * et pas sur la page chargée — sans quoi « le trajet le plus rapide » serait le plus
+   * rapide des cent premiers.
+   */
+  protected onKpiClick(kpi: 'tripCount' | 'totalDistance' | 'totalDuration' | 'maxSpeed'): void {
+    const col = kpiToSortColumn(kpi);
     if (!col) return;
     this.sortBy.set(col);
     this.sortDir.set('desc');
+    this.ecrireEtatDansUrl();
     // Le trajet le plus rapide de la PÉRIODE n'est connu qu'après la réponse serveur :
     // on arme le surlignage, `loadTrips` l'applique sur la 1ʳᵉ ligne reçue.
     this.highlightTopAfterLoad = true;
@@ -2879,8 +3059,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return 'Survitesse détectée';
   });
 
-  /** Genere la liste des dates [from, to) au format YYYY-MM-DD. Cap a 90
-   *  jours pour que le chart reste lisible. */
+  /**
+   * Les jours civils de [from, to[, au format AAAA-MM-JJ.
+   *
+   * ⚠️ PLAFONNÉ À `MAX_JOURS_GRAPHIQUE` : au-delà, les barres deviennent des traits d'un
+   * pixel et le graphique ne se lit plus. Ce plafond est légitime — mais il était SILENCIEUX :
+   * une période de six mois affichait les trois derniers, sous un titre qui promettait la
+   * période. Le lecteur en concluait que les mois manquants n'avaient aucune activité.
+   * `joursTronques()` le dit désormais sous le titre.
+   */
   private dateRange(from: string, to: string): string[] {
     if (!from || !to) return [];
     const out: string[] = [];
@@ -2892,9 +3079,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
       out.push(cur.toISOString().slice(0, 10));
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
-    if (out.length > 90) return out.slice(-90);
+    if (out.length > MAX_JOURS_GRAPHIQUE) return out.slice(-MAX_JOURS_GRAPHIQUE);
     return out;
   }
+
+  /**
+   * Nombre de jours que le graphique d'activité NE MONTRE PAS, ou zéro.
+   *
+   * ⚠️ Compté sur la période demandée, pas sur les données reçues : un mois sans le moindre
+   * trajet doit compter comme un mois non montré, sinon le silence se réinstalle exactement
+   * là où il trompait déjà.
+   */
+  protected readonly joursTronques = computed(() => {
+    this.periodKey();
+    const f = this.periodFrom, t = this.periodTo;
+    if (!f || !t) return 0;
+    const debut = new Date(`${f}T00:00:00Z`).getTime();
+    const fin = new Date(`${t}T00:00:00Z`).getTime();
+    if (!Number.isFinite(debut) || !Number.isFinite(fin)) return 0;
+    const jours = Math.round((fin - debut) / 86_400_000);
+    return Math.max(0, jours - MAX_JOURS_GRAPHIQUE);
+  });
 
   /** Delegue a `reports.utils#max0` (verrouille par tests). */
   protected max0(n: number): number {
@@ -2958,12 +3163,42 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly recapPartiel = computed(() => this.statsPeriode() === null);
 
   /**
+   * ── L'AGRÉGAT DE PÉRIODE EST MONO-SOCIÉTÉ, ET NE SAIT PAS LE DIRE ──────────────────
+   *
+   * `GET /reports/stats` retient UNE flotte : celle passée en paramètre, à défaut celle de
+   * l'appelant, à défaut LA PLUS ANCIENNE DE LA BASE. Un super-administrateur qui regarde
+   * « toutes les sociétés » recevait donc, sans un mot, la synthèse d'une société tirée au
+   * sort — mesuré en recette le 2026-09-04 : 62 trajets là où le reste de l'écran en comptait
+   * 481, et « 0 véhicule actif sur 7 » sous un indicateur annonçant 65 trajets.
+   *
+   * Tant que cette route reste mono-société, l'écran ne demande la synthèse QUE lorsqu'une
+   * société est réellement désignée. Il le DIT (cf. le bandeau sous les indicateurs) plutôt
+   * que de laisser un blanc : une absence inexpliquée se lit comme une panne.
+   */
+  protected readonly synthesePeriodePossible = computed(() => {
+    if (this.authService.user()?.role !== 'SUPER_ADMIN') return true;
+    return this.fleetFilter.selectedFleetId() !== null;
+  });
+
+  /**
    * Les types d'alerte les plus fréquents de la période, en clair.
    *
    * ⚠️ Le libellé vient du contrat PARTAGÉ, celui qu'emploient déjà le PDF et le centre
    * d'alertes. Une table de traduction locale aurait produit, au premier type ajouté, un écran
    * qui dit « OVERSPEED » à côté d'un PDF qui dit « Excès de vitesse ».
    */
+  /**
+   * Part du parc ayant roulé au moins une fois, en pourcentage entier.
+   *
+   * ⚠️ Un parc VIDE rend 0, jamais NaN : ce chiffre s'affiche avant même qu'un véhicule
+   * existe, sur une société qu'on vient de créer.
+   */
+  protected readonly tauxUtilisation = computed(() => {
+    const st = this.statsPeriode();
+    if (!st || st.vehicles.total === 0) return 0;
+    return Math.round((st.vehicles.activeDuringPeriod / st.vehicles.total) * 100);
+  });
+
   protected readonly alertesParType = computed(() => {
     const st = this.statsPeriode();
     if (!st) return [];
@@ -3102,11 +3337,44 @@ export class ReportsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    /**
+     * ── LA PAGE N'AVAIT AUCUN ÉTAT D'URL (F08) ────────────────────────────────────────
+     *
+     * Aucun `Router` n'était injecté : un rafraîchissement ramenait à « 7 jours / tous
+     * véhicules », il était impossible de mettre un rapport en favori, et « regarde ce
+     * véhicule sur août » ne pouvait pas s'envoyer — il fallait décrire les clics.
+     *
+     * Les paramètres lus ici sont ceux qu'on écrit ci-dessous ; ils sont VALIDÉS, jamais
+     * appliqués tels quels : une URL bricolée à la main ne doit pas pouvoir mettre l'écran
+     * dans un état qu'aucun clic ne produit.
+     */
+    const q = this.route.snapshot.queryParamMap;
+    const veh = q.get('vehicle');
+    const grp = q.get('group');
+    if (veh) this.selectedVehicleId.set(veh);
+    if (grp && !veh) this.selectedGroupId.set(grp);
+    const tri = q.get('sort') as TripSortColumn | null;
+    if (tri && this.sortOptions.some((o) => o.col === tri)) this.sortBy.set(tri);
+    const sens = q.get('dir');
+    if (sens === 'asc' || sens === 'desc') this.sortDir.set(sens);
+
     // V1.12 — Default = "7 jours" (periods[1]) au lieu de "Aujourd'hui"
     // (periods[0]) : la majorite des flottes n'ont pas encore de trajets en
     // debut de journee, ce qui rendait la page Reports vide a l'ouverture
     // (impression d'UI cassee). 7j montre du contenu immediatement.
-    this.setPeriod(this.periods()[1]!.from, this.periods()[1]!.to);
+    const du = q.get('from'), au = q.get('to');
+    if (estJourIso(du) && estJourIso(au) && du! <= au!) {
+      this.customFrom.set(du!);
+      this.customTo.set(au!);
+      this.setPeriod(du!, au!);
+    } else {
+      this.setPeriod(this.periods()[1]!.from, this.periods()[1]!.to);
+    }
+    // ⚠️ APRÈS le chargement : le trajet du lien profond n'est pas forcément dans la page
+    // affichée (il peut être le 400ᵉ), donc on va le chercher à part plutôt que de fouiller
+    // une liste qui ne le contient peut-être pas.
+    const trajet = q.get('trip');
+    if (trajet) void this.ouvrirTrajetDuLien(trajet);
     this.loadVehicles();
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
     this.armerBasculeDeMinuit();
@@ -3159,7 +3427,119 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.periodFrom = from;
     this.periodTo = to;
     this.periodKey.set(`${from}|${to}`);
+    this.ecrireEtatDansUrl();
     this.loadData();
+  }
+
+  /**
+   * Reporte l'état de l'écran dans l'URL — véhicule, groupe, période, tri et sens.
+   *
+   * ⚠️ `replaceUrl` : chaque clic de filtre empilerait sinon une entrée d'historique, et le
+   * bouton « précédent » deviendrait un défilement de filtres au lieu de ramener à l'écran
+   * précédent. On veut une URL PARTAGEABLE, pas un journal de navigation.
+   *
+   * ⚠️ Les valeurs par défaut ne sont PAS écrites : une URL qui porte tout, y compris ce qui
+   * n'a pas été choisi, est illisible et se périme (« 7 jours » n'est pas une date). Seul ce
+   * qui s'écarte du défaut mérite d'être transporté.
+   */
+  private ecrireEtatDansUrl(): void {
+    const parDefaut = this.periods()[1];
+    const periodePersonnalisee = !parDefaut || this.periodFrom !== parDefaut.from || this.periodTo !== parDefaut.to;
+    const params: Record<string, string | null> = {
+      vehicle: this.selectedVehicleId() || null,
+      group: this.selectedGroupId() || null,
+      from: periodePersonnalisee ? this.periodFrom : null,
+      to: periodePersonnalisee ? this.periodTo : null,
+      sort: this.sortBy() !== TRI_PAR_DEFAUT.col ? this.sortBy() : null,
+      dir: this.sortDir() !== TRI_PAR_DEFAUT.dir ? this.sortDir() : null,
+      // ⚠️ Le trajet ouvert n'est PAS écrit ici : il l'est à l'ouverture du replay et effacé
+      // à sa fermeture. L'écrire ici le remettrait sur chaque changement de filtre.
+    };
+    this.majParametresUrl(params);
+  }
+
+  /**
+   * Reporte des paramètres dans la barre d'adresse SANS passer par le routeur.
+   *
+   * ⚠️ POURQUOI PAS `router.navigate`.
+   *
+   * Un clic de filtre n'est pas un changement de page. Le faire passer par le routeur
+   * relançait la résolution de route à chaque clic et — l'application ayant activé
+   * `withViewTransitions()` — déclenchait un fondu de la page ENTIÈRE, plus un
+   * « InvalidStateError: Transition was aborted » dès que deux clics se suivaient de près.
+   * Ce qu'on veut ici est exactement ce que fait `replaceState` : une URL qui REFLÈTE
+   * l'écran, partageable et rechargeable, sans rejouer la navigation.
+   *
+   * ⚠️ `replaceState` et non `pushState` : chaque clic de filtre empilerait sinon une entrée
+   * d'historique, et le bouton « précédent » deviendrait un défilement de filtres au lieu de
+   * ramener à l'écran précédent.
+   */
+  private majParametresUrl(params: Record<string, string | null>): void {
+    if (typeof window === 'undefined' || !window.history?.replaceState) return;
+    const u = new URL(window.location.href);
+    for (const [cle, valeur] of Object.entries(params)) {
+      if (valeur) u.searchParams.set(cle, valeur);
+      else u.searchParams.delete(cle);
+    }
+    window.history.replaceState(window.history.state, '', u.toString());
+  }
+
+  /**
+   * Ouvre le replay d'un trajet désigné par l'URL (`/reports?trip=<id>`).
+   *
+   * ⚠️ Le trajet est demandé au SERVEUR et non cherché dans la liste affichée : celle-ci est
+   * plafonnée à cent lignes, et un lien pointe le plus souvent sur un trajet qu'on a justement
+   * dû aller chercher. Le chercher dans la page en ferait un lien qui marche une fois sur
+   * quatre, sans qu'on comprenne pourquoi.
+   */
+  private async ouvrirTrajetDuLien(tripId: string): Promise<void> {
+    try {
+      const trip = await firstValueFrom(this.tripsApi.findOne(tripId));
+      if (trip) this.replayTrip.set(trip);
+      else this.toast.error('Trajet introuvable', "Ce lien pointe vers un trajet qui n'existe plus, ou hors de votre périmètre.");
+    } catch (err) {
+      swallow('reports:ouvrirTrajetDuLien', err);
+      this.toast.error('Trajet introuvable', httpFailureMessage(err, 'ce trajet'));
+    }
+  }
+
+  /** Ferme le replay d'un trajet et retire son paramètre de l'URL. */
+  protected fermerReplay(): void {
+    this.replayTrip.set(null);
+    this.ecrireTrajetDansUrl(null);
+  }
+
+  /** Pose ou retire `trip=<id>` sans toucher aux autres paramètres. */
+  private ecrireTrajetDansUrl(tripId: string | null): void {
+    this.majParametresUrl({ trip: tripId });
+  }
+
+  /**
+   * Copie le lien du trajet ouvert dans le presse-papier.
+   *
+   * ⚠️ `navigator.clipboard` n'existe pas hors contexte sécurisé (http nu, vieux navigateur)
+   * et peut être refusé par l'utilisateur. On le DIT plutôt que d'afficher « Copié ! » sur
+   * un presse-papier vide — la personne collerait alors autre chose dans son courriel.
+   */
+  protected async copierLienTrajet(): Promise<void> {
+    const lien = this.lienDuTrajetOuvert();
+    if (!lien) return;
+    try {
+      await navigator.clipboard.writeText(lien);
+      this.toast.success('Lien copié', 'Il ouvre ce trajet, avec les filtres de cet écran.');
+    } catch (err) {
+      swallow('reports:copierLienTrajet', err);
+      this.toast.error('Copie impossible', 'Votre navigateur a refusé l’accès au presse-papier. Le lien est dans la barre d’adresse.');
+    }
+  }
+
+  /** Le lien PARTAGEABLE du trajet ouvert en replay, ou null. */
+  protected lienDuTrajetOuvert(): string | null {
+    const t = this.replayTrip();
+    if (!t || typeof window === 'undefined') return null;
+    const u = new URL(window.location.href);
+    u.searchParams.set('trip', t.id);
+    return u.toString();
   }
 
   /**
@@ -3529,6 +3909,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private async chargerStatsPeriode(seq: number): Promise<void> {
     const fleetId = this.fleetFilter.selectedFleetId();
     if (!this.periodFrom || !this.periodTo) return;
+    // ⚠️ Voir `synthesePeriodePossible()` : sur « toutes les sociétés », cette route répondrait
+    // pour UNE société prise au hasard. Mieux vaut ne rien afficher que la mauvaise.
+    if (!this.synthesePeriodePossible()) { this.statsPeriode.set(null); return; }
     try {
       const vehicleIds = this.vehicleIdsDuPerimetre();
       const stats = await firstValueFrom(
@@ -3636,8 +4019,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Seuls les trajets pas encore connus : après un « Charger plus », re-demander les
     // pages déjà chargées serait du gaspillage pur (et dépasserait vite le lot max).
     const known = this.analysesMap();
-    const missing = trips.map((t) => t.id).filter((id) => !known.has(id));
+    /**
+     * ⚠️ « Déjà connu » NE SUFFIT PAS : la table n'est écrite qu'à la FIN du chargement.
+     *
+     * Deux appels qui se chevauchent — un tri lancé pendant qu'un changement de période
+     * charge encore, un « Charger plus » qui suit de près — calculaient donc tous deux la
+     * même liste de manquants et redemandaient les mêmes analyses au serveur. Le second lot
+     * arrivait pour rien ; sur une page de cent trajets, c'est une requête entière gaspillée
+     * à chaque fois. Les identifiants EN VOL sont donc exclus, et relâchés quoi qu'il arrive.
+     */
+    const missing = trips
+      .map((t) => t.id)
+      .filter((id) => !known.has(id) && !this.analysesEnVol.has(id));
     if (missing.length === 0) return;
+    for (const id of missing) this.analysesEnVol.add(id);
     try {
       const pages: TripAnalysisDto[][] = [];
       for (let i = 0; i < missing.length; i += ANALYSES_BATCH_SIZE) {
@@ -3655,8 +4050,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
       swallow('reports:loadAnalyses', err);
       // On GARDE ce qui était déjà chargé : vider la table transformerait une page
       // d'analyses manquantes en « aucune analyse nulle part ».
+    } finally {
+      // ⚠️ Dans TOUS les cas, y compris le retour anticipé sur péremption de la séquence :
+      // un identifiant resté « en vol » ne serait plus jamais redemandé, et sa colonne
+      // « Analyse » resterait vide pour le reste de la session.
+      for (const id of missing) this.analysesEnVol.delete(id);
     }
   }
+
+  /** Identifiants dont les analyses sont DEMANDÉES mais pas encore arrivées. */
+  private readonly analysesEnVol = new Set<string>();
 
   protected analysisFor(tripId: string): TripAnalysisDto | null {
     return this.analysesMap().get(tripId) ?? null;
@@ -3675,6 +4078,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   protected async openReplay(trip: TripDto): Promise<void> {
     this.replayTrip.set(trip);
+    // ⚠️ Le trajet ouvert entre dans l'URL : c'est ce qui rend « regarde CE trajet »
+    // citable dans un courriel ou un ticket. Il en sort à la fermeture, sinon un lien
+    // copié plus tard rouvrirait un replay que l'expéditeur avait quitté depuis longtemps.
+    this.ecrireTrajetDansUrl(trip.id);
     if (trip.polyline) return; // déjà complet (ex. trajet rafraîchi après une note)
     try {
       const full = await firstValueFrom(this.tripsApi.findOne(trip.id));

@@ -24,6 +24,14 @@ import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
  *   * Fleet.fuelPriceEurL
  */
 
+/**
+ * Combien de véhicules immobiles la synthèse nomme avant de s'en tenir au compte.
+ *
+ * ⚠️ Le reste n'est pas jeté : `idleTotal` le porte, et l'écran le dit. Une liste tronquée
+ * en silence laisserait croire qu'un parc de deux cents véhicules n'en a que vingt à l'arrêt.
+ */
+const MAX_VEHICULES_IMMOBILES = 24;
+
 const DEFAULT_CONSUMPTION_L100KM: Record<string, number> = {
   CAR: 7,
   TRUCK: 22,
@@ -62,6 +70,21 @@ export interface FleetStatsReport {
     withoutTracker: number;
     /** Detail des dormants (plaque + anciennete du silence) pour la mention du rapport. */
     dormantVehicles: { vehicleId: string; plate: string; silenceLabel: string | null }[];
+    /**
+     * ── LES VÉHICULES QUI N'ONT PAS ROULÉ (F11) ────────────────────────────────────────
+     *
+     * `activeDuringPeriod` disait COMBIEN avaient roulé ; personne ne disait LESQUELS n'ont
+     * pas bougé. C'est pourtant l'information qui décide d'une mutualisation ou d'une
+     * restitution — et le récapitulatif par véhicule, qui ne liste que ceux qui ont roulé,
+     * la rendait structurellement invisible : un véhicule immobile n'y a aucune ligne.
+     *
+     * `silencieux` distingue « il n'a pas servi » de « son boîtier s'est tu » : le premier
+     * se mutualise, le second se répare. Les confondre ferait rendre un véhicule qui roule.
+     *
+     * ⚠️ Liste PLAFONNÉE ; `idleTotal` porte le compte réel, pour que la troncature se dise.
+     */
+    idleVehicles: { vehicleId: string; plate: string; group: { id: string; name: string } | null; silencieux: boolean }[];
+    idleTotal: number;
   };
   trips: {
     count: number;
@@ -462,6 +485,21 @@ export class ReportsStatsService {
     const avgSpeedKmh = totalSeconds > 0 ? totalKm / (totalSeconds / 3600) : 0;
     const maxSpeedKmh = tripAgg._max.maxSpeed ?? 0;
     const activeVehicleIds = new Set(tripsByVehicle.map((g) => g.vehicleId));
+    /**
+     * Ceux du périmètre qui n'ont AUCUN trajet sur la période. Triés plaque en tête, et
+     * les silencieux d'abord : c'est la ligne qu'on veut voir en premier, parce qu'elle
+     * demande une réparation et non une décision d'exploitation.
+     */
+    const silencieuxIds = new Set(dormantVehicles.map((d) => d.vehicleId));
+    const idleVehicles = vehicles
+      .filter((v) => !activeVehicleIds.has(v.id))
+      .map((v) => ({
+        vehicleId: v.id,
+        plate: v.plate,
+        group: v.groups?.[0]?.group ?? null,
+        silencieux: silencieuxIds.has(v.id),
+      }))
+      .sort((a, b) => Number(b.silencieux) - Number(a.silencieux) || a.plate.localeCompare(b.plate, 'fr'));
 
     // Map perVehicle pour calcul carburant + top.
     const perVehicle = new Map<string, { distanceKm: number; tripCount: number; durationSeconds: number }>();
@@ -560,6 +598,8 @@ export class ReportsStatsService {
         dormant: dormantVehicles.length,
         withoutTracker: withoutTrackerCount,
         dormantVehicles,
+        idleVehicles: idleVehicles.slice(0, MAX_VEHICULES_IMMOBILES),
+        idleTotal: idleVehicles.length,
       },
       trips: {
         count: tripCount,

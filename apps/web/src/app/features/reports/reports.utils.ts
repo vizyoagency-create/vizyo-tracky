@@ -373,6 +373,32 @@ export function kpiToSortColumn(
     case 'maxSpeed':
       return 'maxSpeed';
     case 'tripCount':
-      return null;
+      /**
+       * ⚠️ Un COMPTE n'a pas de colonne à trier — mais il a une destination : la liste des
+       * trajets, dans son ordre naturel. Rendre `null` faisait de cette carte une impasse,
+       * et c'était le cas de trois cartes sur quatre : chaque nombre affiché s'arrêtait sur
+       * lui-même, alors qu'il désigne exactement les lignes qui sont juste en dessous.
+       */
+      return 'startedAt';
   }
+}
+
+/**
+ * Un paramètre d'URL est-il bien un jour civil AAAA-MM-JJ, et une date RÉELLE ?
+ *
+ * ⚠️ Le test de forme ne suffit pas : « 2026-02-31 » passe l'expression régulière et donne
+ * un 3 mars. La page Rapports lit sa période dans l'URL depuis le 2026-09-04 ; une URL
+ * bricolée à la main doit être ignorée, pas obéie de travers — sans quoi un lien copié de
+ * travers afficherait une période que l'utilisateur n'a jamais demandée, sans rien dire.
+ *
+ * ⚠️ Interprété à MIDI, pas à minuit : `new Date('2026-03-29')` est minuit UTC, soit la
+ * veille au soir pour un utilisateur à l'ouest de Greenwich — la vérification aurait rejeté
+ * des dates parfaitement valides selon le fuseau de la machine.
+ */
+export function estJourIso(v: string | null | undefined): boolean {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return false;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return v === `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
