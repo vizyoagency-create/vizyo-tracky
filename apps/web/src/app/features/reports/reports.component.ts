@@ -1045,6 +1045,7 @@ const ANALYSES_BATCH_SIZE = 200;
                     <app-trip-analysis-badges
                       [tripId]="trip.id"
                       [analysis]="analysisFor(trip.id)"
+                      [tripStartedAt]="trip.startedAt"
                       layout="row"
                       (analyzed)="onAnalyzed($event)"
                     />
@@ -1132,6 +1133,7 @@ const ANALYSES_BATCH_SIZE = 200;
                   <app-trip-analysis-badges
                     [tripId]="trip.id"
                     [analysis]="analysisFor(trip.id)"
+                    [tripStartedAt]="trip.startedAt"
                     (analyzed)="onAnalyzed($event)"
                   />
                 </div>

@@ -1014,7 +1014,11 @@ export class TripAutomationService {
     // Même instant de référence que `at` : la fenêtre annoncée est celle qui a été mesurée.
     const depuisRecit = new Date(maintenant.getTime() - fenetreRecitHeures() * 3_600_000);
     const rows = await this.prisma.$queryRaw<
-      Array<{ fleetId: string; fleetName: string; aiEnabled: boolean; sansAnalyse: number; sansRecit: number; sansRecitBruts: number; figes: number }>
+      Array<{
+        fleetId: string; fleetName: string; aiEnabled: boolean;
+        sansAnalyse: number; sansRecit: number; sansRecitBruts: number; figes: number;
+        reprisesARattraper: number; reprisesHorsPortee: number; reprisesHorsPorteeAvecExces: number;
+      }>
     >`
       SELECT f.id AS "fleetId", f.name AS "fleetName", f."aiEnabled" AS "aiEnabled",
         (SELECT count(*) FROM trips t
@@ -1034,7 +1038,22 @@ export class TripAutomationService {
             AND t."segmentationSource" <> 'recompute'
             AND t."startedAt" > ${depuisRecit})::int AS "sansRecitBruts",
         (SELECT count(*) FROM trips t
-          WHERE t."fleetId" = f.id AND t."segmentationSource" IN ('fige-retention', 'fige-sans-positions'))::int AS "figes"
+          WHERE t."fleetId" = f.id AND t."segmentationSource" IN ('fige-retention', 'fige-sans-positions'))::int AS "figes",
+        -- ══ REPRISE DES ANALYSES D'AVANT LE 4 SEPTEMBRE ═══════════════════════════════
+        -- Le MEME critere que reprendreAnalysesAnciennes (absence de la cle vitesse) : deux
+        -- definitions de « a reprendre » finiraient par afficher deux nombres, et c'est
+        -- exactement le defaut deja paye sur le compteur « sans recit ».
+        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
+          WHERE a."fleetId" = f.id AND NOT (a.detail ? 'vitesse')
+            AND t."startedAt" > ${horizon})::int AS "reprisesARattraper",
+        -- Au-delà de l'horizon : les positions sont purgées, le rejeu est impossible.
+        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
+          WHERE a."fleetId" = f.id AND NOT (a.detail ? 'vitesse')
+            AND t."startedAt" <= ${horizon})::int AS "reprisesHorsPortee",
+        (SELECT count(*) FROM trip_analyses a JOIN trips t ON t.id = a."tripId"
+          WHERE a."fleetId" = f.id AND NOT (a.detail ? 'vitesse')
+            AND t."startedAt" <= ${horizon}
+            AND jsonb_array_length(COALESCE(a.detail->'speeding', '[]'::jsonb)) > 0)::int AS "reprisesHorsPorteeAvecExces"
       FROM fleets f
       ORDER BY f.name`;
     return {
@@ -1047,6 +1066,9 @@ export class TripAutomationService {
         fleetId: r.fleetId, fleetName: r.fleetName, aiEnabled: !!r.aiEnabled,
         sansAnalyse: Number(r.sansAnalyse), sansRecit: Number(r.sansRecit),
         sansRecitBruts: Number(r.sansRecitBruts), figes: Number(r.figes),
+        reprisesARattraper: Number(r.reprisesARattraper),
+        reprisesHorsPortee: Number(r.reprisesHorsPortee),
+        reprisesHorsPorteeAvecExces: Number(r.reprisesHorsPorteeAvecExces),
       })),
     };
   }
@@ -1391,9 +1413,22 @@ export class TripAutomationService {
           AND t."startedAt" > ${new Date(this.horizonRetention())}
         ORDER BY
           -- Les analyses qui affichent de FAUX excès d'abord : ce sont celles dont un client peut
-          -- lire un chiffre erroné aujourd'hui. Le reste suit, du plus récent au plus ancien.
+          -- lire un chiffre erroné aujourd'hui.
           (jsonb_array_length(COALESCE(ta.detail->'speeding', '[]'::jsonb)) > 0) DESC,
-          t."startedAt" DESC
+          /**
+           * ⚠️ PUIS LES PLUS ANCIENNES — l'inverse de ce qui était écrit ici jusqu'au
+           * 2026-09-04, et c'est le point.
+           *
+           * « Du plus récent au plus ancien » privilégiait les trajets qu'on regarde le plus.
+           * Mais le rattrapage COURT CONTRE LA PURGE : passé l'horizon de rétention, les
+           * positions disparaissent et l'analyse ne pourra plus JAMAIS être reprise. Prendre
+           * les récentes d'abord, c'était donc traiter en priorité celles qui ne risquaient
+           * rien, et laisser mourir celles qui allaient franchir l'horizon.
+           *
+           * Mesuré en production le 2026-09-04 : 2 150 analyses déjà hors de portée, et
+           * 2 424 de plus à moins de quinze jours de l'être. L'ordre inverse les sauve.
+           */
+          t."startedAt" ASC
         LIMIT ${MAX_REPRISE_PAR_PASSAGE}`;
     } catch (e) {
       stats.failed++;

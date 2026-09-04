@@ -8,7 +8,7 @@ import {
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { AiProviderId, TripAnalysisDto } from '@vizyo/tracky-shared';
-import { excesDuTrajet } from '@vizyo/tracky-shared';
+import { excesDuTrajet, analyseAvantRegleActuelle, analyseHorsDePortee } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -171,6 +171,30 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                    début et sont présentés comme s'ils décrivaient le tout. Une analyse
                    partielle affichée comme complète est pire qu'une analyse absente — ses
                    chiffres sont plausibles, cohérents entre eux, et faux. -->
+              <!-- ══ CHIFFRES D'AVANT LA RÈGLE ACTUELLE ═══════════════════════════════
+                   Cette analyse a été écrite avant le 4 septembre 2026 : elle n'a ni le taux
+                   de couverture des limites, ni la réserve sur la vitesse annoncée, et son
+                   détail peut contenir de FAUX excès — des dépassements bâtis sur un seul
+                   point. L'écran ne les COMPTE plus (il relit le détail avec la règle
+                   actuelle), mais les chiffres restent ceux d'hier, et rien ne le disait.
+
+                   ⚠️ Deux cas, deux phrases : celle qui attend son tour, et celle qui ne
+                   l'aura jamais. Les confondre ferait attendre une correction qui n'arrivera
+                   pas — c'est la faute déjà payée sur les trajets figés. -->
+              @if (analyseAncienne()) {
+                <p class="taid-ancienne">
+                  <lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon>
+                  @if (horsDePortee()) {
+                    Chiffres calculés avant le 4 septembre 2026, et <b>ils ne seront pas recalculés</b> :
+                    les positions GPS de ce trajet ne sont plus conservées. Le nombre d'excès affiché
+                    ci-dessus applique bien la règle actuelle ; le détail enregistré, lui, reste celui d'hier.
+                  } @else {
+                    Chiffres calculés avant le 4 septembre 2026. Ce trajet est dans la file de
+                    recalcul automatique ; d'ici là, le nombre d'excès affiché applique déjà la
+                    règle actuelle, mais le détail enregistré reste celui d'hier.
+                  }
+                </p>
+              }
               @if (a.detail.partielle; as pa) {
                 <p class="taid-partielle">
                   <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon>
@@ -457,6 +481,15 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
     .taid-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong, var(--border-subtle)); }
     .taid-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
     .taid-err { margin: 0; font-size: 12px; color: var(--texte-alerte); }
+    .taid-ancienne {
+      display: flex; align-items: flex-start; gap: 7px; margin: 0 0 10px;
+      padding: 9px 11px; border-radius: 10px;
+      font-size: 12.5px; line-height: 1.5;
+      color: var(--fg-secondary);
+      border: 1px dashed var(--border-subtle);
+      background: var(--bg-tertiary);
+    }
+    .taid-ancienne b { color: var(--fg-primary); }
     .taid-partielle {
       display: flex; align-items: flex-start; gap: 7px; margin: 0 0 10px;
       padding: 9px 11px; border-radius: 10px;
@@ -527,6 +560,44 @@ export class TripAnalysisBadgesComponent {
   protected readonly chargementAuto = signal(false);
 
   protected readonly current = computed(() => this.fresh() ?? this.analysis());
+
+  /**
+   * Horizon de rétention des positions, en jours — au-delà, une analyse n'est plus reprenable.
+   *
+   * ⚠️ Fourni par l'écran hôte quand il le connaît ; à défaut, la valeur du produit (60 j).
+   * Une constante recopiée ici DIVERGERAIT du serveur le jour où la rétention change, et le
+   * bandeau dirait « ne sera pas recalculé » d'un trajet que le rattrapage prendra le soir même.
+   */
+  readonly retentionJours = input<number>(60);
+
+  /** Cette analyse a-t-elle été écrite avant la règle actuelle (lot V1, 4 septembre 2026) ? */
+  protected readonly analyseAncienne = computed(() => analyseAvantRegleActuelle(this.current()));
+
+  /**
+   * Et ses positions ont-elles été purgées ? Alors elle ne sera JAMAIS reprise.
+   *
+   * ⚠️ La date de référence est celle du TRAJET, pas celle de l'analyse : c'est le trajet dont
+   * les positions se purgent. Une analyse recalculée hier sur un trajet de juin serait
+   * « récente » et pourtant irréparable.
+   */
+  protected readonly horsDePortee = computed(() => {
+    const a = this.current();
+    if (!a || !this.analyseAncienne()) return false;
+    const depart = this.departTrajet();
+    if (!depart) return false;
+    const horizon = Date.now() - this.retentionJours() * 86_400_000;
+    return analyseHorsDePortee(depart, horizon);
+  });
+
+  /** Date de départ du trajet — passée par l'écran hôte, sinon déduite du tracé de l'analyse. */
+  readonly tripStartedAt = input<string | null>(null);
+  private readonly departTrajet = computed(() => {
+    const fourni = this.tripStartedAt();
+    if (fourni) return fourni;
+    // ⚠️ Repli sur le PREMIER POINT du tracé : `computedAt` daterait le calcul, pas le trajet —
+    // une analyse recalculée hier ferait passer un trajet de juin pour tout frais.
+    return this.current()?.detail?.track?.[0]?.t ?? null;
+  });
 
   /** Analyse persistée sans aucune position : les chiffres sont des zéros inventés, pas des faits. */
   protected readonly isEmptyAnalysis = computed(() => {

@@ -364,6 +364,7 @@ const ANALYSES_BATCH_SIZE = 200;
               <app-trip-analysis-badges
                 [tripId]="trip.id"
                 [analysis]="analysisFor(trip.id)"
+                [tripStartedAt]="trip.startedAt"
                 [autoOpen]="trip.id === openTripId()"
                 (analyzed)="onAnalyzed($event)"
               />

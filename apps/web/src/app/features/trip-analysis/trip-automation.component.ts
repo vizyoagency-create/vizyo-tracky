@@ -172,11 +172,14 @@ import { apiErrorMessage } from '../../core/error/api-error';
             doit passer — il rédige pour toutes les sociétés, option IA ou non. <strong>IA</strong> : le client voit-il
             ses récits (option activée) ; coupée, ils sont rédigés mais masqués. <strong>Bruts</strong> : sans récit possible
             tant que le recalcul n'est pas passé. <strong>Figés</strong> : positions purgées, jamais analysables — un fait, pas un retard.
+            <strong>À reprendre</strong> : analyses écrites avant le 4 septembre 2026, que le rattrapage horaire rejoue — ce nombre-là DOIT
+            atteindre zéro. <strong>Perdues</strong> : les mêmes, mais dont les positions sont purgées — elles ne seront jamais reprises, et
+            leur détail enregistré restera celui d'hier. Un fait, pas un retard.
           </p>
           @if (backlog(); as b) {
             <div class="ta-bl">
               <div class="ta-bl-head" aria-hidden="true">
-                <span>Société</span><span>IA</span><span>Sans analyse</span><span>Sans récit</span><span>Bruts</span><span>Figés</span>
+                <span>Société</span><span>IA</span><span>Sans analyse</span><span>Sans récit</span><span>Bruts</span><span>Figés</span><span>À reprendre</span><span>Perdues</span>
               </div>
               @for (f of b.fleets; track f.fleetId) {
                 <div class="ta-bl-row">
@@ -187,11 +190,29 @@ import { apiErrorMessage } from '../../core/error/api-error';
                   <span class="ta-bl-n" [class.zero]="f.sansRecit === 0" data-label="Sans récit">{{ f.sansRecit | number }}</span>
                   <span class="ta-bl-n" [class.zero]="f.sansRecitBruts === 0" data-label="Bruts">{{ f.sansRecitBruts | number }}</span>
                   <span class="ta-bl-n ta-bl-n--fait" data-label="Figés">{{ f.figes | number }}</span>
+                  <!-- ⚠️ DEUX colonnes et non une. « À reprendre » descend vers zéro, « Perdues »
+                       ne descendra jamais : les additionner ferait passer un travail terminé pour
+                       un travail bloqué, et l'écran attendrait éternellement un zéro impossible. -->
+                  <span class="ta-bl-n" [class.zero]="f.reprisesARattraper === 0" data-label="À reprendre">{{ f.reprisesARattraper | number }}</span>
+                  <span class="ta-bl-n ta-bl-n--fait" data-label="Perdues"
+                        [title]="f.reprisesHorsPorteeAvecExces + ' de ces analyses affichent de faux excès dans leur détail enregistré'">{{ f.reprisesHorsPortee | number }}</span>
                 </div>
               }
               <!-- La définition sous le nombre : sans elle, « 132 sans récit » se fait
                    interpréter, et deux écrans ont affiché deux totaux pour la même question. -->
               <p class="ta-bl-note"><strong>Sans récit</strong> compte les {{ b.resteRecitLibelle }}</p>
+              <!-- ⚠️ Le total PERDU se dit en une phrase, avec la part qui porte de faux excès :
+                   c'est la seule mesure de ce que la reprise n'aura pas sauvé, et elle grandit
+                   tant que le rattrapage n'a pas fini. -->
+              @if (totalPerdues() > 0) {
+                <p class="ta-bl-note ta-bl-note--perte">
+                  <strong>{{ totalPerdues() | number }}</strong> analyse(s) ne seront jamais reprises — positions purgées.
+                  @if (totalPerduesAvecExces() > 0) {
+                    Dont <strong>{{ totalPerduesAvecExces() | number }}</strong> dont le détail enregistré contient de faux excès :
+                    les écrans ne les comptent plus (ils relisent le détail avec la règle actuelle), mais la donnée reste fausse.
+                  }
+                </p>
+              }
               <p class="ta-bl-at">
                 Calculé à {{ b.at | date:'HH:mm:ss' }}@if (b.horizon) { · analysables depuis le {{ b.horizon | date:'dd/MM' }} (rétention des positions) }
               </p>
@@ -314,6 +335,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-bl { display: flex; flex-direction: column; gap: 8px; }
     .ta-bl-note { margin: 4px 0 0; font-size: 12px; line-height: 1.45; color: var(--fg-tertiary); }
     .ta-bl-note strong { color: var(--fg-secondary); }
+    /* ⚠️ La perte définitive ne se distingue PAS par la couleur seule : elle est écrite
+       (« ne seront jamais reprises »). Le liseré n'est qu'un repère de lecture. */
+    .ta-bl-note--perte { margin-top: 8px; padding-left: 9px; border-left: 2px solid var(--texte-attente); }
     .ta-bl-head { display: none; }
     .ta-bl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .ta-bl-row > span::before { content: attr(data-label); display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-tertiary); margin-bottom: 2px; }
@@ -329,7 +353,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-bl-at { font-size: 11.5px; color: var(--fg-tertiary); margin: 4px 0 0; }
     @media (min-width: 640px) {
       .ta-bl { gap: 0; }
-      .ta-bl-head, .ta-bl-row { display: grid; grid-template-columns: 1.6fr .8fr 1fr 1fr .8fr .8fr; align-items: center; gap: 10px; }
+      .ta-bl-head, .ta-bl-row { display: grid; grid-template-columns: 1.6fr .8fr 1fr 1fr .8fr .8fr .9fr .9fr; align-items: center; gap: 10px; }
       .ta-bl-head { padding: 0 12px 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-tertiary); }
       .ta-bl-head span:not(:first-child), .ta-bl-row > span:not(.ta-bl-name) { text-align: right; }
       .ta-bl-row { border-radius: 0; border: none; border-top: 1px solid var(--border-subtle); background: transparent; padding: 10px 12px; }
@@ -383,6 +407,15 @@ export class TripAutomationComponent implements OnInit {
   protected readonly expandedRun = signal<string | null>(null);
   /** Reste à faire par société — rechargé après chaque run (c'est lui qui doit baisser). */
   protected readonly backlog = signal<TripAutomationBacklogDto | null>(null);
+
+  /** Total, toutes sociétés, des analyses que la reprise ne sauvera pas. */
+  protected readonly totalPerdues = computed(
+    () => (this.backlog()?.fleets ?? []).reduce((n, f) => n + f.reprisesHorsPortee, 0),
+  );
+  /** Dont celles qui portent de faux excès — la part qu'un client peut lire. */
+  protected readonly totalPerduesAvecExces = computed(
+    () => (this.backlog()?.fleets ?? []).reduce((n, f) => n + f.reprisesHorsPorteeAvecExces, 0),
+  );
   protected readonly backlogLoading = signal(false);
 
   /** Le formulaire diffère-t-il des réglages enregistrés ? (active le bouton Enregistrer). */

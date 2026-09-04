@@ -602,6 +602,32 @@ export interface TripAutomationBacklogFleetDto {
   sansRecitBruts: number;
   /** Trajets figés (positions purgées ou absentes) : ne seront jamais analysés. Fait, pas retard. */
   figes: number;
+  /**
+   * ── LES ANALYSES ÉCRITES AVANT LE 4 SEPTEMBRE 2026, ENCORE REPRENABLES ─────────────
+   *
+   * Elles n'ont ni le taux de couverture des limites, ni la réserve sur la vitesse annoncée,
+   * ni le détail de la note — et leur détail stocké peut contenir de FAUX excès (segments de
+   * durée nulle, hérités d'avant le lot V2). Les écrans ne les comptent plus, mais la donnée,
+   * elle, reste fausse.
+   *
+   * Ce nombre-ci DOIT atteindre zéro : c'est celui du rattrapage horaire.
+   */
+  reprisesARattraper: number;
+  /**
+   * ── CELLES QUI NE SERONT JAMAIS REPRISES ──────────────────────────────────────────
+   *
+   * Mêmes analyses, mais leurs positions GPS sont purgées (au-delà de l'horizon de rétention) :
+   * les rejouer est impossible, il n'y a plus rien à relire. **Fait, pas retard** — comme
+   * `figes`, et pour la même raison : un nombre qui ne peut pas descendre, affiché à côté de
+   * ceux qui le peuvent, fait passer une tâche terminée pour une tâche bloquée.
+   *
+   * ⚠️ Ce compte GRANDIT tant que le rattrapage n'a pas fini : chaque jour, des analyses
+   * franchissent l'horizon avant d'avoir été reprises. C'est la mesure de ce qu'on perd
+   * définitivement, et c'est pour cela qu'elle doit être visible.
+   */
+  reprisesHorsPortee: number;
+  /** Dont celles qui affichent de FAUX excès — la part visible par un client. */
+  reprisesHorsPorteeAvecExces: number;
 }
 
 export interface TripAutomationBacklogDto {

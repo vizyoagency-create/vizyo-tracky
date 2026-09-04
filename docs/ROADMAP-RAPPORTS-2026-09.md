@@ -552,6 +552,35 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 ---
 
+### ⚠️ Constat du 4 septembre — le rattrapage COURAIT CONTRE LA PURGE, et perdait
+
+Mesuré en production en marquant les analyses hors de portée : **2 150 analyses écrites avant
+le 4 septembre 2026 ne seront JAMAIS reprises** — les positions GPS de leur trajet sont purgées
+(60 j), il n'y a plus rien à relire. **1 811 d'entre elles portent de faux excès dans leur détail
+enregistré.** Réparti : cdef31 1 339, mh cars 584, A2R 230.
+
+**La cause n'était pas le volume, c'était l'ORDRE.** La reprise prenait les analyses « du plus
+récent au plus ancien » — donc en priorité celles qui ne risquaient rien (60 jours de marge), en
+laissant mourir celles qui allaient franchir l'horizon. **2 424 de plus étaient à moins de quinze
+jours de l'être.** L'ordre est inversé (`t."startedAt" ASC` après la priorité aux faux excès) :
+les analyses les plus proches de la purge passent désormais les premières.
+
+**Ce qui est MARQUÉ, et où** :
+- `/admin/trip-automation` gagne **deux** colonnes, jamais une seule : « À reprendre » (qui doit
+  atteindre zéro) et « Perdues » (qui ne le peut pas). Les additionner ferait passer un travail
+  terminé pour un travail bloqué — la faute déjà payée sur les trajets figés.
+- La **modale d'analyse** d'un trajet concerné le dit au lecteur, avec deux phrases distinctes
+  selon qu'il attend son tour ou qu'il ne l'aura jamais.
+- La règle vit dans le contrat partagé (`utils/analyse-ancienne`) : le rattrapage SQL, l'écran
+  d'automatisation et la modale appliquent le même critère. Le produit a déjà payé le prix de
+  deux définitions de « reste à faire ».
+
+⚠️ **Rien n'a été écrit en base.** « Hors de portée » se DÉDUIT de l'horizon de rétention, qui
+bouge : marquer les lignes aurait figé un jugement qui dépend d'un seuil mobile, et une analyse
+marquée perdue le serait restée si la rétention passait à 120 jours.
+
+---
+
 ### ⚠️ Constat du 4 septembre — « +11 925 % » n'est pas une mesure
 
 Vu en recette juste après la mise en place de F03 : sous le nombre de trajets, la tendance
