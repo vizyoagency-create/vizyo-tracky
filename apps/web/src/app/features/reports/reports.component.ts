@@ -18,7 +18,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
 import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
 import { ReportScheduleCardComponent } from './report-schedule-card.component';
 import { PermissionsService } from '../../core/services/permissions.service';
-import { ReportsApiService } from '../../core/services/reports.service';
+import { ReportsApiService, type FleetStatsReportDto } from '../../core/services/reports.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
@@ -539,10 +539,10 @@ const ANALYSES_BATCH_SIZE = 200;
                  le seul indice visible était un chevron gris de 16 px. Sur un téléphone,
                  l'utilisateur cherchait un bouton absent. « Voir › » est désormais écrit
                  en toutes lettres au bout de chaque ligne — la consigne est vraie. -->
-            @if (tripsTruncated()) {
-              <p>Sur les {{ listedTripCount() }} trajets chargés sur {{ kpis().tripCount }} — « Voir » ouvre la fiche du véhicule</p>
+            @if (recapPartiel() && tripsTruncated()) {
+              <p>Sur les {{ listedTripCount() }} trajets chargés sur {{ kpis().tripCount }} — synthèse complète en cours de chargement</p>
             } @else {
-              <p>Synthèse de la période — « Voir » ouvre la fiche du véhicule</p>
+              <p>Synthèse de TOUTE la période — « Voir » ouvre la fiche du véhicule</p>
             }
           </header>
           <div class="rep-vtable">
@@ -2119,6 +2119,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * défaut est invisible en métropole, ce qui le rend durable. Midi local met la valeur
    * à l'abri de tout fuseau et de tout changement d'heure.
    */
+  /**
+   * ── UN JOUR N'EST PAS 86 400 000 MILLISECONDES ──────────────────────────────────────
+   *
+   * Les périodes étaient calculées en soustrayant `N × 86 400 000`. Aux deux week-ends de
+   * changement d'heure, une journée civile dure 23 ou 25 heures : « 30 derniers jours »
+   * couvrait alors 29 ou 31 jours, et « Hier » pouvait tomber sur avant-hier. Le décalage
+   * est d'une heure, mais il traverse minuit — donc il change de JOUR.
+   *
+   * `setDate` fait de l'arithmétique de CALENDRIER en heure locale : il connaît les mois de
+   * 28 jours comme les journées de 23 heures. C'est déjà ce que fait le calcul du lundi de
+   * la semaine, quelques lignes plus bas ; il n'y avait aucune raison que le reste diffère.
+   */
+  private ajouterJours(d: Date, jours: number): Date {
+    const copie = new Date(d);
+    copie.setDate(copie.getDate() + jours);
+    return copie;
+  }
+
   private dateCivileLocale(iso: string): Date {
     return new Date(`${iso}T12:00:00`);
   }
@@ -2132,7 +2150,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const t = this.dateCivileLocale(this.periodTo);
       const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
       // Le `to` est toujours +1 jour (exclusif) cote periods → on retire 1 jour pour l'affichage.
-      const tDisplay = new Date(t.getTime() - 86400000);
+      const tDisplay = this.ajouterJours(t, -1);
       return `${fmt(f)} → ${fmt(tDisplay)}`;
     } catch { return 'Personnalisée'; }
   });
@@ -2169,16 +2187,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     //    la veille, donc « Hier » tombait sur avant-hier et « 7 derniers jours » excluait
     //    aujourd'hui. Même convention que `localIso` et que les pastilles de la barre.
     const iso = (d: Date) => this.localIso(d);
-    const tomorrow = new Date(today.getTime() + 86400000);
-    const yesterday = new Date(today.getTime() - 86400000);
+    const tomorrow = this.ajouterJours(today, 1);
+    const yesterday = this.ajouterJours(today, -1);
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // lundi
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     // 7 et 30 jours civils, aujourd'hui compris — même règle que les pastilles.
-    const days7 = new Date(today.getTime() - 6 * 86400000);
-    const days30 = new Date(today.getTime() - 29 * 86400000);
+    const days7 = this.ajouterJours(today, -6);
+    const days30 = this.ajouterJours(today, -29);
     return [
       { label: "Hier", from: iso(yesterday), to: iso(today) },
       { label: "Cette semaine", from: iso(startOfWeek), to: iso(tomorrow) },
@@ -2376,12 +2394,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private buildPeriods(): { label: string; from: string; to: string }[] {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today.getTime() + 86400000);
+    const tomorrow = this.ajouterJours(today, 1);
     // « 7 jours » = 7 jours civils, aujourd'hui compris (J-6 → J). L'ancien J-7 → J+1
     // couvrait HUIT jours : la modale PDF affichait « 8 jours » sous une pastille « 7 jours »,
     // et le calendrier « 7 derniers jours » comptait, lui, autrement. Même règle pour 30.
-    const minus6 = new Date(today.getTime() - 6 * 86400000);
-    const minus29 = new Date(today.getTime() - 29 * 86400000);
+    const minus6 = this.ajouterJours(today, -6);
+    const minus29 = this.ajouterJours(today, -29);
     return [
       { label: 'Aujourd\'hui', from: this.localIso(today), to: this.localIso(tomorrow) },
       { label: '7 jours', from: this.localIso(minus6), to: this.localIso(tomorrow) },
@@ -2788,7 +2806,39 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * complémentaire du tableau détaillé par trajet — n'enlève rien, ajoute un
    * rollup lisible. Triée par distance décroissante.
    */
+  /**
+   * Récapitulatif serveur de la PÉRIODE — `null` tant qu'il n'est pas arrivé, ou s'il a échoué.
+   */
+  protected readonly statsPeriode = signal<FleetStatsReportDto | null>(null);
+
+  /**
+   * ── LE PREMIER TABLEAU QU'ON LIT ÉTAIT FAUX DÈS L'OUVERTURE ─────────────────────────
+   *
+   * Ce récapitulatif agrégeait les trajets CHARGÉS — cent lignes sur 391 — et non la période.
+   * C'est le tableau qu'un gestionnaire regarde en premier pour comparer ses véhicules. Il
+   * portait bien la mention « sur les N trajets chargés », ce qui vaut mieux que rien, mais
+   * annoncer qu'un chiffre est partiel ne le rend pas juste : on comparait deux véhicules sur
+   * des échantillons différents, et le classement pouvait s'inverser à la page suivante.
+   *
+   * Il vient désormais de l'agrégat SERVEUR, calculé sur toute la période.
+   *
+   * ⚠️ LE REPLI CLIENT RESTE, et il est nécessaire : si l'agrégat n'est pas encore arrivé ou
+   * a échoué, un tableau vide ferait croire à une flotte à l'arrêt. On retombe alors sur les
+   * trajets chargés — et `recapPartiel()` le DIT, au lieu de le laisser deviner.
+   */
+  protected readonly recapPartiel = computed(() => this.statsPeriode() === null);
+
   protected readonly vehicleSummary = computed(() => {
+    const stats = this.statsPeriode();
+    if (stats) {
+      return stats.topVehicles.map((v) => ({
+        vehicleId: v.vehicleId,
+        distance: Math.round(v.distanceKm * 1000),
+        duration: Math.round(v.durationHours * 3600),
+        trips: v.tripCount,
+        avgSpeed: v.avgSpeedKmh,
+      }));
+    }
     const by = new Map<string, { vehicleId: string; distance: number; duration: number; trips: number; speedSum: number }>();
     for (const t of this.trips()) {
       if (!t.vehicleId) continue;
@@ -2933,7 +2983,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.customRangeOpen()) this.fermerPlagePerso();
   }
 
+  /**
+   * ⚠️ Toute rupture de périmètre efface l'agrégat AVANT de recharger. Le laisser en place
+   * afficherait, pendant une seconde, le récapitulatif de la période précédente sous le titre
+   * de la nouvelle — exactement le genre de faux qu'on vient de retirer de cet écran.
+   */
+  private oublierStatsPeriode(): void {
+    this.statsPeriode.set(null);
+  }
+
   protected setPeriod(from: string, to: string): void {
+    this.oublierStatsPeriode();
     this.periodFrom = from;
     this.periodTo = to;
     this.periodKey.set(`${from}|${to}`);
@@ -2962,8 +3022,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // annonçait une période décalée par rapport au fichier produit.
       const fDate = this.dateCivileLocale(this.periodFrom);
       // 'to' est exclusif (+1 jour cote periods) — on retire 1 jour pour l'affichage.
-      const tDate = new Date(this.dateCivileLocale(this.periodTo).getTime() - 86400000);
+      const tDate = this.ajouterJours(this.dateCivileLocale(this.periodTo), -1);
       const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+      // L'arrondi absorbe l'heure gagnée ou perdue au changement d'heure : 29,96 jours se
+      // lit 30. C'est le seul endroit où diviser par 86 400 000 reste juste.
       const days = Math.max(1, Math.round((tDate.getTime() - fDate.getTime()) / 86400000) + 1);
       return `${fmt(fDate)} → ${fmt(tDate)} · ${days} jour${days > 1 ? 's' : ''}`;
     } catch {
@@ -3004,7 +3066,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly pdfFileDateRange = computed(() => {
     this.periodKey();
     if (!this.periodFrom || !this.periodTo) return '';
-    const last = new Date(this.dateCivileLocale(this.periodTo).getTime() - 86400000);
+    const last = this.ajouterJours(this.dateCivileLocale(this.periodTo), -1);
     return `${this.periodFrom}_${this.localIso(last)}`;
   });
 
@@ -3291,6 +3353,50 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Agrégat serveur de la période, pour le récapitulatif par véhicule.
+   *
+   * ⚠️ `topN` est poussé au maximum accepté par le serveur (50). Ce récapitulatif n'est pas un
+   * podium : il doit lister TOUS les véhicules qui ont roulé, sinon il redevient partiel — d'une
+   * autre manière, mais tout aussi silencieuse. Au-delà de 50 véhicules dans un même périmètre,
+   * la liste est tronquée par le serveur ; le repli client, lui, l'annonce.
+   *
+   * ⚠️ Le périmètre suit CELUI DE L'ÉCRAN. Sans lui, le récapitulatif d'un écran filtré sur un
+   * véhicule afficherait toute la flotte : un tableau juste, mais qui répond à une autre question.
+   */
+  private async chargerStatsPeriode(seq: number): Promise<void> {
+    const fleetId = this.fleetFilter.selectedFleetId();
+    if (!this.periodFrom || !this.periodTo) return;
+    try {
+      const vehicleIds = this.vehicleIdsDuPerimetre();
+      const stats = await firstValueFrom(
+        this.reportsApi.stats(fleetId, this.periodFrom, this.periodTo, { vehicleIds, topN: 50 }),
+      );
+      if (seq !== this.loadSeq) return;
+      this.statsPeriode.set(stats);
+    } catch (err) {
+      // Pas de bandeau : ce n'est pas une panne des chiffres, c'est une synthèse indisponible.
+      // Le repli client prend le relais et `recapPartiel()` le dit.
+      if (seq === this.loadSeq) this.statsPeriode.set(null);
+      swallow('reports:statsPeriode', err);
+    }
+  }
+
+  /**
+   * Les véhicules que l'écran regarde : un seul s'il est filtré, ceux du groupe sinon.
+   *
+   * Une liste VIDE veut dire « pas de restriction » — le serveur rend alors toute la société,
+   * dans la limite du périmètre d'accès de l'appelant. C'est bien ce qu'on veut quand aucun
+   * filtre n'est posé.
+   */
+  private vehicleIdsDuPerimetre(): string[] {
+    const un = this.selectedVehicleId();
+    if (un) return [un];
+    const groupe = this.selectedGroupId();
+    if (!groupe) return [];
+    return this.vehicles().filter((v) => v.group?.id === groupe).map((v) => v.id);
+  }
+
   protected async loadData(): Promise<void> {
     const seq = ++this.loadSeq;
     this.loading.set(true);
@@ -3331,6 +3437,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // journalier. Un échec ici laisse l'écran utilisable, avec le repli sur
       // l'échantillon, annoncé comme tel par le titre.
       void this.loadPeriodCharts(seq, summaryParams);
+      // Récapitulatif par véhicule sur TOUTE la période. Chargé à part et sans bloquer :
+      // son échec laisse l'écran utilisable, avec le repli sur les trajets chargés — annoncé.
+      void this.chargerStatsPeriode(seq);
       // Traçabilité fine (P4c) : les badges d'analyse ne s'affichent QUE pour un véhicule choisi
       // (sinon les trajets couvrent plusieurs véhicules, pas de chargement en lot possible).
       void this.loadAnalyses(seq);

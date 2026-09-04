@@ -1096,12 +1096,12 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   private buildPeriods(): { label: string; from: string; to: string }[] {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today.getTime() + 86400000);
+    const tomorrow = this.ajouterJours(today, 1);
     // « 7 jours » = aujourd'hui COMPRIS plus les six précédents. J−7 avec une borne haute à
     // demain en couvrait huit : la fiche véhicule et la page Rapports annonçaient la même
     // période et n'affichaient pas les mêmes totaux.
-    const minus6 = new Date(today.getTime() - 6 * 86400000);
-    const minus29 = new Date(today.getTime() - 29 * 86400000);
+    const minus6 = this.ajouterJours(today, -6);
+    const minus29 = this.ajouterJours(today, -29);
     return [
       { label: "Aujourd'hui", from: this.localIso(today), to: this.localIso(tomorrow) },
       { label: '7 jours', from: this.localIso(minus6), to: this.localIso(tomorrow) },
@@ -1125,7 +1125,7 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
       const f = new Date(this.periodFrom);
       const t = new Date(this.periodTo);
       const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
-      const tDisplay = new Date(t.getTime() - 86400000);
+      const tDisplay = this.ajouterJours(t, -1);
       return `${fmt(f)} → ${fmt(tDisplay)}`;
     } catch { return 'Personnalisée'; }
   });
@@ -1136,6 +1136,7 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
     if (!f || !t) return '';
     if (f > t) return 'La date de début doit être antérieure à la date de fin.';
     if (t > this.todayIso) return 'La date de fin ne peut pas être dans le futur.';
+    // L'arrondi absorbe l'heure gagnée ou perdue au changement d'heure : 29,96 se lit 30.
     const days = Math.round((new Date(t).getTime() - new Date(f).getTime()) / 86400000);
     if (days > 365) return 'La plage ne peut pas dépasser 365 jours.';
     return '';
@@ -1145,15 +1146,15 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const iso = (d: Date) => d.toISOString().slice(0, 10);
-    const tomorrow = new Date(today.getTime() + 86400000);
-    const yesterday = new Date(today.getTime() - 86400000);
+    const tomorrow = this.ajouterJours(today, 1);
+    const yesterday = this.ajouterJours(today, -1);
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // lundi
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const days7 = new Date(today.getTime() - 7 * 86400000);
-    const days30 = new Date(today.getTime() - 30 * 86400000);
+    const days7 = this.ajouterJours(today, -7);
+    const days30 = this.ajouterJours(today, -30);
     return [
       { label: 'Hier', from: iso(yesterday), to: iso(today) },
       { label: 'Cette semaine', from: iso(startOfWeek), to: iso(tomorrow) },
@@ -1400,6 +1401,20 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
 
   /** Helper : format date en YYYY-MM-DD en heure LOCALE (pas UTC) pour eviter
    *  les decalages d'1 jour au changement de fuseau. */
+  /**
+   * ── UN JOUR N'EST PAS 86 400 000 MILLISECONDES ──────────────────────────────────────
+   *
+   * Même défaut que sur la page Rapports, corrigé le même jour : aux deux week-ends de
+   * changement d'heure, une journée civile dure 23 ou 25 heures. « 30 derniers jours » en
+   * couvrait 29 ou 31, et le décalage d'une heure traverse minuit — il change donc de JOUR.
+   * `setDate` fait de l'arithmétique de calendrier en heure locale.
+   */
+  private ajouterJours(d: Date, jours: number): Date {
+    const copie = new Date(d);
+    copie.setDate(copie.getDate() + jours);
+    return copie;
+  }
+
   private localIso(d: Date): string {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');

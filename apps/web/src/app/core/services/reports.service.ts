@@ -39,6 +39,9 @@ export interface FleetStatsReportDto {
     tripCount: number;
     estimatedConsumptionL: number;
     group?: { id: string; name: string } | null;
+    /** Ajoutés le 4 septembre : sans eux, l'écran devait additionner lui-même la page chargée. */
+    durationHours: number;
+    avgSpeedKmh: number;
   }[];
 }
 
@@ -73,9 +76,18 @@ export class ReportsApiService {
   private readonly http = inject(HttpClient);
   private readonly tracker = inject(ActivityTrackerService);
 
-  stats(fleetId: string | null, from: string, to: string) {
+  /**
+   * Indicateurs et récapitulatif par véhicule, calculés sur TOUTE la période par le serveur.
+   *
+   * `vehicleIds` porte le périmètre de l'écran (filtre véhicule ou groupe) ; `topN` la
+   * profondeur du récapitulatif. Sans eux, l'écran ne pouvait pas demander ce qu'il affiche,
+   * et additionnait la seule page chargée.
+   */
+  stats(fleetId: string | null, from: string, to: string, opts: { vehicleIds?: string[]; topN?: number } = {}) {
     const params: Record<string, string> = { from, to };
     if (fleetId) params['fleetId'] = fleetId;
+    if (opts.vehicleIds && opts.vehicleIds.length > 0) params['vehicleIds'] = opts.vehicleIds.join(',');
+    if (opts.topN) params['topN'] = String(opts.topN);
     return this.http.get<FleetStatsReportDto>('/api/reports/stats', { params });
   }
 

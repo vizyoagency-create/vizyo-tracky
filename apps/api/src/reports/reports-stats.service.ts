@@ -107,6 +107,25 @@ export interface FleetStatsReport {
     tripCount: number;
     estimatedConsumptionL: number;
     group: { id: string; name: string } | null;
+    /**
+     * ── AJOUTÉS LE 2026-09-04, POUR QUE L'ÉCRAN CESSE DE COMPTER TOUT SEUL ─────────────
+     *
+     * Le récapitulatif « Par véhicule » de la page Rapports agrégeait les trajets CHARGÉS —
+     * cent lignes sur 391 — et non la période. C'est le premier tableau qu'un gestionnaire
+     * lit pour comparer ses véhicules, et il était faux dès l'ouverture. Il le DISAIT, ce
+     * qui est mieux que rien, mais dire un chiffre faux ne le rend pas vrai.
+     *
+     * Ces deux mesures manquaient à l'agrégat serveur, et c'est la seule raison pour
+     * laquelle l'écran continuait de calculer lui-même.
+     */
+    durationHours: number;
+    /**
+     * ⚠️ Kilomètres parcourus ÷ heures de conduite, jamais la moyenne des moyennes de
+     * trajet. Même définition que la vitesse moyenne de flotte ci-dessus, pour la même
+     * raison : un trajet de 400 m à 8 km/h ne doit pas peser autant qu'un trajet de 180 km.
+     * L'écran, lui, faisait la moyenne des moyennes.
+     */
+    avgSpeedKmh: number;
   }[];
   /**
    * Liste des derniers trajets sur la periode (cap a 30 pour ne pas exploser
@@ -314,7 +333,9 @@ export class ReportsStatsService {
         this.prisma.trip.groupBy({
           by: ['vehicleId'],
           where: tripWhere,
-          _sum: { distanceKm: true },
+          // `durationSeconds` : indispensable au récapitulatif par véhicule de l'écran, qui
+          // devait sinon l'additionner lui-même sur la seule page chargée.
+          _sum: { distanceKm: true, durationSeconds: true },
           _count: { _all: true },
         }),
         this.prisma.alert.groupBy({
@@ -363,11 +384,12 @@ export class ReportsStatsService {
     const activeVehicleIds = new Set(tripsByVehicle.map((g) => g.vehicleId));
 
     // Map perVehicle pour calcul carburant + top.
-    const perVehicle = new Map<string, { distanceKm: number; tripCount: number }>();
+    const perVehicle = new Map<string, { distanceKm: number; tripCount: number; durationSeconds: number }>();
     for (const g of tripsByVehicle) {
       perVehicle.set(g.vehicleId, {
         distanceKm: g._sum.distanceKm ?? 0,
         tripCount: g._count._all,
+        durationSeconds: g._sum.durationSeconds ?? 0,
       });
     }
 
@@ -391,7 +413,7 @@ export class ReportsStatsService {
     let totalLiters = 0;
     const topVehicles: FleetStatsReport['topVehicles'] = [];
     for (const v of vehicles) {
-      const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0 };
+      const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0 };
       // Conso EFFECTIVE : calibrée (méthode du plein) si mesurée, sinon paramétrée, sinon défaut type.
       const consumptionL100 = (v.calibratedTanks > 0 ? v.calibratedConsumptionL100km : null)
         ?? v.fuelConsumptionL100km
@@ -399,7 +421,10 @@ export class ReportsStatsService {
         ?? 8;
       const liters = stat.distanceKm * consumptionL100 / 100;
       totalLiters += liters;
-      if (stat.distanceKm > 0) {
+      // ⚠️ `tripCount > 0` autant que la distance : un véhicule qui a roulé sans avancer —
+      // manœuvres, trajet interrompu — a bien des trajets sur la période, et l'écran le
+      // listait. L'omettre ici l'aurait fait disparaître du récapitulatif.
+      if (stat.distanceKm > 0 || stat.tripCount > 0) {
         topVehicles.push({
           vehicleId: v.id,
           plate: v.plate,
@@ -407,6 +432,10 @@ export class ReportsStatsService {
           tripCount: stat.tripCount,
           estimatedConsumptionL: Math.round(liters * 10) / 10,
           group: v.groups?.[0]?.group ?? null,
+          durationHours: Math.round((stat.durationSeconds / 3600) * 10) / 10,
+          avgSpeedKmh: stat.durationSeconds > 0
+            ? Math.round(stat.distanceKm / (stat.durationSeconds / 3600))
+            : 0,
         });
       }
     }

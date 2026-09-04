@@ -423,8 +423,8 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 | ~~FAIT~~ Le PDF retient désormais les trajets qui DÉMARRENT dans la période, comme l'écran, l'écran ceux qui y démarrent : un trajet parti à 23 h 50 la veille apparaît dans l'un et pas dans l'autre | `apps/api/src/reports/reports-stats.service.ts:277-284` | S |
 | ~~FAIT~~ La fiche véhicule utilise la même définition que la page Rapports (J−6 / J−29) : « 7 jours » y couvre 8 jours, « 30 jours » en couvre 31 | `apps/web/.../vehicles/vehicle-reports-tab.component.ts:1069-1070` | S |
 | ~~FAIT~~ Les CSV positions et commandes sortent avec leur en-tête même sans une seule ligne sans en-tête quand la période ne contient rien | `apps/api/src/reports/report-csv.service.ts:87,199` | S |
-| Les périodes sont calculées en millisecondes (`− N × 86 400 000`) : aux week-ends de changement d'heure, « 30 jours » en fait 29 ou 31 | `reports.component.ts:2068-2069`, `vehicle-reports-tab.component.ts:1069-1070` | S |
-| Avant un export, `refreshPeriodIfStalePreset` réaligne la période en silence sans recharger : le fichier exporté peut couvrir une autre période que celle affichée | `reports.component.ts:2599-2612` | S |
+| ~~FAIT le 4 septembre~~ Les périodes se calculent en JOURS CIVILS (`ajouterJours`, qui s'appuie sur `setDate`), sur les deux écrans. Une journée de 23 ou 25 heures ne décale plus la date : le décalage d'une heure traversait minuit, donc il changeait de jour. Le seul endroit où la division par 86 400 000 subsiste est le DÉCOMPTE de jours, où l'arrondi absorbe l'heure — et c'est écrit sur place | `reports.component.ts`, `vehicle-reports-tab.component.ts` | S |
+| ~~FAIT~~ `refreshPeriodIfStalePreset` passe par `setPeriod`, qui RECHARGE : le fichier exporté couvre la période affichée | `reports.component.ts` | S |
 | ~~FAIT~~ Les libellés de période ne sont plus lus en UTC, interprété en UTC : décalés d'un jour pour une flotte aux Antilles ou en Guyane | `reports.component.ts:1811` | S |
 
 **Comment on saura que c'est bon** : sur une même journée, le nombre de trajets est identique dans le tableau, le CSV, l'Excel et le PDF ; l'onglet Rapports d'une fiche véhicule annonce « 7 jours » dans la modale comme sur `/reports` ; un jeu d'essai avec le fuseau forcé à Paris passe les 30 mars et 20 avril sans écart.
@@ -558,7 +558,7 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 
 | Item | Fichier et ligne | Effort |
 |---|---|---|
-| **F04** — le récapitulatif « Par véhicule » agrège la page chargée, pas la période : sur 391 trajets avec une page de 100, il est faux dès l'ouverture, et il porte lui-même la mention « Sur les N trajets chargés ». L'alimenter depuis l'agrégat serveur | `reports.component.ts:445,459,485` | M |
+| ~~FAIT le 4 septembre~~ **F04** — le récapitulatif vient de l'agrégat SERVEUR, calculé sur toute la période. La route `/reports/stats` expose enfin `vehicleIds` et `topN`, que le service acceptait déjà : c'est parce qu'elle les taisait que l'écran additionnait lui-même sa page. `topVehicles` gagne `durationHours` et `avgSpeedKmh` — cette dernière en km ÷ heures, et non plus en moyenne des moyennes. Le repli client demeure et s'ANNONCE (`recapPartiel`) : un tableau vide ferait croire à une flotte à l'arrêt | `reports-stats.service.ts`, `reports.controller.ts`, `reports.component.ts` | M |
 | **F02** — brancher `GET /reports/stats` (aucun appelant côté web à ce jour) pour afficher coût carburant, litres et CO2 de la période | `reports.service.ts:71` | S |
 | **F05** — bloc « Alertes de la période » par type et sévérité, déjà calculé côté serveur | `reports-stats.service.ts:446` | S |
 | **F11** — parc actif et taux d'utilisation, via un point d'entrée existant et jamais appelé | `agenda/fleet-insights.controller.ts:67` | S |

@@ -146,10 +146,32 @@ export class ReportsController {
     @Query('fleetId') fleetIdQ: string | undefined,
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
+    @Query('vehicleIds') vehicleIdsQ: string | undefined,
+    @Query('topN') topNQ: string | undefined,
   ) {
     const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
     const accessibleVehicleIds = await this.accessibleVehicleIds(req);
-    return this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds });
+    /**
+     * ── DEUX PARAMÈTRES QUE LE SERVICE ACCEPTAIT DÉJÀ, ET QUE LA ROUTE TAISAIT ─────────
+     *
+     * `compute` sait restreindre à des véhicules et régler la profondeur du classement
+     * depuis toujours ; seule cette route ne le laissait pas dire. L'écran Rapports, qui
+     * filtre par véhicule et par groupe, ne pouvait donc pas demander SON périmètre — et
+     * c'est la raison pour laquelle il additionnait lui-même les trajets de la page chargée,
+     * en affichant un récapitulatif faux dès l'ouverture.
+     *
+     * ⚠️ Le périmètre demandé ne desserre RIEN : `compute` l'intersecte avec les véhicules
+     * réellement accessibles à l'appelant. Demander un véhicule d'une autre société ne le
+     * rend pas visible, il disparaît simplement du résultat.
+     */
+    const vehicleIds = (vehicleIdsQ ?? '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+    return this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds }, {
+      vehicleIds: vehicleIds.length > 0 ? vehicleIds : undefined,
+      topN: topNQ ? Number(topNQ) : undefined,
+    });
   }
 
   @Get('pdf')
