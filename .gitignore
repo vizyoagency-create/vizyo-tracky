@@ -28,6 +28,7 @@ pnpm-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .idea
+.zed/
 .DS_Store
 
 # Claude Code
