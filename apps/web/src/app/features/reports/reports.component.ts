@@ -3494,7 +3494,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const n = this.kpis().tripCount;
     const plate = this.selectedVehicleLabel();
     return `Les ${n} trajets de ${plate} sur la période seront supprimés puis redécoupés depuis les positions GPS. ` +
-      `Leurs analyses et leurs récits IA seront perdus ; l'agent les réécrira au fil des prochains passages.`;
+      `Leurs analyses et leurs récits IA seront perdus ; l'agent les réécrira au fil des prochains passages. ` +
+      `Les notes que vous avez saisies, le conducteur affecté et la mission rattachée sont CONSERVÉS : ils ` +
+      `sont rattachés au nouveau trajet qui couvre la même période. Si le redécoupage fond deux trajets en ` +
+      `un seul, une note peut néanmoins se retrouver sans trajet d'accueil — le compte vous sera donné après ` +
+      `le recalcul.`;
   });
 
   /**

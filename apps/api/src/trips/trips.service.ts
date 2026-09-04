@@ -10,7 +10,7 @@ import {
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Trip } from '@prisma/client';
-import type { TripCompletedEvent, TripStartedEvent } from '@vizyo/tracky-shared';
+import type { TripCompletedEvent, TripRecomputeResultDto, TripStartedEvent } from '@vizyo/tracky-shared';
 import { MAX_VITESSE_ANNONCEE_KMH, douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
@@ -888,7 +888,7 @@ export class TripsService implements OnModuleInit {
   async recompute(
     requestedBy: RequestedBy,
     dto: { vehicleId: string; from: string; to: string },
-  ): Promise<{ deleted: number; created: number }> {
+  ): Promise<TripRecomputeResultDto> {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
 
     const vehicle = await this.prisma.vehicle.findUnique({
@@ -933,10 +933,27 @@ export class TripsService implements OnModuleInit {
      * les dependances d'abord, le trajet ensuite. Une analyse decrit un decoupage precis ; apres
      * re-segmentation ce decoupage n'existe plus, la conserver n'aurait aucun sens.
      */
+    /**
+     * ⚠️ LE TRAVAIL SAISI À LA MAIN NE DOIT PAS PARTIR AVEC LA GÉOMÉTRIE.
+     *
+     * Le recalcul détruit des trajets et en recrée d'autres à partir des positions. Jusqu'ici,
+     * il emportait avec eux les NOTES rédigées par un exploitant, le CONDUCTEUR affecté et la
+     * MISSION rattachée — et le dialogue de confirmation n'en disait pas un mot : il annonçait
+     * la perte des analyses et des récits IA, produits par une machine, en taisant celle du
+     * seul contenu qu'un humain avait écrit.
+     *
+     * On relève donc ce qui porte une trace humaine AVANT de supprimer, pour le rattacher
+     * ensuite au nouveau trajet qui recouvre le mieux la même période.
+     */
     const aSupprimer = await this.prisma.trip.findMany({
       where: { vehicleId: dto.vehicleId, startedAt: { gte: fromDate, lte: toDate } },
-      select: { id: true },
+      select: {
+        id: true, startedAt: true, endedAt: true,
+        notes: true, notesUpdatedAt: true, notesUpdatedById: true,
+        driverId: true, driverSource: true, missionId: true,
+      },
     });
+    const aReprendre = aSupprimer.filter((t) => t.notes != null || t.driverId != null || t.missionId != null);
     const idsSupprimes = aSupprimer.map((t) => t.id);
     if (idsSupprimes.length > 0) {
       await this.prisma.tripFuelStop.deleteMany({ where: { tripId: { in: idsSupprimes } } });
@@ -981,6 +998,10 @@ export class TripsService implements OnModuleInit {
     );
 
     let created = 0;
+    /** Anciens trajets déjà rattachés — un jeu de notes ne peut vivre que sur un seul trajet. */
+    const dejaRepris = new Set<string>();
+    let notesReprises = 0;
+    let conducteursRepris = 0;
     for (const draft of drafts) {
       const safeDist = Math.max(0, draft.distanceMeters);
       // Defense en profondeur : le segmenter pre-trie donc draft.durationSeconds
@@ -1002,6 +1023,16 @@ export class TripsService implements OnModuleInit {
         ? draft.endedAt
         : new Date(draft.startedAt.getTime() + safeDur * 1000);
       const simplifiedPoly = douglasPeucker(draft.positions, TRIP_POLYLINE_DP_TOLERANCE_M);
+      /**
+       * À quel ANCIEN trajet ce nouveau correspond-il ? Celui dont la période se recouvre le
+       * plus. Le recouvrement est la seule mesure fiable : le redécoupage peut fondre deux
+       * trajets en un ou couper un trajet en deux, et les identifiants ne survivent pas.
+       */
+      const ancien = this.ancienLeMieuxRecouvert(draft.startedAt, safeEndedAt, aReprendre, dejaRepris);
+      if (ancien) dejaRepris.add(ancien.id);
+      if (ancien?.notes != null) notesReprises++;
+      if (ancien?.driverId != null) conducteursRepris++;
+
       const newTrip = await this.prisma.trip.create({
         data: {
           vehicleId: dto.vehicleId,
@@ -1021,6 +1052,13 @@ export class TripsService implements OnModuleInit {
           positionCount: draft.positionCount,
           segmentationSource: 'recompute',
           polyline: JSON.stringify(simplifiedPoly),
+          // Le travail humain repris tel quel — y compris qui l'a écrit et quand.
+          notes: ancien?.notes ?? null,
+          notesUpdatedAt: ancien?.notesUpdatedAt ?? null,
+          notesUpdatedById: ancien?.notesUpdatedById ?? null,
+          driverId: ancien?.driverId ?? null,
+          driverSource: ancien?.driverSource ?? null,
+          missionId: ancien?.missionId ?? null,
         },
       });
       // Sprint G.3 — map-matching async pour les trips recomputes.
@@ -1028,7 +1066,52 @@ export class TripsService implements OnModuleInit {
       created++;
     }
 
-    return { deleted, created };
+    /**
+     * Ce qui n'a trouvé aucun porteur : deux anciens trajets fondus en un seul, et un seul jeu
+     * de notes peut y tenir. Le chiffre est rendu à l'appelant plutôt que tu — c'est la part
+     * de la perte qu'on ne sait pas éviter, et la taire referait, en plus petit, le défaut
+     * qu'on vient de corriger.
+     */
+    const notesPerdues = aReprendre.filter((t) => !dejaRepris.has(t.id) && t.notes != null).length;
+    if (notesReprises > 0 || conducteursRepris > 0 || notesPerdues > 0) {
+      this.logger.log(
+        `Recalcul ${dto.vehicleId} : ${notesReprises} note(s) et ${conducteursRepris} conducteur(s) repris` +
+          (notesPerdues > 0 ? `, ${notesPerdues} note(s) sans trajet d'accueil apres redecoupage` : ''),
+      );
+    }
+    return { deleted, created, notesReprises, conducteursRepris, notesPerdues };
+  }
+
+  /**
+   * L'ancien trajet dont la période RECOUVRE le mieux celle du nouveau, ou `null`.
+   *
+   * ⚠️ Un ancien trajet ne sert qu'une fois (`dejaRepris`) : ses notes ne peuvent pas être
+   * recopiées sur deux trajets à la fois, sinon un même texte apparaîtrait deux fois et
+   * personne ne saurait lequel fait foi.
+   *
+   * ⚠️ Un recouvrement NUL ne compte pas. Deux trajets qui se suivent sans se chevaucher n'ont
+   * aucune raison de partager des notes : mieux vaut une note orpheline, comptée et annoncée,
+   * qu'une note posée sur le mauvais trajet.
+   */
+  private ancienLeMieuxRecouvert<T extends { id: string; startedAt: Date; endedAt: Date | null }>(
+    debut: Date,
+    fin: Date,
+    anciens: T[],
+    dejaRepris: Set<string>,
+  ): T | null {
+    let meilleur: T | null = null;
+    let meilleurRecouvrement = 0;
+    for (const a of anciens) {
+      if (dejaRepris.has(a.id)) continue;
+      const aFin = a.endedAt ?? a.startedAt;
+      const recouvrement =
+        Math.min(fin.getTime(), aFin.getTime()) - Math.max(debut.getTime(), a.startedAt.getTime());
+      if (recouvrement > meilleurRecouvrement) {
+        meilleurRecouvrement = recouvrement;
+        meilleur = a;
+      }
+    }
+    return meilleur;
   }
 
   /**

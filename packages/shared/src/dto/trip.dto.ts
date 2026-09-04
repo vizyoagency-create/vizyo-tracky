@@ -70,6 +70,26 @@ export interface TripPeriodChartsDto {
 export interface TripRecomputeResultDto {
   deleted: number;
   created: number;
+  /**
+   * ── LE TRAVAIL SAISI À LA MAIN, ET CE QU'IL EST DEVENU (2026-09-04) ──────────────────
+   *
+   * Le recalcul supprime les trajets puis les redécoupe depuis les positions. Les notes
+   * rédigées par un exploitant, le conducteur affecté et la mission rattachée partaient avec
+   * eux — en silence : le dialogue de confirmation annonçait la perte des récits IA, jamais
+   * celle-là. Un texte écrit à la main disparaissait sans que personne ne l'ait accepté.
+   *
+   * Ces champs sont désormais REPRIS par recouvrement de temps. Le compte dit exactement ce
+   * qui a été retrouvé, et surtout ce qui ne l'a pas été.
+   */
+  notesReprises: number;
+  conducteursRepris: number;
+  /**
+   * Travail manuel qu'AUCUN nouveau trajet ne pouvait porter : le redécoupage a fondu deux
+   * anciens trajets en un seul, et un seul jeu de notes peut y tenir. Ce nombre doit rester
+   * visible — c'est la part de la perte qu'on ne sait pas éviter, et la taire reviendrait à
+   * refaire, en plus petit, le défaut qu'on corrige.
+   */
+  notesPerdues: number;
 }
 
 export interface TripStartedEvent {
