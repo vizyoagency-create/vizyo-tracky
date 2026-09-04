@@ -612,24 +612,28 @@ et le rapport hebdomadaire passent par la même route et ont le même angle mort
 
 Fonctions absentes repérées par l'audit. La plupart sont des raccords vers des calculs qui existent déjà côté serveur — la valeur est haute et le coût faible. Le dix-huitième constat de cette lecture, le rapport planifié réglable par le client (F14), a été livré : voir la section 1.
 
-| # | Ce qui manque | Ce que le client y gagne |
-|---|---|---|
-| F02 | Coût carburant, litres et CO2 de la période | Répond à sa première question — « combien m'a coûté la flotte ce mois-ci ? » — sans générer un PDF pour y lire un chiffre déjà calculé. |
-| F04 | Récapitulatif par véhicule portant sur toute la période | Le tableau qu'il lit en premier pour comparer ses véhicules cesse d'être faux dès l'ouverture. |
-| F05 | Compteurs d'alertes de la période, par type et par sévérité | Il prépare son point mensuel depuis l'écran (« 14 excès, 3 sorties de zone ») au lieu d'ouvrir un fichier brut. |
-| F11 | Parc actif, kilométrage moyen et taux d'utilisation | Il voit quels véhicules ne roulent pas — l'information qui justifie une mutualisation ou une restitution. |
-| F06 | Excès de vitesse agrégés par véhicule | Il sait quel véhicule dépasse le plus, et le rapport de vitesse se déclenche sur un excès réel (85 km/h en zone 50) plutôt que sur un seuil fixe qui rate les uns et déclenche à tort sur les autres. |
-| F07 | Podium des conducteurs et lien vers le classement | La fonction la plus « gestion de flotte » du produit devient accessible depuis le rapport, au lieu de n'exister que dans le menu latéral. |
-| F03 | Comparaison avec la période précédente | Il lit une tendance (« +12 % ce mois-ci ») au lieu de comparer de tête ou dans un tableur. |
-| F08 | Filtres portés par l'URL | Il peut envoyer un rapport pré-filtré à un collègue, le mettre en favori, et un rafraîchissement ne perd plus son travail. |
-| F10 | Lien profond vers un trajet et « copier le lien » | Il cite un trajet précis dans un courriel ou un ticket, au lieu de demander à son interlocuteur de le retrouver dans un tableau paginé. |
-| F12 | Ralenti moteur agrégé | Premier poste de gaspillage carburant maîtrisable par simple consigne ; aujourd'hui calculé par trajet et agrégé nulle part. |
-| F13 | Dimension conducteur (filtre et récapitulatif) | « Combien de kilomètres a fait tel conducteur ce mois-ci, avec combien d'excès ? » trouve enfin une réponse sur un seul écran. |
-| F16 | Trajets hors horaires signalés | L'usage privé ou nocturne d'un véhicule de société — motif classique d'installation d'un traceur — ressort du rapport au lieu de rester enfoui dans les alertes. |
-| F17 | Export Excel d'une flotte ou d'un groupe | Le mois complet du parc tient dans un classeur mis en forme, au lieu de quarante exports ou d'un fichier brut. |
-| F09 | Vues enregistrées | Un suivi récurrent (« groupe Livraisons / mois en cours ») se retrouve en un clic. |
-| F15 | Impression de la page | `Ctrl+P` donne un document présentable en réunion, pas une capture de menus déroulants. |
-| F18 | Ponts entre les chiffres et la liste | Chaque nombre affiché devient un point d'entrée vers son détail, au lieu d'une impasse. |
+**Au 4 septembre 2026 au soir : treize des seize sont livrées.** Restent F07 (podium des
+conducteurs), F13 (dimension conducteur) et F16 (trajets hors horaires) — les trois qui
+demandent une agrégation nouvelle plutôt qu'un raccord vers un calcul existant.
+
+| # | État | Ce qui manque | Ce que le client y gagne |
+|---|---|---|---|
+| F02 | **fait** | Coût carburant, litres et CO2 de la période | Répond à sa première question — « combien m'a coûté la flotte ce mois-ci ? » — sans générer un PDF pour y lire un chiffre déjà calculé. |
+| F04 | **fait** | Récapitulatif par véhicule portant sur toute la période | Le tableau qu'il lit en premier pour comparer ses véhicules cesse d'être faux dès l'ouverture. |
+| F05 | **fait** | Compteurs d'alertes de la période, par type et par sévérité | Il prépare son point mensuel depuis l'écran (« 14 excès, 3 sorties de zone ») au lieu d'ouvrir un fichier brut. |
+| F11 | **fait** | Parc actif, kilométrage moyen et taux d'utilisation | Il voit quels véhicules ne roulent pas — l'information qui justifie une mutualisation ou une restitution. |
+| F06 | **fait** | Excès de vitesse agrégés par véhicule | Il sait quel véhicule dépasse le plus, et le rapport de vitesse se déclenche sur un excès réel (85 km/h en zone 50) plutôt que sur un seuil fixe qui rate les uns et déclenche à tort sur les autres. |
+| F07 | à faire | Podium des conducteurs et lien vers le classement | La fonction la plus « gestion de flotte » du produit devient accessible depuis le rapport, au lieu de n'exister que dans le menu latéral. |
+| F03 | **fait** | Comparaison avec la période précédente | Il lit une tendance (« +12 % ce mois-ci ») au lieu de comparer de tête ou dans un tableur. |
+| F08 | **fait** | Filtres portés par l'URL | Il peut envoyer un rapport pré-filtré à un collègue, le mettre en favori, et un rafraîchissement ne perd plus son travail. |
+| F10 | **fait** | Lien profond vers un trajet et « copier le lien » | Il cite un trajet précis dans un courriel ou un ticket, au lieu de demander à son interlocuteur de le retrouver dans un tableau paginé. |
+| F12 | **fait** | Ralenti moteur agrégé | Premier poste de gaspillage carburant maîtrisable par simple consigne ; aujourd'hui calculé par trajet et agrégé nulle part. |
+| F13 | à faire | Dimension conducteur (filtre et récapitulatif) | « Combien de kilomètres a fait tel conducteur ce mois-ci, avec combien d'excès ? » trouve enfin une réponse sur un seul écran. |
+| F16 | à faire | Trajets hors horaires signalés | L'usage privé ou nocturne d'un véhicule de société — motif classique d'installation d'un traceur — ressort du rapport au lieu de rester enfoui dans les alertes. |
+| F17 | **fait** | Export Excel d'une flotte ou d'un groupe | Le mois complet du parc tient dans un classeur mis en forme, au lieu de quarante exports ou d'un fichier brut. |
+| F09 | **fait** | Vues enregistrées | Un suivi récurrent (« groupe Livraisons / mois en cours ») se retrouve en un clic. |
+| F15 | **fait** | Impression de la page | `Ctrl+P` donne un document présentable en réunion, pas une capture de menus déroulants. |
+| F18 | **fait** | Ponts entre les chiffres et la liste | Chaque nombre affiché devient un point d'entrée vers son détail, au lieu d'une impasse. |
 
 ---
 
