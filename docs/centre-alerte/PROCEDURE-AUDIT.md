@@ -26,22 +26,33 @@ soit sur leur effet. Si un redéploiement a eu lieu entre-temps, ils deviennent 
 | **TRK-061** | `eadc0e72` | 🗓️ Le prochain échec IA facturé doit porter `level = 'DEGRADATION'`, `kind = 'provider_unfunded'`, un `motifFournisseur` dans le contexte — et **UNE seule ligne**, plus deux. |
 | **TRK-060** | `3c36cce0` | 🗓️ Une ligne `system-metrics` doit désormais commencer par « Un point de mesure système n'a pas pu être enregistré », pas par `Invalid prisma.$queryRaw()`. |
 | **TRK-065** | `68034a1d` | 🗓️ La ligne hebdomadaire de la sentinelle nº 5 doit tomber de **42 à ~21** et ne plus citer `system@tracky.local`, avec `comptesTechniquesEcartes: 1` au contexte. |
+| **TRK-066** | *(voir la fiche)* | 🗓️ Au prochain échec du relais, la ligne `sms-gateway` doit commencer par « SMS non remis au relais » et nommer `vizyo-texto` — **et conserver le motif technique en fin de phrase**. *S'il disparaît, on a nettoyé l'écran au lieu de traduire le message.* |
 
 🔴 **La double condition de TRK-061 vaut d'être relevée séparément** : le compteur `ERROR` doit
 tomber **sans** que le total de la famille bouge — la ligne existe toujours, en `DEGRADATION`.
 *Si les deux tombent, on a supprimé l'alerte, pas le défaut.*
 
-### 🎯 LES SEPT LOTS DU 04/09 N'AVAIENT RIEN EXERCÉ — c'est LA mesure du jour
+### ✅ LES SEPT LOTS ONT TOURNÉ — mesuré le 04/09 à 12:44, ces questions sont CLOSES
 
-Au moment de l'audit du 04/09, **0 analyse de trajet** avait tourné sous le nouveau code (bascule
-à 01:03, premier passage attendu ~03:47). Quatre sentinelles sur six étaient donc muettes **par
-calendrier**, pas par bonne santé. Ce passage-ci est le premier qui peut les juger :
+L'audit du matin, écrit sept minutes après la bascule, avait posé trois tests datés parce que
+**0 analyse** n'avait encore tourné. **Ils ont été relevés le jour même à 12:44 UTC et sont
+répondus** — ne pas les rouvrir :
 
-| À relever | Attendu | Ce que ça tranche |
+| Question de la veille | Réponse mesurée | État |
 |---|---|---|
-| `limitsCoverage` sur les analyses postérieures au 04/09 01:03 | **non NULL** | 🔴 **Encore 0 = le lot V3 n'écrit JAMAIS**, et la note plafonnée du lot V4 comme la sentinelle nº 4 sont sans matière. C'était 0 sur 641 analyses / 3 jours. |
-| Sentinelles nº 2 et nº 3 | une ligne, ou un silence **expliqué** | Elles dépendent de `detail.vitesse.pointsEcartes` et `aVerifier`, écrits par les lots V1/V2. |
-| [TRK-016](./REFERENCE-ERREURS.md#trk-016) — recalage cartographique | taux mesuré **sous le nouveau code** | Le chantier croise les lots V2/V3. *Un chantier ouvert sur une mesure périmée est un chantier ouvert pour rien.* |
+| `limitsCoverage` écrit-il ? *(lot V3)* | **94 analyses sur 114**, couverture moyenne **0,929** | ✅ **CLOS** |
+| Les lots V1/V2 écrivent-ils leurs blocs ? | `detail.vitesse` **114/114**, `aVerifier` **114/114** | ✅ **CLOS** |
+| Sentinelles nº 2 et nº 3 | **4 lignes `DEGRADATION` à 08:52:37** — premières paroles, constats réels | ✅ **CLOS** |
+
+*Les silences du matin étaient bien calendaires, pas sanitaires. Le diagnostic tenait.*
+
+⚠️ **La sentinelle nº 1 reste muette, et c'est ATTENDU** : le correctif TRK-064 est commité mais
+non déployé. **Après un déploiement, ce silence redevient ambigu** — le relever alors.
+
+| Reste à mesurer | Pourquoi maintenant |
+|---|---|
+| [TRK-016](./REFERENCE-ERREURS.md#trk-016) — recalage cartographique | Le taux (91,9 % d'échec) est antérieur aux lots V2/V3, qui touchent au rattachement à la voie. **Le relever sous le nouveau code avant de rouvrir le chantier** — *un chantier ouvert sur une mesure périmée est un chantier ouvert pour rien.* |
+| [TRK-066](./REFERENCE-ERREURS.md#trk-066) — relais SMS | **1 seule occurrence.** Compter les suivantes : trois points ou rien. |
 
 ### 🗓️ LES TESTS DATÉS — deux dépassent la règle des 7 jours
 
@@ -55,6 +66,11 @@ calendrier**, pas par bonne santé. Ce passage-ci est le premier qui peut les ju
 
 ### 🤝 CE QUI ATTEND UN HUMAIN — à rappeler dans le rapport tant que ce n'est pas fait
 
+0. 🔴🔴 **TRK-066 — trancher les trois questions du coupe-circuit.** Le 04/09 à 03:00, une commande
+   moteur a échoué sur ses **DEUX** voies et un véhicule est resté mobile. Le message est corrigé ;
+   **la garde ne l'est pas, et ne doit pas l'être sans vous** : (a) 10 s suffisent-elles sur un
+   dernier recours ? (b) faut-il un réessai, et comment le rendre idempotent ? (c) une
+   immobilisation demandée **qui n'a pas eu lieu** mérite-t-elle `CRITICAL` plutôt qu'`ERROR` ?
 1. 🔴 **Recharger le compte Anthropic.** À sec depuis le 03/09 00:13. Aucun correctif ne le fera —
    le nôtre ne fait que le DIRE correctement.
 2. **Décider du réglage par défaut des alertes de vitesse** (TRK-064). Les activer partout sans

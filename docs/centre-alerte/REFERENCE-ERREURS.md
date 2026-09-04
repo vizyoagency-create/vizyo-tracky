@@ -1258,6 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-066](#trk-066) | `sms-gateway` / `engine-control` | **Le coupe-circuit a échoué sur ses DEUX voies, et le dernier recours n'a pas dit lequel** — `The operation was aborted due to timeout` | 🟠 **CORRECTIF DU MESSAGE ÉCRIT ET COMMITÉ, NON DÉPLOYÉ** · **gravité 1** · famille **brut** *(**PREMIÈRE ligne `sms-gateway` de toute l'histoire conservée** — le référentiel notait « 0 depuis toujours » pour cette source, et ce zéro n'était pas une bonne nouvelle : c'était un canal qui ne s'était jamais plaint. Le 04/09 à 03:00:10, `FG-669-DQ` (`864035053277662`) est **hors ligne depuis 8 h** ; une commande moteur part, le TCP est impossible, **le repli SMS est donc la DERNIÈRE voie** — et le relais `vizyo-texto` n'a pas répondu dans les 10 s accordées (`sms-gateway.service.ts:609`, `AbortSignal.timeout(10_000)`). **Le véhicule n'a PAS été immobilisé.** ⚠️ Le message écrit au centre d'alerte était `The operation was aborted due to timeout` : sept mots qui ne nomment ni la dépendance, ni la conséquence, ni ce qui survit — **le défaut de [TRK-060](#trk-060), sur une chaîne bien plus grave**. La ligne jumelle de `engine-control`, elle, nomme correctement la conséquence. 🔵 **Trois questions restent HUMAINES et ne sont pas touchées** : le délai de 10 s sur un dernier recours, **l'absence de tout réessai**, et le niveau `ERROR` porté par une immobilisation qui n'a pas eu lieu. Le §8 interdit de modifier une garde de coupe-circuit sans décision humaine — *on corrige le cri, jamais le garde-fou*. ⚠️ **UNE seule occurrence** : fait mesuré, pas une tendance)* | 2026-09-04 | 2026-09-04 |
 | [TRK-063](#trk-063) | `http` | **Une plaque avec un point médian fait tomber TOUS les téléchargements du véhicule** — `Invalid character in header content ["Content-Disposition"]`, HTTP 500 | 🟢 **CORRIGÉ, DÉPLOYÉ ET VÉRIFIÉ SUR L'ARTEFACT SERVI le 2026-09-04 à 01:14:35** *(image reconstruite à 01:14:35, `filename*=UTF-8` désormais PRÉSENT dans `dist/common/utils/telechargement.js` — le constat « neuf minutes trop tard » décrivait l'intervalle entre les DEUX déploiements du 4 septembre)* · **gravité 1** · famille **brut** *(**premier `CRITICAL` depuis le 22/08**, tombé 1 min 44 après le redémarrage de 01:03:57, déclenché par la RECETTE de premier passage — `::ffff:127.0.0.1`, `userAgent: node`, `requestId: 9`. `speed-report.service.ts:173` bâtit le nom du fichier sur la PLAQUE et ne retire que les espaces ; Node lève `ERR_INVALID_CHAR` sur tout caractère hors Latin-1 dans un en-tête. Le trajet incriminé appartient à **`GLA•KC•31`** (`U+2022`). **2 véhicules sur 44** portent une telle plaque — `GLA•KC•31` et `KSR•370` — et pour eux **les 5 exports du contrôleur** répondaient 500 depuis toujours : le rapport de vitesse, pièce opposable à un conducteur, leur était purement inaccessible. ⚠️ **Personne ne l'avait vu parce qu'un 500 sur un téléchargement ressemble à une panne passagère** — il a fallu une recette automatisée pour le lire. ⚠️ **Vérifié sur l'ARTEFACT SERVI** : `filename*=UTF-8` ABSENT, `attachment; filename="` présent 5 fois dans `dist/reports/reports.controller.js` ; l'image est de 01:02:21, le correctif de 01:11:39 — **neuf minutes trop tard**)* | 2026-09-04 | 2026-09-04 |
 | [TRK-064](#trk-064) | *(angle mort — aucune ligne)* | **La chaîne d'alerte de vitesse est déployée, et activée nulle part** — et la sentinelle qui devait le voir se tait pour la même raison | 🟠 **CORRECTIF ÉCRIT ET COMMITÉ (`bacc9b44`), NON DÉPLOYÉ** · **gravité 1** · famille **à lire, pas à notifier** *(lot V5 en ligne depuis le 04/09 01:03. Mesure : **0 flotte sur 5** et **0 véhicule sur 44** avec `speedAlertEnabled`, **0 seuil renseigné**, `speedAlertUpdatedAt` NULL partout — pendant que **150 analyses portent un excès sur 24 h, dont 145 fraîches**. La sentinelle nº 1 `excesSansAlerte` sort à `sentinelles-coherence.service.ts:261` sur `if (flottes.length === 0) return []` : **elle ne peut pas parler**, et rend le MÊME silence qu'une chaîne en parfait état. ⚠️ **Ce n'est pas un défaut du code** — l'opt-in est un choix produit défendable ; le défaut est que **rien ne dit que le réglage est à zéro partout**. 🔑 Les 8 `OVERSPEED` de la semaine sont toutes sur `FG-669-DQ` et **aucune n'est rattachée à un trajet** : elles viennent du chemin historique, pas de V5 — *le compteur `OVERSPEED` n'a jamais mesuré cette chaîne*)* | 2026-09-04 | 2026-09-04 |
 | [TRK-065](#trk-065) | `sentinelles` | **42 notifications non remises faute d'appareil abonné, dont 21 pour un compte technique** | 🟠 **CORRECTIF ÉCRIT ET COMMITÉ (`68034a1d`), NON DÉPLOYÉ** · **gravité 3** *(**première ligne jamais écrite par les sentinelles du lot V6**, 72 s après le démarrage de l'API — l'instrument a parlé au premier passage et il avait raison. Mesure indépendante sur 7 j : `SENT` 66, `SUPPRESSED/no_device` **42**, `SUPPRESSED/default_type_muted` 21 → **une notification sur trois n'atteint personne**. Les 42 se partagent également entre `system@tracky.local` (21), compte **technique** qui n'aura JAMAIS d'appareil, et `tyger.bcn@gmail.com` (21), humain qui se croit prévenu. ⚠️ **Sans sortir le compte technique de la liste, cette sentinelle criera chaque semaine avec un chiffre à moitié structurel** — c'est ainsi qu'un instrument neuf devient du bruit en trois passages)* | 2026-09-04 | 2026-09-04 |
@@ -10585,6 +10586,87 @@ ce dépôt sait ce que coûte un centre d'alerte qu'on cesse de lire.*
 
 Au passage hebdomadaire suivant, la ligne ne cite plus qu'**un** compte, et le total tombe de 42 à
 ~21. *Si le total tombe à zéro, c'est la sentinelle qu'on a éteinte, pas le problème qu'on a réglé.*
+
+---
+
+## TRK-066
+
+**Signature** — `sms-gateway | ERROR | The operation was aborted due to timeout`, doublée 61 ms
+plus tard par `engine-control | ERROR | Commande moteur non transmise : boîtier hors ligne et
+repli SMS impossible (<MOTIF>)`.
+**Statut : 🟠 CORRECTIF DU MESSAGE ÉCRIT ET COMMITÉ, NON DÉPLOYÉ** · gravité **1** ·
+famille **brut** · 1 occurrence · 2026-09-04
+
+### Le zéro qui n'était pas une bonne nouvelle
+
+Le référentiel portait, depuis des semaines, cette ligne dans son tableau d'instruments :
+
+> | Lignes `error_logs` de source `sms-heartbeat`, `sms-gateway` ou `sms-webhook` | **0 — depuis toujours** |
+
+Le 2026-09-04 à 03:00:10, ce zéro est tombé. **C'est la première ligne d'erreur que la passerelle
+SMS ait jamais écrite**, et elle est arrivée sur le pire des chemins.
+
+### Ce qui s'est passé, dans l'ordre
+
+| Heure (UTC) | Fait |
+|---|---|
+| 03/09 18:57 | `FG-669-DQ` (`864035053277662`) émet sa dernière trame, puis se tait |
+| 04/09 03:00:10.904 | Une commande moteur part. Le boîtier est hors ligne → **le TCP est impossible** |
+| ↳ | Le repli SMS est donc la **DERNIÈRE voie**. Le relais `vizyo-texto` ne répond pas en **10 s** |
+| 04/09 03:00:10.965 | La commande passe en `FAILED`. **Le véhicule n'a pas été immobilisé** |
+
+⚠️ **Ce véhicule n'est pas un inconnu** : c'est celui que l'audit du matin avait relevé comme
+**hors ligne sans déclaration** depuis 6 h, et c'est le seul du parc à produire des `OVERSPEED`
+(8 sur 8 la semaine passée). *Le boîtier qui roule vite est celui qu'on n'a pas pu arrêter.*
+
+### Cause racine du DÉFAUT CORRIGÉ ICI — un message qui recopie le transport
+
+`sms-gateway.service.ts` posait au centre d'alerte l'erreur brute de `fetch` :
+
+```
+The operation was aborted due to timeout
+```
+
+Sept mots. Ils ne disent **ni quelle dépendance** a expiré (le relais `vizyo-texto`), **ni la
+conséquence** (le SMS n'est pas parti), **ni ce qui se jouait derrière** (une immobilisation). Un
+exploitant qui lit ça à 3 h du matin ne peut pas savoir qu'un véhicule vient de rester mobile.
+
+C'est **exactement le défaut de [TRK-060](#trk-060)** — l'erreur de transport servie telle quelle —
+mais sur la chaîne la plus grave du produit. *Le même défaut ne coûte pas le même prix selon
+l'endroit où il vit.*
+
+> 🔑 La ligne jumelle, celle de `engine-control`, est bien écrite : elle nomme la conséquence
+> (« commande moteur non transmise »). **Les deux lignes disent des faits différents** — l'une le
+> transport, l'autre la conséquence métier — et ce n'est donc PAS le « un incident, deux lignes »
+> de [TRK-061](#trk-061). Celle qu'il fallait réparer était la première.
+
+### Correctif appliqué
+
+`decrireEchecRelaisSms()` — fonction **pure et exportée**, donc testable sans monter la passerelle.
+Elle nomme la dépendance, la conséquence, le risque d'immobilisation, **et conserve le motif
+technique en fin de phrase** ainsi que dans le contexte (`motifTechnique`). *On change l'ordre, on
+n'efface pas la preuve.* Le numéro du destinataire est **masqué** — ces lignes sont versionnées.
+
+### 🔵 Ce qui reste HUMAIN — et n'a délibérément PAS été touché
+
+| Question | Pourquoi elle n'est pas tranchée ici |
+|---|---|
+| **10 s suffisent-elles** sur un dernier recours ? | Le délai protège d'un relais pendu ; l'allonger déplace le risque. Arbitrage à faire. |
+| **Aucun réessai** sur la dernière voie | Un réessai sur une commande moteur doit être pensé (double envoi, idempotence) — pas improvisé. |
+| Le niveau est `ERROR` | Une immobilisation demandée **qui n'a pas eu lieu** mérite peut-être `CRITICAL`. |
+
+> ⚠️ Ces trois points touchent la **garde du coupe-circuit**, que le §8 de la procédure interdit de
+> modifier sans décision humaine, au même titre qu'un chemin de paiement. **On corrige le cri,
+> jamais le garde-fou.**
+
+### Vérification
+
+Au prochain échec du relais : la ligne `sms-gateway` commence par « SMS non remis au relais » et
+nomme `vizyo-texto`, **et** le motif technique d'origine reste lisible en fin de phrase.
+*Si le motif disparaît, on a nettoyé l'écran au lieu de traduire le message.*
+
+⚠️ **UNE seule occurrence à ce jour.** Fait mesuré, pas une tendance : ne pas en conclure que le
+relais se dégrade avant d'avoir trois points.
 
 ---
 

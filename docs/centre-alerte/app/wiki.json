@@ -43,6 +43,22 @@
   ],
   "fiches": [
     {
+      "id": "TRK-066",
+      "titre": "Le coupe-circuit a echoue sur ses DEUX voies, et le dernier recours n a pas dit lequel",
+      "source": "sms-gateway / engine-control",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 1,
+      "vuPremiere": "2026-09-04",
+      "vuDerniere": "2026-09-04",
+      "occurrences": 1,
+      "occurrencesLibelle": "Une seule occurrence, et c est la PREMIERE ligne d erreur que la passerelle SMS ait jamais ecrite. Le referentiel portait depuis des semaines, dans son tableau d instruments, la mention zero depuis toujours pour cette source. Ce zero n etait pas une bonne nouvelle : c etait un canal qui ne s etait jamais plaint. Le 4 septembre a 03h00m10, il s est plaint, et sur le pire des chemins. ATTENTION : une occurrence est un FAIT MESURE, pas une tendance. Ne pas conclure que le relais se degrade avant d avoir trois points.",
+      "quoi": "Le vehicule FG-669-DQ s est taise le 3 septembre a 18h57. Le 4 a 03h00m10, une commande moteur part vers lui : le boitier etant hors ligne, le canal TCP est impossible, et LE REPLI SMS EST DONC LA DERNIERE VOIE. Le relais vizyo-texto n a pas repondu dans les dix secondes accordees, la commande est passee en echec, ET LE VEHICULE N A PAS ETE IMMOBILISE. Ce vehicule n est pas un inconnu : c est celui que l audit du matin avait releve comme hors ligne SANS DECLARATION, et c est le seul du parc a produire des exces de vitesse, huit sur huit la semaine passee. Le boitier qui roule vite est celui qu on n a pas pu arreter. LE DEFAUT CORRIGE ICI EST LE MESSAGE. La passerelle posait au centre d alerte l erreur brute du transport, sept mots en anglais qui ne nomment ni la dependance qui a expire, ni la consequence, ni ce qui se jouait derriere. C est exactement le defaut de TRK-060, l erreur de transport servie telle quelle, mais sur la chaine la plus grave du produit : le meme defaut ne coute pas le meme prix selon l endroit ou il vit. La ligne jumelle, celle du controle moteur, est bien ecrite et nomme la consequence : les deux lignes disent des faits DIFFERENTS, ce n est donc pas le un incident deux lignes de TRK-061.",
+      "quoiFaire": "CORRECTIF APPLIQUE : une fonction pure et exportee decrit desormais l echec en nommant la dependance, la consequence, le risque d immobilisation, et CONSERVE le motif technique en fin de phrase ainsi que dans le contexte. On change l ordre, on n efface pas la preuve. Le numero du destinataire est masque, ces lignes etant versionnees. TROIS QUESTIONS RESTENT HUMAINES ET N ONT DELIBEREMENT PAS ETE TOUCHEES, parce qu elles relevent de la garde du coupe-circuit que le paragraphe 8 interdit de modifier sans decision humaine : dix secondes suffisent-elles sur un dernier recours, sachant qu allonger le delai deplace le risque au lieu de le retirer ; faut-il un reessai sur la derniere voie, ce qui demande de penser le double envoi et l idempotence plutot que de l improviser ; et une immobilisation demandee QUI N A PAS EU LIEU merite-t-elle le niveau CRITIQUE plutot qu ERREUR. On corrige le cri, jamais le garde-fou. VERIFICATION : au prochain echec du relais, la ligne commence par SMS non remis au relais et nomme vizyo-texto, ET le motif technique d origine reste lisible en fin de phrase. Si le motif disparait, on a nettoye l ecran au lieu de traduire le message.",
+      "aNePasFaire": "NE PAS allonger le delai de dix secondes pour faire disparaitre la ligne : un relais pendu bloquerait alors la commande plus longtemps encore, et le probleme se deplacerait au lieu d etre resolu. NE PAS ajouter un reessai sans avoir tranche l idempotence d une commande moteur. NE PAS lire l unique occurrence comme une degradation du relais : un point ne fait pas une tendance. Et NE PAS considerer la fiche comme close par ce correctif : ce qui est repare, c est la lisibilite de l alerte, pas le fait qu un vehicule soit reste mobile.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-066"
+    },
+    {
       "id": "TRK-063",
       "titre": "Une plaque avec un point median fait tomber TOUS les telechargements du vehicule",
       "source": "http",

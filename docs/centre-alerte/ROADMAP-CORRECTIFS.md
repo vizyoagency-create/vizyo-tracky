@@ -327,3 +327,59 @@ sentinelles ont trouvé un défaut de conception que le test de celle-ci ne pouv
 **Et un défaut se corrige des deux côtés à la fois.** Le client GPT est le jumeau exact du client
 Claude : le compte à sec y aurait été classé « faute d'appel » à l'identique. Les deux sont
 traités dans le même commit — *un défaut corrigé d'un seul côté revient toujours par l'autre.*
+
+---
+
+## Ajout du 2026-09-04 à 12:44 — ce que onze heures de recul ont changé
+
+### 🆕 TRK-066 · gravité 1 · ✅ FAIT *(message)* + 🤝 HUMAIN *(la garde)*
+
+**Ce qui se passe** — Le 04/09 à 03:00:10, une commande moteur a échoué sur ses **DEUX** voies :
+`FG-669-DQ` hors ligne depuis 8 h (TCP impossible), puis le relais SMS — **dernière voie** — muet
+en 10 s. **Le véhicule n'a pas été immobilisé.** C'est la **première ligne `sms-gateway` de toute
+l'histoire conservée** ; le référentiel notait « 0 depuis toujours » pour cette source.
+
+> ⚠️ **Ce zéro n'était pas une bonne nouvelle** : c'était un canal qui ne s'était jamais plaint.
+> Le dispositif l'affichait comme un instrument sain depuis des semaines.
+
+⚠️ **Le véhicule concerné est celui que l'audit du matin signalait déjà** comme hors ligne sans
+déclaration — et le seul du parc à produire des `OVERSPEED` (8 sur 8). *Le boîtier qui roule vite
+est celui qu'on n'a pas pu arrêter.*
+
+**Le geste (fait)** — Le message était `The operation was aborted due to timeout` : le défaut de
+[TRK-060](./REFERENCE-ERREURS.md#trk-060), **sur la chaîne la plus grave du produit**. Une fonction
+**pure et exportée** nomme désormais la dépendance, la conséquence et le risque d'immobilisation,
+**en conservant le motif technique** en fin de phrase et dans le contexte.
+
+**Le geste 🤝 HUMAIN — et il pèse plus que le nôtre** : 10 s suffisent-elles sur un dernier
+recours ? Faut-il un réessai, et comment le rendre idempotent ? Une immobilisation demandée **qui
+n'a pas eu lieu** mérite-t-elle `CRITICAL` ? *Ces trois points touchent la garde du coupe-circuit —
+§8 : on corrige le cri, jamais le garde-fou.*
+
+### ✅ Trois WARN se sont fermés d'eux-mêmes
+
+Les tests que cette roadmap datait au 05/09 ont été relevés **le jour même** :
+
+| Question | Réponse mesurée |
+|---|---|
+| `limitsCoverage` écrit-il ? *(lot V3)* | **94 / 114**, couverture moyenne **0,929** — ✅ oui |
+| Les lots V1 et V2 écrivent-ils leurs blocs ? | **114 / 114** des deux côtés — ✅ oui |
+| Sentinelles nº 2 et nº 3 | **4 lignes `DEGRADATION` à 08:52:37** — ✅ elles parlent |
+
+> 🔑 **Le rapport du matin avait raison de refuser de conclure.** Il écrivait « quatre sentinelles
+> sur six sont muettes **par calendrier**, pas par bonne santé », et il posait la mesure qui
+> trancherait. *Une réserve honnête ne coûte rien : elle se résout dès que la mesure devient
+> possible. Une conclusion prématurée, elle, aurait dû être défaite.*
+
+### 🧹 TRK-063 : statut rectifié sur la MESURE, pas sur la fiche
+
+L'image avait été reconstruite à **01:14:35**, quatre minutes après la collecte du matin. **0
+erreur `http`, 0 `CRITICAL` depuis.** Le constat « neuf minutes trop tard » décrivait l'intervalle
+entre les **deux** déploiements du 4 septembre. *Le rapport disait vrai à 01:10 et faux à 01:15 —
+c'est le prix d'auditer sept minutes après une bascule, et la raison de dater chaque mesure.*
+
+### Journal d'exécution — complément
+
+| # | Fiche | État | Preuve |
+|---|---|---|---|
+| 6 | **TRK-066** | ✅ **FAIT** *(message)* | `decrireEchecRelaisSms` extraite en fonction **pure et exportée** · 6 tests neufs, dont un témoin et un contrôle de non-divulgation du numéro · suite `sms/` **77/77** |
