@@ -72,7 +72,7 @@ describe('resolveReportVehicleScope (helper partagé)', () => {
 describe('ReportsStatsService.compute — borne périmètre', () => {
   /** Capture les `where` passés à trip.aggregate / groupBy / findMany. */
   function makePrisma(vehiclesInFleet: string[]) {
-    const captured: { tripWhere?: any; alertWhere?: any; fuelStopWhere?: any; excesParams?: unknown[] } = {};
+    const captured: { tripWhere?: any; alertWhere?: any; fuelStopWhere?: any; excesParams?: unknown[]; nbRequetesBrutes?: number } = {};
     const vehicleRows = vehiclesInFleet.map((id) => ({
       id, plate: id.toUpperCase(), type: 'CAR', fuelConsumptionL100km: null, groups: [],
     }));
@@ -117,7 +117,11 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
          * oublié sans qu'aucun type ne s'en aperçoive.
          */
         $queryRaw: jest.fn().mockImplementation((_strings: unknown, ...valeurs: unknown[]) => {
-          captured.excesParams = valeurs;
+          // ⚠️ On ACCUMULE : le service en lance plusieurs (excès, ralenti). Ne garder que
+          // la dernière ferait passer le test au vert alors qu'une seule des requêtes porte
+          // le périmètre — et ce serait la garde de périmètre qui aurait l'air tenue.
+          captured.excesParams = [...(captured.excesParams ?? []), ...valeurs];
+          captured.nbRequetesBrutes = (captured.nbRequetesBrutes ?? 0) + 1;
           return Promise.resolve([]);
         }),
       } as any,
@@ -210,11 +214,15 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
     });
 
     const params = valeursLiees(captured.excesParams);
-    // Le tableau de véhicules autorisés est passé en paramètre LIÉ, jamais concaténé.
-    const perimetre = params.find((v): v is string[] => Array.isArray(v));
-    expect(perimetre).toEqual(expect.arrayContaining([VEH_A, VEH_B]));
-    expect(perimetre).toHaveLength(2);
-    expect(perimetre).not.toContain(VEH_X);
+    // ⚠️ CHAQUE requête brute porte son périmètre : autant de tableaux liés que de requêtes.
+    // Une seule suffirait à faire passer une assertion naïve, en laissant l'autre ouverte.
+    const perimetres = params.filter((v): v is string[] => Array.isArray(v));
+    expect(perimetres.length).toBe(captured.nbRequetesBrutes);
+    for (const perimetre of perimetres) {
+      expect(perimetre).toEqual(expect.arrayContaining([VEH_A, VEH_B]));
+      expect(perimetre).toHaveLength(2);
+      expect(perimetre).not.toContain(VEH_X);
+    }
     // Et la flotte reste passée, en défense en profondeur comme partout ailleurs.
     expect(params).toContain(FLEET_ID);
   });

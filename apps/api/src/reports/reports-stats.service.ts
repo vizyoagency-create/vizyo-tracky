@@ -125,6 +125,12 @@ export interface FleetStatsReport {
     /** Nombre de passages station ayant fourni un prix (échantillon du prix constaté). */
     observedSampleCount: number;
     /**
+     * Ralenti moteur cumulé de TOUT le périmètre, en secondes (F12). Premier gaspillage
+     * carburant réductible par simple consigne, calculé par trajet depuis toujours et agrégé
+     * nulle part jusqu'ici.
+     */
+    idleSecondsTotal: number;
+    /**
      * CO₂ estimé de la période, en kg — somme des litres de chaque véhicule multipliés par le
      * facteur de SON énergie, jamais par un facteur moyen de flotte.
      *
@@ -181,6 +187,18 @@ export interface FleetStatsReport {
     speedingCount: number;
     speedingTripCount: number;
     worstOverKmh: number;
+    /**
+     * ── RALENTI MOTEUR : LE PREMIER GASPILLAGE MAÎTRISABLE (F12) ─────────────────────
+     *
+     * Moteur tournant à l'arrêt. Il est calculé PAR TRAJET depuis toujours, et agrégé nulle
+     * part : personne ne pouvait dire « ce véhicule a passé onze heures au ralenti ce
+     * mois-ci », alors que c'est le poste de dépense qu'une simple consigne réduit.
+     *
+     * ⚠️ En secondes, comme partout ailleurs dans le produit ; c'est l'écran qui met en
+     * forme. Rendre des heures ici obligerait chaque lecteur à savoir si l'arrondi a déjà
+     * eu lieu.
+     */
+    idleSeconds: number;
   }[];
   /**
    * Liste des derniers trajets sur la periode (cap a 30 pour ne pas exploser
@@ -390,6 +408,29 @@ export class ReportsStatsService {
      * Mesuré en production le 2026-09-04 : 188 ms sur 30 jours de la plus grosse société.
      * Lancée DANS le Promise.all ci-dessous, donc en parallèle des autres agrégats.
      */
+    /**
+     * Ralenti moteur cumulé par véhicule sur la période (F12).
+     *
+     * ⚠️ Requête SÉPARÉE de celle des excès : celle-ci fait un LATERAL sur les segments de
+     * dépassement, donc une ligne par segment — y additionner `idleSec` compterait le ralenti
+     * d'un trajet autant de fois qu'il porte d'excès. Deux questions, deux requêtes.
+     *
+     * ⚠️ `idleSec` est une colonne, pas du JSON : la lecture ne détoaste aucun détail.
+     */
+    const ralentiParVehicule = this.prisma.$queryRaw<{ vehicleId: string; ralenti: number }[]>`
+      SELECT ta."vehicleId" AS "vehicleId", COALESCE(SUM(ta."idleSec"), 0)::int AS "ralenti"
+        FROM trip_analyses ta
+        JOIN trips t ON t.id = ta."tripId"
+       WHERE ta."fleetId" = ${fleetId}::uuid
+         AND t."startedAt" >= ${from}
+         AND t."startedAt" <  ${to}
+         AND t."endedAt" IS NOT NULL
+         ${isVehicleScopeRestricted
+            ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
+            : Prisma.empty}
+       GROUP BY ta."vehicleId"
+    `;
+
     const excesParVehicule = this.prisma.$queryRaw<
       { vehicleId: string; exces: number; trajets: number; pire: number }[]
     >`
@@ -416,7 +457,7 @@ export class ReportsStatsService {
     // 3) Group by type/severity sur alerts.
     // 4) Detail des 30 trajets recents (avec includes pour le PDF).
     // 5) Group by alerts type + severity.
-    const [tripAgg, tripsByVehicle, alertsByType, alertsBySeverity, recentTripsRaw, excesRows] =
+    const [tripAgg, tripsByVehicle, alertsByType, alertsBySeverity, recentTripsRaw, excesRows, ralentiRows] =
       await Promise.all([
         this.prisma.trip.aggregate({
           where: tripWhere,
@@ -471,8 +512,14 @@ export class ReportsStatsService {
           this.logger.warn(`Excès par véhicule indisponibles : ${e instanceof Error ? e.message : e}`);
           return [] as { vehicleId: string; exces: number; trajets: number; pire: number }[];
         }),
+        // Même règle : une colonne accessoire ne doit pas emporter tout le rapport.
+        ralentiParVehicule.catch((e: unknown) => {
+          this.logger.warn(`Ralenti par véhicule indisponible : ${e instanceof Error ? e.message : e}`);
+          return [] as { vehicleId: string; ralenti: number }[];
+        }),
       ]);
     const excesParVehiculeMap = new Map(excesRows.map((r) => [r.vehicleId, r]));
+    const ralentiParVehiculeMap = new Map(ralentiRows.map((r) => [r.vehicleId, r.ralenti]));
 
     const tripCount = tripAgg._count._all;
     const totalKm = tripAgg._sum.distanceKm ?? 0;
@@ -564,6 +611,7 @@ export class ReportsStatsService {
           speedingCount: excesParVehiculeMap.get(v.id)?.exces ?? 0,
           speedingTripCount: excesParVehiculeMap.get(v.id)?.trajets ?? 0,
           worstOverKmh: Math.round((excesParVehiculeMap.get(v.id)?.pire ?? 0) * 10) / 10,
+          idleSeconds: ralentiParVehiculeMap.get(v.id) ?? 0,
         });
       }
     }
@@ -628,6 +676,7 @@ export class ReportsStatsService {
         estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(totalLiters * observedPriceEurL * 100) / 100 : null,
         observedSampleCount,
         estimatedCo2Kg: Math.round(totalCo2Kg),
+        idleSecondsTotal: ralentiRows.reduce((n, r) => n + Math.max(0, r.ralenti), 0),
       },
       // Le curseur « Top N » de la modale ne pouvait rien au-delà de 10 : tranché ici avant
       // que le PDF ne le lise. Plafond 50, comme le DTO.

@@ -53,6 +53,8 @@ export interface FleetStatsReportDto {
     observedSampleCount: number;
     /** CO₂ estimé de la période (kg) — combustion seule, facteur propre à chaque énergie. */
     estimatedCo2Kg: number;
+    /** Ralenti moteur cumulé de tout le périmètre, en SECONDES (F12). */
+    idleSecondsTotal: number;
   };
   topVehicles: {
     vehicleId: string;
@@ -71,6 +73,8 @@ export interface FleetStatsReportDto {
     speedingCount: number;
     speedingTripCount: number;
     worstOverKmh: number;
+    /** Ralenti moteur cumulé du véhicule sur la période, en SECONDES. */
+    idleSeconds: number;
   }[];
 }
 

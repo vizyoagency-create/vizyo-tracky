@@ -605,6 +605,16 @@ const ANALYSES_BATCH_SIZE = 200;
                 sur le prix paramétré de la société.
               </p>
             }
+            <!-- ══ RALENTI MOTEUR (F12) ══════════════════════════════════════════════
+                 Calculé par trajet depuis toujours, agrégé nulle part : personne ne pouvait
+                 dire « ce parc a passé onze heures moteur tournant à l'arrêt ce mois-ci »,
+                 alors que c'est le gaspillage qu'une simple consigne réduit. -->
+            @if (st.consumption.idleSecondsTotal > 0) {
+              <p class="rep-synthese-detail rep-synthese-detail--fort">
+                Dont {{ formatDuration(st.consumption.idleSecondsTotal) }} moteur tournant à l'arrêt
+                ({{ partRalenti() }} % du temps de conduite) — le gaspillage qu'une consigne suffit à réduire.
+              </p>
+            }
             <p class="rep-synthese-note">
               Estimation : kilomètres parcourus × consommation du véhicule. Ce n'est pas un relevé
               de dépense.
@@ -3480,6 +3490,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const st = this.statsPeriode();
     if (!st || st.vehicles.total === 0) return 0;
     return Math.round((st.vehicles.activeDuringPeriod / st.vehicles.total) * 100);
+  });
+
+  /**
+   * Part du temps de conduite passée moteur tournant à l'arrêt, en pourcentage entier.
+   *
+   * ⚠️ Rapportée à la DURÉE de conduite, pas à la durée de la période : un parc qui roule
+   * deux heures par jour aurait un « ralenti » de 2 % du mois, chiffre exact et sans usage.
+   * Rendu 0 si la durée est nulle — jamais NaN.
+   */
+  protected readonly partRalenti = computed(() => {
+    const st = this.statsPeriode();
+    if (!st || st.trips.totalDurationHours <= 0) return 0;
+    return Math.round((st.consumption.idleSecondsTotal / 3600 / st.trips.totalDurationHours) * 100);
   });
 
   protected readonly alertesParType = computed(() => {
