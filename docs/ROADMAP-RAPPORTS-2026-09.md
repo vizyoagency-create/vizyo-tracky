@@ -349,6 +349,23 @@ d'un passage à l'autre.
 **Recette** : chaque sentinelle sait produire une ligne de test à partir d'un cas réel de production, et
 le centre d'alerte reste lisible — une ligne par incohérence et par jour, pas une par trajet.
 
+#### Lot V9 — Ne pas faire couper un administrateur · **FAIT le 4 septembre**
+
+Demandé après avoir dû couper les alertes de vitesse en urgence : « il ne faut pas spammer les
+administrateurs, sinon ils désactivent les notifications, et là on est pour les faire réactiver ».
+C'est le risque le plus cher du produit, et le plus discret : un client saturé ne se plaint pas, il
+coupe — et le jour où un SOS part, il ne le reçoit pas non plus.
+
+| Garde | Ce qu'elle surveille, et son étalon |
+|---|---|
+| ~~FAIT~~ **Destinataire saturé** | Plus de 15 notifications remises en 24 h à une même personne. Étalon mesuré sur 30 jours : le pire jour d'un administrateur client vaut **10**, sa moyenne **2**, et le défaut du produit est calibré sur ≈ 2,3. Le seuil de vitesse à +20, lui, en aurait produit **29 par jour**. La ligne nomme le type dominant et compte ce que le regroupement a déjà absorbé |
+| ~~FAIT~~ **Le disjoncteur a sauté** | Le plafond horaire (12 par heure et par personne) n'est **jamais** intervenu en 30 jours. Un seul cas suffit donc à écrire la ligne : ce n'est pas un régulateur du quotidien, c'est un disjoncteur, et qu'il saute EST l'information |
+| ~~FAIT~~ **Quelqu'un vient de couper** | Un réglage MODIFIÉ dans les 24 h qui coupe le push, un type ou une famille. Ne lit que les réglages récents : répéter chaque matin une coupure ancienne et assumée reproduirait, sur l'instrument de surveillance, le défaut qu'il surveille |
+| ~~FAIT~~ **Essai à blanc** | `GET /api/alerts/speed-settings/simulation` : ce qu'un seuil produirait, sans rien créer ni envoyer. Né du même jour, où trois notifications sont parties chez des clients pendant un essai |
+
+**Recette** : sur les volumes actuels, les trois gardes se taisent ; un seuil trop bas les fait parler
+avant que le client ne coupe.
+
 #### Lot V7 — Une seule définition de l'excès dans tout le produit · **FAIT le 4 septembre**
 
 Quatre définitions cohabitent aujourd'hui (cf. constat 11). Tant qu'elles coexistent, deux écrans

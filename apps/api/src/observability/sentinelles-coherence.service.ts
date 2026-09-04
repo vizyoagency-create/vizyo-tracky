@@ -129,6 +129,47 @@ const SANS_APPAREIL_MIN = 5;
 const NON_ACQUITTEES_MIN = 10;
 const NON_ACQUITTEES_AGE_JOURS = 7;
 
+/**
+ * ══ LES TROIS GARDES DU BRUIT — pourquoi ils comptent plus que les six autres ══════════
+ *
+ * Demande du propriétaire, le 4 septembre, après avoir dû couper les alertes de vitesse en
+ * urgence : « il ne faut pas spammer les administrateurs, sinon ils désactivent les
+ * notifications, et là on est pour les faire réactiver, c'est chaud. »
+ *
+ * 🔑 C'est le risque le plus cher du produit, et le plus discret. Un client saturé ne se
+ * plaint pas : il coupe. Et le jour où un SOS part, il ne le reçoit pas non plus. Une alerte
+ * qu'on ne reçoit plus est pire qu'une alerte qui n'a jamais existé, parce que tout le monde
+ * croit encore qu'elle fonctionne.
+ *
+ * Ces trois sentinelles ne surveillent pas les données du client : elles surveillent NOTRE
+ * PROPRE VOLUME. C'est l'instrument qui manquait ce matin.
+ */
+
+/**
+ * ── SEUIL — DESTINATAIRE SATURÉ ─────────────────────────────────────────────────────────
+ *
+ * Mesuré en production le 4 septembre, sur trente jours : le pire jour d'un administrateur
+ * client est de **10 notifications**, sa moyenne de 2. Le défaut du produit est calibré sur
+ * ≈ 2,3 par jour, et cette valeur est démontrée dans `DEFAULT_PUSH_PREFERENCE`.
+ *
+ * Le même jour, un seuil d'alerte de vitesse trop bas aurait produit **29 notifications par
+ * jour** pour le gérant de MH Cars — et c'est à ce moment que le propriétaire a demandé
+ * l'arrêt. Quinze se situe donc au-dessus de tout ce qui a jamais été toléré, et bien en
+ * dessous du volume qui a fait réagir : la sentinelle parle AVANT que le client ne coupe.
+ */
+const SATURATION_PAR_JOUR = 15;
+
+/**
+ * ── SEUIL — LE PLAFOND HORAIRE A DÛ INTERVENIR ──────────────────────────────────────────
+ *
+ * `PUSH_MAX_PER_HOUR` retient tout ce qui dépasse douze notifications par heure. En trente
+ * jours de production, il n'a eu à intervenir **aucune fois**. Cette garde n'est donc pas un
+ * régulateur du quotidien : c'est un disjoncteur. Qu'il saute est en soi l'information.
+ *
+ * Un seul cas suffit à écrire la ligne. Pas de seuil, pas de part : le fait est binaire.
+ */
+const PLAFOND_HORAIRE_MIN = 1;
+
 /** Un constat prêt à être écrit — ce que rend chaque sentinelle. */
 export interface ConstatSentinelle {
   /** Clé de refroidissement : identifiant PERSISTANT, le renommer remet le garde à zéro. */
@@ -265,6 +306,10 @@ export class SentinellesCoherenceService {
       ['couverture-limites', (d) => this.couvertureFaible(d)],
       ['destinataire-sans-appareil', (d, m) => this.destinataireSansAppareil(m)],
       ['alertes-non-acquittees', (d, m) => this.alertesNonAcquittees(m)],
+      // Les trois gardes du BRUIT : elles surveillent notre propre volume, pas les données.
+      ['destinataire-sature', (d, m) => this.destinataireSature(d, m)],
+      ['plafond-horaire', (d) => this.plafondHoraireAtteint(d)],
+      ['notifications-coupees', (d) => this.notificationsCoupees(d)],
     ];
   }
 
@@ -614,6 +659,149 @@ export class SentinellesCoherenceService {
       });
     }
     return constats;
+  }
+
+  // ══ 7. QUELQU'UN REÇOIT TROP, ET VA COUPER ════════════════════════════════════════════
+  //
+  // Le compteur qui prévient AVANT la perte. Un administrateur saturé ne se plaint pas : il
+  // désactive ses notifications, et personne ne l'apprend — jusqu'au jour où un SOS ne lui
+  // parvient plus. Le remède (le faire réactiver) coûte infiniment plus cher que le réglage
+  // qui aurait évité la saturation.
+  private async destinataireSature(depuis: Date, maintenant: Date): Promise<ConstatSentinelle[]> {
+    const envois = await this.prisma.notificationDelivery.groupBy({
+      by: ['userId'],
+      where: { status: 'SENT', createdAt: { gte: depuis } },
+      _count: { _all: true },
+    });
+    const satures = envois.filter((e) => e._count._all >= SATURATION_PAR_JOUR);
+    if (satures.length === 0) return [];
+
+    const comptes = await this.prisma.user.findMany({
+      where: { id: { in: satures.map((s) => s.userId) } },
+      select: { id: true, email: true, role: true },
+    });
+    const parCompte = new Map(comptes.map((c) => [c.id, c]));
+
+    const constats: ConstatSentinelle[] = [];
+    for (const s of satures) {
+      const compte = parCompte.get(s.userId);
+      if (!compte) continue;
+
+      // De quoi vient le bruit ? Sans ce détail, la ligne dit « trop » sans dire quoi couper.
+      const parType = await this.prisma.notificationDelivery.groupBy({
+        by: ['alertType'],
+        where: { userId: s.userId, status: 'SENT', createdAt: { gte: depuis } },
+        _count: { _all: true },
+      });
+      const dominant = [...parType].sort((a, b) => b._count._all - a._count._all)[0];
+      // Ce que le regroupement a déjà absorbé : le volume PRODUIT est plus élevé encore.
+      const regroupes = await this.prisma.notificationDelivery.count({
+        where: { userId: s.userId, reason: 'cooldown', createdAt: { gte: depuis } },
+      });
+
+      constats.push({
+        cle: `${CLES_REFROIDISSEMENT.SENTINELLE_DESTINATAIRE_SATURE}:${s.userId}`,
+        source: 'sentinelles',
+        niveau: 'ERROR' as NiveauErreur,
+        message:
+          `${compte.email} a reçu ${s._count._all} notifications en 24 h` +
+          (dominant ? `, dont ${dominant._count._all} de type ${dominant.alertType}` : '') +
+          (regroupes > 0 ? ` (et ${regroupes} de plus ont été repliées par le regroupement)` : '') +
+          `. Le produit est calibré sur deux à trois par jour. À ce rythme, cette personne va couper ses ` +
+          `notifications — et elle ne recevra alors plus rien, pas même un SOS. Relever le seuil qui produit ` +
+          `ce type, ou restreindre ses destinataires, AVANT qu'elle ne le fasse elle-même.`,
+        contexte: { userId: s.userId, email: compte.email, role: String(compte.role), envois: s._count._all, regroupes, type: dominant?.alertType ?? null },
+        fenetreMs: REFROIDISSEMENT_QUOTIDIEN_MS,
+      });
+    }
+    return constats;
+  }
+
+  // ══ 8. LE DISJONCTEUR A SAUTÉ ═════════════════════════════════════════════════════════
+  //
+  // Le plafond horaire retient tout ce qui dépasse douze notifications par heure pour une même
+  // personne. En trente jours de production, il n'a eu à intervenir aucune fois : ce n'est pas
+  // un régulateur du quotidien, c'est un disjoncteur. Qu'il saute EST l'information.
+  private async plafondHoraireAtteint(depuis: Date): Promise<ConstatSentinelle[]> {
+    const bloques = await this.prisma.notificationDelivery.groupBy({
+      by: ['userId'],
+      where: { reason: 'hourly_cap', createdAt: { gte: depuis } },
+      _count: { _all: true },
+    });
+    const total = bloques.reduce((n, b) => n + b._count._all, 0);
+    if (total < PLAFOND_HORAIRE_MIN) return [];
+
+    const comptes = await this.prisma.user.findMany({
+      where: { id: { in: bloques.map((b) => b.userId) } },
+      select: { id: true, email: true },
+    });
+    const nom = new Map(comptes.map((c) => [c.id, c.email]));
+    const decrits = bloques.map((b) => `${nom.get(b.userId) ?? b.userId} (${b._count._all})`);
+
+    return [{
+      cle: CLES_REFROIDISSEMENT.SENTINELLE_PLAFOND_HORAIRE,
+      source: 'sentinelles',
+      niveau: 'ERROR' as NiveauErreur,
+      message:
+        `${total} notifications ont été BLOQUÉES par le plafond horaire en 24 h, sur ${bloques.length} compte(s) : ` +
+        `${enumere(decrits)}. Ce garde-fou n'était jamais intervenu depuis sa mise en service : qu'il se déclenche ` +
+        `signifie qu'une source produit plus de douze notifications par heure pour une seule personne. ` +
+        `Le destinataire, lui, n'a rien vu — et c'est la seule raison pour laquelle il n'a pas encore coupé.`,
+      contexte: { total, comptes: decrits.slice(0, 20), depuis: depuis.toISOString() },
+      fenetreMs: REFROIDISSEMENT_QUOTIDIEN_MS,
+    }];
+  }
+
+  // ══ 9. QUELQU'UN VIENT DE COUPER ══════════════════════════════════════════════════════
+  //
+  // La perte elle-même. Elle doit se voir le jour où elle arrive, pas au moment où l'on
+  // s'étonnera qu'un client n'ait pas réagi à une alerte.
+  //
+  // ⚠️ Ne se déclenche QUE sur un réglage modifié dans la fenêtre. Un client qui a coupé il y a
+  // trois mois et qui l'assume ne doit pas être signalé chaque matin — ce serait reproduire,
+  // sur l'instrument de surveillance, le défaut qu'il surveille.
+  private async notificationsCoupees(depuis: Date): Promise<ConstatSentinelle[]> {
+    const reglages = await this.prisma.notificationPreference.findMany({
+      where: { updatedAt: { gte: depuis } },
+      select: { userId: true, pushEnabled: true, mutedTypes: true, mutedCategories: true, updatedAt: true },
+    });
+    const coupures = reglages.filter(
+      (r) => !r.pushEnabled || (r.mutedTypes ?? []).length > 0 || (r.mutedCategories ?? []).length > 0,
+    );
+    if (coupures.length === 0) return [];
+
+    const comptes = await this.prisma.user.findMany({
+      where: { id: { in: coupures.map((c) => c.userId) }, isActive: true },
+      select: { id: true, email: true, role: true },
+    });
+    if (comptes.length === 0) return [];
+    const parCompte = new Map(comptes.map((c) => [c.id, c]));
+
+    const decrits = coupures
+      .filter((c) => parCompte.has(c.userId))
+      .map((c) => {
+        const compte = parCompte.get(c.userId)!;
+        const quoi = !c.pushEnabled
+          ? 'TOUT coupé'
+          : [
+              (c.mutedTypes ?? []).length > 0 ? `types : ${(c.mutedTypes ?? []).join(', ')}` : null,
+              (c.mutedCategories ?? []).length > 0 ? `familles : ${(c.mutedCategories ?? []).join(', ')}` : null,
+            ].filter(Boolean).join(' · ');
+        return `${compte.email} (${quoi})`;
+      });
+
+    return [{
+      cle: CLES_REFROIDISSEMENT.SENTINELLE_NOTIFICATIONS_COUPEES,
+      source: 'sentinelles',
+      niveau: 'ERROR' as NiveauErreur,
+      message:
+        `${decrits.length} compte(s) ont RÉDUIT leurs notifications dans les dernières 24 h : ${enumere(decrits)}. ` +
+        `C'est le signal qu'on cherche à ne jamais voir : quelqu'un a jugé qu'on le dérangeait. Il ne recevra plus ` +
+        `ce qu'il a coupé, y compris le jour où cela comptera. Comprendre ce qui l'a saturé, corriger le volume, ` +
+        `puis lui proposer de rouvrir — dans cet ordre.`,
+      contexte: { comptes: decrits.slice(0, 20), depuis: depuis.toISOString() },
+      fenetreMs: REFROIDISSEMENT_QUOTIDIEN_MS,
+    }];
   }
 
   // ── Lectures communes ───────────────────────────────────────────────────────────────────

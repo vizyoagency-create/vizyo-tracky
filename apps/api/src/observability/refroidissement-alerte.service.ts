@@ -169,4 +169,18 @@ export const CLES_REFROIDISSEMENT = {
    * rappel hebdomadaire : c'est un état durable, pas une nouvelle du matin.
    */
   SENTINELLE_CHAINE_JAMAIS_ARMEE: 'sentinelle-chaine-vitesse-jamais-armee',
+  /**
+   * ── LES TROIS GARDES DU BRUIT (2026-09-04) ────────────────────────────────────────
+   *
+   * « Il ne faut pas spammer les administrateurs, sinon ils désactivent les notifications,
+   * et là on est pour les faire réactiver. » C'est le risque le plus cher du produit : un
+   * client qui coupe ne se plaint pas, il devient silencieux — et le jour où un SOS part,
+   * il ne le reçoit pas non plus. Ces trois clés surveillent notre propre volume.
+   *
+   * Les deux premières sont préfixées par le compte concerné : un destinataire saturé ne
+   * doit pas faire taire l'alerte sur un autre.
+   */
+  SENTINELLE_DESTINATAIRE_SATURE: 'sentinelle-destinataire-sature',
+  SENTINELLE_PLAFOND_HORAIRE: 'sentinelle-plafond-horaire-atteint',
+  SENTINELLE_NOTIFICATIONS_COUPEES: 'sentinelle-notifications-coupees',
 } as const;

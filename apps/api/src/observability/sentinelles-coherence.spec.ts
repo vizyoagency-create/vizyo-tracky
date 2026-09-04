@@ -55,6 +55,16 @@ interface Monde {
   livraisonsSansAppareil?: { userId: string; _count: { _all: number } }[];
   comptes?: { id: string; email: string }[];
   alertesNonAcquittees?: { fleetId: string; _count: { _all: number } }[];
+  /** Envois REMIS par destinataire, sur la fenetre (garde de saturation). */
+  envois?: { userId: string; _count: { _all: number } }[];
+  /** Repartition par type, pour dire d'ou vient le bruit. */
+  envoisParType?: { alertType: string; _count: { _all: number } }[];
+  /** Envois replies par le regroupement anti-rafale. */
+  regroupes?: number;
+  /** Notifications bloquees par le plafond horaire — le disjoncteur. */
+  plafondHoraire?: { userId: string; _count: { _all: number } }[];
+  /** Reglages de notification modifies dans la fenetre. */
+  reglages?: { userId: string; pushEnabled: boolean; mutedTypes: string[]; mutedCategories: string[]; updatedAt: Date }[];
   /**
    * TRK-064 — nombre de sociétés EXISTANTES, indépendamment de leur réglage d'alerte.
    * Par défaut 0 : une fixture qui ne parle pas de sociétés décrit une plateforme vide, où
@@ -83,7 +93,24 @@ function setup(monde: Monde = {}) {
       findMany: jest.fn().mockResolvedValue(monde.alertesSurTrajets ?? []),
       groupBy: jest.fn().mockResolvedValue(monde.alertesNonAcquittees ?? []),
     },
-    notificationDelivery: { groupBy: jest.fn().mockResolvedValue(monde.livraisonsSansAppareil ?? []) },
+    notificationDelivery: {
+      /**
+       * Trois sentinelles interrogent cette table avec des `where` differents : l'absence
+       * d'appareil, la saturation d'un destinataire, et le plafond horaire. Le simulacre
+       * repond selon le motif demande — un simulacre qui rend les memes lignes aux trois
+       * ferait passer chaque scenario pour les deux autres.
+       */
+      groupBy: jest.fn(async (args: { where?: Record<string, unknown>; by?: string[] }) => {
+        const w = args?.where ?? {};
+        if (w.reason === 'no_device') return monde.livraisonsSansAppareil ?? [];
+        if (w.reason === 'hourly_cap') return monde.plafondHoraire ?? [];
+        if ((args.by ?? []).includes('alertType')) return monde.envoisParType ?? [];
+        if (w.status === 'SENT') return monde.envois ?? [];
+        return [];
+      }),
+      count: jest.fn().mockResolvedValue(monde.regroupes ?? 0),
+    },
+    notificationPreference: { findMany: jest.fn().mockResolvedValue(monde.reglages ?? []) },
     user: { findMany: jest.fn().mockResolvedValue(monde.comptes ?? []) },
   };
   const errorLogger = { record: jest.fn().mockResolvedValue('ok'), recordBackground: jest.fn() };
@@ -455,5 +482,118 @@ describe('Le passage lui-même', () => {
     expect(t.errorLogger.record).toHaveBeenCalledTimes(1);
     // Toutes les écritures vont au centre d'alerte, sous une source unique et reconnaissable.
     for (const appel of t.errorLogger.record.mock.calls) expect(appel[1]).toBe('sentinelles');
+  });
+});
+
+describe('Les trois gardes du BRUIT — ne pas faire couper un administrateur', () => {
+  /**
+   * « Il ne faut pas spammer les administrateurs, sinon ils désactivent les notifications, et
+   * là on est pour les faire réactiver. » Un client saturé ne se plaint pas : il coupe. Et le
+   * jour où un SOS part, il ne le reçoit pas non plus.
+   */
+  const compte = (id: string, email: string, role = 'FLEET_ADMIN') => ({ id, email, role });
+
+  describe('un destinataire saturé', () => {
+    it('crie AVANT que la personne ne coupe, et dit d’où vient le bruit', async () => {
+      const t = await service({
+        envois: [{ userId: 'u1', _count: { _all: 29 } }],
+        envoisParType: [{ alertType: 'OVERSPEED', _count: { _all: 26 } }],
+        regroupes: 11,
+        comptes: [compte('u1', 'gerant@mhcars.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+
+      const [m] = messages(t.errorLogger);
+      expect(m).toContain('gerant@mhcars.fr a reçu 29 notifications en 24 h');
+      expect(m).toContain('26 de type OVERSPEED');
+      expect(m).toContain('11 de plus ont été repliées');
+      expect(m).toContain('pas même un SOS');
+      expect(t.errorLogger.record.mock.calls[0][3]).toBe('ERROR');
+    });
+
+    it('se tait au volume ordinaire — le pire jour mesuré vaut 10', async () => {
+      const t = await service({
+        envois: [{ userId: 'u1', _count: { _all: 10 } }],
+        comptes: [compte('u1', 'gerant@mhcars.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+      expect(t.errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('cloisonne par compte : un saturé ne fait pas taire l’alerte sur un autre', async () => {
+      const t = await service({
+        envois: [{ userId: 'u1', _count: { _all: 20 } }, { userId: 'u2', _count: { _all: 40 } }],
+        comptes: [compte('u1', 'a@x.fr'), compte('u2', 'b@x.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+
+      const cles = t.refroidissement.tenterEmission.mock.calls.map((c) => String(c[0]));
+      expect(cles).toContain('sentinelle-destinataire-sature:u1');
+      expect(cles).toContain('sentinelle-destinataire-sature:u2');
+    });
+  });
+
+  describe('le disjoncteur horaire', () => {
+    it('⚠️ UN SEUL cas suffit — il n’était jamais intervenu en trente jours', async () => {
+      const t = await service({
+        plafondHoraire: [{ userId: 'u1', _count: { _all: 1 } }],
+        comptes: [compte('u1', 'gerant@mhcars.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+
+      const m = messages(t.errorLogger).find((x) => x.includes('plafond horaire'));
+      expect(m).toContain('1 notifications ont été BLOQUÉES');
+      expect(m).toContain("n'était jamais intervenu");
+    });
+
+    it('se tait quand il n’a pas eu à intervenir', async () => {
+      const t = await service({ plafondHoraire: [] });
+      await t.svc.passage(MAINTENANT);
+      expect(t.errorLogger.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('quelqu’un vient de couper', () => {
+    it('signale une coupure TOTALE le jour où elle arrive', async () => {
+      const t = await service({
+        reglages: [{ userId: 'u1', pushEnabled: false, mutedTypes: [], mutedCategories: [], updatedAt: MAINTENANT }],
+        comptes: [compte('u1', 'gerant@mhcars.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+
+      const m = messages(t.errorLogger).find((x) => x.includes('RÉDUIT leurs notifications'));
+      expect(m).toContain('gerant@mhcars.fr (TOUT coupé)');
+      expect(m).toContain("qu'on cherche à ne jamais voir");
+    });
+
+    it('nomme le type coupé quand la coupure est partielle', async () => {
+      const t = await service({
+        reglages: [{ userId: 'u1', pushEnabled: true, mutedTypes: ['OVERSPEED'], mutedCategories: [], updatedAt: MAINTENANT }],
+        comptes: [compte('u1', 'gerant@mhcars.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+      expect(messages(t.errorLogger).find((x) => x.includes('RÉDUIT'))).toContain('types : OVERSPEED');
+    });
+
+    it('⚠️ ne signale PAS un réglage ouvert — seule une réduction compte', async () => {
+      const t = await service({
+        reglages: [{ userId: 'u1', pushEnabled: true, mutedTypes: [], mutedCategories: [], updatedAt: MAINTENANT }],
+        comptes: [compte('u1', 'gerant@mhcars.fr')],
+      });
+      await t.svc.passage(MAINTENANT);
+      expect(t.errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ ne répète pas chaque matin une coupure ancienne et assumée', async () => {
+      // La requête ne lit que les réglages MODIFIÉS dans la fenêtre : un client qui a coupé
+      // il y a trois mois ne doit pas être signalé tous les jours — ce serait reproduire, sur
+      // l'instrument de surveillance, le défaut qu'il surveille.
+      const t = await service({ reglages: [] });
+      await t.svc.passage(MAINTENANT);
+
+      const appel = t.prisma.notificationPreference.findMany.mock.calls[0][0];
+      expect(appel.where.updatedAt.gte).toEqual(new Date(MAINTENANT.getTime() - 24 * 3600_000));
+      expect(t.errorLogger.record).not.toHaveBeenCalled();
+    });
   });
 });
