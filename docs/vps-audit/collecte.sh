@@ -1664,9 +1664,39 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
               ORDER BY pc.reltuples LIMIT 1;" 2>/dev/null)
           if [ -n "$REG" ]; then
             RT=${REG%%|*}; RC=${REG##*|}
+            # ⚠️⚠️ AJOUTE LE 2026-09-04 — VPS-M78. LE REGISTRE PUBLIAIT UN TOTAL, ET UN TOTAL
+            # MELANGE TROIS POPULATIONS QUI N ONT RIEN A VOIR.
+            #
+            # Mesure du 2026-09-04 : le registre passe de 12 a 14 silencieux sur 44, et la
+            # lecture immediate — « la panne s etend a deux boitiers de plus » — est FAUSSE.
+            # Les 14, ventiles a la main ce passage :
+            #   6 boitiers de la flotte 2ad69ac1 muets depuis le 08-31   = LINCIDENT (84-86 h)
+            #   2 boitiers de la meme flotte muets depuis les 08-19/08-21 = ANTERIEURS a lincident
+            #   3 boitiers SANS VEHICULE, muets depuis 5 j a 90 j        = materiel deposé
+            #   2 boitiers dautres flottes, muets depuis 7,5 h et 24,5 h = les « deux de plus »
+            # Le premier des deux a 7 h 30 de silence un matin : cest un vehicule GARE LA NUIT.
+            #
+            # 🔑 VPS-M76 avait corrige un compteur qui DECROISSAIT quand la panne durait. Son
+            # remede — une source sans fenetre — est bon, et il a introduit le defaut SYMETRIQUE :
+            # une source sans fenetre accumule TOUT, donc son total MONTE pour des raisons qui ne
+            # sont pas la panne. Un compteur qui ment dans le sens alarmant nest pas meilleur
+            # quun compteur qui ment dans le sens rassurant : il fabrique une aggravation, et une
+            # aggravation fabriquee fait ouvrir un incident la ou il ny en a pas.
+            #
+            # Le discriminant est la DUREE du silence, et lui seul. On la publie donc par bandes.
+            # ⚠️ COUT : ZERO requete de plus — quatre FILTER de plus sur le MEME parcours des
+            #    44 lignes, deja borne par `reltuples < 10000`.
             REGSIL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
               "SELECT count(*) FILTER (WHERE \"$RC\" <= now() - interval '6 hours' OR \"$RC\" IS NULL),
-                      count(*) FROM \"$RT\";" 2>/dev/null)
+                      count(*),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '6 hours'
+                                         AND \"$RC\" >  now() - interval '24 hours'),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '24 hours'
+                                         AND \"$RC\" >  now() - interval '72 hours'),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '72 hours'
+                                         AND \"$RC\" >  now() - interval '168 hours'),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '168 hours' OR \"$RC\" IS NULL)
+                 FROM \"$RT\";" 2>/dev/null)
             [ -n "$REGSIL" ] && REGSIL="$RT|$REGSIL"
           fi
         fi
@@ -1748,12 +1778,30 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
                   printf "         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,\n            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.\n";
                 printf "         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de\n            retention (%.2f j). Un boitier muet depuis plus longtemps a disparu de la table\n            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».\n", wj;
                 # ── VPS-M76 : la source SANS fenetre, qui seule permet de lire la SERIE ──
-                if (regsil != "" && split(regsil, rr, "|") == 3) {
+                if (regsil != "" && split(regsil, rr, "|") == 7) {
                   printf "         📋 REGISTRE %s (AUCUNE retention) : %d silencieux sur %d enregistres.\n", rr[1], rr[2]+0, rr[3]+0;
+                  # ── VPS-M78 : le TOTAL melange un incident, du materiel depose et des
+                  # vehicules GARES. Seule la duree du silence les separe — donc on la publie.
+                  printf "            ventilation par DUREE du silence (cest elle qui discrimine, pas le total) :\n";
+                  printf "              6-24 h : %-3d  ← un vehicule GARE LA NUIT entre ici. Ne PAS le compter\n", rr[4]+0;
+                  printf "                             comme une panne sans une autre preuve.\n";
+                  printf "              1-3 j  : %-3d\n", rr[5]+0;
+                  printf "              3-7 j  : %-3d  ← au-dela de 3 j, un arret nest plus un usage normal.\n", rr[6]+0;
+                  printf "              > 7 j  : %-3d  ← materiel probablement DEPOSE : a sortir du parc, sinon\n", rr[7]+0;
+                  printf "                             il gonfle le total a chaque passage, pour toujours.\n";
+                  printf "            ⚠️ NE PAS comparer les TOTAUX de deux passages (VPS-M78) : ce total monte\n";
+                  printf "               quand un vehicule se gare et quand un boitier est depose, pas seulement\n";
+                  printf "               quand une panne setend. Comparer les BANDES, et de preference celles > 3 j.\n";
                   if (rr[2]+0 > nm)
                     printf "            🔴 LE REGISTRE EN COMPTE %d DE PLUS que la ligne ci-dessus. Lecart nest PAS\n               une contradiction : cest exactement le nombre de boitiers muets depuis si\n               longtemps quils ont quitte la fenetre de retention. ⚠️ CONSEQUENCE A LIRE\n               AVANT DE COMPARER DEUX PASSAGES : le compteur du journal DECROIT a mesure que\n               la panne DURE — sa serie se lit comme un retablissement pendant que la flotte\n               steint. Cest CE chiffre-ci, et lui seul, qui se compare dun jour a lautre\n               (VPS-M76, mesure du 2026-09-03 : 7 → 6 cote journal, 12 → 12 cote registre).\n", (rr[2]+0) - nm;
                   else if (rr[2]+0 == nm)
                     printf "            ✅ les deux sources saccordent : aucun boitier muet nest sorti de la fenetre.\n";
+                } else if (regsil != "") {
+                  # ⚠️ VPS-M02 : un registre TROUVE dont la ventilation ne se lit pas ne doit
+                  # PAS retomber sur « aucun registre » — ce sont deux etats differents, et
+                  # confondre « pas trouve » avec « trouve mais illisible » est exactement le
+                  # silence qui se lit comme une absence.
+                  printf "         🔴 REGISTRE TROUVE mais sa ventilation est ILLISIBLE (%d champs au lieu de 7) :\n            mesure NON FAITE ce passage, ce nest PAS « aucun boitier muet » (VPS-M02).\n", split(regsil, rr2, "|");
                 } else {
                   printf "         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « %s » et un\n            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI\n            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre\n            passage (VPS-M76).\n", em;
                 }

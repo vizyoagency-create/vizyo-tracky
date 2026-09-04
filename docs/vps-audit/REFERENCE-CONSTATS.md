@@ -936,6 +936,35 @@ c'est là que la détection rapide sert vraiment.
   *(était `APPLIQUE` depuis le 2026-08-04)*
 - **Vu** : 2026-08-04 · **Mesure à la découverte** : 3 des 4 clés de `/root/.ssh/authorized_keys`
 
+> ### 🔴 2026-09-04 — LA CLÉ N'EST PAS DORMANTE : DOUZE SESSIONS ROOT EN VINGT ET UNE HEURES
+>
+> ```
+>   github-actions-vizyo-auth  SHA256:OTSnEmsW…  connexions=12   🟠 AUCUNE option de restriction
+>   2026-09-03 05:36 → 15:17   dix connexions root, depuis dix IP Azure distinctes
+>   2026-09-04 00:36 et 00:54  les deux dernieres — vizyo-auth-api est construit a 00:57:13
+> ```
+>
+> **Hier : `connexions=0`. Aujourd'hui : 12.** Le déploiement de `vizyo-auth` de la nuit est passé
+> par cette clé. Elle est donc l'accès **root** d'une chaîne de CI **en usage quotidien**, et elle
+> ne porte aucune des quatre options posées le 2026-08-04 sur l'autre clé de CI.
+>
+> **Ce que ça change** : une clé root non restreinte qui ne sert jamais est un risque théorique ;
+> une clé root non restreinte qui ouvre **douze sessions par jour depuis douze adresses publiques
+> différentes** est une surface **exercée**. La gravité reste 2, l'urgence monte.
+>
+> ✅ **Et l'avertissement écrit la veille est confirmé en un jour** : *« ⚠️ À ne pas faire :
+> retirer la clé — `connexions=0` sur 7 jours ne veut pas dire “inutilisée” »*. La démonstration
+> est arrivée au passage suivant. **Retirer la clé sur un `connexions=0` aurait cassé le
+> déploiement de l'authentification de toutes les applications.**
+>
+> ⚠️ **Piège payé par l'auditeur le 2026-09-04, à consigner** : voyant `0 → 12`, j'ai grepé
+> l'empreinte dans `auth.log auth.log.1` — **dans cet ordre** — et lu un `tail -15` qui ne montrait
+> que des lignes des 23 et 24 août ; j'en ai conclu quelques minutes que le compteur comptait des
+> événements vieux de onze jours et que **VPS-M77 était cassé**. `tail` lisait la fin du fichier
+> le plus **ancien**, placé en second. *Un détecteur correct accusé à tort par la sortie mal
+> ordonnée du contrôle censé le vérifier : VPS-M01 retourné contre l'auditeur.* **Ce qui a tranché
+> a été de rejouer le filtre de fenêtre du collecteur lui-même, pas de refaire un contrôle à moi.**
+>
 > ### 🔴 2026-09-03 — LE CONSTAT ROUVRE : UNE TROISIÈME CLÉ ROOT, SANS RESTRICTION, DEPUIS DIX-NEUF JOURS
 >
 > ```
@@ -4634,6 +4663,27 @@ confondre les deux ferait accuser le mauvais coupable.
 ## VPS-038 — Six boîtiers se sont tus le dimanche en deux heures, tous dans la même flotte
 
 - **Domaine** : données · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-04 — LA COHORTE EST INCHANGÉE À SIX, MUETS DEPUIS 84 À 86 h.** Dernières
+  trames toujours du **08-31 entre 11 h 53 et 13 h 50**. **Le seuil de réescalade n'est PAS
+  atteint** : il exigeait *« un septième boîtier de la flotte `2ad69ac1…` »*, et il n'y en a pas.
+  Flotte mesurée **31 émetteurs contre 32**, confirmé **indépendamment** par `positions`
+  (31 contre 32) ; débit par boîtier **106,6 trames/h** contre 111,0 (**−4 %**, dans la bande).
+  **La seconde branche du seuil — l'absence de retour au passage du 2026-09-05 — arrive à
+  échéance demain.**
+  ⚠️⚠️ **ET IL NE FAUT PAS LIRE « 14 MUETS AU REGISTRE » CONTRE « 12 HIER » COMME UNE EXTENSION
+  DE LA PANNE.** Les deux boîtiers supplémentaires appartiennent à **d'autres flottes**
+  (`7cc3c2f7…` et `88627f81…`) et sont muets depuis **7 h 30** et **24 h 30** — le premier est un
+  véhicule **garé pour la nuit**. Voir **VPS-M78**, écrit ce passage : *un total sans fenêtre monte
+  pour des raisons qui ne sont pas la panne.* La ventilation par flotte, mesurée ce passage :
+  `2ad69ac1…` **8 silencieux sur 30** (dont **2 antérieurs** à l'incident, 08-19 et 08-21),
+  `88627f81…` 2 sur 4, `7cc3c2f7…` 1 sur 7, et **3 boîtiers sans aucun véhicule**.
+  🔴 **CONSTAT NEUF DU 2026-09-04, révélé par cette ventilation** : **5 boîtiers sont muets depuis
+  plus de 7 jours, jusqu'à 91** (`864035054756177` 13,6 j, `864035054756730` 15,6 j,
+  `864035053277480` 21,0 j, `864035054756292` 64,8 j, `863378070030776` 90,6 j), dont **3 sans
+  véhicule**. Ce n'est pas une panne : c'est du matériel déposé qui n'a jamais été sorti du parc,
+  et il représente **11 des 32 points** de « flotte muette » affichés en permanence. ⚠️ Décision
+  **produit** (statut de sortie de parc), pas action VPS — et **ne pas les `DELETE`** : un boîtier
+  supprimé perd son historique de rattachement.
 - 🔴 **Vu : 2026-09-03 — LES SIX SONT MUETS DEPUIS 60 h 30, ET AUCUN SEPTIÈME NE S'EST AJOUTÉ.**
   Dernières trames inchangées à la seconde (08-31, 11 h 53 min 43 → 13 h 50 min 47). **La flotte
   est stable à 32 contre 32** sur les deux fenêtres de 24 h, et `positions` le confirme désormais
@@ -4726,6 +4776,145 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M79 — Une disparition attribuée au seul mécanisme visible, alors qu'un ménage quotidien la produit et jette sa trace
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : 🟠 `A_TRAITER` (la remédiation modifie le VPS)
+- **Vu** : 2026-09-04 · **Mesure** : après le redéploiement de `tracky-api` le 2026-09-04 à
+  **01 h 14 min 35**, il ne reste **AUCUNE** étiquette `avant-*` sur la machine. Le cron
+  `/etc/cron.d/docker-image-prune` a tourné à **00 h 40 min 01** le même jour — **34 minutes
+  avant** — et fait `docker image prune -af --filter "until=24h" > /dev/null 2>&1`.
+
+**QUAND.** Le rapport du **2026-09-03** avait constaté la disparition des étiquettes
+`avant-trk056/057/058` et écrit : *« Le déploiement de TRK-059, le 09-02 à 21 h 04, a retiré les
+trois précédentes. **Il existe donc bien un mécanisme de rotation**, et la projection “dix en
+coûteront” ne tient pas. »* Il avait accompagné cette conclusion d'un **test écrit d'avance**,
+échu au passage du 2026-09-04.
+
+**QUOI — la cause.** Le test est tranché, et il réfute l'attribution qui l'accompagnait.
+
+| candidat capable de retirer l'étiquette | actif ? | trace exploitable ? |
+|---|---|---|
+| le déploiement de `tracky-api` (01 h 14) | oui | l'état **après**, seulement |
+| `docker image prune -af --filter until=24h` (00 h 40, **quotidien**) | oui | **aucune — `> /dev/null 2>&1`** |
+
+`-a` retire les images **sans conteneur, étiquetées comprises**. Une étiquette de repli est par
+construction une image étiquetée et non utilisée : elle est donc éliminée **dès qu'elle passe
+24 heures**. Le ménage est donc une cause **suffisante à lui seul**, et il tourne tous les jours.
+
+**`docker events --since 48h --filter type=image` rend du vide** : le tampon d'événements du
+démon ne remonte pas si loin. Vérifié — **mesure NON FAITE**, et non « aucun événement ».
+
+> **Le défaut n'est pas dans la mesure, il est dans le raisonnement.** L'audit a observé une
+> disparition, l'a attribuée au seul mécanisme qu'il **voyait**, puis en a tiré une **règle**
+> (« il existe donc bien un mécanisme de rotation ») et fermé un point de son plan d'action. Le
+> mécanisme qui l'explique au moins aussi bien était **dans son propre catalogue
+> d'ordonnancement**, à la bonne heure et à la bonne cadence — mais il jette sa sortie, donc son
+> effet est indémontrable **dans les deux sens** : on ne peut ni le lui imputer, ni l'en disculper.
+
+**`pourquoiInvisible`.** Le catalogue `ordonnancement` déclare **quand** une tâche se déclenche,
+jamais **ce qu'elle a fait**. Une entrée présente, exacte et complète peut donc rester
+inutilisable pour expliquer un fait — et son exactitude même donne l'impression contraire.
+*C'est la famille de VPS-M01 (une concomitance d'horaire n'est pas une identification) et de
+VPS-M55 (une attribution écrite une fois est ensuite republiée sans être réexaminée).*
+
+**QUOI FAIRE.** Deux gestes distincts, et le second n'est pas gratuit.
+
+1. **Au manifeste** — ajouter à chaque entrée de `ordonnancement` un champ `trace` :
+   *journalisée / silencieuse / autodétruite*, et **refuser d'attribuer un fait à une entrée
+   `silencieuse` sans une seconde source**. Coût : une ligne par entrée. Fait au passage du
+   2026-09-04 pour `docker-image-prune`.
+2. **Sur le VPS, à décider** — exempter du ménage **une seule** image de repli par service :
+
+```bash
+docker image prune -af --filter "until=24h" --filter "label!=repli=1"   # exige d'ETIQUETER les images de repli au build
+```
+
+**`aNePasFaire`.** ⚠️ **Ne pas exempter sans borne.** Toute image soustraite au ménage revient
+dans le poste « Images » — **25,33 Go annoncés le 2026-09-04** — et ce ménage de 00 h 40 est
+précisément ce qui le tient. Une exemption non bornée rejoue **VPS-001** (le cache de build que
+rien ne purgeait). ⚠️ **Et ne pas remplacer une attribution non prouvée par une autre** : la
+rédaction du 2026-09-04 a d'abord imputé la disparition au ménage avec la même assurance que la
+veille l'imputait au déploiement. La seule phrase que la mesure autorise est *« deux candidats,
+indépartageables »*.
+
+**Conséquence opérationnelle, à ne pas perdre.** Quel que soit le coupable, **il n'existe
+aujourd'hui aucune image de repli locale pour `tracky-api`.** Ce n'est pas grave — l'image se
+reconstruit depuis git — mais un repli qui prend un build n'est pas un repli en trois minutes.
+Et la conséquence est **l'inverse** de celle qu'annonçait le rapport du 09-03 : les étiquettes de
+repli ne s'accumulent pas, **elles ne survivent pas à une nuit**.
+
+---
+
+### VPS-M78 — Le remède de VPS-M76 portait le défaut symétrique : un total sans fenêtre monte pour des raisons qui ne sont pas la panne
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (2026-09-04)
+- **Vu** : 2026-09-04 · **Mesure** : le registre `trackers` passe de **12 à 14 silencieux sur
+  44**, et **aucun boîtier de la cohorte de VPS-038 n'a été ajouté**. Les deux « nouveaux » sont
+  dans **d'autres flottes**, muets depuis **7 h 30** et **24 h 30**.
+
+**QUAND.** Écrit **un jour** après VPS-M76, qui l'a produit. VPS-M76 corrigeait un compteur qui
+**décroissait** quand la panne durait, parce que sa source (`wire_logs`) a une rétention de
+3,97 jours. Son remède — publier à côté le compte d'une **table de registre sans rétention** —
+est bon, et il a introduit le défaut **symétrique** dès le passage suivant.
+
+**QUOI — la cause.** Une source **sans fenêtre n'oublie rien, donc elle accumule tout.** Les 14
+silencieux du 2026-09-04, ventilés à la main :
+
+```
+h_silence  flotte                                  ce que c'est
+     7.5   7cc3c2f7…  (1 sur 7)                    ← un vehicule GARE POUR LA NUIT
+    24.5   88627f81…  (2 sur 4)
+  84.6 · 84.6 · 85.2 · 85.6 · 85.9 · 86.5
+           2ad69ac1…                                ← LA COHORTE DE VPS-038, inchangee
+   125.2   (sans vehicule)
+   325.7 · 374.9   2ad69ac1…                        ← ANTERIEURS a l'incident (08-19, 08-21)
+   504.3   88627f81…
+  1554.2 · 2174.7  (sans vehicule)                  ← muets depuis 65 et 91 JOURS
+```
+
+**Quatre populations sans rapport dans un seul nombre** : un incident de 6 boîtiers, 2 boîtiers de
+la même flotte muets **avant** lui, 3 boîtiers **sans véhicule** muets depuis 5 à 91 jours, et
+2 véhicules d'autres flottes dont l'un est simplement à l'arrêt un matin.
+
+> **Un compteur qui ment dans le sens alarmant n'est pas meilleur qu'un compteur qui ment dans le
+> sens rassurant.** Il fabrique une aggravation ; une aggravation fabriquée fait ouvrir un
+> incident là où il n'y en a pas, mobiliser un exploitant sur un véhicule garé — et, le jour où
+> une vraie extension arrivera, elle se noiera dans une série qui montait déjà.
+
+**`pourquoiInvisible`.** Parce que le remède de la veille **était le bon** : la source sans
+fenêtre est effectivement la seule dont la série se compare. L'erreur n'était pas de la choisir,
+c'était de croire qu'en supprimant la fenêtre on rendait la mesure **vraie**. *Supprimer une
+fenêtre ne rend pas une mesure vraie : ça change le sens dans lequel elle se trompe.*
+
+**QUOI FAIRE — fait ce passage.** Le registre publie la **ventilation par durée de silence** —
+`6-24 h` / `1-3 j` / `3-7 j` / `> 7 j` — à côté du total, avec l'interdiction écrite de comparer
+les totaux d'un passage à l'autre. La durée est le seul discriminant que la table porte.
+
+**Contre-épreuves, les deux exigées avant publication :**
+
+1. **La partition est exacte** : `1 + 1 + 7 + 5 = 14`, recalculé par une requête **séparée** du
+   total silencieux. Une bande qui recouvrirait ou oublierait une borne se verrait ici.
+2. **Les trois branches sont exercées** — nominale (7 champs), **dégénérée** (3 champs), absente.
+   ⚠️ **La dégénérée est celle qui comptait** : le code de la veille testait `split(...) == 3` ;
+   passer la requête à 7 champs **sans** toucher au test aurait fait retomber la sortie sur
+   *« AUCUN REGISTRE trouvé »* — c'est-à-dire qu'une correction aurait **éteint** le recoupement
+   introduit la veille, avec une phrase rassurante pour le dire. Le bloc distingue désormais
+   *« registre trouvé mais ventilation ILLISIBLE — mesure NON FAITE »* de *« aucun registre »*
+   (**VPS-M02**).
+
+**COÛT : ZÉRO requête supplémentaire, +0,00 s.** Quatre `FILTER` de plus sur le **même** parcours
+des 44 lignes, déjà borné par `reltuples < 10000`. Chronométré 3 fois : **0,08 / 0,09 / 0,09 s**,
+contre 0,08 / 0,08 / 0,10 s mesurés le 2026-09-03 pour la version à deux agrégats — l'écart est
+sous la résolution de la mesure.
+
+**`aNePasFaire`.** ⚠️ **Ne pas revenir au compteur borné par `wire_logs`** : il a le défaut
+inverse, et il est pire (VPS-M76). ⚠️ **Ne pas « corriger » le total en excluant les boîtiers sans
+véhicule** : ce serait choisir la population qui arrange, et rendre invisible le vrai constat que
+la ventilation a révélé — **5 boîtiers muets depuis plus de 7 jours, jusqu'à 91**, dont 3 sans
+véhicule, qui gonflent le total à chaque passage pour toujours.
+
+---
 
 ### VPS-M77 — L'audit comptait des IP et jamais des empreintes, et une troisième clé root est passée dix-neuf jours sans être nommée
 
