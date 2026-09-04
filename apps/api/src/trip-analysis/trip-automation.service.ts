@@ -190,6 +190,8 @@ type MutableStats = {
   skippedBudget: number;
   /** Analyses REJOUÉES parce que leurs limites de vitesse sont arrivées après coup. */
   rejouees: number;
+  /** Analyses d'avant le 4 septembre reprises pour gagner les champs nés avec les lots V1/V3/V4. */
+  reprises: number;
   /** Le passage s'est-il arrêté sur son budget plutôt qu'au bout de son travail ? */
   budgetAtteint: boolean;
 };
@@ -438,6 +440,7 @@ export class TripAutomationService {
 
       // Après les trajets neufs : les analyses dont les limites sont arrivées depuis.
       await this.rejouerAnalysesIncompletes(user, stats, echeance);
+      await this.reprendreAnalysesAnciennes(user, stats, echeance);
 
       const runStats = this.finalStats(stats, Date.now() - startMs);
       await this.persistRun(settings.id, runStats);
@@ -458,6 +461,7 @@ export class TripAutomationService {
           (stats.skippedBudget > 0 ? ` · ${stats.skippedBudget} véhicule(s) reportés au passage suivant (budget de temps atteint)` : '') +
           (stats.skippedNoPositions > 0 ? ` · ${stats.skippedNoPositions} recalcul(s) impossibles faute de position` : '') +
           (stats.rejouees > 0 ? ` · ${stats.rejouees} analyse(s) rejouée(s) (limites arrivées après coup)` : '') +
+          (stats.reprises > 0 ? ` · ${stats.reprises} analyse(s) d'avant le 4 septembre reprises (faux excès, couverture, réserve de vitesse)` : '') +
           // Un passage écourté n'est pas un passage terminé : le dire évite de lire « 12 analysés »
           // comme « il n'y avait que 12 choses à faire ».
           (stats.budgetAtteint ? ' · passage ÉCOURTÉ sur son budget de temps, la suite au prochain' : '') +
@@ -1256,6 +1260,7 @@ export class TripAutomationService {
       fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0,
       skippedDormant: 0, skippedNoPositions: 0, skippedBudget: 0, budgetAtteint: false,
       rejouees: 0,
+      reprises: 0,
     };
   }
 
@@ -1320,6 +1325,95 @@ export class TripAutomationService {
     }
     if (stats.rejouees > 0) {
       this.logger.log(`${stats.rejouees} analyse(s) rejouée(s) — limites de vitesse arrivées après le calcul initial.`);
+    }
+  }
+
+  /**
+   * ══ REPRENDRE LES ANALYSES ÉCRITES AVANT LE 4 SEPTEMBRE ═══════════════════════════════
+   *
+   * ── CE QUE L'HISTORIQUE CONTIENT ────────────────────────────────────────────────────────
+   *
+   * Mesuré en production le 4 septembre, juste après la mise en ligne des lots V1 à V7 :
+   * **8 442 analyses portent des segments d'excès, et 4 036 n'en portent QUE des faux** — des
+   * dépassements bâtis sur un seul point, dont un « limite 30, relevé à 154 km/h » qui est en
+   * réalité un point rattaché au pont qui franchit la rocade.
+   *
+   * Les écrans ne les comptent plus : ils lisent le détail avec la règle actuelle, qui écarte les
+   * segments de durée nulle. Mais le détail STOCKÉ reste faux, et ces analyses n'ont ni le taux de
+   * couverture des limites, ni la réserve sur la vitesse annoncée, ni le détail de la note — trois
+   * champs nés avec les lots V1, V3 et V4. Tant qu'on ne les recalcule pas :
+   *   · les quatre sentinelles qui lisent ces champs restent aveugles sur tout l'historique ;
+   *   · le rapport de vitesse ne peut porter aucune réserve sur ces trajets ;
+   *   · la note de conduite affichée reste celle de l'ancienne formule.
+   *
+   * ── POURQUOI ICI, ET PAS DANS UN SCRIPT LANCÉ À LA MAIN ─────────────────────────────────
+   *
+   * Un script de reprise est un geste qu'on exécute une fois, qu'on interrompt, et qu'on oublie de
+   * reprendre. Ici, la reprise est BORNÉE, REPRENABLE et VISIBLE : elle passe à chaque tour de
+   * l'automatisation, s'arrête net sur le budget de temps, et son compte figure dans le détail du
+   * passage. Elle s'éteint d'elle-même quand il ne reste rien à reprendre.
+   *
+   * Rythme : {@link MAX_REPRISE_PAR_PASSAGE} analyses par tour, un tour par heure — l'historique
+   * mesuré se résorbe en une quinzaine de jours, sans jamais disputer son temps aux trajets neufs.
+   *
+   * ⚠️ APRÈS le rejeu de couverture, et bornée par la MÊME échéance. L'ordre n'est pas
+   * décoratif : un trajet d'hier mal couvert vaut mieux qu'un trajet du mois dernier, et un
+   * rattrapage d'historique ne doit jamais retarder ce que le client regarde aujourd'hui.
+   *
+   * ⚠️ Un échec ne remonte PAS au centre d'alerte. Les positions ont pu être purgées depuis :
+   * l'analyse refuse alors d'écrire un zéro inventé, et elle a raison. Crier sur un fait sans
+   * remède remplirait le centre pour rien — c'est la leçon déjà payée sur les trajets figés.
+   */
+  private async reprendreAnalysesAnciennes(
+    user: AuthUser,
+    stats: MutableStats,
+    echeance: number,
+  ): Promise<void> {
+    /** Enveloppe par passage. Voir l'arithmétique ci-dessus. */
+    const MAX_REPRISE_PAR_PASSAGE = 25;
+
+    /**
+     * Une analyse d'avant le 4 septembre se reconnaît à l'absence de `limitsCoverage` : la colonne
+     * est née avec le lot V3, et toute analyse écrite depuis en porte une valeur — y compris
+     * `null` quand aucun point n'était assez rapide pour qu'une limite soit demandée.
+     *
+     * ⚠️ D'où le second critère, `detail` sans clé `vitesse` : lui est écrit à CHAQUE analyse
+     * depuis le lot V1, sans exception. Se fier au seul taux de couverture ferait reprendre en
+     * boucle les trajets entièrement lents, qui n'en auront jamais.
+     */
+    let candidats: { tripId: string }[];
+    try {
+      candidats = await this.prisma.$queryRaw<{ tripId: string }[]>`
+        SELECT ta."tripId"
+        FROM trip_analyses ta
+        JOIN trips t ON t.id = ta."tripId"
+        WHERE NOT (ta.detail ? 'vitesse')
+          AND t."startedAt" > ${new Date(this.horizonRetention())}
+        ORDER BY
+          -- Les analyses qui affichent de FAUX excès d'abord : ce sont celles dont un client peut
+          -- lire un chiffre erroné aujourd'hui. Le reste suit, du plus récent au plus ancien.
+          (jsonb_array_length(COALESCE(ta.detail->'speeding', '[]'::jsonb)) > 0) DESC,
+          t."startedAt" DESC
+        LIMIT ${MAX_REPRISE_PAR_PASSAGE}`;
+    } catch (e) {
+      stats.failed++;
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'reprise-historique' });
+      return;
+    }
+
+    for (const c of candidats) {
+      if (Date.now() > echeance) { stats.budgetAtteint = true; break; }
+      try {
+        await this.analysis.analyze(user, c.tripId);
+        stats.reprises++;
+      } catch (e) {
+        this.logger.debug(`reprise impossible pour ${c.tripId} : ${(e as Error)?.message ?? e}`);
+      }
+    }
+    if (stats.reprises > 0) {
+      this.logger.log(
+        `${stats.reprises} analyse(s) d'avant le 4 septembre reprises — faux excès écartés, couverture et réserve de vitesse renseignées.`,
+      );
     }
   }
 

@@ -503,6 +503,13 @@ export interface TripAutomationRunStats {
    * le cache en continu, parfois le lendemain du trajet. Absent des passages antérieurs.
    */
   rejouees?: number;
+  /**
+   * Analyses ANTÉRIEURES au 4 septembre reprises pendant ce passage, pour gagner le taux de
+   * couverture des limites, la réserve sur la vitesse annoncée et le détail de la note — et pour
+   * que leurs faux excès (segments bâtis sur un seul point) disparaissent de la base, et pas
+   * seulement de l'affichage. Absent des passages antérieurs à cette reprise.
+   */
+  reprises?: number;
   failed: number;
   durationMs: number;
   /** ISO date de fin du run. */

@@ -138,10 +138,29 @@ const GPS_GAP_SEC = 300;             // > 5 min entre 2 points = perte de signal
  * les deux DOIVENT parler de la même population, sinon le taux de couverture ci-dessous compare
  * des points interrogés à des points qui ne l'ont jamais été.
  *
- * ⚠️ 33 km/h « couvre les zones 30 avec marge » — et rend du même coup indétectable tout excès
- * en zone 20 ou en zone piétonne. Constat ouvert (lot V2).
+ * 33 km/h couvre les zones 30 avec marge : un excès y commence à 35 (30 + 5 de tolérance).
  */
 export const SPEEDING_CANDIDATE_KMH = 33;
+
+/**
+ * ── LE SECOND PALIER, POUR LES ZONES LES PLUS LENTES (2026-09-04) ──────────────────────
+ *
+ * Le seuil ci-dessus a un angle mort qu'il faut nommer : en zone 20 (zone de rencontre) un excès
+ * commence à 25 km/h, et sur une voie limitée à 10 il commence à 15. Un véhicule à 30 km/h dans
+ * une rue à 20 dépassait donc la limite de dix kilomètres-heure sans qu'aucune limite ne soit
+ * seulement DEMANDÉE — l'excès n'était pas raté par erreur de calcul, il était hors du champ de
+ * vision. Ces zones sont précisément celles où l'on croise des piétons.
+ *
+ * 15 km/h couvre la plus basse limite qu'OpenStreetMap porte en France (10), tolérance comprise.
+ *
+ * ⚠️ CE PALIER NE DÉCLENCHE AUCUNE REQUÊTE CARTOGRAPHIQUE. Interroger le service public pour
+ * chaque point de circulation urbaine multiplierait le trafic sur un miroir gratuit déjà signalé
+ * comme dégradé — pour un gain incertain. Ces points sont donc résolus DEPUIS LE CACHE SEUL :
+ * on détecte l'excès partout où la limite est déjà connue, c'est-à-dire sur les rues qu'une flotte
+ * emprunte régulièrement, et nulle part ailleurs. Une amélioration gratuite vaut mieux qu'une
+ * amélioration qu'on n'osera pas déployer.
+ */
+export const EXCES_CANDIDAT_LENT_KMH = 15;
 const HARSH_ACCEL_MS2 = 2.5;         // accélération brusque
 const HARSH_BRAKE_MS2 = 3.0;         // freinage brusque
 const MIN_DT_S = 0.5;                // intervalle plausible min pour dériver une accélération

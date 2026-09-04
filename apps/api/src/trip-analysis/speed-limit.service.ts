@@ -87,6 +87,15 @@ export class SpeedLimitService {
   // provoque le plus de rafales. Voir `RefroidissementAlerteService`.
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
+  /**
+   * Plafond de cellules LENTES lues au cache par analyse.
+   *
+   * Un trajet urbain d'une heure produit des milliers de points sous 33 km/h : sans borne, la
+   * clause `IN` de la lecture de cache grossirait sans limite pour un gain décroissant. 2 000
+   * cellules couvrent une vingtaine de kilomètres de rues distinctes — au-delà, le trajet n'est
+   * plus un déplacement urbain, c'est une journée entière.
+   */
+  private readonly MAX_CELLULES_LENTES = 2000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -104,8 +113,19 @@ export class SpeedLimitService {
    * Pré-résout les limites pour un ensemble de points (dédupliqués par cellule), puis renvoie un
    * RÉSOLVEUR SYNCHRONE (lookup en mémoire) consommable par le préprocesseur. Cache d'abord,
    * Overpass ensuite (groupé, borné, throttlé). Points non résolus → null (limite inconnue).
+   *
+   * `pointsLents` (2026-09-04) est la population des zones les plus basses — un excès commence à
+   * 25 km/h en zone 20, à 15 sur une voie à 10. Elle est lue DANS LE CACHE et **jamais envoyée à
+   * Overpass** : interroger le service public pour chaque point de circulation urbaine
+   * multiplierait le trafic sur un miroir gratuit déjà signalé comme dégradé. On gagne donc les
+   * excès des rues déjà connues — celles qu'une flotte emprunte tous les jours — sans ajouter une
+   * seule requête. Le prix payé est nommé : sur une rue jamais rencontrée, un excès en zone 20
+   * reste invisible.
    */
-  async buildResolver(points: { lat: number; lng: number }[]): Promise<LimitResolver> {
+  async buildResolver(
+    points: { lat: number; lng: number }[],
+    pointsLents: { lat: number; lng: number }[] = [],
+  ): Promise<LimitResolver> {
     const map = new Map<string, number | null>();
     // Dédup par cellule.
     const cells = new Map<string, { lat: number; lng: number }>();
@@ -113,10 +133,22 @@ export class SpeedLimitService {
       const k = this.key(p.lat, p.lng);
       if (!cells.has(k)) cells.set(k, p);
     }
-    if (cells.size === 0) return () => null;
+    /**
+     * Cellules lisibles au cache mais NON interrogeables. Une cellule déjà présente parmi les
+     * points rapides garde son droit d'être interrogée : c'est la même rue, et le trajet y est
+     * passé vite au moins une fois.
+     */
+    const cellulesLentes = new Map<string, { lat: number; lng: number }>();
+    for (const p of pointsLents) {
+      const k = this.key(p.lat, p.lng);
+      if (!cells.has(k) && !cellulesLentes.has(k) && cellulesLentes.size < this.MAX_CELLULES_LENTES) {
+        cellulesLentes.set(k, p);
+      }
+    }
+    if (cells.size === 0 && cellulesLentes.size === 0) return () => null;
 
-    // 1. Cache DB.
-    const keys = [...cells.keys()];
+    // 1. Cache DB — les deux populations, en une seule lecture.
+    const keys = [...cells.keys(), ...cellulesLentes.keys()];
     let cached: { key: string; maxspeed: number | null }[] = [];
     try {
       cached = await this.prisma.speedLimitCache.findMany({ where: { key: { in: keys } }, select: { key: true, maxspeed: true } });
@@ -127,6 +159,7 @@ export class SpeedLimitService {
 
     // 2. Overpass GROUPÉ pour les manquants. On COMPTE les échecs de transport pour remonter UNE
     //    seule alerte par analyse (pas une par point) au centre d'alerte.
+    // ⚠️ `cells` SEULEMENT : les cellules lentes ne sont jamais interrogées, par construction.
     const manquants = [...cells.entries()].filter(([k]) => !map.has(k));
     let requetes = 0;
     let echecs = 0;

@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { FuelStationService } from './fuel-station.service';
 import { SpeedLimitService } from './speed-limit.service';
-import { analyzeTrip, SPEEDING_CANDIDATE_KMH, type RawPosition, type TripAnalysisResult } from './trip-analysis.preprocessor';
+import { analyzeTrip, EXCES_CANDIDAT_LENT_KMH, SPEEDING_CANDIDATE_KMH, type RawPosition, type TripAnalysisResult } from './trip-analysis.preprocessor';
 
 // `SPEEDING_CANDIDATE_KMH` vient du préprocesseur : c'est LUI qui mesure le taux de couverture,
 // et les deux doivent parler de la même population de points. Deux constantes jumelles auraient
@@ -205,9 +205,18 @@ export class TripAnalysisService {
       const candidates = positions
         .filter((p) => p.valid !== false && p.speedKmh > SPEEDING_CANDIDATE_KMH && !(p.lat === 0 && p.lng === 0))
         .map((p) => ({ lat: p.lat, lng: p.lng }));
+      /**
+       * Les points LENTS — entre 15 et 33 km/h — peuvent constituer un excès en zone 20 ou sur une
+       * voie à 10. Ils sont résolus DEPUIS LE CACHE SEUL, jamais par une requête cartographique :
+       * le gain est réel sur les rues déjà connues, et le coût est nul pour le service public.
+       */
+      const candidatsLents = positions
+        .filter((p) => p.valid !== false && !(p.lat === 0 && p.lng === 0)
+          && p.speedKmh > EXCES_CANDIDAT_LENT_KMH && p.speedKmh <= SPEEDING_CANDIDATE_KMH)
+        .map((p) => ({ lat: p.lat, lng: p.lng }));
       let resolver;
       try {
-        resolver = await this.speedLimits.buildResolver(candidates);
+        resolver = await this.speedLimits.buildResolver(candidates, candidatsLents);
       } catch (e) {
         // buildResolver gère déjà l'indispo Overpass en interne (best-effort + trace) ; ce catch ne se
         // déclenche que pour un échec INATTENDU du résolveur → on trace et on continue sans limites.

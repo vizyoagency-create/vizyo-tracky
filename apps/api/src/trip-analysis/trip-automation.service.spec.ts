@@ -43,6 +43,12 @@ describe('TripAutomationService', () => {
   }) {
     const row = makeRow(opts.row);
     const prisma = {
+    /**
+     * La reprise de l'historique lit ses candidats en SQL brut (`NOT (detail ? 'vitesse')` n'a pas
+     * d'équivalent dans l'API typée de Prisma). Un simulacre qui l'omet décrit un client Prisma
+     * qui n'existe pas, et fait passer la reprise pour une panne.
+     */
+      $queryRaw: jest.fn().mockResolvedValue([]),
       tripAutomationSettings: {
         findFirst: jest.fn().mockResolvedValue(row),
         create: jest.fn().mockResolvedValue(row),
@@ -483,5 +489,59 @@ describe('TripAutomationService', () => {
     expect(data.hour).toBe(23); // clampé 0-23
     expect(data.frequency).toBe('hourly'); // toute valeur ≠ 'daily' → 'hourly'
     expect(data.updatedByUserId).toBe('u1');
+  });
+
+  describe('Reprise des analyses d’avant le 4 septembre', () => {
+    /**
+     * 8 442 analyses de production portent des segments d'excès, et 4 036 n'en portent QUE des faux
+     * — bâtis sur un seul point. Les écrans ne les comptent plus, mais le détail STOCKÉ reste faux,
+     * et ces analyses n'ont ni couverture des limites, ni réserve de vitesse, ni détail de note.
+     * Tant qu'on ne les recalcule pas, quatre sentinelles restent aveugles sur tout l'historique.
+     */
+    it('reprend les analyses dépourvues de réserve de vitesse, et les compte à part', async () => {
+      const { svc, prisma, analysis } = build({});
+      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ tripId: 'vieux-1' }, { tripId: 'vieux-2' }]);
+
+      const stats = await svc.runNow();
+
+      expect(stats.reprises).toBe(2);
+      expect((analysis.analyze as jest.Mock).mock.calls.some((c) => c[1] === 'vieux-1')).toBe(true);
+    });
+
+    it('un échec de reprise ne compte NI comme reprise NI comme incident', async () => {
+      // Les positions ont pu être purgées depuis : l'analyse refuse d'écrire un zéro inventé, et
+      // elle a raison. Crier sur un fait sans remède remplirait le centre d'alerte pour rien.
+      const { svc, prisma, analysis, errorLogger } = build({});
+      (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ tripId: 'purge-1' }]);
+      (analysis.analyze as jest.Mock).mockImplementation(async (_u: unknown, id: string) => {
+        if (id === 'purge-1') throw new Error('positions purgées');
+        return {};
+      });
+
+      const stats = await svc.runNow();
+
+      expect(stats.reprises).toBe(0);
+      expect(
+        (errorLogger.record as jest.Mock).mock.calls.some((c) => String(c[2]?.phase) === 'reprise-historique'),
+      ).toBe(false);
+    });
+
+    it('une base injoignable pendant la reprise EST un incident, lui', async () => {
+      const { svc, prisma, errorLogger } = build({});
+      (prisma.$queryRaw as jest.Mock).mockRejectedValue(new Error('base injoignable'));
+
+      const stats = await svc.runNow();
+
+      expect(stats.failed).toBeGreaterThan(0);
+      expect(
+        (errorLogger.record as jest.Mock).mock.calls.some((c) => String(c[2]?.phase) === 'reprise-historique'),
+      ).toBe(true);
+    });
+
+    it('ne dit rien dans le journal du passage quand il n’y a rien à reprendre', async () => {
+      const { svc } = build({});
+      const stats = await svc.runNow();
+      expect(stats.reprises).toBe(0);
+    });
   });
 });

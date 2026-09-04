@@ -41,6 +41,12 @@ function build(opts: {
     .mockResolvedValueOnce(opts.trips ?? [])
     .mockResolvedValueOnce(opts.anciens ?? []);
   const prisma = {
+  /**
+   * La reprise de l'historique lit ses candidats en SQL brut (`NOT (detail ? 'vitesse')` n'a pas
+   * d'équivalent dans l'API typée de Prisma). Un simulacre qui l'omet décrit un client Prisma
+   * qui n'existe pas, et fait passer la reprise pour une panne.
+   */
+    $queryRaw: jest.fn().mockResolvedValue([]),
     tripAutomationSettings: {
       findFirst: jest.fn().mockResolvedValue(row),
       create: jest.fn().mockResolvedValue(row),

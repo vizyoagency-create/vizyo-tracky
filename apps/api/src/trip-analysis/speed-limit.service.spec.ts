@@ -1,5 +1,5 @@
 import { parseMaxspeed, inferFromHighway, distancePointSegment, estRejouable, SpeedLimitService } from './speed-limit.service';
-import { estRoutable, limiteDeVoie } from './speed-limit.resolution';
+import { cleCellule, estRoutable, limiteDeVoie } from './speed-limit.resolution';
 
 /**
  * TRK-038 — faux refroidissement AVEC ETAT.
@@ -237,6 +237,71 @@ describe('SpeedLimitService — ne JAMAIS graver un échec Overpass dans le cach
     expect(source).toBe('trip-analysis');
     expect(ctx).toMatchObject({ feature: 'speed-limit-osm' });
     expect(prisma.speedLimitCache.create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ── LES ZONES LES PLUS LENTES (2026-09-04) ────────────────────────────────────────────
+   *
+   * En zone 20, un excès commence à 25 km/h ; sur une voie à 10, à 15. Ces points n'étaient
+   * jamais candidats à une résolution de limite. Ils le sont désormais — mais DEPUIS LE CACHE
+   * SEUL : interroger le service public pour chaque point de circulation urbaine multiplierait
+   * le trafic sur un miroir gratuit déjà signalé comme dégradé.
+   *
+   * Ces tests protègent les deux moitiés de ce marché : on gagne les rues déjà connues, et on
+   * n'ajoute pas une seule requête.
+   */
+  describe('cellules lentes — lues au cache, jamais interrogées', () => {
+    it('résout un point lent quand sa cellule est DÉJÀ en cache', async () => {
+      const prisma = makePrisma();
+      prisma.speedLimitCache.findMany.mockResolvedValue([{ key: cleCellule(43.6, 1.44), maxspeed: 20 }]);
+      const fetchImpl = jest.fn();
+      const { svc } = svcAvec(fetchImpl, prisma);
+
+      const resolver = await svc.buildResolver([], [{ lat: 43.6, lng: 1.44 }]);
+
+      expect(resolver(43.6, 1.44)).toBe(20);
+      // ⚠️ LE point du lot : aucune requête cartographique.
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ n’interroge JAMAIS Overpass pour une cellule lente inconnue', async () => {
+      const prisma = makePrisma(); // cache vide
+      const fetchImpl = jest.fn();
+      const { svc } = svcAvec(fetchImpl, prisma);
+
+      const resolver = await svc.buildResolver([], [{ lat: 43.6, lng: 1.44 }]);
+
+      expect(resolver(43.6, 1.44)).toBeNull();
+      expect(fetchImpl).not.toHaveBeenCalled();
+      // Rien n'est mémorisé non plus : on n'a rien appris.
+      expect(prisma.speedLimitCache.create).not.toHaveBeenCalled();
+    });
+
+    it('une cellule vue AUSSI en point rapide garde son droit d’être interrogée', async () => {
+      // Même rue, parcourue vite au moins une fois : c'est le point rapide qui décide, et la
+      // cellule ne doit pas être privée d'interrogation parce qu'elle figure aussi en lent.
+      //
+      // ⚠️ Ce test porte sur la QUERYABILITÉ, pas sur le décodage de la réponse — celui-ci est
+      // couvert par « SpeedLimitService — résoudre pour de vrai ». Y ajouter une attente de
+      // valeur ferait échouer ce test pour une raison qui n'est pas son sujet.
+      const prisma = makePrisma();
+      const fetchImpl = jest.fn().mockResolvedValue(reponse({ elements: [] }));
+      const { svc } = svcAvec(fetchImpl, prisma);
+
+      await sansAttendre(() => svc.buildResolver([{ lat: 43.6, lng: 1.44 }], [{ lat: 43.6, lng: 1.44 }]));
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+    it('sans aucun point, ni rapide ni lent, rien n’est lu du tout', async () => {
+      const prisma = makePrisma();
+      const { svc } = svcAvec(jest.fn(), prisma);
+
+      const resolver = await svc.buildResolver([], []);
+
+      expect(resolver(43.6, 1.44)).toBeNull();
+      expect(prisma.speedLimitCache.findMany).not.toHaveBeenCalled();
+    });
   });
 });
 

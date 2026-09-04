@@ -328,9 +328,23 @@ pour ne pas écrire une ligne par trajet.
 > lance le passage tout de suite. La réponse rend les constats trouvés ET ceux que le
 > refroidissement a retenus — « rien d'écrit » ne se confond jamais avec « rien à dire ».
 >
-> **Reste ouvert dans V6** : les quatre sentinelles de l'analyse ne verront rien tant que V1 à V5
-> ne sont pas déployés (la colonne de couverture et les champs `vitesse`/`aVerifier` n'existent
-> pas encore en production).
+> **Reste ouvert dans V6** : ~~les quatre sentinelles de l'analyse ne verront rien tant que V1 à V5
+> ne sont pas déployés~~ — déployé le 4 septembre. Elles restent aveugles sur l'HISTORIQUE tant
+> que la reprise (ci-dessous) ne l'a pas rattrapé.
+
+#### Lot V8 — Les zones lentes, et la reprise de l'historique · **FAIT le 4 septembre**
+
+| Item | Ce qui a changé |
+|---|---|
+| ~~FAIT~~ **Les zones 20 et les voies à 10 étaient hors du champ de vision.** Une limite n'était demandée qu'au-dessus de 33 km/h : un véhicule à 30 dans une rue à 20 dépassait de dix km/h sans qu'aucune limite ne soit seulement DEMANDÉE. Un second palier à 15 km/h les couvre — `EXCES_CANDIDAT_LENT_KMH` |
+| ~~FAIT~~ **Sans une seule requête cartographique de plus.** Les points lents sont résolus DEPUIS LE CACHE SEUL : on gagne les excès des rues qu'une flotte emprunte régulièrement, et on n'ajoute rien au trafic d'un miroir public déjà signalé comme dégradé. Prix nommé : sur une rue jamais rencontrée, l'excès en zone 20 reste invisible |
+| ~~FAIT~~ Le taux de couverture continue de porter sur la population RAPIDE seule : y verser les points lents ferait chuter la couverture de tout trajet urbain et déclencherait des rejeux sans objet |
+| ~~FAIT~~ **Reprise de l'historique.** 8 442 analyses portent des segments d'excès, **4 036 n'en portent QUE des faux**. L'automatisation reprend 25 analyses par passage, les faux excès d'abord, bornée par le même budget de temps que les trajets neufs — l'historique mesuré se résorbe en une quinzaine de jours, et le compte figure dans le détail du passage |
+| ~~FAIT~~ Une analyse d'avant le 4 septembre se reconnaît à l'absence de `detail.vitesse`, écrit à CHAQUE analyse depuis le lot V1 — et non au taux de couverture, qui reste nul pour un trajet entièrement lent et ferait boucler la reprise |
+
+**Recette** : 30 km/h dans une rue à 20 produit un excès quand la cellule est connue ; le passage
+de l'automatisation annonce ses reprises, et le nombre d'analyses sans réserve de vitesse baisse
+d'un passage à l'autre.
 
 **Recette** : chaque sentinelle sait produire une ligne de test à partir d'un cas réel de production, et
 le centre d'alerte reste lisible — une ligne par incohérence et par jour, pas une par trajet.
