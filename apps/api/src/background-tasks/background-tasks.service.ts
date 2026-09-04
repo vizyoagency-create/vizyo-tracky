@@ -543,9 +543,9 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'rattrapage-recits', label: 'Rattrapage des recits (agent sur poste, temporaire)',
     category: 'IA & rapports', kind: 'cron',
-    scheduleHuman: 'toutes les 2 h aux heures paires (70 min max) — sur le poste du proprietaire',
+    scheduleHuman: 'toutes les 2 h aux heures paires (100 min max) — sur le poste du proprietaire',
     criticality: 'basse', antiOverlap: true,
-    note: "TEMPORAIRE, et c'est son interet : la tache resorbe l'arriere de recits (fenetre de 1 500 h) puis devient un no-op — l'agent sort immediatement quand il n'y a plus rien a narrer. Creee le 2026-08-21 apres que le rattrapage a ete perdu TROIS fois en tournant sous une session interactive : ici c'est le Planificateur de Windows qui porte le processus, il survit aux fermetures de session et aux redemarrages.",
+    note: "TEMPORAIRE, et c'est son interet : la tache resorbe l'arriere de recits sur TOUTE LA RETENTION (fenetre de 9 000 h, ~375 j) puis devient un no-op — l'agent sort immediatement quand il n'y a plus rien a narrer. Creee le 2026-08-21 apres que le rattrapage a ete perdu TROIS fois en tournant sous une session interactive : ici c'est le Planificateur de Windows qui porte le processus, il survit aux fermetures de session et aux redemarrages.",
     purpose: "Ecrit les recits manquants de l'HISTORIQUE (le creneau nocturne de 03:15 ne couvre que les 48 dernieres heures). Meme moteur, meme abonnement du poste : aucun credit d'API facture.",
     externe: 'rattrapage-recits',
     poste: 'outils/rattrapage-recits.cmd',
@@ -933,7 +933,14 @@ export class BackgroundTasksService {
   }
 
   /**
-   * État du RATTRAPAGE des récits — la tâche temporaire du poste (fenêtre 1 500 h).
+   * État du RATTRAPAGE des récits — la tâche temporaire du poste.
+   *
+   * ⚠️ LA FENÊTRE COUVRE TOUTE LA RÉTENTION (9 000 h, ~375 j), et non 1 500 h comme l'annonçait
+   * ce catalogue jusqu'au 4 septembre 2026. 1 500 h laissaient hors de portée tout trajet de plus
+   * de 62 jours : au 2026-09-02, 552 analyses de MH Cars et 205 d'A2R restaient sans récit pour
+   * cette seule raison. Le catalogue décrivait donc un rattrapage qui ne rattrapait qu'un
+   * soixantième de ce qu'on conserve — la description doit suivre `outils/rattrapage-recits.cmd`,
+   * qui reste la source (`--heures=9000 --minutes=100`).
    *
    * Même production que l'agent nocturne (des récits `provider = 'local'`), donc même preuve de
    * travail. Ce qui change est la LECTURE DU ZÉRO : quand il ne reste plus rien à narrer, l'agent

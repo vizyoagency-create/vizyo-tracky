@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { libelleGraviteAlerte, libelleTypeAlerte } from '@vizyo/tracky-shared';
 
 /**
  * V1.5 (Sprint L) — Export CSV brut.
@@ -129,12 +130,13 @@ export class ReportCsvService {
       notes: t.notes ?? '',
       notes_author: this.formatAuthor(t.notesUpdatedBy),
       notes_updated_at: t.notesUpdatedAt?.toISOString() ?? '',
+      notes_updated_at_local: t.notesUpdatedAt ? formatFleetDateTime(t.notesUpdatedAt) : '',
     }));
     return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000, [
       'trip_id', 'plate', 'group', 'started_at_local', 'ended_at_local', 'started_at', 'ended_at',
       'duration_seconds', 'distance_km', 'max_speed_kmh', 'avg_speed_kmh', 'position_count',
       'start_lat', 'start_lng', 'end_lat', 'end_lng', 'driver_id', 'driver_name', 'driver_source',
-      'notes', 'notes_author', 'notes_updated_at',
+      'notes', 'notes_author', 'notes_updated_at', 'notes_updated_at_local',
     ]);
   }
 
@@ -166,16 +168,28 @@ export class ReportCsvService {
       plate: a.vehicle?.plate ?? '',
       group: vehicleGroupOf(a.vehicle)?.name ?? '',
       type: a.type,
+      /**
+       * ⚠️ Le CODE reste la première colonne : c'est lui qui se filtre et se trie sans
+       * ambiguïté. Le LIBELLÉ vient à côté, tiré de la MÊME table que le PDF et l'écran.
+       * Jusqu'ici seul le PDF traduisait : un client qui ouvrait les deux lisait
+       * « Excès de vitesse » d'un côté, « OVERSPEED » de l'autre, et pouvait légitimement
+       * se demander s'il s'agissait de la même chose.
+       */
+      type_label: libelleTypeAlerte(a.type),
       severity: a.severity,
+      severity_label: libelleGraviteAlerte(a.severity),
       title: a.title,
       message: a.message ?? '',
       acknowledged_at: a.acknowledgedAt?.toISOString() ?? '',
+      // Heure de Paris lisible pour Excel FR, comme la date de création juste au-dessus.
+      acknowledged_at_local: a.acknowledgedAt ? formatFleetDateTime(a.acknowledgedAt) : '',
       latitude: a.latitude ?? '',
       longitude: a.longitude ?? '',
     }));
     return this.wrap(rows, `tracky-alerts-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000, [
-      'created_at_local', 'created_at', 'plate', 'group', 'type', 'severity', 'title', 'message',
-      'acknowledged_at', 'latitude', 'longitude',
+      'created_at_local', 'created_at', 'plate', 'group', 'type', 'type_label', 'severity',
+      'severity_label', 'title', 'message', 'acknowledged_at', 'acknowledged_at_local',
+      'latitude', 'longitude',
     ]);
   }
 
@@ -197,14 +211,17 @@ export class ReportCsvService {
       status: c.status,
       source: c.source,
       sent_at: c.sentAt?.toISOString() ?? '',
+      sent_at_local: c.sentAt ? formatFleetDateTime(c.sentAt) : '',
       acked_at: c.ackedAt?.toISOString() ?? '',
+      acked_at_local: c.ackedAt ? formatFleetDateTime(c.ackedAt) : '',
       reason: c.reason ?? '',
       last_error: c.lastError ?? '',
       created_at_local: formatFleetDateTime(c.createdAt),
     }));
     // Idem : l'en-tête doit exister même sans une seule commande sur la période.
     return this.wrap(rows, `tracky-commands-${this.dateSuffix(from, to)}.csv`, rows.length >= 20_000, [
-      'created_at', 'created_at_local', 'plate', 'action', 'status', 'source', 'sent_at', 'acked_at', 'reason', 'last_error',
+      'created_at', 'created_at_local', 'plate', 'action', 'status', 'source',
+      'sent_at', 'sent_at_local', 'acked_at', 'acked_at_local', 'reason', 'last_error',
     ]);
   }
 

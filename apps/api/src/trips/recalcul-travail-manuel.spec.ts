@@ -14,6 +14,7 @@ import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripsService } from './trips.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { TripSegmenterService } from './trip-segmenter.service';
 
 const VEHICULE = '00000000-0000-0000-0000-0000000000v1';
@@ -65,11 +66,19 @@ async function recalculer(monde: Monde) {
   };
   const segmenter = { segmentPositions: jest.fn().mockReturnValue(monde.decoupes ?? []) };
 
+  /**
+   * ⚠️ Le journal système est fourni EXPLICITEMENT, pas par `useMocker` : celui-ci rend un
+   * objet vide, sur lequel `record` n'est pas une fonction. Un double qui ne porte pas la
+   * méthode appelée décrit un service qui n'existe pas.
+   */
+  const journal = { record: jest.fn() };
+
   const module = await Test.createTestingModule({
     providers: [
       TripsService,
       { provide: PrismaService, useValue: prisma },
       { provide: TripSegmenterService, useValue: segmenter },
+      { provide: SystemActivityService, useValue: journal },
     ],
   })
     .useMocker(() => ({}))
@@ -80,7 +89,7 @@ async function recalculer(monde: Monde) {
     { userId: 'u1', role: UserRole.SUPER_ADMIN, fleetId: null } as never,
     { vehicleId: VEHICULE, from: a(-60).toISOString(), to: a(600).toISOString() },
   );
-  return { resultat, crees };
+  return { resultat, crees, journal };
 }
 
 describe('Recalcul — le travail saisi à la main survit', () => {
@@ -166,6 +175,53 @@ describe('Recalcul — le travail saisi à la main survit', () => {
 
     expect(crees[0]!.notes).toBeNull();
     expect(resultat).toMatchObject({ notesReprises: 0, conducteursRepris: 0, notesPerdues: 0 });
+  });
+
+  /**
+   * ── LE SEUL GESTE DE CETTE PAGE QUI DÉTRUIT DES DONNÉES DOIT LAISSER UNE TRACE ──────
+   *
+   * Le recalcul supprime des trajets et en recrée d'autres. Il ne laissait qu'une ligne dans
+   * les journaux du conteneur — c'est-à-dire nulle part, pour qui enquête depuis l'espace
+   * admin. Un client qui écrit « mes trajets d'août ont changé » ne pouvait être ni confirmé
+   * ni démenti : personne ne savait qui avait recalculé quoi, ni quand.
+   */
+  it('inscrit au Journal Système ce qui a été supprimé, recréé et perdu', async () => {
+    const { journal, resultat } = await recalculer({
+      anciens: [ancien('vieux-1', 0, 60, { notes: 'Livraison Carrefour', driverId: 'd1' })],
+      decoupes: [decoupe(0, 60)],
+    });
+
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    const ligne = journal.record.mock.calls[0][0];
+    expect(ligne.category).toBe('MUTATION');
+    expect(ligne.action).toBe('trips_recompute');
+    expect(ligne.triggeredByUserId).toBe('u1');
+    expect(ligne.fleetId).toBe('f1');
+    // Les cinq chiffres qu'on vient chercher après coup — Y COMPRIS celui qui vaut zéro.
+    // Une ligne qui ne porte la perte que lorsqu'elle est non nulle oblige à interpréter
+    // son absence, et une absence s'interprète toujours dans le sens qui arrange.
+    expect(ligne.meta).toMatchObject({
+      supprimes: resultat.deleted,
+      recrees: resultat.created,
+      notesReprises: resultat.notesReprises,
+      conducteursRepris: resultat.conducteursRepris,
+      notesPerdues: resultat.notesPerdues,
+    });
+    expect(ligne.meta.notesPerdues).toBe(0);
+    expect(ligne.detail).toContain('supprimé');
+  });
+
+  it('journalise AUSSI la note qu’aucun trajet n’a pu reprendre', async () => {
+    // Deux anciens trajets notés fondus en un seul : une seule note peut tenir.
+    const { journal } = await recalculer({
+      anciens: [
+        ancien('vieux-1', 0, 30, { notes: 'Première tournée' }),
+        ancien('vieux-2', 30, 60, { notes: 'Seconde tournée' }),
+      ],
+      decoupes: [decoupe(0, 60)],
+    });
+
+    expect(journal.record.mock.calls[0][0].meta.notesPerdues).toBe(1);
   });
 
   it('reprend le conducteur seul, même sans note', async () => {

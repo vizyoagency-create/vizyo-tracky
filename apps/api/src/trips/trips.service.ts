@@ -16,6 +16,7 @@ import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { TripSortColumn } from './dto/list-trips.dto';
@@ -114,6 +115,7 @@ export class TripsService implements OnModuleInit {
     private readonly segmenter: TripSegmenterService,
     private readonly mapMatching: MapMatchingService,
     @Optional() private readonly errorLogger?: ErrorLogger,
+    @Optional() private readonly systemActivity?: SystemActivityService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -1079,6 +1081,49 @@ export class TripsService implements OnModuleInit {
           (notesPerdues > 0 ? `, ${notesPerdues} note(s) sans trajet d'accueil apres redecoupage` : ''),
       );
     }
+
+    /**
+     * ── JOURNAL SYSTÈME : LE SEUL GESTE DE LA PAGE QUI DÉTRUIT DES DONNÉES ─────────────
+     *
+     * Le recalcul supprime des trajets et en recrée d'autres. Jusqu'ici il ne laissait qu'une
+     * ligne dans les journaux applicatifs du conteneur — c'est-à-dire nulle part pour qui
+     * enquête depuis l'espace admin. Un client qui écrit « mes trajets d'août ont changé »
+     * ne pouvait donc être ni confirmé ni démenti : personne ne savait qui avait recalculé
+     * quoi, ni quand.
+     *
+     * ⚠️ `récits perdus` est journalisé même à zéro. C'est le chiffre qu'on vient chercher
+     * après coup ; une ligne qui ne le porte que lorsqu'il est non nul oblige à interpréter
+     * son absence, et une absence s'interprète toujours dans le sens qui arrange.
+     *
+     * Fire-and-forget : `record()` ne jette jamais. Un journal en panne ne doit pas faire
+     * échouer un recalcul qui, lui, a bien eu lieu.
+     */
+    this.systemActivity?.record({
+      category: 'MUTATION',
+      action: 'trips_recompute',
+      status: 'SUCCESS',
+      // Le NOM est résolu à la lecture depuis `triggeredByUserId` ; le recopier ici
+      // le figerait au moment du recalcul et le ferait diverger d'un renommage.
+      actor: null,
+      target: vehicle.plate ?? dto.vehicleId,
+      fleetId: vehicle.fleetId,
+      triggeredByUserId: requestedBy.userId ?? null,
+      detail:
+        `${deleted} trajet(s) supprimé(s), ${created} recréé(s) — `
+        + `${notesReprises} note(s) et ${conducteursRepris} conducteur(s) repris, `
+        + `${notesPerdues} note(s) sans trajet d'accueil`,
+      meta: {
+        vehicleId: dto.vehicleId,
+        du: dto.from,
+        au: dto.to,
+        supprimes: deleted,
+        recrees: created,
+        notesReprises,
+        conducteursRepris,
+        notesPerdues,
+      },
+    });
+
     return { deleted, created, notesReprises, conducteursRepris, notesPerdues };
   }
 

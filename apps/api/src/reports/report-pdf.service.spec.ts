@@ -43,7 +43,7 @@ function makeReport(overrides: Partial<FleetStatsReport> = {}): FleetStatsReport
       fuelPriceEurL: 1.85,
       observedPriceEurL: null,
       estimatedCostAtObservedEur: null,
-      observedSampleCount: 0,
+      observedSampleCount: 0, estimatedCo2Kg: 0,
     },
     topVehicles: [],
     recentTrips: [],

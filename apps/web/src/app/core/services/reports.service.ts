@@ -31,6 +31,17 @@ export interface FleetStatsReportDto {
     estimatedLiters: number;
     estimatedCostEur: number;
     fuelPriceEurL: number;
+    /**
+     * Prix RÉELLEMENT CONSTATÉ en station sur la période (€/L moyen), ou `null` si aucun
+     * passage n'a été capté. Le serveur le calcule depuis toujours ; l'écran ne le demandait
+     * pas, et le client comparait donc son coût estimé à un prix qu'il avait paramétré
+     * lui-même, sans jamais voir celui qu'il paie vraiment.
+     */
+    observedPriceEurL: number | null;
+    estimatedCostAtObservedEur: number | null;
+    observedSampleCount: number;
+    /** CO₂ estimé de la période (kg) — combustion seule, facteur propre à chaque énergie. */
+    estimatedCo2Kg: number;
   };
   topVehicles: {
     vehicleId: string;
@@ -42,6 +53,13 @@ export interface FleetStatsReportDto {
     /** Ajoutés le 4 septembre : sans eux, l'écran devait additionner lui-même la page chargée. */
     durationHours: number;
     avgSpeedKmh: number;
+    /**
+     * Excès ÉTABLIS de la période (règle partagée : au moins une seconde), le nombre de
+     * trajets concernés, et le pire dépassement en km/h au-dessus de la limite.
+     */
+    speedingCount: number;
+    speedingTripCount: number;
+    worstOverKmh: number;
   }[];
 }
 

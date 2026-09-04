@@ -227,7 +227,23 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                   <div><dt>À-coups</dt><dd>{{ a.harshAccel + a.harshBrake }} <small>{{ a.harshAccel }} accélérations, {{ a.harshBrake }} freinages brusques</small></dd></div>
                   <div><dt>Ralenti</dt><dd>{{ minutes(a.idleSec) }} min <small>moteur tournant à l'arrêt</small></dd></div>
                   @if (a.fuelLiters != null) {
-                    <div><dt>Carburant</dt><dd>≈ {{ a.fuelLiters | number:'1.1-1' }} L @if (a.co2Kg != null) { · ≈ {{ a.co2Kg | number:'1.0-0' }} kg CO₂ } <small>estimation d'après la consommation du véhicule, pas une mesure</small></dd></div>
+                    <div><dt>Carburant</dt><dd>≈ {{ a.fuelLiters | number:'1.1-1' }} L @if (a.co2Kg != null) { · ≈ {{ a.co2Kg | number:'1.0-0' }} kg CO₂ }
+                      <!-- ⚠️ La phrase disait « d'après la consommation du véhicule » MÊME quand
+                           aucune consommation n'était renseignée sur la fiche : le calcul retombait
+                           alors sur un défaut de type. Le client ne pouvait pas savoir que le
+                           chiffre reposait sur une valeur qu'il n'avait jamais donnée — ni qu'il
+                           pouvait l'améliorer en trente secondes. -->
+                      @if (a.detail?.carburant; as c) {
+                        @if (c.source === 'vehicule') {
+                          <small>estimation d'après la consommation renseignée sur la fiche du véhicule ({{ c.l100km | number:'1.1-1' }} L/100 km), pas une mesure</small>
+                        } @else {
+                          <small>estimation d'après une valeur PAR DÉFAUT ({{ c.l100km | number:'1.1-1' }} L/100 km, déduite du type de véhicule) : aucune consommation n'est renseignée sur la fiche.
+                            <a [routerLink]="['/vehicles', a.vehicleId]" class="lien-conso">La renseigner</a> rendra ce chiffre juste.</small>
+                        }
+                      } @else {
+                        <small>estimation d'après la consommation du véhicule, pas une mesure</small>
+                      }
+                    </dd></div>
                   }
                   @if (pointeNonCorroboree(); as pointe) {
                     <div><dt>Pointe écartée</dt><dd>{{ pointe }} km/h <small>annoncés par le boîtier, mais la distance réellement parcourue ne les soutient pas. Cette valeur n'est retenue ni comme vitesse maximale, ni comme excès.</small></dd></div>
@@ -264,6 +280,38 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                   </button>
                   <span class="taid-actions-note">Relit les positions GPS et les limites de vitesse. Le récit n'est pas modifié.</span>
                 </div>
+              }
+              @if (error(); as e) { <p class="taid-err">{{ e }}</p> }
+            } @else {
+              <!-- ══ LIEN PROFOND SANS ANALYSE EN MAIN ═══════════════════════════════════
+                   Venu de /scores, ce composant reçoit un identifiant de trajet mais pas toujours
+                   l'analyse. La modale ne s'ouvrait alors PAS DU TOUT : le lien semblait
+                   mort, et l'utilisateur cliquait deux ou trois fois avant d'abandonner.
+                   Elle s'ouvre désormais toujours, et dit laquelle des deux situations
+                   elle est : on attend, ou il n'y a rien à attendre. -->
+              @if (chargementAuto()) {
+                <p class="taid-empty">
+                  <lucide-icon [img]="LoaderIcon" [size]="13" class="tab-spin"></lucide-icon>
+                  Chargement de l'analyse…
+                </p>
+              } @else {
+                <p class="taid-empty">
+                  <lucide-icon [img]="ClockIcon" [size]="13"></lucide-icon>
+                  Ce trajet n'a pas encore été analysé.
+                  @if (canRecompute()) {
+                    L'analyse relit les positions GPS et les limites de vitesse ; elle ne coûte aucun crédit d'IA.
+                  } @else {
+                    Elle est calculée automatiquement chaque nuit.
+                  }
+                </p>
+                @if (canRecompute()) {
+                  <div class="taid-actions">
+                    <button type="button" class="taid-btn" (click)="runAnalyze()" [disabled]="busy()">
+                      @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Analyse… }
+                      @else { <lucide-icon [img]="RefreshIcon" [size]="14"></lucide-icon> Analyser maintenant }
+                    </button>
+                  </div>
+                }
               }
               @if (error(); as e) { <p class="taid-err">{{ e }}</p> }
             }
@@ -388,6 +436,7 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
     .taid-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong, var(--border-subtle)); }
     .taid-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
     .taid-err { margin: 0; font-size: 12px; color: var(--texte-alerte); }
+    .lien-conso { color: var(--texte-succes); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
   `],
 })
 export class TripAnalysisBadgesComponent {
@@ -412,13 +461,23 @@ export class TripAnalysisBadgesComponent {
 
   constructor() {
     this.aiStatus.ensureLoaded();
-    // Deep-link (scores « N avec excès » → ?trip=…) : ouvre AUTOMATIQUEMENT le détail de ce
-    // trajet une seule fois, dès que l'analyse est là (current() suit l'input `analysis`).
+    /**
+     * ── LE LIEN PROFOND N'OUVRAIT RIEN QUAND L'ANALYSE MANQUAIT ────────────────────────
+     *
+     * La condition exigeait `current()` : arrivé de /scores sur un trajet jamais analysé —
+     * ou simplement pas encore chargé — le clic ne produisait AUCUN effet visible. Pas de
+     * modale vide, ce qui aurait au moins été un signe : rien. L'utilisateur recliquait,
+     * puis concluait que le lien était cassé.
+     *
+     * La modale s'ouvre maintenant TOUJOURS, et va chercher elle-même l'analyse si personne
+     * ne la lui a donnée. Ses trois états sont dès lors dicibles : on charge, voilà, ou il
+     * n'y en a pas.
+     */
     effect(() => {
-      if (this.autoOpen() && !this.autoOpened && this.current()) {
-        this.autoOpened = true;
-        this.openDetail();
-      }
+      if (!this.autoOpen() || this.autoOpened) return;
+      this.autoOpened = true;
+      this.openDetail();
+      if (!this.current()) void this.chargerPourLienProfond();
     });
   }
 
@@ -435,6 +494,8 @@ export class TripAnalysisBadgesComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly detailOpen = signal(false);
+  /** Lecture en cours déclenchée par un lien profond — distingue « on attend » de « il n'y a rien ». */
+  protected readonly chargementAuto = signal(false);
 
   protected readonly current = computed(() => this.fresh() ?? this.analysis());
 
@@ -580,6 +641,26 @@ export class TripAnalysisBadgesComponent {
     return a.limitsKnown
       ? `${excesDuTrajet(a).nombre} excès de vitesse — dépassement max +${Math.round(a.maxOverKmh)} km/h`
       : `${excesDuTrajet(a).nombre} pointe(s) de vitesse (limites légales non résolues — excès probable)`;
+  }
+
+  /**
+   * Va chercher l'analyse quand un lien profond ouvre la modale sans elle.
+   *
+   * ⚠️ C'est une LECTURE (`get`), pas un calcul : `null` en retour signifie « jamais analysé »
+   * et doit rester dicible. Déclencher l'analyse d'office ici la rendrait indiscernable d'une
+   * analyse préexistante, et ferait travailler le serveur sur un simple clic de lien.
+   */
+  private async chargerPourLienProfond(): Promise<void> {
+    this.chargementAuto.set(true);
+    try {
+      const a = await firstValueFrom(this.api.get(this.tripId()));
+      if (a) this.fresh.set(a);
+    } catch (e) {
+      swallow('trip-analysis-badges:lienProfond', e);
+      this.error.set(apiErrorMessage(e, 'Analyse indisponible.'));
+    } finally {
+      this.chargementAuto.set(false);
+    }
   }
 
   protected openDetail(): void { this.error.set(null); this.detailOpen.set(true); }

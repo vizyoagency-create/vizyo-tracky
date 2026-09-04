@@ -72,7 +72,7 @@ describe('resolveReportVehicleScope (helper partagé)', () => {
 describe('ReportsStatsService.compute — borne périmètre', () => {
   /** Capture les `where` passés à trip.aggregate / groupBy / findMany. */
   function makePrisma(vehiclesInFleet: string[]) {
-    const captured: { tripWhere?: any; alertWhere?: any; fuelStopWhere?: any } = {};
+    const captured: { tripWhere?: any; alertWhere?: any; fuelStopWhere?: any; excesParams?: unknown[] } = {};
     const vehicleRows = vehiclesInFleet.map((id) => ({
       id, plate: id.toUpperCase(), type: 'CAR', fuelConsumptionL100km: null, groups: [],
     }));
@@ -110,6 +110,16 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
             return Promise.resolve({ _avg: { unitPriceEur: null }, _count: { _all: 0 } });
           }),
         },
+        /**
+         * Excès par véhicule (F06) — SQL brut, donc HORS du `where` Prisma que le reste de
+         * ce fichier inspecte. C'est exactement pour cela qu'on capture ses paramètres : une
+         * requête écrite à la main est le seul endroit du service où le périmètre peut être
+         * oublié sans qu'aucun type ne s'en aperçoive.
+         */
+        $queryRaw: jest.fn().mockImplementation((_strings: unknown, ...valeurs: unknown[]) => {
+          captured.excesParams = valeurs;
+          return Promise.resolve([]);
+        }),
       } as any,
     };
   }
@@ -158,6 +168,69 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
     // Aucun filtre vehicleId injecté → tripWhere n'a pas la clé vehicleId.
     expect(captured.tripWhere.vehicleId).toBeUndefined();
     expect(captured.tripWhere.fleetId).toBe(FLEET_ID);
+  });
+
+  /**
+   * Les paramètres LIÉS de la requête, fragments imbriqués compris.
+   *
+   * ⚠️ La clause de périmètre est un `Prisma.sql` niché dans le gabarit principal. Prisma
+   * l'aplatit à l'exécution ; un double `jest.fn()`, lui, reçoit le fragment tel quel. Ne
+   * regarder que le premier niveau ferait passer ce test au vert le jour où la clause
+   * disparaîtrait — le pire des verts, sur une garde de périmètre.
+   */
+  function valeursLiees(params: unknown[] | undefined): unknown[] {
+    const sortie: unknown[] = [];
+    for (const v of params ?? []) {
+      const imbrique = (v as { values?: unknown[] } | null)?.values;
+      if (Array.isArray(imbrique) && v instanceof Object && 'strings' in (v as object)) {
+        sortie.push(...valeursLiees(imbrique));
+      } else {
+        sortie.push(v);
+      }
+    }
+    return sortie;
+  }
+
+  /**
+   * ── LA COLONNE « EXCÈS » PASSE PAR DU SQL ÉCRIT À LA MAIN (F06) ────────────────────
+   *
+   * Les autres agrégats sont bornés par un objet `where` que Prisma type ; celui-ci est une
+   * chaîne. Aucun compilateur ne verra jamais qu'on a oublié d'y remettre le périmètre le
+   * jour où la requête bougera — et c'est le seul endroit du service où un VIEWER pourrait
+   * apprendre combien d'excès a commis un véhicule qu'il n'a pas le droit de voir.
+   */
+  it('la requête SQL des excès porte le périmètre véhicule, pas seulement la flotte', async () => {
+    const { prisma, captured } = makePrisma([VEH_A, VEH_B, VEH_X]);
+    const svc = new ReportsStatsService(prisma);
+
+    await svc.compute(FLEET_ID, FROM, TO, {
+      role: UserRole.VIEWER,
+      fleetId: FLEET_ID,
+      accessibleVehicleIds: [VEH_A, VEH_B],
+    });
+
+    const params = valeursLiees(captured.excesParams);
+    // Le tableau de véhicules autorisés est passé en paramètre LIÉ, jamais concaténé.
+    const perimetre = params.find((v): v is string[] => Array.isArray(v));
+    expect(perimetre).toEqual(expect.arrayContaining([VEH_A, VEH_B]));
+    expect(perimetre).toHaveLength(2);
+    expect(perimetre).not.toContain(VEH_X);
+    // Et la flotte reste passée, en défense en profondeur comme partout ailleurs.
+    expect(params).toContain(FLEET_ID);
+  });
+
+  it("un utilisateur 'ALL' n'envoie AUCUN tableau de véhicules à la requête des excès", async () => {
+    const { prisma, captured } = makePrisma([VEH_A, VEH_B, VEH_X]);
+    const svc = new ReportsStatsService(prisma);
+
+    await svc.compute(FLEET_ID, FROM, TO, {
+      role: UserRole.FLEET_ADMIN,
+      fleetId: FLEET_ID,
+      accessibleVehicleIds: 'ALL',
+    });
+
+    // Aucun paramètre tableau : la clause de périmètre n'est pas ajoutée du tout.
+    expect(valeursLiees(captured.excesParams).some((v) => Array.isArray(v))).toBe(false);
   });
 });
 

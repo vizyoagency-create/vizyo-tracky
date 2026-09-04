@@ -86,6 +86,20 @@ export interface TripAnalysisDetailDto {
   };
   /** Passages en station-service détectés (arrêts tombant sur une station). Optionnel. */
   fuelStops?: TripFuelStopDto[];
+  /**
+   * D'OÙ VIENT LA CONSOMMATION qui a servi à estimer les litres et le CO₂.
+   *
+   * ⚠️ L'écran affirmait « d'après la consommation du véhicule » DANS TOUS LES CAS. Or quand
+   * la fiche véhicule ne porte aucune consommation, le calcul retombe sur une valeur par
+   * défaut déduite du seul TYPE de véhicule (7 L/100 pour une voiture). Le client lisait donc
+   * une phrase qui désignait une donnée qu'il n'avait jamais renseignée — et n'avait aucune
+   * raison d'aller la renseigner, puisqu'on lui disait qu'elle était déjà utilisée.
+   *
+   * `source: 'defaut'` est exactement l'invitation à ouvrir la fiche véhicule.
+   *
+   * Absent des analyses calculées avant le 4 septembre 2026.
+   */
+  carburant?: { l100km: number; source: 'vehicule' | 'defaut'; typeVehicule: string };
 }
 
 export interface TripAnalysisDto {

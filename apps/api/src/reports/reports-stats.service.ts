@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import {
+  co2DuCarburant,
   DORMANT_STOP_COUNTING_MS,
+  EXCES_DUREE_MIN_SEC,
   formatSilenceLabel,
   isVehicleDormant,
   isVehicleExploited,
@@ -99,6 +101,15 @@ export interface FleetStatsReport {
     estimatedCostAtObservedEur: number | null;
     /** Nombre de passages station ayant fourni un prix (échantillon du prix constaté). */
     observedSampleCount: number;
+    /**
+     * CO₂ estimé de la période, en kg — somme des litres de chaque véhicule multipliés par le
+     * facteur de SON énergie, jamais par un facteur moyen de flotte.
+     *
+     * ⚠️ Combustion seule (du réservoir à la roue) : ni la production ni le transport du
+     * carburant ne sont comptés. Ce n'est pas une analyse de cycle de vie, et l'écran ne doit
+     * pas le laisser croire.
+     */
+    estimatedCo2Kg: number;
   };
   topVehicles: {
     vehicleId: string;
@@ -126,6 +137,27 @@ export interface FleetStatsReport {
      * L'écran, lui, faisait la moyenne des moyennes.
      */
     avgSpeedKmh: number;
+    /**
+     * ── COMBIEN D'EXCÈS, ET LE PIRE — PAR VÉHICULE (F06) ──────────────────────────────
+     *
+     * « Quel véhicule dépasse le plus ? » n'avait aucune réponse sur l'écran : les excès
+     * n'existaient qu'au trajet, dans une modale qu'il fallait ouvrir un trajet à la fois.
+     * Le gestionnaire devait parcourir la liste à la main pour trouver ce que la base savait
+     * déjà.
+     *
+     * ⚠️ Ce compte applique la RÈGLE ACTUELLE, celle du contrat partagé : un excès établi
+     * dure au moins `EXCES_DUREE_MIN_SEC`. Lire `speedingCount`, le compteur écrit au moment
+     * de l'analyse, aurait coûté bien moins cher — et aurait été FAUX : au 2026-09-04, 4 036
+     * analyses de production ne portent QUE des segments de durée nulle, hérités d'avant le
+     * lot V2. Ce tableau aurait accusé des véhicules d'excès que le rapport disciplinaire,
+     * lui, refuse d'affirmer.
+     *
+     * `speedingTripCount` compte les TRAJETS concernés, pas les segments : dix dépassements
+     * sur un même trajet ne décrivent pas le même conducteur que dix trajets en excès.
+     */
+    speedingCount: number;
+    speedingTripCount: number;
+    worstOverKmh: number;
   }[];
   /**
    * Liste des derniers trajets sur la periode (cap a 30 pour ne pas exploser
@@ -198,6 +230,9 @@ export class ReportsStatsService {
         : { fleetId },
       select: {
         id: true, plate: true, type: true, fuelConsumptionL100km: true,
+        // Énergie — SANS elle, le CO₂ de la période ne pouvait pas être calculé : un diesel
+        // et une essence n'émettent pas la même chose pour un même litre.
+        energy: true,
         // Conso RÉELLE calibrée (méthode du plein) — prime sur l'estimation si mesurée.
         calibratedConsumptionL100km: true, calibratedTanks: true,
         // Fraîcheur du boîtier — JOINTE ici (relation 1-1 déjà chargée par cette
@@ -316,12 +351,49 @@ export class ReportsStatsService {
     } as const;
     const recentTripsCap = this.clampRecentTripsCap(filters?.maxRecentTrips);
 
+    /**
+     * ── EXCÈS ÉTABLIS PAR VÉHICULE, LUS DANS LE DÉTAIL DES ANALYSES (F06) ──────────────
+     *
+     * En SQL brut parce que le filtre porte sur les ÉLÉMENTS d'un tableau JSON : Prisma ne
+     * sait pas exprimer « au moins un segment d'au moins N secondes », et ramener les détails
+     * en mémoire chargerait aussi le tracé de chaque trajet — plusieurs dizaines de mégaoctets
+     * pour un mois de flotte.
+     *
+     * ⚠️ Le seuil vient de la CONSTANTE PARTAGÉE, interpolée ici. C'est la seule façon d'avoir
+     * une requête SQL qui ne diverge pas de la règle le jour où celle-ci bouge. La FORME du
+     * prédicat est, elle, forcément réécrite en SQL — ce commentaire est la seule protection
+     * contre l'oubli : si `excesEtabli` gagne une condition, elle doit descendre ici aussi.
+     *
+     * Mesuré en production le 2026-09-04 : 188 ms sur 30 jours de la plus grosse société.
+     * Lancée DANS le Promise.all ci-dessous, donc en parallèle des autres agrégats.
+     */
+    const excesParVehicule = this.prisma.$queryRaw<
+      { vehicleId: string; exces: number; trajets: number; pire: number }[]
+    >`
+      SELECT ta."vehicleId"                                     AS "vehicleId",
+             COUNT(*)::int                                      AS "exces",
+             COUNT(DISTINCT ta."tripId")::int                   AS "trajets",
+             COALESCE(MAX((s->>'overKmh')::numeric), 0)::float8 AS "pire"
+        FROM trip_analyses ta
+        JOIN trips t ON t.id = ta."tripId"
+        CROSS JOIN LATERAL jsonb_array_elements(ta.detail->'speeding') s
+       WHERE ta."fleetId" = ${fleetId}::uuid
+         AND t."startedAt" >= ${from}
+         AND t."startedAt" <  ${to}
+         AND t."endedAt" IS NOT NULL
+         ${isVehicleScopeRestricted
+            ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
+            : Prisma.empty}
+         AND (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
+       GROUP BY ta."vehicleId"
+    `;
+
     // 1) Aggregations globales : sum / avg / max / count en une requete SQL.
     // 2) Group by vehicleId : pour topVehicles + activeVehicleIds.
     // 3) Group by type/severity sur alerts.
     // 4) Detail des 30 trajets recents (avec includes pour le PDF).
     // 5) Group by alerts type + severity.
-    const [tripAgg, tripsByVehicle, alertsByType, alertsBySeverity, recentTripsRaw] =
+    const [tripAgg, tripsByVehicle, alertsByType, alertsBySeverity, recentTripsRaw, excesRows] =
       await Promise.all([
         this.prisma.trip.aggregate({
           where: tripWhere,
@@ -369,7 +441,15 @@ export class ReportsStatsService {
           orderBy: { startedAt: 'desc' },
           take: recentTripsCap,
         }),
+        // ⚠️ Best-effort : un échec de cette requête ne doit PAS emporter tout le rapport.
+        // Une colonne « Excès » vide se remarque ; un écran Rapports en erreur pour une
+        // colonne accessoire serait une régression bien plus grave que son absence.
+        excesParVehicule.catch((e: unknown) => {
+          this.logger.warn(`Excès par véhicule indisponibles : ${e instanceof Error ? e.message : e}`);
+          return [] as { vehicleId: string; exces: number; trajets: number; pire: number }[];
+        }),
       ]);
+    const excesParVehiculeMap = new Map(excesRows.map((r) => [r.vehicleId, r]));
 
     const tripCount = tripAgg._count._all;
     const totalKm = tripAgg._sum.distanceKm ?? 0;
@@ -411,6 +491,7 @@ export class ReportsStatsService {
     const avgKmBasisKm = hasExploited ? exploitedKm : totalKm;
 
     let totalLiters = 0;
+    let totalCo2Kg = 0;
     const topVehicles: FleetStatsReport['topVehicles'] = [];
     for (const v of vehicles) {
       const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0 };
@@ -421,6 +502,10 @@ export class ReportsStatsService {
         ?? 8;
       const liters = stat.distanceKm * consumptionL100 / 100;
       totalLiters += liters;
+      // ⚠️ Le CO₂ est cumulé PAR VÉHICULE, avec le facteur de son énergie. Multiplier le
+      // total de litres de la flotte par un facteur unique donnerait un chiffre faux dès
+      // qu'un parc mêle diesel et essence — c'est-à-dire presque toujours.
+      totalCo2Kg += co2DuCarburant(liters, v.energy);
       // ⚠️ `tripCount > 0` autant que la distance : un véhicule qui a roulé sans avancer —
       // manœuvres, trajet interrompu — a bien des trajets sur la période, et l'écran le
       // listait. L'omettre ici l'aurait fait disparaître du récapitulatif.
@@ -436,6 +521,11 @@ export class ReportsStatsService {
           avgSpeedKmh: stat.durationSeconds > 0
             ? Math.round(stat.distanceKm / (stat.durationSeconds / 3600))
             : 0,
+          // Absent de la table = aucun excès établi, et c'est bien zéro : la requête ne
+          // rend une ligne que pour les véhicules qui en ont.
+          speedingCount: excesParVehiculeMap.get(v.id)?.exces ?? 0,
+          speedingTripCount: excesParVehiculeMap.get(v.id)?.trajets ?? 0,
+          worstOverKmh: Math.round((excesParVehiculeMap.get(v.id)?.pire ?? 0) * 10) / 10,
         });
       }
     }
@@ -497,6 +587,7 @@ export class ReportsStatsService {
         observedPriceEurL,
         estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(totalLiters * observedPriceEurL * 100) / 100 : null,
         observedSampleCount,
+        estimatedCo2Kg: Math.round(totalCo2Kg),
       },
       // Le curseur « Top N » de la modale ne pouvait rien au-delà de 10 : tranché ici avant
       // que le PDF ne le lise. Plafond 50, comme le DTO.

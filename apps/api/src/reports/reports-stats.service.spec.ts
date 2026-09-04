@@ -76,6 +76,10 @@ function makePrisma(fixtures: VehicleFixture[]) {
     tripFuelStop: {
       aggregate: jest.fn().mockResolvedValue({ _avg: { unitPriceEur: null }, _count: { _all: 0 } }),
     },
+    // Excès par véhicule (F06) : requête SQL brute sur le détail JSON des analyses.
+    // ⚠️ Un simulacre qui l'omet décrit un client Prisma qui n'existe pas — et le service
+    // échouerait ici pour une raison sans rapport avec ce que ces tests examinent.
+    $queryRaw: jest.fn().mockResolvedValue([]),
   } as any;
 }
 

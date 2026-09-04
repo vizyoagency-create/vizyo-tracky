@@ -4,7 +4,8 @@ import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostL
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
-import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
+import { libelleTypeAlerte } from '@vizyo/tracky-shared';
 import type {
   DriverDto,
   TripAnalysisDto,
@@ -55,6 +56,14 @@ import {
  * pagination plutôt qu'un chargement intégral.
  */
 const REPORTS_TRIPS_PAGE_SIZE = 100;
+
+/**
+ * Combien de types d'alerte la synthèse de période détaille avant de regrouper.
+ *
+ * ⚠️ Le reste n'est pas jeté : `alertesAutres()` le compte et l'écran le dit. Une liste
+ * tronquée en silence laisserait croire que le total ne se décompose qu'en cinq lignes.
+ */
+const MAX_TYPES_ALERTE_AFFICHES = 5;
 
 /** Taille d'un lot d'analyses demandées — aligne sur `MAX_TRIP_IDS_PER_BATCH` côté API. */
 const ANALYSES_BATCH_SIZE = 200;
@@ -452,6 +461,74 @@ const ANALYSES_BATCH_SIZE = 200;
         </button>
       </div>
 
+      <!-- ══ COÛT ET ALERTES DE LA PÉRIODE ═══════════════════════════════════════════
+           Le serveur calculait ces deux blocs depuis toujours ; la page ne les demandait
+           pas. Un gestionnaire devait donc GÉNÉRER UN PDF pour lire un chiffre déjà prêt —
+           « combien m'a coûté la flotte ce mois-ci ? » est pourtant sa première question.
+
+           ⚠️ Les deux blocs ne s'affichent QUE lorsque l'agrégat de période est là. Les
+           déduire des trajets chargés donnerait un coût calculé sur cent trajets sur 391 :
+           exactement le défaut qu'on vient de retirer du récapitulatif par véhicule. -->
+      @if (statsPeriode(); as st) {
+        <div class="rep-synthese-grid">
+          <section class="rep-synthese-card">
+            <header class="rep-synthese-head">
+              <lucide-icon [img]="FuelIcon" [size]="14"></lucide-icon>
+              <h2>Carburant estimé sur la période</h2>
+            </header>
+            <p class="rep-synthese-valeur">
+              {{ st.consumption.estimatedCostEur | number:'1.0-0' }}<span class="rep-synthese-unite">€</span>
+            </p>
+            <p class="rep-synthese-detail">
+              {{ st.consumption.estimatedLiters | number:'1.0-0' }} L estimés, au prix paramétré de
+              {{ st.consumption.fuelPriceEurL | number:'1.2-3' }} €/L
+              <!-- ⚠️ Le CO₂ ne compte QUE la combustion. L'écrire évite qu'un client reprenne
+                   ce chiffre dans un bilan carbone en croyant qu'il couvre le cycle de vie. -->
+              · ≈ {{ st.consumption.estimatedCo2Kg | number:'1.0-0' }} kg de CO₂ brûlés.
+            </p>
+            <!-- ⚠️ Le prix CONSTATÉ en station, quand on l'a capté : c'est la seule façon de
+                 savoir si le prix paramétré décrit encore la réalité. -->
+            @if (st.consumption.observedPriceEurL !== null) {
+              <p class="rep-synthese-detail rep-synthese-detail--fort">
+                Au prix réellement constaté en station ({{ st.consumption.observedPriceEurL | number:'1.2-3' }} €/L
+                sur {{ st.consumption.observedSampleCount }} passage{{ st.consumption.observedSampleCount > 1 ? 's' : '' }}) :
+                {{ st.consumption.estimatedCostAtObservedEur | number:'1.0-0' }} €.
+              </p>
+            } @else {
+              <p class="rep-synthese-detail">
+                Aucun prix relevé en station sur la période : le coût ci-dessus repose entièrement
+                sur le prix paramétré de la société.
+              </p>
+            }
+            <p class="rep-synthese-note">
+              Estimation : kilomètres parcourus × consommation du véhicule. Ce n'est pas un relevé
+              de dépense.
+            </p>
+          </section>
+
+          <section class="rep-synthese-card">
+            <header class="rep-synthese-head">
+              <lucide-icon [img]="AlertTriangleIcon" [size]="14"></lucide-icon>
+              <h2>Alertes de la période</h2>
+            </header>
+            @if (st.alerts.total === 0) {
+              <p class="rep-synthese-valeur rep-synthese-valeur--calme">0</p>
+              <p class="rep-synthese-detail">Aucune alerte sur la période et le périmètre affichés.</p>
+            } @else {
+              <p class="rep-synthese-valeur">{{ st.alerts.total }}</p>
+              <ul class="rep-synthese-liste">
+                @for (a of alertesParType(); track a.type) {
+                  <li><span>{{ a.libelle }}</span><b>{{ a.count }}</b></li>
+                }
+              </ul>
+              @if (alertesAutres() > 0) {
+                <p class="rep-synthese-detail">et {{ alertesAutres() }} d'autres types.</p>
+              }
+            }
+          </section>
+        </div>
+      }
+
       <!-- Charts : full-width line+bar puis 2 demi-largeur en grid.
            Condition sur l'AGRÉGAT (période entière), pas sur la page de trajets chargée :
            une liste vide (échec, tri) masquait des graphiques qui avaient des données. -->
@@ -552,6 +629,7 @@ const ANALYSES_BATCH_SIZE = 200;
               <span>Conduite</span>
               <span class="rep-vt-hide">Trajets</span>
               <span class="rep-vt-hide">V. moy</span>
+              <span class="rep-vexces-h">Excès</span>
               <span></span>
             </div>
             @for (v of vehicleSummary(); track v.vehicleId) {
@@ -573,6 +651,28 @@ const ANALYSES_BATCH_SIZE = 200;
                 <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">
                   @if (v.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
                   {{ v.avgSpeed }} km/h
+                </span>
+                <!-- EXCÈS DE LA PÉRIODE (F06) ═══════════════════════════════════════════
+                     « Quel véhicule dépasse le plus ? » n'avait aucune réponse sur cet écran :
+                     il fallait ouvrir les trajets un par un. Le compte appliqué ici est celui
+                     de la règle partagée, pas le compteur d'analyse — 4 036 analyses de
+                     production ne portent que des segments de durée nulle, et les compter
+                     accuserait des véhicules de ce que le rapport disciplinaire refuse
+                     d'affirmer.
+
+                     ⚠️ La valeur nulle signifie qu'on ne SAIT pas encore (repli client, agrégat
+                     non arrivé) et s'affiche « — », jamais « 0 ». Un zéro inventé sur une
+                     colonne d'excès innocente un véhicule sans l'avoir regardé. -->
+                <span class="rep-vexces" [class.rep-vexces--fort]="(v.speedingCount ?? 0) > 0">
+                  @if (v.speedingCount === null) {
+                    <span class="rep-vexces-vide" title="Synthèse de période en cours de chargement">—</span>
+                  } @else if (v.speedingCount === 0) {
+                    <span class="rep-vexces-vide">0</span>
+                  } @else {
+                    <span class="sr-only">{{ v.speedingCount }} excès de vitesse établis sur {{ v.speedingTripCount }} trajet(s), pire dépassement {{ v.worstOverKmh }} km/h au-dessus de la limite. </span>
+                    <b aria-hidden="true">{{ v.speedingCount }}</b>
+                    <small aria-hidden="true">+{{ v.worstOverKmh | number:'1.0-0' }} km/h</small>
+                  }
                 </span>
                 <span class="rep-vgo">Voir <lucide-icon [img]="ChevronRightIcon" [size]="14" class="rep-vchev" aria-hidden="true"></lucide-icon></span>
               </div>
@@ -1354,6 +1454,22 @@ const ANALYSES_BATCH_SIZE = 200;
     }
     @keyframes rep-export-spin { to { transform: rotate(360deg); } }
 
+    /* ─── Coût et alertes de la période (F02 / F05) ─── */
+    .rep-synthese-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 16px; }
+    @media (min-width: 720px) { .rep-synthese-grid { grid-template-columns: 1fr 1fr; } }
+    .rep-synthese-card { padding: 14px 16px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-secondary); }
+    .rep-synthese-head { display: flex; align-items: center; gap: 8px; color: var(--fg-tertiary); }
+    .rep-synthese-head h2 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .rep-synthese-valeur { margin: 8px 0 2px; font-size: 30px; font-weight: 800; line-height: 1; color: var(--fg-primary); font-variant-numeric: tabular-nums; }
+    .rep-synthese-valeur--calme { color: var(--texte-succes); }
+    .rep-synthese-unite { font-size: 16px; font-weight: 700; color: var(--fg-tertiary); margin-left: 3px; }
+    .rep-synthese-detail { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); }
+    .rep-synthese-detail--fort { color: var(--fg-primary); font-weight: 600; }
+    .rep-synthese-note { margin: 8px 0 0; font-size: 11.5px; color: var(--fg-tertiary); }
+    .rep-synthese-liste { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .rep-synthese-liste li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--fg-secondary); }
+    .rep-synthese-liste b { color: var(--fg-primary); font-variant-numeric: tabular-nums; }
+
     /* ─── Bouton Réinitialiser (filtres) ─── */
     .rep-reset-btn {
       display: inline-flex;
@@ -1837,7 +1953,7 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vsum { margin-bottom: 16px; }
     .rep-vsum-head { margin-bottom: 12px; }
     .rep-vtable { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-card, 16px); overflow: hidden; }
-    .rep-vt-head, .rep-vrow { display: grid; grid-template-columns: minmax(160px,1.8fr) 1fr 1fr .9fr 1fr 70px; align-items: center; gap: 14px; padding: 12px 18px; }
+    .rep-vt-head, .rep-vrow { display: grid; grid-template-columns: minmax(160px,1.8fr) 1fr 1fr .9fr 1fr .9fr 70px; align-items: center; gap: 14px; padding: 12px 18px; }
     .rep-vt-head { background: var(--surface-rail); border-bottom: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary); }
     .rep-vrow { border-top: 1px solid var(--border-subtle); transition: background .15s; }
     .rep-vrow:hover { background: var(--bg-tertiary); }
@@ -1868,21 +1984,32 @@ const ANALYSES_BATCH_SIZE = 200;
     @media (max-width: 768px) {
       .rep-vgo { min-height: 44px; }
     }
+    .rep-vexces { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+    .rep-vexces b { font-weight: 800; color: var(--fg-primary); }
+    .rep-vexces small { font-size: 11px; color: var(--fg-tertiary); }
+    /* ⚠️ Le rouge ne porte JAMAIS l'information seul (WCAG 1.4.1) : le nombre et le pire
+       dépassement sont écrits, et le lecteur d'écran reçoit la phrase entière. */
+    .rep-vexces--fort b { color: var(--texte-alerte); }
+    .rep-vexces-vide { color: var(--fg-tertiary); }
+    .rep-vexces-h { font: inherit; }
     .rep-vchev { color: inherit; transition: transform .15s ease; }
     .rep-vrow:hover .rep-vchev { transform: translateX(2px); }
+    /* La colonne Excès reste visible sur tablette : c'est la question qu'on vient poser
+       à ce tableau, pas un détail qu'on masque au premier resserrement. */
     @media (max-width: 1000px) {
-      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr 74px; }
+      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr .9fr 74px; }
       .rep-vt-hide { display: none !important; }
     }
     /* Sous 480 px, quatre colonnes ne tiennent plus : la ligne devient une carte à deux
        colonnes (plaque en tête, chiffres dessous), le chevron reste à droite. */
     @media (max-width: 480px) {
       .rep-vt-head { display: none; }
-      .rep-vrow { grid-template-columns: 1fr 1fr 56px; grid-template-areas: 'veh veh voir' 'dist meta voir'; gap: 6px 10px; padding: 12px 14px; }
+      .rep-vrow { grid-template-columns: 1fr 1fr 56px; grid-template-areas: 'veh veh voir' 'dist meta voir' 'exces exces voir'; gap: 6px 10px; padding: 12px 14px; }
       .rep-vrow > .rep-vveh { grid-area: veh; }
       .rep-vrow > .rep-vgo { grid-area: voir; align-self: center; }
       .rep-vrow > :nth-child(2) { grid-area: dist; }
       .rep-vrow > :nth-child(3) { grid-area: meta; }
+      .rep-vrow > .rep-vexces { grid-area: exces; justify-self: start; }
     }
   `],
 })
@@ -2017,6 +2144,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly FileSpreadsheetIcon = FileSpreadsheet;
   protected readonly RotateCcwIcon = RotateCcw;
   protected readonly MousePointerClickIcon = MousePointerClick;
+  protected readonly FuelIcon = Fuel;
+  protected readonly AlertTriangleIcon = AlertTriangle;
 
   // ─── Date range custom ────────────────────────────────────────────────
   protected readonly customRangeOpen = signal(false);
@@ -2828,6 +2957,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   protected readonly recapPartiel = computed(() => this.statsPeriode() === null);
 
+  /**
+   * Les types d'alerte les plus fréquents de la période, en clair.
+   *
+   * ⚠️ Le libellé vient du contrat PARTAGÉ, celui qu'emploient déjà le PDF et le centre
+   * d'alertes. Une table de traduction locale aurait produit, au premier type ajouté, un écran
+   * qui dit « OVERSPEED » à côté d'un PDF qui dit « Excès de vitesse ».
+   */
+  protected readonly alertesParType = computed(() => {
+    const st = this.statsPeriode();
+    if (!st) return [];
+    return [...st.alerts.byType]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, MAX_TYPES_ALERTE_AFFICHES)
+      .map((a) => ({ type: a.type, libelle: libelleTypeAlerte(a.type), count: a.count }));
+  });
+
+  /** Ce que la liste ci-dessus ne montre pas — compté, jamais tu. */
+  protected readonly alertesAutres = computed(() => {
+    const st = this.statsPeriode();
+    if (!st) return 0;
+    const montres = this.alertesParType().reduce((n, a) => n + a.count, 0);
+    return Math.max(0, st.alerts.total - montres);
+  });
+
   protected readonly vehicleSummary = computed(() => {
     const stats = this.statsPeriode();
     if (stats) {
@@ -2837,6 +2990,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         duration: Math.round(v.durationHours * 3600),
         trips: v.tripCount,
         avgSpeed: v.avgSpeedKmh,
+        speedingCount: v.speedingCount as number | null,
+        speedingTripCount: v.speedingTripCount,
+        worstOverKmh: v.worstOverKmh,
       }));
     }
     const by = new Map<string, { vehicleId: string; distance: number; duration: number; trips: number; speedSum: number }>();
@@ -2856,6 +3012,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         duration: e.duration,
         trips: e.trips,
         avgSpeed: e.trips ? Math.round(e.speedSum / e.trips) : 0,
+        // ⚠️ Valeur NULLE, pas zéro : le repli client n'a pas les analyses sous la main.
+        // Écrire 0 ici innocenterait un véhicule sans l'avoir regardé — exactement le genre
+        // de faux qu'on vient de retirer du reste de ce tableau.
+        speedingCount: null as number | null,
+        speedingTripCount: 0,
+        worstOverKmh: 0,
       }))
       .sort((a, b) => b.distance - a.distance);
   });

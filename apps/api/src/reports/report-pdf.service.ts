@@ -7,6 +7,7 @@ import {
   formatFleetTime,
 } from '../common/utils/datetime';
 import { buildExploitedScopeNotice, FleetStatsReport } from './reports-stats.service';
+import { libelleGraviteAlerte, libelleTypeAlerte } from '@vizyo/tracky-shared';
 
 /**
  * V1.5 (Sprint L) — Generation PDF des rapports de flotte via pdfkit.
@@ -50,32 +51,16 @@ function inclusiveEnd(toIso: string): Date {
   return new Date(new Date(toIso).getTime() - 1);
 }
 
-/** Libellés lisibles des types et sévérités d'alerte — le PDF sortait « OVERSPEED », « WARNING ». */
-const ALERT_TYPE_LABELS: Record<string, string> = {
-  OVERSPEED: 'Excès de vitesse',
-  GEOFENCE_EXIT: 'Sortie de zone',
-  GEOFENCE_ENTER: 'Entrée de zone',
-  GPS_LOST: 'Signal GPS perdu',
-  LOW_BATTERY: 'Batterie faible',
-  POWER_CUT: 'Alimentation coupée',
-  SOS: 'Appel SOS',
-  OFF_SCHEDULE_MOVEMENT: 'Déplacement hors horaires',
-  TOWING: 'Remorquage suspecté',
-  ACCIDENT: 'Accident suspecté',
-  ENGINE_CUT: 'Moteur coupé à distance',
-  UNKNOWN: 'Autre',
-};
-const ALERT_SEVERITY_LABELS: Record<string, string> = {
-  CRITICAL: 'Critique',
-  WARNING: 'Avertissement',
-  INFO: 'Information',
-};
-function alertTypeLabel(type: string): string {
-  return ALERT_TYPE_LABELS[type] ?? type.toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-}
-function alertSeverityLabel(sev: string): string {
-  return ALERT_SEVERITY_LABELS[sev] ?? sev;
-}
+/**
+ * ⚠️ LA TABLE DE LIBELLÉS A DÉMÉNAGÉ dans le contrat partagé (`dto/libelles-alerte`).
+ *
+ * Elle ne vivait qu'ici : le PDF disait « Excès de vitesse » là où le CSV et l'écran
+ * écrivaient `OVERSPEED`. Un client qui lit les deux se demande, à juste titre, s'il s'agit
+ * de la même chose. Ces deux fonctions ne sont plus que des alias locaux — ne PAS y remettre
+ * une table, sinon les documents se remettront à diverger en silence.
+ */
+const alertTypeLabel = libelleTypeAlerte;
+const alertSeverityLabel = libelleGraviteAlerte;
 
 @Injectable()
 export class ReportPdfService {

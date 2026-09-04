@@ -7,6 +7,7 @@ import {
   vitesseObservee,
 } from '@vizyo/tracky-shared';
 import { haversineMeters } from '../agenda/trip-stop-detector.service';
+import { co2DuCarburant } from '@vizyo/tracky-shared';
 
 /**
  * Traçabilité fine des trajets (Palier 2) — PRÉPROCESSEUR DÉTERMINISTE.
@@ -101,6 +102,12 @@ export interface TripAnalysisResult {
     note?: DetailNote;
     /** Passages en station détectés — ajoutés par le service (le préprocesseur pur laisse ce champ absent). */
     fuelStops?: FuelStopOut[];
+    /**
+     * D'où vient la consommation qui a servi à estimer litres et CO₂ — valeur du véhicule, ou
+     * défaut déduit du type. L'écran affirmait « d'après la consommation du véhicule » dans les
+     * deux cas, et désignait ainsi une donnée que le client n'avait parfois jamais renseignée.
+     */
+    carburant?: { l100km: number; source: 'vehicule' | 'defaut'; typeVehicule: string };
   };
 }
 
@@ -168,7 +175,13 @@ const MAX_DT_S = 12;                 // au-delà = trou, on ne dérive pas d'acc
 /** Consommation par défaut (L/100 km) selon le type de véhicule, si non renseignée. */
 const DEFAULT_L100: Record<string, number> = { CAR: 7, TRUCK: 22, VAN: 10, MOTORCYCLE: 4, BUS: 28, BICYCLE: 0, OTHER: 8, CONSTRUCTION: 25 };
 /** Facteur CO₂ (kg / litre) selon l'énergie. */
-const CO2_PER_L: Record<string, number> = { DIESEL: 2.68, ESSENCE: 2.31, HYBRIDE: 2.0, AUTRE: 2.4 };
+/**
+ * ⚠️ LA TABLE DES FACTEURS A DÉMÉNAGÉ dans le contrat partagé (`utils/co2`).
+ *
+ * Elle ne vivait qu'ici : le CO₂ n'existait donc qu'au TRAJET, et la page Rapports ne pouvait
+ * pas l'annoncer sur une période sans recopier ces quatre nombres. Ne PAS remettre une table
+ * locale, sinon deux écrans finiront par annoncer deux empreintes pour la même flotte.
+ */
 
 const iso = (d: Date) => d.toISOString();
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -320,12 +333,16 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
   const stops = detectStops(pts);
 
   // 4. Éco-conduite : conso + CO₂ estimés + score 0..100 (pénalités anomalies).
-  const l100 = vehicle.fuelConsumptionL100km && vehicle.fuelConsumptionL100km > 0
+  // ⚠️ On retient la SOURCE, pas seulement la valeur : sans elle, l'écran ne peut pas
+  // distinguer une consommation renseignée par le client d'un défaut de type de véhicule,
+  // et affirmait donc « d'après la consommation du véhicule » dans les deux cas.
+  const consoVehicule = vehicle.fuelConsumptionL100km && vehicle.fuelConsumptionL100km > 0
     ? vehicle.fuelConsumptionL100km
-    : (DEFAULT_L100[vehicle.type ?? 'CAR'] ?? 7);
+    : null;
+  const l100 = consoVehicule ?? (DEFAULT_L100[vehicle.type ?? 'CAR'] ?? 7);
   const electric = (vehicle.energy ?? '').toUpperCase() === 'ELECTRIQUE';
   const fuelLiters = electric ? null : Math.round((distanceKm / 100) * l100 * 100) / 100;
-  const co2Kg = fuelLiters == null ? null : Math.round(fuelLiters * (CO2_PER_L[(vehicle.energy ?? 'DIESEL').toUpperCase()] ?? 2.4) * 100) / 100;
+  const co2Kg = fuelLiters == null ? null : co2DuCarburant(fuelLiters, vehicle.energy ?? 'DIESEL');
 
   const { ecoScore, note } = calculerNote({
     distanceKm, durationSec, movingSec, speedingSec, maxOverKmh,
@@ -369,6 +386,13 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
       // Pointes non affirmées : rattachement douteux ou dépassement vu sur un seul point.
       aVerifier,
       note,
+      // D'où vient la conso — écrit MÊME quand elle vient du véhicule : c'est la seule façon
+      // pour l'écran de le dire sans le supposer.
+      carburant: {
+        l100km: round(l100, 1),
+        source: consoVehicule != null ? ('vehicule' as const) : ('defaut' as const),
+        typeVehicule: vehicle.type ?? 'CAR',
+      },
     },
   };
 }
