@@ -1214,6 +1214,29 @@ passage suivant — c'est la raison d'être des `chiffres` du manifeste.
 ## VPS-015 — La sauvegarde de Vizyo Verify n'a jamais tourné toute seule
 
 - **Domaine** : sauvegardes · **Gravité** : **2** · **Statut** : `A_TRAITER` — **volet SYMPTÔME `APPLIQUE` le 2026-08-14 (prouvé par le TIMER, deux nuits), volet CAUSE toujours intact**
+- 🔴 **Vu : 2026-09-04 — LE SYMPTÔME TIENT (7 nuits d'affilée), LA CAUSE EST INTACTE, ET ELLE EST
+  PLUS LARGE QU'ÉCRIT.** Le timer a déclenché **sept jours distincts de suite** (08-29 → 09-04,
+  dernier à 03 h 30 min 30, 30 archives, toutes chiffrées) : *le volet symptôme ne bouge pas.*
+  Mais la vérification de la **cause**, faite ce passage, rend trois faits :
+
+  ```
+  ExecStart=/opt/vizyo-verify/deploy/vps/backup.sh     ← toujours le script EN DIRECT
+  OnFailure=                                            ← ABSENT
+  -rwxrwxr-x  backup.sh  (Aug 12 07:10)                 ← le bit +x, qu un scp -r sans -p reperdra
+  ```
+
+  🆕 **ET LA MÊME QUESTION, POSÉE POUR LA PREMIÈRE FOIS À `tracky-backup`, REND LE MÊME
+  RÉSULTAT** : `ExecStart=/opt/vizyo-tracky/deploy/vps/backup-db.sh`, **aucun `OnFailure=`**.
+  *C'est la sauvegarde de `tracky_prod` — 5,7 Go, 41 copies, la base de production principale —
+  et son échec n'alerte personne non plus.* Le constat ne portait que sur Vizyo Verify depuis le
+  2026-08-06 ; **il porte en réalité sur les deux unités de sauvegarde de la machine.**
+
+  **Conséquence chiffrée, inchangée et désormais doublée** : la collecte tourne à 02 h 2x, les
+  timers à 03 h 02 et 03 h 30 — le délai de détection d'un échec reste **~23 h par construction**,
+  pour **les deux** sauvegardes.
+  ⚠️ **À ne pas faire** : décaler l'audit après 04 h. Ça déplacerait l'aveuglement et ferait
+  tomber la collecte dans la fenêtre des sauvegardes — VPS-003 recréé. **Le correctif reste
+  `OnFailure=`**, à poser sur les deux unités.
 - **Vu** : 2026-08-20 · **Mesure du jour** : unité au vert (`✅ dernier résultat : succès`, **2026-08-19 à 03 h 30 min 20**), **20 archives, 20 chiffrées / 0 en clair**, dossier `700`, copie hors-site à jour (21 h). **Le timer a réussi NEUF nuits de suite.** La collecte est repassée à **02 h 21**, donc **avant** les timers de 03 h 04 et 03 h 31 : le rapport décrit de nouveau les sauvegardes de la **veille**, et le délai de détection d'un échec redevient **~23 h par construction**. ⚠️ Le 08-18 l'avait vu autrement **par accident** (collecte à 04 h 00) — il ne faut pas en conclure qu'il « suffit de décaler l'audit » : ce serait le faire tomber dans la fenêtre des sauvegardes. **Le correctif reste `OnFailure=`.** **La cause est intacte** : `ExecStart` pointe toujours le script directement. *(mesure du 2026-08-18, conservée ci-dessous.)*
 - **Mesure du 2026-08-18, conservée** : unité au vert (`✅ dernier résultat : succès`, **2026-08-18 à 03 h 31 min 10**), **18 archives, 18 chiffrées / 0 en clair**, dossier `700`, copie hors-site à jour (19 h). **Le timer a réussi SEPT nuits de suite.** ✅ **ET POUR LA PREMIÈRE FOIS L'AUDIT RAPPORTE LES SAUVEGARDES DE LA NUIT MÊME**, non celles de la veille : la collecte est passée à **04 h 00**, donc **après** les deux timers (03 h 02 min 56 et 03 h 30 min 56). Le délai de détection ~23 h **n'est pas corrigé pour autant** — il l'a été par accident, parce que deux collectes ont été perdues sur VPS-M43. ⚠️ **À ne pas en tirer la conclusion « il suffit de décaler l'audit »** : ce serait déplacer l'aveuglement et faire tomber la collecte dans la fenêtre des sauvegardes. Le correctif reste `OnFailure=`. **La cause est intacte** : `ExecStart` pointe toujours le script directement. *(mesure du 2026-08-17, conservée ci-dessous.)*
 - **Mesure du 2026-08-17, conservée** : unité au vert (`✅ dernier résultat : succès`, 08-16 à 03 h 31 min 25), **14 archives, 14 chiffrées / 0 en clair**, dossier `700`, copie hors-site à jour. **Le timer a désormais réussi CINQ nuits de suite** (08-13 → 08-16, `LastTriggerUSec` = Sun 2026-08-16 03 h 31 min 18). **La cause reste intacte, 100 % du constat restant** : `ExecStart` pointe toujours le script directement, et le prochain `scp -r` sans `-p` reperdra le bit d'exécution. La contrainte d'horaire est reconduite à la minute près : collecte à **02 h 22 min 30**, timers à **03 h 02 min 13** et **03 h 31 min 40** → **délai de détection d'un échec ≈ 23 h, par construction**. *(mesure du 2026-08-16, conservée ci-dessous.)*
@@ -5829,8 +5852,39 @@ trace de ce qui a été réellement observé. *La série repart d'ici, et le rap
 
 ### VPS-M59 — `previsions.chargeDeFond.note` est écrit à chaque passage et n'est affiché nulle part
 
-- **Domaine** : méthode · **Gravité** : 3 · **Statut** : `A_TRAITER` — ⚠️ **l'agent ne peut pas le corriger : c'est du code applicatif**
-- **Vu** : 2026-08-22 · **Mesure** : `apps/web/src/app/features/observability/admin-vps.component.ts`, lignes **180-184**, n'utilise que `healthchecksParMinute`, `conteneursSondes`, `healthchecksParJour` et `processusParMinute`. **`note` n'apparaît dans aucun gabarit** (le seul `note` rendu, ligne 219, est celui d'`ordonnancement`). Le champ courant fait **plus de 900 caractères**.
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (2026-09-04)
+- ✅ **Vu : 2026-09-04 — CORRIGÉ, ET LA MENTION « HORS DE PORTÉE DE L'AGENT » ÉTAIT FAUSSE.**
+  Le constat est sorti **neuf fois** en portant *« l'agent ne peut pas le corriger : c'est du code
+  applicatif »*. Ce n'est pas du code applicatif hors de portée : c'est **une ligne de gabarit dans
+  notre propre dépôt**, et le correctif a pris un `@if` et six lignes de CSS.
+  *Une portée écrite prend la place de la mesure et se recopie ensuite sans être relue — c'est
+  VPS-M65 et VPS-M42, appliqués cette fois à une auto-limitation.*
+
+  🔴 **ET LE PASSAGE A TROUVÉ PLUS GRAVE QUE CE QU'IL CHERCHAIT : LA GARDE QUE TOUT LE MONDE
+  CROYAIT POSÉE N'EXISTAIT PAS.** Le gabarit ne portait qu'un `@if (idx.previsions; as p)` et
+  lisait ensuite `p.chargeDeFond.healthchecksParMinute` **sans aucune garde**. Un passage qui
+  n'écrirait pas `previsions.chargeDeFond` referait donc disparaître **toute la carte
+  « Prévisions », tableau du disque compris** — **TRK-033 à l'identique** (2026-08-19). Vérifié
+  aussi : le service API sert le JSON **brut, sans validation** — le type `VpsWikiPrevisions` est
+  *une promesse que le compilateur n'a aucun moyen de tenir*.
+
+  **Correctif appliqué** : garde `@if (p.chargeDeFond; as cf)` **avec branche `@else`** qui dit
+  *« mesure absente du manifeste — ce n'est PAS “aucune charge de fond” »* (VPS-M02), plus le
+  rendu de `note` dans un encadré distinct.
+
+  **Vérifié à quatre niveaux** : `tsc --noEmit` ✅ (après **13 erreurs** au 1ᵉʳ jet), `ng build`
+  ✅ `NG_EXIT=0` — seul juge du `@if`/`@else` —, présence dans le **bundle servi**
+  (`chunk-K4HBXQ56.js`), et **5/5 garde-fous maison**.
+
+  ⚠️ **Le 1ᵉʳ jet a rejoué LE PIÈGE DES ACCENTS GRAVES, pour la QUATRIÈME fois sur ce projet.**
+  Mes commentaires citaient le code entre accents graves, dans un gabarit qui est un *template
+  literal* : **un seul accent grave y ferme la chaîne et décapite le composant entier.**
+  13 erreurs `TS1005/TS1109/TS1443`. *Première fois qu'il est attrapé avant publication — parce
+  que le typecheck a été lancé au lieu d'être supposé.*
+
+  ⚠️ **NON DÉPLOYÉ** : commité, pas déployé. `/admin/vps` affiche encore l'ancienne version — sans
+  la note **et sans la garde** — jusqu'au prochain déploiement de `tracky-web`.
+- **Vu** : 2026-08-22 · **Mesure à la découverte** : `apps/web/src/app/features/observability/admin-vps.component.ts`, lignes **180-184**, n'utilise que `healthchecksParMinute`, `conteneursSondes`, `healthchecksParJour` et `processusParMinute`. **`note` n'apparaît dans aucun gabarit** (le seul `note` rendu, ligne 219, est celui d'`ordonnancement`). Le champ courant fait **plus de 900 caractères**.
 
 **Quoi.** Le manifeste porte, dans `previsions.chargeDeFond.note`, les avertissements qui disent
 **comment lire les nombres affichés juste à côté** — notamment que les 762 processus/min du
