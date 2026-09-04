@@ -174,16 +174,55 @@ const STATUT_STYLE: Record<string, string> = {
                 </table>
               </div>
 
-              <div class="fond">
-                <lucide-icon [img]="Activity" [size]="14" />
-                <span>
-                  <b>Charge de fond permanente</b> — {{ p.chargeDeFond.healthchecksParMinute }} sondes/min
-                  sur {{ p.chargeDeFond.conteneursSondes }} conteneurs
-                  ({{ p.chargeDeFond.healthchecksParJour | number }}/jour), et
-                  {{ p.chargeDeFond.processusParMinute | number }} processus créés par minute au total.
-                  C'est le coût que personne ne planifie.
-                </span>
-              </div>
+              <!--
+                ⚠️ CETTE GARDE N'EST PAS COSMÉTIQUE — TRK-033, 2026-08-19.
+                Ce bloc lisait p.chargeDeFond.healthchecksParMinute SANS garde un jour où le
+                manifeste ne portait pas la clé : TypeError, et TOUTE la carte « Prévisions »
+                disparaissait — tableau du disque compris. Le service API sert le JSON BRUT, sans
+                aucune validation : le type VpsWikiPrevisions est donc une promesse que le
+                compilateur n'a AUCUN moyen de tenir. La garde est la seule chose qui la tienne.
+
+                ⚠️⚠️ ET AUCUN ACCENT GRAVE DANS CE COMMENTAIRE : il vit dans un template literal.
+                Un seul accent grave y ferme la chaîne et décapite le composant entier — piège
+                déjà payé trois fois dans le collecteur (VPS-M50), et une quatrième ici le
+                2026-09-04, attrapé par le typecheck avant publication.
+              -->
+              @if (p.chargeDeFond; as cf) {
+                <div class="fond">
+                  <lucide-icon [img]="Activity" [size]="14" />
+                  <span>
+                    <b>Charge de fond permanente</b> — {{ cf.healthchecksParMinute }} sondes/min
+                    sur {{ cf.conteneursSondes }} conteneurs
+                    ({{ cf.healthchecksParJour | number }}/jour), et
+                    {{ cf.processusParMinute | number }} processus créés par minute au total.
+                    C'est le coût que personne ne planifie.
+                  </span>
+                </div>
+
+                <!--
+                  VPS-M59 (9ᵉ report) — la note était écrite à CHAQUE passage et rendue NULLE PART.
+                  Ce n'est pas un détail d'affichage : elle porte les avertissements qui disent
+                  comment lire les deux chiffres ci-dessus. processusParMinute est du BRUIT
+                  (VPS-M68 : étendue intra-fenêtre de 158 % de la valeur), et l'afficher sans sa
+                  note, c'est publier un nombre en invitant à le comparer d'un jour à l'autre —
+                  exactement ce que la note interdit.
+                -->
+                @if (cf.note) {
+                  <div class="fond fond-note">
+                    <lucide-icon [img]="CircleAlert" [size]="14" />
+                    <span>{{ cf.note }}</span>
+                  </div>
+                }
+              } @else {
+                <div class="fond fond-note">
+                  <lucide-icon [img]="CircleAlert" [size]="14" />
+                  <span>
+                    <b>Charge de fond — mesure absente du manifeste.</b> Ce n'est PAS « aucune
+                    charge de fond » : c'est un passage qui n'a pas écrit la clé
+                    <code>previsions.chargeDeFond</code>. À signaler à l'agent d'audit.
+                  </span>
+                </div>
+              }
             </div>
           }
 
@@ -370,6 +409,12 @@ const STATUT_STYLE: Record<string, string> = {
       .small { font-size: 11.5px; }
       .fond { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 11px 13px; border-radius: 11px; background: var(--bg-tertiary); font-size: 12.5px; color: var(--fg-secondary); line-height: 1.55; }
       .fond lucide-icon { color: #fbbf24; flex-shrink: 0; margin-top: 2px; }
+      /* VPS-M59 : la note dit COMMENT LIRE les chiffres du bloc au-dessus. Elle est longue
+         par nature (elle porte les avertissements de VPS-M68 et VPS-M78) : on lui laisse
+         donc sa place, et on la distingue visuellement de la ligne de mesure. */
+      .fond-note { margin-top: 8px; background: color-mix(in srgb, #fbbf24 7%, var(--bg-tertiary)); border-left: 3px solid #fbbf24; font-size: 12px; }
+      .fond-note lucide-icon { color: #f59e0b; }
+      .fond-note code { font-size: 11.5px; padding: 1px 5px; border-radius: 5px; background: var(--bg-secondary); }
 
       /* ── Ordonnancement ── */
       .ordo { display: flex; flex-direction: column; gap: 8px; }
