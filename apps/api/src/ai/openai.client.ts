@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
-import { AiServiceError, describeProviderError, isTransientBadRequest } from './ai-client.types';
+import {
+  AiServiceError,
+  describeProviderError,
+  isTransientBadRequest,
+  isUnfundedRequest,
+  MESSAGE_COMPTE_SANS_CREDIT,
+} from './ai-client.types';
 
 /**
  * Client GPT (OpenAI **Responses API** + Structured Outputs). Même contrat `AiClient` que Claude →
@@ -87,6 +93,11 @@ export class OpenAiClient implements AiClient {
           'overloaded',
           `Le service IA (GPT) n'a pas pu préparer la réponse (${describeProviderError(text)}) — nouvelle tentative au prochain passage.`,
         );
+      }
+      // TRK-061 — même défaut, même correctif : le jumeau de ce client l'avait, et un défaut
+      // corrigé d'un seul côté revient toujours par l'autre.
+      if (isUnfundedRequest(text)) {
+        throw new AiServiceError('provider_unfunded', MESSAGE_COMPTE_SANS_CREDIT, describeProviderError(text));
       }
       throw new AiServiceError('http', `Erreur du service IA (GPT) (${res.status}) : ${describeProviderError(text)}`);
     }

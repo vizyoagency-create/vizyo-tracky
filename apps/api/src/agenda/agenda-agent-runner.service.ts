@@ -481,8 +481,18 @@ export class AgendaAgentRunnerService {
       // remonte au centre d'alerte — c'est exactement le « aucun retour » que l'admin doit pouvoir
       // diagnostiquer (clé API absente, quota, timeout Claude…).
       this.logger.warn(`reviewPatterns ${fleetId} : ${(e as Error)?.message ?? e}`);
+      // TRK-061 — c'est CE chemin qui est tombé le 04/09 à 00:01, le lendemain de l'optimiseur :
+      // le compte du fournisseur était à sec depuis 25 h. La gravité et le motif fournisseur sont
+      // portés par l'erreur elle-même (canard-typage), pour qu'un compte sans crédit ne soit pas
+      // classé « défaut » ici et « dégradation » ailleurs.
+      const echec = e as { niveau?: 'ERROR' | 'CRITICAL' | 'DEGRADATION'; detail?: string };
       void this.errorLogger
-        ?.record(e as Error, 'AGENDA_AGENT_AI', { fleetId, phase: 'reviewPatterns' })
+        ?.record(
+          e as Error,
+          'AGENDA_AGENT_AI',
+          { fleetId, phase: 'reviewPatterns', motifFournisseur: echec?.detail },
+          echec?.niveau ?? 'ERROR',
+        )
         .catch(() => {});
     }
     return out;

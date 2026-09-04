@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
-import { AiServiceError, describeProviderError, isTransientBadRequest } from './ai-client.types';
+import {
+  AiServiceError,
+  describeProviderError,
+  isTransientBadRequest,
+  isUnfundedRequest,
+  MESSAGE_COMPTE_SANS_CREDIT,
+} from './ai-client.types';
 
 /**
  * Sprint 9 — Client Claude minimal (Messages API, sortie structurée). On appelle
@@ -39,7 +45,7 @@ const REQUEST_TIMEOUT_MS = 120_000;
 
 // Rétro-compat : ces symboles étaient exportés d'ici (des appelants les importent encore de ce module).
 export { AiServiceError } from './ai-client.types';
-export type { AiErrorKind } from './ai-client.types';
+export type { AiErrorKind, NiveauEchecIa } from './ai-client.types';
 
 @Injectable()
 export class AnthropicClient implements AiClient {
@@ -116,6 +122,13 @@ export class AnthropicClient implements AiClient {
           'overloaded',
           `Le service IA n'a pas pu préparer la réponse (${describeProviderError(text)}) — nouvelle tentative au prochain passage.`,
         );
+      }
+      // TRK-061 — compte sans crédit : le fournisseur REFUSE de servir pour une raison
+      // contractuelle. Ni une faute d'appel, ni un aléa passager. Le message rendu au client ne
+      // nomme aucun sous-traitant ; le motif du fournisseur part dans `detail`, pour le centre
+      // d'alerte seul. Deux publics, deux chaînes.
+      if (isUnfundedRequest(text)) {
+        throw new AiServiceError('provider_unfunded', MESSAGE_COMPTE_SANS_CREDIT, describeProviderError(text));
       }
       // Vraie faute d'appel : on PORTE le motif du fournisseur jusqu'au centre d'alerte. Sans lui,
       // « Erreur du service IA (400) » obligeait à aller lire les logs du conteneur en SSH.

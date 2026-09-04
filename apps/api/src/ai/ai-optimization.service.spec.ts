@@ -168,12 +168,45 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     const svc = build({ prisma, anthropic, errors });
 
     await expect(svc.suggestCapacity(makeUser(), {})).rejects.toBeInstanceOf(AiServiceError);
+    // TRK-061 — on passe l'INSTANCE, pas son message : `ErrorLogger` marque l'erreur qu'il
+    // archive pour qu'une couche supérieure ne la réécrive pas, et il ne peut marquer qu'un
+    // OBJET. Avec une chaîne, le marqueur ne se posait sur rien — d'où « un incident, deux
+    // lignes » le 03/09 (`AI_OPTIMIZER` puis `http`, 17 ms plus tard, pour un seul appel).
     expect((errors as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
-      'Quota IA atteint',
+      expect.objectContaining({ message: 'Quota IA atteint' }),
       'AI_OPTIMIZER',
       expect.objectContaining({ capability: 'capacity', kind: 'quota', fleetId: 'f1' }),
       'ERROR',
     );
+  });
+
+  // ── TRK-061 — le compte du fournisseur à sec ────────────────────────────────────────────
+  it('TRK-061 : compte sans crédit → DEGRADATION, motif fournisseur dans le CONTEXTE', async () => {
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA', type: 'CAR', brand: 'X', model: 'Y', seats: null, childSeats: null, features: [] }]),
+        update: jest.fn(),
+      },
+    });
+    const panne = new AiServiceError(
+      'provider_unfunded',
+      "Assistance IA indisponible : le compte du fournisseur n'a plus de crédit.",
+      'Your credit balance is too low to access the Anthropic API.',
+    );
+    const anthropic = { completeJson: jest.fn().mockRejectedValue(panne), isConfigured: () => true } as never;
+    const errors = makeErrors();
+    const svc = build({ prisma, anthropic, errors });
+
+    await expect(svc.suggestCapacity(makeUser(), {})).rejects.toBeInstanceOf(AiServiceError);
+
+    const [erreur, source, contexte, niveau] = (errors as unknown as { record: jest.Mock }).record.mock.calls[0];
+    // La gravité vient de l'erreur elle-même, plus de cet appelant : le même incident ne peut
+    // plus être « défaut » ici et « dégradation » ailleurs.
+    expect(niveau).toBe('DEGRADATION');
+    expect(source).toBe('AI_OPTIMIZER');
+    // Le motif du fournisseur est archivé — mais dans le contexte, pas dans ce que lit le client.
+    expect(contexte).toMatchObject({ kind: 'provider_unfunded', motifFournisseur: expect.stringContaining('credit balance') });
+    expect((erreur as Error).message).not.toMatch(/credit balance/i);
   });
 
   it('suggestCapacity : super-admin sans fleetId et sans dto.fleetId -> 400', async () => {

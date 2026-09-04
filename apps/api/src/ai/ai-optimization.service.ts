@@ -30,7 +30,7 @@ import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
-import { AiServiceError, type AiErrorKind } from './anthropic.client';
+import { AiServiceError, type AiErrorKind, type NiveauEchecIa } from './anthropic.client';
 import { AiRouter } from './ai-router.service';
 import { AiAvailabilityService } from './ai-availability.service';
 import {
@@ -604,16 +604,33 @@ export class AiOptimizationService {
     ctx: { userId?: string; fleetId?: string; vehicleCount?: number },
   ): Promise<void> {
     const kind: AiErrorKind = err instanceof AiServiceError ? err.kind : 'http';
-    // Clé IA configurée mais invalide = vrai incident (CRITICAL) ; le reste = ERROR.
-    const level: 'ERROR' | 'CRITICAL' = kind === 'invalid_key' ? 'CRITICAL' : 'ERROR';
+    // TRK-061 — la gravité est décidée par la couche IA (`NIVEAU_PAR_KIND`), pas ici. Avant, la
+    // règle « clé invalide = CRITICAL » vivait dans ce seul appelant : le même incident changeait
+    // de gravité selon la porte par laquelle il entrait.
+    const level: NiveauEchecIa = err instanceof AiServiceError ? err.niveau : 'ERROR';
     const key = `${capability}:${ctx.fleetId ?? 'all'}:${kind}`;
     const now = Date.now();
     const last = this.aiErrLast.get(key);
     if (last && now - last < AI_ALERT_THROTTLE_MS) return; // anti-spam
     this.aiErrLast.set(key, now);
-    const message = err instanceof Error ? err.message : String(err);
+    // TRK-061 — on passe l'INSTANCE, pas son message.
+    //
+    // C'est la cause exacte du « un incident, deux lignes » du 03/09 (`AI_OPTIMIZER` à .379 puis
+    // `http` à .396, 17 ms plus tard, pour UN seul appel) : `ErrorLogger.record` marque l'erreur
+    // qu'il vient d'archiver pour qu'une couche supérieure ne la réécrive pas — mais il ne peut
+    // marquer qu'un OBJET. En lui donnant une chaîne, le marqueur ne se posait sur rien, et le
+    // filtre global d'exceptions archivait le même incident une seconde fois.
+    //
+    // ⚠️ Le motif du fournisseur va dans le CONTEXTE, jamais dans le message : `message` est le
+    // corps de la réponse HTTP servie à l'utilisateur.
+    const motifFournisseur = err instanceof AiServiceError ? err.detail : undefined;
     try {
-      await this.errors.record(message, 'AI_OPTIMIZER', { ...ctx, capability, kind }, level);
+      await this.errors.record(
+        err instanceof Error ? err : new Error(String(err)),
+        'AI_OPTIMIZER',
+        { ...ctx, capability, kind, motifFournisseur },
+        level,
+      );
     } catch {
       // la journalisation ne doit jamais casser la requête.
     }

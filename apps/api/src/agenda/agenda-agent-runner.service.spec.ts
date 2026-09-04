@@ -1,3 +1,4 @@
+import { AiServiceError } from '../ai/anthropic.client';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import type { RecurringPattern } from './recurrence-detector.service';
 
@@ -232,7 +233,36 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
       expect.any(Error),
       'AGENDA_AGENT_AI',
       expect.objectContaining({ fleetId: 'f1' }),
+      'ERROR', // par défaut : une panne IA sans niveau déclaré reste un défaut
     );
+  });
+
+  // ── TRK-061 — c'est CE chemin qui est tombé le 04/09 à 00:01 ───────────────────────────
+  //
+  // Le compte du fournisseur était à sec depuis 25 h. L'agent nocturne doit se comporter comme
+  // l'optimiseur interactif : même incident, même gravité. Sans ce test, la classification aurait
+  // pu rester juste d'un seul côté — le défaut que corrige `NIVEAU_PAR_KIND`.
+  it('TRK-061 : compte du fournisseur à sec -> DEGRADATION, et le run continue', async () => {
+    const prisma = makePrisma(makeSettings({ autonomy: 'suggest' }));
+    const errors = makeErrors();
+    const panne = new AiServiceError(
+      'provider_unfunded',
+      "Assistance IA indisponible : le compte du fournisseur n'a plus de crédit.",
+      'Your credit balance is too low to access the Anthropic API.',
+    );
+    const anthropic = { completeJson: jest.fn().mockRejectedValue(panne), isConfigured: () => true } as never;
+    const svc = new AgendaAgentRunnerService(
+      prisma, makeDetector([PATTERN]), makeReservations(), makeEvents(), makeActivity(),
+      anthropic, makeAiUsage(), errors,
+    );
+
+    const res = await svc.runForFleet('f1', 'manual');
+    expect(res.proposed).toBeGreaterThanOrEqual(1); // le raisonnement déterministe survit
+
+    const [, source, contexte, niveau] = (errors as unknown as { record: jest.Mock }).record.mock.calls[0];
+    expect(source).toBe('AGENDA_AGENT_AI');
+    expect(niveau).toBe('DEGRADATION');
+    expect(contexte).toMatchObject({ motifFournisseur: expect.stringContaining('credit balance') });
   });
 
   it('planifié + agent désactivé : no-op (ne détecte même pas)', async () => {

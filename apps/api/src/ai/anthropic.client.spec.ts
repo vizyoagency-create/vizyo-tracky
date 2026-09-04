@@ -115,6 +115,51 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
     expect((err as Error).message).toContain('max_tokens: must be >= 1');
   });
 
+  // ── TRK-061 — le compte à sec, mesuré en production le 03/09 puis le 04/09 ─────────────
+  //
+  // Le corps est celui qu'Anthropic a réellement renvoyé. Les trois tests forment un couple
+  // avec celui ci-dessus : MÊME code HTTP, MÊME forme de corps, un seul mot change — et tout
+  // le classement bascule. C'est exactement ce qui rendait le défaut invisible.
+  const CORPS_COMPTE_A_SEC = JSON.stringify({
+    type: 'error',
+    error: {
+      type: 'invalid_request_error',
+      message:
+        'Your credit balance is too low to access the Anthropic API. ' +
+        'Please go to Plans & Billing to upgrade or purchase credits.',
+    },
+  });
+
+  it('TRK-061 — HTTP 400 « credit balance too low » -> refus CONTRACTUEL, pas une faute d’appel', async () => {
+    fetchMock.mockResolvedValue(res({ ok: false, status: 400, text: CORPS_COMPTE_A_SEC }));
+    const err = await new AnthropicClient().completeJson(REQ).catch((e: unknown) => e);
+
+    // Non transitoire : une panne de compte ne guérit pas seule, elle DOIT alerter…
+    expect(err).toMatchObject({ kind: 'provider_unfunded', transient: false });
+    // …mais en DEGRADATION : rien n'est cassé dans l'app, une dépendance assumée refuse de servir.
+    expect((err as { niveau: string }).niveau).toBe('DEGRADATION');
+  });
+
+  it('TRK-061 — le message rendu à l’UTILISATEUR ne nomme aucun sous-traitant et donne l’action', async () => {
+    // Le 03/09, ce texte anglais de facturation a été servi tel quel sur un iPhone, page /agenda.
+    fetchMock.mockResolvedValue(res({ ok: false, status: 400, text: CORPS_COMPTE_A_SEC }));
+    const err = await new AnthropicClient().completeJson(REQ).catch((e: unknown) => e);
+
+    const message = (err as Error).message;
+    expect(message).not.toMatch(/anthropic/i);
+    expect(message).not.toMatch(/credit balance/i);
+    expect(message).not.toMatch(/Plans & Billing/i);
+    expect(message).toContain('recharger le compte');
+    // Ce qui SURVIT est dit, sinon l'utilisateur croit toute la plateforme en panne.
+    expect(message).toContain('analyses de flotte');
+  });
+
+  it('TRK-061 — le motif du fournisseur part dans `detail`, pour le centre d’alerte seul', async () => {
+    fetchMock.mockResolvedValue(res({ ok: false, status: 400, text: CORPS_COMPTE_A_SEC }));
+    const err = await new AnthropicClient().completeJson(REQ).catch((e: unknown) => e);
+    expect((err as { detail?: string }).detail).toContain('credit balance is too low');
+  });
+
   it('contenu vide -> 503', async () => {
     fetchMock.mockResolvedValue(res({ json: { stop_reason: 'end_turn', content: [] } }));
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toBeInstanceOf(ServiceUnavailableException);
