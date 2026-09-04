@@ -14,7 +14,7 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-09-03 01:20 UTC** *(🆕 **[TRK-061](#trk-061)** — **le compte du fournisseur IA est à sec, et le dispositif dit « appel malformé »** : Anthropic facture l'épuisement d'un compte en **HTTP 400**, la ligne tombe donc dans le cas commenté « vraie faute d'appel ». **Première occurrence en 90 j.** ⚠️ le message de facturation, en anglais, est **servi à l'utilisateur sur son iPhone** ; ⚠️ **un incident, deux lignes** ; 🔑 **l'écran « Coûts IA » est aveugle** — `ok_24h = 291`, `ko_24h = 0` pendant l'échec, car un appel raté n'écrit rien. 🟢 portée étroite : les 290 appels de flotte tournent en `executor = local` et sont indemnes)* *(🆕 **[TRK-062](#trk-062)** — **une commande partie en SMS n'a aucun état terminal** : conséquence du succès de TRK-021, `SENT` depuis 39 h. Le refus de guetter un accusé est JUSTE (réponse réelle à ~4 h) ; **ce qui manque est une borne SUPÉRIEURE**. Jumeau exact de [TRK-007](#trk-007), réintroduit par un chemin neuf)* *(✅ **[TRK-021](#trk-021) RÉPONDU après 17 jours** — 2 commandes SMS-only parties en `channel = SMS`, contre 6 sur 6 en `TCP`+`FAILED` avant)* *(⚠️ **[TRK-050](#trk-050) : l'occasion est VENUE et n'a rien prouvé** — l'API a redémarré le 02/09 à 21:04:58, mais **0 session active dans l'heure précédente**. *Un test qui ne peut pas échouer ne réussit pas.*)* *(♻️ **[TRK-022](#trk-022) REQUALIFIÉ** — répondu par le comportement : 6 intervalles successifs avec un **plancher net à 6,16 h**, signature d'une fenêtre de 6 h)* *(🎯 **Cadence : trois points comparables** — 0/0/0 sous le minimum matériel ; TRK-057 et TRK-008 tiennent. ⚠️ Le total `fix_continuous` baisse de 514 à 491 et **ce n'est pas une amélioration** : la flotte émettrice est passée de 38 à 32)* · **précédemment, le **2026-09-02 01:25 UTC** *(🆕 **[TRK-059](#trk-059)** — **la « cible atteinte » qui suit un échec porte une AUTRE cible** : sur 7 jours, **46 paires « échec puis réussite » en moins de 30 min, et 46 sur 46 ont vu la cible changer**, délai moyen 6,6 min. La cadence réelle est le MÊME nombre des deux côtés — le boîtier n’a pas bougé, c’est la demande qui est descendue jusqu’à lui)* *(🆕 **[TRK-060](#trk-060)** — `system-metrics` rend `EAI_AGAIN` brut ; incident bénin **mesuré** (1 437 points sur 1 440 en 24 h), défaut réel = le message, qui envoie instruire une panne de base inexistante)* *(✅ **Les correctifs du 01/09 tiennent, mesurés à J+1 indépendamment** : [TRK-057](#trk-057) **44 cibles / 44 canoniques** ; [TRK-056](#trk-056) **32 boîtiers sur 32 à mesure fraîche exactement sur leur cible**, les 6 écarts résiduels portant tous une mesure PÉRIMÉE de boîtier hors service ; [TRK-021](#trk-021) 2ᵉ commande SMS-only partie en `channel = SMS`)* *(⚠️ **[TRK-053](#trk-053) et [TRK-052](#trk-052) restent NON EXERCÉS — par absence d’OCCASION, pas par réussite** : une seule alerte écrite depuis le correctif de 09:17, sur un véhicule EN SERVICE, et les 9 boîtiers hors service sont muets. *Un correctif qui fait taire des boîtiers déjà silencieux ne prouve rien.*)* *(🔴 **Trois tests dépassent 7 jours** : [TRK-022](#trk-022) **14 j**, [TRK-032](#trk-032) **11 j**, [TRK-051](#trk-051) **7 j** — à PROVOQUER ou REQUALIFIER, pas à laisser vieillir un passage de plus)* · **précédemment, le **2026-09-01 07:56 UTC** *(🔵 **Le fait du jour n'est pas dans `error_logs`** : le **31/08 entre 07:29 et 09:00 UTC, six véhicules ont perdu leur alimentation externe** ; leur batterie interne est tombée à **0 %** et **les six boîtiers sont muets depuis 18 h** — la flotte émettrice est passée de **38 à 32**. Action TERRAIN, toujours en cours)* *(🆕 **[TRK-052](#trk-052)** — **acquitter une alerte RÉ-ARME l'alarme** : le prédicat de déduplication porte `acknowledgedAt: null`, corrélation **2 doublons sur 2** le 31/08, dont un acquitté **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de TRK-022)* *(✅ **3 tests datés RÉPONDUS OUI** : [TRK-037](#trk-037) — 22 lignes `DEGRADATION` / **0 `ERROR`** depuis le déploiement ; [TRK-022](#trk-022) volet 1 — **1 317 → 1-2 par jour**, intervalles toujours ≥ 6 h 10 ; [TRK-040](#trk-040) — **exercé six fois, 0 faux positif**, les 6 coupures confirmées par la pente ont fini à 0 % de batterie)* *(🔴 **[TRK-021](#trk-021) : 17 jours sans le moindre essai** — les 8 dernières tentatives SMS-only sont toutes antérieures au correctif et toutes parties en `channel = TCP`. La règle des 7 jours est dépassée de dix)* *(⚠️ **Un filtre qui exige « vivant » rend zéro sur un mort** : `gps_sans_fix` rend **0 ligne** parce que les six véhicules perdus n'émettent plus du tout. Vérifier ce qu'un filtre EXCLUT avant de lire son zéro)* · **précédemment, le 2026-08-26 à 01:15 UTC :** *(🆕 **[TRK-051](#trk-051)** — le statut `ACKNOWLEDGED` n'a jamais voulu dire « acquitté par le boîtier » : **120 sur 7 j, 2 seulement portent une vraie réponse matérielle**. Corollaire : le « métronome de 72 échecs/jour » rapporté depuis dix jours était un **artefact d'étiquetage** — le TOTAL `fix_continuous` est resté plat à 69-79/j pendant que `FAILED` tombait de 72 à 15. `collecte.sql` durci le jour même)* *(✅ **[TRK-046](#trk-046) PROUVÉ par la DOUBLE CONDITION** : 31 coupes exécutées ce soir, **0 refus sur vitesse périmée depuis le 25/08 04:37** — un seul compteur est tombé)* *(⚠️ **3 tests datés sur 5 sans réponse, aucun par échec d'un correctif** : `OFF_SCHEDULE_MOVEMENT` sans occasion, TRK-050 sans redémarrage d'API, **TRK-021 jamais tenté depuis 11 jours**)* · **précédemment, le 2026-08-25 à 20:05 UTC :** *(✅ **[TRK-046](#trk-046) EXERCÉ ET PROUVÉ** à la coupe de 20:00 — preuve directe au journal, 0 refus là où il y en avait 13 la veille à la même heure)* *(🧹 **RÉCONCILIATION DES STATUTS** — 18 en-têtes de fiche étaient restés figés à leur rédaction initiale ; index et manifeste, eux, concordaient. Les trois surfaces sont désormais alignées : **40 corrigées, 5 correctifs proposés, 3 terrain, 2 non corrigées**. Tranché par le CODE DÉPLOYÉ et la MESURE, jamais par une autre fiche)* *(🟢 [TRK-050](#trk-050) CORRIGÉ, TESTÉ ET DÉPLOYÉ — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
+- Dernière mise à jour : **2026-09-04 01:40 UTC** *(🆕 **[TRK-063](#trk-063)** — **une plaque avec un point médian fait tomber TOUS les téléchargements du véhicule** : premier `CRITICAL` depuis le 22/08, trouvé **par la recette** 1 min 44 après le redémarrage. `speed-report.service.ts:173` bâtit le nom du fichier sur la PLAQUE et ne retire que les espaces ; Node refuse tout caractère hors Latin-1 dans un en-tête. **2 véhicules sur 44** — `GLA•KC•31`, `KSR•370` — avaient **les 5 exports en 500 depuis toujours**. ⚠️ Le correctif `ab6c9701` est commité **neuf minutes après** la construction de l'image : **écrit, et sans effet**, vérifié sur l'artefact servi)* *(🆕 **[TRK-064](#trk-064)** — **la chaîne d'alerte de vitesse est déployée et activée NULLE PART** : 0 flotte sur 5, 0 véhicule sur 44, pendant que **145 analyses fraîches portent un excès**. La sentinelle censée le voir sort sur `if (flottes.length === 0) return []` — *elle se tait pour exactement la même raison que la chaîne*)* *(🆕 **[TRK-065](#trk-065)** — **première ligne jamais écrite par les sentinelles V6**, 72 s après le démarrage, et elle avait raison : **42 notifications perdues sur 129**, dont **21 pour un compte technique** qui n'aura jamais d'appareil)* *(🔴 **[TRK-061](#trk-061) RÉCIDIVE, 2ᵉ jour et 2ᵉ chemin** — `agenda_agent` est tombé à son tour ; **compte à sec depuis 25 h**, et « Coûts IA » n'a toujours rien vu)* *(🎯 **Les 7 lots déployés cette nuit n'ont RIEN exercé** — 0 analyse de trajet depuis la bascule ; 4 des 6 sentinelles sont muettes **par calendrier**, pas par bonne santé. Le dire avant de juger)* *(✅ **La réserve du 03/09 est LEVÉE** — les 37 h sans alerte étaient bien un parc calme : 4 types écrits le 03/09. *Une réserve honnête se résout d'elle-même au passage suivant.*)* *(🟢 **[TRK-050](#trk-050) : premier signal positif en 10 j** — 5 sessions vues avant le redémarrage, **0 fermée**, 1 902 `ACTIVE` intactes)* · **précédemment, le **2026-09-03 01:20 UTC** *(🆕 **[TRK-061](#trk-061)** — **le compte du fournisseur IA est à sec, et le dispositif dit « appel malformé »** : Anthropic facture l'épuisement d'un compte en **HTTP 400**, la ligne tombe donc dans le cas commenté « vraie faute d'appel ». **Première occurrence en 90 j.** ⚠️ le message de facturation, en anglais, est **servi à l'utilisateur sur son iPhone** ; ⚠️ **un incident, deux lignes** ; 🔑 **l'écran « Coûts IA » est aveugle** — `ok_24h = 291`, `ko_24h = 0` pendant l'échec, car un appel raté n'écrit rien. 🟢 portée étroite : les 290 appels de flotte tournent en `executor = local` et sont indemnes)* *(🆕 **[TRK-062](#trk-062)** — **une commande partie en SMS n'a aucun état terminal** : conséquence du succès de TRK-021, `SENT` depuis 39 h. Le refus de guetter un accusé est JUSTE (réponse réelle à ~4 h) ; **ce qui manque est une borne SUPÉRIEURE**. Jumeau exact de [TRK-007](#trk-007), réintroduit par un chemin neuf)* *(✅ **[TRK-021](#trk-021) RÉPONDU après 17 jours** — 2 commandes SMS-only parties en `channel = SMS`, contre 6 sur 6 en `TCP`+`FAILED` avant)* *(⚠️ **[TRK-050](#trk-050) : l'occasion est VENUE et n'a rien prouvé** — l'API a redémarré le 02/09 à 21:04:58, mais **0 session active dans l'heure précédente**. *Un test qui ne peut pas échouer ne réussit pas.*)* *(♻️ **[TRK-022](#trk-022) REQUALIFIÉ** — répondu par le comportement : 6 intervalles successifs avec un **plancher net à 6,16 h**, signature d'une fenêtre de 6 h)* *(🎯 **Cadence : trois points comparables** — 0/0/0 sous le minimum matériel ; TRK-057 et TRK-008 tiennent. ⚠️ Le total `fix_continuous` baisse de 514 à 491 et **ce n'est pas une amélioration** : la flotte émettrice est passée de 38 à 32)* · **précédemment, le **2026-09-02 01:25 UTC** *(🆕 **[TRK-059](#trk-059)** — **la « cible atteinte » qui suit un échec porte une AUTRE cible** : sur 7 jours, **46 paires « échec puis réussite » en moins de 30 min, et 46 sur 46 ont vu la cible changer**, délai moyen 6,6 min. La cadence réelle est le MÊME nombre des deux côtés — le boîtier n’a pas bougé, c’est la demande qui est descendue jusqu’à lui)* *(🆕 **[TRK-060](#trk-060)** — `system-metrics` rend `EAI_AGAIN` brut ; incident bénin **mesuré** (1 437 points sur 1 440 en 24 h), défaut réel = le message, qui envoie instruire une panne de base inexistante)* *(✅ **Les correctifs du 01/09 tiennent, mesurés à J+1 indépendamment** : [TRK-057](#trk-057) **44 cibles / 44 canoniques** ; [TRK-056](#trk-056) **32 boîtiers sur 32 à mesure fraîche exactement sur leur cible**, les 6 écarts résiduels portant tous une mesure PÉRIMÉE de boîtier hors service ; [TRK-021](#trk-021) 2ᵉ commande SMS-only partie en `channel = SMS`)* *(⚠️ **[TRK-053](#trk-053) et [TRK-052](#trk-052) restent NON EXERCÉS — par absence d’OCCASION, pas par réussite** : une seule alerte écrite depuis le correctif de 09:17, sur un véhicule EN SERVICE, et les 9 boîtiers hors service sont muets. *Un correctif qui fait taire des boîtiers déjà silencieux ne prouve rien.*)* *(🔴 **Trois tests dépassent 7 jours** : [TRK-022](#trk-022) **14 j**, [TRK-032](#trk-032) **11 j**, [TRK-051](#trk-051) **7 j** — à PROVOQUER ou REQUALIFIER, pas à laisser vieillir un passage de plus)* · **précédemment, le **2026-09-01 07:56 UTC** *(🔵 **Le fait du jour n'est pas dans `error_logs`** : le **31/08 entre 07:29 et 09:00 UTC, six véhicules ont perdu leur alimentation externe** ; leur batterie interne est tombée à **0 %** et **les six boîtiers sont muets depuis 18 h** — la flotte émettrice est passée de **38 à 32**. Action TERRAIN, toujours en cours)* *(🆕 **[TRK-052](#trk-052)** — **acquitter une alerte RÉ-ARME l'alarme** : le prédicat de déduplication porte `acknowledgedAt: null`, corrélation **2 doublons sur 2** le 31/08, dont un acquitté **19 s** après sa création. C'est le mécanisme qui ramènerait le déluge de 1 317 alertes de TRK-022)* *(✅ **3 tests datés RÉPONDUS OUI** : [TRK-037](#trk-037) — 22 lignes `DEGRADATION` / **0 `ERROR`** depuis le déploiement ; [TRK-022](#trk-022) volet 1 — **1 317 → 1-2 par jour**, intervalles toujours ≥ 6 h 10 ; [TRK-040](#trk-040) — **exercé six fois, 0 faux positif**, les 6 coupures confirmées par la pente ont fini à 0 % de batterie)* *(🔴 **[TRK-021](#trk-021) : 17 jours sans le moindre essai** — les 8 dernières tentatives SMS-only sont toutes antérieures au correctif et toutes parties en `channel = TCP`. La règle des 7 jours est dépassée de dix)* *(⚠️ **Un filtre qui exige « vivant » rend zéro sur un mort** : `gps_sans_fix` rend **0 ligne** parce que les six véhicules perdus n'émettent plus du tout. Vérifier ce qu'un filtre EXCLUT avant de lire son zéro)* · **précédemment, le 2026-08-26 à 01:15 UTC :** *(🆕 **[TRK-051](#trk-051)** — le statut `ACKNOWLEDGED` n'a jamais voulu dire « acquitté par le boîtier » : **120 sur 7 j, 2 seulement portent une vraie réponse matérielle**. Corollaire : le « métronome de 72 échecs/jour » rapporté depuis dix jours était un **artefact d'étiquetage** — le TOTAL `fix_continuous` est resté plat à 69-79/j pendant que `FAILED` tombait de 72 à 15. `collecte.sql` durci le jour même)* *(✅ **[TRK-046](#trk-046) PROUVÉ par la DOUBLE CONDITION** : 31 coupes exécutées ce soir, **0 refus sur vitesse périmée depuis le 25/08 04:37** — un seul compteur est tombé)* *(⚠️ **3 tests datés sur 5 sans réponse, aucun par échec d'un correctif** : `OFF_SCHEDULE_MOVEMENT` sans occasion, TRK-050 sans redémarrage d'API, **TRK-021 jamais tenté depuis 11 jours**)* · **précédemment, le 2026-08-25 à 20:05 UTC :** *(✅ **[TRK-046](#trk-046) EXERCÉ ET PROUVÉ** à la coupe de 20:00 — preuve directe au journal, 0 refus là où il y en avait 13 la veille à la même heure)* *(🧹 **RÉCONCILIATION DES STATUTS** — 18 en-têtes de fiche étaient restés figés à leur rédaction initiale ; index et manifeste, eux, concordaient. Les trois surfaces sont désormais alignées : **40 corrigées, 5 correctifs proposés, 3 terrain, 2 non corrigées**. Tranché par le CODE DÉPLOYÉ et la MESURE, jamais par une autre fiche)* *(🟢 [TRK-050](#trk-050) CORRIGÉ, TESTÉ ET DÉPLOYÉ — la déconnexion au redéploiement est instruite : le garde existe depuis le 03/08, il n'est branché que sur le chemin HTTP)* · *(déploiement)* *(les 3 PR FUSIONNÉES et DÉPLOYÉES à 09:22 UTC, marqueurs vérifiés sur l'artefact servi ; 🆕 [TRK-049](#trk-049) trouvée en vérifiant le cumul — un cron invisible depuis le 24/08)* · *(après-midi : passe de correction — PR #133/#134/#135 ouvertes pour TRK-046/048/047, statuts 🟠 CORRECTIF PROPOSÉ ; volet volume de TRK-035 instruit : la fenêtre de 3-4 jours vient du logrotate HÔTE, pas du volume)* · *(matin : audit quotidien — contrôle des 7 correctifs du 24/08 ;
   🆕 [TRK-046](#trk-046) gravité 1, [TRK-047](#trk-047), [TRK-048](#trk-048) ; **5 statuts d'index
   périmés rectifiés** — TRK-015, TRK-018, TRK-025, TRK-026, TRK-045)*
 
@@ -1258,6 +1258,9 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-063](#trk-063) | `http` | **Une plaque avec un point médian fait tomber TOUS les téléchargements du véhicule** — `Invalid character in header content ["Content-Disposition"]`, HTTP 500 | 🟠 **CORRECTIF ÉCRIT ET COMMITÉ (`ab6c9701`), NON DÉPLOYÉ** · **gravité 1** · famille **brut** *(**premier `CRITICAL` depuis le 22/08**, tombé 1 min 44 après le redémarrage de 01:03:57, déclenché par la RECETTE de premier passage — `::ffff:127.0.0.1`, `userAgent: node`, `requestId: 9`. `speed-report.service.ts:173` bâtit le nom du fichier sur la PLAQUE et ne retire que les espaces ; Node lève `ERR_INVALID_CHAR` sur tout caractère hors Latin-1 dans un en-tête. Le trajet incriminé appartient à **`GLA•KC•31`** (`U+2022`). **2 véhicules sur 44** portent une telle plaque — `GLA•KC•31` et `KSR•370` — et pour eux **les 5 exports du contrôleur** répondaient 500 depuis toujours : le rapport de vitesse, pièce opposable à un conducteur, leur était purement inaccessible. ⚠️ **Personne ne l'avait vu parce qu'un 500 sur un téléchargement ressemble à une panne passagère** — il a fallu une recette automatisée pour le lire. ⚠️ **Vérifié sur l'ARTEFACT SERVI** : `filename*=UTF-8` ABSENT, `attachment; filename="` présent 5 fois dans `dist/reports/reports.controller.js` ; l'image est de 01:02:21, le correctif de 01:11:39 — **neuf minutes trop tard**)* | 2026-09-04 | 2026-09-04 |
+| [TRK-064](#trk-064) | *(angle mort — aucune ligne)* | **La chaîne d'alerte de vitesse est déployée, et activée nulle part** — et la sentinelle qui devait le voir se tait pour la même raison | 🔴 **NON CORRIGÉ** · **gravité 1** · famille **à lire, pas à notifier** *(lot V5 en ligne depuis le 04/09 01:03. Mesure : **0 flotte sur 5** et **0 véhicule sur 44** avec `speedAlertEnabled`, **0 seuil renseigné**, `speedAlertUpdatedAt` NULL partout — pendant que **150 analyses portent un excès sur 24 h, dont 145 fraîches**. La sentinelle nº 1 `excesSansAlerte` sort à `sentinelles-coherence.service.ts:261` sur `if (flottes.length === 0) return []` : **elle ne peut pas parler**, et rend le MÊME silence qu'une chaîne en parfait état. ⚠️ **Ce n'est pas un défaut du code** — l'opt-in est un choix produit défendable ; le défaut est que **rien ne dit que le réglage est à zéro partout**. 🔑 Les 8 `OVERSPEED` de la semaine sont toutes sur `FG-669-DQ` et **aucune n'est rattachée à un trajet** : elles viennent du chemin historique, pas de V5 — *le compteur `OVERSPEED` n'a jamais mesuré cette chaîne*)* | 2026-09-04 | 2026-09-04 |
+| [TRK-065](#trk-065) | `sentinelles` | **42 notifications non remises faute d'appareil abonné, dont 21 pour un compte technique** | 🔵 TERRAIN / **action humaine** · **gravité 3** *(**première ligne jamais écrite par les sentinelles du lot V6**, 72 s après le démarrage de l'API — l'instrument a parlé au premier passage et il avait raison. Mesure indépendante sur 7 j : `SENT` 66, `SUPPRESSED/no_device` **42**, `SUPPRESSED/default_type_muted` 21 → **une notification sur trois n'atteint personne**. Les 42 se partagent également entre `system@tracky.local` (21), compte **technique** qui n'aura JAMAIS d'appareil, et `tyger.bcn@gmail.com` (21), humain qui se croit prévenu. ⚠️ **Sans sortir le compte technique de la liste, cette sentinelle criera chaque semaine avec un chiffre à moitié structurel** — c'est ainsi qu'un instrument neuf devient du bruit en trois passages)* | 2026-09-04 | 2026-09-04 |
 | [TRK-061](#trk-061) | `AI_OPTIMIZER` / `http` | **Le compte du fournisseur IA est à sec, et le dispositif dit « appel malformé »** — `Your credit balance is too low to access the Anthropic API`, classé `kind: http` = « vraie faute d'appel » | 🔴 **NON CORRIGÉ** · **gravité 1** · famille **mensonger** *(**première occurrence en 90 j de rétention**, 03/09 00:13:23, DEUX lignes pour UN appel — `AI_OPTIMIZER` à `.379`, `http` à `.396`. Anthropic facture l'épuisement d'un compte en **HTTP 400 `invalid_request_error`** ; `TRANSIENT_400_PATTERNS` ne connaît que `grammar compilation timed out` et `overloaded`, la ligne tombe donc dans le cas par défaut commenté « Vraie faute d'appel ». Ce n'est ni une faute d'appel ni un aléa passager : c'est une panne de COMPTE, qui se reproduira à l'identique à chaque appel facturé et dont l'action correctrice n'est pas dans le code. ⚠️ **Le message de facturation du fournisseur est servi à l'utilisateur final** — `page: /agenda`, `userAgent: iPhone OS 18_7` : `AiServiceError` hérite de `ServiceUnavailableException`, son message EST le corps de la réponse HTTP, et `describeProviderError` avait été écrit « pour que le CENTRE D'ALERTE porte la cause ». Une seule chaîne, deux publics. ⚠️ **L'écran « Coûts IA » est aveugle** : un appel qui échoue n'écrit aucune ligne dans `ai_usage_logs` — mesuré `ok_24h = 291`, `ko_24h = 0` pendant que l'appel échouait. 🟢 **Portée mesurée et étroite** : les 290 appels de flotte du jour tournent en `executor = local` (agent sur le poste, 0,00 $) et sont INDEMNES ; seuls `agenda_agent` et l'optimiseur de placement passent par `api`)* | 2026-09-03 | 2026-09-03 |
 | [TRK-062](#trk-062) | *commandes* | **Une commande partie en SMS n'a aucun état terminal** — `SENT` pour toujours, sans borne supérieure | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **à lire, pas à notifier** *(conséquence directe du correctif [TRK-021](#trk-021), qui lui est PROUVÉ : les 2 commandes SMS-only du 01/09 sont parties en `channel = SMS` contre 6 sur 6 en `TCP`+`FAILED` avant. Mais le compteur qui tombe a un voisin qui monte — elles ne sont plus `FAILED`, elles sont `SENT` depuis **39 h** et **36 h**. Le choix de ne pas guetter d'accusé est délibéré et bien argumenté — réponse réelle mesurée à **presque 4 h** le 19/08, un guetteur de 15 s fabriquerait un faux échec. **Ce qui manque n'est pas un guetteur, c'est une borne supérieure** : entre 15 s et jamais, le dépôt possède déjà sa référence mesurée. Coût concret : sur les 5 commandes en attente > 10 min, **2 sont des résidents permanents** — le compteur cesse de mesurer un retard pour mesurer une accumulation. ⚠️ **Jumeau exact de [TRK-007](#trk-007)**, « commandes bloquées en `SENT` à vie », corrigé sur le chemin TCP : il n'est pas revenu, un chemin neuf l'a réintroduit sans croiser sa correction)* | 2026-09-03 | 2026-09-03 |
 | [TRK-059](#trk-059) | *commandes* | **La « cible atteinte » qui suit un échec porte une AUTRE cible** — le boîtier n’a pas rejoint la cible, c’est la cible qui est descendue jusqu’à lui | 🟠 **DÉPLOYÉ EN PRODUCTION le 02/09 à 08:03, NON EXERCÉ** (`main` @ `24c03b5d`, marqueur `Cible RÉVISÉE` vérifié sur l’artefact SERVI avec son témoin de contrôle ; repli `tracky-api:avant-trk059`) · **gravité 2** · famille **mensonger** *(mesuré le 02/09 sur 7 j : **46 paires « échec puis cible atteinte » séparées de moins de 30 min, et 46 sur 46 portent une cible DIFFÉRENTE** ; délai moyen **6,6 min**. Sur HD-964-XY, GR-898-HY, EZ-259-DB et EY-613-MF, la cadence réelle est le MÊME nombre — 99 s — dans la ligne d’échec et dans celle de réussite. Cause : `desiredIntervalFor` recale la cible quand le véhicule s’arrête (20 s → 99 s), et la clôture par échéance de [TRK-051](#trk-051) compare la mesure à la NOUVELLE cible. Chaque ligne est vraie prise seule ; c’est leur succession qui ment. ⚠️ Ne contredit PAS [TRK-057](#trk-057) : les 44 cibles sont canoniques, le réglage est juste — c’est le récit qu’on en fait qui est faux)*  Correctif : la clôture nomme la RÉVISION de cible au lieu d’affirmer une convergence, et refuse la conclusion sans prétendre à la place du lecteur que le boîtier n’a rien fait — la cadence de l’échec précédent n’est portée par aucune colonne. Statut ACKNOWLEDGED CONSERVÉ (double condition) : sans la clôture les commandes revivraient en `SENT`. 9 tests neufs dont 3 vérifiés EN ÉCHEC sur l’ancien code ; 188 suites / 2 801 tests verts.)* | 2026-09-02 | 2026-09-02 |
@@ -10388,10 +10391,208 @@ famille `shock_*` reste inchangé. *Si les deux tombent, on a supprimé le suivi
 
 ---
 
+## TRK-063
+
+**Signature** — `http | CRITICAL | Invalid character in header content ["Content-Disposition"]`,
+sur `GET /api/reports/speed-analysis/<ID>`, `statusCode: 500`.
+**Statut : 🟠 CORRECTIF ÉCRIT ET COMMITÉ (`ab6c9701`), NON DÉPLOYÉ** · gravité **1** ·
+famille **brut** · 1 occurrence · 2026-09-04
+
+### Comment il a été trouvé — et pourquoi ça compte
+
+C'est le **premier `CRITICAL` du centre d'alerte depuis le 22/08**, et il est tombé **1 min 44
+après le redémarrage** de l'API (01:03:57 → 01:05:41). Le contexte de la ligne le dit sans
+ambiguïté : `ip: ::ffff:127.0.0.1`, `userAgent: node`, `requestId: 9`. C'est la **recette de
+premier passage après déploiement** qui l'a déclenché, depuis l'intérieur du conteneur.
+
+> **Le défaut n'est pas né cette nuit. C'est la vérification qui est née.** Il existait depuis la
+> création de ces exports, et rien ne l'avait jamais exercé.
+
+### Cause racine — Node refuse un en-tête HTTP hors Latin-1
+
+`speed-report.service.ts:173` construit le nom du fichier à partir de la **plaque du véhicule** :
+
+```ts
+const filename = `rapport-vitesse-${plate.replace(/\s/g, '-')}-${parisDayKey(trip.startedAt)}.html`;
+```
+
+`replace(/\s/g, '-')` ne retire que les **espaces**. `reports.controller.ts:431` pose ensuite la
+valeur telle quelle dans l'en-tête :
+
+```ts
+res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+```
+
+Node lève `TypeError [ERR_INVALID_CHAR]` sur tout caractère hors ISO-8859-1 dans un en-tête HTTP.
+Vérifié en base : le trajet `c87259b1-4f89-49de-85d6-0164d024cea3` appartient à **`GLA•KC•31`**,
+dont la plaque contient un **point médian `U+2022`**.
+
+### Portée — mesurée, pas estimée
+
+| Mesure | Valeur |
+|---|---|
+| Véhicules en production | 44 |
+| dont plaque **non-ASCII** | **2** — `GLA•KC•31`, `KSR•370` |
+| Points d'appel `Content-Disposition` dans l'API | **8** *(5 `reports`, 2 `drivers`, 1 `depot`)* |
+
+Pour ces deux véhicules, **les cinq exports du contrôleur de rapports** répondaient 500 — pas
+seulement celui de la vitesse. Le rapport de vitesse est présenté comme une pièce opposable à un
+conducteur : il leur était **purement inaccessible**.
+
+⚠️ **Pourquoi personne ne l'avait vu** : un 500 sur un téléchargement ressemble à une panne
+passagère, et l'écran ne distingue pas « le serveur a refusé » de « le réseau a coupé ».
+
+### Le correctif existe — et il n'est PAS servi
+
+Écrit et commité par une session parallèle **pendant cette passe d'audit** : `ab6c9701`,
+*« fix(exports) : un nom de fichier ne doit jamais faire tomber un téléchargement »*, à
+**01:11:39 UTC**. Il introduit `apps/api/src/common/utils/telechargement.ts` et applique la double
+forme de la **RFC 6266** — `filename="…"` réduit en ASCII **et** `filename*=UTF-8''…` — sur les
+huit points d'appel.
+
+🔴 **Vérifié sur l'ARTEFACT SERVI, en littéraux de chaîne, jamais sur la fiche :**
+
+| Marqueur cherché dans `/app/apps/api/dist` | Résultat |
+|---|---|
+| `filename*=UTF-8` *(forme corrigée)* | **ABSENT** 🔴 |
+| `attachment; filename="` *(forme fautive)* dans `reports.controller.js` | **5 occurrences** 🔴 |
+| `sentinelles-coherence.service.js` *(lot V6, même déploiement)* | **PRÉSENT** ✅ |
+
+L'image `tracky-api:latest` date de **01:02:21**, le correctif de **01:11:39** : **neuf minutes
+trop tard**. *Un correctif commité n'est pas un correctif déployé — et la troisième ligne du
+tableau prouve que la vérification, elle, sait faire la différence.*
+
+### Action
+
+**Redéployer l'API.** Décision humaine ; cet audit ne déploie pas. Le correctif a été relu dans
+cette passe et n'appelle aucune réécriture.
+
+### Vérification — la double condition
+
+`GET /api/reports/speed-analysis/<trajet de GLA•KC•31>` répond **200** avec un nom de fichier
+lisible, **et** les exports des 42 plaques ASCII gardent **exactement** le nom qu'ils avaient.
+*Si les deux changent, on a renommé tous les fichiers au lieu de corriger un défaut.*
+
+---
+
+## TRK-064
+
+**Signature** — *aucune.* C'est un **angle mort** : il n'existe aucune ligne dans `error_logs`, et
+c'est précisément le problème.
+**Statut : 🔴 NON CORRIGÉ** · gravité **1** · famille **à lire, pas à notifier** · 2026-09-04
+
+### Le fait mesuré
+
+Le lot V5 (`956add2e`, « alerter sur ce que Tracky mesure ») est en production depuis le 04/09
+à 01:03. Mesure en base le même matin :
+
+| Grandeur | Mesure |
+|---|---|
+| Flottes avec `speedAlertEnabled = true` | **0 sur 5** |
+| Véhicules avec `speedAlertEnabled = true` | **0 sur 44** |
+| Véhicules avec un seuil `speedAlertOverKmh` | **0 sur 44** |
+| `speedAlertUpdatedAt` | **NULL sur les 5 flottes** |
+| Analyses de trajet portant un excès sur 24 h | **150** |
+| dont **fraîches** *(analysées < 2 h après la fin du trajet)* | **145** |
+| Alertes `OVERSPEED` sur 24 h | **1** |
+
+### Cause racine — la sentinelle et la chaîne se taisent pour la même raison
+
+La sentinelle nº 1, `excesSansAlerte`, a été écrite pour dire « un excès n'a pas produit son
+alerte ». Elle commence par lister les flottes concernées, et sort immédiatement si la liste est
+vide (`sentinelles-coherence.service.ts:261`) :
+
+```ts
+if (flottes.length === 0) return [];
+```
+
+Aucune flotte, aucun véhicule n'ayant le réglage actif, **cette sentinelle ne peut pas parler**.
+Elle rendra exactement le même silence qu'une chaîne d'alerte en parfait état de marche.
+
+> 🔑 C'est le motif que ce dispositif a déjà payé deux fois : le témoin désarmé de
+> [TRK-026](#trk-026), et le capteur éteint du §3 de la procédure. *Un zéro ne dit rien tant qu'on
+> n'a pas vérifié que l'instrument était capable de rendre autre chose.*
+
+⚠️ **Ce n'est pas un défaut du code, et il ne faut surtout pas le corriger comme tel.** Un réglage
+d'alerte en opt-in est un choix produit défendable. Le défaut est que **rien ne dit qu'il vaut
+zéro partout**.
+
+### Les 8 `OVERSPEED` de la semaine ne viennent pas de cette chaîne
+
+Toutes les 8, sans exception, portent sur **`FG-669-DQ`**, et **aucune n'est rattachée à un
+trajet** (`tripId` nul). Elles proviennent du chemin historique, qui juge la trame en direct — pas
+de la chaîne V5 fondée sur l'analyse de trajet. *Le compteur `OVERSPEED` n'est donc pas la preuve
+que V5 fonctionne : il ne l'a jamais mesuré.*
+
+### Correctif proposé
+
+1. **Faire parler la sentinelle sur son propre angle mort.** Quand `flottes.length === 0`, écrire
+   **une** ligne de niveau `DEGRADATION` : « les alertes de vitesse ne sont activées sur aucune
+   société ni aucun véhicule ; *N* analyses ont pourtant relevé un excès cette semaine ».
+   *Un garde-fou doit savoir dire qu'il n'a rien à garder.* Refroidissement **hebdomadaire** — ce
+   n'est pas une nouvelle chaque jour.
+2. **Décider du réglage par défaut** — décision produit, pas technique. Si la chaîne est censée
+   servir, l'activer sur au moins une flotte témoin ; sinon, l'écrire quelque part.
+
+### Vérification — la double condition
+
+La ligne `DEGRADATION` apparaît tant que le réglage vaut zéro partout, **et** elle disparaît dès
+qu'une seule flotte l'active — **sans** que la sentinelle nº 1 cesse pour autant de savoir
+signaler un excès sans alerte. *Si les deux se taisent ensemble, on a supprimé la sentinelle.*
+
+---
+
+## TRK-065
+
+**Signature** — `sentinelles | ERROR | <N> notifications n'ont pas pu être remises cette semaine
+faute d'appareil abonné, sur <N> comptes actifs : <EMAIL> (<N>), …`
+**Statut : 🔵 TERRAIN / action humaine** · gravité **3** · 1 occurrence · 2026-09-04
+
+### C'est la première ligne jamais écrite par les sentinelles du lot V6
+
+Écrite **72 secondes après le démarrage de l'API**, au premier passage. *L'instrument a parlé dès
+qu'il a été branché, et il avait raison.* Mesure indépendante sur 7 jours, dans
+`notification_deliveries` :
+
+| `status` / `reason` | Volume |
+|---|---|
+| `SENT` | 66 |
+| `SUPPRESSED` / `no_device` | **42** |
+| `SUPPRESSED` / `default_type_muted` | 21 |
+
+**Une notification sur trois n'atteint personne.** Les 42 se partagent **également** entre deux
+comptes :
+
+| Compte | Perdues | Nature |
+|---|---|---|
+| `system@tracky.local` | 21 | **technique** — il n'aura jamais d'appareil |
+| `tyger.bcn@gmail.com` | 21 | **humain** — il se croit prévenu et ne l'est pas |
+
+### Ce n'est pas un défaut logiciel
+
+Le chemin fonctionne : il refuse d'envoyer là où il n'y a rien, et il le consigne. Deux actions,
+l'une technique et l'autre humaine :
+
+1. **Sortir le compte technique de la liste des destinataires.** Le faire figurer dans un décompte
+   d'échecs pollue la mesure de **50 % chaque semaine**.
+2. **Prévenir le titulaire du second compte** qu'aucun de ses appareils n'est abonné.
+
+⚠️ **Sans le point nº 1, cette sentinelle criera chaque semaine avec un chiffre à moitié
+structurel.** *C'est exactement ainsi qu'un instrument neuf devient du bruit en trois passages — et
+ce dépôt sait ce que coûte un centre d'alerte qu'on cesse de lire.*
+
+### Vérification
+
+Au passage hebdomadaire suivant, la ligne ne cite plus qu'**un** compte, et le total tombe de 42 à
+~21. *Si le total tombe à zéro, c'est la sentinelle qu'on a éteinte, pas le problème qu'on a réglé.*
+
+---
+
 ## Journal des passages
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-09-04 | **12 défauts actifs** (5 sur 24 h, **1 CRITICAL**) + 32 `DEGRADATION` — 44 actives, 32 archivées | 12 revues ; **passe entièrement dominée par le déploiement de 01:03:57 UTC** (7 lots V1→V7, images de 01:01-01:02, `restarts=0`) — *la collecte a lieu sept minutes après une bascule majeure, et il faut le dire avant de juger quoi que ce soit*. 🆕 **TRK-063, ET C'EST LA RECETTE QUI L'A TROUVÉ** : premier `CRITICAL` depuis le 22/08, tombé **1 min 44 après le redémarrage**, depuis `127.0.0.1` / `userAgent: node` / `requestId: 9`. `speed-report.service.ts:173` bâtit le nom du fichier sur la PLAQUE et ne retire que les espaces ; Node lève `ERR_INVALID_CHAR` sur tout caractère hors Latin-1 dans un en-tête. Le trajet appartient à **`GLA•KC•31`** (`U+2022`). **2 véhicules sur 44** portent une telle plaque, et pour eux **les 5 exports du contrôleur** répondaient 500 **depuis toujours** — le rapport de vitesse, pièce opposable à un conducteur, leur était purement inaccessible. *Le défaut n'est pas né cette nuit : c'est la vérification qui est née.* ⚠️ **Le correctif existe et n'est PAS servi** : `ab6c9701` commité à 01:11:39 par une session parallèle, **neuf minutes après** la construction de l'image (01:02:21) — vérifié sur l'ARTEFACT SERVI, `filename*=UTF-8` **ABSENT**, `attachment; filename="` présent **5 fois**, pendant que `sentinelles-coherence.service.js` du MÊME déploiement est bien là. 🆕 **TRK-064 — LA CHAÎNE D'ALERTE DE VITESSE EST DÉPLOYÉE ET ACTIVÉE NULLE PART** : **0 flotte sur 5**, **0 véhicule sur 44**, **0 seuil**, `speedAlertUpdatedAt` NULL partout — pendant que **150 analyses portent un excès sur 24 h, dont 145 fraîches**. La sentinelle nº 1 sort sur `if (flottes.length === 0) return []` : **elle ne peut pas parler**, et rend le même silence qu'une chaîne en parfait état. *La sentinelle et la chaîne se taisent pour la même raison* — motif déjà payé deux fois (TRK-026, capteur éteint du §3). 🔑 Les 8 `OVERSPEED` de la semaine sont toutes sur `FG-669-DQ` et **aucune n'est rattachée à un trajet** : chemin historique, pas V5 — *ce compteur n'a jamais mesuré cette chaîne*. 🆕 **TRK-065 — la PREMIÈRE ligne jamais écrite par les sentinelles V6**, 72 s après le démarrage, et elle avait raison : **42 notifications perdues sur 129**, réparties **également** entre `system@tracky.local` (compte technique, 21) et un humain (21). *Sans sortir le compte technique, l'instrument criera chaque semaine avec un chiffre à moitié structurel.* 🔴 **TRK-061 RÉCIDIVE, 2ᵉ jour et 2ᵉ chemin** : après l'optimiseur le 03/09, c'est `agenda_agent` (cron 00:01) qui est tombé le 04/09 — **compte à sec depuis 25 h**, dernier `api` réussi toujours le 03/09 00:01:02. ⚠️ **Et « Coûts IA » n'a toujours rien vu** : l'échec n'écrit aucune ligne dans `ai_usage_logs`. 🟢 Flotte indemne — **3 817 appels en 24 h, tous `executor = local`, 0 échec, 0,00 $** *(13× le volume d'hier, coïncide avec V1-V7, fait mesuré et non interprété)*. 🎯 **LES SEPT LOTS N'ONT RIEN EXERCÉ** : **0 analyse de trajet calculée depuis la bascule** (prochain passage ~03:47), et `limitsCoverage` NULL sur **641 analyses / 3 jours** — *ce n'est PAS un défaut aujourd'hui, le champ est neuf ; ce le deviendra demain s'il vaut encore 0*. **4 des 6 sentinelles sont muettes par CALENDRIER**, 1 par angle mort (TRK-064), 1 a parlé (TRK-065) ; la nº 6 est **muette à bon droit et VÉRIFIÉ** — 28 alertes sur 7 j, **28 acquittées, 0 en attente** contre un seuil de 10. ✅ **LA RÉSERVE D'HIER EST LEVÉE** : les « 37 h sans alerte » étaient bien un parc calme — 4 types différents écrits le 03/09 (`LOW_BATTERY` 17:46, `POWER_CUT` 13:45, `GPS_LOST` 09:40, `OVERSPEED` 09:26). *Une réserve honnête se résout d'elle-même au passage suivant.* 🟢 **TRK-050, premier signal positif en 10 j** : 5 sessions vues dans l'heure précédant le redémarrage (0 le 02/09), **0 session fermée** entre 01:03 et 01:06, 1 902 `ACTIVE` nées avant la bascule intactes — passe de « rien prouvé » à « rien contredit », réserve : personne n'a repris à 3 h. ⚠️ **TRK-062 se vérifie en un jour** : les 2 commandes SMS `SENT` atteignent **59,6 h et 63,0 h** et occupent désormais **la moitié** de l'écran des commandes en attente (2 sur 4). ⚠️ **2 boîtiers hors ligne NON déclarés** (0 hier) — `GLA•KC•31` **muet depuis 23 h**, `FG-669-DQ` 6 h ; et `gps_sans_fix` rend 0 **parce que `GLA•KC•31` est sorti du filtre par le bas**, pas parce qu'il a retrouvé son fix. Angles morts : témoin armé **4/4**, **0 constat**, écart **13 250** inchangé (8ᵉ point), `errorDeleted = 0` 5 nuits, `trackers_failing` **0**, **0 acquittement matériel sur 477** (7ᵉ point), cadence sous minimum **0** (4ᵉ point), `cadence_derive` **0 ligne**, TRK-037 **32 `DEGRADATION` / 0 `ERROR`** (3ᵉ point). Total `fix_continuous` 491 → **475**, mais `FAILED` **rigoureusement stable à 110** : la baisse porte sur les succès, pas sur les échecs. 🔴 TRK-032 **13 j** et TRK-051 **9 j** — à REQUALIFIER, pas à laisser vieillir | **3** (TRK-063, TRK-064, TRK-065) | agent d'audit |
 | 2026-09-03 | **7 défauts actifs** (2 sur 24 h, **0 CRITICAL**) + 28 `DEGRADATION` — 35 actives, 32 archivées | 9 revues ; 🆕 **TRK-061, ET C'EST UNE PANNE DE COMPTE HABILLÉE EN BUG** : le compte Anthropic est tombé à sec à 00:13:23, **première occurrence en 90 j de rétention**. Anthropic facture l'épuisement en **HTTP 400 `invalid_request_error`** ; `TRANSIENT_400_PATTERNS` ne connaît que `grammar compilation timed out` et `overloaded`, donc la ligne tombe dans le cas par défaut commenté « **Vraie faute d'appel** ». *Ni faute d'appel, ni aléa passager : une panne de trésorerie, dont l'action correctrice n'est pas dans le code.* ⚠️ **Le message de facturation du fournisseur est SERVI À L'UTILISATEUR** — `page: /agenda`, `iPhone OS 18_7` : `AiServiceError` hérite de `ServiceUnavailableException`, son message EST le corps HTTP, alors que `describeProviderError` a été écrit « pour que le CENTRE D'ALERTE porte la cause ». *Une seule chaîne, deux publics.* ⚠️ **UN incident, DEUX lignes** (`AI_OPTIMIZER` `.379` + `http` `.396`). 🔑 **ET L'ÉCRAN « COÛTS IA » EST AVEUGLE** : un appel qui échoue n'écrit AUCUNE ligne dans `ai_usage_logs` — mesuré **`ok_24h = 291`, `ko_24h = 0`** pendant que l'appel échouait. *Un zéro d'échecs qui ne compte que les succès.* 🟢 **Portée étroite et mesurée** : les 290 appels de flotte tournent en `executor = local` (0,00 $) et sont INDEMNES ; seuls `agenda_agent` et l'optimiseur de placement passent par `api`. Dernier `api` réussi **00:01:02**, échec **00:13:23** — le compte s'est vidé en douze minutes, et l'incident **n'est PAS déclaré clos** (aucun `api` retenté depuis). ✅ **TRK-021 RÉPONDU après 17 jours d'attente** : les 2 commandes SMS-only du 01/09 sont parties en **`channel = SMS`**, contre **6 sur 6** en `TCP`+`FAILED` avant. 🆕 **Mais le compteur qui tombe a un voisin qui monte — TRK-062** : elles ne sont plus `FAILED`, elles sont **`SENT` depuis 39 h et 36 h**. Le refus de guetter un accusé est délibéré et JUSTE (réponse réelle mesurée à **presque 4 h** le 19/08) ; **ce qui manque n'est pas un guetteur, c'est une BORNE SUPÉRIEURE** — entre 15 s et jamais, le dépôt a déjà sa référence mesurée. Sur 5 commandes en attente, **2 sont des résidents permanents** : le compteur cesse de mesurer un retard pour mesurer une accumulation. ⚠️ **Jumeau exact de TRK-007**, corrigé sur le chemin TCP — *il n'est pas revenu, un chemin neuf l'a réintroduit sans croiser sa correction*. ⚠️ **TRK-050 : L'OCCASION EST VENUE ET N'A RIEN PROUVÉ** — l'API a bien redémarré (02/09 21:04:58, déploiement TRK-059), mais **0 session active dans l'heure précédente** (4 dans l'heure suivante, 6 ouvertes après) : 23 h 04 à Paris un mercredi, *il n'y avait personne à déconnecter*. **Un test qui ne peut pas échouer ne réussit pas.** ♻️ **TRK-022 REQUALIFIÉ — répondu par le comportement** : les 7 `OVERSPEED` de la semaine sont toutes sur `FG-669-DQ`, intervalles 6,16 / 6,51 / 7,23 / 15,87 / 23,95 / 40,35 h — **un plancher net à 6,16 h est la signature d'une fenêtre de 6 h** ; la preuve directe exigerait `wire_logs`, ce plancher suffit à ne pas laisser vieillir la fiche d'un jour. 🔴 **TRK-032 : 12 j sans occasion**, à PROVOQUER ou REQUALIFIER. ❌ TRK-053 et TRK-052 **toujours non exercés, J+2** (une seule alerte depuis le correctif, sur un véhicule EN service). 🔵 **`GLA•KC•31` est le sujet GPS du parc** : 2 des 7 défauts actifs ET la seule ligne de `gps_sans_fix` — `ONLINE`, trame à 01:12, **position à 00:04**. Action terrain. 🎯 **Cadence : TROIS points comparables enfin** — 0 / 0 / 0 sous le minimum matériel, cible la plus basse 20 s, `cadence_derive` **0 ligne** : TRK-057 et TRK-008 **tiennent**. ⚠️ **Le total famille `fix_continuous` baisse (514 → 505 → 491) et ce n'est PAS une amélioration** : 8 boîtiers sont sortis du parc le 31/08, la flotte émettrice est passée de 38 à 32 — *le dénominateur a changé avant le numérateur*. Angles morts : témoin armé **4/4**, **0 constat**, écart **13 250** inchangé, `errorDeleted = 0` 5 nuits, `trackers_failing` **0**, **0 boîtier hors ligne inexpliqué** (9 déclarés + 3 de stock), **0 acquittement matériel sur 491**, TRK-037 **28 `DEGRADATION` / 0 `ERROR`** (2ᵉ point). ⚠️ **37 h sans la moindre alerte, tous types confondus — NON contrôlé** : plausible sur un parc calme, pas prouvé ; à provoquer au prochain passage | **2** (TRK-061, TRK-062) | agent d'audit |
 | 2026-09-02 | **5 défauts actifs** (1 sur 24 h) + 25 `DEGRADATION` — 30 actives, 32 archivées | 4 revues ; **TRK-057 (44/44 canoniques) et TRK-056 (32/32 sur cible) confirmés à J+1 par mesure indépendante** ; TRK-021 2ᵉ point SMS ; TRK-053 et TRK-052 toujours **non exercés faute d’occasion** | 2 (TRK-059, TRK-060) | agent d’audit |
 | 2026-09-01 | **58 dont 26 actives (4 defauts + 22 DEGRADATION) et 32 archivees** — **0 defaut sur 24 h**, derniere ligne le 01/09 01:45 (une DEGRADATION) | 13 revues ; 🔵 **LE FAIT DU JOUR N EST PAS DANS `error_logs`** : le 31/08 entre 07:29 et 09:00 UTC, **six vehicules ont perdu leur alimentation externe** a 15-30 min d ecart ; six `POWER_CUT` CRITICAL confirmees par la pente, batteries tombees a **0 %**, et **les six boitiers sont muets depuis 18 h** — la flotte emettrice passe de **38 a 32**, et **12 des 15 immobilisations non confirmees des 3 derniers jours visent ces six vehicules**. Action TERRAIN, toujours en cours. ✅ **TROIS tests dates REPONDUS OUI** : TRK-037 (22 lignes `DEGRADATION` / **0 `ERROR`** depuis le deploiement du 26/08 — bascule nette sur 6 jours), TRK-022 volet 1 (**1 317 alertes/jour → 1-2/jour**, intervalles toujours ≥ 6 h 10 ; volets 2 et 3 ENTIERS), TRK-040 (**exercé six fois, 0 faux positif** — les 6 coupures confirmees ont fini a 0 % de batterie). ✅ TRK-047 mesure : **1,5/j → 0,29/j**, les 2 lignes restantes sont le fail-open voulu sur des vehicules sans position. 🔴 **TRK-021 : 17 JOURS sans le moindre essai** — les 8 dernieres tentatives SMS-only sont toutes anterieures au correctif et toutes parties en `channel = TCP` ; la regle des 7 jours est depassee de dix, et cette fiche bloque le volet 3 de TRK-022. ⚠️ TRK-045 : le modele « deux chiffres » **ne couvre pas 4 boitiers** (`,C,99s;` recu, 2 a 7 s mesures) — mais **pas de deluge** : 2 813 trames/emetteur contre 3 300 le 26/08. ⚠️ TRK-017 reapparait a **1 numero** le 30/08 puis 32 h a zero sur 46 — test date a 7 jours pose. 🔑 **Lecon du passage : un filtre qui exige « vivant » rend zero sur un mort** — `gps_sans_fix` rend **0 ligne** parce que les six vehicules perdus n emettent plus du tout ; la panne la plus grave de la semaine est invisible dans la section concue pour voir les pannes GPS. **Verifier ce qu un filtre EXCLUT avant de lire son zero.** ⚠️ Premier passage depuis le 26/08 — six jours sans audit | **1 (TRK-052)** | agent d'audit |
