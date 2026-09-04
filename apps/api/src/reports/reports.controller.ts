@@ -33,6 +33,7 @@ import { ReportScheduleService } from './report-schedule.service';
 import { ReportExcelService } from './report-excel.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
+import { enTeteTelechargement } from '../common/utils/telechargement';
 import { SpeedReportService } from './speed-report.service';
 
 /**
@@ -168,7 +169,7 @@ export class ReportsController {
       const buffer = await this.pdf.generate(report);
       const filename = `tracky-rapport-${this.fileDates(from, to)}.pdf`;
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', enTeteTelechargement(filename));
       res.send(buffer);
       this.recordExport(req, 'export_pdf', filename, fleetId, { from: fromRaw, to: toRaw });
     });
@@ -245,7 +246,7 @@ export class ReportsController {
 
     const filename = `tracky-rapport-${fileScope}${this.fileDates(from, to)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', enTeteTelechargement(filename));
     res.send(buffer);
     this.recordExport(req, 'export_pdf', filename, fleetId, {
       from: body.from, to: body.to, vehicleIds: vehicleIds.length || undefined,
@@ -281,7 +282,7 @@ export class ReportsController {
           throw new BadRequestException('type doit valoir positions / trips / alerts / commands');
       }
       res.setHeader('Content-Type', result.contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.setHeader('Content-Disposition', enTeteTelechargement(result.filename));
       res.send(result.body);
       this.recordExport(req, `export_csv_${type}`, result.filename, fleetId, { from: fromRaw, to: toRaw, vehicules: ids === 'ALL' ? undefined : ids.length });
     });
@@ -319,7 +320,7 @@ export class ReportsController {
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       );
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', enTeteTelechargement(filename));
       res.send(buffer);
       this.recordExport(req, 'export_excel', filename, veh?.fleetId ?? null, {
         vehicleId: body.vehicleId, from: body.from, to: body.to,
@@ -427,7 +428,7 @@ export class ReportsController {
         select: { vehicle: { select: { fleetId: true } } },
       });
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', enTeteTelechargement(filename));
       res.send(html);
       this.recordExport(req, 'export_speed', filename, trip?.vehicle?.fleetId ?? null, { tripId });
     });

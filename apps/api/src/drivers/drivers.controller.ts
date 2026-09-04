@@ -24,6 +24,7 @@ import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriversService } from './drivers.service';
 import { WorkTimeService } from './work-time.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { enTeteTelechargement } from '../common/utils/telechargement';
 
 @Controller('drivers')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -85,7 +86,7 @@ export class DriversController {
   async gdprExport(@Param('id') id: string, @Req() req: AuthenticatedRequest, @Res() res: Response) {
     const data = await this.drivers.gdprExport(id, this.rb(req));
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="rgpd-conducteur-${id}.json"`);
+    res.setHeader('Content-Disposition', enTeteTelechargement(`rgpd-conducteur-${id}.json`));
     res.send(JSON.stringify(data, null, 2));
   }
 
@@ -117,7 +118,7 @@ export class DriversController {
       meta: { driverId: driver.id, from: from ?? null, to: to ?? null },
     });
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="temps-travail-${id}.csv"`);
+    res.setHeader('Content-Disposition', enTeteTelechargement(`temps-travail-${id}.csv`));
     res.send('﻿' + csv);
   }
 

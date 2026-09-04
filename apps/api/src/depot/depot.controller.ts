@@ -39,6 +39,7 @@ import { DepotScope, DepotScopeBorneParLeService } from './depot-scope.decorator
 import { DepotScopeGuard } from './depot-scope.guard';
 import { DepotTripService } from './depot-trip.service';
 import { DepotService } from './depot.service';
+import { enTeteTelechargement } from '../common/utils/telechargement';
 
 /**
  * Espace depot (2026-08) — l'API que consomme `/depot`. Cf. design/A1-ROLE-DEPOT.md § 4.
@@ -358,7 +359,7 @@ export class DepotController {
 
   private servirFichier(res: Response, fichier: { filename: string; contentType: string; body: Buffer }): void {
     res.setHeader('Content-Type', fichier.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${fichier.filename}"`);
+    res.setHeader('Content-Disposition', enTeteTelechargement(fichier.filename));
     res.setHeader('Content-Length', fichier.body.length);
     res.end(fichier.body);
   }
