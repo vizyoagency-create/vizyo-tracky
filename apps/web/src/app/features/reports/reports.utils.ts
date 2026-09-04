@@ -402,3 +402,53 @@ export function estJourIso(v: string | null | undefined): boolean {
   const p = (n: number) => String(n).padStart(2, '0');
   return v === `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+/**
+ * ── COMPARER UNE PÉRIODE À LA PRÉCÉDENTE (F03) ──────────────────────────────────────
+ *
+ * Un indicateur seul ne dit rien : « 41 478 km » n'est ni bon ni mauvais tant qu'on ne
+ * sait pas ce que valait le mois d'avant. Le gestionnaire comparait de tête, ou dans un
+ * tableur.
+ *
+ * ⚠️ LE PIÈGE EST LE ZÉRO. Passer de 0 à 65 trajets n'est pas « +6 500 % », ni « +∞ % » :
+ * c'est une variation dont le POURCENTAGE N'A PAS DE SENS. On rend `null` pour le taux et
+ * on laisse l'écran écrire la phrase — « aucun trajet sur la période précédente » — plutôt
+ * que d'afficher un nombre qui impressionne et n'informe pas.
+ */
+export interface EcartPeriode {
+  /** Variation relative en %, arrondie ; `null` quand la période précédente vaut zéro. */
+  pourcent: number | null;
+  /** Variation absolue, dans l'unité de la grandeur comparée. */
+  absolu: number;
+  /** `true` si la période précédente était vide — le pourcentage n'existe pas. */
+  precedentVide: boolean;
+}
+
+export function ecartAvecPeriodePrecedente(actuel: number, precedent: number): EcartPeriode {
+  const absolu = actuel - precedent;
+  if (precedent === 0) {
+    return { pourcent: null, absolu, precedentVide: true };
+  }
+  return { pourcent: Math.round((absolu / precedent) * 100), absolu, precedentVide: false };
+}
+
+/**
+ * La période qui PRÉCÈDE immédiatement [from, to[, de même durée en jours civils.
+ *
+ * ⚠️ Arithmétique de CALENDRIER (`setDate`), jamais de millisecondes : aux deux week-ends
+ * de changement d'heure une journée dure 23 ou 25 h, et « les 30 jours précédents » en
+ * couvrait 29 ou 31 — le décalage d'une heure traverse minuit, donc il change de JOUR.
+ */
+export function periodePrecedente(from: string, to: string): { from: string; to: string } | null {
+  if (!estJourIso(from) || !estJourIso(to) || from >= to) return null;
+  const jour = (v: string) => new Date(`${v}T12:00:00`);
+  const debut = jour(from);
+  const fin = jour(to);
+  const jours = Math.round((fin.getTime() - debut.getTime()) / 86_400_000);
+  if (jours <= 0) return null;
+  const p = (n: number) => String(n).padStart(2, '0');
+  const iso = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const nouveauDebut = new Date(debut);
+  nouveauDebut.setDate(nouveauDebut.getDate() - jours);
+  return { from: iso(nouveauDebut), to: from };
+}

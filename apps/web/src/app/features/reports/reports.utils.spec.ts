@@ -25,6 +25,8 @@ import {
   aggregateKpisFromDaily,
   type DailySummaryShape,
   estJourIso,
+  ecartAvecPeriodePrecedente,
+  periodePrecedente,
 } from './reports.utils';
 
 describe('reports.utils — formatDuration', () => {
@@ -460,5 +462,67 @@ describe('estJourIso — ce qu’on accepte de lire dans une URL', () => {
     expect(estJourIso('2027-02-29')).toBe(false); // 2027 n'est pas bissextile
     expect(estJourIso('2026-13-01')).toBe(false);
     expect(estJourIso('2026-04-31')).toBe(false);
+  });
+});
+
+/**
+ * ── LA COMPARAISON AVEC LA PÉRIODE PRÉCÉDENTE (F03) ────────────────────────────────
+ *
+ * Deux pièges, et ils sont tous les deux silencieux : le pourcentage calculé depuis zéro,
+ * et la fenêtre précédente calculée en millisecondes.
+ */
+describe('ecartAvecPeriodePrecedente — le zéro n’est pas un point de départ', () => {
+  it('calcule une hausse et une baisse', () => {
+    expect(ecartAvecPeriodePrecedente(112, 100)).toEqual({ pourcent: 12, absolu: 12, precedentVide: false });
+    expect(ecartAvecPeriodePrecedente(80, 100)).toEqual({ pourcent: -20, absolu: -20, precedentVide: false });
+  });
+
+  it('rend un écart NUL quand rien ne bouge', () => {
+    expect(ecartAvecPeriodePrecedente(100, 100).pourcent).toBe(0);
+  });
+
+  /**
+   * ⚠️ 0 → 65 n'est pas « +6 500 % » ni « +∞ % » : c'est une variation dont le pourcentage
+   * n'a aucun sens. On rend `null` et l'écran écrit la phrase.
+   */
+  it('refuse de calculer un pourcentage depuis zéro', () => {
+    const e = ecartAvecPeriodePrecedente(65, 0);
+    expect(e.pourcent).toBeNull();
+    expect(e.precedentVide).toBe(true);
+    expect(e.absolu).toBe(65);
+  });
+
+  it('rend zéro sur zéro sans exploser', () => {
+    const e = ecartAvecPeriodePrecedente(0, 0);
+    expect(e.pourcent).toBeNull();
+    expect(e.absolu).toBe(0);
+  });
+});
+
+describe('periodePrecedente — la fenêtre d’avant, en jours civils', () => {
+  it('recule d’exactement la durée de la période', () => {
+    // Du 1er au 8 (borne haute exclusive) = 7 jours → la précédente va du 25 au 1er.
+    expect(periodePrecedente('2026-08-01', '2026-08-08')).toEqual({ from: '2026-07-25', to: '2026-08-01' });
+  });
+
+  it('la borne haute de la période précédente EST la borne basse de l’actuelle', () => {
+    // Sans quoi un jour serait compté deux fois, ou aucune fois.
+    const p = periodePrecedente('2026-09-01', '2026-10-01');
+    expect(p?.to).toBe('2026-09-01');
+    expect(p?.from).toBe('2026-08-02');
+  });
+
+  it('traverse un changement d’heure sans perdre ni gagner un jour', () => {
+    // La bascule vers l'heure d'été a lieu le 29 mars 2026 : la journée dure 23 h.
+    expect(periodePrecedente('2026-04-01', '2026-04-08')).toEqual({ from: '2026-03-25', to: '2026-04-01' });
+    // Retour à l'heure d'hiver le 25 octobre : la journée dure 25 h.
+    expect(periodePrecedente('2026-10-26', '2026-11-02')).toEqual({ from: '2026-10-19', to: '2026-10-26' });
+  });
+
+  it('refuse une période mal formée plutôt que d’en inventer une', () => {
+    expect(periodePrecedente('', '2026-09-01')).toBeNull();
+    expect(periodePrecedente('2026-09-01', '2026-09-01')).toBeNull();
+    expect(periodePrecedente('2026-09-08', '2026-09-01')).toBeNull();
+    expect(periodePrecedente('2026-02-31', '2026-03-08')).toBeNull();
   });
 });

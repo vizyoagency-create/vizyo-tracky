@@ -40,7 +40,10 @@ import { TripReplayComponent } from './trip-replay.component';
 import { PeriodReplayComponent } from './period-replay.component';
 import {
   aggregateKpisFromDaily,
+  ecartAvecPeriodePrecedente,
   estJourIso,
+  periodePrecedente,
+  type ReportsKpis,
   clampSpeed as clampSpeedFn,
   formatDuration as formatDurationFn,
   kpiToSortColumn,
@@ -119,6 +122,15 @@ const ANALYSES_BATCH_SIZE = 200;
         <div>
           <span class="vt-eyebrow">Analyse</span>
           <h1 class="text-2xl font-display font-bold text-fg-primary mt-2">Rapports d'activité</h1>
+          <!-- ══ CE QUE SEULE L'IMPRESSION VOIT ═══════════════════════════════════════
+               À l'écran, la période et le périmètre se lisent sur les pastilles et les
+               menus — que l'impression masque, parce qu'un menu déroulant sur papier ne
+               veut rien dire. Sans cette ligne, la feuille sortie de Ctrl+P ne portait NI
+               la société, NI les dates, NI le véhicule : un document qu'on ne peut ni
+               classer ni opposer à qui que ce soit. -->
+          <p class="rep-print-entete">
+            {{ enTeteImpression() }}
+          </p>
         </div>
         <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
           <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
@@ -404,6 +416,13 @@ const ANALYSES_BATCH_SIZE = 200;
         </div>
       }
 
+      <!-- ══ CE QUE LE LECTEUR D'ÉCRAN N'ENTENDAIT PAS ═══════════════════════════════
+           Trier une colonne ou charger une page de plus ne produisait AUCUNE annonce : le
+           tableau changeait en silence, et la seule façon de savoir ce qui s'était passé
+           était de relire toutes les lignes. Une zone aria-live polie le dit en une
+           phrase, sans interrompre la lecture en cours. -->
+      <p class="sr-only" role="status" aria-live="polite">{{ annonceTableau() }}</p>
+
       <!-- Sparkline KPI cards : compactes, lecture rapide -->
       <div class="rep-kpi-grid">
         <!-- ══ CHAQUE NOMBRE MÈNE À SES LIGNES (F18) ════════════════════════════════
@@ -421,6 +440,14 @@ const ANALYSES_BATCH_SIZE = 200;
           </div>
           <div class="rep-kpi-body">
             <p class="rep-kpi-value">{{ kpis().tripCount }}</p>
+            <!-- ⚠️ La tendance n'est ÉCRITE que si elle a un sens : la période précédente
+                 doit être connue et non vide. Un taux calculé depuis zéro impressionne
+                 sans rien apprendre, et se lit pourtant comme une mesure. -->
+            @if (tendance('tripCount'); as t) {
+              <span class="rep-kpi-tendance" [class.rep-kpi-tendance--haut]="t.hausse">{{ t.texte }}</span>
+            } @else if (periodePrecedenteVide()) {
+              <span class="rep-kpi-tendance rep-kpi-tendance--muet">aucun trajet sur la période précédente</span>
+            }
             @if (sparkTripBars().length > 0) {
               <svg class="rep-spark" viewBox="0 0 84 28" preserveAspectRatio="none" aria-hidden="true">
                 @for (b of sparkTripBars(); track $index) {
@@ -446,6 +473,14 @@ const ANALYSES_BATCH_SIZE = 200;
               {{ (kpis().totalDistance / 1000) | number:'1.1-1' }}
               <span class="rep-kpi-unit">km</span>
             </p>
+            <!-- ⚠️ La tendance n'est ÉCRITE que si elle a un sens : la période précédente
+                 doit être connue et non vide. Un taux calculé depuis zéro impressionne
+                 sans rien apprendre, et se lit pourtant comme une mesure. -->
+            @if (tendance('totalDistance'); as t) {
+              <span class="rep-kpi-tendance" [class.rep-kpi-tendance--haut]="t.hausse">{{ t.texte }}</span>
+            } @else if (periodePrecedenteVide()) {
+              <span class="rep-kpi-tendance rep-kpi-tendance--muet">aucun trajet sur la période précédente</span>
+            }
             @if (sparkDistancePath()) {
               <svg class="rep-spark" viewBox="0 0 84 28" preserveAspectRatio="none" aria-hidden="true">
                 <path [attr.d]="sparkDistanceFillPath()" fill="rgba(16,224,160,0.14)" stroke="none" />
@@ -469,6 +504,14 @@ const ANALYSES_BATCH_SIZE = 200;
             <!-- Tronque a 375 px sans attribut title : « 24h18 » se coupait sans que la
                  valeur entiere soit lisible nulle part. -->
             <p class="rep-kpi-value" [title]="formatDuration(kpis().totalDuration)">{{ formatDuration(kpis().totalDuration) }}</p>
+            <!-- ⚠️ La tendance n'est ÉCRITE que si elle a un sens : la période précédente
+                 doit être connue et non vide. Un taux calculé depuis zéro impressionne
+                 sans rien apprendre, et se lit pourtant comme une mesure. -->
+            @if (tendance('totalDuration'); as t) {
+              <span class="rep-kpi-tendance" [class.rep-kpi-tendance--haut]="t.hausse">{{ t.texte }}</span>
+            } @else if (periodePrecedenteVide()) {
+              <span class="rep-kpi-tendance rep-kpi-tendance--muet">aucun trajet sur la période précédente</span>
+            }
             <span class="rep-kpi-meta">~{{ avgDurationPerActiveDay() }} / jour actif</span>
           </div>
         </button>
@@ -1334,6 +1377,11 @@ const ANALYSES_BATCH_SIZE = 200;
     }
     .rep-kpi-card--clickable:active:not(:disabled) { transform: translateY(1px); }
     .rep-kpi-card--clickable:disabled { cursor: default; opacity: .75; }
+    .rep-kpi-tendance { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); }
+    /* ⚠️ La couleur ne porte pas l'information : le signe et le mot « vs période
+       précédente » sont écrits. Elle n'est là que pour accélérer la lecture. */
+    .rep-kpi-tendance--haut { color: var(--texte-succes); }
+    .rep-kpi-tendance--muet { font-weight: 500; font-style: italic; }
     .rep-kpi-click-hint {
       color: var(--fg-tertiary) !important;
       margin-left: auto;
@@ -1567,6 +1615,56 @@ const ANALYSES_BATCH_SIZE = 200;
       flex-shrink: 0;
     }
     @keyframes rep-export-spin { to { transform: rotate(360deg); } }
+
+    /* ══════════════════════════════════════════════════════════════════════════════
+       IMPRESSION (Ctrl+P) — F15
+
+       Ce que Ctrl+P sortait jusqu'ici : les menus déroulants, les boutons d'export, la
+       barre de tri, le fond sombre imprimé en aplat, et un tableau coupé au milieu d'une
+       ligne à chaque saut de page. Autrement dit une capture d'écran, pas un document.
+
+       ⚠️ On ne fabrique PAS une seconde mise en page : on retire ce qui n'a pas de sens
+       sur papier (tout ce qui se clique) et on tient les deux règles qui font qu'un tableau
+       reste lisible sur plusieurs pages — l'en-tête se répète, une ligne ne se coupe pas.
+       ══════════════════════════════════════════════════════════════════════════════ */
+    .rep-print-entete { display: none; }
+
+    @media print {
+      /* Le fond sombre du produit deviendrait un aplat d'encre : on imprime sur blanc. */
+      :host { color: #111 !important; background: #fff !important; }
+      :host ::ng-deep * {
+        background-image: none !important;
+        box-shadow: none !important;
+        color: #111 !important;
+        border-color: #bbb !important;
+      }
+      .rep-print-entete {
+        display: block; margin-top: 6px;
+        font-size: 11pt; color: #333 !important;
+      }
+
+      /* Tout ce qui se clique n'a aucun sens sur du papier. */
+      .rep-export-group, .rep-filters, .rep-selectors, .rep-periods, .rep-actions,
+      .rep-sortbar, .rep-vgo, .rep-vfiltre, .rep-kpi-click-hint, .rep-more,
+      .rep-ligne-action, .rep-card-action, .rep-dropdown-backdrop, .rep-custom-backdrop,
+      .rep-custom-panel, .rep-dropdown-menu {
+        display: none !important;
+      }
+
+      /* ⚠️ Les deux règles qui font un tableau lisible sur plusieurs pages. Sans la
+         première, seule la page 1 porte les titres de colonnes et les suivantes sont des
+         colonnes de chiffres sans nom ; sans la seconde, une ligne se coupe en deux. */
+      thead { display: table-header-group; }
+      tr, .rep-vrow, .rep-card, .rep-synthese-card, .rep-chart-card { break-inside: avoid; }
+
+      /* Les cartes s'étalent : sur papier il n'y a pas de survol pour révéler le reste. */
+      .rep-synthese-grid { grid-template-columns: 1fr 1fr !important; }
+      .rep-vt-hide { display: block !important; }
+
+      /* Un graphique par page au maximum, et jamais coupé en deux. */
+      .rep-charts-grid { display: block !important; }
+      .rep-chart-card { margin-bottom: 12pt; }
+    }
 
     /* ─── Coût et alertes de la période (F02 / F05) ─── */
     .rep-synthese-absente { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 14px;
@@ -2072,6 +2170,28 @@ const ANALYSES_BATCH_SIZE = 200;
       }
       .rep-export-group::-webkit-scrollbar { display: none; }
       .rep-export-btn { flex: 0 0 auto; }
+    }
+
+    /* ══ SOUS 430 px, ON REVIENT AU RETOUR À LA LIGNE ═══════════════════════════════
+       La rangée défilante convient tant qu'on devine qu'elle défile. À 375 px, le
+       QUATRIÈME bouton d'export (« Excel ») et la pastille « Personnalisé » étaient coupés
+       en plein mot au bord de l'écran, sans ombre ni flèche : rien ne disait qu'il restait
+       quelque chose à droite, et l'utilisateur concluait que la fonction n'existait pas sur
+       téléphone.
+
+       Deux rangées de deux valent mieux qu'une rangée dont on ne voit pas la fin. ⚠️ Le
+       seuil est à 430 px et non 375 : entre les deux (iPhone Pro Max, Pixel), la même
+       coupure se produit, un cran plus loin. */
+    @media (max-width: 430px) {
+      .rep-export-group {
+        flex-wrap: wrap; overflow-x: visible;
+      }
+      .rep-export-btn { flex: 1 1 calc(50% - 3px); justify-content: center; }
+      .rep-periods {
+        flex-wrap: wrap; overflow-x: visible;
+      }
+      .rep-periods > *, .rep-custom-wrapper { flex: 1 1 calc(50% - 3px); }
+      .rep-custom-wrapper > .rep-periode { width: 100%; justify-content: center; }
     }
 
     /* ─── Synthèse par véhicule (réf. maquette Rapports) ─── */
@@ -2816,6 +2936,46 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Exposé au gabarit pour ne pas écrire « 90 » à la main dans une phrase. */
   protected readonly maxJoursGraphique = MAX_JOURS_GRAPHIQUE;
 
+  /**
+   * La phrase que le lecteur d'écran entend quand le tableau change.
+   *
+   * ⚠️ Elle nomme le TRI et le nombre de trajets CHARGÉS sur le total — les deux choses
+   * qu'un utilisateur voyant lit d'un coup d'œil (la flèche d'en-tête, la ligne « 100 sur
+   * 391 ») et qu'un lecteur d'écran ne rencontrait nulle part.
+   */
+  protected readonly annonceTableau = computed(() => {
+    if (this.loading()) return 'Chargement des trajets…';
+    const colonne = this.sortOptions.find((o) => o.col === this.sortBy())?.label ?? 'Date';
+    const sens = this.sortDir() === 'desc' ? 'décroissant' : 'croissant';
+    const charges = this.listedTripCount();
+    const total = this.kpis().tripCount;
+    const combien = charges < total
+      ? `${charges} trajets chargés sur ${total}`
+      : `${charges} trajet${charges > 1 ? 's' : ''}`;
+    return `Tableau trié par ${colonne}, ordre ${sens}. ${combien}.`;
+  });
+
+  /**
+   * La ligne d'identité du document imprimé : société, périmètre, période, date d'édition.
+   *
+   * ⚠️ La date d'ÉDITION y figure. Un rapport papier circule, se photocopie et ressort d'un
+   * classeur six mois plus tard ; sans elle, personne ne peut dire s'il décrit encore la
+   * réalité, ni le distinguer d'une réédition de la même période après un recalcul.
+   */
+  protected readonly enTeteImpression = computed(() => {
+    this.periodKey();
+    const morceaux: string[] = [];
+    const societe = this.statsPeriode()?.fleet?.name;
+    if (societe) morceaux.push(societe);
+    const veh = this.selectedVehicleId();
+    if (veh) morceaux.push(`Véhicule ${this.vehiclePlate(veh) || veh}`);
+    else if (this.selectedGroupId()) morceaux.push(`Groupe ${this.selectedGroupLabel()}`);
+    else morceaux.push('Tous véhicules');
+    morceaux.push(this.pdfPeriodLabel());
+    morceaux.push(`édité le ${new Date().toLocaleDateString('fr-FR')}`);
+    return morceaux.join(' · ');
+  });
+
   protected readonly sortOptions: ReadonlyArray<{ col: TripSortColumn; label: string }> = [
     { col: 'startedAt', label: 'Date' },
     { col: 'maxSpeed', label: 'Vitesse max' },
@@ -3144,6 +3304,38 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * Récapitulatif serveur de la PÉRIODE — `null` tant qu'il n'est pas arrivé, ou s'il a échoué.
    */
   protected readonly statsPeriode = signal<FleetStatsReportDto | null>(null);
+
+  /**
+   * Indicateurs de la période PRÉCÉDENTE, ou `null` tant qu'ils ne sont pas là.
+   *
+   * ⚠️ `null` ≠ « zéro trajet ». Un zéro affiché comme référence produirait « +100 % » sur
+   * une flotte qui n'a simplement pas encore répondu — la pire des tendances, parce qu'elle
+   * est plausible.
+   */
+  protected readonly kpisPrecedents = signal<ReportsKpis | null>(null);
+
+  /**
+   * La tendance d'un indicateur, prête à écrire — ou `null` quand elle n'a pas de sens.
+   *
+   * ⚠️ Rend `null` AUSSI quand la période précédente était vide : passer de 0 à 65 trajets
+   * n'est pas « +6 500 % ». L'écran écrit alors la phrase, au lieu d'un nombre qui
+   * impressionne sans informer.
+   */
+  protected tendance(cle: 'tripCount' | 'totalDistance' | 'totalDuration'): { texte: string; hausse: boolean } | null {
+    const avant = this.kpisPrecedents();
+    if (!avant) return null;
+    const e = ecartAvecPeriodePrecedente(this.kpis()[cle], avant[cle]);
+    if (e.precedentVide) return null;
+    if (e.pourcent === 0) return { texte: 'stable vs période précédente', hausse: false };
+    const signe = e.pourcent! > 0 ? '+' : '−';
+    return { texte: `${signe}${Math.abs(e.pourcent!)} % vs période précédente`, hausse: e.pourcent! > 0 };
+  }
+
+  /** Vrai quand la période précédente est connue ET vide : on le DIT plutôt qu'un taux. */
+  protected readonly periodePrecedenteVide = computed(() => {
+    const avant = this.kpisPrecedents();
+    return !!avant && avant.tripCount === 0;
+  });
 
   /**
    * ── LE PREMIER TABLEAU QU'ON LIT ÉTAIT FAUX DÈS L'OUVERTURE ─────────────────────────
@@ -3928,6 +4120,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Résumé journalier de la période PRÉCÉDENTE, de même durée — source de la tendance.
+   *
+   * ⚠️ Il passe par le RÉSUMÉ JOURNALIER, pas par `/reports/stats` : le résumé couvre le
+   * périmètre réel de l'écran, y compris « toutes les sociétés », là où l'agrégat de période
+   * est mono-société (cf. `synthesePeriodePossible`). Comparer un mois toutes sociétés à un
+   * mois d'UNE société donnerait une tendance parfaitement fausse, et parfaitement crédible.
+   */
+  private async chargerPeriodePrecedente(seq: number, summaryParams: Record<string, string>): Promise<void> {
+    const avant = periodePrecedente(this.periodFrom, this.periodTo);
+    if (!avant) { this.kpisPrecedents.set(null); return; }
+    try {
+      const jours = await firstValueFrom(
+        this.tripsApi.dailySummary({ ...summaryParams, from: avant.from, to: avant.to }),
+      );
+      if (seq !== this.loadSeq) return;
+      this.kpisPrecedents.set(aggregateKpisFromDaily(jours));
+    } catch (err) {
+      // Pas de bandeau : une tendance manquante retire une phrase, elle ne fausse rien.
+      if (seq === this.loadSeq) this.kpisPrecedents.set(null);
+      swallow('reports:periodePrecedente', err);
+    }
+  }
+
+  /**
    * Les véhicules que l'écran regarde : un seul s'il est filtré, ceux du groupe sinon.
    *
    * Une liste VIDE veut dire « pas de restriction » — le serveur rend alors toute la société,
@@ -3985,6 +4201,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // Récapitulatif par véhicule sur TOUTE la période. Chargé à part et sans bloquer :
       // son échec laisse l'écran utilisable, avec le repli sur les trajets chargés — annoncé.
       void this.chargerStatsPeriode(seq);
+      // Période PRÉCÉDENTE, pour la tendance sous chaque indicateur. Chargée à part : son
+      // absence retire une phrase, elle ne fausse aucun chiffre.
+      void this.chargerPeriodePrecedente(seq, summaryParams);
       // Traçabilité fine (P4c) : les badges d'analyse ne s'affichent QUE pour un véhicule choisi
       // (sinon les trajets couvrent plusieurs véhicules, pas de chargement en lot possible).
       void this.loadAnalyses(seq);
