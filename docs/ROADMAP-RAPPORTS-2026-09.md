@@ -335,16 +335,19 @@ pour ne pas écrire une ligne par trajet.
 **Recette** : chaque sentinelle sait produire une ligne de test à partir d'un cas réel de production, et
 le centre d'alerte reste lisible — une ligne par incohérence et par jour, pas une par trajet.
 
-#### Lot V7 — Une seule définition de l'excès dans tout le produit · **M**
+#### Lot V7 — Une seule définition de l'excès dans tout le produit · **FAIT le 4 septembre**
 
 Quatre définitions cohabitent aujourd'hui (cf. constat 11). Tant qu'elles coexistent, deux écrans
 donneront toujours deux réponses à la même question.
 
 | Item | Fichier et ligne |
 |---|---|
-| Le rapport de vitesse, présenté comme pièce disciplinaire, retient un seuil **fixe à 90 km/h** sans aucune limite légale | `speed-report.service.ts:102` |
-| Faire dériver ce rapport des excès réellement établis par l'analyse, une fois les lots V1 à V3 livrés | idem |
-| Partager une seule fonction « ceci est-il un excès ? » entre l'analyse, le rapport de vitesse et l'affichage | à extraire vers `packages/shared` |
+| ~~FAIT~~ Le seuil fixe a disparu du document, jusqu'à la ligne pointillée du graphique. Le rapport cite désormais la limite légale de CHAQUE excès, et une colonne « limite voie » accompagne chaque mesure |
+| ~~FAIT~~ Le rapport dérive de `detail.speeding` et ajoute un chapitre « Excès établis, un par un ». Il porte les réserves : pointe non corroborée, pointes écartées du décompte, couverture des limites trop faible. **Sans analyse, il n'affirme RIEN** au lieu d'inventer un seuil |
+| ~~FAIT~~ `packages/shared/src/utils/exces-vitesse.ts` : `estEnExces`, `ecartCredible`, `excesEtabli`, `resumeExces`, `excesDuTrajet`, `excesContenant`. Le préprocesseur, le rapport, les badges et le replay l'appellent — l'écran lisait `speedingCount`, qui diverge du détail sur les analyses antérieures au lot V2 |
+
+| ~~FAIT~~ Le quatrième plafond de vitesse a été aligné : le trajet clampait à 250 là où l'ingestion et l'analyse clampent à 200. **81 trajets sur 14 364** (90 jours) portaient une vitesse maximale que l'analyse du même trajet refuse d'affirmer. Le seuil de téléportation de `isPlausibleJump` reste à 250, et c'est volontaire — il mesure une trajectoire, pas un champ de trame |
+| ~~FAIT~~ Le recalcul de trajet et l'analyse travaillent sur la MÊME population de points : le fix invalide est écarté des deux côtés. Mesuré : zéro position invalide sur 716 240 en trente jours, la porte d'ingestion les refuse déjà — l'alignement ne change rien aujourd'hui, et c'est pourquoi il fallait le poser maintenant |
 
 **Recette** : pour un même trajet, le nombre d'excès est identique dans le replay, dans le rapport de
 vitesse et dans le PDF.

@@ -14,6 +14,12 @@ export interface SegmenterPosition {
   speedKmh: number;
   timestamp: Date;
   ignition?: boolean;
+  /**
+   * Fix GPS valide ? `false` = le boîtier n'avait pas de position sûre. Absent = inconnu, donc
+   * conservé (lot V7 : on aligne la population de points sur celle de l'analyse, on ne
+   * durcit pas le filtre au passage).
+   */
+  valid?: boolean;
 }
 
 export interface TripDraft {
@@ -49,7 +55,11 @@ export class TripSegmenterService {
 
     // Tri chronologique puis filtre defensif (Null Island, sauts > 250 km/h,
     // doublons de timestamp). Garantit une polyligne propre en sortie.
-    const sorted = [...positions].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    // ⚠️ MÊME FILTRE QUE L'ANALYSE (lot V7) : un fix invalide ne fait ni la distance, ni la
+    // vitesse maximale, ni un excès. Sans cela, le trajet et son analyse comptaient sur deux
+    // populations de points différentes, et pouvaient afficher deux vitesses maximales.
+    const retenues = positions.filter((p) => p.valid !== false);
+    const sorted = [...retenues].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     const sanitized = sanitizePositions(sorted) as SegmenterPosition[];
     if (sanitized.length < 2) return [];
 

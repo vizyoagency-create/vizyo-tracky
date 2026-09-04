@@ -11,7 +11,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Trip } from '@prisma/client';
 import type { TripCompletedEvent, TripStartedEvent } from '@vizyo/tracky-shared';
-import { douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
+import { MAX_VITESSE_ANNONCEE_KMH, douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
@@ -37,12 +37,24 @@ const TRIP_POLYPOINTS_CAP = 500;
 const TRIP_POLYLINE_DP_TOLERANCE_M = 5;
 
 /**
- * Plafond defensif sur la vitesse instantanee. Au-dela, la valeur est clampee.
- * Cale sur le seuil `maxKmh` de `sanitizePositions` (250 km/h) — voir
- * `packages/shared/src/utils/gps-sanity.ts`. Une vitesse > 250 km/h sur un
- * vehicule de flotte est forcement un glitch GPS / firmware tracker.
+ * Plafond défensif sur la vitesse ANNONCÉE par le boîtier. Au-delà, la valeur est clampée.
+ *
+ * ── POURQUOI CE CHIFFRE A CHANGÉ (lot V7, 2026-09-04) ───────────────────────────────────
+ *
+ * Il valait 250, et il était le troisième plafond d'une même grandeur : 200 à l'ingestion
+ * (`MAX_VITESSE_ANNONCEE_KMH`), 200 à l'analyse depuis le lot V1, 250 ici. Une vitesse de 210
+ * était donc refusée à l'entrée, acceptée par le trajet, et ignorée par l'analyse — trois
+ * écrans, trois vérités, pour un seul et même trajet. Mesuré le 4 septembre en production :
+ * **81 trajets sur 14 364** (90 jours) portent une vitesse maximale au-dessus de 200, c'est-à-dire
+ * une valeur que l'analyse du même trajet refuse d'affirmer.
+ *
+ * ⚠️ NE PAS CONFONDRE avec le seuil de `sanitizePositions` / `isPlausibleJump`, qui reste à 250
+ * et doit y rester : celui-là ne mesure pas une vitesse annoncée mais une TÉLÉPORTATION —
+ * distance parcourue divisée par le temps écoulé. Deux grandeurs différentes, deux seuils
+ * différents ; les aligner « pour faire propre » confondrait un champ de trame avec une
+ * trajectoire.
  */
-const TRIP_MAX_PLAUSIBLE_SPEED_KMH = 250;
+const TRIP_MAX_PLAUSIBLE_SPEED_KMH = MAX_VITESSE_ANNONCEE_KMH;
 
 /** Clamp d'une vitesse en km/h dans [0, TRIP_MAX_PLAUSIBLE_SPEED_KMH]. */
 function sanitizeSpeed(kmh: number): number {
@@ -440,7 +452,7 @@ export class TripsService implements OnModuleInit {
     }
 
     // Plafond defensif sur la vitesse max (cap firmware glitch). Borne haute
-     // = TRIP_MAX_PLAUSIBLE_SPEED_KMH, alignee sur sanitizePositions.
+     // = TRIP_MAX_PLAUSIBLE_SPEED_KMH, alignée sur le plafond d'INGESTION (lot V7).
      const safeMaxSpeed = Math.min(
        TRIP_MAX_PLAUSIBLE_SPEED_KMH,
        Math.max(0, state.maxSpeed),
@@ -946,12 +958,24 @@ export class TripsService implements OnModuleInit {
       orderBy: { timestamp: 'asc' },
     });
 
+    /**
+     * ⚠️ MÊME POPULATION DE POINTS QUE L'ANALYSE (lot V7). Le recalcul prenait toutes les
+     * positions ; l'analyse écarte celles dont le fix GPS est invalide (`valid: false`). Deux
+     * populations, donc deux vitesses maximales possibles pour un même trajet, sans que rien
+     * ne le dise.
+     *
+     * ⚠️ Mesuré le 4 septembre : ZÉRO position invalide sur 716 240 en trente jours — la porte
+     * d'ingestion les refuse déjà. Cet alignement ne change donc rien aujourd'hui, et c'est
+     * exactement pourquoi il vaut la peine d'être posé maintenant : le jour où une trame
+     * invalide passera, les deux chaînes la traiteront pareil.
+     */
     const drafts = this.segmenter.segmentPositions(
       positions.map((p) => ({
         lat: p.lat,
         lng: p.lng,
         speedKmh: p.speedKmh,
         timestamp: p.timestamp,
+        valid: p.valid,
         ignition: undefined,
       })),
     );

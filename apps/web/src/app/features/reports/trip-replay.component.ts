@@ -16,6 +16,7 @@ import { DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil } from 'lucide-angular';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { SpeedingSegmentDto, TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
+import { excesDuTrajet } from '@vizyo/tracky-shared';
 import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
 import { MapService } from '../../core/services/map.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -121,14 +122,14 @@ interface RecitTrajet {
                     @if (a.ecoScore !== null) { <b>{{ note(a.ecoScore) }}</b> Conduite {{ a.ecoScore }} }
                     @else { Note non calculable }
                   </span>
-                  @if (a.speedingCount > 0) {
+                  @if (nbExces() > 0) {
                     <span class="tr-as-chip tr-as-chip--speed">
-                      {{ a.speedingCount }} excès@if (a.limitsKnown && a.maxOverKmh > 0) { <span> · +{{ a.maxOverKmh | number:'1.0-0' }} km/h</span> }@else if (!a.limitsKnown) { <span> · limites inconnues</span> }
+                      {{ nbExces() }} excès@if (a.limitsKnown && a.maxOverKmh > 0) { <span> · +{{ a.maxOverKmh | number:'1.0-0' }} km/h</span> }@else if (!a.limitsKnown) { <span> · limites inconnues</span> }
                     </span>
                   }
                   <!-- Aucune limite résolue sur le trajet : « 0 excès » ne voudrait rien
                        dire, et ne rien afficher le laisserait croire. -->
-                  @if (!a.limitsKnown && a.speedingCount === 0) {
+                  @if (!a.limitsKnown && nbExces() === 0) {
                     <span class="tr-as-chip tr-as-chip--inconnu">Limites inconnues — excès non vérifiables</span>
                   }
                 </div>
@@ -197,10 +198,10 @@ interface RecitTrajet {
             <div class="relative flex-1 flex flex-col min-h-[180px] sm:min-h-[280px]">
               <div #mapContainer class="flex-1"></div>
               @if (analysis(); as a) {
-                @if (a.stopCount > 0 || a.speedingCount > 0) {
+                @if (a.stopCount > 0 || nbExces() > 0) {
                   <div class="tr-legend">
                     @if (a.stopCount > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.arret"></i> Arrêt</span> }
-                    @if (a.speedingCount > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.exces"></i> Excès confirmé</span> }
+                    @if (nbExces() > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.exces"></i> Excès confirmé</span> }
                   </div>
                 }
               }
@@ -517,6 +518,13 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly trip = input<TripDto | null>(null);
   /** Analyse déterministe du trajet (Palier 4) — arrêts + excès de vitesse affichés sur la carte. */
   readonly analysis = input<TripAnalysisDto | null>(null);
+
+  /**
+   * Lot V7 — LE compte des excès, celui que lisent aussi le rapport de vitesse et le PDF.
+   * On affichait `speedingCount`, le compteur écrit au moment de l'analyse : sur les analyses
+   * antérieures au lot V2, il retient des segments de durée nulle que la règle actuelle écarte.
+   */
+  protected readonly nbExces = computed(() => excesDuTrajet(this.analysis()).nombre);
   readonly vehicleType = input<string>('OTHER');
   /** Si true, affiche le bouton crayon "Modifier la note". */
   readonly canEditNote = input<boolean>(false);

@@ -6,7 +6,7 @@
  *   1. `durationSeconds >= 0` ALWAYS dans la base.
  *   2. `endedAt >= startedAt` ALWAYS.
  *   3. `distanceMeters >= 0`, `distanceKm >= 0`.
- *   4. `maxSpeed`, `avgSpeed` clampes dans [0, 250] km/h.
+ *   4. `maxSpeed`, `avgSpeed` clampes dans [0, 200] km/h (plafond d'ingestion, lot V7).
  *   5. Les retransmissions tardives (timestamp out-of-order) sont ignorees,
  *      n'ecrasent pas `state.lastTimestamp` et ne corrompent pas la finale.
  *   6. Le clamp defensif de `finalizeTrip` rattrape un `endTime < startedAt`
@@ -166,7 +166,7 @@ describe('TripsService — invariants rapports', () => {
       expect((t.distanceMeters as number)).toBeGreaterThanOrEqual(0);
       expect((t.distanceKm as number)).toBeGreaterThanOrEqual(0);
       expect((t.maxSpeed as number)).toBeGreaterThanOrEqual(0);
-      expect((t.maxSpeed as number)).toBeLessThanOrEqual(250);
+      expect((t.maxSpeed as number)).toBeLessThanOrEqual(200);
       expect((t.avgSpeed as number)).toBeGreaterThanOrEqual(0);
       expect((t.avgSpeed as number)).toBeLessThanOrEqual(250);
       expect((t.endedAt as Date).getTime())
@@ -221,12 +221,12 @@ describe('TripsService — invariants rapports', () => {
         .toBeGreaterThanOrEqual((t.startedAt as Date).getTime());
     });
 
-    it('clamps maxSpeed to 250 km/h even if GPS reports glitch values', async () => {
+    it('clamps maxSpeed to 200 km/h even if GPS reports glitch values', async () => {
       const { svc, prisma } = buildService();
 
       await svc.processPosition(pos({ minute: 0, speedKmh: 30 }));
       await svc.processPosition(pos({ minute: 0, second: 30, speedKmh: 30 }));
-      // Glitch : 9999 km/h (firmware bug). On veut clamp a 250.
+      // Glitch : 9999 km/h (firmware bug). On veut clamp a 200 (plafond d'ingestion).
       await svc.processPosition(pos({ minute: 1, speedKmh: 9999 }));
       await svc.processPosition(pos({ minute: 2, speedKmh: 30 }));
       await svc.processPosition(pos({ minute: 3, speedKmh: 0 }));
@@ -234,7 +234,7 @@ describe('TripsService — invariants rapports', () => {
 
       const trips = Array.from(prisma.trips.values());
       expect(trips.length).toBe(1);
-      expect((trips[0]!.maxSpeed as number)).toBeLessThanOrEqual(250);
+      expect((trips[0]!.maxSpeed as number)).toBeLessThanOrEqual(200);
     });
 
     it('clamps negative speedKmh to 0 (defense in depth)', async () => {
@@ -369,9 +369,11 @@ describe('TripsService — invariants rapports', () => {
       expect(day0.totalDurationSeconds).toBe(900);
       // (-1500) ignore : total = 0 + 5000 + 2000
       expect(day0.totalDistanceMeters).toBe(7000);
-      // 9999 clampe a 250 ; max(0, 80, 250) = 250
-      expect(day0.maxSpeed).toBeLessThanOrEqual(250);
-      expect(day0.maxSpeed).toBe(250);
+      // Lot V7 — le plafond du trajet est aligné sur celui de l'INGESTION (200), après quoi
+      // trois plafonds cohabitaient pour une même grandeur : 200 à l'entrée, 200 à l'analyse,
+      // 250 ici. 9999 est donc ramené à 200 ; max(0, 80, 200) = 200.
+      expect(day0.maxSpeed).toBeLessThanOrEqual(200);
+      expect(day0.maxSpeed).toBe(200);
     });
   });
 

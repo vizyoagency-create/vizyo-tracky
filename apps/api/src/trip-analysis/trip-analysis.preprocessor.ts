@@ -1,4 +1,11 @@
-import { MAX_VITESSE_ANNONCEE_KMH, vitesseEstCorroboree, vitesseObservee } from '@vizyo/tracky-shared';
+import {
+  MAX_VITESSE_ANNONCEE_KMH,
+  ecartCredible,
+  estEnExces,
+  excesEtabli,
+  vitesseEstCorroboree,
+  vitesseObservee,
+} from '@vizyo/tracky-shared';
 import { haversineMeters } from '../agenda/trip-stop-detector.service';
 
 /**
@@ -115,36 +122,14 @@ const STOP_SPEED_KMH = 4;            // sous ce seuil = à l'arrêt (bruit GPS)
  * conservée telle quelle par le trajet — trois écrans, trois vérités.
  */
 const IMPOSSIBLE_SPEED_KMH = MAX_VITESSE_ANNONCEE_KMH;
-const SPEED_TOLERANCE_KMH = 5;       // marge (bruit GPS + tolérance) avant de compter un excès
-
 /**
- * ── UN DÉPASSEMENT ÉNORME EST UN RATTACHEMENT RATÉ, PAS UNE FAUTE ──────────────────────
- *
- * Constat du 2026-09-03 : « Limite 30 · dépassement +72 » sur la rocade toulousaine. Personne
- * ne roule à 102 km/h dans une rue à 30 : c'est le point qui a été rattaché au pont qui franchit
- * la rocade, pas le conducteur qui a fauté. Le malus de niveau (`malusVoie`) supprime la plupart
- * de ces cas à la source ; ce garde-fou attrape le reste, car aucune donnée cartographique n'est
- * parfaite.
- *
- * ⚠️ On ne remonte PAS la limite et on n'invente pas d'excès plus doux : on refuse seulement
- * d'affirmer. Le point sort des excès confirmés et rejoint les pointes à vérifier — le doute
- * doit se voir, pas disparaître.
+ * ⚠️ LA RÈGLE N'EST PLUS ICI. Tolérance, durée minimale et crédibilité de l'écart vivent
+ * désormais dans `@vizyo/tracky-shared` (`utils/exces-vitesse.ts`), avec la démonstration de
+ * pourquoi elles valent ce qu'elles valent. Ce fichier les APPLIQUE, il ne les décide plus :
+ * le rapport de vitesse — pièce disciplinaire — comptait ses excès au-dessus de 90 km/h en
+ * ignorant la limite de la voie, et deux écrans donnaient deux chiffres pour un même trajet.
  */
-const LIMITE_LENTE_KMH = 50;         // au-delà, un gros écart reste plausible (90 sur une voie à 80)
-const ECART_INVRAISEMBLABLE_KMH = 40; // sur une voie lente, +40 km/h ne s'explique plus par la conduite
 
-/** Le couple (limite, vitesse) est-il crédible, ou trahit-il un mauvais rattachement ? */
-function ecartCredible(limiteKmh: number, vitesseKmh: number): boolean {
-  if (limiteKmh > LIMITE_LENTE_KMH) return true;
-  return vitesseKmh - limiteKmh <= ECART_INVRAISEMBLABLE_KMH;
-}
-
-/**
- * Durée minimale d'un excès. Un segment bâti sur UN SEUL point ne prouve rien : une position
- * aberrante suffisait à produire un « excès confirmé ». On exige que le dépassement soit vu sur
- * au moins deux points, donc sur une durée non nulle.
- */
-const EXCES_DUREE_MIN_SEC = 1;
 const GPS_GAP_SEC = 300;             // > 5 min entre 2 points = perte de signal
 
 /**
@@ -217,7 +202,7 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
       const segment: SpeedingSegment = { startAt: iso(cur.startAt), endAt: iso(cur.endAt), durationSec, maxSpeedKmh: Math.round(cur.maxSpeed), limitKmh: cur.limit, overKmh: Math.round(cur.over), lat: cur.lat, lng: cur.lng };
       // Un excès vu sur UN SEUL point ne prouve rien : une position aberrante suffisait à
       // produire un « excès confirmé ». Il rejoint les pointes à vérifier, il ne disparaît pas.
-      if (durationSec >= EXCES_DUREE_MIN_SEC) speeding.push(segment);
+      if (excesEtabli(segment)) speeding.push(segment);
       else aVerifier.push({ ...segment, motif: 'point-unique' });
       cur = null;
     }
@@ -268,7 +253,7 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
     }
     if (lim != null) {
       limitsKnown = true;
-      if (p.speedKmh > lim + SPEED_TOLERANCE_KMH) {
+      if (estEnExces(lim, p.speedKmh)) {
         const over = p.speedKmh - lim;
         if (!ecartCredible(lim, p.speedKmh)) {
           // Rattachement douteux : on ferme ce qui précède et on range la pointe à part.

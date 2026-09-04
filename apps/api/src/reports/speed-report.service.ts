@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import type { SpeedingSegmentDto, TripAnalysisDetailDto } from '@vizyo/tracky-shared';
+import { excesContenant, resumeExces } from '@vizyo/tracky-shared';
 import { formatFleetDate, formatFleetTime, parisDayKey } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -19,6 +21,28 @@ interface PositionRow {
   ignition: boolean | null;
 }
 
+/**
+ * RAPPORT DE VITESSE — pièce présentée par un employeur, et lue par un conseil de prud'hommes.
+ *
+ * ── LE DÉFAUT RÉPARÉ (lot V7, 2026-09-04) ───────────────────────────────────────────────
+ *
+ * Ce document comptait ses « excès » au-dessus d'un seuil FIXE de 90 km/h, sans jamais
+ * consulter la limite légale de la voie, et sans écarter une vitesse que la trajectoire
+ * contredit. Trois conséquences, toutes graves pour un document opposable :
+ *   · un trajet entier sur une voie limitée à 110 y affichait des dizaines d'« excès » ;
+ *   · 80 km/h dans une zone 50 n'en produisait aucun ;
+ *   · une pointe à 180 km/h annoncée par un boîtier pendant que le véhicule parcourait
+ *     727 mètres en vingt secondes y figurait en rouge, sans la moindre réserve.
+ *
+ * Le rapport DÉRIVE désormais des excès établis par l'analyse de trajet — limite légale de la
+ * voie, tolérance de 5 km/h, vitesse corroborée par le déplacement, dépassement vu sur au
+ * moins deux positions. Même règle, même fonction (`@vizyo/tracky-shared`), donc même nombre
+ * d'excès que dans le replay et dans le PDF.
+ *
+ * ⚠️ ET QUAND L'ANALYSE MANQUE, LE DOCUMENT LE DIT. Il n'invente aucun seuil de remplacement :
+ * un rapport disciplinaire qui affirme une faute sans pouvoir citer la limite applicable
+ * n'est pas une preuve, c'est un risque pour celui qui le produit.
+ */
 @Injectable()
 export class SpeedReportService {
   constructor(private readonly prisma: PrismaService) {}
@@ -99,9 +123,23 @@ export class SpeedReportService {
     const endTime = trip.endedAt ? formatFleetTime(trip.endedAt) : '—';
     const now = formatFleetDate(new Date());
 
-    const speedPositions = positions.filter((p) => p.speedKmh > 90);
-    const avgSpeedExcess = speedPositions.length > 0
-      ? speedPositions.reduce((s, p) => s + p.speedKmh, 0) / speedPositions.length
+    /**
+     * L'analyse déterministe du trajet : c'est ELLE qui sait quelle limite légale s'appliquait,
+     * et quelles vitesses le déplacement soutient. Sans elle, ce document ne peut rien affirmer.
+     */
+    const analyse = await this.prisma.tripAnalysis.findUnique({
+      where: { tripId: trip.id },
+      select: { detail: true, maxSpeedKmh: true, speedingCount: true, limitsCoverage: true, computedAt: true },
+    });
+    const detail = (analyse?.detail ?? null) as TripAnalysisDetailDto | null;
+    const exces = resumeExces(detail?.speeding);
+    // Positions tombant DANS un excès établi — la seule population que ce document peut
+    // qualifier de fautive, parce que chacune porte la limite légale qu'elle dépassait.
+    const positionsEnExces = positions
+      .map((p) => ({ position: p, segment: excesContenant(detail?.speeding, p.timestamp) }))
+      .filter((x): x is { position: PositionRow; segment: SpeedingSegmentDto } => x.segment !== null);
+    const avgSpeedExcess = positionsEnExces.length > 0
+      ? positionsEnExces.reduce((s, x) => s + x.position.speedKmh, 0) / positionsEnExces.length
       : 0;
 
     const html = this.renderHtml({
@@ -120,7 +158,15 @@ export class SpeedReportService {
         positionCount: trip.positionCount,
       },
       positions,
-      speedExcessCount: speedPositions.length,
+      exces,
+      segments: detail?.speeding ?? [],
+      // Pointe annoncée par le boîtier que la trajectoire ne soutient pas : elle DOIT figurer
+      // dans une pièce disciplinaire, sans quoi le document tait la réserve qui l'invalide.
+      vitesse: detail?.vitesse ?? null,
+      aVerifier: detail?.aVerifier ?? [],
+      analyseAbsente: !analyse,
+      limitsCoverage: analyse?.limitsCoverage ?? null,
+      speedExcessCount: positionsEnExces.length,
       avgSpeedExcess,
     });
 
@@ -139,19 +185,32 @@ export class SpeedReportService {
     now: string;
     trip: { distanceKm: number; maxSpeed: number; avgSpeed: number; positionCount: number };
     positions: PositionRow[];
+    /** Le compte des excès ÉTABLIS, tel que tous les écrans le lisent. */
+    exces: ReturnType<typeof resumeExces>;
+    segments: SpeedingSegmentDto[];
+    vitesse: { pointeBruteKmh: number; pointsEcartes: number } | null;
+    aVerifier: NonNullable<TripAnalysisDetailDto['aVerifier']>;
+    analyseAbsente: boolean;
+    limitsCoverage: number | null;
+    /** Positions tombant dans un excès établi. */
     speedExcessCount: number;
     avgSpeedExcess: number;
   }): string {
     // Le pic est la mesure la plus rapide PARMI LES POSITIONS (argmax) : comparer à
     // `trip.maxSpeed` (calculé ailleurs, arrondi autrement) ne surlignait jamais rien.
     const peakSpeed = d.positions.reduce((m, p) => Math.max(m, p.speedKmh), 0);
+    // Une mesure n'est « en excès » que si elle tombe dans un excès ÉTABLI : elle porte alors
+    // la limite légale qu'elle dépassait, et le document peut la citer. C'est la différence
+    // entre « cette mesure dépasse 90 » — phrase vraie sur aucune route en particulier — et
+    // « cette mesure appartient à l'excès de 14 h 03, sur une voie limitée à 90 ».
     const positionRows = d.positions.map((p) => {
       const t = formatFleetTime(p.timestamp);
-      const over = p.speedKmh > 90;
+      const segment = excesContenant(d.segments, p.timestamp);
       const peak = d.positions.length > 0 && p.speedKmh === peakSpeed && peakSpeed > 0;
-      const cls = peak ? 'speed-peak' : over ? 'speed-over' : '';
+      const cls = peak ? 'speed-peak' : segment ? 'speed-over' : '';
       const ign = p.ignition === true ? 'ON' : p.ignition === false ? 'OFF' : '—';
-      return `<tr class="${cls}"><td>${t}</td><td>${p.speedKmh.toFixed(1)}</td><td>${p.lat.toFixed(5)}</td><td>${p.lng.toFixed(5)}</td><td>${p.valid ? '✓' : '✗'}</td><td>${ign}</td></tr>`;
+      const limite = segment ? `${segment.limitKmh}` : '—';
+      return `<tr class="${cls}"><td>${t}</td><td>${p.speedKmh.toFixed(1)}</td><td>${limite}</td><td>${p.lat.toFixed(5)}</td><td>${p.lng.toFixed(5)}</td><td>${p.valid ? '✓' : '✗'}</td><td>${ign}</td></tr>`;
     }).join('\n');
 
     const maxBarSpeed = Math.max(...d.positions.map((p) => p.speedKmh), 1);
@@ -159,9 +218,13 @@ export class SpeedReportService {
       .filter((_, i) => i % Math.max(1, Math.floor(d.positions.length / 80)) === 0)
       .map((p) => {
         const pct = (p.speedKmh / maxBarSpeed) * 100;
-        const color = p.speedKmh > 90 ? (p.speedKmh === peakSpeed ? '#991b1b' : '#dc2626') : '#059669';
+        const segment = excesContenant(d.segments, p.timestamp);
+        const color = segment ? (p.speedKmh === peakSpeed ? '#991b1b' : '#dc2626') : '#059669';
         const t = formatFleetTime(p.timestamp);
-        return `<div class="bar" style="height:${pct}%" title="${t} — ${p.speedKmh.toFixed(1)} km/h"><div class="bar-fill" style="background:${color}"></div></div>`;
+        const titre = segment
+          ? `${t} — ${p.speedKmh.toFixed(1)} km/h (limite ${segment.limitKmh})`
+          : `${t} — ${p.speedKmh.toFixed(1)} km/h`;
+        return `<div class="bar" style="height:${pct}%" title="${titre}"><div class="bar-fill" style="background:${color}"></div></div>`;
       }).join('\n');
 
     // Sans position, les sections 2 et 3 (profil, chronologie) n'ont rien à montrer : un
@@ -171,11 +234,66 @@ export class SpeedReportService {
 <div class="warning-box" style="border-color:#dc2626;background:#fef2f2">
 <strong style="color:#991b1b">Positions GPS indisponibles pour ce trajet.</strong> Le profil de vitesse et la chronologie ne peuvent pas être établis : seules les valeurs de synthèse du trajet (vitesse maximale et moyenne, distance) sont disponibles. Les positions détaillées ont pu être purgées (rétention) ou ne pas être rattachées à ce boîtier.
 </div>`;
-    const consecutiveNote = d.speedExcessCount > 1
-      ? `${d.speedExcessCount} mesures au-dessus de 90 km/h rendent improbable un artefact GPS isolé.`
-      : d.speedExcessCount === 1
-        ? 'Une seule mesure au-dessus de 90 km/h : un artefact GPS isolé ne peut pas être exclu.'
-        : 'Aucune mesure au-dessus de 90 km/h parmi les positions disponibles.';
+    /**
+     * ⚠️ SANS ANALYSE, AUCUNE LIMITE LÉGALE N'EST CONNUE — et le document doit le dire au lieu
+     * de retomber sur un seuil inventé. C'est la version honnête du défaut réparé : mieux vaut
+     * un rapport qui reconnaît ne pas pouvoir établir la faute qu'un rapport qui l'affirme sur
+     * une base fausse, et s'effondre à l'audience.
+     */
+    const analyseBanner = d.analyseAbsente ? `
+<div class="warning-box" style="border-color:#dc2626;background:#fef2f2">
+<strong style="color:#991b1b">Aucun excès ne peut être établi pour ce trajet.</strong> L'analyse
+déterministe du trajet — celle qui rapproche chaque position de la limite légale de la voie — n'a
+pas encore été calculée. Les vitesses ci-dessous sont les mesures brutes du boîtier : elles ne
+disent rien, à elles seules, d'un dépassement de la vitesse autorisée.
+</div>` : '';
+
+    // Réserve sur la vitesse annoncée : elle appartient au document, pas aux coulisses.
+    const ecartes = d.vitesse?.pointsEcartes ?? 0;
+    const reserveVitesse = ecartes > 0 ? `
+<div class="warning-box">
+<strong>Réserve sur la vitesse annoncée.</strong> ${ecartes} mesure${ecartes > 1 ? 's' : ''} de ce
+trajet annonce${ecartes > 1 ? 'nt' : ''} une vitesse que la distance réellement parcourue ne
+soutient pas — jusqu'à ${(d.vitesse?.pointeBruteKmh ?? 0).toFixed(0)} km/h annoncés. Ces valeurs
+sont ÉCARTÉES du présent rapport et ne fondent aucun excès : un artefact de mesure ne peut pas
+être opposé à un salarié.
+</div>` : '';
+
+    // Pointes que l'analyse refuse d'affirmer : elles ne comptent pas, et se lisent quand même.
+    const douteuses = d.aVerifier.length;
+    const reserveDouteuses = douteuses > 0 ? `
+<div class="warning-box">
+<strong>${douteuses} pointe${douteuses > 1 ? 's' : ''} écartée${douteuses > 1 ? 's' : ''} du
+décompte.</strong> Le rattachement à la voie ou la durée d'observation ne permet pas de les
+affirmer (typiquement un pont rattaché à la voie qu'il franchit, ou un dépassement vu sur une
+seule position). Elles sont mentionnées pour transparence et n'entrent dans aucun total.
+</div>` : '';
+
+    // La couverture cartographique borne ce que le document peut prétendre établir.
+    const couverture = d.limitsCoverage;
+    const reserveCouverture = couverture !== null && couverture < 0.5 ? `
+<div class="warning-box">
+<strong>Couverture des limites légales incomplète (${Math.round(couverture * 100)} %).</strong>
+Pour une part importante des mesures rapides de ce trajet, la vitesse autorisée sur la voie n'a
+pas pu être établie. Le nombre d'excès ci-dessus est donc un MINIMUM, et l'absence d'excès sur
+une portion ne vaut pas conformité.
+</div>` : '';
+
+    const pire = d.exces.pire;
+    const excesRows = d.segments.filter((seg) => seg.durationSec >= 1).map((seg) => {
+      const debut = formatFleetTime(seg.startAt);
+      const fin = formatFleetTime(seg.endAt);
+      const duree = seg.durationSec >= 60 ? `${Math.round(seg.durationSec / 60)} min` : `${seg.durationSec} s`;
+      return `<tr><td>${debut} → ${fin}</td><td>${duree}</td><td>${seg.limitKmh} km/h</td><td style="color:var(--red);font-weight:700">${seg.maxSpeedKmh} km/h</td><td style="color:var(--red);font-weight:700">+${seg.overKmh}</td></tr>`;
+    }).join('\n');
+
+    const consecutiveNote = d.analyseAbsente
+      ? "Aucune limite légale n'a pu être rapprochée des mesures : ce rapport n'établit aucun excès."
+      : d.exces.nombre > 1
+        ? `${d.exces.nombre} excès distincts, établis chacun sur au moins deux mesures consécutives, rendent improbable un artefact GPS isolé.`
+        : d.exces.nombre === 1
+          ? `Un seul excès établi, d'une durée de ${d.exces.dureeSec} s : il repose sur plusieurs mesures consécutives, mais un épisode unique appelle la prudence.`
+          : 'Aucun excès établi : aucune mesure ne dépasse la limite légale de sa voie au-delà de la tolérance de 5 km/h.';
 
     return `<!DOCTYPE html>
 <html lang="fr">
@@ -214,7 +332,6 @@ tr.speed-peak{background:#991b1b;color:#fff;font-weight:700}
 .chart{display:flex;align-items:flex-end;gap:1px;height:180px;position:relative}
 .bar{flex:1;display:flex;align-items:flex-end;min-width:2px}
 .bar-fill{width:100%;border-radius:1px 1px 0 0;min-height:1px}
-.limit-line{position:absolute;bottom:0;left:0;right:0;border-top:2px dashed var(--red);pointer-events:none}
 .legend{display:flex;gap:1.5rem;margin-top:.75rem;font-size:.75rem;color:var(--text-light)}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;margin-right:4px}
 .checklist{list-style:none;margin:1rem 0}
@@ -257,32 +374,52 @@ tr.speed-peak{background:#991b1b;color:#fff;font-weight:700}
 <tr><td style="font-weight:600">Véhicule</td><td>${d.vehicleName}</td></tr>
 <tr><td style="font-weight:600">Heure de départ (heure de Paris)</td><td>${d.startTime}</td></tr>
 <tr><td style="font-weight:600">Heure d'arrivée (heure de Paris)</td><td>${d.endTime}</td></tr>
-<tr><td style="font-weight:600">Mesures > 90 km/h</td><td style="color:var(--red);font-weight:700">${d.speedExcessCount} positions</td></tr>
-<tr><td style="font-weight:600">Vitesse moyenne durant excès</td><td style="color:var(--red);font-weight:700">${d.avgSpeedExcess.toFixed(1)} km/h</td></tr>
+<tr><td style="font-weight:600">Excès établis (limite légale de la voie + 5 km/h de tolérance)</td><td style="color:var(--red);font-weight:700">${d.exces.nombre}</td></tr>
+${pire ? `<tr><td style="font-weight:600">Dépassement le plus grave</td><td style="color:var(--red);font-weight:700">${pire.maxSpeedKmh} km/h sur une voie limitée à ${pire.limitKmh} (+${pire.overKmh} km/h)</td></tr>` : ''}
+<tr><td style="font-weight:600">Temps cumulé en excès</td><td style="color:var(--red);font-weight:700">${d.exces.dureeSec} s</td></tr>
+<tr><td style="font-weight:600">Mesures situées dans un excès</td><td>${d.speedExcessCount} positions${d.speedExcessCount > 0 ? ` · moyenne ${d.avgSpeedExcess.toFixed(1)} km/h` : ''}</td></tr>
 </table>
+${analyseBanner}
+${reserveVitesse}
+${reserveDouteuses}
+${reserveCouverture}
 ${noPositionsBanner}
 </section>
+
+${d.exces.nombre > 0 ? `<section class="no-break">
+<h2>1 bis. Excès établis, un par un</h2>
+<p style="margin-bottom:.75rem">Chaque ligne est un dépassement de la limite légale de la voie
+empruntée, au-delà de la tolérance de 5 km/h, observé sur au moins deux mesures consécutives et
+sur une vitesse que le déplacement du véhicule confirme.</p>
+<table>
+<thead><tr><th>Période (heure de Paris)</th><th>Durée</th><th>Limite de la voie</th><th>Vitesse relevée</th><th>Dépassement</th></tr></thead>
+<tbody>
+${excesRows}
+</tbody>
+</table>
+</section>` : ''}
 
 ${hasPositions ? `<section class="page-break">
 <h2>2. Profil de vitesse</h2>
 <div class="chart-container">
 <div class="chart" style="position:relative">
 ${chartBars}
-<div class="limit-line" style="bottom:${(90 / maxBarSpeed) * 100}%"></div>
 </div>
 <div class="legend">
-<span><i style="background:var(--green)"></i> &lt; 90 km/h</span>
-<span><i style="background:var(--red)"></i> &gt; 90 km/h</span>
+<span><i style="background:var(--green)"></i> Dans la limite de la voie</span>
+<span><i style="background:var(--red)"></i> Dans un excès établi</span>
 <span><i style="background:#991b1b"></i> Pic maximal</span>
-<span style="color:var(--red)">- - - Limite 90 km/h</span>
 </div>
+<p style="margin-top:.5rem;font-size:.85rem;color:var(--text-light)">Aucune ligne de seuil n'est
+tracée : la vitesse autorisée change avec la voie empruntée. Survolez une barre pour lire la
+limite applicable au moment de la mesure.</p>
 </div>
 </section>
 
 <section class="page-break">
 <h2>3. Chronologie détaillée</h2>
 <table>
-<thead><tr><th>Heure (Paris)</th><th>Vitesse (km/h)</th><th>Latitude</th><th>Longitude</th><th>GPS</th><th>Contact</th></tr></thead>
+<thead><tr><th>Heure (Paris)</th><th>Vitesse (km/h)</th><th>Limite voie</th><th>Latitude</th><th>Longitude</th><th>GPS</th><th>Contact</th></tr></thead>
 <tbody>
 ${positionRows}
 </tbody>

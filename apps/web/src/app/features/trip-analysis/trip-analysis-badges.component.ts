@@ -8,6 +8,7 @@ import {
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { AiProviderId, TripAnalysisDto } from '@vizyo/tracky-shared';
+import { excesDuTrajet } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -91,10 +92,10 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                 <lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon> Note non calculable
               </span>
             }
-            @if (a.speedingCount > 0) {
+            @if (nbExces() > 0) {
               <span class="tab-alert" [attr.aria-label]="speedingTitle(a)">
                 <lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon>
-                {{ a.speedingCount }} excès
+                {{ nbExces() }} excès
                 @if (a.limitsKnown && a.maxOverKmh > 0) { <span class="tab-alert-sub">· +{{ a.maxOverKmh | number:'1.0-0' }} km/h</span> }
                 @else if (!a.limitsKnown) { <span class="tab-alert-sub">· limites inconnues</span> }
               </span>
@@ -221,7 +222,7 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                       }
                     </dd>
                   </div>
-                  <div><dt>Excès de vitesse</dt><dd>{{ a.speedingCount }} <small>@if (!a.limitsKnown) { limites légales non résolues sur ce trajet } @else if (a.speedingCount === 0) { aucun dépassement de la limite légale relevé } @else { au-dessus de la limite légale — plus fort dépassement +{{ a.maxOverKmh | number:'1.0-0' }} km/h }</small></dd></div>
+                  <div><dt>Excès de vitesse</dt><dd>{{ nbExces() }} <small>@if (!a.limitsKnown) { limites légales non résolues sur ce trajet } @else if (nbExces() === 0) { aucun dépassement de la limite légale relevé } @else { au-dessus de la limite légale — plus fort dépassement +{{ a.maxOverKmh | number:'1.0-0' }} km/h }</small></dd></div>
                   <div><dt>Arrêts</dt><dd>{{ a.stopCount }} <small>arrêts d'au moins 4 minutes</small></dd></div>
                   <div><dt>À-coups</dt><dd>{{ a.harshAccel + a.harshBrake }} <small>{{ a.harshAccel }} accélérations, {{ a.harshBrake }} freinages brusques</small></dd></div>
                   <div><dt>Ralenti</dt><dd>{{ minutes(a.idleSec) }} min <small>moteur tournant à l'arrêt</small></dd></div>
@@ -446,6 +447,15 @@ export class TripAnalysisBadgesComponent {
   protected readonly grade = computed(() => gradeOf(this.current()?.ecoScore ?? 0));
 
   /**
+   * Lot V7 — LE compte des excès, celui que lisent aussi le rapport de vitesse et le PDF.
+   *
+   * On lisait `speedingCount`, le compteur écrit au moment de l'analyse. Sur les analyses
+   * antérieures au lot V2, il inclut des segments de durée nulle que la règle actuelle écarte :
+   * l'écran annonçait donc un nombre d'excès que la pièce disciplinaire, elle, ne retenait pas.
+   */
+  protected readonly nbExces = computed(() => excesDuTrajet(this.current()).nombre);
+
+  /**
    * Les points retirés, du plus lourd au plus léger. C'est la raison d'être du lot : une note
    * qu'on peut défendre devant un client se lit, elle ne s'assène pas.
    */
@@ -568,8 +578,8 @@ export class TripAnalysisBadgesComponent {
   }
   protected speedingTitle(a: TripAnalysisDto): string {
     return a.limitsKnown
-      ? `${a.speedingCount} excès de vitesse — dépassement max +${Math.round(a.maxOverKmh)} km/h`
-      : `${a.speedingCount} pointe(s) de vitesse (limites légales non résolues — excès probable)`;
+      ? `${excesDuTrajet(a).nombre} excès de vitesse — dépassement max +${Math.round(a.maxOverKmh)} km/h`
+      : `${excesDuTrajet(a).nombre} pointe(s) de vitesse (limites légales non résolues — excès probable)`;
   }
 
   protected openDetail(): void { this.error.set(null); this.detailOpen.set(true); }
