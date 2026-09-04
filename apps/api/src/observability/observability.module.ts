@@ -15,6 +15,7 @@ import { ErrorLogger } from './error-logger.service';
 import { ErrorRateWatchdogService } from './error-rate-watchdog.service';
 import { LogCleanupService } from './log-cleanup.service';
 import { RecensementSuppressionsService } from './recensement-suppressions.service';
+import { SentinellesCoherenceService } from './sentinelles-coherence.service';
 import { VpsAuditWikiController } from './vps-audit-wiki.controller';
 import { VpsAuditWikiService } from './vps-audit-wiki.service';
 
@@ -48,6 +49,8 @@ import { VpsAuditWikiService } from './vps-audit-wiki.service';
     // DELETE fait directement en base ; celui-ci ne l'empeche pas non plus, il empeche qu'il
     // passe INAPERCU. 41 709 alertes ont disparu le 2026-08-19 sans qu'aucun journal ne le dise.
     RecensementSuppressionsService,
+    // Lot V6 — les sentinelles de cohérence : elles LISENT le produit et écrivent au centre.
+    SentinellesCoherenceService,
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,

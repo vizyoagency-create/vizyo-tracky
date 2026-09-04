@@ -151,4 +151,16 @@ export const CLES_REFROIDISSEMENT = {
   ALLOWLIST_SUPPRESSIONS_BLOQUEES: 'sms-allowlist-removals-blocked',
   /** Résumé des profils de surveillance dormants (journal d'exploitation). */
   SURVEILLANCE_DORMANTS: 'surveillance-dormants',
+  /**
+   * Lot V6 — SENTINELLES DE COHÉRENCE. Quatre de ces clés sont des PRÉFIXES : la société
+   * concernée est suffixée (`…:<fleetId>`), pour qu'une flotte bruyante n'impose pas le
+   * silence aux autres. Les deux dernières sont globales — elles décrivent des comptes et
+   * un état d'ensemble, pas une société.
+   */
+  SENTINELLE_EXCES_SANS_ALERTE: 'sentinelle-exces-sans-alerte',
+  SENTINELLE_VITESSE_NON_CORROBOREE: 'sentinelle-vitesse-non-corroboree',
+  SENTINELLE_LIMITE_INVRAISEMBLABLE: 'sentinelle-limite-invraisemblable',
+  SENTINELLE_COUVERTURE_LIMITES: 'sentinelle-couverture-limites',
+  SENTINELLE_SANS_APPAREIL: 'sentinelle-destinataire-sans-appareil',
+  SENTINELLE_ALERTES_NON_ACQUITTEES: 'sentinelle-alertes-non-acquittees',
 } as const;

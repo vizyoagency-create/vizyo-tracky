@@ -1,15 +1,35 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { SentinellesCoherenceService } from './sentinelles-coherence.service';
 
 @Controller('admin/logs')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.SUPER_ADMIN)
 export class AdminLogsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sentinelles: SentinellesCoherenceService,
+  ) {}
+
+  /**
+   * Lot V6 — DÉCLENCHER les sentinelles maintenant, sans attendre le passage de 06:30.
+   *
+   * Sans cette route, vérifier qu'une sentinelle voit juste demanderait d'attendre le lendemain
+   * — et un instrument qu'on ne peut pas éprouver le jour où on l'écrit est un instrument
+   * qu'on ne croit pas.
+   *
+   * ⚠️ Le passage est RÉEL : il consomme les refroidissements et écrit au centre d'alerte, comme
+   * la tâche planifiée. La réponse rend les constats trouvés ET ceux que le refroidissement a
+   * retenus, pour que « rien d'écrit » ne se confonde jamais avec « rien à dire ».
+   */
+  @Post('sentinelles/run')
+  async lancerSentinelles() {
+    return this.sentinelles.passage();
+  }
 
   @Get('wire')
   async listWireLogs(

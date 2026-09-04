@@ -336,6 +336,14 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getMinutes() === 35 },
   },
   {
+    id: 'sentinelles-coherence',
+    source: 'observability/sentinelles-coherence.service.ts', label: 'Sentinelles de cohérence', category: 'Système & observabilité',
+    kind: 'cron', scheduleHuman: 'chaque jour à 06:30', criticality: 'moyenne', antiOverlap: false,
+    note: "Née du constat du 3 septembre : Tracky mesurait des excès de vitesse depuis des mois sans que la chaîne d'alerte existe, et il a fallu qu'un utilisateur ouvre un replay pour s'en apercevoir. Ces sentinelles ne corrigent rien : elles posent la question à voix haute, au seul endroit où quelqu'un la lira. Déclenchables à la demande par POST /api/admin/logs/sentinelles/run.",
+    purpose: "Six contrôles de cohérence écrits au centre d'alerte, agrégés par société : un excès sans son alerte, une vitesse que la trajectoire contredit, un excès bâti sur une limite invraisemblable, une analyse sans couverture cartographique, un destinataire sans appareil abonné, un tas d'alertes jamais acquittées. Une ligne par incohérence et par jour, jamais une par trajet.",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 30 },
+  },
+  {
     id: 'dependency-heartbeat',
     source: 'observability/dependency-heartbeat.service.ts', label: 'Sonde active des dépendances externes', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'toutes les 5 min (à :30 s)', criticality: 'haute', antiOverlap: true,

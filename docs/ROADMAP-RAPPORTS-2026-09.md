@@ -307,7 +307,7 @@ phrase lisible par le conducteur.
 **Recette** : un trajet avec un excès réel produit une alerte, une notification arrive sur un appareil
 abonné, le clic ouvre le trajet, et l'acquittement fonctionne application fermée.
 
-#### Lot V6 — Des sentinelles qui remontent les incohérences · **M**
+#### Lot V6 — Des sentinelles qui remontent les incohérences · **FAIT le 4 septembre**
 
 Demandé explicitement : que le centre d'alerte signale les incohérences au lieu de les laisser dormir.
 Le point d'entrée existe et est trivial à appeler — `ErrorLogger.record(message, source, { fleetId,
@@ -317,12 +317,20 @@ pour ne pas écrire une ligne par trajet.
 
 | Sentinelle | Ce qu'elle signale |
 |---|---|
-| Excès sans alerte | Un trajet contient un excès, la société a les alertes de vitesse activées, aucune alerte n'existe sur la fenêtre du trajet. **Dépend des lots V5 et de son réglage** — sans eux elle signalerait 100 % des trajets |
-| Vitesse non corroborée | La vitesse annoncée dépasse nettement celle que permet la distance parcourue |
-| Limite invraisemblable | Un excès s'appuie sur une limite ≤ 30 km/h avec une vitesse relevée au-delà de 80 |
-| Analyse à couverture faible | Une part importante des points rapides n'a obtenu aucune limite |
-| Destinataire sans appareil | Des notifications sont étouffées en `no_device` pour un compte censé être prévenu |
-| Alerte jamais acquittée | Des alertes anciennes non acquittées s'accumulent, signe que personne ne les lit |
+| ~~FAIT~~ Excès sans alerte | Applique la MÊME fonction que le producteur (`decideAlerteExces`), et les mêmes bornes : réglage en vigueur au moment de l'analyse, trajet de moins de 48 h. Une ligne par société |
+| ~~FAIT~~ Vitesse non corroborée | Déclenche sur la RÉCURRENCE (au moins 3 analyses touchées ET 10 % du jour), pas sur un point isolé. Niveau `DEGRADATION` : le garde-fou a fait son travail. Nomme les véhicules |
+| ~~FAIT~~ Limite invraisemblable | Compte les pointes que le lot V2 a refusées pour rattachement douteux ; au-delà de 10 par jour, c'est une zone à corriger dans la carte. Ignore le motif « point unique », qui n'est pas un défaut de carte |
+| ~~FAIT~~ Analyse à couverture faible | Au moins 30 % des analyses du jour sous 50 % de couverture, sur 5 analyses minimum. Même seuil que le plafonnement de la note (lot V4) |
+| ~~FAIT~~ Destinataire sans appareil | Rappel HEBDOMADAIRE nommant les comptes actifs et le nombre de notifications perdues. Relevé du 3 septembre : deux comptes à 21 notifications étouffées chacun |
+| ~~FAIT~~ Alerte jamais acquittée | Au-delà de 10 alertes de plus de 7 jours par société, rappel hebdomadaire. Calibré sur la production, qui en compte UNE |
+
+> **Comment les éprouver sans attendre** : `POST /api/admin/logs/sentinelles/run` (super-admin)
+> lance le passage tout de suite. La réponse rend les constats trouvés ET ceux que le
+> refroidissement a retenus — « rien d'écrit » ne se confond jamais avec « rien à dire ».
+>
+> **Reste ouvert dans V6** : les quatre sentinelles de l'analyse ne verront rien tant que V1 à V5
+> ne sont pas déployés (la colonne de couverture et les champs `vitesse`/`aVerifier` n'existent
+> pas encore en production).
 
 **Recette** : chaque sentinelle sait produire une ligne de test à partir d'un cas réel de production, et
 le centre d'alerte reste lisible — une ligne par incohérence et par jour, pas une par trajet.
