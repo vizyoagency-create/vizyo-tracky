@@ -145,6 +145,47 @@ export class ReportScheduleService {
     return this.get(user, fleetId);
   }
 
+  /**
+   * ══ LE RÉGLAGE DE TOUTES LES SOCIÉTÉS, EN UNE LECTURE ═════════════════════════════
+   *
+   * ── POURQUOI ────────────────────────────────────────────────────────────────────────
+   *
+   * Le réglage hebdomadaire ne se lisait QUE société par société : pour savoir si le rapport
+   * d'un client était coupé, il fallait le sélectionner dans le sélecteur du haut, attendre
+   * le chargement, lire, recommencer. Personne ne fait ça pour vingt sociétés — donc un
+   * rapport coupé, ou dont l'envoi échoue chaque semaine, se découvrait par hasard, souvent
+   * parce que le client finissait par le signaler.
+   *
+   * ⚠️ RÉSERVÉ AU SUPER-ADMINISTRATEUR. Un administrateur de société n'a rien à apprendre du
+   * réglage des autres — et le nom d'une société cliente est déjà une information.
+   *
+   * ⚠️ DEUX requêtes, pas deux par société : les destinataires par défaut (les administrateurs
+   * actifs) sont chargés d'un coup et regroupés en mémoire. Sur vingt sociétés, la version
+   * naïve aurait fait vingt-et-une requêtes pour un écran de consultation.
+   */
+  async listAll(user: AuthUser): Promise<FleetReportScheduleDto[]> {
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Vue d’ensemble réservée à l’administration de la plateforme');
+    }
+    const [fleets, admins] = await Promise.all([
+      this.prisma.fleet.findMany({ include: { reportSchedule: true }, orderBy: { name: 'asc' } }),
+      this.prisma.user.findMany({
+        where: { role: UserRole.FLEET_ADMIN, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { fleetId: true, email: true },
+      }),
+    ]);
+    const parFlotte = new Map<string, string[]>();
+    for (const a of admins) {
+      if (!a.fleetId) continue;
+      const liste = parFlotte.get(a.fleetId) ?? [];
+      const email = a.email.trim().toLowerCase();
+      if (email && !liste.includes(email)) liste.push(email);
+      parFlotte.set(a.fleetId, liste);
+    }
+    return fleets.map((f) => this.toDto(f, this.effective(f), parFlotte.get(f.id) ?? []));
+  }
+
   /** Journal des envois — une société, ou toutes pour un super-admin sans fleetId. */
   async listDispatches(user: AuthUser, fleetIdQ?: string, limit = 20): Promise<FleetReportDispatchDto[]> {
     const where =

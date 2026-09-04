@@ -54,6 +54,20 @@ export interface UserPreferences {
   dashboardWidgets: DashboardWidgetConfig[];
   /** #3 — vue de la liste véhicules : cartes (défaut), tableau, ou groupée (Sprint 1). */
   vehiclesView: 'cards' | 'table' | 'grouped';
+  /**
+   * ── LA DERNIÈRE VUE DE LA PAGE RAPPORTS (F09) ──────────────────────────────────────
+   *
+   * Les paramètres d'URL de la dernière consultation (`?vehicle=…&from=…`), ou chaîne vide.
+   * Un suivi récurrent — « groupe Livraisons / mois en cours » — se reposait entièrement sur
+   * la mémoire de l'utilisateur : la page rouvrait sur « 7 jours / tous véhicules », et il
+   * fallait reposer trois filtres à chaque visite.
+   *
+   * ⚠️ On ne RESTAURE PAS d'office. Ouvrir un rapport sur une période d'il y a trois
+   * semaines parce que c'est la dernière regardée serait une surprise, et le lecteur ne
+   * verrait pas forcément que les dates ne sont pas celles du jour. L'écran PROPOSE, en une
+   * ligne qu'on peut ignorer.
+   */
+  reportsLastView: string;
 }
 
 const DEFAULTS: UserPreferences = {
@@ -93,6 +107,7 @@ const DEFAULTS: UserPreferences = {
     { key: 'schedule', enabled: true },
   ],
   vehiclesView: 'cards',
+  reportsLastView: '',
 };
 
 const KEY_PREFIX = 'vizyo-tracky-prefs-';
@@ -204,6 +219,7 @@ export class PreferencesService {
       // sont ajoutés (par défaut activés) — utile pour évoluer le set sans casser.
       dashboardWidgets: this.mergeDashboardWidgets(saved.dashboardWidgets, defaults.dashboardWidgets),
       vehiclesView: saved.vehiclesView ?? defaults.vehiclesView,
+      reportsLastView: saved.reportsLastView ?? defaults.reportsLastView,
     };
   }
 

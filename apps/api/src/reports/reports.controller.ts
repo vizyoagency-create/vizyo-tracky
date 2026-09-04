@@ -390,6 +390,19 @@ export class ReportsController {
    * l'écran ne lui montre pas les commandes. Le périmètre société, lui, est verrouillé dans
    * `resolveFleetId` : un non-super-admin ne peut régler que sa propre société.
    */
+  /**
+   * Vue d'ensemble : le réglage hebdomadaire de TOUTES les sociétés, en une lecture.
+   *
+   * ⚠️ Déclarée AVANT `PUT /schedule` et les routes paramétrées — l'ordre des routes compte
+   * dans Nest, et `schedule/overview` doit être reconnu comme un chemin littéral.
+   */
+  @Get('schedule/overview')
+  @Roles(UserRole.SUPER_ADMIN)
+  @RequirePermissions('reports_view')
+  scheduleOverview(@Req() req: AuthenticatedRequest) {
+    return this.schedule.listAll(req.user);
+  }
+
   @Put('schedule')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('reports_export')

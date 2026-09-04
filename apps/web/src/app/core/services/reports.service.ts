@@ -106,6 +106,17 @@ export class ReportsApiService {
   private readonly tracker = inject(ActivityTrackerService);
 
   /**
+   * Réglage hebdomadaire de TOUTES les sociétés — super-administrateur seulement.
+   *
+   * Sans lui, savoir si le rapport d'un client est coupé demandait de le sélectionner dans
+   * le sélecteur du haut, une société après l'autre. Personne ne le fait pour vingt sociétés,
+   * donc un rapport coupé se découvrait par hasard — souvent parce que le client le signalait.
+   */
+  scheduleOverview() {
+    return this.http.get<FleetReportScheduleDto[]>('/api/reports/schedule/overview');
+  }
+
+  /**
    * Indicateurs et récapitulatif par véhicule, calculés sur TOUTE la période par le serveur.
    *
    * `vehicleIds` porte le périmètre de l'écran (filtre véhicule ou groupe) ; `topN` la

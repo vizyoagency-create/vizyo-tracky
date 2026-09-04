@@ -20,6 +20,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
 import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
 import { ReportScheduleCardComponent } from './report-schedule-card.component';
 import { PermissionsService } from '../../core/services/permissions.service';
+import { PreferencesService } from '../../core/services/preferences.service';
 import { ReportsApiService, type FleetStatsReportDto } from '../../core/services/reports.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { TripsApiService } from '../../core/services/trips.service';
@@ -42,6 +43,7 @@ import {
   aggregateKpisFromDaily,
   ecartAvecPeriodePrecedente,
   estJourIso,
+  libelleEcartPeriode,
   periodePrecedente,
   type ReportsKpis,
   clampSpeed as clampSpeedFn,
@@ -422,6 +424,21 @@ const ANALYSES_BATCH_SIZE = 200;
            était de relire toutes les lignes. Une zone aria-live polie le dit en une
            phrase, sans interrompre la lecture en cours. -->
       <p class="sr-only" role="status" aria-live="polite">{{ annonceTableau() }}</p>
+
+      <!-- ══ REPRENDRE LE DERNIER RAPPORT CONSULTÉ (F09) ══════════════════════════════
+           Une ligne qu'on peut ignorer. On ne restaure PAS d'office : ouvrir un rapport sur
+           une période d'il y a trois semaines parce que c'est la dernière regardée serait une
+           surprise, et le lecteur ne verrait pas forcément que les dates ne sont pas celles
+           du jour. -->
+      @if (vueProposee()) {
+        <div class="rep-reprise" role="status">
+          <span>Reprendre votre dernier rapport — {{ libelleVueProposee() }} ?</span>
+          <span class="rep-reprise-actions">
+            <button type="button" class="rep-reprise-oui" (click)="reprendreVue()" trackClick="rapport-reprendre-vue">Reprendre</button>
+            <button type="button" class="rep-reprise-non" (click)="vueProposee.set(null)" aria-label="Ignorer la proposition">Ignorer</button>
+          </span>
+        </div>
+      }
 
       <!-- Sparkline KPI cards : compactes, lecture rapide -->
       <div class="rep-kpi-grid">
@@ -1377,6 +1394,18 @@ const ANALYSES_BATCH_SIZE = 200;
     }
     .rep-kpi-card--clickable:active:not(:disabled) { transform: translateY(1px); }
     .rep-kpi-card--clickable:disabled { cursor: default; opacity: .75; }
+    .rep-reprise {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      margin-bottom: 12px; padding: 9px 14px; border-radius: 12px;
+      border: 1px dashed var(--border-subtle); background: var(--bg-secondary);
+      font-size: 12.5px; color: var(--fg-secondary);
+    }
+    .rep-reprise-actions { display: inline-flex; gap: 8px; }
+    .rep-reprise-oui, .rep-reprise-non {
+      min-height: 32px; padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .rep-reprise-oui { background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); border: none; }
+    .rep-reprise-non { background: transparent; color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
     .rep-kpi-tendance { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); }
     /* ⚠️ La couleur ne porte pas l'information : le signe et le mot « vs période
        précédente » sont écrits. Elle n'est là que pour accélérer la lecture. */
@@ -2266,6 +2295,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly tripsApi = inject(TripsApiService);
   /** Lue UNE fois au démarrage (cf. `ngOnInit`) ; l'écriture passe par `majParametresUrl`. */
   private readonly route = inject(ActivatedRoute);
+  private readonly preferences = inject(PreferencesService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly driversApi = inject(DriversApiService);
   private readonly perms = inject(PermissionsService);
@@ -3316,6 +3346,55 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /**
    * Récapitulatif serveur de la PÉRIODE — `null` tant qu'il n'est pas arrivé, ou s'il a échoué.
    */
+  /** Query de la dernière vue consultée, proposée en une ligne — ou `null`. */
+  protected readonly vueProposee = signal<string | null>(null);
+
+  /** Ce que la dernière vue contenait, en français, pour que la proposition soit lisible. */
+  protected readonly libelleVueProposee = computed(() => {
+    const q = this.vueProposee();
+    if (!q) return '';
+    const p = new URLSearchParams(q);
+    const morceaux: string[] = [];
+    const veh = p.get('vehicle');
+    if (veh) morceaux.push(this.vehiclePlate(veh) || 'un véhicule');
+    else if (p.get('group')) morceaux.push('un groupe');
+    const du = p.get('from'), au = p.get('to');
+    if (du && au) morceaux.push(`du ${this.jourCourt(du)} au ${this.jourCourt(au, -1)}`);
+    return morceaux.length ? morceaux.join(' · ') : 'vos derniers filtres';
+  });
+
+  /** « 12 août » à partir d'un AAAA-MM-JJ, avec décalage de jours facultatif. */
+  private jourCourt(iso: string, decalage = 0): string {
+    const d = new Date(`${iso}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return iso;
+    d.setDate(d.getDate() + decalage);
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  }
+
+  /** Applique la vue proposée : mêmes chemins que les filtres, pas de raccourci. */
+  protected reprendreVue(): void {
+    const q = this.vueProposee();
+    this.vueProposee.set(null);
+    if (!q) return;
+    const p = new URLSearchParams(q);
+    const veh = p.get('vehicle'), grp = p.get('group');
+    this.selectedVehicleId.set(veh ?? '');
+    this.selectedGroupId.set(veh ? '' : (grp ?? ''));
+    const tri = p.get('sort') as TripSortColumn | null;
+    if (tri && this.sortOptions.some((o) => o.col === tri)) this.sortBy.set(tri);
+    const sens = p.get('dir');
+    if (sens === 'asc' || sens === 'desc') this.sortDir.set(sens);
+    const du = p.get('from'), au = p.get('to');
+    if (estJourIso(du) && estJourIso(au) && du! <= au!) {
+      this.customFrom.set(du!);
+      this.customTo.set(au!);
+      this.setPeriod(du!, au!);
+    } else {
+      this.ecrireEtatDansUrl();
+      void this.loadData();
+    }
+  }
+
   protected readonly statsPeriode = signal<FleetStatsReportDto | null>(null);
 
   /**
@@ -3338,10 +3417,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const avant = this.kpisPrecedents();
     if (!avant) return null;
     const e = ecartAvecPeriodePrecedente(this.kpis()[cle], avant[cle]);
-    if (e.precedentVide) return null;
-    if (e.pourcent === 0) return { texte: 'stable vs période précédente', hausse: false };
-    const signe = e.pourcent! > 0 ? '+' : '−';
-    return { texte: `${signe}${Math.abs(e.pourcent!)} % vs période précédente`, hausse: e.pourcent! > 0 };
+    const texte = libelleEcartPeriode(this.kpis()[cle], avant[cle]);
+    if (!texte) return null;
+    return { texte, hausse: (e.pourcent ?? 0) > 0 };
   }
 
   /** Vrai quand la période précédente est connue ET vide : on le DIT plutôt qu'un taux. */
@@ -3580,6 +3658,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // une liste qui ne le contient peut-être pas.
     const trajet = q.get('trip');
     if (trajet) void this.ouvrirTrajetDuLien(trajet);
+    /**
+     * ⚠️ PROPOSÉE, jamais appliquée d'office, et seulement quand l'URL n'apporte AUCUN
+     * filtre. Ouvrir un rapport sur une période d'il y a trois semaines parce que c'est la
+     * dernière regardée serait une surprise — et le lecteur ne verrait pas forcément que les
+     * dates ne sont pas celles du jour.
+     */
+    if (q.keys.length === 0) {
+      const derniere = this.preferences.prefs().reportsLastView;
+      if (derniere) this.vueProposee.set(derniere);
+    }
     this.loadVehicles();
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
     this.armerBasculeDeMinuit();
@@ -3661,6 +3749,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // à sa fermeture. L'écrire ici le remettrait sur chaque changement de filtre.
     };
     this.majParametresUrl(params);
+    /**
+     * ── LA DERNIÈRE VUE (F09) ─────────────────────────────────────────────────────────
+     *
+     * Un suivi récurrent — « groupe Livraisons / mois en cours » — se reposait sur la mémoire
+     * de l'utilisateur : la page rouvrait sur « 7 jours / tous véhicules », et il fallait
+     * reposer trois filtres à chaque visite.
+     *
+     * ⚠️ On retient la QUERY seule, jamais l'URL entière : une URL absolue enregistrée
+     * survivrait à un changement de domaine ou de préfixe et proposerait un lien mort.
+     */
+    const query = Object.entries(params).filter(([, v]) => !!v).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join('&');
+    /**
+     * ⚠️ On n'enregistre QUE si la vue porte quelque chose. Écrire la chaîne vide quand
+     * l'écran est sur ses valeurs par défaut effacerait la vue mémorisée à la première
+     * visite ordinaire — et la proposition ne serait jamais offerte à personne. « Reprendre
+     * votre dernier rapport » ne désigne pas un écran sans filtre.
+     */
+    if (query) this.preferences.update({ reportsLastView: query });
   }
 
   /**

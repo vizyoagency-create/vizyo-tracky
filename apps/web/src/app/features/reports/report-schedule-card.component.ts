@@ -1,6 +1,7 @@
 import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import {
   LucideAngularModule, CalendarClock, Mail, Send, Save, ChevronDown, ChevronUp, Check, X, AlertTriangle, Clock, Loader, Plus,
@@ -45,7 +46,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
           <div class="rsc-head-text">
             <h2 id="rsc-title">Rapport hebdomadaire par e-mail</h2>
             @if (needsFleetChoice()) {
-              <p class="rsc-next rsc-next--off">Choisissez une société dans le sélecteur, en haut de l'écran, pour régler son rapport hebdomadaire.</p>
+              <p class="rsc-next rsc-next--off">Choisissez une société dans le sélecteur, en haut de l'écran, pour régler son rapport hebdomadaire — ou lisez la vue d'ensemble ci-dessous.</p>
             } @else if (schedule(); as s) {
               @if (s.enabled) {
                 <p class="rsc-next">
@@ -76,6 +77,54 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
           <span class="rsc-etat" [class.rsc-etat--on]="enabled()">{{ enabled() ? 'Actif' : 'Coupé' }}</span>
         }
       </header>
+
+      <!-- ══ VUE D'ENSEMBLE : TOUTES LES SOCIÉTÉS ═══════════════════════════════════
+           Le réglage ne se lisait QUE société par société : pour savoir si le rapport d'un
+           client était coupé, il fallait le sélectionner, attendre, lire, recommencer.
+           Personne ne fait ça pour vingt sociétés — donc un rapport coupé, ou dont l'envoi
+           échoue chaque semaine, se découvrait par hasard, souvent parce que le client
+           finissait par le signaler. -->
+      @if (needsFleetChoice()) {
+        @if (vueLoading()) {
+          <p class="rsc-next">Chargement de la vue d'ensemble…</p>
+        } @else if (vueErreur(); as e) {
+          <p class="rsc-next rsc-next--off">{{ e }}</p>
+        } @else if (vue().length > 0) {
+          <div class="rsc-vue">
+            <div class="rsc-vue-tete">
+              <span>Société</span><span>État</span><span>Envoi</span>
+              <span>Destinataires</span><span>Dernier envoi</span>
+            </div>
+            @for (r of vue(); track r.fleetId) {
+              <div class="rsc-vue-ligne" [class.rsc-vue-ligne--coupee]="!r.enabled">
+                <span class="rsc-vue-societe">{{ r.fleetName }}</span>
+                <span>
+                  @if (r.enabled) { <b class="rsc-vue-on">Actif</b> }
+                  @else { <b class="rsc-vue-off">Coupé</b> }
+                  <!-- ⚠️ « Par défaut » distingue un réglage CHOISI d'un réglage jamais
+                       touché : le second peut changer avec le produit, le premier non. -->
+                  @if (r.isDefault) { <small> (par défaut)</small> }
+                </span>
+                <span>{{ jourCourt(r.weekday) }} {{ r.hour }}h</span>
+                <span class="rsc-vue-dest">
+                  @if (r.effectiveRecipients.length === 0) {
+                    <b class="rsc-vue-off">personne</b>
+                  } @else {
+                    {{ r.effectiveRecipients.length }}
+                    @if (r.recipients.length === 0) { <small> (admins)</small> }
+                  }
+                </span>
+                <span>
+                  @if (!r.lastRunAt) { <small>jamais</small> }
+                  @else if (r.lastStatus === 'FAILED') { <b class="rsc-vue-off">échec {{ r.lastRunAt | date:'d MMM' }}</b> }
+                  @else if (r.lastStatus === 'SKIPPED') { <small>{{ r.lastRunAt | date:'d MMM' }} — rien à envoyer</small> }
+                  @else { {{ r.lastRunAt | date:'d MMM' }} }
+                </span>
+              </div>
+            }
+          </div>
+        }
+      }
 
       @if (schedule(); as s) {
         <!-- Dernier passage : la réponse à « je n'ai rien reçu » sans ouvrir les journaux. -->
@@ -247,6 +296,27 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     .rsc-next strong { color: var(--texte-succes); font-weight: 800; }
     .rsc-next--off { color: var(--texte-attente); font-weight: 600; }
     .rsc-fleet { font-weight: 700; color: var(--fg-primary); }
+    .rsc-vue { margin-top: 12px; border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; }
+    .rsc-vue-tete, .rsc-vue-ligne {
+      display: grid; grid-template-columns: minmax(120px, 1.6fr) .9fr .8fr .9fr 1fr;
+      gap: 10px; padding: 8px 12px; align-items: center; font-size: 12.5px;
+    }
+    .rsc-vue-tete {
+      background: var(--surface-rail); border-bottom: 1px solid var(--border-subtle);
+      font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-tertiary);
+    }
+    .rsc-vue-ligne { border-top: 1px solid var(--border-subtle); color: var(--fg-secondary); }
+    .rsc-vue-ligne:first-of-type { border-top: none; }
+    .rsc-vue-societe { font-weight: 700; color: var(--fg-primary); }
+    /* ⚠️ La couleur ne porte pas l'information : « Actif » et « Coupé » sont écrits. */
+    .rsc-vue-on { color: var(--texte-succes); }
+    .rsc-vue-off { color: var(--texte-alerte); }
+    .rsc-vue-ligne--coupee { background: color-mix(in srgb, var(--texte-alerte) 5%, transparent); }
+    .rsc-vue small { color: var(--fg-tertiary); }
+    @media (max-width: 720px) {
+      .rsc-vue-tete { display: none; }
+      .rsc-vue-ligne { grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+    }
     .rsc-readonly { margin: 4px 0 0; font-size: 11.5px; color: var(--fg-tertiary); }
     /* État en lecture seule : même information que l'interrupteur, sans laisser croire qu'on peut agir. */
     .rsc-etat { display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700;
@@ -449,6 +519,36 @@ export class ReportScheduleCardComponent {
     return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   }
 
+  /** Réglage de toutes les sociétés — chargé seulement quand aucune n'est choisie. */
+  protected readonly vue = signal<FleetReportScheduleDto[]>([]);
+  protected readonly vueLoading = signal(false);
+  protected readonly vueErreur = signal<string | null>(null);
+
+  /** « lun. », « mar. »… — l'abréviation suffit dans un tableau de vingt lignes. */
+  protected jourCourt(weekday: number): string {
+    return ['', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'][weekday] ?? '?';
+  }
+
+  /**
+   * ⚠️ Chargée UNIQUEMENT quand aucune société n'est choisie : c'est le seul moment où elle
+   * apprend quelque chose. La charger systématiquement ferait payer une requête de plus à
+   * chaque ouverture de la page Rapports, pour un tableau que personne ne regarderait.
+   */
+  private async chargerVue(): Promise<void> {
+    if (this.vueLoading()) return;
+    this.vueLoading.set(true);
+    this.vueErreur.set(null);
+    try {
+      this.vue.set(await firstValueFrom(this.api.scheduleOverview()));
+    } catch (e) {
+      swallow('report-schedule-card:vue', e);
+      this.vueErreur.set("Vue d'ensemble indisponible.");
+      this.vue.set([]);
+    } finally {
+      this.vueLoading.set(false);
+    }
+  }
+
   private async load(fleetId: string | null): Promise<void> {
     // Super-admin sur « toutes les sociétés » : il n'y a rien à charger, et l'API répondrait
     // par un refus. La carte invite à choisir une société, sans appel inutile.
@@ -456,6 +556,7 @@ export class ReportScheduleCardComponent {
       this.schedule.set(null);
       this.loadError.set(null);
       this.loading.set(false);
+      void this.chargerVue();
       return;
     }
     this.loading.set(true);

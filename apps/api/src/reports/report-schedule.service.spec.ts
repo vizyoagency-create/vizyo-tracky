@@ -14,6 +14,7 @@
  *     sans que rien ne le soit — le paramètre n'existait pas.
  *  5. PAS DE DOUBLON. Deux passages du cron dans la même heure ne doivent pas envoyer deux fois.
  */
+import { ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { ReportScheduleService } from './report-schedule.service';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -300,5 +301,54 @@ describe('ReportScheduleService — envoi', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+/**
+ * ══ LA VUE D'ENSEMBLE : LE RÉGLAGE DE TOUTES LES SOCIÉTÉS ═══════════════════════════
+ *
+ * Le réglage ne se lisait QUE société par société. Personne ne fait ça pour vingt
+ * sociétés — donc un rapport coupé, ou dont l'envoi échoue chaque semaine, se découvrait
+ * par hasard, souvent parce que le client finissait par le signaler.
+ */
+describe("ReportScheduleService.listAll — la vue d'ensemble", () => {
+  const superAdmin = { id: 'sa', role: UserRole.SUPER_ADMIN, fleetId: null, email: 'sa@vizyo.fr' } as never;
+
+  it('rend une ligne par société, réglée ou non', async () => {
+    const { svc } = build(null);
+    const lignes = await svc.listAll(superAdmin);
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]!.fleetName).toBe('MH Cars');
+    // Jamais réglée : le DTO le DIT (`isDefault`), au lieu de faire passer le défaut
+    // du produit pour un choix de l'exploitant.
+    expect(lignes[0]!.isDefault).toBe(true);
+  });
+
+  /**
+   * ⚠️ Le point que cette vue existe pour montrer : « Actif » et destinataires VIDES.
+   * Le rapport part chaque lundi et n'arrive nulle part — et rien, avant, ne le disait.
+   */
+  it('laisse voir une société active dont PERSONNE ne reçoit le rapport', async () => {
+    const { svc } = build({ enabled: true, weekday: 1, hour: 8, recipients: [], sections: ['kpi'], vehicleIds: [], maxTrips: 30, topN: 10 }, { admins: [] });
+    const lignes = await svc.listAll(superAdmin);
+    expect(lignes[0]!.enabled).toBe(true);
+    expect(lignes[0]!.effectiveRecipients).toEqual([]);
+  });
+
+  it('refuse un administrateur de société — le nom d’un client est déjà une information', async () => {
+    const { svc } = build(null);
+    await expect(
+      svc.listAll({ id: 'a', role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID, email: 'a@societe.fr' } as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  /**
+   * ⚠️ DEUX requêtes, pas deux PAR SOCIÉTÉ. Sur vingt sociétés, la version naïve aurait
+   * fait vingt-et-une requêtes pour un écran de consultation.
+   */
+  it('ne fait pas une requête de destinataires par société', async () => {
+    const { svc, prisma } = build(null);
+    await svc.listAll(superAdmin);
+    expect((prisma as never as { user: { findMany: jest.Mock } }).user.findMany).toHaveBeenCalledTimes(1);
   });
 });

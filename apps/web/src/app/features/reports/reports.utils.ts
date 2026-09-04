@@ -452,3 +452,33 @@ export function periodePrecedente(from: string, to: string): { from: string; to:
   nouveauDebut.setDate(nouveauDebut.getDate() - jours);
   return { from: iso(nouveauDebut), to: from };
 }
+
+/**
+ * ── UN POURCENTAGE À CINQ CHIFFRES N'EST PAS UNE MESURE ─────────────────────────────
+ *
+ * Constaté en recette le 2026-09-04 : « +11 925 % vs période précédente » sous le nombre de
+ * trajets. C'est arithmétiquement exact — 481 contre 4 — et parfaitement illisible : personne
+ * ne se représente onze mille pour cent, et le chiffre occupe la place d'une information.
+ *
+ * À partir du triplement, on passe donc au MULTIPLE (« ×120 »), qui se lit d'un coup d'œil et
+ * dit la même chose. En dessous, le pourcentage reste la forme la plus parlante.
+ *
+ * ⚠️ Rend `null` quand la comparaison n'a PAS DE SENS — période précédente vide. C'est à
+ * l'écran d'écrire la phrase (« aucun trajet sur la période précédente ») : un « +∞ % » ou un
+ * « +6 500 % » depuis zéro serait le pire des deux mondes, faux ET impressionnant.
+ */
+export const SEUIL_MULTIPLE_POURCENT = 200;
+
+export function libelleEcartPeriode(actuel: number, precedent: number): string | null {
+  const e = ecartAvecPeriodePrecedente(actuel, precedent);
+  if (e.precedentVide) return null;
+  const pct = e.pourcent!;
+  if (pct === 0) return 'stable vs période précédente';
+  if (pct >= SEUIL_MULTIPLE_POURCENT) {
+    const fois = actuel / precedent;
+    // Un chiffre après la virgule sous 10, aucun au-delà : « ×2,4 » se lit, « ×120,3 » non.
+    const rendu = fois < 10 ? fois.toFixed(1).replace('.', ',') : String(Math.round(fois));
+    return `×${rendu} vs période précédente`;
+  }
+  return `${pct > 0 ? '+' : '−'}${Math.abs(pct)} % vs période précédente`;
+}

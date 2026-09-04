@@ -27,6 +27,7 @@ import {
   estJourIso,
   ecartAvecPeriodePrecedente,
   periodePrecedente,
+  libelleEcartPeriode,
 } from './reports.utils';
 
 describe('reports.utils — formatDuration', () => {
@@ -524,5 +525,40 @@ describe('periodePrecedente — la fenêtre d’avant, en jours civils', () => {
     expect(periodePrecedente('2026-09-01', '2026-09-01')).toBeNull();
     expect(periodePrecedente('2026-09-08', '2026-09-01')).toBeNull();
     expect(periodePrecedente('2026-02-31', '2026-03-08')).toBeNull();
+  });
+});
+
+/**
+ * ── « +11 925 % » N'EST PAS UNE MESURE ──────────────────────────────────────────────
+ *
+ * Constaté en recette le 2026-09-04 sous le nombre de trajets. Arithmétiquement exact,
+ * pratiquement illisible : personne ne se représente onze mille pour cent, et le chiffre
+ * occupe la place d'une information.
+ */
+describe('libelleEcartPeriode — la forme qui se lit', () => {
+  it('garde le pourcentage tant qu’il reste lisible', () => {
+    expect(libelleEcartPeriode(112, 100)).toBe('+12 % vs période précédente');
+    expect(libelleEcartPeriode(80, 100)).toBe('−20 % vs période précédente');
+    expect(libelleEcartPeriode(100, 100)).toBe('stable vs période précédente');
+    // Juste sous le seuil : encore un pourcentage.
+    expect(libelleEcartPeriode(299, 100)).toBe('+199 % vs période précédente');
+  });
+
+  it('passe au MULTIPLE à partir du triplement', () => {
+    // ×2,4 (+140 %) reste en dessous du seuil : le pourcentage s'y lit encore très bien.
+    expect(libelleEcartPeriode(240, 100)).toBe('+140 % vs période précédente');
+    expect(libelleEcartPeriode(300, 100)).toBe('×3,0 vs période précédente');
+    // Le cas de la recette : 481 trajets contre 4, soit « +11 925 % » avant correction.
+    expect(libelleEcartPeriode(481, 4)).toBe('×120 vs période précédente');
+  });
+
+  it('refuse toujours de comparer à zéro', () => {
+    expect(libelleEcartPeriode(65, 0)).toBeNull();
+    expect(libelleEcartPeriode(0, 0)).toBeNull();
+  });
+
+  /** Une baisse ne dépasse jamais −100 % : le pourcentage y reste la forme juste. */
+  it('laisse les baisses en pourcentage', () => {
+    expect(libelleEcartPeriode(1, 1000)).toBe('−100 % vs période précédente');
   });
 });

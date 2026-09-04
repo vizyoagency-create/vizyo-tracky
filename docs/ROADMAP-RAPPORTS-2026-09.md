@@ -445,7 +445,7 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 | ~~FAIT le 4 septembre (T04)~~ Le catalogue annonce la vraie fenêtre (9 000 h, ~375 j) et la vraie durée (100 min). Avant : il promettait 1 500 h, soit 62 jours — au 2026-09-02, 552 analyses de MH Cars et 205 d'A2R restaient sans récit pour cette seule raison, sur une rétention de douze mois. `outils/rattrapage-recits.cmd` reste la source (`--heures=9000 --minutes=100`) | `background-tasks.service.ts:546,935` | S |
 | ~~FAIT le 4 septembre~~ Le recalcul inscrit au **Journal Système** (catégorie `MUTATION`, action `trips_recompute`) qui l'a demandé, sur quel véhicule et quelle période, combien de trajets supprimés et recréés, et combien de notes reprises ou perdues. Avant : une seule ligne dans les journaux du conteneur — c'est-à-dire nulle part, pour qui enquête depuis l'espace admin ; « mes trajets d'août ont changé » ne pouvait être ni confirmé ni démenti. ⚠️ `notesPerdues` est écrit **même à zéro** : une absence s'interprète toujours dans le sens qui arrange | `trips.service.ts` (fin de `recompute`), `recalcul-travail-manuel.spec.ts` | S |
 
-| Vue d'ensemble des rapports hebdomadaires : aujourd'hui un super-admin doit changer de société dans le sélecteur pour lire chaque réglage. Un tableau unique (société · actif · jour et heure · destinataires · dernier envoi) éviterait de découvrir un rapport coupé par hasard | nouvel écran admin, alimenté par `GET /api/reports/schedule/dispatches` sans `fleetId` (déjà multi-sociétés) | M |
+| ~~FAIT le 4 septembre~~ `GET /reports/schedule/overview` (super-administrateur) rend le réglage de TOUTES les sociétés, et le tableau s'affiche exactement là où l'information manquait : sur la carte « Rapport hebdomadaire », quand aucune société n'est choisie — c'est-à-dire au moment où elle n'avait rien à montrer. Société · actif (et « par défaut ») · jour et heure · destinataires · dernier envoi ou échec. ⚠️ DEUX requêtes, pas deux par société : les destinataires par défaut sont chargés d'un coup. ⚠️ Une société **active dont personne ne reçoit le rapport** s'affiche « personne » en rouge — le cas se produit dès qu'aucun administrateur actif n'existe et qu'aucun destinataire n'est choisi ; vérifié en production : les cinq sociétés ont bien au moins un destinataire | `report-schedule.service.ts`, `reports.controller.ts`, `report-schedule-card.component.ts` (+ 4 jeux d'essai) | M |
 
 **Comment on saura que c'est bon** : poste éteint 25 heures → `/admin/background-tasks` affiche « à l'arrêt — dernier passage il y a 25 h » et le centre d'alerte remonte un incident ; un export refusé pour cause de droits apparaît en échec dans le Journal Système, avec le nom de la société.
 
@@ -546,9 +546,23 @@ Lots ordonnés par valeur pour le client, puis par risque. Effort : **S** = moin
 | ~~FAIT le 4 septembre (F08)~~ Véhicule, groupe, période, tri et sens vivent dans l'URL : un rafraîchissement les conserve, un favori les retrouve, un lien les transporte. Les paramètres lus sont VALIDÉS (`estJourIso`, colonnes de tri connues) — « 2026-02-31 » passe une expression régulière et donne un 3 mars, et un rapport affiché sur des dates que personne n'a demandées ne se voit pas. ⚠️ L'écriture passe par `history.replaceState`, PAS par le routeur : un clic de filtre n'est pas un changement de page, et le faire naviguer relançait la résolution de route en fondant la page entière (`withViewTransitions`), avec un « Transition was aborted » dès que deux clics se suivaient. Les valeurs par défaut ne sont pas écrites — une URL qui porte tout est illisible et se périme | `reports.component.ts`, `reports.utils.ts` (+ 3 jeux d'essai sur `estJourIso`) | M |
 | ~~FAIT le 4 septembre (F10)~~ `/reports?trip=<id>` ouvre le replay de ce trajet, et l'en-tête du replay porte « Copier le lien ». ⚠️ Le trajet est demandé au SERVEUR, jamais cherché dans la liste affichée : celle-ci est plafonnée à cent lignes, et un lien pointe le plus souvent sur un trajet qu'on a justement dû aller chercher — le chercher dans la page en aurait fait un lien qui marche une fois sur quatre. Le paramètre est posé à l'ouverture et RETIRÉ à la fermeture, sinon un lien copié plus tard rouvrirait un replay que l'expéditeur avait quitté depuis longtemps | `reports.component.ts`, `trip-replay.component.ts` | S |
 | ~~FAIT le 4 septembre (F18)~~ Les quatre cartes mènent à leurs lignes (`kpiToSortColumn('tripCount')` rend désormais la date au lieu de `null` : un compte n'a pas de colonne à trier, mais il a une destination), et chaque ligne du récapitulatif porte un bouton « Filtrer » qui ramène TOUT le rapport sur ce véhicule — jusqu'ici, regarder un véhicule de plus près obligeait à quitter le rapport. ⚠️ Le bouton arrête la propagation : la ligne entière reste un lien vers la fiche | `reports.component.ts`, `reports.utils.ts` | S |
-| **F09** — enregistrer une vue (nom + filtres) et proposer de reprendre la dernière à l'ouverture | `preferences.service.ts:121` | S |
+| ~~FAIT le 4 septembre (F09)~~ La dernière vue consultée est retenue (`reportsLastView`, les paramètres d'URL seuls — jamais l'URL absolue, qui survivrait à un changement de domaine et proposerait un lien mort) et l'écran PROPOSE de la reprendre, en une ligne qu'on peut ignorer. ⚠️ Jamais appliquée d'office : ouvrir un rapport sur une période d'il y a trois semaines parce que c'est la dernière regardée serait une surprise, et le lecteur ne verrait pas forcément que les dates ne sont pas celles du jour. ⚠️ Une vue VIDE n'écrase pas la mémoire — sinon la première visite ordinaire l'effacerait et la proposition ne serait jamais offerte | `preferences.service.ts`, `reports.component.ts` | S |
 
 **Comment on saura que c'est bon** : copier l'URL après avoir filtré un véhicule sur août et l'ouvrir dans un autre navigateur restitue les mêmes filtres et le même tri ; le lien du courriel hebdomadaire ouvre la page sur la semaine du rapport.
+
+---
+
+### ⚠️ Constat du 4 septembre — « +11 925 % » n'est pas une mesure
+
+Vu en recette juste après la mise en place de F03 : sous le nombre de trajets, la tendance
+affichait **« +11 925 % vs période précédente »**. Arithmétiquement exact (481 contre 4) et
+parfaitement illisible — personne ne se représente onze mille pour cent, et le chiffre occupe
+la place d'une information.
+
+**Corrigé le jour même** : à partir du triplement, la tendance passe au MULTIPLE (« ×120 »),
+qui se lit d'un coup d'œil et dit la même chose. En dessous, le pourcentage reste la forme la
+plus parlante. Le refus de calculer un taux **depuis zéro** était déjà en place ; ce cas-ci
+est son voisin, et il ne se voyait qu'à l'écran.
 
 ---
 
