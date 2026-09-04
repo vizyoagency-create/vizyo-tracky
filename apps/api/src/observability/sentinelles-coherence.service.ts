@@ -176,6 +176,33 @@ function detailDe(analyse: AnalyseLue): DetailLu {
   return (analyse.detail ?? {}) as DetailLu;
 }
 
+/**
+ * ── TRK-065 — LES COMPTES TECHNIQUES NE SONT PAS DES DESTINATAIRES ──────────────────────
+ *
+ * Mesuré le 2026-09-04, au premier passage de la sentinelle nº 5 : **42 notifications perdues
+ * en sept jours, dont exactement 21 pour `system@tracky.local`** — un compte de service, qui
+ * n'installera jamais d'application et n'attend rien de personne.
+ *
+ * 🔑 **Sans cette exclusion, l'instrument crierait chaque semaine avec un chiffre à moitié
+ * structurel.** C'est ainsi qu'un garde-fou neuf devient du bruit en trois passages, puis cesse
+ * d'être lu — exactement ce que l'en-tête de ce fichier existe pour empêcher.
+ *
+ * ⚠️ Le critère est le DOMAINE, pas une liste d'adresses : `.local` est réservé par la RFC 6762
+ * et n'est routable nulle part. Une adresse qui s'y trouve ne peut, par construction, appartenir
+ * à une personne joignable. Une liste d'adresses en dur, elle, serait fausse au prochain compte
+ * de service créé.
+ *
+ * ⚠️ **On n'efface rien : on classe.** Les comptes écartés sont comptés et rendus dans le
+ * contexte de la ligne (`comptesTechniquesEcartes`), pour qu'un lecteur puisse toujours vérifier
+ * que le tri est juste.
+ */
+const DOMAINES_TECHNIQUES = ['.local', '.invalid', '.internal'];
+
+function estCompteTechnique(email: string): boolean {
+  const bas = (email ?? '').toLowerCase().trim();
+  return DOMAINES_TECHNIQUES.some((d) => bas.endsWith(d));
+}
+
 /** « 3 sociétés » / « la société X » — un compte qui se lit sans effort. */
 function enumere(noms: string[], max = MAX_NOMMES): string {
   if (noms.length <= max) return noms.join(', ');
@@ -526,9 +553,15 @@ export class SentinellesCoherenceService {
     if (comptes.length === 0) return [];
 
     const parCompte = new Map(concernes.map((g) => [g.userId, g._count._all]));
-    const decrits = comptes
+    const tous = comptes
       .map((u) => ({ email: u.email, perdues: parCompte.get(u.id) ?? 0 }))
       .sort((a, b) => b.perdues - a.perdues);
+
+    // TRK-065 — un compte de service n'est pas quelqu'un qu'on croit prévenir.
+    const decrits = tous.filter((d) => !estCompteTechnique(d.email));
+    const ecartes = tous.length - decrits.length;
+    if (decrits.length === 0) return [];
+
     const total = decrits.reduce((s, d) => s + d.perdues, 0);
 
     return [{
@@ -541,7 +574,13 @@ export class SentinellesCoherenceService {
         `${enumere(decrits.map((d) => `${d.email} (${d.perdues})`))}. ` +
         `Ces personnes se croient prévenues et ne le sont pas — soit elles doivent activer les notifications sur un ` +
         `appareil, soit elles n'ont rien à faire dans la liste des destinataires.`,
-      contexte: { comptes: decrits.slice(0, 20), total, depuis: depuis.toISOString() },
+      contexte: {
+        comptes: decrits.slice(0, 20),
+        total,
+        // Rendu visible plutôt qu'effacé : un lecteur doit pouvoir vérifier que le tri est juste.
+        comptesTechniquesEcartes: ecartes,
+        depuis: depuis.toISOString(),
+      },
       fenetreMs: REFROIDISSEMENT_HEBDOMADAIRE_MS,
     }];
   }

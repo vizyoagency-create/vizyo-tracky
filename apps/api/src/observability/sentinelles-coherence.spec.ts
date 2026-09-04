@@ -329,6 +329,40 @@ describe('Sentinelle — quelqu’un qu’on croit prévenir et qui ne reçoit r
     expect(m).toContain('se croient prévenues');
   });
 
+  // ── TRK-065 — le compte de service n'est pas quelqu'un qu'on croit prévenir ────────────
+  //
+  // Mesuré au premier passage en production : 42 notifications perdues, dont EXACTEMENT 21 pour
+  // `system@tracky.local`. Sans ce tri, l'instrument crierait chaque semaine avec un chiffre à
+  // moitié structurel — et c'est ainsi qu'un garde-fou neuf cesse d'être lu.
+  it('TRK-065 — écarte les comptes techniques du décompte, et le DIT', async () => {
+    const t = await service({
+      livraisonsSansAppareil: [
+        { userId: 'sys', _count: { _all: 21 } },
+        { userId: 'u1', _count: { _all: 21 } },
+      ],
+      comptes: [{ id: 'sys', email: 'system@tracky.local' }, { id: 'u1', email: 'gerant@mhcars.fr' }],
+    });
+    await t.svc.passage(MAINTENANT);
+
+    const m = messages(t.errorLogger).find((x) => x.includes('appareil abonné'));
+    // Le total ne compte plus que les personnes réellement privées de leurs notifications.
+    expect(m).toContain('21 notifications');
+    expect(m).toContain('gerant@mhcars.fr');
+    expect(m).not.toContain('system@tracky.local');
+    // On n'efface pas : l'exclusion est comptée dans le contexte, vérifiable.
+    const contexte = t.errorLogger.record.mock.calls[0][2] as { comptesTechniquesEcartes: number };
+    expect(contexte.comptesTechniquesEcartes).toBe(1);
+  });
+
+  it('TRK-065 — TÉMOIN : si SEUL un compte technique est concerné, la sentinelle se tait', async () => {
+    const t = await service({
+      livraisonsSansAppareil: [{ userId: 'sys', _count: { _all: 21 } }],
+      comptes: [{ id: 'sys', email: 'system@tracky.local' }],
+    });
+    await t.svc.passage(MAINTENANT);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
   it('se tait sur un abonnement qui vient d’expirer', async () => {
     const t = await service({
       livraisonsSansAppareil: [{ userId: 'u1', _count: { _all: 2 } }],
