@@ -258,7 +258,8 @@ export class SentinellesCoherenceService {
         speedAlertEnabled: true, speedAlertOverKmh: true, speedAlertAbsoluteKmh: true, speedAlertUpdatedAt: true,
       },
     });
-    if (flottes.length === 0) return [];
+    // TRK-064 : « aucune société concernée » n'est PAS un non-événement. Voir `chaineJamaisArmee`.
+    if (flottes.length === 0) return this.chaineJamaisArmee(depuis);
 
     const analyses = await this.lireAnalyses({
       fleetId: { in: flottes.map((f) => f.id) },
@@ -329,6 +330,59 @@ export class SentinellesCoherenceService {
       contexte: { fleetId, tripId: trajets[0], trajets: trajets.slice(0, 20), total: trajets.length, depuis: depuis.toISOString() },
       fenetreMs: REFROIDISSEMENT_QUOTIDIEN_MS,
     }));
+  }
+
+  /**
+   * ══ 1 bis. L'ANGLE MORT DE LA SENTINELLE PRÉCÉDENTE (TRK-064, 2026-09-04) ═════════════
+   *
+   * Mesuré en production le lendemain de la mise en ligne du lot V5 : **0 société sur 5 et
+   * 0 véhicule sur 44** avaient les alertes de vitesse activées, aucun seuil n'était
+   * renseigné — pendant que **145 analyses fraîches portaient un excès**. La sentinelle
+   * ci-dessus sortait donc sur sa toute première ligne et rendait EXACTEMENT le même silence
+   * qu'une chaîne d'alerte en parfait état de marche.
+   *
+   * 🔑 Un garde-fou doit savoir dire qu'il n'a rien à garder. Le réglage en opt-in est un
+   * choix produit défendable ; ce qui ne l'est pas, c'est que personne ne puisse apprendre
+   * qu'il vaut zéro partout. *C'est la leçon du témoin désarmé (TRK-026), repayée ici sur
+   * l'instrument censé la porter.*
+   *
+   * ⚠️ Niveau DEGRADATION, pas ERROR : rien n'est cassé, une capacité est simplement
+   * inactive — le raisonnement retenu pour Overpass en TRK-037. Et refroidissement
+   * HEBDOMADAIRE : c'est un état durable, pas une nouvelle du matin.
+   *
+   * ⚠️ DEUX conditions, et il faut les deux — c'est ce qui sépare un garde-fou d'un râleur :
+   *
+   *   1. **Des sociétés EXISTENT.** « Aucune société armée » et « aucune société du tout » se
+   *      ressemblent trait pour trait dans une requête filtrée, et ne veulent pas du tout dire
+   *      la même chose : sur une plateforme vide, il n'y a rien à armer et rien à signaler.
+   *      *Ce piège a été trouvé par les tests des cinq AUTRES sentinelles, dont les fixtures
+   *      ne déclarent aucune société parce qu'elles ne s'y intéressent pas — et que cette
+   *      sentinelle s'est mise à interrompre.*
+   *   2. **Des excès ont réellement été mesurés.** Une chaîne inactive sur une flotte qui ne
+   *      roule pas vite ne prive de rien, et le répéter chaque semaine serait exactement le
+   *      bruit que ce fichier existe pour éviter.
+   */
+  private async chaineJamaisArmee(depuis: Date): Promise<ConstatSentinelle[]> {
+    const societes = await this.prisma.fleet.count();
+    if (societes === 0) return [];
+
+    const analyses = await this.lireAnalyses({ computedAt: { gte: depuis }, speedingCount: { gt: 0 } });
+    if (analyses.length === 0) return [];
+
+    const vehicules = new Set(analyses.map((a) => a.vehicleId)).size;
+    return [{
+      cle: CLES_REFROIDISSEMENT.SENTINELLE_CHAINE_JAMAIS_ARMEE,
+      source: 'sentinelles',
+      niveau: NIVEAU_DEGRADATION,
+      message:
+        `Les alertes de vitesse ne sont activées sur AUCUNE des ${societes} sociétés, ni sur aucun véhicule, alors que ` +
+        `${analyses.length} analyse${analyses.length > 1 ? 's' : ''} ${analyses.length > 1 ? 'ont' : 'a'} relevé un ` +
+        `excès depuis la veille, sur ${vehicules} véhicule${vehicules > 1 ? 's' : ''}. Personne n'est prévenu de ces ` +
+        `excès, et la sentinelle qui devrait le signaler ne peut pas parler : elle n'a aucune société à surveiller. ` +
+        `Action : activer le réglage sur au moins une société, ou acter que cette chaîne ne sert pas.`,
+      contexte: { societes, analysesAvecExces: analyses.length, vehicules, depuis: depuis.toISOString() },
+      fenetreMs: REFROIDISSEMENT_HEBDOMADAIRE_MS,
+    }];
   }
 
   // ══ 2. UNE VITESSE QUE LA TRAJECTOIRE CONTREDIT ═══════════════════════════════════════

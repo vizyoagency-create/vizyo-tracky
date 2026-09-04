@@ -55,6 +55,12 @@ interface Monde {
   livraisonsSansAppareil?: { userId: string; _count: { _all: number } }[];
   comptes?: { id: string; email: string }[];
   alertesNonAcquittees?: { fleetId: string; _count: { _all: number } }[];
+  /**
+   * TRK-064 — nombre de sociétés EXISTANTES, indépendamment de leur réglage d'alerte.
+   * Par défaut 0 : une fixture qui ne parle pas de sociétés décrit une plateforme vide, où
+   * il n'y a rien à armer — donc rien à signaler.
+   */
+  flottesExistantes?: number;
   /** Refroidissement : `false` = la garde refuse l'émission. */
   emissionAutorisee?: boolean;
 }
@@ -64,6 +70,7 @@ function setup(monde: Monde = {}) {
     fleet: {
       findMany: jest.fn().mockResolvedValue(monde.flottes ?? []),
       findUnique: jest.fn().mockResolvedValue({ name: FLOTTE.name }),
+      count: jest.fn().mockResolvedValue(monde.flottesExistantes ?? 0),
     },
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(monde.analyses ?? []) },
     trip: { findMany: jest.fn().mockResolvedValue(monde.trajets ?? []) },
@@ -165,6 +172,35 @@ describe('Sentinelle — un excès sans son alerte', () => {
       expect.objectContaining({ where: expect.objectContaining({ fleetId: expect.anything() }) }),
     );
     expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  // ── TRK-064 — l'angle mort de cette sentinelle ────────────────────────────────────────
+  //
+  // Le test ci-dessus est désormais le TÉMOIN du couple : aucune société réglée ET aucun excès
+  // mesuré, donc rien à dire. Le suivant est son contraire exact — la MÊME absence de réglage,
+  // un fait en plus : des excès ont bien été relevés, et personne n'en est prévenu.
+  //
+  // Sans ce couple, le silence de la sentinelle prouverait seulement qu'elle sait se taire.
+  it('TRK-064 — signale que la chaîne n’est armée NULLE PART quand des excès sont pourtant mesurés', async () => {
+    const analyses = [analyse({ tripId: 't1' }), analyse({ tripId: 't2', vehicleId: 'v2' })];
+    const t = await service({ flottes: [], flottesExistantes: 5, analyses });
+    await t.svc.passage(MAINTENANT);
+
+    const [m] = messages(t.errorLogger);
+    expect(m).toContain('AUCUNE des 5 sociétés');
+    expect(m).toContain('2 analyses');
+    expect(m).toContain('2 véhicules');
+    // DEGRADATION et non ERROR : rien n'est cassé, une capacité est inactive (raisonnement TRK-037).
+    expect(t.errorLogger.record.mock.calls[0][3]).toBe('DEGRADATION');
+  });
+
+  it('TRK-064 — un rappel HEBDOMADAIRE, pas une ligne chaque matin', async () => {
+    const t = await service({ flottes: [], flottesExistantes: 5, analyses: [analyse()] });
+    await t.svc.passage(MAINTENANT);
+
+    const [cle, fenetreMs] = t.refroidissement.tenterEmission.mock.calls[0];
+    expect(cle).toBe('sentinelle-chaine-vitesse-jamais-armee');
+    expect(fenetreMs).toBeGreaterThan(6 * 24 * 3_600_000);
   });
 
   it('groupe par société : une ligne, pas une par trajet', async () => {

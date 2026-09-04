@@ -163,4 +163,10 @@ export const CLES_REFROIDISSEMENT = {
   SENTINELLE_COUVERTURE_LIMITES: 'sentinelle-couverture-limites',
   SENTINELLE_SANS_APPAREIL: 'sentinelle-destinataire-sans-appareil',
   SENTINELLE_ALERTES_NON_ACQUITTEES: 'sentinelle-alertes-non-acquittees',
+  /**
+   * TRK-064 — l'angle mort de la sentinelle « excès sans alerte » : la chaîne n'est armée
+   * NULLE PART. Clé globale (aucune société n'est concernée, c'est justement le sujet) et
+   * rappel hebdomadaire : c'est un état durable, pas une nouvelle du matin.
+   */
+  SENTINELLE_CHAINE_JAMAIS_ARMEE: 'sentinelle-chaine-vitesse-jamais-armee',
 } as const;
