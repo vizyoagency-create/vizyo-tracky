@@ -65,3 +65,38 @@ export interface SetVehicleSpeedAlertOverrideDto {
   enabled: boolean | null;
   overKmh: number | null;
 }
+
+/**
+ * ── ESSAI À BLANC (2026-09-04) ──────────────────────────────────────────────────────────
+ *
+ * Ce que le réglage PRODUIRAIT, sans rien créer ni envoyer.
+ *
+ * Né d'une leçon payée le jour même : les alertes de vitesse ont été activées sur deux
+ * sociétés clientes pour éprouver la chaîne. Elle a fonctionné — quatre alertes en deux
+ * minutes, et **trois notifications sont parties chez des clients** avant qu'on ne coupe. Il
+ * n'existait aucun moyen de vérifier un seuil autrement qu'en le subissant en vrai.
+ *
+ * ⚠️ STRICTEMENT EN LECTURE. Aucune alerte, aucune notification, aucune écriture : c'est la
+ * seule garantie qui rende cet outil utilisable sur une société cliente.
+ */
+export interface SpeedAlertSimulationDto {
+  fleetId: string;
+  fleetName: string;
+  /** Réglage ESSAYÉ — pas nécessairement celui qui est enregistré. */
+  essai: { overKmh: number; absoluteKmh: number | null };
+  /** Fenêtre observée, en heures. */
+  heures: number;
+  /** Trajets analysés sur la fenêtre. */
+  trajetsExamines: number;
+  /** Alertes qui SERAIENT créées. */
+  alertes: number;
+  /** Dont critiques (dépassement de 50 km/h ou plus). */
+  critiques: number;
+  /**
+   * Personnes qui recevraient une notification, et combien chacune. Le compte ne tient pas
+   * compte du regroupement anti-rafale : c'est un MAJORANT, et il vaut mieux qu'il le soit.
+   */
+  destinataires: { email: string; role: string; notifications: number; appareils: number }[];
+  /** Un échantillon de ce qui serait écrit, mot pour mot. */
+  exemples: { plate: string; severity: 'WARNING' | 'CRITICAL'; message: string; tripId: string }[];
+}

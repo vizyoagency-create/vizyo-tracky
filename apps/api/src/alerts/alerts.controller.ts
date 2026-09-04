@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { SPEED_ALERT_DEFAULTS } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -57,6 +58,35 @@ export class AlertsController {
   @RequirePermissions('alerts_view')
   speedSettingsGet(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
     return this.speedSettings.get(req.user, fleetId);
+  }
+
+  /**
+   * ESSAI À BLANC : ce que le réglage produirait, sans rien produire.
+   *
+   * En lecture (`alerts_view`) et en `GET` : cette route ne crée aucune alerte et n'envoie
+   * aucune notification. C'est ce qui permet d'éprouver un seuil sur une société cliente sans
+   * que personne ne le voie — le moyen qui manquait le 4 septembre, quand trois notifications
+   * sont parties chez des clients pendant un essai.
+   */
+  @Get('speed-settings/simulation')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_view')
+  speedSettingsSimulation(
+    @Req() req: AuthenticatedRequest,
+    @Query('fleetId') fleetId?: string,
+    @Query('overKmh') overKmh?: string,
+    @Query('absoluteKmh') absoluteKmh?: string,
+    @Query('heures') heures?: string,
+  ) {
+    const nombre = (v: string | undefined, defaut: number) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : defaut;
+    };
+    return this.speedSettings.simuler(req.user, fleetId, {
+      overKmh: nombre(overKmh, SPEED_ALERT_DEFAULTS.overKmh),
+      absoluteKmh: absoluteKmh === 'aucun' ? null : nombre(absoluteKmh, SPEED_ALERT_DEFAULTS.absoluteKmh),
+      heures: nombre(heures, 48),
+    });
   }
 
   @Put('speed-settings')
