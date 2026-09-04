@@ -158,3 +158,123 @@ describe('ReportExcelService.generate', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+/**
+ * ══ LE CLASSEUR D'UN PÉRIMÈTRE (société ou groupe) ═══════════════════════════════════
+ *
+ * L'Excel n'existait QUE par véhicule : obtenir le mois d'un parc demandait quarante
+ * exports recollés à la main. Ces tests protègent les trois points où l'on peut se
+ * tromper — le périmètre, la mention des véhicules exclus, et la colonne qui dit de QUI
+ * est chaque trajet.
+ */
+describe('ReportExcelService.generateScope — le classeur d’un parc', () => {
+  const VEH_B = 'veh-b';
+  const VEH_PRIVE = 'veh-prive';
+
+  function buildScope(opts: { accessible?: string[] | 'ALL'; avecPrive?: boolean } = {}) {
+    const vehicules = [
+      {
+        id: VEH_A, plate: 'AB-123-CD', brand: 'Renault', model: 'Master', type: 'VAN',
+        fuelConsumptionL100km: null, calibratedConsumptionL100km: null, calibratedTanks: 0,
+        privacyModeEnabled: false, groups: [{ group: { id: 'g1', name: 'Livraisons' } }],
+      },
+      {
+        id: VEH_B, plate: 'EF-456-GH', brand: 'Peugeot', model: 'Partner', type: 'VAN',
+        fuelConsumptionL100km: null, calibratedConsumptionL100km: null, calibratedTanks: 0,
+        privacyModeEnabled: false, groups: [],
+      },
+      ...(opts.avecPrive
+        ? [{
+            id: VEH_PRIVE, plate: 'ZZ-999-ZZ', brand: null, model: null, type: 'CAR',
+            fuelConsumptionL100km: null, calibratedConsumptionL100km: null, calibratedTanks: 0,
+            privacyModeEnabled: true, groups: [],
+          }]
+        : []),
+    ];
+    const capture: { tripWhere?: any; vehWhere?: any } = {};
+    const prisma = {
+      fleet: { findUnique: jest.fn().mockResolvedValue({ id: FLEET_ID, name: 'Flotte Test', fuelPriceEurL: 1.9 }) },
+      vehicle: {
+        findMany: jest.fn().mockImplementation(({ where }: any) => {
+          capture.vehWhere = where;
+          return Promise.resolve(vehicules);
+        }),
+      },
+      trip: {
+        findMany: jest.fn().mockImplementation(({ where }: any) => {
+          capture.tripWhere = where;
+          return Promise.resolve(TRIP_ROWS.map((t, i) => ({ ...t, vehicleId: i === 0 ? VEH_A : VEH_B })));
+        }),
+      },
+      tripFuelStop: { findMany: jest.fn().mockResolvedValue([]) },
+    } as any;
+    const vehicleAccess = { getAccessibleVehicleIds: jest.fn().mockResolvedValue(opts.accessible ?? 'ALL') } as any;
+    return { svc: new ReportExcelService(prisma, vehicleAccess), capture };
+  }
+
+  it('ouvre sur une feuille de synthèse par véhicule, total compris', async () => {
+    const { svc } = buildScope();
+    const { buffer, filename } = await svc.generateScope({ fleetId: FLEET_ID }, FROM, TO, makeUser(UserRole.FLEET_ADMIN));
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Synthèse par véhicule', 'Trajets', 'Par jour']);
+    expect(filename).toContain('2026-06-01_2026-06-30');
+
+    const synth = wb.getWorksheet('Synthèse par véhicule')!;
+    expect((synth.getRow(4).values as unknown[])[1]).toBe('Véhicule');
+    const derniere = synth.getRow(synth.rowCount);
+    expect(derniere.getCell(1).value).toBe('TOTAL');
+    /**
+     * ⚠️ PAS de vitesse moyenne dans la ligne TOTAL : une moyenne de moyennes n'a aucun
+     * sens, et un chiffre plausible à cet endroit serait lu comme la vitesse moyenne du
+     * parc. Le tiret est délibéré.
+     */
+    expect(derniere.getCell(7).value).toBe('—');
+  });
+
+  it('ajoute la colonne « Véhicule » aux trajets — un classeur de parc doit dire de qui ils sont', async () => {
+    const { svc } = buildScope();
+    const { buffer } = await svc.generateScope({ fleetId: FLEET_ID }, FROM, TO, makeUser(UserRole.FLEET_ADMIN));
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const trajets = wb.getWorksheet('Trajets')!;
+    expect((trajets.getRow(1).values as unknown[])[1]).toBe('Véhicule');
+    expect(trajets.getRow(2).getCell(1).value).toBe('AB-123-CD');
+  });
+
+  /**
+   * ⚠️ Un véhicule en mode vie privée ne peut pas bloquer le rapport de toute la société
+   * (ce serait un seul véhicule protégé contre quarante). Il est donc retiré — mais un
+   * total silencieusement amputé est un total FAUX : la mention et les plaques doivent
+   * figurer dans le classeur.
+   */
+  it('exclut les véhicules en mode vie privée ET le dit, plaques comprises', async () => {
+    const { svc, capture } = buildScope({ avecPrive: true });
+    const { buffer } = await svc.generateScope({ fleetId: FLEET_ID }, FROM, TO, makeUser(UserRole.FLEET_ADMIN));
+
+    // Le véhicule privé ne fait pas partie de la requête trajets.
+    expect(capture.tripWhere.vehicleId.in).not.toContain(VEH_PRIVE);
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer as any);
+    const synth = wb.getWorksheet('Synthèse par véhicule')!;
+    const mention = String(synth.getCell('A3').value ?? '');
+    expect(mention).toContain('vie privée');
+    expect(mention).toContain('ZZ-999-ZZ');
+  });
+
+  it('borne au périmètre de l’appelant, jamais à toute la société', async () => {
+    const { svc, capture } = buildScope({ accessible: [VEH_A] });
+    await svc.generateScope({ fleetId: FLEET_ID }, FROM, TO, makeUser(UserRole.VIEWER));
+    expect(capture.vehWhere.id).toEqual({ in: [VEH_A] });
+    expect(capture.vehWhere.fleetId).toBe(FLEET_ID);
+  });
+
+  it('refuse la société d’autrui à un non-super-administrateur', async () => {
+    const { svc } = buildScope();
+    await expect(
+      svc.generateScope({ fleetId: FLEET_ID }, FROM, TO, makeUser(UserRole.FLEET_ADMIN, 'autre-flotte')),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});

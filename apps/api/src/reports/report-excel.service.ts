@@ -143,6 +143,196 @@ export class ReportExcelService {
     return { buffer, filename };
   }
 
+  /**
+   * ══ LE CLASSEUR D'UN PÉRIMÈTRE : SOCIÉTÉ, GROUPE, OU LES DEUX ═════════════════════
+   *
+   * ── CE QUI MANQUAIT ────────────────────────────────────────────────────────────────
+   *
+   * L'Excel n'existait QUE par véhicule. Un gestionnaire qui voulait le mois de son parc
+   * devait lancer quarante exports et les recoller à la main — ou se rabattre sur le CSV
+   * brut, qui n'est pas un document qu'on met sur une table de réunion. C'est la fonction
+   * qui manquait le plus souvent au dossier mensuel.
+   *
+   * Le classeur ouvre sur une feuille « Synthèse par véhicule » — une ligne par véhicule,
+   * total en bas — puis liste tous les trajets du périmètre, avec la colonne « Véhicule »
+   * qui n'avait aucune raison d'exister dans l'export d'un seul véhicule.
+   *
+   * ⚠️ LES VÉHICULES EN MODE VIE PRIVÉE SONT EXCLUS, ET C'EST ÉCRIT DANS LE CLASSEUR.
+   * L'export d'un véhicule en mode privé est refusé (403) ; celui d'un parc ne peut pas
+   * l'être, sinon un seul véhicule protégé bloquerait le rapport de toute la société. On
+   * les retire donc — mais un total silencieusement amputé est un total faux : la feuille
+   * de synthèse porte la mention et le nombre.
+   */
+  async generateScope(
+    scope: { fleetId: string; groupId?: string },
+    from: Date,
+    to: Date,
+    requestedBy: AuthUser,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const fleet = await this.prisma.fleet.findUnique({
+      where: { id: scope.fleetId },
+      select: { id: true, name: true, fuelPriceEurL: true },
+    });
+    if (!fleet) throw new NotFoundException('Société introuvable');
+    if (requestedBy.role !== UserRole.SUPER_ADMIN && fleet.id !== requestedBy.fleetId) {
+      throw new ForbiddenException('Accès refusé à cette société');
+    }
+
+    const accessible = await this.vehicleAccess.getAccessibleVehicleIds(requestedBy);
+    const borne = resolveReportVehicleScope(accessible);
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: {
+        fleetId: fleet.id,
+        ...(borne === 'ALL' ? {} : { id: { in: borne } }),
+        ...(scope.groupId ? { groups: { some: { groupId: scope.groupId } } } : {}),
+      },
+      select: {
+        id: true, plate: true, brand: true, model: true, type: true,
+        fuelConsumptionL100km: true, calibratedConsumptionL100km: true, calibratedTanks: true,
+        privacyModeEnabled: true,
+        groups: { select: { group: { select: { id: true, name: true } } }, orderBy: { group: { name: 'asc' } }, take: 1 },
+      },
+      orderBy: { plate: 'asc' },
+    });
+    if (vehicles.length === 0) throw new NotFoundException('Aucun véhicule dans ce périmètre');
+
+    const prives = vehicles.filter((v) => v.privacyModeEnabled);
+    const exportables = vehicles.filter((v) => !v.privacyModeEnabled);
+    if (exportables.length === 0) {
+      throw new ForbiddenException(
+        'Tous les véhicules de ce périmètre sont en mode vie privée : aucun trajet ne peut être exporté.',
+      );
+    }
+    const ids = exportables.map((v) => v.id);
+
+    const [trips, fuelStops] = await Promise.all([
+      this.prisma.trip.findMany({
+        where: { vehicleId: { in: ids }, startedAt: { gte: from, lt: to }, endedAt: { not: null } },
+        select: {
+          vehicleId: true,
+          startedAt: true, endedAt: true, durationSeconds: true,
+          distanceKm: true, maxSpeed: true, avgSpeed: true, notes: true,
+          driver: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { startedAt: 'asc' },
+        take: TRIPS_CAP,
+      }),
+      this.prisma.tripFuelStop.findMany({
+        where: { vehicleId: { in: ids }, arrivedAt: { gte: from, lte: to } },
+        select: {
+          arrivedAt: true, durationSec: true, fuelType: true, unitPriceEur: true,
+          station: { select: { brand: true, name: true, city: true, address: true } },
+        },
+        orderBy: { arrivedAt: 'asc' },
+      }),
+    ]);
+
+    const plaque = new Map(exportables.map((v) => [v.id, v.plate]));
+    const parVehicule = new Map<string, TripRow[]>();
+    for (const t of trips) {
+      const liste = parVehicule.get(t.vehicleId) ?? [];
+      liste.push(t);
+      parVehicule.set(t.vehicleId, liste);
+    }
+
+    const lignes: LigneVehicule[] = exportables.map((v) => {
+      const siens = parVehicule.get(v.id) ?? [];
+      return {
+        plate: v.plate,
+        modele: [v.brand, v.model].filter(Boolean).join(' '),
+        groupe: v.groups?.[0]?.group?.name ?? '',
+        kpis: this.aggregate(siens, { ...v, fleet }, []),
+      };
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Vizyo Tracky';
+    workbook.created = new Date();
+
+    this.buildSyntheseParVehicule(workbook, fleet.name, scope.groupId ? (lignes[0]?.groupe || null) : null, from, to, lignes, prives.map((v) => v.plate));
+    this.buildTrajets(workbook, trips, plaque);
+    this.buildParJour(workbook, trips);
+    if (fuelStops.length) this.buildPassagesStation(workbook, fuelStops);
+
+    const arrayBuffer = await workbook.xlsx.writeBuffer();
+    const buffer = Buffer.from(arrayBuffer as ArrayBuffer);
+    const nom = scope.groupId ? (lignes[0]?.groupe || 'groupe') : fleet.name;
+    const filename = `tracky-${this.safePlate(nom)}-${this.dateSuffix(from, to)}.xlsx`;
+    return { buffer, filename };
+  }
+
+  /**
+   * Feuille d'ouverture d'un classeur de périmètre : une ligne par véhicule, total en bas.
+   *
+   * ⚠️ Le total de la colonne « Vitesse moyenne » n'existe PAS : une moyenne de moyennes
+   * n'a pas de sens, et un chiffre plausible à cet endroit serait lu comme la vitesse
+   * moyenne du parc. La cellule porte un tiret.
+   */
+  private buildSyntheseParVehicule(
+    wb: ExcelJS.Workbook,
+    societe: string,
+    groupe: string | null,
+    from: Date,
+    to: Date,
+    lignes: LigneVehicule[],
+    plaquesPrivees: string[],
+  ): void {
+    const ws = wb.addWorksheet('Synthèse par véhicule', { views: [{ state: 'frozen', ySplit: 4 }] });
+    ws.mergeCells('A1:H1');
+    const titre = ws.getCell('A1');
+    titre.value = groupe ? `${societe} — groupe ${groupe}` : societe;
+    titre.font = { size: 15, bold: true, color: { argb: COLOR_TITLE_FONT } };
+    ws.mergeCells('A2:H2');
+    const sousTitre = ws.getCell('A2');
+    // Borne haute EXCLUSIVE côté API : la date affichée est la veille, comme partout ailleurs.
+    sousTitre.value = `Du ${formatFleetDate(from)} au ${formatFleetDate(new Date(to.getTime() - 1))} inclus · ${lignes.length} véhicule(s)`;
+    sousTitre.font = { size: 11, color: { argb: 'FF6B7280' } };
+    if (plaquesPrivees.length > 0) {
+      ws.mergeCells('A3:H3');
+      const mention = ws.getCell('A3');
+      // ⚠️ Un total amputé sans mention est un total faux. On nomme les plaques : le lecteur
+      // doit pouvoir vérifier lui-même que le manque est voulu, et non une panne.
+      mention.value = `⚠️ ${plaquesPrivees.length} véhicule(s) exclu(s) — mode vie privée actif : ${plaquesPrivees.join(', ')}`;
+      mention.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
+    }
+
+    const enTete = ws.getRow(4);
+    const colonnes = ['Véhicule', 'Modèle', 'Groupe', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)', 'Carburant estimé (€)'];
+    enTete.values = colonnes;
+    enTete.eachCell((c) => {
+      c.font = { bold: true, color: { argb: COLOR_HEADER_FONT } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_HEADER_FILL } };
+      c.alignment = { vertical: 'middle' };
+    });
+    ws.columns = [
+      { width: 14 }, { width: 22 }, { width: 18 }, { width: 10 },
+      { width: 15 }, { width: 12 }, { width: 18 }, { width: 20 },
+    ];
+
+    // Les plus gros rouleurs en tête : c'est l'ordre dans lequel on lit ce tableau.
+    const triees = [...lignes].sort((a, b) => b.kpis.totalKm - a.kpis.totalKm);
+    for (const l of triees) {
+      ws.addRow([
+        l.plate, l.modele, l.groupe,
+        l.kpis.tripCount, l.kpis.totalKm, fmtDuration(l.kpis.totalDurationSeconds),
+        l.kpis.avgSpeedKmh, l.kpis.estimatedCostEur,
+      ]);
+    }
+
+    const total = ws.addRow([
+      'TOTAL', '', '',
+      triees.reduce((n, l) => n + l.kpis.tripCount, 0),
+      round1(triees.reduce((n, l) => n + l.kpis.totalKm, 0)),
+      fmtDuration(triees.reduce((n, l) => n + l.kpis.totalDurationSeconds, 0)),
+      '—',
+      Math.round(triees.reduce((n, l) => n + l.kpis.estimatedCostEur, 0) * 100) / 100,
+    ]);
+    total.eachCell((c) => {
+      c.font = { bold: true };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_TOTAL_FILL } };
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Agrégation KPI
   // ---------------------------------------------------------------------------
@@ -287,11 +477,19 @@ export class ReportExcelService {
   // Feuille « Trajets »
   // ---------------------------------------------------------------------------
 
-  private buildTrajets(wb: ExcelJS.Workbook, trips: TripRow[]): void {
+  /**
+   * @param plaques quand il est fourni, le classeur couvre PLUSIEURS véhicules et une
+   *   colonne « Véhicule » ouvre le tableau. Sans elle, un classeur de parc serait une
+   *   liste de trajets dont on ne saurait pas de qui ils sont.
+   */
+  private buildTrajets(wb: ExcelJS.Workbook, trips: TripRow[], plaques?: Map<string, string>): void {
     const ws = wb.addWorksheet('Trajets', {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
     ws.columns = [
+      // ⚠️ La colonne « Véhicule » n'existe QUE dans un classeur de périmètre. Dans l'export
+      // d'un seul véhicule, elle répéterait la même plaque sur mille lignes.
+      ...(plaques ? [{ header: 'Véhicule', key: 'veh', width: 14 }] : []),
       // Heure de PARIS, écrite en texte : une cellule Date passe à Excel un instant UTC, que
       // le tableur affiche sans fuseau — un départ à 07:30 se lisait 05:30, alors que le PDF
       // du même véhicule disait 07:30.
@@ -314,6 +512,7 @@ export class ReportExcelService {
       sumKm += km;
       sumDur += dur;
       ws.addRow({
+        ...(plaques ? { veh: plaques.get(t.vehicleId ?? '') ?? '' } : {}),
         start: formatFleetDateTime(t.startedAt),
         end: t.endedAt ? formatFleetDateTime(t.endedAt) : '',
         dur: fmtDuration(dur),
@@ -473,6 +672,8 @@ export class ReportExcelService {
 // -----------------------------------------------------------------------------
 
 interface TripRow {
+  /** Renseigné uniquement dans un classeur de PÉRIMÈTRE (plusieurs véhicules). */
+  vehicleId?: string;
   startedAt: Date;
   endedAt: Date | null;
   durationSeconds: number;
@@ -481,6 +682,14 @@ interface TripRow {
   avgSpeed: number;
   notes: string | null;
   driver: { firstName: string; lastName: string } | null;
+}
+
+/** Une ligne de la feuille « Synthèse par véhicule » d'un classeur de périmètre. */
+interface LigneVehicule {
+  plate: string;
+  modele: string;
+  groupe: string;
+  kpis: Kpis;
 }
 
 interface Kpis {

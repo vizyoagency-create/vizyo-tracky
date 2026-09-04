@@ -148,8 +148,8 @@ const ANALYSES_BATCH_SIZE = 200;
           <!-- Sprint 5 — Export Excel « soigné » PAR VÉHICULE : nécessite un
                véhicule précis (sinon désactivé + hint). -->
           <button type="button" (click)="onExportExcel()" trackClick="rapport-export-excel"
-                  [disabled]="!!exporting() || !canExportExcel()"
-                  [title]="canExportExcel() ? 'Export Excel détaillé du véhicule' : 'Sélectionnez un véhicule'"
+                  [disabled]="!!exporting()"
+                  [title]="libelleExcel()"
                   class="rep-export-btn rep-export-btn--excel">
             @if (exporting() === 'excel') {
               <span class="rep-export-spin"></span>
@@ -2771,7 +2771,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * Sprint 5 — l'export Excel est PAR VÉHICULE : il faut un véhicule précis
    * sélectionné. Sinon le bouton est désactivé avec un hint.
    */
+  /**
+   * ⚠️ CONSERVÉ mais plus utilisé pour DÉSACTIVER le bouton : l'Excel couvre désormais un
+   * parc entier. Le libellé ci-dessous dit ce que le classeur contiendra — un bouton qui
+   * change de portée sans le dire produit un fichier qu'on n'attendait pas.
+   */
   protected readonly canExportExcel = computed(() => !!this.selectedVehicleId());
+
+  /** Ce que le classeur contiendra, écrit dans l'infobulle du bouton. */
+  protected readonly libelleExcel = computed(() => {
+    const veh = this.selectedVehicleId();
+    if (veh) return `Export Excel détaillé du véhicule ${this.vehiclePlate(veh) || ''}`.trim();
+    if (this.selectedGroupId()) return `Export Excel du groupe ${this.selectedGroupLabel()} — une feuille de synthèse par véhicule`;
+    return 'Export Excel de toute la société — une feuille de synthèse par véhicule';
+  });
 
   /** Format une Date en YYYY-MM-DD en HEURE LOCALE (pas UTC).
    *  Important : `toISOString()` decale d'1 jour si le user est a UTC+X et qu'on est
@@ -3888,8 +3901,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected async onExportExcel(): Promise<void> {
     if (this.exporting()) return;
     const vehicleId = this.selectedVehicleId();
-    if (!vehicleId) {
-      this.toast.error('Export Excel', 'Sélectionnez un véhicule pour exporter.');
+    /**
+     * ⚠️ Sans véhicule, le classeur porte le PÉRIMÈTRE — mais il faut alors une société
+     * désignée. Un super-administrateur sur « toutes les sociétés » reçoit un refus explicite
+     * plutôt qu'un classeur portant le nom d'une société qu'il n'a pas demandée : celui-là
+     * aurait l'air juste, ce qui est pire qu'une erreur.
+     */
+    const fleetId = this.fleetFilter.selectedFleetId();
+    if (!vehicleId && !this.synthesePeriodePossible()) {
+      this.toast.error(
+        'Export Excel',
+        'Choisissez une société (ou un véhicule) : un classeur de parc doit désigner son périmètre.',
+      );
       return;
     }
     this.refreshPeriodIfStalePreset();
@@ -3899,7 +3922,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
     this.exporting.set('excel');
     try {
-      await this.reportsApi.downloadExcel(vehicleId, this.periodFrom, this.periodTo);
+      await this.reportsApi.downloadExcel(
+        vehicleId
+          ? { vehicleId }
+          : { fleetId, groupId: this.selectedGroupId() || undefined },
+        this.periodFrom,
+        this.periodTo,
+      );
       this.toast.success('Excel généré');
     } catch (err) {
       this.toast.error('Échec export Excel', err instanceof Error ? err.message : '');

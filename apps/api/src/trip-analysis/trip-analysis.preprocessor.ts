@@ -8,6 +8,7 @@ import {
 } from '@vizyo/tracky-shared';
 import { haversineMeters } from '../agenda/trip-stop-detector.service';
 import { co2DuCarburant } from '@vizyo/tracky-shared';
+import { sanitizePositions } from '@vizyo/tracky-shared';
 
 /**
  * Traçabilité fine des trajets (Palier 2) — PRÉPROCESSEUR DÉTERMINISTE.
@@ -95,7 +96,9 @@ export interface TripAnalysisResult {
      * dont la trajectoire contredit la vitesse. Permet d'afficher « pointe non corroborée »
      * plutôt que de faire disparaître un chiffre sans explication.
      */
-    vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
+    vitesse?: { pointeBruteKmh: number; pointsEcartes: number; pointsInvraisemblables?: number };
+    /** L'analyse ne couvre qu'une partie du trajet (plafond de positions atteint). */
+    partielle?: { positionsLues: number; plafond: number };
     /** Pointes que l'on refuse d'affirmer, avec le motif du doute. */
     aVerifier?: PointeAVerifier[];
     /** Ce qui a ete retire a la note, et pourquoi — une phrase par penalite. */
@@ -194,10 +197,24 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
   const total = raw.length;
   // 1. Filtrage : valides, coordonnées présentes (≠ 0,0), vitesses possibles, triées, dé-dupliquées par timestamp.
   const seen = new Set<number>();
-  const pts = raw
+  const retenus = raw
     .filter((p) => p.valid !== false && !(p.lat === 0 && p.lng === 0) && p.speedKmh <= IMPOSSIBLE_SPEED_KMH && Number.isFinite(p.lat) && Number.isFinite(p.lng))
     .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
     .filter((p) => { const t = p.timestamp.getTime(); if (seen.has(t)) return false; seen.add(t); return true; });
+  /**
+   * ── LE MÊME FILTRE DE SAUTS QUE LE TRAJET (A09) ────────────────────────────────────
+   *
+   * Le SEGMENTEUR passe ses positions par `sanitizePositions`, qui rejette les téléportations
+   * (un point à 40 km du précédent en douze secondes). L'analyse, elle, ne le faisait pas :
+   * elle comptait donc ces bonds dans sa distance. Le tableau annonçait 42 km pour un trajet
+   * dont l'analyse disait 58 — deux chiffres pour un même trajet, sur le même écran, et rien
+   * pour expliquer l'écart.
+   *
+   * ⚠️ Les points écartés sont COMPTÉS, pas effacés : c'est la mesure de ce qu'on a refusé
+   * de croire, et elle doit rester lisible.
+   */
+  const pts = sanitizePositions(retenus);
+  const pointsInvraisemblables = retenus.length - pts.length;
 
   if (pts.length === 0) return empty(total);
 
@@ -382,6 +399,9 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
       vitesse: {
         pointeBruteKmh: round(pointeBrute, 1),
         pointsEcartes: pointsVitesseEcartes,
+        // Bonds de position rejetés par le même filtre que le trajet — la mesure de ce
+        // qu'on a refusé de croire, comptée plutôt qu'effacée.
+        pointsInvraisemblables,
       },
       // Pointes non affirmées : rattachement douteux ou dépassement vu sur un seul point.
       aVerifier,

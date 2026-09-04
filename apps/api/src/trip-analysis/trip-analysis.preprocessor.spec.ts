@@ -84,4 +84,41 @@ describe('analyzeTrip (préprocesseur déterministe)', () => {
     expect(r.fuelLiters).toBeGreaterThan(0.8); // ~1 L pour 10 km à 10 L/100
     expect(r.co2Kg).toBeGreaterThan(0);
   });
+
+  /**
+   * ══ LE MÊME FILTRE DE SAUTS QUE LE TRAJET (A09) ═══════════════════════════════════
+   *
+   * Le SEGMENTEUR passe ses positions par `sanitizePositions`, qui rejette les
+   * téléportations. L'analyse, elle, ne le faisait pas : elle comptait ces bonds dans sa
+   * distance. Le tableau annonçait une distance, l'analyse une autre, et rien sur l'écran
+   * n'expliquait l'écart — le pire des désaccords, parce que les deux chiffres sont
+   * plausibles isolément.
+   */
+  describe('bonds de position — l’analyse écarte ce que le trajet écarte déjà', () => {
+    /** 40 km parcourus en 12 s : 12 000 km/h. Aucune trajectoire ne soutient cela. */
+    const teleportation = (): RawPosition[] => [
+      p(0, 0, 50),
+      p(12, 40_000, 50),
+      p(24, 40_300, 50),
+    ];
+
+    it('ne compte PAS la téléportation dans la distance', () => {
+      const r = analyzeTrip(teleportation());
+      // Sans le filtre, la distance dépassait 40 km. Avec, il ne reste que le premier point.
+      expect(r.distanceKm).toBeLessThan(1);
+    });
+
+    it('COMPTE les points écartés au lieu de les effacer', () => {
+      const r = analyzeTrip(teleportation());
+      expect(r.detail.vitesse?.pointsInvraisemblables).toBeGreaterThan(0);
+    });
+
+    it('ne touche à rien quand aucun bond n’est présent', () => {
+      const pts: RawPosition[] = [];
+      for (let i = 0; i <= 10; i++) pts.push(p(i * 10, i * 250, 90));
+      const r = analyzeTrip(pts);
+      expect(r.gpsPoints).toBe(11);
+      expect(r.detail.vitesse?.pointsInvraisemblables).toBe(0);
+    });
+  });
 });

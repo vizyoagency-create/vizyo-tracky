@@ -165,6 +165,20 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
           </header>
           <div class="taid-body">
             @if (current(); as a) {
+              <!-- ══ CE QUE LES CHIFFRES NE COUVRENT PAS (A09) ══════════════════════════
+                   Au-delà du plafond de lecture, seules les PREMIÈRES positions sont
+                   analysées : sur un trajet de douze heures, les chiffres décrivent le
+                   début et sont présentés comme s'ils décrivaient le tout. Une analyse
+                   partielle affichée comme complète est pire qu'une analyse absente — ses
+                   chiffres sont plausibles, cohérents entre eux, et faux. -->
+              @if (a.detail.partielle; as pa) {
+                <p class="taid-partielle">
+                  <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon>
+                  Analyse PARTIELLE : ce trajet compte plus de {{ pa.plafond }} positions, et seules
+                  les {{ pa.positionsLues }} premières ont été lues. Les chiffres ci-dessous décrivent
+                  le DÉBUT du trajet, pas son ensemble.
+                </p>
+              }
               @if (a.narrative) {
                 <section class="taid-sec taid-sec--recit">
                   <h4>Récit @if (a.provider) { <span class="taid-prov">par {{ providerLabel(a.provider) }}</span> }</h4>
@@ -247,6 +261,13 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
                   }
                   @if (pointeNonCorroboree(); as pointe) {
                     <div><dt>Pointe écartée</dt><dd>{{ pointe }} km/h <small>annoncés par le boîtier, mais la distance réellement parcourue ne les soutient pas. Cette valeur n'est retenue ni comme vitesse maximale, ni comme excès.</small></dd></div>
+                  }
+                  <!-- ⚠️ Comptés, jamais effacés : c'est la mesure de ce qu'on a refusé de
+                       croire. Depuis le 4 septembre, l'analyse écarte les mêmes bonds de
+                       position que le trajet — auparavant elle les comptait dans sa distance
+                       là où le trajet les rejetait, et les deux chiffres divergeaient. -->
+                  @if (a.detail.vitesse?.pointsInvraisemblables; as bonds) {
+                    <div><dt>Positions écartées</dt><dd>{{ bonds }} <small>bond{{ bonds > 1 ? 's' : '' }} de position que le temps écoulé ne permet pas — écarté{{ bonds > 1 ? 's' : '' }} du calcul, comme le fait déjà le trajet.</small></dd></div>
                   }
                   <div><dt>Fiabilité GPS</dt><dd>@if (a.trustScore != null) { {{ a.trustScore }}/100 } @else { {{ (a.gpsValidRatio * 100) | number:'1.0-0' }} % de mesures valides } <small>{{ a.gpsPoints }} positions@if (a.gpsLostCount > 0) { , {{ a.gpsLostCount }} perte(s) de signal }</small></dd></div>
                 </dl>
@@ -436,6 +457,14 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
     .taid-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong, var(--border-subtle)); }
     .taid-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
     .taid-err { margin: 0; font-size: 12px; color: var(--texte-alerte); }
+    .taid-partielle {
+      display: flex; align-items: flex-start; gap: 7px; margin: 0 0 10px;
+      padding: 9px 11px; border-radius: 10px;
+      font-size: 12.5px; line-height: 1.5; font-weight: 600;
+      color: var(--texte-attente);
+      border: 1px solid color-mix(in srgb, var(--texte-attente) 35%, transparent);
+      background: color-mix(in srgb, var(--texte-attente) 10%, transparent);
+    }
     .lien-conso { color: var(--texte-succes); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
   `],
 })

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { haversineMeters } from '@vizyo/tracky-shared';
 
 /** Une position minimale (testable sans Prisma). */
 export interface StopPosition {
@@ -106,13 +107,10 @@ export class TripStopDetectorService {
 }
 
 /** Distance haversine en mètres (auto-suffisant : pas de dépendance géo pour un composant back). */
-export function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6_371_000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-}
+/**
+ * ⚠️ ALIAS de la formule PARTAGÉE (`utils/gps-sanity`), qui sert déjà à l'ingestion, au
+ * segmenteur et au replay. Une copie locale vivait ici ; elle donnait le même résultat, donc
+ * rien ne signalait la divergence — et c'est exactement ce qui la rendait durable.
+ * Ne PAS y remettre de calcul.
+ */
+export { haversineMeters };

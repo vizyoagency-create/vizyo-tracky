@@ -228,6 +228,20 @@ export class TripAnalysisService {
         );
       }
       result = analyzeTrip(raw, this.vehicleFuel(trip), resolver);
+      /**
+       * ── UNE ANALYSE PARTIELLE DOIT LE DIRE (A09) ──────────────────────────────────
+       *
+       * La lecture des positions est plafonnée (`MAX_POSITIONS`). Au-delà, seules les
+       * PREMIÈRES sont analysées : sur un trajet de douze heures, les chiffres décrivent
+       * alors le début du trajet et sont annoncés comme s'ils décrivaient le tout.
+       *
+       * ⚠️ Une analyse partielle affichée comme complète est pire qu'une analyse absente :
+       * ses chiffres sont plausibles, cohérents entre eux, et faux. On la marque, l'écran
+       * la signale, et personne n'en tire une conclusion qu'elle ne porte pas.
+       */
+      if (positions.length >= MAX_POSITIONS) {
+        result.detail.partielle = { positionsLues: positions.length, plafond: MAX_POSITIONS };
+      }
     }
 
     // Passages en STATION-SERVICE (sur les arrêts détectés) — best-effort, jamais bloquant. Le service

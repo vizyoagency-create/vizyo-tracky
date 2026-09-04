@@ -335,17 +335,40 @@ export class ReportsController {
       if (from.getTime() >= to.getTime()) {
         throw new BadRequestException('from doit etre strictement avant to');
       }
-      // La flotte du véhicule, pas celle de l'appelant : un super-admin exporte pour autrui.
-      const veh = await this.prisma.vehicle.findUnique({ where: { id: body.vehicleId }, select: { fleetId: true } });
-      const { buffer, filename } = await this.excel.generate(body.vehicleId, from, to, req.user);
+      /**
+       * ── UN VÉHICULE, OU TOUT UN PÉRIMÈTRE ────────────────────────────────────────
+       *
+       * `vehicleId` absent = classeur de société (éventuellement borné à un groupe), avec
+       * une feuille de synthèse par véhicule en tête. Jusqu'ici, obtenir le mois d'un parc
+       * demandait quarante exports recollés à la main.
+       *
+       * ⚠️ La flotte retenue est celle du VÉHICULE (ou celle demandée), pas celle de
+       * l'appelant : un super-administrateur exporte pour autrui. Le service, lui,
+       * intersecte toujours avec les véhicules réellement accessibles.
+       */
+      const veh = body.vehicleId
+        ? await this.prisma.vehicle.findUnique({ where: { id: body.vehicleId }, select: { fleetId: true } })
+        : null;
+      let fleetIdCible = veh?.fleetId ?? body.fleetId ?? req.user.fleetId ?? null;
+      if (!body.vehicleId && !fleetIdCible) {
+        // Super-administrateur sans société : on refuse plutôt que d'en choisir une au
+        // hasard — un classeur portant le nom d'une société qu'on n'a pas demandée serait
+        // pire qu'une erreur, il aurait l'air juste.
+        throw new BadRequestException(
+          'Précisez une société (fleetId) ou un véhicule : un classeur de parc doit désigner son périmètre.',
+        );
+      }
+      const { buffer, filename } = body.vehicleId
+        ? await this.excel.generate(body.vehicleId, from, to, req.user)
+        : await this.excel.generateScope({ fleetId: fleetIdCible!, groupId: body.groupId }, from, to, req.user);
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       );
       res.setHeader('Content-Disposition', enTeteTelechargement(filename));
       res.send(buffer);
-      this.recordExport(req, 'export_excel', filename, veh?.fleetId ?? null, {
-        vehicleId: body.vehicleId, from: body.from, to: body.to,
+      this.recordExport(req, 'export_excel', filename, fleetIdCible, {
+        vehicleId: body.vehicleId, groupId: body.groupId, from: body.from, to: body.to,
       });
     });
   }

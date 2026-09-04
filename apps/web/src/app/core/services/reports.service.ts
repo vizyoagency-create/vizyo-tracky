@@ -225,16 +225,31 @@ export class ReportsApiService {
 
   /**
    * Sprint 5 — Export Excel « soigné » PAR VÉHICULE.
-   * POST /api/reports/excel { vehicleId, from, to } → .xlsx en streaming.
+   * POST /api/reports/excel { vehicleId? | fleetId? + groupId?, from, to } → .xlsx.
+   *
+   * Sans `vehicleId`, le classeur couvre TOUT le périmètre, avec une feuille de synthèse
+   * par véhicule en tête — jusqu'au 4 septembre 2026, l'Excel n'existait que par véhicule,
+   * et obtenir le mois d'un parc demandait quarante exports recollés à la main.
    * `from`/`to` sont les bornes de la période courante (le `to` est déjà
    * exclusif côté composant, ce que le backend attend : from < to strict).
    * Le nom de fichier est lu depuis le Content-Disposition (le backend nomme
    * `tracky-{plaque}-{from}_{to}.xlsx`), avec un fallback générique.
    */
-  async downloadExcel(vehicleId: string, from: string, to: string): Promise<void> {
+  async downloadExcel(
+    cible: { vehicleId?: string; fleetId?: string | null; groupId?: string },
+    from: string,
+    to: string,
+  ): Promise<void> {
     try {
       const res = await firstValueFrom(
-        this.http.post('/api/reports/excel', { vehicleId, from, to }, {
+        this.http.post('/api/reports/excel', {
+          // ⚠️ Aucune clé vide n'est envoyée : le serveur distingue « pas de véhicule
+          // demandé » (classeur de parc) de « véhicule vide », qui serait un 400.
+          ...(cible.vehicleId ? { vehicleId: cible.vehicleId } : {}),
+          ...(cible.fleetId ? { fleetId: cible.fleetId } : {}),
+          ...(cible.groupId ? { groupId: cible.groupId } : {}),
+          from, to,
+        }, {
           responseType: 'blob',
           observe: 'response',
         }),

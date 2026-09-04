@@ -66,7 +66,26 @@ export interface TripAnalysisDetailDto {
    * maximale ni un excès, mais on les montre : effacer un chiffre sans le dire déplacerait
    * simplement le mensonge. Absent des analyses calculées avant le 3 septembre 2026.
    */
-  vitesse?: { pointeBruteKmh: number; pointsEcartes: number };
+  vitesse?: {
+    pointeBruteKmh: number;
+    pointsEcartes: number;
+    /**
+     * Positions rejetées comme TÉLÉPORTATIONS par le même filtre que le trajet (A09).
+     * Absent des analyses calculées avant le 4 septembre 2026 — auparavant, l'analyse
+     * comptait ces bonds dans sa distance là où le trajet les écartait, et les deux chiffres
+     * divergeaient sans que rien ne l'explique.
+     */
+    pointsInvraisemblables?: number;
+  };
+  /**
+   * L'analyse ne porte que sur une PARTIE du trajet : le nombre de positions dépasse le
+   * plafond de lecture, et seules les premières ont été analysées.
+   *
+   * ⚠️ Une analyse partielle affichée comme complète est pire qu'une analyse absente : ses
+   * chiffres sont plausibles, cohérents entre eux, et faux. Absent quand l'analyse est
+   * complète — et des analyses antérieures au 4 septembre 2026.
+   */
+  partielle?: { positionsLues: number; plafond: number };
   /**
    * Pointes que l'analyse REFUSE d'affirmer comme des excès, avec le motif du doute :
    * `limite-invraisemblable` (102 km/h sur une voie à 30 — le point a été rattaché au pont qui
