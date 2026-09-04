@@ -1102,12 +1102,24 @@ export class TripsService implements OnModuleInit {
       category: 'MUTATION',
       action: 'trips_recompute',
       status: 'SUCCESS',
-      // Le NOM est résolu à la lecture depuis `triggeredByUserId` ; le recopier ici
-      // le figerait au moment du recalcul et le ferait diverger d'un renommage.
-      actor: null,
+      /**
+       * ⚠️ TOUS LES RECALCULS NE SONT PAS HUMAINS.
+       *
+       * L'automatisation appelle `recompute` avec un utilisateur SYNTHÉTIQUE dont l'identifiant
+       * est `system-trip-automation` — pas un UUID. `triggeredByUserId` est une colonne `uuid` :
+       * le lui passer faisait échouer l'écriture (22P02), silencieusement pour le recalcul
+       * (le journal est fire-and-forget) mais bruyamment dans le centre d'alerte, une fois par
+       * passage horaire. Constaté en production le 2026-09-04 à 16:45, 16:52 et 17:45.
+       *
+       * Un recalcul déclenché par la machine n'a donc pas d'auteur humain : `actor` le NOMME,
+       * `triggeredByUserId` reste vide. Écrire l'un ou l'autre selon l'origine vaut mieux que
+       * de perdre la trace des recalculs automatiques — ce sont eux, précisément, qu'un client
+       * ne peut pas expliquer quand ses trajets changent tout seuls.
+       */
+      actor: this.acteurHumain(requestedBy.userId) ? null : (requestedBy.userId || 'automatisation'),
       target: vehicle.plate ?? dto.vehicleId,
       fleetId: vehicle.fleetId,
-      triggeredByUserId: requestedBy.userId ?? null,
+      triggeredByUserId: this.acteurHumain(requestedBy.userId) ? requestedBy.userId : null,
       detail:
         `${deleted} trajet(s) supprimé(s), ${created} recréé(s) — `
         + `${notesReprises} note(s) et ${conducteursRepris} conducteur(s) repris, `
@@ -1125,6 +1137,17 @@ export class TripsService implements OnModuleInit {
     });
 
     return { deleted, created, notesReprises, conducteursRepris, notesPerdues };
+  }
+
+  /**
+   * L'identifiant est-il celui d'une VRAIE personne ?
+   *
+   * ⚠️ Le test porte sur la forme UUID, pas sur l'existence en base : `triggeredByUserId` est
+   * une colonne `uuid`, et c'est le format qui fait échouer l'écriture. Un identifiant
+   * synthétique (`system-trip-automation`) n'a rien à y faire.
+   */
+  private acteurHumain(userId: string | null | undefined): userId is string {
+    return !!userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
   }
 
   /**

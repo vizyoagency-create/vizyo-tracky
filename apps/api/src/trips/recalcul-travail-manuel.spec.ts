@@ -18,6 +18,8 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
 import { TripSegmenterService } from './trip-segmenter.service';
 
 const VEHICULE = '00000000-0000-0000-0000-0000000000v1';
+/** ⚠️ Un VRAI uuid : `triggeredByUserId` est une colonne uuid, et « u1 » n'en est pas un. */
+const HUMAIN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 const T0 = new Date('2026-09-01T08:00:00.000Z');
 const a = (min: number) => new Date(T0.getTime() + min * 60_000);
 
@@ -41,6 +43,8 @@ const decoupe = (debutMin: number, finMin: number) => ({
 interface Monde {
   anciens?: ReturnType<typeof ancien>[];
   decoupes?: ReturnType<typeof decoupe>[];
+  /** Identifiant de l'appelant — un uuid pour un humain, autre chose pour l'automatisation. */
+  demandeur?: string;
 }
 
 async function recalculer(monde: Monde) {
@@ -86,7 +90,7 @@ async function recalculer(monde: Monde) {
 
   const svc = module.get(TripsService);
   const resultat = await svc.recompute(
-    { userId: 'u1', role: UserRole.SUPER_ADMIN, fleetId: null } as never,
+    { userId: monde.demandeur ?? HUMAIN, role: UserRole.SUPER_ADMIN, fleetId: null } as never,
     { vehicleId: VEHICULE, from: a(-60).toISOString(), to: a(600).toISOString() },
   );
   return { resultat, crees, journal };
@@ -195,7 +199,7 @@ describe('Recalcul — le travail saisi à la main survit', () => {
     const ligne = journal.record.mock.calls[0][0];
     expect(ligne.category).toBe('MUTATION');
     expect(ligne.action).toBe('trips_recompute');
-    expect(ligne.triggeredByUserId).toBe('u1');
+    expect(ligne.triggeredByUserId).toBe(HUMAIN);
     expect(ligne.fleetId).toBe('f1');
     // Les cinq chiffres qu'on vient chercher après coup — Y COMPRIS celui qui vaut zéro.
     // Une ligne qui ne porte la perte que lorsqu'elle est non nulle oblige à interpréter
@@ -209,6 +213,42 @@ describe('Recalcul — le travail saisi à la main survit', () => {
     });
     expect(ligne.meta.notesPerdues).toBe(0);
     expect(ligne.detail).toContain('supprimé');
+  });
+
+  /**
+   * ── TOUS LES RECALCULS NE SONT PAS HUMAINS ────────────────────────────────────────
+   *
+   * L'automatisation appelle `recompute` avec un utilisateur SYNTHÉTIQUE dont l'identifiant
+   * est `system-trip-automation`. `triggeredByUserId` est une colonne `uuid` : le lui passer
+   * faisait échouer l'écriture du journal (Postgres 22P02) — silencieusement pour le recalcul,
+   * bruyamment dans le centre d'alerte, une fois par passage horaire. Constaté en production
+   * le 2026-09-04 à 16:45, 16:52 et 17:45.
+   */
+  it('un recalcul AUTOMATIQUE nomme la machine au lieu d’inventer un utilisateur', async () => {
+    const { journal } = await recalculer({
+      anciens: [ancien('vieux-1', 0, 60)],
+      decoupes: [decoupe(0, 60)],
+      demandeur: 'system-trip-automation',
+    });
+
+    const ligne = journal.record.mock.calls[0][0];
+    // ⚠️ VIDE, et non l'identifiant synthétique : la colonne est un uuid.
+    expect(ligne.triggeredByUserId).toBeNull();
+    // Mais la trace ne se perd pas : l'origine est nommée.
+    expect(ligne.actor).toBe('system-trip-automation');
+  });
+
+  it('un recalcul HUMAIN garde son auteur, résolu à la lecture', async () => {
+    const { journal } = await recalculer({
+      anciens: [ancien('vieux-1', 0, 60)],
+      decoupes: [decoupe(0, 60)],
+      demandeur: HUMAIN,
+    });
+
+    const ligne = journal.record.mock.calls[0][0];
+    expect(ligne.triggeredByUserId).toBe(HUMAIN);
+    // Le NOM est résolu à la lecture : le recopier ici le figerait au moment du recalcul.
+    expect(ligne.actor).toBeNull();
   });
 
   it('journalise AUSSI la note qu’aucun trajet n’a pu reprendre', async () => {
