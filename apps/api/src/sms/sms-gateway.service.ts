@@ -108,6 +108,44 @@ export interface SmsInboundEvent {
   receivedAt: string;
 }
 
+/**
+ * ══ TRK-066 — QUAND LE DERNIER RECOURS SE TAIT, IL DOIT AU MOINS DIRE LEQUEL ═════════════
+ *
+ * Le 2026-09-04 à 03:00:10, la passerelle SMS a écrit sa **toute première ligne d'erreur** — le
+ * référentiel notait, pour cette source, « **0 depuis toujours** ». Le message était :
+ *
+ *     The operation was aborted due to timeout
+ *
+ * Sept mots qui ne nomment ni la dépendance, ni la conséquence, ni ce qui survit. Or ce qui se
+ * jouait derrière était le **coupe-circuit** : le boîtier `FG-669-DQ` était hors ligne, le repli
+ * SMS était donc la DERNIÈRE voie, et le relais n'a pas répondu dans les 10 secondes accordées.
+ * **Le véhicule n'a pas été immobilisé.**
+ *
+ * 🔑 C'est le défaut de TRK-060, sur une chaîne bien plus grave : *un message qui recopie l'erreur
+ * de transport fait porter tout le travail de traduction à l'exploitant, et l'envoie au mauvais
+ * endroit.* Celui-ci ne disait même pas quel relais avait expiré.
+ *
+ * ⚠️ **On change l'ORDRE, on n'efface rien** : le motif technique reste en fin de phrase ET dans
+ * le contexte (`motifTechnique`), pour que la ligne reste diagnosticable.
+ *
+ * ⚠️ **Ce correctif ne touche PAS la garde elle-même.** Le délai de 10 s, l'absence de réessai sur
+ * le dernier recours, et le niveau `ERROR` porté par une immobilisation qui n'a pas eu lieu sont
+ * instruits dans la fiche TRK-066 : ils relèvent du coupe-circuit, que le §8 de la procédure
+ * d'audit interdit de modifier sans décision humaine. *On corrige le cri, jamais le garde-fou.*
+ */
+export function decrireEchecRelaisSms(motif: string, destinataire: string): string {
+  const expiration = /abort|timeout|timed out/i.test(motif);
+  const masque = destinataire.length > 4 ? `…${destinataire.slice(-4)}` : destinataire;
+  const cause = expiration
+    ? "le relais SMS (vizyo-texto) n'a pas répondu dans le délai accordé"
+    : 'le relais SMS (vizyo-texto) a refusé la demande';
+  return (
+    `SMS non remis au relais : ${cause}. Le message vers ${masque} n'est pas parti — ` +
+    "si cet envoi était le repli d'une commande moteur, le véhicule n'a PAS été immobilisé. " +
+    `Motif technique : ${motif.replace(/\s+/g, ' ').trim().slice(0, 200)}`
+  );
+}
+
 @Injectable()
 export class SmsGatewayService implements OnModuleInit {
   private readonly logger = new Logger(SmsGatewayService.name);
@@ -736,9 +774,9 @@ export class SmsGatewayService implements OnModuleInit {
       });
       this.logger.error(`SMS (vizyo-texto) erreur vers ${to}: ${errorMessage}`);
       this.errorLogger.record(
-        err instanceof Error ? err : new Error(errorMessage),
+        new Error(decrireEchecRelaisSms(errorMessage, to)),
         'sms-gateway',
-        { imei: context?.imei, toNumber: to, provider: 'vizyo-texto' },
+        { imei: context?.imei, toNumber: to, provider: 'vizyo-texto', motifTechnique: errorMessage },
       ).catch((e) => this.logger.error('ErrorLog persist failed', e));
       return { ok: false, outcome: 'failed', submittedStatus: 'failed', error: errorMessage };
     }
