@@ -238,9 +238,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                     @if (e.confirmation === 'MESURE') {
                       <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md
                                    bg-amber-500/10 text-amber-400"
-                            title="Le boitier n'a envoye aucune reponse. L'effet est constate par la
-                                   cadence mesuree, pas confirme par le materiel.">
-                        sans accuse du boitier
+                            title="Le boîtier n'a envoyé aucune réponse. L'effet est constaté par la
+                                   cadence mesurée, pas confirmé par le matériel.">
+                        sans accusé du boîtier
                       </span>
                     }
                     @if (e.outcomeReason) {

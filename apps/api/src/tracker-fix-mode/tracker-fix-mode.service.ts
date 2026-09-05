@@ -673,7 +673,7 @@ export class TrackerFixModeService {
           `vers des boitiers bloques sous le plancher d'auto-alignement (${AUTO_ALIGN_FLOOR_S}s).`,
       );
     } catch (err) {
-      this.logger.warn(`Fix-mode: echec de la recuperation TRK-045: ${err}`);
+      this.logger.warn(`Fix-mode : échec de la récupération TRK-045 : ${err}`);
     }
   }
 

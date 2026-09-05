@@ -99,6 +99,11 @@ const TOLERES = new Set([
   // parce que la forme est identique. Accentuer une ligne de journal n'apporte rien a
   // personne ; la tolerer ici la rend visible plutot que de detendre le motif pour tous.
   'apps/api/src/observability/recensement-suppressions.service.ts|echec',
+  // `trip-analysis-badges` : `this.current()?.detail?.note` et `?.detail?.fuelStops` — le champ
+  // `detail` du DTO d'analyse, un IDENTIFIANT. Le motif « gabarit » part d'un « > » de
+  // `computed<string | null>(() =>` et court jusqu'au prochain « < », plusieurs lignes de code
+  // plus loin. Accentuer casserait la lecture du DTO ; on tolère, on ne détend pas le motif.
+  'apps/web/src/app/features/trip-analysis/trip-analysis-badges.component.ts|detail',
 ]);
 
 const fichiers = [];

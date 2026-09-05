@@ -3666,10 +3666,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const sens = q.get('dir');
     if (sens === 'asc' || sens === 'desc') this.sortDir.set(sens);
 
-    // V1.12 — Default = "7 jours" (periods[1]) au lieu de "Aujourd'hui"
-    // (periods[0]) : la majorite des flottes n'ont pas encore de trajets en
-    // debut de journee, ce qui rendait la page Reports vide a l'ouverture
-    // (impression d'UI cassee). 7j montre du contenu immediatement.
+    // V1.12 — Défaut = "7 jours" (periods[1]) au lieu de "Aujourd'hui"
+    // (periods[0]) : la majorité des flottes n'ont pas encore de trajets en
+    // début de journée, ce qui rendait la page Rapports vide à l'ouverture
+    // (impression d'UI cassée). 7 j montre du contenu immédiatement.
     const du = q.get('from'), au = q.get('to');
     if (estJourIso(du) && estJourIso(au) && du! <= au!) {
       this.customFrom.set(du!);
