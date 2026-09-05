@@ -92,6 +92,16 @@ function makeSvc(
 ) {
   const prisma = {
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(ANALYSES) },
+    /**
+     * Excès ÉTABLIS (règle partagée), demandés en SQL — cf. `trajetsAvecExces`. Aucun test de
+     * cette suite ne lit `speedingTrips` : ce simulacre existe pour que le service passe par sa
+     * vraie requête et non par un repli. ⚠️ Son ABSENCE ferait échouer la suite (TypeError non
+     * rattrapée, et c'est voulu) : c'est la garde qui empêche un simulacre incomplet de faire
+     * passer un zéro silencieux pour un classement sans excès.
+     */
+    $queryRaw: jest.fn().mockImplementation(() => Promise.resolve(
+      ANALYSES.filter((a) => (ANALYSIS_TEMPLATES[a.vehicleId]?.speedingCount ?? 0) > 0).map((a) => ({ tripId: a.tripId })),
+    )),
     trip: {
       findMany: jest.fn().mockResolvedValue(TRIPS),
       // Comptage des trajets RÉELLEMENT parcourus (taux d'analyse). Dérivé de TRIPS pour

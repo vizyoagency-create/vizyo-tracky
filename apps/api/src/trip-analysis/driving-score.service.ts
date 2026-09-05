@@ -7,10 +7,11 @@ import type {
   DrivingScoreScope,
   DrivingScoresDto,
 } from '@vizyo/tracky-shared';
-import { formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
+import { EXCES_DUREE_MIN_SEC, formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { Prisma } from '@prisma/client';
 
 /** Borne dure d'analyses lues (perf). Au-delà, on tronque (le plus récent d'abord). */
 const MAX_ANALYSES = 20_000;
@@ -178,7 +179,11 @@ export class DrivingScoreService {
       // dont on ne sait rien. Ces analyses vides gonflaient la moyenne du classement, et un
       // véhicule mal suivi remontait au podium précisément parce qu'il était mal suivi.
       where: { ...vehicleWhere, gpsPoints: { gt: 0 } },
-      select: { tripId: true, vehicleId: true, ecoScore: true, distanceKm: true, speedingCount: true, harshAccel: true, harshBrake: true, fuelLiters: true, co2Kg: true },
+      // ⚠️ PLUS de `speedingCount` ici : c'est le compteur écrit au moment de l'analyse, et sur
+      // les analyses antérieures au lot V2 il compte des segments de durée nulle — des points
+      // GPS aberrants. Le classement disait « 1 625 trajets avec excès » sur 30 jours dont
+      // le seul excès était un point unique (mesuré le 2026-09-05). Voir `trajetsAvecExces`.
+      select: { tripId: true, vehicleId: true, ecoScore: true, distanceKm: true, harshAccel: true, harshBrake: true, fuelLiters: true, co2Kg: true },
       orderBy: { computedAt: 'desc' },
       take: MAX_ANALYSES,
     });
@@ -192,6 +197,10 @@ export class DrivingScoreService {
       select: { id: true, vehicleId: true, driverId: true, startedAt: true, driver: { select: { firstName: true, lastName: true, color: true } } },
     });
     const tripById = new Map(trips.map((t) => [t.id, t]));
+    // ⚠️ APRÈS le filtre de période, et sur ses seuls trajets : la requête lit `detail` (JSON
+    // qui voyage avec le tracé) — la poser sur les 20 000 analyses chargées ferait dé-TOASTer
+    // des tracés hors période dont la réponse ne serait jamais consultée.
+    const avecExces = await this.trajetsAvecExces(trips.map((t) => t.id));
 
     // 4. Libellés : plaques + modèles + groupes (une seule requête chacun). `tracker` est joint ICI,
     //    dans la requête qui existait déjà : la dormance ne coûte AUCUNE requête supplémentaire
@@ -323,7 +332,7 @@ export class DrivingScoreService {
         g.trips += 1;
       }
       g.distanceKm += a.distanceKm;
-      if (a.speedingCount > 0) {
+      if (avecExces.has(a.tripId)) {
         g.speedingTrips += 1;
         g.speedingRefs.push({ tripId: a.tripId, vehicleId: t.vehicleId, startedAt: t.startedAt });
       }
@@ -462,6 +471,68 @@ export class DrivingScoreService {
    * Score PERSO d'UNE entité (véhicule/conducteur/groupe) : sa note + son RANG dans le classement +
    * son écart à la moyenne. Réutilise `scores()` (même périmètre/anti-IDOR) puis extrait l'entité.
    */
+  /**
+   * ══ QUELS TRAJETS ONT UN EXCÈS ÉTABLI — SELON LA RÈGLE PARTAGÉE ═══════════════════════
+   *
+   * ── CE QUE LE CLASSEMENT DISAIT ───────────────────────────────────────────────────────
+   *
+   * Il lisait `speedingCount`, le compteur écrit au moment de l'analyse. Sur les analyses
+   * antérieures au lot V2 (2026-09-04), ce compteur inclut des segments de durée NULLE : un
+   * dépassement vu sur un seul point GPS — typiquement un point rattaché au pont qui franchit
+   * la rocade, « limite 30, relevé à 154 km/h ». Tous les autres écrans relisent le détail avec
+   * la règle actuelle depuis le lot V7 ; le classement, lui, continuait d'accuser.
+   *
+   * Mesuré en production le 2026-09-05, sur les 30 derniers jours : cdef31 1 719 trajets
+   * « avec excès » dont 1 000 n'ont QUE des faux ; mh cars 1 148 dont 493 ; A2R 473 dont 132.
+   * Soit 1 625 trajets marqués à tort — et c'est ce chiffre qu'un gestionnaire lit sous le nom
+   * d'un conducteur.
+   *
+   * ── POURQUOI EN SQL ────────────────────────────────────────────────────────────────────
+   *
+   * La règle vit dans `detail.speeding`, un tableau JSON qui voyage avec le tracé du trajet :
+   * charger `detail` sur 20 000 analyses ferait passer plusieurs dizaines de mégaoctets dans
+   * Node pour lire un booléen. On demande donc à Postgres « ce trajet a-t-il au moins un
+   * segment d'au moins `EXCES_DUREE_MIN_SEC` ? », avec la constante PARTAGÉE interpolée —
+   * c'est la seule façon d'avoir un SQL qui ne diverge pas de la règle le jour où elle bouge.
+   * Même prédicat que `reports-stats.service.ts` (colonne « Excès » du récapitulatif) : deux
+   * écrans, une réponse.
+   *
+   * ⚠️ BEST-EFFORT, et le repli est ZÉRO, jamais `speedingCount`. Un classement sans sa colonne
+   * « avec excès » reste un classement juste ; un repli sur l'ancien compteur réintroduirait
+   * exactement ce qu'on vient de retirer, au moment précis où l'on ne regarde pas.
+   *
+   * ⚠️ Vaut aussi pour les analyses HORS DE PORTÉE du rattrapage (positions purgées) : leur
+   * détail stocké gardera ses faux segments pour toujours, mais ce filtre les écarte à la
+   * lecture. C'est le seul endroit où ces analyses-là peuvent être corrigées.
+   */
+  private async trajetsAvecExces(tripIds: string[]): Promise<Set<string>> {
+    if (tripIds.length === 0) return new Set();
+    try {
+      const rows = await this.prisma.$queryRaw<{ tripId: string }[]>`
+        SELECT ta."tripId" AS "tripId"
+          FROM trip_analyses ta
+         WHERE ta."tripId" = ANY(${tripIds}::uuid[])
+           AND EXISTS (
+             SELECT 1 FROM jsonb_array_elements(COALESCE(ta.detail->'speeding', '[]'::jsonb)) s
+              WHERE (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
+           )`;
+      return new Set(rows.map((r) => r.tripId));
+    } catch (e) {
+      /**
+       * ⚠️ Seules les erreurs de BASE retombent à zéro (base injoignable, requête refusée) : un
+       * classement sans sa colonne « avec excès » reste juste. Une erreur de PROGRAMMATION —
+       * colonne mal orthographiée, client Prisma sans `$queryRaw` dans un simulacre — doit
+       * remonter : la rattraper ici transformerait un défaut de code en zéro silencieux pour
+       * toute la flotte, avec un simple avertissement que personne ne lit.
+       */
+      if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError || e instanceof Prisma.PrismaClientInitializationError) {
+        this.logger.warn(`excès établis indisponibles pour le classement : ${e.message}`);
+        return new Set();
+      }
+      throw e;
+    }
+  }
+
   async entityScore(user: AuthUser, scope: DrivingScoreScope, id: string, fromIso?: string, toIso?: string, fleetId?: string): Promise<DrivingScoreDetailWithDormancyDto> {
     const all = await this.scores(user, scope, fromIso, toIso, fleetId);
     const idx = all.rows.findIndex((r) => r.id === id);

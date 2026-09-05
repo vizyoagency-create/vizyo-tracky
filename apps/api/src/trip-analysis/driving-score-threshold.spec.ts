@@ -74,6 +74,8 @@ function setup(
 
   const prisma = {
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(analyses) },
+    // Aucun excès établi dans ces jeux d'essai : ils portent sur le seuil de classement.
+    $queryRaw: jest.fn().mockResolvedValue([]),
     trip: {
       findMany: jest.fn().mockResolvedValue(trips),
       // Les trajets RÉELS, indépendants des analysés — c'est tout l'objet du taux.
