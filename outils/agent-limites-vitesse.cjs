@@ -317,7 +317,17 @@ async function lotOverpass(points) {
   const avant = compteCache();
   const cellules = cellulesARésoudre();
   journal(`cache : ${avant.toLocaleString('fr-FR')} portions connues - ${cellules.length.toLocaleString('fr-FR')} a resoudre`);
-  if (cellules.length === 0) { journal('rien a faire.'); return; }
+  if (cellules.length === 0) {
+    // ⚠️ « Rien a faire » est un passage REUSSI (design/C3, point 3). Ce `return` sortait avant
+    //    que `passageSucces` soit pose, et le journal consignait un ECHEC : chaque passage sur
+    //    un cache complet comptait comme une panne, et la supervision ne pouvait plus distinguer
+    //    l'agent qui a tout resolu de l'agent qui ne tourne plus. C'est le prealable a toute
+    //    alerte fondee sur `succes` : sans lui, l'alerte crierait sur l'agent en bonne sante.
+    passageSucces = true;
+    passageResume = `rien a faire : les ${avant.toLocaleString('fr-FR')} portions recentes sont deja resolues`;
+    journal('rien a faire.');
+    return;
+  }
 
   const orphelines = cellulesOrphelines(cellules);
   if (orphelines.length > 0) {

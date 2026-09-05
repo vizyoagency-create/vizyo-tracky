@@ -9,7 +9,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { distanceMeters } from '../common/utils/haversine';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { TravauxIaService } from '../travaux-ia/travaux-ia.service';
+import { TravauxIaService, lireResultatLocal } from '../travaux-ia/travaux-ia.service';
 import { FleetPlacesService } from './fleet-places.service';
 import { PlaceEnrichmentService, type PlaceFacts } from './place-enrichment.service';
 
@@ -235,6 +235,14 @@ export class PlaceAnalysisService {
    * CONSOMMATEUR (design/C1) : range ce que le poste a rédigé, via LE MÊME `persist()` que la
    * voie API — mêmes bornes sur la sortie du modèle, même empreinte anti-redite, même écran.
    * Un lieu supprimé entre l'enfilage et le rangement consomme le travail sans rien écrire.
+   *
+   * ⚠️ C'EST ICI, ET SEULEMENT ICI, que la ligne `ai_usage_logs` d'un travail local est écrite
+   * (C3, point 3 — AM-023 : jusqu'au 05/09 le courrier en écrivait une seconde, 20 doublons
+   * relevés). Les jetons sont ceux que la CLI a MESURÉS, rangés par le courrier dans `resultat`
+   * avec l'identifiant réel du modèle et la durée ; `persist()` les transmet à `aiUsage.record`,
+   * qui force `costUsd` à 0 pour l'executor `local` (rien n'est facturé — le coût équivalent se
+   * recalcule à la lecture, à partir de ces jetons). Un ancien résultat sans jetons vaut 0, pas
+   * une erreur.
    */
   async consommerTravauxLocaux(): Promise<{ ranges: number; rejetes: number }> {
     await this.travauxIa.reprendrePerimes();
@@ -243,7 +251,7 @@ export class PlaceAnalysisService {
     let rejetes = 0;
     for (const t of faits) {
       const ctx = t.contexte as { placeId?: string; hash?: string };
-      const brut = t.resultat as { contenu?: LlmOut; modele?: string } | null;
+      const lu = lireResultatLocal(t.resultat);
       try {
         const place = await this.prisma.fleetPlace.findUnique({ where: { id: String(ctx.placeId) } });
         if (!place) {
@@ -257,13 +265,13 @@ export class PlaceAnalysisService {
           'scheduled',
           null,
           {
-            model: brut?.modele ?? 'local',
+            model: lu.modele,
             provider: 'local',
-            usage: { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
-            latencyMs: 0,
-            result: brut?.contenu,
+            usage: lu.usage,
+            latencyMs: lu.latencyMs,
+            result: lu.contenu as LlmOut | undefined,
           },
-          0, // absorbé par l'abonnement du poste
+          0, // absorbé par l'abonnement du poste : rien n'est facturé, `costEur` du lieu reste 0
           'local',
         );
         ranges++;

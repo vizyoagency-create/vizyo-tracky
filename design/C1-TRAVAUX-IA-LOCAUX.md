@@ -4,6 +4,17 @@
 traité de manière récurrente doit être réalisé par des agents locaux ; l'API est réservée aux
 interactions nécessitant une réponse immédiate ».*
 
+> **Note du 2026-09-05** — les règles ci-dessous ont été durcies par le chantier C3
+> (`design/C3-CHANTIER-IA-2026-09-05.md`, points 3 et 6), après le relevé de production du même jour
+> (5 travaux `echec` repris 76 à 1 330 fois, 20 lignes d'usage en doublon, 0 jeton écrit par les
+> agents) : le courrier vérifie l'ABONNEMENT avant tout travail (`outils/cli-claude.cjs`) et refuse
+> sinon ; il ne prend que `tentatives < 3`, acte lui-même `echec` à la 3ᵉ et s'arrête après 4 échecs
+> d'affilée ; il n'écrit plus dans `ai_usage_logs` — le SEUL consommateur serveur le fait, avec les
+> jetons RÉELS et l'identifiant réel du modèle rangés dans `resultat` ; le serveur acte aussi en
+> `echec` les `a-faire` au plafond sans écraser le motif, écrit UNE alerte par travail (source
+> `travaux-ia`) et une ligne d'usage `ok=false`, et purge les `echec` de plus de 7 jours ; un passage
+> « rien à faire » est un SUCCÈS. En cas de divergence entre cette page et C3, **C3 fait foi**.
+
 ## Le problème exact
 
 Deux services IA récurrents sont aujourd'hui **coupés** faute d'un coût d'API justifiable :

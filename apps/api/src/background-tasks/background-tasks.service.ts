@@ -221,6 +221,14 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
+    id: 'travaux-ia-purge-echecs',
+    source: 'travaux-ia/travaux-ia.service.ts', label: 'Purge des travaux IA locaux en échec', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:50', criticality: 'basse', antiOverlap: false,
+    note: "Née du chantier C3 (2026-09-05) : cinq analyses de lieu en échec depuis le 27/08 (76 à 1 330 tentatives, lieux ré-analysés depuis) laissaient l'écran du courrier en anomalie permanente, sans rien dire au centre d'alerte.",
+    purpose: "Efface les travaux de la file du poste passés en « echec » depuis plus de 7 jours. L'alerte est écrite au moment du passage en échec (source travaux-ia, une par travail) : le stock n'a plus rien à apprendre.",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 50 },
+  },
+  {
     id: 'power-cut-recheck',
     source: 'alerts/power-cut-recheck.service.ts',
     label: "Réexamen des alarmes d'alimentation", category: 'Sécurité & moteur',

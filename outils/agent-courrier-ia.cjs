@@ -16,6 +16,22 @@
  *
  * Aucun credit d'API : le travail passe par l'abonnement du poste (executor `local`, cout 0).
  *
+ * ── CE QUI A CHANGE LE 2026-09-05 (design/C3, points 3 et 6) ─────────────────────────
+ *
+ *   — L'abonnement est VERIFIE avant de prendre quoi que ce soit (`cli-claude.verifierAbonnement`) :
+ *     une cle Anthropic dans l'environnement ou une session hors claude.ai = passage refuse, journalise
+ *     en echec explicite, code de sortie 2. Le « cout 0 » etait une hypothese ; c'est une garantie.
+ *   — Les JETONS REELS, l'identifiant REEL du modele, le cout equivalent API et la duree sont ranges
+ *     dans `resultat` avec la reponse. Le courrier n'ecrit PLUS RIEN dans `ai_usage_logs` : c'est le
+ *     consommateur serveur qui trace l'usage a partir de ces chiffres (AM-023 : 20 lignes en doublon
+ *     courrier + serveur relevees le 2026-09-05).
+ *   — Plafond de tentatives applique ICI aussi (AM-005) : ne prend que `tentatives < 3`, ne reprend
+ *     jamais dans le meme passage un travail qu'il vient de reposer, passe lui-meme en `echec` a la
+ *     3e tentative, et s'arrete apres 4 echecs consecutifs. Releve du 2026-09-05 : 5 travaux
+ *     `analyse-lieu` avaient ete repris 76 a 1 330 fois depuis le 27/08, l'abonnement brule en boucle.
+ *   — Le motif conserve dans `erreur` vient de la SORTIE de la CLI (stderr), jamais de la ligne de
+ *     commande — `execFileSync` y range le prompt systeme entier.
+ *
  * ── USAGE ────────────────────────────────────────────────────────────────────────────
  *
  *   node outils/agent-courrier-ia.cjs [--minutes=30] [--modele=sonnet] [--essai]
@@ -24,22 +40,22 @@
  */
 
 const { execFileSync } = require('node:child_process');
+const { verifierAbonnement, appeler } = require('./cli-claude.cjs');
 
 // ── Configuration ────────────────────────────────────────────────────────────────────
 const VPS = 'root@72.62.26.240';
 const CONTENEUR = 'tracky-postgres';
 const BASE = { user: 'tracky', db: 'tracky_prod' };
-/**
- * Le BINAIRE de la CLI — meme piege que l'agent de recits : sous Windows, `claude` est un
- * script que Node refuse de lancer sans shell, et un shell obligerait a echapper le prompt.
- */
-const CLI = process.platform === 'win32'
-  ? 'C:/Program Files/nodejs/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
-  : 'claude';
 /** Un travail (rapport 8-12k jetons d'entree) peut etre long : marge large. */
 const TIMEOUT_TRAVAIL_MS = 8 * 60 * 1000;
-/** L'action tracee dans les couts IA, par type de travail. */
-const ACTION_PAR_TYPE = { 'rapport-activite': 'activity_report', 'analyse-lieu': 'place_analysis' };
+/**
+ * Plafond de tentatives — la MEME valeur que `TENTATIVES_MAX` cote serveur
+ * (apps/api/src/travaux-ia/travaux-ia.service.ts). Le serveur acte aussi l'echec des `a-faire`
+ * arrives a ce plafond : les deux bords se completent, aucun ne compte sur l'autre.
+ */
+const TENTATIVES_MAX = 3;
+/** Au-dela, quelque chose est casse (session, reseau, modele) : on s'arrete proprement, comme l'agent de recits. */
+const ECHECS_CONSECUTIFS_MAX = 4;
 
 const args = process.argv.slice(2);
 const opt = (nom, defaut) => {
@@ -65,15 +81,24 @@ const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
 /**
  * Prend UN travail, atomiquement : `FOR UPDATE SKIP LOCKED` — deux courriers concurrents (un
  * passage planifie plus un lancement manuel) ne prendront jamais la meme ligne.
+ *
+ * `tentatives < 3` : un travail arrive au plafond n'est plus pour nous (le serveur l'acte en echec).
+ * `id <> ALL(exclus)` : un travail repose DANS CE PASSAGE n'est pas repris deux minutes plus tard —
+ * il etait en tete de file (tri `creeA ASC`), il y reviendrait a chaque tour et consommerait ses
+ * trois tentatives en un seul passage sans que rien ait change entre-temps.
+ * Le RETURNING rend `tentatives` APRES increment : c'est ce compteur qui decide, a l'echec, entre
+ * reposer et acter.
  */
-function prendreUnTravail() {
+function prendreUnTravail(exclus) {
+  const tableau = exclus.length ? `ARRAY[${exclus.map(q).join(',')}]::uuid[]` : 'ARRAY[]::uuid[]';
   const sql = `
     UPDATE travaux_ia_locaux SET statut='pris', "prisA"=now(), tentatives=tentatives+1
     WHERE id = (
-      SELECT id FROM travaux_ia_locaux WHERE statut='a-faire'
+      SELECT id FROM travaux_ia_locaux
+      WHERE statut='a-faire' AND tentatives < ${TENTATIVES_MAX} AND id <> ALL(${tableau})
       ORDER BY "creeA" ASC LIMIT 1 FOR UPDATE SKIP LOCKED
     )
-    RETURNING id::text || '|' || type || '|' || encode(convert_to(payload::text,'UTF8'),'base64');`;
+    RETURNING id::text || '|' || type || '|' || tentatives::text || '|' || encode(convert_to(payload::text,'UTF8'),'base64');`;
   /**
    * ⚠️ LE TAG DE COMMANDE (« UPDATE 1 ») SUIT LA DONNEE dans la sortie psql — et les
    * caracteres U-P-D-A-T-E et le chiffre appartiennent a l'ALPHABET BASE64. Quand le
@@ -102,27 +127,42 @@ function prendreUnTravail() {
    * n'etait jamais journalise, donc l'ecran de supervision annonçait « jamais lance » un agent
    * qui venait de travailler. Exactement l'agent invisible qu'on traque depuis deux jours.
    */
-  if (parts.length !== 3) return null;
-  const [id, type, b64] = parts;
+  if (parts.length !== 4) return null;
+  const [id, type, tentativesTexte, b64] = parts;
+  const tentatives = Number(tentativesTexte) || 0;
   /**
    * ⚠️ LA LIGNE EST DEJA MARQUEE `pris` A CE STADE. Un payload illisible doit donc etre
    * REPOSE avant de lever — sinon le travail reste orphelin : aucun passage ne reprend
    * une ligne `pris`. Paye le 2026-08-23 (analyse de lieu de Toulouse) : le crash de
    * decodage laissait la ligne en `pris`, et le resume du passage comptait « repose »
-   * un travail qui ne l'etait pas.
+   * un travail qui ne l'etait pas. Au plafond, on ACTE : un payload illisible ne le
+   * deviendra pas au passage suivant.
    */
   try {
-    return { id, type, payload: JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) };
+    return { id, type, tentatives, payload: JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) };
   } catch (e) {
     const motif = e instanceof Error ? e.message : String(e);
+    // Repose dans TOUS les cas, plafond compris : `tentatives < 3` empeche toute reprise, et c'est
+    // le SERVEUR qui actera l'echec (`reprendrePerimes`) — la seule transition qui alerte.
     reposer(id, `payload illisible au decodage : ${motif}`);
-    throw new Error(`travail ${id.slice(0, 8)} repose — payload illisible (${motif})`);
+    throw new Error(`travail ${id.slice(0, 8)} repose${tentatives >= TENTATIVES_MAX ? ' (plafond atteint : le serveur l\'actera en echec)' : ''} — payload illisible (${motif})`);
   }
 }
 
-/** La reponse du modele part en base64 : aucun echappement SQL a negocier. */
-function livrer(id, contenu, modele) {
-  const resultat = Buffer.from(JSON.stringify({ contenu, modele }), 'utf8').toString('base64');
+/**
+ * La reponse du modele part en base64 : aucun echappement SQL a negocier.
+ * `resultat` porte, a cote du contenu, ce que le SERVEUR ecrira dans `ai_usage_logs` : le modele
+ * REEL (identifiant date rendu par la CLI, pas l'alias « sonnet »), les jetons reels, le cout
+ * equivalent API et la duree. Le courrier ne trace rien lui-meme : une seule ecriture par travail.
+ */
+function livrer(id, reponse) {
+  const resultat = Buffer.from(JSON.stringify({
+    contenu: reponse.contenu,
+    modele: reponse.modele,
+    usage: reponse.usage,
+    coutEquivalentUsd: reponse.coutEquivalentUsd,
+    dureeMs: reponse.dureeMs,
+  }), 'utf8').toString('base64');
   psql(
     `UPDATE travaux_ia_locaux
      SET statut='fait', "finiA"=now(),
@@ -132,23 +172,13 @@ function livrer(id, contenu, modele) {
   );
 }
 
+/** Remet en file avec le motif : le serveur ou le prochain passage retentera. */
 function reposer(id, erreur) {
   psql(
-    `UPDATE travaux_ia_locaux SET statut='a-faire', "prisA"=NULL, erreur=${q(String(erreur).slice(0, 400))}
+    `UPDATE travaux_ia_locaux SET statut='a-faire', "prisA"=NULL, erreur=${q(String(erreur).slice(-400))}
      WHERE id=${q(id)} AND statut='pris';`,
     { lecture: false },
   );
-}
-
-/** Trace de cout : meme table que l'API, executor `local`, cout 0 — absorbe par l'abonnement. */
-function tracerCout(type, modele) {
-  const action = ACTION_PAR_TYPE[type] ?? type;
-  psql(
-    `INSERT INTO ai_usage_logs (id, action, model, executor, "inputTokens", "outputTokens",
-       "cacheWriteTokens", "cacheReadTokens", "costUsd", "latencyMs", ok, "createdAt")
-     VALUES (gen_random_uuid(), ${q(action)}, ${q(modele)}, 'local', 0, 0, 0, 0, 0, 0, true, now());`,
-    { lecture: false },
-  ).trim();
 }
 
 /** Journal des passages : l'ecran de supervision lit le TRAVAIL, pas une promesse. */
@@ -168,9 +198,10 @@ function journaliserPassage(demarreA, succes, resume, erreur) {
 
 // ── L'appel modele ───────────────────────────────────────────────────────────────────
 /**
- * `--max-turns 1`, aucun outil : UNE reponse a partir des donnees fournies, pas un agent qui
- * explore le disque. Le schema JSON du travail est joint a la consigne — c'est le SERVEUR qui
- * l'a choisi, le courrier ne fait que le transmettre.
+ * UNE reponse a partir des donnees fournies (`--max-turns 1`, aucun outil — cf. cli-claude). Le
+ * schema JSON du travail est joint a la consigne — c'est le SERVEUR qui l'a choisi, le courrier ne
+ * fait que le transmettre. `maxTokens` vient aussi du travail : le producteur sait ce qu'il attend
+ * (900 pour un lieu, 16 000 pour un rapport), le courrier non.
  */
 function appelerModele(travail) {
   const p = travail.payload;
@@ -179,29 +210,18 @@ function appelerModele(travail) {
     `Reponds UNIQUEMENT par un objet JSON conforme a ce schema (aucun texte autour, aucune balise de code) :\n` +
     `${JSON.stringify(p.schema)}`;
 
-  const sortie = execFileSync(
-    CLI,
-    ['-p', '--output-format', 'json', '--max-turns', '1', '--allowed-tools', '',
-     '--model', MODELE, '--append-system-prompt', String(p.system ?? '')],
-    { input: consigne, encoding: 'utf8', timeout: TIMEOUT_TRAVAIL_MS, maxBuffer: 32 * 1024 * 1024 },
-  );
+  const reponse = appeler({
+    system: String(p.system ?? ''),
+    consigne,
+    modele: MODELE,
+    maxTokens: p.maxTokens,
+    timeoutMs: TIMEOUT_TRAVAIL_MS,
+  });
 
-  let texte;
-  try {
-    const env = JSON.parse(sortie);
-    if (env.is_error) throw new Error(env.result || 'erreur CLI');
-    texte = typeof env.result === 'string' ? env.result : JSON.stringify(env.result);
-  } catch (e) {
-    if (/OAuth|authenticate|401|revoked/i.test(sortie)) {
-      throw new Error(`session Claude Code non authentifiee : ${sortie.trim().slice(0, 160)}`);
-    }
-    if (e && /erreur CLI/.test(e.message)) throw e;
-    texte = sortie;
-  }
-
-  const m = texte.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error(`reponse sans objet JSON (${texte.slice(0, 120)})`);
-  return JSON.parse(m[0]); // JSON illisible => throw => le travail est repose, pas invente
+  const m = reponse.texte.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error(`reponse sans objet JSON (${reponse.texte.slice(0, 120)})`);
+  // JSON illisible => throw => le travail est repose, pas invente.
+  return { ...reponse, contenu: JSON.parse(m[0]) };
 }
 
 // ── Boucle ───────────────────────────────────────────────────────────────────────────
@@ -215,46 +235,90 @@ function appelerModele(travail) {
   console.log(`[${h()}] courrier IA — modele ${MODELE}, budget ${MINUTES} min — file : ${etat}${ESSAI ? ' (ESSAI)' : ''}`);
 
   if (ESSAI) {
-    const apercu = psql(`SELECT type || ' cree ' || "creeA"::timestamp(0) FROM travaux_ia_locaux WHERE statut='a-faire' ORDER BY "creeA" LIMIT 3;`).trim();
+    const apercu = psql(`SELECT type || ' cree ' || "creeA"::timestamp(0) || ' (tentatives ' || tentatives || ')' FROM travaux_ia_locaux WHERE statut='a-faire' AND tentatives < ${TENTATIVES_MAX} ORDER BY "creeA" LIMIT 3;`).trim();
     console.log(apercu ? `[${h()}] prochains : ${apercu.split('\n').join(' | ')}` : `[${h()}] rien a prendre.`);
     return;
   }
 
-  let faits = 0, erreurs = 0;
+  /**
+   * ⚠️ AVANT de prendre le moindre travail. Prendre puis decouvrir que la CLI est hors
+   * abonnement, c'est deja une tentative consommee pour rien — et, pire, un appel qui aurait pu
+   * partir sur l'API facturee. Un refus est un passage en ECHEC, dit tel quel : la supervision
+   * doit le voir, pas le deviner d'une file qui n'avance plus.
+   */
+  const abonnement = verifierAbonnement();
+  if (!abonnement.ok) {
+    const erreur = `CLI hors abonnement : ${abonnement.motif}`;
+    console.error(`[${h()}] REFUS — ${erreur} — aucun travail pris.`);
+    journaliserPassage(demarreA, false, '0 travail pris — CLI hors abonnement, passage refuse', erreur);
+    process.exit(2);
+  }
+
+  let faits = 0, reposes = 0, actes = 0;
   let derniereErreur = null;
+  let echecsConsecutifs = 0;
+  /** Les travaux reposes ou actes DANS CE PASSAGE : jamais repris avant le prochain. */
+  const exclus = [];
   /**
    * `finally` : le passage est journalise MEME sur une panne imprevue. Un agent qui meurt sans
    * laisser de trace est un agent invisible — et l'ecran, faute de mieux, rassure a tort.
    */
   try {
   while (Date.now() < fin) {
-    const travail = prendreUnTravail();
+    const travail = prendreUnTravail(exclus);
     if (!travail) break; // file vide : on ne tourne pas a vide, la tache est un no-op
     const t0 = Date.now();
     try {
-      const contenu = appelerModele(travail);
-      livrer(travail.id, contenu, MODELE);
-      tracerCout(travail.type, MODELE);
+      const reponse = appelerModele(travail);
+      livrer(travail.id, reponse);
       faits++;
-      console.log(`[${h()}] ${travail.type} livre en ${((Date.now() - t0) / 1000).toFixed(0)}s (${travail.id.slice(0, 8)})`);
+      echecsConsecutifs = 0;
+      const j = reponse.usage;
+      console.log(
+        `[${h()}] ${travail.type} livre en ${((Date.now() - t0) / 1000).toFixed(0)}s (${travail.id.slice(0, 8)}) — ` +
+          `${reponse.modele}, ${j.inputTokens + j.cacheWriteTokens + j.cacheReadTokens} jetons entree / ${j.outputTokens} sortie, ` +
+          `equivalent API ${reponse.coutEquivalentUsd.toFixed(4)} $ (absorbe par l'abonnement)`,
+      );
     } catch (e) {
-      erreurs++;
       derniereErreur = e;
-      reposer(travail.id, e instanceof Error ? e.message : String(e));
-      console.warn(`[${h()}] ${travail.type} repose : ${String(e).slice(0, 140)}`);
+      const motif = e instanceof Error ? e.message : String(e);
+      exclus.push(travail.id);
+      if (travail.tentatives >= TENTATIVES_MAX) {
+        // 3e tentative sans livraison : on ne s'acharne pas (les 5 travaux morts du 27/08 avaient
+        // ete repris jusqu'a 1 330 fois avant que quelqu'un ne les voie). Le travail est REPOSE
+        // avec son motif, pas acte ici : `tentatives < 3` garantit qu'aucun courrier ne le
+        // reprendra, et c'est le SERVEUR qui l'actera en `echec` (`reprendrePerimes`, branche
+        // « plafonnes ») — la seule transition qui ecrit l'alerte et la ligne d'usage `ok=false`.
+        // Un `echec` pose d'ici n'entrait dans aucun de ses filtres : invisible (revue C3).
+        reposer(travail.id, motif);
+        actes++;
+        console.warn(`[${h()}] ${travail.type} au PLAFOND apres ${travail.tentatives} tentatives (${travail.id.slice(0, 8)}) : repose, le serveur l'actera en echec — ${motif.slice(0, 140)}`);
+      } else {
+        reposer(travail.id, motif);
+        reposes++;
+        console.warn(`[${h()}] ${travail.type} repose (tentative ${travail.tentatives}/${TENTATIVES_MAX}, ${travail.id.slice(0, 8)}) : ${motif.slice(0, 140)}`);
+      }
       // Session non authentifiee : inutile d'insister, tous les travaux echoueraient pareil.
-      if (/non authentifiee/.test(String(e))) break;
+      if (e && e.code === 'AUTH') {
+        console.error(`[${h()}] ARRET : session Claude Code du poste invalide — ouvrir un terminal (compte YOUNESS), lancer « claude » puis /login.`);
+        process.exitCode = 2;
+        break;
+      }
+      if (++echecsConsecutifs >= ECHECS_CONSECUTIFS_MAX) {
+        console.error(`[${h()}] ${echecsConsecutifs} echecs d'affilee — arret propre, le reste attendra le prochain passage.`);
+        break;
+      }
     }
   }
 
   } catch (e) {
-    erreurs++;
     derniereErreur = e;
     console.error(`[${h()}] ARRET sur erreur inattendue : ${e && e.message ? e.message : e}`);
   } finally {
-    const resume = `${faits} travail(aux) livre(s), ${erreurs} repose(s)`;
+    const resume = `${faits} travail(aux) livre(s), ${reposes} repose(s), ${actes} acte(s) en echec`;
     console.log(`[${h()}] fini — ${resume}`);
-    journaliserPassage(demarreA, erreurs === 0, resume, derniereErreur);
+    // Une file vide est un passage REUSSI : « rien a faire » n'est pas une panne.
+    journaliserPassage(demarreA, derniereErreur === null, resume, derniereErreur);
   }
 })().catch((e) => {
   console.error('ARRET :', e && e.message ? e.message : e);

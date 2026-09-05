@@ -76,7 +76,7 @@ passage. Le serveur promet `echec` après 3 tentatives (design C1), l'agent ne l
 **Geste** : dans `reposer()`, basculer en `echec` quand `tentatives >= 3` ; compteur d'échecs
 consécutifs avec arrêt propre (motif existant dans l'agent récit) ; ne pas reprendre un id
 déjà reposé dans le même passage.
-Statut : **à faire** · vu le 2026-08-23
+Statut : **fait** le 2026-09-05 (chantier C3 point 6, lot 1 : `agent-courrier-ia.cjs` ne prend que `tentatives < 3`, exclut les ids reposés du passage, acte `echec` à la 3ᵉ, s'arrête à 4 échecs d'affilée ; `TravauxIaService.reprendrePerimes` acte aussi les `a-faire` au plafond) · vu le 2026-08-23
 
 ### AM-006 · [important] Consommateurs locaux : le clamp silencieux persiste des livrables vides
 La « validation serveur » promise par C1 ne rejette jamais : `place-analysis.service.ts:454-465`
@@ -92,7 +92,7 @@ Une ligne `ai_usage_logs` écrite par le courrier (`agent-courrier-ia.cjs:116-12
 seconde par le consommateur (`place-analysis.service.ts:253-268`).
 **Geste** : une seule source d'écriture (le consommateur, qui connaît le résultat) ; le
 courrier cesse de tracer pour les types que le serveur trace lui-même.
-Statut : **à faire** · vu le 2026-08-23
+Statut : **fait** le 2026-09-05 (chantier C3 point 3, lot 1 : `tracerCout` supprimé du courrier, qui range les jetons réels dans `resultat` ; les deux consommateurs écrivent la ligne d'usage via `lireResultatLocal` ; les 20 doublons historiques relèvent de la migration de données du lot 2) · vu le 2026-08-23
 
 ### AM-032 · [moyen] Une panne serveur au login s'affiche « Identifiants invalides »
 `login.component.ts:252-254,289-291` : un 500/timeout est présenté comme une erreur de mot de
@@ -286,7 +286,7 @@ Chemin absolu du binaire figé en deux exemplaires, détection d'authentificatio
 sur des messages non contractuels (`agent-courrier-ia.cjs:36-38,161-171`).
 **Geste** : centraliser le chemin + la détection dans un petit module partagé des agents ;
 un smoke-test hebdomadaire « la CLI répond-elle ? » tracé dans les passages.
-Statut : **à faire** · vu le 2026-08-23
+Statut : **fait** le 2026-09-05 (chantier C3 point 3, lot 1 : `outils/cli-claude.cjs` — chemin unique, `verifierAbonnement()` via `claude auth status` à CHAQUE passage du courrier et des récits (refus journalisé en échec explicite), erreurs tirées de la sortie CLI, `node --test outils/cli-claude.test.cjs`) · vu le 2026-08-23
 
 ### AM-035 · [moyen] Étendre le témoin des disparitions au-delà de error_logs/alerts
 `ai_usage_logs`, `passages_agents_locaux`, `trips`… peuvent être vidées hors application

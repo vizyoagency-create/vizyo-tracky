@@ -22,7 +22,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ACTIVITY_REPORT_SCHEMA, ACTIVITY_REPORT_SYSTEM } from './activity-report.prompt';
-import { TravauxIaService } from '../travaux-ia/travaux-ia.service';
+import { TravauxIaService, lireResultatLocal } from '../travaux-ia/travaux-ia.service';
 
 /** Auteur d'une génération : un super-admin (id) ou le système (null, cas planifié). */
 type Actor = { id: string | null; fleetId: string | null };
@@ -322,15 +322,22 @@ export class ActivityReportService {
    * Le resultat repasse par LE MEME `sanitize()` que la voie API d'origine : une reponse
    * malformee du modele est rejetee a l'identique — l'agent n'a aucun moyen d'ecrire une
    * donnee que ce service n'aurait pas acceptee hier.
+   *
+   * ⚠️ Le rapport local ecrit AUSSI sa ligne `ai_usage_logs` (C3, point 3) : jusqu'au 05/09,
+   * seul le courrier la posait — a 0 jeton, sous le modele « sonnet » — et il ne la pose plus.
+   * Les jetons viennent de `resultat` (mesures par la CLI, identifiant reel du modele, duree) ;
+   * `aiUsage.record` force `costUsd` a 0 pour l'executor `local`. Pas de societe (`fleetId`)
+   * pour un rapport d'activite : il cible des utilisateurs, pas une flotte ; `userId` null =
+   * genere par le systeme. Un ancien resultat sans jetons compte 0, sans erreur.
    */
   private async consommerTravauxLocaux(): Promise<void> {
     await this.travauxIa.reprendrePerimes();
     const faits = await this.travauxIa.faits('rapport-activite');
     for (const t of faits) {
       const ctx = t.contexte as { userIds?: string[]; from?: string; to?: string; title?: string; frequency?: string; scope?: string };
-      const brut = t.resultat as { contenu?: unknown; modele?: string } | null;
+      const lu = lireResultatLocal(t.resultat);
       try {
-        const content = this.sanitize(brut?.contenu as ActivityReportContent);
+        const content = this.sanitize(lu.contenu as ActivityReportContent);
         const row = await this.prisma.activityReport.create({
           data: {
             createdByUserId: null,
@@ -341,9 +348,23 @@ export class ActivityReportService {
             origin: 'scheduled',
             title: ctx.title ?? null,
             content: content as unknown as Prisma.InputJsonValue,
-            model: brut?.modele ?? 'local',
-            costUsd: 0, // absorbe par l'abonnement du poste
+            model: lu.modele,
+            costUsd: 0, // absorbe par l'abonnement du poste : rien n'est facture
           },
+        });
+        void this.aiUsage.record({
+          userId: null,
+          fleetId: null,
+          action: 'activity_report',
+          model: lu.modele,
+          executor: 'local',
+          inputTokens: lu.usage.inputTokens,
+          outputTokens: lu.usage.outputTokens,
+          cacheWriteTokens: lu.usage.cacheWriteTokens,
+          cacheReadTokens: lu.usage.cacheReadTokens,
+          latencyMs: lu.latencyMs || null,
+          ok: true,
+          resultCount: 1,
         });
         this.systemActivity.record({
           category: 'AI_REPORT',

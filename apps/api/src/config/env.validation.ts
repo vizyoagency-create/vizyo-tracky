@@ -207,13 +207,32 @@ const envSchema = z.object({
   // Sprint 9 — Copilote IA d'optimisation (Claude). Si ANTHROPIC_API_KEY est vide,
   // les endpoints /ai/* renvoient 503 (le reste de l'app tourne). A tester d'abord
   // en Console Anthropic ; lue cote serveur via process.env, jamais loggee.
+  //
+  // ⚠️ Depuis le 2026-09-05 (design/C3, point 3) les cles IA vivent dans `apps/api/.env`, PAS dans
+  // le `.env` racine : la racine est le repertoire de travail des agents du poste, et une
+  // `ANTHROPIC_API_KEY` visible par la CLI Claude Code la ferait basculer de l'abonnement vers
+  // l'API facturee. L'API charge les deux fichiers (app.module : envFilePath ['../../.env', '.env']).
   ANTHROPIC_API_KEY: z.string().default(''),
+  // Modele Anthropic impose au client (`anthropic.client.ts` : `ANTHROPIC_MODEL` surcharge son
+  // defaut). Optionnel, vide = defaut du client. Declare ici pour que la variable soit VISIBLE au
+  // schema : elle etait lue par process.env sans exister nulle part ailleurs (constat C3).
+  ANTHROPIC_MODEL: z.string().optional(),
 
   // Couche IA multi-provider (2026-07) — moteur GPT (OpenAI Responses API). Si OPENAI_API_KEY est
   // vide, le provider 'gpt' est indisponible (le routeur retombe sur Claude si sélectionné). Modèle
   // par défaut surchargeable (OPENAI_MODEL, ex. gpt-4.1 / gpt-4.1-mini / gpt-4o). Lue via process.env.
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default(''),
+
+  // Taux USD→EUR de la page « Couts IA » (`AiUsageService.usdToEur` : absent = 0,92 en dur, alors
+  // que le marche etait a ≈ 0,86 le 05/09/2026 — C3 point 4 le porte en base). Optionnel, > 0.
+  // ⚠️ `AI_USD_TO_EUR=` VIDE (cas du .env.example copie tel quel) doit valoir ABSENT, pas 0 :
+  // sans le `preprocess`, `coerce` ferait de la chaine vide un 0 refuse par `positive()`, et
+  // l'API refuserait de demarrer sur un fichier d'exemple.
+  AI_USD_TO_EUR: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.coerce.number().positive().optional(),
+  ),
 
   // ─── Integration partenaire (Tracky x Maestroo) — lot 0 ────────────────────
   // KILL-SWITCH DE DEPLOIEMENT : a false, TOUT le module partenaire est inerte

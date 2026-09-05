@@ -63,22 +63,18 @@
 
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+/**
+ * La CLI Claude Code passe par le module partage des agents (design/C3, point 3) : chemin du
+ * binaire, verification de l'ABONNEMENT (une cle Anthropic dans l'environnement ferait facturer
+ * l'API sans aucun signal), environnement nettoye, et JETONS REELS rendus avec l'identifiant
+ * reel du modele — ce que cet agent ecrivait en dur (0 jeton, « claude-code-poste ») depuis le 20/08.
+ */
+const { verifierAbonnement, appeler, repartirUsage } = require('./cli-claude.cjs');
 
 // ── Configuration ────────────────────────────────────────────────────────────────────
 const VPS = 'root@72.62.26.240';
 const CONTENEUR = 'tracky-postgres';
 const BASE = { user: 'tracky', db: 'tracky_prod' };
-/**
- * Le BINAIRE de la CLI.
- *
- * ⚠️ Sous Windows, `claude` est un script (`.cmd`, `.ps1`) : `execFileSync('claude')` echoue en
- *    ENOENT / EINVAL selon la variante. Node refuse de lancer un `.cmd` sans shell depuis 20.x,
- *    et passer par un shell obligerait a echapper un prompt multiligne — la porte ouverte aux
- *    injections. On vise donc le binaire reel.
- */
-const CLI = process.platform === 'win32'
-  ? 'C:/Program Files/nodejs/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
-  : 'claude';
 /** Pause entre deux lots — on ne mitraille pas sa propre session. */
 let PAUSE_MS = 1500;
 /** Attentes avant de rejouer un trajet refusé. */
@@ -236,16 +232,21 @@ function resteAFaire() {
 // ── Le modele, via l'abonnement du poste ─────────────────────────────────────────────
 
 /**
- * Un appel, PLUSIEURS recits. Renvoie une Map index -> recit assaini.
+ * Un appel, PLUSIEURS recits. Renvoie { recits: Map index -> recit assaini, appel } ou `appel`
+ * porte ce que la CLI a REELLEMENT mesure : modele (identifiant date), jetons, cout equivalent
+ * API, duree.
  *
  * Chaque invocation de la CLI renvoie son contexte complet : c'est un peage fixe, paye que l'on
  * demande un trajet ou dix. Grouper est donc la condition pour que le passage tienne dans une nuit.
+ * Mesure le 2026-09-05 sur la 2.1.168 : ~28 000 jetons d'ecriture de cache par appel, quel que
+ * soit le lot — c'est ce peage que les jetons reels rendent enfin visible sur la page « Couts IA ».
  *
- * `--max-turns 1` et aucun outil autorise : on veut UNE reponse a partir des donnees fournies, pas
- * un agent qui part explorer le disque. C'est aussi ce qui rend la duree previsible.
+ * `--max-turns 1` et aucun outil autorise (cf. cli-claude) : on veut UNE reponse a partir des
+ * donnees fournies, pas un agent qui part explorer le disque. C'est aussi ce qui rend la duree
+ * previsible.
  *
  * Un trajet dont le recit manque ou est illisible n'est PAS invente : il est simplement absent de
- * la Map, et repassera au prochain creneau.
+ * la Map, et repassera au prochain creneau. Une session invalide leve une erreur `.code = 'AUTH'`.
  */
 function demanderRecits(lot) {
   const consigne =
@@ -260,52 +261,48 @@ function demanderRecits(lot) {
     `{"index":<n>,"narrative":"...","advice":"...","trustScore":<0-100>}. ` +
     `Aucun texte autour, aucune balise de code.`;
 
-  const sortie = execFileSync(
-    CLI,
-    ['-p', '--output-format', 'json', '--max-turns', '1', '--allowed-tools', '',
-     '--model', MODELE, '--append-system-prompt', renderTripNarrativeSystem()],
-    { input: consigne, encoding: 'utf8', timeout: TIMEOUT_LOT_MS, maxBuffer: 32 * 1024 * 1024 },
-  );
+  const appel = appeler({
+    system: renderTripNarrativeSystem(),
+    consigne,
+    modele: MODELE,
+    timeoutMs: TIMEOUT_LOT_MS,
+  });
 
-  let texte;
-  try {
-    const env = JSON.parse(sortie);
-    if (env.is_error) throw new Error(env.result || 'erreur CLI');
-    texte = typeof env.result === 'string' ? env.result : JSON.stringify(env.result);
-  } catch (e) {
-    if (/OAuth|authenticate|401|revoked/i.test(sortie)) {
-      throw new Error(`session Claude Code non authentifiee : ${sortie.trim().slice(0, 160)}`);
-    }
-    if (e && /erreur CLI/.test(e.message)) throw e;
-    texte = sortie;
-  }
-
-  const m = texte.match(/\[[\s\S]*\]/);
-  if (!m) return new Map();
+  const out = new Map();
+  const m = appel.texte.match(/\[[\s\S]*\]/);
+  if (!m) return { recits: out, appel };
   let brut;
   try {
     brut = JSON.parse(m[0]);
   } catch {
-    return new Map();
+    return { recits: out, appel };
   }
-  const out = new Map();
   for (const r of Array.isArray(brut) ? brut : []) {
     const i = Number(r && r.index);
     if (Number.isInteger(i) && i >= 0 && i < lot.length) out.set(i, assainirRecit(r));
   }
-  return out;
+  return { recits: out, appel };
 }
 
 // ── Ecriture ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Ecrit le recit, journalise le passage a cout ZERO (executor `local`) et conserve le couple
- * (entree, sortie). Le tout dans UNE transaction : un recit sans sa trace, ou une trace sans son
- * recit, serait un etat qu'on ne saurait pas interpreter ensuite.
+ * Ecrit le recit, journalise l'usage (executor `local`, `costUsd` 0 : c'est ce qui est facture)
+ * et conserve le couple (entree, sortie). Le tout dans UNE transaction : un recit sans sa trace,
+ * ou une trace sans son recit, serait un etat qu'on ne saurait pas interpreter ensuite.
+ *
+ * `trace` porte les chiffres REELS de l'appel (design/C3, point 3) : le modele tel que la CLI le
+ * nomme et la PART de jetons de ce recit. Un lot est un seul appel, mais chaque recit garde sa
+ * ligne — un lot melange des societes, et `fleetId` est ce que la page « Couts IA » ventile. Les
+ * jetons de l'appel sont donc repartis a parts egales entre les recits ecrits du lot
+ * (`repartirUsage`) ; la somme des lignes est exactement l'appel, `resultCount` vaut 1 par ligne,
+ * et `latencyMs` porte la duree de l'appel entier (c'est bien ce que ce recit a attendu). Le cout
+ * equivalent API se recalcule a la lecture, a partir de ces jetons et de la grille.
  *
  * `WHERE narrative IS NULL` : deux passages concurrents ne peuvent pas s'ecraser.
  */
-function ecrire(tripId, ligne, payload, recit) {
+function ecrire(tripId, ligne, payload, recit, trace) {
+  const u = trace.usage;
   const sql = `
     BEGIN;
     UPDATE trip_analyses
@@ -330,14 +327,16 @@ function ecrire(tripId, ligne, payload, recit) {
     INSERT INTO ai_usage_logs
       (id,"createdAt","userId","fleetId",model,action,"inputTokens","outputTokens",
        "cacheWriteTokens","cacheReadTokens","costUsd","latencyMs",ok,"resultCount",executor)
-    VALUES (gen_random_uuid(), now(), NULL, ${q(ligne.fleetId)}, 'claude-code-poste',
-            'trip_analysis', 0, 0, 0, 0, 0, NULL, true, 1, 'local');
+    VALUES (gen_random_uuid(), now(), NULL, ${q(ligne.fleetId)}, ${q(trace.modele)},
+            'trip_analysis', ${u.inputTokens}, ${u.outputTokens}, ${u.cacheWriteTokens}, ${u.cacheReadTokens},
+            0, ${Number.isFinite(trace.latencyMs) && trace.latencyMs > 0 ? Math.round(trace.latencyMs) : 'NULL'}, true, 1, 'local');
 
     INSERT INTO ai_agent_traces
       (id,"createdAt",action,executor,model,"fleetId",input,output,"latencyMs",verdict)
-    VALUES (gen_random_uuid(), now(), 'trip_analysis', 'local', 'claude-code-poste',
+    VALUES (gen_random_uuid(), now(), 'trip_analysis', 'local', ${q(trace.modele)},
             ${q(ligne.fleetId)}, ${q(JSON.stringify(payload))}::jsonb,
-            ${q(JSON.stringify(recit))}::jsonb, NULL, 'concluant');
+            ${q(JSON.stringify(recit))}::jsonb,
+            ${Number.isFinite(trace.latencyMs) && trace.latencyMs > 0 ? Math.round(trace.latencyMs) : 'NULL'}, 'concluant');
     COMMIT;`;
   psql(sql, { lecture: false });
 }
@@ -357,8 +356,30 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
   const avant = resteAFaire();
   console.log(`[${h()}] trajets recents sans recit (toutes societes) : ${avant}`);
   if (avant === 0) {
+    // ⚠️ « Rien a faire » est un passage REUSSI (design/C3, point 3). Ce `return` sortait avant
+    //    que `passageSucces` soit pose, et le journal consignait un ECHEC chaque nuit sans trajet
+    //    recent : la supervision ne pouvait plus distinguer l'agent qui n'avait rien a narrer de
+    //    l'agent en panne. C'est le prealable a toute alerte fondee sur `succes`.
+    passageSucces = true;
+    passageResume = 'rien a faire : aucun trajet recent sans recit';
     console.log(`[${h()}] rien a faire — termine.`);
     return;
+  }
+
+  /**
+   * ⚠️ AVANT le premier appel. Une cle Anthropic dans l'environnement ou une session hors
+   * claude.ai ferait facturer l'API sans aucun signal — le « cout 0 » de cet agent etait une
+   * hypothese. Un refus est un passage en ECHEC explicite (code 3, comme la session expiree) :
+   * la supervision doit le lire, pas le deviner d'un compteur qui n'avance plus.
+   */
+  if (!ESSAI) {
+    const abonnement = verifierAbonnement();
+    if (!abonnement.ok) {
+      passageErreur = `CLI hors abonnement : ${abonnement.motif}`;
+      passageResume = 'passage refuse : CLI hors abonnement (aucun appel, aucune ecriture)';
+      console.error(`[${h()}] ARRET : ${passageErreur}`);
+      process.exit(3);
+    }
   }
 
   let ecrits = 0;
@@ -382,12 +403,13 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
 
     // Un seul appel pour tout le lot.
     let recits = new Map();
+    let appel = null;
     const t0 = Date.now();
     try {
-      recits = demanderRecits(lot);
+      ({ recits, appel } = demanderRecits(lot));
     } catch (e) {
       const msg = (e && e.message) || String(e);
-      if (/non authentifiee/i.test(msg)) {
+      if (e && e.code === 'AUTH') {
         passageErreur = msg;
         passageResume = 'session Claude Code du poste expiree';
         console.error(
@@ -412,15 +434,27 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
     // ⚠️ On n'ecrit QUE le concluant. Un trajet absent de la reponse, ou dont le recit est vide,
     //    n'est pas ecrit : il repassera. L'ecrire condamnerait le trajet a ne jamais etre repris,
     //    puisque le pipeline considere qu'un trajet avec recit est traite.
-    let ecritsLot = 0;
+    //
+    // Les jetons de l'appel sont partages entre les recits CONCLUANTS du lot (cf. `ecrire`). La
+    // part d'un recit dont l'ecriture est refusee est perdue — au plus 1/n de l'appel, et le cas
+    // (recit deja ecrit par un passage concurrent) est rare : on prefere une somme legerement
+    // sous-estimee a une ligne d'usage sans recit.
+    const concluants = [];
     for (let i = 0; i < lot.length; i++) {
       const recit = recits.get(i);
-      if (!recit || !recitConcluant(recit)) {
-        refuses++;
-        continue;
-      }
+      if (recit && recitConcluant(recit)) concluants.push(i);
+      else refuses++;
+    }
+    const parts = repartirUsage(appel.usage, concluants.length);
+    let ecritsLot = 0;
+    for (let k = 0; k < concluants.length; k++) {
+      const i = concluants[k];
       try {
-        ecrire(lot[i].tripId, lot[i].ligne, lot[i].payload, recit);
+        ecrire(lot[i].tripId, lot[i].ligne, lot[i].payload, recits.get(i), {
+          modele: appel.modele,
+          usage: parts[k],
+          latencyMs: appel.dureeMs,
+        });
         ecrits++;
         ecritsLot++;
       } catch (e) {
@@ -442,7 +476,12 @@ const dors = (ms) => new Promise((r) => setTimeout(r, ms));
     }
 
     const reste = Math.max(0, Math.round((fin - Date.now()) / 60000));
-    console.log(`[${h()}] lot de ${lot.length} en ${secondes}s : ${ecritsLot} ecrit(s) — ${ecrits} au total, ${reste} min restantes`);
+    const j = appel.usage;
+    console.log(
+      `[${h()}] lot de ${lot.length} en ${secondes}s : ${ecritsLot} ecrit(s) — ${ecrits} au total, ${reste} min restantes` +
+        ` — ${appel.modele}, ${j.inputTokens + j.cacheWriteTokens + j.cacheReadTokens} jetons entree / ${j.outputTokens} sortie,` +
+        ` equivalent API ${appel.coutEquivalentUsd.toFixed(4)} $ (absorbe)`,
+    );
     await dors(PAUSE_MS);
   }
 
