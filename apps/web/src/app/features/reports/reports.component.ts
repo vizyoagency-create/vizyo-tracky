@@ -1,11 +1,11 @@
 import { swallow } from '../../core/error/swallow';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
-import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Users, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
 import { libelleTypeAlerte } from '@vizyo/tracky-shared';
 import type {
   DriverDto,
@@ -99,6 +99,7 @@ const ANALYSES_BATCH_SIZE = 200;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     FormsModule,
+    RouterLink,
     VehicleLinkDirective,
     LucideAngularModule,
     TrackClickDirective,
@@ -773,7 +774,7 @@ const ANALYSES_BATCH_SIZE = 200;
       @if (!loading() && vehicleSummary().length > 0) {
         <section class="rep-vsum">
           <header class="rep-chart-head rep-vsum-head">
-            <h2>Par véhicule</h2>
+            <h2>{{ vueRecap() === 'attribution' ? 'Par conducteur ou groupe' : 'Par véhicule' }}</h2>
             <!-- Ce rollup agrège les trajets CHARGÉS (cf. vehicleSummary), pas la période
                  entière : tant que le tableau est paginé, il faut le dire, sinon deux
                  totaux différents cohabitent sur le même écran sans explication. -->
@@ -782,7 +783,10 @@ const ANALYSES_BATCH_SIZE = 200;
                  le seul indice visible était un chevron gris de 16 px. Sur un téléphone,
                  l'utilisateur cherchait un bouton absent. « Voir › » est désormais écrit
                  en toutes lettres au bout de chaque ligne — la consigne est vraie. -->
-            @if (!synthesePeriodePossible()) {
+            @if (vueRecap() === 'attribution') {
+              <!-- ⚠️ Pas de « Voir » ici : une ligne d'imputation n'a pas de fiche à ouvrir. -->
+              <p>Synthèse de TOUTE la période — chaque trajet compte pour son conducteur, sinon pour le groupe de son véhicule</p>
+            } @else if (!synthesePeriodePossible()) {
               <!-- ⚠️ Ce repli ne DOIT PAS s'annoncer « synthèse de toute la période » : sur
                    « toutes les sociétés », il additionne les trajets chargés, pas la période. -->
               <p>Sur les {{ listedTripCount() }} trajets chargés — la synthèse complète se calcule société par société</p>
@@ -794,72 +798,181 @@ const ANALYSES_BATCH_SIZE = 200;
               <p>Synthèse de TOUTE la période — « Voir » ouvre la fiche du véhicule</p>
             }
           </header>
-          <div class="rep-vtable">
-            <div class="rep-vt-head">
-              <span>Véhicule</span>
-              <span>Distance</span>
-              <span>Conduite</span>
-              <span class="rep-vt-hide">Trajets</span>
-              <span class="rep-vt-hide">V. moy</span>
-              <span class="rep-vexces-h">Excès</span>
-              <span></span>
-              <span></span>
-            </div>
-            @for (v of vehicleSummary(); track v.vehicleId) {
-              <!-- Le nom accessible du lien était la concaténation « AB-123-CD Renault Clio
-                   152 km 3h12 », sans verbe, et l'attribut title ne servait qu'à la souris. -->
-              <div class="rep-vrow" [vehicleLink]="v.vehicleId"
-                   [attr.aria-label]="'Voir la fiche du véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')">
-                <div class="rep-vveh">
-                  <div class="rep-vplate">{{ vehiclePlate(v.vehicleId) || '—' }}</div>
-                  <div class="rep-vmodel">{{ vehicleModelLabel(v.vehicleId) }}</div>
-                </div>
-                <span class="rep-vdist">{{ (v.distance / 1000) | number:'1.0-0' }} <span class="rep-vunit">km</span></span>
-                <span class="rep-vmeta">{{ formatDuration(v.duration) }}</span>
-                <span class="rep-vmeta rep-vt-hide">{{ v.trips }}</span>
-                <!-- Le glyphe ▲ double la couleur : l'alerte « vitesse moyenne élevée » ne
-                     doit pas reposer sur la seule teinte (WCAG 1.4.1). Le mot, lui, est
-                     dit au lecteur d'écran — un aria-label sur un span générique n'est pas
-                     restitué de façon fiable, une mention masquée l'est. -->
-                <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">
-                  @if (v.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
-                  {{ v.avgSpeed }} km/h
-                </span>
-                <!-- EXCÈS DE LA PÉRIODE (F06) ═══════════════════════════════════════════
-                     « Quel véhicule dépasse le plus ? » n'avait aucune réponse sur cet écran :
-                     il fallait ouvrir les trajets un par un. Le compte appliqué ici est celui
-                     de la règle partagée, pas le compteur d'analyse — 4 036 analyses de
-                     production ne portent que des segments de durée nulle, et les compter
-                     accuserait des véhicules de ce que le rapport disciplinaire refuse
-                     d'affirmer.
 
-                     ⚠️ La valeur nulle signifie qu'on ne SAIT pas encore (repli client, agrégat
-                     non arrivé) et s'affiche « — », jamais « 0 ». Un zéro inventé sur une
-                     colonne d'excès innocente un véhicule sans l'avoir regardé. -->
-                <span class="rep-vexces" [class.rep-vexces--fort]="(v.speedingCount ?? 0) > 0">
-                  @if (v.speedingCount === null) {
-                    <span class="rep-vexces-vide" title="Synthèse de période en cours de chargement">—</span>
-                  } @else if (v.speedingCount === 0) {
-                    <span class="rep-vexces-vide">0</span>
-                  } @else {
-                    <span class="sr-only">{{ v.speedingCount }} excès de vitesse établis sur {{ v.speedingTripCount }} trajet(s), pire dépassement {{ v.worstOverKmh }} km/h au-dessus de la limite. </span>
-                    <b aria-hidden="true">{{ v.speedingCount }}</b>
-                    <small aria-hidden="true">+{{ v.worstOverKmh | number:'1.0-0' }} km/h</small>
-                  }
-                </span>
-                <!-- ⚠️ Bouton À PART, qui arrête la propagation : la ligne entière est un lien
-                     vers la fiche véhicule. Sans cela, filtrer la page quitterait la page —
-                     et c'est exactement ce que ce récapitulatif ne permettait pas d'éviter :
-                     regarder un véhicule de plus près obligeait à sortir du rapport. -->
-                <button type="button" class="rep-vfiltre"
-                        (click)="$event.preventDefault(); $event.stopPropagation(); filtrerSurVehicule(v.vehicleId)"
-                        trackClick="rapport-recap-filtrer"
-                        [attr.aria-label]="'Filtrer le rapport sur le véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')"
-                        title="Filtrer tout le rapport sur ce véhicule">Filtrer</button>
-                <span class="rep-vgo">Voir <lucide-icon [img]="ChevronRightIcon" [size]="14" class="rep-vchev" aria-hidden="true"></lucide-icon></span>
-              </div>
-            }
+          <!-- ══ « QUEL VÉHICULE ? » OU « QUI ? » (F13) ═══════════════════════════════════
+               La carte répondait à « quel véhicule roule et dépasse ? ». Personne ne pouvait
+               répondre à « combien de kilomètres a fait tel conducteur ce mois-ci, avec
+               combien d'excès ? », alors que l'écran des scores impute déjà chaque trajet.
+
+               ⚠️ Vrai groupe de boutons : l'état actif est porté par aria-pressed, et doublé
+               d'une coche — la teinte seule ne peut pas être la seule information (WCAG 1.4.1). -->
+          <div class="rep-vseg" role="group" aria-label="Vue du récapitulatif">
+            <button type="button" class="rep-vseg-btn"
+                    [attr.aria-pressed]="vueRecap() === 'vehicule'"
+                    (click)="setVueRecap('vehicule')"
+                    trackClick="rapport-recap-vue-vehicule">
+              <lucide-icon [img]="TruckIcon" [size]="14" aria-hidden="true"></lucide-icon>
+              Par véhicule
+            </button>
+            <!-- ⚠️ DÉSACTIVÉ, jamais masqué, quand l'imputation manque : un bouton disparu se
+                 lit comme une panne, et une vue vide ferait croire à zéro trajet attribué. -->
+            <button type="button" class="rep-vseg-btn"
+                    [attr.aria-pressed]="vueRecap() === 'attribution'"
+                    [disabled]="!attributionDisponible()"
+                    [attr.aria-describedby]="attributionDisponible() ? null : 'rep-vseg-motif'"
+                    (click)="setVueRecap('attribution')"
+                    trackClick="rapport-recap-vue-attribution">
+              <lucide-icon [img]="UsersIcon" [size]="14" aria-hidden="true"></lucide-icon>
+              Par conducteur ou groupe
+            </button>
           </div>
+          @if (motifAttributionIndisponible(); as motif) {
+            <p class="rep-vseg-motif" id="rep-vseg-motif">{{ motif }}</p>
+          }
+
+          @if (vueRecap() === 'attribution') {
+            <div class="rep-vtable">
+              <div class="rep-vt-head rep-vt-head--attr">
+                <span>Conducteur ou groupe</span>
+                <span>Distance</span>
+                <span>Conduite</span>
+                <span class="rep-vt-hide">Trajets</span>
+                <span class="rep-vt-hide">V. moy</span>
+                <span class="rep-vexces-h">Excès</span>
+              </div>
+              @for (l of attributionSummary(); track l.key) {
+                <!-- ⚠️ Ni lien ni bouton « Filtrer » : il n'existe pas de fiche « conducteur ou
+                     groupe » à ouvrir, et le rapport ne se filtre que par véhicule. Un lien mort
+                     vaudrait moins que rien. -->
+                <div class="rep-vrow rep-vrow--attr">
+                  <div class="rep-vveh">
+                    <div class="rep-vnom">{{ l.label }}</div>
+                    <!-- Le sous-libellé dit d'où vient la ligne : sans lui, « Atelier » et
+                         « Amine Berrada » se lisent comme deux personnes. -->
+                    <div class="rep-vmodel">{{ l.kind === 'driver' ? 'conducteur' : 'groupe' }}</div>
+                  </div>
+                  <span class="rep-vdist">{{ (l.distance / 1000) | number:'1.0-0' }} <span class="rep-vunit">km</span></span>
+                  <span class="rep-vmeta">{{ formatDuration(l.duration) }}</span>
+                  <span class="rep-vmeta rep-vt-hide">{{ l.trips }}</span>
+                  <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="l.avgSpeed >= 50">
+                    @if (l.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
+                    {{ l.avgSpeed }} km/h
+                  </span>
+                  <!-- Même compte que la vue par véhicule : les excès ÉTABLIS de la règle
+                       partagée, jamais le compteur écrit au moment de l'analyse. -->
+                  <span class="rep-vexces" [class.rep-vexces--fort]="l.speedingCount > 0">
+                    @if (l.speedingCount === 0) {
+                      <span class="rep-vexces-vide">0</span>
+                    } @else {
+                      <span class="sr-only">{{ l.speedingCount }} excès de vitesse établis sur {{ l.speedingTripCount }} trajet(s), pire dépassement {{ l.worstOverKmh }} km/h au-dessus de la limite. </span>
+                      <b aria-hidden="true">{{ l.speedingCount }}</b>
+                      <small aria-hidden="true">+{{ l.worstOverKmh | number:'1.0-0' }} km/h</small>
+                    }
+                  </span>
+                </div>
+              }
+              @if (attributionSummary().length === 0) {
+                <div class="rep-vrow rep-vrow--vide">
+                  Aucun trajet de la période n'est imputé à un conducteur ni à un groupe.
+                </div>
+              }
+            </div>
+            <!-- La troncature se dit : sans cette ligne, un parc de quarante conducteurs
+                 semblerait n'en compter que dix. -->
+            @if (attributionTotal() > attributionSummary().length) {
+              <p class="rep-vseg-motif">
+                {{ attributionSummary().length }} ligne{{ attributionSummary().length > 1 ? 's' : '' }} affichée{{ attributionSummary().length > 1 ? 's' : '' }}
+                sur {{ attributionTotal() }} — les plus gros rouleurs d'abord.
+              </p>
+            }
+            <!-- ══ CE QUI N'EST IMPUTÉ À PERSONNE ═══════════════════════════════════════
+                 Même mention que l'écran des scores, au mot près : ces trajets sont COMPTÉS
+                 et ne peuvent être portés au crédit ni au débit de quiconque. Mesuré le
+                 2026-09-05 : chez mh cars, 1 866 trajets sur 1 886 sont dans ce cas — les
+                 taire ferait lire une image complète là où presque rien n'est imputé. -->
+            @if (nonAttribues(); as na) {
+              @if (na.tripCount > 0) {
+                <div class="rep-vnon-attribue" role="status">
+                  <lucide-icon [img]="AlertTriangleIcon" [size]="14"></lucide-icon>
+                  <div>
+                    <strong>{{ na.tripCount | number }} trajet{{ na.tripCount > 1 ? 's' : '' }}</strong>
+                    sur {{ totalTrajetsPeriode() | number }} ({{ partLibelle(na.tripCount, totalTrajetsPeriode()) }},
+                    {{ na.distanceKm | number:'1.0-0' }} km) n'{{ na.tripCount > 1 ? 'ont' : 'a' }} <strong>ni conducteur, ni groupe</strong> :
+                    {{ na.tripCount > 1 ? 'ils ne peuvent être attribués' : 'il ne peut être attribué' }} à personne.
+                    <a routerLink="/vehicles">Renseignez un conducteur ou un groupe</a> sur ces véhicules
+                    pour que leurs kilomètres comptent pour quelqu'un.
+                  </div>
+                </div>
+              }
+            }
+          } @else {
+            <div class="rep-vtable">
+              <div class="rep-vt-head">
+                <span>Véhicule</span>
+                <span>Distance</span>
+                <span>Conduite</span>
+                <span class="rep-vt-hide">Trajets</span>
+                <span class="rep-vt-hide">V. moy</span>
+                <span class="rep-vexces-h">Excès</span>
+                <span></span>
+                <span></span>
+              </div>
+              @for (v of vehicleSummary(); track v.vehicleId) {
+                <!-- Le nom accessible du lien était la concaténation « AB-123-CD Renault Clio
+                     152 km 3h12 », sans verbe, et l'attribut title ne servait qu'à la souris. -->
+                <div class="rep-vrow" [vehicleLink]="v.vehicleId"
+                     [attr.aria-label]="'Voir la fiche du véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')">
+                  <div class="rep-vveh">
+                    <div class="rep-vplate">{{ vehiclePlate(v.vehicleId) || '—' }}</div>
+                    <div class="rep-vmodel">{{ vehicleModelLabel(v.vehicleId) }}</div>
+                  </div>
+                  <span class="rep-vdist">{{ (v.distance / 1000) | number:'1.0-0' }} <span class="rep-vunit">km</span></span>
+                  <span class="rep-vmeta">{{ formatDuration(v.duration) }}</span>
+                  <span class="rep-vmeta rep-vt-hide">{{ v.trips }}</span>
+                  <!-- Le glyphe ▲ double la couleur : l'alerte « vitesse moyenne élevée » ne
+                       doit pas reposer sur la seule teinte (WCAG 1.4.1). Le mot, lui, est
+                       dit au lecteur d'écran — un aria-label sur un span générique n'est pas
+                       restitué de façon fiable, une mention masquée l'est. -->
+                  <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">
+                    @if (v.avgSpeed >= 50) { <span class="sr-only">Vitesse moyenne élevée : </span> }
+                    {{ v.avgSpeed }} km/h
+                  </span>
+                  <!-- EXCÈS DE LA PÉRIODE (F06) ═══════════════════════════════════════════
+                       « Quel véhicule dépasse le plus ? » n'avait aucune réponse sur cet écran :
+                       il fallait ouvrir les trajets un par un. Le compte appliqué ici est celui
+                       de la règle partagée, pas le compteur d'analyse — 4 036 analyses de
+                       production ne portent que des segments de durée nulle, et les compter
+                       accuserait des véhicules de ce que le rapport disciplinaire refuse
+                       d'affirmer.
+
+                       ⚠️ La valeur nulle signifie qu'on ne SAIT pas encore (repli client, agrégat
+                       non arrivé) et s'affiche « — », jamais « 0 ». Un zéro inventé sur une
+                       colonne d'excès innocente un véhicule sans l'avoir regardé. -->
+                  <span class="rep-vexces" [class.rep-vexces--fort]="(v.speedingCount ?? 0) > 0">
+                    @if (v.speedingCount === null) {
+                      <span class="rep-vexces-vide" title="Synthèse de période en cours de chargement">—</span>
+                    } @else if (v.speedingCount === 0) {
+                      <span class="rep-vexces-vide">0</span>
+                    } @else {
+                      <span class="sr-only">{{ v.speedingCount }} excès de vitesse établis sur {{ v.speedingTripCount }} trajet(s), pire dépassement {{ v.worstOverKmh }} km/h au-dessus de la limite. </span>
+                      <b aria-hidden="true">{{ v.speedingCount }}</b>
+                      <small aria-hidden="true">+{{ v.worstOverKmh | number:'1.0-0' }} km/h</small>
+                    }
+                  </span>
+                  <!-- ⚠️ Bouton À PART, qui arrête la propagation : la ligne entière est un lien
+                       vers la fiche véhicule. Sans cela, filtrer la page quitterait la page —
+                       et c'est exactement ce que ce récapitulatif ne permettait pas d'éviter :
+                       regarder un véhicule de plus près obligeait à sortir du rapport. -->
+                  <button type="button" class="rep-vfiltre"
+                          (click)="$event.preventDefault(); $event.stopPropagation(); filtrerSurVehicule(v.vehicleId)"
+                          trackClick="rapport-recap-filtrer"
+                          [attr.aria-label]="'Filtrer le rapport sur le véhicule ' + (vehiclePlate(v.vehicleId) || 'sans plaque')"
+                          title="Filtrer tout le rapport sur ce véhicule">Filtrer</button>
+                  <span class="rep-vgo">Voir <lucide-icon [img]="ChevronRightIcon" [size]="14" class="rep-vchev" aria-hidden="true"></lucide-icon></span>
+                </div>
+              }
+            </div>
+          }
         </section>
       }
 
@@ -2301,6 +2414,54 @@ const ANALYSES_BATCH_SIZE = 200;
       .rep-vrow > .rep-vexces { grid-area: exces; justify-self: start; }
       .rep-vrow > .rep-vfiltre { grid-area: filtre; justify-self: start; }
     }
+    /* ══ BASCULE VÉHICULE / CONDUCTEUR OU GROUPE (F13) ════════════════════════════════
+       Un vrai groupe de boutons : l'état vit dans aria-pressed, pas dans une classe que
+       seul l'œil voit. La coche double la teinte, pour que « actif » ne repose jamais sur
+       la seule couleur (WCAG 1.4.1). */
+    .rep-vseg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; margin-bottom: 12px;
+                border-radius: 11px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .rep-vseg-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 12px;
+                    border: 1px solid transparent; border-radius: 8px; background: transparent;
+                    color: var(--fg-secondary); font-size: 12.5px; font-weight: 700; cursor: pointer; }
+    .rep-vseg-btn:hover:not(:disabled) { color: var(--fg-primary); }
+    .rep-vseg-btn[aria-pressed="true"] { background: var(--bg-secondary); color: var(--fg-primary);
+                                         border-color: var(--border-subtle); }
+    .rep-vseg-btn[aria-pressed="true"]::before { content: '✓'; font-size: 11px; font-weight: 800; color: var(--texte-succes); }
+    /* Indisponible, jamais masqué : le motif est écrit juste dessous. */
+    .rep-vseg-btn:disabled { opacity: .55; cursor: not-allowed; }
+    .rep-vseg-motif { margin: -6px 0 12px; font-size: 11.5px; line-height: 1.45; color: var(--fg-tertiary); }
+    /* Nom d'une personne ou d'un groupe : PAS la police à chasse fixe des plaques. */
+    .rep-vnom { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Six colonnes au lieu de huit : ni « Filtrer » ni « Voir » — une ligne d'imputation
+       n'ouvre aucune fiche. */
+    .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(160px,2fr) 1fr 1fr .9fr 1fr .9fr; }
+    .rep-vrow--attr:hover { background: transparent; }
+    .rep-vrow--vide { display: block; padding: 18px; font-size: 12.5px; color: var(--fg-tertiary); }
+    /* Mention des trajets qu'on ne peut imputer à personne — même forme que l'écran des
+       scores, pour que le gestionnaire reconnaisse la phrase d'un écran à l'autre. */
+    .rep-vnon-attribue {
+      display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; padding: 12px 14px;
+      border-radius: 12px; font-size: 13px; line-height: 1.5; color: var(--fg-secondary);
+      border: 1px solid color-mix(in srgb, var(--texte-attente) 35%, transparent);
+      background: color-mix(in srgb, var(--texte-attente) 8%, transparent);
+    }
+    .rep-vnon-attribue lucide-icon { color: var(--texte-attente); flex-shrink: 0; margin-top: 2px; }
+    .rep-vnon-attribue strong { color: var(--fg-primary); }
+    .rep-vnon-attribue a { color: var(--texte-succes); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+    @media (max-width: 1000px) {
+      .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(140px,2fr) 1fr 1fr .9fr; }
+    }
+    /* Au doigt : la bascule occupe la largeur et chaque position fait 44 px de haut —
+       critère de recette du dépôt à 375 px. */
+    @media (max-width: 480px) {
+      .rep-vseg { display: flex; width: 100%; }
+      .rep-vseg-btn { flex: 1 1 0; min-height: 44px; justify-content: center; text-align: center; }
+      .rep-vrow--attr { grid-template-columns: 1fr 1fr; grid-template-areas: 'veh veh' 'dist meta' 'exces exces'; }
+      .rep-vrow--attr > .rep-vveh { grid-area: veh; }
+      .rep-vrow--attr > :nth-child(2) { grid-area: dist; }
+      .rep-vrow--attr > :nth-child(3) { grid-area: meta; }
+      .rep-vrow--attr > .rep-vexces { grid-area: exces; justify-self: start; }
+    }
   `],
 })
 export class ReportsComponent implements OnInit, OnDestroy {
@@ -2358,6 +2519,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // rapport « toute la flotte » de la nouvelle société.
       this.selectedVehicleId.set('');
       this.selectedGroupId.set('');
+      // ⚠️ La synthèse de la société PRÉCÉDENTE doit partir avec elle : sans cela, la vue « par
+      // conducteur ou groupe » gardait, le temps du chargement, les conducteurs d'un autre client
+      // sous le nom de la nouvelle société (revue du 2026-09-05).
+      this.oublierStatsPeriode();
       void this.loadData();
     }
   });
@@ -2439,6 +2604,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly MousePointerClickIcon = MousePointerClick;
   protected readonly FuelIcon = Fuel;
   protected readonly AlertTriangleIcon = AlertTriangle;
+  /** Bascule « Par conducteur ou groupe » — même icône que la 4ᵉ portée des scores. */
+  protected readonly UsersIcon = Users;
 
   // ─── Date range custom ────────────────────────────────────────────────
   protected readonly customRangeOpen = signal(false);
@@ -2721,6 +2888,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected onSelectVehicle(id: string): void {
     this.selectedVehicleId.set(id);
     this.fermerMenuVehicule();
+    // Le périmètre change : la synthèse en mémoire décrit l'ancien (cf. `filtrerSurVehicule`).
+    this.oublierStatsPeriode();
     this.ecrireEtatDansUrl();
     this.loadData();
   }
@@ -2760,6 +2929,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (selV && id && !this.vehicles().some((v) => v.id === selV && v.group?.id === id)) {
       this.selectedVehicleId.set('');
     }
+    // Le périmètre change : la synthèse en mémoire décrit l'ancien.
+    this.oublierStatsPeriode();
     this.ecrireEtatDansUrl();
     // Recharge KPI + trajets scopés sur le groupe (ou toute la flotte si « tous »).
     this.loadData();
@@ -3565,6 +3736,114 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.distance - a.distance);
   });
 
+  // ═══ RÉCAPITULATIF « PAR CONDUCTEUR OU GROUPE » (F13) ═══════════════════════════════
+  //
+  // La carte répondait à « quel véhicule roule et dépasse ? ». Elle répond désormais aussi
+  // à « combien de kilomètres a fait tel conducteur ce mois-ci, avec combien d'excès ? ».
+  // L'imputation vient du SERVEUR, avec la clé du classement des scores (conducteur si
+  // connu, sinon groupe du véhicule) : la recalculer ici la ferait diverger au premier
+  // changement de règle.
+
+  /**
+   * Position DEMANDÉE par l'utilisateur. Distincte de la position EFFECTIVE : on la garde
+   * telle quelle quand l'imputation devient indisponible (changement de société), pour que
+   * la vue revienne d'elle-même dès que la synthèse est là.
+   */
+  private readonly vueRecapDemandee = signal<'vehicule' | 'attribution'>('vehicule');
+
+  /**
+   * ⚠️ L'IMPUTATION N'EXISTE QUE DANS L'AGRÉGAT DE PÉRIODE. Le repli « trajets chargés »
+   * (société non choisie, synthèse en échec ou pas encore arrivée) ne connaît ni conducteur
+   * ni groupe : il n'a que les trajets de la page courante. Fabriquer une vue depuis lui
+   * afficherait un tableau vide sous un titre qui promet une imputation — un gestionnaire y
+   * lirait « aucun trajet attribué », c'est-à-dire l'inverse de la vérité.
+   *
+   * Un serveur antérieur à ce lot ne sert pas le bloc : `Array.isArray` distingue « absent »
+   * de « vide », et l'écran se tait au lieu d'afficher zéro.
+   */
+  protected readonly attributionDisponible = computed(() => Array.isArray(this.statsPeriode()?.byAttribution));
+
+  /** Position EFFECTIVE — retombe sur « Par véhicule » tant que l'imputation manque. */
+  protected readonly vueRecap = computed<'vehicule' | 'attribution'>(() =>
+    this.vueRecapDemandee() === 'attribution' && this.attributionDisponible() ? 'attribution' : 'vehicule',
+  );
+
+  protected setVueRecap(vue: 'vehicule' | 'attribution'): void {
+    this.vueRecapDemandee.set(vue);
+  }
+
+  /**
+   * Pourquoi la bascule est indisponible, en toutes lettres — `null` quand elle l'est.
+   *
+   * ⚠️ Une absence INEXPLIQUÉE se lit comme une panne : le bouton reste visible et désactivé,
+   * et cette phrase dit ce qu'il faut faire pour l'obtenir.
+   */
+  protected readonly motifAttributionIndisponible = computed<string | null>(() => {
+    if (this.attributionDisponible()) return null;
+    if (!this.synthesePeriodePossible()) {
+      return 'La synthèse par conducteur se calcule société par société : choisissez une société dans le sélecteur en haut de page.';
+    }
+    if (this.recapPartiel()) {
+      // ⚠️ Deux états sous une seule phrase : « elle arrive » était aussi servi quand la synthèse
+      // avait ÉCHOUÉ — une promesse jamais tenue, sans recours, devant une bascule morte.
+      return this.statsEchouee()
+        ? 'La synthèse de période n\'a pas pu être calculée : le tableau ci-dessous agrège les trajets chargés. Rechargez la page pour réessayer.'
+        : 'La synthèse par conducteur arrive avec la synthèse de période ; le tableau ci-dessous agrège pour l\'instant les trajets chargés.';
+    }
+    return 'La synthèse par conducteur ou groupe n\'est pas servie pour cette période.';
+  });
+
+  /**
+   * Les lignes d'imputation, dans la MÊME unité que `vehicleSummary` (mètres et secondes) :
+   * les cellules du tableau sont partagées entre les deux vues, elles ne doivent pas avoir
+   * à savoir laquelle les alimente.
+   */
+  protected readonly attributionSummary = computed(() =>
+    (this.statsPeriode()?.byAttribution ?? []).map((l) => ({
+      key: l.key,
+      label: l.label,
+      kind: l.kind,
+      distance: Math.round(l.distanceKm * 1000),
+      duration: Math.round(l.durationHours * 3600),
+      trips: l.tripCount,
+      avgSpeed: l.avgSpeedKmh,
+      speedingCount: l.speedingCount,
+      speedingTripCount: l.speedingTripCount,
+      worstOverKmh: l.worstOverKmh,
+    })),
+  );
+
+  /** Compte RÉEL des lignes d'imputation ; la liste servie est plafonnée comme le top véhicules. */
+  protected readonly attributionTotal = computed(() => this.statsPeriode()?.byAttributionTotal ?? 0);
+
+  /** Les trajets qu'on ne peut imputer à personne — comptés, jamais une ligne du tableau. */
+  protected readonly nonAttribues = computed(() => this.statsPeriode()?.unattributedTrips ?? null);
+
+  /**
+   * Dénominateur de la mention « N sur M ».
+   *
+   * ⚠️ MÊME source que le numérateur (l'agrégat de période), et non `kpis()`, qui vient du
+   * résumé journalier : deux comptes légèrement différents dans la même phrase feraient
+   * douter des deux.
+   */
+  protected readonly totalTrajetsPeriode = computed(() => this.statsPeriode()?.trips.count ?? 0);
+
+  /**
+   * Part en pourcentage, sans jamais contredire les nombres qu'elle accompagne : « 1 sur
+   * 1 000 » n'est pas « 0 % » et « 999 sur 1 000 » n'est pas « 100 % » — l'arrondi ne peut
+   * affirmer un extrême que si les nombres l'atteignent vraiment. Dénominateur nul : « 0 % ».
+   *
+   * ⚠️ Même règle, au caractère près, que `partLibelle` de l'écran des scores
+   * (apps/web/src/app/features/trip-analysis/driving-scores.component.ts) : les deux écrans
+   * affichent la même mention sur les mêmes trajets, ils ne peuvent pas arrondir autrement.
+   */
+  protected partLibelle(n: number, d: number): string {
+    if (d <= 0 || n <= 0) return '0 %';
+    if (n >= d) return '100 %';
+    const p = Math.round((n / d) * 100);
+    return p === 0 ? '< 1 %' : p === 100 ? '> 99 %' : `${p} %`;
+  }
+
   // ─── Period replay ────────────────────────────────────────────────────
   /** Modal replay-periode ouverte ? Toggled par `onOpenPeriodReplay`. */
   protected readonly periodReplayOpen = signal(false);
@@ -3738,7 +4017,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   private oublierStatsPeriode(): void {
     this.statsPeriode.set(null);
+    this.statsEchouee.set(false);
   }
+
+  /**
+   * La synthèse de période a-t-elle ÉCHOUÉ (par opposition à « pas encore arrivée ») ? Les deux
+   * laissent `statsPeriode()` nul, et l'écran doit les distinguer : « elle arrive » devant une
+   * requête morte est une promesse qu'on ne tiendra pas.
+   */
+  private readonly statsEchouee = signal(false);
 
   protected setPeriod(from: string, to: string): void {
     this.oublierStatsPeriode();
@@ -4260,6 +4547,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   private async chargerStatsPeriode(seq: number): Promise<void> {
     const fleetId = this.fleetFilter.selectedFleetId();
+    this.statsEchouee.set(false);
     if (!this.periodFrom || !this.periodTo) return;
     // ⚠️ Voir `synthesePeriodePossible()` : sur « toutes les sociétés », cette route répondrait
     // pour UNE société prise au hasard. Mieux vaut ne rien afficher que la mauvaise.
@@ -4274,7 +4562,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     } catch (err) {
       // Pas de bandeau : ce n'est pas une panne des chiffres, c'est une synthèse indisponible.
       // Le repli client prend le relais et `recapPartiel()` le dit.
-      if (seq === this.loadSeq) this.statsPeriode.set(null);
+      if (seq === this.loadSeq) {
+        this.statsPeriode.set(null);
+        this.statsEchouee.set(true);
+      }
       swallow('reports:statsPeriode', err);
     }
   }

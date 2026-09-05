@@ -8,6 +8,8 @@ import {
   isVehicleDormant,
   isVehicleExploited,
   trackerSilenceMs,
+  CLE_NON_ATTRIBUE,
+  cleImputationTrajet,
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
@@ -200,6 +202,55 @@ export interface FleetStatsReport {
      */
     idleSeconds: number;
   }[];
+  /**
+   * ── « QUI ROULE, ET QUI DÉPASSE ? » — LE MÊME RÉCAPITULATIF, PAR IMPUTATION (F13) ──
+   *
+   * `topVehicles` répond à « quel VÉHICULE roule et dépasse ? ». Personne ne pouvait
+   * répondre à « combien de kilomètres a fait tel conducteur ce mois-ci, avec combien
+   * d'excès ? » : l'écran des scores savait déjà imputer un trajet, le rapport non.
+   *
+   * MÊME forme de chiffres que `topVehicles` (distance, conduite, trajets, vitesse moyenne,
+   * excès, ralenti), aux mêmes arrondis : l'écran réutilise ses cellules telles quelles, et
+   * les deux vues ne peuvent pas se mettre à compter différemment.
+   *
+   * ⚠️ Les deux vues sortent de la MÊME passe : le total d'un véhicule est la SOMME de ses
+   * conducteurs. Deux agrégations séparées finiraient par ne plus tomber juste — et c'est
+   * `topVehicles` que le client lit tous les jours, dans l'écran comme dans le PDF/Excel.
+   *
+   * Trié par distance décroissante et plafonné comme `topVehicles` (cf. `topN`) ;
+   * `byAttributionTotal` porte le compte RÉEL, pour que la troncature se dise.
+   *
+   * ⚠️ Déclaré OPTIONNEL parce que d'autres producteurs de cette forme n'en fabriquent pas
+   * (les fixtures du PDF construisent un `FleetStatsReport` complet à la main). `compute`,
+   * lui, le renseigne TOUJOURS : un consommateur qui ne le trouve pas doit se taire, jamais
+   * afficher zéro.
+   */
+  byAttribution?: {
+    /** `driver:<id>` ou `group:<id>` — la clé du CLASSEMENT, cf. `cleAttribution` ci-dessous. */
+    key: string;
+    /** Nom du conducteur, sinon nom du groupe. */
+    label: string;
+    kind: 'driver' | 'group';
+    tripCount: number;
+    distanceKm: number;
+    durationHours: number;
+    avgSpeedKmh: number;
+    speedingCount: number;
+    speedingTripCount: number;
+    worstOverKmh: number;
+    idleSeconds: number;
+  }[];
+  /** Compte RÉEL des lignes d'imputation ; la liste ci-dessus est plafonnée. */
+  byAttributionTotal?: number;
+  /**
+   * Trajets sans conducteur NI groupe : comptés, JAMAIS une ligne — on ne note pas
+   * « personne », et on ne lui attribue pas non plus de kilomètres.
+   *
+   * ⚠️ Ce n'est pas un cas marginal. Mesuré en production le 2026-09-05 : chez mh cars,
+   * 1 866 trajets sur 1 886 n'ont ni conducteur ni groupe. Les taire ferait lire une image
+   * complète là où presque rien n'est imputé à quiconque.
+   */
+  unattributedTrips?: { tripCount: number; distanceKm: number; durationHours: number };
   /**
    * Liste des derniers trajets sur la periode (cap a 30 pour ne pas exploser
    * le PDF). Inclut la note libre + le conducteur — le rapport PDF les rend
@@ -416,11 +467,33 @@ export class ReportsStatsService {
      * d'un trajet autant de fois qu'il porte d'excès. Deux questions, deux requêtes.
      *
      * ⚠️ `idleSec` est une colonne, pas du JSON : la lecture ne détoaste aucun détail.
+     *
+     * ⚠️ `t."driverId"` DANS LE GROUP BY (F13) : la même passe alimente la vue par véhicule
+     * et la vue par imputation. Les partitions sont disjointes — un trajet a exactement un
+     * véhicule et au plus un conducteur — donc additionner les lignes d'un véhicule redonne
+     * EXACTEMENT le ralenti d'avant ce lot. Une seconde requête aurait fini par diverger.
      */
-    const ralentiParVehicule = this.prisma.$queryRaw<{ vehicleId: string; ralenti: number }[]>`
-      SELECT ta."vehicleId" AS "vehicleId", COALESCE(SUM(ta."idleSec"), 0)::int AS "ralenti"
+    /**
+     * ⚠️ LE MODE VIE PRIVÉE BORNE CETTE REQUÊTE AUSSI (RGPD).
+     *
+     * `privacyExclude` ne vit que dans `tripWhere` et `alertWhere` : ces deux requêtes écrites à
+     * la main l'ignoraient. Relevé en revue le 2026-09-05, et reproduit : un groupe contenant UN
+     * véhicule normal et UN véhicule en vie privée voyait la ligne du groupe naître du premier
+     * (2 trajets, 12 km) puis encaisser les excès du second (40 excès, +55 km/h). L'écran publiait
+     * ainsi la conduite d'un véhicule que le client a explicitement mis sous vie privée, sur une
+     * ligne dont les compteurs ne pouvaient pas concorder. Le garde-fou plus bas ne protège que la
+     * CRÉATION d'une ligne : il ne pouvait rien contre l'abondement d'une ligne déjà née.
+     *
+     * Ce filtre remet aussi d'aplomb `consumption.idleSecondsTotal`, qui sommait le ralenti de
+     * TOUS les véhicules, privés compris — un total de flotte qui ne retombait sur aucune somme.
+     */
+    const ralentiParVehicule = this.prisma.$queryRaw<{ vehicleId: string; driverId: string | null; ralenti: number }[]>`
+      SELECT ta."vehicleId" AS "vehicleId",
+             t."driverId"   AS "driverId",
+             COALESCE(SUM(ta."idleSec"), 0)::int AS "ralenti"
         FROM trip_analyses ta
         JOIN trips t ON t.id = ta."tripId"
+        JOIN vehicles v ON v.id = ta."vehicleId" AND v."privacyModeEnabled" IS NOT TRUE
        WHERE ta."fleetId" = ${fleetId}::uuid
          AND t."startedAt" >= ${from}
          AND t."startedAt" <  ${to}
@@ -428,18 +501,25 @@ export class ReportsStatsService {
          ${isVehicleScopeRestricted
             ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
             : Prisma.empty}
-       GROUP BY ta."vehicleId"
+       GROUP BY ta."vehicleId", t."driverId"
     `;
 
+    /**
+     * ⚠️ `t."driverId"` dans le GROUP BY pour la même raison que ci-dessus. `COUNT(DISTINCT
+     * ta."tripId")` reste sommable : un trajet ne portant qu'un seul conducteur, il ne peut
+     * pas être compté dans deux partitions du même véhicule.
+     */
     const excesParVehicule = this.prisma.$queryRaw<
-      { vehicleId: string; exces: number; trajets: number; pire: number }[]
+      { vehicleId: string; driverId: string | null; exces: number; trajets: number; pire: number }[]
     >`
       SELECT ta."vehicleId"                                     AS "vehicleId",
+             t."driverId"                                       AS "driverId",
              COUNT(*)::int                                      AS "exces",
              COUNT(DISTINCT ta."tripId")::int                   AS "trajets",
              COALESCE(MAX((s->>'overKmh')::numeric), 0)::float8 AS "pire"
         FROM trip_analyses ta
         JOIN trips t ON t.id = ta."tripId"
+        JOIN vehicles v ON v.id = ta."vehicleId" AND v."privacyModeEnabled" IS NOT TRUE
         CROSS JOIN LATERAL jsonb_array_elements(ta.detail->'speeding') s
        WHERE ta."fleetId" = ${fleetId}::uuid
          AND t."startedAt" >= ${from}
@@ -449,7 +529,7 @@ export class ReportsStatsService {
             ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
             : Prisma.empty}
          AND (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
-       GROUP BY ta."vehicleId"
+       GROUP BY ta."vehicleId", t."driverId"
     `;
 
     // 1) Aggregations globales : sum / avg / max / count en une requete SQL.
@@ -467,7 +547,10 @@ export class ReportsStatsService {
           _max: { maxSpeed: true },
         }),
         this.prisma.trip.groupBy({
-          by: ['vehicleId'],
+          // ⚠️ `driverId` en plus du véhicule (F13) : UNE passe pour les DEUX vues du
+          // récapitulatif. Le total d'un véhicule est la somme de ses conducteurs — cf.
+          // `perVehicle` plus bas, qui réagrège exactement les chiffres d'avant ce lot.
+          by: ['vehicleId', 'driverId'],
           where: tripWhere,
           // `durationSeconds` : indispensable au récapitulatif par véhicule de l'écran, qui
           // devait sinon l'additionner lui-même sur la seule page chargée.
@@ -510,16 +593,34 @@ export class ReportsStatsService {
         // colonne accessoire serait une régression bien plus grave que son absence.
         excesParVehicule.catch((e: unknown) => {
           this.logger.warn(`Excès par véhicule indisponibles : ${e instanceof Error ? e.message : e}`);
-          return [] as { vehicleId: string; exces: number; trajets: number; pire: number }[];
+          return [] as { vehicleId: string; driverId: string | null; exces: number; trajets: number; pire: number }[];
         }),
         // Même règle : une colonne accessoire ne doit pas emporter tout le rapport.
         ralentiParVehicule.catch((e: unknown) => {
           this.logger.warn(`Ralenti par véhicule indisponible : ${e instanceof Error ? e.message : e}`);
-          return [] as { vehicleId: string; ralenti: number }[];
+          return [] as { vehicleId: string; driverId: string | null; ralenti: number }[];
         }),
       ]);
-    const excesParVehiculeMap = new Map(excesRows.map((r) => [r.vehicleId, r]));
-    const ralentiParVehiculeMap = new Map(ralentiRows.map((r) => [r.vehicleId, r.ralenti]));
+    /**
+     * Repli des deux requêtes brutes sur le SEUL véhicule, pour `topVehicles`.
+     *
+     * ⚠️ Ces chiffres doivent rester EXACTEMENT ceux d'avant ce lot : c'est la carte que le
+     * client lit tous les jours, et le PDF comme l'Excel s'en servent. La somme est exacte
+     * parce que les partitions (véhicule, conducteur) sont disjointes — y compris pour
+     * `trajets`, qui compte des trajets DISTINCTS ne pouvant appartenir qu'à une seule.
+     */
+    const excesParVehiculeMap = new Map<string, { exces: number; trajets: number; pire: number }>();
+    for (const r of excesRows) {
+      const e = excesParVehiculeMap.get(r.vehicleId) ?? { exces: 0, trajets: 0, pire: 0 };
+      e.exces += r.exces;
+      e.trajets += r.trajets;
+      e.pire = Math.max(e.pire, r.pire);
+      excesParVehiculeMap.set(r.vehicleId, e);
+    }
+    const ralentiParVehiculeMap = new Map<string, number>();
+    for (const r of ralentiRows) {
+      ralentiParVehiculeMap.set(r.vehicleId, (ralentiParVehiculeMap.get(r.vehicleId) ?? 0) + r.ralenti);
+    }
 
     const tripCount = tripAgg._count._all;
     const totalKm = tripAgg._sum.distanceKm ?? 0;
@@ -548,14 +649,96 @@ export class ReportsStatsService {
       }))
       .sort((a, b) => Number(b.silencieux) - Number(a.silencieux) || a.plate.localeCompare(b.plate, 'fr'));
 
+    /**
+     * Premier groupe du véhicule — la MÊME source que la colonne « groupe » de `topVehicles`
+     * et de `recentTrips` (relation `groups` chargée plus haut, ordonnée par nom, `take: 1`).
+     * Le modèle est mono-groupe de facto ; on ne réinterroge pas la base pour le savoir.
+     */
+    const groupeParVehicule = new Map(vehicles.map((v) => [v.id, v.groups?.[0]?.group ?? null]));
+
+    /**
+     * ── LA CLÉ D'IMPUTATION EST CELLE DU CLASSEMENT (F13) ─────────────────────────────
+     *
+     * Conducteur si `trip.driverId` est renseigné, sinon PREMIER groupe du véhicule, sinon
+     * « non attribué ». La règle vit dans le CONTRAT PARTAGÉ (`cleImputationTrajet`), d'où
+     * l'écran des scores la tire aussi pour sa 4ᵉ portée : deux copies auraient donné deux
+     * réponses à la même question — « combien a roulé ce conducteur ce mois-ci ? ».
+     *
+     * Pourquoi le repli sur le groupe n'est pas un détail, mesuré en production le
+     * 2026-09-05 : chez cdef31, 2 675 trajets sur 2 707 n'ont PAS de conducteur mais ont un
+     * groupe — sans ce repli, 99 % du parc serait « non attribué » et la vue ne dirait rien.
+     */
+    const cleAttribution = (driverId: string | null, vehicleId: string): string =>
+      cleImputationTrajet(driverId, groupeParVehicule.get(vehicleId)?.id ?? null);
+
     // Map perVehicle pour calcul carburant + top.
     const perVehicle = new Map<string, { distanceKm: number; tripCount: number; durationSeconds: number }>();
+    /** Agrégat par clé d'imputation, alimenté par la MÊME passe que `perVehicle`. */
+    const parAttribution = new Map<string, {
+      key: string; kind: 'driver' | 'group'; driverId: string | null; groupName: string | null;
+      distanceKm: number; durationSeconds: number; tripCount: number;
+      speedingCount: number; speedingTripCount: number; worstOverKmh: number; idleSeconds: number;
+    }>();
+    /** Les trajets qu'on ne peut imputer à personne : comptés, jamais classés. */
+    const nonAttribue = { tripCount: 0, distanceKm: 0, durationSeconds: 0 };
+    const ligneAttribution = (driverId: string | null, vehicleId: string) => {
+      const key = cleAttribution(driverId, vehicleId);
+      if (key === CLE_NON_ATTRIBUE) return null;
+      let a = parAttribution.get(key);
+      if (!a) {
+        a = {
+          key,
+          kind: driverId ? 'driver' : 'group',
+          driverId: driverId ?? null,
+          groupName: driverId ? null : (groupeParVehicule.get(vehicleId)?.name ?? null),
+          distanceKm: 0, durationSeconds: 0, tripCount: 0,
+          speedingCount: 0, speedingTripCount: 0, worstOverKmh: 0, idleSeconds: 0,
+        };
+        parAttribution.set(key, a);
+      }
+      return a;
+    };
+
     for (const g of tripsByVehicle) {
-      perVehicle.set(g.vehicleId, {
-        distanceKm: g._sum.distanceKm ?? 0,
-        tripCount: g._count._all,
-        durationSeconds: g._sum.durationSeconds ?? 0,
-      });
+      const km = g._sum.distanceKm ?? 0;
+      const sec = g._sum.durationSeconds ?? 0;
+      const n = g._count._all;
+      // Vue VÉHICULE : on réagrège sur les conducteurs. Le groupBy porte désormais
+      // ['vehicleId', 'driverId'] — sans cette somme, un véhicule à deux conducteurs ne
+      // rendrait dans `topVehicles` que les kilomètres du dernier groupe lu.
+      const v = perVehicle.get(g.vehicleId) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0 };
+      v.distanceKm += km;
+      v.tripCount += n;
+      v.durationSeconds += sec;
+      perVehicle.set(g.vehicleId, v);
+      // Vue IMPUTATION : même passe, autre clé.
+      const a = ligneAttribution(g.driverId ?? null, g.vehicleId);
+      if (a) {
+        a.distanceKm += km;
+        a.durationSeconds += sec;
+        a.tripCount += n;
+      } else {
+        nonAttribue.tripCount += n;
+        nonAttribue.distanceKm += km;
+        nonAttribue.durationSeconds += sec;
+      }
+    }
+
+    // Excès et ralenti reportés sur la ligne d'imputation.
+    // ⚠️ On ne CRÉE aucune ligne ici : les deux requêtes brutes ignorent le mode vie privée
+    // (RGPD), que `tripWhere` exclut. Créer une ligne depuis elles ferait apparaître, dans
+    // le récapitulatif, un conducteur dont aucun kilomètre n'est compté — et `topVehicles`,
+    // qui ne lit ses excès que pour les véhicules ayant roulé, ne le montrerait pas.
+    for (const r of excesRows) {
+      const a = parAttribution.get(cleAttribution(r.driverId ?? null, r.vehicleId));
+      if (!a) continue;
+      a.speedingCount += r.exces;
+      a.speedingTripCount += r.trajets;
+      a.worstOverKmh = Math.max(a.worstOverKmh, r.pire);
+    }
+    for (const r of ralentiRows) {
+      const a = parAttribution.get(cleAttribution(r.driverId ?? null, r.vehicleId));
+      if (a) a.idleSeconds += r.ralenti;
     }
 
     // Moyenne kilométrique : MÊME population des deux côtés de la division.
@@ -616,18 +799,70 @@ export class ReportsStatsService {
       }
     }
     topVehicles.sort((a, b) => b.distanceKm - a.distanceKm);
+    /** Profondeur demandée par l'appelant, UNE seule fois : les deux vues se plafonnent pareil. */
+    const topN = Math.min(50, Math.max(1, Math.trunc(filters?.topN ?? 10)));
+
+    /**
+     * Noms des conducteurs des lignes d'imputation — une requête, et AUCUNE quand pas un
+     * seul trajet ne porte de conducteur. C'est le cas courant, pas l'exception : mh cars
+     * comptait 1 866 trajets sans conducteur sur 1 886 au 2026-09-05.
+     *
+     * ⚠️ Bornée à la flotte du rapport, comme tout le reste : un `driverId` ne vient jamais
+     * d'ailleurs, mais une jointure de nom ne doit pas être le seul endroit qui l'oublie.
+     */
+    const driverIds = [...new Set(
+      [...parAttribution.values()].map((a) => a.driverId).filter((id): id is string => !!id),
+    )];
 
     // P3 carburant — prix RÉELLEMENT CONSTATÉ en station sur la période (moyenne des prix captés aux
     // passages station du périmètre), pour comparer au prix paramétré. Best-effort : null si aucun passage.
-    const fuelStopAgg = await this.prisma.tripFuelStop.aggregate({
-      where: {
-        arrivedAt: { gte: from, lte: to },
-        unitPriceEur: { not: null },
-        ...(isVehicleScopeRestricted ? { vehicleId: { in: vehicles.map((v) => v.id) } } : { fleetId: fleet.id }),
-      },
-      _avg: { unitPriceEur: true },
-      _count: { _all: true },
-    });
+    // Lancé EN PARALLÈLE de la lecture des conducteurs : le VPS a 2 vCPU, deux allers-retours
+    // séquentiels de plus par rapport hebdomadaire se paient sur chaque société.
+    const [fuelStopAgg, driverRows] = await Promise.all([
+      this.prisma.tripFuelStop.aggregate({
+        where: {
+          arrivedAt: { gte: from, lte: to },
+          unitPriceEur: { not: null },
+          ...(isVehicleScopeRestricted ? { vehicleId: { in: vehicles.map((v) => v.id) } } : { fleetId: fleet.id }),
+        },
+        _avg: { unitPriceEur: true },
+        _count: { _all: true },
+      }),
+      driverIds.length > 0
+        ? this.prisma.driver.findMany({
+            where: { id: { in: driverIds }, fleetId },
+            select: { id: true, firstName: true, lastName: true },
+          })
+        : Promise.resolve([] as { id: string; firstName: string; lastName: string }[]),
+    ]);
+    const nomParConducteur = new Map(driverRows.map((d) => [d.id, `${d.firstName} ${d.lastName}`.trim()]));
+
+    const byAttribution: NonNullable<FleetStatsReport['byAttribution']> = [...parAttribution.values()]
+      .map((a) => ({
+        key: a.key,
+        label: a.kind === 'driver'
+          // Supprimer un conducteur remet `Trip.driverId` à NULL (onDelete: SetNull) : ce
+          // repli ne devrait jamais s'afficher. Une ligne sans nom vaut quand même mieux
+          // qu'une ligne escamotée, qui emporterait ses kilomètres avec elle.
+          ? (nomParConducteur.get(a.driverId ?? '') || 'Conducteur inconnu')
+          : (a.groupName ?? 'Groupe sans nom'),
+        kind: a.kind,
+        tripCount: a.tripCount,
+        distanceKm: Math.round(a.distanceKm * 10) / 10,
+        durationHours: Math.round((a.durationSeconds / 3600) * 10) / 10,
+        // ⚠️ Kilomètres ÷ heures de conduite, comme `topVehicles` et comme la vitesse
+        // moyenne de flotte — jamais la moyenne des moyennes de trajet.
+        avgSpeedKmh: a.durationSeconds > 0
+          ? Math.round(a.distanceKm / (a.durationSeconds / 3600))
+          : 0,
+        speedingCount: a.speedingCount,
+        speedingTripCount: a.speedingTripCount,
+        worstOverKmh: Math.round(a.worstOverKmh * 10) / 10,
+        idleSeconds: a.idleSeconds,
+      }))
+      // Départage par le libellé : l'ordre d'une Map suit l'ordre des lignes rendues par la
+      // base, qui n'est garanti par rien. Deux appels identiques doivent classer pareil.
+      .sort((x, y) => y.distanceKm - x.distanceKm || x.label.localeCompare(y.label, 'fr'));
     const observedPriceEurL = fuelStopAgg._avg.unitPriceEur != null ? Math.round(fuelStopAgg._avg.unitPriceEur * 1000) / 1000 : null;
     const observedSampleCount = fuelStopAgg._count._all;
 
@@ -680,7 +915,17 @@ export class ReportsStatsService {
       },
       // Le curseur « Top N » de la modale ne pouvait rien au-delà de 10 : tranché ici avant
       // que le PDF ne le lise. Plafond 50, comme le DTO.
-      topVehicles: topVehicles.slice(0, Math.min(50, Math.max(1, Math.trunc(filters?.topN ?? 10)))),
+      topVehicles: topVehicles.slice(0, topN),
+      // MÊME plafond que la vue par véhicule : les deux moitiés d'une bascule ne peuvent pas
+      // montrer des profondeurs différentes sans que le lecteur croie à une donnée manquante.
+      byAttribution: byAttribution.slice(0, topN),
+      // Le compte RÉEL, pour que la troncature se dise au lieu de se deviner.
+      byAttributionTotal: byAttribution.length,
+      unattributedTrips: {
+        tripCount: nonAttribue.tripCount,
+        distanceKm: Math.round(nonAttribue.distanceKm * 10) / 10,
+        durationHours: Math.round((nonAttribue.durationSeconds / 3600) * 10) / 10,
+      },
       // V1.10 (Sprint 2 perf) — pas de slice ici, le take=recentTripsCap dans
       // le findMany ci-dessus a deja limite cote DB.
       recentTrips: recentTripsRaw.map((t) => ({

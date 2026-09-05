@@ -243,6 +243,103 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 2bis) ReportsStatsService.compute — le récapitulatif « par conducteur ou groupe » (F13)
+// ---------------------------------------------------------------------------
+/**
+ * ── UN AGRÉGAT DE PLUS, DONC UNE FUITE DE PLUS À FERMER ────────────────────────────────
+ *
+ * Le balayage ci-dessus vérifie que CHAQUE requête brute porte le périmètre. Il ne dit rien
+ * de ce que le service en fait ensuite : la vue par imputation nomme des CONDUCTEURS, ce
+ * qu'aucun agrégat de ce fichier ne faisait avant. Un VIEWER limité à deux véhicules ne doit
+ * apprendre ni le nom du conducteur d'un troisième, ni les kilomètres du groupe auquel il
+ * appartient — et la requête qui va chercher ces noms est une requête de plus, qu'aucun
+ * `where` inspecté plus haut ne couvre.
+ */
+describe('ReportsStatsService.compute — périmètre du récapitulatif par conducteur ou groupe', () => {
+  const DRIVER_A = 'driver-a';
+  const DRIVER_X = 'driver-x';
+
+  /** Trois véhicules, trois conducteurs : A et B dans le périmètre, X en dehors. */
+  function makePrisma(perimetre: string[] | 'ALL') {
+    const dedans = (id: string) => perimetre === 'ALL' || perimetre.includes(id);
+    const captured: { driverWhere?: unknown } = {};
+    const vehicles = [
+      { id: VEH_A, plate: 'A', groups: [{ group: { id: 'grp-a', name: 'Groupe A' } }] },
+      { id: VEH_B, plate: 'B', groups: [] },
+      { id: VEH_X, plate: 'X', groups: [{ group: { id: 'grp-x', name: 'Groupe X' } }] },
+    ]
+      .filter((v) => dedans(v.id))
+      .map((v) => ({ ...v, type: 'CAR', fuelConsumptionL100km: null, calibratedConsumptionL100km: null, calibratedTanks: 0, tracker: null }));
+    const trips = [
+      { vehicleId: VEH_A, driverId: DRIVER_A, _sum: { distanceKm: 10, durationSeconds: 600 }, _count: { _all: 1 } },
+      { vehicleId: VEH_B, driverId: null, _sum: { distanceKm: 20, durationSeconds: 600 }, _count: { _all: 2 } },
+      { vehicleId: VEH_X, driverId: DRIVER_X, _sum: { distanceKm: 999, durationSeconds: 600 }, _count: { _all: 9 } },
+    ].filter((t) => dedans(t.vehicleId));
+
+    return {
+      captured,
+      prisma: {
+        fleet: { findUnique: jest.fn().mockResolvedValue({ id: FLEET_ID, name: 'F1', fuelPriceEurL: 1.85 }) },
+        vehicle: { findMany: jest.fn().mockResolvedValue(vehicles) },
+        trip: {
+          aggregate: jest.fn().mockResolvedValue({
+            _count: { _all: 0 }, _sum: { distanceKm: 0, durationSeconds: 0 },
+            _avg: { avgSpeed: 0 }, _max: { maxSpeed: 0 },
+          }),
+          groupBy: jest.fn().mockResolvedValue(trips),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+        alert: { groupBy: jest.fn().mockResolvedValue([]) },
+        tripFuelStop: { aggregate: jest.fn().mockResolvedValue({ _avg: { unitPriceEur: null }, _count: { _all: 0 } }) },
+        driver: {
+          findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) => {
+            captured.driverWhere = where;
+            return Promise.resolve(
+              [{ id: DRIVER_A, firstName: 'Amine', lastName: 'Berrada' },
+               { id: DRIVER_X, firstName: 'Secret', lastName: 'Hors périmètre' }]
+                .filter((d) => where.id.in.includes(d.id)),
+            );
+          }),
+        },
+        $queryRaw: jest.fn().mockResolvedValue([]),
+      } as any,
+    };
+  }
+
+  it('user scopé (A,B) : aucune ligne, aucun nom, aucun kilomètre du véhicule hors périmètre', async () => {
+    const { prisma, captured } = makePrisma([VEH_A, VEH_B]);
+
+    const report = await new ReportsStatsService(prisma).compute(FLEET_ID, FROM, TO, {
+      role: UserRole.VIEWER, fleetId: FLEET_ID, accessibleVehicleIds: [VEH_A, VEH_B],
+    });
+
+    expect(report.byAttribution!.map((l) => l.key)).toEqual(['driver:' + DRIVER_A]);
+    expect(JSON.stringify(report.byAttribution)).not.toContain(DRIVER_X);
+    expect(JSON.stringify(report.byAttribution)).not.toContain('Secret');
+    // Les 999 km de VEH_X ne se glissent nulle part, pas même dans les non attribués.
+    expect(report.byAttribution!.reduce((s, l) => s + l.distanceKm, 0) + report.unattributedTrips!.distanceKm).toBe(30);
+    // ⚠️ La requête des noms est la SEULE de ce service à lire une autre table que les
+    // trajets : elle ne demande que les conducteurs des lignes retenues, et reste bornée à
+    // la flotte du rapport.
+    expect(captured.driverWhere).toEqual({ id: { in: [DRIVER_A] }, fleetId: FLEET_ID });
+  });
+
+  it("user 'ALL' : le récapitulatif couvre bien toute la flotte (aucune borne de trop)", async () => {
+    const { prisma } = makePrisma('ALL');
+
+    const report = await new ReportsStatsService(prisma).compute(FLEET_ID, FROM, TO, {
+      role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID, accessibleVehicleIds: 'ALL',
+    });
+
+    expect(report.byAttribution!.map((l) => l.key).sort()).toEqual(
+      ['driver:' + DRIVER_A, 'driver:' + DRIVER_X].sort(),
+    );
+    // VEH_B n'a ni conducteur ni groupe : compté, jamais classé.
+    expect(report.unattributedTrips).toEqual({ tripCount: 2, distanceKm: 20, durationHours: 0.2 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 3) ReportCsvService.trips
 // ---------------------------------------------------------------------------
 describe('ReportCsvService.trips — borne périmètre', () => {

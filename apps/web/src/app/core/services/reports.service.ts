@@ -76,6 +76,44 @@ export interface FleetStatsReportDto {
     /** Ralenti moteur cumulé du véhicule sur la période, en SECONDES. */
     idleSeconds: number;
   }[];
+  /**
+   * ── LE MÊME RÉCAPITULATIF, PAR CONDUCTEUR OU GROUPE (F13) ──────────────────────────
+   *
+   * `topVehicles` répond à « quel véhicule roule et dépasse ? ». Ce bloc répond à
+   * « combien de kilomètres a fait tel conducteur ce mois-ci, avec combien d'excès ? » —
+   * question à laquelle la page ne savait pas répondre, alors que l'écran des scores
+   * impute déjà chaque trajet.
+   *
+   * Chaque trajet compte pour son CONDUCTEUR s'il est connu, sinon pour le GROUPE de son
+   * véhicule. Mêmes champs et mêmes arrondis que `topVehicles` : l'écran réutilise ses
+   * cellules telles quelles.
+   *
+   * ⚠️ OPTIONNELS À DESSEIN. Un serveur antérieur à ce lot ne les sert pas : l'écran doit
+   * alors se TAIRE (bascule indisponible), jamais afficher une vue vide qui ferait croire
+   * à zéro trajet attribué.
+   */
+  byAttribution?: {
+    /** `driver:<id>` ou `group:<id>` — la clé d'imputation, identique à celle des scores. */
+    key: string;
+    /** Nom du conducteur, sinon nom du groupe. */
+    label: string;
+    kind: 'driver' | 'group';
+    tripCount: number;
+    distanceKm: number;
+    durationHours: number;
+    avgSpeedKmh: number;
+    speedingCount: number;
+    speedingTripCount: number;
+    worstOverKmh: number;
+    idleSeconds: number;
+  }[];
+  /** Compte RÉEL des lignes d'imputation ; `byAttribution` est plafonné comme `topVehicles`. */
+  byAttributionTotal?: number;
+  /**
+   * Trajets sans conducteur NI groupe : comptés, jamais une ligne — on ne note pas
+   * « personne ». Mesuré le 2026-09-05 : 1 866 trajets sur 1 886 chez mh cars.
+   */
+  unattributedTrips?: { tripCount: number; distanceKm: number; durationHours: number };
 }
 
 export type CsvType = 'positions' | 'trips' | 'alerts' | 'commands';

@@ -52,6 +52,7 @@ export * from './protocol';
 export * from './utils/gps-sanity';
 export * from './utils/alerte-exces';
 export * from './utils/exces-vitesse';
+export * from './utils/imputation-trajet';
 export * from './utils/lien-trajet';
 export * from './utils/plaque';
 export * from './utils/live-motion';
