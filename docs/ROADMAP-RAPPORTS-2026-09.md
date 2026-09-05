@@ -642,6 +642,23 @@ production le 5 septembre, **deux causes indépendantes**, dont aucune ne se voy
 | 3 | **FAIT le 5 septembre** | Le même récapitulatif « par conducteur ou groupe » sur la page Rapports (F13) : une bascule sur la carte du récapitulatif, les mêmes colonnes que la vue par véhicule (trajets, distance, conduite, vitesse moyenne, excès **établis**, ralenti), et la mention des trajets non attribués. ⚠️ UNE seule passe alimente les deux vues — le groupBy des trajets et les deux requêtes d'excès et de ralenti groupent aussi par conducteur, la vue par véhicule réagrège dessus : `topVehicles` rend exactement les mêmes chiffres qu'avant, et c'est vérifié par un test (le PDF, l'Excel et le rapport hebdomadaire en dépendent). La bascule est **indisponible avec son motif** quand la synthèse de période n'est pas calculable — la page est mono-société — plutôt que d'afficher une vue vide qui ferait croire à zéro trajet attribué. |
 | 4 | **FAIT le 5 septembre** | La note dit sur combien d'**analyses anciennes** elle est calculée (`oldFormulaTripCount`, compté sur la population exacte de `tripCount`). Mesuré en production le jour même, sur 30 jours d'analyses notées : **cdef31 2 472 sur 2 647, mh cars 1 695 sur 1 898, A2R 555 sur 636, Ahmed 32 sur 32** — la réserve n'est pas un cas de bord, c'est l'état ordinaire des notes aujourd'hui. La requête SQL du classement, qui faisait déjà une passe sur le détail pour les excès établis, rend désormais **deux faits par trajet** ; l'écran affiche « dont N analyse(s) ancienne(s) » avec une info-bulle. C'est une réserve, pas une accusation : le mot « faux » qualifie le détail stocké, jamais la note du conducteur. |
 
+**Vérifié en production le 5 septembre au soir**, contre un recalcul SQL indépendant :
+- **cdef31** — 15 lignes de groupe (425 : 620 trajets et 6 119 km ; BOREAL 289 ; NOVA 130 ; ROSE 123 ;
+  CELESTE 275 ; …), **34 trajets non attribués**, et la somme des imputations retombe **exactement**
+  sur les totaux par véhicule (2 754 trajets de part et d'autre, 24 704,4 km contre 24 704,5).
+  Analyses notées 2 615 dont **2 444 anciennes**.
+- **mh cars** — trois conducteurs nommés (Sohaib Hamanni 22 trajets, Nael Mhamdi 17, Hamza Ayachi 12)
+  et **1 905 trajets non attribués sur 1 956** : l'écran dit enfin l'ampleur du trou de données.
+  Leurs 51 analyses notées sont **toutes récentes** — ce sont des trajets d'après la bascule.
+
+**Défaut trouvé en revue et corrigé avant livraison** : les excès et le ralenti d'un véhicule en
+**mode vie privée** se déversaient dans les lignes d'imputation. Le filtre RGPD ne vivait que dans
+le filtre Prisma des trajets, pas dans les deux requêtes SQL écrites à la main : un groupe contenant
+un véhicule normal et un véhicule privé affichait « 2 trajets, 12 km — 40 excès, +55 km/h »,
+c'est-à-dire la conduite d'un véhicule que le client a explicitement mis sous vie privée. Le filtre
+est descendu dans les deux requêtes, un test verrouille la jointure, et le **ralenti total de la
+flotte** — qui sommait lui aussi les véhicules privés — retombe désormais juste.
+
 **Ce que les points 3 et 4 ont exigé, et qu'il ne faut pas défaire :**
 - La **règle d'imputation** (conducteur, sinon groupe du véhicule, sinon personne) vit dans le
   contrat partagé (`packages/shared/src/utils/imputation-trajet.ts`) et **deux écrans l'appellent** :
