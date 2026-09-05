@@ -4,6 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import type { PlaceAutomationSettings } from '@prisma/client';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlaceAnalysisService, type PaidCallError, type PlaceForAnalysis } from './place-analysis.service';
@@ -132,11 +133,24 @@ export class PlaceAutomationService {
 
   /**
    * Lancement MANUEL (super-admin). `dryRun` = SIMULATION : tout est évalué (candidats, sauts,
-   * estimation) mais **aucun appel IA n'est émis** — permet de voir ce que coûterait un run avant
-   * de l'activer.
+   * estimation) mais **rien n'est enfilé ni écrit** — permet de voir ce que ferait un passage
+   * avant de l'activer.
+   *
+   * ⚠️ En pause, seul le passage RÉEL est refusé (design/C3 point 2, 2026-09-05). Le texte de
+   * l'écran promettait le contraire (« le bouton reste utilisable — et il dépense ») : un clic
+   * confiait pourtant les analyses dues au poste alors que l'exploitant avait tout coupé. La
+   * simulation, elle, reste permise en pause : c'est une lecture sans effet, et c'est
+   * précisément AVANT d'activer qu'on veut savoir ce qu'un passage ferait. Le 409 est levé ici,
+   * à l'entrée HTTP, jamais dans `run()` : le cron (`runScheduled`) garde son no-op silencieux
+   * et la règle « le service ne lève jamais » de l'en-tête vaut toujours pour lui.
    */
   async runNow(dryRun = false): Promise<PlaceAutomationRunStats> {
     const settings = await this.loadRow();
+    if (!dryRun && !settings.enabled) {
+      throw new AutomationDisabledException(
+        'Automatisation des lieux en pause : activez-la et enregistrez pour lancer un passage.',
+      );
+    }
     return this.run(settings, dryRun ? 'dry-run' : 'manual');
   }
 

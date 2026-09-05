@@ -1,4 +1,5 @@
 import { AiServiceError } from '../ai/anthropic.client';
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import type { RecurringPattern } from './recurrence-detector.service';
 
@@ -273,6 +274,82 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
     const res = await svc.runForFleet('f1', 'scheduled');
     expect(res).toMatchObject({ created: 0, proposed: 0, skipped: 0 });
     expect((detector as unknown as { detectWithStats: jest.Mock }).detectWithStats).not.toHaveBeenCalled();
+  });
+
+  /**
+   * design/C3 point 2 (2026-09-05) — « Lancer l'analyse » ne contourne plus l'interrupteur.
+   *
+   * Avant : un clic sur une société dont l'agent était coupé tournait quand même — détection,
+   * propositions, et jusqu'à l'appel IA de `reviewPatterns` (12 appels API en 30 j relevés le
+   * 05/09 pour la seule société cdef31). Le refus doit être un 409 lisible, tomber AVANT tout
+   * travail, et ne laisser NI ligne d'historique NI appel modèle : un réglage respecté ne doit
+   * pas ressembler à un agent en panne.
+   */
+  describe('manuel + agent désactivé : refus, sans détection ni trace (design/C3)', () => {
+    function monter(settings: unknown) {
+      const prisma = makePrisma(settings);
+      const detector = makeDetector([PATTERN]);
+      const reservations = makeReservations();
+      const activity = makeActivity();
+      const anthropic = makeAnthropic([{ index: 0, keep: true, reasoning: 'stable' }]);
+      const svc = new AgendaAgentRunnerService(
+        prisma, detector, reservations, makeEvents(), activity,
+        anthropic, makeAiUsage(), makeErrors(),
+        { isEnabledForFleet: jest.fn().mockResolvedValue(true) } as never,
+      );
+      return { svc, prisma, detector, reservations, activity, anthropic };
+    }
+
+    it('refuse en 409 (AutomationDisabledException) avec la consigne en français', async () => {
+      const { svc } = monter(makeSettings({ enabled: false }));
+
+      const refus = await svc.runForFleet('f1', 'manual').catch((e: unknown) => e);
+
+      expect(refus).toBeInstanceOf(AutomationDisabledException);
+      expect((refus as AutomationDisabledException).getStatus()).toBe(409);
+      expect((refus as Error).message).toMatch(/désactivé pour cette société/);
+      expect((refus as Error).message).toMatch(/Activez-le et enregistrez/);
+    });
+
+    it('ne détecte rien, n\'appelle pas l\'IA, ne réserve rien, n\'écrit ni historique ni journal', async () => {
+      const { svc, prisma, detector, reservations, activity, anthropic } = monter(makeSettings({ enabled: false }));
+
+      await expect(svc.runForFleet('f1', 'manual')).rejects.toBeInstanceOf(AutomationDisabledException);
+
+      expect((detector as unknown as { detectWithStats: jest.Mock }).detectWithStats).not.toHaveBeenCalled();
+      expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+      expect((reservations as unknown as { systemConfirm: jest.Mock }).systemConfirm).not.toHaveBeenCalled();
+      expect((prisma as unknown as { agendaAgentProposal: { create: jest.Mock } }).agendaAgentProposal.create).not.toHaveBeenCalled();
+      // Pas de ligne « error » : ce passage n'a pas eu lieu, il n'a pas échoué.
+      expect(runsOf(prisma).create).not.toHaveBeenCalled();
+      expect((activity as unknown as { record: jest.Mock }).record).not.toHaveBeenCalled();
+      // `lastRunAt` reste celui du dernier VRAI passage.
+      expect((prisma as unknown as { agendaAgentSettings: { update: jest.Mock } }).agendaAgentSettings.update).not.toHaveBeenCalled();
+    });
+
+    it('société sans ligne de réglage (agent jamais activé) : même refus', async () => {
+      const { svc, detector } = monter(null);
+
+      await expect(svc.runForFleet('f1', 'manual')).rejects.toBeInstanceOf(AutomationDisabledException);
+      expect((detector as unknown as { detectWithStats: jest.Mock }).detectWithStats).not.toHaveBeenCalled();
+    });
+
+    it('relâche le verrou anti-chevauchement : un second clic est refusé pareil, pas « déjà en cours »', async () => {
+      const { svc } = monter(makeSettings({ enabled: false }));
+
+      await expect(svc.runForFleet('f1', 'manual')).rejects.toBeInstanceOf(AutomationDisabledException);
+      // Sans le `finally`, le second appel rendrait `alreadyRunning: true` en silence.
+      await expect(svc.runForFleet('f1', 'manual')).rejects.toBeInstanceOf(AutomationDisabledException);
+    });
+
+    it('agent activé : le lancement manuel tourne comme avant (garde ciblée, pas un verrou global)', async () => {
+      const { svc, detector } = monter(makeSettings({ enabled: true, autonomy: 'suggest' }));
+
+      const res = await svc.runForFleet('f1', 'manual');
+
+      expect(res.proposed).toBeGreaterThanOrEqual(1);
+      expect((detector as unknown as { detectWithStats: jest.Mock }).detectWithStats).toHaveBeenCalledTimes(1);
+    });
   });
 
   /**

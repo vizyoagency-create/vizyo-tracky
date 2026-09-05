@@ -16,6 +16,7 @@ import type {
   SetFleetReportScheduleDto,
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { formatFleetDate, parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -206,10 +207,24 @@ export class ReportScheduleService {
     return rows.map((r) => this.dispatchToDto(r, r.fleet.name, r.requestedByUserId ? nameOf.get(r.requestedByUserId) ?? null : null));
   }
 
-  /** Envoi immédiat : les 7 derniers jours civils révolus, aux destinataires réglés. */
+  /**
+   * Envoi immédiat : les 7 derniers jours civils révolus, aux destinataires réglés.
+   *
+   * ⚠️ Refusé (409) quand l'envoi automatique est coupé (design/C3 point 2, 2026-09-05). Le
+   * bouton partait vers de vraies boîtes aux lettres — actif par défaut pour TOUTES les
+   * sociétés, sociétés d'essai comprises — alors que l'exploitant avait coupé l'envoi : un
+   * réglage qu'un bouton contourne n'est pas un réglage. Le refus tombe AVANT tout calcul et
+   * n'écrit aucune ligne de journal d'envoi (rien n'est parti) ; c'est le contrôleur qui
+   * consigne le refus dans l'activité système. Le cron (`runDue`) ignorait déjà ces sociétés.
+   */
   async sendNow(user: AuthUser, fleetIdQ?: string): Promise<FleetReportDispatchDto> {
     const fleet = await this.loadFleet(this.resolveFleetId(user, fleetIdQ));
     const eff = this.effective(fleet);
+    if (!eff.enabled) {
+      throw new AutomationDisabledException(
+        "L'envoi automatique est coupé pour cette société : réactivez-le avant d'envoyer.",
+      );
+    }
     const todayKey = parisDayKey(new Date());
     const to = parisDayStart(todayKey);
     const from = parisDayStart(this.shiftDayKey(todayKey, -7));

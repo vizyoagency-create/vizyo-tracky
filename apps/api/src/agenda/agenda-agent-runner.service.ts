@@ -17,6 +17,7 @@ import type {
   FleetMetier,
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiRouter } from '../ai/ai-router.service';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
@@ -128,9 +129,27 @@ export class AgendaAgentRunnerService {
     try {
       const settings = await this.prisma.agendaAgentSettings.findUnique({ where: { fleetId } });
       const enabled = settings?.enabled ?? false;
-      // Planifié : rien si l'agent est désactivé. Manuel : on tourne quand même, mais on ne réserve
-      // AUTO que si l'agent est activé ET en autonomie « auto si confiance haute ».
+      // Planifié : rien si l'agent est désactivé (no-op silencieux, un cron ne lève pas).
       if (origin === 'scheduled' && !enabled) return { created: 0, proposed: 0, skipped: 0 };
+      /**
+       * Manuel + agent désactivé : REFUS, avant toute détection (design/C3 point 2, 2026-09-05).
+       *
+       * Jusqu'ici « Lancer l'analyse » tournait quand même — détection, propositions, et
+       * jusqu'à l'appel IA de `reviewPatterns` — alors que l'exploitant avait coupé l'agent
+       * (12 appels API sur 30 j relevés le 05/09 pour la seule société cdef31). Un interrupteur
+       * qu'un bouton contourne n'est pas un interrupteur. Le 409 remonte tel quel au front
+       * (le message dit quoi faire) ; il ne laisse ni ligne d'historique ni alerte : ce n'est
+       * pas un passage qui a échoué, c'est un passage qui n'a pas eu lieu.
+       *
+       * Une société SANS ligne de réglage n'a jamais activé l'agent : même refus. Les
+       * déclencheurs événementiels ne passent pas ici (`onTrigger` teste déjà `enabled`).
+       */
+      if (origin === 'manual' && !enabled) {
+        throw new AutomationDisabledException(
+          "L'agent d'agenda est désactivé pour cette société. Activez-le et enregistrez avant de lancer une analyse.",
+        );
+      }
+      // On ne réserve AUTO que si l'agent est en autonomie « auto si confiance haute ».
       const autoOn = enabled && (settings?.autonomy ?? 'suggest') === 'auto_high_confidence';
       const threshold = (settings?.confidenceThreshold ?? 80) / 100;
 
@@ -241,6 +260,10 @@ export class AgendaAgentRunnerService {
       });
       return { created, proposed, skipped };
     } catch (e) {
+      // Un refus (agent désactivé, lancement manuel) n'est pas un passage en échec : il n'a rien
+      // détecté, rien écrit, rien à archiver. Une ligne « error » ici ferait passer un réglage
+      // respecté pour un agent cassé — l'inverse exact de ce que l'historique doit montrer.
+      if (e instanceof AutomationDisabledException) throw e;
       // Un passage qui échoue doit LAISSER UNE TRACE : sans ça, l'historique ne montrerait que les
       // succès et un agent cassé passerait pour un agent qui n'a rien à faire.
       await this.recordRun({

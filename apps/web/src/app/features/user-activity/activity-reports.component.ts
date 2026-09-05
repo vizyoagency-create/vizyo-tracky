@@ -1,7 +1,9 @@
 import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { AiUsageApiService } from '../../core/services/ai-usage.service';
+import { apiErrorMessage } from '../../core/error/api-error';
+import type { AiFeatureFlagsDto } from '@vizyo/tracky-shared';
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, Sparkles, Loader, Search, Check, AlertTriangle, Clock, RefreshCw,
   FileText, TrendingDown, ThumbsUp, Lightbulb, CalendarClock, Copy, Trash2, Users as UsersIcon,
@@ -66,10 +68,15 @@ type Period = '7d' | '30d' | 'custom';
               </div>
             }
             <p class="ar-sel">{{ selected().size }} sélectionné(s)</p>
-            <button type="button" class="ar-btn ar-btn--primary" [disabled]="!canGenerate()" (click)="generate()">
+            <!-- Grisé quand le drapeau global « rapport d'activité » est coupé : le serveur
+                 répondrait 403 (design/C3 point 2). Le motif est écrit dessous, pas deviné. -->
+            <button type="button" class="ar-btn ar-btn--primary" [disabled]="!canGenerate()" [title]="motifRapport() ?? 'Générer le rapport pour la sélection'" (click)="generate()">
               @if (generating()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="ar-spin"></lucide-icon> Analyse en cours… }
               @else { <lucide-icon [img]="SparkIcon" [size]="14"></lucide-icon> Générer le rapport }
             </button>
+            @if (motifRapport(); as motif) {
+              <p class="ar-hint ar-hint--off">{{ motif }}</p>
+            }
             <p class="ar-hint">L'IA lit l'activité (parcours, durées, clics, formulaires, erreurs) et produit un rapport. Coût suivi dans « Coûts IA ».</p>
           </div>
         </div>
@@ -245,6 +252,8 @@ type Period = '7d' | '30d' | 'custom';
     .ar-btn--primary { background: var(--tracky, #10B981); color: #fff; border-color: transparent; }
     .ar-btn:disabled { opacity: .5; }
     .ar-hint { font-size: 11px; color: var(--fg-tertiary); line-height: 1.4; }
+    /* Le motif d'un bouton grisé : écrit, pas seulement une opacité. */
+    .ar-hint--off { color: var(--texte-attente); font-weight: 600; }
     .ar-empty { font-size: 12.5px; color: var(--fg-tertiary); padding: 14px 0; text-align: center; }
 
     .ar-cols { display: grid; grid-template-columns: 1fr; gap: 14px; }
@@ -320,6 +329,17 @@ export class ActivityReportsComponent implements OnInit {
   private readonly api = inject(ActivityReportApiService);
   private readonly usersApi = inject(UsersApiService);
   private readonly toast = inject(ToastService);
+  /**
+   * Disponibilité du rapport d'activité IA telle que le serveur l'appliquera : le DRAPEAU GLOBAL
+   * `activityReport` seul (`ActivityReportService.generate` → 403 s'il est coupé ; coupé par
+   * décision le 2026-09-05, le rapport planifié passe par le poste). ⚠️ Pas `aiStatus.can(...)` :
+   * cette porte-là est PAR SOCIÉTÉ (clé + drapeau + option IA de la société, fausse sans société),
+   * ce qui grisait le bouton d'un outil owner sans société pour un motif faux (revue C3).
+   * Opt-in : OFF tant que les drapeaux ne sont pas chargés, pour ne jamais montrer un bouton
+   * qui répondra 403.
+   */
+  private readonly aiUsage = inject(AiUsageApiService);
+  protected readonly drapeaux = signal<AiFeatureFlagsDto | null>(null);
 
   protected readonly SparkIcon = Sparkles;
   protected readonly LoaderIcon = Loader;
@@ -345,7 +365,19 @@ export class ActivityReportsComponent implements OnInit {
   protected readonly customTo = signal('');
   protected readonly generating = signal(false);
 
+  protected readonly aiReportOn = computed(() => this.drapeaux()?.activityReport === true);
+  /**
+   * Le motif du bouton grisé, une fois le statut CONNU — avant, on ne sait pas encore, et un
+   * « coupé par décision » qui clignote le temps d'un chargement serait faux.
+   */
+  protected readonly motifRapport = computed<string | null>(() =>
+    this.drapeaux() && !this.aiReportOn()
+      ? 'Rapport d\'activité IA coupé par décision — le rapport planifié passe par le poste.'
+      : null,
+  );
+
   protected readonly canGenerate = computed(() => {
+    if (!this.aiReportOn()) return false;
     if (this.selected().size === 0 || this.generating()) return false;
     if (this.period() !== 'custom') return true;
     const f = this.customFrom();
@@ -369,6 +401,7 @@ export class ActivityReportsComponent implements OnInit {
   });
 
   async ngOnInit(): Promise<void> {
+    void this.chargerDrapeaux(); // grise « Générer » si le rapport d'activité IA est coupé
     try {
       const [{ users }] = await Promise.all([this.usersApi.findAll()]);
       this.users.set(users);
@@ -523,12 +556,17 @@ export class ActivityReportsComponent implements OnInit {
     }
   }
 
-  private errMsg(e: unknown): string {
-    if (e instanceof HttpErrorResponse) {
-      const m = (e.error as { message?: string } | null)?.message;
-      if (m) return Array.isArray(m) ? m.join(', ') : m;
-      return `Erreur (${e.status}).`;
+  /** Les drapeaux globaux : la porte exacte de `POST /admin/activity/reports/generate` (403 si coupé). */
+  private async chargerDrapeaux(): Promise<void> {
+    try {
+      this.drapeaux.set(await firstValueFrom(this.aiUsage.getFeatures()));
+    } catch (e) {
+      swallow('activity-reports:drapeaux', e);
     }
-    return 'Une erreur est survenue.';
+  }
+
+  /** Le message du serveur est enveloppé dans { error: { message } } : `apiErrorMessage` sait le lire. */
+  private errMsg(e: unknown): string {
+    return apiErrorMessage(e, 'Une erreur est survenue.');
   }
 }

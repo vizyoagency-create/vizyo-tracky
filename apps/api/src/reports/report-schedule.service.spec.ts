@@ -16,6 +16,7 @@
  */
 import { ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { ReportScheduleService } from './report-schedule.service';
 import type { AuthUser } from '../auth/types/auth-user';
 
@@ -282,6 +283,37 @@ describe('ReportScheduleService — envoi', () => {
     expect(res).toEqual({ sent: 0, failed: 0, skipped: 0 });
     expect(send).not.toHaveBeenCalled();
     expect(dispatchCreate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * design/C3 point 2 (2026-09-05) — « Envoyer maintenant » ne contourne plus l'interrupteur.
+   * Le bouton partait vers de vraies boîtes aux lettres alors que la société avait coupé
+   * l'envoi. Le refus est un 409 lisible, rien n'est calculé, rien n'est envoyé, et aucune
+   * ligne de journal d'envoi n'est écrite : rien n'est parti.
+   */
+  describe('envoi immédiat quand l’envoi automatique est coupé', () => {
+    it('refuse en 409 (AutomationDisabledException) : aucun envoi, aucun journal, aucun calcul', async () => {
+      const { svc, send, dispatchCreate, compute, genererPdf, scheduleUpsert } = build({ ...REGLAGE_DU, enabled: false });
+
+      const refus = await svc.sendNow(admin()).catch((e: unknown) => e);
+
+      expect(refus).toBeInstanceOf(AutomationDisabledException);
+      expect((refus as AutomationDisabledException).getStatus()).toBe(409);
+      expect((refus as Error).message).toMatch(/coupé pour cette société/);
+      expect(send).not.toHaveBeenCalled();
+      expect(dispatchCreate).not.toHaveBeenCalled();
+      expect(compute).not.toHaveBeenCalled();
+      expect(genererPdf).not.toHaveBeenCalled();
+      expect(scheduleUpsert).not.toHaveBeenCalled(); // pas de « dernier passage » pour un refus
+    });
+
+    it('la sentinelle historique « - » (société jamais réglée, envoi coupé) refuse pareil', async () => {
+      const { svc, send, dispatchCreate } = build(null, { weeklyReportEmail: '-' });
+
+      await expect(svc.sendNow(admin())).rejects.toBeInstanceOf(AutomationDisabledException);
+      expect(send).not.toHaveBeenCalled();
+      expect(dispatchCreate).not.toHaveBeenCalled();
+    });
   });
 
   it('l’envoi immédiat part même sans trajet — c’est un geste manuel, pas un courrier automatique', async () => {

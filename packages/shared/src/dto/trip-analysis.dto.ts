@@ -581,6 +581,14 @@ export interface TripAutomationRunStats {
   durationMs: number;
   /** ISO date de fin du run. */
   at: string;
+  /**
+   * Un passage tournait DÉJÀ quand celui-ci a été demandé : rien n'a été lancé. Jusqu'au
+   * 2026-09-05 (design/C3 point 2), le verrou rendait des compteurs à zéro indiscernables
+   * d'un passage réel qui n'aurait rien trouvé — le bouton « Lancer maintenant » affichait
+   * « Run terminé · 0 analysé » pendant qu'un passage horaire de 50 minutes travaillait à
+   * côté. Absent des passages réels et des bilans persistés (`lastRunStats`).
+   */
+  alreadyRunning?: boolean;
 }
 
 /** Réglages (singleton) de l'automatisation des trajets. */

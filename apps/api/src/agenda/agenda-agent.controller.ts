@@ -17,17 +17,25 @@ const ALL_ROLES = [
 
 /**
  * Refonte agenda/IA (2026-07, P3) — Agent nocturne : lancement à la demande + revue des propositions.
- * Lancer l'agent = SUPER_ADMIN/FLEET_ADMIN (opérateur de l'agent). Voir les propositions =
- * reservations_view ; valider/refuser = reservations_manage (mêmes gardes que les réservations).
+ * Lancer l'agent = SUPER_ADMIN/FLEET_ADMIN (opérateur de l'agent) ET reservations_manage : un
+ * passage manuel peut CRÉER des réservations fermes (autonomie auto), c'est le même geste que
+ * valider une proposition. Voir les propositions = reservations_view ; valider/refuser =
+ * reservations_manage (mêmes gardes que les réservations).
  */
 @Controller('agenda/agent')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class AgendaAgentController {
   constructor(private readonly runner: AgendaAgentRunnerService) {}
 
-  /** Lance l'analyse maintenant (propositions ; réserve ferme si autonomie auto + confiance ≥ seuil). */
+  /**
+   * Lance l'analyse maintenant (propositions ; réserve ferme si autonomie auto + confiance ≥ seuil).
+   * Répond 409 (`AutomationDisabledException`) si l'agent est désactivé pour la société : le
+   * bouton ne contourne plus l'interrupteur (design/C3 point 2). La permission est celle de ses
+   * voisines `apply` / `dismiss` — la route était la seule du contrôleur à n'en exiger aucune.
+   */
   @Post('run')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('reservations_manage')
   run(@Req() req: AuthenticatedRequest, @Body() body?: { fleetId?: string }) {
     return this.runner.runOnDemand(req.user, body?.fleetId);
   }

@@ -425,24 +425,40 @@ export class ReportsController {
     return dto;
   }
 
-  /** Envoi immédiat des 7 derniers jours révolus — journalisé comme un passage manuel. */
+  /**
+   * Envoi immédiat des 7 derniers jours révolus — journalisé comme un passage manuel.
+   *
+   * Un envoi REFUSÉ laisse aussi une trace (design/C3 point 2, 2026-09-05) : quand l'envoi
+   * automatique est coupé, le service répond 409 avant tout calcul et n'écrit aucune ligne de
+   * journal d'envoi — rien n'est parti. Sans cette enveloppe, le clic disparaissait de
+   * l'activité système, et « pourquoi mon rapport n'est pas parti ? » n'avait pas de réponse.
+   * Même enveloppe que les exports (`traceEchec`) : une ligne FAILURE, le motif en clair,
+   * l'erreur relancée telle quelle (le 409 arrive intact au front).
+   */
   @Post('schedule/send-now')
   @HttpCode(200)
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('reports_export')
   async sendScheduleNow(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
-    const dispatch = await this.schedule.sendNow(req.user, fleetId);
-    this.systemActivity.record({
-      category: 'EXPORT',
-      action: 'weekly_report_send_now',
-      status: dispatch.status === 'FAILED' ? 'FAILURE' : 'SUCCESS',
-      actor: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email || 'utilisateur',
-      target: dispatch.fleetName,
-      fleetId: dispatch.fleetId,
-      triggeredByUserId: req.user.id,
-      meta: { status: dispatch.status, recipients: dispatch.recipients.length, tripsCount: dispatch.tripsCount, pdfBytes: dispatch.pdfBytes, error: dispatch.error ?? undefined },
+    // La société est résolue AVANT la trace : une valeur brute de la query (société d'un autre
+    // client, identifiant fantaisiste) ne doit jamais signer une ligne de journal — le refus de
+    // périmètre (400/403) est alors tracé sans société, la valeur demandée restant dans meta.
+    let cible: string | null = null;
+    try { cible = this.schedule.resolveFleetId(req.user, fleetId); } catch { cible = null; }
+    return this.traceEchec(req, 'weekly_report_send_now', cible, { trigger: 'manual', fleetIdDemande: fleetId ?? null }, async () => {
+      const dispatch = await this.schedule.sendNow(req.user, fleetId);
+      this.systemActivity.record({
+        category: 'EXPORT',
+        action: 'weekly_report_send_now',
+        status: dispatch.status === 'FAILED' ? 'FAILURE' : 'SUCCESS',
+        actor: [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || req.user.email || 'utilisateur',
+        target: dispatch.fleetName,
+        fleetId: dispatch.fleetId,
+        triggeredByUserId: req.user.id,
+        meta: { status: dispatch.status, recipients: dispatch.recipients.length, tripsCount: dispatch.tripsCount, pdfBytes: dispatch.pdfBytes, error: dispatch.error ?? undefined },
+      });
+      return { dispatch };
     });
-    return { dispatch };
   }
 
   /** Journal des envois (société courante ; toutes les sociétés pour un super-admin sans fleetId). */

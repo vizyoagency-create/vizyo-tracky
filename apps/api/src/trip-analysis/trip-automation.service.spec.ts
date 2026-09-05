@@ -1,3 +1,4 @@
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { TripAutomationService } from './trip-automation.service';
 
 /**
@@ -129,6 +130,83 @@ describe('TripAutomationService', () => {
     const { svc, prisma } = build({ row: { enabled: false } });
     await svc.runScheduled();
     expect(prisma.fleet.findMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * design/C3 point 2 (2026-09-05) — « Lancer maintenant » ne contourne plus l'interrupteur.
+   *
+   * « En pause » ne coupait que le cron : un clic déclenchait quand même un passage complet
+   * sur TOUTES les flottes (recalcul, analyses, récits IA facturés), jusqu'à 50 minutes. Le
+   * refus doit être un 409 lisible, tomber avant toute lecture de flotte, et ne laisser aucune
+   * trace : rien n'a eu lieu. Le chemin planifié (test juste au-dessus) garde son no-op.
+   */
+  describe('« Lancer maintenant » en pause (design/C3)', () => {
+    it('refuse en 409 (AutomationDisabledException) sans lire une seule flotte', async () => {
+      const { svc, prisma, analysis, llm, systemActivity, errorLogger } = build({
+        row: { enabled: false },
+        trips: [{ id: 't2' }],
+        analyses: [],
+      });
+
+      const refus = await svc.runNow().catch((e: unknown) => e);
+
+      expect(refus).toBeInstanceOf(AutomationDisabledException);
+      expect((refus as AutomationDisabledException).getStatus()).toBe(409);
+      expect((refus as Error).message).toMatch(/en pause/);
+      expect((refus as Error).message).toMatch(/activez-la et enregistrez/);
+      // Avant toute lecture : ni flotte, ni analyse, ni récit, ni historique, ni journal, ni alerte.
+      expect(prisma.fleet.findMany).not.toHaveBeenCalled();
+      expect(analysis.analyze).not.toHaveBeenCalled();
+      expect(llm.narrate).not.toHaveBeenCalled();
+      expect(prisma.tripAutomationRun.create).not.toHaveBeenCalled();
+      expect(prisma.tripAutomationSettings.update).not.toHaveBeenCalled();
+      expect(systemActivity.record).not.toHaveBeenCalled();
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('le refus ne prend pas le verrou : un passage activé ensuite tourne normalement', async () => {
+      const enPause = build({ row: { enabled: false } });
+      await expect(enPause.svc.runNow()).rejects.toBeInstanceOf(AutomationDisabledException);
+      // Même instance, réglage réactivé : si le verrou avait été pris, ce second appel
+      // rendrait « déjà en cours » au lieu de travailler.
+      enPause.prisma.tripAutomationSettings.findFirst.mockResolvedValue(makeRow({ enabled: true }));
+      const stats = await enPause.svc.runNow();
+      expect(stats.alreadyRunning).toBeUndefined();
+      expect(enPause.prisma.fleet.findMany).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * Verrou anti-chevauchement : le second appel doit le DIRE. Jusqu'au 2026-09-05, il rendait
+   * des compteurs à zéro indiscernables d'un vrai passage sans travail — l'écran affichait
+   * « Run terminé · 0 analysé » pendant qu'un passage horaire travaillait à côté, et l'on
+   * recliquait. Le premier passage, lui, ne porte JAMAIS ce champ.
+   */
+  it('un passage demandé pendant un autre rend alreadyRunning: true, sans rien lancer', async () => {
+    let liberer: () => void = () => {};
+    let demarre: () => void = () => {};
+    const premierDemarre = new Promise<void>((r) => { demarre = r; });
+    const { svc, prisma, analysis } = build({ trips: [{ id: 't1' }], analyses: [], aiEnabled: false });
+    // La première analyse bloque le passage tant que le test ne la libère pas.
+    analysis.analyze.mockImplementationOnce(() => { demarre(); return new Promise<void>((r) => { liberer = r; }); });
+
+    const premier = svc.runNow();
+    await premierDemarre;
+    const second = await svc.runNow();
+
+    expect(second.alreadyRunning).toBe(true);
+    expect(second.analyzed).toBe(0);
+    expect(analysis.analyze).toHaveBeenCalledTimes(1); // le second n'a rien déclenché
+    expect(prisma.fleet.findMany).toHaveBeenCalledTimes(1);
+
+    liberer();
+    const stats = await premier;
+    expect(stats.alreadyRunning).toBeUndefined();
+    expect(stats.analyzed).toBe(1);
+    // Le bilan persisté est celui du VRAI passage : le refus du verrou n'écrit rien.
+    expect(prisma.tripAutomationRun.create).toHaveBeenCalledTimes(1);
+    const persiste = prisma.tripAutomationSettings.update.mock.calls[0][0].data.lastRunStats;
+    expect(persiste.alreadyRunning).toBeUndefined();
   });
 
   it('pipeline : recompute le tail sale, analyse le trajet manquant, narre s’il manque le récit', async () => {

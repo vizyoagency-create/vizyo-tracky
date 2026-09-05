@@ -75,7 +75,10 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
               }
             </label>
             @if (!aiMasterEnabled()) {
-              <div class="aas-note">L'IA est désactivée pour cette société. Les réglages de l'agent ci-dessous restent sans effet tant que l'IA est coupée.</div>
+              <!-- Vrai, et rien de plus : la détection des habitudes est DÉTERMINISTE (elle ne passe
+                   pas par l'IA). L'ancienne note prétendait les réglages « sans effet », alors qu'un
+                   agent déjà activé continue ses passages planifiés sans avis de l'IA. -->
+              <div class="aas-note">L'IA est désactivée pour cette société : l'agent ne peut pas être activé d'ici. S'il l'était déjà, ses passages planifiés continuent sans avis de l'IA — détection déterministe des habitudes, propositions et réservations selon l'autonomie réglée.</div>
             }
 
             <!-- Activation de l'agent d'agenda (sous-ensemble de l'IA). -->
@@ -220,7 +223,10 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
           </div>
 
           <div class="aas-foot">
-            <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving()" (click)="runNow()" title="Analyser maintenant (sans attendre la nuit)">
+            <!-- Grisé sur la valeur ENREGISTRÉE de l'interrupteur, pas sur la case cochée : le
+                 serveur juge le réglage en base (409 sinon), et un clic entre « cocher » et
+                 « enregistrer » serait refusé. Le motif est écrit sous les boutons. -->
+            <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving() || !lancementPossible()" (click)="runNow()" [title]="motifLancement() ?? 'Analyser maintenant (sans attendre la nuit)'">
               @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
               Lancer l'analyse
             </button>
@@ -228,6 +234,9 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
               @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> }
               {{ saving() ? 'Enregistrement…' : 'Enregistrer' }}
             </button>
+            @if (motifLancement(); as motif) {
+              <span class="aas-foot-note">{{ motif }}</span>
+            }
           </div>
         }
       </div>
@@ -290,7 +299,9 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-run-detail { font-size: 11px; color: var(--fg-tertiary); line-height: 1.4; }
     .aas-run-detail--err { color: var(--danger); }
     .aas-run-dur { flex: 0 0 auto; font-size: 10.5px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace); }
-    .aas-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
+    .aas-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
+    /* Le motif d'un bouton grisé, sous les boutons, sur toute la largeur. */
+    .aas-foot-note { flex-basis: 100%; font-size: 11.5px; line-height: 1.4; color: var(--fg-tertiary); text-align: right; }
     .aas-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
     .aas-btn--ghost { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
     .aas-btn:disabled { opacity: .55; }
@@ -339,6 +350,14 @@ export class AgendaAgentSettingsSheetComponent {
 
   // Champs éditables
   protected readonly enabled = signal(false);
+  /**
+   * Valeur ENREGISTRÉE de l'interrupteur de l'agent (chargée par `load()`, mise à jour après
+   * `save()`), distincte de la case `enabled()` en cours d'édition. C'est elle que le serveur
+   * juge : « Lancer l'analyse » répond 409 quand l'agent est désactivé en base (design/C3
+   * point 2). Griser sur la case cochée aurait laissé cliquer entre « cocher » et
+   * « enregistrer », pour un refus.
+   */
+  protected readonly enregistre = signal(false);
   protected readonly nightlyHour = signal(2);
   protected readonly frequency = signal<AgendaAgentFrequency>('daily');
   protected readonly autonomy = signal<AgendaAgentAutonomy>('suggest');
@@ -368,6 +387,21 @@ export class AgendaAgentSettingsSheetComponent {
 
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   protected readonly needsFleet = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
+
+  /**
+   * « Lancer l'analyse » n'est proposé que si l'agent est activé EN BASE — c'est exactement ce que
+   * le serveur refuse (409). L'IA maître coupée ne grise PAS le bouton : le serveur accepte ce
+   * lancement et produit un passage déterministe (détection, propositions, réservations selon
+   * l'autonomie) sans avis de l'IA — comportement voulu, décrit dans design/C3. Griser ici ce que
+   * le serveur accepte aurait caché une fonction qui marche.
+   */
+  protected readonly lancementPossible = computed(() => this.enregistre() && !this.error());
+  /** Le motif du bouton grisé — écrit sous le bouton, jamais deviné. `null` quand le lancement est possible. */
+  protected readonly motifLancement = computed<string | null>(() => {
+    if (this.error()) return 'Réglage indisponible : impossible de savoir si l\'agent est activé.';
+    if (!this.enregistre()) return 'L\'agent est désactivé : activez-le et enregistrez pour lancer une analyse.';
+    return null;
+  });
 
   constructor() {
     effect(() => {
@@ -410,11 +444,13 @@ export class AgendaAgentSettingsSheetComponent {
   private async load(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.enregistre.set(false); // inconnu tant que le réglage n'est pas relu : pas de bouton, pas de faux motif
     const fleetId = this.currentFleetId();
     try {
       const s = await firstValueFrom(this.agentApi.getSettings(fleetId));
       this.fleetName.set(s.fleetName);
       this.enabled.set(s.enabled);
+      this.enregistre.set(s.enabled);
       this.nightlyHour.set(s.nightlyHour);
       this.frequency.set(s.frequency);
       this.autonomy.set(s.autonomy);
@@ -548,6 +584,7 @@ export class AgendaAgentSettingsSheetComponent {
         triggerMaintenance: this.trigMaintenance(),
         triggerReservation: this.trigReservation(),
       }));
+      this.enregistre.set(this.enabled()); // la valeur en base est désormais celle de la case
       this.toast.success('Paramètres enregistrés', 'L\'agent utilisera ces réglages.');
       this.saved.emit();
       this.closed.emit();
@@ -565,6 +602,9 @@ export class AgendaAgentSettingsSheetComponent {
    * résultats (cliquables pour ouvrir les propositions). Fini l'attente bloquée sans retour.
    */
   protected runNow(): void {
+    // Le bouton est grisé dans ce cas ; la garde évite un clic clavier ou un état intermédiaire.
+    // Le serveur refuserait de toute façon (409, design/C3 point 2).
+    if (!this.lancementPossible()) return;
     // Anti-double-lancement : la feuille reste montée ~220 ms après fermeture (animation de sortie).
     // Sans cette garde, un double-tap créerait 2 analyses → coût IA doublé ET double placement auto possible.
     if (this.aiJob.hasRunningOf('agent-run')) { this.closed.emit(); return; }
@@ -574,9 +614,13 @@ export class AgendaAgentSettingsSheetComponent {
       hint: 'L\'IA parcourt les trajets récurrents et l\'agenda pour proposer (ou placer automatiquement) les réservations utiles. Ça prend quelques secondes…',
       task: firstValueFrom(this.agentApi.run(this.currentFleetId())),
       summarize: (r) =>
-        r.created || r.proposed
-          ? `${r.created} réservation(s) placée(s) automatiquement · ${r.proposed} proposition(s) à valider.`
-          : 'Aucune optimisation à proposer pour l\'instant : aucun trajet récurrent assez net sur la période analysée.',
+        // Verrou serveur (passage nocturne ou événementiel en cours) : rien n'a été lancé — ne pas
+        // le résumer en « rien à proposer », qui ferait passer un agent occupé pour un agent vide.
+        r.alreadyRunning
+          ? 'Une analyse était déjà en cours pour cette société : rien de nouveau n\'a été lancé.'
+          : r.created || r.proposed
+            ? `${r.created} réservation(s) placée(s) automatiquement · ${r.proposed} proposition(s) à valider.`
+            : 'Aucune optimisation à proposer pour l\'instant : aucun trajet récurrent assez net sur la période analysée.',
     });
     this.closed.emit(); // suivi désormais dans la pastille : plus de blocage de la modal.
   }

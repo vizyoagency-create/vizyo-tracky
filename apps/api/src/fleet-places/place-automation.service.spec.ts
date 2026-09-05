@@ -1,3 +1,4 @@
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { PlaceAutomationService } from './place-automation.service';
 
 /**
@@ -109,6 +110,41 @@ describe('PlaceAutomationService', () => {
     const { svc, analysis } = build({ settings: { hour: parisHour(), lastRunAt: new Date() } });
     await svc.runScheduled();
     expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
+  });
+
+  /**
+   * design/C3 point 2 (2026-09-05) — en pause, « Lancer maintenant » est refusé, « Simuler »
+   * reste permis. L'écran promettait que le bouton « reste utilisable » en pause : un clic
+   * confiait alors les analyses dues au poste malgré l'interrupteur coupé. La simulation est
+   * une lecture sans effet — c'est justement avant d'activer qu'on veut la faire.
+   */
+  describe('en pause : refus du passage réel, simulation permise (design/C3)', () => {
+    it('« Lancer maintenant » en pause : 409, rien collecté, rien enfilé, aucun passage archivé', async () => {
+      const { svc, analysis, prisma } = build({ settings: { enabled: false } });
+
+      const refus = await svc.runNow(false).catch((e: unknown) => e);
+
+      expect(refus).toBeInstanceOf(AutomationDisabledException);
+      expect((refus as AutomationDisabledException).getStatus()).toBe(409);
+      expect((refus as Error).message).toMatch(/lieux en pause/);
+      expect(prisma.fleet.findMany).not.toHaveBeenCalled();
+      expect(analysis.gatherFacts).not.toHaveBeenCalled();
+      expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
+      expect(prisma.placeAutomationRun.create).not.toHaveBeenCalled();
+      expect(prisma.placeAutomationSettings.update).not.toHaveBeenCalled();
+    });
+
+    it('« Simuler » en pause : reste permis — chiffre le passage sans rien enfiler ni décaler la cadence', async () => {
+      const { svc, analysis, prisma } = build({ settings: { enabled: false } });
+
+      const stats = await svc.runNow(true);
+
+      expect(stats.dryRun).toBe(true);
+      expect(stats.analyzed).toBe(4); // les 4 lieux dus SERAIENT analysés
+      expect(analysis.gatherFacts).toHaveBeenCalledTimes(4); // lecture gratuite : normale
+      expect(analysis.enfilerAnalyseLocale).not.toHaveBeenCalled();
+      expect(prisma.placeAutomationSettings.update).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Garde-fou 2 : société sans IA ───────────────────────────────────────

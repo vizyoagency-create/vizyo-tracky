@@ -13,6 +13,7 @@ import type {
 import { DORMANT_STOP_ACTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
+import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -331,9 +332,24 @@ export class TripAutomationService {
     await this.run(settings, 'scheduled');
   }
 
-  /** Lancement MANUEL (bouton « Lancer maintenant » super-admin) — ignore cadence/heure. */
+  /**
+   * Lancement MANUEL (bouton « Lancer maintenant » super-admin) — ignore cadence/heure, mais
+   * PLUS l'interrupteur (design/C3 point 2, 2026-09-05).
+   *
+   * Jusque-là, « En pause » ne coupait que le cron : un clic déclenchait quand même un passage
+   * complet — recalcul, analyses, récits IA facturés si `narrateEnabled` — sur TOUTES les
+   * flottes, pendant jusqu'à 50 minutes. Un réglage qu'un bouton contourne n'est pas un
+   * réglage. Le refus est un 409 lisible (jamais archivé au centre d'alerte : rien n'est en
+   * panne) et tombe AVANT le verrou et avant toute lecture de flotte. Le chemin planifié garde
+   * son no-op silencieux (`runScheduled`), un cron ne lève pas.
+   */
   async runNow(): Promise<TripAutomationRunStatsWithDormancy> {
     const settings = await this.loadRow();
+    if (!settings.enabled) {
+      throw new AutomationDisabledException(
+        'Automatisation des trajets en pause : activez-la et enregistrez pour lancer un passage.',
+      );
+    }
     return this.run(settings, 'manual');
   }
 
@@ -342,8 +358,15 @@ export class TripAutomationService {
     origin: 'scheduled' | 'manual',
   ): Promise<TripAutomationRunStatsWithDormancy> {
     if (this.running) {
+      /**
+       * Verrou pris : on ne lance rien, et on le DIT. Jusqu'au 2026-09-05, ce chemin rendait
+       * des compteurs à zéro indiscernables d'un vrai passage sans travail : le bouton
+       * « Lancer maintenant » affichait « Run terminé · 0 analysé » pendant qu'un passage
+       * horaire de 50 minutes travaillait à côté — et l'on recliquait. `alreadyRunning` n'est
+       * jamais persisté (`persistRun` n'est pas atteint) : il ne vit que dans cette réponse.
+       */
       this.logger.warn('Run déjà en cours — skip.');
-      return this.finalStats(this.emptyStats(), 0);
+      return { ...this.finalStats(this.emptyStats(), 0), alreadyRunning: true };
     }
     this.running = true;
     const startedAt = new Date();

@@ -241,7 +241,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
                 @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="rsc-spin"></lucide-icon> Enregistrement… }
                 @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> Enregistrer }
               </button>
-              <button type="button" class="rsc-btn rsc-btn--ghost" (click)="sendNow()" [disabled]="sending() || dirty()" [title]="dirty() ? 'Enregistrez d’abord vos modifications' : 'Envoie le rapport des 7 derniers jours aux destinataires réglés'">
+              <!-- Grisé aussi quand l'envoi automatique est coupé : le serveur refuse (409,
+                   design/C3 point 2) — le bouton ne contourne plus l'interrupteur. -->
+              <button type="button" class="rsc-btn rsc-btn--ghost" (click)="sendNow()" [disabled]="sending() || dirty() || !enabled()" [title]="titreEnvoi()">
                 @if (sending()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="rsc-spin"></lucide-icon> Envoi… }
                 @else { <lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Envoyer maintenant }
               </button>
@@ -470,6 +472,18 @@ export class ReportScheduleCardComponent {
    */
   protected readonly verrouille = computed(() => !this.editable() || !this.enabled());
 
+  /**
+   * Le motif du bouton « Envoyer maintenant », dans l'ordre où l'API refuserait : d'abord des
+   * modifications non enregistrées (le serveur jugerait l'ancien réglage), puis l'envoi coupé
+   * (409, design/C3 point 2 — le bouton partait vers de vraies boîtes aux lettres malgré
+   * l'interrupteur). Sinon, ce que fait le bouton.
+   */
+  protected readonly titreEnvoi = computed(() => {
+    if (this.dirty()) return 'Enregistrez d’abord vos modifications';
+    if (!this.enabled()) return 'Réactivez l’envoi automatique pour envoyer';
+    return 'Envoie le rapport des 7 derniers jours aux destinataires réglés';
+  });
+
   /** « dans 4 jours » / « demain » / « dans 3 heures » — le chiffre que le client attend. */
   protected readonly nextIn = computed(() => {
     const s = this.schedule();
@@ -670,7 +684,8 @@ export class ReportScheduleCardComponent {
   }
 
   protected async sendNow(): Promise<void> {
-    if (this.sending()) return;
+    // Bouton grisé quand l'envoi est coupé ; la garde couvre le clavier (409 côté serveur sinon).
+    if (this.sending() || !this.enabled()) return;
     this.sending.set(true);
     try {
       const { dispatch } = await this.api.sendReportNow(this.fleetId());

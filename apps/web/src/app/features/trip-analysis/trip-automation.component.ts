@@ -1,6 +1,7 @@
 import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, Bot, ChevronLeft, Loader, Play, Save, Info, CheckCircle2, Gauge,
@@ -61,7 +62,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
           <label class="ta-row ta-toggle">
             <div>
               <span class="ta-row-t">Activer l'automatisation</span>
-              <span class="ta-row-d">Interrupteur maître. En pause, rien ne se lance automatiquement.</span>
+              <span class="ta-row-d">Interrupteur maître. En pause, rien ne se lance — ni le passage horaire, ni « Lancer maintenant ».</span>
             </div>
             <input type="checkbox" [checked]="d.enabled" (change)="patch('enabled', $any($event.target).checked)">
           </label>
@@ -135,8 +136,10 @@ import { apiErrorMessage } from '../../core/error/api-error';
         <!-- Lancer maintenant -->
         <section class="ta-card">
           <div class="ta-card-h"><lucide-icon [img]="PlayIcon" [size]="15"></lucide-icon> Tester maintenant</div>
-          <p class="ta-hint">Lance un run tout de suite (ignore la cadence) pour vérifier le pipeline sur les données réelles.</p>
-          <button type="button" class="ta-btn ta-btn--run" [disabled]="running()" (click)="runNow()">
+          <p class="ta-hint">Lance un passage tout de suite (ignore la cadence). Indisponible tant que l'automatisation est en pause.</p>
+          <!-- Grisé sur le réglage ENREGISTRÉ (settings), pas sur le brouillon : c'est la valeur en
+               base que le serveur juge (409 sinon, design/C3 point 2). -->
+          <button type="button" class="ta-btn ta-btn--run" [disabled]="running() || enPause()" [title]="titreLancement()" (click)="runNow()">
             @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="spin"></lucide-icon> Traitement en cours… }
             @else { <lucide-icon [img]="PlayIcon" [size]="15"></lucide-icon> Lancer maintenant }
           </button>
@@ -418,6 +421,18 @@ export class TripAutomationComponent implements OnInit {
   );
   protected readonly backlogLoading = signal(false);
 
+  /**
+   * Automatisation en pause SELON LE RÉGLAGE ENREGISTRÉ (`settings`, jamais `draft`). Le bouton
+   * « Lancer maintenant » se grise dessus : le serveur refuse (409) sur la valeur en base, et
+   * cocher la case sans enregistrer ne change rien à ce qu'il jugera (design/C3 point 2).
+   */
+  protected readonly enPause = computed(() => !(this.settings()?.enabled ?? false));
+  protected readonly titreLancement = computed(() =>
+    this.enPause()
+      ? 'Automatisation en pause : activez-la et enregistrez pour lancer un passage'
+      : 'Lance un passage tout de suite, sans attendre la cadence',
+  );
+
   /** Le formulaire diffère-t-il des réglages enregistrés ? (active le bouton Enregistrer). */
   protected readonly dirty = computed(() => {
     const s = this.settings(), d = this.draft();
@@ -524,10 +539,19 @@ export class TripAutomationComponent implements OnInit {
   }
 
   protected async runNow(): Promise<void> {
-    if (this.running()) return;
+    // Bouton grisé en pause ; la garde couvre le clavier et l'état intermédiaire (409 côté serveur sinon).
+    if (this.running() || this.enPause()) return;
     this.running.set(true);
     try {
       const stats = await firstValueFrom(this.api.runAutomationNow());
+      if (stats.alreadyRunning) {
+        // Le verrou serveur a refusé : RIEN n'a été lancé. Jusqu'au 05/09 ces compteurs à zéro
+        // s'affichaient en « Run terminé · 0 analysé » pendant qu'un passage horaire de
+        // 50 minutes travaillait à côté — et l'on recliquait. On ne les montre pas comme un bilan.
+        this.toast.info('Un passage est déjà en cours', 'Rien de nouveau n\'a été lancé : son bilan arrivera dans l\'historique quand il aura fini.');
+        void this.loadRuns();
+        return;
+      }
       this.lastRun.set(stats);
       this.toast.success('Run terminé', `${stats.analyzed} analysé(s) · ${stats.narrated} récit(s) IA`);
       void this.load();
@@ -535,7 +559,21 @@ export class TripAutomationComponent implements OnInit {
       void this.loadBacklog();
     } catch (e) {
       swallow('trip-automation:runNow', e);
-      this.toast.error('Le run a échoué', apiErrorMessage(e, ''));
+      if (e instanceof HttpErrorResponse && e.status >= 400 && e.status < 500) {
+        // Refus lisible (409 : automatisation en pause) — le serveur dit quoi faire. On recharge
+        // le réglage : l'écran était en retard sur la valeur en base.
+        this.toast.error('Lancement refusé', apiErrorMessage(e, ''));
+        void this.load();
+        return;
+      }
+      // Un passage peut durer jusqu'à 50 minutes : si la requête HTTP a expiré (statut 0, 502,
+      // 504), le passage CONTINUE côté serveur. Ne pas laisser croire qu'il ne s'est rien passé —
+      // sinon on reclique, et le verrou refuse en silence.
+      this.toast.error(
+        'Réponse non reçue',
+        `${apiErrorMessage(e, 'Délai dépassé')} — le passage peut être encore en cours côté serveur. Consultez l'historique ci-dessous avant de relancer.`,
+      );
+      void this.loadRuns();
     } finally {
       this.running.set(false);
     }

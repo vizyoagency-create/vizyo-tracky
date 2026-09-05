@@ -1,6 +1,7 @@
 import { swallow } from '../../core/error/swallow';
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, MapPin, ChevronLeft, Loader, Play, Save, Info, Gauge, History, FlaskConical, ShieldCheck,
@@ -78,7 +79,7 @@ const STOP_LABELS: Record<string, string> = {
           <label class="pa-row pa-toggle">
             <div>
               <span class="pa-row-t">Activer l'automatisation</span>
-              <span class="pa-row-d">En pause, <strong>aucun passage automatique</strong> n'a lieu. Le bouton « Lancer maintenant » ci-dessous reste utilisable — c'est un déclenchement volontaire, et il dépense.</span>
+              <span class="pa-row-d">En pause, <strong>aucun passage</strong> n'a lieu — ni le passage quotidien, ni « Lancer maintenant ». « Simuler » reste possible : c'est une évaluation, sans analyse confiée au poste (la simulation reste tracée dans l'historique).</span>
             </div>
             <input type="checkbox" [checked]="d.enabled" (change)="patch('enabled', $any($event.target).checked)">
           </label>
@@ -147,15 +148,20 @@ const STOP_LABELS: Record<string, string> = {
               <lucide-icon [img]="FlaskIcon" [size]="15"></lucide-icon>
               {{ simulating() ? 'Simulation…' : 'Simuler (gratuit)' }}
             </button>
-            <button class="pa-btn pa-btn--run" [disabled]="busy()" (click)="runNow()">
+            <!-- Grisé sur le réglage ENREGISTRÉ : le serveur refuse (409) sur la valeur en base.
+                 « Simuler » reste permis en pause — c'est avant d'activer qu'on veut savoir. -->
+            <button class="pa-btn pa-btn--run" [disabled]="busy() || enPause()" [title]="titreLancement()" (click)="runNow()">
               <lucide-icon [img]="PlayIcon" [size]="15"></lucide-icon>
               {{ running() ? 'En cours…' : 'Lancer maintenant' }}
             </button>
           </div>
+          <!-- La vérité depuis la bascule locale du 2026-08-21 (design/C1) : le passage n'appelle
+               plus l'IA. L'ancien texte (« dépense réellement ») décrivait un monde disparu. -->
           <p class="pa-hint">
             <lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon>
-            « Simuler » évalue exactement le même parcours mais n'envoie aucune requête à l'IA :
-            aucun euro n'est dépensé. « Lancer maintenant » dépense réellement.
+            « Simuler » évalue le même parcours sans rien enfiler ni dépenser (la simulation reste tracée dans l'historique) : lieux dus, sauts, estimation — possible même en pause.
+            « Lancer maintenant » n'appelle plus l'IA : il confie les analyses dues au poste (coût 0) ;
+            le résultat arrive au passage suivant, une fois le courrier du poste passé.
           </p>
         </section>
 
@@ -167,8 +173,8 @@ const STOP_LABELS: Record<string, string> = {
               {{ st.dryRun ? 'Simulation — rien n\\'a été dépensé' : 'Dernier lancement' }}
             </div>
             <div class="pa-stats">
-              <div class="pa-stat"><b>{{ st.analyzed }}</b><span>{{ st.dryRun ? 'seraient analysés' : 'analysés' }}</span></div>
-              <div class="pa-stat pa-stat--cost"><b>{{ st.costEur | number: '1.2-4' }} €</b><span>{{ st.dryRun ? 'coût estimé' : 'coût réel' }}</span></div>
+              <div class="pa-stat"><b>{{ st.analyzed }}</b><span>{{ st.dryRun ? 'seraient confiés au poste' : 'confiés au poste' }}</span></div>
+              <div class="pa-stat pa-stat--cost"><b>{{ st.costEur | number: '1.2-4' }} €</b><span>{{ st.dryRun ? 'coût estimé' : 'coût facturé (0 : absorbé par le poste)' }}</span></div>
               <div class="pa-stat"><b>{{ st.skippedUnchanged }}</b><span>inchangés</span></div>
               <div class="pa-stat"><b>{{ st.skippedCooldown }}</b><span>trop récents</span></div>
               <div class="pa-stat"><b>{{ st.skippedAiOff }}</b><span>société sans IA</span></div>
@@ -187,7 +193,7 @@ const STOP_LABELS: Record<string, string> = {
             <div class="pa-table-wrap">
               <table class="pa-table">
                 <thead>
-                  <tr><th>Quand</th><th>Type</th><th>Analysés</th><th>Sautés</th><th>Échecs</th><th>Coût</th><th>Arrêt</th></tr>
+                  <tr><th>Quand</th><th>Type</th><th>Confiés au poste</th><th>Sautés</th><th>Échecs</th><th>Coût</th><th>Arrêt</th></tr>
                 </thead>
                 <tbody>
                   @for (r of runs(); track r.id) {
@@ -306,6 +312,18 @@ export class PlaceAutomationComponent implements OnInit {
   }
 
   /**
+   * Automatisation en pause SELON LE RÉGLAGE ENREGISTRÉ (`settings`, jamais `draft`) : c'est la
+   * valeur en base que le serveur juge (409 sinon, design/C3 point 2). Ne grise que le passage
+   * réel — la simulation est une lecture sans effet, permise en pause.
+   */
+  protected readonly enPause = computed(() => !(this.settings()?.enabled ?? false));
+  protected readonly titreLancement = computed(() =>
+    this.enPause()
+      ? 'Automatisation en pause : activez-la et enregistrez pour lancer un passage'
+      : 'Confie au poste les analyses dues, sans attendre le passage quotidien',
+  );
+
+  /**
    * Pire cas mensuel = plafond par passage × 30. C'est LE chiffre à montrer : un plafond « par
    * passage » se lit comme petit, alors qu'il s'applique tous les jours.
    */
@@ -393,7 +411,8 @@ export class PlaceAutomationComponent implements OnInit {
   }
 
   protected async runNow(): Promise<void> {
-    if (this.busy()) return;
+    // Bouton grisé en pause ; la garde couvre le clavier et l'état intermédiaire (409 côté serveur sinon).
+    if (this.busy() || this.enPause()) return;
     this.running.set(true);
     try {
       const stats = await firstValueFrom(this.api.runAutomationNow());
@@ -407,10 +426,18 @@ export class PlaceAutomationComponent implements OnInit {
       if (stats.stopReason === 'already_running') {
         this.toast.info('Un passage était déjà en cours', 'Rien de nouveau n\'a été lancé.');
       } else {
-        this.toast.success('Passage terminé', `${stats.analyzed} analysé(s) · ${stats.costEur.toFixed(4)} €`);
+        // « analysé(s) » mentait : le passage n'analyse plus, il CONFIE au poste (design/C1).
+        this.toast.success('Passage terminé', `${stats.analyzed} analyse(s) confiée(s) au poste — résultat au passage suivant.`);
       }
     } catch (e) {
       swallow('place-automation:runNow', e);
+      if (e instanceof HttpErrorResponse && e.status >= 400 && e.status < 500) {
+        // Refus lisible (409 : automatisation en pause) — le serveur dit quoi faire. On recharge
+        // le réglage : l'écran était en retard sur la valeur en base.
+        this.toast.error('Lancement refusé', apiErrorMessage(e));
+        this.settings.set(await firstValueFrom(this.api.automationSettings()).catch(() => this.settings()));
+        return;
+      }
       // Un passage peut durer plusieurs minutes : si la requête HTTP a expiré, le run CONTINUE
       // côté serveur. Ne pas laisser croire qu'il ne s'est rien passé — sinon on reclique.
       this.toast.error(
