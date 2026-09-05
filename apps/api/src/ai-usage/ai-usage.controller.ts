@@ -5,7 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import type { AiFeatureFlagsDto, AiProviderInfoDto, AiProviderSettingsDto } from '@vizyo/tracky-shared';
+import type { AiFeatureFlagsDto, AiProviderInfoDto, AiProviderQuarantineDto, AiProviderSettingsDto } from '@vizyo/tracky-shared';
 import { AiProviderSettingsService } from '../ai/ai-provider-settings.service';
 import { AiFeatureFlagsService } from '../ai/ai-feature-flags.service';
 import { AiRouter } from '../ai/ai-router.service';
@@ -43,7 +43,7 @@ export class AiUsageController {
     return this.featureFlags.setFlag(dto.feature, dto.enabled, req.user.id);
   }
 
-  /** Vue du moteur IA global sélectionné + moteurs disponibles (clé présente). */
+  /** Vue du moteur IA global sélectionné + moteurs disponibles (clé présente) + moteurs à l'écart. */
   private async providerView(): Promise<AiProviderSettingsDto> {
     const setting = await this.aiProvider.view();
     const avail = this.aiRouter.availability();
@@ -51,7 +51,20 @@ export class AiUsageController {
       { id: 'claude', label: 'Claude — Opus 4.8', hint: 'Anthropic · raisonnement agenda & optimisation', configured: avail.claude },
       { id: 'gpt', label: 'GPT — OpenAI', hint: 'Analyse de trajets & détection d\'anomalies', configured: avail.gpt },
     ];
-    return { provider: setting.provider, updatedAt: setting.updatedAt, providers, mixteAvailable: this.aiRouter.mixteAvailable() };
+    // C3 point 1 (2026-09-05) — un moteur mis à l'écart après un refus : l'écran doit le dire,
+    // sinon il affiche « Claude » pendant que GPT facture, sans rien qui explique pourquoi.
+    const etats = this.aiRouter.etatFournisseurs();
+    const quarantines: AiProviderQuarantineDto[] = (['claude', 'gpt'] as const).flatMap((id) => {
+      const q = etats[id].quarantaine;
+      return q ? [{ provider: id, kind: q.kind, until: q.jusqua }] : [];
+    });
+    return {
+      provider: setting.provider,
+      updatedAt: setting.updatedAt,
+      providers,
+      mixteAvailable: this.aiRouter.mixteAvailable(),
+      quarantines,
+    };
   }
 
   /**

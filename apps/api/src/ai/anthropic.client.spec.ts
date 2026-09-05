@@ -88,6 +88,13 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toThrow(/Quota/i);
   });
 
+  // Chantier C3 — symétrie avec le client GPT : un compte à sec servi en 429 doit rester un refus
+  // contractuel (provider_unfunded, archivé), jamais un « quota » passager mis 60 s à l'écart.
+  it('HTTP 429 portant « credit balance is too low » -> provider_unfunded, pas quota', async () => {
+    fetchMock.mockResolvedValue(res({ ok: false, status: 429, text: 'Your credit balance is too low to access the Anthropic API.' }));
+    await expect(new AnthropicClient().completeJson(REQ)).rejects.toMatchObject({ kind: 'provider_unfunded' });
+  });
+
   // Incident 2026-07-27 — un récit de trajet perdu sur un 400 « Grammar compilation timed out »,
   // remonté en ERREUR au centre d'alerte. C'est un aléa du fournisseur (il n'a pas compilé NOTRE
   // schéma à temps), pas un appel fautif : il doit être marqué passager, donc non archivé.

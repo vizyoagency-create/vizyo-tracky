@@ -30,9 +30,13 @@ const ANTHROPIC_VERSION = '2023-06-01';
  * Chaque récit passait par `claude-opus-4-8` non par choix, mais parce que le modèle était écrit
  * en dur ici. Raconter un trajet en trois phrases ne demande pas le modèle le plus cher.
  *
- * Sonnet 5 est à la fois PLUS RÉCENT et MOINS CHER qu'Opus 4.8 : 3/15 $ par million de jetons
- * contre 5/25 $, soit 40 % de moins à volume identique. Surchargeable par `ANTHROPIC_MODEL`, et
- * par appel via `AiJsonRequest.model` pour les tâches qui méritent vraiment davantage.
+ * Sonnet 5 est à la fois PLUS RÉCENT et MOINS CHER qu'Opus 4.8 : 2/10 $ par million de jetons
+ * (entrée/sortie ; cache 2,50 $ à l'écriture, 0,20 $ à la lecture — page tarifaire officielle
+ * relevée le 2026-09-05) contre 5/25 $, soit 60 % de moins à volume identique. Le commentaire
+ * disait 3/15 $ jusqu'au 05/09 : c'est ce même chiffre faux que la grille « Coûts IA » comptait
+ * (26 lignes Sonnet 5 = 0,891 $ stockés contre 0,594 $ recalculés) — la grille est corrigée par
+ * le point 4 du chantier C3. Surchargeable par `ANTHROPIC_MODEL`, et par appel via
+ * `AiJsonRequest.model` pour les tâches qui méritent vraiment davantage.
  */
 const DEFAULT_MODEL = 'claude-sonnet-5';
 
@@ -107,6 +111,17 @@ export class AnthropicClient implements AiClient {
       if (res.status === 401 || res.status === 403) {
         throw new AiServiceError('invalid_key', 'Clé IA invalide ou non autorisée.');
       }
+      // TRK-061 — compte sans crédit : le fournisseur REFUSE de servir pour une raison
+      // contractuelle. Ni une faute d'appel, ni un aléa passager. Le message rendu au client ne
+      // nomme aucun sous-traitant ; le motif du fournisseur part dans `detail`, pour le centre
+      // d'alerte seul. Deux publics, deux chaînes.
+      // ⚠️ Évalué AVANT la branche 429, comme dans le client GPT (chantier C3) : Anthropic envoie
+      // aujourd'hui ce refus en 400, mais OpenAI l'envoie en 429 — un défaut corrigé d'un seul
+      // côté revient par l'autre, et un compte à sec classé « quota » serait un échec passager
+      // invisible, mis 60 s à l'écart puis retenté sans fin.
+      if (isUnfundedRequest(text)) {
+        throw new AiServiceError('provider_unfunded', MESSAGE_COMPTE_SANS_CREDIT, describeProviderError(text));
+      }
       if (res.status === 429) {
         throw new AiServiceError('quota', 'Quota IA atteint, réessayez plus tard.');
       }
@@ -122,13 +137,6 @@ export class AnthropicClient implements AiClient {
           'overloaded',
           `Le service IA n'a pas pu préparer la réponse (${describeProviderError(text)}) — nouvelle tentative au prochain passage.`,
         );
-      }
-      // TRK-061 — compte sans crédit : le fournisseur REFUSE de servir pour une raison
-      // contractuelle. Ni une faute d'appel, ni un aléa passager. Le message rendu au client ne
-      // nomme aucun sous-traitant ; le motif du fournisseur part dans `detail`, pour le centre
-      // d'alerte seul. Deux publics, deux chaînes.
-      if (isUnfundedRequest(text)) {
-        throw new AiServiceError('provider_unfunded', MESSAGE_COMPTE_SANS_CREDIT, describeProviderError(text));
       }
       // Vraie faute d'appel : on PORTE le motif du fournisseur jusqu'au centre d'alerte. Sans lui,
       // « Erreur du service IA (400) » obligeait à aller lire les logs du conteneur en SSH.

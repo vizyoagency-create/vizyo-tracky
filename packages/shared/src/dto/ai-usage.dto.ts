@@ -177,6 +177,24 @@ export interface AiProviderInfoDto {
   configured: boolean;
 }
 
+/**
+ * Sortes de refus qui mettent un moteur à l'écart — miroir de `REPLI_KINDS` côté API. Si l'API
+ * y ajoute une sorte sans la déclarer ici, sa compilation échoue à l'affectation : c'est voulu.
+ */
+export type AiQuarantineKind = 'no_key' | 'invalid_key' | 'quota' | 'overloaded' | 'provider_unfunded';
+
+/**
+ * Un moteur mis à l'écart par le routeur après un refus (C3 point 1, 2026-09-05), et jusqu'à
+ * quand. Pendant ce temps, les appels partent vers l'autre moteur : l'écran doit le dire, sinon
+ * il affiche « Claude » pendant que GPT facture.
+ */
+export interface AiProviderQuarantineDto {
+  provider: AiProviderId;
+  kind: AiQuarantineKind;
+  /** Fin de la quarantaine (ISO 8601). */
+  until: string;
+}
+
 /** Réglage courant du moteur IA global + moteurs disponibles. */
 export interface AiProviderSettingsDto {
   /** MODE global : un seul moteur (`claude`/`gpt`) ou le MIXTE (`both`). */
@@ -185,6 +203,12 @@ export interface AiProviderSettingsDto {
   providers: AiProviderInfoDto[];
   /** Vrai si le mode mixte est disponible (les 2 moteurs ont une clé). */
   mixteAvailable: boolean;
+  /**
+   * Moteurs actuellement à l'écart après un refus (vide si aucun). OPTIONNEL à la lecture : un
+   * client déployé avant ce champ continue de fonctionner, et un client neuf face à une API plus
+   * ancienne se tait plutôt que d'inventer un état.
+   */
+  quarantines?: AiProviderQuarantineDto[];
 }
 
 /** Change le mode IA global (super-admin). */

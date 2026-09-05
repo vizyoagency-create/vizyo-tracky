@@ -44,6 +44,33 @@ export type AiErrorKind =
 const TRANSIENT_KINDS: ReadonlySet<AiErrorKind> = new Set<AiErrorKind>(['quota', 'overloaded', 'timeout', 'network']);
 
 /**
+ * ══ C3 point 1 (2026-09-05) — LES SORTES SUR LESQUELLES LE ROUTEUR PEUT BASCULER ═════════
+ *
+ * Le fournisseur a REFUSÉ de servir, et rien n'a été facturé : pas de clé, clé refusée, quota,
+ * saturation, compte à sec. Un autre moteur peut légitimement prendre l'appel à sa place.
+ *
+ * Relevé de production du 2026-09-05 qui a décidé ce point : `ANTHROPIC_API_KEY` refusée
+ * (400 « credit balance is too low ») depuis le 03/09, pendant qu'une `OPENAI_API_KEY` VALIDE
+ * (GET /v1/models = 200) dormait à côté — l'agent d'agenda tournait en mode dégradé depuis
+ * le 04/09 avec un second moteur payé et inutilisé.
+ *
+ * ⚠️ Volontairement ABSENTS :
+ *  - `refusal`, `truncated`, `parse`, `empty`, `http` : des défauts de la REQUÊTE (schéma trop
+ *    gros, sortie coupée, appel malformé). Un second moteur les repaierait pour le même résultat.
+ *  - `timeout`, `network` : une INCERTITUDE, pas un refus. L'appel a peut-être été servi et
+ *    facturé de l'autre côté ; le rejouer ailleurs doublerait la dépense.
+ */
+export const REPLI_KINDS = ['no_key', 'invalid_key', 'quota', 'overloaded', 'provider_unfunded'] as const satisfies readonly AiErrorKind[];
+
+/** Sorte d'échec qui autorise le repli — et qui met le moteur fautif en quarantaine (cf. `AiRouter`). */
+export type KindRepli = (typeof REPLI_KINDS)[number];
+
+/** Vrai si un autre moteur peut légitimement reprendre l'appel après cet échec. */
+export function estRepliable(kind: AiErrorKind): kind is KindRepli {
+  return (REPLI_KINDS as readonly AiErrorKind[]).includes(kind);
+}
+
+/**
  * Motifs d'erreur PASSAGERS que les fournisseurs renvoient en **400**.
  *
  * Un 400 signale normalement un appel malformé — donc un vrai bug, qui DOIT alerter. Mais

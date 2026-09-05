@@ -79,6 +79,18 @@ export class OpenAiClient implements AiClient {
       if (res.status === 401 || res.status === 403) {
         throw new AiServiceError('invalid_key', 'Clé IA (GPT) invalide ou non autorisée.');
       }
+      // TRK-061 — même défaut, même correctif : le jumeau de ce client l'avait, et un défaut
+      // corrigé d'un seul côté revient toujours par l'autre.
+      //
+      // ⚠️ C3 point 1 (2026-09-05) — évalué AVANT la branche 429. Là où Anthropic habille le
+      // compte à sec en 400, OpenAI l'envoie en **429 `insufficient_quota`** : le même code que
+      // la limite de débit. Testé après, il tombait dans `quota` — passager, donc jamais archivé
+      // au centre d'alerte, quarantaine de 60 s au lieu de 15 min, et « réessayez plus tard »
+      // servi à l'utilisateur pour une panne qui ne guérit pas seule. Un compte OpenAI à sec
+      // était un échec passager invisible.
+      if (isUnfundedRequest(text)) {
+        throw new AiServiceError('provider_unfunded', MESSAGE_COMPTE_SANS_CREDIT, describeProviderError(text));
+      }
       if (res.status === 429) {
         throw new AiServiceError('quota', 'Quota IA (GPT) atteint, réessayez plus tard.');
       }
@@ -93,11 +105,6 @@ export class OpenAiClient implements AiClient {
           'overloaded',
           `Le service IA (GPT) n'a pas pu préparer la réponse (${describeProviderError(text)}) — nouvelle tentative au prochain passage.`,
         );
-      }
-      // TRK-061 — même défaut, même correctif : le jumeau de ce client l'avait, et un défaut
-      // corrigé d'un seul côté revient toujours par l'autre.
-      if (isUnfundedRequest(text)) {
-        throw new AiServiceError('provider_unfunded', MESSAGE_COMPTE_SANS_CREDIT, describeProviderError(text));
       }
       throw new AiServiceError('http', `Erreur du service IA (GPT) (${res.status}) : ${describeProviderError(text)}`);
     }

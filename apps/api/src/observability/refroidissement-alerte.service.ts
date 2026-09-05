@@ -183,4 +183,14 @@ export const CLES_REFROIDISSEMENT = {
   SENTINELLE_DESTINATAIRE_SATURE: 'sentinelle-destinataire-sature',
   SENTINELLE_PLAFOND_HORAIRE: 'sentinelle-plafond-horaire-atteint',
   SENTINELLE_NOTIFICATIONS_COUPEES: 'sentinelle-notifications-coupees',
+  /**
+   * C3 point 1 (2026-09-05) — repli du routeur IA vers un autre moteur. PRÉFIXE, suffixé
+   * `:<moteur>:<sorte>` (`ai-repli:claude:provider_unfunded`) : un compte Anthropic à sec ne
+   * doit pas faire taire l'alerte d'un quota OpenAI. Une ligne par 6 h et par épisode.
+   */
+  AI_REPLI: 'ai-repli',
+  /** Le moteur de repli a échoué à son tour — suffixé :<moteur>:<sorte>, 6 h (revue C3). */
+  AI_REPLI_ECHEC: 'ai-repli-echec',
+  /** Travail de la file du poste passé en échec définitif — suffixé par l'id du travail, 30 j (chantier C3). */
+  TRAVAUX_IA_ECHEC: 'travaux-ia:echec',
 } as const;

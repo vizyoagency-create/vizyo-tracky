@@ -219,6 +219,8 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                     <span class="au-prov-name">{{ p.label }}</span>
                     @if (savingProvider() === p.id) {
                       <lucide-icon [img]="LoaderIcon" [size]="13" class="au-spin"></lucide-icon>
+                    } @else if (quarantaineDe(p.id)) {
+                      <span class="au-prov-badge au-prov-badge--off" [title]="libelleQuarantaine(quarantaineDe(p.id)!.kind)">À l'écart jusqu'à {{ heure(quarantaineDe(p.id)!.until) }}</span>
                     } @else if (prov.provider === p.id) {
                       <span class="au-prov-badge"><lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Actif</span>
                     } @else if (!p.configured) {
@@ -250,6 +252,14 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
               <div class="au-prov-warn">
                 <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon>
                 Le moteur « {{ name }} » n'a pas de clé API côté serveur : les appels basculent sur un moteur disponible. Ajoutez la clé pour l'activer réellement.
+              </div>
+            }
+            <!-- Un moteur mis à l'écart par le routeur (repli, chantier C3) : l'écran DOIT le dire,
+                 sinon il affiche « Claude » pendant que GPT répond et facture. -->
+            @for (q of quarantaines(); track q.provider) {
+              <div class="au-prov-warn">
+                <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon>
+                Le moteur « {{ nomMoteur(q.provider) }} » est mis à l'écart ({{ libelleQuarantaine(q.kind) }}) jusqu'à {{ heure(q.until) }} : les appels partent vers « {{ nomMoteur(autreMoteur(q.provider)) }} ».
               </div>
             }
           </section>
@@ -715,6 +725,36 @@ export class AdminAiUsageComponent implements OnInit {
     if (!s) return [];
     return this.tab() === 'user' ? s.byUser : this.tab() === 'fleet' ? s.byFleet : s.byAction;
   });
+
+  /**
+   * Moteurs mis à l'écart par le routeur (repli du chantier C3, 2026-09-05). Mesuré en production
+   * le jour même : clé Anthropic refusée pour crédit, clé OpenAI valide — sans cet affichage la
+   * carte disait « Claude · Actif » pendant que chaque appel partait vers GPT et y était facturé.
+   */
+  protected readonly quarantaines = computed(() => this.provider()?.quarantines ?? []);
+  protected quarantaineDe(id: string) {
+    return this.quarantaines().find((q) => q.provider === id) ?? null;
+  }
+  protected nomMoteur(id: string): string {
+    return this.provider()?.providers.find((p) => p.id === id)?.label ?? id;
+  }
+  protected autreMoteur(id: string): string {
+    return id === 'claude' ? 'gpt' : 'claude';
+  }
+  protected heure(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '?' : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+  protected libelleQuarantaine(kind: string): string {
+    switch (kind) {
+      case 'provider_unfunded': return 'compte sans crédit';
+      case 'invalid_key': return 'clé refusée';
+      case 'quota': return 'limite de débit atteinte';
+      case 'overloaded': return 'moteur saturé';
+      case 'no_key': return 'clé absente';
+      default: return kind;
+    }
+  }
 
   /** Libellé du moteur actif s'il n'a PAS de clé (→ avertissement de repli), sinon null. */
   protected readonly activeProviderUnconfigured = computed<string | null>(() => {
