@@ -248,11 +248,11 @@ export class AiOptimizationService {
         // Une proposition par véhicule : marge pour une grande flotte sans risquer le
         // timeout HTTP (16k = plafond non-stream confortable, ~200 véhicules).
         maxTokens: 16000,
-      });
+      }, { trace: { action: 'capacity', userId: user.id, fleetId } });
       ai = call.result;
       // Palier « Coûts IA » — journalise l'usage (non bloquant).
       void this.aiUsage.record({
-        userId: user.id, fleetId, action: 'capacity', model: call.model,
+        userId: user.id, fleetId, action: 'capacity', model: call.model, provider: call.provider,
         inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
         cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
         latencyMs: call.latencyMs, ok: true,
@@ -550,12 +550,12 @@ export class AiOptimizationService {
         schema: PLACEMENT_SCHEMA,
         // 8192 : une longue liste de propositions (grosse flotte) pouvait être tronquée à 4096.
         maxTokens: 8192,
-      });
+      }, { trace: { action: 'placement', userId: user.id, fleetId } });
       ai = call.result;
       // Transparence : coût € de CET appel (même calcul que le palier « Coûts IA »).
       aiCostEur = Math.round(this.aiUsage.costOf(call.model, call.usage) * this.aiUsage.eurRate() * 10000) / 10000;
       void this.aiUsage.record({
-        userId: user.id, fleetId, action: 'placement', model: call.model,
+        userId: user.id, fleetId, action: 'placement', model: call.model, provider: call.provider,
         inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
         cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
         latencyMs: call.latencyMs, ok: true,

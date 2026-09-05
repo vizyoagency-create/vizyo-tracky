@@ -13,6 +13,7 @@ import type {
 import { DORMANT_STOP_ACTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
+import { classerEchecIa } from '../ai/ai-client.types';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -965,7 +966,11 @@ export class TripAutomationService {
           didNarrate = true;
         } catch (e) {
           stats.failed++;
-          await this.errorLogger.record(e as Error, SOURCE, { fleetId, vehicleId, tripId: t.id, phase: 'narrate' });
+          // Niveau décidé par la couche IA + motif du fournisseur (C3 point 5). La couche LLM a
+          // en général déjà archivé cette instance (marqueur RECORDED : pas de doublon) ; si elle
+          // ne l'a pas fait, la ligne écrite ici porte la même gravité qu'ailleurs.
+          const { niveau, kind, motifFournisseur } = classerEchecIa(e);
+          await this.errorLogger.record(e as Error, SOURCE, { fleetId, vehicleId, tripId: t.id, phase: 'narrate', kind, motifFournisseur }, niveau);
         }
       }
 

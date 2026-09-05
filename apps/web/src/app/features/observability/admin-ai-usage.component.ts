@@ -118,6 +118,8 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                 {{ eur(s.budget.spentThisMonthEur) }}
                 @if (s.budget.monthlyBudgetEur > 0) { <span class="au-budget-of">/ {{ eur(s.budget.monthlyBudgetEur) }}</span> }
               </div>
+              <!-- Le taux n'est plus un 0,92 invisible ecrit en dur (C3 point 4) : il est dit a cote de chaque montant en euros. -->
+              <span class="au-taux" title="Taux USD → € appliqué à tous les montants en euros de cette page">{{ usd(s.budget.spentThisMonthUsd) }} · 1 $ = {{ tauxLibelle(s.budget.usdToEurRate) }}</span>
             </div>
             @if (isSuperAdmin()) {
               <span class="au-budget-badge" [attr.data-status]="s.budget.status">{{ budgetBadge(s.budget.status) }}</span>
@@ -143,12 +145,14 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
           @if (isSuperAdmin()) {
             <div class="au-budget-edit">
               <label>Plafond mensuel (€)</label>
-              <input type="number" min="0" step="1" inputmode="decimal" [value]="budgetInput()" (input)="budgetInput.set($any($event.target).value)" placeholder="ex. 10" />
+              <input type="number" min="0" step="1" inputmode="decimal" [value]="budgetInput()" (input)="budgetInput.set($any($event.target).value)" placeholder="ex. 10" aria-label="Plafond mensuel en euros" />
+              <label>Taux USD → €</label>
+              <input type="number" min="0.5" max="1.5" step="0.01" inputmode="decimal" [value]="rateInput()" (input)="rateInput.set($any($event.target).value)" placeholder="0,86" aria-label="Taux de conversion dollar vers euro" />
               <button type="button" class="au-btn" [disabled]="savingBudget()" (click)="saveBudget()">
                 @if (savingBudget()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="au-spin"></lucide-icon> } @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> }
                 Enregistrer
               </button>
-              <span class="au-budget-hint">0 = pas de budget. Marqueur rouge dès {{ '100 %' }} (orange à 80 %).</span>
+              <span class="au-budget-hint">0 = pas de budget. Marqueur rouge dès {{ '100 %' }} (orange à 80 %). Le taux convertit les coûts facturés en dollars : il vaut pour tous les montants en euros de cette page (marché ≈ 0,86 le 05/09/2026).</span>
             </div>
           }
         </section>
@@ -270,20 +274,36 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
           <div class="au-kpi">
             <span class="au-kpi-n">{{ eur(s.totalCostEur) }}</span>
             <span class="au-kpi-l">Coût ({{ periodLabel() }})</span>
-            <span class="au-kpi-sub">{{ usd(s.totalCostUsd) }}</span>
+            <span class="au-kpi-sub">{{ usd(s.totalCostUsd) }} · 1 $ = {{ tauxLibelle(s.usdToEurRate) }}</span>
           </div>
           <div class="au-kpi">
             <span class="au-kpi-n">{{ num(s.totalCalls) }}</span>
             <span class="au-kpi-l">Appels</span>
+            <span class="au-kpi-sub">dont {{ num(appelsFactures(s)) }} facturé(s)</span>
+          </div>
+          <!--
+            Les ECHECS, comptes a part (C3 point 5). Jusqu'au 05/09 cette page n'avait aucune
+            ligne ok=false : trois jours de compte Anthropic a sec y etaient invisibles. Le cout
+            est une ESTIMATION (marque ≈), jamais de l'argent compte dans le plafond.
+          -->
+          <div class="au-kpi" [class.au-kpi--ko]="(s.failedCalls ?? 0) > 0">
+            <span class="au-kpi-n">{{ num(s.failedCalls ?? 0) }}</span>
+            <span class="au-kpi-l">Échecs</span>
+            @if ((s.failedCalls ?? 0) > 0) {
+              <span class="au-kpi-sub">≈ {{ eur(s.failedEstimatedCostEur ?? 0) }} estimés</span>
+            } @else {
+              <span class="au-kpi-sub">aucun sur la période</span>
+            }
           </div>
           <div class="au-kpi">
-            <span class="au-kpi-n">{{ compact(s.totalInputTokens + s.totalOutputTokens) }}</span>
-            <span class="au-kpi-l">Tokens</span>
-            <span class="au-kpi-sub">{{ compact(s.totalInputTokens) }} in · {{ compact(s.totalOutputTokens) }} out</span>
+            <span class="au-kpi-n">{{ compact(jetons(s)) }}</span>
+            <span class="au-kpi-l">Jetons</span>
+            <span class="au-kpi-sub">{{ compact(s.totalInputTokens) }} entrée · {{ compact(s.totalOutputTokens) }} sortie · dont cache {{ compact(jetonsCache(s)) }}</span>
           </div>
           <div class="au-kpi">
             <span class="au-kpi-n">{{ perCall(s) }}</span>
             <span class="au-kpi-l">Coût / appel</span>
+            <span class="au-kpi-sub">sur les appels facturés (API, réussis)</span>
           </div>
         </section>
 
@@ -311,13 +331,20 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
               }
               <!--
                 On dit que c'est une ESTIMATION, et d'ou elle vient. Un agent local ne recoit
-                aucune facture : le chiffre est extrapole du cout moyen reellement constate pour
-                la meme action via l'API. Le presenter comme une mesure serait un faux.
+                aucune facture. Depuis le 05/09 (C3 point 3) le poste rend ses jetons reels : la
+                part correspondante est au tarif EXACT de la grille — mais ces jetons incluent le
+                contexte propre de Claude Code (≈ 28 000 jetons de cache par appel), et il faut le
+                dire. Le reste est extrapole du cout moyen constate via l'API sur 90 jours.
               -->
               <p class="au-f-note">
-                Estimation, pas relevé&nbsp;: un agent sur le poste ne reçoit aucune facture. Le
-                montant est extrapolé du coût moyen réellement constaté pour les mêmes traitements
-                via l'API.
+                Estimation, pas relevé&nbsp;: un agent sur le poste ne reçoit aucune facture.
+                @if ((abs.callsWithTokens ?? 0) > 0) {
+                  {{ num(abs.callsWithTokens ?? 0) }} appel(s) sont comptés au tarif exact de leurs jetons
+                  — des jetons qui incluent le contexte propre de Claude Code (≈ 28 000 jetons de cache par appel).
+                }
+                @if ((abs.callsEstimated ?? 0) > 0) {
+                  {{ num(abs.callsEstimated ?? 0) }} appel(s) sans jetons sont extrapolés du coût moyen des mêmes traitements via l'API sur les 90 derniers jours.
+                }
                 @if (abs.actionsSansReference.length > 0) {
                   <strong>Non estimé faute de référence&nbsp;: {{ abs.actionsSansReference.join(', ') }}.</strong>
                 }
@@ -347,7 +374,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                     <span class="au-brow-cost">{{ eur(r.costEur) }}</span>
                   </div>
                   <div class="au-bar au-bar--thin"><div class="au-bar-fill au-bar-fill--accent" [style.width.%]="pctOfMax(r, activeBreakdown())"></div></div>
-                  <span class="au-brow-sub">{{ num(r.calls) }} appel(s) · {{ compact(r.inputTokens + r.outputTokens) }} tokens</span>
+                  <span class="au-brow-sub">{{ num(r.calls) }} appel(s)@if (r.failed) { <span class="au-brow-ko">· {{ num(r.failed) }} échec(s)</span> } · {{ compact(r.inputTokens + r.outputTokens) }} jetons</span>
                 </div>
               }
             </div>
@@ -375,16 +402,23 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
         <section class="au-panel">
           <div class="au-panel-head">
             <h2>Journal des appels</h2>
-            <div class="au-seg au-seg--sm">
-              <button type="button" (click)="setLogAction(undefined)" [class.on]="!logAction()">Tous</button>
-              <button type="button" (click)="setLogAction('capacity')" [class.on]="logAction() === 'capacity'">Capacité</button>
-              <button type="button" (click)="setLogAction('placement')" [class.on]="logAction() === 'placement'">Placement</button>
+            <div class="au-journal-filtres">
+              <!-- Le filtre est alimente par les actions VUES sur la periode (byAction), plus deux boutons figes. -->
+              <div class="au-seg au-seg--sm">
+                <button type="button" (click)="setLogAction(undefined)" [class.on]="!logAction()">Tous</button>
+                @for (a of actionsDuJournal(); track a.key) {
+                  <button type="button" (click)="setLogAction(a.key)" [class.on]="logAction() === a.key">{{ a.label }}</button>
+                }
+              </div>
+              <button type="button" class="au-seg-ko" [class.on]="logFailedOnly()" (click)="toggleFailedOnly()" [attr.aria-pressed]="logFailedOnly()">
+                <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> Échecs seulement
+              </button>
             </div>
           </div>
           <div class="au-table-wrap">
             <table class="au-table">
               <thead>
-                <tr><th>Date</th><th>Utilisateur</th><th>Flotte</th><th>Type</th><th class="r">Tokens</th><th class="r">Coût</th><th class="r">Latence</th></tr>
+                <tr><th>Date</th><th>Utilisateur</th><th>Flotte</th><th>Type</th><th>Modèle</th><th>Exécutant</th><th>Fournisseur</th><th class="r">Jetons</th><th class="r">Coût</th><th class="r">Latence</th></tr>
               </thead>
               <tbody>
                 @for (l of logRows(); track l.id) {
@@ -392,13 +426,27 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                     <td>{{ l.createdAt | date:'dd/MM HH:mm' }}</td>
                     <td class="au-td-ell" [title]="l.userEmail || '—'">{{ l.userEmail || '—' }}</td>
                     <td class="au-td-ell" [title]="l.fleetName || '—'">{{ l.fleetName || '—' }}</td>
-                    <td>{{ actionLabel(l.action) }}</td>
-                    <td class="r">{{ compact(l.inputTokens + l.outputTokens) }}</td>
-                    <td class="r au-cost">{{ eur(l.costEur) }}</td>
+                    <td>
+                      {{ actionLabel(l.action) }}
+                      @if (!l.ok) {
+                        <span class="au-badge-ko" [title]="l.errorDetail || 'Motif non transmis'">{{ libelleEchec(l.errorKind) }}</span>
+                      }
+                    </td>
+                    <td class="au-td-ell au-mono" [title]="l.model">{{ l.model }}</td>
+                    <td>{{ l.executor === 'local' ? 'Poste' : 'API' }}</td>
+                    <td>{{ nomFournisseur(l.provider) }}</td>
+                    <td class="r">{{ compact(l.inputTokens + l.outputTokens + l.cacheReadTokens) }}</td>
+                    <td class="r au-cost">
+                      @if (!l.ok && l.estime && l.estimatedCostEur != null) {
+                        <span title="Estimation : rien n'a été facturé pour cet appel">≈ {{ eur(l.estimatedCostEur) }}</span>
+                      } @else {
+                        {{ eur(l.costEur) }}
+                      }
+                    </td>
                     <td class="r au-dim">{{ l.latencyMs != null ? (l.latencyMs / 1000 | number:'1.1-1') + 's' : '—' }}</td>
                   </tr>
                 } @empty {
-                  <tr><td colspan="7" class="au-empty-sm">Aucun appel enregistré.</td></tr>
+                  <tr><td colspan="10" class="au-empty-sm">{{ logFailedOnly() ? 'Aucun échec enregistré.' : 'Aucun appel enregistré.' }}</td></tr>
                 }
               </tbody>
             </table>
@@ -482,6 +530,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-budget-edit label { font-size: 12px; color: var(--fg-secondary); }
     .au-budget-edit input { width: 110px; padding: 8px 10px; border-radius: 9px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 16px; }
     .au-budget-hint { font-size: 11px; color: var(--fg-secondary); flex-basis: 100%; }
+    .au-taux { display: block; margin-top: 4px; font-size: 11.5px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
     /*
      * Encre FONCEE sur l'accent — regle non negociable de B0-SOCLE (« sur un fond accent,
      * l'encre doit etre foncee, jamais blanche »). Le blanc donnait 3,43:1 en theme clair.
@@ -520,13 +569,17 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-prov-hint { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.35; }
     .au-prov-warn { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.4; color: var(--texte-alerte); background: color-mix(in srgb, var(--danger) 9%, transparent); border-radius: 9px; padding: 8px 10px; }
 
-    /* KPIs */
-    .au-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    /* KPIs — cinq cases depuis C3 point 5 (les echecs ont la leur). */
+    .au-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+    @media (max-width: 900px) { .au-kpis { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 640px) { .au-kpis { grid-template-columns: 1fr 1fr; } }
     .au-kpi { padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 3px; }
     .au-kpi-n { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--fg-primary); }
     .au-kpi-l { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-secondary); font-weight: 600; }
     .au-kpi-sub { font-size: 11px; color: var(--fg-secondary); }
+    /* Des echecs sur la periode : la case le dit en rouge, sans changer le fond (le chiffre suffit). */
+    .au-kpi--ko { border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+    .au-kpi--ko .au-kpi-n { color: var(--texte-alerte); }
 
     /* Panels */
     .au-panel { padding: 16px 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
@@ -540,6 +593,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-brow-label { font-size: 13px; color: var(--fg-secondary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .au-brow-cost { font-size: 13px; font-weight: 800; color: var(--fg-primary); font-variant-numeric: tabular-nums; }
     .au-brow-sub { font-size: 11px; color: var(--fg-secondary); }
+    .au-brow-ko { color: var(--texte-alerte); font-weight: 700; }
 
     /* Trend */
     .au-trend { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 8px; }
@@ -554,9 +608,18 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); white-space: nowrap; }
     .au-table th.r, .au-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
     .au-td-ell { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+    .au-mono { font-family: var(--font-mono); font-size: 11.5px; }
     .au-cost { font-weight: 800; color: var(--fg-primary); }
     .au-dim { color: var(--fg-secondary); }
-    .au-row-ko { opacity: .6; }
+    /*
+     * Une ligne d'echec n'est plus estompee : c'est precisement celle qu'on veut LIRE (C3 point 5).
+     * Le badge nomme la sorte en francais ; le motif du fournisseur est dans l'info-bulle.
+     */
+    .au-row-ko td { background: color-mix(in srgb, var(--danger) 5%, transparent); }
+    .au-badge-ko { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
+    .au-journal-filtres { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .au-seg-ko { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 5px 10px; border-radius: 9px; font-size: 12px; font-weight: 600; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
+    .au-seg-ko.on { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 35%, transparent); color: var(--texte-alerte); }
     .au-more { align-self: center; min-height: 44px; padding: 8px 16px; border-radius: 9px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 
     /* ── Le forfait d'abord (B1 § D) ─────────────────────────────────────────
@@ -610,6 +673,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
       /* min-WIDTH autant que min-height : « 7 j » sortait a 36 px de large pour 44 de haut.
          Une cible n'est atteignable que si ses DEUX dimensions le sont. */
       .au-seg button { min-height: 44px; min-width: 44px; }
+      .au-seg-ko { min-height: 44px; }
       .au-day { min-height: 44px; }
       /* Le fil d'Ariane est une commande de navigation a part entiere, pas un lien dans une
          phrase : l'exception « lien en ligne » ne s'y applique pas. */
@@ -667,6 +731,8 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly budgetInput = signal<string>('');
+  /** Taux USD→€ saisi (C3 point 4) — pré-rempli avec le taux enregistré, envoyé avec le plafond. */
+  protected readonly rateInput = signal<string>('');
   protected readonly savingBudget = signal(false);
   /**
    * Etat de facturation de la societe SCOPEE — la source du forfait (lot B-pages, B1 § D
@@ -690,6 +756,7 @@ export class AdminAiUsageComponent implements OnInit {
     { key: 'capacity', label: 'Optimiseur — capacités', desc: 'Déduction des places / sièges-enfant par modèle.' },
     { key: 'placement', label: 'Optimiseur — placement', desc: 'Classement des véhicules pour une réservation.' },
     { key: 'bookingParse', label: 'Saisie vocale (réservations)', desc: 'Dictée du besoin sur les liens publics.' },
+    { key: 'placeAnalysis', label: 'Analyse de lieu', desc: 'Fiche IA d’un lieu clé (station, parking, dépôt) à partir des faits OpenStreetMap et de l’usage réel de la flotte.' },
     { key: 'activityReport', label: 'Rapport d’activité IA', desc: 'Ton outil super-admin (analyse de l’activité). Personne d’autre n’y a accès.', owner: true },
   ];
 
@@ -719,12 +786,23 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly logCursor = signal<string | null>(null);
   protected readonly loadingMore = signal(false);
   protected readonly logAction = signal<string | undefined>(undefined);
+  /** « Échecs seulement » — le filtre qui manquait pendant les trois jours de compte à sec (03-04/09). */
+  protected readonly logFailedOnly = signal(false);
 
   protected readonly activeBreakdown = computed<AiUsageBreakdownRowDto[]>(() => {
     const s = this.summary();
     if (!s) return [];
     return this.tab() === 'user' ? s.byUser : this.tab() === 'fleet' ? s.byFleet : s.byAction;
   });
+
+  /**
+   * Les actions proposées au filtre du journal : celles VUES sur la période (`byAction`), avec
+   * le libellé du serveur. Le filtre était figé sur Capacité et Placement — l'assistance, les
+   * lieux et les récits, qui font l'essentiel de la dépense, n'étaient pas filtrables.
+   */
+  protected readonly actionsDuJournal = computed<{ key: string; label: string }[]>(
+    () => (this.summary()?.byAction ?? []).map((r) => ({ key: r.key, label: r.label })),
+  );
 
   /**
    * Moteurs mis à l'écart par le routeur (repli du chantier C3, 2026-09-05). Mesuré en production
@@ -817,6 +895,7 @@ export class AdminAiUsageComponent implements OnInit {
       if (this.budgetInput() === '' && s.budget.monthlyBudgetEur > 0) {
         this.budgetInput.set(String(s.budget.monthlyBudgetEur));
       }
+      if (this.rateInput() === '') this.rateInput.set(String(s.budget.usdToEurRate));
       await this.loadLogs(true);
       await this.loadFacturation();
       // Moteur IA + prix de l'option IA (super-admin uniquement ; endpoints gardés). Non bloquant.
@@ -1016,10 +1095,17 @@ export class AdminAiUsageComponent implements OnInit {
     const fleetId = this.selectedFleetId() ?? undefined;
     const before = reset ? (dayFilter ? to : undefined) : (this.logCursor() ?? undefined);
     const page = await firstValueFrom(
-      this.api.logs({ limit: 30, action: this.logAction(), fleetId, before, after: dayFilter ? from : undefined }),
+      this.api.logs({ limit: 30, action: this.logAction(), fleetId, before, after: dayFilter ? from : undefined, failed: this.logFailedOnly() }),
     );
     this.logRows.set(reset ? page.rows : [...this.logRows(), ...page.rows]);
     this.logCursor.set(page.nextCursor);
+  }
+
+  /** Bascule « Échecs seulement » et recharge le journal depuis le début. */
+  protected toggleFailedOnly(): void {
+    this.logFailedOnly.update((v) => !v);
+    this.logCursor.set(null);
+    void this.loadLogs(true).catch((e) => this.toast.error('Chargement', this.errMsg(e)));
   }
 
   protected async loadMore(): Promise<void> {
@@ -1047,12 +1133,29 @@ export class AdminAiUsageComponent implements OnInit {
       this.toast.error('Budget invalide', 'Entrez un montant ≥ 0.');
       return;
     }
+    // Le taux part avec le plafond quand il est renseigné ; hors bornes, on refuse ici plutôt
+    // que de laisser le serveur l'ignorer en silence (une virgule décimale est acceptée).
+    const brut = this.rateInput().trim().replace(',', '.');
+    const taux = brut === '' ? undefined : Number(brut);
+    if (taux !== undefined && (!Number.isFinite(taux) || taux < 0.5 || taux > 1.5)) {
+      this.toast.error('Taux invalide', 'Le taux USD → € doit être compris entre 0,5 et 1,5.');
+      return;
+    }
     this.savingBudget.set(true);
     try {
-      const budget = await firstValueFrom(this.api.setBudget(value));
+      const budget = await firstValueFrom(this.api.setBudget(value, taux));
       const s = this.summary();
-      if (s) this.summary.set({ ...s, budget });
-      this.toast.success('Budget enregistré', budget.monthlyBudgetEur > 0 ? `${this.eur(budget.monthlyBudgetEur)} / mois` : 'Budget retiré');
+      // Le taux vaut pour TOUS les montants en euros : on recharge plutôt que de recalculer à la main.
+      if (s && s.budget.usdToEurRate !== budget.usdToEurRate) {
+        this.rateInput.set(String(budget.usdToEurRate));
+        void this.reload();
+      } else if (s) {
+        this.summary.set({ ...s, budget });
+      }
+      this.toast.success(
+        'Budget enregistré',
+        (budget.monthlyBudgetEur > 0 ? `${this.eur(budget.monthlyBudgetEur)} / mois` : 'Budget retiré') + ` · 1 $ = ${this.tauxLibelle(budget.usdToEurRate)}`,
+      );
     } catch (e) {
       swallow('admin-ai-usage:saveBudget', e);
       this.toast.error('Échec', this.errMsg(e));
@@ -1087,8 +1190,54 @@ export class AdminAiUsageComponent implements OnInit {
     if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
     return String(v);
   }
+  /** Taux USD→€ en toutes lettres : « 0,86 € ». */
+  protected tauxLibelle(rate: number): string {
+    return `${rate.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} €`;
+  }
+  /** Appels FACTURÉS (API, réussis). Une API plus ancienne ne le dit pas : on retombe sur le total. */
+  protected appelsFactures(s: AiUsageSummaryDto): number {
+    return s.billedCalls ?? s.totalCalls;
+  }
+  /**
+   * Coût par appel sur les seuls appels FACTURÉS. Diviser par tous les appels mêlait ceux du
+   * poste (0 $) et les refus (0 $) : le chiffre baissait quand le service marchait moins bien.
+   */
   protected perCall(s: AiUsageSummaryDto): string {
-    return this.eur(s.totalCalls > 0 ? s.totalCostEur / s.totalCalls : 0);
+    const factures = this.appelsFactures(s);
+    // Le coût des appels facturés, pas le coût TOTAL : celui-ci compte aussi les échecs facturés
+    // (réponse tronquée), que le dénominateur exclut. Une API plus ancienne ne le dit pas.
+    const cout = s.billedCostEur ?? s.totalCostEur;
+    return this.eur(factures > 0 ? cout / factures : 0);
+  }
+  /** Jetons = entrée + sortie + cache (lecture et écriture) : le cache est facturé aussi. */
+  protected jetons(s: AiUsageSummaryDto): number {
+    return s.totalInputTokens + s.totalOutputTokens + this.jetonsCache(s);
+  }
+  protected jetonsCache(s: AiUsageSummaryDto): number {
+    return s.totalCacheReadTokens + (s.totalCacheWriteTokens ?? 0);
+  }
+  /** Libellé français d'une sorte d'échec (badge du journal). */
+  protected libelleEchec(kind: string | null | undefined): string {
+    switch (kind) {
+      case 'provider_unfunded': return 'compte sans crédit';
+      case 'invalid_key': return 'clé invalide';
+      case 'no_key': return 'clé absente';
+      case 'quota': return 'quota';
+      case 'overloaded': return 'saturation';
+      case 'timeout': return 'délai';
+      case 'network': return 'réseau';
+      case 'truncated': return 'réponse tronquée';
+      case 'parse': return 'JSON invalide';
+      case 'refusal': return 'refus';
+      case 'empty': return 'vide';
+      case 'http': return 'HTTP';
+      // Sorte propre à la file du poste : le travail a été abandonné après 3 tentatives.
+      case 'travail_local': return 'travail du poste abandonné';
+      default: return kind || 'échec';
+    }
+  }
+  protected nomFournisseur(provider: string | null | undefined): string {
+    return provider === 'claude' ? 'Claude' : provider === 'gpt' ? 'GPT' : provider || '—';
   }
   protected budgetPct(s: AiUsageSummaryDto): number {
     const b = s.budget;
@@ -1110,6 +1259,7 @@ export class AdminAiUsageComponent implements OnInit {
     capacity: 'Capacité', placement: 'Placement', agenda_optimization: 'Agenda (agent)',
     agenda_agent: 'Agent agenda', activity_report: "Rapport d'activité",
     trip_analysis: 'Analyse de trajet', booking_parse: 'Réservation (vocal)',
+    place_analysis: 'Analyse de lieu', support_chat: 'Assistance (chat)',
   };
   protected actionLabel(a: string): string {
     return AdminAiUsageComponent.ACTION_LABELS[a] ?? a;

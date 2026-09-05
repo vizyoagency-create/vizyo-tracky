@@ -1,6 +1,6 @@
 import type { AiErrorKind, AiProviderMode } from './ai-client.types';
 import { AiServiceError, REPLI_KINDS } from './ai-client.types';
-import { AiRouter } from './ai-router.service';
+import { AiRouter, estimerJetonsEntree } from './ai-router.service';
 
 /**
  * LE PLAFOND MENSUEL DE DÉPENSE IA — appliqué au POINT D'ENTRÉE UNIQUE.
@@ -44,10 +44,11 @@ interface Monde {
 
 function build(exhausted = false, monde: Monde = {}) {
   const completeJson = jest.fn().mockResolvedValue({ ...OK_CLAUDE });
-  const anthropic = { isConfigured: () => monde.anthropicConfigure ?? true, completeJson };
-  const openai = { isConfigured: () => monde.openaiConfigure ?? false, completeJson: jest.fn().mockResolvedValue({ ...OK_GPT }) };
+  // `modelFor` : le modèle qui SERAIT employé — ce que la ligne d'échec chiffre quand rien n'a répondu (C3 point 5).
+  const anthropic = { isConfigured: () => monde.anthropicConfigure ?? true, completeJson, modelFor: jest.fn(() => 'claude-sonnet-5') };
+  const openai = { isConfigured: () => monde.openaiConfigure ?? false, completeJson: jest.fn().mockResolvedValue({ ...OK_GPT }), modelFor: jest.fn(() => 'gpt-4.1') };
   const settings = { current: jest.fn().mockResolvedValue(monde.mode ?? 'claude') };
-  const usage = { monthBudgetExhausted: jest.fn().mockResolvedValue(exhausted) };
+  const usage = { monthBudgetExhausted: jest.fn().mockResolvedValue(exhausted), recordFailure: jest.fn().mockResolvedValue(undefined) };
   const errorLogger = { record: jest.fn().mockResolvedValue('log-1') };
   const emissions = [...(monde.emissions ?? [])];
   const refroidissement = {
@@ -479,13 +480,19 @@ describe('AiRouter — quand le repli échoue à son tour', () => {
 
     await expect(t.svc.completeJson(REQ, { trace: { action: 'agenda_agent' } })).rejects.toMatchObject({ kind: 'overloaded' });
 
-    expect(t.errorLogger.record).toHaveBeenCalledTimes(1);
-    const [err, source, ctx, niveau] = t.errorLogger.record.mock.calls[0];
+    // Deux lignes, deux faits : la faute de GPT (CRITICAL, sous sa clé) ET — C3 point 5 — l'échec
+    // PASSAGER du primaire, que personne d'autre n'archivera (`ErrorLogger` ignore un transitoire).
+    expect(t.errorLogger.record).toHaveBeenCalledTimes(2);
+    const repli = t.errorLogger.record.mock.calls.find((c) => (c[0] as Error).message.startsWith('Repli IA en échec'))!;
+    const [err, source, ctx, niveau] = repli;
     expect((err as Error).message).toBe('Repli IA en échec : claude → gpt (invalid_key) — 401 clé refusée');
     expect(source).toBe('AI_ROUTER');
     expect(ctx).toMatchObject({ de: 'claude', vers: 'gpt', kind: 'invalid_key', action: 'agenda_agent' });
     expect(niveau).toBe('CRITICAL');
     expect(t.refroidissement.tenterEmission).toHaveBeenCalledWith('ai-repli-echec:gpt:invalid_key', expect.any(Number));
+    const passager = t.errorLogger.record.mock.calls.find((c) => (c[0] as Error).message.startsWith('Appel IA en échec passager'))!;
+    expect((passager[0] as Error).message).toBe('Appel IA en échec passager : claude overloaded — 529 overloaded');
+    expect(passager[3]).toBe('DEGRADATION');
   });
 
   it('un échec passager du moteur de repli est archivé en DEGRADATION', async () => {
@@ -494,7 +501,157 @@ describe('AiRouter — quand le repli échoue à son tour', () => {
     t.openai.completeJson.mockRejectedValue(refus('quota', '429 rate limited'));
 
     await expect(t.svc.completeJson(REQ)).rejects.toMatchObject({ kind: 'provider_unfunded' });
+    // Le primaire (compte à sec) n'est PAS passager : l'appelant l'archive, le routeur se tait.
     expect(t.errorLogger.record).toHaveBeenCalledTimes(1);
     expect(t.errorLogger.record.mock.calls[0][3]).toBe('DEGRADATION');
+  });
+});
+
+/**
+ * ══ C3 POINT 5 (2026-09-05) — CHAQUE ÉCHEC EST UNE LIGNE, ET UN ÉCHEC PASSAGER SE VOIT ══
+ *
+ * `ai_usage_logs` n'avait jamais porté une ligne `ok = false` : trois jours de compte Anthropic
+ * à sec (03-04/09) sans une trace sur la page « Coûts IA ». Le routeur est le seul point de
+ * passage : c'est ici qu'aucun échec ne peut être oublié.
+ */
+describe('AiRouter — chaque tentative en échec écrit une ligne (C3 point 5)', () => {
+  const TRACE = { trace: { action: 'agenda_agent', userId: 'u1', fleetId: 'f1' } };
+  /** Requête dont on connaît la taille : 8 caractères de prompt + `{"a":"bcdefghij"}` (17) = 25 → 7 jetons estimés. */
+  const REQ_MESUREE = { system: 'systeme!', userPayload: { a: 'bcdefghij' }, schema: {}, maxTokens: 10 } as never;
+
+  it('(a) refus Anthropic (compte à sec) puis repli GPT réussi → UNE ligne d’échec, provider claude, ESTIMÉE', async () => {
+    const t = build(false, { openaiConfigure: true });
+    t.completeJson.mockRejectedValue(refus('provider_unfunded', 'Your credit balance is too low'));
+
+    await expect(t.svc.completeJson(REQ_MESUREE, TRACE)).resolves.toMatchObject({ provider: 'gpt' });
+
+    expect(t.usage.recordFailure).toHaveBeenCalledTimes(1);
+    const ligne = t.usage.recordFailure.mock.calls[0][0];
+    expect(ligne).toMatchObject({
+      action: 'agenda_agent', userId: 'u1', fleetId: 'f1', provider: 'claude', model: 'claude-sonnet-5',
+      errorKind: 'provider_unfunded', errorDetail: 'Your credit balance is too low', usage: null,
+    });
+    // Rien n'a été facturé : l'estimation porte les jetons du prompt (25 caractères / 4 → 7).
+    expect(ligne.estimatedInputTokens).toBe(7);
+    expect(ligne.latencyMs).toBeGreaterThanOrEqual(0);
+    // Le modèle estimé est celui que Claude AURAIT employé pour cette requête.
+    expect(t.anthropic.modelFor).toHaveBeenCalledWith(REQ_MESUREE);
+  });
+
+  it('(b) un échec APRÈS réponse (tronqué, avec usage) porte les jetons facturés et le modèle réel, sans estimation', async () => {
+    const t = build(false, { openaiConfigure: true });
+    const usage = { inputTokens: 100, outputTokens: 500, cacheWriteTokens: 0, cacheReadTokens: 0 };
+    t.completeJson.mockRejectedValue(new AiServiceError('truncated', 'Réponse tronquée', undefined, { usage, model: 'claude-sonnet-5-20260101' }));
+
+    await expect(t.svc.completeJson(REQ_MESUREE, TRACE)).rejects.toMatchObject({ kind: 'truncated' });
+
+    expect(t.usage.recordFailure).toHaveBeenCalledTimes(1);
+    expect(t.usage.recordFailure.mock.calls[0][0]).toMatchObject({
+      provider: 'claude', model: 'claude-sonnet-5-20260101', errorKind: 'truncated', usage, estimatedInputTokens: undefined,
+    });
+    // Pas de repli (défaut de la requête), pas de DEGRADATION (pas passager) : l'appelant archive.
+    expect(t.openai.completeJson).not.toHaveBeenCalled();
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('(c) tout échoue en 429 : une ligne d’échec PAR tentative + UNE DEGRADATION derrière `ai-echec:<moteur>:<sorte>` (1 h)', async () => {
+    const t = build(false, { openaiConfigure: true });
+    t.completeJson.mockRejectedValue(refus('quota', '429 rate limited'));
+    t.openai.completeJson.mockRejectedValue(refus('quota', '429 too many requests'));
+
+    await expect(t.svc.completeJson(REQ, TRACE)).rejects.toMatchObject({ kind: 'quota' });
+
+    expect(t.usage.recordFailure).toHaveBeenCalledTimes(2);
+    expect(t.usage.recordFailure.mock.calls.map((c) => [c[0].provider, c[0].model, c[0].errorKind])).toEqual([
+      ['claude', 'claude-sonnet-5', 'quota'],
+      ['gpt', 'gpt-4.1', 'quota'],
+    ]);
+    // DEGRADATION du primaire passager, derrière le refroidissement d'une heure.
+    expect(t.refroidissement.tenterEmission).toHaveBeenCalledWith('ai-echec:claude:quota', 3_600_000);
+    const passager = t.errorLogger.record.mock.calls.find((c) => (c[0] as Error).message.startsWith('Appel IA en échec passager'))!;
+    expect(passager).toBeDefined();
+    expect((passager[0] as Error).message).toBe('Appel IA en échec passager : claude quota — 429 rate limited');
+    expect(passager[1]).toBe('AI_ROUTER');
+    expect(passager[2]).toMatchObject({ action: 'agenda_agent', provider: 'claude', kind: 'quota', motif: '429 rate limited', userId: 'u1', fleetId: 'f1' });
+    expect(passager[3]).toBe('DEGRADATION');
+  });
+
+  it('(c bis) le refroidissement encore actif fait taire la DEGRADATION, pas la ligne d’échec', async () => {
+    // Deux gardes consultés dans l'ordre : l'échec du repli (`ai-repli-echec`), puis l'échec
+    // passager du primaire (`ai-echec`). Tous deux encore chauds : aucune ligne au centre.
+    const t = build(false, { openaiConfigure: true, emissions: [false, false] });
+    t.completeJson.mockRejectedValue(refus('quota'));
+    t.openai.completeJson.mockRejectedValue(refus('quota'));
+    await expect(t.svc.completeJson(REQ, TRACE)).rejects.toMatchObject({ kind: 'quota' });
+    expect(t.usage.recordFailure).toHaveBeenCalledTimes(2);
+    expect(t.refroidissement.tenterEmission).toHaveBeenLastCalledWith('ai-echec:claude:quota', 3_600_000);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('(c ter) un échec total NON passager (compte à sec, un seul moteur) : la ligne, mais pas de DEGRADATION — l’appelant archive', async () => {
+    const t = build(false);
+    t.completeJson.mockRejectedValue(refus('provider_unfunded', 'credit'));
+    await expect(t.svc.completeJson(REQ, TRACE)).rejects.toMatchObject({ kind: 'provider_unfunded' });
+    expect(t.usage.recordFailure).toHaveBeenCalledTimes(1);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('(d) le plafond mensuel levé AVANT tout appel écrit une ligne sans fournisseur, et une DEGRADATION « plafond »', async () => {
+    const t = build(true, { openaiConfigure: true });
+    await expect(t.svc.completeJson(REQ_MESUREE, TRACE)).rejects.toMatchObject({ kind: 'quota' });
+
+    expect(t.usage.recordFailure).toHaveBeenCalledTimes(1);
+    expect(t.usage.recordFailure.mock.calls[0][0]).toMatchObject({
+      action: 'agenda_agent', provider: null, model: 'claude-sonnet-5', errorKind: 'quota', latencyMs: 0, estimatedInputTokens: 7,
+    });
+    // Sans lire le réglage du moteur : le plafond passe AVANT le choix du fournisseur.
+    expect(t.settings.current).not.toHaveBeenCalled();
+    expect(t.refroidissement.tenterEmission).toHaveBeenCalledWith('ai-echec:plafond:quota', 3_600_000);
+    expect(t.errorLogger.record.mock.calls[0][3]).toBe('DEGRADATION');
+  });
+
+  it('(e) un appelant sans `trace` voit ses échecs rangés sous l’action « inconnu »', async () => {
+    const t = build(false);
+    t.completeJson.mockRejectedValue(refus('http', '400'));
+    await expect(t.svc.completeJson(REQ)).rejects.toMatchObject({ kind: 'http' });
+    expect(t.usage.recordFailure.mock.calls[0][0]).toMatchObject({ action: 'inconnu', userId: null, fleetId: null });
+  });
+
+  it('un succès n’écrit aucune ligne d’échec', async () => {
+    const t = build(false, { openaiConfigure: true });
+    await t.svc.completeJson(REQ, TRACE);
+    expect(t.usage.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('un moteur SAUTÉ pour quarantaine n’a pas tenté : pas de ligne pour lui', async () => {
+    const horloge = figerHorloge();
+    try {
+      const t = build(false, { openaiConfigure: true });
+      t.completeJson.mockRejectedValue(refus('provider_unfunded'));
+      await t.svc.completeJson(REQ, TRACE); // refus + repli : une ligne (claude)
+      horloge.avancer(60_000);
+      await t.svc.completeJson(REQ, TRACE); // Claude sauté sans appel : aucune ligne de plus
+      expect(t.usage.recordFailure).toHaveBeenCalledTimes(1);
+    } finally {
+      horloge.rendre();
+    }
+  });
+
+  it('journaliser l’échec ne peut pas faire échouer l’appel (ni changer l’erreur relancée)', async () => {
+    const t = build(false, { openaiConfigure: true });
+    t.usage.recordFailure.mockRejectedValue(new Error('DB down'));
+    t.completeJson.mockRejectedValue(refus('provider_unfunded'));
+    await expect(t.svc.completeJson(REQ, TRACE)).resolves.toMatchObject({ provider: 'gpt' });
+  });
+
+  it('estimerJetonsEntree : longueur(system + JSON des données) / 4, arrondi au-dessus', () => {
+    expect(estimerJetonsEntree({ system: 'abcd', userPayload: { x: 1 }, schema: {} } as never)).toBe(Math.ceil((4 + 7) / 4));
+    expect(estimerJetonsEntree({ system: '', userPayload: undefined, schema: {} } as never)).toBe(1);
+  });
+
+  it('modeleParDefaut expose le modèle réel de chaque moteur (carte « Moteur IA »)', () => {
+    const t = build();
+    expect(t.svc.modeleParDefaut('claude')).toBe('claude-sonnet-5');
+    expect(t.svc.modeleParDefaut('gpt')).toBe('gpt-4.1');
   });
 });

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
+import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider, AiUsage } from './ai-client.types';
 import {
   AiServiceError,
   describeProviderError,
@@ -59,6 +59,11 @@ export class AnthropicClient implements AiClient {
   /** Vrai si une clé API est présente côté serveur. */
   isConfigured(): boolean {
     return !!process.env.ANTHROPIC_API_KEY;
+  }
+
+  /** Le modèle que `completeJson` emploierait — même résolution, sans appel (cf. `AiClient`). */
+  modelFor(req?: Pick<AiJsonRequest, 'model'>): string {
+    return resolveModel(req?.model);
   }
 
   /**
@@ -154,8 +159,14 @@ export class AnthropicClient implements AiClient {
         cache_read_input_tokens?: number;
       };
     };
+    // ══ À PARTIR D'ICI, LE FOURNISSEUR A RÉPONDU : LES JETONS SONT FACTURÉS ═══════════════
+    // Un refus du modèle, une sortie tronquée, une réponse vide ou un JSON invalide ont coûté
+    // exactement ce que `usage` dit. L'erreur les emporte (C3 point 5) pour que le routeur
+    // journalise ce coût RÉEL — sans quoi une réponse tronquée à 16 000 jetons de sortie
+    // apparaîtrait comme un échec « gratuit », estimé au seul prompt.
+    const facture = data.usage ? { usage: usageDepuis(data.usage), model: data.model ?? modele } : undefined;
     if (data.stop_reason === 'refusal') {
-      throw new AiServiceError('refusal', "L'IA a refusé de traiter cette requête.");
+      throw new AiServiceError('refusal', "L'IA a refusé de traiter cette requête.", undefined, facture);
     }
     // Sortie plafonnée par max_tokens (le raisonnement adaptatif consomme le budget) :
     // le JSON est coupé → détecter AVANT le parse pour une erreur claire (au lieu du
@@ -164,30 +175,41 @@ export class AnthropicClient implements AiClient {
       throw new AiServiceError(
         'truncated',
         'Réponse IA tronquée (limite de tokens atteinte) : requête trop volumineuse, réduisez la période ou le périmètre.',
+        undefined,
+        facture,
       );
     }
     const block = (data.content ?? []).find((b) => b.type === 'text' && typeof b.text === 'string');
     if (!block?.text) {
-      throw new AiServiceError('empty', 'Réponse IA vide.');
+      throw new AiServiceError('empty', 'Réponse IA vide.', undefined, facture);
     }
     let result: T;
     try {
       result = JSON.parse(block.text) as T;
     } catch {
-      throw new AiServiceError('parse', 'Réponse IA non conforme (JSON invalide).');
+      throw new AiServiceError('parse', 'Réponse IA non conforme (JSON invalide).', undefined, facture);
     }
-    const u = data.usage ?? {};
     return {
       result,
-      usage: {
-        inputTokens: u.input_tokens ?? 0,
-        outputTokens: u.output_tokens ?? 0,
-        cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
-        cacheReadTokens: u.cache_read_input_tokens ?? 0,
-      },
+      usage: usageDepuis(data.usage ?? {}),
       model: data.model ?? modele,
       provider: 'claude',
       latencyMs: Date.now() - startedAt,
     };
   }
+}
+
+/** Compteurs de la Messages API → `AiUsage` (cache Anthropic : écriture et lecture séparées). */
+function usageDepuis(u: {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}): AiUsage {
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: u.cache_read_input_tokens ?? 0,
+  };
 }

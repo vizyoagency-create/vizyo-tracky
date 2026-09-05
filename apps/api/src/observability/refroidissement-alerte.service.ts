@@ -191,6 +191,18 @@ export const CLES_REFROIDISSEMENT = {
   AI_REPLI: 'ai-repli',
   /** Le moteur de repli a échoué à son tour — suffixé :<moteur>:<sorte>, 6 h (revue C3). */
   AI_REPLI_ECHEC: 'ai-repli-echec',
+  /** Un modèle inconnu de la grille tarifaire — suffixé :<modele>, 7 j (C3 point 4). */
+  AI_TARIF_INCONNU: 'tarif-inconnu',
+  /** Échec passager de tous les moteurs (quota, saturation, délai, réseau, plafond) — suffixé :<moteur>:<sorte>, 1 h (C3 point 5). */
+  AI_ECHEC_PASSAGER: 'ai-echec',
   /** Travail de la file du poste passé en échec définitif — suffixé par l'id du travail, 30 j (chantier C3). */
   TRAVAUX_IA_ECHEC: 'travaux-ia:echec',
+  /**
+   * PS du chantier C3 (2026-09-05) — sentinelle des agents du poste. PRÉFIXE, suffixé
+   * `:<agent>:<motif>` (`agent-local:agent-recit-trajet:manque`) : une ligne par agent, par
+   * épisode et par jour (24 h), pour que « PC éteint la nuit » se lise le matin comme cinq
+   * lignes — une par agent — et non comme cinq lignes par heure. La clé est OUBLIÉE dès que
+   * l'agent repasse avec succès : l'épisode suivant doit crier sans délai.
+   */
+  AGENT_LOCAL: 'agent-local',
 } as const;

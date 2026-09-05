@@ -199,6 +199,20 @@ export class AiServiceError extends ServiceUnavailableException {
    */
   public readonly niveau: NiveauEchecIa;
 
+  /**
+   * ══ C3 point 5 (2026-09-05) — CE QUE L'ÉCHEC A COÛTÉ ═══════════════════════════════════
+   *
+   * Un échec APRÈS réponse du fournisseur (refus du modèle, sortie tronquée, réponse vide ou
+   * JSON invalide) a été FACTURÉ : le fournisseur a lu le prompt et produit des jetons avant que
+   * le client ne rejette la réponse. Sans ces deux champs, le routeur ne pouvait qu'estimer ce
+   * coût — et l'estimation ne compte jamais dans le plafond mensuel, donc l'argent réellement
+   * dépensé par une réponse tronquée disparaissait. Absents sur un échec AVANT réponse (clé,
+   * quota, réseau, délai) : rien n'a été facturé, le routeur estime.
+   */
+  public readonly usage?: AiUsage;
+  /** Identifiant du modèle qui a produit la réponse rejetée (tel que renvoyé par le fournisseur). */
+  public readonly model?: string;
+
   constructor(
     public readonly kind: AiErrorKind,
     message: string,
@@ -208,11 +222,33 @@ export class AiServiceError extends ServiceUnavailableException {
      * `message`, si.
      */
     public readonly detail?: string,
+    /** Jetons facturés et modèle, quand le fournisseur a répondu avant l'échec (voir `usage`). */
+    facture?: { usage: AiUsage; model?: string },
   ) {
     super(message);
     this.transient = TRANSIENT_KINDS.has(kind);
     this.niveau = NIVEAU_PAR_KIND[kind] ?? 'ERROR';
+    if (facture) {
+      this.usage = facture.usage;
+      this.model = facture.model;
+    }
   }
+}
+
+/**
+ * Ce qu'un appelant transmet au centre d'alerte à propos d'un échec IA : le NIVEAU décidé par la
+ * couche IA (`NIVEAU_PAR_KIND`), la sorte, et le motif du fournisseur pour le contexte — jamais
+ * pour le message (TRK-061). Une erreur qui n'est pas un échec typé (défaut du code) garde
+ * `ERROR`, sans motif.
+ *
+ * ── Pourquoi une fonction ──────────────────────────────────────────────────────────────
+ * Le 05/09, cinq appelants archivaient sans niveau : le même compte à sec sortait en ERROR par
+ * l'assistance et en DEGRADATION par l'optimiseur. La règle est écrite ici une fois, et chaque
+ * appelant la transmet telle quelle (C3 point 5).
+ */
+export function classerEchecIa(e: unknown): { niveau: NiveauEchecIa; kind?: AiErrorKind; motifFournisseur?: string } {
+  if (e instanceof AiServiceError) return { niveau: e.niveau, kind: e.kind, motifFournisseur: e.detail };
+  return { niveau: 'ERROR' };
 }
 
 /** Une requête IA → une réponse JSON structurée. Identique quel que soit le provider. */
@@ -268,4 +304,13 @@ export interface AiClient {
   isConfigured(): boolean;
   /** Un appel = une réponse JSON structurée (validée par `schema`). Lève `AiServiceError` (503) sinon. */
   completeJson<T>(req: AiJsonRequest): Promise<AiJsonResult<T>>;
+  /**
+   * Le modèle que `completeJson` EMPLOIERAIT pour cette requête (choix de l'appelant, sinon
+   * variable d'environnement, sinon défaut du client) — sans rien appeler. Sert à ESTIMER le
+   * coût d'un échec survenu AVANT toute réponse (C3 point 5) : un refus de clé ou un quota ne
+   * renvoie aucun identifiant de modèle, et la grille tarifaire a besoin d'un nom pour chiffrer
+   * le prompt qui a été préparé pour rien. Sans argument : le modèle par défaut du moteur (carte
+   * « Moteur IA » de la page « Coûts IA »).
+   */
+  modelFor(req?: Pick<AiJsonRequest, 'model'>): string;
 }

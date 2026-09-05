@@ -14,6 +14,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { fleetTzFormatter, localParts, localWallToUtc } from '../agenda/fleet-tz.util';
 import { ReservationsService } from '../agenda/reservations.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { classerEchecIa } from '../ai/ai-client.types';
 import { AiRouter } from '../ai/ai-router.service';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -189,10 +190,10 @@ export class ReservationBookingService {
           userPayload: { text: clean },
           schema: BOOKING_PARSE_SCHEMA,
           maxTokens: 400,
-        });
+        }, { trace: { action: 'booking_parse', userId: null, fleetId: link.fleetId } });
         const r = call.result ?? ({} as { seatsNeeded?: unknown; destination?: unknown; startAt?: unknown; endAt?: unknown });
         void this.aiUsage.record({
-          userId: null, fleetId: link.fleetId, action: 'booking_parse', model: call.model,
+          userId: null, fleetId: link.fleetId, action: 'booking_parse', model: call.model, provider: call.provider,
           inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
           cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
           latencyMs: call.latencyMs, ok: true,
@@ -205,10 +206,12 @@ export class ReservationBookingService {
         };
       } catch (e) {
         // best-effort : on garde l'analyse déterministe (aucun échec propagé au demandeur public), MAIS
-        // on remonte au centre d'alerte (l'admin voit les pannes IA du parsing vocal : clé, quota, timeout).
+        // on remonte au centre d'alerte (l'admin voit les pannes IA du parsing vocal : clé, quota, timeout)
+        // — avec le NIVEAU décidé par la couche IA et le motif du fournisseur en contexte (C3 point 5).
         this.logger.warn(`parsePublic (IA) ${link.fleetId} : ${(e as Error)?.message ?? e}`);
+        const { niveau, kind, motifFournisseur } = classerEchecIa(e);
         void this.errorLogger
-          ?.record(e as Error, 'BOOKING_PARSE_AI', { fleetId: link.fleetId, phase: 'parsePublic' })
+          ?.record(e as Error, 'BOOKING_PARSE_AI', { fleetId: link.fleetId, phase: 'parsePublic', kind, motifFournisseur }, niveau)
           .catch(() => {});
       }
     }

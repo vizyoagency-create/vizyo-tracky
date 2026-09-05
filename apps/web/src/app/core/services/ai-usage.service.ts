@@ -8,6 +8,7 @@ import type {
   AiUsageBudgetDto,
   AiUsageLogsPageDto,
   AiUsageSummaryDto,
+  SetAiBudgetDto,
 } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
@@ -31,8 +32,11 @@ export class AiUsageApiService {
     return this.http.get<AiUsageSummaryDto>('/api/admin/ai-usage/summary', { params });
   }
 
-  /** Journal des appels (curseur temporel `before` = ISO ; `after` = borne basse pour un filtre jour), filtrable. */
-  logs(opts: { limit?: number; before?: string; after?: string; userId?: string; fleetId?: string; action?: string } = {}): Observable<AiUsageLogsPageDto> {
+  /**
+   * Journal des appels (curseur temporel `before` = ISO ; `after` = borne basse pour un filtre jour),
+   * filtrable par action et, depuis C3 point 5, restreignable aux échecs (`failed`).
+   */
+  logs(opts: { limit?: number; before?: string; after?: string; userId?: string; fleetId?: string; action?: string; failed?: boolean } = {}): Observable<AiUsageLogsPageDto> {
     const params: Record<string, string> = {};
     if (opts.limit) params['limit'] = String(opts.limit);
     if (opts.before) params['before'] = opts.before;
@@ -40,6 +44,7 @@ export class AiUsageApiService {
     if (opts.userId) params['userId'] = opts.userId;
     if (opts.fleetId) params['fleetId'] = opts.fleetId;
     if (opts.action) params['action'] = opts.action;
+    if (opts.failed) params['failed'] = '1';
     return this.http.get<AiUsageLogsPageDto>('/api/admin/ai-usage/logs', { params });
   }
 
@@ -47,8 +52,10 @@ export class AiUsageApiService {
     return this.http.get<AiUsageBudgetDto>('/api/admin/ai-usage/budget');
   }
 
-  setBudget(monthlyBudgetEur: number): Observable<AiUsageBudgetDto> {
-    return this.http.put<AiUsageBudgetDto>('/api/admin/ai-usage/budget', { monthlyBudgetEur });
+  /** Règle le plafond mensuel et, s'il est fourni, le taux USD→€ appliqué à tous les montants en euros. */
+  setBudget(monthlyBudgetEur: number, usdToEurRate?: number): Observable<AiUsageBudgetDto> {
+    const body: SetAiBudgetDto = usdToEurRate !== undefined ? { monthlyBudgetEur, usdToEurRate } : { monthlyBudgetEur };
+    return this.http.put<AiUsageBudgetDto>('/api/admin/ai-usage/budget', body);
   }
 
   /** Moteur IA global sélectionné + moteurs disponibles (switch Claude ↔ GPT, super-admin). */

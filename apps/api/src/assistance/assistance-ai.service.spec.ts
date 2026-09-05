@@ -1,4 +1,5 @@
 import { UserRole } from '@prisma/client';
+import { AiServiceError } from '../ai/ai-client.types';
 import type { AuthUser } from '../auth/types/auth-user';
 import { AssistanceAiService } from './assistance-ai.service';
 
@@ -18,6 +19,8 @@ describe('AssistanceAiService', () => {
     redaction?: Record<string, unknown>;
     echecClassement?: boolean;
     echecRedaction?: boolean;
+    /** L'erreur levée par le moteur (défaut : une `Error` ordinaire, sans niveau IA). */
+    erreur?: Error;
     configure?: boolean;
     lots?: Array<{ key: string; libelle: string; data: unknown; volume: number; refus?: string }>;
   } = {}) {
@@ -29,16 +32,17 @@ describe('AssistanceAiService', () => {
       reponse: 'Votre trajet a ete coupe parce que le contact a ete remis.', escalade: false, gravite: 'LOW',
       ...opts.redaction,
     };
+    const erreur = opts.erreur ?? new Error('moteur indisponible');
     let appel = 0;
     const ai = {
       isConfigured: jest.fn().mockReturnValue(opts.configure ?? true),
       completeJson: jest.fn().mockImplementation(() => {
         appel++;
         if (appel === 1) {
-          if (opts.echecClassement) return Promise.reject(new Error('moteur indisponible'));
+          if (opts.echecClassement) return Promise.reject(erreur);
           return Promise.resolve({ result: classement, usage: USAGE, model: 'm-test', provider: 'claude', latencyMs: 300 });
         }
-        if (opts.echecRedaction) return Promise.reject(new Error('moteur indisponible'));
+        if (opts.echecRedaction) return Promise.reject(erreur);
         return Promise.resolve({ result: redaction, usage: USAGE, model: 'm-test', provider: 'claude', latencyMs: 900 });
       }),
     };
@@ -135,6 +139,41 @@ describe('AssistanceAiService', () => {
     expect(r.escalade).toBe(true);
     expect(r.costUsd).toBe(0);
     expect(errorLogger.record).toHaveBeenCalled();
+  });
+
+  /**
+   * C3 point 5 (2026-09-05) — le NIVEAU décidé par la couche IA est transmis tel quel. Avant,
+   * l'assistance archivait tout en ERROR : le compte à sec du 03/09 sortait en ERROR par ici et
+   * en DEGRADATION par l'optimiseur, pour le même incident.
+   */
+  it('transmet au centre d’alerte le niveau de l’erreur IA et le motif du fournisseur', async () => {
+    const erreur = new AiServiceError('provider_unfunded', 'Assistance IA indisponible.', 'Your credit balance is too low');
+    const { svc, errorLogger, user } = build({ echecClassement: true, erreur });
+    await svc.repondre(user, 'question');
+    expect(errorLogger.record).toHaveBeenCalledTimes(1);
+    const [err, source, ctx, niveau] = errorLogger.record.mock.calls[0];
+    // L'INSTANCE, pas son message : c'est elle que `ErrorLogger` marque pour éviter le doublon (TRK-061).
+    expect(err).toBe(erreur);
+    expect(source).toBe('ASSISTANCE');
+    expect(ctx).toMatchObject({ phase: 'classement', userId: 'u1', fleetId: 'f1', kind: 'provider_unfunded', motifFournisseur: 'Your credit balance is too low' });
+    expect(niveau).toBe('DEGRADATION');
+  });
+
+  it('une erreur qui n’est pas un échec IA typé reste en ERROR, sans motif', async () => {
+    const { svc, errorLogger, user } = build({ echecRedaction: true });
+    await svc.repondre(user, 'question');
+    const [, , ctx, niveau] = errorLogger.record.mock.calls[0];
+    expect(niveau).toBe('ERROR');
+    expect(ctx).toMatchObject({ phase: 'redaction' });
+    expect((ctx as { motifFournisseur?: string }).motifFournisseur).toBeUndefined();
+  });
+
+  it('passe sa `trace` au routeur : action, utilisateur, société — pour que ses échecs se rangent sur la page « Coûts IA »', async () => {
+    const { svc, ai, user } = build();
+    await svc.repondre(user, 'question');
+    for (const call of ai.completeJson.mock.calls) {
+      expect(call[1]).toEqual({ trace: { action: 'support_chat', userId: 'u1', fleetId: 'f1' } });
+    }
   });
 
   it('rédaction en échec : le coût DÉJÀ engagé au classement est tout de même remonté', async () => {

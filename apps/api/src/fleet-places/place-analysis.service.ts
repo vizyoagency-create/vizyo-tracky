@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { ExpectedRefusalException } from '../common/expected-refusal.exception';
 import { FleetPlaceKind } from '@prisma/client';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
+import { classerEchecIa } from '../ai/ai-client.types';
 import { AiRouter } from '../ai/ai-router.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -186,13 +187,16 @@ export class PlaceAnalysisService {
         userPayload: facts,
         schema: SCHEMA,
         maxTokens: 900,
-      });
+      }, { trace: { action: 'place_analysis', userId, fleetId: place.fleetId } });
     } catch (err) {
-      // Panne/refus du provider : visible au centre d'alerte, et l'erreur typée (503) remonte à l'UI.
+      // Panne/refus du provider : visible au centre d'alerte — avec le niveau décidé par la
+      // couche IA et le motif du fournisseur (C3 point 5) — et l'erreur typée (503) remonte à l'UI.
+      const { niveau, kind, motifFournisseur } = classerEchecIa(err);
       this.errorLogger.recordBackground(
         err instanceof Error ? err : new Error(String(err)),
         'place-analysis',
-        { placeId: place.id, fleetId: place.fleetId, note: "echec de l'appel IA d'analyse de lieu" },
+        { placeId: place.id, fleetId: place.fleetId, note: "echec de l'appel IA d'analyse de lieu", kind, motifFournisseur },
+        niveau,
       );
       throw err;
     }

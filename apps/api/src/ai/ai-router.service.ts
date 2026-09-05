@@ -16,12 +16,16 @@ import type {
 } from './ai-client.types';
 import { AiServiceError, estRepliable } from './ai-client.types';
 
-/** Ce que l'appelant sait de son appel — repris au centre d'alerte quand le routeur bascule. */
+/**
+ * Ce que l'appelant sait de son appel — repris au centre d'alerte quand le routeur bascule, et
+ * sur CHAQUE ligne d'échec écrite dans `ai_usage_logs` (C3 point 5). `action` est obligatoire :
+ * c'est le vocabulaire de la page « Coûts IA », et un échec sans action ne se range nulle part.
+ */
 export interface AiRunTrace {
   /** Action métier (`agenda_agent`, `trip_analysis`, `placement`…) : le vocabulaire d'`ai_usage_logs`. */
-  action?: string;
-  userId?: string;
-  fleetId?: string;
+  action: string;
+  userId?: string | null;
+  fleetId?: string | null;
 }
 
 /** Options d'un appel routé. */
@@ -42,7 +46,11 @@ export interface AiRunOptions {
    * Défaut `true`. Forcé à `false` dès que `preferProvider` est fourni — voir ci-dessus.
    */
   fallback?: boolean;
-  /** Contexte porté au centre d'alerte si le routeur bascule. Rempli par les appelants (C3 point 5). */
+  /**
+   * Contexte porté au centre d'alerte et sur les lignes d'échec. Rempli par les appelants
+   * (C3 point 5) ; un appelant qui l'oublie voit ses échecs rangés sous l'action `inconnu`, avec
+   * un avertissement dans le journal — jamais perdus.
+   */
   trace?: AiRunTrace;
 }
 
@@ -91,8 +99,51 @@ const QUARANTAINE_PAR_KIND: Readonly<Record<KindRepli, number>> = {
  */
 const REFROIDISSEMENT_REPLI_MS = 6 * 3_600_000;
 
+/**
+ * ══ C3 point 5 — UN ÉCHEC PASSAGER TOTAL SE VOIT, SANS BRUIT ═══════════════════════════════
+ *
+ * `ErrorLogger` n'archive JAMAIS une erreur `transient` (429, 529, délai, réseau, plafond
+ * mensuel) : c'est voulu depuis le 2026-07-20, ces échecs ne sont ni un bug ni une action à
+ * mener. Mais « jamais archivé » était devenu « jamais vu » : un fournisseur saturé toute une
+ * nuit ne laissait aucune trace au centre d'alerte. Quand TOUTES les tentatives échouent sur une
+ * erreur passagère, le routeur écrit donc lui-même UNE ligne DEGRADATION — écrite, datée,
+ * consultable, pas comptée comme un défaut (TRK-037) — par (moteur, sorte) et par heure.
+ * Les erreurs NON passagères restent archivées par les appelants (marqueur RECORDED : pas de
+ * doublon), avec leur niveau.
+ */
+const REFROIDISSEMENT_ECHEC_PASSAGER_MS = 3_600_000;
+/**
+ * Clé de refroidissement des échecs passagers, suffixée `:<moteur>:<sorte>`. Identifiant
+ * PERSISTANT (la renommer remettrait le garde à zéro) : a vocation à rejoindre
+ * `CLES_REFROIDISSEMENT` sous ce nom exact.
+ */
+const CLE_ECHEC_PASSAGER: string = CLES_REFROIDISSEMENT.AI_ECHEC_PASSAGER;
+/** Nom du « moteur » sur une ligne d'échec levée par le plafond mensuel, avant tout fournisseur. */
+const MOTEUR_PLAFOND = 'plafond';
+
 /** Source des lignes du routeur au centre d'alerte. */
 const SOURCE_ALERTE = 'AI_ROUTER';
+
+/** Action rangée sur les échecs d'un appelant qui n'a pas transmis de `trace`. */
+const ACTION_INCONNUE = 'inconnu';
+
+/** Trace complétée : toujours une action, même quand l'appelant a oublié la sienne. */
+type TraceResolue = { action: string; userId: string | null; fleetId: string | null };
+
+/**
+ * Jetons d'entrée ESTIMÉS d'une requête qui n'a reçu aucune réponse : longueur du prompt
+ * système et des données, à 4 caractères par jeton (l'ordre de grandeur usuel pour du texte et
+ * du JSON). Le schéma de sortie n'est pas compté — l'estimation est SIMPLE, et assumée telle.
+ */
+export function estimerJetonsEntree(req: AiJsonRequest): number {
+  let caracteres = (req.system ?? '').length;
+  try {
+    caracteres += JSON.stringify(req.userPayload ?? null)?.length ?? 0;
+  } catch {
+    /* charge utile non sérialisable (cycle) : on ne compte que le prompt système */
+  }
+  return Math.ceil(caracteres / 4);
+}
 
 /**
  * Routeur IA (2026-07) — point d'entrée UNIQUE de tous les appels IA de l'app. DROP-IN de
@@ -112,6 +163,14 @@ const SOURCE_ALERTE = 'AI_ROUTER';
  * dans l'ordre ; un REFUS (`REPLI_KINDS` : rien n'a été facturé) passe au suivant, tout autre
  * échec remonte tel quel. Voir `AiRunOptions.preferProvider` pour l'exception, et la quarantaine
  * ci-dessus pour ne pas repayer un refus certain à chaque appel.
+ *
+ * ══ C3 point 5 (2026-09-05) — CHAQUE ÉCHEC EST UNE LIGNE ═════════════════════════════════
+ *
+ * Seul point de passage, donc seul endroit où AUCUN échec ne peut être oublié : chaque tentative
+ * de fournisseur qui échoue — y compris celles suivies d'un repli réussi, et le plafond mensuel
+ * levé avant tout appel — écrit une ligne `ok = false` dans `ai_usage_logs` (sorte, motif,
+ * fournisseur, coût réel si le fournisseur a facturé, estimation sinon). Jusqu'au 05/09, la table
+ * n'avait jamais porté un échec : trois jours de compte à sec sans une ligne sur la page.
  */
 @Injectable()
 export class AiRouter {
@@ -158,6 +217,14 @@ export class AiRouter {
     return { claude: etat('claude'), gpt: etat('gpt') };
   }
 
+  /**
+   * Le modèle qu'un moteur emploie par défaut (sans choix de l'appelant) — pour que la carte
+   * « Moteur IA » nomme le modèle RÉEL au lieu d'un libellé écrit en dur (C3 point 4).
+   */
+  modeleParDefaut(p: AiProvider): string {
+    return this.byName(p).modelFor();
+  }
+
   private byName(p: AiProvider): AiClient {
     return p === 'gpt' ? this.openai : this.anthropic;
   }
@@ -178,6 +245,8 @@ export class AiRouter {
    * (analyse de trajets) ; pour un appel SIMPLE, il retombe sur le moteur primaire (Claude).
    */
   async completeJson<T>(req: AiJsonRequest, opts?: AiRunOptions): Promise<AiJsonResult<T>> {
+    const trace = this.traceDe(opts);
+
     // ══ PLAFOND MENSUEL — applique ICI, pour TOUS les appelants ═══════════════════
     //
     // Il ne gardait qu'UN des huit points d'appel (`place-analysis`). L'administrateur
@@ -189,12 +258,36 @@ export class AiRouter {
     // Ce service se declare « point d'entree UNIQUE de tous les appels IA ». C'est donc
     // le seul endroit ou la regle ne peut pas etre oubliee par un futur appelant.
     if (await this.usage.monthBudgetExhausted()) {
-      throw new AiServiceError('quota', 'Plafond mensuel de depense IA atteint — appel refuse.');
+      const refus = new AiServiceError('quota', 'Plafond mensuel de depense IA atteint — appel refuse.');
+      // Refusé AVANT tout moteur : la ligne d'échec n'a pas de fournisseur, et son estimation
+      // chiffre le modèle qui AURAIT été employé — sans lire le réglage (le plafond passe avant
+      // le choix du fournisseur, et une lecture en base pour un appel refusé serait payée pour rien).
+      await this.journaliserEchec(null, this.modeleProbable(req), refus, req, trace, 0);
+      await this.signalerEchecPassager(null, refus, trace);
+      throw refus;
     }
 
     const mode = await this.settings.current();
     const selected: AiProvider = mode === 'both' ? 'claude' : mode;
-    return this.essayer<T>(req, this.candidats(selected, opts), opts);
+    return this.essayer<T>(req, this.candidats(selected, opts), opts, trace);
+  }
+
+  /**
+   * La trace, complétée. Un appelant qui n'en fournit pas voit ses échecs rangés sous `inconnu`
+   * — et le journal le dit, pour qu'on aille lui ajouter la sienne.
+   */
+  private traceDe(opts?: AiRunOptions): TraceResolue {
+    const t = opts?.trace;
+    if (!t?.action) {
+      this.logger.warn('Appel IA sans `trace` : ses échecs seront rangés sous l\'action « inconnu ». Ajouter `trace: { action, userId, fleetId }` à l\'appelant.');
+    }
+    return { action: t?.action || ACTION_INCONNUE, userId: t?.userId ?? null, fleetId: t?.fleetId ?? null };
+  }
+
+  /** Le modèle du premier moteur configuré (ordre par défaut Claude puis GPT), sans lecture du réglage. */
+  private modeleProbable(req: AiJsonRequest): string {
+    const p: AiProvider = this.anthropic.isConfigured() || !this.openai.isConfigured() ? 'claude' : 'gpt';
+    return this.byName(p).modelFor(req);
   }
 
   /**
@@ -219,8 +312,11 @@ export class AiRouter {
    * Quand tout échoue, c'est l'erreur du PRIMAIRE — le premier tenté — qui est relancée, telle
    * quelle : c'est elle que les appelants et le filtre HTTP savent classer et archiver, et son
    * message est celui écrit pour l'utilisateur (TRK-061).
+   *
+   * Chaque tentative qui échoue écrit sa ligne d'échec AVANT toute décision de repli : la ligne
+   * dit ce qui s'est passé à ce moteur, quoi qu'il advienne ensuite (C3 point 5).
    */
-  private async essayer<T>(req: AiJsonRequest, liste: AiProvider[], opts?: AiRunOptions): Promise<AiJsonResult<T>> {
+  private async essayer<T>(req: AiJsonRequest, liste: AiProvider[], opts: AiRunOptions | undefined, trace: TraceResolue): Promise<AiJsonResult<T>> {
     const maintenant = Date.now();
     const horsQuarantaine = liste.filter((p) => !this.enQuarantaine(p, maintenant));
     // Tous à l'écart (ou le seul candidat l'est) : on tente quand même le premier.
@@ -235,14 +331,19 @@ export class AiRouter {
     const replis: { de: AiProvider; err: AiServiceError }[] = [];
     for (let i = 0; i < aEssayer.length; i++) {
       const p = aEssayer[i];
+      const client = this.byName(p);
+      const depart = Date.now();
       try {
-        const res = await this.byName(p).completeJson<T>(req);
+        const res = await client.completeJson<T>(req);
         for (const r of replis) await this.archiverRepli(r.de, p, r.err, opts);
         return res;
       } catch (e) {
         // Une erreur qui n'est pas un échec typé du fournisseur est un DÉFAUT du code : elle
         // remonte telle quelle, jamais cachée derrière le 503 d'un autre moteur.
         if (!(e instanceof AiServiceError)) throw e;
+        // La ligne d'échec : le modèle qui a répondu (échec après réponse), sinon celui qui
+        // aurait servi. La latence est celle de CETTE tentative.
+        await this.journaliserEchec(p, e.model ?? client.modelFor(req), e, req, trace, Date.now() - depart);
         primaire ??= e;
         const suivant = aEssayer[i + 1];
         if (!suivant || !estRepliable(e.kind)) {
@@ -251,6 +352,9 @@ export class AiRouter {
           // Claude serait invisible au centre d'alerte (revue C3 du 2026-09-05). Il est archivé
           // sous sa propre clé, avec SON niveau, avant que l'erreur du primaire ne reparte.
           if (replis.length > 0) await this.archiverEchecRepli(replis[replis.length - 1].de, p, e, opts);
+          // Tout a échoué. Si l'erreur relancée est PASSAGÈRE, personne d'autre ne l'archivera
+          // (`ErrorLogger` l'ignore) : une ligne DEGRADATION, derrière refroidissement.
+          await this.signalerEchecPassager(aEssayer[0], primaire, trace);
           throw primaire;
         }
         this.mettreEnQuarantaine(p, e.kind, Date.now());
@@ -278,6 +382,63 @@ export class AiRouter {
   }
 
   /**
+   * UNE ligne d'échec par tentative (C3 point 5). Le coût RÉEL vient des jetons que l'erreur
+   * transporte quand le fournisseur a répondu avant l'échec (réponse tronquée, refus après
+   * lecture, JSON invalide) ; sinon `costUsd` vaut 0 et l'estimation chiffre le prompt préparé
+   * pour rien. Ne fait jamais échouer l'appel : `recordFailure` ne lève pas, et on se protège
+   * quand même — journaliser un échec ne doit pas en fabriquer un second.
+   */
+  private async journaliserEchec(
+    provider: AiProvider | null,
+    model: string,
+    err: AiServiceError,
+    req: AiJsonRequest,
+    trace: TraceResolue,
+    latencyMs: number,
+  ): Promise<void> {
+    try {
+      await this.usage.recordFailure({
+        action: trace.action,
+        userId: trace.userId,
+        fleetId: trace.fleetId,
+        provider,
+        model,
+        errorKind: err.kind,
+        errorDetail: err.detail ?? err.message,
+        latencyMs,
+        usage: err.usage ?? null,
+        estimatedInputTokens: err.usage ? undefined : estimerJetonsEntree(req),
+      });
+    } catch (e) {
+      this.logger.warn(`Ligne d'échec IA non écrite (${provider ?? MOTEUR_PLAFOND}/${err.kind}) : ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
+   * Tout a échoué sur une erreur PASSAGÈRE : une ligne DEGRADATION par (moteur, sorte) et par
+   * heure — cf. `REFROIDISSEMENT_ECHEC_PASSAGER_MS`. L'erreur écrite est une `Error` ordinaire,
+   * pas l'`AiServiceError` transitoire : c'est précisément ce que `ErrorLogger` refuserait
+   * d'archiver. Rien pour une erreur non passagère (l'appelant l'archive avec son niveau).
+   */
+  private async signalerEchecPassager(provider: AiProvider | null, err: AiServiceError, trace: TraceResolue): Promise<void> {
+    if (!err.transient || !this.errorLogger) return;
+    const moteur = provider ?? MOTEUR_PLAFOND;
+    const motif = err.detail ?? err.message;
+    try {
+      const cle = `${CLE_ECHEC_PASSAGER}:${moteur}:${err.kind}`;
+      if (this.refroidissement && !(await this.refroidissement.tenterEmission(cle, REFROIDISSEMENT_ECHEC_PASSAGER_MS))) return;
+      await this.errorLogger.record(
+        new Error(`Appel IA en échec passager : ${moteur} ${err.kind} — ${motif}`),
+        SOURCE_ALERTE,
+        { action: trace.action, provider: moteur, kind: err.kind, motif, userId: trace.userId ?? undefined, fleetId: trace.fleetId ?? undefined },
+        'DEGRADATION',
+      );
+    } catch (e) {
+      this.logger.error(`Échec passager ${moteur}/${err.kind} non signalé : ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /**
    * Le repli a RÉUSSI : on le dit, une fois par (moteur, sorte) et par 6 h. Le silence serait un
    * mensonge tranquille — l'écran « Coûts IA » verrait GPT facturer pendant que le réglage dit
    * « Claude », sans qu'aucune ligne n'explique pourquoi.
@@ -300,7 +461,7 @@ export class AiRouter {
       await this.errorLogger.record(
         new Error(`Repli IA en échec : ${de} → ${vers} (${err.kind}) — ${err.detail ?? err.message}`),
         SOURCE_ALERTE,
-        { de, vers, kind: err.kind, motifFournisseur: err.detail, action: opts?.trace?.action, userId: opts?.trace?.userId, fleetId: opts?.trace?.fleetId },
+        { de, vers, kind: err.kind, motifFournisseur: err.detail, action: opts?.trace?.action, userId: opts?.trace?.userId ?? undefined, fleetId: opts?.trace?.fleetId ?? undefined },
         niveau,
       );
     } catch (e) {
@@ -327,8 +488,8 @@ export class AiRouter {
           kind: err.kind,
           motifFournisseur: err.detail,
           action: opts?.trace?.action,
-          userId: opts?.trace?.userId,
-          fleetId: opts?.trace?.fleetId,
+          userId: opts?.trace?.userId ?? undefined,
+          fleetId: opts?.trace?.fleetId ?? undefined,
         },
         niveau,
       );

@@ -207,8 +207,9 @@ describe('PlaceAnalysisService', () => {
 
     await expect(svc.analyze(user, 'place-1')).rejects.toThrow('provider 503');
 
+    // Le niveau est celui décidé par la couche IA (C3 point 5) ; une erreur non typée reste ERROR.
     expect(errorLogger.recordBackground).toHaveBeenCalledWith(
-      expect.any(Error), 'place-analysis', expect.objectContaining({ placeId: 'place-1', fleetId: 'fleet-1' }),
+      expect.any(Error), 'place-analysis', expect.objectContaining({ placeId: 'place-1', fleetId: 'fleet-1' }), 'ERROR',
     );
     expect(aiUsage.record).not.toHaveBeenCalled();
     expect(prisma.placeAnalysis.upsert).not.toHaveBeenCalled();

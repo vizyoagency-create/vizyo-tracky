@@ -15,6 +15,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { classerEchecIa } from '../ai/ai-client.types';
 import { AiRouter } from '../ai/ai-router.service';
 import { AiFeatureFlagsService } from '../ai/ai-feature-flags.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
@@ -153,11 +154,11 @@ export class ActivityReportService {
         // thinking adaptatif dépassait 4096 → JSON tronqué → échec. Plafond only (sans coût
         // supplémentaire pour les rapports qui tenaient déjà).
         maxTokens: 16000,
-      });
+      }, { trace: { action: 'activity_report', userId: actor.id, fleetId: actor.fleetId } });
       const content = this.sanitize(call.result);
       const costUsd = this.aiUsage.costOf(call.model, call.usage);
       void this.aiUsage.record({
-        userId: actor.id, fleetId: actor.fleetId, action: 'activity_report', model: call.model,
+        userId: actor.id, fleetId: actor.fleetId, action: 'activity_report', model: call.model, provider: call.provider,
         inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
         cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
         latencyMs: call.latencyMs, ok: true,
@@ -169,6 +170,16 @@ export class ActivityReportService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Rapport d'activité en échec : ${message}`);
+      // ⚠️ Remonté au centre d'alerte (C3 point 5) : `errorLogger` était injecté mais jamais
+      // appelé sur ce chemin — l'échec d'un rapport MANUEL ne vivait que dans l'historique des
+      // rapports, où personne ne va voir une panne de moteur. Niveau et motif de la couche IA.
+      const { niveau, kind, motifFournisseur } = classerEchecIa(err);
+      this.errorLogger.recordBackground(
+        err instanceof Error ? err : new Error(String(err)),
+        'ACTIVITY_REPORT',
+        { origin, userId: actor.id ?? undefined, targetCount: userIds.length, kind, motifFournisseur },
+        niveau,
+      );
       // On PERSISTE l'échec (visible dans l'historique) plutôt que de le perdre.
       const row = await this.prisma.activityReport.create({
         data: { createdByUserId: actor.id, targetUserIds: userIds, fromAt: from, toAt: to, status: 'FAILED', origin, title, error: message.slice(0, 400), costUsd: 0 },

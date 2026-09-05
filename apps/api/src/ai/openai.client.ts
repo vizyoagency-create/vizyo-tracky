@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
+import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider, AiUsage } from './ai-client.types';
 import {
   AiServiceError,
   describeProviderError,
@@ -29,13 +29,24 @@ export class OpenAiClient implements AiClient {
     return !!process.env.OPENAI_API_KEY;
   }
 
+  /**
+   * Le modèle que `completeJson` emploierait — la MÊME résolution que l'appel, sans appel.
+   * ⚠️ `req.model` est volontairement ignoré, comme dans `completeJson` : les appelants y
+   * écrivent des identifiants Anthropic (`claude-haiku-4-5`), qu'OpenAI ne connaît pas. Ce
+   * client n'a qu'un modèle, réglé par `OPENAI_MODEL` ; l'estimation d'un échec doit chiffrer
+   * ce modèle-là, pas celui demandé pour l'autre moteur.
+   */
+  modelFor(_req?: Pick<AiJsonRequest, 'model'>): string {
+    return process.env.OPENAI_MODEL || DEFAULT_MODEL;
+  }
+
   async completeJson<T>(req: AiJsonRequest): Promise<AiJsonResult<T>> {
     const startedAt = Date.now();
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new AiServiceError('no_key', 'Copilote IA (GPT) non configuré (OPENAI_API_KEY absente côté serveur).');
     }
-    const model = process.env.OPENAI_MODEL || DEFAULT_MODEL;
+    const model = this.modelFor(req);
 
     const body = {
       model,
@@ -122,11 +133,19 @@ export class OpenAiClient implements AiClient {
       };
     };
 
+    // ══ LE FOURNISSEUR A RÉPONDU : LES JETONS SONT FACTURÉS (C3 point 5) ═════════════════
+    // Même règle que le client Claude : une sortie tronquée, un refus, une réponse vide ou un
+    // JSON invalide emportent l'usage réel, pour que le routeur journalise ce coût au lieu de
+    // l'estimer au seul prompt.
+    const facture = data.usage ? { usage: usageDepuis(data.usage), model: data.model ?? model } : undefined;
+
     // Sortie plafonnée par max_output_tokens → JSON coupé : détecter AVANT le parse (erreur claire).
     if (data.status === 'incomplete' && data.incomplete_details?.reason === 'max_output_tokens') {
       throw new AiServiceError(
         'truncated',
         'Réponse IA (GPT) tronquée (limite de tokens atteinte) : réduisez la période ou le périmètre.',
+        undefined,
+        facture,
       );
     }
 
@@ -134,34 +153,38 @@ export class OpenAiClient implements AiClient {
     if (!text) {
       // Un item `refusal` (au lieu d'`output_text`) = refus explicite du modèle.
       if (hasRefusal(data.output)) {
-        throw new AiServiceError('refusal', "L'IA (GPT) a refusé de traiter cette requête.");
+        throw new AiServiceError('refusal', "L'IA (GPT) a refusé de traiter cette requête.", undefined, facture);
       }
-      throw new AiServiceError('empty', 'Réponse IA (GPT) vide.');
+      throw new AiServiceError('empty', 'Réponse IA (GPT) vide.', undefined, facture);
     }
 
     let result: T;
     try {
       result = JSON.parse(text) as T;
     } catch {
-      throw new AiServiceError('parse', 'Réponse IA (GPT) non conforme (JSON invalide).');
+      throw new AiServiceError('parse', 'Réponse IA (GPT) non conforme (JSON invalide).', undefined, facture);
     }
 
-    const u = data.usage ?? {};
-    const cached = u.input_tokens_details?.cached_tokens ?? 0;
     return {
       result,
-      usage: {
-        // OpenAI compte le cache DANS input_tokens ; on isole la part cachée (tarif réduit) comme Anthropic.
-        inputTokens: Math.max(0, (u.input_tokens ?? 0) - cached),
-        outputTokens: u.output_tokens ?? 0,
-        cacheWriteTokens: 0, // OpenAI ne facture pas l'écriture de cache séparément.
-        cacheReadTokens: cached,
-      },
+      usage: usageDepuis(data.usage ?? {}),
       model: data.model ?? model,
       provider: 'gpt',
       latencyMs: Date.now() - startedAt,
     };
   }
+}
+
+/** Compteurs de la Responses API → `AiUsage`. */
+function usageDepuis(u: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } }): AiUsage {
+  const cached = u.input_tokens_details?.cached_tokens ?? 0;
+  return {
+    // OpenAI compte le cache DANS input_tokens ; on isole la part cachée (tarif réduit) comme Anthropic.
+    inputTokens: Math.max(0, (u.input_tokens ?? 0) - cached),
+    outputTokens: u.output_tokens ?? 0,
+    cacheWriteTokens: 0, // OpenAI ne facture pas l'écriture de cache séparément.
+    cacheReadTokens: cached,
+  };
 }
 
 /** Extrait le texte de sortie des items `message`/`output_text` de la Responses API. */

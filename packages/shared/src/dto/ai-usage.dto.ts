@@ -1,10 +1,12 @@
 /**
  * Palier « Coûts IA » — supervision des dépenses du copilote IA (super-admin).
  *
- * Chaque appel Claude RÉUSSI est journalisé (tokens + coût estimé). Le tableau de bord
- * agrège par requête / jour / mois / flotte / utilisateur, et compare la dépense du mois
- * à un budget paramétrable (marqueur rouge à l'approche). Les coûts sont calculés en USD
- * (facturation Anthropic) et convertis en € via un taux configurable côté serveur.
+ * Chaque appel IA est journalisé — RÉUSSI (tokens + coût) et, depuis le chantier C3 du
+ * 2026-09-05, ÉCHOUÉ (sorte d'échec, motif, coût réel s'il y a eu facturation, estimation sinon).
+ * Le tableau de bord agrège par requête / jour / mois / flotte / utilisateur, et compare la
+ * dépense du mois à un budget paramétrable (marqueur rouge à l'approche). Les coûts sont
+ * calculés en USD (facturation du fournisseur) et convertis en € via un taux stocké en base
+ * (`ai_budget.usdToEurRate`), modifiable depuis la page et affiché à côté des montants.
  */
 
 export type AiUsageAction = 'capacity' | 'placement';
@@ -35,7 +37,7 @@ export type AiExecutor = 'api' | 'local';
  * total incomplet et annoncé qu'un chiffre inventé.
  */
 export interface AiUsageAbsorbedDto {
-  /** Appels réellement exécutés en local sur la période (donc non facturés). */
+  /** Appels réellement exécutés en local sur la période ET réussis (donc non facturés). */
   localCalls: number;
   /** Ce que ces appels ont produit, quand c'est compté. `null` = non mesuré. */
   localResults: number | null;
@@ -44,6 +46,16 @@ export interface AiUsageAbsorbedDto {
   estimatedCostEur: number | null;
   /** Libellés des actions exécutées en local sans référence API : non estimables. */
   actionsSansReference: string[];
+  /**
+   * Appels locaux dont la ligne PORTE ses jetons (C3 point 3 : le poste rend les jetons réels
+   * depuis le 05/09) — leur part du montant est le tarif EXACT de la grille, pas une moyenne.
+   * ⚠️ Ces jetons incluent le contexte propre de Claude Code (≈ 28 000 jetons de cache par
+   * appel) : le montant dit ce que le poste a réellement consommé, pas ce qu'un appel API nu
+   * aurait coûté. OPTIONNEL à la lecture (client déployé avant ce champ).
+   */
+  callsWithTokens?: number;
+  /** Appels locaux sans jetons, estimés d'après la moyenne des appels API des 90 derniers jours. */
+  callsEstimated?: number;
 }
 
 export interface AiUsageBudgetDto {
@@ -54,7 +66,11 @@ export interface AiUsageBudgetDto {
   spentThisMonthUsd: number;
   /** none = pas de budget ; ok < 80% ; warn ≥ 80% ; over ≥ 100%. */
   status: AiBudgetStatus;
-  /** Taux USD→€ appliqué (figé côté serveur). */
+  /**
+   * Taux USD→€ appliqué à TOUS les montants en euros de la page. Lu dans `ai_budget.usdToEurRate`
+   * (défaut 0,86, marché relevé le 2026-09-05) ; avant cette date c'était 0,92 en dur, invisible,
+   * soit 7 % au-dessus du marché — et le plafond mensuel se compare à cette dépense en euros.
+   */
   usdToEurRate: number;
   updatedAt: string | null;
 }
@@ -89,18 +105,51 @@ export interface AiUsageBreakdownRowDto {
    * `null` quand l'action est inconnue ou que la ligne n'agrège pas une action.
    */
   resultatsLibelle: string | null;
+  /**
+   * Appels en ÉCHEC (`ok = false`) parmi `calls`, quand la ligne agrège une action. Compté à
+   * part pour que « 12 appels » ne cache pas « dont 10 refusés » (relevé des 03-04/09 : trois
+   * jours de compte Anthropic à sec sans une seule ligne sur cette page). OPTIONNEL à la lecture.
+   */
+  failed?: number;
 }
 
 export interface AiUsageSummaryDto {
   from: string;
   to: string;
+  /** Toutes les lignes de la fenêtre : appels réussis ET échecs (cf. `failedCalls`). */
   totalCalls: number;
+  /**
+   * Appels FACTURÉS : exécutant `api` et réussis. C'est le seul dénominateur honnête d'un
+   * « coût par appel » — diviser par `totalCalls` mêlait les appels du poste (0 $) et les refus
+   * (0 $), et le chiffre baissait quand le service marchait moins bien. OPTIONNEL à la lecture.
+   */
+  billedCalls?: number;
+  /**
+   * Coût des SEULS appels facturés — le numérateur qui va avec `billedCalls`. `totalCostUsd`, lui,
+   * inclut le coût réel des échecs facturés (réponse tronquée, refus après lecture) : les diviser
+   * l'un par l'autre donnait un « coût par appel » gonflé. OPTIONNELS à la lecture.
+   */
+  billedCostUsd?: number;
+  billedCostEur?: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCacheReadTokens: number;
+  /** Jetons écrits en cache (Anthropic les facture 1,25× l'entrée). OPTIONNEL à la lecture. */
+  totalCacheWriteTokens?: number;
   totalCostUsd: number;
   totalCostEur: number;
   usdToEurRate: number;
+  /**
+   * ══ LES ÉCHECS (C3 point 5, 2026-09-05) ══════════════════════════════════════════════
+   * Lignes `ok = false` de la fenêtre. `failedEstimatedCostUsd` additionne, pour chacune, le coût
+   * RÉEL quand le fournisseur a facturé (réponse tronquée, refus après lecture) et sinon une
+   * estimation SIMPLE (jetons d'entrée ≈ longueur du prompt / 4, sortie 0). C'est un ordre de
+   * grandeur marqué ≈ à l'écran, JAMAIS de l'argent compté dans le plafond mensuel.
+   * OPTIONNELS à la lecture : un client déployé avant ces champs se tait au lieu d'afficher zéro.
+   */
+  failedCalls?: number;
+  failedEstimatedCostUsd?: number;
+  failedEstimatedCostEur?: number;
   byAction: AiUsageBreakdownRowDto[];
   byFleet: AiUsageBreakdownRowDto[];
   byUser: AiUsageBreakdownRowDto[];
@@ -122,6 +171,27 @@ export interface AiUsageSummaryDto {
   absorbed?: AiUsageAbsorbedDto;
 }
 
+/**
+ * Sortes d'échec d'un appel IA, telles que la couche IA les classe (`AiErrorKind` côté API).
+ * Recopiées ici en littéraux : le paquet partagé ne doit rien importer du serveur, et le front
+ * n'a besoin que d'un libellé par sorte.
+ */
+export type AiUsageErrorKind =
+  /** Échec définitif d'un travail de la FILE DU POSTE (3 tentatives) — rien n'a été facturé. */
+  | 'travail_local'
+  | 'no_key'
+  | 'invalid_key'
+  | 'quota'
+  | 'overloaded'
+  | 'timeout'
+  | 'network'
+  | 'refusal'
+  | 'empty'
+  | 'parse'
+  | 'truncated'
+  | 'provider_unfunded'
+  | 'http';
+
 /** Une ligne du journal des appels (le plus récent d'abord). */
 export interface AiUsageLogRowDto {
   id: string;
@@ -141,6 +211,20 @@ export interface AiUsageLogRowDto {
   ok: boolean;
   /** Exécutant de l'appel. Optionnel à la lecture (cf. `AiUsageSummaryDto.absorbed`). */
   executor?: AiExecutor;
+  /** Fournisseur qui a répondu ou refusé (`claude` | `gpt`) ; `null` sur les lignes antérieures au 05/09. */
+  provider?: string | null;
+  /** Sorte d'échec (ligne `ok = false`) ; `null` sur un succès ou une ligne d'échec sans sorte connue. */
+  errorKind?: AiUsageErrorKind | string | null;
+  /** Motif du fournisseur ou message d'erreur, borné à 400 caractères. */
+  errorDetail?: string | null;
+  /** Coût estimé d'un échec (≈), en USD/€ — jamais compté dans le plafond mensuel. */
+  estimatedCostUsd?: number | null;
+  estimatedCostEur?: number | null;
+  /**
+   * Vrai quand `estimatedCostUsd` est une ESTIMATION (aucun usage renvoyé par le fournisseur) :
+   * l'écran l'affiche avec ≈. Faux quand le coût vient des jetons réellement facturés.
+   */
+  estime?: boolean;
 }
 
 export interface AiUsageLogsPageDto {
@@ -149,9 +233,11 @@ export interface AiUsageLogsPageDto {
   nextCursor: string | null;
 }
 
-/** Réglage du budget mensuel (super-admin). */
+/** Réglage du budget mensuel (super-admin). Le taux USD→€ est optionnel : absent = inchangé. */
 export interface SetAiBudgetDto {
   monthlyBudgetEur: number;
+  /** Taux USD→€ (0,5 à 1,5). Absent = on ne touche pas au taux enregistré. */
+  usdToEurRate?: number;
 }
 
 /* ── Couche IA multi-provider (2026-07) — switch Claude ↔ GPT (super-admin) ── */

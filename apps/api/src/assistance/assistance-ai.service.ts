@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiTraceService } from '../ai-traces/ai-trace.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { classerEchecIa } from '../ai/ai-client.types';
 import { AiRouter } from '../ai/ai-router.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -120,6 +121,9 @@ export class AssistanceAiService {
     let coutTotal = 0;
     let latenceTotale = 0;
     let modele: string | null = null;
+    // Ce que le routeur écrit sur chaque ligne d'échec (C3 point 5) : la même identité que la
+    // ligne de succès, pour que refus et réponses se rangent au même endroit de la page.
+    const trace = { action: ACTION, userId: user.id, fleetId: user.fleetId };
 
     // ── 1. Classement ──────────────────────────────────────────────────────────
     let plan: Classement;
@@ -135,13 +139,13 @@ export class AssistanceAiService {
         // en SORTIE. On laisse le modèle par défaut (le fournisseur peut changer), on baisse
         // l'effort : c'est le levier qui ne dépend d'aucun nom de modèle codé en dur.
         effort: 'low',
-      });
+      }, { trace });
       plan = this.normaliserClassement(appel.result);
       coutTotal += this.aiUsage.costOf(appel.model, appel.usage);
       latenceTotale += appel.latencyMs;
       modele = appel.model;
       void this.aiUsage.record({
-        userId: user.id, fleetId: user.fleetId, action: ACTION, model: appel.model, executor: 'api',
+        userId: user.id, fleetId: user.fleetId, action: ACTION, model: appel.model, executor: 'api', provider: appel.provider,
         inputTokens: appel.usage.inputTokens, outputTokens: appel.usage.outputTokens,
         cacheWriteTokens: appel.usage.cacheWriteTokens, cacheReadTokens: appel.usage.cacheReadTokens,
         latencyMs: appel.latencyMs, ok: true,
@@ -195,13 +199,13 @@ export class AssistanceAiService {
         schema: REPONSE_SCHEMA,
         maxTokens: 900,
         effort: 'low',
-      });
+      }, { trace });
       const r = this.normaliserRedaction(appel.result);
       coutTotal += this.aiUsage.costOf(appel.model, appel.usage);
       latenceTotale += appel.latencyMs;
       modele = appel.model;
       void this.aiUsage.record({
-        userId: user.id, fleetId: user.fleetId, action: ACTION, model: appel.model, executor: 'api',
+        userId: user.id, fleetId: user.fleetId, action: ACTION, model: appel.model, executor: 'api', provider: appel.provider,
         inputTokens: appel.usage.inputTokens, outputTokens: appel.usage.outputTokens,
         cacheWriteTokens: appel.usage.cacheWriteTokens, cacheReadTokens: appel.usage.cacheReadTokens,
         latencyMs: appel.latencyMs, ok: true, resultCount: 1,
@@ -344,8 +348,12 @@ export class AssistanceAiService {
   private async tracerErreur(e: unknown, user: AuthUser, phase: string): Promise<void> {
     const err = e instanceof Error ? e : new Error(String(e));
     this.logger.warn(`Assistance (${phase}) : ${err.message}`);
+    // Le NIVEAU est celui décidé par la couche IA, et le motif du fournisseur part dans le
+    // contexte (C3 point 5) : jusqu'au 05/09 l'assistance archivait tout en ERROR, un compte à
+    // sec compris — le même incident sortait en DEGRADATION par l'optimiseur.
+    const { niveau, kind, motifFournisseur } = classerEchecIa(err);
     await this.errorLogger
-      .record(err, SOURCE, { phase, userId: user.id, fleetId: user.fleetId ?? undefined })
+      .record(err, SOURCE, { phase, userId: user.id, fleetId: user.fleetId ?? undefined, kind, motifFournisseur }, niveau)
       .catch(() => {
         /* la supervision ne doit jamais faire tomber ce qu'elle supervise */
       });

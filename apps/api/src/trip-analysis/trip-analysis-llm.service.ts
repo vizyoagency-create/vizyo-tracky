@@ -3,7 +3,7 @@ import type { AiProviderId, TripAiResultDto, TripAnalysisDto, TripNarrativeCompa
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { AiRouter } from '../ai/ai-router.service';
-import { AiServiceError, type AiProvider, type AiProviderMode } from '../ai/ai-client.types';
+import { AiServiceError, classerEchecIa, type AiProvider, type AiProviderMode } from '../ai/ai-client.types';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -103,11 +103,13 @@ export class TripAnalysisLlmService {
     try {
       call = await this.ai.completeJson<NarrativeOut>(
         { system: renderTripSynthesisSystem(), userPayload: payload, schema: TRIP_NARRATIVE_SCHEMA, maxTokens: 1200, effort: 'low' },
-        { preferProvider: 'claude' },
+        { preferProvider: 'claude', trace: { action: 'trip_analysis', userId: actorId, fleetId: row.fleetId } },
       );
     } catch (e) {
+      // Niveau décidé par la couche IA + motif du fournisseur en contexte (C3 point 5).
+      const { niveau, kind, motifFournisseur } = classerEchecIa(e);
       void this.errorLogger
-        .record(e as Error, 'TRIP_ANALYSIS_AI', { fleetId: row.fleetId, vehicleId: row.vehicleId, tripId: row.tripId, phase: 'synthese-mixte' })
+        .record(e as Error, 'TRIP_ANALYSIS_AI', { fleetId: row.fleetId, vehicleId: row.vehicleId, tripId: row.tripId, phase: 'synthese-mixte', kind, motifFournisseur }, niveau)
         .catch(() => {});
       throw e;
     }
@@ -115,7 +117,7 @@ export class TripAnalysisLlmService {
       // ⚠️ `userId` valait `null` : la depense s'inscrivait chez le client SANS acteur.
       // Un super-admin analysant le trajet d'une societe y laissait une ligne de cout que
       // personne ne pouvait rattacher a une action — invisible a expliquer au client.
-      userId: actorId, fleetId: row.fleetId, action: 'trip_analysis', model: call.model,
+      userId: actorId, fleetId: row.fleetId, action: 'trip_analysis', model: call.model, provider: call.provider,
       inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
       cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
       latencyMs: call.latencyMs, ok: true,
@@ -164,12 +166,14 @@ export class TripAnalysisLlmService {
     try {
       call = await this.ai.completeJson<NarrativeOut>(
         { system: renderTripNarrativeSystem(), userPayload: payload, schema: TRIP_NARRATIVE_SCHEMA, maxTokens: 1200, effort: 'low' },
-        { preferProvider },
+        { preferProvider, trace: { action: 'trip_analysis', userId: actorId, fleetId: row.fleetId } },
       );
     } catch (e) {
-      // Remonte au centre d'alerte (l'admin voit les pannes IA du récit de trajet).
+      // Remonte au centre d'alerte (l'admin voit les pannes IA du récit de trajet), avec le
+      // niveau décidé par la couche IA et le motif du fournisseur en contexte (C3 point 5).
+      const { niveau, kind, motifFournisseur } = classerEchecIa(e);
       void this.errorLogger
-        .record(e as Error, 'TRIP_ANALYSIS_AI', { fleetId: row.fleetId, vehicleId: row.vehicleId, tripId: row.tripId, provider: preferProvider })
+        .record(e as Error, 'TRIP_ANALYSIS_AI', { fleetId: row.fleetId, vehicleId: row.vehicleId, tripId: row.tripId, provider: preferProvider, kind, motifFournisseur }, niveau)
         .catch(() => {});
       throw e;
     }
@@ -178,7 +182,7 @@ export class TripAnalysisLlmService {
       // ⚠️ `userId` valait `null` : la depense s'inscrivait chez le client SANS acteur.
       // Un super-admin analysant le trajet d'une societe y laissait une ligne de cout que
       // personne ne pouvait rattacher a une action — invisible a expliquer au client.
-      userId: actorId, fleetId: row.fleetId, action: 'trip_analysis', model: call.model,
+      userId: actorId, fleetId: row.fleetId, action: 'trip_analysis', model: call.model, provider: call.provider,
       inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
       cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
       latencyMs: call.latencyMs, ok: true,

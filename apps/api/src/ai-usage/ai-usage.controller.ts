@@ -47,9 +47,21 @@ export class AiUsageController {
   private async providerView(): Promise<AiProviderSettingsDto> {
     const setting = await this.aiProvider.view();
     const avail = this.aiRouter.availability();
+    // Le libellé est DÉRIVÉ du modèle réellement employé par défaut, jamais écrit en dur : la
+    // carte disait « Opus 4.8 » pendant que chaque appel partait sur Sonnet 5 (C3 point 4).
     const providers: AiProviderInfoDto[] = [
-      { id: 'claude', label: 'Claude — Opus 4.8', hint: 'Anthropic · raisonnement agenda & optimisation', configured: avail.claude },
-      { id: 'gpt', label: 'GPT — OpenAI', hint: 'Analyse de trajets & détection d\'anomalies', configured: avail.gpt },
+      {
+        id: 'claude',
+        label: `Claude — ${libelleModele(this.aiRouter.modeleParDefaut('claude'))} (défaut)`,
+        hint: 'Anthropic · raisonnement agenda & optimisation',
+        configured: avail.claude,
+      },
+      {
+        id: 'gpt',
+        label: `GPT — ${libelleModele(this.aiRouter.modeleParDefaut('gpt'))} (défaut)`,
+        hint: 'OpenAI · analyse de trajets & détection d\'anomalies',
+        configured: avail.gpt,
+      },
     ];
     // C3 point 1 (2026-09-05) — un moteur mis à l'écart après un refus : l'écran doit le dire,
     // sinon il affiche « Claude » pendant que GPT facture, sans rien qui explique pourquoi.
@@ -92,7 +104,10 @@ export class AiUsageController {
     return this.svc.summary(from, to, this.scopeFleet(req, fleetId), req.user);
   }
 
-  /** GET /api/admin/ai-usage/logs — journal des appels (curseur `before` = ISO ; `after` = borne basse jour). */
+  /**
+   * GET /api/admin/ai-usage/logs — journal des appels (curseur `before` = ISO ; `after` = borne
+   * basse jour ; `failed=1` = échecs seulement).
+   */
   @Get('logs')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
   logs(
@@ -103,6 +118,7 @@ export class AiUsageController {
     @Query('userId') userId?: string,
     @Query('fleetId') fleetId?: string,
     @Query('action') action?: string,
+    @Query('failed') failed?: string,
   ) {
     return this.svc.logs({
       limit: limit ? parseInt(limit, 10) : undefined,
@@ -111,6 +127,7 @@ export class AiUsageController {
       userId,
       fleetId: this.scopeFleet(req, fleetId),
       action,
+      onlyFailed: failed === '1' || failed === 'true',
     }, req.user);
   }
 
@@ -122,11 +139,11 @@ export class AiUsageController {
     return this.svc.getBudget(req.user);
   }
 
-  /** PUT /api/admin/ai-usage/budget — règle le budget mensuel (€). */
+  /** PUT /api/admin/ai-usage/budget — règle le budget mensuel (€) et, s'il est fourni, le taux USD→€. */
   @Put('budget')
   @Roles(UserRole.SUPER_ADMIN)
   setBudget(@Body() dto: SetAiBudgetBodyDto, @Req() req: AuthenticatedRequest) {
-    return this.svc.setBudget(dto.monthlyBudgetEur, req.user.id, req.user);
+    return this.svc.setBudget({ monthlyBudgetEur: dto.monthlyBudgetEur, usdToEurRate: dto.usdToEurRate }, req.user.id, req.user);
   }
 
   /** GET /api/admin/ai-usage/provider — moteur IA global + disponibilité des moteurs. */
@@ -143,4 +160,21 @@ export class AiUsageController {
     await this.aiProvider.set(dto.provider, req.user.id);
     return this.providerView();
   }
+}
+
+/**
+ * Nom lisible d'un identifiant de modèle : `claude-sonnet-5` → « Sonnet 5 »,
+ * `claude-haiku-4-5-20251001` → « Haiku 4.5 », `gpt-4.1-2025-04-14` → « 4.1 »,
+ * `gpt-5-mini` → « 5 mini ». Un identifiant d'une autre forme est rendu tel quel : mieux vaut
+ * un nom brut qu'un nom inventé.
+ */
+export function libelleModele(model: string): string {
+  const claude = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(model);
+  if (claude) {
+    const famille = claude[1].charAt(0).toUpperCase() + claude[1].slice(1);
+    return `${famille} ${claude[2]}${claude[3] ? `.${claude[3]}` : ''}`;
+  }
+  const gpt = /^gpt-([0-9][0-9a-z.]*)(?:-(mini|nano))?(?:-\d{4}-\d{2}-\d{2})?$/.exec(model);
+  if (gpt) return `${gpt[1]}${gpt[2] ? ` ${gpt[2]}` : ''}`;
+  return model;
 }
