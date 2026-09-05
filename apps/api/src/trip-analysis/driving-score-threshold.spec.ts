@@ -74,8 +74,14 @@ function setup(
 
   const prisma = {
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(analyses) },
-    // Aucun excès établi dans ces jeux d'essai : ils portent sur le seuil de classement.
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    // Une ligne par analyse, dans la forme rendue par `faitsParTrajet` : ni excès établi ni
+    // analyse ancienne dans ces jeux d'essai, qui portent sur le seuil de classement.
+    // ⚠️ Les deux colonnes sont explicitement `false` et non omises : un simulacre qui les
+    // laisse absentes décrit un client Prisma qui n'existe pas, et ferait passer pour un fait
+    // ce qui n'est qu'un `undefined`.
+    $queryRaw: jest.fn().mockImplementation(() => Promise.resolve(
+      trips.map((t) => ({ tripId: t.id, exces: false, ancienne: false })),
+    )),
     trip: {
       findMany: jest.fn().mockResolvedValue(trips),
       // Les trajets RÉELS, indépendants des analysés — c'est tout l'objet du taux.

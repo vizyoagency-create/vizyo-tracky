@@ -158,6 +158,17 @@ type Period = '7d' | '30d' | '90d';
                         <em class="ds-rate">sur {{ r.totalTripCount }} ({{ analysisRate(r) }} %)</em>
                       }
                     </span>
+                    <!--
+                      ⚠️ SUR COMBIEN D'ANALYSES ANCIENNES CETTE NOTE EST-ELLE CALCULÉE ?
+                      Les écrans ne comptent plus les faux excès de ces analyses, mais la NOTE,
+                      elle, est toujours calculée dessus : un conducteur pouvait être classé sur
+                      40 analyses dont 35 écrites sous l'ancienne règle, et rien ne le disait.
+                      C'est une RÉSERVE sur ce que la note mesure, pas une erreur — d'où le ton
+                      neutre et la place discrète, à côté du taux d'analyse.
+                    -->
+                    @if (r.oldFormulaTripCount > 0) {
+                      <span class="ds-ancien" [title]="ancienneteTitle(r)">{{ ancienneteLabel(r) }}</span>
+                    }
                     <span>{{ r.distanceKm | number:'1.0-0' }} km</span>
                     @if (r.speedingTrips > 0) {
                       @if (r.speedingTripRefs.length > 0) {
@@ -203,6 +214,15 @@ type Period = '7d' | '30d' | '90d';
                     {{ r.tripCount }} analysé{{ r.tripCount > 1 ? 's' : '' }}
                     @if (r.totalTripCount > r.tripCount) { sur {{ r.totalTripCount }} }
                   </span>
+                  <!-- Même réserve que dans le classement : ces lignes affichent déjà un
+                       compte d'analyses, donc la même question se pose sur leur note.
+                       ⚠️ SŒUR du compte, et non imbriquée dedans : à 375 px, mesuré sur banc,
+                       la phrase allongeait tellement la métadonnée qu'elle coupait la plaque
+                       en deux (« HD-292- » / « SH »). En enfant direct de la ligne, elle passe
+                       à la ligne suivante au lieu d'écraser le libellé. -->
+                  @if (r.oldFormulaTripCount > 0) {
+                    <span class="ds-ancien" [title]="ancienneteTitle(r)">{{ ancienneteLabel(r) }}</span>
+                  }
                 </div>
               }
             </details>
@@ -234,10 +254,17 @@ type Period = '7d' | '30d' | '90d';
     .ds-help { display: flex; gap: 8px; align-items: flex-start; padding: 10px 13px; border-radius: 11px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 7%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 20%, transparent); font-size: 12px; line-height: 1.5; color: var(--fg-secondary); }
     .ds-help lucide-icon { color: var(--tracky-light, #10E0A0); flex-shrink: 0; margin-top: 1px; }
     .ds-rate { font-style: normal; color: var(--fg-tertiary); }
+    /* Réserve « dont N analyses anciennes » : même gris que le reste des métadonnées, jamais
+       une couleur d'alerte. Ce n'est pas un défaut de la ligne, c'est une précision sur ce que
+       sa note mesure. Le souligné pointillé signale l'info-bulle, seul endroit où la phrase
+       complète tient. */
+    .ds-ancien { color: var(--fg-tertiary); border-bottom: 1px dotted var(--border-subtle); cursor: help; }
     .ds-insuf { border: 1px solid var(--border-subtle); border-radius: 11px; background: var(--bg-secondary); padding: 10px 13px; font-size: 12.5px; }
     .ds-insuf summary { cursor: pointer; font-weight: 700; color: var(--fg-secondary); }
     .ds-insuf-why { margin: 8px 0 10px; color: var(--fg-tertiary); line-height: 1.5; }
-    .ds-insuf-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+    /* Retour à la ligne autorisé : sans lui, la réserve « dont N analyses anciennes » volait
+       assez de place au libellé pour couper une plaque en deux à 375 px (mesuré sur banc). */
+    .ds-insuf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
     .ds-insuf-label { font-weight: 700; color: var(--fg-primary); }
     .ds-insuf-sub { font-size: 11.5px; color: var(--fg-tertiary); }
     .ds-insuf-score { color: var(--fg-secondary); }
@@ -424,6 +451,40 @@ export class DrivingScoresComponent implements OnInit {
     return (
       `Note calculée sur ${r.tripCount} trajet(s) analysé(s) parmi ${r.totalTripCount} ` +
       `parcouru(s), soit ${this.analysisRate(r)} % de l'activité de la période.`
+    );
+  }
+
+  /**
+   * Mention discrète, à côté du taux d'analyse : « dont N analyse(s) ancienne(s) ».
+   *
+   * ⚠️ Le libellé ne qualifie JAMAIS la note, seulement les analyses : « ancienne » dit d'où
+   * vient la donnée, là où « faussée » aurait accusé le conducteur d'une note qu'il n'a pas
+   * choisie. Le détail de ce que ça change tient dans l'info-bulle ci-dessous.
+   */
+  protected ancienneteLabel(r: DrivingScoreRowDto): string {
+    const n = r.oldFormulaTripCount;
+    return `dont ${n} analyse${n > 1 ? 's' : ''} ancienne${n > 1 ? 's' : ''}`;
+  }
+
+  /**
+   * Info-bulle de la réserve : une phrase, qui dit ce que ça change et pourquoi ça se résorbe.
+   *
+   * Les trois choses qu'un gestionnaire doit savoir, et rien d'autre : ces analyses ont été
+   * écrites avant la règle actuelle, leur DÉTAIL peut contenir de faux excès (des dépassements
+   * bâtis sur un seul point GPS), la note est calculée dessus — et le rattrapage les reprendra
+   * tant que les positions du trajet existent, donc le nombre baissera tout seul.
+   *
+   * ⚠️ « faux » qualifie le détail stocké, jamais la note : la note reste la meilleure mesure
+   * disponible, et l'écran ne doit pas laisser croire qu'un conducteur est mal noté à tort.
+   */
+  protected ancienneteTitle(r: DrivingScoreRowDto): string {
+    const n = r.oldFormulaTripCount;
+    const pluriel = n > 1;
+    return (
+      `${n} des ${r.tripCount} analyses qui font cette note ${pluriel ? 'ont été écrites' : 'a été écrite'} ` +
+      `avant la règle actuelle : ${pluriel ? 'leur' : 'son'} détail peut contenir de faux excès, ` +
+      `la note en dépend, et ${pluriel ? 'elles seront reprises' : 'elle sera reprise'} par le ` +
+      `rattrapage tant que les positions du trajet existent.`
     );
   }
 

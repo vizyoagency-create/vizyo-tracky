@@ -63,7 +63,12 @@ function build(opts: { sansAnalyse?: boolean } = {}) {
         Promise.resolve(vehicles.filter((v) => where.id.in.includes(v.id)))),
       findUnique: jest.fn().mockResolvedValue(null),
     },
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    // Forme rendue par `faitsParTrajet` : une ligne par analyse, deux booléens. Ces jeux
+    // d'essai portent sur l'IMPUTATION, donc ni excès établi ni analyse ancienne — mais les
+    // colonnes existent, sans quoi le simulacre décrirait un client Prisma qui n'existe pas.
+    $queryRaw: jest.fn().mockImplementation(() => Promise.resolve(
+      tripsFiltres.map((t) => ({ tripId: t.id, exces: false, ancienne: false })),
+    )),
   };
   const access = { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') };
   const user = { id: 'u', role: UserRole.FLEET_ADMIN, fleetId: FLEET } as never;

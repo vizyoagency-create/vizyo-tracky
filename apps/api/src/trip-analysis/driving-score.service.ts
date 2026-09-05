@@ -7,7 +7,7 @@ import type {
   DrivingScoreScope,
   DrivingScoresDto,
 } from '@vizyo/tracky-shared';
-import { EXCES_DUREE_MIN_SEC, formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
+import { CLE_NON_ATTRIBUE, cleImputationTrajet, EXCES_DUREE_MIN_SEC, formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -36,8 +36,6 @@ const MAX_SPEEDING_REFS = 25;
  * ne les cache pas.
  */
 const MIN_ANALYSES_FOR_RANKING = 20;
-/** Clé des trajets sans conducteur ni groupe (portée `attribution`). Jamais une ligne classée. */
-const CLE_NON_ATTRIBUE = 'non-attribue';
 
 /**
  * Force de rappel vers la moyenne de flotte, pour le score de CLASSEMENT.
@@ -103,9 +101,29 @@ const POIDS_MIN_KM = 1;
 
 type SpeedingRef = { tripId: string; vehicleId: string; startedAt: Date };
 
+/**
+ * Ce que Postgres sait dire d'un trajet en lisant `detail` UNE seule fois.
+ *
+ * Deux faits sans rapport l'un avec l'autre, mais tirés de la même colonne : les lire en deux
+ * requêtes ferait dé-TOASTer deux fois le même JSON (le tracé voyage dedans) sur un VPS à
+ * 2 vCPU. Voir {@link DrivingScoreService.faitsParTrajet}.
+ */
+type FaitsParTrajet = {
+  /** Trajets ayant au moins un segment d'excès ÉTABLI (règle partagée `EXCES_DUREE_MIN_SEC`). */
+  avecExces: Set<string>;
+  /** Trajets dont l'analyse a été écrite AVANT la règle actuelle (absence de `detail.vitesse`). */
+  anciennes: Set<string>;
+};
+
 type Agg = {
   id: string; label: string; sublabel: string | null; color: string | null;
   sumScore: number; poids: number; trips: number; distanceKm: number; speedingTrips: number; harshCount: number; fuelLiters: number; co2Kg: number;
+  /**
+   * Parmi les `trips` analyses NOTÉES, celles écrites avant la règle actuelle.
+   * ⚠️ Incrémenté DANS le même `if (ecoScore != null)` que `trips` : compté ailleurs, le
+   * rapport « N sur `tripCount` » affiché à l'écran pourrait dépasser son dénominateur.
+   */
+  oldTrips: number;
   speedingRefs: SpeedingRef[];
   /** true = entité SORTIE du classement parce que son boîtier s'est tu (scope `vehicle` uniquement). */
   dormant: boolean;
@@ -184,7 +202,7 @@ export class DrivingScoreService {
       // ⚠️ PLUS de `speedingCount` ici : c'est le compteur écrit au moment de l'analyse, et sur
       // les analyses antérieures au lot V2 il compte des segments de durée nulle — des points
       // GPS aberrants. Le classement disait « 1 625 trajets avec excès » sur 30 jours dont
-      // le seul excès était un point unique (mesuré le 2026-09-05). Voir `trajetsAvecExces`.
+      // le seul excès était un point unique (mesuré le 2026-09-05). Voir `faitsParTrajet`.
       select: { tripId: true, vehicleId: true, ecoScore: true, distanceKm: true, harshAccel: true, harshBrake: true, fuelLiters: true, co2Kg: true },
       orderBy: { computedAt: 'desc' },
       take: MAX_ANALYSES,
@@ -205,7 +223,7 @@ export class DrivingScoreService {
     // ⚠️ APRÈS le filtre de période, et sur ses seuls trajets : la requête lit `detail` (JSON
     // qui voyage avec le tracé) — la poser sur les 20 000 analyses chargées ferait dé-TOASTer
     // des tracés hors période dont la réponse ne serait jamais consultée.
-    const avecExces = await this.trajetsAvecExces(trips.map((t) => t.id));
+    const faits = await this.faitsParTrajet(trips.map((t) => t.id));
 
     // ══ TRAJETS RÉELLEMENT PARCOURUS (pour le TAUX D'ANALYSE) ═══════════════════════
     //
@@ -240,7 +258,16 @@ export class DrivingScoreService {
     // les lignes naissent des analyses, eux ne servent qu'à répondre « quel groupe ? ».
     const vehIds = [...new Set([...trips.map((t) => t.vehicleId), ...realTripRows.map((r) => r.vehicleId)])];
     const vehicles = vehIds.length
-      ? await this.prisma.vehicle.findMany({ where: { id: { in: vehIds } }, select: { id: true, plate: true, brand: true, model: true, outOfServiceReason: true, tracker: { select: { id: true, lastSeenAt: true } }, groups: { select: { group: { select: { id: true, name: true } } } } } })
+      ? await this.prisma.vehicle.findMany({ where: { id: { in: vehIds } }, select: { id: true, plate: true, brand: true, model: true, outOfServiceReason: true, tracker: { select: { id: true, lastSeenAt: true } }, groups: {
+            // ⚠️ MÊME choix que le récapitulatif des Rapports : le premier groupe PAR NOM. Le
+            // contrat partagé fixe l'ordre de repli (conducteur → groupe), pas lequel des groupes
+            // d'un véhicule fait foi ; sans tri, `groups[0]` dépendait de l'ordre de la base et
+            // les deux écrans auraient pu imputer un même trajet à deux groupes différents le
+            // jour où un véhicule en aurait deux (aucun n'en a deux au 2026-09-05).
+            select: { group: { select: { id: true, name: true } } },
+            orderBy: { group: { name: 'asc' } },
+            take: 1,
+          } } })
       : [];
     const vehById = new Map(vehicles.map((v) => [v.id, v]));
 
@@ -291,16 +318,17 @@ export class DrivingScoreService {
       realKmByKey.set(key, (realKmByKey.get(key) ?? 0) + km);
     };
     /**
-     * Clé d'imputation de la portée `attribution` : conducteur si connu, sinon groupe du
-     * véhicule, sinon la ligne « non attribué ». Une SEULE fonction pour le dénominateur ET
-     * l'agrégation : deux calculs de la même clé finiraient par diverger, et le taux d'analyse
-     * d'une ligne rapporterait des trajets notés à des trajets qui ne sont pas les siens.
+     * Clé d'imputation de la portée `attribution`. La RÈGLE vit dans le contrat partagé
+     * (`cleImputationTrajet`) : la page Rapports la pose aussi, pour son récapitulatif « par
+     * conducteur ou groupe » (F13), et deux copies auraient fini par rendre deux réponses à la
+     * même question. Ici on ne fait que lui fournir le groupe du véhicule.
+     *
+     * Une SEULE fonction pour le dénominateur ET l'agrégation : deux calculs de la même clé
+     * finiraient par diverger, et le taux d'analyse d'une ligne rapporterait des trajets notés
+     * à des trajets qui ne sont pas les siens.
      */
-    const cleAttribution = (driverId: string | null, vehicleId: string): string => {
-      if (driverId) return `driver:${driverId}`;
-      const gid = vehById.get(vehicleId)?.groups?.[0]?.group?.id ?? null;
-      return gid ? `group:${gid}` : CLE_NON_ATTRIBUE;
-    };
+    const cleAttribution = (driverId: string | null, vehicleId: string): string =>
+      cleImputationTrajet(driverId, vehById.get(vehicleId)?.groups?.[0]?.group?.id ?? null);
     for (const r of realTripRows) {
       const n = r._count._all;
       const km = r._sum.distanceKm ?? 0;
@@ -357,7 +385,7 @@ export class DrivingScoreService {
       const dormant = scope === 'vehicle' && dormantVehicles.has(t.vehicleId);
 
       let g = map.get(key);
-      if (!g) { g = { id: key, label, sublabel, color, sumScore: 0, poids: 0, trips: 0, distanceKm: 0, speedingTrips: 0, harshCount: 0, fuelLiters: 0, co2Kg: 0, speedingRefs: [], dormant, lastSeenAt: dormant ? (dormantVehicles.get(t.vehicleId) ?? null) : null }; map.set(key, g); }
+      if (!g) { g = { id: key, label, sublabel, color, sumScore: 0, poids: 0, trips: 0, distanceKm: 0, speedingTrips: 0, harshCount: 0, fuelLiters: 0, co2Kg: 0, oldTrips: 0, speedingRefs: [], dormant, lastSeenAt: dormant ? (dormantVehicles.get(t.vehicleId) ?? null) : null }; map.set(key, g); }
       /**
        * ⚠️ NOTE PONDÉRÉE PAR LES KILOMÈTRES, pas par le nombre de trajets.
        *
@@ -375,9 +403,21 @@ export class DrivingScoreService {
         g.sumScore += a.ecoScore * poids;
         g.poids += poids;
         g.trips += 1;
+        /**
+         * ⚠️ SUR COMBIEN D'ANALYSES ANCIENNES CETTE NOTE EST-ELLE CALCULÉE ?
+         *
+         * Ici et NULLE PART AILLEURS : dans le même `if` que `g.trips`, donc sur exactement la
+         * population que la ligne annoncera. Une analyse ancienne SANS note n'entre ni dans
+         * l'une ni dans l'autre — elle ne pèse sur rien, il n'y a rien à mettre en réserve.
+         *
+         * Le fait vient de la MÊME passe SQL que l'excès établi (`faitsParTrajet`) : ces
+         * analyses sont écartées du COMPTE des excès depuis le point 1, mais leur éco-score
+         * stocké, lui, a bien été calculé sous l'ancienne règle et continue de faire la note.
+         */
+        if (faits.anciennes.has(a.tripId)) g.oldTrips += 1;
       }
       g.distanceKm += a.distanceKm;
-      if (avecExces.has(a.tripId)) {
+      if (faits.avecExces.has(a.tripId)) {
         g.speedingTrips += 1;
         g.speedingRefs.push({ tripId: a.tripId, vehicleId: t.vehicleId, startedAt: t.startedAt });
       }
@@ -400,6 +440,10 @@ export class DrivingScoreService {
         // Repli sur `g.trips` : un total inférieur aux analyses serait incohérent, et
         // afficherait un taux supérieur à 100 %.
         totalTripCount: Math.max(realTripsByKey.get(g.id) ?? 0, g.trips),
+        // Sur combien des `tripCount` analyses notées la note repose-t-elle malgré l'ancienne
+        // règle ? Rendu par TOUTES les listes (classées, écartées, dormantes) : elles passent
+        // toutes par ici, et une réserve qui ne vaudrait que pour le podium n'en serait pas une.
+        oldFormulaTripCount: g.oldTrips,
         distanceKm: round(g.distanceKm, 1), speedingTrips: g.speedingTrips,
         speedingTripRefs: g.speedingRefs
           .sort((x, y) => y.startedAt.getTime() - x.startedAt.getTime())
@@ -524,11 +568,14 @@ export class DrivingScoreService {
   }
 
   /**
-   * Score PERSO d'UNE entité (véhicule/conducteur/groupe) : sa note + son RANG dans le classement +
-   * son écart à la moyenne. Réutilise `scores()` (même périmètre/anti-IDOR) puis extrait l'entité.
-   */
-  /**
-   * ══ QUELS TRAJETS ONT UN EXCÈS ÉTABLI — SELON LA RÈGLE PARTAGÉE ═══════════════════════
+   * ══ DEUX FAITS PAR TRAJET, EN UNE SEULE PASSE SUR `detail` ════════════════════════════
+   *
+   * `detail` est un JSON qui voyage avec le tracé du trajet : le lire coûte un dé-TOAST par
+   * ligne. Les deux faits ci-dessous n'ont rien à voir l'un avec l'autre, mais ils sortent de
+   * la même colonne — les demander en deux requêtes doublerait ce coût sur un VPS à 2 vCPU,
+   * pour rien.
+   *
+   * ══ FAIT 1 — L'EXCÈS EST-IL ÉTABLI ? ══════════════════════════════════════════════════
    *
    * ── CE QUE LE CLASSEMENT DISAIT ───────────────────────────────────────────────────────
    *
@@ -553,42 +600,83 @@ export class DrivingScoreService {
    * Même prédicat que `reports-stats.service.ts` (colonne « Excès » du récapitulatif) : deux
    * écrans, une réponse.
    *
-   * ⚠️ BEST-EFFORT, et le repli est ZÉRO, jamais `speedingCount`. Un classement sans sa colonne
-   * « avec excès » reste un classement juste ; un repli sur l'ancien compteur réintroduirait
-   * exactement ce qu'on vient de retirer, au moment précis où l'on ne regarde pas.
-   *
    * ⚠️ Vaut aussi pour les analyses HORS DE PORTÉE du rattrapage (positions purgées) : leur
    * détail stocké gardera ses faux segments pour toujours, mais ce filtre les écarte à la
    * lecture. C'est le seul endroit où ces analyses-là peuvent être corrigées.
+   *
+   * ══ FAIT 2 — L'ANALYSE EST-ELLE ANTÉRIEURE À LA RÈGLE ACTUELLE ? ══════════════════════
+   *
+   * Le fait 1 a retiré les faux excès du COMPTE. Il n'a rien changé à la NOTE : l'éco-score
+   * stocké d'une analyse écrite avant le lot V1 (4 septembre 2026) a bel et bien été calculé
+   * sous l'ancienne règle, et c'est lui qui fait la moyenne. Un conducteur pouvait donc être
+   * classé sur 40 analyses dont 35 anciennes sans que rien ne le dise. Mesuré en production le
+   * 2026-09-05 : 4 036 analyses antérieures au lot V2 ne portent que des segments de durée
+   * nulle. La ligne le déclare désormais (`oldFormulaTripCount`) — une réserve sur ce que la
+   * note mesure, pas une accusation contre le conducteur.
+   *
+   * ⚠️ MÊME CRITÈRE que `analyseAvantRegleActuelle` (contrat partagé) : l'absence de
+   * `detail.vitesse`. Le helper TS répond vrai dans TROIS cas — `detail` nul, clé absente,
+   * valeur nulle — et le prédicat SQL doit couvrir les trois, d'où le `IS NULL` DOUBLÉ du
+   * `= 'null'::jsonb`. Un simple `NOT (detail ? 'vitesse')` raterait le troisième : deux
+   * définitions de « ancienne », deux totaux, et aucun moyen de dire lequel ment.
+   *
+   * ══ POLITIQUE D'ERREUR (inchangée, et elle vaut pour LES DEUX faits) ══════════════════
+   *
+   * ⚠️ BEST-EFFORT, et le repli est « AUCUN FAIT CONNU » — jamais `speedingCount`, jamais une
+   * ancienneté devinée. Un classement sans sa colonne « avec excès » et sans sa réserve reste
+   * un classement juste ; un repli sur l'ancien compteur réintroduirait exactement ce qu'on
+   * vient de retirer, au moment précis où l'on ne regarde pas.
    */
-  private async trajetsAvecExces(tripIds: string[]): Promise<Set<string>> {
-    if (tripIds.length === 0) return new Set();
+  private async faitsParTrajet(tripIds: string[]): Promise<FaitsParTrajet> {
+    const vide: FaitsParTrajet = { avecExces: new Set(), anciennes: new Set() };
+    if (tripIds.length === 0) return vide;
     try {
-      const rows = await this.prisma.$queryRaw<{ tripId: string }[]>`
-        SELECT ta."tripId" AS "tripId"
+      /**
+       * UNE passe sur `detail`, deux colonnes : l'excès établi et l'ancienneté de l'analyse.
+       *
+       * ⚠️ NE REMETS PAS L'EXISTS DANS LE `WHERE`. Il y était tant que la requête ne rendait
+       * que les trajets à excès, et le remettre pour « rendre moins de lignes » ferait
+       * disparaître le second fait de TOUS les trajets sans excès — c'est-à-dire de la grande
+       * majorité : la réserve tomberait à zéro en silence, exactement là où elle compte.
+       * Une ligne par trajet de la période coûte deux booléens et un uuid ; sur 90 jours chez
+       * cdef31, 2 707 lignes.
+       */
+      const rows = await this.prisma.$queryRaw<{ tripId: string; exces: boolean; ancienne: boolean }[]>`
+        SELECT ta."tripId" AS "tripId",
+               EXISTS (
+                 SELECT 1 FROM jsonb_array_elements(COALESCE(ta.detail->'speeding', '[]'::jsonb)) s
+                  WHERE (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
+               ) AS "exces",
+               (ta.detail->'vitesse' IS NULL OR ta.detail->'vitesse' = 'null'::jsonb) AS "ancienne"
           FROM trip_analyses ta
-         WHERE ta."tripId" = ANY(${tripIds}::uuid[])
-           AND EXISTS (
-             SELECT 1 FROM jsonb_array_elements(COALESCE(ta.detail->'speeding', '[]'::jsonb)) s
-              WHERE (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
-           )`;
-      return new Set(rows.map((r) => r.tripId));
+         WHERE ta."tripId" = ANY(${tripIds}::uuid[])`;
+      const faits: FaitsParTrajet = { avecExces: new Set(), anciennes: new Set() };
+      for (const r of rows) {
+        if (r.exces) faits.avecExces.add(r.tripId);
+        if (r.ancienne) faits.anciennes.add(r.tripId);
+      }
+      return faits;
     } catch (e) {
       /**
-       * ⚠️ Seules les erreurs de BASE retombent à zéro (base injoignable, requête refusée) : un
-       * classement sans sa colonne « avec excès » reste juste. Une erreur de PROGRAMMATION —
-       * colonne mal orthographiée, client Prisma sans `$queryRaw` dans un simulacre — doit
-       * remonter : la rattraper ici transformerait un défaut de code en zéro silencieux pour
-       * toute la flotte, avec un simple avertissement que personne ne lit.
+       * ⚠️ Seules les erreurs de BASE retombent à « aucun fait connu » (base injoignable,
+       * requête refusée) : un classement sans sa colonne « avec excès » et sans sa réserve
+       * reste juste. Une erreur de PROGRAMMATION — colonne mal orthographiée, client Prisma
+       * sans `$queryRaw` dans un simulacre — doit remonter : la rattraper ici transformerait
+       * un défaut de code en zéro silencieux pour toute la flotte, avec un simple
+       * avertissement que personne ne lit.
        */
       if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError || e instanceof Prisma.PrismaClientInitializationError) {
-        this.logger.warn(`excès établis indisponibles pour le classement : ${e.message}`);
-        return new Set();
+        this.logger.warn(`faits par trajet indisponibles pour le classement (excès établis et analyses anciennes) : ${e.message}`);
+        return vide;
       }
       throw e;
     }
   }
 
+  /**
+   * Score PERSO d'UNE entité (véhicule/conducteur/groupe) : sa note + son RANG dans le classement +
+   * son écart à la moyenne. Réutilise `scores()` (même périmètre/anti-IDOR) puis extrait l'entité.
+   */
   async entityScore(user: AuthUser, scope: DrivingScoreScope, id: string, fromIso?: string, toIso?: string, fleetId?: string): Promise<DrivingScoreDetailWithDormancyDto> {
     const all = await this.scores(user, scope, fromIso, toIso, fleetId);
     const idx = all.rows.findIndex((r) => r.id === id);

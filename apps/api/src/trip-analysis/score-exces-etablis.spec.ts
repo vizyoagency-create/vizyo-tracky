@@ -43,7 +43,14 @@ function build(opts: { etablis: string[]; queryRawEchoue?: boolean }) {
       captured.sql = strings.join('?');
       captured.params = params;
       if (opts.queryRawEchoue) return Promise.reject(new Prisma.PrismaClientUnknownRequestError('base injoignable', { clientVersion: 'test' }));
-      return Promise.resolve(opts.etablis.map((tripId) => ({ tripId })));
+      // ⚠️ La requête rend UNE ligne par analyse avec DEUX booléens depuis qu'elle porte aussi
+      // l'ancienneté : un simulacre qui filtrerait la liste ne décrirait plus Postgres, et le
+      // service ne verrait jamais de ligne à `exces: false`.
+      return Promise.resolve(analyses.map((a) => ({
+        tripId: a.tripId,
+        exces: opts.etablis.includes(a.tripId),
+        ancienne: false,
+      })));
     }),
   };
   const access = { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') };

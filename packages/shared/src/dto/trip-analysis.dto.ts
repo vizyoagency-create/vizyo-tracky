@@ -439,6 +439,33 @@ export interface DrivingScoreRowDto {
    * vaut réellement.
    */
   totalTripCount: number;
+  /**
+   * Parmi les `tripCount` analyses NOTÉES de la ligne, combien ont été écrites AVANT la
+   * règle actuelle (lot V1, 4 septembre 2026). Leur marque est l'absence de `detail.vitesse`,
+   * exactement le critère de `analyseAvantRegleActuelle` — une seule définition partagée.
+   *
+   * ── À QUOI ÇA SERT ───────────────────────────────────────────────────────────────────
+   *
+   * Les écrans ne COMPTENT plus les faux excès de ces analyses : ils relisent le détail avec
+   * la règle actuelle, qui écarte les segments de durée nulle. Mais la NOTE, elle, est
+   * toujours calculée dessus. Un conducteur pouvait donc être classé sur 40 analyses dont 35
+   * écrites sous l'ancienne règle, et rien à l'écran ne le disait. Mesuré en production le
+   * 2026-09-05 : 4 036 analyses antérieures au lot V2 ne portent que des segments d'excès de
+   * durée nulle.
+   *
+   * ── CE N'EST PAS UN DÉFAUT, C'EST UNE RÉSERVE ────────────────────────────────────────
+   *
+   * La note reste la meilleure mesure disponible, et ces analyses sont reprises par le
+   * rattrapage tant que les positions du trajet existent : le chiffre baissera de lui-même.
+   * On dit sur QUOI la note est calculée ; on ne déclare pas la note fausse.
+   *
+   * ⚠️ MÊME POPULATION que `tripCount` — les analyses dont l'éco-score n'est pas nul. Compté
+   * sur une population plus large, le rapport « N sur `tripCount` » affirmerait un ratio
+   * impossible (« 12 anciennes sur 8 analysées »).
+   *
+   * `0` = toutes les analyses sur lesquelles la note repose sont récentes.
+   */
+  oldFormulaTripCount: number;
   distanceKm: number;
   /** Nombre total de trajets AVEC au moins un excès. */
   speedingTrips: number;

@@ -93,14 +93,25 @@ function makeSvc(
   const prisma = {
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(ANALYSES) },
     /**
-     * Excès ÉTABLIS (règle partagée), demandés en SQL — cf. `trajetsAvecExces`. Aucun test de
-     * cette suite ne lit `speedingTrips` : ce simulacre existe pour que le service passe par sa
-     * vraie requête et non par un repli. ⚠️ Son ABSENCE ferait échouer la suite (TypeError non
-     * rattrapée, et c'est voulu) : c'est la garde qui empêche un simulacre incomplet de faire
-     * passer un zéro silencieux pour un classement sans excès.
+     * Les DEUX faits par trajet (excès établi + analyse antérieure à la règle actuelle),
+     * demandés en une passe SQL — cf. `faitsParTrajet`. Aucun test de cette suite ne lit
+     * `speedingTrips` ni `oldFormulaTripCount` : ce simulacre existe pour que le service passe
+     * par sa vraie requête et non par un repli. ⚠️ Son ABSENCE ferait échouer la suite
+     * (TypeError non rattrapée, et c'est voulu) : c'est la garde qui empêche un simulacre
+     * incomplet de faire passer un zéro silencieux pour un classement sans excès.
+     *
+     * ⚠️ UNE LIGNE PAR ANALYSE, avec ses deux booléens : c'est la forme que rend Postgres
+     * depuis que la requête porte les deux faits. Un simulacre resté à `[{ tripId }]` aurait
+     * rendu `undefined` sur les deux colonnes — donc « aucun excès, aucune ancienne » quoi
+     * qu'il arrive, sans qu'aucun test ne bronche.
      */
     $queryRaw: jest.fn().mockImplementation(() => Promise.resolve(
-      ANALYSES.filter((a) => (ANALYSIS_TEMPLATES[a.vehicleId]?.speedingCount ?? 0) > 0).map((a) => ({ tripId: a.tripId })),
+      ANALYSES.map((a) => ({
+        tripId: a.tripId,
+        exces: (ANALYSIS_TEMPLATES[a.vehicleId]?.speedingCount ?? 0) > 0,
+        // Toutes récentes ici : l'ancienneté a ses propres jeux d'essai.
+        ancienne: false,
+      })),
     )),
     trip: {
       findMany: jest.fn().mockResolvedValue(TRIPS),
