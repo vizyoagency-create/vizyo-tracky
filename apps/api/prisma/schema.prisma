@@ -2340,6 +2340,20 @@ model AiUsageLog {
   costUsd          Float    @default(0)
   latencyMs        Int?
   ok               Boolean  @default(true)
+  /**
+   * ══ LES ÉCHECS SONT DES LIGNES (chantier C3, 2026-09-05) ═════════════════════════════
+   * Jusqu'ici la table ne connaissait que les appels RÉUSSIS : l'écran « Coûts IA » est resté
+   * aveugle pendant trois jours de compte Anthropic à sec (rapports des 03 et 04/09). Une ligne
+   * `ok = false` porte la sorte d'échec, le motif du fournisseur (≤ 400), le fournisseur tenté,
+   * et une estimation SIMPLE de ce que l'appel aurait coûté. `costUsd` reste l'argent réellement
+   * facturé (0 pour un refus avant réponse ; l'usage réel pour une réponse tronquée ou refusée).
+   */
+  errorKind        String?
+  errorDetail      String?
+  /** 'claude' | 'gpt' — le fournisseur qui a répondu (ou refusé). Nul sur les lignes antérieures. */
+  provider         String?
+  /** Coût estimé d'un échec (jamais compté dans le plafond mensuel) ; nul sur un succès. */
+  estimatedCostUsd Float?
   /// Combien d'objets cet appel a réellement PRODUITS (trajets analysés, lieux
   /// qualifiés, créneaux proposés…). La page « Coûts IA » disait ce que l'IA
   /// coûte sans jamais dire ce qu'elle rend : une facture sans ligne.
@@ -2373,6 +2387,13 @@ model AiUsageLog {
 model AiBudget {
   id               String   @id @default(uuid()) @db.Uuid
   monthlyBudgetEur Float    @default(0)
+  /**
+   * Taux USD→EUR appliqué À LA LECTURE à tous les montants en euros. Avant le 2026-09-05 c'était
+   * 0,92 en dur (variable jamais déclarée ni posée), soit 7 % au-dessus du marché (≈ 0,86 relevé
+   * ce jour-là) — et le plafond mensuel se compare à cette dépense en euros. Modifiable depuis la
+   * page « Coûts IA », affiché à côté des montants.
+   */
+  usdToEurRate     Float    @default(0.86)
   updatedAt        DateTime @updatedAt
   updatedByUserId  String?  @db.Uuid
 
@@ -2803,6 +2824,14 @@ model AgendaAgentProposal {
   reasoning        String
   /// 'pending' | 'auto_applied' | 'applied' | 'dismissed'
   status           String   @default("pending")
+  /**
+   * Verdict de l'IA rendu APRÈS coup, par la file du poste (chantier C3, 2026-09-05) : la nuit,
+   * les propositions naissent avec une phrase mécanique ; le jugement arrive au passage suivant
+   * du courrier. `aiKeep = false` a passé la proposition en `dismissed` avec la raison de l'IA ;
+   * nul = avis pas encore rendu. Une réservation ferme n'est jamais annulée par ce verdict.
+   */
+  aiVerdictAt      DateTime?
+  aiKeep           Boolean?
   /// Réservation créée si appliquée / auto (VehicleEvent.id).
   createdEventId   String?  @db.Uuid
   /// 'scheduled' | 'manual' | 'incident' | 'maintenance' | 'reservation'
