@@ -934,6 +934,13 @@ c'est là que la détection rapide sert vraiment.
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : 🔴 **`A_TRAITER` — ROUVERT le 2026-09-03**
   *(était `APPLIQUE` depuis le 2026-08-04)*
+- 🔴 **Vu : 2026-09-05 — TROISIÈME JOUR, TROISIÈME VALEUR : `connexions` passe de 12 à 16.**
+  `github-actions-vizyo-auth` : **0 → 12 → 16** en trois passages, toujours **sans aucune option de
+  restriction**, toujours en root. La clé humaine `vizyo-vps-hostinger` est à **10 442** (9 371 la
+  veille) et reste **volontairement** non restreinte — le 🟠 en face d'elle est le comportement
+  voulu du détecteur. **2 empreintes vues, 0 non déclarée.**
+  *La série 0 → 12 → 16 clôt définitivement le débat ouvert le 09-03 : cette clé n'est pas
+  dormante, c'est un accès root de CI en usage quotidien.* Seuil de réescalade **inchangé**.
 - **Vu** : 2026-08-04 · **Mesure à la découverte** : 3 des 4 clés de `/root/.ssh/authorized_keys`
 
 > ### 🔴 2026-09-04 — LA CLÉ N'EST PAS DORMANTE : DOUZE SESSIONS ROOT EN VINGT ET UNE HEURES
@@ -1114,6 +1121,26 @@ découvre au pire moment.
 ## VPS-013 — Trois bases de production n'ont aucune sauvegarde exploitable
 
 - **Domaine** : sauvegardes · **Gravité** : 1 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-05 — 28ᵉ PASSAGE, ET LE CONSTAT EST INTACT MALGRÉ TROIS LIGNES VERTES.** La
+  table de couverture affiche `✅ à jour (0 j)` sur **les trois** bases. C'est un **dump lancé à la
+  main** le 2026-09-04 à **04 h 52 min 04**, *la même seconde pour les trois*, et **rien ne le
+  rejouera** : aucun timer, aucun cron, aucun script. Mesure du discriminant posé ce passage
+  (VPS-M81) : `vizyo-manager` **salve précédente à 142 jours**, `texto` et `capcom6` **une seule
+  copie chacun**.
+  ⚠️ **Sans ce discriminant, ce constat de gravité 1 aurait paru refermé pendant sept jours** — le
+  temps que l'âge de la copie franchisse le seuil d'abandon.
+  ⚠️ **Et le script qui aurait pu les produire existe, sans appelant** :
+  `/opt/vizyo-manager/deploy/backup-db.sh`, daté du **2026-03-21**, cité par aucun cron ni aucune
+  unité. Il n'est même pas l'auteur du fichier du 09-04 : il nomme ses archives
+  `vizyo_manager_<date>_<heure>` (souligné, forme des 25 copies antérieures, la dernière du
+  2026-04-15) alors que le fichier neuf porte un **tiret**, comme `texto` et `capcom6`.
+  ✅ **Ce qui a VRAIMENT changé, et c'est une bonne nouvelle** : `vizyo-auth` — une **8ᵉ** base,
+  que cet audit n'avait jamais énumérée (VPS-M80) — a reçu le 2026-09-04 une vraie unité
+  quotidienne, `vizyo-auth-backup.timer`, à **04 h 00 UTC** : *exactement le créneau que le plan
+  d'action de ce référentiel désignait comme libre*, avec `RandomizedDelaySec=300`,
+  `Persistent=true`, rétention 30 j et journalisation. **Le modèle à copier pour les trois autres
+  est désormais sur la machine.** ⚠️ Il n'a encore **jamais tourné seul** : première échéance
+  automatique le 2026-09-05 à 04 h 04.
 - **Vu : 2026-08-26** · **Mesure du jour** : 3 bases de production sur 7 moteurs en service ; `vizyo-manager` a **132 jours** (3 191 h) ; **cout total d'y remedier : 17,7 Mo/jour** (`texto` 8 932 kB · `vizyo-manager` 8 396 kB · `capcom6` 0,4 Mo) — **23ᵉ passage sans action**, sur une machine qui a **45 Go libres** et garde deja 6,7 Go de sauvegardes Tracky.
 - **Vu** : 2026-08-22 · **Mesure du jour** : 3 bases de production sur 7 moteurs en service ; `vizyo-manager` a **129 jours** (3 095 h) ; **cout total d'y remedier : 17,6 Mo/jour** (`texto` 8 836 kB · `vizyo-manager` 8 388 kB · `capcom6` 0,4 Mo) — **19e passage sans action**, sur une machine qui a **43 Go libres** et garde deja 6,8 Go de sauvegardes Tracky. *(mesure du 2026-08-21, conservee ci-dessous.)*
 - **Mesure du 2026-08-21, conservée** : 3 bases de production sur 7 moteurs en service ; `vizyo-manager` a **128 jours** (3 073 h) ; **cout total d'y remedier : 17,6 Mo/jour** (`texto` 8 828 kB · `vizyo-manager` 8 388 kB · `capcom6` 0,4 Mo) — **18e passage sans action**. ⚠️ Rappel de ce que porte `texto-postgres`, seule base de PRODUCTION sans aucune copie : `messages`, `allowlist_entries` et `allowlist_audit_logs`, c'est-a-dire la passerelle SMS. *(mesure du 2026-08-20, conservee ci-dessous.)*
@@ -1214,6 +1241,19 @@ passage suivant — c'est la raison d'être des `chiffres` du manifeste.
 ## VPS-015 — La sauvegarde de Vizyo Verify n'a jamais tourné toute seule
 
 - **Domaine** : sauvegardes · **Gravité** : **2** · **Statut** : `A_TRAITER` — **volet SYMPTÔME `APPLIQUE` le 2026-08-14 (prouvé par le TIMER, deux nuits), volet CAUSE toujours intact**
+- ✅ **Vu : 2026-09-05 — LE MOTIF DE CE CONSTAT EST RECONNU ET REFERMÉ AILLEURS, PAR ÉCRIT.**
+  `vizyo-auth-backup.service`, créé le 2026-09-04, porte dans son propre en-tête :
+  *« Absente jusqu'au 03/09/2026 : les scripts de sauvegarde étaient déposés sur le VPS depuis le
+  07/03/2026 mais rien ne les appelait. »* — **c'est VPS-015 mot pour mot, sur une autre
+  application, diagnostiqué et corrigé sans cet audit.**
+  ⚠️ **Et le motif s'est reproduit une troisième fois le même jour, sans être vu** :
+  `/opt/vizyo-manager/deploy/backup-db.sh` est sur la machine **depuis le 2026-03-21** et **personne
+  ne l'appelle** (VPS-013, VPS-M81). *Un script de sauvegarde posé sans déclencheur est le mode de
+  panne le plus fréquent de cette machine : trois occurrences en six mois, sur trois applications.*
+  ⚠️ **Ce que l'audit ne peut PAS encore dire** : `vizyo-auth-backup.timer` n'a **jamais tourné
+  seul**. Sa seule exécution est manuelle (09-04 à 07 h 34) ; première échéance automatique le
+  09-05 à 04 h 04. **Test écrit d'avance** : au passage du 2026-09-06, `/var/backups/vizyo-auth`
+  doit porter **deux** copies et une cadence d'environ **20 h**, pas « une seule salve ».
 - 🔴 **Vu : 2026-09-04 — LE SYMPTÔME TIENT (7 nuits d'affilée), LA CAUSE EST INTACTE, ET ELLE EST
   PLUS LARGE QU'ÉCRIT.** Le timer a déclenché **sept jours distincts de suite** (08-29 → 09-04,
   dernier à 03 h 30 min 30, 30 archives, toutes chiffrées) : *le volet symptôme ne bouge pas.*
@@ -4685,7 +4725,32 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## VPS-038 — Six boîtiers se sont tus le dimanche en deux heures, tous dans la même flotte
 
-- **Domaine** : données · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- **Domaine** : données · **Gravité** : **1** (montée le 2026-09-05, sur le seuil écrit le 09-03) ·
+  **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-05 — GRAVITÉ 1. LE SEUIL ÉCRIT D'AVANCE ARRIVE À ÉCHÉANCE, ET IL N'EST PAS
+  TENU.** Il exigeait le retour des six *« au passage du 2026-09-05 »* : ils sont muets depuis
+  **108,6 à 110,6 heures**, soit **4,6 jours**, tous les six, tous `OFFLINE`, tous dans
+  `2ad69ac1…`. **La montée en gravité ne repose sur aucune mesure neuve ni aucune interprétation :
+  c'est le test écrit il y a deux jours qui se prononce.**
+  ⚠️ **La PREMIÈRE branche du seuil n'est PAS franchie** : `2ad69ac1…` compte toujours **8
+  silencieux sur 30**, dont 2 antérieurs à l'incident. Aucun septième boîtier de cette flotte ne
+  s'est tu. C'est la **seconde** branche, datée, qui décide.
+  🔴 **ET LA FLOTTE CONTINUE DE SE RÉDUIRE — deux boîtiers de plus le 09-03**, dans **deux flottes
+  différentes** : `864035053277662` (`7cc3c2f7…`, dernière trame 09-03 18 h 38) et
+  `864035054756649` (`88627f81…`, 09-03 01 h 45). `positions`, par jour, sur huit jours :
+  **39 · 39 · 38 · 38 · 32 · 32 · 32 · 30** — soit **−23 %**.
+  ⚠️ **Et le volume ne le montre toujours pas** : 21 464 lignes le 09-04 contre 21 930 le 09-03,
+  **−2 %** pour **6 % d'émetteurs en moins**. Le rapport à J-7, lui, le dit : **×0,82**.
+  ⚠️ **Ce que l'audit ne peut PAS dire, et ne dira donc pas** : si les trois pertes ont la même
+  cause. Les six du 08-31 sont mono-flotte et groupés en deux heures ; les deux du 09-03 sont dans
+  deux flottes et séparées de 17 heures. **Les traiter comme un seul incident serait une hypothèse,
+  pas une mesure** (VPS-M01). Le fait établi est la trajectoire.
+  ⚠️ **Ne pas lire « 14 muets au registre » contre « 14 hier » comme une stabilisation** : le total
+  est identique, les **bandes** ont bougé (`6-24 h` : 1 → **0** ; `1-3 j` : 1 → **2**). Le boîtier
+  qui était à 7 h 30 est à **31 h 30** — il a changé de bande, pas disparu (VPS-M78).
+  🔑 **Nouveau seuil de réescalade** : redescend en **gravité 2** dès que le compte d'émetteurs de
+  `positions` repasse à **32 sur une journée complète**, et en `SURVEILLANCE` à **38**. Reste en
+  gravité 1 tant que ce compte ne remonte pas, **quel que soit** l'état des autres compteurs.
 - 🔴 **Vu : 2026-09-04 — LA COHORTE EST INCHANGÉE À SIX, MUETS DEPUIS 84 À 86 h.** Dernières
   trames toujours du **08-31 entre 11 h 53 et 13 h 50**. **Le seuil de réescalade n'est PAS
   atteint** : il exigeait *« un septième boîtier de la flotte `2ad69ac1…` »*, et il n'y en a pas.
@@ -4799,6 +4864,177 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M83 — Une explication rassurante offerte sans le test qui la réfuterait
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (règle de rédaction, pas de code)
+- **Vu** : 2026-09-05 · **Mesure** : le rapport du 2026-09-04 a écrit qu'un boîtier muet depuis
+  **7 h 30** était *« un véhicule **garé pour la nuit** »*. Vingt-quatre heures plus tard il est à
+  **31,5 h**, le second boîtier de la même phrase à **48,6 h**, et **aucun des deux n'a réémis**.
+  `positions` confirme leur départ par un chemin indépendant : **32 émetteurs le 09-03, 30 le 09-04**.
+- **QUOI — la cause** : **le détecteur avait raison, la rédaction est allée plus loin que lui.** La
+  ventilation par bande refusait de compter ces deux boîtiers comme une extension de VPS-038 —
+  c'était juste, ils sont dans d'autres flottes et ils y restent. Mais la bande `6-24 h` porte le
+  commentaire *« un véhicule garé la nuit entre ici »* : c'est une **liste de possibles**, et elle
+  a été lue puis republiée comme un **diagnostic**.
+- **`pourquoiInvisible`** : parce qu'une explication plausible ne coûte rien à écrire, rassure
+  immédiatement, et n'a **pas de compteur qui la contredise**. Contrairement à un chiffre faux,
+  elle ne laisse aucune trace mesurable — sauf le jour où elle est démentie.
+- **QUOI FAIRE** : **une explication écrite pour désamorcer un chiffre doit porter le test qui la
+  réfuterait, ou ne pas être écrite.** « Garé pour la nuit » avait un test évident et gratuit —
+  *il doit avoir réémis au passage suivant* — et il n'a pas été écrit. Le seul énoncé que la mesure
+  autorisait était : *« deux boîtiers d'autres flottes, muets depuis 7 h 30 et 24 h 30 ; à revoir
+  demain. »*
+- **`aNePasFaire`** : ⚠️ **ne pas ajouter de sonde au collecteur pour ça.** `collecte.sh` dit déjà
+  la bonne chose (*« Ne PAS le compter comme une panne **sans une autre preuve** »*). Ajouter un
+  mécanisme pour se protéger de sa propre plume serait le mauvais remède, et il coûterait à une
+  machine à 2 vCPU.
+- **Famille** : VPS-M01 sous sa forme la plus discrète — non pas une concomitance prise pour une
+  identification, mais une **cause nommée** pour clore un chiffre gênant ; puis VPS-M55, qui décrit
+  la republication d'une attribution jamais réexaminée.
+
+---
+
+### VPS-M82 — Un contrôle d'intégrité qui imprimait sa propre réfutation, sur la ligne d'à côté
+
+- **Domaine** : méthode · **Gravité** : 3 · **Statut** : ✅ `APPLIQUE` (corrigé le 2026-09-05)
+- **Vu** : 2026-09-05 · **Mesure** : l'archive `capcom6_sms_20260904-045204.sql.gz` — un
+  `mysqldump` **parfaitement complet** — était affichée :
+
+  ```
+  🟠 capcom6   se relit, mais SANS le marqueur de fin de pg_dump — dump interrompu, ou
+               archive qui n est pas un pg_dump.
+               Derniere ligne : -- Dump completed on 2026-09-04  4:52:05
+  ```
+
+- **QUOI — la cause** : le motif cherché était `dump complete`, en **minuscules** et sans variante.
+  `pg_dump` écrit *« PostgreSQL database dump complete »* ; `mysqldump` écrit
+  *« -- Dump completed on \<date\> »* — majuscule, et « complet**ed** ». `capcom6-mysql` est le seul
+  MySQL de la machine : le contrôle était **monolingue** sur un parc bilingue.
+- **`pourquoiInvisible`** : parce que le 🟠 était **plausible**. Un dump interrompu est un mode de
+  panne réel, la phrase de repli disait déjà *« ou archive qui n'est pas un pg_dump »*, et le seul
+  objet concerné est une base secondaire. **La preuve du contraire était imprimée par le contrôle
+  lui-même, une ligne plus bas, et personne ne l'avait rapprochée.**
+- **QUOI FAIRE** : motif **nommé par moteur**, et la sortie dit **lequel** a été trouvé —
+  *(marqueur pg_dump)* ou *(marqueur mysqldump)*. Un élargissement futur redevient visible au lieu
+  d'être silencieusement laxiste.
+- **Contre-épreuve — c'est la branche du REFUS qui comptait.** Élargir un motif de validation
+  risque de rendre le contrôle permissif : un **témoin fabriqué** (archive gzip valide, aucun
+  marqueur) est bien signalé 🟠. Les 6 archives réelles rendent 6 marqueurs identifiés, **0 🟠**.
+- **`aNePasFaire`** : ⚠️ **ne pas remplacer le motif par un `grep -qi "dump"`.** N'importe quelle
+  ligne de commentaire contenant le mot passerait : le contrôle deviendrait vert sur une archive
+  tronquée, ce qui est le seul défaut qu'il existe pour attraper.
+
+---
+
+### VPS-M81 — « À jour » ne veut pas dire « sauvegardée » : trois bases vertes sur un geste manuel
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (corrigé le 2026-09-05)
+- **Vu** : 2026-09-05 · **Mesure** : la table de couverture affichait
+
+  ```
+  vizyo-manager-postgres  ✅ a jour (0 j)   |  texto-postgres  ✅ a jour (0 j)
+  capcom6-mysql           ✅ a jour (0 j)
+  ```
+
+  **sur les trois bases exactes que VPS-013 signale sans filet depuis 27 passages.** Le contenu de
+  `/var/backups` tranche : **une copie chacune, toutes les trois horodatées `2026-09-04 04:52:04`
+  — la même seconde.** Aucun timer, aucun cron, aucun script ne les rejouera.
+
+- **QUOI — la cause** : **la table ne mesure qu'une chose, l'ÂGE de la copie la plus récente**, et
+  cette grandeur ne distingue pas un **mécanisme** d'un **geste**. Elle aurait affiché `✅ à jour`
+  le lendemain (1 j), `🟠 en retard` le surlendemain, et ne serait repassée au rouge qu'au
+  **septième** jour — pendant lequel le seul constat de gravité 1 encore ouvert du référentiel
+  aurait paru refermé.
+- **⚠️ Et le script qui aurait pu les produire existe, sans appelant** :
+  `/opt/vizyo-manager/deploy/backup-db.sh`, daté du **2026-03-21**, n'est cité par aucun cron,
+  aucune unité, aucun fichier de `/root`. Il n'est même pas l'auteur du fichier du 09-04 : il nomme
+  ses archives `vizyo_manager_<date>_<heure>` (souligné) — forme des 25 copies antérieures, la
+  dernière du **2026-04-15** — alors que le fichier neuf porte un **tiret**, comme ceux de `texto`
+  et `capcom6`. *Trois fichiers, une convention commune, une seule seconde : un geste.*
+- **`pourquoiInvisible`** : parce que le contrôle **disait vrai**. La copie a bien 0 jour. C'est la
+  question qui n'était pas celle qu'on croyait poser : on demandait *« cette base est-elle
+  sauvegardée ? »* et on mesurait *« quel âge a le dernier fichier ? »*. Le bloc « L'unité qui
+  PRODUIT chaque sauvegarde » existe précisément pour l'autre moitié — il ne liste que 4 unités,
+  aucune pour ces trois bases — mais **rien ne rapprochait les deux blocs de la même section**, et
+  un lecteur lit la table, pas la liste d'unités au-dessus.
+- **QUOI FAIRE** : publier l'**écart entre la copie la plus récente et la SALVE précédente**. Une
+  cadence en laisse une trace régulière ; un geste unique, non. Mesuré ce passage :
+  `vizyo-manager` **salve précédente à 142 j**, `texto` / `capcom6` / `vizyo-auth` **une seule
+  salve**, `vizyo-tracky` **24 h**, `vizyo-verify` **23 h**.
+- **⚠️ DÉFAUT DE MON PROPRE CORRECTIF, ATTRAPÉ AU BANC AVANT PUBLICATION.** La première version
+  comparait les deux **fichiers** les plus récents. Or `vizyo-verify` en dépose **deux par
+  exécution** (la base, puis les pièces) : elle annonçait **« cadence mesurée : 0 h »** sur la
+  sauvegarde la mieux tenue de la machine. *Fabriquer, dans le correctif écrit contre les nombres
+  qui ne mesurent pas ce qu'ils nomment, un nombre qui ne mesure pas ce qu'il nomme.* Corrigé en
+  comparant la **salve** précédente (> 1 h d'écart). **Le banc sur les six dossiers réels l'a
+  montré ; essayer le bloc sur le seul cas qui m'intéressait ne l'aurait pas montré** (VPS-M35).
+- **`aNePasFaire`** : ⚠️ **ne pas chercher le producteur par `grep` du chemin dans les scripts.**
+  Ça marche sur les quatre unités existantes, et ça déclarerait « aucun mécanisme » sur n'importe
+  quel script calculant sa destination (`DEST=/var/backups/$APP`). **Un contrôle de sauvegarde qui
+  crie au loup se fait désactiver en trois jours** (VPS-M13). L'écart entre deux salves est un
+  **fait**, pas une inférence.
+- **Coût** : **zéro commande supplémentaire** — le `find` était déjà lancé pour l'âge ; on garde
+  tous ses horodatages au lieu de n'en retenir qu'un.
+- **Famille** : VPS-004, VPS-M06, VPS-M13, VPS-M15 — troisième occurrence de *« on vérifiait la
+  TRACE et jamais l'EFFET »*, cette fois **à l'intérieur d'une section qui contient déjà les deux
+  moitiés sans les rapprocher**.
+
+---
+
+### VPS-M80 — Une base de production n'a jamais été énumérée, et le dénominateur la cachait
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` (corrigé le 2026-09-05)
+- **Vu** : 2026-09-05 · **Mesure** :
+
+  ```
+  filtre par NOM seul  (avant) : 7 conteneurs de base
+  filtre nom OU IMAGE  (apres) : 8
+  rattrapee par l image seule  : vizyo-auth-db (postgres:17-alpine, PostgreSQL 17.9)
+  ```
+
+  `vizyo-auth-db` porte la base `vizyo_auth` — **l'authentification de toutes les applications de
+  la machine**.
+- **QUOI — la cause** : le filtre d'énumération était
+  `docker ps --format '{{.Names}}' | grep -Ei "postgres|postgis|mysql|maria|mongo"`. Il porte sur
+  le **nom du conteneur**. Un conteneur nommé `-db` n'y entre pas — **depuis le premier passage de
+  cet audit.**
+- **Ce que ça cachait, aux trois endroits où le filtre servait** :
+
+  | section | affiché | manquant |
+  |---|---|---|
+  | 5 — Données PostgreSQL | 6 bases détaillées | taille, cache, connexions, tables, rétention de `vizyo_auth` |
+  | 12 — Levier 4 | **« ✅ 6 / 6 bases PostgreSQL examinées »** | le **dénominateur** vient du filtre défaillant : vert **sur son propre angle mort** |
+  | 11 — Couverture des sauvegardes | 7 lignes | `vizyo-auth-db` absent — et une base sans sauvegarde y apparaît **par son absence** |
+
+- **`pourquoiInvisible`** : **parce que le seul symptôme était une absence, et qu'aucune ligne ne
+  l'annonçait.** La section 5 affichait six bases saines ; rien ne disait combien il aurait dû y en
+  avoir. *« 6 / 6 » n'est pas une mesure de couverture, c'est une tautologie : numérateur et
+  dénominateur viennent du même filtre.* Et l'ironie est mesurable : `vizyo-auth-db` a reçu une
+  sauvegarde le 2026-09-04, **sans que cet audit l'ait jamais demandée** — s'il n'en avait pas reçu,
+  l'audit ne l'aurait **jamais** dit.
+- **QUOI FAIRE** : filtre sur le **nom OU l'image**, et **publier ce que le nom seul aurait raté**
+  (un rattrapage silencieux serait un correctif dont on ne pourrait plus mesurer la valeur).
+- **⚠️ DEUXIÈME CORRECTION, DISTINCTE DE LA PREMIÈRE** : reconnaître un objet et savoir le
+  **rapprocher** sont deux choses. Une fois détecté, `vizyo-auth-db` ne correspondait à aucun
+  dossier de `/var/backups` (`vizyo-auth-db` ⊄ `vizyo-auth`) et serait entré dans la table pour y
+  être déclaré **« AUCUNE SAUVEGARDE » à tort** — un faux positif sur la base d'authentification,
+  c'est-à-dire exactement le genre d'alerte qui fait désactiver un contrôle. Le suffixe
+  `-db`/`-database` est retiré de la clé de rapprochement.
+- **Contre-épreuve, jouée sur la machine** : 7 → 8 conteneurs ; les **8** clés dérivées correctes
+  (`capcom6-mysql`→`capcom6`, `vizyo-auth-db`→`vizyo-auth`, …) ; un motif introuvable
+  (`cockroach|firebird`) rend du vide sans faux positif.
+- **Coût** : **zéro commande supplémentaire** — le même `docker ps`, avec un champ de plus dans le
+  gabarit.
+- **`aNePasFaire`** : ⚠️ **ne pas conclure que `vizyo-auth-db` est mesuré pour autant.** Le
+  collecteur corrigé n'a **pas** été rejoué ce passage (133 s de production pour revalider un bloc
+  serait un mauvais échange) : ses tables et son `random_page_cost` ne seront lus qu'au passage
+  suivant. *Un correctif écrit n'est pas une mesure faite.*
+- **Famille** : **VPS-M34 mot pour mot** — « le levier PostgreSQL n'examinait que la moitié des
+  bases » — et la règle qui l'interdit (VPS-M08 / VPS-M22 : *« toute extraction conditionnelle doit
+  annoncer son dénominateur »*) était écrite **dans le commentaire de ce bloc même**.
+
+---
 
 ### VPS-M79 — Une disparition attribuée au seul mécanisme visible, alors qu'un ménage quotidien la produit et jette sa trace
 

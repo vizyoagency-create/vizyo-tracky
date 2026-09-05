@@ -1427,8 +1427,39 @@ section "5. DONNEES (PostgreSQL)"
 # jours plus tard — ESSAYER LES BRANCHES NE REMPLACE PAS ESSAYER LE MONTAGE. Le correctif du
 # 08-17 a ete valide par six branches ET une contre-epreuve 6/6 sur la machine ; aucune de ces
 # sept verifications ne pouvait le voir, parce qu'elles rejouaient le BLOC, jamais le SCRIPT.
+#
+# ⚠️⚠️ CORRIGE LE 2026-09-05 (VPS-M80) — L'ENUMERATION DES BASES SE FAISAIT SUR LE NOM DU
+# CONTENEUR, ET ELLE A MANQUE UNE BASE DE PRODUCTION PENDANT TOUTE LA VIE DE CET AUDIT.
+# `vizyo-auth-db` est un `postgres:17-alpine` qui porte l'authentification de TOUTES les
+# applications de la machine. Son nom finit par `-db`, pas par `-postgres` : il etait donc
+# absent de cette section, absent du levier 4 — qui annoncait « ✅ 6 / 6 bases PostgreSQL
+# examinees », un denominateur calcule par le filtre defaillant lui-meme, donc rassurant sur
+# son propre angle mort (VPS-M34, mot pour mot) — et absent de la table de couverture des
+# sauvegardes de la section 11, ou une base sans sauvegarde apparait par son ABSENCE.
+# Le filtre porte desormais sur le NOM **ou** l'IMAGE, et il DIT ce que le nom seul aurait rate.
+db_conteneurs() {   # $1 = motif de moteurs (ERE, en minuscules)
+  docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null \
+    | awk -F'|' -v m="$1" '{n=tolower($1); i=tolower($2)} n ~ m || i ~ m {print $1}' | sort -u
+}
+db_vues_par_image_seule() {   # celles que le NOM seul aurait manquees — a publier, pas a taire
+  docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null \
+    | awk -F'|' -v m="$1" '{n=tolower($1); i=tolower($2)} i ~ m && n !~ m {print $1" ("$2")"}' | sort -u
+}
+MOTEURS_PG='postgres|postgis'
+MOTEURS_TOUS='postgres|postgis|mysql|maria|mongo'
+RATTRAPEES=$(db_vues_par_image_seule "$MOTEURS_TOUS")
+if [ -n "$RATTRAPEES" ]; then
+  printf '  🟠 %s conteneur(s) de base reconnu(s) par leur IMAGE et NON par leur nom (VPS-M80) :\n' \
+    "$(printf '%s\n' "$RATTRAPEES" | wc -l)"
+  printf '%s\n' "$RATTRAPEES" | sed 's/^/       /'
+  echo "     Avant le 2026-09-05, ces conteneurs etaient absents de TOUTE cette section, du"
+  echo "     levier 4 et de la couverture des sauvegardes — et leur absence se lisait comme"
+  echo "     « rien a signaler ». Le denominateur « N / N bases examinees » les ignorait aussi."
+else
+  echo "  ✅ aucun conteneur de base que le nom seul aurait manque (filtre nom OU image, VPS-M80)"
+fi
 RPC_CACHE=''
-for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|postgis"); do
+for pg in $(db_conteneurs "$MOTEURS_PG"); do
   U=$(docker exec "$pg" printenv POSTGRES_USER 2>/dev/null)
   D=$(docker exec "$pg" printenv POSTGRES_DB   2>/dev/null)
   [ -z "$U" ] && continue
@@ -2938,9 +2969,13 @@ done
 
 sub "Couverture : chaque base EN SERVICE a-t-elle une sauvegarde ?"
 MAINTENANT=$(date +%s)
-for cont in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei "postgres|postgis|mysql|maria|mongo"); do
+for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   # Rapprochement par prefixe : `tracky-postgres` → un dossier contenant « tracky ».
-  cle=$(echo "$cont" | sed -E 's/-(postgres|postgis|mysql|mariadb|mongo).*$//')
+  # ⚠️ Le second `sed` est le corollaire de VPS-M80 : `vizyo-auth-db`, une fois reconnu par son
+  # image, ne se rapproche d'aucun dossier tant que son suffixe `-db` n'est pas retire — il
+  # serait entre dans la table pour y etre declare « AUCUNE SAUVEGARDE » a tort. Reconnaitre un
+  # objet et savoir le rapprocher sont deux corrections, pas une.
+  cle=$(echo "$cont" | sed -E 's/-(postgres|postgis|mysql|mariadb|mongo).*$//; s/-(db|database)$//')
   # ⚠️ PIEGE PAYE A L'ECRITURE MEME DE CE CONTROLE, le 2026-08-05 — il faut le laisser ecrit.
   # La premiere version s'arretait au PREMIER dossier correspondant (`break`). Pour
   # `tracky-postgres`, le premier dossier contenant « tracky » est `tracky-pre-deploy-20260427`
@@ -2949,13 +2984,27 @@ for cont in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei "postgres|p
   # alors que sa sauvegarde etait fraiche. Un controle de sauvegarde qui crie au loup se fait
   # desactiver en trois jours, et c'est ainsi qu'on perd la vraie alerte.
   # On balaie donc TOUS les dossiers correspondants et on garde la copie LA PLUS RECENTE.
-  trouve=""; agemax=""; recent=0
+  trouve=""; agemax=""; recent=0; horodatages=""
   for d in /var/backups/*/; do
     case "$(basename "$d")" in
       *"$cle"*)
         t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
         trouve="${trouve}${trouve:+, }$(basename "$d")"
         [ -n "$t" ] && [ "${t%.*}" -gt "$recent" ] && recent=${t%.*}
+        # ⚠️⚠️ AJOUTE LE 2026-09-05 (VPS-M81) — « A JOUR » NE VEUT PAS DIRE « SAUVEGARDEE ».
+        # Le 2026-09-04 a 04 h 52, quelqu'un a lance A LA MAIN un dump de `vizyo-manager`,
+        # `vizyo-texto` et `capcom6`. Au passage suivant, cette table affichait « ✅ a jour
+        # (0 j) » sur les TROIS bases que VPS-013 signale sans filet depuis 27 passages —
+        # alors qu'AUCUN timer, AUCUN cron, AUCUN script ne les produit. L'age de la derniere
+        # copie ne distingue pas un MECANISME d'un GESTE, et il aurait affiche vert quatre
+        # jours de suite avant de repasser au rouge sans que rien n'ait change.
+        # Le discriminant est mesurable et il ne suppose rien : l'ECART entre les DEUX copies
+        # les plus recentes. Une cadence en laisse une trace ; un geste unique, non.
+        # ⚠️ On ne cherche PAS a nommer le producteur : un script qui calcule sa destination
+        # (`DEST=/var/backups/$APP`) serait introuvable par grep, et un controle de sauvegarde
+        # qui crie au loup se fait desactiver en trois jours (VPS-M13).
+        horodatages="${horodatages}$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null)
+"
         ;;
     esac
   done
@@ -2975,6 +3024,36 @@ for cont in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei "postgres|p
     verdict="✅ a jour ($agemax j)"
   fi
   printf '  %-26s %-42s %-28s %s\n' "$cont" "$verdict" "${trouve:-—}" "$nature"
+  # ── Cadence : y a-t-il une TRACE de mecanisme, ou une seule copie posee a la main ? ──
+  if [ "$recent" -gt 0 ]; then
+    deux=$(printf '%s' "$horodatages" | grep -E '^[0-9]' | sort -rn | head -2)
+    nb=$(printf '%s' "$horodatages" | grep -cE '^[0-9]')
+    # ⚠️ DEFAUT DE MON PROPRE CORRECTIF, ATTRAPE AU BANC LE 2026-09-05 AVANT PUBLICATION.
+    # La premiere version comparait les DEUX FICHIERS les plus recents. Or `vizyo-verify`
+    # depose DEUX fichiers par execution (la base, puis les pieces) : elle annoncait donc
+    # « cadence mesuree : 0 h » sur la sauvegarde la mieux tenue de la machine. Le nombre
+    # n'etait pas faux, il ne mesurait pas ce que son nom disait — exactement le defaut que
+    # ce bloc existe pour attraper, retourne contre lui-meme. On compare desormais la plus
+    # recente a la plus recente d'une AUTRE SALVE (plus d'une heure d'ecart).
+    t1=$(printf '%s\n' "$deux" | sed -n 1p); t1=${t1%.*}
+    t2=$(printf '%s' "$horodatages" | grep -E '^[0-9]' | sed 's/\..*//' \
+         | awk -v r="$t1" '$1 <= r-3600' | sort -rn | head -1)
+    if [ "$nb" -lt 2 ] || [ -z "$t2" ]; then
+      printf '     ⚠️ UNE SEULE SALVE DE COPIES (%s fichier(s), tous a la meme heure) — aucune\n' "$nb"
+      printf '        cadence mesurable. Une copie recente n est pas une sauvegarde : rien dans\n'
+      printf '        les FICHIERS ne prouve qu un mecanisme la refera (VPS-M81). Croiser avec le\n'
+      printf '        bloc « L unite qui PRODUIT chaque sauvegarde » ci-dessus, qui, lui, le dit.\n'
+    else
+      ecart=$(( (t1 - t2) / 3600 ))
+      if [ "$ecart" -gt 168 ]; then
+        printf '     ⚠️ COPIE ISOLEE — la salve precedente date de %s j (%s h). Une cadence laisse\n' \
+          "$(( ecart / 24 ))" "$ecart"
+        printf '        une trace reguliere ; cet ecart designe un GESTE, pas un mecanisme (VPS-M81).\n'
+      else
+        printf '     cadence mesuree : %s h depuis la salve precedente (%s copies au total)\n' "$ecart" "$nb"
+      fi
+    fi
+  fi
   # ── Ce que COUTERAIT la sauvegarde manquante (angle mort n° 5 du rapport du 2026-08-08) ──
   # ⚠️ On repetait « texto et capcom6 n'ont aucune sauvegarde » depuis CINQ passages sans
   # jamais dire ce que la corriger couterait. Or c'est le seul chiffre qui tranche le debat :
@@ -3134,8 +3213,18 @@ for d in /var/backups/*/; do
   fin=$(timeout 120 $LOW gzip -dc "$fic" 2>/dev/null | tail -8); rc=$?
   if [ "$rc" -ne 0 ]; then
     printf '  🔴 %-26s %s ILLISIBLE OU TRONQUEE — cette sauvegarde ne restaurera pas\n' "$(basename "$d")" "$(basename "$fic")"
-  elif echo "$fin" | grep -q "dump complete"; then
-    printf '  ✅ %-26s %s se relit ET le dump est COMPLET\n' "$(basename "$d")" "$(basename "$fic")"
+  # ⚠️⚠️ CORRIGE LE 2026-09-05 (VPS-M82) — CE CONTROLE IMPRIMAIT SA PROPRE REFUTATION.
+  # Le motif etait `dump complete`, en minuscules et sans variante. Un `mysqldump` termine par
+  # « -- Dump completed on <date> » : majuscule, et « completed ». Le 2026-09-05, l'archive
+  # `capcom6` — un mysqldump PARFAITEMENT COMPLET — a donc ete affichee en 🟠 « SANS le marqueur
+  # de fin », suivie, sur la ligne d'a cote, de « Derniere ligne : -- Dump completed on
+  # 2026-09-04 4:52:05 ». Le controle publiait la preuve qu'il avait tort, dans sa propre sortie.
+  # Le motif est desormais NOMME par moteur : on dit LEQUEL a ete trouve, ce qui rend un
+  # elargissement futur visible au lieu de silencieusement laxiste.
+  elif echo "$fin" | grep -qi "PostgreSQL database dump complete"; then
+    printf '  ✅ %-26s %s se relit ET le dump est COMPLET (marqueur pg_dump)\n' "$(basename "$d")" "$(basename "$fic")"
+  elif echo "$fin" | grep -qi -- "-- Dump completed on"; then
+    printf '  ✅ %-26s %s se relit ET le dump est COMPLET (marqueur mysqldump)\n' "$(basename "$d")" "$(basename "$fic")"
   else
     printf '  🟠 %-26s %s se relit, mais SANS le marqueur de fin de pg_dump —\n' "$(basename "$d")" "$(basename "$fic")"
     printf '     %-26s dump interrompu, ou archive qui n est pas un pg_dump. Derniere ligne : %s\n' "" "$(echo "$fin" | tail -1 | cut -c1-60)"
@@ -3423,7 +3512,13 @@ sub "Levier 4 — reglages PostgreSQL"
 # C'est VPS-M08 / VPS-M22 a l'identique — « toute extraction conditionnelle doit annoncer son
 # denominateur » — et la regle etait ecrite. Le `head -3` lui est anterieur, et il a meme ete
 # EDITE la veille (SIGPIPE) sans que personne ne demande pourquoi il etait la.
-PG_TOUS=$(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | grep -E "postgres|postgis")
+# ⚠️ ET LE 2026-09-05, LE MEME DENOMINATEUR ETAIT ENCORE TRONQUE, PAR L'AUTRE BOUT (VPS-M80) :
+# il annoncait « ✅ 6 / 6 bases PostgreSQL examinees » alors que la machine en porte SEPT.
+# `vizyo-auth-db` (postgres:17-alpine, authentification de toutes les applications) etait exclu
+# par le filtre de NOM — donc exclu du numerateur ET du denominateur, ce qui rend le controle
+# vert sur son propre angle mort. C'est exactement le defaut que ce bloc denonce depuis le
+# 2026-08-13, avec un autre filtre. Le filtre vient desormais de `db_conteneurs` (nom OU image).
+PG_TOUS=$(db_conteneurs "$MOTEURS_PG")
 PG_NB=$(printf '%s\n' "$PG_TOUS" | grep -c .)
 PG_VUS=0
 #
