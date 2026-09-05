@@ -25,6 +25,13 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
  * Refonte agenda/IA (2026-07, P3.4) — Revue des propositions de l'agent nocturne.
  * Liste les suggestions récurrentes en attente (« le 731, lundi 8h → Carcassonne ») avec le POURQUOI
  * vulgarisé, et permet de valider (→ réservation) ou refuser. Société = sélecteur global.
+ *
+ * Avis de l'IA (design/C3 point 7, 2026-09-05) : une proposition naît avec une phrase mécanique et
+ * l'IA la relit APRÈS coup, depuis le poste. Une carte AFFICHE l'avis quand il est rendu, et ne dit
+ * RIEN sinon. ⚠️ Elle n'annonce pas « en attente » : les propositions créées avant la bascule — 339
+ * encore vivantes le 05/09 — n'ont jamais été soumises et n'auront jamais d'avis ; promettre à leur
+ * sujet un avis qui ne viendra pas ferait passer un stock ancien pour une chaîne en panne.
+ * Les propositions que l'IA a écartées sont passées en `dismissed` : elles ne sont pas listées ici.
  */
 @Component({
   selector: 'app-agenda-agent-proposals-sheet',
@@ -58,6 +65,12 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
                   @if (p.destinationLabel) { <span class="ap-dest"><lucide-icon [img]="MapPinIcon" [size]="12"></lucide-icon> {{ p.destinationLabel }}</span> }
                 </p>
                 <p class="ap-why">{{ p.reasoning }}</p>
+                <!-- Une proposition écartée par l'IA n'est plus listée (dismissed) : un avis
+                     rendu ici est donc « conservée » ; le repli « écartée » ne sert qu'à ne
+                     jamais afficher un faux « conservée » si un statut inattendu arrivait. -->
+                @if (p.aiVerdictAt) {
+                  <p class="ap-ia ap-ia--rendu">Avis IA du {{ p.aiVerdictAt | date:'dd/MM HH:mm' }} : {{ p.aiKeep === false ? 'écartée' : 'conservée' }}</p>
+                }
                 @if (canManage()) {
                   <div class="ap-actions">
                     <button type="button" class="ap-btn ap-btn--ok" [disabled]="busyId() === p.id" (click)="apply(p)"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Réserver</button>
@@ -90,6 +103,8 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .ap-when { font-size: 12.5px; color: var(--fg-secondary); margin-top: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; text-transform: capitalize; }
     .ap-dest { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--tracky-light); text-transform: none; }
     .ap-why { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 6px; line-height: 1.45; }
+    .ap-ia { font-size: 10.5px; color: var(--fg-tertiary); margin-top: 6px; font-style: italic; }
+    .ap-ia--rendu { color: var(--texte-succes); font-style: normal; font-weight: 600; }
     .ap-actions { display: flex; gap: 8px; margin-top: 10px; }
     .ap-btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700; }
     .ap-btn--ok { background: rgba(16,224,160,.12); color: var(--tracky-light); border: 1px solid rgba(16,224,160,.25); }

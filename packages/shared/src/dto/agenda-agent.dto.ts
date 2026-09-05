@@ -46,8 +46,15 @@ export interface AgendaAgentSettingsDto {
   monthCostEur: number;
 }
 
-/** Statut d'une proposition de l'agent. */
-export type AgendaAgentProposalStatus = 'pending' | 'auto_applied' | 'applied' | 'dismissed';
+/**
+ * Statut d'une proposition de l'agent.
+ *
+ * `expired` (design/C3 point 7, 2026-09-05) : une suggestion `pending` dont le créneau est passé.
+ * Relevé en production le 05/09 : 1 954 `pending` dont 1 615 périmées, jamais aucune expiration —
+ * la liste montrait les 200 plus anciennes, toutes dépassées. Le cron horaire de l'agenda les
+ * bascule ; elles ne sont plus listées, et une réservation ferme n'est jamais concernée.
+ */
+export type AgendaAgentProposalStatus = 'pending' | 'auto_applied' | 'applied' | 'dismissed' | 'expired';
 
 /** Une proposition de l'agent nocturne : occurrence récurrente projetée (suggestion ou auto). */
 export interface AgendaAgentProposalDto {
@@ -66,6 +73,14 @@ export interface AgendaAgentProposalDto {
   origin: string; // scheduled | manual | incident | maintenance | reservation
   createdEventId: string | null;
   createdAt: string; // ISO
+  /**
+   * Verdict de l'IA, rendu APRÈS coup par la file du poste (design/C3 point 7) : la proposition
+   * naît avec une phrase mécanique, l'avis arrive au passage suivant du courrier (06:30 / 14:30).
+   * `aiVerdictAt` nul = avis pas encore rendu. `aiKeep` false a passé la proposition en
+   * `dismissed` avec la raison de l'IA dans `reasoning` ; true = conservée, `reasoning` vulgarisé.
+   */
+  aiVerdictAt: string | null; // ISO
+  aiKeep: boolean | null;
 }
 
 /** Bilan d'une exécution de l'agent. */
@@ -78,6 +93,13 @@ export interface AgendaAgentRunResultDto {
   skipped: number;
   /** L'agent tournait déjà pour cette flotte (anti-chevauchement). */
   alreadyRunning?: boolean;
+  /**
+   * Un travail `jugement-agenda` a été confié à la file du poste pour ce passage (design/C3
+   * point 7) : l'avis de l'IA arrivera au prochain passage du courrier. false = IA coupée pour
+   * la société, aucun motif à juger, ou file indisponible — les propositions restent telles
+   * quelles, avec leur phrase mécanique. L'écran ne promet un avis que si c'est vrai.
+   */
+  aiVerdictQueued?: boolean;
 }
 
 /**
@@ -99,7 +121,12 @@ export interface AgendaAgentRunDto {
   created: number;
   proposed: number;
   skipped: number;
-  /** La couche IA a-t-elle réellement jugé ? false = agent déterministe seul (IA coupée). */
+  /**
+   * La couche IA a-t-elle réellement jugé ce passage ? Toujours false à la création depuis le
+   * 2026-09-05 (design/C3 point 7) : le jugement est confié à la file du poste, et le passage
+   * ne devient `aiUsed` que lorsque le cron horaire CONSOMME le verdict. false durablement =
+   * agent déterministe seul (IA coupée pour la société) ou verdict jamais rendu.
+   */
   aiUsed: boolean;
   durationMs: number;
   /** Message d'erreur si le passage a échoué (tronqué). */

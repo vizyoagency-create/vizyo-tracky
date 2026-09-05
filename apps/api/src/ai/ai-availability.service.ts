@@ -35,6 +35,16 @@ export class AiAvailabilityService {
    */
   async isEnabledForFleet(fleetId: string | null | undefined, feature?: AiFeatureKey, now = Date.now()): Promise<boolean> {
     if (!this.router.isConfigured()) return false;
+    return this.isFeatureOnForFleet(fleetId, feature, now);
+  }
+
+  /**
+   * La même porte SANS l'exigence d'une clé API côté serveur : drapeau global de la fonction ET
+   * option IA de la société. C'est la porte des traitements qui passent par la FILE DU POSTE
+   * (chantier C3, 2026-09-05 : jugement de l'agent d'agenda) — l'abonnement du poste n'a que
+   * faire des clés du serveur, et un serveur sans clé ne doit pas éteindre le poste.
+   */
+  async isFeatureOnForFleet(fleetId: string | null | undefined, feature?: AiFeatureKey, now = Date.now()): Promise<boolean> {
     // Kill-switch GLOBAL par fonctionnalité (owner) — se cumule PAR-DESSUS l'interrupteur société.
     // Fail-open (défaut ON) : couper est une action explicite ; un glitch ne coupe pas l'IA payée.
     if (feature && !(await this.featureFlags.isEnabled(feature, now))) return false;

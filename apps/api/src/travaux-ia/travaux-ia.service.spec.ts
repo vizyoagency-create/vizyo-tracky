@@ -111,7 +111,8 @@ function observabilite() {
     }),
   };
   const errorLogger = { record: jest.fn().mockResolvedValue('id') };
-  const aiUsage = { record: jest.fn().mockResolvedValue(undefined) };
+  // `recordFailure` : le même chemin que les échecs de l'API (C3 point 5) — sorte, motif, exécutant.
+  const aiUsage = { record: jest.fn().mockResolvedValue(undefined), recordFailure: jest.fn().mockResolvedValue(undefined) };
   return { refroidissement, errorLogger, aiUsage };
 }
 
@@ -284,10 +285,11 @@ describe('File de travaux IA — le plafond de tentatives vaut AUSSI pour les «
 
     await svc.reprendrePerimes();
 
-    expect(obs.aiUsage.record).toHaveBeenCalledTimes(1);
-    expect(obs.aiUsage.record).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'place_analysis', executor: 'local', ok: false, model: 'local', fleetId: 'f-1',
-      inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0, resultCount: 0,
+    expect(obs.aiUsage.recordFailure).toHaveBeenCalledTimes(1);
+    expect(obs.aiUsage.record).not.toHaveBeenCalled();
+    expect(obs.aiUsage.recordFailure).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'place_analysis', executor: 'local', model: 'local', fleetId: 'f-1',
+      errorKind: 'travail_local', errorDetail: expect.stringContaining('x'),
     }));
   });
 
@@ -341,7 +343,7 @@ describe('File de travaux IA — le consommateur décide, jamais l’agent', () 
 
     expect(obs.errorLogger.record).toHaveBeenCalledTimes(1);
     expect((obs.errorLogger.record.mock.calls[0] as [Error])[0].message).toContain('rapport-activite');
-    expect(obs.aiUsage.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'activity_report', ok: false, executor: 'local' }));
+    expect(obs.aiUsage.recordFailure).toHaveBeenCalledWith(expect.objectContaining({ action: 'activity_report', executor: 'local', errorKind: 'travail_local' }));
   });
 
   it('l’état pour l’écran compte les quatre statuts', async () => {
@@ -427,6 +429,8 @@ describe('Résultat du courrier — jetons réels, ancien format toléré (C3, p
   it('l’action d’usage d’un type est celle du consommateur ; un type inconnu garde son nom', () => {
     expect(actionUsagePourType('analyse-lieu')).toBe('place_analysis');
     expect(actionUsagePourType('rapport-activite')).toBe('activity_report');
-    expect(actionUsagePourType('jugement-agenda')).toBe('jugement-agenda');
+    // Le jugement d'agenda (C3 point 7) se range sous l'action de ses succès : « Agent agenda ».
+    expect(actionUsagePourType('jugement-agenda')).toBe('agenda_agent');
+    expect(actionUsagePourType('type-futur')).toBe('type-futur');
   });
 });

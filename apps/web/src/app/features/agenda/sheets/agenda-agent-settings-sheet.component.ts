@@ -18,6 +18,7 @@ import {
   type AgendaAgentAutonomy,
   type AgendaAgentFrequency,
   type AgendaAgentRunDto,
+  type AgendaAgentRunResultDto,
   type FleetMetier,
   type ReservationBookingLinkDto,
 } from '@vizyo/tracky-shared';
@@ -81,9 +82,11 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
               <div class="aas-note">L'IA est désactivée pour cette société : l'agent ne peut pas être activé d'ici. S'il l'était déjà, ses passages planifiés continuent sans avis de l'IA — détection déterministe des habitudes, propositions et réservations selon l'autonomie réglée.</div>
             }
 
-            <!-- Activation de l'agent d'agenda (sous-ensemble de l'IA). -->
+            <!-- Activation de l'agent d'agenda (sous-ensemble de l'IA). Le texte dit où l'IA
+                 intervient : APRÈS coup, par le poste (design/C3 point 7) — ni la nuit ni le clic
+                 n'appellent l'API. -->
             <label class="aas-row aas-row--switch">
-              <div><span class="aas-lbl">Activer l'agent IA</span><span class="aas-sub">L'agent analyse et optimise l'agenda de {{ fleetName() || 'cette société' }}.</span></div>
+              <div><span class="aas-lbl">Activer l'agent IA</span><span class="aas-sub">L'agent détecte les habitudes de {{ fleetName() || 'cette société' }} et prépare les propositions ; l'IA les relit ensuite depuis le poste (06:30 et 14:30) pour écarter les douteuses et expliquer les autres.</span></div>
               <input type="checkbox" class="aas-sw" [checked]="enabled()" [disabled]="!aiMasterEnabled()" (change)="enabled.set($any($event.target).checked)">
             </label>
 
@@ -226,7 +229,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             <!-- Grisé sur la valeur ENREGISTRÉE de l'interrupteur, pas sur la case cochée : le
                  serveur juge le réglage en base (409 sinon), et un clic entre « cocher » et
                  « enregistrer » serait refusé. Le motif est écrit sous les boutons. -->
-            <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving() || !lancementPossible()" (click)="runNow()" [title]="motifLancement() ?? 'Analyser maintenant (sans attendre la nuit)'">
+            <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving() || !lancementPossible()" (click)="runNow()" [title]="titreLancement()">
               @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
               Lancer l'analyse
             </button>
@@ -402,6 +405,15 @@ export class AgendaAgentSettingsSheetComponent {
     if (!this.enregistre()) return 'L\'agent est désactivé : activez-le et enregistrez pour lancer une analyse.';
     return null;
   });
+  /**
+   * Info-bulle du bouton : le motif du refus s'il y en a un, sinon ce que le clic fait vraiment
+   * depuis le 05/09 — préparer les propositions, l'avis de l'IA venant du poste (design/C3
+   * point 7). Calculée ici plutôt que dans le gabarit : une apostrophe dans une expression
+   * Angular casse le parseur.
+   */
+  protected readonly titreLancement = computed(
+    () => this.motifLancement() ?? 'Préparer les propositions maintenant (sans attendre la nuit) ; l\'avis de l\'IA arrive au prochain passage du poste.',
+  );
 
   constructor() {
     effect(() => {
@@ -598,31 +610,49 @@ export class AgendaAgentSettingsSheetComponent {
 
   /**
    * Lance l'analyse de l'agent EN ARRIÈRE-PLAN (sans attendre la nuit) : on ferme la modal
-   * immédiatement et une PASTILLE en haut de l'agenda montre « l'IA travaille… » puis les
+   * immédiatement et une PASTILLE en haut de l'agenda montre « l'agent travaille… » puis les
    * résultats (cliquables pour ouvrir les propositions). Fini l'attente bloquée sans retour.
+   *
+   * Depuis le 2026-09-05 (design/C3 point 7), le clic suit le MÊME chemin que la nuit : détection
+   * déterministe, propositions préparées tout de suite avec leur phrase mécanique, et l'avis de
+   * l'IA confié au poste — il arrive au passage suivant du courrier (06:30 ou 14:30). Plus aucun
+   * appel API au clic : le résumé le dit, et ne promet un avis que si un travail est bien parti
+   * (`aiVerdictQueued`) — l'IA peut être coupée pour la société, ou n'avoir rien à juger.
    */
   protected runNow(): void {
     // Le bouton est grisé dans ce cas ; la garde évite un clic clavier ou un état intermédiaire.
     // Le serveur refuserait de toute façon (409, design/C3 point 2).
     if (!this.lancementPossible()) return;
     // Anti-double-lancement : la feuille reste montée ~220 ms après fermeture (animation de sortie).
-    // Sans cette garde, un double-tap créerait 2 analyses → coût IA doublé ET double placement auto possible.
+    // Sans cette garde, un double-tap créerait 2 analyses → double placement auto possible.
     if (this.aiJob.hasRunningOf('agent-run')) { this.closed.emit(); return; }
     this.aiJob.run({
       kind: 'agent-run',
       title: 'Analyse de l\'agenda',
-      hint: 'L\'IA parcourt les trajets récurrents et l\'agenda pour proposer (ou placer automatiquement) les réservations utiles. Ça prend quelques secondes…',
+      hint: 'L\'agent parcourt les trajets récurrents et l\'agenda pour préparer les propositions (ou placer automatiquement les réservations utiles). L\'avis de l\'IA, lui, est confié au poste : il arrive au prochain passage (06:30 ou 14:30). Ça prend quelques secondes…',
       task: firstValueFrom(this.agentApi.run(this.currentFleetId())),
-      summarize: (r) =>
-        // Verrou serveur (passage nocturne ou événementiel en cours) : rien n'a été lancé — ne pas
-        // le résumer en « rien à proposer », qui ferait passer un agent occupé pour un agent vide.
-        r.alreadyRunning
-          ? 'Une analyse était déjà en cours pour cette société : rien de nouveau n\'a été lancé.'
-          : r.created || r.proposed
-            ? `${r.created} réservation(s) placée(s) automatiquement · ${r.proposed} proposition(s) à valider.`
-            : 'Aucune optimisation à proposer pour l\'instant : aucun trajet récurrent assez net sur la période analysée.',
+      summarize: (r) => this.resumeLancement(r),
     });
     this.closed.emit(); // suivi désormais dans la pastille : plus de blocage de la modal.
+  }
+
+  /** Résumé lisible d'un lancement manuel, pour la pastille. Isolé pour rester testable et honnête. */
+  protected resumeLancement(r: AgendaAgentRunResultDto): string {
+    // Verrou serveur (passage nocturne ou événementiel en cours) : rien n'a été lancé — ne pas
+    // le résumer en « rien à proposer », qui ferait passer un agent occupé pour un agent vide.
+    if (r.alreadyRunning) return 'Une analyse était déjà en cours pour cette société : rien de nouveau n\'a été lancé.';
+    if (!r.created && !r.proposed) {
+      return 'Aucune optimisation à proposer pour l\'instant : aucun trajet récurrent assez net sur la période analysée.';
+    }
+    const preparees = `${r.proposed} proposition(s) préparée(s)`
+      + (r.created ? ` · ${r.created} réservation(s) placée(s) automatiquement` : '');
+    // ⚠️ `aiVerdictQueued = false` confond trois causes (IA coupée, rien à juger, file
+    // indisponible) : le dire « désactivée pour cette société » accusait un réglage que la pastille
+    // ne connaît pas — faux dès qu'un enfilage échoue sur une IA pourtant active.
+    const avis = r.aiVerdictQueued
+      ? ' — l\'avis de l\'IA arrivera au prochain passage du poste (06:30 ou 14:30).'
+      : ' — aucun avis de l\'IA n\'est attendu pour ce passage.';
+    return preparees + avis;
   }
 
   private errMsg(e: unknown): string {

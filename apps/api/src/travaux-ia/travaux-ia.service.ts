@@ -44,7 +44,7 @@ import { PrismaService } from '../prisma/prisma.service';
  * `fait` avant le déploiement) : jetons 0, jamais d'erreur.
  */
 
-export type TypeTravailIa = 'rapport-activite' | 'analyse-lieu';
+export type TypeTravailIa = 'rapport-activite' | 'analyse-lieu' | 'jugement-agenda';
 
 /** Un travail pris depuis plus longtemps que ça est réputé abandonné (agent tué). */
 export const REPRISE_APRES_MS = 2 * 60 * 60 * 1000;
@@ -134,6 +134,7 @@ export function actionUsagePourType(type: string): string {
   switch (type) {
     case 'analyse-lieu': return 'place_analysis';
     case 'rapport-activite': return 'activity_report';
+    case 'jugement-agenda': return 'agenda_agent';
     default: return type;
   }
 }
@@ -368,20 +369,18 @@ export class TravauxIaService {
     const fleetId = typeof contexte['fleetId'] === 'string' ? contexte['fleetId'] : null;
 
     try {
-      await this.aiUsage?.record({
+      // Même chemin que les échecs de l'API (C3 point 5) : la page « Coûts IA » lit la sorte et le
+      // motif dans la ligne, et l'exécutant `local` la tient hors de tout coût facturé.
+      await this.aiUsage?.recordFailure({
+        action: actionUsagePourType(t.type),
         userId: null,
         fleetId,
-        model: 'local',
-        action: actionUsagePourType(t.type),
         executor: 'local',
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheWriteTokens: 0,
-        cacheReadTokens: 0,
+        provider: 'claude',
+        model: 'local',
+        errorKind: 'travail_local',
+        errorDetail: t.erreur,
         latencyMs: null,
-        ok: false,
-        // 0 et non null : cet appel n'a RIEN produit, et c'est un fait, pas une absence de mesure.
-        resultCount: 0,
       });
     } catch (e) {
       this.logger.warn(`usage ok=false non journalisé pour ${t.id} : ${e instanceof Error ? e.message : String(e)}`);
