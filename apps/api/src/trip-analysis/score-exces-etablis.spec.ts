@@ -33,7 +33,7 @@ function build(opts: { etablis: string[]; queryRawEchoue?: boolean }) {
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(analyses) },
     trip: {
       findMany: jest.fn().mockResolvedValue(trips),
-      groupBy: jest.fn().mockResolvedValue([{ vehicleId: VEH, driverId: null, _count: { _all: 2 } }]),
+      groupBy: jest.fn().mockResolvedValue([{ vehicleId: VEH, driverId: null, _count: { _all: 2 }, _sum: { distanceKm: 0 } }]),
     },
     vehicle: {
       findMany: jest.fn().mockResolvedValue([{ id: VEH, plate: 'AB-123-CD', brand: 'Renault', model: 'Clio', groups: [], tracker: { id: 'trk', lastSeenAt: new Date() } }]),

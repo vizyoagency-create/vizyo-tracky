@@ -618,6 +618,60 @@ et le rapport hebdomadaire passent par la même route et ont le même angle mort
 
 ---
 
+### ⚠️ Constat du 5 septembre — les notes des conducteurs n'étaient pas fiables
+
+Le client l'a dit sans détour : « les notes des conducteurs ne sont pas fiables ». Mesuré en
+production le 5 septembre, **deux causes indépendantes**, dont aucune ne se voyait à l'écran :
+
+1. **Le classement comptait les faux excès.** Il lisait `speedingCount`, le compteur écrit au
+   moment de l'analyse — qui, sur les analyses antérieures au lot V2, inclut des segments de
+   durée nulle. **1 625 trajets sur 30 jours étaient marqués « avec excès » pour un point GPS
+   unique**, et ce chiffre s'affichait sous le nom d'un conducteur. Le récapitulatif de la page
+   Rapports (F06), lui, appliquait déjà la règle partagée : deux écrans, deux vérités.
+2. **Presque aucun trajet n'a de conducteur.** cdef31 : **2 675 trajets sur 2 707** sans
+   conducteur mais avec un groupe ; mh cars : **1 866 sur 1 886** sans conducteur NI groupe.
+   Le classement « Conducteurs » y est vide, ou assis sur 9 trajets ; le classement « Groupes »
+   ignore les conducteurs quand il y en a. Aucun des deux ne répond à « qui conduit comment ? ».
+
+**Quatre points, dans cet ordre, chacun vérifié en production avant le suivant :**
+
+| # | État | Ce qui change |
+|---|---|---|
+| 1 | **FAIT le 5 septembre** (`4b88836a`) | Le classement demande à Postgres les excès **établis** (règle partagée `EXCES_DUREE_MIN_SEC`), exactement comme la colonne « Excès » de F06. Vérifié en prod : **719 / 655 / 341 / 12** trajets avec excès (cdef31 / mh cars / A2R / Ahmed) contre 1 719 / 1 148 / 473 / 23 avant. ⚠️ Si la requête échoue, le repli est ZÉRO, jamais `speedingCount` : retomber sur l'ancien compteur réintroduirait le défaut au moment précis où personne ne regarde. |
+| 2 | **FAIT le 5 septembre** | Quatrième portée **« Conducteur ou groupe »** : chaque trajet est imputé au conducteur s'il est connu, sinon au groupe du véhicule, sinon à une ligne **« non attribué » — comptée, jamais classée** (on ne note pas « personne »). L'encart dit combien de trajets échappent à toute imputation, sur combien de trajets réels de la période, et renvoie vers les véhicules pour renseigner ce qui manque. |
+| 3 | à faire | Le même récapitulatif « par conducteur ou groupe » sur la page Rapports (F13). |
+| 4 | à faire | La note dit « calculé sur N analyses anciennes » quand une partie de ses analyses date d'avant la règle actuelle. |
+
+**Ce que le point 2 a exigé, et qu'il ne faut pas défaire :**
+- **Une seule fonction** calcule la clé d'imputation, pour le dénominateur (trajets réels) ET
+  pour la note : deux calculs de la même clé finissent par diverger, et une ligne annoncerait
+  « 2 notés sur 8 » avec six trajets qui ne sont pas les siens.
+- L'encart « non attribué » est rendu **quel que soit l'état du classement**. Une première
+  version ne l'affichait que si le classement était vide : chez cdef31, 17 groupes notés
+  l'auraient masqué, et le gestionnaire aurait cru lire une image complète.
+- Son dénominateur est le total **réel** de la période (`periodTripCount`), pas `totalTrips`
+  qui ne compte que les trajets analysés des lignes classées — « 1 866 sur 12 » aurait été un
+  mensonge.
+- Les deux routes (`/scores` et `/scores/:scope/:id`) lisent **la même liste** de portées : la
+  quatrième avait été ajoutée à l'une sans l'autre, et la fiche de détail aurait silencieusement
+  répondu la note « véhicule » d'un identifiant qui n'en est pas un.
+- La liste des véhicules chargée couvre ceux des trajets **analysés et des trajets réels**.
+  Relevé en revue contradictoire : elle ne couvrait que les premiers, donc un véhicule à groupe
+  qui avait roulé sans être analysé « n'avait pas de groupe », et ses trajets grossissaient le
+  trou de données — un mensonge, et un dénominateur de groupe amputé (le classement « Groupes »
+  en souffrait déjà). Par le même chemin, plus de sortie anticipée quand il n'y a aucune
+  analyse : une société qui démarre a des trajets à compter avant d'avoir des notes.
+- Les kilomètres de l'encart sont ceux des trajets **réels** (`trips.distanceKm`, renseigné sur
+  100 % des 5 352 trajets des 30 derniers jours), jamais la somme des seules analyses affichée à
+  côté d'un compte de trajets réels.
+- Une réponse en retard d'une portée quittée n'écrase plus la portée courante (numéro de
+  demande) ; la barre de portées passe à la ligne à 375 px (mesuré : 446 px pour 343 utiles
+  avant, 341 px sur deux rangées après).
+- Aucun véhicule n'est dans plusieurs groupes en production (vérifié le 5 septembre) ; si cela
+  arrivait, « le groupe du véhicule » devrait être défini avant d'être affiché.
+
+---
+
 ### Lot 9 — De page de trajets à page de gestion · **L**
 
 **Objectif** : brancher ce que l'API calcule déjà et que la page ne demande pas. Détail des gains en section 3.

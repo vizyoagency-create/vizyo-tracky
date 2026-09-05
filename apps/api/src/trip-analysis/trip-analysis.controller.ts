@@ -36,6 +36,16 @@ import { TripAutomationService } from './trip-automation.service';
  * consulte ses trajets par son endpoint dédié `/depot/trips/:id` (lot A3), dont le DTO
  * est restreint.
  */
+/**
+ * Portées de notation acceptées dans l'URL ; tout inconnu retombe sur `vehicle`.
+ * ⚠️ UNE seule liste pour `/scores` ET `/scores/:scope/:id` : la 4ᵉ portée avait été ajoutée
+ * à l'une sans l'autre, et la fiche de détail aurait silencieusement répondu « véhicule ».
+ */
+export const PORTEES_NOTATION: readonly DrivingScoreScope[] = ['vehicle', 'driver', 'group', 'attribution'];
+export function parseScope(brut: string | undefined): DrivingScoreScope {
+  return brut != null && (PORTEES_NOTATION as readonly string[]).includes(brut) ? (brut as DrivingScoreScope) : 'vehicle';
+}
+
 @Controller('trip-analysis')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, DepotScopeGuard)
 export class TripAnalysisController {
@@ -102,7 +112,7 @@ export class TripAnalysisController {
     @Query('to') to?: string,
     @Query('fleetId') fleetId?: string,
   ): Promise<DrivingScoresDto> {
-    const s: DrivingScoreScope = scope === 'driver' || scope === 'group' ? scope : 'vehicle';
+    const s = parseScope(scope);
     const scopedFleet = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || undefined) : undefined;
     return this.scores.scores(req.user, s, from, to, scopedFleet);
   }
@@ -121,7 +131,7 @@ export class TripAnalysisController {
     @Query('to') to?: string,
     @Query('fleetId') fleetId?: string,
   ): Promise<DrivingScoreDetailDto> {
-    const s: DrivingScoreScope = scope === 'driver' || scope === 'group' ? scope : 'vehicle';
+    const s = parseScope(scope);
     const scopedFleet = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || undefined) : undefined;
     return this.scores.entityScore(req.user, s, id, from, to, scopedFleet);
   }

@@ -109,10 +109,10 @@ function makeSvc(
       // verts sur des ratios impossibles.
       groupBy: jest.fn().mockResolvedValue(
         Object.values(
-          TRIPS.reduce<Record<string, { vehicleId: string; driverId: string | null; _count: { _all: number } }>>(
+          TRIPS.reduce<Record<string, { vehicleId: string; driverId: string | null; _count: { _all: number }; _sum: { distanceKm: number | null } }>>(
             (acc, t) => {
               const key = `${t.vehicleId}|${t.driverId ?? ''}`;
-              acc[key] ??= { vehicleId: t.vehicleId, driverId: t.driverId ?? null, _count: { _all: 0 } };
+              acc[key] ??= { vehicleId: t.vehicleId, driverId: t.driverId ?? null, _count: { _all: 0 }, _sum: { distanceKm: 0 } };
               acc[key]._count._all += 1;
               return acc;
             },

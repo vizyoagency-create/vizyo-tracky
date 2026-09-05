@@ -384,7 +384,20 @@ export interface TripNarrativeCompareDto {
 /* ── Notation — score de conduite agrégé par véhicule / conducteur / groupe ── */
 
 /** Sur quoi agréger la note de conduite. */
-export type DrivingScoreScope = 'vehicle' | 'driver' | 'group';
+/**
+ * ── LA QUATRIÈME PORTÉE : « CONDUCTEUR, SINON GROUPE » ────────────────────────────────
+ *
+ * Mesuré en production le 2026-09-05 : chez cdef31, 2 675 trajets sur 2 707 n'ont pas de
+ * conducteur mais ont un groupe ; chez mh cars, 1 866 sur 1 886 n'ont ni l'un ni l'autre.
+ * Le classement « Conducteurs » y est vide ou assis sur 9 trajets ; le classement
+ * « Groupes » ignore les conducteurs quand il y en a. Aucun des trois ne répond à la
+ * question réelle du gestionnaire : « qui conduit comment ? ».
+ *
+ * `attribution` impute chaque trajet au conducteur s'il est connu, sinon au groupe du
+ * véhicule, sinon à une ligne « non attribué » — comptée, jamais classée, et affichée en
+ * premier quand elle domine, avec ce qu'il faut renseigner pour qu'elle disparaisse.
+ */
+export type DrivingScoreScope = 'vehicle' | 'driver' | 'group' | 'attribution';
 
 /**
  * Référence d'un trajet AVEC excès de vitesse — permet de lier une ligne de score
@@ -452,6 +465,27 @@ export interface DrivingScoresDto {
   totalTrips: number;
   /** Nombre d'entités classées (véhicules/conducteurs/groupes). */
   rankedCount: number;
+  /**
+   * Portée `attribution` seulement : les trajets qui n'ont NI conducteur NI groupe.
+   *
+   * ⚠️ Ils ne sont PAS une ligne du classement — on ne note pas « personne ». Ils sont
+   * comptés à part pour que l'écran dise combien de trajets échappent à toute imputation,
+   * et ce qu'il faut renseigner. `null` pour les autres portées.
+   */
+  unattributed: {
+    /** Trajets non attribués NOTÉS — une analyse avec une note, donnée à personne. Même règle que `tripCount` des lignes. */
+    tripCount: number;
+    /** Trajets non attribués RÉELS sur la période, analysés ou non : le vrai trou de données. */
+    totalTripCount: number;
+    /**
+     * TOUS les trajets réels de la période, toutes imputations confondues — le seul
+     * dénominateur honnête de `totalTripCount`. ⚠️ Pas `totalTrips` : celui-là ne compte que
+     * les trajets ANALYSÉS des lignes CLASSÉES, et « 1 866 sur 12 » aurait été un mensonge.
+     */
+    periodTripCount: number;
+    /** Kilomètres RÉELS des trajets non attribués (`trips.distanceKm`), cohérents avec `totalTripCount`. */
+    distanceKm: number;
+  } | null;
 
   // ══ CE QUI A ÉTÉ ÉCARTÉ DU CLASSEMENT, ET POURQUOI ═══════════════════════════════════
   //

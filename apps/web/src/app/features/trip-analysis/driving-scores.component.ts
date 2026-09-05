@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, s
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy } from 'lucide-angular';
+import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy, Users } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
@@ -52,6 +52,10 @@ type Period = '7d' | '30d' | '90d';
           <button type="button" (click)="setScope('vehicle')" [class.on]="scope() === 'vehicle'"><lucide-icon [img]="CarIcon" [size]="14"></lucide-icon> Véhicules</button>
           <button type="button" (click)="setScope('driver')" [class.on]="scope() === 'driver'"><lucide-icon [img]="UserIcon" [size]="14"></lucide-icon> Conducteurs</button>
           <button type="button" (click)="setScope('group')" [class.on]="scope() === 'group'"><lucide-icon [img]="LayersIcon" [size]="14"></lucide-icon> Groupes</button>
+          <!-- « Conducteur, sinon groupe » : la seule portée qui répond à « qui conduit
+               comment ? » quand les conducteurs ne sont renseignés que sur une partie du
+               parc — c'est-à-dire, mesuré le 2026-09-05, sur toutes les sociétés. -->
+          <button type="button" (click)="setScope('attribution')" [class.on]="scope() === 'attribution'"><lucide-icon [img]="UsersIcon" [size]="14"></lucide-icon> Conducteur ou groupe</button>
         </div>
         <div class="ds-seg ds-seg--sm">
           @for (p of periods; track p.key) {
@@ -77,7 +81,7 @@ type Period = '7d' | '30d' | '90d';
         <!-- Podium (top 3) — le cœur de la compétition. -->
         @if (podium(); as pod) {
           <section class="ds-podium-wrap">
-            <span class="ds-podium-cap"><lucide-icon [img]="TrophyIcon" [size]="13"></lucide-icon> Podium — top 3 des {{ scopeNoun() }}s</span>
+            <span class="ds-podium-cap"><lucide-icon [img]="TrophyIcon" [size]="13"></lucide-icon> Podium — top 3 des {{ scopeNounPluriel() }}</span>
             <div class="ds-podium">
               @for (p of pod; track p.rank) {
                 <div class="ds-pod" [attr.data-rank]="p.rank">
@@ -94,11 +98,36 @@ type Period = '7d' | '30d' | '90d';
           </section>
         }
 
+        <!-- ══ CE QUI N'EST IMPUTÉ À PERSONNE ══════════════════════════════════════════
+             Compté, jamais noté — et rendu QUEL QUE SOIT l'état du classement. Une première
+             version ne l'affichait que si le classement était vide : chez cdef31, 17 groupes
+             notés auraient masqué les trajets hors de toute imputation, et un gestionnaire
+             aurait cru lire une image complète. -->
+        @if (d.unattributed; as na) {
+          @if (na.totalTripCount > 0) {
+            <div class="ds-non-attribue" role="status">
+              <lucide-icon [img]="AlertIcon" [size]="14"></lucide-icon>
+              <div>
+                <strong>{{ na.totalTripCount | number }} trajet{{ na.totalTripCount > 1 ? 's' : '' }}</strong>
+                sur {{ na.periodTripCount | number }} ({{ partLibelle(na.totalTripCount, na.periodTripCount) }},
+                {{ na.distanceKm | number:'1.0-0' }} km) n'{{ na.totalTripCount > 1 ? 'ont' : 'a' }} <strong>ni conducteur, ni groupe</strong> :
+                {{ na.totalTripCount > 1 ? 'ils ne peuvent être notés' : 'il ne peut être noté' }} pour personne.
+                <a routerLink="/vehicles">Renseignez un conducteur ou un groupe</a> sur ces véhicules
+                pour que leurs trajets comptent.
+              </div>
+            </div>
+          }
+        }
+
         @if (d.rows.length === 0) {
           <div class="ds-empty">
             <lucide-icon [img]="GaugeIcon" [size]="44" class="opacity-30"></lucide-icon>
             <p>Aucun {{ scopeNoun() }} noté sur la période.</p>
-            <span>Analysez des trajets (bouton « Analyser » dans les rapports ou la fiche véhicule) pour alimenter les scores.</span>
+            @if (nonAttribueDomine(d.unattributed)) {
+              <span>La plupart des trajets de la période ne sont imputés à personne : les analyser n'y changera rien tant qu'un conducteur ou un groupe n'est pas renseigné.</span>
+            } @else {
+              <span>Analysez des trajets (bouton « Analyser » dans les rapports ou la fiche véhicule) pour alimenter les scores.</span>
+            }
           </div>
         } @else {
           <div class="ds-list">
@@ -168,6 +197,7 @@ type Period = '7d' | '30d' | '90d';
               @for (r of d.insufficientRows; track r.id) {
                 <div class="ds-insuf-row">
                   <span class="ds-insuf-label">{{ r.label }}</span>
+                  @if (scope() === 'attribution' && r.sublabel) { <span class="ds-insuf-sub">{{ r.sublabel }}</span> }
                   <span class="ds-insuf-score">{{ r.score }}/100</span>
                   <span class="ds-insuf-meta">
                     {{ r.tripCount }} analysé{{ r.tripCount > 1 ? 's' : '' }}
@@ -209,10 +239,12 @@ type Period = '7d' | '30d' | '90d';
     .ds-insuf-why { margin: 8px 0 10px; color: var(--fg-tertiary); line-height: 1.5; }
     .ds-insuf-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
     .ds-insuf-label { font-weight: 700; color: var(--fg-primary); }
+    .ds-insuf-sub { font-size: 11.5px; color: var(--fg-tertiary); }
     .ds-insuf-score { color: var(--fg-secondary); }
     .ds-insuf-meta { margin-left: auto; color: var(--fg-tertiary); }
     .ds-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-    .ds-seg { display: inline-flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 12px; }
+    /* Quatre portées depuis le point 2 (2026-09-05) : sans retour à la ligne, la barre dépassait les 343 px utiles d un écran de 375 px. */
+    .ds-seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 12px; }
     .ds-seg button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: var(--fg-tertiary); }
     /* Convention du kit (styles.css) : l'etat actif prend --texte-succes, pas
        le vert de marque. Sur --bg-secondary clair : 3,43 -> 5,97:1.
@@ -276,6 +308,15 @@ type Period = '7d' | '30d' | '90d';
     .ds-warn { color: var(--texte-alerte); font-weight: 700; }
     a.ds-warn-link { text-decoration: none; cursor: pointer; white-space: nowrap; }
     a.ds-warn-link:hover { text-decoration: underline; }
+    .ds-non-attribue {
+      display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; padding: 12px 14px;
+      border-radius: 12px; font-size: 13px; line-height: 1.5; color: var(--fg-secondary);
+      border: 1px solid color-mix(in srgb, var(--texte-attente) 35%, transparent);
+      background: color-mix(in srgb, var(--texte-attente) 8%, transparent);
+    }
+    .ds-non-attribue lucide-icon { color: var(--texte-attente); flex-shrink: 0; margin-top: 2px; }
+    .ds-non-attribue strong { color: var(--fg-primary); }
+    .ds-non-attribue a { color: var(--texte-succes); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
     .ds-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 40px 20px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); }
     .ds-empty p { margin: 0; font-weight: 700; color: var(--fg-secondary); }
     .ds-empty span { font-size: 12px; max-width: 340px; }
@@ -313,6 +354,7 @@ export class DrivingScoresComponent implements OnInit {
   protected readonly LayersIcon = Layers;
   protected readonly RefreshIcon = RefreshCw;
   protected readonly AlertIcon = AlertTriangle;
+  protected readonly UsersIcon = Users;
   protected readonly TrendIcon = TrendingUp;
   protected readonly InfoIcon = Info;
   protected readonly TrophyIcon = Trophy;
@@ -321,7 +363,30 @@ export class DrivingScoresComponent implements OnInit {
     return this.period() === '7d' ? '7 derniers jours' : this.period() === '90d' ? '90 derniers jours' : '30 derniers jours';
   }
   protected scopeNoun(): string {
-    return this.scope() === 'driver' ? 'conducteur' : this.scope() === 'group' ? 'groupe' : 'véhicule';
+    return this.scope() === 'driver' ? 'conducteur' : this.scope() === 'group' ? 'groupe' : this.scope() === 'attribution' ? 'conducteur ou groupe' : 'véhicule';
+  }
+  /** Pluriel du titre du podium — « des conducteur ou groupes » n'est pas du français. */
+  protected scopeNounPluriel(): string {
+    return this.scope() === 'driver' ? 'conducteurs' : this.scope() === 'group' ? 'groupes' : this.scope() === 'attribution' ? 'conducteurs et groupes' : 'véhicules';
+  }
+  /**
+   * Part en pourcentage, sans jamais contredire les nombres qu'elle accompagne : « 1 sur 1 000 »
+   * n'est pas « 0 % » et « 999 sur 1 000 » n'est pas « 100 % » — l'arrondi ne peut affirmer un
+   * extrême que si les nombres l'atteignent vraiment. Dénominateur nul : « 0 % ».
+   */
+  protected partLibelle(n: number, d: number): string {
+    if (d <= 0 || n <= 0) return '0 %';
+    if (n >= d) return '100 %';
+    const p = Math.round((n / d) * 100);
+    return p === 0 ? '< 1 %' : p === 100 ? '> 99 %' : `${p} %`;
+  }
+  /**
+   * Le trou de données DOMINE-t-il la période (au moins un trajet réel sur deux) ? C'est la
+   * seule situation où l'état vide peut dire « personne » : un seul trajet orphelin au milieu
+   * d'une flotte imputée mais sous le seuil de classement appelle le conseil habituel — analyser.
+   */
+  protected nonAttribueDomine(na: DrivingScoresDto['unattributed']): boolean {
+    return !!na && na.periodTripCount > 0 && na.totalTripCount * 2 >= na.periodTripCount;
   }
 
   /**
@@ -378,18 +443,29 @@ export class DrivingScoresComponent implements OnInit {
     return new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
   }
 
+  /**
+   * Numéro de la dernière demande partie. ⚠️ Deux bascules rapides (Véhicules → Conducteur ou
+   * groupe) font partir deux requêtes ; si la première revient APRÈS la seconde, elle écrasait
+   * l'écran avec un classement d'une autre portée — et l'encart « non attribué » avec.
+   */
+  private requete = 0;
+
   protected async reload(): Promise<void> {
+    const jeton = ++this.requete;
     this.loading.set(true);
     this.error.set(null);
     try {
-      this.data.set(await firstValueFrom(
+      const d = await firstValueFrom(
         this.api.scores(this.scope(), this.fromIso(), undefined, this.fleetFilter.selectedFleetId() ?? undefined),
-      ));
+      );
+      if (jeton !== this.requete) return; // une demande plus récente est partie : son résultat prime
+      this.data.set(d);
     } catch (e) {
+      if (jeton !== this.requete) return;
       swallow('driving-scores:reload', e);
       this.error.set(apiErrorMessage(e, 'Chargement des scores impossible.'));
     } finally {
-      this.loading.set(false);
+      if (jeton === this.requete) this.loading.set(false);
     }
   }
 }

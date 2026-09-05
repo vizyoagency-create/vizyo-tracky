@@ -80,7 +80,7 @@ function setup(
       findMany: jest.fn().mockResolvedValue(trips),
       // Les trajets RÉELS, indépendants des analysés — c'est tout l'objet du taux.
       groupBy: jest.fn().mockResolvedValue(
-        specs.map((s) => ({ vehicleId: s.id, driverId: null, _count: { _all: s.realTrips } })),
+        specs.map((s) => ({ vehicleId: s.id, driverId: null, _count: { _all: s.realTrips }, _sum: { distanceKm: 0 } })),
       ),
     },
     vehicle: { findMany: jest.fn().mockResolvedValue(vehicles), findUnique: jest.fn().mockResolvedValue(null) },

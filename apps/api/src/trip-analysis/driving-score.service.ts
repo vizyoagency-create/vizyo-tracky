@@ -36,6 +36,8 @@ const MAX_SPEEDING_REFS = 25;
  * ne les cache pas.
  */
 const MIN_ANALYSES_FOR_RANKING = 20;
+/** Clé des trajets sans conducteur ni groupe (portée `attribution`). Jamais une ligne classée. */
+const CLE_NON_ATTRIBUE = 'non-attribue';
 
 /**
  * Force de rappel vers la moyenne de flotte, pour le score de CLASSEMENT.
@@ -188,7 +190,10 @@ export class DrivingScoreService {
       take: MAX_ANALYSES,
     });
     if (analyses.length >= MAX_ANALYSES) this.logger.warn(`scores : ${MAX_ANALYSES} analyses (tronqué).`);
-    if (analyses.length === 0) return { scope, from: from.toISOString(), to: to.toISOString(), rows: [], overallScore: null, overallGrade: null, totalTrips: 0, rankedCount: 0, dormantExcludedCount: 0, dormantExcludedTrips: 0, dormantRows: [], minAnalysesForRanking: MIN_ANALYSES_FOR_RANKING, insufficientRows: [], insufficientCount: 0 };
+    // ⚠️ PAS de sortie anticipée sur « aucune analyse » : la portée `attribution` doit encore dire
+    // combien de trajets RÉELS ne sont imputés à personne — ils existent même quand rien n'a été
+    // analysé, et c'est précisément le cas d'une société qui démarre. Tout ce qui suit accepte
+    // des listes vides et rend alors un classement vide, avec ce compte-là renseigné.
 
     // 3. Trajets correspondants DANS la période → conducteur + véhicule.
     const tripIds = analyses.map((a) => a.tripId);
@@ -202,10 +207,38 @@ export class DrivingScoreService {
     // des tracés hors période dont la réponse ne serait jamais consultée.
     const avecExces = await this.trajetsAvecExces(trips.map((t) => t.id));
 
+    // ══ TRAJETS RÉELLEMENT PARCOURUS (pour le TAUX D'ANALYSE) ═══════════════════════
+    //
+    // ⚠️ L'écran affichait « 1 trajet » pour HD-292-SH — qui en avait fait 75. Ce « 1 »
+    // est le nombre de trajets ANALYSÉS, mais rien ne le disait : on lisait naturellement
+    // « ce véhicule n'a roulé qu'une fois ». Impossible, dès lors, de comprendre pourquoi
+    // sa note valait moins que celle d'un autre.
+    //
+    // Un `groupBy` et non un `findMany` : sur 90 jours, cdef31 compte ~4 700 trajets ;
+    // les charger pour en compter le nombre serait absurde sur un VPS à 2 vCPU. Ici, une
+    // ligne par couple (véhicule, conducteur) — quelques dizaines.
+    //
+    // ⚠️ MÊME `vehicleWhere` que les analyses : le comptage doit être borné au périmètre
+    // exact de l'utilisateur. Un filtre plus large ferait fuir un total inter-flottes dans
+    // un simple ratio — une fuite discrète, mais une fuite.
+    const realTripRows = await this.prisma.trip.groupBy({
+      by: ['vehicleId', 'driverId'],
+      where: { ...vehicleWhere, endedAt: { not: null }, startedAt: { gte: from, lte: to } },
+      _count: { _all: true },
+      // Kilomètres RÉELS par clé : l'encart « non attribué » les affiche à côté d'un compte de
+      // trajets réels — une somme des seules analyses, à cet endroit, aurait menti par omission.
+      _sum: { distanceKm: true },
+    });
+
     // 4. Libellés : plaques + modèles + groupes (une seule requête chacun). `tracker` est joint ICI,
     //    dans la requête qui existait déjà : la dormance ne coûte AUCUNE requête supplémentaire
     //    (VPS 2 vCPU déjà saturé).
-    const vehIds = [...new Set(trips.map((t) => t.vehicleId))];
+    // ⚠️ Véhicules des trajets ANALYSÉS **et** des trajets RÉELS. Une première version ne
+    // chargeait que les premiers : un véhicule à groupe qui avait roulé sans être analysé n'avait
+    // pas de groupe connu, et ses trajets tombaient dans « non attribué » — un mensonge, et un
+    // dénominateur de groupe amputé. Les véhicules supplémentaires n'ajoutent aucune ligne :
+    // les lignes naissent des analyses, eux ne servent qu'à répondre « quel groupe ? ».
+    const vehIds = [...new Set([...trips.map((t) => t.vehicleId), ...realTripRows.map((r) => r.vehicleId)])];
     const vehicles = vehIds.length
       ? await this.prisma.vehicle.findMany({ where: { id: { in: vehIds } }, select: { id: true, plate: true, brand: true, model: true, outOfServiceReason: true, tracker: { select: { id: true, lastSeenAt: true } }, groups: { select: { group: { select: { id: true, name: true } } } } } })
       : [];
@@ -250,39 +283,36 @@ export class DrivingScoreService {
       }
     }
 
-    // ══ TRAJETS RÉELLEMENT PARCOURUS (pour le TAUX D'ANALYSE) ═══════════════════════
-    //
-    // ⚠️ L'écran affichait « 1 trajet » pour HD-292-SH — qui en avait fait 75. Ce « 1 »
-    // est le nombre de trajets ANALYSÉS, mais rien ne le disait : on lisait naturellement
-    // « ce véhicule n'a roulé qu'une fois ». Impossible, dès lors, de comprendre pourquoi
-    // sa note valait moins que celle d'un autre.
-    //
-    // Un `groupBy` et non un `findMany` : sur 90 jours, cdef31 compte ~4 700 trajets ;
-    // les charger pour en compter le nombre serait absurde sur un VPS à 2 vCPU. Ici, une
-    // ligne par couple (véhicule, conducteur) — quelques dizaines.
-    //
-    // ⚠️ MÊME `vehicleWhere` que les analyses : le comptage doit être borné au périmètre
-    // exact de l'utilisateur. Un filtre plus large ferait fuir un total inter-flottes dans
-    // un simple ratio — une fuite discrète, mais une fuite.
-    const realTripRows = await this.prisma.trip.groupBy({
-      by: ['vehicleId', 'driverId'],
-      where: { ...vehicleWhere, endedAt: { not: null }, startedAt: { gte: from, lte: to } },
-      _count: { _all: true },
-    });
     const realTripsByKey = new Map<string, number>();
-    const addReal = (key: string | null, n: number): void => {
+    const realKmByKey = new Map<string, number>();
+    const addReal = (key: string | null, n: number, km: number): void => {
       if (!key) return;
       realTripsByKey.set(key, (realTripsByKey.get(key) ?? 0) + n);
+      realKmByKey.set(key, (realKmByKey.get(key) ?? 0) + km);
+    };
+    /**
+     * Clé d'imputation de la portée `attribution` : conducteur si connu, sinon groupe du
+     * véhicule, sinon la ligne « non attribué ». Une SEULE fonction pour le dénominateur ET
+     * l'agrégation : deux calculs de la même clé finiraient par diverger, et le taux d'analyse
+     * d'une ligne rapporterait des trajets notés à des trajets qui ne sont pas les siens.
+     */
+    const cleAttribution = (driverId: string | null, vehicleId: string): string => {
+      if (driverId) return `driver:${driverId}`;
+      const gid = vehById.get(vehicleId)?.groups?.[0]?.group?.id ?? null;
+      return gid ? `group:${gid}` : CLE_NON_ATTRIBUE;
     };
     for (const r of realTripRows) {
       const n = r._count._all;
-      if (scope === 'vehicle') addReal(r.vehicleId, n);
-      else if (scope === 'driver') addReal(r.driverId, n);
-      else addReal(vehById.get(r.vehicleId)?.groups?.[0]?.group?.id ?? null, n);
+      const km = r._sum.distanceKm ?? 0;
+      if (scope === 'vehicle') addReal(r.vehicleId, n, km);
+      else if (scope === 'driver') addReal(r.driverId, n, km);
+      else if (scope === 'attribution') addReal(cleAttribution(r.driverId, r.vehicleId), n, km);
+      else addReal(vehById.get(r.vehicleId)?.groups?.[0]?.group?.id ?? null, n, km);
     }
 
     // 5. Agrégation par scope.
     const map = new Map<string, Agg>();
+    const nonAttribue = { tripCount: 0 };
 
     for (const a of analyses) {
       const t = tripById.get(a.tripId);
@@ -299,6 +329,21 @@ export class DrivingScoreService {
       } else if (scope === 'driver') {
         if (!t.driverId || !t.driver) continue; // trajets sans conducteur exclus du classement conducteurs
         key = t.driverId; label = `${t.driver.firstName} ${t.driver.lastName}`.trim(); color = t.driver.color ?? null; sublabel = veh?.plate ? `dernier véhicule ${veh.plate}` : null;
+      } else if (scope === 'attribution') {
+        key = cleAttribution(t.driverId, t.vehicleId);
+        if (key === CLE_NON_ATTRIBUE) {
+          // ⚠️ Compté, jamais classé : on ne note pas « personne ». La ligne s'affichera à
+          // part, avec ce qu'il faut renseigner pour qu'elle disparaisse.
+          // Même règle que `g.trips` plus bas : une analyse sans note ne compte pas comme notée.
+          if (a.ecoScore != null) nonAttribue.tripCount += 1;
+          continue;
+        }
+        if (t.driverId && t.driver) {
+          label = `${t.driver.firstName} ${t.driver.lastName}`.trim(); color = t.driver.color ?? null;
+          sublabel = 'conducteur';
+        } else {
+          label = grp?.name ?? '—'; sublabel = 'groupe — trajets sans conducteur';
+        }
       } else {
         if (!grp) continue; // véhicules sans groupe exclus du classement groupes
         key = grp.id; label = grp.name; sublabel = null;
@@ -456,6 +501,17 @@ export class DrivingScoreService {
     const overallScore = rankedPoids > 0 ? Math.round(rankedSum / rankedPoids) : null;
     return {
       scope, from: from.toISOString(), to: to.toISOString(), rows,
+      unattributed: scope === 'attribution'
+        ? {
+            tripCount: nonAttribue.tripCount,
+            // Trajets RÉELS sans imputation, analysés ou non : c'est le vrai trou de données.
+            totalTripCount: realTripsByKey.get(CLE_NON_ATTRIBUE) ?? 0,
+            // Toutes les clés confondues : en portée `attribution`, CHAQUE trajet réel a une clé.
+            periodTripCount: [...realTripsByKey.values()].reduce((s, n) => s + n, 0),
+            // Kilomètres RÉELS (`trips.distanceKm`), cohérents avec `totalTripCount`.
+            distanceKm: round(realKmByKey.get(CLE_NON_ATTRIBUE) ?? 0, 1),
+          }
+        : null,
       overallScore, overallGrade: overallScore != null ? grade(overallScore) : null, totalTrips: rankedTrips,
       rankedCount: rows.length,
       dormantExcludedCount: dormantRows.length,
