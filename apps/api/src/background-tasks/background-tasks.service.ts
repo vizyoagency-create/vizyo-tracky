@@ -11,7 +11,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripAutomationService } from '../trip-analysis/trip-automation.service';
-import { nextFireInstant, nextPeriodicTick, SERVER_TZ } from './next-run.util';
+import { nextFireInstant, nextPeriodicTick, previousFireInstant, previousPeriodicTick, SERVER_TZ } from './next-run.util';
 
 const PARIS = 'Europe/Paris';
 const DAY_MS = 86_400_000;
@@ -197,10 +197,13 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'agenda-agent',
     source: 'agenda/agenda-agent-runner.service.ts', label: 'Agent nocturne d\'optimisation d\'agenda', category: 'IA & rapports',
-    kind: 'cron', scheduleHuman: 'chaque nuit à l\'heure réglée (par flotte)', criticality: 'moyenne', antiOverlap: true,
+    kind: 'cron', scheduleHuman: 'chaque nuit à l\'heure réglée (par flotte) — verdict de l\'IA au passage suivant du courrier (06:30 / 14:30)', criticality: 'moyenne', antiOverlap: true,
     configurable: true, settingsRoute: '/agenda', ai: 'agenda',
-    note: 'Se règle dans l\'Agenda (par flotte), pas ici.',
-    purpose: 'Détecte les trajets récurrents et propose (ou crée) des réservations, chaque nuit, par flotte.',
+    note: "Se règle dans l'Agenda (par flotte), pas ici. DÉCISION (propriétaire, 2026-09-05) : le jugement de l'agent passe par la file du poste (design/C3) ; la détection reste au serveur, seuls assistance et optimiseur restent sur l'API. Jusqu'au 05/09, chaque passage — nocturne ou au clic — appelait l'API (12 appels en 30 j pour une seule société, et un passage tombé sur un compte fournisseur à sec) ; il enfile désormais un travail « jugement-agenda » que le courrier du poste rédige sur l'abonnement, et le cron horaire range le verdict.",
+    purpose: 'Détecte les trajets récurrents et propose (ou crée) des réservations, chaque nuit, par flotte. Le « pourquoi » vulgarisé et le tri de l\'IA arrivent après coup, par le courrier du poste : 0 crédit d\'API.',
+    // 'absorbe' et non le 'facture' déduit de `ai` : ce cron n'appelle plus aucun modèle (design/C3
+    // point 7). Le jugement est rédigé sur le poste, ses jetons réels sont comptés à 0 $ en usage.
+    coutIa: 'absorbe',
   },
   {
     id: 'reports-weekly',
@@ -339,7 +342,9 @@ const CATALOG: CatalogEntry[] = [
     id: 'scheduled-task-heartbeat', label: 'Sonde des taches planifiees', category: 'Système & observabilité',
     source: 'observability/scheduled-task-heartbeat.service.ts',
     kind: 'cron', scheduleHuman: 'toutes les heures (a h:35)', criticality: 'haute', antiOverlap: false,
-    note: "DECISION D'ARCHITECTURE (proprietaire, 2026-08-21) : reste sur l'API, par exception a la regle « recurrent = agent local ». Ses propositions de reservation font partie des interactions que le proprietaire veut instantanees et coherentes avec l'agenda ; le passage nocturne prepare exactement ces propositions. Cout mesure : 1,35 $ en deux mois — migrer dupliquerait la detection de recurrences pour une economie de quelques euros par an.",
+    // La note du 21/08 (« reste sur l'API … 1,35 $ en deux mois ») qui figurait ici parlait de
+    // l'AGENT D'AGENDA, pas de la sonde ; elle est périmée depuis la décision du 2026-09-05
+    // (design/C3 point 7) et vit désormais, mise à jour, sur l'entrée 'agenda-agent'.
     purpose: "Verifie que les automatisations configurees tournent vraiment. Tolerance de deux periodes manquees (plancher 4 h) : une seule est un alea, deux de suite ne s'expliquent plus. Remonte une alerte au centre d'alerte.",
     fire: { tz: SERVER_TZ, matcher: (w) => w.getMinutes() === 35 },
   },
@@ -358,6 +363,15 @@ const CATALOG: CatalogEntry[] = [
     note: 'Née de la panne Vizyo Auth du 18-21/07 restée invisible 3 jours. Sonde les adresses PUBLIQUES (jamais internes).',
     purpose: 'Vérifie que les services dont Tracky dépend (Vizyo Auth, passerelle SMS…) répondent réellement ; 2 échecs consécutifs ⇒ alerte au centre d\'alertes (panne signalée en ~10 min).',
     periodic: { everyMs: 300_000, offsetMs: 30_000 },
+  },
+  {
+    id: 'agents-locaux-sentinelle',
+    source: 'background-tasks/agents-locaux-sentinelle.service.ts', label: 'Sentinelle des agents du poste', category: 'Système & observabilité',
+    kind: 'cron', scheduleHuman: 'toutes les heures (à h:50)', criticality: 'haute', antiOverlap: false,
+    settingsRoute: '/admin/alerts',
+    note: "Née du PS du chantier C3 (2026-09-05) : « PC éteint la nuit = le matin, tous les agents en échec ». Jusque-là, un agent du poste qui ne tournait pas ne produisait AUCUNE ligne serveur, et cet écran ne le disait « silencieux » qu'au-delà de deux cadences — le surlendemain pour les récits. Grâce de 2 h après le créneau, parce que StartWhenAvailable rattrape un démarrage tardif du PC.",
+    purpose: "Compare, pour chacun des cinq agents du poste ci-dessous, le dernier passage journalisé au dernier déclenchement planifié (heure de Paris) et ÉCRIT AU CENTRE D'ALERTE : passage manqué, dernier passage en échec, agent jamais vu — une ligne CRITICAL par agent, par épisode et par jour, archivée d'elle-même quand l'agent repasse ; les super-admins sont prévenus. Le rattrapage résorbé ne compte pas.",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getMinutes() === 50 },
   },
   {
     id: 'cache-cleanup',
@@ -597,12 +611,27 @@ const CATALOG: CatalogEntry[] = [
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
 
-/** Ce qu'un agent du poste inscrit à la FIN de son passage (`passages_agents_locaux`). */
-interface PassageLocal {
+/**
+ * Ce qu'un agent du poste inscrit à la FIN de son passage (`passages_agents_locaux`).
+ *
+ * `demarreA` est là pour la SENTINELLE (PS du chantier C3) : c'est l'heure de DÉBUT qu'on compare
+ * au déclenchement planifié — un passage de 03:15 qui finit à 05:05 a bien répondu au créneau de
+ * 03:15, et l'agent de récits peut courir jusqu'à 110 min.
+ */
+export interface PassageLocal {
+  demarreA: Date;
   finiA: Date;
   succes: boolean;
   resume: string | null;
   erreur: string | null;
+}
+
+/** Un agent du poste tel que la sentinelle le voit : son id de catalogue et sa clé de journal. */
+export interface AgentDuPoste {
+  id: string;
+  label: string;
+  /** Clé sous laquelle le POSTE écrit ses passages — pas forcément l'id (voir `cleJournalDe`). */
+  cleJournal: string;
 }
 
 /** Bloc d'état d'un agent du poste, fusionné tel quel dans le DTO par `list()`. */
@@ -624,6 +653,16 @@ interface EtatLocal {
 function surveillanceDe(id: string): { cadenceMs: number; fraicheurMs: number } {
   const e = CATALOG.find((c) => c.id === id);
   return { cadenceMs: e?.cadenceMs ?? DAY_MS, fraicheurMs: e?.fraicheurMs ?? 36 * 3_600_000 };
+}
+
+/**
+ * Clé sous laquelle un agent du poste ÉCRIT ses passages. C'est l'id du catalogue partout SAUF
+ * pour le courrier : `courrier-ia` au catalogue, `agent-courrier-ia` en base (voir l'avertissement
+ * de `dernierPassage`). Dit en un seul endroit pour que la sentinelle et les `etat*` de l'écran
+ * interrogent la même clé — un test (`agents-locaux-sentinelle.service.spec.ts`) le vérifie.
+ */
+function cleJournalDe(e: CatalogEntry): string {
+  return e.externe === 'courrier-ia' ? 'agent-courrier-ia' : e.id;
 }
 
 /**
@@ -752,17 +791,70 @@ export class BackgroundTasksService {
    *    fier à l'id aurait rendu ce seul agent muet, en silence — la panne exacte que cet écran
    *    doit rendre impossible. Un agent qui se mettra à journaliser ses passages devra employer
    *    la clé passée ici par son `etat*`, sinon sa preuve de vie n'atteindra jamais l'écran.
+   *
+   * Publique depuis le PS du chantier C3 (2026-09-05) : la sentinelle des agents du poste lit le
+   * MÊME journal par la MÊME clé (`agentsDuPoste()` la lui donne). En mode `strict`, une lecture
+   * qui échoue est RELANCÉE au lieu de rendre `null` : pour elle, « base illisible » et « agent
+   * jamais vu » sont deux faits différents, et confondre les deux accuserait le poste d'une panne
+   * de base. L'écran garde le repli silencieux : il ne doit jamais tomber.
    */
-  private async dernierPassage(agent: string): Promise<PassageLocal | null> {
+  async dernierPassage(agent: string, opts: { strict?: boolean } = {}): Promise<PassageLocal | null> {
     try {
       const p = await this.prisma.passageAgentLocal.findFirst({
         where: { agent },
         orderBy: { finiA: 'desc' },
-        select: { finiA: true, succes: true, resume: true, erreur: true },
+        select: { demarreA: true, finiA: true, succes: true, resume: true, erreur: true },
       });
       return p ?? null;
-    } catch {
+    } catch (e) {
+      if (opts.strict) throw e;
       return null;
+    }
+  }
+
+  // ═══ Ce que la SENTINELLE des agents du poste lit ici (PS du chantier C3, 2026-09-05) ════════
+  //
+  // Une seule vérité : la sentinelle ne recopie ni les horaires, ni les clés du journal, ni la
+  // règle du « sans objet ». Elle les demande au catalogue, pour que changer l'heure d'un agent
+  // ici change, dans le même geste, l'heure à laquelle on l'attend.
+
+  /** Les agents du poste tels que catalogués, chacun avec la clé sous laquelle il journalise. */
+  agentsDuPoste(): AgentDuPoste[] {
+    return CATALOG.filter((e) => e.externe).map((e) => ({ id: e.id, label: e.label, cleJournal: cleJournalDe(e) }));
+  }
+
+  /**
+   * DERNIER déclenchement planifié (≤ `nowMs`) d'un agent — ce à quoi son dernier passage se
+   * compare. Heure de PARIS pour les heures fixes (les matcheurs `fire` du catalogue portent leur
+   * fuseau), arithmétique d'époque pour le rattrapage (`periodic`). `null` sans planification datée.
+   */
+  dernierDeclenchementAttendu(id: string, nowMs = Date.now()): Date | null {
+    const e = CATALOG.find((c) => c.id === id);
+    if (!e) return null;
+    if (e.periodic) return previousPeriodicTick(e.periodic.everyMs, e.periodic.offsetMs, nowMs);
+    if (e.fire) return previousFireInstant(e.fire.matcher, nowMs, e.fire.tz);
+    return null;
+  }
+
+  /** Cadence annoncée et fenêtre de fraîcheur d'un agent, lues au catalogue (contexte des alertes). */
+  surveillance(id: string): { cadenceMs: number; fraicheurMs: number } {
+    return surveillanceDe(id);
+  }
+
+  /**
+   * Silence LÉGITIME : l'agent n'a plus rien à faire, son absence de passage n'est pas une panne.
+   *
+   * Aujourd'hui, un seul cas — le rattrapage des récits dont l'arriéré est résorbé —, jugé par la
+   * MÊME lecture que l'écran (`etatRattrapageRecits` : `resteRecitTotal().aNarrer === 0`). Une
+   * lecture qui échoue rend `false` : dans le doute, la sentinelle préfère crier pour rien que se
+   * taire sur une vraie panne.
+   */
+  async silenceLegitime(id: string): Promise<boolean> {
+    if (id !== 'rattrapage-recits') return false;
+    try {
+      return (await this.tripAutomation.resteRecitTotal()).aNarrer === 0;
+    } catch {
+      return false;
     }
   }
 

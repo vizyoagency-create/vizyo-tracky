@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { BadRequestException, DefaultValuePipe, ParseBoolPipe } from '@nestjs/common';
 import { TrackerCommandStatus, UserRole } from '@prisma/client';
+import { SOURCE_AGENTS_LOCAUX } from '../background-tasks/agents-locaux-sentinelle.service';
 import { HORS_DEGRADATION, NIVEAU_DEGRADATION } from '../observability/niveaux-erreur';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -103,6 +104,7 @@ export class AdminAlertsController {
         offline: [],
         pendingCommands: [],
         errors: { last24h: 0, criticalLastHour: 0, bySource: [], topMessages: [], recentCritical: [], recent: [] },
+        agentsLocaux: { ouverts: 0, lignes: [] },
       };
     }
     // SUPER_ADMIN : filtre optionnel via ?fleetId= ; non-super : force sur sa flotte.
@@ -197,6 +199,10 @@ export class AdminAlertsController {
       }),
     ]);
 
+    // PS du chantier C3 — les agents du poste en alerte, lus à part : ce bloc a sa propre section
+    // en tête de l'écran et sa propre pulsation au hub, quelle que soit la fenêtre de 24 h.
+    const agentsLocaux = await this.agentsDuPosteEnAlerte();
+
     // Agréger les erreurs par source.
     const bySourceMap = new Map<string, { count: number; lastAt: Date }>();
     for (const e of errorLogs24h) {
@@ -286,6 +292,8 @@ export class AdminAlertsController {
         degradations24h: degradations24h.length,
       },
       degradations: degradations24h.map(mapError),
+      // PS du chantier C3 — section « Agents du poste » en tête de l'écran, et pulsation du hub.
+      agentsLocaux,
       failing: failingTrackers.map((t) => ({
         kind: 'TRACKER_FAILING' as const,
         trackerId: t.id,
@@ -342,6 +350,53 @@ export class AdminAlertsController {
         recent,
       },
     };
+  }
+
+  /**
+   * PS du chantier C3 (2026-09-05) — les lignes OUVERTES de la sentinelle des agents du poste.
+   *
+   * Pas de fenêtre de 24 h ici, à dessein : une ligne « passage manqué » écrite mardi 05:50 et
+   * jamais refermée (le PC n'a pas repassé) doit encore se lire jeudi. C'est l'archivage
+   * automatique de la sentinelle, pas le temps, qui sort une ligne de cette section.
+   *
+   * UNE ligne par agent — la plus récente — parce que l'écran en fait une liste à lire d'un coup
+   * d'œil au réveil ; `ouverts` compte donc des AGENTS, pas des lignes (un agent absent trois
+   * jours porte trois lignes ouvertes, et reste UN agent en alerte). L'agent vient du contexte
+   * JSON (`context.agent`, l'id du catalogue), le message est celui de la sentinelle.
+   *
+   * Défensif : un centre d'alerte qui tomberait à cause de la section qui surveille le poste
+   * serait un comble — en cas d'échec de lecture, la section est simplement vide.
+   */
+  private async agentsDuPosteEnAlerte(): Promise<{
+    ouverts: number;
+    lignes: Array<{ agent: string; message: string; createdAt: string }>;
+  }> {
+    try {
+      const ouvertes = await this.prisma.errorLog.findMany({
+        // CRITICAL seulement : la sentinelle écrit aussi des lignes ERROR « journal illisible »
+        // (incident d'environnement, même source, même contexte). Les faire remonter en tête du
+        // centre d'alerte annoncerait un agent muet alors qu'il tourne peut-être très bien.
+        where: { source: SOURCE_AGENTS_LOCAUX, resolvedAt: null, level: 'CRITICAL' },
+        orderBy: { createdAt: 'desc' },
+        select: { message: true, createdAt: true, context: true },
+        take: 50,
+      });
+      const parAgent = new Map<string, { agent: string; message: string; createdAt: string }>();
+      for (const l of ouvertes) {
+        const ctx = (l.context && typeof l.context === 'object' ? l.context : {}) as Record<string, unknown>;
+        const agent = typeof ctx['agent'] === 'string' ? ctx['agent'] : 'agent inconnu';
+        if (!parAgent.has(agent)) {
+          parAgent.set(agent, {
+            agent,
+            message: l.message.split('\n')[0].slice(0, 300),
+            createdAt: l.createdAt.toISOString(),
+          });
+        }
+      }
+      return { ouverts: parAgent.size, lignes: [...parAgent.values()] };
+    } catch {
+      return { ouverts: 0, lignes: [] };
+    }
   }
 
   /**

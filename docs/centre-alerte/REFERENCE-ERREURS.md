@@ -1258,6 +1258,7 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-069](#trk-069) | `agents-locaux` | **Un agent du poste n'a pas tourné, a échoué, ou n'a jamais été vu** — `Passage manqué : <AGENT> attendu le <DATE> à <HH:MM> (Paris)…`, `Dernier passage en échec : <AGENT>…`, `Agent du poste jamais journalisé : <AGENT>` | 🔵 **TERRAIN** · **gravité 2** · famille **angle mort** *(instrument né du PS du chantier C3, 2026-09-05 : jusque-là, un PC éteint la nuit ne produisait AUCUNE ligne serveur — cinq traitements dépendent d'un poste allumé, et l'écran des traitements ne les disait « silencieux » qu'au-delà de DEUX cadences, soit le surlendemain pour les récits. Une ligne par agent, par épisode et par jour, en heure de Paris ; **archivée automatiquement** dès que l'agent repasse avec succès. L'action est matérielle : allumer le poste, vérifier le Planificateur, lire le motif d'échec. **0 occurrence à la création**, la première est attendue au premier matin sans PC)* | 2026-09-05 | 2026-09-05 |
 | [TRK-068](#trk-068) | `http` | **`fetch failed` sur le rafraîchissement de jeton, et c'est un `CRITICAL`** — l'appel à Vizyo Auth n'a ni `try/catch` ni délai d'expiration, le rejet de transport remonte nu et NestJS en fait un 500 | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **brut** *(1 occurrence, 04/09 12:57:05, depuis un iPhone. Trois défauts dans la même ligne : le **message brut** ne nomme ni la dépendance ni la conséquence ; le **500 est faux** — une dépendance injoignable est un 503, et le client ne peut pas distinguer « réessaie » de « ta session est morte » ; le niveau **`CRITICAL`** est disproportionné pour une panne tierce sur un seul rafraîchissement. 🔑 **TROISIÈME récidive du motif de [TRK-060](#trk-060) et [TRK-066](#trk-066), sur une troisième chaîne** — aucun appel sortant de ce dépôt n'a de gabarit de message d'échec. ⚠️ Jumeau à traiter : `verifyLoginCode()`, même angle mort)* | 2026-09-04 | 2026-09-04 |
 | [TRK-067](#trk-067) | `system-activity` | **Le journal de recalcul n'écrivait rien pour les recalculs AUTOMATIQUES** — `invalid input syntax for type uuid: "system-trip-automation"` | 🟢 **CORRIGÉ, DÉPLOYÉ ET VÉRIFIÉ SUR L'ARTEFACT SERVI** *(`19d7d76c`, 04/09 15:51 → déployé 17:01)* · **gravité 2** · famille **brut** *(10 occurrences le 04/09 entre 14:45 et 16:55 — **la source la plus bruyante des 24 h**, née et close le même jour. L'automatisation appelle `recompute()` avec un utilisateur SYNTHÉTIQUE dont l'id n'est pas un UUID ; la colonne en est un. 🔴 **Le coût n'était PAS le bruit** : le journal est fire-and-forget, donc le recalcul réussissait — mais **aucun recalcul automatique ne laissait de trace**, précisément ceux qu'un client ne peut pas expliquer quand ses trajets changent tout seuls. ✅ **Double condition vérifiée le 05/09** : 0 ligne `system-activity` depuis 17:01:33 **ET** 30 lignes `actor = system-trip-automation` écrites entre 17:45 et 23:48 — *la trace est revenue, c'est ça la preuve*)* | 2026-09-04 | 2026-09-04 |
 | [TRK-066](#trk-066) | `sms-gateway` / `engine-control` | **Le coupe-circuit a échoué sur ses DEUX voies, et le dernier recours n'a pas dit lequel** — `The operation was aborted due to timeout` | 🟠 **CORRECTIF DU MESSAGE DÉPLOYÉ le 2026-09-04 à 17:01, NON EXERCÉ** *(marqueur `decrireEchecRelaisSms` vérifié le 05/09 dans `dist/sms/sms-gateway.service.js` — l'artefact SERVI, pas la fiche ; ancien libellé : « ÉCRIT ET COMMITÉ, NON DÉPLOYÉ »)* · **gravité 1** · famille **brut** *(**PREMIÈRE ligne `sms-gateway` de toute l'histoire conservée** — le référentiel notait « 0 depuis toujours » pour cette source, et ce zéro n'était pas une bonne nouvelle : c'était un canal qui ne s'était jamais plaint. Le 04/09 à 03:00:10, `FG-669-DQ` (`864035053277662`) est **hors ligne depuis 8 h** ; une commande moteur part, le TCP est impossible, **le repli SMS est donc la DERNIÈRE voie** — et le relais `vizyo-texto` n'a pas répondu dans les 10 s accordées (`sms-gateway.service.ts:609`, `AbortSignal.timeout(10_000)`). **Le véhicule n'a PAS été immobilisé.** ⚠️ Le message écrit au centre d'alerte était `The operation was aborted due to timeout` : sept mots qui ne nomment ni la dépendance, ni la conséquence, ni ce qui survit — **le défaut de [TRK-060](#trk-060), sur une chaîne bien plus grave**. La ligne jumelle de `engine-control`, elle, nomme correctement la conséquence. 🔵 **Trois questions restent HUMAINES et ne sont pas touchées** : le délai de 10 s sur un dernier recours, **l'absence de tout réessai**, et le niveau `ERROR` porté par une immobilisation qui n'a pas eu lieu. Le §8 interdit de modifier une garde de coupe-circuit sans décision humaine — *on corrige le cri, jamais le garde-fou*. ⚠️ **UNE seule occurrence** : fait mesuré, pas une tendance)* | 2026-09-04 | 2026-09-04 |
@@ -10858,6 +10859,92 @@ a nettoyé l'écran au lieu de traduire le message.
 
 ⚠️ **UNE seule occurrence à ce jour.** Fait mesuré, pas une tendance : ne pas conclure que Vizyo Auth
 se dégrade avant d'avoir trois points.
+
+---
+
+## TRK-069
+
+**Signature** — `agents-locaux | CRITICAL | Passage manqué : <AGENT> attendu le <DATE> à <HH:MM> (Paris), dernier passage le <DATE> à <HH:MM> — <RÉSUMÉ>` ; variantes `Dernier passage en échec : <AGENT> le <DATE> à <HH:MM> — <MOTIF>` et `Agent du poste jamais journalisé : <AGENT>`. Contexte : `agent`, `motif` (`manque` / `echec` / `jamais`), `attenduAt`, `dernierPassageAt`, `resume`, `erreur`, `cadenceMs`.
+**Statut : 🔵 TERRAIN** · gravité **2** · famille **angle mort** · 0 occurrence à la création · 2026-09-05
+
+### Ce que ça veut dire
+
+Un des cinq traitements qui tournent sur le **poste du propriétaire** — limites de vitesse OSM,
+récits de trajet, rattrapage des récits, qualité GPS, courrier IA — n'a pas fait son travail :
+
+| Motif | Ce que la sentinelle a vu | Ce que ça signifie le plus souvent |
+|---|---|---|
+| `manque` | le dernier créneau planifié (heure de Paris) est passé depuis plus de **2 h**, et le dernier passage journalisé a démarré AVANT ce créneau | PC éteint ou en veille, session Windows fermée, tâche désactivée au Planificateur |
+| `echec` | le dernier passage a été journalisé avec `succes = false` | abonnement Claude inactif (`claude auth status`), base injoignable depuis le poste, Overpass qui refuse — le motif consigné par le poste est dans le message |
+| `jamais` | aucune ligne dans `passages_agents_locaux` pour cet agent | la tâche n'est pas inscrite au Planificateur, ou journalise sous une autre clé |
+
+Ce n'est pas une faute du serveur, et aucun code ne peut la corriger : l'action est **matérielle**,
+d'où le statut TERRAIN. La ligne existe pour être lue **le matin**, pas pour être corrigée.
+
+### Pourquoi cet instrument existe (relevé du 2026-09-05, `design/C3`)
+
+Cinq tâches Windows (session interactive, `StartWhenAvailable`, pas de réveil) journalisent leurs
+passages dans `passages_agents_locaux`, et **aucune alerte serveur n'existait quand un agent
+manquait**. L'écran des traitements de fond sait afficher « silencieux », mais seulement au-delà de
+**deux fois la cadence annoncée** — 48 h pour l'agent de récits, 32 h pour le courrier : un PC éteint
+la nuit ne s'y lisait que le surlendemain, et seulement si quelqu'un ouvrait cet écran-là. Décision
+du propriétaire : *« je veux tout voir : PC éteint la nuit, le matin tous les agents en échec »*.
+
+### Ce que fait la sentinelle (`background-tasks/agents-locaux-sentinelle.service.ts`, toutes les heures à h:50)
+
+- Elle compare le dernier passage au **dernier déclenchement planifié** lu au catalogue
+  (`previousFireInstant` en heure de Paris, `previousPeriodicTick` pour le rattrapage aux heures
+  paires) — et non à un multiple de cadence.
+- **Grâce de 2 h** : `StartWhenAvailable` rattrape un créneau au démarrage du PC ; une heure de
+  retard n'est pas une panne, la crier apprendrait à ignorer la sentinelle.
+- **Une ligne par agent, par motif et par jour** (refroidissement `agent-local:<agent>:<motif>`,
+  24 h) : le matin, cinq agents manquants font cinq lignes, pas cinq lignes par heure.
+- Le rattrapage des récits n'est jamais dit « manqué » quand l'écran le juge **sans objet**
+  (arriéré résorbé) : l'agent sort sans rien écrire, et c'est son succès.
+- **Résolution automatique** : dès que l'agent repasse avec succès, ses lignes ouvertes antérieures
+  au passage sont archivées (`resolvedNote` = « Agent repassé le … (résolution automatique) ») et
+  le refroidissement est oublié — l'épisode suivant crie sans délai. Rien n'est effacé (règle de
+  [TRK-035](#trk-035)).
+- Chaque **nouvelle** ligne part en push aux super-admins (catégorie `SYSTEM`, sous-type
+  `agent-local-absent`, un sujet par agent) vers `/admin/alerts`, où la section « Agents du poste »
+  vient en tête et fait pulser le hub.
+- Une lecture du journal qui échoue produit une ligne `ERROR` *« Journal des passages illisible
+  pour <AGENT> : <motif> »* — jamais un `CRITICAL` « jamais vu » : une base illisible n'est pas un
+  poste éteint (même règle que [TRK-042](#trk-042) : une lecture qui échoue n'est pas une tâche à
+  l'arrêt).
+
+### Quoi faire
+
+1. **`manque`** — allumer le poste ; vérifier que la session est ouverte et que la tâche est active
+   au Planificateur (lanceurs `outils/*.cmd`). La ligne s'archive seule au prochain passage réussi.
+2. **`echec`** — lire le motif dans le message. Abonnement absent → `claude auth status` sur le
+   poste (`outils/cli-claude.cjs` refuse de tourner hors abonnement) ; base injoignable → réseau du
+   poste. Le passage suivant referme la ligne.
+3. **`jamais`** — la tâche n'est pas inscrite au Planificateur, ou n'écrit pas sous la clé attendue
+   (le courrier journalise sous `agent-courrier-ia`, catalogue `courrier-ia`). Inscrire la tâche,
+   puis vérifier `passages_agents_locaux`.
+4. Inutile d'archiver à la main : la ligne s'archive seule au premier passage réussi. Archivée à la
+   main sans que l'agent repasse, elle **revient le lendemain** — une ligne par jour tant que
+   l'épisode dure, c'est voulu.
+
+### ⚠️ Ce qu'il ne faut PAS faire
+
+- **Ne pas élargir la grâce** pour faire taire un poste qui s'allume tard : au-delà de 2 h, le
+  créneau est réellement perdu et le travail (récits, limites) prend un jour de retard. Si l'horaire
+  du poste change, c'est le **catalogue** qu'il faut changer — la sentinelle le lit.
+- **Ne pas revenir à « 2 × cadence »** ici : c'est précisément ce que l'écran faisait, et ce qui
+  rendait un PC éteint invisible jusqu'au surlendemain.
+- **Ne pas supprimer les lignes** : elles s'archivent d'elles-mêmes et gardent la trace de chaque
+  nuit sans poste.
+
+### Vérification
+
+Au premier matin sans poste, chaque agent est signalé à SON heure — l'agent de récits et le rattrapage à **05:50**, les limites de vitesse à **06:50**, la qualité GPS à **07:50**, le courrier IA à **08:50** — chaque agent est jugé au premier contrôle horaire suivant son créneau plus les 2 h de grâce : une ligne `CRITICAL` par agent manquant, datée
+en heure de Paris ; une notification par ligne aux super-admins ; la section « Agents du poste » en
+tête de `/admin/alerts` ; le hub qui pulse. Au passage suivant de l'agent : la ligne passe
+`resolvedAt` avec la note « résolution automatique », et une seconde absence dans la journée produit
+une **nouvelle** ligne sans attendre 24 h. Jeux d'essai : `agents-locaux-sentinelle.service.spec.ts`
+(horloge simulée, les neuf cas du cahier) et `next-run.util.spec.ts` (heure de Paris contre UTC).
 
 ---
 

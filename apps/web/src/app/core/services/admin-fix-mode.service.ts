@@ -117,6 +117,11 @@ export interface AdminAlertsDto {
   offline: OfflineTrackerAlert[];
   pendingCommands: PendingCommandAlert[];
   errors: ErrorAlertsSummary;
+  /**
+   * Agents du poste en alerte (sentinelle du chantier C3, 2026-09-05) : les lignes OUVERTES du centre
+   * d'alerte de source `agents-locaux`, une par agent. Optionnel : un serveur antérieur ne le sert pas.
+   */
+  agentsLocaux?: { ouverts: number; lignes: Array<{ agent: string; message: string; createdAt: string }> };
 }
 
 export interface ErrorTimelineBucket {

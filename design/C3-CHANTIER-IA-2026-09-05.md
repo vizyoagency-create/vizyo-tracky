@@ -149,6 +149,11 @@ le bouton se grise avec le motif au lieu de produire un 403.
 - Seuls **assistance** et **optimiseur** restent sur l'API. Supposition assumée : la saisie vocale de
   réservation (`bookingParse`, 1 appel en 60 j, instantané, lien public) reste aussi sur l'API, faute
   de pouvoir attendre un passage nocturne ; à couper depuis la page si le propriétaire le souhaite.
+- **Un chemin automatique subsiste, et il est éteint** : le cron des trajets (HH:45) narre par l'API
+  quand `trip_automation_settings.narrateEnabled` ET l'option IA de la société sont vrais. Relevé
+  le 5 septembre : `narrateEnabled = false` depuis fin juillet, et les 11 620 récits des 30 derniers
+  jours viennent tous du poste. Le rallumer coûterait ~386 $/an ; il reste en place pour la voie
+  MANUELLE (« Analyser » sur un trajet). L'écran d'automatisation doit continuer de le dire.
 
 ## PS — Sentinelle des agents du poste
 
@@ -161,6 +166,23 @@ le bouton se grise avec le motif au lieu de produire un 403.
   repassé le … ») et l'épisode est oublié, pour crier sans délai la prochaine fois.
 - Le centre d'alerte affiche une section « Agents du poste » alimentée par ces lignes ouvertes, et le
   hub pulse dessus ; les super-admins reçoivent une notification.
+
+## À faire par le propriétaire — heure d'hiver et Planificateur Windows
+
+Relevé sur le poste le 5 septembre (`Get-ScheduledTask`, champ `StartBoundary`) : **quatre des cinq
+tâches sont enregistrées avec un décalage UTC** (`+02:00`) au lieu d'une heure locale —
+`VizyoTracky-QualiteGPS` (05:00), `VizyoTracky-CourrierIA` (06:30 et 14:30),
+`VizyoTracky-LimitesVitesse` (5 créneaux), `VizyoTracky-RattrapageRecits` (02:00, répété) ; seule
+`VizyoTracky-RecitTrajet` est en heure locale (`2026-08-20T03:15:00`, sans décalage).
+
+**Conséquence au 25 octobre** : ces quatre tâches se déclencheront une heure PLUS TÔT en heure de
+Paris, alors que le catalogue — et donc la sentinelle — les attend à l'heure locale déclarée. La
+sentinelle jugerait le passage « manqué » chaque jour, sur des agents qui ont pourtant tourné.
+
+Le correctif est une action sur le poste, pas du code : ré-enregistrer les déclencheurs de ces trois
+tâches quotidiennes sans décalage (décocher « Synchroniser entre fuseaux horaires »), comme
+`VizyoTracky-RecitTrajet`. À vérifier le 26 octobre : `demarreA` du passage doit valoir l'heure
+locale déclarée.
 
 ## Ordre de livraison
 

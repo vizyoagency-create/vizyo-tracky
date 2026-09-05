@@ -5,6 +5,7 @@ import {
   Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish, ShieldQuestion,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
+import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
 
 @Component({
   selector: 'app-admin-hub',
@@ -17,10 +18,13 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           <h1>Administration</h1>
           <p>Supervision, diagnostic et configuration avancee.</p>
         </div>
+        <!-- La pulsation compte aussi les agents du poste en alerte (PS du chantier C3) : une
+             ligne de la sentinelle ecrite a 05:50 n'est plus « critique de la derniere heure » a
+             09:00, et le hub aurait dit « Nominal » a un proprietaire dont le PC n'a rien fait. -->
         @if (stats(); as s) {
-          <div class="pulse" [class.pulse-warn]="s.failing > 0 || s.criticalLastHour > 0">
+          <div class="pulse" [class.pulse-warn]="s.failing > 0 || s.criticalLastHour > 0 || agentsDuPosteEnAlerte() > 0">
             <span class="pulse-dot"></span>
-            {{ s.failing > 0 || s.criticalLastHour > 0 ? 'Alertes actives' : 'Nominal' }}
+            {{ s.failing > 0 || s.criticalLastHour > 0 || agentsDuPosteEnAlerte() > 0 ? 'Alertes actives' : 'Nominal' }}
           </div>
         }
       </div>
@@ -52,6 +56,10 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
                 </div>
                 <div class="kpi" [class.kpi-hot]="s.errorsLast24h > 0">
                   <span class="kpi-n">{{ s.errorsLast24h }}</span><span class="kpi-l">Err. 24h</span>
+                </div>
+                <div class="kpi" [class.kpi-hot]="agentsDuPosteEnAlerte() > 0"
+                     title="Agents du poste du propriétaire dont le dernier passage manque ou a échoué">
+                  <span class="kpi-n">{{ agentsDuPosteEnAlerte() }}</span><span class="kpi-l">Agents poste</span>
                 </div>
               </div>
             }
@@ -733,10 +741,15 @@ export class AdminHubComponent implements OnInit {
   protected readonly SatelliteDish = SatelliteDish;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
+  /** Agents du poste en alerte (PS du chantier C3) : lu sur la même réponse que les compteurs. */
+  readonly agentsDuPosteEnAlerte = signal(0);
 
   ngOnInit(): void {
     firstValueFrom(this.api.alerts())
-      .then((d) => this.stats.set(d.summary))
+      .then((d: AlertesAvecAgentsDuPoste) => {
+        this.stats.set(d.summary);
+        this.agentsDuPosteEnAlerte.set(d.agentsLocaux?.ouverts ?? 0);
+      })
       .catch(() => { /* silencieux */ });
   }
 }

@@ -35,6 +35,32 @@ import { ErrorTimelineChartComponent } from '../../shared/ui/charts/error-timeli
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
 
+/**
+ * Une ligne OUVERTE de la sentinelle des agents du poste (source « agents-locaux » du centre
+ * d'alerte) — une par agent, la plus récente.
+ */
+export interface AgentDuPosteEnAlerte {
+  agent: string;
+  message: string;
+  createdAt: string;
+}
+
+/**
+ * Bloc « Agents du poste » que renvoie GET /api/admin/alerts depuis le PS du chantier C3
+ * (2026-09-05) : `ouverts` = nombre d'agents ayant au moins une ligne non résolue.
+ *
+ * Typé ICI, en extension OPTIONNELLE du DTO du service, tant que `AdminAlertsDto`
+ * (core/services/admin-fix-mode.service.ts) ne le porte pas : une API qui ne le renvoie pas
+ * encore donne un écran complet, sans section, plutôt qu'une erreur.
+ */
+export interface AgentsDuPosteBloc {
+  ouverts: number;
+  lignes: AgentDuPosteEnAlerte[];
+}
+export type AlertesAvecAgentsDuPoste = AdminAlertsDto & { agentsLocaux?: AgentsDuPosteBloc };
+
+const AUCUN_AGENT_EN_ALERTE: AgentsDuPosteBloc = { ouverts: 0, lignes: [] };
+
 @Component({
   selector: 'app-admin-alerts',
   standalone: true,
@@ -101,6 +127,36 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
             </span>
           }
         </div>
+      }
+
+      <!-- AGENTS DU POSTE (PS du chantier C3, 2026-09-05) : les lignes OUVERTES de la sentinelle,
+           source agents-locaux, une par agent. En tete et en rouge, parce que c'est ce que le
+           proprietaire veut lire au reveil : « PC eteint la nuit = le matin, tous les agents en
+           echec ». La ligne s'archive d'elle-meme quand l'agent repasse avec succes. -->
+      @if (agentsLocaux().ouverts > 0) {
+        <section class="rounded-[--radius-card] border border-rose-500/30 bg-rose-500/10 px-4 py-3 flex flex-col gap-2"
+                 aria-label="Agents du poste en alerte">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-sm font-display font-semibold text-rose-300 flex items-center gap-2">
+              <lucide-icon [img]="Zap" [size]="16" class="shrink-0"></lucide-icon>
+              Agents du poste — {{ agentsLocaux().ouverts }} en alerte
+            </h2>
+            <a routerLink="/admin/background-tasks"
+               class="text-xs text-rose-200 hover:underline shrink-0"
+               title="Etat de chaque agent du poste : dernier passage, issue, prochain creneau">
+              Voir les traitements de fond
+            </a>
+          </div>
+          <ul class="flex flex-col gap-1.5 list-none m-0 p-0">
+            @for (l of agentsLocaux().lignes; track l.agent) {
+              <li class="text-xs text-rose-100/90 flex flex-col sm:flex-row sm:items-baseline gap-x-3 gap-y-0.5">
+                <span class="font-mono text-[11px] text-rose-200 shrink-0 sm:w-44">{{ l.agent }}</span>
+                <span class="flex-1 min-w-0">{{ l.message }}</span>
+                <span class="text-[10px] font-mono text-rose-200/70 shrink-0">{{ l.createdAt | date: 'dd/MM HH:mm' }}</span>
+              </li>
+            }
+          </ul>
+        </section>
       }
 
       <!-- Summary -->
@@ -579,7 +635,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
         </section>
       }
 
-      @if (data() && data()!.failing.length === 0 && data()!.offline.length === 0 && data()!.pendingCommands.length === 0 && !data()!.errors.last24h) {
+      @if (data() && data()!.failing.length === 0 && data()!.offline.length === 0 && data()!.pendingCommands.length === 0 && !data()!.errors.last24h && agentsLocaux().ouverts === 0) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-12 text-center">
           <lucide-icon [img]="CheckCircle" [size]="48" class="mx-auto mb-3 text-emerald-400"></lucide-icon>
           <h2 class="text-lg font-display font-semibold text-fg-primary">Tout va bien</h2>
@@ -618,7 +674,9 @@ export class AdminAlertsComponent implements OnInit {
 
   private static readonly LAST_VISIT_KEY = 'tracky_alerts_last_visit';
 
-  readonly data = signal<AdminAlertsDto | null>(null);
+  readonly data = signal<AlertesAvecAgentsDuPoste | null>(null);
+  /** Agents du poste en alerte — vide tant que l'API ne renvoie pas le bloc (ou qu'il n'y a rien). */
+  readonly agentsLocaux = computed<AgentsDuPosteBloc>(() => this.data()?.agentsLocaux ?? AUCUN_AGENT_EN_ALERTE);
   readonly loading = signal(false);
   readonly expandedErrors = signal<Record<string, boolean>>({});
   readonly timelineBuckets = signal<ErrorTimelineBucket[]>([]);
@@ -656,6 +714,17 @@ export class AdminAlertsComponent implements OnInit {
   readonly healthStatus = computed<{ level: 'ok' | 'warn' | 'critical'; text: string }>(() => {
     const s = this.data()?.summary;
     if (!s) return { level: 'ok', text: 'Chargement...' };
+
+    // PS du chantier C3 : au réveil, un PC qui n'a rien fait prime sur tout le reste. Ces lignes
+    // datent de 05:50 et ne sont plus « critiques de la dernière heure » à 09:00 — le bandeau
+    // doit pourtant les porter, sinon il dirait « nominal » au-dessus d'une section rouge.
+    const agents = this.agentsLocaux().ouverts;
+    if (agents > 0) {
+      return {
+        level: 'critical',
+        text: `${agents} agent(s) du poste en alerte — le PC a-t-il tourné cette nuit ? Voir la section ci-dessous.`,
+      };
+    }
 
     if (s.criticalLastHour > 0) {
       return {

@@ -43,6 +43,22 @@
   ],
   "fiches": [
     {
+      "id": "TRK-069",
+      "titre": "Un agent du poste n a pas tourne, a echoue, ou n a jamais ete vu (sentinelle du chantier C3)",
+      "source": "agents-locaux",
+      "statut": "TERRAIN",
+      "gravite": 2,
+      "vuPremiere": "2026-09-05",
+      "vuDerniere": "2026-09-05",
+      "occurrences": 0,
+      "occurrencesLibelle": "Aucune occurrence a la creation : la fiche documente un INSTRUMENT ne le 5 septembre. La premiere ligne est attendue au premier matin ou le poste du proprietaire n aura pas tourne — a l heure propre a chaque agent (recits et rattrapage 05h50, limites 06h50, qualite GPS 07h50, courrier 08h50 — heure de Paris) : le premier controle horaire qui suit son creneau plus les 2 h de grace.",
+      "quoi": "Cinq traitements tournent sur le POSTE du proprietaire (limites de vitesse OSM, recits de trajet, rattrapage des recits, qualite GPS, courrier IA) et leur arret ne produisait AUCUNE ligne serveur : l ecran des traitements ne les disait silencieux qu au-dela de deux cadences, soit le surlendemain pour les recits. La sentinelle compare chaque heure le dernier passage journalise au dernier declenchement PLANIFIE en heure de Paris (grace de 2 h, parce que StartWhenAvailable rattrape un demarrage tardif du PC) et ecrit une ligne CRITICAL par agent, par motif et par jour : passage manque, dernier passage en echec (avec le motif consigne par le poste), agent jamais journalise. Le rattrapage dont l arriere est resorbe ne compte pas. Les lignes s archivent d elles-memes quand l agent repasse avec succes, et les super-admins recoivent une notification.",
+      "quoiFaire": "L action est MATERIELLE, pas du code. Passage manque : allumer le poste, verifier que la session est ouverte et que la tache est active au Planificateur. Dernier passage en echec : lire le motif dans le message (abonnement Claude absent, base injoignable, Overpass qui refuse). Jamais journalise : inscrire la tache au Planificateur, ou verifier la cle sous laquelle elle ecrit (le courrier journalise sous agent-courrier-ia). Inutile d archiver a la main : la ligne se referme seule au premier passage reussi, et reviendrait le lendemain tant que l agent ne repasse pas.",
+      "aNePasFaire": "NE PAS elargir la grace de 2 h pour faire taire un poste qui s allume tard : au-dela, le creneau est reellement perdu. NE PAS revenir a un raisonnement en deux fois la cadence, c est ce qui rendait un PC eteint invisible jusqu au surlendemain. NE PAS supprimer les lignes : elles s archivent d elles-memes et gardent la trace de chaque nuit sans poste.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-069"
+    },
+    {
       "id": "TRK-067",
       "titre": "Le journal de recalcul n ecrivait rien pour les recalculs AUTOMATIQUES",
       "source": "system-activity",
