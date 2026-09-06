@@ -203,14 +203,19 @@ describe('Vitesse moyenne agrégée — flotte, véhicule, conducteur', () => {
     // La moyenne des moyennes rendrait 49 ; la bonne réponse est 89.
     const ensemble = { distanceKm: 180.4, durationSeconds: 9000, movingSeconds: 7380 };
 
-    expect(vitesseMoyenneAgregee(ensemble)).toBe(88);
-    expect(vitesseMoyenneAgregee(ensemble)).not.toBe(Math.round((90 + 8) / 2));
+    expect(Math.round(vitesseMoyenneAgregee(ensemble))).toBe(88);
+    expect(Math.round(vitesseMoyenneAgregee(ensemble))).not.toBe(Math.round((90 + 8) / 2));
   });
 
   it('sans temps roulant connu, la durée totale — jamais zéro', () => {
     // ⚠️ Un cinquième de la base n'a ni analyse ni positions : afficher 0 km/h sous des
     // centaines de kilomètres bien réels ferait douter des chiffres voisins, qui sont justes.
     expect(vitesseMoyenneAgregee({ distanceKm: 100, durationSeconds: 7200, movingSeconds: 0 })).toBe(50);
+
+    // ⚠️ RENDU SANS ARRONDI : c'est ce qui permet au classeur d'écrire 49,2 là où l'écran
+    // écrit 49. Arrondir ici ferait diverger deux documents qui décrivent la même flotte.
+    expect(vitesseMoyenneAgregee({ distanceKm: 10988.2, durationSeconds: 1008720, movingSeconds: 803880 }))
+      .toBeCloseTo(49.2, 1);
   });
 
   it('ni distance ni durée : rien à diviser', () => {

@@ -925,7 +925,7 @@ export class ReportsStatsService {
           estimatedConsumptionL: Math.round(liters * 10) / 10,
           group: v.groups?.[0]?.group ?? null,
           durationHours: Math.round((stat.durationSeconds / 3600) * 10) / 10,
-          avgSpeedKmh: vitesseMoyenneAgregee(stat),
+          avgSpeedKmh: Math.round(vitesseMoyenneAgregee(stat)),
           // Absent de la table = aucun excès établi, et c'est bien zéro : la requête ne
           // rend une ligne que pour les véhicules qui en ont.
           speedingCount: excesParVehiculeMap.get(v.id)?.exces ?? 0,
@@ -1053,7 +1053,7 @@ export class ReportsStatsService {
         durationHours: Math.round((a.durationSeconds / 3600) * 10) / 10,
         // ⚠️ Kilomètres ÷ TEMPS ROULANT, comme `topVehicles`, comme la vitesse moyenne de
         // flotte et comme chaque ligne de trajet — jamais la moyenne des moyennes.
-        avgSpeedKmh: vitesseMoyenneAgregee(a),
+        avgSpeedKmh: Math.round(vitesseMoyenneAgregee(a)),
         speedingCount: a.speedingCount,
         speedingTripCount: a.speedingTripCount,
         worstOverKmh: Math.round(a.worstOverKmh * 10) / 10,

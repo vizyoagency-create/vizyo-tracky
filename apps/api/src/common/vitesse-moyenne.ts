@@ -168,8 +168,11 @@ export function vitesseMoyenneTrajet(t: {
  * totale. Sans ce repli, la fiche d'un véhicule ancien afficherait 0 km/h sous des centaines
  * de kilomètres bien réels.
  *
- * Le résultat est ARRONDI À L'ENTIER : c'est la forme attendue par les tableaux du PDF et de
- * l'écran, et une décimale sur une moyenne de flotte n'apporte rien.
+ * ⚠️ RENDU SANS ARRONDI, et c'est délibéré : chaque surface n'a pas le même besoin. Les
+ * tableaux de l'écran veulent un entier, le classeur une décimale, le PDF l'imprime avec
+ * `toFixed(1)`. Une version qui arrondissait ici à l'entier faisait afficher 49 au classeur
+ * là où le PDF imprimait 49,2 — deux documents qui décrivent la même flotte et ne se
+ * répondent pas tout à fait. La règle calcule ; la mise en forme appartient à qui affiche.
  */
 export function vitesseMoyenneAgregee(t: {
   distanceKm: number;
@@ -178,6 +181,6 @@ export function vitesseMoyenneAgregee(t: {
 }): number {
   const denominateur = t.movingSeconds > 0 ? t.movingSeconds : t.durationSeconds;
   if (!(denominateur > 0) || !(t.distanceKm > 0)) return 0;
-  return Math.round(t.distanceKm / (denominateur / 3600));
+  return t.distanceKm / (denominateur / 3600);
 }
 
