@@ -95,11 +95,69 @@ export class AuthService {
   private static readonly PROACTIVE_RETRY_MS = 3_000;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * La marge avant expiration : on renouvelle 60 s avant l'échéance, jamais à la seconde.
+   *
+   * ⚠️ NOMMÉE, parce que DEUX endroits doivent s'accorder — la programmation du minuteur et
+   * le contrôle au retour au premier plan. Deux littéraux auraient fini par diverger, et le
+   * second serait devenu soit bavard (il renouvellerait trop tôt), soit inutile (trop tard).
+   */
+  private static readonly MARGE_EXPIRATION_MS = 60_000;
+
   constructor() {
     // « Rester connecté » — refresh PROACTIF : on renouvelle l'access token AVANT
     // son expiration (toutes les ~15 min), pour ne JAMAIS bouncer l'utilisateur en
     // pleine action (fix « on se reconnecte tout le temps »).
     if (this.token) this.scheduleProactiveRefresh();
+    this.surveillerLeRetourAuPremierPlan();
+  }
+
+  /**
+   * ── LE MINUTEUR NE SUFFIT PAS : IL DORT QUAND L'ONGLET DORT ──────────────────────────
+   *
+   * `proactiveTick` explique déjà (TRK-002) qu'un `setTimeout` est GELÉ en arrière-plan.
+   * Ce qui manquait, c'est la conséquence : au retour, il se déclenche EN RETARD, et
+   * l'application a déjà eu le temps de partir avec un jeton mort. Le cas n'a rien
+   * d'exotique — c'est le geste le plus banal du mobile : on verrouille son téléphone, on
+   * le rouvre vingt minutes plus tard, la page reprend et lance ses requêtes.
+   *
+   * Le rattrapage par 401 existe (l'intercepteur renouvelle puis rejoue), mais il arrive
+   * APRÈS l'échec : dans le meilleur des cas quelques requêtes perdues et un écran qui
+   * clignote, dans le pire une déconnexion si le renouvellement rate à ce moment-là.
+   *
+   * On contrôle donc au moment précis où l'onglet redevient visible, AVANT que la page ne
+   * reparle. Et seulement si le jeton est effectivement à bout de course : sans ce garde,
+   * chaque va-et-vient entre deux onglets déclencherait un appel réseau.
+   *
+   * ⚠️ Aucune déconnexion ici, jamais. Si le renouvellement échoue, `proactiveTick` s'arrête
+   * et laisse un 401 ultérieur trancher — un réseau encore endormi au réveil de l'appareil
+   * ne doit pas coûter sa session à l'utilisateur.
+   */
+  private surveillerLeRetourAuPremierPlan(): void {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      // Déconnecté, ou sans de quoi renouveler : rien à faire.
+      if (!this.token || !this.refreshToken) return;
+      if (!this.jetonEnFinDeVie()) {
+        // Le jeton tient encore : on reprogramme simplement le minuteur, qui a pu dériver
+        // pendant le sommeil de l'onglet.
+        this.scheduleProactiveRefresh();
+        return;
+      }
+      void this.proactiveTick();
+    });
+  }
+
+  /** Le jeton d'accès est-il expiré, ou sur le point de l'être ? */
+  private jetonEnFinDeVie(): boolean {
+    const token = this.token;
+    if (!token) return false;
+    const exp = this.tokenExp(token);
+    // Un jeton dont on ne sait pas lire l'échéance n'est pas déclaré mourant : on ne
+    // renouvelle pas dans le vide à chaque retour d'onglet.
+    if (!exp) return false;
+    return exp * 1000 - Date.now() < AuthService.MARGE_EXPIRATION_MS;
   }
 
   /** true (défaut) = session persistante (localStorage) ; false = session-only (sessionStorage). */
@@ -301,8 +359,9 @@ export class AuthService {
     const exp = this.tokenExp(token);
     if (!exp) return;
     const msUntilExpiry = exp * 1000 - Date.now();
-    // 60 s de marge, plancher 5 s (évite une boucle serrée si le token est déjà court/expiré).
-    const delay = Math.max(5_000, msUntilExpiry - 60_000);
+    // Marge partagée avec le contrôle au retour au premier plan (cf. `MARGE_EXPIRATION_MS`),
+    // plancher 5 s (évite une boucle serrée si le token est déjà court/expiré).
+    const delay = Math.max(5_000, msUntilExpiry - AuthService.MARGE_EXPIRATION_MS);
     this.refreshTimer = setTimeout(() => {
       void this.proactiveTick();
     }, delay);
