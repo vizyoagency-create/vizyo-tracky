@@ -1,6 +1,7 @@
 import { swallow } from '../../core/error/swallow';
 import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { marqueFichierConducteurDeFiltre } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from './activity-tracker.service';
 import type {
@@ -220,10 +221,10 @@ export class ReportsApiService {
     if (fleetId) params = params.set('fleetId', fleetId);
     if (driverId) params = params.set('driverId', driverId);
     try {
-      const blob = await firstValueFrom(
-        this.http.get('/api/reports/pdf', { params, responseType: 'blob' }),
+      const res = await firstValueFrom(
+        this.http.get('/api/reports/pdf', { params, responseType: 'blob', observe: 'response' }),
       );
-      this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
+      this.triggerDownload(res.body ?? new Blob(), this.nomPdfDepuisReponse(res, from, to, driverId));
     } catch (err) {
       swallow('reports:downloadPdf', err);
       throw new Error(await this.formatHttpError(err, 'PDF'));
@@ -252,10 +253,10 @@ export class ReportsApiService {
     if (config.driverId) body['driverId'] = config.driverId;
 
     try {
-      const blob = await firstValueFrom(
-        this.http.post('/api/reports/pdf', body, { responseType: 'blob' }),
+      const res = await firstValueFrom(
+        this.http.post('/api/reports/pdf', body, { responseType: 'blob', observe: 'response' }),
       );
-      this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
+      this.triggerDownload(res.body ?? new Blob(), this.nomPdfDepuisReponse(res, from, to, config.driverId));
     } catch (err) {
       swallow('reports:downloadConfiguredPdf', err);
       throw new Error(await this.formatHttpError(err, 'PDF'));
@@ -399,6 +400,45 @@ export class ReportsApiService {
       swallow('reports:downloadExcel', err);
       throw new Error(await this.formatHttpError(err, 'Excel'));
     }
+  }
+
+  /**
+   * ── LE NOM DU PDF VIENT DU SERVEUR, COMME CELUI DU CSV ET DU CLASSEUR ─────────────────
+   *
+   * `a.download` ÉCRASE le `Content-Disposition` : tant que les deux chemins PDF refabriquaient
+   * le nom ici, tout ce que le serveur y avait mis se perdait sur le disque du gestionnaire.
+   * Mesuré en production le 2026-09-06, sur la même période et la même société :
+   *
+   *   serveur   tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf
+   *   serveur   tracky-rapport-2026-08-31_2026-09-06-sans-conducteur.pdf
+   *   serveur   tracky-rapport-2026-08-31_2026-09-06.pdf
+   *   disque    tracky-rapport-2026-08-31_2026-09-07.pdf   ← les trois, à l'identique
+   *
+   * Trois marques disparaissaient d'un coup : le FILTRE CONDUCTEUR (trois populations sous un
+   * seul nom, celle « sans conducteur » étant justement indiscernable de l'export complet), la
+   * PLAQUE quand le rapport ne porte que sur un véhicule, et la BORNE DE FIN — `to` est
+   * exclusive dans tout le produit, donc le repli datait le fichier d'un jour de trop et
+   * contredisait l'aperçu « AU (INCLUS) » de la modale juste avant le clic.
+   *
+   * Le CSV, le classeur Excel et le rapport de vitesse lisaient déjà l'en-tête ; les deux PDF
+   * étaient les seuls restés en arrière.
+   *
+   * ⚠️ LE REPLI RESTE UN NOM PLAUSIBLE, jamais une chaîne vide : l'en-tête peut manquer (proxy
+   * qui le filtre), et un `a.download` vide fait enregistrer le fichier sous « download », sans
+   * extension. Il porte donc au moins la marque du conducteur, la seule des trois qu'on puisse
+   * recomposer ici sans redemander au serveur ce qu'il vient de dire.
+   */
+  private nomPdfDepuisReponse(
+    res: HttpResponse<unknown>,
+    from: string,
+    to: string,
+    driverId?: string,
+  ): string {
+    const marque = marqueFichierConducteurDeFiltre(driverId);
+    return this.filenameFromResponse(
+      res,
+      `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}${marque}.pdf`,
+    );
   }
 
   /**

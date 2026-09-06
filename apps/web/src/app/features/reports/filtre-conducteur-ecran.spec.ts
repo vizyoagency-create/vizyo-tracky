@@ -1036,3 +1036,119 @@ describe('Export CSV — la marque conducteur du nom de fichier atteint le navig
     expect(await exporter('attachment')).toBe('tracky-trips-2026-09-01_2026-09-30.csv');
   });
 });
+
+/**
+ * ══ LE MÊME MAILLON, CÔTÉ PDF — ET IL MANQUAIT ENCORE ═══════════════════════════════════
+ *
+ * Le bloc ci-dessus a rebranché le CSV sur le `Content-Disposition`. Le classeur Excel et le
+ * rapport de vitesse le lisaient déjà. Les DEUX chemins PDF, eux, sont restés en arrière : ils
+ * refabriquaient le nom depuis `from`/`to`, et `a.download` écrasait tout ce que le serveur y
+ * avait mis.
+ *
+ * Mesuré en production le 2026-09-06, même société, même période, trois filtres différents :
+ *
+ *   serveur   tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf
+ *   serveur   tracky-rapport-2026-08-31_2026-09-06-sans-conducteur.pdf
+ *   serveur   tracky-rapport-2026-08-31_2026-09-06.pdf
+ *   disque    tracky-rapport-2026-08-31_2026-09-07.pdf   ← les trois, à l'identique
+ *
+ * Trois marques disparaissaient d'un coup, et la troisième n'a rien à voir avec le conducteur :
+ * `to` est EXCLUSIVE dans tout le produit, donc le repli datait le fichier d'un jour de trop —
+ * en contradiction directe avec le « AU (INCLUS) » que la modale venait d'afficher.
+ */
+describe('Export PDF — le nom composé par le serveur atteint le navigateur', () => {
+  let api: ReportsApiService;
+  let http: HttpTestingController;
+  let nomsTelecharges: string[];
+
+  const ID_CONDUCTEUR = '83c26191-d254-4989-a5cf-d3aa16d9802e';
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    api = TestBed.inject(ReportsApiService);
+    http = TestBed.inject(HttpTestingController);
+    nomsTelecharges = [];
+    spyOn(api as unknown as { triggerDownload(b: Blob, n: string): void }, 'triggerDownload')
+      .and.callFake((_blob: Blob, nom: string) => { nomsTelecharges.push(nom); });
+  });
+
+  afterEach(() => http.verify());
+
+  /** Joue l'export PDF configuré (le SEUL chemin des écrans) et rend le nom retenu. */
+  const exporterConfigure = async (
+    contentDisposition: string | null,
+    driverId?: string,
+  ): Promise<string> => {
+    const promesse = api.downloadConfiguredPdf('f1', '2026-08-31', '2026-09-07', {
+      sections: ['kpi', 'trips'], maxTrips: 30, topN: 7, driverId,
+    });
+    const requete = http.expectOne((r) => r.url === '/api/reports/pdf' && r.method === 'POST');
+    requete.flush(
+      new Blob(['%PDF']),
+      contentDisposition
+        ? { headers: new HttpHeaders({ 'Content-Disposition': contentDisposition }) }
+        : {},
+    );
+    await promesse;
+    return nomsTelecharges[0];
+  };
+
+  it('reprend le nom marqué par le serveur au lieu de le refabriquer', async () => {
+    const nom = await exporterConfigure(
+      'attachment; filename="tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf"; '
+      + "filename*=UTF-8''tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf",
+      ID_CONDUCTEUR,
+    );
+    expect(nom).toBe('tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf');
+  });
+
+  it('reprend aussi la PLAQUE, que le client ne met jamais dans son repli', async () => {
+    // Un rapport sur un seul véhicule s'appelle « tracky-rapport-AB-123-CD-<dates> » côté
+    // serveur. Le repli du client ne connaît pas les plaques : sans l'en-tête, cette marque
+    // n'existe simplement pas.
+    const nom = await exporterConfigure(
+      'attachment; filename="tracky-rapport-AB-123-CD-2026-08-31_2026-09-06.pdf"',
+    );
+    expect(nom).toBe('tracky-rapport-AB-123-CD-2026-08-31_2026-09-06.pdf');
+  });
+
+  it("en-tête absent : le repli porte au moins la marque du conducteur", async () => {
+    // Un proxy peut filtrer l'en-tête. C'est la SEULE des trois marques que le client puisse
+    // recomposer : il connaît le filtre qu'il vient d'envoyer.
+    const nom = await exporterConfigure(null, ID_CONDUCTEUR);
+    expect(nom).toBe('tracky-rapport-2026-08-31_2026-09-07-conducteur-83c26191.pdf');
+  });
+
+  it('en-tête absent et « sans conducteur » : le repli le dit aussi', async () => {
+    // Le cas qui coûte le plus cher : chez « mh cars », 1 905 trajets sur 1 956 n'ont aucun
+    // conducteur, donc ce document ressemble trait pour trait à l'export complet.
+    expect(await exporterConfigure(null, CONDUCTEUR_AUCUN))
+      .toBe('tracky-rapport-2026-08-31_2026-09-07-sans-conducteur.pdf');
+  });
+
+  it('en-tête absent et aucun filtre : le repli reste le nom historique', async () => {
+    // Aucun filtre ne doit RIEN ajouter : le nom d'un export non filtré ne change pas d'un
+    // caractère par rapport à ce que les utilisateurs reçoivent depuis toujours.
+    expect(await exporterConfigure(null)).toBe('tracky-rapport-2026-08-31_2026-09-07.pdf');
+  });
+
+  it('en-tête mal formé : même repli, aucun nom bricolé', async () => {
+    expect(await exporterConfigure('attachment')).toBe('tracky-rapport-2026-08-31_2026-09-07.pdf');
+  });
+
+  it("le chemin GET historique lit l'en-tête lui aussi", async () => {
+    // Aucun écran ne l'appelle, mais une route atteignable hors de l'app ne doit pas rendre un
+    // nom différent de celle que l'app utilise : c'est ainsi que deux comportements divergent.
+    const promesse = api.downloadPdf('f1', '2026-08-31', '2026-09-07', CONDUCTEUR_AUCUN);
+    const requete = http.expectOne((r) => r.url === '/api/reports/pdf' && r.method === 'GET');
+    requete.flush(new Blob(['%PDF']), {
+      headers: new HttpHeaders({
+        'Content-Disposition': 'attachment; filename="tracky-rapport-2026-08-31_2026-09-06-sans-conducteur.pdf"',
+      }),
+    });
+    await promesse;
+    expect(nomsTelecharges[0]).toBe('tracky-rapport-2026-08-31_2026-09-06-sans-conducteur.pdf');
+  });
+});

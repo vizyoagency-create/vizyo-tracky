@@ -232,7 +232,15 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
   let modale: Interne;
 
   const GROUPES = [{ id: 'g1', name: 'Livraisons Nord' }, { id: 'g2', name: 'Atelier' }];
-  const CONDUCTEURS = [{ id: 'd1', nom: 'Sohaib Hamanni' }, { id: 'd2', nom: 'Nael Mhamdi' }];
+  /**
+   * ⚠️ DE VRAIS UUID, pas « d1 » / « d2 ». Le serveur n'accepte que cette forme
+   * (`resolveDriverScope` refuse le reste), et la marque du nom de fichier en tronque les huit
+   * premiers caractères : une fausse clé courte rendait le test vert sur une règle que la
+   * production n'applique jamais.
+   */
+  const D1 = 'a1b2c3d4-1111-4aaa-8bbb-000000000001';
+  const D2 = 'e5f6a7b8-2222-4ccc-9ddd-000000000002';
+  const CONDUCTEURS = [{ id: D1, nom: 'Sohaib Hamanni' }, { id: D2, nom: 'Nael Mhamdi' }];
 
   /** L'écran : du 8 août au 7 septembre (borne haute EXCLUSIVE), aucun groupe, aucun conducteur. */
   const ouvrirDepuisEcran = (groupe = '', conducteur = ''): void => {
@@ -256,12 +264,12 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
   });
 
   it('à lʼouverture, la modale part de lʼécran — et ne signale aucun écart', () => {
-    ouvrirDepuisEcran('g1', 'd1');
+    ouvrirDepuisEcran('g1', D1);
 
     expect(modale['from']()).toBe('2026-08-08');
     expect(modale['to']()).toBe('2026-09-07');
     expect(modale['groupId']()).toBe('g1');
-    expect(modale['driverId']()).toBe('d1');
+    expect(modale['driverId']()).toBe(D1);
     expect(modale['ecartAvecEcran']()).toBeFalse();
   });
 
@@ -288,7 +296,7 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
   });
 
   it('« Revenir à lʼécran » remet les trois réglages, et éteint le bandeau', () => {
-    ouvrirDepuisEcran('g1', 'd1');
+    ouvrirDepuisEcran('g1', D1);
     modale['onFromChange']({ target: { value: '2026-07-01' } } as unknown as Event);
     modale['onDriverChange']({ target: { value: 'none' } } as unknown as Event);
     fixture.detectChanges();
@@ -298,7 +306,7 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
     fixture.detectChanges();
 
     expect(modale['from']()).toBe('2026-08-08');
-    expect(modale['driverId']()).toBe('d1');
+    expect(modale['driverId']()).toBe(D1);
     expect(modale['ecartAvecEcran']()).toBeFalse();
   });
 
@@ -328,7 +336,7 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
 
   it('le conducteur choisi ICI nomme lʼaperçu, même si lʼécran nʼen a aucun', () => {
     ouvrirDepuisEcran();
-    modale['onDriverChange']({ target: { value: 'd2' } } as unknown as Event);
+    modale['onDriverChange']({ target: { value: D2 } } as unknown as Event);
     fixture.detectChanges();
 
     const phrase: string = modale['previewSentence']();
@@ -337,7 +345,7 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
   });
 
   it('la demande émise porte la période et le conducteur de la MODALE', () => {
-    ouvrirDepuisEcran('', 'd1');
+    ouvrirDepuisEcran('', D1);
     modale['onFromChange']({ target: { value: '2026-07-01' } } as unknown as Event);
     modale['onDriverChange']({ target: { value: '' } } as unknown as Event);
     fixture.detectChanges();
@@ -352,4 +360,50 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
     // SON filtre, et le document démentirait la phrase d'aperçu.
     expect(recu!.driverId).toBe('');
   });
+
+  /**
+   * ── « FICHIER : … » EST UNE PROMESSE, PAS UNE DÉCORATION ──────────────────────────────
+   *
+   * La ligne annonce le nom que portera la pièce jointe. Mesuré en production le 2026-09-06,
+   * elle affichait `tracky-rapport-2026-08-31_2026-09-06.pdf` pendant que le serveur rendait
+   * `tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf` : le format était écrit
+   * deux fois, et la seconde écriture ignorait le filtre conducteur. Un aperçu qui ne décrit
+   * pas le fichier reçu vaut moins que pas d'aperçu du tout — il fait chercher au mauvais nom.
+   */
+  it('lʼaperçu du nom porte la marque du conducteur choisi ICI', () => {
+    ouvrirDepuisEcran();
+    modale['onDriverChange']({ target: { value: D2 } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(modale['fileName']()).toContain('-conducteur-' + D2.slice(0, 8));
+  });
+
+  it('« sans conducteur » se lit dans le nom, pas seulement dans la phrase', () => {
+    // Le document le plus dangereux : il ressemble trait pour trait à l'export complet.
+    ouvrirDepuisEcran();
+    modale['onDriverChange']({ target: { value: 'none' } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(modale['fileName']()).toContain('-sans-conducteur');
+  });
+
+  it('aucun filtre : le nom annoncé ne change pas dʼun caractère', () => {
+    // ⚠️ Le cas de l'immense majorité des exports. Une marque « neutre » renommerait tous les
+    // fichiers que les clients reçoivent depuis toujours.
+    ouvrirDepuisEcran();
+    fixture.detectChanges();
+
+    expect(modale['fileName']()).toBe('tracky-rapport-2026-08-08_2026-09-06.pdf');
+  });
+
+  it('le nom annoncé suit la période réglée dans la modale, bornée AU JOUR INCLUS', () => {
+    // `to` est exclusive dans tout le produit : l'écran porte 2026-09-07, le fichier doit
+    // dire 2026-09-06 — c'est aussi ce que la modale affiche sous « AU (INCLUS) ».
+    ouvrirDepuisEcran();
+    modale['onFromChange']({ target: { value: '2026-07-01' } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(modale['fileName']()).toBe('tracky-rapport-2026-07-01_2026-09-06.pdf');
+  });
 });
+

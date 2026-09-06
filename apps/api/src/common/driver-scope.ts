@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { CONDUCTEUR_AUCUN, FILTRE_CONDUCTEUR_REGEX, normaliserFiltreConducteur } from '@vizyo/tracky-shared';
+import {
+  CONDUCTEUR_AUCUN,
+  FILTRE_CONDUCTEUR_REGEX,
+  marqueFichierConducteurDeFiltre,
+  normaliserFiltreConducteur,
+} from '@vizyo/tracky-shared';
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════════════
@@ -107,7 +112,12 @@ export function marqueFichierConducteur(driverScope: PorteeConducteur): string {
   if (driverScope === undefined) return '';
   // La portée est déjà canonique (minuscules, cf. `resolveDriverScope`) : deux exports du même
   // conducteur portent donc le même nom, quelle que soit la casse écrite dans l'URL.
-  return driverScope === null ? '-sans-conducteur' : `-conducteur-${driverScope.slice(0, 8)}`;
+  //
+  // ⚠️ LE FORMAT LUI-MÊME VIT DANS `@vizyo/tracky-shared`, et cette fonction n'est plus que
+  // l'adaptateur de la portée serveur vers la valeur de fil. La modale d'export ANNONCE le nom
+  // du fichier avant de le demander : tant que le format n'était écrit qu'ici, elle promettait
+  // `tracky-rapport-2026-08-31_2026-09-06.pdf` là où arrivait `…-conducteur-83c26191.pdf`.
+  return marqueFichierConducteurDeFiltre(driverScope ?? CONDUCTEUR_AUCUN);
 }
 
 /**

@@ -91,6 +91,42 @@ export function normaliserFiltreConducteur(valeur: string | null | undefined): s
   return FILTRE_CONDUCTEUR_REGEX.test(brut) ? brut.toLowerCase() : null;
 }
 
+/**
+ * ── LA MARQUE DU FILTRE DANS LE NOM D'UN FICHIER EXPORTÉ ────────────────────────────────
+ *
+ * Sans elle, deux exports de la même période portent le même nom, et sous « sans conducteur »
+ * ils sont indiscernables : chez « mh cars », 1 905 trajets sur 1 956 n'ont aucun conducteur,
+ * donc le fichier filtré ressemble trait pour trait à l'export complet. Le navigateur suffixe
+ * « (1) », le gestionnaire envoie le second par courriel, et le destinataire lit le mois entier
+ * là où il manque 51 trajets que rien ne signale.
+ *
+ * ⚠️ LA RÈGLE VIT ICI, dans le contrat partagé, parce que TROIS surfaces l'écrivent :
+ *
+ *   1. le serveur, qui compose le `Content-Disposition` des quatre documents ;
+ *   2. la modale d'export, qui ANNONCE le nom avant de le demander (« Fichier : … ») ;
+ *   3. le repli de l'écran, quand l'en-tête manque (proxy qui le filtre).
+ *
+ * Elle a d'abord vécu du seul côté serveur, et la modale refabriquait le sien : elle promettait
+ * `tracky-rapport-2026-08-31_2026-09-06.pdf` là où arrivait
+ * `tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf` — mesuré en production le
+ * 2026-09-06. Un aperçu qui ne décrit pas le fichier reçu vaut moins que pas d'aperçu du tout.
+ *
+ * L'identifiant est TRONQUÉ à huit caractères, et le nom de la personne n'y figure pas : le
+ * contenu porte déjà la trace (colonne `driver_name` du CSV, ligne « Conducteur : … » du PDF),
+ * le nom du fichier n'a qu'à dire QU'IL est filtré — sans faire voyager un nom propre dans un
+ * intitulé de pièce jointe.
+ *
+ * @param filtre la valeur DE FIL — celle de l'URL et du menu déroulant : vide, `none`, ou un
+ *   identifiant. Une valeur non reconnue ne marque rien, comme elle ne filtrerait rien.
+ */
+export function marqueFichierConducteurDeFiltre(filtre: string | null | undefined): string {
+  const canonique = normaliserFiltreConducteur(filtre);
+  if (canonique === null) return '';
+  return canonique === CONDUCTEUR_AUCUN
+    ? '-sans-conducteur'
+    : `-conducteur-${canonique.slice(0, 8)}`;
+}
+
 /** La sorte que porte une clé rendue par `cleImputationTrajet`. */
 export function sorteImputation(cle: string): SorteImputation {
   if (cle.startsWith('driver:')) return 'driver';

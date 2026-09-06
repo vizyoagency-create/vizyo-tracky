@@ -8,6 +8,7 @@
 import {
   CLE_NON_ATTRIBUE,
   CONDUCTEUR_AUCUN,
+  marqueFichierConducteurDeFiltre,
   FILTRE_CONDUCTEUR_REGEX,
   cleImputationTrajet,
   normaliserFiltreConducteur,
@@ -118,5 +119,53 @@ describe('normaliserFiltreConducteur — la VALEUR canonique, jamais un simple v
     expect(normaliserFiltreConducteur(`x${UUID}`)).toBeNull();
     expect(normaliserFiltreConducteur(`${UUID}x`)).toBeNull();
     expect(normaliserFiltreConducteur('none none')).toBeNull();
+  });
+});
+
+/**
+ * ══ LA MARQUE DU FILTRE DANS LE NOM D'UN FICHIER ════════════════════════════════════════
+ *
+ * Trois surfaces l'écrivent : le serveur pose le `Content-Disposition`, la modale ANNONCE le
+ * nom avant le clic, et l'écran s'en sert de repli quand l'en-tête manque. Mesuré en
+ * production le 2026-09-06, la modale promettait `…_2026-09-06.pdf` là où arrivait
+ * `…_2026-09-06-conducteur-83c26191.pdf` : deux écritures du même format avaient divergé.
+ */
+describe('marqueFichierConducteurDeFiltre — une seule écriture pour trois surfaces', () => {
+  const ID = '83C26191-D254-4989-A5CF-D3AA16D9802E';
+
+  it('aucun filtre : aucune marque, le nom historique ne bouge pas', () => {
+    // ⚠️ Le cas de l'immense majorité des exports. Une marque « neutre » ici renommerait
+    // TOUS les fichiers que les clients reçoivent depuis toujours.
+    expect(marqueFichierConducteurDeFiltre(undefined)).toBe('');
+    expect(marqueFichierConducteurDeFiltre(null)).toBe('');
+    expect(marqueFichierConducteurDeFiltre('')).toBe('');
+    expect(marqueFichierConducteurDeFiltre('   ')).toBe('');
+  });
+
+  it('sans conducteur : la marque le dit en toutes lettres', () => {
+    // Le document le plus dangereux : chez « mh cars », 1 905 trajets sur 1 956 n'ont aucun
+    // conducteur, donc il ressemble trait pour trait à l'export complet.
+    expect(marqueFichierConducteurDeFiltre(CONDUCTEUR_AUCUN)).toBe('-sans-conducteur');
+  });
+
+  it('un conducteur : huit caractères de son identifiant, jamais son nom', () => {
+    expect(marqueFichierConducteurDeFiltre(ID.toLowerCase())).toBe('-conducteur-83c26191');
+  });
+
+  it('la casse ne fabrique pas deux noms pour le même conducteur', () => {
+    // Un identifiant recopié en majuscules depuis une URL doit produire le MÊME fichier :
+    // sinon deux exports de la même personne se retrouvent côte à côte sous deux noms.
+    expect(marqueFichierConducteurDeFiltre(ID)).toBe(marqueFichierConducteurDeFiltre(ID.toLowerCase()));
+  });
+
+  it('les blancs autour ne changent rien non plus', () => {
+    expect(marqueFichierConducteurDeFiltre(' none ')).toBe('-sans-conducteur');
+  });
+
+  it('valeur non reconnue : aucune marque, comme elle ne filtrerait rien', () => {
+    // Une valeur que le serveur refuserait ne doit pas marquer un fichier qu'il rendra
+    // complet — ce serait la promesse inverse de la vérité.
+    expect(marqueFichierConducteurDeFiltre('tout')).toBe('');
+    expect(marqueFichierConducteurDeFiltre('83c26191')).toBe('');
   });
 });

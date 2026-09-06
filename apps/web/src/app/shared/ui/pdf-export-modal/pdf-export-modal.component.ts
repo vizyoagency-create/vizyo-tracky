@@ -25,6 +25,7 @@ import {
   User,
   X,
 } from 'lucide-angular';
+import { marqueFichierConducteurDeFiltre } from '@vizyo/tracky-shared';
 import type { VehicleDetailDto } from '../../../core/services/vehicles.service';
 import type { PdfReportSection } from '../../../core/services/reports.service';
 
@@ -1377,8 +1378,16 @@ export class PdfExportModalComponent {
   });
 
   /**
-   * Nom du fichier tel que le backend le compose : « tracky-rapport- », la plaque
-   * quand le rapport ne porte que sur un vehicule, puis les dates de la periode.
+   * Nom du fichier tel que le serveur le compose : « tracky-rapport- », la plaque quand le
+   * rapport ne porte que sur un véhicule, les dates de la période, puis la marque du filtre
+   * conducteur.
+   *
+   * ⚠️ CETTE LIGNE EST UNE PROMESSE, pas une décoration : elle annonce le nom que portera la
+   * pièce jointe. La marque du conducteur y manquait — mesuré en production le 2026-09-06, la
+   * modale affichait `tracky-rapport-2026-08-31_2026-09-06.pdf` pendant que le serveur rendait
+   * `tracky-rapport-2026-08-31_2026-09-06-conducteur-83c26191.pdf`. D'où l'appel à la règle
+   * PARTAGÉE plutôt qu'une seconde écriture du même format, qui rederiverait au premier
+   * changement.
    */
   protected readonly fileName = computed(() => {
     let scopePart = '';
@@ -1387,8 +1396,15 @@ export class PdfExportModalComponent {
       const plate = this.vehicleById().get(id)?.plate;
       if (plate) scopePart = plate.replace(/[^A-Za-z0-9-]+/g, '-') + '-';
     }
-    const dates = this.fileDateRange().trim() || '…';
-    return 'tracky-rapport-' + scopePart + dates + '.pdf';
+    // ⚠️ LES DATES VIENNENT DE LA MODALE, PAS DE LA PAGE. `fileDateRange` est une entrée :
+    // elle porte la période de l'ÉCRAN, figée à l'ouverture. Depuis que la période se règle
+    // ici, la lire seule faisait annoncer l'ancienne — on changeait « Du » sous les yeux du
+    // lecteur et la ligne « Fichier : … » ne bougeait pas. Le repli reste l'entrée, pour un
+    // appelant qui ne passerait pas de période.
+    const propres = this.from() && this.toInclusif() ? this.from() + '_' + this.toInclusif() : '';
+    const dates = propres || this.fileDateRange().trim() || '…';
+    const conducteur = marqueFichierConducteurDeFiltre(this.driverId());
+    return 'tracky-rapport-' + scopePart + dates + conducteur + '.pdf';
   });
 
   protected readonly canExport = computed(() => {
