@@ -50,6 +50,50 @@ export LC_ALL=C
 ERRBUF=/tmp/audit-vps-stderr.log
 exec 2>"$ERRBUF"
 
+# ⚠️⚠️ AJOUTE LE 2026-08-18 (VPS-M43) — LE TAMPON CI-DESSUS N'EST PUBLIE QU'A LA FIN, DONC
+# JAMAIS QUAND LA COLLECTE MEURT EN ROUTE. Et elle est morte en route ce matin, deux fois de
+# suite, sur une variable non liee (`RPC_CACHE`, section 5) : `set -u` arrete `bash` net, le
+# message part dans `$ERRBUF`, et `$ERRBUF` n'est jamais lu puisqu'on n'atteint pas sa
+# publication. Sortie tronquee, stderr local VIDE, aucune explication nulle part.
+#
+# Le marqueur `FIN DE COLLECTE` a fait son travail — il a dit QU'ELLE etait tronquee. Il ne
+# pouvait pas dire POURQUOI, et c'est ce qui a coute deux collectes completes a une machine a
+# 2 vCPU avant qu'un `grep` cote poste ne trouve la cause.
+#
+# Ce trap publie le tampon SUR STDOUT quand on sort autrement que par la fin normale. Il coute
+# un `trap` et rien d'autre : sur un passage sain, `FIN_NORMALE` vaut 1 et il ne fait rien.
+# ⚠️ Il ne remplace PAS le bloc de fin (VPS-M33), qui compte et publie les erreurs NON FATALES
+#    d'un passage reussi. Les deux repondent a deux questions differentes : « qu'est-ce qui a
+#    rate en chemin ? » et « pourquoi ca s'est arrete ? ». Un seul des deux laisse un trou.
+FIN_NORMALE=0
+_publier_erreurs_si_mort_en_route() {
+  st=$?
+  [ "${FIN_NORMALE:-0}" = "1" ] && return 0
+  printf '\n\n'
+  # ⚠️ Attrape a l'essai de la branche C (mort par signal) : dans un trap EXIT, `$?` ne porte
+  #    PAS le statut 143/137 d'une mort par signal — il vaut 0. Publier « statut de sortie 0 »
+  #    sur une collecte tuee, c'est AFFIRMER que tout allait bien au moment de mourir. On
+  #    l'annonce donc comme non significatif plutot que de le donner pour une mesure (VPS-M28).
+  if [ "$st" = "0" ]; then
+    printf '🔴🔴 LA COLLECTE S EST ARRETEE AVANT LA FIN — statut de sortie NON SIGNIFICATIF\n'
+    printf '     (dans un trap EXIT, `$?` vaut 0 sur une mort par SIGNAL : ne pas lire ce 0\n'
+    printf '      comme « elle s est bien terminee »).\n'
+  else
+    printf '🔴🔴 LA COLLECTE S EST ARRETEE AVANT LA FIN — statut de sortie %s.\n' "$st"
+  fi
+  printf '     Ce qui suit est le tampon stderr, publie par le trap de sortie (VPS-M43).\n'
+  printf '     ⚠️ NE PAS interpreter les sections deja produites comme un passage complet :\n'
+  printf '        la procedure impose de RELANCER, pas de lire une sortie partielle.\n'
+  if [ -s "$ERRBUF" ]; then
+    printf '     ── dernieres lignes de stderr ──\n'
+    tail -20 "$ERRBUF" 2>/dev/null | sed 's/^/     /'
+  else
+    printf '     tampon stderr VIDE : la mort ne vient pas d un message d erreur\n'
+    printf '     (signal recu, connexion coupee, ou processus tue de l exterieur).\n'
+  fi
+}
+trap _publier_erreurs_si_mort_en_route EXIT
+
 # ⚠️ AJOUTE LE 2026-08-06. La collecte a mis 136 s ce jour-la (budget : 90 s) et RIEN dans la
 # sortie ne disait ou le temps etait passe — il a fallu re-mesurer a la main, section par
 # section. Un budget qu'on impose sans l'instrumenter ne se diagnostique pas : il se constate.
@@ -132,6 +176,52 @@ ms() { echo $(( ( $(date +%s%N) - $1 ) / 1000000 )); }
 # Sur 2 vCPU deja charges, un audit qui se sert avant les services degrade ce qu'il surveille
 # et fausse sa propre mesure.
 LOW="nice -n 19 ionice -c3"
+
+# ⚠️⚠️ AJOUTE LE 2026-08-23 — VPS-M61. LES DEUX BORNES DE TOUT HISTOGRAMME « PAR JOUR » SONT
+# PARTIELLES, ET AUCUNE NE LE DISAIT.
+#
+# Ces histogrammes sont decoupes dans une fenetre de 7 jours GLISSANTE, qui commence et finit a
+# l heure de la collecte. Le PREMIER jour est donc ampute de son debut, et le DERNIER n a pas eu
+# lieu. Les jours du MILIEU, eux, sont exacts a l unite pres. Trois preuves, prises sur le meme
+# journal a trois passages differents :
+#
+#   journee   vue par la passe du 08-21   du 08-22   du 08-23
+#   08-15                            52          27          —      (hyperviseur)
+#   08-16                            52          52           8     (hyperviseur)
+#   08-16                             —          46          30      (sessions SSH)
+#
+# Le meme jour vaut 52 puis 27, ou 52 puis 8 : ce n est pas la machine qui a change, c est la
+# borne qui a coupe ailleurs. Et le rapport du 08-22 a publie « 72 » pour le 08-22 — jour lu
+# alors qu il etait ecoule a 1,9 % ; il en valait 360 une fois complet, soit un facteur 5.
+#
+# ⚠️ CE DEFAUT A DEJA CONTAMINE LE MANIFESTE : `ordonnancement.hyperviseur-ps` y decrit la
+#    repartition « 8 · 52 · 52 · 52 · 52 · 53 · 59 · 5 — reguliere a l unite pres ». Le 8 et le 5
+#    sont les deux bords, c est-a-dire les deux seuls nombres de la serie qui ne mesurent rien.
+#
+# ⚠️ ET LA LECON EST QUE LE COLLECTEUR SAVAIT DEJA : la section 9 porte cet avertissement depuis
+#    le premier jour (« la derniere etant le jour EN COURS (partielle) »). Une lecon apprise a un
+#    endroit ne se propage pas toute seule aux trois autres qui en ont besoin — il faut la
+#    FACTORISER, sinon elle reste une note locale. D ou cette fonction, unique, appelee par les
+#    trois blocs.
+#
+# Cout : nul. Aucune commande de plus, aucune lecture de plus — uniquement des libelles.
+hist_jour() { # $1=indentation  $2=debut de fenetre (lisible)  $3=fin de fenetre (lisible)
+  awk -v pre="$1" -v deb="$2" -v fin="$3" '
+    { l[NR] = $0 }
+    END {
+      if (NR == 0) { print pre "(aucune ligne sur la fenetre)"; exit }
+      for (i = 1; i <= NR; i++) {
+        m = ""
+        if (i == 1)  m = "   ⚠️ BORD — jour AMPUTE de son debut (fenetre ouverte a " deb ")"
+        if (i == NR) m = "   ⚠️ BORD — jour EN COURS, arrete a " fin
+        print pre l[i] m
+      }
+      if (NR <= 2)
+        print pre "⚠️ TOUTES les lignes sont des bords : cette serie ne porte AUCUN jour complet."
+      else
+        printf "%s→ %d jour(s) COMPLET(s) au milieu — seuls ceux-la se comparent d un passage a l autre.\n", pre, NR - 2
+    }'
+}
 
 printf 'COLLECTE AUDIT VPS — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 printf 'hote=%s  noyau=%s\n' "$(hostname)" "$(uname -r)"
@@ -231,7 +321,50 @@ for n in dockerd containerd systemd-journald snapd; do
   # On reutilise les DEUX instantanes deja pris ci-dessus : aucune mesure supplementaire.
   INST=$(printf '%s\n%s\n' "$AVANT" "$APRES" | awk -v pid="$p" -v hz="$HZ" -v dt="$DT" '
     $1==pid { if (vu++) printf "%.1f", 100*(($2-t)/hz)/dt; else t=$2 }')
-  [ -z "$INST" ] && INST=0
+  # ⚠️⚠️ CORRIGE LE 2026-08-18 (VPS-M44) — ICI SE TROUVAIT `[ -z "$INST" ] && INST=0`, ET IL A
+  # PUBLIE « dockerd maintenant 0,0 % — 🟠 SEQUELLE, calme maintenant » LE 2026-08-18 A 03h51,
+  # sur un demon qui consommait 1,44 coeur en moyenne sur les 25 heures encadrant la mesure et
+  # que `sar` place, sur la tranche de dix minutes contenant cet instant, a 5,75 % d inactivite.
+  #
+  # Le grand instantane (`snap()`) lit ~900 fichiers de /proc en priorite `nice -n 19`. Sur une
+  # machine a ~6 % d inactivite, il arrive qu un PID manque a l un des deux echantillons : awk ne
+  # rend alors RIEN, et le repli FABRIQUAIT UN ZERO. Une absence de mesure devenait une
+  # affirmation — « il n a rien consomme » — et c est le sens RASSURANT (VPS-M21).
+  #
+  # ⚠️ Ce defaut est VPS-M39 A L IDENTIQUE, ET A TROIS LIGNES DE LA. VPS-M39 a corrige le 08-16
+  # exactement ce repli (`pdock >= 0 ? pdock : 0`) dans le bloc BUDGET, en ecrivant : « quand la
+  # part de dockerd n est pas mesurable, il publiait dockerd 0,0 %, ce qui se lit : dockerd n a
+  # rien consomme. Une AFFIRMATION tiree d une ABSENCE. » La lecon n a jamais ete portee au bloc
+  # d a cote — celui qui, lui, decide du verdict du constat le plus lourd du dispositif.
+  #
+  # Le cout n etait pas seulement un chiffre faux : `EMB_PID` (plus bas) reste vide quand INST
+  # vaut 0, donc TOUT le bloc « signature de boucle » de VPS-M28 est saute EN SILENCE — le
+  # collecteur perd son propre diagnostic le matin ou il sert.
+  #
+  # On distingue donc les deux cas, et quand la mesure a echoue on la REFAIT, cibles seulement :
+  # 2 lectures de /proc pour ce seul PID et 1 s d attente, au lieu de deux balayages de 900
+  # fichiers. Si la reprise echoue aussi, on AVOUE — jamais un zero.
+  if [ -z "$INST" ]; then
+    R0=$(awk '{ sub(/^[0-9]+ \(.*\) /, ""); print $12+$13 }' /proc/$p/stat 2>/dev/null)
+    T0=$(awk '{print $1}' /proc/uptime)
+    sleep 1
+    R1=$(awk '{ sub(/^[0-9]+ \(.*\) /, ""); print $12+$13 }' /proc/$p/stat 2>/dev/null)
+    T1=$(awk '{print $1}' /proc/uptime)
+    if [ -n "$R0" ] && [ -n "$R1" ]; then
+      INST=$(awk -v a="$R0" -v b="$R1" -v t0="$T0" -v t1="$T1" -v hz="$HZ" \
+        'BEGIN{ d=t1-t0; if (d>0) printf "%.1f", 100*((b-a)/hz)/d }')
+      printf '  ⚠️ %s : le grand instantane n a pas rendu ce PID — mesure REPRISE sur 1 s, ciblee.\n' "$n"
+    fi
+  fi
+  if [ -z "$INST" ]; then
+    # Aucun zero fabrique. On dit ce qu on ne sait pas, et on refuse le verdict rassurant.
+    awk -v hz="$HZ" -v up="$UPS" -v n="$n" '{
+      s=($14+$15)/hz; r=100*s/up
+      printf "  %-16s maintenant  NON MESURABLE  |  cumul %5.1f h CPU / %5.1f h uptime = %5.1f %%\n",
+        n, s/3600, up/3600, r
+      if (r > 50) printf "     🔴 CUMUL ELEVE ET INSTANTANE NON MESURABLE : on ne peut PAS dire si la\n        boucle est EN COURS ou ETEINTE. NE PAS lire cette absence comme « calme maintenant »\n        (VPS-M44). Trancher a la main : ps -o etime,time -p %s, puis sar -u.\n", n
+    }' /proc/$p/stat 2>/dev/null
+  else
   awk -v hz="$HZ" -v up="$UPS" -v n="$n" -v inst="$INST" '{
     s=($14+$15)/hz; r=100*s/up      # s et up sont tous deux en SECONDES
     if (inst+0 > 50)   v="🔴 EMBALLEMENT EN COURS — il tourne en boucle MAINTENANT"
@@ -239,7 +372,12 @@ for n in dockerd containerd systemd-journald snapd; do
     else               v=""
     printf "  %-16s maintenant %5.1f %%  |  cumul %5.1f h CPU / %5.1f h uptime = %5.1f %%  %s\n",
       n, inst, s/3600, up/3600, r, v
+    # ⚠️ Un instantane de 3 s sur une machine saturee est un ECHANTILLON, pas un etat. Quand il
+    # dit « calme » alors que le cumul crie, la seule lecture honnete est « je ne sais pas sur
+    # cette fenetre » — c est la lecon de VPS-M36 (un echantillon unique presente comme un etat).
+    if (inst+0 <= 50 && r > 50) printf "     ⚠️ Instantane BAS et cumul HAUT : 3 s ne suffisent pas a conclure que la boucle\n        est finie. Confirmer par ps -o etime,time (continuite) AVANT d ecrire « elle a cesse ».\n"
   }' /proc/$p/stat 2>/dev/null
+  fi
   # Retenir le PREMIER demon en emballement EN COURS : c'est lui qu'on ausculte plus bas.
   # On ne retient PAS sur le cumul (🟠) : une sequelle n'a rien a ausculter, la boucle est finie.
   if [ -z "${EMB_PID:-}" ] && [ "$(awk -v i="$INST" 'BEGIN{print (i+0>50)?1:0}')" = "1" ]; then
@@ -513,6 +651,13 @@ done
 
 sub "/opt sous-dossier par sous-dossier (le poste le plus lourd — VPS-M26/VPS-018)"
 T_OPT=$(date +%s); OPT_KO=0; OPT_N=0; OPT_TOT=0; OPT_RESTE=""
+# ⚠️⚠️ AJOUTE LE 2026-08-21 (VPS-M55) — LE COUT DE CHAQUE ENFANT EST DESORMAIS CUMULE.
+# Ces deux compteurs n'existent que pour DERIVER la part de /opt/vizyo-leads au lieu de
+# l'ecrire en dur : la phrase « ~25 % de ce parcours » etait figee depuis le 2026-08-11 et
+# valait 11,9 % le 2026-08-21. Une attribution derivee de la mesure survit au changement de
+# situation ; une attribution ecrite en dur devient fausse sans que rien ne le signale
+# (meme lecon que VPS-M47, au meme fichier, a un autre endroit).
+OPT_MS_TOT=0; OPT_MS_LEADS=""
 for d in /opt/*/; do
   OPT_TOT=$((OPT_TOT+1)); x=${d%/}
   # Plafond GLOBAL : au-dela, on n'entame pas un enfant de plus. Le budget de la section est
@@ -520,15 +665,17 @@ for d in /opt/*/; do
   if [ $(( $(date +%s) - T_OPT )) -ge 45 ]; then OPT_RESTE="$OPT_RESTE ${x##*/}"; continue; fi
   T0=$(date +%s%N)
   k=$(timeout 12 $LOW du -sk "$d" 2>/dev/null | awk '{print $1}')
+  D_MS=$(ms "$T0"); OPT_MS_TOT=$((OPT_MS_TOT+D_MS))
+  [ "${x##*/}" = "vizyo-leads" ] && OPT_MS_LEADS=$D_MS
   if [ -n "$k" ]; then
     OPT_KO=$((OPT_KO+k)); OPT_N=$((OPT_N+1))
     printf '  %8s  %-36s %6s ms\n' \
       "$(awk -v k="$k" 'BEGIN{ if (k>=1048576) printf "%.1fG", k/1048576;
                                else if (k>=1024) printf "%.0fM", k/1024;
                                else printf "%dK", k }')" \
-      "$x" "$(ms "$T0")"
+      "$x" "$D_MS"
   else
-    printf '  %8s  %-36s %6s ms\n' "(>12s)" "$x" "$(ms "$T0")"
+    printf '  %8s  %-36s %6s ms\n' "(>12s)" "$x" "$D_MS"
     OPT_RESTE="$OPT_RESTE ${x##*/}"
   fi
 done
@@ -537,9 +684,19 @@ done
 awk -v k="$OPT_KO" -v n="$OPT_N" -v t="$OPT_TOT" -v s="$(( $(date +%s) - T_OPT ))" 'BEGIN{
   printf "  → /opt = %.1f Go, mesures sur %d / %d sous-dossiers, en %d s\n", k/1048576, n, t, s }'
 [ -n "$OPT_RESTE" ] && echo "  ⚠️ NON MESURE (delai depasse — mesure NON FAITE, PAS un dossier vide) :$OPT_RESTE"
-echo "  ⚠️ Le cout suit les INODES, pas les octets : au 2026-08-11, /opt/maalem (1,6 Go) coute"
-echo "     ~1 s quand /opt/vizyo-leads (823 Mo, pile SUPPRIMEE le 2026-08-04) en coute ~6 —"
-echo "     soit ~25 % de ce parcours pour du code qui ne tourne plus (VPS-018)."
+echo "  ⚠️ Le cout suit les INODES, pas les octets — et la part ci-dessous est MESUREE ce passage,"
+echo "     pas recopiee : c'est ce que coute chaque nuit un depot dont la pile est SUPPRIMEE."
+awk -v l="$OPT_MS_LEADS" -v t="$OPT_MS_TOT" 'BEGIN{
+  if (l == "" || t <= 0) {
+    print "     /opt/vizyo-leads : NON MESURE ce passage — aucune part ne peut en etre derivee.";
+    print "     (absence de mesure, PAS une part nulle : si le dossier a disparu, VPS-018 est CLOS.)";
+  } else {
+    printf "     /opt/vizyo-leads (823 Mo, pile SUPPRIMEE le 2026-08-04) : %.1f s sur %.1f s\n", l/1000, t/1000;
+    printf "     = %.1f %% de ce parcours pour du code qui ne tourne plus (VPS-018).\n", 100*l/t;
+  } }'
+echo "     ⚠️ NE PAS comparer cette part a celle d un autre passage sans regarder les DUREES :"
+echo "        un parcours a froid et un parcours a chaud different d un facteur ~20 (VPS-M18),"
+echo "        et la part se deplace quand c est le DENOMINATEUR qui change, pas vizyo-leads."
 echo "  (+ ~4,5 Go d outillage de dev exclus du parcours : /root/.local, .npm, .cache, .claude —"
 echo "     mesures le 2026-08-06, ~155 000 inodes. Voir VPS-017 : ils n'ont rien a faire ici.)"
 # ⚠️ /opt est le PREMIER POSTE de la collecte, et il faut le dire ici plutot que de le
@@ -552,6 +709,19 @@ echo "     mesures le 2026-08-06, ~155 000 inodes. Voir VPS-017 : ils n'ont rien
 # Le compte n'est PAS recalcule a chaque passage, volontairement : `find /opt | wc -l` refait
 # exactement le parcours que `du` vient de faire, pour un chiffre qui ne bouge qu'a un deploiement.
 # Ajouter du travail a la machine pour documenter le travail qu'on lui ajoute serait absurde.
+#
+# ⚠️⚠️ /opt/maalem — MESURE LE 2026-08-21, apres SEPT passages a « (>12s) ».
+# Valeurs : 1 621 488 Ko (1,55 Go) et 135 099 inodes. Le `find` ne coute que 487 ms ; c'est le
+# `du` qui coute, parce qu'il faut stat() chaque inode.
+# ⚠️ ET CE QUI COMPTE ICI EST LA CAUSE, PAS LA TAILLE : le rapport du 2026-08-20 attribuait le
+# « 17/18 » a une machine occupee par VPS-016. C'EST REFUTE — le 2026-08-21 la machine est a
+# 0,50 de charge, 88 % d'inactivite, aucune boucle, et maalem depasse les 12 s a l'identique.
+# La cause est le cache FROID : relance immediatement apres l'abandon (donc a chaud), le meme
+# `du` rend 5,76 s. Le delai de 12 s n'est pas trop court pour la machine, il est trop court
+# pour un premier parcours de 135 099 inodes — ce qui est exactement le cas de chaque nuit.
+# ⚠️ NE PAS en conclure « il faut relever le delai a 20 s » : ce serait +8 s sur une collecte
+# qui depasse DEJA son budget (108 s pour 90 le 2026-08-21). L'arbitrage est ouvert, il est
+# ecrit dans le rapport du 2026-08-21, et il ne se tranche pas en changeant un chiffre ici.
 sub "Detail /var/lib/docker (dossiers legers uniquement)"
 # ⚠️ `rootfs` et `overlay2` sont VOLONTAIREMENT EXCLUS : les parcourir, c'est marcher sur
 # ~12 Go de couches empilees, soit plusieurs minutes d'E/S soutenues pour un chiffre que
@@ -636,7 +806,31 @@ fi
 section "4. DOCKER"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 have docker || { echo "docker absent"; }
-docker system df 2>/dev/null
+# CAPTURE UNIQUE, POSEE LE 2026-08-20 (VPS-M53) — CE COLLECTEUR APPELAIT `docker system df`
+# SIX FOIS (section 4, section 10, levier 1), pour une valeur qui ne change pas pendant une
+# collecte. Mesure sur machine SAINE, six appels consecutifs : 1,96 / 1,85 / 4,26 / 2,22 /
+# 1,76 / 1,92 s — soit ~14 s des 90 s de budget depenses a redemander la meme chose.
+#
+# ET LE GAIN DE TEMPS EST LE MOINDRE DES DEUX. Les six appels avaient lieu a des INSTANTS
+# DIFFERENTS : section 4 vers t+50 s, section 10 vers t+110 s, levier 1 vers t+131 s. Le
+# 2026-08-14, le total est passe de 18,92 a 13,38 puis 17,35 et 16,57 Go A L INTERIEUR D UNE
+# MEME COLLECTE, et le rapport ne pouvait pas dire laquelle etait « la » mesure. Une capture
+# unique rend les sections COHERENTES ENTRE ELLES : elles decrivent le meme instant.
+SYSDF_T=$(date -u '+%H:%M:%S')
+SYSDF_TXT=$(docker system df 2>/dev/null)
+SYSDF_FMT=$(docker system df --format '{{.Type}}|{{.Size}}|{{.Reclaimable}}|{{.Active}}|{{.TotalCount}}' 2>/dev/null)
+echo "$SYSDF_TXT"
+# Denominateur explicite (lecon VPS-M08/M22) : sans lui, une capture vide ferait afficher
+# « rien » aux trois consommateurs, en silence — et « rien » se lit comme « rien a signaler ».
+SYSDF_N=$(echo "$SYSDF_FMT" | grep -c "^..*$")
+case "${SYSDF_N:-}" in ''|*[!0-9]*) SYSDF_N=0 ;; esac
+if [ "$SYSDF_N" -eq 0 ]; then
+  echo "  🔴 LA CAPTURE docker system df EST VIDE — les sections 10 et 12 n auront PAS leurs"
+  echo "     chiffres, et leur silence ne voudra PAS dire « rien a recuperer »."
+else
+  echo "  (capture unique a $SYSDF_T UTC, $SYSDF_N lignes — relue par les sections 10 et 12,"
+  echo "   donc toutes les sections decrivent le MEME instant)"
+fi
 sub "Conteneurs par etat"
 docker ps -a --format '{{.State}}' 2>/dev/null | sort | uniq -c
 sub "Conteneurs ARRETES — toujours affiche, meme a zero"
@@ -883,6 +1077,189 @@ else
   echo "  (jq absent — table de routage non calculable)"
 fi
 
+sub "Clients docker BLOQUES — la cause de VPS-016 (orphelins le 08-18, parent VIVANT le 08-20)"
+# ⚠️⚠️ AJOUTE LE 2026-08-18 — CE BLOC AURAIT ECONOMISE SEPT JOURS A MOITIE DE MACHINE.
+#
+# La 3e occurrence de VPS-016 a dure du 2026-08-11 21h05 au 2026-08-18 05h47 — 152 heures a
+# ~100 % d'un coeur, puis ~170 % apres le 08-17. Le vidage des goroutines (kill -USR1) a montre
+# 66 goroutines bloquees dans `stream/bytespipe` et DEUX `httputils.WriteLogStream` actives.
+# Les deux clients, retrouves par leur inode de socket :
+#
+#   pid  986774  docker logs --tail 40 --since 30m foodsqan-traefik   demarre 2026-08-11 21:01:20
+#   pid 3191099  docker logs texto-relay --tail 400                   demarre 2026-08-17 09:17:08
+#
+# ⚠️ LES DEUX DATES TOMBENT DANS LES DEUX FENETRES DATEES PAR `sar`, A LA MINUTE : le debut de la
+# boucle (11-08 ~21h05) et la bascule du SECOND REGIME (17-08 entre 09h10 et 09h30). Deux
+# evenements independants, deux coincidences exactes.
+#
+# `kill 986774 3191099` a fait passer dockerd de **170 % a 1,5 % d'un coeur**, et la signature de
+# boucle de 1 316 459 read()/s a 0,0000 octet est tombee a 4 836 read()/s a 5 259 octets par
+# appel. AUCUNE COUPURE : 33/33 conteneurs debout, PID du demon inchange.
+#
+# ⚠️ NI L'UN NI L'AUTRE N'AVAIT `-f`. Ils ne suivaient donc pas les journaux : leurs shells
+# parents (`bash -c ...` lances par SSH) sont MORTS, et le client est reste bloque a ECRIRE vers
+# un canal SSH disparu. C'est VPS-M12 mot pour mot — « une commande envoyee a un demon ne doit
+# pas etre interrompue en cours de route : le client meurt, le travail cote serveur, NON » —
+# ecrit le 2026-08-05, jamais relie a VPS-016 pendant treize passages.
+#
+# ⚠️ COUT DU BLOC : un `pgrep` et une lecture de /proc par client trouve (il y en a 0 ou 1 en
+# temps normal). AUCUN appel a Docker — c'est deliberé : on ne diagnostique pas un demon malade
+# en lui parlant.
+# ⚠️⚠️⚠️ CORRIGE LE 2026-08-20 (VPS-M49) — CE DETECTEUR A MANQUE LA 4e OCCURRENCE, LE JOUR MEME.
+#
+# Ce matin a 01h13:57, `docker logs tracky-postgres --tail 200000` a rallume VPS-016 : dockerd
+# est passe a 101,7 % d'un coeur, et `sar` date la bascule entre 01h10:20 et 01h20:20 — LA SECONDE
+# du lancement du client. Le bloc ci-dessus a pourtant publie « ✅ aucun client docker orphelin ».
+#
+# LA RAISON EST DANS SON CRITERE : il ne comptait que les clients dont le PPID vaut 1. Or ici la
+# chaine de parents est ENTIEREMENT VIVANTE :
+#     43987  docker logs tracky-postgres --tail 200000   (Sl, futex_wait_queue, 0 s de CPU)
+#     43986  bash -c "docker logs ... | grep -i ... | tail -20"
+#     43921  sshd: root@notty          <- canal SSH encore ESTABLISHED
+# Le tube n'est pas casse, le shell n'est pas mort, PERSONNE n'est orphelin — et le demon brule
+# quand meme un coeur. « Parent mort » etait la forme qu'avait prise la 3e occurrence, pas la
+# CONDITION du defaut. On a code le symptome observe une fois, pas le phenomene.
+#
+# LE BON DISCRIMINANT EST L'AGE : un client `docker` en ligne de commande rend la main en moins
+# d'une seconde. Un client vivant depuis des MINUTES est bloque, que son parent respire ou non.
+# On liste donc TOUS les clients, on affiche age + CPU + wchan, et on signale sur l'AGE.
+# Le PPID reste imprime — c'est une information utile — mais il n'est plus un filtre.
+#
+# ⚠️ NE PAS S'ACCUSER SOI-MEME : la collecte lance elle-meme des clients docker. Ils sont ses
+# descendants, donc on remonte la chaine des parents et on ecarte tout ce qui descend de $$.
+# Sans ce garde, le bloc se denoncerait lui-meme a chaque passage un peu lent.
+#
+# ⚠️ COUT : un `pgrep` et quelques lectures de /proc. AUCUN appel a Docker — on ne diagnostique
+# pas un demon malade en lui parlant.
+SEUIL_AGE=60          # secondes : au-dela, un client en ligne de commande est BLOQUE
+SUSPECT=0; ORPH=0; NB_VU=0
+for _p in $(pgrep -x docker 2>/dev/null); do
+  [ -r "/proc/$_p/stat" ] || continue
+  _pp=$(awk '{print $4}' "/proc/$_p/stat" 2>/dev/null)
+  [ -z "$_pp" ] && continue
+  # descend-il de la collecte elle-meme ? (remontee bornee a 8 crans)
+  _mien=0; _a=$_p
+  for _i in 1 2 3 4 5 6 7 8; do
+    [ "$_a" = "$$" ] && { _mien=1; break; }
+    [ "$_a" = "1" ] || [ -z "$_a" ] && break
+    _a=$(awk '{print $4}' "/proc/$_a/stat" 2>/dev/null)
+  done
+  [ "$_mien" = "1" ] && continue
+  NB_VU=$((NB_VU+1))
+  _args=$(tr '\0' ' ' < "/proc/$_p/cmdline" 2>/dev/null | cut -c1-88)
+  _age=$(ps -o etimes= -p "$_p" 2>/dev/null | tr -d ' '); case "${_age:-}" in ''|*[!0-9]*) _age=0 ;; esac
+  _cpu=$(ps -o time= -p "$_p" 2>/dev/null | tr -d ' ')
+  _wch=$(cat "/proc/$_p/wchan" 2>/dev/null); [ -z "$_wch" ] && _wch='-'
+  [ "$_pp" = "1" ] && { ORPH=$((ORPH+1)); _tag='ORPHELIN'; } || _tag="ppid=$_pp"
+  if [ "$_age" -ge "$SEUIL_AGE" ]; then
+    SUSPECT=$((SUSPECT+1))
+    printf '  🔴 BLOQUE   pid %-8s age %5ss  cpu %-9s %-13s %s\n' "$_p" "$_age" "${_cpu:-?}" "$_tag" "$_args"
+    printf '             bloque dans : %s\n' "$_wch"
+  else
+    printf '  ·  en cours pid %-8s age %5ss  %-13s %s\n' "$_p" "$_age" "$_tag" "$_args"
+  fi
+done
+if [ "$SUSPECT" -eq 0 ]; then
+  printf '  ✅ aucun client docker bloque (aucun ne vit depuis plus de %s s)\n' "$SEUIL_AGE"
+  [ "$ORPH" -gt 0 ] && echo "  ⚠️ mais $ORPH client(s) ont pour parent init : a surveiller au prochain passage."
+else
+  printf '  🔴 %s client(s) docker VIVANTS DEPUIS PLUS DE %s s (dont %s orphelin(s)) — un client\n' "$SUSPECT" "$SEUIL_AGE" "$ORPH"
+  echo  "     en ligne de commande rend la main en moins d une seconde. C EST LA CAUSE DE VPS-016,"
+  echo  "     etablie le 2026-08-18 (parent mort) PUIS le 2026-08-20 (parent vivant, tube bloque)."
+  # ⚠️ GUILLEMETS SIMPLES OBLIGATOIRES : en guillemets doubles, les accents graves autour de
+  #    `kill <pid>` seraient une SUBSTITUTION DE COMMANDE — le collecteur EXECUTERAIT un kill
+  #    pour afficher une phrase. C'est le piege deja documente en tete de ce fichier pour
+  #    `docker stats` (2026-08-08), et il a ete re-tendu ici a l'ecriture, le 2026-08-18.
+  echo  '     Verifier dockerd juste au-dessus : s il brule un coeur, la remediation est'
+  echo  '     `kill <pid>` sur ces clients — 2 secondes, AUCUNE coupure, aucun conteneur touche.'
+  echo  '     ⚠️ NE PAS redemarrer Docker avant d avoir essaye ca : le redemarrage coute ~50 s'
+  echo  '        d interruption et efface l etat qui prouve la cause.'
+fi
+# ⚠️ Le denominateur, pour que ce bloc ne puisse pas rassurer par accident (lecon VPS-M08/M22).
+# ⚠️⚠️ ET SA PREMIERE ECRITURE ETAIT FAUSSE — `pgrep -xc docker 2>/dev/null || echo 0`.
+# `pgrep -c` ECRIT « 0 » sur stdout ET SORT EN STATUT 1 quand il ne compte rien : le `|| echo 0`
+# ajoutait donc une SECONDE ligne, et le denominateur s'affichait « 0\n0 » — sur le cas SAIN,
+# c'est-a-dire celui de tous les jours. C'est VPS-M33 MOT POUR MOT (`grep -c` avait exactement ce
+# comportement, et le meme repli avait produit exactement ce defaut le 2026-08-13).
+# ⚠️ Les QUATRE branches synthetiques etaient toutes passees : elles bouchonnaient `pgrep`, donc
+# elles ne pouvaient pas reproduire son STATUT DE SORTIE. Seule l'execution REELLE, sur la
+# machine, et sur le cas SAIN, l'a montre — les deux lecons du jour (VPS-M43 « essayer les
+# branches ne remplace pas essayer le montage » et VPS-M40 « tout detecteur doit voir un cas
+# sain ») verifiees dans la meme minute, sur le correctif qui les cite.
+# On n'interroge donc pas le statut : on assainit la valeur.
+NB_DOCK=$(pgrep -xc docker 2>/dev/null)
+case "${NB_DOCK:-}" in ''|*[!0-9]*) NB_DOCK=0 ;; esac
+printf '  (denominateur : %s processus client `docker` au total, %s examine(s) hors collecte)\n' "$NB_DOCK" "$NB_VU"
+echo  '  ⚠️ PORTEE du comptage ci-dessus, ecrite le 2026-08-20 pour ne pas repayer VPS-M49 : il ne'
+echo  '     voit que les processus dont le NOM est exactement « docker ». Un client qui parle au'
+echo  '     socket sans s appeler ainsi — curl sur /run/docker.sock, un SDK dans un conteneur, un'
+echo  '     outil de supervision — lui est invisible. Les deux occurrences connues etaient des'
+echo  '     `docker logs`, ce qui ne prouve pas que la troisieme le sera.'
+# ⚠️ AJOUTE LE 2026-08-24 — ANGLE MORT N° 4 DES RAPPORTS DU 08-19 AU 08-23, REPORTE QUATRE FOIS.
+#
+# La portee ci-dessus etait ECRITE depuis le 08-20 et n'etait pas MESUREE : on publiait chaque
+# nuit « 0 processus client docker » en sachant que ce 0 ne couvrait pas les clients anonymes,
+# sans jamais dire combien il y en avait. Un avertissement qui remplace une mesure finit par se
+# lire comme la mesure.
+#
+# ON COMPTE DONC LES CONNEXIONS, PAS LES NOMS : cote serveur, chaque client de l'API tient une
+# socket unix ETABLIE sur /run/docker.sock, qu'il s'appelle docker, curl, traefik ou rien.
+#
+# ⚠️ `ss -x` SEUL NE REND RIEN ICI — il faut `-p`. Verifie sur la machine le 2026-08-24 : la
+# meme commande sans `-p` rend zero ligne pour /run/docker.sock, avec `-p` elle les rend toutes.
+# Ecrire `ss -x` aurait donc produit un « 0 » PERMANENT et FAUX, du cote rassurant : exactement
+# la famille VPS-M28 (un detecteur qui n'a jamais rien pu voir).
+#
+# ⚠️⚠️ ET C'EST UN ECHANTILLON, DONC ON EN PREND TROIS. Un sondage unique valait 8 a 02h40 et
+# 0 a 02h55 le jour de son ecriture : publier le second comme un fait aurait rejoue VPS-M36
+# (« le wchan est un echantillon, et il sert de preuve »). On publie l'ETENDUE des trois.
+# Ce que 1,1 s d'echantillonnage attrape : un client VIVANT — et c'est la cible, puisque
+# VPS-016 est cause par des clients qui durent des MINUTES. Ce qu'il rate : un client eclair,
+# qui ne bloque rien. La portee est donc alignee sur le defaut recherche, et elle est dite.
+# ⚠️ COUT MESURE : 3 x 40 ms de `ss` + 1,0 s d'attente = ~1,1 s. Aucun appel a Docker.
+SOCK_MIN=''; SOCK_MAX=''
+for _s in 1 2 3; do
+  _n=$(ss -xp 2>/dev/null | awk '$2=="ESTAB" && $5=="/run/docker.sock"' | wc -l)
+  case "${_n:-}" in ''|*[!0-9]*) _n=0 ;; esac
+  [ -z "$SOCK_MIN" ] && { SOCK_MIN=$_n; SOCK_MAX=$_n; }
+  [ "$_n" -lt "$SOCK_MIN" ] && SOCK_MIN=$_n
+  [ "$_n" -gt "$SOCK_MAX" ] && SOCK_MAX=$_n
+  [ "$_s" != 3 ] && sleep 0.5
+done
+if [ "$SOCK_MAX" -eq 0 ]; then
+  echo "  ✅ 0 connexion ETABLIE sur /run/docker.sock (3 sondages sur 1,1 s) — donc AUCUN client"
+  echo "     de l API a cet instant, nomme « docker » ou non. Le 0 ci-dessus est desormais MESURE"
+  echo "     sur les connexions, plus seulement sur les noms de processus."
+elif [ "$SOCK_MIN" -eq "$SOCK_MAX" ]; then
+  printf '  🟠 %s connexion(s) ETABLIE(S) sur /run/docker.sock aux 3 sondages, pour %s processus\n' "$SOCK_MAX" "$NB_DOCK"
+  echo  "     nomme(s) « docker ». L ECART est le nombre de clients que le comptage par NOM ne"
+  echo  "     voit pas. Stable sur 1,1 s = client DURABLE, donc candidat au blocage (VPS-016)."
+else
+  printf '  ·  connexions ETABLIES sur /run/docker.sock : %s a %s selon le sondage (3 sur 1,1 s),\n' "$SOCK_MIN" "$SOCK_MAX"
+  printf '     pour %s processus nomme(s) « docker ». Un compte QUI VARIE = trafic d API normal,\n' "$NB_DOCK"
+  echo  "     pas un client installe. C est un compte STABLE et NON NUL qui doit inquieter."
+fi
+echo  "  ── conteneurs qui MONTENT la socket (clients permanents par construction) ──"
+if [ -n "${INSPECT_JSON:-}" ] && have jq; then
+  # ⚠️ Derive de INSPECT_JSON, deja capture par la carte des domaines : ZERO appel docker de plus
+  # (discipline VPS-M30). Un conteneur qui monte la socket peut piloter TOUT le demon : c'est une
+  # elevation de privilege de fait, et `ro` n'y change rien — l API est en ecriture par la requete,
+  # pas par le montage.
+  MONTEURS=$(printf '%s' "$INSPECT_JSON" | jq -r '.[]
+      | select([.Mounts[]?.Source] | any(. == "/var/run/docker.sock" or . == "/run/docker.sock"))
+      | "    \(.Name[1:])  (projet \(.Config.Labels["com.docker.compose.project"] // "-"))  monte en \([.Mounts[] | select(.Source | test("docker[.]sock")) | if .RW then "LECTURE-ECRITURE" else "lecture seule" end] | join(","))"' 2>/dev/null)
+  if [ -n "$MONTEURS" ]; then
+    printf '%s\n' "$MONTEURS"
+    printf '    → %s conteneur(s). Un montage « lecture seule » NE limite RIEN : qui atteint la\n' "$(printf '%s\n' "$MONTEURS" | grep -c '^..*$')"
+    echo  "      socket pilote le demon (creer, supprimer, monter /). C est le compromettre qui"
+    echo  "      compromet la machine — a garder en tete pour la surface d attaque, section 6."
+  else
+    echo "    ✅ aucun conteneur ne monte /run/docker.sock"
+  fi
+else
+  echo "    (non mesure : INSPECT_JSON absent ou jq indisponible — PAS « aucun »)"
+fi
+
 sub "Consommation live"
 docker stats --no-stream --format '  {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.PIDs}}' 2>/dev/null | sort -t$'\t' -k3 -h -r | head -15
 sub "Images (les plus lourdes)"
@@ -1033,7 +1410,56 @@ section "5. DONNEES (PostgreSQL)"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # Les identifiants se LISENT dans l'env du conteneur. Les deviner (`-U postgres`) renvoie une
 # sortie VIDE que l'on prendrait pour « rien a signaler » — le pire des faux negatifs.
-for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|postgis"); do
+#
+# ⚠️⚠️ CORRIGE LE 2026-08-18 (VPS-M43) — CETTE LIGNE EST TOUT LE CORRECTIF, ET SON ABSENCE A
+# DECAPITE LA COLLECTE DEUX FOIS. Le correctif du 2026-08-17 (angle mort n° 3, patron VPS-M30)
+# accumule `random_page_cost` dans `RPC_CACHE` pour que le levier 4 en DERIVE au lieu de relancer
+# six `docker exec`. Il ne l'a jamais INITIALISE. Or ce script tourne sous `set -u` (ligne 27) :
+# la premiere lecture de `${RPC_CACHE}`, a la fin de la PREMIERE iteration, est une variable non
+# liee — donc `bash` s'arrete net, avec le statut 1, au beau milieu de la section 5.
+#
+# ⚠️ Et il s'arrete EN SILENCE, parce que `exec 2>"$ERRBUF"` (ligne 51) envoie « unbound
+# variable » dans un tampon qui n'est publie qu'a la FIN — c'est-a-dire jamais, puisqu'on meurt
+# avant. Le garde VPS-M33, ecrit precisement pour rendre les erreurs du collecteur visibles, est
+# ce qui a rendu celle-ci invisible. Voir le trap de la ligne ~52, qui ferme ce mode d'echec.
+#
+# ⚠️ La lecon N'EST PAS « penser a initialiser » : c'est celle de VPS-M35, mot pour mot, trois
+# jours plus tard — ESSAYER LES BRANCHES NE REMPLACE PAS ESSAYER LE MONTAGE. Le correctif du
+# 08-17 a ete valide par six branches ET une contre-epreuve 6/6 sur la machine ; aucune de ces
+# sept verifications ne pouvait le voir, parce qu'elles rejouaient le BLOC, jamais le SCRIPT.
+#
+# ⚠️⚠️ CORRIGE LE 2026-09-05 (VPS-M80) — L'ENUMERATION DES BASES SE FAISAIT SUR LE NOM DU
+# CONTENEUR, ET ELLE A MANQUE UNE BASE DE PRODUCTION PENDANT TOUTE LA VIE DE CET AUDIT.
+# `vizyo-auth-db` est un `postgres:17-alpine` qui porte l'authentification de TOUTES les
+# applications de la machine. Son nom finit par `-db`, pas par `-postgres` : il etait donc
+# absent de cette section, absent du levier 4 — qui annoncait « ✅ 6 / 6 bases PostgreSQL
+# examinees », un denominateur calcule par le filtre defaillant lui-meme, donc rassurant sur
+# son propre angle mort (VPS-M34, mot pour mot) — et absent de la table de couverture des
+# sauvegardes de la section 11, ou une base sans sauvegarde apparait par son ABSENCE.
+# Le filtre porte desormais sur le NOM **ou** l'IMAGE, et il DIT ce que le nom seul aurait rate.
+db_conteneurs() {   # $1 = motif de moteurs (ERE, en minuscules)
+  docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null \
+    | awk -F'|' -v m="$1" '{n=tolower($1); i=tolower($2)} n ~ m || i ~ m {print $1}' | sort -u
+}
+db_vues_par_image_seule() {   # celles que le NOM seul aurait manquees — a publier, pas a taire
+  docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null \
+    | awk -F'|' -v m="$1" '{n=tolower($1); i=tolower($2)} i ~ m && n !~ m {print $1" ("$2")"}' | sort -u
+}
+MOTEURS_PG='postgres|postgis'
+MOTEURS_TOUS='postgres|postgis|mysql|maria|mongo'
+RATTRAPEES=$(db_vues_par_image_seule "$MOTEURS_TOUS")
+if [ -n "$RATTRAPEES" ]; then
+  printf '  🟠 %s conteneur(s) de base reconnu(s) par leur IMAGE et NON par leur nom (VPS-M80) :\n' \
+    "$(printf '%s\n' "$RATTRAPEES" | wc -l)"
+  printf '%s\n' "$RATTRAPEES" | sed 's/^/       /'
+  echo "     Avant le 2026-09-05, ces conteneurs etaient absents de TOUTE cette section, du"
+  echo "     levier 4 et de la couverture des sauvegardes — et leur absence se lisait comme"
+  echo "     « rien a signaler ». Le denominateur « N / N bases examinees » les ignorait aussi."
+else
+  echo "  ✅ aucun conteneur de base que le nom seul aurait manque (filtre nom OU image, VPS-M80)"
+fi
+RPC_CACHE=''
+for pg in $(db_conteneurs "$MOTEURS_PG"); do
   U=$(docker exec "$pg" printenv POSTGRES_USER 2>/dev/null)
   D=$(docker exec "$pg" printenv POSTGRES_DB   2>/dev/null)
   [ -z "$U" ] && continue
@@ -1100,14 +1526,361 @@ for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|post
       if [ -z "$COL" ]; then
         printf '       %-30s (aucune colonne horodatee — fenetre indeterminable)\n' "$t"
       else
-        docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
-          "SELECT '       '||rpad('$t',30)||coalesce(min(\"$COL\")::date::text,'vide')||' -> '
-                  ||coalesce(max(\"$COL\")::date::text,'vide')||'  = '
-                  ||count(DISTINCT \"$COL\"::date)||' jours  (colonne $COL)'
-           FROM \"$t\";" 2>/dev/null
+        # ⚠️⚠️ CORRIGE LE 2026-08-24 (VPS-M64) — CE BLOC A DIT « RIEN A FAIRE » SUR UNE TABLE
+        # QUI AVAIT GROSSI DE 16 % EN 24 h, ET IL AVAIT RAISON SUR CE QU'IL MESURAIT.
+        #
+        # Le 2026-08-24, `wire_logs` passe de 708 320 a 823 954 lignes (+16,3 %) et
+        # `position_sampling_decisions` de 581 918 a 727 692 (+25,1 %). Les DEUX fenetres sont
+        # restees a 5 jours, identiques a la veille — donc le bloc a imprime son verdict
+        # rassurant : « fenetre COURTE et STABLE = retention active, rien a faire ».
+        #
+        # LE VERDICT ETAIT UN NON-SEQUITUR. Une fenetre borne une DUREE, jamais un VOLUME :
+        # a retention constante, le volume est le produit de la duree PAR LE DEBIT D'ARRIVEE —
+        # et le debit n'etait mesure nulle part. Les emetteurs ont triple leur cadence apres un
+        # deploiement le 08-23 a 03h59 (6 850 lignes/h -> 20 300/h, verifie heure par heure) :
+        # la fenetre n'a pas bouge d'une minute, et la table va vers le TRIPLE de sa taille.
+        #
+        # C'est la regle du §0 de la procedure — « un compteur doit prouver qu'il compte ce
+        # qu'il pretend compter » — prise en defaut : celui-ci pretendait trancher « accumulation
+        # ou regime permanent ? » en ne regardant QUE les bornes de la fenetre.
+        #
+        # ⚠️ COUT : NUL. Le `min/max/count(DISTINCT)` ci-dessous etait DEJA un parcours complet
+        # de la table ; on ajoute deux agregats FILTER et une lecture de catalogue SUR LE MEME
+        # PARCOURS. Aucune requete de plus, aucun `docker exec` de plus.
+        # ⚠️ La comparaison est INTERNE a la passe (24 h contre les 24 h precedentes) : le
+        # collecteur n'a pas de memoire d'un passage a l'autre, et un detecteur qui exige cette
+        # memoire ne se declenche jamais le jour ou il faudrait.
+        # ⚠️⚠️ AJOUTE LE 2026-08-26 — ANGLE MORT N° 1 DU RAPPORT DU 2026-08-25, FERME ICI.
+        # Ce bloc savait dire « le debit a ete divise par 1,5 ». Il ne savait PAS dire si
+        # c etait « par la MEME flotte » ou « par une flotte REDUITE » — c est-a-dire la
+        # difference entre un correctif qui a marche et une panne majeure deguisee en bonne
+        # nouvelle : les deux produisent exactement la meme courbe descendante.
+        # Le 2026-08-25 la question a ete posee A LA MAIN (38 boitiers avant, 38 apres) ; sans
+        # elle, le rapport publiait « le debit revient a la normale ✅ » sur une flotte qui
+        # aurait pu etre a moitie muette. Elle entre donc dans le script.
+        # ⚠️ COUT : +0,40 s, MESURE, PAS ESTIME — et ce nest PAS « nul », contrairement a ce que
+        # javais ecrit en posant ce bloc. Trois paires de mesures consecutives sur wire_logs
+        # (291 Mo, 825 000 lignes) le 2026-08-26 : 272/270/246 ms sans les deux agregats,
+        # 655/671/655 ms avec. Le parcours est bien le meme, mais `count(DISTINCT)` ajoute un
+        # tri/hachage de 126 000 valeurs. Une seule table de la machine porte une colonne
+        # demetteur, donc la facture totale est de +0,4 s sur une passe de ~137 s.
+        # (Le 2026-08-25, un angle mort annonce a ~2 s en a coute 5,7 : une estimation non
+        #  recalee devient un argument. Celle-ci est donc mesuree avant detre ecrite.)
+        # ⚠️ La colonne d emetteur est cherchee par HEURISTIQUE (elle s appelle `imei` ici) :
+        # quand elle est absente, le bloc le DIT au lieu de se taire — une absence de mesure et
+        # une mesure nulle ne doivent pas se lire pareil (VPS-M02).
+        # Jour de la semaine au MILIEU de chaque fenetre de 24 h — le milieu, pas le bord, pour
+        # qu une collecte lancee a 02 h ne soit pas etiquetee du jour precedent (VPS-M61).
+        # `:=` n affecte qu une fois : deux forks pour toute la section, pas deux par table.
+        : "${JOUR_J0:=$(date -u -d '-12 hours' '+%a' 2>/dev/null || echo '?')}"
+        : "${JOUR_J1:=$(date -u -d '-36 hours' '+%a' 2>/dev/null || echo '?')}"
+        # ⚠️⚠️ HEURISTIQUE ELARGIE LE 2026-09-03 — ANGLE MORT N° 2, FERME AU 4e REPORT.
+        # Elle ne connaissait que des colonnes TEXTE (`imei`, `deviceid`...). `positions` — la
+        # plus grosse table de la production, 459 Mo — porte son emetteur en `trackerId`, une
+        # cle etrangere UUID vers `trackers.id`. Elle etait donc « emetteurs NON MESURES »
+        # depuis toujours, et c est precisement cette table qui a du servir A LA MAIN de
+        # contre-epreuve a VPS-038 le 2026-09-02 : sans une SECONDE table alimentee par un
+        # AUTRE chemin de code, « six emetteurs ont disparu » et « la colonne imei a cesse
+        # d etre remplie » rendent la meme sortie — et la seconde fabriquerait un incident
+        # majeur a partir d un defaut d ecriture.
+        #
+        # Le piege annonce des le 2026-09-02 est desarme par la clause `est_cle_primaire` :
+        # sans elle, `positions.id` (uuid, cle primaire) serait retenu et le collecteur
+        # publierait « 1,5 million d emetteurs distincts » — un compteur qui compte les LIGNES
+        # en se presentant comme un compte d emetteurs, soit VPS-M01 sous sa forme la plus pure.
+        # Le controle se fait contre `key_column_usage`, donc sur le catalogue, pas sur le nom.
+        #
+        # ⚠️ COUT : +0,84 s au total, MESURE sur l EMSEL COMPLET (les trois agregats, tel qu il
+        #    tourne reellement) — 5 paires appariees le 2026-09-03, la premiere jetee :
+        #      positions                   0,26/0,25/0,24/0,28 s sans  →  0,97/0,90/0,97/1,06 avec  = +0,72 s
+        #      position_sampling_decisions 0,13/0,13/0,11 s sans       →  0,25/0,25/0,24 avec       = +0,12 s
+        #    ⚠️⚠️ UN PREMIER JET AVAIT ECRIT « +0,48 s », ET CE CHIFFRE ETAIT FAUX DE 43 % : il
+        #    ne chronometrait que les DEUX `count(DISTINCT)`, en oubliant le 3e agregat de
+        #    fraicheur (le `GROUP BY` de VPS-M75), qui est un SECOND parcours. C est l erreur
+        #    du 2026-09-01 a l identique — « juste sur les E/S, faux sur le processeur ». Mesurer
+        #    un correctif AMPUTE de la moitie qu on vient d ajouter est le defaut le plus facile
+        #    a commettre, parce que la mesure repond quand meme.
+        #    Un jet plus ancien encore chronometrait une requete qui ECHOUAIT (0,72 s) : les DEUX
+        #    requetes sont desormais controlees rendre une VALEUR avant d etre chronometrees —
+        #    un chronometre sur une erreur mesure la vitesse de l erreur.
+        # ⚠️ Cette seconde est ajoutee a une collecte DEJA hors budget (VPS-M56, 17e
+        #    depassement ce passage). C est un echange assume et il faut l ecrire : 0,67 % de
+        #    la duree contre la capacite de distinguer une flotte amputee d un defaut
+        #    d ecriture, sur la table qui porte la donnee METIER.
+        EMCOL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+          "SELECT column_name FROM information_schema.columns
+            WHERE table_name='$t' AND data_type IN ('text','character varying')
+              AND lower(column_name) IN ('imei','deviceid','device_id','serial','serialnumber','msisdn','tracker','boitier')
+            ORDER BY CASE lower(column_name) WHEN 'imei' THEN 1 WHEN 'deviceid' THEN 2
+                                             WHEN 'device_id' THEN 3 ELSE 9 END
+            LIMIT 1;" 2>/dev/null)
+        if [ -z "$EMCOL" ]; then
+          EMCOL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+            "SELECT c.column_name FROM information_schema.columns c
+              WHERE c.table_name='$t' AND c.data_type='uuid'
+                AND (c.column_name ~ 'Id\$' OR c.column_name ~ '_id\$')
+                AND c.column_name NOT IN (
+                      SELECT k.column_name FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage k
+                          ON k.constraint_name = tc.constraint_name
+                       WHERE tc.table_name='$t' AND tc.constraint_type='PRIMARY KEY')
+              ORDER BY CASE WHEN lower(c.column_name) LIKE '%tracker%' THEN 1
+                            WHEN lower(c.column_name) LIKE '%device%'  THEN 2 ELSE 9 END,
+                       c.ordinal_position
+              LIMIT 1;" 2>/dev/null)
+        fi
+        # ⚠️⚠️ TROISIEME AGREGAT AJOUTE LE 2026-09-02 — VPS-M75. UNE FENETRE DE 24 h RETARDE LA
+        # DETECTION D UN ARRET DE 24 h, ET LE RAPPORT PUBLIE CE RETARD COMME UN ETAT COURANT.
+        # Le 2026-09-01 a 07:39, ce bloc a publie « ✅ flotte STABLE (38 contre 38) » et le
+        # rapport en a tire « la flotte est intacte, 15e jour sans perte ». Mesure faite le
+        # lendemain : SIX emetteurs avaient cesse d emettre le 08-31 entre 11 h 53 et 13 h 50,
+        # soit DIX-HUIT HEURES avant cette phrase. Le compteur n avait pas tort — leurs dernieres
+        # trames tombaient encore dans sa fenetre de 24 h. Le defaut est que la sortie ne dit pas
+        # qu elle decrit une FENETRE et se lit comme un ETAT.
+        # Le correctif ne remplace pas la comparaison de fenetres : il ajoute la seule grandeur
+        # qui n a pas de retard, la FRAICHEUR de la derniere trame de chaque emetteur.
+        # ⚠️ PORTEE, ecrite ici pour qu on ne la redecouvre pas : cet agregat ne voit que les
+        #    emetteurs presents dans la table, donc dans la fenetre de RETENTION (~4 j sur
+        #    wire_logs). Un boitier muet depuis six jours en a disparu et n est PAS compte —
+        #    c est un PLANCHER du nombre de silencieux, jamais un total. Six des douze traceurs
+        #    silencieux du 2026-09-02 etaient dans ce cas.
+        if [ -n "$EMCOL" ]; then
+          EMSEL="count(DISTINCT \"$EMCOL\") FILTER (WHERE \"$COL\" >  now() - interval '24 hours'),
+                 count(DISTINCT \"$EMCOL\") FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
+                                                      AND \"$COL\" <= now() - interval '24 hours'),
+                 (SELECT count(*)::text || '/' || coalesce(to_char(max(d),'MM-DD HH24:MI'),'-')
+                    FROM (SELECT max(\"$COL\") d FROM \"$t\" GROUP BY \"$EMCOL\") g
+                   WHERE d <= now() - interval '6 hours')"
+        else
+          EMSEL="-1, -1, ''"
+        fi
+        # ⚠️⚠️ AJOUTE LE 2026-09-03 — VPS-M76. LE COMPTEUR DE SILENCE DECROIT QUAND LA PANNE DURE.
+        # L agregat de fraicheur pose la veille (VPS-M75) porte la mention « c est un PLANCHER,
+        # il ne voit que les emetteurs encore presents dans la fenetre de retention ». Cette
+        # mention etait juste — et INSUFFISANTE, ce que le passage suivant a montre en un jour :
+        #
+        #   2026-09-02 : 🔴 7 emetteurs muets      2026-09-03 : 🔴 6 emetteurs muets
+        #
+        # Rien ne s est ameliore. Le 7e (864035054755856, muet depuis le 08-29 21 h 15) est
+        # simplement SORTI de la fenetre de retention de wire_logs (borne basse : 08-30 03 h 00,
+        # verifie — il a 0 ligne dans la table). Le registre `trackers`, lui, qui n a AUCUNE
+        # retention, compte 12 silencieux sur 44 les DEUX jours.
+        #
+        # 🔑 LE DEFAUT EST PIRE QU UN PLANCHER : plus un boitier se tait longtemps, plus il est
+        # CERTAIN de disparaitre du compte. Le compteur est donc ANTI-CORRELE a la gravite qu il
+        # mesure, et sa serie (7 → 6 → 5...) se lit exactement comme une flotte qui se retablit
+        # pendant qu elle s eteint. Un plancher qui SE DEGRADE avec le temps n est pas une borne
+        # prudente, c est un indicateur qui ment dans le sens rassurant — la famille VPS-M31.
+        #
+        # Le remede n est pas un avertissement de plus : c est une source SANS fenetre. On
+        # cherche donc, dans la MEME base, une table de REGISTRE — petite, portant la meme
+        # colonne d emetteur ET un horodatage de derniere vue — et on publie son compte a cote.
+        # ⚠️ COUT : 0,08 s MESURE (3 mesures : 0,10 / 0,08 / 0,08 s le 2026-09-03) — la table
+        #    fait 44 lignes. Le `reltuples < 10000` garantit qu on ne parcourt jamais un journal.
+        # ⚠️ PORTEE : ce recoupement n existe que si un registre est trouve. Quand il ne l est
+        #    pas, le bloc le DIT — il ne retombe pas silencieusement sur le plancher (VPS-M02).
+        REGSIL=""
+        if [ -n "$EMCOL" ]; then
+          REG=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
+            "SELECT c.table_name || '|' || ts.column_name
+               FROM information_schema.columns c
+               JOIN pg_class pc ON pc.relname = c.table_name
+               JOIN LATERAL (SELECT column_name FROM information_schema.columns
+                              WHERE table_name = c.table_name
+                                AND data_type LIKE 'timestamp%'
+                                AND (column_name ~* '^last.*(seen|frame|contact)' )
+                              ORDER BY ordinal_position LIMIT 1) ts ON true
+              WHERE c.column_name = '$EMCOL' AND c.table_schema='public'
+                AND c.table_name <> '$t' AND pc.reltuples BETWEEN 0 AND 10000
+              ORDER BY pc.reltuples LIMIT 1;" 2>/dev/null)
+          if [ -n "$REG" ]; then
+            RT=${REG%%|*}; RC=${REG##*|}
+            # ⚠️⚠️ AJOUTE LE 2026-09-04 — VPS-M78. LE REGISTRE PUBLIAIT UN TOTAL, ET UN TOTAL
+            # MELANGE TROIS POPULATIONS QUI N ONT RIEN A VOIR.
+            #
+            # Mesure du 2026-09-04 : le registre passe de 12 a 14 silencieux sur 44, et la
+            # lecture immediate — « la panne s etend a deux boitiers de plus » — est FAUSSE.
+            # Les 14, ventiles a la main ce passage :
+            #   6 boitiers de la flotte 2ad69ac1 muets depuis le 08-31   = LINCIDENT (84-86 h)
+            #   2 boitiers de la meme flotte muets depuis les 08-19/08-21 = ANTERIEURS a lincident
+            #   3 boitiers SANS VEHICULE, muets depuis 5 j a 90 j        = materiel deposé
+            #   2 boitiers dautres flottes, muets depuis 7,5 h et 24,5 h = les « deux de plus »
+            # Le premier des deux a 7 h 30 de silence un matin : cest un vehicule GARE LA NUIT.
+            #
+            # 🔑 VPS-M76 avait corrige un compteur qui DECROISSAIT quand la panne durait. Son
+            # remede — une source sans fenetre — est bon, et il a introduit le defaut SYMETRIQUE :
+            # une source sans fenetre accumule TOUT, donc son total MONTE pour des raisons qui ne
+            # sont pas la panne. Un compteur qui ment dans le sens alarmant nest pas meilleur
+            # quun compteur qui ment dans le sens rassurant : il fabrique une aggravation, et une
+            # aggravation fabriquee fait ouvrir un incident la ou il ny en a pas.
+            #
+            # Le discriminant est la DUREE du silence, et lui seul. On la publie donc par bandes.
+            # ⚠️ COUT : ZERO requete de plus — quatre FILTER de plus sur le MEME parcours des
+            #    44 lignes, deja borne par `reltuples < 10000`.
+            REGSIL=$(docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
+              "SELECT count(*) FILTER (WHERE \"$RC\" <= now() - interval '6 hours' OR \"$RC\" IS NULL),
+                      count(*),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '6 hours'
+                                         AND \"$RC\" >  now() - interval '24 hours'),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '24 hours'
+                                         AND \"$RC\" >  now() - interval '72 hours'),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '72 hours'
+                                         AND \"$RC\" >  now() - interval '168 hours'),
+                      count(*) FILTER (WHERE \"$RC\" <= now() - interval '168 hours' OR \"$RC\" IS NULL)
+                 FROM \"$RT\";" 2>/dev/null)
+            [ -n "$REGSIL" ] && REGSIL="$RT|$REGSIL"
+          fi
+        fi
+        docker exec "$pg" psql -U "$U" -d "$D" -t -A -F'|' -c \
+          "SELECT coalesce(min(\"$COL\")::date::text,'vide'),
+                  coalesce(max(\"$COL\")::date::text,'vide'),
+                  count(DISTINCT \"$COL\"::date),
+                  count(*),
+                  round(extract(epoch from (max(\"$COL\")-min(\"$COL\")))/86400.0, 2),
+                  count(*) FILTER (WHERE \"$COL\" >  now() - interval '24 hours'),
+                  count(*) FILTER (WHERE \"$COL\" >  now() - interval '48 hours'
+                                     AND \"$COL\" <= now() - interval '24 hours'),
+                  round(pg_total_relation_size('\"$t\"')/1048576.0, 1),
+                  $EMSEL,
+                  count(*) FILTER (WHERE \"$COL\" >  now() - interval '8 days'
+                                     AND \"$COL\" <= now() - interval '7 days')
+           FROM \"$t\";" 2>/dev/null |
+        awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" -v regsil="${REGSIL:-}" \
+                  -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" 'NF>=12 {
+            deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
+            e0=$9+0; e1=$10+0; muets=$11; j7=$12+0;
+            printf "       %-30s%s -> %s  = %s jours, %.1f Mo  (colonne %s)\n", t, deb, fin, jours, mo, c;
+            if (j1 <= 0) {
+              printf "         (debit non comparable : 0 arrivee sur les 24 h PRECEDENTES)\n";
+              next;
+            }
+            r = j0 / j1;
+            printf "         debit : %d arrivees sur 24 h  contre  %d les 24 h precedentes  = x%.2f\n", j0, j1, r;
+            # ── AJOUTE LE 2026-09-01 (VPS-M71) : LA VEILLE NEST PAS UNE REFERENCE ──
+            # Ce rapport compare un JOUR OUVRE a un DIMANCHE une fois sur deux, et rien ne le
+            # disait. Le 2026-09-01, positions affichait x1.50 — exactement le bord de la bande,
+            # donc a un point de publier un 🔴 sur un lundi parfaitement normal. Mesure du jour :
+            # 15 024 lignes le dimanche 08-30 contre 22 211 le lundi 08-31 et 26 101 le vendredi
+            # 08-28, et le taux trame->position tombe a 15,0 % le dimanche contre 21,7-23,4 % en
+            # semaine. Rien navait bouge dans la chaine : la flotte ne roule pas le dimanche.
+            # Cest VPS-M69 (cycle DIURNE) a la periode SUPERIEURE — et le meme piege : une
+            # grandeur cyclique lue sur une fenetre plus courte que son cycle fabrique une
+            # variation qui nexiste pas.
+            if (j7 > 0) {
+              r7 = j0 / j7;
+              printf "         meme jour de semaine (J-7) : %d arrivees  = x%.2f   [fenetre J = %s, fenetre J-1 = %s]\n", j7, r7, jour0, jour1;
+              h1 = (r  >= 1.5 || r  <= 0.67);
+              h7 = (r7 >= 1.5 || r7 <= 0.67);
+              if (h1 && !h7)
+                printf "         🟠 LES DEUX COMPARAISONS SE CONTREDISENT : x%.2f contre la VEILLE (%s),\n            x%.2f contre le MEME JOUR de la semaine passee. Quand lactivite a un cycle\n            HEBDOMADAIRE, la veille nest pas une reference : cest le CALENDRIER, pas le\n            debit (VPS-M71). Ne pas ouvrir de constat sur le seul rapport a la veille.\n", r, jour1, r7;
+              else if (!h1 && h7)
+                printf "         🟠 STABLE contre la veille (x%.2f) mais HORS BANDE contre J-7 (x%.2f) :\n            une derive LENTE est invisible a une comparaison de 24 h. Cest ici quon la voit.\n", r, r7;
+              else if (h1 && h7)
+                printf "         ⚠️ les DEUX comparaisons sortent de la bande (x%.2f veille, x%.2f J-7) :\n            lexcursion nest PAS un effet de calendrier.\n", r, r7;
+            } else {
+              printf "         (J-7 : 0 arrivee — la fenetre de retention de cette table (%.2f j) ne remonte\n          PAS a 7 jours. Comparaison a meme jour de semaine IMPOSSIBLE : mesure NON\n          FAITE, PAS un debit nul (VPS-M02). Le rapport a la veille reste seul juge ici.)\n", wj;
+            }
+            # ── LE DISCRIMINANT : moins de trames, ou moins d emetteurs ? (angle mort n° 1) ──
+            # Sans cette ligne, une flotte a moitie muette et un correctif reussi rendent la
+            # MEME courbe. Elle a ete posee a la main le 2026-08-25 ; elle est dans le script
+            # depuis le 2026-08-26. Aucune apostrophe ici : programme awk en quotes simples.
+            if (e0 < 0) {
+              printf "         (emetteurs NON MESURES : aucune colonne didentifiant reconnue sur cette\n";
+              printf "          table — ce nest PAS « un seul emetteur », cest une mesure NON FAITE.)\n";
+            } else if (e0 > 0 && e1 > 0) {
+              pb0 = j0 / e0 / 24.0; pb1 = j1 / e1 / 24.0; re = e0 / e1;
+              printf "         emetteurs DISTINCTS : %d sur 24 h  contre  %d les 24 h precedentes  (colonne %s)\n", e0, e1, em;
+              printf "         par emetteur : %.1f trames/h  contre  %.1f  = x%.2f\n", pb0, pb1, (pb1>0 ? pb0/pb1 : 0);
+              if (re < 0.90)
+                printf "         🔴 %d EMETTEUR(S) ONT DISPARU (x%.2f) — la baisse du debit vient de la FLOTTE,\n            pas de la cadence. Une panne dingestion se lit comme une amelioration.\n", e1-e0, re;
+              else if (re > 1.10)
+                printf "         🟠 la flotte a GRANDI (x%.2f) : une hausse de debit est attendue, la juger par emetteur.\n", re;
+              else
+                printf "         ✅ flotte STABLE (%d contre %d) : toute la variation est portee par la CADENCE,\n            pas par le nombre demetteurs. Cest ce qui distingue un correctif dune panne.\n", e0, e1;
+              printf "         ⚠️ Ce taux est une moyenne sur 24 h, et cest VOLONTAIRE (VPS-M69) : lu a une\n";
+              printf "            SEULE heure, il confond le creux de la nuit avec une derive du regime.\n";
+              # ── VPS-M75 : la FRAICHEUR, qui na pas le retard de 24 h de la comparaison ci-dessus ──
+              nm = 0; qd = "-";
+              if (muets != "" && index(muets, "/") > 0) {
+                split(muets, mm, "/"); nm = mm[1]+0; qd = mm[2];
+                if (nm > 0)
+                  printf "         🔴 SILENCE : %d emetteur(s) nont plus emis depuis plus de 6 h (dernier arret : %s UTC).\n            Cette ligne na PAS le retard de 24 h de la comparaison ci-dessus : un arret y\n            apparait des la 7e heure, la ou la fenetre de 24 h peut le cacher un jour entier\n            et publier « flotte STABLE » (VPS-M75, mesure du 2026-09-02).\n", nm, qd;
+                else
+                  printf "         ✅ FRAICHEUR : aucun emetteur muet depuis plus de 6 h. Cest un etat COURANT,\n            pas une fenetre — la comparaison ci-dessus, elle, retarde jusqua 24 h.\n";
+                printf "         ⚠️ PLANCHER : ne compte que les emetteurs encore PRESENTS dans la fenetre de\n            retention (%.2f j). Un boitier muet depuis plus longtemps a disparu de la table\n            et nest PAS compte ici — mesure NON FAITE sur lui, pas « il va bien ».\n", wj;
+                # ── VPS-M76 : la source SANS fenetre, qui seule permet de lire la SERIE ──
+                if (regsil != "" && split(regsil, rr, "|") == 7) {
+                  printf "         📋 REGISTRE %s (AUCUNE retention) : %d silencieux sur %d enregistres.\n", rr[1], rr[2]+0, rr[3]+0;
+                  # ── VPS-M78 : le TOTAL melange un incident, du materiel depose et des
+                  # vehicules GARES. Seule la duree du silence les separe — donc on la publie.
+                  printf "            ventilation par DUREE du silence (cest elle qui discrimine, pas le total) :\n";
+                  printf "              6-24 h : %-3d  ← un vehicule GARE LA NUIT entre ici. Ne PAS le compter\n", rr[4]+0;
+                  printf "                             comme une panne sans une autre preuve.\n";
+                  printf "              1-3 j  : %-3d\n", rr[5]+0;
+                  printf "              3-7 j  : %-3d  ← au-dela de 3 j, un arret nest plus un usage normal.\n", rr[6]+0;
+                  printf "              > 7 j  : %-3d  ← materiel probablement DEPOSE : a sortir du parc, sinon\n", rr[7]+0;
+                  printf "                             il gonfle le total a chaque passage, pour toujours.\n";
+                  printf "            ⚠️ NE PAS comparer les TOTAUX de deux passages (VPS-M78) : ce total monte\n";
+                  printf "               quand un vehicule se gare et quand un boitier est depose, pas seulement\n";
+                  printf "               quand une panne setend. Comparer les BANDES, et de preference celles > 3 j.\n";
+                  if (rr[2]+0 > nm)
+                    printf "            🔴 LE REGISTRE EN COMPTE %d DE PLUS que la ligne ci-dessus. Lecart nest PAS\n               une contradiction : cest exactement le nombre de boitiers muets depuis si\n               longtemps quils ont quitte la fenetre de retention. ⚠️ CONSEQUENCE A LIRE\n               AVANT DE COMPARER DEUX PASSAGES : le compteur du journal DECROIT a mesure que\n               la panne DURE — sa serie se lit comme un retablissement pendant que la flotte\n               steint. Cest CE chiffre-ci, et lui seul, qui se compare dun jour a lautre\n               (VPS-M76, mesure du 2026-09-03 : 7 → 6 cote journal, 12 → 12 cote registre).\n", (rr[2]+0) - nm;
+                  else if (rr[2]+0 == nm)
+                    printf "            ✅ les deux sources saccordent : aucun boitier muet nest sorti de la fenetre.\n";
+                } else if (regsil != "") {
+                  # ⚠️ VPS-M02 : un registre TROUVE dont la ventilation ne se lit pas ne doit
+                  # PAS retomber sur « aucun registre » — ce sont deux etats differents, et
+                  # confondre « pas trouve » avec « trouve mais illisible » est exactement le
+                  # silence qui se lit comme une absence.
+                  printf "         🔴 REGISTRE TROUVE mais sa ventilation est ILLISIBLE (%d champs au lieu de 7) :\n            mesure NON FAITE ce passage, ce nest PAS « aucun boitier muet » (VPS-M02).\n", split(regsil, rr2, "|");
+                } else {
+                  printf "         ⚠️ AUCUN REGISTRE trouve dans cette base (table petite portant « %s » et un\n            horodatage de derniere vue). Le compte ci-dessus reste donc un PLANCHER QUI\n            DECROIT avec la duree de la panne : NE PAS comparer sa valeur a celle dun autre\n            passage (VPS-M76).\n", em;
+                }
+              }
+            } else {
+              printf "         (emetteurs : %d sur 24 h, %d les 24 h precedentes — taux par emetteur non calculable)\n", e0, e1;
+            }
+            if (wj > 0 && n > 0) {
+              proj_n = wj * j0; proj_mo = mo * proj_n / n;
+              printf "         projection a fenetre PLEINE (%.2f j x le debit du jour) : %.0f Mo\n", wj, proj_mo;
+              # CORRIGE LE 2026-08-25 — VPS-M67. Cette etiquette etait ecrite EN DUR a
+              # « PLANCHER », et elle a ete ecrite la VEILLE, un jour ou le debit MONTAIT.
+              # Le sens de la borne SUIT LE SIGNE de la tendance : a debit qui monte, la
+              # projection (batie sur la moyenne des 24 h ECOULEES, qui inclut le BAS de la
+              # rampe) est un PLANCHER ; a debit qui BAISSE, la meme moyenne inclut le HAUT
+              # de la rampe et la projection devient un PLAFOND. Ecrire « PLANCHER » les deux
+              # jours, c est se tromper de borne exactement le jour ou l on annonce une
+              # amelioration — et une amelioration sur-estimee ne se fait jamais contredire.
+              # Cest VPS-M64 dans la MEME section, un jour plus tard : un mot juste tant que
+              # les deux grandeurs varient ensemble.
+              # ⚠️ AUCUNE APOSTROPHE dans ce bloc : il vit dans un programme awk delimite par
+              # des quotes simples. Une apostrophe y ferme la chaine et casse tout le script —
+              # attrape par `bash -n` a l ecriture meme de ce correctif.
+              if (r > 1.05) {
+                printf "           ⚠️ PLANCHER (le debit MONTE) : la moyenne des 24 h ecoulees inclut le BAS\n";
+                printf "              de la rampe. Si le debit monte encore, la projection monte avec lui.\n";
+              } else if (r < 0.95) {
+                printf "           ⚠️ PLAFOND (le debit BAISSE) : la moyenne des 24 h ecoulees inclut encore le\n";
+                printf "              HAUT de la rampe. Le regime reel est SOUS cette valeur — ne pas la\n";
+                printf "              presenter comme le gain acquis, elle le SOUS-estime.\n";
+              } else {
+                printf "           ⚠️ Estimation a debit CONSTANT : la moyenne des 24 h ecoulees est plate,\n";
+                printf "              la borne na donc pas de sens privilegie.\n";
+              }
+              printf "              Dans tous les cas : suppose le debit des 24 h ECOULEES constant.\n";
+            }
+            if (r >= 1.5)
+              printf "         🔴 LE DEBIT MONTE (x%.2f) — UNE FENETRE STABLE NE GARDE PAS UN VOLUME STABLE.\n         La retention fonctionne ET la table grossit : ce ne sont pas des enonces contraires.\n", r;
+            else if (r <= 0.67)
+              printf "         🟠 le debit BAISSE (x%.2f) : a fenetre pleine, le volume decroitra.\n", r;
+            else
+              printf "         ✅ debit stable (x%.2f, dans la bande 0,67-1,50) : le volume l est aussi.\n", r;
+          }'
       fi
     done
-    echo "       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active, rien a faire."
+    echo "       ⚠️ Une fenetre COURTE et STABLE d'un passage a l'autre = retention active."
+    echo "          Elle ne dit RIEN du volume : a duree constante, le volume suit le DEBIT."
+    echo "          C'est la ligne « debit » ci-dessus qui tranche, pas les bornes (VPS-M64)."
     echo "          Une date de debut qui NE BOUGE PAS pendant que la fin avance = accumulation sans borne."
   fi
   # ⚠️ AJOUTE LE 2026-08-17 — angle mort n° 3 des rapports du 08-13 au 08-16, REPORTE CINQ FOIS.
@@ -1188,6 +1961,66 @@ if [ -n "$SRC" ]; then
   echo "  IP dont des connexions ont REUSSI (a reconnaitre : ce sont vos acces) :"
   echo "$ECH" | grep "Accepted" \
     | grep -oE "([0-9]{1,3}\.){3}[0-9]{1,3}" | sort | uniq -c | sort -rn | head -5 | sed 's/^/    /'
+  # ⚠️⚠️ AJOUTE LE 2026-09-03 — VPS-M77. L AUDIT NE COMPTAIT QUE DES IP, JAMAIS DES CLES,
+  # ET UNE TROISIEME CLE ROOT EST APPARUE LE 2026-08-23 SANS QUE ONZE PASSAGES NE LA NOMMENT.
+  #
+  # VPS-012 est classe APPLIQUE depuis le 2026-08-04 sur la phrase « aucune cle inconnue ».
+  # Cette phrase a ete verifiee A LA MAIN a quelques passages (08-09, 08-11, 08-16 a 08-20),
+  # puis plus du tout — et le collecteur, lui, ne l a JAMAIS verifiee : il affiche un top 5
+  # des IP, ce qui aide a reconnaitre ses acces et ne dit RIEN de la cle employee. Une IP
+  # d Azure ressemble a une autre IP d Azure.
+  #
+  # Mesure du 2026-09-03 : `github-actions-vizyo-auth` (SHA256:OTSnEmsW...) est ACTIVE dans
+  # authorized_keys, premiere utilisation le 2026-08-23 a 10 h 58 depuis le poste d admin puis
+  # depuis douze IP Azure — et elle ne porte AUCUNE des options de restriction que VPS-012
+  # avait posees sur l autre cle de CI le 2026-08-04. Le durcissement a donc regresse, sur une
+  # cle ajoutee APRES lui, et rien ne l a dit.
+  #
+  # ⚠️ CE BLOC NE JUGE PAS DE LA LEGITIMITE D UNE CLE — il ne peut pas. Il rend deux
+  #    inventaires cote a cote (declarees / vues) et signale les ecarts. C est au lecteur de
+  #    trancher : une cle inconnue peut etre un provisionnement legitime non documente, et une
+  #    cle declaree peut etre de trop. Nommer un coupable ici serait VPS-M01.
+  # ⚠️ COUT : un `ssh-keygen -lf` et un `grep` sur des lignes DEJA en memoire ($ECH). Aucune
+  #    E/S disque supplementaire, aucun fork Docker.
+  echo "  ── Cles SSH : ce qui est DECLARE contre ce qui a SERVI (VPS-012 / VPS-M77) ──"
+  AK=/root/.ssh/authorized_keys
+  if [ -r "$AK" ]; then
+    # Empreintes DECLAREES et actives, avec leur commentaire et leurs options.
+    # Une ligne dont le 1er champ commence par ssh-/ecdsa-/sk- ne porte AUCUNE option.
+    DECL=$(awk '!/^[[:space:]]*#/ && NF>0 {
+             opt = ($1 ~ /^(ssh-|ecdsa-|sk-)/) ? "-" : $1;
+             print $NF "\t" opt }' "$AK" 2>/dev/null)
+    NB_DECL=$(printf '%s\n' "$DECL" | grep -c . )
+    printf '    declarees et ACTIVES : %s\n' "$NB_DECL"
+    ssh-keygen -lf "$AK" 2>/dev/null | while read -r _bits fp comment _type; do
+      o=$(printf '%s\n' "$DECL" | awk -F'\t' -v c="$comment" '$1==c {print $2; exit}')
+      vue=$(echo "$ECH" | grep -c "$fp")
+      if [ "$o" = "-" ]; then
+        printf '      %-28s %s  connexions=%-5s 🟠 AUCUNE option de restriction\n' "$comment" "$fp" "$vue"
+      else
+        printf '      %-28s %s  connexions=%-5s ✅ restreinte (%s)\n' "$comment" "$fp" "$vue" "$o"
+      fi
+    done
+    # L ecart qui compte : une empreinte qui a SERVI et qui n est pas declaree.
+    VUES=$(echo "$ECH" | grep -oE 'SHA256:[A-Za-z0-9+/]+' | sort -u)
+    NB_VUES=$(printf '%s\n' "$VUES" | grep -c . )
+    INC=0
+    for f in $VUES; do
+      ssh-keygen -lf "$AK" 2>/dev/null | grep -q "$f" || { INC=$((INC+1)); printf '      🔴 EMPREINTE NON DECLAREE : %s\n' "$f"; }
+    done
+    printf '    empreintes VUES sur la fenetre : %s  |  non declarees : %s\n' "$NB_VUES" "$INC"
+    if [ "$INC" -eq 0 ]; then
+      echo "    ✅ toute empreinte ayant servi est declaree dans authorized_keys."
+      echo "       ⚠️ PORTEE : ceci ne dit PAS « aucun acces inconnu ». Le canal guest-exec de"
+      echo "          l hyperviseur (VPS-027/VPS-036) execute du root SANS passer par SSH — il ne"
+      echo "          laisse aucune ligne ici. Cette conclusion vaut sur les acces SSH, et sur eux seuls."
+    fi
+    echo "       ⚠️ Une empreinte ABSENTE de la fenetre de 7 j n est pas une cle inutilisee :"
+    echo "          c est une cle qui n a pas servi CES 7 JOURS. connexions=0 n autorise donc"
+    echo "          aucun retrait sans une autre verification (VPS-M02)."
+  else
+    echo "    (authorized_keys illisible — inventaire NON FAIT, ce n est pas « aucune cle »)"
+  fi
   # ⚠️ AJOUTE LE 2026-08-05. Le compte d'echecs porte sur TOUTE la fenetre : 176 echecs se lit
   # comme « on est attaque en ce moment » alors que le dernier datait de 22 heures. La DATE du
   # dernier echec est l'information qui manquait — c'est elle qui dit si l'attaque est en
@@ -1197,7 +2030,87 @@ if [ -n "$SRC" ]; then
   # Un total de 7 jours ne distingue pas « 188 etales » de « 188 hier soir ». La repartition
   # par jour, elle, le dit — et c'est elle qui doit declencher une lecture, pas le total.
   echo "  ── repartition par jour (une attaque EN COURS se voit ici, jamais dans un total) ──"
-  echo "$ECH" | grep "Failed password\|Invalid user" | cut -c1-10 | sort | uniq -c | sed 's/^/    /'
+  echo "$ECH" | grep "Failed password\|Invalid user" | cut -c1-10 | sort | uniq -c \
+    | hist_jour '    ' "$DEPUIS" "$(date '+%Y-%m-%dT%H:%M')"
+  # ⚠️⚠️ AJOUTE LE 2026-08-22 (VPS-032 / angle mort de VPS-M57) — LE COLLECTEUR LISAIT DEJA CES
+  # LIGNES ET N EN COMPTAIT QUE LES ECHECS. Les connexions REUSSIES n etaient affichees que sous
+  # forme de « top 5 des IP », pour aider a reconnaitre ses propres acces. Personne ne regardait
+  # le NOMBRE. Il valait 7 385 sur 7 jours au 2026-08-22, dont 4 252 pour la seule journee du
+  # 08-20 — ~5 sessions par minute, quatorze heures d affilee, toutes depuis notre poste.
+  #
+  # Chaque session ouvre un sshd, un PAM, une session logind ET une instance systemd --user,
+  # puis referme le tout. COUT MESURE le 2026-08-22, contre un temoin de meme duree :
+  # 445 forks en 20 s a vide, 1 527 en 20 s pendant 20 sessions → ~54 processus par session.
+  # ⚠️ C est un PLANCHER issu d un temoin UNIQUE, pas une constante : une partie des 20 sessions
+  #    est tombee hors de la fenetre de 20 s, ce qui SOUS-estime le cout. Ne pas le republier
+  #    comme une propriete (VPS-M53 : un nombre mesure une seule fois n est pas une mesure).
+  #
+  # Pourquoi ce bloc et pas un detecteur de collision : VPS-M57 proposait de signaler « une
+  # rafale de sessions SSH encadrant la collecte ». La mesure ci-dessus REFUTE ce dessin — sur
+  # une journee de travail la rafale est PERMANENTE, et le detecteur crierait chaque apres-midi.
+  # On publie donc le CHIFFRE et son denominateur, et on laisse le lecteur trancher : c est la
+  # difference entre une mesure et une alarme qu on ne peut pas croire.
+  echo "  ── Sessions SSH REUSSIES : la charge de fond que personne ne compte (VPS-032) ──"
+  echo "$ECH" | grep -c "Accepted" | sed 's/^/    total sur la fenetre de 7 j : /'
+  echo "    par jour :"
+  echo "$ECH" | grep "Accepted" | cut -c1-10 | sort | uniq -c \
+    | hist_jour '      ' "$DEPUIS" "$(date '+%Y-%m-%dT%H:%M')"
+  # La fenetre de MA collecte, bornee par T_DEBUT : qui d autre parlait a la machine pendant
+  # que je la mesurais ? Le denominateur est explicite, et ma propre session est RETIREE — mais
+  # seulement si j en ai une (VPS-M34 : un denominateur suppose est un denominateur faux).
+  # ⚠️⚠️ CE BLOC A ETE FAUX DEUX FOIS EN UNE HEURE, LE 2026-08-22, ET LES DEUX FOIS C EST
+  # L EXECUTION REELLE QUI L A DIT — jamais la relecture.
+  #
+  #  1. Borne arrondie a la MINUTE ('+%H:%M') : la fenetre commencait jusqu a 59 s AVANT la
+  #     collecte. L essai a compte 4 sessions la ou il y en avait 1. Sur une journee de travail
+  #     a ~5 sessions/min, cela FABRIQUAIT jusqu a cinq « autres sessions » qui n avaient jamais
+  #     recouvert la mesure. *Une borne arrondie dans le sens large ne rate rien : elle invente*,
+  #     et elle invente du cote qui ACCUSE — le defaut VPS-M01, reproduit par le bloc ecrit pour
+  #     l eviter.
+  #  2. Corrige a la seconde, il est devenu faux dans l autre sens : il a publie
+  #     « 0 session(s) … reste : -1 ». Cause : LA SESSION SSH EST ACCEPTEE AVANT QUE LE SCRIPT NE
+  #     DEMARRE. `T_DEBUT` est pris apres l ouverture de session, donc ma propre ligne `Accepted`
+  #     est TOUJOURS anterieure a la borne — et retrancher un 1 forfaitaire d un compte qui ne
+  #     me contient pas donne un negatif. *Un « reste » negatif est impossible : c est la seule
+  #     raison pour laquelle ce defaut-la s est vu, et le premier n avait pas cette chance.*
+  #
+  # On ne SUPPOSE donc plus sa propre session : on l IDENTIFIE. `SSH_CONNECTION` porte l IP et le
+  # PORT SOURCE du client, et sshd ecrit exactement ce couple dans « from <ip> port <port> ».
+  # La fenetre remonte 15 s avant T_DEBUT pour englober l ouverture de session, et la ligne qui
+  # porte mon port est retiree nominativement. Denominateur explicite des deux cotes (VPS-M34).
+  FEN_DEB=$(date -d "@$((T_DEBUT - 15))" '+%Y-%m-%dT%H:%M:%S' 2>/dev/null)
+  ACC_FEN=$(echo "$ECH" | grep "Accepted" | awk -v d="$FEN_DEB" '$1 >= d')
+  SESS_FEN=$(printf '%s' "$ACC_FEN" | grep -c "Accepted")
+  MON_IP=$(echo "${SSH_CONNECTION:-}" | awk '{print $1}')
+  MON_PORT=$(echo "${SSH_CONNECTION:-}" | awk '{print $2}')
+  if [ -n "$MON_PORT" ]; then
+    MIENNE=$(printf '%s' "$ACC_FEN" | grep -c "from $MON_IP port $MON_PORT ")
+    ORIG="identifiee par son port source $MON_PORT"
+  else
+    MIENNE=0
+    ORIG="ABSENTE — script lance hors SSH, rien a retrancher"
+  fi
+  printf '    pendant MA collecte (%s → maintenant, ouverture de session comprise) : %s session(s)\n' \
+    "$FEN_DEB" "$SESS_FEN"
+  printf '      dont la mienne : %s  (%s)  |  reste : %s\n' "$MIENNE" "$ORIG" "$((SESS_FEN - MIENNE))"
+  if [ "$MON_PORT" != "" ] && [ "$MIENNE" = "0" ]; then
+    echo "      ⚠️ MA PROPRE SESSION N A PAS ETE RETROUVEE dans la fenetre : le « reste »"
+    echo "         ci-dessus est donc SUR-EVALUE de 1. Ne pas le lire comme une collision."
+  fi
+  if [ "$((SESS_FEN - MIENNE))" -gt 0 ]; then
+    echo "      🟠 UNE AUTRE SESSION que celle qui execute ce script a parle a la machine"
+    echo "         pendant la mesure. Ce n est ni une faute ni une identification : ce bloc"
+    echo "         COMPTE des sessions, il ne dit pas QUI. Ce peut etre l autre audit, un"
+    echo "         deploiement — ou votre propre outillage, une commande plus tot (verifie le"
+    echo "         2026-08-22 : la « seconde session » etait mon propre essai, 25 s avant)."
+    echo "         A porter au dossier AVANT d imputer au script un depassement de budget ou"
+    echo "         une charge (VPS-M57, collision du 2026-08-21) — et VPS-M01 : une"
+    echo "         concomitance d horaire n est pas une identification."
+  else
+    echo "      ✅ ma collecte etait SEULE : aucune autre session pendant la fenetre."
+  fi
+  echo "    cout : ~54 processus par session (mesure du 2026-08-22 contre temoin — PLANCHER,"
+  echo "           temoin unique). A comparer aux ~93 600 invocations/j de healthchecks."
 fi
 # ⚠️ `fail2ban-client status` (sans nom de prison) ne dit QUE « il y a 1 prison ». Il ne dit ni
 # combien d'echecs la prison a VUS, ni combien d'IP elle a bannies. Or c'est exactement la
@@ -1255,6 +2168,43 @@ NB_SEC=$(printf '%s\n' "$APT_LIST" | grep -icE "security")
 if [ "${APT_STAMP:-0}" -gt 0 ] && [ "$APT_AGE_H" -le 6 ]; then
   printf '  paquets en retard : %s\n' "$NB_UPG"
   printf '  dont estampilles securite : %s   ✅ cache de %s h — MESURE VALIDE\n' "$NB_SEC" "$APT_AGE_H"
+  # ⚠️⚠️ AJOUTE LE 2026-09-02 — VPS-M74. UN COMPTE VALIDE N EST PAS ENCORE UNE INFORMATION.
+  # Ce matin le garde VPS-M29 a laisse passer un compte PARFAITEMENT valide — cache de 1 h, deux
+  # sources independantes d accord — et ce compte disait « 109 paquets, 34 estampilles securite ».
+  # Lu seul, il annonce sept jours de correctifs non appliques sur une machine qui porte sept
+  # bases de production. J ai failli l ecrire.
+  #
+  # LA MESURE QUI L A REFUTE : les index eux-memes. `noble-security_main` porte la date
+  # 2026-09-01 17:10 et `noble-updates_main` 18:26 — le lot a ete PUBLIE hier soir. Le
+  # rafraichissement l a vu a 00:48:53, et l INSTALLATEUR passe a 06:52:59. La collecte est tombee
+  # a 02:22, c est-a-dire dans le seul creneau ou le compte est a la fois exact et trompeur :
+  # APRES la decouverte, AVANT l installation.
+  #
+  # La lecon depasse apt et vaut pour toute file d attente : un compte d EN-ATTENTE ne se lit pas
+  # sans la POSITION de la mesure dans le cycle qui la vide. VPS-033 disait « l audit ne mesure
+  # qu un jour sur cinq » ; ceci dit que meme le jour ou il mesure, il peut conclure a l envers.
+  # Cout : deux `systemctl show`, aucune E/S disque.
+  APT_INST_LAST=$(systemctl show apt-daily-upgrade.timer -p LastTriggerUSec --value 2>/dev/null)
+  APT_INST_NEXT=$(systemctl show apt-daily-upgrade.timer -p NextElapseUSecRealtime --value 2>/dev/null)
+  echo  '  ── position de CETTE mesure dans le cycle rafraichir → installer (VPS-M74) ──'
+  printf '     derniere INSTALLATION declenchee : %s\n' "${APT_INST_LAST:-inconnue}"
+  printf '     prochaine INSTALLATION prevue    : %s\n' "${APT_INST_NEXT:-inconnue}"
+  APT_INST_TS=$(date -d "${APT_INST_LAST:-@0}" +%s 2>/dev/null || echo 0)
+  if [ "${APT_INST_TS:-0}" -gt 0 ] && [ "${APT_STAMP:-0}" -gt "${APT_INST_TS:-0}" ]; then
+    printf '     🟠 CE COMPTE N EST PAS (ENCORE) UN RETARD : le cache a ete rafraichi %s h APRES le\n' \
+           "$(( ( ${APT_STAMP:-0} - ${APT_INST_TS:-0} ) / 3600 ))"
+    echo  "        dernier passage de l installateur. Ces paquets ont ete DECOUVERTS depuis, et"
+    echo  "        l installateur ne les a pas encore vus. NE PAS conclure que le canal est en panne."
+    echo  "        ⚠️ Et l inverse est le vrai test : si au passage suivant l installation a eu lieu"
+    echo  "           ET que le compte n a pas baisse, alors la panne est etablie. C est ce test-la"
+    echo  "           qui tranche, jamais le compte seul."
+  elif [ "${APT_INST_TS:-0}" -gt 0 ]; then
+    echo  "     ✅ l installateur est passe APRES le dernier rafraichissement : le compte ci-dessus"
+    echo  "        est bien un RESTE, pas une file en attente de son tour. Un reste non nul se traite."
+  else
+    echo  "     ⚠️ horodatage de l installateur ILLISIBLE : la position de cette mesure dans le cycle"
+    echo  "        n est PAS etablie. Ne pas trancher entre « retard » et « file en attente » (VPS-M02)."
+  fi
 else
   printf '  🟠 NON MESURABLE — le cache apt a %s h (seuil de validite : 6 h).\n' "$APT_AGE_H"
   printf '     Ce que le cache PERIME affiche, a titre indicatif SEULEMENT : %s paquets en retard,\n' "$NB_UPG"
@@ -1264,6 +2214,71 @@ else
 fi
 echo "     (et meme sur cache frais, un 0 n'est PAS une garantie : Ubuntu publie beaucoup de"
 echo "      correctifs par 'noble-updates', qui ne porte pas le mot 'security'.)"
+# ⚠️⚠️ AJOUTE LE 2026-08-18 — ANGLE MORT N° 6 DU RAPPORT DU 2026-08-17.
+# Le garde VPS-M29 ci-dessus fonctionne : il a refuse de publier 5 fois sur 6 passages. Mais une
+# mesure disponible UN MATIN SUR SIX n'est pas une surveillance, et le sujet n'est plus le garde,
+# c'est la CADENCE de sa source. `apt-daily.timer` porte un delai aleatoire de plusieurs heures :
+# il peut tirer a 23 h et laisser un cache de 25 h au moment de la collecte.
+#
+# ⚠️ CE QU'IL NE FAUT PAS FAIRE, et c'est la tentation evidente : elargir le seuil de 6 h pour
+#    que le chiffre passe. C'est exactement ce que VPS-M31 punit — on elargit la tolerance d'un
+#    garde au lieu de chercher la grandeur qui separe les cas.
+#
+# Ce qu'on fait a la place : lire une SECONDE source, avec sa PROPRE fraicheur, et l'afficher
+# A COTE de la premiere — jamais a sa place. `/var/lib/update-notifier/updates-available` est
+# ecrit par `update-notifier-download.timer`, qui a son propre horaire : quand l'une des deux
+# sources est perimee, l'autre ne l'est pas forcement.
+#
+# ⚠️ PORTEE, ecrite avant qu'elle ne coute : ce fichier est un TEXTE destine au message du jour
+#    (« N updates can be applied immediately »), pas une API. Son format peut changer, et il peut
+#    etre absent (paquet non installe). Les deux cas doivent AVOUER, pas rendre 0 — c'est la
+#    lecon VPS-M28/M02 : un repli qui FABRIQUE une valeur produit une affirmation a partir d une
+#    absence. Et les deux sources ne comptent pas exactement la meme chose : celle-ci ne connait
+#    que ce que son propre `apt-get -s` a vu. UN ECART ENTRE LES DEUX N'EST PAS UNE ERREUR, c'est
+#    l'information — il date le moment ou l'une des deux a cesse de voir.
+UPD_FILE=/var/lib/update-notifier/updates-available
+if [ -r "$UPD_FILE" ]; then
+  UPD_STAMP=$(stat -c '%Y' "$UPD_FILE" 2>/dev/null || echo 0)
+  UPD_AGE_H=$(( ( $(date +%s) - ${UPD_STAMP:-0} ) / 3600 ))
+  # Deux entiers extraits separement : la 1re ligne porte le total, la 2e (si elle existe) la
+  # part de securite. `grep -o '[0-9]\+'` puis `head -1` : aucun positionnel, aucune hypothese
+  # sur la ponctuation de la phrase, qui est traduite selon la locale du systeme.
+  UPD_TOT=$(grep -m1 -oE '[0-9]+' "$UPD_FILE" 2>/dev/null | head -1)
+  UPD_SEC=$(grep -iE 'securit|security' "$UPD_FILE" 2>/dev/null | grep -oE '[0-9]+' | head -1)
+  if [ -n "$UPD_TOT" ]; then
+    printf '  ── 2e source, INDEPENDANTE du cache apt (update-notifier) ──\n'
+    printf '     ecrite le : %s  (il y a %s h)\n' \
+      "$(date -d "@${UPD_STAMP:-0}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo inconnu)" "$UPD_AGE_H"
+    if [ "$UPD_AGE_H" -le 6 ]; then
+      printf '     %s paquets en retard   ✅ %s h — MESURE VALIDE\n' "$UPD_TOT" "$UPD_AGE_H"
+    else
+      printf '     %s paquets en retard   🟠 %s h — PERIMEE elle aussi\n' "$UPD_TOT" "$UPD_AGE_H"
+    fi
+    # ⚠️ Ubuntu OMET la ligne « … standard security updates » quand elle vaudrait 0. Une absence
+    #    de ligne et un zero produisent donc le meme fichier, et les DEUX lectures sont fausses :
+    #    afficher « ? » crie au loup sur le cas normal, afficher « 0 » AFFIRME a partir d une
+    #    absence (VPS-M02/M28). On dit donc exactement ce qu on sait, et rien de plus.
+    if [ -n "$UPD_SEC" ]; then
+      printf '     dont %s de securite (ligne presente dans le fichier)\n' "$UPD_SEC"
+    else
+      echo  "     part securite : LIGNE ABSENTE du fichier. Ubuntu ne l ecrit pas quand elle vaut 0,"
+      echo  "     donc « absente » et « zero » sont indiscernables ICI : c est le cache apt qui tranche."
+    fi
+    printf '     → cache apt %s h vs update-notifier %s h : la plus FRAICHE des deux est %s.\n' \
+      "$APT_AGE_H" "$UPD_AGE_H" \
+      "$( [ "$UPD_AGE_H" -lt "$APT_AGE_H" ] && echo 'update-notifier' || echo 'le cache apt' )"
+    echo  "     ⚠️ Les deux sources ne comptent pas la meme chose et n ont pas la meme fraicheur."
+    echo  "        Un ECART entre elles n est PAS une erreur : c est ce qui date le moment ou"
+    echo  "        l une des deux a cesse de voir. Ne JAMAIS substituer l une a l autre."
+  else
+    echo  "  ── 2e source (update-notifier) : fichier present mais AUCUN nombre extrait ──"
+    echo  "     🟠 MESURE NON FAITE — format inattendu. NE PAS lire ceci comme « 0 paquet »."
+  fi
+else
+  echo  "  ── 2e source (update-notifier) : fichier ABSENT ou illisible ──"
+  echo  "     🟠 MESURE NON FAITE (paquet update-notifier-common non installe ?)."
+  echo  "     NE PAS lire cette absence comme « rien a signaler » — c est VPS-M02."
+fi
 # ⚠️ Ce que le compte de paquets ne dira JAMAIS : si un paquet a ete INSTALLE, les demons qui
 # le chargeaient tournent encore sur l'ancienne version jusqu'a leur redemarrage. Le 2026-08-11
 # a 06h19, unattended-upgrades a installe 11 paquets systemd/udev — le compte est retombe de 70
@@ -1322,10 +2337,62 @@ sub "Certificats TLS des domaines publics"
 # ⚠️ La liste par defaut ne contenait QUE le site vitrine — l'application elle-meme
 # (`app-tracky`) n'etait jamais verifiee. Un certificat expire sur l'application ne coupe pas
 # la vitrine : on l'aurait appris par un client, pas par l'audit.
+# ⚠️⚠️ ANGLE MORT N° 9 — TRAITE LE 2026-09-06, apres 22 reports. Il etait pose ainsi :
+# « l'audit ne verifie pas que les certificats SERVIS sont ceux du volume ».
+#
+# Ce qui le rendait necessaire est la question ouverte du rapport du 2026-09-05 : combien de
+# verdicts verts mesurent un ETAT la ou la question portait sur un MECANISME ? Celui-ci en
+# etait le premier exemple cite. Jusqu'ici deux grandeurs etaient publiees :
+#   • `acme.json modifie le ...` (section 4) — c'est la date d'un FICHIER. Elle resterait
+#     verte trente jours apres l'arret du renouvellement, jusqu'a l'expiration ;
+#   • la date d'expiration servie — elle dit quand ca cassera, jamais si ca se renouvelle.
+# Aucune des deux ne repond a « le renouvellement PARVIENT-il jusqu'au client ? ».
+#
+# Le discriminant ne suppose rien et ne coute AUCUN echange reseau de plus : l'empreinte du
+# certificat SERVI (meme `s_client`, deux options de plus) contre celle du certificat que le
+# volume DETIENT. Traefik charge ses certificats en memoire : un volume renouvele et un
+# processus qui n'a pas recharge donnent deux empreintes differentes — et c'est le seul
+# symptome, jusqu'au jour de l'expiration.
+# ⚠️ On ne lit que `.certificate` (la partie PUBLIQUE). Le champ `.key` du meme objet n'est
+#    JAMAIS touche, et il ne doit pas l'etre : cette sortie est versionnee.
+# ⚠️ Ce qu'il ne faut PAS conclure d'une divergence : « le certificat servi est mauvais ».
+#    Un renouvellement en cours pendant la mesure les separe legitimement quelques secondes.
+#    C'est la REPETITION sur deux passages qui vaut constat, pas une occurrence.
+ACME_VOL=/var/lib/docker/volumes/foodsqan-letsencrypt/_data/acme.json
 for d in ${AUDIT_DOMAINS:-tracky.vizyoagency.com app-tracky.vizyoagency.com}; do
-  exp=$(echo | timeout 8 openssl s_client -servername "$d" -connect "$d:443" 2>/dev/null \
-        | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+  servi=$(echo | timeout 8 openssl s_client -servername "$d" -connect "$d:443" 2>/dev/null \
+          | openssl x509 -noout -startdate -enddate -fingerprint -sha256 2>/dev/null)
+  exp=$(printf '%s' "$servi" | sed -n 's/^notAfter=//p')
+  deb=$(printf '%s' "$servi" | sed -n 's/^notBefore=//p')
+  emp=$(printf '%s' "$servi" | sed -n 's/^sha256 Fingerprint=//p')
   printf '  %-40s %s\n' "$d" "${exp:-injoignable depuis la machine (a reverifier de l exterieur)}"
+  [ -z "$exp" ] && continue
+  # Age du certificat SERVI : c'est lui qui date le dernier renouvellement PARVENU au client.
+  if [ -n "$deb" ]; then
+    d_epoch=$(date -d "$deb" +%s 2>/dev/null)
+    [ -n "$d_epoch" ] && printf '     emis il y a %s j  (expire dans %s j)\n' \
+      "$(( ( $(date +%s) - d_epoch ) / 86400 ))" \
+      "$(( ( $(date -d "$exp" +%s 2>/dev/null || date +%s) - $(date +%s) ) / 86400 ))"
+  fi
+  # L'empreinte du volume — le certificat que Traefik DETIENT, contre celui qu'il SERT.
+  if [ -r "$ACME_VOL" ]; then
+    emp_vol=$(jq -r --arg d "$d" '.[].Certificates[]? | select(.domain.main==$d) | .certificate' \
+              "$ACME_VOL" 2>/dev/null | head -1 | base64 -d 2>/dev/null \
+              | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed -n 's/^sha256 Fingerprint=//p')
+    if [ -z "$emp_vol" ]; then
+      printf '     ⚠️ empreinte du VOLUME non lisible pour ce domaine — mesure NON FAITE,\n'
+      printf '        PAS « elles concordent » (VPS-M02).\n'
+    elif [ "$emp_vol" = "$emp" ]; then
+      printf '     ✅ le certificat SERVI est celui du volume (empreintes identiques)\n'
+    else
+      printf '     🔴 LE CERTIFICAT SERVI N EST PAS CELUI DU VOLUME.\n'
+      printf '        servi  : %s\n' "$emp"
+      printf '        volume : %s\n' "$emp_vol"
+      printf '        Traefik n a pas recharge, ou un autre frontal repond. A REVOIR au\n'
+      printf '        passage suivant avant d en faire un constat (un renouvellement en\n'
+      printf '        cours les separe legitimement quelques secondes).\n'
+    fi
+  fi
 done
 
 # ⚠️ AJOUTE LE 2026-08-10 — angle mort n° 5 du rapport du 2026-08-09.
@@ -1359,6 +2426,41 @@ sub "crontab root"
 crontab -l 2>/dev/null | grep -vE "^#|^$" | sed 's/^/  /' || echo "  (vide)"
 sub "cron.d"
 for f in /etc/cron.d/*; do [ -f "$f" ] && { echo "  $f :"; grep -vE "^#|^$" "$f" | sed 's/^/    /'; }; done
+# ⚠️⚠️ AJOUTE LE 2026-08-20 (VPS-M50) — L'ANGLE MORT N° 7 DU 08-19 A COUTE DEUX FOIS DE SUITE.
+#
+# Le catalogue `ordonnancement` liste ce qui se declenche seul, et n'a AUCUNE notion de
+# « nouveau depuis le passage precedent ». Consequences, deux passages d'affilee :
+#   08-19 : `docker-builder-prune` est apparu la veille — trouve A LA MAIN en relisant ce bloc.
+#   08-20 : le MEME fichier a ete REECRIT le 08-19 a 11h02 — son filtre `unused-for=168h` a
+#           disparu et son horaire a bouge de 05h33 a 04h57 — trouve A LA MAIN, encore.
+# Un contenu qui change ne saute pas aux yeux dans une liste de quatre fichiers qu'on relit
+# chaque matin : les deux versions se ressemblent. UNE DATE, elle, se compare sans effort.
+#
+# ⚠️ Ce controle date le FICHIER, pas la regle : un cron cree PUIS retire entre deux passages
+# ne laisse toujours aucune trace ici. C'est une reduction de l'angle mort, pas sa fermeture.
+sub "Fraicheur du catalogue : qu est-ce qui a CHANGE depuis le passage precedent ?"
+_recent=0
+for f in /etc/cron.d/* /etc/systemd/system/*.timer /etc/systemd/system/*.service; do
+  [ -f "$f" ] || continue
+  _m=$(stat -c %Y "$f" 2>/dev/null); case "${_m:-}" in ''|*[!0-9]*) continue ;; esac
+  _j=$(( ( $(date +%s) - _m ) / 86400 ))
+  if [ "$_j" -le 2 ]; then
+    _recent=$((_recent+1))
+    printf '  🆕 %s  (modifie il y a %s j) %s\n' "$(date -d "@$_m" '+%Y-%m-%d %H:%M' 2>/dev/null)" "$_j" "$f"
+  fi
+done
+if [ "$_recent" -eq 0 ]; then
+  echo "  ✅ aucun fichier de cron.d ni d unite systemd modifie dans les 2 derniers jours"
+else
+  printf '  🟠 %s fichier(s) de planification modifie(s) dans les 2 derniers jours.\n' "$_recent"
+  # ⚠️ GUILLEMETS SIMPLES : en guillemets doubles, les accents graves autour d ordonnancement
+  #    seraient une SUBSTITUTION DE COMMANDE. Piege deja documente deux fois dans ce fichier
+  #    (docker stats le 2026-08-08, kill le 2026-08-18) — et RE-TENDU ici a l ecriture, le
+  #    2026-08-20. Trois fois le meme piege, sur trois blocs differents : ce n est plus une
+  #    inattention, c est que le reflexe « accent grave = citation » vient du Markdown.
+  echo  '     Comparer leur CONTENU au catalogue `ordonnancement` du manifeste AVANT de conclure'
+  echo  '     que « rien n a bouge » : c est le seul endroit ou les collisions d horaires se voient.'
+fi
 sub "Timers systemd"
 # ⚠️ `head -12` CACHAIT DES TIMERS (corrige le 2026-08-06). La machine en a 13 ; le catalogue
 # `ordonnancement` du manifeste — dont le seul role est de reveler les collisions d'horaires —
@@ -1403,6 +2505,175 @@ done
 sub "Services en echec"
 systemctl --failed --no-pager 2>/dev/null | head -8 | sed 's/^/  /'
 
+# ── LA QUATRIEME COUCHE : l HYPERVISEUR (VPS-027, ajoute le 2026-08-19) ──────────────────────
+# Trois couches de planification etaient catalogues — crons de la machine, timers systemd,
+# tache Claude Code cote poste. Il y en a une QUATRIEME, et elle execute du root : l hote KVM
+# envoie des `guest-exec` par le canal virtio-serial de `qemu-ga`. Elle echappe a TOUS les
+# gardes existants — pas d authentification SSH (donc rien dans auth.log, rien pour fail2ban),
+# pas de reseau (donc rien pour ufw), pas de cron local (donc rien dans cette section jusqu ici).
+# Decouverte par hasard le 2026-08-18 en cherchant autre chose ; elle est desormais mesuree.
+#
+# ⚠️⚠️ CE COMPTEUR A ETE ECRIT DEUX FOIS, ET LA PREMIERE VERSION SE TROMPAIT D UN FACTEUR 17.
+# `grep -c guest-exec` rend 5776 sur 6 jours — soit « ~930 executions/jour », un chiffre
+# alarmant et faux : `guest-exec-status` est le SONDAGE du resultat, repete des dizaines de
+# fois par execution. Les executions reelles (`guest-exec called`) sont 333, soit ~52/jour.
+# C est VPS-M01 et VPS-M46 une troisieme fois : un compteur doit prouver qu il compte ce qu il
+# pretend compter. Les deux nombres sont donc affiches COTE A COTE, jamais l un sans l autre.
+sub "Hyperviseur : ordres executes en root dans la machine, hors SSH (VPS-027)"
+if journalctl -t qemu-ga --no-pager -n1 >/dev/null 2>&1; then
+  QGA=$(journalctl -t qemu-ga --no-pager -o short-iso 2>/dev/null)
+  QGA_EXEC=$(printf '%s\n' "$QGA" | grep -cF 'guest-exec called' || true)
+  QGA_POLL=$(printf '%s\n' "$QGA" | grep -cF 'guest-exec-status called' || true)
+  QGA_T0=$(printf '%s\n' "$QGA" | head -1 | cut -c1-19)
+  QGA_T1=$(printf '%s\n' "$QGA" | tail -1 | cut -c1-19)
+  # ⚠️ VPS-M02 : `journalctl` sort 0 avec « -- No entries -- ». Sans ce test, un journal VIDE
+  #    (rotation, filtre trop etroit, agent renomme) publierait « ✅ aucun ordre » — c est-a-dire
+  #    une AFFIRMATION rassurante tiree d une ABSENCE DE DONNEE. Les deux cas se disent autrement.
+  if [ -z "$QGA" ] || printf '%s' "$QGA" | grep -q '^-- No entries'; then
+    echo "  ⚠️ journal qemu-ga VIDE sur la fenetre conservee — ce n est PAS « aucun ordre recu »,"
+    echo "     c est « rien de conserve ». Le 2026-08-18 la rotation avait deja efface les 6 jours"
+    echo "     dont on avait besoin pour trancher une hypothese (VPS-027)."
+  elif [ "${QGA_EXEC:-0}" -eq 0 ]; then
+    echo "  ✅ aucun ordre d execution recu de l hyperviseur sur la fenetre conservee"
+    printf '     (fenetre : %s → %s ; %s sondages de statut, 0 execution)\n' "$QGA_T0" "$QGA_T1" "$QGA_POLL"
+  else
+    printf '  🟠 %s EXECUTIONS en root, fenetre %s → %s\n' "$QGA_EXEC" "$QGA_T0" "$QGA_T1"
+    printf '     denominateur honnete : %s sondages `guest-exec-status` pour ces %s executions.\n' "$QGA_POLL" "$QGA_EXEC"
+    echo  "     ⚠️ NE JAMAIS compter les sondages comme des executions : le ratio depasse 17 pour 1."
+    echo  "  ── executions par jour (une hausse se voit ici, jamais dans un total) ──"
+    printf '%s\n' "$QGA" | grep -F 'guest-exec called' | cut -c1-10 | uniq -c \
+      | hist_jour '     ' "$QGA_T0" "$QGA_T1"
+    echo  "  ── les 3 dernieres lignes de commande RECUES (c est du root, il faut les lire) ──"
+    printf '%s\n' "$QGA" | grep -F 'guest-exec called' | tail -3 \
+      | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /     \1 \2  /' | cut -c1-150
+    echo  "     ⚠️ Une commande qui ECRIT (systemctl, echo > /sys, fstrim) n est plus de la lecture :"
+    echo  "        elle change l etat d une machine dont ce catalogue pretend tenir la liste."
+    # ⚠️⚠️ AJOUTE LE 2026-08-20 (VPS-M50) — « LES 3 DERNIERES » NE MONTRAIENT QUE LA ROUTINE.
+    # Le scanner horaire et le `ps` horaire representent ~98 % des lignes : les trois dernieres
+    # sont donc, presque toujours, trois lignes de routine. Les commandes qui comptent — celles
+    # qui ECRIVENT — sont noyees et ne remontent jamais a la surface. C est ainsi que
+    # `/etc/cron.d/docker-builder-prune` a ete attribue a « une action humaine deliberee hors de
+    # toute session d audit » (fiche VPS-029, 2026-08-19) alors que le journal lu par CE BLOC
+    # portait la preuve du contraire : il a ete ecrit PAR CE CANAL, le 08-18 a 13h22, puis
+    # REECRIT le 08-19 a 11h02 sans son filtre. Une provenance affirmee sans etre mesuree, quand
+    # la mesure tenait dans un `grep -v` sur une sortie deja en memoire.
+    # ⚠️ DEUX DENOMINATEURS, ET C EST LE POINT. La premiere ecriture de ce bloc titrait
+    # « commandes NON ROUTINIERES » et comptait 39 — dont 32 etaient le lot TRIM de l hebergeur,
+    # qui tourne TOUS LES JOURS. Un compteur doit prouver qu il compte ce qu il pretend compter
+    # (VPS-M01, VPS-M46, VPS-027) : « hors sonde » et « hors routine » ne sont pas la meme chose,
+    # et c est la seconde qui interesse. Les deux sont donc publiees, jamais l une sans l autre.
+    # ⚠️ Le lot TRIM n est PAS masque pour autant : il est compte a part et son EXISTENCE est
+    # affichee. Le jour ou il changera de contenu, la difference des deux compteurs le dira.
+    # ⚠️⚠️ CORRIGE LE 2026-08-26 (VPS-M70) — LE FILTRE ETAIT CABLE SUR UN NOM DE FICHIER.
+    # Il ecartait `hstgr-<epoch>.scanner.py`. L hebergeur a renomme sa sonde horaire en
+    # `usage-telemetry.py` le 2026-08-25 entre 07h18 et 08h14 : du jour au lendemain, une sonde
+    # horaire parfaitement routiniere est devenue « INATTENDUE », et le bloc a publie
+    # « 🟠 19 commande(s) INATTENDUE(S) » dont les DIX-NEUF etaient cette sonde. Le compteur ne
+    # comptait plus ce qu il pretendait compter — VPS-M01 / VPS-M46 / VPS-M50, quatrieme fois.
+    # Le filtre porte desormais sur la FORME (`hstgr-<epoch>.<nom>.py`, le script auto-detruit
+    # que l hyperviseur depose puis execute), pas sur un nom precis.
+    # ⚠️ CE FILTRE EST PLUS LARGE, ET C EST UN RISQUE QU IL FAUT COMPENSER, PAS TAIRE : un script
+    # reellement nouveau passant par le meme chemin serait desormais ecarte lui aussi. La
+    # contrepartie est donc obligatoire — l INVENTAIRE des noms de sonde est publie ci-dessous
+    # dans TOUS les cas, avec son compte, et tout changement de nom est signale. On ecarte le
+    # BRUIT sans perdre la capacite de voir qu il a change (leçon VPS-M50 sur le lot TRIM).
+    echo  "  ── inventaire des sondes horaires deposees par l hyperviseur (VPS-M70) ──"
+    QGA_SONDES=$(printf '%s\n' "$QGA" | grep -F 'guest-exec called' \
+      | grep -oE 'hstgr-[0-9]+\.[A-Za-z0-9_.-]+\.py' | sed -E 's/^hstgr-[0-9]+\.//' \
+      | sort | uniq -c | sort -rn)
+    if [ -z "$QGA_SONDES" ]; then
+      echo "     (aucun script hstgr-*.py dans la fenetre — PAS « rien a signaler » : soit la"
+      echo "      sonde a change de forme, soit elle a cesse. Les deux meritent un regard.)"
+    else
+      printf '%s\n' "$QGA_SONDES" | sed 's/^/       /'
+      QGA_NB_NOMS=$(printf '%s\n' "$QGA_SONDES" | grep -c '^..*$')
+      if [ "${QGA_NB_NOMS:-0}" -gt 1 ]; then
+        echo "     🟠 $QGA_NB_NOMS noms de sonde DIFFERENTS dans la fenetre : l hyperviseur a"
+        echo "        renomme ou remplace son script pendant la periode observee. Ce n est pas"
+        echo "        anodin — c est du code execute en root chez nous, et son nom est tout ce"
+        echo "        que l on en voit (le script s auto-detruit par son propre trap de sortie)."
+      else
+        echo "     ✅ un seul nom de sonde sur la fenetre : pas de remplacement observe."
+      fi
+    fi
+    echo  "  ── commandes hors sonde horaire (le script hstgr-*.py, le ps et /proc/meminfo ecartes) ──"
+    QGA_HORS=$(printf '%s\n' "$QGA" | grep -F 'guest-exec called' \
+      | grep -vE 'hstgr-[0-9]+\.[A-Za-z0-9_.-]+\.py|ps -eo vsz|/proc/meminfo')
+    QGA_NB_HORS=$(printf '%s\n' "$QGA_HORS" | grep -c '^..*$')
+    # le lot TRIM quotidien de l hebergeur : connu, documente, attendu (VPS-027)
+    QGA_INAT=$(printf '%s\n' "$QGA_HORS" \
+      | grep -vE 'systemctl enable fstrim\.timer|provisioning_mode|^.*fstrim (-v --minimum|--listed-in)')
+    QGA_NB_INAT=$(printf '%s\n' "$QGA_INAT" | grep -c '^..*$')
+    QGA_NB_TRIM=$(( ${QGA_NB_HORS:-0} - ${QGA_NB_INAT:-0} ))
+    printf '     hors sonde : %s  |  dont lot TRIM quotidien (connu, VPS-027) : %s  |  INATTENDUES : %s\n' \
+      "${QGA_NB_HORS:-0}" "$QGA_NB_TRIM" "${QGA_NB_INAT:-0}"
+    if [ "${QGA_NB_INAT:-0}" -eq 0 ]; then
+      echo "     ✅ aucune commande inattendue : l hyperviseur n a envoye que son lot TRIM connu."
+    else
+      printf '     🟠 %s commande(s) INATTENDUE(S) — les 12 dernieres :\n' "$QGA_NB_INAT"
+      printf '%s\n' "$QGA_INAT" | tail -12 \
+        | sed -E 's/^([0-9-]{10})T([0-9:]{8}).*guest-exec called: /       \1 \2  /' | cut -c1-165
+      # ⚠️⚠️ AJOUTE LE 2026-09-01 (VPS-M72) — LA TRONCATURE A 165 CARACTERES REND UNE CHARGE
+      # UTILE EN BASE64 STRICTEMENT ILLISIBLE, ET C EST ARRIVE LE 2026-08-28.
+      # Ce jour-la, ce bloc a publie « 🟠 1 commande INATTENDUE » suivie de 120 caracteres de
+      # base64. Un humain lisant le rapport ne pouvait RIEN en conclure — ni que c etait anodin,
+      # ni que c etait grave. Decode a la main le 2026-09-01, le contenu etait un script de
+      # 1 420 caracteres qui parcourt `ps`, selectionne les `docker logs` / `docker stats` de
+      # plus de 6 h ainsi que les pagers (less, more, htop, sngrep, ugrep), puis leur envoie
+      # `kill -TERM` PUIS `kill -KILL`. C est-a-dire du code TIERS qui TUE des processus en root
+      # sur la production, arrive par un canal qui ne passe ni par SSH ni par le pare-feu.
+      # Le defaut n est PAS d avoir signale la commande — le compteur a fait son travail. C est
+      # que la seule chose publiee de cette commande etait la partie DEPOURVUE d information :
+      # l invocation `/bin/sh -c echo <blob>`. Une charge utile encodee est exactement le cas ou
+      # une troncature ne coupe pas « la fin d une phrase » : elle coupe LA PHRASE ENTIERE.
+      # Famille VPS-M22 / VPS-M46 — un extracteur qui rend de l illisible en silence.
+      # ⚠️ COUT : NUL en l absence de base64 — le `grep -oE` ne rend rien et la boucle ne tourne
+      # pas. Un seul blob a decoder sur la fenetre de 7 jours du 2026-09-01.
+      QGA_B64=$(printf '%s\n' "$QGA_INAT" | grep -oE '[A-Za-z0-9+/]{40,}={0,2}' | sort -u)
+      if [ -n "$QGA_B64" ]; then
+        printf '     ── %s charge(s) utile(s) encodee(s), DECODEE(S) ici (VPS-M72) ──\n' \
+          "$(printf '%s\n' "$QGA_B64" | grep -c '^..*$')"
+        printf '%s\n' "$QGA_B64" | while IFS= read -r b; do
+          CLAIR=$(printf '%s' "$b" | base64 -d 2>/dev/null)
+          if [ -z "$CLAIR" ]; then
+            printf '       blob de %s caracteres : NON DECODABLE — mesure NON FAITE, PAS « inoffensif » (VPS-M02).\n' "${#b}"
+            continue
+          fi
+          # Un blob qui decode en BINAIRE n est pas du script : le dire, au lieu de deverser des
+          # octets illisibles dans le rapport et de faire croire a une lecture.
+          if [ -n "$(printf '%s' "$CLAIR" | LC_ALL=C tr -d '[:print:][:space:]')" ]; then
+            printf '       blob de %s caracteres : decode en BINAIRE (non textuel) — contenu NON LU.\n' "${#b}"
+            continue
+          fi
+          printf '       blob de %s caracteres, %s ligne(s) de texte en clair :\n' \
+            "${#b}" "$(printf '%s\n' "$CLAIR" | grep -c '^')"
+          printf '%s\n' "$CLAIR" | cut -c1-200 | head -25 | sed 's/^/         | /'
+          # ⚠️ Ce releve de verbes ne PROUVE aucune intention : il dit ce que le texte CONTIENT.
+          # Un script peut ecrire sans aucun de ces mots. Un vide ici se lit « aucun verbe
+          # releve », JAMAIS « lecture seule garantie » — c est la discipline VPS-M28.
+          VERBES=$(printf '%s\n' "$CLAIR" \
+            | grep -oE '(kill -[A-Za-z0-9]+|pkill|killall|rm -[rfRv]+|systemctl (start|stop|restart|enable|disable|mask)|chmod|chown|mkfs|dd if=|iptables|ufw |crontab|docker (rm|stop|kill|prune))' \
+            | sort -u | paste -sd' ')
+          if [ -n "$VERBES" ]; then
+            printf '         🔴 CETTE CHARGE ECRIT OU TUE — verbes releves : %s\n' "$VERBES"
+            echo  "            Ce n est plus de la lecture : un tiers agit sur l etat d une machine"
+            echo  "            dont ce catalogue pretend tenir la liste de ce qui s y declenche."
+          else
+            echo  "         (aucun verbe d ecriture ni de signal RELEVE dans le texte decode —"
+            echo  "          ce n est pas une garantie de lecture seule, seulement une absence.)"
+          fi
+        done
+      fi
+      echo  "     ⚠️ Ce canal ne passe NI par SSH (rien dans auth.log, rien pour fail2ban), NI par"
+      echo  "        le reseau (virtio-serial, rien pour ufw). L audit ne peut PAS distinguer ici"
+      echo  "        l hebergeur d un humain utilisant la console web du panneau : les deux"
+      echo  "        arrivent par la meme porte. Ne pas attribuer une provenance qu on ne mesure pas."
+    fi
+  fi
+else
+  echo "  (journal qemu-ga illisible ou agent absent — PAS « aucun ordre » : on ne sait pas)"
+fi
+
 # ── La charge de fond que PERSONNE ne planifie ────────────────────────────────────────────
 # Les crons et les timers se declarent ; les healthchecks, non. Ils sont pourtant la premiere
 # source de creation de processus de la machine : chaque passage lance une chaine `runc exec`
@@ -1423,16 +2694,54 @@ printf '%s\n' "$CADENCES" | awk -v tot="$NB_PS" '
   END {printf "  → %d invocations/min, soit ~%d/jour (chacune ~5 processus via runc)\n", n, n*1440
        printf "     %d conteneurs sondes sur %d ; %d SANS AUCUNE SONDE (leur panne est invisible a Docker)\n", s, tot, tot-s}'
 
-sub "Creations de processus par minute (mesure de 10 s)"
+sub "Creations de processus par minute (fenetre de 10 s, DECOUPEE en 3 sous-fenetres)"
 # Le compteur `processes` de /proc/stat est cumulatif depuis le demarrage : la difference sur
 # une fenetre donne le taux reel, healthchecks compris. A l'arret, c'est eux qui dominent.
 #
 # ⚠️ FENETRE DE 10 s, PAS PLUS : a 20 s, la collecte complete depassait 90 s — le budget que
 # cette meme procedure impose. Un audit qui viole sa propre regle pour mieux mesurer se trompe
 # de priorite (defaut VPS-M05, corrige le 2026-08-04).
-p1=$(awk '/^processes/{print $2}' /proc/stat); sleep 10
-p2=$(awk '/^processes/{print $2}' /proc/stat)
-awk -v d="$((p2-p1))" 'BEGIN {printf "  %d processus en 10 s = %d/min = ~%.1f millions/jour\n", d, d*6, d*6*1440/1000000}'
+#
+# ⚠️⚠️ CORRIGE LE 2026-08-25 — ANGLE MORT N° 2, REPORTE TROIS FOIS : UN ECHANTILLON DE 10 s
+# PUBLIE COMME UNE CONSTANTE. La serie inter-passages fait 1 230 · 762 · 1 374 · 786 · 1 224,
+# soit un facteur 1,8 — et pendant vingt passages rien ne disait si cet ecart vient de la
+# MACHINE (des jours reellement differents) ou de la MESURE (une fenetre trop courte pour un
+# phenomene en rafales : les healthchecks se declenchent par paquets alignes sur leur cadence).
+# La question se tranche SANS allonger la fenetre : on decoupe la MEME fenetre de 10 s en trois.
+#
+# ⚠️ CE QUE CE BLOC MESURE vs CE QU'IL AFFIRME (discipline posee par VPS-M64) :
+#   il mesure  : la dispersion INTRA-fenetre, sur 3 s / 3 s / 4 s ;
+#   il affirme : « la valeur de 10 s est/n'est pas un echantillon stable ». Une etendue faible
+#                ne prouve PAS que la valeur est reproductible d'un JOUR a l'autre — elle
+#                elimine seulement la rafale courte comme explication. Le dire, sinon on
+#                republiera « mesure stable » sur une grandeur qui varie de 80 % en 24 h.
+#
+# ⚠️ COUT : ZERO seconde de plus (3+3+4 = les memes 10 s), deux lectures de /proc/stat en plus.
+# ⚠️ La valeur PUBLIEE dans la serie reste celle des 10 s pleines : c'est elle qui alimente
+# `processusParMin` depuis vingt passages, et changer la grandeur d'une serie de tendance sans
+# le dire casse la comparaison au moment ou elle sert (VPS-M60, VPS-M63).
+p1=$(awk '/^processes/{print $2}' /proc/stat); sleep 3
+p2=$(awk '/^processes/{print $2}' /proc/stat); sleep 3
+p3=$(awk '/^processes/{print $2}' /proc/stat); sleep 4
+p4=$(awk '/^processes/{print $2}' /proc/stat)
+awk -v a="$((p2-p1))" -v b="$((p3-p2))" -v c="$((p4-p3))" -v tot="$((p4-p1))" 'BEGIN {
+  r[1]=a*20; r[2]=b*20; r[3]=c*15          # 3 s -> x20, 3 s -> x20, 4 s -> x15
+  mn=r[1]; mx=r[1]
+  for (i=2; i<=3; i++) { if (r[i]<mn) mn=r[i]; if (r[i]>mx) mx=r[i] }
+  printf "  %d processus en 10 s = %d/min = ~%.1f millions/jour   <- LA VALEUR DE LA SERIE\n", tot, tot*6, tot*6*1440/1000000
+  if (tot <= 0) { print "  🔴 COMPTEUR NON AVANCE : /proc/stat illisible ou fenetre nulle — ne pas lire « machine au repos »."; exit }
+  printf "  sous-fenetres 3 s / 3 s / 4 s : %d, %d, %d /min\n", r[1], r[2], r[3]
+  printf "  etendue intra-fenetre : %d/min, soit %.0f %% de la valeur publiee\n", mx-mn, 100*(mx-mn)/(tot*6)
+  if (mx-mn > 0.5*tot*6) {
+    print "  ⚠️ L ETENDUE DEPASSE LA MOITIE DE LA VALEUR PUBLIEE : 10 s ne suffisent pas a"
+    print "     caracteriser ce taux. La rafale courte suffit alors a expliquer le facteur 1,8"
+    print "     entre passages — NE PAS chercher une cause metier avant d avoir allonge la fenetre."
+  } else {
+    print "  ✅ Etendue sous la moitie de la valeur publiee : la rafale courte n EXPLIQUE PAS le"
+    print "     facteur 1,8 observe entre passages. Chercher la cause du cote de ce qui tourne CE"
+    print "     jour-la (build, sauvegarde, session SSH) — pas du cote de l instrument."
+  }
+}'
 
 sub "Crons INTERNES aux conteneurs (verifier que crond ne tourne pas)"
 # ⚠️ PIEGE : toute image Alpine embarque un /etc/crontabs/root avec des `run-parts
@@ -1463,16 +2772,38 @@ journalctl --disk-usage 2>/dev/null | sed 's/^/  /'
 timeout 20 $LOW du -sh /var/log/* 2>/dev/null | sort -rh | head -8
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
-section "9. HISTORIQUE 7 JOURS (sysstat)"
+section "9. HISTORIQUE (sysstat — TOUTES les journees conservees, jour en cours compris)"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 # C'est LA section qui distingue un incident d'une habitude. Sans elle, un pic de charge
 # constate a l'instant T se raconte comme une derive alors que c'est peut-etre un build.
 if have sar; then
-  printf '  %-8s %8s %8s %8s %8s %10s %10s %s\n' jour user% sys% iowait% steal% pic_charge pic_ram% note
-  for i in $(seq 7 -1 1); do
-    f=/var/log/sysstat/sa$(date -d "-$i day" +%d 2>/dev/null)
+  # ⚠️⚠️ REECRIT LE 2026-08-19 — DEUX DEFAUTS, ET LE SECOND A COUTE SEPT PASSAGES DE DIAGNOSTIC.
+  #
+  # 1. `%idle` n etait PAS publie (angle mort n° 7 du 2026-08-18). C est pourtant l inactivite
+  #    qui date les bascules : la serie 38 → 19,5 → 66 → 84 raconte VPS-016 a elle seule, et il
+  #    a fallu une requete `sar` en marge, trois passages de suite, pour l obtenir. Cout : nul,
+  #    c est la meme commande et la meme sortie — seulement une colonne de plus ($8).
+  #
+  # 2. LA FENETRE ETAIT FIXEE A 7 JOURS ALORS QUE LES FICHIERS EN GARDENT DAVANTAGE, ET LE JOUR
+  #    EN COURS ETAIT IGNORE. `seq 7 -1 1` sautait sa19 (aujourd hui) et n atteignait jamais
+  #    sa11. Or le 2026-08-19, sa11 portait la SEULE journee calme conservee — idle 77,66 % —
+  #    et la 3e occurrence de VPS-016 a commence le 08-11 a 21 h 05. Autrement dit : l audit a
+  #    decrit pendant CINQ passages une machine a ~37 % d inactivite comme si c etait son etat
+  #    normal, alors que son etat normal est ~78 %. Un incident qui dure plus longtemps que la
+  #    fenetre d observation efface sa propre reference — et rien ne le signale, parce que la
+  #    fenetre glisse avec lui. On lit donc TOUS les `sa??` presents, jour en cours compris.
+  #
+  # ⚠️ La date NE PEUT PAS etre derivee du nom : `sa14` est le 14 de ce mois-ci OU du mois
+  #    dernier. On la lit dans l en-tete de `sar` lui-meme (`08/18/26`), qui ne ment pas.
+  printf '  %-8s %8s %8s %8s %8s %8s %10s %10s %s\n' jour user% sys% iowait% steal% idle% pic_charge pic_ram% note
+  NB_SA=0
+  # ⚠️ Ordre par DATE D ECRITURE, pas par nom : `sa28`..`sa31` peuvent venir du mois precedent,
+  #    et un tri lexical les placerait en tete. sysstat ecrit chaque fichier le jour meme.
+  for f in $(ls -tr /var/log/sysstat/sa[0-9][0-9] 2>/dev/null); do
     [ -f "$f" ] || continue
-    d=$(date -d "-$i day" +%m-%d)
+    d=$(LC_ALL=C sar -u -f "$f" 2>/dev/null | awk 'NR==1{n=split($4,x,"/"); if (n==3) printf "%s-%s", x[1], x[2]}')
+    [ -z "$d" ] && continue
+    NB_SA=$((NB_SA+1))
     # ⚠️ PIEGE PAYE LE 2026-08-05 : un jour ou la machine REDEMARRE, `sar` decoupe la journee
     # en segments et emet UNE ligne `Average:` PAR segment. Le `printf` cumulatif d'origine les
     # concatenait : la ligne du 08-04 affichait HUIT colonnes au lieu de quatre, totalement
@@ -1480,20 +2811,72 @@ if have sar; then
     # comptait le plus. On ne garde donc que le DERNIER segment (l'etat courant de la machine),
     # et on SIGNALE le redecoupage au lieu de le masquer.
     nseg=$(sar -u -f "$f" 2>/dev/null | grep -c '^Average:')
-    cpu=$(sar -u -f "$f" 2>/dev/null | awk '/^Average:/ {u=$3; s=$5; w=$6; t=$7} END {printf "%8.2f %8.2f %8.2f %8.2f", u,s,w,t}')
+    cpu=$(sar -u -f "$f" 2>/dev/null | awk '/^Average:/ {u=$3; s=$5; w=$6; t=$7; i=$8} END {printf "%8.2f %8.2f %8.2f %8.2f %8.2f", u,s,w,t,i}')
     if [ "${nseg:-1}" -gt 1 ]; then note="⚠️ REDEMARRAGE ce jour-la — $nseg segments, valeurs du DERNIER"; else note=""; fi
     chg=$(sar -q -f "$f" 2>/dev/null | awk '$1!="Average:" && $4 ~ /^[0-9.]+$/ {if ($4+0>m) m=$4+0} END {printf "%10.2f", m}')
     ram=$(sar -r -f "$f" 2>/dev/null | awk '$1!="Average:" && $5 ~ /^[0-9.]+$/ {if ($5+0>m) m=$5+0} END {printf "%10.1f", m}')
     printf '  %-8s %s %s %s %s\n' "$d" "$cpu" "$chg" "$ram" "$note"
+    # VPS-M62 : la serie d inactivite est MEMORISEE ici pour l indicateur de CAPACITE plus bas.
+    # Elle est extraite de "$cpu" (5e champ), donc sans un seul appel `sar` de plus.
+    IDLE_SERIE="${IDLE_SERIE:-}${d} $(printf '%s' "$cpu" | awk '{print $5}')
+"
   done
+  # ⚠️ Le DENOMINATEUR est affiche (lecon VPS-M08/M22) : sans lui, une journee absente du
+  # tableau se confond avec une journee calme. Et la derniere ligne est le jour EN COURS,
+  # donc partielle — le dire, sinon on compare un jour entier a quelques heures.
+  printf '  → %s journee(s) conservee(s) par sysstat, la derniere etant le jour EN COURS (partielle).\n' "$NB_SA"
+  echo  "     ⚠️ Un incident plus long que cette fenetre efface sa propre reference : comparer la"
+  echo  "        colonne idle% a la journee la PLUS ANCIENNE avant de parler d etat « normal »."
+  # ⚠️⚠️ AJOUTE LE 2026-08-23 — VPS-M62, angle mort n° 10 reporte QUATRE fois : « aucun indicateur
+  # ne mesure la CAPACITE, seulement la disponibilite ». Les quatre points publics repondent en
+  # 28 ms depuis dix-neuf passages, et le rapport ecrit « production 🟢 » chaque matin — ce qui
+  # resterait vrai jusqu au jour ou il n y a plus de marge du tout. La disponibilite est un
+  # indicateur BINAIRE et TARDIF : il bascule quand c est deja arrive.
+  #
+  # Pourquoi maintenant, et pourquoi ca ne coute rien : la donnee est deja lue ci-dessus (la
+  # colonne idle% du tableau), et trois journees calmes d affilee donnent une reference SAINE.
+  # Un indicateur ne naitrait pas au bon moment le jour d un incident : il naitrait avec le
+  # regime de panne pour normale, ce qui est exactement VPS-M48.
+  #
+  # ⚠️ LE JOUR EN COURS EST EXCLU — il est partiel, et c est VPS-M61 trois blocs plus haut :
+  #    le comparer aux jours complets ferait dire n importe quoi a l ecart.
+  if [ "${NB_SA:-0}" -ge 3 ]; then
+    printf '%s' "${IDLE_SERIE:-}" | awk '
+      NF == 2 { d[++k] = $1; v[k] = $2 + 0 }
+      END {
+        if (k < 3) {
+          print "\n  ── CAPACITE ── pas assez de journees conservees (" k ") pour une reference."
+          exit
+        }
+        # bornes calculees sur les jours COMPLETS uniquement : 1 .. k-1
+        mn = v[1]; mx = v[1]; jmn = d[1]
+        for (i = 1; i < k; i++) { if (v[i] < mn) { mn = v[i]; jmn = d[i] } ; if (v[i] > mx) mx = v[i] }
+        veille = v[k-1]; anc = v[1]
+        print  "\n  ── CAPACITE : reste-t-il de la MARGE ? (et non « est-ce que ca repond ? ») ──"
+        printf "     jour en cours (%s) EXCLU : partiel (VPS-M61).\n", d[k]
+        printf "     inactivite de la veille           (%s) : %6.2f %%\n", d[k-1], veille
+        printf "     journee la PLUS ANCIENNE conservee (%s) : %6.2f %%\n", d[1], anc
+        printf "     etendue des %d journees COMPLETES        : %6.2f %% (%s) a %6.2f %%\n", k-1, mn, jmn, mx
+        printf "     ecart veille - plus ancienne            : %+6.2f pt\n", veille - anc
+        # Seuils ECRITS, parce qu un « on surveille » sans seuil ne declenche jamais rien
+        # (barème du referentiel, § SURVEILLANCE).
+        if      (veille < 25) print  "     🔴 MARGE CRITIQUE — moins de 25 % d inactivite sur une journee ENTIERE."
+        else if (veille < 50) print  "     🟠 MARGE ENTAMEE — moins de 50 % d inactivite sur une journee ENTIERE."
+        else                  print  "     ✅ MARGE CONFORTABLE — la veille garde plus de 50 % d inactivite."
+        print  "     seuils de reescalade : 🟠 < 50 % un jour entier  |  🔴 < 25 %, ou 🟠 trois jours de suite."
+        print  "     ⚠️ PORTEE : `idle%` est une moyenne sur 24 h. Elle ne voit PAS une saturation"
+        print  "        de 20 min a 14 h — pour cela, c est la colonne pic_charge du tableau."
+      }'
+  fi
   sub "Ecriture disque moyenne par jour (revele les journees de build)"
-  for i in $(seq 7 -1 1); do
-    f=/var/log/sysstat/sa$(date -d "-$i day" +%d 2>/dev/null)
+  for f in $(ls -tr /var/log/sysstat/sa[0-9][0-9] 2>/dev/null); do
     [ -f "$f" ] || continue
     # Meme piege qu'au-dessus : un jour de redemarrage produisait DEUX lignes pour la meme
     # date (08-04 apparaissait deux fois le 2026-08-05), ce qui se lit comme une erreur de
     # collecte. On agrege sur le dernier segment, comme pour le CPU.
-    sar -b -f "$f" 2>/dev/null | awk -v d="$(date -d "-$i day" +%m-%d)" \
+    d=$(LC_ALL=C sar -b -f "$f" 2>/dev/null | awk 'NR==1{n=split($4,x,"/"); if (n==3) printf "%s-%s", x[1], x[2]}')
+    [ -z "$d" ] && continue
+    sar -b -f "$f" 2>/dev/null | awk -v d="$d" \
       '/^Average:/ {tps=$2; wr=$6} END {if (tps!="") printf "  %s : %.0f tps, ecriture %.0f blocs/s\n", d, tps, wr}'
   done
 else
@@ -1511,14 +2894,37 @@ section "10. PREVISIONS — ce que chaque nettoyage rendrait"
 TOTAL_KB=$(df -k / | awk 'NR==2{print $2}')
 USED_KB=$(df -k / | awk 'NR==2{print $3}')
 FREE_KB=$(df -k / | awk 'NR==2{print $4}')
+# ⚠️⚠️ AJOUTE LE 2026-08-22 (VPS-M60) — DEUX POURCENTAGES DE DISQUE DANS LA MEME COLLECTE, ET
+# LA SERIE DU MANIFESTE PIOCHAIT DANS LES DEUX. La section 3 affiche le `Use%` de `df -h` ;
+# la ligne ci-dessous calcule le sien. Releve des cinq passages precedents : le 08-18 le
+# manifeste a copie 68 (section 10), le 08-19 54 (section 10), le 08-21 55 (df) — et le 08-20
+# un 50 qui ne vient d AUCUNE des deux, parce qu il a ete pris apres une purge, hors de la
+# collecte archivee. *La pente du disque affichee a l ecran se calcule sur cette serie.* Elle
+# avance d environ 0,1 point par jour : un ecart d un point vaut DIX JOURS de tendance.
+#
+# ⚠️ ET LA CAUSE DE L ECART N EST PAS CELLE QUE J AI CRUE. J avais d abord ecrit que `df`
+# comptait les 5 % de blocs RESERVES a root. Faux, et le controle l a dit tout de suite :
+# total=100476656 used=55459356 avail=45000916 → les DEUX formules donnent 55,20 %, et `df`
+# affiche 56 %. La difference est un ARRONDI : GNU `df` arrondit le pourcentage AU SUPERIEUR
+# (ceil), pas au plus proche. D ou `ceil()` ci-dessous, verifie contre `df -h` sur la machine.
+# *Deux chiffres qui different d un point n ont pas forcement deux definitions : ils peuvent
+# n avoir que deux arrondis — et on ne le sait qu en refaisant le calcul a la main.*
 awk -v t="$TOTAL_KB" -v u="$USED_KB" -v f="$FREE_KB" 'BEGIN {
-  printf "  disque : %.0f Go utilises / %.0f Go (%.0f%%), %.0f Go libres\n", u/1048576, t/1048576, 100*u/t, f/1048576 }'
+  p = 100*u/(u+f); c = (p == int(p)) ? p : int(p) + 1
+  printf "  disque : %.0f Go utilises / %.0f Go (%.0f%%), %.0f Go libres\n", u/1048576, t/1048576, 100*u/t, f/1048576
+  printf "  ── la valeur a reporter dans le manifeste (VPS-M60) ──\n"
+  printf "     disqueUtilisePct = %d   (identique au Use%% de `df` en section 3 : %.2f%% arrondi AU SUPERIEUR)\n", c, p
+  printf "     ⚠️ %.0f%% ci-dessus = le meme %.2f%% arrondi au PLUS PROCHE. Meme disque, meme\n", 100*u/t, p
+  printf "        formule, deux arrondis — et un point d ecart dans la serie de tendance.\n"
+  printf "     Copier TOUJOURS la valeur nommee ici : c est celle que `df` affiche, donc celle\n"
+  printf "     qu un humain relit. Melanger les deux fabrique une pente qui ne mesure que ca.\n" }'
 
 echo "  ── recuperable, par poste ──"
 # ⚠️ On passe par `--format` et NON par le tableau texte : « Local Volumes » contient un
 # espace, donc les colonnes se decalent d'un cran sur cette ligne-la et un `$NF` en awk
 # ramenait « (100%) » au lieu de la taille (defaut VPS-M05, corrige le 2026-08-04).
-docker system df --format '{{.Type}}|{{.Reclaimable}}' 2>/dev/null | while IFS='|' read -r type recl; do
+echo "${SYSDF_FMT:-}" | while IFS='|' read -r type size recl active total; do
+  [ -n "$type" ] || continue
   case "$type" in
     "Build Cache")   printf '  %-28s %s\n' "cache de build" "$recl" ;;
     # ⚠️ NE PAS PRENDRE CE CHIFFRE POUR DE L'ESPACE RECUPERABLE (constate le 2026-08-05).
@@ -1528,8 +2934,8 @@ docker system df --format '{{.Type}}|{{.Reclaimable}}' 2>/dev/null | while IFS='
     # un plan d'action ferait promettre 24 Go que la commande ne rendrait jamais.
     "Images")        printf '  %-28s %s  (⚠️ CHIFFRE NON FIABLE : %s images sur %s sont ACTIVES —\n' \
                        "images" "$recl" \
-                       "$(docker system df --format '{{.Type}}|{{.Active}}' 2>/dev/null | awk -F'|' '/^Images/{print $2}')" \
-                       "$(docker system df --format '{{.Type}}|{{.TotalCount}}' 2>/dev/null | awk -F'|' '/^Images/{print $2}')"
+                       "$active" \
+                       "$total"
                      printf '  %-28s   docker compte des couches partagees, pas de l espace liberable)\n' "" ;;
     "Containers")    printf '  %-28s %s\n' "conteneurs arretes" "$recl" ;;
     "Local Volumes") printf '  %-28s %s  (⚠️ contient des BASES : ne pas purger a l aveugle)\n' "volumes non montes" "$recl" ;;
@@ -1615,9 +3021,13 @@ done
 
 sub "Couverture : chaque base EN SERVICE a-t-elle une sauvegarde ?"
 MAINTENANT=$(date +%s)
-for cont in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei "postgres|postgis|mysql|maria|mongo"); do
+for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   # Rapprochement par prefixe : `tracky-postgres` → un dossier contenant « tracky ».
-  cle=$(echo "$cont" | sed -E 's/-(postgres|postgis|mysql|mariadb|mongo).*$//')
+  # ⚠️ Le second `sed` est le corollaire de VPS-M80 : `vizyo-auth-db`, une fois reconnu par son
+  # image, ne se rapproche d'aucun dossier tant que son suffixe `-db` n'est pas retire — il
+  # serait entre dans la table pour y etre declare « AUCUNE SAUVEGARDE » a tort. Reconnaitre un
+  # objet et savoir le rapprocher sont deux corrections, pas une.
+  cle=$(echo "$cont" | sed -E 's/-(postgres|postgis|mysql|mariadb|mongo).*$//; s/-(db|database)$//')
   # ⚠️ PIEGE PAYE A L'ECRITURE MEME DE CE CONTROLE, le 2026-08-05 — il faut le laisser ecrit.
   # La premiere version s'arretait au PREMIER dossier correspondant (`break`). Pour
   # `tracky-postgres`, le premier dossier contenant « tracky » est `tracky-pre-deploy-20260427`
@@ -1626,32 +3036,101 @@ for cont in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -Ei "postgres|p
   # alors que sa sauvegarde etait fraiche. Un controle de sauvegarde qui crie au loup se fait
   # desactiver en trois jours, et c'est ainsi qu'on perd la vraie alerte.
   # On balaie donc TOUS les dossiers correspondants et on garde la copie LA PLUS RECENTE.
-  trouve=""; agemax=""; recent=0
+  trouve=""; agemax=""; agemax_h=""; recent=0; horodatages=""
   for d in /var/backups/*/; do
     case "$(basename "$d")" in
       *"$cle"*)
         t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
         trouve="${trouve}${trouve:+, }$(basename "$d")"
         [ -n "$t" ] && [ "${t%.*}" -gt "$recent" ] && recent=${t%.*}
+        # ⚠️⚠️ AJOUTE LE 2026-09-05 (VPS-M81) — « A JOUR » NE VEUT PAS DIRE « SAUVEGARDEE ».
+        # Le 2026-09-04 a 04 h 52, quelqu'un a lance A LA MAIN un dump de `vizyo-manager`,
+        # `vizyo-texto` et `capcom6`. Au passage suivant, cette table affichait « ✅ a jour
+        # (0 j) » sur les TROIS bases que VPS-013 signale sans filet depuis 27 passages —
+        # alors qu'AUCUN timer, AUCUN cron, AUCUN script ne les produit. L'age de la derniere
+        # copie ne distingue pas un MECANISME d'un GESTE, et il aurait affiche vert quatre
+        # jours de suite avant de repasser au rouge sans que rien n'ait change.
+        # Le discriminant est mesurable et il ne suppose rien : l'ECART entre les DEUX copies
+        # les plus recentes. Une cadence en laisse une trace ; un geste unique, non.
+        # ⚠️ On ne cherche PAS a nommer le producteur : un script qui calcule sa destination
+        # (`DEST=/var/backups/$APP`) serait introuvable par grep, et un controle de sauvegarde
+        # qui crie au loup se fait desactiver en trois jours (VPS-M13).
+        horodatages="${horodatages}$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null)
+"
         ;;
     esac
   done
-  [ "$recent" -gt 0 ] && agemax=$(( (MAINTENANT - recent) / 86400 ))
+  # ⚠️⚠️ VPS-M84 — CORRIGE LE 2026-09-06. CE BLOC ET CELUI D'EN DESSOUS (« Age de la derniere
+  # sauvegarde, par dossier ») LISAIENT LES MEMES FICHIERS ET RENDAIENT DES VERDICTS OPPOSES.
+  #
+  # L'age etait ici tronque en JOURS ENTIERS (`/ 86400`) et compare a 2 ; vingt lignes plus bas
+  # il est calcule en HEURES et compare a 30. Un fichier de 47 h etait donc
+  #   « ✅ a jour (1 j) »  ici,  et  « ⚠️ PERIMEE (> 30 h) »  la-bas — LE MEME FICHIER.
+  # Mesure du 2026-09-06 : `vizyo-manager` et `vizyo-texto`, a 47 h, deux des TROIS bases du
+  # constat de gravite 1 VPS-013. La bande aveugle allait de 30 h a 48 h, soit DIX-HUIT HEURES
+  # pendant lesquelles la table qui repond a « cette base est-elle sauvegardee ? » disait oui
+  # alors que sa voisine disait qu'une nuit avait ete manquee.
+  # ⚠️ Et c'est la ligne VERTE qui gagne : un lecteur s'arrete a la table de couverture, qui
+  # nomme les conteneurs. Le bloc par dossier, lui, nomme des repertoires — il faut deja savoir
+  # que `vizyo-texto` est la base de `texto-postgres` pour rapprocher les deux.
+  #
+  # Correctif : le MEME seuil de 30 h des deux cotes, et l'age affiche en HEURES sous 48 h pour
+  # que les deux blocs soient comparables a l'oeil. COUT : ZERO commande de plus — `recent` est
+  # deja un horodatage epoch, il etait seulement divise trop tot.
+  # ⚠️ La bande « nuit manquee » NE remplace PAS « en retard » : elles ne disent pas la meme
+  # chose. 31 h = une execution sautee ; 3 j = un mecanisme arrete. Les fondre reperdrait ce
+  # que ce correctif fait gagner.
+  if [ "$recent" -gt 0 ]; then
+    agemax_h=$(( (MAINTENANT - recent) / 3600 ))
+    agemax=$(( agemax_h / 24 ))
+  fi
   # Une base de DEVELOPPEMENT sans sauvegarde est un choix, pas un defaut : on le dit, plutot
   # que de produire une alerte quotidienne que tout le monde apprendra a ignorer.
   case "$cont" in *-dev-*) nature="(developpement — sans enjeu)" ;; *) nature="" ;; esac
   if [ -z "$trouve" ]; then
     verdict="🔴 AUCUNE SAUVEGARDE"
-  elif [ -z "$agemax" ]; then
+  elif [ -z "$agemax_h" ]; then
     verdict="🔴 dossier VIDE"
-  elif [ "$agemax" -ge 7 ]; then
+  elif [ "$agemax_h" -ge 168 ]; then
     verdict="🔴 ABANDONNEE — derniere copie il y a $agemax jours"
-  elif [ "$agemax" -ge 2 ]; then
+  elif [ "$agemax_h" -ge 48 ]; then
     verdict="🟠 en retard ($agemax j)"
+  elif [ "$agemax_h" -gt 30 ]; then
+    verdict="🟠 NUIT MANQUEE ($agemax_h h > 30 h)"
   else
-    verdict="✅ a jour ($agemax j)"
+    verdict="✅ a jour ($agemax_h h)"
   fi
   printf '  %-26s %-42s %-28s %s\n' "$cont" "$verdict" "${trouve:-—}" "$nature"
+  # ── Cadence : y a-t-il une TRACE de mecanisme, ou une seule copie posee a la main ? ──
+  if [ "$recent" -gt 0 ]; then
+    deux=$(printf '%s' "$horodatages" | grep -E '^[0-9]' | sort -rn | head -2)
+    nb=$(printf '%s' "$horodatages" | grep -cE '^[0-9]')
+    # ⚠️ DEFAUT DE MON PROPRE CORRECTIF, ATTRAPE AU BANC LE 2026-09-05 AVANT PUBLICATION.
+    # La premiere version comparait les DEUX FICHIERS les plus recents. Or `vizyo-verify`
+    # depose DEUX fichiers par execution (la base, puis les pieces) : elle annoncait donc
+    # « cadence mesuree : 0 h » sur la sauvegarde la mieux tenue de la machine. Le nombre
+    # n'etait pas faux, il ne mesurait pas ce que son nom disait — exactement le defaut que
+    # ce bloc existe pour attraper, retourne contre lui-meme. On compare desormais la plus
+    # recente a la plus recente d'une AUTRE SALVE (plus d'une heure d'ecart).
+    t1=$(printf '%s\n' "$deux" | sed -n 1p); t1=${t1%.*}
+    t2=$(printf '%s' "$horodatages" | grep -E '^[0-9]' | sed 's/\..*//' \
+         | awk -v r="$t1" '$1 <= r-3600' | sort -rn | head -1)
+    if [ "$nb" -lt 2 ] || [ -z "$t2" ]; then
+      printf '     ⚠️ UNE SEULE SALVE DE COPIES (%s fichier(s), tous a la meme heure) — aucune\n' "$nb"
+      printf '        cadence mesurable. Une copie recente n est pas une sauvegarde : rien dans\n'
+      printf '        les FICHIERS ne prouve qu un mecanisme la refera (VPS-M81). Croiser avec le\n'
+      printf '        bloc « L unite qui PRODUIT chaque sauvegarde » ci-dessus, qui, lui, le dit.\n'
+    else
+      ecart=$(( (t1 - t2) / 3600 ))
+      if [ "$ecart" -gt 168 ]; then
+        printf '     ⚠️ COPIE ISOLEE — la salve precedente date de %s j (%s h). Une cadence laisse\n' \
+          "$(( ecart / 24 ))" "$ecart"
+        printf '        une trace reguliere ; cet ecart designe un GESTE, pas un mecanisme (VPS-M81).\n'
+      else
+        printf '     cadence mesuree : %s h depuis la salve precedente (%s copies au total)\n' "$ecart" "$nb"
+      fi
+    fi
+  fi
   # ── Ce que COUTERAIT la sauvegarde manquante (angle mort n° 5 du rapport du 2026-08-08) ──
   # ⚠️ On repetait « texto et capcom6 n'ont aucune sauvegarde » depuis CINQ passages sans
   # jamais dire ce que la corriger couterait. Or c'est le seul chiffre qui tranche le debat :
@@ -1715,6 +3194,69 @@ for d in /var/backups/*/; do
   printf '  %-26s %3s h  %-42s %2d copies, %s  %s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")"
 done
 
+# ── Ce qui RESSEMBLE a une sauvegarde et vit HORS de tout controle ────────────────────────
+# ⚠️⚠️ AJOUTE LE 2026-08-25 — ANGLE MORT N° 4, OUVERT LE 2026-08-20 ET REPORTE QUATRE FOIS.
+#
+# Les QUATRE controles ci-dessus sont definis par un CHEMIN — ils enumerent /var/backups/*.
+# VPS-030 a chiffre ce que ca coute : 1,66 Go de dumps dans /root/backups, presents sur le
+# disque, couverts par AUCUNE retention, et absents des quatre controles a la fois. Aucun
+# d'eux ne signalait qu'il n'en disait rien : une absence se lit « rien a signaler ».
+# C'est VPS-013 dans l'autre sens, et c'est la meme lecon que VPS-004/VPS-M06/VPS-M13 —
+# verifier du cote de l'EFFET (des octets de sauvegarde existent-ils quelque part ?) et pas
+# du cote de la trace (le dossier que j'ai decide de regarder est-il a jour ?).
+#
+# On cherche donc par CONTENU — extension d'archive + taille — et pas par emplacement.
+#
+# ⚠️ CE QUE CE BLOC MESURE vs CE QU'IL AFFIRME (discipline posee par VPS-M64) :
+#   il mesure  : les fichiers > 50 Mo portant une extension d'archive, hors des chemins elagues ;
+#   il affirme : « ces octets ne sont sous aucune retention connue ». C'est vrai des chemins
+#                listes ci-dessous, et FAUX le jour ou quelqu'un pose une retention ailleurs.
+#                La liste couverte est donc IMPRIMEE avec le resultat, pas cachee ici en
+#                commentaire — un lecteur doit pouvoir refuter le verdict sans lire le code.
+#
+# ⚠️ BORNES, et elles ne sont pas negociables (regle n° 2 du §1 de la procedure) :
+#   • `-xdev`      : une seule partition ;
+#   • profondeur 5 : VPS-030 vivait a la profondeur 3 ; /opt/maalem porte 135 099 inodes et ne
+#                    doit pas etre descendu entierement ;
+#   • `-prune` AVANT descente sur /var/lib/docker (~12 Go de couches), /proc, /sys, /snap, /run ;
+#   • `$LOW` + `timeout` : priorite idle, et une borne dure.
+# ⚠️ Le timeout est traite EXPLICITEMENT : un `timeout` qui expire rend du vide, et du vide se
+# lit « rien a signaler » (VPS-M02, le tout premier defaut de methode de cet audit).
+sub "Sauvegardes HORS de /var/backups — balayage par CONTENU (angle mort n° 4, 5e report)"
+echo "  couvert par les controles ci-dessus : /var/backups/*"
+echo "  elague du balayage (non pertinent)  : /var/backups, /var/lib/docker, /proc, /sys, /snap, /run"
+echo "  critere : fichier > 50 Mo, extension .sql .sql.gz .sql.bz2 .dump .tar .tar.gz .tgz .gpg .bak"
+ERRANTS=$(timeout 25 $LOW find / -xdev -maxdepth 5 \
+    \( -path /var/backups -o -path /var/lib/docker -o -path /proc -o -path /sys \
+       -o -path /snap -o -path /run \) -prune -o \
+    -type f -size +50M \
+    \( -name '*.sql' -o -name '*.sql.gz' -o -name '*.sql.bz2' -o -name '*.dump' \
+       -o -name '*.tar' -o -name '*.tar.gz' -o -name '*.tgz' -o -name '*.gpg' -o -name '*.bak' \) \
+    -printf '%s\t%TY-%Tm-%Td %TH:%TM\t%p\n' 2>/dev/null)
+RC_ERRANTS=$?
+if [ "$RC_ERRANTS" -eq 124 ]; then
+  echo "  🔴 BALAYAGE INTERROMPU (timeout 25 s) — le resultat ci-dessous est PARTIEL."
+  echo "     NE PAS le lire comme « rien a signaler » : c'est « on ne sait pas »."
+fi
+if [ -z "$ERRANTS" ]; then
+  [ "$RC_ERRANTS" -eq 124 ] || \
+    echo "  ✅ AUCUN fichier d'archive > 50 Mo hors des chemins couverts. VPS-030 serait donc soit"
+  [ "$RC_ERRANTS" -eq 124 ] || \
+    echo "     traite, soit descendu sous 50 Mo — verifier laquelle des deux avant de le clore."
+else
+  printf '%s\n' "$ERRANTS" | sort -rn | awk -F'\t' '
+    { mo=$1/1048576; tot+=mo; n++
+      if (n<=20) printf "  %8.1f Mo  %s  %s\n", mo, $2, $3
+      d=$3; sub(/\/[^\/]*$/, "", d); par[d]+=mo; nb[d]++ }
+    END {
+      if (n>20) printf "  … %d fichiers supplementaires non detailles (les 20 plus gros ci-dessus)\n", n-20
+      printf "  ── %d fichiers, %.2f Go au total, sous AUCUNE retention connue ──\n", n, tot/1024
+      for (k in par) printf "     %-34s %8.1f Mo en %d fichiers\n", k, par[k], nb[k]
+      print  "  ⚠️ Ces octets ne seront enleves par RIEN : aucune des retentions de la machine ne"
+      print  "     couvre ces chemins. Lire VPS-030 avant tout geste — certains sont les SEULES"
+      print  "     copies connues d un etat de base (le dossier n est pas jetable en bloc)." }'
+fi
+
 # ── L'archive est-elle LISIBLE ? (angle mort du rapport du 2026-08-04) ────────────────────
 # On verifiait qu'une sauvegarde EXISTE et qu'elle PESE 130 Mo. Une archive tronquee — pipe
 # coupe, disque plein en fin d'ecriture — passait ce controle sans broncher : le fichier est
@@ -1748,8 +3290,18 @@ for d in /var/backups/*/; do
   fin=$(timeout 120 $LOW gzip -dc "$fic" 2>/dev/null | tail -8); rc=$?
   if [ "$rc" -ne 0 ]; then
     printf '  🔴 %-26s %s ILLISIBLE OU TRONQUEE — cette sauvegarde ne restaurera pas\n' "$(basename "$d")" "$(basename "$fic")"
-  elif echo "$fin" | grep -q "dump complete"; then
-    printf '  ✅ %-26s %s se relit ET le dump est COMPLET\n' "$(basename "$d")" "$(basename "$fic")"
+  # ⚠️⚠️ CORRIGE LE 2026-09-05 (VPS-M82) — CE CONTROLE IMPRIMAIT SA PROPRE REFUTATION.
+  # Le motif etait `dump complete`, en minuscules et sans variante. Un `mysqldump` termine par
+  # « -- Dump completed on <date> » : majuscule, et « completed ». Le 2026-09-05, l'archive
+  # `capcom6` — un mysqldump PARFAITEMENT COMPLET — a donc ete affichee en 🟠 « SANS le marqueur
+  # de fin », suivie, sur la ligne d'a cote, de « Derniere ligne : -- Dump completed on
+  # 2026-09-04 4:52:05 ». Le controle publiait la preuve qu'il avait tort, dans sa propre sortie.
+  # Le motif est desormais NOMME par moteur : on dit LEQUEL a ete trouve, ce qui rend un
+  # elargissement futur visible au lieu de silencieusement laxiste.
+  elif echo "$fin" | grep -qi "PostgreSQL database dump complete"; then
+    printf '  ✅ %-26s %s se relit ET le dump est COMPLET (marqueur pg_dump)\n' "$(basename "$d")" "$(basename "$fic")"
+  elif echo "$fin" | grep -qi -- "-- Dump completed on"; then
+    printf '  ✅ %-26s %s se relit ET le dump est COMPLET (marqueur mysqldump)\n' "$(basename "$d")" "$(basename "$fic")"
   else
     printf '  🟠 %-26s %s se relit, mais SANS le marqueur de fin de pg_dump —\n' "$(basename "$d")" "$(basename "$fic")"
     printf '     %-26s dump interrompu, ou archive qui n est pas un pg_dump. Derniere ligne : %s\n' "" "$(echo "$fin" | tail -1 | cut -c1-60)"
@@ -1925,8 +3477,9 @@ verdict() { # $1=libelle $2=actuel $3=vise $4=ok|ko $5=commentaire
 }
 
 sub "Levier 1 — cache de build Docker (le poste qui REVIENT)"
-BC=$(docker system df --format '{{.Type}}|{{.Size}}' 2>/dev/null | awk -F'|' '/Build Cache/{print $2}')
-BC_GO=$(docker system df --format '{{.Type}}|{{.Size}}' 2>/dev/null | awk -F'|' '/Build Cache/{gsub(/GB|MB/,"",$2); if ($2 ~ /^[0-9.]+$/) print int($2)}')
+# Relit la capture unique de la section 4 (VPS-M53) — le champ 2 reste la Taille.
+BC=$(echo "${SYSDF_FMT:-}" | awk -F'|' '/Build Cache/{print $2}')
+BC_GO=$(echo "${SYSDF_FMT:-}" | awk -F'|' '/Build Cache/{gsub(/GB|MB/,"",$2); if ($2 ~ /^[0-9.]+$/) print int($2)}')
 # ⚠️ Ce n'est PAS un defaut a corriger une fois : il se reconstitue a CHAQUE build (mesure :
 # +14 Go en 4 h pour 3 deploiements). Le seuil se juge donc a l'espace libre, pas au cache seul.
 #
@@ -1971,7 +3524,14 @@ fi
 if [ "${REF_BC:-0}" -ge "$SEUIL_BC" ]; then
   verdict "cache de build (Private)" "$MESURE_BC" "< ${SEUIL_BC} Go" ko "il ECHAPPE a son ramasse-miettes (plafond ${GC_GO:-?} Go) — docker buildx prune -af --filter until=168h"
 else
-  verdict "cache de build (Private)" "$MESURE_BC" "< ${SEUIL_BC} Go" ok "contenu par son ramasse-miettes (plafond ${GC_GO:-?} Go) ; total affiche par docker system df = $BC"
+  # ⚠️ CORRIGE LE 2026-08-22 — LA LIGNE VERTE SE CONTREDISAIT A L OEIL NU. Elle affichait
+  # « ✅ 10.42GB … plafond 10 Go » : une valeur AU-DESSUS du plafond qu elle cite, sous une coche
+  # verte. Le verdict, lui, etait JUSTE — il porte sur le seuil d alerte (plafond x 1,5 = 15 Go,
+  # correctif VPS-M10), pas sur le plafond. Mais ce seuil n etait ecrit NULLE PART dans la
+  # branche verte, donc le lecteur ne pouvait pas savoir a quoi 10,42 avait ete compare.
+  # *Un verdict juste dont on ne publie pas le critere se lit comme un verdict faux* — et le
+  # doute qu il installe coute autant qu une erreur : il a fallu relire le script pour l ecarter.
+  verdict "cache de build (Private)" "$MESURE_BC" "< ${SEUIL_BC} Go" ok "sous son seuil d alerte de ${SEUIL_BC} Go (= plafond ${GC_GO:-?} Go du ramasse-miettes + 50 % de marge, VPS-M10) ; total docker system df = $BC"
 fi
 # ⚠️ Chercher un CRON de purge serait chercher la mauvaise garde. La borne est posee dans
 # `/etc/docker/daemon.json` (ramasse-miettes de BuildKit) : un mecanisme PERMANENT, donc sans
@@ -2029,7 +3589,13 @@ sub "Levier 4 — reglages PostgreSQL"
 # C'est VPS-M08 / VPS-M22 a l'identique — « toute extraction conditionnelle doit annoncer son
 # denominateur » — et la regle etait ecrite. Le `head -3` lui est anterieur, et il a meme ete
 # EDITE la veille (SIGPIPE) sans que personne ne demande pourquoi il etait la.
-PG_TOUS=$(printf '%s\n' "$(docker ps --format '{{.Names}}' 2>/dev/null)" | grep -E "postgres|postgis")
+# ⚠️ ET LE 2026-09-05, LE MEME DENOMINATEUR ETAIT ENCORE TRONQUE, PAR L'AUTRE BOUT (VPS-M80) :
+# il annoncait « ✅ 6 / 6 bases PostgreSQL examinees » alors que la machine en porte SEPT.
+# `vizyo-auth-db` (postgres:17-alpine, authentification de toutes les applications) etait exclu
+# par le filtre de NOM — donc exclu du numerateur ET du denominateur, ce qui rend le controle
+# vert sur son propre angle mort. C'est exactement le defaut que ce bloc denonce depuis le
+# 2026-08-13, avec un autre filtre. Le filtre vient desormais de `db_conteneurs` (nom OU image).
+PG_TOUS=$(db_conteneurs "$MOTEURS_PG")
 PG_NB=$(printf '%s\n' "$PG_TOUS" | grep -c .)
 PG_VUS=0
 #
@@ -2195,6 +3761,28 @@ else
         printf "  part de dockerd      : %.1f s de CPU sur la MEME fenetre = %.1f %% de la machine\n", dock_s, pdock
         printf "  → repartition : audit %.1f %%  |  dockerd %.1f %%  |  reste %.1f %%  |  inactif %.1f %%\n", \
                paudit, pdock, preste, pidle
+        # ── AJOUTE LE 2026-09-02 : LE « RESTE » EST ENFIN VENTILE (angle mort n° 1, 3e report) ──
+        # La ligne ci-dessus publiait « reste 33,4 % » depuis des semaines sans jamais dire de
+        # quoi ce reste etait fait, et trois rapports de suite ont reporte l angle mort au lieu
+        # de le fermer — alors que les deux tiers de la reponse etaient DEJA calcules quatre
+        # lignes plus haut, sur exactement la meme fenetre. `iowait` et `steal` sont du temps ou
+        # AUCUN processus de cette machine ne brule de cycle : le premier attend le disque, le
+        # second est pris par l hyperviseur. Les compter dans « reste » les fait passer pour de
+        # la consommation locale non identifiee, ce qu ils ne sont pas.
+        # ⚠️ Ce n est pas une soustraction exacte et il faut le dire : `iowait` est deja compte
+        #    dans `idle` par le noyau sur certaines versions, et le cout de l audit mesure par
+        #    /proc/$$/stat recouvre une partie de `user`+`sys`. La ventilation ci-dessous BORNE
+        #    le reste inexplique, elle ne le partitionne pas. Un ordre de grandeur honnete vaut
+        #    mieux qu un silence de trois passages. Cout : nul, les valeurs sont deja en memoire.
+        pattente = pio + psteal
+        pinconnu = preste - pattente
+        if (pinconnu < 0) pinconnu = 0
+        printf "     dont ATTENTE (personne ne brule de cycle) : iowait %.1f %% + steal %.1f %% = %.1f %%\n", \
+               pio, psteal, pattente
+        if (preste > 0)
+          printf "     reste INEXPLIQUE apres ventilation : %.1f %% (soit %.0f %% du « reste »)\n", \
+                 pinconnu, 100*pinconnu/preste
+        printf "     ⚠️ BORNE, pas partition : iowait peut deja etre compte dans idle, et le cout de\n        l audit recouvre une part de user+sys. A lire comme un ordre de grandeur.\n"
       }
     } else
       printf "  ⚠️ part de dockerd NON MESUREE (pid introuvable ou /proc illisible) : le verdict\n     ci-dessous ne peut donc PAS nommer le consommateur, seulement disculper l audit.\n"
@@ -2211,8 +3799,20 @@ else
       printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), l audit n y est que pour %.1f %% et\n     dockerd pour %.1f %%. Le consommateur n est NI l un NI l autre : le chercher dans\n     user %.1f %% + sys %.1f %% — sondes de sante, runc, backends PostgreSQL.\n", pidle, paudit, pdock, puser, psys
     else if (pidle < 10)
       printf "  🟠 MACHINE SATUREE (%.1f %% d inactivite), l audit n y est que pour %.1f %%, et la\n     part de dockerd N A PAS PU ETRE MESUREE ce passage. Le consommateur n est donc PAS\n     nomme — et surtout, ne pas lire cette absence comme « dockerd n y est pour rien ».\n", pidle, paudit
+    # ⚠️⚠️ CORRIGE LE 2026-08-19 (VPS-M47) — CETTE BRANCHE NOMMAIT UNE CAUSE QU ELLE NE MESURAIT PAS.
+    # Ecrite pendant VPS-016, elle attribuait la file d attente au « socket d un demon en boucle
+    # (VPS-016) » — en dur, quelle que soit la part mesuree de dockerd. Le 2026-08-19, VPS-016
+    # etait clos depuis 20 h, dockerd mesure a 5,7 % et la machine a 43,7 % d inactivite : la
+    # phrase s est publiee quand meme, et elle designait un phenomene DISPARU. Le chiffre etait
+    # juste, l EXPLICATION etait fausse — et une explication fausse dans une ligne ✅ ne rencontre
+    # aucun contradicteur (VPS-M21 : un defaut qui rassure n a pas de plaignant).
+    # La regle : une attribution se derive de la mesure de la MEME fenetre, ou ne s ecrit pas.
+    else if (l1-l0 > 1.0 && pdock >= 25)
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite. Et le consommateur est NOMME PAR LA MESURE : dockerd prend\n     %.1f %% de cette fenetre — les processus s empilent en sommeil ININTERRUPTIBLE sur son\n     socket, ils comptent dans loadavg sans bruler un cycle (signature VPS-016).\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle, pdock
+    else if (l1-l0 > 1.0 && pdock >= 0)
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite : des processus attendent sans bruler de cycle.\n     ⚠️ LA CAUSE N EST PAS NOMMEE, et c est voulu — dockerd n est mesure qu a %.1f %% sur\n        cette fenetre, donc ce n est PAS une boucle de demon.%s\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle, pdock, (pio >= 5.0 ? sprintf(" Candidat MESURE : iowait = %.1f %%\n        (le parcours /opt lit ~1,7 M inodes en priorite idle).", pio) : sprintf(" Et iowait ne l explique pas\n        non plus (%.1f %%) : AUCUN candidat n est designe. Le chercher, pas le deviner.", pio))
     else if (l1-l0 > 1.0)
-      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite. Les processus s empilent en sommeil ININTERRUPTIBLE sur le\n     socket d un demon en boucle (VPS-016) : ils comptent dans loadavg sans bruler un cycle.\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle
+      printf "  ✅ LA CHARGE ANNONCEE EST UNE FILE D ATTENTE, PAS UNE CONSOMMATION.\n     loadavg monte de %.2f (%.2f → %.2f) alors que l audit prend %.1f %% et que la machine\n     garde %.1f %% d inactivite : des processus attendent sans bruler de cycle.\n     ⚠️ LA CAUSE N EST PAS NOMMEE : la part de dockerd n a PAS pu etre mesuree ce passage,\n        donc on ne peut ni l accuser ni le disculper. iowait = %.1f %% sur la fenetre.\n     ⚠️ NE PAS reporter ce delta de charge comme un cout de l audit.\n", l1-l0, l0, l1, paudit, pidle, pio
     else
       printf "  ✅ COUT CONFIRME FAIBLE : %.1f %% de la machine, %.1f %% d inactivite restante.\n", paudit, pidle
     printf "  ⚠️ PORTEE : « cout REEL » ne compte que les enfants DEJA attendus, et pas sshd cote\n     serveur. C est un PLANCHER — il ne peut pas disculper l audit a tort.\n"
@@ -2252,4 +3852,8 @@ fi
 echo "  ⚠️ PORTEE : ce compteur ne voit QUE ce qui n est pas deja tu par un \`2>/dev/null\` local,"
 echo "     et le script en pose une centaine, volontairement, pour des erreurs ATTENDUES."
 echo "     Un zero ne dit donc pas « aucune erreur », il dit « aucune erreur INATTENDUE »."
+# ⚠️ Desarme le trap de sortie (VPS-M43) : a partir d'ici, la fin est NORMALE. La ligne est
+# volontairement AVANT le marqueur, pour qu'un passage qui meurt entre les deux soit encore
+# signale comme anormal.
+FIN_NORMALE=1
 printf '\n\nFIN DE COLLECTE — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
