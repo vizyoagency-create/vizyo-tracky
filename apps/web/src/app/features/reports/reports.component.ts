@@ -1803,6 +1803,16 @@ export function trajetHorsPerimetreConducteur(
     }
     .rep-reprise-oui { background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); border: none; }
     .rep-reprise-non { background: transparent; color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
+    /* ⚠️ AU DOIGT, 44 px — ET LE BLOC EST POSÉ ICI, PAS DANS CELUI DES CIBLES TACTILES
+       PLUS HAUT. Celui-là est déclaré AVANT le min-height de 32px de ces deux boutons :
+       une media query n'ajoute aucune spécificité, la règle y serait strictement inerte.
+       Ce dépôt a livré deux fois ce défaut exact ; cascade-css.spec.ts le tient désormais.
+       Mesuré à 320 px : « Reprendre » et « Ignorer » rendaient 32 px, alors que tout le
+       reste de la barre est à 44. Ce sont les deux actions d'une proposition qui pose un
+       filtre — les rater fait recharger le mauvais rapport. */
+    @media (max-width: 768px) {
+      .rep-reprise-oui, .rep-reprise-non { min-height: 44px; padding-left: 14px; padding-right: 14px; }
+    }
     .rep-kpi-tendance { display: block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); }
     /* ⚠️ La couleur ne porte pas l'information : le signe et le mot « vs période
        précédente » sont écrits. Elle n'est là que pour accélérer la lecture. */
@@ -2509,6 +2519,16 @@ export function trajetHorsPerimetreConducteur(
          celui de la société la plus concernée par ce filtre, lui avait échappé.
          8 px de remplissage et 4 px d'écart rendent 114 px, ce qui loge les deux. */
       .rep-selectors .rep-dropdown-trigger { padding-left: 8px; padding-right: 8px; gap: 4px; }
+    }
+    /* ⚠️ SOUS 360 px, UN FILTRE PAR RANGÉE. Mesuré à 320 px (iPhone SE) : à deux menus, la
+       moitié de 288 px utiles laisse 86 px de libellé — « Sohaib Hamanni » en réclame 101,
+       et le nom du conducteur retombait en « Sohaib Ha… ». Récupérer du remplissage ne suffit
+       plus à cette largeur : il faut la rangée entière. Une société à trois menus en obtient
+       trois, empilés — c'est plus haut, mais tout se lit, et c'est le seul arbitrage qui
+       tienne quand la largeur manque vraiment.
+       Placé APRÈS le bloc 640 px, jamais avant : à média égal, seul l'ordre tranche. */
+    @media (max-width: 359px) {
+      .rep-selectors .rep-dropdown-wrapper { flex-basis: 100%; }
     }
     .rep-periods {
       display: flex; gap: 6px; flex-wrap: nowrap;

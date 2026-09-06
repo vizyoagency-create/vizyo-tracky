@@ -95,6 +95,30 @@ describe('Page Rapports — l’ordre des règles CSS, que rien d’autre ne tie
     expect(impression).toBeGreaterThan(masquage);
   });
 
+  it('les 44 px au doigt de « Reprendre » / « Ignorer » sont déclarés APRÈS leur base', () => {
+    // Relevé à 320 px : ces deux boutons rendaient 32 px. Ce sont les actions d'une
+    // proposition qui POSE un filtre — les rater fait recharger le mauvais rapport. La règle
+    // ne pouvait pas rejoindre le bloc des cibles tactiles, déclaré plus haut que leur base.
+    const base = positionDe(css, /\.rep-reprise-oui,\s*\.rep-reprise-non\s*\{[^}]*min-height:\s*32px/);
+    const override = positionDe(css, /\.rep-reprise-oui,\s*\.rep-reprise-non\s*\{\s*min-height:\s*44px/);
+
+    expect(base).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(base);
+  });
+
+  it('la rangée unique sous 360 px est déclarée APRÈS la demi-rangée de 640 px', () => {
+    // À 320 px, la moitié de la barre ne laisse que 86 px de libellé : « Sohaib Hamanni »
+    // en réclame 101. Les deux règles portent le MÊME sélecteur — si la seconde passait
+    // devant, la première gagnerait et le nom du conducteur retomberait tronqué.
+    const demi = positionDe(css, /\.rep-selectors\s+\.rep-dropdown-wrapper\s*\{\s*flex-basis:\s*calc\(50%/);
+    const pleine = positionDe(css, /\.rep-selectors\s+\.rep-dropdown-wrapper\s*\{\s*flex-basis:\s*100%/);
+
+    expect(demi).toBeGreaterThan(-1);
+    expect(pleine).toBeGreaterThan(-1);
+    expect(pleine).toBeGreaterThan(demi);
+  });
+
   it('aucune de ces trois règles n’a été dupliquée en chemin', () => {
     // Un doublon rendrait les assertions ci-dessus ambiguës : `positionDe` lit la PREMIÈRE
     // occurrence, et deux bases dont l'une suit l'override feraient passer un test faux.

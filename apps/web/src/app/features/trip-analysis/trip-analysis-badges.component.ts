@@ -429,6 +429,16 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
     .tab--row .tab-btn { min-height: 32px; padding: 5px 10px; font-size: 12px; }
     .tab--row .tab-btn--primary { flex: 0 0 auto; }
     .tab--row.tab--todo { padding: 0; border: none; }
+    /* ⚠️ AU DOIGT, 44 px — la norme que le reste de l'application tient déjà.
+       Relevé en mesurant la liste des trajets de la page Rapports sur un écran de 320 px :
+       « Lire le récit » rendait 40 px en carte et 32 px en ligne. C'est l'action qui ouvre
+       le récit d'un trajet, souvent la seule d'une ligne dense, et la plus facile à rater.
+       ⚠️ Bloc placé APRÈS les deux déclarations de base — dont .tab--row .tab-btn, de
+       spécificité supérieure : une media query n'en ajoute aucune, seul l'ordre tranche.
+       À la souris (au-delà de 768 px) les hauteurs compactes d'origine sont conservées. */
+    @media (max-width: 768px) {
+      .tab-btn, .tab--row .tab-btn { min-height: 44px; }
+    }
 
     /* ── Modale détail ── */
     .taid-overlay { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: flex-end; justify-content: center; padding: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
