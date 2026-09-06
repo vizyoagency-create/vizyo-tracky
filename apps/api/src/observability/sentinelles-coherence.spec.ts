@@ -71,9 +71,22 @@ interface Monde {
    * il n'y a rien à armer — donc rien à signaler.
    */
   flottesExistantes?: number;
+  /**
+   * VPS-038 — les boîtiers que la requête rend, c'est-à-dire ceux DÉJÀ muets au-delà du seuil.
+   * Par défaut vide : une fixture qui ne parle pas de boîtiers décrit un parc qui émet.
+   */
+  boitiers?: { imei: string; lastSeenAt: Date | null; vehicle: { plate: string; fleetId: string; fleet: { name: string } } | null }[];
   /** Refroidissement : `false` = la garde refuse l'émission. */
   emissionAutorisee?: boolean;
 }
+
+/** Un boîtier muet depuis `jours`, rattaché à un véhicule (le cas qui doit crier). */
+const boitier = (imei: string, jours: number, patch: Record<string, unknown> = {}) => ({
+  imei,
+  lastSeenAt: ilYa(jours * 24),
+  vehicle: { plate: `PL-${imei.slice(-3)}`, fleetId: 'f1', fleet: { name: FLOTTE.name } },
+  ...patch,
+});
 
 function setup(monde: Monde = {}) {
   const prisma = {
@@ -112,6 +125,7 @@ function setup(monde: Monde = {}) {
     },
     notificationPreference: { findMany: jest.fn().mockResolvedValue(monde.reglages ?? []) },
     user: { findMany: jest.fn().mockResolvedValue(monde.comptes ?? []) },
+    tracker: { findMany: jest.fn().mockResolvedValue(monde.boitiers ?? []) },
   };
   const errorLogger = { record: jest.fn().mockResolvedValue('ok'), recordBackground: jest.fn() };
   const refroidissement = {
@@ -595,5 +609,124 @@ describe('Les trois gardes du BRUIT — ne pas faire couper un administrateur', 
       expect(appel.where.updatedAt.gte).toEqual(new Date(MAINTENANT.getTime() - 24 * 3600_000));
       expect(t.errorLogger.record).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * VPS-038 — LA FLOTTE ELLE-MÊME SE TAIT.
+ *
+ * Six boîtiers d'une même société se sont tus le 31/08 en deux heures. Le 06/09 ils l'étaient
+ * encore — cinq jours et demi — et le centre d'alerte n'avait rien dit. Le registre `trackers`
+ * portait l'information depuis le premier jour ; il n'avait simplement pas de lecteur.
+ */
+describe('Sentinelle — des boîtiers ne parlent plus', () => {
+  const muet = (m: Monde = {}) => service({ boitiers: [boitier('864035054757027', 5.6)], ...m });
+
+  it('crie, en nommant la plaque, l’IMEI et l’ancienneté du silence', async () => {
+    const t = await muet();
+    await t.svc.passage(MAINTENANT);
+
+    const m = messages(t.errorLogger).find((x) => x.includes("n'émet plus"));
+    expect(m).toContain('1 boîtier de MH Cars');
+    expect(m).toContain('864035054757027');
+    expect(m).toContain('5.6 j');
+    expect(m).toContain("n'est plus un stationnement");
+  });
+
+  it('se tait quand le parc émet', async () => {
+    const t = await service({ boitiers: [] });
+    await t.svc.passage(MAINTENANT);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ écrit UNE ligne par société, jamais une par boîtier', async () => {
+    // Six boîtiers d'une même flotte sont UN fait. Six lignes le rendraient six fois moins
+    // lisible — c'est la règle qui gouverne tout ce fichier.
+    const t = await service({
+      boitiers: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map((i) => boitier(i, 5.6)),
+    });
+    await t.svc.passage(MAINTENANT);
+
+    expect(t.errorLogger.record).toHaveBeenCalledTimes(1);
+    expect(messages(t.errorLogger)[0]).toContain('6 boîtiers de MH Cars');
+  });
+
+  it('sépare les sociétés : deux flottes touchées font deux lignes', async () => {
+    const t = await service({
+      boitiers: [
+        boitier('a1', 5.6),
+        boitier('b1', 3.2, { vehicle: { plate: 'ZZ-999-ZZ', fleetId: 'f2', fleet: { name: 'Transports Sud' } } }),
+      ],
+    });
+    await t.svc.passage(MAINTENANT);
+
+    expect(t.errorLogger.record).toHaveBeenCalledTimes(2);
+    expect(messages(t.errorLogger).join(' | ')).toContain('Transports Sud');
+  });
+
+  it('⚠️ un boîtier SANS véhicule ne déclenche jamais — mais il est COMPTÉ', async () => {
+    // Relevé du 06/09 : trois boîtiers muets depuis 7, 67 et 93 jours, rattachés à rien. Du
+    // matériel déposé que personne n'a sorti du parc — une décision produit, pas une alerte.
+    // Les compter ferait crier cette ligne tous les jours, pour toujours.
+    const t = await service({
+      boitiers: [
+        { imei: 'orphelin-1', lastSeenAt: ilYa(93 * 24), vehicle: null },
+        { imei: 'orphelin-2', lastSeenAt: ilYa(67 * 24), vehicle: null },
+      ],
+    });
+    await t.svc.passage(MAINTENANT);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ le témoin : le MÊME parc, un boîtier rattaché en plus, et elle parle', async () => {
+    // Sans ce couple, le test précédent ne prouverait rien — juste que la fixture ne
+    // déclenche jamais.
+    const t = await service({
+      boitiers: [
+        { imei: 'orphelin-1', lastSeenAt: ilYa(93 * 24), vehicle: null },
+        { imei: 'orphelin-2', lastSeenAt: ilYa(67 * 24), vehicle: null },
+        boitier('864035054757027', 5.6),
+      ],
+    });
+    await t.svc.passage(MAINTENANT);
+
+    expect(t.errorLogger.record).toHaveBeenCalledTimes(1);
+    // Les orphelins sont classés, pas effacés : un lecteur doit pouvoir vérifier le tri.
+    expect(t.errorLogger.record.mock.calls[0][2]).toMatchObject({ deposesSansVehicule: 2, total: 1 });
+  });
+
+  it('🔑 AUCUNE borne haute : un boîtier muet depuis 40 jours crie toujours (piège VPS-M76)', async () => {
+    // La tentation serait d'écarter au-delà de sept jours comme « matériel déposé ». Les six
+    // boîtiers du 31/08 auraient alors disparu de l'alerte le 07/09 — le jour même où
+    // l'incident devenait le plus grave. C'est le rattachement qui décide, jamais la durée.
+    const t = await service({ boitiers: [boitier('vieux', 40)] });
+    await t.svc.passage(MAINTENANT);
+
+    expect(t.errorLogger.record).toHaveBeenCalledTimes(1);
+    expect(messages(t.errorLogger)[0]).toContain('40 j');
+  });
+
+  it('🔑 le compte entre dans la clé : un boîtier de plus produit une clé NEUVE', async () => {
+    // Le refroidissement est hebdomadaire — c'est un état durable, pas une nouvelle du matin.
+    // Mais le jour où un SEPTIÈME se tait, la nouvelle ne doit pas être noyée dans la
+    // répétition. Le compte dans la clé fait qu'un effectif qui bouge parle tout de suite.
+    const six = await service({ boitiers: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map((i) => boitier(i, 5.6)) });
+    await six.svc.passage(MAINTENANT);
+    const sept = await service({ boitiers: ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'].map((i) => boitier(i, 5.6)) });
+    await sept.svc.passage(MAINTENANT);
+
+    expect(six.refroidissement.tenterEmission.mock.calls[0][0]).toBe('sentinelle-boitiers-muets:f1:6');
+    expect(sept.refroidissement.tenterEmission.mock.calls[0][0]).toBe('sentinelle-boitiers-muets:f1:7');
+  });
+
+  it('⚠️ interroge la base au seuil de TROIS jours, pas de vingt-quatre heures', async () => {
+    // À un jour, elle crierait tous les lundis matin : un véhicule garé le week-end, un
+    // chauffeur en congé, une batterie débranchée pour un entretien. Le filtre est dans le
+    // `where`, donc c'est LUI qu'il faut éprouver — le simulacre, lui, rend ce qu'on lui donne.
+    const t = await service({ boitiers: [] });
+    await t.svc.passage(MAINTENANT);
+
+    const appel = t.prisma.tracker.findMany.mock.calls[0][0];
+    expect(appel.where.lastSeenAt.lt).toEqual(new Date(MAINTENANT.getTime() - 3 * 24 * 3600_000));
   });
 });

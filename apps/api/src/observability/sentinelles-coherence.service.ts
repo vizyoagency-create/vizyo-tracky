@@ -170,6 +170,45 @@ const SATURATION_PAR_JOUR = 15;
  */
 const PLAFOND_HORAIRE_MIN = 1;
 
+/**
+ * ── SEUIL — BOÎTIERS MUETS (VPS-038) ────────────────────────────────────────────────────
+ *
+ * Le 31/08 entre 11 h 53 et 13 h 50, **six boîtiers d'une même société se sont tus en deux
+ * heures**. Le 06/09 ils l'étaient encore — **cinq jours et demi** —, et la flotte émettrice
+ * était passée de 39 à 30 traceurs par jour, soit **−23 %**. Pendant tout ce temps, le centre
+ * d'alerte n'a rien dit : les boîtiers sont bien marqués `OFFLINE` dans le registre, mais
+ * personne ne lit un registre, et aucun instrument ne posait la question à voix haute.
+ *
+ * ⚠️ **Trois jours, et pas vingt-quatre heures.** Un véhicule garé le week-end, un chauffeur en
+ * congé, une batterie débranchée pour un entretien : à un jour, cette sentinelle crierait tous
+ * les lundis matin. Relevé du 06/09 sur les 44 boîtiers du parc — bande `6-24 h` : **0**,
+ * `1-3 j` : **1**, `3-7 j` : **7**, `> 7 j` : **6**. C'est bien au-delà de trois jours que le
+ * silence cesse d'être un usage normal.
+ */
+const MUET_SEUIL_JOURS = 3;
+
+/**
+ * ⚠️ **Un boîtier SANS véhicule n'est pas une panne, et il ne doit jamais déclencher.**
+ *
+ * Relevé du 06/09 : trois boîtiers sont muets depuis **7,3, 66,8 et 92,7 jours** et ne sont
+ * rattachés à aucun véhicule. Ce n'est pas un incident, c'est du matériel déposé que personne
+ * n'a sorti du parc — une décision produit, pas une alerte. Les compter ferait crier cette
+ * ligne **tous les jours, pour toujours**, et un instrument qui crie toujours cesse d'être lu.
+ *
+ * 🔑 **Mais on ne les efface pas : on les classe.** Ils sont comptés dans le contexte de la
+ * ligne (`deposesSansVehicule`), pour qu'un lecteur puisse vérifier que le tri est juste — même
+ * traitement que `comptesTechniquesEcartes` pour la sentinelle nº 5.
+ *
+ * ⚠️ **Et surtout : PAS de borne HAUTE sur l'ancienneté d'un boîtier rattaché.** La tentation
+ * serait d'écarter au-delà de sept jours en les rangeant, eux aussi, dans « matériel déposé ».
+ * Ce serait le piège de VPS-M76 reproduit ici : *un compteur qui décroît à mesure que la panne
+ * dure*. Les six boîtiers du 31/08 auraient franchi les sept jours le 07/09 et **auraient
+ * disparu de l'alerte le jour même où l'incident devenait le plus grave.* Tant qu'un boîtier
+ * est rattaché à un véhicule, son silence se signale — c'est le rattachement qui décide, jamais
+ * la durée.
+ */
+const MUET_EXIGE_UN_VEHICULE = true;
+
 /** Un constat prêt à être écrit — ce que rend chaque sentinelle. */
 export interface ConstatSentinelle {
   /** Clé de refroidissement : identifiant PERSISTANT, le renommer remet le garde à zéro. */
@@ -310,7 +349,93 @@ export class SentinellesCoherenceService {
       ['destinataire-sature', (d, m) => this.destinataireSature(d, m)],
       ['plafond-horaire', (d) => this.plafondHoraireAtteint(d)],
       ['notifications-coupees', (d) => this.notificationsCoupees(d)],
+      // VPS-038 : la flotte elle-même se tait, et rien ne le disait à voix haute.
+      ['boitiers-muets', (d, m) => this.boitiersMuets(m)],
     ];
+  }
+
+  // ══ 10. DES BOÎTIERS RATTACHÉS À UN VÉHICULE NE PARLENT PLUS ══════════════════════════
+  //
+  // Née de VPS-038, relevée par l'audit VPS du 06/09 : six boîtiers d'une même société muets
+  // depuis cinq jours et demi, une flotte passée de 39 à 30 émetteurs par jour, et **aucune
+  // ligne nulle part**. Le registre `trackers` portait l'information depuis le premier jour —
+  // il n'a simplement jamais eu de lecteur.
+  //
+  // ⚠️ UNE LIGNE PAR SOCIÉTÉ, jamais une par boîtier : six boîtiers d'une même flotte sont un
+  // seul fait, et six lignes le rendraient six fois moins lisible.
+  private async boitiersMuets(maintenant: Date): Promise<ConstatSentinelle[]> {
+    const seuil = new Date(maintenant.getTime() - MUET_SEUIL_JOURS * FENETRE_JOUR_MS);
+
+    // ⚠️ `lt` ne rend PAS les lignes dont `lastSeenAt` est nul : un boîtier enregistré qui n'a
+    // JAMAIS émis est hors de portée de cette sentinelle. C'est délibéré — c'est un défaut de
+    // provisionnement, pas une perte de contact, et les deux ne se traitent pas au même endroit.
+    const muets = await this.prisma.tracker.findMany({
+      where: { lastSeenAt: { lt: seuil } },
+      select: {
+        imei: true,
+        lastSeenAt: true,
+        vehicle: { select: { plate: true, fleetId: true, fleet: { select: { name: true } } } },
+      },
+    });
+    if (muets.length === 0) return [];
+
+    const joursDe = (d: Date | null | undefined): number =>
+      d ? (maintenant.getTime() - d.getTime()) / FENETRE_JOUR_MS : 0;
+
+    const sansVehicule = muets.filter((t) => !t.vehicle);
+    const rattaches = MUET_EXIGE_UN_VEHICULE ? muets.filter((t) => t.vehicle) : muets;
+    if (rattaches.length === 0) return [];
+
+    const parFlotte = new Map<string, { nom: string; boitiers: { imei: string; plaque: string; jours: number }[] }>();
+    for (const t of rattaches) {
+      const v = t.vehicle;
+      if (!v) continue;
+      const groupe = parFlotte.get(v.fleetId) ?? { nom: v.fleet?.name ?? v.fleetId, boitiers: [] };
+      groupe.boitiers.push({
+        imei: t.imei,
+        plaque: v.plate,
+        jours: Math.round(joursDe(t.lastSeenAt) * 10) / 10,
+      });
+      parFlotte.set(v.fleetId, groupe);
+    }
+
+    const constats: ConstatSentinelle[] = [];
+    for (const [fleetId, groupe] of parFlotte) {
+      // Le plus ancien silence en tête : c'est celui qui date l'épisode.
+      const boitiers = groupe.boitiers.sort((a, b) => b.jours - a.jours);
+      const n = boitiers.length;
+      const pluriel = n > 1 ? 's' : '';
+
+      constats.push({
+        // Le compte entre dans la clé : un effectif qui bouge parle tout de suite, un effectif
+        // stable se tait pour la semaine. Voir le commentaire de la clé.
+        cle: `${CLES_REFROIDISSEMENT.SENTINELLE_BOITIERS_MUETS}:${fleetId}:${n}`,
+        source: 'sentinelles',
+        niveau: 'ERROR' as NiveauErreur,
+        message:
+          `${n} boîtier${pluriel} de ${groupe.nom} n'émet${n > 1 ? 'tent' : ''} plus depuis plus de ` +
+          `${MUET_SEUIL_JOURS} jours : ` +
+          `${enumere(boitiers.map((b) => `${b.plaque} (${b.imei}, ${b.jours} j)`))}. ` +
+          `Au-delà de trois jours, un silence n'est plus un stationnement : ${n > 1 ? 'ces véhicules ne sont' : 'ce véhicule n’est'} ` +
+          `ni suivi${pluriel} ni géolocalisable${pluriel}, et aucune alerte de vol ou de mouvement ne partira ${n > 1 ? 'les' : 'le'} concernant. ` +
+          `À porter à l'exploitant de la flotte avec l'heure de la dernière trame.`,
+        contexte: {
+          flotteId: fleetId,
+          flotte: groupe.nom,
+          boitiers: boitiers.slice(0, 20),
+          total: n,
+          // ⚠️ Le plus ancien EST l'information : six boîtiers à 5,6 jours sont un incident
+          // groupé, six boîtiers à 3, 12, 40, 60, 90 et 200 jours sont un parc mal tenu.
+          silenceMaxJours: boitiers[0]?.jours ?? 0,
+          silenceMinJours: boitiers[n - 1]?.jours ?? 0,
+          seuilJours: MUET_SEUIL_JOURS,
+          // Rendu visible plutôt qu'effacé : un lecteur doit pouvoir vérifier que le tri est juste.
+          deposesSansVehicule: sansVehicule.length,
+        },
+        fenetreMs: REFROIDISSEMENT_HEBDOMADAIRE_MS,
+      });
+    }
+    return constats;
   }
 
   // ══ 1. UN EXCÈS SANS SON ALERTE ═══════════════════════════════════════════════════════
