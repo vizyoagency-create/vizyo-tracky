@@ -2497,6 +2497,18 @@ export function trajetHorsPerimetreConducteur(
     @media (max-width: 640px) {
       .rep-selectors { flex-wrap: wrap; }
       .rep-selectors .rep-dropdown-wrapper { flex-basis: calc(50% - 4px); }
+      /* ⚠️ ET ON RÉCUPÈRE LA PLACE À L'INTÉRIEUR DU BOUTON, parce que le retour à la ligne
+         ne suffit pas quand la société n'a PAS de groupes.
+         Mesuré en production sur « mh cars » (aucun groupe, donc DEUX menus côte à côte, à
+         375 px) : bouton 168 px, moins 2 de bordures, 24 de remplissage, 16 de double écart
+         et 28 pour les deux pictogrammes = 98 px de libellé. « Sohaib Hamanni » en réclame
+         101 et « Tous les véhicules » 113 : le nom du conducteur — la seule chose que ce
+         filtre sert à montrer — sortait en « Sohaib Hama… ».
+         Le correctif précédent n'avait été mesuré qu'à TROIS menus, cas où le conducteur
+         passe seul en seconde rangée et dispose de 343 px : le cas à deux menus, qui est
+         celui de la société la plus concernée par ce filtre, lui avait échappé.
+         8 px de remplissage et 4 px d'écart rendent 114 px, ce qui loge les deux. */
+      .rep-selectors .rep-dropdown-trigger { padding-left: 8px; padding-right: 8px; gap: 4px; }
     }
     .rep-periods {
       display: flex; gap: 6px; flex-wrap: nowrap;
