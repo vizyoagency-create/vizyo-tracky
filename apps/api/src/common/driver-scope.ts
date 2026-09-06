@@ -76,6 +76,41 @@ export function resolveDriverScope(driverId?: string | null): PorteeConducteur {
 }
 
 /**
+ * ── LA MARQUE DU FILTRE DANS LE NOM D'UN FICHIER EXPORTÉ ────────────────────────────────
+ *
+ * ⚠️ SANS ELLE, DEUX EXPORTS DE LA MÊME PÉRIODE PORTENT LE MÊME NOM. Et sous « sans
+ * conducteur » ils sont indiscernables : chez « mh cars », 1 847 trajets sur 1 898 n'ont aucun
+ * conducteur, donc le fichier filtré ressemble trait pour trait à l'export complet. Le
+ * navigateur suffixe « (1) », le gestionnaire envoie le second par courriel, et le
+ * destinataire lit le mois entier là où il manque 51 trajets que rien ne signale.
+ *
+ * ── TROIS CHOIX, ET POURQUOI CEUX-LÀ ──────────────────────────────────────────────────────
+ *
+ *  1. LE NOM DE FICHIER PLUTÔT QU'UNE COLONNE. Le CSV déclare 23 colonnes qui sont un
+ *     contrat ; en ajouter une changerait la forme de TOUS les exports, filtrés ou non, pour
+ *     marquer une minorité. Sans filtre, le nom reste celui d'avant au caractère près.
+ *  2. L'IDENTIFIANT TRONQUÉ PLUTÔT QUE LE NOM DE LA PERSONNE. Le contenu porte déjà la trace
+ *     (colonne `driver_name` du CSV, ligne « Conducteur : … » du PDF, titre de la feuille
+ *     Excel) : le nom du fichier n'a qu'à dire QU'IL est filtré. Huit caractères y suffisent,
+ *     sans faire voyager un nom propre dans un intitulé de pièce jointe, et sans la lecture en
+ *     base qu'il faudrait pour l'obtenir.
+ *  3. LE SUFFIXE APRÈS LES DATES, à côté de `-PARTIEL` du CSV. Même idiome — « ce fichier ne
+ *     contient pas ce que son nom laisserait croire » — et les deux exports restent voisins
+ *     dans le dossier de téléchargement, là où on les compare.
+ *
+ * ⚠️ UNE SEULE ÉCRITURE, ici, pour les QUATRE documents (CSV trajets, PDF rapide, PDF
+ * configuré, classeur Excel). Elle a d'abord vécu dans le seul service CSV, et les trois
+ * autres sont restés muets pendant tout un lot : un PDF et un classeur filtrés arrivaient
+ * chez le client sous un nom qui ne disait rien.
+ */
+export function marqueFichierConducteur(driverScope: PorteeConducteur): string {
+  if (driverScope === undefined) return '';
+  // La portée est déjà canonique (minuscules, cf. `resolveDriverScope`) : deux exports du même
+  // conducteur portent donc le même nom, quelle que soit la casse écrite dans l'URL.
+  return driverScope === null ? '-sans-conducteur' : `-conducteur-${driverScope.slice(0, 8)}`;
+}
+
+/**
  * Ce qu'un DTO doit poser AVANT de valider, pour que les deux portes du serveur rendent la même
  * réponse aux mêmes entrées.
  *

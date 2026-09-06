@@ -78,24 +78,24 @@ export class AuthClientService {
   /**
    * TRK-068 — TOUT appel sortant vers Vizyo Auth passe par ici, et aucun ne peut durer.
    *
-   * Le cas « le serveur repond une erreur » etait deja instruit (401/403 -> refus
-   * d'authentification, autre -> erreur nommee portant le code). C'est UNIQUEMENT le rejet de
-   * TRANSPORT — DNS, connexion coupee, TLS, pas de reponse — qui remontait nu : `fetch failed`,
-   * sans capture ni delai d'expiration. NestJS en faisait un 500, et le filtre d'exceptions un
-   * `CRITICAL`, parce qu'une exception qui n'est pas une `HttpException` est par definition une
-   * faute serveur non maitrisee.
+   * Le cas « le serveur répond une erreur » était déjà instruit (401/403 → refus
+   * d'authentification, autre → erreur nommée portant le code). C'est UNIQUEMENT le rejet de
+   * TRANSPORT — DNS, connexion coupée, TLS, pas de réponse — qui remontait nu : `fetch failed`,
+   * sans capture ni délai d'expiration. NestJS en faisait un 500, et le filtre d'exceptions un
+   * `CRITICAL`, parce qu'une exception qui n'est pas une `HttpException` est par définition une
+   * faute serveur non maîtrisée.
    *
-   * Trois choses etaient fausses dans cette seule ligne :
-   *   1. le MESSAGE ne nommait ni la dependance, ni l'operation, ni la consequence ;
-   *   2. le CODE disait « nous avons un bug » (500) la ou une dependance injoignable est un 503 —
-   *      le client ne pouvait pas distinguer « reessaie » de « ta session est morte » ;
+   * Trois choses étaient fausses dans cette seule ligne :
+   *   1. le MESSAGE ne nommait ni la dépendance, ni l'opération, ni la conséquence ;
+   *   2. le CODE disait « nous avons un bug » (500) là où une dépendance injoignable est un 503 —
+   *      le client ne pouvait pas distinguer « réessaie » de « ta session est morte » ;
    *   3. le NIVEAU criait `CRITICAL` pour une panne de transport d'un tiers.
    *
    * Lever une `ServiceUnavailableException` corrige les trois d'un geste : c'est une
    * `HttpException`, donc le filtre la classe en `ERROR` et rend un 503.
    *
-   * 🔑 Le motif technique est DEPLACE en fin de phrase, jamais efface : on change l'ordre de
-   * lecture, on ne perd pas la preuve. *Un message qui nettoie l'ecran au lieu de traduire
+   * 🔑 Le motif technique est DÉPLACÉ en fin de phrase, jamais effacé : on change l'ordre de
+   * lecture, on ne perd pas la preuve. *Un message qui nettoie l'écran au lieu de traduire
    * l'incident n'est pas un correctif.*
    */
   private async appelerVizyoAuth(
@@ -103,7 +103,7 @@ export class AuthClientService {
     init: RequestInit,
     /** Ce qu'on tentait, en clair : « l'appel POST /v1/auth/refresh ». */
     operation: string,
-    /** Ce que la personne va constater. C'est la moitie qui manque toujours aux messages bruts. */
+    /** Ce que la personne va constater. C'est la moitié qui manque toujours aux messages bruts. */
     consequence: string,
   ): Promise<Response> {
     try {

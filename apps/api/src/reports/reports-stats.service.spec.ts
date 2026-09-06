@@ -346,6 +346,48 @@ describe('buildExploitedScopeNotice — rien ne change en silence', () => {
     // Le plus ancien silence est nommé en premier (c'est le plus parlant).
     expect(notice.indexOf('AA-008-AA')).toBeLessThan(notice.indexOf('AA-003-AA'));
   });
+
+  /**
+   * ── LE PARC MASQUÉ OUVRE L'ENCART À LUI SEUL ────────────────────────────────────────
+   *
+   * Cas le plus fréquent une fois le mode vie privée utilisé : un parc PARFAITEMENT sain —
+   * aucun dormant, aucun véhicule sans boîtier — dont deux véhicules sont masqués. L'encart
+   * rendait `null`, et le PDF sortait avec un parc rétréci sans un mot d'explication. Le
+   * client compte 5 véhicules, son rapport en annonce 3, et rien ne dit pourquoi.
+   */
+  it('un parc SAIN mais partiellement masqué ouvre quand même l’encart, et le dit en premier', () => {
+    const base = {
+      total: 3, activeDuringPeriod: 3, exploited: 3, dormant: 0, withoutTracker: 0,
+      dormantVehicles: [], idleVehicles: [], idleTotal: 0, hiddenByPrivacy: 2,
+    };
+    const report = {
+      vehicles: base,
+      trips: { avgKmBasisVehicles: 3, avgKmBasisKm: 300 },
+    } as unknown as FleetStatsReport;
+
+    const notice = buildExploitedScopeNotice(report)!;
+
+    expect(notice).not.toBeNull();
+    expect(notice).toContain('2 véhicules en mode vie privée');
+    expect(notice).toContain('y compris du parc total');
+    // En PREMIER : c'est la ligne qui explique le total. Lue après les dormants, elle
+    // arriverait trop tard — et ici il n'y a même pas de dormants pour la précéder.
+    expect(notice.indexOf('vie privée')).toBeLessThan(notice.indexOf('Distance moyenne'));
+  });
+
+  it('parc sain et AUCUN masqué : l’encart reste absent (rien de neuf sur le chemin courant)', () => {
+    // Le témoin. Sans lui, « ouvrir l'encart » pourrait vouloir dire « l'ouvrir toujours »,
+    // et tous les rapports du parc gagneraient une mention qui ne les concerne pas.
+    const report = {
+      vehicles: {
+        total: 3, activeDuringPeriod: 3, exploited: 3, dormant: 0, withoutTracker: 0,
+        dormantVehicles: [], idleVehicles: [], idleTotal: 0, hiddenByPrivacy: 0,
+      },
+      trips: { avgKmBasisVehicles: 3, avgKmBasisKm: 300 },
+    } as unknown as FleetStatsReport;
+
+    expect(buildExploitedScopeNotice(report)).toBeNull();
+  });
 });
 
 /**
@@ -624,6 +666,52 @@ describe('ReportsStatsService — vie privée et passages en station', () => {
     expect(r.consumption.observedSampleCount).toBe(12);
     expect(whereStations().fleetId).toBe(FLEET_ID);
     expect(whereStations()).not.toHaveProperty('vehicleId');
+  });
+
+  /**
+   * ── LE RECENSEMENT, QUATRIÈME ENDROIT OÙ CE GARDE LÂCHAIT ────────────────────────────
+   *
+   * Les trois premiers fuyaient des DONNÉES (les excès et le ralenti le 5 septembre, puis
+   * les passages en station). Celui-ci n'en fuit aucune — et c'est pour ça qu'il a survécu
+   * trois relectures : il fait simplement ÉCRIRE UN MENSONGE. Un véhicule masqué n'a, par
+   * construction, aucun trajet dans ce rapport ; il tombait donc dans la liste des
+   * immobiles, PLAQUE NOMMÉE, sous « n'a fait aucun trajet ». C'est l'information qui
+   * décide d'une restitution : le client aurait rendu un véhicule qui roule, sur la foi de
+   * son propre réglage de confidentialité.
+   */
+  it('le véhicule masqué n’est ni compté au parc, ni accusé de n’avoir pas roulé', async () => {
+    // ST-003-ST est le véhicule masqué du banc, et il n'a aucun trajet (le banc n'en
+    // fabrique pour aucun des trois) : sans le correctif il serait donc listé immobile.
+    const { calculer } = bancStations(PASSAGES_MELANGES, [V_PRIVE]);
+
+    const r = await calculer();
+
+    expect(r.vehicles.total).toBe(2);
+    expect(r.vehicles.hiddenByPrivacy).toBe(1);
+    // Les DEUX véhicules visibles ont roulé : la liste des immobiles est donc VIDE. Sans le
+    // correctif elle contenait une ligne, et cette ligne était la plaque du véhicule masqué
+    // — c'est exactement ce que le témoin ci-dessous démontre a contrario.
+    const plaques = r.vehicles.idleVehicles.map((v) => v.plate);
+    expect(plaques).not.toContain('ST-003-ST');
+    expect(r.vehicles.idleTotal).toBe(0);
+    // Les dormants aussi : la mention « boîtier muet depuis 89 j » est publique, elle ne
+    // doit pas nommer un véhicule que le client a soustrait au regard.
+    expect(r.vehicles.dormantVehicles.map((d) => d.plate)).not.toContain('ST-003-ST');
+  });
+
+  it('parc SAIN : le recensement est celui d’avant, et c’est BIEN ce véhicule qu’on masquait', async () => {
+    // Double emploi, et c'est voulu. (a) Le témoin qui interdit de « corriger » en
+    // rétrécissant le parc de tout le monde. (b) La preuve que le test précédent ne passe
+    // pas par accident : sans mode vie privée, ST-003-ST EST la ligne immobile. C'est donc
+    // bien elle que le correctif retire, et pas une liste vide par construction.
+    const { calculer } = bancStations(PASSAGES_MELANGES);
+
+    const r = await calculer();
+
+    expect(r.vehicles.total).toBe(3);
+    expect(r.vehicles.hiddenByPrivacy).toBe(0);
+    expect(r.vehicles.idleTotal).toBe(1);
+    expect(r.vehicles.idleVehicles.map((v) => v.plate)).toEqual(['ST-003-ST']);
   });
 });
 

@@ -88,6 +88,13 @@ export interface FleetStatsReport {
      */
     idleVehicles: { vehicleId: string; plate: string; group: { id: string; name: string } | null; silencieux: boolean }[];
     idleTotal: number;
+    /**
+     * Véhicules du périmètre que le client a mis en MODE VIE PRIVÉE, donc absents de TOUT ce
+     * rapport — `total` compris. Rendu pour que les surfaces puissent le DIRE : un parc qui
+     * rétrécit sans explication se lit comme une perte de véhicules, et « 5 sur 34 » chez un
+     * client qui en compte 39 est une question sans réponse.
+     */
+    hiddenByPrivacy: number;
   };
   trips: {
     count: number;
@@ -373,7 +380,31 @@ export class ReportsStatsService {
       }
     }
 
-    const totalVehicles = vehicles.length;
+    /**
+     * ── LE PARC QUE CE RAPPORT A LE DROIT DE DÉCRIRE (RGPD) ──────────────────────────────
+     *
+     * Un véhicule que le client a mis en MODE VIE PRIVÉE n'a ni trajet, ni kilomètre, ni
+     * alerte dans ce rapport : `tripWhere`, `alertWhere` et les deux requêtes SQL écrites à
+     * la main l'excluent tous. Il restait pourtant dans le RECENSEMENT, et c'est un
+     * quatrième endroit où ce garde lâchait — le plus sournois, parce qu'il ne fuitait
+     * aucune donnée mais faisait ÉCRIRE UN MENSONGE :
+     *
+     *   - `activeDuringPeriod` comparait les véhicules qui ont roulé à un total qui
+     *     comptait des véhicules dont on s'interdit de savoir s'ils ont roulé ;
+     *   - `idleVehicles` NOMMAIT SA PLAQUE sous « n'a fait aucun trajet », alors qu'il en a
+     *     peut-être fait cinquante. C'est l'information qui décide d'une restitution : le
+     *     client aurait rendu un véhicule qui roule, sur la foi de son propre réglage.
+     *
+     * Le recensement porte donc sur le parc VISIBLE. ⚠️ Et le compte des exclus est rendu
+     * (`hiddenByPrivacy`), parce qu'un total qui rétrécit sans le dire est le même défaut
+     * déplacé : « 5 véhicules sur 34 » quand le parc en compte 39 se lit comme une perte.
+     *
+     * Aucun véhicule n'est en mode vie privée en production au 2026-09-06 : ce garde est
+     * posé avant que le cas n'arrive, pas après.
+     */
+    const vehiclesVisibles = vehicles.filter((v) => !v.privacyModeEnabled);
+    const totalVehicles = vehiclesVisibles.length;
+    const hiddenByPrivacy = vehicles.length - vehiclesVisibles.length;
     const fuelPrice = fleet.fuelPriceEurL;
 
     // ── Parc EXPLOITÉ : qui a le droit d'entrer dans une MOYENNE ? ────────────
@@ -392,7 +423,9 @@ export class ReportsStatsService {
     // « réactiver ». Dès que le boîtier ré-émet, `lastSeenAt` redevient frais et le
     // véhicule réintègre le dénominateur au rapport suivant, tout seul.
     const now = Date.now();
-    const dormancyInputs = vehicles.map((v) => ({
+    // ⚠️ Sur le parc VISIBLE : un véhicule en mode vie privée ne doit pas non plus voir sa
+    // plaque nommée sous « boîtier muet depuis 89 j » — la mention est publique.
+    const dormancyInputs = vehiclesVisibles.map((v) => ({
       vehicle: v,
       // `trackerId` = présence d'un boîtier ; `lastSeenAt` = a-t-il déjà parlé, et quand.
       liveness: { trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null },
@@ -696,7 +729,10 @@ export class ReportsStatsService {
      * demande une réparation et non une décision d'exploitation.
      */
     const silencieuxIds = new Set(dormantVehicles.map((d) => d.vehicleId));
-    const idleVehicles = vehicles
+    // ⚠️ Sur le parc VISIBLE. Un véhicule en mode vie privée n'a AUCUN trajet dans ce
+    // rapport par construction : le lister ici l'accuserait de n'avoir pas roulé, plaque à
+    // l'appui, sur la foi d'une absence que le client a lui-même demandée.
+    const idleVehicles = vehiclesVisibles
       .filter((v) => !activeVehicleIds.has(v.id))
       .map((v) => ({
         vehicleId: v.id,
@@ -1028,6 +1064,7 @@ export class ReportsStatsService {
         dormantVehicles,
         idleVehicles: idleVehicles.slice(0, MAX_VEHICULES_IMMOBILES),
         idleTotal: idleVehicles.length,
+        hiddenByPrivacy,
       },
       trips: {
         count: tripCount,
@@ -1126,10 +1163,24 @@ export function buildExploitedScopeNotice(
   options?: { maxPlates?: number; filtreConducteur?: boolean },
 ): string | null {
   const maxPlates = options?.maxPlates ?? NOTICE_MAX_PLATES;
-  const { dormant, withoutTracker, dormantVehicles, total } = report.vehicles;
-  if (dormant === 0 && withoutTracker === 0) return null;
+  const { dormant, withoutTracker, dormantVehicles, total, hiddenByPrivacy } = report.vehicles;
+  // ⚠️ `hiddenByPrivacy` OUVRE AUSSI L'ENCART. Un parc sain mais partiellement masqué n'a ni
+  // dormant ni véhicule sans boîtier : l'encart rendait donc `null`, et le document sortait
+  // avec un parc rétréci sans un mot. Le papier voyage par courriel et ressort d'un classeur
+  // des mois plus tard, sans écran pour le démentir.
+  if (dormant === 0 && withoutTracker === 0 && hiddenByPrivacy === 0) return null;
 
   const parts: string[] = [];
+
+  if (hiddenByPrivacy > 0) {
+    // En PREMIER : c'est la ligne qui explique pourquoi le total du parc n'est pas celui que
+    // le client a en tête. Lue après les dormants, elle arriverait trop tard.
+    parts.push(
+      `${hiddenByPrivacy} véhicule${plural(hiddenByPrivacy)} en mode vie privée — ` +
+      `exclu${plural(hiddenByPrivacy)} de TOUT ce rapport, y compris du parc total : ` +
+      `ni trajet, ni kilomètre, ni alerte n'en est rapporté.`,
+    );
+  }
 
   if (dormant > 0) {
     const named = dormantVehicles

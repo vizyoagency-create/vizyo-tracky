@@ -845,6 +845,16 @@ export function trajetHorsPerimetreConducteur(
             @if (noteParcConducteur(); as note) {
               <p class="rep-synthese-note" role="note">{{ note }}</p>
             }
+            <!-- ⚠️ UN PARC QUI RÉTRÉCIT SANS LE DIRE SE LIT COMME UNE PERTE.
+                 Les véhicules en mode vie privée sont retirés de TOUT ce rapport, y compris
+                 du total : sans cette ligne, un client qui en compte 39 verrait « 5 sur 34 »
+                 et chercherait les cinq manquants. C'est son propre réglage, il a le droit
+                 de savoir qu'il agit ici. -->
+            @if (st.vehicles.hiddenByPrivacy > 0) {
+              <p class="rep-synthese-note" role="note">
+                {{ st.vehicles.hiddenByPrivacy }} véhicule{{ st.vehicles.hiddenByPrivacy > 1 ? 's sont' : ' est' }} en mode vie privée : {{ st.vehicles.hiddenByPrivacy > 1 ? 'ils ne comptent' : 'il ne compte' }} dans aucun chiffre de ce rapport, pas même dans le parc.
+              </p>
+            }
             @if (st.vehicles.idleTotal === 0) {
               @if (perimetreParc(); as p) {
                 <p class="rep-synthese-detail rep-synthese-detail--fort">Tout le parc a roulé{{ p }} au moins une fois : aucun véhicule immobile.</p>

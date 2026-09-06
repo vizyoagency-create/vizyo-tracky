@@ -24,6 +24,13 @@ export interface FleetStatsReportDto {
     idleVehicles: { vehicleId: string; plate: string; group: { id: string; name: string } | null; silencieux: boolean }[];
     /** Compte RÉEL des immobiles ; la liste ci-dessus est plafonnée. */
     idleTotal: number;
+    /**
+     * Véhicules que le client a mis en MODE VIE PRIVÉE : absents de TOUT ce rapport, `total`
+     * compris. Servi pour que l'écran le DISE — un parc qui rétrécit sans explication se lit
+     * comme une perte de véhicules, et « 5 sur 34 » chez un client qui en compte 39 est une
+     * question sans réponse.
+     */
+    hiddenByPrivacy: number;
   };
   trips: {
     count: number;

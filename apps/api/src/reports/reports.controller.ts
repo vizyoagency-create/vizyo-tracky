@@ -21,7 +21,7 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
-import { CONDUCTEUR_AUCUN, resolveDriverScope, type PorteeConducteur } from '../common/driver-scope';
+import { CONDUCTEUR_AUCUN, marqueFichierConducteur, resolveDriverScope, type PorteeConducteur } from '../common/driver-scope';
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -295,7 +295,7 @@ export class ReportsController {
         { driverId: driverIdQ },
       );
       const buffer = await this.pdf.generate(report, { driverLabel: conducteur.titre ?? undefined });
-      const filename = `tracky-rapport-${this.fileDates(from, to)}.pdf`;
+      const filename = `tracky-rapport-${this.fileDates(from, to)}${marqueFichierConducteur(conducteur.scope)}.pdf`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', enTeteTelechargement(filename));
       res.send(buffer);
@@ -382,7 +382,7 @@ export class ReportsController {
       driverLabel: conducteur.titre ?? undefined,
     });
 
-    const filename = `tracky-rapport-${fileScope}${this.fileDates(from, to)}.pdf`;
+    const filename = `tracky-rapport-${fileScope}${this.fileDates(from, to)}${marqueFichierConducteur(conducteur.scope)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', enTeteTelechargement(filename));
     res.send(buffer);
@@ -544,9 +544,14 @@ export class ReportsController {
       const filtreClasseur = conducteur.scope === undefined
         ? undefined
         : { scope: conducteur.scope, label: conducteur.nom ?? 'Conducteur' };
-      const { buffer, filename } = body.vehicleId
+      const { buffer, filename: nomBrut } = body.vehicleId
         ? await this.excel.generate(body.vehicleId, from, to, req.user, filtreClasseur)
         : await this.excel.generateScope({ fleetId: fleetIdCible!, groupId: body.groupId }, from, to, req.user, filtreClasseur);
+      // La marque du filtre est posée ICI et pas dans le service : les deux variantes de
+      // classeur (un véhicule, un périmètre) nomment leur fichier chacune de leur côté, et
+      // le suffixe doit tomber avant l'extension dans les deux cas. Même écriture que le CSV
+      // et que les deux PDF — cf. `marqueFichierConducteur`.
+      const filename = nomBrut.replace(/\.xlsx$/, marqueFichierConducteur(conducteur.scope) + '.xlsx');
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -303,7 +303,7 @@ const RAPPORT: FleetStatsReport = {
   period: { from: '2026-06-01T00:00:00.000Z', to: '2026-07-01T00:00:00.000Z', days: 30 },
   vehicles: {
     total: 1, activeDuringPeriod: 1, exploited: 1, dormant: 0, withoutTracker: 0,
-    dormantVehicles: [], idleVehicles: [], idleTotal: 0,
+    dormantVehicles: [], idleVehicles: [], idleTotal: 0, hiddenByPrivacy: 0,
   },
   trips: {
     count: 1, totalKm: 120, totalDurationHours: 2, avgKmPerVehicle: 120,

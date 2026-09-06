@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
-import type { PorteeConducteur } from '../common/driver-scope';
+import { marqueFichierConducteur, type PorteeConducteur } from '../common/driver-scope';
 import { libelleGraviteAlerte, libelleTypeAlerte } from '@vizyo/tracky-shared';
 
 /**
@@ -124,10 +124,9 @@ export class ReportCsvService {
    *     deux exports restent voisins dans le dossier de téléchargement, où on les compare.
    */
   private marqueConducteur(driverScope: PorteeConducteur): string {
-    if (driverScope === undefined) return '';
-    // La portée est déjà canonique (minuscules) : deux exports du même conducteur portent donc
-    // le même nom, quelle que soit la casse écrite dans l'URL (cf. `resolveDriverScope`).
-    return driverScope === null ? '-sans-conducteur' : `-conducteur-${driverScope.slice(0, 8)}`;
+    // Une seule écriture, dans `common/driver-scope` : le PDF et le classeur Excel posent
+    // la MÊME marque, et un client qui reçoit les trois les reconnaît du premier coup.
+    return marqueFichierConducteur(driverScope);
   }
 
   /**
