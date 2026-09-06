@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "updatedAt": "2026-09-05",
+  "updatedAt": "2026-09-06",
   "title": "Centre d'alerte — documentation & audits",
   "intro": "Tout ce qui a été observé, diagnostiqué et corrigé sur le centre d'alerte. Le référentiel garde la mémoire des erreurs au-delà de la purge de 30 jours ; les rapports gardent la trace de chaque passage.",
   "_comment": "Fichier LU PAR L'APPLICATION (GET /api/admin/alerts/wiki). Les documents sont découverts automatiquement sur le disque : ce manifeste ne fait qu'ajouter titres, ordre et descriptions. Un fichier absent d'ici apparaît quand même — il ne disparaît jamais faute de déclaration. En revanche `fiches` et `passages` sont tenus à la main par l'agent d'audit : l'état d'un défaut et ce qu'il faut en faire ne se devinent pas d'une liste de fichiers.",
@@ -43,17 +43,65 @@
   ],
   "fiches": [
     {
+      "id": "TRK-072",
+      "titre": "La chaine de vitesse fraichement armee sature ses destinataires",
+      "source": "sentinelles",
+      "statut": "TERRAIN",
+      "gravite": 2,
+      "vuPremiere": "2026-09-06",
+      "vuDerniere": "2026-09-06",
+      "occurrences": 2,
+      "occurrencesLibelle": "Deux lignes le 5 septembre a 06h30, une par compte sature. Premiere parole du seuil destinataire sature des sentinelles V6.",
+      "quoi": "Le seuil destinataire sature a parle pour la premiere fois : deux SUPER_ADMIN, admin@vizyoagency.com et rougie31@live.fr, ont recu 15 notifications en 24 heures chacun, dont 14 de type OVERSPEED, plus 3 repliees par le regroupement — pour un produit calibre sur deux a trois par jour. Ce n est PAS un defaut : c est l effet mesure de la decision produit du 4 septembre, quand les alertes de vitesse ont ete armees sur 2 societes sur 5. La chaine V5 a ecrit ses premieres OVERSPEED (12 le 4 septembre, 6 le 5, toutes nees d un trajet) et la premiere consequence visible n est pas un deluge en base mais la saturation de deux boites de reception. Le risque annonce est reel et precis : qui coupe ses notifications ne recoit plus rien, pas meme un SOS.",
+      "quoiFaire": "Decision PRODUIT, humaine. Trancher entre les deux leviers que la sentinelle nomme elle-meme : relever le seuil qui produit OVERSPEED (vitesse, duree de depassement, marge), ou restreindre ses destinataires — un SUPER_ADMIN n a probablement pas a recevoir les exces de vitesse de toutes les flottes, c est un role d exploitation et non un abonnement. Verification en DOUBLE CONDITION : apres reglage la sentinelle doit cesser d ecrire ET le compte quotidien d OVERSPEED doit rester non nul ; si les deux tombent, on a eteint la chaine d alerte au lieu de la calibrer.",
+      "aNePasFaire": "NE PAS desarmer les alertes de vitesse pour faire taire la sentinelle : ce serait revenir a TRK-064, ou la chaine se taisait parce qu elle n etait activee nulle part. NE PAS elargir le regroupement sans regarder le seuil : replier trois notifications de plus ne change pas le fait qu un exces sur deux n en est peut-etre pas un. NE PAS lire la baisse de 12 a 6 comme une tendance : deux points ne font pas une pente.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-072"
+    },
+    {
+      "id": "TRK-071",
+      "titre": "Le repli IA est ne inerte : le second compte est a sec aussi",
+      "source": "AI_ROUTER",
+      "statut": "TERRAIN",
+      "gravite": 1,
+      "vuPremiere": "2026-09-06",
+      "vuDerniere": "2026-09-06",
+      "occurrences": 1,
+      "occurrencesLibelle": "Une occurrence, le 5 septembre a 12h23m59 UTC — six minutes apres la mise en ligne du repli qu elle exerce.",
+      "quoi": "Les DEUX comptes de fournisseur IA sont a sec en meme temps. Le repli automatique claude vers gpt, livre le 5 septembre au titre du chantier C3, a ete exerce six minutes apres sa mise en ligne et n avait nulle part ou aller : le compte Anthropic est vide depuis le 3 septembre a 00h13, le compte OpenAI est constate vide le 5 a 12h23. Ce n est PAS un defaut logiciel — le routeur bascule, echoue, l ecrit, le date et le classe correctement en DEGRADATION, en nommant le moteur de depart, celui d arrivee, la sorte d echec et le motif du fournisseur. Un mecanisme de secours ne vaut que par la ressource qu il vise : livrer une redondance sans provisionner sa cible, c est livrer une ligne de journal.",
+      "quoiFaire": "Recharger AU MOINS UN des deux comptes de fournisseur IA. C est une action humaine et c est la seule qui debloque quoi que ce soit : tant que les deux sont vides, TRK-061, TRK-070 et cette fiche decrivent le meme fait par trois portes differentes. Verification : apres recharge l appel doit repartir sans ecrire de ligne AI_ROUTER — si un seul compte est recharge, le repli doit aboutir, donc la aussi plus aucune ligne.",
+      "aNePasFaire": "NE PAS ajouter un troisieme fournisseur pour fiabiliser le repli : le defaut n est pas le nombre de moteurs, c est qu aucun n est provisionne. NE PAS faire taire cette ligne — elle est en DEGRADATION donc deja non comptee comme defaut, et elle est la seule preuve datee que le repli a ete exerce.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-071"
+    },
+    {
+      "id": "TRK-070",
+      "titre": "L escalade d assistance re-ecrit en ERROR un incident deja classe DEGRADATION",
+      "source": "ASSISTANCE",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-09-06",
+      "vuDerniere": "2026-09-06",
+      "occurrences": 2,
+      "occurrencesLibelle": "Deux occurrences le 5 septembre, a 12h23m59 et 17h00m35 — de part et d autre du deploiement, ce qui permet de mesurer l effet exact du correctif.",
+      "quoi": "Un seul incident compte du fournisseur IA a sec produit DEUX lignes au centre d alerte, a quatorze millisecondes d intervalle, et la seconde annule le benefice de la premiere. La premiere sort en DEGRADATION : c est le correctif du chantier C3 point 5 et de TRK-061, un compte a sec etant une degradation assumee. La seconde sort en ERROR sous le libelle Assistance a reprendre, et le recompte donc comme un defaut. Cause racine dans assistance-ai.service.ts lignes 153 a 155 : quand l appel IA echoue, le catch trace correctement l incident puis retourne une reponse marquee ESCALADE, laquelle appelle signalerReprise dont la regle de niveau est ecrite sur la GRAVITE de la conversation et jamais sur la CAUSE de l escalade. LOW n etant ni urgent ni CRITICAL, le repli technique sort en ERROR. Mesure des deux cotes du deploiement : ERROR plus ERROR a 12h23, DEGRADATION plus ERROR a 17h00 — le correctif a supprime la moitie du bruit, pas la totalite. C est le motif de TRK-004 et de TRK-061 rejoue sur une quatrieme chaine.",
+      "quoiFaire": "Distinguer les deux natures d escalade, qui n ont rien a voir. Une escalade decidee par l assistant sur le CONTENU de la conversation garde ERROR : quelqu un attend vraiment un humain, c est un signal produit legitime. Une escalade qui n est qu un repli sur une panne technique DEJA consignee ne doit pas ecrire de seconde ligne au centre d alerte, ou doit l ecrire au niveau deja decide pour cet incident. Concretement : passer a signalerReprise la cause du repli, un kind optionnel issu de classerEchecIa, et aligner le niveau sur celui de l incident d origine quand elle est renseignee. Chercher TOUS les chemins de sansIaReponse qui suivent un tracerErreur — c est la lecon de TRK-004. Verification en DOUBLE CONDITION : au prochain echec IA il ne doit rester QU UNE ligne ASSISTANCE, en DEGRADATION, et le journal systeme doit toujours porter son assistance_escalade.",
+      "aNePasFaire": "NE PAS supprimer la ligne d escalade : une vraie demande de reprise humaine doit rester visible, on corrige son NIVEAU quand elle est un repli technique, pas son existence. NE PAS abaisser tout signalerReprise a DEGRADATION : une escalade decidee sur le contenu est un defaut de service et vaut ERROR. NE PAS toucher au journal systeme, qui doit continuer a ecrire dans les deux cas : l escalade est un fait, ce qui est en cause est l endroit ou elle se lit.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-070"
+    },
+    {
       "id": "TRK-069",
       "titre": "Un agent du poste n a pas tourne, a echoue, ou n a jamais ete vu (sentinelle du chantier C3)",
       "source": "agents-locaux",
       "statut": "TERRAIN",
       "gravite": 2,
       "vuPremiere": "2026-09-05",
-      "vuDerniere": "2026-09-05",
-      "occurrences": 0,
-      "occurrencesLibelle": "Aucune occurrence a la creation : la fiche documente un INSTRUMENT ne le 5 septembre. La premiere ligne est attendue au premier matin ou le poste du proprietaire n aura pas tourne — a l heure propre a chaque agent (recits et rattrapage 05h50, limites 06h50, qualite GPS 07h50, courrier 08h50 — heure de Paris) : le premier controle horaire qui suit son creneau plus les 2 h de grace.",
+      "vuDerniere": "2026-09-06",
+      "occurrences": 3,
+      "occurrencesLibelle": "Trois premieres lignes le 6 septembre, au premier matin sans poste — exactement le cas que la fiche annoncait a sa creation. Trois motifs distincts et aucune redondance : agent-recit-trajet en echec le 5 septembre a 03h15 (passage interrompu avant la fin), le meme agent manque le 6 a 03h15, et rattrapage-recits manque son tick de 22h00 apres un dernier passage reussi a 20h00. Les deux agents pointent vers le meme moment : le poste a cesse de travailler dans la soiree du 5 septembre. Un raisonnement en deux fois la cadence n aurait rien dit avant le 7 septembre — 48 heures gagnees.",
       "quoi": "Cinq traitements tournent sur le POSTE du proprietaire (limites de vitesse OSM, recits de trajet, rattrapage des recits, qualite GPS, courrier IA) et leur arret ne produisait AUCUNE ligne serveur : l ecran des traitements ne les disait silencieux qu au-dela de deux cadences, soit le surlendemain pour les recits. La sentinelle compare chaque heure le dernier passage journalise au dernier declenchement PLANIFIE en heure de Paris (grace de 2 h, parce que StartWhenAvailable rattrape un demarrage tardif du PC) et ecrit une ligne CRITICAL par agent, par motif et par jour : passage manque, dernier passage en echec (avec le motif consigne par le poste), agent jamais journalise. Le rattrapage dont l arriere est resorbe ne compte pas. Les lignes s archivent d elles-memes quand l agent repasse avec succes, et les super-admins recoivent une notification.",
-      "quoiFaire": "L action est MATERIELLE, pas du code. Passage manque : allumer le poste, verifier que la session est ouverte et que la tache est active au Planificateur. Dernier passage en echec : lire le motif dans le message (abonnement Claude absent, base injoignable, Overpass qui refuse). Jamais journalise : inscrire la tache au Planificateur, ou verifier la cle sous laquelle elle ecrit (le courrier journalise sous agent-courrier-ia). Inutile d archiver a la main : la ligne se referme seule au premier passage reussi, et reviendrait le lendemain tant que l agent ne repasse pas.",
+      "quoiFaire": "L action est MATERIELLE, pas du code. Au 6 septembre : rallumer le poste et lire le motif d echec de agent-recit-trajet, qui dit passage interrompu avant la fin — abonnement Claude absent, base injoignable depuis le poste, ou machine arretee en cours de passage. Verifier aussi que la session Windows est ouverte et que les taches sont actives au Planificateur. Inutile d archiver a la main : la ligne se referme seule au premier passage reussi, et reviendrait le lendemain tant que l agent ne repasse pas. ATTENTION : cette sentinelle fait passer les CRITICAL actives de 2 a 5 — c est un capteur qui s allume, pas la plateforme qui se degrade. Si un PC eteint chaque nuit produit trois CRITICAL chaque matin, c est le NIVEAU qu il faudra rediscuter, jamais la sentinelle.",
       "aNePasFaire": "NE PAS elargir la grace de 2 h pour faire taire un poste qui s allume tard : au-dela, le creneau est reellement perdu. NE PAS revenir a un raisonnement en deux fois la cadence, c est ce qui rendait un PC eteint invisible jusqu au surlendemain. NE PAS supprimer les lignes : elles s archivent d elles-memes et gardent la trace de chaque nuit sans poste.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-069"
@@ -1165,6 +1213,13 @@
   ],
   "documents": [
     {
+      "slug": "rapports/2026-09-06.md",
+      "title": "Audit du 6 septembre",
+      "section": "rapports",
+      "order": -16,
+      "description": "Les deux fournisseurs IA sont a sec en meme temps : le repli claude vers gpt livre la veille a ete exerce six minutes apres sa mise en ligne et n avait nulle part ou aller. Trois fiches neuves : TRK-070 (l escalade d assistance re-ecrit en ERROR un incident deja classe DEGRADATION — le correctif de TRK-061 contourne par la porte voisine), TRK-071 (le repli inerte) et TRK-072 (la sentinelle destinataire sature parle pour la premiere fois). Et TRK-069, nee la veille sans occurrence, a parle au premier matin sans poste : trois lignes, trois motifs, 48 heures gagnees."
+    },
+    {
       "slug": "rapports/2026-09-04.md",
       "title": "Audit du 4 septembre",
       "section": "rapports",
@@ -1421,6 +1476,54 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-09-06",
+      "origine": "agent",
+      "rapport": "rapports/2026-09-06.md",
+      "verdict": "82 lignes actives dont 34 defauts — et le fait du jour est que les DEUX fournisseurs d IA sont a sec en meme temps, ce qui rend inerte le repli claude vers gpt deploye la veille au titre du chantier C3 ; pendant ce temps la sentinelle des agents du poste, nee hier avec zero occurrence, a rendu ses trois premieres lignes, et elles disent vrai : l agent de recits est a l arret depuis le 5 septembre a 03h15.",
+      "chiffres": {
+        "erreurs": 82,
+        "defautsActifs": 34,
+        "degradations": 48,
+        "archivees": 32,
+        "critical": 5,
+        "actives24h": 17,
+        "defauts24h": 8,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 14,
+        "trackersHorsLigneNonDeclares": 2,
+        "commandesEnAttente": 7,
+        "commandesEnAttenteHorsReveilParc": 2,
+        "echecsCommandesParJour": 15.6,
+        "totalFamilleFixContinuous": 437,
+        "acquittementsMateriels": 0,
+        "cadenceSousMinimum": 0,
+        "constatsDisparition": 1,
+        "ecartInsDelLive": 13250,
+        "temoinArme": 4,
+        "societesAvecAlerteVitesse": 2,
+        "societesTotal": 5,
+        "overspeedJour": 6,
+        "overspeedNeesDunTrajet": 6,
+        "tauxEchecRecalagePct": 87.9,
+        "heuresCompteIaASec": 76
+      },
+      "fiches": {
+        "nouvelles": 3,
+        "misesAJour": 6
+      },
+      "aTraiter": [
+        "TRK-071",
+        "TRK-070",
+        "TRK-069",
+        "TRK-072",
+        "TRK-066",
+        "TRK-062",
+        "TRK-032",
+        "TRK-051"
+      ],
+      "note": "LE FAIT DU JOUR : LES DEUX FOURNISSEURS IA SONT A SEC EN MEME TEMPS. Le repli claude vers gpt, livre le 5 septembre au titre du chantier C3, a ete exerce SIX MINUTES apres sa mise en ligne et n avait nulle part ou aller — le compte OpenAI est vide lui aussi. Le compte Anthropic est a sec depuis 76 heures. Un mecanisme de secours ne vaut que par la ressource qu il vise : livrer une redondance sans provisionner sa cible, c est livrer une ligne de journal. C est la fiche neuve TRK-071, et ce n est PAS un defaut de code — le routeur bascule, echoue, l ecrit, le date et le classe correctement. FICHE NEUVE TRK-070, ET ELLE CONTOURNE UN CORRECTIF DEJA PROUVE : un compte a sec produit DEUX lignes a quatorze millisecondes d intervalle, la premiere en DEGRADATION grace au correctif de TRK-061, la seconde en ERROR sous le libelle Assistance a reprendre — qui la recompte comme un defaut. La regle de niveau est ecrite sur la GRAVITE de la conversation et jamais sur la CAUSE de l escalade : elle ne peut donc pas distinguer un utilisateur qui a besoin d un humain d une IA qui vient de tomber. Mesure des DEUX COTES du deploiement : ERROR plus ERROR a 12h23, DEGRADATION plus ERROR a 17h00 — le correctif a supprime la moitie du bruit, pas la totalite. C est le motif de TRK-004 et TRK-061 rejoue sur une quatrieme chaine. FICHE NEUVE TRK-072 : la sentinelle destinataire sature parle pour la premiere fois — 15 notifications en 24 heures dont 14 OVERSPEED, sur deux super-admins, pour un produit calibre sur deux a trois par jour. Elle a crie AVANT que le destinataire ne coupe ses notifications, et couper ses notifications lui ferait perdre jusqu au SOS. Le compte d OVERSPEED demande hier : 12 le 4 septembre, 6 le 5, six sur six nees d un trajet — deux points, pas une tendance, et tres loin des 1317 alertes de TRK-022. TRK-069 A PARLE AU PREMIER MATIN SANS POSTE : de zero a trois occurrences, avec trois motifs distincts et aucune redondance — agent-recit-trajet en echec le 5 a 03h15 puis manque le 6, rattrapage-recits manque son tick de 22h00. Les deux pointent vers le meme moment : le poste a cesse de travailler dans la soiree du 5 septembre. Un raisonnement en deux fois la cadence n aurait rien dit avant le 7 : quarante-huit heures gagnees. ATTENTION, LES CRITICAL PASSENT DE 2 A 5 PAR L ARRIVEE D UN CAPTEUR, PAS PAR DEGRADATION DE LA PLATEFORME. SECOND DEPLOIEMENT NON ANNONCE EN DEUX JOURS, le 5 septembre a 18h13m08 : quatre marqueurs C3 verifies presents sur l ARTEFACT SERVI, et SENT_UNCONFIRMED confirme ABSENT pour la troisieme fois — TRK-062 attend toujours sa migration. PIEGE DE FUSEAU RELEVE : git log est en heure de Paris et la base en UTC, si bien qu une ligne de 12h23 UTC suivant un commit date 14h17 Paris revele un deploiement INTERMEDIAIRE que StartedAt seul ne montre pas. Comparer un journal git a une table sans convertir les fuseaux fabrique de fausses impossibilites. TRK-016 quatrieme point a 87,9 pour cent : la baisse d hier a 83,3 etait bien une fluctuation, et la reserve ecrite hier vient de s auto-verifier. LES 7 COMMANDES EN ATTENTE NE SE COMPARENT PAS AUX 2 D HIER : la collecte tombe a 06h05 heure de Paris, au reveil du parc, contre 03h11 hier — une grandeur mesuree a une autre heure n est pas la meme grandeur. ANGLES MORTS : temoin arme 4 sur 4, ecart inchange a 13250 au dixieme point, aucune erreur supprimee par la retention sur cinq nuits, zero tracker en echec, zero acquittement materiel sur 437 au neuvieme point, zero cadence sous le minimum materiel au sixieme point, aucune derive, TRK-037 a 48 degradations pour zero erreur au cinquieme point. ATTENTION, LE ZERO DE LA SECTION GPS N EST TOUJOURS PAS UNE BONNE NOUVELLE, DEUXIEME JOUR CONSECUTIF : GLA KC 31 depuis 74 heures et FG-669-DQ depuis 57 heures sont sortis du filtre PAR LE BAS, hors ligne et non declares. A FAIRE EN PREMIER : recharger UN des deux comptes IA — les deux sont vides, et aucun correctif ne le fera."
+    },
     {
       "date": "2026-09-05",
       "origine": "agent",
