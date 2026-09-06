@@ -2337,10 +2337,62 @@ sub "Certificats TLS des domaines publics"
 # ⚠️ La liste par defaut ne contenait QUE le site vitrine — l'application elle-meme
 # (`app-tracky`) n'etait jamais verifiee. Un certificat expire sur l'application ne coupe pas
 # la vitrine : on l'aurait appris par un client, pas par l'audit.
+# ⚠️⚠️ ANGLE MORT N° 9 — TRAITE LE 2026-09-06, apres 22 reports. Il etait pose ainsi :
+# « l'audit ne verifie pas que les certificats SERVIS sont ceux du volume ».
+#
+# Ce qui le rendait necessaire est la question ouverte du rapport du 2026-09-05 : combien de
+# verdicts verts mesurent un ETAT la ou la question portait sur un MECANISME ? Celui-ci en
+# etait le premier exemple cite. Jusqu'ici deux grandeurs etaient publiees :
+#   • `acme.json modifie le ...` (section 4) — c'est la date d'un FICHIER. Elle resterait
+#     verte trente jours apres l'arret du renouvellement, jusqu'a l'expiration ;
+#   • la date d'expiration servie — elle dit quand ca cassera, jamais si ca se renouvelle.
+# Aucune des deux ne repond a « le renouvellement PARVIENT-il jusqu'au client ? ».
+#
+# Le discriminant ne suppose rien et ne coute AUCUN echange reseau de plus : l'empreinte du
+# certificat SERVI (meme `s_client`, deux options de plus) contre celle du certificat que le
+# volume DETIENT. Traefik charge ses certificats en memoire : un volume renouvele et un
+# processus qui n'a pas recharge donnent deux empreintes differentes — et c'est le seul
+# symptome, jusqu'au jour de l'expiration.
+# ⚠️ On ne lit que `.certificate` (la partie PUBLIQUE). Le champ `.key` du meme objet n'est
+#    JAMAIS touche, et il ne doit pas l'etre : cette sortie est versionnee.
+# ⚠️ Ce qu'il ne faut PAS conclure d'une divergence : « le certificat servi est mauvais ».
+#    Un renouvellement en cours pendant la mesure les separe legitimement quelques secondes.
+#    C'est la REPETITION sur deux passages qui vaut constat, pas une occurrence.
+ACME_VOL=/var/lib/docker/volumes/foodsqan-letsencrypt/_data/acme.json
 for d in ${AUDIT_DOMAINS:-tracky.vizyoagency.com app-tracky.vizyoagency.com}; do
-  exp=$(echo | timeout 8 openssl s_client -servername "$d" -connect "$d:443" 2>/dev/null \
-        | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+  servi=$(echo | timeout 8 openssl s_client -servername "$d" -connect "$d:443" 2>/dev/null \
+          | openssl x509 -noout -startdate -enddate -fingerprint -sha256 2>/dev/null)
+  exp=$(printf '%s' "$servi" | sed -n 's/^notAfter=//p')
+  deb=$(printf '%s' "$servi" | sed -n 's/^notBefore=//p')
+  emp=$(printf '%s' "$servi" | sed -n 's/^sha256 Fingerprint=//p')
   printf '  %-40s %s\n' "$d" "${exp:-injoignable depuis la machine (a reverifier de l exterieur)}"
+  [ -z "$exp" ] && continue
+  # Age du certificat SERVI : c'est lui qui date le dernier renouvellement PARVENU au client.
+  if [ -n "$deb" ]; then
+    d_epoch=$(date -d "$deb" +%s 2>/dev/null)
+    [ -n "$d_epoch" ] && printf '     emis il y a %s j  (expire dans %s j)\n' \
+      "$(( ( $(date +%s) - d_epoch ) / 86400 ))" \
+      "$(( ( $(date -d "$exp" +%s 2>/dev/null || date +%s) - $(date +%s) ) / 86400 ))"
+  fi
+  # L'empreinte du volume — le certificat que Traefik DETIENT, contre celui qu'il SERT.
+  if [ -r "$ACME_VOL" ]; then
+    emp_vol=$(jq -r --arg d "$d" '.[].Certificates[]? | select(.domain.main==$d) | .certificate' \
+              "$ACME_VOL" 2>/dev/null | head -1 | base64 -d 2>/dev/null \
+              | openssl x509 -noout -fingerprint -sha256 2>/dev/null | sed -n 's/^sha256 Fingerprint=//p')
+    if [ -z "$emp_vol" ]; then
+      printf '     ⚠️ empreinte du VOLUME non lisible pour ce domaine — mesure NON FAITE,\n'
+      printf '        PAS « elles concordent » (VPS-M02).\n'
+    elif [ "$emp_vol" = "$emp" ]; then
+      printf '     ✅ le certificat SERVI est celui du volume (empreintes identiques)\n'
+    else
+      printf '     🔴 LE CERTIFICAT SERVI N EST PAS CELUI DU VOLUME.\n'
+      printf '        servi  : %s\n' "$emp"
+      printf '        volume : %s\n' "$emp_vol"
+      printf '        Traefik n a pas recharge, ou un autre frontal repond. A REVOIR au\n'
+      printf '        passage suivant avant d en faire un constat (un renouvellement en\n'
+      printf '        cours les separe legitimement quelques secondes).\n'
+    fi
+  fi
 done
 
 # ⚠️ AJOUTE LE 2026-08-10 — angle mort n° 5 du rapport du 2026-08-09.
@@ -2984,7 +3036,7 @@ for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   # alors que sa sauvegarde etait fraiche. Un controle de sauvegarde qui crie au loup se fait
   # desactiver en trois jours, et c'est ainsi qu'on perd la vraie alerte.
   # On balaie donc TOUS les dossiers correspondants et on garde la copie LA PLUS RECENTE.
-  trouve=""; agemax=""; recent=0; horodatages=""
+  trouve=""; agemax=""; agemax_h=""; recent=0; horodatages=""
   for d in /var/backups/*/; do
     case "$(basename "$d")" in
       *"$cle"*)
@@ -3008,20 +3060,45 @@ for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
         ;;
     esac
   done
-  [ "$recent" -gt 0 ] && agemax=$(( (MAINTENANT - recent) / 86400 ))
+  # ⚠️⚠️ VPS-M84 — CORRIGE LE 2026-09-06. CE BLOC ET CELUI D'EN DESSOUS (« Age de la derniere
+  # sauvegarde, par dossier ») LISAIENT LES MEMES FICHIERS ET RENDAIENT DES VERDICTS OPPOSES.
+  #
+  # L'age etait ici tronque en JOURS ENTIERS (`/ 86400`) et compare a 2 ; vingt lignes plus bas
+  # il est calcule en HEURES et compare a 30. Un fichier de 47 h etait donc
+  #   « ✅ a jour (1 j) »  ici,  et  « ⚠️ PERIMEE (> 30 h) »  la-bas — LE MEME FICHIER.
+  # Mesure du 2026-09-06 : `vizyo-manager` et `vizyo-texto`, a 47 h, deux des TROIS bases du
+  # constat de gravite 1 VPS-013. La bande aveugle allait de 30 h a 48 h, soit DIX-HUIT HEURES
+  # pendant lesquelles la table qui repond a « cette base est-elle sauvegardee ? » disait oui
+  # alors que sa voisine disait qu'une nuit avait ete manquee.
+  # ⚠️ Et c'est la ligne VERTE qui gagne : un lecteur s'arrete a la table de couverture, qui
+  # nomme les conteneurs. Le bloc par dossier, lui, nomme des repertoires — il faut deja savoir
+  # que `vizyo-texto` est la base de `texto-postgres` pour rapprocher les deux.
+  #
+  # Correctif : le MEME seuil de 30 h des deux cotes, et l'age affiche en HEURES sous 48 h pour
+  # que les deux blocs soient comparables a l'oeil. COUT : ZERO commande de plus — `recent` est
+  # deja un horodatage epoch, il etait seulement divise trop tot.
+  # ⚠️ La bande « nuit manquee » NE remplace PAS « en retard » : elles ne disent pas la meme
+  # chose. 31 h = une execution sautee ; 3 j = un mecanisme arrete. Les fondre reperdrait ce
+  # que ce correctif fait gagner.
+  if [ "$recent" -gt 0 ]; then
+    agemax_h=$(( (MAINTENANT - recent) / 3600 ))
+    agemax=$(( agemax_h / 24 ))
+  fi
   # Une base de DEVELOPPEMENT sans sauvegarde est un choix, pas un defaut : on le dit, plutot
   # que de produire une alerte quotidienne que tout le monde apprendra a ignorer.
   case "$cont" in *-dev-*) nature="(developpement — sans enjeu)" ;; *) nature="" ;; esac
   if [ -z "$trouve" ]; then
     verdict="🔴 AUCUNE SAUVEGARDE"
-  elif [ -z "$agemax" ]; then
+  elif [ -z "$agemax_h" ]; then
     verdict="🔴 dossier VIDE"
-  elif [ "$agemax" -ge 7 ]; then
+  elif [ "$agemax_h" -ge 168 ]; then
     verdict="🔴 ABANDONNEE — derniere copie il y a $agemax jours"
-  elif [ "$agemax" -ge 2 ]; then
+  elif [ "$agemax_h" -ge 48 ]; then
     verdict="🟠 en retard ($agemax j)"
+  elif [ "$agemax_h" -gt 30 ]; then
+    verdict="🟠 NUIT MANQUEE ($agemax_h h > 30 h)"
   else
-    verdict="✅ a jour ($agemax j)"
+    verdict="✅ a jour ($agemax_h h)"
   fi
   printf '  %-26s %-42s %-28s %s\n' "$cont" "$verdict" "${trouve:-—}" "$nature"
   # ── Cadence : y a-t-il une TRACE de mecanisme, ou une seule copie posee a la main ? ──

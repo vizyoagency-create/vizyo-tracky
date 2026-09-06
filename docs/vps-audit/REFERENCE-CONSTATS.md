@@ -425,6 +425,17 @@ sorti en **137** (tué) — s'il doit revivre, le sortir de la liste.
 ## VPS-007 — `random_page_cost` réglé pour un disque mécanique
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `A_TRAITER` — ⚠️ **ROUVERT le 2026-08-13 : il avait été fermé sur un dénominateur tronqué**
+- **Vu : 2026-09-06** · **Mesure du jour** : **6 bases sur 7 sont à `4`**, seule `tracky-postgres`
+  est à 1.1. ⚠️ **Le compte monte de 5/7 à 6/7 sans qu'aucun réglage n'ait changé** : c'est
+  `vizyo-auth-db` — la base d'authentification de **toutes** les applications — qui entre dans la
+  mesure pour la première fois, huit jours après avoir été rattrapée par VPS-M80. *Le numérateur a
+  cessé d'être aveugle ; le parc, lui, est inchangé.*
+  ✅ **Et le dénominateur est enfin honnête** : le levier affiche **`7 / 7 bases PostgreSQL
+  examinées`** au lieu du `6 / 6` d'une machine qui en porte sept. Le garde de VPS-M34 tient — et
+  ce passage montre qu'il ne suffisait pas : *un dénominateur calculé par le filtre défaillant est
+  vert sur son propre angle mort* (VPS-M80).
+  L'enjeu de performance reste nul (bases de 8 à 28 Mo, cache à 99,99 – 100 %) ; l'enjeu de méthode
+  ne l'est pas.
 - **Vu** : 2026-08-20 · **Mesure du jour** : **5 bases sur 6 sont a `4`, dont TROIS de production** (`vizyo-verify`, `vizyo-manager`, `texto`) — inchange, seule `tracky-postgres` est a 1.1. ✅ Le levier affiche **`6 / 6 bases examinees`** pour son **sixieme** passage complet, et le second par derivation (il ne parle plus a Docker). Le garde de denominateur de VPS-M34 tient. L enjeu de performance reste nul (bases de 8 a 17 Mo, cache a 99,99 %) ; l enjeu de methode ne l est pas. *(mesure du 2026-08-18, conservee ci-dessous.)*
 - **Mesure du 2026-08-18, conservée** : **5 bases sur 6 sont a `4`, dont TROIS de production** — inchange. ✅ **Le levier affiche `6 / 6 bases examinees` pour son CINQUIEME passage complet, et pour la PREMIERE FOIS par derivation** (il ne parle plus a Docker du tout). ⚠️ **Ce correctif est celui qui a decapite la collecte ce matin** : l'accumulateur `RPC_CACHE` n'etait pas initialise sous `set -u` — voir **VPS-M43**. La valeur rendue est identique a l'ancienne methode, le mecanisme est bon, c'est son montage qui n'avait jamais ete essaye. *(mesure du 2026-08-17, conservee ci-dessous.)*
 - **Mesure du 2026-08-17, conservée** : **5 bases sur 6 sont a `4`, dont TROIS de production** — `vizyo-verify-postgres`, `vizyo-manager-postgres` et `texto-postgres`. Seule `tracky-postgres` est a 1.1. Inchange ; le levier affiche `✅ 6 / 6 bases examinees` pour son **quatrieme** passage complet. 🆕 **A partir du prochain passage, ce levier ne parle plus a Docker du tout** : la valeur est capturee en section 5 et le levier en derive (VPS-M42, patron de VPS-M30). **Contre-epreuve faite sur la machine : 6/6 valeurs identiques a l'ancienne methode** — une optimisation qui ne prouve pas qu'elle rend la meme valeur n'est pas une optimisation. Le garde de denominateur de VPS-M34 est **conserve intact** : une base absente de la capture n'est toujours pas comptee comme vue. *(mesure du 2026-08-16, conservee ci-dessous.)*
@@ -934,6 +945,18 @@ c'est là que la détection rapide sert vraiment.
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : 🔴 **`A_TRAITER` — ROUVERT le 2026-09-03**
   *(était `APPLIQUE` depuis le 2026-08-04)*
+- 🟠 **Vu : 2026-09-06 — QUATRIÈME JOUR, ET LA PROGRESSION S'ARRÊTE : 0 → 12 → 16 → 16.**
+  `github-actions-vizyo-auth` reste à **16 connexions root**, toujours **sans aucune option de
+  restriction**. **2 empreintes vues sur la fenêtre, 0 non déclarée.**
+  ⚠️⚠️ **ET IL NE FAUT PAS LIRE LA BAISSE DE `vizyo-vps-hostinger` (10 442 → 9 127) COMME UNE
+  ACCALMIE.** Ces compteurs portent sur une **fenêtre glissante de 7 jours**, qui vient de laisser
+  sortir le 08-29 pour n'entrer que **4 heures** du jour en cours. **C'est la fenêtre qui a bougé,
+  pas l'usage** — et le total des sessions SSH le confirme par la même mécanique (10 458 → 9 143).
+  *C'est le mode d'échec de **VPS-M76** sur une troisième famille de compteurs, celle de la
+  section 6, qu'aucun constat ne couvrait ; il fonde la question ouverte du rapport de ce jour.*
+  ⚠️ **Conséquence pour ce constat** : la série `0 → 12 → 16 → 16` est **elle aussi** glissante. Un
+  palier n'y prouve pas un arrêt d'usage — seulement que les entrées et les sorties de fenêtre se
+  compensent.
 - 🔴 **Vu : 2026-09-05 — TROISIÈME JOUR, TROISIÈME VALEUR : `connexions` passe de 12 à 16.**
   `github-actions-vizyo-auth` : **0 → 12 → 16** en trois passages, toujours **sans aucune option de
   restriction**, toujours en root. La clé humaine `vizyo-vps-hostinger` est à **10 442** (9 371 la
@@ -1121,6 +1144,19 @@ découvre au pire moment.
 ## VPS-013 — Trois bases de production n'ont aucune sauvegarde exploitable
 
 - **Domaine** : sauvegardes · **Gravité** : 1 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-06 — 29ᵉ PASSAGE, INTACT, ET LES TROIS LIGNES VERTES SONT ENFIN PASSÉES À
+  L'ORANGE.** Le correctif **VPS-M84** écrit ce passage aligne le seuil de la table de couverture
+  sur celui de son bloc voisin : `capcom6`, `vizyo-manager` et `vizyo-texto`, à **47 h**, affichent
+  désormais **`🟠 NUIT MANQUÉE (47 h > 30 h)`** au lieu de `✅ à jour (1 j)`. *Le dump manuel du
+  09-04 a cessé de les blanchir au bout de 43 heures au lieu de sept jours.*
+  Discriminant de cadence (VPS-M81), inchangé : `vizyo-manager` **salve précédente à 142 j**,
+  `texto` et `capcom6` **une seule copie chacun**.
+  ✅ **ET LE GABARIT À COPIER A MAINTENANT FAIT SES PREUVES** : `vizyo-auth-backup.timer` ne s'est
+  pas contenté d'être posé, il s'est **déclenché seul deux fois** — le 09-05 à 04 h 01 min 41 et le
+  09-06 à 04 h 04 min 10, `systemd[1]: Starting…` à l'appui — avec rétention 30 j active et
+  journal. **3 copies, cadence mesurée 24 h.** La réserve écrite le 09-05 est levée : il n'y a plus
+  rien à concevoir pour les trois autres, seulement à copier. **Créneaux pris : 03 h 00, 03 h 30,
+  04 h 00 — 04 h 30 est libre.**
 - 🔴 **Vu : 2026-09-05 — 28ᵉ PASSAGE, ET LE CONSTAT EST INTACT MALGRÉ TROIS LIGNES VERTES.** La
   table de couverture affiche `✅ à jour (0 j)` sur **les trois** bases. C'est un **dump lancé à la
   main** le 2026-09-04 à **04 h 52 min 04**, *la même seconde pour les trois*, et **rien ne le
@@ -1241,6 +1277,23 @@ passage suivant — c'est la raison d'être des `chiffres` du manifeste.
 ## VPS-015 — La sauvegarde de Vizyo Verify n'a jamais tourné toute seule
 
 - **Domaine** : sauvegardes · **Gravité** : **2** · **Statut** : `A_TRAITER` — **volet SYMPTÔME `APPLIQUE` le 2026-08-14 (prouvé par le TIMER, deux nuits), volet CAUSE toujours intact**
+- ✅ **Vu : 2026-09-06 — LE MODE D'ÉCHEC DE CE CONSTAT NE SE REJOUE PAS SUR `vizyo-auth`, ET C'EST
+  MESURÉ, PAS SUPPOSÉ.** Le test écrit d'avance le 09-05 exigeait *« deux copies et une cadence
+  d'environ 20 h »*. La machine rend **trois copies** et **24 h** :
+
+  ```
+  vizyo_auth_20260904-073414.sql.gz   ← lancement MANUEL
+  vizyo_auth_20260905-040141.sql.gz   ← 1re echeance AUTOMATIQUE
+  vizyo_auth_20260906-040410.sql.gz   ← 2e echeance AUTOMATIQUE
+  2026-09-06T04:04:10  systemd[1]: Starting vizyo-auth-backup.service...
+  2026-09-06T04:04:11  vizyo-auth-backup.sh: 3 sauvegarde(s) en place dans /var/backups/vizyo-auth.
+  ```
+
+  **C'est `systemd[1]` qui démarre l'unité, pas une session.** *Un script posé, une unité déclarée
+  et rien qui se déclenche — le motif exact de ce constat — a été exclu par la mesure.*
+  ⚠️ **Et il faut dire pourquoi la réserve avait été écrite** : la collecte du 09-05 tournait à
+  **02 h 22**, soit **1 h 40 avant** la première échéance. *Le rapport d'hier ne pouvait pas voir
+  cette exécution ; il a eu raison de ne pas la supposer.*
 - ✅ **Vu : 2026-09-05 — LE MOTIF DE CE CONSTAT EST RECONNU ET REFERMÉ AILLEURS, PAR ÉCRIT.**
   `vizyo-auth-backup.service`, créé le 2026-09-04, porte dans son propre en-tête :
   *« Absente jusqu'au 03/09/2026 : les scripts de sauvegarde étaient déposés sur le VPS depuis le
@@ -4262,6 +4315,27 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- ✅ **Vu : 2026-09-06 — PREMIÈRE MESURE VALIDE DEPUIS ONZE PASSAGES, ET PAR CHANCE : le cache
+  `apt` avait 1 h.** Et elle tranche l'alerte laissée ouverte hier. Le rapport du 09-05 avait
+  relevé, **sur un cache de 9 h donc hors mesure**, deux sources indicatives passant de « 0-1
+  correctif de sécurité » à **« 20-26 »**, en refusant de les reporter et en écrivant que *« ce
+  n'est pas une mesure — c'est une raison de refaire la mesure »* :
+
+  | source | 09-05 (cache 9 h, **non mesurable**) | 09-06 (cache **1 h**, ✅ VALIDE) |
+  |---|---:|---:|
+  | cache `apt` | 95, dont **20** sécurité | **75**, dont **0** |
+  | `update-notifier` | 101, dont **26** | **75**, dont **1** |
+
+  Entre les deux, `apt-daily-upgrade` a tourné le **09-05 à 06 h 41 min 30**. **Le canal a fait son
+  travail** — *et la seule raison pour laquelle on peut l'affirmer est que le rapport d'hier s'était
+  interdit d'appeler « mesure » ce qui n'en était pas une.*
+  ⚠️ **Ce vert ne referme pas le constat** : la mesure n'a été valide que parce que le tirage
+  aléatoire d'`apt-daily` est tombé à 02 h 59, une heure avant la collecte. **La cause — une source
+  rafraîchie à heure tirée au hasard dans une fenêtre de 12 h — est intacte.**
+  ⚠️ **Et les 75 restants ne sont PAS encore un retard** (bloc VPS-M74) : le cache a été rafraîchi
+  **20 h après** le dernier passage de l'installateur. **Le test est écrit** : si au passage suivant
+  l'installation du 09-06 06 h 31 a eu lieu **et** que le compte n'a pas baissé, la panne est
+  établie.
 - 🟠 **Vu : 2026-09-03 — 8ᵉ ÉCHEC EN 10 PASSAGES (cache apt à 25 h), MAIS LE TEST ÉCRIT D'AVANCE
   EST TRANCHÉ, ET DANS LE BON SENS.** Le rapport du 09-02 exigeait : *« si l'installation a eu lieu
   et que le compte n'a pas baissé, le canal est en panne et le constat monte en gravité 2 »*.
@@ -4727,6 +4801,27 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : données · **Gravité** : **1** (montée le 2026-09-05, sur le seuil écrit le 09-03) ·
   **Statut** : `A_TRAITER`
+- ✅ **Vu : 2026-09-06 — PREMIER PASSAGE SANS PERTE NOUVELLE DEPUIS LE 08-31, ET LE CONSTAT RESTE
+  EN GRAVITÉ 1.** Les quatorze silencieux d'hier sont les quatorze d'aujourd'hui, **chacun vieilli
+  de vingt-quatre heures** : aucun nom neuf. Les trois chemins de code indépendants donnent
+  **30 émetteurs contre 30** (`wire_logs`, `positions`, `position_sampling_decisions`). **La
+  trajectoire s'arrête** : 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 · **30**.
+  **La cohorte est à 134,4 – 136,3 h**, soit **5,6 jours**, tous les six `OFFLINE`, tous dans
+  `2ad69ac1…`, tous encore rattachés à un véhicule.
+  ⚠️ **Le constat NE redescend PAS**, et c'est le seuil qui le dit : il exige *« 32 sur une journée
+  complète »*. Il est à **30**. *Un compteur qui arrête de descendre n'est pas un compteur qui
+  remonte* — neuf boîtiers manquent toujours à l'appel.
+  ⚠️ **Le total du registre est identique (14), et pour la bonne raison cette fois** : la
+  ventilation par bande (VPS-M78) montre qu'**un seul boîtier a bougé**, de `1-3 j` (2 → **1**)
+  vers `3-7 j` (6 → **7**) ; `6-24 h` reste à **0** et `> 7 j` à **6**. *Le déplacement d'un
+  boîtier d'une bande à la suivante explique la totalité de l'écart : aucune entrée, aucune
+  sortie.*
+  ⚠️ **Et VPS-M83 est confirmé un SECOND jour** : les deux boîtiers que le rapport du 09-04 avait
+  rangés hors cohorte — dont l'un déclaré *« garé pour la nuit »* — sont à **57,3 h** et **74,3 h**,
+  et **aucun des deux n'a réémis**. Le second vient de franchir les trois jours.
+  🆕 **Voir aussi VPS-039, écrit ce passage** : à effectif constant, le taux de rétention de
+  l'échantillonnage perd 11 points en trois jours. ⚠️ **Ne pas confondre les deux** — l'un compte
+  des émetteurs, l'autre mesure un taux.
 - 🔴 **Vu : 2026-09-05 — GRAVITÉ 1. LE SEUIL ÉCRIT D'AVANCE ARRIVE À ÉCHÉANCE, ET IL N'EST PAS
   TENU.** Il exigeait le retour des six *« au passage du 2026-09-05 »* : ils sont muets depuis
   **108,6 à 110,6 heures**, soit **4,6 jours**, tous les six, tous `OFFLINE`, tous dans
@@ -4863,7 +4958,129 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
+## VPS-039 — Le taux de rétention de l'échantillonnage perd 11 points en trois jours, à flotte constante
+
+- **Domaine** : données · **Gravité** : **2** · **Statut** : `SURVEILLANCE` — *avec seuil daté, cf.
+  ci-dessous*
+- **Vu** : 2026-09-06 · **Mesure à la découverte** : la part des décisions d'échantillonnage qui
+  devient une position enregistrée passe de **40,8 % → 34,7 % → 29,8 %** en trois jours, sur une
+  flotte **stable à 30 émetteurs** et un volume de décisions **stable** (53 810 · 61 832 · 58 423).
+
+  ```
+     jour      sem  emetteurs  positions  decisions  pct_retenu  par_emetteur
+   2026-09-03  Thu      32       21930      53810      40.8 %         685
+   2026-09-04  Fri      30       21464      61832      34.7 %         715
+   2026-09-05  Sat      30       17399      58423      29.8 %         580
+   2026-09-06  Sun      30        1477      10505      14.1 %          49   ← PARTIEL
+  ```
+
+- **QUOI — ce qui est établi, et rien de plus** : c'est cette grandeur qui porte l'écart entre les
+  trois compteurs de la section 5 — `wire_logs` **×0,95** (trames reçues),
+  `position_sampling_decisions` **×0,94** (décisions prises), `positions` **×0,81** (positions
+  écrites). *L'ingestion va bien, l'échantillonneur tourne : c'est sa sortie qui rétrécit.*
+
+- **⚠️ Ce que l'audit ne peut PAS dire, et ne dira donc pas** : **ni la cause, ni s'il s'agit d'une
+  dérive.** Deux limites, toutes deux mesurées :
+  1. **La fenêtre ne fait que trois jours.** `position_sampling_decisions` a une rétention de
+     **3,03 j** : il n'existe aucun point avant le 09-03. **Trois points ne distinguent pas une
+     pente d'un cycle hebdomadaire** — c'est l'angle mort n° 3 du référentiel qui se paie ici pour
+     la première fois.
+  2. **Le 09-05 est un samedi — mais l'explication « c'est le week-end » est FAIBLE, et c'est
+     mesuré** : sur `positions` par émetteur, le samedi 08-29 rendait **610** contre **619** le
+     vendredi (−1 %), quand le dimanche 08-30 tombait à **395** (−35 %). *Le samedi n'est pas un
+     jour creux sur cette flotte ; le dimanche l'est.* Un samedi n'explique pas 11 points.
+
+- **`pourquoiInvisible`** : **aucun compteur vert ne la montre.** Les trois lignes de flotte
+  affichent `✅ flotte STABLE (30 contre 30)` et le débit de `positions` est déclaré `✅ stable
+  (×0,81, dans la bande 0,67-1,50)`. **Chaque contrôle dit vrai séparément** ; c'est le *rapport*
+  entre deux d'entre eux qui bouge, et il n'était calculé nulle part.
+
+- **🔑 Seuil de réescalade — le test de réfutation, écrit d'avance** : **au passage du 2026-09-09**,
+  le premier qui mesurera une **journée ouvrée pleine** (mardi 09-08), le taux doit être revenu à
+  **38 % ou plus**. S'il l'est, la variation était un cycle hebdomadaire et le constat se referme.
+  **S'il reste à 32 % ou moins, l'hypothèse du cycle est réfutée** : dérive établie, **gravité 2**
+  confirmée, enquête côté produit.
+
+- **`aNePasFaire`** :
+  ⚠️ **Ne PAS trancher sur le passage du 2026-09-07** : il mesurera un **dimanche**, le seul jour
+  dont on sait déjà qu'il est creux sur cette flotte (395 contre 610). *Un test qui tombe le jour
+  où la mesure ne veut rien dire est **VPS-M41**, et il a déjà été payé une fois.*
+  ⚠️ **Ne pas lire ce constat comme une aggravation de VPS-038.** VPS-038 compte des **émetteurs**
+  (30, stable) ; celui-ci mesure un **taux à effectif constant**. Les confondre ferait croire que
+  la flotte continue de tomber alors qu'elle a arrêté.
+  ⚠️ **Ne pas se réjouir de la baisse de volume de `positions`.** La projection à fenêtre pleine
+  descend de 324 Mo — mais un gain de disque obtenu en écrivant moins de positions n'est un gain
+  que si l'on a **décidé** d'en écrire moins.
+
+- **QUOI FAIRE** : **rien aujourd'hui, et c'est le point.** Attendre le 2026-09-09 et appliquer le
+  test. La seule action utile d'ici là serait côté produit : savoir si une consigne
+  d'échantillonnage a été modifiée entre le 09-03 et le 09-05 — question qui se pose à un humain,
+  pas à la machine.
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M84 — Deux blocs de la même section rendaient des verdicts opposés sur les mêmes fichiers
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-06
+- **Vu** : 2026-09-06 · **Mesure à la découverte** : à **47 h**, `vizyo-manager` et `vizyo-texto`
+  étaient **« ✅ à jour (1 j) »** dans la table de couverture et **« ⚠️ PÉRIMÉE (> 30 h) »** vingt
+  lignes plus bas, **dans la même section, sur les mêmes fichiers**.
+
+  ```
+  ── Couverture : chaque base EN SERVICE a-t-elle une sauvegarde ? ──
+    texto-postgres             ✅ a jour (1 j)          vizyo-texto
+    vizyo-manager-postgres     ✅ a jour (1 j)          vizyo-manager
+  ── Age de la derniere sauvegarde, par dossier ──          ← VINGT LIGNES PLUS BAS
+    vizyo-manager               47 h  ⚠️ PERIMEE (> 30 h)
+    vizyo-texto                 47 h  ⚠️ PERIMEE (> 30 h)
+  ```
+
+- **QUOI — la cause** : **deux unités et deux seuils dans le même bloc de code.** La table de
+  couverture calculait `(MAINTENANT - recent) / 86400` — des **jours entiers, tronqués** — et
+  alertait à `>= 2`, soit **48 h**. Le bloc voisin calcule un `age_h` en **heures** et alerte à
+  **30 h**. **Entre 30 h et 48 h s'ouvre une bande aveugle de dix-huit heures.**
+
+- **`pourquoiInvisible` — et c'est la ligne verte qui gagne** : la table de couverture nomme les
+  **conteneurs**, le bloc par dossier nomme des **répertoires**. Pour rapprocher les deux il faut
+  déjà savoir que `vizyo-texto` est la sauvegarde de `texto-postgres`. Un lecteur s'arrête à la
+  première — c'est elle qui pose la question et qui porte les ✅ — et n'a aucune raison de
+  descendre vérifier qu'on lui dit l'inverse.
+  ⚠️ **Et le moment était le pire possible** : les trois lignes vertes portaient sur les **trois
+  bases de VPS-013**, seul constat de gravité 1 encore ouvert — celles-là mêmes que **VPS-M81**
+  venait de sauver, la veille, d'un faux vert.
+
+- **La famille, à sa troisième forme** : **VPS-M15** lisait la trace et jamais l'unité qui la
+  produit ; **VPS-M81** confondait l'âge et le mécanisme ; celui-ci **mesure deux fois la même
+  chose avec deux règles** et publie les deux. *À chaque fois, la version rassurante est celle qui
+  reste à l'écran.*
+
+- **Le correctif** : le **même seuil de 30 h des deux côtés**, l'âge affiché en **heures** sous
+  48 h, et une bande neuve `🟠 NUIT MANQUÉE`.
+  ⚠️ **Elle ne remplace PAS « en retard », et c'est délibéré** : 31 h est une **exécution sautée**,
+  3 jours un **mécanisme arrêté**. Les fondre reperdrait ce que ce correctif fait gagner.
+
+- **Contre-épreuve** : jouée sur la machine sur **12 âges couvrant les 5 branches** (0, 12, 29, 30,
+  31, 47, 48, 71, 96, 167, 168, 200) **plus la branche dégénérée** (dossier vide) → **zéro
+  divergence** avec le bloc voisin. Rejouée sur les **7 dossiers réels** : `capcom6`,
+  `vizyo-manager` et `vizyo-texto` basculent de `✅ à jour (1 j)` à `🟠 NUIT MANQUÉE (47 h)`.
+  ⚠️ **Portée honnête du banc** : il itère `/var/backups` directement, là où le collecteur
+  rapproche par une clé. Il valide **le verdict**, pas le rapprochement.
+  ⚠️ **Le vrai risque n'était pas dans la bande neuve, il était aux DEUX BORNES** : le premier banc
+  n'exerçait que 31 h et 47 h, et ils passaient tous les deux. C'est en ajoutant **48, 167 et 168**
+  que la frontière `ABANDONNEE` a été vérifiée intacte après changement d'unité.
+
+- **`aNePasFaire`** : ⚠️ **ne pas supprimer le bloc « âge par dossier » sous prétexte qu'il fait
+  doublon.** Les deux ne couvrent pas le même ensemble : la couverture part des **bases en
+  service**, le bloc par dossier part des **dossiers existants** — et c'est ce second qui voit un
+  dossier de sauvegarde dont la base a disparu. *Le défaut était la divergence de seuil, pas la
+  redondance.*
+
+- **COÛT : ZÉRO commande supplémentaire** — `recent` était déjà un horodatage epoch, il était
+  seulement divisé trop tôt.
+
+---
 
 ### VPS-M83 — Une explication rassurante offerte sans le test qui la réfuterait
 

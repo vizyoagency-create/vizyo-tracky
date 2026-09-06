@@ -1,7 +1,7 @@
 {
   "title": "Audit VPS — performances, données et sécurité",
   "intro": "Ce que la machine encaisse : disque, mémoire, conteneurs, données, sécurité. Un passage par jour, en lecture seule — l'agent observe et propose, il ne touche à rien.",
-  "updatedAt": "2026-09-05",
+  "updatedAt": "2026-09-06",
   "sections": [
     {
       "key": "guide",
@@ -227,8 +227,8 @@
       "statut": "A_TRAITER",
       "gravite": 1,
       "vuPremiere": "2026-09-02",
-      "vuDerniere": "2026-09-05",
-      "mesure": "2026-09-05 : les SIX sont muets depuis 108,6 a 110,6 h (4,6 jours), tous OFFLINE, tous dans la flotte 2ad69ac1. Le seuil ecrit le 09-03 exigeait leur retour « au passage du 2026-09-05 » : il n est pas tenu, la gravite passe a 1. La premiere branche (un SEPTIEME boitier de cette flotte) n est PAS franchie — 2ad69ac1 compte toujours 8 silencieux sur 30, dont 2 anterieurs a l incident. ET LA FLOTTE CONTINUE DE SE REDUIRE : deux boitiers de plus le 09-03, dans DEUX flottes differentes (864035053277662 / 7cc3c2f7 a 18 h 38, 864035054756649 / 88627f81 a 01 h 45). positions par jour sur huit jours : 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30, soit -23 %. Le volume ne le montre pas : 21 464 lignes le 09-04 contre 21 930 le 09-03 (-2 %) pour 6 % d emetteurs en moins ; le rapport a J-7 le dit (x0,82).",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : PREMIER PASSAGE SANS PERTE NOUVELLE DEPUIS LE 08-31. Les quatorze silencieux d hier sont les quatorze d aujourd hui, chacun vieilli de 24 h : aucun nom neuf. Les trois chemins de code donnent 30 emetteurs contre 30 (wire_logs, positions, position_sampling_decisions) — la trajectoire s arrete : 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 · 30. La cohorte est a 134,4 - 136,3 h (5,6 jours), tous les six OFFLINE, tous dans 2ad69ac1, tous encore rattaches a un vehicule. ⚠️ LE CONSTAT NE REDESCEND PAS, et c est le SEUIL qui le dit : il exige 32 sur une journee complete, il est a 30. Un compteur qui arrete de descendre n est pas un compteur qui remonte — neuf boitiers manquent toujours a l appel. Ventilation par bande (VPS-M78) : 6-24 h = 0, 1-3 j = 2 → 1, 3-7 j = 6 → 7, > 7 j = 6 ; UN SEUL boitier a bouge, d une bande a la suivante, ce qui explique la totalite de l ecart d un total identique a 14.",
       "quoi": "Six arrets independants ne tombent pas dans une fenetre de deux heures : il y a une cause commune, et l appartenance des six a une SEULE flotte la resserre encore. ⚠️ Ce que l audit ne peut PAS dire depuis la machine, et ne dira donc pas : LAQUELLE. Un site partage (depot, parking), une coupure d operateur ou de SIM, une action de flotte et une panne d alimentation groupee produisent la MEME trace ici. Nommer l une d elles serait VPS-M01 — une plausibilite presentee comme une identification. ⚠️ Ce n est PAS un deploiement : les quatre reconstructions de tracky-api du 09-01 (09 h 35, 14 h 23, 14 h 46, 15 h 09) sont posterieures de 20 a 25 heures au dernier arret.",
       "gain": "Dater la perte a l heure, etablir qu elle est GROUPEE et MONO-FLOTTE, et fournir les six IMEI — ce que ni le centre d alerte ni l ecran ne produisent sous cette forme. Six arrets en deux heures ont une cause commune : la trouver en regle six.",
       "quoiFaire": "RIEN sur le VPS. Porter les six IMEI et l heure de leur derniere trame a l exploitant de la flotte 2ad69ac1, et chercher ce qu ils ont en commun (site, lot d installation, operateur SIM). SEUIL DE REESCALADE REECRIT LE 2026-09-05 : redescend en gravite 2 des que le compte d emetteurs de positions repasse a 32 sur une journee COMPLETE, et en SURVEILLANCE a 38 ; reste en gravite 1 tant que ce compte ne remonte pas, QUEL QUE SOIT l etat des autres compteurs.",
@@ -471,8 +471,8 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-23",
-      "vuDerniere": "2026-09-05",
-      "mesure": "2026-09-05, 10e echec sur 12 : cache apt de 9 h pour un seuil de 6 h → NON MESURABLE. Et ce passage montre le prix : les deux sources INDICATIVES passent de « 75, dont 0-1 securite » a « 95 dont 20 » (apt) et « 101 dont 26 » (update-notifier). Deux compteurs qui ne comptent pas la meme chose bougent dans le meme sens et du meme ordre de grandeur — un lot de correctifs de securite a ete publie. Ce n est PAS une mesure, c est une RAISON DE REFAIRE LA MESURE, et c est precisement ce que ce constat empeche de faire a volonte.",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : PREMIERE MESURE VALIDE DEPUIS ONZE PASSAGES, et par chance — le cache apt avait 1 h. Elle tranche l alerte laissee ouverte hier : cache apt 75 paquets dont 0 securite, update-notifier 75 dont 1, contre 95 dont 20 et 101 dont 26 la veille SUR UN CACHE DE 9 H donc hors mesure. Entre les deux, apt-daily-upgrade a tourne le 09-05 a 06 h 41 min 30 : LE CANAL A FAIT SON TRAVAIL — et la seule raison pour laquelle on peut l affirmer est que le rapport d hier s etait interdit d appeler « mesure » ce qui n en etait pas une. ⚠️ Ce vert ne referme PAS le constat : la mesure n a ete valide que parce que le tirage aleatoire d apt-daily est tombe a 02 h 59, une heure avant la collecte. La cause est intacte. ⚠️ Et les 75 restants ne sont pas encore un retard (VPS-M74) : le cache a ete rafraichi 20 h APRES le dernier passage de l installateur. Test ecrit : si au passage suivant l installation du 09-06 06 h 31 a eu lieu ET que le compte n a pas baisse, la panne est etablie.",
       "quoi": "apt-daily.timer porte OnCalendar=*-*-* 6,18:00 et RandomizedDelaySec=12h : l heure du rafraichissement est TIREE AU HASARD dans une fenetre de douze heures, deux fois par jour. Executions reellement journalisees : 09:15, 18:23, 10:39, 03:04, 13:30, 02:59, 09:11. Le seul passage qui a mesure (08-21) est celui qui est tombe du bon cote du tirage.",
       "gain": "Restaure une mesure perdue 6 fois sur 9 — ET rend la POSITION de la mesure dans le cycle rafraichir → installer constante d un passage a l autre. Ce second benefice n avait jamais ete ecrit ; il est etabli le 2026-09-02.",
       "quoiFaire": "Figer le delai aleatoire cote VPS : « systemctl edit apt-daily.timer » puis [Timer] / RandomizedDelaySec=30m. C est la SEULE correction deterministe. CONTREPARTIE REELLE : le delai aleatoire existe pour etaler la charge sur les miroirs Ubuntu — le reduire sur une machine est sans effet mesurable, le generaliser ne le serait pas. Preferer 30m a 0.",
@@ -1213,8 +1213,8 @@
       "statut": "A_TRAITER",
       "gravite": 4,
       "vuPremiere": "2026-08-04",
-      "vuDerniere": "2026-09-05",
-      "mesure": "2026-09-05 : random_page_cost = 4 sur 5 bases sur 7, dont vizyo-verify-postgres (PRODUCTION). ⚠️ Le compte passe de 5/6 a 5/7 sans qu aucun reglage n ait change : c est le DENOMINATEUR qui a ete corrige (VPS-M80). vizyo-auth-db n est pas encore mesure sur ce point — la lecture arrivera au passage du 2026-09-06.",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : 6 bases sur 7 sont a random_page_cost = 4, seule tracky-postgres est a 1.1. ⚠️ Le compte monte de 5/7 a 6/7 SANS QU AUCUN REGLAGE N AIT CHANGE : c est vizyo-auth-db — la base d authentification de TOUTES les applications — qui entre dans la mesure pour la premiere fois, rattrapee par VPS-M80. Le numerateur a cesse d etre aveugle ; le parc, lui, est inchange. ✅ Et le denominateur est enfin honnete : le levier affiche « 7 / 7 bases PostgreSQL examinees » au lieu du « 6 / 6 » d une machine qui en porte sept. L enjeu de performance reste nul (bases de 8 a 28 Mo, cache a 99,99 - 100 %) ; l enjeu de methode ne l est pas.",
       "gain": "le planificateur cesse de surestimer le cout des acces aleatoires sur SSD",
       "quoi": "La valeur 4 dit au planificateur qu'un accès aléatoire coûte 4× un accès séquentiel — vrai sur disque à plateaux, faux sur SSD. Il préfère donc des parcours de table là où un index serait plus rapide.",
       "quoiFaire": "ALTER SYSTEM SET random_page_cost = 1.1; SELECT pg_reload_conf(); sur les TROIS bases de production. Reversible instantanement, aucune interruption.",
@@ -1298,8 +1298,8 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-04",
-      "vuDerniere": "2026-09-05",
-      "mesure": "2026-09-05 : github-actions-vizyo-auth passe de 12 a 16 connexions root — serie 0 → 12 → 16 en trois passages, toujours SANS aucune option de restriction. vizyo-vps-hostinger (cle humaine, volontairement non restreinte) a 10 442. 2 empreintes vues sur la fenetre, 0 non declaree. La serie clot le debat ouvert le 09-03 : cette cle n est pas dormante, c est un acces root de CI en usage quotidien.",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06, quatrieme jour, et la progression s arrete : github-actions-vizyo-auth reste a 16 connexions root (0 → 12 → 16 → 16), toujours SANS AUCUNE option de restriction. 2 empreintes vues sur la fenetre, 0 NON DECLAREE. ⚠️⚠️ ET IL NE FAUT PAS LIRE LA BAISSE DE vizyo-vps-hostinger (10 442 → 9 127) COMME UNE ACCALMIE : ces compteurs portent sur une FENETRE GLISSANTE DE 7 JOURS, qui vient de laisser sortir le 08-29 pour n entrer que 4 heures du jour en cours. C est la fenetre qui a bouge, pas l usage — le total des sessions SSH le confirme par la meme mecanique (10 458 → 9 143). Consequence pour ce constat : la serie 0 → 12 → 16 → 16 est ELLE AUSSI glissante ; un palier n y prouve pas un arret d usage, seulement que les entrees et les sorties de fenetre se compensent.",
       "gain": "une cle CI volee ne donne plus acces aux bases par tunnel",
       "quoi": "Ce n est PAS une intrusion : la cle est declaree dans authorized_keys, son commentaire la nomme, et son usage est celui d une cle de deploiement GitHub Actions ordinaire. LE CONSTAT EST AILLEURS : le correctif du 2026-08-04 — poser no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc sur les cles de CI, pour qu une cle volee ne serve pas de TUNNEL vers Postgres, Redis ou MinIO — A REGRESSE SUR UNE CLE AJOUTEE DIX-NEUF JOURS APRES LUI. Le gain tient toujours sur github-actions-deploy-maalem ; il n a jamais existe sur celle-ci.",
       "quoiFaire": "Poser sur github-actions-vizyo-auth les memes options que sur l autre cle de CI : dix secondes, aucun effet de bord, et c est le geste DEJA PROUVE le 2026-08-04 sur une cle de test jetable. Relever la ligne AVANT de la modifier : grep -n github-actions-vizyo-auth /root/.ssh/authorized_keys",
@@ -1316,8 +1316,8 @@
       "statut": "A_TRAITER",
       "gravite": 1,
       "vuPremiere": "2026-08-05",
-      "vuDerniere": "2026-09-05",
-      "mesure": "2026-09-05, 28e passage — LE CONSTAT EST INTACT MALGRE TROIS LIGNES VERTES. La table de couverture affiche « ✅ a jour (0 j) » sur les trois bases : c est un DUMP LANCE A LA MAIN le 2026-09-04 a 04 h 52 min 04, la meme seconde pour les trois, et rien ne le rejouera (aucun timer, aucun cron, aucun script). Discriminant pose ce passage (VPS-M81) : vizyo-manager salve precedente a 142 jours, texto et capcom6 une SEULE copie chacun. Sans ce discriminant, ce constat de gravite 1 aurait paru referme pendant SEPT jours.",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06, 29e passage, INTACT — et les trois lignes vertes sont enfin passees a l orange. Le correctif VPS-M84 aligne le seuil de la table de couverture sur celui de son bloc voisin : capcom6, vizyo-manager et vizyo-texto, a 47 h, affichent desormais « 🟠 NUIT MANQUEE (47 h > 30 h) » au lieu de « ✅ a jour (1 j) ». Le dump manuel du 09-04 a cesse de les blanchir au bout de 43 heures au lieu de sept jours. Discriminant de cadence (VPS-M81) inchange : vizyo-manager salve precedente a 142 j, texto et capcom6 une seule copie chacun. ✅ ET LE GABARIT A COPIER A FAIT SES PREUVES : vizyo-auth-backup.timer s est declenche SEUL DEUX FOIS (09-05 04:01:41, 09-06 04:04:10), retention 30 j active, 3 copies, cadence mesuree 24 h. Il n y a plus rien a concevoir pour les trois autres, seulement a copier. Creneaux pris : 03 h 00, 03 h 30, 04 h 00 — 04 h 30 est libre.",
       "gain": "ferme le seul risque de perte de donnees definitive de la machine",
       "quoi": "Sur 7 moteurs de base en service, deux seulement sont sauvegardes (tracky, verify) et deux sont du developpement. Restent vizyo-manager-postgres (abonnements Stripe, factures, clients — derniere copie le 2026-04-15), texto-postgres (passerelle SMS : messages, allowlist) et capcom6-mysql (relais SMS). Pour vizyo-manager le dossier existe avec 25 copies, mais plus aucun timer ne les produit : la sauvegarde n'a pas echoue, elle a ete DEBRANCHEE, et les fichiers restants donnent l'apparence contraire.",
       "quoiFaire": "Deriver une unite systemd pour chacune des trois bases, sur le modele de vizyo-auth-backup.timer POSE LE 2026-09-04 SUR CETTE MACHINE : OnCalendar quotidien, RandomizedDelaySec=300, Persistent=true, retention 30 j, StandardOutput=journal. `systemctl cat vizyo-auth-backup.timer vizyo-auth-backup.service` donne le gabarit. ⚠️ Creneaux PRIS : 03 h 00 (tracky-backup), 03 h 30 (vizyo-verify-backup), 04 h 00 (vizyo-auth-backup depuis le 09-04). 04 h 30 est libre. ⚠️ Ne PAS remettre un cron : VPS-003 est ne de la.",
@@ -1350,8 +1350,8 @@
       "statut": "A_TRAITER",
       "gravite": 2,
       "vuPremiere": "2026-08-06",
-      "vuDerniere": "2026-09-05",
-      "mesure": "2026-09-05 : LE MOTIF DE CE CONSTAT EST RECONNU ET REFERME AILLEURS, PAR ECRIT. vizyo-auth-backup.service, cree le 2026-09-04, porte dans son en-tete : « Absente jusqu au 03/09/2026 : les scripts de sauvegarde etaient deposes sur le VPS depuis le 07/03/2026 mais rien ne les appelait. » — VPS-015 mot pour mot, sur une autre application, diagnostique et corrige sans cet audit. ET LE MOTIF S EST REPRODUIT UNE TROISIEME FOIS LE MEME JOUR SANS ETRE VU : /opt/vizyo-manager/deploy/backup-db.sh est sur la machine depuis le 2026-03-21 et personne ne l appelle (VPS-013, VPS-M81). Trois occurrences en six mois, sur trois applications. ⚠️ vizyo-auth-backup.timer n a JAMAIS tourne seul : sa seule execution est manuelle (09-04 a 07 h 34), premiere echeance automatique le 09-05 a 04 h 04. TEST ECRIT D AVANCE : au passage du 2026-09-06, /var/backups/vizyo-auth doit porter DEUX copies et une cadence d environ 20 h, pas « une seule salve ».",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : LE MODE D ECHEC DE CE CONSTAT NE SE REJOUE PAS SUR vizyo-auth, ET C EST MESURE, PAS SUPPOSE. Le test ecrit d avance le 09-05 exigeait deux copies et une cadence d environ 20 h : la machine rend TROIS copies et 24 h — vizyo_auth_20260904-073414 (lancement manuel), 20260905-040141 et 20260906-040410 (echeances AUTOMATIQUES), avec « systemd[1]: Starting vizyo-auth-backup.service » au journal et « 3 sauvegarde(s) en place ». C est systemd qui demarre l unite, pas une session : un script pose, une unite declaree et rien qui se declenche — le motif exact de ce constat — a ete EXCLU par la mesure. ⚠️ Pourquoi la reserve avait ete ecrite : la collecte du 09-05 tournait a 02 h 22, soit 1 h 40 AVANT la premiere echeance ; le rapport d hier ne pouvait pas voir cette execution, et il a eu raison de ne pas la supposer.",
       "gain": "Rend une sauvegarde de pieces d identite qui n a jamais existe",
       "quoi": "Le script /opt/vizyo-verify/deploy/vps/backup.sh est en -rw-rw-r-- : il a perdu son bit d execution. Tout le dossier porte l horodatage Aug 5 01:40 et les droits 664 — la signature d un scp -r, qui ne preserve les permissions qu avec -p. Le timer se declenche, systemd ne peut pas executer le fichier, 4 ms de CPU, echec.",
       "quoiFaire": "Le volet symptome est ferme par accident ; la CAUSE est intacte. Poser ExecStart=/bin/bash /opt/vizyo-verify/deploy/vps/backup.sh, pour que le bit d execution cesse d etre une condition de survie de la sauvegarde — le prochain scp -r sans -p le retirera comme le 5 aout. TEST ECRIT D AVANCE, gratuit : l echeance du 2026-08-13 03h30:53 dira si le chemin AUTOMATIQUE fonctionne. Reussite -> volet symptome en APPLIQUE ; 203/EXEC -> le bit a deja ete reperdu et on est revenu au jour 1.",
@@ -2191,9 +2191,89 @@
       "aNePasFaire": "NE PAS se contenter de corriger la syntaxe d'un seuil sans essayer sa branche degeneree : le seuil vide devait REFUSER de classer, pas afficher un « aucune boucle active » rassurant calcule sur rien (VPS-M28). ET NE PAS oublier le controle qui compte : ajouter un 7e champ au gabarit docker inspect est precisement le geste qui avait fait disparaitre sept conteneurs en silence (VPS-M08) — verifie avant tout le reste, 33 / 33 lignes rendues.",
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-m38-redemn-est-un-compteur-cumule-publie-sans-sa-fenetre-et-il-accuse-un-conteneur-sain"
+    },
+    {
+      "id": "VPS-039",
+      "titre": "Le taux de retention de l echantillonnage perd 11 points en trois jours, a flotte constante",
+      "domaine": "donnees",
+      "statut": "SURVEILLANCE",
+      "gravite": 2,
+      "vuPremiere": "2026-09-06",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : la part des decisions d echantillonnage qui devient une position ENREGISTREE passe de 40,8 % (09-03) a 34,7 % (09-04) puis 29,8 % (09-05), soit -11 points en trois jours — sur une flotte STABLE a 30 emetteurs et un volume de decisions stable (53 810 · 61 832 · 58 423). Le jour en cours (14,1 %) est PARTIEL et ne se compare pas (VPS-M61). C est cette grandeur qui porte l ecart entre les trois compteurs de la section 5 : wire_logs x0,95 (trames recues), position_sampling_decisions x0,94 (decisions prises), positions x0,81 (positions ecrites).",
+      "quoi": "L ingestion va bien et l echantillonneur tourne : c est sa SORTIE qui retrecit. ⚠️ Ce que l audit ne peut PAS dire, et ne dira donc pas : ni la cause, ni s il s agit d une derive. La fenetre ne fait que TROIS JOURS (position_sampling_decisions a une retention de 3,03 j : aucun point avant le 09-03), et trois points ne distinguent pas une pente d un cycle hebdomadaire.",
+      "pourquoiInvisible": "AUCUN compteur vert ne la montre. Les trois lignes de flotte affichent « ✅ flotte STABLE (30 contre 30) » et le debit de positions est declare « ✅ stable (x0,81, dans la bande 0,67-1,50) ». Chaque controle dit vrai SEPAREMENT ; c est le RAPPORT entre deux d entre eux qui bouge, et il n etait calcule nulle part.",
+      "quoiFaire": "RIEN aujourd hui, et c est le point : appliquer le test de refutation au passage du 2026-09-09, le premier qui mesurera une journee ouvree pleine (mardi 09-08). Taux >= 38 % : la variation etait un cycle hebdomadaire, le constat se referme. Taux <= 32 % : l hypothese du cycle est REFUTEE, derive etablie, gravite 2 confirmee et enquete cote produit. La seule action utile d ici la est cote produit : savoir si une consigne d echantillonnage a ete modifiee entre le 09-03 et le 09-05.",
+      "gain": "Rattraper, a effectif de flotte constant, une baisse de 27 % du volume ecrit que tous les compteurs de sante declarent verte.",
+      "aNePasFaire": "⚠️ NE PAS trancher au passage du 2026-09-07 : il mesurera un DIMANCHE, le seul jour dont on sait deja qu il est creux sur cette flotte (395 positions par emetteur le 08-30 contre 610 le samedi 08-29). Un test qui tombe le jour ou la mesure ne veut rien dire est VPS-M41, deja paye une fois. ⚠️ NE PAS ecrire « c est le week-end » : l explication est mesurable, et elle a ete mesuree — le samedi 08-29 rendait 610 contre 619 le vendredi (-1 %), quand le dimanche tombait a 395 (-35 %). Le samedi n est PAS un jour creux sur cette flotte, il n explique pas 11 points (VPS-M83). ⚠️ NE PAS lire ce constat comme une aggravation de VPS-038 : l un compte des EMETTEURS (30, stable), l autre mesure un TAUX a effectif constant. ⚠️ NE PAS se rejouir de la baisse de volume de positions : la projection a fenetre pleine descend de 324 Mo, mais un gain de disque obtenu en ecrivant moins de positions n est un gain que si l on a DECIDE d en ecrire moins.",
+      "piste": "Conserver le taux du jour dans le manifeste (cle tauxRetentionEchantillonnagePct, posee ce passage) : c est la seule memoire longue possible sur une table dont la retention est plus courte que le cycle hebdomadaire — exactement ce que la cle imagesTotal a permis pour le menage de 00 h 40.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-039-le-taux-de-retention-de-lechantillonnage-perd-11-points-en-trois-jours-a-flotte-constante"
+    },
+    {
+      "id": "VPS-M84",
+      "titre": "Deux blocs de la meme section rendaient des verdicts opposes sur les memes fichiers",
+      "domaine": "methode",
+      "statut": "APPLIQUE",
+      "gravite": 2,
+      "vuPremiere": "2026-09-06",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : a 47 h, vizyo-manager et vizyo-texto etaient « ✅ a jour (1 j) » dans la table de couverture et « ⚠️ PERIMEE (> 30 h) » VINGT LIGNES PLUS BAS, dans la meme section, sur les memes fichiers. capcom6 aussi.",
+      "quoi": "Deux unites et deux seuils dans le meme bloc de code. La table de couverture calculait (MAINTENANT - recent) / 86400 — des JOURS ENTIERS, TRONQUES — et alertait a >= 2, soit 48 h. Le bloc voisin calcule un age_h en HEURES et alerte a 30 h. Entre 30 h et 48 h s ouvrait une BANDE AVEUGLE DE DIX-HUIT HEURES.",
+      "pourquoiInvisible": "C est la ligne VERTE qui gagne. La table de couverture nomme les CONTENEURS, le bloc par dossier nomme des REPERTOIRES : pour rapprocher les deux il faut deja savoir que vizyo-texto est la sauvegarde de texto-postgres. Un lecteur s arrete a la premiere — c est elle qui pose la question et qui porte les ✅ — et n a aucune raison de descendre verifier qu on lui dit l inverse. ⚠️ Et le moment etait le pire possible : les trois lignes vertes portaient sur les TROIS BASES DE VPS-013, seul constat de gravite 1 encore ouvert — celles-la memes que VPS-M81 venait de sauver, la veille, d un faux vert. Troisieme forme de la meme famille : VPS-M15 lisait la trace et jamais l unite, VPS-M81 confondait l age et le mecanisme, celui-ci mesure DEUX FOIS LA MEME CHOSE AVEC DEUX REGLES et publie les deux. A chaque fois, la version rassurante est celle qui reste a l ecran.",
+      "quoiFaire": "APPLIQUE : le meme seuil de 30 h des deux cotes, l age affiche en HEURES sous 48 h, et une bande neuve « 🟠 NUIT MANQUEE ». Contre-epreuve jouee sur la machine sur 12 ages couvrant les 5 branches (0, 12, 29, 30, 31, 47, 48, 71, 96, 167, 168, 200) plus la branche degeneree (dossier vide) : ZERO divergence avec le bloc voisin. Rejouee sur les 7 dossiers reels : capcom6, vizyo-manager et vizyo-texto basculent de « ✅ a jour (1 j) » a « 🟠 NUIT MANQUEE (47 h) ». COUT : ZERO commande supplementaire — recent etait deja un horodatage epoch, il etait seulement divise trop tot.",
+      "gain": "Un dump manuel cesse de blanchir une base pendant 48 h la ou le controle voisin alerte des 30 h. Sur les trois bases de VPS-013, le faux vert passe de 7 jours (avant VPS-M81) a 43 heures (apres VPS-M81) a ZERO.",
+      "aNePasFaire": "⚠️ NE PAS supprimer le bloc « age par dossier » sous pretexte qu il fait doublon : les deux ne couvrent pas le meme ensemble — la couverture part des BASES EN SERVICE, le bloc par dossier part des DOSSIERS EXISTANTS, et c est ce second qui voit un dossier de sauvegarde dont la base a disparu. Le defaut etait la divergence de SEUIL, pas la redondance. ⚠️ NE PAS fondre « NUIT MANQUEE » dans « en retard » : 31 h est une EXECUTION SAUTEE, 3 jours un MECANISME ARRETE. Les fondre reperdrait ce que ce correctif fait gagner. ⚠️ Portee honnete du banc : il itere /var/backups directement, la ou le collecteur rapproche par une cle. Il valide LE VERDICT, pas le rapprochement.",
+      "piste": "Le vrai risque n etait PAS dans la bande neuve, il etait AUX DEUX BORNES : le premier banc n exercait que 31 h et 47 h, et ils passaient tous les deux. C est en ajoutant 48, 167 et 168 que la frontiere ABANDONNEE a ete verifiee intacte apres changement d unite de comparaison.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m84-deux-blocs-de-la-meme-section-rendaient-des-verdicts-opposes-sur-les-memes-fichiers"
     }
   ],
   "passages": [
+    {
+      "date": "2026-09-06",
+      "verdict": "✅ LE TEST ECRIT D AVANCE LE 09-05 EST REPONDU, ET IL EST TENU : vizyo-auth-backup s est declenche SEUL le 09-05 a 04:01:41 et le 09-06 a 04:04:10 (systemd[1]: Starting au journal), 3 copies, cadence 24 h, retention 30 j active — le mode d echec de VPS-015 ne se rejoue pas. ✅ ET VPS-038 CONNAIT SON PREMIER PASSAGE SANS PERTE NOUVELLE DEPUIS LE 08-31 : les 14 silencieux d hier sont les 14 d aujourd hui, chacun vieilli de 24 h, et les TROIS chemins de code donnent 30 emetteurs contre 30 ; la trajectoire s arrete (39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 · 30). Le constat RESTE EN GRAVITE 1 : le seuil exige 32, pas un arret de la chute. 🔴 MAIS UNE GRANDEUR TOMBE DEPUIS TROIS JOURS ET AUCUN COMPTEUR VERT NE LA MONTRE (🆕 VPS-039) : a flotte stable a 30 et volume de decisions stable, la part des decisions qui devient une position enregistree passe de 40,8 % a 34,7 % puis 29,8 % — c est elle qui porte le x0,81 de positions quand wire_logs fait x0,95. ⚠️ La fenetre de mesure ne fait que 3 jours (retention 3,03 j) : je ne peux pas encore separer une derive d un cycle hebdomadaire, donc je ne le fais pas, et j ecris le test qui tranchera le 2026-09-09. 🔴 ET DEUX BLOCS DE LA MEME SECTION RENDAIENT DES VERDICTS OPPOSES SUR LES MEMES FICHIERS (🆕 VPS-M84, corrige ce passage) : a 47 h, vizyo-manager et vizyo-texto etaient « ✅ a jour (1 j) » dans la table de couverture et « ⚠️ PERIMEE (> 30 h) » vingt lignes plus bas — un age tronque en jours contre un age en heures, une bande aveugle de DIX-HUIT HEURES, sur les TROIS BASES DE VPS-013. ✅ ANGLE MORT N° 9 TRAITE APRES 22 REPORTS : le certificat SERVI est bien celui du VOLUME (empreintes identiques sur les deux domaines) — et la mesure retourne une ligne verte d hier, « acme.json reecrit le 09-04 » datait le renouvellement d auth.vizyoagency.com, pas de Tracky, dont les certificats ont 24 jours. C etait la question ouverte du 09-05, et elle avait raison. ✅ ANGLE MORT N° 3 FERME : vizyo-auth-db est mesuree (28 Mo, AuditLog 19 Mo, random_page_cost = 4), et le denominateur du levier 4 passe a 7 / 7. ✅ VPS-033 rend sa PREMIERE MESURE VALIDE depuis onze passages, et les « 20 a 26 correctifs de securite » d hier ont ete INSTALLES (75 paquets, 0 securite). Par ailleurs la machine va bien : 33/33 conteneurs, production en 99 · 102 · 47 · 118 ms, 0 OOM en 30 j, PSI full 0,00, memoire a 35 %, disque a 53 % avec 46 Go libres et 1 Go d occupation rendu malgre 1,94 Go d images neuves, dockerd eteint pour le 20e jour a 2,3 % d un coeur.",
+      "chiffres": {
+        "disqueUtilisePct": 53,
+        "disqueRecuperableGo": 10.1,
+        "ramUtiliseePct": 35,
+        "swapUtiliseMo": 1147,
+        "chargeMoyenne1m": 0.32,
+        "conteneursActifs": 33,
+        "conteneursMorts": 0,
+        "paquetsEnRetard": "75, dont 0 estampilles securite — ✅ MESURE VALIDE (cache apt de 1 h), la premiere depuis onze passages. update-notifier, source independante et aussi fraiche : 75 dont 1. ⚠️ Ce n est PAS encore un retard (VPS-M74) : le cache a ete rafraichi 20 h APRES le dernier passage de l installateur, ces paquets ont ete decouverts depuis. Et les « 20 a 26 securite » du 09-05 etaient un artefact de cache perime : apt-daily-upgrade a tourne le 09-05 a 06:41:30 et les a installes.",
+        "echecsSshJour": 3,
+        "healthchecksParMin": 65,
+        "processusParMin": 1272,
+        "dockerdPctCoeur": 2.3,
+        "collecteSecondes": 116,
+        "cacheBuildGo": 10.13,
+        "cacheBuildPrivateGo": 10.1,
+        "chargeApresCollecte": 1.57,
+        "dockerdHeuresCpuCumul": 237.8,
+        "sessionsSshReussies7j": 9143,
+        "sessionsSshPicJour": 4528,
+        "emetteursDistincts24h": 30,
+        "tramesParHeureParBoitier24h": 102.5,
+        "positionsArrivees24h": 17317,
+        "positionsRatioVeille": 0.81,
+        "positionsRatioJ7": 0.72,
+        "imagesTotal": 27,
+        "registreSilencieuxTotal": 14,
+        "registreSilencieuxPlus3j": 13,
+        "tauxRetentionEchantillonnagePct": 29.8
+      },
+      "aTraiter": [
+        "Donner un MECANISME aux trois bases de VPS-013 (29e passage) — le gabarit a copier a maintenant FAIT SES PREUVES : vizyo-auth-backup.timer s est declenche seul deux fois. Creneaux pris : 03 h 00, 03 h 30, 04 h 00 ; 04 h 30 est libre. Ne pas remettre un cron (VPS-003).",
+        "Retrouver les six boitiers de la flotte 2ad69ac1 (VPS-038, GRAVITE 1) — 136 heures de silence. Rien a faire sur le VPS : la chaine d ingestion est saine, mesuree trois fois par trois chemins de code.",
+        "Trancher VPS-039 au passage du 2026-09-09 (mardi 09-08, journee ouvree pleine) : taux >= 38 % = cycle hebdomadaire, taux <= 32 % = derive etablie. ⚠️ NE PAS trancher le 09-07, qui mesurera un dimanche (VPS-M41).",
+        "Restreindre la cle github-actions-vizyo-auth (VPS-012) — 16 connexions root, quatrieme passage sans restriction.",
+        "Sortir du parc les 6 boitiers muets depuis plus de 7 jours (dont 3 sans aucun vehicule, muets depuis 66,8 et 92,7 jours) — decision PRODUIT, pas suppression.",
+        "Donner un second depositaire a la copie hors-site (VPS-037) — elle depend du meme poste que la planification de cet audit.",
+        "Obtenir de l hebergeur la liste de ce que son canal guest-exec s autorise sans preavis (VPS-036).",
+        "Verifier au passage suivant que les 75 paquets ont baisse (test VPS-M74) : l installation etait prevue le 09-06 a 06 h 31. Si elle a eu lieu et que le compte n a pas baisse, la panne du canal est etablie."
+      ]
+    },
     {
       "date": "2026-09-05",
       "verdict": "🔴 VPS-038 PASSE EN GRAVITE 1 : le seuil ECRIT D AVANCE le 09-03 arrivait a echeance aujourd hui et il n est pas tenu — les six boitiers sont muets depuis 108,6 a 110,6 h (4,6 jours). Et la flotte continue de se reduire : positions compte 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 emetteurs par jour sur huit jours, soit -23 %, avec DEUX boitiers de plus tombes le 09-03 dans deux flottes DIFFERENTES. 🔴 TROIS BASES DE PRODUCTION AFFICHENT « ✅ a jour (0 j) » ET AUCUN MECANISME NE LES PRODUIT : le 09-04 a 04 h 52 min 04, la meme seconde pour les trois, quelqu un a lance a la main un dump de vizyo-manager, vizyo-texto et capcom6 — les trois bases que VPS-013 signale sans filet depuis 27 passages. La table de couverture serait restee verte SEPT JOURS (🆕 VPS-M81, corrige ce passage : l age de la derniere copie ne distingue pas un MECANISME d un GESTE). 🔴 ET UNE BASE DE PRODUCTION N A JAMAIS ETE REGARDEE PAR CET AUDIT, DEPUIS LE PREMIER PASSAGE : vizyo-auth-db (postgres:17-alpine) porte l authentification de TOUTES les applications ; son nom finit par -db, le filtre d enumeration le ratait — absent de la section 5, absent de la couverture des sauvegardes, et absent du DENOMINATEUR du levier 4, qui annoncait « ✅ 6 / 6 bases PostgreSQL examinees » sur une machine qui en porte SEPT (🆕 VPS-M80, corrige ce passage). 🆕 VPS-M82 : le controle d integrite imprimait sa propre refutation — il declarait l archive capcom6 « SANS marqueur de fin » et affichait, une ligne plus bas, « -- Dump completed on ... » (motif monolingue sur un parc bilingue). 🆕 VPS-M83 : les deux explications rassurantes du 09-04 n ont tenu ni l une ni l autre — le « vehicule gare pour la nuit » est a 31,5 h, le second a 48,6 h ; une explication ecrite pour desamorcer un chiffre doit porter le test qui la refuterait, ou ne pas etre ecrite. ✅ ET UNE RECOMMANDATION DE CE PLAN D ACTION A ETE APPLIQUEE A LA LETTRE : vizyo-auth a recu le 09-04 une vraie unite quotidienne a 04 h 00 UTC — le creneau exact designe comme libre — avec RandomizedDelaySec, Persistent, retention 30 j et journalisation ; son en-tete nomme sa propre cause, qui est VPS-015 mot pour mot. ✅ ANGLE MORT N° 2 TRAITE : le menage de 00 h 40 a retire 6 entrees d image en 24 h (28 + 4 - 26), mesure pour la premiere fois grace a la cle imagesTotal posee la veille. Par ailleurs la machine va bien : 33/33 conteneurs, production en 30 · 28 · 27 · 160 ms, 0 OOM en 30 j, PSI full 0,00, memoire a 32 %, disque a 53 % avec 46 Go libres (+1 Go) malgre 4,20 Go d images neuves, dockerd eteint pour le 19e jour a 2,5 % d un coeur.",
@@ -3454,12 +3534,12 @@
     {
       "id": "audit-vps",
       "couche": "Poste",
-      "heureLocale": "VARIABLE — OBSERVE a 02:21:17 le 2026-09-03, 02:22:18 le 09-02, mais 07:39 le 09-01",
-      "heureUtc": "VARIABLE — OBSERVE a 02:21:17 le 2026-09-03, 02:22:18 le 09-02, mais 07:39 le 09-01",
+      "heureLocale": "VARIABLE — OBSERVE a 06:05:17 le 2026-09-06, 04:21:23 le 09-05, 04:22:18 le 09-02",
+      "heureUtc": "VARIABLE — OBSERVE a 04:05:17 le 2026-09-06, 02:21:23 le 09-05, 02:22:18 le 09-02",
       "cadence": "quotidien",
       "quoi": "Audit VPS (perf, disque, docker, donnees, securite)",
-      "duree": "126 s le 2026-09-03 (budget impose : 90 s — 17e depassement, VPS-M56)",
-      "cout": "20,8 % de la machine pendant 120 s, MESURE par /proc/$$/stat et non deduit. Charge 0,34 → 1,80, sous la limite de 2. La machine garde 41,1 % d inactivite pendant la collecte : le delta de charge est une FILE D ATTENTE, pas une consommation (VPS-M35).",
+      "duree": "116 s le 2026-09-06 (budget impose : 90 s — 20e depassement, VPS-M56 ; meilleur des trois derniers passages : 133 s le 09-05, 126 s le 09-03)",
+      "cout": "24,2 % de la machine pendant 116 s, MESURE par /proc/$$/stat et non deduit. Charge 0,32 → 1,57, sous la limite de 2. La machine garde 44,1 % d inactivite pendant la collecte : le delta de charge est une FILE D ATTENTE, pas une consommation (VPS-M35). Candidat mesure : iowait 7,5 % — le parcours /opt lit ~1,7 M inodes en priorite idle. ⚠️ Une seconde session SSH a parle a la machine pendant la mesure : ce bloc COMPTE des sessions, il ne dit pas QUI (VPS-M57).",
       "note": "⚠️ 2026-09-03 — RETOUR A L HEURE HABITUELLE (02 h 21), apres le passage tardif du 09-01 a 07 h 39 qui suivait cinq jours manques (VPS-M73). Les collectes archivees demarrent entre 02 h 21 et 02 h 22 dans la grande majorite des cas : c est l heure de reference, et 07 h 39 etait l exception. ⚠️ CETTE HEURE DECIDE DE CE QUE L AUDIT PEUT VOIR, et ce n est pas un detail de confort : a 02 h 21 il passe AVANT les timers de sauvegarde de 03 h 00 et 03 h 30 (donc il decrit celles de la VEILLE — delai de detection d un echec ~23 h par construction, VPS-015) et AVANT l installateur de correctifs de 06 h 15 (donc il mesure une file d attente et non un retard, VPS-M74). | 🔴 2026-09-01 — CINQ PASSAGES MANQUES (27 au 31 aout), ET LA CONSEQUENCE N EST PAS SEULEMENT L ABSENCE DE MESURE : la copie hors-site des sauvegardes de Vizyo Verify depend du MEME poste et est passee a 51 h, au-dela de son seuil de 48 h (VPS-037, VPS-M73). Le choix de planifier cote poste reste le bon — c est lui qui garantit l absence du doublon VPS-003 — mais rien ne signale une ABSENCE. ⚠️ Le passage du jour a eu lieu a 07:39 UTC, soit APRES 03 h 30 : la mesure des fenetres de retention exigee par VPS-M41 est donc valide ce passage. Le cache apt, lui, avait 31 h — VPS-033 echoue pour la 7e fois sur 8. | ⚠️ L HORAIRE DE CETTE TACHE DECIDE DE DEUX MESURES. (1) SECURITE : a 02 h 2x le cache apt a 23 h, donc la mesure des correctifs est perdue — 5 passages sur 6, VPS-033. Un passage a 03 h 30 UTC en aurait rattrape 3 sur 4, sans rien garantir (la source est ALEATOIRE : RandomizedDelaySec=12h). (2) RETENTION : le test des fenetres de retention exige une collecte APRES 03 h 30 UTC et ne l a jamais eue — VPS-M41. ⚠️ NE PAS decaler sans regarder les voisins : backup-timer est a 03:00 UTC, verify-backup a 03:30 UTC et audit-pc a 03:12 UTC — c est exactement le genre de collision qui a produit VPS-M57.",
       "constat": "VPS-M56, VPS-033, VPS-M73"
     },
@@ -3503,15 +3583,15 @@
     {
       "id": "vizyo-auth-backup",
       "couche": "VPS",
-      "heureLocale": "06:00",
-      "heureUtc": "04:00",
+      "heureLocale": "06:00 (declare 04:00 UTC). OBSERVE : 06:01:41 le 2026-09-05, 06:04:10 le 2026-09-06",
+      "heureUtc": "04:00 declare. OBSERVE : 04:01:41 le 2026-09-05, 04:04:10 le 2026-09-06 (RandomizedDelaySec=300 : les deux tirages tombent dans la fenetre)",
       "cadence": "quotidien (RandomizedDelaySec=300, Persistent=true)",
       "quoi": "Vizyo Auth — sauvegarde quotidienne de la base d authentification (vizyo_auth, postgres:17-alpine). pg_dump gzip vers /var/backups/vizyo-auth, retention 30 jours. Donnees ephemeres exclues (structure conservee) : OtpVerification, EmailOtpVerification, PasswordResetToken.",
-      "duree": "~1 s (1,4 Mo produits le 2026-09-04)",
-      "cout": "negligeable — un pg_dump sur une base de 8 Mo, hors du creneau des deux autres sauvegardes",
+      "duree": "~1 s (1,45 Mo produits le 2026-09-06)",
+      "cout": "negligeable — un pg_dump sur une base de 28 Mo, hors du creneau des deux autres sauvegardes. ✅ ET IL S EST DECLENCHE SEUL, DEUX FOIS : le 09-05 a 04:01:41 et le 09-06 a 04:04:10, « systemd[1]: Starting » au journal, retention 30 j active (0 archive supprimee), 3 copies en place, cadence mesuree 24 h. La reserve du 09-05 — « il n a jamais tourne tout seul » — est LEVEE : c est le gabarit a copier pour les trois bases de VPS-013.",
       "note": "🆕 2026-09-05 — ENTREE NEUVE AU CATALOGUE. Unite et timer crees le 2026-09-04 a 07 h 34, detectes par la fraicheur du catalogue (section 7). ✅ LE CRENEAU EST CELUI QUE CE REFERENTIEL DESIGNAIT COMME LIBRE : le commentaire du timer dit « 04:00 UTC : apres tracky-backup (03:00) et vizyo-verify-backup (03:30), pour ne pas faire porter trois pg_dump au meme disque en meme temps ». Aucune collision : 03 h 00 · 03 h 30 · 04 h 00, et l audit passe a 02 h 21. ✅ L en-tete du service nomme sa propre cause — « les scripts de sauvegarde etaient deposes sur le VPS depuis le 07/03/2026 mais rien ne les appelait » — c est VPS-015 mot pour mot. ⚠️ IL N A JAMAIS TOURNE SEUL : sa seule execution est manuelle (09-04 a 07 h 34) ; premiere echeance automatique le 2026-09-05 a 04 h 04. TEST ECRIT D AVANCE : au passage du 2026-09-06, /var/backups/vizyo-auth doit porter DEUX copies et une cadence d environ 20 h, pas « une seule salve » (VPS-M81). ⚠️ La base qu il protege, vizyo-auth-db, n a JAMAIS ete enumeree par cet audit avant le 2026-09-05 (VPS-M80) : ce timer a ete pose sans que l audit ait jamais signale son absence.",
       "constat": "VPS-013, VPS-015, VPS-M80",
-      "trace": "journalisee"
+      "trace": "journalisee (StandardOutput=journal) — et c est elle qui prouve le declenchement autonome"
     },
     {
       "id": "fwupd-refresh",
@@ -3699,7 +3779,7 @@
   "previsions": {
     "disque": {
       "totalGo": 96,
-      "utiliseGo": 51,
+      "utiliseGo": 50,
       "libreGo": 46,
       "utilisePct": 53,
       "seuilAlertePct": 90
@@ -3707,10 +3787,10 @@
     "recuperable": [
       {
         "poste": "Cache de build Docker (Private)",
-        "go": 10.52,
+        "go": 10.1,
         "commande": "docker builder prune -f --filter unused-for=168h",
         "risque": "faible",
-        "contrepartie": "Le premier build de chaque projet redevient 2 a 4x plus long, et le cache se reconstitue au deploiement suivant. NE PAS purger : 46 Go libres, et le ramasse-miettes de BuildKit le borne — verifie ce passage, cache.db reecrit A LA SECONDE du dernier build (ecart 0 s). Le cache redescend de 10,66 a 10,52 Go apres 4 builds (4,20 Go d images annoncees) : la borne de 10 Go se rattrape bien au build suivant, comme annonce le 2026-09-04."
+        "contrepartie": "Le premier build de chaque projet redevient 2 a 4x plus long, et le cache se reconstitue au deploiement suivant. NE PAS purger : 46 Go libres, et le ramasse-miettes de BuildKit le borne — verifie ce passage, cache.db reecrit A LA SECONDE du dernier build (ecart 0 s). Le cache redescend de 10,52 a 10,1 Go apres les 2 builds du 09-05 (1,94 Go d images annoncees) : la borne de 10 Go se rattrape bien au build suivant, pour le troisieme passage consecutif."
       },
       {
         "poste": "/root/backups — dumps de pre-deploiement empiles (VPS-030)",
@@ -3749,19 +3829,19 @@
       },
       {
         "poste": "Journaux systemd",
-        "go": 0.228,
+        "go": 0.227,
         "commande": "journalctl --vacuum-size=100M",
         "risque": "faible",
         "contrepartie": "On perd l historique des journaux au-dela de 100 Mo. Le plafond SystemMaxUse=1G tient tres largement : 228,1 Mo. Aucune urgence."
       }
     ],
     "chargeDeFond": {
-      "processusParMinute": 1458,
-      "processusParJour": 2099520,
+      "processusParMinute": 1272,
+      "processusParJour": 1831680,
       "healthchecksParMinute": 65,
       "healthchecksParJour": 93600,
       "conteneursSondes": 24,
-      "note": "⚠️ processusParMinute EST DU BRUIT, PAS UNE TENDANCE (VPS-M68), et ce passage le redit : l etendue INTRA-fenetre vaut 2 040/min, soit 140 % de la valeur publiee (sous-fenetres de 3 s / 3 s / 4 s : 820 · 2 860 · 885). NE PAS comparer ce nombre aux 1 620/min du 09-04 ni aux 1 080/min du 09-03 : une fenetre de 10 s ne caracterise pas ce taux. Les healthchecks, eux, restent la 1re source de forks et leur mesure est STABLE : 65 invocations/min sur 24 conteneurs sondes, 9 des 33 n ayant AUCUNE sonde — dont foodsqan-traefik, qui tient les ports 80/443 de toute la production, tracky-web et tracky-lp."
+      "note": "⚠️ processusParMinute EST DU BRUIT, PAS UNE TENDANCE (VPS-M68), et ce passage le redit plus fort que jamais : l etendue INTRA-fenetre vaut 2 360/min, soit 186 % de la valeur publiee (sous-fenetres de 3 s / 3 s / 4 s : 2 860 · 500 · 660). NE PAS comparer ce nombre aux 1 458/min du 09-05 ni aux 1 620/min du 09-04 : une fenetre de 10 s ne caracterise pas ce taux, et la rafale courte suffit a expliquer un facteur 1,8 entre passages. Les healthchecks, eux, restent la 1re source de forks et leur mesure est STABLE : 65 invocations/min sur 24 conteneurs sondes, 9 des 33 n ayant AUCUNE sonde — dont foodsqan-traefik, qui tient les ports 80/443 de toute la production ET monte la socket Docker, tracky-web et tracky-lp."
     }
   }
 }
