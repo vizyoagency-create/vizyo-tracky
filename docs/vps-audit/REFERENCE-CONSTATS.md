@@ -4958,10 +4958,37 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
-## VPS-039 — Le taux de rétention de l'échantillonnage perd 11 points en trois jours, à flotte constante
+## VPS-039 — ~~Le taux de rétention de l'échantillonnage perd 11 points en trois jours~~ → **RÉFUTÉ : la flotte roulait de moins en moins**
 
-- **Domaine** : données · **Gravité** : **2** · **Statut** : `SURVEILLANCE` — *avec seuil daté, cf.
-  ci-dessous*
+- **Domaine** : données · **Gravité** : 4 · **Statut** : `ACCEPTE` — **réfuté le 2026-09-06, le jour
+  même de son ouverture**
+- ✅ **RÉFUTÉ : 2026-09-06 (quelques heures après l'ouverture du constat).** La table
+  `position_sampling_decisions` porte deux colonnes que je n'avais pas ouvertes — `decision` (le
+  motif de chaque rejet) et `state` (l'état du véhicule). Elles répondent, sans attendre le
+  2026-09-09, à la question que ce constat déclarait non tranchable :
+
+  ```
+     jour        MOVING   STOPPED   SKIPPED_THROTTLE   taux retenu
+   jeu 09-03      28,0 %    70,1 %        60,4 %          40,8 %
+   ven 09-04      25,3 %    72,9 %        62,3 %          34,7 %
+   sam 09-05      18,6 %    79,9 %        68,6 %          29,8 %
+   dim 09-06       1,6 %    98,1 %        85,8 %          14,1 %  (partiel)
+  ```
+
+  **Le taux de rétention suit la part de véhicules EN MOUVEMENT.** L'échantillonneur bride les
+  trames des véhicules à l'arrêt — c'est sa fonction. La flotte a roulé de moins en moins du jeudi
+  au dimanche ; **il n'y a pas de dérive, il y a un week-end.** Aucune action.
+  ⚠️ **Réserve de mesure, écrite plutôt que tue** : les 40,8 % de la découverte viennent d'un
+  rapport `positions` / `decisions` **entre deux tables** ; la table des décisions rend **36,4 %**
+  d'`INSERTED` pour le même jour (+0,8 % de `RECOVERED_BUFFER`). Les niveaux absolus diffèrent —
+  bornes de journée, et des positions arrivent par des chemins qui ne journalisent pas de
+  décision. **La pente, elle, est identique**, et c'est elle qui portait le constat.
+  🔑 **Ce que ce constat laisse derrière lui, et qui vaut mieux que lui** : voir **VPS-M85**. La
+  réfutation que j'avais écrite le matin même était fondée sur la **mauvaise grandeur**, et la
+  colonne qui nommait la cause était **dans la table d'à côté, depuis toujours**.
+  ⚠️ **Et il laisse une conséquence produit, elle bien réelle** : un seuil d'alerte à « ≤ 32 % »
+  aurait crié **13,7 % le jour de sa mise en service**, un dimanche, parce que les camions sont au
+  parking. *Un instrument calibré sur ce constat serait né faux.*
 - **Vu** : 2026-09-06 · **Mesure à la découverte** : la part des décisions d'échantillonnage qui
   devient une position enregistrée passe de **40,8 % → 34,7 % → 29,8 %** en trois jours, sur une
   flotte **stable à 30 émetteurs** et un volume de décisions **stable** (53 810 · 61 832 · 58 423).
@@ -5020,6 +5047,58 @@ confondre les deux ferait accuser le mauvais coupable.
 ---
 
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M85 — J'ai réfuté la bonne hypothèse avec la mauvaise grandeur, et la colonne qui nommait la cause était dans la table d'à côté
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-06 (règle
+  d'enquête, pas de code)
+- **Vu** : 2026-09-06 · **Mesure à la découverte** : le rapport du matin ouvrait **VPS-039** en
+  écrivant *« ni la cause, ni s'il s'agit d'une dérive »* et en datant un test au **2026-09-09**.
+  La cause était mesurable **le matin même**, dans `position_sampling_decisions.state` : le taux de
+  rétention suit la part de véhicules `MOVING` (28,0 → 25,3 → 18,6 → 1,6 %). **Constat réfuté le
+  jour de son ouverture.**
+
+- **QUOI — la cause, et elle n'est pas « je n'ai pas cherché »** : j'ai bien formulé l'hypothèse
+  du cycle hebdomadaire, et j'ai bien voulu la tester. **J'ai simplement testé avec une grandeur
+  qui ne pouvait pas y répondre.** J'ai comparé les *positions par émetteur* du samedi 08-29 (610)
+  au vendredi 08-28 (619) et conclu *« le samedi n'est pas un jour creux sur cette flotte »*. La
+  grandeur qui répondait était la **part de `MOVING`**, et elle, elle tombe.
+  🔑 **Une réfutation est une mesure comme une autre : elle doit porter sur la grandeur dont
+  parle l'hypothèse.** « La flotte roule-t-elle moins ? » ne se teste pas avec un volume de
+  lignes écrites — qui dépend *à la fois* du roulage et de l'échantillonnage — mais avec la part
+  de temps en mouvement, qui ne dépend que du roulage.
+
+- **`pourquoiInvisible`** : **parce que la réfutation avait l'air rigoureuse.** Elle citait deux
+  chiffres réels, comparait le bon jour de semaine, et concluait explicitement contre le confort
+  (*« l'explication est mesurable, alors je l'ai mesurée »*). Rien dans sa forme ne trahissait que
+  l'instrument était le mauvais. *Un raisonnement faux qui se donne les gestes de la rigueur est
+  plus difficile à attraper qu'un raisonnement paresseux — il a déjà passé le contrôle qu'on
+  aurait fait.*
+  ⚠️ **Et le collecteur ne pouvait pas rattraper ça** : il lit trois tables et n'a jamais ouvert
+  les colonnes `decision` et `state`, qui existent pourtant **depuis la création de la table**.
+
+- **QUOI FAIRE** — deux règles, et la seconde compte plus que la première :
+  1. **Avant de dater un test dans le futur, épuiser les colonnes du présent.** Un test à J+3 est
+     une dette ; il ne se justifie que si la donnée d'aujourd'hui ne peut pas répondre. Ici elle
+     pouvait, et personne n'avait regardé le schéma.
+  2. **Écrire, à côté de chaque réfutation, la grandeur qu'elle emploie et pourquoi c'est
+     celle-là.** *« Je teste "la flotte roule moins" avec les positions par émetteur »* aurait
+     rendu l'erreur visible à la relecture : les positions par émetteur dépendent de deux facteurs,
+     et l'hypothèse n'en nomme qu'un.
+
+- **`aNePasFaire`** : ⚠️ **ne pas en conclure qu'il fallait s'abstenir de réfuter.** L'abstention
+  est le défaut symétrique, et il est pire : c'est VPS-M83, qui laisse une explication rassurante
+  sans test. **Le geste était juste, l'instrument était faux** — il fallait réfuter, avec la part
+  de `MOVING`.
+  ⚠️ **Ne pas ajouter la mesure de `MOVING` au collecteur VPS par réflexe.** Elle appartient à
+  l'application, pas à l'audit machine : c'est une sentinelle du centre d'alerte que ce constat a
+  fait naître, pas une section de plus dans une collecte déjà à 116 s pour un budget de 90.
+
+- **Gain** : un constat de gravité 2 fermé **trois jours avant son échéance**, et une sentinelle
+  qui, calibrée sur le constat non réfuté, serait née fausse — elle aurait crié **13,7 % un
+  dimanche**, son premier jour.
+
+---
 
 ### VPS-M84 — Deux blocs de la même section rendaient des verdicts opposés sur les mêmes fichiers
 
