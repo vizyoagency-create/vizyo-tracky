@@ -16,6 +16,7 @@
  *   6. un parc 100 % dormant ne produit ni NaN ni Infinity.
  */
 import { UserRole } from '@prisma/client';
+import { parisDayStart } from '../common/utils/datetime';
 import { buildExploitedScopeNotice, FleetStatsReport, ReportsStatsService } from './reports-stats.service';
 
 const FLEET_ID = 'fleet-1';
@@ -274,6 +275,54 @@ describe('buildExploitedScopeNotice — rien ne change en silence', () => {
     expect(notice).toContain('boîtier jamais connecté');
   });
 
+  /**
+   * ⚠️ SOUS FILTRE CONDUCTEUR, LA DERNIÈRE PHRASE CHANGE DE SUJET (F13).
+   *
+   * « Distance moyenne calculée sur 3 véhicules exploités (180.0 km) » donne au lecteur les
+   * deux moitiés d'une division — et l'invite à la refaire. Sous filtre, ces kilomètres sont
+   * ceux d'UNE personne : la phrase affirmerait que le parc exploité a roulé 180 km. La base
+   * ne se divise plus par le parc, et la mention doit le dire, sinon le document argumente
+   * une base que son propre numérateur n'a plus.
+   */
+  it('sous filtre conducteur, la mention ne parle plus du parc exploité', async () => {
+    const report = await compute(PARC);
+    const notice = buildExploitedScopeNotice(report, { filtreConducteur: true })!;
+
+    expect(notice).toContain('jamais par le parc');
+    expect(notice).toContain('180.0 km sur 3 véhicules');
+    expect(notice).toContain('Parc total inchangé : 5'); // le parc facturé, lui, ne bouge pas
+    // La phrase de flotte, elle, a disparu — c'est elle qui affirmait un faux.
+    expect(notice).not.toContain('véhicules exploités');
+    // Les plaques et la réintégration automatique restent dites : le filtre n'efface pas
+    // l'information de dormance, il ne change QUE la base annoncée.
+    expect(notice).toContain('FV-941-LZ');
+    expect(notice).toContain('réintégré dès la première trame reçue');
+  });
+
+  /**
+   * ⚠️ BASE VIDE SOUS FILTRE : ATTEIGNABLE, ET LA PHRASE DOIT LE SUPPORTER.
+   *
+   * Un conducteur qui n'a pas roulé du mois (congés, arrêt) ne fait rouler aucun véhicule :
+   * `avgKmBasisVehicles` vaut 0 et `avgKmPerVehicle` vaut 0 par garde. La phrase de base
+   * écrirait alors « 0.0 km sur 0 véhicule » — une division par zéro mise en forme, dans un
+   * document que le client relit des mois plus tard. On dit l'absence de base, pas son
+   * calcul. Le reste de la mention (plaques, parc total) décrit le PARC : il ne bouge pas.
+   */
+  it('base vide sous filtre : la mention dit l’absence de base, pas « 0 km sur 0 véhicule »', async () => {
+    const report = await compute(PARC);
+    const sansTrajet: FleetStatsReport = {
+      ...report,
+      trips: { ...report.trips, avgKmBasisVehicles: 0, avgKmBasisKm: 0, avgKmPerVehicle: 0 },
+    };
+    const notice = buildExploitedScopeNotice(sansTrajet, { filtreConducteur: true })!;
+
+    expect(notice).toContain('aucun trajet retenu par ce filtre sur la période');
+    expect(notice).not.toContain('sur 0 véhicule');
+    // Le parc facturé et les plaques dormantes restent dits : le filtre ne les efface pas.
+    expect(notice).toContain('Parc total inchangé : 5');
+    expect(notice).toContain('FV-941-LZ');
+  });
+
   it('aucune mention sur un parc sain (pas de bruit permanent)', async () => {
     const report = await compute([
       { id: 'v1', plate: 'AA-111-AA', trackerId: 't1', lastSeenAt: ago(60 * 1000), km: 12 },
@@ -296,5 +345,327 @@ describe('buildExploitedScopeNotice — rien ne change en silence', () => {
     expect(notice).toContain('+3 autres');
     // Le plus ancien silence est nommé en premier (c'est le plus parlant).
     expect(notice.indexOf('AA-008-AA')).toBeLessThan(notice.indexOf('AA-003-AA'));
+  });
+});
+
+/**
+ * ══ LE PRIX CONSTATÉ EN STATION SOUS FILTRE CONDUCTEUR (F13) ════════════════════════════
+ *
+ * Un passage en station est un arrêt du VÉHICULE : `TripFuelStop` n'a pas de conducteur. Ce
+ * chiffre reste donc calculé sur le périmètre véhicule même sous filtre — décision assumée,
+ * écrite au-dessus de la requête, et dite au lecteur par les trois surfaces (l'écran et le PDF
+ * le GARDENT en expliquant pourquoi, le classeur Excel le RETIRE et l'écrit).
+ *
+ * ⚠️ CES DEUX TESTS VERROUILLENT UNE DÉCISION, PAS UN CALCUL — c'est-à-dire exactement ce
+ * qu'aucun test ne protégeait. Les deux « corrections » qu'on est tenté d'appliquer ici sont
+ * l'une et l'autre des régressions, et chacune fait tomber un de ces tests :
+ *   · neutraliser sous filtre (`observedPriceEurL` à `null`) ferait écrire à l'écran « Aucun
+ *     prix relevé en station sur la période », ce qui est FAUX ;
+ *   · ajouter le conducteur au `where` ne filtrerait rien du tout (la table n'a pas la
+ *     colonne) ou fabriquerait un chiffre hybride sous un nom propre.
+ */
+describe('ReportsStatsService — prix constaté en station et filtre conducteur', () => {
+  const SOHAIB = 'aaaa1111-1111-4111-8111-111111111111';
+
+  /** Le parc de référence, avec des passages en station RÉELLEMENT captés sur la période. */
+  const prismaAvecPassages = () => {
+    const prisma = makePrisma(PARC);
+    prisma.tripFuelStop.aggregate.mockResolvedValue({
+      _avg: { unitPriceEur: 1.7123 },
+      _count: { _all: 12 },
+    });
+    return prisma;
+  };
+
+  const computeAvecFiltre = (prisma: ReturnType<typeof makePrisma>, driverId?: string) =>
+    new ReportsStatsService(prisma).compute(
+      FLEET_ID,
+      FROM,
+      TO,
+      { role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID, accessibleVehicleIds: 'ALL' },
+      driverId ? { driverId } : undefined,
+    );
+
+  it('garde le prix et le nombre de passages sous filtre : ils existent, ils ne sont pas imputables', async () => {
+    const prisma = prismaAvecPassages();
+    const report = await computeAvecFiltre(prisma, SOHAIB);
+
+    // Le chiffre est SERVI, pas escamoté : c'est la condition pour que l'écran puisse dire
+    // « ce prix ne suit pas le filtre » au lieu de « aucun prix relevé ».
+    expect(report.consumption.observedPriceEurL).toBe(1.712);
+    expect(report.consumption.observedSampleCount).toBe(12);
+    // Et le coût au prix constaté reste calculable : litres DU FILTRE × prix DU PARC.
+    expect(report.consumption.estimatedCostAtObservedEur).not.toBeNull();
+  });
+
+  it('ne pose AUCUNE clause conducteur sur les passages en station', async () => {
+    const prisma = prismaAvecPassages();
+    await computeAvecFiltre(prisma, SOHAIB);
+
+    expect(prisma.tripFuelStop.aggregate).toHaveBeenCalledTimes(1);
+    const where = prisma.tripFuelStop.aggregate.mock.calls[0][0].where;
+    // Ni `driverId`, ni jointure `trip: { driverId }` : la table n'a pas cette colonne, et
+    // passer par les trajets rendrait les pleins faits par d'autres sur les mêmes véhicules.
+    expect(JSON.stringify(where)).not.toContain('driver');
+    expect(where.fleetId).toBe(FLEET_ID);
+
+    // TÉMOIN : sans filtre, la MÊME requête. Le filtre ne touche pas cet agrégat, dans un
+    // sens comme dans l'autre.
+    const sansFiltre = prismaAvecPassages();
+    await computeAvecFiltre(sansFiltre);
+    expect(sansFiltre.tripFuelStop.aggregate.mock.calls[0][0].where).toEqual(where);
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * MODE VIE PRIVÉE (RGPD) — LES PASSAGES EN STATION D'UN VÉHICULE MASQUÉ N'ABONDENT RIEN
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ NE PAS CONFONDRE AVEC LA DÉCISION DU BLOC PRÉCÉDENT. Que le prix constaté ne suive pas
+ * le FILTRE CONDUCTEUR est un arbitrage assumé (un passage est un arrêt du véhicule). Qu'il
+ * compte des véhicules sous VIE PRIVÉE n'en est pas un : là, le client a retiré le véhicule
+ * du périmètre lui-même, et TOUTES les autres surfaces le retirent — les trajets et les
+ * alertes par `privacyExclude`, les deux requêtes brutes par leur jointure
+ * `v."privacyModeEnabled" IS NOT TRUE`, le classeur Excel en refusant net un véhicule privé.
+ *
+ * L'agrégat des passages était le dernier survivant du défaut relevé le 2026-09-05, et pour
+ * la même raison que les deux requêtes brutes de l'époque : `TripFuelStop` porte `vehicleId`
+ * en scalaire, SANS relation `vehicle` déclarée. `NOT: { vehicle: { privacyModeEnabled } }`
+ * n'y compile pas — une borne qui ne s'écrit pas comme les autres est une borne qu'on oublie.
+ *
+ * Ce que le défaut coûtait, mesuré : 8 des 12 passages venaient du véhicule masqué, le prix
+ * passait de 1,60 à 1,72 EUR/L, et le PDF du lundi — envoyé automatiquement à toutes les
+ * sociétés — imprimait « 12 passages station » sous une phrase affirmant qu'ils portent sur
+ * les véhicules du périmètre. Le classeur Excel de la même société, la même semaine, en
+ * annonçait 4 : c'est le document qui voyage par courriel qui avait tort.
+ *
+ * Le simulacre ci-dessous ÉVALUE le `where` reçu contre une table en mémoire (il honore
+ * `vehicleId.in`, `vehicleId.notIn`, et les deux formes de borne haute). Un faux qui rendrait
+ * un compte figé ne prouverait rien de la clause produite par le service : c'est la clause
+ * qu'on éprouve ici, pas le simulacre.
+ */
+const V_PUB_1 = 'v-station-pub-1';
+const V_PUB_2 = 'v-station-pub-2';
+const V_PRIVE = 'v-station-prive';
+
+interface PassageStation {
+  vehicleId: string;
+  arrivedAt: Date;
+  prix: number;
+}
+
+/** Borne de période telle que le service l'écrit : `gte` obligatoire, `lt` OU `lte`. */
+interface BorneArrivee {
+  gte: Date;
+  lt?: Date;
+  lte?: Date;
+}
+
+interface WhereStations {
+  fleetId?: string;
+  vehicleId?: { in?: string[]; notIn?: string[] };
+  arrivedAt: BorneArrivee;
+}
+
+function bancStations(passages: PassageStation[], prives: string[] = []) {
+  const vehicleRows = [V_PUB_1, V_PUB_2, V_PRIVE].map((id, i) => ({
+    id,
+    plate: `ST-00${i + 1}-ST`,
+    type: 'CAR',
+    fuelConsumptionL100km: 10,
+    energy: 'DIESEL',
+    calibratedConsumptionL100km: null,
+    calibratedTanks: 0,
+    privacyModeEnabled: prives.includes(id),
+    tracker: { id: `t-${id}`, lastSeenAt: new Date() },
+    groups: [] as unknown[],
+  }));
+
+  /** Les passages que la clause reçue laisse VRAIMENT passer. */
+  const retenus = (where: WhereStations): PassageStation[] =>
+    passages.filter((p) => {
+      const borne = where.vehicleId;
+      if (borne?.in && !borne.in.includes(p.vehicleId)) return false;
+      if (borne?.notIn && borne.notIn.includes(p.vehicleId)) return false;
+      const q = where.arrivedAt;
+      if (p.arrivedAt.getTime() < q.gte.getTime()) return false;
+      if (q.lt && p.arrivedAt.getTime() >= q.lt.getTime()) return false;
+      if (q.lte && p.arrivedAt.getTime() > q.lte.getTime()) return false;
+      return true;
+    });
+
+  const prisma = {
+    fleet: {
+      findUnique: jest.fn().mockResolvedValue({ id: FLEET_ID, name: 'Flotte test', fuelPriceEurL: 1.85 }),
+    },
+    vehicle: {
+      // Honore `id: { in: [...] }` : sous périmètre restreint, le service ne charge que les
+      // véhicules permis — et c'est de CETTE liste que sort l'exclusion des privés.
+      findMany: jest.fn(async ({ where }: { where: { id?: { in?: string[] } } }) => {
+        const permis = where?.id?.in;
+        return Array.isArray(permis) ? vehicleRows.filter((v) => permis.includes(v.id)) : vehicleRows;
+      }),
+    },
+    trip: {
+      aggregate: jest.fn().mockResolvedValue({
+        _count: { _all: 2 },
+        _sum: { distanceKm: 100, durationSeconds: 7200 },
+        _avg: { avgSpeed: 42 },
+        _max: { maxSpeed: 110 },
+      }),
+      // Les trajets du véhicule masqué sont DÉJÀ exclus en amont (`privacyExclude`) : seuls
+      // les deux véhicules publics ont roulé, 50 km chacun.
+      groupBy: jest.fn().mockResolvedValue([
+        { vehicleId: V_PUB_1, driverId: null, _sum: { distanceKm: 50, durationSeconds: 3600 }, _count: { _all: 1 } },
+        { vehicleId: V_PUB_2, driverId: null, _sum: { distanceKm: 50, durationSeconds: 3600 }, _count: { _all: 1 } },
+      ]),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    alert: { groupBy: jest.fn().mockResolvedValue([]) },
+    tripFuelStop: {
+      aggregate: jest.fn(async ({ where }: { where: WhereStations }) => {
+        const lignes = retenus(where);
+        return {
+          _avg: {
+            unitPriceEur: lignes.length > 0
+              ? lignes.reduce((s, p) => s + p.prix, 0) / lignes.length
+              : null,
+          },
+          _count: { _all: lignes.length },
+        };
+      }),
+    },
+    driver: { findMany: jest.fn().mockResolvedValue([]) },
+    $queryRaw: jest.fn().mockResolvedValue([]),
+  };
+
+  /** Le `where` que le service a posé sur l'agrégat des passages. */
+  const whereStations = (): WhereStations =>
+    prisma.tripFuelStop.aggregate.mock.calls[0]![0].where as WhereStations;
+
+  const calculer = (perimetre?: string[], bornes?: { from: Date; to: Date }) =>
+    new ReportsStatsService(prisma as never).compute(
+      FLEET_ID,
+      bornes?.from ?? FROM,
+      bornes?.to ?? TO,
+      perimetre
+        ? { role: UserRole.VIEWER, fleetId: FLEET_ID, accessibleVehicleIds: perimetre }
+        : { role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID, accessibleVehicleIds: 'ALL' },
+    );
+
+  return { prisma, calculer, whereStations };
+}
+
+/** 4 passages publics à 1,60 et 8 passages du véhicule masqué à 1,78 — 12 en tout. */
+const PASSAGES_MELANGES: PassageStation[] = [
+  ...Array.from({ length: 4 }, (_, i) => ({
+    vehicleId: i % 2 === 0 ? V_PUB_1 : V_PUB_2,
+    arrivedAt: new Date('2026-06-10T09:00:00.000Z'),
+    prix: 1.6,
+  })),
+  ...Array.from({ length: 8 }, () => ({
+    vehicleId: V_PRIVE,
+    arrivedAt: new Date('2026-06-11T09:00:00.000Z'),
+    prix: 1.78,
+  })),
+];
+
+describe('ReportsStatsService — vie privée et passages en station', () => {
+  it('parc entier : les passages du véhicule masqué sortent du compte, du prix et du coût', async () => {
+    const { prisma, calculer, whereStations } = bancStations(PASSAGES_MELANGES, [V_PRIVE]);
+
+    const r = await calculer();
+
+    /**
+     * ⚠️ LE DRAPEAU DOIT ÊTRE CHARGÉ, ET C'EST ASSERTÉ À PART. Ce simulacre rend
+     * `privacyModeEnabled` quoi qu'il arrive ; Prisma, lui, ne rend QUE ce que le `select`
+     * demande. Sans cette ligne, retirer `privacyModeEnabled` du `select` de
+     * `vehicle.findMany` laisserait ce fichier entièrement vert pendant que la fuite se
+     * rouvrirait en production — le simulacre est plus généreux que la base.
+     */
+    const selectVehicules = (prisma.vehicle.findMany.mock.calls[0]![0] as unknown as {
+      select: Record<string, unknown>;
+    }).select;
+    expect(selectVehicules['privacyModeEnabled']).toBe(true);
+
+    // 12 passages en base, 4 dans le périmètre du rapport. Le compte imprimé par le PDF et
+    // affiché par l'écran ne peut plus contenir le véhicule que le client a masqué.
+    expect(r.consumption.observedSampleCount).toBe(4);
+    expect(r.consumption.observedPriceEurL).toBe(1.6);
+    // Le coût suit : 100 km × 10 L/100 km = 10 L, au prix du périmètre et pas à 1,72.
+    expect(r.consumption.estimatedCostAtObservedEur).toBe(16);
+    // Et la clause elle-même nomme l'exclusion : sans elle, les trois chiffres ci-dessus
+    // seraient justes par accident de simulacre.
+    expect(whereStations().vehicleId).toEqual({ notIn: [V_PRIVE] });
+  });
+
+  it('périmètre restreint : le véhicule masqué n’entre pas non plus dans la liste permise', async () => {
+    const { calculer, whereStations } = bancStations(PASSAGES_MELANGES, [V_PRIVE]);
+
+    // Un VIEWER dont le groupe CONTIENT le véhicule masqué : la branche restreinte du
+    // `where` est celle que le drapeau ne pouvait pas filtrer avant, faute d'être chargé.
+    const r = await calculer([V_PUB_1, V_PUB_2, V_PRIVE]);
+
+    expect(r.consumption.observedSampleCount).toBe(4);
+    expect(r.consumption.observedPriceEurL).toBe(1.6);
+    const borne = whereStations().vehicleId!;
+    expect(borne.in).toEqual([V_PUB_1, V_PUB_2]);
+    expect(borne.in).not.toContain(V_PRIVE);
+  });
+
+  it('parc SAIN : aucune clé n’est ajoutée au where (le chemin courant ne change pas)', async () => {
+    const { calculer, whereStations } = bancStations(PASSAGES_MELANGES);
+
+    const r = await calculer();
+
+    // Aucun véhicule masqué : les 12 passages restent, et le `where` est celui d'avant —
+    // `fleetId` seul, sans la moindre borne véhicule.
+    expect(r.consumption.observedSampleCount).toBe(12);
+    expect(whereStations().fleetId).toBe(FLEET_ID);
+    expect(whereStations()).not.toHaveProperty('vehicleId');
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LA BORNE HAUTE DES PASSAGES EST EXCLUSIVE, COMME TOUT LE RESTE DU RAPPORT
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `to` est le LENDEMAIN minuit : `tripWhere` (`lt`), `alertWhere` (`lt`) et les deux requêtes
+ * brutes (`t."startedAt" < ${to}`) le traitent en borne exclusive. L'agrégat des passages
+ * était le seul à écrire `lte` — un passage horodaté à minuit pile entrait donc dans DEUX
+ * rapports voisins, et pesait dans les deux moyennes que le client compare d'un mois sur
+ * l'autre. L'instant de collision n'a rien de rare : les horodatages des boîtiers sont à la
+ * seconde (la milliseconde vaut toujours zéro), et le rapport hebdomadaire du lundi produit
+ * chaque semaine, pour toutes les sociétés, deux fenêtres dont la borne est le MÊME instant.
+ *
+ * ⚠️ L'assertion porte sur la SOMME des deux périodes, pas seulement sur chacune : deux
+ * bornes qui ouvriraient pareil se satisferaient l'une l'autre. Le prix d'août est asserté
+ * pour la même raison — c'est lui que la pollution déplaçait.
+ */
+describe('ReportsStatsService — la borne haute des passages en station', () => {
+  const AOUT = { from: parisDayStart('2026-08-01'), to: parisDayStart('2026-09-01') };
+  const SEPTEMBRE = { from: parisDayStart('2026-09-01'), to: parisDayStart('2026-10-01') };
+
+  /** Trois passages réels, dont UN calé exactement sur l'instant de bascule. */
+  const TROIS_PASSAGES: PassageStation[] = [
+    { vehicleId: V_PUB_1, arrivedAt: new Date('2026-08-15T09:00:00.000Z'), prix: 1 },
+    { vehicleId: V_PUB_1, arrivedAt: parisDayStart('2026-09-01'), prix: 2 },
+    { vehicleId: V_PUB_2, arrivedAt: new Date('2026-09-15T09:00:00.000Z'), prix: 1.5 },
+  ];
+
+  it('un passage à minuit pile n’appartient qu’à UNE des deux périodes voisines', async () => {
+    const aout = await bancStations(TROIS_PASSAGES).calculer(undefined, AOUT);
+    const septembre = await bancStations(TROIS_PASSAGES).calculer(undefined, SEPTEMBRE);
+
+    // La somme est le test : avec une borne inclusive, deux rapports adjacents comptaient
+    // quatre passages pour trois réels.
+    expect(aout.consumption.observedSampleCount + septembre.consumption.observedSampleCount).toBe(3);
+    // Et il tombe du côté de la période qui COMMENCE à cet instant, jamais de celle qui s'y
+    // termine — sans quoi le prix du mois clos bougerait après coup.
+    expect(aout.consumption.observedSampleCount).toBe(1);
+    expect(aout.consumption.observedPriceEurL).toBe(1);
+    expect(septembre.consumption.observedSampleCount).toBe(2);
   });
 });

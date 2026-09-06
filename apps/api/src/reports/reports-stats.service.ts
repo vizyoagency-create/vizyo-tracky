@@ -13,6 +13,7 @@ import {
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { resolveDriverScope } from '../common/driver-scope';
 
 /**
  * V1.5 (Sprint L) — Agregation KPI pour les rapports & export.
@@ -281,7 +282,17 @@ export class ReportsStatsService {
     from: Date,
     to: Date,
     requestedBy?: { role: UserRole | string; fleetId: string | null; accessibleVehicleIds?: string[] | 'ALL' },
-    filters?: { vehicleIds?: string[]; maxRecentTrips?: number; topN?: number },
+    filters?: {
+      vehicleIds?: string[];
+      maxRecentTrips?: number;
+      topN?: number;
+      /**
+       * Filtre CONDUCTEUR (F13) — UUID, ou `none` pour les trajets sans conducteur. Même
+       * convention et même validation que `GET /trips` : les deux écrans se lisent côte à
+       * côte, ils ne peuvent pas parler deux langues.
+       */
+      driverId?: string;
+    },
   ): Promise<FleetStatsReport> {
     if (requestedBy && requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (requestedBy.fleetId !== fleetId) {
@@ -322,6 +333,12 @@ export class ReportsStatsService {
         : { fleetId },
       select: {
         id: true, plate: true, type: true, fuelConsumptionL100km: true,
+        // Mode vie privée (RGPD) — CHARGÉ ICI, et pas seulement subi dans les `where`.
+        // `TripFuelStop` n'a pas de relation `vehicle` (cf. schema.prisma) : l'agrégat des
+        // passages en station ne peut PAS écrire `NOT: { vehicle: { privacyModeEnabled } }`
+        // comme le font `tripWhere` et `alertWhere`, il lui faut la liste des identifiants.
+        // Sans ce drapeau ici, cette exclusion-là n'est pas exprimable (cf. plus bas).
+        privacyModeEnabled: true,
         // Énergie — SANS elle, le CO₂ de la période ne pouvait pas être calculé : un diesel
         // et une essence n'émettent pas la même chose pour un même litre.
         energy: true,
@@ -425,13 +442,39 @@ export class ReportsStatsService {
     // DÉMARRENT. Un trajet parti à 23 h 50 la veille entrait donc dans le PDF sans figurer
     // dans la liste qui l'avait produit — et le total de kilomètres ne tombait jamais juste.
     // Même convention partout : `startedAt` dans [from, to[, trajet terminé.
+    /**
+     * ── FILTRE CONDUCTEUR (F13, seconde moitié) ───────────────────────────────────────
+     *
+     * `undefined` = aucun filtre, `null` = trajets SANS conducteur, sinon l'identifiant.
+     * Même règle et même validation que `GET /trips` (cf. `common/driver-scope`) : l'écran
+     * Rapports pose UN filtre et attend qu'il vaille pour le tableau ET pour la synthèse.
+     *
+     * ⚠️ Le test est `!== undefined`, jamais une vérité simple : `null` DOIT descendre dans
+     * le `where` (« sans conducteur » est un filtre, pas une absence de filtre).
+     */
+    const driverScope = resolveDriverScope(filters?.driverId);
+    const tripDriverFilter: { driverId?: string | null } =
+      driverScope === undefined ? {} : { driverId: driverScope };
     const tripWhere = {
       fleetId,
       ...tripVehicleFilter,
+      ...tripDriverFilter,
       startedAt: { gte: from, lt: to },
       endedAt: { not: null },
       ...privacyExclude,
     } as const;
+    /**
+     * ⚠️ AUCUN FILTRE CONDUCTEUR ICI, ET C'EST UNE DÉCISION, PAS UN OUBLI.
+     *
+     * Une alerte appartient à un VÉHICULE : elle n'a pas de conducteur. La restreindre à
+     * l'aide de `Trip.driverId` demanderait de rattacher chaque alerte au trajet en cours à
+     * son horodatage — une jointure approximative dont le résultat, présenté comme un fait,
+     * accuserait une personne d'alertes qu'on ne peut pas lui imputer.
+     *
+     * Les alertes restent donc calculées sur le PÉRIMÈTRE VÉHICULE. L'écran doit le DIRE
+     * quand un conducteur est sélectionné (carte « Alertes de la période ») : une carte
+     * muette laisserait croire que ce conducteur a déclenché toutes ces alertes.
+     */
     const alertWhere = {
       fleetId,
       // Borne haute exclusive, comme les trajets : `to` est le lendemain minuit.
@@ -441,6 +484,18 @@ export class ReportsStatsService {
       ...(isVehicleScopeRestricted ? { vehicleId: { in: scopedVehicleIds } } : {}),
       ...privacyExclude,
     } as const;
+    /**
+     * Le même filtre, pour les DEUX requêtes écrites à la main (excès établis, ralenti).
+     * Elles joignent déjà `trips t`, donc la colonne est à portée — mais elles ne partagent
+     * PAS `tripWhere`, et c'est exactement ainsi que le mode vie privée leur avait échappé
+     * (relevé en revue le 2026-09-05). Une seule expression, injectée aux deux endroits.
+     */
+    const filtreConducteurSql =
+      driverScope === undefined
+        ? Prisma.empty
+        : driverScope === null
+          ? Prisma.sql`AND t."driverId" IS NULL`
+          : Prisma.sql`AND t."driverId" = ${driverScope}::uuid`;
     const recentTripsCap = this.clampRecentTripsCap(filters?.maxRecentTrips);
 
     /**
@@ -501,6 +556,7 @@ export class ReportsStatsService {
          ${isVehicleScopeRestricted
             ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
             : Prisma.empty}
+         ${filtreConducteurSql}
        GROUP BY ta."vehicleId", t."driverId"
     `;
 
@@ -528,6 +584,7 @@ export class ReportsStatsService {
          ${isVehicleScopeRestricted
             ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
             : Prisma.empty}
+         ${filtreConducteurSql}
          AND (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
        GROUP BY ta."vehicleId", t."driverId"
     `;
@@ -746,7 +803,22 @@ export class ReportsStatsService {
     // gonflerait la moyenne d'un véhicule tombé en panne EN COURS de période (ses
     // km comptés, sa place non). Numérateur et dénominateur portent donc tous deux
     // sur les véhicules exploités.
-    const exploitedKm = Array.from(exploitedVehicleIds).reduce(
+    //
+    // ⚠️ UN FILTRE CONDUCTEUR EST UNE POPULATION, LUI AUSSI (F13, relevé en revue).
+    //
+    // Le numérateur descend de `tripWhere`, donc du filtre ; le dénominateur venait du
+    // PARC. Les 400 km d'une seule personne se divisaient par les 35 véhicules exploités
+    // de la société : « 11,4 km » là où la réponse est 400, dont 34 véhicules qu'elle n'a
+    // jamais conduits. Et ce chiffre n'existe QUE dans le PDF — aucun écran ne l'affiche,
+    // donc rien ne pouvait le démentir une fois le fichier parti par courriel.
+    //
+    // La base suit donc le filtre : les véhicules exploités que CE filtre a fait rouler.
+    // Sans filtre, `baseMoyenneIds` EST `exploitedVehicleIds` — le chiffre que le client
+    // compare d'une semaine sur l'autre ne bouge pas d'un dixième.
+    const baseMoyenneIds = driverScope === undefined
+      ? exploitedVehicleIds
+      : new Set([...exploitedVehicleIds].filter((id) => activeVehicleIds.has(id)));
+    const exploitedKm = Array.from(baseMoyenneIds).reduce(
       (sum, id) => sum + (perVehicle.get(id)?.distanceKm ?? 0),
       0,
     );
@@ -754,8 +826,17 @@ export class ReportsStatsService {
     // boîtiers, flotte hivernée) doit produire un CHIFFRE, jamais NaN ni Infinity :
     // on retombe alors sur le parc entier, et la mention d'exclusion explique au
     // lecteur pourquoi ce chiffre est ce qu'il est.
-    const hasExploited = exploitedVehicleIds.size > 0;
-    const avgKmBasisVehicles = hasExploited ? exploitedVehicleIds.size : totalVehicles;
+    //
+    // ⚠️ SOUS FILTRE, CE REPLI NE DOIT SURTOUT PAS RENDRE LE PARC. Un conducteur qui n'a
+    // roulé que sur des véhicules devenus dormants vide `baseMoyenneIds` : retomber sur
+    // `totalVehicles` rouvrirait par la porte de derrière la faute qu'on vient de fermer.
+    // On replie sur les véhicules que ce filtre a fait rouler — et `totalKm` est
+    // exactement leur somme, donc les deux moitiés restent accordées. Aucun trajet du
+    // tout : 0 et 0, et le garde de `avgKmPerVehicle` rend 0 sans diviser.
+    const hasExploited = baseMoyenneIds.size > 0;
+    const avgKmBasisVehicles = hasExploited
+      ? baseMoyenneIds.size
+      : (driverScope === undefined ? totalVehicles : activeVehicleIds.size);
     const avgKmBasisKm = hasExploited ? exploitedKm : totalKm;
 
     let totalLiters = 0;
@@ -818,12 +899,76 @@ export class ReportsStatsService {
     // passages station du périmètre), pour comparer au prix paramétré. Best-effort : null si aucun passage.
     // Lancé EN PARALLÈLE de la lecture des conducteurs : le VPS a 2 vCPU, deux allers-retours
     // séquentiels de plus par rapport hebdomadaire se paient sur chaque société.
+    /**
+     * ── CE CHIFFRE NE SUIT PAS LE FILTRE CONDUCTEUR, ET C'EST DÉLIBÉRÉ (F13) ─────────────
+     *
+     * `TripFuelStop` n'a PAS de conducteur : un passage en station est un arrêt du VÉHICULE.
+     * Le `where` ci-dessous reste donc borné au périmètre véhicule, `driverScope` n'y entre
+     * pas — et ce n'est pas un oubli, c'est le seul choix qui ne fabrique aucun énoncé faux :
+     *
+     *   · le neutraliser sous filtre (rendre `null`) ferait écrire à l'écran « Aucun prix
+     *     relevé en station sur la période ». FAUX : des prix ont bien été relevés, ils ne
+     *     sont simplement imputables à personne ;
+     *   · le filtrer par les véhicules qu'a conduits la personne ferait un chiffre HYBRIDE —
+     *     les pleins faits par les autres sur ces mêmes véhicules y entreraient — sous un
+     *     nom propre, ce qui est pire que le chiffre de parc, parce que ça se croit filtré.
+     *
+     * Ce qui n'était pas permis, c'est de se TAIRE : muet sous un nom propre, « 12 passages
+     * station » s'attribue tout seul à la personne nommée. Les TROIS surfaces le disent donc
+     * désormais, chacune à sa manière — l'écran (`noteCarburantConducteur` de
+     * `reports.component.ts`) et le PDF (`renderKpis`) GARDENT le chiffre et écrivent
+     * pourquoi ; le classeur Excel, qui liste les arrêts un par un, les RETIRE et l'écrit
+     * (une liste nominative d'arrêts d'autrui n'a pas d'excuse).
+     *
+     * ⚠️ Seuls les LITRES valorisés suivent le filtre : `estimatedCostAtObservedEur` vaut
+     * litres-du-filtre × prix-du-parc, et les trois surfaces l'annoncent en ces termes.
+     */
+    /**
+     * ── LA VIE PRIVÉE, ELLE, BORNE BIEN CE CHIFFRE — ET CE N'EST PAS LE MÊME SUJET ────────
+     *
+     * Ne pas confondre les deux axes. Le FILTRE CONDUCTEUR ne s'applique pas ici (ci-dessus,
+     * c'est une décision). Le MODE VIE PRIVÉE, lui, retire le véhicule DU PÉRIMÈTRE : ses
+     * trajets, ses alertes, ses excès, son ralenti et son classement en sortent tous, et le
+     * classeur Excel refuse même de le traiter. Ses passages en station doivent en sortir
+     * aussi, sans quoi le PDF du lundi imprime « N passages station » dont une part vient
+     * d'un véhicule que le client a explicitement soustrait au regard — et la phrase que ce
+     * lot ajoute juste à côté (« ils portent sur les véhicules du périmètre ») devient fausse.
+     *
+     * ⚠️ POURQUOI CET AGRÉGAT AVAIT ÉCHAPPÉ AUX DEUX RATTRAPAGES PRÉCÉDENTS. `TripFuelStop`
+     * porte `vehicleId` en SCALAIRE, sans relation `vehicle` déclarée : `privacyExclude`
+     * (`NOT: { vehicle: { privacyModeEnabled: true } }`) lui est littéralement inapplicable.
+     * C'est la même raison qui avait fait manquer les deux requêtes écrites à la main le
+     * 2026-09-05 — une borne qui ne s'exprime pas de la même façon est une borne qu'on
+     * oublie. L'exclusion passe donc par les identifiants, d'où le drapeau chargé plus haut.
+     *
+     * Sur un parc SANS véhicule privé, le `where` reste à l'octet près celui d'avant : la
+     * liste des exclus est vide, aucune clé n'est ajoutée.
+     */
+    const idsSousViePrivee = vehicles.filter((v) => v.privacyModeEnabled).map((v) => v.id);
+    const bornePassagesStation = isVehicleScopeRestricted
+      // Périmètre restreint : le `in` ne retient que les véhicules VISIBLES. Une seule clé
+      // `vehicleId`, jamais deux homonymes dont la seconde écraserait la première.
+      ? { vehicleId: { in: vehicles.filter((v) => !v.privacyModeEnabled).map((v) => v.id) } }
+      // Parc entier : `notIn` plutôt qu'un `in` de tout le parc — la liste des privés est
+      // courte et l'index (fleetId, arrivedAt) reste utilisable.
+      : { fleetId: fleet.id, ...(idsSousViePrivee.length > 0 ? { vehicleId: { notIn: idsSousViePrivee } } : {}) };
     const [fuelStopAgg, driverRows] = await Promise.all([
       this.prisma.tripFuelStop.aggregate({
         where: {
-          arrivedAt: { gte: from, lte: to },
+          /**
+           * ⚠️ BORNE HAUTE EXCLUSIVE, comme les trajets (`tripWhere`), les alertes
+           * (`alertWhere`) et les deux requêtes brutes : `to` est le LENDEMAIN minuit, jamais
+           * un 23:59:59 (tous les appelants le construisent par `parisDayStart`). Avec `lte`,
+           * un passage horodaté à minuit pile — et la milliseconde vaut TOUJOURS zéro, les
+           * horodatages des boîtiers sont à la seconde — entrait dans DEUX rapports voisins
+           * et pesait dans les deux moyennes `observedPriceEurL` que le client compare d'un
+           * mois sur l'autre. Le rapport hebdomadaire du lundi produit chaque semaine deux
+           * fenêtres dont la borne est exactement le même instant. Même arbitrage, mot pour
+           * mot, que `trips.service.list`.
+           */
+          arrivedAt: { gte: from, lt: to },
           unitPriceEur: { not: null },
-          ...(isVehicleScopeRestricted ? { vehicleId: { in: vehicles.map((v) => v.id) } } : { fleetId: fleet.id }),
+          ...bornePassagesStation,
         },
         _avg: { unitPriceEur: true },
         _count: { _all: true },
@@ -972,12 +1117,15 @@ const plural = (n: number): string => (n > 1 ? 's' : '');
  * Exportée pour que toutes les surfaces (PDF aujourd'hui, Excel / web ensuite)
  * disent EXACTEMENT la même phrase.
  *
+ * @param options.filtreConducteur le rapport ne porte que sur UN conducteur (F13). La
+ *   dernière phrase change alors de sujet : voir le commentaire qui la surplombe.
  * @returns `null` quand rien n'est exclu — pas de mention inutile sur un parc sain.
  */
 export function buildExploitedScopeNotice(
   report: FleetStatsReport,
-  maxPlates: number = NOTICE_MAX_PLATES,
+  options?: { maxPlates?: number; filtreConducteur?: boolean },
 ): string | null {
+  const maxPlates = options?.maxPlates ?? NOTICE_MAX_PLATES;
   const { dormant, withoutTracker, dormantVehicles, total } = report.vehicles;
   if (dormant === 0 && withoutTracker === 0) return null;
 
@@ -1021,7 +1169,36 @@ export function buildExploitedScopeNotice(
   // Toujours en dernier : la base de calcul. C'est la ligne qui permet au client de
   // refaire l'opération lui-même, et qui rappelle que le parc facturé n'a pas bougé.
   const basis = report.trips.avgKmBasisVehicles;
-  if (report.vehicles.exploited === 0) {
+  if (options?.filtreConducteur) {
+    /**
+     * ⚠️ SOUS FILTRE CONDUCTEUR, LA PHRASE DE FLOTTE DEVIENT UN FAUX.
+     *
+     * « Distance moyenne calculée sur 35 véhicules exploités (400.0 km) — parc total
+     * inchangé : 39 » présente les kilomètres d'UNE personne comme ceux du parc exploité,
+     * et donne au lecteur les deux moitiés d'une division qui ne décrivent pas la même
+     * population. La base a changé (cf. `baseMoyenneIds`) : la phrase change avec elle.
+     *
+     * Formulée sans nommer personne : elle vaut pour un conducteur choisi comme pour
+     * « sans conducteur », et le nom est déjà imprimé en gras en tête de document.
+     *
+     * ⚠️ `basis === 0` EST ATTEIGNABLE : un conducteur qui n'a pas roulé du mois (congés,
+     * arrêt) ne fait rouler aucun véhicule, la base est vide et `avgKmPerVehicle` vaut 0
+     * par garde. Écrire « 0.0 km sur 0 véhicule » imprimerait une division par zéro dans
+     * un document que le client relit — on dit l'absence de base au lieu de la mettre en
+     * forme. Le reste de la mention (plaques dormantes, parc total) est inchangé : il
+     * décrit le parc, que le filtre ne touche pas.
+     */
+    parts.push(
+      basis > 0
+        ? `Rapport filtré sur un conducteur : la distance moyenne se divise par les seuls ` +
+          `véhicules que ce filtre retient, jamais par le parc — ` +
+          `${report.trips.avgKmBasisKm.toFixed(1)} km sur ${basis} véhicule${plural(basis)}. ` +
+          `Parc total inchangé : ${total}.`
+        : `Rapport filtré sur un conducteur : aucun trajet retenu par ce filtre sur la ` +
+          `période — la distance moyenne n'a pas de base et vaut 0, elle ne se divise en ` +
+          `aucun cas par le parc. Parc total inchangé : ${total}.`,
+    );
+  } else if (report.vehicles.exploited === 0) {
     // Parc 100 % dormant / non équipé : on ne PEUT pas diviser par le parc exploité
     // (ce serait NaN). On le dit au lieu de laisser croire à une moyenne réelle.
     parts.push(

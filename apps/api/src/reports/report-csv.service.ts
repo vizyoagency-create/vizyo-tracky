@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import type { PorteeConducteur } from '../common/driver-scope';
 import { libelleGraviteAlerte, libelleTypeAlerte } from '@vizyo/tracky-shared';
 
 /**
@@ -93,11 +94,79 @@ export class ReportCsvService {
     ]);
   }
 
-  async trips(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
+  /**
+   * ── LE NOM DU FICHIER DIT LE FILTRE, PARCE QUE LE CSV N'A PAS D'AUTRE ENDROIT OÙ LE DIRE ──
+   *
+   * Le PDF écrit le conducteur en gras sous le nom de la société, l'Excel le met dans le titre
+   * de sa feuille et dans une ligne « Filtre conducteur ». Le CSV, lui, n'a que son nom : une
+   * ligne de prose au-dessus des colonnes serait lue comme l'en-tête par Excel et par tout
+   * analyseur.
+   *
+   * ⚠️ SANS CETTE MARQUE, DEUX EXPORTS DE LA MÊME PÉRIODE PORTENT LE MÊME NOM. Et sous
+   * « none » ils sont indiscernables : chez « mh cars », 1 905 trajets sur 1 956 n'ont aucun
+   * conducteur, donc le fichier filtré a `driver_id` et `driver_name` vides sur TOUTES ses
+   * lignes — exactement comme la quasi-totalité de l'export complet. Le navigateur suffixe
+   * « (1) », le gestionnaire envoie le second par courriel, et le destinataire lit le mois
+   * entier là où il manque 51 trajets que rien ne signale.
+   *
+   * ── TROIS CHOIX, ET POURQUOI CEUX-LÀ ──────────────────────────────────────────────────
+   *
+   *  1. LE NOM PLUTÔT QU'UNE COLONNE `filtre_conducteur`. Les 23 colonnes déclarées sont un
+   *     contrat (cf. `wrap`) : en ajouter une changerait la forme de TOUS les exports, filtrés
+   *     ou non, pour marquer une minorité. Sans filtre, le nom reste celui d'avant au caractère
+   *     près — c'est ce que fige le test.
+   *  2. L'IDENTIFIANT TRONQUÉ PLUTÔT QUE LE NOM DE LA PERSONNE. Sous un conducteur nommé, la
+   *     colonne `driver_name` porte déjà la trace sur chaque ligne : le nom du fichier n'a qu'à
+   *     dire QU'IL est filtré. Huit caractères y suffisent, sans faire voyager un nom propre
+   *     dans un intitulé de pièce jointe, et sans la lecture en base qu'il faudrait pour lui.
+   *  3. LE SUFFIXE APRÈS LES DATES, à côté de `-PARTIEL`. Même canal et même idiome que la
+   *     troncature (« ce fichier ne contient pas ce que son nom laisserait croire »), et les
+   *     deux exports restent voisins dans le dossier de téléchargement, où on les compare.
+   */
+  private marqueConducteur(driverScope: PorteeConducteur): string {
+    if (driverScope === undefined) return '';
+    // La portée est déjà canonique (minuscules) : deux exports du même conducteur portent donc
+    // le même nom, quelle que soit la casse écrite dans l'URL (cf. `resolveDriverScope`).
+    return driverScope === null ? '-sans-conducteur' : `-conducteur-${driverScope.slice(0, 8)}`;
+  }
+
+  /**
+   * ── LE SEUL EXPORT CSV QUI PEUT SUIVRE UN CONDUCTEUR (F13) ─────────────────────────────
+   *
+   * Un trajet PORTE son conducteur (`Trip.driverId`) : c'est ce qui rend ce filtre possible
+   * ici, et impossible pour les positions, les alertes et les commandes — la route les refuse
+   * explicitement plutôt que de leur laisser rendre une autre population (cf.
+   * `reports.controller`, `csvDownload`).
+   *
+   * @param driverScope `undefined` = aucun filtre, `null` = trajets SANS conducteur (le
+   *   mot-clé `none`), sinon l'identifiant demandé. Résolu par `resolveDriverScope` en amont :
+   *   ce service ne revalide rien, il POSE ce qu'on lui donne.
+   *
+   *   ⚠️ Le test est `!== undefined`, jamais une vérité simple. Écrire `where.driverId = null`
+   *   quand aucun filtre n'est demandé ne rendrait que les trajets orphelins — l'inverse de
+   *   « pas de filtre », et un CSV silencieusement amputé de presque tout.
+   *
+   *   La portée sert DEUX fois : elle borne le `where`, et elle marque le NOM du fichier
+   *   (cf. `marqueConducteur`) — un fichier filtré et muet est le piège que ce lot répare,
+   *   déplacé dans un document qui survivra à l'écran qui l'a produit.
+   */
+  async trips(
+    fleetId: string,
+    from: Date,
+    to: Date,
+    accessibleVehicleIds: string[] | 'ALL' = 'ALL',
+    driverScope: PorteeConducteur = undefined,
+  ) {
     const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const trips = await this.prisma.trip.findMany({
       // Mode vie privée (RGPD) : exclut les trajets d'un véhicule actuellement en mode privé.
-      where: { fleetId, startedAt: { gte: from, lt: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
+      where: {
+        fleetId,
+        startedAt: { gte: from, lt: to },
+        ...(ids ? { vehicleId: { in: ids } } : {}),
+        ...(driverScope === undefined ? {} : { driverId: driverScope }),
+        NOT: { vehicle: { privacyModeEnabled: true } },
+      },
       orderBy: { startedAt: 'desc' },
       include: {
         vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } },
@@ -132,7 +201,11 @@ export class ReportCsvService {
       notes_updated_at: t.notesUpdatedAt?.toISOString() ?? '',
       notes_updated_at_local: t.notesUpdatedAt ? formatFleetDateTime(t.notesUpdatedAt) : '',
     }));
-    return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000, [
+    // ⚠️ La marque est posée ICI, pas dans `wrap` : `wrap` sert les quatre types de CSV et
+    // trois d'entre eux ne peuvent PAS porter de conducteur (la route les refuse sous filtre).
+    // Lui passer un nom déjà marqué laisse sa seule règle — le `-PARTIEL` de la troncature —
+    // intacte, et les deux suffixes se composent dans l'ordre où ils se lisent.
+    return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}${this.marqueConducteur(driverScope)}.csv`, rows.length >= 50_000, [
       'trip_id', 'plate', 'group', 'started_at_local', 'ended_at_local', 'started_at', 'ended_at',
       'duration_seconds', 'distance_km', 'max_speed_kmh', 'avg_speed_kmh', 'position_count',
       'start_lat', 'start_lng', 'end_lat', 'end_lng', 'driver_id', 'driver_name', 'driver_source',

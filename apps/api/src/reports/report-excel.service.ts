@@ -1,6 +1,10 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
+// `partLibelle` : la MÊME règle d'arrondi que l'écran et que le PDF, prise dans le contrat
+// partagé — le classeur se pose à côté des deux, et « 99 % » ici contre « 100 % » là-bas sur
+// les mêmes trajets se lit comme une erreur de calcul, pas comme une nuance d'arrondi.
+import { CLE_NON_ATTRIBUE, cleImputationTrajet, partLibelle } from '@vizyo/tracky-shared';
 import { formatFleetDate, formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -12,7 +16,8 @@ import type { AuthUser } from '../auth/types/auth-user';
  *
  * Différent du CSV brut (dump papaparse) : un vrai classeur `.xlsx` mis en forme
  * (en-têtes stylés, bordures, formats nombre/durée, en-tête figé, lignes total)
- * sur 3 feuilles : Synthèse · Trajets · Par jour.
+ * sur 4 feuilles : Synthèse · Par conducteur ou groupe · Trajets · Par jour
+ * (+ « Passages station » quand des passages ont été captés).
  *
  * Périmètre / sécurité (cf. PART A) :
  *   - le `vehicleId` demandé DOIT appartenir au périmètre véhicules de
@@ -25,6 +30,66 @@ import type { AuthUser } from '../auth/types/auth-user';
 
 /** Cap défensif sur le nombre de trajets embarqués dans le classeur. */
 const TRIPS_CAP = 5000;
+
+/**
+ * ══ LE FILTRE CONDUCTEUR D'UN CLASSEUR (F13, seconde moitié) ═══════════════════════════
+ *
+ * Un gestionnaire filtré sur une personne qui cliquait « Excel » recevait le classeur de
+ * TOUT le parc. Un fichier survit à l'écran qui l'a produit : il part par courriel, il
+ * s'ouvre en réunion, et rien dedans ne disait qu'il décrivait une autre population.
+ *
+ * @property scope l'identifiant du conducteur, ou `null` pour les trajets SANS conducteur
+ *   (le mot-clé `none`). ⚠️ `null` est un FILTRE, pas une absence de filtre : c'est le
+ *   paramètre lui-même qui, absent, veut dire « aucun filtre ». Cette forme rend impossible
+ *   la confusion `null` / `undefined` qui, dans un `where`, ne rendrait que les orphelins.
+ * @property label la désignation NUE que le classeur enchâsse dans ses phrases — « Sohaib
+ *   Hamanni », « Sans conducteur ». ⚠️ Pas de préfixe « Conducteur : » ici : ce libellé
+ *   s'écrit au milieu d'une phrase (« … QUE les trajets de … »), et un préfixe collé
+ *   produirait « les trajets de Conducteur : Sohaib Hamanni ». La résolution du nom vit dans
+ *   le contrôleur, seul endroit qui la fait une fois pour le PDF comme pour l'Excel.
+ */
+export interface FiltreConducteurClasseur {
+  scope: string | null;
+  label: string;
+}
+
+/**
+ * Ce que la feuille de synthèse écrit quand un conducteur est demandé.
+ *
+ * ⚠️ Elle dit AUSSI ce que le classeur ne contient plus. Les passages en station sont des
+ * arrêts du VÉHICULE : rien ne les rattache à une personne (`TripFuelStop` ne porte pas de
+ * conducteur). Les garder sous le nom de quelqu'un afficherait une liste d'arrêts et un
+ * « prix constaté » qui peuvent tous appartenir aux trajets d'un autre — donc on les retire,
+ * et on le dit. Un classeur silencieusement composite serait le pire des trois.
+ */
+function mentionConducteur(filtre: FiltreConducteurClasseur): string {
+  const porte = filtre.scope === null
+    ? 'Ce classeur ne porte QUE les trajets sans conducteur.'
+    : `Ce classeur ne porte QUE les trajets de ${filtre.label}.`;
+  return `${porte} Les passages en station sont des arrêts du véhicule, pas d'une personne : ils sont exclus de ce classeur.`;
+}
+
+/**
+ * Hauteur d'une ligne portant une mention FUSIONNÉE.
+ *
+ * ⚠️ EXCEL N'AJUSTE JAMAIS LA HAUTEUR D'UNE LIGNE FUSIONNÉE, et une hauteur posée par
+ * ExcelJS sort dans le XML avec `customHeight="1"` — le drapeau ECMA-376 qui lui INTERDIT
+ * de l'ajuster à l'ouverture. Une hauteur FIGÉE est donc une phrase coupée dès qu'elle
+ * s'allonge, et avec `vertical: 'middle'` elle est rognée aux DEUX bouts : la première
+ * ligne cisaillée par le haut, la dernière par le bas. Or ce qui disparaît ici est
+ * précisément l'aveu du classeur — « les passages en station sont exclus », « 99 % des
+ * trajets n'ont ni conducteur ni groupe ». Un classeur incomplet ET muet sur son
+ * incomplétude est le pire des trois. On calcule donc la hauteur au lieu de la poser.
+ *
+ * @param carParLigne budget de caractères pour la largeur de la fusion, à ~0,96 caractère
+ *   par unité de largeur de colonne — la calibration prudente de la feuille « Par
+ *   conducteur ou groupe » (78 caractères pour ses 81 unités cumulées). Elle sur-réserve
+ *   d'environ un quart : de la place perdue, jamais du texte perdu.
+ * @param plancher hauteur minimale, pour ne pas rétrécir une mise en page existante.
+ */
+function hauteurMention(texte: string, carParLigne: number, plancher = 16): number {
+  return Math.max(plancher, Math.ceil(texte.length / carParLigne) * 15);
+}
 
 /** Consommation par défaut (L/100km) par type véhicule — aligné reports-stats. */
 const DEFAULT_CONSUMPTION_L100KM: Record<string, number> = {
@@ -52,6 +117,10 @@ export class ReportExcelService {
 
   /**
    * Génère le classeur Excel d'un véhicule sur une période.
+   *
+   * @param conducteur filtre CONDUCTEUR (F13). Absent = aucun filtre, comportement d'avant.
+   *   Présent, il borne les trajets ET se lit dans la feuille de synthèse : un classeur
+   *   calculé sur une seule personne et qui ne le dit pas est le piège que ce lot ferme.
    * @returns buffer .xlsx + nom de fichier `tracky-{plaque}-{from}_{to}.xlsx`.
    */
   async generate(
@@ -59,6 +128,7 @@ export class ReportExcelService {
     from: Date,
     to: Date,
     requestedBy: AuthUser,
+    conducteur?: FiltreConducteurClasseur,
   ): Promise<{ buffer: Buffer; filename: string }> {
     // 1) 🔒 Périmètre utilisateur : lève ForbiddenException si vehicleId hors
     //    périmètre accessible (VIEWER/FLEET_MANAGER scope groupe/véhicules).
@@ -81,6 +151,11 @@ export class ReportExcelService {
         calibratedTanks: true,
         fleetId: true,
         privacyModeEnabled: true,
+        // Le groupe sert l'IMPUTATION des trajets sans conducteur (F13). Ordonné par nom et
+        // borné à un, comme partout ailleurs : le modèle est mono-groupe de facto, mais le
+        // jour où un véhicule en aurait deux, les trois surfaces doivent choisir le même —
+        // sinon un même trajet serait imputé à deux groupes différents selon le document.
+        groups: { select: { group: { select: { id: true, name: true } } }, orderBy: { group: { name: 'asc' } }, take: 1 },
         fleet: { select: { id: true, name: true, fuelPriceEurL: true } },
       },
     });
@@ -97,8 +172,15 @@ export class ReportExcelService {
     }
 
     // 3) Trajets du véhicule sur la période (capés, triés). PAS de positions.
+    // ⚠️ `driverId` n'est écrit QUE si un filtre est demandé : la clé posée à `null` sans
+    //    raison ne rendrait que les trajets orphelins, soit l'inverse de « pas de filtre ».
     const trips = await this.prisma.trip.findMany({
-      where: { vehicleId, startedAt: { gte: from, lt: to }, endedAt: { not: null } },
+      where: {
+        vehicleId,
+        startedAt: { gte: from, lt: to },
+        endedAt: { not: null },
+        ...(conducteur ? { driverId: conducteur.scope } : {}),
+      },
       select: {
         startedAt: true,
         endedAt: true,
@@ -107,6 +189,9 @@ export class ReportExcelService {
         maxSpeed: true,
         avgSpeed: true,
         notes: true,
+        // ⚠️ L'IDENTIFIANT, PAS SEULEMENT LE NOM (F13) : deux conducteurs peuvent être
+        // homonymes, et une imputation faite sur le nom les fondrait en une seule ligne.
+        driverId: true,
         driver: { select: { firstName: true, lastName: true } },
       },
       orderBy: { startedAt: 'asc' },
@@ -115,7 +200,12 @@ export class ReportExcelService {
 
     // 3bis) Passages en station-service du véhicule sur la période (prix DATÉ à chaque passage) —
     //       base du suivi de coût réel et de la future section d'auto-calcul à la pompe.
-    const fuelStops = await this.prisma.tripFuelStop.findMany({
+    //
+    // ⚠️ AUCUN passage sous un filtre conducteur, et ce n'est pas un oubli : `TripFuelStop`
+    // ne porte pas de conducteur (cf. `mentionConducteur`). Les charger quand même mettrait,
+    // dans un classeur au nom d'une personne, des arrêts et un « prix constaté » qui peuvent
+    // tous venir des trajets d'un autre. La feuille de synthèse dit qu'ils manquent.
+    const fuelStops = conducteur ? [] : await this.prisma.tripFuelStop.findMany({
       where: { vehicleId, arrivedAt: { gte: from, lte: to } },
       select: {
         arrivedAt: true, durationSec: true, fuelType: true, unitPriceEur: true,
@@ -132,7 +222,11 @@ export class ReportExcelService {
     workbook.creator = 'Vizyo Tracky';
     workbook.created = new Date();
 
-    this.buildSynthese(workbook, vehicle, from, to, kpis);
+    this.buildSynthese(workbook, vehicle, from, to, kpis, conducteur);
+    // Le groupe d'un classeur de véhicule est CONSTANT — c'est celui du véhicule exporté.
+    // La feuille répond donc surtout à « qui a conduit celui-ci, et combien ».
+    const groupeDuVehicule = vehicle.groups?.[0]?.group ?? null;
+    this.buildParImputation(workbook, this.imputer(trips, () => groupeDuVehicule), trips.length, conducteur);
     this.buildTrajets(workbook, trips);
     this.buildParJour(workbook, trips);
     if (fuelStops.length) this.buildPassagesStation(workbook, fuelStops);
@@ -168,6 +262,7 @@ export class ReportExcelService {
     from: Date,
     to: Date,
     requestedBy: AuthUser,
+    conducteur?: FiltreConducteurClasseur,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const fleet = await this.prisma.fleet.findUnique({
       where: { id: scope.fleetId },
@@ -207,17 +302,28 @@ export class ReportExcelService {
 
     const [trips, fuelStops] = await Promise.all([
       this.prisma.trip.findMany({
-        where: { vehicleId: { in: ids }, startedAt: { gte: from, lt: to }, endedAt: { not: null } },
+        // Filtre conducteur (F13) : écrit SEULEMENT s'il est demandé — `null` sans raison
+        // ne rendrait que les trajets orphelins, l'inverse de « pas de filtre ».
+        where: {
+          vehicleId: { in: ids },
+          startedAt: { gte: from, lt: to },
+          endedAt: { not: null },
+          ...(conducteur ? { driverId: conducteur.scope } : {}),
+        },
         select: {
           vehicleId: true,
           startedAt: true, endedAt: true, durationSeconds: true,
           distanceKm: true, maxSpeed: true, avgSpeed: true, notes: true,
+          // Cf. le classeur d'un véhicule : l'imputation se fait sur l'IDENTIFIANT.
+          driverId: true,
           driver: { select: { firstName: true, lastName: true } },
         },
         orderBy: { startedAt: 'asc' },
         take: TRIPS_CAP,
       }),
-      this.prisma.tripFuelStop.findMany({
+      // ⚠️ Rien sous un filtre conducteur : une station est un arrêt du VÉHICULE (cf.
+      // `mentionConducteur`), et la feuille de synthèse annonce l'absence.
+      conducteur ? Promise.resolve([]) : this.prisma.tripFuelStop.findMany({
         where: { vehicleId: { in: ids }, arrivedAt: { gte: from, lte: to } },
         select: {
           arrivedAt: true, durationSec: true, fuelType: true, unitPriceEur: true,
@@ -249,7 +355,20 @@ export class ReportExcelService {
     workbook.creator = 'Vizyo Tracky';
     workbook.created = new Date();
 
-    this.buildSyntheseParVehicule(workbook, fleet.name, scope.groupId ? (lignes[0]?.groupe || null) : null, from, to, lignes, prives.map((v) => v.plate));
+    this.buildSyntheseParVehicule(workbook, fleet.name, scope.groupId ? (lignes[0]?.groupe || null) : null, from, to, lignes, prives.map((v) => v.plate), conducteur);
+    /**
+     * Le groupe vient des véhicules EXPORTABLES — la même relation, ordonnée pareil, que
+     * celle qui alimente la colonne « Groupe » de la feuille précédente. Un véhicule en mode
+     * vie privée n'a ni trajet ni ligne ici : ses kilomètres ne peuvent pas se glisser dans
+     * l'imputation d'un groupe par la porte de derrière.
+     */
+    const groupeParVehicule = new Map(exportables.map((v) => [v.id, v.groups?.[0]?.group ?? null]));
+    this.buildParImputation(
+      workbook,
+      this.imputer(trips, (vehicleId) => groupeParVehicule.get(vehicleId ?? '') ?? null),
+      trips.length,
+      conducteur,
+    );
     this.buildTrajets(workbook, trips, plaque);
     this.buildParJour(workbook, trips);
     if (fuelStops.length) this.buildPassagesStation(workbook, fuelStops);
@@ -276,27 +395,57 @@ export class ReportExcelService {
     to: Date,
     lignes: LigneVehicule[],
     plaquesPrivees: string[],
+    conducteur?: FiltreConducteurClasseur,
   ): void {
     const ws = wb.addWorksheet('Synthèse par véhicule', { views: [{ state: 'frozen', ySplit: 4 }] });
     ws.mergeCells('A1:H1');
     const titre = ws.getCell('A1');
-    titre.value = groupe ? `${societe} — groupe ${groupe}` : societe;
+    // ⚠️ LE CONDUCTEUR EST DANS LE TITRE, pas dans une note de bas de feuille : c'est la
+    // première chose lue, et c'est ce qui distingue ce classeur de celui de tout le parc.
+    const coiffe = groupe ? `${societe} — groupe ${groupe}` : societe;
+    titre.value = conducteur
+      ? `${coiffe} — ${conducteur.scope === null ? 'trajets sans conducteur' : conducteur.label}`
+      : coiffe;
     titre.font = { size: 15, bold: true, color: { argb: COLOR_TITLE_FONT } };
     ws.mergeCells('A2:H2');
     const sousTitre = ws.getCell('A2');
     // Borne haute EXCLUSIVE côté API : la date affichée est la veille, comme partout ailleurs.
     sousTitre.value = `Du ${formatFleetDate(from)} au ${formatFleetDate(new Date(to.getTime() - 1))} inclus · ${lignes.length} véhicule(s)`;
     sousTitre.font = { size: 11, color: { argb: 'FF6B7280' } };
+    /**
+     * ── LES MENTIONS S'EMPILENT, ET L'EN-TÊTE DESCEND AVEC ELLES ────────────────────────
+     *
+     * La ligne 3 portait LA mention (véhicules en mode privé) et l'en-tête était figé en 4.
+     * Il y a désormais deux choses à pouvoir dire — le mode privé et le filtre conducteur —
+     * et écrire la seconde en 3 effacerait la première. ⚠️ Sans mention, ou avec une seule,
+     * la mise en page est celle d'avant au pixel : en-tête ligne 4, volet figé sur 4.
+     */
+    const mentions: string[] = [];
     if (plaquesPrivees.length > 0) {
-      ws.mergeCells('A3:H3');
-      const mention = ws.getCell('A3');
       // ⚠️ Un total amputé sans mention est un total faux. On nomme les plaques : le lecteur
       // doit pouvoir vérifier lui-même que le manque est voulu, et non une panne.
-      mention.value = `⚠️ ${plaquesPrivees.length} véhicule(s) exclu(s) — mode vie privée actif : ${plaquesPrivees.join(', ')}`;
-      mention.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
+      mentions.push(`⚠️ ${plaquesPrivees.length} véhicule(s) exclu(s) — mode vie privée actif : ${plaquesPrivees.join(', ')}`);
     }
+    if (conducteur) mentions.push(`⚠️ ${mentionConducteur(conducteur)}`);
+    mentions.forEach((texte, i) => {
+      const r = 3 + i;
+      ws.mergeCells(`A${r}:H${r}`);
+      const cellule = ws.getCell(`A${r}`);
+      cellule.value = texte;
+      cellule.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
+      // ⚠️ RENVOI À LA LIGNE ET HAUTEUR CALCULÉE (cf. `hauteurMention`). Cette fusion ne
+      // portait qu'une mention courte — les plaques en mode vie privée — et n'avait donc
+      // ni `wrapText` ni hauteur ; une cellule fusionnée non renvoyée à la ligne est
+      // ÉCRÊTÉE à la largeur de la fusion. La mention du filtre conducteur, elle, fait
+      // 164 caractères pour 129 unités : elle débordait déjà pour n'importe quel nom, et
+      // c'est sa fin — « ils sont exclus de ce classeur » — qui tombait.
+      cellule.alignment = { wrapText: true, vertical: 'middle' };
+      ws.getRow(r).height = hauteurMention(texte, 124);
+    });
 
-    const enTete = ws.getRow(4);
+    const ligneEnTete = Math.max(4, 3 + mentions.length);
+    if (ligneEnTete !== 4) ws.views = [{ state: 'frozen', ySplit: ligneEnTete }];
+    const enTete = ws.getRow(ligneEnTete);
     const colonnes = ['Véhicule', 'Modèle', 'Groupe', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)', 'Carburant estimé (€)'];
     enTete.values = colonnes;
     enTete.eachCell((c) => {
@@ -395,6 +544,7 @@ export class ReportExcelService {
     from: Date,
     to: Date,
     k: Kpis,
+    conducteur?: FiltreConducteurClasseur,
   ): void {
     const ws = wb.addWorksheet('Synthèse', {
       properties: { defaultColWidth: 22 },
@@ -409,11 +559,35 @@ export class ReportExcelService {
     title.font = { bold: true, size: 16, color: { argb: COLOR_TITLE_FONT } };
     ws.getRow(1).height = 24;
 
+    /**
+     * ── LE FILTRE CONDUCTEUR, JUSTE SOUS LE TITRE (F13) ────────────────────────────────
+     *
+     * La ligne 2 était vide ; elle porte maintenant ce qui change TOUT le contenu du
+     * classeur quand il est posé. Ni discret ni en bas : un lecteur qui compare deux
+     * classeurs du même véhicule doit voir immédiatement pourquoi les totaux diffèrent.
+     * Sans filtre, la ligne reste vide et rien ne bouge.
+     */
+    if (conducteur) {
+      ws.mergeCells('A2:B2');
+      const mention = ws.getCell('A2');
+      const texte = `⚠️ ${mentionConducteur(conducteur)}`;
+      mention.value = texte;
+      mention.font = { size: 10, italic: true, bold: true, color: { argb: 'FFB45309' } };
+      mention.alignment = { wrapText: true, vertical: 'middle' };
+      // ⚠️ Hauteur CALCULÉE, jamais figée (cf. `hauteurMention`) : les 164 caractères de
+      // cette phrase demandent trois lignes sur les 54 unités cumulées de A et B, et les
+      // 30 pt posés jusqu'ici en affichaient deux — la moitié coupée étant celle qui avoue
+      // le retrait des passages en station. ~52 caractères par ligne pour ces 54 unités.
+      ws.getRow(2).height = hauteurMention(texte, 52, 30);
+    }
+
     const marqueModele = [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || '—';
     const headerRows: Array<[string, string]> = [
       ['Plaque', vehicle.plate],
       ['Marque / modèle', marqueModele],
       ['Flotte', vehicle.fleet?.name ?? '—'],
+      // La ligne d'identité du périmètre : elle se lit à côté de la plaque, pas en note.
+      ...(conducteur ? [['Filtre conducteur', conducteur.label] as [string, string]] : []),
       // Fin INCLUSE : la borne `to` est le lendemain minuit, « au 03/09 » aurait promis un jour de plus.
       ['Période (du)', formatFleetDate(from)],
       ['Période (au, inclus)', formatFleetDate(new Date(to.getTime() - 1))],
@@ -474,6 +648,263 @@ export class ReportExcelService {
   }
 
   // ---------------------------------------------------------------------------
+  // Feuille « Par conducteur ou groupe »
+  // ---------------------------------------------------------------------------
+
+  /**
+   * ══ « QUI ROULE ? » — L'IMPUTATION DES TRAJETS DU CLASSEUR (F13) ═══════════════════════
+   *
+   * L'écran des Rapports rend ce récapitulatif depuis le 5 septembre ; les documents, non —
+   * « le client voit à l'écran ce que son PDF ne dit pas ». Un classeur se pose sur une table
+   * de réunion et sert de référence : il doit répondre à « qui a roulé ? », pas seulement à
+   * « quel véhicule ? ».
+   *
+   * ⚠️ LA RÈGLE D'IMPUTATION EST CELLE DU CONTRAT PARTAGÉ (`cleImputationTrajet`) : le
+   * conducteur du TRAJET s'il est renseigné, sinon le GROUPE du véhicule, sinon personne.
+   * La recopier ici en aurait fait une seconde définition, et le classeur aurait fini par
+   * répondre autrement que l'écran à la même question — la faute que ce produit a déjà payée
+   * sur « reste à faire » et sur « avec excès ».
+   *
+   * ⚠️ CE CLASSEUR IMPUTE SES PROPRES TRAJETS, pas ceux de l'agrégat serveur : ses feuilles
+   * sont toutes calculées sur les mêmes lignes (`TRIPS_CAP`), et une ligne d'imputation qui
+   * viendrait d'ailleurs ne retomberait pas sur le total de la feuille « Trajets ». C'est
+   * aussi pourquoi le dénombrement des non attribués se dit « de ce classeur ».
+   *
+   * @param groupeDe le groupe du véhicule d'un trajet — constant pour le classeur d'UN
+   *   véhicule, lu dans une table pour celui d'un parc.
+   */
+  private imputer(
+    trips: TripRow[],
+    groupeDe: (vehicleId: string | undefined) => { id: string; name: string } | null,
+  ): Imputation {
+    const lignes = new Map<string, LigneImputation>();
+    const nonAttribue = { tripCount: 0, km: 0 };
+
+    for (const t of trips) {
+      const groupe = groupeDe(t.vehicleId);
+      const cle = cleImputationTrajet(t.driverId ?? null, groupe?.id ?? null);
+      const km = Math.max(0, t.distanceKm);
+      const dur = Math.max(0, t.durationSeconds);
+      // ⚠️ COMPTÉ, JAMAIS CLASSÉ : on ne crée pas de ligne « personne ». Ces trajets et ces
+      // kilomètres existent, ils ne peuvent simplement être portés au crédit de quiconque.
+      if (cle === CLE_NON_ATTRIBUE) {
+        nonAttribue.tripCount++;
+        nonAttribue.km += km;
+        continue;
+      }
+      let l = lignes.get(cle);
+      if (!l) {
+        lignes.set(cle, (l = {
+          libelle: t.driverId
+            // Repli qui ne devrait jamais s'afficher (supprimer un conducteur remet
+            // `Trip.driverId` à NULL) : une ligne sans nom vaut mieux qu'une ligne escamotée,
+            // qui emporterait ses kilomètres avec elle.
+            ? (`${t.driver?.firstName ?? ''} ${t.driver?.lastName ?? ''}`.trim() || 'Conducteur inconnu')
+            : (groupe?.name ?? 'Groupe sans nom'),
+          sorte: t.driverId ? 'conducteur' : 'groupe',
+          tripCount: 0, km: 0, durationSeconds: 0,
+        }));
+      }
+      l.tripCount++;
+      l.km += km;
+      l.durationSeconds += dur;
+    }
+
+    return {
+      // Les plus gros rouleurs d'abord, départage par le libellé : l'ordre d'une Map suit
+      // l'ordre de lecture des trajets, que rien ne garantit d'un export à l'autre.
+      lignes: [...lignes.values()].sort((a, b) => b.km - a.km || a.libelle.localeCompare(b.libelle, 'fr')),
+      nonAttribue,
+    };
+  }
+
+  /**
+   * La feuille « Par conducteur ou groupe » — la même vérité que l'écran et que le PDF.
+   *
+   * ⚠️ LES NON ATTRIBUÉS SE DISENT QUEL QUE SOIT L'ÉTAT DU CLASSEMENT, et EN TÊTE de feuille.
+   * L'écran a déjà payé cette faute : une première version ne montrait l'encart que si le
+   * classement était vide, et chez cdef31 dix-sept groupes classés l'auraient masqué. Mesuré
+   * en production le 2026-09-05 : chez mh cars, 1 866 trajets sur 1 886 n'ont NI conducteur NI
+   * groupe — un classement muet sur ce point donnerait à lire une image complète alors qu'il
+   * en manque 99 %.
+   *
+   * ⚠️ SON DÉNOMINATEUR EST LE TOTAL DES TRAJETS DU CLASSEUR, celui de la feuille « Trajets »,
+   * jamais la somme des lignes classées : « 1 866 sur 22 » serait un mensonge parfaitement
+   * crédible. Le pourcentage vient de `partLibelle` (contrat partagé) : c'est la mention de
+   * l'écran et du PDF au mot près, « 1 866 trajets sur 1 886 (99 %, 11 460 km) ». Trois
+   * surfaces qui montrent les mêmes trajets et n'écrivent pas la même part se lisent comme
+   * une erreur de calcul.
+   *
+   * ⚠️ ET CE CLASSEUR EST PLAFONNÉ. Ses feuilles s'arrêtent à `TRIPS_CAP` trajets, les plus
+   * ANCIENS de la période (`orderBy: startedAt asc` + `take`) : la fin de période manque. Une
+   * phrase qui compte « N sur M de ce classeur » au-dessus d'un classeur tronqué en silence
+   * est pire que le silence — elle a l'air de tout compter. Le plafond se dit donc là où le
+   * lecteur compte, et AVANT le compte, pour qu'il sache d'emblée sur quoi porte le M.
+   *
+   * @param totalTrajets nombre de trajets embarqués dans le classeur (feuille « Trajets »).
+   */
+  private buildParImputation(
+    wb: ExcelJS.Workbook,
+    imputation: Imputation,
+    totalTrajets: number,
+    conducteur?: FiltreConducteurClasseur,
+  ): void {
+    const ws = wb.addWorksheet('Par conducteur ou groupe', { views: [{ state: 'frozen', ySplit: 4 }] });
+    ws.columns = [
+      { width: 30 }, { width: 14 },
+      { width: 10, style: { numFmt: '#,##0' } },
+      { width: 15, style: { numFmt: '#,##0.0' } },
+      { width: 12 },
+    ];
+
+    ws.mergeCells('A1:E1');
+    const titre = ws.getCell('A1');
+    titre.value = 'Par conducteur ou groupe';
+    titre.font = { size: 15, bold: true, color: { argb: COLOR_TITLE_FONT } };
+
+    ws.mergeCells('A2:E2');
+    const regle = ws.getCell('A2');
+    // La règle d'imputation est ÉCRITE : sans elle, un lecteur ne peut pas savoir pourquoi
+    // « Livraisons » et « Amine Berrada » figurent dans la même colonne.
+    regle.value = 'Chaque trajet compte pour son conducteur, sinon pour le groupe de son véhicule.';
+    regle.font = { size: 11, color: { argb: 'FF6B7280' } };
+
+    /**
+     * ── LES MENTIONS S'EMPILENT, ET L'EN-TÊTE DESCEND AVEC ELLES ────────────────────────
+     *
+     * Même mécanique que la feuille « Synthèse par véhicule », et pour la même raison :
+     * il y a deux choses à pouvoir dire ici, écrire la seconde sur la ligne de la première
+     * l'effacerait. Sans mention, en-tête ligne 4 et volet figé sur 4.
+     */
+    const mentions: string[] = [];
+    /**
+     * ── LE PLAFOND DU CLASSEUR, DIT AVANT LE COMPTE QU'IL BORNE ──────────────────────────
+     *
+     * `TRIPS_CAP` atteint = la période contient PEUT-ÊTRE davantage de trajets, et on ne peut
+     * pas savoir combien sans une seconde requête de comptage. On ne prétend donc pas au
+     * nombre manquant : on dit le plafond, le fait qu'il est atteint, et QUELS trajets ont
+     * été gardés — les plus anciens, la fin de période étant coupée. Un lecteur averti sait
+     * alors quoi faire (resserrer la période) ; un lecteur qui l'ignore prendrait « 4 300
+     * trajets sur 5 000 de ce classeur » pour le compte de sa société.
+     *
+     * ⚠️ ET LA PHRASE DIT AUSSI CE QUE LE PLAFOND NE BORNE PAS. Elle affirmait « tous les
+     * nombres de ce classeur, ceux des autres feuilles compris » : c'était FAUX pour les
+     * passages en station. `tripFuelStop.findMany` n'a AUCUN `take` — à trois lignes du
+     * `take: TRIPS_CAP` des trajets — et ces passages ne dérivent pas des trajets : c'est
+     * une population parallèle, lue sur TOUTE la période. La feuille « Passages station »,
+     * son PRIX MOYEN, et dans le classeur d'un véhicule les indicateurs « Passages en
+     * station », « Prix constaté en station » et « Coût au prix constaté » (ce dernier
+     * croisant des litres PLAFONNÉS avec un prix qui ne l'est pas) débordent donc la
+     * fenêtre annoncée. Un lecteur qui fait confiance à la phrase rapprocherait un total de
+     * station d'un total de trajets qui ne portent pas sur la même population.
+     * Ne PAS « corriger » en plafonnant les passages : cela amputerait un prix moyen
+     * aujourd'hui juste. On dit ce qui manque, et on dit ce qui déborde.
+     */
+    if (totalTrajets >= TRIPS_CAP) {
+      mentions.push(
+        `⚠️ Classeur plafonné à ${TRIPS_CAP} trajets, et ce plafond est atteint : la période en `
+        + 'compte peut-être davantage. Les trajets gardés sont les plus ANCIENS de la période — '
+        + 'la fin de période manque. Tous les nombres TIRÉS DES TRAJETS — cette feuille, '
+        + '« Trajets », « Par jour » et la synthèse — portent sur ces trajets-là. EXCEPTION : '
+        + 'les passages en station ne sont PAS plafonnés ; leur feuille, le prix constaté et le '
+        + 'coût qui en découle couvrent TOUTE la période, ils ne se rapprochent donc pas des '
+        + 'kilomètres ci-dessus. Resserrez la période pour obtenir un classeur homogène.',
+      );
+    }
+    const na = imputation.nonAttribue;
+    if (na.tripCount > 0) {
+      const s = na.tripCount > 1 ? 's' : '';
+      mentions.push(
+        `⚠️ ${na.tripCount} trajet${s} sur ${totalTrajets} de ce classeur `
+        + `(${partLibelle(na.tripCount, totalTrajets)}, ${round1(na.km)} km) `
+        + `n’${na.tripCount > 1 ? 'ont' : 'a'} ni conducteur, ni groupe : `
+        + `${na.tripCount > 1 ? 'ils ne figurent' : 'il ne figure'} dans aucune ligne ci-dessous, `
+        + 'et ne peuvent être attribués à personne. Renseignez un conducteur ou un groupe sur ces '
+        + 'véhicules pour que leurs kilomètres comptent pour quelqu’un.',
+      );
+    }
+    /**
+     * ⚠️ SOUS FILTRE, CE CLASSEMENT SE RÉDUIT PAR CONSTRUCTION — un classement d'une seule
+     * ligne, laissé sans contexte, se lit « il n'y a qu'une personne qui roule ». La phrase
+     * vaut pour les DEUX formes du filtre : sur une personne nommée il ne reste qu'une ligne,
+     * sous « sans conducteur » il reste des lignes de GROUPE et aucune de personne.
+     */
+    if (conducteur) {
+      mentions.push(
+        '⚠️ Périmètre limité par le filtre conducteur de ce classeur : le classement ci-dessous '
+        + 'ne porte que sur les trajets retenus. Un classeur centré sur une personne ne peut donc '
+        + 'contenir qu’une seule ligne, et un classeur « sans conducteur » n’en contient aucune de '
+        + 'conducteur — ce n’est pas le classement de la société.',
+      );
+    }
+    mentions.forEach((texte, i) => {
+      const r = 3 + i;
+      ws.mergeCells(`A${r}:E${r}`);
+      const cellule = ws.getCell(`A${r}`);
+      cellule.value = texte;
+      cellule.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
+      cellule.alignment = { wrapText: true, vertical: 'middle' };
+      // ⚠️ EXCEL N'AJUSTE PAS LA HAUTEUR D'UNE LIGNE FUSIONNÉE : sans ce calcul, la phrase
+      // la plus importante de la feuille — celle qui dit que 99 % des trajets ne sont
+      // attribués à personne — serait coupée au ras de la deuxième ligne. ~78 caractères
+      // par ligne pour la largeur cumulée des cinq colonnes.
+      ws.getRow(r).height = hauteurMention(texte, 78);
+    });
+
+    const ligneEnTete = Math.max(4, 3 + mentions.length);
+    if (ligneEnTete !== 4) ws.views = [{ state: 'frozen', ySplit: ligneEnTete }];
+    const enTete = ws.getRow(ligneEnTete);
+    enTete.values = ['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée'];
+    enTete.eachCell((c) => {
+      c.font = { bold: true, color: { argb: COLOR_HEADER_FONT } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_HEADER_FILL } };
+      c.alignment = { vertical: 'middle' };
+    });
+
+    if (imputation.lignes.length === 0) {
+      // ⚠️ « Aucun trajet imputé » et « aucun trajet » sont deux faits différents : le premier
+      // est un trou de données à combler, le second une période sans activité. Les confondre
+      // enverrait le gestionnaire renseigner des conducteurs sur un parc à l'arrêt.
+      //
+      // ⚠️ ET « SUR LA PÉRIODE » SERAIT UN FAUX SOUS FILTRE — même règle que le PDF, qui
+      // écrit déjà « Aucun trajet retenu par ce filtre sur la période » sur ce fait exact.
+      // Un classeur filtré sur quelqu'un qui était en congés est vide parce qu'il vient
+      // d'écarter tous les autres par construction, pas parce que le parc s'est arrêté ; et
+      // c'est la seule phrase AFFIRMATIVE que l'œil trouve juste sous l'en-tête. Posée sur
+      // une table de réunion, elle se lirait « le parc n'a pas bougé en juin ».
+      // La seconde branche, elle, ne date pas sa population : elle reste vraie sous filtre.
+      const vide = ws.addRow([
+        totalTrajets === 0
+          ? (conducteur
+            ? 'Aucun trajet retenu par ce filtre sur la période — le classeur a écarté les autres conducteurs, la période n’est pas vide pour autant.'
+            : 'Aucun trajet sur la période.')
+          : 'Aucun trajet n’est imputé à un conducteur ni à un groupe.',
+      ]);
+      vide.font = { italic: true, color: { argb: 'FF6B7280' } };
+      return;
+    }
+
+    for (const l of imputation.lignes) {
+      ws.addRow([l.libelle, l.sorte, l.tripCount, round1(l.km), fmtDuration(l.durationSeconds)]);
+    }
+
+    // ⚠️ « lignes classées » et non « TOTAL » : sous ce tableau, le total du classeur, c'est
+    // celui-ci PLUS les non attribués annoncés en tête. Un « TOTAL » nu se lirait comme le
+    // total de la période, et manquerait 99 % des trajets chez deux sociétés sur cinq.
+    const total = ws.addRow([
+      'TOTAL (lignes classées)', '',
+      imputation.lignes.reduce((n, l) => n + l.tripCount, 0),
+      round1(imputation.lignes.reduce((n, l) => n + l.km, 0)),
+      fmtDuration(imputation.lignes.reduce((n, l) => n + l.durationSeconds, 0)),
+    ]);
+    total.eachCell((c) => {
+      c.font = { bold: true };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_TOTAL_FILL } };
+    });
+    this.applyBorders(ws, `A${ligneEnTete}:E${ws.rowCount}`);
+  }
+
+  // ---------------------------------------------------------------------------
   // Feuille « Trajets »
   // ---------------------------------------------------------------------------
 
@@ -506,8 +937,28 @@ export class ReportExcelService {
 
     let sumKm = 0;
     let sumDur = 0;
+    /**
+     * ⚠️ ON SOMME LE BRUT, ON N'ARRONDIT QU'UNE FOIS — la convention de tout le reste du
+     * fichier (`aggregate`, `buildParJour`, `imputer`), dont cette feuille était la seule
+     * exception. `distanceKm` est stocké au CENTIÈME en production
+     * (`Math.round(metres / 10) / 100`, cf. trips.service) : arrondir chaque ligne au
+     * DIXIÈME avant de l'accumuler jetait jusqu'à 0,05 km par trajet, et toujours dans le
+     * même sens. Sur un classeur plafonné à 5 000 trajets, cela faisait ~23 km d'écart
+     * entre le TOTAL de cette feuille et celui des trois autres — deux totaux de
+     * kilomètres contradictoires dans le même fichier, alors que la feuille « Par
+     * conducteur ou groupe » invite justement le lecteur à faire l'addition (« TOTAL
+     * (lignes classées) » + les non attribués annoncés en tête).
+     *
+     * ⚠️ ET LA CELLULE PORTE LE BRUT, PAS L'ARRONDI : c'est le format de colonne
+     * (`numFmt: '#,##0.0'`) qui affiche le dixième. Y écrire `round1(km)` tout en sommant
+     * le brut rouvrirait l'écart À L'INTÉRIEUR de la feuille — un simple Autosum sur la
+     * colonne ne retomberait plus sur sa propre ligne TOTAL, ce qui est pire que l'écart
+     * entre feuilles. Effet de bord assumé : une distance dont le centième vaut exactement
+     * 5 peut désormais s'afficher 0,1 km plus bas (le tableur arrondit le double réel, que
+     * `Math.round` poussait vers le haut) — du bruit d'affichage contre un total juste.
+     */
     for (const t of trips) {
-      const km = round1(Math.max(0, t.distanceKm));
+      const km = Math.max(0, t.distanceKm);
       const dur = Math.max(0, t.durationSeconds);
       sumKm += km;
       sumDur += dur;
@@ -681,7 +1132,37 @@ interface TripRow {
   maxSpeed: number;
   avgSpeed: number;
   notes: string | null;
+  /**
+   * Conducteur du TRAJET, la clé de l'imputation (F13) — et non celui du véhicule : c'est
+   * qui a conduit ce jour-là, et un même véhicule peut en changer.
+   *
+   * ⚠️ OPTIONNEL dans ce type, jamais dans les requêtes : les deux `findMany` le
+   * sélectionnent. Il l'est parce que d'anciens jeux d'essai construisent des `TripRow` à la
+   * main — et un trajet sans identifiant est alors imputé à son GROUPE, comme un trajet qui
+   * n'a réellement pas de conducteur.
+   */
+  driverId?: string | null;
   driver: { firstName: string; lastName: string } | null;
+}
+
+/** Une ligne du classement « par conducteur ou groupe ». */
+interface LigneImputation {
+  libelle: string;
+  sorte: 'conducteur' | 'groupe';
+  tripCount: number;
+  km: number;
+  durationSeconds: number;
+}
+
+/**
+ * Le classement, et ce qu'il ne peut pas contenir.
+ *
+ * ⚠️ `nonAttribue` n'est PAS une ligne du classement : on ne note pas « personne », et on ne
+ * lui attribue pas non plus de kilomètres. Il est compté à part et annoncé en tête de feuille.
+ */
+interface Imputation {
+  lignes: LigneImputation[];
+  nonAttribue: { tripCount: number; km: number };
 }
 
 /** Une ligne de la feuille « Synthèse par véhicule » d'un classeur de périmètre. */

@@ -5,6 +5,7 @@ import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy, Users } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { partLibelle } from '@vizyo/tracky-shared';
 import type { DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -400,13 +401,14 @@ export class DrivingScoresComponent implements OnInit {
    * Part en pourcentage, sans jamais contredire les nombres qu'elle accompagne : « 1 sur 1 000 »
    * n'est pas « 0 % » et « 999 sur 1 000 » n'est pas « 100 % » — l'arrondi ne peut affirmer un
    * extrême que si les nombres l'atteignent vraiment. Dénominateur nul : « 0 % ».
+   *
+   * ⚠️ LA RÈGLE VIT DANS LE CONTRAT PARTAGÉ, plus ici : cet écran, la page Rapports et le PDF
+   * affichent la même mention sur les mêmes trajets, ils ne peuvent pas arrondir autrement.
+   *
+   * ⚠️ Réexposée en propriété de classe parce que le GABARIT l'appelle : une fonction de module
+   * n'est pas atteignable depuis un template Angular.
    */
-  protected partLibelle(n: number, d: number): string {
-    if (d <= 0 || n <= 0) return '0 %';
-    if (n >= d) return '100 %';
-    const p = Math.round((n / d) * 100);
-    return p === 0 ? '< 1 %' : p === 100 ? '> 99 %' : `${p} %`;
-  }
+  protected readonly partLibelle = partLibelle;
   /**
    * Le trou de données DOMINE-t-il la période (au moins un trajet réel sur deux) ? C'est la
    * seule situation où l'état vide peut dire « personne » : un seul trajet orphelin au milieu

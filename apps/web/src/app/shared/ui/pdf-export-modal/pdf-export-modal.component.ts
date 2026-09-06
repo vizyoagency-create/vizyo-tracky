@@ -22,6 +22,7 @@ import {
   Search,
   Trophy,
   Truck,
+  User,
   X,
 } from 'lucide-angular';
 import type { VehicleDetailDto } from '../../../core/services/vehicles.service';
@@ -33,6 +34,19 @@ export interface PdfExportRequest {
   sections: PdfReportSection[];
   maxTrips: number;
   topN: number;
+}
+
+/**
+ * Le filtre conducteur de la PAGE, tel que la modale doit l'annoncer (F13).
+ *
+ * @property nom la désignation courte du bandeau — « Sohaib Hamanni », « Sans conducteur ».
+ * @property trajets la même chose, en groupe nominal enchâssable — « les trajets de Sohaib
+ *   Hamanni », « les trajets sans conducteur ». La phrase d'aperçu le colle derrière « et
+ *   seulement … » ; le nom seul y produirait « et seulement Sans conducteur ».
+ */
+export interface PdfExportDriverFilter {
+  nom: string;
+  trajets: string;
 }
 
 type Scope = 'all' | 'selected';
@@ -222,6 +236,20 @@ function joinFr(parts: string[]): string {
                     </button>
                   </div>
                 }
+              }
+
+              <!-- Le filtre CONDUCTEUR de la page (F13) : affiché, jamais modifiable ici.
+                   Sans cette ligne, « Toute la flotte » se lirait au pied de la lettre alors
+                   que le rapport ne portera que les trajets d'une personne — et le fichier,
+                   lui, partira par courriel avec cette ambiguïté dedans. -->
+              @if (driverFilter(); as cond) {
+                <p class="pem-scope-banner pem-scope-banner--driver">
+                  <lucide-icon [img]="UserIcon" [size]="14" class="shrink-0"></lucide-icon>
+                  <span>
+                    Filtré sur <strong>{{ cond.nom }}</strong> — le rapport ne portera que
+                    ces trajets. Le périmètre véhicule ci-dessous s'y ajoute.
+                  </span>
+                </p>
               }
 
               <div class="grid grid-cols-2 gap-2">
@@ -544,6 +572,16 @@ function joinFr(parts: string[]): string {
       border-color: color-mix(in srgb, var(--texte-attente, var(--warning)) 30%, transparent);
       color: var(--texte-attente, var(--warning));
     }
+    /* Filtre conducteur : ni succes ni avertissement — c'est un FAIT sur le perimetre.
+       Lavis neutre, texte en --fg-secondary, pour qu'il se lise sans crier ni se fondre. */
+    .pem-scope-banner--driver {
+      align-items: flex-start;
+      background: var(--bg-tertiary);
+      border-color: var(--border-subtle);
+      color: var(--fg-secondary);
+    }
+    .pem-scope-banner--driver strong { color: var(--fg-primary); font-weight: 700 }
+    .pem-scope-banner--driver lucide-icon { margin-top: 2px }
     .pem-inline-btn {
       display: inline-flex;
       align-items: center;
@@ -721,6 +759,24 @@ export class PdfExportModalComponent {
    */
   readonly fileDateRange = input<string>('');
 
+  /**
+   * ── LE CONDUCTEUR SUR LEQUEL L'ÉCRAN EST FILTRÉ (F13) ──────────────────────────────────
+   *
+   * `null` quand aucun filtre n'est posé.
+   *
+   * ⚠️ CE N'EST PAS UN RÉGLAGE DE LA MODALE : contrairement au périmètre véhicule, il ne se
+   * change pas ici. Il est AFFICHÉ, et rien d'autre — la page reste l'unique endroit où l'on
+   * choisit un conducteur, sinon la modale produirait un PDF qui ne correspond à aucun
+   * écran, et la phrase d'aperçu mentirait sur ce que le client vient de regarder.
+   *
+   * ⚠️ DEUX FORMES DANS UN SEUL OBJET, et c'est délibéré : le bandeau nomme (« Filtré sur
+   * Sohaib Hamanni »), la phrase d'aperçu enchâsse (« … et seulement les trajets sans
+   * conducteur »). Deux entrées séparées finiraient par se contredire — l'une mise à jour,
+   * l'autre oubliée —, et c'est la phrase d'aperçu, la dernière ligne lue avant de cliquer,
+   * qui mentirait.
+   */
+  readonly driverFilter = input<PdfExportDriverFilter | null>(null);
+
   readonly closed = output<void>();
   readonly exportRequested = output<PdfExportRequest>();
 
@@ -796,6 +852,7 @@ export class PdfExportModalComponent {
   protected readonly InfoIcon = Info;
   protected readonly EyeIcon = Eye;
   protected readonly RotateCcwIcon = RotateCcw;
+  protected readonly UserIcon = User;
 
   protected readonly uid = Math.random().toString(36).slice(2, 9);
 
@@ -894,21 +951,47 @@ export class PdfExportModalComponent {
     return total != null && total > MAX_TRIPS;
   });
 
+  /**
+   * ⚠️ SOUS UN FILTRE CONDUCTEUR, CETTE SECTION NE LE SUIT PAS — et la case doit le dire
+   * AVANT d'être cochée, pas seulement dans le PDF une fois sorti.
+   *
+   * Une alerte appartient à un VÉHICULE : lui attribuer un conducteur demanderait de deviner
+   * qui conduisait à son horodatage. Une section muette, dans un rapport au nom d'une
+   * personne, se lit comme « voici ses alertes » : ce n'est plus un chiffre, c'est une
+   * accusation — et sur du papier qui circule, elle n'a pas de démenti. Le document porte la
+   * même phrase (`report-pdf.service`), l'écran aussi.
+   */
   protected readonly alertsHint = computed(() => {
     const n = this.alertCount();
     const detail = 'total, répartition par type et par sévérité';
-    if (n == null) return 'Sur la période : ' + detail + '.';
-    if (n === 0) return 'Aucune alerte sur la période — la section le dira noir sur blanc.';
-    if (n === 1) return '1 alerte sur la période — ' + detail + '.';
-    return n + ' alertes sur la période — ' + detail + '.';
+    const exception = this.driverFilter()
+      ? ' ⚠️ Les alertes appartiennent à un véhicule, pas à un conducteur : cette section ne suit pas le filtre et porte sur les véhicules du périmètre.'
+      : '';
+    if (n == null) return 'Sur la période : ' + detail + '.' + exception;
+    if (n === 0) return 'Aucune alerte sur la période — la section le dira noir sur blanc.' + exception;
+    if (n === 1) return '1 alerte sur la période — ' + detail + '.' + exception;
+    return n + ' alertes sur la période — ' + detail + '.' + exception;
   });
 
+  /**
+   * ⚠️ CETTE CASE COMMANDE DEUX TABLEAUX, PAS UN — et le second est NOMINATIF.
+   *
+   * Le document couple délibérément les deux (`report-pdf.service` : le récapitulatif par
+   * conducteur ou groupe sort sous la section « topVehicles », parce qu'à l'écran ce sont les
+   * deux faces d'une même carte). Ce couplage est assumé et testé dans les deux sens ; ce qui
+   * ne suivait pas, c'est la PROMESSE : la case annonçait un palmarès de véhicules et livrait,
+   * en plus, un classement de PERSONNES avec leurs excès et leur pire dépassement, plus
+   * l'encart des trajets que rien ne rattache à personne — sur un document qui part par
+   * courriel. Et symétriquement, décocher la case jette tout cela sans qu'un mot ne l'annonce.
+   */
   protected readonly topHint = computed(() => {
     const n = this.effectiveTopN();
     const base = n > 1
       ? 'Les ' + n + ' véhicules qui ont le plus roulé'
       : 'Le véhicule qui a le plus roulé';
-    return base + ' — plaque, distance, trajets, carburant estimé.';
+    return base + ' — plaque, distance, trajets, carburant estimé.'
+      + ' Le même récapitulatif suit par conducteur ou groupe — nom, distance, trajets, excès —'
+      + ' avec les trajets non attribués. Décocher retire les deux.';
   });
 
   protected readonly topSliderHint = computed(() => {
@@ -971,15 +1054,22 @@ export class PdfExportModalComponent {
     return 'sur la période ' + raw;
   });
 
+  /**
+   * ⚠️ LE CONDUCTEUR EST DANS CETTE PHRASE, pas seulement dans le bandeau du dessus. C'est
+   * la dernière ligne lue avant de cliquer, et « pour toute la flotte » y était un mensonge
+   * dès qu'un conducteur était sélectionné : le fichier ne portera QUE ses trajets.
+   */
   protected readonly scopePhrase = computed(() => {
+    const conducteur = this.driverFilter();
+    const suffixe = conducteur ? ', et seulement ' + conducteur.trajets : '';
     if (this.scope() === 'all') {
       const n = this.vehicles().length;
-      return n > 0
+      return (n > 0
         ? 'pour toute la flotte (' + n + ' véhicule' + (n > 1 ? 's' : '') + ')'
-        : 'pour toute la flotte';
+        : 'pour toute la flotte') + suffixe;
     }
     const label = this.plateSummary(Array.from(this.selectedIds()));
-    return label ? 'pour ' + label : 'pour aucun véhicule';
+    return (label ? 'pour ' + label : 'pour aucun véhicule') + suffixe;
   });
 
   /**
@@ -1161,14 +1251,30 @@ export class PdfExportModalComponent {
     if (this.includeKpi()) out.push('les indicateurs clés');
     if (this.includeAlerts()) {
       const n = this.alertCount();
-      if (n == null) out.push('les alertes');
+      /**
+       * ⚠️ SOUS FILTRE CONDUCTEUR, CETTE ÉNUMÉRATION EST LA DERNIÈRE LIGNE LUE AVANT LE CLIC,
+       * et elle vient juste après « et seulement les trajets de X » : « les 12 alertes » s'y
+       * lisait donc comme « ses 12 alertes ». Une alerte appartient à un véhicule et ne suit
+       * pas ce filtre — la case le dit déjà (`alertsHint`), le document aussi, mais la phrase
+       * qui récapitule ce qu'on va recevoir laissait l'inférence intacte.
+       */
+      const perimetre = this.driverFilter() ? ' des véhicules du périmètre' : '';
+      if (n == null) out.push('les alertes' + perimetre);
       else if (n === 0) out.push('la section alertes (aucune sur la période)');
-      else if (n === 1) out.push('l\'unique alerte');
-      else out.push('les ' + n + ' alertes');
+      else if (n === 1) out.push('l\'unique alerte' + perimetre);
+      else out.push('les ' + n + ' alertes' + perimetre);
     }
     if (this.includeTopVehicles()) {
       const n = this.effectiveTopN();
-      out.push(n > 1 ? 'le top ' + n + ' des véhicules' : 'le véhicule qui a le plus roulé');
+      /**
+       * ⚠️ LA DERNIÈRE LIGNE LUE AVANT LE CLIC DOIT NOMMER LE TABLEAU NOMINATIF. Cette case
+       * amène aussi le récapitulatif « Par conducteur ou groupe » (cf. `topHint`) : annoncer
+       * un top de véhicules pour un fichier qui classe des personnes, avec leurs excès, c'est
+       * la promesse d'avant le clic qui ment. Le bloc étant plafonné par le même `topN`,
+       * l'énumération reste juste sans second chiffre.
+       */
+      out.push((n > 1 ? 'le top ' + n + ' des véhicules' : 'le véhicule qui a le plus roulé')
+        + ' et le même récapitulatif par conducteur ou groupe');
     }
     if (this.includeTrips()) {
       const total = this.tripCount();

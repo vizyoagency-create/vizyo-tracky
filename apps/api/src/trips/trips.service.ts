@@ -15,6 +15,7 @@ import { MAX_VITESSE_ANNONCEE_KMH, douglasPeucker, isPlausibleJump, isValidLatLn
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { resolveDriverScope, type PorteeConducteur } from '../common/driver-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -573,6 +574,29 @@ export class TripsService implements OnModuleInit {
   }
 
   /**
+   * Résout le filtre `where.driverId` — F13, seconde moitié.
+   *
+   * Rend `undefined` (aucun filtre), `null` (trajets SANS conducteur) ou l'identifiant
+   * demandé. La règle et sa validation vivent dans `common/driver-scope` : la synthèse
+   * (`reports-stats`) applique EXACTEMENT la même, sans quoi le tableau et les agrégats
+   * de la page Rapports afficheraient deux périmètres différents.
+   *
+   * ⚠️ APPELÉE AUX DEUX ENDROITS — `list()` et `buildPeriodWhere()`. Le second sert
+   * `dailySummary` ET `periodCharts` : filtrer la liste sans filtrer ces agrégats ferait
+   * cohabiter, sur le même écran, un compteur qui compte tous les trajets et un tableau qui
+   * n'en montre qu'une partie. C'est le défaut que cette page a déjà payé.
+   *
+   * ⚠️ ANTI-IDOR — aucune lecture de contrôle ici, et c'est délibéré. Les trajets sont déjà
+   * bornés par `fleetId` (ou par le fail-closed d'un non-super sans flotte) ET par le
+   * périmètre véhicule de l'appelant : un identifiant de conducteur d'une AUTRE société ne
+   * peut donc rendre que zéro ligne, jamais les trajets d'un tiers. Vérifier l'appartenance
+   * du conducteur coûterait une requête par appel pour n'apprendre rien de plus.
+   */
+  private resolveDriverScope(driverId?: string): PorteeConducteur {
+    return resolveDriverScope(driverId);
+  }
+
+  /**
    * Ordre de tri d'une page de trajets.
    *
    * ⚠️ Le `id` en second critère n'est PAS cosmétique : `startedAt` et `maxSpeed` ne
@@ -602,6 +626,8 @@ export class TripsService implements OnModuleInit {
       limit?: string;
       cursor?: string;
       fleetId?: string;
+      /** UUID de conducteur, ou `none` pour les trajets sans conducteur (cf. ListTripsDto). */
+      driverId?: string;
       sortBy?: TripSortColumn;
       sortDir?: 'asc' | 'desc';
       light?: string;
@@ -622,6 +648,10 @@ export class TripsService implements OnModuleInit {
     // Périmètre véhicule : vehicleId unique OU vehicleIds (filtre groupe), borné aux accès.
     const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);
     if (vScope !== undefined) where.vehicleId = vScope;
+    // Périmètre conducteur (F13) : `undefined` = pas de filtre, `null` = sans conducteur.
+    // ⚠️ Le test `!== undefined` est le point sensible : `null` DOIT être écrit dans le where.
+    const dScope = this.resolveDriverScope(filters.driverId);
+    if (dScope !== undefined) where.driverId = dScope;
     if (filters.from || filters.to) {
       where.startedAt = {};
       // Jours civils Europe/Paris — même lecture que les agrégats (cf. buildPeriodWhere).
@@ -753,7 +783,7 @@ export class TripsService implements OnModuleInit {
    */
   private buildPeriodWhere(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string; driverId?: string },
   ): Prisma.TripWhereInput | null {
     // Mode vie privée (RGPD) : exclut les véhicules en mode privé des agrégats.
     const where: Prisma.TripWhereInput = { endedAt: { not: null }, NOT: { vehicle: { privacyModeEnabled: true } } };
@@ -766,6 +796,12 @@ export class TripsService implements OnModuleInit {
     // Périmètre véhicule (unique ou groupe), borné aux accès — cf. list().
     const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);
     if (vScope !== undefined) where.vehicleId = vScope;
+    // Périmètre conducteur (F13) — MÊME règle que `list()`, et c'est tout l'intérêt de la
+    // partager ici : `dailySummary` (d'où viennent les indicateurs) et `periodCharts` la
+    // suivent d'un coup. Sans cela, filtrer sur un conducteur laisserait les compteurs et les
+    // graphiques décrire toute la flotte au-dessus d'un tableau qui n'en montre qu'une part.
+    const dScope = this.resolveDriverScope(filters.driverId);
+    if (dScope !== undefined) where.driverId = dScope;
     // Jours civils Europe/Paris (cf. `parisDayStart`) : « 2026-08-03 » = minuit à Paris,
     // pas minuit UTC. Un ISO complet (avec heure) reste lu tel quel.
     if (filters.from) where.startedAt = { ...(where.startedAt as any ?? {}), gte: parisDayStart(filters.from) };
@@ -777,7 +813,7 @@ export class TripsService implements OnModuleInit {
 
   async dailySummary(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string; driverId?: string },
   ): Promise<Array<{ date: string; tripCount: number; totalDistanceMeters: number; totalDurationSeconds: number; maxSpeed: number }>> {
     const where = this.buildPeriodWhere(requestedBy, filters);
     if (where === null) return [];
@@ -833,7 +869,7 @@ export class TripsService implements OnModuleInit {
    */
   async periodCharts(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string; driverId?: string },
   ): Promise<{ speeds: number[]; heatmap: number[][] }> {
     const empty = { speeds: [], heatmap: TripsService.emptyHeatmap() };
     const where = this.buildPeriodWhere(requestedBy, filters);

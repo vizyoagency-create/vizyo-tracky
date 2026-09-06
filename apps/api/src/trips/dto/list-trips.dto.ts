@@ -1,4 +1,6 @@
-import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsIn, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { CONDUCTEUR_AUCUN, FILTRE_CONDUCTEUR_REGEX, normaliserDriverIdDto } from '../../common/driver-scope';
 
 /**
  * Colonnes de tri acceptees par `GET /trips`. Liste FERMEE : elle est injectee
@@ -26,6 +28,31 @@ export class ListTripsDto {
   @IsOptional() @IsString() cursor?: string;
   /** Filtre société global (sélecteur super-admin). Ignoré pour un non-super. */
   @IsOptional() @IsUUID() fleetId?: string;
+  /**
+   * Filtre CONDUCTEUR — deux formes, et deux seulement :
+   *
+   *   - `driverId=<uuid>` → les trajets de cette personne ;
+   *   - `driverId=none`   → les trajets SANS conducteur.
+   *
+   * La seconde n'est pas un raffinement : mesuré en production le 2026-09-05, 1 905 trajets
+   * sur 1 956 chez « mh cars » n'ont aucun conducteur. C'est la liste que le gestionnaire
+   * doit pouvoir isoler pour la corriger, et rien ne la lui donnait.
+   *
+   * ⚠️ Liste FERMÉE, comme `sortBy` au-dessus, et pour la même raison : la valeur finit dans
+   * un `where` Prisma. `@Matches` porte l'EXPRESSION PARTAGÉE avec `resolveDriverScope`, qui
+   * borne les routes lisant des `@Query()` bruts (`daily-summary`, `period-charts`,
+   * `reports/stats`) — une seconde expression écrite ici aurait fini par diverger.
+   */
+  // ⚠️ NORMALISÉ AVANT D'ÊTRE VALIDÉ. `@Matches` porte sur la valeur BRUTE et `@IsOptional()` ne
+  // saute que `null`/`undefined` : sans cette ligne, `?driverId=` et `?driverId=%20none` étaient
+  // refusés ICI (400) et acceptés par les trois routes qui lisent des `@Query()` bruts — le
+  // tableau en panne au-dessus de compteurs qui décrivaient tranquillement une population.
+  @Transform(({ value }) => normaliserDriverIdDto(value))
+  @IsOptional()
+  @Matches(FILTRE_CONDUCTEUR_REGEX, {
+    message: `driverId doit être un identifiant de conducteur ou « ${CONDUCTEUR_AUCUN} ».`,
+  })
+  driverId?: string;
   /**
    * Colonne de tri. Absent = `startedAt` (comportement historique inchangé).
    *

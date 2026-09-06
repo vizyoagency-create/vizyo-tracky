@@ -134,6 +134,14 @@ export interface PdfExportConfig {
   maxTrips?: number;
   /** Cap top vehicules (default 10, max 50). */
   topN?: number;
+  /**
+   * Filtre CONDUCTEUR (F13) — un identifiant, ou `none` pour les trajets sans conducteur.
+   *
+   * ⚠️ Il borne le CALCUL du rapport, et le document le DIT (une ligne sous le nom de la
+   * société). Sans lui, un gestionnaire filtré sur une personne recevait le PDF de toute la
+   * société — un fichier qui contredit l'écran qui l'a produit, et qui survit à cet écran.
+   */
+  driverId?: string;
 }
 
 /**
@@ -165,17 +173,45 @@ export class ReportsApiService {
    * profondeur du récapitulatif. Sans eux, l'écran ne pouvait pas demander ce qu'il affiche,
    * et additionnait la seule page chargée.
    */
-  stats(fleetId: string | null, from: string, to: string, opts: { vehicleIds?: string[]; topN?: number } = {}) {
+  /**
+   * @param opts.driverId Filtre CONDUCTEUR (F13) — un identifiant, ou `none` pour les trajets
+   *   sans conducteur. Il borne les totaux, le récapitulatif par véhicule, celui par
+   *   imputation, les excès et le ralenti.
+   *
+   *   ⚠️ PAS les ALERTES : elles appartiennent à un véhicule et n'ont pas de conducteur (cf.
+   *   `alertWhere` côté serveur). L'écran le dit quand un conducteur est sélectionné — sans
+   *   quoi le lecteur croirait que cette personne a déclenché toutes ces alertes.
+   */
+  stats(fleetId: string | null, from: string, to: string, opts: { vehicleIds?: string[]; topN?: number; driverId?: string } = {}) {
     const params: Record<string, string> = { from, to };
     if (fleetId) params['fleetId'] = fleetId;
     if (opts.vehicleIds && opts.vehicleIds.length > 0) params['vehicleIds'] = opts.vehicleIds.join(',');
     if (opts.topN) params['topN'] = String(opts.topN);
+    if (opts.driverId) params['driverId'] = opts.driverId;
     return this.http.get<FleetStatsReportDto>('/api/reports/stats', { params });
   }
 
-  async downloadPdf(fleetId: string | null, from: string, to: string): Promise<void> {
+  /**
+   * Client du `GET /api/reports/pdf` historique, gardé pour compatibilité.
+   *
+   * ⚠️ AUCUN ÉCRAN NE L'APPELLE. Le bouton PDF de Rapports comme celui de l'onglet véhicule
+   * ouvrent la modale et passent par `downloadConfiguredPdf` (POST). La phrase qui vivait ici
+   * décrivait « l'export rapide, sans modale » et « deux chemins depuis un même écran » : ce
+   * second chemin n'existe pas, et un lecteur envoyé le chercher ne le trouve pas. La route
+   * serveur, elle, reste bien atteignable hors de l'app (URL recopiée, autre client).
+   *
+   * @param driverId Filtre CONDUCTEUR (F13), porté ici pour que ce client ne soit pas en retard
+   *   sur sa route — le GET l'accepte désormais (cf. `reports.controller.ts`).
+   *
+   *   ⚠️ CE CHEMIN NE REND PAS le même périmètre que la variante configurable, et ne le peut
+   *   pas : il ne transporte ni `vehicleIds`, ni `sections`, ni les plafonds. Le rebrancher
+   *   depuis un écran filtré par véhicule ou par groupe produirait un PDF de TOUTE la société
+   *   sous le nom d'une personne — exactement le défaut que ce lot referme.
+   */
+  async downloadPdf(fleetId: string | null, from: string, to: string, driverId?: string): Promise<void> {
     let params = new HttpParams().set('from', from).set('to', to);
     if (fleetId) params = params.set('fleetId', fleetId);
+    if (driverId) params = params.set('driverId', driverId);
     try {
       const blob = await firstValueFrom(
         this.http.get('/api/reports/pdf', { params, responseType: 'blob' }),
@@ -189,8 +225,8 @@ export class ReportsApiService {
 
   /**
    * Variante configurable du PDF — POST avec body JSON (vehicleIds + sections
-   * + caps). Utilise par la modal d'export. L'ancienne `downloadPdf()` reste
-   * dispo pour les appels rapides sans configuration.
+   * + caps). C'est le SEUL chemin d'export PDF de l'application : la modale y mène depuis la
+   * page Rapports comme depuis l'onglet véhicule (cf. `downloadPdf`, sans appelant).
    */
   async downloadConfiguredPdf(
     fleetId: string | null,
@@ -204,6 +240,9 @@ export class ReportsApiService {
     if (config.sections && config.sections.length > 0) body['sections'] = config.sections;
     if (config.maxTrips != null) body['maxTrips'] = config.maxTrips;
     if (config.topN != null) body['topN'] = config.topN;
+    // Le filtre conducteur de l'écran voyage avec la configuration : le PDF est calculé
+    // dessus, et le document porte le nom de la personne sous celui de la société.
+    if (config.driverId) body['driverId'] = config.driverId;
 
     try {
       const blob = await firstValueFrom(
@@ -220,16 +259,47 @@ export class ReportsApiService {
    * `vehicleIds` : périmètre véhicule / groupe de l'écran. Sans lui, un CSV « trajets »
    * demandé depuis un rapport filtré sur EP-047-TY exportait toute la flotte — le fichier
    * ne correspondait pas à l'écran qui l'avait produit.
+   *
+   * @param driverId Filtre CONDUCTEUR (F13), le même défaut une seconde fois : un CSV
+   *   « trajets » demandé depuis un écran filtré sur une personne rendait tous les trajets
+   *   de la société.
+   *
+   *   ⚠️ N'A DE SENS QUE POUR `type === 'trips'`. Une position, une alerte et une commande
+   *   appartiennent à un véhicule ou à un boîtier, jamais à une personne : le serveur REFUSE
+   *   ces trois types quand un conducteur est demandé (400, avec la raison en clair) plutôt
+   *   que de rendre une autre population sous un nom de fichier qu'on croit filtré. L'écran
+   *   désactive d'ailleurs le bouton concerné et le dit avant le clic.
    */
-  async downloadCsv(type: CsvType, fleetId: string | null, from: string, to: string, vehicleIds: string[] = []): Promise<void> {
+  async downloadCsv(type: CsvType, fleetId: string | null, from: string, to: string, vehicleIds: string[] = [], driverId?: string): Promise<void> {
     let params = new HttpParams().set('type', type).set('from', from).set('to', to);
     if (fleetId) params = params.set('fleetId', fleetId);
     if (vehicleIds.length > 0) params = params.set('vehicleIds', vehicleIds.join(','));
+    if (driverId) params = params.set('driverId', driverId);
     try {
-      const blob = await firstValueFrom(
-        this.http.get('/api/reports/csv', { params, responseType: 'blob' }),
+      /**
+       * ── LE NOM DU FICHIER VIENT DU SERVEUR (F13) ──────────────────────────────────────
+       *
+       * Le serveur nomme déjà ce fichier et y met ce que le client ne peut pas deviner : le
+       * FILTRE CONDUCTEUR (« -sans-conducteur », « -conducteur-<8 caractères> ») et le
+       * marqueur « -PARTIEL » de la troncature. Tant que l'écran refabriquait le nom,
+       * `a.download` écrasait le `Content-Disposition` et les deux marques n'atteignaient
+       * personne : sous « Sans conducteur » — 1 905 trajets sur 1 956 chez « mh cars » —, le
+       * gestionnaire recevait deux fichiers de MÊME nom pour deux populations différentes, et
+       * un export tronqué portait le nom d'un export complet.
+       *
+       * ⚠️ LE REPLI RESTE LE NOM D'AVANT, jamais une chaîne vide : l'en-tête peut manquer
+       * (proxy qui le filtre) ou être mal formé, et un `a.download` vide fait enregistrer le
+       * fichier sous « download », sans extension. C'est exactement ce que
+       * `filenameFromResponse` garantit, et c'est déjà le geste de `downloadExcel`.
+       */
+      const res = await firstValueFrom(
+        this.http.get('/api/reports/csv', { params, responseType: 'blob', observe: 'response' }),
       );
-      this.triggerDownload(blob, `tracky-${type}-${from.slice(0, 10)}_${to.slice(0, 10)}.csv`);
+      const filename = this.filenameFromResponse(
+        res,
+        `tracky-${type}-${from.slice(0, 10)}_${to.slice(0, 10)}.csv`,
+      );
+      this.triggerDownload(res.body ?? new Blob(), filename);
     } catch (err) {
       swallow('reports:downloadCsv', err);
       throw new Error(await this.formatHttpError(err, 'CSV'));
@@ -288,8 +358,16 @@ export class ReportsApiService {
    * Le nom de fichier est lu depuis le Content-Disposition (le backend nomme
    * `tracky-{plaque}-{from}_{to}.xlsx`), avec un fallback générique.
    */
+  /**
+   * @param cible.driverId Filtre CONDUCTEUR (F13) — un identifiant, ou `none`. Il borne les
+   *   trajets du classeur, et la feuille de synthèse porte le nom de la personne.
+   *
+   *   ⚠️ Sous ce filtre, le classeur N'EMBARQUE PLUS les passages en station : ce sont des
+   *   arrêts du VÉHICULE, que rien ne rattache à quelqu'un. Le classeur le dit — un fichier
+   *   composite en silence est pire qu'un fichier incomplet annoncé.
+   */
   async downloadExcel(
-    cible: { vehicleId?: string; fleetId?: string | null; groupId?: string },
+    cible: { vehicleId?: string; fleetId?: string | null; groupId?: string; driverId?: string },
     from: string,
     to: string,
   ): Promise<void> {
@@ -301,6 +379,7 @@ export class ReportsApiService {
           ...(cible.vehicleId ? { vehicleId: cible.vehicleId } : {}),
           ...(cible.fleetId ? { fleetId: cible.fleetId } : {}),
           ...(cible.groupId ? { groupId: cible.groupId } : {}),
+          ...(cible.driverId ? { driverId: cible.driverId } : {}),
           from, to,
         }, {
           responseType: 'blob',

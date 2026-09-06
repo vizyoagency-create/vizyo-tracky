@@ -7,7 +7,10 @@ import {
   formatFleetTime,
 } from '../common/utils/datetime';
 import { buildExploitedScopeNotice, FleetStatsReport } from './reports-stats.service';
-import { libelleGraviteAlerte, libelleTypeAlerte } from '@vizyo/tracky-shared';
+// `partLibelle` vient du contrat partagé, et n'a pas de copie ici : le gestionnaire ouvre
+// son PDF à côté de son écran, et « 99 % » d'un côté contre « 100 % » de l'autre sur les
+// MÊMES trajets se lit comme une erreur de calcul, pas comme une nuance d'arrondi.
+import { libelleGraviteAlerte, libelleTypeAlerte, partLibelle } from '@vizyo/tracky-shared';
 
 /**
  * V1.5 (Sprint L) — Generation PDF des rapports de flotte via pdfkit.
@@ -41,6 +44,18 @@ export interface PdfReportOptions {
   scopeLabel?: string;
   /** Titre sous le logo — « Rapport de flotte » par défaut, « Rapport véhicule » pour un seul. */
   title?: string;
+  /**
+   * ── LE CONDUCTEUR SUR LEQUEL LE DOCUMENT PORTE (F13) ────────────────────────────────
+   *
+   * Ex. « Conducteur : Sohaib Hamanni », ou « Trajets sans conducteur ». Absent quand aucun
+   * filtre conducteur n'est demandé — un rapport de flotte n'a rien à annoncer.
+   *
+   * ⚠️ RENDU EN GRAS, sous le nom de la société : ce n'est pas une note de bas de page. Un
+   * PDF calculé sur une seule personne et qui ne le dit pas est exactement le piège que ce
+   * lot ferme — sauf qu'il voyage par courriel et ressort d'un classeur des mois plus tard,
+   * quand plus personne ne peut le rapprocher de l'écran qui l'a produit.
+   */
+  driverLabel?: string;
 }
 
 const DEFAULT_MAX_TRIPS = 30;
@@ -90,17 +105,33 @@ export class ReportPdfService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
 
-        this.renderHeader(doc, report, options?.scopeLabel, options?.title);
+        this.renderHeader(doc, report, options?.scopeLabel, options?.title, options?.driverLabel);
         // Rendue AVANT les sections, et hors du bloc `kpi` : la base de calcul du
         // parc exploité vaut pour tout le document (top véhicules compris), et un
         // rapport dont on aurait décoché la section KPI ne doit pas perdre la
         // mention — c'est justement le chiffre qu'elle explique qui se retrouverait
         // ailleurs sans avertissement.
-        this.renderExploitedScopeNotice(doc, report);
-        if (sections.has('kpi')) this.renderKpis(doc, report);
-        if (sections.has('alerts')) this.renderAlerts(doc, report);
-        if (sections.has('topVehicles')) this.renderTopVehicles(doc, report, topN);
-        if (sections.has('trips')) this.renderRecentTrips(doc, report, maxTrips);
+        this.renderExploitedScopeNotice(doc, report, options?.driverLabel);
+        if (sections.has('kpi')) this.renderKpis(doc, report, options?.driverLabel);
+        if (sections.has('alerts')) this.renderAlerts(doc, report, options?.driverLabel);
+        if (sections.has('topVehicles')) {
+          this.renderTopVehicles(doc, report, topN, options?.driverLabel);
+          // ⚠️ SOUS LA MÊME SECTION QUE LE TOP VÉHICULES, ET CE N'EST PAS UN RACCOURCI.
+          // À l'écran, les deux tableaux sont les DEUX FACES d'une même carte (une
+          // bascule « Par véhicule » / « Par conducteur ou groupe ») : c'est le même
+          // récapitulatif, posé sur une autre clé. Et surtout, un cinquième identifiant de
+          // section n'atteindrait aucun lecteur : la modale d'export poste toujours la
+          // liste EXPLICITE des quatre sections qu'elle connaît, et le rapport
+          // hebdomadaire filtre la sienne sur `FleetReportSection` du contrat partagé —
+          // le bloc serait donc absent des deux seuls chemins qui produisent des PDF.
+          this.renderAttribution(doc, report, topN, options?.driverLabel);
+        } else {
+          // Le CLASSEMENT suit « Top véhicules » (les deux faces d'une même carte) ;
+          // l'ENCART des non attribués, non — cf. `renderNonAttribues`. Exactement un
+          // rendu sur chaque branche : le rapport complet reste identique au pixel.
+          this.renderNonAttribues(doc, report, options?.driverLabel);
+        }
+        if (sections.has('trips')) this.renderRecentTrips(doc, report, maxTrips, options?.driverLabel);
         this.renderFooter(doc);
 
         doc.end();
@@ -121,7 +152,13 @@ export class ReportPdfService {
     return Math.min(max, Math.max(min, Math.trunc(value)));
   }
 
-  private renderHeader(doc: PDFKit.PDFDocument, report: FleetStatsReport, scopeLabel?: string, title?: string): void {
+  private renderHeader(
+    doc: PDFKit.PDFDocument,
+    report: FleetStatsReport,
+    scopeLabel?: string,
+    title?: string,
+    driverLabel?: string,
+  ): void {
     // Logo / nom Tracky en haut-gauche
     doc.fillColor(COLOR_TRACKY).fontSize(20).font('Helvetica-Bold')
       .text('Vizyo Tracky', 40, 40);
@@ -142,13 +179,31 @@ export class ReportPdfService {
     // Fleet name + sous-titre scope (ex: "3 véhicules sélectionnés")
     doc.fillColor(COLOR_FG).fontSize(16).font('Helvetica-Bold')
       .text(report.fleet.name, 40, 95);
+    /**
+     * ⚠️ LE PÉRIMÈTRE S'ÉCRIT LIGNE À LIGNE, ET LE TRAIT DESCEND AVEC LUI.
+     *
+     * Le périmètre VÉHICULE tenait sur une ligne posée à 116, sous un trait figé à 130. La
+     * seconde ligne — le CONDUCTEUR (F13) — n'avait donc nulle part où aller : écrite là, elle
+     * serait passée SOUS le trait, dans le corps du document. On empile ce qu'il y a à dire et
+     * on repousse le trait d'autant ; sans mention, la mise en page est celle d'avant, au pixel.
+     */
+    let ligneY = 116;
     if (scopeLabel) {
       doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
-        .text(scopeLabel, 40, 116);
+        .text(scopeLabel, 40, ligneY);
+      ligneY += 13;
+    }
+    if (driverLabel) {
+      // GRAS et en couleur de texte pleine, pas en gris de note : ce libellé ne commente pas
+      // le rapport, il dit DE QUI il parle. Un lecteur qui le survole doit le heurter.
+      doc.fillColor(COLOR_FG).fontSize(9.5).font('Helvetica-Bold')
+        .text(driverLabel, 40, ligneY);
+      ligneY += 14;
     }
 
-    doc.moveTo(40, 130).lineTo(555, 130).strokeColor(COLOR_TRACKY).lineWidth(1.5).stroke();
-    doc.y = 145;
+    const traitY = Math.max(130, ligneY + 1);
+    doc.moveTo(40, traitY).lineTo(555, traitY).strokeColor(COLOR_TRACKY).lineWidth(1.5).stroke();
+    doc.y = traitY + 15;
   }
 
   /**
@@ -162,18 +217,39 @@ export class ReportPdfService {
    *
    * Aucune mention quand rien n'est exclu (`buildExploitedScopeNotice` renvoie null) :
    * un encart permanent deviendrait du bruit qu'on ne lit plus.
+   *
+   * ⚠️ `driverLabel` DESCEND JUSQU'ICI (F13). L'encart énonce la base de la moyenne ; sous
+   * filtre conducteur cette base n'est plus celle du parc, et la phrase de flotte devenait
+   * un faux imprimé à trois lignes du nom de la personne. Il est rendu HORS du bloc `kpi` :
+   * un rapport dont on a décoché « Indicateurs clés » porte quand même cette phrase.
    */
-  private renderExploitedScopeNotice(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
-    const notice = buildExploitedScopeNotice(report);
+  private renderExploitedScopeNotice(
+    doc: PDFKit.PDFDocument,
+    report: FleetStatsReport,
+    driverLabel?: string,
+  ): void {
+    const notice = buildExploitedScopeNotice(report, { filtreConducteur: !!driverLabel });
     if (!notice) return;
+    this.renderEncartAmbre(doc, notice);
+  }
 
+  /**
+   * Un encart ambre sur toute la largeur — le fond, la hauteur mesurée, le saut de page.
+   *
+   * ⚠️ EXTRAIT TEL QUEL de `renderExploitedScopeNotice` le jour où un SECOND encart est
+   * apparu (les trajets non attribués, F13). Deux copies de cette géométrie auraient
+   * dérivé : la mesure de hauteur se fait avec la police COURANTE, et c'est précisément
+   * l'oubli qui fait couper le texte par son propre fond. Les nombres sont inchangés — un
+   * rapport sans filtre doit rester identique au pixel près.
+   */
+  private renderEncartAmbre(doc: PDFKit.PDFDocument, texte: string): void {
     const boxW = 515;
     const padX = 8;
     const textW = boxW - padX * 2;
     // heightOfString mesure avec la police COURANTE : on la fixe avant, sinon la
     // hauteur est calculée pour une autre taille et le fond coupe le texte.
     doc.fontSize(8.5).font('Helvetica');
-    const boxH = doc.heightOfString(notice, { width: textW }) + 12;
+    const boxH = doc.heightOfString(texte, { width: textW }) + 12;
 
     // Saut de page défensif : la mention doit rester lisible d'un bloc.
     if (doc.y + boxH > 780) doc.addPage();
@@ -181,26 +257,90 @@ export class ReportPdfService {
     const top = doc.y;
     doc.roundedRect(40, top, boxW, boxH, 4).fill(COLOR_BG_NOTICE);
     doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
-      .text(notice, 40 + padX, top + 6, { width: textW });
+      .text(texte, 40 + padX, top + 6, { width: textW });
     doc.y = top + boxH + 12;
   }
 
-  private renderKpis(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
+  /**
+   * @param driverLabel présent = le rapport est filtré sur un conducteur.
+   *
+   * ── LA RÈGLE DE LECTURE DES INDICATEURS, ÉCRITE DANS LE DOCUMENT ──────────────────────
+   *
+   * Deux cartes changent de SENS sous un filtre conducteur, sans changer d'apparence :
+   *
+   *  • « Véhicules ayant roulé : 2 / 39 » oppose un numérateur CONDUCTEUR (les véhicules
+   *    que ce filtre a fait rouler) à un dénominateur PARC. Muette, la fraction se lit
+   *    « 37 véhicules sont restés au garage » — et l'encart du dessus, qui nomme les
+   *    plaques dormantes, pousse activement cette lecture-là ;
+   *  • « Distance moy./véhicule » divise désormais par les seuls véhicules de ce filtre
+   *    (cf. `baseMoyenneIds` dans `reports-stats.service`) : sans le dire, le chiffre a
+   *    silencieusement changé de base entre deux rapports.
+   *
+   * DEUX GESTES, PAS UN. L'INTITULÉ DE LA CARTE CHANGE, puis la phrase l'explique. Un
+   * lecteur pressé ne lit que le libellé en petites capitales ; laisser « VÉHICULES AYANT
+   * ROULÉ » au-dessus de « 2 / 39 » et se contenter d'un paragraphe au-dessus de la grille,
+   * c'est annoter un piège au lieu de le retirer. Les intitulés filtrés tiennent tous sur
+   * UNE ligne de carte (mesurés à 150 px utiles, fontSize 8) : au-delà, le libellé passerait
+   * sous la valeur.
+   *
+   * L'écran fait désormais LES DEUX MÊMES GESTES : sa carte du parc change d'intitulé sous
+   * filtre (« Véhicules conduits / parc », le libellé exact d'ici) et qualifie ses phrases,
+   * en plus de porter la mention (`noteParcConducteur`). Les deux surfaces nomment donc la
+   * même chose — c'est la condition pour qu'on puisse les lire côte à côte. Le papier, lui,
+   * voyage par courriel et ressort d'un classeur des mois plus tard, sans écran pour le
+   * démentir. Même discipline que `renderAlerts`, dont c'est le patron.
+   */
+  private renderKpis(doc: PDFKit.PDFDocument, report: FleetStatsReport, driverLabel?: string): void {
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
       .text('Indicateurs clés', 40, doc.y);
     doc.moveDown(0.4);
 
+    const base = report.trips.avgKmBasisVehicles;
+    if (driverLabel) {
+      doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
+        .text(
+          'Lecture sous filtre conducteur : « Véhicules conduits / parc » ne compte, au '
+          + 'premier chiffre, que les véhicules que ce filtre a fait rouler sur la période — '
+          + 'les autres ne sont pas immobiles, ils ont roulé hors de ce filtre — tandis que le '
+          + 'second reste le parc total de la société. '
+          // ⚠️ `base === 0` est atteignable (conducteur qui n'a pas roulé du mois) : écrire
+          // « se divise par les 0 véhicules » imprimerait une division par zéro.
+          + (base > 0
+            ? `« Distance moy./véhicule conduit » se divise, elle, par ces ${base} `
+              + `véhicule${base > 1 ? 's' : ''}, jamais par le parc.`
+            : 'Aucun trajet retenu par ce filtre sur la période : la distance moyenne n’a '
+              + 'pas de base et vaut 0.'),
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(0.5);
+    }
+
     const kpis: { label: string; value: string }[] = [
       // « ayant roulé » et non « actifs » : l'encart du dessus peut dire, juste avant, que des
       // véhicules sont sortis du parc exploité — « 6 actifs / 6 » se lisait comme une contradiction.
-      { label: 'Véhicules ayant roulé', value: `${report.vehicles.activeDuringPeriod} / ${report.vehicles.total}` },
+      //
+      // ⚠️ SOUS FILTRE, « AYANT ROULÉ » DEVIENT UN FAUX SENS : le numérateur ne compte que
+      // les véhicules de CE filtre, le dénominateur reste le parc. « 1 / 4 » se lisait « un
+      // seul véhicule sur quatre a roulé ce mois-ci ». Le libellé dit donc ce que chaque
+      // moitié compte, et la phrase du dessus finit le travail.
+      {
+        label: driverLabel ? 'Véhicules conduits / parc' : 'Véhicules ayant roulé',
+        value: `${report.vehicles.activeDuringPeriod} / ${report.vehicles.total}`,
+      },
       { label: 'Trajets', value: report.trips.count.toString() },
       { label: 'Distance totale', value: `${report.trips.totalKm.toFixed(1)} km` },
       // La moyenne par vehicule etait absente du PDF alors que c'est elle que le
       // client compare d'une semaine sur l'autre : il la lisait ailleurs (app,
       // export) sans jamais voir sur quelle base elle etait calculee. On l'affiche
       // ici, adossee a l'encart « parc exploite » rendu juste au-dessus.
-      { label: 'Distance moy./véhicule', value: `${report.trips.avgKmPerVehicle.toFixed(1)} km` },
+      //
+      // « conduit » sous filtre : le dénominateur a changé de population (cf.
+      // `baseMoyenneIds`), et ce chiffre n'existe QUE dans le PDF — aucun écran ne peut
+      // dire au lecteur sur quoi on a divisé.
+      {
+        label: driverLabel ? 'Distance moy./véhicule conduit' : 'Distance moy./véhicule',
+        value: `${report.trips.avgKmPerVehicle.toFixed(1)} km`,
+      },
       { label: 'Durée totale', value: `${report.trips.totalDurationHours.toFixed(1)} h` },
       { label: 'Vitesse moy. (km / h de conduite)', value: `${report.trips.avgSpeedKmh.toFixed(1)} km/h` },
       { label: 'Vitesse max', value: `${report.trips.maxSpeedKmh.toFixed(0)} km/h` },
@@ -252,12 +392,63 @@ export class ReportPdfService {
       doc.y += 6;
       doc.moveDown(1);
     }
+
+    /**
+     * ── LE PRIX CONSTATÉ NE SUIT PAS LE FILTRE, ET LE DOCUMENT LE DIT (F13) ─────────────
+     *
+     * `TripFuelStop` n'a pas de conducteur : l'agrégat porte sur le périmètre VÉHICULE
+     * (cf. `reports-stats.service`). Le PDF GARDE le chiffre — un prix de station est un
+     * fait de marché, et « Coût au prix constaté » = les litres de ce filtre valorisés à
+     * ce prix reste une comparaison utile —, mais « (12 passages station) » est un
+     * DÉNOMBREMENT D'ÉVÉNEMENTS imprimé sous un nom propre : muet, il s'attribue tout seul
+     * à la personne nommée en tête de page.
+     *
+     * ⚠️ Le classeur Excel, lui, les RETIRE et l'écrit (`mentionConducteur`) : il liste les
+     * arrêts un par un, une liste nominative d'arrêts d'autrui n'a pas d'excuse. Les deux
+     * documents donnent donc la même réponse — « ces passages ne sont pas les siens » —
+     * par deux gestes différents. Ce qui n'était pas permis, c'est qu'un seul des deux se
+     * taise ; le silence se lisait « celui-ci, si, il suit le filtre ».
+     */
+    if (driverLabel && c.observedPriceEurL != null) {
+      doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
+        .text(
+          'Les passages en station sont des arrêts du véhicule, pas d’une personne : ce prix '
+          + 'et ce nombre de passages ne suivent pas le filtre conducteur et portent sur les '
+          + 'véhicules du périmètre. Seuls les litres valorisés le suivent.',
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(1);
+    }
   }
 
-  private renderAlerts(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
+  /**
+   * @param driverLabel présent = le rapport est filtré sur un conducteur.
+   *
+   * ── L'EXCEPTION DES ALERTES, ÉCRITE DANS LE DOCUMENT ──────────────────────────────────
+   *
+   * Une alerte appartient à un VÉHICULE : elle n'a pas de conducteur, et lui en attribuer un
+   * demanderait de deviner qui conduisait à son horodatage. Ce compte reste donc calculé sur
+   * le périmètre véhicule, alors que tout le reste de la page suit le conducteur (cf.
+   * `alertWhere` dans `reports-stats.service`).
+   *
+   * ⚠️ SANS CETTE PHRASE, la section serait lue comme « voici ses alertes ». Ce n'est plus un
+   * chiffre, c'est une accusation — et sur du papier qui circule, elle n'a pas de démenti.
+   * L'écran porte exactement la même mention (`noteAlertesConducteur`).
+   */
+  private renderAlerts(doc: PDFKit.PDFDocument, report: FleetStatsReport, driverLabel?: string): void {
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
       .text('Alertes', 40, doc.y);
     doc.moveDown(0.4);
+
+    if (driverLabel) {
+      doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
+        .text(
+          'Les alertes appartiennent à un véhicule, pas à un conducteur : ce compte ne suit '
+          + 'pas le filtre conducteur du rapport et porte sur les véhicules du périmètre.',
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(0.5);
+    }
 
     if (report.alerts.total === 0) {
       doc.fillColor(COLOR_FG_MUTED).fontSize(10).font('Helvetica')
@@ -296,13 +487,46 @@ export class ReportPdfService {
     doc.y = Math.max(leftY, rightY) + 14;
   }
 
-  private renderTopVehicles(doc: PDFKit.PDFDocument, report: FleetStatsReport, topN: number): void {
+  /**
+   * @param driverLabel présent = le rapport est filtré sur un conducteur.
+   *
+   * ── UN PALMARÈS DE VÉHICULES SOUS UN NOM DE PERSONNE ─────────────────────────────────
+   *
+   * Sous filtre, ce tableau ne compte QUE les trajets retenus : les kilomètres de chaque
+   * véhicule sont amputés de tout ce que les autres conducteurs y ont roulé, et un véhicule
+   * qui n'apparaît pas n'est pas un véhicule à l'arrêt. Muet, il se lit comme le palmarès du
+   * parc — imprimé trois lignes sous « Conducteur : Sohaib Hamanni ».
+   *
+   * Même discipline que `renderKpis`, `renderAlerts` et `renderAttribution` : le document
+   * dit sur quelle population il compte. ⚠️ Et il le dit avec SES mots — deux phrases qui
+   * ouvriraient pareil rendraient le test de l'une satisfait par l'autre.
+   */
+  private renderTopVehicles(
+    doc: PDFKit.PDFDocument,
+    report: FleetStatsReport,
+    topN: number,
+    driverLabel?: string,
+  ): void {
     if (report.topVehicles.length === 0) return;
-    if (doc.y > 700) doc.addPage();
+    // Le seuil descend quand une mention doit tenir sous le titre : ce tableau ne pagine
+    // pas ses rangées, une section poussée trop bas déborderait sous le pied de page.
+    if (doc.y > (driverLabel ? 660 : 700)) doc.addPage();
 
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
       .text('Top véhicules (km parcourus)', 40, doc.y);
     doc.moveDown(0.4);
+
+    if (driverLabel) {
+      doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
+        .text(
+          'Lecture sous filtre conducteur : ce palmarès ne compte que les trajets retenus par '
+          + 'le filtre annoncé en tête de rapport. Les kilomètres de chaque véhicule sont donc '
+          + 'ceux de ce seul périmètre, et un véhicule qui n’y figure pas a pu rouler pour '
+          + 'quelqu’un d’autre — ce n’est pas le palmarès du parc.',
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(0.5);
+    }
 
     // Table header
     const colX = [40, 200, 320, 410];
@@ -336,17 +560,277 @@ export class ReportPdfService {
   }
 
   /**
+   * ══ « QUI ROULE, ET QUI DÉPASSE ? » — LE RÉCAPITULATIF PAR IMPUTATION (F13) ══════════
+   *
+   * ── CE QUI MANQUAIT, ET CE QUE LE SILENCE COÛTAIT ───────────────────────────────────
+   *
+   * L'écran des Rapports rend ce bloc depuis le 5 septembre ; le PDF, l'Excel et le rapport
+   * hebdomadaire, non — « le client voit à l'écran ce que son PDF ne dit pas ». Or c'est le
+   * document, pas l'écran, qui part par courriel et ressort d'un classeur six mois plus tard,
+   * quand plus personne ne peut le rapprocher de la page qui l'a produit.
+   *
+   * MÊME VÉRITÉ QUE L'ÉCRAN, PAS UNE VARIANTE : les lignes viennent de `byAttribution`, que
+   * `ReportsStatsService.compute` calcule UNE fois avec la règle du contrat partagé
+   * (`cleImputationTrajet`) — le conducteur s'il est connu, sinon le GROUPE du véhicule,
+   * sinon personne. Ce service met en page, il n'impute rien lui-même : une seconde règle
+   * d'imputation finirait par répondre autrement à la même question.
+   *
+   * ⚠️ L'ENCART « NON ATTRIBUÉ » SE REND QUEL QUE SOIT L'ÉTAT DU CLASSEMENT. L'écran a déjà
+   * payé cette faute : une première version ne l'affichait que si le classement était vide,
+   * et chez cdef31 dix-sept groupes classés l'auraient masqué. Mesuré en production le
+   * 2026-09-05 : cdef31, 2 675 trajets sur 2 707 sans conducteur mais avec un groupe ;
+   * mh cars, 1 866 sur 1 886 sans NI l'un NI l'autre. Un bloc qui tairait ces trajets ferait
+   * lire une image complète là où il en manque 99 %.
+   *
+   * @param driverLabel présent = le rapport est filtré sur un conducteur. Le classement se
+   *   réduit alors par construction, et le dit — même discipline que `renderAlerts` et que
+   *   la mention des passages en station.
+   */
+  private renderAttribution(
+    doc: PDFKit.PDFDocument,
+    report: FleetStatsReport,
+    topN: number,
+    driverLabel?: string,
+  ): void {
+    // ⚠️ `byAttribution` est OPTIONNEL dans le contrat : d'autres producteurs de
+    // `FleetStatsReport` n'en fabriquent pas. Absent, le document se TAIT — il n'imprime
+    // pas un classement vide, qui se lirait « personne n'a roulé ce mois-ci ».
+    const lignes = report.byAttribution;
+    if (!lignes) return;
+    const nonAttribue = report.unattributedTrips ?? { tripCount: 0, distanceKm: 0, durationHours: 0 };
+    // Rien à classer ET rien à signaler = aucun trajet sur la période : la grille
+    // d'indicateurs le dit déjà, une section vide ne ferait qu'inquiéter.
+    if (lignes.length === 0 && nonAttribue.tripCount === 0) return;
+
+    if (doc.y > 640) doc.addPage();
+
+    doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
+      .text('Par conducteur ou groupe', 40, doc.y);
+    doc.moveDown(0.4);
+    doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+      .text(
+        'Chaque trajet compte pour son conducteur, sinon pour le groupe de son véhicule.',
+        40, doc.y, { width: 515 },
+      );
+    doc.moveDown(0.5);
+
+    /**
+     * ⚠️ SOUS FILTRE, CE CLASSEMENT SE RÉDUIT PAR CONSTRUCTION — et un classement d'une
+     * seule ligne, imprimé sans contexte, se lit « il n'y a qu'une personne qui roule ».
+     *
+     * La phrase vaut pour les DEUX formes du filtre, et c'est voulu : sur un conducteur
+     * nommé il ne reste qu'une ligne, tandis que sous « sans conducteur » il reste
+     * plusieurs lignes de GROUPE et aucune de personne. Le document ne reçoit que le
+     * LIBELLÉ (`driverLabel`), pas la forme du filtre ; deviner la seconde en lisant le
+     * premier coudrait ce fichier au contrôleur qui le compose.
+     */
+    if (driverLabel) {
+      doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
+        .text(
+          'Lecture sous filtre conducteur : ce classement ne porte que sur les trajets retenus '
+          + 'par le filtre annoncé en tête de rapport. Un rapport centré sur une personne ne peut '
+          + 'donc contenir qu’une seule ligne, et un rapport « sans conducteur » n’en contient '
+          + 'aucune de conducteur — ce n’est pas le classement de la société.',
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(0.5);
+    }
+
+    const colX = { nom: 40, dist: 255, duree: 330, trajets: 400, exces: 455 };
+    /** Place laissée au nom, la sorte étant posée à sa suite (cf. la rangée ci-dessous). */
+    const NOM_LARGEUR = 150;
+    const renderEnTete = (): void => {
+      const y = doc.y;
+      doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica-Bold')
+        .text('CONDUCTEUR OU GROUPE', colX.nom, y, { width: colX.dist - colX.nom - 6 })
+        .text('DISTANCE', colX.dist, y)
+        .text('CONDUITE', colX.duree, y)
+        .text('TRAJETS', colX.trajets, y)
+        .text('EXCÈS', colX.exces, y);
+      doc.moveDown(0.3);
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e5e7eb').stroke();
+      doc.moveDown(0.3);
+    };
+
+    const affichees = lignes.slice(0, topN);
+    if (affichees.length > 0) {
+      renderEnTete();
+      for (const l of affichees) {
+        // Chaque rangée vérifie la place qui reste : quinze groupes ne tiennent pas sous
+        // un top véhicules qui a déjà mangé la page.
+        if (doc.y + 15 > 770) {
+          doc.addPage();
+          renderEnTete();
+        }
+        const y = doc.y;
+        doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica');
+        const nom = this.tronquerA(doc, l.label, NOM_LARGEUR);
+        doc.text(nom, colX.nom, y, { lineBreak: false });
+        /**
+         * La SORTE, en gris, à la suite du nom — même geste que le groupe accolé à la plaque
+         * du top véhicules. Elle n'est pas décorative : sans elle, « Atelier » et « Amine
+         * Berrada » se lisent comme deux personnes.
+         *
+         * ⚠️ Mesure prise AVANT de changer de police (`widthOfString` mesure avec la police
+         * courante), et le nom est déjà coupé à `NOM_LARGEUR` : le mot ne peut donc pas
+         * dépasser 40 + 150 + 6 + 38 = 234 pt, soit avant la colonne « Distance » (255).
+         */
+        const xSorte = colX.nom + doc.widthOfString(nom) + 6;
+        doc.fillColor(COLOR_FG_MUTED).fontSize(8).font('Helvetica')
+          .text(l.kind === 'driver' ? 'conducteur' : 'groupe', xSorte, y + 2, { lineBreak: false });
+        doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica');
+        doc.text(`${l.distanceKm.toFixed(1)} km`, colX.dist, y, { lineBreak: false });
+        // Les heures décimales du contrat repassent en secondes AVANT d'être mises en
+        // forme, exactement comme l'écran : « 2.5 h » et « 2h30 » doivent être le même fait.
+        doc.text(this.formatDuration(Math.round(l.durationHours * 3600)), colX.duree, y, { lineBreak: false });
+        doc.text(`${l.tripCount}`, colX.trajets, y, { lineBreak: false });
+        // MÊME compte que la vue par véhicule : les excès ÉTABLIS de la règle partagée,
+        // jamais le compteur écrit au moment de l'analyse (4 036 analyses de production ne
+        // portent que des segments de durée nulle).
+        doc.text(
+          l.speedingCount === 0 ? '0' : `${l.speedingCount} (+${l.worstOverKmh.toFixed(0)} km/h)`,
+          colX.exces, y, { width: 555 - colX.exces, lineBreak: false },
+        );
+        doc.y = y + 15;
+      }
+
+      // La troncature se dit : sans cette ligne, un parc de quarante conducteurs semblerait
+      // n'en compter que dix. Le total RÉEL vient du serveur (`byAttributionTotal`), la liste
+      // servie étant déjà plafonnée par `compute`.
+      const total = report.byAttributionTotal ?? lignes.length;
+      if (total > affichees.length) {
+        doc.moveDown(0.4);
+        doc.fillColor(COLOR_FG_MUTED).fontSize(8.5).font('Helvetica')
+          .text(
+            `${affichees.length} ligne${affichees.length > 1 ? 's' : ''} affichée${affichees.length > 1 ? 's' : ''} `
+            + `sur ${total} — les plus gros rouleurs d’abord.`,
+            40, doc.y, { width: 515 },
+          );
+      }
+      doc.moveDown(1);
+    } else {
+      doc.fillColor(COLOR_FG_MUTED).fontSize(10).font('Helvetica')
+        .text(
+          driverLabel
+            // « de la période » serait un FAUX sous filtre : la vue vient d'écarter les
+            // autres conducteurs par construction, ce n'est pas une lacune de la société.
+            ? 'Aucun trajet de ce périmètre n’est imputé à un conducteur ni à un groupe.'
+            : 'Aucun trajet de la période n’est imputé à un conducteur ni à un groupe.',
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(1);
+    }
+
+    this.renderNonAttribues(doc, report, driverLabel);
+  }
+
+  /**
+   * L'ENCART DES NON ATTRIBUÉS — RENDU HORS DE TOUTE SECTION.
+   *
+   * Même geste que `renderExploitedScopeNotice`, et pour la même raison. Le CLASSEMENT est
+   * la seconde face de la carte « Top véhicules » : le décocher emporte le tableau, c'est
+   * assumé. L'ENCART, lui, n'est pas une face de ce tableau — c'est le contre-poids qui
+   * empêche de lire le document comme complet. Il vivait dans `renderAttribution`, donc
+   * sous `if (sections.has('topVehicles'))` : un rapport hebdomadaire réglé sur
+   * ['kpi','alerts','trips'] — la route l'accepte — perdait la seule phrase du PDF qui dise
+   * que 99 % des kilomètres n'appartiennent à personne (mh cars, 1 866 trajets sur 1 886 au
+   * 2026-09-05), pendant que le corps du COURRIEL, lui, l'écrivait inconditionnellement
+   * (`buildUnattributedNote`). La pièce jointe est le document qu'on classe et qu'on relit
+   * six mois plus tard : elle ne peut pas contredire son courriel par omission.
+   *
+   * ⚠️ MÊME GARDE QU'AVANT, à la ligne près : `byAttribution` absent = producteur muet =
+   * document muet (d'autres producteurs de `FleetStatsReport` n'en fabriquent pas, et un
+   * encart seul, sans classement, se lirait comme un reproche sorti de nulle part).
+   */
+  private renderNonAttribues(
+    doc: PDFKit.PDFDocument,
+    report: FleetStatsReport,
+    driverLabel?: string,
+  ): void {
+    if (!report.byAttribution) return;
+    const na = report.unattributedTrips;
+    if (!na || na.tripCount <= 0) return;
+    this.renderEncartAmbre(doc, this.libelleNonAttribues(na, report.trips.count, !!driverLabel));
+  }
+
+  /**
+   * Coupe une chaîne à la largeur donnée, points de suspension compris.
+   *
+   * ⚠️ `{ ellipsis: true }` DE PDFKIT NE FAIT PAS CELA. Vérifié dans son source
+   * (`LineWrapper`) : l'ellipse n'est posée que sur un débordement VERTICAL, quand une
+   * `height` est donnée et que la ligne suivante sortirait du cadre. Sur une largeur, elle
+   * ne coupe rien — avec `lineBreak: false`, un nom de groupe un peu long passe simplement
+   * par-dessus la colonne voisine ; avec le retour à la ligne, il écrase la rangée du
+   * dessous. Mesuré sur la grille d'aujourd'hui : sans cette coupe, « Groupe très long qui
+   * déborde de la colonne voisine » finit à 265,98 pt et sa sorte à 296,80 pt, pour une
+   * colonne DISTANCE (`colX.dist`) qui commence à 255 — le libellé s'imprime donc
+   * par-dessus les kilomètres de SA PROPRE LIGNE. Rien ne borne cette longueur en amont :
+   * `VehicleGroup.name` est un `String` nu au schéma et son DTO n'a pas de `@MaxLength`.
+   * (Le test « coupe un libellé trop long AVANT la colonne DISTANCE » tient ces nombres.)
+   *
+   * ⚠️ La POLICE DOIT ÊTRE POSÉE avant l'appel : `widthOfString` mesure avec la police
+   * courante, et une mesure faite dans une autre taille rendrait une coupe fausse.
+   */
+  private tronquerA(doc: PDFKit.PDFDocument, texte: string, largeur: number): string {
+    if (doc.widthOfString(texte) <= largeur) return texte;
+    let coupe = texte;
+    while (coupe.length > 1 && doc.widthOfString(`${coupe}…`) > largeur) {
+      coupe = coupe.slice(0, -1);
+    }
+    return `${coupe}…`;
+  }
+
+  /**
+   * L'encart « ni conducteur, ni groupe » — au mot près celui de l'écran.
+   *
+   * ⚠️ SON DÉNOMINATEUR EST LE TOTAL RÉEL DE LA PÉRIODE (`trips.count`), jamais la somme des
+   * lignes classées : chez mh cars, « 1 866 sur 12 » aurait été un mensonge parfaitement
+   * crédible. Les deux nombres viennent donc de la MÊME passe d'agrégation, celle qui compte
+   * les trajets réels.
+   *
+   * @param filtre le rapport porte sur un conducteur : le dénominateur a lui aussi été
+   *   filtré, et l'annoncer « de la période » ferait passer une population bornée pour
+   *   la société entière.
+   */
+  private libelleNonAttribues(
+    na: { tripCount: number; distanceKm: number; durationHours: number },
+    totalTrajets: number,
+    filtre: boolean,
+  ): string {
+    const n = na.tripCount;
+    const perimetre = filtre ? 'retenus par ce filtre' : 'de la période';
+    return `${n} trajet${n > 1 ? 's' : ''} sur ${totalTrajets} ${perimetre} `
+      + `(${partLibelle(n, totalTrajets)}, ${na.distanceKm.toFixed(1)} km) `
+      + `n’${n > 1 ? 'ont' : 'a'} ni conducteur, ni groupe : `
+      + `${n > 1 ? 'ils ne peuvent être attribués' : 'il ne peut être attribué'} à personne. `
+      + 'Renseignez un conducteur ou un groupe sur ces véhicules, depuis la page Véhicules, '
+      + 'pour que leurs kilomètres comptent pour quelqu’un.';
+  }
+
+  /**
    * Section "Trajets recents" — liste les 30 derniers trajets avec leurs
    * informations cles + la note libre. Une nouvelle page est ajoutee si on
    * approche du bas, et le tableau est paginé tout seul (chaque rangee
    * verifie l'espace restant).
    *
    * Phase 2 ajoutera la colonne "Conducteur" entre Plaque et Distance.
+   *
+   * @param driverLabel présent = le rapport est filtré sur un conducteur. La liste n'est
+   *   alors PAS celle des derniers trajets de la société : « les 30 derniers trajets sur la
+   *   période » décrit une population bornée, et la colonne « Conducteur » qui répète le même
+   *   nom trente fois pousse à croire que la société n'a qu'un conducteur. Le compte total
+   *   entre parenthèses, lui aussi filtré, achève la confusion s'il n'est pas situé.
    */
-  private renderRecentTrips(doc: PDFKit.PDFDocument, report: FleetStatsReport, maxTrips: number): void {
+  private renderRecentTrips(
+    doc: PDFKit.PDFDocument,
+    report: FleetStatsReport,
+    maxTrips: number,
+    driverLabel?: string,
+  ): void {
     if (!report.recentTrips || report.recentTrips.length === 0) return;
 
-    if (doc.y > 680) doc.addPage();
+    // Cf. `renderTopVehicles` : la mention prend deux lignes, le seuil descend d'autant.
+    if (doc.y > (driverLabel ? 650 : 680)) doc.addPage();
 
     const trips = report.recentTrips.slice(0, maxTrips);
 
@@ -361,6 +845,21 @@ export class ReportPdfService {
           : ''),
         40, doc.y,
       );
+    if (driverLabel) {
+      doc.moveDown(0.4);
+      doc.fillColor(COLOR_FG_NOTICE).fontSize(8.5).font('Helvetica')
+        .text(
+          'Lecture sous filtre conducteur : cette liste ne montre que les trajets retenus par '
+          + 'le filtre annoncé en tête de rapport'
+          // Le total entre parenthèses n'est écrit que s'il y a plus de trajets que de
+          // rangées : le nommer quand il est absent enverrait chercher un chiffre inexistant.
+          + (report.trips.count > trips.length
+            ? ', et le total entre parenthèses est celui de ce seul périmètre'
+            : '')
+          + ' — ce ne sont pas les derniers trajets de la société.',
+          40, doc.y, { width: 515 },
+        );
+    }
     doc.moveDown(0.6);
 
     // Colonnes : Date | Plaque | Duree | Distance | Conducteur | Note

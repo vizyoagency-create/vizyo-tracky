@@ -633,7 +633,7 @@ production le 5 septembre, **deux causes indépendantes**, dont aucune ne se voy
    Le classement « Conducteurs » y est vide, ou assis sur 9 trajets ; le classement « Groupes »
    ignore les conducteurs quand il y en a. Aucun des deux ne répond à « qui conduit comment ? ».
 
-**Quatre points, dans cet ordre, chacun vérifié en production avant le suivant :**
+**Cinq points, dans cet ordre, chacun vérifié en production avant le suivant :**
 
 | # | État | Ce qui change |
 |---|---|---|
@@ -641,6 +641,7 @@ production le 5 septembre, **deux causes indépendantes**, dont aucune ne se voy
 | 2 | **FAIT le 5 septembre** (`6afccf85`) | Quatrième portée **« Conducteur ou groupe »** : chaque trajet est imputé au conducteur s'il est connu, sinon au groupe du véhicule, sinon à une ligne **« non attribué » — comptée, jamais classée** (on ne note pas « personne »). L'encart dit combien de trajets échappent à toute imputation, sur combien de trajets réels de la période, et renvoie vers les véhicules pour renseigner ce qui manque. Vérifié en prod contre un recalcul SQL indépendant, au chiffre près sur les cinq sociétés (30 jours) : **cdef31** 15 groupes classés, 32 trajets non attribués sur 2 707 ; **mh cars** 3 conducteurs sous le seuil (9, 8 et 3 trajets notés), **1 865 non attribués sur 1 888** ; **A2R** 725 sur 725 ; Ahmed 32 sur 32. |
 | 3 | **FAIT le 5 septembre** | Le même récapitulatif « par conducteur ou groupe » sur la page Rapports (F13) : une bascule sur la carte du récapitulatif, les mêmes colonnes que la vue par véhicule (trajets, distance, conduite, vitesse moyenne, excès **établis**, ralenti), et la mention des trajets non attribués. ⚠️ UNE seule passe alimente les deux vues — le groupBy des trajets et les deux requêtes d'excès et de ralenti groupent aussi par conducteur, la vue par véhicule réagrège dessus : `topVehicles` rend exactement les mêmes chiffres qu'avant, et c'est vérifié par un test (le PDF, l'Excel et le rapport hebdomadaire en dépendent). La bascule est **indisponible avec son motif** quand la synthèse de période n'est pas calculable — la page est mono-société — plutôt que d'afficher une vue vide qui ferait croire à zéro trajet attribué. |
 | 4 | **FAIT le 5 septembre** | La note dit sur combien d'**analyses anciennes** elle est calculée (`oldFormulaTripCount`, compté sur la population exacte de `tripCount`). Mesuré en production le jour même, sur 30 jours d'analyses notées : **cdef31 2 472 sur 2 647, mh cars 1 695 sur 1 898, A2R 555 sur 636, Ahmed 32 sur 32** — la réserve n'est pas un cas de bord, c'est l'état ordinaire des notes aujourd'hui. La requête SQL du classement, qui faisait déjà une passe sur le détail pour les excès établis, rend désormais **deux faits par trajet** ; l'écran affiche « dont N analyse(s) ancienne(s) » avec une info-bulle. C'est une réserve, pas une accusation : le mot « faux » qualifie le détail stocké, jamais la note du conducteur. |
+| 5 | **FAIT le 5 septembre** | Le **filtre conducteur** dans la liste des trajets — seconde et dernière moitié de F13. Un troisième menu dans la barre de filtres, avec « Sans conducteur » comme option de plein droit : mesuré en prod, 1 905 trajets sur 1 956 chez mh cars n'ont aucun conducteur, et c'est cette liste-là que le gestionnaire doit pouvoir isoler pour la corriger. ⚠️ Le filtre borne le TABLEAU **et** tous les agrégats de trajets (résumé journalier d'où viennent les indicateurs, graphiques de période, synthèse `/reports/stats`) **et** les exports (CSV trajets, PDF, Excel) — un écran qui filtrerait la liste sans filtrer les compteurs afficherait deux totaux contradictoires, le défaut que cette page a déjà payé (« le compteur annonce 622 et le tableau en affiche 100 »). **Deux exceptions assumées, et DITES à l'écran** : une alerte appartient à un véhicule, pas à un conducteur, donc sa carte reste hors filtre et le dit ; les exports CSV `positions` / `alerts` / `commands` n'ont pas de conducteur, donc ils sont **refusés** sous filtre (message qui dit pourquoi et quoi faire) plutôt que de rendre silencieusement une autre population. Le PDF et l'Excel **nomment** le conducteur sur lequel ils portent : un fichier filtré muet est le même piège, déplacé dans un document qui survivra à l'écran. La forme acceptée (UUID ou le mot-clé `none`) vit dans le contrat partagé et la résolution dans `common/driver-scope.ts` — une seule règle, parce que trois routes lisent des `@Query()` bruts sans DTO et que l'écran relit le filtre de l'URL. |
 
 **Vérifié en production le 5 septembre au soir**, contre un recalcul SQL indépendant :
 - **cdef31** — 15 lignes de groupe (425 : 620 trajets et 6 119 km ; BOREAL 289 ; NOVA 130 ; ROSE 123 ;
@@ -667,10 +668,24 @@ flotte** — qui sommait lui aussi les véhicules privés — retombe désormais
   payée sur « reste à faire » et sur « avec excès ».
 - Le prédicat SQL de l'ancienneté est le jumeau du helper partagé `analyseAvantRegleActuelle` : les
   trois formes (détail nul, clé absente, valeur nulle) doivent coïncider, et un test les tient.
-- **Reste ouvert** : le PDF, l'Excel et le rapport hebdomadaire lisent `FleetStatsReport` mais ne
-  rendent pas encore le bloc « par conducteur ou groupe » — le client voit à l'écran ce que son PDF
-  ne dit pas. Et F13 demandait aussi un **filtre conducteur dans la liste des trajets**
-  (`ListTripsDto` ne l'expose toujours pas) : le récapitulatif est livré, le filtre non.
+- ~~**Reste ouvert**~~ **REFERMÉ le 6 septembre** : le PDF, l'Excel et le rapport hebdomadaire
+  rendent désormais le bloc « par conducteur ou groupe » — le client ne voit plus à l'écran ce que
+  son PDF tait. ⚠️ **Et au passage, une phrase de ce document était fausse** : l'Excel ne lit PAS
+  `FleetStatsReport`, il agrège ses propres trajets. Il impute donc ses lignes avec la MÊME fonction
+  partagée (`cleImputationTrajet`), jamais une recopie de la règle — sans quoi le classeur et l'écran
+  auraient fini par rendre deux réponses à la même question. Le rapport hebdomadaire, lui, n'a rien
+  demandé : il joint le PDF, le bloc lui arrive par là (vérifié de bout en bout par un test qui monte
+  le VRAI service PDF dans le service d'envoi et inspecte la pièce jointe réellement expédiée).
+  **Conséquence assumée et testée dans les deux sens** : une société qui a DÉCOCHÉ « Top véhicules »
+  ne reçoit pas le bloc — un rapport raccourci exprès ne se voit pas rallonger d'un tableau que
+  personne n'a demandé.
+- L'encart « non attribué » se rend dans les documents **quel que soit l'état du classement**, et sur
+  le total RÉEL de la période. C'est la faute que l'écran a déjà payée : chez cdef31, dix-sept
+  groupes classés l'auraient masqué, et « 1 866 sur 51 » aurait été un mensonge crédible.
+- La règle d'arrondi de la part en pourcentage (`partLibelle` : « 1 sur 1 000 » n'est pas « 0 % »)
+  avait fini en **trois écritures** — les deux écrans et le PDF. Elle vit désormais dans le contrat
+  partagé : le gestionnaire lit son PDF à côté de son écran, et « 99 % » ici contre « 100 % » là-bas
+  se lirait comme une erreur de calcul, pas comme une nuance d'arrondi.
 
 **Ce que le point 2 a exigé, et qu'il ne faut pas défaire :**
 - **Une seule fonction** calcule la clé d'imputation, pour le dénominateur (trajets réels) ET
@@ -715,7 +730,7 @@ flotte** — qui sommait lui aussi les véhicules privés — retombe désormais
 | ~~FAIT le 4 septembre (F06)~~ Colonne « Excès » au récapitulatif par véhicule : nombre d'excès **établis** et pire dépassement. Le rapport de vitesse, lui, était déjà passé à la règle réelle au lot V7. ⚠️ Le compte relit le DÉTAIL des analyses (SQL brut sur le tableau JSON, seuil pris dans la constante partagée) et non `speedingCount` : au 2026-09-04, 4 036 analyses de production ne portent que des segments de durée nulle, et les compter accuserait des véhicules de ce que le rapport disciplinaire refuse d'affirmer. ⚠️ Quand l'agrégat n'est pas là, la cellule affiche « — », jamais « 0 » : un zéro inventé innocente un véhicule sans l'avoir regardé. Mesuré en production : 188 ms sur 30 jours de la plus grosse société ; un test de sécurité vérifie que cette requête écrite à la main porte bien le périmètre véhicule | `reports-stats.service.ts`, `reports.component.ts`, `reports-scope.security.spec.ts` | S |
 | ~~FAIT le 4 septembre (F03)~~ « −13 % vs période précédente » sous Trajets, Distance et Durée. La période de référence est la fenêtre PRÉCÉDENTE de même durée, calculée en jours civils (`periodePrecedente`, jeux d'essai aux deux changements d'heure). ⚠️ Elle passe par le RÉSUMÉ JOURNALIER, pas par `/reports/stats` : le résumé couvre le périmètre réel de l'écran, y compris « toutes les sociétés », là où l'agrégat est mono-société — comparer un mois toutes sociétés à un mois d'UNE société donnerait une tendance parfaitement fausse et parfaitement crédible. ⚠️ **Aucun pourcentage n'est calculé depuis zéro** : passer de 0 à 65 trajets n'est pas « +6 500 % », l'écran écrit « aucun trajet sur la période précédente ». Un taux qui impressionne sans informer se lit pourtant comme une mesure | `reports.utils.ts` (+ 8 jeux d'essai), `reports.component.ts` | M |
 | ~~FAIT le 4 septembre (F12)~~ **Ralenti moteur agrégé** : cumul de la période dans la carte Carburant (« dont 4h12 moteur tournant à l'arrêt, 9 % du temps de conduite »), et par véhicule dans l'agrégat. Il était calculé PAR TRAJET depuis toujours et agrégé nulle part — personne ne pouvait dire « ce parc a passé onze heures moteur tournant à l'arrêt ce mois-ci », alors que c'est le gaspillage qu'une simple consigne réduit. ⚠️ Rapporté à la DURÉE DE CONDUITE, pas à la durée de la période : un parc qui roule deux heures par jour aurait un « ralenti » de 2 % du mois, chiffre exact et sans usage. ⚠️ Requête SÉPARÉE de celle des excès — celle-ci fait un LATERAL sur les segments, donc y additionner le ralenti le compterait autant de fois qu'un trajet porte d'excès | `reports-stats.service.ts`, `reports.component.ts` | M |
-| **F13** — dimension conducteur : filtre dans la liste et récapitulatif par conducteur. **RESTE À FAIRE** — `Trip.driverId` et son index existent, `ListTripsDto` ne l'expose pas | `list-trips.dto.ts`, `trips.service.ts`, `reports.component.ts` | M |
+| ~~FAIT le 5 septembre~~ **F13** — dimension conducteur, **entière** : le récapitulatif « par conducteur ou groupe » (point 3 du chantier des notes) et le **filtre conducteur** dans la liste (point 5). Le filtre borne le tableau, les trois agrégats de trajets et les exports d'un même geste ; « Sans conducteur » est une option de plein droit, et c'est même la plus utile (1 905 trajets sur 1 956 chez mh cars). ⚠️ Les alertes restent hors filtre — elles appartiennent à un véhicule — et l'écran le DIT ; les exports CSV sans conducteur sont refusés avec leur motif plutôt que de rendre une autre population | `list-trips.dto.ts`, `common/driver-scope.ts`, `trips.service.ts`, `reports-stats.service.ts`, `reports.controller.ts`, `report-csv/pdf/excel.service.ts`, `reports.component.ts` | M |
 
 **Comment on saura que c'est bon** : les indicateurs « Carburant estimé » et « CO2 » de l'écran sont identiques à l'en-tête du PDF sur la même période ; le récapitulatif par véhicule est complet dès l'ouverture, sans mention « sur les N trajets chargés ».
 
@@ -725,12 +740,11 @@ flotte** — qui sommait lui aussi les véhicules privés — retombe désormais
 
 Fonctions absentes repérées par l'audit. La plupart sont des raccords vers des calculs qui existent déjà côté serveur — la valeur est haute et le coût faible. Le dix-huitième constat de cette lecture, le rapport planifié réglable par le client (F14), a été livré : voir la section 1.
 
-**Au 5 septembre 2026 au soir : treize des seize sont livrées, et F13 l'est à moitié.** Son
-récapitulatif « par conducteur ou groupe » est en production (point 3 du chantier des notes) ;
-son **filtre conducteur dans la liste des trajets** ne l'est pas — `ListTripsDto` ne l'expose
-toujours pas. Restent donc F07 (podium des conducteurs), la moitié de F13 et F16 (trajets hors
-horaires) — celles qui demandent une agrégation nouvelle plutôt qu'un raccord vers un calcul
-existant.
+**Au 5 septembre 2026 au soir : quatorze des seize sont livrées.** F13 est entière — son
+récapitulatif « par conducteur ou groupe » (point 3 du chantier des notes) et son **filtre
+conducteur dans la liste des trajets** (point 5) sont tous deux en production. Restent F07
+(podium des conducteurs) et F16 (trajets hors horaires) — les deux qui demandent une agrégation
+nouvelle plutôt qu'un raccord vers un calcul existant.
 
 | # | État | Ce qui manque | Ce que le client y gagne |
 |---|---|---|---|
@@ -744,7 +758,7 @@ existant.
 | F08 | **fait** | Filtres portés par l'URL | Il peut envoyer un rapport pré-filtré à un collègue, le mettre en favori, et un rafraîchissement ne perd plus son travail. |
 | F10 | **fait** | Lien profond vers un trajet et « copier le lien » | Il cite un trajet précis dans un courriel ou un ticket, au lieu de demander à son interlocuteur de le retrouver dans un tableau paginé. |
 | F12 | **fait** | Ralenti moteur agrégé | Premier poste de gaspillage carburant maîtrisable par simple consigne ; aujourd'hui calculé par trajet et agrégé nulle part. |
-| F13 | **récapitulatif fait le 5 septembre, filtre à faire** | Dimension conducteur (filtre et récapitulatif) | « Combien de kilomètres a fait tel conducteur ce mois-ci, avec combien d'excès ? » a désormais sa réponse sur un seul écran, en une bascule de la carte du récapitulatif — et l'imputation retombe sur le GROUPE quand aucun conducteur n'est renseigné, sans quoi 99 % du parc de cdef31 n'aurait rien à dire. Reste le filtre conducteur dans la liste des trajets. |
+| F13 | **fait** | Dimension conducteur (filtre et récapitulatif) | « Combien de kilomètres a fait tel conducteur ce mois-ci, avec combien d'excès ? » a sa réponse sur un seul écran, en une bascule de la carte du récapitulatif — et l'imputation retombe sur le GROUPE quand aucun conducteur n'est renseigné, sans quoi 99 % du parc de cdef31 n'aurait rien à dire. Le geste suivant existe aussi : **« montre-moi SES trajets »**, un filtre qui emmène avec lui le tableau, les indicateurs, les graphiques et les fichiers exportés. Et « Sans conducteur » se filtre comme les autres — c'est la liste de travail de qui veut combler le trou de données. |
 | F16 | à faire | Trajets hors horaires signalés | L'usage privé ou nocturne d'un véhicule de société — motif classique d'installation d'un traceur — ressort du rapport au lieu de rester enfoui dans les alertes. |
 | F17 | **fait** | Export Excel d'une flotte ou d'un groupe | Le mois complet du parc tient dans un classeur mis en forme, au lieu de quarante exports ou d'un fichier brut. |
 | F09 | **fait** | Vues enregistrées | Un suivi récurrent (« groupe Livraisons / mois en cours ») se retrouve en un clic. |

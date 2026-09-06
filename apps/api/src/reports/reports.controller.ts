@@ -21,6 +21,7 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { CONDUCTEUR_AUCUN, resolveDriverScope, type PorteeConducteur } from '../common/driver-scope';
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -138,18 +139,98 @@ export class ReportsController {
     return `${parisDayKey(from)}_${parisDayKey(new Date(to.getTime() - 1))}`;
   }
 
+  /**
+   * ══ LE FILTRE CONDUCTEUR DES EXPORTS, ET SON LIBELLÉ ══════════════════════════════════
+   *
+   * ── LE DÉFAUT QUE CETTE MÉTHODE FERME ──────────────────────────────────────────────────
+   *
+   * L'écran Rapports se filtre sur une personne depuis F13 : le tableau, le résumé
+   * journalier, les graphiques et la synthèse suivent. Les EXPORTS, eux, ne suivaient rien.
+   * Un gestionnaire filtré sur un conducteur qui cliquait « CSV trajets » recevait TOUS les
+   * trajets de la société ; son PDF et son Excel décrivaient une autre population que son
+   * écran. C'est le défaut le plus cher de ce produit — un fichier qui contredit l'écran qui
+   * l'a produit —, et il se paie deux fois : le fichier voyage, et il n'a pas de démenti.
+   *
+   * ── UNE SEULE RÈGLE, ET UN LIBELLÉ ─────────────────────────────────────────────────────
+   *
+   * La VALIDATION est celle de tout le monde (`resolveDriverScope`, `common/driver-scope`) :
+   * un UUID, ou `none` pour les trajets sans conducteur, et rien d'autre. Aucune seconde
+   * écriture ici — le jour où la règle bouge, elle bouge pour la liste, la synthèse ET les
+   * documents.
+   *
+   * Le LIBELLÉ, lui, est propre aux documents : un PDF ou un classeur doit DIRE de qui il
+   * parle. Il est résolu ICI, une fois, pour les deux — deux lectures séparées finiraient
+   * par nommer la même personne de deux façons.
+   *
+   * ⚠️ Le nom est cherché DANS LA SOCIÉTÉ DU RAPPORT. Un identifiant venu d'ailleurs ne
+   * rend aucun trajet (les `where` portent déjà `fleetId`) : plutôt que de laisser le
+   * document muet sur un périmètre vide, on l'annonce comme introuvable. Un fichier à zéro
+   * ligne sans explication se lit comme « ce conducteur n'a pas roulé », ce qui est faux.
+   *
+   * @returns `nom` = la désignation NUE (« Sohaib Hamanni », « Sans conducteur »), que
+   *   l'Excel enchâsse dans ses propres phrases ; `titre` = la ligne prête à imprimer du
+   *   PDF. Deux formes parce que deux documents, une seule lecture en base.
+   */
+  private async filtreConducteur(
+    fleetId: string | null,
+    driverId: string | undefined,
+  ): Promise<{ scope: PorteeConducteur; nom: string | null; titre: string | null }> {
+    const scope = resolveDriverScope(driverId);
+    if (scope === undefined) return { scope, nom: null, titre: null };
+    if (scope === null) {
+      return { scope, nom: 'Sans conducteur', titre: `Trajets sans conducteur (filtre « ${CONDUCTEUR_AUCUN} »)` };
+    }
+    const d = fleetId
+      ? await this.prisma.driver.findFirst({
+          where: { id: scope, fleetId },
+          select: { firstName: true, lastName: true },
+        })
+      : null;
+    const nom = d ? `${d.firstName} ${d.lastName}`.trim() : '';
+    if (nom) return { scope, nom, titre: `Conducteur : ${nom}` };
+    const inconnu = `conducteur introuvable dans cette société (identifiant ${scope.slice(0, 8)}…)`;
+    return { scope, nom: inconnu, titre: `Conducteur : ${inconnu}` };
+  }
+
+  /**
+   * ⚠️ LES `@Query()` DE CETTE ROUTE S'ÉCRIVENT `?: string`, JAMAIS `string | undefined`.
+   *
+   * Ce n'est pas une coquetterie de style, c'est ce qui fait la différence entre un 400 et
+   * un 500. `emitDecoratorMetadata` émet `design:paramtypes` : `?: string` donne le métatype
+   * `String`, `string | undefined` donne `Object` (sous `strictNullChecks`, TypeScript
+   * n'élide plus `undefined` de l'union et retombe sur `Object`). Or le `ValidationPipe`
+   * global de `main.ts` ne convertit QUE pour `String` (`transformPrimitive` :
+   * `if (metatype === String …) return String(value)`).
+   *
+   * Conséquence mesurée sur `?driverId=a&driverId=b` — une URL recopiée, un client qui
+   * ré-ajoute le filtre, un `HttpParams.append` au lieu de `set` : express rend `['a','b']`.
+   * En `String`, le pipe coerce en `"a,b"`, l'expression partagée le refuse et la route rend
+   * le MÊME 400 nommant le champ que les sept autres portes qui portent ce filtre. En
+   * `Object`, le tableau arrive intact jusqu'à `(driverId ?? '').trim()` : `TypeError`, 500
+   * « Internal server error » servi au client, et une CRITICAL au centre d'alerte pour une
+   * requête simplement malformée. Même histoire pour `vehicleIds`, dont le `.split(',')`
+   * juste en dessous casse de la même façon.
+   *
+   * Le métatype est figé par un test (`exports-filtre-conducteur.spec.ts`, « la coercition
+   * du ValidationPipe ») : réécrire ces paramètres en union le fait tomber.
+   */
   @Get('stats')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('reports_view')
   async statsJson(
     @Req() req: AuthenticatedRequest,
-    @Query('fleetId') fleetIdQ: string | undefined,
-    @Query('from') fromRaw: string,
-    @Query('to') toRaw: string,
-    @Query('vehicleIds') vehicleIdsQ: string | undefined,
-    @Query('topN') topNQ: string | undefined,
+    @Query('fleetId') fleetIdQ?: string,
+    // `from` et `to` restent OBLIGATOIRES pour l'appelant — mais optionnels ici, sans quoi
+    // TypeScript refuse un paramètre requis après un optionnel (TS1016). Leur absence est
+    // refusée par `parseRange`, qui rend le même 400 « from et to (ISO date) requis »
+    // qu'avant : le pipe laisse déjà `undefined` intact, `?? ''` ne change donc rien.
+    @Query('from') fromRaw?: string,
+    @Query('to') toRaw?: string,
+    @Query('vehicleIds') vehicleIdsQ?: string,
+    @Query('topN') topNQ?: string,
+    @Query('driverId') driverIdQ?: string,
   ) {
-    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw ?? '', toRaw ?? '');
     const accessibleVehicleIds = await this.accessibleVehicleIds(req);
     /**
      * ── DEUX PARAMÈTRES QUE LE SERVICE ACCEPTAIT DÉJÀ, ET QUE LA ROUTE TAISAIT ─────────
@@ -168,12 +249,29 @@ export class ReportsController {
       .split(',')
       .map((v) => v.trim())
       .filter((v) => v.length > 0);
+    /**
+     * ── LE FILTRE CONDUCTEUR SUIT LA SYNTHÈSE AUSSI (F13) ─────────────────────────────
+     *
+     * Sans lui, la page Rapports filtrée sur une personne montrerait un tableau de SES
+     * trajets sous une synthèse décrivant toute la société — deux réponses à deux questions
+     * différentes, présentées comme une seule. Deux formes acceptées : un UUID, ou `none`
+     * pour les trajets sans conducteur ; `compute` valide et refuse le reste.
+     *
+     * ⚠️ Les ALERTES, elles, restent hors de ce filtre : elles appartiennent à un véhicule et
+     * n'ont pas de conducteur (cf. `alertWhere` dans `reports-stats.service`). L'écran le dit.
+     */
     return this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds }, {
       vehicleIds: vehicleIds.length > 0 ? vehicleIds : undefined,
       topN: topNQ ? Number(topNQ) : undefined,
+      driverId: driverIdQ,
     });
   }
 
+  /**
+   * ⚠️ `driverId` EST ACCEPTÉ ICI AUSSI (F13). Cette route « rapide » est le raccourci sans
+   * modale : rien ne justifie qu'elle rende un autre périmètre que la variante configurable
+   * juste en dessous — un même écran, deux chemins, deux documents différents.
+   */
   @Get('pdf')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('reports_export')
@@ -183,17 +281,25 @@ export class ReportsController {
     @Query('fleetId') fleetIdQ: string | undefined,
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
+    @Query('driverId') driverIdQ?: string,
   ): Promise<void> {
-    await this.traceEchec(req, 'export_pdf', fleetIdQ ?? null, { from: fromRaw, to: toRaw }, async () => {
+    await this.traceEchec(req, 'export_pdf', fleetIdQ ?? null, { from: fromRaw, to: toRaw, driverId: driverIdQ ?? undefined }, async () => {
       const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
       const accessibleVehicleIds = await this.accessibleVehicleIds(req);
-      const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds });
-      const buffer = await this.pdf.generate(report);
+      // ⚠️ Résolu AVANT le calcul : une valeur invalide doit refuser l'export, pas produire
+      // un document de toute la flotte que le client lirait comme le sien.
+      const conducteur = await this.filtreConducteur(fleetId, driverIdQ);
+      const report = await this.stats.compute(
+        fleetId, from, to,
+        { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds },
+        { driverId: driverIdQ },
+      );
+      const buffer = await this.pdf.generate(report, { driverLabel: conducteur.titre ?? undefined });
       const filename = `tracky-rapport-${this.fileDates(from, to)}.pdf`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', enTeteTelechargement(filename));
       res.send(buffer);
-      this.recordExport(req, 'export_pdf', filename, fleetId, { from: fromRaw, to: toRaw });
+      this.recordExport(req, 'export_pdf', filename, fleetId, { from: fromRaw, to: toRaw, driverId: driverIdQ ?? undefined });
     });
   }
 
@@ -212,7 +318,7 @@ export class ReportsController {
     @Res() res: Response,
     @Body() body: GeneratePdfDto,
   ): Promise<void> {
-    await this.traceEchec(req, 'export_pdf', body.fleetId ?? null, { from: body.from, to: body.to, vehicleIds: body.vehicleIds?.length || undefined }, () =>
+    await this.traceEchec(req, 'export_pdf', body.fleetId ?? null, { from: body.from, to: body.to, vehicleIds: body.vehicleIds?.length || undefined, driverId: body.driverId ?? undefined }, () =>
       this.genererPdfConfigure(req, res, body));
   }
 
@@ -250,12 +356,21 @@ export class ReportsController {
     }
 
     const accessibleVehicleIds = await this.accessibleVehicleIds(req);
+    /**
+     * ── LE PÉRIMÈTRE CONDUCTEUR DU DOCUMENT (F13) ───────────────────────────────────────
+     *
+     * Le périmètre VÉHICULE était déjà annoncé (`scopeLabel`, sous le nom de la société) ;
+     * le conducteur ne l'était pas du tout, et il ne descendait même pas dans le calcul. Un
+     * PDF filtré sur une personne portait donc les chiffres de tout le parc, sous un titre
+     * qui ne démentait rien.
+     */
+    const conducteur = await this.filtreConducteur(fleetId, body.driverId);
     const report = await this.stats.compute(
       fleetId,
       from,
       to,
       { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds },
-      { vehicleIds, maxRecentTrips: body.maxTrips, topN: body.topN },
+      { vehicleIds, maxRecentTrips: body.maxTrips, topN: body.topN, driverId: body.driverId },
     );
 
     const buffer = await this.pdf.generate(report, {
@@ -264,6 +379,7 @@ export class ReportsController {
       topN: body.topN,
       scopeLabel,
       title,
+      driverLabel: conducteur.titre ?? undefined,
     });
 
     const filename = `tracky-rapport-${fileScope}${this.fileDates(from, to)}.pdf`;
@@ -272,9 +388,33 @@ export class ReportsController {
     res.send(buffer);
     this.recordExport(req, 'export_pdf', filename, fleetId, {
       from: body.from, to: body.to, vehicleIds: vehicleIds.length || undefined,
+      driverId: body.driverId ?? undefined,
     });
   }
 
+  /**
+   * ══ LE FILTRE CONDUCTEUR NE VAUT QUE POUR LES TRAJETS, ET LA ROUTE LE DIT ══════════════
+   *
+   * Un TRAJET porte son conducteur (`Trip.driverId`) : le CSV « trajets » suit donc le filtre
+   * de l'écran, exactement comme il suit déjà son périmètre véhicule.
+   *
+   * ⚠️ LES TROIS AUTRES TYPES N'ONT PAS DE CONDUCTEUR, ET C'EST DÉFINITIF :
+   *
+   *   - une POSITION est un point d'un boîtier ;
+   *   - une ALERTE appartient à un véhicule (la rattacher à quelqu'un demanderait de deviner
+   *     qui conduisait à son horodatage — une accusation, pas une donnée) ;
+   *   - une COMMANDE moteur est envoyée à un boîtier par un utilisateur, pas par un conducteur.
+   *
+   * Trois conduites étaient possibles. Les servir en ignorant le filtre — ce que faisait le
+   * code — rend une AUTRE population sous un nom de fichier qu'on croit filtré : c'est le
+   * défaut qu'on répare, on ne va pas le laisser ici. Les servir en les vidant serait pire
+   * encore (« cette personne n'a déclenché aucune alerte » est faux). Reste le REFUS EXPLICITE,
+   * avec la raison en clair : le client apprend pourquoi, et sait quoi faire.
+   *
+   * L'écran, lui, n'attend pas ce refus pour le dire : sous un filtre conducteur, le bouton
+   * « CSV alertes » est désactivé et la mention d'export porte la même phrase (cf.
+   * `reports.component`). Ce 400 est la ceinture — un autre client, une URL recopiée.
+   */
   @Get('csv')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('reports_export')
@@ -286,27 +426,57 @@ export class ReportsController {
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
     @Query('vehicleIds') vehicleIdsRaw?: string,
+    @Query('driverId') driverIdQ?: string,
   ): Promise<void> {
-    await this.traceEchec(req, `export_csv_${type}`, fleetIdQ ?? null, { from: fromRaw, to: toRaw }, async () => {
+    await this.traceEchec(req, `export_csv_${type}`, fleetIdQ ?? null, { from: fromRaw, to: toRaw, driverId: driverIdQ ?? undefined }, async () => {
       const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
       // Périmètre de l'ÉCRAN (véhicule ou groupe sélectionné), borné aux accès de l'appelant :
       // un CSV « trajets » demandé depuis un rapport filtré sur un véhicule exportait toute la
       // flotte. `resolveReportVehicleScope` rejette (403) toute demande hors périmètre.
       const wanted = (vehicleIdsRaw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       const ids = resolveReportVehicleScope(await this.accessibleVehicleIds(req), wanted);
+      // Même règle que partout — un UUID ou `none`, rien d'autre (cf. `common/driver-scope`).
+      // Résolue AVANT le `switch` : une valeur invalide refuse l'export quel que soit le type.
+      const driverScope = resolveDriverScope(driverIdQ);
+      /**
+       * Le refus, écrit UNE fois et posé sur les trois types concernés.
+       *
+       * ⚠️ `sujet` est un littéral du `switch`, jamais la valeur brute de la requête : rien
+       * de ce que l'appelant écrit ne revient dans le message.
+       */
+      const refuserSansConducteur = (sujet: string): void => {
+        if (driverScope === undefined) return;
+        throw new BadRequestException(
+          `L'export « ${sujet} » ne peut pas suivre un filtre conducteur : une position, une alerte `
+          + 'et une commande appartiennent à un véhicule ou à un boîtier, jamais à une personne. '
+          + "Seul l'export « trajets » porte un conducteur. Retirez le filtre conducteur pour obtenir ce fichier.",
+        );
+      };
       let result;
       switch (type) {
-        case 'positions': result = await this.csv.positions(fleetId, from, to, ids); break;
-        case 'trips': result = await this.csv.trips(fleetId, from, to, ids); break;
-        case 'alerts': result = await this.csv.alerts(fleetId, from, to, ids); break;
-        case 'commands': result = await this.csv.commands(fleetId, from, to, ids); break;
+        case 'positions': refuserSansConducteur('positions'); result = await this.csv.positions(fleetId, from, to, ids); break;
+        // ⚠️ Le NOM que rend le service porte le filtre (`-sans-conducteur`, `-conducteur-<8>`) :
+        //    c'est le seul endroit où un CSV peut le dire, et c'est ce nom qui part dans le
+        //    `Content-Disposition` ci-dessous et dans la trace d'export. Sous « none », deux
+        //    fichiers de la même période étaient sinon indiscernables — toutes leurs lignes ont
+        //    un conducteur vide (1 905 trajets sur 1 956 chez « mh cars »).
+        //    ⚠️ ET CE NOM ATTEINT LE NAVIGATEUR : `reports.service.downloadCsv` LIT cet
+        //    en-tête (`observe: 'response'` puis `filenameFromResponse`) au lieu de refabriquer
+        //    le sien, l'ancien nom ne servant plus que de repli si un proxy filtre l'en-tête.
+        //    Le `-PARTIEL` de la troncature passe par le même canal — il était avalé jusqu'à
+        //    ce lot. Quatre cas le figent (`filtre-conducteur-ecran.spec.ts`, « Export CSV —
+        //    la marque conducteur du nom de fichier atteint le navigateur ») : ne rebranchez
+        //    pas un nom fabriqué côté client, ils tomberaient.
+        case 'trips': result = await this.csv.trips(fleetId, from, to, ids, driverScope); break;
+        case 'alerts': refuserSansConducteur('alertes'); result = await this.csv.alerts(fleetId, from, to, ids); break;
+        case 'commands': refuserSansConducteur('commandes'); result = await this.csv.commands(fleetId, from, to, ids); break;
         default:
           throw new BadRequestException('type doit valoir positions / trips / alerts / commands');
       }
       res.setHeader('Content-Type', result.contentType);
       res.setHeader('Content-Disposition', enTeteTelechargement(result.filename));
       res.send(result.body);
-      this.recordExport(req, `export_csv_${type}`, result.filename, fleetId, { from: fromRaw, to: toRaw, vehicules: ids === 'ALL' ? undefined : ids.length });
+      this.recordExport(req, `export_csv_${type}`, result.filename, fleetId, { from: fromRaw, to: toRaw, vehicules: ids === 'ALL' ? undefined : ids.length, driverId: driverIdQ ?? undefined });
     });
   }
 
@@ -325,7 +495,7 @@ export class ReportsController {
     @Res() res: Response,
     @Body() body: GenerateExcelDto,
   ): Promise<void> {
-    await this.traceEchec(req, 'export_excel', null, { vehicleId: body.vehicleId, from: body.from, to: body.to }, async () => {
+    await this.traceEchec(req, 'export_excel', null, { vehicleId: body.vehicleId, from: body.from, to: body.to, driverId: body.driverId ?? undefined }, async () => {
       // Jours civils de Paris, comme le PDF et les listes (cf. parisDayStart).
       const from = parisDayStart(body.from);
       const to = parisDayStart(body.to);
@@ -358,9 +528,25 @@ export class ReportsController {
           'Précisez une société (fleetId) ou un véhicule : un classeur de parc doit désigner son périmètre.',
         );
       }
+      /**
+       * ── LE CLASSEUR SUIT LE FILTRE CONDUCTEUR (F13) ────────────────────────────────
+       *
+       * ⚠️ L'EXCEL NE PASSE PAS PAR `ReportsStatsService.compute` — il fait ses propres
+       * requêtes (cf. `report-excel.service`). Le filtre descend donc dans SES `where`,
+       * et le libellé résolu ici s'écrit dans sa feuille de synthèse : un classeur au nom
+       * d'une personne qui porterait les trajets de tout le parc est exactement le fichier
+       * qu'on ne peut pas rattraper une fois envoyé.
+       *
+       * `filtreConducteur` refuse déjà toute valeur qui n'est ni un UUID ni `none` — même
+       * règle que la liste, la synthèse et le PDF.
+       */
+      const conducteur = await this.filtreConducteur(fleetIdCible, body.driverId);
+      const filtreClasseur = conducteur.scope === undefined
+        ? undefined
+        : { scope: conducteur.scope, label: conducteur.nom ?? 'Conducteur' };
       const { buffer, filename } = body.vehicleId
-        ? await this.excel.generate(body.vehicleId, from, to, req.user)
-        : await this.excel.generateScope({ fleetId: fleetIdCible!, groupId: body.groupId }, from, to, req.user);
+        ? await this.excel.generate(body.vehicleId, from, to, req.user, filtreClasseur)
+        : await this.excel.generateScope({ fleetId: fleetIdCible!, groupId: body.groupId }, from, to, req.user, filtreClasseur);
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -369,6 +555,7 @@ export class ReportsController {
       res.send(buffer);
       this.recordExport(req, 'export_excel', filename, fleetIdCible, {
         vehicleId: body.vehicleId, groupId: body.groupId, from: body.from, to: body.to,
+        driverId: body.driverId ?? undefined,
       });
     });
   }

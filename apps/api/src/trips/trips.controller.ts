@@ -31,6 +31,16 @@ export class TripsController {
     return this.trips.list(await this.rb(req), query);
   }
 
+  /**
+   * ⚠️ `driverId` EST ACCEPTÉ ICI AUSSI (F13), et ce n'est pas un confort.
+   *
+   * Cet agrégat alimente les INDICATEURS de la page Rapports. Filtrer la liste de trajets
+   * sans filtrer ce résumé mettrait, sur le même écran, un compteur qui compte toute la
+   * flotte au-dessus d'un tableau qui n'en montre qu'un conducteur — le défaut que cette
+   * page a déjà payé. Deux formes acceptées : un UUID, ou `none` pour les trajets sans
+   * conducteur ; la validation vit dans `resolveDriverScope` (ce paramètre est un `@Query()`
+   * brut, il ne traverse aucun DTO).
+   */
   @Get('daily-summary')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   async dailySummary(
@@ -40,8 +50,9 @@ export class TripsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('fleetId') fleetId?: string,
+    @Query('driverId') driverId?: string,
   ) {
-    return this.trips.dailySummary(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId });
+    return this.trips.dailySummary(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId, driverId });
   }
 
   /**
@@ -50,6 +61,11 @@ export class TripsController {
    * ⚠️ DOIT rester déclaré AVANT `@Get(':id')` : Nest résout les routes dans l'ordre de
    * déclaration, et `:id` capturerait « period-charts » comme un identifiant de trajet.
    * C'est la même raison qui place `daily-summary` juste au-dessus.
+   *
+   * ⚠️ `driverId` suit le même chemin que le résumé journalier (F13) : les deux agrégats
+   * partagent `buildPeriodWhere`, donc le même périmètre. Des courbes qui décriraient toute
+   * la flotte à côté d'un tableau filtré sur une personne seraient plus difficiles à
+   * repérer que deux écrans faux — elles ont l'air justes.
    */
   @Get('period-charts')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
@@ -60,8 +76,9 @@ export class TripsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('fleetId') fleetId?: string,
+    @Query('driverId') driverId?: string,
   ) {
-    return this.trips.periodCharts(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId });
+    return this.trips.periodCharts(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId, driverId });
   }
 
   @Get(':id')

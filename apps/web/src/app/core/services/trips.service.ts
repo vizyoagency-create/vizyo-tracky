@@ -12,6 +12,18 @@ import { Observable } from 'rxjs';
 export class TripsApiService {
   private readonly http = inject(HttpClient);
 
+  /**
+   * Liste de trajets.
+   *
+   * Paramètres reconnus par le serveur (`ListTripsDto`) : `vehicleId`, `vehicleIds`, `from`,
+   * `to`, `limit`, `cursor`, `fleetId`, `sortBy`, `sortDir`, `light` et — depuis F13 —
+   * `driverId`, qui vaut un identifiant de conducteur ou `none` pour les trajets SANS
+   * conducteur.
+   *
+   * ⚠️ `driverId` doit être posé sur CETTE requête ET sur les agrégats ci-dessous : un
+   * tableau filtré sous des compteurs qui ne le sont pas, c'est deux totaux contradictoires
+   * dans le même écran — le défaut que la page Rapports a déjà payé.
+   */
   list(params: Record<string, string>): Observable<{ items: TripDto[]; nextCursor: string | null }> {
     return this.http.get<{ items: TripDto[]; nextCursor: string | null }>('/api/trips', { params });
   }
@@ -20,6 +32,7 @@ export class TripsApiService {
     return this.http.get<TripDto>(`/api/trips/${id}`);
   }
 
+  /** Mêmes filtres que `list()`, `driverId` compris : ces chiffres alimentent les indicateurs. */
   dailySummary(params: Record<string, string>): Observable<TripDailySummaryDto[]> {
     return this.http.get<TripDailySummaryDto[]>('/api/trips/daily-summary', { params });
   }
@@ -29,6 +42,9 @@ export class TripsApiService {
    *
    * Distinct de `list()`, qui borne à 100 trajets pour le tableau : ces graphiques
    * prétendaient couvrir la période alors qu'ils dessinaient cet échantillon.
+   *
+   * Mêmes filtres que `list()`, `driverId` compris : des courbes décrivant toute la flotte à
+   * côté d'un tableau filtré sur une personne auraient l'air justes.
    */
   periodCharts(params: Record<string, string>): Observable<TripPeriodChartsDto> {
     return this.http.get<TripPeriodChartsDto>('/api/trips/period-charts', { params });

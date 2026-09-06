@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EmailStatus } from '@prisma/client';
 import { Resend } from 'resend';
+import { partLibelle } from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
 import { formatFleetDateTime, formatFleetDateTimeLong } from '../common/utils/datetime';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -115,6 +116,48 @@ export interface SendEmailParams {
    * jointe » depuis 2026-01 sans que rien ne soit joint : le paramètre n'existait pas.
    */
   attachments?: { filename: string; content: Buffer }[];
+}
+
+/**
+ * ══ LES TRAJETS QUE RIEN NE RATTACHE À PERSONNE, DANS LE COURRIER DU LUNDI (F13) ═══════
+ *
+ * Le PDF joint le dit depuis ce lot ; le CORPS du message, lui, résumait trajets, kilomètres,
+ * alertes et consommation sans jamais dire que ces nombres pouvaient n'appartenir à personne.
+ * Or c'est le corps qui se lit sur un téléphone, à 8 h, sans ouvrir la pièce jointe — et chez
+ * mh cars (mesuré le 2026-09-05) 1 866 trajets sur 1 886 sont dans ce cas : 99 % du courrier
+ * portait sur des kilomètres qu'aucun conducteur ne revendique.
+ *
+ * ⚠️ UNE SEULE ÉCRITURE POUR LES DEUX PARTIES MIME DU MÊME MESSAGE. Le corps HTML est
+ * fabriqué ici, le corps texte dans `ReportScheduleService` : deux phrases rédigées chacune
+ * de son côté auraient fini par dire deux choses du même chiffre, et le client sous Outlook
+ * n'aurait pas lu la même semaine que le client en texte brut. La phrase se calcule donc une
+ * fois, ici, et les deux corps la reçoivent telle quelle.
+ *
+ * ⚠️ MUETTE QUAND IL N'Y A RIEN À SIGNALER, et c'est la moitié du travail : ce courrier part
+ * AUTOMATIQUEMENT chaque lundi à TOUTES les sociétés, sociétés d'essai comprises. Une société
+ * qui a renseigné ses conducteurs, une société sans un seul trajet, une société dont le
+ * producteur de statistiques ne fabrique pas le champ (il est optionnel au contrat) ne
+ * reçoivent AUCUNE ligne — pas une ligne à zéro, qui se lirait comme un reproche sans objet.
+ *
+ * Les mots sont ceux de l'écran, du PDF et du classeur — « … sur … (99 %, 11 460 km) … ni
+ * conducteur, ni groupe » —, la part venant de la règle d'arrondi du contrat partagé.
+ *
+ * @param unattributed le bloc `unattributedTrips` du rapport, absent chez certains producteurs.
+ * @param totalTrips le total RÉEL de la semaine (`trips.count`), jamais la somme des lignes
+ *   classées : « 1 866 sur 22 » serait un mensonge parfaitement crédible.
+ */
+export function buildUnattributedNote(
+  unattributed: { tripCount: number; distanceKm: number } | null | undefined,
+  totalTrips: number,
+): string | null {
+  const n = unattributed?.tripCount ?? 0;
+  if (n <= 0 || totalTrips <= 0) return null;
+  return `${n} trajet${n > 1 ? 's' : ''} sur ${totalTrips} de la semaine `
+    + `(${partLibelle(n, totalTrips)}, ${unattributed!.distanceKm.toFixed(1)} km) `
+    + `n’${n > 1 ? 'ont' : 'a'} ni conducteur, ni groupe : `
+    + `${n > 1 ? 'ils ne peuvent être attribués' : 'il ne peut être attribué'} à personne. `
+    + 'Renseignez un conducteur ou un groupe sur ces véhicules, depuis la page Véhicules, '
+    + 'pour que leurs kilomètres comptent pour quelqu’un.';
 }
 
 @Injectable()
@@ -1000,6 +1043,14 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
    * Charte 2026 — rapport hebdomadaire. Déplacé de ReportsCronService pour passer
    * par le shell(). Renvoie UNIQUEMENT le HTML ; le cron conserve subject / text /
    * pièce jointe PDF (logique métier inchangée). Grille de 4 stats mono.
+   *
+   * @param opts.unattributedNote la phrase des trajets que rien ne rattache à personne,
+   *   fabriquée par `buildUnattributedNote` (ci-dessus) et `null` quand il n'y a rien à
+   *   signaler. Le PARAMÈTRE existe pour qu'elle ne soit PAS rédigée ici : ce courrier a deux
+   *   parties MIME — ce HTML et le corps texte que `ReportScheduleService` compose du même
+   *   appel —, un client sous Outlook lit l'une pendant qu'un client en texte brut lit
+   *   l'autre. Une phrase calculée une fois et rendue deux fois ne peut pas diverger ; deux
+   *   rédactions, même bien intentionnées, l'auraient fait.
    */
   buildWeeklyReportEmail(opts: {
     fromStr: string;
@@ -1010,6 +1061,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     liters: number;
     costEur: number;
     pdfName?: string;
+    unattributedNote?: string | null;
   }): string {
     const appBase = this.config.get('APP_BASE_URL', { infer: true });
     const km = opts.totalKm.toFixed(1);
@@ -1017,6 +1069,29 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     const cost = opts.costEur.toFixed(2);
     const chip = opts.pdfName
       ? `<table role="presentation"><tr><td style="background:rgba(16,224,160,.1);border:1px solid rgba(16,224,160,.25);border-radius:9px;padding:9px 14px;font-family:${EMAIL_FONT_MONO};font-size:11px;color:${EMAIL_ACCENT_TEXTE};">${escapeHtml(opts.pdfName)} en pièce jointe</td></tr></table>`
+      : '';
+    /**
+     * Le panneau des non attribués : sous la grille des quatre chiffres, AVANT le bouton —
+     * c'est ce qui manque pour que ces quatre chiffres comptent pour quelqu'un.
+     *
+     * ⚠️ FILET AMBRE SUR LE PANNEAU NEUTRE DE LA MAISON (`m-panel` + `#F6F9F7`), et non un
+     * fond ambre à moi : `m-panel` est ce que la règle sombre du gabarit sait repeindre.
+     * Un fond clair codé en dur serait resté un pavé blanc au milieu d'un courrier sombre.
+     * Ce n'est pas une alerte — rien n'est cassé —, c'est un trou de données à combler.
+     *
+     * ⚠️ LE TEXTE EST ÉCHAPPÉ. Il ne porte que des nombres et un nom de page, mais il arrive
+     * d'ailleurs et traverse une couche de mise en forme : un gabarit d'e-mail n'a aucune
+     * raison de faire confiance à ce qu'on lui passe.
+     */
+    const nonAttribues = opts.unattributedNote
+      ? `<tr><td style="padding:16px 36px 0;">
+          <table class="m-panel" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F9F7;border:1px solid rgba(245,179,61,.35);border-radius:13px;">
+            <tr><td style="padding:14px 18px;">
+              <div class="m-text" style="font-family:${EMAIL_FONT_MONO};font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:${EMAIL_TEXTE_ATTENTE};margin-bottom:6px;">Trajets non attribués</div>
+              <p class="m-text" style="margin:0;font-family:${EMAIL_FONT};font-size:14px;line-height:1.6;color:#56635E;">${escapeHtml(opts.unattributedNote)}</p>
+            </td></tr>
+          </table>
+        </td></tr>`
       : '';
     return this.shell({
       eyebrow: 'Rapport · Hebdo',
@@ -1052,6 +1127,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
             </tr>
           </table>
         </td></tr>
+        ${nonAttribues}
         <tr><td style="padding:20px 36px 0;">
           ${chip}
           <table role="presentation" style="margin-top:${opts.pdfName ? '20px' : '0'};"><tr><td style="border-radius:11px;background:#10E0A0;">
@@ -1790,6 +1866,11 @@ ${this.commercialSignatureText()}`;
             liters: 287,
             costEur: 458,
             pdfName: 'rapport-semaine.pdf',
+            // L'aperçu montre le bloc AVEC sa phrase — c'est le cas le plus fréquent en
+            // production, et un aperçu qui l'omettrait laisserait croire qu'il n'existe pas.
+            // La phrase passe par le MÊME constructeur que l'envoi réel : un exemple recopié
+            // à la main aurait dérivé du jour où la vraie phrase change.
+            unattributedNote: buildUnattributedNote({ tripCount: 112, distanceKm: 2016.4 }, 128),
           }),
           text: 'Aperçu du rapport hebdomadaire (données d’exemple).',
         };

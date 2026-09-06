@@ -20,7 +20,12 @@ const WEEKDAYS = [
 const SECTIONS: { key: FleetReportSection; label: string; hint: string }[] = [
   { key: 'kpi', label: 'Indicateurs clés', hint: 'distance, durée, vitesses, conso estimée' },
   { key: 'alerts', label: 'Alertes', hint: 'total, par type et par gravité' },
-  { key: 'topVehicles', label: 'Top véhicules', hint: 'classement par kilomètres' },
+  // ⚠️ Cette case commande DEUX tableaux, pas un. Le PDF rend le classement par véhicule ET le
+  // récapitulatif par conducteur ou groupe — avec l'encart des trajets que rien ne rattache à
+  // personne — sous la même section. Un administrateur qui décoche pour raccourcir son courrier
+  // perdrait sinon en silence la seule page qui nomme les conducteurs, pendant que le corps du
+  // message, lui, continue d'annoncer les trajets non attribués.
+  { key: 'topVehicles', label: 'Top véhicules', hint: 'classement par kilomètres, puis par conducteur ou groupe, avec les trajets non attribués' },
   { key: 'trips', label: 'Trajets détaillés', hint: 'date, plaque, durée, distance, conducteur' },
 ];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

@@ -6,7 +6,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Users, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
-import { libelleTypeAlerte } from '@vizyo/tracky-shared';
+import { CONDUCTEUR_AUCUN, normaliserFiltreConducteur, libelleTypeAlerte, partLibelle } from '@vizyo/tracky-shared';
 import type {
   DriverDto,
   TripAnalysisDto,
@@ -73,6 +73,24 @@ const REPORTS_TRIPS_PAGE_SIZE = 100;
 const MAX_TYPES_ALERTE_AFFICHES = 5;
 
 /**
+ * ── FILTRE CONDUCTEUR (F13, seconde moitié) ─────────────────────────────────────────────
+ *
+ * `CONDUCTEUR_AUCUN` (le mot-clé « trajets SANS conducteur ») et `normaliserFiltreConducteur`
+ * viennent du CONTRAT PARTAGÉ, pas d'une constante locale : le serveur borne les mêmes deux
+ * formes dans `common/driver-scope`, et deux expressions écrites séparément auraient fini par
+ * diverger — c'est le côté le plus permissif qui aurait gagné, celui qui laisse passer.
+ *
+ * Ce mot-clé n'est pas une option secondaire : mesuré en production le 2026-09-05, 1 905
+ * trajets sur 1 956 chez « mh cars » n'ont aucun conducteur. C'est cette liste que le
+ * gestionnaire doit pouvoir isoler pour la corriger.
+ *
+ * ⚠️ Les paramètres relus au démarrage sont VALIDÉS, jamais appliqués tels quels — une URL
+ * bricolée à la main ne doit pas pouvoir mettre l'écran dans un état qu'aucun clic ne
+ * produit. Le serveur refuse déjà le reste ; l'écran ne doit pas pour autant afficher un
+ * libellé de filtre pour une valeur qu'il n'obtiendra jamais.
+ */
+
+/**
  * L'ordre de départ du tableau — du plus récent au plus ancien.
  *
  * ⚠️ Nommé, parce qu'il sert à DEUX endroits qui doivent rester d'accord : l'état initial du
@@ -92,6 +110,35 @@ const TRI_PAR_DEFAUT: { col: TripSortColumn; dir: SortDirection } = { col: 'star
 
 /** Taille d'un lot d'analyses demandées — aligne sur `MAX_TRIP_IDS_PER_BATCH` côté API. */
 const ANALYSES_BATCH_SIZE = 200;
+
+/**
+ * Le trajet vient-il de SORTIR du périmètre affiché ?
+ *
+ * ⚠️ Le filtre conducteur est honoré au CHARGEMENT (le `where` est posé en base) ; rien, côté
+ * écran, ne réévalue l'appartenance d'une ligne après une MUTATION — `sortedTrips` est
+ * l'identité, et c'est voulu (un re-filtrage client réintroduirait le mensonge qu'on vient
+ * d'enlever). C'est donc au geste qui mute de le dire.
+ *
+ * Fonction de module, exportée, sans dépendance à l'écran : c'est LA règle qui décide si une
+ * ligne peut rester affichée, et elle doit pouvoir être éprouvée seule — le défaut d'origine
+ * était précisément qu'aucun test ne pouvait l'atteindre.
+ *
+ * @param filtre        `selectedDriverId()` — '' (aucun filtre), `none`, ou un identifiant.
+ * @param conducteurApres L'identifiant du conducteur du trajet APRÈS l'affectation, ou `null`.
+ */
+export function trajetHorsPerimetreConducteur(
+  filtre: string,
+  conducteurApres: string | null,
+): boolean {
+  if (!filtre) return false;
+  // « Sans conducteur » : le trajet sort dès qu'il en gagne un — c'est le cas d'usage même du
+  // filtre, la correction en masse des 1 905 trajets orphelins.
+  if (filtre === CONDUCTEUR_AUCUN) return conducteurApres !== null;
+  // Filtre nominatif : le trajet sort si on lui retire son conducteur (symétrique, et tout
+  // aussi visible : la ligne resterait dans la liste de cette personne avec un bouton
+  // « Assigner » à la place du nom) ou si on le donne à quelqu'un d'autre.
+  return conducteurApres !== filtre;
+}
 
 @Component({
   selector: 'app-reports',
@@ -135,6 +182,7 @@ const ANALYSES_BATCH_SIZE = 200;
             {{ enTeteImpression() }}
           </p>
         </div>
+        <div class="rep-export-colonne">
         <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
           <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
@@ -144,7 +192,15 @@ const ANALYSES_BATCH_SIZE = 200;
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-trips' ? 'Export…' : 'CSV trajets' }}</span>
           </button>
-          <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts" [disabled]="!!exporting()" class="rep-export-btn">
+          <!-- ⚠️ DÉSACTIVÉ SOUS UN FILTRE CONDUCTEUR, ET LA MENTION SOUS LES BOUTONS DIT
+               POURQUOI (F13). Une alerte appartient à un VÉHICULE : elle n'a pas de
+               conducteur. Ce fichier ne peut donc PAS suivre le filtre — le servir quand
+               même rendrait, sous un nom qu'on croit filtré, les alertes de tout le parc.
+               Le serveur refuse aussi (400 avec la raison), mais un bouton qu'on clique pour
+               découvrir un bandeau rouge n'est pas une réponse : on le dit avant. -->
+          <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts"
+                  [disabled]="!!exporting() || conducteurFiltre()"
+                  class="rep-export-btn">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
           </button>
@@ -161,6 +217,17 @@ const ANALYSES_BATCH_SIZE = 200;
             }
             <span>{{ exporting() === 'excel' ? 'Export…' : 'Excel' }}</span>
           </button>
+        </div>
+        <!-- ══ CE QUE LES FICHIERS CONTIENDRONT — ET CE QU'ILS NE PEUVENT PAS CONTENIR (F13)
+             Le PDF, le CSV trajets et l'Excel suivent désormais le filtre conducteur ; le CSV
+             alertes ne le peut pas (une alerte appartient à un véhicule) et son bouton est
+             désactivé juste au-dessus. Un bouton grisé sans raison est une impasse : la raison
+             est ici, VISIBLE, et non dans un attribut « title » — une infobulle n'existe pas
+             au doigt. Cette mention est collée aux boutons : une phrase posée ailleurs sur la
+             page ne se lit pas au moment où l'on clique. -->
+        @if (noteExportsConducteur(); as note) {
+          <p class="rep-export-note" role="note">{{ note }}</p>
+        }
         </div>
       </div>
 
@@ -273,6 +340,116 @@ const ANALYSES_BATCH_SIZE = 200;
             </div>
           }
         </div>
+
+        <!-- ══ FILTRE CONDUCTEUR (F13, seconde moitié) ══════════════════════════════════
+             Le récapitulatif répond à « combien a roulé tel conducteur » ; ce menu répond au
+             geste suivant : « montre-moi SES trajets ». Il restreint le tableau ET tous les
+             agrégats de trajets, sinon l'écran afficherait deux totaux contradictoires.
+
+             Masqué quand la société n'a aucun conducteur : un menu dont la seule option
+             utile serait « Sans conducteur » n'aiderait personne à comprendre ce qu'il fait.
+
+             ⚠️ MAIS JAMAIS QUAND UN FILTRE EST POSÉ — « ou conducteurFiltre() ». Relevé en
+             revue contradictoire : la liste du menu vient de GET /drivers, qui ne rend que les
+             conducteurs ACTIFS, pendant que le bouton « Filtrer » du récapitulatif vient de
+             /reports/stats, qui nomme aussi les archivés. Un clic sur la ligne d'un conducteur
+             archivé bornait donc tout le rapport — tableau, chiffres, graphiques, exports — à
+             une personne, sans laisser à l'écran le moindre contrôle pour l'enlever. Même
+             impasse après un 403 sur /drivers, ou sur un lien « ?driver=… » ouvert dans une
+             société sans conducteur. « Tous les conducteurs » est écrit HORS de la boucle : le
+             menu reste donc utilisable avec zéro option, et retire le filtre par son chemin
+             normal, sans emporter la période ni le tri comme le ferait « Réinitialiser ». -->
+        @if (driverOptions().length > 0 || conducteurFiltre()) {
+          <div class="rep-dropdown-wrapper">
+            <button type="button" #driverTrigger
+                    (click)="driverDropdownOpen.set(!driverDropdownOpen())"
+                    class="rep-dropdown-trigger"
+                    aria-haspopup="listbox"
+                    aria-controls="rep-menu-conducteur"
+                    [attr.aria-expanded]="driverDropdownOpen()"
+                    [class.rep-dropdown-trigger--open]="driverDropdownOpen()">
+              <lucide-icon [img]="UsersIcon" [size]="14"></lucide-icon>
+              <span class="rep-dropdown-label">{{ selectedDriverLabel() }}</span>
+              <lucide-icon [img]="ChevronDown" [size]="14" class="rep-dropdown-chevron"></lucide-icon>
+            </button>
+            @if (driverDropdownOpen()) {
+              <div class="rep-dropdown-backdrop" (click)="fermerMenuConducteur()"></div>
+              <div class="rep-dropdown-menu" id="rep-menu-conducteur" role="listbox" aria-label="Filtrer par conducteur">
+                <button type="button"
+                        (click)="onSelectDriver('')"
+                        class="rep-dropdown-item"
+                        role="option"
+                        [attr.aria-selected]="!selectedDriverId()"
+                        [class.rep-dropdown-item--active]="!selectedDriverId()">
+                  <span>Tous les conducteurs</span>
+                  @if (!selectedDriverId()) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+                </button>
+                <!-- Séparateur CONDITIONNEL : sans conducteur ni ligne hors liste, il se
+                     collerait à celui de « Sans conducteur » — deux traits l'un sur l'autre. -->
+                @if (conducteurHorsListe() || driverOptions().length > 0) {
+                  <div class="rep-dropdown-divider"></div>
+                }
+                <!-- ⚠️ LA PERSONNE FILTRÉE QUE LA LISTE NE CONTIENT PAS (archivée, ou d'une
+                     autre société). Sans cette entrée, AUCUNE option du « listbox » ne portait
+                     aria-selected="true" ni de coche pendant que le bouton, lui, annonçait le
+                     nom : un lecteur d'écran entendait une liste de sélection sans rien de
+                     sélectionné. Le sous-libellé dit POURQUOI elle n'est pas dans la liste —
+                     sinon on la cherche, et on la perd en quittant le filtre. -->
+                @if (conducteurHorsListe()) {
+                  <button type="button"
+                          (click)="fermerMenuConducteur()"
+                          class="rep-dropdown-item rep-dropdown-item--active"
+                          role="option"
+                          aria-selected="true">
+                    <span class="rep-dropdown-item-content">
+                      <span class="rep-vnom">{{ selectedDriverLabel() }}</span>
+                      <!-- ⚠️ « absente de la liste » n'est pas « liste absente ». Tant que
+                           GET /drivers n'a pas répondu — et après un 403, où il ne répondra
+                           jamais —, affirmer « archivé » sur une personne parfaitement active
+                           est un motif inventé à partir d'une absence. Même distinction que le
+                           menu véhicule juste avant (« Liste indisponible. »). -->
+                      <span class="rep-dropdown-item-meta">
+                        @if (driversRepondus()) {
+                          archivé, ou hors de cette société
+                        } @else {
+                          liste des conducteurs indisponible
+                        }
+                      </span>
+                    </span>
+                    <lucide-icon [img]="Check" [size]="14"></lucide-icon>
+                  </button>
+                }
+                @for (d of driverOptions(); track d.id) {
+                  <button type="button"
+                          (click)="onSelectDriver(d.id)"
+                          class="rep-dropdown-item"
+                          role="option"
+                          [attr.aria-selected]="selectedDriverId() === d.id"
+                          [class.rep-dropdown-item--active]="selectedDriverId() === d.id">
+                    <span class="rep-dropdown-item-content">
+                      <span class="rep-vnom">{{ d.nom }}</span>
+                    </span>
+                    @if (selectedDriverId() === d.id) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+                  </button>
+                }
+                <div class="rep-dropdown-divider"></div>
+                <!-- ⚠️ L'OPTION QUI SERT VRAIMENT. Chez « mh cars », 1 905 trajets sur 1 956
+                     n'ont pas de conducteur : c'est exactement ce que le gestionnaire doit
+                     pouvoir isoler pour l'affecter. Séparée des personnes, parce qu'elle ne
+                     désigne personne. -->
+                <button type="button"
+                        (click)="onSelectDriver(CONDUCTEUR_AUCUN)"
+                        class="rep-dropdown-item"
+                        role="option"
+                        [attr.aria-selected]="selectedDriverId() === CONDUCTEUR_AUCUN"
+                        [class.rep-dropdown-item--active]="selectedDriverId() === CONDUCTEUR_AUCUN">
+                  <span>Sans conducteur</span>
+                  @if (selectedDriverId() === CONDUCTEUR_AUCUN) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+                </button>
+              </div>
+            }
+          </div>
+        }
 
         </div>
 
@@ -393,11 +570,15 @@ const ANALYSES_BATCH_SIZE = 200;
           </button>
         }
 
-        <!-- Sprint 5 — Réinitialiser : tous groupes / tous véhicules / 7 jours.
-             Désactivé quand les filtres sont déjà sur leurs valeurs par défaut. -->
+        <!-- Sprint 5 — Réinitialiser : tous groupes / tous véhicules / tous conducteurs /
+             7 jours, et le TRI avec. Désactivé quand tout est déjà sur ses valeurs par défaut.
+             ⚠️ L'énumération taisait déjà les groupes et le tri, et F13 y a ajouté le conducteur
+             sans la toucher : un bouton « Réinitialiser » qui annonce moins qu'il ne fait est le
+             défaut que ce fichier dénonce en tête. Formulée sans liste, elle ne se périmera plus
+             au prochain filtre ajouté. -->
         <button type="button" (click)="resetFilters()" [disabled]="!filtersDirty()"
                 trackClick="rapport-reset-filtres"
-                title="Réinitialiser les filtres (tous véhicules · 7 jours)"
+                title="Réinitialiser tous les filtres et le tri (période : 7 jours)"
                 class="rep-reset-btn">
           <lucide-icon [img]="RotateCcwIcon" [size]="13"></lucide-icon>
           <span>Réinitialiser</span>
@@ -606,6 +787,17 @@ const ANALYSES_BATCH_SIZE = 200;
                 sur le prix paramétré de la société.
               </p>
             }
+            <!-- ══ CE PRIX NE SUIT PAS LE FILTRE CONDUCTEUR, ET L'ÉCRAN LE DIT (F13) ══════
+                 Un passage en station est un arrêt du VÉHICULE : la table qui les porte n'a
+                 aucun conducteur. Le chiffre est GARDÉ — un prix de station est un fait de
+                 marché, et le comparer au prix paramétré reste utile — mais muet sous un nom
+                 propre, « 12 passages station » s'attribue tout seul à la personne nommée en
+                 haut de page. Seuls les litres valorisés, eux, suivent bien le filtre.
+                 Même geste et même phrase que le PDF ; le classeur Excel, qui liste les
+                 arrêts un par un, les RETIRE et l'écrit. -->
+            @if (noteCarburantConducteur(); as note) {
+              <p class="rep-synthese-note" role="note">{{ note }}</p>
+            }
             <!-- ══ RALENTI MOTEUR (F12) ══════════════════════════════════════════════
                  Calculé par trajet depuis toujours, agrégé nulle part : personne ne pouvait
                  dire « ce parc a passé onze heures moteur tournant à l'arrêt ce mois-ci »,
@@ -630,19 +822,42 @@ const ANALYSES_BATCH_SIZE = 200;
           <section class="rep-synthese-card">
             <header class="rep-synthese-head">
               <lucide-icon [img]="TruckIcon" [size]="14"></lucide-icon>
-              <h2>Parc actif sur la période</h2>
+              <!-- ⚠️ DEUX GESTES, PAS UN — la règle que le PDF s'impose déjà dans renderKpis,
+                   « Véhicules conduits / parc » : l'INTITULÉ change, puis les phrases
+                   l'expliquent. Sous filtre, le numérateur ne compte que les véhicules que
+                   CE filtre a fait rouler, le dénominateur reste le parc entier : laisser
+                   « Parc actif sur la période » au-dessus de « 2 / 39 », c'est annoter un
+                   piège au lieu de le retirer, et les deux surfaces ne nomment plus la même
+                   chose sur les mêmes chiffres. -->
+              <h2>{{ conducteurFiltre() ? 'Véhicules conduits / parc' : 'Parc actif sur la période' }}</h2>
             </header>
             <p class="rep-synthese-valeur">
               {{ st.vehicles.activeDuringPeriod }}<span class="rep-synthese-unite">/ {{ st.vehicles.total }}</span>
             </p>
             <p class="rep-synthese-detail">
-              {{ tauxUtilisation() }} % du parc a roulé au moins une fois.
+              {{ tauxUtilisation() }} % du parc a roulé{{ perimetreParc() }} au moins une fois.
             </p>
+            <!-- ⚠️ SOUS UN FILTRE CONDUCTEUR, « IMMOBILE » CHANGE DE SENS (F13).
+                 Ce compte se déduit des trajets du périmètre : filtré sur une personne, il ne
+                 dit plus « n'a pas roulé » mais « n'a pas roulé AVEC elle ». Le chiffre reste
+                 vrai, c'est sa lecture qui bouge — et une lecture tacite se prend pour un
+                 fait, exactement comme le compteur d'alertes juste au-dessus. -->
+            @if (noteParcConducteur(); as note) {
+              <p class="rep-synthese-note" role="note">{{ note }}</p>
+            }
             @if (st.vehicles.idleTotal === 0) {
-              <p class="rep-synthese-detail rep-synthese-detail--fort">Aucun véhicule immobile : tout le parc a servi.</p>
+              @if (perimetreParc(); as p) {
+                <p class="rep-synthese-detail rep-synthese-detail--fort">Tout le parc a roulé{{ p }} au moins une fois : aucun véhicule immobile.</p>
+              } @else {
+                <p class="rep-synthese-detail rep-synthese-detail--fort">Aucun véhicule immobile : tout le parc a servi.</p>
+              }
             } @else {
+              <!-- ⚠️ CETTE PHRASE INTRODUIT DES PLAQUES NOMMÉES, et c'est la donnée sur
+                   laquelle se décide une mutualisation ou une restitution : sous filtre, ces
+                   véhicules ONT roulé, simplement pas avec cette personne. Non qualifiée,
+                   elle les désigne comme dormants. -->
               <p class="rep-synthese-detail rep-synthese-detail--fort">
-                {{ st.vehicles.idleTotal }} véhicule{{ st.vehicles.idleTotal > 1 ? 's n’ont' : ' n’a' }} fait aucun trajet :
+                {{ st.vehicles.idleTotal }} véhicule{{ st.vehicles.idleTotal > 1 ? 's n’ont' : ' n’a' }} fait aucun trajet{{ perimetreParc() }} :
               </p>
               <ul class="rep-parc-liste">
                 @for (v of st.vehicles.idleVehicles; track v.vehicleId) {
@@ -682,6 +897,15 @@ const ANALYSES_BATCH_SIZE = 200;
               @if (alertesAutres() > 0) {
                 <p class="rep-synthese-detail">et {{ alertesAutres() }} d'autres types.</p>
               }
+            }
+            <!-- ══ L'EXCEPTION DU FILTRE CONDUCTEUR, DITE À VOIX HAUTE (F13) ═════════════
+                 Une alerte appartient à un VÉHICULE : elle n'a pas de conducteur, et la
+                 rattacher à quelqu'un demanderait de deviner qui conduisait à son heure.
+                 Ce compte reste donc calculé sur le périmètre véhicule. Sans cette phrase,
+                 une carte muette sous un filtre conducteur laisserait croire que cette
+                 personne a déclenché toutes ces alertes — une accusation, pas un chiffre. -->
+            @if (noteAlertesConducteur(); as note) {
+              <p class="rep-synthese-note" role="note">{{ note }}</p>
             }
           </section>
         </div>
@@ -797,6 +1021,13 @@ const ANALYSES_BATCH_SIZE = 200;
             } @else {
               <p>Synthèse de TOUTE la période — « Voir » ouvre la fiche du véhicule</p>
             }
+            <!-- ⚠️ EN PLUS des phrases ci-dessus, jamais à leur place : « TOUTE la période »
+                 répond à la pagination, celle-ci répond au PÉRIMÈTRE — deux questions
+                 différentes, et c'est la seconde qui manquait ici alors que le lot l'écrit
+                 déjà pour les alertes, le parc actif et les exports. -->
+            @if (noteRecapConducteur(); as note) {
+              <p role="note">{{ note }}</p>
+            }
           </header>
 
           <!-- ══ « QUEL VÉHICULE ? » OU « QUI ? » (F13) ═══════════════════════════════════
@@ -839,11 +1070,19 @@ const ANALYSES_BATCH_SIZE = 200;
                 <span class="rep-vt-hide">Trajets</span>
                 <span class="rep-vt-hide">V. moy</span>
                 <span class="rep-vexces-h">Excès</span>
+                <span></span>
               </div>
               @for (l of attributionSummary(); track l.key) {
-                <!-- ⚠️ Ni lien ni bouton « Filtrer » : il n'existe pas de fiche « conducteur ou
-                     groupe » à ouvrir, et le rapport ne se filtre que par véhicule. Un lien mort
-                     vaudrait moins que rien. -->
+                <!-- ⚠️ AUCUN LIEN sur la ligne : il n'existe pas de fiche « conducteur ou
+                     groupe » à ouvrir, et un lien mort vaudrait moins que rien.
+                     Un bouton « Filtrer » sur les lignes de sorte CONDUCTEUR, en revanche :
+                     c'est le geste que ce récapitulatif appelait sans pouvoir l'offrir — il
+                     dit combien a roulé telle personne, on veut voir SES trajets (F13).
+                     Les lignes de sorte GROUPE n'en ont pas, et ce n'est pas un oubli : il
+                     n'existe pas de filtre par groupe d'IMPUTATION. Le filtre groupe de la
+                     barre porte sur les VÉHICULES du groupe — donc sur un autre ensemble de
+                     trajets que cette ligne, qui n'a que ceux sans conducteur. Un bouton qui
+                     poserait ce filtre-là rendrait un total différent de la ligne cliquée. -->
                 <div class="rep-vrow rep-vrow--attr">
                   <div class="rep-vveh">
                     <div class="rep-vnom">{{ l.label }}</div>
@@ -869,11 +1108,28 @@ const ANALYSES_BATCH_SIZE = 200;
                       <small aria-hidden="true">+{{ l.worstOverKmh | number:'1.0-0' }} km/h</small>
                     }
                   </span>
+                  @if (l.kind === 'driver' && l.driverId) {
+                    <button type="button" class="rep-vfiltre"
+                            (click)="filtrerSurConducteur(l.driverId)"
+                            trackClick="rapport-recap-filtrer-conducteur"
+                            [attr.aria-label]="'Filtrer le rapport sur les trajets de ' + l.label"
+                            [title]="'Filtrer tout le rapport sur les trajets de ' + l.label">Filtrer</button>
+                  } @else {
+                    <span></span>
+                  }
                 </div>
               }
               @if (attributionSummary().length === 0) {
                 <div class="rep-vrow rep-vrow--vide">
-                  Aucun trajet de la période n'est imputé à un conducteur ni à un groupe.
+                  <!-- ⚠️ « de la période » serait FAUX sous filtre conducteur : la vue vient
+                       d'écarter tous les autres conducteurs par construction, donc affirmer que
+                       la période n'impute rien à personne est une affirmation, pas une lacune
+                       d'explication. -->
+                  @if (conducteurFiltre()) {
+                    Aucun trajet de ce périmètre n'est imputé à un conducteur ni à un groupe.
+                  } @else {
+                    Aucun trajet de la période n'est imputé à un conducteur ni à un groupe.
+                  }
                 </div>
               }
             </div>
@@ -896,7 +1152,7 @@ const ANALYSES_BATCH_SIZE = 200;
                   <lucide-icon [img]="AlertTriangleIcon" [size]="14"></lucide-icon>
                   <div>
                     <strong>{{ na.tripCount | number }} trajet{{ na.tripCount > 1 ? 's' : '' }}</strong>
-                    sur {{ totalTrajetsPeriode() | number }} ({{ partLibelle(na.tripCount, totalTrajetsPeriode()) }},
+                    sur {{ totalTrajetsPeriode() | number }}{{ libelleDenominateurTrajets() }} ({{ partLibelle(na.tripCount, totalTrajetsPeriode()) }},
                     {{ na.distanceKm | number:'1.0-0' }} km) n'{{ na.tripCount > 1 ? 'ont' : 'a' }} <strong>ni conducteur, ni groupe</strong> :
                     {{ na.tripCount > 1 ? 'ils ne peuvent être attribués' : 'il ne peut être attribué' }} à personne.
                     <a routerLink="/vehicles">Renseignez un conducteur ou un groupe</a> sur ces véhicules
@@ -1379,6 +1635,11 @@ const ANALYSES_BATCH_SIZE = 200;
       (selected)="onDriverPickedForTrip($event)"
     />
 
+    <!-- ⚠️ Le filtre conducteur est LU par la modale, jamais modifié par elle (F13) : le
+         conducteur se choisit sur la page, et nulle part ailleurs. La modale l'annonce dans
+         son bandeau de périmètre et dans sa phrase d'aperçu — la dernière ligne lue avant de
+         cliquer, où « pour toute la flotte » était un mensonge dès qu'un conducteur était
+         sélectionné. -->
     <app-pdf-export-modal
       [preselectedVehicleIds]="pdfPreselectedVehicleIds()"
       [tripCount]="kpis().tripCount"
@@ -1386,6 +1647,7 @@ const ANALYSES_BATCH_SIZE = 200;
       [open]="pdfModalOpen()"
       [vehicles]="pdfModalVehicles()"
       [periodLabel]="pdfPeriodLabel()"
+      [driverFilter]="conducteurPourExport()"
       [loading]="exporting() === 'pdf'"
       (closed)="pdfModalOpen.set(false)"
       (exportRequested)="onPdfExportRequested($event)"
@@ -1709,6 +1971,16 @@ const ANALYSES_BATCH_SIZE = 200;
       gap: 6px;
       flex-wrap: wrap;
     }
+    /* Les boutons d'export et, dessous, ce qu'ils ne couvrent pas — la mention doit rester
+       COLLÉE aux boutons : une phrase posée ailleurs sur la page ne se lit pas au moment
+       où l'on clique. */
+    .rep-export-colonne { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .rep-export-note { margin: 0; max-width: 38ch; text-align: right; font-size: 11.5px;
+                       line-height: 1.45; color: var(--fg-tertiary); }
+    @media (max-width: 640px) {
+      .rep-export-colonne { align-items: stretch; width: 100%; }
+      .rep-export-note { text-align: left; max-width: none; }
+    }
     .rep-export-btn {
       display: inline-flex;
       align-items: center;
@@ -1798,7 +2070,7 @@ const ANALYSES_BATCH_SIZE = 200;
       }
 
       /* Tout ce qui se clique n'a aucun sens sur du papier. */
-      .rep-export-group, .rep-filters, .rep-selectors, .rep-periods, .rep-actions,
+      .rep-export-group, .rep-export-note, .rep-filters, .rep-selectors, .rep-periods, .rep-actions,
       .rep-sortbar, .rep-vgo, .rep-vfiltre, .rep-kpi-click-hint, .rep-more,
       .rep-ligne-action, .rep-card-action, .rep-dropdown-backdrop, .rep-custom-backdrop,
       .rep-custom-panel, .rep-dropdown-menu {
@@ -1813,7 +2085,10 @@ const ANALYSES_BATCH_SIZE = 200;
 
       /* Les cartes s'étalent : sur papier il n'y a pas de survol pour révéler le reste. */
       .rep-synthese-grid { grid-template-columns: 1fr 1fr !important; }
-      .rep-vt-hide { display: block !important; }
+      /* ⚠️ .rep-vt-hide N'EST PAS ICI : à cette place, la règle était strictement INERTE en
+         A4 portrait (le bloc « max-width: 1000px » qui la contredit est écrit 600 lignes plus
+         bas, à poids égal). Elle vit désormais tout en bas du fichier — voir le dernier bloc
+         « @media print » de ce tableau de styles. */
 
       /* Un graphique par page au maximum, et jamais coupé en deux. */
       .rep-charts-grid { display: block !important; }
@@ -2194,6 +2469,25 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-selectors { display: flex; gap: 8px; }
     .rep-selectors .rep-dropdown-wrapper { flex: 1; min-width: 0; }
     .rep-selectors .rep-dropdown-trigger { width: 100%; }
+    /* ⚠️ DEUX RANGÉES DE DEUX, comme les exports et les périodes le font déjà plus bas.
+       À 375 px, .rep-selectors mesure 343 px : à deux menus chacun tenait 167,5 px et son
+       libellé 97,5 px — « Livraisons Nord » et « EP-047-TY » se lisaient en entier. Le
+       troisième menu (F13) les a serrés à 109 px, soit 39 px de libellé une fois retirés les
+       bordures, le remplissage, l'écart et les deux pictogrammes : les trois boutons
+       affichaient « Tous… », distinguables au seul pictogramme de 14 px, et les valeurs
+       posées tombaient à « Livra… », « EP-0… », « Soh… » — le nom du conducteur, c'est-à-dire
+       la seule chose que ce filtre sert à montrer.
+       ⚠️ flex-wrap: wrap SEUL ne change rien : avec flex: 1 la base vaut 0, les enveloppes
+       ne débordent jamais et ne reviennent donc jamais à la ligne. C'est la BASE de 50 % qui
+       déclenche le retour ; le flex-grow déjà posé absorbe ensuite le reste, donc aucune
+       largeur n'est figée et une société sans groupe garde ses deux menus côte à côte.
+       ⚠️ Borné à 640 px, et surtout PAS sur la règle de base : au-delà, .rep-selectors est
+       en display: contents (voir plus bas) et ces enveloppes deviennent enfants directs de
+       .rep-filters — leur donner une base y déplacerait toute la barre du bureau. */
+    @media (max-width: 640px) {
+      .rep-selectors { flex-wrap: wrap; }
+      .rep-selectors .rep-dropdown-wrapper { flex-basis: calc(50% - 4px); }
+    }
     .rep-periods {
       display: flex; gap: 6px; flex-wrap: nowrap;
       overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
@@ -2378,11 +2672,6 @@ const ANALYSES_BATCH_SIZE = 200;
       font-size: 12px; font-weight: 700; color: var(--texte-succes);
       white-space: nowrap;
     }
-    /* Au doigt seulement : à la souris, 44 px de haut allongeraient inutilement chaque
-       ligne de la synthèse. */
-    @media (max-width: 768px) {
-      .rep-vgo { min-height: 44px; }
-    }
     .rep-vexces { display: flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
     .rep-vexces b { font-weight: 800; color: var(--fg-primary); }
     .rep-vexces small { font-size: 11px; color: var(--fg-tertiary); }
@@ -2394,6 +2683,24 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vfiltre { min-height: 32px; padding: 5px 10px; border-radius: 8px; font-size: 11.5px; font-weight: 700;
                    background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-subtle); cursor: pointer; }
     .rep-vfiltre:hover { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
+    /* Au doigt seulement : à la souris, 44 px de haut allongeraient inutilement chaque ligne
+       de la synthèse. Le « Voir › » de la ligne voisine le fait déjà ; « Filtrer », lui, ne
+       l'obtenait qu'à 480 px et restait à 32 px sur toute la bande 481-768 px — la tablette
+       d'atelier tenue en main. styles.css porte pourtant depuis le 2026-08-17 une règle
+       globale de TYPE (44 px à tout bouton sous 768 px), écrite après un relevé de 111 cibles
+       trop petites sur 25 écrans ; le sélecteur de classe (0,1,0, et 0,2,0 sous l'encapsulation
+       émulée d'Angular) l'écrase. Cela répare du même geste le « Filtrer » de la vue par
+       véhicule, qui était sous le seuil à TOUTES les largeurs, 375 px compris.
+
+       ⚠️ PLACÉ APRÈS LA RÈGLE DE BASE, ET C'EST TOUT L'ENJEU. Une media query n'ajoute AUCUNE
+       spécificité : les deux déclarations de min-height pèsent pareil, c'est l'ORDRE qui
+       tranche. Écrit AU-DESSUS de la règle de base — comme il l'était —, ce bloc est inerte :
+       mesuré au banc statique à 375 px comme à 700 px, le bouton restait à 32 px, exactement
+       comme si la media query n'existait pas. Ne pas le remonter, et ne rien déclarer d'autre
+       sur cette classe en dessous. */
+    @media (max-width: 768px) {
+      .rep-vgo, .rep-vfiltre { min-height: 44px; }
+    }
     .rep-vchev { color: inherit; transition: transform .15s ease; }
     .rep-vrow:hover .rep-vchev { transform: translateX(2px); }
     /* La colonne Excès reste visible sur tablette : c'est la question qu'on vient poser
@@ -2429,12 +2736,33 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vseg-btn[aria-pressed="true"]::before { content: '✓'; font-size: 11px; font-weight: 800; color: var(--texte-succes); }
     /* Indisponible, jamais masqué : le motif est écrit juste dessous. */
     .rep-vseg-btn:disabled { opacity: .55; cursor: not-allowed; }
+    /* Au doigt : 44 px de haut sur TOUTE la bande tactile, pas seulement sous 480 px. La
+       bascule restait à 34 px entre 481 et 768 px — la tablette d'atelier tenue en main —,
+       sous le seuil que le reste de l'écran respecte, et le bloc de 480 px juste dessous
+       laissait croire le contraire. Même défaut, même correction et même raison que le
+       Filtrer de la synthèse (cf. le bloc 768 px plus haut) : la règle globale de TYPE de
+       styles.css est écrasée par un sélecteur de classe.
+
+       ⚠️ PLACÉ APRÈS LA DÉCLARATION DE BASE, ET C'EST TOUT L'ENJEU. Une media query n'ajoute
+       AUCUNE spécificité : les deux min-height pèsent pareil, seul l'ORDRE tranche. Écrit
+       au-dessus, ce bloc serait strictement inerte — c'est la faute déjà payée sur
+       .rep-vfiltre, invisible à la relecture et visible au banc statique. MESURÉ ici, pas
+       déduit — banc statique servi en HTTP, hauteur du bouton à 375 / 481 / 700 / 769 px :
+         · avant : 44 / 34 / 34 / 34 px (les 44 px de 375 px viennent du bloc 480 px) ;
+         · après : 44 / 44 / 44 / 34 px, le retour à 34 px au-delà du seuil étant voulu ;
+         · le même bloc écrit AU-DESSUS de la base : 34 px aux quatre largeurs, inerte.
+       Ne pas le remonter, et ne rien déclarer d'autre en dessous sur cette classe. */
+    @media (max-width: 768px) {
+      .rep-vseg-btn { min-height: 44px; }
+    }
     .rep-vseg-motif { margin: -6px 0 12px; font-size: 11.5px; line-height: 1.45; color: var(--fg-tertiary); }
     /* Nom d'une personne ou d'un groupe : PAS la police à chasse fixe des plaques. */
     .rep-vnom { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    /* Six colonnes au lieu de huit : ni « Filtrer » ni « Voir » — une ligne d'imputation
-       n'ouvre aucune fiche. */
-    .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(160px,2fr) 1fr 1fr .9fr 1fr .9fr; }
+    /* Sept colonnes au lieu de huit : pas de « Voir » — une ligne d'imputation n'ouvre
+       aucune fiche —, mais bien un « Filtrer », qui pose le filtre conducteur (F13). La
+       septième colonne reste VIDE sur une ligne de groupe : le filtre groupe de la barre
+       porte sur les véhicules, pas sur cette imputation. */
+    .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(160px,2fr) 1fr 1fr .9fr 1fr .9fr 76px; }
     .rep-vrow--attr:hover { background: transparent; }
     .rep-vrow--vide { display: block; padding: 18px; font-size: 12.5px; color: var(--fg-tertiary); }
     /* Mention des trajets qu'on ne peut imputer à personne — même forme que l'écran des
@@ -2449,18 +2777,60 @@ const ANALYSES_BATCH_SIZE = 200;
     .rep-vnon-attribue strong { color: var(--fg-primary); }
     .rep-vnon-attribue a { color: var(--texte-succes); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
     @media (max-width: 1000px) {
-      .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(140px,2fr) 1fr 1fr .9fr; }
+      /* Les deux colonnes masquées (Trajets, V. moy) partent ; « Filtrer » RESTE : c'est le
+         geste que ce tableau offre, pas une décoration de grand écran. */
+      .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(140px,2fr) 1fr 1fr .9fr 76px; }
     }
     /* Au doigt : la bascule occupe la largeur et chaque position fait 44 px de haut —
        critère de recette du dépôt à 375 px. */
     @media (max-width: 480px) {
       .rep-vseg { display: flex; width: 100%; }
       .rep-vseg-btn { flex: 1 1 0; min-height: 44px; justify-content: center; text-align: center; }
-      .rep-vrow--attr { grid-template-columns: 1fr 1fr; grid-template-areas: 'veh veh' 'dist meta' 'exces exces'; }
+      /* La zone « filtre » EXISTE même sur une ligne de groupe, qui n'y met qu'un span vide :
+         sans elle, le bouton des lignes conducteur retomberait dans une zone implicite et se
+         placerait au hasard de l'ordre du DOM. */
+      .rep-vrow--attr { grid-template-columns: 1fr 1fr; grid-template-areas: 'veh veh' 'dist meta' 'exces filtre'; }
       .rep-vrow--attr > .rep-vveh { grid-area: veh; }
       .rep-vrow--attr > :nth-child(2) { grid-area: dist; }
       .rep-vrow--attr > :nth-child(3) { grid-area: meta; }
       .rep-vrow--attr > .rep-vexces { grid-area: exces; justify-self: start; }
+      /* Les 44 px au doigt viennent du bloc ≤ 768 px ci-dessus, qui couvre les DEUX vues :
+         les répéter ici laisserait croire que la hauteur ne vaut que sous 480 px. */
+      .rep-vrow--attr > .rep-vfiltre { grid-area: filtre; justify-self: end; }
+    }
+
+    /* ══ LES COLONNES QUI REVIENNENT SUR LE PAPIER ════════════════════════════════════
+       ⚠️ PLACÉ APRÈS LES BLOCS ≤ 1000 px, ET C'EST TOUT L'ENJEU. Une media query n'ajoute
+       AUCUNE spécificité : « .rep-vt-hide { display: block !important } » écrit dans le bloc
+       « @media print » du haut pesait exactement autant que le « display: none !important »
+       du bloc ≤ 1000 px placé 600 lignes plus bas, et perdait donc sur l'ORDRE. Or une A4
+       PORTRAIT fait 794 px CSS (717 px avec les marges par défaut de Chrome) : la condition
+       « max-width: 1000px » y est VRAIE. La règle du haut n'agissait qu'en A4 paysage —
+       l'orientation que personne ne choisit. Même faute que celle déjà payée deux fois dans
+       ce fichier, sur .rep-vfiltre et .rep-vseg-btn.
+
+       MESURÉ, PAS DÉDUIT — banc statique servi en HTTP avec le CSS RÉELLEMENT ÉMIS par le
+       build (apps/web/dist/web), Chromium en media=print, DOM fidèle des deux tableaux :
+         · avant, 794 px et 717 px : .rep-vt-hide = none, en-tête « Par conducteur ou groupe »
+           réduit à [Conducteur ou groupe, Distance, Conduite, Excès, (vide)] pour 5 pistes,
+           et la ligne à 4 cellules — 76 px de colonne morte à droite de chaque page ;
+         · avant, 1122 px (paysage) : block, 7 pistes ;
+         · après : block et 6 cellules pour 6 pistes aux trois largeurs.
+       Ne pas remonter ce bloc, et ne rien déclarer d'autre sur .rep-vt-hide en dessous.
+
+       Les grilles sont REPOSÉES ici : sans elles, les colonnes revenues se placeraient dans
+       les 5 (ou 6) pistes du bloc ≤ 1000 px et l'en-tête se replierait sur une seconde
+       rangée. Les pistes de fin tombent avec leurs contrôles — « Filtrer » et « Voir › » sont
+       masqués à l'impression, leur colonne ne laisserait qu'un vide. */
+    @media print {
+      .rep-vt-hide { display: block !important; }
+      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px, 1.8fr) 1fr 1fr .9fr 1fr .9fr; }
+      .rep-vt-head--attr, .rep-vrow--attr { grid-template-columns: minmax(140px, 2fr) 1fr 1fr .9fr 1fr .9fr; }
+      /* Les cellules de remplissage (une dans l'en-tête « attr » et sur une ligne de GROUPE,
+         deux dans l'en-tête par véhicule) n'ont plus de piste : sans cela elles créeraient une
+         seconde rangée sous chaque en-tête. */
+      .rep-vt-head > span:nth-child(n + 7) { display: none; }
+      .rep-vrow--attr > span:nth-child(7) { display: none; }
     }
   `],
 })
@@ -2519,10 +2889,37 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // rapport « toute la flotte » de la nouvelle société.
       this.selectedVehicleId.set('');
       this.selectedGroupId.set('');
+      // ⚠️ Le conducteur AUSSI : il appartient à une société. Le garder ferait demander au
+      // serveur les trajets d'une personne d'un autre client — zéro ligne, sous un nom qui
+      // reste affiché dans le menu, donc un rapport « vide » parfaitement crédible.
+      this.selectedDriverId.set('');
+      // La liste est rechargée : le menu la borne déjà à la société affichée
+      // (`driverOptions`), mais un conducteur créé entre-temps chez le client qu'on vient
+      // d'ouvrir doit y figurer — sinon le filtre ne propose personne là où il y a du monde.
+      void this.loadDrivers();
       // ⚠️ La synthèse de la société PRÉCÉDENTE doit partir avec elle : sans cela, la vue « par
       // conducteur ou groupe » gardait, le temps du chargement, les conducteurs d'un autre client
       // sous le nom de la nouvelle société (revue du 2026-09-05).
       this.oublierStatsPeriode();
+      /**
+       * ⚠️ ET LA MÉMOIRE DE L'ÉTAT AVEC, sinon effacer les filtres ne sert à rien.
+       *
+       * Les trois `set('')` ci-dessus ne touchent QUE la mémoire de l'écran. La barre d'adresse,
+       * elle, gardait `driver=` (et `vehicle=`, `group=`) de la société qu'on vient de quitter —
+       * le sélecteur de société ne navigue pas, il ne fait que poser un signal. Au F5 réflexe,
+       * `ngOnInit` relit ces paramètres, la FORME est valide (c'est bien un UUID), et le rapport
+       * s'ouvre borné sur une personne d'un autre client : zéro ligne et « Aucun trajet pour
+       * cette période » pour une société qui en compte des milliers. C'est exactement le
+       * « rapport vide parfaitement crédible » que le commentaire ci-dessus dit empêcher.
+       *
+       * La vue mémorisée part d'abord : elle ne porte AUCUNE société, donc elle n'appartient
+       * qu'à celle qui l'a écrite. `ecrireEtatDansUrl` ne l'écrase pas quand la query est vide
+       * (période par défaut, aucun filtre) — « Reprendre votre dernier rapport » reposerait
+       * alors le conducteur étranger par l'autre porte, et le libellé annoncerait
+       * « un conducteur » sans pouvoir le nommer.
+       */
+      this.preferences.update({ reportsLastView: '' });
+      this.ecrireEtatDansUrl();
       void this.loadData();
     }
   });
@@ -2862,9 +3259,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly vehicleTriggerEl = viewChild<ElementRef<HTMLButtonElement>>('vehicleTrigger');
   private readonly customTriggerEl = viewChild<ElementRef<HTMLButtonElement>>('customTrigger');
 
-  /** Le déclencheur peut ne pas exister (filtre groupe masqué quand il n'y a pas de groupe). */
-  private rendreLeFocus(ref: ElementRef<HTMLElement> | undefined): void {
-    ref?.nativeElement?.focus();
+  /**
+   * Rend le focus au PREMIER déclencheur qui peut réellement le prendre.
+   *
+   * Le déclencheur peut ne pas exister (filtre groupe masqué quand il n'y a pas de groupe),
+   * ou exister sans pouvoir être focalisé — le déclencheur véhicule porte
+   * `[disabled]="vehiclesLoading()"`, et `focus()` sur un bouton désactivé ne fait rien.
+   * D'où les replis en cascade : sans eux, le focus retombe sur `<body>` et la navigation au
+   * clavier repart du haut du document.
+   */
+  private rendreLeFocus(...refs: (ElementRef<HTMLElement> | undefined)[]): void {
+    for (const ref of refs) {
+      const el = ref?.nativeElement;
+      if (!el || (el as HTMLButtonElement).disabled) continue;
+      el.focus();
+      if (document.activeElement === el) return;
+    }
   }
 
   protected fermerMenuGroupe(): void {
@@ -2875,6 +3285,372 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected fermerMenuVehicule(): void {
     this.vehicleDropdownOpen.set(false);
     this.rendreLeFocus(this.vehicleTriggerEl());
+  }
+
+  /* ══ FILTRE CONDUCTEUR (F13, seconde moitié) ═══════════════════════════════════════════
+     Le récapitulatif dit COMBIEN a roulé telle personne ; ce filtre montre SES trajets. Il
+     borne la liste, le résumé journalier, les graphiques de période et la synthèse — un
+     tableau filtré sous des compteurs qui ne le sont pas, c'est deux totaux contradictoires
+     dans le même écran. Les ALERTES font exception, et l'écran le dit (cf. `noteAlertesConducteur`). */
+
+  /** Conducteurs de la société, source du menu — chargés comme les véhicules (`loadDrivers`). */
+  protected readonly drivers = signal<DriverDto[]>([]);
+  /**
+   * La liste a-t-elle RÉPONDU ? Faux tant qu'elle charge, et faux après un échec.
+   *
+   * ⚠️ Sans ce drapeau, « absente de la liste » et « liste pas là » étaient la même chose, et le
+   * menu répondait par un MOTIF INVENTÉ : « archivé, ou hors de cette société » s'affichait pour
+   * un conducteur parfaitement ACTIF de la société courante, le temps que `GET /drivers` réponde
+   * — c'est-à-dire à chaque ouverture d'un lien « /rapports?driver=… » partagé —, et
+   * DÉFINITIVEMENT après un 403 (cette route exige `drivers_view`, la page `reports_view`) ou une
+   * coupure réseau. Le sélecteur véhicule d'à côté distingue les deux états depuis toujours
+   * (« Liste indisponible. » / « Aucun véhicule dans ce périmètre. ») : c'est cette parité-là qui
+   * manquait.
+   */
+  protected readonly driversRepondus = signal(false);
+  protected readonly driverDropdownOpen = signal(false);
+  /** '' = tous ; un identifiant de conducteur ; ou `CONDUCTEUR_AUCUN` (sans conducteur). */
+  protected readonly selectedDriverId = signal('');
+  /** Exposée au gabarit : une constante de module n'est pas lisible depuis un template. */
+  protected readonly CONDUCTEUR_AUCUN = CONDUCTEUR_AUCUN;
+  private readonly driverTriggerEl = viewChild<ElementRef<HTMLButtonElement>>('driverTrigger');
+
+  protected fermerMenuConducteur(): void {
+    this.driverDropdownOpen.set(false);
+    /**
+     * ⚠️ LE DÉCLENCHEUR NE SURVIT PAS TOUJOURS AU GESTE QU'ON VIENT DE FAIRE. La garde du
+     * gabarit est `driverOptions().length > 0 || conducteurFiltre()` : choisir « Tous les
+     * conducteurs » dans un menu SANS option (conducteur archivé seul filtré, ou 403 sur
+     * /drivers) rend les deux branches fausses, et la détection de changements qui suit retire
+     * le bloc entier — déclencheur compris. Rendre le focus à un élément sur le point d'être
+     * démonté, c'est le laisser tomber sur `<body>` : le clavier repart du haut du document.
+     * `onSelectDriver` pose le signal AVANT d'appeler cette fermeture, donc l'expression est
+     * déjà à jour ; les trois autres chemins (fond cliqué, Échap, entrée « hors liste ») ne
+     * touchent pas au filtre et gardent le comportement d'aujourd'hui.
+     */
+    const survit = this.driverOptions().length > 0 || this.conducteurFiltre();
+    if (survit) { this.rendreLeFocus(this.driverTriggerEl()); return; }
+    // Les voisins de la même barre, dans l'ordre où le clavier les rencontrerait.
+    this.rendreLeFocus(this.vehicleTriggerEl(), this.groupTriggerEl());
+  }
+
+  /**
+   * Conducteurs proposés — bornés à la société courante, comme les groupes le sont.
+   *
+   * ⚠️ `GET /drivers` rend TOUTES les sociétés à un super-administrateur (le serveur ne
+   * filtre que les autres rôles) : sans cette borne, le menu d'une société afficherait les
+   * conducteurs d'un autre client.
+   */
+  protected readonly driverOptions = computed(() =>
+    this.drivers()
+      .filter((d) => this.fleetFilter.matches(d.fleetId))
+      .map((d) => ({ id: d.id, nom: `${d.firstName} ${d.lastName}`.trim() || 'Conducteur sans nom' }))
+      .sort((a, b) => a.nom.localeCompare(b.nom)),
+  );
+
+  /** Un filtre conducteur est-il posé ? (« sans conducteur » en est un, et pas des moindres.) */
+  protected readonly conducteurFiltre = computed(() => !!this.selectedDriverId());
+
+  /**
+   * Le nom d'un conducteur HORS LISTE, retenu au moment où l'on a cliqué « Filtrer ».
+   *
+   * ⚠️ `filtrerSurConducteur` efface la synthèse dans la MÊME instruction qui pose le filtre
+   * (`oublierStatsPeriode`) : le repli de `selectedDriverLabel` cherchait donc son nom dans un
+   * récapitulatif que la ligne précédente venait de vider — mort sur le chemin même pour lequel
+   * il existe. Un conducteur ARCHIVÉ est nommé par `/reports/stats` mais absent de `GET /drivers` :
+   * tout l'écran annonçait alors « Conducteur », y compris l'en-tête d'impression et la modale
+   * PDF, pendant que le PDF produit imprimait, lui, le vrai nom résolu en base. Et
+   * DÉFINITIVEMENT si la synthèse échoue (`statsEchouee`), puisque `statsPeriode` reste nul.
+   *
+   * ⚠️ RETENU AVEC SON IDENTIFIANT : sans cette clé, le souvenir survivrait au filtre suivant et
+   * nommerait quelqu'un d'autre. La paire s'invalide donc toute seule — aucun nettoyage à
+   * ajouter dans `onSelectDriver`, `reprendreVue` ni la relecture d'URL.
+   *
+   * ⚠️ ET RETENIR, PAS RÉORDONNER : `selectedDriverLabel` est un `computed` relu à chaque
+   * lecture, pas un instantané pris au clic. Lire le libellé avant `oublierStatsPeriode()` sans
+   * le mémoriser serait une correction strictement inerte.
+   */
+  private readonly libelleConducteurRetenu = signal<{ id: string; nom: string } | null>(null);
+
+  /**
+   * Ce qu'affiche le bouton du menu.
+   *
+   * ⚠️ Le repli n'est JAMAIS « Tous les conducteurs » : ce libellé dirait exactement le
+   * contraire de ce que la page montre. Un conducteur archivé (ou une liste pas encore
+   * arrivée) est cherché dans le récapitulatif — c'est de là que vient l'identifiant quand on
+   * a cliqué « Filtrer » —, puis dans le nom retenu à ce clic, puis nommé « Conducteur ».
+   */
+  protected readonly selectedDriverLabel = computed(() => {
+    const id = this.selectedDriverId();
+    if (!id) return 'Tous les conducteurs';
+    if (id === CONDUCTEUR_AUCUN) return 'Sans conducteur';
+    const d = this.driverOptions().find((x) => x.id === id);
+    if (d) return d.nom;
+    // La synthèse FRAÎCHE reste prioritaire ; le souvenir n'est qu'un filet, et seulement
+    // pour l'identifiant qui l'a posé.
+    const memo = this.libelleConducteurRetenu();
+    return this.attributionSummary().find((l) => l.driverId === id)?.label
+      ?? (memo?.id === id ? memo.nom : undefined)
+      ?? 'Conducteur';
+  });
+
+  /**
+   * Le conducteur filtré est-il ABSENT du menu ?
+   *
+   * ⚠️ Ce cas n'a rien d'exotique et ne demande aucune URL bricolée : `GET /drivers` ne rend
+   * que les conducteurs ACTIFS, tandis que `/reports/stats` nomme aussi les archivés — le
+   * bouton « Filtrer » du récapitulatif offre donc, d'un clic ordinaire, un identifiant que la
+   * liste du menu ne contient pas. Idem pour un `?driver=` d'une autre société.
+   *
+   * Le repli de `selectedDriverLabel` couvrait déjà le LIBELLÉ ; il ne couvrait pas l'ÉTAT de
+   * la liste : les trois `aria-selected` du menu étaient faux en même temps, donc plus aucune
+   * option sélectionnée sous un bouton qui annonçait pourtant un nom.
+   */
+  protected readonly conducteurHorsListe = computed(() => {
+    const id = this.selectedDriverId();
+    return !!id && id !== CONDUCTEUR_AUCUN && !this.driverOptions().some((d) => d.id === id);
+  });
+
+  /**
+   * ── L'EXCEPTION DES ALERTES, ÉCRITE À L'ÉCRAN ────────────────────────────────────────
+   *
+   * Une alerte appartient à un VÉHICULE : elle n'a pas de conducteur, et lui en attribuer un
+   * demanderait de deviner qui conduisait à son horodatage. Ce compte reste donc calculé sur
+   * le périmètre véhicule. Une carte muette, sous un filtre conducteur, laisserait croire que
+   * cette personne a déclenché toutes ces alertes — ce n'est plus un chiffre, c'est une
+   * accusation. `null` quand aucun conducteur n'est choisi : rien à expliquer.
+   */
+  protected readonly noteAlertesConducteur = computed<string | null>(() => {
+    const id = this.selectedDriverId();
+    if (!id) return null;
+    const porte = 'Ce compte porte sur les véhicules du périmètre.';
+    return id === CONDUCTEUR_AUCUN
+      ? `Les alertes appartiennent à un véhicule, pas à un conducteur : elles ne suivent pas le filtre « Sans conducteur ». ${porte}`
+      : `Les alertes appartiennent à un véhicule, pas à un conducteur : elles ne sont pas filtrées sur ${this.selectedDriverLabel()}. ${porte}`;
+  });
+
+  /**
+   * ── ET L'EXCEPTION DU PRIX CONSTATÉ EN STATION ───────────────────────────────────────
+   *
+   * Même famille que les alertes, et pour la même raison : un passage en station est un arrêt
+   * du VÉHICULE — `TripFuelStop` n'a pas de colonne conducteur, et rien ne dit qui tenait le
+   * pistolet. Le serveur GARDE donc ce prix et ce compte sur le périmètre véhicule sous
+   * filtre, délibérément (cf. `reports-stats.service`) : les neutraliser ferait afficher
+   * « Aucun prix relevé en station sur la période », ce qui serait faux — des prix ont bien
+   * été relevés, ils ne sont simplement imputables à personne.
+   *
+   * ⚠️ Ce qui n'était pas permis, c'est le SILENCE : « … sur 12 passages » sous le nom d'une
+   * personne se lit comme ses douze pleins. Et la phrase doit nommer la part qui, elle, SUIT
+   * le filtre — les litres —, sinon le lecteur conclut que la carte entière est hors filtre
+   * alors que le coût estimé, lui, ne compte que les kilomètres de cette personne.
+   *
+   * `null` sans filtre, et `null` sans prix relevé : la phrase d'à côté dit alors déjà qu'il
+   * n'y a rien à imputer, et une note sur un chiffre absent est du bruit.
+   */
+  protected readonly noteCarburantConducteur = computed<string | null>(() => {
+    const id = this.selectedDriverId();
+    if (!id) return null;
+    if (this.statsPeriode()?.consumption.observedPriceEurL == null) return null;
+    const porte = 'Ils portent sur les véhicules du périmètre ; seuls les litres valorisés à ce prix suivent le filtre.';
+    return id === CONDUCTEUR_AUCUN
+      ? `Les passages en station sont des arrêts du véhicule, pas d'une personne : ce prix et ce nombre de passages ne suivent pas le filtre « Sans conducteur ». ${porte}`
+      : `Les passages en station sont des arrêts du véhicule, pas d'une personne : ce prix et ce nombre de passages ne sont pas filtrés sur ${this.selectedDriverLabel()}. ${porte}`;
+  });
+
+  /**
+   * ── CE QUE LES FICHIERS VONT CONTENIR, DIT À L'ENDROIT OÙ L'ON CLIQUE ────────────────
+   *
+   * Les TRAJETS des exports suivent le filtre conducteur (F13) : le PDF est calculé dessus et
+   * porte le nom de la personne sous celui de la société, le CSV trajets ne rend que ses lignes,
+   * le classeur Excel ne porte que ses trajets.
+   *
+   * ⚠️ ET LES ALERTES, NULLE PART — une alerte appartient à un véhicule. Le CSV alertes est donc
+   * refusé (son bouton est désactivé juste au-dessus, et un bouton grisé sans raison est une
+   * impasse : la raison est ici, et elle dit quoi faire), MAIS la section « Alertes » du PDF,
+   * elle, sort quand même — cochée par défaut — avec le compte de tout le périmètre véhicule.
+   *
+   * ⚠️ D'où la formulation. La phrase a d'abord accroché l'exception au SEUL fichier « CSV
+   * alertes » : nommer une exception fait lire l'énumération comme complète, et le lecteur en
+   * concluait que le PDF, lui, n'en avait pas. La mention ne corrigeait pas l'inférence, elle la
+   * renforçait — sur un document qui part par courriel avec un nom de personne en tête et le
+   * total d'alertes de tout le parc dedans. L'exception porte donc sur LES ALERTES, pas sur un
+   * fichier.
+   *
+   * Le classeur Excel perd en plus ses passages en station (des arrêts du VÉHICULE) : c'est
+   * dit dans l'infobulle du bouton et écrit dans le classeur lui-même, pas ici. Cette mention
+   * doit rester lisible d'un coup d'œil au moment du clic ; y empiler tout ce qui est vrai la
+   * transformerait en pavé qu'on ne lit plus, et le point important — les alertes — s'y
+   * perdrait.
+   *
+   * `null` sans filtre : aucun export n'a alors quoi que ce soit à annoncer, et une mention
+   * permanente deviendrait du bruit.
+   */
+  protected readonly noteExportsConducteur = computed<string | null>(() => {
+    const cond = this.conducteurPourExport();
+    if (!cond) return null;
+    return `PDF, CSV trajets et Excel ne retiendront que ${cond.trajets}. `
+      + 'Les alertes, elles, ne suivent jamais ce filtre — une alerte appartient à un véhicule, '
+      + 'pas à une personne : la section « Alertes » du PDF porte sur les véhicules du périmètre, '
+      + 'et le CSV alertes n\'est pas exportable sous filtre (retirez-le pour l\'obtenir).';
+  });
+
+  /**
+   * Le filtre conducteur sous ses DEUX formes de phrase, pour la modale PDF et la mention
+   * ci-dessus. Une seule source : deux libellés écrits séparément se contrediraient le jour
+   * où l'un des deux changerait, et c'est la phrase lue juste avant le clic qui mentirait.
+   */
+  protected readonly conducteurPourExport = computed<{ nom: string; trajets: string } | null>(() => {
+    const id = this.selectedDriverId();
+    if (!id) return null;
+    if (id === CONDUCTEUR_AUCUN) return { nom: 'Sans conducteur', trajets: 'les trajets sans conducteur' };
+    const nom = this.selectedDriverLabel();
+    return { nom, trajets: `les trajets de ${nom}` };
+  });
+
+  /**
+   * ── ET CE QUE LE FILTRE FAIT AU PARC ACTIF ───────────────────────────────────────────
+   *
+   * Contrairement aux alertes, ce compte SUIT le filtre : il se déduit des trajets du
+   * périmètre. Mais « immobile » ne veut alors plus dire « n'a pas roulé », il veut dire
+   * « n'a pas roulé avec cette personne ». Le chiffre reste vrai, sa lecture change — et une
+   * lecture tacite se prend pour un fait.
+   */
+  protected readonly noteParcConducteur = computed<string | null>(() => {
+    const id = this.selectedDriverId();
+    if (!id) return null;
+    return id === CONDUCTEUR_AUCUN
+      ? 'Sous ce filtre, « immobile » veut dire : aucun trajet sans conducteur sur la période.'
+      : `Sous ce filtre, « immobile » veut dire : aucun trajet avec ${this.selectedDriverLabel()} sur la période.`;
+  });
+
+  /**
+   * ── … ET LE MÊME PÉRIMÈTRE, ACCOLÉ AUX PHRASES ELLES-MÊMES ───────────────────────────
+   *
+   * ⚠️ DEUX GESTES, PAS UN. La note ci-dessus ne redéfinit que le mot « immobile » ; les deux
+   * phrases qui l'encadrent, elles, restaient des phrases de FLOTTE : « 5 % du parc a roulé au
+   * moins une fois » et « 37 véhicules n'ont fait aucun trajet : AA-111-BB, CC-222-DD… ». Sous
+   * un filtre conducteur, ces 37 véhicules ont roulé — hors de ce filtre — et la seconde phrase
+   * NOMME des plaques : c'est la donnée sur laquelle se décide une mutualisation ou une
+   * restitution. Annoter un piège ne le retire pas ; le PDF, sur les mêmes chiffres, renomme
+   * son libellé (`renderKpis` : « Véhicules conduits / parc ») avant de l'expliquer. L'écran
+   * fait désormais les deux, et les deux surfaces nomment enfin la même chose pareil.
+   *
+   * Chaîne VIDE hors filtre : les phrases de flotte y sont justes telles quelles, et un suffixe
+   * permanent serait du bruit.
+   */
+  protected readonly perimetreParc = computed<string>(() => {
+    const id = this.selectedDriverId();
+    if (!id) return '';
+    return id === CONDUCTEUR_AUCUN ? ' sans conducteur' : ` avec ${this.selectedDriverLabel()}`;
+  });
+
+  /**
+   * ── ET CE QUE LE FILTRE FAIT AU RÉCAPITULATIF LUI-MÊME ───────────────────────────────
+   *
+   * C'est la carte où le rétrécissement est le plus spectaculaire, et la seule des quatre à
+   * n'avoir rien dit. Filtrée sur une personne, elle ne peut plus contenir qu'UNE ligne — la
+   * sienne, dont les deux chiffres recopient les indicateurs du haut de page. La mention de
+   * troncature ne se déclenche pas (rien n'est tronqué : le total servi vaut 1 lui aussi), et
+   * un classement de flotte à une ligne se lit « il n'y a qu'une personne qui roule ». La vue
+   * « Par véhicule » fond de la même façon, sous le même en-tête.
+   *
+   * Aucun chiffre n'est faux — c'est bien l'objet de ce lot. C'est la LECTURE qu'il faut
+   * énoncer, comme pour les alertes, le parc actif et les exports.
+   *
+   * ⚠️ Vaut pour les DEUX vues et pour les DEUX formes du filtre : sous « Sans conducteur » la
+   * carte garde plusieurs lignes de GROUPE, une phrase qui annoncerait « une seule ligne » y
+   * serait fausse. Le seul dénominateur commun est le PÉRIMÈTRE.
+   */
+  protected readonly noteRecapConducteur = computed<string | null>(() => {
+    const id = this.selectedDriverId();
+    if (!id) return null;
+    const perimetre = id === CONDUCTEUR_AUCUN
+      ? 'aux trajets sans conducteur'
+      : `aux trajets de ${this.selectedDriverLabel()}`;
+    const consequence = id === CONDUCTEUR_AUCUN
+      ? 'aucune ligne de conducteur ne peut y figurer'
+      : 'aucun autre conducteur ne peut y figurer';
+    return `Périmètre limité ${perimetre} : ${consequence}, et seuls les véhicules concernés sont listés. `
+      + 'Retirez le filtre conducteur pour la flotte entière.';
+  });
+
+  /**
+   * Ce que le dénominateur de « N trajets sur M » compte VRAIMENT.
+   *
+   * ⚠️ Sous « Sans conducteur », le dénominateur DEVIENT l'une des deux conditions du
+   * numérateur : le total suit le filtre, alors que les trajets « ni conducteur, ni groupe » en
+   * sont par construction un sous-ensemble et ne bougent pas. La part passe donc de 33 % à 83 %
+   * sur les mêmes trajets, sans qu'un seul ait changé — et cette mention est une boîte à part,
+   * avec son `role="status"` : elle est lue seule, donc elle doit être vraie seule. La note
+   * d'en-tête de la carte ne la couvre pas.
+   *
+   * Chaîne vide sous un conducteur nommé : tous ses trajets ont un conducteur, le numérateur
+   * vaut alors zéro et la mention ne s'affiche pas.
+   */
+  protected readonly libelleDenominateurTrajets = computed(() =>
+    this.selectedDriverId() === CONDUCTEUR_AUCUN ? ' trajets sans conducteur' : '',
+  );
+
+  /**
+   * Pose (ou retire) le filtre conducteur.
+   *
+   * ⚠️ `oublierStatsPeriode()` AVANT de recharger, comme pour le véhicule et le groupe : la
+   * synthèse en mémoire décrit l'ancien périmètre, et la laisser à l'écran afficherait une
+   * seconde les chiffres de tout le parc sous le nom d'une personne.
+   */
+  protected onSelectDriver(id: string): void {
+    this.selectedDriverId.set(id);
+    this.fermerMenuConducteur();
+    this.oublierStatsPeriode();
+    this.ecrireEtatDansUrl();
+    void this.loadData();
+  }
+
+  /**
+   * Le geste que le récapitulatif appelait : depuis la ligne d'un conducteur, voir SES
+   * trajets. Même chemin que `filtrerSurVehicule`, sans raccourci.
+   *
+   * ⚠️ Le véhicule et le groupe ne sont PAS effacés : un gestionnaire qui regarde un groupe
+   * et veut y isoler un conducteur ne demande pas à sortir du groupe. Les deux filtres se
+   * composent — le récapitulatif affiché décrivait déjà ce périmètre-là.
+   */
+  protected filtrerSurConducteur(driverId: string): void {
+    if (this.selectedDriverId() === driverId) return;
+    // ⚠️ AVANT `oublierStatsPeriode()` : c'est la dernière instruction où le nom est encore
+    // lisible. La ligne suivante vide `statsPeriode`, dont `attributionSummary` — la source du
+    // repli de `selectedDriverLabel` — dérive. Cf. `libelleConducteurRetenu`.
+    const nom = this.attributionSummary().find((l) => l.driverId === driverId)?.label;
+    this.libelleConducteurRetenu.set(nom ? { id: driverId, nom } : null);
+    this.selectedDriverId.set(driverId);
+    this.oublierStatsPeriode();
+    this.ecrireEtatDansUrl();
+    void this.loadData();
+    queueMicrotask(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
+
+  /**
+   * Liste des conducteurs — alimente le menu, et rien d'autre.
+   *
+   * ⚠️ Un échec ne montre PAS de bandeau et ne coupe rien : le menu se vide de ses options,
+   * les trajets et les chiffres restent justes. Un filtre absent se remarque ; une page de
+   * rapport en erreur pour un menu accessoire serait une régression bien plus grave.
+   *
+   * ⚠️ « le menu disparaît simplement » : c'est ce que disait cette phrase, et ce n'était vrai
+   * que tant qu'AUCUN filtre n'était posé. Un rapport borné à une personne dont le seul
+   * contrôle vient de s'évanouir est une impasse — d'où le `|| conducteurFiltre()` du gabarit,
+   * qui garde le menu (et donc « Tous les conducteurs ») quand la liste est vide.
+   */
+  private async loadDrivers(): Promise<void> {
+    // ⚠️ REMIS À FAUX À L'ENTRÉE : le rechargement d'un changement de société garderait sinon
+    // un « true » périmé, et le menu réaffirmerait un motif qu'il n'a pas encore mesuré.
+    this.driversRepondus.set(false);
+    try {
+      this.drivers.set(await this.driversApi.list());
+      this.driversRepondus.set(true);
+    } catch (err) {
+      swallow('reports:loadDrivers', err);
+      this.drivers.set([]);
+    }
   }
 
   /** Label affiché dans le bouton du dropdown selon la sélection courante. */
@@ -2937,15 +3713,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Sprint 5 — Réinitialise les filtres aux valeurs par défaut : tous groupes,
-   * tous véhicules, période « 7 jours ». Ferme les dropdowns / panneaux ouverts
-   * et relance le chargement via setPeriod (qui appelle loadData une seule fois).
+   * Sprint 5 — Réinitialise les filtres aux valeurs par défaut : tous groupes, tous véhicules,
+   * TOUS CONDUCTEURS, période « 7 jours », et le TRI revient à son point de départ. Ferme les
+   * dropdowns / panneaux ouverts et relance le chargement via setPeriod (qui appelle loadData
+   * une seule fois).
+   *
+   * ⚠️ Cette énumération et l'infobulle du bouton doivent rester d'accord avec `filtersDirty()`.
+   * Elles ne l'étaient pas : le conducteur et le tri étaient remis sans être annoncés.
    */
   protected resetFilters(): void {
     this.selectedGroupId.set('');
     this.selectedVehicleId.set('');
+    this.selectedDriverId.set('');
     this.groupDropdownOpen.set(false);
     this.vehicleDropdownOpen.set(false);
+    this.driverDropdownOpen.set(false);
     this.customRangeOpen.set(false);
     this.customFrom.set('');
     this.customTo.set('');
@@ -2966,7 +3748,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   protected readonly filtersDirty = computed(() => {
     this.periodKey();
-    if (this.selectedGroupId() || this.selectedVehicleId()) return true;
+    // Le conducteur compte comme les deux autres : « Réinitialiser » doit être offert dès
+    // qu'un filtre est posé, sinon le seul geste qui ramène la page à son état d'origine
+    // reste grisé après le geste qui l'en a sortie.
+    if (this.selectedGroupId() || this.selectedVehicleId() || this.selectedDriverId()) return true;
     /**
      * ⚠️ LE TRI COMPTE AUTANT QUE LES FILTRES.
      *
@@ -2994,9 +3779,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Ce que le classeur contiendra, écrit dans l'infobulle du bouton. */
   protected readonly libelleExcel = computed(() => {
     const veh = this.selectedVehicleId();
-    if (veh) return `Export Excel détaillé du véhicule ${this.vehiclePlate(veh) || ''}`.trim();
-    if (this.selectedGroupId()) return `Export Excel du groupe ${this.selectedGroupLabel()} — une feuille de synthèse par véhicule`;
-    return 'Export Excel de toute la société — une feuille de synthèse par véhicule';
+    // Le conducteur figure dans l'infobulle comme il figure dans le classeur (F13). Ce n'est
+    // PAS le seul endroit où il est dit — la mention sous les boutons le porte à l'écran :
+    // une infobulle n'existe pas au doigt, elle complète, elle ne remplace pas.
+    const cond = this.conducteurPourExport();
+    const suffixe = cond
+      ? ` — seulement ${cond.trajets}, sans les passages en station (ce sont des arrêts du véhicule)`
+      : '';
+    if (veh) return `Export Excel détaillé du véhicule ${this.vehiclePlate(veh) || ''}`.trim() + suffixe;
+    if (this.selectedGroupId()) return `Export Excel du groupe ${this.selectedGroupLabel()} — une feuille de synthèse par véhicule${suffixe}`;
+    return `Export Excel de toute la société — une feuille de synthèse par véhicule${suffixe}`;
   });
 
   /** Format une Date en YYYY-MM-DD en HEURE LOCALE (pas UTC).
@@ -3197,6 +3989,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (veh) morceaux.push(`Véhicule ${this.vehiclePlate(veh) || veh}`);
     else if (this.selectedGroupId()) morceaux.push(`Groupe ${this.selectedGroupLabel()}`);
     else morceaux.push('Tous véhicules');
+    // ⚠️ Le conducteur figure sur le papier. Un rapport imprimé circule et ressort d'un
+    // classeur des mois plus tard : sans cette mention, une feuille filtrée sur une personne
+    // se lirait comme le rapport de toute la flotte.
+    if (this.conducteurFiltre()) morceaux.push(this.selectedDriverLabel());
     morceaux.push(this.pdfPeriodLabel());
     morceaux.push(`édité le ${new Date().toLocaleDateString('fr-FR')}`);
     return morceaux.join(' · ');
@@ -3541,6 +4337,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const veh = p.get('vehicle');
     if (veh) morceaux.push(this.vehiclePlate(veh) || 'un véhicule');
     else if (p.get('group')) morceaux.push('un groupe');
+    // Le conducteur est nommé, comme le véhicule : la proposition doit dire ce qu'elle va
+    // appliquer. « Reprendre votre dernier rapport » ne doit poser aucun filtre en silence.
+    //
+    // ⚠️ NORMALISÉ ICI AUSSI, exactement comme dans `reprendreVue` juste dessous. La chaîne
+    // mémorisée a pu être écrite par une version antérieure de l'écran : comparée BRUTE,
+    // « NONE » n'égale pas le mot-clé et un UUID en majuscules ne retrouve pas sa ligne dans
+    // `driverOptions`. La proposition annonçait alors « un conducteur » avant d'appliquer, elle,
+    // la forme canonique — le libellé et le clic ne décrivaient pas le même filtre.
+    const cond = normaliserFiltreConducteur(p.get('driver'));
+    if (cond === CONDUCTEUR_AUCUN) morceaux.push('sans conducteur');
+    else if (cond) morceaux.push(this.driverOptions().find((d) => d.id === cond)?.nom ?? 'un conducteur');
     const du = p.get('from'), au = p.get('to');
     if (du && au) morceaux.push(`du ${this.jourCourt(du)} au ${this.jourCourt(au, -1)}`);
     return morceaux.length ? morceaux.join(' · ') : 'vos derniers filtres';
@@ -3563,10 +4370,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const veh = p.get('vehicle'), grp = p.get('group');
     this.selectedVehicleId.set(veh ?? '');
     this.selectedGroupId.set(veh ? '' : (grp ?? ''));
+    // Même normalisation qu'au démarrage : la vue mémorisée est une chaîne, pas un état de
+    // confiance — elle a pu être écrite par une version antérieure de l'écran.
+    this.selectedDriverId.set(normaliserFiltreConducteur(p.get('driver')) ?? '');
     const tri = p.get('sort') as TripSortColumn | null;
     if (tri && this.sortOptions.some((o) => o.col === tri)) this.sortBy.set(tri);
     const sens = p.get('dir');
     if (sens === 'asc' || sens === 'desc') this.sortDir.set(sens);
+    /**
+     * ⚠️ LA MÊME GARDE QUE LES SIX AUTRES CHEMINS DE PÉRIMÈTRE, et elle manquait ici seule.
+     *
+     * `ecrireEtatDansUrl` n'écrit `from`/`to` que si la période s'écarte du défaut : une vue
+     * mémorisée sur « 7 jours » vaut donc « driver=<uuid> » tout court, et la reprise passait
+     * par la branche `else`, qui rechargeait sans jamais oublier la synthèse. Or `ngOnInit` l'a
+     * déjà remplie, NON filtrée. Le temps de l'aller-retour, le carburant, le parc actif, les
+     * alertes et le récapitulatif décrivaient donc toute la société sous le nom d'une personne
+     * — avec, à côté, les mentions de ce lot qui AFFIRMENT le filtre. Pire : un tri ou un clic
+     * de KPI pendant cette fenêtre incrémente `loadSeq` sans relancer la synthèse, qui reste
+     * alors fausse jusqu'au prochain changement de filtre.
+     *
+     * Posée AVANT le `if`, elle couvre les deux branches — donc aussi le véhicule et le groupe,
+     * qui avaient le même trou. `setPeriod` la rappelle : `statsPeriode.set(null)` deux fois de
+     * suite ne coûte rien.
+     */
+    this.oublierStatsPeriode();
     const du = p.get('from'), au = p.get('to');
     if (estJourIso(du) && estJourIso(au) && du! <= au!) {
       this.customFrom.set(du!);
@@ -3803,6 +4630,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       key: l.key,
       label: l.label,
       kind: l.kind,
+      /**
+       * L'identifiant du conducteur, relu sur la clé (`driver:<id>`) — c'est ce que le
+       * bouton « Filtrer » pose dans le filtre conducteur (F13).
+       *
+       * ⚠️ `null` sur une ligne de GROUPE, et le gabarit s'en sert pour n'offrir le bouton
+       * qu'aux personnes : il n'existe pas de filtre par groupe d'imputation (celui de la
+       * barre porte sur les véhicules, donc sur d'autres trajets que cette ligne).
+       */
+      driverId: l.kind === 'driver' ? l.key.slice('driver:'.length) : null,
       distance: Math.round(l.distanceKm * 1000),
       duration: Math.round(l.durationHours * 3600),
       trips: l.tripCount,
@@ -3833,16 +4669,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * 1 000 » n'est pas « 0 % » et « 999 sur 1 000 » n'est pas « 100 % » — l'arrondi ne peut
    * affirmer un extrême que si les nombres l'atteignent vraiment. Dénominateur nul : « 0 % ».
    *
-   * ⚠️ Même règle, au caractère près, que `partLibelle` de l'écran des scores
-   * (apps/web/src/app/features/trip-analysis/driving-scores.component.ts) : les deux écrans
-   * affichent la même mention sur les mêmes trajets, ils ne peuvent pas arrondir autrement.
+   * ⚠️ LA RÈGLE VIT DANS LE CONTRAT PARTAGÉ, plus ici. Elle avait été recopiée TROIS fois —
+   * cet écran, celui des scores, le PDF — sur les MÊMES trajets et sous les MÊMES yeux : le
+   * gestionnaire ouvre son PDF à côté de son écran, et « 99 % » ici contre « 100 % » là-bas
+   * se lit comme une erreur de calcul, pas comme une nuance d'arrondi.
+   *
+   * ⚠️ Réexposée en propriété de classe parce que le GABARIT l'appelle : une fonction de
+   * module n'est pas atteignable depuis un template Angular, et la perdre casserait le rendu
+   * de la mention « N trajets sur M » sans que rien ne le signale à la compilation.
    */
-  protected partLibelle(n: number, d: number): string {
-    if (d <= 0 || n <= 0) return '0 %';
-    if (n >= d) return '100 %';
-    const p = Math.round((n / d) * 100);
-    return p === 0 ? '< 1 %' : p === 100 ? '> 99 %' : `${p} %`;
-  }
+  protected readonly partLibelle = partLibelle;
 
   // ─── Period replay ────────────────────────────────────────────────────
   /** Modal replay-periode ouverte ? Toggled par `onOpenPeriodReplay`. */
@@ -3940,6 +4776,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const grp = q.get('group');
     if (veh) this.selectedVehicleId.set(veh);
     if (grp && !veh) this.selectedGroupId.set(grp);
+    // Conducteur : NORMALISÉ avant d'être posé, pas seulement validé. Valider une chaîne trimée
+    // puis mémoriser la chaîne brute, c'est exactement ce que ce garde prétendait interdire — un
+    // état qu'aucun clic ne produit. `?driver=%20none` partait alors tel quel : 400 sur la liste,
+    // 200 filtrés sur les compteurs. Ce qui est posé ici est ce qui sera envoyé.
+    const cond = normaliserFiltreConducteur(q.get('driver'));
+    if (cond) this.selectedDriverId.set(cond);
     const tri = q.get('sort') as TripSortColumn | null;
     if (tri && this.sortOptions.some((o) => o.col === tri)) this.sortBy.set(tri);
     const sens = q.get('dir');
@@ -3973,6 +4815,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (derniere) this.vueProposee.set(derniere);
     }
     this.loadVehicles();
+    // Le menu conducteur n'apparaît qu'une fois cette liste là ; l'écran reste utilisable
+    // sans elle (cf. `loadDrivers`, qui ne montre aucun bandeau en cas d'échec).
+    void this.loadDrivers();
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
     this.armerBasculeDeMinuit();
   }
@@ -4007,6 +4852,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected onEscape(): void {
     if (this.groupDropdownOpen()) { this.fermerMenuGroupe(); return; }
     if (this.vehicleDropdownOpen()) { this.fermerMenuVehicule(); return; }
+    if (this.driverDropdownOpen()) { this.fermerMenuConducteur(); return; }
     if (this.customRangeOpen()) this.fermerPlagePerso();
   }
 
@@ -4053,6 +4899,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const params: Record<string, string | null> = {
       vehicle: this.selectedVehicleId() || null,
       group: this.selectedGroupId() || null,
+      // Le filtre conducteur voyage comme les autres : une URL qui montre les trajets d'une
+      // personne doit pouvoir s'envoyer, sinon il faut décrire les clics (cf. F08).
+      driver: this.selectedDriverId() || null,
       from: periodePersonnalisee ? this.periodFrom : null,
       to: periodePersonnalisee ? this.periodTo : null,
       sort: this.sortBy() !== TRI_PAR_DEFAUT.col ? this.sortBy() : null,
@@ -4265,6 +5114,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
           sections: req.sections,
           maxTrips: req.maxTrips,
           topN: req.topN,
+          // ⚠️ Le filtre conducteur vient de la PAGE, pas de la modale : c'est l'écran qui
+          // le choisit, et le document doit décrire ce que l'écran montrait. Sans lui, le
+          // PDF portait toute la société sous un écran filtré sur une personne.
+          driverId: this.selectedDriverId() || undefined,
         },
       );
       this.toast.success('PDF généré');
@@ -4290,6 +5143,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected async onExportCsv(kind: 'trips' | 'alerts'): Promise<void> {
     if (this.exporting()) return;
+    /**
+     * ⚠️ LE MÊME REFUS QUE LE SERVEUR, MAIS AVANT LE TÉLÉCHARGEMENT (F13).
+     *
+     * Une alerte appartient à un VÉHICULE : ce fichier ne peut pas suivre le filtre
+     * conducteur. Le bouton est déjà désactivé — cette garde couvre les chemins qui ne
+     * passent pas par lui (raccourci clavier, appel programmatique) et rend un message,
+     * pas un fichier qui décrirait une autre population que l'écran.
+     */
+    if (kind === 'alerts' && this.conducteurFiltre()) {
+      this.toast.error(
+        'Export CSV alertes',
+        'Une alerte appartient à un véhicule, pas à un conducteur : cet export ne peut pas suivre le filtre. Retirez le filtre conducteur pour l\'obtenir.',
+      );
+      return;
+    }
     this.refreshPeriodIfStalePreset();
     if (!this.periodFrom || !this.periodTo) {
       this.toast.error('Échec export CSV', 'Période invalide — recharge la page.');
@@ -4301,6 +5169,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         kind, this.fleetFilter.selectedFleetId(), this.periodFrom, this.periodTo,
         // Même périmètre que l'écran : le véhicule choisi, sinon les véhicules du groupe.
         this.exportVehicleIds(),
+        // ⚠️ Et le même conducteur. `kind` ne vaut ici que 'trips' (le refus ci-dessus a déjà
+        // écarté 'alerts'), donc ce paramètre ne peut atteindre qu'un export qui sait le porter.
+        this.selectedDriverId() || undefined,
       );
       this.toast.success(kind === 'trips' ? 'CSV trajets téléchargé' : 'CSV alertes téléchargé');
     } catch (err) {
@@ -4340,10 +5211,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
     this.exporting.set('excel');
     try {
+      // ⚠️ Le filtre conducteur voyage dans les DEUX formes (un véhicule / un périmètre) :
+      // un classeur au nom d'une personne qui porterait les trajets de tout le monde est
+      // exactement le fichier qu'on ne peut plus rattraper une fois envoyé.
+      const driverId = this.selectedDriverId() || undefined;
       await this.reportsApi.downloadExcel(
         vehicleId
-          ? { vehicleId }
-          : { fleetId, groupId: this.selectedGroupId() || undefined },
+          ? { vehicleId, driverId }
+          : { fleetId, groupId: this.selectedGroupId() || undefined, driverId },
         this.periodFrom,
         this.periodTo,
       );
@@ -4417,6 +5292,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
         tripParams['vehicleIds'] = ids;
         summaryParams['vehicleIds'] = ids;
       }
+    }
+    /**
+     * Filtre CONDUCTEUR (F13) — posé sur les DEUX jeux de paramètres, et c'est tout l'objet
+     * de les construire ici : la liste et les agrégats ne peuvent pas décrire deux périmètres
+     * différents. `none` demande les trajets SANS conducteur (le cas de 1 905 trajets sur
+     * 1 956 chez « mh cars ») ; l'API n'accepte que cette forme ou un identifiant.
+     */
+    const cond = this.selectedDriverId();
+    if (cond) {
+      tripParams['driverId'] = cond;
+      summaryParams['driverId'] = cond;
     }
     // Filtre société GLOBAL (sélecteur super-admin) : scope le rapport entier (KPI + trajets
     // + charts) à la flotte choisie, côté serveur (les agrégats ne sont pas filtrables client).
@@ -4555,7 +5441,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     try {
       const vehicleIds = this.vehicleIdsDuPerimetre();
       const stats = await firstValueFrom(
-        this.reportsApi.stats(fleetId, this.periodFrom, this.periodTo, { vehicleIds, topN: 50 }),
+        // ⚠️ `driverId` ici AUSSI : la synthèse doit décrire le périmètre que le tableau
+        // montre. Sans lui, la page filtrée sur une personne afficherait ses trajets sous
+        // un récapitulatif de toute la société — deux réponses présentées comme une seule.
+        this.reportsApi.stats(fleetId, this.periodFrom, this.periodTo, {
+          vehicleIds,
+          topN: 50,
+          driverId: this.selectedDriverId() || undefined,
+        }),
       );
       if (seq !== this.loadSeq) return;
       this.statsPeriode.set(stats);
@@ -4812,6 +5705,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /**
    * Reaffectation du conducteur sur un trip. driver=null => retire.
    * Met a jour la ligne dans la table sans re-fetch + le replay si même trip.
+   *
+   * ══ SAUF SOUS FILTRE CONDUCTEUR : LA LIGNE VIENT DE CHANGER DE POPULATION (F13) ══════
+   *
+   * Le rustinage en mémoire était inoffensif tant que la liste n'était bornée que par
+   * véhicule, groupe et période : une ligne qui gagnait un nom continuait d'y appartenir.
+   * Le filtre conducteur le transforme en contradiction affichée, et précisément dans le mode
+   * qui EXISTE pour ce geste — « Sans conducteur », 1 905 trajets sur 1 956 chez « mh cars »,
+   * la liste que le gestionnaire isole POUR LA CORRIGER. Après vingt affectations, le tableau
+   * montrait vingt trajets conduits sous un en-tête de filtre disant « Sans conducteur », les
+   * compteurs, les courbes et la synthèse décrivaient toujours la population d'AVANT, et la
+   * modale PDF annonçait « les 55 trajets de la période » pour un document qui en portait 54 —
+   * un fichier qui contredit l'écran qui l'a produit.
+   *
+   * ⚠️ ON RETIRE LA LIGNE, ON NE RECHARGE PAS LA LISTE. `loadData()` est le geste des poseurs
+   * de filtre (`onSelectDriver`, `filtrerSurConducteur`), mais il ramène le tableau à sa
+   * première page : sur un périmètre de 1 905 lignes corrigées au « Charger plus », renvoyer le
+   * gestionnaire en tête à chaque affectation rendrait inutilisable le geste même que ce filtre
+   * sert. On retire donc la ligne du périmètre — jamais on ne la laisse affichée — et on rejoue
+   * les seuls AGRÉGATS, qui ne dépendent pas de la pagination.
    */
   protected async onDriverPickedForTrip(driver: DriverDto | null): Promise<void> {
     const trip = this.driverPickerTrip();
@@ -4821,9 +5733,39 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const updated = await firstValueFrom(
         this.driversApi.assignToTrip(trip.id, driver?.id ?? null),
       );
-      this.trips.update((list) => list.map((t) => (t.id === updated.id ? updated : t)));
       const replay = this.replayTrip();
       if (replay && replay.id === updated.id) this.replayTrip.set(updated);
+      const conducteurAvant = trip.driver?.id ?? null;
+      const conducteurApres = updated.driver?.id ?? null;
+      if (trajetHorsPerimetreConducteur(this.selectedDriverId(), conducteurApres)) {
+        this.trips.update((list) => list.filter((t) => t.id !== updated.id));
+        this.oublierStatsPeriode();
+        void this.rafraichirAgregatsDuPerimetre();
+      } else {
+        this.trips.update((list) => list.map((t) => (t.id === updated.id ? updated : t)));
+        /**
+         * ⚠️ MÊME SANS AUCUN FILTRE CONDUCTEUR, LE RÉCAPITULATIF VIENT DE SE PÉRIMER.
+         *
+         * La ligne reste dans le tableau — sa population n'a pas changé —, mais elle a changé
+         * de CAMP dans la carte « Par conducteur ou groupe » : elle passe de
+         * `unattributedTrips` à `byAttribution` (ou d'un conducteur à un autre). Le compte
+         * « N trajets sur M ni conducteur, ni groupe » et sa part en pourcentage décrivaient
+         * donc l'état d'AVANT le clic, sur un écran où le nom, lui, venait de s'afficher — et
+         * c'est LE geste que ce récapitulatif sert à provoquer : 1 866 trajets sur 1 886 sans
+         * imputation chez « mh cars » au 2026-09-05.
+         *
+         * ⚠️ SEULE la synthèse est rejouée. Le résumé journalier et les graphiques comptent des
+         * trajets et des kilomètres : sans filtre conducteur, affecter quelqu'un n'en change
+         * pas un seul. Les rejouer serait deux allers-retours pour un résultat identique.
+         *
+         * ⚠️ ET SANS `oublierStatsPeriode()` : ici rien ne rompt le périmètre, donc vider la
+         * grille entière ferait clignoter le carburant, le parc actif et les alertes — qui,
+         * eux, ne bougent pas — pour un rafraîchissement de quelques centaines de millisecondes.
+         * Un échec, lui, ne reste pas silencieux : `chargerStatsPeriode` retombe alors sur le
+         * repli client, qui annonce qu'il est partiel.
+         */
+        if (conducteurAvant !== conducteurApres) void this.chargerStatsPeriode(this.loadSeq);
+      }
       this.toast.success(
         driver ? 'Conducteur affecte' : 'Conducteur retire',
         driver ? `${driver.firstName} ${driver.lastName}` : '',
@@ -4832,6 +5774,36 @@ export class ReportsComponent implements OnInit, OnDestroy {
       swallow('reports:onDriverPickedForTrip', err);
       this.toast.error('Échec affectation', err instanceof Error ? err.message : '');
     }
+  }
+
+  /**
+   * Rejoue les AGRÉGATS du périmètre courant, sans toucher au tableau ni à sa pagination.
+   *
+   * Sert le seul cas où la population change SANS que l'écran ait changé de filtre : une
+   * affectation de conducteur sous un filtre conducteur. Les poseurs de filtre, eux, passent
+   * par `loadData()` — ils veulent bien repartir de la première page.
+   *
+   * ⚠️ `loadSeq` n'est PAS incrémenté : ce rafraîchissement ne remplace aucun chargement en
+   * cours, il s'y ajoute. L'incrémenter invaliderait la liste en vol (le `seq` de `loadTrips`)
+   * et laisserait le tableau estompé pour de bon.
+   */
+  private async rafraichirAgregatsDuPerimetre(): Promise<void> {
+    const seq = this.loadSeq;
+    const { summaryParams } = this.buildFilterParams();
+    try {
+      const summary = await firstValueFrom(this.tripsApi.dailySummary(summaryParams));
+      if (seq !== this.loadSeq) return;
+      this.summaryError.set(null);
+      this.dailySummary.set(summary);
+    } catch (err) {
+      swallow('reports:rafraichirAgregatsDuPerimetre', err);
+      if (seq === this.loadSeq) {
+        this.summaryError.set(httpFailureMessage(err, 'le résumé de la période'));
+      }
+      return;
+    }
+    void this.loadPeriodCharts(seq, summaryParams);
+    void this.chargerStatsPeriode(seq);
   }
 
   /** Confirmation avant recalcul : ouverte par le bouton admin, fermée par la modale. */

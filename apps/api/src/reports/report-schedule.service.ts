@@ -18,7 +18,7 @@ import type {
 import type { AuthUser } from '../auth/types/auth-user';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
 import { formatFleetDate, parisDayKey, parisDayStart } from '../common/utils/datetime';
-import { EmailService } from '../email/email.service';
+import { buildUnattributedNote, EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportPdfService } from './report-pdf.service';
@@ -342,7 +342,19 @@ export class ReportScheduleService {
           const toStr = formatFleetDate(lastDay);
           const pdfName = `tracky-rapport-${parisDayKey(from)}_${parisDayKey(lastDay)}.pdf`;
           const subject = `Rapport hebdomadaire — ${fleet.name}`;
-          const text = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} (inclus) est en pièce jointe.\n\nRésumé :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n- Conso estimée : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n\nL'équipe Vizyo`;
+          /**
+           * ⚠️ LA MÊME PHRASE DANS LES DEUX PARTIES MIME DU MÊME MESSAGE (F13).
+           *
+           * Elle est calculée UNE fois — `buildUnattributedNote`, du côté e-mail — puis posée
+           * ici dans le corps texte et passée là dans le corps HTML. La rédiger deux fois
+           * aurait fini par faire lire deux semaines différentes au client sous Outlook et au
+           * client en texte brut, sur le seul document que la plupart des gestionnaires
+           * ouvrent vraiment. `null` quand il n'y a rien à signaler : ce courrier part
+           * automatiquement à TOUTES les sociétés, une ligne à zéro serait un reproche
+           * sans objet.
+           */
+          const nonAttribues = buildUnattributedNote(report.unattributedTrips, report.trips.count);
+          const text = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} (inclus) est en pièce jointe.\n\nRésumé :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n- Conso estimée : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n${nonAttribues ? `\nTrajets non attribués : ${nonAttribues}\n` : ''}\nL'équipe Vizyo`;
           const html = this.email.buildWeeklyReportEmail({
             fromStr,
             toStr,
@@ -352,6 +364,7 @@ export class ReportScheduleService {
             liters: report.consumption.estimatedLiters,
             costEur: report.consumption.estimatedCostEur,
             pdfName,
+            unattributedNote: nonAttribues,
           });
 
           const failures: string[] = [];
