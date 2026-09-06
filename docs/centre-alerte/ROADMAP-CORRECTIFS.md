@@ -1,9 +1,21 @@
-# Roadmap des correctifs — centre d'alerte Tracky
+# Roadmap des correctifs — centre d'alerte **et VPS** de production Tracky
 
 > **Refondue le 2026-09-06**, à partir des **20 fiches ouvertes** du
 > [référentiel](./REFERENCE-ERREURS.md) et des six derniers audits (01/09 → 06/09). Ce fichier dit
 > **quoi faire, dans quel ordre, et ce qui est vérifiable aujourd'hui** — le référentiel, lui, dit
 > *pourquoi*. Les deux ne se recopient pas.
+>
+> 🆕 **Élargie le 2026-09-06 aux constats du VPS de production.** Le fichier porte désormais **deux
+> parties** :
+> - **[Partie I](#-ce-qui-attend-une-décision-ou-un-geste-humain) — le centre d'alerte** (fiches
+>   `TRK-nnn`), source : [`REFERENCE-ERREURS.md`](./REFERENCE-ERREURS.md) ;
+> - **[Partie II](#partie-ii--vps-de-production--25-constats-confirmés-et-non-corrigés) — le VPS**
+>   (fiches `VPS-nnn`), source : `docs/vps-audit/REFERENCE-CONSTATS.md`.
+>
+> *Les deux dispositifs sont distincts — l'un lit les erreurs de l'application, l'autre l'état de la
+> machine — mais **les tâches, elles, atterrissent sur les mêmes épaules**. C'est la seule raison de
+> les réunir ici : un backlog par instrument produit deux files que personne ne priorise l'une
+> contre l'autre.*
 >
 > 📌 **Ce fichier est le SEUL sans date dans son nom, et c'est délibéré : c'est la roadmap
 > VIVANTE.** `ROADMAP-CORRECTIFS-2026-08-25.md`, `-2026-09-01.md` et `-2026-09-04.md` sont les
@@ -228,6 +240,282 @@ rien ne bouge** — c'est l'absence de mouvement qui fait la preuve.*
 
 ---
 
+# PARTIE II — VPS de production : 25 constats confirmés et non corrigés
+
+> **Source** : les **124 fiches** de `docs/vps-audit/REFERENCE-CONSTATS.md`, dont **25 ouvertes** au
+> 2026-09-06. **87 sont `APPLIQUE`** (corrigées et vérifiées) et **12 `ACCEPTE`** — dont 6 réfutées
+> par la mesure et 6 assumées par écrit. *Aucune tâche ne se cache dans ces 99 : elles ont été
+> relues une par une pour construire cette liste.*
+>
+> 🔴 **AVERTISSEMENT DE LECTURE — LE RÉFÉRENTIEL VPS N'EST PAS SUR `main`.** Sur `main`,
+> `docs/vps-audit/REFERENCE-CONSTATS.md` pèse **289 Ko et s'arrête au 2026-08-17** : il ne contient
+> **aucune** des fiches **VPS-030 à VPS-039**, *les deux gravités 1 comprises*. La version à jour
+> (**631 Ko**) vit uniquement sur la branche **`perf/garde-fou-tests-et-workers`**. **C'est pourquoi
+> cette partie ne porte aucun lien relatif vers les fiches** — ils pointeraient dans le vide.
+> *C'est le mode d'échec des « six rapports jamais commités » du 11/08 sous une forme neuve : cette
+> fois ils sont commités, mais sur une branche que personne ne fusionne.* 👉 **Tâche V0 ci-dessous.**
+
+## Récapitulatif des huit derniers passages VPS
+
+| Date | Disque | RAM | Collecte | Émetteurs | Le fait du jour, en une ligne |
+|---|---:|---:|---:|---:|---|
+| **25/08** | 53 % | 33 % | 142 s | — | Passe de correction : TRK-046/048/047 déployés |
+| **26/08** | 54 % | 33 % | 137 s | 38 | Dernier passage avant **cinq jours manqués** *(VPS-M73)* |
+| **01/09** | 53 % | 35 % | 138 s | 38 | *« La flotte est intacte, 15ᵉ jour sans perte »* — **écrit 18 h APRÈS l'arrêt des six** |
+| **02/09** | 54 % | 35 % | 120 s | **32** | **Six boîtiers se sont tus le 31/08 en deux heures**, tous dans la même flotte *(🆕 VPS-038)* |
+| **03/09** | 53 % | 38 % | 126 s | 32 | Seuil de réescalade écrit d'avance, échéance au 05/09 |
+| **04/09** | 53 % | 33 % | 96 s | 31 | `vizyo-auth` reçoit une vraie unité de sauvegarde — **le créneau exact que le plan recommandait** |
+| **05/09** | 53 % | 32 % | 133 s | 30 | **VPS-038 passe en gravité 1** ; trois bases vertes sur un **dump manuel** *(🆕 VPS-M80/M81)* |
+| **06/09** | 53 % | 35 % | 116 s | **30** | **Premier passage sans perte nouvelle** ; deux blocs de la même section se contredisaient *(🆕 VPS-M84/M85)* |
+
+**Ce que la série raconte** — **la machine va bien et n'a jamais mal été** : 33/33 conteneurs sur
+les huit passages, **0 OOM en 30 jours**, PSI `full` à 0,00, disque **stable à 53 %** avec 46 Go
+libres, production en 99 · 102 · 47 · 118 ms. *Le VPS n'est pas le sujet ; ce qui vit dessus l'est.*
+
+> 🔑 **Le motif structurant, vu quatre fois en six jours :** un contrôle rend **vert** sur une
+> grandeur qui ne répond pas à la question posée. **VPS-M81** (l'âge d'un fichier ne distingue pas
+> un mécanisme d'un geste), **VPS-M80** (un dénominateur calculé par le filtre défaillant),
+> **VPS-M84** (deux seuils contradictoires dans la même section), **VPS-M85** (une réfutation menée
+> avec la mauvaise grandeur). *Trois de ces quatre verts portaient sur le seul constat de gravité 1
+> encore ouvert.*
+
+## Les classes d'exécution VPS — qui a le droit de faire quoi
+
+*Reprises telles quelles de `docs/vps-audit/ROADMAP.md` pour ne pas créer un troisième vocabulaire.*
+
+| Classe | Sens | Qui exécute |
+|:--:|---|---|
+| 🟢 **AUTO** | Additif, réversible, vérifiable immédiatement, **aucun impact production**. | Un agent, seul, **et il prouve le résultat**. |
+| 🟡 **PRÉPARÉ** | La commande est écrite et mesurée, **l'application demande un arbitrage**. | Humain, après lecture. |
+| 🔴 **HUMAIN** | **Destructif ou interrompt la production.** Jamais exécuté par un agent. | Humain, exclusivement. |
+| 🔵 **PRODUIT** | Ce n'est pas une action sur le VPS. | Exploitant / équipe produit. |
+
+> ⚠️ **Un agent qui a le droit de `prune` a le droit de se tromper de `prune`.** VPS-002 a établi
+> qu'on perd une machine en coupant un accès avant d'avoir prouvé le suivant ; VPS-009, qu'une
+> commande de nettoyage ne distingue pas un cache d'une base de données.
+
+---
+
+## 🔴 V0 — LA TÂCHE QUI CONDITIONNE TOUTES LES AUTRES
+
+### V0 · Fusionner ou verser les docs VPS sur `main` — 🔴 HUMAIN · *15 min*
+
+**Vingt jours d'audit — 22 rapports, 10 fiches neuves, les deux gravités 1 — n'existent pas sur
+`main`.** Le montage `/opt/tracky-vps-audit` masque le problème en production tant qu'il tient :
+l'écran `/admin → Audit VPS` lit le dossier monté, pas le dépôt. **Le jour où le montage saute,
+l'écran affiche une documentation du 17/08 sans rien signaler.**
+
+**Le geste** — fusionner `perf/garde-fou-tests-et-workers` dans `main`, ou en extraire le seul
+chemin `docs/vps-audit/`. ⚠️ **La branche porte aussi du code** (garde-fou tests/workers) : un
+`merge` complet est une décision, un `checkout` de chemin n'en est pas une.
+
+⚠️ **À ne pas faire** : recopier les fichiers à la main depuis le worktree. On perdrait l'historique
+des 22 passages, qui est la seule chose qui rende les tendances relisibles.
+
+---
+
+## 🤝 CE QUI ATTEND UNE DÉCISION OU UN GESTE HUMAIN — *10 tâches*
+
+*Rien de tout ceci ne se corrige par une commande. C'est la liste la plus bloquante.*
+
+| # | Fiche | G | L'action, en une phrase | Classe | Depuis |
+|---|---|:-:|---|:--:|---|
+| **V1** | VPS-038 | **1** | 🔵 **Porter les 6 IMEI de la flotte `2ad69ac1…` à l'exploitant** — muets depuis **5,6 jours**, avec l'heure de leur dernière trame | 🔵 PRODUIT | 31/08 |
+| **V2** | VPS-038 | **1** | 🔵 **Sortir du parc les 6 boîtiers muets depuis > 7 j**, dont **3 sans aucun véhicule** (7,3 · 66,8 · 92,7 j) — un statut, **pas** un `DELETE` | 🔵 PRODUIT | 04/09 |
+| **V3** | VPS-036 · VPS-027 | 2 | 🔵 **Un seul ticket hébergeur** couvrant les deux ordres d'écriture root (`kill -KILL` du 28/08, `systemctl mask` du 01/09) : paternité, cadence, **puis la liste de ce que ce canal s'autorise sans préavis** | 🔵 PRODUIT | 28/08 |
+| **V4** | VPS-010 | 2 | **Planifier un redémarrage** vers 23 h 30 — noyau actif `6.8.0-136`, **trois** installés (`-137`, `-138`, `-139`), 6 services sur une bibliothèque remplacée dont `docker.service` | 🔴 HUMAIN | 04/08 |
+| **V5** | VPS-M56 | 2 | **Arbitrer le budget de collecte** — dépassé **20 fois**, 116 s pour 90. Trois réponses chiffrées, aucune n'est technique *(détail ci-dessous)* | 🟡 PRÉPARÉ | 04/08 |
+| **V6** | VPS-037 | 3 | **Donner un second dépositaire à la copie hors-site** — dépositaire unique, **le même poste que la planification de l'audit** | 🟡 PRÉPARÉ | 01/09 |
+| **V7** | VPS-005 | 2 | **Poser les limites mémoire** sur les 30 conteneurs sur 33 qui n'en ont pas (**0 sur 33** ont une limite CPU) | 🔴 HUMAIN | 04/08 |
+| **V8** | VPS-020 | 2 | **Séparer les projets compose** `deploy` — 7 conteneurs, **2 applications sans rapport** (4 Maestroo dev + 3 Vizyo Manager **prod**), confirmé ce jour | 🔴 HUMAIN | 08/08 |
+| **V9** | VPS-017 | 3 | **Trancher pourquoi 4,5 Go d'outillage de développement** vivent dans `/root` d'un serveur qui porte **sept bases de production** | 🔴 HUMAIN | 06/08 |
+| **V10** | VPS-018 | 4 | **Retirer `/opt/vizyo-leads`** — pile supprimée le 04/08, dépôt distant vérifié, **10,3 % du parcours nocturne** de l'audit | 🔴 HUMAIN | 12/08 |
+
+### Les trois réponses au budget de collecte (V5 / VPS-M56) — à arbitrer, pas à deviner
+
+Vingt dépassements sur vingt et un passages. **Recommandation de l'agent, non appliquée :
+recalibrer à 120 s ET borner `/opt` à 25 s.**
+
+- **(a) Alléger** — le seul gisement est `/opt` (36 s). Mais le réduire, c'est **perdre la mesure
+  par sous-dossier** qui justifie VPS-018 et qui a chiffré à 10,3 % ce qu'on croyait valoir 25 %.
+- **(b) Recalibrer** — assumer que 90 s décrivait la machine du 04/08, qui portait moins de code.
+  ⚠️ *Un budget relevé dès qu'il gêne ne borne plus rien.*
+- **(c) Ne rien faire** — le dépassement reste un symptôme lisible.
+
+⚠️ **À ne pas faire** : relever le budget **en silence**. Un budget modifié sans que le rapport le
+dise transforme un dépassement en conformité sans que rien n'ait changé.
+
+---
+
+## 🔧 À APPLIQUER — geste serveur borné, commande écrite, personne ne l'a lancée — *9 tâches*
+
+### V11 · VPS-013 · gravité 1 · 🟢 AUTO — *le plus rentable de toute la liste, et de loin*
+
+**Ce qui se passe** — **29ᵉ passage.** Trois bases de **production** n'ont aucune sauvegarde
+qu'un mécanisme reproduise : `vizyo-manager` (abonnements Stripe, factures, clients),
+`texto-postgres` (passerelle SMS : `messages`, `allowlist_entries`) et `capcom6-mysql` (relais SMS).
+
+Le dump manuel du 04/09 à **04:52:04** — *la même seconde pour les trois* — les a fait passer au
+vert. **Rien ne le rejouera** : aucun timer, aucun cron, aucun script. `vizyo-manager` : salve
+précédente à **142 jours** ; `texto` et `capcom6` : **une seule copie chacun**.
+
+**Le geste** — dériver une unité systemd par base, **sur un gabarit qui existe déjà sur la machine
+et qui a fait ses preuves** : `vizyo-auth-backup.timer`, posé le 04/09, **s'est déclenché seul deux
+fois** (05/09 04:01:41, 06/09 04:04:10, `systemd[1]: Starting` au journal), rétention 30 j active.
+
+```bash
+systemctl cat vizyo-auth-backup.timer vizyo-auth-backup.service   # le gabarit a copier
+```
+
+**Coût mesuré** : **~17,8 Mo/jour** avant compression, sur **46 Go libres**.
+
+⚠️ **Créneaux PRIS** : 03 h 00 (`tracky-backup`), 03 h 30 (`vizyo-verify-backup`), 04 h 00
+(`vizyo-auth-backup`). **04 h 30 est libre.**
+⚠️ **Ne PAS remettre un cron** : VPS-003 — deux planificateurs pour la même sauvegarde, deux
+`pg_dump` concurrents à 3 h du matin — est né exactement de là.
+⚠️ **Sauvegarder `vizyo-manager` AVANT** de toucher au projet compose (V8) : sa base est dans le
+projet `deploy`, et `docker compose down --remove-orphans` la supprimerait.
+
+### V12 · VPS-012 · gravité 2 · 🟡 PRÉPARÉ — *10 secondes*
+
+**Ce qui se passe** — `github-actions-vizyo-auth` a un accès **root complet sans aucune option de
+restriction**, et elle sert : **0 → 12 → 16 → 16** connexions sur quatre passages. Elle déploie
+l'authentification de **toutes** les applications de la machine.
+
+**Le geste** — poser les mêmes options que sur l'autre clé de CI (`no-port-forwarding`,
+`no-agent-forwarding`, `no-X11-forwarding`, `no-user-rc`). **Geste déjà prouvé sans effet de bord
+le 04/08.**
+
+```bash
+grep -n 'github-actions-vizyo-auth' /root/.ssh/authorized_keys   # relever la ligne AVANT
+```
+
+⚠️ **Ne PAS retirer la clé** : `connexions=0` sur une fenêtre de 7 jours ne veut pas dire
+« inutilisée », mais « elle n'a pas servi ces sept jours-là ».
+⚠️ **Ne PAS poser `command="…"`** : mesuré et écarté le 04/08 — casse les workflows multi-lignes.
+⚠️ **Et ne PAS lire la baisse de `vizyo-vps-hostinger` (10 442 → 9 127) comme une accalmie** : c'est
+une **fenêtre glissante de 7 jours** qui a laissé sortir une journée de déploiements.
+
+### V13 · VPS-015 · gravité 2 · 🟢 AUTO — *le symptôme est fermé par accident, la cause est intacte*
+
+**Ce qui se passe** — le déclenchement de la sauvegarde Verify dépend du **bit d'exécution** du
+script. Le prochain `scp -r` sans `-p` le retirera, comme le 05/08.
+
+**Le geste** — `ExecStart=/bin/bash /opt/vizyo-verify/deploy/vps/backup.sh`, pour que le bit cesse
+d'être une condition de survie de la sauvegarde.
+
+### V14 · VPS-033 · gravité 2 · 🟡 PRÉPARÉ — *5 min*
+
+**Ce qui se passe** — la mesure des correctifs de sécurité est perdue **4 passages sur 5** parce que
+sa source est rafraîchie **à une heure tirée au hasard** dans une fenêtre de 12 h. Le 06/09 est la
+**première mesure valide depuis onze passages**, et par chance.
+
+```bash
+systemctl edit apt-daily.timer   # [Timer] / RandomizedDelaySec=30m
+```
+
+⚠️ **Contrepartie réelle** : le délai aléatoire étale la charge sur les miroirs Ubuntu. Le réduire
+sur **une** machine est sans effet mesurable ; le généraliser ne le serait pas. **Préférer `30m` à `0`.**
+
+### V15 · VPS-034 · gravité 2 · 🔴 HUMAIN — *moitié gratuite*
+
+**Ce qui se passe** — `foodsqan-traefik` tient `0.0.0.0:80` et `:443`, sert **25 domaines**, monte
+`/run/docker.sock` (« lecture seule » — **ce qui ne restreint rien** : qui atteint la socket pilote
+le démon), tourne sur l'étiquette flottante `traefik:latest` et **n'a aucune sonde de santé**.
+
+```bash
+docker inspect foodsqan-traefik --format '{{.Image}}'   # relever le digest AVANT toute recreation
+```
+
+⚠️ **L'ORDRE COMPTE** : relever le digest **avant** toute recréation, sinon on épingle la version
+qui vient d'arriver au lieu de celle qu'on a validée.
+⚠️ **Ne PAS retirer le montage** : Traefik perdrait la découverte de routes et **les 25 domaines
+tomberaient**.
+⚠️ **Ne PAS traiter ceci comme une urgence** : aucune intrusion constatée, 23 échecs SSH sur 7 j,
+**0 sur `root`**, 0 IP bannie.
+
+### V16 · VPS-026 · gravité 3 · 🟡 PRÉPARÉ
+
+**Ce qui se passe** — la sauvegarde des **pièces d'identité** de Vizyo Verify télécharge
+`alpine:latest` depuis Docker Hub pour s'exécuter, parce que le ménage de 00 h 40 vient de la
+supprimer. **18ᵉ prédiction juste** : l'image a été tirée le 05/09 à 03:32, elle avait plus de 24 h
+cette nuit, elle sera retéléchargée.
+
+**Le geste** — épingler `alpine` **par empreinte** et la pré-tirer **hors** de la fenêtre de
+sauvegarde ; ou vérifier si le `tar` + `gpg` a réellement besoin d'un conteneur.
+
+### V17 · VPS-030 · gravité 3 · 🟡 PRÉPARÉ
+
+**1,70 Go en 13 fichiers**, sous **aucune** rétention (1 679 Mo dans `/root/backups`, 57 Mo dans
+`/opt/backups/tracky`). Ce sont des copies **supplémentaires** d'une base qui en a 40 ailleurs.
+
+```bash
+ls -1t /root/backups/tracky-avant-graphiques-*.sql.gz | tail -n +2   # liste, n efface rien
+```
+
+⚠️ **Ne PAS `rm -rf /root/backups`** : le dossier porte aussi les **seules copies connues** d'un
+état de la base Maestroo de développement — et elles pèsent 0,46 Mo.
+⚠️ **Ne PAS toucher** à `/opt/backups/tracky/positions-avant-purge60j-*` : 57 Mo, **seule trace**
+des lignes purgées le 21/07.
+
+### V18 · VPS-032 · gravité 3 · 🟢 AUTO — *côté POSTE, pas côté serveur*
+
+**9 143 sessions SSH** sur 7 jours, pic **4 528** en une journée. Multiplexer **côté poste** :
+
+```
+Host 72.62.26.240
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%r@%h:%p
+  ControlPersist 10m
+```
+
+**Risque nul pour le VPS** : aucun paquet, aucune configuration serveur, le seul effet côté serveur
+est **moins de travail**. ⚠️ **Contrepartie** : un socket de contrôle vit 10 min sur le poste ; qui a
+accès au compte local pendant ce temps réutilise la connexion **sans la clé**.
+⚠️ **Ne RIEN borner côté serveur** (`MaxStartups`, `ClientAliveInterval`) : ça transformerait une
+inefficacité en **panne intermittente** le jour où on en aura légitimement besoin.
+
+### V19 · VPS-007 · gravité 4 · 🟡 PRÉPARÉ — *déconseillé en l'état*
+
+`random_page_cost = 4` sur **6 bases sur 7** (seule `tracky-postgres` est à 1.1). ⚠️ **L'enjeu de
+performance est nul** — ces bases pèsent 8 à 28 Mo et tiennent en cache à 99,99 % : *le planificateur
+ne peut pas se tromper de façon mesurable sur une table qui n'a aucune page à aller chercher.*
+**L'enjeu est de méthode**, et il est déjà réglé (le dénominateur est honnête depuis VPS-M80).
+
+---
+
+## 🗓️ À DÉPLOYER — écrit, testé, jamais mis en ligne
+
+| Quoi | État | Ce qui le prouvera |
+|---|---|---|
+| **Sentinelle « boîtiers muets » (VPS-038)** — une ligne par société au centre d'alerte quand des boîtiers rattachés se taisent > 3 j | Commit `fb0642f8` sur `feat/sentinelle-boitiers-muets`. **48 tests verts**, mutation du seuil → 1 échec exactement. **Non déployée.** | Au premier passage en production : **2 lignes** (`2ad69ac1…` 8 boîtiers, `88627f81…` 2), **pas 10** — et les 3 boîtiers sans véhicule écartés du déclenchement mais comptés dans le contexte |
+
+---
+
+## 👁️ À SURVEILLER — rien à appliquer, une mesure à relever à chaque passage
+
+| Mesure | Dernière valeur | Série | Ce qu'un changement signifierait |
+|---|---|---|---|
+| **VPS-038** — émetteurs distincts / 24 h | **30** | 39 · 39 · 38 · 38 · 32 · 32 · 32 · 30 · **30** | 🔴 Redescend en gravité 2 à **32 sur une journée complète**, en `SURVEILLANCE` à **38**. ⚠️ *Un compteur qui arrête de descendre n'est pas un compteur qui remonte* |
+| **VPS-038** — registre, par **bande** | 6-24 h : 0 · 1-3 j : 1 · 3-7 j : 7 · > 7 j : 6 | total stable à **14** | ⚠️ **Ne JAMAIS comparer les totaux** (VPS-M78) : le 06/09, le total est identique et **un boîtier a changé de bande** |
+| **VPS-011** — invocations de sondes | **65/min** (~93 600/j) | 24 conteneurs sondés **sur 33** | 9 sans aucune sonde, dont `foodsqan-traefik` qui tient 80/443 |
+| **VPS-035** — trames/h/boîtier | **102,5** | bande 60–300 | ⚠️ **Un seuil par tête ne voit pas une flotte qui rétrécit** — croiser avec VPS-038 |
+| **VPS-005** — conteneurs sans limite mémoire | **30 / 33** | **0 OOM en 30 j**, PSI `full` 0,00 | Pas d'urgence ; le jour où il y aura une OOM, **le choix de la victime ne nous appartiendra pas** |
+| Disque | **53 %**, 46 Go libres | stable sur 8 passages | Cache de build 10,1 Go, borné par le ramasse-miettes de BuildKit |
+
+---
+
+## ⛔ VPS — BLOQUÉ PAR UN PRÉREQUIS
+
+| Fiche | Ce qui bloque | Le prérequis |
+|---|---|---|
+| **VPS-M79** | Le ménage de 00 h 40 est mesuré **en volume** (6 images retirées en 24 h) mais reste **muet sur l'identité** — le cron fait `> /dev/null 2>&1` | Étiqueter les images de repli **au build** (`label!=repli=1`), donc toucher aux Dockerfile |
+| **VPS-029** | Volet symptôme appliqué (filtre `unused-for=168h` remis le 20/08, **toujours en place** ce jour) ; **deux** mécanismes gouvernent toujours le cache de build | Décider lequel fait foi — `daemon.json` (permanent, autorégulé) ou le cron hebdomadaire |
+| **VPS-M36** | Le `wchan` sert de preuve sur le constat le plus lourd, et le collecteur n'en prend **qu'un échantillon** | Échantillonner 3× à 1 s d'intervalle et publier la **répartition** — coût à chiffrer sur une collecte déjà hors budget |
+| **VPS-M73** | Aucun écran ne dit **depuis combien de jours** le dernier passage remonte — cinq passages manqués (27→31/08) n'ont été vus qu'après coup | Code applicatif : afficher l'écart en jours sur `/admin → Audit VPS`. *La donnée est déjà là.* |
+
+---
+
 ## 🧹 Dette de documentation relevée le 06/09
 
 *Deux incohérences trouvées en construisant cette roadmap. Elles ne coûtent rien aujourd'hui, et
@@ -242,6 +530,18 @@ feront perdre une heure le jour où quelqu'un les suivra.*
    renvoyait pour la dette d'architecture (clés `AM-NNN`) ; le fichier est **absent du dépôt**.
    👉 **Le créer, ou retirer la référence** — *un renvoi vers un fichier fantôme est pire que pas de
    renvoi.*
+3. 🆕 **`docs/vps-audit/ROADMAP.md` existe, date du 04/09, et il est FAUX sur deux points.** Il
+   annonce **VPS-013 « ✅ FAIT »** — la fiche est `A_TRAITER` au 29ᵉ passage, les trois bases n'ont
+   toujours aucun mécanisme — et classe **VPS-038 en gravité 2**, alors qu'elle est passée en
+   **gravité 1** le 05/09. *Un catalogue qui déclare résolu le seul constat de gravité 1 encore
+   ouvert est pire qu'un catalogue absent.*
+   👉 **Décision à prendre, et elle n'est pas cosmétique** : soit ce fichier redevient la source et
+   la Partie II ci-dessus n'en est qu'un digest daté, soit il est **retiré** au profit de cette
+   roadmap. **Deux catalogues du même objet divergent — c'est déjà fait, en deux jours.**
+4. 🆕 **La Partie II est un instantané DÉRIVÉ, pas une source.** Elle a été construite le 06/09 à
+   partir des 124 fiches du référentiel VPS. **Le référentiel dit *pourquoi*, ce fichier dit *quoi
+   faire*** — même règle que pour la Partie I. *Si les deux se contredisent un jour, c'est le
+   référentiel qui a raison, et c'est cette ligne-ci qui aura échoué.*
 
 ---
 
@@ -261,3 +561,24 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 > 🔑 **Un mécanisme de secours ne vaut que par la ressource qu'il vise.** Le repli `claude → gpt` est
 > déployé, correct, testé — et parfaitement inutile parce que le second compte est vide lui aussi.
 > *Livrer une redondance sans provisionner sa cible, c'est livrer une ligne de journal.*
+
+## Ce que le rapprochement des deux dispositifs a appris — 06/09
+
+> 🔑 **Les deux instruments souffrent du MÊME défaut, découvert indépendamment.** Côté centre
+> d'alerte : *« aucun appel sortant de ce dépôt n'a de gabarit de message d'échec »* — quatre
+> correctifs, quatre chaînes, un par jour. Côté VPS : *quatre contrôles rendaient **vert** sur une
+> grandeur qui ne répondait pas à la question posée* (VPS-M80, M81, M84, M85). **Dans les deux cas,
+> ce n'est pas le défaut qui se répète, c'est l'absence d'un gabarit commun** — de message d'un
+> côté, de vérification de l'autre.
+
+> 🔑 **La liste la plus courte est celle qui bloque.** Sur 25 constats VPS ouverts, **9 se
+> corrigent par une commande écrite d'avance**, dont le plus rentable — trois unités systemd pour
+> trois bases de production sans filet — coûte **20 minutes et 17,8 Mo par jour**. Les **10 autres
+> attendent une décision humaine depuis 15 à 33 jours.** *Ce n'est pas un problème de capacité
+> technique, et aucune passe de correction ne le résoudra.*
+
+> 🔑 **Un catalogue qui vieillit ment plus vite qu'un référentiel.** `docs/vps-audit/ROADMAP.md` a
+> divergé en **deux jours** : il déclare résolu le seul constat de gravité 1 encore ouvert. Le
+> référentiel, lui, est resté juste — parce qu'il est réécrit à chaque passage par la mesure, quand
+> la roadmap est réécrite à la main. *C'est la raison pour laquelle la Partie II ci-dessus porte sa
+> date en toutes lettres et se déclare dérivée.*
