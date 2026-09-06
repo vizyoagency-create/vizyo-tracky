@@ -182,53 +182,6 @@ export function trajetHorsPerimetreConducteur(
             {{ enTeteImpression() }}
           </p>
         </div>
-        <div class="rep-export-colonne">
-        <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
-          <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting() || exportsBloquesSansSociete()" class="rep-export-btn rep-export-btn--pdf">
-            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
-            <span>{{ exporting() === 'pdf' ? 'Export…' : 'PDF' }}</span>
-          </button>
-          <button type="button" (click)="onExportCsv('trips')" trackClick="rapport-export-trips" [disabled]="!!exporting() || exportsBloquesSansSociete()" class="rep-export-btn">
-            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
-            <span>{{ exporting() === 'csv-trips' ? 'Export…' : 'CSV trajets' }}</span>
-          </button>
-          <!-- ⚠️ DÉSACTIVÉ SOUS UN FILTRE CONDUCTEUR, ET LA MENTION SOUS LES BOUTONS DIT
-               POURQUOI (F13). Une alerte appartient à un VÉHICULE : elle n'a pas de
-               conducteur. Ce fichier ne peut donc PAS suivre le filtre — le servir quand
-               même rendrait, sous un nom qu'on croit filtré, les alertes de tout le parc.
-               Le serveur refuse aussi (400 avec la raison), mais un bouton qu'on clique pour
-               découvrir un bandeau rouge n'est pas une réponse : on le dit avant. -->
-          <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts"
-                  [disabled]="!!exporting() || conducteurFiltre() || exportsBloquesSansSociete()"
-                  class="rep-export-btn">
-            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
-            <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
-          </button>
-          <!-- Sprint 5 — Export Excel « soigné » PAR VÉHICULE : nécessite un
-               véhicule précis (sinon désactivé + hint). -->
-          <button type="button" (click)="onExportExcel()" trackClick="rapport-export-excel"
-                  [disabled]="!!exporting() || exportsBloquesSansSociete()"
-                  [title]="libelleExcel()"
-                  class="rep-export-btn rep-export-btn--excel">
-            @if (exporting() === 'excel') {
-              <span class="rep-export-spin"></span>
-            } @else {
-              <lucide-icon [img]="FileSpreadsheetIcon" [size]="13"></lucide-icon>
-            }
-            <span>{{ exporting() === 'excel' ? 'Export…' : 'Excel' }}</span>
-          </button>
-        </div>
-        <!-- ══ CE QUE LES FICHIERS CONTIENDRONT — ET CE QU'ILS NE PEUVENT PAS CONTENIR (F13)
-             Le PDF, le CSV trajets et l'Excel suivent désormais le filtre conducteur ; le CSV
-             alertes ne le peut pas (une alerte appartient à un véhicule) et son bouton est
-             désactivé juste au-dessus. Un bouton grisé sans raison est une impasse : la raison
-             est ici, VISIBLE, et non dans un attribut « title » — une infobulle n'existe pas
-             au doigt. Cette mention est collée aux boutons : une phrase posée ailleurs sur la
-             page ne se lit pas au moment où l'on clique. -->
-        @if (noteExportsConducteur(); as note) {
-          <p class="rep-export-note" role="note">{{ note }}</p>
-        }
-        </div>
       </div>
 
       <!-- Barre de filtres — MOBILE D'ABORD. Trois groupes réels dans le DOM (sélecteurs,
@@ -585,6 +538,62 @@ export function trajetHorsPerimetreConducteur(
         </button>
         </div>
       </div>
+
+      <!-- ══ LES EXPORTS VIENNENT APRÈS LES FILTRES ═══════════════════════════════════
+           Ils étaient tout en haut, AVANT le moindre filtre : on proposait d'exporter
+           avant que le lecteur ait dit sur quoi. C'est l'ordre inverse du geste — on
+           choisit une période, une société, des véhicules, un conducteur, on regarde les
+           chiffres, ET ALORS on emporte le document. Relevé par le propriétaire :
+           « on ne comprend pas trop ».
+           ⚠️ La mention reste COLLÉE aux boutons : c'est elle qui dit ce que les fichiers
+                contiendront, et une phrase posée ailleurs ne se lit pas au moment du clic. -->
+        <div class="rep-export-colonne">
+        <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
+          <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting() || exportsBloquesSansSociete()" class="rep-export-btn rep-export-btn--pdf">
+            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
+            <span>{{ exporting() === 'pdf' ? 'Export…' : 'PDF' }}</span>
+          </button>
+          <button type="button" (click)="onExportCsv('trips')" trackClick="rapport-export-trips" [disabled]="!!exporting() || exportsBloquesSansSociete()" class="rep-export-btn">
+            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
+            <span>{{ exporting() === 'csv-trips' ? 'Export…' : 'CSV trajets' }}</span>
+          </button>
+          <!-- ⚠️ DÉSACTIVÉ SOUS UN FILTRE CONDUCTEUR, ET LA MENTION SOUS LES BOUTONS DIT
+               POURQUOI (F13). Une alerte appartient à un VÉHICULE : elle n'a pas de
+               conducteur. Ce fichier ne peut donc PAS suivre le filtre — le servir quand
+               même rendrait, sous un nom qu'on croit filtré, les alertes de tout le parc.
+               Le serveur refuse aussi (400 avec la raison), mais un bouton qu'on clique pour
+               découvrir un bandeau rouge n'est pas une réponse : on le dit avant. -->
+          <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts"
+                  [disabled]="!!exporting() || conducteurFiltre() || exportsBloquesSansSociete()"
+                  class="rep-export-btn">
+            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
+            <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
+          </button>
+          <!-- Sprint 5 — Export Excel « soigné » PAR VÉHICULE : nécessite un
+               véhicule précis (sinon désactivé + hint). -->
+          <button type="button" (click)="onExportExcel()" trackClick="rapport-export-excel"
+                  [disabled]="!!exporting() || exportsBloquesSansSociete()"
+                  [title]="libelleExcel()"
+                  class="rep-export-btn rep-export-btn--excel">
+            @if (exporting() === 'excel') {
+              <span class="rep-export-spin"></span>
+            } @else {
+              <lucide-icon [img]="FileSpreadsheetIcon" [size]="13"></lucide-icon>
+            }
+            <span>{{ exporting() === 'excel' ? 'Export…' : 'Excel' }}</span>
+          </button>
+        </div>
+        <!-- ══ CE QUE LES FICHIERS CONTIENDRONT — ET CE QU'ILS NE PEUVENT PAS CONTENIR (F13)
+             Le PDF, le CSV trajets et l'Excel suivent désormais le filtre conducteur ; le CSV
+             alertes ne le peut pas (une alerte appartient à un véhicule) et son bouton est
+             désactivé juste au-dessus. Un bouton grisé sans raison est une impasse : la raison
+             est ici, VISIBLE, et non dans un attribut « title » — une infobulle n'existe pas
+             au doigt. Cette mention est collée aux boutons : une phrase posée ailleurs sur la
+             page ne se lit pas au moment où l'on clique. -->
+        @if (noteExportsConducteur(); as note) {
+          <p class="rep-export-note" role="note">{{ note }}</p>
+        }
+        </div>
 
       <!--
         Panne de la liste des VÉHICULES. Elle échouait en silence : plus une seule plaque
@@ -1708,6 +1717,7 @@ export function trajetHorsPerimetreConducteur(
       [vehicles]="pdfModalVehicles()"
       [periodLabel]="pdfPeriodLabel()"
       [driverFilter]="conducteurPourExport()"
+      [groupLabel]="selectedGroupId() ? selectedGroupLabel() : null"
       [loading]="exporting() === 'pdf'"
       (closed)="pdfModalOpen.set(false)"
       (exportRequested)="onPdfExportRequested($event)"

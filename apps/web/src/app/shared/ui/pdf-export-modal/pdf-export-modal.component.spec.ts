@@ -91,8 +91,45 @@ describe('Modale dʼexport PDF — la promesse lue juste avant le clic', () => {
     ouvrir(SANS_CONDUCTEUR);
     const bandeau: HTMLElement = fixture.nativeElement.querySelector('.pem-scope-banner--driver');
     expect(bandeau.textContent).toContain('Sans conducteur');
-    expect(modale['previewSentence']()).toContain('et seulement les trajets sans conducteur');
-    expect(modale['previewSentence']()).not.toContain('et seulement Sans conducteur');
+    expect(modale['previewSentence']()).toContain('portant uniquement sur les trajets sans conducteur');
+    expect(modale['previewSentence']()).not.toContain('Sans conducteur, quel que soit');
+  });
+
+
+  /**
+   * ⚠️ LA PHRASE NE DOIT PLUS SE DÉMENTIR ELLE-MÊME.
+   *
+   * Relevé par le propriétaire sur une capture d'écran, et il avait raison :
+   *
+   *   « pour toute la flotte (7 véhicules), et seulement les trajets de Sohaib Hamanni »
+   *
+   * Les deux moitiés disent le contraire l'une de l'autre. Et « toute la flotte » y est
+   * doublement trompeur : mesuré en production, Sohaib n'a conduit qu'UN véhicule sur sept
+   * — le document ne montrera jamais les six autres. C'est la DERNIÈRE ligne lue avant de
+   * cliquer : elle ne peut pas être celle qui embrouille.
+   */
+  it('sous filtre conducteur, lʼaperçu ne dit JAMAIS « toute la flotte »', () => {
+    ouvrir(SOHAIB);
+    const phrase: string = modale['previewSentence']();
+
+    expect(phrase).toContain('portant uniquement sur les trajets de Sohaib Hamanni');
+    expect(phrase).toContain('quel que soit le véhicule');
+    expect(phrase).not.toContain('toute la flotte');
+    // Le témoin : SANS filtre, « toute la flotte » reste la bonne formule.
+    ouvrir(null);
+    expect(modale['previewSentence']()).toContain('toute la flotte');
+  });
+
+  it('conducteur ET sélection de véhicules : le véhicule restreint, il ne contredit pas', () => {
+    ouvrir(SOHAIB);
+    modale['onScopeSelected']();
+    modale['onToggleVehicle']('v1');
+    fixture.detectChanges();
+
+    const phrase: string = modale['previewSentence']();
+    expect(phrase).toContain('portant uniquement sur les trajets de Sohaib Hamanni');
+    expect(phrase).toContain('et parmi eux ceux faits avec');
+    expect(phrase).not.toContain('quel que soit le véhicule');
   });
 
   /**
@@ -121,17 +158,17 @@ describe('Modale dʼexport PDF — la promesse lue juste avant le clic', () => {
    */
   it('lʼaperçu dit le conducteur, que le périmètre soit la flotte ou une sélection', () => {
     ouvrir(null);
-    expect(modale['previewSentence']()).not.toContain('et seulement');
+    expect(modale['previewSentence']()).not.toContain('portant uniquement sur');
 
     ouvrir(SOHAIB);
     expect(modale['scope']()).toBe('all');
-    expect(modale['previewSentence']()).toContain('et seulement les trajets de Sohaib Hamanni');
+    expect(modale['previewSentence']()).toContain('portant uniquement sur les trajets de Sohaib Hamanni');
 
     modale['onScopeSelected']();
     modale['onToggleVehicle']('v1');
     fixture.detectChanges();
     expect(modale['scope']()).toBe('selected');
-    expect(modale['previewSentence']()).toContain('et seulement les trajets de Sohaib Hamanni');
+    expect(modale['previewSentence']()).toContain('portant uniquement sur les trajets de Sohaib Hamanni');
   });
 
   /**

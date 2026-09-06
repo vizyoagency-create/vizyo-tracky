@@ -238,6 +238,16 @@ function joinFr(parts: string[]): string {
                 }
               }
 
+              @if (groupLabel(); as grp) {
+                <p class="pem-scope-banner pem-scope-banner--driver">
+                  <lucide-icon [img]="InfoIcon" [size]="14" class="shrink-0"></lucide-icon>
+                  <span>
+                    Restreint au groupe <strong>{{ grp }}</strong> — seuls ses véhicules
+                    entreront dans le rapport.
+                  </span>
+                </p>
+              }
+
               <!-- Le filtre CONDUCTEUR de la page (F13) : affiché, jamais modifiable ici.
                    Sans cette ligne, « Toute la flotte » se lirait au pied de la lettre alors
                    que le rapport ne portera que les trajets d'une personne — et le fichier,
@@ -777,6 +787,16 @@ export class PdfExportModalComponent {
    */
   readonly driverFilter = input<PdfExportDriverFilter | null>(null);
 
+  /**
+   * Le GROUPE choisi sur la page, ou null. Affiché, jamais modifiable ici — comme le
+   * conducteur et la période.
+   *
+   * ⚠️ Il manquait, et c'était le dernier trou du récapitulatif de périmètre : un rapport
+   * restreint à un groupe s'annonçait « pour toute la flotte », puisque le sélecteur de
+   * véhicules de cette modale ne connaît, lui, que la flotte entière.
+   */
+  readonly groupLabel = input<string | null>(null);
+
   readonly closed = output<void>();
   readonly exportRequested = output<PdfExportRequest>();
 
@@ -1061,15 +1081,35 @@ export class PdfExportModalComponent {
    */
   protected readonly scopePhrase = computed(() => {
     const conducteur = this.driverFilter();
-    const suffixe = conducteur ? ', et seulement ' + conducteur.trajets : '';
-    if (this.scope() === 'all') {
-      const n = this.vehicles().length;
-      return (n > 0
-        ? 'pour toute la flotte (' + n + ' véhicule' + (n > 1 ? 's' : '') + ')'
-        : 'pour toute la flotte') + suffixe;
+    const label = this.scope() === 'all' ? null : this.plateSummary(Array.from(this.selectedIds()));
+    const n = this.vehicles().length;
+
+    /**
+     * ⚠️ SOUS FILTRE CONDUCTEUR, C'EST LUI LE PÉRIMÈTRE — le véhicule n'est plus qu'une
+     * précision. Cette phrase collait le conducteur EN SUFFIXE derrière le périmètre
+     * véhicule, et se démentait toute seule :
+     *
+     *   « pour toute la flotte (7 véhicules), et seulement les trajets de Sohaib Hamanni »
+     *
+     * Les deux moitiés disent le contraire l'une de l'autre. Et « toute la flotte » est
+     * doublement trompeur : mesuré en production, Sohaib n'a conduit qu'UN véhicule sur
+     * sept — le document ne montrera jamais les six autres.
+     *
+     * On énonce donc le filtre EN PREMIER, et le périmètre véhicule comme ce qu'il est
+     * vraiment : une restriction supplémentaire, ou rien du tout.
+     */
+    if (conducteur) {
+      return label
+        ? 'portant uniquement sur ' + conducteur.trajets + ', et parmi eux ceux faits avec ' + label
+        : 'portant uniquement sur ' + conducteur.trajets + ', quel que soit le véhicule';
     }
-    const label = this.plateSummary(Array.from(this.selectedIds()));
-    return (label ? 'pour ' + label : 'pour aucun véhicule') + suffixe;
+
+    if (this.scope() === 'all') {
+      return n > 0
+        ? 'pour toute la flotte (' + n + ' véhicule' + (n > 1 ? 's' : '') + ')'
+        : 'pour toute la flotte';
+    }
+    return label ? 'pour ' + label : 'pour aucun véhicule';
   });
 
   /**
