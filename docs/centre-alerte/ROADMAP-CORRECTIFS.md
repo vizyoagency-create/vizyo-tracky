@@ -65,7 +65,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ## 🗂️ Tableau de bord — 49 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-06 : 1 faite · 2 déployées, preuve attendue · 1 commitée · 45 ouvertes.**
+**Au 2026-09-06 : 2 faites · 2 déployées, preuve attendue · 2 commitées · 43 ouvertes.**
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
@@ -83,7 +83,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
 | ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
 | `~` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | ✅ **COMMITÉ** `2112e9ae` |
-| ☐ | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | 🔧 À CODER |
+| `~` | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | ✅ **COMMITÉ** `c80632ba` |
 | ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
 | ☐ | **T13** | TRK-016 | Recalage cartographique — **~88 % d'échec** | 🔧 CHANTIER |
 | ☐ | **T14** | TRK-053 | Provoquer ou requalifier *(échéance **08/09**)* | ⛔ sans occasion |
@@ -112,7 +112,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V8** | VPS-020 | Séparer les projets compose `deploy` | 🔴 HUMAIN |
 | ☐ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | 🔴 HUMAIN |
 | ☐ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | 🔴 HUMAIN |
-| ☐ | **V11** | VPS-013 | 🔴 **3 bases de prod sans sauvegarde reproductible** | 🟢 AUTO ⭐ |
+| ☑ | **V11** | VPS-013 | 🔴 **3 bases de prod sans sauvegarde reproductible** | ✅ **FAIT ET PROUVÉ** |
 | ☐ | **V12** | VPS-012 | Restreindre la clé CI `vizyo-auth` *(10 s)* | 🟡 PRÉPARÉ |
 | ☐ | **V13** | VPS-015 | `ExecStart` par `bash` **+ `OnFailure=` sur `tracky-backup`** | 🟢 AUTO |
 | ☐ | **V14** | VPS-033 | `RandomizedDelaySec=30m` sur `apt-daily.timer` | 🟡 PRÉPARÉ |
@@ -252,7 +252,7 @@ de la semaine. Le journal système (`assistance_escalade`) doit continuer d'écr
 ⚠️ **Double condition :** au prochain échec IA, **UNE** seule ligne `ASSISTANCE`, en `DEGRADATION`.
 *Si les deux disparaissent, on a supprimé la trace de l'escalade au lieu de la classer.*
 
-### ☐ T11 · TRK-068 · gravité 2 · 🔧 À CODER
+### `~` T11 · TRK-068 · gravité 2 · ✅ **COMMITÉ le 2026-09-06** (`c80632ba`) — *pas encore déployé*
 
 **Ce qui se passe** — `auth-client.service.ts`, méthode `request()` : l'appel à Vizyo Auth est un
 `fetch` **sans `try/catch` ni délai d'expiration**. Le rejet de transport remonte nu, NestJS en fait
@@ -475,7 +475,7 @@ dise transforme un dépassement en conformité sans que rien n'ait changé.
 
 ## 🔧 À APPLIQUER — geste serveur borné, commande écrite, personne ne l'a lancée — *9 tâches*
 
-### ☐ V11 · VPS-013 · gravité 1 · 🟢 AUTO — *le plus rentable de toute la liste, et de loin*
+### ☑ V11 · VPS-013 · gravité 1 · ✅ **FAIT ET PROUVÉ le 2026-09-06** — *trois unités systemd, exercées et confrontées à la base vivante*
 
 **Ce qui se passe** — **29ᵉ passage.** Trois bases de **production** n'ont aucune sauvegarde
 qu'un mécanisme reproduise : `vizyo-manager` (abonnements Stripe, factures, clients),
@@ -811,6 +811,8 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **06/09** | **V11** | VPS-013 — trois bases de production sans sauvegarde reproductible | ✅ **FAIT ET PROUVÉ** | *(unités systemd)* | 3 unités dérivées du gabarit `vizyo-auth-backup`, exercées une fois chacune → **3 succès**. 🔑 **Confrontées à la base VIVANTE** : `vizyo_manager` **8 tables = 8** `CREATE TABLE` · `vizyo_texto` **47 lignes `allowlist_entries` = 47** · `sms` 9 tables. Archives **600**, dossiers **700**. Minuteries **actives** (04:30 / 04:40 / 04:50 UTC, `Persistent=true`). Elles portent déjà `ExecStart=/bin/bash` — le geste de **V13** |
+| **06/09** | **T11** | TRK-068 — un appel à Vizyo Auth ne peut plus durer, ni remonter nu | `~` **COMMITÉ** | `c80632ba` | auth-client **16/16**, typecheck **3/3**, smoke-boot **5/5**. 🔑 **Deux mutations** — retrait du délai → **1 échec**, remontée nue du rejet → **4 échecs**. Le jumeau `verifyLoginCode` passe par le même chemin borné. ⏳ **Preuve attendue** : `statusCode 503`, niveau `ERROR`, motif technique **conservé** en fin de phrase |
 | **06/09** | **T10** | TRK-070 — le niveau de l'escalade suit la CAUSE, pas la gravité de la conversation | `~` **COMMITÉ** | `2112e9ae` | Suite assistance **74/74**, typecheck **3/3**, smoke-boot DI **5/5**. 🔑 **Mutation de la règle de niveau → 1 échec exactement** : le test n'est pas tautologique. Les **trois** replis techniques traités ensemble *(leçon de TRK-004)*. ⏳ **Preuve attendue en production** : UNE seule ligne `ASSISTANCE`, en `DEGRADATION`, **et** le journal système garde son `assistance_escalade` |
 | **06/09** | **V0** | Verser `docs/vps-audit/` sur `main` — 20 jours d'audit n'y existaient pas | ✅ **FAIT** | *(checkout de chemin, avec historique)* | Arborescences vérifiées identiques ; 29 rapports, 125 fiches, 631 Ko sur `main` |
 | **06/09** | *(VPS-038)* | Sentinelle « boîtiers muets » | `[»]` **DÉPLOYÉE** | `fb0642f8` | 48 tests verts, mutation du seuil → 1 échec exactement ; smoke-boot OK ; `restarts=0`, `healthy`. ⏳ **Preuve attendue** : 2 lignes à la passe de 06:30 UTC, **pas 10** |

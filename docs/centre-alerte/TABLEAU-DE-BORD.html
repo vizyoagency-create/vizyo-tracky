@@ -88,19 +88,19 @@
 </header>
 
 <div class="kpis">
-  <div class="k ok"><div class="n">1</div><div class="l">faites et verifiees</div></div>
+  <div class="k ok"><div class="n">2</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">2</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">45</div><div class="l">ouvertes sur 49</div></div>
-  <div class="k dgr"><div class="n">10</div><div class="l">ouvertes en gravite 1</div></div>
+  <div class="k"><div class="n">43</div><div class="l">ouvertes sur 49</div></div>
+  <div class="k dgr"><div class="n">9</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">2</div><div class="l">au-dela de 7 jours</div></div>
   <div class="k info"><div class="n">18</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 1 faites, 2 deployees, 45 ouvertes sur 49">
-  <span class="s-FAIT" style="width:2%"></span>
+<div class="barre" role="img" aria-label="Avancement : 2 faites, 2 deployees, 43 ouvertes sur 49">
+  <span class="s-FAIT" style="width:4%"></span>
   <span class="s-DEPLOYE" style="width:4%"></span>
-  <span class="s-COMMITE" style="width:2%"></span>
-  <span class="s-OUVERT" style="width:92%"></span>
+  <span class="s-COMMITE" style="width:4%"></span>
+  <span class="s-OUVERT" style="width:88%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -112,13 +112,13 @@
 
 <div class="filtres" id="f">
   <button data-f="tout" aria-pressed="true">Tout (49)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (45)</button>
-  <button data-f="g1" aria-pressed="false">Gravite 1 (10)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (43)</button>
+  <button data-f="g1" aria-pressed="false">Gravite 1 (9)</button>
   <button data-f="humain" aria-pressed="false">Attendent un humain (18)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (13)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (11)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
-  <button data-f="fait" aria-pressed="false">Closes (3)</button>
+  <button data-f="fait" aria-pressed="false">Closes (4)</button>
 </div>
 
 <h2 class="sec">Les 49 taches — ouvertes et graves d'abord</h2>
@@ -135,21 +135,6 @@
   </div>
   <h3>Recharger au moins UN des deux comptes IA</h3>
   <p class="detail">Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c'est vrai.</p>
-  
-  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
-</article>
-<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="vps" data-classe="AUTO" data-g="1">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">V11</span>
-    <span class="fiche">VPS-013</span>
-    <span class="classe">🟢 Agent, seul, avec preuve</span>
-    <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">32 j</span>
-    
-  </div>
-  <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
-  <p class="detail">vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.</p>
   
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
@@ -330,21 +315,6 @@
   </div>
   <h3>Declarer ou depanner GLA•KC•31 et FG-669-DQ</h3>
   <p class="detail">Muets depuis 74 h et 57 h, et NON declares : ils sortent du filtre gps_sans_fix par le bas.</p>
-  
-  <div class="badges"></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T11</span>
-    <span class="fiche">TRK-068</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
-    
-  </div>
-  <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
-  <p class="detail">Ni try/catch ni delai d'expiration : le rejet de transport devient un 500 la ou une dependance injoignable est un 503.</p>
   
   <div class="badges"></div>
 </article>
@@ -813,6 +783,21 @@
   <p class="preuve"><b>Preuve</b> — Suite assistance 74/74, typecheck 3/3, smoke-boot DI 5/5. MUTATION de la regle de niveau -&gt; 1 echec exactement : le test n'est pas tautologique. Les TROIS replis techniques sont traites ensemble (classement, redaction, IA non configuree).</p><p class="attendue"><b>Preuve attendue</b> — Au prochain echec IA EN PRODUCTION : UNE seule ligne ASSISTANCE pour l'incident, en DEGRADATION, et le journal systeme porte toujours son assistance_escalade. DOUBLE CONDITION : si les deux lignes disparaissent, on a supprime la trace de l'escalade au lieu de la classer.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
+<article class="t etat-COMMITE g2" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T11</span>
+    <span class="fiche">TRK-068</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    <code class="commit">c80632ba</code>
+  </div>
+  <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
+  <p class="detail">Ni try/catch ni delai d'expiration : le rejet de transport devient un 500 la ou une dependance injoignable est un 503.</p>
+  <p class="preuve"><b>Preuve</b> — auth-client 16/16, typecheck 3/3, smoke-boot DI 5/5. DEUX mutations : retrait du delai -&gt; 1 echec, remontee nue du rejet -&gt; 4 echecs. Le jumeau verifyLoginCode passe par le meme chemin borne.</p><p class="attendue"><b>Preuve attendue</b> — Au prochain rejet de transport EN PRODUCTION : la ligne doit porter statusCode 503 (et non 500), sortir en ERROR (et non CRITICAL), nommer Vizyo Auth et la consequence, ET conserver le motif technique en fin de phrase. Si le motif disparait, on a nettoye l ecran.</p>
+  <div class="badges"></div>
+</article>
 <article class="t etat-DEPLOYE g1" data-etat="DEPLOYE" data-partie="vps" data-classe="AUTO" data-g="1">
   <div class="t-h">
     <span class="marque" title="Deploye, preuve attendue">»</span>
@@ -842,6 +827,21 @@
   <p class="detail">Corrige un defaut plus grave que celui vise : la garde que tout le monde croyait posee n'existait pas.</p>
   <p class="preuve"><b>Preuve</b> — Sur l'artefact servi : fond-note 0 → 1, « mesure absente du manifeste » 0 → 1, temoin impossible 0. ng build NG_EXIT=0.</p><p class="attendue"><b>Preuve attendue</b> — La note doit rester visible au prochain passage d'audit qui l'ecrit.</p>
   <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g1" data-etat="FAIT" data-partie="vps" data-classe="AUTO" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">V11</span>
+    <span class="fiche">VPS-013</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">32 j</span>
+    
+  </div>
+  <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
+  <p class="detail">vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.</p>
+  <p class="preuve"><b>Preuve</b> — Trois unites systemd derivees du gabarit vizyo-auth-backup, exercees une fois chacune : 3 succes. CONFRONTEES A LA BASE VIVANTE — vizyo_manager 8 tables en base = 8 CREATE TABLE dans le dump ; vizyo_texto 47 lignes allowlist_entries en base = 47 dans le dump ; sms 9 CREATE TABLE. Archives en 600, dossiers en 700. Minuteries ACTIVES, prochaines echeances 04:30 / 04:40 / 04:50 UTC, Persistent=true. Les trois unites portent deja ExecStart=/bin/bash (constat VPS-015) : le declenchement ne depend pas du bit d execution.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-FAIT g1" data-etat="FAIT" data-partie="vps" data-classe="AUTO" data-g="1">
   <div class="t-h">

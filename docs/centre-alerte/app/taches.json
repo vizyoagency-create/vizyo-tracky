@@ -199,8 +199,11 @@
       "detail": "Ni try/catch ni delai d'expiration : le rejet de transport devient un 500 la ou une dependance injoignable est un 503.",
       "classe": "A_CODER",
       "gravite": 2,
-      "etat": "OUVERT",
-      "depuis": "2026-09-04"
+      "etat": "COMMITE",
+      "depuis": "2026-09-04",
+      "commit": "c80632ba",
+      "preuve": "auth-client 16/16, typecheck 3/3, smoke-boot DI 5/5. DEUX mutations : retrait du delai -> 1 echec, remontee nue du rejet -> 4 echecs. Le jumeau verifyLoginCode passe par le meme chemin borne.",
+      "preuveAttendue": "Au prochain rejet de transport EN PRODUCTION : la ligne doit porter statusCode 503 (et non 500), sortir en ERROR (et non CRITICAL), nommer Vizyo Auth et la consequence, ET conserver le motif technique en fin de phrase. Si le motif disparait, on a nettoye l ecran."
     },
     {
       "id": "T12",
@@ -469,9 +472,11 @@
       "detail": "vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.",
       "classe": "AUTO",
       "gravite": 1,
-      "etat": "OUVERT",
+      "etat": "FAIT",
       "depuis": "2026-08-05",
-      "phare": true
+      "phare": true,
+      "faitLe": "2026-09-06",
+      "preuve": "Trois unites systemd derivees du gabarit vizyo-auth-backup, exercees une fois chacune : 3 succes. CONFRONTEES A LA BASE VIVANTE — vizyo_manager 8 tables en base = 8 CREATE TABLE dans le dump ; vizyo_texto 47 lignes allowlist_entries en base = 47 dans le dump ; sms 9 CREATE TABLE. Archives en 600, dossiers en 700. Minuteries ACTIVES, prochaines echeances 04:30 / 04:40 / 04:50 UTC, Persistent=true. Les trois unites portent deja ExecStart=/bin/bash (constat VPS-015) : le declenchement ne depend pas du bit d execution."
     },
     {
       "id": "V12",
