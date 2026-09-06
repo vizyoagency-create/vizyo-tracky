@@ -13,7 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2, Crosshair } from 'lucide-angular';
+import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2, Crosshair, ChevronDown } from 'lucide-angular';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { SpeedingSegmentDto, TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
 import { excesDuTrajet } from '@vizyo/tracky-shared';
@@ -134,11 +134,27 @@ interface RecitTrajet {
                   }
                 </div>
                 @if (faits().length) { <p class="tr-as-l2">{{ faits().join(' · ') }}</p> }
-                @if (estimations().length) { <p class="tr-as-l3">{{ estimations().join(' · ') }}</p> }
+                <!-- ⚠️ LES ESTIMATIONS SE REPLIENT, PAS LES FAITS. « 1 arrêt », « 3 à-coups »
+                     décrivent ce qui EST arrivé ; les litres, le CO₂ et la fiabilité GPS sont
+                     des estimations qu'on va chercher. Sur 375 px, ces deux lignes coûtaient
+                     50 px à une carte qui n'en avait que 180. -->
+                @if (estimations().length) {
+                  @if (estRepliee('faits')) {
+                    <button type="button" class="tr-plus" (click)="basculerSectionModale('faits')"
+                            aria-expanded="false" trackClick="replay-voir-estimations">
+                      <lucide-icon [img]="ChevronDownIcon" [size]="12"></lucide-icon>
+                      Consommation, CO₂ et fiabilité
+                    </button>
+                  } @else {
+                    <p class="tr-as-l3">{{ estimations().join(' · ') }}</p>
+                  }
+                }
                 <!-- L'écart entre le trajet et son analyse est DIT, pas masqué : les deux
                      comptent des positions différentes, et un lecteur qui voit 180 km
                      ici et 150 km dans le récit doit savoir pourquoi. -->
-                @if (ecartAnalyse(); as e) { <p class="tr-as-ecart">{{ e }}</p> }
+                @if (ecartAnalyse(); as e) {
+                  @if (!estRepliee('faits')) { <p class="tr-as-ecart">{{ e }}</p> }
+                }
               }
               <!-- Bandeau driver + note : visibles si presents OU si role autorise. -->
               <div class="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -212,7 +228,7 @@ interface RecitTrajet {
                  barre de lecture (heure, vitesse, frise) sont incompressibles, et un
                  plancher de carte trop haut poussait la barre hors de l'ecran sur les
                  petits telephones — la commande principale devenait inatteignable. -->
-            <div class="relative flex-1 flex flex-col min-h-[180px] sm:min-h-[280px]">
+            <div class="relative flex-1 flex flex-col min-h-[260px] sm:min-h-[280px]">
               <div #mapContainer class="flex-1"></div>
               <!-- ══ LA VITESSE, SUR LA CARTE ══════════════════════════════════════════
                    Elle existait déjà, mais SOUS la carte, en petit, sous la frise — loin
@@ -255,12 +271,20 @@ interface RecitTrajet {
                 <div class="tr-aside-scroll">
                   @if (recit(); as r) {
                     <section class="tr-recit">
+                      <!-- ⚠️ AU DOIGT, LE RÉCIT NAÎT REPLIÉ, et le bouton porte alors le
+                           repli plutôt que le « Lire la suite » : deux lignes d'extrait
+                           coûtaient 110 px à une carte qui n'en avait que 180, pour un texte
+                           que ce même bouton invitait déjà à déplier. Sur écran large rien
+                           ne change — l'extrait reste visible d'emblée. -->
                       <button type="button" class="tr-recit-b"
-                              (click)="basculerRecit()"
-                              [attr.aria-expanded]="recitOuvert()">
+                              (click)="estRepliee('recit') ? basculerSectionModale('recit') : basculerRecit()"
+                              [attr.aria-expanded]="!estRepliee('recit') && recitOuvert()">
                         <span class="tr-recit-titre">Le récit de ce trajet</span>
-                        <span class="tr-recit-plus">{{ recitOuvert() ? 'Réduire' : 'Lire la suite' }}</span>
+                        <span class="tr-recit-plus">
+                          {{ estRepliee('recit') ? 'Lire' : (recitOuvert() ? 'Réduire' : 'Lire la suite') }}
+                        </span>
                       </button>
+                      @if (!estRepliee('recit')) {
                       @if (r.perime) {
                         <p class="tr-recit-perime">
                           Récit écrit AVANT le dernier recalcul des chiffres : il décrit le trajet
@@ -279,15 +303,29 @@ interface RecitTrajet {
                         }
                         @if (r.fiabilite) { <p class="tr-recit-fia">{{ r.fiabilite }}</p> }
                       }
+                      }
                     </section>
                   }
 
                   @if (evenements().length) {
-                    <h3 class="tr-aside-titre">
+                    <!-- ══ L'ÉVENTAIL DES ARRÊTS ET DES EXCÈS ═══════════════════════════
+                         OUVERT par défaut, même au doigt : c'est la liste qu'on touche pour
+                         se déplacer dans le trajet — la replier d'office reviendrait à
+                         cacher la commande principale. Mais elle se replie, parce qu'un
+                         trajet à sept événements poussait la barre de lecture hors de
+                         l'écran. Le compte reste visible dans l'en-tête : on sait ce qu'on
+                         rouvre sans avoir à le rouvrir. -->
+                    <button type="button" class="tr-aside-titre tr-aside-titre--b"
+                            (click)="basculerSectionModale('evenements')"
+                            [attr.aria-expanded]="!estRepliee('evenements')"
+                            aria-controls="tr-sec-evenements"
+                            trackClick="replay-replier-evenements">
+                      <lucide-icon [img]="ChevronDownIcon" [size]="14" class="tr-chev"
+                                   [class.tr-chev--ferme]="estRepliee('evenements')"></lucide-icon>
                       Ce qui s'est passé
                       <span>{{ evenements().length }} événement{{ evenements().length > 1 ? 's' : '' }}</span>
-                    </h3>
-                    <ul class="tr-evs">
+                    </button>
+                    <ul class="tr-evs" id="tr-sec-evenements" [class.tr-sec--repliee]="estRepliee('evenements')">
                       @for (ev of evenements(); track ev.at) {
                         <li>
                           <button type="button" class="tr-ev" [attr.data-type]="ev.type" (click)="allerA(ev)">
@@ -447,6 +485,25 @@ interface RecitTrajet {
     .tr-suivre:hover { border-color: var(--tracky-light, #10E0A0); }
     .tr-suivre lucide-icon { color: var(--tracky-light, #10E0A0); }
 
+    /* ─── Ce qui se replie dans la modale ─── */
+    /* ⚠️ Borné à l'écran, comme sur la page Rapports : à l'impression une section repliée
+       doit sortir quand même, avec sa mise en page d'origine. */
+    @media screen {
+      .tr-sec--repliee { display: none !important; }
+    }
+    .tr-chev { color: var(--tracky-light, #10E0A0); flex-shrink: 0; transition: transform .2s; }
+    .tr-chev--ferme { transform: rotate(-90deg); }
+    /* Le repli des estimations : un lien discret, pas une pastille — il ne doit pas
+       concurrencer les deux chips de note et d'excès juste au-dessus. */
+    .tr-plus {
+      display: inline-flex; align-items: center; gap: 5px;
+      min-height: 44px; padding: 0; margin: 0;
+      background: none; border: none; cursor: pointer;
+      font-size: 11.5px; font-weight: 700; color: var(--fg-tertiary);
+    }
+    .tr-plus:hover { color: var(--fg-secondary); }
+    .tr-plus lucide-icon { color: var(--tracky-light, #10E0A0); transform: rotate(-90deg); }
+
     /* Légende carte */
     .tr-legend {
       position: absolute; left: 10px; bottom: 10px; z-index: 5;
@@ -515,6 +572,16 @@ interface RecitTrajet {
       font-size: 13px; font-weight: 700; color: var(--fg-primary);
     }
     .tr-aside-titre span { font-size: 11px; font-weight: 600; color: var(--fg-secondary); }
+    /* ⚠️ POSÉ APRÈS SA BASE, jamais avant. L'élément porte LES DEUX classes, et deux
+       sélecteurs d'une classe ont la même spécificité : seul l'ordre tranche. Déclarée
+       plus haut, cette règle était strictement inerte — le piège que ce dépôt a déjà payé
+       trois fois, et que cascade-css.spec.ts tient désormais sur la page Rapports.
+       L'en-tête devient un bouton : même dessin, plus un chevron et 44 px au doigt. */
+    .tr-aside-titre--b {
+      width: 100%; min-height: 44px; cursor: pointer;
+      background: none; border: none; text-align: left;
+      align-items: center;
+    }
     .tr-evs { list-style: none; margin: 0; padding: 0 10px; display: grid; gap: 4px; }
     .tr-ev {
       width: 100%; min-height: 44px;
@@ -618,6 +685,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   /** Exposé au template : la légende doit porter la couleur RÉELLE des couches de carte. */
   protected readonly LinkIcon = Link2;
   protected readonly CrosshairIcon = Crosshair;
+  protected readonly ChevronDownIcon = ChevronDown;
   protected readonly couleursCarte = COULEURS_CARTE;
   /**
    * Les chiffres de l'en-tête passent par les MÊMES fonctions que le tableau. Une
@@ -647,6 +715,55 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
    * manipule la carte lui-même (cf. `suivreSiBesoin` et l'écoute posée à la création).
    */
   protected readonly suiviActif = signal(true);
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * CE QUI SE REPLIE DANS LA MODALE — LA CARTE D'ABORD
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Mesuré sur la production, à 375 × 812 : la modale occupe 726 px, et la CARTE n'en a que
+   * 180 — un quart. L'en-tête en prend 200 à lui seul (titre, deux pastilles, les faits,
+   * les estimations, la note), le récit 110, et « Ce qui s'est passé » se retrouvait COUPÉ
+   * en bas : la liste des excès, c'est-à-dire ce qu'on vient cliquer, était hors d'atteinte.
+   *
+   * Sur un replay, la carte EST le sujet. Tout le reste l'accompagne.
+   *
+   * ── CE QUI SE REPLIE, ET DANS QUEL ÉTAT IL NAÎT ──────────────────────────────────────
+   *
+   *   `faits`       — litres, CO₂, fiabilité GPS, écart d'analyse : replié au doigt. Ce
+   *                   sont des chiffres qu'on va CHERCHER, jamais qu'on surveille.
+   *   `recit`       — replié au doigt : deux lignes d'extrait coûtaient 110 px pour un
+   *                   texte que le bouton « Lire la suite » invitait déjà à déplier.
+   *   `evenements`  — OUVERT par défaut, mais repliable : c'est la liste des arrêts et des
+   *                   excès, celle qu'on touche pour se déplacer dans le trajet. La replier
+   *                   d'office reviendrait à cacher la commande principale.
+   *
+   * ⚠️ Sur écran large, RIEN n'est replié : la place ne manque pas, et fermer des sections
+   * d'office y serait une perte sèche.
+   */
+  private readonly SECTIONS_MODALE = ['faits', 'recit', 'evenements'] as const;
+  private readonly REPLIS_AU_DOIGT = ['faits', 'recit'] as const;
+
+  protected readonly sectionsRepliees = signal<ReadonlySet<string>>(
+    typeof matchMedia === 'function' && matchMedia('(max-width: 768px)').matches
+      ? new Set(this.REPLIS_AU_DOIGT)
+      : new Set<string>(),
+  );
+
+  protected estRepliee(cle: string): boolean {
+    return this.sectionsRepliees().has(cle);
+  }
+
+  protected basculerSectionModale(cle: string): void {
+    if (!(this.SECTIONS_MODALE as readonly string[]).includes(cle)) return;
+    const suivant = new Set(this.sectionsRepliees());
+    if (suivant.has(cle)) suivant.delete(cle);
+    else suivant.add(cle);
+    this.sectionsRepliees.set(suivant);
+    // La carte change de taille quand une section s'ouvre ou se ferme : sans ce redimensionnement,
+    // MapLibre garde son ancien canvas et rend une bande grise sur la hauteur gagnée.
+    queueMicrotask(() => this.map?.resize());
+  }
   protected readonly speed = signal(1);
   protected readonly recitOuvert = signal(false);
 
