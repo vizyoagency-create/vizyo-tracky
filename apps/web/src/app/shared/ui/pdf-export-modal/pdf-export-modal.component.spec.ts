@@ -26,11 +26,22 @@ type Interne = Record<string, any>;
 const interne = (c: PdfExportModalComponent): Interne => c as unknown as Interne;
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-const vehicule = (id: string, plate: string) => ({ id, plate }) as never;
+const vehicule = (id: string, plate: string, group?: { id: string; name: string }) =>
+  ({ id, plate, group }) as never;
 
-/** Douze véhicules : le plafond « top 10 » n'est alors pas rogné par le périmètre. */
+/**
+ * Douze véhicules : le plafond « top 10 » n'est alors pas rogné par le périmètre.
+ *
+ * ⚠️ TROIS D'ENTRE EUX APPARTIENNENT À UN GROUPE, et c'est indispensable. Sans appartenance,
+ * choisir « Livraisons Nord » cochait ZÉRO véhicule : le test « choisir un groupe restreint
+ * vraiment le périmètre » passait au vert en vérifiant seulement que la bascule avait eu lieu,
+ * sur une sélection vide que le bouton d'export aurait refusée.
+ */
+const G1 = { id: 'g1', name: 'Livraisons Nord' };
+const G2 = { id: 'g2', name: 'Atelier' };
 const FLOTTE = Array.from({ length: 12 }, (_, i) =>
-  vehicule('v' + (i + 1), 'AA-' + String(101 + i) + '-BB'));
+  vehicule('v' + (i + 1), 'AA-' + String(101 + i) + '-BB',
+    i < 3 ? G1 : i < 5 ? G2 : undefined));
 
 const SOHAIB = { nom: 'Sohaib Hamanni', trajets: 'les trajets de Sohaib Hamanni' };
 const SANS_CONDUCTEUR = { nom: 'Sans conducteur', trajets: 'les trajets sans conducteur' };
@@ -322,6 +333,9 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
 
     expect(modale['scope']()).toBe('selected');
     expect(modale['groupeChoisi']()).toBe('Livraisons Nord');
+    // ⚠️ Et il coche VRAIMENT les véhicules du groupe : sans cette ligne, une sélection vide
+    // passerait pour une restriction réussie.
+    expect(modale['selectedIds']().size).toBe(3);
   });
 
   it('revenir à « Tous les groupes » rouvre le périmètre à toute la flotte', () => {
@@ -404,6 +418,55 @@ describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => 
     fixture.detectChanges();
 
     expect(modale['fileName']()).toBe('tracky-rapport-2026-07-01_2026-09-06.pdf');
+  });
+
+  /**
+   * ── LE GROUPE SE LIT DANS LA PHRASE, PAS SEULEMENT DANS LE MENU ───────────────────────
+   *
+   * Relevé en production le 2026-09-06 sur « cdef31 », groupe « CHAUFFEURS » :
+   *
+   *   « Vous allez recevoir un PDF …, pour FY-038-TS, HD-292-SH, HD-584-BF, avec … »
+   *
+   * Le mot qu'on venait de choisir n'apparaissait nulle part, et au-delà de trois véhicules
+   * la phrase se réduisait à « pour 5 véhicules » — qui n'identifie rien du tout.
+   */
+  it('lʼaperçu nomme le GROUPE choisi, pas seulement ses plaques', () => {
+    ouvrirDepuisEcran();
+    modale['onGroupChange']({ target: { value: 'g1' } } as unknown as Event);
+    fixture.detectChanges();
+
+    const phrase: string = modale['previewSentence']();
+    expect(phrase).toContain('les véhicules du groupe Livraisons Nord');
+    // Les plaques restent : le nom dit l'intention, les plaques disent le contenu.
+    expect(phrase).toContain('AA-101-BB');
+  });
+
+  it('décocher un véhicule retire le nom du groupe — la phrase ne le décrit plus', () => {
+    // ⚠️ « CHAUFFEURS sauf celui qui était au garage » est un geste normal. Continuer à
+    // appeler ça « le groupe CHAUFFEURS » étiquetterait le document d'un périmètre qu'il n'a
+    // pas ; on retombe sur les plaques, qui, elles, sont exactes.
+    ouvrirDepuisEcran();
+    modale['onGroupChange']({ target: { value: 'g1' } } as unknown as Event);
+    modale['onToggleVehicle']('v1');
+    fixture.detectChanges();
+
+    const phrase: string = modale['previewSentence']();
+    expect(phrase).not.toContain('groupe Livraisons Nord');
+    expect(phrase).toContain('AA-102-BB');
+  });
+
+  it('groupe ET conducteur : le conducteur mène, le groupe précise le véhicule', () => {
+    // La branche « filtre conducteur » de `scopePhrase` doit lire le MÊME périmètre que
+    // l'autre. Deux écritures séparées finiraient par nommer le groupe d'un côté et les
+    // plaques de l'autre, pour un seul et même document.
+    ouvrirDepuisEcran();
+    modale['onGroupChange']({ target: { value: 'g2' } } as unknown as Event);
+    modale['onDriverChange']({ target: { value: D1 } } as unknown as Event);
+    fixture.detectChanges();
+
+    const phrase: string = modale['previewSentence']();
+    expect(phrase).toContain('portant uniquement sur les trajets de Sohaib Hamanni');
+    expect(phrase).toContain('ceux faits avec les véhicules du groupe Atelier');
   });
 });
 

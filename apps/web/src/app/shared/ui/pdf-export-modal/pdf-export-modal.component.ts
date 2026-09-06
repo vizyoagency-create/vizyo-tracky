@@ -1031,6 +1031,48 @@ export class PdfExportModalComponent {
       : { nom: 'Conducteur', trajets: 'les trajets de ce conducteur' };
   });
 
+  /**
+   * ── LE GROUPE QUE LA PHRASE A LE DROIT DE NOMMER ──────────────────────────────────────
+   *
+   * Choisir « CHAUFFEURS » cochait bien ses trois véhicules, mais l'aperçu n'en disait rien :
+   *
+   *   « Vous allez recevoir un PDF …, pour FY-038-TS, HD-292-SH, HD-584-BF, avec … »
+   *
+   * Trois plaques à la place du mot qu'on venait de choisir. Le lecteur doit reconstituer
+   * lui-même que ce sont bien « les chauffeurs » — et sur un groupe de plus de trois
+   * véhicules la phrase disait seulement « pour 5 véhicules », ce qui n'identifie rien.
+   *
+   * ⚠️ NOMMÉ SEULEMENT TANT QUE C'EST VRAI. Décocher un véhicule après avoir choisi un groupe
+   * est un geste normal (« CHAUFFEURS, sauf celui qui était au garage ») : la sélection ne
+   * décrit alors plus le groupe, et continuer à l'appeler par son nom serait un document
+   * étiqueté d'un périmètre qu'il n'a pas. On retombe sur les plaques, qui, elles, sont
+   * exactes.
+   */
+  protected readonly groupeAAnnoncer = computed<string | null>(() => {
+    const nom = this.groupeChoisi();
+    if (!nom || this.scope() !== 'selected') return null;
+    const duGroupe = this.vehicles().filter((v) => v.group?.id === this.groupId()).map((v) => v.id);
+    const choisis = this.selectedIds();
+    if (duGroupe.length === 0 || duGroupe.length !== choisis.size) return null;
+    return duGroupe.every((id) => choisis.has(id)) ? nom : null;
+  });
+
+  /**
+   * Le périmètre véhicule tel qu'il doit se LIRE : le nom du groupe quand il en est un, les
+   * plaques sinon. Une seule écriture, parce que les deux branches de `scopePhrase` — avec et
+   * sans filtre conducteur — doivent dire la même chose du même périmètre.
+   */
+  private libellePerimetreVehicule(): string {
+    const plaques = this.plateSummary(Array.from(this.selectedIds()));
+    const groupe = this.groupeAAnnoncer();
+    if (!groupe) return plaques;
+    // « les véhicules du groupe … » plutôt que « le groupe … » : la même chaîne sert aux DEUX
+    // branches, dont « … ceux faits avec … », où « faits avec le groupe CHAUFFEURS » ne se dit
+    // pas. Une seule formulation qui se lit juste des deux côtés vaut mieux que deux variantes.
+    const tete = 'les véhicules du groupe ' + groupe;
+    return plaques ? tete + ' (' + plaques + ')' : tete;
+  }
+
   /** Le libellé du groupe choisi ICI. */
   protected readonly groupeChoisi = computed<string | null>(() => {
     const id = this.groupId();
@@ -1327,7 +1369,7 @@ export class PdfExportModalComponent {
    */
   protected readonly scopePhrase = computed(() => {
     const conducteur = this.conducteurAffiche();
-    const label = this.scope() === 'all' ? null : this.plateSummary(Array.from(this.selectedIds()));
+    const label = this.scope() === 'all' ? null : this.libellePerimetreVehicule();
     const n = this.vehicles().length;
 
     /**
