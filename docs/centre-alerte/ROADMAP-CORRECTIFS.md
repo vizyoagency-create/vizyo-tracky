@@ -538,10 +538,19 @@ ne peut pas se tromper de façon mesurable sur une table qui n'a aucune page à 
 
 ## 🗓️ À DÉPLOYER — écrit, testé, jamais mis en ligne
 
-| Quoi | État | Ce qui le prouvera |
+*Les deux entrées de cette section ont été **déployées le 2026-09-06 à 05 h 30 UTC**. Conservées avec
+leur preuve : c'est ce qui distingue « livré » de « livré ET vérifié ».*
+
+| Quoi | État | Preuve |
 |---|---|---|
-| **Sentinelle « boîtiers muets » (VPS-038)** — une ligne par société au centre d'alerte quand des boîtiers rattachés se taisent > 3 j | Commit `fb0642f8`, fusionné dans `main`. **48 tests verts**, mutation du seuil → 1 échec exactement. **Non déployée.** | Au premier passage en production : **2 lignes** (`2ad69ac1…` 8 boîtiers, `88627f81…` 2), **pas 10** — et les 3 boîtiers sans véhicule écartés du déclenchement mais comptés dans le contexte |
-| **VPS-M59** — `previsions.chargeDeFond.note` s'affiche, **et la garde manquante du gabarit `/admin/vps`** | Corrigé le **04/09**, `tsc` vert, `ng build` vert (14,1 s), présence vérifiée dans le bundle `chunk-K4HBXQ56.js`. **`tracky-web` n'a jamais été redéployé.** | Ouvrir `/admin/vps` → carte « Prévisions ». Si le bloc « Charge de fond » **n'est pas** suivi d'un second encadré portant le texte de `note`, **le déploiement n'a pas eu lieu** — et il ne faut pas conclure que le correctif ne marche pas |
+| ✅ **Sentinelle « boîtiers muets » (VPS-038)** — une ligne par société quand des boîtiers rattachés se taisent > 3 j | **DÉPLOYÉE** (`fb0642f8`). 48 tests verts, mutation du seuil → 1 échec exactement. **Smoke-boot** avant bascule : *« Nest application successfully started »*. | `tracky-api` : `restarts=0`, `healthy`, `/api/health` base connectée, **port 5023 ouvert**. Sentinelle présente dans le conteneur qui tourne. ⏳ **Elle parlera à la passe de 06:30 UTC** — attendu : **2 lignes** (`2ad69ac1…` 8 boîtiers, `88627f81…` 2), **pas 10** |
+| ✅ **VPS-M59** — `chargeDeFond.note` s'affiche, **et un repli explicite** sur `/admin/vps` | **DÉPLOYÉ** (`9dce59ec`). `ng build` **NG_EXIT=0**. ⚠️ Le cherry-pick de `e803e5f6` conflictait : **`main` portait déjà la garde** — seuls le rendu de la note, la branche `@else` et le style manquaient, écrits avec les **jetons** de `main` et non les hexadécimaux de la branche | Sur l'**artefact servi** : `fond-note` **0 → 1 fichier**, *« mesure absente du manifeste »* **0 → 1**, témoin impossible **0**. `restarts=0` |
+
+> 🔑 **La mesure qui a validé ces deux lignes avait d'abord été fausse.** Un premier contrôle du
+> bundle rendait *« 397 fichiers contiennent la note »* — `grep -rlc` combine deux options
+> contradictoires, et 397 était le **nombre total de fichiers du bundle**. *Un contrôle de
+> déploiement doit porter un témoin impossible ; sans lui, on ne distingue pas « ça a marché » de
+> « mon grep compte autre chose ».*
 
 > 🔴 **VPS-M59 corrige un défaut plus grave que celui qu'il visait, et il faut le dire.** En ouvrant
 > le gabarit, le passage du 04/09 a trouvé que **la garde que tout le monde croyait posée n'existait
