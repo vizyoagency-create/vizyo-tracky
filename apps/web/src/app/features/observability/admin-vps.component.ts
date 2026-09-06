@@ -191,6 +191,34 @@ const STATUT_STYLE: Record<string, string> = {
                     C'est le coût que personne ne planifie.
                   </span>
                 </div>
+
+                <!-- VPS-M59, 11 reports — la note etait ecrite a CHAQUE passage d'audit et
+                     rendue NULLE PART. Ce n'est pas un detail d'affichage : elle porte les
+                     avertissements qui disent COMMENT LIRE les deux chiffres ci-dessus.
+                     processusParMinute est du BRUIT (VPS-M68 : etendue intra-fenetre pouvant
+                     depasser 150 % de la valeur publiee), et l'afficher sans sa note invite a
+                     le comparer d'un jour a l'autre — ce que la note interdit precisement.
+                     ⚠️ AUCUN ACCENT GRAVE DANS CE COMMENTAIRE : il vit dans un template
+                     literal, ou un seul accent grave fermerait la chaine et decapiterait le
+                     composant entier (piege deja paye quatre fois, VPS-M50). -->
+                @if (cf.note) {
+                  <div class="fond fond-note">
+                    <lucide-icon [img]="CircleAlert" [size]="14" />
+                    <span>{{ cf.note }}</span>
+                  </div>
+                }
+              } @else {
+                <!-- Un silence ne doit pas se lire comme un zero : la garde ci-dessus empeche
+                     l'ecran de tomber, mais sans cette branche elle le rendrait MUET, ce qui
+                     se confond avec « aucune charge de fond ». -->
+                <div class="fond fond-note">
+                  <lucide-icon [img]="CircleAlert" [size]="14" />
+                  <span>
+                    <b>Charge de fond — mesure absente du manifeste.</b> Ce n'est PAS « aucune
+                    charge de fond » : c'est un passage d'audit qui n'a pas écrit la clé
+                    <code>previsions.chargeDeFond</code>. À signaler à l'agent d'audit.
+                  </span>
+                </div>
               }
             </div>
           }
@@ -378,6 +406,14 @@ const STATUT_STYLE: Record<string, string> = {
       .small { font-size: 11.5px; }
       .fond { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 11px 13px; border-radius: 11px; background: var(--bg-tertiary); font-size: 12.5px; color: var(--fg-secondary); line-height: 1.55; }
       .fond lucide-icon { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+      /* VPS-M59 : la note dit COMMENT LIRE les chiffres du bloc au-dessus. Elle est longue par
+         nature (elle porte les avertissements de VPS-M68 et VPS-M78) : on lui laisse sa place,
+         et on la distingue visuellement de la ligne de mesure.
+         ⚠️ Jetons, pas hexadecimaux : la regle voisine .fond utilise deja var(--warning), et le
+         motif color-mix est celui des regles .mode.real et .op.c-poste de ce meme fichier. */
+      .fond-note { margin-top: 8px; background: color-mix(in srgb, var(--warning) 7%, var(--bg-tertiary)); border-left: 3px solid var(--warning); font-size: 12px; }
+      .fond-note lucide-icon { color: var(--warning); }
+      .fond-note code { font-size: 11.5px; padding: 1px 5px; border-radius: 5px; background: var(--bg-secondary); }
 
       /* ── Ordonnancement ── */
       .ordo { display: flex; flex-direction: column; gap: 8px; }
