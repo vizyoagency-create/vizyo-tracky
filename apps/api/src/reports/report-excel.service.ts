@@ -545,7 +545,7 @@ export class ReportExcelService {
      * Σ km ÷ Σ temps roulant, exactement ce que calcule la synthèse du PDF. Les deux
      * documents impriment donc le même nombre, à la décimale près.
      */
-    const kmTotal = triees.reduce((n, l) => n + l.kpis.totalKm, 0);
+    const kmTotal = triees.reduce((n, l) => n + l.kpis.totalKmBrut, 0);
     const roulantTotal = triees.reduce((n, l) => n + l.kpis.totalMovingSeconds, 0);
     const dureeTotale = triees.reduce((n, l) => n + l.kpis.totalDurationSeconds, 0);
     const total = ws.addRow([
@@ -626,6 +626,7 @@ export class ReportExcelService {
     return {
       tripCount: trips.length,
       totalKm: round1(totalKm),
+      totalKmBrut: totalKm,
       totalDurationSeconds,
       totalMovingSeconds,
       speedingCount: exces.exces,
@@ -1384,6 +1385,16 @@ interface Kpis {
   tripCount: number;
   totalKm: number;
   totalDurationSeconds: number;
+  /**
+   * La distance BRUTE, non arrondie — pour les totaux qui somment plusieurs véhicules.
+   *
+   * ⚠️ `totalKm` est arrondi au dixième POUR L'AFFICHAGE d'une ligne. Additionner sept lignes
+   * arrondies donnait 10 988,1 km là où la feuille « Trajets » du même classeur affichait
+   * 10 988,2 — relevé en production le 2026-09-07. Deux totaux de kilomètres qui se
+   * contredisent dans un seul fichier, et le lecteur n'a aucun moyen de savoir lequel croire.
+   * On somme le brut, on n'arrondit qu'une fois : la convention du reste du fichier.
+   */
+  totalKmBrut: number;
   /** Le dénominateur de `avgSpeedKmh` — cumulable, contrairement à une moyenne. */
   totalMovingSeconds: number;
   /** Excès ÉTABLIS (cf. `exces-portee.ts`) : segments, trajets concernés, pire dépassement. */

@@ -192,4 +192,30 @@ describe('Classeur — les excès figurent partout où ils ont un sens', () => {
     const wbSansMethode = await classeur(banc());
     expect(wbSansMethode.getWorksheet('Trajets')!.rowCount).toBeGreaterThan(1);
   });
+
+  /**
+   * ⚠️ DEUX TOTAUX DE KILOMÈTRES DANS UN MÊME CLASSEUR DOIVENT TOMBER PAREIL.
+   *
+   * Relevé en production le 2026-09-07 : la feuille « Synthèse par véhicule » annonçait
+   * 10 988,1 km et la feuille « Trajets » 10 988,2, pour la même société et la même période.
+   * La première additionnait sept lignes DÉJÀ ARRONDIES au dixième, la seconde sommait le
+   * brut. Un lecteur n'a aucun moyen de savoir lequel croire, et la feuille « Par conducteur
+   * ou groupe » l'invite justement à faire l'addition.
+   */
+  it('le TOTAL des kilomètres est le même sur toutes les feuilles', async () => {
+    const parVehicule = wb.getWorksheet('Synthèse par véhicule');
+    const trajets = wb.getWorksheet('Trajets')!;
+    const entete = valeurs(trajets, 1) as string[];
+    const kmTrajets = valeurs(trajets, trajets.rowCount)[entete.indexOf('Distance (km)')] as number;
+
+    // Le classeur d'UN véhicule n'a pas la feuille de parc : on compare alors au bloc KPI.
+    const ws = wb.getWorksheet('Synthèse')!;
+    const lignes: Array<[unknown, unknown]> = [];
+    ws.eachRow((row) => lignes.push([row.getCell(1).value, row.getCell(2).value]));
+    const kmSynthese = lignes.find(([l]) => l === 'Distance totale (km)')?.[1] as number;
+
+    expect(parVehicule).toBeUndefined();
+    expect(kmSynthese).toBeCloseTo(kmTrajets, 6);
+  });
 });
+
