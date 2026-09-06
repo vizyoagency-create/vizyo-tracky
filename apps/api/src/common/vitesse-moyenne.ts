@@ -155,3 +155,29 @@ export function vitesseMoyenneTrajet(t: {
   const denominateur = roulantIncomplet ? Math.max(movingSec, durationSec) : movingSec;
   return vitesseMoyenneRoulante(distanceKm, denominateur);
 }
+
+/**
+ * La vitesse moyenne d'un ENSEMBLE de trajets — une flotte, un véhicule, un conducteur.
+ *
+ * ⚠️ Σ kilomètres ÷ Σ temps roulant, JAMAIS la moyenne des moyennes. Un trajet de 400 m à
+ * 8 km/h pèserait autant qu'un trajet de 180 km à 110 : c'est le défaut que le PDF et l'Excel
+ * avaient déjà payé une fois (45,1 contre 39,3 pour le même véhicule et la même période).
+ *
+ * ⚠️ ET LE MÊME REPLI QUE POUR UN TRAJET SEUL : quand aucun trajet de l'ensemble n'a de temps
+ * roulant connu — données d'avant la reprise, positions purgées — on divise par la durée
+ * totale. Sans ce repli, la fiche d'un véhicule ancien afficherait 0 km/h sous des centaines
+ * de kilomètres bien réels.
+ *
+ * Le résultat est ARRONDI À L'ENTIER : c'est la forme attendue par les tableaux du PDF et de
+ * l'écran, et une décimale sur une moyenne de flotte n'apporte rien.
+ */
+export function vitesseMoyenneAgregee(t: {
+  distanceKm: number;
+  durationSeconds: number;
+  movingSeconds: number;
+}): number {
+  const denominateur = t.movingSeconds > 0 ? t.movingSeconds : t.durationSeconds;
+  if (!(denominateur > 0) || !(t.distanceKm > 0)) return 0;
+  return Math.round(t.distanceKm / (denominateur / 3600));
+}
+

@@ -1,5 +1,6 @@
 import {
   SEUIL_ARRET_KMH,
+  vitesseMoyenneAgregee,
   TROU_GPS_SEC,
   apportTempsRoulantSec,
   tempsRoulantSec,
@@ -186,6 +187,35 @@ describe('TripSegmenterService — la vitesse moyenne ne dépend plus de la cade
     // Avec elle, la moyenne reste sous la pointe — la seule borne dont on soit sûr.
     expect(t.avgSpeed).toBeLessThanOrEqual(t.maxSpeed);
     expect(t.avgSpeed).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * ══ UN ENSEMBLE DE TRAJETS — LA MÊME DIVISION, JAMAIS UNE MOYENNE DE MOYENNES ═══════════
+ *
+ * C'est la fonction que le PDF (synthèse, top véhicules, récapitulatif par conducteur) et
+ * l'Excel appellent tous les deux. Tant qu'elle était recopiée de part et d'autre, le même
+ * véhicule sortait à 45,1 km/h dans l'un et 39,3 dans l'autre.
+ */
+describe('Vitesse moyenne agrégée — flotte, véhicule, conducteur', () => {
+  it('Σ km ÷ Σ temps roulant, et pas la moyenne des moyennes', () => {
+    // Deux trajets : 180 km à 90 km/h (2 h roulantes) et 0,4 km à 8 km/h (3 min roulantes).
+    // La moyenne des moyennes rendrait 49 ; la bonne réponse est 89.
+    const ensemble = { distanceKm: 180.4, durationSeconds: 9000, movingSeconds: 7380 };
+
+    expect(vitesseMoyenneAgregee(ensemble)).toBe(88);
+    expect(vitesseMoyenneAgregee(ensemble)).not.toBe(Math.round((90 + 8) / 2));
+  });
+
+  it('sans temps roulant connu, la durée totale — jamais zéro', () => {
+    // ⚠️ Un cinquième de la base n'a ni analyse ni positions : afficher 0 km/h sous des
+    // centaines de kilomètres bien réels ferait douter des chiffres voisins, qui sont justes.
+    expect(vitesseMoyenneAgregee({ distanceKm: 100, durationSeconds: 7200, movingSeconds: 0 })).toBe(50);
+  });
+
+  it('ni distance ni durée : rien à diviser', () => {
+    expect(vitesseMoyenneAgregee({ distanceKm: 0, durationSeconds: 7200, movingSeconds: 3600 })).toBe(0);
+    expect(vitesseMoyenneAgregee({ distanceKm: 10, durationSeconds: 0, movingSeconds: 0 })).toBe(0);
   });
 });
 

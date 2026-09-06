@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { resolveDriverScope } from '../common/driver-scope';
+import { vitesseMoyenneAgregee } from '../common/vitesse-moyenne';
 
 /**
  * V1.5 (Sprint L) — Agregation KPI pour les rapports & export.
@@ -644,7 +645,11 @@ export class ReportsStatsService {
           where: tripWhere,
           // `durationSeconds` : indispensable au récapitulatif par véhicule de l'écran, qui
           // devait sinon l'additionner lui-même sur la seule page chargée.
-          _sum: { distanceKm: true, durationSeconds: true },
+          // `movingSeconds` : le dénominateur des vitesses moyennes par véhicule et par
+          // imputation. Sans lui, ces deux vues divisaient par la durée TOTALE pendant que la
+          // synthèse et chaque ligne de trajet divisaient par le temps roulant — trois
+          // chiffres dans un même PDF.
+          _sum: { distanceKm: true, durationSeconds: true, movingSeconds: true },
           _count: { _all: true },
         }),
         this.prisma.alert.groupBy({
@@ -777,15 +782,15 @@ export class ReportsStatsService {
       cleImputationTrajet(driverId, groupeParVehicule.get(vehicleId)?.id ?? null);
 
     // Map perVehicle pour calcul carburant + top.
-    const perVehicle = new Map<string, { distanceKm: number; tripCount: number; durationSeconds: number }>();
+    const perVehicle = new Map<string, { distanceKm: number; tripCount: number; durationSeconds: number; movingSeconds: number }>();
     /** Agrégat par clé d'imputation, alimenté par la MÊME passe que `perVehicle`. */
     const parAttribution = new Map<string, {
       key: string; kind: 'driver' | 'group'; driverId: string | null; groupName: string | null;
-      distanceKm: number; durationSeconds: number; tripCount: number;
+      distanceKm: number; durationSeconds: number; movingSeconds: number; tripCount: number;
       speedingCount: number; speedingTripCount: number; worstOverKmh: number; idleSeconds: number;
     }>();
     /** Les trajets qu'on ne peut imputer à personne : comptés, jamais classés. */
-    const nonAttribue = { tripCount: 0, distanceKm: 0, durationSeconds: 0 };
+    const nonAttribue = { tripCount: 0, distanceKm: 0, durationSeconds: 0, movingSeconds: 0 };
     const ligneAttribution = (driverId: string | null, vehicleId: string) => {
       const key = cleAttribution(driverId, vehicleId);
       if (key === CLE_NON_ATTRIBUE) return null;
@@ -796,7 +801,7 @@ export class ReportsStatsService {
           kind: driverId ? 'driver' : 'group',
           driverId: driverId ?? null,
           groupName: driverId ? null : (groupeParVehicule.get(vehicleId)?.name ?? null),
-          distanceKm: 0, durationSeconds: 0, tripCount: 0,
+          distanceKm: 0, durationSeconds: 0, movingSeconds: 0, tripCount: 0,
           speedingCount: 0, speedingTripCount: 0, worstOverKmh: 0, idleSeconds: 0,
         };
         parAttribution.set(key, a);
@@ -807,25 +812,30 @@ export class ReportsStatsService {
     for (const g of tripsByVehicle) {
       const km = g._sum.distanceKm ?? 0;
       const sec = g._sum.durationSeconds ?? 0;
+      const roulant = g._sum.movingSeconds ?? 0;
       const n = g._count._all;
       // Vue VÉHICULE : on réagrège sur les conducteurs. Le groupBy porte désormais
       // ['vehicleId', 'driverId'] — sans cette somme, un véhicule à deux conducteurs ne
       // rendrait dans `topVehicles` que les kilomètres du dernier groupe lu.
-      const v = perVehicle.get(g.vehicleId) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0 };
+      const v = perVehicle.get(g.vehicleId)
+        ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0, movingSeconds: 0 };
       v.distanceKm += km;
       v.tripCount += n;
       v.durationSeconds += sec;
+      v.movingSeconds += roulant;
       perVehicle.set(g.vehicleId, v);
       // Vue IMPUTATION : même passe, autre clé.
       const a = ligneAttribution(g.driverId ?? null, g.vehicleId);
       if (a) {
         a.distanceKm += km;
         a.durationSeconds += sec;
+        a.movingSeconds += roulant;
         a.tripCount += n;
       } else {
         nonAttribue.tripCount += n;
         nonAttribue.distanceKm += km;
         nonAttribue.durationSeconds += sec;
+        nonAttribue.movingSeconds += roulant;
       }
     }
 
@@ -891,7 +901,7 @@ export class ReportsStatsService {
     let totalCo2Kg = 0;
     const topVehicles: FleetStatsReport['topVehicles'] = [];
     for (const v of vehicles) {
-      const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0 };
+      const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0, movingSeconds: 0 };
       // Conso EFFECTIVE : calibrée (méthode du plein) si mesurée, sinon paramétrée, sinon défaut type.
       const consumptionL100 = (v.calibratedTanks > 0 ? v.calibratedConsumptionL100km : null)
         ?? v.fuelConsumptionL100km
@@ -915,9 +925,7 @@ export class ReportsStatsService {
           estimatedConsumptionL: Math.round(liters * 10) / 10,
           group: v.groups?.[0]?.group ?? null,
           durationHours: Math.round((stat.durationSeconds / 3600) * 10) / 10,
-          avgSpeedKmh: stat.durationSeconds > 0
-            ? Math.round(stat.distanceKm / (stat.durationSeconds / 3600))
-            : 0,
+          avgSpeedKmh: vitesseMoyenneAgregee(stat),
           // Absent de la table = aucun excès établi, et c'est bien zéro : la requête ne
           // rend une ligne que pour les véhicules qui en ont.
           speedingCount: excesParVehiculeMap.get(v.id)?.exces ?? 0,
@@ -1043,11 +1051,9 @@ export class ReportsStatsService {
         tripCount: a.tripCount,
         distanceKm: Math.round(a.distanceKm * 10) / 10,
         durationHours: Math.round((a.durationSeconds / 3600) * 10) / 10,
-        // ⚠️ Kilomètres ÷ heures de conduite, comme `topVehicles` et comme la vitesse
-        // moyenne de flotte — jamais la moyenne des moyennes de trajet.
-        avgSpeedKmh: a.durationSeconds > 0
-          ? Math.round(a.distanceKm / (a.durationSeconds / 3600))
-          : 0,
+        // ⚠️ Kilomètres ÷ TEMPS ROULANT, comme `topVehicles`, comme la vitesse moyenne de
+        // flotte et comme chaque ligne de trajet — jamais la moyenne des moyennes.
+        avgSpeedKmh: vitesseMoyenneAgregee(a),
         speedingCount: a.speedingCount,
         speedingTripCount: a.speedingTripCount,
         worstOverKmh: Math.round(a.worstOverKmh * 10) / 10,
