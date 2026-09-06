@@ -1535,11 +1535,22 @@ export function trajetHorsPerimetreConducteur(
                     <span class="rep-card-stat-value">{{ clampSpeed(trip.avgSpeed) | number:'1.0-0' }} <small>km/h</small></span>
                   </div>
                 </div>
+                <!-- ══ LE DÉTAIL D'ANALYSE SE REPLIE, CARTE PAR CARTE ═══════════════════
+                     Mesuré en production : 453 px par carte, pour 100 cartes — 45 360 px,
+                     90 % de la page. Le bloc d'analyse en porte le plus gros, et l'essentiel
+                     y tient en une ligne : la note et les excès. Les estimations et l'extrait
+                     du récit sont ce qu'on lit sur UN trajet qu'on a choisi, pas sur cent
+                     qu'on parcourt.
+                     Replié, on garde donc la disposition « row » du tableau — note, excès,
+                     faits, et l'action ; déplié, la carte complète revient. La bascule vit
+                     dans le PIED, une rangée de 44 px qui existe déjà : le repli ne coûte
+                     donc aucune hauteur, il n'en rend que. -->
                 <div class="rep-card-analysis">
                   <app-trip-analysis-badges
                     [tripId]="trip.id"
                     [analysis]="analysisFor(trip.id)"
                     [tripStartedAt]="trip.startedAt"
+                    [layout]="detailTrajetOuvert(trip.id) ? 'card' : 'row'"
                     (analyzed)="onAnalyzed($event)"
                   />
                 </div>
@@ -1581,6 +1592,18 @@ export function trajetHorsPerimetreConducteur(
                     }
                   </div>
                   <div class="rep-card-foot-right">
+                    <!-- ⚠️ DANS LE PIED, et c'est tout l'intérêt : cette rangée mesure déjà
+                         44 px pour « Replay ». Une bascule posée sous l'analyse aurait ajouté
+                         sa propre hauteur à chacune des cent cartes, et mangé une bonne part
+                         de ce que le repli fait gagner. -->
+                    <button type="button" (click)="basculerDetailTrajet(trip.id)"
+                            [attr.aria-expanded]="detailTrajetOuvert(trip.id)"
+                            class="rep-card-action rep-card-detail"
+                            trackClick="rapport-detail-trajet">
+                      <lucide-icon [img]="ChevronDown" [size]="14" class="rep-repli-chevron"
+                                   [class.rep-repli-chevron--ferme]="!detailTrajetOuvert(trip.id)"></lucide-icon>
+                      Détail
+                    </button>
                     @if (isAdmin() && trip.maxSpeed > 90) {
                       <button type="button" (click)="downloadSpeedReport(trip)" class="rep-card-action" title="Rapport vitesse">
                         <lucide-icon [img]="FileTextIcon" [size]="15"></lucide-icon>
@@ -2677,9 +2700,31 @@ export function trajetHorsPerimetreConducteur(
     .rep-card-stats {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
     }
-    @media (max-width: 380px) {
-      .rep-card-stats { grid-template-columns: repeat(2, 1fr); }
+    /* ── LES QUATRE CHIFFRES SUR UNE LIGNE DENSE, AU DOIGT ──────────────────────────────
+       En pastilles empilées deux par deux, ils prenaient 114 px sur 453 — pour quatre
+       nombres qu'on lit d'un coup d'œil. La grille cède donc la place à une ligne qui
+       s'enroule : libellé et valeur côte à côte, sans fond ni remplissage. Mesuré : 114 px
+       → 40, soit 74 px rendus sur CHACUNE des cent cartes, près de 7 400 px au total.
+       ⚠️ Les libellés RESTENT. « 46 » sans « V. max » n'est plus un chiffre, c'est une
+       devinette — et « V. moy » juste à côté rendrait la confusion certaine. C'est le
+       CONTENANT qu'on retire, jamais le sens.
+       Au-delà de 768 px la grille d'origine reprend : la place ne manque pas, et les
+       pastilles s'y lisent mieux. */
+    @media (max-width: 768px) {
+      .rep-card-stats { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+      .rep-card-stat {
+        flex-direction: row; align-items: baseline; gap: 5px;
+        padding: 0; background: none; border-radius: 0;
+      }
+      .rep-card-stat-label { font-size: 9.5px; }
+      .rep-card-stat-value { font-size: 13.5px; }
     }
+    /* ⚠️ L'ancienne bascule à deux colonnes sous 380 px a été RETIRÉE, pas déplacée : la
+       ligne dense ci-dessus couvre déjà tout ce qui est sous 768 px, et une règle bornée à
+       la fois au-dessus de 768 et en dessous de 380 ne se serait jamais appliquée. */
+    /* La bascule du détail : même pastille que « Replay », chevron qui pivote comme celui
+       des sections repliables — un seul repère à apprendre dans toute la page. */
+    .rep-card-detail { font-size: 12px; font-weight: 700; }
     .rep-card-stat {
       display: flex; flex-direction: column; gap: 2px; min-width: 0;
       padding: 8px 10px; border-radius: 10px;
@@ -4873,6 +4918,37 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // délibérément TOUT ouvert au doigt retrouverait ses sections repliées à chaque visite.
     if (this.preferences.aChoisi('reportsSectionsRepliees')) return;
     if (this.ecranEtroit()) this.sectionsRepliees.set(new Set(this.SECTIONS_REPLIABLES));
+  }
+
+  /**
+   * ── LE DÉTAIL D'ANALYSE, OUVERT CARTE PAR CARTE ──────────────────────────────────────
+   *
+   * Mesuré en production le 2026-09-06, à 375 px : 45 360 px pour cent cartes, soit 453 px
+   * chacune — 90 % de la page. Le bloc d'analyse en est le premier poste, et l'essentiel y
+   * tient sur sa première ligne : la note et les excès. Les estimations (litres, CO₂,
+   * fiabilité GPS) et l'extrait du récit sont ce qu'on lit sur UN trajet qu'on a choisi,
+   * jamais sur cent qu'on fait défiler.
+   *
+   * ⚠️ ON MÉMORISE LES CARTES OUVERTES, pas les fermées — l'inverse de ce que fait le repli
+   * des sections, et pour la raison inverse : ici la valeur par défaut est « fermé » pour
+   * toutes, y compris les trajets qui arriveront à la page suivante. Une liste de cartes
+   * fermées grandirait sans fin, et le premier « Charger plus » l'aurait déjà fait mentir.
+   *
+   * ⚠️ RIEN N'EST PERSISTÉ. Ce choix vaut pour la consultation en cours : retrouver, une
+   * semaine plus tard, trois cartes ouvertes au milieu d'une liste dont les trajets ont
+   * changé n'aurait aucun sens.
+   */
+  private readonly detailsTrajet = signal<ReadonlySet<string>>(new Set());
+
+  protected detailTrajetOuvert(tripId: string): boolean {
+    return this.detailsTrajet().has(tripId);
+  }
+
+  protected basculerDetailTrajet(tripId: string): void {
+    const suivant = new Set(this.detailsTrajet());
+    if (suivant.has(tripId)) suivant.delete(tripId);
+    else suivant.add(tripId);
+    this.detailsTrajet.set(suivant);
   }
 
   protected readonly totalTrajetsPeriode = computed(() => this.statsPeriode()?.trips.count ?? 0);
