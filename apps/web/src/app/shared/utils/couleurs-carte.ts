@@ -28,8 +28,17 @@ export const COULEURS_CARTE = {
   trace: '#10E0A0',
   /** Les arrêts — bleu, information. */
   arret: '#3B82F6',
-  /** Les excès de vitesse — rouge, à vérifier. */
+  /** Les excès CONFIRMÉS — rouge, affirmé. */
   exces: '#EF4444',
+  /**
+   * Les pointes que l'analyse REFUSE d'affirmer — ambre, un doute et pas une faute.
+   *
+   * ⚠️ UNE COULEUR À PART, PAS LE ROUGE ATTÉNUÉ. Ces pointes ne comptent ni dans le nombre
+   * d'excès ni dans le score : les peindre comme les excès confirmés faisait lire six fautes
+   * là où l'en-tête en annonçait une (mesuré le 2026-09-06 sur un trajet de « mh cars » :
+   * 1 excès confirmé, 5 pointes « point unique »).
+   */
+  pointe: '#F59E0B',
   /** Le contour blanc qui détache les pastilles du fond, quel qu'il soit. */
   contour: '#FFFFFF',
 } as const;

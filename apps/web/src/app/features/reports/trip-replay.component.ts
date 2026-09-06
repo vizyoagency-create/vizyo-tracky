@@ -36,9 +36,18 @@ import { clampSpeed, formatDuration, max0 } from './reports.utils';
 // échelle (80/50) vivait ici et donnait « Éco 74 » vert à côté d'un « C » ambre.
 import { gradeOf } from '../trip-analysis/trip-analysis-badges.component';
 
-/** Un événement situé dans le trajet — un arrêt, ou un excès confirmé. */
+/**
+ * Un événement situé dans le trajet — un arrêt, un excès CONFIRMÉ, ou une pointe que
+ * l'analyse refuse d'affirmer.
+ *
+ * ⚠️ `pointe` EST UN TROISIÈME TYPE, et pas une variante d'`exces`. Les deux partageaient
+ * `'exces'` : la frise peignait donc les pointes du même rouge que les excès, sous un en-tête
+ * qui n'en comptait qu'un et une légende qui ne parlait que d'« Excès confirmé ». Mesuré en
+ * production le 2026-09-06 sur un trajet de « mh cars » — 1 excès confirmé (137 km/h pour 130,
+ * tenu 99 s) et 5 pointes « point unique » — la frise affichait SIX traits rouges identiques.
+ */
 interface EvenementRejeu {
-  type: 'arret' | 'exces';
+  type: 'arret' | 'exces' | 'pointe';
   /** Horodatage en ms, pour le tri et la clé de boucle. */
   at: number;
   /** Position dans le trajet, de 0 à 1 — sert à placer le repère sur la frise. */
@@ -254,10 +263,14 @@ interface RecitTrajet {
                 </button>
               }
               @if (analysis(); as a) {
-                @if (a.stopCount > 0 || nbExces() > 0) {
+                @if (a.stopCount > 0 || nbExces() > 0 || nbPointes() > 0) {
                   <div class="tr-legend">
                     @if (a.stopCount > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.arret"></i> Arrêt</span> }
                     @if (nbExces() > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.exces"></i> Excès confirmé</span> }
+                    <!-- ⚠️ La légende doit nommer TOUT ce que la carte et la frise montrent.
+                         Elle ne disait qu'« Excès confirmé » pendant que la frise portait aussi
+                         les pointes : le lecteur comptait des fautes qui n'en étaient pas. -->
+                    @if (nbPointes() > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.pointe"></i> Pointe à vérifier</span> }
                   </div>
                 }
               }
@@ -534,6 +547,33 @@ interface RecitTrajet {
     /* Un SEUL defilement pour le panneau : le recit et les evenements bougent
        ensemble, sinon le recit reste coince en haut d'une liste qui defile. */
     .tr-aside-scroll { overflow-y: auto; min-height: 0; padding-bottom: 10px; }
+    /*
+     * ─── SOUS 1024 px, C'EST LE CORPS QUI DÉFILE, PAS LE PANNEAU ───
+     *
+     * ⚠️ MESURÉ EN PRODUCTION LE 2026-09-06, iPhone 375 × 812 : le panneau recevait
+     * 33 PIXELS DE HAUT pour 590 px de contenu. Le titre « Le récit de ce trajet » était
+     * coupé en deux, et la liste des événements — celle qu'on vient toucher pour se déplacer
+     * dans le trajet — était hors d'atteinte.
+     *
+     * L'arithmétique ne laissait pas le choix : l'en-tête prend 309 px, la barre de lecture
+     * 167, il reste 294 px de corps, et la carte en réclame 260 (min-h-[260px], relevé de
+     * 180 au lot précédent pour qu'un tracé y soit lisible). 294 − 260 = 34. Le
+     * max-height: 42% du panneau ne l'a jamais protégé : il PLAFONNE, il ne réserve rien.
+     *
+     * Donner un plancher au panneau ne suffisait pas non plus — 260 + 148 = 408 pour 294 px
+     * disponibles : sur un écran court, les deux ne tiennent pas ensemble, quelle que soit la
+     * répartition. Donc le corps défile, la carte garde ses 260 px, et le panneau prend sa
+     * hauteur naturelle. L'en-tête et la barre de lecture restent fixes : c'est la barre qu'on
+     * doit pouvoir atteindre à tout moment pendant la lecture.
+     *
+     * Le défilement INTÉRIEUR du panneau est retiré ici, sinon deux zones défilantes
+     * s'emboîtent et le doigt ne sait plus laquelle il déplace.
+     */
+    @media (max-width: 1023px) {
+      .tr-corps { overflow-y: auto; }
+      .tr-aside { max-height: none; }
+      .tr-aside-scroll { overflow-y: visible; }
+    }
     @media (min-width: 1024px) {
       .tr-corps { flex-direction: row; }
       .tr-aside { max-height: none; width: 328px; flex: none; border-top: none; border-left: 1px solid var(--border-subtle); }
@@ -593,6 +633,7 @@ interface RecitTrajet {
     }
     .tr-ev:hover { background: var(--bg-tertiary); }
     .tr-ev[data-type="exces"] { border-left-color: var(--texte-alerte); }
+    .tr-ev[data-type="pointe"] { border-left-color: var(--texte-orange); }
     .tr-ev[data-type="arret"] { border-left-color: var(--texte-info); }
     .tr-ev-h { flex: none; font-size: 11.5px; font-weight: 700; color: var(--fg-secondary); font-variant-numeric: tabular-nums; padding-top: 1px; }
     .tr-ev-c { display: grid; gap: 2px; min-width: 0; }
@@ -635,6 +676,10 @@ interface RecitTrajet {
     }
     .tr-marque i { display: block; width: 3px; height: 15px; border-radius: 2px; background: var(--fg-tertiary); }
     .tr-marque[data-type="exces"] i { background: var(--texte-alerte); height: 20px; }
+    /* Ambre ET plus courte que l'excès confirmé : la couleur seule ne suffit pas — un
+       daltonien deutan lit le rouge et l'ambre presque pareil, et c'est justement la
+       distinction entre « faute » et « doute » qu'il ne faut pas lui coûter. */
+    .tr-marque[data-type="pointe"] i { background: var(--texte-orange); height: 13px; }
     .tr-marque[data-type="arret"] i { background: var(--texte-info); }
     .tr-marque:hover i, .tr-marque:focus-visible i { transform: scaleX(2); }
     /* 44 px : la glissiere native mesure 16 px de haut. C'est la commande la plus
@@ -666,6 +711,12 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
    * antérieures au lot V2, il retient des segments de durée nulle que la règle actuelle écarte.
    */
   protected readonly nbExces = computed(() => excesDuTrajet(this.analysis()).nombre);
+  /**
+   * Les pointes écartées par l'analyse. Elles NE COMPTENT PAS comme des excès — c'est tout
+   * l'objet de la distinction — mais la légende doit les nommer, faute de quoi la frise et la
+   * carte montrent une couleur que rien n'explique.
+   */
+  protected readonly nbPointes = computed(() => (this.analysis()?.detail?.aVerifier ?? []).length);
   readonly vehicleType = input<string>('OTHER');
   /** Si true, affiche le bouton crayon "Modifier la note". */
   readonly canEditNote = input<boolean>(false);
@@ -1057,7 +1108,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
         ? `Limite ${Math.round(e.limitKmh)} relevée à cet endroit — invraisemblable à cette vitesse, la carte a probablement retenu une voie voisine (pont, contre-allée)`
         : 'Dépassement vu sur un seul point : trop court pour être affirmé';
       out.push({
-        type: 'exces', at: ms, fraction: situe(ms), heure: this.heure(ms),
+        type: 'pointe', at: ms, fraction: situe(ms), heure: this.heure(ms),
         titre: `Pointe à vérifier · ${Math.round(e.maxSpeedKmh)} km/h`,
         detail: pourquoi, lat: e.lat, lng: e.lng,
       });
@@ -1338,7 +1389,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     this.minuteries.push(window.setTimeout(() => this.map?.resize(), 600));
   }
 
-  /** Ajoute les couches d'analyse (arrêts + excès) — appelé une fois la carte chargée. */
+  /** Ajoute les couches d'analyse (arrêts, pointes, excès) — une fois la carte chargée. */
   private addAnalysisLayers(): void {
     const a = this.analysis();
     const map = this.map;
@@ -1360,6 +1411,45 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       map.addLayer({
         id: 'replay-stops', type: 'circle', source: 'replay-stops',
         paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.arret, 'circle-opacity': 0.8, 'circle-stroke-width': 2, 'circle-stroke-color': COULEURS_CARTE.contour },
+      });
+    }
+
+    /**
+     * ── LES POINTES ÉCARTÉES, SUR LA CARTE AUSSI ──────────────────────────────────────
+     *
+     * ⚠️ POSÉES AVANT LES EXCÈS CONFIRMÉS, exprès : MapLibre empile dans l'ordre d'ajout, et
+     * c'est l'excès affirmé qui doit rester au-dessus quand les deux se superposent.
+     *
+     * Elles n'étaient pas dessinées du tout, alors que la frise portait déjà leurs repères :
+     * cliquer un repère y menait la caméra, et le lecteur cherchait sur la carte une pastille
+     * qui n'existait pas. Un repère qui ne mène nulle part se lit comme un défaut d'affichage.
+     *
+     * Le rayon est FIXE, contrairement aux excès dont il croît avec le dépassement : sur une
+     * pointe vue en un seul point, ce dépassement est justement la valeur dont on doute — la
+     * mettre en taille ferait affirmer par le dessin ce que le texte refuse d'affirmer.
+     */
+    const pointes = (a.detail?.aVerifier ?? []).filter((s) => isValidLatLng(s.lat, s.lng));
+    if (pointes.length > 0) {
+      map.addSource('replay-pointes', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: pointes.map((s) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+            properties: {},
+          })),
+        },
+      });
+      map.addLayer({
+        id: 'replay-pointes', type: 'circle', source: 'replay-pointes',
+        paint: {
+          'circle-radius': 5,
+          'circle-color': COULEURS_CARTE.pointe,
+          'circle-opacity': 0.75,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': COULEURS_CARTE.contour,
+        },
       });
     }
 

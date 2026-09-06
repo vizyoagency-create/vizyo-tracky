@@ -1,4 +1,5 @@
 import { ReportsComponent } from './reports.component';
+import { TripReplayComponent } from './trip-replay.component';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -37,8 +38,8 @@ import { ReportsComponent } from './reports.component';
  * rien à l'ordre, ils sont identiques pour toutes les règles du composant, et leur suffixe
  * varie à chaque compilation. Les garder rendrait ce test illisible et cassant.
  */
-function stylesDuComposant(): string {
-  const def = (ReportsComponent as unknown as { ɵcmp?: { styles?: string[] } }).ɵcmp;
+function stylesDuComposant(composant: unknown = ReportsComponent): string {
+  const def = (composant as { ɵcmp?: { styles?: string[] } }).ɵcmp;
   const styles = def?.styles;
   if (!styles || styles.length === 0) {
     throw new Error(
@@ -129,3 +130,74 @@ describe('Page Rapports — l’ordre des règles CSS, que rien d’autre ne tie
     expect(compte(/\.rep-vt-hide\s*\{\s*display:\s*block/g)).toBe(1);
   });
 });
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * MÊME PIÈGE, AUTRE ÉCRAN — LE REPLAY DE TRAJET
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Sous 1024 px, c'est le CORPS du replay qui défile, et non plus le panneau : sur un écran de
+ * 812 px de haut, la carte (260 px de plancher) et le panneau ne tiennent pas ensemble dans
+ * les 294 px que l'en-tête et la barre de lecture laissent — mesuré en production le
+ * 2026-09-06, le panneau recevait 33 px pour 590 px de contenu.
+ *
+ * Les trois règles de ce basculement portent des sélecteurs IDENTIQUES à leurs bases. Posées
+ * avant elles, elles seraient inertes — sans erreur, sans avertissement, et le panneau
+ * retomberait à sa fente de 33 px.
+ */
+describe('Replay de trajet — l’ordre des règles CSS du basculement mobile', () => {
+  let css: string;
+
+  beforeAll(() => { css = stylesDuComposant(TripReplayComponent); });
+
+  it('le défilement du corps est déclaré APRÈS la base de `.tr-corps`', () => {
+    const base = positionDe(css, /\.tr-corps\s*\{[^}]*flex:\s*1/);
+    const override = positionDe(css, /\.tr-corps\s*\{\s*overflow-y:\s*auto/);
+
+    expect(base).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(base);
+  });
+
+  it('la levée du plafond du panneau est déclarée APRÈS ce plafond', () => {
+    // `max-height: 42%` PLAFONNE le panneau, il ne lui réserve rien : c'est ce malentendu
+    // qui a laissé la carte le réduire à 33 px. Sous 1024 px on le lève, et il faut que
+    // cette levée gagne.
+    const plafond = positionDe(css, /\.tr-aside\s*\{[^}]*max-height:\s*42%/);
+    const levee = positionDe(css, /\.tr-aside\s*\{\s*max-height:\s*none/);
+
+    expect(plafond).toBeGreaterThan(-1);
+    expect(levee).toBeGreaterThan(-1);
+    expect(levee).toBeGreaterThan(plafond);
+  });
+
+  it('le retrait du défilement intérieur est déclaré APRÈS ce défilement', () => {
+    // Deux zones défilantes emboîtées : le doigt ne sait plus laquelle il déplace.
+    const interieur = positionDe(css, /\.tr-aside-scroll\s*\{\s*overflow-y:\s*auto/);
+    const retrait = positionDe(css, /\.tr-aside-scroll\s*\{\s*overflow-y:\s*visible/);
+
+    expect(interieur).toBeGreaterThan(-1);
+    expect(retrait).toBeGreaterThan(-1);
+    expect(retrait).toBeGreaterThan(interieur);
+  });
+
+  it('la frise distingue la pointe de l’excès — deux couleurs, deux hauteurs', () => {
+    // ⚠️ La distinction tient à CES DEUX RÈGLES. Sans la seconde, `.tr-marque[data-type]`
+    // retombe sur la base grise ; avec une seule couleur, six traits identiques annoncent six
+    // fautes là où l'en-tête en compte une.
+    // ⚠️ Les guillemets de l'attribut sont OPTIONNELS dans le CSS émis : le compilateur
+    // normalise `[data-type="exces"]` en `[data-type=exces]`. Un motif qui les exige ne
+    // trouve rien — et un test qui ne trouve rien ne garde rien.
+    const marque = (type: string, jeton: string) =>
+      new RegExp('\\.tr-marque\\[data-type="?' + type + '"?\\]\\s*i\\s*\\{[^}]*' + jeton);
+    const exces = positionDe(css, marque('exces', '--texte-alerte'));
+    const pointe = positionDe(css, marque('pointe', '--texte-orange'));
+
+    expect(exces).toBeGreaterThan(-1);
+    expect(pointe).toBeGreaterThan(-1);
+    // Et des hauteurs différentes : la couleur seule ne suffit pas à un daltonien deutan.
+    expect(marque('exces', 'height:\\s*20px').test(css)).toBeTrue();
+    expect(marque('pointe', 'height:\\s*13px').test(css)).toBeTrue();
+  });
+});
+
