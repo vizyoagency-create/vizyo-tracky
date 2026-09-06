@@ -871,3 +871,48 @@ describe('ReportPdfService — la part des non attribués suit la règle du cont
     expect(text).not.toContain('(100 %,');
   });
 });
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LE PDF ET LE CLASSEUR DOIVENT IMPRIMER LE MÊME NOMBRE
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Les deux documents décrivent la même société sur la même période, et un gestionnaire les
+ * ouvre côte à côte. Trois choses ont dû s'aligner pour qu'ils se répondent :
+ *
+ *   1. la même DÉFINITION — Σ km ÷ Σ temps roulant, `vitesseMoyenneAgregee`, appelée des deux
+ *      côtés (le PDF divisait encore par la durée totale sur deux de ses vues) ;
+ *   2. la même CASE — la ligne TOTAL du classeur affichait un tiret, donc le chiffre du PDF
+ *      n'avait aucun vis-à-vis ;
+ *   3. la même PRÉCISION — la règle arrondissait à l'entier avant de rendre sa valeur, et le
+ *      classeur écrivait 49 là où le PDF imprimait 49,2.
+ *
+ * Ce test tient la troisième, qui est la seule visible ici : le PDF imprime la valeur qu'on
+ * lui donne, à une décimale. Le reste est tenu par `vitesse-moyenne.spec.ts` (la règle) et par
+ * `report-excel.service.spec.ts` (la ligne TOTAL).
+ *
+ * ⚠️ Vérifié en production le 2026-09-06 sur « mh cars » du 31 août au 6 septembre :
+ * 10 988,2 km, 223,3 h de roulage. Classeur : 49,2 km/h. Synthèse : 49,2 km/h.
+ */
+describe('ReportPdfService — la vitesse moyenne s’imprime à la décimale', () => {
+  it('imprime la valeur reçue, sans la ré-arrondir', async () => {
+    const { text } = await renderedText(makeReport({
+      trips: {
+        count: 481, totalKm: 10988.2, totalDurationHours: 280.2,
+        avgKmPerVehicle: 1569.7, avgKmBasisVehicles: 7, avgKmBasisKm: 10988.2,
+        avgSpeedKmh: 49.2, maxSpeedKmh: 140.7,
+      },
+    }));
+
+    expect(text).toContain('49.2 km/h');
+    // ⚠️ Et surtout PAS l'entier : c'est l'écart qu'on vient de fermer avec le classeur.
+    expect(text).not.toContain('49 km/h');
+  });
+
+  it('le libellé dit le dénominateur — sinon 47,6 km en 1 h 07 et 53 km/h se contredisent', async () => {
+    const { text } = await renderedText(makeReport());
+
+    expect(text.toLowerCase()).toContain('h de conduite');
+  });
+});
+
