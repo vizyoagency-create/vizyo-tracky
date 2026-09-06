@@ -68,6 +68,21 @@ export interface UserPreferences {
    * ligne qu'on peut ignorer.
    */
   reportsLastView: string;
+
+  /**
+   * ── LES SECTIONS DE LA PAGE RAPPORTS QUE LE LECTEUR A REPLIÉES ────────────────────────
+   *
+   * Clés séparées par des virgules ('activite', 'hebdo'). Mesuré sur la production le
+   * 2026-09-06, à 375 px : la page fait 50 000 px de haut, dont 4 600 AVANT le premier
+   * trajet — les trois graphiques en pèsent 1 134 et le réglage du rapport hebdomadaire
+   * 1 027. Sur un téléphone, cela fait cinq écrans de défilement pour atteindre ce qu'on
+   * est venu lire.
+   *
+   * ⚠️ On mémorise ce que le lecteur a REPLIÉ, pas ce qu'il a ouvert. Un jour où une
+   * nouvelle section apparaîtra, elle sera donc OUVERTE pour tout le monde : une section
+   * qu'on n'a jamais vue ne peut pas avoir été fermée exprès.
+   */
+  reportsSectionsRepliees: string;
 }
 
 const DEFAULTS: UserPreferences = {
@@ -108,6 +123,7 @@ const DEFAULTS: UserPreferences = {
   ],
   vehiclesView: 'cards',
   reportsLastView: '',
+  reportsSectionsRepliees: '',
 };
 
 const KEY_PREFIX = 'vizyo-tracky-prefs-';
@@ -220,6 +236,7 @@ export class PreferencesService {
       dashboardWidgets: this.mergeDashboardWidgets(saved.dashboardWidgets, defaults.dashboardWidgets),
       vehiclesView: saved.vehiclesView ?? defaults.vehiclesView,
       reportsLastView: saved.reportsLastView ?? defaults.reportsLastView,
+      reportsSectionsRepliees: saved.reportsSectionsRepliees ?? defaults.reportsSectionsRepliees,
     };
   }
 

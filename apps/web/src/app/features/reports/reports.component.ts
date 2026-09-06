@@ -925,7 +925,20 @@ export function trajetHorsPerimetreConducteur(
            Condition sur l'AGRÉGAT (période entière), pas sur la page de trajets chargée :
            une liste vide (échec, tri) masquait des graphiques qui avaient des données. -->
       @if (!loading() && (kpis().tripCount > 0 || trips().length > 0)) {
-        <div class="rep-charts-grid">
+        <!-- ══ SECTION REPLIABLE (mobile d'abord) ═══════════════════════════════════════
+             Les trois graphiques pèsent 1 134 px, mesurés sur la production à 375 px. Ils
+             se REGARDENT, ils ne se lisent pas : les replier au doigt par défaut rend un
+             écran et demi sans rien retirer. L'en-tête dit ce qu'il cache, porte
+             aria-expanded, et l'impression force l'ouverture. -->
+        <button type="button" class="rep-repli" (click)="basculerSection('graphiques')"
+                [attr.aria-expanded]="!estRepliee('graphiques')" aria-controls="rep-sec-graphiques"
+                trackClick="rapport-replier-graphiques">
+          <lucide-icon [img]="ChevronDown" [size]="16" class="rep-repli-chevron"
+                       [class.rep-repli-chevron--ferme]="estRepliee('graphiques')"></lucide-icon>
+          <span class="rep-repli-titre">Graphiques</span>
+          <span class="rep-repli-sous">activité, vitesses, fréquentation</span>
+        </button>
+        <div class="rep-charts-grid" id="rep-sec-graphiques" [class.rep-sec--repliee]="estRepliee('graphiques')">
           <section class="rep-chart-card rep-chart-card--full">
             <header class="rep-chart-head">
               <h2>Activité</h2>
@@ -994,7 +1007,21 @@ export function trajetHorsPerimetreConducteur(
       <!-- Rapport hebdomadaire par e-mail : réglage par société (admins). Placé avant la
            synthèse : c'est ce que le client règle une fois, pas ce qu'il lit chaque jour. -->
       @if (canSeeSchedule()) {
+        <!-- ══ SECTION REPLIABLE — 1 027 px mesurés à 375 px. Ce bloc se RÈGLE une fois puis
+             s'oublie ; le laisser déplié entre la synthèse et le récapitulatif imposait un
+             écran entier de formulaire à qui vient lire ses trajets. L'en-tête garde
+             l'essentiel visible : la prochaine échéance. -->
+        <button type="button" class="rep-repli" (click)="basculerSection('hebdo')"
+                [attr.aria-expanded]="!estRepliee('hebdo')" aria-controls="rep-sec-hebdo"
+                trackClick="rapport-replier-hebdo">
+          <lucide-icon [img]="ChevronDown" [size]="16" class="rep-repli-chevron"
+                       [class.rep-repli-chevron--ferme]="estRepliee('hebdo')"></lucide-icon>
+          <span class="rep-repli-titre">Rapport hebdomadaire par e-mail</span>
+          <span class="rep-repli-sous">jour, heure, destinataires et contenu du PDF</span>
+        </button>
         <app-report-schedule-card
+          id="rep-sec-hebdo"
+          [class.rep-sec--repliee]="estRepliee('hebdo')"
           class="rep-sched"
           [fleetId]="fleetFilter.selectedFleetId()"
           [vehicles]="pdfModalVehicles()"
@@ -1006,7 +1033,7 @@ export function trajetHorsPerimetreConducteur(
       <!-- Synthèse par véhicule (réf. maquette Rapports) — rollup de la période,
            complémentaire du tableau détaillé par trajet ci-dessous. -->
       @if (!loading() && vehicleSummary().length > 0) {
-        <section class="rep-vsum">
+        <section class="rep-vsum" #recapSection>
           <header class="rep-chart-head rep-vsum-head">
             <h2>{{ vueRecap() === 'attribution' ? 'Par conducteur ou groupe' : 'Par véhicule' }}</h2>
             <!-- Ce rollup agrège les trajets CHARGÉS (cf. vehicleSummary), pas la période
@@ -1797,6 +1824,39 @@ export function trajetHorsPerimetreConducteur(
       border: 1px dashed var(--border-subtle); background: var(--bg-secondary);
       font-size: 12.5px; color: var(--fg-secondary);
     }
+    /* ── EN-TÊTE D'UNE SECTION REPLIABLE ─────────────────────────────────────────────
+       Un bouton pleine largeur, pas une pastille : au doigt, la cible est la ligne
+       entière. Le chevron pivote plutôt que de changer de dessin — un seul repère à
+       apprendre, et l'animation dit dans quel sens ça va s'ouvrir. */
+    .rep-repli {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      min-height: 44px; padding: 10px 12px; margin: 0;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      border-radius: 12px; cursor: pointer; text-align: left;
+    }
+    .rep-repli:hover { border-color: var(--border-strong); }
+    .rep-repli-chevron { color: var(--tracky-light); flex-shrink: 0; transition: transform .2s; }
+    /* Fermé = le chevron pointe vers la droite ; ouvert = vers le bas. */
+    .rep-repli-chevron--ferme { transform: rotate(-90deg); }
+    .rep-repli-titre { font-size: 13.5px; font-weight: 800; color: var(--fg-primary); }
+    /* ⚠️ Le sous-titre DIT CE QUE LA SECTION CACHE. Un en-tête replié qui n'annoncerait que
+       « Graphiques » obligerait à ouvrir pour savoir s'il y a là ce qu'on cherche. */
+    .rep-repli-sous { font-size: 11.5px; color: var(--fg-tertiary); font-weight: 600; }
+    @media (max-width: 480px) {
+      /* Sous 480 px les deux textes ne tiennent plus sur une ligne : le sous-titre passe
+         dessous plutôt que d'être coupé. */
+      .rep-repli { flex-wrap: wrap; }
+      .rep-repli-sous { flex-basis: 100%; padding-left: 24px; }
+    }
+    /* ⚠️ BORNÉ À L'ÉCRAN, et c'est tout l'intérêt d'écrire « @media screen » plutôt que de
+       masquer sans condition : à l'IMPRESSION la règle n'existe pas, donc une section
+       repliée sort quand même sur le papier, avec sa mise en page d'origine (une grille
+       reste une grille — la forcer en « display: block » à l'impression l'aurait cassée).
+       Un Ctrl+P amputé de ses graphiques parce qu'on les avait fermés à l'écran serait un
+       piège ; l'en-tête de repli, lui, est masqué avec les autres commandes plus bas. */
+    @media screen {
+      .rep-sec--repliee { display: none !important; }
+    }
     .rep-reprise-actions { display: inline-flex; gap: 8px; }
     .rep-reprise-oui, .rep-reprise-non {
       min-height: 32px; padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;
@@ -2090,6 +2150,7 @@ export function trajetHorsPerimetreConducteur(
       }
 
       /* Tout ce qui se clique n'a aucun sens sur du papier. */
+      .rep-repli,
       .rep-export-group, .rep-export-note, .rep-filters, .rep-selectors, .rep-periods, .rep-actions,
       .rep-sortbar, .rep-vgo, .rep-vfiltre, .rep-kpi-click-hint, .rep-more,
       .rep-ligne-action, .rep-card-action, .rep-dropdown-backdrop, .rep-custom-backdrop,
@@ -2527,7 +2588,16 @@ export function trajetHorsPerimetreConducteur(
        trois, empilés — c'est plus haut, mais tout se lit, et c'est le seul arbitrage qui
        tienne quand la largeur manque vraiment.
        Placé APRÈS le bloc 640 px, jamais avant : à média égal, seul l'ordre tranche. */
-    @media (max-width: 359px) {
+    /* ⚠️ SOUS 480 px, UN FILTRE PAR RANGÉE — seuil relevé de 359 px après mesure SUR LA
+       PRODUCTION, à 375 px, une fois le nom du conducteur enfin lisible :
+       « Tous les conducteurs » (l'état PAR DÉFAUT, celui que tout le monde voit en arrivant)
+       réclame 125 px là où une demi-rangée n'en laisse que 114. Récupérer du remplissage a
+       sauvé le nom de la personne ; ça ne sauvera pas un libellé de vingt caractères.
+       Le coût est d'une rangée de 52 px — à comparer aux 2 161 px que les deux sections
+       repliables viennent de rendre. La lisibilité passe avant la compacité quand on a les
+       deux moyens de la payer.
+       Placé APRÈS le bloc 640 px, jamais avant : à média égal, seul l'ordre tranche. */
+    @media (max-width: 480px) {
       .rep-selectors .rep-dropdown-wrapper { flex-basis: 100%; }
     }
     .rep-periods {
@@ -3656,7 +3726,35 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * et veut y isoler un conducteur ne demande pas à sortir du groupe. Les deux filtres se
    * composent — le récapitulatif affiché décrivait déjà ce périmètre-là.
    */
-  protected filtrerSurConducteur(driverId: string): void {
+
+  /**
+   * ── APRÈS UN « FILTRER », ON RESTE OÙ L'ON ÉTAIT ──────────────────────────────────────
+   *
+   * Ces deux gestes partaient d'un `window.scrollTo({ top: 0 })`. Sur un écran large c'est
+   * anodin ; au doigt, c'est une éjection : le récapitulatif est à quatre écrans du haut,
+   * on y tape « Filtrer » sur une ligne, et on se retrouve devant l'en-tête sans savoir si
+   * quelque chose s'est passé. Il faut alors redescendre chercher la ligne qu'on vient de
+   * toucher.
+   *
+   * On ramène donc le RÉCAPITULATIF en haut de la fenêtre : c'est là qu'on a agi, c'est là
+   * que la réponse s'écrit (la carte porte « Périmètre limité aux trajets de … » et se
+   * réduit à une ligne), et la barre de filtres reste à un pouce au-dessus.
+   *
+   * ⚠️ APRÈS le chargement, pas avant : `oublierStatsPeriode()` vide la synthèse, et la
+   * carte SORT du DOM le temps de la requête (son `@if` porte sur `vehicleSummary()`).
+   * Scroller tout de suite viserait un élément qui n'existe plus.
+   *
+   * ⚠️ Repli sur le haut de page si la carte n'est pas revenue — un filtre qui ne rend
+   * aucune ligne, par exemple. Ne rien faire du tout laisserait le lecteur devant une zone
+   * vide, sans rien pour comprendre.
+   */
+  private ramenerSurLeRecap(): void {
+    const el = this.recapEl()?.nativeElement;
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  protected async filtrerSurConducteur(driverId: string): Promise<void> {
     if (this.selectedDriverId() === driverId) return;
     // ⚠️ AVANT `oublierStatsPeriode()` : c'est la dernière instruction où le nom est encore
     // lisible. La ligne suivante vide `statsPeriode`, dont `attributionSummary` — la source du
@@ -3666,8 +3764,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedDriverId.set(driverId);
     this.oublierStatsPeriode();
     this.ecrireEtatDansUrl();
-    void this.loadData();
-    queueMicrotask(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    await this.loadData();
+    this.ramenerSurLeRecap();
   }
 
   /**
@@ -3939,6 +4037,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private highlightTimer: ReturnType<typeof setTimeout> | null = null;
   /** Référence au conteneur du tableau (scroll au clic KPI « Vitesse max »). */
   private readonly tableEl = viewChild<ElementRef<HTMLElement>>('tripsTable');
+  private readonly recapEl = viewChild<ElementRef<HTMLElement>>('recapSection');
 
   /**
    * Sentinelle de pagination : quand elle entre dans la fenêtre, on charge la page
@@ -4090,14 +4189,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * ⚠️ Le groupe est effacé en même temps : un véhicule sélectionné dans un groupe qui ne le
    * contient pas donnerait un rapport vide, et l'utilisateur croirait le véhicule à l'arrêt.
    */
-  protected filtrerSurVehicule(vehicleId: string): void {
+  protected async filtrerSurVehicule(vehicleId: string): Promise<void> {
     if (this.selectedVehicleId() === vehicleId) return;
     this.selectedGroupId.set('');
     this.selectedVehicleId.set(vehicleId);
     this.oublierStatsPeriode();
     this.ecrireEtatDansUrl();
-    void this.loadData();
-    queueMicrotask(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    await this.loadData();
+    this.ramenerSurLeRecap();
   }
 
   protected onMaxSpeedKpiClick(): void {
@@ -4704,6 +4803,78 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * résumé journalier : deux comptes légèrement différents dans la même phrase feraient
    * douter des deux.
    */
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * LES SECTIONS QUI SE REPLIENT — MOBILE D'ABORD
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Mesuré sur la production le 2026-09-06, à 375 px : la page fait 50 129 px de haut.
+   * 45 360 sont la liste des trajets (100 cartes d'analyse) ; les 4 769 restants sont ce
+   * qu'il faut traverser AVANT d'atteindre le premier trajet, soit près de six écrans. Deux
+   * blocs en portent la moitié :
+   *
+   *   - les trois graphiques (activité, vitesses, fréquentation)  1 134 px ;
+   *   - le réglage du rapport hebdomadaire par e-mail             1 027 px.
+   *
+   * Ce sont exactement les deux qu'on consulte RAREMENT : le premier se regarde, il ne se
+   * lit pas ; le second se règle une fois puis s'oublie. Les replier par défaut au doigt
+   * rend 2 161 px — deux écrans et demi — sans rien retirer : l'en-tête reste, avec ce qu'il
+   * contient, et un appui l'ouvre.
+   *
+   * ⚠️ REPLIÉ N'EST PAS ABSENT. Le contenu reste dans le DOM et c'est un CHOIX, pas une
+   * facilité : masqué en CSS, il n'est ni peint ni mesuré, mais il redevient visible à
+   * l'IMPRESSION, où le repli n'a aucun sens. Un Ctrl+P amputé de ses graphiques parce que
+   * le lecteur les avait fermés à l'écran serait exactement le genre de piège que ce dépôt
+   * passe son temps à retirer. Avec un `@if`, la page imprimée aurait perdu ces blocs.
+   * L'en-tête, lui, ANNONCE ce qu'il cache et porte `aria-expanded` : un lecteur d'écran le
+   * parcourt et l'ouvre comme n'importe quel bouton.
+   */
+  private readonly SECTIONS_REPLIABLES = ['graphiques', 'hebdo'] as const;
+
+  /**
+   * Ce que le lecteur a replié LUI-MÊME, mémorisé d'une visite à l'autre.
+   *
+   * ⚠️ On mémorise les sections FERMÉES, jamais les ouvertes : une section ajoutée demain
+   * sera donc ouverte pour tout le monde. L'inverse la ferait naître invisible.
+   */
+  protected readonly sectionsRepliees = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Vrai tant que la fenêtre est étroite. Les deux replis par défaut ne valent QUE là : sur
+   * un écran large, tout tient sans effort et fermer des sections d'office serait une perte.
+   */
+  private readonly ecranEtroit = signal(false);
+
+  protected estRepliee(cle: string): boolean {
+    return this.sectionsRepliees().has(cle);
+  }
+
+  protected basculerSection(cle: string): void {
+    const suivant = new Set(this.sectionsRepliees());
+    if (suivant.has(cle)) suivant.delete(cle);
+    else suivant.add(cle);
+    this.sectionsRepliees.set(suivant);
+    // ⚠️ On n'enregistre QUE des clés connues : une préférence qui accumulerait des clés
+    // mortes finirait par replier une section qui n'existe plus, sans qu'on sache pourquoi.
+    const propres = this.SECTIONS_REPLIABLES.filter((c) => suivant.has(c));
+    this.preferences.update({ reportsSectionsRepliees: propres.join(',') });
+  }
+
+  /**
+   * L'état de départ : la préférence si le lecteur en a une, sinon les deux replis par
+   * défaut au doigt. Appelé une fois, au démarrage.
+   */
+  private initSectionsRepliees(): void {
+    this.ecranEtroit.set(typeof matchMedia === 'function' && matchMedia('(max-width: 768px)').matches);
+    const memo = (this.preferences.prefs().reportsSectionsRepliees || '')
+      .split(',').map((c) => c.trim()).filter((c) => (this.SECTIONS_REPLIABLES as readonly string[]).includes(c));
+    if (memo.length > 0) { this.sectionsRepliees.set(new Set(memo)); return; }
+    // ⚠️ `aChoisi` distingue « jamais réglé » de « réglé à vide ». Sans lui, un lecteur qui a
+    // délibérément TOUT ouvert au doigt retrouverait ses sections repliées à chaque visite.
+    if (this.preferences.aChoisi('reportsSectionsRepliees')) return;
+    if (this.ecranEtroit()) this.sectionsRepliees.set(new Set(this.SECTIONS_REPLIABLES));
+  }
+
   protected readonly totalTrajetsPeriode = computed(() => this.statsPeriode()?.trips.count ?? 0);
 
   /**
@@ -4802,6 +4973,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    // Avant tout le reste : ce que le lecteur voit se déplier dépend de la largeur, et la
+    // largeur ne change pas selon les filtres.
+    this.initSectionsRepliees();
     /**
      * ── LA PAGE N'AVAIT AUCUN ÉTAT D'URL (F08) ────────────────────────────────────────
      *
