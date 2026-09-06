@@ -96,9 +96,15 @@ describe('ReportExcelService.generate', () => {
     // En-tête de la feuille Trajets (ligne 1).
     const trajets = wb.getWorksheet('Trajets')!;
     const header = (trajets.getRow(1).values as unknown[]).slice(1); // index 0 vide chez exceljs
+    /**
+     * ⚠️ « Excès » et « Pire dépassement » s'intercalent APRÈS les vitesses et AVANT le
+     * conducteur : c'est la lecture naturelle d'une ligne de trajet — ce qui s'est passé, puis
+     * qui conduisait. Le classeur ne disait rien des excès nulle part, alors que le PDF et
+     * l'écran les comptent depuis toujours.
+     */
     expect(header).toEqual([
       'Départ (heure de Paris)', 'Arrivée (heure de Paris)', 'Durée', 'Distance (km)',
-      'V. moy (km/h)', 'V. max (km/h)', 'Conducteur', 'Notes',
+      'V. moy (km/h)', 'V. max (km/h)', 'Excès', 'Pire dépassement (km/h)', 'Conducteur', 'Notes',
     ]);
 
     // 3 trajets + 1 ligne TOTAL = 4 lignes de données (rows 2..5).
@@ -518,7 +524,10 @@ describe('ReportExcelService — feuille « Par conducteur ou groupe »', () => 
      * les 42, 35 et 38 km/h n'existaient que sur un des trois supports — et c'est le classeur
      * qu'on ouvre pour comparer deux conducteurs.
      */
-    expect(valeurs(4)).toEqual(['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)']);
+    expect(valeurs(4)).toEqual([
+      'Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée',
+      'V. moyenne (km/h)', 'Excès', 'Pire dépassement (km/h)',
+    ]);
     // Les plus gros rouleurs d'abord, et la SORTE dit d'où vient la ligne : sans elle,
     // « Livraisons » et « Alice Martin » se lisent comme deux personnes.
     expect(valeurs(5).slice(0, 5)).toEqual(['Alice Martin', 'conducteur', 1, 30, '30min']);

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 // `partLibelle` : la MÊME règle d'arrondi que l'écran et que le PDF, prise dans le contrat
@@ -11,6 +11,7 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import type { AuthUser } from '../auth/types/auth-user';
 import { vitesseMoyenneAgregee } from '../common/vitesse-moyenne';
+import { CUMUL_EXCES_VIDE, excesParTrajet, type CumulExces, type ExcesParTrajetLigne, type PorteeExces } from './exces-portee';
 
 /**
  * Sprint 5 (Rapports & filtres v2) — Export Excel « soigné » PAR VÉHICULE.
@@ -111,10 +112,39 @@ const COLOR_TITLE_FONT = 'FF1F2937';
 
 @Injectable()
 export class ReportExcelService {
+  /**
+   * Le journal sert à UNE chose ici : dire qu'une colonne accessoire manque. Les excès sont
+   * lus en best-effort — un classeur amputé d'une colonne reste utile, un classeur en erreur
+   * ne l'est pas — et sans cette trace, l'absence serait indiscernable d'un parc irréprochable.
+   */
+  private readonly logger = new Logger(ReportExcelService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
   ) {}
+
+  /**
+   * Les excès du périmètre, indexés par trajet — ou une table VIDE si la lecture échoue.
+   *
+   * ⚠️ LE `try` ENGLOBE L'APPEL, pas seulement la promesse. Un `.catch()` seul ne rattrape que
+   * les rejets : si `$queryRaw` n'existe pas — un double de test, un client Prisma remplacé —
+   * l'erreur est SYNCHRONE et traverse. Le classeur tombait alors entièrement pour une colonne
+   * accessoire, exactement ce que ce garde-fou existe pour empêcher.
+   *
+   * Une table vide se lit comme « aucun excès connu » : les colonnes sortent à zéro et le
+   * journal dit pourquoi. Un classeur amputé d'une colonne reste utile ; c'est le document de
+   * secours quand l'écran ne répond pas, il ne doit pas tomber avec lui.
+   */
+  private async lireExces(portee: PorteeExces): Promise<Map<string, ExcesParTrajetLigne>> {
+    try {
+      const lignes = await excesParTrajet(this.prisma, portee);
+      return new Map(lignes.map((l) => [l.tripId, l]));
+    } catch (e: unknown) {
+      this.logger.warn(`Excès indisponibles pour le classeur : ${e instanceof Error ? e.message : e}`);
+      return new Map();
+    }
+  }
 
   /**
    * Génère le classeur Excel d'un véhicule sur une période.
@@ -183,6 +213,7 @@ export class ReportExcelService {
         ...(conducteur ? { driverId: conducteur.scope } : {}),
       },
       select: {
+        id: true,
         startedAt: true,
         endedAt: true,
         durationSeconds: true,
@@ -216,8 +247,21 @@ export class ReportExcelService {
       orderBy: { arrivedAt: 'asc' },
     });
 
+    /**
+     * 3ter) Les EXCÈS ÉTABLIS du véhicule, au grain du trajet.
+     *
+     * ⚠️ Best-effort, comme côté écran : une colonne « Excès » vide se remarque et se
+     * comprend ; un classeur en erreur pour une colonne accessoire serait une régression bien
+     * plus grave que son absence. Le classeur reste le document de secours quand l'écran ne
+     * répond pas — il ne doit pas tomber avec lui.
+     */
+    const excesDuTrajet = await this.lireExces({
+      fleetId: vehicle.fleetId, from, to,
+      vehicleIds: [vehicleId], driverScope: conducteur?.scope,
+    });
+
     // 4) Agrégation KPI à partir des trajets chargés (+ prix constaté depuis les passages station).
-    const kpis = this.aggregate(trips, vehicle, fuelStops);
+    const kpis = this.aggregate(trips, vehicle, fuelStops, excesDuTrajet);
 
     // 5) Construit le classeur.
     const workbook = new ExcelJS.Workbook();
@@ -228,8 +272,8 @@ export class ReportExcelService {
     // Le groupe d'un classeur de véhicule est CONSTANT — c'est celui du véhicule exporté.
     // La feuille répond donc surtout à « qui a conduit celui-ci, et combien ».
     const groupeDuVehicule = vehicle.groups?.[0]?.group ?? null;
-    this.buildParImputation(workbook, this.imputer(trips, () => groupeDuVehicule), trips.length, conducteur);
-    this.buildTrajets(workbook, trips);
+    this.buildParImputation(workbook, this.imputer(trips, () => groupeDuVehicule, excesDuTrajet), trips.length, conducteur);
+    this.buildTrajets(workbook, trips, undefined, excesDuTrajet);
     this.buildParJour(workbook, trips);
     if (fuelStops.length) this.buildPassagesStation(workbook, fuelStops);
 
@@ -313,6 +357,7 @@ export class ReportExcelService {
           ...(conducteur ? { driverId: conducteur.scope } : {}),
         },
         select: {
+          id: true,
           vehicleId: true,
           startedAt: true, endedAt: true, durationSeconds: true,
           distanceKm: true, maxSpeed: true, avgSpeed: true, movingSeconds: true, notes: true,
@@ -343,13 +388,19 @@ export class ReportExcelService {
       parVehicule.set(t.vehicleId, liste);
     }
 
+    // Les EXCÈS ÉTABLIS du périmètre, au grain du trajet — best-effort (cf. le classeur d'un
+    // véhicule) : une colonne vide vaut mieux qu'un classeur en erreur.
+    const excesDuTrajet = await this.lireExces({
+      fleetId: fleet.id, from, to, vehicleIds: ids, driverScope: conducteur?.scope,
+    });
+
     const lignes: LigneVehicule[] = exportables.map((v) => {
       const siens = parVehicule.get(v.id) ?? [];
       return {
         plate: v.plate,
         modele: [v.brand, v.model].filter(Boolean).join(' '),
         groupe: v.groups?.[0]?.group?.name ?? '',
-        kpis: this.aggregate(siens, { ...v, fleet }, []),
+        kpis: this.aggregate(siens, { ...v, fleet }, [], excesDuTrajet),
       };
     });
 
@@ -367,11 +418,11 @@ export class ReportExcelService {
     const groupeParVehicule = new Map(exportables.map((v) => [v.id, v.groups?.[0]?.group ?? null]));
     this.buildParImputation(
       workbook,
-      this.imputer(trips, (vehicleId) => groupeParVehicule.get(vehicleId ?? '') ?? null),
+      this.imputer(trips, (vehicleId) => groupeParVehicule.get(vehicleId ?? '') ?? null, excesDuTrajet),
       trips.length,
       conducteur,
     );
-    this.buildTrajets(workbook, trips, plaque);
+    this.buildTrajets(workbook, trips, plaque, excesDuTrajet);
     this.buildParJour(workbook, trips);
     if (fuelStops.length) this.buildPassagesStation(workbook, fuelStops);
 
@@ -400,7 +451,7 @@ export class ReportExcelService {
     conducteur?: FiltreConducteurClasseur,
   ): void {
     const ws = wb.addWorksheet('Synthèse par véhicule', { views: [{ state: 'frozen', ySplit: 4 }] });
-    ws.mergeCells('A1:H1');
+    ws.mergeCells('A1:J1');
     const titre = ws.getCell('A1');
     // ⚠️ LE CONDUCTEUR EST DANS LE TITRE, pas dans une note de bas de feuille : c'est la
     // première chose lue, et c'est ce qui distingue ce classeur de celui de tout le parc.
@@ -409,7 +460,7 @@ export class ReportExcelService {
       ? `${coiffe} — ${conducteur.scope === null ? 'trajets sans conducteur' : conducteur.label}`
       : coiffe;
     titre.font = { size: 15, bold: true, color: { argb: COLOR_TITLE_FONT } };
-    ws.mergeCells('A2:H2');
+    ws.mergeCells('A2:J2');
     const sousTitre = ws.getCell('A2');
     // Borne haute EXCLUSIVE côté API : la date affichée est la veille, comme partout ailleurs.
     sousTitre.value = `Du ${formatFleetDate(from)} au ${formatFleetDate(new Date(to.getTime() - 1))} inclus · ${lignes.length} véhicule(s)`;
@@ -431,7 +482,7 @@ export class ReportExcelService {
     if (conducteur) mentions.push(`⚠️ ${mentionConducteur(conducteur)}`);
     mentions.forEach((texte, i) => {
       const r = 3 + i;
-      ws.mergeCells(`A${r}:H${r}`);
+      ws.mergeCells(`A${r}:J${r}`);
       const cellule = ws.getCell(`A${r}`);
       cellule.value = texte;
       cellule.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
@@ -448,7 +499,12 @@ export class ReportExcelService {
     const ligneEnTete = Math.max(4, 3 + mentions.length);
     if (ligneEnTete !== 4) ws.views = [{ state: 'frozen', ySplit: ligneEnTete }];
     const enTete = ws.getRow(ligneEnTete);
-    const colonnes = ['Véhicule', 'Modèle', 'Groupe', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)', 'Carburant estimé (€)'];
+    /**
+     * ⚠️ « Excès » et « Pire dépassement » AJOUTÉES. Le PDF imprimait déjà une colonne EXCÈS
+     * dans son récapitulatif et l'écran l'affiche sur les deux vues ; le classeur n'en disait
+     * rien nulle part. Or c'est lui qu'on trie pour trouver qui appuie.
+     */
+    const colonnes = ['Véhicule', 'Modèle', 'Groupe', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)', 'Excès', 'Pire dépassement (km/h)', 'Carburant estimé (€)'];
     enTete.values = colonnes;
     enTete.eachCell((c) => {
       c.font = { bold: true, color: { argb: COLOR_HEADER_FONT } };
@@ -457,7 +513,9 @@ export class ReportExcelService {
     });
     ws.columns = [
       { width: 14 }, { width: 22 }, { width: 18 }, { width: 10 },
-      { width: 15 }, { width: 12 }, { width: 18 }, { width: 20 },
+      { width: 15 }, { width: 12 }, { width: 18 },
+      { width: 9 }, { width: 22 },
+      { width: 20 },
     ];
 
     // Les plus gros rouleurs en tête : c'est l'ordre dans lequel on lit ce tableau.
@@ -466,7 +524,12 @@ export class ReportExcelService {
       ws.addRow([
         l.plate, l.modele, l.groupe,
         l.kpis.tripCount, l.kpis.totalKm, fmtDuration(l.kpis.totalDurationSeconds),
-        l.kpis.avgSpeedKmh, l.kpis.estimatedCostEur,
+        l.kpis.avgSpeedKmh,
+        l.kpis.speedingCount,
+        // Vide et non zéro : sans excès il n'y a pas de « pire », et un 0 se trierait comme
+        // une mesure — au milieu de véhicules qui en ont vraiment un.
+        l.kpis.speedingCount > 0 ? l.kpis.worstOverKmh : '',
+        l.kpis.estimatedCostEur,
       ]);
     }
 
@@ -493,6 +556,9 @@ export class ReportExcelService {
       round1(vitesseMoyenneAgregee({
         distanceKm: kmTotal, durationSeconds: dureeTotale, movingSeconds: roulantTotal,
       })),
+      triees.reduce((n, l) => n + l.kpis.speedingCount, 0),
+      // Le pire du parc est un MAXIMUM : la somme des pires ne décrit aucun dépassement réel.
+      (() => { const p = triees.reduce((m, l) => Math.max(m, l.kpis.speedingCount > 0 ? l.kpis.worstOverKmh : 0), 0); return p > 0 ? round1(p) : ''; })(),
       Math.round(triees.reduce((n, l) => n + l.kpis.estimatedCostEur, 0) * 100) / 100,
     ]);
     total.eachCell((c) => {
@@ -509,12 +575,23 @@ export class ReportExcelService {
     trips: TripRow[],
     vehicle: { type: string; fuelConsumptionL100km: number | null; calibratedConsumptionL100km: number | null; calibratedTanks: number; fleet: { fuelPriceEurL: number } | null },
     fuelStops: FuelStopRow[],
+    /**
+     * Les excès de CES trajets, indexés par identifiant. Absent = compte inconnu, ce qui
+     * n'est pas la même chose que zéro : la lecture est best-effort, et le classeur doit
+     * pouvoir sortir sans elle.
+     */
+    excesDuTrajet?: ReadonlyMap<string, ExcesParTrajetLigne>,
   ): Kpis {
     let totalKm = 0;
     let totalDurationSeconds = 0;
     let totalMovingSeconds = 0;
     let maxSpeed = 0;
+    const exces: CumulExces = { ...CUMUL_EXCES_VIDE };
     for (const t of trips) {
+      // ⚠️ `pire` est un MAXIMUM, jamais une somme : additionner des dépassements donnerait
+      // un nombre qui ne correspond à aucun instant de la période.
+      const e = t.id ? excesDuTrajet?.get(t.id) : undefined;
+      if (e) { exces.exces += e.exces; exces.trajets += 1; exces.pire = Math.max(exces.pire, e.pire); }
       const km = Math.max(0, t.distanceKm);
       totalKm += km;
       totalDurationSeconds += Math.max(0, t.durationSeconds);
@@ -551,6 +628,9 @@ export class ReportExcelService {
       totalKm: round1(totalKm),
       totalDurationSeconds,
       totalMovingSeconds,
+      speedingCount: exces.exces,
+      speedingTripCount: exces.trajets,
+      worstOverKmh: round1(exces.pire),
       avgSpeedKmh: round1(avgSpeed),
       maxSpeedKmh: round1(maxSpeed),
       estimatedLiters: round1(estimatedLiters),
@@ -648,6 +728,22 @@ export class ReportExcelService {
       ['Durée totale', fmtDuration(k.totalDurationSeconds), undefined],
       ['Vitesse moyenne (km/h)', k.avgSpeedKmh, '#,##0.0'],
       ['Vitesse max (km/h)', k.maxSpeedKmh, '#,##0.0'],
+      /**
+       * ⚠️ EXCÈS ÉTABLIS — le même compte que l'écran et que le PDF, et il manquait ici.
+       *
+       * Deux lignes plutôt qu'une : « 17 excès » et « sur 6 trajets » ne disent pas la même
+       * chose. Dix-sept dépassements répartis sur six sorties se lisent autrement que
+       * dix-sept sur une seule, et c'est cette seconde ligne qui distingue une habitude d'un
+       * mauvais jour.
+       *
+       * Le pire dépassement n'apparaît QUE s'il y en a un : un « 0 » à cette ligne se lirait
+       * comme une mesure, alors qu'il n'y a rien à mesurer.
+       */
+      ['Excès de vitesse établis', k.speedingCount, '#,##0'],
+      ['— sur combien de trajets', k.speedingTripCount, '#,##0'],
+      ...(k.speedingCount > 0
+        ? [['Pire dépassement (km/h au-dessus)', k.worstOverKmh, '#,##0.0'] as [string, string | number, string | undefined]]
+        : []),
       ['Conso estimée (L)', k.estimatedLiters, '#,##0.0'],
       ['Coût estimé — prix paramétré (€)', k.estimatedCostEur, '#,##0.00'],
       ['Prix carburant paramétré (€/L)', k.fuelPriceEurL, '#,##0.000'],
@@ -705,6 +801,7 @@ export class ReportExcelService {
   private imputer(
     trips: TripRow[],
     groupeDe: (vehicleId: string | undefined) => { id: string; name: string } | null,
+    excesDuTrajet?: ReadonlyMap<string, ExcesParTrajetLigne>,
   ): Imputation {
     const lignes = new Map<string, LigneImputation>();
     const nonAttribue = { tripCount: 0, km: 0 };
@@ -732,12 +829,17 @@ export class ReportExcelService {
             : (groupe?.name ?? 'Groupe sans nom'),
           sorte: t.driverId ? 'conducteur' : 'groupe',
           tripCount: 0, km: 0, durationSeconds: 0, movingSeconds: 0,
+          exces: 0, excesTrajets: 0, pire: 0,
         }));
       }
       l.tripCount++;
       l.km += km;
       l.durationSeconds += dur;
       l.movingSeconds += Math.max(0, t.movingSeconds);
+      // Le pire dépassement est un MAXIMUM : la somme de deux dépassements ne décrit aucun
+      // instant de conduite.
+      const e = t.id ? excesDuTrajet?.get(t.id) : undefined;
+      if (e) { l.exces += e.exces; l.excesTrajets += 1; l.pire = Math.max(l.pire, e.pire); }
     }
 
     return {
@@ -786,14 +888,16 @@ export class ReportExcelService {
       { width: 15, style: { numFmt: '#,##0.0' } },
       { width: 12 },
       { width: 18, style: { numFmt: '#,##0.0' } },
+      { width: 9, style: { numFmt: '#,##0' } },
+      { width: 22, style: { numFmt: '#,##0.0' } },
     ];
 
-    ws.mergeCells('A1:F1');
+    ws.mergeCells('A1:H1');
     const titre = ws.getCell('A1');
     titre.value = 'Par conducteur ou groupe';
     titre.font = { size: 15, bold: true, color: { argb: COLOR_TITLE_FONT } };
 
-    ws.mergeCells('A2:F2');
+    ws.mergeCells('A2:H2');
     const regle = ws.getCell('A2');
     // La règle d'imputation est ÉCRITE : sans elle, un lecteur ne peut pas savoir pourquoi
     // « Livraisons » et « Amine Berrada » figurent dans la même colonne.
@@ -870,7 +974,7 @@ export class ReportExcelService {
     }
     mentions.forEach((texte, i) => {
       const r = 3 + i;
-      ws.mergeCells(`A${r}:F${r}`);
+      ws.mergeCells(`A${r}:H${r}`);
       const cellule = ws.getCell(`A${r}`);
       cellule.value = texte;
       cellule.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
@@ -896,7 +1000,7 @@ export class ReportExcelService {
      * Elle se calcule ici comme partout ailleurs (Σ km ÷ Σ temps roulant), donc un lecteur
      * qui la rapproche de la ligne d'un trajet ou de la synthèse retombe sur ses pieds.
      */
-    enTete.values = ['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)'];
+    enTete.values = ['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)', 'Excès', 'Pire dépassement (km/h)'];
     enTete.eachCell((c) => {
       c.font = { bold: true, color: { argb: COLOR_HEADER_FONT } };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_HEADER_FILL } };
@@ -932,6 +1036,8 @@ export class ReportExcelService {
         round1(vitesseMoyenneAgregee({
           distanceKm: l.km, durationSeconds: l.durationSeconds, movingSeconds: l.movingSeconds,
         })),
+        l.exces,
+        l.exces > 0 ? round1(l.pire) : '',
       ]);
     }
 
@@ -951,12 +1057,14 @@ export class ReportExcelService {
       round1(vitesseMoyenneAgregee({
         distanceKm: kmClasses, durationSeconds: dureeClassee, movingSeconds: roulantClasse,
       })),
+      imputation.lignes.reduce((n, l) => n + l.exces, 0),
+      (() => { const p = imputation.lignes.reduce((m, l) => Math.max(m, l.pire), 0); return p > 0 ? round1(p) : ''; })(),
     ]);
     total.eachCell((c) => {
       c.font = { bold: true };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_TOTAL_FILL } };
     });
-    this.applyBorders(ws, `A${ligneEnTete}:F${ws.rowCount}`);
+    this.applyBorders(ws, `A${ligneEnTete}:H${ws.rowCount}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -968,7 +1076,12 @@ export class ReportExcelService {
    *   colonne « Véhicule » ouvre le tableau. Sans elle, un classeur de parc serait une
    *   liste de trajets dont on ne saurait pas de qui ils sont.
    */
-  private buildTrajets(wb: ExcelJS.Workbook, trips: TripRow[], plaques?: Map<string, string>): void {
+  private buildTrajets(
+    wb: ExcelJS.Workbook,
+    trips: TripRow[],
+    plaques?: Map<string, string>,
+    excesDuTrajet?: ReadonlyMap<string, ExcesParTrajetLigne>,
+  ): void {
     const ws = wb.addWorksheet('Trajets', {
       views: [{ state: 'frozen', ySplit: 1 }],
     });
@@ -985,6 +1098,15 @@ export class ReportExcelService {
       { header: 'Distance (km)', key: 'km', width: 14, style: { numFmt: '#,##0.0' } },
       { header: 'V. moy (km/h)', key: 'avg', width: 14, style: { numFmt: '#,##0.0' } },
       { header: 'V. max (km/h)', key: 'max', width: 14, style: { numFmt: '#,##0.0' } },
+      /**
+       * ⚠️ EXCÈS ÉTABLIS, pas « pointes relevées ». Les dépassements que l'analyse refuse
+       * d'affirmer — vus sur un seul point, ou sur une limite invraisemblable — n'y sont pas :
+       * c'est la distinction que le replay peint en ambre, et la faire disparaître ici
+       * transformerait un doute en faute dans un document qu'on met sous le nez d'un
+       * conducteur.
+       */
+      { header: 'Excès', key: 'exces', width: 9, style: { numFmt: '#,##0' } },
+      { header: 'Pire dépassement (km/h)', key: 'pire', width: 22, style: { numFmt: '#,##0.0' } },
       { header: 'Conducteur', key: 'driver', width: 22 },
       { header: 'Notes', key: 'notes', width: 40 },
     ];
@@ -992,6 +1114,8 @@ export class ReportExcelService {
 
     let sumKm = 0;
     let sumDur = 0;
+    let sumExces = 0;
+    let sumPire = 0;
     /**
      * ⚠️ ON SOMME LE BRUT, ON N'ARRONDIT QU'UNE FOIS — la convention de tout le reste du
      * fichier (`aggregate`, `buildParJour`, `imputer`), dont cette feuille était la seule
@@ -1017,6 +1141,8 @@ export class ReportExcelService {
       const dur = Math.max(0, t.durationSeconds);
       sumKm += km;
       sumDur += dur;
+      const excesLigne = t.id ? excesDuTrajet?.get(t.id) : undefined;
+      if (excesLigne) { sumExces += excesLigne.exces; sumPire = Math.max(sumPire, excesLigne.pire); }
       ws.addRow({
         ...(plaques ? { veh: plaques.get(t.vehicleId ?? '') ?? '' } : {}),
         start: formatFleetDateTime(t.startedAt),
@@ -1025,6 +1151,10 @@ export class ReportExcelService {
         km,
         avg: round1(Math.max(0, t.avgSpeed)),
         max: round1(Math.max(0, t.maxSpeed)),
+        exces: excesLigne?.exces ?? 0,
+        // Vide plutôt que 0 : « aucun dépassement » n'a pas de pire dépassement, et un zéro
+        // dans cette colonne se trierait comme une valeur mesurée.
+        pire: excesLigne ? round1(excesLigne.pire) : '',
         driver: t.driver ? `${t.driver.firstName} ${t.driver.lastName}` : '',
         notes: t.notes ?? '',
       });
@@ -1035,6 +1165,9 @@ export class ReportExcelService {
       start: 'TOTAL',
       dur: fmtDuration(sumDur),
       km: round1(sumKm),
+      exces: sumExces,
+      // Le pire de la période, pas la somme des pires.
+      pire: sumPire > 0 ? round1(sumPire) : '',
     });
     totalRow.font = { bold: true };
     totalRow.eachCell((cell) => {
@@ -1044,7 +1177,11 @@ export class ReportExcelService {
 
     // Bordures sur tout le tableau (header + lignes + total).
     if (ws.rowCount >= 1) {
-      this.applyBorders(ws, `A1:H${ws.rowCount}`);
+      // ⚠️ La dernière colonne se DÉDUIT, elle ne s'écrit plus en dur : cette feuille en a
+      // une de plus dans un classeur de parc (« Véhicule »), et la borne figée à `H` laissait
+      // déjà les deux dernières colonnes sans bordure avant ce lot.
+      const derniere = String.fromCharCode(64 + ws.columnCount);
+      this.applyBorders(ws, `A1:${derniere}${ws.rowCount}`);
     }
   }
 
@@ -1178,6 +1315,14 @@ export class ReportExcelService {
 // -----------------------------------------------------------------------------
 
 interface TripRow {
+  /**
+   * L'identifiant du trajet — la clé qui relie une ligne à ses EXCÈS.
+   *
+   * ⚠️ OPTIONNEL pour la même raison que `vehicleId` : d'anciens jeux d'essai construisent des
+   * `TripRow` à la main. Un trajet sans identifiant n'a alors simplement aucun excès connu,
+   * ce qui est exact — il n'en a pas non plus en base.
+   */
+  id?: string;
   /** Renseigné uniquement dans un classeur de PÉRIMÈTRE (plusieurs véhicules). */
   vehicleId?: string;
   startedAt: Date;
@@ -1210,6 +1355,10 @@ interface LigneImputation {
   durationSeconds: number;
   /** Le dénominateur de la vitesse moyenne — cumulable, contrairement à une moyenne. */
   movingSeconds: number;
+  /** Excès ÉTABLIS imputés à cette ligne, et le pire dépassement qu'ils portent. */
+  exces: number;
+  excesTrajets: number;
+  pire: number;
 }
 
 /**
@@ -1237,6 +1386,10 @@ interface Kpis {
   totalDurationSeconds: number;
   /** Le dénominateur de `avgSpeedKmh` — cumulable, contrairement à une moyenne. */
   totalMovingSeconds: number;
+  /** Excès ÉTABLIS (cf. `exces-portee.ts`) : segments, trajets concernés, pire dépassement. */
+  speedingCount: number;
+  speedingTripCount: number;
+  worstOverKmh: number;
   avgSpeedKmh: number;
   maxSpeedKmh: number;
   estimatedLiters: number;

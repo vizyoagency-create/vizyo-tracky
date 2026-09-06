@@ -161,7 +161,23 @@ function aplatirSql(strings: readonly string[], valeurs: unknown[]): { texte: st
 function valeurDeClause(valeurs: readonly unknown[], marqueur: string): unknown {
   for (const v of valeurs) {
     if (!estFragment(v)) continue;
-    if (v.strings.some((s) => s.includes(marqueur))) return v.values[0];
+    /**
+     * ⚠️ LA VALEUR SE REPÈRE PAR SA POSITION DANS LE FRAGMENT, plus par « c'est la première ».
+     *
+     * Dans un `Prisma.Sql`, `strings[i]` précède `values[i]` : la valeur d'une clause est
+     * celle qui SUIT le morceau de texte où la clause est écrite. La version précédente
+     * rendait `values[0]`, ce qui ne marchait que tant que chaque clause vivait dans son
+     * propre petit fragment.
+     *
+     * `Prisma.sql` APLATIT les fragments imbriqués à la construction : depuis que le corps
+     * commun des requêtes d'excès est bâti d'un seul tenant (`exces-portee.ts`), toutes les
+     * clauses se retrouvent dans le MÊME fragment. « values[0] » y rendait le `fleetId` — une
+     * chaîne, donc le simulacre ne criait même pas : il filtrait sur la mauvaise valeur et
+     * rendait zéro excès. Le test devenait rouge pour une raison qui n'existait pas dans le
+     * produit.
+     */
+    const i = v.strings.findIndex((s) => s.includes(marqueur));
+    if (i >= 0 && i < v.values.length) return v.values[i];
     const imbrique = valeurDeClause(v.values, marqueur);
     if (imbrique !== undefined) return imbrique;
   }

@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { resolveDriverScope } from '../common/driver-scope';
 import { vitesseMoyenneAgregee } from '../common/vitesse-moyenne';
+import { excesParVehiculeEtConducteur } from './exces-portee';
 
 /**
  * V1.5 (Sprint L) — Agregation KPI pour les rapports & export.
@@ -599,29 +600,21 @@ export class ReportsStatsService {
      * ta."tripId")` reste sommable : un trajet ne portant qu'un seul conducteur, il ne peut
      * pas être compté dans deux partitions du même véhicule.
      */
-    const excesParVehicule = this.prisma.$queryRaw<
-      { vehicleId: string; driverId: string | null; exces: number; trajets: number; pire: number }[]
-    >`
-      SELECT ta."vehicleId"                                     AS "vehicleId",
-             t."driverId"                                       AS "driverId",
-             COUNT(*)::int                                      AS "exces",
-             COUNT(DISTINCT ta."tripId")::int                   AS "trajets",
-             COALESCE(MAX((s->>'overKmh')::numeric), 0)::float8 AS "pire"
-        FROM trip_analyses ta
-        JOIN trips t ON t.id = ta."tripId"
-        JOIN vehicles v ON v.id = ta."vehicleId" AND v."privacyModeEnabled" IS NOT TRUE
-        CROSS JOIN LATERAL jsonb_array_elements(ta.detail->'speeding') s
-       WHERE ta."fleetId" = ${fleetId}::uuid
-         AND t."startedAt" >= ${from}
-         AND t."startedAt" <  ${to}
-         AND t."endedAt" IS NOT NULL
-         ${isVehicleScopeRestricted
-            ? Prisma.sql`AND ta."vehicleId" = ANY(${scopedVehicleIds}::uuid[])`
-            : Prisma.empty}
-         ${filtreConducteurSql}
-         AND (s->>'durationSec')::numeric >= ${EXCES_DUREE_MIN_SEC}
-       GROUP BY ta."vehicleId", t."driverId"
-    `;
+    /**
+     * ⚠️ LA REQUÊTE A DÉMÉNAGÉ dans `exces-portee.ts`, elle n'a pas changé.
+     *
+     * Elle vivait ici, donc l'écran et le PDF comptaient les excès et le CLASSEUR n'en parlait
+     * pas — il n'avait aucun moyen d'y accéder sans réécrire les trois clauses qui portent
+     * toute la justesse de ce compte (le seuil de durée, le mode vie privée, le filtre
+     * conducteur), dont deux ont déjà coûté une correction.
+     */
+    const excesParVehicule = excesParVehiculeEtConducteur(this.prisma, {
+      fleetId,
+      from,
+      to,
+      vehicleIds: isVehicleScopeRestricted ? scopedVehicleIds : null,
+      driverScope,
+    });
 
     // 1) Aggregations globales : sum / avg / max / count en une requete SQL.
     // 2) Group by vehicleId : pour topVehicles + activeVehicleIds.

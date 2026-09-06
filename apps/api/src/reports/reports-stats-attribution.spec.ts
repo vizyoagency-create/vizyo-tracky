@@ -158,6 +158,41 @@ function compute(opts: OptionsBanc = {}): Promise<FleetStatsReport> {
 const ligne = (report: FleetStatsReport, key: string) =>
   report.byAttribution!.find((l) => l.key === key)!;
 
+/**
+ * Le TEXTE COMPLET d'une requête brute, fragments `Prisma.sql` compris.
+ *
+ * ⚠️ Un simple `Array.from(strings).join()` ne suffit plus : depuis que le corps commun des
+ * requêtes d'excès vit dans `exces-portee.ts`, il arrive au simulacre comme une VALEUR
+ * interpolée. Le joindre naïvement rendait un gabarit de trois mots, et les vérifications de
+ * clauses ci-dessous passaient au vert sans rien vérifier — le pire des deux mondes.
+ */
+/** Toutes les valeurs LIÉES d'une série d'appels, fragments imbriqués compris. */
+function valeursSql(appels: readonly unknown[][]): unknown[] {
+  const fragment = (v: unknown): v is { strings: readonly string[]; values: readonly unknown[] } =>
+    !!v && typeof v === 'object' && Array.isArray((v as { strings?: unknown }).strings);
+  const out: unknown[] = [];
+  const descendre = (valeurs: readonly unknown[]): void => {
+    for (const v of valeurs) {
+      if (fragment(v)) descendre(v.values);
+      else out.push(v);
+    }
+  };
+  for (const appel of appels) descendre(appel.slice(1));
+  return out;
+}
+
+function texteSql(strings: readonly string[], valeurs: readonly unknown[]): string {
+  const fragment = (v: unknown): v is { strings: readonly string[]; values: readonly unknown[] } =>
+    !!v && typeof v === 'object' && Array.isArray((v as { strings?: unknown }).strings);
+  return strings
+    .map((morceau, i) => {
+      const v = valeurs[i];
+      if (i >= valeurs.length) return morceau;
+      return morceau + (fragment(v) ? texteSql(v.strings, v.values) : ' ? ');
+    })
+    .join('');
+}
+
 describe('ReportsStatsService — récapitulatif par conducteur ou groupe (F13)', () => {
   /**
    * ⚠️ LE TEST QUI PROTÈGE L'EXISTANT. Le `groupBy` porte désormais ['vehicleId','driverId'] :
@@ -271,13 +306,16 @@ describe('ReportsStatsService — récapitulatif par conducteur ou groupe (F13)'
     await new ReportsStatsService(prisma).compute(FLEET_ID, FROM, TO);
 
     const appels = (prisma as unknown as { $queryRaw: jest.Mock }).$queryRaw.mock.calls;
-    const textes = appels.map((c: unknown[]) => Array.from(c[0] as TemplateStringsArray).join(' ? '));
+    const textes = appels.map((c: unknown[]) => texteSql(c[0] as TemplateStringsArray, c.slice(1)));
     const requeteExces = textes.find((t: string) => t.includes("detail->'speeding'"))!;
 
     expect(requeteExces).toBeDefined();
     // Le seuil est LIÉ à la requête, et vient de la constante partagée.
     expect(requeteExces).toContain("durationSec");
-    expect(appels.some((c: unknown[]) => c.includes(EXCES_DUREE_MIN_SEC))).toBe(true);
+    // ⚠️ Le seuil est lié DANS le fragment du corps commun, plus au premier niveau de l'appel :
+    // on cherche donc la valeur partout, y compris dans les fragments imbriqués. La garantie
+    // ne change pas — la constante partagée doit voyager avec la requête, pas être recopiée.
+    expect(valeursSql(appels).includes(EXCES_DUREE_MIN_SEC)).toBe(true);
     // Aucune requête ne lit le compteur de l'analyse : c'est le raccourci qui serait faux.
     expect(textes.join(' ')).not.toContain('speedingCount');
   });
@@ -298,7 +336,7 @@ describe('ReportsStatsService — récapitulatif par conducteur ou groupe (F13)'
     await new ReportsStatsService(prisma).compute(FLEET_ID, FROM, TO);
 
     const appels = (prisma as unknown as { $queryRaw: jest.Mock }).$queryRaw.mock.calls;
-    const textes = appels.map((c: unknown[]) => Array.from(c[0] as TemplateStringsArray).join(' ? '));
+    const textes = appels.map((c: unknown[]) => texteSql(c[0] as TemplateStringsArray, c.slice(1)));
     const requeteExces = textes.find((t: string) => t.includes("detail->'speeding'"))!;
     const requeteRalenti = textes.find((t: string) => t.includes('idleSec'))!;
 
