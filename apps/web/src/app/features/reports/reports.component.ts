@@ -1718,6 +1718,12 @@ export function trajetHorsPerimetreConducteur(
       [periodLabel]="pdfPeriodLabel()"
       [driverFilter]="conducteurPourExport()"
       [groupLabel]="selectedGroupId() ? selectedGroupLabel() : null"
+      [groups]="groupOptions()"
+      [drivers]="driverOptions()"
+      [screenGroupId]="selectedGroupId()"
+      [screenDriverId]="selectedDriverId()"
+      [screenFrom]="periodFrom"
+      [screenTo]="periodTo"
       [loading]="exporting() === 'pdf'"
       (closed)="pdfModalOpen.set(false)"
       (exportRequested)="onPdfExportRequested($event)"
@@ -5427,17 +5433,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
     try {
       await this.reportsApi.downloadConfiguredPdf(
         this.fleetFilter.selectedFleetId(),
-        this.periodFrom,
-        this.periodTo,
+        // ⚠️ LA PÉRIODE DE LA MODALE PRIME, et c'est le sens du lot : elle s'y règle
+        // désormais. Absente, on retombe sur celle de l'écran — la modale ne renvoie une
+        // valeur que lorsqu'elle en a une.
+        req.from || this.periodFrom,
+        req.to || this.periodTo,
         {
           vehicleIds: req.vehicleIds,
           sections: req.sections,
           maxTrips: req.maxTrips,
           topN: req.topN,
-          // ⚠️ Le filtre conducteur vient de la PAGE, pas de la modale : c'est l'écran qui
-          // le choisit, et le document doit décrire ce que l'écran montrait. Sans lui, le
-          // PDF portait toute la société sous un écran filtré sur une personne.
-          driverId: this.selectedDriverId() || undefined,
+          /**
+           * ⚠️ `req.driverId` PEUT ÊTRE LA CHAÎNE VIDE, et c'est une valeur : « tous les
+           * conducteurs », choisi dans la modale alors que l'écran est filtré sur quelqu'un.
+           * Un `??` retomberait sur le filtre de la page et produirait un document que la
+           * phrase d'aperçu venait de démentir. On ne bascule sur l'écran que si la modale
+           * n'a rien dit du tout (`undefined`).
+           */
+          driverId: (req.driverId ?? this.selectedDriverId()) || undefined,
         },
       );
       this.toast.success('PDF généré');

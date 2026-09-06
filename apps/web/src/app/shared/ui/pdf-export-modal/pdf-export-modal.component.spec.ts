@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PdfExportModalComponent } from './pdf-export-modal.component';
+import type { PdfExportRequest } from './pdf-export-modal.component';
 
 /**
  * ══ CE QUE LA MODALE PROMET, JUSTE AVANT LE CLIC ════════════════════════════════════════
@@ -210,5 +211,145 @@ describe('Modale dʼexport PDF — la promesse lue juste avant le clic', () => {
     fixture.detectChanges();
     expect(modale['previewSentence']()).not.toContain('par conducteur ou groupe');
     expect(modale['previewSentence']()).not.toContain('le top 10 des véhicules');
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * PÉRIODE, GROUPE ET CONDUCTEUR SE RÈGLENT DANS LA MODALE
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Ces trois-là vivaient uniquement dans la barre de filtres de la page : on ouvrait
+ * « Rapport PDF » en pensant tout régler, on trouvait la moitié des boutons, et il fallait
+ * fermer, changer un filtre, rouvrir.
+ *
+ * Le risque de les rapatrier est connu et assumé : la modale n'écrit PAS sur la page, donc
+ * le document peut décrire autre chose que ce qu'on a sous les yeux. C'est traité de la
+ * seule façon honnête — l'écart est ANNONCÉ et NOMMÉ. Ces tests tiennent les deux moitiés.
+ */
+describe('Modale dʼexport PDF — le périmètre complet se règle ici', () => {
+  let fixture: ComponentFixture<PdfExportModalComponent>;
+  let modale: Interne;
+
+  const GROUPES = [{ id: 'g1', name: 'Livraisons Nord' }, { id: 'g2', name: 'Atelier' }];
+  const CONDUCTEURS = [{ id: 'd1', nom: 'Sohaib Hamanni' }, { id: 'd2', nom: 'Nael Mhamdi' }];
+
+  /** L'écran : du 8 août au 7 septembre (borne haute EXCLUSIVE), aucun groupe, aucun conducteur. */
+  const ouvrirDepuisEcran = (groupe = '', conducteur = ''): void => {
+    fixture.componentRef.setInput('vehicles', FLOTTE);
+    fixture.componentRef.setInput('tripCount', 391);
+    fixture.componentRef.setInput('groups', GROUPES);
+    fixture.componentRef.setInput('drivers', CONDUCTEURS);
+    fixture.componentRef.setInput('screenFrom', '2026-08-08');
+    fixture.componentRef.setInput('screenTo', '2026-09-07');
+    fixture.componentRef.setInput('screenGroupId', groupe);
+    fixture.componentRef.setInput('screenDriverId', conducteur);
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+  };
+
+  beforeEach(() => {
+    localStorage.removeItem(CLE_PREFS);
+    TestBed.configureTestingModule({ imports: [PdfExportModalComponent] });
+    fixture = TestBed.createComponent(PdfExportModalComponent);
+    modale = interne(fixture.componentInstance);
+  });
+
+  it('à lʼouverture, la modale part de lʼécran — et ne signale aucun écart', () => {
+    ouvrirDepuisEcran('g1', 'd1');
+
+    expect(modale['from']()).toBe('2026-08-08');
+    expect(modale['to']()).toBe('2026-09-07');
+    expect(modale['groupId']()).toBe('g1');
+    expect(modale['driverId']()).toBe('d1');
+    expect(modale['ecartAvecEcran']()).toBeFalse();
+  });
+
+  it('la borne haute sʼaffiche INCLUSIVE, et repart exclusive', () => {
+    // Tout le produit traite `to` comme exclusif. Montrer « 7 septembre » dans un champ de
+    // date ferait comprendre « le 7 compris » : on affiche la veille, et on rajoute le jour
+    // au retour. Sans cette conversion, chaque export gagnerait un jour de trop.
+    ouvrirDepuisEcran();
+    expect(modale['toInclusif']()).toBe('2026-09-06');
+
+    modale['onToChange']({ target: { value: '2026-09-06' } } as unknown as Event);
+    expect(modale['to']()).toBe('2026-09-07');
+  });
+
+  it('changer la période signale lʼécart, et le NOMME', () => {
+    ouvrirDepuisEcran();
+    modale['onFromChange']({ target: { value: '2026-07-01' } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(modale['ecartAvecEcran']()).toBeTrue();
+    expect(modale['ecartsNommes']()).toContain('la période');
+    // « Vous exportez autre chose » sans le QUOI n'aide personne.
+    expect(modale['ecartsNommes']()).not.toContain('le conducteur');
+  });
+
+  it('« Revenir à lʼécran » remet les trois réglages, et éteint le bandeau', () => {
+    ouvrirDepuisEcran('g1', 'd1');
+    modale['onFromChange']({ target: { value: '2026-07-01' } } as unknown as Event);
+    modale['onDriverChange']({ target: { value: 'none' } } as unknown as Event);
+    fixture.detectChanges();
+    expect(modale['ecartAvecEcran']()).toBeTrue();
+
+    modale['revenirAuxReglagesEcran']();
+    fixture.detectChanges();
+
+    expect(modale['from']()).toBe('2026-08-08');
+    expect(modale['driverId']()).toBe('d1');
+    expect(modale['ecartAvecEcran']()).toBeFalse();
+  });
+
+  it('choisir un groupe RESTREINT vraiment le périmètre véhicules', () => {
+    // ⚠️ Côté serveur, un groupe N'EST qu'une liste de véhicules. Sans cette bascule, le
+    // menu « Groupe » n'aurait rien changé au document — un réglage qui ne fait rien est
+    // pire que pas de réglage.
+    ouvrirDepuisEcran();
+    expect(modale['scope']()).toBe('all');
+
+    modale['onGroupChange']({ target: { value: 'g1' } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(modale['scope']()).toBe('selected');
+    expect(modale['groupeChoisi']()).toBe('Livraisons Nord');
+  });
+
+  it('revenir à « Tous les groupes » rouvre le périmètre à toute la flotte', () => {
+    ouvrirDepuisEcran();
+    modale['onGroupChange']({ target: { value: 'g1' } } as unknown as Event);
+    modale['onGroupChange']({ target: { value: '' } } as unknown as Event);
+    fixture.detectChanges();
+
+    expect(modale['scope']()).toBe('all');
+    expect(modale['selectedIds']().size).toBe(0);
+  });
+
+  it('le conducteur choisi ICI nomme lʼaperçu, même si lʼécran nʼen a aucun', () => {
+    ouvrirDepuisEcran();
+    modale['onDriverChange']({ target: { value: 'd2' } } as unknown as Event);
+    fixture.detectChanges();
+
+    const phrase: string = modale['previewSentence']();
+    expect(phrase).toContain('portant uniquement sur les trajets de Nael Mhamdi');
+    expect(phrase).not.toContain('toute la flotte');
+  });
+
+  it('la demande émise porte la période et le conducteur de la MODALE', () => {
+    ouvrirDepuisEcran('', 'd1');
+    modale['onFromChange']({ target: { value: '2026-07-01' } } as unknown as Event);
+    modale['onDriverChange']({ target: { value: '' } } as unknown as Event);
+    fixture.detectChanges();
+
+    let recu: PdfExportRequest | null = null;
+    fixture.componentInstance.exportRequested.subscribe((r) => { recu = r; });
+    modale['onExport']();
+
+    expect(recu!.from).toBe('2026-07-01');
+    // ⚠️ La chaîne VIDE doit traverser : c'est « tous les conducteurs », choisi ici alors
+    // que l'écran filtre sur d1. La transformer en `undefined` ferait retomber la page sur
+    // SON filtre, et le document démentirait la phrase d'aperçu.
+    expect(recu!.driverId).toBe('');
   });
 });

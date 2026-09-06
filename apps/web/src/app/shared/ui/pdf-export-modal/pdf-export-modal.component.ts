@@ -34,6 +34,21 @@ export interface PdfExportRequest {
   sections: PdfReportSection[];
   maxTrips: number;
   topN: number;
+  /**
+   * ── LA MODALE RÈGLE MAINTENANT TOUT LE PÉRIMÈTRE ────────────────────────────────────
+   *
+   * La période et le conducteur venaient de la PAGE : on ouvrait « Rapport PDF » pour tout
+   * régler, on n'y trouvait que la moitié des boutons, et il fallait fermer la modale,
+   * changer un filtre, puis rouvrir. Ils font désormais partie de la demande.
+   *
+   * ⚠️ Une valeur ABSENTE veut dire « ce que l'écran montre », jamais « aucun filtre ». La
+   * page garde donc sa valeur quand la modale n'a rien changé — et un conducteur absent ne
+   * peut pas se lire comme « toute la société ».
+   */
+  from?: string;
+  to?: string;
+  /** Chaîne vide = tous les conducteurs ; « none » = sans conducteur ; sinon un identifiant. */
+  driverId?: string;
 }
 
 /**
@@ -206,6 +221,73 @@ function joinFr(parts: string[]): string {
               </span>
             </p>
 
+            <!-- ══ SECTION 0 : LE PÉRIMÈTRE QUI NE SE RÉGLAIT QUE SUR LA PAGE ═══════════
+                 Période, groupe et conducteur vivaient uniquement dans la barre de filtres.
+                 On ouvrait « Rapport PDF » pour tout régler, on trouvait la moitié des
+                 boutons, et il fallait fermer, changer un filtre, rouvrir.
+                 ⚠️ Changer ces réglages ICI ne touche PAS l'écran : on prépare un document,
+                 on ne refait pas la consultation en cours. L'écart est annoncé plus bas. -->
+            <section class="space-y-3">
+              <header class="flex items-center gap-2">
+                <lucide-icon [img]="RouteIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
+                <h4 class="text-xs font-display font-semibold uppercase tracking-wider text-fg-secondary">
+                  Période et filtres
+                </h4>
+              </header>
+
+              <div class="pem-reglages">
+                <label class="pem-champ">
+                  <span>Du</span>
+                  <input type="date" [value]="from()" (change)="onFromChange($event)" class="pem-date">
+                </label>
+                <label class="pem-champ">
+                  <span>Au (inclus)</span>
+                  <input type="date" [value]="toInclusif()" (change)="onToChange($event)" class="pem-date">
+                </label>
+
+                @if (groups().length > 0) {
+                  <label class="pem-champ pem-champ--large">
+                    <span>Groupe</span>
+                    <select [value]="groupId()" (change)="onGroupChange($event)" class="pem-select">
+                      <option value="">Tous les groupes</option>
+                      @for (g of groups(); track g.id) {
+                        <option [value]="g.id" [selected]="groupId() === g.id">{{ g.name }}</option>
+                      }
+                    </select>
+                  </label>
+                }
+
+                @if (drivers().length > 0) {
+                  <label class="pem-champ pem-champ--large">
+                    <span>Conducteur</span>
+                    <select [value]="driverId()" (change)="onDriverChange($event)" class="pem-select">
+                      <option value="">Tous les conducteurs</option>
+                      <option value="none" [selected]="driverId() === 'none'">Sans conducteur</option>
+                      @for (d of drivers(); track d.id) {
+                        <option [value]="d.id" [selected]="driverId() === d.id">{{ d.nom }}</option>
+                      }
+                    </select>
+                  </label>
+                }
+              </div>
+
+              <!-- ⚠️ L'ÉCART EST DIT, ET NOMMÉ. « Vous exportez autre chose » sans le QUOI
+                   n'aide personne : on liste ce qui diverge, et on offre le retour. -->
+              @if (ecartAvecEcran()) {
+                <div class="pem-scope-banner pem-scope-banner--changed">
+                  <lucide-icon [img]="InfoIcon" [size]="14" class="shrink-0"></lucide-icon>
+                  <span class="flex-1 min-w-0">
+                    Le document ne décrira pas ce que vous avez sous les yeux :
+                    {{ ecartsNommes() }} ne correspond plus à l'écran.
+                  </span>
+                  <button type="button" (click)="revenirAuxReglagesEcran()" class="pem-inline-btn">
+                    <lucide-icon [img]="RotateCcwIcon" [size]="13"></lucide-icon>
+                    <span>Revenir à l'écran</span>
+                  </button>
+                </div>
+              }
+            </section>
+
             <!-- Section 1 : Perimetre vehicules -->
             <section class="space-y-3">
               <header class="flex items-center gap-2">
@@ -252,7 +334,7 @@ function joinFr(parts: string[]): string {
                    Sans cette ligne, « Toute la flotte » se lirait au pied de la lettre alors
                    que le rapport ne portera que les trajets d'une personne — et le fichier,
                    lui, partira par courriel avec cette ambiguïté dedans. -->
-              @if (driverFilter(); as cond) {
+              @if (conducteurAffiche(); as cond) {
                 <p class="pem-scope-banner pem-scope-banner--driver">
                   <lucide-icon [img]="UserIcon" [size]="14" class="shrink-0"></lucide-icon>
                   <span>
@@ -564,6 +646,24 @@ function joinFr(parts: string[]): string {
     /* Bandeau perimetre : vert quand la modale colle a l'ecran, ambre sinon.
        Texte en jetons --texte-* : les couleurs de marque brutes sont illisibles
        sur fond clair. */
+    /* ─── Période, groupe et conducteur, réglables dans la modale ───
+       Une grille qui s'enroule : deux dates côte à côte, puis les deux menus en pleine
+       largeur. Au doigt, chaque champ vaut 44 px — c'est la norme du reste du produit. */
+    .pem-reglages { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pem-champ { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; min-width: 0; }
+    .pem-champ--large { flex-basis: 100%; }
+    .pem-champ > span {
+      font-size: 11px; font-weight: 700; color: var(--fg-tertiary);
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .pem-date, .pem-select {
+      min-height: 44px; width: 100%; padding: 8px 10px;
+      border-radius: 10px; border: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary); color: var(--fg-primary);
+      font-size: 13px; font-weight: 600;
+    }
+    .pem-date:focus, .pem-select:focus { outline: 2px solid var(--tracky-light, #10E0A0); outline-offset: 1px; }
+
     .pem-scope-banner {
       display: flex;
       align-items: center;
@@ -797,12 +897,157 @@ export class PdfExportModalComponent {
    */
   readonly groupLabel = input<string | null>(null);
 
+  /** Les groupes de la société, pour le sélecteur de la modale. */
+  readonly groups = input<{ id: string; name: string }[]>([]);
+  /** Les conducteurs de la société — `nom` déjà composé, la modale ne recompose rien. */
+  readonly drivers = input<{ id: string; nom: string }[]>([]);
+  /** Ce que la PAGE montre : sert d'état d'ouverture, et de référence pour signaler l'écart. */
+  readonly screenGroupId = input<string>('');
+  readonly screenDriverId = input<string>('');
+  /** La période de la page, en jours civils. `screenTo` est EXCLUSIF, comme partout ailleurs. */
+  readonly screenFrom = input<string>('');
+  readonly screenTo = input<string>('');
+
   readonly closed = output<void>();
   readonly exportRequested = output<PdfExportRequest>();
 
   // ─── State ──────────────────────────────────────────────────────────────
   protected readonly scope = signal<Scope>('all');
   protected readonly selectedIds = signal<Set<string>>(new Set<string>());
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * PÉRIODE, GROUPE ET CONDUCTEUR — RÉGLABLES ICI, ET L'ÉCART EST DIT
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Ces trois-là vivaient uniquement sur la page. On ouvrait « Rapport PDF » en pensant
+   * tout régler, on trouvait la moitié des boutons, et il fallait fermer, changer un
+   * filtre, rouvrir.
+   *
+   * ⚠️ LA MODALE N'ÉCRIT PAS SUR LA PAGE. Changer la période ici ne doit PAS recharger
+   * l'écran derrière : on prépare un document, on ne refait pas la consultation en cours.
+   * Le risque de cette décision est connu — le PDF peut alors décrire autre chose que ce
+   * qu'on a sous les yeux — et il est traité de la seule façon honnête : l'écart est
+   * ANNONCÉ, avec un bouton pour revenir à l'écran. C'est exactement le geste que la modale
+   * faisait déjà pour le périmètre véhicule ; on l'étend, on n'invente rien.
+   */
+  protected readonly from = signal('');
+  protected readonly to = signal('');
+  protected readonly groupId = signal('');
+  protected readonly driverId = signal('');
+
+  /** Un des trois réglages diverge-t-il de la page ? */
+  protected readonly ecartAvecEcran = computed(() =>
+    this.from() !== this.screenFrom()
+    || this.to() !== this.screenTo()
+    || this.groupId() !== this.screenGroupId()
+    || this.driverId() !== this.screenDriverId(),
+  );
+
+  /** Ce qui diverge, nommé — un « vous exportez autre chose » sans le quoi n'aide pas. */
+  protected readonly ecartsNommes = computed(() => {
+    const parts: string[] = [];
+    if (this.from() !== this.screenFrom() || this.to() !== this.screenTo()) parts.push('la période');
+    if (this.groupId() !== this.screenGroupId()) parts.push('le groupe');
+    if (this.driverId() !== this.screenDriverId()) parts.push('le conducteur');
+    return joinFr(parts);
+  });
+
+  /**
+   * La borne haute affichée est INCLUSIVE, celle qu'on manipule est EXCLUSIVE.
+   *
+   * ⚠️ Tout le produit traite `to` comme exclusif (« du 8 août au 7 septembre » = jusqu'au
+   * 6 au soir). Montrer cette valeur dans un champ de date ferait choisir au lecteur un
+   * lendemain qu'il ne veut pas : il lit « au 7 » et comprend « le 7 compris ». On affiche
+   * donc la veille, et on rajoute le jour au moment de renvoyer la valeur.
+   */
+  protected readonly toInclusif = computed(() => this.veille(this.to()));
+
+  private veille(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  private lendemain(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  protected onFromChange(e: Event): void {
+    const v = (e.target as HTMLInputElement).value;
+    if (v) this.from.set(v);
+  }
+
+  protected onToChange(e: Event): void {
+    const v = (e.target as HTMLInputElement).value;
+    if (v) this.to.set(this.lendemain(v));
+  }
+
+  protected onGroupChange(e: Event): void {
+    const id = (e.target as HTMLSelectElement).value;
+    this.groupId.set(id);
+    /**
+     * ⚠️ LE GROUPE PILOTE LE PÉRIMÈTRE VÉHICULES, parce que l'API n'en connaît pas d'autre :
+     * côté serveur un groupe N'EST qu'une liste de véhicules. Sans cette ligne, choisir un
+     * groupe ici n'aurait strictement rien changé au document — un réglage qui ne fait rien
+     * est pire que pas de réglage.
+     */
+    if (!id) {
+      this.scope.set('all');
+      this.selectedIds.set(new Set());
+      return;
+    }
+    const ids = this.vehicles().filter((v) => v.group?.id === id).map((v) => v.id);
+    this.scope.set('selected');
+    this.selectedIds.set(new Set(ids));
+  }
+
+  protected onDriverChange(e: Event): void {
+    this.driverId.set((e.target as HTMLSelectElement).value);
+  }
+
+  protected revenirAuxReglagesEcran(): void {
+    this.from.set(this.screenFrom());
+    this.to.set(this.screenTo());
+    this.groupId.set(this.screenGroupId());
+    this.driverId.set(this.screenDriverId());
+  }
+
+  /** Le conducteur choisi ICI, sous les deux formes que les phrases attendent. */
+  protected readonly conducteurChoisi = computed<PdfExportDriverFilter | null>(() => {
+    const id = this.driverId();
+    if (!id) return null;
+    if (id === 'none') return { nom: 'Sans conducteur', trajets: 'les trajets sans conducteur' };
+    const d = this.drivers().find((x) => x.id === id);
+    // Un identifiant qui n'est plus dans la liste (conducteur archivé pendant la session)
+    // reste un filtre RÉEL : on le dit sans prétendre connaître son nom.
+    return d
+      ? { nom: d.nom, trajets: 'les trajets de ' + d.nom }
+      : { nom: 'Conducteur', trajets: 'les trajets de ce conducteur' };
+  });
+
+  /** Le libellé du groupe choisi ICI. */
+  protected readonly groupeChoisi = computed<string | null>(() => {
+    const id = this.groupId();
+    if (!id) return null;
+    return this.groups().find((g) => g.id === id)?.name ?? 'Groupe';
+  });
+
+  /**
+   * Le conducteur que les phrases doivent nommer — la SEULE source pour l'affichage.
+   *
+   * ⚠️ Repli sur l'entrée `driverFilter` tant que la modale n'a rien changé. La page compose
+   * déjà ce libellé (elle seule connaît le repli d'un conducteur archivé) : le recomposer
+   * ici à partir de la liste produirait deux noms pour la même personne le jour où l'un des
+   * deux chemins évoluerait.
+   */
+  protected readonly conducteurAffiche = computed<PdfExportDriverFilter | null>(
+    () => this.conducteurChoisi() ?? (this.driverId() === this.screenDriverId() ? this.driverFilter() : null),
+  );
   /** Signal (et non champ simple) : `filteredVehicles` est un computed, il ne se
    *  recalculerait jamais sur une propriete non reactive — la recherche restait morte. */
   protected readonly search = signal('');
@@ -984,7 +1229,7 @@ export class PdfExportModalComponent {
   protected readonly alertsHint = computed(() => {
     const n = this.alertCount();
     const detail = 'total, répartition par type et par sévérité';
-    const exception = this.driverFilter()
+    const exception = this.conducteurAffiche()
       ? ' ⚠️ Les alertes appartiennent à un véhicule, pas à un conducteur : cette section ne suit pas le filtre et porte sur les véhicules du périmètre.'
       : '';
     if (n == null) return 'Sur la période : ' + detail + '.' + exception;
@@ -1080,7 +1325,7 @@ export class PdfExportModalComponent {
    * dès qu'un conducteur était sélectionné : le fichier ne portera QUE ses trajets.
    */
   protected readonly scopePhrase = computed(() => {
-    const conducteur = this.driverFilter();
+    const conducteur = this.conducteurAffiche();
     const label = this.scope() === 'all' ? null : this.plateSummary(Array.from(this.selectedIds()));
     const n = this.vehicles().length;
 
@@ -1230,6 +1475,12 @@ export class PdfExportModalComponent {
       sections: this.currentSections(),
       maxTrips: this.maxTrips(),
       topN: this.topN(),
+      from: this.from() || undefined,
+      to: this.to() || undefined,
+      // ⚠️ La chaîne vide est une VALEUR ici — « tous les conducteurs » — et doit traverser
+      // telle quelle : la remplacer par `undefined` ferait retomber la page sur SON filtre,
+      // et le document ne décrirait pas ce que la modale annonçait.
+      driverId: this.driverId(),
     });
   }
 
@@ -1237,6 +1488,10 @@ export class PdfExportModalComponent {
   /** Etat d'ouverture : perimetre = ecran, contenu = dernier choix memorise. */
   private applyOpeningState(): void {
     this.search.set('');
+    // ⚠️ À CHAQUE OUVERTURE on repart de l'écran, jamais du réglage précédent : la modale
+    // décrit d'abord ce que le lecteur regarde. Le CONTENU, lui, est mémorisé (cf. plus bas)
+    // — c'est une préférence, pas un périmètre.
+    this.revenirAuxReglagesEcran();
 
     const preset = this.screenScopeIds();
     if (preset.length > 0) {
@@ -1298,7 +1553,7 @@ export class PdfExportModalComponent {
        * pas ce filtre — la case le dit déjà (`alertsHint`), le document aussi, mais la phrase
        * qui récapitule ce qu'on va recevoir laissait l'inférence intacte.
        */
-      const perimetre = this.driverFilter() ? ' des véhicules du périmètre' : '';
+      const perimetre = this.conducteurAffiche() ? ' des véhicules du périmètre' : '';
       if (n == null) out.push('les alertes' + perimetre);
       else if (n === 0) out.push('la section alertes (aucune sur la période)');
       else if (n === 1) out.push('l\'unique alerte' + perimetre);
