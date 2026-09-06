@@ -1487,6 +1487,13 @@
       "section": "rapports",
       "order": -7,
       "description": "Instantane fige de la passe de correction du 1er septembre : le plan qui a produit les correctifs de TRK-052 et TRK-053, deployes a 09h17."
+    },
+    {
+      "slug": "TABLEAU-DE-BORD.html",
+      "title": "Tableau de bord des corrections (visuel)",
+      "section": "guide",
+      "order": 1,
+      "description": "Le suivi VISUEL des 49 taches — T1 a T23 pour le centre d alerte, V0 a V25 pour le VPS. Fichier autonome, sans reseau ni dependance, regenere a chaque passage des deux routines quotidiennes depuis app/taches.json : compteurs, barre d avancement, filtres par gravite, par partie et par etat. Le resume n y est pas ecrit, il est RECALCULE — c est ce qui l empeche de vieillir separement du detail. La prose et le pourquoi restent dans ROADMAP-CORRECTIFS.md."
     }
   ],
   "passages": [

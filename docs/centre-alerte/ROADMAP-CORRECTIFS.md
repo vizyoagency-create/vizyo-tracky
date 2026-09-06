@@ -63,9 +63,11 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 46 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 49 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-06 : 3 faites · 2 déployées non prouvées · 41 ouvertes.**
+**Au 2026-09-06 : 1 faite · 2 déployées, preuve attendue · 46 ouvertes.**
+
+> 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
 ### Partie I — centre d'alerte *(23 tâches)*
 
@@ -95,7 +97,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T22** | TRK-014 | Rectifier son `quoiFaire` *(renvoie à TRK-012, clos)* | 🧹 dette doc |
 | ☐ | **T23** | — | Créer ou déréférencer `TACHES-AMELIORATION.md` | 🧹 dette doc |
 
-### Partie II — VPS *(23 tâches)*
+### Partie II — VPS *(26 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -123,9 +125,10 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V21** | VPS-029 | Trancher quel mécanisme gouverne le cache de build | ⛔ BLOQUÉ |
 | ☐ | **V22** | VPS-M36 | Échantillonner `wchan` 3× et publier la répartition | ⛔ BLOQUÉ |
 | ☐ | **V23** | VPS-M73 | Afficher l'écart en jours sur `/admin → Audit VPS` | ⛔ BLOQUÉ |
+| `»` | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *preuve attendue : 2 lignes à 06:30 UTC, pas 10* | 🗓️ DÉPLOYÉE |
+| `»` | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite | 🗓️ DÉPLOYÉ |
 
-**Déjà déployées, preuve en cours** *(voir « À DÉPLOYER » en Partie II)* :
-`[»]` **Sentinelle « boîtiers muets »** (VPS-038, `fb0642f8`) · `[»]` **VPS-M59** (`9dce59ec`).
+
 
 > ⭐ **Les deux tâches les plus rentables de tout le fichier, si vous n'en faites que deux :**
 > **T10** *(quelques lignes, referme le motif récurrent de la semaine)* et **V11** *(20 minutes,

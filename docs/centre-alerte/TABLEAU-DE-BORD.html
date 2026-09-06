@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tableau de bord — corrections Tracky</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --txt:#14181f; --mut:#5d6672; --bord:#e3e7ec;
+    --ok:#0f9d6b; --warn:#d98324; --dgr:#d1453b; --info:#2f6fd0; --neutre:#8b95a3;
+    --ombre:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#0f1216; --card:#171c22; --txt:#e6eaf0; --mut:#98a2b3; --bord:#252c35;
+    --ombre:0 1px 2px rgba(0,0,0,.4);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:28px 20px 80px}
+  header h1{margin:0 0 4px;font-size:25px;letter-spacing:-.02em}
+  .sous{color:var(--mut);margin:0 0 22px;font-size:14px}
+  .sous b{color:var(--txt)}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
+  .k{background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:13px 15px;box-shadow:var(--ombre)}
+  .k .n{font-size:27px;font-weight:650;letter-spacing:-.02em;line-height:1.1}
+  .k .l{color:var(--mut);font-size:12.5px;margin-top:3px}
+  .k.ok .n{color:var(--ok)} .k.warn .n{color:var(--warn)} .k.dgr .n{color:var(--dgr)} .k.info .n{color:var(--info)}
+
+  .barre{display:flex;height:11px;border-radius:6px;overflow:hidden;border:1px solid var(--bord);margin-bottom:6px}
+  .barre span{display:block}
+  .s-FAIT{background:var(--ok)} .s-DEPLOYE{background:var(--warn)}
+  .s-COMMITE{background:var(--info)} .s-OUVERT{background:var(--bord)}
+  .leg{color:var(--mut);font-size:12.5px;margin-bottom:22px}
+  .leg i{font-style:normal;margin-right:14px;white-space:nowrap}
+  .leg b{color:var(--txt)}
+
+  .filtres{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px}
+  .filtres button{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--bord);background:var(--card);color:var(--txt)}
+  .filtres button[aria-pressed="true"]{background:var(--txt);color:var(--bg);border-color:var(--txt)}
+
+  .t{background:var(--card);border:1px solid var(--bord);border-left:4px solid var(--neutre);
+    border-radius:10px;padding:14px 16px;margin-bottom:11px;box-shadow:var(--ombre)}
+  .t.g1{border-left-color:var(--dgr)} .t.g2{border-left-color:var(--warn)}
+  .t.g3{border-left-color:var(--info)} .t.g4{border-left-color:var(--neutre)}
+  .t.etat-FAIT{border-left-color:var(--ok);opacity:.72}
+  .t.etat-FAIT h3{text-decoration:line-through;text-decoration-color:var(--mut)}
+  .t.etat-DEPLOYE{border-left-color:var(--warn)}
+  .t-h{display:flex;flex-wrap:wrap;gap:9px;align-items:center;font-size:12.5px;color:var(--mut);margin-bottom:6px}
+  .marque{font-weight:700;color:var(--txt);font-size:15px;width:1.1em;text-align:center}
+  .etat-FAIT .marque{color:var(--ok)} .etat-DEPLOYE .marque{color:var(--warn)}
+  .id{font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
+  .fiche{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .grav,.depuis{border:1px solid var(--bord);border-radius:5px;padding:0 6px;font-size:11.5px}
+  .commit{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+    background:var(--bg);border:1px solid var(--bord);border-radius:5px;padding:0 6px}
+  .t h3{margin:0 0 5px;font-size:15.5px;font-weight:620;letter-spacing:-.01em}
+  .detail{margin:0;color:var(--mut);font-size:14px}
+  .preuve,.attendue{margin:8px 0 0;font-size:13.5px;padding:8px 11px;border-radius:7px;background:var(--bg);border:1px solid var(--bord)}
+  .preuve b{color:var(--ok)} .attendue b{color:var(--warn)}
+  .badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .badges:empty{display:none}
+  .b{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--bord);color:var(--mut)}
+  .b-phare{border-color:var(--ok);color:var(--ok)}
+  .b-retard{border-color:var(--dgr);color:var(--dgr)}
+  .b-bloque{border-color:var(--neutre)}
+  .b-ech{border-color:var(--warn);color:var(--warn)}
+
+  h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+    margin:30px 0 12px;font-weight:600}
+  .vide{color:var(--mut);font-style:italic;padding:20px;text-align:center;
+    border:1px dashed var(--bord);border-radius:10px}
+  footer{margin-top:38px;padding-top:16px;border-top:1px solid var(--bord);color:var(--mut);font-size:13px}
+  footer code{font-size:12px}
+  @media print{.filtres{display:none} body{background:#fff}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Tableau de bord des corrections — Tracky</h1>
+  <p class="sous">Genere le <b>2026-09-06</b> depuis <code>app/taches.json</code>.
+  Le detail, le pourquoi et les pieges vivent dans <b>ROADMAP-CORRECTIFS.md</b> —
+  ce tableau ne dit que <b>l'etat</b>.</p>
+</header>
+
+<div class="kpis">
+  <div class="k ok"><div class="n">1</div><div class="l">faites et verifiees</div></div>
+  <div class="k warn"><div class="n">2</div><div class="l">deployees, preuve attendue</div></div>
+  <div class="k"><div class="n">46</div><div class="l">ouvertes sur 49</div></div>
+  <div class="k dgr"><div class="n">10</div><div class="l">ouvertes en gravite 1</div></div>
+  <div class="k dgr"><div class="n">2</div><div class="l">au-dela de 7 jours</div></div>
+  <div class="k info"><div class="n">18</div><div class="l">attendent un humain</div></div>
+</div>
+
+<div class="barre" role="img" aria-label="Avancement : 1 faites, 2 deployees, 46 ouvertes sur 49">
+  <span class="s-FAIT" style="width:2%"></span>
+  <span class="s-DEPLOYE" style="width:4%"></span>
+  <span class="s-COMMITE" style="width:0%"></span>
+  <span class="s-OUVERT" style="width:94%"></span>
+</div>
+<p class="leg">
+  <i><b>✓</b> faite ET verifiee</i>
+  <i><b>»</b> deployee, la preuve n'est pas venue</i>
+  <i><b>~</b> ecrite et commitee, pas en ligne</i>
+  <i><b>☐</b> ouverte</i>
+  <br><i style="margin-top:4px;display:inline-block">Une tache ne passe a <b>✓</b> qu'avec une preuve : un commit ne prouve pas un deploiement, un deploiement ne prouve pas un fonctionnement.</i>
+</p>
+
+<div class="filtres" id="f">
+  <button data-f="tout" aria-pressed="true">Tout (49)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (46)</button>
+  <button data-f="g1" aria-pressed="false">Gravite 1 (10)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (18)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (14)</button>
+  <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
+  <button data-f="vps" aria-pressed="false">VPS</button>
+  <button data-f="fait" aria-pressed="false">Closes (3)</button>
+</div>
+
+<h2 class="sec">Les 49 taches — ouvertes et graves d'abord</h2>
+<div id="liste">
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T1</span>
+    <span class="fiche">TRK-071</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">3 j</span>
+    
+  </div>
+  <h3>Recharger au moins UN des deux comptes IA</h3>
+  <p class="detail">Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c'est vrai.</p>
+  
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="vps" data-classe="AUTO" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V11</span>
+    <span class="fiche">VPS-013</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">32 j</span>
+    
+  </div>
+  <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
+  <p class="detail">vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.</p>
+  
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T10</span>
+    <span class="fiche">TRK-070</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    
+  </div>
+  <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
+  <p class="detail">Un compte IA a sec produit 2 lignes a 14 ms : DEGRADATION puis ERROR. La seconde recompte l'incident comme un defaut et annule le correctif de TRK-061.</p>
+  
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T3</span>
+    <span class="fiche">TRK-066</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>Trancher les trois questions du coupe-circuit</h3>
+  <p class="detail">10 s sur un dernier recours ? Un reessai, et comment le rendre idempotent ? Une immobilisation demandee qui n'a pas eu lieu vaut-elle CRITICAL ?</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T7</span>
+    <span class="fiche">TRK-035</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">17 j</span>
+    
+  </div>
+  <h3>Ouvrir la fenetre de maintenance du role non-superutilisateur</h3>
+  <p class="detail">Le role applicatif est superutilisateur ET proprietaire : un REVOKE est sans effet. Un droit oublie casse l'ingestion GPS.</p>
+  
+  <div class="badges"><span class="b b-bloque">⛔ prerequis</span></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TEST_DATE" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T14</span>
+    <span class="fiche">TRK-053</span>
+    <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">5 j</span>
+    
+  </div>
+  <h3>Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes</h3>
+  <p class="detail">Deploye le 01/09, sans regression (7, trois points identiques), mais JAMAIS exerce : les 10 vehicules declares sont muets.</p>
+  
+  <div class="badges"><span class="b b-ech">🗓️ echeance 2026-09-08</span></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="NON_EXERCE" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T16</span>
+    <span class="fiche">TRK-064</span>
+    <span class="classe">🗓️ Deploye, a guetter</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>A CLORE ? Le sujet a change : la chaine de vitesse est armee</h3>
+  <p class="detail">2 societes sur 5 armees, la chaine V5 ecrit. Le silence de la sentinelle est desormais legitime.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="NON_EXERCE" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T18</span>
+    <span class="fiche">TRK-066</span>
+    <span class="classe">🗓️ Deploye, a guetter</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>Guetter « SMS non remis au relais » — motif technique CONSERVE</h3>
+  <p class="detail">La verification porte sur ce qui RESTE : si le motif technique s'evapore, on a nettoye l'ecran au lieu de traduire le message.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="BLOQUE" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T21</span>
+    <span class="fiche">TRK-018</span>
+    <span class="classe">⛔ Bloque par un prerequis</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-11">26 j</span>
+    
+  </div>
+  <h3>Accuse de remise de la passerelle SMS</h3>
+  <p class="detail">Les 4 correctifs sont livres ET prouves (313 commandes SENT tombees a 0). Reste que la passerelle n'expose aucun accuse.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V1</span>
+    <span class="fiche">VPS-038</span>
+    <span class="classe">🔵 Exploitant / equipe produit</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-31">6 j</span>
+    
+  </div>
+  <h3>Porter les 6 IMEI muets a l'exploitant</h3>
+  <p class="detail">Flotte 2ad69ac1, muets depuis 5,6 jours, avec l'heure de leur derniere trame.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V2</span>
+    <span class="fiche">VPS-038</span>
+    <span class="classe">🔵 Exploitant / equipe produit</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>Sortir du parc les 6 boitiers muets depuis plus de 7 jours</h3>
+  <p class="detail">Dont 3 sans aucun vehicule (7,3 · 66,8 · 92,7 jours). Un STATUT, pas un DELETE.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T2</span>
+    <span class="fiche">TRK-069</span>
+    <span class="classe">🔵 Action materielle</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-05">1 j</span>
+    
+  </div>
+  <h3>Rallumer le poste et lire le motif de agent-recit-trajet</h3>
+  <p class="detail">Passage interrompu avant la fin le 05/09 a 03:15, sans reprise depuis. La ligne s'archivera seule au premier passage reussi.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T4</span>
+    <span class="fiche">TRK-072</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    
+  </div>
+  <h3>Calibrer les notifications d'exces de vitesse</h3>
+  <p class="detail">14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T5</span>
+    <span class="fiche">TRK-062</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">3 j</span>
+    
+  </div>
+  <h3>Autoriser la migration SENT_UNCONFIRMED</h3>
+  <p class="detail">Verifie absent de l'artefact servi 3 fois. Les 2 commandes SMS vieillissent de 24 h par jour et ne se fermeront jamais seules.</p>
+  
+  <div class="badges"><span class="b b-bloque">⛔ prerequis</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T9</span>
+    <span class="fiche">—</span>
+    <span class="classe">🔵 Action materielle</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">3 j</span>
+    
+  </div>
+  <h3>Declarer ou depanner GLA•KC•31 et FG-669-DQ</h3>
+  <p class="detail">Muets depuis 74 h et 57 h, et NON declares : ils sortent du filtre gps_sans_fix par le bas.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T11</span>
+    <span class="fiche">TRK-068</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
+  <p class="detail">Ni try/catch ni delai d'expiration : le rejet de transport devient un 500 la ou une dependance injoignable est un 503.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T12</span>
+    <span class="fiche">TRK-022</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-13">24 j</span>
+    
+  </div>
+  <h3>Deduplication GENERIQUE des alarmes du boitier</h3>
+  <p class="detail">Posee seulement sur le chemin de la survitesse. Le modele existe dix lignes plus loin (perte GPS, 24 h).</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="CHANTIER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T13</span>
+    <span class="fiche">TRK-016</span>
+    <span class="classe">🏗️ Chantier, hors passe</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-09">28 j</span>
+    
+  </div>
+  <h3>Recalage cartographique : ~88 % d'echec depuis avril</h3>
+  <p class="detail">Mesure fraiche du 06/09 : 131 trajets sur 149. Le chiffre est frais et stable, le chantier peut s'ouvrir.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TEST_DATE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T19</span>
+    <span class="fiche">TRK-032</span>
+    <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">16 j</span>
+    
+  </div>
+  <h3>REQUALIFIER — l'occasion ne viendra pas seule</h3>
+  <p class="detail">16 jours d'attente. 7 coupures d'alimentation cette semaine, toutes hors plage. Fabriquer le cas en atelier, ou fermer la fiche.</p>
+  
+  <div class="badges"><span class="b b-retard">🔴 au-dela de 7 jours</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TEST_DATE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T20</span>
+    <span class="fiche">TRK-051</span>
+    <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-25">12 j</span>
+    
+  </div>
+  <h3>Confier a un humain : le badge ambre du mode fix</h3>
+  <p class="detail">12 jours d'attente. Geste d'interface, impossible a provoquer en lecture seule. 30 secondes pour qui a l'ecran.</p>
+  
+  <div class="badges"><span class="b b-retard">🔴 au-dela de 7 jours</span></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V3</span>
+    <span class="fiche">VPS-036 · VPS-027</span>
+    <span class="classe">🔵 Exploitant / equipe produit</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-28">9 j</span>
+    
+  </div>
+  <h3>Un seul ticket hebergeur pour les deux ecritures root</h3>
+  <p class="detail">kill -KILL du 28/08 et systemctl mask du 01/09 : paternite, cadence, puis la liste de ce que ce canal s'autorise sans preavis.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V4</span>
+    <span class="fiche">VPS-010</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">33 j</span>
+    
+  </div>
+  <h3>Planifier un redemarrage vers 23 h 30</h3>
+  <p class="detail">Noyau actif 6.8.0-136, trois installes. 6 services tournent sur une bibliotheque remplacee, dont docker.service.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V5</span>
+    <span class="fiche">VPS-M56</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">33 j</span>
+    
+  </div>
+  <h3>Arbitrer le budget de collecte</h3>
+  <p class="detail">Depasse 20 fois sur 21 passages : 116 s pour 90. Trois reponses chiffrees, aucune n'est technique. Ne PAS le relever en silence.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V7</span>
+    <span class="fiche">VPS-005</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">33 j</span>
+    
+  </div>
+  <h3>Poser les limites memoire sur 30 conteneurs</h3>
+  <p class="detail">30 sur 33 sans limite memoire, 0 sur 33 avec une limite CPU. Pas d'urgence : 0 OOM en 30 jours — mais le jour venu, le choix de la victime ne nous appartiendra pas.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V8</span>
+    <span class="fiche">VPS-020</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-08">29 j</span>
+    
+  </div>
+  <h3>Separer les projets compose deploy</h3>
+  <p class="detail">7 conteneurs, 2 applications sans rapport : 4 Maestroo dev et 3 Vizyo Manager PROD.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V12</span>
+    <span class="fiche">VPS-012</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">31 j</span>
+    
+  </div>
+  <h3>Restreindre la cle CI github-actions-vizyo-auth</h3>
+  <p class="detail">Acces root complet sans aucune option de restriction, et elle deploie l'authentification de toutes les applications. Geste deja prouve sans effet de bord.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="AUTO" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V13</span>
+    <span class="fiche">VPS-015</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">32 j</span>
+    
+  </div>
+  <h3>ExecStart par bash, et OnFailure sur tracky-backup</h3>
+  <p class="detail">Le declenchement depend du bit d'execution du script. Le perimetre a DOUBLE : tracky-backup (5,7 Go, base principale) n'a pas d'OnFailure non plus — delai de detection ~23 h.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V14</span>
+    <span class="fiche">VPS-033</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">17 j</span>
+    
+  </div>
+  <h3>RandomizedDelaySec=30m sur apt-daily.timer</h3>
+  <p class="detail">La mesure des correctifs de securite est perdue 4 passages sur 5. Preferer 30m a 0 : le delai aleatoire etale la charge sur les miroirs.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V15</span>
+    <span class="fiche">VPS-034</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">16 j</span>
+    
+  </div>
+  <h3>Epingler Traefik par digest</h3>
+  <p class="detail">Tient 0.0.0.0:80 et :443, sert 25 domaines, monte /run/docker.sock, etiquette flottante, aucune sonde. Digest DEJA releve le 04/09. Ne PAS retirer le montage : les 25 domaines tomberaient.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="vps" data-classe="BLOQUE" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V23</span>
+    <span class="fiche">VPS-M73</span>
+    <span class="classe">⛔ Bloque par un prerequis</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">5 j</span>
+    
+  </div>
+  <h3>Afficher l'ecart en jours sur /admin → Audit VPS</h3>
+  <p class="detail">Cinq passages manques (27 au 31/08) n'ont ete vus qu'apres coup. La donnee est deja la.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T6</span>
+    <span class="fiche">TRK-065</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>Prevenir le titulaire de compte sans appareil</h3>
+  <p class="detail">21 notifications perdues. Cette personne se croit prevenue et ne l'est pas.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="NON_EXERCE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T15</span>
+    <span class="fiche">TRK-060</span>
+    <span class="classe">🗓️ Deploye, a guetter</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">4 j</span>
+    
+  </div>
+  <h3>Guetter : « Un point de mesure systeme n'a pas pu etre enregistre »</h3>
+  <p class="detail">Deploye le 04/09 a 17:01, marqueur verifie sur l'artefact servi. Aucune occasion depuis le 02/09.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="NON_EXERCE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T17</span>
+    <span class="fiche">TRK-065</span>
+    <span class="classe">🗓️ Deploye, a guetter</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">2 j</span>
+    
+  </div>
+  <h3>Guetter la ligne hebdomadaire : 42 doit tomber a ~21</h3>
+  <p class="detail">Refroidissement hebdomadaire. Elle ne doit plus citer system@tracky.local et doit porter comptesTechniquesEcartes = 1.</p>
+  
+  <div class="badges"><span class="b b-ech">🗓️ echeance 2026-09-11</span></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="centre-alerte" data-classe="DETTE_DOC" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T22</span>
+    <span class="fiche">TRK-014</span>
+    <span class="classe">🧹 Dette de documentation</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    
+  </div>
+  <h3>Rectifier le quoiFaire de TRK-014</h3>
+  <p class="detail">Il renvoie vers « le correctif de TRK-012 reste en attente d'accord » — or TRK-012 est CORRIGE depuis le 25/08.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V6</span>
+    <span class="fiche">VPS-037</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">5 j</span>
+    
+  </div>
+  <h3>Donner un second depositaire a la copie hors-site</h3>
+  <p class="detail">Depositaire unique, et c'est le meme poste que celui qui porte la planification de l'audit.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V9</span>
+    <span class="fiche">VPS-017</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">31 j</span>
+    
+  </div>
+  <h3>Trancher les 4,5 Go d'outillage de developpement dans /root</h3>
+  <p class="detail">Sur un serveur qui porte sept bases de production.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V16</span>
+    <span class="fiche">VPS-026</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-14">23 j</span>
+    
+  </div>
+  <h3>Epingler alpine par empreinte</h3>
+  <p class="detail">La sauvegarde des pieces d'identite retelecharge alpine:latest a chaque fois. Empreinte ET lignes a modifier deja relevees.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V17</span>
+    <span class="fiche">VPS-030</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">18 j</span>
+    
+  </div>
+  <h3>Purger 1,4 Go de copies sans retention</h3>
+  <p class="detail">Perimetre exact deja releve : 10 fichiers. Ne PAS rm -rf /root/backups (seules copies d'un etat Maestroo) ni toucher a positions-avant-purge60j.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="AUTO" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V18</span>
+    <span class="fiche">VPS-032</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">18 j</span>
+    
+  </div>
+  <h3>Multiplexage SSH cote POSTE</h3>
+  <p class="detail">9 143 sessions sur 7 jours, pic a 4 528. Risque nul pour le VPS. Ne RIEN borner cote serveur : ca transformerait une inefficacite en panne intermittente.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="BLOQUE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V20</span>
+    <span class="fiche">VPS-M79</span>
+    <span class="classe">⛔ Bloque par un prerequis</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">4 j</span>
+    
+  </div>
+  <h3>Etiqueter les images de repli au build</h3>
+  <p class="detail">Le menage de 00 h 40 est mesure en volume mais muet sur l'identite. Demande de toucher aux Dockerfile.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="BLOQUE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V21</span>
+    <span class="fiche">VPS-029</span>
+    <span class="classe">⛔ Bloque par un prerequis</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">17 j</span>
+    
+  </div>
+  <h3>Trancher quel mecanisme gouverne le cache de build</h3>
+  <p class="detail">Deux mecanismes coexistent : daemon.json (permanent, autoregule) ou le cron hebdomadaire.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="BLOQUE" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V22</span>
+    <span class="fiche">VPS-M36</span>
+    <span class="classe">⛔ Bloque par un prerequis</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-15">22 j</span>
+    
+  </div>
+  <h3>Echantillonner wchan 3 fois et publier la repartition</h3>
+  <p class="detail">Le wchan sert de preuve sur le constat le plus lourd, et le collecteur n'en prend qu'un echantillon. Cout a chiffrer sur une collecte deja hors budget.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="centre-alerte" data-classe="TERRAIN" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T8</span>
+    <span class="fiche">TRK-001 · TRK-027</span>
+    <span class="classe">🔵 Action materielle</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-03">34 j</span>
+    
+  </div>
+  <h3>Controler les antennes de trois vehicules</h3>
+  <p class="detail">FS-253-HR, FZ-862-VY, KSR•370. Antenne intermittente, pas panne resolue : les fix se reperdent apres chaque episode referme.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="centre-alerte" data-classe="DETTE_DOC" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T23</span>
+    <span class="fiche">—</span>
+    <span class="classe">🧹 Dette de documentation</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    
+  </div>
+  <h3>Creer ou dereferencer TACHES-AMELIORATION.md</h3>
+  <p class="detail">Reference pour la dette d'architecture (cles AM-nnn), le fichier est absent du depot. Un renvoi vers un fichier fantome est pire que pas de renvoi.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="vps" data-classe="HUMAIN" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V10</span>
+    <span class="fiche">VPS-018</span>
+    <span class="classe">🤝 Decision ou geste humain</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-12">25 j</span>
+    
+  </div>
+  <h3>Retirer /opt/vizyo-leads</h3>
+  <p class="detail">Pile supprimee le 04/08, depot distant verifie. 10,3 % du parcours nocturne de l'audit.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g4" data-etat="OUVERT" data-partie="vps" data-classe="PREPARE" data-g="4">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V19</span>
+    <span class="fiche">VPS-007</span>
+    <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
+    <span class="grav" title="gravite 4">G4</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">32 j</span>
+    
+  </div>
+  <h3>random_page_cost sur 6 bases</h3>
+  <p class="detail">DECONSEILLE en l'etat : l'enjeu de performance est nul (bases de 8 a 28 Mo, en cache a 99,99 %). L'enjeu de methode est deja regle.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-DEPLOYE g1" data-etat="DEPLOYE" data-partie="vps" data-classe="AUTO" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Deploye, preuve attendue">»</span>
+    <span class="id">V24</span>
+    <span class="fiche">VPS-038</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    <code class="commit">fb0642f8</code>
+  </div>
+  <h3>Sentinelle « boitiers muets »</h3>
+  <p class="detail">Une ligne par societe quand des boitiers rattaches se taisent plus de 3 jours.</p>
+  <p class="preuve"><b>Preuve</b> — 48 tests verts, mutation du seuil → 1 echec exactement. Smoke-boot OK. tracky-api restarts=0, healthy.</p><p class="attendue"><b>Preuve attendue</b> — 2 lignes a la passe de 06:30 UTC (flottes 2ad69ac1 et 88627f81), PAS 10.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="vps" data-classe="AUTO" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Deploye, preuve attendue">»</span>
+    <span class="id">V25</span>
+    <span class="fiche">VPS-M59</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    <code class="commit">9dce59ec</code>
+  </div>
+  <h3>chargeDeFond.note s'affiche, avec un repli explicite</h3>
+  <p class="detail">Corrige un defaut plus grave que celui vise : la garde que tout le monde croyait posee n'existait pas.</p>
+  <p class="preuve"><b>Preuve</b> — Sur l'artefact servi : fond-note 0 → 1, « mesure absente du manifeste » 0 → 1, temoin impossible 0. ng build NG_EXIT=0.</p><p class="attendue"><b>Preuve attendue</b> — La note doit rester visible au prochain passage d'audit qui l'ecrit.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g1" data-etat="FAIT" data-partie="vps" data-classe="AUTO" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">V0</span>
+    <span class="fiche">—</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    
+  </div>
+  <h3>Verser docs/vps-audit sur main</h3>
+  <p class="detail">20 jours d'audit — 15 rapports, 10 fiches neuves, les deux gravites 1 — n'existaient pas sur main.</p>
+  <p class="preuve"><b>Preuve</b> — Checkout de chemin AVEC historique. Arborescences verifiees identiques : 29 rapports, 125 fiches, 631 Ko sur main.</p>
+  <div class="badges"></div>
+</article>
+</div>
+<p class="vide" id="rien" hidden>Aucune tache ne correspond a ce filtre.</p>
+
+<footer>
+  <p><b>Ce fichier est genere.</b> Ne pas l'editer a la main : la prochaine execution ecraserait la
+  modification. Pour changer l'etat d'une tache, editer <code>docs/centre-alerte/app/taches.json</code>
+  puis relancer&nbsp;: <code>node docs/centre-alerte/app/generer-tableau-de-bord.mjs</code></p>
+  <p>Il est regenere automatiquement par les deux routines quotidiennes — l'audit du centre d'alerte
+  et l'audit du VPS — et publie avec le reste de la documentation.</p>
+</footer>
+
+</div>
+<script>
+(() => {
+  const boutons = [...document.querySelectorAll('#f button')];
+  const cartes = [...document.querySelectorAll('#liste .t')];
+  const rien = document.getElementById('rien');
+  const HUMAIN = ['HUMAIN', 'TERRAIN', 'PRODUIT'];
+  const CODE = ['A_CODER', 'CHANTIER', 'AUTO', 'PREPARE'];
+  const garde = (f, c) => {
+    const d = c.dataset;
+    switch (f) {
+      case 'tout': return true;
+      case 'ouvert': return d.etat === 'OUVERT';
+      case 'g1': return d.etat === 'OUVERT' && d.g === '1';
+      case 'humain': return d.etat === 'OUVERT' && HUMAIN.includes(d.classe);
+      case 'code': return d.etat === 'OUVERT' && CODE.includes(d.classe);
+      case 'fait': return d.etat === 'FAIT' || d.etat === 'DEPLOYE';
+      default: return d.partie === f;
+    }
+  };
+  const appliquer = (f) => {
+    let n = 0;
+    for (const c of cartes) { const v = garde(f, c); c.hidden = !v; if (v) n++; }
+    rien.hidden = n > 0;
+  };
+  for (const b of boutons) {
+    b.addEventListener('click', () => {
+      for (const o of boutons) o.setAttribute('aria-pressed', String(o === b));
+      appliquer(b.dataset.f);
+    });
+  }
+})();
+</script>
+</body>
+</html>
