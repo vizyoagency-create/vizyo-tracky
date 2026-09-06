@@ -511,11 +511,18 @@ describe('ReportExcelService — feuille « Par conducteur ou groupe »', () => 
     const { valeurs, texte, ws } = await feuille(buffer);
 
     // Une seule mention (les non attribués) : l'en-tête reste en ligne 4.
-    expect(valeurs(4)).toEqual(['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée']);
+    /**
+     * ⚠️ « V. moyenne » EN SIXIÈME COLONNE. Le récapitulatif du classeur ne la portait pas,
+     * alors que l'écran l'affiche sur la MÊME vue : le contrôle du 2026-09-06 a montré trois
+     * conducteurs de « mh cars » identiques partout (trajets, kilomètres, durées) mais dont
+     * les 42, 35 et 38 km/h n'existaient que sur un des trois supports — et c'est le classeur
+     * qu'on ouvre pour comparer deux conducteurs.
+     */
+    expect(valeurs(4)).toEqual(['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)']);
     // Les plus gros rouleurs d'abord, et la SORTE dit d'où vient la ligne : sans elle,
     // « Livraisons » et « Alice Martin » se lisent comme deux personnes.
-    expect(valeurs(5)).toEqual(['Alice Martin', 'conducteur', 1, 30, '30min']);
-    expect(valeurs(6)).toEqual(['Livraisons', 'groupe', 1, 20, '30min']);
+    expect(valeurs(5).slice(0, 5)).toEqual(['Alice Martin', 'conducteur', 1, 30, '30min']);
+    expect(valeurs(6).slice(0, 5)).toEqual(['Livraisons', 'groupe', 1, 20, '30min']);
     // Le total ne prétend PAS être celui du classeur : il manque le trajet non attribué.
     const total = ws.getRow(ws.rowCount);
     expect(total.getCell(1).value).toBe('TOTAL (lignes classées)');
@@ -662,8 +669,8 @@ describe('ReportExcelService — feuille « Par conducteur ou groupe »', () => 
     const { valeurs } = await feuille(buffer);
 
     expect(valeurs(4)[0]).toBe('Conducteur ou groupe'); // aucune mention : rien de non attribué
-    expect(valeurs(5)).toEqual(['Jean Martin', 'conducteur', 1, 30, '30min']);
-    expect(valeurs(6)).toEqual(['Jean Martin', 'conducteur', 1, 20, '30min']);
+    expect(valeurs(5).slice(0, 5)).toEqual(['Jean Martin', 'conducteur', 1, 30, '30min']);
+    expect(valeurs(6).slice(0, 5)).toEqual(['Jean Martin', 'conducteur', 1, 20, '30min']);
   });
 
   /**
@@ -697,8 +704,8 @@ describe('ReportExcelService — feuille « Par conducteur ou groupe »', () => 
 
     // Alice 12,4 km, Bob 7,5 km — et le trajet sans conducteur du véhicule (20,1 km), qui
     // n'a pas de groupe dans ce jeu d'essai, n'est imputé à personne.
-    expect(valeurs(5)).toEqual(['Alice Martin', 'conducteur', 1, 12.4, '30min']);
-    expect(valeurs(6)).toEqual(['Bob Durand', 'conducteur', 1, 7.5, '20min']);
+    expect(valeurs(5).slice(0, 5)).toEqual(['Alice Martin', 'conducteur', 1, 12.4, '30min']);
+    expect(valeurs(6).slice(0, 5)).toEqual(['Bob Durand', 'conducteur', 1, 7.5, '20min']);
     expect(texte(3)).toContain('1 trajet sur 3 de ce classeur');
   });
 });

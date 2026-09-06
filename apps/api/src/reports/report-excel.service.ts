@@ -731,12 +731,13 @@ export class ReportExcelService {
             ? (`${t.driver?.firstName ?? ''} ${t.driver?.lastName ?? ''}`.trim() || 'Conducteur inconnu')
             : (groupe?.name ?? 'Groupe sans nom'),
           sorte: t.driverId ? 'conducteur' : 'groupe',
-          tripCount: 0, km: 0, durationSeconds: 0,
+          tripCount: 0, km: 0, durationSeconds: 0, movingSeconds: 0,
         }));
       }
       l.tripCount++;
       l.km += km;
       l.durationSeconds += dur;
+      l.movingSeconds += Math.max(0, t.movingSeconds);
     }
 
     return {
@@ -784,14 +785,15 @@ export class ReportExcelService {
       { width: 10, style: { numFmt: '#,##0' } },
       { width: 15, style: { numFmt: '#,##0.0' } },
       { width: 12 },
+      { width: 18, style: { numFmt: '#,##0.0' } },
     ];
 
-    ws.mergeCells('A1:E1');
+    ws.mergeCells('A1:F1');
     const titre = ws.getCell('A1');
     titre.value = 'Par conducteur ou groupe';
     titre.font = { size: 15, bold: true, color: { argb: COLOR_TITLE_FONT } };
 
-    ws.mergeCells('A2:E2');
+    ws.mergeCells('A2:F2');
     const regle = ws.getCell('A2');
     // La règle d'imputation est ÉCRITE : sans elle, un lecteur ne peut pas savoir pourquoi
     // « Livraisons » et « Amine Berrada » figurent dans la même colonne.
@@ -868,7 +870,7 @@ export class ReportExcelService {
     }
     mentions.forEach((texte, i) => {
       const r = 3 + i;
-      ws.mergeCells(`A${r}:E${r}`);
+      ws.mergeCells(`A${r}:F${r}`);
       const cellule = ws.getCell(`A${r}`);
       cellule.value = texte;
       cellule.font = { size: 10, italic: true, color: { argb: 'FFB45309' } };
@@ -883,7 +885,18 @@ export class ReportExcelService {
     const ligneEnTete = Math.max(4, 3 + mentions.length);
     if (ligneEnTete !== 4) ws.views = [{ state: 'frozen', ySplit: ligneEnTete }];
     const enTete = ws.getRow(ligneEnTete);
-    enTete.values = ['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée'];
+    /**
+     * ⚠️ « V. moyenne » AJOUTÉE — le récapitulatif du classeur ne la portait pas.
+     *
+     * Contrôle du 2026-09-06, « mh cars » du 31 août au 6 septembre : les trois conducteurs
+     * sortent avec les MÊMES trajets, kilomètres et durées dans le PDF, le classeur et
+     * l'écran. Mais l'écran affichait 42, 35 et 38 km/h que le classeur taisait — or c'est le
+     * classeur qu'on ouvre pour comparer deux conducteurs.
+     *
+     * Elle se calcule ici comme partout ailleurs (Σ km ÷ Σ temps roulant), donc un lecteur
+     * qui la rapproche de la ligne d'un trajet ou de la synthèse retombe sur ses pieds.
+     */
+    enTete.values = ['Conducteur ou groupe', 'Sorte', 'Trajets', 'Distance (km)', 'Durée', 'V. moyenne (km/h)'];
     enTete.eachCell((c) => {
       c.font = { bold: true, color: { argb: COLOR_HEADER_FONT } };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_HEADER_FILL } };
@@ -914,23 +927,36 @@ export class ReportExcelService {
     }
 
     for (const l of imputation.lignes) {
-      ws.addRow([l.libelle, l.sorte, l.tripCount, round1(l.km), fmtDuration(l.durationSeconds)]);
+      ws.addRow([
+        l.libelle, l.sorte, l.tripCount, round1(l.km), fmtDuration(l.durationSeconds),
+        round1(vitesseMoyenneAgregee({
+          distanceKm: l.km, durationSeconds: l.durationSeconds, movingSeconds: l.movingSeconds,
+        })),
+      ]);
     }
 
     // ⚠️ « lignes classées » et non « TOTAL » : sous ce tableau, le total du classeur, c'est
     // celui-ci PLUS les non attribués annoncés en tête. Un « TOTAL » nu se lirait comme le
     // total de la période, et manquerait 99 % des trajets chez deux sociétés sur cinq.
+    const kmClasses = imputation.lignes.reduce((n, l) => n + l.km, 0);
+    const dureeClassee = imputation.lignes.reduce((n, l) => n + l.durationSeconds, 0);
+    const roulantClasse = imputation.lignes.reduce((n, l) => n + l.movingSeconds, 0);
     const total = ws.addRow([
       'TOTAL (lignes classées)', '',
       imputation.lignes.reduce((n, l) => n + l.tripCount, 0),
-      round1(imputation.lignes.reduce((n, l) => n + l.km, 0)),
-      fmtDuration(imputation.lignes.reduce((n, l) => n + l.durationSeconds, 0)),
+      round1(kmClasses),
+      fmtDuration(dureeClassee),
+      // Σ km ÷ Σ temps roulant DES LIGNES CLASSÉES — jamais la moyenne des moyennes, et
+      // jamais celle de la société : les non attribués ne sont pas dans ce tableau.
+      round1(vitesseMoyenneAgregee({
+        distanceKm: kmClasses, durationSeconds: dureeClassee, movingSeconds: roulantClasse,
+      })),
     ]);
     total.eachCell((c) => {
       c.font = { bold: true };
       c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_TOTAL_FILL } };
     });
-    this.applyBorders(ws, `A${ligneEnTete}:E${ws.rowCount}`);
+    this.applyBorders(ws, `A${ligneEnTete}:F${ws.rowCount}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -1182,6 +1208,8 @@ interface LigneImputation {
   tripCount: number;
   km: number;
   durationSeconds: number;
+  /** Le dénominateur de la vitesse moyenne — cumulable, contrairement à une moyenne. */
+  movingSeconds: number;
 }
 
 /**
