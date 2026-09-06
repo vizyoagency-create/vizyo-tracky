@@ -184,11 +184,11 @@ export function trajetHorsPerimetreConducteur(
         </div>
         <div class="rep-export-colonne">
         <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
-          <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
+          <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting() || exportsBloquesSansSociete()" class="rep-export-btn rep-export-btn--pdf">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'pdf' ? 'Export…' : 'PDF' }}</span>
           </button>
-          <button type="button" (click)="onExportCsv('trips')" trackClick="rapport-export-trips" [disabled]="!!exporting()" class="rep-export-btn">
+          <button type="button" (click)="onExportCsv('trips')" trackClick="rapport-export-trips" [disabled]="!!exporting() || exportsBloquesSansSociete()" class="rep-export-btn">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-trips' ? 'Export…' : 'CSV trajets' }}</span>
           </button>
@@ -199,7 +199,7 @@ export function trajetHorsPerimetreConducteur(
                Le serveur refuse aussi (400 avec la raison), mais un bouton qu'on clique pour
                découvrir un bandeau rouge n'est pas une réponse : on le dit avant. -->
           <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts"
-                  [disabled]="!!exporting() || conducteurFiltre()"
+                  [disabled]="!!exporting() || conducteurFiltre() || exportsBloquesSansSociete()"
                   class="rep-export-btn">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
@@ -207,7 +207,7 @@ export function trajetHorsPerimetreConducteur(
           <!-- Sprint 5 — Export Excel « soigné » PAR VÉHICULE : nécessite un
                véhicule précis (sinon désactivé + hint). -->
           <button type="button" (click)="onExportExcel()" trackClick="rapport-export-excel"
-                  [disabled]="!!exporting()"
+                  [disabled]="!!exporting() || exportsBloquesSansSociete()"
                   [title]="libelleExcel()"
                   class="rep-export-btn rep-export-btn--excel">
             @if (exporting() === 'excel') {
@@ -3642,7 +3642,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * `null` sans filtre : aucun export n'a alors quoi que ce soit à annoncer, et une mention
    * permanente deviendrait du bruit.
    */
+  /**
+   * ── UN RAPPORT PORTE SUR UNE SOCIÉTÉ, ET L'ÉCRAN LE DIT AVANT LE CLIC ────────────────
+   *
+   * Le serveur refuse désormais un export sans société désignée (il en choisissait une au
+   * hasard — la plus ancienne — et l'étiquetait de son nom). Mais découvrir ce refus APRÈS
+   * avoir cliqué, dans un bandeau rouge, n'est pas une réponse : on ferme les boutons et on
+   * dit pourquoi, exactement comme le CSV alertes sous filtre conducteur.
+   *
+   * ⚠️ Ne concerne QUE les comptes qui voient plusieurs sociétés. Un gestionnaire n'a rien
+   * à choisir : `synthesePeriodePossible` est vrai pour lui, et rien ne change.
+   */
+  protected readonly exportsBloquesSansSociete = computed(() => !this.synthesePeriodePossible());
+
   protected readonly noteExportsConducteur = computed<string | null>(() => {
+    if (this.exportsBloquesSansSociete()) {
+      return 'Choisissez une société dans le sélecteur en haut de page pour exporter. '
+        + "Un rapport porte sur UNE société : en désigner une au hasard produirait un "
+        + "document au nom d'un client qui n'est pas celui que vous regardez.";
+    }
     const cond = this.conducteurPourExport();
     if (!cond) return null;
     return `PDF, CSV trajets et Excel ne retiendront que ${cond.trajets}. `

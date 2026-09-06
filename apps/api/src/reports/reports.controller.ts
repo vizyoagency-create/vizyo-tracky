@@ -735,13 +735,44 @@ export class ReportsController {
         const v = await this.prisma.vehicle.findUnique({ where: { id: hintId }, select: { fleetId: true } });
         if (v?.fleetId) fleetId = v.fleetId;
       }
+      /**
+       * ══════════════════════════════════════════════════════════════════════════════════
+       * UN RAPPORT SANS SOCIÉTÉ DÉSIGNÉE EST REFUSÉ — IL N'EN INVENTE PLUS UNE
+       * ══════════════════════════════════════════════════════════════════════════════════
+       *
+       * Cette branche prenait `fleet.findFirst({ orderBy: { createdAt: 'asc' } })` : la
+       * société la PLUS ANCIENNE, choisie en silence. Vérifié en production le 2026-09-06 —
+       * `GET /reports/stats` sans `fleetId` rendait 1 838 trajets et 38 928 km sous le nom
+       * d'une société que personne n'avait demandée.
+       *
+       * C'est le pire des trois comportements possibles :
+       *   - rendre TOUTES les sociétés mélangées serait faux, mais visiblement faux ;
+       *   - refuser est juste ;
+       *   - en désigner UNE et l'ÉTIQUETER de son nom est faux ET crédible. Le document
+       *     part chez un client avec le nom d'un autre en en-tête, et rien ne cloche.
+       *
+       * Un super-administrateur voit plusieurs sociétés : tant qu'il n'en a pas choisi une
+       * dans la barre du haut, la question « quel est le rapport ? » n'a pas de réponse. On
+       * la lui pose, en nommant le geste — un 400 qui dit seulement « fleetId requis »
+       * n'aide personne devant un écran où ce mot n'apparaît nulle part.
+       *
+       * ⚠️ LE REPLI PAR VÉHICULE RESTE, juste au-dessus : demander l'export d'un véhicule
+       * précis DÉSIGNE sa société sans ambiguïté. C'est le seul cas où l'on peut répondre
+       * sans que l'utilisateur ait choisi.
+       */
       if (!fleetId) {
-        const firstFleet = await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
-        if (firstFleet) fleetId = firstFleet.id;
+        throw new BadRequestException(
+          'Aucune société sélectionnée. Choisissez une société dans le sélecteur en haut de '
+          + "l'écran : un rapport porte sur UNE société, et en désigner une au hasard "
+          + "produirait un document au nom d'un client qui n'est pas le vôtre.",
+        );
       }
     }
     if (!fleetId) {
-      throw new BadRequestException('fleetId requis');
+      throw new BadRequestException(
+        'Aucune société sélectionnée. Choisissez une société dans le sélecteur en haut de '
+        + "l'écran avant de demander un rapport.",
+      );
     }
     return { from, to, fleetId };
   }
