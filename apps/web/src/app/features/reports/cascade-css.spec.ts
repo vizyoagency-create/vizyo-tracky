@@ -199,5 +199,17 @@ describe('Replay de trajet — l’ordre des règles CSS du basculement mobile',
     expect(marque('exces', 'height:\\s*20px').test(css)).toBeTrue();
     expect(marque('pointe', 'height:\\s*13px').test(css)).toBeTrue();
   });
+
+  it('le plancher réduit de la carte est déclaré APRÈS la classe utilitaire quʼil corrige', () => {
+    // ⚠️ `min-h-[260px]` est une utilitaire TAILWIND : elle vit dans la feuille GLOBALE, pas
+    // ici. Ce test ne peut donc pas comparer leurs positions — il vérifie ce qu'il peut
+    // vérifier : que la règle existe, et qu'elle porte bien la borne de HAUTEUR. Sans cette
+    // borne elle s'appliquerait aussi aux écrans hauts, où la carte n'a aucune raison de
+    // rétrécir. C'est la spécificité d'encapsulation (0,2,0 contre 0,1,0) qui la fait gagner.
+    const regle = positionDe(css, /\.tr-carte-hote\s*\{\s*min-height:\s*220px/);
+
+    expect(regle).toBeGreaterThan(-1);
+    expect(/@media[^{]*max-height:\s*900px[^{]*\{\s*\.tr-carte-hote/.test(css)).toBeTrue();
+  });
 });
 

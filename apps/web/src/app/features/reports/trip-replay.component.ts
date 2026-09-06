@@ -237,7 +237,7 @@ interface RecitTrajet {
                  barre de lecture (heure, vitesse, frise) sont incompressibles, et un
                  plancher de carte trop haut poussait la barre hors de l'ecran sur les
                  petits telephones — la commande principale devenait inatteignable. -->
-            <div class="relative flex-1 flex flex-col min-h-[260px] sm:min-h-[280px]">
+            <div class="tr-carte-hote relative flex-1 flex flex-col min-h-[260px] sm:min-h-[280px]">
               <div #mapContainer class="flex-1"></div>
               <!-- ══ LA VITESSE, SUR LA CARTE ══════════════════════════════════════════
                    Elle existait déjà, mais SOUS la carte, en petit, sous la frise — loin
@@ -573,6 +573,22 @@ interface RecitTrajet {
       .tr-corps { overflow-y: auto; }
       .tr-aside { max-height: none; }
       .tr-aside-scroll { overflow-y: visible; }
+    }
+    /*
+     * Sur un écran COURT, la carte cède 40 px de son plancher.
+     *
+     * Le corps défile désormais, donc le panneau est atteignable — mais à 812 px de haut il
+     * n'en dépassait que 34, et le titre « Le récit de ce trajet » arrivait coupé en son
+     * milieu. Une ligne tranchée se lit comme un défaut d'affichage, pas comme « la suite est
+     * en dessous ». À 220 px la carte reste bien au-dessus des 180 px d'avant le lot
+     * précédent, et le panneau montre son premier titre en entier plus l'amorce du suivant :
+     * cette amorce-là, elle, se lit comme une invitation à faire défiler.
+     *
+     * ⚠️ Bornée en HAUTEUR, pas en largeur : c'est la place verticale qui manque. Sur un
+     * téléphone posé à l'horizontale comme sur une tablette haute, la carte garde ses 260 px.
+     */
+    @media (max-width: 1023px) and (max-height: 900px) {
+      .tr-carte-hote { min-height: 220px; }
     }
     @media (min-width: 1024px) {
       .tr-corps { flex-direction: row; }
