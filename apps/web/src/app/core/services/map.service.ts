@@ -82,6 +82,41 @@ export class MapService {
         touchPitch: true,
         touchZoomRotate: true,
         attributionControl: { compact: true },
+        /**
+         * ── LES COMMANDES DE LA CARTE PARLENT FRANÇAIS ────────────────────────────────
+         *
+         * MapLibre pose ses propres `aria-label` et `title`, en anglais, sur des boutons
+         * que le produit n'écrit pas lui-même. Relevé en auditant le replay au lecteur
+         * d'écran : « Zoom in », « Zoom out », « Drag to rotate map, click to reset
+         * north » — dans une application entièrement en français, sur la seule commande
+         * qu'un utilisateur non voyant peut identifier.
+         *
+         * ⚠️ POSÉ ICI, dans le service, et pas au cas par cas : toutes les cartes du
+         * produit passent par `createMap`. Traduire dans le replay seul aurait laissé la
+         * carte temps réel, la fiche véhicule et le replay de période en anglais — et la
+         * prochaine carte serait née en anglais elle aussi.
+         *
+         * Les clés absentes retombent sur l'anglais d'origine : on traduit ce qui est
+         * visible ici, sans prétendre couvrir un catalogue qu'on ne maîtrise pas.
+         */
+        locale: {
+          'AttributionControl.ToggleAttribution': 'Afficher les mentions légales',
+          'AttributionControl.MapFeedback': 'Signaler un problème sur la carte',
+          'FullscreenControl.Enter': 'Passer en plein écran',
+          'FullscreenControl.Exit': 'Quitter le plein écran',
+          'GeolocateControl.FindMyLocation': 'Me localiser',
+          'GeolocateControl.LocationNotAvailable': 'Position indisponible',
+          'LogoControl.Title': 'Logo MapLibre',
+          'Map.Title': 'Carte',
+          'NavigationControl.ResetBearing': 'Remettre le nord en haut',
+          'NavigationControl.ZoomIn': 'Zoomer',
+          'NavigationControl.ZoomOut': 'Dézoomer',
+          'ScaleControl.Feet': 'pi',
+          'ScaleControl.Meters': 'm',
+          'ScaleControl.Kilometers': 'km',
+          'ScaleControl.Miles': 'mi',
+          'ScaleControl.NauticalMiles': 'nmi',
+        },
       });
 
       if (opts.withNavigationControl !== false) {

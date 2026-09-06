@@ -45,7 +45,19 @@ describe('AuthService — le retour au premier plan rattrape le minuteur gelé',
   let realFetch: typeof globalThis.fetch;
   let appels: number;
   let reponse: () => Promise<Response>;
-  const visibiliteOrigine = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+  /**
+   * ⚠️ ON DÉFINIT SUR L'INSTANCE `document`, DONC ON DOIT LA NETTOYER SUR L'INSTANCE.
+   *
+   * Une première version restaurait le descripteur de `Document.prototype` — qui n'avait
+   * jamais été touché. La propriété posée sur l'instance survivait donc à la suite et
+   * masquait le vrai getter pour TOUS les tests suivants : quatre specs d'`api-fetch`,
+   * qui décident d'après la visibilité de la page, tombaient sans rapport avec leur sujet.
+   * Un test qui laisse une trace globale fait échouer le voisin, et on cherche le défaut au
+   * mauvais endroit.
+   */
+  const rendreLaVisibilite = () => {
+    delete (document as unknown as Record<string, unknown>)['visibilityState'];
+  };
 
   beforeEach(() => {
     TestBed.configureTestingModule({ providers: [provideRouter([]), provideHttpClient()] });
@@ -60,7 +72,7 @@ describe('AuthService — le retour au premier plan rattrape le minuteur gelé',
     globalThis.fetch = realFetch;
     localStorage.removeItem('vizyo-tracky-refresh');
     localStorage.removeItem('vizyo-tracky-token');
-    if (visibiliteOrigine) Object.defineProperty(Document.prototype, 'visibilityState', visibiliteOrigine);
+    rendreLaVisibilite();
   });
 
   it('jeton EXPIRÉ pendant le sommeil de l’onglet : le retour déclenche un renouvellement', async () => {

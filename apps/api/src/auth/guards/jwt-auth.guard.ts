@@ -35,12 +35,43 @@ export class JwtAuthGuard implements CanActivate {
     const header = req.headers.authorization;
     const headerToken = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
 
-    const token = cookieToken ?? headerToken;
-    if (!token) {
+    if (!cookieToken && !headerToken) {
       throw new UnauthorizedException('Missing access token');
     }
 
-    const payload = this.auth.verifyAccessToken(token);
+    /**
+     * ── LE COOKIE A LA PRIORITÉ, PAS LE MONOPOLE ────────────────────────────────────────
+     *
+     * Ce guard s'écrivait `const token = cookieToken ?? headerToken`. Le repli ne servait
+     * donc QUE si le cookie était ABSENT, jamais s'il était INUTILISABLE — alors que le
+     * commentaire ci-dessus annonce deux modes qui « cohabitent ».
+     *
+     * Un cookie présent mais périmé, tronqué, ou signé avec un secret d'avant un
+     * redéploiement faisait donc échouer la requête SANS JAMAIS essayer l'en-tête, que le
+     * client venait pourtant de rafraîchir. Le navigateur, lui, ne peut rien y faire : le
+     * cookie est httpOnly, il ne sait ni le lire ni le supprimer.
+     *
+     * ⚠️ CECI N'ÉLARGIT AUCUNE CONFIANCE. Les deux jetons traversent EXACTEMENT la même
+     * vérification (`verifyAccessToken` : signature, émetteur, audience, type, application).
+     * Un en-tête accepté ici l'aurait été à l'identique sur une requête sans cookie. On
+     * corrige l'ORDRE d'essai, jamais le contrôle.
+     *
+     * ⚠️ Et l'échec reste un échec : si les DEUX sont invalides, c'est l'erreur du cookie
+     * qui est relancée — celle du mode nominal, la plus utile à qui lit les journaux.
+     */
+    let payload;
+    try {
+      payload = this.auth.verifyAccessToken(cookieToken ?? headerToken!);
+    } catch (erreurCookie) {
+      // Rien à réessayer : soit il n'y avait pas de cookie, soit l'en-tête est le même jeton.
+      if (!cookieToken || !headerToken || headerToken === cookieToken) throw erreurCookie;
+      try {
+        payload = this.auth.verifyAccessToken(headerToken);
+      } catch {
+        throw erreurCookie;
+      }
+    }
+
     req.user = await this.auth.resolveLocalUser(payload.sub);
     return true;
   }

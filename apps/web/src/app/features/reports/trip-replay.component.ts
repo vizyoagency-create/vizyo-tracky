@@ -13,7 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2 } from 'lucide-angular';
+import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2, Crosshair } from 'lucide-angular';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { SpeedingSegmentDto, TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
 import { excesDuTrajet } from '@vizyo/tracky-shared';
@@ -214,6 +214,29 @@ interface RecitTrajet {
                  petits telephones — la commande principale devenait inatteignable. -->
             <div class="relative flex-1 flex flex-col min-h-[180px] sm:min-h-[280px]">
               <div #mapContainer class="flex-1"></div>
+              <!-- ══ LA VITESSE, SUR LA CARTE ══════════════════════════════════════════
+                   Elle existait déjà, mais SOUS la carte, en petit, sous la frise — loin
+                   du véhicule qu'on regarde. Sur un trajet court elle vaut en plus la même
+                   chose que le « max » de l'en-tête, si bien qu'elle passait pour un
+                   rappel figé de celui-ci. Relevé à l'audit : la valeur bougeait bien
+                   (26 → 8 → 0 km/h), personne ne pouvait le voir.
+                   Elle est donc posée EN SURIMPRESSION, à côté de ce qu'elle décrit. Le
+                   bandeau du bas est conservé : il porte l'heure, la provenance du relevé
+                   et l'excès en cours, que cette pastille n'a pas la place de dire. -->
+              <div class="tr-vit-carte" [class.tr-vit-carte--moyenne]="!vitesse().mesuree"
+                   role="status" [attr.aria-label]="'Vitesse à l’instant lu : ' + (vitesse().kmh | number:'1.0-0') + ' kilomètres-heure'">
+                <b>{{ vitesse().kmh | number:'1.0-0' }}</b><small>km/h</small>
+              </div>
+              <!-- ⚠️ N'APPARAÎT QUE QUAND LE SUIVI EST COUPÉ, c'est-à-dire quand
+                   l'utilisateur a déplacé la carte lui-même. Un bouton toujours affiché
+                   pour une caméra qui suit déjà n'aurait rien à corriger. -->
+              @if (!suiviActif()) {
+                <button type="button" class="tr-suivre" (click)="reprendreLeSuivi()"
+                        trackClick="replay-reprendre-suivi">
+                  <lucide-icon [img]="CrosshairIcon" [size]="13"></lucide-icon>
+                  Suivre le véhicule
+                </button>
+              }
               @if (analysis(); as a) {
                 @if (a.stopCount > 0 || nbExces() > 0) {
                   <div class="tr-legend">
@@ -390,6 +413,40 @@ interface RecitTrajet {
     .tr-as-l3 { margin: 2px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-tertiary); }
     .tr-as-ecart { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--texte-attente); }
 
+    /* ─── La vitesse lue, en surimpression de la carte ───
+       Même matière que la légende (fond translucide, flou) pour qu'on la lise sur
+       n'importe quel fond de carte, clair ou sombre. En HAUT à droite : la légende occupe
+       le bas à gauche, et les commandes de zoom le bas à droite. */
+    .tr-vit-carte {
+      position: absolute; right: 10px; top: 10px; z-index: 5;
+      display: inline-flex; align-items: baseline; gap: 3px;
+      padding: 6px 10px; border-radius: 10px;
+      background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border-subtle);
+      font-variant-numeric: tabular-nums;
+    }
+    .tr-vit-carte b { font-size: 20px; font-weight: 800; color: var(--fg-primary); line-height: 1; }
+    .tr-vit-carte small { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); }
+    /* ⚠️ Une vitesse DÉDUITE de la moyenne ne se lit pas comme une mesure : elle est mise
+       en retrait, exactement comme le bandeau du bas le fait déjà (classe tr-hud-v--moyenne).
+       Deux surfaces qui affichent le même chiffre doivent porter la même réserve. */
+    .tr-vit-carte--moyenne b { color: var(--fg-secondary); font-weight: 700; }
+
+    /* Le retour au véhicule, quand le doigt a pris la main sur la caméra. */
+    .tr-suivre {
+      position: absolute; right: 10px; top: 52px; z-index: 5;
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 44px; padding: 8px 12px; border-radius: 10px;
+      background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border-subtle);
+      font-size: 11.5px; font-weight: 700; color: var(--fg-primary);
+      cursor: pointer;
+    }
+    .tr-suivre:hover { border-color: var(--tracky-light, #10E0A0); }
+    .tr-suivre lucide-icon { color: var(--tracky-light, #10E0A0); }
+
     /* Légende carte */
     .tr-legend {
       position: absolute; left: 10px; bottom: 10px; z-index: 5;
@@ -560,6 +617,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
 
   /** Exposé au template : la légende doit porter la couleur RÉELLE des couches de carte. */
   protected readonly LinkIcon = Link2;
+  protected readonly CrosshairIcon = Crosshair;
   protected readonly couleursCarte = COULEURS_CARTE;
   /**
    * Les chiffres de l'en-tête passent par les MÊMES fonctions que le tableau. Une
@@ -583,6 +641,12 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private readonly preferences = inject(PreferencesService);
 
   protected readonly playing = signal(false);
+
+  /**
+   * La caméra suit-elle le véhicule ? Vrai par défaut, coupé dès que l'utilisateur
+   * manipule la carte lui-même (cf. `suivreSiBesoin` et l'écoute posée à la création).
+   */
+  protected readonly suiviActif = signal(true);
   protected readonly speed = signal(1);
   protected readonly recitOuvert = signal(false);
 
@@ -1118,6 +1182,19 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       const points = this.points.map(([lng, lat]) => ({ lat, lng }));
       this.mapSvc.fitBounds(this.map!, points, { padding: 50, animate: false });
 
+      /**
+       * ⚠️ LE GESTE DE L'UTILISATEUR COUPE LE SUIVI, et c'est `originalEvent` qui fait la
+       * différence : MapLibre émet `dragstart` / `zoomstart` AUSSI pour ses propres
+       * animations — dont le `easeTo` du suivi lui-même. Sans ce test, la caméra se serait
+       * désarmée toute seule au premier recentrage, et le suivi n'aurait jamais duré plus
+       * d'une image.
+       */
+      for (const evenement of ['dragstart', 'zoomstart', 'rotatestart'] as const) {
+        this.map!.on(evenement, (e: { originalEvent?: unknown }) => {
+          if (e?.originalEvent) this.suiviActif.set(false);
+        });
+      }
+
       // Marker initial : la vitesse du DÉPART, mesurée quand elle existe. Il portait
       // la moyenne du trajet, donc restait ambre à l'arrêt comme en excès.
       const data: VehicleMarkerData = {
@@ -1218,6 +1295,55 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     if (!pos || !this.marker) return;
     this.marker.setLngLat([pos.lng, pos.lat]);
     this.majIcone(pos.heading);
+    this.suivreSiBesoin(pos.lng, pos.lat);
+  }
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * LA CAMÉRA SUIT LE VÉHICULE — SANS JAMAIS SE BATTRE AVEC LE DOIGT
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Mesuré sur la production : la caméra ne bougeait JAMAIS pendant la lecture. Elle se
+   * posait une fois sur l'ensemble du trajet, et c'est tout. Conséquence, vérifiée au
+   * navigateur : trois crans de zoom pour voir la rue, et le véhicule sortait du cadre dès
+   * la première seconde — pour n'y jamais revenir. Le replay ne servait donc qu'à un seul
+   * niveau de zoom, celui de l'ouverture, où l'on ne distingue rien.
+   *
+   * ── POURQUOI PAS UN RECENTRAGE À CHAQUE IMAGE ─────────────────────────────────────────
+   *
+   * Parce que la carte deviendrait inutilisable : à 8×, une caméra collée au véhicule
+   * défile en continu, on ne peut plus rien lire autour, et le moindre geste est balayé à
+   * l'image suivante. On ne recentre donc QUE lorsque le véhicule approche du bord — tant
+   * qu'il est dans les 60 % centraux, la carte ne bouge pas d'un pixel.
+   *
+   * ⚠️ ET LE DOIGT GAGNE TOUJOURS. Dès que l'utilisateur déplace ou zoome la carte
+   * lui-même, le suivi s'arrête et un bouton « Suivre le véhicule » apparaît. Une caméra
+   * qui ramène de force là où elle veut, pendant qu'on essaie de regarder ailleurs, est
+   * pire que pas de caméra du tout.
+   */
+  private suivreSiBesoin(lng: number, lat: number): void {
+    if (!this.suiviActif() || !this.map) return;
+    try {
+      const canvas = this.map.getCanvas();
+      const p = this.map.project([lng, lat]);
+      const margeX = canvas.clientWidth * 0.2;
+      const margeY = canvas.clientHeight * 0.2;
+      const dansLaZoneSure =
+        p.x > margeX && p.x < canvas.clientWidth - margeX &&
+        p.y > margeY && p.y < canvas.clientHeight - margeY;
+      if (dansLaZoneSure) return;
+      // `easeTo` ne touche QUE le centre : le zoom choisi par l'utilisateur est conservé.
+      this.map.easeTo({ center: [lng, lat], duration: 300 });
+    } catch { /* carte pas prête : la position suivante réessaiera */ }
+  }
+
+  /** Ramène la caméra sur le véhicule et réarme le suivi. */
+  protected reprendreLeSuivi(): void {
+    this.suiviActif.set(true);
+    const pos = this.projeter(this.partDistanceA(this.floatFraction));
+    if (pos && this.map) {
+      try { this.map.easeTo({ center: [pos.lng, pos.lat], duration: 400 }); } catch { /* carte pas prête */ }
+    }
   }
 
   /** Rafraîchit la pastille du véhicule (couleur = vitesse affichée, cap = direction). */
