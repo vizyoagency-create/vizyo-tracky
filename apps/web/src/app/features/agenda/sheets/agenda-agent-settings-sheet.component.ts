@@ -254,7 +254,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-note, .aas-alert { margin: 12px 2px; padding: 12px; border-radius: 12px; background: rgba(56,189,248,.10); color: #38BDF8; font-size: 12.5px; }
     .aas-alert { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--texte-alerte); }
     .aas-skel { height: 46px; border-radius: 12px; margin: 8px 2px; background: linear-gradient(90deg, var(--bg-tertiary), var(--bg-secondary), var(--bg-tertiary)); }
-    .aas-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 62dvh; padding: 10px 2px 2px; }
+    .aas-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 62vh; max-height: 62dvh; padding: 10px 2px 2px; }
     .aas-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .aas-row--col { flex-direction: column; align-items: stretch; gap: 6px; }
     .aas-row--switch { padding: 4px 0; }

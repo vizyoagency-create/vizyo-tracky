@@ -177,7 +177,7 @@ type Step = 1 | 2;
       background: var(--bg-secondary);
       width: 100%;
       max-width: 640px;
-      max-height: 100dvh;
+      max-height: 100vh; max-height: 100dvh;
       height: 100dvh;
       display: flex;
       flex-direction: column;
@@ -186,7 +186,7 @@ type Step = 1 | 2;
     }
     @media (min-width: 768px) {
       .wizard-overlay { padding: 24px; }
-      .wizard-shell { height: auto; max-height: 90dvh; border-radius: var(--radius-card, 16px); }
+      .wizard-shell { height: auto; max-height: 90vh; max-height: 90dvh; border-radius: var(--radius-card, 16px); }
     }
     .wizard-header {
       position: relative;

@@ -184,7 +184,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
     .op-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-display, inherit); }
     .op-x { width: 34px; height: 34px; border-radius: 9px; color: var(--fg-tertiary); display: inline-flex; align-items: center; justify-content: center; }
     .op-x:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
-    .op-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 64dvh; padding: 10px 2px 0; }
+    .op-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 64vh; max-height: 64dvh; padding: 10px 2px 0; }
     .op-accent { color: var(--tracky-light); }
     .op-muted { color: var(--fg-secondary); }
     .op-pad { padding: 10px 2px; font-size: 12.5px; }

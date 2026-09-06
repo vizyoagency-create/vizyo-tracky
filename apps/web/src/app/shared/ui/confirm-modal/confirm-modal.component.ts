@@ -201,7 +201,7 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
         border-top-right-radius: var(--feuille-rayon);
         border-bottom-left-radius: 0; border-bottom-right-radius: 0;
         padding: 8px 20px calc(20px + env(safe-area-inset-bottom));
-        max-height: 88dvh; overflow-y: auto;
+        max-height: 88vh; max-height: 88dvh; overflow-y: auto;
       }
       .cm-boite--critique { border-top: 3px solid var(--texte-alerte); }
       .cm-poignee {

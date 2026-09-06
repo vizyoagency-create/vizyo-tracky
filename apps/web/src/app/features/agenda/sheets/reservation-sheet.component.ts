@@ -236,7 +236,7 @@ function toLocalInput(d: Date): string {
     .rs-seg-btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--fg-tertiary); }
     .rs-seg-btn--on { background: var(--bg-primary); color: var(--tracky-light); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
     .rs-badge { font-size: 11px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: rgba(56,189,248,.18); color: #38BDF8; }
-    .rs-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 58dvh; padding: 2px; }
+    .rs-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 58vh; max-height: 58dvh; padding: 2px; }
     .rs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .rs-f { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-f > span:first-child, .rs-lbl-row { font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }

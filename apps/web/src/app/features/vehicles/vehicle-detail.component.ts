@@ -2619,6 +2619,29 @@ export class VehicleDetailComponent implements OnInit {
     if (typeof qp['tripDate'] === 'string' && qp['tripDate']) this.openTripDate.set(qp['tripDate']);
     if (typeof qp['alert'] === 'string' && qp['alert']) this.openAlertId.set(qp['alert']);
 
+    /**
+     * ── LE LIEN PROFOND SE CONSOMME UNE FOIS, ET DISPARAÎT DE L'ADRESSE ──────────────────
+     *
+     * ⚠️ Ces trois paramètres OUVRENT l'analyse du trajet toute seule (`autoOpen`). Tant
+     * qu'ils restaient dans l'adresse, tout rechargement la rouvrait : on ferme la feuille,
+     * on tire l'écran vers le bas pour rafraîchir — geste réflexe sur téléphone — et elle
+     * revient. Signalé depuis un iPhone comme « il n'y a pas de croix pour fermer », ce qui
+     * décrit exactement ce qu'on ressent quand fermer ne tient pas.
+     *
+     * Les signaux gardent les valeurs : la carte reste mise en évidence et l'analyse s'ouvre
+     * bien cette fois-ci. Seule l'ADRESSE est nettoyée, sans entrée d'historique
+     * supplémentaire (`replaceUrl`) — sinon le bouton « retour » ramènerait sur le lien qui
+     * rouvre la feuille, ce qui serait le même piège d'un cran plus loin.
+     */
+    if (qp['trip'] || qp['tripDate'] || qp['alert']) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { trip: null, tripDate: null, alert: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+    }
+
     const id = this.route.snapshot.params['id'];
     if (!id) { this.router.navigate(['/vehicles']); return; }
     await this.loadAll(id);

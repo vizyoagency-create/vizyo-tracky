@@ -169,7 +169,7 @@ const REASON_LABEL: Record<string, string> = {
   styles: [`
     .ws-ov { position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center; padding:0; }
     @media(min-width:640px){ .ws-ov { align-items:center; padding:16px; } }
-    .ws-pan { width:100%; max-width:480px; max-height:92dvh; overflow:auto; background:var(--bg-primary,#0A0F0E); border:1px solid var(--border-subtle,rgba(255,255,255,.1)); border-radius:16px 16px 0 0; padding:18px; box-sizing:border-box; }
+    .ws-pan { width:100%; max-width:480px; max-height: 92vh; max-height:92dvh; overflow:auto; background:var(--bg-primary,#0A0F0E); border:1px solid var(--border-subtle,rgba(255,255,255,.1)); border-radius:16px 16px 0 0; padding:18px; box-sizing:border-box; }
     @media(min-width:640px){ .ws-pan { border-radius:16px; } }
     .ws-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
     .ws-title { display:flex; gap:10px; align-items:center; color:var(--tracky,#10E0A0); }

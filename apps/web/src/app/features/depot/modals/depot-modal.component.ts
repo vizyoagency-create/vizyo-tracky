@@ -82,7 +82,7 @@ import { LucideAngularModule, X } from 'lucide-angular';
     @media (max-width: 767px) {
       .dmo-panneau {
         left: 0; right: 0; bottom: 0; top: auto; transform: none;
-        width: auto; max-height: 88dvh;
+        width: auto; max-height: 88vh; max-height: 88dvh;
         border-radius: var(--feuille-rayon) var(--feuille-rayon) 0 0;
         padding-bottom: env(safe-area-inset-bottom);
         animation: dmo-monte 260ms cubic-bezier(.16, 1, .3, 1) both;

@@ -442,10 +442,31 @@ export function gradeOf(score: number): 'A' | 'B' | 'C' | 'D' | 'E' {
 
     /* ── Modale détail ── */
     .taid-overlay { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: flex-end; justify-content: center; padding: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
+    /*
+     * ── LA FEUILLE NE DOIT JAMAIS POUSSER SON EN-TÊTE HORS DE L'ÉCRAN ──
+     *
+     * Signalé sur iPhone : « ça ouvre directement le rapport et il n'y a pas de croix pour
+     * fermer ». Cette feuille est ancrée EN BAS (align-items: flex-end) : sa croix est en
+     * haut de la carte, donc tout ce qui la fait dépasser en hauteur la pousse au-dessus du
+     * cadre, hors d'atteinte. Et sur un téléphone en application installée, il n'y a ni
+     * barre d'adresse ni bouton retour pour s'en sortir.
+     *
+     * Deux garde-fous, dans cet ordre :
+     *
+     *   1. 92vh AVANT 92dvh. Sans unité dvh (Safari antérieur à 15.4), la seconde
+     *      déclaration est INVALIDE donc ignorée — et il ne restait alors AUCUN plafond :
+     *      la carte prenait la hauteur de son contenu, un récit de vingt lignes la faisait
+     *      déborder, et la croix sortait par le haut. ⚠️ L'ordre EST la correction : à
+     *      sélecteur égal, c'est la dernière déclaration comprise qui gagne.
+     *   2. padding-top sur la zone sûre : en application installée avec une barre d'état
+     *      translucide (black-translucent, cf. index.html), le contenu passe SOUS l'heure
+     *      et la batterie. La croix tombait à 13 px de l'îlot dynamique.
+     */
     .taid-card {
-      width: 100%; max-width: 720px; max-height: 92dvh; display: flex; flex-direction: column;
+      width: 100%; max-width: 720px; max-height: 92vh; max-height: 92dvh; display: flex; flex-direction: column;
       border-radius: 18px 18px 0 0; background: var(--bg-secondary); border: 1px solid var(--border-subtle);
       box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden;
+      padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
     }
     @media (min-width: 640px) {

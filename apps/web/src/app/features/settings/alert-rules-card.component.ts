@@ -317,7 +317,7 @@ const EMPTY_FORM: RuleForm = {
     .btn-ghost { background: transparent; border: 1px solid var(--border-subtle); color: inherit; }
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60;
       display: flex; align-items: flex-end; justify-content: center; }
-    .sheet { background: var(--bg-secondary); width: min(560px, 100%); max-height: 92dvh;
+    .sheet { background: var(--bg-secondary); width: min(560px, 100%); max-height: 92vh; max-height: 92dvh;
       display: flex; flex-direction: column; border-radius: 16px 16px 0 0;
       /* Zone sûre iOS : sans ça le bouton passe sous la barre gestuelle. */
       padding-bottom: env(safe-area-inset-bottom, 0); }

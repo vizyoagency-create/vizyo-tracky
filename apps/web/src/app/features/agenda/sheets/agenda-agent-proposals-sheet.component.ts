@@ -94,7 +94,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .ap-skel { height: 84px; border-radius: 12px; margin: 10px 2px; background: linear-gradient(90deg, var(--bg-tertiary), var(--bg-secondary), var(--bg-tertiary)); }
     .ap-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 30px 12px; color: var(--fg-tertiary); text-align: center; }
     .ap-empty-ic { opacity: .5; }
-    .ap-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 64dvh; padding: 10px 2px 2px; }
+    .ap-body { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 64vh; max-height: 64dvh; padding: 10px 2px 2px; }
     .ap-card { border: 1px solid var(--border-subtle); border-radius: 12px; padding: 12px; background: var(--bg-tertiary); }
     .ap-card-top { display: flex; align-items: center; justify-content: space-between; }
     .ap-plate { font-size: 13px; font-weight: 800; color: var(--fg-primary); }

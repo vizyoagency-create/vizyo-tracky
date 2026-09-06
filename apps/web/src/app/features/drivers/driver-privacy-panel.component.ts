@@ -90,7 +90,7 @@ const REASON_LABEL: Record<string, string> = {
   styles: [`
     .dp-ov { position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center; }
     @media(min-width:640px){ .dp-ov { align-items:center; padding:16px; } }
-    .dp-pan { width:100%; max-width:440px; max-height:92dvh; overflow:auto; background:var(--bg-primary,#0A0F0E); border:1px solid var(--border-subtle,rgba(255,255,255,.1)); border-radius:16px 16px 0 0; padding:18px; box-sizing:border-box; }
+    .dp-pan { width:100%; max-width:440px; max-height: 92vh; max-height:92dvh; overflow:auto; background:var(--bg-primary,#0A0F0E); border:1px solid var(--border-subtle,rgba(255,255,255,.1)); border-radius:16px 16px 0 0; padding:18px; box-sizing:border-box; }
     @media(min-width:640px){ .dp-pan { border-radius:16px; } }
     .dp-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
     .dp-title { display:flex; gap:10px; align-items:center; color:var(--tracky-light,#3EEBB8); }

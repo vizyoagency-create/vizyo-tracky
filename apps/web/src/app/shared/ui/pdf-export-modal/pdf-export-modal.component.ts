@@ -569,7 +569,7 @@ function joinFr(parts: string[]): string {
       border-top-right-radius: 20px;
       display: flex;
       flex-direction: column;
-      max-height: 92dvh;
+      max-height: 92vh; max-height: 92dvh;
       box-shadow: 0 -8px 32px rgba(0, 0, 0, .35);
       animation: pem-slide-up .22s ease-out;
     }
@@ -579,7 +579,7 @@ function joinFr(parts: string[]): string {
         margin: auto 1rem;
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-card, 16px);
-        max-height: 85dvh;
+        max-height: 85vh; max-height: 85dvh;
         box-shadow: 0 24px 48px rgba(0, 0, 0, .45);
         animation: pem-fade-in .18s ease-out;
       }

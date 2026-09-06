@@ -107,7 +107,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         border-top-right-radius: var(--feuille-rayon);
         border-bottom-left-radius: 0; border-bottom-right-radius: 0;
         padding: 8px 20px calc(20px + env(safe-area-inset-bottom));
-        max-height: 88dvh; overflow-y: auto;
+        max-height: 88vh; max-height: 88dvh; overflow-y: auto;
       }
       .tf-poignee {
         display: block; margin: 4px auto 14px;
