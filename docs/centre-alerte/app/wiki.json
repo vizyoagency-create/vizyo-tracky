@@ -1305,10 +1305,10 @@
     },
     {
       "slug": "ROADMAP-CORRECTIFS.md",
-      "title": "Roadmap des correctifs — audit du 20/08",
+      "title": "Roadmap des correctifs (VIVANTE)",
       "section": "guide",
-      "order": 3,
-      "description": "Plan d'exécution des six correctifs du 20/08 : pourquoi, où dans le code, le geste, et comment prouver que c'est réparé."
+      "order": 2,
+      "description": "LE fichier qui dit quoi faire et dans quel ordre — refondue le 6 septembre sur les 20 fiches ouvertes. Recapitule les six derniers audits, puis classe chaque tache en cinq etats : ce qui attend un geste humain, ce qui est a coder, ce qui est deploye mais non exerce, ce qui est seulement a surveiller, et ce qui est bloque par un prerequis. C est la seule roadmap sans date dans son nom, et c est delibere : les autres sont des instantanes figes."
     },
     {
       "slug": "README.md",
@@ -1473,6 +1473,20 @@
       "section": "rapports",
       "order": -15,
       "description": "Premier passage apres un deploiement NON ANNONCE qui a mis six correctifs en ligne d un coup, tous verifies un par un sur l artefact servi. Deux se prouvent le jour meme : TRK-061 par la double condition, TRK-059 par ses motifs de cloture. Deux fiches neuves : TRK-067 (le journal ne journalisait aucun recalcul automatique, nee et close le meme jour) et TRK-068 (fetch failed sur le rafraichissement de jeton, troisieme recidive du message de transport brut). Le temoin des disparitions rend son PREMIER constat en quinze jours, et il s explique. Et le critere de verification de TRK-052 est rectifie : il accusait la mauvaise chaine."
+    },
+    {
+      "slug": "ROADMAP-CORRECTIFS-2026-09-04.md",
+      "title": "Roadmap des correctifs du 4 septembre",
+      "section": "rapports",
+      "order": -8,
+      "description": "Instantane fige de la passe de correction du 4 septembre : les 17 fiches alors ouvertes, la branche fix/roadmap qui a livre TRK-064, TRK-061, TRK-060 et TRK-065, et le complement de 12h44 qui a ouvert TRK-066. Remplacee par la roadmap VIVANTE le 6 septembre."
+    },
+    {
+      "slug": "ROADMAP-CORRECTIFS-2026-09-01.md",
+      "title": "Roadmap des correctifs du 1er septembre",
+      "section": "rapports",
+      "order": -7,
+      "description": "Instantane fige de la passe de correction du 1er septembre : le plan qui a produit les correctifs de TRK-052 et TRK-053, deployes a 09h17."
     }
   ],
   "passages": [
