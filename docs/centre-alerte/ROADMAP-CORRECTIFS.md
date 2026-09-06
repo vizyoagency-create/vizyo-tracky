@@ -355,9 +355,21 @@ dise transforme un dépassement en conformité sans que rien n'ait changé.
 qu'un mécanisme reproduise : `vizyo-manager` (abonnements Stripe, factures, clients),
 `texto-postgres` (passerelle SMS : `messages`, `allowlist_entries`) et `capcom6-mysql` (relais SMS).
 
-Le dump manuel du 04/09 à **04:52:04** — *la même seconde pour les trois* — les a fait passer au
-vert. **Rien ne le rejouera** : aucun timer, aucun cron, aucun script. `vizyo-manager` : salve
+Le dump du 04/09 à **04:52:04** — *la même seconde pour les trois* — les a fait passer au vert.
+**Rien ne le rejouera** : aucun timer, aucun cron, aucun script. `vizyo-manager` : salve
 précédente à **142 jours** ; `texto` et `capcom6` : **une seule copie chacun**.
+
+> ✅ **ET SON AUTEUR EST CONNU — c'est l'agent d'audit lui-même, et il l'avait écrit.** Le journal
+> d'exécution du 04/09 (tâche T1, dans le `ROADMAP.md` retiré ce jour) porte les trois archives,
+> leur taille, leur vérification d'intégrité **et** leur confrontation à la base vivante
+> (`allowlist_entries` : 47 en base = 47 dans le dump). Il y écrivait déjà, mot pour mot :
+> *« c'est une copie ponctuelle. Aucun timer n'a été posé, donc ces trois bases seront de nouveau
+> périmées demain. La fiche reste `A_TRAITER`. »*
+>
+> 🔑 **Les audits des 05 et 06/09 ont consacré un chapitre entier à chercher qui avait fait ce
+> dump — la réponse était dans un fichier de leur propre dossier, avec la mise en garde qui allait
+> avec.** *VPS-M81 n'a rien découvert de faux ; il a redécouvert, à grands frais, ce qui était déjà
+> écrit.* C'est la raison pour laquelle le contenu de ce journal est versé ici plutôt que supprimé.
 
 **Le geste** — dériver une unité systemd par base, **sur un gabarit qui existe déjà sur la machine
 et qui a fait ses preuves** : `vizyo-auth-backup.timer`, posé le 04/09, **s'est déclenché seul deux
@@ -404,6 +416,23 @@ script. Le prochain `scp -r` sans `-p` le retirera, comme le 05/08.
 **Le geste** — `ExecStart=/bin/bash /opt/vizyo-verify/deploy/vps/backup.sh`, pour que le bit cesse
 d'être une condition de survie de la sauvegarde.
 
+> 🔴 **LE PÉRIMÈTRE A DOUBLÉ LE 04/09, ET LE COLLECTEUR NE LE VOIT TOUJOURS PAS.** La même question,
+> posée pour la première fois à `tracky-backup`, rend le même résultat :
+>
+> ```
+> ExecStart=/opt/vizyo-tracky/deploy/vps/backup-db.sh     ← le script EN DIRECT
+> OnFailure=                                              ← ABSENT
+> ```
+>
+> **C'est la sauvegarde de `tracky_prod` — 5,7 Go, 41 copies, la base de production principale — et
+> son échec n'alerte personne.** Le constat ne visait Vizyo Verify que parce que **personne n'avait
+> posé la question à l'autre unité**. **Délai de détection d'un échec : ~23 h par construction, pour
+> les DEUX sauvegardes.**
+>
+> *Piste concrète et gratuite* : le bloc « L'unité qui PRODUIT chaque sauvegarde a-t-elle réussi ? »
+> lit déjà chaque unité. Lui faire afficher `OnFailure=` présent/absent coûte **un
+> `systemctl show -p OnFailure` par unité** — quatre appels, aucune E/S disque.
+
 ### V14 · VPS-033 · gravité 2 · 🟡 PRÉPARÉ — *5 min*
 
 **Ce qui se passe** — la mesure des correctifs de sécurité est perdue **4 passages sur 5** parce que
@@ -423,12 +452,21 @@ sur **une** machine est sans effet mesurable ; le généraliser ne le serait pas
 `/run/docker.sock` (« lecture seule » — **ce qui ne restreint rien** : qui atteint la socket pilote
 le démon), tourne sur l'étiquette flottante `traefik:latest` et **n'a aucune sonde de santé**.
 
+**✅ Le digest est DÉJÀ relevé — relevé le 04/09, ne pas le re-préparer :**
+
+```
+traefik@sha256:82d3d16dde0474a51fef00b28de143d48b67f7a27453224d5e7b5aaefff26a97
+```
+
 ```bash
-docker inspect foodsqan-traefik --format '{{.Image}}'   # relever le digest AVANT toute recreation
+docker inspect foodsqan-traefik --format '{{.Image}}'   # verifier qu il n a PAS change
 ```
 
 ⚠️ **L'ORDRE COMPTE** : relever le digest **avant** toute recréation, sinon on épingle la version
 qui vient d'arriver au lieu de celle qu'on a validée.
+🔑 **Et si ce digest a changé depuis le 04/09 sans qu'on ait rien fait, ce n'est pas un détail :
+c'est que l'étiquette flottante a bougé sous la production — la première preuve directe que le
+risque décrit par VPS-034 se réalise.**
 ⚠️ **Ne PAS retirer le montage** : Traefik perdrait la découverte de routes et **les 25 domaines
 tomberaient**.
 ⚠️ **Ne PAS traiter ceci comme une urgence** : aucune intrusion constatée, 23 échecs SSH sur 7 j,
@@ -444,6 +482,13 @@ cette nuit, elle sera retéléchargée.
 **Le geste** — épingler `alpine` **par empreinte** et la pré-tirer **hors** de la fenêtre de
 sauvegarde ; ou vérifier si le `tar` + `gpg` a réellement besoin d'un conteneur.
 
+**✅ L'empreinte ET les lignes à modifier sont DÉJÀ relevées — 04/09 :**
+
+```
+alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+→ lignes 163 et 165 de /opt/vizyo-verify/deploy/vps/backup.sh
+```
+
 ### V17 · VPS-030 · gravité 3 · 🟡 PRÉPARÉ
 
 **1,70 Go en 13 fichiers**, sous **aucune** rétention (1 679 Mo dans `/root/backups`, 57 Mo dans
@@ -452,6 +497,9 @@ sauvegarde ; ou vérifier si le `tar` + `gpg` a réellement besoin d'un conteneu
 ```bash
 ls -1t /root/backups/tracky-avant-graphiques-*.sql.gz | tail -n +2   # liste, n efface rien
 ```
+
+**✅ Le périmètre exact est DÉJÀ relevé — 04/09 : 10 fichiers, 1,4 Go**, en conservant
+`tracky-avant-graphiques-20260819-030105.sql.gz`. *Ne pas re-préparer.*
 
 ⚠️ **Ne PAS `rm -rf /root/backups`** : le dossier porte aussi les **seules copies connues** d'un
 état de la base Maestroo de développement — et elles pèsent 0,46 Mo.
@@ -488,7 +536,20 @@ ne peut pas se tromper de façon mesurable sur une table qui n'a aucune page à 
 
 | Quoi | État | Ce qui le prouvera |
 |---|---|---|
-| **Sentinelle « boîtiers muets » (VPS-038)** — une ligne par société au centre d'alerte quand des boîtiers rattachés se taisent > 3 j | Commit `fb0642f8` sur `feat/sentinelle-boitiers-muets`. **48 tests verts**, mutation du seuil → 1 échec exactement. **Non déployée.** | Au premier passage en production : **2 lignes** (`2ad69ac1…` 8 boîtiers, `88627f81…` 2), **pas 10** — et les 3 boîtiers sans véhicule écartés du déclenchement mais comptés dans le contexte |
+| **Sentinelle « boîtiers muets » (VPS-038)** — une ligne par société au centre d'alerte quand des boîtiers rattachés se taisent > 3 j | Commit `fb0642f8`, fusionné dans `main`. **48 tests verts**, mutation du seuil → 1 échec exactement. **Non déployée.** | Au premier passage en production : **2 lignes** (`2ad69ac1…` 8 boîtiers, `88627f81…` 2), **pas 10** — et les 3 boîtiers sans véhicule écartés du déclenchement mais comptés dans le contexte |
+| **VPS-M59** — `previsions.chargeDeFond.note` s'affiche, **et la garde manquante du gabarit `/admin/vps`** | Corrigé le **04/09**, `tsc` vert, `ng build` vert (14,1 s), présence vérifiée dans le bundle `chunk-K4HBXQ56.js`. **`tracky-web` n'a jamais été redéployé.** | Ouvrir `/admin/vps` → carte « Prévisions ». Si le bloc « Charge de fond » **n'est pas** suivi d'un second encadré portant le texte de `note`, **le déploiement n'a pas eu lieu** — et il ne faut pas conclure que le correctif ne marche pas |
+
+> 🔴 **VPS-M59 corrige un défaut plus grave que celui qu'il visait, et il faut le dire.** En ouvrant
+> le gabarit, le passage du 04/09 a trouvé que **la garde que tout le monde croyait posée n'existait
+> pas** : `@if (idx.previsions; as p)` était la seule, et `p.chargeDeFond.…` était lu **sans
+> garde**. Un passage d'audit qui n'écrirait pas cette clé ferait retomber **toute la carte
+> « Prévisions », tableau du disque compris** — c'est-à-dire **TRK-033 à l'identique**. Le service
+> API sert le JSON **brut, sans validation** : *le type TypeScript est une promesse que le
+> compilateur n'a aucun moyen de tenir.*
+>
+> ⚠️ **Et ce correctif a été reporté 11 fois comme « hors de portée de l'agent — code applicatif ».
+> Il ne l'était pas.** Le rapport d'audit du 06/09 le listait encore comme angle mort ouvert, **deux
+> jours après qu'il eut été écrit et compilé** — parce que personne n'avait lu le journal du 04/09.
 
 ---
 
@@ -530,14 +591,18 @@ feront perdre une heure le jour où quelqu'un les suivra.*
    renvoyait pour la dette d'architecture (clés `AM-NNN`) ; le fichier est **absent du dépôt**.
    👉 **Le créer, ou retirer la référence** — *un renvoi vers un fichier fantôme est pire que pas de
    renvoi.*
-3. 🆕 **`docs/vps-audit/ROADMAP.md` existe, date du 04/09, et il est FAUX sur deux points.** Il
-   annonce **VPS-013 « ✅ FAIT »** — la fiche est `A_TRAITER` au 29ᵉ passage, les trois bases n'ont
-   toujours aucun mécanisme — et classe **VPS-038 en gravité 2**, alors qu'elle est passée en
-   **gravité 1** le 05/09. *Un catalogue qui déclare résolu le seul constat de gravité 1 encore
-   ouvert est pire qu'un catalogue absent.*
-   👉 **Décision à prendre, et elle n'est pas cosmétique** : soit ce fichier redevient la source et
-   la Partie II ci-dessus n'en est qu'un digest daté, soit il est **retiré** au profit de cette
-   roadmap. **Deux catalogues du même objet divergent — c'est déjà fait, en deux jours.**
+3. ✅ **`docs/vps-audit/ROADMAP.md` — RETIRÉ le 06/09.** Il datait du 04/09 et son tableau de
+   synthèse annonçait **VPS-013 « ✅ FAIT »** (la fiche est `A_TRAITER` au 29ᵉ passage) et
+   **VPS-038 en gravité 2** (elle est passée en **gravité 1** le 05/09). **Cette roadmap-ci fait
+   désormais foi, seule.**
+   👉 **Son contenu non obsolète a été versé ici avant suppression**, et il ne l'était pas qu'un
+   peu : le **journal d'exécution du 04/09** (l'auteur du dump que VPS-M81 cherchait), les
+   **quatre jeux de valeurs préparées** (digests Traefik et Alpine, périmètre exact des 1,4 Go,
+   dépôt distant de `vizyo-leads` vérifié), l'**élargissement de VPS-015 à `tracky-backup`**, et le
+   fait que **VPS-M59 est corrigé et compilé depuis le 04/09, mais jamais déployé**.
+   ⚠️ **La copie de ce fichier survit sur `perf/garde-fou-tests-et-workers`.** Une fusion future de
+   cette branche la ferait revenir. *Le retirer sur `main` ne suffit pas à le faire disparaître —
+   c'est à savoir au moment de traiter cette branche.*
 4. 🆕 **La Partie II est un instantané DÉRIVÉ, pas une source.** Elle a été construite le 06/09 à
    partir des 124 fiches du référentiel VPS. **Le référentiel dit *pourquoi*, ce fichier dit *quoi
    faire*** — même règle que pour la Partie I. *Si les deux se contredisent un jour, c'est le
@@ -577,8 +642,22 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 > attendent une décision humaine depuis 15 à 33 jours.** *Ce n'est pas un problème de capacité
 > technique, et aucune passe de correction ne le résoudra.*
 
-> 🔑 **Un catalogue qui vieillit ment plus vite qu'un référentiel.** `docs/vps-audit/ROADMAP.md` a
-> divergé en **deux jours** : il déclare résolu le seul constat de gravité 1 encore ouvert. Le
-> référentiel, lui, est resté juste — parce qu'il est réécrit à chaque passage par la mesure, quand
-> la roadmap est réécrite à la main. *C'est la raison pour laquelle la Partie II ci-dessus porte sa
-> date en toutes lettres et se déclare dérivée.*
+> 🔑 **Un catalogue qui vieillit ment plus vite qu'un référentiel — mais c'est son RÉSUMÉ qui ment,
+> pas son détail.** `docs/vps-audit/ROADMAP.md`, retiré ce jour, annonçait **VPS-013 « ✅ FAIT »**
+> dans son tableau de synthèse — alors que sa propre section détaillée disait l'inverse, en toutes
+> lettres : *« copie ponctuelle, aucun timer, la fiche reste `A_TRAITER` »*. **Le fichier n'était
+> pas faux : sa ligne de résumé l'était.** *C'est VPS-M84 sous une autre forme — deux endroits du
+> même document répondent à la même question et ne disent pas la même chose, et c'est la version
+> rassurante qu'on lit.*
+
+> 🔑 **La note de passation la mieux écrite ne vaut rien si le passage suivant ne l'ouvre pas.**
+> `ROADMAP.md` se terminait par une section **« POUR L'AGENT D'AUDIT DE DEMAIN »** qui répondait
+> d'avance à quatre questions : qui avait fait le dump du 04/09, que `VPS-M59` était corrigé mais
+> non déployé, que `tracky-backup` n'avait pas d'`OnFailure=` non plus, et que quatre tâches
+> étaient déjà préparées avec leurs digests. **Les passages du 05 et du 06/09 ne l'ont pas lue.**
+> Résultat : un chapitre entier réécrit pour retrouver une réponse déjà écrite (VPS-M81), et un
+> angle mort republié comme ouvert alors qu'il était corrigé depuis deux jours (VPS-M59, 11ᵉ
+> report).
+> *La procédure d'audit impose de relire le dernier rapport et le référentiel. **Elle n'a jamais
+> imposé de relire la roadmap** — et c'est exactement là que vivait la passation.* 👉 **C'est le
+> premier argument pour n'avoir qu'UNE roadmap, et c'est pourquoi elle est ici.**

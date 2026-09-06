@@ -2245,6 +2245,23 @@
       "piste": "Angle mort n° 12, ouvert ce passage : avant d ouvrir un constat sur un VOLUME, ventiler ce volume par les COLONNES CATEGORIELLES de sa propre table (~1 s). decision et state auraient epargne un constat de gravite 2 et un test date a trois jours.",
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-m85-jai-refute-la-bonne-hypothese-avec-la-mauvaise-grandeur-et-la-colonne-qui-nommait-la-cause-etait-dans-la-table-da-cote"
+    },
+    {
+      "id": "VPS-M86",
+      "titre": "La note de passation existait, elle repondait d avance a quatre questions, et deux passages de suite ne l ont pas ouverte",
+      "domaine": "methode",
+      "statut": "APPLIQUE",
+      "gravite": 2,
+      "vuPremiere": "2026-09-06",
+      "vuDerniere": "2026-09-06",
+      "mesure": "2026-09-06 : docs/vps-audit/ROADMAP.md se terminait par une section « POUR L AGENT D AUDIT DE DEMAIN » ecrite le 04/09, qui repondait d avance a quatre questions traitees comme ouvertes par les passages suivants : (1) l auteur des trois dumps du 04/09 a 04:52 — VPS-M81 y a consacre un chapitre entier ; (2) VPS-M59 corrige mais non deploye — republie le 06/09 en angle mort ouvert « hors de portee de l agent », 11e report, DEUX JOURS apres sa correction ; (3) tracky-backup n a pas d OnFailure= non plus — jamais repris ; (4) quatre tâches deja preparees avec leurs digests — le plan du 06/09 redemande de les relever.",
+      "quoi": "La cause est dans la PROCEDURE, pas dans la negligence. Le §3 de PROCEDURE-AUDIT.md impose de relire REFERENCE-CONSTATS.md en entier et le dernier rapport. Il ne mentionne pas la roadmap — or c est exactement la que le passage du 04/09, le seul qui ait AGI sur la machine, avait depose ce qu il avait fait et ce qu il fallait verifier ensuite. La passation n a pas ete omise : elle a ete ecrite dans le seul fichier que la procedure n oblige pas a ouvrir.",
+      "pourquoiInvisible": "Une note de passation ne produit AUCUN symptome quand on ne la lit pas : elle ne casse rien, ne rend pas de chiffre faux, ne declenche aucun controle. Son non-usage ne se voit qu a ceci — l audit redecouvre a grands frais ce qui etait ecrit. Et cette redecouverte RESSEMBLE A DU BON TRAVAIL : VPS-M81 est un constat juste, bien argumente, qui a produit un correctif utile. Rien dans son resultat ne trahit qu il etait inutile.",
+      "quoiFaire": "APPLIQUE : il n y a plus qu UNE seule roadmap, docs/centre-alerte/ROADMAP-CORRECTIFS.md, portant les deux dispositifs, et le contenu de passation y est verse. ⚠️ RESTE A FAIRE, et ce n est pas fait : ajouter la roadmap a la liste de lecture obligatoire du §3 de PROCEDURE-AUDIT.md. Sans quoi le meme oubli se rejouera sur le nouveau fichier — on aura deplace la note, pas l habitude.",
+      "gain": "Deux constats republies a tort en moins (VPS-M59, VPS-M81), quatre jeux de valeurs preparees recuperes, et un elargissement de VPS-015 qui touche la sauvegarde de la base de production principale (tracky_prod, 5,7 Go) — lequel serait reste invisible.",
+      "aNePasFaire": "⚠️ NE PAS en conclure qu il ne faut plus ecrire de note de passation : elle etait juste, complete et datee ; c est sa PLACE qui etait mauvaise. ⚠️ NE PAS supprimer VPS-M81 pour autant : le correctif qu il a produit (l ecart entre deux salves, qui distingue un mecanisme d un geste) est bon et il reste. Un travail redondant n est pas un travail faux.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m86-la-note-de-passation-existait-elle-repondait-davance-a-quatre-questions-et-deux-passages-de-suite-ne-lont-pas-ouverte"
     }
   ],
   "passages": [
