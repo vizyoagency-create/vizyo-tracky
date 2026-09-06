@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import type { AuthUser } from '../auth/types/auth-user';
+import { vitesseMoyenneAgregee } from '../common/vitesse-moyenne';
 
 /**
  * Sprint 5 (Rapports & filtres v2) — Export Excel « soigné » PAR VÉHICULE.
@@ -469,12 +470,29 @@ export class ReportExcelService {
       ]);
     }
 
+    /**
+     * ⚠️ LA LIGNE TOTAL DONNE MAINTENANT LA MOYENNE, elle affichait un tiret.
+     *
+     * Le tiret était prudent tant que la colonne portait des moyennes non cumulables : on ne
+     * fait pas la moyenne de moyennes. Mais le PDF, lui, imprime bien une vitesse moyenne de
+     * flotte — et un gestionnaire qui compare les deux documents ne trouvait le chiffre que
+     * dans l'un des deux.
+     *
+     * Il est cumulable dès lors qu'on additionne les deux GRANDEURS et qu'on divise à la fin :
+     * Σ km ÷ Σ temps roulant, exactement ce que calcule la synthèse du PDF. Les deux
+     * documents impriment donc le même nombre, à la décimale près.
+     */
+    const kmTotal = triees.reduce((n, l) => n + l.kpis.totalKm, 0);
+    const roulantTotal = triees.reduce((n, l) => n + l.kpis.totalMovingSeconds, 0);
+    const dureeTotale = triees.reduce((n, l) => n + l.kpis.totalDurationSeconds, 0);
     const total = ws.addRow([
       'TOTAL', '', '',
       triees.reduce((n, l) => n + l.kpis.tripCount, 0),
-      round1(triees.reduce((n, l) => n + l.kpis.totalKm, 0)),
-      fmtDuration(triees.reduce((n, l) => n + l.kpis.totalDurationSeconds, 0)),
-      '—',
+      round1(kmTotal),
+      fmtDuration(dureeTotale),
+      round1(vitesseMoyenneAgregee({
+        distanceKm: kmTotal, durationSeconds: dureeTotale, movingSeconds: roulantTotal,
+      })),
       Math.round(triees.reduce((n, l) => n + l.kpis.estimatedCostEur, 0) * 100) / 100,
     ]);
     total.eachCell((c) => {
@@ -532,6 +550,7 @@ export class ReportExcelService {
       tripCount: trips.length,
       totalKm: round1(totalKm),
       totalDurationSeconds,
+      totalMovingSeconds,
       avgSpeedKmh: round1(avgSpeed),
       maxSpeedKmh: round1(maxSpeed),
       estimatedLiters: round1(estimatedLiters),
@@ -1188,6 +1207,8 @@ interface Kpis {
   tripCount: number;
   totalKm: number;
   totalDurationSeconds: number;
+  /** Le dénominateur de `avgSpeedKmh` — cumulable, contrairement à une moyenne. */
+  totalMovingSeconds: number;
   avgSpeedKmh: number;
   maxSpeedKmh: number;
   estimatedLiters: number;

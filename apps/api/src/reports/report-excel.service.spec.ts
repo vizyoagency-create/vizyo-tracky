@@ -271,11 +271,24 @@ describe('ReportExcelService.generateScope — le classeur d’un parc', () => {
     const derniere = synth.getRow(synth.rowCount);
     expect(derniere.getCell(1).value).toBe('TOTAL');
     /**
-     * ⚠️ PAS de vitesse moyenne dans la ligne TOTAL : une moyenne de moyennes n'a aucun
-     * sens, et un chiffre plausible à cet endroit serait lu comme la vitesse moyenne du
-     * parc. Le tiret est délibéré.
+     * ⚠️ LA VITESSE MOYENNE DU PARC, ET PLUS UN TIRET.
+     *
+     * Le tiret venait d'un raisonnement juste — on ne fait pas la moyenne de moyennes — mais
+     * appliqué à la mauvaise opération. La grandeur est cumulable dès lors qu'on additionne
+     * les DEUX termes et qu'on divise à la fin : Σ km ÷ Σ temps roulant, exactement ce
+     * qu'imprime la synthèse du PDF.
+     *
+     * Tant que la colonne restait vide, le gestionnaire qui comparait les deux documents ne
+     * trouvait ce chiffre que dans l'un des deux — et n'avait aucun moyen de vérifier que
+     * l'autre disait la même chose.
      */
-    expect(derniere.getCell(7).value).toBe('—');
+    const kmTotal = derniere.getCell(5).value as number;
+    const moyenne = derniere.getCell(7).value as number;
+    expect(typeof moyenne).toBe('number');
+    expect(moyenne).toBeGreaterThan(0);
+    // Cohérente avec les kilomètres de la même ligne : jamais plus que la distance parcourue
+    // en une heure ne le permettrait sur la durée affichée.
+    expect(moyenne).toBeLessThanOrEqual(kmTotal);
   });
 
   it('ajoute la colonne « Véhicule » aux trajets — un classeur de parc doit dire de qui ils sont', async () => {
