@@ -1,7 +1,14 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import type { Env } from '../config/env.validation';
+
+/**
+ * Delai au-dela duquel Vizyo Auth est declare injoignable. Un rafraichissement de jeton se fait
+ * pendant que la personne attend devant son ecran : au-dela de quelques secondes, echouer VITE et
+ * le DIRE vaut mieux que faire patienter sur une dependance qui ne repondra pas.
+ */
+const DELAI_APPEL_MS = 8_000;
 
 export interface LoginResponse {
   accessToken: string;
@@ -68,6 +75,53 @@ export class AuthClientService {
     };
   }
 
+  /**
+   * TRK-068 — TOUT appel sortant vers Vizyo Auth passe par ici, et aucun ne peut durer.
+   *
+   * Le cas « le serveur repond une erreur » etait deja instruit (401/403 -> refus
+   * d'authentification, autre -> erreur nommee portant le code). C'est UNIQUEMENT le rejet de
+   * TRANSPORT — DNS, connexion coupee, TLS, pas de reponse — qui remontait nu : `fetch failed`,
+   * sans capture ni delai d'expiration. NestJS en faisait un 500, et le filtre d'exceptions un
+   * `CRITICAL`, parce qu'une exception qui n'est pas une `HttpException` est par definition une
+   * faute serveur non maitrisee.
+   *
+   * Trois choses etaient fausses dans cette seule ligne :
+   *   1. le MESSAGE ne nommait ni la dependance, ni l'operation, ni la consequence ;
+   *   2. le CODE disait « nous avons un bug » (500) la ou une dependance injoignable est un 503 —
+   *      le client ne pouvait pas distinguer « reessaie » de « ta session est morte » ;
+   *   3. le NIVEAU criait `CRITICAL` pour une panne de transport d'un tiers.
+   *
+   * Lever une `ServiceUnavailableException` corrige les trois d'un geste : c'est une
+   * `HttpException`, donc le filtre la classe en `ERROR` et rend un 503.
+   *
+   * 🔑 Le motif technique est DEPLACE en fin de phrase, jamais efface : on change l'ordre de
+   * lecture, on ne perd pas la preuve. *Un message qui nettoie l'ecran au lieu de traduire
+   * l'incident n'est pas un correctif.*
+   */
+  private async appelerVizyoAuth(
+    url: string,
+    init: RequestInit,
+    /** Ce qu'on tentait, en clair : « l'appel POST /v1/auth/refresh ». */
+    operation: string,
+    /** Ce que la personne va constater. C'est la moitie qui manque toujours aux messages bruts. */
+    consequence: string,
+  ): Promise<Response> {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(DELAI_APPEL_MS) });
+    } catch (e) {
+      const expire = e instanceof Error && e.name === 'TimeoutError';
+      const motif = expire
+        ? `aucune reponse en ${DELAI_APPEL_MS / 1000} s`
+        : e instanceof Error
+          ? e.message
+          : String(e);
+      this.logger.warn(`Vizyo Auth injoignable (${operation}) : ${motif}`);
+      throw new ServiceUnavailableException(
+        `Vizyo Auth est injoignable : ${operation} n'a pas pu aboutir. ${consequence} Motif technique : ${motif}.`,
+      );
+    }
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -82,11 +136,12 @@ export class AuthClientService {
       headers['Authorization'] = `Bearer ${bearerToken}`;
     }
 
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    const res = await this.appelerVizyoAuth(
+      url,
+      { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined },
+      `l'appel ${method} ${path}`,
+      "La session de l'utilisateur ne peut pas etre verifiee : il va etre deconnecte.",
+    );
 
     if (!res.ok) {
       const text = await res.text().catch(() => '(body unreadable)');
@@ -212,11 +267,14 @@ export class AuthClientService {
   async verifyLoginCode(email: string, code: string): Promise<{ ok: boolean }> {
     const url = `${this.apiUrl}/v1/auth/email-otp/verify`;
     const body = { email, code };
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: this.signHeaders(body),
-      body: JSON.stringify(body),
-    });
+    // Le JUMEAU de `request()` : meme angle mort, meme correctif. Un defaut corrige d'un seul
+    // cote revient toujours par l'autre (lecon de TRK-004).
+    const res = await this.appelerVizyoAuth(
+      url,
+      { method: 'POST', headers: this.signHeaders(body), body: JSON.stringify(body) },
+      "la verification du code recu par e-mail",
+      "Le code n'a pas pu etre verifie : il faut reessayer dans un instant.",
+    );
     if (res.ok) {
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
       return { ok: data?.ok === true };

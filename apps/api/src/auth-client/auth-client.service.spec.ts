@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { AuthClientService } from './auth-client.service';
 import type { Env } from '../config/env.validation';
 
@@ -135,5 +135,74 @@ describe('AuthClientService — signature HMAC', () => {
     // Si la signature et le body envoye divergent, Vizyo Auth renvoie 401.
     expect(init?.body).toBe('{}');
     expect(headers['X-App-Signature']).toBe(expected);
+  });
+});
+
+/**
+ * TRK-068 — le rejet de TRANSPORT vers Vizyo Auth.
+ *
+ * Le cas « le serveur repond une erreur » etait deja instruit. Celui ou il ne repond PAS
+ * remontait nu : `fetch failed`, en 500, et le filtre d'exceptions le classait `CRITICAL` parce
+ * qu'une exception qui n'est pas une `HttpException` est une faute serveur non maitrisee.
+ */
+describe('AuthClientService — une dependance injoignable (TRK-068)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /** Le transport echoue : pas de reponse, pas de statut — juste un rejet. */
+  function mockFetchRejette(err: Error) {
+    const spy = jest.fn().mockRejectedValue(err);
+    global.fetch = spy as unknown as typeof fetch;
+    return spy;
+  }
+
+  const messageDe = (e: unknown) => String((e as { message?: string })?.message ?? '');
+
+  it('rend un 503 et non un 500 : le client distingue reessayer de session morte', async () => {
+    mockFetchRejette(new TypeError('fetch failed'));
+    await expect(createService().login('a@b.fr', 'x')).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('le message NOMME la dependance, la tentative et la consequence', async () => {
+    mockFetchRejette(new TypeError('fetch failed'));
+    const err = await createService().login('a@b.fr', 'x').catch((e: Error) => e);
+    const msg = messageDe(err);
+    expect(msg).toContain('Vizyo Auth');
+    expect(msg).toContain('POST /v1/auth/login');
+    expect(msg).toContain('deconnecte');
+  });
+
+  it('CONSERVE le motif technique en fin de phrase : on deplace la preuve, on ne efface pas', async () => {
+    mockFetchRejette(new TypeError('getaddrinfo ENOTFOUND vizyo-auth-api'));
+    const err = await createService().login('a@b.fr', 'x').catch((e: Error) => e);
+    // Si ce motif disparait, on a nettoye ecran au lieu de traduire incident.
+    expect(messageDe(err)).toContain('getaddrinfo ENOTFOUND vizyo-auth-api');
+  });
+
+  it('borne appel par un delai expiration : sans lui, on attend indefiniment', async () => {
+    const spy = mockFetchRejette(new TypeError('fetch failed'));
+    await createService().login('a@b.fr', 'x').catch(() => undefined);
+    const [, init] = spy.mock.calls[0];
+    expect((init as { signal?: AbortSignal }).signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('une expiration dit le DELAI, pas une pile de transport', async () => {
+    const expire = new Error('The operation was aborted due to timeout');
+    expire.name = 'TimeoutError';
+    mockFetchRejette(expire);
+    const err = await createService().login('a@b.fr', 'x').catch((e: Error) => e);
+    expect(messageDe(err)).toContain('aucune reponse en 8 s');
+  });
+
+  it('LE JUMEAU verifyLoginCode est traite aussi : un defaut corrige un seul cote revient par autre', async () => {
+    mockFetchRejette(new TypeError('fetch failed'));
+    const err = await createService().verifyLoginCode('a@b.fr', '123456').catch((e: Error) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(messageDe(err)).toContain('code recu par e-mail');
+  });
+
+  it('un code INVALIDE reste un echec metier, pas une panne : la garde na pas ete elargie', async () => {
+    // Double condition : le nouveau chemin ne doit pas avaler ce que ancien traitait bien.
+    mockFetch(401, {});
+    await expect(createService().verifyLoginCode('a@b.fr', 'faux')).resolves.toEqual({ ok: false });
   });
 });
