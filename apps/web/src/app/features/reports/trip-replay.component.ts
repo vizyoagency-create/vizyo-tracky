@@ -13,7 +13,8 @@ import {
   viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2, Crosshair, ChevronDown } from 'lucide-angular';
+import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2, Crosshair, ChevronDown, Car, Maximize } from 'lucide-angular';
+import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { SpeedingSegmentDto, TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
 import { excesDuTrajet } from '@vizyo/tracky-shared';
@@ -93,7 +94,14 @@ interface RecitTrajet {
 @Component({
   selector: 'app-trip-replay',
   standalone: true,
-  imports: [LucideAngularModule, DecimalPipe],
+  /**
+   * ⚠️ `TrackClickDirective` MANQUAIT, et les huit `trackClick="…"` de ce fichier étaient
+   * donc de simples attributs HTML : aucun clic du replay n'a jamais été compté. Le défaut
+   * est muet par construction — un attribut inconnu ne fait ni erreur ni avertissement, et
+   * la seule trace est l'absence de lignes dans le journal d'activité, que personne ne va
+   * chercher. Les trois autres écrans qui posent ces marqueurs, eux, l'importent.
+   */
+  imports: [LucideAngularModule, DecimalPipe, TrackClickDirective],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex flex-col tr-replay-shell">
@@ -262,6 +270,20 @@ interface RecitTrajet {
                   Suivre le véhicule
                 </button>
               }
+              <!-- ══ LES DEUX ÉCHELLES D'UN REPLAY ═══════════════════════════════════════
+                   La carte s'ouvre sur TOUT le trajet : 47 km dans 342 px de large, où la
+                   voiture est un point et la route un trait. À cette échelle le suivi ne
+                   sert à rien — la voiture ne quitte jamais les 60 % centraux, donc la
+                   caméra ne bouge pas d'un pixel de toute la lecture.
+                   Pour regarder la conduite il fallait pincer trois fois, à chaque
+                   ouverture, et le geste coupait le suivi. Ce bouton fait les deux d'un
+                   coup, et sait revenir. -->
+              <button type="button" class="tr-cam" (click)="basculerCamera()"
+                      [attr.aria-pressed]="modeCamera() === 'conduite'"
+                      [trackClick]="modeCamera() === 'conduite' ? 'replay-vue-trajet' : 'replay-vue-conduite'">
+                <lucide-icon [img]="modeCamera() === 'conduite' ? MaximizeIcon : CarIcon" [size]="13"></lucide-icon>
+                {{ modeCamera() === 'conduite' ? 'Tout le trajet' : 'Zoom sur la voiture' }}
+              </button>
               @if (analysis(); as a) {
                 @if (a.stopCount > 0 || nbExces() > 0 || nbPointes() > 0) {
                   <div class="tr-legend">
@@ -497,6 +519,33 @@ interface RecitTrajet {
     }
     .tr-suivre:hover { border-color: var(--tracky-light, #10E0A0); }
     .tr-suivre lucide-icon { color: var(--tracky-light, #10E0A0); }
+
+    /* La bascule d'échelle occupe le coin HAUT-GAUCHE : la pastille de vitesse tient le
+       haut-droit, le bouton « Suivre le véhicule » juste dessous, la légende le bas-gauche.
+       C'est le seul coin libre, et le plus proche du pouce sur un téléphone tenu à gauche. */
+    .tr-cam {
+      position: absolute; left: 10px; top: 10px; z-index: 5;
+      display: inline-flex; align-items: center; gap: 6px;
+      min-height: 44px; padding: 8px 12px; border-radius: 10px;
+      background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border-subtle);
+      font-size: 11.5px; font-weight: 700; color: var(--fg-primary);
+      cursor: pointer;
+    }
+    .tr-cam:hover { border-color: var(--tracky-light, #10E0A0); }
+    .tr-cam lucide-icon { color: var(--tracky-light, #10E0A0); }
+    /* En vue conduite le bouton porte l'accent : c'est un MODE actif, pas une action
+       disponible, et rien d'autre à l'écran ne dit à quelle échelle on regarde. */
+    .tr-cam[aria-pressed="true"] {
+      border-color: var(--tracky-light, #10E0A0);
+      background: color-mix(in srgb, var(--color-tracky-light) 14%, var(--bg-secondary));
+    }
+    /* Sous 380 px, la légende et la bascule se disputent la largeur : la légende descend
+       d'un cran plutôt que de passer dessous, où elle masquerait la fin du tracé. */
+    @media (max-width: 380px) {
+      .tr-cam { font-size: 11px; padding: 8px 10px; }
+    }
 
     /* ─── Ce qui se replie dans la modale ─── */
     /* ⚠️ Borné à l'écran, comme sur la page Rapports : à l'impression une section repliée
@@ -753,6 +802,8 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   protected readonly LinkIcon = Link2;
   protected readonly CrosshairIcon = Crosshair;
   protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly CarIcon = Car;
+  protected readonly MaximizeIcon = Maximize;
   protected readonly couleursCarte = COULEURS_CARTE;
   /**
    * Les chiffres de l'en-tête passent par les MÊMES fonctions que le tableau. Une
@@ -782,6 +833,41 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
    * manipule la carte lui-même (cf. `suivreSiBesoin` et l'écoute posée à la création).
    */
   protected readonly suiviActif = signal(true);
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * DEUX ÉCHELLES, DEUX RÈGLES DE CAMÉRA — ET C'EST L'UTILISATEUR QUI CHOISIT
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * « trajet »  — l'ouverture : toute la trace tient dans le cadre. On voit le parcours,
+   *               pas la conduite. La caméra ne recentre qu'au bord (règle historique).
+   * « conduite » — l'échelle de la route : on voit les rues, les sorties, l'endroit exact
+   *               d'un excès. La caméra reste COLLÉE à la voiture.
+   *
+   * ── POURQUOI DEUX RÈGLES DE SUIVI, ET PAS UNE ────────────────────────────────────────
+   *
+   * La règle des 60 % centraux a été écrite pour le zoom que l'utilisateur avait choisi
+   * lui-même : y recentrer à chaque image aurait rendu la carte illisible. En vue conduite,
+   * la promesse est l'inverse — on demande explicitement à rester sur la voiture — et la
+   * règle du bord y produirait un défilement par à-coups : à 1x, ce replay comprime 1 h 07
+   * en 30 s, soit 134 fois le temps réel, donc la voiture traverse un cadre de 700 m en
+   * moins de deux secondes. On recentre donc à chaque image, sans animation : ce sont les
+   * positions qui sont interpolées, le mouvement est déjà lisse.
+   *
+   * ⚠️ LE DOIGT GAGNE TOUJOURS, dans les deux modes : un geste coupe le suivi et fait
+   * apparaître « Suivre le véhicule », qui le réarme À L'ÉCHELLE DU MODE COURANT.
+   */
+  protected readonly modeCamera = signal<'trajet' | 'conduite'>('trajet');
+
+  /**
+   * Le zoom de la vue conduite : environ 700 m de large sur un téléphone. Assez serré pour
+   * lire les rues et situer un excès, assez large pour que la voiture ne sorte pas du cadre
+   * entre deux images de lecture.
+   *
+   * ⚠️ Ce n'est qu'un POINT DE DÉPART : le pincement de l'utilisateur reste souverain, et le
+   * suivi conserve ensuite le zoom qu'il a choisi.
+   */
+  private static readonly ZOOM_CONDUITE = 15;
 
   /**
    * ══════════════════════════════════════════════════════════════════════════════════════
@@ -1546,6 +1632,13 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
    */
   private suivreSiBesoin(lng: number, lat: number): void {
     if (!this.suiviActif() || !this.map) return;
+    if (this.modeCamera() === 'conduite') {
+      // Collé à la voiture, sans animation : les positions sont déjà interpolées image par
+      // image, et un `easeTo` de 300 ms empilerait une seconde animation par-dessus — la
+      // caméra courrait alors derrière la voiture au lieu de la porter.
+      try { this.map.jumpTo({ center: [lng, lat] }); } catch { /* carte pas prête */ }
+      return;
+    }
     try {
       const canvas = this.map.getCanvas();
       const p = this.map.project([lng, lat]);
@@ -1560,13 +1653,48 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     } catch { /* carte pas prête : la position suivante réessaiera */ }
   }
 
-  /** Ramène la caméra sur le véhicule et réarme le suivi. */
+  /** Ramène la caméra sur le véhicule et réarme le suivi, à l'échelle du mode courant. */
   protected reprendreLeSuivi(): void {
     this.suiviActif.set(true);
     const pos = this.projeter(this.partDistanceA(this.floatFraction));
     if (pos && this.map) {
-      try { this.map.easeTo({ center: [pos.lng, pos.lat], duration: 400 }); } catch { /* carte pas prête */ }
+      // ⚠️ En vue conduite, réarmer SANS revenir au zoom de conduite ramènerait sur la
+      // voiture à l'échelle du trajet entier — c'est-à-dire nulle part où l'on voit
+      // quoi que ce soit, sous un bouton qui promet de suivre le véhicule.
+      const zoom = this.modeCamera() === 'conduite'
+        ? Math.max(this.map.getZoom(), TripReplayComponent.ZOOM_CONDUITE)
+        : undefined;
+      try { this.map.easeTo({ center: [pos.lng, pos.lat], zoom, duration: 400 }); } catch { /* carte pas prête */ }
     }
+  }
+
+  /**
+   * Passe d'une échelle à l'autre. Le libellé du bouton dit ce que le clic VA FAIRE, jamais
+   * l'état courant : « Zoom sur la voiture » puis « Tout le trajet ».
+   */
+  protected basculerCamera(): void {
+    const map = this.map;
+    if (!map) return;
+    if (this.modeCamera() === 'conduite') {
+      this.modeCamera.set('trajet');
+      // Le suivi est coupé : à cette échelle il n'a rien à suivre, et le laisser armé
+      // ferait recentrer la carte au moindre passage près du bord.
+      this.suiviActif.set(false);
+      const points = this.points.map(([lng, lat]) => ({ lat, lng }));
+      try { this.mapSvc.fitBounds(map, points, { padding: 50, animate: true }); } catch { /* carte pas prête */ }
+      return;
+    }
+    this.modeCamera.set('conduite');
+    this.suiviActif.set(true);
+    const pos = this.projeter(this.partDistanceA(this.floatFraction));
+    if (!pos) return;
+    try {
+      map.easeTo({
+        center: [pos.lng, pos.lat],
+        zoom: Math.max(map.getZoom(), TripReplayComponent.ZOOM_CONDUITE),
+        duration: 600,
+      });
+    } catch { /* carte pas prête */ }
   }
 
   /** Rafraîchit la pastille du véhicule (couleur = vitesse affichée, cap = direction). */
