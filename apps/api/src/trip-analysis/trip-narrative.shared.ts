@@ -60,10 +60,26 @@ export function construirePayloadRecit(row: LigneAnalyse): unknown {
       distanceKm: n('distanceKm'),
       durationMin: Math.round(n('durationSec') / 60),
       movingMin: Math.round(n('movingSec') / 60),
+      /**
+       * ⚠️ LES SECONDES AUSSI, ET C'EST LA MÊME PRUDENCE QUE `limitsKnown` CI-DESSOUS.
+       *
+       * Les minutes seules faisaient DISPARAÎTRE les trajets courts : un déplacement de
+       * 24 secondes arrivait au modèle en `durationMin: 0`, c'est-à-dire « ce trajet a duré
+       * zéro minute ». Relevé en production le 2026-09-06 sur un trajet de 90 m — le récit
+       * publié disait « Déplacement de 90 mètres en quelques secondes (durée non
+       * enregistrée) ». La durée ÉTAIT enregistrée : c'est l'arrondi qui l'avait effacée, et
+       * le modèle en a tiré la seule conclusion que le chiffre autorisait.
+       *
+       * On garde les minutes — la formulation des trajets normaux ne change pas — et on
+       * ajoute la valeur exacte, pour que le court puisse se dire en secondes.
+       */
+      durationSec: n('durationSec'),
+      movingSec: n('movingSec'),
       avgSpeedKmh: n('avgSpeedKmh'),
       maxSpeedKmh: n('maxSpeedKmh'),
       stopCount: n('stopCount'),
       idleMin: Math.round(n('idleSec') / 60),
+      idleSec: n('idleSec'),
     },
     gpsQuality: { points: n('gpsPoints'), validRatio: n('gpsValidRatio'), lostSignals: n('gpsLostCount') },
     speeding: {

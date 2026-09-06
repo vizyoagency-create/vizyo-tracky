@@ -108,4 +108,52 @@ describe('trip-narrative.shared', () => {
     const texte = 'Trajet calme de 12 km en trente minutes, deux arrets brefs et une conduite reguliere.';
     expect(recitConcluant(assainirRecit({ narrative: texte }))).toBe(true);
   });
+
+  // ─── Ce que le modèle reçoit d'une durée ───────────────────────────────────
+
+  /**
+   * ⚠️ UN ARRONDI QUI EFFACE UNE DONNÉE FAIT ÉCRIRE UNE AFFIRMATION FAUSSE.
+   *
+   * Le payload n'envoyait que des MINUTES. Un déplacement de 24 secondes arrivait donc en
+   * `durationMin: 0` — « ce trajet a duré zéro minute ». Relevé en production le 2026-09-06 sur
+   * un trajet de 90 m d'« mh cars » : le récit publié disait « Déplacement de 90 mètres en
+   * quelques secondes (durée non enregistrée) ». La durée était enregistrée, des deux côtés
+   * (`trip.durationSeconds = 24`, `analysis.durationSec = 24`) ; c'est l'arrondi qui l'avait
+   * effacée, et le modèle en a tiré la seule conclusion que le chiffre autorisait.
+   *
+   * Même prudence que `limitsKnown` : on ne laisse pas le modèle affirmer une absence qu'on n'a
+   * jamais constatée.
+   */
+  it('un trajet de 24 secondes transmet SA DURÉE, pas un zéro', () => {
+    const p = construirePayloadRecit(ligne({ durationSec: 24, movingSec: 24, distanceKm: 0.09 })) as {
+      summary: { durationMin: number; durationSec: number; movingSec: number };
+    };
+
+    expect(p.summary.durationSec).toBe(24);
+    expect(p.summary.movingSec).toBe(24);
+    // La minute arrondie reste, pour ne pas changer la formulation des trajets normaux…
+    expect(p.summary.durationMin).toBe(0);
+  });
+
+  it('… et sur un trajet normal, les minutes ne bougent pas', () => {
+    // La correction ne doit RIEN changer aux récits déjà satisfaisants : c'est un ajout, pas
+    // un remplacement.
+    const p = construirePayloadRecit(ligne()) as {
+      summary: { durationMin: number; movingMin: number; durationSec: number };
+    };
+
+    expect(p.summary.durationMin).toBe(30);
+    expect(p.summary.movingMin).toBe(25);
+    expect(p.summary.durationSec).toBe(1800);
+  });
+
+  it('le ralenti aussi : 40 secondes moteur tournant ne sont pas « zéro minute »', () => {
+    const p = construirePayloadRecit(ligne({ idleSec: 40 })) as {
+      summary: { idleMin: number; idleSec: number };
+    };
+
+    expect(p.summary.idleSec).toBe(40);
+    expect(p.summary.idleMin).toBe(1);
+  });
 });
+

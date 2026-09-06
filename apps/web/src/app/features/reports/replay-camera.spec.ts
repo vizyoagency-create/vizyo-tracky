@@ -198,4 +198,35 @@ describe('Replay de trajet — la caméra a deux échelles, et le doigt garde la
     expect(() => interne['basculerCamera']()).not.toThrow();
     expect(interne['modeCamera']()).toBe('trajet');
   });
+
+  /**
+   * ── CE QUI APPARTIENT AU TRAJET QU'ON QUITTE ──────────────────────────────────────────
+   *
+   * Relevé en production le 2026-09-06 : après un replay passé en vue conduite, ouvrir un
+   * AUTRE trajet donnait un bouton « Tout le trajet » — une modale qui se déclare en vue
+   * conduite — alors que la caméra venait de faire son cadrage d'ouverture sur la trace
+   * entière. Le bouton proposait de revenir là où on était déjà.
+   */
+  it('ouvrir un autre trajet repart de la vue trajet', () => {
+    ouvrir();
+    interne['basculerCamera']();
+    expect(interne['modeCamera']()).toBe('conduite');
+
+    // `cleanup()` est ce que `initReplay` exécute en premier pour le trajet suivant.
+    interne['cleanup']();
+
+    expect(interne['modeCamera']()).toBe('trajet');
+  });
+
+  it('et avec le suivi réarmé, même si le trajet précédent lʼavait coupé', () => {
+    // Sinon le trajet suivant s'ouvre avec « Suivre le véhicule » affiché, sans que
+    // personne n'ait touché à CETTE carte-là.
+    ouvrir();
+    interne['suiviActif'].set(false);
+
+    interne['cleanup']();
+
+    expect(interne['suiviActif']()).toBeTrue();
+  });
 });
+

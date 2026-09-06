@@ -1792,6 +1792,24 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     this.floatFraction = 0;
     this.curseur.set(0);
     this.recitOuvert.set(false);
+    /**
+     * ── L'ÉTAT DE CAMÉRA NE SURVIT PAS À UN TRAJET ────────────────────────────────────
+     *
+     * `cleanup()` est appelé au début de CHAQUE `initReplay` : c'est ici que se remet à zéro
+     * ce qui appartient au trajet qu'on vient de quitter.
+     *
+     * ⚠️ Ces deux-là manquaient, et le défaut se voyait à l'œil. Relevé en production le
+     * 2026-09-06 : après un replay passé en vue conduite, ouvrir un AUTRE trajet donnait un
+     * bouton « Tout le trajet » — donc une modale qui se déclare en vue conduite — alors que
+     * la caméra venait de faire son `fitBounds` d'ouverture. Le bouton proposait de revenir
+     * là où on était déjà : un clic pour rien, puis un libellé inversé.
+     *
+     * Même chose pour le suivi : un geste dans le trajet précédent le laissait désarmé, et
+     * le trajet suivant s'ouvrait avec « Suivre le véhicule » affiché sans que personne n'ait
+     * touché à cette carte-là.
+     */
+    this.modeCamera.set('trajet');
+    this.suiviActif.set(true);
   }
 }
 
