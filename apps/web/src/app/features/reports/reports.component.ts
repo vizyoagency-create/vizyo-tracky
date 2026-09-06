@@ -1359,7 +1359,8 @@ export function trajetHorsPerimetreConducteur(
                   </button>
                 </th>
                 <th class="p-0 text-right">
-                  <button type="button" class="rep-th rep-th--right" (click)="onSort('avgSpeed')">
+                  <button type="button" class="rep-th rep-th--right" (click)="onSort('avgSpeed')"
+                          title="Vitesse moyenne EN ROULANT : distance ÷ temps réellement passé à rouler, arrêts et trous de signal déduits. Elle est donc plus élevée que distance ÷ durée totale.">
                     <span>V. moy</span>
                     <lucide-icon [img]="sortIcon('avgSpeed')" [size]="13"
                                  [class.rep-th-arrow--active]="sortIndicator('avgSpeed')"></lucide-icon>
@@ -1539,7 +1540,10 @@ export function trajetHorsPerimetreConducteur(
                       {{ clampSpeed(trip.maxSpeed) | number:'1.0-0' }} <small>km/h</small>
                     </span>
                   </div>
-                  <div class="rep-card-stat">
+                  <!-- ⚠️ Le TITRE dit le dénominateur, et il n'est pas décoratif : sans lui,
+                       « 47,6 km en 1 h 07 » et « 53 km/h » se contredisent à la lecture. La
+                       moyenne se calcule sur le temps ROULANT, arrêts déduits. -->
+                  <div class="rep-card-stat" title="Vitesse moyenne EN ROULANT : distance ÷ temps réellement passé à rouler, arrêts et trous de signal déduits. Elle est donc plus élevée que distance ÷ durée totale.">
                     <span class="rep-card-stat-label">V. moy</span>
                     <span class="rep-card-stat-value">{{ clampSpeed(trip.avgSpeed) | number:'1.0-0' }} <small>km/h</small></span>
                   </div>
@@ -4223,7 +4227,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     { col: 'maxSpeed', label: 'Vitesse max' },
     { col: 'distanceMeters', label: 'Distance' },
     { col: 'durationSeconds', label: 'Durée' },
-    { col: 'avgSpeed', label: 'Vitesse moyenne' },
+    { col: 'avgSpeed', label: 'Vitesse moyenne (en roulant)' },
   ];
 
   /**

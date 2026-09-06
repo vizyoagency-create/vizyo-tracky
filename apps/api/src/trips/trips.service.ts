@@ -14,6 +14,7 @@ import type { TripCompletedEvent, TripRecomputeResultDto, TripStartedEvent } fro
 import { MAX_VITESSE_ANNONCEE_KMH, douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { parisDayKey, parisDayStart } from '../common/utils/datetime';
 import { distanceMeters } from '../common/utils/haversine';
+import { apportTempsRoulantSec, vitesseMoyenneTrajet } from '../common/vitesse-moyenne';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { resolveDriverScope, type PorteeConducteur } from '../common/driver-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -86,7 +87,16 @@ interface OpenTripState {
   lastTimestamp: Date;
   dist: number;
   maxSpeed: number;
+  /**
+   * ⚠️ CONSERVÉ, MAIS IL NE FAIT PLUS LA VITESSE MOYENNE. La somme des vitesses annoncées
+   * divisée par leur nombre pondère chaque relevé pareil, quelle que soit sa durée : elle
+   * dépendait de la cadence du boîtier. La moyenne vient désormais de `movingSec`.
+   */
   speedSum: number;
+  /** Temps réellement roulé, accumulé position par position (cf. `common/vitesse-moyenne`). */
+  movingSec: number;
+  /** La vitesse de la position précédente — l'autre borne de la règle du temps roulant. */
+  lastSpeedKmh: number;
   positionCount: number;
   polyPoints: Array<{ lat: number; lng: number }>;
   zeroSpeedSince: Date | null;
@@ -148,6 +158,11 @@ export class TripsService implements OnModuleInit {
         dist: trip.distanceMeters,
         maxSpeed: trip.maxSpeed,
         speedSum: trip.avgSpeed * trip.positionCount,
+        // ⚠️ REPRIS TEL QUEL, jamais reconstitué : le temps roulant est STOCKÉ précisément
+        // pour qu'un redémarrage de l'API au milieu d'un trajet ne fabrique pas un
+        // dénominateur approché à partir de la durée écoulée.
+        movingSec: trip.movingSeconds,
+        lastSpeedKmh: 0,
         positionCount: trip.positionCount,
         polyPoints: [],
         zeroSpeedSince: null,
@@ -245,6 +260,11 @@ export class TripsService implements OnModuleInit {
       // Conserver maxSpeed/speedSum/timestamp pour ne pas geler le trip.
       state.maxSpeed = Math.max(state.maxSpeed, sanitizedSpeed);
       state.speedSum += sanitizedSpeed;
+      state.movingSec += apportTempsRoulantSec(
+        { timestamp: state.lastTimestamp, speedKmh: state.lastSpeedKmh },
+        { timestamp: data.timestamp, speedKmh: sanitizedSpeed },
+      );
+      state.lastSpeedKmh = sanitizedSpeed;
       state.positionCount++;
       state.lastTimestamp = data.timestamp;
     } else {
@@ -253,6 +273,11 @@ export class TripsService implements OnModuleInit {
       state.dist += Math.max(0, d);
       state.maxSpeed = Math.max(state.maxSpeed, sanitizedSpeed);
       state.speedSum += sanitizedSpeed;
+      state.movingSec += apportTempsRoulantSec(
+        { timestamp: state.lastTimestamp, speedKmh: state.lastSpeedKmh },
+        { timestamp: data.timestamp, speedKmh: sanitizedSpeed },
+      );
+      state.lastSpeedKmh = sanitizedSpeed;
       state.positionCount++;
       state.lastLat = data.lat;
       state.lastLng = data.lng;
@@ -338,6 +363,9 @@ export class TripsService implements OnModuleInit {
       dist: 0,
       maxSpeed: initSpeed,
       speedSum: initSpeed,
+      // Une seule position : aucun intervalle, donc aucune seconde de roulage.
+      movingSec: 0,
+      lastSpeedKmh: initSpeed,
       positionCount: 1,
       polyPoints: [{ lat: data.lat, lng: data.lng }],
       zeroSpeedSince: null,
@@ -433,7 +461,17 @@ export class TripsService implements OnModuleInit {
     }
 
     const dur = Math.max(0, Math.round((safeEndMs - startMs) / 1000));
-    const avg = state.positionCount > 0 ? Math.round((state.speedSum / state.positionCount) * 100) / 100 : 0;
+    /**
+     * ⚠️ DISTANCE ÷ TEMPS ROULANT, comme la segmentation par lot et comme l'analyse. C'était
+     * la moyenne arithmétique des vitesses annoncées : un trajet fermé en direct et le même
+     * recalculé par lot ne portaient donc pas le même chiffre.
+     */
+    const avg = vitesseMoyenneTrajet({
+      distanceKm: state.dist / 1000,
+      movingSec: state.movingSec,
+      durationSec: dur,
+      maxSpeedKmh: state.maxSpeed,
+    });
 
     // Simplification Douglas-Peucker : reduit le poids stocke en preservant la
     // forme. Pour un trajet urbain typique, divise les points par 5 a 10.
@@ -477,6 +515,7 @@ export class TripsService implements OnModuleInit {
           distanceKm: Math.round(safeDist / 10) / 100,
           maxSpeed: Math.round(safeMaxSpeed * 100) / 100,
           avgSpeed: safeAvgSpeed,
+          movingSeconds: state.movingSec,
           positionCount: state.positionCount,
           segmentationSource: source,
           polyline: JSON.stringify(simplifiedPoly),
@@ -1087,6 +1126,7 @@ export class TripsService implements OnModuleInit {
           distanceKm: Math.round(safeDist / 10) / 100,
           maxSpeed: safeMaxSpeed,
           avgSpeed: safeAvgSpeed,
+          movingSeconds: Math.max(0, draft.movingSeconds),
           positionCount: draft.positionCount,
           segmentationSource: 'recompute',
           polyline: JSON.stringify(simplifiedPoly),

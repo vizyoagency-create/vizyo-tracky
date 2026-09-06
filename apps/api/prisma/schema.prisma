@@ -1090,7 +1090,12 @@ model Trip {
   distanceKm         Float     @default(0)
   distanceMeters     Float     @default(0)
   maxSpeed           Float     @default(0)
+  /// Distance / temps roulant, en km/h. Voir `common/vitesse-moyenne.ts`.
   avgSpeed           Float     @default(0)
+  /// Temps REELLEMENT passe a rouler (hors arrets et hors trous de signal), en secondes.
+  /// C'est le denominateur de `avgSpeed` : sans lui la moyenne n'est verifiable par personne,
+  /// et une flotte ne peut s'agreger qu'en moyennant des moyennes, ce qui est faux.
+  movingSeconds      Int       @default(0)
   positionCount      Int       @default(0)
   segmentationSource String    @default("live")
   /// Espace dépôt (2026-08) — mission à laquelle ce trajet est rattaché, une fois la

@@ -188,6 +188,7 @@ export class ReportExcelService {
         distanceKm: true,
         maxSpeed: true,
         avgSpeed: true,
+        movingSeconds: true,
         notes: true,
         // ⚠️ L'IDENTIFIANT, PAS SEULEMENT LE NOM (F13) : deux conducteurs peuvent être
         // homonymes, et une imputation faite sur le nom les fondrait en une seule ligne.
@@ -313,7 +314,7 @@ export class ReportExcelService {
         select: {
           vehicleId: true,
           startedAt: true, endedAt: true, durationSeconds: true,
-          distanceKm: true, maxSpeed: true, avgSpeed: true, notes: true,
+          distanceKm: true, maxSpeed: true, avgSpeed: true, movingSeconds: true, notes: true,
           // Cf. le classeur d'un véhicule : l'imputation se fait sur l'IDENTIFIANT.
           driverId: true,
           driver: { select: { firstName: true, lastName: true } },
@@ -493,17 +494,26 @@ export class ReportExcelService {
   ): Kpis {
     let totalKm = 0;
     let totalDurationSeconds = 0;
+    let totalMovingSeconds = 0;
     let maxSpeed = 0;
-    let avgSpeedWeightedSum = 0; // moyenne pondérée par durée
     for (const t of trips) {
       const km = Math.max(0, t.distanceKm);
       totalKm += km;
-      const dur = Math.max(0, t.durationSeconds);
-      totalDurationSeconds += dur;
+      totalDurationSeconds += Math.max(0, t.durationSeconds);
+      totalMovingSeconds += Math.max(0, t.movingSeconds);
       maxSpeed = Math.max(maxSpeed, Math.max(0, t.maxSpeed));
-      avgSpeedWeightedSum += Math.max(0, t.avgSpeed) * dur;
     }
-    const avgSpeed = totalDurationSeconds > 0 ? avgSpeedWeightedSum / totalDurationSeconds : 0;
+    /**
+     * ⚠️ Σ km ÷ Σ temps roulant — la MÊME formule que la synthèse et que chaque ligne de
+     * trajet. C'était une moyenne des `avgSpeed` pondérée par la durée : correcte tant que
+     * `avgSpeed` valait distance ÷ durée, fausse dès qu'il vaut distance ÷ temps roulant,
+     * puisque le poids et le dénominateur ne parlent alors plus du même temps.
+     *
+     * Repli sur la durée totale si aucun trajet du lot n'a de temps roulant connu (données
+     * d'avant la reprise, positions purgées).
+     */
+    const denomSec = totalMovingSeconds > 0 ? totalMovingSeconds : totalDurationSeconds;
+    const avgSpeed = denomSec > 0 ? totalKm / (denomSec / 3600) : 0;
 
     // Conso EFFECTIVE : calibrée (méthode du plein) si mesurée, sinon paramétrée, sinon défaut type.
     const consL100 = (vehicle.calibratedTanks > 0 ? vehicle.calibratedConsumptionL100km : null)
@@ -1131,6 +1141,7 @@ interface TripRow {
   distanceKm: number;
   maxSpeed: number;
   avgSpeed: number;
+  movingSeconds: number;
   notes: string | null;
   /**
    * Conducteur du TRAJET, la clé de l'imputation (F13) — et non celui du véhicule : c'est

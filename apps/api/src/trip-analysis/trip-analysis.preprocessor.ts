@@ -9,6 +9,7 @@ import {
 import { haversineMeters } from '../agenda/trip-stop-detector.service';
 import { co2DuCarburant } from '@vizyo/tracky-shared';
 import { sanitizePositions } from '@vizyo/tracky-shared';
+import { SEUIL_ARRET_KMH, TROU_GPS_SEC, vitesseMoyenneTrajet } from '../common/vitesse-moyenne';
 
 /**
  * Traçabilité fine des trajets (Palier 2) — PRÉPROCESSEUR DÉTERMINISTE.
@@ -122,7 +123,16 @@ export interface VehicleFuel {
 }
 
 // ── Seuils (alignés sur les règles anti-bruit de l'app) ─────────────────────────────────
-const STOP_SPEED_KMH = 4;            // sous ce seuil = à l'arrêt (bruit GPS)
+/**
+ * ⚠️ LES DEUX SEUILS VIENNENT DE `common/vitesse-moyenne`, ils ne sont plus écrits ici.
+ *
+ * Ce fichier était leur seul propriétaire, et le SEGMENTEUR de trajets — l'autre producteur
+ * de « vitesse moyenne » — n'en savait rien : il calculait la moyenne arithmétique des
+ * vitesses des points, sans notion de temps roulant. Deux définitions, deux chiffres, aucun
+ * moyen de savoir lequel on lisait. Les alias locaux sont conservés pour ne pas récrire les
+ * cent lignes qui les nomment.
+ */
+const STOP_SPEED_KMH = SEUIL_ARRET_KMH;
 /**
  * Au-dessus = trame corrompue → jetée.
  *
@@ -140,7 +150,7 @@ const IMPOSSIBLE_SPEED_KMH = MAX_VITESSE_ANNONCEE_KMH;
  * ignorant la limite de la voie, et deux écrans donnaient deux chiffres pour un même trajet.
  */
 
-const GPS_GAP_SEC = 300;             // > 5 min entre 2 points = perte de signal
+const GPS_GAP_SEC = TROU_GPS_SEC;    // > 5 min entre 2 points = perte de signal
 
 /**
  * Vitesse au-dessus de laquelle un point peut constituer un excès, et à partir de laquelle une
@@ -342,7 +352,13 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
 
   const durationSec = Math.round((pts[pts.length - 1].timestamp.getTime() - t0) / 1000);
   const distanceKm = distanceM / 1000;
-  const avgSpeedKmh = movingSec > 0 ? (distanceKm / (movingSec / 3600)) : 0;
+  /**
+   * ⚠️ MÊME GARDE QUE LE TRAJET : sans elle, l'analyse annonçait jusqu'à 286 km/h de moyenne
+   * (23,98 km pour 302 s de roulage observé), et le RÉCIT reprenait ce chiffre mot pour mot.
+   * Le défaut vivait ici depuis le début, invisible parce que rien ne le comparait à la
+   * moyenne du trajet — qui était calculée autrement.
+   */
+  const avgSpeedKmh = vitesseMoyenneTrajet({ distanceKm, movingSec, durationSec, maxSpeedKmh: maxSpeed });
   const speedingSec = speeding.reduce((s, x) => s + x.durationSec, 0);
   const maxOverKmh = speeding.reduce((m, x) => Math.max(m, x.overKmh), 0);
 

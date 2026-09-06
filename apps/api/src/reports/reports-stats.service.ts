@@ -632,7 +632,7 @@ export class ReportsStatsService {
         this.prisma.trip.aggregate({
           where: tripWhere,
           _count: { _all: true },
-          _sum: { distanceKm: true, durationSeconds: true },
+          _sum: { distanceKm: true, durationSeconds: true, movingSeconds: true },
           _avg: { avgSpeed: true },
           _max: { maxSpeed: true },
         }),
@@ -715,12 +715,24 @@ export class ReportsStatsService {
     const tripCount = tripAgg._count._all;
     const totalKm = tripAgg._sum.distanceKm ?? 0;
     const totalSeconds = tripAgg._sum.durationSeconds ?? 0;
-    // ⚠️ Vitesse moyenne = km parcourus / heures de conduite, PAS la moyenne des moyennes
-    //    de trajet (`_avg.avgSpeed`). Un trajet de 400 m à 8 km/h pesait autant qu'un
-    //    trajet de 180 km à 110 km/h : le PDF disait 45,1 km/h là où l'Excel (pondéré par
-    //    la durée) disait 39,3 pour le même véhicule et la même période. Une seule
-    //    définition, celle qu'un gestionnaire comprend, partagée par tous les exports.
-    const avgSpeedKmh = totalSeconds > 0 ? totalKm / (totalSeconds / 3600) : 0;
+    const totalMovingSeconds = tripAgg._sum.movingSeconds ?? 0;
+    /**
+     * ⚠️ Vitesse moyenne = km parcourus / TEMPS ROULANT, PAS la moyenne des moyennes de
+     * trajet (`_avg.avgSpeed`). Un trajet de 400 m à 8 km/h pesait autant qu'un trajet de
+     * 180 km à 110 km/h : le PDF disait 45,1 km/h là où l'Excel (pondéré par la durée) disait
+     * 39,3 pour le même véhicule et la même période.
+     *
+     * Le dénominateur était la durée TOTALE ; c'est désormais le temps roulant, pour que la
+     * synthèse de flotte et la ligne d'un trajet mesurent enfin la même chose. Sans ce
+     * changement, la fiche d'un véhicule aurait annoncé 36 km/h de moyenne sur des trajets
+     * qui affichent chacun 42 : deux nombres justes, incomparables, et rien pour le dire.
+     *
+     * Repli sur la durée totale quand AUCUN trajet du périmètre n'a de temps roulant connu —
+     * c'est-à-dire des trajets d'avant la reprise dont les positions ont été purgées. Mieux
+     * vaut un ordre de grandeur explicable qu'un zéro sur une flotte qui a roulé.
+     */
+    const denomSec = totalMovingSeconds > 0 ? totalMovingSeconds : totalSeconds;
+    const avgSpeedKmh = denomSec > 0 ? totalKm / (denomSec / 3600) : 0;
     const maxSpeedKmh = tripAgg._max.maxSpeed ?? 0;
     const activeVehicleIds = new Set(tripsByVehicle.map((g) => g.vehicleId));
     /**
