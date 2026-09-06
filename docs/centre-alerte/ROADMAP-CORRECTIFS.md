@@ -247,13 +247,12 @@ rien ne bouge** — c'est l'absence de mouvement qui fait la preuve.*
 > par la mesure et 6 assumées par écrit. *Aucune tâche ne se cache dans ces 99 : elles ont été
 > relues une par une pour construire cette liste.*
 >
-> 🔴 **AVERTISSEMENT DE LECTURE — LE RÉFÉRENTIEL VPS N'EST PAS SUR `main`.** Sur `main`,
-> `docs/vps-audit/REFERENCE-CONSTATS.md` pèse **289 Ko et s'arrête au 2026-08-17** : il ne contient
-> **aucune** des fiches **VPS-030 à VPS-039**, *les deux gravités 1 comprises*. La version à jour
-> (**631 Ko**) vit uniquement sur la branche **`perf/garde-fou-tests-et-workers`**. **C'est pourquoi
-> cette partie ne porte aucun lien relatif vers les fiches** — ils pointeraient dans le vide.
-> *C'est le mode d'échec des « six rapports jamais commités » du 11/08 sous une forme neuve : cette
-> fois ils sont commités, mais sur une branche que personne ne fusionne.* 👉 **Tâche V0 ci-dessous.**
+> ✅ **Le référentiel VPS est sur `main` depuis le 2026-09-06** — 29 rapports, 631 Ko, 125 fiches.
+> Il s'y arrêtait au **17/08** (289 Ko) et ne contenait **aucune** des fiches **VPS-030 à VPS-039**,
+> *les deux gravités 1 comprises* : elles ne vivaient que sur `perf/garde-fou-tests-et-workers`.
+> *C'était le mode d'échec des « six rapports jamais commités » du 11/08 sous une forme neuve —
+> cette fois ils étaient commités, mais sur une branche que personne ne fusionnait.*
+> Les fiches sont donc désormais consultables : [`REFERENCE-CONSTATS.md`](../vps-audit/REFERENCE-CONSTATS.md).
 
 ## Récapitulatif des huit derniers passages VPS
 
@@ -281,7 +280,8 @@ libres, production en 99 · 102 · 47 · 118 ms. *Le VPS n'est pas le sujet ; ce
 
 ## Les classes d'exécution VPS — qui a le droit de faire quoi
 
-*Reprises telles quelles de `docs/vps-audit/ROADMAP.md` pour ne pas créer un troisième vocabulaire.*
+*Reprises telles quelles de `docs/vps-audit/ROADMAP.md` — **retiré le 06/09** — pour ne pas créer un
+troisième vocabulaire. Ce sont désormais les seules classes d'exécution VPS.*
 
 | Classe | Sens | Qui exécute |
 |:--:|---|---|
@@ -296,21 +296,25 @@ libres, production en 99 · 102 · 47 · 118 ms. *Le VPS n'est pas le sujet ; ce
 
 ---
 
-## 🔴 V0 — LA TÂCHE QUI CONDITIONNE TOUTES LES AUTRES
+## ✅ V0 — FAIT le 2026-09-06 : les docs VPS sont sur `main`
 
-### V0 · Fusionner ou verser les docs VPS sur `main` — 🔴 HUMAIN · *15 min*
+**Vingt jours d'audit — 15 rapports, 10 fiches neuves, les deux gravités 1 — n'existaient pas sur
+`main`.** Le montage `/opt/tracky-vps-audit` masquait le problème en production tant qu'il tenait :
+l'écran `/admin → Audit VPS` lit le dossier monté, pas le dépôt. *Le jour où le montage aurait
+sauté, l'écran aurait affiché une documentation du 17/08 sans rien signaler.*
 
-**Vingt jours d'audit — 22 rapports, 10 fiches neuves, les deux gravités 1 — n'existent pas sur
-`main`.** Le montage `/opt/tracky-vps-audit` masque le problème en production tant qu'il tient :
-l'écran `/admin → Audit VPS` lit le dossier monté, pas le dépôt. **Le jour où le montage saute,
-l'écran affiche une documentation du 17/08 sans rien signaler.**
+**Ce qui a été fait** — le seul chemin `docs/vps-audit/` a été versé sur `main`
+(`git checkout perf/garde-fou-tests-et-workers -- docs/vps-audit/`), **avec son historique**, et
+non recopié à la main. Arborescences vérifiées identiques, rien d'autre n'a été importé.
+**La branche `perf/garde-fou-tests-et-workers` est conservée** : elle porte encore 49 commits
+uniques, dont du **code** (`scripts/guard-dev-servers.mjs`, le correctif VPS-M59 de
+`admin-vps.component.ts`, `package.json`). *Une fusion complète est une décision ; un `checkout` de
+chemin n'en est pas une.*
 
-**Le geste** — fusionner `perf/garde-fou-tests-et-workers` dans `main`, ou en extraire le seul
-chemin `docs/vps-audit/`. ⚠️ **La branche porte aussi du code** (garde-fou tests/workers) : un
-`merge` complet est une décision, un `checkout` de chemin n'en est pas une.
-
-⚠️ **À ne pas faire** : recopier les fichiers à la main depuis le worktree. On perdrait l'historique
-des 22 passages, qui est la seule chose qui rende les tendances relisibles.
+⚠️ **Ce qu'il RESTE à décider sur cette branche** — sa fusion entre en **conflit sur 4 fichiers** :
+`admin-vps.component.ts`, `REFERENCE-ERREURS.md`, **`ROADMAP-CORRECTIFS.md`** (add/add) et
+`app/wiki.json`. Les trois derniers sont les documents les plus édités du dépôt, et sa version
+date du **21/08**. *Fusionner cette branche telle quelle écraserait la roadmap que vous lisez.*
 
 ---
 
