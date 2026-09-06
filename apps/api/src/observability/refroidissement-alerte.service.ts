@@ -205,4 +205,19 @@ export const CLES_REFROIDISSEMENT = {
    * l'agent repasse avec succès : l'épisode suivant doit crier sans délai.
    */
   AGENT_LOCAL: 'agent-local',
+  /**
+   * VPS-038 (2026-09-06) — boîtiers rattachés à un véhicule et muets depuis plus de trois
+   * jours. PRÉFIXE, suffixé `:<fleetId>:<nombre>`.
+   *
+   * ⚠️ **Le NOMBRE fait partie de la clé, et ce n'est pas un accident.** Ce constat décrit un
+   * état DURABLE — six boîtiers d'une même société se sont tus le 31/08 et l'étaient encore le
+   * 06/09, six jours plus tard. Une clé fixe avec un rappel hebdomadaire dirait la même chose
+   * tous les sept jours, y compris le jour où un SEPTIÈME se tait : la nouvelle serait noyée
+   * dans la répétition. En faisant entrer le compte dans la clé, un effectif qui bouge produit
+   * une clé neuve, donc une ligne immédiate ; un effectif stable se tait pour la semaine.
+   *
+   * C'est la mise en pratique de VPS-M78 : *ne pas comparer les totaux d'un passage à l'autre,
+   * comparer ce qui a changé.* Ici, c'est le changement lui-même qui déclenche.
+   */
+  SENTINELLE_BOITIERS_MUETS: 'sentinelle-boitiers-muets',
 } as const;
