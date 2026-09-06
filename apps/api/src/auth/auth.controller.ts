@@ -107,11 +107,39 @@ export class AuthController {
     // les cas (rotation refresh token cote Vizyo Auth).
     // `dto?.` et non `dto.` : une requete SANS CORPS rend `dto` undefined, et la forme
     // directe levait un TypeError — donc un 500 la ou la reponse juste est un 400.
-    const refreshToken = req.cookies?.['tracky_rt'] ?? dto?.refreshToken;
-    if (!refreshToken) {
+    const jetonCookie = req.cookies?.['tracky_rt'];
+    const jetonCorps = dto?.refreshToken;
+    if (!jetonCookie && !jetonCorps) {
       throw new BadRequestException('Refresh token absent (ni cookie ni body)');
     }
-    const result = await this.authClient.refresh(refreshToken);
+
+    /**
+     * ── LE COOKIE A LA PRIORITÉ, PAS LE MONOPOLE (jumeau de `JwtAuthGuard`) ─────────────
+     *
+     * Cette ligne s'écrivait `req.cookies?.['tracky_rt'] ?? dto?.refreshToken` : le corps
+     * ne servait QUE si le cookie était absent, jamais s'il était périmé. Or LE JETON DE
+     * RAFRAÎCHISSEMENT TOURNE À CHAQUE APPEL — Vizyo Auth en rend un neuf, qu'on repose en
+     * cookie ET que le client garde de son côté.
+     *
+     * Il suffit donc d'UNE rotation perdue en route pour que les deux divergent : un
+     * onglet qui rafraîchit pendant qu'un autre dort, un cookie non réécrit parce que la
+     * réponse n'est pas arrivée, un `SameSite` qui bloque l'écriture. À partir de là, le
+     * cookie est mort pour toujours, le client en détient un valide, et le serveur refuse
+     * sans jamais le regarder. L'utilisateur est déconnecté et ne peut rien y faire : le
+     * cookie est httpOnly, il ne sait ni le lire ni l'effacer.
+     *
+     * ⚠️ AUCUNE CONFIANCE ÉLARGIE : les deux jetons partent au MÊME `authClient.refresh`,
+     * qui reste seul juge. Un corps invalide est refusé exactement comme avant. On corrige
+     * l'ORDRE d'essai, pas le contrôle.
+     */
+    let result;
+    try {
+      result = await this.authClient.refresh(jetonCookie ?? jetonCorps!);
+    } catch (erreurCookie) {
+      // Rien à réessayer : pas de cookie, pas de corps, ou le même jeton des deux côtés.
+      if (!jetonCookie || !jetonCorps || jetonCorps === jetonCookie) throw erreurCookie;
+      result = await this.authClient.refresh(jetonCorps);
+    }
     // Préserve le choix « rester connecté » à la rotation (défaut true si marqueur absent).
     const remember = (req.cookies?.[REMEMBER_COOKIE_NAME] ?? '1') !== '0';
     setAuthCookies(res, result.accessToken, result.refreshToken, remember);
