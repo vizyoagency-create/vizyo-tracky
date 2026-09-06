@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+﻿import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type {
   AssistanceAdminDetailDto,
@@ -17,7 +17,11 @@ import { NotificationDispatchService } from '../notifications/notification-dispa
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
-import { AssistanceAiService, type AssistanceMessageEntree } from './assistance-ai.service';
+import {
+  AssistanceAiService,
+  type AssistanceMessageEntree,
+  type CauseTechniqueEscalade,
+} from './assistance-ai.service';
 
 const SOURCE = 'ASSISTANCE';
 /** Réponses automatiques par conversation. Au-delà, on passe la main plutôt que de tourner en rond. */
@@ -132,7 +136,11 @@ export class AssistanceService {
       },
     });
 
-    if (r.escalade) await this.signalerReprise(user, conv.id, r.motifEscalade, r.gravite);
+    if (r.escalade) {
+      // TRK-070 — la CAUSE voyage avec l'escalade : sans elle, un repli sur un incident déjà
+      // consigné en `DEGRADATION` ressortait en `ERROR` et le recomptait comme un défaut.
+      await this.signalerReprise(user, conv.id, r.motifEscalade, r.gravite, false, r.causeTechnique ?? null);
+    }
 
     return this.toDto(conv.id, user);
   }
@@ -200,15 +208,37 @@ export class AssistanceService {
     motif: string | null,
     gravite: AssistanceGravite,
     urgent = false,
+    // TRK-070 — présent quand l'escalade n'est qu'un REPLI sur un échec technique déjà journalisé.
+    causeTechnique: CauseTechniqueEscalade | null = null,
   ): Promise<void> {
-    const niveau = urgent || gravite === 'CRITICAL' ? 'CRITICAL' : 'ERROR';
+    // ── TRK-070 : le niveau suit la CAUSE, pas la gravité de la conversation ──────────────────
+    //
+    // La règle historique ne lisait que `gravite`, qui décrit l'URGENCE POUR L'UTILISATEUR. Elle
+    // ne pouvait donc pas distinguer « quelqu'un a besoin d'un humain » de « l'IA est tombée et on
+    // a rendu la main » : les deux sortaient en `ERROR`. Sur un compte fournisseur à sec, cela
+    // produisait DEUX lignes pour un seul incident — `DEGRADATION` puis `ERROR` quatorze
+    // millisecondes plus tard — et la seconde le recomptait comme un défaut à corriger.
+    //
+    // Quand l'escalade est un repli technique, on reprend le niveau DÉJÀ décidé pour l'incident
+    // d'origine. Une escalade décidée sur le CONTENU garde `ERROR` : c'est un vrai signal produit.
+    //
+    // ⚠️ L'urgence prime sur tout : une situation critique décrite par l'utilisateur reste
+    // `CRITICAL`, même si un appel IA a échoué en chemin.
+    const niveau = urgent || gravite === 'CRITICAL' ? 'CRITICAL' : (causeTechnique?.niveau ?? 'ERROR');
     await this.errorLogger
       .record(
         new Error(
           `${urgent ? 'RAPPEL URGENT' : 'Assistance à reprendre'} — ${user.email} : ${motif ?? 'sans motif'}`,
         ),
         SOURCE,
-        { conversationId, userId: user.id, fleetId: user.fleetId ?? undefined, gravite },
+        {
+          conversationId,
+          userId: user.id,
+          fleetId: user.fleetId ?? undefined,
+          gravite,
+          // On déplace la preuve, on ne l'efface pas : la ligne reste diagnosticable.
+          ...(causeTechnique ? { repliTechnique: true, kind: causeTechnique.kind } : {}),
+        },
         niveau,
       )
       .catch(() => {

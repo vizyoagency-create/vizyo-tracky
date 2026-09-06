@@ -164,6 +164,71 @@ describe('AssistanceService', () => {
     expect(errorLogger.record).toHaveBeenCalled();
   });
 
+  // ─── TRK-070 : le niveau de l'escalade suit la CAUSE, pas la gravite ──────
+  //
+  // Un compte fournisseur a sec produisait DEUX lignes pour un seul incident : `DEGRADATION`
+  // (l'incident, correctement classe depuis TRK-061) puis `ERROR` quatorze millisecondes plus
+  // tard (l'escalade) — qui le recomptait comme un defaut. La regle de niveau ne lisait que la
+  // gravite de la CONVERSATION, et ne pouvait donc pas distinguer les deux natures d'escalade.
+
+  it('un REPLI sur un echec technique est classe au niveau de l\'incident, pas en ERROR', async () => {
+    const { svc, errorLogger, user } = build({
+      ia: {
+        escalade: true,
+        motifEscalade: 'Classement indisponible',
+        gravite: 'LOW',
+        causeTechnique: { niveau: 'DEGRADATION', kind: 'provider_unfunded' },
+      },
+    });
+    await svc.poser(user, 'question');
+    const [, , contexte, niveau] = errorLogger.record.mock.calls[0];
+    expect(niveau).toBe('DEGRADATION');
+    // La preuve est DEPLACEE, pas effacee : la ligne reste diagnosticable.
+    expect(contexte).toMatchObject({ repliTechnique: true, kind: 'provider_unfunded' });
+  });
+
+  it('une escalade decidee sur le CONTENU garde ERROR — vrai signal produit', async () => {
+    const { svc, errorLogger, user } = build({
+      ia: { escalade: true, motifEscalade: 'hors connaissance', gravite: 'LOW' },
+    });
+    await svc.poser(user, 'question');
+    expect(errorLogger.record.mock.calls[0][3]).toBe('ERROR');
+    // Sans cause technique, rien ne doit laisser croire a un repli.
+    expect(errorLogger.record.mock.calls[0][2]).not.toHaveProperty('repliTechnique');
+  });
+
+  it('DOUBLE CONDITION — la ligne d\'escalade et sa trace systeme EXISTENT toujours', async () => {
+    // Si les deux disparaissaient, on aurait supprime la trace de l'escalade au lieu de la
+    // classer : le compteur tomberait pour la mauvaise raison.
+    const { svc, errorLogger, systemActivity, user } = build({
+      ia: {
+        escalade: true,
+        motifEscalade: 'Redaction indisponible',
+        gravite: 'LOW',
+        causeTechnique: { niveau: 'DEGRADATION', kind: 'provider_unfunded' },
+      },
+    });
+    await svc.poser(user, 'question');
+    expect(errorLogger.record).toHaveBeenCalledTimes(1);
+    expect(systemActivity.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'assistance_escalade' }),
+    );
+  });
+
+  it('une URGENCE reste CRITICAL meme si un appel IA a echoue en chemin', async () => {
+    // L'urgence decrit le besoin de l'utilisateur ; elle prime sur la cause technique.
+    const { svc, errorLogger, user } = build({
+      ia: {
+        escalade: true,
+        motifEscalade: 'Situation critique',
+        gravite: 'CRITICAL',
+        causeTechnique: { niveau: 'DEGRADATION', kind: 'provider_unfunded' },
+      },
+    });
+    await svc.poser(user, 'question');
+    expect(errorLogger.record.mock.calls[0][3]).toBe('CRITICAL');
+  });
+
   it('le rappel urgent n\'appelle PAS l\'IA et alerte en CRITICAL', async () => {
     const { svc, ia, errorLogger, systemActivity, user } = build();
     await svc.rappelUrgent(user, 'c1', 'camion vole');

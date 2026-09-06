@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiTraceService } from '../ai-traces/ai-trace.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
-import { classerEchecIa } from '../ai/ai-client.types';
+import { classerEchecIa, type AiErrorKind, type NiveauEchecIa } from '../ai/ai-client.types';
 import { AiRouter } from '../ai/ai-router.service';
 import type { AuthUser } from '../auth/types/auth-user';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -34,10 +34,34 @@ export interface AssistanceMessageEntree {
   content: string;
 }
 
+/**
+ * TRK-070 — POURQUOI l'assistant a rendu la main, quand ce n'est PAS une décision de contenu.
+ *
+ * Une escalade a deux natures que rien ne distinguait : l'assistant juge sur le CONTENU qu'un
+ * humain doit reprendre (vrai signal produit), ou bien un appel IA vient d'échouer et l'escalade
+ * n'est qu'un REPLI sur un incident **déjà consigné**. Le second cas produisait une seconde ligne
+ * `ERROR` quatorze millisecondes après la ligne `DEGRADATION` de l'incident — et la recomptait
+ * comme un défaut, annulant le bénéfice du correctif de TRK-061.
+ *
+ * Renseigné → l'escalade est un repli technique, et le centre d'alerte doit la classer au niveau
+ * DÉJÀ décidé pour l'incident d'origine. Absent → escalade de contenu, qui garde `ERROR`.
+ */
+export interface CauseTechniqueEscalade {
+  /** Niveau déjà retenu pour l'incident d'origine (`classerEchecIa`). */
+  niveau: NiveauEchecIa;
+  /** Sorte d'échec, conservée pour que la ligne d'escalade reste diagnosticable. */
+  kind?: AiErrorKind;
+}
+
 export interface AssistanceReponse {
   reponse: string;
   escalade: boolean;
   motifEscalade: string | null;
+  /**
+   * TRK-070 — présent uniquement quand l'escalade est un REPLI sur un échec technique déjà
+   * journalisé. Le service d'assistance s'en sert pour ne pas re-hausser l'incident en `ERROR`.
+   */
+  causeTechnique?: CauseTechniqueEscalade | null;
   gravite: Gravite;
   /** Titre court déduit de la demande — sert la liste de suivi en espace admin. */
   titre: string;
@@ -114,7 +138,13 @@ export class AssistanceAiService {
     const demande = (question ?? '').trim().slice(0, QUESTION_MAX);
     if (!demande) return this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', false, 'Message vide');
     if (!this.ai.isConfigured()) {
-      return this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Assistance IA non configurée');
+      // Une IA non configurée est un ÉTAT VOULU, pas une panne : personne n'a de bug à corriger.
+      // Même raisonnement que `no_key` côté routeur — la ligne est écrite, elle ne compte pas
+      // comme un défaut.
+      return this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Assistance IA non configurée', {
+        niveau: 'DEGRADATION',
+        kind: 'no_key',
+      });
     }
 
     const recents = historique.slice(-HISTORIQUE_MAX).map((m) => ({ role: m.role, contenu: m.content.slice(0, 1500) }));
@@ -151,8 +181,8 @@ export class AssistanceAiService {
         latencyMs: appel.latencyMs, ok: true,
       });
     } catch (e) {
-      await this.tracerErreur(e, user, 'classement');
-      return this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Classement indisponible');
+      const cause = await this.tracerErreur(e, user, 'classement');
+      return this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Classement indisponible', cause);
     }
 
     // ── Urgence : on ne fait PAS rédiger ───────────────────────────────────────
@@ -222,7 +252,7 @@ export class AssistanceAiService {
         sansIa: false,
       };
     } catch (e) {
-      await this.tracerErreur(e, user, 'redaction');
+      const cause = await this.tracerErreur(e, user, 'redaction');
       void this.traces.record({
         action: ACTION, executor: 'api', model: modele, fleetId: user.fleetId,
         input: this.entreeTracable(demande, recents, plan, lots),
@@ -230,7 +260,7 @@ export class AssistanceAiService {
         verdict: 'rejete', verdictNote: 'Appel de rédaction en échec',
       });
       return {
-        ...this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Rédaction indisponible'),
+        ...this.sansIaReponse(REPONSE_INDISPONIBLE, 'LOW', true, 'Rédaction indisponible', cause),
         titre: plan.titre || 'Demande d\'assistance',
         // Le classement a bien eu lieu et a été facturé : on le remonte, sinon le coût
         // apparaîtrait nulle part et la facture ne serait plus explicable.
@@ -276,11 +306,19 @@ export class AssistanceAiService {
     };
   }
 
-  private sansIaReponse(texte: string, gravite: Gravite, escalade: boolean, motif: string): AssistanceReponse {
+  private sansIaReponse(
+    texte: string,
+    gravite: Gravite,
+    escalade: boolean,
+    motif: string,
+    // TRK-070 — renseigné quand l'escalade n'est qu'un repli sur un incident DÉJÀ consigné.
+    causeTechnique: CauseTechniqueEscalade | null = null,
+  ): AssistanceReponse {
     return {
       reponse: texte,
       escalade,
       motifEscalade: escalade ? motif : null,
+      causeTechnique: escalade ? causeTechnique : null,
       gravite,
       titre: 'Demande d\'assistance',
       sujets: [],
@@ -345,7 +383,11 @@ export class AssistanceAiService {
     });
   }
 
-  private async tracerErreur(e: unknown, user: AuthUser, phase: string): Promise<void> {
+  /**
+   * Journalise l'échec au centre d'alerte ET **rend sa classification**, pour que l'escalade qui
+   * suit soit cotée sur la CAUSE et non sur la gravité de la conversation (TRK-070).
+   */
+  private async tracerErreur(e: unknown, user: AuthUser, phase: string): Promise<CauseTechniqueEscalade> {
     const err = e instanceof Error ? e : new Error(String(e));
     this.logger.warn(`Assistance (${phase}) : ${err.message}`);
     // Le NIVEAU est celui décidé par la couche IA, et le motif du fournisseur part dans le
@@ -357,5 +399,6 @@ export class AssistanceAiService {
       .catch(() => {
         /* la supervision ne doit jamais faire tomber ce qu'elle supervise */
       });
+    return { niveau, kind };
   }
 }
