@@ -1305,10 +1305,10 @@
     },
     {
       "slug": "ROADMAP-CORRECTIFS.md",
-      "title": "Roadmap des correctifs (VIVANTE)",
+      "title": "Roadmap des correctifs (VIVANTE) — le fil directeur",
       "section": "guide",
       "order": 2,
-      "description": "LE fichier qui dit quoi faire et dans quel ordre — refondue le 6 septembre sur les 20 fiches ouvertes. Recapitule les six derniers audits, puis classe chaque tache en cinq etats : ce qui attend un geste humain, ce qui est a coder, ce qui est deploye mais non exerce, ce qui est seulement a surveiller, et ce qui est bloque par un prerequis. C est la seule roadmap sans date dans son nom, et c est delibere : les autres sont des instantanes figes."
+      "description": "LE fichier qu on suit pour les corrections, decision du proprietaire du 6 septembre : on le coche au fur et a mesure. Deux parties — le centre d alerte (taches T1 a T23) et le VPS de production (V0 a V23) — soit 46 taches a identifiant STABLE, avec un tableau de bord en tete pour voir l avancement d un coup d oeil et un journal d avancement en fin de fichier ou chaque tache close est inscrite AVEC SA PREUVE. Trois marques distinctes et aucune ne remplace la suivante : ecrit et commite, deploye, puis fait ET verifie. Une tache ne disparait jamais de la liste, meme close."
     },
     {
       "slug": "README.md",

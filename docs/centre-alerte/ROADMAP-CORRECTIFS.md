@@ -25,6 +25,125 @@
 
 ---
 
+## 📋 Comment on suit ce fichier — la règle de tenue
+
+> **Décision du propriétaire, 2026-09-06 : ce fichier est le fil directeur des corrections.**
+> On ne travaille pas à côté de lui, et **on le coche au fur et à mesure**.
+
+**Chaque tâche porte un identifiant stable** — `T-nn` pour le centre d'alerte, `V-nn` pour le VPS.
+L'identifiant ne change jamais et **n'est jamais réutilisé**, même quand la tâche est close : c'est
+lui qui permet de dire « T10 est fait » dans un commit, un rapport ou une conversation, six semaines
+plus tard.
+
+### Les quatre règles
+
+1. **Une tâche ne DISPARAÎT jamais.** Faite, elle passe à `[x]` **✅ FAIT** et reste en place, avec
+   sa date, son commit et sa preuve. *Une liste qui raccourcit ne se relit pas ; elle s'oublie.*
+2. **« Fait » veut dire PROUVÉ, pas écrit.** Trois états distincts, et aucun ne remplace le suivant :
+
+   | Marque | Ce que ça veut dire |
+   |:--:|---|
+   | `[~]` | **Écrit et commité** — pas en ligne. |
+   | `[»]` | **Déployé** — en ligne, **mais la preuve n'est pas encore venue**. |
+   | `[x]` | **✅ FAIT** — déployé **ET** vérifié sur l'artefact servi ou par la mesure. |
+
+   > 🔑 *C'est la leçon payée quatre fois cette semaine : un correctif commité n'est pas déployé, et
+   > un correctif déployé n'est pas prouvé.* Cocher `[x]` sans preuve, c'est fabriquer le
+   > « ✅ FAIT » de `docs/vps-audit/ROADMAP.md` — celui qui annonçait VPS-013 clos alors que sa
+   > propre section détaillée disait l'inverse.
+3. **On coche DANS LE MÊME PASSAGE que la correction**, jamais « plus tard ». Le tableau de bord et
+   le journal d'avancement se remplissent avec le commit du correctif, pas après.
+4. **Les trois gestes de diffusion valent aussi pour ce fichier** : l'**écrire**, le **copier** sur
+   le VPS (`scp -r docs/centre-alerte/. …`, sinon l'écran `/admin/alerts` ne le voit pas), le
+   **committer**. *Sauter le troisième ne se voit nulle part.*
+
+⚠️ **Ce qu'il ne faut PAS faire** — retirer une ligne close pour « alléger », déplacer une tâche
+d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche plutôt que d'une mesure.
+*Si une fiche et l'artefact servi se contredisent, **l'artefact a raison**.*
+
+---
+
+## 🗂️ Tableau de bord — 46 tâches, l'avancement d'un coup d'œil
+
+**Au 2026-09-06 : 3 faites · 2 déployées non prouvées · 41 ouvertes.**
+
+### Partie I — centre d'alerte *(23 tâches)*
+
+| | ID | Fiche | La tâche | État |
+|:--:|:--:|---|---|---|
+| ☐ | **T1** | TRK-071 | 🔴🔴 Recharger **au moins un** des deux comptes IA | 🤝 HUMAIN |
+| ☐ | **T2** | TRK-069 | 🔵 Rallumer le poste, lire le motif de `agent-recit-trajet` | 🤝 HUMAIN |
+| ☐ | **T3** | TRK-066 | 🔴 Trancher les **trois questions** du coupe-circuit | 🤝 HUMAIN |
+| ☐ | **T4** | TRK-072 | Calibrer les notifications d'excès de vitesse | 🤝 HUMAIN |
+| ☐ | **T5** | TRK-062 | Autoriser la migration `SENT_UNCONFIRMED` | 🤝 HUMAIN |
+| ☐ | **T6** | TRK-065 | Prévenir `tyger.bcn@gmail.com` *(21 notifications perdues)* | 🤝 HUMAIN |
+| ☐ | **T7** | TRK-035 | Ouvrir la fenêtre de maintenance *(rôle non-superutilisateur)* | 🤝 HUMAIN |
+| ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
+| ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
+| ☐ | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🔧 **À CODER** ⭐ |
+| ☐ | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | 🔧 À CODER |
+| ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
+| ☐ | **T13** | TRK-016 | Recalage cartographique — **~88 % d'échec** | 🔧 CHANTIER |
+| ☐ | **T14** | TRK-053 | Provoquer ou requalifier *(échéance **08/09**)* | ⛔ sans occasion |
+| ☐ | **T15** | TRK-060 | Guetter : « Un point de mesure système… » | 🗓️ NON EXERCÉ |
+| ☐ | **T16** | TRK-064 | **À clore ?** — le sujet a changé, la chaîne est armée | 🗓️ NON EXERCÉ |
+| ☐ | **T17** | TRK-065 | Guetter la ligne hebdomadaire *(**~11/09**)* | 🗓️ NON EXERCÉ |
+| ☐ | **T18** | TRK-066 | Guetter « SMS non remis au relais » *(+ motif conservé)* | 🗓️ NON EXERCÉ |
+| ☐ | **T19** | TRK-032 | **REQUALIFIER** — 16 j d'attente | 🗓️ test daté |
+| ☐ | **T20** | TRK-051 | Confier à un humain — 12 j, **30 s** pour qui a l'écran | 🗓️ test daté |
+| ☐ | **T21** | TRK-018 | Accusé de remise de la passerelle SMS | ⛔ BLOQUÉ |
+| ☐ | **T22** | TRK-014 | Rectifier son `quoiFaire` *(renvoie à TRK-012, clos)* | 🧹 dette doc |
+| ☐ | **T23** | — | Créer ou déréférencer `TACHES-AMELIORATION.md` | 🧹 dette doc |
+
+### Partie II — VPS *(23 tâches)*
+
+| | ID | Fiche | La tâche | État |
+|:--:|:--:|---|---|---|
+| ☑ | **V0** | — | ✅ **Docs VPS versées sur `main`** *(06/09)* | ✅ **FAIT** |
+| ☐ | **V1** | VPS-038 | 🔵 Porter les **6 IMEI** muets à l'exploitant | 🔵 PRODUIT |
+| ☐ | **V2** | VPS-038 | 🔵 Sortir du parc les 6 boîtiers muets > 7 j | 🔵 PRODUIT |
+| ☐ | **V3** | VPS-036 · 027 | 🔵 **Un seul ticket hébergeur** *(2 écritures root)* | 🔵 PRODUIT |
+| ☐ | **V4** | VPS-010 | Planifier un redémarrage *(noyau, 6 services)* | 🔴 HUMAIN |
+| ☐ | **V5** | VPS-M56 | Arbitrer le budget de collecte *(20 dépassements)* | 🟡 PRÉPARÉ |
+| ☐ | **V6** | VPS-037 | Second dépositaire de la copie hors-site | 🟡 PRÉPARÉ |
+| ☐ | **V7** | VPS-005 | Limites mémoire — **30 conteneurs sur 33** | 🔴 HUMAIN |
+| ☐ | **V8** | VPS-020 | Séparer les projets compose `deploy` | 🔴 HUMAIN |
+| ☐ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | 🔴 HUMAIN |
+| ☐ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | 🔴 HUMAIN |
+| ☐ | **V11** | VPS-013 | 🔴 **3 bases de prod sans sauvegarde reproductible** | 🟢 AUTO ⭐ |
+| ☐ | **V12** | VPS-012 | Restreindre la clé CI `vizyo-auth` *(10 s)* | 🟡 PRÉPARÉ |
+| ☐ | **V13** | VPS-015 | `ExecStart` par `bash` **+ `OnFailure=` sur `tracky-backup`** | 🟢 AUTO |
+| ☐ | **V14** | VPS-033 | `RandomizedDelaySec=30m` sur `apt-daily.timer` | 🟡 PRÉPARÉ |
+| ☐ | **V15** | VPS-034 | Épingler Traefik par digest *(déjà relevé)* | 🔴 HUMAIN |
+| ☐ | **V16** | VPS-026 | Épingler `alpine` par empreinte *(déjà relevée)* | 🟡 PRÉPARÉ |
+| ☐ | **V17** | VPS-030 | Purger 1,4 Go de copies sans rétention *(périmètre prêt)* | 🟡 PRÉPARÉ |
+| ☐ | **V18** | VPS-032 | Multiplexage SSH **côté poste** | 🟢 AUTO |
+| ☐ | **V19** | VPS-007 | `random_page_cost` — *déconseillé en l'état* | 🟡 PRÉPARÉ |
+| ☐ | **V20** | VPS-M79 | Étiqueter les images de repli au build | ⛔ BLOQUÉ |
+| ☐ | **V21** | VPS-029 | Trancher quel mécanisme gouverne le cache de build | ⛔ BLOQUÉ |
+| ☐ | **V22** | VPS-M36 | Échantillonner `wchan` 3× et publier la répartition | ⛔ BLOQUÉ |
+| ☐ | **V23** | VPS-M73 | Afficher l'écart en jours sur `/admin → Audit VPS` | ⛔ BLOQUÉ |
+
+**Déjà déployées, preuve en cours** *(voir « À DÉPLOYER » en Partie II)* :
+`[»]` **Sentinelle « boîtiers muets »** (VPS-038, `fb0642f8`) · `[»]` **VPS-M59** (`9dce59ec`).
+
+> ⭐ **Les deux tâches les plus rentables de tout le fichier, si vous n'en faites que deux :**
+> **T10** *(quelques lignes, referme le motif récurrent de la semaine)* et **V11** *(20 minutes,
+> trois bases de production qui n'ont aujourd'hui aucun filet reproductible)*.
+
+> ⚠️ **Six fiches apparaissent deux fois, et c'est voulu** — TRK-065 en **T6** *(prévenir la
+> personne)* et **T17** *(guetter la ligne)* ; TRK-066 en **T3** *(trancher la garde)* et **T18**
+> *(guetter le message)* ; TRK-062 en **T5** *(autoriser)* et dans les bloquées ; TRK-035 en **T7** ;
+> TRK-027 dans **T8** ; VPS-038 en **V1** et **V2**. *Une fiche n'est pas une tâche : elle peut en
+> porter deux, qui ne se font ni par les mêmes mains ni au même moment.*
+
+> 👁️ **Les relevés récurrents ne sont PAS dans ce tableau** — ils ne se cochent pas, ils se
+> reprennent à chaque passage. Ils vivent dans les deux sections **« À SURVEILLER »**
+> ([Partie I](#-à-surveiller--rien-à-coder-une-mesure-à-relever-à-chaque-passage) ·
+> [Partie II](#-à-surveiller--rien-à-appliquer-une-mesure-à-relever-à-chaque-passage)).
+
+---
+
 ## Récapitulatif des six derniers audits
 
 | Date | Actives | Le fait du jour, en une ligne |
@@ -82,17 +201,17 @@ Trois critères, appliqués dans cet ordre — **pas** la gravité seule :
 
 *Rien de tout ceci ne se corrige par du code. C'est la liste la plus courte — et la plus bloquante.*
 
-| # | Fiche | L'action, en une phrase | Depuis |
-|---|---|---|---|
-| **1** | [TRK-071](./REFERENCE-ERREURS.md#trk-071) | 🔴🔴 **Recharger au moins UN des deux comptes IA** — Anthropic **et** OpenAI sont vides | **76 h** |
-| **2** | [TRK-069](./REFERENCE-ERREURS.md#trk-069) | 🔵 **Rallumer le poste** et lire le motif d'échec de `agent-recit-trajet` | 05/09 |
-| **3** | [TRK-066](./REFERENCE-ERREURS.md#trk-066) | 🔴 **Trancher les trois questions du coupe-circuit** *(détail ci-dessous)* | 04/09 |
-| **4** | [TRK-072](./REFERENCE-ERREURS.md#trk-072) | **Calibrer les notifications d'excès de vitesse** — 14/jour/super-admin, pour un produit calibré sur 2 à 3 | 06/09 |
-| **5** | [TRK-062](./REFERENCE-ERREURS.md#trk-062) | **Autoriser la migration** `SENT_UNCONFIRMED` pour les commandes de boîtier | 03/09 |
-| **6** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) | **Prévenir `tyger.bcn@gmail.com`** — 21 notifications perdues faute d'appareil abonné | 04/09 |
-| **7** | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | **Ouvrir une fenêtre de maintenance** pour créer le rôle applicatif non-superutilisateur | 20/08 |
-| **8** | [TRK-001](./REFERENCE-ERREURS.md#trk-001) · [TRK-027](./REFERENCE-ERREURS.md#trk-027) | 🔵 **Contrôler les antennes** de `FS-253-HR`, `FZ-862-VY`, `KSR•370` | 03/08 |
-| **9** | *(hors fiche)* | 🔵 **Déclarer ou dépanner** `GLA•KC•31` (74 h) et `FG-669-DQ` (57 h), muets et **non déclarés** | 03/09 |
+| | ID | Fiche | L'action, en une phrase | Depuis |
+|:--:|:--:|---|---|---|
+| ☐ | **T1** | [TRK-071](./REFERENCE-ERREURS.md#trk-071) | 🔴🔴 **Recharger au moins UN des deux comptes IA** — Anthropic **et** OpenAI sont vides | **76 h** |
+| ☐ | **T2** | [TRK-069](./REFERENCE-ERREURS.md#trk-069) | 🔵 **Rallumer le poste** et lire le motif d'échec de `agent-recit-trajet` | 05/09 |
+| ☐ | **T3** | [TRK-066](./REFERENCE-ERREURS.md#trk-066) | 🔴 **Trancher les trois questions du coupe-circuit** *(détail ci-dessous)* | 04/09 |
+| ☐ | **T4** | [TRK-072](./REFERENCE-ERREURS.md#trk-072) | **Calibrer les notifications d'excès de vitesse** — 14/jour/super-admin, pour un produit calibré sur 2 à 3 | 06/09 |
+| ☐ | **T5** | [TRK-062](./REFERENCE-ERREURS.md#trk-062) | **Autoriser la migration** `SENT_UNCONFIRMED` pour les commandes de boîtier | 03/09 |
+| ☐ | **T6** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) | **Prévenir `tyger.bcn@gmail.com`** — 21 notifications perdues faute d'appareil abonné | 04/09 |
+| ☐ | **T7** | [TRK-035](./REFERENCE-ERREURS.md#trk-035) | **Ouvrir une fenêtre de maintenance** pour créer le rôle applicatif non-superutilisateur | 20/08 |
+| ☐ | **T8** | [TRK-001](./REFERENCE-ERREURS.md#trk-001) · [TRK-027](./REFERENCE-ERREURS.md#trk-027) | 🔵 **Contrôler les antennes** de `FS-253-HR`, `FZ-862-VY`, `KSR•370` | 03/08 |
+| ☐ | **T9** | *(hors fiche)* | 🔵 **Déclarer ou dépanner** `GLA•KC•31` (74 h) et `FG-669-DQ` (57 h), muets et **non déclarés** | 03/09 |
 
 ### Les trois questions du coupe-circuit (TRK-066) — à trancher, pas à deviner
 
@@ -112,7 +231,7 @@ vous** :
 
 ## P0 — nuit à la production maintenant
 
-### TRK-070 · gravité 2 · 🔧 À CODER — *le plus rentable de la liste*
+### ☐ T10 · TRK-070 · gravité 2 · 🔧 À CODER — *le plus rentable de la liste*
 
 **Ce qui se passe** — Un compte IA à sec produit **deux** lignes à 14 ms d'intervalle : la première
 en `DEGRADATION` (correctif C3 point 5 / TRK-061), la seconde en **`ERROR`** — qui la **recompte
@@ -130,7 +249,7 @@ de la semaine. Le journal système (`assistance_escalade`) doit continuer d'écr
 ⚠️ **Double condition :** au prochain échec IA, **UNE** seule ligne `ASSISTANCE`, en `DEGRADATION`.
 *Si les deux disparaissent, on a supprimé la trace de l'escalade au lieu de la classer.*
 
-### TRK-068 · gravité 2 · 🔧 À CODER
+### ☐ T11 · TRK-068 · gravité 2 · 🔧 À CODER
 
 **Ce qui se passe** — `auth-client.service.ts`, méthode `request()` : l'appel à Vizyo Auth est un
 `fetch` **sans `try/catch` ni délai d'expiration**. Le rejet de transport remonte nu, NestJS en fait
@@ -143,7 +262,7 @@ conséquence pour l'utilisateur, **motif technique conservé en fin de phrase**.
 
 ⚠️ **1 occurrence, 2 jours.** Fait mesuré, pas une tendance — mais le geste est connu et borné.
 
-### TRK-022 · gravité 2 · 🔧 À CODER *(à clore)*
+### ☐ T12 · TRK-022 · gravité 2 · 🔧 À CODER *(à clore)*
 
 **Ce qui se passe** — Aucune déduplication **générique** des alarmes du boîtier. Le volet 1 est
 **répondu** (1 317 → 1-2 par jour, plancher net à 6,16 h), mais la déduplication n'est posée **que
@@ -158,7 +277,7 @@ décidera si la chaîne V5 sature à nouveau ses destinataires.
 
 ## P1 — le message ment, ou le compteur dérive
 
-### TRK-016 · gravité 2 · 🔧 CHANTIER *(hors passe)*
+### ☐ T13 · TRK-016 · gravité 2 · 🔧 CHANTIER *(hors passe)*
 
 **Le recalage cartographique échoue sur ~9 trajets sur 10, depuis avril.** Mesure fraîche sous les
 lots V1→V9, prise le 06/09 : **87,9 %** (131 trajets sur 149).
@@ -169,7 +288,7 @@ Série ouvrée : 90,2 · 88,7 · 91,3 · 87,0 · 89,3 · 91,1 · 91,9 · 89,2 ·
 s'auto-vérifier.** Le chantier peut désormais s'ouvrir : le chiffre est frais et stable autour de
 **~88 %**. Ce n'est pas une passe d'une heure — c'est un vrai sujet, à planifier.
 
-### TRK-053 · gravité 1 · ⛔ déployé, **aucune occasion**
+### ☐ T14 · TRK-053 · gravité 1 · ⛔ déployé, **aucune occasion**
 
 Correctif déployé le **01/09 à 09:17**. **Sans régression** : `alertes_depuis_declaration` = **7**,
 identique aux 04, 05 et 06/09 — **3ᵉ point**. Ce qui manque est une **occasion** : les 10 véhicules
@@ -185,12 +304,12 @@ prouve rien*.
 *Ces quatre correctifs sont **en ligne**, marqueurs vérifiés sur l'**artefact servi** le 05/09.
 Aucun n'a encore eu l'occasion de se prouver. **Ne pas les rouvrir ; les guetter.***
 
-| Fiche | Ce qui le prouvera | Attendu |
-|---|---|---|
-| [TRK-060](./REFERENCE-ERREURS.md#trk-060) | Une ligne `system-metrics` commençant par « **Un point de mesure système n'a pas pu être enregistré** », et non par la pile de transport brute | au prochain incident DNS |
-| [TRK-064](./REFERENCE-ERREURS.md#trk-064) | *Son sujet a changé* : la chaîne **est armée** sur 2 sociétés sur 5, et le silence de la sentinelle est **légitime** | — 👉 **à clore ?** |
-| [TRK-065](./REFERENCE-ERREURS.md#trk-065) | La ligne hebdomadaire tombe de **42 à ~21**, ne cite plus `system@tracky.local`, et porte `comptesTechniquesEcartes: 1` | **~11/09** |
-| [TRK-066](./REFERENCE-ERREURS.md#trk-066) | La ligne `sms-gateway` commence par « **SMS non remis au relais** », nomme `vizyo-texto`, **et conserve le motif technique en fin de phrase** | au prochain échec du relais |
+| | ID | Fiche | Ce qui le prouvera | Attendu |
+|:--:|:--:|---|---|---|
+| ☐ | **T15** | [TRK-060](./REFERENCE-ERREURS.md#trk-060) | Une ligne `system-metrics` commençant par « **Un point de mesure système n'a pas pu être enregistré** », et non par la pile de transport brute | au prochain incident DNS |
+| ☐ | **T16** | [TRK-064](./REFERENCE-ERREURS.md#trk-064) | *Son sujet a changé* : la chaîne **est armée** sur 2 sociétés sur 5, et le silence de la sentinelle est **légitime** | — 👉 **à clore ?** |
+| ☐ | **T17** | [TRK-065](./REFERENCE-ERREURS.md#trk-065) | La ligne hebdomadaire tombe de **42 à ~21**, ne cite plus `system@tracky.local`, et porte `comptesTechniquesEcartes: 1` | **~11/09** |
+| ☐ | **T18** | [TRK-066](./REFERENCE-ERREURS.md#trk-066) | La ligne `sms-gateway` commence par « **SMS non remis au relais** », nomme `vizyo-texto`, **et conserve le motif technique en fin de phrase** | au prochain échec du relais |
 
 > ⚠️ **Pour TRK-066, la vérification porte sur ce qui RESTE, pas sur ce qui disparaît.** *Si le motif
 > technique s'évapore, on a nettoyé l'écran au lieu de traduire le message.*
@@ -221,22 +340,22 @@ rien ne bouge** — c'est l'absence de mouvement qui fait la preuve.*
 > 🔑 **Règle du dispositif : un test en attente depuis plus de 7 jours doit être PROVOQUÉ ou
 > REQUALIFIÉ.** Un correctif jamais exercé rend le **même zéro** qu'un correctif qui marche.
 
-| Fiche | Ce qu'il faut provoquer | En attente | Décision proposée |
-|---|---|---|---|
-| [TRK-032](./REFERENCE-ERREURS.md#trk-032) | une trame `ac alarm` pendant une coupure programmée | 🔴 **16 j** | **REQUALIFIER** — 7 coupures cette semaine, toutes hors plage. Soit on la fabrique en atelier, soit on ferme la fiche en « non reproductible en exploitation ». |
-| [TRK-051](./REFERENCE-ERREURS.md#trk-051) | mode fix : badge ambre « cible atteinte (mesurée) » | 🔴 **12 j** | **CONFIER À UN HUMAIN** — geste d'interface, impossible à provoquer en lecture seule. **30 s pour qui a l'écran.** |
-| [TRK-053](./REFERENCE-ERREURS.md#trk-053) | une alarme sur un véhicule déclaré hors service | 6 j | Encore dans la fenêtre. **À trancher le 08/09** si aucune occasion. |
+| | ID | Fiche | Ce qu'il faut provoquer | En attente | Décision proposée |
+|:--:|:--:|---|---|---|---|
+| ☐ | **T19** | [TRK-032](./REFERENCE-ERREURS.md#trk-032) | une trame `ac alarm` pendant une coupure programmée | 🔴 **16 j** | **REQUALIFIER** — 7 coupures cette semaine, toutes hors plage. Soit on la fabrique en atelier, soit on ferme la fiche en « non reproductible en exploitation ». |
+| ☐ | **T20** | [TRK-051](./REFERENCE-ERREURS.md#trk-051) | mode fix : badge ambre « cible atteinte (mesurée) » | 🔴 **12 j** | **CONFIER À UN HUMAIN** — geste d'interface, impossible à provoquer en lecture seule. **30 s pour qui a l'écran.** |
+| ☐ | **T14** | [TRK-053](./REFERENCE-ERREURS.md#trk-053) | une alarme sur un véhicule déclaré hors service | 6 j | Encore dans la fenêtre. **À trancher le 08/09** si aucune occasion. |
 
 ---
 
 # ⛔ BLOQUÉ PAR UN PRÉREQUIS
 
-| Fiche | Ce qui bloque | Le prérequis |
-|---|---|---|
-| [TRK-062](./REFERENCE-ERREURS.md#trk-062) | `SENT_UNCONFIRMED` n'existe **pas** pour les commandes de boîtier — vérifié **absent de l'artefact servi 3 fois** | Une **migration d'énumération**, donc un accord humain. Spec prête. |
-| [TRK-027](./REFERENCE-ERREURS.md#trk-027) | Le garde-fou juste est **physique** (contact coupé), pas temporel | **L'état du contact n'est PAS persisté sur une trame sans fix.** Il faut d'abord le persister. |
-| [TRK-035](./REFERENCE-ERREURS.md#trk-035) *(voie 1)* | Le rôle applicatif est **superutilisateur ET propriétaire** — un `REVOKE` est sans effet sur lui | Fenêtre de maintenance + répétition : *un droit oublié casse l'ingestion GPS*. |
-| [TRK-018](./REFERENCE-ERREURS.md#trk-018) | Les 4 correctifs sont livrés et **prouvés** (313 → **0** commandes `SENT`, 307 → **0** de plus de 24 h) | Reste : **la passerelle SMS n'expose aucun accusé de remise**. Même sujet que TRK-026 et TRK-062. |
+| | ID | Fiche | Ce qui bloque | Le prérequis |
+|:--:|:--:|---|---|---|
+| ☐ | **T5** | [TRK-062](./REFERENCE-ERREURS.md#trk-062) | `SENT_UNCONFIRMED` n'existe **pas** pour les commandes de boîtier — vérifié **absent de l'artefact servi 3 fois** | Une **migration d'énumération**, donc un accord humain. Spec prête. |
+| ☐ | **T8** | [TRK-027](./REFERENCE-ERREURS.md#trk-027) | Le garde-fou juste est **physique** (contact coupé), pas temporel | **L'état du contact n'est PAS persisté sur une trame sans fix.** Il faut d'abord le persister. |
+| ☐ | **T7** | [TRK-035](./REFERENCE-ERREURS.md#trk-035) *(voie 1)* | Le rôle applicatif est **superutilisateur ET propriétaire** — un `REVOKE` est sans effet sur lui | Fenêtre de maintenance + répétition : *un droit oublié casse l'ingestion GPS*. |
+| ☐ | **T21** | [TRK-018](./REFERENCE-ERREURS.md#trk-018) | Les 4 correctifs sont livrés et **prouvés** (313 → **0** commandes `SENT`, 307 → **0** de plus de 24 h) | Reste : **la passerelle SMS n'expose aucun accusé de remise**. Même sujet que TRK-026 et TRK-062. |
 
 ---
 
@@ -322,18 +441,18 @@ date du **21/08**. *Fusionner cette branche telle quelle écraserait la roadmap 
 
 *Rien de tout ceci ne se corrige par une commande. C'est la liste la plus bloquante.*
 
-| # | Fiche | G | L'action, en une phrase | Classe | Depuis |
-|---|---|:-:|---|:--:|---|
-| **V1** | VPS-038 | **1** | 🔵 **Porter les 6 IMEI de la flotte `2ad69ac1…` à l'exploitant** — muets depuis **5,6 jours**, avec l'heure de leur dernière trame | 🔵 PRODUIT | 31/08 |
-| **V2** | VPS-038 | **1** | 🔵 **Sortir du parc les 6 boîtiers muets depuis > 7 j**, dont **3 sans aucun véhicule** (7,3 · 66,8 · 92,7 j) — un statut, **pas** un `DELETE` | 🔵 PRODUIT | 04/09 |
-| **V3** | VPS-036 · VPS-027 | 2 | 🔵 **Un seul ticket hébergeur** couvrant les deux ordres d'écriture root (`kill -KILL` du 28/08, `systemctl mask` du 01/09) : paternité, cadence, **puis la liste de ce que ce canal s'autorise sans préavis** | 🔵 PRODUIT | 28/08 |
-| **V4** | VPS-010 | 2 | **Planifier un redémarrage** vers 23 h 30 — noyau actif `6.8.0-136`, **trois** installés (`-137`, `-138`, `-139`), 6 services sur une bibliothèque remplacée dont `docker.service` | 🔴 HUMAIN | 04/08 |
-| **V5** | VPS-M56 | 2 | **Arbitrer le budget de collecte** — dépassé **20 fois**, 116 s pour 90. Trois réponses chiffrées, aucune n'est technique *(détail ci-dessous)* | 🟡 PRÉPARÉ | 04/08 |
-| **V6** | VPS-037 | 3 | **Donner un second dépositaire à la copie hors-site** — dépositaire unique, **le même poste que la planification de l'audit** | 🟡 PRÉPARÉ | 01/09 |
-| **V7** | VPS-005 | 2 | **Poser les limites mémoire** sur les 30 conteneurs sur 33 qui n'en ont pas (**0 sur 33** ont une limite CPU) | 🔴 HUMAIN | 04/08 |
-| **V8** | VPS-020 | 2 | **Séparer les projets compose** `deploy` — 7 conteneurs, **2 applications sans rapport** (4 Maestroo dev + 3 Vizyo Manager **prod**), confirmé ce jour | 🔴 HUMAIN | 08/08 |
-| **V9** | VPS-017 | 3 | **Trancher pourquoi 4,5 Go d'outillage de développement** vivent dans `/root` d'un serveur qui porte **sept bases de production** | 🔴 HUMAIN | 06/08 |
-| **V10** | VPS-018 | 4 | **Retirer `/opt/vizyo-leads`** — pile supprimée le 04/08, dépôt distant vérifié, **10,3 % du parcours nocturne** de l'audit | 🔴 HUMAIN | 12/08 |
+| | ID | Fiche | G | L'action, en une phrase | Classe | Depuis |
+|:--:|:--:|---|:-:|---|:--:|---|
+| ☐ | **V1** | VPS-038 | **1** | 🔵 **Porter les 6 IMEI de la flotte `2ad69ac1…` à l'exploitant** — muets depuis **5,6 jours**, avec l'heure de leur dernière trame | 🔵 PRODUIT | 31/08 |
+| ☐ | **V2** | VPS-038 | **1** | 🔵 **Sortir du parc les 6 boîtiers muets depuis > 7 j**, dont **3 sans aucun véhicule** (7,3 · 66,8 · 92,7 j) — un statut, **pas** un `DELETE` | 🔵 PRODUIT | 04/09 |
+| ☐ | **V3** | VPS-036 · VPS-027 | 2 | 🔵 **Un seul ticket hébergeur** couvrant les deux ordres d'écriture root (`kill -KILL` du 28/08, `systemctl mask` du 01/09) : paternité, cadence, **puis la liste de ce que ce canal s'autorise sans préavis** | 🔵 PRODUIT | 28/08 |
+| ☐ | **V4** | VPS-010 | 2 | **Planifier un redémarrage** vers 23 h 30 — noyau actif `6.8.0-136`, **trois** installés (`-137`, `-138`, `-139`), 6 services sur une bibliothèque remplacée dont `docker.service` | 🔴 HUMAIN | 04/08 |
+| ☐ | **V5** | VPS-M56 | 2 | **Arbitrer le budget de collecte** — dépassé **20 fois**, 116 s pour 90. Trois réponses chiffrées, aucune n'est technique *(détail ci-dessous)* | 🟡 PRÉPARÉ | 04/08 |
+| ☐ | **V6** | VPS-037 | 3 | **Donner un second dépositaire à la copie hors-site** — dépositaire unique, **le même poste que la planification de l'audit** | 🟡 PRÉPARÉ | 01/09 |
+| ☐ | **V7** | VPS-005 | 2 | **Poser les limites mémoire** sur les 30 conteneurs sur 33 qui n'en ont pas (**0 sur 33** ont une limite CPU) | 🔴 HUMAIN | 04/08 |
+| ☐ | **V8** | VPS-020 | 2 | **Séparer les projets compose** `deploy` — 7 conteneurs, **2 applications sans rapport** (4 Maestroo dev + 3 Vizyo Manager **prod**), confirmé ce jour | 🔴 HUMAIN | 08/08 |
+| ☐ | **V9** | VPS-017 | 3 | **Trancher pourquoi 4,5 Go d'outillage de développement** vivent dans `/root` d'un serveur qui porte **sept bases de production** | 🔴 HUMAIN | 06/08 |
+| ☐ | **V10** | VPS-018 | 4 | **Retirer `/opt/vizyo-leads`** — pile supprimée le 04/08, dépôt distant vérifié, **10,3 % du parcours nocturne** de l'audit | 🔴 HUMAIN | 12/08 |
 
 ### Les trois réponses au budget de collecte (V5 / VPS-M56) — à arbitrer, pas à deviner
 
@@ -353,7 +472,7 @@ dise transforme un dépassement en conformité sans que rien n'ait changé.
 
 ## 🔧 À APPLIQUER — geste serveur borné, commande écrite, personne ne l'a lancée — *9 tâches*
 
-### V11 · VPS-013 · gravité 1 · 🟢 AUTO — *le plus rentable de toute la liste, et de loin*
+### ☐ V11 · VPS-013 · gravité 1 · 🟢 AUTO — *le plus rentable de toute la liste, et de loin*
 
 **Ce qui se passe** — **29ᵉ passage.** Trois bases de **production** n'ont aucune sauvegarde
 qu'un mécanisme reproduise : `vizyo-manager` (abonnements Stripe, factures, clients),
@@ -392,7 +511,7 @@ systemctl cat vizyo-auth-backup.timer vizyo-auth-backup.service   # le gabarit a
 ⚠️ **Sauvegarder `vizyo-manager` AVANT** de toucher au projet compose (V8) : sa base est dans le
 projet `deploy`, et `docker compose down --remove-orphans` la supprimerait.
 
-### V12 · VPS-012 · gravité 2 · 🟡 PRÉPARÉ — *10 secondes*
+### ☐ V12 · VPS-012 · gravité 2 · 🟡 PRÉPARÉ — *10 secondes*
 
 **Ce qui se passe** — `github-actions-vizyo-auth` a un accès **root complet sans aucune option de
 restriction**, et elle sert : **0 → 12 → 16 → 16** connexions sur quatre passages. Elle déploie
@@ -412,7 +531,7 @@ grep -n 'github-actions-vizyo-auth' /root/.ssh/authorized_keys   # relever la li
 ⚠️ **Et ne PAS lire la baisse de `vizyo-vps-hostinger` (10 442 → 9 127) comme une accalmie** : c'est
 une **fenêtre glissante de 7 jours** qui a laissé sortir une journée de déploiements.
 
-### V13 · VPS-015 · gravité 2 · 🟢 AUTO — *le symptôme est fermé par accident, la cause est intacte*
+### ☐ V13 · VPS-015 · gravité 2 · 🟢 AUTO — *le symptôme est fermé par accident, la cause est intacte*
 
 **Ce qui se passe** — le déclenchement de la sauvegarde Verify dépend du **bit d'exécution** du
 script. Le prochain `scp -r` sans `-p` le retirera, comme le 05/08.
@@ -437,7 +556,7 @@ d'être une condition de survie de la sauvegarde.
 > lit déjà chaque unité. Lui faire afficher `OnFailure=` présent/absent coûte **un
 > `systemctl show -p OnFailure` par unité** — quatre appels, aucune E/S disque.
 
-### V14 · VPS-033 · gravité 2 · 🟡 PRÉPARÉ — *5 min*
+### ☐ V14 · VPS-033 · gravité 2 · 🟡 PRÉPARÉ — *5 min*
 
 **Ce qui se passe** — la mesure des correctifs de sécurité est perdue **4 passages sur 5** parce que
 sa source est rafraîchie **à une heure tirée au hasard** dans une fenêtre de 12 h. Le 06/09 est la
@@ -450,7 +569,7 @@ systemctl edit apt-daily.timer   # [Timer] / RandomizedDelaySec=30m
 ⚠️ **Contrepartie réelle** : le délai aléatoire étale la charge sur les miroirs Ubuntu. Le réduire
 sur **une** machine est sans effet mesurable ; le généraliser ne le serait pas. **Préférer `30m` à `0`.**
 
-### V15 · VPS-034 · gravité 2 · 🔴 HUMAIN — *moitié gratuite*
+### ☐ V15 · VPS-034 · gravité 2 · 🔴 HUMAIN — *moitié gratuite*
 
 **Ce qui se passe** — `foodsqan-traefik` tient `0.0.0.0:80` et `:443`, sert **25 domaines**, monte
 `/run/docker.sock` (« lecture seule » — **ce qui ne restreint rien** : qui atteint la socket pilote
@@ -476,7 +595,7 @@ tomberaient**.
 ⚠️ **Ne PAS traiter ceci comme une urgence** : aucune intrusion constatée, 23 échecs SSH sur 7 j,
 **0 sur `root`**, 0 IP bannie.
 
-### V16 · VPS-026 · gravité 3 · 🟡 PRÉPARÉ
+### ☐ V16 · VPS-026 · gravité 3 · 🟡 PRÉPARÉ
 
 **Ce qui se passe** — la sauvegarde des **pièces d'identité** de Vizyo Verify télécharge
 `alpine:latest` depuis Docker Hub pour s'exécuter, parce que le ménage de 00 h 40 vient de la
@@ -493,7 +612,7 @@ alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 → lignes 163 et 165 de /opt/vizyo-verify/deploy/vps/backup.sh
 ```
 
-### V17 · VPS-030 · gravité 3 · 🟡 PRÉPARÉ
+### ☐ V17 · VPS-030 · gravité 3 · 🟡 PRÉPARÉ
 
 **1,70 Go en 13 fichiers**, sous **aucune** rétention (1 679 Mo dans `/root/backups`, 57 Mo dans
 `/opt/backups/tracky`). Ce sont des copies **supplémentaires** d'une base qui en a 40 ailleurs.
@@ -510,7 +629,7 @@ ls -1t /root/backups/tracky-avant-graphiques-*.sql.gz | tail -n +2   # liste, n 
 ⚠️ **Ne PAS toucher** à `/opt/backups/tracky/positions-avant-purge60j-*` : 57 Mo, **seule trace**
 des lignes purgées le 21/07.
 
-### V18 · VPS-032 · gravité 3 · 🟢 AUTO — *côté POSTE, pas côté serveur*
+### ☐ V18 · VPS-032 · gravité 3 · 🟢 AUTO — *côté POSTE, pas côté serveur*
 
 **9 143 sessions SSH** sur 7 jours, pic **4 528** en une journée. Multiplexer **côté poste** :
 
@@ -527,7 +646,7 @@ accès au compte local pendant ce temps réutilise la connexion **sans la clé**
 ⚠️ **Ne RIEN borner côté serveur** (`MaxStartups`, `ClientAliveInterval`) : ça transformerait une
 inefficacité en **panne intermittente** le jour où on en aura légitimement besoin.
 
-### V19 · VPS-007 · gravité 4 · 🟡 PRÉPARÉ — *déconseillé en l'état*
+### ☐ V19 · VPS-007 · gravité 4 · 🟡 PRÉPARÉ — *déconseillé en l'état*
 
 `random_page_cost = 4` sur **6 bases sur 7** (seule `tracky-postgres` est à 1.1). ⚠️ **L'enjeu de
 performance est nul** — ces bases pèsent 8 à 28 Mo et tiennent en cache à 99,99 % : *le planificateur
@@ -581,12 +700,12 @@ leur preuve : c'est ce qui distingue « livré » de « livré ET vérifié ».*
 
 ## ⛔ VPS — BLOQUÉ PAR UN PRÉREQUIS
 
-| Fiche | Ce qui bloque | Le prérequis |
-|---|---|---|
-| **VPS-M79** | Le ménage de 00 h 40 est mesuré **en volume** (6 images retirées en 24 h) mais reste **muet sur l'identité** — le cron fait `> /dev/null 2>&1` | Étiqueter les images de repli **au build** (`label!=repli=1`), donc toucher aux Dockerfile |
-| **VPS-029** | Volet symptôme appliqué (filtre `unused-for=168h` remis le 20/08, **toujours en place** ce jour) ; **deux** mécanismes gouvernent toujours le cache de build | Décider lequel fait foi — `daemon.json` (permanent, autorégulé) ou le cron hebdomadaire |
-| **VPS-M36** | Le `wchan` sert de preuve sur le constat le plus lourd, et le collecteur n'en prend **qu'un échantillon** | Échantillonner 3× à 1 s d'intervalle et publier la **répartition** — coût à chiffrer sur une collecte déjà hors budget |
-| **VPS-M73** | Aucun écran ne dit **depuis combien de jours** le dernier passage remonte — cinq passages manqués (27→31/08) n'ont été vus qu'après coup | Code applicatif : afficher l'écart en jours sur `/admin → Audit VPS`. *La donnée est déjà là.* |
+| | ID | Fiche | Ce qui bloque | Le prérequis |
+|:--:|:--:|---|---|---|
+| ☐ | **V20** | **VPS-M79** | Le ménage de 00 h 40 est mesuré **en volume** (6 images retirées en 24 h) mais reste **muet sur l'identité** — le cron fait `> /dev/null 2>&1` | Étiqueter les images de repli **au build** (`label!=repli=1`), donc toucher aux Dockerfile |
+| ☐ | **V21** | **VPS-029** | Volet symptôme appliqué (filtre `unused-for=168h` remis le 20/08, **toujours en place** ce jour) ; **deux** mécanismes gouvernent toujours le cache de build | Décider lequel fait foi — `daemon.json` (permanent, autorégulé) ou le cron hebdomadaire |
+| ☐ | **V22** | **VPS-M36** | Le `wchan` sert de preuve sur le constat le plus lourd, et le collecteur n'en prend **qu'un échantillon** | Échantillonner 3× à 1 s d'intervalle et publier la **répartition** — coût à chiffrer sur une collecte déjà hors budget |
+| ☐ | **V23** | **VPS-M73** | Aucun écran ne dit **depuis combien de jours** le dernier passage remonte — cinq passages manqués (27→31/08) n'ont été vus qu'après coup | Code applicatif : afficher l'écart en jours sur `/admin → Audit VPS`. *La donnée est déjà là.* |
 
 ---
 
@@ -674,3 +793,31 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 > *La procédure d'audit impose de relire le dernier rapport et le référentiel. **Elle n'a jamais
 > imposé de relire la roadmap** — et c'est exactement là que vivait la passation.* 👉 **C'est le
 > premier argument pour n'avoir qu'UNE roadmap, et c'est pourquoi elle est ici.**
+
+---
+
+# 🧾 Journal d'avancement
+
+> **Ajouté le 2026-09-06, sur décision du propriétaire : « on suit ce fichier, et on coche au fur
+> et à mesure ».** Une ligne par tâche close, **en tête**, jamais retirée. C'est ici qu'on répond à
+> « qu'est-ce qui a été fait, quand, et qu'est-ce qui le prouve ? » — sans relire 700 lignes.
+>
+> ⚠️ **Une ligne n'entre ici qu'avec sa PREUVE.** Un commit n'est pas une preuve de déploiement, et
+> un déploiement n'est pas une preuve de fonctionnement. *C'est la seule règle de ce tableau, et
+> c'est celle qui a manqué à `docs/vps-audit/ROADMAP.md` le jour où il a annoncé VPS-013 « ✅ FAIT ».*
+
+| Date | ID | Tâche | État | Commit | La preuve |
+|---|:--:|---|:--:|---|---|
+| **06/09** | **V0** | Verser `docs/vps-audit/` sur `main` — 20 jours d'audit n'y existaient pas | ✅ **FAIT** | *(checkout de chemin, avec historique)* | Arborescences vérifiées identiques ; 29 rapports, 125 fiches, 631 Ko sur `main` |
+| **06/09** | *(VPS-038)* | Sentinelle « boîtiers muets » | `[»]` **DÉPLOYÉE** | `fb0642f8` | 48 tests verts, mutation du seuil → 1 échec exactement ; smoke-boot OK ; `restarts=0`, `healthy`. ⏳ **Preuve attendue** : 2 lignes à la passe de 06:30 UTC, **pas 10** |
+| **06/09** | *(VPS-M59)* | `chargeDeFond.note` s'affiche + repli explicite | `[»]` **DÉPLOYÉ** | `9dce59ec` | Sur l'**artefact servi** : `fond-note` 0 → 1, « mesure absente du manifeste » 0 → 1, **témoin impossible 0** ; `ng build` NG_EXIT=0 |
+
+### Ce que le prochain passage doit faire de ce journal
+
+1. **Relire le [tableau de bord](#-tableau-de-bord--46-tâches-lavancement-dun-coup-dœil) AVANT la
+   collecte** — c'est là que vit la passation, et c'est précisément ce que les passages des 05 et
+   06/09 n'ont pas fait, au prix d'un chapitre entier réécrit pour rien *(VPS-M81)*.
+2. **Vérifier les deux `[»]` ci-dessus.** Ils passent `[x]` **le jour où la mesure tombe**, pas
+   avant — et si elle ne tombe pas, le dire.
+3. **Cocher ce qui a été fait entre-temps**, même par un humain hors session : une tâche close qui
+   reste `☐` fait rouvrir un chantier déjà terminé.
