@@ -65,7 +65,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ## 🗂️ Tableau de bord — 49 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-06 : 1 faite · 2 déployées, preuve attendue · 46 ouvertes.**
+**Au 2026-09-06 : 1 faite · 2 déployées, preuve attendue · 1 commitée · 45 ouvertes.**
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
@@ -82,7 +82,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T7** | TRK-035 | Ouvrir la fenêtre de maintenance *(rôle non-superutilisateur)* | 🤝 HUMAIN |
 | ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
 | ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
-| ☐ | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🔧 **À CODER** ⭐ |
+| `~` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | ✅ **COMMITÉ** `2112e9ae` |
 | ☐ | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | 🔧 À CODER |
 | ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
 | ☐ | **T13** | TRK-016 | Recalage cartographique — **~88 % d'échec** | 🔧 CHANTIER |
@@ -234,7 +234,7 @@ vous** :
 
 ## P0 — nuit à la production maintenant
 
-### ☐ T10 · TRK-070 · gravité 2 · 🔧 À CODER — *le plus rentable de la liste*
+### `~` T10 · TRK-070 · gravité 2 · ✅ **COMMITÉ le 2026-09-06** (`2112e9ae`) — *pas encore déployé*
 
 **Ce qui se passe** — Un compte IA à sec produit **deux** lignes à 14 ms d'intervalle : la première
 en `DEGRADATION` (correctif C3 point 5 / TRK-061), la seconde en **`ERROR`** — qui la **recompte
@@ -811,6 +811,7 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **06/09** | **T10** | TRK-070 — le niveau de l'escalade suit la CAUSE, pas la gravité de la conversation | `~` **COMMITÉ** | `2112e9ae` | Suite assistance **74/74**, typecheck **3/3**, smoke-boot DI **5/5**. 🔑 **Mutation de la règle de niveau → 1 échec exactement** : le test n'est pas tautologique. Les **trois** replis techniques traités ensemble *(leçon de TRK-004)*. ⏳ **Preuve attendue en production** : UNE seule ligne `ASSISTANCE`, en `DEGRADATION`, **et** le journal système garde son `assistance_escalade` |
 | **06/09** | **V0** | Verser `docs/vps-audit/` sur `main` — 20 jours d'audit n'y existaient pas | ✅ **FAIT** | *(checkout de chemin, avec historique)* | Arborescences vérifiées identiques ; 29 rapports, 125 fiches, 631 Ko sur `main` |
 | **06/09** | *(VPS-038)* | Sentinelle « boîtiers muets » | `[»]` **DÉPLOYÉE** | `fb0642f8` | 48 tests verts, mutation du seuil → 1 échec exactement ; smoke-boot OK ; `restarts=0`, `healthy`. ⏳ **Preuve attendue** : 2 lignes à la passe de 06:30 UTC, **pas 10** |
 | **06/09** | *(VPS-M59)* | `chargeDeFond.note` s'affiche + repli explicite | `[»]` **DÉPLOYÉ** | `9dce59ec` | Sur l'**artefact servi** : `fond-note` 0 → 1, « mesure absente du manifeste » 0 → 1, **témoin impossible 0** ; `ng build` NG_EXIT=0 |

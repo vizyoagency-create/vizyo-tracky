@@ -90,17 +90,17 @@
 <div class="kpis">
   <div class="k ok"><div class="n">1</div><div class="l">faites et verifiees</div></div>
   <div class="k warn"><div class="n">2</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">46</div><div class="l">ouvertes sur 49</div></div>
+  <div class="k"><div class="n">45</div><div class="l">ouvertes sur 49</div></div>
   <div class="k dgr"><div class="n">10</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">2</div><div class="l">au-dela de 7 jours</div></div>
   <div class="k info"><div class="n">18</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 1 faites, 2 deployees, 46 ouvertes sur 49">
+<div class="barre" role="img" aria-label="Avancement : 1 faites, 2 deployees, 45 ouvertes sur 49">
   <span class="s-FAIT" style="width:2%"></span>
   <span class="s-DEPLOYE" style="width:4%"></span>
-  <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:94%"></span>
+  <span class="s-COMMITE" style="width:2%"></span>
+  <span class="s-OUVERT" style="width:92%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -112,10 +112,10 @@
 
 <div class="filtres" id="f">
   <button data-f="tout" aria-pressed="true">Tout (49)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (46)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (45)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (10)</button>
   <button data-f="humain" aria-pressed="false">Attendent un humain (18)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (14)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (13)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
   <button data-f="fait" aria-pressed="false">Closes (3)</button>
@@ -150,21 +150,6 @@
   </div>
   <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
   <p class="detail">vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.</p>
-  
-  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
-</article>
-<article class="t etat-OUVERT g2" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
-  <div class="t-h">
-    <span class="marque" title="Ouvert">☐</span>
-    <span class="id">T10</span>
-    <span class="fiche">TRK-070</span>
-    <span class="classe">🔧 A coder</span>
-    <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
-    
-  </div>
-  <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
-  <p class="detail">Un compte IA a sec produit 2 lignes a 14 ms : DEGRADATION puis ERROR. La seconde recompte l'incident comme un defaut et annule le correctif de TRK-061.</p>
   
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
@@ -812,6 +797,21 @@
   <p class="detail">DECONSEILLE en l'etat : l'enjeu de performance est nul (bases de 8 a 28 Mo, en cache a 99,99 %). L'enjeu de methode est deja regle.</p>
   
   <div class="badges"></div>
+</article>
+<article class="t etat-COMMITE g2" data-etat="COMMITE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Ecrit et commite">~</span>
+    <span class="id">T10</span>
+    <span class="fiche">TRK-070</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">0 j</span>
+    <code class="commit">2112e9ae</code>
+  </div>
+  <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
+  <p class="detail">Un compte IA a sec produit 2 lignes a 14 ms : DEGRADATION puis ERROR. La seconde recompte l'incident comme un defaut et annule le correctif de TRK-061.</p>
+  <p class="preuve"><b>Preuve</b> — Suite assistance 74/74, typecheck 3/3, smoke-boot DI 5/5. MUTATION de la regle de niveau -&gt; 1 echec exactement : le test n'est pas tautologique. Les TROIS replis techniques sont traites ensemble (classement, redaction, IA non configuree).</p><p class="attendue"><b>Preuve attendue</b> — Au prochain echec IA EN PRODUCTION : UNE seule ligne ASSISTANCE pour l'incident, en DEGRADATION, et le journal systeme porte toujours son assistance_escalade. DOUBLE CONDITION : si les deux lignes disparaissent, on a supprime la trace de l'escalade au lieu de la classer.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-DEPLOYE g1" data-etat="DEPLOYE" data-partie="vps" data-classe="AUTO" data-g="1">
   <div class="t-h">
