@@ -168,6 +168,11 @@ services:
       NODE_ENV: production
       DEMO_MODE: "true"
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tracky-demo-postgres:5432/${POSTGRES_DB}?schema=public&application_name=tracky-demo-import
+      # Le tas par défaut de Node se dimensionne sur la mémoire visible et s'était arrêté vers
+      # 400 Mo au premier import réel. L'importeur lit désormais par paquets (la vraie
+      # correction) ; ce plafond explicite n'est que la marge, pour que la panne suivante soit
+      # un ralentissement et non un arrêt.
+      NODE_OPTIONS: --max-old-space-size=1536
     command: ["node", "dist/demo/import/import.cli.js"]
     depends_on:
       postgres:
@@ -178,4 +183,4 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768m
+          memory: 2g

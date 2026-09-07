@@ -75,6 +75,14 @@ export interface BilanImport {
 /** Taille des lots d'écriture (`createMany`) et de lecture des positions. */
 const LOT = 5_000;
 const PAGE_POSITIONS = 20_000;
+/**
+ * Taille des paquets de LECTURE des trois grosses tables. Volontairement petite : un trajet
+ * porte sa polyligne, une analyse son JSON de détail, une alerte sa charge utile — quelques
+ * kilo-octets chacun, multipliés par l'empreinte des objets JavaScript. C'est ce qui a fait
+ * dépasser le tas au premier import réel (13 504 trajets, 10 096 alertes).
+ */
+const PAQUET_TRAJETS = 500;
+const PAQUET_ALERTES = 1_000;
 
 /**
  * ═══ GARDE-FOUS — AVANT de lire quoi que ce soit ═══════════════════════════════════════════
@@ -212,24 +220,41 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
     const plannings = await src.vehicleSchedule.findMany({ where: { vehicleId: { in: vehiculeIds } } });
     const planningsTravail = await src.vehicleWorkSchedule.findMany({ where: { vehicleId: { in: vehiculeIds } } });
     const profils = await src.surveillanceProfile.findMany({ where: { vehicleId: { in: vehiculeIds } } });
-    const trajets = await src.trip.findMany({
-      where: { vehicleId: { in: vehiculeIds }, startedAt: { gte: depuisTrajets }, endedAt: { not: null, lt: aujourdhui } },
-      orderBy: { startedAt: 'asc' },
+    /**
+     * ══ LES TROIS GROSSES TABLES NE SONT PAS CHARGÉES EN MÉMOIRE ═══════════════════════════
+     *
+     * Trajets, analyses et alertes sont lus PAR PAGES au moment de l'écriture (§ 3). Ici on ne
+     * prend que leurs IDENTIFIANTS, parce qu'il en faut la carte complète avant d'écrire : une
+     * alerte renvoie à un trajet, et on doit savoir s'il fait partie de la fenêtre importée.
+     *
+     * ⚠️ CE N'EST PAS UNE OPTIMISATION, C'EST LA CORRECTION D'UNE PANNE. Le premier import réel
+     * s'est arrêté sur `FATAL ERROR: Reached heap limit` : 13 504 trajets et 10 096 alertes
+     * chargés d'un bloc, avec leurs polylignes et leurs JSON de détail, dépassaient les 400 Mo
+     * de tas. Mon jeu d'essai local en comptait 34. La taille d'un client n'est pas une variable
+     * d'ajustement — un import qui tient en mémoire aujourd'hui doit tenir dans un an.
+     */
+    const trajetIds = (
+      await src.trip.findMany({
+        where: { vehicleId: { in: vehiculeIds }, startedAt: { gte: depuisTrajets }, endedAt: { not: null, lt: aujourdhui } },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+      })
+    ).map((t) => t.id);
+    const nbAlertes = await src.alert.count({
+      where: { fleetId: { in: flotteIds }, createdAt: { gte: depuisTrajets, lt: aujourdhui } },
     });
-    const trajetIds = trajets.map((t) => t.id);
-    const analyses = await parLotsDIds(trajetIds, (lot) => src.tripAnalysis.findMany({ where: { tripId: { in: lot } } }));
-    const arrets = await parLotsDIds(trajetIds, (lot) => src.tripFuelStop.findMany({ where: { tripId: { in: lot } } }));
     const pleins = await src.fuelFillUp.findMany({ where: { fleetId: { in: flotteIds }, filledAt: { gte: depuisTrajets, lt: aujourdhui } } });
-    const stationIds = unique([...arrets.map((a) => a.stationId), ...pleins.map((p) => p.stationId), ...lieux.map((l) => l.stationId)]);
+    // Les stations doivent exister AVANT les arrêts qui les citent (clé étrangère) : on ne lit
+    // donc ici que leurs identifiants, pas les arrêts eux-mêmes.
+    const stationIdsDArrets = await parLotsDIds(trajetIds, (lot) =>
+      src.tripFuelStop.findMany({ where: { tripId: { in: lot } }, select: { stationId: true } }).then((r) => r.map((x) => ({ id: x.stationId }))),
+    );
+    const stationIds = unique([...stationIdsDArrets.map((s) => s.id), ...pleins.map((p) => p.stationId), ...lieux.map((l) => l.stationId)]);
     const stations = await parLotsDIds(stationIds, (lot) => src.fuelStation.findMany({ where: { id: { in: lot } } }));
     const prix = await parLotsDIds(stationIds, (lot) =>
       src.fuelStationPrice.findMany({ where: { stationId: { in: lot }, capturedAt: { gte: depuisPositions } } }),
     );
-    const alertes = await src.alert.findMany({
-      where: { fleetId: { in: flotteIds }, createdAt: { gte: depuisTrajets, lt: aujourdhui } },
-      orderBy: { createdAt: 'asc' },
-    });
-    log(`Source : ${flottes.length} société(s), ${vehicules.length} véhicules, ${boitiers.length} boîtiers, ${conducteurs.length} conducteurs, ${trajets.length} trajets, ${alertes.length} alertes`);
+    log(`Source : ${flottes.length} société(s), ${vehicules.length} véhicules, ${boitiers.length} boîtiers, ${conducteurs.length} conducteurs, ${trajetIds.length} trajets, ${nbAlertes} alertes`);
 
     // ── 2. Correspondances et pseudonymes ────────────────────────────────────────────────
     const ids = new Correspondances(o.sel);
@@ -273,7 +298,7 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
     for (const g of geofences) ids.marquer('Geofence', g.id);
     for (const s of stations) ids.marquer('FuelStation', s.id, s.id);
     for (const l of lieux) ids.marquer('FleetPlace', l.id);
-    for (const t of trajets) ids.marquer('Trip', t.id);
+    for (const t of trajetIds) ids.marquer('Trip', t);
 
     // Les noms de groupes sont REMPLACÉS par des libellés inventés, indexés par rang : un nom de
     // groupe est un nom de client (cf. `nomGroupeDemo`), et l'index rend l'unicité (société, nom)
@@ -402,11 +427,46 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
         await tx.position.deleteMany({});
         await tx.demoReplayFrame.deleteMany({});
 
-        for (const lot of lots(trajets)) await tx.trip.createMany({ data: lot.map((t) => transformerTrajet(t, ctx)) });
-        for (const lot of lots(analyses)) await tx.tripAnalysis.createMany({ data: lot.map((a) => transformerAnalyse(a, ctx)) });
-        for (const lot of lots(arrets)) await tx.tripFuelStop.createMany({ data: lot.map((a) => transformerArretCarburant(a, ctx)) });
+        /**
+         * Trajets, analyses et arrêts : lus PAR PAQUETS D'IDENTIFIANTS et écrits au fil de l'eau.
+         * Chaque paquet est relâché avant le suivant — la mémoire ne dépend plus du nombre de
+         * trajets du client, seulement de la taille du paquet.
+         */
+        let analyses = 0;
+        for (const paquet of lots(trajetIds, PAQUET_TRAJETS)) {
+          const page = await src.trip.findMany({ where: { id: { in: paquet } } });
+          await tx.trip.createMany({ data: page.map((t) => transformerTrajet(t, ctx)) });
+
+          const pageAnalyses = await src.tripAnalysis.findMany({ where: { tripId: { in: paquet } } });
+          if (pageAnalyses.length > 0) {
+            await tx.tripAnalysis.createMany({ data: pageAnalyses.map((a) => transformerAnalyse(a, ctx)) });
+            analyses += pageAnalyses.length;
+          }
+
+          const pageArrets = await src.tripFuelStop.findMany({ where: { tripId: { in: paquet } } });
+          if (pageArrets.length > 0) {
+            await tx.tripFuelStop.createMany({ data: pageArrets.map((a) => transformerArretCarburant(a, ctx)) });
+          }
+        }
+
         for (const lot of lots(pleins)) await tx.fuelFillUp.createMany({ data: lot.map((p) => transformerPlein(p, ctx)) });
-        for (const lot of lots(alertes)) await tx.alert.createMany({ data: lot.map((a) => transformerAlerte(a, ctx)) });
+
+        // Alertes : paginées sur l'identifiant, même raison.
+        let alertes = 0;
+        let curseurAlerte: string | undefined;
+        for (;;) {
+          const page = await src.alert.findMany({
+            where: { fleetId: { in: flotteIds }, createdAt: { gte: depuisTrajets, lt: aujourdhui } },
+            orderBy: { id: 'asc' },
+            take: PAQUET_ALERTES,
+            ...(curseurAlerte ? { cursor: { id: curseurAlerte }, skip: 1 } : {}),
+          });
+          if (page.length === 0) break;
+          await tx.alert.createMany({ data: page.map((a) => transformerAlerte(a, ctx)) });
+          alertes += page.length;
+          curseurAlerte = page[page.length - 1]!.id;
+          if (page.length < PAQUET_ALERTES) break;
+        }
 
         // Positions : lues page par page dans la source, écrites au fil de l'eau.
         let positions = 0;
@@ -460,9 +520,9 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
           geofences: geofences.length,
           lieux: lieux.length,
           stations: stations.length,
-          trajets: trajets.length,
-          analyses: analyses.length,
-          alertes: alertes.length,
+          trajets: trajetIds.length,
+          analyses,
+          alertes,
           positions,
           tramesRejeu,
           dureeMs: Date.now() - debut,
