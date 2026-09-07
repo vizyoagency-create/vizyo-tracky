@@ -402,3 +402,38 @@ describe('InvitationsService.create — access scopes (matrice dès invitation)'
     expect(prisma.invitation.create).not.toHaveBeenCalled();
   });
 });
+
+describe('InvitationsService.accept — le nom affiché n\'est jamais une adresse', () => {
+  let service: InvitationsService;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        InvitationsService,
+        { provide: PrismaService, useValue: { user: {}, invitation: {}, fleet: {} } },
+        { provide: EmailService, useValue: { isEnabled: jest.fn(), send: jest.fn(), buildInvitationEmail: jest.fn() } },
+        { provide: AuthClientService, useValue: { register: jest.fn(), login: jest.fn(), me: jest.fn() } },
+        {
+          provide: ConfigService,
+          useValue: { get: (k: string) => (k === 'INVITATION_JWT_SECRET' ? 'test-secret' : '') },
+        },
+      ],
+    }).compile();
+    service = module.get(InvitationsService);
+  });
+
+  // Le cas réel : un gestionnaire de mots de passe remplit « Nom complet » avec
+  // l'identifiant qu'il a en mémoire, faute de champ d'identifiant dans le formulaire.
+  // L'adresse finissait en nom affiché, puis en acteur du journal d'activité.
+  it('refuse un nom contenant une arobase, avant même de regarder le jeton', async () => {
+    await expect(service.accept('jeton-invalide', 'MotDePasseAssezLong1', 'admin@exemple.org'))
+      .rejects.toThrow(/pas une adresse e-mail/);
+  });
+
+  it('laisse passer un nom normal jusqu\'à la vérification du jeton', async () => {
+    // Preuve que la garde est bien placée AVANT et qu'elle ne bloque pas un vrai nom :
+    // on atteint alors le refus suivant, celui du jeton.
+    await expect(service.accept('jeton-invalide', 'MotDePasseAssezLong1', 'Camille Dupont'))
+      .rejects.toThrow(/invitation invalide/i);
+  });
+});

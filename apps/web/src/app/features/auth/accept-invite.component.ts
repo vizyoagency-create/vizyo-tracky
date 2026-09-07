@@ -74,10 +74,28 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
           </div>
 
           <form (submit)="$event.preventDefault(); submit()" class="ai-form">
+            <!--
+              Ancre pour les gestionnaires de mots de passe. Ce formulaire ne demande pas
+              d'identifiant, seulement un nom et deux mots de passe. Sans champ marqué
+              autocomplete="username", un gestionnaire remplit le PREMIER champ texte venu,
+              donc « Nom complet », avec l'identifiant qu'il a en mémoire. Constaté le
+              2026-09-07 : une adresse e-mail sans rapport s'est retrouvée en nom affiché,
+              jusque dans le journal d'activité.
+
+              Le champ doit être rendu, pas display:none — un gestionnaire ignore les champs
+              masqués ainsi et retombe sur le premier champ visible. On le sort donc du flux
+              visuel sans le retirer du DOM. Rien n'est lu depuis ce champ.
+            -->
+            <input class="ai-username-anchor" type="email" name="username" autocomplete="username"
+                   tabindex="-1" aria-hidden="true" />
+
             <div class="ai-field">
               <label for="ai-name">Nom complet</label>
               <input id="ai-name" class="ai-in" [(ngModel)]="displayName" name="displayName"
                      placeholder="Prénom Nom" autocomplete="name" required />
+              @if (nomRessembleAUneAdresse()) {
+                <p class="ai-hint-err">Indiquez un prénom et un nom, pas une adresse e-mail.</p>
+              }
             </div>
 
             <div class="ai-field">
@@ -225,6 +243,16 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
     .ai-mismatch { display: inline-flex; align-items: center; gap: 6px; font-size: .76rem; color: var(--warning); }
 
+    /* Ancre des gestionnaires de mots de passe : rendue, mais hors du flux visuel.
+       Surtout pas display:none — un gestionnaire ignore un champ masque ainsi et
+       retombe sur le premier champ visible, c'est-a-dire « Nom complet ». */
+    .ai-username-anchor {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+    }
+
+    .ai-hint-err { margin: 0; font-size: 12.5px; line-height: 1.35; color: var(--texte-alerte); }
+
     .ai-alert {
       display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 10px;
       background: color-mix(in srgb, var(--danger) 12%, transparent);
@@ -328,8 +356,18 @@ export class AcceptInviteComponent implements OnInit {
     return this.password === this.passwordConfirm;
   }
 
+  /**
+   * Un nom affiche ne contient jamais d'arobase. Le test porte sur ce caractere et pas sur
+   * une expression d'adresse complete : ce qu'on refuse, c'est qu'un identifiant se retrouve
+   * en nom, quelle que soit sa forme. Le serveur applique la meme regle, lui seul fait foi.
+   */
+  nomRessembleAUneAdresse(): boolean {
+    return this.displayName.includes('@');
+  }
+
   canSubmit(): boolean {
     return this.displayName.trim().length >= 2
+      && !this.nomRessembleAUneAdresse()
       && this.password.length >= 12
       && this.passwordsMatch();
   }

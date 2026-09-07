@@ -230,6 +230,24 @@ export class InvitationsService {
     if (!displayName || displayName.trim().length < 2) {
       throw new BadRequestException('Nom complet requis (2 caractères minimum)');
     }
+    // ══ UN NOM AFFICHÉ N'EST JAMAIS UNE ADRESSE ════════════════════════════════
+    //
+    // Le formulaire d'acceptation demande un nom et deux mots de passe, sans champ
+    // d'identifiant. Un gestionnaire de mots de passe y voit un formulaire de connexion
+    // et remplit le premier champ texte — « Nom complet » — avec l'identifiant qu'il a
+    // en mémoire. Constaté le 2026-09-07 sur l'environnement de démonstration : une
+    // adresse sans rapport avec l'invité s'est retrouvée en nom affiché, puis recopiée
+    // comme acteur dans le journal d'activité, où elle était lisible par tous.
+    //
+    // Le formulaire porte désormais une ancre `autocomplete="username"`, mais elle
+    // dépend du navigateur et du gestionnaire. Cette garde-ci n'en dépend pas.
+    // On teste l'arobase, pas une expression d'adresse complète : ce qu'on refuse,
+    // c'est qu'un identifiant devienne un nom, quelle que soit sa forme.
+    if (displayName.includes('@')) {
+      throw new BadRequestException(
+        'Indiquez un prénom et un nom, pas une adresse e-mail. Si le champ a été rempli automatiquement, corrigez-le.',
+      );
+    }
 
     let payload: { invitationId: string; token: string };
     try {
