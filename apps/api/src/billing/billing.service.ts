@@ -183,7 +183,9 @@ export class BillingService {
       monthlyLabel: `${monthly} ${price.currency.toUpperCase()}`,
     });
     void this.email
-      .send({ template: 'ai_invoice_request', to: CONTACT_EMAIL, subject: mail.subject, html: mail.html, text: mail.text, fleetId })
+      .send({ template: 'ai_invoice_request', to: CONTACT_EMAIL, subject: mail.subject, html: mail.html, text: mail.text, fleetId,
+        // Répondre écrit au gestionnaire qui a demandé la facture, pas à `noreply@`.
+        replyTo: user?.email ?? undefined })
       .catch((e) => this.logger.warn(`E-mail facture physique non envoyé : ${(e as Error)?.message ?? e}`));
     return { status: 'INVOICE_PENDING' };
   }

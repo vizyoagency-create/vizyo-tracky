@@ -78,13 +78,17 @@ export class LeadsService {
         managerUrl: MANAGER_LEADS_URL,
       });
       const prefix = isResubmission ? `[Re-soumission #${submissionCount}] ` : '';
-      const r = await this.email.send({ to: ADMIN_EMAIL, subject: prefix + q.subject, html: q.html, text: q.text, template: 'quote_signed' });
+      // ⚠️ `replyTo` : répondre à cette notification écrit AU PROSPECT — c'est la suite
+      // normale d'un devis signé, et l'expéditeur est `noreply@`.
+      const r = await this.email.send({ to: ADMIN_EMAIL, subject: prefix + q.subject, html: q.html, text: q.text, template: 'quote_signed', replyTo: lead.email });
       if (!r.ok) this.logger.warn(`Failed to send quote-signed notification: ${r.error}`);
     } else {
       const subjectPrefix = isResubmission ? `[Re-soumission #${submissionCount}] ` : '';
       const subject = `${subjectPrefix}Nouveau lead Tracky — ${dto.company || dto.name}${dto.fleetSize ? ` (${dto.fleetSize} vehicules)` : ''}`;
       const { html, text } = this.buildLeadNotificationEmail(lead, isResubmission, submissionCount);
-      const result = await this.email.send({ to: ADMIN_EMAIL, subject, html, text, template: 'lead' });
+      // ⚠️ `replyTo` : comme pour un devis signé, répondre à cette notification écrit AU
+      // PROSPECT. C'est le geste qu'on fait vraiment en la lisant.
+      const result = await this.email.send({ to: ADMIN_EMAIL, subject, html, text, template: 'lead', replyTo: lead.email });
       if (!result.ok) this.logger.warn(`Failed to send lead notification: ${result.error}`);
     }
 

@@ -437,6 +437,9 @@ export class InstallationBookingService {
           manageUrl: `${this.appBase()}/admin/installation-bookings`,
         }),
         template: 'installation_slot_requested',
+        // ⚠️ RÉPONDRE ÉCRIT AU CLIENT, pas à notre propre boîte. Le pied de page le dit ;
+        // sans cet en-tête il faudrait recopier l'adresse à la main depuis le corps.
+        replyTo: clientEmail,
         fleetId: link.fleetId,
         context: { bookingId: booking.id, linkId: link.id },
       })

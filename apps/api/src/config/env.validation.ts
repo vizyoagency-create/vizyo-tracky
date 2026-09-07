@@ -72,12 +72,25 @@ const envSchema = z.object({
   // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,
   // log de debug). Permet de developper sans compte Resend.
   RESEND_API_KEY: z.string().default(''),
-  RESEND_FROM: z.string().default('contact@vizyoagency.com'),
+  // Expediteur. `noreply@` et non `contact@` : la quasi-totalite de ce que le produit
+  // envoie est AUTOMATIQUE (rapport du lundi, alertes, securite, invitations). Poser
+  // l'adresse d'un humain en expediteur promet une conversation que personne ne tient.
+  RESEND_FROM: z.string().default('Vizyo Tracky <noreply@vizyoagency.com>'),
+  // ...mais une reponse ne doit jamais tomber dans le vide : `Reply-To` la ramene vers
+  // l'adresse lue par quelqu'un. Le pied de page des courriels informatifs demande de
+  // ne pas repondre ; cet en-tete rattrape ceux qui repondent quand meme.
+  EMAIL_REPLY_TO: z.string().default('contact@vizyoagency.com'),
 
   // URL absolue du logo PNG des e-mails. Gmail/Outlook/Yahoo suppriment le SVG
-  // inline → le logo doit etre une image hebergee. Servi par la LP
-  // (lp/public/email/vizyo-logo.png). Override possible en prod si le domaine differe.
-  EMAIL_LOGO_URL: z.string().default('https://tracky.vizyoagency.com/email/vizyo-logo.png'),
+  // inline → le logo doit etre une image hebergee.
+  //
+  // VIDE PAR DEFAUT, ET C'EST VOULU : le service retombe alors sur l'asset servi par
+  // l'application elle-meme (`{APP_BASE_URL}/logos/png/vizyo-tracky-icon-green.png`),
+  // donc sur LE MEME FICHIER que la barre du haut et l'ecran de connexion. Une copie
+  // hebergee ailleurs a deja diverge une fois — celle de la LP avait perdu la goutte
+  // interieure de la pastille, et rien ne le signalait. Ne remplir cette variable que
+  // pour pointer un domaine different, jamais une autre image.
+  EMAIL_LOGO_URL: z.string().default(''),
 
   // Secret du webhook Resend (Svix, format 'whsec_…'). Sert a verifier la signature
   // des events entrants (delivered/opened/clicked/bounced/complained) sur /api/email/webhook.

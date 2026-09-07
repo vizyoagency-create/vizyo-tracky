@@ -116,6 +116,13 @@ export interface SendEmailParams {
    * jointe » depuis 2026-01 sans que rien ne soit joint : le paramètre n'existait pas.
    */
   attachments?: { filename: string; content: Buffer }[];
+  /**
+   * Adresse de reponse, si elle differe du defaut (`EMAIL_REPLY_TO`).
+   *
+   * Sert aux notifications INTERNES qui portent la question d'un client : y repondre
+   * doit ecrire au client, pas a notre propre boite.
+   */
+  replyTo?: string;
 }
 
 /**
@@ -165,6 +172,16 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly client: Resend | null;
   private readonly fromAddress: string;
+  /**
+   * Adresse vers laquelle une reponse est ramenee.
+   *
+   * ⚠️ L'EXPEDITEUR EST `noreply@` : sans cet en-tete, toute reponse d'un client
+   * tomberait dans une boite que personne n'ouvre. Les courriels informatifs demandent
+   * de ne pas repondre — celui-ci rattrape ceux qui repondent quand meme, et c'est le
+   * cas de tous les courriels commerciaux (devis, reservation, installation) ou une
+   * reponse est au contraire la suite normale de la conversation.
+   */
+  private readonly replyToAddress: string;
   private readonly enabled: boolean;
   /** URL absolue du logo PNG (charte 2026) — cf. EMAIL_LOGO_URL. */
   private readonly logoUrl: string;
@@ -177,7 +194,21 @@ export class EmailService {
   ) {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     this.fromAddress = this.config.get('RESEND_FROM', { infer: true });
-    this.logoUrl = this.config.get('EMAIL_LOGO_URL', { infer: true });
+    this.replyToAddress = this.config.get('EMAIL_REPLY_TO', { infer: true });
+    /**
+     * ⚠️ LE LOGO DE L'E-MAIL EST CELUI DE L'APPLICATION, LE MEME FICHIER.
+     *
+     * Il a longtemps ete une COPIE hebergee par la page vitrine. Elle a divergé sans que
+     * rien ne le signale : la copie avait perdu la goutte interieure de la pastille, et
+     * le courrier du lundi portait donc un logo amputé depuis des mois. Une image servie
+     * par l'application ne peut pas diverger d'elle-meme.
+     *
+     * `EMAIL_LOGO_URL` reste un override — pour un domaine different, jamais pour une
+     * autre image.
+     */
+    const logoConfigure = this.config.get('EMAIL_LOGO_URL', { infer: true });
+    this.logoUrl = logoConfigure
+      || `${this.config.get('APP_BASE_URL', { infer: true })}/logos/png/vizyo-tracky-icon-green.png`;
     this.enabled = !!apiKey;
     this.client = this.enabled ? new Resend(apiKey) : null;
     if (this.enabled) {
@@ -204,6 +235,7 @@ export class EmailService {
     try {
       const result = await this.client.emails.send({
         from: this.fromAddress,
+        replyTo: params.replyTo ?? this.replyToAddress,
         to: params.to,
         subject: params.subject,
         html: params.html,
@@ -414,7 +446,7 @@ export class EmailService {
     const html = this.shell({
       eyebrow: 'Accès',
       preheader: 'Ce que ce compte vous permet de voir, et ce qu\'il ne permet pas.',
-      footer: `${transporteur} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky. Ce lien expire le ${expire}.`,
+      footer: `${transporteur} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky · E-mail automatique, ne pas répondre.<br>Ce lien expire le ${expire}.`,
       body: `
         <tr><td style="padding:28px 36px 0;">
           <!-- Preheader : première ligne lue dans la liste des messages. -->
@@ -527,7 +559,7 @@ export class EmailService {
 
     const html = this.shell({
       eyebrow: 'Demande de mission',
-      footer: `${this.escapeHtml(opts.carrierName)}<br>Propulsé par Vizyo Tracky. E-mail automatique, ne pas répondre.`,
+      footer: `${this.escapeHtml(opts.carrierName)}<br>Propulsé par Vizyo Tracky · E-mail automatique, ne pas répondre.`,
       body: `
         <tr><td style="padding:28px 36px 0;">
           <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${this.escapeHtml(opts.titre)}</h1>
@@ -601,7 +633,7 @@ export class EmailService {
     const html = this.shell({
       eyebrow: 'Livraison',
       preheader: 'Le créneau, le point de retrait et la marche à suivre en cas d\'imprévu.',
-      footer: `${this.escapeHtml(opts.carrierName)} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky. E-mail automatique, ne pas répondre.`,
+      footer: `${this.escapeHtml(opts.carrierName)} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky · E-mail automatique, ne pas répondre.`,
       body: `
         <tr><td style="padding:28px 36px 0;">
           <h1 class="m-title" style="margin:0 0 10px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">Une livraison vous est assignée</h1>
@@ -731,7 +763,7 @@ export class EmailService {
     const html = this.shell({
       eyebrow: 'Accès · Invitation',
       preheader: 'Créez votre mot de passe pour ouvrir votre espace.',
-      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE<br>Vous recevez cet e-mail suite à une invitation. Ne pas répondre.',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE<br>Vous recevez cet e-mail suite à une invitation · E-mail automatique, ne pas répondre.',
       body: `
         <tr><td style="padding:28px 36px 8px;">
           <h1 class="m-title" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Rejoignez la flotte<br><span style="color:${EMAIL_ACCENT_TEXTE};">${escapeHtml(opts.fleetName)}</span></h1>
@@ -774,7 +806,7 @@ Ce lien est valide jusqu'au ${expiresLabel}.
     const html = this.shell({
       eyebrow: 'Sécurité · Mot de passe',
       preheader: 'Vous n\'êtes pas à l\'origine de la demande ? Ignorez ce message, rien ne change.',
-      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.',
+      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique, ne pas répondre.',
       body: `
         <tr><td style="padding:28px 36px 0;">
           <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Réinitialisez votre mot de passe</h1>
@@ -827,7 +859,7 @@ Si vous n'avez pas demandé cette réinitialisation, ignorez cet e-mail.
     const html = this.shell({
       eyebrow: 'Sécurité · Nouvel appareil',
       preheader: 'Saisissez ce code pour terminer la connexion. Il expire dans quelques minutes.',
-      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.',
+      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique, ne pas répondre.',
       body: `
         <tr><td style="padding:28px 36px 0;">
           <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Votre code de connexion</h1>
@@ -875,7 +907,7 @@ Si vous n'êtes pas à l'origine de cette connexion, ignorez cet e-mail et chang
     const html = this.shell({
       eyebrow: 'Sécurité · Double authentification',
       preheader: 'Ce code retire une protection de votre compte. Ne le transmettez à personne.',
-      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.',
+      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique, ne pas répondre.',
       body: `
         <tr><td style="padding:28px 36px 0;">
           <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#0A1311;">Désactiver la double authentification</h1>
@@ -923,7 +955,7 @@ Vous n'êtes pas à l'origine de cette demande ? N'entrez pas ce code et changez
       preheader: 'Ce que la loi vous impose d\'afficher et de déclarer, et sous quel délai.',
       accent: '#F5B33D',
       borderColor: 'rgba(245,179,61,.25)',
-      footer: "VIZYO TRACKY · GARDE-FOU CONFORMITÉ<br>La conformité réglementaire reste la responsabilité de l'exploitant.",
+      footer: "VIZYO TRACKY · GARDE-FOU CONFORMITÉ · E-mail automatique, ne pas répondre.<br>La conformité réglementaire reste la responsabilité de l'exploitant.",
       body: `
         <tr><td style="padding:26px 36px 0;">
           <h1 class="m-title" style="margin:0 0 12px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">Écoute audio activée</h1>
@@ -982,7 +1014,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     const html = this.shell({
       eyebrow: 'Nouveauté · Assistance',
       preheader: 'Une capacité désactivée par défaut : rien ne change tant que vous n\'agissez pas.',
-      footer: 'VIZYO TRACKY · NOUVELLE FONCTION<br>Informez conducteurs et occupants, posez la signalétique. Conformité à votre charge.',
+      footer: 'VIZYO TRACKY · NOUVELLE FONCTION · E-mail automatique, ne pas répondre.<br>Informez conducteurs et occupants, posez la signalétique. Conformité à votre charge.',
       body: `
         <tr><td style="padding:26px 36px 0;">
           <p style="margin:0 0 6px;font-family:${EMAIL_FONT_MONO};font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:${EMAIL_ACCENT_TEXTE};">Disponible pour ${escapeHtml(opts.fleetName)}</p>
@@ -1127,7 +1159,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     return this.shell({
       eyebrow: 'Rapport · Hebdo',
       preheader: 'Distance, trajets et alertes de la semaine, avec le détail par véhicule.',
-      footer: 'VIZYO TRACKY · RAPPORT AUTOMATIQUE HEBDOMADAIRE<br>Gérez la fréquence depuis Réglages → Rapports.',
+      footer: 'VIZYO TRACKY · RAPPORT AUTOMATIQUE HEBDOMADAIRE · E-mail automatique, ne pas répondre.<br>Gérez la fréquence depuis Réglages → Rapports.',
       body: `
         <tr><td style="padding:26px 36px 0;">
           <p class="m-text" style="margin:0 0 6px;font-family:${EMAIL_FONT_MONO};font-size:11px;letter-spacing:0.06em;color:${EMAIL_TEXTE_SECOND};">SEMAINE DU ${escapeHtml(opts.fromStr)} → ${escapeHtml(opts.toStr)}</p>
@@ -1206,7 +1238,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
       eyebrow: `● Centre d'alerte · Seuil dépassé`,
       accent,
       borderColor: border,
-      footer: "VIZYO TRACKY · VIGIE DU CENTRE D'ALERTE<br>Une seule alerte par heure, même si les erreurs continuent.",
+      footer: "VIZYO TRACKY · VIGIE DU CENTRE D'ALERTE · E-mail automatique, ne pas répondre.<br>Une seule alerte par heure, même si les erreurs continuent.",
       body: `
         <tr><td style="padding:26px 36px 0;">
           <h1 class="m-title" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">${data.total} erreurs en une heure</h1>
@@ -1249,7 +1281,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
       eyebrow,
       accent,
       borderColor: border,
-      footer: "VIZYO TRACKY · NOTIFICATION D'ALERTE<br>Réglez vos canaux dans Réglages → Alertes.",
+      footer: "VIZYO TRACKY · NOTIFICATION D'ALERTE · E-mail automatique, ne pas répondre.<br>Réglez vos canaux dans Réglages → Alertes.",
       body: `
         <tr><td style="padding:26px 36px 0;">
           <h1 class="m-title" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">${escapeHtml(alert.title)}</h1>
@@ -1325,7 +1357,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     const html = this.shell({
       eyebrow: 'Intégration · Autorisation',
       preheader: 'Aucune donnée ne part tant que vous n\'avez pas autorisé ce partage.',
-      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE<br>Vous restez propriétaire de vos données : le partage se coupe depuis votre espace, sans nous demander.',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE · E-mail automatique, ne pas répondre.<br>Vous restez propriétaire de vos données : le partage se coupe depuis votre espace, sans nous demander.',
       body,
     });
     const text = `Autoriser le partage avec ${opts.partnerName} ?
@@ -1388,7 +1420,7 @@ Vous n'attendiez pas cette demande ? Ne cliquez pas, et répondez à cet e-mail.
     const html = this.shell({
       eyebrow: 'Installation · Demande',
       preheader: 'Un créneau vous est proposé : confirmez-le ou demandez-en un autre.',
-      footer: 'VIZYO TRACKY · PLANIFICATION DES INSTALLATIONS<br>Notification automatique. Répondez au client via son e-mail.',
+      footer: 'VIZYO TRACKY · PLANIFICATION DES INSTALLATIONS<br>Notification automatique — répondre à ce message écrit au client.',
       body,
     });
     const text = `Nouvelle demande de créneau d'installation — ${opts.companyName}
@@ -1466,7 +1498,7 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
           </table>
         </td></tr>`;
     const html = this.shell({ eyebrow: 'Réservation · Demande reçue',
-      preheader: 'Nous revenons vers vous dès qu\'un véhicule est confirmé sur ce créneau.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES', body });
+      preheader: 'Nous revenons vers vous dès qu\'un véhicule est confirmé sur ce créneau.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
     const text = `Bonjour,
 
 Nous avons bien reçu votre demande de réservation auprès de ${opts.fleetName}.
@@ -1502,7 +1534,7 @@ Vous recevrez une confirmation dès qu'elle sera validée.`;
           <p class="m-text" style="margin:20px 0 0;font-family:${EMAIL_FONT};font-size:13px;line-height:1.6;color:${EMAIL_TEXTE_SECOND};">Un imprévu ? Répondez à cet e-mail pour prévenir la société. À très bientôt.</p>
         </td></tr>`;
     const html = this.shell({ eyebrow: 'Réservation · Confirmée',
-      preheader: 'Le véhicule, le créneau et le point de retrait sont fixés.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES', body });
+      preheader: 'Le véhicule, le créneau et le point de retrait sont fixés.', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES · E-mail automatique, ne pas répondre.', body });
     const text = `Bonjour,
 
 Votre réservation auprès de ${opts.fleetName} est confirmée.
@@ -1537,7 +1569,7 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
           </table>
         </td></tr>`;
     const html = this.shell({ eyebrow: 'Facturation · Option IA',
-      preheader: 'Le détail de la consommation du mois et le montant correspondant.', footer: 'VIZYO TRACKY · FACTURATION', body });
+      preheader: 'Le détail de la consommation du mois et le montant correspondant.', footer: 'VIZYO TRACKY · FACTURATION<br>Répondre à ce message écrit au demandeur.', body });
     const text = `Demande de facture physique — Option IA
 Société : ${opts.fleetName}
 Demandeur : ${opts.requester}
@@ -1661,7 +1693,7 @@ ${this.commercialSignatureText()}`;
     const html = this.shell({
       eyebrow: 'Devis signé · Prospect',
       preheader: 'Le devis est signé en ligne : voici le détail et la suite à donner.',
-      footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · DEVIS',
+      footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · DEVIS<br>Répondre à ce message écrit au prospect.',
       body: `
         <tr><td style="padding:26px 36px 0;">
           <div style="display:inline-block;padding:5px 12px;border-radius:999px;background:rgba(16,224,160,.12);font-family:${EMAIL_FONT_MONO};font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:${EMAIL_ACCENT_TEXTE};margin-bottom:12px;">Bon pour accord</div>
@@ -1938,7 +1970,7 @@ ${this.commercialSignatureText()}`;
           subject: 'Nouveau lead Tracky — SARL Delmas (25 véhicules)',
           html: this.shell({
             eyebrow: 'Lead · Prospect',
-            footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · LEADS',
+            footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · LEADS<br>Répondre à ce message écrit au prospect.',
             body: `
               <tr><td style="padding:26px 36px 0;">
                 <h1 class="m-title" style="margin:0 0 4px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">Nouveau prospect</h1>
