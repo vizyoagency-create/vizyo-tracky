@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish, ShieldQuestion, FlaskConical,} from 'lucide-angular';
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish, ShieldQuestion, FlaskConical, Link2,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
 import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
@@ -248,6 +248,22 @@ import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
             </div>
             <h3>Sécurité &amp; connexions</h3>
             <p class="desc">Qui a activé le 2FA, et la carte des lieux de connexion par utilisateur.</p>
+          </div>
+        </a>
+
+        <!-- ── LIENS DE PARTAGE OUVERTS ──
+             Les deux mécanismes d'accès public réunis. Chacun a déjà sa vue PAR SOCIÉTÉ ;
+             aucun ne disait ce qui est ouvert à l'échelle du parc — et un lien qu'on ne voit
+             qu'en pensant à aller le chercher est un lien qu'on ne voit pas. -->
+        <a routerLink="/admin/liens-partages" class="card" style="--i:5">
+          <span class="accent accent-green"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-green"><lucide-icon [img]="Link2" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Liens de partage ouverts</h3>
+            <p class="desc">Tous les accès publics du parc — partages de trajet et suivis de livraison : qui les a créés, combien de fois ils ont été consultés, quand ils expirent. Révoquer ou repousser l'échéance.</p>
           </div>
         </a>
 
@@ -751,6 +767,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Send = Send;
   protected readonly Bot = Bot;
   protected readonly Globe = Globe;
+  protected readonly Link2 = Link2;
   protected readonly BellRing = BellRing;
   protected readonly SatelliteDish = SatelliteDish;
 

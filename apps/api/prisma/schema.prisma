@@ -1261,10 +1261,20 @@ model MissionShareLink {
   createdByUserId String @db.Uuid
   createdBy       User   @relation("MissionShareAuthor", fields: [createdByUserId], references: [id], onDelete: Cascade)
 
-  /// L'EXPIRATION. Calculée à la création, jamais prolongeable, vérifiée à chaque
-  /// requête à l'heure serveur.
+  /// L'EXPIRATION, vérifiée à chaque requête à l'heure serveur.
+  ///
+  /// ⚠️ PROLONGEABLE DEPUIS LE 2026-09-07 (elle ne l'était pas avant) : un suivi de livraison
+  /// qui expire pendant que le camion est encore en route coupe le dépôt au moment précis où
+  /// il en a le plus besoin. La prolongation est bornée et TRACÉE — voir `extendedCount`.
   expiresAt DateTime
+  /// La durée d'ORIGINE, inchangée par les prolongations : c'est `expiresAt` qui fait foi.
   duration  ShareDuration
+
+  /// PROLONGATION — combien de fois, quand, par qui. Sans cette trace, une échéance repoussée
+  /// est indiscernable d'une échéance d'origine, et l'écran de surveillance ne surveille plus.
+  extendedCount    Int       @default(0)
+  lastExtendedAt   DateTime?
+  lastExtendedById String?   @db.Uuid
 
   revokedAt       DateTime?
   revokedByUserId String?   @db.Uuid
@@ -1318,10 +1328,27 @@ model TripShareLink {
   createdByUserId String @db.Uuid
   createdBy       User   @relation("TripShareAuthor", fields: [createdByUserId], references: [id], onDelete: Cascade)
 
-  /// L'EXPIRATION. Calculée à la création, jamais prolongeable, vérifiée à chaque requête à
-  /// l'heure serveur.
+  /// L'EXPIRATION, vérifiée à chaque requête à l'heure serveur.
+  ///
+  /// ⚠️ ELLE EST PROLONGEABLE DEPUIS LE 2026-09-07, et ne l'était pas avant. Le cas réel :
+  /// le lien expire pendant que le destinataire dort, et il faut aujourd'hui en régénérer un
+  /// — ce qui laisse l'ancien dans la nature et fait perdre son compteur de visites. La
+  /// prolongation est bornée (plafond de vie totale) et TRACÉE : voir `extendedCount`.
   expiresAt DateTime
+  /// La durée d'ORIGINE, telle que choisie à la création. Elle ne bouge pas quand le lien est
+  /// prolongé : c'est `expiresAt` qui fait foi. Les garder toutes deux permet de lire
+  /// « 24 h au départ, repoussé deux fois » plutôt qu'une échéance sans histoire.
   duration  TripShareDuration
+
+  /// PROLONGATION — combien de fois, quand, par qui.
+  ///
+  /// ⚠️ Sans cette trace, une date d'expiration devient inexplicable : impossible de dire si
+  /// un lien vit encore parce qu'il est récent ou parce que quelqu'un l'a repoussé trois fois.
+  /// Un accès public dont on ne peut pas raconter l'histoire est exactement ce que l'écran de
+  /// surveillance existe pour empêcher.
+  extendedCount    Int       @default(0)
+  lastExtendedAt   DateTime?
+  lastExtendedById String?   @db.Uuid
 
   revokedAt       DateTime?
   revokedByUserId String?   @db.Uuid

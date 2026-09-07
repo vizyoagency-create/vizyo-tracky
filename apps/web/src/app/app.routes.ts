@@ -392,6 +392,20 @@ export const routes: Routes = [
         data: { title: 'Centre d\'alertes' },
       },
       {
+        /**
+         * La vue d'ensemble des ACCÈS PUBLICS — partages de trajet et suivis de livraison
+         * réunis, toutes sociétés. Super-admin : la question posée est « qu'est-ce qui est
+         * ouvert chez TOUS mes clients ? », et y répondre suppose de lire les liens de chacun.
+         */
+        path: 'admin/liens-partages',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-liens-partages.component').then(
+            (m) => m.AdminLiensPartagesComponent,
+          ),
+        data: { title: 'Liens de partage ouverts' },
+      },
+      {
         path: 'admin/vps',
         canActivate: [superAdminGuard],
         loadComponent: () =>

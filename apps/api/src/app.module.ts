@@ -21,6 +21,7 @@ import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.modul
 import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
 import { ConsentModule } from './consent/consent.module';
+import { LiensPartagesAdminModule } from './admin-liens-partages/liens-partages-admin.module';
 import { SecurityModule } from './security/security.module';
 import { validateEnv } from './config/env.validation';
 import { DriversModule } from './drivers/drivers.module';
@@ -217,6 +218,11 @@ import { DemoModule } from './demo/demo.module';
     // Sécurité — 2FA app OPT-IN adaptatif (code e-mail sur anomalie) + journal/carte
     // des connexions géo-IP. @Global : self-enregistre le gate (403 DEVICE_VERIFICATION_REQUIRED).
     SecurityModule,
+    // Vue d'ensemble des ACCÈS PUBLICS (partages de trajet + suivis de livraison), toutes
+    // sociétés — SUPER_ADMIN. Chaque mécanisme a déjà sa vue par société ; aucun ne disait
+    // ce qui est ouvert à l'échelle du parc, et un lien qu'on ne voit qu'en pensant à le
+    // chercher est un lien qu'on ne voit pas.
+    LiensPartagesAdminModule,
     // Environnement de démonstration (2026-09) — rejeu de trames sur de faux boîtiers + écran
     // d'administration. Ne fait rien sans DEMO_MODE=true. Cf. docs/environnement-demo/.
     DemoModule,
