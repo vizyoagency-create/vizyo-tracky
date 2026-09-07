@@ -1,5 +1,5 @@
 import { BANDES_VITESSE, couleurVitesse } from './couleurs-carte';
-import { segmentsColores, type PointVitesse } from './segments-vitesse';
+import { pointsDepuisHistorique, segmentsColores, type PointVitesse } from './segments-vitesse';
 
 /**
  * Le tracé coloré par la vitesse — le même générateur pour le rejeu de trajet, le rejeu de
@@ -51,6 +51,19 @@ describe('segmentsColores', () => {
     const fc = segmentsColores([p(0, 0, 10), p(1, 0, Number.NaN)]);
 
     expect(fc.features[0].properties.color).toBe(gris);
+  });
+
+  it('pointsDepuisHistorique écarte les coordonnées invalides et les sauts de plus de 5 km', () => {
+    const pts = pointsDepuisHistorique([
+      { lat: 43.6, lng: 1.43, speedKmh: 20 },
+      { lat: 0, lng: 0, speedKmh: 20 },              // (0,0) : invalide, écarté
+      { lat: 43.601, lng: 1.431, speedKmh: 30 },
+      { lat: 44.9, lng: 1.43, speedKmh: 30 },        // à 145 km : un saut, écarté
+      { lat: 43.602, lng: 1.432, speedKmh: null },   // vitesse absente → NaN → gris
+    ]);
+
+    expect(pts.map((p) => [p.lng, p.lat])).toEqual([[1.43, 43.6], [1.431, 43.601], [1.432, 43.602]]);
+    expect(pts.map((p) => p.speedKmh)).toEqual([20, 30, Number.NaN]);
   });
 
   it('suit exactement couleurVitesse — un seul endroit décide de la couleur', () => {

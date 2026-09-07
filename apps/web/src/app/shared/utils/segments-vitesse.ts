@@ -1,3 +1,4 @@
+import { haversineMeters, isValidLatLng } from '@vizyo/tracky-shared';
 import { couleurVitesse } from './couleurs-carte';
 
 /**
@@ -76,4 +77,28 @@ export function segmentsColores(points: readonly PointVitesse[]): SegmentsColore
 
 function troncon(coordinates: [number, number][], color: string): SegmentColore {
   return { type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: { color } };
+}
+
+/** Une trame telle que l'historique de positions la sert (`/api/positions/history`, fin). */
+export interface TrameHistorique {
+  readonly lat: number;
+  readonly lng: number;
+  readonly speedKmh?: number | null;
+}
+
+/**
+ * Les trames d'un historique, prêtes à être colorées — avec le MÊME garde-fou que les
+ * polylignes des rejeux : coordonnées invalides écartées, et tout saut de plus de 5 km
+ * ignoré. Un point à l'autre bout du département tirerait un tronçon en travers de la
+ * carte, et il serait coloré comme les autres : faux avec l'air d'être précis.
+ */
+export function pointsDepuisHistorique(trames: readonly TrameHistorique[], sautMaxM = 5_000): PointVitesse[] {
+  const out: PointVitesse[] = [];
+  for (const t of trames) {
+    if (!isValidLatLng(t.lat, t.lng)) continue;
+    const prec = out[out.length - 1];
+    if (prec && haversineMeters(prec.lat, prec.lng, t.lat, t.lng) > sautMaxM) continue;
+    out.push({ lng: t.lng, lat: t.lat, speedKmh: t.speedKmh ?? Number.NaN });
+  }
+  return out;
 }

@@ -48,5 +48,10 @@ describe('LegendeVitesseComponent', () => {
     fixture.componentRef.setInput('disposition', 'grille');
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.lv--grille')).not.toBeNull();
+
+    fixture.componentRef.setInput('disposition', 'ligne');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.lv--grille')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.lv--ligne')).not.toBeNull();
   });
 });

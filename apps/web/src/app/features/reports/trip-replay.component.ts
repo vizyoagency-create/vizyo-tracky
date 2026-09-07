@@ -15,12 +15,16 @@ import {
 import { DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil, Link2, Crosshair, ChevronDown, Car, Maximize } from 'lucide-angular';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
-import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
+import type { Map as MlMap, Marker as MlMarker, GeoJSONSource } from 'maplibre-gl';
+import type { Subscription } from 'rxjs';
 import type { SpeedingSegmentDto, TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
 import { excesDuTrajet } from '@vizyo/tracky-shared';
 import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
 import { MapService } from '../../core/services/map.service';
 import { PreferencesService } from '../../core/services/preferences.service';
+import { PositionsApiService } from '../../core/services/positions.service';
+import { pointsDepuisHistorique, segmentsColores } from '../../shared/utils/segments-vitesse';
+import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 import {
   attachVehicleMarker,
   buildVehicleMarkerEl,
@@ -101,7 +105,7 @@ interface RecitTrajet {
    * la seule trace est l'absence de lignes dans le journal d'activité, que personne ne va
    * chercher. Les trois autres écrans qui posent ces marqueurs, eux, l'importent.
    */
-  imports: [LucideAngularModule, DecimalPipe, TrackClickDirective],
+  imports: [LucideAngularModule, DecimalPipe, TrackClickDirective, LegendeVitesseComponent],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex flex-col tr-replay-shell">
@@ -297,6 +301,12 @@ interface RecitTrajet {
                   </div>
                 }
               }
+              <!-- La couleur du tracé est une VITESSE, générée depuis la même table que les
+                   marqueurs. Sans cette légende, un tronçon rouge d'autoroute se lirait comme
+                   une faute — les excès, eux, restent des pastilles cerclées de blanc. -->
+              <div class="tr-legende-v">
+                <app-legende-vitesse></app-legende-vitesse>
+              </div>
             </div>
 
             <!-- Le récit et « ce qui s'est passé ». Le récit était produit pour CE
@@ -582,6 +592,15 @@ interface RecitTrajet {
        chip : c'est elle qu'on cherche des yeux sur le fond. Le halo suit la surface —
        en blanc fixe il disparaissait sur le fond clair de la légende. */
     .tr-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px var(--bg-secondary); }
+    /* La légende de vitesse : en bas à DROITE, au-dessus de la mention légale compacte de
+       MapLibre (24 px). En bas à gauche, elle se battrait avec la légende d'analyse. */
+    .tr-legende-v {
+      position: absolute; right: 10px; bottom: 34px; z-index: 5;
+      padding: 6px 10px; border-radius: 10px;
+      background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border-subtle);
+    }
 
     /* ─── Corps : la carte, le récit, et le journal des événements ───
        Au-dela de 1024 px le panneau tient a cote de la carte ; en dessous il
@@ -834,6 +853,9 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly mapSvc = inject(MapService);
   private readonly preferences = inject(PreferencesService);
+  private readonly positionsApi = inject(PositionsApiService);
+  /** La demande d'historique en cours pour colorer le tracé — annulée avec le trajet. */
+  private traceSub: Subscription | null = null;
 
   protected readonly playing = signal(false);
 
@@ -1437,7 +1459,8 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     } catch { /* ResizeObserver indispo : les timers ci-dessous prennent le relais */ }
 
     this.map.on('load', () => {
-      // Polyligne replay (gradient couleur si donnees vitesse, sinon vert).
+      // Le trait vert uni d'abord — tout de suite, depuis la polyligne — puis les tronçons
+      // colorés par la vitesse dès que l'historique répond (cf. `chargerTraceColoree`).
       this.map!.addSource('replay-line', {
         type: 'geojson',
         data: {
@@ -1450,12 +1473,14 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
         id: 'replay-line',
         type: 'line',
         source: 'replay-line',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': COULEURS_CARTE.trace,
+          'line-color': ['coalesce', ['get', 'color'], COULEURS_CARTE.trace],
           'line-width': 4,
           'line-opacity': 0.85,
         },
       });
+      this.chargerTraceColoree(trip);
 
       // Auto-fit sur l'ensemble du trajet.
       const points = this.points.map(([lng, lat]) => ({ lat, lng }));
@@ -1498,6 +1523,41 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     this.minuteries.push(window.setTimeout(() => this.map?.resize(), 50));
     this.minuteries.push(window.setTimeout(() => this.map?.resize(), 250));
     this.minuteries.push(window.setTimeout(() => this.map?.resize(), 600));
+  }
+
+  /**
+   * ── LE TRACÉ COLORÉ PAR LA VITESSE ────────────────────────────────────────────────────
+   *
+   * La polyligne du trajet (`trip.polyline`, simplifiée) ne porte AUCUNE vitesse — vérifié
+   * en base de production le 2026-09-07. Les vitesses sont dans les positions : on demande
+   * l'historique fin du trajet (une trame par relevé, 5 000 au plus), on en fait des
+   * tronçons par bande (`segmentsColores`), et on les pose à la place du trait vert.
+   *
+   * Tant que la réponse n'est pas là — ou si elle ne vient pas (droit `vehicles_view`
+   * absent, boîtier inconnu, réseau) — le trait reste vert uni : un rejeu sans couleur vaut
+   * mieux qu'un rejeu sans tracé, et rien n'est dit de faux.
+   *
+   * ⚠️ La géométrie ANIMÉE reste la polyligne : curseur, cumuls et caméra n'en changent pas.
+   * Positions brutes et polyligne (Douglas-Peucker à 5 m) viennent des mêmes trames ; à
+   * l'échelle d'un rejeu, l'écart ne se voit pas.
+   */
+  private chargerTraceColoree(trip: TripDto): void {
+    this.traceSub?.unsubscribe();
+    this.traceSub = null;
+    if (!trip.trackerId || !trip.endedAt) return;
+    this.traceSub = this.positionsApi
+      .history({ trackerId: trip.trackerId, from: trip.startedAt, to: trip.endedAt, detail: 'fine' })
+      .subscribe({
+        next: (res) => {
+          // Le trajet a pu changer pendant la requête : on ne colore que celui qu'on regarde.
+          if (this.trip()?.id !== trip.id) return;
+          const src = this.map?.getSource('replay-line') as GeoJSONSource | undefined;
+          const points = pointsDepuisHistorique(res.points);
+          if (!src || points.length < 2) return;
+          src.setData(segmentsColores(points));
+        },
+        error: () => { /* le trait vert uni reste — dit au-dessus */ },
+      });
   }
 
   /** Ajoute les couches d'analyse (arrêts, pointes, excès) — une fois la carte chargée. */
@@ -1785,6 +1845,8 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
 
   private cleanup(): void {
     this.playing.set(false);
+    this.traceSub?.unsubscribe();
+    this.traceSub = null;
     this.annulerMinuteries();
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     if (this.resizeObserver) {
