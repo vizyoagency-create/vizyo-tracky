@@ -1,0 +1,8 @@
+[Unit]
+Description=Tracky — rafraîchissement hebdomadaire de la base de démonstration depuis la production
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vizyo-tracky/deploy/vps/demo-refresh.sh

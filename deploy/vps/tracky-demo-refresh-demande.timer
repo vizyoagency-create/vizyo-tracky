@@ -1,0 +1,9 @@
+[Unit]
+Description=Tracky — toutes les 15 min, prend en charge une demande de rafraîchissement de la démo s'il y en a une
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=false
+
+[Install]
+WantedBy=timers.target

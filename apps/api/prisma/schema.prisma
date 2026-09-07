@@ -4481,3 +4481,33 @@ model FleetReportDispatch {
   @@index([createdAt])
   @@map("fleet_report_dispatches")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Environnement de démonstration (2026-09) — docs/environnement-demo/PLAN-2026-09-07.md
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// La matière du DIRECT de la démo : une semaine de positions réelles (pseudonymisées),
+/// réindexée par jour de semaine ISO (1 = lundi … 7 = dimanche) et seconde du jour en heure
+/// LOCALE (Europe/Paris). Toutes les dix secondes, le rejeu (`DemoReplayService`) prend les
+/// trames du jour de semaine courant dont la seconde vient de passer et les injecte dans le
+/// pipeline d'ingestion NORMAL — trajets, alertes, analyses naissent du produit réel, pas
+/// d'une copie.
+///
+/// En production cette table existe et reste VIDE : seul l'importeur de la démo y écrit, et
+/// il refuse d'écrire ailleurs que dans une base marquée « démonstration ».
+model DemoReplayFrame {
+  id          Int      @id @default(autoincrement())
+  imei        String
+  weekday     Int
+  secondOfDay Int
+  lat         Float
+  lng         Float
+  speedKmh    Float    @default(0)
+  heading     Float    @default(0)
+  altitude    Float?
+  ignition    Boolean?
+  valid       Boolean  @default(true)
+
+  @@index([imei, weekday, secondOfDay])
+  @@map("demo_replay_frames")
+}

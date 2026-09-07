@@ -5,6 +5,7 @@ import { NotificationDispatchService } from '../notifications/notification-dispa
 import { ErrorLogger } from '../observability/error-logger.service';
 import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { AgentDuPoste, BackgroundTasksService, PassageLocal } from './background-tasks.service';
 
 /** Source des lignes écrites au centre d'alerte — le contrôleur du centre et l'écran la lisent telle quelle. */
@@ -125,6 +126,9 @@ export class AgentsLocauxSentinelleService {
     // Optionnel : la ligne du centre d'alerte est le contrat, la notification un confort. Un
     // module qui n'aurait pas le dispatch (spec, environnement réduit) ne doit pas perdre l'alerte.
     @Optional() private readonly dispatch?: NotificationDispatchService,
+    // Environnement de démonstration : aucun agent du poste ne vise la démo — la juger « à
+    // l'arrêt » toutes les heures serait un faux CRITICAL de plus. Optionnel pour les specs.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
 
   /**
@@ -138,6 +142,8 @@ export class AgentsLocauxSentinelleService {
    */
   @Cron('0 50 * * * *')
   async verifier(nowMs = Date.now()): Promise<void> {
+    // Démo : les agents du poste n'écrivent que dans la production. Rien à juger ici.
+    if (this.demoMode?.enabled) return;
     for (const agent of this.catalogue.agentsDuPoste()) {
       try {
         await this.examiner(agent, nowMs);

@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -21,6 +22,9 @@ export class BackupHealthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly errorLogger: ErrorLogger,
+    // Environnement de démonstration : la base de démo n'est pas sauvegardée, PAR CHOIX (elle se
+    // régénère depuis la production chaque semaine). Optionnel pour les specs.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
 
   async record(payload: BackupRunPayload): Promise<{ id: string }> {
@@ -65,6 +69,8 @@ export class BackupHealthService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
   async checkBackupHealth(): Promise<void> {
+    // Démo : pas de sauvegarde, donc pas d'alerte « aucune sauvegarde » — ce serait un faux CRITICAL quotidien.
+    if (this.demoMode?.enabled) return;
     const last = await this.lastSuccessfulRun();
     const lastTime = last?.createdAt.getTime() ?? 0;
     const ageMs = Date.now() - lastTime;

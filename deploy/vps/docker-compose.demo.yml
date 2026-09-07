@@ -1,0 +1,181 @@
+# ═══ ENVIRONNEMENT DE DÉMONSTRATION — docs/environnement-demo/PLAN-2026-09-07.md ════════════
+#
+#   docker compose --env-file .env.demo -f docker-compose.demo.yml up -d
+#
+# Une pile SÉPARÉE de la production, sur le même VPS, faite des MÊMES IMAGES que la prod :
+# aucun `build:` ici. Déployer la prod (`docker-compose.prod.yml up -d --build`) construit
+# `tracky-api:latest` et `tracky-web:latest` ; un `up -d` sur ce fichier recrée alors les
+# conteneurs de la démo sur ces images et joue les migrations. C'est ce qui rend la mise à jour
+# du code automatique : la démo ne peut pas être en retard sur la prod autrement que par l'oubli
+# de cette seule commande (cf. deploy/vps/README.md).
+#
+# ⚠️ Trois choses font que la démo NE PEUT PAS atteindre un véhicule, et elles sont ici :
+#   1. aucun `ports:` sur l'API — le port boîtiers 5023 n'est pas publié (et le serveur TCP
+#      n'écoute pas en DEMO_MODE) ;
+#   2. `.env.demo` ne contient AUCUNE clé SMS, push, Stripe, SIM ni partenaire : les modules
+#      correspondants sont inertes par construction (env.validation.ts) ;
+#   3. ni l'API ni le web de la démo ne sont sur le réseau de la production. Seul le conteneur
+#      ÉPHÉMÈRE de l'importeur (profil `refresh`) le rejoint, le temps de lire la base par un
+#      rôle Postgres SELECT seulement.
+name: tracky-demo
+
+networks:
+  foodsqan-public:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+  # Le réseau de la PRODUCTION (déclaré par docker-compose.prod.yml). Rejoint UNIQUEMENT par
+  # l'importeur — voir le service `importer` et l'avertissement n° 3 ci-dessus.
+  vizyo-tracky:
+    external: true
+    name: vizyo-tracky
+  tracky-demo:
+    driver: bridge
+    name: tracky-demo
+
+volumes:
+  tracky-demo-postgres-data:
+    name: tracky-demo-postgres-data
+  tracky-demo-redis-data:
+    name: tracky-demo-redis-data
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: tracky-demo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - tracky-demo-postgres-data:/var/lib/postgresql/data
+      - ../../docker/postgres/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
+    networks:
+      - tracky-demo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Limites volontairement GÉNÉREUSES par rapport à l'usage attendu (une société, quelques
+    # centaines de Mo) : confiner une fuite, pas optimiser au plus juste (constat VPS-005).
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  redis:
+    image: redis:7-alpine
+    container_name: tracky-demo-redis
+    restart: unless-stopped
+    # Un Redis PROPRE : partager celui de la prod ferait consommer les jobs BullMQ de l'une par l'autre.
+    command: redis-server --appendonly yes --maxmemory 64mb --maxmemory-policy allkeys-lru
+    volumes:
+      - tracky-demo-redis-data:/data
+    networks:
+      - tracky-demo
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+  api:
+    # PAS de `build:` — l'image que docker-compose.prod.yml vient de construire.
+    image: tracky-api:latest
+    container_name: tracky-demo-api
+    restart: unless-stopped
+    env_file:
+      - .env.demo
+    environment:
+      NODE_ENV: production
+      # LE drapeau. Tout le reste de la configuration est celle d'une production ordinaire.
+      DEMO_MODE: "true"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tracky-demo-postgres:5432/${POSTGRES_DB}?schema=public&application_name=tracky-demo-api&connection_limit=5
+      REDIS_URL: redis://tracky-demo-redis:6379
+      API_PORT: 3000
+      # Déclaré pour la validation d'env ; jamais publié, et le serveur n'écoute pas en DEMO_MODE.
+      TRACKER_TCP_PORT: 5023
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # ⚠️ AUCUN `ports:` — voir l'avertissement n° 1 en tête de fichier.
+    networks:
+      - tracky-demo
+      - foodsqan-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.routers.tracky-demo-api.rule=Host(`${DEMO_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/socket.io`))"
+      - "traefik.http.routers.tracky-demo-api.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.tracky-demo-api.tls=true"
+      - "traefik.http.routers.tracky-demo-api.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.tracky-demo-api.priority=10"
+      - "traefik.http.services.tracky-demo-api.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.tracky-demo-ws.headers.customrequestheaders.X-Forwarded-Proto=https"
+      # Une démo n'a rien à faire dans un moteur de recherche.
+      - "traefik.http.middlewares.tracky-demo-noindex.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow"
+      - "traefik.http.routers.tracky-demo-api.middlewares=tracky-demo-ws,tracky-demo-noindex"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  web:
+    # La même image que la prod : le web parle à `/api` en relatif, il sert n'importe quel domaine.
+    image: tracky-web:latest
+    container_name: tracky-demo-web
+    restart: unless-stopped
+    networks:
+      - foodsqan-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.routers.tracky-demo-web.rule=Host(`${DEMO_DOMAIN}`)"
+      - "traefik.http.routers.tracky-demo-web.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.tracky-demo-web.tls=true"
+      - "traefik.http.routers.tracky-demo-web.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.tracky-demo-web.priority=1"
+      - "traefik.http.services.tracky-demo-web.loadbalancer.server.port=80"
+      - "traefik.http.routers.tracky-demo-web.middlewares=tracky-demo-noindex"
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
+  # ── L'IMPORTEUR — un conteneur ÉPHÉMÈRE, jamais démarré par `up` ─────────────────────────
+  #
+  #   docker compose --env-file .env.demo -f docker-compose.demo.yml run --rm importer
+  #
+  # (c'est ce que fait `demo-refresh.sh`). Même image que l'API, mais un autre programme :
+  # `import.cli.js` ne démarre ni Nest, ni les crons, ni le serveur TCP. C'est le SEUL conteneur
+  # de la démo relié au réseau de la production, et il ne vit que le temps de l'import.
+  importer:
+    image: tracky-api:latest
+    container_name: tracky-demo-importer
+    profiles: ["refresh"]
+    restart: "no"
+    env_file:
+      - .env.demo
+    environment:
+      NODE_ENV: production
+      DEMO_MODE: "true"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@tracky-demo-postgres:5432/${POSTGRES_DB}?schema=public&application_name=tracky-demo-import
+    command: ["node", "dist/demo/import/import.cli.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tracky-demo
+      - vizyo-tracky
+    deploy:
+      resources:
+        limits:
+          memory: 768m
