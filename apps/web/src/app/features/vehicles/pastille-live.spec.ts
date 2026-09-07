@@ -1,4 +1,4 @@
-import { pastilleLiveAutorisee } from './pastille-live';
+import { genrePastille, pastilleLiveAutorisee } from './pastille-live';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -116,5 +116,61 @@ describe('pastilleLiveAutorisee — parler au présent exige une trame du prése
           .toBe(false);
       }
     }
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * « À L'ARRÊT » NE SE DÉDUIT PAS D'UN FIL QU'ON N'A PAS POSÉ
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Sur trois états possibles, un seul exige le fil ACC du boîtier : `idle` — immobile MOTEUR
+ * TOURNANT. Les deux autres se lisent sur le GPS.
+ *
+ * ⚠️ Quand le fil n'est pas raccordé, `ignition` vaut `false` en permanence. Le lire quand même
+ * ne donne pas une approximation : il donne l'INVERSE. Mesuré en production le 2026-09-07 :
+ * `GA-490-SJ` roulait à 31 km/h et la liste affichait « À l'arrêt ». Six véhicules vivants sur
+ * trente avaient `accConnected: false`.
+ */
+describe('genrePastille — ce que la pastille peut honnêtement affirmer', () => {
+  it('🔴 sans fil ACC, un véhicule qui roule est « moving », jamais « stopped »', () => {
+    // Le cas exact de GA-490-SJ : le boîtier dit contact coupé, le GPS voit 31 km/h.
+    expect(genrePastille({ ignition: false, speedKmh: 31 }, false)).toBe('moving');
+  });
+
+  it('sans fil ACC, on n’affirme JAMAIS « idle » — cet état est inconnaissable', () => {
+    // Ni à l'arrêt total, ni à vitesse nulle avec un contact qui prétendrait être ON.
+    expect(genrePastille({ ignition: false, speedKmh: 0 }, false)).toBe('stopped');
+    expect(genrePastille({ ignition: true, speedKmh: 0 }, false)).toBe('stopped');
+  });
+
+  it('avec le fil, les trois états restent distingués', () => {
+    expect(genrePastille({ ignition: true, speedKmh: 50 }, true)).toBe('moving');
+    expect(genrePastille({ ignition: true, speedKmh: 0 }, true)).toBe('idle');
+    expect(genrePastille({ ignition: false, speedKmh: 0 }, true)).toBe('stopped');
+  });
+
+  /**
+   * ⚠️ AVEC LE FIL, ET POURTANT CONTRADICTOIRE : remorquage, roue libre, trame en retard. On
+   * croit le GPS — annoncer « à l'arrêt » un véhicule qui se déplace est la seule des deux
+   * erreurs qu'un exploitant ne peut pas rattraper.
+   */
+  it('contact coupé mais mouvement réel : on croit le GPS', () => {
+    expect(genrePastille({ ignition: false, speedKmh: 31 }, true)).toBe('moving');
+  });
+
+  it('le seuil de 3 km/h sépare le roulage de la dérive GPS', () => {
+    expect(genrePastille({ ignition: true, speedKmh: 3 }, true)).toBe('idle');
+    expect(genrePastille({ ignition: true, speedKmh: 4 }, true)).toBe('moving');
+  });
+
+  /**
+   * `accConnected` inconnu (`null`) n'est pas `false` : un boîtier dont on ignore le câblage
+   * garde le comportement d'avant, sinon on retirerait `idle` à toute une flotte par prudence
+   * mal placée.
+   */
+  it('fil inconnu (null) : comportement d’origine, `idle` reste possible', () => {
+    expect(genrePastille({ ignition: true, speedKmh: 0 }, null)).toBe('idle');
+    expect(genrePastille({ ignition: true, speedKmh: 0 }, undefined)).toBe('idle');
   });
 });

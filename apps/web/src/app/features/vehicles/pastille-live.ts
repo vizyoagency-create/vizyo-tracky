@@ -81,3 +81,49 @@ export function pastilleLiveAutorisee(
 
   return true;
 }
+
+/** Ce que la pastille raconte : le véhicule roule, tourne à l'arrêt, ou est immobile. */
+export type GenrePastille = 'moving' | 'idle' | 'stopped';
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * QUE RACONTE LA PASTILLE — ET CE QU'ELLE NE PEUT PAS SAVOIR SANS LE FIL ACC
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Trois états, mais seulement DEUX sont dérivables du GPS seul :
+ *
+ *   · `moving` — le véhicule se déplace : la vitesse suffit à l'affirmer ;
+ *   · `stopped` — il ne se déplace pas ;
+ *   · `idle` — il est immobile MOTEUR TOURNANT. Cet état-là ne se lit que sur l'entrée ACC du
+ *     boîtier, c'est-à-dire sur un FIL qu'il faut avoir raccordé à la pose.
+ *
+ * ⚠️ QUAND CE FIL N'EST PAS RACCORDÉ, `ignition` NE VEUT RIEN DIRE — et vaut `false` en
+ * permanence. Le déduire quand même produit l'inverse de la vérité.
+ *
+ * Mesuré en production le 2026-09-07 : `GA-490-SJ` roulait à **31 km/h** et la liste affichait
+ * « À l'arrêt ». Son `accConnected` valait `false` : le statut était calculé sur un champ que
+ * son installation ne renseigne pas. Six véhicules vivants sur trente étaient dans ce cas.
+ *
+ * Sans le fil, on s'en tient donc à ce que le GPS prouve : il roule, ou il ne roule pas.
+ * `idle` n'est jamais affirmé — mieux vaut ne pas distinguer que distinguer à l'envers.
+ */
+export function genrePastille(
+  trame: { ignition?: boolean | null; speedKmh: number },
+  accRaccorde: boolean | null | undefined,
+  seuilRoule = 3,
+): GenrePastille {
+  const vitesse = Math.round(trame.speedKmh);
+
+  // Le fil ACC n'est pas posé : `ignition` est structurellement faux, on l'ignore.
+  if (accRaccorde === false) return vitesse > seuilRoule ? 'moving' : 'stopped';
+
+  if (trame.ignition && vitesse > seuilRoule) return 'moving';
+  if (trame.ignition) return 'idle';
+  /**
+   * ⚠️ CONTACT COUPÉ MAIS VITESSE RÉELLE. Le fil est raccordé et dit « coupé » alors que le
+   * GPS voit du mouvement : remorquage, roue libre, ou trame d'ignition en retard. Dans le
+   * doute on croit le GPS — annoncer « à l'arrêt » un véhicule qui se déplace est la seule
+   * des deux erreurs qu'un exploitant ne peut pas rattraper.
+   */
+  return vitesse > seuilRoule ? 'moving' : 'stopped';
+}

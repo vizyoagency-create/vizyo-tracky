@@ -31,7 +31,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
-import { pastilleLiveAutorisee } from './pastille-live';
+import { genrePastille, pastilleLiveAutorisee } from './pastille-live';
 import {
   formatSilenceLabel,
   getVehicleConnectivityState,
@@ -1635,14 +1635,16 @@ export class VehiclesListComponent implements OnInit {
       pos.timestamp,
       !!dormantV && this.isDormant(dormantV),
     )) return null;
+    /**
+     * ⚠️ LE GENRE DE PASTILLE DÉPEND DU FIL ACC, PAS SEULEMENT DE L'IGNITION.
+     *
+     * Quand le fil n'est pas raccordé (`accConnected: false`), `ignition` vaut `false` en
+     * permanence : le déduire donnait « À l'arrêt » à un véhicule mesuré à 31 km/h en
+     * production le 2026-09-07. La règle vit dans `genrePastille`, avec son test.
+     */
     const speedKmh = Math.round(pos.speedKmh);
-    if (pos.ignition && speedKmh > 3) {
-      return { kind: 'moving', speedKmh, cssClass: 'v-live-pill--moving' };
-    }
-    if (pos.ignition) {
-      return { kind: 'idle', speedKmh, cssClass: 'v-live-pill--idle' };
-    }
-    return { kind: 'stopped', speedKmh, cssClass: 'v-live-pill--stopped' };
+    const kind = genrePastille({ ignition: pos.ignition, speedKmh: pos.speedKmh }, snap?.accConnected);
+    return { kind, speedKmh, cssClass: `v-live-pill--${kind}` };
   }
 
   /** Dernière position live (lat/lng/horodatage) depuis le snapshot temps réel. */
