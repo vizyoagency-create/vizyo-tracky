@@ -7,6 +7,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from './maplibre-markers';
+import { BANDES_VITESSE } from './couleurs-carte';
 import { getVehicleSvg } from './vehicle-icons';
 
 /**
@@ -33,14 +34,20 @@ describe('markerInk — l’icône reste lisible sur les six fonds de la palette
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
   };
 
+  /**
+   * ⚠️ Les CINQ bandes de vitesse, pas quatre. La cinquième (« plus de 140 km/h », rouge
+   * foncé) est celle qu'une table écrite à la main oublie : elle n'existait pas quand cette
+   * table a été écrite, et rien ne l'aurait signalé.
+   */
   const PALETTE: Array<[string, string]> = [
-    ['0 km/h', speedColor(0)],
-    ['1-50 km/h', speedColor(30)],
-    ['51-90 km/h', speedColor(70)],
-    ['91+ km/h', speedColor(120)],
+    ...BANDES_VITESSE.map((b): [string, string] => [b.libelle, b.couleur]),
     ['hors ligne', OFFLINE_MARKER_COLOR],
     ['GPS perdu', GPS_LOST_MARKER_COLOR],
   ];
+
+  it('la table lue est bien celle à cinq bandes', () => {
+    expect(PALETTE.length).toBe(7);
+  });
 
   for (const [nom, fond] of PALETTE) {
     it(`passe 4,5:1 sur ${nom} (${fond})`, () => {
@@ -51,6 +58,36 @@ describe('markerInk — l’icône reste lisible sur les six fonds de la palette
   it('choisit le BLANC sur un fond sombre et une teinte sombre sur un fond clair', () => {
     expect(markerInk('#5C746C')).toBe('#FFFFFF');
     expect(markerInk('#10E0A0')).not.toBe('#FFFFFF');
+  });
+});
+
+/**
+ * UNE SEULE ÉCHELLE DE VITESSE, demandée par le propriétaire le 2026-09-07 :
+ * 1–65 vert, 66–100 orange, 101–140 rouge, au-delà rouge foncé.
+ *
+ * `speedColor` est l'entrée historique des marqueurs et de la mini-carte : elle doit
+ * répondre exactement comme la source unique de `couleurs-carte.ts`, sinon la pastille du
+ * véhicule et la traînée sous ses roues se contredisent au même instant.
+ */
+describe('speedColor — la seule échelle de vitesse', () => {
+  it('🔴 65 km/h est encore vert, 66 devient orange', () => {
+    expect(speedColor(65)).toBe('#10E0A0');
+    expect(speedColor(66)).toBe('#F59E0B');
+  });
+
+  it('🔴 100 km/h est encore orange, 101 devient rouge', () => {
+    expect(speedColor(100)).toBe('#F59E0B');
+    expect(speedColor(101)).toBe('#EF4444');
+  });
+
+  it('🔴 140 km/h est encore rouge, 141 devient rouge foncé', () => {
+    expect(speedColor(140)).toBe('#EF4444');
+    expect(speedColor(141)).toBe('#991B1B');
+  });
+
+  it('0 km/h et les vitesses négatives sont « à l’arrêt »', () => {
+    expect(speedColor(0)).toBe('#5C746C');
+    expect(speedColor(-3)).toBe('#5C746C');
   });
 });
 

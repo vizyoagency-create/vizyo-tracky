@@ -42,3 +42,50 @@ export const COULEURS_CARTE = {
   /** Le contour blanc qui détache les pastilles du fond, quel qu'il soit. */
   contour: '#FFFFFF',
 } as const;
+
+/* ═══ L'ÉCHELLE DE VITESSE — UNE SEULE, POUR TOUTES LES CARTES ═══════════════════════════
+   Demande du propriétaire, 2026-09-07 : 1–65 vert, 66–100 orange, 101–140 rouge, au-delà
+   rouge foncé. Avant, chaque surface avait la sienne : les marqueurs à 50/90, le rejeu en
+   vert uni, la page publique en vert uni, et deux légendes écrites à la main avec d'autres
+   seuils encore. Une carte qui se contredit elle-même n'apprend rien à personne.
+
+   Tout part d'ici : `speedColor()` (marqueurs, mini-carte, traînées) délègue, les segments
+   des rejeux se colorent avec, et les légendes sont GÉNÉRÉES depuis cette table — changer un
+   seuil ne peut donc plus laisser une légende mentir.
+
+   ⚠️ `#991B1B` n'est pas un choix esthétique : `markerInk()` y pose du blanc, ~8,3:1. Toute
+   autre teinte doit repasser par `maplibre-markers.spec.ts`, qui mesure 4,5:1 sur chacune.
+   ⚠️ Ceci ne touche ni aux récits ni aux excès de vitesse (`COULEURS_CARTE.exces` et
+   `.pointe`) : ce sont des JUGEMENTS de l'analyse, pas une couleur de vitesse instantanée.
+   ══════════════════════════════════════════════════════════════════════════════════════ */
+
+export interface BandeVitesse {
+  /** Plafond inclus de la bande, en km/h. `Infinity` pour la dernière. */
+  readonly max: number;
+  readonly couleur: string;
+  /** Le libellé que les légendes affichent — d'où l'accent et l'unité ici, pas dans le gabarit. */
+  readonly libelle: string;
+}
+
+export const BANDES_VITESSE: readonly BandeVitesse[] = [
+  { max: 0, couleur: '#5C746C', libelle: 'À l’arrêt' },
+  { max: 65, couleur: '#10E0A0', libelle: '1-65 km/h' },
+  { max: 100, couleur: '#F59E0B', libelle: '66-100 km/h' },
+  { max: 140, couleur: '#EF4444', libelle: '101-140 km/h' },
+  { max: Number.POSITIVE_INFINITY, couleur: '#991B1B', libelle: 'Plus de 140 km/h' },
+];
+
+/**
+ * La couleur d'une vitesse instantanée : la première bande dont le plafond la couvre.
+ *
+ * ⚠️ Une vitesse absente (`NaN`, `undefined` coercé) est « à l'arrêt », pas « au-delà de
+ * 140 » : tomber en bout de table sur le rouge foncé peindrait une trame muette comme un
+ * excès. Le gris est la seule couleur qui ne prétend rien.
+ */
+export function couleurVitesse(kmh: number): string {
+  if (!(kmh > 0)) return BANDES_VITESSE[0].couleur;
+  for (const bande of BANDES_VITESSE) {
+    if (kmh <= bande.max) return bande.couleur;
+  }
+  return BANDES_VITESSE[BANDES_VITESSE.length - 1].couleur;
+}

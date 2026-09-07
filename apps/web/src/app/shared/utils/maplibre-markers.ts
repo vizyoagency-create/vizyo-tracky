@@ -2,12 +2,15 @@ import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import { getVehicleSvg } from './vehicle-icons';
 import { findBrand } from './vehicle-brands';
+import { couleurVitesse } from './couleurs-carte';
 
+/**
+ * L'entrée historique des marqueurs, de la mini-carte et des traînées. Elle ne décide plus
+ * rien : l'échelle vit dans `couleurs-carte.ts` (`BANDES_VITESSE`), la même que les rejeux
+ * et les légendes. L'export reste, il est importé à trois endroits.
+ */
 export function speedColor(speed: number): string {
-  if (speed <= 0) return '#5C746C';
-  if (speed <= 50) return '#10E0A0';
-  if (speed <= 90) return '#F59E0B';
-  return '#EF4444';
+  return couleurVitesse(speed);
 }
 
 function canalLineaire(v: number): number {
