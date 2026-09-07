@@ -74,7 +74,12 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     imposes: ['outOfServiceById', 'outOfServiceNote', 'privacyModeById', 'privacyModeNote'],
   },
   Tracker: {
-    pourquoi: 'les boîtiers : IMEI régénéré (15 chiffres, Luhn), état de liveness conservé pour que la carte soit peuplée dès le démarrage, numéro de SIM effacé',
+    pourquoi:
+      "les boîtiers : IMEI régénéré (15 chiffres, Luhn), état de liveness conservé pour que la " +
+      "carte soit peuplée dès le démarrage. Le numéro de SIM n'est plus effacé mais REMPLACÉ par " +
+      "celui de la SIM de démo posée dans ce boîtier — un numéro de la plage de fiction de l'ARCEP. " +
+      "Vidé, il faisait afficher « SIM manquante » sur les trente-sept véhicules, l'écran dérivant " +
+      "ce badge de cette seule colonne.",
     copies: [
       'model', 'status', 'lastSeenAt', 'lastKnownIgnition', 'lastIgnitionChangeAt', 'lastLat', 'lastLng',
       'lastSpeedKmh', 'lastHeading', 'lastIgnition', 'lastValid', 'lastPositionAt', 'lastNoFixAt',
@@ -83,8 +88,8 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
       'currentFixIntervalS', 'recentFixIntervalsS', 'lastFixIntervalSyncAt', 'fixCommandFailureCount',
       'fixCommandFailing', 'lastValidFrameAt', 'accConnected', 'createdAt', 'updatedAt',
     ],
-    transformes: ['id', 'imei', 'vehicleId'],
-    imposes: ['verboseUntil', 'fixModeOverrideUntil', 'simPhoneNumber'],
+    transformes: ['id', 'imei', 'vehicleId', 'simPhoneNumber'],
+    imposes: ['verboseUntil', 'fixModeOverrideUntil'],
   },
   Sim: {
     pourquoi:

@@ -164,14 +164,24 @@ describe("transformations de l'import de démonstration", () => {
     expect(sortie.model).toBeNull();
   });
 
-  it('Tracker : IMEI régénéré, SIM effacée, overrides admin effacés, liveness conservée', () => {
+  it('Tracker : IMEI régénéré, numéro de SIM remplacé par celui de démo, overrides admin effacés', () => {
     const ctx = contexte();
     ctx.ids.marquer('Vehicle', 'v-1');
-    const sortie = transformerBoitier(ligneSource('Tracker', { id: 't-1', vehicleId: 'v-1' }) as never, ctx, '353000000000015');
+    const src = ligneSource('Tracker', { id: 't-1', vehicleId: 'v-1' }) as never;
+
+    // Sans SIM posée : la colonne reste vide, et l'écran affichera « SIM manquante ».
+    expect(transformerBoitier(src, ctx, '353000000000015').simPhoneNumber).toBeNull();
+
+    // Avec SIM : on reçoit le numéro de DÉMO, jamais celui de la source, qui vaut
+    // « simPhoneNumber-source » dans la ligne synthétique ci-dessus.
+    const avecSim = transformerBoitier(src, ctx, '353000000000015', '+33639981234');
+    expect(avecSim.simPhoneNumber).toBe('+33639981234');
+    expect(avecSim.simPhoneNumber).not.toBe('simPhoneNumber-source');
+
+    const sortie = transformerBoitier(src, ctx, '353000000000015', '+33639981234');
     attendreChampsDe('Tracker', sortie);
     expect(sortie).toMatchObject({
       imei: '353000000000015',
-      simPhoneNumber: null,
       verboseUntil: null,
       fixModeOverrideUntil: null,
       vehicleId: ctx.ids.id('Vehicle', 'v-1'),

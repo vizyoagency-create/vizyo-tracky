@@ -310,7 +310,19 @@ export function transformerVehicule(src: Vehicle, ctx: Contexte, plaque: string)
   };
 }
 
-export function transformerBoitier(src: Tracker, ctx: Contexte, imei: string): Prisma.TrackerUncheckedCreateInput {
+/**
+ * `simPhoneNumber` reçoit le numéro DE DÉMO de la SIM posée dans ce boîtier, jamais celui de
+ * la source. Il ne s'agit pas de décoration : l'écran véhicules en déduit le badge
+ * d'installation — sans numéro, il affiche « SIM manquante » sur chaque véhicule, ce qu'un
+ * prospect lit comme un parc mal posé. Le numéro vient de `msisdnDemo`, donc de la plage de
+ * fiction de l'ARCEP : le renseigner n'expose personne.
+ */
+export function transformerBoitier(
+  src: Tracker,
+  ctx: Contexte,
+  imei: string,
+  simPhoneNumber: string | null = null,
+): Prisma.TrackerUncheckedCreateInput {
   return {
     id: ctx.ids.id('Tracker', src.id),
     imei,
@@ -344,7 +356,7 @@ export function transformerBoitier(src: Tracker, ctx: Contexte, imei: string): P
     fixCommandFailing: src.fixCommandFailing,
     fixModeOverrideUntil: null,
     lastValidFrameAt: src.lastValidFrameAt,
-    simPhoneNumber: null,
+    simPhoneNumber,
     accConnected: src.accConnected,
     vehicleId: ctx.ids.siImporte('Vehicle', src.vehicleId),
     createdAt: src.createdAt,

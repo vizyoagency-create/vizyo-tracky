@@ -1,7 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { FLEET_TIME_ZONE, parisDayKey, parisDayStart } from '../../common/utils/datetime';
 import { JOURNAL_DEMO } from '../journal-demo';
-import { identiteDemo, imeiDemo, plaqueDemo } from './pseudonymes';
+import { identiteDemo, imeiDemo, msisdnDemo, plaqueDemo } from './pseudonymes';
 import {
   Assainisseur,
   Correspondances,
@@ -285,6 +285,13 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
       imeis.set(b.id, imei);
       assainisseur.ajouter(b.imei, imei);
     }
+    // Numéro de démo de la SIM posée dans chaque boîtier, indexé par l'identifiant SOURCE du
+    // boîtier. `transformerBoitier` en a besoin : sans lui, l'écran véhicules affiche
+    // « SIM manquante » partout, ce badge se dérivant de `simPhoneNumber` et de rien d'autre.
+    const msisdnParBoitier = new Map<string, string>();
+    for (const s of sims) {
+      if (s.trackerId && s.msisdn !== null) msisdnParBoitier.set(s.trackerId, msisdnDemo(o.sel, s.id));
+    }
     const identites = new Map<string, { firstName: string; lastName: string }>();
     const identitesPrises = new Set<string>();
     for (const c of conducteurs) {
@@ -349,7 +356,7 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
           await tx.vehicle.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
         }
         for (const b of boitiers) {
-          const ligne = transformerBoitier(b, ctx, imeis.get(b.id)!);
+          const ligne = transformerBoitier(b, ctx, imeis.get(b.id)!, msisdnParBoitier.get(b.id) ?? null);
           await tx.tracker.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
         }
         // Après les boîtiers : la SIM pointe vers l'un d'eux, et lui emprunte son IMEI de démo.
