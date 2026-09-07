@@ -166,11 +166,26 @@ services:
       # On l'attache ici. A verifier au deploiement (pas de Traefik en local).
       - "traefik.http.routers.tracky-api.middlewares=tracky-api-ws"
 
-    # Limite memoire (VPS-005) — usage observe 94 Mo ; Node peut pointer lors des rapports PDF et des appels IA
+    # Limite memoire (VPS-005) — au repos l'API tient dans ~270 Mo. Le plafond couvre les POINTES.
+    #
+    # 1024m -> 1536m le 2026-09-07, apres l'incident du 06/09 : l'automatisation des trajets a
+    # manque 7 tics horaires d'affilee (12:45 -> 20:45 UTC). Elle ne s'etait pas arretee — chaque
+    # passage DEMARRAIT (recalculs traces a 13:45:00, 14:45:00, 16:45:00, pile sur le tic) puis
+    # mourait avant de persister. Aucune erreur journalisee, ce qui est coherent : un `catch` ne
+    # s'execute pas quand le processus est tue. Cout reel : 5 trajets definitivement inanalysables,
+    # leurs positions ayant ete purgees avant que l'analyse ne les atteigne.
+    #
+    # ⚠️ CE PLAFOND DIMENSIONNE AUSSI LE TAS DE NODE. V8 le derive du cgroup : 524 Mo sous 1 Go,
+    # ~768 Mo sous 1,5 Go. Le baisser ne fait donc pas qu'ecreter — il rapproche l'API de la
+    # rupture sur les gros passages (semaines de positions, analyse par vehicule), les rapports
+    # PDF et les appels IA.
+    #
+    # Marge hote au moment du changement : 5,0 Go disponibles sur 7,9, ~1,0 Go consomme par
+    # l'ENSEMBLE des conteneurs du VPS (plusieurs autres projets y tournent sans plafond).
     deploy:
       resources:
         limits:
-          memory: 1024m
+          memory: 1536m
 
   web:
     build:
