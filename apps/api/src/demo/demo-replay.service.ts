@@ -242,6 +242,7 @@ export class DemoReplayService implements OnModuleInit, OnModuleDestroy {
     // Premier passage : on repart de maintenant, sans rattraper ce qui précède.
     if (!b.curseur) {
       b.curseur = { dayKey: local.dayKey, secondOfDay: local.secondOfDay };
+      await this.repositionner(b, local);
       return;
     }
     // La journée a tourné : on ne rattrape pas la nuit, et le retard des coupures de la veille
@@ -249,12 +250,16 @@ export class DemoReplayService implements OnModuleInit, OnModuleDestroy {
     if (b.curseur.dayKey !== local.dayKey) {
       b.curseur = { dayKey: local.dayKey, secondOfDay: local.secondOfDay };
       b.retardS = 0;
+      await this.repositionner(b, local);
       return;
     }
     const jusqua = local.secondOfDay - b.retardS;
     const depuis = b.curseur.secondOfDay;
     if (jusqua <= depuis) return;
     const borne = Math.max(depuis, jusqua - RATTRAPAGE_MAX_S);
+    // On a sauté du temps (réveil après une pause, déploiement) : la trace reprend ailleurs, donc
+    // on se replace avant d'émettre — sinon la première trame serait un saut infaisable.
+    if (borne > depuis) await this.repositionner(b, { ...local, secondOfDay: borne });
 
     const trames = await this.prisma.demoReplayFrame.findMany({
       where: { imei: b.imei, weekday: local.weekday, secondOfDay: { gt: borne, lte: jusqua } },
@@ -272,6 +277,61 @@ export class DemoReplayService implements OnModuleInit, OnModuleDestroy {
       );
     }
     b.curseur.secondOfDay = jusqua;
+  }
+
+  /**
+   * ══ REPLACER LE BOÎTIER SUR SA TRACE, SANS PASSER PAR L'INGESTION ═════════════════════════
+   *
+   * L'ingestion refuse les sauts infaisables (`implausible_jump`) : elle compare la position
+   * reçue à la dernière position connue et rejette ce qu'aucun véhicule ne pourrait parcourir.
+   * C'est une garde JUSTE, qui protège la production d'un boîtier qui déraille — et le rejeu la
+   * déclenchait de plein fouet.
+   *
+   * ⚠️ MESURÉ LE 2026-09-07, ET C'ÉTAIT UNE SPIRALE. Après l'import, la dernière position connue
+   * d'un boîtier est celle de la source, ailleurs et à une autre heure. La première trame rejouée
+   * est donc un saut, elle est rejetée — donc la position connue ne bouge pas — donc la suivante
+   * est rejetée aussi, indéfiniment. Résultat : 42 positions acceptées en cinq minutes pour
+   * trente-sept véhicules, une carte figée, et une coupure moteur qui ne pouvait plus être
+   * confirmée faute de trame.
+   *
+   * On ne désarme PAS la garde : on supprime le saut. Le boîtier est replacé une fois, en base,
+   * sur le point de sa trace correspondant à l'heure courante ; tout ce qui suit est la trace
+   * réelle, donc continu par construction. Un replacement, et non un déplacement : aucune ligne
+   * de `positions` n'est écrite, c'est l'état du boîtier qu'on aligne.
+   */
+  private async repositionner(b: Boitier, local: InstantLocal): Promise<void> {
+    const ancre = await this.prisma.demoReplayFrame.findFirst({
+      where: { imei: b.imei, weekday: local.weekday, secondOfDay: { lte: local.secondOfDay } },
+      orderBy: { secondOfDay: 'desc' },
+    });
+    if (!ancre) return;
+    const quand = new Date();
+    await this.prisma.tracker.update({
+      where: { id: b.trackerId },
+      data: {
+        lastLat: ancre.lat,
+        lastLng: ancre.lng,
+        lastHeading: ancre.heading,
+        lastSpeedKmh: 0,
+        lastValid: true,
+        lastIgnition: ancre.ignition ?? false,
+        lastKnownIgnition: ancre.ignition ?? false,
+        lastPositionAt: quand,
+        lastValidFrameAt: quand,
+        lastSeenAt: quand,
+        status: 'ONLINE',
+      },
+    });
+    b.derniere = {
+      lat: ancre.lat,
+      lng: ancre.lng,
+      heading: ancre.heading,
+      altitude: ancre.altitude ?? undefined,
+      ignition: ancre.ignition ?? undefined,
+    };
+    b.dernierDeviceTimeMs = quand.getTime();
+    b.derniereEmissionMs = Date.now();
+    this.logger.log(`[DÉMO] ${b.imei} replacé sur sa trace (jour ${local.weekday}, seconde ${ancre.secondOfDay})`);
   }
 
   private async emettreBattement(b: Boitier, maintenant: Date, ignition: boolean | undefined): Promise<void> {

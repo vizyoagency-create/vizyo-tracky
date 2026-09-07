@@ -18,7 +18,10 @@ describe('DemoReplayService', () => {
   // 2026-09-08 (mardi) 08:00:10 heure de Paris = 06:00:10Z.
   const T0 = new Date('2026-09-08T06:00:10Z');
 
-  let prisma: { tracker: { findMany: jest.Mock }; demoReplayFrame: { findMany: jest.Mock } };
+  let prisma: {
+    tracker: { findMany: jest.Mock; update: jest.Mock };
+    demoReplayFrame: { findMany: jest.Mock; findFirst: jest.Mock };
+  };
   let positions: { ingest: jest.Mock };
   let registry: { register: jest.Mock; unregister: jest.Mock };
   let gateway: { emitTrackerStatus: jest.Mock };
@@ -37,8 +40,9 @@ describe('DemoReplayService', () => {
     jest.useFakeTimers();
     jest.setSystemTime(T0.getTime());
     prisma = {
-      tracker: { findMany: jest.fn().mockResolvedValue([TRACKER]) },
-      demoReplayFrame: { findMany: jest.fn().mockResolvedValue([]) },
+      tracker: { findMany: jest.fn().mockResolvedValue([TRACKER]), update: jest.fn().mockResolvedValue({}) },
+      // `findFirst` sert au REPLACEMENT sur la trace : null = aucune ancre, le service n'y touche pas.
+      demoReplayFrame: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
     };
     positions = { ingest: jest.fn().mockResolvedValue(undefined) };
     registry = { register: jest.fn(), unregister: jest.fn() };
@@ -160,6 +164,32 @@ describe('DemoReplayService', () => {
     expect(positions.ingest).toHaveBeenCalledTimes(2);
     const [a, b] = positions.ingest.mock.calls.map((c) => c[0].deviceTime.getTime());
     expect(b).toBeGreaterThan(a);
+  });
+
+  it('replace le boîtier sur sa trace au premier passage, sans écrire de position', async () => {
+    // Sans ce replacement, la première trame rejouée est un saut infaisable depuis la position
+    // héritée de l'import : l'ingestion la rejette, la position connue ne bouge pas, et TOUTES
+    // les suivantes sont rejetées à leur tour. Carte figée (constat du 2026-09-07).
+    prisma.demoReplayFrame.findFirst.mockResolvedValue({
+      imei: IMEI, weekday: 2, secondOfDay: 8 * 3600, lat: 43.7, lng: 1.5,
+      speedKmh: 0, heading: 12, altitude: null, ignition: true, valid: true,
+    });
+    const service = construire();
+    await service.synchroniser();
+    await service.tic(T0);
+
+    expect(prisma.demoReplayFrame.findFirst).toHaveBeenCalledWith({
+      where: { imei: IMEI, weekday: 2, secondOfDay: { lte: 8 * 3600 + 10 } },
+      orderBy: { secondOfDay: 'desc' },
+    });
+    expect(prisma.tracker.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'trk-1' },
+        data: expect.objectContaining({ lastLat: 43.7, lastLng: 1.5, status: 'ONLINE' }),
+      }),
+    );
+    // Un REPLACEMENT, pas un déplacement : aucune ligne de positions n'est écrite pour cela.
+    expect(positions.ingest).not.toHaveBeenCalled();
   });
 
   it("à l'arrêt du module, retire ses sockets et annule ses timers", async () => {
