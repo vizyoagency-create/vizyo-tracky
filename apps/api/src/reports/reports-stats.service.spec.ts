@@ -290,6 +290,22 @@ describe('ReportsStatsService — un électrique ne consomme pas de carburant', 
     expect(r.consumption.fuelFreeVehicles).toBe(1);
   });
 
+  /**
+   * ⚠️ CEUX QUI N'ONT PAS ROULÉ NE SONT EXCLUS DE RIEN. Le compteur portait d'abord sur le parc
+   * entier : une société de 8 fourgons électriques dont 5 avaient roulé annonçait « 8 véhicules
+   * hors de l'estimation » — sur un rapport où trois n'avaient pas bougé, et sous une phrase qui
+   * enchaîne sur « leurs kilomètres restent comptés ». Constaté en production le 2026-09-07.
+   */
+  it('un électrique resté au garage n’est pas annoncé comme exclu', async () => {
+    const r = await compute([
+      ...PARC_MIXTE,
+      { id: 'v-elec-garage', plate: 'EL-003-EC', trackerId: 't3', lastSeenAt: ago(5 * 60 * 1000), km: 0, type: 'VAN', energy: 'ELECTRIQUE' },
+    ]);
+
+    // Deux électriques au parc, un seul a roulé : c'est lui, et lui seul, qui est hors calcul.
+    expect(r.consumption.fuelFreeVehicles).toBe(1);
+  });
+
   it('parc sans électrique : rien à signaler, et pas de mention parasite', async () => {
     const r = await compute(PARC);
 

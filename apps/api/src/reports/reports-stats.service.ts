@@ -940,7 +940,6 @@ export class ReportsStatsService {
        * passent maintenant par la même règle.
        */
       const liters = bruleDuCarburant(v.energy) ? stat.distanceKm * consumptionL100 / 100 : 0;
-      if (!bruleDuCarburant(v.energy)) vehiculesSansCarburant++;
       totalLiters += liters;
       // ⚠️ Le CO₂ est cumulé PAR VÉHICULE, avec le facteur de son énergie. Multiplier le
       // total de litres de la flotte par un facteur unique donnerait un chiffre faux dès
@@ -950,6 +949,16 @@ export class ReportsStatsService {
       // manœuvres, trajet interrompu — a bien des trajets sur la période, et l'écran le
       // listait. L'omettre ici l'aurait fait disparaître du récapitulatif.
       if (stat.distanceKm > 0 || stat.tripCount > 0) {
+        /**
+         * ⚠️ COMPTÉ ICI, DONC PARMI CEUX QUI ONT ROULÉ — et pas sur le parc entier.
+         *
+         * Premier jet : le compteur était hors de cette garde. Une société de 8 fourgons
+         * électriques dont 5 avaient roulé annonçait « 8 véhicules hors de l'estimation »
+         * sur un rapport où trois n'avaient pas bougé. Un véhicule qui n'a pas roulé n'est
+         * exclu de rien : il n'avait aucun litre à ne pas consommer. Et la phrase enchaîne
+         * sur « leurs kilomètres restent comptés » — ce qui ne veut rien dire pour eux.
+         */
+        if (!bruleDuCarburant(v.energy)) vehiculesSansCarburant++;
         topVehicles.push({
           vehicleId: v.id,
           plate: v.plate,
