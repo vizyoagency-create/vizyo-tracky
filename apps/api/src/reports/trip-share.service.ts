@@ -294,7 +294,7 @@ export class TripShareService {
         maxSpeedKmh,
       })),
       maxSpeedKmh,
-      path: await this.trace(t.trackerId, t.startedAt, t.endedAt),
+      ...(await this.trace(t.trackerId, t.startedAt, t.endedAt)),
       expiresAt: lien.expiresAt.toISOString(),
     };
   }
@@ -315,13 +315,18 @@ export class TripShareService {
    * ⚠️ `valid: true` : les trames aberrantes sont écartées ici comme partout ailleurs. Un
    * point à l'autre bout du département tirerait une ligne droite en travers de la carte, et
    * le destinataire n'a personne à qui demander si c'est normal.
+   *
+   * ⚠️ LA VITESSE SUIT CHAQUE POINT, AU MÊME INDEX. Le tracé est coloré par bande de vitesse
+   * comme le rejeu de l'application ; les deux listes sont décimées du même pas, par la même
+   * boucle — une vitesse décalée d'un index peindrait l'autoroute en vert et la ville en
+   * rouge. Entière : un destinataire n'a que faire de 88,6 km/h.
    */
   private async trace(
     trackerId: string | null,
     debut: Date,
     fin: Date | null,
-  ): Promise<[number, number][]> {
-    if (!trackerId) return [];
+  ): Promise<{ path: [number, number][]; speedsKmh: number[] }> {
+    if (!trackerId) return { path: [], speedsKmh: [] };
     const positions = await this.prisma.position.findMany({
       where: {
         trackerId,
@@ -329,23 +334,28 @@ export class TripShareService {
         timestamp: { gte: debut, ...(fin ? { lte: fin } : {}) },
       },
       orderBy: { timestamp: 'asc' },
-      select: { lat: true, lng: true },
+      select: { lat: true, lng: true, speedKmh: true },
       take: MAX_POINTS_LUS,
     });
 
     const pas = Math.max(1, Math.ceil(positions.length / MAX_POINTS_SERVIS));
-    const out: [number, number][] = [];
+    const path: [number, number][] = [];
+    const speedsKmh: number[] = [];
+    const servir = (p: { lat: number; lng: number; speedKmh: number | null }): void => {
+      path.push([p.lng, p.lat]);
+      speedsKmh.push(Number.isFinite(p.speedKmh) ? Math.max(0, Math.round(p.speedKmh as number)) : 0);
+    };
     for (let i = 0; i < positions.length; i += pas) {
       const p = positions[i]!;
-      if (Number.isFinite(p.lng) && Number.isFinite(p.lat)) out.push([p.lng, p.lat]);
+      if (Number.isFinite(p.lng) && Number.isFinite(p.lat)) servir(p);
     }
     // Le DERNIER point est toujours servi : sans lui, le tracé s'arrête avant l'arrivée, ce
     // qui se voit — et fait douter du reste.
     const dernier = positions[positions.length - 1];
-    if (dernier && (out.length === 0 || out[out.length - 1]![0] !== dernier.lng || out[out.length - 1]![1] !== dernier.lat)) {
-      out.push([dernier.lng, dernier.lat]);
+    if (dernier && (path.length === 0 || path[path.length - 1]![0] !== dernier.lng || path[path.length - 1]![1] !== dernier.lat)) {
+      servir(dernier);
     }
-    return out;
+    return { path, speedsKmh };
   }
 
   /**

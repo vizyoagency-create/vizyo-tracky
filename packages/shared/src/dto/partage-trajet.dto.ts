@@ -102,6 +102,12 @@ export interface PartageTrajetPublicDto {
   maxSpeedKmh: number;
   /** Le tracé, en [lng, lat] — l'objet même du partage. */
   path: [number, number][];
+  /**
+   * La vitesse au point de même index que `path`, en km/h entiers — pour colorer le tracé
+   * par bande de vitesse comme le rejeu de l'application. Même longueur que `path` ; un
+   * point sans vitesse vaut 0. Rien d'autre ne sort par ici : ni horodatage, ni contact.
+   */
+  speedsKmh: number[];
   /** Quand ce lien cesse de fonctionner : le destinataire doit le savoir avant de le ranger. */
   expiresAt: string;
 }

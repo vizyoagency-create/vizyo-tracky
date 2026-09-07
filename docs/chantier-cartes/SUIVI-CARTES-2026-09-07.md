@@ -108,16 +108,38 @@ Bandes demandées : 0 arrêt · 1–65 vert · 66–100 orange · 101–140 roug
 - [x] B4 — `maplibre-markers.spec.ts` : `PALETTE` générée depuis `BANDES_VITESSE` (7 fonds),
       contraste 4,5:1 sur chacun ; `couleurs-carte.spec.ts` : forme de la table, bornes,
       `speedColor === couleurVitesse` de 0 à 200. 35/35 verts.
-- [ ] B3 — `segmentsColores(points)` (`shared/utils/segments-vitesse.ts`, tronçons fusionnés
+- [x] B3 — `segmentsColores(points)` (`shared/utils/segments-vitesse.ts`, tronçons fusionnés
       par bande, point frontière répété, vitesse du point d'arrivée) ;
-      `<app-legende-vitesse>` (`shared/ui/legende-vitesse/`) générée depuis la table ; les deux
-      légendes manuscrites de `map.component.ts` remplacées. Tests écrits — à passer.
-- [ ] B2a — `reports/trip-replay.component.ts` (l.1454) : segments colorés. Vérifier.
-- [ ] B2b — `reports/period-replay.component.ts` (l.1060). Vérifier.
-- [ ] B2c — `public-trip` : le DTO public ne porte pas de vitesse → contrat API
-      (`trip-share.service.ts`, `trace()`), tests, puis la carte. Vérifier.
-- [ ] B2d — `depot-map.component.ts` : vérifier s'il y a un tracé.
-- [ ] Recette : un rejeu d'autoroute change de couleur (ville / route / autoroute).
+      `<app-legende-vitesse>` (`shared/ui/legende-vitesse/`) générée depuis la table, trois
+      dispositions (liste, grille, ligne) ; les deux légendes manuscrites de
+      `map.component.ts` remplacées. 44/44 verts sur les 4 specs. Commits `c4d6b9d4` (B1)
+      et `95f86cf5` (B3), suite web 684/684, **déployés** — artefact vérifié
+      (`lv-pastille`, `991b1b` présents dans le paquet servi).
+
+**Ce que la base de production a appris (2026-09-07, lecture seule)** : les polylignes
+stockées (`trips.polyline`, Douglas-Peucker 5 m, ≤ 500 points) ne portent AUCUNE vitesse ;
+seuls 588 trajets sur 5 239 des 30 derniers jours ont un tracé recalé. Les vitesses sont
+dans `positions.speedKmh`. L'historique fin (`GET /api/positions/history?detail=fine`, une
+trame par relevé, 5 000 points au plus, refusé au-delà de 14 jours) est donc la source des
+tronçons colorés des deux rejeux ; la page publique reçoit les siennes de l'API du partage.
+
+- [x] B2a — `trip-replay` : trait vert immédiat depuis la polyligne, puis `history(fine)` du
+      trajet → `pointsDepuisHistorique` (mêmes garde-fous : coordonnées invalides, sauts
+      > 5 km) → `segmentsColores` posé sur la source ; peinture `coalesce(get color, vert)`
+      donc repli vert uni si l'historique ne vient pas. Légende en bas à droite de la carte,
+      au-dessus de la mention légale. Géométrie animée inchangée (polyligne). **À vérifier en
+      production.**
+- [x] B2b — `period-replay` : idem, trajet par trajet, trois requêtes en parallèle, repli vert
+      par trajet. Légende idem. **À vérifier en production.**
+- [x] B2c — contrat public : `PartageTrajetPublicDto.speedsKmh` (entiers, même index que
+      `path`, décimés du même pas, dernier point compris). 3 tests rouges avant (clés,
+      alignement, décimation), 22/22 après. `public-trip` : tronçons colorés + repli vert si
+      l'API ne sert pas les vitesses ; légende « Couleur du tracé » sous la carte. **À
+      vérifier en production** (nécessite un lien de partage actif).
+- [x] B2d — `depot-map.component.ts` : vérifié, **aucun tracé** (marqueurs seulement). Rien à
+      câbler.
+- [ ] Recette production : un rejeu d'autoroute change de couleur (ville / route / autoroute),
+      sur un véhicule réel ; la page publique aussi.
 
 ---
 
@@ -174,4 +196,12 @@ _(vide pour l'instant)_
 1. Alerte par gravité dans le watchdog (une tâche à l'arrêt n'envoie aucun e-mail).
 2. Fonds CARTO « Plan clair / sombre » : tuiles « API KEY REQUIRED » en HTTP 200.
 3. `showPlates: true` par défaut.
-4. Contrôle du 08/09 07:15 : le trou d'automatisation est-il revenu ?
+4. Contrôle du 08/09 07:15 : le trou d'automatisation est-il revenu ? ⚠️ Le conteneur API a
+   été recréé le 07/09 (déploiements de ce chantier) : ses journaux d'avant sont dans
+   `/root/journaux-tracky/` sur le VPS, `docker inspect` ne dira plus rien d'avant 17:38Z.
+5. **Le rouge de la bande 101-140 (`#EF4444`) est aussi le rouge des excès confirmés**, et
+   l'orange 66-100 (`#F59E0B`) celui des pointes. Sur le rejeu, excès et pointes restent des
+   PASTILLES cerclées de blanc (pas des tronçons), et la légende de vitesse nomme les bandes ;
+   la distinction tient par la forme. À valider à l'œil par le propriétaire ; si elle ne
+   suffit pas, c'est la teinte des bandes qu'il faut changer, jamais `COULEURS_CARTE.exces`
+   ni `.pointe`.

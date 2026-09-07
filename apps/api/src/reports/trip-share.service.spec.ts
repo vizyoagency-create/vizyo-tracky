@@ -248,8 +248,57 @@ describe('Partage de trajet — la consultation publique', () => {
 
     expect(champs).toEqual([
       'avgSpeedKmh', 'distanceKm', 'durationSeconds', 'endedAt', 'expiresAt',
-      'maxSpeedKmh', 'path', 'plate', 'startedAt',
+      'maxSpeedKmh', 'path', 'plate', 'speedsKmh', 'startedAt',
     ]);
+  });
+
+  /**
+   * ── LE TRACÉ EST COLORÉ PAR LA VITESSE, comme le rejeu de l'application ──────────────
+   *
+   * Le destinataire voyait un trait vert uni ; le gestionnaire, un rejeu coloré par bande
+   * de vitesse. `speedsKmh` porte la vitesse du point de MÊME INDEX que `path` — entière,
+   * en km/h — et rien d'autre : pas d'horodatage, pas de contact, pas de boîtier.
+   */
+  it('🔴 le tracé porte une vitesse entière par point, alignée sur `path`', async () => {
+    const { svc, prisma } = service({ lien: lienVivant() });
+    prisma.position.findMany.mockResolvedValue([
+      { lat: 43.6, lng: 1.4, speedKmh: 12.4 },
+      { lat: 43.61, lng: 1.41, speedKmh: 88.6 },
+      { lat: 43.62, lng: 1.42, speedKmh: null },
+    ]);
+
+    const r = await svc.consulterPublic('t');
+
+    expect(r.path).toEqual([[1.4, 43.6], [1.41, 43.61], [1.42, 43.62]]);
+    // Arrondie : un destinataire n'a que faire de 88,6. Absente : 0, jamais « undefined ».
+    expect(r.speedsKmh).toEqual([12, 89, 0]);
+  });
+
+  /**
+   * ⚠️ LA DÉCIMATION DOIT DÉCIMER LES DEUX LISTES DU MÊME PAS. Une vitesse décalée d'un
+   * index peindrait l'autoroute en vert et la ville en rouge — un tracé faux, avec l'air
+   * d'être précis.
+   */
+  it('🔴 la décimation à 1 500 points garde les vitesses alignées, dernier point compris', async () => {
+    const { svc, prisma } = service({ lien: lienVivant() });
+    const positions = Array.from({ length: 4000 }, (_, i) => ({
+      lat: 43 + i / 1e4, lng: 1 + i / 1e4, speedKmh: i % 200,
+    }));
+    prisma.position.findMany.mockResolvedValue(positions);
+
+    const r = await svc.consulterPublic('t');
+
+    expect(r.path.length).toBeLessThanOrEqual(1_501);
+    expect(r.speedsKmh.length).toBe(r.path.length);
+    // Chaque vitesse est celle du point de même index — vérifié sur tout le tracé.
+    for (let i = 0; i < r.path.length; i++) {
+      const src = positions.find((p) => p.lng === r.path[i]![0] && p.lat === r.path[i]![1])!;
+      expect(r.speedsKmh[i]).toBe(src.speedKmh);
+    }
+    // Le dernier point est toujours servi, avec SA vitesse.
+    const dernier = positions[positions.length - 1]!;
+    expect(r.path[r.path.length - 1]).toEqual([dernier.lng, dernier.lat]);
+    expect(r.speedsKmh[r.speedsKmh.length - 1]).toBe(dernier.speedKmh);
   });
 
   it('l’échéance est servie : le destinataire doit savoir quand le lien meurt', async () => {

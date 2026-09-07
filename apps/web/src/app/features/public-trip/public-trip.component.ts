@@ -18,6 +18,9 @@ import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap } from 'maplibre-gl';
 import { firstValueFrom } from 'rxjs';
 import { MapService } from '../../core/services/map.service';
+import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
+import { segmentsColores } from '../../shared/utils/segments-vitesse';
+import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -48,7 +51,7 @@ type Etat = 'chargement' | 'actif' | 'ferme';
 @Component({
   selector: 'app-public-trip',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, LegendeVitesseComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pj">
@@ -87,6 +90,13 @@ type Etat = 'chargement' | 'actif' | 'ferme';
             </header>
 
             <div #carte class="pj-carte" role="application" aria-label="Tracé du trajet"></div>
+
+            <!-- La couleur du tracé est une VITESSE. Le destinataire n'a ni compte ni habitude
+                 du produit : sans cette ligne, un tronçon rouge se lirait comme une faute. -->
+            <div class="pj-legende">
+              <span class="pj-legende-t">Couleur du tracé</span>
+              <app-legende-vitesse disposition="ligne" style="--lv-taille: 11px"></app-legende-vitesse>
+            </div>
 
             <dl class="pj-chiffres">
               <div><dt>Distance</dt><dd>{{ trajet()!.distanceKm | number:'1.1-1' }} km</dd></div>
@@ -141,6 +151,13 @@ type Etat = 'chargement' | 'actif' | 'ferme';
 
     /* La carte prend ce qui reste : c'est l'objet du partage, pas une illustration. */
     .pj-carte { flex: 1; min-height: 320px; width: 100% }
+    .pj-legende {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+      padding: 10px 20px; border-top: 1px solid var(--border-subtle);
+    }
+    .pj-legende-t {
+      font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-secondary);
+    }
 
     .pj-chiffres {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 0;
@@ -266,10 +283,23 @@ export class PublicTripComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.map.once('load', () => {
       if (!this.map) return;
-      this.map.addSource('trajet', {
-        type: 'geojson',
-        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: t.path } },
-      });
+      /**
+       * Coloré par la vitesse quand l'API la sert (une vitesse par point, même index) ; sinon
+       * — réponse plus ancienne, boîtier muet — un trait vert uni, comme avant. Le contour
+       * suit la même géométrie dans les deux cas.
+       */
+      const vitesses = t.speedsKmh?.length === t.path.length ? t.speedsKmh : null;
+      const trace = vitesses
+        ? segmentsColores(t.path.map(([lng, lat], i) => ({ lng, lat, speedKmh: vitesses[i]! })))
+        : {
+            type: 'FeatureCollection' as const,
+            features: [{
+              type: 'Feature' as const,
+              properties: { color: COULEURS_CARTE.trace },
+              geometry: { type: 'LineString' as const, coordinates: t.path },
+            }],
+          };
+      this.map.addSource('trajet', { type: 'geojson', data: trace });
       // Un contour sous le trait : sur un fond clair comme sur un fond sombre, une ligne
       // simple disparaît dès qu'elle croise une route de la même teinte.
       this.map.addLayer({
@@ -280,7 +310,7 @@ export class PublicTripComponent implements OnInit, AfterViewInit, OnDestroy {
       this.map.addLayer({
         id: 'trajet-trait', type: 'line', source: 'trajet',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#10E0A0', 'line-width': 4 },
+        paint: { 'line-color': ['coalesce', ['get', 'color'], COULEURS_CARTE.trace], 'line-width': 4 },
       });
 
       const depart = t.path[0]!;
