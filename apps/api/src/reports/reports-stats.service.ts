@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import {
+  bruleDuCarburant,
   co2DuCarburant,
   DORMANT_STOP_COUNTING_MS,
   EXCES_DUREE_MIN_SEC,
@@ -146,6 +147,14 @@ export interface FleetStatsReport {
     estimatedCostAtObservedEur: number | null;
     /** Nombre de passages station ayant fourni un prix (échantillon du prix constaté). */
     observedSampleCount: number;
+    /**
+     * Véhicules HORS estimation carburant parce qu'ils n'en brûlent pas (électriques).
+     *
+     * ⚠️ EXPOSÉ POUR ÊTRE ÉCRIT. Les passer à zéro litre sans le dire remplace un mensonge
+     * par un autre : le lecteur en conclurait que ces véhicules ne coûtent rien à faire
+     * rouler. Le document annonce qu'ils sont hors du calcul ; il ne les escamote pas.
+     */
+    fuelFreeVehicles: number;
     /**
      * Ralenti moteur cumulé de TOUT le périmètre, en secondes (F12). Premier gaspillage
      * carburant réductible par simple consigne, calculé par trajet depuis toujours et agrégé
@@ -902,6 +911,14 @@ export class ReportsStatsService {
 
     let totalLiters = 0;
     let totalCo2Kg = 0;
+    /**
+     * Combien de véhicules sont HORS de l'estimation carburant parce qu'ils n'en brûlent pas.
+     *
+     * ⚠️ COMPTÉ POUR ÊTRE DIT. Passer un électrique à zéro litre sans l'écrire remplace un
+     * mensonge par un autre : le lecteur conclurait que rouler ne lui coûte rien. Le document
+     * doit annoncer que ces véhicules sont hors du calcul, pas les faire disparaître.
+     */
+    let vehiculesSansCarburant = 0;
     const topVehicles: FleetStatsReport['topVehicles'] = [];
     for (const v of vehicles) {
       const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0, durationSeconds: 0, movingSeconds: 0 };
@@ -910,7 +927,20 @@ export class ReportsStatsService {
         ?? v.fuelConsumptionL100km
         ?? DEFAULT_CONSUMPTION_L100KM[v.type as keyof typeof DEFAULT_CONSUMPTION_L100KM]
         ?? 8;
-      const liters = stat.distanceKm * consumptionL100 / 100;
+      /**
+       * ⚠️ UN ÉLECTRIQUE NE CONSOMME PAS DE LITRES — et il en recevait.
+       *
+       * `consumptionL100` sort du TYPE du véhicule (fourgon, camion…), qui ne dit rien de son
+       * énergie : un fourgon électrique héritait des 10 L/100 km du type « fourgon ». Sur une
+       * société de production, le 2026-09-07 : cinq fourgons électriques, 695,1 km dans la
+       * semaine, 69,5 litres et 128,58 € de gazole qui n'existent pas — dans un rapport parti
+       * chez le client. Le CO₂ suivait, au facteur par défaut.
+       *
+       * L'analyse d'un TRAJET écartait déjà les électriques ; cet agrégat-ci, non. Les deux
+       * passent maintenant par la même règle.
+       */
+      const liters = bruleDuCarburant(v.energy) ? stat.distanceKm * consumptionL100 / 100 : 0;
+      if (!bruleDuCarburant(v.energy)) vehiculesSansCarburant++;
       totalLiters += liters;
       // ⚠️ Le CO₂ est cumulé PAR VÉHICULE, avec le facteur de son énergie. Multiplier le
       // total de litres de la flotte par un facteur unique donnerait un chiffre faux dès
@@ -1117,6 +1147,7 @@ export class ReportsStatsService {
         observedPriceEurL,
         estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(totalLiters * observedPriceEurL * 100) / 100 : null,
         observedSampleCount,
+        fuelFreeVehicles: vehiculesSansCarburant,
         estimatedCo2Kg: Math.round(totalCo2Kg),
         idleSecondsTotal: ralentiRows.reduce((n, r) => n + Math.max(0, r.ralenti), 0),
       },

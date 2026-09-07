@@ -4,7 +4,7 @@ import * as ExcelJS from 'exceljs';
 // `partLibelle` : la MÊME règle d'arrondi que l'écran et que le PDF, prise dans le contrat
 // partagé — le classeur se pose à côté des deux, et « 99 % » ici contre « 100 % » là-bas sur
 // les mêmes trajets se lit comme une erreur de calcul, pas comme une nuance d'arrondi.
-import { CLE_NON_ATTRIBUE, cleImputationTrajet, partLibelle } from '@vizyo/tracky-shared';
+import { CLE_NON_ATTRIBUE, cleImputationTrajet, partLibelle, bruleDuCarburant } from '@vizyo/tracky-shared';
 import { formatFleetDate, formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -156,6 +156,10 @@ export class ReportExcelService {
         brand: true,
         model: true,
         type: true,
+        // `energy` : c'est elle qui dit si le véhicule brûle quelque chose. Sans elle, la
+        // garde `bruleDuCarburant` serait toujours vraie et un électrique reprendrait des
+        // litres — le défaut qu'elle existe pour fermer.
+        energy: true,
         fuelConsumptionL100km: true,
         calibratedConsumptionL100km: true,
         calibratedTanks: true,
@@ -308,7 +312,7 @@ export class ReportExcelService {
         ...(scope.groupId ? { groups: { some: { groupId: scope.groupId } } } : {}),
       },
       select: {
-        id: true, plate: true, brand: true, model: true, type: true,
+        id: true, plate: true, brand: true, model: true, type: true, energy: true,
         fuelConsumptionL100km: true, calibratedConsumptionL100km: true, calibratedTanks: true,
         privacyModeEnabled: true,
         groups: { select: { group: { select: { id: true, name: true } } }, orderBy: { group: { name: 'asc' } }, take: 1 },
@@ -555,7 +559,7 @@ export class ReportExcelService {
 
   private aggregate(
     trips: TripRow[],
-    vehicle: { type: string; fuelConsumptionL100km: number | null; calibratedConsumptionL100km: number | null; calibratedTanks: number; fleet: { fuelPriceEurL: number } | null },
+    vehicle: { type: string; energy: string | null; fuelConsumptionL100km: number | null; calibratedConsumptionL100km: number | null; calibratedTanks: number; fleet: { fuelPriceEurL: number } | null },
     fuelStops: FuelStopRow[],
     /**
      * Les excès de CES trajets, indexés par identifiant. Absent = compte inconnu, ce qui
@@ -597,7 +601,10 @@ export class ReportExcelService {
       ?? vehicle.fuelConsumptionL100km
       ?? DEFAULT_CONSUMPTION_L100KM[vehicle.type]
       ?? 8;
-    const estimatedLiters = (totalKm * consL100) / 100;
+    // ⚠️ MÊME RÈGLE QUE L'AGRÉGAT DE PÉRIODE ET QUE L'ANALYSE DE TRAJET : un électrique ne
+    // brûle rien. `consL100` vient du TYPE du véhicule et ignore son énergie — un fourgon
+    // électrique héritait des 10 L/100 km du type « fourgon ».
+    const estimatedLiters = bruleDuCarburant(vehicle.energy) ? (totalKm * consL100) / 100 : 0;
     const fuelPrice = vehicle.fleet?.fuelPriceEurL ?? 1.85;
 
     // Prix RÉELLEMENT CONSTATÉ en station (moyenne des prix captés aux passages du véhicule sur la période).

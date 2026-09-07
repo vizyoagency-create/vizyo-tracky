@@ -615,6 +615,31 @@ export class ReportPdfService {
     }
 
     /**
+     * ── LES VÉHICULES QUI NE BRÛLENT RIEN SONT HORS DU CALCUL, ET LE DOCUMENT LE DIT ────
+     *
+     * Ils y étaient : un fourgon électrique héritait des 10 L/100 km de son TYPE et pesait sur
+     * le carburant, le coût et le CO₂ de la flotte. Les passer à zéro était nécessaire — mais
+     * un zéro SILENCIEUX remplacerait un mensonge par un autre, celui-là plus flatteur : que
+     * ces véhicules ne coûtent rien à faire rouler.
+     *
+     * La phrase dit donc les deux choses : ils sont hors de l'estimation, et leur énergie n'est
+     * pas mesurée par le produit. Le kilométrage, lui, les compte — c'est bien leur distance
+     * qui est dans le total.
+     */
+    if (c.fuelFreeVehicles > 0) {
+      const n = c.fuelFreeVehicles;
+      doc.fillColor(COLOR_FG_MUTED).fontSize(8.5).font('Helvetica')
+        .text(
+          `${n} véhicule${n > 1 ? 's' : ''} électrique${n > 1 ? 's' : ''} `
+          + `${n > 1 ? 'sont' : 'est'} hors de l’estimation carburant : ${n > 1 ? 'ils ne brûlent' : 'il ne brûle'} `
+          + 'aucun litre, et l’électricité consommée n’est pas mesurée par le produit. '
+          + `${n > 1 ? 'Leurs kilomètres restent comptés' : 'Ses kilomètres restent comptés'} dans la distance de la période.`,
+          40, doc.y, { width: 515 },
+        );
+      doc.moveDown(1);
+    }
+
+    /**
      * ── LE PRIX CONSTATÉ NE SUIT PAS LE FILTRE, ET LE DOCUMENT LE DIT (F13) ─────────────
      *
      * `TripFuelStop` n'a pas de conducteur : l'agrégat porte sur le périmètre VÉHICULE

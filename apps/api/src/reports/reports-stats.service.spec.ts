@@ -30,6 +30,10 @@ const ago = (ms: number) => new Date(Date.now() - ms);
 interface VehicleFixture {
   id: string;
   plate: string;
+  /** Énergie de la fiche. Absente = DIESEL, comme la majorité du parc simulé. */
+  energy?: string | null;
+  /** Type, pour le défaut de consommation. Absent = CAR (7 L/100 km). */
+  type?: string;
   /** null = aucun boîtier affecté (véhicule de test / pas encore équipé). */
   trackerId: string | null;
   /** null = boîtier affecté qui n'a JAMAIS émis (provisionnement KO). */
@@ -46,8 +50,12 @@ function makePrisma(fixtures: VehicleFixture[]) {
   const vehicleRows = fixtures.map((f) => ({
     id: f.id,
     plate: f.plate,
-    type: 'CAR',
-    fuelConsumptionL100km: 7,
+    type: f.type ?? 'CAR',
+    energy: f.energy === undefined ? 'DIESEL' : f.energy,
+    // ⚠️ `null` volontaire pour les fixtures qui n'en fixent pas : c'est le DÉFAUT DE TYPE
+    // qui doit alors jouer, comme en production — et c'est lui qui donnait des litres aux
+    // électriques.
+    fuelConsumptionL100km: f.type ? null : 7,
     calibratedConsumptionL100km: null,
     calibratedTanks: 0,
     groups: [],
@@ -217,6 +225,75 @@ describe('ReportsStatsService — parc exploité (dénominateur des moyennes)', 
     expect(prisma.vehicle.findMany).toHaveBeenCalledTimes(1);
     const select = prisma.vehicle.findMany.mock.calls[0][0].select;
     expect(select.tracker).toEqual({ select: { id: true, lastSeenAt: true } });
+  });
+});
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * 🔴 LES ÉLECTRIQUES RECEVAIENT DU GAZOLE — ET C'EST L'AGRÉGAT QUI LE FAISAIT
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `carburant-electrique.spec.ts` tient la RÈGLE ; ce bloc-ci tient son BRANCHEMENT, et c'est
+ * lui qui aurait attrapé le défaut. La règle, elle, existait déjà — appliquée à l'analyse d'un
+ * trajet, et à elle seule. Un test de la règle nue serait resté vert pendant que la période
+ * inventait des litres.
+ *
+ * Mesuré en production le 2026-09-07 : cinq fourgons électriques, 695,1 km, 69,5 L de gazole
+ * fantôme et 128,58 € facturés dans le rapport du lundi.
+ */
+describe('ReportsStatsService — un électrique ne consomme pas de carburant', () => {
+  /** Un fourgon électrique et un fourgon diesel, même distance, même type. */
+  const PARC_MIXTE: VehicleFixture[] = [
+    { id: 'v-elec', plate: 'EL-001-EC', trackerId: 't1', lastSeenAt: ago(5 * 60 * 1000), km: 695.1, type: 'VAN', energy: 'ELECTRIQUE' },
+    { id: 'v-diesel', plate: 'DI-002-SL', trackerId: 't2', lastSeenAt: ago(5 * 60 * 1000), km: 695.1, type: 'VAN', energy: 'DIESEL' },
+  ];
+
+  it('🔴 le fourgon électrique n’apporte aucun litre — seul le diesel compte', async () => {
+    const r = await compute(PARC_MIXTE);
+
+    // Défaut du type « fourgon » = 10 L/100 km, appliqué au SEUL diesel.
+    expect(r.consumption.estimatedLiters).toBeCloseTo(69.5, 1);
+  });
+
+  it('ni aucun euro : sous l’ancien calcul, le coût était exactement doublé', async () => {
+    const r = await compute(PARC_MIXTE);
+
+    // 69,5 L × 1,85 €. L'ancien calcul en donnait 139 L, donc 257,15 €.
+    expect(r.consumption.estimatedCostEur).toBeCloseTo(128.58, 1);
+  });
+
+  it('ni aucun CO₂ — l’empreinte inventée disparaît elle aussi', async () => {
+    const r = await compute(PARC_MIXTE);
+
+    // 69,5 L de gazole à 2,68 kg/L. L'électrique ajoutait 166,8 kg au facteur « inconnu ».
+    expect(r.consumption.estimatedCo2Kg).toBeCloseTo(186.3, 0);
+  });
+
+  /**
+   * ⚠️ LE KILOMÉTRAGE, LUI, COMPTE. C'est la CONSOMMATION qui est hors sujet, pas la distance :
+   * le fourgon électrique a bien roulé, et le retirer du total kilométrique serait un second
+   * défaut, symétrique du premier.
+   */
+  it('mais ses kilomètres restent dans le total de la flotte', async () => {
+    const r = await compute(PARC_MIXTE);
+
+    expect(r.trips.totalKm).toBeCloseTo(1390.2, 1);
+  });
+
+  /**
+   * ⚠️ UN ZÉRO SILENCIEUX EST UN AUTRE MENSONGE, plus flatteur : que ces véhicules ne coûtent
+   * rien à faire rouler. Le compte est exposé pour que les documents l'écrivent.
+   */
+  it('le compte des véhicules hors estimation est exposé, pour être écrit', async () => {
+    const r = await compute(PARC_MIXTE);
+
+    expect(r.consumption.fuelFreeVehicles).toBe(1);
+  });
+
+  it('parc sans électrique : rien à signaler, et pas de mention parasite', async () => {
+    const r = await compute(PARC);
+
+    expect(r.consumption.fuelFreeVehicles).toBe(0);
   });
 });
 

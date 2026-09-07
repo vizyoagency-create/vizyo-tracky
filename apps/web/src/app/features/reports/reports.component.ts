@@ -797,6 +797,19 @@ export function trajetHorsPerimetreConducteur(
                 sur le prix paramétré de la société.
               </p>
             }
+            <!-- ══ LES VÉHICULES QUI NE BRÛLENT RIEN SONT HORS DU CALCUL, ET L'ÉCRAN LE DIT ══
+                 Ils y étaient : la consommation part du TYPE du véhicule et ignorait son
+                 ÉNERGIE — un fourgon électrique héritait des 10 L/100 km du type « fourgon ».
+                 Les passer à zéro était nécessaire ; un zéro SILENCIEUX dirait que ces
+                 véhicules ne coûtent rien à faire rouler. Le PDF porte la même phrase. -->
+            @if (st.consumption.fuelFreeVehicles > 0) {
+              <p class="rep-synthese-detail">
+                {{ st.consumption.fuelFreeVehicles }} véhicule{{ st.consumption.fuelFreeVehicles > 1 ? 's' : '' }}
+                électrique{{ st.consumption.fuelFreeVehicles > 1 ? 's' : '' }} hors de cette estimation :
+                {{ st.consumption.fuelFreeVehicles > 1 ? 'ils ne brûlent' : 'il ne brûle' }} aucun litre, et
+                l'électricité consommée n'est pas mesurée. Leurs kilomètres restent comptés dans la distance.
+              </p>
+            }
             <!-- ══ CE PRIX NE SUIT PAS LE FILTRE CONDUCTEUR, ET L'ÉCRAN LE DIT (F13) ══════
                  Un passage en station est un arrêt du VÉHICULE : la table qui les porte n'a
                  aucun conducteur. Le chiffre est GARDÉ — un prix de station est un fait de

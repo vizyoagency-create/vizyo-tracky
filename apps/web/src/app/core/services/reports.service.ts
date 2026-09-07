@@ -59,6 +59,15 @@ export interface FleetStatsReportDto {
     observedPriceEurL: number | null;
     estimatedCostAtObservedEur: number | null;
     observedSampleCount: number;
+    /**
+     * Véhicules HORS estimation carburant parce qu'ils n'en brûlent pas (électriques).
+     *
+     * ⚠️ Ils y étaient : la consommation part du TYPE du véhicule (fourgon, camion…) et
+     * ignorait son ÉNERGIE — un fourgon électrique héritait des 10 L/100 km du type
+     * « fourgon ». Les passer à zéro était nécessaire, mais un zéro SILENCIEUX dirait que
+     * ces véhicules ne coûtent rien à faire rouler. L'écran l'annonce, comme le PDF.
+     */
+    fuelFreeVehicles: number;
     /** CO₂ estimé de la période (kg) — combustion seule, facteur propre à chaque énergie. */
     estimatedCo2Kg: number;
     /** Ralenti moteur cumulé de tout le périmètre, en SECONDES (F12). */

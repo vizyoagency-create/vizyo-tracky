@@ -43,7 +43,7 @@ function makeReport(overrides: Partial<FleetStatsReport> = {}): FleetStatsReport
       fuelPriceEurL: 1.85,
       observedPriceEurL: null,
       estimatedCostAtObservedEur: null,
-      observedSampleCount: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+      observedSampleCount: 0, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
     },
     topVehicles: [],
     recentTrips: [],
@@ -383,7 +383,7 @@ describe('ReportPdfService — indicateurs sous filtre conducteur', () => {
     consumption: {
       estimatedLiters: 14, estimatedCostEur: 25.9, fuelPriceEurL: 1.85,
       observedPriceEurL: 1.842, estimatedCostAtObservedEur: 25.79,
-      observedSampleCount: 12, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+      observedSampleCount: 12, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
     },
   });
 

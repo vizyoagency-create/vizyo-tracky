@@ -314,7 +314,7 @@ const RAPPORT: FleetStatsReport = {
   consumption: {
     estimatedLiters: 10, estimatedCostEur: 18, fuelPriceEurL: 1.8,
     observedPriceEurL: null, estimatedCostAtObservedEur: null,
-    observedSampleCount: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+    observedSampleCount: 0, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
   },
   topVehicles: [],
   recentTrips: [],

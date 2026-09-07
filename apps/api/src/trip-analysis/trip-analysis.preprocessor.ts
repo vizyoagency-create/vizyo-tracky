@@ -7,7 +7,7 @@ import {
   vitesseObservee,
 } from '@vizyo/tracky-shared';
 import { haversineMeters } from '../agenda/trip-stop-detector.service';
-import { co2DuCarburant } from '@vizyo/tracky-shared';
+import { bruleDuCarburant, co2DuCarburant } from '@vizyo/tracky-shared';
 import { sanitizePositions } from '@vizyo/tracky-shared';
 import { SEUIL_ARRET_KMH, TROU_GPS_SEC, vitesseMoyenneTrajet } from '../common/vitesse-moyenne';
 
@@ -373,8 +373,12 @@ export function analyzeTrip(raw: RawPosition[], vehicle: VehicleFuel = {}, limit
     ? vehicle.fuelConsumptionL100km
     : null;
   const l100 = consoVehicule ?? (DEFAULT_L100[vehicle.type ?? 'CAR'] ?? 7);
-  const electric = (vehicle.energy ?? '').toUpperCase() === 'ELECTRIQUE';
-  const fuelLiters = electric ? null : Math.round((distanceKm / 100) * l100 * 100) / 100;
+  // ⚠️ LA RÈGLE EST PARTAGÉE DEPUIS LE 2026-09-07, plus recopiée ici. Elle vivait à cet
+  // endroit SEUL : l'agrégat de période l'ignorait, et le même véhicule affichait 0 L sur son
+  // trajet et des litres de gazole fantôme sur le rapport de la semaine.
+  const fuelLiters = bruleDuCarburant(vehicle.energy)
+    ? Math.round((distanceKm / 100) * l100 * 100) / 100
+    : null;
   const co2Kg = fuelLiters == null ? null : co2DuCarburant(fuelLiters, vehicle.energy ?? 'DIESEL');
 
   const { ecoScore, note } = calculerNote({
