@@ -143,8 +143,19 @@ tronçons colorés des deux rejeux ; la page publique reçoit les siennes de l'A
       vérifier en production** (nécessite un lien de partage actif).
 - [x] B2d — `depot-map.component.ts` : vérifié, **aucun tracé** (marqueurs seulement). Rien à
       câbler.
-- [ ] Recette production : un rejeu d'autoroute change de couleur (ville / route / autoroute),
-      sur un véhicule réel ; la page publique aussi.
+- [x] Recette production (session du propriétaire, 1440 px, 20:15-20:30) :
+      · **B2a** rejeu du trajet GA-490-SJ 14:17 (A2R, 39,5 km, pointe 106) : historique fin
+        demandé (200, 102 ms), tracé vert en ville, orange sur la rocade, pastilles d'excès
+        et de pointes intactes par-dessus, légende à cinq bandes en bas à droite ;
+      · **B2b** rejeu de période GA-490-SJ 07/09 (11 trajets, 200 km) : 11 historiques
+        demandés, tracés colorés trajet par trajet, légende. ⚠️ Un bandeau « la carte n'a
+        pas pu se charger (délai dépassé) » apparaît sur la PREMIÈRE capture : artefact du
+        banc (le volet ne tire ses rAF qu'à la capture, le garde-fou de chargement expire
+        avant le premier rendu), la carte se peint à la capture suivante — pas un défaut ;
+      · **B2c** page publique `/t/aHsm…` (FV-941-LZ, mh cars, 84 km, pointe 132) : l'API sert
+        84 vitesses alignées sur 84 points et rien d'autre (10 champs), légende « Couleur du
+        tracé » sous la carte, tracé vert en ville / orange / **rouge sur l'autoroute**.
+        Lien de test déjà existant (18 ouvertures), aucun lien créé sur un trajet client.
 
 ---
 
@@ -206,6 +217,19 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
       pas ; page Lieux → Déplacer → glisser → Enregistrer déplace bien.
 
 ---
+
+## 5 ter. État des déploiements
+
+| Commit(s) | Contenu | Déployé | Artefact vérifié |
+|---|---|---|---|
+| `09d04e2b` | A — reprise WebGL | 19:50 | `fond-reapplique` dans le paquet web |
+| `c4d6b9d4` `95f86cf5` | B1+B4, B3 | 20:00 | `lv-pastille`, `991b1b` |
+| `0ce1e70c` `ad5b12bc` `11c44103` | B2a, B2b, B2c (+ `3fb96da9` d'une autre session) | 20:40 (second lancement, le premier n'avait pas recréé les conteneurs) | `speedsKmh` ×4 dans l'API, `pj-legende`, `tr-legende-v`, `pr-legende-v` |
+| `df9905cf` `7f184173` | C, D1, E1, E2 | 21:05 | `mp-legende-b`, `pm-boite` |
+
+⚠️ Un `docker compose up -d --build` a rendu la main avec exit 0 SANS recréer les conteneurs
+(20:25) : les images n'avaient pas été reconstruites. Toujours lire l'artefact ; relancer si
+`docker ps` montre des conteneurs plus vieux que le déploiement.
 
 ## 6. Journal (une ligne par étape, heure locale)
 
