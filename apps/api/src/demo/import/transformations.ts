@@ -22,7 +22,7 @@ import type {
   VehicleSchedule,
   VehicleWorkSchedule,
 } from '@prisma/client';
-import { nomLieuDemo, nomZoneDemo } from './pseudonymes';
+import { nomGroupeDemo, nomLieuDemo, nomZoneDemo } from './pseudonymes';
 import { idDemo } from './uuid-deterministe';
 
 /** Le compte système du seed (`prisma/seed.ts`) : cible des clés « auteur » obligatoires. */
@@ -297,10 +297,15 @@ export function transformerConducteur(
   };
 }
 
-export function transformerGroupe(src: VehicleGroup, ctx: Contexte, nom: string): Prisma.VehicleGroupUncheckedCreateInput {
+/**
+ * Le nom du groupe est REMPLACÉ, jamais repris : cf. `nomGroupeDemo`. `index` est le rang du
+ * groupe, ce qui rend le nom unique par construction — la contrainte d'unicité (société, nom)
+ * tient donc même en fusionnant deux sociétés source qui auraient le même libellé.
+ */
+export function transformerGroupe(src: VehicleGroup, ctx: Contexte, index: number): Prisma.VehicleGroupUncheckedCreateInput {
   return {
     id: ctx.ids.id('VehicleGroup', src.id),
-    name: ctx.assainisseur.texte(nom),
+    name: nomGroupeDemo(index),
     fleetId: ctx.idFlotteDemo,
     createdAt: src.createdAt,
   };

@@ -1,4 +1,4 @@
-import { identiteDemo, imeiDemo, nomLieuDemo, nomZoneDemo, plaqueDemo } from './pseudonymes';
+import { identiteDemo, imeiDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo, plaqueDemo } from './pseudonymes';
 import { idDemo, uuidV5 } from './uuid-deterministe';
 
 const SEL = 'un-sel-de-test-suffisamment-long';
@@ -56,6 +56,18 @@ describe('pseudonymes déterministes', () => {
     expect(nomLieuDemo('FUEL_STATION', 2)).toBe('Station 2');
     expect(nomLieuDemo('INCONNU', 3)).toBe('Site 3');
     expect(nomZoneDemo(4)).toBe('Zone 4');
+  });
+
+  it("noms de groupes : inventés, jamais repris de la source, et uniques même au-delà de la liste", () => {
+    // Le cas réel qui a motivé la règle : les groupes de la société source portent les noms de
+    // ses foyers (« ARC EN CIEL », « ESCALE »…). Aucun ne doit ressortir.
+    expect(nomGroupeDemo(0)).toBe('Secteur Nord');
+    expect(nomGroupeDemo(5)).toBe('Atelier');
+    // Vingt-cinq groupes fusionnés : vingt-cinq noms distincts, sans exception.
+    const noms = Array.from({ length: 25 }, (_, i) => nomGroupeDemo(i));
+    expect(new Set(noms).size).toBe(25);
+    expect(noms[20]).toBe('Groupe 21');
+    expect(noms.some((n) => /arc en ciel|escale|havre|eden/i.test(n))).toBe(false);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   transformerConducteur,
   transformerFlotte,
   transformerGeofence,
+  transformerGroupe,
   transformerLieu,
   transformerPlanning,
   transformerPosition,
@@ -170,6 +171,16 @@ describe("transformations de l'import de démonstration", () => {
     const sortie = transformerConducteur(ligneSource('Driver', { id: 'd-1' }) as never, ctx, { firstName: 'Camille', lastName: 'Martin' });
     attendreChampsDe('Driver', sortie);
     expect(sortie).toMatchObject({ firstName: 'Camille', lastName: 'Martin', phone: null, email: null, licenseNumber: null, notes: null, userId: null });
+  });
+
+  it('VehicleGroup : le nom de la source ne ressort jamais', () => {
+    const ctx = contexte();
+    const sortie = transformerGroupe(ligneSource('VehicleGroup', { id: 'g-1', name: 'ARC EN CIEL' }) as never, ctx, 0);
+    attendreChampsDe('VehicleGroup', sortie);
+    expect(sortie).toMatchObject({ name: 'Secteur Nord', fleetId: ctx.idFlotteDemo });
+    // Deux sociétés fusionnées peuvent avoir le MÊME libellé : les rangs les séparent.
+    const autre = transformerGroupe(ligneSource('VehicleGroup', { id: 'g-2', name: 'ARC EN CIEL' }) as never, ctx, 1);
+    expect(autre.name).not.toBe(sortie.name);
   });
 
   it('Geofence / FleetPlace : géométrie copiée, nom remplacé, note et auteur effacés', () => {

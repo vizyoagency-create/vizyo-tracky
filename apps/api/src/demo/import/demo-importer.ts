@@ -264,16 +264,11 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
     for (const l of lieux) ids.marquer('FleetPlace', l.id);
     for (const t of trajets) ids.marquer('Trip', t.id);
 
-    // Les groupes portent une contrainte d'unicité (société, nom) : deux sociétés source fusionnées
-    // peuvent avoir « Nuit » toutes les deux. La seconde devient « Nuit (2) ».
-    const nomsGroupes = new Map<string, string>();
-    const nomsPris = new Set<string>();
-    for (const g of groupes) {
-      let nom = g.name;
-      for (let n = 2; nomsPris.has(nom.toLowerCase()); n++) nom = `${g.name} (${n})`;
-      nomsPris.add(nom.toLowerCase());
-      nomsGroupes.set(g.id, nom);
-    }
+    // Les noms de groupes sont REMPLACÉS par des libellés inventés, indexés par rang : un nom de
+    // groupe est un nom de client (cf. `nomGroupeDemo`), et l'index rend l'unicité (société, nom)
+    // vraie par construction, y compris en fusionnant deux sociétés source.
+    const rangsGroupes = new Map<string, number>();
+    groupes.forEach((g, i) => rangsGroupes.set(g.id, i));
     // Même contrainte sur (société, station) pour les lieux : la seconde occurrence perd son lien.
     const stationsDeLieu = new Map<string, string | null>();
     const stationsPrises = new Set<string>();
@@ -317,7 +312,7 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
           await tx.tracker.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
         }
         for (const g of groupes) {
-          const ligne = transformerGroupe(g, ctx, nomsGroupes.get(g.id)!);
+          const ligne = transformerGroupe(g, ctx, rangsGroupes.get(g.id)!);
           await tx.vehicleGroup.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
         }
         let indexZone = 0;

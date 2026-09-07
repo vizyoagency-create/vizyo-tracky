@@ -92,7 +92,8 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     imposes: ['phone', 'email', 'licenseNumber', 'notes', 'userId'],
   },
   VehicleGroup: {
-    pourquoi: 'les groupes de véhicules : le nom est conservé (assaini), il structure la démo',
+    pourquoi:
+      "les groupes de véhicules : la structure est conservée, le nom est REMPLACÉ — un nom de groupe est un nom de client (les dix-sept groupes de la société source sont les noms de ses foyers)",
     copies: ['createdAt'],
     transformes: ['id', 'name', 'fleetId'],
     imposes: [],
