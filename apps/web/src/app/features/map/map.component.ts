@@ -268,8 +268,8 @@ const RESYNC_RADIUS_M = 150;
         <div class="mp-interrompue-boite">
           <p class="mp-interrompue-titre">Affichage de la carte interrompu</p>
           <p class="mp-interrompue-texte">
-            Votre navigateur a suspendu l'affichage graphique. Les vehicules continuent d'etre
-            suivis&nbsp;: seul le rendu est en pause. La carte se retablit d'elle-meme des que
+            Votre navigateur a suspendu l'affichage graphique. Les véhicules continuent d'être
+            suivis&nbsp;: seul le rendu est en pause. La carte se rétablit d'elle-même dès que
             le navigateur rend la main.
           </p>
           <button type="button" class="mp-interrompue-b" (click)="rechargerPage()">

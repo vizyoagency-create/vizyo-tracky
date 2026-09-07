@@ -663,7 +663,7 @@ function joinFr(parts: string[]): string {
       background: var(--bg-tertiary); color: var(--fg-primary);
       font-size: 13px; font-weight: 600;
     }
-    .pem-date:focus, .pem-select:focus { outline: 2px solid var(--tracky-light, #10E0A0); outline-offset: 1px; }
+    .pem-date:focus, .pem-select:focus { outline: 2px solid var(--tracky-light); outline-offset: 1px; }
 
     .pem-scope-banner {
       display: flex;

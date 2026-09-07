@@ -72,6 +72,11 @@ const TOLERES = new Map([
   // Plaque de logo CONSTRUCTEUR : support d'image, pas surface d'interface. Un logo
   // noir sur une surface sombre du thème disparaîtrait.
   ['ui/brand-logo/brand-logo.component.ts', 'plaque de logo constructeur — fond imposé par les images'],
+  // Viseur de caméra : même famille que la plaque de logo, une surface de MÉDIA et non
+  // d'interface. Le noir y est la convention universelle, et aucun jeton ne convient —
+  // ils suivent tous le thème, si bien qu'en clair les bandes autour de l'image, et
+  // l'attente avant que la caméra ne rende la main, viraient au blanc.
+  ['ui/scanner-code/scanner-code.component.ts', 'viseur de caméra — surface de média, noir dans les deux thèmes'],
 ]);
 
 const fichiers = [];

@@ -104,6 +104,13 @@ const TOLERES = new Set([
   // `computed<string | null>(() =>` et court jusqu'au prochain « < », plusieurs lignes de code
   // plus loin. Accentuer casserait la lecture du DTO ; on tolère, on ne détend pas le motif.
   'apps/web/src/app/features/trip-analysis/trip-analysis-badges.component.ts|detail',
+  // `env.validation` : meme cause que ci-dessus, dans un COMMENTAIRE cette fois. La fleche
+  // de « Vide => le cron skip » fournit le « > », le motif « gabarit » court jusqu'au
+  // prochain « < » et ramasse deux commentaires plus bas, cinq et neuf lignes plus loin.
+  // Ce sont des notes pour le lecteur du fichier d'environnement, jamais affichees a un
+  // utilisateur — hors perimetre par la regle en tete de ce fichier.
+  'apps/api/src/config/env.validation.ts|envoye',
+  'apps/api/src/config/env.validation.ts|securite',
 ]);
 
 const fichiers = [];
