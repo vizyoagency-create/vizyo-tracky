@@ -121,8 +121,16 @@ services:
       - "traefik.http.services.tracky-demo-api.loadbalancer.server.port=3000"
       - "traefik.http.middlewares.tracky-demo-ws.headers.customrequestheaders.X-Forwarded-Proto=https"
       # Une démo n'a rien à faire dans un moteur de recherche.
-      - "traefik.http.middlewares.tracky-demo-noindex.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow"
-      - "traefik.http.routers.tracky-demo-api.middlewares=tracky-demo-ws,tracky-demo-noindex"
+      #
+      # ⚠️ CHAQUE SERVICE DÉFINIT LES MIDDLEWARES QU'IL UTILISE, et n'emprunte jamais ceux d'un
+      # autre conteneur. Ce n'est pas de la coquetterie : le web référençait celui-ci, défini
+      # ici. Or le rafraîchissement hebdomadaire ARRÊTE l'API le temps de l'import — les labels
+      # de ce conteneur disparaissent alors de la configuration Traefik, le middleware avec, et
+      # le routeur du WEB devient invalide. Mesuré le 2026-09-07 : « middleware
+      # tracky-demo-noindex@docker does not exist », site entier en 404 pendant l'import, alors
+      # que seule l'API devait être indisponible.
+      - "traefik.http.middlewares.tracky-demo-noindex-api.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow"
+      - "traefik.http.routers.tracky-demo-api.middlewares=tracky-demo-ws,tracky-demo-noindex-api"
     deploy:
       resources:
         limits:
@@ -144,7 +152,10 @@ services:
       - "traefik.http.routers.tracky-demo-web.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
       - "traefik.http.routers.tracky-demo-web.priority=1"
       - "traefik.http.services.tracky-demo-web.loadbalancer.server.port=80"
-      - "traefik.http.routers.tracky-demo-web.middlewares=tracky-demo-noindex"
+      # Le web définit SON middleware (cf. l'avertissement du service api) : il doit continuer à
+      # servir la page pendant que l'API est arrêtée pour l'import.
+      - "traefik.http.middlewares.tracky-demo-noindex-web.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow"
+      - "traefik.http.routers.tracky-demo-web.middlewares=tracky-demo-noindex-web"
     deploy:
       resources:
         limits:
