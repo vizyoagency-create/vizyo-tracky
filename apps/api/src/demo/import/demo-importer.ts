@@ -12,6 +12,7 @@ import {
   transformerAnalyse,
   transformerArretCarburant,
   transformerBoitier,
+  transformerSim,
   transformerConducteur,
   transformerFlotte,
   transformerGeofence,
@@ -211,6 +212,9 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
     const vehicules = await src.vehicle.findMany({ where: { fleetId: { in: flotteIds } }, orderBy: { createdAt: 'asc' } });
     const vehiculeIds = vehicules.map((v) => v.id);
     const boitiers = await src.tracker.findMany({ where: { vehicleId: { in: vehiculeIds } } });
+    // Les SIM se prennent par le boîtier où elles sont POSÉES, pas par `fleetId` : une SIM en
+    // stock porte la flotte sans être montée, et la démo n'a que faire d'un stock.
+    const sims = await src.sim.findMany({ where: { trackerId: { in: boitiers.map((b) => b.id) } } });
     const conducteurs = await src.driver.findMany({ where: { fleetId: { in: flotteIds } }, orderBy: { createdAt: 'asc' } });
     const groupes = await src.vehicleGroup.findMany({ where: { fleetId: { in: flotteIds } }, orderBy: { createdAt: 'asc' } });
     const affectations = await src.vehicleGroupAssignment.findMany({ where: { groupId: { in: groupes.map((g) => g.id) } } });
@@ -294,6 +298,7 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
     for (const c of conducteurs) ids.marquer('Driver', c.id);
     for (const v of vehicules) ids.marquer('Vehicle', v.id);
     for (const b of boitiers) ids.marquer('Tracker', b.id);
+    for (const s of sims) ids.marquer('Sim', s.id);
     for (const g of groupes) ids.marquer('VehicleGroup', g.id);
     for (const g of geofences) ids.marquer('Geofence', g.id);
     for (const s of stations) ids.marquer('FuelStation', s.id, s.id);
@@ -347,6 +352,11 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
           const ligne = transformerBoitier(b, ctx, imeis.get(b.id)!);
           await tx.tracker.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
         }
+        // Après les boîtiers : la SIM pointe vers l'un d'eux, et lui emprunte son IMEI de démo.
+        for (const s of sims) {
+          const ligne = transformerSim(s, ctx, s.trackerId ? (imeis.get(s.trackerId) ?? null) : null);
+          await tx.sim.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
+        }
         for (const g of groupes) {
           const ligne = transformerGroupe(g, ctx, rangsGroupes.get(g.id)!);
           await tx.vehicleGroup.upsert({ where: { id: ligne.id as string }, create: ligne, update: sansId(ligne) });
@@ -387,6 +397,8 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
           await tx.mission.deleteMany({ where: { vehicleId: { in: idsDisparus } } });
           await tx.vehicle.deleteMany({ where: { id: { in: idsDisparus } } });
         }
+        // Avant les boîtiers : `Sim.trackerId` est en `SetNull`, une SIM survivrait détachée.
+        await tx.sim.deleteMany({ where: { fleetId: idFlotteDemo, id: { notIn: ids.idsImportes('Sim') } } });
         await tx.tracker.deleteMany({ where: { id: { notIn: ids.idsImportes('Tracker') } } });
         await tx.driver.deleteMany({ where: { fleetId: idFlotteDemo, id: { notIn: ids.idsImportes('Driver') } } });
         await tx.vehicleGroup.deleteMany({ where: { fleetId: idFlotteDemo, id: { notIn: ids.idsImportes('VehicleGroup') } } });

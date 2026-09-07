@@ -17,6 +17,7 @@ import {
   transformerPlanning,
   transformerPosition,
   transformerProfilSurveillance,
+  transformerSim,
   transformerTrajet,
   transformerVehicule,
   type Contexte,
@@ -176,6 +177,32 @@ describe("transformations de l'import de démonstration", () => {
       vehicleId: ctx.ids.id('Vehicle', 'v-1'),
       lastLat: 1.5,
     });
+  });
+
+  it("Sim : abonnement régénéré, IMEI aligné sur le boîtier, infrastructure de l'opérateur effacée", () => {
+    const ctx = contexte();
+    ctx.ids.marquer('Tracker', 't-1');
+    const src = ligneSource('Sim', { iccid: '8934075512345678901', trackerId: 't-1' }) as never;
+    const sortie = transformerSim(src, ctx, '353000000000015');
+    attendreChampsDe('Sim', sortie);
+    expect(sortie).toMatchObject({
+      iccid: expect.stringMatching(/^8933\d{15}$/),
+      msisdn: expect.stringMatching(/^\+3363998\d{4}$/),
+      imsi: expect.stringMatching(/^20801\d{10}$/),
+      // L'opérateur voit le MÊME appareil que Tracky : recopier l'IMEI source afficherait
+      // deux numéros sur la même fiche, et le vrai serait celui du client.
+      imei: '353000000000015',
+      customField1: '353000000000015',
+      providerId: null,
+      apn: null,
+      ipAddress: null,
+      label: null,
+      notes: null,
+      rawProvider: Prisma.DbNull,
+      fleetId: ctx.idFlotteDemo,
+      trackerId: ctx.ids.id('Tracker', 't-1'),
+    });
+    expect(sortie.iccid).not.toBe('8934075512345678901');
   });
 
   it('Driver : identité de liste, coordonnées, permis, notes et compte effacés', () => {

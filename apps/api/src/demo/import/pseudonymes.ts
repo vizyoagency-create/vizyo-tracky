@@ -58,6 +58,46 @@ export function imeiDemo(sel: string, imeiSource: string, tentative = 0): string
   return corps + cleLuhn(corps);
 }
 
+/**
+ * ICCID de démonstration — 19 chiffres, clé de Luhn valide.
+ *
+ * `89` est le préfixe télécom de l'ISO/IEC 7812 et `33` le code pays France. Les SIM de la
+ * source sont espagnoles (`8934`) ; on francise, la société de démonstration étant française
+ * et son parc censé rouler en France.
+ */
+export function iccidDemo(sel: string, iccidSource: string, tentative = 0): string {
+  const h = empreinte(sel, 'iccid', iccidSource.trim(), String(tentative));
+  let corps = '8933';
+  for (let i = 0; corps.length < 18; i++) corps += String(h[i]! % 10);
+  return corps + cleLuhn(corps);
+}
+
+/**
+ * Numéro d'appel de démonstration, pris dans la PLAGE DE FICTION RÉSERVÉE PAR L'ARCEP.
+ *
+ * ⚠️ Ce n'est pas un raffinement. Un numéro mobile tiré au hasard dans `06` appartient à
+ * quelqu'un : le jour où un prospect clique « appeler le conducteur » depuis la démo, il
+ * fait sonner le téléphone d'un inconnu. L'ARCEP réserve `06 39 98 00 00` à `06 39 98 99 99`
+ * pour la fiction — dix mille numéros attribués à personne, et qui ne le seront jamais.
+ * On y puise, et on n'en sort pas : les quatre derniers chiffres seuls varient.
+ */
+export function msisdnDemo(sel: string, idSource: string): string {
+  const h = empreinte(sel, 'msisdn', idSource.trim());
+  const n = String(((h[0]! << 8) | h[1]!) % 10_000).padStart(4, '0');
+  return `+3363998${n}`;
+}
+
+/**
+ * IMSI de démonstration — 15 chiffres : MCC 208 (France), MNC 01, puis dix chiffres.
+ * L'IMSI identifie l'abonné chez l'opérateur ; celui de la source ne doit jamais ressortir.
+ */
+export function imsiDemo(sel: string, idSource: string): string {
+  const h = empreinte(sel, 'imsi', idSource.trim());
+  let s = '20801';
+  for (let i = 0; s.length < 15; i++) s += String(h[i]! % 10);
+  return s;
+}
+
 const PRENOMS = [
   'Camille', 'Julien', 'Sophie', 'Nicolas', 'Léa', 'Thomas', 'Manon', 'Antoine', 'Chloé', 'Maxime',
   'Inès', 'Hugo', 'Sarah', 'Lucas', 'Emma', 'Mehdi', 'Nadia', 'Karim', 'Yasmine', 'Romain',

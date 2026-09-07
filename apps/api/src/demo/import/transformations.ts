@@ -11,6 +11,7 @@ import type {
   Geofence,
   GeofenceVehicle,
   Position,
+  Sim,
   SurveillanceProfile,
   Tracker,
   Trip,
@@ -22,7 +23,7 @@ import type {
   VehicleSchedule,
   VehicleWorkSchedule,
 } from '@prisma/client';
-import { modeleDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo } from './pseudonymes';
+import { iccidDemo, imsiDemo, modeleDemo, msisdnDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo } from './pseudonymes';
 import { idDemo } from './uuid-deterministe';
 
 /** Le compte système du seed (`prisma/seed.ts`) : cible des clés « auteur » obligatoires. */
@@ -346,6 +347,49 @@ export function transformerBoitier(src: Tracker, ctx: Contexte, imei: string): P
     simPhoneNumber: null,
     accConnected: src.accConnected,
     vehicleId: ctx.ids.siImporte('Vehicle', src.vehicleId),
+    createdAt: src.createdAt,
+    updatedAt: src.updatedAt,
+  };
+}
+
+/**
+ * La SIM du boîtier. `imeiBoitier` est l'IMEI DE DÉMO du boîtier auquel elle est posée : il
+ * faut le lui passer, car l'opérateur voit le même appareil que Tracky. Recopier l'IMEI de la
+ * source afficherait deux numéros différents sur la même fiche, et le premier serait vrai.
+ */
+export function transformerSim(src: Sim, ctx: Contexte, imeiBoitier: string | null): Prisma.SimUncheckedCreateInput {
+  return {
+    id: ctx.ids.id('Sim', src.id),
+    iccid: iccidDemo(ctx.sel, src.iccid),
+    msisdn: src.msisdn === null ? null : msisdnDemo(ctx.sel, src.id),
+    imsi: src.imsi === null ? null : imsiDemo(ctx.sel, src.id),
+    imei: src.imei === null ? null : imeiBoitier,
+    provider: src.provider,
+    // Identifie l'abonnement dans le portail de l'opérateur : sans usage en démo, et c'est
+    // une clé qui ouvre un vrai compte.
+    providerId: null,
+    statusId: src.statusId,
+    statusLabel: src.statusLabel,
+    // L'APN nommerait notre fournisseur de SIM devant un prospect, qui peut être un concurrent.
+    apn: null,
+    // IP publique réellement attribuée au boîtier du client. Rien ne justifie de la montrer.
+    ipAddress: null,
+    networkOperator: src.networkOperator,
+    monthlyDataVolumeBytes: src.monthlyDataVolumeBytes,
+    monthlyDataLimitBytes: src.monthlyDataLimitBytes,
+    prevMonthDataVolumeBytes: src.prevMonthDataVolumeBytes,
+    inSessionSince: src.inSessionSince,
+    activationAt: src.activationAt,
+    // `custom_field_1` porte le « nom d'appareil » côté opérateur, où l'on inscrit l'IMEI.
+    customField1: src.customField1 === null ? null : imeiBoitier,
+    label: null,
+    notes: null,
+    // Le payload brut de l'opérateur : tout ce que le modèle ne représente pas y est encore,
+    // y compris ce qu'on vient d'effacer colonne par colonne. Il part en entier.
+    rawProvider: Prisma.DbNull,
+    fleetId: ctx.idFlotteDemo,
+    trackerId: ctx.ids.siImporte('Tracker', src.trackerId),
+    externalSyncedAt: src.externalSyncedAt,
     createdAt: src.createdAt,
     updatedAt: src.updatedAt,
   };

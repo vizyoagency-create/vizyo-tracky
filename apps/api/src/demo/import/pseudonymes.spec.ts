@@ -1,4 +1,7 @@
-import { identiteDemo, imeiDemo, modeleDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo, plaqueDemo } from './pseudonymes';
+import {
+  iccidDemo, identiteDemo, imeiDemo, imsiDemo, modeleDemo, msisdnDemo,
+  nomGroupeDemo, nomLieuDemo, nomZoneDemo, plaqueDemo,
+} from './pseudonymes';
 import { idDemo, uuidV5 } from './uuid-deterministe';
 
 const SEL = 'un-sel-de-test-suffisamment-long';
@@ -41,6 +44,42 @@ describe('pseudonymes déterministes', () => {
       doubler = !doubler;
     }
     expect(somme % 10).toBe(0);
+  });
+
+  it('iccidDemo : 19 chiffres, préfixe 8933, clé de Luhn valide, stable', () => {
+    const iccid = iccidDemo(SEL, '8934075512345678901');
+    expect(iccid).toMatch(/^8933\d{15}$/);
+    expect(iccidDemo(SEL, '8934075512345678901')).toBe(iccid);
+    expect(iccidDemo(SEL, '8934075512345678902')).not.toBe(iccid);
+    let somme = 0;
+    let doubler = false;
+    for (let i = iccid.length - 1; i >= 0; i--) {
+      let d = Number(iccid[i]);
+      if (doubler) { d *= 2; if (d > 9) d -= 9; }
+      somme += d;
+      doubler = !doubler;
+    }
+    expect(somme % 10).toBe(0);
+  });
+
+  it("msisdnDemo : TOUJOURS dans la plage de fiction de l'ARCEP, jamais ailleurs", () => {
+    // ⚠️ Le test qui compte. Un numéro hors de 06 39 98 XX XX appartient à quelqu'un : un
+    // prospect qui clique « appeler » depuis la démo ferait sonner un inconnu. Mille tirages
+    // sur des sources différentes, aucun ne doit sortir de la plage.
+    for (let i = 0; i < 1000; i++) {
+      const n = msisdnDemo(SEL, `sim-${i}`);
+      expect(n).toMatch(/^\+3363998\d{4}$/);
+    }
+    expect(msisdnDemo(SEL, 'sim-1')).toBe(msisdnDemo(SEL, 'sim-1'));
+    const distincts = new Set(Array.from({ length: 200 }, (_, i) => msisdnDemo(SEL, `s-${i}`)));
+    expect(distincts.size).toBeGreaterThan(150);
+  });
+
+  it('imsiDemo : 15 chiffres, MCC 208 (France), stable', () => {
+    const imsi = imsiDemo(SEL, 'sim-42');
+    expect(imsi).toMatch(/^20801\d{10}$/);
+    expect(imsiDemo(SEL, 'sim-42')).toBe(imsi);
+    expect(imsiDemo(SEL, 'sim-43')).not.toBe(imsi);
   });
 
   it('identiteDemo : un prénom et un nom des listes, stables', () => {

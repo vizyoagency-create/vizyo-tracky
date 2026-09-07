@@ -86,6 +86,23 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     transformes: ['id', 'imei', 'vehicleId'],
     imposes: ['verboseUntil', 'fixModeOverrideUntil', 'simPhoneNumber'],
   },
+  Sim: {
+    pourquoi:
+      "les cartes SIM des boîtiers. Tout ce qui identifie un abonnement est régénéré : ICCID, " +
+      "numéro d'appel, IMSI. L'IMEI et le « nom d'appareil » recopient celui du boîtier de démo, " +
+      "sinon la fiche se contredirait. L'IP publique, le payload brut de l'opérateur et l'identifiant " +
+      "chez l'opérateur sont effacés : ils portent des données d'infrastructure réelles que rien " +
+      "n'oblige à montrer. L'APN aussi, qui nommerait notre fournisseur de SIM devant un prospect. " +
+      "Les compteurs de volume et les états d'activation sont copiés : c'est ce qui rend l'écran vivant.",
+    copies: [
+      'provider', 'statusId', 'statusLabel', 'networkOperator', 'monthlyDataVolumeBytes',
+      'monthlyDataLimitBytes', 'prevMonthDataVolumeBytes', 'inSessionSince', 'activationAt',
+      'externalSyncedAt', 'createdAt', 'updatedAt',
+    ],
+    transformes: ['id', 'iccid', 'msisdn', 'imsi', 'imei', 'customField1', 'fleetId', 'trackerId'],
+    imposes: ['providerId', 'apn', 'ipAddress', 'label', 'notes', 'rawProvider'],
+  },
+
   Driver: {
     pourquoi: 'les conducteurs : identité tirée de listes, coordonnées et permis effacés ; le lien vers un compte est préservé côté démo, jamais copié',
     copies: ['color', 'isActive', 'createdAt', 'updatedAt'],
@@ -250,9 +267,9 @@ export const EXCLUS: Readonly<Record<string, string>> = {
     'GeocodeCache', 'SpeedLimitCache',
   ),
   ...exclure(
-    "commandes et boîtiers : historique des commandes, écoute audio, provisionnement SMS, SIM, diagnostics GPS — du matériel réel et des numéros ; la démo n'a ni l'un ni l'autre",
+    "commandes et boîtiers : historique des commandes, écoute audio, provisionnement SMS, diagnostics GPS — du matériel réel et des numéros ; la démo n'a ni l'un ni l'autre. La SIM, elle, est désormais importée pseudonymisée (cf. entrée `Sim`) : son absence faisait afficher « SIM manquante » sur les trente-sept véhicules, ce qu'un prospect lit comme une installation ratée.",
     'TrackerCommand', 'EngineControlCommand', 'AudioMonitoringCommand', 'FleetAudioConfig', 'TrackerProvisioning',
-    'Sim', 'GpsDeadZone', 'GpsLossEvent', 'GpsZoneDiagnostic', 'ScheduleHistory', 'PrivacyModeEvent',
+    'GpsDeadZone', 'GpsLossEvent', 'GpsZoneDiagnostic', 'ScheduleHistory', 'PrivacyModeEvent',
   ),
   ...exclure(
     'agenda, entretien et événements véhicule : hors périmètre v1 (décision du 2026-09-07, § 9 point 7)',
