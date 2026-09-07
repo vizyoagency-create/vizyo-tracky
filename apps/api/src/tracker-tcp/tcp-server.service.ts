@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TrackerStatus } from '@prisma/client';
 import { decodeFrame } from '@vizyo/tracky-shared';
@@ -14,6 +14,7 @@ import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SocketRegistryService, type TrackerSocket } from '../socket-registry/socket-registry.service';
 import { UnknownTrackerRegistry } from '../unknown-trackers/unknown-trackers.registry';
+import { DemoModeService } from '../demo/demo-mode.service';
 
 @Injectable()
 export class TcpServerService implements OnModuleInit, OnModuleDestroy {
@@ -42,9 +43,20 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     private readonly errorLogger: ErrorLogger,
     private readonly ackWaiter: AckWaiterService,
     private readonly unknownTrackers: UnknownTrackerRegistry,
+    // @Optional : les specs construisent ce service à la main, sans le drapeau de démo.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
 
   onModuleInit(): void {
+    // Environnement de démonstration (2026-09) : AUCUN boîtier réel ne doit pouvoir parler à
+    // cette instance, ni elle à lui. Le port n'est déjà pas publié par le compose de la démo ;
+    // ne pas écouter du tout est la ceinture avec les bretelles. Les boîtiers de la démo sont
+    // de faux sockets posés dans le registre par `DemoReplayService`. C'est la SEULE chose que
+    // le mode démo change ici (plan § 11).
+    if (this.demoMode?.enabled) {
+      this.logger.warn("DEMO_MODE : le serveur TCP des boîtiers n'est PAS démarré — aucun boîtier réel ne peut joindre cette instance.");
+      return;
+    }
     const port = this.config.get('TRACKER_TCP_PORT', { infer: true });
     this.server = createServer((socket) => this.handleConnection(socket));
 

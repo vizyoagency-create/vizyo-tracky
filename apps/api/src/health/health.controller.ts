@@ -1,12 +1,16 @@
 import { Controller, Get, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import type { Response } from 'express';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('health')
 export class HealthController {
   private readonly startedAt = Date.now();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly demoMode: DemoModeService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -24,6 +28,10 @@ export class HealthController {
       version: '1.3.0',
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
       services: checks,
+      // Environnement de démonstration (2026-09) : le SEUL endroit public où l'écran apprend
+      // qu'il parle à la démo — avant toute session, donc dès la page de connexion. Lu par le
+      // web au démarrage (DemoModeService côté Angular) pour poser le bandeau.
+      demo: this.demoMode.enabled,
     };
   }
 

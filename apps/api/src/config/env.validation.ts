@@ -272,6 +272,39 @@ const envSchema = z.object({
   // numero personnel expose la ne se reprend plus. Ne jamais rebrancher ce champ
   // sur `User.phone` ni sur le telephone d'un client pre-rempli.
   INSTALLATION_PUBLIC_PHONE: z.string().default(''),
+
+  // ─── Environnement de démonstration (2026-09) ───────────────────────────────────────────
+  // docs/environnement-demo/PLAN-2026-09-07.md. `DEMO_MODE=true` fait de cette instance LA
+  // DÉMO : boîtiers simulés par rejeu de trames, serveur TCP boîtiers NON démarré, sentinelles
+  // d'exploitation sans objet mises en veille, drapeau `demo` exposé par /api/health pour que
+  // l'écran l'annonce. VOLONTAIREMENT indépendant de NODE_ENV : la démo tourne en `production`
+  // (mêmes images que la prod) — c'est cette variable, et elle seule, qui la distingue. Absente
+  // en production → tout le module est inerte.
+  //
+  // ⚠️ Le drapeau ne protège rien à lui seul : ce qui empêche la démo d'atteindre un véhicule,
+  // c'est l'ABSENCE de port TCP publié et de clé SMS dans son environnement (compose + .env.demo).
+  DEMO_MODE: z.string().default('false'),
+  // Les variables suivantes ne servent QU'À L'IMPORTEUR (node dist/demo/import/import.cli.js),
+  // un processus à part qui ne démarre pas l'application. Déclarées ici pour être VISIBLES
+  // (constat C3 : une variable lue par process.env sans exister nulle part ailleurs est une
+  // variable qu'on ne retrouve pas), optionnelles pour ne contraindre ni la prod ni le dev.
+  //   DEMO_SOURCE_DATABASE_URL : la production, par un rôle Postgres SELECT SEULEMENT (tracky_ro).
+  //   DEMO_SOURCE_FLEET_IDS    : CSV des sociétés source (une ou plusieurs, fusionnées en une).
+  //   DEMO_SALT                : sel des pseudonymes et des identifiants (≥ 16 car.). Le changer
+  //                              change TOUTES les identités et orphelines les droits posés.
+  DEMO_SOURCE_DATABASE_URL: z.string().optional(),
+  DEMO_SOURCE_FLEET_IDS: z.string().default(''),
+  DEMO_FLEET_NAME: z.string().default('Transports Démo'),
+  DEMO_SALT: z.string().default(''),
+  // Fenêtres d'import. Même précaution que AI_USD_TO_EUR : une valeur VIDE vaut ABSENT, pas 0.
+  DEMO_POSITIONS_DAYS: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.coerce.number().int().positive().default(30),
+  ),
+  DEMO_TRIPS_MONTHS: z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? undefined : v),
+    z.coerce.number().int().positive().default(12),
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;

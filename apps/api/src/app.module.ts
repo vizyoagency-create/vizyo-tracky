@@ -78,6 +78,8 @@ import { DriverUnlockApiModule } from './driver-unlock/driver-unlock-api.module'
 import { AuditAlertesModule } from './audit-alertes/audit-alertes.module';
 import { TrackerOnboardingModule } from './tracker-onboarding/tracker-onboarding.module';
 import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
+import { DemoModeModule } from './demo/demo-mode.module';
+import { DemoModule } from './demo/demo.module';
 
 @Module({
   imports: [
@@ -117,6 +119,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // « Owner » plateforme — invisibilité des comptes owner aux autres super-admins.
     // @Global : injectable partout (users, activité, IA, sérialiseurs d'action).
     OwnerVisibilityModule,
+    // Environnement de démonstration (2026-09) — le drapeau DEMO_MODE, @Global : lu par le
+    // serveur TCP, /health et deux sentinelles. Inerte en production (variable absente).
+    DemoModeModule,
     SocketRegistryModule,
     AuthClientModule,
     AuthModule,
@@ -212,6 +217,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // Sécurité — 2FA app OPT-IN adaptatif (code e-mail sur anomalie) + journal/carte
     // des connexions géo-IP. @Global : self-enregistre le gate (403 DEVICE_VERIFICATION_REQUIRED).
     SecurityModule,
+    // Environnement de démonstration (2026-09) — rejeu de trames sur de faux boîtiers + écran
+    // d'administration. Ne fait rien sans DEMO_MODE=true. Cf. docs/environnement-demo/.
+    DemoModule,
   ],
   controllers: [HealthController],
   providers: [
