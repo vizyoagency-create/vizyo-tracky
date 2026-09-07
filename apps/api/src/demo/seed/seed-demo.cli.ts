@@ -135,7 +135,24 @@ async function main(): Promise<void> {
       console.log('[comptes] DEMO_ACCOUNTS_PASSWORD vide — pas de comptes de rôle');
       return;
     }
-    if (motDePasse.length < 12) throw new Error('DEMO_ACCOUNTS_PASSWORD doit faire au moins 12 caractères (règle Vizyo Auth).');
+    /**
+     * ⚠️ ON VÉRIFIE LA FORME AVANT LE PREMIER APPEL, ET C'EST LE FRUIT D'UN ÉCHEC RÉEL.
+     *
+     * Le 2026-09-07, la mise en service s'est arrêtée ICI, après avoir créé le marqueur, le
+     * super-admin et la société : Vizyo Auth a refusé le mot de passe avec « Add an uppercase
+     * letter ». Le message était juste, mais il arrivait d'un tiers, au milieu d'une séquence
+     * déjà à moitié jouée — et il ne disait pas QUELLE variable corriger.
+     *
+     * On refuse donc en le nommant, avant de toucher à quoi que ce soit.
+     */
+    const manques: string[] = [];
+    if (motDePasse.length < 12) manques.push('au moins 12 caractères');
+    if (!/[A-Z]/.test(motDePasse)) manques.push('au moins une majuscule');
+    if (!/[a-z]/.test(motDePasse)) manques.push('au moins une minuscule');
+    if (!/[0-9]/.test(motDePasse)) manques.push('au moins un chiffre');
+    if (manques.length > 0) {
+      throw new Error(`DEMO_ACCOUNTS_PASSWORD ne respecte pas la politique de Vizyo Auth — il lui manque : ${manques.join(', ')}.`);
+    }
 
     // Le client Vizyo Auth de l'application, avec la configuration lue dans l'environnement.
     const config = { get: (cle: string) => process.env[cle] } as unknown as ConfigService<Env, true>;

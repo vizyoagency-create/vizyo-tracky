@@ -35,10 +35,22 @@ if [[ ! -f .env.demo ]]; then
 fi
 
 # POSTGRES_* pour interroger la base de démo depuis l'hôte (psql dans le conteneur).
-set -a
-# shellcheck disable=SC1091
-source .env.demo
-set +a
+#
+# ⚠️ SURTOUT PAS `source .env.demo`, ET C'EST UN ÉCHEC RÉEL, PAS UNE PRÉCAUTION. Le 2026-09-07 le
+# premier import s'est arrêté sur « syntax error near unexpected token `newline' » : le fichier
+# contient `RESEND_FROM=Tracky Démo <demo@vizyoagency.com>`, et bash lit `<…>` comme une
+# REDIRECTION. Docker Compose, lui, parse ce fichier sans passer par un shell — la valeur y est
+# parfaitement valide. Un fichier d'environnement n'est donc pas un script, et le lire comme tel
+# casse sur la première adresse e-mail nommée, une accolade ou une apostrophe.
+#
+# On extrait les deux seules variables dont ce script a besoin, littéralement.
+lire_env() { grep -m1 "^$1=" .env.demo | cut -d= -f2-; }
+POSTGRES_USER="$(lire_env POSTGRES_USER)"
+POSTGRES_DB="$(lire_env POSTGRES_DB)"
+if [ -z "$POSTGRES_USER" ] || [ -z "$POSTGRES_DB" ]; then
+  log "ERREUR : POSTGRES_USER ou POSTGRES_DB absent de .env.demo"
+  exit 1
+fi
 
 if [[ "${1:-}" == "--si-demande" ]]; then
   # Une demande est « en attente » si elle est postérieure au dernier passage de l'importeur.
