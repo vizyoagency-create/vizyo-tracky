@@ -300,10 +300,20 @@ export class DemoReplayService implements OnModuleInit, OnModuleDestroy {
    * de `positions` n'est écrite, c'est l'état du boîtier qu'on aligne.
    */
   private async repositionner(b: Boitier, local: InstantLocal): Promise<void> {
-    const ancre = await this.prisma.demoReplayFrame.findFirst({
-      where: { imei: b.imei, weekday: local.weekday, secondOfDay: { lte: local.secondOfDay } },
-      orderBy: { secondOfDay: 'desc' },
-    });
+    // Le point de la trace où le véhicule se trouve à cette heure-ci…
+    const ancre =
+      (await this.prisma.demoReplayFrame.findFirst({
+        where: { imei: b.imei, weekday: local.weekday, secondOfDay: { lte: local.secondOfDay } },
+        orderBy: { secondOfDay: 'desc' },
+      })) ??
+      // …ou, avant le premier point du jour (la nuit, tôt le matin), son point de DÉPART. Sans ce
+      // repli, le boîtier resterait sur sa position d'import jusqu'au début de la tournée, et la
+      // première trame de celle-ci serait de nouveau un saut infaisable — la spirale reviendrait
+      // chaque matin.
+      (await this.prisma.demoReplayFrame.findFirst({
+        where: { imei: b.imei, weekday: local.weekday },
+        orderBy: { secondOfDay: 'asc' },
+      }));
     if (!ancre) return;
     const quand = new Date();
     await this.prisma.tracker.update({

@@ -192,6 +192,28 @@ describe('DemoReplayService', () => {
     expect(positions.ingest).not.toHaveBeenCalled();
   });
 
+  it("avant le premier point du jour, se replace sur le point de DÉPART de la tournée", async () => {
+    // La nuit et tôt le matin, aucune trame ne précède l'heure courante. Sans repli, le boîtier
+    // resterait sur sa position d'import et la première trame de la tournée serait un saut.
+    prisma.demoReplayFrame.findFirst
+      .mockResolvedValueOnce(null) // aucun point avant l'heure courante
+      .mockResolvedValueOnce({
+        imei: IMEI, weekday: 2, secondOfDay: 6 * 3600, lat: 43.8, lng: 1.6,
+        speedKmh: 0, heading: 0, altitude: null, ignition: false, valid: true,
+      });
+    const service = construire();
+    await service.synchroniser();
+    await service.tic(T0);
+
+    expect(prisma.demoReplayFrame.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { imei: IMEI, weekday: 2 },
+      orderBy: { secondOfDay: 'asc' },
+    });
+    expect(prisma.tracker.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ lastLat: 43.8, lastLng: 1.6 }) }),
+    );
+  });
+
   it("à l'arrêt du module, retire ses sockets et annule ses timers", async () => {
     const service = construire();
     await service.onModuleInit();
