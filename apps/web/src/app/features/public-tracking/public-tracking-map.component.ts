@@ -13,7 +13,6 @@ import {
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import { MapService } from '../../core/services/map.service';
-import { ThemeService } from '../../core/theme/theme.service';
 
 /**
  * Lot A4 — la carte de la page publique.
@@ -110,7 +109,6 @@ export class PublicTrackingMapComponent implements AfterViewInit, OnDestroy {
 
   private readonly conteneur = viewChild<ElementRef<HTMLDivElement>>('carte');
   private readonly mapSvc = inject(MapService);
-  private readonly theme = inject(ThemeService);
 
   private map: MlMap | null = null;
   private marqueur: MlMarker | null = null;
@@ -173,7 +171,19 @@ export class PublicTrackingMapComponent implements AfterViewInit, OnDestroy {
     this.map = this.mapSvc.createMap(el, {
       center: p ?? CENTRE_PAR_DEFAUT,
       zoom: p ? 13 : 10,
-      style: this.theme.theme() === 'dark' ? 'dark' : 'light',
+      /**
+       * ⚠️ `osm`, PLUS `light`/`dark`. Ces deux fonds viennent de CARTO, qui exige
+       * désormais une clé : leurs tuiles reviennent barrées d'un filigrane « API KEY
+       * REQUIRED » répété en diagonale sur toute la carte. Constaté le 2026-09-07 sur le
+       * rendu réel — le service répond bien `200`, avec la tuile marquée, donc rien ne
+       * signalait la panne côté code.
+       *
+       * ⚠️ ET LE THÈME NE LE PILOTE PLUS. Le destinataire n'a pas de compte : il n'a pas
+       * de préférence à suivre, et une seule des deux variantes était de toute façon
+       * utilisable. Cette page part chez le client d'un client — c'est la dernière où
+       * l'on peut se permettre un filigrane en travers.
+       */
+      style: 'osm',
       // Aucun controle : ni navigation, ni geolocalisation, ni echelle. La page ne
       // demande RIEN a l'appareil du destinataire — surtout pas sa position (A4 § 6).
       withNavigationControl: false,

@@ -310,10 +310,30 @@ body.plat-android {
   }
   a.block { display: flex; align-items: center; }
 
-  /* Les exceptions motivées ci-dessus. */
+  /* Les exceptions motivées ci-dessus.
+   *
+   * ⚠️ `.maplibregl-marker` AJOUTÉ LE 2026-09-07, ET C'EST LA FORME QUI COMPTE.
+   *
+   * L'exception ne visait que `.tracky-marker`, le marqueur de véhicule — une LISTE DE
+   * NOMS, exactement ce que le commentaire ci-dessus reproche à la règle qu'il remplace.
+   * Elle a donc raté tous les autres marqueurs du produit, et le défaut était visible :
+   *
+   *   MapLibre 5 pose `role="button"` sur CHAQUE marqueur, pour l'accessibilité. Un
+   *   marqueur plus petit que 44 px se faisait donc étirer en hauteur — un rond de 14 px
+   *   devenait une ellipse de 14 × 44, décalée de son point. Constaté sur le partage de
+   *   trajet, le suivi public de livraison (`.ptm-pin`, 34 px) et la carte du dépôt.
+   *
+   * `.maplibregl-marker` est posée par MapLibre lui-même : viser cette classe couvre tous
+   * les marqueurs du produit, y compris ceux qui n'existent pas encore. Et le motif est le
+   * même que pour `.tracky-marker` — un marqueur est posé à une COORDONNÉE, l'agrandir
+   * déplace l'information au lieu de la rendre plus facile à toucher. La commande, elle,
+   * est ailleurs : dans la liste, la fiche, la bulle.
+   */
   .hm-cell,
   .tracky-marker,
-  .tracky-marker * {
+  .tracky-marker *,
+  .maplibregl-marker,
+  .maplibregl-marker * {
     min-height: 0;
     display: revert;
   }

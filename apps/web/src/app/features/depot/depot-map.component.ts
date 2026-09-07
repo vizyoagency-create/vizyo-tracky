@@ -15,7 +15,6 @@ import type { DepotMissionDto, DepotPositionDto } from '@vizyo/tracky-shared';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import { MapService } from '../../core/services/map.service';
-import { ThemeService } from '../../core/theme/theme.service';
 
 /**
  * Espace dépôt (2026-08) — la carte live, en CONFIGURATION RESTREINTE (A3 § 1).
@@ -98,7 +97,6 @@ export class DepotMapComponent implements AfterViewInit, OnDestroy {
 
   private readonly conteneur = viewChild<ElementRef<HTMLDivElement>>('carte');
   private readonly mapSvc = inject(MapService);
-  private readonly theme = inject(ThemeService);
 
   private map: MlMap | null = null;
   private readonly prete = signal(false);
@@ -118,12 +116,16 @@ export class DepotMapComponent implements AfterViewInit, OnDestroy {
     this.dessiner(missions, positions, selection);
   });
 
-  /** Les tuiles suivent le thème : CartoDB clair ou sombre (A3 § 1). */
-  private readonly themeEffect = effect(() => {
-    const sombre = this.theme.theme() === 'dark';
-    if (!this.map || !this.prete()) return;
-    this.mapSvc.setStyle(this.map, sombre ? 'dark' : 'light');
-  });
+  /**
+   * ⚠️ LE FOND NE SUIT PLUS LE THÈME (A3 § 1 amendé le 2026-09-07).
+   *
+   * Il basculait entre les deux fonds CartoDB, qui exigent désormais une clé : les deux
+   * variantes revenaient barrées d'un filigrane « API KEY REQUIRED ». Suivre le thème
+   * n'avait plus d'objet — il n'y avait plus qu'un fond utilisable, `osm`.
+   *
+   * L'effet est CONSERVÉ, vide, plutôt que supprimé : le jour où un fond sombre sans clé
+   * est disponible, c'est ici qu'il se rebranche, avec l'intention d'origine sous les yeux.
+   */
 
   ngAfterViewInit(): void {
     setTimeout(() => this.initialiser(), 0);
@@ -144,7 +146,14 @@ export class DepotMapComponent implements AfterViewInit, OnDestroy {
     this.map = this.mapSvc.createMap(el, {
       center: CENTRE_PAR_DEFAUT,
       zoom: 10,
-      style: this.theme.theme() === 'dark' ? 'dark' : 'light',
+      /**
+       * ⚠️ `osm`, PLUS `light`/`dark`. Ces deux fonds viennent de CARTO, qui exige
+       * désormais une clé : leurs tuiles reviennent barrées d'un filigrane « API KEY
+       * REQUIRED » répété en diagonale sur toute la carte. Constaté le 2026-09-07 sur le
+       * rendu réel — le service répond bien `200`, avec la tuile marquée, donc rien ne
+       * signalait la panne côté code.
+       */
+      style: 'osm',
       // Aucun contrôle de géolocalisation : la position du DÉPÔT n'a rien à faire
       // ici, et le navigateur demanderait une permission que rien ne justifie.
       withNavigationControl: true,
