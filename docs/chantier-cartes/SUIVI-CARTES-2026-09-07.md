@@ -238,7 +238,11 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
 | `c4d6b9d4` `95f86cf5` | B1+B4, B3 | 20:00 | `lv-pastille`, `991b1b` |
 | `0ce1e70c` `ad5b12bc` `11c44103` | B2a, B2b, B2c (+ `3fb96da9` d'une autre session) | 20:40 (second lancement, le premier n'avait pas recréé les conteneurs) | `speedsKmh` ×4 dans l'API, `pj-legende`, `tr-legende-v`, `pr-legende-v` |
 | `df9905cf` `7f184173` | C, D1, E1, E2 | 21:05 | `mp-legende-b`, `pm-boite` |
-| `1e3841c0` | R1+R2 : infobulle, légende hors des commandes | 08/09 01:22 (conteneurs recréés 23:22:46Z) | chunk de la carte reconstruit (`mp-legende-b` dans un nouveau chunk), `right: 56px` présent |
+| `1e3841c0` | R1+R2 : infobulle, légende hors des commandes | 08/09 01:22 (conteneurs recréés 23:22:46Z) | `chunk-XOA6VNXP.js` : `"right","56px"` présent, `glissez` absent (0) — puis **contre-vérifié à l'écran** |
+
+**Le chantier est terminé.** Les six tâches (A, B1+B4, B3, B2, C, D1, E) et les deux défauts de
+recette (R1, R2) sont passés par les cinq niveaux, jusqu'à la mesure en production. Restent
+seulement les points de la section 8, qui appartiennent au propriétaire.
 
 ⚠️ Un `docker compose up -d --build` a rendu la main avec exit 0 SANS recréer les conteneurs
 (20:25) : les images n'avaient pas été reconstruites. Toujours lire l'artefact ; relancer si
@@ -268,11 +272,25 @@ Recette de production du 08/09 (00:30-01:20), session du propriétaire, deux son
 - [x] **R1 — L'infobulle du repère disait encore « glissez pour déplacer »** alors que le
       glisser est retiré (E1). Vu en simulant le glisser : 0 px de déplacement, mais le `title`
       promettait le geste. Corrigé : `title = nom`, plus de curseur « grab ».
+      **Contre-vérifié en production le 08/09** (service worker retiré et 11 caches purgés
+      d'abord, société cdef31, 12 repères) : aucun `title` ne contient « glissez », les
+      infobulles ne portent que le nom, le curseur est `pointer` partout, et un glisser simulé
+      de 120 × 70 px donne **0 px de déplacement**, `transform` inchangé, **0 requête**
+      `/api/fleet-places`, aucun message de confirmation.
 - [x] **R2 — La pastille « Légende » repliée chevauchait les commandes MapLibre** (zoom,
       boussole, posées en bas à droite) : zone commune de 19 px mesurée à 768 et 1920 px par
       la sonde de collision, confirmée par `elementFromPoint`. Corrigé : HUD décalé à
       `right: 56px`, à gauche des commandes. Absent à 375 (HUD masqué) et invisible à 1440
       seulement par chance de hauteur.
+      **Contre-vérifié en production le 08/09**, repliée ET dépliée, à 768, 1440 et 1920 px :
+      **0 collision**, **15 px d'écart** entre le bord droit de la légende et le bord gauche
+      des commandes à chaque largeur. Test de touche : le centre du bouton « Légende » atteint
+      la légende, le centre de « Zoomer » atteint le bouton de zoom. Légende dépliée : cinq
+      bandes et cinq repères ; repliée de nouveau, préférence réécrite à `true`.
+
+⚠️ **Le service worker sert l'ancien paquet** : sans le purger, cette contre-vérification
+aurait jugé le paquet d'avant le correctif. Toujours le retirer avant de juger une correction
+d'interface (piège 0.6 du dossier de reprise).
 
 Écartés, préexistants et hors chantier :
 - « Toutes les sociétés » élidé dans la puce du sélecteur à 375 et 768 px (`w 96 / sw 101`) :
