@@ -219,6 +219,36 @@ describe("transformations de l'import de démonstration", () => {
     expect(analyse.detail).toEqual({ texte: 'AB-123-CD', liste: ['x'] });
   });
 
+  it("Alert : le nom de la zone citée est remplacé, même si la zone n'existe plus", () => {
+    const ctx = contexte();
+    // Le cas réel : 536 alertes citaient « CDEF425 » alors que la société source n'a plus aucune
+    // géofence — rien ne permettait de retrouver l'entité, seule la CITATION peut être remplacée.
+    const sortie = transformerAlerte(
+      ligneSource('Alert', {
+        id: 'al-z', vehicleId: null, trackerId: null, tripId: null,
+        title: 'Sortie de la zone "CDEF425"', message: 'Zone: CDEF425 (100m)', payload: { zone: 'CDEF425' },
+      }) as never,
+      ctx,
+    );
+    expect(sortie.title).toBe('Sortie de la zone "Zone A"');
+    expect(sortie.message).toBe('Zone: Zone A (100m)');
+    expect(sortie.payload).toEqual({ zone: 'Zone A' });
+
+    // Le MÊME nom garde la MÊME étiquette : deux alertes de la même zone restent cohérentes.
+    const meme = transformerAlerte(
+      ligneSource('Alert', { id: 'al-z2', vehicleId: null, trackerId: null, tripId: null, title: 'Entree dans la zone "cdef425"', message: null, payload: null }) as never,
+      ctx,
+    );
+    expect(meme.title).toBe('Entree dans la zone "Zone A"');
+
+    // Un autre nom reçoit une autre étiquette.
+    const autre = transformerAlerte(
+      ligneSource('Alert', { id: 'al-z3', vehicleId: null, trackerId: null, tripId: null, title: 'Sortie de la zone "Test CDEF425"', message: null, payload: null }) as never,
+      ctx,
+    );
+    expect(autre.title).toBe('Sortie de la zone "Zone B"');
+  });
+
   it('Alert : titre, message et charge utile assainis, acquitteur effacé, trajet hors fenêtre → null', () => {
     const ctx = contexte();
     ctx.ids.marquer('Vehicle', 'v-1');

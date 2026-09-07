@@ -74,6 +74,8 @@ export class Correspondances {
  */
 export class Assainisseur {
   private readonly regles: Array<{ motif: RegExp; par: string }> = [];
+  /** Noms d'entités CITÉS dans un texte d'alerte → leur étiquette de démo. Cf. `texteAlerte`. */
+  private readonly zonesCitees = new Map<string, string>();
 
   /** Une correspondance source → démo. Les plaques sont aussi reconnues sans tirets ni espaces. */
   ajouter(source: string, par: string): void {
@@ -99,6 +101,63 @@ export class Assainisseur {
     return t === null ? null : this.texte(t);
   }
 
+  /**
+   * ══ LE TEXTE D'UNE ALERTE CITE DES ENTITÉS QUE PLUS RIEN NE PERMET DE RETROUVER ═══════════
+   *
+   * Une alerte de géofence porte le nom de la zone franchie DANS SON TITRE : « Sortie de la zone
+   * "CDEF425" », et dans son message : « Zone: CDEF425 (100m) ». Ce nom a été figé à l'écriture
+   * de l'alerte, il y a des mois.
+   *
+   * ⚠️ ET LA ZONE N'EXISTE PLUS. Mesuré le 2026-09-07 sur le premier import réel : 536 alertes
+   * citaient « CDEF425 » et « Test CDEF425 » alors que la société source n'a plus AUCUNE
+   * géofence. Remplacer les noms des zones vivantes — ce que fait déjà l'import — ne pouvait
+   * donc rien y faire : il n'y avait rien à mettre en face.
+   *
+   * On ne cherche pas à identifier l'entité : on remplace la CITATION. Chaque nom distinct reçoit
+   * une étiquette stable (« Zone A », « Zone B »…), pour que deux alertes de la même zone restent
+   * cohérentes entre elles. Les lettres les distinguent des zones vivantes, numérotées.
+   */
+  texteAlerte(t: string): string {
+    return this.texte(t)
+      .replace(/"([^"\n]{1,80})"/g, (_m, nom: string) => `"${this.pseudoZone(nom)}"`)
+      .replace(
+        /(\bZone\s*:\s*)([^()\n]{1,80}?)(\s*\(|\s*$)/gi,
+        (_m, avant: string, nom: string, apres: string) => `${avant}${this.pseudoZone(nom)}${apres}`,
+      );
+  }
+
+  texteAlerteOuNull(t: string | null): string | null {
+    return t === null ? null : this.texteAlerte(t);
+  }
+
+  /**
+   * Même parcours que `json`, avec la règle des alertes sur chaque chaîne.
+   *
+   * Une valeur JSON porte le nom NU, sans guillemets — `{ "zone": "CDEF425" }` — que les motifs
+   * de `texteAlerte` ne peuvent pas voir. On rattrape donc les chaînes qui sont EXACTEMENT un nom
+   * déjà cité ailleurs dans la même alerte (le titre est traité en premier). On ne baptise jamais
+   * une chaîne inconnue : sinon un simple `{"type":"OVERSPEED"}` deviendrait une « zone ».
+   */
+  jsonAlerte(v: Prisma.JsonValue): Prisma.JsonValue {
+    if (typeof v === 'string') return this.zonesCitees.get(v.trim().toLowerCase()) ?? this.texteAlerte(v);
+    if (Array.isArray(v)) return v.map((x) => this.jsonAlerte(x));
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, this.jsonAlerte(x as Prisma.JsonValue)]));
+    }
+    return v;
+  }
+
+  /** Étiquette stable d'un nom de zone cité : le même nom rend toujours la même étiquette. */
+  private pseudoZone(nom: string): string {
+    const cle = nom.trim().toLowerCase();
+    let etiquette = this.zonesCitees.get(cle);
+    if (!etiquette) {
+      etiquette = `Zone ${etiquetteAlpha(this.zonesCitees.size)}`;
+      this.zonesCitees.set(cle, etiquette);
+    }
+    return etiquette;
+  }
+
   /** Parcourt récursivement un JSON et assainit chaque chaîne. */
   json(v: Prisma.JsonValue): Prisma.JsonValue {
     if (typeof v === 'string') return this.texte(v);
@@ -112,6 +171,18 @@ export class Assainisseur {
 
 function echapper(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** A, B … Z, AA, AB … — les étiquettes des zones citées, en lettres pour ne pas les confondre
+ *  avec les zones VIVANTES de la démo, qui sont numérotées. */
+function etiquetteAlpha(index: number): string {
+  let n = index;
+  let s = '';
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
 }
 
 /** Un JSON source vers l'entrée d'écriture Prisma (null explicite → `JsonNull`). */
@@ -584,9 +655,11 @@ export function transformerAlerte(src: Alert, ctx: Contexte): Prisma.AlertCreate
     tripId: ctx.ids.siImporte('Trip', src.tripId),
     type: src.type,
     severity: src.severity,
-    title: ctx.assainisseur.texte(src.title),
-    message: ctx.assainisseur.texteOuNull(src.message),
-    payload: src.payload === null ? Prisma.JsonNull : (ctx.assainisseur.json(src.payload) as Prisma.InputJsonValue),
+    // `texteAlerte` et non `texte` : le titre et le message CITENT le nom de la zone franchie,
+    // qui n'existe souvent plus dans la source. Cf. `Assainisseur.texteAlerte`.
+    title: ctx.assainisseur.texteAlerte(src.title),
+    message: ctx.assainisseur.texteAlerteOuNull(src.message),
+    payload: src.payload === null ? Prisma.JsonNull : (ctx.assainisseur.jsonAlerte(src.payload) as Prisma.InputJsonValue),
     latitude: src.latitude,
     longitude: src.longitude,
     acknowledgedAt: src.acknowledgedAt,
