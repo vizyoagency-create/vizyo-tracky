@@ -7,6 +7,7 @@ import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { retourSur } from '../auth/retour-interne';
 import { AuthService } from './auth.service';
 import { FleetFilterService } from './fleet-filter.service';
 import { NotificationsApiService } from './notifications.service';
@@ -537,7 +538,18 @@ export class RealtimeService {
     this.connectErrorRefreshFailures = 0;
     this.disconnect();
     this.auth.logout();
-    void this.router.navigate(['/login']);
+    /**
+     * ⚠️ « EXACTEMENT COMME L'INTERCEPTEUR HTTP » CI-DESSUS — ET ÇA NE L'ÉTAIT PLUS. Le lot
+     * des liens profonds a appris à l'intercepteur à garder l'adresse en cours ; cette
+     * porte-là, elle, la jetait encore.
+     *
+     * Ce n'est pas la moins fréquente des deux : c'est la carte live et la fiche véhicule qui
+     * tiennent une socket, donc précisément les écrans qu'une notification d'excès ouvre. Sur
+     * ces pages, le WS voit la session morte AVANT le premier appel HTTP — la réparation
+     * d'à-côté n'aurait jamais joué.
+     */
+    const retour = retourSur(this.router.url);
+    void this.router.navigate(['/login'], retour ? { queryParams: { returnUrl: retour } } : {});
   }
 
   /**

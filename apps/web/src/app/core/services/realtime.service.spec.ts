@@ -115,7 +115,7 @@ class RealtimeServiceTestable extends RealtimeService {
 describe('TRK-050 — câblage : le vrai handler connect_error', () => {
   let service: RealtimeServiceTestable;
   let auth: { tryRefresh: jasmine.Spy; refreshUnavailable: jasmine.Spy; logout: jasmine.Spy; token: string | null };
-  let router: { navigate: jasmine.Spy };
+  let router: { navigate: jasmine.Spy; url: string };
 
   beforeEach(() => {
     auth = {
@@ -125,7 +125,7 @@ describe('TRK-050 — câblage : le vrai handler connect_error', () => {
       logout: jasmine.createSpy('logout'),
       token: 'jeton-de-test',
     };
-    router = { navigate: jasmine.createSpy('navigate').and.resolveTo(true) };
+    router = { navigate: jasmine.createSpy('navigate').and.resolveTo(true), url: '/dashboard' };
 
     TestBed.configureTestingModule({
       providers: [
@@ -171,7 +171,7 @@ describe('TRK-050 — câblage : le vrai handler connect_error', () => {
 
     await service.faux.declencher('connect_error', new Error('unauthorized'));
     expect(auth.logout).toHaveBeenCalledTimes(1);
-    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+    expect(router.navigate).toHaveBeenCalledWith(['/login'], { queryParams: { returnUrl: '/dashboard' } });
   });
 
   it('🔴 LE COMPTEUR REDESCEND : deux pannes séparées par une reconnexion ne s\'additionnent pas', async () => {
@@ -201,5 +201,45 @@ describe('TRK-050 — câblage : le vrai handler connect_error', () => {
     await service.faux.declencher('connect_error', new Error('unauthorized'));
 
     expect(auth.logout).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * LA SESSION MEURT PAR LA SOCKET — ET L'ADRESSE DOIT SURVIVRE QUAND MEME
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Le lot des liens profonds a appris au garde de route et a l'intercepteur HTTP a garder
+   * l'adresse en cours. Cette porte-la, dont le commentaire dit pourtant « exactement comme
+   * l'intercepteur HTTP », la jetait encore.
+   *
+   * Ce n'est pas la moins frequente des deux : ce sont la carte live et la fiche vehicule
+   * qui tiennent une socket, donc precisement les ecrans qu'une notification d'exces ouvre.
+   * Sur ces pages, le WS voit la session morte AVANT le premier appel HTTP — la reparation
+   * d'a-cote n'aurait jamais joue.
+   */
+  async function expirerLaSession(): Promise<void> {
+    auth.refreshUnavailable.and.returnValue(false); // le serveur repond, et il REFUSE
+    for (let i = 0; i < 3; i++) {
+      await service.faux.declencher('connect_error', new Error('unauthorized'));
+    }
+  }
+
+  it('le trajet ouvert depuis une notification est reporte sur la connexion', async () => {
+    router.url = '/vehicles/v1?tab=reports&trip=t1&tripDate=2026-09-06&alert=a1';
+
+    await expirerLaSession();
+
+    expect(router.navigate).toHaveBeenCalledWith(
+      ['/login'],
+      { queryParams: { returnUrl: '/vehicles/v1?tab=reports&trip=t1&tripDate=2026-09-06&alert=a1' } },
+    );
+  });
+
+  it('depuis la page de connexion elle-meme, aucun retour : ce serait une boucle', async () => {
+    router.url = '/login';
+
+    await expirerLaSession();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/login'], {});
   });
 });
