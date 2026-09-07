@@ -58,7 +58,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
 import { RealtimeService } from '../../core/services/realtime.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
-import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
+import { PreferencesService, type AffichageLieux, type CameraMode } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService } from '../../core/services/engine-control.service';
@@ -99,7 +99,9 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
  * flotte) qui posaient la même question trois fois sans jamais la poser en entier :
  * « combien de lieux je veux voir ? ». Il ne double pas ces calques — il les pilote.
  */
-type AffichageLieux = 'masques' | 'discrets' | 'tous';
+// ⚠️ Le type vit desormais dans le service de preferences : ce reglage est MEMORISE.
+// Le redeclarer ici ferait diverger les deux definitions en silence.
+export type { AffichageLieux };
 
 /** Géométrie d'un repère de lieu selon le mode. En discret, il cède le pas. */
 const GEOMETRIE_LIEU: Record<'discrets' | 'tous', { taille: number; z: number; police: number }> = {
@@ -253,6 +255,29 @@ const RESYNC_RADIUS_M = 150;
   imports: [DecimalPipe, NgTemplateOutlet, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
+
+    <!-- ════════════════════════════════════════════════════════════
+         CARTE INTERROMPUE — perte du contexte WebGL
+         Le navigateur a repris le contexte graphique (pilote qui redemarre, pression
+         memoire, bascule entre GPU). Ce n'est ni une panne du produit ni une faute de
+         l'utilisateur, mais la carte est gelee : il faut le DIRE, et dire quoi faire.
+         Avant : un « Une erreur est survenue » generique, sur une carte noire.
+         ════════════════════════════════════════════════════════════ -->
+    @if (carteInterrompue()) {
+      <div class="mp-interrompue" role="status" aria-live="polite">
+        <div class="mp-interrompue-boite">
+          <p class="mp-interrompue-titre">Affichage de la carte interrompu</p>
+          <p class="mp-interrompue-texte">
+            Votre navigateur a suspendu l'affichage graphique. Les vehicules continuent d'etre
+            suivis&nbsp;: seul le rendu est en pause. La carte se retablit d'elle-meme des que
+            le navigateur rend la main.
+          </p>
+          <button type="button" class="mp-interrompue-b" (click)="rechargerPage()">
+            Recharger maintenant
+          </button>
+        </div>
+      </div>
+    }
 
     <!-- ════════════════════════════════════════════════════════════
          MOBILE TOP BAR (chip statut + boutons recherche/actions)
@@ -1435,6 +1460,38 @@ const RESYNC_RADIUS_M = 150;
     />
   `,
   styles: [`
+    /* ── CARTE INTERROMPUE (perte du contexte WebGL) ────────────────────────────────
+       ⚠️ AUCUN ACCENT GRAVE DANS CE BLOC : on est dans un litteral gabarit, un seul le
+       refermerait et la compilation echouerait tres loin d'ici sans nommer la cause.
+
+       Le bandeau se pose AU-DESSUS de la carte gelee, mais ne la masque pas entierement :
+       les marqueurs restent visibles dessous. On informe, on ne confisque pas. */
+    .mp-interrompue {
+      position: absolute; inset: 0; z-index: 30;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px; pointer-events: none;
+      background: color-mix(in srgb, var(--bg-primary) 55%, transparent);
+      backdrop-filter: blur(2px);
+    }
+    .mp-interrompue-boite {
+      pointer-events: auto; max-width: 380px; padding: 18px 20px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card); box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+      text-align: center;
+    }
+    .mp-interrompue-titre {
+      margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--fg-primary);
+    }
+    .mp-interrompue-texte {
+      margin: 0 0 14px; font-size: 13px; line-height: 1.55; color: var(--fg-secondary);
+    }
+    .mp-interrompue-b {
+      min-height: 44px; padding: 0 18px; border-radius: 12px; cursor: pointer;
+      background: var(--tracky-light); border: none;
+      color: #04150F; font-size: 13px; font-weight: 700;
+    }
+    .mp-interrompue-b:hover { filter: brightness(1.06); }
+
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
        Mesuré à 375 px : les pastilles de la feuille (10 par écran), sa croix de
        fermeture, le compteur d'actifs et les deux boutons flottants. La carte est
@@ -2972,7 +3029,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
      Ce signal ne DOUBLE pas les trois calques — il les PILOTE. Ils restent la
      source de vérité pour le rendu, le chargement et le comptage de filtres
      actifs ; sans quoi un état sur deux finirait par mentir à l'autre. */
-  protected readonly lieuxAffichage = signal<AffichageLieux>('tous');
+  /**
+   * ⚠️ LU DANS LES PRÉFÉRENCES, PAS FIGÉ À « TOUS ».
+   *
+   * Le défaut du produit est désormais « discrets » : sur une flotte réelle, les trois familles
+   * de repères en taille pleine couvrent la ville et la carte cesse de montrer ce qu'on vient y
+   * chercher. Et le choix de l'utilisateur est RETENU — il vivait dans ce signal seul, donc
+   * repasser en « Tous » ou en « Masqués » ne tenait pas au-delà du rechargement.
+   */
+  protected readonly lieuxAffichage = signal<AffichageLieux>(this.preferences.prefs().map.lieuxAffichage);
   protected readonly MODES_LIEUX: ReadonlyArray<{ id: AffichageLieux; label: string }> = [
     { id: 'masques', label: 'Masqués' },
     { id: 'discrets', label: 'Discrets' },
@@ -2982,7 +3047,22 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected reglerAffichageLieux(mode: AffichageLieux): void {
     if (this.lieuxAffichage() === mode) return;
     this.lieuxAffichage.set(mode);
-    const visible = mode !== 'masques';
+    // Le choix survit au rechargement : sans ça, « Discrets » est à reposer à chaque visite,
+    // et le réglage ne sert qu'à la session en cours.
+    this.preferences.update({ map: { ...this.preferences.prefs().map, lieuxAffichage: mode } });
+    this.appliquerModeLieux();
+  }
+
+  /**
+   * Aligne les trois calques de repères et leur géométrie sur le mode COURANT.
+   *
+   * ⚠️ Appelé aussi au CHARGEMENT de la carte, et c'est la raison d'être de l'extraction : le
+   * mode est désormais mémorisé, donc il peut valoir « masqués » alors que les trois bascules
+   * démarrent à `true`. Sans cet appel, un utilisateur qui a masqué les lieux les retrouverait
+   * à chaque visite — le réglage aurait l'air de ne pas tenir.
+   */
+  private appliquerModeLieux(): void {
+    const visible = this.lieuxAffichage() !== 'masques';
     // On passe par les bascules existantes : elles portent le chargement des données,
     // la visibilité des couches MapLibre et la fermeture des cards devenues orphelines.
     if (this.showFuelStations() !== visible) this.toggleFuelStations();
@@ -2998,12 +3078,77 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /* ═══ PERTE DE CONTEXTE WEBGL ════════════════════════════════════════════════════════
+     Le navigateur peut retirer le contexte WebGL d'un onglet à tout moment : pilote
+     graphique qui redémarre, machine sous pression mémoire, portable qui bascule entre
+     GPU intégré et dédié, onglet longtemps en arrière-plan. Ce n'est ni une erreur de
+     l'application ni une action de l'utilisateur — c'est une décision du système.
+
+     ⚠️ CE QUE MAPLIBRE FAIT ALORS (5.24, `maplibre-gl.js`) :
+
+         this.style.destroy(), this.style = null, this.fire(new Event('webglcontextlost'))
+
+     L'objet `Map` reste bien vivant : toutes les gardes `if (!this.map) return` du fichier
+     passent. Mais `map.getSource(...)` lit `this.style.getSource(...)` et lève désormais
+     « Cannot read properties of null ». Il y a DIX-NEUF appels `getSource` ici.
+
+     ── CE QUE ÇA DONNAIT, MESURÉ ────────────────────────────────────────────────────────
+
+     Constaté en production le 2026-09-07 chez un client (`standard@cdef31.org`, société
+     cdef31, page /map) : deux `[uncaught] TypeError` remontés au centre d'alerte. Reproduit
+     ensuite au navigateur en forçant `WEBGL_lose_context.loseContext()` : QUATRE-VINGT-DIX
+     erreurs identiques, une par cycle de rendu, chacune postée au serveur — et une carte
+     noire, sans tuiles, avec ses marqueurs DOM orphelins flottant sur le vide. Le seul
+     message affiché était « Une erreur est survenue », qui ne dit pas que la carte est morte
+     ni qu'il faut la relancer.
+
+     ── CE QU'ON FAIT ────────────────────────────────────────────────────────────────────
+
+     1. On ÉCOUTE la perte, et on cesse de toucher aux sources : plus une seule exception.
+     2. On le DIT, et on dit quoi faire — un bandeau, pas un toast générique.
+     3. On RÉCUPÈRE : le navigateur rend souvent le contexte quelques secondes plus tard
+        (`webglcontextrestored`), et la carte se reconstruit alors toute seule.
+
+     `preventDefault()` sur l'événement de perte est OBLIGATOIRE : sans lui, le navigateur ne
+     tente JAMAIS la restauration, et le point 3 ne se produirait pas. */
+
+  /**
+   * Vrai entre la perte du contexte WebGL et sa restauration. Pilote le bandeau, et
+   * surtout la garde `carteUtilisable()`.
+   */
+  protected readonly carteInterrompue = signal(false);
+
+  /**
+   * La carte est-elle en état de recevoir des ordres ?
+   *
+   * ⚠️ `this.map` NON NUL NE SUFFIT PAS — c'est tout le piège. Après une perte de contexte,
+   * la référence est intacte et le style est à `null`. On teste donc l'état réel, pas la
+   * présence de l'objet.
+   */
+  /**
+   * Recharge la page — la seule issue sûre quand le navigateur ne rend pas le contexte.
+   *
+   * ⚠️ Le bandeau propose ce geste sans l'imposer : la restauration automatique est le cas
+   * FRÉQUENT, et recharger d'office ferait perdre la position de la carte, les filtres et la
+   * card ouverte pour une interruption qui aurait duré deux secondes.
+   */
+  protected rechargerPage(): void {
+    window.location.reload();
+  }
+
+  private carteUtilisable(): boolean {
+    if (!this.map || this.carteInterrompue()) return false;
+    // `style` est typé non-nullable par MapLibre, et pourtant la bibliothèque le met à null
+    // elle-même sur `webglcontextlost`. On lit donc la valeur réelle, pas le type déclaré.
+    return !!(this.map as unknown as { style?: unknown }).style;
+  }
+
   /**
    * Les stations détectées sont une COUCHE MapLibre, pas du DOM : leur taille se règle
    * en propriété de peinture, pas en CSS.
    */
   private appliquerDiscretionStations(): void {
-    if (!this.map || !this.map.getLayer('fuel-stations-circle')) return;
+    if (!this.map || !this.carteUtilisable() || !this.map.getLayer('fuel-stations-circle')) return;
     const discret = this.lieuxAffichage() === 'discrets';
     this.map.setPaintProperty('fuel-stations-circle', 'circle-radius', discret
       ? ['interpolate', ['linear'], ['get', 'visits'], 1, 6, 5, 9, 15, 13]
@@ -3315,7 +3460,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const filtered = ids === 'ALL'
       ? all
       : all.filter((p) => (ids as Set<string>).has(p.vehicleId));
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     this.applyPositions(this.applyFilters(filtered));
   });
 
@@ -3423,7 +3568,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   /** Centre sur le véhicule demandé et libère la demande. Appelé aussi à la fin du chargement
    *  de la carte, pour ne pas dépendre du prochain rafraîchissement de positions. */
   private consumeFlyTo(vehicleId: string, positions = this.realtime.positionsList()): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const pos = positions.find((p) => p.vehicleId === vehicleId);
     if (pos) {
       this.followedVehicleId.set(vehicleId);
@@ -3572,6 +3717,35 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // ci-dessous). Les markers véhicule sont des éléments DOM frères → toujours capturés.
     this.map.getCanvas().setAttribute('data-no-track', '');
 
+    /* ── PERTE ET RETOUR DU CONTEXTE WEBGL ─────────────────────────────────────────────
+       Voir le long commentaire de `carteInterrompue`. En deux mots : le navigateur peut
+       retirer le contexte à tout moment, MapLibre met alors son style à `null`, et les
+       dix-neuf `getSource` de ce fichier se mettent à lever — quatre-vingt-dix fois par
+       minute, mesuré. On coupe court, on le dit, et on répare quand le contexte revient. */
+    this.map.on('webglcontextlost', () => {
+      this.carteInterrompue.set(true);
+      // ⚠️ AUCUN `preventDefault()` ICI : MapLibre l'appelle déjà dans son propre
+      // gestionnaire (`_contextLost`). Le rappeler ne changerait rien ; l'oublier ne
+      // changerait rien non plus — mais le CROIRE nécessaire ferait chercher au mauvais
+      // endroit le jour où la restauration ne se produit pas.
+    });
+
+    this.map.on('webglcontextrestored', () => {
+      /**
+       * ⚠️ MAPLIBRE NE RESTAURE QUE SON PROPRE STYLE. Son avertissement est explicite :
+       * « You will need to re-add them manually after context restoration ». Il relance un
+       * `setStyle`, donc nos sources et nos couches ont disparu — il faut les reposer.
+       *
+       * On attend `styledata` : reposer nos couches avant que le style de base soit en place
+       * les ferait balayer par celui qui arrive, et la carte reviendrait vide en silence —
+       * c'est-à-dire réparée en apparence seulement.
+       */
+      this.carteInterrompue.set(false);
+      if (!this.map) return;
+      if (this.map.isStyleLoaded()) this.recreerCouches();
+      else this.map.once('styledata', () => this.recreerCouches());
+    });
+
     // Setup sources/layers de base apres `load`.
     this.map.on('load', () => {
       this.setupGeofencesLayer();
@@ -3588,6 +3762,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       this.applyClusterVisibility();
+      // Le mode « lieux » est MÉMORISÉ : on l'applique dès l'ouverture, sinon les repères
+      // sortent en taille pleine quel que soit le choix retenu, et « masqués » ne tient pas.
+      this.appliquerModeLieux();
       this.restoreFromUrl();
       // Demande de centrage arrivée d'une AUTRE page (vignette dashboard) avant que la carte
       // n'existe : on la consomme dès que la carte est prête, sans attendre une nouvelle trame.
@@ -3908,7 +4085,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private updateUserMarker(coords: { lat: number; lng: number }): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     if (this.userMarker) {
       this.userMarker.setLngLat([coords.lng, coords.lat]);
       return;
@@ -3946,7 +4123,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   protected setStyle(id: MapStyleId): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     // V1.10 (Sprint 3 perf) — garde-fou anti-race : si un setStyle est encore
     // en cours de re-setup des sources, on ignore l'appel suivant. Sans ca,
     // un user qui clique 2 fois sur 2 styles dans la palette empilait des
@@ -3964,28 +4141,48 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Apres setStyle, les sources custom (geofences/trails) sont perdues — on les recree.
     this.map.once('styledata', () => {
       try {
-        this.setupGeofencesLayer();
-        this.setupTrailsLayer();
-        this.setupMiniReplayLayer();
-        this.setupMeasureLayer();
-        this.setupStopsLayer();
-        this.setupHeatmapLayer();
-        this.setupFuelStationsLayer();
-        this.setupClusterLayer();
-        this.loadGeofences();
-        this.applyPositions(this.applyFilters(this.realtime.positionsList()));
-        this.applyClusterVisibility();
-        // Mini-replay : si actif, recharger.
-        const vid = this.miniReplayVehicleId();
-        if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
-        this.refreshMeasureLayer();
-        if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
-        if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
-        this.loadDeadZones().catch(() => { /* silent */ });
+        this.recreerCouches();
       } finally {
         this.styleChangeInFlight = false;
       }
     });
+  }
+
+  /**
+   * Recrée TOUTES les sources et couches personnalisées, puis les repeuple.
+   *
+   * ⚠️ EXTRAITE POUR ÊTRE REJOUÉE, pas par goût du découpage. Deux événements détruisent le
+   * style de MapLibre et emportent tout ce qu'on y avait posé :
+   *
+   *   · un changement de fond de carte (`setStyle`) — le cas connu, déjà traité ;
+   *   · une PERTE DE CONTEXTE WEBGL — le cas qui manquait, et qui casse la carte d'un client
+   *     sans qu'il puisse rien y faire (cf. `initMap`).
+   *
+   * Écrire la séquence deux fois aurait garanti qu'elles divergent : la seconde aurait oublié
+   * un calque, et l'oubli ne se serait vu que chez quelqu'un dont le pilote graphique a
+   * hoqueté — c'est-à-dire jamais en recette.
+   */
+  private recreerCouches(): void {
+    if (!this.map || !this.carteUtilisable()) return;
+    this.setupGeofencesLayer();
+    this.setupTrailsLayer();
+    this.setupMiniReplayLayer();
+    this.setupMeasureLayer();
+    this.setupStopsLayer();
+    this.setupHeatmapLayer();
+    this.setupFuelStationsLayer();
+    this.setupClusterLayer();
+    this.loadGeofences();
+    this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+    this.applyClusterVisibility();
+    // Mini-replay : si actif, recharger.
+    const vid = this.miniReplayVehicleId();
+    if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
+    this.refreshMeasureLayer();
+    if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
+    if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
+    this.loadDeadZones().catch(() => { /* silent */ });
+    this.appliquerModeLieux();
   }
 
   /**
@@ -4000,7 +4197,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * mode mini (markers riches meme a faible zoom).
    */
   private applyClusterVisibility(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const z = this.map.getZoom();
 
     // Hysteresis : pas de toggle si on est dans la zone tampon [9.5, 10.5].
@@ -4054,6 +4251,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint D.2 — toggle l'affichage de la derniere heure pour un vehicule. */
   protected async toggleMiniReplay(vehicleId: string): Promise<void> {
+    // ⚠️ `this.map?.` ne protège que d'une carte NULLE. Après une perte de contexte WebGL, la
+    // référence est intacte et c'est `style` qui est à null : `getSource` lève quand même.
+    if (!this.carteUtilisable()) return;
     if (this.miniReplayVehicleId() === vehicleId) {
       this.miniReplayVehicleId.set(null);
       const src = this.map?.getSource('mini-replay') as GeoJSONSource | undefined;
@@ -4065,7 +4265,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private async loadMiniReplay(vehicleId: string): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     try {
       const fromIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const res = await firstValueFrom(
@@ -4108,6 +4308,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private refreshMeasureLayer(): void {
+    // Même piège : l'optionnel ne couvre que la carte nulle, pas la carte sans style.
+    if (!this.carteUtilisable()) return;
     const src = this.map?.getSource('measure') as GeoJSONSource | undefined;
     if (!src) return;
     const pts = this.measurePoints();
@@ -4128,7 +4330,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint D.5 — copie une URL avec la vue carte courante (lat/lng/zoom/bearing/pitch/style). */
   protected async shareUrl(): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const c = this.map.getCenter();
     const params = new URLSearchParams({
       lat: c.lat.toFixed(6), lng: c.lng.toFixed(6),
@@ -4147,7 +4349,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private restoreFromUrl(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const params = this.route.snapshot.queryParamMap;
     const lat = parseFloat(params.get('lat') ?? '');
     const lng = parseFloat(params.get('lng') ?? '');
@@ -4187,7 +4389,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private cinemaTick(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const list = this.cinemaCandidates();
     if (list.length === 0) {
       // Tant qu'on n'a RIEN reçu (hydratation en cours, reconnexion WS), une liste vide ne
@@ -4420,7 +4622,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   protected resetNorth(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     this.mapSvc.resetNorth(this.map);
   }
 
@@ -4478,7 +4680,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint G.4 — charge les positions des 24h pour densite. */
   private async loadHeatmap(): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const fromIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const ids = this._accessibleIds();
     const vehiclesToScan = (ids === 'ALL'
@@ -4518,7 +4720,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint G.5 — verrouille / deverrouille le pan de la carte. Zoom + rotation restent libres. */
   protected toggleLock(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const next = !this.mapLocked();
     this.mapLocked.set(next);
     if (next) {
@@ -4551,7 +4753,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * au centre de chaque cluster.
    */
   private async loadStops(): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const STOP_MIN_DURATION_MS = 5 * 60 * 1000;
     const STOP_MAX_RADIUS_M = 50;
     const STOP_MAX_SPEED = 2; // km/h — bruit GPS tolere
@@ -4656,14 +4858,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private setLayerVisibility(layerId: string, visible: boolean): void {
-    if (!this.map?.getLayer(layerId)) return;
+    if (!this.carteUtilisable() || !this.map?.getLayer(layerId)) return;
     this.map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
   }
 
   /* --- Sources/layers --- */
 
   private setupGeofencesLayer(): void {
-    if (!this.map || this.map.getSource('geofences')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('geofences')) return;
     this.map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     this.map.addLayer({
       id: 'geofences-fill',
@@ -4684,7 +4886,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private setupTrailsLayer(): void {
-    if (!this.map || this.map.getSource('trails')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('trails')) return;
     this.map.addSource('trails', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     this.map.addLayer({
       id: 'trails-line',
@@ -4701,7 +4903,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint D.2 — setup layer pour la polyligne historique 1h (couleur bleue distincte du trail live). */
   private setupMiniReplayLayer(): void {
-    if (!this.map || this.map.getSource('mini-replay')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('mini-replay')) return;
     this.map.addSource('mini-replay', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     this.map.addLayer({
       id: 'mini-replay-line',
@@ -4722,7 +4924,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * Au-dela, les markers DOM riches (heading, plaque, ACC) reapparaissent.
    */
   private setupClusterLayer(): void {
-    if (!this.map || this.map.getSource('vehicles-cluster')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('vehicles-cluster')) return;
     // V1.10 (Sprint 3 perf) — cleanup des listeners precedents avant re-setup
     // apres setStyle. Sans ca, chaque setStyle empilait 4 listeners residuels
     // sur des layers detruits (memory + comportement double-trigger occasionnel).
@@ -4791,7 +4993,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // pour pouvoir les .off() avant le prochain setupClusterLayer (post-setStyle)
     // ou au ngOnDestroy.
     const clickClusterBg = (e: maplibregl.MapMouseEvent & maplibregl.MapLayerEventType['click']) => {
-      if (!this.map) return;
+      if (!this.map || !this.carteUtilisable()) return;
       const feat = e.features?.[0];
       const clusterId = feat?.properties?.['cluster_id'];
       if (clusterId == null) return;
@@ -4799,7 +5001,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.activityTracker.trackClick('Carte · zoom cluster');
       const src = this.map.getSource('vehicles-cluster') as maplibregl.GeoJSONSource;
       Promise.resolve(src.getClusterExpansionZoom(clusterId)).then((zoom: number) => {
-        if (!this.map) return;
+        if (!this.map || !this.carteUtilisable()) return;
         const geom = feat?.geometry as GeoJSON.Point | undefined;
         if (!geom) return;
         this.map.flyTo({ center: geom.coordinates as [number, number], zoom, speed: 1.4, curve: 1.4 });
@@ -4809,7 +5011,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.clusterListenerCleanups.push(() => this.map?.off('click', 'vehicles-cluster-bg', clickClusterBg));
 
     const clickUnclustered = (e: maplibregl.MapMouseEvent & maplibregl.MapLayerEventType['click']) => {
-      if (!this.map) return;
+      if (!this.map || !this.carteUtilisable()) return;
       const feat = e.features?.[0];
       const geom = feat?.geometry as GeoJSON.Point | undefined;
       if (!geom) return;
@@ -4833,7 +5035,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint G.4 — setup layer heatmap des densites de positions sur 24h. */
   private setupHeatmapLayer(): void {
-    if (!this.map || this.map.getSource('positions-heatmap')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('positions-heatmap')) return;
     this.map.addSource('positions-heatmap', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     this.map.addLayer({
       id: 'positions-heatmap',
@@ -4861,7 +5063,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * quel véhicule + durée. L'ancien style (gros pictos « P » qui se chevauchaient) est remplacé.
    */
   private setupStopsLayer(): void {
-    if (!this.map || this.map.getSource('stops')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('stops')) return;
     for (const off of this.stopsListenerCleanups) off();
     this.stopsListenerCleanups = [];
     const vis: 'visible' | 'none' = this.showStops() ? 'visible' : 'none';
@@ -4912,13 +5114,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
     // Clic amas → zoom d'expansion (comme le cluster véhicules).
     const onClusterClick = (e: maplibregl.MapLayerMouseEvent) => {
-      if (!this.map) return;
+      if (!this.map || !this.carteUtilisable()) return;
       const feat = e.features?.[0];
       const clusterId = feat?.properties?.['cluster_id'];
       if (clusterId == null) return;
       const src = this.map.getSource('stops') as maplibregl.GeoJSONSource;
       Promise.resolve(src.getClusterExpansionZoom(clusterId)).then((zoom: number) => {
-        if (!this.map) return;
+        if (!this.map || !this.carteUtilisable()) return;
         const geom = feat?.geometry as GeoJSON.Point | undefined;
         if (!geom) return;
         this.map.flyTo({ center: geom.coordinates as [number, number], zoom, speed: 1.4, curve: 1.4 });
@@ -4963,7 +5165,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * de setupStopsLayer (source/layers dédiés → zéro conflit avec les markers véhicule).
    */
   private setupFuelStationsLayer(): void {
-    if (!this.map || this.map.getSource('fuel-stations')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('fuel-stations')) return;
     this.map.addSource('fuel-stations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     this.map.addLayer({
       id: 'fuel-stations-circle',
@@ -5003,7 +5205,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Charge les stations fréquentées (90 j) et alimente le calque. Best-effort (silencieux). */
   private async loadFuelStations(): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     try {
       const from = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
       const stations = await firstValueFrom(
@@ -5084,7 +5286,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * parking passe DEVANT le véhicule. Bonus : les marqueurs DOM survivent au changement de fond de carte.
    */
   private renderDeadZoneMarkers(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const zones = (this.showDeadZones() ? this.deadZonesData() : [])
       .filter((z) => Number.isFinite(z.centroidLat) && Number.isFinite(z.centroidLng));
 
@@ -5138,7 +5340,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * groupe a changé afficherait un compteur périmé.
    */
   private renderDeadZonesGroupees(zones: GpsDeadZoneMapDto[]): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const carte = this.map;
     // 2 × la taille du repère discret : deux pastilles qui ne se touchent pas
     // restent distinctes — on ne regroupe que ce qui se chevauche vraiment.
@@ -5237,7 +5439,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Charge les zones mortes de la flotte accessible (best-effort) : alimente le signal ET les pins. */
   private async loadDeadZones(): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     try {
       const zones = await firstValueFrom(this.deadZonesApi.listForMap(this.fleetFilter.selectedFleetId() ?? undefined));
       this.deadZonesData.set(zones);
@@ -5258,7 +5460,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Popup d'une zone morte au clic (véhicule, nature, fréquence). */
   private openDeadZonePopup(z: GpsDeadZoneMapDto): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
     const statusLabel = z.status === 'CONFIRMED_BENIGN'
       ? '🅿️ Parking souterrain confirmé'
@@ -5305,7 +5507,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private renderFleetPlaceMarkers(): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     // Le droit de lecture prime sur le toggle : sans `places_view`, on ne dessine jamais de lieu.
     const places = this.canViewPlaces() && this.showFleetPlaces() ? this.fleetPlaces() : [];
     const seen = new Set<string>();
@@ -5559,7 +5761,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */
   private setupMeasureLayer(): void {
-    if (!this.map || this.map.getSource('measure')) return;
+    if (!this.map || !this.carteUtilisable() || this.map.getSource('measure')) return;
     this.map.addSource('measure', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     this.map.addLayer({
       id: 'measure-line',
@@ -5578,7 +5780,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private async loadGeofences(): Promise<void> {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     try {
       const zones = await firstValueFrom(this.geofencesApi.list());
       const features: GeoJSON.Feature[] = [];
@@ -5602,7 +5804,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   /* --- Markers update --- */
 
   private applyPositions(positions: PositionUpdateEvent[]): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
 
     const nowMs = Date.now();
     const activeIds = new Set<string>();
@@ -6261,7 +6463,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sprint G.1 — saut sur un vehicule depuis les suggestions. */
   protected jumpToVehicle(vehicleId: string): void {
-    if (!this.map) return;
+    if (!this.map || !this.carteUtilisable()) return;
     const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
     const snap = this.realtime.snapshot().find((s) => s.vehicleId === vehicleId);
     const lat = pos?.lat ?? snap?.lastLat;

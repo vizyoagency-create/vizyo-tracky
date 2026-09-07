@@ -3,6 +3,15 @@ import type { MapStyleId } from './map-style.service';
 
 export type CameraMode = 'free' | 'follow' | 'heading-up' | 'chase';
 
+/**
+ * Combien de repères de lieux la carte montre : aucun, en fond, ou en premier plan.
+ *
+ * ⚠️ Déclaré ICI et non dans le composant carte, parce qu'il est désormais MÉMORISÉ. Le garder
+ * dans le composant obligerait les préférences à dépendre de lui — l'inverse de la dépendance
+ * naturelle.
+ */
+export type AffichageLieux = 'masques' | 'discrets' | 'tous';
+
 export interface NotificationPrefs {
   enabled: boolean;
   duration: number; // ms, 0 = permanent
@@ -49,6 +58,15 @@ export interface UserPreferences {
     cameraMode: CameraMode;
     /** V1.7 — si false, jamais de mode compact a faible zoom (markers riches partout). */
     compactMarkers: boolean;
+    /**
+     * Combien de REPÈRES DE LIEUX on veut voir : stations détectées, zones mortes et lieux de
+     * la flotte, pilotés ensemble par le tri-état de la planche de calques.
+     *
+     * ⚠️ MÉMORISÉ, alors qu'il ne l'était pas. Le réglage existait mais vivait dans un signal
+     * de composant : passer en « Discrets » tenait jusqu'au rechargement, puis la carte
+     * redevenait chargée. Un réglage qu'il faut reposer à chaque visite n'est pas un réglage.
+     */
+    lieuxAffichage: AffichageLieux;
   };
   /** Widgets activés et ordre d'affichage sur le tableau de bord. */
   dashboardWidgets: DashboardWidgetConfig[];
@@ -112,6 +130,18 @@ const DEFAULTS: UserPreferences = {
     showPlates: true,
     cameraMode: 'free',
     compactMarkers: true,
+    /**
+     * ⚠️ « DISCRETS » ET NON « TOUS ».
+     *
+     * Les trois familles de repères — stations détectées, zones mortes, lieux de la flotte —
+     * s'affichaient toutes en taille pleine dès l'ouverture. Sur une flotte réelle, elles
+     * couvrent la ville et la carte cesse de montrer ce qu'on vient y chercher : les véhicules.
+     *
+     * « Discrets » ne CACHE rien : les repères restent là, cliquables, simplement dimensionnés
+     * pour être un fond et non un premier plan. Qui veut la vue complète la reprend d'un clic —
+     * et, désormais, son choix est retenu.
+     */
+    lieuxAffichage: 'discrets',
   },
   dashboardWidgets: [
     { key: 'kpis', enabled: true },
