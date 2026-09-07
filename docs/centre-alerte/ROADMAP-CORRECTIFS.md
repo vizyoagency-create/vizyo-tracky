@@ -63,9 +63,13 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 49 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 51 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-06 : 2 faites · 2 déployées, preuve attendue · 2 commitées · 43 ouvertes.**
+**Au 2026-09-07 : 4 faites · 3 déployées, preuve attendue · 0 commitée · 44 ouvertes.**
+
+> 🆕 **Deux tâches neuves ce jour** — **T24** *(TRK-073)* et **T25** *(TRK-074)*, nées du même
+> constat : l'automatisation des trajets a tourné huit fois sans laisser de trace, et le témoin qui
+> l'a déclarée « à l'arrêt » ne sait pas se refermer quand elle revient.
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
@@ -74,7 +78,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
 | ☐ | **T1** | TRK-071 | 🔴🔴 Recharger **au moins un** des deux comptes IA | 🤝 HUMAIN |
-| ☐ | **T2** | TRK-069 | 🔵 Rallumer le poste, lire le motif de `agent-recit-trajet` | 🤝 HUMAIN |
+| ☑ | **T2** | TRK-069 | 🔵 ~~Rallumer le poste~~ — **le poste a repris SEUL le 06/09 à 06:08** | ✅ **FAIT** |
 | ☐ | **T3** | TRK-066 | 🔴 Trancher les **trois questions** du coupe-circuit | 🤝 HUMAIN |
 | ☐ | **T4** | TRK-072 | Calibrer les notifications d'excès de vitesse | 🤝 HUMAIN |
 | ☐ | **T5** | TRK-062 | Autoriser la migration `SENT_UNCONFIRMED` | 🤝 HUMAIN |
@@ -82,8 +86,8 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T7** | TRK-035 | Ouvrir la fenêtre de maintenance *(rôle non-superutilisateur)* | 🤝 HUMAIN |
 | ☐ | **T8** | TRK-001 · 027 | 🔵 Contrôler les antennes *(3 véhicules)* | 🤝 HUMAIN |
 | ☐ | **T9** | — | 🔵 Déclarer ou dépanner `GLA•KC•31` et `FG-669-DQ` | 🤝 HUMAIN |
-| `~` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | ✅ **COMMITÉ** `2112e9ae` |
-| `~` | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | ✅ **COMMITÉ** `c80632ba` |
+| `»` | **T10** | TRK-070 | Le niveau de l'escalade suit la **cause**, pas la gravité | 🗓️ **DÉPLOYÉ** `2112e9ae` |
+| `»` | **T11** | TRK-068 | Borner le `fetch` vers Vizyo Auth *(+ le jumeau)* | 🗓️ **DÉPLOYÉ** `c80632ba` |
 | ☐ | **T12** | TRK-022 | Déduplication **générique** des alarmes du boîtier | 🔧 À CODER |
 | ☐ | **T13** | TRK-016 | Recalage cartographique — **~88 % d'échec** | 🔧 CHANTIER |
 | ☐ | **T14** | TRK-053 | Provoquer ou requalifier *(échéance **08/09**)* | ⛔ sans occasion |
@@ -96,6 +100,8 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T21** | TRK-018 | Accusé de remise de la passerelle SMS | ⛔ BLOQUÉ |
 | ☐ | **T22** | TRK-014 | Rectifier son `quoiFaire` *(renvoie à TRK-012, clos)* | 🧹 dette doc |
 | ☐ | **T23** | — | Créer ou déréférencer `TACHES-AMELIORATION.md` | 🧹 dette doc |
+| ☐ | **T24** | TRK-073 | 🔴 **Marquer le passage au DÉPART, pas à l'arrivée** *(8 passages perdus)* | 🔧 À CODER |
+| ☐ | **T25** | TRK-074 | Donner une **résolution automatique** au témoin des tâches | 🔧 À CODER |
 
 ### Partie II — VPS *(26 tâches)*
 
@@ -125,14 +131,18 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V21** | VPS-029 | Trancher quel mécanisme gouverne le cache de build | ⛔ BLOQUÉ |
 | ☐ | **V22** | VPS-M36 | Échantillonner `wchan` 3× et publier la répartition | ⛔ BLOQUÉ |
 | ☐ | **V23** | VPS-M73 | Afficher l'écart en jours sur `/admin → Audit VPS` | ⛔ BLOQUÉ |
-| `»` | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *preuve attendue : 2 lignes à 06:30 UTC, pas 10* | 🗓️ DÉPLOYÉE |
+| ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
 | `»` | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite | 🗓️ DÉPLOYÉ |
 
 
 
 > ⭐ **Les deux tâches les plus rentables de tout le fichier, si vous n'en faites que deux :**
-> **T10** *(quelques lignes, referme le motif récurrent de la semaine)* et **V11** *(20 minutes,
-> trois bases de production qui n'ont aujourd'hui aucun filet reproductible)*.
+> **T1** *(recharger un compte IA — rien d'autre ne débloque quoi que ce soit, 97 h)* et **T24**
+> *(marquer le passage au départ — tant que ce n'est pas fait, **on ne peut pas savoir si une tâche
+> de fond tourne**, et chaque redéploiement fabrique de fausses `CRITICAL`)*.
+>
+> *T10 et V11, qui occupaient cette place hier, sont l'une **déployée** et l'autre **faite et
+> prouvée**.*
 
 > ⚠️ **Six fiches apparaissent deux fois, et c'est voulu** — TRK-065 en **T6** *(prévenir la
 > personne)* et **T17** *(guetter la ligne)* ; TRK-066 en **T3** *(trancher la garde)* et **T18**
@@ -156,6 +166,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | **03/09** | 35 | **Le compte Anthropic tombe à sec**, et le dispositif classe l'incident en « appel malformé » : ni le niveau, ni l'écran « Coûts IA » ne nomment la seule action utile *(🆕 TRK-061, TRK-062)* |
 | **04/09** | 44 | Premier `CRITICAL` en 12 jours : **une plaque à point médian fait répondre 500 à TOUS les exports** de 2 véhicules sur 44, depuis toujours *(🆕 TRK-063 → TRK-066)* |
 | **05/09** | 65 | **Déploiement non annoncé de 17:01** : six correctifs d'un coup, deux prouvés le jour même (TRK-061, TRK-059) ; les alertes de vitesse enfin armées sur 2 sociétés sur 5 *(🆕 TRK-067, TRK-068)* |
+| **07/09** | **94** | **La tâche tournait, son carnet de bord était vide, et le témoin a crié « à l'arrêt »** — 8 passages sur 24 perdus le 06/09 alors que **sept portent la preuve d'avoir tourné** *(🆕 TRK-073, TRK-074)* |
 | **06/09** | **82** | **Les DEUX fournisseurs IA sont à sec en même temps** — le repli `claude → gpt` livré la veille a été exercé 6 min après sa mise en ligne et n'avait nulle part où aller *(🆕 TRK-070, TRK-071, TRK-072)* |
 
 **Ce que la série raconte** — les actives passent de 26 à 82 en six jours, et **ce n'est pas une
@@ -811,6 +822,10 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **07/09** | **V24** | VPS-038 — sentinelle « boîtiers muets » | ✅ **FAIT ET PROUVÉ** | `fb0642f8` | 🔑 **La preuve attendue est tombée au mot près.** Passage du 06/09 à **06:30:01** : **exactement 2 lignes, pas 10** — `2ad69ac1` (cdef31, **8 boîtiers**, 17,8 → 5,7 j) et `88627f81` (A2R, **2 boîtiers**, `KSR•370` 23,2 j, `GLA•KC•31` 3,2 j, `deposesSansVehicule: 3`). Le regroupement par société tient |
+| **07/09** | **T10** | TRK-070 — le niveau de l'escalade suit la CAUSE | `»` **DÉPLOYÉ** | `2112e9ae` | Déploiement **07/09 00:58:58**. Vérifié sur l'**artefact servi** : `causeTechnique` **×5** dans `dist/assistance/assistance.service.js`, et l'ancienne règle `urgent \|\| gravite === 'CRITICAL' ? …` **a disparu**. ⏳ **Preuve de production non venue** — aucun échec IA depuis le 05/09 17:00 |
+| **07/09** | **T11** | TRK-068 — borner le `fetch` vers Vizyo Auth | `»` **DÉPLOYÉ** | `c80632ba` | Déploiement **07/09 00:58:58**. Vérifié sur l'**artefact servi** : `AbortSignal` et `ServiceUnavailableException` présents dans `dist/auth-client/auth-client.service.js`, `Vizyo Auth` nommé **6 fois**. ⏳ **Preuve de production non venue** — aucun rejet de transport depuis le 04/09 12:57 |
+| **07/09** | **T2** | TRK-069 — rallumer le poste | ✅ **FAIT** | *(aucun — geste matériel)* | Le poste a repris **seul** le 06/09 à 06:08. 🔑 **Et c'est du même coup la preuve de l'auto-archivage annoncé par TRK-069** : les 4 lignes se sont archivées d'elles-mêmes (« Agent repassé … résolution automatique »), et une 5ᵉ — `agent-limites-vitesse` — est née à 18:50 et s'est refermée à 20:50. **Zéro geste humain** |
 | **06/09** | **V11** | VPS-013 — trois bases de production sans sauvegarde reproductible | ✅ **FAIT ET PROUVÉ** | *(unités systemd)* | 3 unités dérivées du gabarit `vizyo-auth-backup`, exercées une fois chacune → **3 succès**. 🔑 **Confrontées à la base VIVANTE** : `vizyo_manager` **8 tables = 8** `CREATE TABLE` · `vizyo_texto` **47 lignes `allowlist_entries` = 47** · `sms` 9 tables. Archives **600**, dossiers **700**. Minuteries **actives** (04:30 / 04:40 / 04:50 UTC, `Persistent=true`). Elles portent déjà `ExecStart=/bin/bash` — le geste de **V13** |
 | **06/09** | **T11** | TRK-068 — un appel à Vizyo Auth ne peut plus durer, ni remonter nu | `~` **COMMITÉ** | `c80632ba` | auth-client **16/16**, typecheck **3/3**, smoke-boot **5/5**. 🔑 **Deux mutations** — retrait du délai → **1 échec**, remontée nue du rejet → **4 échecs**. Le jumeau `verifyLoginCode` passe par le même chemin borné. ⏳ **Preuve attendue** : `statusCode 503`, niveau `ERROR`, motif technique **conservé** en fin de phrase |
 | **06/09** | **T10** | TRK-070 — le niveau de l'escalade suit la CAUSE, pas la gravité de la conversation | `~` **COMMITÉ** | `2112e9ae` | Suite assistance **74/74**, typecheck **3/3**, smoke-boot DI **5/5**. 🔑 **Mutation de la règle de niveau → 1 échec exactement** : le test n'est pas tautologique. Les **trois** replis techniques traités ensemble *(leçon de TRK-004)*. ⏳ **Preuve attendue en production** : UNE seule ligne `ASSISTANCE`, en `DEGRADATION`, **et** le journal système garde son `assistance_escalade` |
@@ -823,7 +838,16 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 1. **Relire le [tableau de bord](#-tableau-de-bord--46-tâches-lavancement-dun-coup-dœil) AVANT la
    collecte** — c'est là que vit la passation, et c'est précisément ce que les passages des 05 et
    06/09 n'ont pas fait, au prix d'un chapitre entier réécrit pour rien *(VPS-M81)*.
-2. **Vérifier les deux `[»]` ci-dessus.** Ils passent `[x]` **le jour où la mesure tombe**, pas
-   avant — et si elle ne tombe pas, le dire.
+2. **Vérifier les `[»]` ci-dessus.** Ils passent `[x]` **le jour où la mesure tombe**, pas avant —
+   et si elle ne tombe pas, le dire. Au 07/09 il en reste **trois** — **V25**, dont la preuve relève de la routine VPS, et surtout les deux déployés ce matin :
+   **T10** *(UNE seule ligne `ASSISTANCE`, en `DEGRADATION`, et le journal système garde son
+   `assistance_escalade` — si les deux tombent, on a supprimé la trace)* et **T11** *(`503` et non
+   `500`, niveau `ERROR` et non `CRITICAL`, motif technique **conservé** en fin de phrase)*.
+   ⚠️ **Les deux attendent une OCCASION qui ne vient pas** : aucun échec IA depuis le 05/09 17:00,
+   aucun rejet de transport depuis le 04/09 12:57. *Un correctif déployé qu'aucun événement
+   n'exerce reste un correctif non prouvé — le dire vaut mieux que l'oublier.*
+4. 🆕 **Relever la série de `trip_automation_runs`** — 02/09 **15** · 03/09 **23** · 04/09 **22** ·
+   05/09 **23** · 06/09 **16** passages sur 24. C'est la mesure de **T24**, et elle ne devient
+   dicible qu'à force de points.
 3. **Cocher ce qui a été fait entre-temps**, même par un humain hors session : une tâche close qui
    reste `☐` fait rouvrir un chantier déjà terminé.

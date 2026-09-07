@@ -1,7 +1,7 @@
 {
   "_comment": "SOURCE STRUCTUREE DES TACHES — lue par app/generer-tableau-de-bord.mjs pour produire TABLEAU-DE-BORD.html. Le fichier de PROSE reste ROADMAP-CORRECTIFS.md : il dit le detail, le pourquoi et les pieges. Ici, uniquement l'etat. LES DEUX DOIVENT S'ACCORDER — si l'un dit FAIT et l'autre OUVERT, c'est la PREUVE qui tranche, jamais le fichier le plus recent. Un identifiant n'est JAMAIS reutilise, meme quand la tache est close.",
   "version": 1,
-  "misAJourLe": "2026-09-06",
+  "misAJourLe": "2026-09-07",
   "etats": {
     "OUVERT": {
       "libelle": "Ouvert",
@@ -94,8 +94,10 @@
       "detail": "Passage interrompu avant la fin le 05/09 a 03:15, sans reprise depuis. La ligne s'archivera seule au premier passage reussi.",
       "classe": "TERRAIN",
       "gravite": 2,
-      "etat": "OUVERT",
-      "depuis": "2026-09-05"
+      "etat": "FAIT",
+      "depuis": "2026-09-05",
+      "faitLe": "2026-09-06",
+      "preuve": "Le poste a repris seul le 06/09 a 06h08. Les 4 lignes agents-locaux se sont ARCHIVEES d elles-memes, motif agent repasse, resolution automatique — et une cinquieme, agent-limites-vitesse, est nee a 18h50 et s est refermee a 20h50. Zero geste humain. C est aussi la preuve de l auto-archivage annonce par TRK-069."
     },
     {
       "id": "T3",
@@ -113,7 +115,7 @@
       "partie": "centre-alerte",
       "fiche": "TRK-072",
       "titre": "Calibrer les notifications d'exces de vitesse",
-      "detail": "14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires.",
+      "detail": "14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires. NOUVEAU le 07/09 : le sujet a DEUX cotes. Les 20 trajets a plus de 90 km/h du 6 septembre, pointe a 137,31 km/h, sont sur A2R dont speedAlertEnabled vaut faux ; les deux flottes armees ont culmine a 96,84, sous leur seuil. La flotte qui roule le plus vite est exactement celle ou l alerte est eteinte. Regler le seuil sans regarder QUI est arme ne traiterait que la moitie bruyante du sujet.",
       "classe": "HUMAIN",
       "gravite": 2,
       "etat": "OUVERT",
@@ -184,12 +186,13 @@
       "detail": "Un compte IA a sec produit 2 lignes a 14 ms : DEGRADATION puis ERROR. La seconde recompte l'incident comme un defaut et annule le correctif de TRK-061.",
       "classe": "A_CODER",
       "gravite": 2,
-      "etat": "COMMITE",
+      "etat": "DEPLOYE",
       "depuis": "2026-09-06",
       "phare": true,
       "commit": "2112e9ae",
-      "preuve": "Suite assistance 74/74, typecheck 3/3, smoke-boot DI 5/5. MUTATION de la regle de niveau -> 1 echec exactement : le test n'est pas tautologique. Les TROIS replis techniques sont traites ensemble (classement, redaction, IA non configuree).",
-      "preuveAttendue": "Au prochain echec IA EN PRODUCTION : UNE seule ligne ASSISTANCE pour l'incident, en DEGRADATION, et le journal systeme porte toujours son assistance_escalade. DOUBLE CONDITION : si les deux lignes disparaissent, on a supprime la trace de l'escalade au lieu de la classer."
+      "preuve": "Suite assistance 74/74, typecheck 3/3, smoke-boot DI 5/5, mutation de la regle de niveau -> 1 echec exactement. DEPLOYE le 07/09 a 00h58m58 : verifie sur l artefact servi, causeTechnique present 5 fois dans dist/assistance/assistance.service.js et l ancienne regle urgent ou gravite CRITICAL a DISPARU.",
+      "preuveAttendue": "Au prochain echec IA EN PRODUCTION : UNE seule ligne ASSISTANCE pour l'incident, en DEGRADATION, et le journal systeme porte toujours son assistance_escalade. DOUBLE CONDITION : si les deux lignes disparaissent, on a supprime la trace de l'escalade au lieu de la classer.",
+      "deployeLe": "2026-09-07"
     },
     {
       "id": "T11",
@@ -199,11 +202,12 @@
       "detail": "Ni try/catch ni delai d'expiration : le rejet de transport devient un 500 la ou une dependance injoignable est un 503.",
       "classe": "A_CODER",
       "gravite": 2,
-      "etat": "COMMITE",
+      "etat": "DEPLOYE",
       "depuis": "2026-09-04",
       "commit": "c80632ba",
-      "preuve": "auth-client 16/16, typecheck 3/3, smoke-boot DI 5/5. DEUX mutations : retrait du delai -> 1 echec, remontee nue du rejet -> 4 echecs. Le jumeau verifyLoginCode passe par le meme chemin borne.",
-      "preuveAttendue": "Au prochain rejet de transport EN PRODUCTION : la ligne doit porter statusCode 503 (et non 500), sortir en ERROR (et non CRITICAL), nommer Vizyo Auth et la consequence, ET conserver le motif technique en fin de phrase. Si le motif disparait, on a nettoye l ecran."
+      "preuve": "auth-client 16/16, typecheck 3/3, smoke-boot DI 5/5, deux mutations -> 1 puis 4 echecs. DEPLOYE le 07/09 a 00h58m58 : verifie sur l artefact servi, AbortSignal et ServiceUnavailableException presents dans dist/auth-client/auth-client.service.js, Vizyo Auth nomme 6 fois.",
+      "preuveAttendue": "Au prochain rejet de transport EN PRODUCTION : la ligne doit porter statusCode 503 (et non 500), sortir en ERROR (et non CRITICAL), nommer Vizyo Auth et la consequence, ET conserver le motif technique en fin de phrase. Si le motif disparait, on a nettoye l ecran.",
+      "deployeLe": "2026-09-07"
     },
     {
       "id": "T12",
@@ -221,7 +225,7 @@
       "partie": "centre-alerte",
       "fiche": "TRK-016",
       "titre": "Recalage cartographique : ~88 % d'echec depuis avril",
-      "detail": "Mesure fraiche du 06/09 : 131 trajets sur 149. Le chiffre est frais et stable, le chantier peut s'ouvrir.",
+      "detail": "Mesure fraiche du 07/09 : 82 trajets sur 94, soit 87,2 pour cent. Cinquieme point sous le nouveau code, stable autour de 88 pour cent sur trois releves frais. Le chantier peut s ouvrir sur ce chiffre.",
       "classe": "CHANTIER",
       "gravite": 2,
       "etat": "OUVERT",
@@ -232,7 +236,7 @@
       "partie": "centre-alerte",
       "fiche": "TRK-053",
       "titre": "Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes",
-      "detail": "Deploye le 01/09, sans regression (7, trois points identiques), mais JAMAIS exerce : les 10 vehicules declares sont muets.",
+      "detail": "Deploye le 01/09, sans regression — alertes_depuis_declaration vaut 7, QUATRE points identiques les 4, 5, 6 et 7 septembre — mais JAMAIS exerce : les 10 vehicules declares sont muets. Echeance atteinte le 08/09 : provoquer en atelier, ou requalifier.",
       "classe": "TEST_DATE",
       "gravite": 1,
       "etat": "OUVERT",
@@ -340,6 +344,31 @@
       "gravite": 4,
       "etat": "OUVERT",
       "depuis": "2026-09-06"
+    },
+    {
+      "id": "T24",
+      "partie": "centre-alerte",
+      "fiche": "TRK-073",
+      "titre": "Marquer le passage au DEPART, pas a l arrivee",
+      "detail": "L historique de l automatisation ne peut contenir que des succes : persistRun et recordRun ne sont appeles que sur le chemin heureux. Un passage interrompu y est indiscernable d un passage qui n a jamais eu lieu, et le temoin de vie en conclut a tort que la tache est a l arret. Ecrire la ligne au depart en etat EN COURS, la completer a la cloture, et refermer au demarrage du service celles restees ouvertes.",
+      "classe": "A_CODER",
+      "gravite": 1,
+      "etat": "OUVERT",
+      "depuis": "2026-09-06",
+      "phare": true,
+      "preuveAttendue": "Au prochain jour comportant un redeploiement, trip_automation_runs doit porter 24 lignes, dont une ou plusieurs MARQUEES INTERROMPUES — et non 16 lignes toutes en succes. Si le compte monte a 24 sans qu aucune ne soit marquee interrompue, on a maquille le carnet au lieu de le tenir."
+    },
+    {
+      "id": "T25",
+      "partie": "centre-alerte",
+      "fiche": "TRK-074",
+      "titre": "Donner une resolution automatique au temoin des taches planifiees",
+      "detail": "Quatre CRITICAL du 6 septembre restent ouvertes alors que la condition est close depuis 20h45. La sentinelle des agents du poste, nee le 5 septembre, archive les siennes toute seule — quatre sur quatre le meme jour. Porter ce comportement, en filtrant sur le NOM DE TACHE structure et jamais sur le texte du message.",
+      "classe": "A_CODER",
+      "gravite": 2,
+      "etat": "OUVERT",
+      "depuis": "2026-09-06",
+      "preuveAttendue": "Double condition : les lignes doivent s ARCHIVER quand la tache repasse, ET une tache reellement arretee doit CONTINUER d en produire. Si plus rien n apparait, on a eteint le temoin au lieu de lui apprendre a se taire."
     },
     {
       "id": "V0",
@@ -618,11 +647,12 @@
       "detail": "Une ligne par societe quand des boitiers rattaches se taisent plus de 3 jours.",
       "classe": "AUTO",
       "gravite": 1,
-      "etat": "DEPLOYE",
+      "etat": "FAIT",
       "depuis": "2026-09-06",
       "commit": "fb0642f8",
-      "preuve": "48 tests verts, mutation du seuil → 1 echec exactement. Smoke-boot OK. tracky-api restarts=0, healthy.",
-      "preuveAttendue": "2 lignes a la passe de 06:30 UTC (flottes 2ad69ac1 et 88627f81), PAS 10."
+      "preuve": "48 tests verts, mutation du seuil -> 1 echec exactement, smoke-boot OK. PREUVE DE PRODUCTION OBTENUE le 06/09 a 06h30m01 : EXACTEMENT 2 lignes, pas 10 — flotte 2ad69ac1 cdef31 avec 8 boitiers de 17,8 a 5,7 jours, et flotte 88627f81 A2R avec 2 boitiers, KSR 370 a 23,2 jours et GLA KC 31 a 3,2 jours. Le regroupement par societe tient.",
+      "preuveAttendue": "2 lignes a la passe de 06:30 UTC (flottes 2ad69ac1 et 88627f81), PAS 10.",
+      "faitLe": "2026-09-06"
     },
     {
       "id": "V25",
