@@ -48,6 +48,7 @@ import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { InstallBannerComponent } from '../shared/ui/install-banner/install-banner.component';
 import { PushPromptComponent } from '../shared/ui/push-prompt/push-prompt.component';
+import { DemoBannerComponent } from '../shared/ui/demo-banner/demo-banner.component';
 import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
 import { ConsentGateComponent } from '../features/consent/consent-gate.component';
@@ -84,7 +85,7 @@ interface NavGroup {
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, DeviceVerificationGateComponent, TwoFactorProposalComponent, BaanoolMapOverlayComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, DemoBannerComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, DeviceVerificationGateComponent, TwoFactorProposalComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()" [class.layout--depot]="auth.isDepot()" [class.layout--hors-ligne]="!network.online()">
@@ -196,6 +197,9 @@ interface NavGroup {
 
       <!-- MAIN CONTENT -->
       <div class="main-area">
+        <!-- Environnement de démonstration (2026-09) : bandeau PERMANENT, au-dessus de la barre
+             du haut, sur tous les écrans — plein écran carte compris. Vide en production. -->
+        <app-demo-banner />
         <header class="top-bar" role="banner">
           <!-- Wave layers (effet vague glassy tracky) — wrapper a overflow:hidden
                pour ne pas couper les popups (alerts-bell) qui debordent du top-bar. -->

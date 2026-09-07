@@ -126,6 +126,12 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
       border-radius: var(--radius-card, 16px);
       padding: 24px;
       box-shadow: 0 24px 64px -12px rgba(0,0,0,.5);
+      /* Une modale plus haute que l'écran doit rester atteignable JUSQU'À SES BOUTONS. Mesuré le
+         2026-09-07 : la confirmation critique de coupure, avec l'état du véhicule, ses conséquences
+         et l'encart de démonstration, fait 775 px — sur un portable à 720 px de haut, le bouton
+         « Couper le moteur » sortait de l'écran, sans défilement possible. Même règle qu'en
+         feuille basse (ci-dessous) : la boîte défile, jamais la page. */
+      max-height: 92vh; max-height: 92dvh; overflow-y: auto;
     }
     /* Marqueur n° 1 du critique : un liseré rouge en tête, visible avant le titre. */
     .cm-boite--critique { border-top: 3px solid var(--texte-alerte); }

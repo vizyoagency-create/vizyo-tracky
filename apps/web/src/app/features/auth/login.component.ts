@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { retourSur } from '../../core/auth/retour-interne';
 import { AuthService } from '../../core/services/auth.service';
+import { DemoModeService } from '../../core/services/demo-mode.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
@@ -22,6 +23,18 @@ import { ThemeService } from '../../core/theme/theme.service';
       <span class="vt-eyebrow">Espace pro</span>
       <h1 class="font-display text-[2.15rem] font-extrabold tracking-[-0.03em] leading-[1.07] text-fg-primary mt-3">Bon retour.</h1>
       <p class="text-[1.02rem] text-fg-secondary leading-[1.5] mt-3">Connectez-vous à votre tableau de bord Vizyo Tracky.</p>
+      <!-- Environnement de démonstration (2026-09) : dit AVANT la session ce que le bandeau
+           redira sur chaque écran — et où demander un accès. Absent en production. -->
+      @if (demo.enabled()) {
+        <div class="lg-demo" role="note">
+          <span class="lg-demo-t">Environnement de démonstration</span>
+          <span class="lg-demo-p">
+            Société fictive, véhicules simulés : aucune action ici n'atteint un véhicule réel.
+            Pas encore d'accès ?
+            <a class="lg-demo-a" href="mailto:contact@vizyoagency.com?subject=Acc%C3%A8s%20%C3%A0%20la%20d%C3%A9mo%20Tracky">Demandez-le à Vizyo.</a>
+          </span>
+        </div>
+      }
     </div>
     <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4 w-full">
         <div class="flex flex-col gap-1.5">
@@ -214,6 +227,17 @@ import { ThemeService } from '../../core/theme/theme.service';
       .lg-case { width: 20px; height: 20px }
       label:has(.lg-case) { min-height: 44px }
     }
+
+    /* ─── Environnement de démonstration ─── teinte verte fabriquée, texte en jeton. */
+    .lg-demo {
+      display: flex; flex-direction: column; gap: 4px;
+      margin-top: 14px; padding: 10px 12px; border-radius: 11px;
+      background: color-mix(in srgb, var(--color-tracky-light) 11%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 30%, transparent);
+    }
+    .lg-demo-t { font-size: 11px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; color: var(--texte-succes) }
+    .lg-demo-p { font-size: 12.5px; line-height: 1.45; color: var(--fg-secondary); text-wrap: pretty }
+    .lg-demo-a { color: var(--texte-succes); font-weight: 700; text-decoration: underline; text-underline-offset: 2px }
   `],
 })
 export class LoginComponent implements OnInit {
@@ -230,6 +254,7 @@ export class LoginComponent implements OnInit {
   private readonly preferences = inject(PreferencesService);
   private readonly themeService = inject(ThemeService);
   private readonly route = inject(ActivatedRoute);
+  protected readonly demo = inject(DemoModeService);
 
   constructor(private readonly router: Router) {}
 

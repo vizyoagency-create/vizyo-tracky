@@ -11,6 +11,7 @@ import {
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { DemoModeService } from '../../core/services/demo-mode.service';
 import {
   EngineControlService,
   type EngineControlCommandDto,
@@ -155,6 +156,27 @@ const CONFIRM_WINDOW_MS = 90_000;
         (confirmed)="onConfirm('CUT')"
         (cancelled)="isOpen.set(null)"
       >
+        <!--
+          ENVIRONNEMENT DE DÉMONSTRATION (2026-09). Le geste est le même qu'en production, et
+          c'est voulu : le prospect doit voir la vraie modale, la vraie plaque à retaper, les vrais
+          états. Mais il doit lire, AVANT de cliquer, qu'aucun véhicule n'est concerné — et ce qui
+          se passerait sur un vrai boîtier. Le texte dit la réalité du produit : un Coban exécute
+          la commande en silence, la preuve est la chute du contact sur la trame suivante.
+        -->
+        @if (demo.enabled()) {
+          <div class="ec-demo" role="note">
+            <div class="ec-demo-t">Démonstration — véhicule simulé, aucun véhicule n'est immobilisé</div>
+            <p class="ec-demo-p">
+              La commande suit le circuit réel — envoi au boîtier par le même chemin qu'en production,
+              exécution silencieuse, puis confirmation par la chute du contact sur la trame suivante —
+              sur un boîtier simulé.
+            </p>
+            <p class="ec-demo-p">
+              En réel : le relais coupe le circuit à l'arrêt (jamais au-delà de 20 km/h), et le véhicule
+              ne redémarre qu'après un rallumage depuis Tracky.
+            </p>
+          </div>
+        }
         <textarea
           [ngModel]="reason()"
           (ngModelChange)="reason.set($event)"
@@ -192,7 +214,17 @@ const CONFIRM_WINDOW_MS = 90_000;
         [loading]="loading()"
         (confirmed)="onConfirm('RESTORE')"
         (cancelled)="isOpen.set(null)"
-      />
+      >
+        @if (demo.enabled()) {
+          <div class="ec-demo" role="note">
+            <div class="ec-demo-t">Démonstration — rallumage simulé</div>
+            <p class="ec-demo-p">
+              Sur un vrai boîtier, le véhicule peut redémarrer dès réception de la commande. Ici, le
+              boîtier simulé reprend sa tournée là où elle s'était arrêtée.
+            </p>
+          </div>
+        }
+      </app-confirm-modal>
     </div>
   `,
   styles: [
@@ -254,6 +286,16 @@ const CONFIRM_WINDOW_MS = 90_000;
       text-decoration: none; cursor: pointer;
     }
     .ec-sortie:disabled { opacity: .55; cursor: wait; }
+
+    /* Environnement de démonstration — encart des confirmations. Famille verte, teinte fabriquée. */
+    .ec-demo {
+      margin-top: 10px; padding: 8px 10px; border-radius: 11px;
+      background: color-mix(in srgb, var(--color-tracky-light) 11%, transparent);
+      border: 1px solid color-mix(in srgb, var(--color-tracky-light) 30%, transparent);
+      text-align: left;
+    }
+    .ec-demo-t { font-size: 11.5px; font-weight: 800; color: var(--texte-succes); text-wrap: pretty; }
+    .ec-demo-p { margin: 4px 0 0; font-size: 11px; line-height: 1.4; color: var(--fg-secondary); text-wrap: pretty; }
     `,
   ],
 })
@@ -299,6 +341,8 @@ export class EngineControlButtonComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly realtime = inject(RealtimeService);
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
+  /** Environnement de démonstration : encarts des confirmations, toast et pastille « simulation ». */
+  protected readonly demo = inject(DemoModeService);
 
   /**
    * V1.11 Phase 1 — VehicleId effectif : prend l'input si fourni, sinon resout
@@ -418,7 +462,21 @@ export class EngineControlButtonComponent implements OnInit {
    * non confirmee / non verifiable / echec. Garantit qu'on n'affiche JAMAIS un faux
    * succes (l'etat "coupe" du bouton ne passe qu'a la confirmation reelle).
    */
+  /**
+   * Environnement de démonstration : la pastille dit « simulation » à côté de l'état RÉEL de la
+   * commande. L'état, lui, n'est pas maquillé — il vient du même circuit qu'en production.
+   */
   readonly commandState = computed<{ short: string; label: string; textClass: string; dotClass: string } | null>(() => {
+    const etat = this.commandStateBrut();
+    if (!etat || !this.demo.enabled()) return etat;
+    return {
+      ...etat,
+      short: `${etat.short} · simulation`,
+      label: `${etat.label} (environnement de démonstration : boîtier simulé, aucun véhicule réel)`,
+    };
+  });
+
+  private readonly commandStateBrut = computed<{ short: string; label: string; textClass: string; dotClass: string } | null>(() => {
     const c = this.lastAppCommand();
     if (!c || c.status === 'PENDING' || c.status === 'REJECTED_SPEED') return null;
     const verb = c.action === 'CUT' ? 'Coupure' : 'Rallumage';
@@ -469,7 +527,7 @@ export class EngineControlButtonComponent implements OnInit {
 
   /** L'etat NON CONFIRME est-il a l'ecran ? Il ouvre alors ses trois sorties. */
   protected readonly nonConfirmee = computed<boolean>(
-    () => this.commandState()?.short === 'Non confirmée',
+    () => this.commandStateBrut()?.short === 'Non confirmée',
   );
   /**
    * Sortie n° 3 : « j'ai verifie sur place ».
@@ -732,14 +790,30 @@ export class EngineControlButtonComponent implements OnInit {
       // Boîtier muet : « en attente de confirmation » deviendrait mensonger — il n'y aura
       // PAS de confirmation. On le dit dans le toast, dernière chose lue avant de partir.
       const dormant = this.dormantWarning();
-      this.toast.success(
-        action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
-        dormant
-          ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : aucune confirmation à attendre, à vérifier physiquement.`
-          : action === 'CUT'
-            ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
-            : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
-      );
+      if (this.demo.enabled()) {
+        // Démonstration : la dernière chose lue avant de partir doit redire qu'aucun véhicule
+        // n'est concerné — et annoncer ce que l'écran va montrer, pour que ce soit compris
+        // comme le comportement réel du produit, pas comme un effet de la démo.
+        this.toast.show({
+          kind: 'info',
+          title: action === 'CUT' ? 'Coupure simulée envoyée' : 'Rallumage simulé envoyé',
+          message:
+            action === 'CUT'
+              ? `Commande ${cmd.id.slice(0, 8)} — environnement de démonstration : aucun véhicule réel n'est concerné. Le boîtier simulé coupe le contact dans quelques secondes, et l'état passe à « confirmée » comme en réel.`
+              : `Commande ${cmd.id.slice(0, 8)} — environnement de démonstration : le boîtier simulé reprend sa tournée.`,
+          // Deux phrases à lire : le défaut de 4 s ne suffit pas.
+          duration: 9000,
+        });
+      } else {
+        this.toast.success(
+          action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
+          dormant
+            ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : aucune confirmation à attendre, à vérifier physiquement.`
+            : action === 'CUT'
+              ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
+              : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
+        );
+      }
       await this.loadRecentCommands();
     } catch (err) {
       swallow('engine-control-button:onConfirm', err);

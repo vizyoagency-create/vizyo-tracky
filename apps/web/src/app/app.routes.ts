@@ -626,6 +626,17 @@ export const routes: Routes = [
         data: { title: 'Rétention des données' },
       },
       {
+        // Environnement de démonstration (2026-09) — état de l'import depuis la production,
+        // compteurs, « rafraîchir maintenant ». SUPER_ADMIN. En production, la page rappelle
+        // où vit la démo et ce qu'elle ne peut pas faire.
+        path: 'admin/demo',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-demo.component').then((m) => m.AdminDemoComponent),
+        data: { title: 'Environnement de démonstration' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>

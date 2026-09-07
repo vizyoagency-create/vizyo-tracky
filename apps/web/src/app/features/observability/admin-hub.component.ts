@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish, ShieldQuestion,} from 'lucide-angular';
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server, Send, Search, Layers, SatelliteDish, ShieldQuestion, FlaskConical,} from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
 import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
@@ -427,6 +427,19 @@ import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
           </div>
         </a>
 
+        <!-- ── ENVIRONNEMENT DE DÉMONSTRATION (wide) — 2026-09 ── -->
+        <a routerLink="/admin/demo" class="card card-wide" style="--i:12">
+          <span class="accent accent-teal"></span>
+          <div class="body body-row">
+            <div class="ico ico-teal"><lucide-icon [img]="FlaskConical" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Environnement de démonstration</h3>
+              <p class="desc">Sur la démo : dernier rafraîchissement depuis la production, compteurs, demande de rafraîchissement. Sur la production : rappelle où vit la démo et ce qu'elle ne peut pas faire.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
         </div>
       </section>
 
@@ -717,6 +730,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Terminal = Terminal;
   protected readonly MessageSquare = MessageSquare;
   protected readonly Search = Search;
+  protected readonly FlaskConical = FlaskConical;
   protected readonly ShieldQuestion = ShieldQuestion;
   protected readonly Layers = Layers;
   protected readonly Users = Users;

@@ -2,6 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ActivityTrackerService } from './core/services/activity-tracker.service';
 import { AuthService } from './core/services/auth.service';
+import { DemoModeService } from './core/services/demo-mode.service';
 import { InstallPromptService } from './core/services/install-prompt.service';
 import { NetworkStatusService } from './core/services/network-status.service';
 import { PreferencesService } from './core/services/preferences.service';
@@ -34,8 +35,12 @@ export class App implements OnInit {
   // Tracking d'activité utilisateur : instancié ici pour démarrer son effet
   // (start/stop automatique selon l'authentification).
   private readonly activityTracker = inject(ActivityTrackerService);
+  private readonly demoMode = inject(DemoModeService);
 
   ngOnInit(): void {
+    // Environnement de démonstration (2026-09) : une seule question à l'API (« es-tu la démo ? »),
+    // sans attendre la réponse — le bandeau apparaît quand elle arrive. Même bundle qu'en prod.
+    void this.demoMode.charger();
     // Refonte v2 — pose `plat-ios` / `plat-android` / `plat-bureau` sur <body>. Les
     // 3 écarts de géométrie (poignée, rayon, densité) sont VOLONTAIRES : les aplatir
     // donnerait une application étrangère sur les deux plateformes (B1 § système de
