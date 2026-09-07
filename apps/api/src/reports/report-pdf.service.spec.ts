@@ -916,3 +916,68 @@ describe('ReportPdfService — la vitesse moyenne s’imprime à la décimale', 
   });
 });
 
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LE PALMARÈS PAR VÉHICULE COMPTE LES EXCÈS, COMME LE RÉCAPITULATIF PAR CONDUCTEUR
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Le même PDF portait une colonne EXCÈS dans son récapitulatif par conducteur ou groupe, et
+ * n'en avait AUCUNE dans son palmarès par véhicule — le seul tableau par véhicule que le
+ * client reçoive imprimé. Le chiffre était pourtant déjà transmis (`speedingCount`,
+ * `worstOverKmh`, lot F06) : seule la colonne manquait.
+ */
+describe('ReportPdfService — les excès par véhicule', () => {
+  const AVEC_VEHICULES = makeReport({
+    topVehicles: [
+      {
+        vehicleId: 'v1', plate: 'AB-123-CD', distanceKm: 210.5, tripCount: 14,
+        estimatedConsumptionL: 14.7, group: null, durationHours: 7.5, avgSpeedKmh: 28,
+        speedingCount: 12, speedingTripCount: 5, worstOverKmh: 27.4, idleSeconds: 0,
+      },
+      {
+        vehicleId: 'v2', plate: 'EF-456-GH', distanceKm: 100, tripCount: 8,
+        estimatedConsumptionL: 7, group: null, durationHours: 4, avgSpeedKmh: 25,
+        speedingCount: 0, speedingTripCount: 0, worstOverKmh: 0, idleSeconds: 0,
+      },
+    ] as unknown as FleetStatsReport['topVehicles'],
+  });
+
+  it('imprime la colonne, son compte et le pire dépassement', async () => {
+    const { text } = await renderedText(AVEC_VEHICULES, { sections: ['topVehicles'] });
+
+    expect(text).toContain('Excès');
+    expect(text).toContain('12 (+27 km/h)');
+  });
+
+  it('un véhicule sans excès écrit « 0 », jamais « 0 (+0 km/h) »', async () => {
+    // Une parenthèse à zéro donnerait un dépassement à qui n'en a pas — et cette ligne-là est
+    // la seule bonne nouvelle du tableau.
+    const { text } = await renderedText(AVEC_VEHICULES, { sections: ['topVehicles'] });
+
+    expect(text).not.toContain('0 (+0 km/h)');
+  });
+
+  it('les deux tableaux du document écrivent les excès de la MÊME façon', async () => {
+    /**
+     * ⚠️ Deux tableaux d'un même PDF qui comptent la même chose mais l'écrivent autrement
+     * (« 12 » ici, « 12 (+27 km/h) » là) laissent croire à deux mesures différentes. L'écart
+     * ne se remarque qu'une fois le document parti chez le client.
+     */
+    const avecLesDeux = makeReport({
+      ...AVEC_VEHICULES,
+      byAttribution: [
+        {
+          key: 'driver:d1', label: 'Alice Martin', kind: 'driver', tripCount: 5, distanceKm: 210.5,
+          durationHours: 7.5, avgSpeedKmh: 28, speedingCount: 12, speedingTripCount: 5,
+          worstOverKmh: 27.4, idleSeconds: 0,
+        },
+      ] as unknown as FleetStatsReport['byAttribution'],
+      byAttributionTotal: 1,
+    });
+    const { text } = await renderedText(avecLesDeux, { sections: ['topVehicles'] });
+
+    // La même chaîne apparaît DEUX fois : une par tableau.
+    expect(text.split('12 (+27 km/h)').length - 1).toBe(2);
+  });
+});
+

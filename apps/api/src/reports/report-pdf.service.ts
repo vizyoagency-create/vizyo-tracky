@@ -62,6 +62,21 @@ const DEFAULT_MAX_TRIPS = 30;
 const DEFAULT_TOP_N = 10;
 
 /** Dernier jour INCLUS d'une période dont la borne haute est exclusive (lendemain minuit). */
+/**
+ * Ce qu'une cellule « Excès » écrit : le compte, et le pire dépassement entre parenthèses.
+ *
+ * ⚠️ UNE SEULE ÉCRITURE POUR LES DEUX TABLEAUX du document — le palmarès par véhicule et le
+ * récapitulatif par conducteur ou groupe. Deux tableaux d'un même PDF qui compteraient la
+ * même chose mais l'écriraient autrement (« 94 » ici, « 94 (+46 km/h) » là) laisseraient
+ * croire à deux mesures différentes, et c'est le genre d'écart qu'on ne remarque qu'une fois
+ * le document parti chez le client.
+ *
+ * Zéro s'écrit « 0 » tout court : « 0 (+0 km/h) » donnerait un dépassement à qui n'en a pas.
+ */
+function libelleExces(compte: number, pire: number): string {
+  return compte === 0 ? '0' : `${compte} (+${pire.toFixed(0)} km/h)`;
+}
+
 function inclusiveEnd(toIso: string): Date {
   return new Date(new Date(toIso).getTime() - 1);
 }
@@ -528,13 +543,26 @@ export class ReportPdfService {
       doc.moveDown(0.5);
     }
 
-    // Table header
-    const colX = [40, 200, 320, 410];
+    /**
+     * ── LA COLONNE « EXCÈS » MANQUAIT ICI, ET NULLE PART AILLEURS ────────────────────────
+     *
+     * Le récapitulatif PAR CONDUCTEUR du même PDF la porte depuis toujours, l'écran l'affiche
+     * sur ses deux vues, et le classeur vient de l'obtenir. Ce tableau-ci — le seul palmarès
+     * par VÉHICULE que le client reçoive imprimé — s'arrêtait aux kilomètres et au carburant.
+     *
+     * Le chiffre était pourtant déjà là : `topVehicles[].speedingCount` et `worstOverKmh` sont
+     * calculés et transmis depuis le lot F06. Seule la colonne manquait.
+     *
+     * Les cinq abscisses sont resserrées pour lui faire place, sans déborder les 555 pt de la
+     * zone de texte : la plaque garde ses 160 pt (elle porte aussi le nom du groupe, en gris).
+     */
+    const colX = [40, 200, 285, 340, 455];
     doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica-Bold')
       .text('Plaque', colX[0]!, doc.y, { continued: false })
-      .text('Trajets', colX[2]!, doc.y - 11)
       .text('Distance', colX[1]!, doc.y - 11)
-      .text('Carburant est.', colX[3]!, doc.y - 11);
+      .text('Trajets', colX[2]!, doc.y - 11)
+      .text('Excès', colX[3]!, doc.y - 11)
+      .text('Carburant est.', colX[4]!, doc.y - 11);
     doc.moveDown(0.3);
     doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e5e7eb').stroke();
     doc.moveDown(0.3);
@@ -553,7 +581,11 @@ export class ReportPdfService {
       doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica');
       doc.text(`${v.distanceKm.toFixed(1)} km`, colX[1]!, y);
       doc.text(`${v.tripCount}`, colX[2]!, y);
-      doc.text(`${v.estimatedConsumptionL.toFixed(1)} L`, colX[3]!, y);
+      // Même écriture que le récapitulatif par conducteur, à la parenthèse près : deux
+      // tableaux du même document qui compteraient pareil mais l'écriraient autrement
+      // laisseraient croire à deux mesures différentes.
+      doc.text(libelleExces(v.speedingCount, v.worstOverKmh), colX[3]!, y, { width: colX[4]! - colX[3]! - 6, lineBreak: false });
+      doc.text(`${v.estimatedConsumptionL.toFixed(1)} L`, colX[4]!, y);
       doc.moveDown(0.6);
     }
     doc.moveDown();
@@ -688,7 +720,7 @@ export class ReportPdfService {
         // jamais le compteur écrit au moment de l'analyse (4 036 analyses de production ne
         // portent que des segments de durée nulle).
         doc.text(
-          l.speedingCount === 0 ? '0' : `${l.speedingCount} (+${l.worstOverKmh.toFixed(0)} km/h)`,
+          libelleExces(l.speedingCount, l.worstOverKmh),
           colX.exces, y, { width: 555 - colX.exces, lineBreak: false },
         );
         doc.y = y + 15;
