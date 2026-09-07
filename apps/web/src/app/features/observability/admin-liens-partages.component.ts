@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, type HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ArrowLeft, Link2, LucideAngularModule, RefreshCw, ShieldOff, Timer } from 'lucide-angular';
@@ -11,7 +11,7 @@ import type {
   VueLiensPartagesDto,
 } from '@vizyo/tracky-shared';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { codeErreur } from '../../core/interceptors/auth.interceptor';
+import { corpsErreur } from '../../core/interceptors/auth.interceptor';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -231,7 +231,7 @@ import { codeErreur } from '../../core/interceptors/auth.interceptor';
     .lp-spin { animation: lp-rot 1s linear infinite; }
     @keyframes lp-rot { to { transform: rotate(360deg); } }
 
-    .lp-erreur { padding: 10px 12px; border-radius: 10px; background: var(--bg-tertiary); color: var(--texte-danger); font-size: 13px; }
+    .lp-erreur { padding: 10px 12px; border-radius: 10px; background: var(--bg-tertiary); color: var(--texte-alerte); font-size: 13px; }
 
     .lp-resume { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
     .lp-kpi {
@@ -295,7 +295,7 @@ import { codeErreur } from '../../core/interceptors/auth.interceptor';
     .lp-etat { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
     .lp-etat--actif { background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--texte-succes); }
     .lp-etat--expire { background: var(--bg-tertiary); color: var(--fg-tertiary); }
-    .lp-etat--revoque { background: color-mix(in srgb, var(--texte-danger) 12%, transparent); color: var(--texte-danger); }
+    .lp-etat--revoque { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--texte-alerte); }
 
     .lp-prolong-grp { display: inline-flex; gap: 4px; margin-right: 6px; }
     .lp-mini {
@@ -305,8 +305,8 @@ import { codeErreur } from '../../core/interceptors/auth.interceptor';
     }
     .lp-mini:hover:not(:disabled) { border-color: var(--texte-succes); color: var(--texte-succes); }
     .lp-mini:disabled { opacity: .45; cursor: default; }
-    .lp-mini--danger { color: var(--texte-danger); }
-    .lp-mini--danger:hover:not(:disabled) { border-color: var(--texte-danger); color: var(--texte-danger); }
+    .lp-mini--danger { color: var(--texte-alerte); }
+    .lp-mini--danger:hover:not(:disabled) { border-color: var(--texte-alerte); color: var(--texte-alerte); }
 
     @media (max-width: 720px) {
       .lp { padding: 14px 12px 60px; }
@@ -445,14 +445,18 @@ export class AdminLiensPartagesComponent implements OnInit {
       this.remplacer(maj);
       this.toast.success('Échéance repoussée', `Ce lien expire maintenant ${this.echeance(maj)}.`);
     } catch (e) {
-      // Le serveur renvoie un code métier (plafond atteint, lien révoqué) : on sert SON message,
-      // qui explique quoi faire, plutôt qu'un « une erreur est survenue » qui n'aide personne.
-      const err = e as { error?: { error?: { code?: string; message?: string } } };
-      const corps = err.error?.error;
-      const code = codeErreur(e as never);
+      /**
+       * ⚠️ ON SERT LE MESSAGE DU SERVEUR, pas un « une erreur est survenue ».
+       *
+       * Les deux refus possibles — plafond de vie atteint, lien révoqué — expliquent quoi
+       * faire à la place (« créez-en un nouveau »). Les remplacer par un message générique
+       * transformerait une règle compréhensible en mur.
+       */
+      const corps = corpsErreur(e as HttpErrorResponse);
+      const message = typeof corps?.['message'] === 'string' ? corps['message'] : null;
       this.toast.error(
-        code === 'PLAFOND_VIE_ATTEINT' ? 'Plafond de vie atteint' : 'Prolongation refusée',
-        corps?.message ?? "Le lien n'a pas pu être prolongé.",
+        corps?.code === 'PLAFOND_VIE_ATTEINT' ? 'Plafond de vie atteint' : 'Prolongation refusée',
+        message ?? "Le lien n'a pas pu être prolongé.",
       );
     } finally {
       this.occupe.set(null);
