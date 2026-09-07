@@ -48,6 +48,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 import { firstValueFrom } from 'rxjs';
+import { reprendreApresContexte } from './reprise-contexte-webgl';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { GpsDeadZonesApiService, type GpsDeadZoneMapDto } from '../../core/services/gps-dead-zones.service';
@@ -3107,7 +3108,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
      1. On ÉCOUTE la perte, et on cesse de toucher aux sources : plus une seule exception.
      2. On le DIT, et on dit quoi faire — un bandeau, pas un toast générique.
      3. On RÉCUPÈRE : le navigateur rend souvent le contexte quelques secondes plus tard
-        (`webglcontextrestored`), et la carte se reconstruit alors toute seule.
+        (`webglcontextrestored`). MapLibre rejoue alors le style qu'il avait sauvegardé à la
+        perte — nos sources comprises — un `requestAnimationFrame` plus tard ; nous
+        repeuplons ensuite, ou reposons le fond nous-mêmes si sa sauvegarde était vide.
+        La séquence exacte, mesurée, est dans `reprise-contexte-webgl.ts`.
 
      `preventDefault()` sur l'événement de perte est OBLIGATOIRE : sans lui, le navigateur ne
      tente JAMAIS la restauration, et le point 3 ne se produirait pas. */
@@ -3732,18 +3736,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     this.map.on('webglcontextrestored', () => {
       /**
-       * ⚠️ MAPLIBRE NE RESTAURE QUE SON PROPRE STYLE. Son avertissement est explicite :
-       * « You will need to re-add them manually after context restoration ». Il relance un
-       * `setStyle`, donc nos sources et nos couches ont disparu — il faut les reposer.
+       * La séquence vit dans `reprise-contexte-webgl.ts`, avec ses tests : MapLibre rejoue
+       * lui-même le style sauvegardé à la perte (nos sources comprises), mais un rAF plus
+       * tard — et il ne rejoue RIEN si le style n'était pas chargé. Mesuré le 2026-09-07.
        *
-       * On attend `styledata` : reposer nos couches avant que le style de base soit en place
-       * les ferait balayer par celui qui arrive, et la carte reviendrait vide en silence —
-       * c'est-à-dire réparée en apparence seulement.
+       * ⚠️ Le bandeau reste à l'écran jusqu'à la reconstruction, pas jusqu'à l'événement :
+       * entre les deux, la carte est un style vide, et dans un onglet en arrière-plan ce
+       * « entre les deux » dure jusqu'au retour de l'utilisateur.
        */
-      this.carteInterrompue.set(false);
-      if (!this.map) return;
-      if (this.map.isStyleLoaded()) this.recreerCouches();
-      else this.map.once('styledata', () => this.recreerCouches());
+      const map = this.map;
+      if (!map) return;
+      reprendreApresContexte(map, {
+        reappliquerFond: () => this.mapSvc.setStyle(map, this.currentStyle()),
+        leverInterruption: () => this.carteInterrompue.set(false),
+        reconstruire: () => this.recreerCouches(),
+      });
     });
 
     // Setup sources/layers de base apres `load`.
