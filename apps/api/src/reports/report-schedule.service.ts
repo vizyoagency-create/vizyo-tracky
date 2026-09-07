@@ -390,8 +390,17 @@ export class ReportScheduleService {
              * le tableau de bord oblige à refaire à la main la période qu'on vient de lire.
              * Les deux bornes sont celles du document, à l'identique — `to` est EXCLUSIVE des
              * deux côtés, donc la page ouvre exactement la semaine de la pièce jointe.
+             *
+             * ⚠️ ET LA SOCIÉTÉ VOYAGE AVEC. La page Rapports prend la sienne dans le sélecteur
+             * du haut, persisté d'une visite à l'autre : un super-admin qui ouvrait ce bouton
+             * lisait les chiffres de la société sur laquelle son sélecteur était resté, sous le
+             * titre de la semaine annoncée ici. Le document dit « ${fleet.name} » ; le lien doit
+             * dire la même chose, sinon il vaut mieux ne pas en mettre.
+             *
+             * Un destinataire d'une seule société ne voit pas la différence — son périmètre est
+             * posé par le serveur — et c'est très bien : le paramètre ne fait rien pour lui.
              */
-            lienRapport: `/reports?from=${parisDayKey(from)}&to=${parisDayKey(to)}`,
+            lienRapport: `/reports?fleet=${fleet.id}&from=${parisDayKey(from)}&to=${parisDayKey(to)}`,
           });
 
           const failures: string[] = [];

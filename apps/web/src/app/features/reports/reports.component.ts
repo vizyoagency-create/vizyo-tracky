@@ -42,6 +42,7 @@ import { PeriodReplayComponent } from './period-replay.component';
 import {
   aggregateKpisFromDaily,
   ecartAvecPeriodePrecedente,
+  estIdentifiantSociete,
   estJourIso,
   libelleEcartPeriode,
   periodePrecedente,
@@ -5102,6 +5103,32 @@ export class ReportsComponent implements OnInit, OnDestroy {
      * dans un état qu'aucun clic ne produit.
      */
     const q = this.route.snapshot.queryParamMap;
+    /**
+     * ── LA SOCIÉTÉ D'ABORD, AVANT TOUT LE RESTE ───────────────────────────────────────
+     *
+     * Les autres paramètres cadrent l'écran ; celui-ci dit DE QUI on parle, et tout ce qui
+     * suit — véhicule, groupe, conducteur, chiffres — n'a de sens qu'une fois la société
+     * fixée. Il est donc lu en premier, avant le moindre chargement.
+     *
+     * ⚠️ POURQUOI IL EXISTE. Cette page prend sa société dans le sélecteur du haut, persisté
+     * en localStorage d'une visite à l'autre. Un lien qui arrive de l'EXTÉRIEUR — le bouton du
+     * rapport hebdomadaire, qui parle d'UNE société — n'en disait rien : un super-admin
+     * l'ouvrait et lisait les chiffres de la société sur laquelle son sélecteur était resté,
+     * sous le titre de la semaine annoncée par le courriel. Deux sociétés, un seul écran, et
+     * rien pour signaler l'écart.
+     *
+     * ⚠️ SUPER-ADMIN UNIQUEMENT. Pour tout autre rôle le périmètre est posé par le serveur et
+     * ce sélecteur n'existe pas ; poser une société ferait demander un périmètre hors du sien
+     * — refus de l'API, écran vide, et un filtre fantôme qui lui resterait.
+     *
+     * ⚠️ CE N'EST PAS UN CONTOURNEMENT DE LA RÈGLE « le super-admin choisit sa société avant
+     * de sortir un rapport ». C'est elle, appliquée : le sélecteur du haut AFFICHE la société
+     * ainsi posée, donc l'écran continue de dire de qui il parle.
+     */
+    const societe = q.get('fleet');
+    if (estIdentifiantSociete(societe) && this.authService.user()?.role === 'SUPER_ADMIN') {
+      this.fleetFilter.set(societe);
+    }
     const veh = q.get('vehicle');
     const grp = q.get('group');
     if (veh) this.selectedVehicleId.set(veh);

@@ -81,10 +81,10 @@ function build(
   const genererPdf = jest.fn().mockResolvedValue(Buffer.from('%PDF-1.7 faux rapport'));
   const pdf = { generate: genererPdf } as never;
   const send = jest.fn().mockResolvedValue({ ok: opts.envoiOk !== false, error: opts.envoiOk === false ? 'boîte pleine' : undefined });
-  const email = { send, buildWeeklyReportEmail: jest.fn().mockReturnValue('<html>rapport</html>') } as never;
+  const email = { send, buildWeeklyReportEmail: jest.fn().mockReturnValue('<html>rapport</html>') };
 
-  const svc = new ReportScheduleService(prisma, stats, pdf, email);
-  return { svc, prisma, compute, genererPdf, send, dispatchCreate, scheduleUpsert };
+  const svc = new ReportScheduleService(prisma, stats, pdf, email as never);
+  return { svc, prisma, compute, genererPdf, send, dispatchCreate, scheduleUpsert, email };
 }
 
 describe('ReportScheduleService — calendrier en heure de Paris', () => {
@@ -217,6 +217,49 @@ describe('ReportScheduleService — envoi', () => {
     expect(journal['trigger']).toBe('cron');
     expect(journal['tripsCount']).toBe(12);
     expect(journal['pdfBytes']).toBeGreaterThan(0);
+  });
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * LE BOUTON DU COURRIER DOIT OUVRIR LA SOCIÉTÉ DONT LE COURRIER PARLE
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * La page Rapports prend sa société dans le sélecteur du haut, PERSISTÉ d'une visite à
+   * l'autre. Le lien ne disait que la période : un super-admin — le nôtre reçoit celui de la
+   * société d'essai — l'ouvrait et lisait les chiffres de la société sur laquelle son
+   * sélecteur était resté, sous le titre de la semaine annoncée ici.
+   *
+   * ⚠️ RIEN NE L'AURAIT SIGNALÉ. Deux sociétés donnent deux jeux de nombres également
+   * plausibles ; l'écran affiche un total de trajets, pas une preuve d'origine. C'est
+   * exactement le mélange de données que le lot des rapports par société interdit, arrivé par
+   * la porte d'un lien.
+   */
+  it('le lien du courrier nomme la société ET la période du document', async () => {
+    const { svc, email } = build(REGLAGE_DU);
+
+    await svc.runDue(new Date('2026-07-06T06:05:00.000Z'));
+
+    const opts = email.buildWeeklyReportEmail.mock.calls[0]![0] as { lienRapport?: string };
+    expect(opts.lienRapport).toBe(`/reports?fleet=${FLEET_ID}&from=2026-06-29&to=2026-07-06`);
+  });
+
+  /**
+   * ⚠️ `to` EST EXCLUSIVE DES DEUX CÔTÉS. Le document annonce « du 29 juin au 5 juillet
+   * inclus » ; le lien porte `to=2026-07-06` parce que la page Rapports, elle, lit une borne
+   * exclusive — comme les trajets, comme les exports, comme le rapport lui-même. Écrire la
+   * date affichée décalerait la page d'un jour sur le document qu'elle prétend rouvrir.
+   */
+  it('la borne haute du lien est exclusive, comme partout ailleurs dans le produit', async () => {
+    const { svc, email, send } = build(REGLAGE_DU);
+
+    await svc.runDue(new Date('2026-07-06T06:05:00.000Z'));
+
+    const opts = email.buildWeeklyReportEmail.mock.calls[0]![0] as { lienRapport?: string; toStr?: string };
+    expect(opts.toStr).toContain('05'); // le document dit « au 5 juillet »
+    expect(opts.lienRapport).toContain('to=2026-07-06'); // la page en veut la borne exclusive
+    // Et la pièce jointe garde, elle, le dernier jour INCLUS dans son nom.
+    const envoi = send.mock.calls[0]![0] as { attachments?: { filename: string }[] };
+    expect(envoi.attachments![0]!.filename).toBe('tracky-rapport-2026-06-29_2026-07-05.pdf');
   });
 
   it('n’envoie rien si l’échéance a déjà été traitée (pas de doublon d’une heure à l’autre)', async () => {

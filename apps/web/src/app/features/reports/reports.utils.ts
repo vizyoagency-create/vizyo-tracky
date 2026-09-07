@@ -482,3 +482,17 @@ export function libelleEcartPeriode(actuel: number, precedent: number): string |
   }
   return `${pct > 0 ? '+' : '−'}${Math.abs(pct)} % vs période précédente`;
 }
+
+/**
+ * Cette chaîne peut-elle être un identifiant de société ?
+ *
+ * ⚠️ VALIDÉE PARCE QU'ELLE EST MÉMORISÉE. Le paramètre `?fleet=` du lien hebdomadaire ne fait
+ * pas que cadrer l'écran : il pose le sélecteur de société du haut, qui est PERSISTANT. Une
+ * valeur bricolée y resterait après la visite, et le super-admin retrouverait toutes ses pages
+ * filtrées sur une société qui n'existe pas — écrans vides, sans rien pour dire pourquoi.
+ *
+ * Le format est celui de toutes les clés du produit (UUID v4).
+ */
+export function estIdentifiantSociete(v: string | null | undefined): boolean {
+  return !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
