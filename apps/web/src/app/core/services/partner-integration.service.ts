@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import { FleetFilterService } from './fleet-filter.service';
 
 /** Une catégorie de données, telle que présentée à l'écran de consentement. */
 export interface PartnerScopeOption {
@@ -59,14 +60,25 @@ export interface PartnerLinkStatus {
 @Injectable({ providedIn: 'root' })
 export class PartnerIntegrationService {
   private readonly http = inject(HttpClient);
+  private readonly fleetFilter = inject(FleetFilterService);
+
+  /**
+   * Filtre société global : un super-admin n'a pas de flotte propre, c'est le sélecteur qui
+   * la désigne. Sans ce paramètre, l'écran répondait « Aucune flotte associée » quelle que
+   * soit la société choisie. Vide pour un fleet-admin, que l'API confine à sa flotte.
+   */
+  private params(): { params?: { fleetId: string } } {
+    const fleetId = this.fleetFilter.selectedFleetId();
+    return fleetId ? { params: { fleetId } } : {};
+  }
 
   status(): Observable<PartnerLinkStatus> {
-    return this.http.get<PartnerLinkStatus>('/api/integrations/partner');
+    return this.http.get<PartnerLinkStatus>('/api/integrations/partner', this.params());
   }
 
   /** Résout un code d'appairage. N'ACTIVE RIEN — le client doit pouvoir regarder avant. */
   claim(code: string): Observable<PartnerClaimPreview> {
-    return this.http.post<PartnerClaimPreview>('/api/integrations/partner/claim', { code });
+    return this.http.post<PartnerClaimPreview>('/api/integrations/partner/claim', { code }, this.params());
   }
 
   /** Acte explicite : active le partage sur les catégories cochées. */
@@ -74,6 +86,7 @@ export class PartnerIntegrationService {
     return this.http.post<{ linkId: string; scopes: string[] }>(
       '/api/integrations/partner/approve',
       { code, scopes },
+      this.params(),
     );
   }
 
@@ -82,6 +95,7 @@ export class PartnerIntegrationService {
     return this.http.patch<{ scopes: string[]; changed: boolean }>(
       '/api/integrations/partner/scopes',
       { scope, enabled },
+      this.params(),
     );
   }
 
@@ -89,7 +103,7 @@ export class PartnerIntegrationService {
     return this.http.request<{ status: string; tokensRevoked: number }>(
       'delete',
       '/api/integrations/partner',
-      { body: { reason } },
+      { body: { reason }, ...this.params() },
     );
   }
 }

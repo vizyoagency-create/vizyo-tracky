@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { isPartnerScope } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
@@ -29,26 +29,30 @@ export class PartnerController {
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @RequirePermissions('integrations_manage')
-  async status(@Req() req: AuthenticatedRequest) {
-    return this.pairing.status(this.requireFleet(req));
+  async status(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.pairing.status(this.requireFleet(req, fleetId));
   }
 
   /** Résout un code et renvoie l'aperçu du consentement. N'active RIEN. */
   @Post('claim')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @RequirePermissions('integrations_manage')
-  async claim(@Req() req: AuthenticatedRequest, @Body() body: { code?: string }) {
+  async claim(@Req() req: AuthenticatedRequest, @Body() body: { code?: string }, @Query('fleetId') fleetId?: string) {
     if (!body?.code) throw new BadRequestException('Code requis');
-    return this.pairing.claim(this.requireFleet(req), body.code);
+    return this.pairing.claim(this.requireFleet(req, fleetId), body.code);
   }
 
   /** Acte explicite du fleet-admin : active le partage sur les catégories cochées. */
   @Post('approve')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @RequirePermissions('integrations_manage')
-  async approve(@Req() req: AuthenticatedRequest, @Body() body: { code?: string; scopes?: unknown }) {
+  async approve(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { code?: string; scopes?: unknown },
+    @Query('fleetId') fleetId?: string,
+  ) {
     if (!body?.code) throw new BadRequestException('Code requis');
-    return this.pairing.approve(this.requireFleet(req), req.user.id, body.code, body.scopes);
+    return this.pairing.approve(this.requireFleet(req, fleetId), req.user.id, body.code, body.scopes);
   }
 
   /**
@@ -59,11 +63,15 @@ export class PartnerController {
   @Patch('scopes')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @RequirePermissions('integrations_manage')
-  async setScope(@Req() req: AuthenticatedRequest, @Body() body: { scope?: string; enabled?: boolean }) {
+  async setScope(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { scope?: string; enabled?: boolean },
+    @Query('fleetId') fleetId?: string,
+  ) {
     if (!body?.scope || !isPartnerScope(body.scope)) throw new BadRequestException('Scope inconnu');
     if (typeof body.enabled !== 'boolean') throw new BadRequestException('`enabled` requis');
 
-    const link = await this.pairing.requireLink(this.requireFleet(req));
+    const link = await this.pairing.requireLink(this.requireFleet(req, fleetId));
     const result = await this.revocation.setScope(link.id, body.scope, body.enabled, req.user.id);
     // Tentative immédiate ; le cron de l'outbox reste le filet.
     if (result.changed && !body.enabled) await this.outbox.dispatchNow(link.id);
@@ -77,8 +85,12 @@ export class PartnerController {
   @Delete()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @RequirePermissions('integrations_manage')
-  async revoke(@Req() req: AuthenticatedRequest, @Body() body: { reason?: string }) {
-    const fleetId = this.requireFleet(req);
+  async revoke(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { reason?: string },
+    @Query('fleetId') fleetIdQuery?: string,
+  ) {
+    const fleetId = this.requireFleet(req, fleetIdQuery);
     const link = await this.pairing.requireLink(fleetId);
     const result = await this.revocation.revoke(
       link.id,
@@ -95,8 +107,15 @@ export class PartnerController {
    * Le lien appartient à une FLOTTE : un super-admin sans flotte n'a rien à
    * appairer. On refuse plutôt que de deviner laquelle.
    */
-  private requireFleet(req: AuthenticatedRequest): string {
-    if (!req.user.fleetId) throw new BadRequestException('Aucune flotte associée a ce compte');
+  /**
+   * `fleetId` = filtre société global (sélecteur super-admin), comme sur `/vehicles/stats`.
+   * Un super-admin n'a pas de flotte propre : sans ce paramètre, l'écran Intégrations lui
+   * répondait « Aucune flotte associée » quelle que soit la société sélectionnée. Ignoré
+   * pour un non-super, qui reste confiné à sa propre flotte.
+   */
+  private requireFleet(req: AuthenticatedRequest, fleetIdQuery?: string): string {
+    if (req.user.role === UserRole.SUPER_ADMIN && fleetIdQuery) return fleetIdQuery;
+    if (!req.user.fleetId) throw new BadRequestException('Aucune flotte associée à ce compte');
     return req.user.fleetId;
   }
 }
