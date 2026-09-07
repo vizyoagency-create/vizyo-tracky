@@ -10,7 +10,7 @@ import {
 } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
-import { PreferencesService } from '../../core/services/preferences.service';
+import { PreferencesService, TRAINEE_POINTS_MAX } from '../../core/services/preferences.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
@@ -303,7 +303,9 @@ interface GroupeSection {
                   <div class="map-row-right">
                     @if (prefs().map.showTrails) {
                       <span class="zoom-value">{{ prefs().map.trailLength }}pts</span>
-                      <input type="range" min="5" max="50" [ngModel]="prefs().map.trailLength" (ngModelChange)="setMapPref('trailLength', $event)" class="range-styled range-sm" />
+                      <!-- Plage courte, voulue : à une trame toutes les 10-16 s, vingt points
+                           faisaient trois à cinq minutes de route derrière le véhicule. -->
+                      <input type="range" min="2" [max]="traineeMax" [ngModel]="prefs().map.trailLength" (ngModelChange)="setMapPref('trailLength', $event)" class="range-styled range-sm" />
                     }
                     <label class="toggle">
                       <input type="checkbox" [checked]="prefs().map.showTrails" (change)="setMapPref('showTrails', !prefs().map.showTrails)" />
@@ -963,6 +965,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
   protected readonly PaletteIcon = Palette;
   protected readonly NavigationIcon = Navigation;
   protected readonly RouteIcon = Route;
+  /** Plafond du curseur des traînées — la même constante que la normalisation des préférences. */
+  protected readonly traineeMax = TRAINEE_POINTS_MAX;
   protected readonly ArrowRightIcon = ArrowRight;
   protected readonly EarIcon = Ear;
   protected readonly ZapIcon = Zap;

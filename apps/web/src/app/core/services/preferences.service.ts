@@ -67,6 +67,11 @@ export interface UserPreferences {
      * redevenait chargée. Un réglage qu'il faut reposer à chaque visite n'est pas un réglage.
      */
     lieuxAffichage: AffichageLieux;
+    /**
+     * La légende du HUD de bureau est repliée par défaut : c'est de la référence qu'on lit une
+     * fois, pas un tableau de bord. Le choix est retenu, comme `lieuxAffichage`.
+     */
+    legendeRepliee: boolean;
   };
   /** Widgets activés et ordre d'affichage sur le tableau de bord. */
   dashboardWidgets: DashboardWidgetConfig[];
@@ -103,6 +108,13 @@ export interface UserPreferences {
   reportsSectionsRepliees: string;
 }
 
+/**
+ * Longueur de la traînée par défaut (en points) et plafond du réglage.
+ * Demande du propriétaire (2026-09-07) : deux ou trois traînées derrière ceux qui roulent.
+ */
+export const TRAINEE_POINTS_DEFAUT = 4;
+export const TRAINEE_POINTS_MAX = 8;
+
 const DEFAULTS: UserPreferences = {
   theme: 'light',
   notifications: {
@@ -126,7 +138,7 @@ const DEFAULTS: UserPreferences = {
     zoom: 12,
     style: 'osm',
     showTrails: true,
-    trailLength: 20,
+    trailLength: TRAINEE_POINTS_DEFAUT,
     showPlates: true,
     cameraMode: 'free',
     compactMarkers: true,
@@ -142,6 +154,7 @@ const DEFAULTS: UserPreferences = {
      * et, désormais, son choix est retenu.
      */
     lieuxAffichage: 'discrets',
+    legendeRepliee: true,
   },
   dashboardWidgets: [
     { key: 'kpis', enabled: true },
@@ -260,7 +273,7 @@ export class PreferencesService {
         info: { ...defaults.notifications.info, ...saved.notifications?.info },
       },
       pushAlerts: { ...defaults.pushAlerts, ...saved.pushAlerts },
-      map: { ...defaults.map, ...saved.map },
+      map: this.normaliserMap({ ...defaults.map, ...saved.map }),
       // Si la liste sauvegardée existe, on s'assure que les widgets manquants
       // sont ajoutés (par défaut activés) — utile pour évoluer le set sans casser.
       dashboardWidgets: this.mergeDashboardWidgets(saved.dashboardWidgets, defaults.dashboardWidgets),
@@ -268,6 +281,19 @@ export class PreferencesService {
       reportsLastView: saved.reportsLastView ?? defaults.reportsLastView,
       reportsSectionsRepliees: saved.reportsSectionsRepliees ?? defaults.reportsSectionsRepliees,
     };
+  }
+
+  /**
+   * ⚠️ UN ANCIEN DÉFAUT ENREGISTRÉ N'EST PAS UN CHOIX. Chaque utilisateur porte
+   * `trailLength: 20` dans ses préférences — l'ancien défaut, recopié à sa première visite.
+   * Le fusionner tel quel aurait gardé l'ancienne longueur pour tout le monde, et le nouveau
+   * défaut (4) ne se serait appliqué qu'aux comptes créés ensuite. Toute valeur hors de la
+   * plage du réglage retombe donc au défaut ; une valeur dans la plage est un vrai choix.
+   */
+  private normaliserMap(map: UserPreferences['map']): UserPreferences['map'] {
+    const l = map.trailLength;
+    const valide = Number.isFinite(l) && l >= 1 && l <= TRAINEE_POINTS_MAX;
+    return valide ? map : { ...map, trailLength: TRAINEE_POINTS_DEFAUT };
   }
 
   private mergeDashboardWidgets(

@@ -48,6 +48,7 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 | B2 | Câblage carte par carte : trip-replay, period-replay, public-trip (+DTO), depot | à faire | — |
 | C | Traînées : mesurer, puis corriger | à faire | — |
 | D | Légende repliable et mémorisée | à faire | — |
+| E | Repères de lieux NON déplaçables depuis les cartes (demande du 07/09 soir) | à faire | — |
 | R | Recette finale : captures 4 largeurs, sondes, correction des défauts | à faire | — |
 
 ---
@@ -92,8 +93,12 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 - [x] A4 — Journaux sauvegardés : `/root/journaux-tracky/tracky-api-avant-deploiement-*.log`
       (1 591 lignes, 0 CRITICAL depuis le démarrage de 16:09Z ; OOMKilled=false, exit 0).
       Déploiement lancé (embarque aussi `2a0d2326`, `cff8fc87`, `e4348461`).
-- [ ] A5 — Production : reproduire la perte, compter les erreurs soi-même (0), bandeau,
-      requête `/api/geofences` après le retour comme témoin, captures.
+- [x] A5 — **Prouvé en production** (session réelle du propriétaire, 1440 px, 20:10) :
+      avant → 0 erreur, pas de bandeau ; perte+800 ms → bandeau « Affichage de la carte
+      interrompu », 0 erreur ; retour+300 ms → bandeau ENCORE là (style pas rechargé, rAF en
+      attente), 0 erreur ; après rAF → bandeau retiré, **2 requêtes `/api/geofences`**
+      (`recreerCouches` a passé sa garde), 0 erreur, 41 marqueurs, carte repeinte. Captures
+      prises aux quatre instants.
 
 ---
 
@@ -156,18 +161,49 @@ tronçons colorés des deux rejeux ; la page publique reçoit les siennes de l'A
   contradictoire : on croit le GPS. `accConnected: null` garde le comportement d'avant.
   (Même règle que la pastille, commit `558213a8`.)
 
-- [ ] C0 — Mesurer en production sur 2-3 véhicules en route et 2-3 à l'arrêt, dont un sans
-      ACC : `trailPoints.size`, âge du plus ancien point, ce qui est affiché. Lire
-      `trailPoints`, `lastTruthPosition`, `motion`, `rejectStreak` avant.
-- [ ] C1 — Corriger selon la mesure (longueur en points vs durée ; purge à l'arrêt ≥ 3 min ;
-      hydratation initiale ; ACC non raccordé). Ne pas doubler la machinerie de lissage.
+- [x] C0 — **Mesuré en base de production** (90 dernières minutes, 19:55) : trois
+      véhicules en route émettent toutes les **10 à 16 s** (pas 30) ; treize à l'arrêt
+      émettent toutes les **2 à 6 min** avec un bruit GPS de **7 à 23 m en moyenne, 65 à
+      243 m au pire** entre deux trames, et jusqu'à 31 positions distinctes sans bouger.
+      L'ancienne règle (déduplication sur l'égalité exacte, aucune purge) faisait donc de
+      chaque trame bruitée un point de traînée, et rien ne l'effaçait. À 20 points, la
+      traînée d'un véhicule en route couvrait 3 à 5 min de route.
+      Le code ne lit `ignition` nulle part pour la traînée : le GPS seul décide, déjà.
+- [x] C1 — `features/map/trainee.ts` : une trame n'entre que si elle est NEUVE (horodatage
+      boîtier jamais vu, car `applyPositions` rejoue la dernière trame à chaque flush) ET que
+      le GPS prouve un mouvement (vitesse annoncée > 3 km/h ou déduite > 8 km/h, au-dessus du
+      bruit mesuré) ; trois minutes sans mouvement effacent tout. Défaut 4 points, curseur
+      2-8, un réglage hors plage (l'ancien défaut 20 recopié chez tous) retombe au défaut.
+      7 tests rouges sur l'ancien comportement, 15/15 verts après. Lissage inchangé.
 - [ ] Recette (production) : 2-3 traînées pour ceux qui roulent, aucune pour un arrêt
       ≥ 3 min, y compris pour un véhicule sans ACC.
 
 ## 5. Tâche D — soin visuel
 
-- [ ] D1 — Légende repliable, repliée par défaut, choix mémorisé (patron `lieuxAffichage`).
+- [x] D1 — HUD de bureau : bouton « Légende » (aria-expanded), repliée par défaut, préférence
+      `legendeRepliee` (défaut + persistance + anciennes préférences → défaut). Spec prouvée
+      rouge en changeant le défaut (2 échecs), verte ensuite. **À vérifier en production.**
 - [ ] D3 — `showPlates` par défaut : **décision propriétaire**, ne pas toucher.
+
+## 5 bis. Tâche E — les repères de lieux ne bougent plus depuis les cartes
+
+**Demande du propriétaire (2026-09-07, 20 h)** : sur mobile, en déplaçant la carte, on déplace
+parfois une station ou un parking sans le vouloir. Le glisser-déposer d'un repère ne doit
+exister que depuis la page Lieux, jamais depuis les pages carte.
+
+**Constat** : `map.component.ts` (`renderFleetPlaceMarkers`, ~l.5499) crée le marqueur avec
+`draggable: canManagePlaces()` et persiste au `dragend`. Un doigt qui veut faire défiler la
+carte et tombe sur un repère de 44 px le déplace, et la position est enregistrée en base.
+
+- [x] E1 — `draggable: false` sur la carte temps réel, `persistPlaceMove` retiré.
+      **Constat** : la page Lieux n'avait AUCUN moyen de déplacer un lieu (pas de carte) ;
+      retirer le glisser de la carte aurait rendu le déplacement impossible.
+- [x] E2 — `features/places/place-move.component.ts` : bouton « Déplacer » (droit
+      `places_manage`) → boîte avec une carte faite pour ça, repère glissable, bouton
+      d'enregistrement inactif tant que rien n'a bougé ; 3 tests (contrat d'enregistrement,
+      échec dit, rien d'émis sans déplacement).
+- [ ] Recette production, mobile 375 px : faire défiler la carte sur un repère ne le déplace
+      pas ; page Lieux → Déplacer → glisser → Enregistrer déplace bien.
 
 ---
 

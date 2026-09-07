@@ -49,6 +49,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 }
 import { firstValueFrom } from 'rxjs';
 import { reprendreApresContexte } from './reprise-contexte-webgl';
+import { ETAT_TRAINEE_VIDE, mettreAJourTrainee, type EtatTrainee } from './trainee';
 import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
@@ -1045,9 +1046,20 @@ const RESYNC_RADIUS_M = 150;
     }
 
     <!-- Légende vitesse - DESKTOP ONLY (mobile : dans la sheet) -->
+    <!-- ══ LA LÉGENDE SE REPLIE, ET RESTE REPLIÉE ══
+         Cinq bandes de vitesse et jusqu'à sept repères, en permanence à l'écran : c'est de la
+         référence qu'on lit une fois, pas un tableau de bord. Repliée par défaut, et le choix
+         est retenu (préférence legendeRepliee, même patron que lieuxAffichage). -->
     <div class="tracky-desktop-hud" style="position:absolute;bottom:24px;right:16px;z-index:1000">
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-3">
+                  rounded-[--radius-card] mp-legende" [class.mp-legende--ouverte]="!legendeRepliee()">
+        <button type="button" class="mp-legende-b" (click)="basculerLegende()"
+                [attr.aria-expanded]="!legendeRepliee()" aria-controls="mp-legende-contenu">
+          <span class="text-[10px] font-semibold text-fg-secondary uppercase tracking-wider">Légende</span>
+          <span class="mp-legende-chevron" aria-hidden="true">{{ legendeRepliee() ? '▸' : '▾' }}</span>
+        </button>
+        @if (!legendeRepliee()) {
+        <div id="mp-legende-contenu" class="mp-legende-contenu">
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
         <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
         <app-legende-vitesse></app-legende-vitesse>
@@ -1088,6 +1100,8 @@ const RESYNC_RADIUS_M = 150;
               </div>
             }
           </div>
+        }
+        </div>
         }
       </div>
     </div>
@@ -1461,6 +1475,18 @@ const RESYNC_RADIUS_M = 150;
       color: #04150F; font-size: 13px; font-weight: 700;
     }
     .mp-interrompue-b:hover { filter: brightness(1.06); }
+
+    /* ── La légende repliable du HUD de bureau ── */
+    .mp-legende { padding: 4px; }
+    .mp-legende--ouverte { padding: 12px; }
+    .mp-legende-b {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      width: 100%; min-height: 32px; padding: 4px 8px; border-radius: 8px;
+      background: transparent; border: 0; cursor: pointer; color: var(--fg-secondary);
+    }
+    .mp-legende-b:hover { background: color-mix(in srgb, var(--fg-primary) 6%, transparent); }
+    .mp-legende-chevron { font-size: 11px; line-height: 1; color: var(--fg-tertiary); }
+    .mp-legende-contenu { margin-top: 6px; }
 
     /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
        Mesuré à 375 px : les pastilles de la feuille (10 par écran), sa croix de
@@ -2862,7 +2888,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private resizeObserver: ResizeObserver | null = null;
   private markers = new Map<string, MarkerEntry>();
   private vehicleMeta = new Map<string, VehicleMeta>();
-  private trailPoints = new Map<string, Array<[number, number]>>();
+  /** La traînée de chaque boîtier — règle et purge dans `trainee.ts`, prouvées. */
+  private trainees = new Map<string, EtatTrainee>();
   // Derniere position consideree comme "verite" par tracker (fix GPS valid).
   // Sert d'ancrage pour `isAcceptableLiveFix` : on rejette les sauts > 250 km/h
   // depuis cette ancre, ce qui filtre les teleportations meme sur trames marquees
@@ -3008,6 +3035,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * repasser en « Tous » ou en « Masqués » ne tenait pas au-delà du rechargement.
    */
   protected readonly lieuxAffichage = signal<AffichageLieux>(this.preferences.prefs().map.lieuxAffichage);
+
+  /** La légende du HUD de bureau : repliée par défaut, et le choix est retenu (cf. gabarit). */
+  protected readonly legendeRepliee = signal<boolean>(this.preferences.prefs().map.legendeRepliee);
+
+  protected basculerLegende(): void {
+    const repliee = !this.legendeRepliee();
+    this.legendeRepliee.set(repliee);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, legendeRepliee: repliee } });
+  }
   protected readonly MODES_LIEUX: ReadonlyArray<{ id: AffichageLieux; label: string }> = [
     { id: 'masques', label: 'Masqués' },
     { id: 'discrets', label: 'Discrets' },
@@ -3824,7 +3860,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // de map.remove() (qui est suppose les nettoyer, mais defense en profondeur).
     for (const off of this.clusterListenerCleanups) off();
     this.clusterListenerCleanups = [];
-    this.trailPoints.clear();
+    this.trainees.clear();
     this.lastTruthPosition.clear();
     this.rejectStreak.clear();
     this.motion.clear();
@@ -5495,17 +5531,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         existing.setLngLat([p.lng, p.lat]);
         continue;
       }
-      // Glisser-déposer réservé à `places_manage` : on déplace le pin et on persiste au drop.
-      const draggable = this.canManagePlaces();
-      const marker = new maplibregl.Marker({ element: this.buildFleetPlaceEl(p), anchor: 'center', draggable })
+      /**
+       * ⚠️ JAMAIS DÉPLAÇABLE DEPUIS LA CARTE. Le glisser-déposer y était offert à qui a
+       * `places_manage` — et sur téléphone, un pouce qui veut faire défiler la carte et tombe
+       * sur un repère de 44 px le déplaçait, puis la position partait en base sans qu'on l'ait
+       * voulu. Constaté par le propriétaire, 2026-09-07. Le déplacement d'un lieu se fait
+       * depuis la page Lieux, par un geste explicite (`app-place-move`).
+       */
+      const marker = new maplibregl.Marker({ element: this.buildFleetPlaceEl(p), anchor: 'center', draggable: false })
         .setLngLat([p.lng, p.lat])
         .addTo(this.map);
-      if (draggable) {
-        marker.on('dragend', () => {
-          const ll = marker.getLngLat();
-          void this.persistPlaceMove(p.id, ll.lat, ll.lng);
-        });
-      }
       this.fleetPlaceMarkers.set(p.id, marker);
     }
     for (const [id, marker] of this.fleetPlaceMarkers) {
@@ -5647,23 +5682,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.toast.error('Suppression impossible');
     } finally {
       this.placeCardSaving.set(false);
-    }
-  }
-
-  /**
-   * Persiste le déplacement d'un lieu (glisser-déposer du marqueur). En cas d'échec on RESYNCHRONISE
-   * les marqueurs sur les coordonnées connues : sans ça le pin resterait là où l'utilisateur l'a
-   * lâché alors que rien n'est enregistré (l'UI mentirait).
-   */
-  private async persistPlaceMove(id: string, lat: number, lng: number): Promise<void> {
-    try {
-      const updated = await firstValueFrom(this.fleetPlacesApi.update(id, { lat, lng }));
-      this.applyPlaceUpdate(updated, { recreateMarker: false });
-      this.toast.success('Lieu déplacé');
-    } catch (err) {
-      swallow('map:persistPlaceMove', err);
-      this.toast.error('Déplacement non enregistré');
-      this.renderFleetPlaceMarkers(); // remet le pin à sa position enregistrée
     }
   }
 
@@ -5909,7 +5927,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           // GPS perdu → on NE reconstruit PAS la trainée (position figée : pas de trajet réel,
           // un trail vert laisserait croire qu'il roule). Elle disparaît proprement.
           if (showTrails && !gpsLost) {
-            const pts = this.trailPoints.get(pos.trackerId);
+            const pts = this.trainees.get(pos.trackerId)?.points;
             if (pts && pts.length >= 2) {
               const smoothPts = catmullRom(
                 pts.map(([lng, lat]) => ({ lat, lng })),
@@ -5997,7 +6015,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           // RAPPORTEE (la vitesse derivee sur le grand saut serait absurde).
           // Sur resync, on repart le trail a neuf : tirer un segment droit a
           // travers le trou (coupure GPRS) serait trompeur (chemin reel inconnu).
-          if (forceSnap) this.trailPoints.delete(pos.trackerId);
+          if (forceSnap) this.trainees.delete(pos.trackerId);
           entry.marker.setLngLat([pos.lng, pos.lat]);
           updateVehicleMarkerEl(entry.el, data);
           this.motion.set(pos.trackerId, {
@@ -6056,25 +6074,32 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         speedKmh: pos.speedKmh,
       });
 
-      // Trail accumulation (en memoire, capee a trailLength).
-      // V1.8 : dedupliquer — applyPositions est appele a chaque flush du buffer rAF
-      // (donc tres souvent, meme quand un seul tracker a recu une trame). Sans
-      // ce check, chaque tracker qui n'a PAS bouge voit son ancienne position
-      // pushee a chaque appel, remplissant trailPoints de duplicats. Resultat :
-      // le LineString degenere en N points superposes (segments de longueur 0)
-      // → plus aucune trainee visible meme quand le vehicule bouge vraiment.
-      // GPS perdu → pas de trainée (position figée). Cohérent avec la branche fix-invalide.
+      /**
+       * ── LA TRAÎNÉE : COURTE, ET SEULEMENT DERRIÈRE CEUX QUI ROULENT ────────────────────
+       *
+       * La règle est dans `trainee.ts`, avec ses tests : une trame n'entre que si le GPS
+       * prouve un mouvement (vitesse annoncée, ou déduite du déplacement — jamais le contact,
+       * six boîtiers sur trente n'ont pas de fil ACC), une trame rejouée par un flush ne
+       * compte pas, et trois minutes d'arrêt effacent tout. `trailLength` plafonne à quelques
+       * points (défaut 4, trois tronçons) : à une trame toutes les 10-16 s, vingt points
+       * faisaient trois à cinq minutes de route derrière le véhicule.
+       * GPS perdu → pas de traînée (position figée). Cohérent avec la branche fix-invalide.
+       */
       if (showTrails && !gpsLost) {
-        let pts = this.trailPoints.get(pos.trackerId);
-        if (!pts) {
-          pts = [];
-          this.trailPoints.set(pos.trackerId, pts);
-        }
-        const last = pts[pts.length - 1];
-        if (!last || last[0] !== pos.lng || last[1] !== pos.lat) {
-          pts.push([pos.lng, pos.lat]);
-          while (pts.length > trailLength) pts.shift();
-        }
+        const etat = mettreAJourTrainee(
+          this.trainees.get(pos.trackerId) ?? ETAT_TRAINEE_VIDE,
+          {
+            lng: pos.lng,
+            lat: pos.lat,
+            horodatage: pos.timestamp,
+            vitesseRapporteeKmh: pos.speedKmh,
+            vitesseDeriveeKmh: derived.effectiveSpeedKmh,
+            nowMs,
+          },
+          trailLength,
+        );
+        this.trainees.set(pos.trackerId, etat);
+        const pts = etat.points;
 
         if (pts.length >= 2) {
           // Lissage Catmull-Rom : insere des points intermediaires pour adoucir
@@ -6103,7 +6128,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         entry.abort.abort();
         entry.marker.remove();
         this.markers.delete(id);
-        this.trailPoints.delete(id);
+        this.trainees.delete(id);
         this.lastTruthPosition.delete(id);
         this.rejectStreak.delete(id);
         this.motion.delete(id);
