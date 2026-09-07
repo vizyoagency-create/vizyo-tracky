@@ -11,7 +11,7 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import type { AuthUser } from '../auth/types/auth-user';
 import { vitesseMoyenneAgregee } from '../common/vitesse-moyenne';
-import { CUMUL_EXCES_VIDE, excesParTrajet, type CumulExces, type ExcesParTrajetLigne, type PorteeExces } from './exces-portee';
+import { CUMUL_EXCES_VIDE, lireExcesParTrajet, type CumulExces, type ExcesParTrajetLigne } from './exces-portee';
 
 /**
  * Sprint 5 (Rapports & filtres v2) — Export Excel « soigné » PAR VÉHICULE.
@@ -124,27 +124,6 @@ export class ReportExcelService {
     private readonly vehicleAccess: VehicleAccessService,
   ) {}
 
-  /**
-   * Les excès du périmètre, indexés par trajet — ou une table VIDE si la lecture échoue.
-   *
-   * ⚠️ LE `try` ENGLOBE L'APPEL, pas seulement la promesse. Un `.catch()` seul ne rattrape que
-   * les rejets : si `$queryRaw` n'existe pas — un double de test, un client Prisma remplacé —
-   * l'erreur est SYNCHRONE et traverse. Le classeur tombait alors entièrement pour une colonne
-   * accessoire, exactement ce que ce garde-fou existe pour empêcher.
-   *
-   * Une table vide se lit comme « aucun excès connu » : les colonnes sortent à zéro et le
-   * journal dit pourquoi. Un classeur amputé d'une colonne reste utile ; c'est le document de
-   * secours quand l'écran ne répond pas, il ne doit pas tomber avec lui.
-   */
-  private async lireExces(portee: PorteeExces): Promise<Map<string, ExcesParTrajetLigne>> {
-    try {
-      const lignes = await excesParTrajet(this.prisma, portee);
-      return new Map(lignes.map((l) => [l.tripId, l]));
-    } catch (e: unknown) {
-      this.logger.warn(`Excès indisponibles pour le classeur : ${e instanceof Error ? e.message : e}`);
-      return new Map();
-    }
-  }
 
   /**
    * Génère le classeur Excel d'un véhicule sur une période.
@@ -255,10 +234,11 @@ export class ReportExcelService {
      * plus grave que son absence. Le classeur reste le document de secours quand l'écran ne
      * répond pas — il ne doit pas tomber avec lui.
      */
-    const excesDuTrajet = await this.lireExces({
-      fleetId: vehicle.fleetId, from, to,
-      vehicleIds: [vehicleId], driverScope: conducteur?.scope,
-    });
+    const excesDuTrajet = await lireExcesParTrajet(
+      this.prisma,
+      { fleetId: vehicle.fleetId, from, to, vehicleIds: [vehicleId], driverScope: conducteur?.scope },
+      (raison) => this.logger.warn(`Excès indisponibles pour le classeur : ${raison}`),
+    );
 
     // 4) Agrégation KPI à partir des trajets chargés (+ prix constaté depuis les passages station).
     const kpis = this.aggregate(trips, vehicle, fuelStops, excesDuTrajet);
@@ -390,9 +370,11 @@ export class ReportExcelService {
 
     // Les EXCÈS ÉTABLIS du périmètre, au grain du trajet — best-effort (cf. le classeur d'un
     // véhicule) : une colonne vide vaut mieux qu'un classeur en erreur.
-    const excesDuTrajet = await this.lireExces({
-      fleetId: fleet.id, from, to, vehicleIds: ids, driverScope: conducteur?.scope,
-    });
+    const excesDuTrajet = await lireExcesParTrajet(
+      this.prisma,
+      { fleetId: fleet.id, from, to, vehicleIds: ids, driverScope: conducteur?.scope },
+      (raison) => this.logger.warn(`Excès indisponibles pour le classeur : ${raison}`),
+    );
 
     const lignes: LigneVehicule[] = exportables.map((v) => {
       const siens = parVehicule.get(v.id) ?? [];

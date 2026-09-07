@@ -180,3 +180,36 @@ export function cumulerParCle<T extends ExcesParTrajetLigne>(
   }
   return out;
 }
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LA LECTURE QUI NE FAIT JAMAIS TOMBER SON DOCUMENT
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Les excès sont une colonne ACCESSOIRE d'exports qui, eux, ne le sont pas : le classeur et le
+ * CSV sont ce qu'on ouvre quand l'écran ne répond plus. Les faire tomber pour une colonne
+ * serait une régression bien plus grave que son absence — deux colonnes à zéro se remarquent
+ * et se comprennent, un export en erreur ne sert plus à rien.
+ *
+ * ⚠️ LE `try` ENGLOBE L'APPEL, pas seulement la promesse. Un `.catch()` seul ne rattrape que
+ * les REJETS : si `$queryRaw` n'existe pas — client Prisma remplacé, double de test — l'erreur
+ * est SYNCHRONE et traverse. Les deux appelants ont fait l'erreur à tour de rôle ; elle est
+ * corrigée une fois, ici.
+ *
+ * @param onErreur ce que l'appelant veut journaliser. Sans trace, une table vide serait
+ *   indiscernable d'un parc irréprochable.
+ */
+export async function lireExcesParTrajet(
+  prisma: Pick<PrismaClient, '$queryRaw'>,
+  portee: PorteeExces,
+  onErreur?: (raison: string) => void,
+): Promise<Map<string, ExcesParTrajetLigne>> {
+  try {
+    const lignes = await excesParTrajet(prisma, portee);
+    return new Map(lignes.map((l) => [l.tripId, l]));
+  } catch (e: unknown) {
+    onErreur?.(e instanceof Error ? e.message : String(e));
+    return new Map();
+  }
+}
+

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatFleetDateTime, parisDayKey } from '../common/utils/datetime';
@@ -6,6 +6,7 @@ import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { marqueFichierConducteur, type PorteeConducteur } from '../common/driver-scope';
 import { libelleGraviteAlerte, libelleTypeAlerte } from '@vizyo/tracky-shared';
+import { lireExcesParTrajet } from './exces-portee';
 
 /**
  * V1.5 (Sprint L) — Export CSV brut.
@@ -24,6 +25,13 @@ const BOM = '﻿';
 
 @Injectable()
 export class ReportCsvService {
+  /**
+   * Le journal ne sert qu'à dire qu'une colonne accessoire manque : la lecture des excès est
+   * best-effort, et sans cette trace, deux colonnes à zéro seraient indiscernables d'un parc
+   * irréprochable.
+   */
+  private readonly logger = new Logger(ReportCsvService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -174,6 +182,30 @@ export class ReportCsvService {
       },
       take: 50_000,
     });
+    /**
+     * ── LES EXCÈS, LIGNE À LIGNE ─────────────────────────────────────────────────────────
+     *
+     * ⚠️ DEUX COLONNES AJOUTÉES EN FIN DE LISTE, et la position n'est pas un détail. Les 23
+     * colonnes historiques sont un contrat : des scripts et des imports les lisent. Insérer
+     * au milieu décalerait tout pour qui lit par POSITION ; ajouter à la fin ne change rien
+     * ni pour eux, ni pour qui lit par nom d'en-tête.
+     *
+     * ⚠️ ET C'EST BIEN LEUR PLACE. Le lot du filtre conducteur avait tranché l'inverse — la
+     * marque du filtre irait dans le NOM du fichier, pas dans une colonne — mais il s'agissait
+     * de décrire le FICHIER ENTIER : une colonne qui répète la même valeur sur toutes les
+     * lignes n'est pas une donnée. Un compte d'excès, lui, change à chaque ligne. C'est
+     * exactement ce qu'une colonne est faite pour porter, et c'est la raison d'être d'un CSV
+     * qu'on trie et qu'on filtre.
+     *
+     * Lecture best-effort, comme le classeur : deux colonnes à zéro se remarquent et se
+     * comprennent ; un export en erreur pour une colonne accessoire ne sert plus à rien.
+     */
+    const excesDuTrajet = await lireExcesParTrajet(
+      this.prisma,
+      { fleetId, from, to, vehicleIds: ids, driverScope },
+      (raison) => this.logger.warn(`Excès indisponibles pour le CSV : ${raison}`),
+    );
+
     const rows = trips.map((t) => ({
       trip_id: t.id,
       plate: t.vehicle?.plate ?? '',
@@ -199,6 +231,13 @@ export class ReportCsvService {
       notes_author: this.formatAuthor(t.notesUpdatedBy),
       notes_updated_at: t.notesUpdatedAt?.toISOString() ?? '',
       notes_updated_at_local: t.notesUpdatedAt ? formatFleetDateTime(t.notesUpdatedAt) : '',
+      // ⚠️ Excès ÉTABLIS (cf. `exces-portee.ts`), jamais les pointes que l'analyse refuse
+      // d'affirmer : un CSV se recopie dans un tableur puis dans un courriel, et ce qui y
+      // devient une faute ne redevient jamais un doute.
+      speeding_count: excesDuTrajet.get(t.id)?.exces ?? 0,
+      // Vide et non zéro : sans excès il n'y a pas de « pire », et un 0 se trierait comme une
+      // mesure au milieu de trajets qui en ont vraiment un.
+      worst_over_kmh: excesDuTrajet.has(t.id) ? excesDuTrajet.get(t.id)!.pire.toFixed(1) : '',
     }));
     // ⚠️ La marque est posée ICI, pas dans `wrap` : `wrap` sert les quatre types de CSV et
     // trois d'entre eux ne peuvent PAS porter de conducteur (la route les refuse sous filtre).
@@ -209,6 +248,7 @@ export class ReportCsvService {
       'duration_seconds', 'distance_km', 'max_speed_kmh', 'avg_speed_kmh', 'position_count',
       'start_lat', 'start_lng', 'end_lat', 'end_lng', 'driver_id', 'driver_name', 'driver_source',
       'notes', 'notes_author', 'notes_updated_at', 'notes_updated_at_local',
+      'speeding_count', 'worst_over_kmh',
     ]);
   }
 
