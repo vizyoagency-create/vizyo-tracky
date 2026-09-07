@@ -45,7 +45,8 @@ import {
 } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Play, Pause, X, Navigation, Square } from 'lucide-angular';
-import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
+import type { Map as MlMap, Marker as MlMarker, GeoJSONSource } from 'maplibre-gl';
+import { EMPTY, from, mergeMap, catchError, map as rxMap, type Subscription } from 'rxjs';
 import type { TripDto } from '@vizyo/tracky-shared';
 import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
 import { MapService } from '../../core/services/map.service';
@@ -57,6 +58,9 @@ import {
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
+import { pointsDepuisHistorique, segmentsColores } from '../../shared/utils/segments-vitesse';
+import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
+import { PositionsApiService } from '../../core/services/positions.service';
 import { clampSpeed, formatDuration, max0 } from './reports.utils';
 
 interface TripSegment {
@@ -140,7 +144,7 @@ interface TimelineState {
   selector: 'app-period-replay',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, DatePipe, DecimalPipe],
+  imports: [LucideAngularModule, DatePipe, DecimalPipe, LegendeVitesseComponent],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex flex-col pr-shell">
@@ -199,6 +203,11 @@ interface TimelineState {
             <div #mapContainer
                  id="period-replay-map-container"
                  class="flex-1"></div>
+
+            <!-- La couleur des tracés est une VITESSE, la même table que les marqueurs. -->
+            <div class="pr-legende-v">
+              <app-legende-vitesse></app-legende-vitesse>
+            </div>
 
             <!-- Overlays positionnes par-dessus le map container -->
             @if (mapError(); as err) {
@@ -504,6 +513,15 @@ interface TimelineState {
     @media (max-width: 640px) {
       .pr-hud { font-size: 12px; }
     }
+    /* La légende de vitesse : en bas à droite, au-dessus de la mention légale compacte de
+       MapLibre (24 px), loin du HUD posé en haut à gauche. */
+    .pr-legende-v {
+      position: absolute; right: 12px; bottom: 34px; z-index: 10;
+      padding: 6px 10px; border-radius: 10px;
+      background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border-subtle);
+    }
   `],
 })
 export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
@@ -516,6 +534,9 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly mapSvc = inject(MapService);
   private readonly preferences = inject(PreferencesService);
+  private readonly positionsApi = inject(PositionsApiService);
+  /** Les demandes d'historique qui colorent les tracés — annulées avec la carte. */
+  private tracesSub: Subscription | null = null;
 
   protected readonly PlayIcon = Play;
   protected readonly PauseIcon = Pause;
@@ -1056,13 +1077,18 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
           id: layerId,
           type: 'line',
           source: srcId,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
-            'line-color': COULEURS_CARTE.trace,
+            // Vert uni tant que l'historique n'a pas répondu, puis la couleur du tronçon.
+            'line-color': ['coalesce', ['get', 'color'], COULEURS_CARTE.trace],
             'line-width': 3,
             'line-opacity': 0.55,
           },
         });
       }
+      this.chargerTracesColorees(
+        tl.segments.filter((s): s is TripSegment => s.kind === 'trip').map((s) => s.trip),
+      );
       // Auto-fit sur l'ensemble.
       const allLatLng = tl.allPoints.map(([lng, lat]) => ({ lat, lng }));
       this.mapSvc.fitBounds(this.map, allLatLng, { padding: 60, animate: false });
@@ -1088,8 +1114,43 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
     this.armer(() => this.map?.resize(), 600);
   }
 
+  /**
+   * ── LES TRACÉS COLORÉS PAR LA VITESSE, TRAJET PAR TRAJET ─────────────────────────────
+   *
+   * Les polylignes stockées ne portent aucune vitesse (vérifié en base de production le
+   * 2026-09-07). On demande l'historique fin de chaque trajet, trois à la fois, et on
+   * remplace son trait vert par des tronçons colorés à mesure que les réponses arrivent.
+   * Un trajet dont l'historique ne vient pas garde son trait vert : un rejeu sans couleur
+   * vaut mieux qu'un rejeu sans tracé, et rien n'est dit de faux.
+   */
+  private chargerTracesColorees(trips: TripDto[]): void {
+    this.tracesSub?.unsubscribe();
+    this.tracesSub = null;
+    const candidats = trips.filter((t) => !!t.trackerId && !!t.endedAt);
+    if (candidats.length === 0) return;
+    this.tracesSub = from(candidats)
+      .pipe(
+        mergeMap(
+          (t) => this.positionsApi
+            .history({ trackerId: t.trackerId!, from: t.startedAt, to: t.endedAt!, detail: 'fine' })
+            .pipe(
+              rxMap((res) => ({ tripId: t.id, points: pointsDepuisHistorique(res.points) })),
+              catchError(() => EMPTY),
+            ),
+          3,
+        ),
+      )
+      .subscribe(({ tripId, points }) => {
+        const src = this.map?.getSource(`pr-line-${tripId}`) as GeoJSONSource | undefined;
+        if (!src || points.length < 2) return;
+        src.setData(segmentsColores(points));
+      });
+  }
+
   private disposeMap(): void {
     // La carte s'en va : plus rien a surveiller ni a redimensionner.
+    this.tracesSub?.unsubscribe();
+    this.tracesSub = null;
     this.annulerMinuteries();
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     if (this.resizeObserver) {
