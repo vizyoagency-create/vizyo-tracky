@@ -18,7 +18,6 @@ import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap } from 'maplibre-gl';
 import { firstValueFrom } from 'rxjs';
 import { MapService } from '../../core/services/map.service';
-import { ThemeService } from '../../core/theme/theme.service';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -167,7 +166,6 @@ export class PublicTripComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
   private readonly mapSvc = inject(MapService);
-  private readonly theme = inject(ThemeService);
   private readonly conteneur = viewChild<ElementRef<HTMLDivElement>>('carte');
 
   protected readonly etat = signal<Etat>('chargement');
@@ -246,7 +244,21 @@ export class PublicTripComponent implements OnInit, AfterViewInit, OnDestroy {
     this.map = this.mapSvc.createMap(el, {
       center: bornes.getCenter(),
       zoom: 12,
-      style: this.theme.theme() === 'dark' ? 'dark' : 'light',
+      /**
+       * ⚠️ LE FOND `osm`, PAS `light`/`dark`. Les fonds « Plan clair » et « Plan sombre »
+       * viennent de CARTO, qui exige désormais une clé : leurs tuiles reviennent barrées
+       * d'un filigrane « API KEY REQUIRED » en travers de toute la carte. Constaté le
+       * 2026-09-07 sur le rendu réel.
+       *
+       * Sur une page que le client envoie à un conducteur ou à un tiers, c'est la dernière
+       * chose à montrer. `osm` est le fond par défaut du produit, sans clé et sans filigrane.
+       *
+       * ⚠️ ET IL NE SUIT PAS LE THÈME, volontairement. Le destinataire n'a pas de préférence
+       * enregistrée — il n'a pas de compte : suivre le thème de SON système donnerait une
+       * carte sombre à qui n'a rien demandé, et surtout une seule des deux variantes est
+       * utilisable.
+       */
+      style: 'osm',
       withNavigationControl: false,
       withGeolocateControl: false,
       withScaleControl: false,
@@ -278,6 +290,14 @@ export class PublicTripComponent implements OnInit, AfterViewInit, OnDestroy {
         this.marqueur(arrivee, 'Arrivée', '#0A1311');
       }
 
+      /**
+       * ⚠️ `resize()` AVANT `fitBounds`, et ce n'est pas superflu. `fitBounds` cadre d'après
+       * la taille que la carte CROIT avoir : si elle a été créée pendant que la mise en page
+       * flex se posait encore, elle garde une taille périmée et le cadrage tombe à côté —
+       * observé une fois sur deux, avec le tracé qui sortait par la droite. Un trajet
+       * partagé dont on ne voit pas l'arrivée ne partage pas grand-chose.
+       */
+      this.map.resize();
       this.map.fitBounds(bornes, { padding: 48, maxZoom: 15, duration: 0 });
     });
   }
