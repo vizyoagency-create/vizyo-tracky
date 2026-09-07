@@ -1,5 +1,5 @@
 import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from '../observability/refroidissement-alerte.service';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SurveillanceMode, UserRole } from '@prisma/client';
 import {
@@ -7,6 +7,7 @@ import {
   formatSilenceLabel,
   isVehicleDormant,
 } from '@vizyo/tracky-shared';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -55,6 +56,9 @@ export class SurveillanceSchedulerService {
     private readonly systemActivity: SystemActivityService,
     // Refroidissements d'alerte — ObservabilityModule est @Global, aucun import a ajouter.
     private readonly refroidissement: RefroidissementAlerteService,
+    // Environnement de démonstration : armer un profil y passerait par une passerelle SMS
+    // qui n'existe pas. Optionnel pour les specs, qui instancient ce service à la main.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
 
   private running = false;
@@ -73,6 +77,17 @@ export class SurveillanceSchedulerService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async run(): Promise<void> {
+    // ══ DÉMO — AUCUNE PASSERELLE SMS, DONC AUCUN ARMEMENT ══════════════════════
+    //
+    // La démo n'a pas de passerelle SMS, et c'est voulu : rien de ce qu'un prospect
+    // fait ne doit partir vers un vrai boîtier. Or armer un profil de surveillance
+    // passe par un SMS Coban. Sans cette garde, ce cron échouait CHAQUE MINUTE —
+    // 35 erreurs par heure le 2026-09-07, à elles seules au-dessus du seuil qui
+    // déclenche l'alerte de taux d'erreurs.
+    //
+    // Les profils restent visibles et modifiables à l'écran : c'est leur exécution
+    // planifiée qui n'a pas de sens ici, pas leur existence.
+    if (this.demoMode?.enabled) return;
     // Garde anti-chevauchement : si le tick précédent tourne encore (beaucoup de
     // profils × envoi SMS Coban), on saute ce tick plutôt que d'empiler des runs
     // concurrents (risque de saturation CPU/SMS). Le travail est repris au tick

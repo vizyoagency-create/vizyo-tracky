@@ -1,7 +1,8 @@
 import { CLES_REFROIDISSEMENT, RefroidissementAlerteService } from './refroidissement-alerte.service';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -43,6 +44,9 @@ export class ErrorRateWatchdogService {
     private readonly config: ConfigService,
     // Refroidissements d'alerte — ObservabilityModule est @Global, aucun import a ajouter.
     private readonly refroidissement: RefroidissementAlerteService,
+    // Environnement de démonstration : ses erreurs ne concernent pas l'exploitation.
+    // Optionnel pour les specs, qui instancient ce service sans conteneur DI.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
 
   private get threshold(): number {
@@ -60,6 +64,18 @@ export class ErrorRateWatchdogService {
    */
   @Cron('0 */10 * * * *')
   async check(now = Date.now()): Promise<void> {
+    // ══ DÉMO — NE JAMAIS ALERTER L'EXPLOITATION ════════════════════════════════
+    //
+    // Mesuré le 2026-09-07, jour de la mise en service : la démo a écrit « 54 erreurs
+    // en 1 h (dont 6 critiques) » à contact@vizyoagency.com. Aucune ne venait de la
+    // production, et la quasi-totalité était auto-infligée — passerelle SMS absente
+    // en démo, par conception.
+    //
+    // Une alerte de démo dans la boîte d'exploitation ne se distingue pas d'une vraie.
+    // C'est ainsi qu'on cesse de les lire, et qu'une vraie panne passe inaperçue. Les
+    // erreurs de la démo restent visibles dans SON propre centre d'alerte, ce qui
+    // suffit à qui la prépare avant un rendez-vous.
+    if (this.demoMode?.enabled) return;
     if (this.running) return;
     this.running = true;
     try {
