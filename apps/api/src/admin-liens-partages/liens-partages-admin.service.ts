@@ -65,8 +65,17 @@ export class LiensPartagesAdminService {
     const maintenant = Date.now();
     const auteur = { select: { firstName: true, lastName: true, email: true } };
 
+    /**
+     * ⚠️ LES DEUX TABLES SONT TOUJOURS LUES, MÊME AVEC UN FILTRE DE TYPE.
+     *
+     * Court-circuiter l'une d'elles économiserait une requête et FAUSSERAIT les compteurs de
+     * tête, qui sont censés porter sur l'ensemble : filtrer sur « Livraisons » aurait affiché
+     * « 2 actifs » pour un parc qui en compte 5. Un écran de surveillance dont les compteurs
+     * changent avec le filtre donne exactement le faux calme qu'il doit dissiper. Le filtre
+     * s'applique donc à la LISTE, jamais à la lecture.
+     */
     const [trajets, missions] = await Promise.all([
-      filtres.type === 'MISSION' ? Promise.resolve([]) : this.prisma.tripShareLink.findMany({
+      this.prisma.tripShareLink.findMany({
         where: filtres.fleetId ? { fleetId: filtres.fleetId } : {},
         orderBy: { createdAt: 'desc' },
         take: LiensPartagesAdminService.MAX_LIGNES + 1,
@@ -76,7 +85,7 @@ export class LiensPartagesAdminService {
           trip: { select: { startedAt: true, vehicle: { select: { plate: true } } } },
         },
       }),
-      filtres.type === 'TRAJET' ? Promise.resolve([]) : this.prisma.missionShareLink.findMany({
+      this.prisma.missionShareLink.findMany({
         orderBy: { createdAt: 'desc' },
         take: LiensPartagesAdminService.MAX_LIGNES + 1,
         include: {
@@ -156,6 +165,7 @@ export class LiensPartagesAdminService {
     const filtrees = lignes
       .filter((l) => !filtres.fleetId || l.fleetId === filtres.fleetId)
       .filter((l) => !filtres.etat || l.etat === filtres.etat)
+      .filter((l) => !filtres.type || l.type === filtres.type)
       // Les plus récemment créés d'abord : c'est l'ordre dans lequel on cherche un lien
       // qu'on vient d'envoyer, et celui dans lequel les oublis remontent naturellement.
       .sort((a, b) => b.creeAt.localeCompare(a.creeAt));

@@ -152,6 +152,77 @@ describe('Prolongation d’un lien de partage', () => {
   });
 });
 
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LES COMPTEURS DE TÊTE NE DOIVENT PAS BOUGER AVEC LE FILTRE
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * L'écran affiche « N actifs » au-dessus d'une liste filtrable. Si le compteur suivait le
+ * filtre, choisir « Livraisons » afficherait « 2 actifs » pour un parc qui en compte 5 — et
+ * l'écran de surveillance produirait le faux calme qu'il existe pour dissiper.
+ */
+describe('Vue d’ensemble — compteurs et filtres', () => {
+  function vueAvec(nbTrajets: number, nbMissions: number) {
+    const commun = (i: number) => ({
+      id: 'l' + i,
+      createdAt: new Date(MAINTENANT - HEURE),
+      expiresAt: new Date(MAINTENANT + 12 * HEURE),
+      duration: 'HOUR_24',
+      revokedAt: null,
+      openCount: 0,
+      firstOpenedAt: null,
+      lastOpenedAt: null,
+      lastOpenedFrom: null,
+      extendedCount: 0,
+      lastExtendedAt: null,
+      createdBy: { firstName: 'Ada', lastName: 'L', email: 'ada@x.fr' },
+    });
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const prisma: any = {
+      tripShareLink: {
+        findMany: jest.fn().mockResolvedValue(
+          Array.from({ length: nbTrajets }, (_, i) => ({
+            ...commun(i), fleetId: 'f1', fleet: { name: 'mh cars' }, trip: null,
+          })),
+        ),
+      },
+      missionShareLink: {
+        findMany: jest.fn().mockResolvedValue(
+          Array.from({ length: nbMissions }, (_, i) => ({
+            ...commun(100 + i), mission: { ref: 'M-1', startAt: null, fleetId: 'f1', fleet: { name: 'mh cars' }, vehicle: null },
+          })),
+        ),
+      },
+    };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    return new LiensPartagesAdminService(prisma, { record: jest.fn() } as never);
+  }
+
+  beforeEach(() => jest.useFakeTimers().setSystemTime(MAINTENANT));
+  afterEach(() => jest.useRealTimers());
+
+  it('🔴 filtrer par type réduit la LISTE mais pas le compteur', async () => {
+    const svc = vueAvec(3, 2);
+
+    const tout = await svc.vue({});
+    const missionsSeules = await svc.vue({ type: 'MISSION' });
+
+    expect(tout.liens.length).toBe(5);
+    expect(missionsSeules.liens.length).toBe(2);
+    // Le compteur, lui, porte sur l'ensemble dans les DEUX cas.
+    expect(missionsSeules.resume.actifs).toBe(5);
+    expect(missionsSeules.resume.actifs).toBe(tout.resume.actifs);
+  });
+
+  it('les deux mécanismes apparaissent dans la même liste', async () => {
+    const svc = vueAvec(1, 1);
+
+    const types = (await svc.vue({})).liens.map((l) => l.type).sort();
+
+    expect(types).toEqual(['MISSION', 'TRAJET']);
+  });
+});
+
 describe('Révocation depuis la vue d’ensemble', () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(MAINTENANT));
   afterEach(() => jest.useRealTimers());
