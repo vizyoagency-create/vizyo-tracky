@@ -219,6 +219,32 @@ describe("transformations de l'import de démonstration", () => {
     expect(analyse.detail).toEqual({ texte: 'AB-123-CD', liste: ['x'] });
   });
 
+  it("Alert : les récentes arrivent OUVERTES, les anciennes gardent leur acquittement", () => {
+    const ctx = contexte(); // maintenant = 2026-09-07T04:00:00Z
+    const acquittee = new Date('2026-09-01T10:00:00Z');
+    const recente = transformerAlerte(
+      ligneSource('Alert', {
+        id: 'a-recente', vehicleId: null, trackerId: null, tripId: null,
+        createdAt: new Date('2026-09-05T10:00:00Z'), acknowledgedAt: acquittee,
+      }) as never,
+      ctx,
+    );
+    // Le centre d'alerte n'affiche que le non acquitté : sans cela il serait vide.
+    expect(recente.acknowledgedAt).toBeNull();
+
+    const ancienne = transformerAlerte(
+      ligneSource('Alert', {
+        id: 'a-ancienne', vehicleId: null, trackerId: null, tripId: null,
+        createdAt: new Date('2026-07-05T10:00:00Z'), acknowledgedAt: acquittee,
+      }) as never,
+      ctx,
+    );
+    expect(ancienne.acknowledgedAt).toEqual(acquittee);
+    // L'acquitteur n'est jamais importé, dans les deux cas.
+    expect(recente.acknowledgedBy).toBeNull();
+    expect(ancienne.acknowledgedBy).toBeNull();
+  });
+
   it("Alert : le nom de la zone citée est remplacé, même si la zone n'existe plus", () => {
     const ctx = contexte();
     // Le cas réel : 536 alertes citaient « CDEF425 » alors que la société source n'a plus aucune

@@ -28,6 +28,9 @@ import { idDemo } from './uuid-deterministe';
 /** Le compte système du seed (`prisma/seed.ts`) : cible des clés « auteur » obligatoires. */
 export const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+/** Fenêtre pendant laquelle une alerte importée arrive OUVERTE. Cf. `transformerAlerte`. */
+export const OUVERTURE_ALERTES_MS = 7 * 24 * 60 * 60 * 1000;
+
 /**
  * Correspondances identifiant source → identifiant de démo, par modèle.
  *
@@ -662,7 +665,21 @@ export function transformerAlerte(src: Alert, ctx: Contexte): Prisma.AlertCreate
     payload: src.payload === null ? Prisma.JsonNull : (ctx.assainisseur.jsonAlerte(src.payload) as Prisma.InputJsonValue),
     latitude: src.latitude,
     longitude: src.longitude,
-    acknowledgedAt: src.acknowledgedAt,
+    /**
+     * ⚠️ LES ALERTES RÉCENTES ARRIVENT OUVERTES, ET C'EST UNE DÉCISION, PAS UN OUBLI.
+     *
+     * Le centre d'alerte n'affiche que le NON ACQUITTÉ (`GET /api/alerts?acknowledged=false`).
+     * Or la société source a acquitté les siennes : les 10 096 alertes importées l'étaient
+     * toutes. Résultat mesuré le 2026-09-07 sur la démo déployée : « Aucune alerte » sur une
+     * flotte de trente-sept véhicules — l'écran le plus vendeur du produit, vide.
+     *
+     * On rouvre donc les alertes des sept derniers jours, et on garde l'acquittement des plus
+     * anciennes : le prospect voit une poignée d'alertes à traiter ET un historique. C'est aussi
+     * le seul état COHÉRENT, puisque l'acquitteur (`acknowledgedBy`) n'est jamais importé — une
+     * alerte acquittée par personne n'existe pas.
+     */
+    acknowledgedAt:
+      src.createdAt.getTime() >= ctx.maintenant.getTime() - OUVERTURE_ALERTES_MS ? null : src.acknowledgedAt,
     acknowledgedBy: null,
     escalatedAt: src.escalatedAt,
     createdAt: src.createdAt,

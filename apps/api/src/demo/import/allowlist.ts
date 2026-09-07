@@ -192,9 +192,10 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     imposes: [],
   },
   Alert: {
-    pourquoi: "les alertes (fenêtre DEMO_TRIPS_MONTHS) : titre, message et charge utile assainis (ils citent la plaque), l'acquitteur (un compte) effacé",
-    copies: ['type', 'severity', 'latitude', 'longitude', 'acknowledgedAt', 'escalatedAt', 'createdAt'],
-    transformes: ['id', 'fleetId', 'vehicleId', 'trackerId', 'tripId', 'title', 'message', 'payload'],
+    pourquoi:
+      "les alertes (fenêtre DEMO_TRIPS_MONTHS) : titre, message et charge utile assainis (ils citent la plaque ET la zone), l'acquitteur effacé, et l'acquittement REMIS À ZÉRO sur les sept derniers jours — sinon le centre d'alerte est vide, la source ayant tout acquitté",
+    copies: ['type', 'severity', 'latitude', 'longitude', 'escalatedAt', 'createdAt'],
+    transformes: ['id', 'fleetId', 'vehicleId', 'trackerId', 'tripId', 'title', 'message', 'payload', 'acknowledgedAt'],
     imposes: ['acknowledgedBy'],
   },
   Position: {
