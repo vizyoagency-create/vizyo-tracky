@@ -309,11 +309,13 @@ d'interface (piège 0.6 du dossier de reprise).
 4. Contrôle du 08/09 07:15 : le trou d'automatisation est-il revenu ? ⚠️ Le conteneur API a
    été recréé le 07/09 (déploiements de ce chantier) : ses journaux d'avant sont dans
    `/root/journaux-tracky/` sur le VPS, `docker inspect` ne dira plus rien d'avant 17:38Z.
-6. **Chaque redéploiement déconnecte la session du propriétaire** : observé deux fois le
-   07/09 21:05 et le 08/09 01:35 (page de connexion au retour, « Rester connecté » coché).
-   La mémoire du dépôt affirme qu'une vraie session survit au redémarrage grâce au jeton de
-   rafraîchissement ; ce n'est pas ce qui s'est passé. À instruire (`auth.interceptor.ts`,
-   `refreshUnavailable()`, et ce que renvoie l'API pendant la fenêtre de recréation).
+6. ~~**Chaque redéploiement déconnecte la session du propriétaire**~~ — **RÉSOLU par une autre
+   session** (`9a6531a8`, déployé). Le symptôme que j'avais relevé deux fois (07/09 21:05,
+   08/09 01:35) avait la cause suivante : pendant la recréation du conteneur, Traefik perd le
+   routeur de l'API, `/api/*` retombe sur le front, et nginx répond **405** à un POST. Or
+   `tryRefresh()` ne jugeait « indisponible » qu'un code 0 ou ≥ 500 : le 405 passait pour un
+   refus et l'intercepteur déconnectait. Désormais seuls 401 et 403 sont des refus.
+   ✅ Constaté ici : un redéploiement a eu lieu pendant cette recette et **la session a tenu**.
 5. **Le rouge de la bande 101-140 (`#EF4444`) est aussi le rouge des excès confirmés**, et
    l'orange 66-100 (`#F59E0B`) celui des pointes. Sur le rejeu, excès et pointes restent des
    PASTILLES cerclées de blanc (pas des tronçons), et la légende de vitesse nomme les bandes ;
