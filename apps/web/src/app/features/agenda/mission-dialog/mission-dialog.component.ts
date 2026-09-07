@@ -11,6 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { AlertTriangle, LucideAngularModule, Route, Warehouse, X } from 'lucide-angular';
+import { corpsErreur } from '../../../core/interceptors/auth.interceptor';
 import { swallow } from '../../../core/error/swallow';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 
@@ -807,8 +808,14 @@ export class MissionDialogComponent {
         },
         error: (err: HttpErrorResponse) => {
           this.envoi.set(false);
-          const corps = err.error as ConflitMission | { message?: string } | undefined;
-          if (corps && 'code' in corps && corps.code === 'MISSION_SLOT_CONFLICT') {
+          /**
+           * ⚠️ LE CORPS SE LIT À TRAVERS L'ENVELOPPE `{ error: { … } }`. Lu à plat, `code`
+           * valait toujours `undefined` : le panneau de conflit ne s'ouvrait jamais et
+           * l'utilisateur recevait « La mission n'a pas pu être créée. » — un refus sans
+           * motif, devant lequel la seule issue est de réessayer au hasard.
+           */
+          const corps = corpsErreur(err) as (ConflitMission & { message?: string }) | null;
+          if (corps?.code === 'MISSION_SLOT_CONFLICT') {
             this.conflit.set(corps);
             // On recharge : le véhicule vient d'être pris, la liste doit le dire.
             this.rechargerDisponibilite();

@@ -1,4 +1,5 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, type HttpErrorResponse } from '@angular/common/http';
+import { codeErreur } from '../../core/interceptors/auth.interceptor';
 import { inject, Injectable, signal } from '@angular/core';
 import type {
   DepotDocumentsDto,
@@ -156,10 +157,30 @@ export class DepotApiService {
       return reponse;
     } catch (err) {
       const statut = (err as { status?: number })?.status;
-      // 401 = session morte ; 403 = compte encore valide mais périmètre vidé (accès
-      // retiré). Les deux mènent au même écran : on ne laisse pas un dépôt devant une
-      // page qui charge sans fin, sans savoir que son accès a changé.
-      if (statut === 401 || statut === 403) this.accesRetire.set(true);
+      /**
+       * ══════════════════════════════════════════════════════════════════════════════════
+       * « VOTRE TRANSPORTEUR A FERMÉ CET ACCÈS » N'EST PAS VRAI DE TOUS LES 403
+       * ══════════════════════════════════════════════════════════════════════════════════
+       *
+       * 401 = session morte ; 403 = compte valide mais périmètre vidé. Les deux menaient au
+       * même écran — on ne laisse pas un dépôt devant une page qui charge sans fin.
+       *
+       * ⚠️ MAIS DEUX AUTRES 403 PASSENT PAR ICI, et pour eux le message est FAUX :
+       *
+       *   · `CONSENT_REQUIRED` — l'accord RGPD n'est pas donné ;
+       *   · `DEVICE_VERIFICATION_REQUIRED` — l'appareil n'est pas encore vérifié.
+       *
+       * Dans les deux cas, l'écran disait « Votre transporteur a fermé cet accès.
+       * Contactez-le pour le rétablir. » — on envoyait la personne appeler son transporteur
+       * pour quelque chose qu'elle seule peut faire, et le transporteur ne trouvait rien à
+       * réparer. Constaté le 2026-09-07 sur un compte DEPOT de production.
+       *
+       * Ces deux-là sont traités par l'intercepteur global, qui lève l'écran adéquat : ici,
+       * on se contente de ne pas les traduire de travers.
+       */
+      const code = codeErreur(err as HttpErrorResponse);
+      const traiteAilleurs = code === 'CONSENT_REQUIRED' || code === 'DEVICE_VERIFICATION_REQUIRED';
+      if ((statut === 401 || statut === 403) && !traiteAilleurs) this.accesRetire.set(true);
       throw err;
     }
   }

@@ -62,6 +62,51 @@ function notifySessionExpired(toast: ToastService): void {
 // #39 — N requetes 401 concurrentes ne doivent PAS executer N fois les effets de
 // bord de deconnexion (disconnect/logout/navigate). Idempotent via un flag, reset
 // apres 5s pour qu'une re-connexion + re-expiration ulterieure fonctionne.
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LE CODE MÉTIER D'UNE ERREUR, LU À TRAVERS L'ENVELOPPE
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * L'API enveloppe ses erreurs : `{ error: { code, message, requestId } }`. Le code vit donc
+ * un cran PLUS BAS que `HttpErrorResponse.error`, qui est déjà le corps analysé.
+ *
+ * ⚠️ LES DEUX GARDES DE SÉCURITÉ LISAIENT AU MAUVAIS NIVEAU — `error.error.code` au lieu de
+ * `error.error.error.code` — donc trouvaient toujours `undefined`. Ni l'écran de
+ * consentement ni celui de vérification d'appareil ne s'ouvrait depuis un appel HttpClient.
+ * Le défaut était doublé côté serveur, où le filtre d'exceptions écrasait le code par
+ * `FORBIDDEN` : deux erreurs qui se cachaient l'une l'autre, et aucune ne levait de bruit.
+ *
+ * Les deux formes sont acceptées : l'enveloppée d'aujourd'hui, et la plate au cas où une
+ * route y échapperait. Une garde de sécurité ne doit pas dépendre d'un détail de sérialisation.
+ */
+export function codeErreur(error: HttpErrorResponse): string | null {
+  return corpsErreur(error)?.code ?? null;
+}
+
+/**
+ * Le corps métier d'une erreur d'API — `code` compris, mais aussi tout ce que le service a
+ * jugé utile d'y joindre.
+ *
+ * ⚠️ CERTAINES ERREURS PORTENT LEUR MOTIF DANS CES CHAMPS-LÀ. Un créneau refusé renvoie
+ * `MISSION_SLOT_CONFLICT` **avec** la plaque du véhicule et la mission qui bloque : sans eux,
+ * il ne reste qu'un refus sans raison. Lire le code seul suffit pour une garde ; pour un
+ * message à montrer, il faut le corps entier.
+ *
+ * Rend `null` quand il n'y a rien à lire — corps vide, texte brut, coupure réseau.
+ */
+export function corpsErreur(
+  error: HttpErrorResponse,
+): (Record<string, unknown> & { code?: string }) | null {
+  const corps = error.error as Record<string, unknown> | null | undefined;
+  if (!corps || typeof corps !== 'object') return null;
+  // La forme enveloppée d'aujourd'hui, puis la plate au cas où une route y échapperait.
+  const interne = corps['error'];
+  if (interne && typeof interne === 'object' && !Array.isArray(interne)) {
+    return interne as Record<string, unknown> & { code?: string };
+  }
+  return corps as Record<string, unknown> & { code?: string };
+}
+
 let loggingOut = false;
 function forceLogout(
   toast: ToastService,
@@ -147,10 +192,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       // Gate RGPD : le back renvoie 403 { code:'CONSENT_REQUIRED' } tant que l'accord
       // n'est pas donné → on lève l'écran de consentement (backstop des appels HttpClient ;
       // le check boot /consent/current reste le gate primaire).
-      if (
-        error.status === 403 &&
-        (error.error as { code?: string } | null)?.code === 'CONSENT_REQUIRED'
-      ) {
+      if (error.status === 403 && codeErreur(error) === 'CONSENT_REQUIRED') {
         consent.require();
         return throwError(() => error);
       }
@@ -160,7 +202,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       // boot du statut reste le gate primaire).
       if (
         error.status === 403 &&
-        (error.error as { code?: string } | null)?.code === 'DEVICE_VERIFICATION_REQUIRED'
+        codeErreur(error) === 'DEVICE_VERIFICATION_REQUIRED'
       ) {
         security.require();
         return throwError(() => error);
