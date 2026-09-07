@@ -3,8 +3,9 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } 
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
-  LucideAngularModule, Fuel, MapPin, ParkingSquare, Check, Trash2, RefreshCw, AlertTriangle, Info, Sparkles,
+  LucideAngularModule, Fuel, MapPin, ParkingSquare, Check, Trash2, RefreshCw, AlertTriangle, Info, Sparkles, Move,
 } from 'lucide-angular';
+import { PlaceMoveComponent } from './place-move.component';
 import { firstValueFrom } from 'rxjs';
 import {
   FleetPlacesApiService,
@@ -42,9 +43,14 @@ type OngletPlaces = 'valider' | 'valides' | 'zones';
   selector: 'app-places',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, RouterLink, LucideAngularModule, SpinnerComponent, ZoneComponent],
+  imports: [DatePipe, DecimalPipe, RouterLink, LucideAngularModule, SpinnerComponent, ZoneComponent, PlaceMoveComponent],
   template: `
     <div class="lk-page">
+      <!-- Déplacer un lieu se fait ICI, par un geste explicite — plus jamais en glissant un
+           repère sur la carte, où un pouce qui fait défiler le déplaçait sans le vouloir. -->
+      @if (deplacement(); as p) {
+        <app-place-move [place]="p" (deplace)="lieuDeplace($event)" (annule)="deplacement.set(null)"></app-place-move>
+      }
       <header class="lk-head">
         <div>
           <h1 class="lk-title">Lieux clés</h1>
@@ -161,6 +167,10 @@ type OngletPlaces = 'valider' | 'valides' | 'zones';
                   <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
                 </button>
                 @if (canManage()) {
+                  <button type="button" class="lk-btn" (click)="deplacement.set(p)" title="Déplacer ce lieu">
+                    <lucide-icon [img]="MoveIcon" [size]="13"></lucide-icon>
+                    Déplacer
+                  </button>
                   <button
                     type="button"
                     class="lk-btn lk-btn--danger"
@@ -574,6 +584,15 @@ export class PlacesComponent {
   protected readonly AlertIcon = AlertTriangle;
   protected readonly InfoIcon = Info;
   protected readonly SparklesIcon = Sparkles;
+  protected readonly MoveIcon = Move;
+
+  /** Le lieu en cours de déplacement — la boîte `app-place-move` est ouverte tant qu'il y en a un. */
+  protected readonly deplacement = signal<FleetPlaceDto | null>(null);
+
+  protected lieuDeplace(updated: FleetPlaceDto): void {
+    this.places.update((list) => list.map((x) => (x.id === updated.id ? updated : x)));
+    this.deplacement.set(null);
+  }
 
   /** Seuil d'arrêt réel (min) — aligné sur la détection serveur. */
   protected readonly minStopMin = 4;
