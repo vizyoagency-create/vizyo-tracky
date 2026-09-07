@@ -49,6 +49,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 }
 import { firstValueFrom } from 'rxjs';
 import { reprendreApresContexte } from './reprise-contexte-webgl';
+import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { GpsDeadZonesApiService, type GpsDeadZoneMapDto } from '../../core/services/gps-dead-zones.service';
@@ -253,7 +254,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent],
+  imports: [DecimalPipe, NgTemplateOutlet, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective, BottomSheetComponent, ZoneComponent, LegendeVitesseComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -991,24 +992,8 @@ const RESYNC_RADIUS_M = 150;
         <!-- ─── LÉGENDE VITESSE (mobile only) ─── -->
         <div class="tracky-sheet-section tracky-sheet-section--mobile-only">
           <p class="tracky-sheet-title">Légende vitesse</p>
-          <div class="tracky-sheet-legend">
-            <div class="tracky-sheet-legend-item">
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#5C746C"></span>
-              <span>0 km/h</span>
-            </div>
-            <div class="tracky-sheet-legend-item">
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#10E0A0"></span>
-              <span>1-50 km/h</span>
-            </div>
-            <div class="tracky-sheet-legend-item">
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#F59E0B"></span>
-              <span>51-90 km/h</span>
-            </div>
-            <div class="tracky-sheet-legend-item">
-              <span class="w-2.5 h-2.5 rounded-full" style="background:#EF4444"></span>
-              <span>91+ km/h</span>
-            </div>
-          </div>
+          <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
+          <app-legende-vitesse disposition="grille" style="--lv-taille: 12px"></app-legende-vitesse>
           @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
             <p class="tracky-sheet-title" style="margin-top:10px">Repères carte</p>
             <div class="tracky-sheet-legend">
@@ -1064,24 +1049,8 @@ const RESYNC_RADIUS_M = 150;
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-3">
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
-        <div class="flex flex-col gap-1">
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full" style="background:#5C746C"></span>
-            <span class="text-[10px] text-fg-tertiary">0 km/h</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full" style="background:#10E0A0"></span>
-            <span class="text-[10px] text-fg-tertiary">1-50 km/h</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full" style="background:#F59E0B"></span>
-            <span class="text-[10px] text-fg-tertiary">51-90 km/h</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full" style="background:#EF4444"></span>
-            <span class="text-[10px] text-fg-tertiary">91+ km/h</span>
-          </div>
-        </div>
+        <!-- Générée depuis BANDES_VITESSE : la même table que les marqueurs et les tracés. -->
+        <app-legende-vitesse></app-legende-vitesse>
         @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Repères</p>

@@ -82,13 +82,16 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 
 - [ ] A0 — Mesurer le comportement ACTUEL sur le banc local (`ng.getComponent`), sonde `etat()`
       avant / pendant / après. Critère : 4 sources présentes et nombre de couches revenu.
-- [ ] A1 — Extraire le séquencement du retour dans une fonction pure testable
-      (`features/map/reprise-contexte-webgl.ts`), tests rouges sur les deux trous.
-- [ ] A2 — Correctif : style nul → réappliquer le fond courant ; drapeau levé au moment de
-      reconstruire, pas avant. Vert.
-- [ ] A3 — Garde-fous (7), `ng build`, `ng test`, `jest`.
-- [ ] A4 — Sauvegarder les journaux du conteneur API hors arbre git AVANT de déployer
-      (contrôle du 08/09). Déployer, attendre l'artefact.
+- [x] A0 — Mesuré (journal du 19:35). Les couches reviennent ; les deux trous sont réels.
+- [x] A1 — `reprise-contexte-webgl.ts` + spec : 2 tests rouges sur 4 avant correctif
+      (drapeau baissé avant `styledata` ; fond jamais réappliqué sur style nul).
+- [x] A2 — Correctif, 4/4 verts. Re-mesuré sur le banc : les deux scénarios reviennent à
+      4 sources / 16 couches / données repeuplées / 0 erreur, bandeau retiré APRÈS.
+- [x] A3 — 7 garde-fous verts, `ng build` OK (avertissements de budget préexistants),
+      `ng test` 662/662, `jest` 3779/3779. Commit `09d04e2b`, poussé.
+- [x] A4 — Journaux sauvegardés : `/root/journaux-tracky/tracky-api-avant-deploiement-*.log`
+      (1 591 lignes, 0 CRITICAL depuis le démarrage de 16:09Z ; OOMKilled=false, exit 0).
+      Déploiement lancé (embarque aussi `2a0d2326`, `cff8fc87`, `e4348461`).
 - [ ] A5 — Production : reproduire la perte, compter les erreurs soi-même (0), bandeau,
       requête `/api/geofences` après le retour comme témoin, captures.
 
@@ -98,13 +101,17 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 
 Bandes demandées : 0 arrêt · 1–65 vert · 66–100 orange · 101–140 rouge · > 140 rouge foncé.
 
-- [ ] B1 — `BANDES_VITESSE` + `couleurVitesse()` dans `shared/utils/couleurs-carte.ts` ;
-      `speedColor()` délègue (export conservé).
-- [ ] B4 — `maplibre-markers.spec.ts` : table `PALETTE` à 5 bandes, contraste 4,5:1 sur
-      chacune (le rouge foncé `#991B1B` porte du blanc à ~8,3:1).
-- [ ] B3 — `segmentsColores(points)` → `FeatureCollection` de segments `properties.color` ;
-      `<app-legende-vitesse>` générée depuis `BANDES_VITESSE` ; remplacer les deux légendes
-      manuscrites de `map.component.ts` (HUD l.1069-1081, planche l.996-1008).
+- [x] B1 — `BANDES_VITESSE` + `couleurVitesse()` dans `shared/utils/couleurs-carte.ts` ;
+      `speedColor()` délègue (export conservé). Rouge d'abord : 3 tests de seuil rouges sur
+      l'ancienne échelle (60 → orange, 95 → rouge, 150 → rouge et non foncé), puis verts.
+      Vitesse absente (`NaN`) → gris « à l'arrêt », jamais le rouge foncé.
+- [x] B4 — `maplibre-markers.spec.ts` : `PALETTE` générée depuis `BANDES_VITESSE` (7 fonds),
+      contraste 4,5:1 sur chacun ; `couleurs-carte.spec.ts` : forme de la table, bornes,
+      `speedColor === couleurVitesse` de 0 à 200. 35/35 verts.
+- [ ] B3 — `segmentsColores(points)` (`shared/utils/segments-vitesse.ts`, tronçons fusionnés
+      par bande, point frontière répété, vitesse du point d'arrivée) ;
+      `<app-legende-vitesse>` (`shared/ui/legende-vitesse/`) générée depuis la table ; les deux
+      légendes manuscrites de `map.component.ts` remplacées. Tests écrits — à passer.
 - [ ] B2a — `reports/trip-replay.component.ts` (l.1454) : segments colorés. Vérifier.
 - [ ] B2b — `reports/period-replay.component.ts` (l.1060). Vérifier.
 - [ ] B2c — `public-trip` : le DTO public ne porte pas de vitesse → contrat API
