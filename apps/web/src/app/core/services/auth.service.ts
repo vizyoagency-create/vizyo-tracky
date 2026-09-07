@@ -294,7 +294,16 @@ export class AuthService {
         // 5xx = l'API redémarre ou la passerelle ne répond pas. La session est parfaitement
         // valide ; il n'y a aucune raison de déconnecter. Seuls 401/403 disent réellement
         // « ce jeton n'est plus accepté ».
-        this._refreshUnavailable.set(res.status === 0 || res.status >= 500);
+        //
+        // ⚠️ ET CE N'EST PAS « TOUT CE QUI N'EST PAS 5xx ». Constaté le 2026-09-08 : pendant
+        // la recréation du conteneur API, Traefik perd son routeur et `/api/*` retombe sur le
+        // routeur du front, dont la règle est `Host(...)` sans chemin. nginx répond alors
+        // `405 Not Allowed` à ce POST. Un 405 n'est ni 0 ni ≥ 500 : il passait pour un refus
+        // de jeton, et TOUS les connectés étaient éjectés à chaque déploiement — ainsi qu'un
+        // prospect en pleine démo pendant le rafraîchissement du dimanche. Même chose pour un
+        // 404 de passerelle. On applique donc la règle telle qu'elle est écrite ci-dessus :
+        // refus = 401 ou 403, tout le reste est une indisponibilité, et la session tient.
+        this._refreshUnavailable.set(res.status !== 401 && res.status !== 403);
         return null;
       }
 

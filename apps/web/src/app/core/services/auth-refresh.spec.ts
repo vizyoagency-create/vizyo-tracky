@@ -61,6 +61,24 @@ describe('AuthService.tryRefresh — panne serveur vs jeton refusé', () => {
       expect(auth.refreshUnavailable()).toBeTrue();
     });
 
+    it('405 (nginx du front, quand /api retombe sur lui pendant un redéploiement) → indisponible', async () => {
+      // Le cas réel du 2026-09-08 : le conteneur API se recrée, Traefik perd son routeur,
+      // `/api/auth/refresh` atterrit sur le serveur statique du front, qui répond 405 à un
+      // POST. Ce n'est ni 0 ni ≥ 500 : la règle « tout sauf 5xx est un refus » éjectait
+      // tous les connectés à chaque déploiement, prospects en démo compris.
+      reponse = () => Promise.resolve(new Response('', { status: 405 }));
+      expect(await auth.tryRefresh()).toBeNull();
+      expect(auth.refreshUnavailable())
+        .withContext('Un 405 vient d’un serveur qui n’est pas l’API : le jeton n’a pas été jugé.')
+        .toBeTrue();
+    });
+
+    it('404 (passerelle sans route, même fenêtre de déploiement) → indisponible', async () => {
+      reponse = () => Promise.resolve(new Response('', { status: 404 }));
+      await auth.tryRefresh();
+      expect(auth.refreshUnavailable()).toBeTrue();
+    });
+
     it('réseau coupé (la requête n’aboutit pas) → indisponible', async () => {
       reponse = () => Promise.reject(new TypeError('Failed to fetch'));
       expect(await auth.tryRefresh()).toBeNull();
