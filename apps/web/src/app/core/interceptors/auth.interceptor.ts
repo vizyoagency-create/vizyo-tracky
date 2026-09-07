@@ -73,7 +73,20 @@ function forceLogout(
   loggingOut = true;
   realtime.disconnect();
   auth.logout();
-  void router.navigate(['/login']);
+  /**
+   * ⚠️ ON GARDE L'ADRESSE OÙ L'ON ÉTAIT, comme le fait `authGuard` pour une entrée profonde.
+   *
+   * Ici la session expire pendant qu'on REGARDE quelque chose — un trajet ouvert depuis une
+   * notification d'excès, un rapport sur une période choisie. Sans ce report, se reconnecter
+   * renvoie au tableau de bord et il faut refaire le chemin de mémoire ; c'est le même défaut
+   * que celui du garde, à l'autre bout de la vie d'une session.
+   *
+   * `/login` n'est jamais renvoyé à lui-même : ce serait une boucle. Et la page de connexion
+   * revalide le chemin (interne uniquement) avant de s'y rendre.
+   */
+  const cible = router.url;
+  const utile = cible && cible !== '/' && !cible.startsWith('/login');
+  void router.navigate(['/login'], utile ? { queryParams: { returnUrl: cible } } : {});
   setTimeout(() => { loggingOut = false; }, 5_000);
 }
 

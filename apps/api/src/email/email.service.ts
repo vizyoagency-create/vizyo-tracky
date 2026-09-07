@@ -1058,12 +1058,43 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     tripsCount: number;
     totalKm: number;
     alertsTotal: number;
+    /** Excès ÉTABLIS de la période — omis du courrier quand il n'y en a aucun. */
+    speedingCount?: number;
     liters: number;
     costEur: number;
     pdfName?: string;
     unattributedNote?: string | null;
+    /**
+     * Chemin INTERNE vers lequel mène le bouton, période comprise. Par défaut le tableau de
+     * bord, pour les appelants qui n'en fournissent pas.
+     */
+    lienRapport?: string;
   }): string {
     const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    /**
+     * ⚠️ CHEMIN INTERNE UNIQUEMENT. `lienRapport` est composé par l'appelant, mais un gabarit
+     * d'e-mail n'a aucune raison de faire confiance à ce qu'on lui passe : un chemin qui ne
+     * commence pas par une seule barre est refusé, ce qui interdit `//evil.example` — une
+     * redirection ouverte dans un courrier qui part à tous les clients.
+     */
+    const chemin = opts.lienRapport && /^\/(?!\/)/.test(opts.lienRapport) ? opts.lienRapport : '/dashboard';
+    /**
+     * ── UNE LIGNE, ET SEULEMENT SI ELLE A UN OBJET ────────────────────────────────────
+     *
+     * Le chiffre que le gestionnaire cherche le lundi matin n'existait que dans la pièce
+     * jointe. Une ligne — pas une cinquième tuile : la grille en compte quatre, et un
+     * courrier de rapport se lit en trois secondes sur un téléphone.
+     *
+     * Muette à zéro : ce courrier part automatiquement à toutes les sociétés, et « 0 excès »
+     * chaque lundi serait un reproche sans objet.
+     */
+    const exces = opts.speedingCount && opts.speedingCount > 0
+      ? `<tr><td style="padding:14px 36px 0;">
+          <p class="m-text" style="margin:0;font-family:${EMAIL_FONT};font-size:14px;line-height:1.6;color:#56635E;">
+            <strong style="color:${EMAIL_TEXTE_ATTENTE};">${opts.speedingCount}</strong> excès de vitesse sur la période — le détail par véhicule et par conducteur est dans la pièce jointe.
+          </p>
+        </td></tr>`
+      : '';
     const km = opts.totalKm.toFixed(1);
     const liters = opts.liters.toFixed(0);
     const cost = opts.costEur.toFixed(2);
@@ -1127,11 +1158,11 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
             </tr>
           </table>
         </td></tr>
-        ${nonAttribues}
+        ${exces}${nonAttribues}
         <tr><td style="padding:20px 36px 0;">
           ${chip}
           <table role="presentation" style="margin-top:${opts.pdfName ? '20px' : '0'};"><tr><td style="border-radius:11px;background:#10E0A0;">
-            <a href="${appBase}/dashboard" style="display:inline-block;padding:14px 30px;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir le tableau de bord →</a>
+            <a href="${appBase}${chemin}" style="display:inline-block;padding:14px 30px;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir le rapport →</a>
           </td></tr></table>
         </td></tr>`,
     });

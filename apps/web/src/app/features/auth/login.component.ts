@@ -273,7 +273,16 @@ export class LoginComponent implements OnInit {
       // feat/comptes-conducteurs — retour post-login vers la page d'origine (ex. scan QR
       // /driver/unlock alors qu'on n'était pas connecté). URL INTERNE uniquement (anti open-redirect).
       const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-      const safeReturn = returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : null;
+      /**
+       * ⚠️ TROIS CONDITIONS, ET LA TROISIÈME EST NOUVELLE. Interne (une seule barre) contre la
+       * redirection ouverte ; et JAMAIS `/login`, sinon se connecter renvoie à la page de
+       * connexion — une boucle qu'un lien bricolé à la main suffirait à armer. Le garde de
+       * route et l'intercepteur évitent déjà de l'écrire ; cette ligne le rend impossible.
+       */
+      const safeReturn = returnUrl
+        && returnUrl.startsWith('/') && !returnUrl.startsWith('//')
+        && !returnUrl.startsWith('/login')
+        ? returnUrl : null;
       // Espace dépôt (2026-08) — un DEPOT arrive sur `/depot`, jamais sur `/dashboard`.
       // Placé en tête, au même endroit que la redirection du conducteur (A1 § 5).
       const home = this.auth.isDepot()

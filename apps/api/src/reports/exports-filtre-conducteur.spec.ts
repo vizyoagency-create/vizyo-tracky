@@ -308,6 +308,7 @@ const RAPPORT: FleetStatsReport = {
   trips: {
     count: 1, totalKm: 120, totalDurationHours: 2, avgKmPerVehicle: 120,
     avgKmBasisVehicles: 1, avgKmBasisKm: 120, avgSpeedKmh: 60, maxSpeedKmh: 90,
+    speedingCount: 0, worstOverKmh: 0,
   },
   alerts: { total: 4, byType: [{ type: 'OVERSPEED', count: 4 }], bySeverity: [{ severity: 'WARNING', count: 4 }] },
   consumption: {

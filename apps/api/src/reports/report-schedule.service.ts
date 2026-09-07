@@ -354,17 +354,44 @@ export class ReportScheduleService {
            * sans objet.
            */
           const nonAttribues = buildUnattributedNote(report.unattributedTrips, report.trips.count);
-          const text = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} (inclus) est en pièce jointe.\n\nRésumé :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n- Conso estimée : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n${nonAttribues ? `\nTrajets non attribués : ${nonAttribues}\n` : ''}\nL'équipe Vizyo`;
+          /**
+           * ── UNE LIGNE POUR LES EXCÈS, ET UNE SEULE ──────────────────────────────────
+           *
+           * C'est le chiffre qu'un gestionnaire cherche le lundi matin, et il n'existait que
+           * dans la pièce jointe — invisible sur un téléphone, là où ce courrier se lit.
+           *
+           * ⚠️ ELLE DISPARAÎT QUAND IL N'Y EN A PAS. Ce courrier part automatiquement à toutes
+           * les sociétés : une ligne « 0 excès » chaque lundi serait un reproche sans objet —
+           * la même raison qui fait taire la ligne des non attribués.
+           *
+           * ⚠️ ET LE COMPTE VIENT DE `trips`, PAS DE `topVehicles`. Ces listes s'arrêtent à
+           * `topN` : les sommer donnerait un total silencieusement trop bas dès qu'une société
+           * dépasse dix véhicules — « cdef31 » en a trente.
+           */
+          const exces = report.trips.speedingCount > 0
+            ? `- ${report.trips.speedingCount} excès de vitesse`
+            : null;
+          const text = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} (inclus) est en pièce jointe.\n\nRésumé :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n${exces ? `${exces}\n` : ''}- Conso estimée : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n${nonAttribues ? `\nTrajets non attribués : ${nonAttribues}\n` : ''}\nL'équipe Vizyo`;
           const html = this.email.buildWeeklyReportEmail({
             fromStr,
             toStr,
             tripsCount: report.trips.count,
             totalKm: report.trips.totalKm,
             alertsTotal: report.alerts.total,
+            speedingCount: report.trips.speedingCount,
             liters: report.consumption.estimatedLiters,
             costEur: report.consumption.estimatedCostEur,
             pdfName,
             unattributedNote: nonAttribues,
+            /**
+             * ── LE BOUTON MÈNE AU RAPPORT, PLUS AU TABLEAU DE BORD ────────────────────
+             *
+             * Un courrier qui s'appelle « rapport hebdomadaire » et dont le seul bouton ouvre
+             * le tableau de bord oblige à refaire à la main la période qu'on vient de lire.
+             * Les deux bornes sont celles du document, à l'identique — `to` est EXCLUSIVE des
+             * deux côtés, donc la page ouvre exactement la semaine de la pièce jointe.
+             */
+            lienRapport: `/reports?from=${parisDayKey(from)}&to=${parisDayKey(to)}`,
           });
 
           const failures: string[] = [];

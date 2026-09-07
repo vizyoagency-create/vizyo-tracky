@@ -120,6 +120,16 @@ export interface FleetStatsReport {
     avgKmBasisKm: number;
     avgSpeedKmh: number;
     maxSpeedKmh: number;
+    /**
+     * Excès ÉTABLIS de TOUT le périmètre, et le pire dépassement qu'ils portent.
+     *
+     * ⚠️ NON PLAFONNÉ, contrairement à `topVehicles` et `byAttribution` qui s'arrêtent à
+     * `topN`. Sommer ces deux listes pour obtenir un total est le piège : chez « cdef31»
+     * (30 véhicules), les dix premiers n'en portent qu'une partie, et le total obtenu serait
+     * silencieusement trop bas. Ce compte-ci vient de la table complète, avant découpe.
+     */
+    speedingCount: number;
+    worstOverKmh: number;
   };
   alerts: {
     total: number;
@@ -1090,6 +1100,10 @@ export class ReportsStatsService {
         avgKmBasisKm: Math.round(avgKmBasisKm * 10) / 10,
         avgSpeedKmh: Math.round(avgSpeedKmh * 10) / 10,
         maxSpeedKmh: Math.round(maxSpeedKmh * 10) / 10,
+        // La table complète, jamais les listes plafonnées (cf. le contrat au-dessus).
+        speedingCount: [...excesParVehiculeMap.values()].reduce((n, e) => n + e.exces, 0),
+        worstOverKmh: Math.round([...excesParVehiculeMap.values()]
+          .reduce((m, e) => Math.max(m, e.pire), 0) * 10) / 10,
       },
       alerts: {
         total: totalAlerts,

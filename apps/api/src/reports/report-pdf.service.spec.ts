@@ -34,7 +34,7 @@ function makeReport(overrides: Partial<FleetStatsReport> = {}): FleetStatsReport
       avgKmBasisVehicles: 5,
       avgKmBasisKm: 200,
       avgSpeedKmh: 42,
-      maxSpeedKmh: 110,
+      maxSpeedKmh: 110, speedingCount: 0, worstOverKmh: 0,
     },
     alerts: { total: 0, byType: [], bySeverity: [] },
     consumption: {
@@ -67,7 +67,7 @@ const REPORT_AVEC_DORMANTS = makeReport({
   trips: {
     count: 12, totalKm: 200, totalDurationHours: 9,
     avgKmPerVehicle: 60, avgKmBasisVehicles: 3, avgKmBasisKm: 180,
-    avgSpeedKmh: 42, maxSpeedKmh: 110,
+    avgSpeedKmh: 42, maxSpeedKmh: 110, speedingCount: 0, worstOverKmh: 0,
   },
 });
 
@@ -179,7 +179,7 @@ describe('ReportPdfService — mention « parc exploité »', () => {
       trips: {
         count: 0, totalKm: 0, totalDurationHours: 0,
         avgKmPerVehicle: 0, avgKmBasisVehicles: 2, avgKmBasisKm: 0,
-        avgSpeedKmh: 0, maxSpeedKmh: 0,
+        avgSpeedKmh: 0, maxSpeedKmh: 0, speedingCount: 0, worstOverKmh: 0,
       },
     });
 
@@ -338,7 +338,7 @@ describe('ReportPdfService — indicateurs sous filtre conducteur', () => {
       trips: {
         count: 0, totalKm: 0, totalDurationHours: 0,
         avgKmPerVehicle: 0, avgKmBasisVehicles: 0, avgKmBasisKm: 0,
-        avgSpeedKmh: 0, maxSpeedKmh: 0,
+        avgSpeedKmh: 0, maxSpeedKmh: 0, speedingCount: 0, worstOverKmh: 0,
       },
     });
     const { text } = await renderedText(rapport, { driverLabel: LIBELLE });
@@ -431,7 +431,7 @@ describe('ReportPdfService — récapitulatif par conducteur ou groupe', () => {
     trips: {
       count: 2707, totalKm: 24704.4, totalDurationHours: 900,
       avgKmPerVehicle: 500, avgKmBasisVehicles: 49, avgKmBasisKm: 24500,
-      avgSpeedKmh: 27, maxSpeedKmh: 131,
+      avgSpeedKmh: 27, maxSpeedKmh: 131, speedingCount: 0, worstOverKmh: 0,
     },
     byAttribution: [
       ligne({ key: 'group:g1', label: '425', kind: 'group', tripCount: 620, distanceKm: 6119.4, durationHours: 212.5, speedingCount: 41, speedingTripCount: 33, worstOverKmh: 38.4 }),
@@ -487,7 +487,7 @@ describe('ReportPdfService — récapitulatif par conducteur ou groupe', () => {
       trips: {
         count: 1886, totalKm: 12000, totalDurationHours: 400,
         avgKmPerVehicle: 300, avgKmBasisVehicles: 40, avgKmBasisKm: 12000,
-        avgSpeedKmh: 30, maxSpeedKmh: 120,
+        avgSpeedKmh: 30, maxSpeedKmh: 120, speedingCount: 0, worstOverKmh: 0,
       },
       byAttribution: [
         ligne({ key: 'driver:d1', label: 'Sohaib Hamanni', kind: 'driver', tripCount: 22, distanceKm: 240 }),
@@ -514,7 +514,7 @@ describe('ReportPdfService — récapitulatif par conducteur ou groupe', () => {
       trips: {
         count: 725, totalKm: 5200, totalDurationHours: 180,
         avgKmPerVehicle: 200, avgKmBasisVehicles: 26, avgKmBasisKm: 5200,
-        avgSpeedKmh: 28, maxSpeedKmh: 118,
+        avgSpeedKmh: 28, maxSpeedKmh: 118, speedingCount: 0, worstOverKmh: 0,
       },
       byAttribution: [],
       byAttributionTotal: 0,
@@ -545,7 +545,7 @@ describe('ReportPdfService — récapitulatif par conducteur ou groupe', () => {
       trips: {
         count: 0, totalKm: 0, totalDurationHours: 0,
         avgKmPerVehicle: 0, avgKmBasisVehicles: 5, avgKmBasisKm: 0,
-        avgSpeedKmh: 0, maxSpeedKmh: 0,
+        avgSpeedKmh: 0, maxSpeedKmh: 0, speedingCount: 0, worstOverKmh: 0,
       },
       byAttribution: [],
       byAttributionTotal: 0,
@@ -566,7 +566,7 @@ describe('ReportPdfService — récapitulatif par conducteur ou groupe', () => {
       trips: {
         count: 22, totalKm: 310.5, totalDurationHours: 11.5,
         avgKmPerVehicle: 155, avgKmBasisVehicles: 2, avgKmBasisKm: 310.5,
-        avgSpeedKmh: 27, maxSpeedKmh: 118,
+        avgSpeedKmh: 27, maxSpeedKmh: 118, speedingCount: 0, worstOverKmh: 0,
       },
       byAttribution: [ligne({ key: 'driver:d1', label: 'Sohaib Hamanni', kind: 'driver', tripCount: 22, distanceKm: 310.5 })],
       byAttributionTotal: 1,
@@ -587,7 +587,7 @@ describe('ReportPdfService — récapitulatif par conducteur ou groupe', () => {
       trips: {
         count: 1905, totalKm: 12000, totalDurationHours: 400,
         avgKmPerVehicle: 300, avgKmBasisVehicles: 40, avgKmBasisKm: 12000,
-        avgSpeedKmh: 30, maxSpeedKmh: 120,
+        avgSpeedKmh: 30, maxSpeedKmh: 120, speedingCount: 0, worstOverKmh: 0,
       },
       byAttribution: [ligne({ key: 'group:g1', label: 'Atelier', kind: 'group', tripCount: 39, distanceKm: 400 })],
       byAttributionTotal: 1,
@@ -743,7 +743,7 @@ describe('ReportPdfService — top véhicules et trajets récents sous filtre co
     trips: {
       count: 22, totalKm: 310.5, totalDurationHours: 11.5,
       avgKmPerVehicle: 155, avgKmBasisVehicles: 2, avgKmBasisKm: 310.5,
-      avgSpeedKmh: 27, maxSpeedKmh: 118,
+      avgSpeedKmh: 27, maxSpeedKmh: 118, speedingCount: 0, worstOverKmh: 0,
     },
     topVehicles: [
       {
@@ -811,7 +811,7 @@ describe('ReportPdfService — top véhicules et trajets récents sous filtre co
       trips: {
         count: 2, totalKm: 32.5, totalDurationHours: 1.2,
         avgKmPerVehicle: 16, avgKmBasisVehicles: 2, avgKmBasisKm: 32.5,
-        avgSpeedKmh: 27, maxSpeedKmh: 90,
+        avgSpeedKmh: 27, maxSpeedKmh: 90, speedingCount: 0, worstOverKmh: 0,
       },
       recentTrips: RAPPORT_AVEC_LISTES.recentTrips,
     }), { driverLabel: LIBELLE });
@@ -849,7 +849,7 @@ describe('ReportPdfService — la part des non attribués suit la règle du cont
     trips: {
       count, totalKm: 12000, totalDurationHours: 400,
       avgKmPerVehicle: 300, avgKmBasisVehicles: 40, avgKmBasisKm: 12000,
-      avgSpeedKmh: 30, maxSpeedKmh: 120,
+      avgSpeedKmh: 30, maxSpeedKmh: 120, speedingCount: 0, worstOverKmh: 0,
     },
     byAttribution: [],
     byAttributionTotal: 0,
@@ -900,7 +900,7 @@ describe('ReportPdfService — la vitesse moyenne s’imprime à la décimale', 
       trips: {
         count: 481, totalKm: 10988.2, totalDurationHours: 280.2,
         avgKmPerVehicle: 1569.7, avgKmBasisVehicles: 7, avgKmBasisKm: 10988.2,
-        avgSpeedKmh: 49.2, maxSpeedKmh: 140.7,
+        avgSpeedKmh: 49.2, maxSpeedKmh: 140.7, speedingCount: 0, worstOverKmh: 0,
       },
     }));
 
