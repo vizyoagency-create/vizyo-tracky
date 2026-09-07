@@ -966,6 +966,18 @@ c'est là que la détection rapide sert vraiment.
   dormante, c'est un accès root de CI en usage quotidien.* Seuil de réescalade **inchangé**.
 - **Vu** : 2026-08-04 · **Mesure à la découverte** : 3 des 4 clés de `/root/.ssh/authorized_keys`
 
+> ### 🟠 2026-09-07 — CINQUIÈME MESURE, ET LA SÉRIE EST PLATE : 0 → 12 → 16 → 16 → **16**
+>
+> `github-actions-vizyo-auth` reste à **16 connexions** root sans aucune option de restriction,
+> `vizyo-vps-hostinger` à **9 207**, `github-actions-deploy-maalem` à **0** et restreinte.
+> **2 empreintes vues sur la fenêtre, 0 non déclarée.** Rien n'a été fait, rien n'a empiré.
+> ⚠️ **C'est la cinquième illustration de l'angle mort n° 4** : *les fiches `APPLIQUE` ne sont
+> re-mesurées par rien*, et celle-ci ne l'est que parce que le collecteur l'énumère par hasard
+> depuis VPS-M77.
+> 🔑 **Et `connexions=0` sur `deploy-maalem` est un candidat de la question ouverte du 09-07** —
+> *un champ dont le zéro peut être une valeur d'initialisation*. Le collecteur l'écrit déjà
+> lui-même (*« une clé qui n'a pas servi CES 7 JOURS »*) ; **le manifeste, lui, ne le reprend pas.**
+
 > ### 🔴 2026-09-04 — LA CLÉ N'EST PAS DORMANTE : DOUZE SESSIONS ROOT EN VINGT ET UNE HEURES
 >
 > ```
@@ -1144,6 +1156,45 @@ découvre au pire moment.
 ## VPS-013 — Trois bases de production n'ont aucune sauvegarde exploitable
 
 - **Domaine** : sauvegardes · **Gravité** : 1 · **Statut** : `A_TRAITER`
+- 🔴 **Vu : 2026-09-07 — 30ᵉ PASSAGE. LES TROIS UNITÉS EXISTENT, ELLES ONT TOURNÉ UNE FOIS À LA
+  MAIN, ET AUCUNE MINUTERIE N'A JAMAIS DÉCLENCHÉ.**
+  `LastTriggerUSec=` est **vide** sur `vizyo-manager-backup.timer`, `vizyo-texto-backup.timer` et
+  `capcom6-backup.timer` ; `ExecMainStartTimestamp` et `ExecMainExitTimestamp` le sont aussi sur les
+  trois services. Le journal date l'unique exécution : **09-06 à 06 h 35 min 47-48, les trois à la
+  même seconde** — un `systemctl start`, donc un **geste**, pas un mécanisme (VPS-M81). **Première
+  échéance autonome : 09-07 à 04 h 34 min 22, 04 h 40 min 53 et 04 h 50 min 18 UTC**, soit
+  **deux heures après cette collecte**.
+  ✅ **Ce qui EST acquis, et il ne faut pas le minorer** : unités dérivées du gabarit prouvé,
+  `Persistent=yes`, minuteries `active`, trois dumps **relus et complets** (marqueurs `pg_dump` /
+  `mysqldump`), archives `600`, dossiers `700`, rétention 30 j **exercée** (« 0 supprimée(s),
+  1 conservée(s) »). **Il n'y a plus rien à concevoir ni à écrire.**
+  🔑 **Ce qui manque est la seule chose qui définit le constat** : *un déclenchement autonome*.
+  VPS-013 ne dit pas « ces bases n'ont pas de copie », il dit qu'elles n'ont **aucune sauvegarde
+  reproductible** — et une copie posée à la main ne le devient qu'au moment où quelque chose la
+  refait sans personne. **C'est la barre appliquée à `vizyo-auth` le 09-06 ; l'appliquer à lui seul
+  reviendrait à la retirer.**
+  🔴 **ET DEUX DÉFAUTS DU COLLECTEUR ONT COUVERT CET ÉTAT DE TROIS VERTS** — corrigés ce passage :
+  **VPS-M87** (`Result=success` est la valeur *par défaut* d'une unité jamais démarrée → les trois
+  affichaient « ✅ dernier résultat : succès ») et **VPS-M88** (le bloc « âge par dossier » filtrait
+  par une liste blanche de préfixes et a **jeté 4 dossiers sur 10** — dont les trois qui portent les
+  copies fraîches — tout en **gardant** les deux dossiers morts pour les dire « PÉRIMÉE »).
+  🆕 **CONSÉQUENCE DE PÉRIMÈTRE, NOUVELLE ET DURABLE** : les trois unités écrivent dans des dossiers
+  nommés d'après la **base** — `/var/backups/{vizyo_manager,vizyo_texto,sms}` — et non d'après
+  l'application. **Les anciens dossiers `vizyo-manager` (26 copies), `vizyo-texto` et `capcom6` ne
+  sont donc plus alimentés par rien** et afficheront « PÉRIMÉE » tous les matins, pour toujours.
+  *Un faux orange quotidien finit par faire ignorer le vrai* — voir l'action 3 du plan du 09-07.
+  ⚠️ **Et la table de couverture publie deux verdicts FAUX, du côté prudent** : `vizyo-manager-postgres`
+  et `capcom6-mysql` sont dits « 🟠 en retard (2 j) » alors qu'une copie de **19 h** existe — le
+  rapprochement par sous-chaîne ne relie ni `vizyo-manager` à `vizyo_manager`, ni `capcom6` à `sms`.
+  *`texto-postgres` est juste par pur hasard : le souligné tombe après la sous-chaîne.*
+  🔑 **Test de réfutation, écrit d'avance — au passage du 2026-09-08** : les trois unités doivent
+  porter un `LastTriggerUSec` du **09-07 04 h 34 / 04 h 40 / 04 h 50**, un `ExecMainExitTimestamp`
+  **non vide**, et `/var/backups/{vizyo_manager,vizyo_texto,sms}` doivent porter **DEUX** copies
+  chacun. **Si les trois tombent, le constat sort de la gravité 1. Si `LastTriggerUSec` est encore
+  vide, c'est VPS-015 à l'identique** et l'enquête porte sur `WantedBy=timers.target`.
+  ⚠️ **À NE PAS FAIRE d'ici là** : relancer les unités à la main pour « avoir une seconde copie ».
+  Cela fabriquerait exactement la trace que le test cherche à distinguer d'un mécanisme et rendrait
+  le constat **indécidable** — c'est le geste du 09-04 qui a coûté VPS-M81.
 - 🔴 **Vu : 2026-09-06 — 29ᵉ PASSAGE, INTACT, ET LES TROIS LIGNES VERTES SONT ENFIN PASSÉES À
   L'ORANGE.** Le correctif **VPS-M84** écrit ce passage aligne le seuil de la table de couverture
   sur celui de son bloc voisin : `capcom6`, `vizyo-manager` et `vizyo-texto`, à **47 h**, affichent
@@ -4315,6 +4366,27 @@ mesurant le phénomène (VPS-M12, nouvelle forme).
 ## VPS-033 — La mesure des correctifs de sécurité est perdue 4 passages sur 5, parce que sa source est aléatoire par conception
 
 - **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-07 — LA VALIDITÉ DE LA MESURE S'EST JOUÉE À 37 MINUTES, ET ELLE EST TOMBÉE DU
+  MAUVAIS CÔTÉ.** Le cache est daté du **2026-09-06 à 02 h 59 min 53** : c'est **exactement celui
+  d'hier**. Le rapport du 09-06 (collecte à 04 h 05) l'a lu à **1 h** d'âge et l'a déclaré ✅ valide ;
+  aujourd'hui (collecte à **02 h 21**) il a **23 h** et le collecteur le déclare 🟠 non mesurable.
+  Les deux fois, **75 paquets**.
+  🔑 **75 → 75 n'est donc PAS une stabilité : c'est UNE mesure publiée deux fois.** *La règle que le
+  collecteur applique déjà au cache de build — « comparer la valeur à la fraîcheur de son
+  producteur, jamais la valeur à elle-même » — vaut ici et n'y était pas appliquée.* L'avertissement
+  est désormais porté par la valeur elle-même dans le manifeste.
+  ⚠️ **Et le test de VPS-M74 écrit le 09-06 n'est PAS tranché — il ne peut pas l'être.**
+  L'installation **a bien eu lieu** (`apt-daily-upgrade.timer` `LAST = 2026-09-06 06:31:56`,
+  `unattended-upgrades-stamp` et `upgrade-stamp` à 06 h 31 min 59), mais le compte de 75 vient d'un
+  cache figé **3 h 32 AVANT** elle : **ce n'est pas l'état après, c'est l'entrée.** *Donnée de plus,
+  à ne pas sur-interpréter : `/var/log/apt/history.log` n'a aucune opération le 09-06, la dernière
+  étant du 09-05 à 06 h 43 min 24 — compatible avec « rien à installer » comme avec « échec sans
+  écriture », et je ne tranche pas.*
+  🔑 **Cela change la remédiation** : le plan du 09-06 proposait `RandomizedDelaySec=30m`, qui
+  **rétrécit** la fenêtre sans la **placer**. Ce qu'il faut est que le cache soit frais **à l'heure
+  de l'audit** — donc **fixer l'heure** : `OnCalendar=*-*-* 01:30:00` + `RandomizedDelaySec=15m`.
+  ⚠️ **Ne pas mettre `RandomizedDelaySec=0`** : l'aléa existe pour étaler la charge sur les miroirs
+  Ubuntu, et 15 min suffisent à cet égard.
 - ✅ **Vu : 2026-09-06 — PREMIÈRE MESURE VALIDE DEPUIS ONZE PASSAGES, ET PAR CHANCE : le cache
   `apt` avait 1 h.** Et elle tranche l'alerte laissée ouverte hier. Le rapport du 09-05 avait
   relevé, **sur un cache de 9 h donc hors mesure**, deux sources indicatives passant de « 0-1
@@ -4801,6 +4873,36 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **Domaine** : données · **Gravité** : **1** (montée le 2026-09-05, sur le seuil écrit le 09-03) ·
   **Statut** : `A_TRAITER`
+- 🟠 **Vu : 2026-09-07 — UN BOÎTIER EST REVENU CINQ SECONDES, N'A PRODUIT AUCUNE POSITION, ET S'EST
+  RETU. LE CONSTAT RESTE EN GRAVITÉ 1.**
+  **Treize des quatorze ont exactement vieilli de 22,3 h**, l'écart entre les deux collectes. Le
+  quatorzième, **`864035053277662`**, devrait être à 79,5 h : il est à **12,1**. La mesure qui le
+  nomme est une **anti-jointure** `wire_logs` / `positions` : **5 trames le 2026-09-06 de
+  14 h 18 min 33,763 à 14 h 18 min 38,162, et pas une seule position.** Il est le seul dans ce cas.
+  🔑 **C'est un mode de panne DISTINCT de celui des six autres** : *son matériel répond, la chaîne
+  ne rend rien.* Une panne d'alimentation et une panne de position n'appellent pas le même geste —
+  et jusqu'à ce passage rien ne permettait de les distinguer.
+  ⚠️ **Il ne doit donc PAS être porté à l'exploitant dans la même liste que la cohorte
+  `2ad69ac1…`** : les confondre ferait chercher la même panne pour deux symptômes différents.
+  🔴 **Et les trois compteurs divergent pour la première fois** — `wire_logs` **31**, `positions`
+  **30**, `position_sampling_decisions` **30** — pendant que le collecteur imprime *« ✅ flotte
+  STABLE (31 contre 30) »*. **C'est 🆕 VPS-M89**, ouvert ce passage : chaque compteur est comparé à
+  lui-même de la veille, jamais aux deux autres au même instant.
+  ⚠️ **La ventilation par bande ne l'a pas vu non plus, et il faut dire pourquoi** : le revenant
+  est passé de `1-3 j` à `6-24 h`, laissant le **total à 14** et les deux bandes qui portent le vrai
+  sujet **identiques** (`3-7 j` = 7, `> 7 j` = 6). *Un lecteur appliquant VPS-M78 à la lettre
+  conclurait « rien n'a bougé ».* **VPS-M78 protège contre un total qui MONTE ; il ne voit pas un
+  boîtier qui DESCEND d'une bande.**
+  ⚠️ **Ce que l'audit ne peut PAS dire** : pourquoi ces 5 trames n'ont produit aucune position.
+  Trois explications tiennent debout — trames sans point GPS, trames rejetées, mise sous tension par
+  un technicien — et **aucune n'est tranchable depuis le VPS** (VPS-M01). *La nommer serait
+  VPS-M83.*
+  🔑 **Test écrit d'avance — au passage du 2026-09-08** : si `864035053277662` a réémis **et**
+  produit **au moins une position**, la salve du 09-06 était une remise sous tension et le boîtier
+  est **récupéré**. **S'il est à ~36 h de silence sans aucune position**, ce n'était pas un retour :
+  c'est un boîtier qui s'annonce et ne mesure rien.
+  **Le seuil reste inchangé** : gravité 2 quand `positions` repasse à **32 sur une journée
+  complète**, `SURVEILLANCE` à 38. Il est à **30**.
 - ✅ **Vu : 2026-09-06 — PREMIER PASSAGE SANS PERTE NOUVELLE DEPUIS LE 08-31, ET LE CONSTAT RESTE
   EN GRAVITÉ 1.** Les quatorze silencieux d'hier sont les quatorze d'aujourd'hui, **chacun vieilli
   de vingt-quatre heures** : aucun nom neuf. Les trois chemins de code indépendants donnent
@@ -5048,6 +5150,167 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M89 — Les trois compteurs d'émetteurs sont comparés chacun à lui-même de la veille, jamais entre eux au même instant
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (correctif conçu, non posé —
+  il touche une boucle de la section 5, et le budget est déjà à 94 s pour 90)
+- **Vu** : 2026-09-07 · **Mesure à la découverte** : sur la fenêtre de 24 h, `wire_logs` compte
+  **31** émetteurs distincts, `positions` **30** et `position_sampling_decisions` **30**. Le
+  collecteur imprime, sous `wire_logs` : **`✅ flotte STABLE (31 contre 30)`** — parce qu'il compare
+  ce compteur à **sa propre valeur de la veille**, qui était 30. Les deux autres blocs comparent de
+  même, chacun de son côté, et **rendent vert eux aussi**. **Les trois verdicts sont verts le jour
+  où les trois compteurs ne disent pas la même chose.**
+
+- **QUOI — la cause** : chaque table est traitée dans une **itération séparée** de la boucle des
+  trois plus grosses tables. Le compteur y est comparé à J-1 et à J-7 de la **même table** ; il
+  n'existe **aucun point du script où les trois nombres coexistent**. La comparaison croisée — celle
+  qui a fait tout l'intérêt des rapports des 09-04, 09-05 et 09-06 — est faite **à la main, par
+  l'agent, dans le rapport**, jamais par l'outil.
+
+- **Ce que ça a coûté ce jour précis** : l'écart de +1 sur `wire_logs` **était** l'événement du
+  jour. Le boîtier `864035053277662`, muet depuis 79 h, a émis **5 trames le 09-06 à 14 h 18 min 33
+  → 14 h 18 min 38** et **n'a produit aucune position**. C'est un mode de panne **distinct** de
+  celui des six autres boîtiers muets : *le matériel répond, la chaîne ne rend rien.* Sans la
+  requête d'anti-jointure lancée à la main, il serait passé sous trois lignes vertes.
+
+- **`pourquoiInvisible`** : **parce que chaque bloc a raison isolément.** 31 contre 30 la veille
+  *est* une stabilité, si l'on ne regarde que `wire_logs`. Le défaut n'est dans aucun des trois
+  blocs : il est dans **l'absence d'un quatrième**. *Un contrôle manquant ne produit pas de ligne
+  fausse — il ne produit rien, et rien se lit « rien à signaler ».*
+  ⚠️ **Et la ventilation par bande ne rattrape pas** : le revenant est passé de la bande `1-3 j` à
+  la bande `6-24 h`, laissant le **total à 14** et les deux bandes qui comptent (`3-7 j` = 7,
+  `> 7 j` = 6) **rigoureusement identiques**. Un lecteur appliquant VPS-M78 à la lettre conclurait
+  « rien n'a bougé ». 🔑 **VPS-M78 protège contre un total qui MONTE ; il ne voit pas un boîtier qui
+  DESCEND d'une bande.**
+
+- **QUOI FAIRE** — deux gestes, dont le premier coûte zéro requête :
+  1. **Retenir les trois comptes d'émetteurs dans trois variables et imprimer, une fois, un bloc de
+     comparaison** qui alerte dès qu'ils ne sont pas égaux, en nommant l'écart. Les trois nombres
+     sont **déjà calculés** ; il ne manque que de les faire coexister.
+  2. **Rendre le vecteur de bandes comparable d'un passage à l'autre** — clé `registreBandes` du
+     manifeste, posée ce passage sous la forme `"1/0/7/6"` — et nommer les IMEI qui changent de
+     bande **dans l'un ou l'autre sens**.
+
+- **`aNePasFaire`** : ⚠️ **ne pas supprimer le verdict « flotte STABLE » par prudence.** Il répond à
+  une vraie question — *la variation est-elle portée par la cadence ou par l'effectif ?* — et c'est
+  lui qui a permis de dire, quatre passages durant, que l'ingestion allait bien. **Il faut lui
+  ajouter un voisin, pas le retirer.**
+  ⚠️ **Et ne pas conclure du +1 que le boîtier « revient ».** Cinq trames en 4,4 s sans position
+  admettent au moins trois explications (trames sans point GPS, trames rejetées, mise sous tension
+  par un technicien) et **aucune n'est tranchable depuis le VPS** — le dire serait VPS-M83.
+
+- **Gain** : un mode de panne distinct, rendu visible automatiquement au lieu de dépendre de ce que
+  l'agent pense à croiser ce jour-là.
+
+---
+
+### VPS-M88 — Le bloc « âge par dossier » filtrait par une liste blanche écrite à la main, et il a jeté 4 dossiers sur 10
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-07 (banc + témoin
+  négatif, coût zéro commande)
+- **Vu** : 2026-09-07 · **Mesure à la découverte** : le bloc a publié **six** lignes ;
+  `/var/backups` en porte **dix**. Les quatre sautés :
+
+  | dossier | pourquoi il est passé au travers | ce qu'il portait |
+  |---|---|---|
+  | `vizyo_manager` | **souligné**, ne correspond pas à `vizyo-*` | 🔑 la copie **vivante** de `vizyo-manager-postgres`, **19 h** |
+  | `vizyo_texto` | idem | 🔑 la copie **vivante** de `texto-postgres`, **19 h** |
+  | `sms` | ne correspond à **aucun** préfixe | 🔑 la copie **vivante** de `capcom6-mysql`, **19 h** |
+  | `capcom6` | **sans suffixe**, ne correspond pas à `capcom6-*` qui exige un tiret | la copie **morte** du 09-04 |
+
+- **QUOI — la cause** : un filtre par **nom**, écrit à la main, en tête de boucle :
+  `case "$app" in vizyo-*|tracky-*|maestroo-*|maalem-*|texto-*|capcom6-*) ;; *) continue ;; esac`.
+  Les trois unités de sauvegarde posées le 09-06 nomment leurs dossiers d'après la **base**, pas
+  d'après l'**application** — une convention que rien n'imposait et que rien ne garantissait.
+
+- **`pourquoiInvisible`** : **un `continue` n'imprime rien.** Le bloc a rendu six lignes bien
+  formées, dont deux orange qui avaient l'air d'être *le* sujet, et rien nulle part ne disait qu'il
+  en manquait quatre.
+  ⚠️ **Et le pire est la combinaison** : le filtre a **gardé** les dossiers que plus rien
+  n'alimente — pour les déclarer « PÉRIMÉE », ce qui est vrai des répertoires et faux des bases — et
+  **jeté** ceux où arrivent les copies. **Faux dans les deux sens, sur les trois mêmes applications,
+  le lendemain de leur réparation.**
+  🔑 **La leçon n'est pas « la liste blanche était incomplète »** — elle le sera toujours. C'est
+  qu'un **filtre par nom décide de ce qu'on regarde à partir d'une convention que personne ne
+  garantit**. Le fichier porte déjà la bonne règle vingt lignes plus bas, pour VPS-030 : *vérifier
+  du côté de l'EFFET, pas de la trace.* Elle n'avait pas été appliquée au bloc d'à côté.
+
+- **QUOI FAIRE** — appliqué ce passage :
+  1. **La liste blanche est supprimée** : tous les dossiers sont énumérés. *Un dossier qui n'est pas
+     une sauvegarde s'affiche et ne coûte rien ; un dossier de sauvegarde invisible coûte VPS-013.*
+  2. **Un second volet imprime les dossiers qu'aucun conteneur n'a réclamés** — différence
+     d'ensembles sur des données déjà collectées, avec les deux lectures opposées énoncées côte à
+     côte (base disparue **ou** base bien sauvegardée sous un autre nom) et le moyen de trancher
+     (`journalctl -u <unité>`, qui imprime la destination).
+  - **Contre-épreuve** : les 10 dossiers réels (3 apparaissent, aucun ne disparaît) ; **témoin
+    négatif** — en déclarant tous les dossiers réclamés, le bloc rend **✅ aucun**, il ne crie donc
+    pas par construction. **COÛT : ZÉRO commande de plus.**
+
+- **`aNePasFaire`** : ⚠️ **ne pas « corriger » le rapprochement conteneur→dossier en l'élargissant**
+  (rendre `-` et `_` équivalents, par exemple). Un rapprochement plus permissif créditerait la
+  mauvaise archive : c'est le piège du `break` payé le 2026-08-05, où `tracky-postgres` s'était vu
+  attribuer un instantané de 99 jours et déclarer « ABANDONNÉE » la base la plus importante de la
+  machine. **Un faux vert coûte plus cher qu'un faux orange**, et les deux verdicts faux du jour
+  sont, eux, du côté prudent. **On imprime l'écart ; on ne devine pas mieux.**
+
+- **Gain** : trois copies de sauvegarde de **19 h**, présentes sur le disque et invisibles à
+  l'audit, redeviennent visibles — sur le seul constat de gravité 1 de la machine.
+
+---
+
+### VPS-M87 — « ✅ dernier résultat : succès » sur trois unités qui n'avaient jamais tourné
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : ✅ `APPLIQUE` le 2026-09-07 (banc sur les
+  8 combinaisons + rejeu sur les 7 unités réelles, coût zéro commande)
+- **Vu** : 2026-09-07 · **Mesure à la découverte** :
+
+  ```
+  capcom6-backup.service         inactive   ✅ dernier resultat : succes
+    derniere fin : jamais executee
+  vizyo-manager-backup.service   inactive   ✅ dernier resultat : succes
+    derniere fin : jamais executee
+  vizyo-texto-backup.service     inactive   ✅ dernier resultat : succes
+    derniere fin : jamais executee
+  ```
+
+- **QUOI — la cause** : `systemctl show -p Result` rend **`success` par défaut** sur une unité qui
+  n'a jamais démarré. Ce n'est pas un résultat, c'est **l'état initial d'un champ**. Et le `case`
+  rangeait `success` **et** `""` dans la **même branche verte** — si bien que *« jamais tourné »* et
+  *« a tourné et réussi »* étaient **rigoureusement indiscernables**.
+
+- **`pourquoiInvisible`** : le disqualifiant *était imprimé* — mais **le ✅ est sur la ligne qui
+  NOMME l'unité**, donc celle qu'on lit, et le démenti sur la ligne indentée d'en dessous, dans un
+  bloc où toutes les autres unités en portent une inoffensive (une date).
+  **C'est VPS-M84 à l'identique, un jour après**, et la troisième fois de la semaine dans cette même
+  section (VPS-M15 lisait la trace et jamais l'unité ; VPS-M81 confondait l'âge et le mécanisme ;
+  VPS-M84 mesurait deux fois la même chose avec deux règles).
+  ⚠️ **Et l'ironie est le cœur du constat** : le bloc s'intitule *« L'unité qui PRODUIT chaque
+  sauvegarde a-t-elle réussi ? (la trace peut mentir, pas elle) »*. Il a été écrit pour être le juge
+  de dernier ressort de VPS-013 — **et il a validé les trois unités de VPS-013.**
+  🔑 **Une unité qui n'a jamais tourné ne ment pas : elle ne dit RIEN.** C'est VPS-M02 — une mesure
+  **non faite** n'est pas un succès.
+
+- **QUOI FAIRE** — appliqué ce passage : le verdict teste **`ExecMainExitTimestamp` avant `Result`**
+  → `⬜ JAMAIS EXÉCUTÉE — aucun résultat à lire`, et **imprime l'échéance de la minuterie à côté**,
+  car « jamais exécutée » n'est un défaut que si **rien ne doit la déclencher** — et l'absence
+  d'échéance est le mode d'échec exact de VPS-015.
+  - **Contre-épreuve** : les **8 combinaisons** de (`fin`, `res`), branche dégénérée comprise, puis
+    rejeu sur les **7 unités réelles** — **3 basculent, 4 inchangées, zéro régression** sur les
+    branches `success`, `exit-code`, `timeout` et `Result` absent. **COÛT : ZÉRO commande de plus**,
+    `$fin` était déjà lu pour la ligne d'en dessous.
+
+- **`aNePasFaire`** : ⚠️ **ne pas lire un `⬜` futur comme « la sauvegarde est cassée »** : une unité
+  posée le matin pour le soir l'affiche légitimement. **C'est l'absence d'échéance à côté qui
+  qualifie** — raison pour laquelle elle est imprimée sur la même ligne.
+  ⚠️ **Et ne pas généraliser en « se méfier de systemd »** : la famille visée est plus précise et
+  plus large — *tout champ dont le zéro ou le succès peut être une valeur d'initialisation*. Trois
+  autres sont encore verts aujourd'hui : `NRestarts=0`, `connexions=0` sur une clé SSH,
+  `Currently failed: 0` de `fail2ban`. C'est la question ouverte du 2026-09-07.
+
+- **Gain** : le juge de dernier ressort de VPS-013 cesse de valider ce qu'il n'a pas vu.
+
+---
+
 ### VPS-M86 — La note de passation existait, elle répondait d'avance à quatre questions, et deux passages de suite ne l'ont pas ouverte
 
 - **Domaine** : méthode · **Gravité** : **2** · **Statut** : ✅ `APPLIQUE` le 2026-09-06 (le fichier
@@ -5079,9 +5342,16 @@ confondre les deux ferait accuser le mauvais coupable.
 
 - **QUOI FAIRE** — **appliqué ce passage, et le correctif est structurel** : il n'y a plus qu'**une
   seule roadmap**, `docs/centre-alerte/ROADMAP-CORRECTIFS.md`, et elle porte les deux dispositifs.
-  Le contenu de passation y est versé. ⚠️ **Reste à faire, et ce n'est pas fait** : ajouter la
-  roadmap à la liste de lecture obligatoire du §3 de `PROCEDURE-AUDIT.md`. *Sans quoi le même
-  oubli se rejouera sur le nouveau fichier — on aura déplacé la note, pas l'habitude.*
+  Le contenu de passation y est versé. ~~⚠️ **Reste à faire, et ce n'est pas fait** : ajouter la
+  roadmap à la liste de lecture obligatoire du §3 de `PROCEDURE-AUDIT.md`.~~
+  ✅ **FAIT le 2026-09-07** : la roadmap est désormais le **point 1** du §3, avant même le
+  référentiel. *Sans quoi le même oubli se serait rejoué sur le nouveau fichier — on aurait déplacé
+  la note, pas l'habitude.*
+  🔑 **Et la démonstration est arrivée le jour même.** C'est en relisant ce journal que le passage
+  du 07/09 a vu la ligne *« V11 — ✅ FAIT ET PROUVÉ »* du 06/09, est allé la vérifier, et a
+  découvert que **les trois minuteries n'avaient jamais déclenché seules**. **Sans cette lecture, le
+  seul constat de gravité 1 du VPS serait resté clos à tort.** *Une note de passation ne sert pas
+  seulement à éviter de refaire — elle sert à contrôler ce que le passage précédent a affirmé.*
 
 - **`aNePasFaire`** : ⚠️ **ne pas en conclure qu'il ne faut plus écrire de note de passation.**
   Elle était juste, complète et datée ; c'est sa **place** qui était mauvaise. ⚠️ Et **ne pas

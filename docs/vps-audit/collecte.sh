@@ -3008,12 +3008,46 @@ for u in $(systemctl list-unit-files --no-legend --no-pager '*backup*.service' 2
   else
     droits=""
   fi
-  case "$res" in
-    success|"") verdict="✅ dernier resultat : succes" ;;
-    *)          verdict="🔴 DERNIER RESULTAT : $res (code $code) — AUCUNE SAUVEGARDE PRODUITE" ;;
-  esac
+  # ⚠️⚠️ VPS-M87 — CORRIGE LE 2026-09-07. CE BLOC RENDAIT « ✅ dernier resultat : succes »
+  # SUR TROIS UNITES QUI N'AVAIENT JAMAIS TOURNE.
+  #
+  # `systemctl show -p Result` rend `success` par DEFAUT sur une unite qui n'a jamais demarre :
+  # c'est sa valeur d'initialisation, pas un resultat. L'ancien `case` la traitait comme un
+  # succes — et le cas `""` (propriete absente) tombait dans la MEME branche verte, si bien que
+  # « jamais tourne » et « a tourne et reussi » etaient rigoureusement indiscernables.
+  # Mesure du 2026-09-07 : `vizyo-manager-backup`, `vizyo-texto-backup` et `capcom6-backup`,
+  # posees la veille, affichaient les trois ✅ alors que leurs minuteries n'avaient JAMAIS
+  # declenche (`LastTriggerUSec=` vide). Ce sont les TROIS bases de VPS-013, gravite 1.
+  # ⚠️ Et le disqualifiant etait deja imprime : « derniere fin : jamais executee », sur la ligne
+  # SUIVANTE, en retrait. C'est VPS-M84 a l'identique — deux faits dans le meme bloc, et le vert
+  # est sur la ligne qui NOMME l'unite, donc celle qu'on lit.
+  #
+  # 🔑 Ce bloc s'intitule « la trace peut mentir, pas elle ». Une unite qui n'a jamais tourne ne
+  # ment pas : elle ne dit RIEN. C'est VPS-M02 — une mesure NON FAITE n'est pas un succes.
+  # COUT : ZERO commande de plus, `$fin` etait deja lu pour la ligne d'en dessous.
+  if [ -z "$fin" ]; then
+    verdict="⬜ JAMAIS EXECUTEE — aucun resultat a lire (le « success » de systemd est sa valeur par defaut)"
+  else
+    case "$res" in
+      success|"") verdict="✅ dernier resultat : succes" ;;
+      *)          verdict="🔴 DERNIER RESULTAT : $res (code $code) — AUCUNE SAUVEGARDE PRODUITE" ;;
+    esac
+  fi
   printf '  %-34s %-14s %s\n' "$u" "$etat" "$verdict"
   printf '    derniere fin : %s\n' "${fin:-jamais executee}"
+  # ⚠️ « Jamais executee » n'est pas un defaut en soi : une unite posee ce matin pour ce soir
+  # est normale. Ce qui la qualifie, c'est l'existence d'une ECHEANCE — et son absence est le
+  # mode d'echec exact de VPS-015 (un script pose, une unite declaree, et rien qui declenche).
+  # On imprime donc l'echeance a cote, pour que la ligne se lise SEULE.
+  if [ -z "$fin" ]; then
+    tmr="${u%.service}.timer"
+    if systemctl cat "$tmr" >/dev/null 2>&1; then
+      printf '    minuterie %-30s prochaine echeance : %s\n' "$tmr" \
+        "$(systemctl show "$tmr" -p NextElapseUSecRealtime --value 2>/dev/null)"
+    else
+      printf '    🔴 AUCUNE minuterie %s — rien ne la declenchera jamais (mode d echec de VPS-015)\n' "$tmr"
+    fi
+  fi
   [ -n "$droits" ] && printf '    %s\n' "$droits"
 done
 [ -n "$(systemctl list-unit-files --no-legend --no-pager '*backup*.service' 2>/dev/null)" ] || \
@@ -3021,6 +3055,11 @@ done
 
 sub "Couverture : chaque base EN SERVICE a-t-elle une sauvegarde ?"
 MAINTENANT=$(date +%s)
+# ⚠️ VPS-M88 (2026-09-07) — on note au passage QUELS dossiers de /var/backups ont ete
+# reclames par un conteneur. Le reste est imprime en fin de section : un dossier de
+# sauvegarde que personne ne reclame est soit une base disparue, soit — et c'est le cas
+# mesure ce jour — une base BIEN sauvegardee dont le dossier ne porte pas le nom attendu.
+DOSSIERS_RECLAMES=""
 for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
   # Rapprochement par prefixe : `tracky-postgres` → un dossier contenant « tracky ».
   # ⚠️ Le second `sed` est le corollaire de VPS-M80 : `vizyo-auth-db`, une fois reconnu par son
@@ -3042,6 +3081,7 @@ for cont in $(db_conteneurs "$MOTEURS_TOUS"); do
       *"$cle"*)
         t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
         trouve="${trouve}${trouve:+, }$(basename "$d")"
+        DOSSIERS_RECLAMES="${DOSSIERS_RECLAMES} $(basename "$d")"   # VPS-M88
         [ -n "$t" ] && [ "${t%.*}" -gt "$recent" ] && recent=${t%.*}
         # ⚠️⚠️ AJOUTE LE 2026-09-05 (VPS-M81) — « A JOUR » NE VEUT PAS DIRE « SAUVEGARDEE ».
         # Le 2026-09-04 a 04 h 52, quelqu'un a lance A LA MAIN un dump de `vizyo-manager`,
@@ -3171,9 +3211,32 @@ done
 echo "  (une base absente de cette liste n'existe pas ; une base sans sauvegarde y figure BIEN)"
 
 sub "Age de la derniere sauvegarde, par dossier de /var/backups"
+# ⚠️⚠️ VPS-M88 — CORRIGE LE 2026-09-07. CE BLOC SAUTAIT 4 DOSSIERS SUR 10, EN SILENCE,
+# ET IL A SAUTE EXACTEMENT LES TROIS QUI PORTAIENT LES COPIES FRAICHES.
+#
+# Le filtre etait une LISTE BLANCHE de prefixes ecrite a la main :
+#     case "$app" in vizyo-*|tracky-*|maestroo-*|maalem-*|texto-*|capcom6-*) ;; *) continue ;;
+# Le 2026-09-06, les trois unites de sauvegarde de VPS-013 ont ete posees ; elles ecrivent
+# dans des dossiers nommes d'apres la BASE (`vizyo_manager`, `vizyo_texto`, `sms`) et non
+# d'apres l'application. Resultat, mesure le 2026-09-07 :
+#   • `vizyo_manager` et `vizyo_texto` — un SOULIGNE, pas un tiret — ne correspondent pas a
+#     `vizyo-*` : sautes ;
+#   • `sms` ne correspond a aucun prefixe : saute ;
+#   • `capcom6` (sans suffixe) ne correspond pas a `capcom6-*`, qui exige un tiret : saute.
+# 🔴 Le bloc a donc GARDE les deux dossiers MORTS (`vizyo-manager`, `vizyo-texto`, figes au
+# 09-04) pour les declarer « ⚠️ PERIMEE », et JETE les deux dossiers VIVANTS qui portaient la
+# copie de 19 h. Il s'est trompe dans les DEUX SENS a la fois, sur les memes applications, le
+# lendemain du jour ou elles ont ete reparees.
+#
+# 🔑 La lecon n'est pas « la liste blanche etait incomplete » — elle le sera toujours. C'est
+# qu'un filtre par NOM decide de ce qu'on regarde a partir d'une convention que personne ne
+# garantit, et qu'une exclusion silencieuse se lit « rien a signaler ». Le fichier le dit deja
+# vingt lignes plus bas, pour VPS-030 : verifier du cote de l'EFFET, pas de la trace.
+# On enumere donc TOUS les dossiers. Un dossier qui n'est pas une sauvegarde s'affiche et ne
+# coute rien ; un dossier de sauvegarde invisible, lui, coute VPS-013.
+# COUT : ZERO commande de plus — la boucle parcourait deja /var/backups/*/.
 for d in /var/backups/*/; do
   app=$(basename "$d")
-  case "$app" in vizyo-*|tracky-*|maestroo-*|maalem-*|texto-*|capcom6-*) ;; *) continue ;; esac
   dernier=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
   if [ -z "$dernier" ]; then
     printf '  %-22s AUCUNE SAUVEGARDE\n' "$app"
@@ -3193,6 +3256,39 @@ for d in /var/backups/*/; do
   esac
   printf '  %-26s %3s h  %-42s %2d copies, %s  %s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")"
 done
+
+# ── VPS-M88, second volet : QUEL dossier n'a ete reclame par AUCUN conteneur ? ─────────────
+# Le rapprochement de la table de couverture se fait par SOUS-CHAINE du nom du conteneur
+# (`texto-postgres` → tout dossier contenant « texto »). Il a donc credite `vizyo_texto` par
+# CHANCE — le souligne est apres la sous-chaine — et manque `vizyo_manager` (souligne AVANT
+# la fin de « vizyo-manager ») et `sms` (aucun rapport avec « capcom6 »).
+# ⚠️ On ne CORRIGE PAS le rapprochement en l'elargissant : un rapprochement plus permissif
+#    crediterait la mauvaise archive, et c'est le piege du `break` paye le 2026-08-05 —
+#    `tracky-postgres` s'etait vu attribuer un instantane de 99 jours. Un faux vert coute plus
+#    cher qu'un faux orange.
+# On imprime donc l'ECART, qui ne suppose rien : les dossiers qu'aucun conteneur n'a reclames.
+# C'est une difference d'ensembles sur des donnees deja collectees — ZERO commande de plus.
+printf '\n  ── Dossiers de /var/backups qu AUCUN conteneur n a reclames (VPS-M88) ──\n'
+_orphelins=0
+for d in /var/backups/*/; do
+  app=$(basename "$d")
+  case " $DOSSIERS_RECLAMES " in *" $app "*) continue ;; esac
+  _n=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) 2>/dev/null | wc -l)
+  [ "$_n" -eq 0 ] && continue          # un dossier vide n'est pas une sauvegarde non reclamee
+  _orphelins=$((_orphelins + 1))
+  _t=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -1)
+  printf '    🟠 %-24s %2s copie(s), la plus recente il y a %s h — reclame par AUCUN conteneur\n' \
+    "$app" "$_n" "$(( (MAINTENANT - ${_t%.*}) / 3600 ))"
+done
+if [ "$_orphelins" -eq 0 ]; then
+  printf '    ✅ aucun : chaque dossier portant des archives est rattache a un conteneur en service.\n'
+else
+  printf '    ⚠️ Deux lectures, et elles sont OPPOSEES — il faut trancher, pas choisir la rassurante :\n'
+  printf '       • soit la base a disparu et ces octets sont a retirer ;\n'
+  printf '       • soit la base est BIEN sauvegardee ici, et la table de couverture ci-dessus\n'
+  printf '         la declare « en retard » a tort parce que le dossier ne porte pas son nom.\n'
+  printf '       Le journal de l unite tranche : il imprime sa destination (journalctl -u <unite>).\n'
+fi
 
 # ── Ce qui RESSEMBLE a une sauvegarde et vit HORS de tout controle ────────────────────────
 # ⚠️⚠️ AJOUTE LE 2026-08-25 — ANGLE MORT N° 4, OUVERT LE 2026-08-20 ET REPORTE QUATRE FOIS.

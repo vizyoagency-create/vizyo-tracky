@@ -63,13 +63,27 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 51 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 52 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-07 : 4 faites · 3 déployées, preuve attendue · 0 commitée · 44 ouvertes.**
+**Au 2026-09-07 (après la routine VPS) : 4 faites · 3 déployées, preuve attendue · 0 commitée ·
+45 ouvertes.**
 
-> 🆕 **Deux tâches neuves ce jour** — **T24** *(TRK-073)* et **T25** *(TRK-074)*, nées du même
+> 🆕 **Trois tâches neuves ce jour** — **T24** *(TRK-073)* et **T25** *(TRK-074)*, nées du même
 > constat : l'automatisation des trajets a tourné huit fois sans laisser de trace, et le témoin qui
-> l'a déclarée « à l'arrêt » ne sait pas se refermer quand elle revient.
+> l'a déclarée « à l'arrêt » ne sait pas se refermer quand elle revient. Puis **V26**, née de
+> l'audit VPS : les trois sauvegardes réparées écrivent dans des dossiers **neufs**, et les anciens
+> crieront « PÉRIMÉE » tous les matins, pour toujours.
+>
+> 🔴 **ET UNE TÂCHE A ÉTÉ REQUALIFIÉE VERS LE BAS — c'est le fait du jour.** **V11** *(VPS-013,
+> gravité 1)* passe de **✅ FAIT** à **`»` DÉPLOYÉ** : les trois minuteries de sauvegarde **n'ont
+> jamais déclenché seules** (`LastTriggerUSec` **vide** au 07/09 à 02 h 21), leur unique exécution
+> étant un `systemctl start` du 06/09 à 06 h 35 — *les trois à la même seconde, donc un geste, pas
+> un mécanisme*. La première échéance autonome tombe **deux heures après la collecte**. *Le travail
+> est bon et le mécanisme est posé ; c'est la **preuve** qui n'est pas encore née.* **La règle n° 2
+> de ce fichier vaut aussi quand elle dérange.**
+>
+> ⚖️ **En compensation exacte, et le même jour : V25 passe `»` → ✅ FAIT.** Sa preuve est venue, et
+> **plus forte que demandée** — le correctif a survécu au rebuild de 01 h 22, dans un chunk **neuf**.
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
@@ -103,7 +117,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T24** | TRK-073 | 🔴 **Marquer le passage au DÉPART, pas à l'arrivée** *(8 passages perdus)* | 🔧 À CODER |
 | ☐ | **T25** | TRK-074 | Donner une **résolution automatique** au témoin des tâches | 🔧 À CODER |
 
-### Partie II — VPS *(26 tâches)*
+### Partie II — VPS *(27 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -118,10 +132,10 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V8** | VPS-020 | Séparer les projets compose `deploy` | 🔴 HUMAIN |
 | ☐ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | 🔴 HUMAIN |
 | ☐ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | 🔴 HUMAIN |
-| ☑ | **V11** | VPS-013 | 🔴 **3 bases de prod sans sauvegarde reproductible** | ✅ **FAIT ET PROUVÉ** |
+| `»` | **V11** | VPS-013 | 🔴 **3 bases de prod sans sauvegarde reproductible** — *les 3 minuteries n'ont **jamais** déclenché seules* | 🗓️ **DÉPLOYÉ** *(requalifié le 07/09)* |
 | ☐ | **V12** | VPS-012 | Restreindre la clé CI `vizyo-auth` *(10 s)* | 🟡 PRÉPARÉ |
 | ☐ | **V13** | VPS-015 | `ExecStart` par `bash` **+ `OnFailure=` sur `tracky-backup`** | 🟢 AUTO |
-| ☐ | **V14** | VPS-033 | `RandomizedDelaySec=30m` sur `apt-daily.timer` | 🟡 PRÉPARÉ |
+| ☐ | **V14** | VPS-033 | **Fixer l'heure** du rafraîchissement `apt` *(et non réduire son aléa)* | 🟡 PRÉPARÉ |
 | ☐ | **V15** | VPS-034 | Épingler Traefik par digest *(déjà relevé)* | 🔴 HUMAIN |
 | ☐ | **V16** | VPS-026 | Épingler `alpine` par empreinte *(déjà relevée)* | 🟡 PRÉPARÉ |
 | ☐ | **V17** | VPS-030 | Purger 1,4 Go de copies sans rétention *(périmètre prêt)* | 🟡 PRÉPARÉ |
@@ -132,7 +146,8 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V22** | VPS-M36 | Échantillonner `wchan` 3× et publier la répartition | ⛔ BLOQUÉ |
 | ☐ | **V23** | VPS-M73 | Afficher l'écart en jours sur `/admin → Audit VPS` | ⛔ BLOQUÉ |
 | ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
-| `»` | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite | 🗓️ DÉPLOYÉ |
+| ☑ | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite — *a survécu au rebuild du 07/09* | ✅ **FAIT ET PROUVÉ** |
+| ☐ | **V26** | VPS-013 · M88 | 🆕 Ranger les **2 dossiers de sauvegarde abandonnés** *(faux orange quotidien)* | 🟡 PRÉPARÉ |
 
 
 
@@ -141,8 +156,11 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 > *(marquer le passage au départ — tant que ce n'est pas fait, **on ne peut pas savoir si une tâche
 > de fond tourne**, et chaque redéploiement fabrique de fausses `CRITICAL`)*.
 >
-> *T10 et V11, qui occupaient cette place hier, sont l'une **déployée** et l'autre **faite et
-> prouvée**.*
+> *T10, qui occupait cette place hier, est **déployée**.* ⚠️ **V11 y était aussi, annoncée « faite
+> et prouvée » — elle est redescendue à **déployée** le 07/09 : ses trois minuteries n'avaient
+> jamais déclenché seules. Sa vérification du 08/09 est, de fait, la troisième tâche la plus
+> rentable du fichier : deux minutes de lecture pour clore ou rouvrir le seul constat de gravité 1
+> du VPS.*
 
 > ⚠️ **Six fiches apparaissent deux fois, et c'est voulu** — TRK-065 en **T6** *(prévenir la
 > personne)* et **T17** *(guetter la ligne)* ; TRK-066 en **T3** *(trancher la garde)* et **T18**
@@ -822,6 +840,9 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **07/09** *(VPS)* | **V11** | VPS-013 — trois bases de production sans sauvegarde reproductible | 🔴 **REQUALIFIÉ** `[x]` → `[»]` | *(unités systemd)* | 🔴 **La preuve annoncée le 06/09 n'en était pas une, et la machine le dit en trois endroits.** `LastTriggerUSec` est **vide** sur `vizyo-manager-backup.timer`, `vizyo-texto-backup.timer` et `capcom6-backup.timer` ; `ExecMainStartTimestamp` et `ExecMainExitTimestamp` le sont aussi sur les trois services ; et le journal date l'unique exécution du **06/09 à 06 h 35 min 47-48, les trois à la même seconde** — un `systemctl start`, donc **un geste, pas un mécanisme** (VPS-M81). **Première échéance autonome : 07/09 à 04 h 34 / 04 h 40 / 04 h 50 UTC, soit 2 h après la collecte.** ⏳ **Preuve attendue au 08/09** : `LastTriggerUSec` renseigné, `ExecMainExitTimestamp` non vide, et **DEUX** copies dans `/var/backups/{vizyo_manager,vizyo_texto,sms}`. ⚠️ **Ne pas relancer à la main d'ici là** — cela rendrait le test indécidable |
+| **07/09** *(VPS)* | **V25** | VPS-M59 — `chargeDeFond.note` s'affiche | ✅ **FAIT ET PROUVÉ** | `9dce59ec` | 🔑 **La preuve est venue, et elle est plus forte que celle qui était demandée.** `tracky-web` a été **reconstruit le 07/09 à 01 h 22 min 34**, et les deux chaînes témoins (`fond-note`, « mesure absente du manifeste ») sont **toujours dans l'artefact servi** — désormais `chunk-K6RYKC7I.js`, **un fichier différent** de celui d'hier (`chunk-K4HBXQ56.js`). *Ce n'est donc pas l'ancien artefact resté en place : c'est une construction neuve qui porte le correctif, donc la branche d'où l'on déploie le porte encore.* ⚠️ Prouve que le code est **servi**, pas qu'il s'affiche — barre que la roadmap se donne elle-même |
+| **07/09** *(VPS)* | **V14** | VPS-033 — la mesure `apt` | ☐ **recommandation CHANGÉE** | — | **La validité de la mesure s'est jouée à 37 minutes.** Le cache lu ce passage (collecte 02 h 21) est **exactement celui** que le passage du 06/09 (collecte 04 h 05) avait déclaré valide : daté du **06/09 02 h 59 min 53**. *75 → 75 n'est pas une stabilité, c'est **une** mesure publiée deux fois.* `RandomizedDelaySec=30m` **rétrécit** la fenêtre sans la **placer** → le geste devient `OnCalendar=*-*-* 01:30:00` + `RandomizedDelaySec=15m` |
 | **07/09** | **V24** | VPS-038 — sentinelle « boîtiers muets » | ✅ **FAIT ET PROUVÉ** | `fb0642f8` | 🔑 **La preuve attendue est tombée au mot près.** Passage du 06/09 à **06:30:01** : **exactement 2 lignes, pas 10** — `2ad69ac1` (cdef31, **8 boîtiers**, 17,8 → 5,7 j) et `88627f81` (A2R, **2 boîtiers**, `KSR•370` 23,2 j, `GLA•KC•31` 3,2 j, `deposesSansVehicule: 3`). Le regroupement par société tient |
 | **07/09** | **T10** | TRK-070 — le niveau de l'escalade suit la CAUSE | `»` **DÉPLOYÉ** | `2112e9ae` | Déploiement **07/09 00:58:58**. Vérifié sur l'**artefact servi** : `causeTechnique` **×5** dans `dist/assistance/assistance.service.js`, et l'ancienne règle `urgent \|\| gravite === 'CRITICAL' ? …` **a disparu**. ⏳ **Preuve de production non venue** — aucun échec IA depuis le 05/09 17:00 |
 | **07/09** | **T11** | TRK-068 — borner le `fetch` vers Vizyo Auth | `»` **DÉPLOYÉ** | `c80632ba` | Déploiement **07/09 00:58:58**. Vérifié sur l'**artefact servi** : `AbortSignal` et `ServiceUnavailableException` présents dans `dist/auth-client/auth-client.service.js`, `Vizyo Auth` nommé **6 fois**. ⏳ **Preuve de production non venue** — aucun rejet de transport depuis le 04/09 12:57 |
@@ -839,7 +860,15 @@ feront perdre une heure le jour où quelqu'un les suivra.*
    collecte** — c'est là que vit la passation, et c'est précisément ce que les passages des 05 et
    06/09 n'ont pas fait, au prix d'un chapitre entier réécrit pour rien *(VPS-M81)*.
 2. **Vérifier les `[»]` ci-dessus.** Ils passent `[x]` **le jour où la mesure tombe**, pas avant —
-   et si elle ne tombe pas, le dire. Au 07/09 il en reste **trois** — **V25**, dont la preuve relève de la routine VPS, et surtout les deux déployés ce matin :
+   et si elle ne tombe pas, le dire.
+   🔴 **Au 07/09 après la routine VPS, le plus urgent est V11** *(VPS-013, gravité 1)* : au passage
+   du **08/09**, les trois minuteries doivent porter un `LastTriggerUSec` du **07/09 04 h 34 /
+   04 h 40 / 04 h 50 UTC**, un `ExecMainExitTimestamp` **non vide**, et
+   `/var/backups/{vizyo_manager,vizyo_texto,sms}` **deux** copies chacun. *Si `LastTriggerUSec` est
+   encore vide, c'est VPS-015 à l'identique — un script posé, une unité déclarée, et rien qui se
+   déclenche.* ⚠️ **Ne pas relancer les unités à la main d'ici là.**
+   ~~**V25**, dont la preuve relève de la routine VPS~~ → **prouvé le 07/09**. Restent les deux
+   déployés le matin du 07/09 :
    **T10** *(UNE seule ligne `ASSISTANCE`, en `DEGRADATION`, et le journal système garde son
    `assistance_escalade` — si les deux tombent, on a supprimé la trace)* et **T11** *(`503` et non
    `500`, niveau `ERROR` et non `CRITICAL`, motif technique **conservé** en fin de phrase)*.

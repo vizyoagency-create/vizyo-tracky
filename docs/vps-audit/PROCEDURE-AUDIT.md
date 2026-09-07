@@ -89,10 +89,22 @@ habituel. `sysstat` garde 7 jours ; au-delà, la comparaison se fait entre rappo
 
 Avant d'écrire quoi que ce soit :
 
-1. Lire `REFERENCE-CONSTATS.md` **en entier**. Un constat déjà connu ne redevient pas neuf.
-2. Lire le dernier rapport de `rapports/`, en particulier sa section **« Améliorer l'agent »** —
+1. **Lire `docs/centre-alerte/ROADMAP-CORRECTIFS.md` — son tableau de bord et son journal
+   d'avancement — AVANT la collecte.** *Ajouté le 2026-09-07, et c'est la partie restée en suspens
+   de **VPS-M86**.* C'est là que vit la **passation** : ce que le passage précédent a fait sur la
+   machine, et ce qu'il a demandé de vérifier ensuite. Les passages des 05 et 06/09 ne l'ont pas
+   fait — un chapitre entier a été réécrit pour retrouver une réponse déjà écrite (VPS-M81), et un
+   correctif déployé depuis deux jours a été republié comme angle mort ouvert (VPS-M59, 11ᵉ report).
+   > ⚠️ **Cette ligne existe parce que déplacer la note de passation ne suffisait pas.** VPS-M86
+   > l'a versée dans la roadmap unique le 06/09 en écrivant lui-même : *« sans quoi le même oubli se
+   > rejouera sur le nouveau fichier — on aura déplacé la note, pas l'habitude. »*
+   > 🔑 **Et le 07/09 en a donné la démonstration immédiate** : c'est en relisant ce journal que le
+   > passage a vu la ligne *« V11 — ✅ FAIT ET PROUVÉ »*, puis découvert que les trois minuteries
+   > n'avaient jamais déclenché. **Sans cette lecture, le constat de gravité 1 serait resté clos.**
+2. Lire `REFERENCE-CONSTATS.md` **en entier**. Un constat déjà connu ne redevient pas neuf.
+3. Lire le dernier rapport de `rapports/`, en particulier sa section **« Améliorer l'agent »** —
    elle contient les angles morts identifiés au passage précédent, à couvrir cette fois.
-3. Comparer les `chiffres` du manifeste (`passages[]`) avec ceux du jour : c'est la seule
+4. Comparer les `chiffres` du manifeste (`passages[]`) avec ceux du jour : c'est la seule
    source de tendance au-delà de 7 jours.
 
 Pour chaque constat existant, trancher : **toujours vrai** (mettre à jour `vuDerniere` et la
