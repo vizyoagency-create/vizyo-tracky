@@ -249,7 +249,26 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
 
 ## 7. Défauts trouvés en recette (à corriger, puis cocher)
 
-_(vide pour l'instant)_
+Recette de production du 08/09 (00:30-01:20), session du propriétaire, deux sondes sur `/map`,
+`/places`, `/reports`, `/t/:token` à 375, 768, 1440 et 1920 px.
+
+- [x] **R1 — L'infobulle du repère disait encore « glissez pour déplacer »** alors que le
+      glisser est retiré (E1). Vu en simulant le glisser : 0 px de déplacement, mais le `title`
+      promettait le geste. Corrigé : `title = nom`, plus de curseur « grab ».
+- [x] **R2 — La pastille « Légende » repliée chevauchait les commandes MapLibre** (zoom,
+      boussole, posées en bas à droite) : zone commune de 19 px mesurée à 768 et 1920 px par
+      la sonde de collision, confirmée par `elementFromPoint`. Corrigé : HUD décalé à
+      `right: 56px`, à gauche des commandes. Absent à 375 (HUD masqué) et invisible à 1440
+      seulement par chance de hauteur.
+
+Écartés, préexistants et hors chantier :
+- « Toutes les sociétés » élidé dans la puce du sélecteur à 375 et 768 px (`w 96 / sw 101`) :
+  élision volontaire d'un libellé long dans la barre du haut.
+- « Assistance » recouvert de 12 px par la carte « Agent IA » à 1440 px : c'est le bas de la
+  liste de navigation défilante — même faux positif que la recette du 07/09 (atteignable
+  après défilement).
+- « Carte » contre « Départ » / « Arrivée » sur la page publique : un marqueur (role=button)
+  posé sur le canevas (tabindex 0) est la définition même d'une carte, pas une collision.
 
 ## 8. Décisions laissées au propriétaire
 

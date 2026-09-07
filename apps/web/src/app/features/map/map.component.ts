@@ -1050,7 +1050,10 @@ const RESYNC_RADIUS_M = 150;
          Cinq bandes de vitesse et jusqu'à sept repères, en permanence à l'écran : c'est de la
          référence qu'on lit une fois, pas un tableau de bord. Repliée par défaut, et le choix
          est retenu (préférence legendeRepliee, même patron que lieuxAffichage). -->
-    <div class="tracky-desktop-hud" style="position:absolute;bottom:24px;right:16px;z-index:1000">
+    <!-- right: 56 px — à GAUCHE des commandes MapLibre (zoom, boussole, position : 29 px + marge
+         de 10 px, posées en bas à droite). À 16 px, la pastille repliée chevauchait « Dézoomer »
+         et « Remettre le nord en haut » de 19 px : mesuré en recette à 768 et 1920 px. -->
+    <div class="tracky-desktop-hud" style="position:absolute;bottom:24px;right:56px;z-index:1000">
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] mp-legende" [class.mp-legende--ouverte]="!legendeRepliee()">
         <button type="button" class="mp-legende-b" (click)="basculerLegende()"
@@ -5563,8 +5566,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       `justify-content:center;color:#fff;font-weight:800;font-size:${g.police}px;line-height:1;cursor:pointer`;
     el.textContent = glyph;
     el.setAttribute('aria-label', p.name);
-    el.title = this.canManagePlaces() ? `${p.name} — glissez pour déplacer` : p.name;
-    if (this.canManagePlaces()) el.style.cursor = 'grab';
+    // Plus de « glissez pour déplacer » : le repère ne se déplace plus depuis la carte (cf.
+    // `renderFleetPlaceMarkers`). Une infobulle qui promet un geste impossible est un défaut.
+    el.title = p.name;
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
       this.openPlaceCard(p);
