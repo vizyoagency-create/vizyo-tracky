@@ -86,6 +86,16 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 **Le `--env-file .env.prod` n'est pas optionnel.** Sans lui, échec sur
 `network <vide> declared as external, but could not be found` (cf. `deploy/vps/README.md`).
 
+> **Environnement de démonstration (2026-09)** — une fois la prod reconstruite, la démo se met
+> à jour sur les mêmes images avec **une ligne de plus** :
+>
+> ```bash
+> docker compose --env-file .env.demo -f docker-compose.demo.yml up -d
+> ```
+>
+> Elle joue ses propres migrations sur sa propre base. Tout le reste (installation, rafraîchissement
+> des données, comptes) : `docs/environnement-demo/EXPLOITATION.md`.
+
 ### 3. Vérifier que l'API a RÉELLEMENT démarré
 
 Un conteneur « up » peut redémarrer en boucle. Trois contrôles.

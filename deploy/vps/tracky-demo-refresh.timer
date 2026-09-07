@@ -1,0 +1,9 @@
+[Unit]
+Description=Tracky — base de démonstration rafraîchie chaque dimanche à 04:00 UTC (après la sauvegarde de 03:00)
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

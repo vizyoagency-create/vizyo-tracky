@@ -22,3 +22,13 @@ Voir `docs/DEPLOYMENT-VPS.md` pour la procédure complète.
     # Redéploiement après git pull
     cd /opt/vizyo-tracky && git pull origin main
     cd deploy/vps && docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+
+## Environnement de démonstration (2026-09)
+
+Une pile séparée sur les MÊMES images que la prod (pas de `build:`). Après le déploiement de la
+prod, **une ligne de plus** — c'est ce qui met la démo à jour :
+
+    docker compose --env-file .env.demo -f docker-compose.demo.yml up -d      # démo
+
+Installation, rafraîchissement (hebdomadaire + à la demande), comptes et procédure prospect :
+`docs/environnement-demo/EXPLOITATION.md`. Plan et garanties : `docs/environnement-demo/PLAN-2026-09-07.md`.

@@ -1,0 +1,8 @@
+[Unit]
+Description=Tracky — rafraîchissement de la démo À LA DEMANDE (bouton de l'écran d'administration)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vizyo-tracky/deploy/vps/demo-refresh.sh --si-demande
