@@ -256,14 +256,21 @@ describe('ReportPdfService — l’en-tête : le trait descend avec les lignes',
   });
 
   /**
-   * La contre-épreuve, qui tient la promesse écrite dans `renderHeader` : « sans mention,
-   * la mise en page est celle d'avant, au pixel ». Sans elle, on pourrait faire descendre
-   * le trait de tous les rapports pour satisfaire l'assertion du dessus.
+   * La contre-épreuve de l'assertion du dessus : sans elle, on pourrait faire descendre le
+   * trait de TOUS les rapports pour la satisfaire, et personne ne le verrait.
+   *
+   * ⚠️ LA VALEUR EST ÉCRITE EN DUR, ET C'EST TOUT L'INTÉRÊT. Elle ne relit pas la constante du
+   * service — un test qui lit la valeur qu'il vérifie passe quoi qu'elle vaille. Elle doit donc
+   * être mise à jour À LA MAIN quand l'en-tête change VRAIMENT, ce qui oblige à le décider.
+   *
+   * Elle valait 130 jusqu'au 2026-09-07, date où l'en-tête a été refait : la marque est passée
+   * en mention de papier à lettres (petit corps, interlettré) et le nom du client est devenu le
+   * titre. Le bloc du haut est plus compact, le trait remonte donc de huit points.
    */
-  it('sans ligne conducteur, le trait reste à 130 — la mise en page d’avant, au pixel', async () => {
+  it('sans ligne conducteur, le trait est à sa position de référence', async () => {
     const { yTraits } = await renderedGeometry(makeReport(), { scopeLabel: '3 véhicules sélectionnés' });
 
-    expect(yTraits[0]).toBe(130);
+    expect(yTraits[0]).toBe(122);
   });
 });
 

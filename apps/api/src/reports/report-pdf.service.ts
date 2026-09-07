@@ -36,12 +36,13 @@ import { libelleGraviteAlerte, libelleTypeAlerte, partLibelle } from '@vizyo/tra
  * grande surface est un marqueur d'e-mail promotionnel ». C'est le même raisonnement, sur le
  * seul document que le client archive et ressort des mois plus tard.
  *
- * Le vert reste — c'est la marque — mais il redevient un ACCENT : un segment de filet sous
- * l'en-tête, et rien d'autre. Assombri à teinte égale, parce qu'un aplat de `#10E0A0` sort en
- * gris très clair sur une imprimante noir et blanc, et que la moitié de ces rapports finissent
- * sur du papier.
+ * ⚠️ LE DOCUMENT EST MONOCHROME, VOLONTAIREMENT — teintes d'ambre des mentions exceptées.
+ * Un premier passage avait gardé le vert en accent (un segment de filet, le logo) ; il a été
+ * retiré entièrement. Ce qui hiérarchise ces pages, ce sont la TAILLE, la GRAISSE et l'ESPACE,
+ * pas la couleur — et c'est précisément ce qui distingue un rapport d'exploitation d'une
+ * plaquette. Le logo lui-même est pris dans sa variante noire : même dessin au pixel près que
+ * la verte de l'application (vérifié), simplement la déclinaison faite pour ce fond-là.
  */
-const COLOR_ACCENT = '#0B8F68';
 /** Encre. Presque noir plutôt que noir : le noir pur bave à l'impression laser. */
 const COLOR_FG = '#111827';
 const COLOR_FG_MUTED = '#6b7280';
@@ -49,6 +50,17 @@ const COLOR_FG_MUTED = '#6b7280';
 const COLOR_BG_CARD = '#F6F7F8';
 /** Filets et contours de carte. */
 const COLOR_BORDER = '#E5E7EB';
+/**
+ * Fond et encre des cartes ÉTEINTES — celles qui n'ont rien à montrer.
+ *
+ * ⚠️ « 0.0 km » EN NOIR FRANC SE LIT COMME UNE MESURE. Neuf cartes de zéros composées comme
+ * neuf résultats donnaient à une semaine sans le moindre trajet exactement le même poids
+ * visuel qu'une semaine à dix mille kilomètres. Éteintes, elles se lisent d'un coup d'œil pour
+ * ce qu'elles sont : des cases sans contenu. Le chiffre reste écrit — le document est une
+ * pièce d'archive — mais il cesse de se faire passer pour une donnée.
+ */
+const COLOR_BG_CARD_VIDE = '#FAFBFB';
+const COLOR_FG_VIDE = '#9AA3AC';
 // Mention « parc exploité » : ambre volontairement DOUX. Ce n'est pas une alerte
 // (rien n'est cassé côté client), c'est une note de méthode sur la base de calcul.
 const COLOR_BG_NOTICE = '#fffbeb';
@@ -92,8 +104,10 @@ export interface PdfReportOptions {
  * se range dans un classeur et ressort des mois plus tard : c'est la surface où une marque doit
  * se reconnaître d'un coup d'œil.
  *
- * ⚠️ CE N'EST PAS UNE COPIE, ET C'EST LE POINT. Le fichier est celui que sert l'application —
- * la barre du haut, l'écran de connexion. Une copie propre à l'API aurait divergé, comme celle
+ * ⚠️ CE N'EST PAS UNE COPIE, ET C'EST LE POINT. Le fichier vient du jeu de logos que sert
+ * l'application — même dossier, même dessin. La déclinaison NOIRE plutôt que la verte : le
+ * document est monochrome, et l'application ship elle-même les trois variantes (noire, verte,
+ * blanche) précisément parce qu'une marque s'adapte à son support. Une copie propre à l'API aurait divergé, comme celle
  * de la page vitrine l'avait fait pour les e-mails : elle y avait perdu la goutte intérieure de
  * la pastille, et personne ne pouvait le voir puisqu'aucun écran ne montre les deux ensemble.
  * L'image de production arrive par le Dockerfile (`COPY .../apps/web/public/logos`).
@@ -102,7 +116,7 @@ export interface PdfReportOptions {
  * manquant lève, et ferait échouer la génération entière — un rapport sans logo vaut infiniment
  * mieux qu'un rapport qui n'existe pas. `null` ⇒ on retombe sur le nom seul, comme avant.
  */
-export const CHEMIN_LOGO = resolve(__dirname, '../../../web/public/logos/png/vizyo-tracky-icon-green.png');
+export const CHEMIN_LOGO = resolve(__dirname, '../../../web/public/logos/png/vizyo-tracky-icon-black.png');
 const LOGO: Buffer | null = (() => {
   try {
     return readFileSync(CHEMIN_LOGO);
@@ -110,6 +124,14 @@ const LOGO: Buffer | null = (() => {
     return null;
   }
 })();
+
+/**
+ * L'ordonnée PLANCHER du filet d'en-tête, quand rien ne s'empile sous le titre.
+ *
+ * Nommée parce qu'un test la tient : sans elle, on pourrait faire descendre le trait de TOUS
+ * les rapports pour satisfaire l'assertion « le trait passe sous la ligne conducteur ».
+ */
+const TRAIT_Y_MIN = 122;
 
 const DEFAULT_MAX_TRIPS = 30;
 const DEFAULT_TOP_N = 10;
@@ -231,46 +253,63 @@ export class ReportPdfService {
     driverLabel?: string,
   ): void {
     /**
-     * Marque en haut à gauche : le logo, puis le nom.
+     * ══════════════════════════════════════════════════════════════════════════════════
+     * L'EN-TÊTE : UN PAPIER À LETTRES, PUIS LE DOCUMENT
+     * ══════════════════════════════════════════════════════════════════════════════════
      *
-     * ⚠️ LE NOM EST EN ENCRE, PLUS EN VERT. Vingt points de `#10E0A0` en haut de page, c'était
-     * la moitié du problème de ton du document ; l'autre moitié était le fond des cartes. La
-     * marque est maintenant portée par le LOGO — c'est son travail —, et le texte se comporte
-     * comme le titre qu'il est.
+     * La hiérarchie était INVERSÉE. « Vizyo Tracky » s'écrivait en 20 points gras, le nom du
+     * client en 16, et la nature du document — « Rapport hebdomadaire » — en 9 points de gris
+     * sous la marque. Le titre le plus gros de la page était donc le nom du fournisseur, sur un
+     * document dont le sujet est le client. C'est la marque d'une plaquette ; un rapport
+     * annonce d'abord DE QUI il parle.
      *
-     * Le bloc texte se décale de la largeur du logo. Sans logo (fichier absent), il reprend sa
-     * place d'origine : la mise en page reste juste, elle n'a simplement pas d'image.
+     * Deux étages, et un seul par ligne :
+     *
+     *   1. LE PAPIER À LETTRES — logo + « VIZYO TRACKY » en petit, espacé, et en face la
+     *      nature du document en capitales grises. Ça se lit en diagonale et ça ne dispute
+     *      rien au titre. C'est exactement la structure de l'en-tête des courriels (marque à
+     *      gauche, « RAPPORT · HEBDO » à droite) : les deux documents que le client reçoit le
+     *      lundi matin s'ouvrent désormais de la même façon.
+     *
+     *   2. LE DOCUMENT — le nom du client en gros, et sa période en face.
+     *
+     * ⚠️ L'INTERLETTRAGE FAIT LE TRAVAIL QUE LA COULEUR FAISAIT. Helvetica en corps 9 sans
+     * réglage a l'air d'un défaut de rendu ; espacée de 1,5 point et en capitales, la même
+     * ligne devient une mention de papier à lettres. Et le titre reçoit un interlettrage
+     * NÉGATIF : au-delà de 20 points, l'espacement par défaut d'Helvetica se voit et fait
+     * flotter les lettres.
      */
-    const xTexte = LOGO ? 72 : 40;
-    if (LOGO) doc.image(LOGO, 40, 36, { height: 26 });
-    doc.fillColor(COLOR_FG).fontSize(19).font('Helvetica-Bold')
-      .text('Vizyo Tracky', xTexte, 38);
-    doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
-      .text(title ?? 'Rapport de flotte', xTexte, 62);
+    const titreDoc = title ?? 'Rapport de flotte';
+    const xMarque = LOGO ? 68 : 40;
+    if (LOGO) doc.image(LOGO, 40, 38, { height: 21 });
+    doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica-Bold')
+      .text('VIZYO TRACKY', xMarque, 43, { characterSpacing: 1.5, lineBreak: false });
+    doc.fillColor(COLOR_FG_MUTED).fontSize(7.5).font('Helvetica-Bold')
+      .text(titreDoc.toUpperCase(), 300, 44.5, {
+        width: 255, align: 'right', characterSpacing: 1.1, lineBreak: false,
+      });
 
-    // Bandeau période en haut-droite.
-    // ⚠️ « du … au … inclus », pas « → » : Helvetica (WinAnsi) n'a pas la flèche, elle
-    //    s'imprimait « !' ». Et la borne `to` de l'API est EXCLUSIVE (lendemain minuit) :
-    //    affichée telle quelle, un rapport du 3 au 9 se lisait « 03/08 → 10/08 ».
     const fromStr = formatFleetDate(report.period.from);
     const toStr = formatFleetDate(inclusiveEnd(report.period.to));
-    doc.fillColor(COLOR_FG).fontSize(11).font('Helvetica')
-      .text(`du ${fromStr} au ${toStr} inclus`, 340, 42, { width: 215, align: 'right' });
-    doc.fillColor(COLOR_FG_MUTED).fontSize(9)
-      .text(`${report.period.days} jour${report.period.days > 1 ? 's' : ''}`, 340, 60, { width: 215, align: 'right' });
 
-    // Fleet name + sous-titre scope (ex: "3 véhicules sélectionnés")
-    doc.fillColor(COLOR_FG).fontSize(16).font('Helvetica-Bold')
-      .text(report.fleet.name, 40, 95);
     /**
-     * ⚠️ LE PÉRIMÈTRE S'ÉCRIT LIGNE À LIGNE, ET LE TRAIT DESCEND AVEC LUI.
-     *
-     * Le périmètre VÉHICULE tenait sur une ligne posée à 116, sous un trait figé à 130. La
-     * seconde ligne — le CONDUCTEUR (F13) — n'avait donc nulle part où aller : écrite là, elle
-     * serait passée SOUS le trait, dans le corps du document. On empile ce qu'il y a à dire et
-     * on repousse le trait d'autant ; sans mention, la mise en page est celle d'avant, au pixel.
+     * ⚠️ `lineBreak: false` + `ellipsis` SUR LE NOM DU CLIENT. En 21 points, « Transports
+     * Legrand & Fils Occitanie » déborde de ses 250 points et passerait sous le bloc de
+     * période, à droite — deux textes l'un sur l'autre. Coupé, il reste lisible ; et la
+     * société sait comment elle s'appelle.
      */
-    let ligneY = 116;
+    doc.fillColor(COLOR_FG).fontSize(21).font('Helvetica-Bold')
+      .text(report.fleet.name, 40, 76, {
+        width: 250, characterSpacing: -0.35, lineBreak: false, ellipsis: true,
+      });
+    doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica')
+      .text(`du ${fromStr} au ${toStr} inclus`, 300, 80, { width: 255, align: 'right', lineBreak: false });
+    doc.fillColor(COLOR_FG_MUTED).fontSize(8.5).font('Helvetica')
+      .text(`${report.period.days} jour${report.period.days > 1 ? 's' : ''}`, 300, 94, {
+        width: 255, align: 'right', lineBreak: false,
+      });
+
+    let ligneY = 108;
     if (scopeLabel) {
       doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
         .text(scopeLabel, 40, ligneY);
@@ -284,17 +323,12 @@ export class ReportPdfService {
       ligneY += 14;
     }
 
-    /**
-     * ⚠️ UN FILET NEUTRE, ET UN COURT SEGMENT DE MARQUE À GAUCHE.
-     *
-     * C'était un trait vert plein sur les 515 points de la largeur : la troisième grande
-     * surface verte de la page. Un filet gris qui traverse et un accent de 56 points à son
-     * origine disent la même chose — la marque, et où commence le document — sans peindre.
-     */
-    const traitY = Math.max(130, ligneY + 1);
+    // Un filet gris, et rien de plus : il dit où le papier à lettres s'arrête et où le
+    // document commence. C'était un trait vert plein sur 515 points — la troisième grande
+    // surface verte de la page.
+    const traitY = Math.max(TRAIT_Y_MIN, ligneY + 1);
     doc.moveTo(40, traitY).lineTo(555, traitY).strokeColor(COLOR_BORDER).lineWidth(1).stroke();
-    doc.moveTo(40, traitY).lineTo(96, traitY).strokeColor(COLOR_ACCENT).lineWidth(2).stroke();
-    doc.y = traitY + 15;
+    doc.y = traitY + 16;
   }
 
   /**
@@ -358,9 +392,10 @@ export class ReportPdfService {
     const top = doc.y;
 
     doc.roundedRect(40, top, boxW, boxH, 5).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-    // Un repère d'accent à gauche : la seule couleur du bloc, et elle marque un état, pas une
-    // alerte — rien n'est cassé, la flotte n'a simplement pas roulé.
-    doc.rect(40, top, 3, boxH).fill(COLOR_ACCENT);
+    // Un filet vertical à gauche pour distinguer le bloc d'une carte ordinaire. En GRIS
+    // FONCÉ, pas en couleur : ce bloc constate un état, il n'alerte de rien — rien n'est
+    // cassé, la flotte n'a simplement pas roulé.
+    doc.rect(40, top, 2.5, boxH).fill(COLOR_FG_MUTED);
 
     doc.fillColor(COLOR_FG).fontSize(10.5).font('Helvetica-Bold')
       .text('Aucun trajet sur cette période', 40 + padX, top + 11, { width: textW });
@@ -529,6 +564,13 @@ export class ReportPdfService {
     const startX = 40;
     const cardW = Math.floor((515 - gap * (cols - 1)) / cols);
     const cardH = 56;
+    /**
+     * ⚠️ ÉTEINTES QUAND RIEN N'A ROULÉ. Le bandeau du haut dit déjà « aucun trajet » ; la
+     * grille, elle, continuait de composer ses zéros comme des résultats. Un lecteur qui
+     * parcourt la page en diagonale ne lit pas le bandeau, il lit les gros chiffres — et neuf
+     * « 0 » en noir franc ont l'aplomb d'une mesure.
+     */
+    const eteintes = report.trips.count === 0;
     let x = startX;
     let y = doc.y;
     let bas = y;
@@ -537,10 +579,11 @@ export class ReportPdfService {
       const kpi = kpis[i]!;
       // Fond gris neutre + contour d'un point : la carte se distingue par sa STRUCTURE, pas
       // par un aplat de couleur. Neuf aplats verts, c'était le ton commercial du document.
-      doc.roundedRect(x, y, cardW, cardH, 5).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-      doc.fillColor(COLOR_FG_MUTED).fontSize(8).font('Helvetica')
+      doc.roundedRect(x, y, cardW, cardH, 5)
+        .fillAndStroke(eteintes ? COLOR_BG_CARD_VIDE : COLOR_BG_CARD, COLOR_BORDER);
+      doc.fillColor(eteintes ? COLOR_FG_VIDE : COLOR_FG_MUTED).fontSize(8).font('Helvetica')
         .text(kpi.label.toUpperCase(), x + 8, y + 6, { width: cardW - 16 });
-      doc.fillColor(COLOR_FG).fontSize(15).font('Helvetica-Bold')
+      doc.fillColor(eteintes ? COLOR_FG_VIDE : COLOR_FG).fontSize(15).font('Helvetica-Bold')
         .text(kpi.value, x + 8, y + 22, { width: cardW - 16 });
       // ⚠️ LE BAS RÉEL DE LA GRILLE, SUIVI CARTE PAR CARTE.
       //

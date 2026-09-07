@@ -137,6 +137,97 @@ describe('PDF — le pied de page ne fabrique plus les pages blanches', () => {
   });
 });
 
+/** Toutes les couleurs posées pendant le rendu — remplissages ET traits. */
+async function couleursUtilisees(report: FleetStatsReport): Promise<Set<string>> {
+  const vues = new Set<string>();
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const proto = PDFDocument.prototype as any;
+  const espions = ['fillColor', 'strokeColor', 'fill', 'stroke', 'fillAndStroke'].map((nom) => {
+    const vrai = proto[nom];
+    return jest.spyOn(proto, nom).mockImplementation(function (this: any, ...args: any[]) {
+      for (const a of args) if (typeof a === 'string' && a.startsWith('#')) vues.add(a.toLowerCase());
+      return vrai.apply(this, args);
+    });
+  });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  try {
+    await new ReportPdfService().generate(report);
+  } finally {
+    espions.forEach((e) => e.mockRestore());
+  }
+  return vues;
+}
+
+/** Le vert domine-t-il dans cette couleur ? */
+function estVerte(hex: string): boolean {
+  const n = hex.length === 4
+    ? hex.slice(1).split('').map((c) => parseInt(c + c, 16))
+    : [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [r, v, b] = n as [number, number, number];
+  return v > r + 12 && v > b + 12;
+}
+
+describe('PDF — le document est monochrome', () => {
+  /**
+   * ⚠️ « ENLÈVE LE VERT COMPLÈTEMENT ». Un premier passage l'avait seulement RÉDUIT : le nom de
+   * la marque et le fond des neuf cartes étaient repassés en neutre, mais il restait un segment
+   * de filet vert sous l'en-tête et un repère vert sur le bandeau d'état vide.
+   *
+   * Ce test ne liste pas les endroits où le vert a été retiré — il interdit la TEINTE, partout.
+   * C'est la seule forme qui tienne : une palette se réintroduit toujours par un endroit
+   * auquel on n'avait pas pensé, et sûrement pas par celui qu'on vient de corriger.
+   *
+   * Les mentions ambre (`#fffbeb`, `#92400e`) restent : elles ne sont pas décoratives, elles
+   * signalent une note de méthode — et elles ne sont pas vertes.
+   */
+  it('aucune teinte verte, nulle part', async () => {
+    const vertes = [...await couleursUtilisees(makeReport())].filter(estVerte);
+
+    expect(vertes).toEqual([]);
+  });
+
+  it('le rapport plein non plus — les tableaux ne réintroduisent rien', async () => {
+    const vertes = [...await couleursUtilisees(REPORT_LONG)].filter(estVerte);
+
+    expect(vertes).toEqual([]);
+  });
+
+  /** Contre-épreuve du détecteur : il doit reconnaître le vert de marque et sa version sombre. */
+  it('le détecteur reconnaît bien un vert', () => {
+    expect(estVerte('#10E0A0')).toBe(true);
+    expect(estVerte('#0B8F68')).toBe(true);
+    expect(estVerte('#111827')).toBe(false);
+    expect(estVerte('#fffbeb')).toBe(false);
+    expect(estVerte('#9AA3AC')).toBe(false);
+  });
+});
+
+describe('PDF — les cartes s’éteignent quand il n’y a rien dedans', () => {
+  /**
+   * « 0.0 km » composé en noir franc a l'aplomb d'une mesure : neuf cartes de zéros donnaient à
+   * une semaine sans le moindre trajet le même poids visuel qu'une semaine à dix mille
+   * kilomètres. Le bandeau du haut le dit déjà — mais un lecteur qui parcourt la page en
+   * diagonale ne lit pas le bandeau, il lit les gros chiffres.
+   *
+   * Les valeurs restent ÉCRITES (le document est une pièce d'archive) : elles cessent seulement
+   * de se faire passer pour des données.
+   */
+  it('zéro trajet : le fond et l’encre des cartes passent en éteint', async () => {
+    const vides = await couleursUtilisees(makeReport());
+
+    expect(vides.has('#fafbfb')).toBe(true);
+    expect(vides.has('#9aa3ac')).toBe(true);
+  });
+
+  it('dès qu’un trajet existe, les cartes reprennent leur encre pleine', async () => {
+    const pleines = await couleursUtilisees(REPORT_LONG);
+
+    expect(pleines.has('#fafbfb')).toBe(false);
+    expect(pleines.has('#9aa3ac')).toBe(false);
+    expect(pleines.has('#f6f7f8')).toBe(true);
+  });
+});
+
 describe('PDF — le logo de la marque', () => {
   it('le document embarque le logo', async () => {
     const { buffer } = await rendu(makeReport());
