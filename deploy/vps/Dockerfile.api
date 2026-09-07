@@ -32,6 +32,13 @@ COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 
+# Le LOGO de la marque, tel que l'application le sert — le PDF des rapports l'imprime en
+# en-tete. Ce n'est pas une copie : c'est le fichier de `apps/web/public`, celui de la barre
+# du haut et de l'ecran de connexion. Une copie propre a l'API aurait diverge, comme celle de
+# la page vitrine l'avait fait pour les e-mails (goutte manquante dans la pastille, invisible
+# pendant des mois). Le WORKDIR runtime est /app/apps/api, donc `../web/public/...` resout ici.
+COPY --from=builder /app/apps/web/public/logos ./apps/web/public/logos
+
 # Documentation du centre d'alerte (referentiel des erreurs, procedure d'audit, rapports).
 # Servie en lecture par CentreAlerteWikiService a l'ecran /admin/alerts. Sans cette copie
 # l'endpoint repondrait `available: false` en prod alors qu'il marche en developpement —

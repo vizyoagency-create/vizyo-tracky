@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import PDFDocument from 'pdfkit';
 import {
   formatFleetDate,
@@ -20,10 +22,33 @@ import { libelleGraviteAlerte, libelleTypeAlerte, partLibelle } from '@vizyo/tra
  * ou attachment email).
  */
 
-const COLOR_TRACKY = '#10E0A0';
-const COLOR_FG = '#1f2937';
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LA PALETTE D'UN DOCUMENT IMPRIMÉ N'EST PAS CELLE D'UN ÉCRAN
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * `#10E0A0` est un vert d'ÉCRAN : lumineux sur le fond sombre de l'application, il vire au
+ * fluorescent sur du papier blanc. Il portait ici le nom de la marque en 20 points ET le fond
+ * des neuf cartes d'indicateurs — un rapport d'exploitation qui se lisait comme une plaquette
+ * commerciale.
+ *
+ * ⚠️ LE GABARIT E-MAIL A TRANCHÉ LA MÊME QUESTION, dans les mêmes termes : « le vert saturé en
+ * grande surface est un marqueur d'e-mail promotionnel ». C'est le même raisonnement, sur le
+ * seul document que le client archive et ressort des mois plus tard.
+ *
+ * Le vert reste — c'est la marque — mais il redevient un ACCENT : un segment de filet sous
+ * l'en-tête, et rien d'autre. Assombri à teinte égale, parce qu'un aplat de `#10E0A0` sort en
+ * gris très clair sur une imprimante noir et blanc, et que la moitié de ces rapports finissent
+ * sur du papier.
+ */
+const COLOR_ACCENT = '#0B8F68';
+/** Encre. Presque noir plutôt que noir : le noir pur bave à l'impression laser. */
+const COLOR_FG = '#111827';
 const COLOR_FG_MUTED = '#6b7280';
-const COLOR_BG_ACCENT = '#ecfdf5';
+/** Fond des cartes — gris neutre. C'était un vert pâle, sur neuf cartes à la fois. */
+const COLOR_BG_CARD = '#F6F7F8';
+/** Filets et contours de carte. */
+const COLOR_BORDER = '#E5E7EB';
 // Mention « parc exploité » : ambre volontairement DOUX. Ce n'est pas une alerte
 // (rien n'est cassé côté client), c'est une note de méthode sur la base de calcul.
 const COLOR_BG_NOTICE = '#fffbeb';
@@ -57,6 +82,34 @@ export interface PdfReportOptions {
    */
   driverLabel?: string;
 }
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LE LOGO — LE MÊME FICHIER QUE L'APPLICATION, PAS UNE COPIE
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Le document ne portait que le nom écrit en toutes lettres. Il part par courriel, s'imprime,
+ * se range dans un classeur et ressort des mois plus tard : c'est la surface où une marque doit
+ * se reconnaître d'un coup d'œil.
+ *
+ * ⚠️ CE N'EST PAS UNE COPIE, ET C'EST LE POINT. Le fichier est celui que sert l'application —
+ * la barre du haut, l'écran de connexion. Une copie propre à l'API aurait divergé, comme celle
+ * de la page vitrine l'avait fait pour les e-mails : elle y avait perdu la goutte intérieure de
+ * la pastille, et personne ne pouvait le voir puisqu'aucun écran ne montre les deux ensemble.
+ * L'image de production arrive par le Dockerfile (`COPY .../apps/web/public/logos`).
+ *
+ * ⚠️ LU UNE FOIS, ET SON ABSENCE NE FAIT PAS TOMBER LE RAPPORT. Un `doc.image()` sur un fichier
+ * manquant lève, et ferait échouer la génération entière — un rapport sans logo vaut infiniment
+ * mieux qu'un rapport qui n'existe pas. `null` ⇒ on retombe sur le nom seul, comme avant.
+ */
+export const CHEMIN_LOGO = resolve(__dirname, '../../../web/public/logos/png/vizyo-tracky-icon-green.png');
+const LOGO: Buffer | null = (() => {
+  try {
+    return readFileSync(CHEMIN_LOGO);
+  } catch {
+    return null;
+  }
+})();
 
 const DEFAULT_MAX_TRIPS = 30;
 const DEFAULT_TOP_N = 10;
@@ -126,6 +179,9 @@ export class ReportPdfService {
         // rapport dont on aurait décoché la section KPI ne doit pas perdre la
         // mention — c'est justement le chiffre qu'elle explique qui se retrouverait
         // ailleurs sans avertissement.
+        // Le FAIT d'abord (rien n'a roulé), la MÉTHODE ensuite (la base de la moyenne) :
+        // un lecteur qui ouvre une page de zéros doit lire pourquoi avant de lire comment.
+        this.renderEtatVide(doc, report, options?.driverLabel);
         this.renderExploitedScopeNotice(doc, report, options?.driverLabel);
         if (sections.has('kpi')) this.renderKpis(doc, report, options?.driverLabel);
         if (sections.has('alerts')) this.renderAlerts(doc, report, options?.driverLabel);
@@ -174,11 +230,23 @@ export class ReportPdfService {
     title?: string,
     driverLabel?: string,
   ): void {
-    // Logo / nom Tracky en haut-gauche
-    doc.fillColor(COLOR_TRACKY).fontSize(20).font('Helvetica-Bold')
-      .text('Vizyo Tracky', 40, 40);
+    /**
+     * Marque en haut à gauche : le logo, puis le nom.
+     *
+     * ⚠️ LE NOM EST EN ENCRE, PLUS EN VERT. Vingt points de `#10E0A0` en haut de page, c'était
+     * la moitié du problème de ton du document ; l'autre moitié était le fond des cartes. La
+     * marque est maintenant portée par le LOGO — c'est son travail —, et le texte se comporte
+     * comme le titre qu'il est.
+     *
+     * Le bloc texte se décale de la largeur du logo. Sans logo (fichier absent), il reprend sa
+     * place d'origine : la mise en page reste juste, elle n'a simplement pas d'image.
+     */
+    const xTexte = LOGO ? 72 : 40;
+    if (LOGO) doc.image(LOGO, 40, 36, { height: 26 });
+    doc.fillColor(COLOR_FG).fontSize(19).font('Helvetica-Bold')
+      .text('Vizyo Tracky', xTexte, 38);
     doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
-      .text(title ?? 'Rapport de flotte', 40, 65);
+      .text(title ?? 'Rapport de flotte', xTexte, 62);
 
     // Bandeau période en haut-droite.
     // ⚠️ « du … au … inclus », pas « → » : Helvetica (WinAnsi) n'a pas la flèche, elle
@@ -216,9 +284,93 @@ export class ReportPdfService {
       ligneY += 14;
     }
 
+    /**
+     * ⚠️ UN FILET NEUTRE, ET UN COURT SEGMENT DE MARQUE À GAUCHE.
+     *
+     * C'était un trait vert plein sur les 515 points de la largeur : la troisième grande
+     * surface verte de la page. Un filet gris qui traverse et un accent de 56 points à son
+     * origine disent la même chose — la marque, et où commence le document — sans peindre.
+     */
     const traitY = Math.max(130, ligneY + 1);
-    doc.moveTo(40, traitY).lineTo(555, traitY).strokeColor(COLOR_TRACKY).lineWidth(1.5).stroke();
+    doc.moveTo(40, traitY).lineTo(555, traitY).strokeColor(COLOR_BORDER).lineWidth(1).stroke();
+    doc.moveTo(40, traitY).lineTo(96, traitY).strokeColor(COLOR_ACCENT).lineWidth(2).stroke();
     doc.y = traitY + 15;
+  }
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * QUAND IL N'Y A RIEN À DIRE, LE DIRE — AU LIEU D'IMPRIMER NEUF ZÉROS
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Une semaine sans trajet produisait une page de « 0 », « 0.0 km », « 0.0 h », « 0 km/h »,
+   * puis « Aucune alerte sur la période. » et un grand blanc. Le document ne mentait pas, mais
+   * il ne DISAIT rien : le lecteur ne pouvait pas distinguer « la flotte n'a pas roulé » de
+   * « le rapport n'a pas su calculer ». Les deux se ressemblent trait pour trait, et l'un des
+   * deux est une panne.
+   *
+   * ⚠️ LES INDICATEURS RESTENT IMPRIMÉS. Ce document est une pièce d'archive : « la semaine du
+   * 31/08 au 06/09 est à zéro » est une information, et la supprimer laisserait un trou dans la
+   * série que le client compare d'une semaine sur l'autre. On ajoute la phrase, on ne retire
+   * pas le chiffre.
+   *
+   * ⚠️ IL NE REDIT PAS L'ENCART AMBRE qui le suit. Celui-là explique une BASE DE CALCUL
+   * (pourquoi la moyenne ne divise pas par le parc entier) et n'apparaît que si quelque chose
+   * est exclu ; celui-ci énonce un FAIT (rien n'a roulé) et n'apparaît que si rien n'a roulé.
+   * La deuxième ligne d'ici est donc la seule à toucher aux boîtiers, et seulement quand
+   * l'encart ambre ne dira rien — sinon la même cause serait écrite deux fois en dix lignes.
+   */
+  private renderEtatVide(doc: PDFKit.PDFDocument, report: FleetStatsReport, driverLabel?: string): void {
+    if (report.trips.count > 0) return;
+
+    const du = formatFleetDate(report.period.from);
+    const au = formatFleetDate(inclusiveEnd(report.period.to));
+    const parc = report.vehicles.total;
+    const sansBoitier = report.vehicles.withoutTracker;
+
+    const sujet = driverLabel
+      ? 'Aucun trajet ne lui est attribué'
+      : parc > 0
+        ? `Aucun des ${parc} véhicule${parc > 1 ? 's' : ''} du parc n’a transmis de trajet`
+        : 'Aucun trajet n’a été transmis';
+    const constat = `${sujet} entre le ${du} et le ${au}. Les indicateurs, les alertes et les `
+      + 'classements ci-dessous sont donc vides — ce n’est pas une erreur de calcul.';
+
+    /**
+     * La cause, quand on peut la nommer sans deviner. `buildExploitedScopeNotice` porte déjà
+     * le cas des boîtiers absents dans son encart ; on ne l'écrit ici que s'il se taira.
+     */
+    const encartAmbrePrendraLeRelais = !!buildExploitedScopeNotice(report, { filtreConducteur: !!driverLabel });
+    const cause = driverLabel
+      ? 'Vérifiez que les trajets de la période lui sont bien attribués, sur la page Véhicules.'
+      : !encartAmbrePrendraLeRelais && sansBoitier === 0 && parc > 0
+        ? 'Si vos véhicules ont roulé sur cette période, vérifiez l’alimentation et la connexion de leurs boîtiers.'
+        : null;
+
+    const boxW = 515;
+    const padX = 12;
+    const textW = boxW - padX * 2;
+    doc.fontSize(9).font('Helvetica');
+    const hConstat = doc.heightOfString(constat, { width: textW });
+    const hCause = cause ? doc.heightOfString(cause, { width: textW }) + 4 : 0;
+    const boxH = 16 + 14 + hConstat + hCause + 10;
+
+    if (doc.y + boxH > 780) doc.addPage();
+    const top = doc.y;
+
+    doc.roundedRect(40, top, boxW, boxH, 5).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
+    // Un repère d'accent à gauche : la seule couleur du bloc, et elle marque un état, pas une
+    // alerte — rien n'est cassé, la flotte n'a simplement pas roulé.
+    doc.rect(40, top, 3, boxH).fill(COLOR_ACCENT);
+
+    doc.fillColor(COLOR_FG).fontSize(10.5).font('Helvetica-Bold')
+      .text('Aucun trajet sur cette période', 40 + padX, top + 11, { width: textW });
+    doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+      .text(constat, 40 + padX, top + 27, { width: textW });
+    if (cause) {
+      doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+        .text(cause, 40 + padX, top + 27 + hConstat + 4, { width: textW });
+    }
+    doc.y = top + boxH + 14;
   }
 
   /**
@@ -379,14 +531,25 @@ export class ReportPdfService {
     const cardH = 56;
     let x = startX;
     let y = doc.y;
+    let bas = y;
 
     for (let i = 0; i < kpis.length; i++) {
       const kpi = kpis[i]!;
-      doc.roundedRect(x, y, cardW, cardH, 6).fill(COLOR_BG_ACCENT);
+      // Fond gris neutre + contour d'un point : la carte se distingue par sa STRUCTURE, pas
+      // par un aplat de couleur. Neuf aplats verts, c'était le ton commercial du document.
+      doc.roundedRect(x, y, cardW, cardH, 5).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
       doc.fillColor(COLOR_FG_MUTED).fontSize(8).font('Helvetica')
         .text(kpi.label.toUpperCase(), x + 8, y + 6, { width: cardW - 16 });
       doc.fillColor(COLOR_FG).fontSize(15).font('Helvetica-Bold')
         .text(kpi.value, x + 8, y + 22, { width: cardW - 16 });
+      // ⚠️ LE BAS RÉEL DE LA GRILLE, SUIVI CARTE PAR CARTE.
+      //
+      // `doc.y = y + cardH + 16` était juste pour une dernière rangée INCOMPLÈTE (où `y` pointe
+      // encore sa propre rangée) et faux pour une rangée pleine : `y` était déjà passé à la
+      // rangée suivante, et on lui ajoutait une hauteur de carte de plus. Neuf indicateurs sur
+      // trois colonnes tombent pile — soit soixante-six points de blanc injustifié entre la
+      // grille et la section suivante, sur tous les rapports.
+      bas = y + cardH;
       if ((i + 1) % cols === 0) {
         x = startX;
         y += cardH + gap;
@@ -394,7 +557,7 @@ export class ReportPdfService {
         x += cardW + gap;
       }
     }
-    doc.y = y + cardH + 16;
+    doc.y = bas + 18;
 
     // P3 carburant — ligne de comparaison prix constaté vs paramétré (base du calcul de coût).
     const c = report.consumption;
@@ -969,17 +1132,40 @@ export class ReportPdfService {
     return `${m}min`;
   }
 
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * LE PIED DE PAGE FABRIQUAIT LES PAGES BLANCHES QU'IL PRÉTENDAIT ÉVITER
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Un rapport d'une page sortait en TROIS pages : la première portait le contenu et AUCUN
+   * pied de page, la deuxième la seule mention « Généré automatiquement », la troisième le
+   * seul « Page 1 / 1 » — un numéro qui se croyait seul au monde, et qui avait raison au
+   * moment où il s'écrivait.
+   *
+   * ⚠️ `lineBreak: false` NE SUFFIT PAS, et le commentaire précédent s'y fiait. Ce n'est pas
+   * le retour à la ligne qui ouvre une page, c'est la MARGE BASSE : PDFKit compare `y` à
+   * `page.height - margins.bottom` et appelle `addPage()` dès qu'un texte commence en
+   * dessous. Écrire DANS la marge exige donc de l'annuler le temps de l'écriture. Chaque
+   * `.text()` ouvrait sa propre page — d'où deux pages pour deux morceaux.
+   *
+   * ⚠️ `range.count` EST LU AVANT LA BOUCLE et ne bouge plus : c'est ce qui rend « Page i / n »
+   * exact. Sous l'ancien code il valait 1 pendant que la boucle créait les pages 2 et 3.
+   */
   private renderFooter(doc: PDFKit.PDFDocument): void {
     const range = doc.bufferedPageRange();
     const generated = formatFleetDateTime(new Date());
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
-      // Dans la marge basse, SANS retour à la ligne : un texte qui déborde de la zone
-      // imprimable déclenche une nouvelle page — c'était la page blanche finale.
-      const y = doc.page.height - 30;
+      const margeBasse = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+
+      const y = doc.page.height - 28;
+      doc.moveTo(40, y - 9).lineTo(555, y - 9).strokeColor(COLOR_BORDER).lineWidth(0.5).stroke();
       doc.fontSize(8).fillColor(COLOR_FG_MUTED).font('Helvetica')
         .text(`Généré automatiquement par Vizyo Tracky — ${generated}`, 40, y, { width: 400, align: 'left', lineBreak: false })
         .text(`Page ${i + 1} / ${range.count}`, 440, y, { width: 115, align: 'right', lineBreak: false });
+
+      doc.page.margins.bottom = margeBasse;
     }
   }
 }
