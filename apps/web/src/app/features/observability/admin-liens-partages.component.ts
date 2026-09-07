@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { RouterLink } from '@angular/router';
 import { ArrowLeft, Link2, LucideAngularModule, RefreshCw, ShieldOff, Timer } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { PLAFOND_VIE_LIEN_MS } from '@vizyo/tracky-shared';
 import type {
   DureeProlongation,
   EtatLienPartage,
@@ -182,9 +183,15 @@ import { corpsErreur } from '../../core/interceptors/auth.interceptor';
                       @if (l.etat !== 'REVOQUE') {
                         <span class="lp-prolong-grp">
                           @for (d of DUREES; track d.cle) {
-                            <button class="lp-mini" [disabled]="occupe() === cleDe(l)"
+                            <!-- ⚠️ LA CONTRAINTE SE VOIT AVANT LE CLIC. Le serveur refuse au-dela
+                                 de 30 jours de vie totale ; laisser le bouton actif ferait
+                                 decouvrir la regle par un echec, alors qu'elle est calculable
+                                 ici avec les memes donnees. -->
+                            <button class="lp-mini" [disabled]="occupe() === cleDe(l) || !possible(l, d.cle)"
                                     (click)="prolonger(l, d.cle)"
-                                    [attr.title]="'Repousser l’échéance de ' + d.libelle">
+                                    [attr.title]="possible(l, d.cle)
+                                      ? 'Repousser l’échéance de ' + d.libelle
+                                      : 'Impossible : un lien ne peut pas vivre plus de 30 jours après sa création.'">
                               +{{ d.court }}
                             </button>
                           }
@@ -418,6 +425,22 @@ export class AdminLiensPartagesComponent implements OnInit {
   protected relatif(iso: string | null): string {
     if (!iso) return '—';
     return 'il y a ' + this.duree(Date.now() - Date.parse(iso));
+  }
+
+  /**
+   * Cette prolongation-là passerait-elle ?
+   *
+   * ⚠️ LA MÊME RÈGLE QUE LE SERVEUR, PAS UNE APPROXIMATION. Le plafond (`PLAFOND_VIE_LIEN_MS`)
+   * et la base de calcul (`max(maintenant, échéance)`) viennent du contrat partagé : si les
+   * deux divergeaient, le bouton promettrait ce que l'API refuse — ou l'inverse, ce qui est
+   * pire, car on cesserait d'offrir une prolongation légitime.
+   *
+   * Le serveur reste l'autorité : ceci ne fait qu'éviter un aller-retour et une erreur.
+   */
+  protected possible(l: LienPartageAdminDto, duree: DureeProlongation): boolean {
+    const ms = duree === 'HOUR_1' ? 3600_000 : duree === 'DAY_7' ? 7 * 24 * 3600_000 : 24 * 3600_000;
+    const base = Math.max(Date.now(), Date.parse(l.expireAt));
+    return base + ms <= Date.parse(l.creeAt) + PLAFOND_VIE_LIEN_MS;
   }
 
   private duree(ms: number): string {
