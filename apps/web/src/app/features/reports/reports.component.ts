@@ -1882,13 +1882,33 @@ export function trajetHorsPerimetreConducteur(
       letter-spacing: .04em;
     }
     .rep-kpi-head lucide-icon { color: var(--tracky-light); }
+    /* ⚠️ RETOUR À LA LIGNE À TOUTES LES LARGEURS. La courbe descend d'une ligne quand il n'y
+       a plus la place ; c'est ELLE qui cède, jamais le chiffre. Voir .rep-kpi-value dessous.
+       ⚠️ AUCUN ACCENT GRAVE DANS CE BLOC : on est dans le littéral gabarit de styles:[...],
+       un seul accent grave le referme et la compilation échoue loin d'ici, sans nommer la
+       cause. */
     .rep-kpi-body {
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
       gap: 8px;
+      row-gap: 4px;
+      flex-wrap: wrap;
       min-width: 0;
     }
+    /**
+     * LE CHIFFRE NE SE TRONQUE JAMAIS — À AUCUNE LARGEUR.
+     *
+     * ⚠️ Cette protection existait déjà, mais enfermée dans un média max-width: 480px. Or la
+     * grille passe à 2 colonnes jusqu'à 1023 px puis à QUATRE au-delà : les cartes redeviennent
+     * étroites précisément sur les écrans d'ordinateur. Le seul endroit où le correctif
+     * s'appliquait était donc le téléphone.
+     *
+     * Mesuré en production le 2026-09-07, à 1440 px : « 1221 » s'affichait « 1… »,
+     * « 19 016,1 km » s'affichait « 19 0… », « 585h38 » s'affichait « 58… ». Un lecteur y voit
+     * 1 trajet au lieu de 1221 et 19 km au lieu de 19 016 — une carte de KPI qui ment sur son
+     * KPI. Tronqué de 481 px à ~1700 px, c'est-à-dire sur tous les portables.
+     */
     .rep-kpi-value {
       margin: 0;
       font-size: 22px;
@@ -1897,9 +1917,9 @@ export function trajetHorsPerimetreConducteur(
       line-height: 1;
       letter-spacing: -.02em;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 0 1 auto;
+      overflow: visible;
+      text-overflow: clip;
+      flex: 0 0 auto;
     }
     .rep-kpi-unit {
       font-size: 12px;
@@ -1927,13 +1947,12 @@ export function trajetHorsPerimetreConducteur(
       flex-shrink: 0;
       overflow: visible;
     }
-    /* Sous 480 px, une carte KPI fait ~134 px de large utile : « 33 171,4 km » et sa
-       courbe ne tiennent pas côte à côte, et la valeur s'affichait « 33171,… ». Le chiffre
-       est la raison d'être de la carte : il ne se tronque JAMAIS. La courbe et la mention
-       passent à la ligne quand il n'y a plus de place. */
+    /* Sous 480 px, une carte KPI fait ~134 px de large utile. Le passage à la ligne et la
+       non-troncature du chiffre sont désormais la règle de BASE (voir .rep-kpi-value) : il
+       ne reste ici que ce qui est propre au téléphone — un chiffre un peu plus petit, une
+       mention qui s'enroule et une courbe réduite. */
     @media (max-width: 480px) {
-      .rep-kpi-body { flex-wrap: wrap; row-gap: 4px; }
-      .rep-kpi-value { font-size: 20px; overflow: visible; text-overflow: clip; }
+      .rep-kpi-value { font-size: 20px; }
       .rep-kpi-meta { white-space: normal; line-height: 1.3; }
       .rep-spark { width: 60px; height: 22px; }
     }
@@ -2813,6 +2832,26 @@ export function trajetHorsPerimetreConducteur(
     @media (min-width: 641px) {
       .rep-filters { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
       .rep-selectors, .rep-periods, .rep-actions { display: contents; }
+      /**
+       * ⚠️ ET ON REND AUX ENVELOPPES LEUR LARGEUR PROPRE.
+       *
+       * Le display: contents fait disparaître .rep-selectors : ses enveloppes deviennent des
+       * éléments flexibles de .rep-filters. Mais elles gardaient la mise en page MOBILE
+       * (flex: 1 ; min-width: 0, plus haut), pensée pour des boutons en pleine largeur — alors
+       * que le bouton, lui, impose min-width: 180px. Les deux se contredisent : flex
+       * comprimait l'enveloppe et le bouton DÉBORDAIT sur son voisin.
+       *
+       * Mesuré en production le 2026-09-07 à 1440 px, donc sur un écran de bureau ordinaire :
+       * enveloppes à 90 px pour des boutons de 180 px, et quatre recouvrements confirmés par
+       * test de touche — « Tous les conducteurs » couvrant les deux autres filtres AINSI QUE
+       * les puces « Aujourd'hui » et « 7 jours ». Cliquer une période dans cette zone
+       * atteignait le mauvais contrôle : un défaut fonctionnel, pas cosmétique.
+       *
+       * flex: 0 0 auto = la largeur du contenu, ni plus ni moins. .rep-filters étant déjà en
+       * flex-wrap: wrap, la rangée passe proprement à la ligne au lieu de se superposer.
+       */
+      .rep-selectors .rep-dropdown-wrapper { flex: 0 0 auto; min-width: 0; }
+      .rep-selectors .rep-dropdown-trigger { width: auto; }
     }
 
     /* ─── Liste des trajets : conteneur commun tableau / cartes ─── */

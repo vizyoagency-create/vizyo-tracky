@@ -31,6 +31,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { BottomSheetComponent } from '../../shared/ui/bottom-sheet/bottom-sheet.component';
 import { ZoneComponent, type EtatZone } from '../../shared/ui/zone/zone.component';
+import { pastilleLiveAutorisee } from './pastille-live';
 import {
   formatSilenceLabel,
   getVehicleConnectivityState,
@@ -1614,25 +1615,26 @@ export class VehiclesListComponent implements OnInit {
   protected liveStatus(vehicleId: string): { kind: 'moving' | 'idle' | 'stopped'; speedKmh: number; cssClass: string } | null {
     const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
     if (!pos) return null;
-    // DORMANCE — garde AJOUTÉE en amont (aucune garde existante n'est retirée). Le snapshot
-    // hydrate une position pour TOUS les véhicules, y compris ceux muets depuis 89 jours :
-    // sans ce filtre, FV-941-LZ afficherait la pastille « Stationné » comme s'il venait d'être
-    // vu, et le badge de présence — le seul à dire la vérité — ne s'afficherait JAMAIS (il est
-    // dans la branche `@else` de cette pastille). Le véhicule n'est pas retiré de la liste : il
-    // bascule sur le badge « Dormant · 89 j », qui date la donnée au lieu de la maquiller.
+    /**
+     * ⚠️ LA DÉCISION « A-T-ON LE DROIT DE PARLER AU PRÉSENT ? » VIT DANS `pastille-live.ts`.
+     *
+     * Elle s'est trompée trois fois ici même, toujours en OUBLIANT un état de boîtier
+     * (dormant, GPS perdu, puis simplement muet depuis 4 jours). La fonction extraite la pose
+     * dans l'autre sens — elle EXIGE un boîtier vivant — et son test la tient.
+     */
     const dormantV = this.vehicles().find((v) => v.id === vehicleId);
-    if (dormantV && this.isDormant(dormantV)) return null;
-    // Incident FS-253 — GPS perdu : la vitesse live est FIGÉE (dernière position vieille de
-    // plusieurs heures). On n'affiche AUCUNE pastille de vitesse (le badge « GPS perdu » du
-    // tri-état s'en charge) pour ne pas laisser croire que le véhicule roule.
     const snap = this.realtime.snapshot().find((s) => s.vehicleId === vehicleId);
-    if (snap && getVehicleConnectivityState({
-      trackerId: snap.trackerId,
-      lastSeenAt: snap.lastSeenAt,
-      lastPositionAt: snap.lastPositionAt,
-      lastNoFixAt: snap.lastNoFixAt,
-      lastIgnition: snap.lastIgnition,
-    }) === 'GPS_LOST') return null;
+    if (!pastilleLiveAutorisee(
+      snap ? {
+        trackerId: snap.trackerId,
+        lastSeenAt: snap.lastSeenAt,
+        lastPositionAt: snap.lastPositionAt,
+        lastNoFixAt: snap.lastNoFixAt,
+        lastIgnition: snap.lastIgnition,
+      } : null,
+      pos.timestamp,
+      !!dormantV && this.isDormant(dormantV),
+    )) return null;
     const speedKmh = Math.round(pos.speedKmh);
     if (pos.ignition && speedKmh > 3) {
       return { kind: 'moving', speedKmh, cssClass: 'v-live-pill--moving' };

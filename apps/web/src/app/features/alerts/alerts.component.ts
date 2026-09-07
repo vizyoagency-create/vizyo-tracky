@@ -328,6 +328,12 @@ interface AlertCluster {
                     <a [routerLink]="['/vehicles', cluster.vehicleId]" class="al-plate">{{ alertVehiclePlate(cluster.lead) }}</a>
                   }
                   @if (lienTrajet(cluster.lead); as lt) {
+                    <!-- ⚠️ LE SÉPARATEUR EST OBLIGATOIRE. Angular supprime l'espace entre deux
+                         blocs @if (preserveWhitespaces: false) : sans ce point médian, la
+                         plaque et le lien se collaient en un seul mot — « FM-772-JHVoir le
+                         trajet → », constaté en production le 2026-09-07. Le reste de la ligne
+                         (message, horodatage) sépare déjà ses membres de la même façon. -->
+                    @if (cluster.vehicleId) { <span class="al-sep">·</span> }
                     <a [routerLink]="['/vehicles', lt.vehicleId]" [queryParams]="lt.params" class="al-trip">Voir le trajet →</a>
                   }
                   @if (cluster.lead.message) { <span class="al-sep">·</span> {{ cluster.lead.message }} }
