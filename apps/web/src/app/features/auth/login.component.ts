@@ -2,6 +2,7 @@ import { swallow } from '../../core/error/swallow';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { retourSur } from '../../core/auth/retour-interne';
 import { AuthService } from '../../core/services/auth.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -272,17 +273,12 @@ export class LoginComponent implements OnInit {
       const baanool = data.user.preferences?.uiMode === 'baanool';
       // feat/comptes-conducteurs — retour post-login vers la page d'origine (ex. scan QR
       // /driver/unlock alors qu'on n'était pas connecté). URL INTERNE uniquement (anti open-redirect).
-      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
       /**
-       * ⚠️ TROIS CONDITIONS, ET LA TROISIÈME EST NOUVELLE. Interne (une seule barre) contre la
-       * redirection ouverte ; et JAMAIS `/login`, sinon se connecter renvoie à la page de
-       * connexion — une boucle qu'un lien bricolé à la main suffirait à armer. Le garde de
-       * route et l'intercepteur évitent déjà de l'écrire ; cette ligne le rend impossible.
+       * ⚠️ ON NE FAIT PAS CONFIANCE À CE PARAMÈTRE, même si c'est le garde de route ou
+       * l'intercepteur qui l'ont écrit : il arrive par l'URL, donc il arrive de l'extérieur.
+       * `retourSur` porte la règle et ses raisons — c'est la même des deux côtés.
        */
-      const safeReturn = returnUrl
-        && returnUrl.startsWith('/') && !returnUrl.startsWith('//')
-        && !returnUrl.startsWith('/login')
-        ? returnUrl : null;
+      const safeReturn = retourSur(this.route.snapshot.queryParamMap.get('returnUrl'));
       // Espace dépôt (2026-08) — un DEPOT arrive sur `/depot`, jamais sur `/dashboard`.
       // Placé en tête, au même endroit que la redirection du conducteur (A1 § 5).
       const home = this.auth.isDepot()

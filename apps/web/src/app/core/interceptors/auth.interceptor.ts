@@ -2,6 +2,7 @@ import { HttpErrorResponse, type HttpInterceptorFn } from '@angular/common/http'
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, from, switchMap, throwError } from 'rxjs';
+import { retourSur } from '../auth/retour-interne';
 import { activityContext } from '../services/activity-context';
 import { AuthService } from '../services/auth.service';
 import { ConsentService } from '../services/consent.service';
@@ -81,12 +82,11 @@ function forceLogout(
    * renvoie au tableau de bord et il faut refaire le chemin de mémoire ; c'est le même défaut
    * que celui du garde, à l'autre bout de la vie d'une session.
    *
-   * `/login` n'est jamais renvoyé à lui-même : ce serait une boucle. Et la page de connexion
-   * revalide le chemin (interne uniquement) avant de s'y rendre.
+   * Ce qui mérite d'être reporté est défini par `retourSur`, partagé avec le garde de route
+   * et avec la page de connexion qui suivra ce paramètre.
    */
-  const cible = router.url;
-  const utile = cible && cible !== '/' && !cible.startsWith('/login');
-  void router.navigate(['/login'], utile ? { queryParams: { returnUrl: cible } } : {});
+  const retour = retourSur(router.url);
+  void router.navigate(['/login'], retour ? { queryParams: { returnUrl: retour } } : {});
   setTimeout(() => { loggingOut = false; }, 5_000);
 }
 

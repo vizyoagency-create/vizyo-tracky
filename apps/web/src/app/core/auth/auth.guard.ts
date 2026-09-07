@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { type ActivatedRouteSnapshot, type CanActivateFn, type RouterStateSnapshot, Router } from '@angular/router';
+import { retourSur } from './retour-interne';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -25,17 +26,15 @@ import { type ActivatedRouteSnapshot, type CanActivateFn, type RouterStateSnapsh
  * `/vehicles/xxx` ramènerait la fiche mais pas le trajet, ni l'alerte à marquer vue — la
  * moitié de la promesse, donc le pire des deux mondes.
  *
- * ⚠️ ON N'ENVOIE JAMAIS `/login` COMME RETOUR. Une session expirée sur la page de connexion
- * elle-même (ou une double redirection) créerait une boucle : connecté, renvoyé au login,
- * reconnecté. La page de connexion valide déjà que le retour est un chemin interne
- * (anti-redirection ouverte) ; on ajoute ici la seule garde qu'elle ne peut pas faire.
+ * ⚠️ CE QUI MÉRITE D'ÊTRE REPORTÉ EST DÉFINI AILLEURS — `retourSur`, partagé avec
+ * l'intercepteur qui écrit le même paramètre et avec la page de connexion qui le suit. Les
+ * trois se posaient la question chacun de son côté ; la règle et ses raisons sont là-bas.
  */
 export const authGuard: CanActivateFn = (_route: ActivatedRouteSnapshot, state: RouterStateSnapshot) => {
   const router = inject(Router);
   const token = localStorage.getItem('vizyo-tracky-token');
   if (token) return true;
 
-  const cible = state.url;
-  const utile = cible && cible !== '/' && !cible.startsWith('/login');
-  return router.createUrlTree(['/login'], utile ? { queryParams: { returnUrl: cible } } : {});
+  const retour = retourSur(state.url);
+  return router.createUrlTree(['/login'], retour ? { queryParams: { returnUrl: retour } } : {});
 };
