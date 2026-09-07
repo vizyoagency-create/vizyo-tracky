@@ -283,7 +283,7 @@ function makePrisma(opts: OptionsBanc = {}) {
         return by[0] === 'type' ? ALERTES_PAR_TYPE : ALERTES_PAR_GRAVITE;
       }),
     },
-    tripFuelStop: { aggregate: jest.fn().mockResolvedValue({ _avg: { unitPriceEur: null }, _count: { _all: 0 } }) },
+    tripFuelStop: { groupBy: jest.fn().mockResolvedValue([]) },
     driver: {
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
         CONDUCTEURS.filter((d) => where.id.in.includes(d.id)),

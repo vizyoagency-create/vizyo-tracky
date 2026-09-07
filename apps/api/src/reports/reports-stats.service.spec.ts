@@ -82,8 +82,11 @@ function makePrisma(fixtures: VehicleFixture[]) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     alert: { groupBy: jest.fn().mockResolvedValue([]) },
+    // ⚠️ `groupBy` et non `aggregate` depuis le 2026-09-07 : le coût est bâti CARBURANT PAR
+    // CARBURANT (gazole aux diesels, essence aux essences), donc le service demande les
+    // relevés groupés par carburant. Aucun passage capté = aucune ligne.
     tripFuelStop: {
-      aggregate: jest.fn().mockResolvedValue({ _avg: { unitPriceEur: null }, _count: { _all: 0 } }),
+      groupBy: jest.fn().mockResolvedValue([]),
     },
     // Excès par véhicule (F06) : requête SQL brute sur le détail JSON des analyses.
     // ⚠️ Un simulacre qui l'omet décrit un client Prisma qui n'existe pas — et le service
@@ -313,6 +316,114 @@ describe('ReportsStatsService — un électrique ne consomme pas de carburant', 
   });
 });
 
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * LE PRIX AU LITRE : LA MESURE PASSE DEVANT L'HYPOTHÈSE, CARBURANT PAR CARBURANT
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * Le coût se calculait `totalLitres × Fleet.fuelPriceEurL` : UN prix saisi à la main pour toute
+ * la société. Deux défauts d'un coup, mesurés le 2026-09-07 :
+ *
+ *   · il se périmait en silence — posé à 1,85 €/L (« moyenne FR fin 2025 »), jamais retouché,
+ *     21 % sous le marché, et aucun écran ne permet de le régler ;
+ *   · il était unique sur un parc qui ne l'est pas — une société de production a 17 essence,
+ *     4 diesel et 8 électriques, tous facturés au même prix au litre.
+ *
+ * Le prix RÉELLEMENT affiché à la pompe est pourtant capté à chaque passage, depuis le flux
+ * officiel. Il passe devant, par carburant. Et il ne se périme pas : une moyenne recalculée à
+ * chaque période suit le marché parce qu'elle EST le marché.
+ */
+describe('ReportsStatsService — le coût est bâti sur le prix constaté, par carburant', () => {
+  const PARC_DEUX_CARBURANTS: VehicleFixture[] = [
+    { id: 'v-gazole', plate: 'DI-001-SL', trackerId: 't1', lastSeenAt: ago(5 * 60 * 1000), km: 1000, type: 'VAN', energy: 'DIESEL' },
+    { id: 'v-essence', plate: 'ES-002-NC', trackerId: 't2', lastSeenAt: ago(5 * 60 * 1000), km: 1000, type: 'VAN', energy: 'ESSENCE' },
+  ];
+
+  /** Des relevés pour le gazole seulement : l'essence devra retomber sur le paramètre. */
+  const avecRelevesGazole = () => {
+    const prisma = makePrisma(PARC_DEUX_CARBURANTS);
+    prisma.tripFuelStop.groupBy.mockResolvedValue([
+      { fuelType: 'gazole', _avg: { unitPriceEur: 2.2771 }, _count: { _all: 24 } },
+    ]);
+    return prisma;
+  };
+
+  const calculer = (prisma: ReturnType<typeof makePrisma>) =>
+    new ReportsStatsService(prisma as never).compute(FLEET_ID, FROM, TO, {
+      role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID, accessibleVehicleIds: 'ALL',
+    });
+
+  it('🔴 le diesel est facturé au prix CONSTATÉ, pas au prix paramétré', async () => {
+    const r = await calculer(avecRelevesGazole());
+    const gazole = r.consumption.basis.find((b) => b.fuel === 'gazole')!;
+
+    // 1000 km × 10 L/100 = 100 L, au prix vu en station (2,277) et non au 1,85 de la fiche.
+    expect(gazole.priceEurL).toBe(2.277);
+    expect(gazole.observed).toBe(true);
+    expect(gazole.sampleCount).toBe(24);
+  });
+
+  it('l’essence, sans relevé, retombe sur le prix paramétré — et le document le dit', async () => {
+    const r = await calculer(avecRelevesGazole());
+    const essence = r.consumption.basis.find((b) => b.fuel === 'e10')!;
+
+    expect(essence.priceEurL).toBe(1.85);
+    expect(essence.observed).toBe(false);
+    expect(essence.sampleCount).toBe(0);
+  });
+
+  /**
+   * ⚠️ C'EST TOUT L'OBJET DU LOT : deux carburants, deux prix. Sous l'ancien calcul les deux
+   * véhicules étaient facturés 1,85 €/L, soit 370 € pour 200 L. Le vrai coût mêle 2,277 et 1,85.
+   */
+  it('le total additionne DEUX prix, plus un seul appliqué à tout le monde', async () => {
+    const r = await calculer(avecRelevesGazole());
+
+    // 100 L × 2,277 + 100 L × 1,85 = 227,70 + 185,00
+    expect(r.consumption.estimatedLiters).toBeCloseTo(200, 1);
+    expect(r.consumption.estimatedCostEur).toBeCloseTo(412.7, 1);
+  });
+
+  it('aucun relevé du tout : tout retombe sur le paramètre, sans rien inventer', async () => {
+    const r = await calculer(makePrisma(PARC_DEUX_CARBURANTS));
+
+    expect(r.consumption.estimatedCostEur).toBeCloseTo(370, 1);
+    expect(r.consumption.basis.every((b) => !b.observed)).toBe(true);
+    expect(r.consumption.observedPriceEurL).toBeNull();
+  });
+
+  /**
+   * ⚠️ MOYENNE PONDÉRÉE PAR LES RELEVÉS, jamais moyenne des moyennes. Vingt pleins de gazole et
+   * un plein d'essence ne pèsent pas pareil ; la moyenne des deux moyennes donnerait à ce plein
+   * unique le poids des vingt autres, et le « prix moyen constaté » affiché serait faux.
+   */
+  it('le prix moyen affiché est pondéré par le nombre de relevés', async () => {
+    const prisma = makePrisma(PARC_DEUX_CARBURANTS);
+    prisma.tripFuelStop.groupBy.mockResolvedValue([
+      { fuelType: 'gazole', _avg: { unitPriceEur: 2.0 }, _count: { _all: 20 } },
+      { fuelType: 'e10', _avg: { unitPriceEur: 3.0 }, _count: { _all: 1 } },
+    ]);
+
+    const r = await calculer(prisma);
+
+    // (2,0 × 20 + 3,0 × 1) / 21 = 2,048 — et non (2,0 + 3,0) / 2 = 2,5.
+    expect(r.consumption.observedPriceEurL).toBe(2.048);
+    expect(r.consumption.observedSampleCount).toBe(21);
+  });
+
+  it('un électrique n’apparaît dans AUCUNE base de calcul', async () => {
+    const prisma = makePrisma([
+      ...PARC_DEUX_CARBURANTS,
+      { id: 'v-elec', plate: 'EL-003-EC', trackerId: 't3', lastSeenAt: ago(5 * 60 * 1000), km: 500, type: 'VAN', energy: 'ELECTRIQUE' },
+    ]);
+
+    const r = await calculer(prisma);
+
+    expect(r.consumption.basis.map((b) => b.fuel).sort()).toEqual(['e10', 'gazole']);
+    expect(r.consumption.fuelFreeVehicles).toBe(1);
+  });
+});
+
 describe('buildExploitedScopeNotice — rien ne change en silence', () => {
   it('nomme les plaques, l’ancienneté, et promet la réintégration automatique', async () => {
     const report = await compute(PARC);
@@ -505,10 +616,9 @@ describe('ReportsStatsService — prix constaté en station et filtre conducteur
   /** Le parc de référence, avec des passages en station RÉELLEMENT captés sur la période. */
   const prismaAvecPassages = () => {
     const prisma = makePrisma(PARC);
-    prisma.tripFuelStop.aggregate.mockResolvedValue({
-      _avg: { unitPriceEur: 1.7123 },
-      _count: { _all: 12 },
-    });
+    prisma.tripFuelStop.groupBy.mockResolvedValue([
+      { fuelType: 'gazole', _avg: { unitPriceEur: 1.7123 }, _count: { _all: 12 } },
+    ]);
     return prisma;
   };
 
@@ -529,16 +639,16 @@ describe('ReportsStatsService — prix constaté en station et filtre conducteur
     // « ce prix ne suit pas le filtre » au lieu de « aucun prix relevé ».
     expect(report.consumption.observedPriceEurL).toBe(1.712);
     expect(report.consumption.observedSampleCount).toBe(12);
-    // Et le coût au prix constaté reste calculable : litres DU FILTRE × prix DU PARC.
-    expect(report.consumption.estimatedCostAtObservedEur).not.toBeNull();
+    // Et le coût est désormais BÂTI dessus : litres DU FILTRE × prix DU PARC.
+    expect(report.consumption.basis.some((b) => b.observed)).toBe(true);
   });
 
   it('ne pose AUCUNE clause conducteur sur les passages en station', async () => {
     const prisma = prismaAvecPassages();
     await computeAvecFiltre(prisma, SOHAIB);
 
-    expect(prisma.tripFuelStop.aggregate).toHaveBeenCalledTimes(1);
-    const where = prisma.tripFuelStop.aggregate.mock.calls[0][0].where;
+    expect(prisma.tripFuelStop.groupBy).toHaveBeenCalledTimes(1);
+    const where = prisma.tripFuelStop.groupBy.mock.calls[0][0].where;
     // Ni `driverId`, ni jointure `trip: { driverId }` : la table n'a pas cette colonne, et
     // passer par les trajets rendrait les pleins faits par d'autres sur les mêmes véhicules.
     expect(JSON.stringify(where)).not.toContain('driver');
@@ -548,7 +658,7 @@ describe('ReportsStatsService — prix constaté en station et filtre conducteur
     // sens comme dans l'autre.
     const sansFiltre = prismaAvecPassages();
     await computeAvecFiltre(sansFiltre);
-    expect(sansFiltre.tripFuelStop.aggregate.mock.calls[0][0].where).toEqual(where);
+    expect(sansFiltre.tripFuelStop.groupBy.mock.calls[0][0].where).toEqual(where);
   });
 });
 
@@ -659,16 +769,14 @@ function bancStations(passages: PassageStation[], prives: string[] = []) {
     },
     alert: { groupBy: jest.fn().mockResolvedValue([]) },
     tripFuelStop: {
-      aggregate: jest.fn(async ({ where }: { where: WhereStations }) => {
+      groupBy: jest.fn(async ({ where }: { where: WhereStations }) => {
         const lignes = retenus(where);
-        return {
-          _avg: {
-            unitPriceEur: lignes.length > 0
-              ? lignes.reduce((s, p) => s + p.prix, 0) / lignes.length
-              : null,
-          },
+        if (lignes.length === 0) return [];
+        return [{
+          fuelType: 'gazole',
+          _avg: { unitPriceEur: lignes.reduce((s2, p) => s2 + p.prix, 0) / lignes.length },
           _count: { _all: lignes.length },
-        };
+        }];
       }),
     },
     driver: { findMany: jest.fn().mockResolvedValue([]) },
@@ -677,7 +785,7 @@ function bancStations(passages: PassageStation[], prives: string[] = []) {
 
   /** Le `where` que le service a posé sur l'agrégat des passages. */
   const whereStations = (): WhereStations =>
-    prisma.tripFuelStop.aggregate.mock.calls[0]![0].where as WhereStations;
+    prisma.tripFuelStop.groupBy.mock.calls[0]![0].where as WhereStations;
 
   const calculer = (perimetre?: string[], bornes?: { from: Date; to: Date }) =>
     new ReportsStatsService(prisma as never).compute(
@@ -728,8 +836,9 @@ describe('ReportsStatsService — vie privée et passages en station', () => {
     // affiché par l'écran ne peut plus contenir le véhicule que le client a masqué.
     expect(r.consumption.observedSampleCount).toBe(4);
     expect(r.consumption.observedPriceEurL).toBe(1.6);
-    // Le coût suit : 100 km × 10 L/100 km = 10 L, au prix du périmètre et pas à 1,72.
-    expect(r.consumption.estimatedCostAtObservedEur).toBe(16);
+    // Le coût suit : 100 km × 10 L/100 km = 10 L, au prix du PÉRIMÈTRE (1,60) et pas à 1,72.
+    // Assertion plus forte qu'avant : ce n'est plus un chiffre annexe, c'est LE coût du rapport.
+    expect(r.consumption.estimatedCostEur).toBe(16);
     // Et la clause elle-même nomme l'exclusion : sans elle, les trois chiffres ci-dessus
     // seraient justes par accident de simulacre.
     expect(whereStations().vehicleId).toEqual({ notIn: [V_PRIVE] });

@@ -105,9 +105,11 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
           }),
         },
         tripFuelStop: {
-          aggregate: jest.fn().mockImplementation(({ where }: any) => {
+          // ⚠️ `groupBy` depuis le 2026-09-07 : le coût est bâti carburant par carburant.
+          // Le `where` capturé reste le même, et c'est lui que ce fichier surveille.
+          groupBy: jest.fn().mockImplementation(({ where }: any) => {
             captured.fuelStopWhere = where;
-            return Promise.resolve({ _avg: { unitPriceEur: null }, _count: { _all: 0 } });
+            return Promise.resolve([]);
           }),
         },
         /**
@@ -290,7 +292,7 @@ describe('ReportsStatsService.compute — périmètre du récapitulatif par cond
           findMany: jest.fn().mockResolvedValue([]),
         },
         alert: { groupBy: jest.fn().mockResolvedValue([]) },
-        tripFuelStop: { aggregate: jest.fn().mockResolvedValue({ _avg: { unitPriceEur: null }, _count: { _all: 0 } }) },
+        tripFuelStop: { groupBy: jest.fn().mockResolvedValue([]) },
         driver: {
           findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) => {
             captured.driverWhere = where;

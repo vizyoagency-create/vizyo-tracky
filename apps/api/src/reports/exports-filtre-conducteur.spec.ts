@@ -313,8 +313,8 @@ const RAPPORT: FleetStatsReport = {
   alerts: { total: 4, byType: [{ type: 'OVERSPEED', count: 4 }], bySeverity: [{ severity: 'WARNING', count: 4 }] },
   consumption: {
     estimatedLiters: 10, estimatedCostEur: 18, fuelPriceEurL: 1.8,
-    observedPriceEurL: null, estimatedCostAtObservedEur: null,
-    observedSampleCount: 0, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+    observedPriceEurL: null,
+    observedSampleCount: 0, fuelFreeVehicles: 0, basis: [], estimatedCo2Kg: 0, idleSecondsTotal: 0,
   },
   topVehicles: [],
   recentTrips: [],

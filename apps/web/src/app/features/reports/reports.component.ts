@@ -6,7 +6,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Users, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
-import { CONDUCTEUR_AUCUN, normaliserFiltreConducteur, libelleTypeAlerte, partLibelle } from '@vizyo/tracky-shared';
+import { CONDUCTEUR_AUCUN, normaliserFiltreConducteur, libelleTypeAlerte, partLibelle, libelleCarburant as libelleCarburantPartage } from '@vizyo/tracky-shared';
 import type {
   DriverDto,
   TripAnalysisDto,
@@ -777,24 +777,28 @@ export function trajetHorsPerimetreConducteur(
               {{ st.consumption.estimatedCostEur | number:'1.0-0' }}<span class="rep-synthese-unite">€</span>
             </p>
             <p class="rep-synthese-detail">
-              {{ st.consumption.estimatedLiters | number:'1.0-0' }} L estimés, au prix paramétré de
-              {{ st.consumption.fuelPriceEurL | number:'1.2-3' }} €/L
+              {{ st.consumption.estimatedLiters | number:'1.0-0' }} L estimés
               <!-- ⚠️ Le CO₂ ne compte QUE la combustion. L'écrire évite qu'un client reprenne
                    ce chiffre dans un bilan carbone en croyant qu'il couvre le cycle de vie. -->
               · ≈ {{ st.consumption.estimatedCo2Kg | number:'1.0-0' }} kg de CO₂ brûlés.
             </p>
-            <!-- ⚠️ Le prix CONSTATÉ en station, quand on l'a capté : c'est la seule façon de
-                 savoir si le prix paramétré décrit encore la réalité. -->
-            @if (st.consumption.observedPriceEurL !== null) {
-              <p class="rep-synthese-detail rep-synthese-detail--fort">
-                Au prix réellement constaté en station ({{ st.consumption.observedPriceEurL | number:'1.2-3' }} €/L
-                sur {{ st.consumption.observedSampleCount }} passage{{ st.consumption.observedSampleCount > 1 ? 's' : '' }}) :
-                {{ st.consumption.estimatedCostAtObservedEur | number:'1.0-0' }} €.
-              </p>
-            } @else {
-              <p class="rep-synthese-detail">
-                Aucun prix relevé en station sur la période : le coût ci-dessus repose entièrement
-                sur le prix paramétré de la société.
+            <!-- ══ SUR QUOI CE COÛT EST BÂTI, CARBURANT PAR CARBURANT ═══════════════════
+                 Le coût se calculait au prix PARAMÉTRÉ — une hypothèse saisie à la main, jamais
+                 mise à jour, 21 % sous le marché au 2026-09-07 — et le prix CONSTATÉ en station,
+                 la mesure, n'était qu'une ligne de comparaison. L'ordre est inversé.
+
+                 ⚠️ CETTE LIGNE EST OBLIGATOIRE : un total qui mêle des prix mesurés et des prix
+                 supposés sans le dire est invérifiable par la seule personne qui pourrait le
+                 démentir — le client qui a payé ses pleins. Le PDF porte la même phrase. -->
+            @for (b of st.consumption.basis; track b.fuel) {
+              <p class="rep-synthese-detail" [class.rep-synthese-detail--fort]="b.observed">
+                {{ libelleCarburant(b.fuel) }} : {{ b.litres | number:'1.0-1' }} L à
+                {{ b.priceEurL | number:'1.2-3' }} €/L
+                @if (b.observed) {
+                  — constaté en station, sur {{ b.sampleCount }} relevé{{ b.sampleCount > 1 ? 's' : '' }}.
+                } @else {
+                  — prix paramétré de la société, aucun relevé sur la période.
+                }
               </p>
             }
             <!-- ══ LES VÉHICULES QUI NE BRÛLENT RIEN SONT HORS DU CALCUL, ET L'ÉCRAN LE DIT ══
@@ -5343,6 +5347,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
       swallow('reports:ouvrirTrajetDuLien', err);
       this.toast.error('Trajet introuvable', httpFailureMessage(err, 'ce trajet'));
     }
+  }
+
+  /**
+   * Le nom lisible d'un carburant dans la base de calcul du coût.
+   *
+   * ⚠️ Le libellé vient du CONTRAT PARTAGÉ, comme celui du PDF : deux écritures du même
+   * carburant sur deux documents qu'on lit côte à côte se remarquent, et font douter du reste.
+   */
+  protected libelleCarburant(carburant: string | null): string {
+    return carburant ? libelleCarburantPartage(carburant) : 'Énergie non renseignée';
   }
 
   /** Ferme le replay d'un trajet et retire son paramètre de l'URL. */

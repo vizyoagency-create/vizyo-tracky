@@ -57,7 +57,6 @@ export interface FleetStatsReportDto {
      * lui-même, sans jamais voir celui qu'il paie vraiment.
      */
     observedPriceEurL: number | null;
-    estimatedCostAtObservedEur: number | null;
     observedSampleCount: number;
     /**
      * Véhicules HORS estimation carburant parce qu'ils n'en brûlent pas (électriques).
@@ -68,6 +67,23 @@ export interface FleetStatsReportDto {
      * ces véhicules ne coûtent rien à faire rouler. L'écran l'annonce, comme le PDF.
      */
     fuelFreeVehicles: number;
+    /**
+     * Sur quoi le coût est bâti, carburant par carburant : prix CONSTATÉ en station quand il
+     * existe, prix paramétré de la société à défaut.
+     *
+     * ⚠️ Le coût se calculait au prix paramétré — une hypothèse saisie à la main, jamais mise à
+     * jour, 21 % sous le marché au 2026-09-07 — pendant que le prix réel de la pompe ne servait
+     * qu'à une ligne de comparaison. Un total qui mêle mesure et hypothèse sans le dire est
+     * invérifiable par le client qui a payé.
+     */
+    basis: {
+      fuel: string | null;
+      priceEurL: number;
+      observed: boolean;
+      sampleCount: number;
+      litres: number;
+      vehicles: number;
+    }[];
     /** CO₂ estimé de la période (kg) — combustion seule, facteur propre à chaque énergie. */
     estimatedCo2Kg: number;
     /** Ralenti moteur cumulé de tout le périmètre, en SECONDES (F12). */

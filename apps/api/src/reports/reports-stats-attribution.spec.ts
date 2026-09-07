@@ -122,7 +122,7 @@ function makePrisma(opts: OptionsBanc = {}) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     alert: { groupBy: jest.fn().mockResolvedValue([]) },
-    tripFuelStop: { aggregate: jest.fn().mockResolvedValue({ _avg: { unitPriceEur: null }, _count: { _all: 0 } }) },
+    tripFuelStop: { groupBy: jest.fn().mockResolvedValue([]) },
     driver: {
       findMany: jest.fn().mockImplementation(({ where }: { where: { id: { in: string[] } } }) => {
         capturedDriverWhere.where = where;

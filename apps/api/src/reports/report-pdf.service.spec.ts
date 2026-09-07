@@ -42,8 +42,7 @@ function makeReport(overrides: Partial<FleetStatsReport> = {}): FleetStatsReport
       estimatedCostEur: 25.9,
       fuelPriceEurL: 1.85,
       observedPriceEurL: null,
-      estimatedCostAtObservedEur: null,
-      observedSampleCount: 0, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+      observedSampleCount: 0, fuelFreeVehicles: 0, basis: [], estimatedCo2Kg: 0, idleSecondsTotal: 0,
     },
     topVehicles: [],
     recentTrips: [],
@@ -382,8 +381,12 @@ describe('ReportPdfService — indicateurs sous filtre conducteur', () => {
   const REPORT_PRIX_STATION = makeReport({
     consumption: {
       estimatedLiters: 14, estimatedCostEur: 25.9, fuelPriceEurL: 1.85,
-      observedPriceEurL: 1.842, estimatedCostAtObservedEur: 25.79,
-      observedSampleCount: 12, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+      observedPriceEurL: 1.842,
+      observedSampleCount: 12, fuelFreeVehicles: 0,
+      // La base de calcul PORTE désormais le nombre de relevés : c'est elle qui l'écrit,
+      // depuis que le coût est bâti carburant par carburant sur le prix constaté.
+      basis: [{ fuel: 'gazole', priceEurL: 1.842, observed: true, sampleCount: 12, litres: 14, vehicles: 3 }],
+      estimatedCo2Kg: 0, idleSecondsTotal: 0,
     },
   });
 
@@ -391,7 +394,7 @@ describe('ReportPdfService — indicateurs sous filtre conducteur', () => {
     const { text } = await renderedText(REPORT_PRIX_STATION, { driverLabel: LIBELLE });
 
     // Le chiffre reste : c'est une décision, pas un oubli — et elle est écrite.
-    expect(text).toContain('12 passages station');
+    expect(text).toContain('12 relevés');
     expect(text).toContain('Les passages en station sont des arrêts du véhicule');
     expect(text).toContain('ne suivent pas le filtre conducteur');
     // La part qui, elle, SUIT le filtre est nommée : sinon « Coût au prix constaté »
@@ -402,7 +405,8 @@ describe('ReportPdfService — indicateurs sous filtre conducteur', () => {
   it('sans filtre : la ligne du prix constaté est là, sans mention de périmètre', async () => {
     const { text } = await renderedText(REPORT_PRIX_STATION);
 
-    expect(text).toContain('12 passages station');
+    expect(text).toContain('12 relevés');
+    expect(text).toContain('constaté en station');
     expect(text).not.toContain('Les passages en station sont des arrêts');
   });
 });

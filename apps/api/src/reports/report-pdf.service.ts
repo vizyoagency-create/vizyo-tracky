@@ -12,7 +12,7 @@ import { buildExploitedScopeNotice, FleetStatsReport } from './reports-stats.ser
 // `partLibelle` vient du contrat partagé, et n'a pas de copie ici : le gestionnaire ouvre
 // son PDF à côté de son écran, et « 99 % » d'un côté contre « 100 % » de l'autre sur les
 // MÊMES trajets se lit comme une erreur de calcul, pas comme une nuance d'arrondi.
-import { libelleGraviteAlerte, libelleTypeAlerte, partLibelle } from '@vizyo/tracky-shared';
+import { libelleGraviteAlerte, libelleTypeAlerte, partLibelle, libelleCarburant } from '@vizyo/tracky-shared';
 
 /**
  * V1.5 (Sprint L) — Generation PDF des rapports de flotte via pdfkit.
@@ -549,12 +549,18 @@ export class ReportPdfService {
       { label: 'Conso estimée', value: `${report.consumption.estimatedLiters.toFixed(1)} L` },
       { label: 'Coût carburant', value: `${report.consumption.estimatedCostEur.toFixed(2)} EUR` },
     ];
-    // P3 carburant — prix RÉELLEMENT CONSTATÉ en station (si des passages ont été captés).
+    /**
+     * Le prix moyen RÉELLEMENT payé, tous carburants confondus.
+     *
+     * ⚠️ IL N'Y A PLUS DE CARTE « COÛT AU PRIX CONSTATÉ ». Elle existait quand le coût
+     * principal était calculé au prix PARAMÉTRÉ : elle montrait alors ce qu'il aurait fallu
+     * payer en vrai. Le coût principal EST maintenant au prix constaté, carburant par
+     * carburant — la seconde carte donnerait donc le même montant en moins précis (une
+     * moyenne unique au lieu d'un prix par carburant), et deux totaux voisins qui diffèrent
+     * de quelques euros se lisent comme une erreur de calcul.
+     */
     if (report.consumption.observedPriceEurL != null) {
-      kpis.push({ label: 'Prix constaté', value: `${report.consumption.observedPriceEurL.toFixed(3)} EUR/L` });
-      if (report.consumption.estimatedCostAtObservedEur != null) {
-        kpis.push({ label: 'Coût au prix constaté', value: `${report.consumption.estimatedCostAtObservedEur.toFixed(2)} EUR` });
-      }
+      kpis.push({ label: 'Prix moyen constaté', value: `${report.consumption.observedPriceEurL.toFixed(3)} EUR/L` });
     }
 
     // Grille 3 × 3 : neuf cartes (onze avec le prix constaté) sur quatre colonnes laissaient
@@ -602,15 +608,40 @@ export class ReportPdfService {
     }
     doc.y = bas + 18;
 
-    // P3 carburant — ligne de comparaison prix constaté vs paramétré (base du calcul de coût).
+    /**
+     * ══════════════════════════════════════════════════════════════════════════════════════
+     * SUR QUOI CE COÛT EST BÂTI — CARBURANT PAR CARBURANT
+     * ══════════════════════════════════════════════════════════════════════════════════════
+     *
+     * Le document affichait un coût calculé au prix PARAMÉTRÉ — une hypothèse saisie à la main,
+     * jamais mise à jour, 21 % sous le marché au 2026-09-07 — et reléguait le prix CONSTATÉ en
+     * station, la mesure, dans une phrase de comparaison. Le gros chiffre était le mauvais.
+     *
+     * L'ordre est inversé : le coût est bâti sur le prix constaté quand il existe, carburant
+     * par carburant, et cette ligne dit sur quelle base chacun a été valorisé.
+     *
+     * ⚠️ ELLE EST OBLIGATOIRE, PAS DÉCORATIVE. Un total qui mêle des prix mesurés et des prix
+     * supposés sans le dire est invérifiable par la seule personne qui pourrait le démentir :
+     * le client qui a payé ses pleins.
+     */
     const c = report.consumption;
-    if (c.observedPriceEurL != null && c.estimatedCostAtObservedEur != null) {
-      const delta = Math.round((c.estimatedCostAtObservedEur - c.estimatedCostEur) * 100) / 100;
-      const passages = `${c.observedSampleCount} passage${c.observedSampleCount > 1 ? 's' : ''} station`;
-      const txt = `Prix carburant constaté en station (${passages}) : ${c.observedPriceEurL.toFixed(3)} EUR/L, contre ${c.fuelPriceEurL.toFixed(2)} EUR/L paramétré. `
-        + `Coût estimé au prix réel : ${c.estimatedCostAtObservedEur.toFixed(2)} EUR (${delta >= 0 ? '+' : ''}${delta.toFixed(2)} EUR vs paramétré).`;
-      doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica').text(txt, 40, doc.y, { width: 515 });
-      doc.y += 6;
+    /**
+     * ⚠️ `?.` ET CE N'EST PAS DE LA PARANOÏA. Un champ absent du rapport faisait LEVER la
+     * génération entière — donc tomber le courrier hebdomadaire, pièce jointe comprise, pour
+     * une ligne d'explication. Le fichier voisin porte déjà un test nommé « champ absent du
+     * rapport : aucune ligne inventée, et le courrier part quand même » : c'est la règle de
+     * la maison, un document dégradé vaut mieux qu'un document qui n'existe pas.
+     */
+    if (c.basis?.length) {
+      const morceaux = c.basis.map((b) => {
+        const nom = b.fuel ? libelleCarburant(b.fuel) : 'énergie non renseignée';
+        const source = b.observed
+          ? `${b.priceEurL.toFixed(3)} EUR/L constaté en station (${b.sampleCount} relevé${b.sampleCount > 1 ? 's' : ''})`
+          : `${b.priceEurL.toFixed(3)} EUR/L, prix paramétré de la société — aucun relevé sur la période`;
+        return `${nom} : ${b.litres.toFixed(1)} L à ${source}`;
+      });
+      const txt = `Base du calcul — ${morceaux.join(' ; ')}.`;
+      doc.fillColor(COLOR_FG_MUTED).fontSize(8.5).font('Helvetica').text(txt, 40, doc.y, { width: 515 });
       doc.moveDown(1);
     }
 

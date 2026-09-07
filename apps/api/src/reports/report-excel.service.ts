@@ -612,6 +612,19 @@ export class ReportExcelService {
     const observedPriceEurL = priced.length ? Math.round((priced.reduce((a, b) => a + b, 0) / priced.length) * 1000) / 1000 : null;
     const fuelType = fuelStops.find((s) => s.fuelType)?.fuelType ?? null;
 
+    /**
+     * ⚠️ LE PRIX CONSTATÉ PASSE DEVANT LE PRIX PARAMÉTRÉ, comme dans la synthèse de période.
+     *
+     * Le coût se calculait au prix saisi à la main dans la fiche société — jamais mis à jour,
+     * 21 % sous le marché au 2026-09-07 — pendant que le prix réel de la pompe, capté à chaque
+     * passage, ne servait qu'à une ligne de comparaison. Ici le grain est encore meilleur :
+     * ce sont les stations de CE véhicule, pas la moyenne de la flotte.
+     *
+     * ⚠️ ET IL N'Y A PLUS DE « COÛT AU PRIX CONSTATÉ » : c'est devenu le coût tout court.
+     * Garder les deux afficherait deux totaux voisins pour la même chose.
+     */
+    const prixApplique = observedPriceEurL ?? fuelPrice;
+
     return {
       tripCount: trips.length,
       totalKm: round1(totalKm),
@@ -624,12 +637,12 @@ export class ReportExcelService {
       avgSpeedKmh: round1(avgSpeed),
       maxSpeedKmh: round1(maxSpeed),
       estimatedLiters: round1(estimatedLiters),
-      estimatedCostEur: Math.round(estimatedLiters * fuelPrice * 100) / 100,
-      fuelPriceEurL: fuelPrice,
+      estimatedCostEur: Math.round(estimatedLiters * prixApplique * 100) / 100,
+      fuelPriceEurL: prixApplique,
+      fuelPriceObserved: observedPriceEurL != null,
       fuelVisits: fuelStops.length,
       fuelType,
       observedPriceEurL,
-      estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(estimatedLiters * observedPriceEurL * 100) / 100 : null,
     };
   }
 
@@ -736,14 +749,13 @@ export class ReportExcelService {
         : []),
       ['Conso estimée (L)', k.estimatedLiters, '#,##0.0'],
       ['Coût estimé — prix paramétré (€)', k.estimatedCostEur, '#,##0.00'],
-      ['Prix carburant paramétré (€/L)', k.fuelPriceEurL, '#,##0.000'],
+      [k.fuelPriceObserved ? 'Prix carburant appliqué (€/L, constaté en station)' : 'Prix carburant appliqué (€/L, paramétré — aucun relevé)', k.fuelPriceEurL, '#,##0.000'],
     ];
     // Prix RÉELLEMENT CONSTATÉ en station sur la période (si des passages ont été captés).
     if (k.fuelVisits > 0) {
       kpiRows.push(['Passages en station', k.fuelVisits, '#,##0']);
       if (k.observedPriceEurL != null) {
         kpiRows.push([`Prix constaté en station (€/L${k.fuelType ? ' — ' + fuelLabelXlsx(k.fuelType) : ''})`, k.observedPriceEurL, '#,##0.000']);
-        kpiRows.push(['Coût au prix constaté (€)', k.estimatedCostAtObservedEur ?? 0, '#,##0.00']);
       }
     }
     const kpiStart = r;
@@ -1400,8 +1412,8 @@ interface Kpis {
   fuelType: string | null;
   /** Prix moyen RÉELLEMENT CONSTATÉ en station (€/L) sur la période, ou null si aucun passage capté. */
   observedPriceEurL: number | null;
-  /** Coût carburant estimé au prix constaté (litres × prix constaté), ou null. */
-  estimatedCostAtObservedEur: number | null;
+  /** `true` = le prix appliqué vient des stations du véhicule ; `false` = repli sur la fiche société. */
+  fuelPriceObserved: boolean;
 }
 
 interface FuelStopRow {

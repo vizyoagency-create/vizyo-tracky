@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { asTransient, ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { FuelStopOut, TripStopOut } from './trip-analysis.preprocessor';
+import { bruleDuCarburant, carburantDePompe } from '@vizyo/tracky-shared';
 
 /**
  * Stations-service & prix carburants (2026-07). Pour chaque ARRÊT d'un trajet, on regarde s'il tombe
@@ -43,7 +44,27 @@ export class FuelStationService {
     await this.prisma.tripFuelStop.deleteMany({ where: { tripId: ctx.tripId } }).catch(() => { /* best-effort */ });
     if (!stops.length) return [];
 
+    /**
+     * ══════════════════════════════════════════════════════════════════════════════════
+     * UN ÉLECTRIQUE NE PASSE PAS À LA POMPE
+     * ══════════════════════════════════════════════════════════════════════════════════
+     *
+     * `fuelTypeFor('ELECTRIQUE')` rend `null` — donc aucun prix n'était lu. Mais le PASSAGE,
+     * lui, était enregistré quand même : un fourgon électrique garé cinq minutes à côté d'une
+     * station-service devenait un « passage station » dans son rapport, avec un carburant et
+     * un prix vides.
+     *
+     * Constaté le 2026-09-07 : six passages fantômes sur une seule semaine, et l'effet le plus
+     * pervers n'est pas l'affichage — c'est que ces lignes vides ENTRENT dans le décompte des
+     * relevés (« 30 passages station ») pendant qu'elles sont exclues de la moyenne de prix.
+     * Le document annonçait donc un échantillon plus large que celui qu'il avait mesuré.
+     *
+     * ⚠️ ON SORT AVANT LES APPELS À L'API, pas après : c'est aussi douze requêtes publiques
+     * économisées par trajet pour un résultat qu'on sait d'avance inutilisable.
+     */
     const fuelType = fuelTypeFor(ctx.energy);
+    if (!bruleDuCarburant(ctx.energy)) return [];
+
     const out: FuelStopOut[] = [];
     let lookups = 0;
     let apiFailures = 0;
@@ -234,18 +255,13 @@ export interface GouvStation {
 }
 
 /** Mappe l'énergie du véhicule (libre) vers un carburant de l'API. null = pas de carburant liquide pertinent. */
-export function fuelTypeFor(energy: string | null): string | null {
-  if (!energy) return null;
-  const e = energy.toUpperCase();
-  if (e.includes('DIESEL') || e.includes('GAZOLE') || e.includes('GASOIL') || e.includes('GAZOIL')) return 'gazole';
-  if (e.includes('GPL') || e.includes('LPG')) return 'gplc';
-  if (e.includes('E85') || e.includes('ETHANOL') || e.includes('SUPERETHANOL')) return 'e85';
-  if (e.includes('ELEC') || e.includes('HYBRID')) return null; // électrique/hybride : pas de prix carburant liquide
-  if (e.includes('SP98')) return 'sp98';
-  if (e.includes('SP95') || e.includes('E10')) return 'e10';
-  if (e.includes('ESSENCE') || e.includes('GASOLINE') || e.includes('PETROL') || e.includes('BENZIN')) return 'e10';
-  return null;
-}
+/**
+ * ⚠️ LA TABLE A DÉMÉNAGÉ dans le contrat partagé (`utils/carburant`) le 2026-09-07 : les
+ * RAPPORTS en ont besoin pour appliquer le bon prix constaté à chaque véhicule, et une
+ * seconde copie aurait divergé — l'écart se lisant en euros sur la facture d'un client.
+ * Cet alias garde les appelants d'ici (calibration, spec) branchés sur la même définition.
+ */
+export const fuelTypeFor = carburantDePompe;
 
 /** Prix au litre pour un carburant donné (repli essence e10→sp95). null si indisponible. */
 export function priceForType(s: GouvStation, fuelType: string): number | null {

@@ -31,8 +31,7 @@ function makeReport(overrides: Partial<FleetStatsReport> = {}): FleetStatsReport
     },
     alerts: { total: 0, byType: [], bySeverity: [] },
     consumption: {
-      estimatedLiters: 0, estimatedCostEur: 0, fuelPriceEurL: 1.85, observedPriceEurL: null,
-      estimatedCostAtObservedEur: null, observedSampleCount: 0, fuelFreeVehicles: 0, estimatedCo2Kg: 0, idleSecondsTotal: 0,
+      estimatedLiters: 0, estimatedCostEur: 0, fuelPriceEurL: 1.85, observedPriceEurL: null, observedSampleCount: 0, fuelFreeVehicles: 0, basis: [], estimatedCo2Kg: 0, idleSecondsTotal: 0,
     },
     topVehicles: [],
     recentTrips: [],

@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { Prisma, UserRole } from '@prisma/client';
 import {
   bruleDuCarburant,
+  carburantDePompe,
   co2DuCarburant,
   DORMANT_STOP_COUNTING_MS,
   EXCES_DUREE_MIN_SEC,
@@ -144,7 +145,6 @@ export interface FleetStatsReport {
     /** Prix carburant RÉELLEMENT CONSTATÉ en station sur la période (€/L moyen), ou null si aucun passage capté (P3). */
     observedPriceEurL: number | null;
     /** Coût estimé au prix constaté (litres × prix constaté), ou null. */
-    estimatedCostAtObservedEur: number | null;
     /** Nombre de passages station ayant fourni un prix (échantillon du prix constaté). */
     observedSampleCount: number;
     /**
@@ -155,6 +155,28 @@ export interface FleetStatsReport {
      * rouler. Le document annonce qu'ils sont hors du calcul ; il ne les escamote pas.
      */
     fuelFreeVehicles: number;
+    /**
+     * SUR QUOI le coût a été bâti, carburant par carburant.
+     *
+     * ⚠️ UN TOTAL DONT ON NE SAIT PAS D'OÙ IL VIENT NE VAUT RIEN. Le coût mêle désormais des
+     * prix CONSTATÉS en station — la mesure — et, à défaut de relevé, le prix PARAMÉTRÉ de la
+     * société — une hypothèse. Taire lequel a servi rendrait le total invérifiable par la
+     * seule personne capable de le démentir : le client qui a payé.
+     *
+     * Vide quand rien n'a brûlé (parc entièrement électrique, semaine sans trajet).
+     */
+    basis: {
+      /** Carburant de pompe (`gazole`, `e10`…), ou `null` si l'énergie du véhicule est inconnue. */
+      fuel: string | null;
+      /** Prix appliqué (€/L). */
+      priceEurL: number;
+      /** `true` = moyenne des relevés en station ; `false` = repli sur le prix paramétré. */
+      observed: boolean;
+      /** Nombre de relevés derrière ce prix. 0 quand il vient du paramètre. */
+      sampleCount: number;
+      litres: number;
+      vehicles: number;
+    }[];
     /**
      * Ralenti moteur cumulé de TOUT le périmètre, en secondes (F12). Premier gaspillage
      * carburant réductible par simple consigne, calculé par trajet depuis toujours et agrégé
@@ -426,7 +448,84 @@ export class ReportsStatsService {
     const vehiclesVisibles = vehicles.filter((v) => !v.privacyModeEnabled);
     const totalVehicles = vehiclesVisibles.length;
     const hiddenByPrivacy = vehicles.length - vehiclesVisibles.length;
+    /**
+     * ══════════════════════════════════════════════════════════════════════════════════════
+     * LE PRIX AU LITRE : CELUI QU'ON A VU EN STATION, CARBURANT PAR CARBURANT
+     * ══════════════════════════════════════════════════════════════════════════════════════
+     *
+     * Le coût carburant se calculait avec `Fleet.fuelPriceEurL` — UN nombre, saisi à la main,
+     * pour toute la société. Deux défauts d'un coup :
+     *
+     *   1. IL SE PÉRIME EN SILENCE. Posé à 1,85 €/L (« moyenne FR fin 2025 »), il n'avait
+     *      jamais bougé : au 2026-09-07, 21 % sous le marché. Aucune société ne l'avait
+     *      corrigé, et pour cause — il n'existe aucun écran pour le régler.
+     *   2. IL EST UNIQUE SUR UN PARC QUI NE L'EST PAS. Une société de production a 17 essence,
+     *      4 diesel et 8 électriques : le même prix au litre servait aux trois. Le CO₂, lui,
+     *      distinguait déjà les énergies.
+     *
+     * ── LE PRIX CONSTATÉ PASSE DEVANT, ET C'EST LE POINT ─────────────────────────────────
+     *
+     * Chaque passage en station porte le prix RÉELLEMENT affiché à la pompe où le véhicule
+     * s'est arrêté, capté depuis le flux officiel `data.economie.gouv.fr`. C'est ce que le
+     * client paie ; le paramètre n'est qu'une hypothèse sur ce qu'il paie. Le document
+     * affichait pourtant l'hypothèse en gros et la mesure en note de bas de page.
+     *
+     * ⚠️ ET IL NE SE PÉRIME PAS. Un nombre écrit à la main redeviendra faux ; une moyenne
+     * recalculée à chaque période suit le marché parce qu'elle EST le marché. C'est la seule
+     * forme de correction qui ne demande aucun entretien.
+     *
+     * ⚠️ REPLI SUR LE PARAMÈTRE, JAMAIS SUR ZÉRO. Un carburant sans le moindre relevé sur la
+     * période — un parc essence qui n'a fait aucun plein, une semaine creuse — retombe sur
+     * `Fleet.fuelPriceEurL`. Le document dit alors sur quelle base il a compté.
+     */
+    const idsSousViePrivee = vehicles.filter((v) => v.privacyModeEnabled).map((v) => v.id);
+    const bornePassagesStation = isVehicleScopeRestricted
+      // Périmètre restreint : le `in` ne retient que les véhicules VISIBLES. Une seule clé
+      // `vehicleId`, jamais deux homonymes dont la seconde écraserait la première.
+      ? { vehicleId: { in: vehiclesVisibles.map((v) => v.id) } }
+      // Parc entier : `notIn` plutôt qu'un `in` de tout le parc — la liste des privés est
+      // courte et l'index (fleetId, arrivedAt) reste utilisable.
+      : { fleetId: fleet.id, ...(idsSousViePrivee.length > 0 ? { vehicleId: { notIn: idsSousViePrivee } } : {}) };
+
+    /**
+     * ⚠️ BORNE HAUTE EXCLUSIVE, comme les trajets, les alertes et les deux requêtes brutes :
+     * `to` est le LENDEMAIN minuit. Avec `lte`, un passage horodaté à minuit pile — et la
+     * milliseconde vaut TOUJOURS zéro, les horodatages des boîtiers sont à la seconde —
+     * entrerait dans DEUX rapports voisins et pèserait dans les deux moyennes que le client
+     * compare d'un mois sur l'autre. Le rapport hebdomadaire du lundi produit chaque semaine
+     * deux fenêtres dont la borne est exactement le même instant.
+     */
+    const relevesParCarburant = await this.prisma.tripFuelStop.groupBy({
+      by: ['fuelType'],
+      where: {
+        arrivedAt: { gte: from, lt: to },
+        unitPriceEur: { not: null },
+        fuelType: { not: null },
+        ...bornePassagesStation,
+      },
+      _avg: { unitPriceEur: true },
+      _count: { _all: true },
+    });
+
     const fuelPrice = fleet.fuelPriceEurL;
+    /** Prix moyen constaté et nombre de relevés, par carburant de pompe. */
+    const prixConstateParCarburant = new Map<string, { prix: number; releves: number }>();
+    for (const r of relevesParCarburant) {
+      if (!r.fuelType || r._avg.unitPriceEur == null) continue;
+      prixConstateParCarburant.set(r.fuelType, {
+        prix: Math.round(r._avg.unitPriceEur * 1000) / 1000,
+        releves: r._count._all,
+      });
+    }
+
+    /** Le prix à appliquer aux litres d'un véhicule, et d'où il vient. */
+    const prixDuVehicule = (energie: string | null): { prix: number; carburant: string | null; constate: boolean } => {
+      const carburant = carburantDePompe(energie);
+      const releve = carburant ? prixConstateParCarburant.get(carburant) : undefined;
+      return releve
+        ? { prix: releve.prix, carburant, constate: true }
+        : { prix: fuelPrice, carburant, constate: false };
+    };
 
     // ── Parc EXPLOITÉ : qui a le droit d'entrer dans une MOYENNE ? ────────────
     // Cas réel (prod, 39 véhicules) : FV-941-LZ muet depuis 89 j et FL-787-KV
@@ -910,6 +1009,16 @@ export class ReportsStatsService {
     const avgKmBasisKm = hasExploited ? exploitedKm : totalKm;
 
     let totalLiters = 0;
+    let totalCost = 0;
+    /**
+     * Sur quelle base chaque carburant a été valorisé — pour que le document puisse l'écrire.
+     *
+     * ⚠️ UN COÛT DONT ON NE SAIT PAS D'OÙ IL VIENT NE VAUT RIEN. Le rapport mêle désormais
+     * des prix constatés et, à défaut, le prix paramétré : taire lequel a servi rendrait le
+     * total invérifiable par le client, qui est précisément la personne qui pourrait le
+     * démentir.
+     */
+    const basesDeCalcul = new Map<string, { carburant: string | null; prix: number; constate: boolean; litres: number; vehicules: number }>();
     let totalCo2Kg = 0;
     /**
      * Combien de véhicules sont HORS de l'estimation carburant parce qu'ils n'en brûlent pas.
@@ -941,6 +1050,19 @@ export class ReportsStatsService {
        */
       const liters = bruleDuCarburant(v.energy) ? stat.distanceKm * consumptionL100 / 100 : 0;
       totalLiters += liters;
+      /**
+       * ⚠️ LE COÛT SE CUMULE ICI, VÉHICULE PAR VÉHICULE — plus `totalLitres × prix unique` à
+       * la fin. C'est la seule façon d'appliquer le prix du gazole aux diesels et celui de
+       * l'essence aux essences : à la fin, on ne sait plus qui a brûlé quoi.
+       */
+      if (liters > 0) {
+        const { prix, carburant, constate } = prixDuVehicule(v.energy);
+        totalCost += liters * prix;
+        const b = basesDeCalcul.get(carburant ?? '?') ?? { carburant, prix, constate, litres: 0, vehicules: 0 };
+        b.litres += liters;
+        b.vehicules += 1;
+        basesDeCalcul.set(carburant ?? '?', b);
+      }
       // ⚠️ Le CO₂ est cumulé PAR VÉHICULE, avec le facteur de son énergie. Multiplier le
       // total de litres de la flotte par un facteur unique donnerait un chiffre faux dès
       // qu'un parc mêle diesel et essence — c'est-à-dire presque toujours.
@@ -1018,8 +1140,8 @@ export class ReportsStatsService {
      * pourquoi ; le classeur Excel, qui liste les arrêts un par un, les RETIRE et l'écrit
      * (une liste nominative d'arrêts d'autrui n'a pas d'excuse).
      *
-     * ⚠️ Seuls les LITRES valorisés suivent le filtre : `estimatedCostAtObservedEur` vaut
-     * litres-du-filtre × prix-du-parc, et les trois surfaces l'annoncent en ces termes.
+     * ⚠️ Seuls les LITRES valorisés suivent le filtre : le coût vaut litres-du-filtre ×
+     * prix-du-parc, et les trois surfaces l'annoncent en ces termes.
      */
     /**
      * ── LA VIE PRIVÉE, ELLE, BORNE BIEN CE CHIFFRE — ET CE N'EST PAS LE MÊME SUJET ────────
@@ -1042,42 +1164,12 @@ export class ReportsStatsService {
      * Sur un parc SANS véhicule privé, le `where` reste à l'octet près celui d'avant : la
      * liste des exclus est vide, aucune clé n'est ajoutée.
      */
-    const idsSousViePrivee = vehicles.filter((v) => v.privacyModeEnabled).map((v) => v.id);
-    const bornePassagesStation = isVehicleScopeRestricted
-      // Périmètre restreint : le `in` ne retient que les véhicules VISIBLES. Une seule clé
-      // `vehicleId`, jamais deux homonymes dont la seconde écraserait la première.
-      ? { vehicleId: { in: vehicles.filter((v) => !v.privacyModeEnabled).map((v) => v.id) } }
-      // Parc entier : `notIn` plutôt qu'un `in` de tout le parc — la liste des privés est
-      // courte et l'index (fleetId, arrivedAt) reste utilisable.
-      : { fleetId: fleet.id, ...(idsSousViePrivee.length > 0 ? { vehicleId: { notIn: idsSousViePrivee } } : {}) };
-    const [fuelStopAgg, driverRows] = await Promise.all([
-      this.prisma.tripFuelStop.aggregate({
-        where: {
-          /**
-           * ⚠️ BORNE HAUTE EXCLUSIVE, comme les trajets (`tripWhere`), les alertes
-           * (`alertWhere`) et les deux requêtes brutes : `to` est le LENDEMAIN minuit, jamais
-           * un 23:59:59 (tous les appelants le construisent par `parisDayStart`). Avec `lte`,
-           * un passage horodaté à minuit pile — et la milliseconde vaut TOUJOURS zéro, les
-           * horodatages des boîtiers sont à la seconde — entrait dans DEUX rapports voisins
-           * et pesait dans les deux moyennes `observedPriceEurL` que le client compare d'un
-           * mois sur l'autre. Le rapport hebdomadaire du lundi produit chaque semaine deux
-           * fenêtres dont la borne est exactement le même instant. Même arbitrage, mot pour
-           * mot, que `trips.service.list`.
-           */
-          arrivedAt: { gte: from, lt: to },
-          unitPriceEur: { not: null },
-          ...bornePassagesStation,
-        },
-        _avg: { unitPriceEur: true },
-        _count: { _all: true },
-      }),
-      driverIds.length > 0
-        ? this.prisma.driver.findMany({
-            where: { id: { in: driverIds }, fleetId },
-            select: { id: true, firstName: true, lastName: true },
-          })
-        : Promise.resolve([] as { id: string; firstName: string; lastName: string }[]),
-    ]);
+    const driverRows = driverIds.length > 0
+      ? await this.prisma.driver.findMany({
+          where: { id: { in: driverIds }, fleetId },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
     const nomParConducteur = new Map(driverRows.map((d) => [d.id, `${d.firstName} ${d.lastName}`.trim()]));
 
     const byAttribution: NonNullable<FleetStatsReport['byAttribution']> = [...parAttribution.values()]
@@ -1104,8 +1196,25 @@ export class ReportsStatsService {
       // Départage par le libellé : l'ordre d'une Map suit l'ordre des lignes rendues par la
       // base, qui n'est garanti par rien. Deux appels identiques doivent classer pareil.
       .sort((x, y) => y.distanceKm - x.distanceKm || x.label.localeCompare(y.label, 'fr'));
-    const observedPriceEurL = fuelStopAgg._avg.unitPriceEur != null ? Math.round(fuelStopAgg._avg.unitPriceEur * 1000) / 1000 : null;
-    const observedSampleCount = fuelStopAgg._count._all;
+    /**
+     * La moyenne TOUS CARBURANTS CONFONDUS, dérivée des relevés déjà lus par carburant — et
+     * non d'une seconde requête.
+     *
+     * ⚠️ MOYENNE PONDÉRÉE PAR LE NOMBRE DE RELEVÉS, jamais moyenne des moyennes : vingt pleins
+     * de gazole et un plein d'essence ne pèsent pas pareil, et la moyenne des deux moyennes
+     * aurait donné à ce plein unique le poids des vingt autres.
+     *
+     * ⚠️ ELLE NE SERT PLUS AU CALCUL, seulement à l'affichage : le coût est désormais bâti
+     * carburant par carburant. Elle reste parce que « le prix moyen que je paie » est une
+     * question que le client se pose, et parce que le contrat de l'écran la porte déjà.
+     */
+    const totalReleves = [...prixConstateParCarburant.values()].reduce((n, r) => n + r.releves, 0);
+    const observedPriceEurL = totalReleves > 0
+      ? Math.round(
+          ([...prixConstateParCarburant.values()].reduce((s2, r) => s2 + r.prix * r.releves, 0) / totalReleves) * 1000,
+        ) / 1000
+      : null;
+    const observedSampleCount = totalReleves;
 
     // V1.10 (Sprint 2 perf) — totalAlerts agrege depuis le groupBy au lieu
     // d'un findMany separe. Le where du groupBy applique deja le filtre
@@ -1151,12 +1260,22 @@ export class ReportsStatsService {
       },
       consumption: {
         estimatedLiters: Math.round(totalLiters * 10) / 10,
-        estimatedCostEur: Math.round(totalLiters * fuelPrice * 100) / 100,
+        estimatedCostEur: Math.round(totalCost * 100) / 100,
         fuelPriceEurL: fuelPrice,
         observedPriceEurL,
-        estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(totalLiters * observedPriceEurL * 100) / 100 : null,
         observedSampleCount,
         fuelFreeVehicles: vehiculesSansCarburant,
+        basis: [...basesDeCalcul.values()]
+          .map((b) => ({
+            fuel: b.carburant,
+            priceEurL: b.prix,
+            observed: b.constate,
+            sampleCount: b.carburant ? (prixConstateParCarburant.get(b.carburant)?.releves ?? 0) : 0,
+            litres: Math.round(b.litres * 10) / 10,
+            vehicles: b.vehicules,
+          }))
+          // Le plus gros poste d'abord : c'est celui que le lecteur veut vérifier.
+          .sort((x, y) => y.litres - x.litres),
         estimatedCo2Kg: Math.round(totalCo2Kg),
         idleSecondsTotal: ralentiRows.reduce((n, r) => n + Math.max(0, r.ralenti), 0),
       },
