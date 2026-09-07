@@ -119,9 +119,15 @@ import { corpsErreur } from '../../core/interceptors/auth.interceptor';
              croire qu'on sait QUI a ouvert. On ne le sait pas, et c'est voulu. -->
         <p class="lp-note">
           <lucide-icon [img]="ShieldOff" [size]="13" />
-          Les destinataires n'ont pas de compte : personne à nommer. On sait qui a
-          <strong>créé</strong> l'accès, combien de fois il a été consulté et depuis quelle
-          empreinte tronquée — jamais l'adresse complète, jamais l'identité du visiteur.
+          <!-- ⚠️ LE TEXTE DOIT ÊTRE UN SEUL ELEMENT FLEXIBLE. .lp-note est en display: flex :
+               sans cette enveloppe, chaque noeud de texte ET le strong deviennent des elements
+               distincts, poses cote a cote — la phrase sortait en trois colonnes. Constate sur
+               la capture de production du 2026-09-07. -->
+          <span>
+            Les destinataires n'ont pas de compte : personne à nommer. On sait qui a
+            <strong>créé</strong> l'accès, combien de fois il a été consulté et depuis quelle
+            empreinte tronquée — jamais l'adresse complète, jamais l'identité du visiteur.
+          </span>
         </p>
 
         @if (lignes().length === 0) {
