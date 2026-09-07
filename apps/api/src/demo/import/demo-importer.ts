@@ -184,9 +184,20 @@ export async function importerDemo(o: OptionsImport): Promise<BilanImport> {
   try {
     // ── 1. Lecture de la source ──────────────────────────────────────────────────────────
     const src = o.source;
-    const flottes = await src.fleet.findMany({ where: { id: { in: o.idsFlottesSource } }, orderBy: { createdAt: 'asc' } });
-    const manquantes = o.idsFlottesSource.filter((id) => !flottes.some((f) => f.id === id));
+    const trouvees = await src.fleet.findMany({ where: { id: { in: o.idsFlottesSource } } });
+    const manquantes = o.idsFlottesSource.filter((id) => !trouvees.some((f) => f.id === id));
     if (manquantes.length > 0) throw new Error(`Sociétés source introuvables : ${manquantes.join(', ')}`);
+    /**
+     * ⚠️ L'ORDRE EST CELUI DE `DEMO_SOURCE_FLEET_IDS`, PAS CELUI DE LA BASE. La première société
+     * de la liste donne son identité (donc l'identifiant de la société de démo, dérivé du sien)
+     * et ses réglages — métier, prix du carburant, alertes de vitesse.
+     *
+     * Ce tri était `createdAt: 'asc'`, et c'était un défaut : le seed (`seed-demo.cli.ts`), qui
+     * n'a pas accès à la base source, calcule le même identifiant à partir du PREMIER ID DE LA
+     * VARIABLE. Les deux ne s'accordaient donc que par coïncidence — sinon la démo se retrouvait
+     * avec deux sociétés, celle du seed restant vide.
+     */
+    const flottes = o.idsFlottesSource.map((id) => trouvees.find((f) => f.id === id)!);
     const flotteIds = flottes.map((f) => f.id);
 
     const vehicules = await src.vehicle.findMany({ where: { fleetId: { in: flotteIds } }, orderBy: { createdAt: 'asc' } });
