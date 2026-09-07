@@ -42,14 +42,14 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 
 | # | Tâche | État | Niveaux passés |
 |---|---|---|---|
-| A | Prouver et finir la reconstruction des couches après perte de contexte WebGL | à faire | — |
-| B1+B4 | Échelle de vitesse unique (source + tests), sans câblage | à faire | — |
-| B3 | `segmentsColores()` + `<app-legende-vitesse>` + légendes générées | à faire | — |
-| B2 | Câblage carte par carte : trip-replay, period-replay, public-trip (+DTO), depot | à faire | — |
-| C | Traînées : mesurer, puis corriger | à faire | — |
-| D | Légende repliable et mémorisée | à faire | — |
-| E | Repères de lieux NON déplaçables depuis les cartes (demande du 07/09 soir) | à faire | — |
-| R | Recette finale : captures 4 largeurs, sondes, correction des défauts | à faire | — |
+| A | Prouver et finir la reconstruction des couches après perte de contexte WebGL | fait | 1-5 |
+| B1+B4 | Échelle de vitesse unique (source + tests), sans câblage | fait | 1-5 |
+| B3 | `segmentsColores()` + `<app-legende-vitesse>` + légendes générées | fait | 1-5 |
+| B2 | Câblage carte par carte : trip-replay, period-replay, public-trip (+DTO), depot | fait | 1-5 |
+| C | Traînées : mesurer, puis corriger | fait | 1-5 |
+| D | Légende repliable et mémorisée | fait (D3 laissé au propriétaire) | 1-5 |
+| E | Repères de lieux NON déplaçables depuis les cartes (demande du 07/09 soir) | fait | 1-5 |
+| R | Recette finale : captures 4 largeurs, sondes, correction des défauts | fait | 1-5 |
 
 ---
 
@@ -186,14 +186,21 @@ tronçons colorés des deux rejeux ; la page publique reçoit les siennes de l'A
       bruit mesuré) ; trois minutes sans mouvement effacent tout. Défaut 4 points, curseur
       2-8, un réglage hors plage (l'ancien défaut 20 recopié chez tous) retombe au défaut.
       7 tests rouges sur l'ancien comportement, 15/15 verts après. Lissage inchangé.
-- [ ] Recette (production) : 2-3 traînées pour ceux qui roulent, aucune pour un arrêt
-      ≥ 3 min, y compris pour un véhicule sans ACC.
+- [x] Recette (production, 08/09 00:45-01:25, session du propriétaire) : le réglage hérité
+      `trailLength: 20` du compte est bien retombé à 4 au chargement. Carte cdef31 laissée
+      ouverte 25 min avec 22 véhicules à l'arrêt : **aucune traînée** derrière eux (l'ancienne
+      règle en aurait fabriqué à partir du bruit GPS). HD-779-MA (A2R) suivi en roulant (39 à
+      96 km/h, vue libre, échelle 100 m) : **une traînée courte de deux à trois tronçons** verte
+      derrière le véhicule, qui le suit trame après trame. Sans fil ACC : la règle ne lit pas
+      `ignition`, prouvé par les tests ; pas de véhicule sans ACC en mouvement à cette heure.
 
 ## 5. Tâche D — soin visuel
 
 - [x] D1 — HUD de bureau : bouton « Légende » (aria-expanded), repliée par défaut, préférence
       `legendeRepliee` (défaut + persistance + anciennes préférences → défaut). Spec prouvée
-      rouge en changeant le défaut (2 échecs), verte ensuite. **À vérifier en production.**
+      rouge en changeant le défaut (2 échecs), verte ensuite. **Vérifié en production** :
+      repliée à l'ouverture, cinq bandes au clic, préférence écrite, état conservé après
+      rechargement dans les deux sens.
 - [ ] D3 — `showPlates` par défaut : **décision propriétaire**, ne pas toucher.
 
 ## 5 bis. Tâche E — les repères de lieux ne bougent plus depuis les cartes
@@ -213,8 +220,13 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
       `places_manage`) → boîte avec une carte faite pour ça, repère glissable, bouton
       d'enregistrement inactif tant que rien n'a bougé ; 3 tests (contrat d'enregistrement,
       échec dit, rien d'émis sans déplacement).
-- [ ] Recette production, mobile 375 px : faire défiler la carte sur un repère ne le déplace
-      pas ; page Lieux → Déplacer → glisser → Enregistrer déplace bien.
+- [x] Recette production (08/09) : sur la carte cdef31, glisser simulé de 80 × 48 px sur le
+      repère « Auchan — Launaguet » → **0 px de déplacement**, aucune requête vers
+      `/api/fleet-places`. Page Lieux → « Déplacer » sur le même lieu → boîte avec carte et
+      repère, bouton inactif ; le même glisser déplace le repère de 80 × 48 px, les
+      coordonnées passent à 43,65873 / 1,45675 « nouvelle position, non enregistrée », bouton
+      actif ; « Annuler » referme sans requête, la liste garde 43,6591 / 1,4559. L'enregistrement
+      lui-même n'a pas été joué sur un lieu client (contrat couvert par les tests).
 
 ---
 
@@ -226,6 +238,7 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
 | `c4d6b9d4` `95f86cf5` | B1+B4, B3 | 20:00 | `lv-pastille`, `991b1b` |
 | `0ce1e70c` `ad5b12bc` `11c44103` | B2a, B2b, B2c (+ `3fb96da9` d'une autre session) | 20:40 (second lancement, le premier n'avait pas recréé les conteneurs) | `speedsKmh` ×4 dans l'API, `pj-legende`, `tr-legende-v`, `pr-legende-v` |
 | `df9905cf` `7f184173` | C, D1, E1, E2 | 21:05 | `mp-legende-b`, `pm-boite` |
+| `1e3841c0` | R1+R2 : infobulle, légende hors des commandes | 08/09 01:22 (conteneurs recréés 23:22:46Z) | chunk de la carte reconstruit (`mp-legende-b` dans un nouveau chunk), `right: 56px` présent |
 
 ⚠️ Un `docker compose up -d --build` a rendu la main avec exit 0 SANS recréer les conteneurs
 (20:25) : les images n'avaient pas été reconstruites. Toujours lire l'artefact ; relancer si
@@ -278,6 +291,11 @@ Recette de production du 08/09 (00:30-01:20), session du propriétaire, deux son
 4. Contrôle du 08/09 07:15 : le trou d'automatisation est-il revenu ? ⚠️ Le conteneur API a
    été recréé le 07/09 (déploiements de ce chantier) : ses journaux d'avant sont dans
    `/root/journaux-tracky/` sur le VPS, `docker inspect` ne dira plus rien d'avant 17:38Z.
+6. **Chaque redéploiement déconnecte la session du propriétaire** : observé deux fois le
+   07/09 21:05 et le 08/09 01:35 (page de connexion au retour, « Rester connecté » coché).
+   La mémoire du dépôt affirme qu'une vraie session survit au redémarrage grâce au jeton de
+   rafraîchissement ; ce n'est pas ce qui s'est passé. À instruire (`auth.interceptor.ts`,
+   `refreshUnavailable()`, et ce que renvoie l'API pendant la fenêtre de recréation).
 5. **Le rouge de la bande 101-140 (`#EF4444`) est aussi le rouge des excès confirmés**, et
    l'orange 66-100 (`#F59E0B`) celui des pointes. Sur le rejeu, excès et pointes restent des
    PASTILLES cerclées de blanc (pas des tronçons), et la légende de vitesse nomme les bandes ;
