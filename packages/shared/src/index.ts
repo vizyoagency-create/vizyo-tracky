@@ -46,6 +46,7 @@ export * from './dto/api-traffic.dto';
 export * from './dto/mission.dto';
 // Lot A3 — ce que les quatre onglets ajoutent : live, historique, documents, écritures.
 export * from './dto/depot.dto';
+export * from './dto/partage-trajet.dto';
 export * from './events/ws-events';
 export * from './partner';
 export * from './permissions';

@@ -26,6 +26,22 @@ export const routes: Routes = [
    * │ fichier : c'est une exception, elle se lit comme telle.                    │
    * └────────────────────────────────────────────────────────────────────────────┘
    */
+  /**
+   * Le PARTAGE D'UN TRAJET (2026-09-07) — la seconde route sans aucun garde.
+   *
+   * Même statut que `/s/:token` ci-dessous, et pour la même raison : le destinataire est un
+   * conducteur ou un tiers à qui on a envoyé une URL. Il n'a pas de compte, et ne doit voir
+   * ni menu, ni marque imposée, ni lien vers l'application.
+   *
+   * ⚠️ Le préfixe `/t/` est DÉCLARÉ dans `estPagePublique` : sans cela, le socle poserait un
+   * identifiant d'appareil sur le téléphone de quelqu'un qui n'a consenti à rien.
+   */
+  {
+    path: 't/:token',
+    loadComponent: () =>
+      import('./features/public-trip/public-trip.component').then((m) => m.PublicTripComponent),
+    data: { title: 'Trajet partagé' },
+  },
   {
     path: 's/:token',
     loadComponent: () =>

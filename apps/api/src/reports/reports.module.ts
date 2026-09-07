@@ -12,9 +12,21 @@ import { SpeedReportService } from './speed-report.service';
 // VehicleAccessService est fourni globalement (VehicleAccessModule @Global) :
 // pas besoin de l'importer ici, il est injectable dans le controller + le
 // ReportExcelService.
+import { PublicTripShareController } from './public-trip-share.controller';
+import { TripShareController } from './trip-share.controller';
+import { TripSharePurgeService } from './trip-share-purge.service';
+import { TripShareService } from './trip-share.service';
+
 @Module({
   imports: [AuthModule],
-  controllers: [ReportsController],
+  controllers: [
+    ReportsController,
+    TripShareController,
+    // ⚠️ La route PUBLIQUE, sans aucun garde, déclarée à côté des autres mais définie dans
+    // son propre fichier : c'est la seule façon qu'un `@UseGuards` ajouté au contrôleur
+    // authentifié ne l'atteigne jamais par accident.
+    PublicTripShareController,
+  ],
   providers: [
     ReportsStatsService,
     ReportPdfService,
@@ -23,6 +35,8 @@ import { SpeedReportService } from './speed-report.service';
     ReportScheduleService,
     ReportsCronService,
     SpeedReportService,
+    TripShareService,
+    TripSharePurgeService,
   ],
   exports: [ReportsStatsService],
 })

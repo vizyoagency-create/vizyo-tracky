@@ -5,15 +5,14 @@ import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostL
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
-import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Users, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Users, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, Link2, X, MousePointerClick, Fuel, AlertTriangle } from 'lucide-angular';
 import { CONDUCTEUR_AUCUN, normaliserFiltreConducteur, libelleTypeAlerte, partLibelle, libelleCarburant as libelleCarburantPartage } from '@vizyo/tracky-shared';
 import type {
   DriverDto,
   TripAnalysisDto,
   TripDailySummaryDto,
   TripDto,
-  TripPeriodChartsDto,
-} from '@vizyo/tracky-shared';
+  TripPeriodChartsDto, TripShareLinkAvecTrajetDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
@@ -23,6 +22,7 @@ import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { ReportsApiService, type FleetStatsReportDto } from '../../core/services/reports.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
+import { TripShareApiService } from '../../core/services/trip-share.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -536,6 +536,21 @@ export function trajetHorsPerimetreConducteur(
                 class="rep-reset-btn">
           <lucide-icon [img]="RotateCcwIcon" [size]="13"></lucide-icon>
           <span>Réinitialiser</span>
+        </button>
+        <!-- ══ LES LIENS PUBLICS OUVERTS ════════════════════════════════════════════════
+             ⚠️ LE COMPTEUR EST SUR LE BOUTON, ET C'EST TOUT L'INTÉRÊT. Un panneau qu'il faut
+             penser à ouvrir ne se consulte jamais ; un « 3 » posé sur la barre d'outils dit
+             qu'il y a trois accès publics ouverts en ce moment, sans rien demander. C'est la
+             différence entre une page de gestion et une surveillance. -->
+        <button type="button" (click)="ouvrirPanneauLiens()"
+                trackClick="rapport-liens-partages"
+                title="Voir les liens de partage ouverts sur cette société"
+                class="rep-reset-btn">
+          <lucide-icon [img]="LinkIcon" [size]="13"></lucide-icon>
+          <span>Liens partagés</span>
+          @if (liensOuverts().length > 0) {
+            <span class="rep-liens-pastille">{{ liensOuverts().length }}</span>
+          }
         </button>
         </div>
       </div>
@@ -1677,9 +1692,67 @@ export function trajetHorsPerimetreConducteur(
       }
     </div>
 
+    <!-- ══════════════════════════════════════════════════════════════════════════════════
+         LES LIENS PUBLICS OUVERTS SUR CETTE SOCIÉTÉ
+         ══════════════════════════════════════════════════════════════════════════════════
+         « Je ne veux rien qui soit transparent et fantôme » : un accès public que personne
+         ne voit est un accès que personne ne révoque. Ce panneau répond à trois questions —
+         QUOI est ouvert, PAR QUI, et depuis QUAND on l'a ouvert.
+
+         ⚠️ LES LIENS MORTS Y FIGURENT AUSSI, plus bas et grisés. Une liste qui ne montrerait
+         que l'actif ne répondrait pas à « qu'est-ce qui a été partagé la semaine dernière ? »,
+         qui est la question qu'on se pose quand quelqu'un signale avoir reçu un lien. -->
+    @if (panneauLiensOuvert()) {
+      <div class="rep-liens-voile" (click)="panneauLiensOuvert.set(false)"></div>
+      <aside class="rep-liens-panneau" role="dialog" aria-label="Liens de partage ouverts">
+        <header class="rep-liens-entete">
+          <div>
+            <h2>Liens partagés</h2>
+            <p>{{ liensOuverts().length }} lien{{ liensOuverts().length > 1 ? 's' : '' }} actif{{ liensOuverts().length > 1 ? 's' : '' }}
+               sur {{ liensPartages().length }} au total</p>
+          </div>
+          <button type="button" (click)="panneauLiensOuvert.set(false)" aria-label="Fermer" class="rep-liens-fermer">
+            <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
+          </button>
+        </header>
+
+        @if (liensPartages().length === 0) {
+          <p class="rep-liens-vide">
+            Aucun trajet n'a été partagé publiquement. Le bouton « Copier le lien » d'un replay
+            crée un lien valable 24 h, qui s'ouvre sans compte Tracky.
+          </p>
+        } @else {
+          <ul class="rep-liens-liste">
+            @for (l of liensPartages(); track l.id) {
+              <li class="rep-liens-item" [class.rep-liens-item--mort]="!l.active">
+                <div class="rep-liens-corps">
+                  <p class="rep-liens-titre">
+                    {{ l.trip?.plate ?? 'Trajet supprimé' }}
+                    @if (l.trip) {
+                      <span class="rep-liens-detail">· {{ l.trip.distanceKm | number:'1.1-1' }} km</span>
+                    }
+                  </p>
+                  <p class="rep-liens-meta">
+                    {{ echeanceLien(l) }} · {{ usageLien(l) }}
+                    @if (l.createdByName) { · par {{ l.createdByName }} }
+                  </p>
+                </div>
+                @if (l.active) {
+                  <button type="button" (click)="revoquerLienPartage(l.id)"
+                          title="Couper ce lien immédiatement"
+                          class="rep-liens-couper">Couper</button>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </aside>
+    }
+
     <app-trip-replay
       [lienPartage]="lienDuTrajetOuvert()"
-      (copierLien)="copierLienTrajet()"
+      [partageEnCours]="partageEnCours()"
+      (copierLien)="partagerTrajet()"
       [open]="!!replayTrip()"
       [trip]="replayTrip()"
       [analysis]="replayTrip() ? analysisFor(replayTrip()!.id) : null"
@@ -2345,6 +2418,72 @@ export function trajetHorsPerimetreConducteur(
       color: var(--fg-tertiary) !important;
     }
     .rep-dropdown-trigger--open .rep-dropdown-chevron { transform: rotate(180deg) }
+
+    /* ══ LE PANNEAU DES LIENS PUBLICS ═══════════════════════════════════════════════════
+       Un tiroir à droite, pas une modale centrée : on le consulte EN GARDANT le rapport
+       sous les yeux — « ce trajet que je regarde, est-ce que je l'ai partagé ? ».
+
+       ⚠️ z-index 9000, comme les autres panneaux du produit, et donc SOUS le toast (9500)
+       qui est monté au-dessus le même jour. Un toast « Lien coupé » masqué par le panneau
+       qui vient de le déclencher, c'est exactement le défaut qu'on venait de corriger. */
+    .rep-liens-voile {
+      position: fixed; inset: 0; z-index: 8999;
+      background: rgba(0, 0, 0, .35);
+    }
+    .rep-liens-panneau {
+      position: fixed; top: 0; right: 0; bottom: 0; z-index: 9000;
+      width: min(420px, 100vw);
+      display: flex; flex-direction: column;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border-subtle);
+      box-shadow: -12px 0 32px rgba(0, 0, 0, .18);
+      /* La zone sûre : sur iPhone, le bas du panneau passait sous la barre de gestes. */
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .rep-liens-entete {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      padding: 18px 18px 14px; border-bottom: 1px solid var(--border-subtle);
+    }
+    .rep-liens-entete h2 { margin: 0; font-size: 16px; font-weight: 700; color: var(--fg-primary) }
+    .rep-liens-entete p { margin: 3px 0 0; font-size: 12px; color: var(--fg-secondary) }
+    .rep-liens-fermer {
+      display: grid; place-items: center; width: 44px; height: 44px; margin: -10px -10px 0 0;
+      border-radius: 10px; color: var(--fg-secondary); cursor: pointer; background: none; border: 0;
+    }
+    .rep-liens-fermer:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
+
+    .rep-liens-vide { margin: 0; padding: 24px 18px; font-size: 13px; line-height: 1.6; color: var(--fg-secondary) }
+    .rep-liens-liste { margin: 0; padding: 0; list-style: none; overflow-y: auto; flex: 1 }
+    .rep-liens-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 18px; border-bottom: 1px solid var(--border-subtle);
+    }
+    /* Grisés, pas cachés : ils répondent à « qu'est-ce qui a été partagé la semaine
+       dernière ? », qui est la question qu'on se pose APRÈS coup. */
+    .rep-liens-item--mort { opacity: .55 }
+    .rep-liens-corps { flex: 1; min-width: 0 }
+    .rep-liens-titre { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--fg-primary) }
+    .rep-liens-detail { font-weight: 400; color: var(--fg-secondary) }
+    .rep-liens-meta { margin: 2px 0 0; font-size: 11.5px; color: var(--fg-secondary) }
+    .rep-liens-couper {
+      flex-shrink: 0; min-height: 36px; padding: 0 12px; border-radius: 9px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      color: var(--texte-alerte); background: none;
+      border: 1px solid var(--border-subtle);
+    }
+    .rep-liens-couper:hover { background: var(--bg-tertiary) }
+    /* Cible tactile : sous 768 px, « Couper » doit rester attrapable au doigt. */
+    @media (max-width: 768px) {
+      .rep-liens-couper { min-height: 44px; min-width: 64px }
+    }
+
+    /* La pastille du compteur, sur la barre d'outils : c'est elle qui fait qu'on REGARDE. */
+    .rep-liens-pastille {
+      display: inline-grid; place-items: center; min-width: 18px; height: 18px;
+      margin-left: 5px; padding: 0 5px; border-radius: 9999px;
+      font-size: 10.5px; font-weight: 700; line-height: 1;
+      color: var(--accent-ink); background: var(--color-tracky-light);
+    }
 
     .rep-dropdown-backdrop {
       position: fixed; inset: 0; z-index: 50;
@@ -3069,6 +3208,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** `protected` : le gabarit passe la société courante à la carte de réglage
    *  hebdomadaire, et un gabarit Angular ne peut pas lire un membre privé. */
   protected readonly fleetFilter = inject(FleetFilterService);
+  private readonly tripShare = inject(TripShareApiService);
+  /** Un partage en cours : le bouton ne doit pas pouvoir en créer trois d'affilée. */
+  protected readonly partageEnCours = signal(false);
+  /**
+   * ── LES LIENS PUBLICS OUVERTS SUR CETTE SOCIÉTÉ ────────────────────────────────────────
+   *
+   * ⚠️ CHARGÉS ET AFFICHÉS, PAS SEULEMENT ENREGISTRÉS. Un accès public que personne ne voit
+   * est un accès que personne ne révoque : c'est toute la raison de cette liste. Elle porte
+   * aussi les liens MORTS — « qu'est-ce qui a été partagé la semaine dernière, et par qui ? »
+   * est une question qui se pose après coup.
+   */
+  protected readonly liensPartages = signal<TripShareLinkAvecTrajetDto[]>([]);
+  protected readonly liensOuverts = computed(() => this.liensPartages().filter((l) => l.active));
+  protected readonly panneauLiensOuvert = signal(false);
   private readonly analysisApi = inject(TripAnalysisApiService);
   protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary' | 'excel'>(null);
 
@@ -3193,6 +3346,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly ArrowUpDownIcon = ArrowUpDown;
   protected readonly FileSpreadsheetIcon = FileSpreadsheet;
   protected readonly RotateCcwIcon = RotateCcw;
+  protected readonly LinkIcon = Link2;
+  protected readonly XIcon = X;
   protected readonly MousePointerClickIcon = MousePointerClick;
   protected readonly FuelIcon = Fuel;
   protected readonly AlertTriangleIcon = AlertTriangle;
@@ -5370,22 +5525,111 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.majParametresUrl({ trip: tripId });
   }
 
-  /**
-   * Copie le lien du trajet ouvert dans le presse-papier.
-   *
-   * ⚠️ `navigator.clipboard` n'existe pas hors contexte sécurisé (http nu, vieux navigateur)
-   * et peut être refusé par l'utilisateur. On le DIT plutôt que d'afficher « Copié ! » sur
-   * un presse-papier vide — la personne collerait alors autre chose dans son courriel.
-   */
-  protected async copierLienTrajet(): Promise<void> {
-    const lien = this.lienDuTrajetOuvert();
-    if (!lien) return;
+  /** Recharge la liste des liens publics de la société courante. Best-effort : silencieux. */
+  protected async chargerLiensPartages(): Promise<void> {
     try {
-      await navigator.clipboard.writeText(lien);
-      this.toast.success('Lien copié', 'Il ouvre ce trajet, avec les filtres de cet écran.');
+      this.liensPartages.set(await this.tripShare.listerPourSociete(this.fleetFilter.selectedFleetId()));
     } catch (err) {
-      swallow('reports:copierLienTrajet', err);
-      this.toast.error('Copie impossible', 'Votre navigateur a refusé l’accès au presse-papier. Le lien est dans la barre d’adresse.');
+      swallow('reports:liensPartages', err);
+    }
+  }
+
+  /**
+   * Coupe un lien. Immédiat : il cesse de fonctionner à la requête suivante.
+   *
+   * ⚠️ AUCUNE CONFIRMATION. Révoquer est le geste PRUDENT : le demander deux fois ajouterait
+   * une friction du mauvais côté — celui de la sécurité. C'est ouvrir un lien qui mérite une
+   * hésitation, pas le fermer.
+   */
+  protected async revoquerLienPartage(id: string): Promise<void> {
+    try {
+      await this.tripShare.revoquer(id);
+      this.toast.success('Lien coupé', 'Il ne donne plus accès au trajet.');
+      await this.chargerLiensPartages();
+    } catch (err) {
+      swallow('reports:revoquerLien', err);
+      this.toast.error('Révocation impossible', httpFailureMessage(err, 'ce lien'));
+    }
+  }
+
+  /** Ouvre le panneau de surveillance, en rechargeant : on ne montre pas un état périmé. */
+  protected async ouvrirPanneauLiens(): Promise<void> {
+    this.panneauLiensOuvert.set(true);
+    await this.chargerLiensPartages();
+  }
+
+  /** « expire dans 3 h », « expiré » — ce que le gestionnaire lit d'un coup d'œil. */
+  protected echeanceLien(l: TripShareLinkAvecTrajetDto): string {
+    if (l.revokedAt) return 'coupé';
+    const restant = new Date(l.expiresAt).getTime() - Date.now();
+    if (restant <= 0) return 'expiré';
+    const h = Math.floor(restant / 3_600_000);
+    if (h >= 24) return `expire dans ${Math.floor(h / 24)} j`;
+    if (h >= 1) return `expire dans ${h} h`;
+    return `expire dans ${Math.max(1, Math.round(restant / 60_000))} min`;
+  }
+
+  /** « jamais ouvert », « ouvert 3 fois » — l'usage, qui rend la révocation éclairée. */
+  protected usageLien(l: TripShareLinkAvecTrajetDto): string {
+    if (l.openCount === 0) return 'jamais ouvert';
+    const depuis = l.lastOpenedFrom ? ` depuis ${l.lastOpenedFrom}` : '';
+    return `ouvert ${l.openCount} fois${depuis}`;
+  }
+
+  /**
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   * PARTAGER LE TRAJET — UN VRAI LIEN PUBLIC, PAS L'ADRESSE DE L'APPLICATION
+   * ══════════════════════════════════════════════════════════════════════════════════════
+   *
+   * Ce bouton copiait l'URL INTERNE de l'écran (`/reports?from=…&to=…&trip=…`). Envoyée au
+   * conducteur concerné — qui n'a pas de compte Tracky — elle affichait un écran de
+   * connexion. Et l'application annonçait « Lien copié » : on envoyait un lien mort en
+   * croyant avoir partagé, et c'est le destinataire qui découvrait le problème.
+   *
+   * ⚠️ CRÉER UN LIEN EST UN APPEL RÉSEAU. C'est ce qui change tout : le serveur tire un token
+   * imprévisible, pose une échéance de 24 h, et INSCRIT le lien là où on pourra le retrouver
+   * et le couper. Un lien fabriqué dans le navigateur ne s'inscrit nulle part.
+   *
+   * ⚠️ ET ON LE DIT AU MOMENT DE COPIER. « Lien copié » ne suffit plus : le message annonce
+   * qu'il est PUBLIC et qu'il expire. Sans cette phrase, la personne le colle dans un fil de
+   * discussion d'équipe sans mesurer qu'il s'ouvre sans compte.
+   */
+  protected async partagerTrajet(): Promise<void> {
+    const trajet = this.replayTrip();
+    if (!trajet || this.partageEnCours()) return;
+    this.partageEnCours.set(true);
+    try {
+      const lien = await this.tripShare.creer(trajet.id, 'HOUR_24');
+      await this.copierDansPressePapier(
+        lien.url,
+        'Lien public copié',
+        'Valable 24 h, il s’ouvre sans compte Tracky. Retrouvez-le dans « Liens partagés ».',
+      );
+      await this.chargerLiensPartages();
+    } catch (err) {
+      swallow('reports:partagerTrajet', err);
+      this.toast.error('Partage impossible', httpFailureMessage(err, 'le lien de partage'));
+    } finally {
+      this.partageEnCours.set(false);
+    }
+  }
+
+  /**
+   * ⚠️ `navigator.clipboard` N'EXISTE PAS HORS CONTEXTE SÉCURISÉ (http nu, vieux navigateur)
+   * et peut être refusé par l'utilisateur. On le DIT plutôt que d'afficher « Copié ! » sur un
+   * presse-papier vide — la personne collerait alors autre chose dans son message.
+   *
+   * ⚠️ ET ON REDONNE LE LIEN DANS LE MESSAGE D'ÉCHEC. Il vient d'être CRÉÉ côté serveur : sans
+   * cela, il existerait, compterait dans le plafond de trois, et personne ne l'aurait jamais
+   * vu — un lien fantôme fabriqué par l'échec d'une copie.
+   */
+  private async copierDansPressePapier(texte: string, titre: string, detail: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(texte);
+      this.toast.success(titre, detail);
+    } catch (err) {
+      swallow('reports:copie', err);
+      this.toast.error('Copie impossible', `Votre navigateur a refusé le presse-papier. Le lien : ${texte}`);
     }
   }
 

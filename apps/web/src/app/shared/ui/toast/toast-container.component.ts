@@ -27,7 +27,22 @@ const COLOR_MAP: Record<ToastKind, string> = {
   standalone: true,
   imports: [LucideAngularModule],
   template: `
-    <div class="toast-stack fixed right-4 z-[6000] flex flex-col gap-2 pointer-events-none"
+    <!--
+      ══ LE TOAST PASSE AU-DESSUS DE TOUT CE QUI N'EST PAS BLOQUANT ═══════════════════════
+      Il était à 6000, donc SOUS chaque modale et chaque tiroir du produit (tous à 9000) :
+      un toast levé pendant qu'un panneau était ouvert n'apparaissait nulle part. Signalé sur
+      le replay de trajet — « je clique sur Partager, le toast est derrière la modale » —
+      mais le défaut valait pour les douze composants de ce niveau.
+
+      ⚠️ C'EST LE SEUL CANAL QUI DIT « ÇA A MARCHÉ » OU « ÇA A ÉCHOUÉ ». Le masquer revient à
+      exécuter l'action en silence, et l'utilisateur recommence — ou pire, croit que c'est
+      passé. Un toast caché est un défaut fonctionnel, pas un défaut d'affichage.
+
+      ⚠️ 9500, PAS 9999 : la modale de mise à jour obligatoire garde le dessus. Quand elle
+      s'affiche, l'application est inutilisable tant qu'on n'a pas rechargé — un toast par
+      dessus ne ferait que masquer la seule chose à lire.
+    -->
+    <div class="toast-stack fixed right-4 z-[9500] flex flex-col gap-2 pointer-events-none"
          role="region"
          aria-label="Notifications"
          aria-live="polite"

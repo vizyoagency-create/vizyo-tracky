@@ -19,8 +19,18 @@
  * └────────────────────────────────────────────────────────────────────────────┘
  */
 
-/** Le préfixe des routes ouvertes. Une seule aujourd'hui : le suivi public d'A4. */
-const PREFIXES_PUBLICS = ['/s/'] as const;
+/**
+ * Les préfixes des routes ouvertes.
+ *
+ * ⚠️ TOUTE ROUTE PUBLIQUE DOIT FIGURER ICI, et l'oubli est silencieux : la page s'affichera
+ * très bien, en posant simplement un identifiant d'appareil sur l'appareil d'un tiers qui n'a
+ * consenti à rien. Rien ne le signalera — c'est le genre de manquement qu'on découvre en
+ * relisant, pas en testant.
+ *
+ *   `/s/` — le suivi de livraison (lot A4).
+ *   `/t/` — le partage d'un trajet (2026-09-07), envoyé au conducteur ou à un tiers.
+ */
+const PREFIXES_PUBLICS = ['/s/', '/t/'] as const;
 
 export function estPagePublique(chemin: string = typeof location !== 'undefined' ? location.pathname : ''): boolean {
   return PREFIXES_PUBLICS.some((p) => chemin.startsWith(p));

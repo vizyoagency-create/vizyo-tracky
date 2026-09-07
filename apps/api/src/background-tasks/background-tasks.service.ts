@@ -258,6 +258,14 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 15 },
   },
   {
+    id: 'trip-share-purge',
+    source: 'reports/trip-share-purge.service.ts', label: 'Purge des liens de partage de trajet', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:20', criticality: 'basse', antiOverlap: true,
+    note: 'Purge REELLE. Decalee de 5 min sur celle des liens de mission : deux deleteMany a la meme minute se disputent les memes verrous pour un travail qui n\'est presse ni l\'un ni l\'autre.',
+    purpose: 'Supprime les liens publics de partage de trajet expires depuis plus de 30 jours. La conservation sert l\'audit : qui a ouvert cet acces, quand, combien de fois.',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 20 },
+  },
+  {
     id: 'trips-retention',
     source: 'trips/trips-retention.service.ts', label: 'Rétention des trajets (RGPD)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:45', criticality: 'moyenne', antiOverlap: false,

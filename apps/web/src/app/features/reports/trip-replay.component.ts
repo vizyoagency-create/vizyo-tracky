@@ -215,15 +215,16 @@ interface RecitTrajet {
                  tableau paginé, à partir d'une date et d'une plaque. -->
             @if (lienPartage()) {
               <button type="button" (click)="copierLien.emit()"
-                      aria-label="Copier le lien de ce trajet"
-                      title="Copier le lien de ce trajet"
+                      [disabled]="partageEnCours()"
+                      aria-label="Créer et copier un lien public de ce trajet"
+                      title="Crée un lien public valable 24 h, qui s'ouvre sans compte"
                       class="tr-replay-lien shrink-0 inline-flex items-center justify-center gap-1.5
                              h-11 px-3 rounded-full bg-bg-tertiary/80 backdrop-blur-sm
                              text-fg-secondary hover:text-fg-primary hover:bg-bg-tertiary
                              border border-border-subtle cursor-pointer transition-colors
                              text-[11.5px] font-semibold">
                 <lucide-icon [img]="LinkIcon" [size]="15"></lucide-icon>
-                <span class="hidden sm:inline">Copier le lien</span>
+                <span class="hidden sm:inline">{{ partageEnCours() ? 'Création…' : 'Copier le lien' }}</span>
               </button>
             }
             <button (click)="onClose()"
@@ -793,6 +794,14 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
    * il est utilisé aussi bien depuis la page Rapports que depuis une fiche véhicule.
    */
   readonly lienPartage = input<string | null>(null);
+  /**
+   * Un partage est en cours de création.
+   *
+   * ⚠️ CRÉER UN LIEN EST UN APPEL RÉSEAU depuis le 2026-09-07, plus une copie locale. Sans
+   * cet état, trois clics impatients ouvrent TROIS accès publics — et atteignent le plafond
+   * du trajet pour un seul partage voulu.
+   */
+  readonly partageEnCours = input(false);
   readonly copierLien = output<void>();
   readonly closed = output<void>();
   /** Demande au parent d'ouvrir le modal d'edition pour le trip courant. */

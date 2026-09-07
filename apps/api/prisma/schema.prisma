@@ -335,6 +335,8 @@ model Fleet {
   missionPricingSettings   MissionPricingSettings?
 
   @@map("fleets")
+  /// Les liens publics de partage de trajet — l'écran de surveillance s'y appuie.
+  tripShareLinks          TripShareLink[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -568,6 +570,7 @@ model User {
   /// gestionnaire peut en créer ; c'est par cette relation qu'on révoque les liens
   /// d'un compte désactivé (A4 § 8).
   missionShareLinks      MissionShareLink[]      @relation("MissionShareAuthor")
+  tripShareLinks         TripShareLink[]         @relation("TripShareAuthor")
   notificationPreference NotificationPreference?
   notificationDeliveries NotificationDelivery[]
   /// Demandes d'assistance IA de ce compte. Supprimées avec lui (cascade) : les échanges
@@ -1144,6 +1147,8 @@ model Trip {
   @@index([driverId, startedAt(sort: Desc)])
   @@index([missionId])
   @@map("trips")
+  /// Les liens publics ouverts sur ce trajet (cf. `TripShareLink`).
+  shareLinks         TripShareLink[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1278,6 +1283,77 @@ model MissionShareLink {
   /// L'index de la purge quotidienne des liens expirés.
   @@index([expiresAt])
   @@map("mission_share_links")
+}
+
+/// ════════════════════════════════════════════════════════════════════════════════════════
+/// LE PARTAGE PUBLIC D'UN TRAJET (2026-09-07)
+/// ════════════════════════════════════════════════════════════════════════════════════════
+///
+/// Le bouton « Partager » du replay copiait l'URL INTERNE de l'application
+/// (`/reports?...&trip=…`). Envoyée à un conducteur sans compte, elle affichait un écran de
+/// connexion : le lien ne partageait rien. C'est le défaut que ce modèle ferme.
+///
+/// ⚠️ CALQUÉ SUR `MissionShareLink`, DÉLIBÉRÉMENT. Même token, même expiration, même
+/// révocation, même suivi d'usage, même purge. Un second mécanisme de lien public aurait sa
+/// propre idée de la sécurité — et c'est le genre de divergence qui se découvre après.
+model TripShareLink {
+  id     String @id @default(uuid()) @db.Uuid
+  tripId String @db.Uuid
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  /// La société propriétaire, DÉNORMALISÉE depuis le trajet.
+  ///
+  /// ⚠️ Elle porte l'écran de surveillance : « quels liens de MA société sont ouverts ? » est
+  /// la question posée, et y répondre par une jointure sur les trajets puis les véhicules
+  /// rendrait cette liste coûteuse — donc lente, donc consultée moins souvent.
+  fleetId String @db.Uuid
+  fleet   Fleet  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+
+  /// Opaque, imprévisible, 22 caractères base62. JAMAIS l'uuid du trajet : un token
+  /// prévisible donnerait accès à tous les trajets par simple énumération.
+  token String @unique
+
+  /// Qui a généré le lien. Cascade : le compte supprimé emporte ses liens — un accès public
+  /// que plus personne n'assume ne doit pas survivre à son auteur.
+  createdByUserId String @db.Uuid
+  createdBy       User   @relation("TripShareAuthor", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  /// L'EXPIRATION. Calculée à la création, jamais prolongeable, vérifiée à chaque requête à
+  /// l'heure serveur.
+  expiresAt DateTime
+  duration  TripShareDuration
+
+  revokedAt       DateTime?
+  revokedByUserId String?   @db.Uuid
+
+  /// Suivi d'usage — pour une révocation ÉCLAIRÉE. « Ouvert 4 fois, la dernière il y a 2 h »
+  /// est ce qui permet de décider de couper, ou de comprendre qu'on a partagé trop large.
+  openCount      Int       @default(0)
+  firstOpenedAt  DateTime?
+  lastOpenedAt   DateTime?
+  /// Empreinte TRONQUÉE de l'appelant (« 92.184.x.x »), jamais l'IP complète : on veut
+  /// distinguer deux destinataires, pas identifier une personne (RGPD).
+  lastOpenedFrom String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tripId, createdAt])
+  /// L'écran de surveillance : les liens VIVANTS d'une société, les plus récents d'abord.
+  @@index([fleetId, expiresAt])
+  /// L'index de la purge quotidienne.
+  @@index([expiresAt])
+  @@map("trip_share_links")
+}
+
+/// Les durées offertes pour un partage de trajet. Pas de durée libre : un champ « nombre
+/// d'heures » finirait à 8 760 le jour où quelqu'un voudra « un lien pour l'année ».
+enum TripShareDuration {
+  /// `now + 1 h` — pour montrer un trajet à quelqu'un qui est au bout du fil.
+  HOUR_1
+  /// `now + 24 h` — LE DÉFAUT. Un conducteur reçoit le lien le soir et le lit le lendemain.
+  HOUR_24
+  /// `now + 7 j` — le maximum. Au-delà, ce n'est plus un partage, c'est une publication.
+  DAY_7
 }
 
 /// Les trois durées d'A4 § 4. Pas de durée libre : un champ « nombre de minutes »
