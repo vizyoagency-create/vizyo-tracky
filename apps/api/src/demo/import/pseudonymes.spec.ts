@@ -1,4 +1,4 @@
-import { identiteDemo, imeiDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo, plaqueDemo } from './pseudonymes';
+import { identiteDemo, imeiDemo, modeleDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo, plaqueDemo } from './pseudonymes';
 import { idDemo, uuidV5 } from './uuid-deterministe';
 
 const SEL = 'un-sel-de-test-suffisamment-long';
@@ -56,6 +56,24 @@ describe('pseudonymes déterministes', () => {
     expect(nomLieuDemo('FUEL_STATION', 2)).toBe('Station 2');
     expect(nomLieuDemo('INCONNU', 3)).toBe('Site 3');
     expect(nomZoneDemo(4)).toBe('Zone 4');
+  });
+
+  it('modèles : cohérents avec le type ET l\'énergie, stables, jamais ceux de la source', () => {
+    // Un utilitaire électrique doit recevoir un utilitaire ÉLECTRIQUE : sinon la consommation
+    // affichée, calculée depuis l'énergie, contredirait la fiche sous les yeux du prospect.
+    const elec = modeleDemo(SEL, 'v-1', 'VAN', 'ELECTRIQUE');
+    expect(['Kangoo E-Tech', 'e-Expert', 'Vivaro-e', 'E-Transit Custom', 'eVito', 'Proace Electric']).toContain(elec.model);
+    const diesel = modeleDemo(SEL, 'v-1', 'VAN', 'DIESEL');
+    expect(['Trafic', 'Expert', 'Jumpy', 'Transit Custom', 'Vivaro', 'Proace', 'Vito', 'Transporter']).toContain(diesel.model);
+
+    // Stable : le même véhicule garde son modèle d'un rafraîchissement à l'autre.
+    expect(modeleDemo(SEL, 'v-1', 'VAN', 'DIESEL')).toEqual(diesel);
+    // Et deux véhicules ne reçoivent pas systématiquement le même.
+    const autres = new Set(Array.from({ length: 30 }, (_, i) => modeleDemo(SEL, `v-${i}`, 'CAR', 'ESSENCE').model));
+    expect(autres.size).toBeGreaterThan(3);
+
+    // Un type inconnu ne fait pas tomber l'import : il retombe sur la famille générique.
+    expect(modeleDemo(SEL, 'v-1', 'INEXISTANT', null).brand.length).toBeGreaterThan(2);
   });
 
   it("noms de groupes : inventés, jamais repris de la source, et uniques même au-delà de la liste", () => {

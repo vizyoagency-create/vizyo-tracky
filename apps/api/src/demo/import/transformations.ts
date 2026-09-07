@@ -22,7 +22,7 @@ import type {
   VehicleSchedule,
   VehicleWorkSchedule,
 } from '@prisma/client';
-import { nomGroupeDemo, nomLieuDemo, nomZoneDemo } from './pseudonymes';
+import { modeleDemo, nomGroupeDemo, nomLieuDemo, nomZoneDemo } from './pseudonymes';
 import { idDemo } from './uuid-deterministe';
 
 /** Le compte système du seed (`prisma/seed.ts`) : cible des clés « auteur » obligatoires. */
@@ -269,13 +269,16 @@ export function planningRapportDemo(ctx: Contexte): Prisma.FleetReportScheduleUn
 // ─── Parc ──────────────────────────────────────────────────────────────────────────────────
 
 export function transformerVehicule(src: Vehicle, ctx: Contexte, plaque: string): Prisma.VehicleUncheckedCreateInput {
+  // Marque et modèle REMPLACÉS (décision du propriétaire : « les trajets seuls »). On garde la
+  // forme de la source — un champ vide le reste — mais jamais sa valeur. Cf. `modeleDemo`.
+  const modele = modeleDemo(ctx.sel, src.id, src.type, src.energy);
   return {
     id: ctx.ids.id('Vehicle', src.id),
     fleetId: ctx.idFlotteDemo,
     plate: plaque,
     type: src.type,
-    brand: src.brand,
-    model: src.model,
+    brand: src.brand === null ? null : modele.brand,
+    model: src.model === null ? null : modele.model,
     energy: src.energy,
     year: src.year,
     color: src.color,

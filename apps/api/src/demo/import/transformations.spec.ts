@@ -147,8 +147,20 @@ describe("transformations de l'import de démonstration", () => {
       outOfServiceNote: null,
       privacyModeById: null,
       privacyModeNote: null,
-      brand: 'brand-source',
     });
+    // La marque et le modèle de la source ne ressortent JAMAIS (accord : « les trajets seuls »),
+    // mais les champs restent remplis : un parc sans marque a l'air cassé.
+    expect(sortie.brand).not.toBe('brand-source');
+    expect(sortie.model).not.toBe('model-source');
+    expect(String(sortie.brand).length).toBeGreaterThan(2);
+    expect(String(sortie.model).length).toBeGreaterThan(1);
+  });
+
+  it('Vehicle : un champ marque VIDE à la source le reste — on garde la forme, jamais la valeur', () => {
+    const ctx = contexte();
+    const sortie = transformerVehicule(ligneSource('Vehicle', { id: 'v-2', brand: null, model: null }) as never, ctx, 'AB-123-CD');
+    expect(sortie.brand).toBeNull();
+    expect(sortie.model).toBeNull();
   });
 
   it('Tracker : IMEI régénéré, SIM effacée, overrides admin effacés, liveness conservée', () => {

@@ -61,15 +61,16 @@ export const ALLOWLIST: Readonly<Record<string, RegleModele>> = {
     ],
   },
   Vehicle: {
-    pourquoi: 'le parc : plaque régénérée, caractéristiques et réglages conservés, auteurs et notes libres effacés',
+    pourquoi:
+      "le parc : plaque régénérée, MARQUE ET MODÈLE remplacés (l'accord porte sur « les trajets seuls »), réglages conservés, auteurs et notes libres effacés",
     copies: [
-      'type', 'brand', 'model', 'energy', 'year', 'color', 'fuelConsumptionL100km',
+      'type', 'energy', 'year', 'color', 'fuelConsumptionL100km',
       'calibratedConsumptionL100km', 'calibratedTanks', 'calibratedAt', 'lastOdometerKm', 'lastOdometerAt',
       'seats', 'childSeats', 'features', 'mixedUseEnabled', 'speedAlertEnabled', 'speedAlertOverKmh',
       'outOfServiceReason', 'outOfServiceSince', 'privacyModeEnabled', 'privacyModeSince', 'workOverrideUntil',
       'createdAt', 'updatedAt',
     ],
-    transformes: ['id', 'fleetId', 'plate', 'currentDriverId'],
+    transformes: ['id', 'fleetId', 'plate', 'brand', 'model', 'currentDriverId'],
     imposes: ['outOfServiceById', 'outOfServiceNote', 'privacyModeById', 'privacyModeNote'],
   },
   Tracker: {
