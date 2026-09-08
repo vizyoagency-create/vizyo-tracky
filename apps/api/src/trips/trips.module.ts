@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { DriversModule } from '../drivers/drivers.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { MapMatchingService } from './map-matching.service';
+import { TripMapMatchingService } from './trip-map-matching.service';
 import { TripSegmenterService } from './trip-segmenter.service';
 import { TripsController } from './trips.controller';
 import { TripsRetentionService } from './trips-retention.service';
@@ -11,7 +12,7 @@ import { TripsService } from './trips.service';
 @Module({
   imports: [forwardRef(() => RealtimeModule), AuthModule, DriversModule],
   controllers: [TripsController],
-  providers: [TripsService, TripSegmenterService, MapMatchingService, TripsRetentionService],
+  providers: [TripsService, TripSegmenterService, MapMatchingService, TripMapMatchingService, TripsRetentionService],
   exports: [TripsService],
 })
 export class TripsModule {}

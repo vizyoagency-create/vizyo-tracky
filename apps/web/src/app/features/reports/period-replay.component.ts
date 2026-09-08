@@ -58,7 +58,7 @@ import {
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
-import { pointsDepuisHistorique, segmentsColores } from '../../shared/utils/segments-vitesse';
+import { pointsColores, pointsDepuisHistorique, segmentsColores } from '../../shared/utils/segments-vitesse';
 import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 import { PositionsApiService } from '../../core/services/positions.service';
 import { clampSpeed, formatDuration, max0 } from './reports.utils';
@@ -1142,8 +1142,11 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
       )
       .subscribe(({ tripId, points }) => {
         const src = this.map?.getSource(`pr-line-${tripId}`) as GeoJSONSource | undefined;
-        if (!src || points.length < 2) return;
-        src.setData(segmentsColores(points));
+        // On colore la POLYLIGNE du trajet (recalée quand elle existe), jamais les relevés
+        // eux-mêmes : creux, ils couperaient les virages (cf. rejeu de trajet, 2026-09-08).
+        const ligne = this.timeline()?.tripLines.find((l) => l.tripId === tripId);
+        if (!src || !ligne || ligne.points.length < 2 || points.length === 0) return;
+        src.setData(segmentsColores(pointsColores(ligne.points, points)));
       });
   }
 

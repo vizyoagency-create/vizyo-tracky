@@ -241,6 +241,8 @@ describe('TripsController — le paramètre de la requête atteint vraiment le s
       { dailySummary, periodCharts } as never,
       { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never,
       {} as never,
+      // Recalage à la demande : hors sujet ici, mais le constructeur l'exige.
+      {} as never,
     );
     return { ctrl, dailySummary, periodCharts };
   }

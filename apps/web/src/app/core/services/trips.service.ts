@@ -62,4 +62,12 @@ export class TripsApiService {
   updateNote(id: string, notes: string | null): Observable<TripDto> {
     return this.http.patch<TripDto>(`/api/trips/${id}/notes`, { notes });
   }
+
+  /**
+   * Recale le tracé d'un trajet sur les routes, à la demande. Idempotent : un trajet déjà
+   * recalé rend ce qui existe. `enCours` vrai = un autre rejeu l'a demandé, rien de neuf.
+   */
+  mapMatch(id: string): Observable<{ polylineMatched: string | null; enCours: boolean }> {
+    return this.http.post<{ polylineMatched: string | null; enCours: boolean }>(`/api/trips/${id}/map-matching`, {});
+  }
 }

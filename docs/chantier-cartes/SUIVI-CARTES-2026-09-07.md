@@ -292,6 +292,31 @@ Recette de production du 08/09 (00:30-01:20), session du propriétaire, deux son
 aurait jugé le paquet d'avant le correctif. Toujours le retirer avant de juger une correction
 d'interface (piège 0.6 du dossier de reprise).
 
+- [ ] **R3 — « Les courbes sont mauvaises » (propriétaire, 08/09 01:55, capture du rejeu
+      GA-490-SJ 21:23 UTC, 9,1 km, pointe 106)** : le tracé coloré est fait de droites entre
+      quelques points, une diagonale orange traverse Les Izards.
+      **Cause 1, ma régression (B2a/B2b/B2c)** : le tracé coloré prenait sa géométrie dans les
+      POSITIONS stockées, alors que le trait vert d'avant prenait la polyligne recalée quand
+      elle existe. Mesuré en base : ce trajet a 29 positions pour 9,1 km, une trame toutes
+      les 24 à 99 s à plus de 90 km/h, **2 558 m sans point** entre le péage et Borderouge —
+      le serveur avait tout inséré (« mouvement actif »), il n'y avait rien de plus.
+      **Cause 2, préexistante** : le recalage OSRM échouait pour tout trajet de plus de dix
+      points. Mesuré contre `router.project-osrm.org` avec les 29 points réels : **10
+      coordonnées passent, 11 sont refusées (HTTP 400)** ; rayon 40 m passe, 50 m refusé ;
+      chaque lot de 5 à 10 points se recale à 90 % de confiance, 154 points de route pour
+      9 points bruts. Le code envoyait des lots de 100. En base sur huit jours : 100 % de
+      recalés sous 10 points, 39 % entre 10 et 29, **0 % au-delà de 30**.
+      **Correctif** : (a) `vitessesSurTrace` (paquet partagé) prête à chaque sommet de la
+      polyligne la vitesse du relevé le plus proche, en avançant ; rejeu, rejeu de période et
+      page publique colorent la POLYLIGNE (recalée, sinon brute), plus jamais les relevés ;
+      (b) recalage par lots de 10 qui se chevauchent d'un point, pause de 150 ms, un lot
+      refusé garde ses points bruts sans perdre le trajet ; (c) recalage **à la demande** :
+      `POST /api/trips/:id/map-matching` quand un rejeu s'ouvre sur un trajet sans tracé
+      recalé, résultat rangé pour les rejeux suivants ; le tracé brut s'affiche sans attendre,
+      la route vient le remplacer sous le véhicule sans toucher au curseur.
+      Tests : 5 (partagé), 6 (lots, 2 rouges avant), 6 (à la demande), 24 (public, 2 rouges
+      avant), +1 web. **Recette production à faire sur ce trajet précis.**
+
 Écartés, préexistants et hors chantier :
 - « Toutes les sociétés » élidé dans la puce du sélecteur à 375 et 768 px (`w 96 / sw 101`) :
   élision volontaire d'un libellé long dans la barre du haut.

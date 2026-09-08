@@ -1,5 +1,5 @@
 import { BANDES_VITESSE, couleurVitesse } from './couleurs-carte';
-import { pointsDepuisHistorique, segmentsColores, type PointVitesse } from './segments-vitesse';
+import { pointsColores, pointsDepuisHistorique, segmentsColores, type PointVitesse } from './segments-vitesse';
 
 /**
  * Le tracé coloré par la vitesse — le même générateur pour le rejeu de trajet, le rejeu de
@@ -64,6 +64,23 @@ describe('segmentsColores', () => {
 
     expect(pts.map((p) => [p.lng, p.lat])).toEqual([[1.43, 43.6], [1.431, 43.601], [1.432, 43.602]]);
     expect(pts.map((p) => p.speedKmh)).toEqual([20, 30, Number.NaN]);
+  });
+
+  /**
+   * ⚠️ On colore le TRACÉ (recalé sur la route, dense), pas les relevés (creux) : un tracé de
+   * six sommets entre deux relevés doit rester un tracé de six sommets, coloré par les relevés.
+   */
+  it('pointsColores garde la géométrie du tracé et lui prête les vitesses des relevés', () => {
+    const trace: Array<[number, number]> = [[1.400, 43.6], [1.401, 43.6], [1.402, 43.6], [1.403, 43.6], [1.404, 43.6], [1.405, 43.6]];
+    const releves = [{ lat: 43.6, lng: 1.400, speedKmh: 30 }, { lat: 43.6, lng: 1.405, speedKmh: 110 }];
+
+    const pts = pointsColores(trace, releves);
+
+    expect(pts.map((p) => [p.lng, p.lat])).toEqual(trace);
+    expect(pts.map((p) => p.speedKmh)).toEqual([30, 30, 30, 110, 110, 110]);
+    // Et ces points colorés se découpent en deux tronçons : vert puis rouge, sans trou.
+    const fc = segmentsColores(pts);
+    expect(fc.features.map((f) => f.properties.color)).toEqual([vert, rouge]);
   });
 
   it('suit exactement couleurVitesse — un seul endroit décide de la couleur', () => {

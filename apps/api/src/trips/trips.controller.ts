@@ -9,6 +9,7 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { ListTripsDto } from './dto/list-trips.dto';
 import { RecomputeTripsDto } from './dto/recompute-trips.dto';
 import { UpdateTripNoteDto } from './dto/update-trip-note.dto';
+import { TripMapMatchingService } from './trip-map-matching.service';
 import { TripsService } from './trips.service';
 
 @Controller('trips')
@@ -18,6 +19,7 @@ export class TripsController {
     private readonly trips: TripsService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly drivers: DriversService,
+    private readonly recalage: TripMapMatchingService,
   ) {}
 
   private async rb(req: AuthenticatedRequest) {
@@ -86,6 +88,17 @@ export class TripsController {
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     // rb() inclut accessibleVehicleIds pour appliquer l'acces granulaire (groupes).
     return this.trips.findOne(id, await this.rb(req));
+  }
+
+  /**
+   * Recale le tracé d'un trajet sur les routes, à la demande — quand un rejeu s'ouvre sur un
+   * trajet qui n'en a pas (cf. `TripMapMatchingService`). Idempotent : un trajet déjà recalé
+   * rend ce qui existe sans rien demander à OSRM. Même périmètre que la lecture du trajet.
+   */
+  @Post(':id/map-matching')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  async mapMatching(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.recalage.recaler(id, await this.rb(req));
   }
 
   @Post('recompute')

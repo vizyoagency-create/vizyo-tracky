@@ -61,3 +61,4 @@ export * from './utils/lien-trajet';
 export * from './utils/plaque';
 export * from './utils/live-motion';
 export * from './utils/tracker-liveness';
+export * from './utils/vitesse-sur-trace';

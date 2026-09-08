@@ -23,7 +23,8 @@ import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
 import { MapService } from '../../core/services/map.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { PositionsApiService } from '../../core/services/positions.service';
-import { pointsDepuisHistorique, segmentsColores } from '../../shared/utils/segments-vitesse';
+import { TripsApiService } from '../../core/services/trips.service';
+import { pointsColores, pointsDepuisHistorique, segmentsColores, type PointVitesse } from '../../shared/utils/segments-vitesse';
 import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 import {
   attachVehicleMarker,
@@ -854,8 +855,13 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private readonly mapSvc = inject(MapService);
   private readonly preferences = inject(PreferencesService);
   private readonly positionsApi = inject(PositionsApiService);
+  private readonly tripsApi = inject(TripsApiService);
   /** La demande d'historique en cours pour colorer le tracé — annulée avec le trajet. */
   private traceSub: Subscription | null = null;
+  /** Le recalage à la demande en cours — annulé avec le trajet. */
+  private recalageSub: Subscription | null = null;
+  /** Les relevés GPS du trajet (positions avec vitesse), qui colorent la polyligne. */
+  private releves: PointVitesse[] = [];
 
   protected readonly playing = signal(false);
 
@@ -1414,26 +1420,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       }
     }
 
-    // Garde-fou cote frontend : filtre points invalides et sauts > 5 km.
-    const cleaned: Array<{ lat: number; lng: number }> = [];
-    for (const p of parsed) {
-      if (!isValidLatLng(p.lat, p.lng)) continue;
-      const last = cleaned[cleaned.length - 1];
-      if (last && haversineMeters(last.lat, last.lng, p.lat, p.lng) > 5000) continue;
-      cleaned.push(p);
-    }
-
-    this.points = cleaned.map((p) => [p.lng, p.lat] as [number, number]);
-    // La distance cumulée est le pont entre le TEMPS (qui pilote la lecture) et la
-    // POLYLIGNE (qui n'est pas régulière) : on avance de tant de mètres, pas de tant
-    // de points.
-    this.cumuls = [0];
-    for (let i = 1; i < this.points.length; i++) {
-      const a = this.points[i - 1]!;
-      const b = this.points[i]!;
-      this.cumuls.push((this.cumuls[i - 1] ?? 0) + haversineMeters(a[1], a[0], b[1], b[0]));
-    }
-    this.distanceTotale = this.cumuls[this.cumuls.length - 1] ?? 0;
+    this.poserGeometrie(parsed);
     this.floatFraction = 0;
     this.curseur.set(0);
 
@@ -1481,6 +1468,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
         },
       });
       this.chargerTraceColoree(trip);
+      this.recalerSiBesoin(trip, usedMatched);
 
       // Auto-fit sur l'ensemble du trajet.
       const points = this.points.map(([lng, lat]) => ({ lat, lng }));
@@ -1526,24 +1514,57 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
+   * ── LA GÉOMÉTRIE DU REJEU ─────────────────────────────────────────────────────────────
+   *
+   * Pose `points`, `cumuls` et `distanceTotale` depuis une polyligne `{lat, lng}[]`, avec le
+   * garde-fou du front (points invalides et sauts de plus de 5 km écartés). Appelée à
+   * l'ouverture, et de nouveau quand le tracé recalé arrive (`recalerSiBesoin`) — sans
+   * toucher au curseur : c'est la route sous le véhicule qui change, pas l'instant lu.
+   */
+  private poserGeometrie(parsed: Array<{ lat: number; lng: number }>): void {
+    const cleaned: Array<{ lat: number; lng: number }> = [];
+    for (const p of parsed) {
+      if (!isValidLatLng(p.lat, p.lng)) continue;
+      const last = cleaned[cleaned.length - 1];
+      if (last && haversineMeters(last.lat, last.lng, p.lat, p.lng) > 5000) continue;
+      cleaned.push(p);
+    }
+
+    this.points = cleaned.map((p) => [p.lng, p.lat] as [number, number]);
+    // La distance cumulée est le pont entre le TEMPS (qui pilote la lecture) et la
+    // POLYLIGNE (qui n'est pas régulière) : on avance de tant de mètres, pas de tant
+    // de points.
+    this.cumuls = [0];
+    for (let i = 1; i < this.points.length; i++) {
+      const a = this.points[i - 1]!;
+      const b = this.points[i]!;
+      this.cumuls.push((this.cumuls[i - 1] ?? 0) + haversineMeters(a[1], a[0], b[1], b[0]));
+    }
+    this.distanceTotale = this.cumuls[this.cumuls.length - 1] ?? 0;
+  }
+
+  /**
    * ── LE TRACÉ COLORÉ PAR LA VITESSE ────────────────────────────────────────────────────
    *
-   * La polyligne du trajet (`trip.polyline`, simplifiée) ne porte AUCUNE vitesse — vérifié
-   * en base de production le 2026-09-07. Les vitesses sont dans les positions : on demande
-   * l'historique fin du trajet (une trame par relevé, 5 000 au plus), on en fait des
-   * tronçons par bande (`segmentsColores`), et on les pose à la place du trait vert.
+   * La polyligne du trajet ne porte AUCUNE vitesse — vérifié en base de production le
+   * 2026-09-07. Les vitesses sont dans les positions : on demande l'historique fin du trajet
+   * (une trame par relevé, 5 000 au plus) et on les garde comme RELEVÉS.
+   *
+   * ⚠️ ON COLORE LA POLYLIGNE, PAS LES RELEVÉS. Première version (07/09) : le tracé coloré
+   * était fait des positions elles-mêmes — et elles sont creuses : une trame toutes les 20 à
+   * 100 s à 100 km/h, jusqu'à 2,5 km sans rien (trajet GA-490-SJ du 07/09, 29 positions pour
+   * 9,1 km). Le tracé coupait les virages là où le trait vert, lui, suivait la polyligne
+   * recalée. Désormais chaque sommet de la polyligne reçoit la vitesse du relevé le plus
+   * proche (`pointsColores`), et la géométrie dessinée est celle qui anime le véhicule.
    *
    * Tant que la réponse n'est pas là — ou si elle ne vient pas (droit `vehicles_view`
    * absent, boîtier inconnu, réseau) — le trait reste vert uni : un rejeu sans couleur vaut
    * mieux qu'un rejeu sans tracé, et rien n'est dit de faux.
-   *
-   * ⚠️ La géométrie ANIMÉE reste la polyligne : curseur, cumuls et caméra n'en changent pas.
-   * Positions brutes et polyligne (Douglas-Peucker à 5 m) viennent des mêmes trames ; à
-   * l'échelle d'un rejeu, l'écart ne se voit pas.
    */
   private chargerTraceColoree(trip: TripDto): void {
     this.traceSub?.unsubscribe();
     this.traceSub = null;
+    this.releves = [];
     if (!trip.trackerId || !trip.endedAt) return;
     this.traceSub = this.positionsApi
       .history({ trackerId: trip.trackerId, from: trip.startedAt, to: trip.endedAt, detail: 'fine' })
@@ -1551,13 +1572,50 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
         next: (res) => {
           // Le trajet a pu changer pendant la requête : on ne colore que celui qu'on regarde.
           if (this.trip()?.id !== trip.id) return;
-          const src = this.map?.getSource('replay-line') as GeoJSONSource | undefined;
-          const points = pointsDepuisHistorique(res.points);
-          if (!src || points.length < 2) return;
-          src.setData(segmentsColores(points));
+          this.releves = pointsDepuisHistorique(res.points);
+          this.redessinerTrace();
         },
         error: () => { /* le trait vert uni reste — dit au-dessus */ },
       });
+  }
+
+  /** Redessine le tracé : coloré par la vitesse si des relevés sont là, vert uni sinon. */
+  private redessinerTrace(): void {
+    const src = this.map?.getSource('replay-line') as GeoJSONSource | undefined;
+    if (!src || this.points.length < 2) return;
+    if (this.releves.length === 0) {
+      src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: this.points }, properties: {} });
+      return;
+    }
+    src.setData(segmentsColores(pointsColores(this.points, this.releves)));
+  }
+
+  /**
+   * ── LE RECALAGE SUR LES ROUTES, À LA DEMANDE ──────────────────────────────────────────
+   *
+   * 89 % des trajets en base n'ont pas de tracé recalé : le recalage à la clôture échouait
+   * pour tout trajet de plus de dix points (limite réelle du service public OSRM, mesurée le
+   * 2026-09-08). Un trajet qu'on rejoue sans tracé recalé le demande ici, une fois ; l'API le
+   * range, et les rejeux suivants l'ont d'emblée. Le tracé brut s'affiche sans attendre, puis
+   * la route vient le remplacer sous le véhicule — le curseur, lui, ne bouge pas.
+   */
+  private recalerSiBesoin(trip: TripDto, dejaRecale: boolean): void {
+    this.recalageSub?.unsubscribe();
+    this.recalageSub = null;
+    if (dejaRecale || !trip.polyline) return;
+    this.recalageSub = this.tripsApi.mapMatch(trip.id).subscribe({
+      next: (r) => {
+        if (this.trip()?.id !== trip.id || !r.polylineMatched || !this.map) return;
+        let parsed: unknown;
+        try { parsed = JSON.parse(r.polylineMatched); } catch { return; }
+        if (!Array.isArray(parsed) || parsed.length < 2) return;
+        this.poserGeometrie(parsed as Array<{ lat: number; lng: number }>);
+        this.redessinerTrace();
+        // Le véhicule est reposé sur la nouvelle route, à l'instant qu'on lisait.
+        this.appliquer(this.floatFraction);
+      },
+      error: () => { /* le tracé brut reste : rien n'est dit de faux, juste moins précis */ },
+    });
   }
 
   /** Ajoute les couches d'analyse (arrêts, pointes, excès) — une fois la carte chargée. */
@@ -1847,6 +1905,9 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     this.playing.set(false);
     this.traceSub?.unsubscribe();
     this.traceSub = null;
+    this.recalageSub?.unsubscribe();
+    this.recalageSub = null;
+    this.releves = [];
     this.annulerMinuteries();
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     if (this.resizeObserver) {

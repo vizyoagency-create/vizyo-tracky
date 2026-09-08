@@ -16,6 +16,7 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { genererTokenPartage, tronquerAdresse } from '../depot/share-token';
 import { vitesseMoyenneTrajet } from '../common/vitesse-moyenne';
+import { vitessesSurTrace } from '@vizyo/tracky-shared';
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════════════════
@@ -247,6 +248,7 @@ export class TripShareService {
           select: {
             startedAt: true, endedAt: true, durationSeconds: true, movingSeconds: true,
             distanceKm: true, maxSpeed: true, trackerId: true,
+            polyline: true, polylineMatched: true,
             vehicle: { select: { plate: true, privacyModeEnabled: true } },
           },
         },
@@ -294,7 +296,7 @@ export class TripShareService {
         maxSpeedKmh,
       })),
       maxSpeedKmh,
-      ...(await this.trace(t.trackerId, t.startedAt, t.endedAt)),
+      ...(await this.trace(t)),
       expiresAt: lien.expiresAt.toISOString(),
     };
   }
@@ -304,8 +306,14 @@ export class TripShareService {
   /**
    * ── LE TRACÉ ───────────────────────────────────────────────────────────────────────────
    *
-   * Les positions du boîtier entre le départ et l'arrivée. Le trajet ne porte pas son tracé :
-   * il est reconstitué depuis `Position`, comme le fait le replay de l'application.
+   * LA GÉOMÉTRIE d'abord, dans cet ordre : le tracé recalé sur les routes (OSRM), sinon la
+   * polyligne du trajet, sinon les positions elles-mêmes. Constaté en production le 2026-09-08 :
+   * les positions stockées sont creuses — le boîtier émet toutes les 20 à 100 s à 100 km/h,
+   * jusqu'à 2,5 km sans rien — et les tracer coupe les virages. Le tracé recalé, lui, suit la
+   * route ; il est demandé au premier rejeu du trajet dans l'application (`TripMapMatchingService`).
+   *
+   * LES VITESSES ensuite : chaque sommet du tracé reçoit celle du relevé GPS le plus proche
+   * (`vitessesSurTrace`, partagée avec le rejeu — les deux surfaces se colorent pareil).
    *
    * ⚠️ PLAFONNÉ ET DÉCIMÉ. Un trajet de six heures peut porter plusieurs milliers de points ;
    * les servir tous sur une route PUBLIQUE et sans authentification offrirait à qui trouve un
@@ -316,46 +324,44 @@ export class TripShareService {
    * point à l'autre bout du département tirerait une ligne droite en travers de la carte, et
    * le destinataire n'a personne à qui demander si c'est normal.
    *
-   * ⚠️ LA VITESSE SUIT CHAQUE POINT, AU MÊME INDEX. Le tracé est coloré par bande de vitesse
-   * comme le rejeu de l'application ; les deux listes sont décimées du même pas, par la même
-   * boucle — une vitesse décalée d'un index peindrait l'autoroute en vert et la ville en
-   * rouge. Entière : un destinataire n'a que faire de 88,6 km/h.
+   * ⚠️ LA VITESSE SUIT CHAQUE POINT, AU MÊME INDEX. Les deux listes sont décimées du même pas,
+   * par la même boucle — une vitesse décalée d'un index peindrait l'autoroute en vert et la
+   * ville en rouge. Entière : un destinataire n'a que faire de 88,6 km/h.
    */
-  private async trace(
-    trackerId: string | null,
-    debut: Date,
-    fin: Date | null,
-  ): Promise<{ path: [number, number][]; speedsKmh: number[] }> {
-    if (!trackerId) return { path: [], speedsKmh: [] };
-    const positions = await this.prisma.position.findMany({
-      where: {
-        trackerId,
-        valid: true,
-        timestamp: { gte: debut, ...(fin ? { lte: fin } : {}) },
-      },
-      orderBy: { timestamp: 'asc' },
-      select: { lat: true, lng: true, speedKmh: true },
-      take: MAX_POINTS_LUS,
-    });
+  private async trace(t: {
+    trackerId: string | null;
+    startedAt: Date;
+    endedAt: Date | null;
+    polyline?: string | null;
+    polylineMatched?: string | null;
+  }): Promise<{ path: [number, number][]; speedsKmh: number[] }> {
+    const releves = t.trackerId
+      ? await this.prisma.position.findMany({
+          where: {
+            trackerId: t.trackerId,
+            valid: true,
+            timestamp: { gte: t.startedAt, ...(t.endedAt ? { lte: t.endedAt } : {}) },
+          },
+          orderBy: { timestamp: 'asc' },
+          select: { lat: true, lng: true, speedKmh: true },
+          take: MAX_POINTS_LUS,
+        })
+      : [];
 
-    const pas = Math.max(1, Math.ceil(positions.length / MAX_POINTS_SERVIS));
+    const geometrie = lirePolyligne(t.polylineMatched) ?? lirePolyligne(t.polyline);
+    if (geometrie) {
+      return decimer(geometrie, vitessesSurTrace(geometrie, releves).map(vitesseEntiere));
+    }
+
+    // Sans polyligne : les positions elles-mêmes, comme avant.
     const path: [number, number][] = [];
     const speedsKmh: number[] = [];
-    const servir = (p: { lat: number; lng: number; speedKmh: number | null }): void => {
+    for (const p of releves) {
+      if (!Number.isFinite(p.lng) || !Number.isFinite(p.lat)) continue;
       path.push([p.lng, p.lat]);
-      speedsKmh.push(Number.isFinite(p.speedKmh) ? Math.max(0, Math.round(p.speedKmh as number)) : 0);
-    };
-    for (let i = 0; i < positions.length; i += pas) {
-      const p = positions[i]!;
-      if (Number.isFinite(p.lng) && Number.isFinite(p.lat)) servir(p);
+      speedsKmh.push(vitesseEntiere(p.speedKmh));
     }
-    // Le DERNIER point est toujours servi : sans lui, le tracé s'arrête avant l'arrivée, ce
-    // qui se voit — et fait douter du reste.
-    const dernier = positions[positions.length - 1];
-    if (dernier && (path.length === 0 || path[path.length - 1]![0] !== dernier.lng || path[path.length - 1]![1] !== dernier.lat)) {
-      servir(dernier);
-    }
-    return { path, speedsKmh };
+    return decimer(path, speedsKmh);
   }
 
   /**
@@ -447,4 +453,48 @@ export class TripShareService {
       this.logger.warn(`suivi d'ouverture du partage ${lienId} : ${(e as Error)?.message ?? e}`);
     }
   }
+}
+
+// ═══ Aides pures du tracé ══════════════════════════════════════════════════════════════════
+
+/** Une vitesse servie au destinataire : entière, jamais négative, 0 quand elle manque. */
+function vitesseEntiere(v: number | null | undefined): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0;
+}
+
+/** La polyligne stockée (`{lat, lng}[]` en JSON) en coordonnées `[lng, lat]` ; null si elle ne fait pas un tracé. */
+function lirePolyligne(json: string | null | undefined): [number, number][] | null {
+  if (!json) return null;
+  try {
+    const brut: unknown = JSON.parse(json);
+    if (!Array.isArray(brut)) return null;
+    const points: [number, number][] = [];
+    for (const p of brut as Array<{ lat?: unknown; lng?: unknown }>) {
+      if (p && Number.isFinite(p.lat) && Number.isFinite(p.lng)) points.push([p.lng as number, p.lat as number]);
+    }
+    return points.length >= 2 ? points : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Décime les deux listes DU MÊME PAS, dernier point toujours servi : sans lui, le tracé
+ * s'arrête avant l'arrivée, ce qui se voit — et fait douter du reste.
+ */
+function decimer(path: [number, number][], speedsKmh: number[]): { path: [number, number][]; speedsKmh: number[] } {
+  if (path.length <= MAX_POINTS_SERVIS) return { path, speedsKmh };
+  const pas = Math.ceil(path.length / MAX_POINTS_SERVIS);
+  const outPath: [number, number][] = [];
+  const outSpeeds: number[] = [];
+  for (let i = 0; i < path.length; i += pas) {
+    outPath.push(path[i]!);
+    outSpeeds.push(speedsKmh[i] ?? 0);
+  }
+  const dernier = path.length - 1;
+  if (dernier % pas !== 0) {
+    outPath.push(path[dernier]!);
+    outSpeeds.push(speedsKmh[dernier] ?? 0);
+  }
+  return { path: outPath, speedsKmh: outSpeeds };
 }

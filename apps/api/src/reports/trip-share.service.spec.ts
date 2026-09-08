@@ -275,6 +275,46 @@ describe('Partage de trajet — la consultation publique', () => {
   });
 
   /**
+   * ── LA GÉOMÉTRIE VIENT DE LA POLYLIGNE RECALÉE, LES VITESSES DES RELEVÉS ────────────────
+   *
+   * Constaté en production le 2026-09-08 : les positions stockées sont creuses (une trame
+   * toutes les 20 à 100 s à 100 km/h, jusqu'à 2,5 km sans rien). Tracer les positions coupe
+   * les virages. Quand le trajet porte un tracé recalé sur les routes, c'est lui qu'on sert,
+   * et chaque sommet reçoit la vitesse du relevé le plus proche.
+   */
+  it('🔴 le tracé public suit la polyligne recalée quand elle existe, avec les vitesses des relevés', async () => {
+    const recale = [
+      { lat: 43.600, lng: 1.400 }, { lat: 43.601, lng: 1.401 }, { lat: 43.602, lng: 1.402 }, { lat: 43.603, lng: 1.403 },
+    ];
+    const { svc, prisma } = service({
+      lien: lienVivant({ trip: { ...lienVivant().trip, polyline: JSON.stringify(recale.slice(0, 2)), polylineMatched: JSON.stringify(recale) } }),
+    });
+    // Deux relevés seulement, aux extrémités : 20 km/h au départ, 80 à l'arrivée.
+    prisma.position.findMany.mockResolvedValue([
+      { lat: 43.600, lng: 1.400, speedKmh: 20 },
+      { lat: 43.603, lng: 1.403, speedKmh: 80 },
+    ]);
+
+    const r = await svc.consulterPublic('t');
+
+    expect(r.path).toEqual([[1.400, 43.600], [1.401, 43.601], [1.402, 43.602], [1.403, 43.603]]);
+    expect(r.speedsKmh).toEqual([20, 20, 80, 80]);
+  });
+
+  it('sans tracé recalé, la polyligne brute sert de géométrie ; sans polyligne, les positions', async () => {
+    const brute = [{ lat: 43.600, lng: 1.400 }, { lat: 43.605, lng: 1.405 }];
+    const { svc, prisma } = service({
+      lien: lienVivant({ trip: { ...lienVivant().trip, polyline: JSON.stringify(brute), polylineMatched: null } }),
+    });
+    prisma.position.findMany.mockResolvedValue([{ lat: 43.600, lng: 1.400, speedKmh: 33 }]);
+
+    const r = await svc.consulterPublic('t');
+
+    expect(r.path).toEqual([[1.400, 43.600], [1.405, 43.605]]);
+    expect(r.speedsKmh).toEqual([33, 33]);
+  });
+
+  /**
    * ⚠️ LA DÉCIMATION DOIT DÉCIMER LES DEUX LISTES DU MÊME PAS. Une vitesse décalée d'un
    * index peindrait l'autoroute en vert et la ville en rouge — un tracé faux, avec l'air
    * d'être précis.

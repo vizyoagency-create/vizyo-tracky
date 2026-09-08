@@ -1,4 +1,4 @@
-import { haversineMeters, isValidLatLng } from '@vizyo/tracky-shared';
+import { haversineMeters, isValidLatLng, vitessesSurTrace, type ReleveVitesse } from '@vizyo/tracky-shared';
 import { couleurVitesse } from './couleurs-carte';
 
 /**
@@ -77,6 +77,24 @@ export function segmentsColores(points: readonly PointVitesse[]): SegmentsColore
 
 function troncon(coordinates: [number, number][], color: string): SegmentColore {
   return { type: 'Feature', geometry: { type: 'LineString', coordinates }, properties: { color } };
+}
+
+/**
+ * Le tracé D'UN TRAJET (polyligne recalée sur les routes, ou brute) avec, à chaque sommet, la
+ * vitesse du relevé GPS le plus proche.
+ *
+ * ⚠️ C'est le TRACÉ qu'on colore, jamais les relevés eux-mêmes. Constaté en production le
+ * 2026-09-08 : les positions stockées sont creuses (une trame toutes les 20 à 100 s à
+ * 100 km/h, jusqu'à 2,5 km sans rien) — les dessiner coupe les virages, alors que la
+ * polyligne recalée suit la route. Le mariage des deux vit dans `vitessesSurTrace`, partagée
+ * avec l'API : la page publique et le rejeu se colorent pareil.
+ */
+export function pointsColores(
+  trace: ReadonlyArray<readonly [number, number]>,
+  releves: ReadonlyArray<ReleveVitesse>,
+): PointVitesse[] {
+  const vitesses = vitessesSurTrace(trace, releves);
+  return trace.map(([lng, lat], i) => ({ lng, lat, speedKmh: vitesses[i] ?? Number.NaN }));
 }
 
 /** Une trame telle que l'historique de positions la sert (`/api/positions/history`, fin). */
