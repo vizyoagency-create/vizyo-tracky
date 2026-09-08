@@ -27,6 +27,13 @@ export interface MapStyleDef {
 /**
  * Catalog des fonds de carte disponibles dans Tracky V1.4.
  * Tous gratuits, sans cle API. Chaque entree a une URL raster compatible MapLibre.
+ *
+ * ⚠️ PLUS AUCUNE TUILE CARTO. Mesuré en production le 2026-09-08 : « Plan clair », « Plan
+ * sombre » et les libellés de l'hybride venaient de basemaps.cartocdn.com, dont chaque tuile
+ * porte désormais le filigrane « API KEY REQUIRED » en travers de la carte. Les fonds gris
+ * d'Esri (Light / Dark Gray Canvas) rendent le même service — un plan neutre qui laisse les
+ * véhicules au premier plan — sans clé, jusqu'au zoom 16 ; leur calque de référence apporte
+ * les noms de villes et de rues. Vérifié tuile par tuile avant le remplacement.
  */
 @Injectable({ providedIn: 'root' })
 export class MapStyleService {
@@ -41,17 +48,23 @@ export class MapStyleService {
     {
       id: 'dark',
       label: 'Plan sombre',
-      tilesUrl: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
-      attribution: '&copy; OpenStreetMap, &copy; CARTO',
-      maxZoom: 20,
+      tilesUrl:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      overlayUrl:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Tiles &copy; Esri',
+      maxZoom: 16,
       darkUI: true,
     },
     {
       id: 'light',
       label: 'Plan clair',
-      tilesUrl: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png',
-      attribution: '&copy; OpenStreetMap, &copy; CARTO',
-      maxZoom: 20,
+      tilesUrl:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      overlayUrl:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Tiles &copy; Esri',
+      maxZoom: 16,
     },
     {
       id: 'satellite',
@@ -67,8 +80,9 @@ export class MapStyleService {
       label: 'Hybride',
       tilesUrl:
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      overlayUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}@2x.png',
-      attribution: 'Tiles &copy; Esri, Labels &copy; CARTO',
+      overlayUrl:
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Tiles &copy; Esri',
       maxZoom: 19,
       darkUI: true,
     },
