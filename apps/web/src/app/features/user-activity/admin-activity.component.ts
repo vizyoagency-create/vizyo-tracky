@@ -46,6 +46,7 @@ import {
   Users,
   CalendarClock,
 } from 'lucide-angular';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { UsersApiService } from '../../core/services/users.service';
 import { relativeTime } from '../../shared/utils/relative-time';
@@ -1075,10 +1076,11 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
           this.history.set(f);
           this.erreurSource.set(null);
         },
-        error: (e: { error?: { message?: string }; message?: string }) =>
-          this.erreurSource.set(
-            e?.error?.message ?? e?.message ?? "Cette source n'a pas répondu.",
-          ),
+        // `apiErrorMessage` et pas `e.message` : le backend enveloppe ses erreurs dans
+        // `{ error: { message } }`, et lire à plat rendait « Http failure response for … : 503 OK »
+        // — une phrase technique à la place du motif, qui est justement ce qu'on veut lire ici.
+        error: (e: unknown) =>
+          this.erreurSource.set(apiErrorMessage(e, "Cette source n'a pas répondu.")),
       });
     this.loadFilterUsers();
   }
