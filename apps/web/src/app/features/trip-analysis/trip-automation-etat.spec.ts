@@ -18,6 +18,12 @@ describe('Automatisation des trajets — état d\'un passage', () => {
     expect(e?.resume).toContain('passage suivant');
   });
 
+  it('🔴 un passage interrompu sans trajet listé ne dit pas « rien de nouveau à traiter » (vu en production le 08/09)', () => {
+    expect(etatPassage('interrupted')?.vide).toContain("n'est pas allé jusqu'au bout");
+    expect(etatPassage('running')?.vide).toContain('en cours');
+    expect(etatPassage('failed')?.vide).toContain('erreur');
+  });
+
   it('« en cours » et « échec » ont chacun leur mot', () => {
     expect(etatPassage('running')?.libelle).toBe('En cours');
     expect(etatPassage('failed')?.libelle).toBe('Échec');

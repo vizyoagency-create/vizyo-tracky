@@ -19,18 +19,32 @@ import { apiErrorMessage } from '../../core/error/api-error';
  * surtout « interrompu », qui est exactement ce que personne ne voyait avant.
  * Exporté pour être testé sans monter l'écran.
  */
-export function etatPassage(status: TripAutomationRunStatus | undefined): { libelle: string; classe: string; resume: string } | null {
+export function etatPassage(
+  status: TripAutomationRunStatus | undefined,
+): { libelle: string; classe: string; resume: string; vide: string } | null {
   switch (status) {
     case 'running':
-      return { libelle: 'En cours', classe: 'en-cours', resume: 'passage en cours…' };
+      return {
+        libelle: 'En cours',
+        classe: 'en-cours',
+        resume: 'passage en cours…',
+        vide: 'Passage en cours — le détail des trajets arrive à la clôture.',
+      };
     case 'interrupted':
       return {
         libelle: 'Interrompu',
         classe: 'interrompu',
         resume: "commencé, jamais terminé — l'API a redémarré pendant le passage ; la suite au passage suivant",
+        // « Rien de nouveau à traiter » serait un mensonge : il n'est pas allé jusqu'aux trajets.
+        vide: "Le passage n'est pas allé jusqu'au bout : rien à lister ici, la suite au passage suivant.",
       };
     case 'failed':
-      return { libelle: 'Échec', classe: 'echec', resume: 'arrêté sur une erreur — le détail est au centre d\'alerte' };
+      return {
+        libelle: 'Échec',
+        classe: 'echec',
+        resume: "arrêté sur une erreur — le détail est au centre d'alerte",
+        vide: "Arrêté sur une erreur avant d'avoir listé des trajets — le détail est au centre d'alerte.",
+      };
     default:
       return null;
   }
@@ -275,7 +289,7 @@ export function etatPassage(status: TripAutomationRunStatus | undefined): { libe
                     <div class="ta-run-body">
                       <div class="ta-run-meta">{{ r.fleets }} flotte(s) · {{ r.vehicles }} véhicule(s) · {{ r.finishedAt ? dur(r.durationMs) : 'durée inconnue' }}</div>
                       @if (r.items.length === 0) {
-                        <p class="ta-empty sm">Rien de nouveau à traiter sur ce passage.</p>
+                        <p class="ta-empty sm">{{ etat(r)?.vide ?? 'Rien de nouveau à traiter sur ce passage.' }}</p>
                       } @else {
                         <div class="ta-items">
                           @for (it of r.items; track it.tripId) {
