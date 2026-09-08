@@ -82,7 +82,7 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 
 ### Plan
 
-- [ ] A0 — Mesurer le comportement ACTUEL sur le banc local (`ng.getComponent`), sonde `etat()`
+- [x] A0 — Mesurer le comportement ACTUEL sur le banc local (`ng.getComponent`), sonde `etat()`
       avant / pendant / après. Critère : 4 sources présentes et nombre de couches revenu.
 - [x] A0 — Mesuré (journal du 19:35). Les couches reviennent ; les deux trous sont réels.
 - [x] A1 — `reprise-contexte-webgl.ts` + spec : 2 tests rouges sur 4 avant correctif
@@ -394,6 +394,110 @@ a été décidé et fait est en section 9 ; cette liste garde l'état de chaque 
    la distinction tient par la forme. — **TRANCHÉ (§ 9.5)** : la couleur reste (le détail
    d'emblée), et devient une CASE retenue par utilisateur, dans les rejeux et dans Calques ;
    les teintes des bandes, `COULEURS_CARTE.exces` et `.pointe` n'ont pas bougé.
+
+## 10. Reste-à-faire du 08/09 (demandé à 07:30, tout fait)
+
+Après le bilan de 07:05, le propriétaire a demandé de faire les sept points relevés. Chacun a
+suivi les cinq niveaux.
+
+### 10.1 L'alerte répétée sur un trajet aux positions purgées — CORRIGÉ
+
+**Le défaut, mesuré.** Le trajet du 08/07 de HD-597-XY (3,2 km, `recompute`) n'a plus aucune
+position : la plus vieille en base date du 10/07, les siennes sont purgées. Il a pourtant écrit
+**20 lignes d'erreur entre le 07/09 03:45 et le 08/09 06:52**, une par passage horaire, et
+n'allait jamais s'arrêter.
+
+Deux causes qui se combinaient :
+
+1. `TripAnalysisService.analyze()` archivait TOUT échec au centre d'alerte, y compris le refus
+   délibéré « positions introuvables ». Les trois « on n'alerte pas » écrits en commentaire dans
+   l'automatisation étaient donc annulés par la couche du dessous.
+2. Le gel du trajet n'existait que sur le chemin de la PREMIÈRE analyse. Les chemins « rejeu des
+   limites » et « reprise d'historique » le resélectionnaient à chaque passage.
+
+**Fait.** Classe dédiée `PositionsIntrouvablesException` (reste un 422, le client reçoit son
+message) ; `analyze()` ne l'archive plus ; un seul helper `figerSiPositionsIntrouvables()` gèle
+sur les TROIS chemins — `fige-retention` sous l'horizon de rétention, muet, et
+`fige-sans-positions` au-dessus, où l'anomalie est dite UNE fois puisque le gel garantit
+l'unicité. Le gel ne se déclenche plus sur n'importe quel 422 : un geste définitif ne se pose
+pas au doute.
+
+**Contrat changé, assumé** : `retention-refus.spec.ts` affirmait « au-dessus de l'horizon, on
+alerte et on ne gèle rien ». L'intention était juste, la conséquence non — c'est le défaut.
+
+**Rouge d'abord** : `gel-positions-introuvables.spec.ts`, 5 échecs sur 8.
+
+### 10.2 Rattrapage du recalage des anciens tracés — FAIT
+
+Mesuré : **31 trajets sur 31** clôturés depuis le correctif OSRM portent un tracé recalé, contre
+**156 sur 1 217** avant. Le correctif soigne le neuf ; 4 641 trajets d'historique coupaient
+encore les virages, et ne se soignaient qu'à l'ouverture d'un rejeu.
+
+`recalerAnciensTraces()` reprend 15 tracés par passage, en DERNIER et sous la même échéance —
+un tracé plus joli ne vaut jamais une analyse manquante. Réutilise le service du recalage à la
+demande (même verrou, même stockage). `RECALAGE_RATTRAPAGE_PAR_PASSAGE` le règle ou le coupe
+sans déploiement. À ce rythme l'historique se résorbe en une douzaine de jours.
+
+⚠️ **Les refus d'OSRM sont mémorisés** (mémoire du processus, bornée à 500). Sans cela, les
+tracés impossibles auraient occupé les quinze places à chaque passage : le rattrapage aurait
+tourné en rond pour toujours — exactement le défaut du 10.1, dans une autre pièce.
+
+**Rouge d'abord** : `rattrapage-recalage.spec.ts`, 8 tests, méthode inexistante.
+
+### 10.3 La fenêtre de déploiement gardée par le script — FAIT
+
+`deploy/vps/deploy.sh` : lit `trip_automation_runs` et **refuse de partir** si une ligne est
+`running`, en disant depuis quand. `--force` passe outre en annonçant que le passage sera tué ;
+`--avec-demo` enchaîne la démo. Lecture défensive : base injoignable ou table absente, on laisse
+passer — une garde qui bloque parce qu'elle ne sait pas lire serait pire que pas de garde.
+Documenté dans `deploy/vps/README.md`.
+
+### 10.4 `marquerPassagesInterrompus` sûr à plusieurs instances — FAIT
+
+À une instance (le déploiement d'aujourd'hui), le marquage reste immédiat : ce processus est le
+seul à lancer des passages et il vient de naître. Au-delà, seule l'ancienneté tranche — une ligne
+plus vieille que le budget du passage plus dix minutes est morte quel que soit son propriétaire.
+`API_INSTANCES` dit la vérité du déploiement ; absente ou absurde, on suppose une instance, le
+défaut le plus bavard étant le bon défaut pour une vigie.
+
+### 10.5 A0 coché — FAIT
+
+Mesure faite le 07/09 19:35, case oubliée.
+
+### 10.6 La sentinelle « vitesse contredite par la distance » — LA RÈGLE, pas la donnée
+
+**Ce que la production dit** (sept jours) : « mh cars » 170 analyses touchées sur 467 (36 %),
+« cdef31 » 104 sur 533 (20 %), « A2R » 71 sur 215 (33 %). Huit véhicules au moins, dans les trois
+flottes. **Ce n'est donc pas un boîtier à vérifier : c'est le régime de ces boîtiers.**
+
+La donnée est déjà protégée — ces points sont écartés du calcul, c'est le lot V1 et il a raison.
+La règle, elle, criait au-dessus de 10 % : seuil franchi partout, tous les jours, en désignant
+des flottes entières. Une alerte qu'on ne peut pas suivre apprend à ne plus lire les alertes.
+
+**Fait** : la sentinelle ne parle plus que d'un véhicule qui SORT DU LOT — la majorité de ses
+analyses touchées, avec un plancher de cinq, quand ses voisins sont au tiers. Le message le nomme
+avec sa part et rappelle celle de la flotte, pour qu'on puisse juger sur pièces. Si personne ne
+sort du lot, silence.
+
+**Rouge d'abord** : `sentinelles-coherence.spec.ts`, 3 échecs contre l'ancienne règle.
+
+### 10.7 Le rouge 101-140 face au rouge des excès — REGARDÉ, puis tranché
+
+Banc monté aux valeurs réelles (tracé 4 px vert → ambre → rouge → rouge foncé, pastilles cerclées
+de blanc posées dessus), sur fond clair ET sur fond sombre, à l'échelle de la carte puis en zoom.
+
+**La rampe ne bouge pas.** Vert → ambre → rouge est la convention de lecture d'une vitesse : la
+casser coûterait plus de lisibilité qu'elle n'en gagnerait. Les DEUX bandes du milieu
+collisionnent (101-140 = `exces`, 66-100 = `pointe`), donc en repeindre une déplacerait le
+problème. Et toute autre teinte devrait repasser le seuil de contraste de `markerInk` (4,5:1,
+mesuré par `maplibre-markers.spec.ts`).
+
+**Ce que le banc a montré, en revanche** : posée sur un tronçon de sa propre couleur, une
+pastille cerclée de 2 px se lit comme une bosse du trait. À 3 px elle redevient un repère, sur
+les deux fonds. `CERCLAGE_PASTILLE_PX = 3`, appliqué aux trois couches de pastilles du rejeu, et
+la décision est écrite là où on la trouvera — avec son test.
+
+---
 
 ## 9. Décisions tranchées selon les choix clients (08/09, 02:35 → )
 
