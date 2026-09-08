@@ -243,6 +243,11 @@ type Period = '24h' | '7d' | '30d';
               <option value="SCROLL">Défilements</option>
               <option value="SESSION_START">Connexions</option>
               <option value="SESSION_END">Déconnexions</option>
+              <!-- Types déjà collectés, décrits et iconisés, mais qu'aucune option n'atteignait :
+                   ils n'apparaissaient que dans « Tous », impossibles à isoler. -->
+              <option value="SESSION_RESUME">Reprises de session</option>
+              <option value="AWAY">Absences</option>
+              <option value="IDLE">Inactivités</option>
             </select>
           </div>
         </div>
