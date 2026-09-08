@@ -20,6 +20,7 @@ export const TEMPLATE_META: {
   noOpenTracking?: boolean;
 }[] = [
   { id: 'error_rate_alert', label: "Saturation du centre d'alerte", category: 'Supervision', subject: '{n} erreurs en 1 h (dont {n} critiques)', trigger: "Plus de 5 erreurs enregistrées sur l'heure glissante (vérifié toutes les 10 min, 1 e-mail/h max)" },
+  { id: 'critical_error_alert', label: 'Erreur critique', category: 'Supervision', subject: '{n} erreur(s) critique(s) — {source}', trigger: "Une erreur CRITICAL enregistrée sur l'heure glissante, même seule et sous le seuil de saturation (vérifié toutes les 10 min, 1 e-mail/h max)" },
   { id: 'invitation', label: 'Invitation', category: 'Accès', subject: 'Vous êtes invité à rejoindre {flotte}', trigger: 'Un admin invite un membre' },
   { id: 'password_reset', label: 'Réinitialisation MDP', category: 'Sécurité', subject: 'Réinitialisation de votre mot de passe', trigger: 'Demande « mot de passe oublié »', noOpenTracking: true },
   { id: 'device_verification', label: 'Code nouvel appareil', category: 'Sécurité', subject: 'Votre code de connexion : {code}', trigger: 'Connexion depuis un appareil non reconnu (2FA)', noOpenTracking: true },
@@ -65,15 +66,72 @@ export interface EmailLogDto {
   createdAt: Date;
 }
 
+/** Une entrée de la liste de suppression du fournisseur, seule source qui fasse foi. */
+interface SuppressionFournisseur {
+  email: string;
+  /** `bounce` ou `complaint` : un rebond se corrige, une plainte se respecte. */
+  origin: string;
+  date: string;
+}
+
 @Injectable()
 export class EmailAdminService {
   private readonly logger = new Logger(EmailAdminService.name);
+
+  /**
+   * Mémo court de la liste de suppression. `stats()` et `deliverability()` alimentent le MÊME
+   * écran et la demanderaient toutes deux : une minute suffit à n'appeler le fournisseur qu'une
+   * fois par ouverture, sans jamais servir une liste périmée à qui rafraîchit après avoir agi.
+   */
+  private memoSuppressions: { a: number; valeur: SuppressionFournisseur[] } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
   ) {}
+
+  /**
+   * La liste de suppression RÉELLE, celle du fournisseur.
+   *
+   * ⚠️ POURQUOI `EmailLog` NE SUFFIT PAS. Quand Resend a supprimé une adresse, il accepte
+   * l'envoi, rend un identifiant, n'expédie rien et n'émet AUCUN webhook. Notre statut reste
+   * donc `QUEUED` — jamais `BOUNCED`, jamais `COMPLAINED`. Cet écran, qui ne comptait que ces
+   * deux statuts, affichait « 0 en suppression » le 2026-09-08 pendant que Resend en détenait
+   * SEPT, dont l'adresse d'une société cliente sans rapport hebdomadaire depuis quatre mois.
+   * L'information était affichée, et elle était fausse : elle lisait la mauvaise source.
+   *
+   * Best-effort : sur échec, liste vide et l'écran retombe sur ce que nous savons, plutôt que
+   * de refuser de s'afficher.
+   */
+  private async suppressionsFournisseur(): Promise<SuppressionFournisseur[]> {
+    if (this.memoSuppressions && Date.now() - this.memoSuppressions.a < 60_000) {
+      return this.memoSuppressions.valeur;
+    }
+    const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
+    if (!apiKey) return [];
+    try {
+      const res = await fetch('https://api.resend.com/suppressions', {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`Liste de suppression Resend : http ${res.status}`);
+        return [];
+      }
+      const corps = (await res.json()) as {
+        data?: Array<{ email?: string; origin?: string; created_at?: string }>;
+      };
+      const valeur: SuppressionFournisseur[] = (corps.data ?? [])
+        .filter((s): s is { email: string; origin?: string; created_at?: string } => !!s.email)
+        .map((s) => ({ email: s.email, origin: s.origin ?? 'inconnue', date: s.created_at ?? '' }));
+      this.memoSuppressions = { a: Date.now(), valeur };
+      return valeur;
+    } catch (e) {
+      this.logger.warn(`Liste de suppression Resend indisponible : ${String(e)}`);
+      return [];
+    }
+  }
 
   /** KPI + séries pour l'onglet Suivi. */
   async stats(rangeDays = 30) {
@@ -91,9 +149,15 @@ export class EmailAdminService {
     const trackableDelivered = trackable.filter((l) => DELIVERED_STATES.includes(l.status)).length;
     const opened = trackable.filter((l) => OPENED_STATES.includes(l.status)).length;
     const failed24h = logs.filter((l) => FAILED_STATES.includes(l.status) && l.createdAt >= since24h).length;
-    const suppressed = new Set(
-      logs.filter((l) => l.status === EmailStatus.BOUNCED || l.status === EmailStatus.COMPLAINED).map((l) => l.toAddress),
-    ).size;
+    // Le fournisseur fait foi, nos statuts ne sont qu'un complément : une adresse supprimée
+    // n'émet aucun webhook, donc ne porte jamais BOUNCED ni COMPLAINED chez nous. Compter les
+    // deux, sans doublon, est la seule façon de ne rien manquer dans un sens comme dans l'autre.
+    const suppressed = new Set([
+      ...(await this.suppressionsFournisseur()).map((s) => s.email),
+      ...logs
+        .filter((l) => l.status === EmailStatus.BOUNCED || l.status === EmailStatus.COMPLAINED)
+        .map((l) => l.toAddress),
+    ]).size;
 
     const counts = new Map<string, number>();
     for (const l of logs) counts.set(l.template, (counts.get(l.template) ?? 0) + 1);
@@ -264,6 +328,17 @@ export class EmailAdminService {
     });
     const seen = new Set<string>();
     const suppression: { email: string; reason: string; date: string }[] = [];
+    // Le fournisseur EN PREMIER : c'est lui qui décide de ne plus rien remettre, et lui seul
+    // connaît les adresses dont aucun webhook n'est jamais revenu.
+    for (const s of await this.suppressionsFournisseur()) {
+      if (seen.has(s.email)) continue;
+      seen.add(s.email);
+      suppression.push({
+        email: s.email,
+        reason: s.origin === 'complaint' ? 'Plainte (spam) — liste Resend' : `Rejet (${s.origin}) — liste Resend`,
+        date: s.date,
+      });
+    }
     for (const s of suppressedRows) {
       if (seen.has(s.toAddress)) continue;
       seen.add(s.toAddress);
