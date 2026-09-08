@@ -154,6 +154,16 @@ describe('TripAutomationService — la ligne au départ', () => {
     expect(message).toContain('prochain passage');
   });
 
+  it("tué dans la minute, le message dit « moins d'une minute », pas « 0 min » (vu en production le 08/09)", async () => {
+    const { svc, errorLogger } = build({
+      orphelins: [{ id: 'mort-3', startedAt: new Date(Date.now() - 16_000), origin: 'scheduled' }],
+    });
+
+    await svc.marquerPassagesInterrompus();
+
+    expect(errorLogger.record.mock.calls[0][0] as string).toContain("redémarré moins d'une minute plus tard");
+  });
+
   it('sans ligne orpheline, le redémarrage n\'écrit rien nulle part', async () => {
     const { svc, prisma, errorLogger, systemActivity } = build();
 

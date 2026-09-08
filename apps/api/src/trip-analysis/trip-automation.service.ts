@@ -332,9 +332,11 @@ export class TripAutomationService implements OnApplicationBootstrap {
 
     for (const o of orphelins) {
       const minutes = Math.max(0, Math.round((now.getTime() - o.startedAt.getTime()) / 60_000));
+      // Mesuré en production le 08/09 : tué 16 s après son départ, le passage disait « 0 min ».
+      const delai = minutes === 0 ? "moins d'une minute" : `${minutes} min`;
       const message =
         `Passage d'automatisation interrompu : commencé le ${formatFleetDateTime(o.startedAt)} ` +
-        `(${o.origin === 'manual' ? 'manuel' : 'planifié'}), jamais terminé — l'API a redémarré ${minutes} min plus tard. ` +
+        `(${o.origin === 'manual' ? 'manuel' : 'planifié'}), jamais terminé — l'API a redémarré ${delai} plus tard. ` +
         `Les trajets non traités le seront au prochain passage.`;
       const meta = { runId: o.id, startedAt: o.startedAt.toISOString(), origin: o.origin, minutes };
       await this.errorLogger.record(message, SOURCE, { phase: 'interrompu', ...meta }, 'CRITICAL');
