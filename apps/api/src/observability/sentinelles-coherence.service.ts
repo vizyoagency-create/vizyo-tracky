@@ -77,6 +77,24 @@ const CORROBORATION_MIN_ANALYSES = 3;
 const CORROBORATION_PART_MIN = 0.1;
 
 /**
+ * ── ET LE SEUIL QUI REND L'ALERTE ACTIONNABLE (mesuré le 2026-09-08) ────────────────────
+ *
+ * Les deux conditions ci-dessus décrivent une FLOTTE, et la production a montré qu'elles la
+ * décrivent toujours : sur sept jours, **170 analyses sur 467 pour « mh cars », 104 sur 533
+ * pour « cdef31 », 71 sur 215 pour « A2R »** — de 20 à 36 %, partout, tout le temps. Le seuil
+ * de 10 % était donc franchi en permanence, et la sentinelle disait chaque jour « un boîtier à
+ * vérifier » en désignant des flottes entières. Une alerte qu'on ne peut pas suivre apprend à
+ * ne plus lire les alertes.
+ *
+ * Un tiers des analyses touchées est le RÉGIME de ces boîtiers, pas une panne. Ce qui mérite un
+ * regard, c'est le véhicule qui sort du lot : celui dont la MAJORITÉ des analyses portent des
+ * points écartés, quand ses voisins sont au tiers. Ce seuil-là nomme quelque chose à faire —
+ * un boîtier, une plaque, un rendez-vous d'atelier.
+ */
+const VEHICULE_MIN_ANALYSES_TOUCHEES = 5;
+const VEHICULE_PART_MIN = 0.5;
+
+/**
  * ── SEUIL — LIMITE INVRAISEMBLABLE ──────────────────────────────────────────────────────
  *
  * « Limite 30, dépassement +72 » sur la rocade toulousaine : le point avait été rattaché au pont
@@ -589,16 +607,19 @@ export class SentinellesCoherenceService {
   // tous les jours ne se répare pas tout seul.
   private async vitesseNonCorroboree(depuis: Date): Promise<ConstatSentinelle[]> {
     const analyses = await this.lireAnalyses({ computedAt: { gte: depuis } });
-    const parFlotte = new Map<string, { total: number; touchees: number; vehicules: Map<string, number> }>();
+    type StatVehicule = { total: number; touchees: number };
+    const parFlotte = new Map<string, { total: number; touchees: number; vehicules: Map<string, StatVehicule> }>();
 
     for (const a of analyses) {
-      const stat = parFlotte.get(a.fleetId) ?? { total: 0, touchees: 0, vehicules: new Map<string, number>() };
+      const stat = parFlotte.get(a.fleetId) ?? { total: 0, touchees: 0, vehicules: new Map<string, StatVehicule>() };
       stat.total++;
-      const ecartes = detailDe(a).vitesse?.pointsEcartes ?? 0;
-      if (ecartes > 0) {
+      const veh = stat.vehicules.get(a.vehicleId) ?? { total: 0, touchees: 0 };
+      veh.total++;
+      if ((detailDe(a).vitesse?.pointsEcartes ?? 0) > 0) {
         stat.touchees++;
-        stat.vehicules.set(a.vehicleId, (stat.vehicules.get(a.vehicleId) ?? 0) + ecartes);
+        veh.touchees++;
       }
+      stat.vehicules.set(a.vehicleId, veh);
       parFlotte.set(a.fleetId, stat);
     }
 
@@ -607,18 +628,42 @@ export class SentinellesCoherenceService {
       if (stat.touchees < CORROBORATION_MIN_ANALYSES) continue;
       if (stat.touchees / stat.total < CORROBORATION_PART_MIN) continue;
 
+      /**
+       * ⚠️ ON NE PARLE QUE SI QUELQU'UN SORT DU LOT (2026-09-08, cf. `VEHICULE_PART_MIN`).
+       * Un tiers d'analyses touchées est le régime ordinaire de ces boîtiers, mesuré sur les
+       * trois flottes : crier là-dessus revenait à crier tous les jours sur tout le monde.
+       */
+      const sortentDuLot = [...stat.vehicules.entries()]
+        .filter(([, v]) => v.touchees >= VEHICULE_MIN_ANALYSES_TOUCHEES && v.touchees / v.total >= VEHICULE_PART_MIN)
+        .sort((a, b) => b[1].touchees / b[1].total - a[1].touchees / a[1].total)
+        .slice(0, MAX_NOMMES);
+      if (sortentDuLot.length === 0) continue;
+
       const nom = await this.nomFlotte(fleetId);
-      const pires = [...stat.vehicules.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_NOMMES);
-      const plaques = await this.plaques(pires.map(([id]) => id));
+      const plaques = await this.plaques(sortentDuLot.map(([id]) => id));
+      const partFlotte = Math.round((stat.touchees / stat.total) * 100);
+      // « HD-779-MA (77 % de ses 130 analyses) » — la plaque, puis de quoi juger sur pièces.
+      const detaille = sortentDuLot.map(
+        ([, v], i) => `${plaques[i] ?? '?'} (${Math.round((v.touchees / v.total) * 100)} % de ses ${v.total} analyses)`,
+      );
+      const pluriel = sortentDuLot.length > 1;
       constats.push({
         cle: `${CLES_REFROIDISSEMENT.SENTINELLE_VITESSE_NON_CORROBOREE}:${fleetId}`,
         source: 'sentinelles',
         niveau: NIVEAU_DEGRADATION,
         message:
-          `${stat.touchees} analyses sur ${stat.total} de « ${nom} » contiennent une vitesse que la distance parcourue ` +
-          `contredit — le boîtier annonce plus vite que le déplacement ne le permet. Ces points sont écartés du calcul, ` +
-          `mais la répétition désigne un boîtier à vérifier. Véhicules les plus concernés : ${enumere(plaques)}.`,
-        contexte: { fleetId, analysesTouchees: stat.touchees, analysesTotal: stat.total, depuis: depuis.toISOString() },
+          `${sortentDuLot.length} véhicule${pluriel ? 's' : ''} de « ${nom} » annonce${pluriel ? 'nt' : ''} une vitesse ` +
+          `que la distance parcourue contredit bien plus souvent que le reste de la flotte : ${enumere(detaille)}. ` +
+          `La flotte entière est à ${partFlotte} %, ce qui est son régime ordinaire. Ces points sont écartés du calcul — ` +
+          `c'est la récurrence SUR CES VÉHICULES-LÀ qui désigne un boîtier à vérifier.`,
+        contexte: {
+          fleetId,
+          analysesTouchees: stat.touchees,
+          analysesTotal: stat.total,
+          partFlotte,
+          vehiculesHorsNorme: sortentDuLot.length,
+          depuis: depuis.toISOString(),
+        },
         fenetreMs: REFROIDISSEMENT_QUOTIDIEN_MS,
       });
     }

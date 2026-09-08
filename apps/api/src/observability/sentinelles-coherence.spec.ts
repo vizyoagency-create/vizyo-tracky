@@ -255,25 +255,62 @@ describe('Sentinelle — un excès sans son alerte', () => {
   });
 });
 
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * SENTINELLE — UNE VITESSE QUE LA TRAJECTOIRE CONTREDIT
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * ⚠️ CE CONTRAT A CHANGÉ LE 2026-09-08, sur une mesure de production. La sentinelle criait dès
+ * que 10 % des analyses d'une flotte portaient des points écartés. Or, sur sept jours :
+ *
+ *   · « mh cars » 170 analyses touchées sur 467 ....... 36 %
+ *   · « cdef31 »  104 sur 533 ......................... 20 %
+ *   · « A2R »      71 sur 215 ......................... 33 %
+ *
+ * Le seuil était donc franchi partout, tout le temps : la sentinelle désignait « un boîtier à
+ * vérifier » en nommant des flottes entières, tous les jours. Un tiers de points écartés est le
+ * RÉGIME de ces boîtiers, pas une panne — et une alerte qu'on ne peut pas suivre apprend à ne
+ * plus lire les alertes.
+ *
+ * Elle ne parle donc plus que d'un véhicule qui SORT DU LOT : la majorité de ses analyses
+ * touchées, quand ses voisins sont au tiers. Ce signal-là nomme quelque chose à faire.
+ */
 describe('Sentinelle — une vitesse que la trajectoire contredit', () => {
-  const avecEcartes = (n: number, total: number) =>
+  const ecarte = { vitesse: { pointeBruteKmh: 180, pointsEcartes: 2 } };
+
+  /** `n` analyses touchées sur `total`, toutes sur le même véhicule. */
+  const avecEcartes = (n: number, total: number, vehicleId = 'v1') =>
     Array.from({ length: total }, (_, i) =>
-      analyse({
-        tripId: `t${i}`,
-        speedingCount: 0,
-        detail: i < n ? { vitesse: { pointeBruteKmh: 180, pointsEcartes: 2 } } : {},
-      }),
+      analyse({ tripId: `${vehicleId}-t${i}`, vehicleId, speedingCount: 0, detail: i < n ? ecarte : {} }),
     );
 
-  it('crie quand les points écartés se répètent', async () => {
-    const t = await service({ analyses: avecEcartes(5, 20) });
+  it('🔴 crie quand UN VÉHICULE sort du lot, et le nomme avec sa part', async () => {
+    const t = await service({
+      analyses: [
+        ...avecEcartes(8, 10, 'v1'), // 80 % : celui-là ment
+        ...avecEcartes(3, 10, 'v2'), // 30 % : le régime ordinaire
+        ...avecEcartes(3, 10, 'v3'),
+      ],
+    });
     await t.svc.passage(MAINTENANT);
 
     const m = messages(t.errorLogger).find((x) => x.includes('contredit'));
-    expect(m).toContain('5 analyses sur 20');
+    expect(m).toContain('1 véhicule');
     expect(m).toContain('AB-123-CD');
+    expect(m).toContain('80 % de ses 10 analyses');
+    // Et le point de comparaison, sans quoi « 80 % » ne veut rien dire.
+    expect(m).toContain('47 %');
     // Le garde-fou a fait son travail : c'est une dégradation, pas un défaut de l'application.
     expect(t.errorLogger.record.mock.calls[0][3]).toBe('DEGRADATION');
+  });
+
+  it('🔴 se tait quand TOUTE la flotte est au même régime — le cas mesuré en production', async () => {
+    // Un tiers d'analyses touchées partout : c'est ainsi que ces boîtiers se comportent.
+    const t = await service({
+      analyses: [...avecEcartes(7, 20, 'v1'), ...avecEcartes(7, 20, 'v2'), ...avecEcartes(6, 20, 'v3')],
+    });
+    await t.svc.passage(MAINTENANT);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
   });
 
   it('se tait sur un cas isolé — le bruit GPS ordinaire', async () => {
@@ -285,6 +322,14 @@ describe('Sentinelle — une vitesse que la trajectoire contredit', () => {
   it('se tait quand la part reste faible, même avec beaucoup de cas', async () => {
     // 5 analyses touchées sur 200 : le plancher absolu est franchi, pas la part.
     const t = await service({ analyses: avecEcartes(5, 200) });
+    await t.svc.passage(MAINTENANT);
+    expect(t.errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  it('se tait sur un véhicule à forte part mais à peine roulé — quatre analyses ne font pas une preuve', async () => {
+    const t = await service({
+      analyses: [...avecEcartes(4, 4, 'v1'), ...avecEcartes(2, 20, 'v2')],
+    });
     await t.svc.passage(MAINTENANT);
     expect(t.errorLogger.record).not.toHaveBeenCalled();
   });
