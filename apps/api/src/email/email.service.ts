@@ -24,6 +24,8 @@ export type EmailTemplateId =
   | 'weekly_report'
   | 'alert'
   | 'error_rate_alert'
+  // Vigie des erreurs CRITIQUES (2026-09-08) : une seule suffit, sous le seuil de saturation.
+  | 'critical_error_alert'
   | 'lead'
   | 'lead_welcome'
   | 'quote_signed'
@@ -1284,6 +1286,58 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     });
   }
 
+  /**
+   * Vigie des erreurs CRITIQUES (2026-09-08) — une seule suffit.
+   *
+   * La vigie de saturation ne regarde que le DÉBIT : cinq erreurs dans l'heure. Un passage
+   * d'automatisation tué, un agent local muet, une base injoignable écrivent UNE ligne
+   * CRITICAL — et personne n'était prévenu tant que quatre autres erreurs ne suivaient pas
+   * (mesuré en production le 2026-09-07 : « Passage manqué : agent-limites-vitesse », aucun
+   * e-mail). Le rouge est celui des excès : il dit « regardez tout de suite ».
+   */
+  buildCriticalErrorAlertEmail(data: {
+    critical: number;
+    total: number;
+    top: { source: string; count: number }[];
+    since: Date;
+  }): string {
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    const depuis = formatFleetDateTime(data.since);
+    const s = data.critical > 1 ? 's' : '';
+    const lignes = data.top
+      .map(
+        (t, i) => `
+            ${i > 0 ? '<tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>' : ''}
+            <tr>
+              <td class="m-text" style="padding:13px 18px;font-family:${EMAIL_FONT_MONO};font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:${EMAIL_TEXTE_SECOND};">${escapeHtml(t.source)}</td>
+              <td align="right" style="padding:13px 18px;"><span class="m-title" style="font-family:${EMAIL_FONT_MONO};font-size:13px;font-weight:600;color:#0A1311;background:rgba(255,255,255,.05);border-radius:6px;padding:3px 9px;">${t.count}</span></td>
+            </tr>`,
+      )
+      .join('');
+    return this.shell({
+      eyebrow: `● Centre d'alerte · Erreur critique`,
+      accent: '#F2706B',
+      borderColor: 'rgba(242,112,107,.28)',
+      preheader: `${data.top[0] ? escapeHtml(data.top[0].source) + ' — ' : ''}relevé depuis le ${escapeHtml(depuis)}`,
+      footer: "VIZYO TRACKY · VIGIE DU CENTRE D'ALERTE · E-mail automatique, ne pas répondre.<br>Une seule alerte par heure, même si d'autres erreurs critiques suivent.",
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <h1 class="m-title" style="margin:0 0 6px;font-family:${EMAIL_FONT};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#0A1311;">${data.critical} erreur${s} critique${s} en une heure</h1>
+          <p class="m-text" style="margin:0 0 20px;font-family:${EMAIL_FONT};font-size:15px;line-height:1.6;color:#56635E;">
+            Une erreur <strong style="color:${EMAIL_TEXTE_ALERTE};">critique</strong> demande un regard tout de suite, quel que soit le débit d'erreurs :
+            ${data.total} erreur${data.total > 1 ? 's' : ''} en tout sur l'heure. Relevé depuis le ${escapeHtml(depuis)}.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          <table class="m-panel" role="presentation" width="100%" style="background:#F6F9F7;border:1px solid rgba(255,255,255,.07);border-radius:13px;">${lignes}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <a href="${appBase}/admin/observability" style="display:inline-block;background:#10E0A0;color:#04130D;font-family:${EMAIL_FONT};font-size:14px;font-weight:800;text-decoration:none;padding:12px 22px;border-radius:10px;">Ouvrir le centre d'alerte</a>
+        </td></tr>`,
+    });
+  }
+
   buildAlertEmail(
     alert: { title: string; message: string | null; plate: string; severity: string; createdAt: Date },
     opts: { isEscalation?: boolean } = {},
@@ -1979,6 +2033,17 @@ ${this.commercialSignatureText()}`;
             since: new Date(Date.now() - 60 * 60 * 1000),
           }),
           text: "Aperçu de l'alerte de saturation (données d'exemple).",
+        };
+      case 'critical_error_alert':
+        return {
+          subject: '1 erreur critique — trip-automation',
+          html: this.buildCriticalErrorAlertEmail({
+            critical: 1,
+            total: 3,
+            top: [{ source: 'trip-automation', count: 1 }],
+            since: new Date(Date.now() - 60 * 60 * 1000),
+          }),
+          text: "Aperçu de l'alerte d'erreur critique (données d'exemple).",
         };
       case 'alert':
         return {

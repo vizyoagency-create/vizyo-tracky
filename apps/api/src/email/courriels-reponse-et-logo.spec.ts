@@ -41,6 +41,7 @@ const POLITIQUE: Record<EmailTemplateId, Politique> = {
   weekly_report: 'automatique',
   alert: 'automatique',
   error_rate_alert: 'automatique',
+  critical_error_alert: 'automatique',
   audio_activation: 'automatique',
   audio_info: 'automatique',
   partner_consent_invitation: 'automatique',

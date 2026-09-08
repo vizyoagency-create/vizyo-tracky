@@ -140,6 +140,11 @@ export const CLES_REFROIDISSEMENT = {
   SPEED_LIMIT_OSM: 'speed-limit-osm',
   /** Vigie de saturation du centre d'alerte : un e-mail par heure au plus. */
   VIGIE_SATURATION: 'error-rate-watchdog',
+  /**
+   * Vigie des erreurs CRITIQUES (2026-09-08) : une seule suffit à prévenir, une fois par heure
+   * au plus. Clé distincte de la saturation — un débit normal n'a jamais fait taire une panne.
+   */
+  VIGIE_CRITIQUE: 'error-rate-watchdog-critical',
   /** Trou d'allowlist SMS : rappel périodique tant que l'épisode dure. */
   ALLOWLIST_EPISODE: 'sms-allowlist-episode',
   /**

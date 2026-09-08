@@ -161,9 +161,9 @@ const CATALOG: CatalogEntry[] = [
 
   {
     id: 'error-rate-watchdog',
-    source: 'observability/error-rate-watchdog.service.ts', label: "Vigie de saturation du centre d'alerte", category: 'Sécurité & moteur',
+    source: 'observability/error-rate-watchdog.service.ts', label: "Vigie du centre d'alerte", category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: true,
-    purpose: "Prévient par e-mail quand plus de 5 erreurs sont enregistrées sur l'heure glissante (1 e-mail/h max).",
+    purpose: "Prévient par e-mail quand plus de 5 erreurs sont enregistrées sur l'heure glissante, ou dès UNE erreur critique (2026-09-08) — 1 e-mail/h max, quelle que soit la vigie qui parle.",
     periodic: { everyMs: 600_000, offsetMs: 0 },
   },
 
