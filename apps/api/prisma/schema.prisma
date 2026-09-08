@@ -2864,6 +2864,11 @@ model TripAutomationRun {
   finishedAt DateTime?
   /// 'scheduled' (cron) | 'manual' (bouton « Lancer maintenant »).
   origin     String    @default("scheduled")
+  /// La ligne au départ (2026-09-08) : 'running' dès le premier instant du passage, 'done' à la
+  /// clôture, 'failed' si le passage s'est arrêté sur une exception, 'interrupted' quand l'API a
+  /// redémarré en trouvant la ligne encore « en cours » — un passage tué en vol par un
+  /// redéploiement ne disparaît plus sans trace. Les lignes d'avant sont toutes closes : 'done'.
+  status     String    @default("done")
   fleets     Int       @default(0)
   vehicles   Int       @default(0)
   recomputed Int       @default(0)

@@ -56,7 +56,11 @@ describe('TripAutomationService', () => {
         update: jest.fn().mockResolvedValue(row),
       },
       tripAutomationRun: {
-        create: jest.fn().mockResolvedValue({}),
+        // La ligne au départ (2026-09-08) : `create` ouvre la ligne et rend son identifiant,
+        // `update` la complète à la clôture.
+        create: jest.fn().mockResolvedValue({ id: 'run-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -203,8 +207,10 @@ describe('TripAutomationService', () => {
     const stats = await premier;
     expect(stats.alreadyRunning).toBeUndefined();
     expect(stats.analyzed).toBe(1);
-    // Le bilan persisté est celui du VRAI passage : le refus du verrou n'écrit rien.
+    // Le bilan persisté est celui du VRAI passage : le refus du verrou n'écrit rien — ni ligne
+    // de départ (un seul `create`), ni clôture (un seul `update`).
     expect(prisma.tripAutomationRun.create).toHaveBeenCalledTimes(1);
+    expect(prisma.tripAutomationRun.update).toHaveBeenCalledTimes(1);
     const persiste = prisma.tripAutomationSettings.update.mock.calls[0][0].data.lastRunStats;
     expect(persiste.alreadyRunning).toBeUndefined();
   });
@@ -471,9 +477,14 @@ describe('TripAutomationService', () => {
       aiEnabled: true,
     });
     await svc.runNow();
+    // La ligne au départ : UN `create` (le départ, en « running »), puis la MÊME ligne complétée.
     expect(prisma.tripAutomationRun.create).toHaveBeenCalledTimes(1);
-    const data = prisma.tripAutomationRun.create.mock.calls[0][0].data;
+    expect(prisma.tripAutomationRun.create.mock.calls[0][0].data).toMatchObject({ origin: 'manual', status: 'running', finishedAt: null });
+    expect(prisma.tripAutomationRun.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tripAutomationRun.update.mock.calls[0][0].where).toEqual({ id: 'run-1' });
+    const data = prisma.tripAutomationRun.update.mock.calls[0][0].data;
     expect(data.origin).toBe('manual');
+    expect(data.status).toBe('done');
     expect(data.items).toHaveLength(1);
     expect(data.items[0]).toMatchObject({ vehicleId: 'v1', plate: 'AA-001-BB', tripId: 't2', action: 'narrated' });
     expect(data.finishedAt).toBeInstanceOf(Date);

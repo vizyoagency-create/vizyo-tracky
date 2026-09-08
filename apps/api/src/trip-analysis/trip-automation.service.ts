@@ -1,5 +1,5 @@
-import { heureParis } from '../common/utils/datetime';
-import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import { formatFleetDateTime, heureParis } from '../common/utils/datetime';
+import { Injectable, Logger, type OnApplicationBootstrap, UnprocessableEntityException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole, type TripAutomationRun, type TripAutomationSettings } from '@prisma/client';
 import type {
@@ -8,6 +8,7 @@ import type {
   TripAutomationRunDto,
   TripAutomationRunItemDto,
   TripAutomationRunStats,
+  TripAutomationRunStatus,
   TripAutomationSettingsDto,
 } from '@vizyo/tracky-shared';
 import { DORMANT_STOP_ACTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
@@ -24,6 +25,11 @@ import { TripAnalysisService } from './trip-analysis.service';
 
 /** Source des erreurs de l'automatisation dans le centre d'alerte (filtre dédié). */
 const SOURCE = 'TRIP_AUTOMATION';
+
+/** L'état stocké d'un passage, ramené aux quatre valeurs du DTO — une valeur inconnue se lit « clos ». */
+function statutPassage(brut: string): TripAutomationRunStatus {
+  return brut === 'running' || brut === 'failed' || brut === 'interrupted' ? brut : 'done';
+}
 /** recompute() clampe déjà `to` à now-10min ; on aligne la fenêtre dessus. */
 const RECOMPUTE_TAIL_MS = 10 * 60 * 1000;
 /** Marge amont quand on recompute le « tail sale » (rattrape un trajet frontière). */
@@ -268,7 +274,7 @@ type RunItem = TripAutomationRunItemDto;
 const LOOKBACK_HEURES_MAX = 2160;
 
 @Injectable()
-export class TripAutomationService {
+export class TripAutomationService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TripAutomationService.name);
   private running = false;
 
@@ -281,6 +287,69 @@ export class TripAutomationService {
     private readonly errorLogger: ErrorLogger,
     private readonly systemActivity: SystemActivityService,
   ) {}
+
+  /** Au démarrage de l'API : ce qui était « en cours » dans l'historique est mort avec le processus d'avant. */
+  async onApplicationBootstrap(): Promise<void> {
+    await this.marquerPassagesInterrompus();
+  }
+
+  /**
+   * ── AU DÉMARRAGE : CE QUI ÉTAIT « EN COURS » EST MORT ────────────────────────────────
+   *
+   * Ce processus est le SEUL à lancer des passages (verrou `running` en mémoire, garde
+   * persistée entre départs), et il vient de naître : une ligne encore `running` appartient
+   * forcément à un processus disparu — conteneur recréé par un déploiement, crash, OOM. On la
+   * marque `interrupted` (sa `finishedAt` reste nulle : il n'a pas fini), on l'inscrit au
+   * journal d'activité, et on écrit une ligne CRITICAL au centre d'alerte — la vigie des
+   * erreurs critiques (2026-09-08) prévient alors par e-mail dans les dix minutes.
+   *
+   * Ce qui n'est PAS fait ici, exprès : relancer le travail. Le passage suivant (HH:45) reprend
+   * les trajets non traités — le pipeline part toujours du reste à faire, jamais d'un curseur.
+   * Et rien ne lève : un démarrage qui échouerait sur un témoin serait pire que le témoin absent.
+   */
+  async marquerPassagesInterrompus(now = new Date()): Promise<number> {
+    let orphelins: { id: string; startedAt: Date; origin: string }[];
+    try {
+      orphelins = await this.prisma.tripAutomationRun.findMany({
+        where: { status: 'running' },
+        select: { id: true, startedAt: true, origin: true },
+        orderBy: { startedAt: 'desc' },
+      });
+    } catch (e) {
+      this.logger.warn(`Passages interrompus : historique illisible au démarrage (${(e as Error)?.message ?? e}).`);
+      return 0;
+    }
+    if (orphelins.length === 0) return 0;
+
+    try {
+      await this.prisma.tripAutomationRun.updateMany({
+        where: { id: { in: orphelins.map((o) => o.id) } },
+        data: { status: 'interrupted' },
+      });
+    } catch (e) {
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'interrompus-marquage' });
+    }
+
+    for (const o of orphelins) {
+      const minutes = Math.max(0, Math.round((now.getTime() - o.startedAt.getTime()) / 60_000));
+      const message =
+        `Passage d'automatisation interrompu : commencé le ${formatFleetDateTime(o.startedAt)} ` +
+        `(${o.origin === 'manual' ? 'manuel' : 'planifié'}), jamais terminé — l'API a redémarré ${minutes} min plus tard. ` +
+        `Les trajets non traités le seront au prochain passage.`;
+      const meta = { runId: o.id, startedAt: o.startedAt.toISOString(), origin: o.origin, minutes };
+      await this.errorLogger.record(message, SOURCE, { phase: 'interrompu', ...meta }, 'CRITICAL');
+      this.systemActivity.record({
+        category: 'AI',
+        action: 'trip_automation_passage_interrompu',
+        status: 'FAILURE',
+        actor: 'planning',
+        detail: message,
+        meta,
+      });
+    }
+    this.logger.warn(`${orphelins.length} passage(s) d'automatisation interrompu(s) marqué(s) au démarrage.`);
+    return orphelins.length;
+  }
 
   /** Toutes les heures à HH:45 (décalé des crons agenda :00 / rapports :20 pour lisser le VPS). */
   @Cron('0 45 * * * *')
@@ -377,6 +446,8 @@ export class TripAutomationService {
     const echeance = startMs + RUN_BUDGET_MS;
     const stats = this.emptyStats();
     const items: RunItem[] = [];
+    // La ligne au départ : le passage existe dans l'historique AVANT de toucher à une flotte.
+    const ligneId = await this.ouvrirLigne(origin, startedAt);
     try {
       const user = this.systemUser();
       const now = Date.now();
@@ -468,7 +539,7 @@ export class TripAutomationService {
 
       const runStats = this.finalStats(stats, Date.now() - startMs);
       await this.persistRun(settings.id, runStats);
-      await this.recordRun(origin, startedAt, runStats, items);
+      await this.recordRun(origin, startedAt, runStats, items, ligneId, 'done');
       this.systemActivity.record({
         category: 'AI',
         action: 'trip_automation_run',
@@ -495,9 +566,40 @@ export class TripAutomationService {
       return runStats;
     } catch (e) {
       await this.errorLogger.record(e as Error, SOURCE, { phase: 'run' }, 'CRITICAL');
-      return this.finalStats(stats, Date.now() - startMs);
+      // La ligne ouverte au départ ne doit pas rester « en cours » : ce passage s'est arrêté,
+      // sur une exception, et sa ligne le dit — sinon le prochain démarrage le lirait « tué ».
+      const runStats = this.finalStats(stats, Date.now() - startMs);
+      await this.recordRun(origin, startedAt, runStats, items, ligneId, 'failed');
+      return runStats;
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * ── LA LIGNE AU DÉPART (2026-09-08) ─────────────────────────────────────────────────
+   *
+   * Jusqu'ici la ligne d'historique n'était écrite qu'à la CLÔTURE (`recordRun`). Un passage
+   * tué en vol — conteneur recréé par un déploiement, crash, OOM — ne laissait donc RIEN : ni
+   * ligne, ni « tick annulé », ni erreur ; les journaux du conteneur partaient avec lui.
+   * Mesuré le 2026-09-07 : quatre passages disparus (14:45, 15:45, 17:45, 23:45 UTC), zéro
+   * trace, et un passage dure de 2 à 54 min selon la charge.
+   *
+   * Désormais la ligne naît avec le passage, en `running`, et `recordRun` la COMPLÈTE. Si elle
+   * ne peut pas s'écrire (base injoignable à cet instant), le passage tourne quand même et la
+   * clôture la crée comme avant : rien de l'ancien comportement n'est perdu, on y a ajouté un
+   * témoin. `marquerPassagesInterrompus` dit ce que ce témoin permet.
+   */
+  private async ouvrirLigne(origin: 'scheduled' | 'manual', startedAt: Date): Promise<string | null> {
+    try {
+      const ligne = await this.prisma.tripAutomationRun.create({
+        data: { startedAt, finishedAt: null, origin, status: 'running' },
+        select: { id: true },
+      });
+      return ligne.id;
+    } catch (e) {
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'ouvrirLigne' });
+      return null;
     }
   }
 
@@ -1171,8 +1273,11 @@ export class TripAutomationService {
    * colonne ni migration. La table est élaguée à `KEEP_RUNS` (100) lignes — plus de quatre
    * jours à cadence horaire — et indexée `startedAt desc` : la lecture est gratuite.
    *
-   * Un passage TUÉ avant sa clôture n'y laisse rien : le tick suivant part, ce qui est le
-   * comportement voulu (observé le 22/08 : tick de 12:45 tué à 12:48, celui de 13:45 a tourné).
+   * Depuis la ligne au départ (2026-09-08), un passage TUÉ avant sa clôture y laisse sa ligne
+   * (`interrupted`, ou `running` jusqu'au redémarrage) : la garde mesure depuis son départ,
+   * exactement comme pour un passage clos, et le tick suivant part au bout de 50 min — le
+   * comportement observé le 22/08 (tick de 12:45 tué à 12:48, celui de 13:45 a tourné) ne
+   * change pas, il devient simplement visible.
    *
    * Repli : si l'historique est illisible, on retombe sur `lastRunAt` — l'ancien point de
    * mesure, trop prudent mais jamais dangereux. La garde ne disparaît dans aucun cas.
@@ -1200,29 +1305,47 @@ export class TripAutomationService {
     }
   }
 
-  /** Enregistre le run dans l'historique (audit + récits cliquables) puis élague les vieux. */
+  /**
+   * Clôt le run dans l'historique (audit + récits cliquables) puis élague les vieux.
+   *
+   * La ligne a normalement été OUVERTE au départ (`ouvrirLigne`) : on la complète. Si elle n'a
+   * pas pu l'être, ou si elle a disparu entre-temps (élaguée, effacée à la main), on la crée
+   * comme avant le 2026-09-08 — l'audit ne se perd dans aucun cas.
+   */
   private async recordRun(
     origin: 'scheduled' | 'manual',
     startedAt: Date,
     runStats: TripAutomationRunStatsWithDormancy,
     items: RunItem[],
+    ligneId: string | null,
+    status: 'done' | 'failed',
   ): Promise<void> {
+    const cloture = {
+      finishedAt: new Date(),
+      origin,
+      status,
+      fleets: runStats.fleets,
+      vehicles: runStats.vehicles,
+      recomputed: runStats.recomputed,
+      analyzed: runStats.analyzed,
+      narrated: runStats.narrated,
+      failed: runStats.failed,
+      durationMs: runStats.durationMs,
+      items: items.slice(0, MAX_ITEMS_PER_RUN) as unknown as Prisma.InputJsonValue,
+    };
     try {
-      await this.prisma.tripAutomationRun.create({
-        data: {
-          startedAt,
-          finishedAt: new Date(),
-          origin,
-          fleets: runStats.fleets,
-          vehicles: runStats.vehicles,
-          recomputed: runStats.recomputed,
-          analyzed: runStats.analyzed,
-          narrated: runStats.narrated,
-          failed: runStats.failed,
-          durationMs: runStats.durationMs,
-          items: items.slice(0, MAX_ITEMS_PER_RUN) as unknown as Prisma.InputJsonValue,
-        },
-      });
+      let completee = false;
+      if (ligneId) {
+        try {
+          await this.prisma.tripAutomationRun.update({ where: { id: ligneId }, data: cloture });
+          completee = true;
+        } catch (e) {
+          await this.errorLogger.record(e as Error, SOURCE, { phase: 'recordRun-completer', ligneId });
+        }
+      }
+      if (!completee) {
+        await this.prisma.tripAutomationRun.create({ data: { startedAt, ...cloture } });
+      }
       // Élagage best-effort : ne garder que les KEEP_RUNS plus récents.
       const stale = await this.prisma.tripAutomationRun.findMany({
         orderBy: { startedAt: 'desc' },
@@ -1260,6 +1383,7 @@ export class TripAutomationService {
       startedAt: r.startedAt.toISOString(),
       finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null,
       origin: r.origin === 'manual' ? 'manual' : 'scheduled',
+      status: statutPassage(r.status),
       fleets: r.fleets,
       vehicles: r.vehicles,
       recomputed: r.recomputed,

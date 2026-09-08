@@ -8,10 +8,33 @@ import {
   History, ChevronDown, Truck, ArrowUpRight, Sparkles, ListChecks, RefreshCw,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { SetTripAutomationSettingsDto, TripAutomationBacklogDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
+import type { SetTripAutomationSettingsDto, TripAutomationBacklogDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationRunStatus, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../core/error/api-error';
+
+/**
+ * L'état d'un passage, en mots (« la ligne au départ », 2026-09-08). Un passage clos n'a rien
+ * à dire : sa ligne de chiffres parle. Les trois autres états doivent se voir d'un coup d'œil —
+ * surtout « interrompu », qui est exactement ce que personne ne voyait avant.
+ * Exporté pour être testé sans monter l'écran.
+ */
+export function etatPassage(status: TripAutomationRunStatus | undefined): { libelle: string; classe: string; resume: string } | null {
+  switch (status) {
+    case 'running':
+      return { libelle: 'En cours', classe: 'en-cours', resume: 'passage en cours…' };
+    case 'interrupted':
+      return {
+        libelle: 'Interrompu',
+        classe: 'interrompu',
+        resume: "commencé, jamais terminé — l'API a redémarré pendant le passage ; la suite au passage suivant",
+      };
+    case 'failed':
+      return { libelle: 'Échec', classe: 'echec', resume: 'arrêté sur une erreur — le détail est au centre d\'alerte' };
+    default:
+      return null;
+  }
+}
 
 /**
  * Espace SUPER-ADMIN — automatisation des trajets. Pilote le cron qui, pour TOUTES les flottes,
@@ -240,12 +263,17 @@ import { apiErrorMessage } from '../../core/error/api-error';
                   <button type="button" class="ta-run-head" (click)="toggleRun(r.id)">
                     <span class="ta-run-when">{{ r.startedAt | date:'dd/MM HH:mm' }}</span>
                     <span class="ta-run-origin" [class.manual]="r.origin === 'manual'">{{ r.origin === 'manual' ? 'Manuel' : 'Auto' }}</span>
-                    <span class="ta-run-sum">{{ r.analyzed }} analysés · {{ r.narrated }} récits@if (r.failed > 0) { · <b class="err">{{ r.failed }} échecs</b> }</span>
+                    @if (etat(r); as e) {
+                      <span [class]="'ta-run-etat ta-run-etat--' + e.classe">{{ e.libelle }}</span>
+                      <span class="ta-run-sum">{{ e.resume }}</span>
+                    } @else {
+                      <span class="ta-run-sum">{{ r.analyzed }} analysés · {{ r.narrated }} récits@if (r.failed > 0) { · <b class="err">{{ r.failed }} échecs</b> }</span>
+                    }
                     <lucide-icon [img]="ChevronDownIcon" [size]="16" class="ta-run-chev" [class.open]="expandedRun() === r.id"></lucide-icon>
                   </button>
                   @if (expandedRun() === r.id) {
                     <div class="ta-run-body">
-                      <div class="ta-run-meta">{{ r.fleets }} flotte(s) · {{ r.vehicles }} véhicule(s) · {{ dur(r.durationMs) }}</div>
+                      <div class="ta-run-meta">{{ r.fleets }} flotte(s) · {{ r.vehicles }} véhicule(s) · {{ r.finishedAt ? dur(r.durationMs) : 'durée inconnue' }}</div>
                       @if (r.items.length === 0) {
                         <p class="ta-empty sm">Rien de nouveau à traiter sur ce passage.</p>
                       } @else {
@@ -376,6 +404,10 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-run-when { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .ta-run-origin { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, var(--fg-tertiary) 18%, transparent); color: var(--fg-secondary); }
     .ta-run-origin.manual { background: color-mix(in srgb, var(--violet) 10%, transparent); color: var(--texte-violet); }
+    /* L'état d'un passage qui n'est pas simplement clos : en cours, interrompu, en échec. */
+    .ta-run-etat { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; }
+    .ta-run-etat--en-cours { background: color-mix(in srgb, var(--tracky-light) 14%, transparent); color: var(--texte-succes); }
+    .ta-run-etat--interrompu, .ta-run-etat--echec { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--texte-alerte); }
     .ta-run-sum { font-size: 12px; color: var(--fg-tertiary); flex: 1; min-width: 0; }
     .ta-run-sum .err { color: var(--texte-alerte); }
     .ta-run-chev { color: var(--fg-tertiary); transition: transform .2s; flex-shrink: 0; }
@@ -584,5 +616,9 @@ export class TripAutomationComponent implements OnInit {
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60);
     return `${m}min ${s % 60}s`;
+  }
+
+  protected etat(r: TripAutomationRunDto): ReturnType<typeof etatPassage> {
+    return etatPassage(r.status);
   }
 }

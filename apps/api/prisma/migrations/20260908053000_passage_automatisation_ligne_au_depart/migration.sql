@@ -1,0 +1,15 @@
+-- LA LIGNE AU DEPART : UN PASSAGE D'AUTOMATISATION ECRIT SA LIGNE QUAND IL COMMENCE.
+--
+-- Jusqu'ici la ligne de trip_automation_runs n'etait ecrite qu'a la CLOTURE du passage. Un
+-- passage tue en vol -- conteneur recree par un deploiement, crash, OOM -- ne laissait donc
+-- RIEN : ni ligne, ni << tick annule >>, ni erreur ; les journaux du conteneur partaient
+-- avec lui. Mesure le 2026-09-07 : quatre passages horaires disparus (14:45, 15:45, 17:45,
+-- 23:45 UTC), zero trace, alors qu'un passage dure de 2 a 54 min selon la charge.
+--
+-- Desormais la ligne nait avec le passage ('running') et se complete a la cloture ('done',
+-- ou 'failed' sur une exception). Au demarrage de l'API, une ligne encore 'running' est un
+-- passage mort : elle passe a 'interrupted', le journal d'activite et le centre d'alerte
+-- (CRITICAL, donc un e-mail par la vigie) le disent. Les lignes deja en base sont toutes
+-- closes : le defaut 'done' les decrit exactement.
+-- AlterTable
+ALTER TABLE "trip_automation_runs" ADD COLUMN     "status" TEXT NOT NULL DEFAULT 'done';

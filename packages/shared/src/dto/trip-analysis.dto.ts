@@ -725,13 +725,23 @@ export interface TripAutomationRunItemDto {
   action: 'analyzed' | 'narrated';
 }
 
+/**
+ * État d'un passage — « la ligne au départ » (2026-09-08). La ligne naît avec le passage
+ * (`running`) et se complète à la clôture (`done`) ; `failed` si le passage s'est arrêté sur
+ * une exception ; `interrupted` quand l'API a redémarré en la trouvant encore en cours — un
+ * passage tué par un redéploiement ne disparaît plus sans trace.
+ */
+export type TripAutomationRunStatus = 'running' | 'done' | 'failed' | 'interrupted';
+
 /** Historique d'UN passage d'automatisation (quand, pour qui, quoi + récits produits). */
 export interface TripAutomationRunDto {
   id: string;
   startedAt: string;
+  /** Nul tant que le passage court — et pour toujours s'il a été interrompu. */
   finishedAt: string | null;
   /** 'scheduled' (cron) | 'manual' (bouton « Lancer maintenant »). */
   origin: 'scheduled' | 'manual';
+  status: TripAutomationRunStatus;
   fleets: number;
   vehicles: number;
   recomputed: number;
