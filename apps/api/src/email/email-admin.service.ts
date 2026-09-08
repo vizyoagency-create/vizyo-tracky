@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EmailStatus, Prisma } from '@prisma/client';
 import { Resend } from 'resend';
 import type { Env } from '../config/env.validation';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService, type EmailTemplateId } from './email.service';
 
@@ -20,7 +21,6 @@ export const TEMPLATE_META: {
   noOpenTracking?: boolean;
 }[] = [
   { id: 'error_rate_alert', label: "Saturation du centre d'alerte", category: 'Supervision', subject: '{n} erreurs en 1 h (dont {n} critiques)', trigger: "Plus de 5 erreurs enregistrées sur l'heure glissante (vérifié toutes les 10 min, 1 e-mail/h max)" },
-  { id: 'critical_error_alert', label: 'Erreur critique', category: 'Supervision', subject: '{n} erreur(s) critique(s) — {source}', trigger: "Une erreur CRITICAL enregistrée sur l'heure glissante, même seule et sous le seuil de saturation (vérifié toutes les 10 min, 1 e-mail/h max)" },
   { id: 'critical_error_alert', label: 'Erreur critique', category: 'Supervision', subject: '{n} erreur(s) critique(s) — {source}', trigger: "Une erreur CRITICAL enregistrée sur l'heure glissante, même seule et sous le seuil de saturation (vérifié toutes les 10 min, 1 e-mail/h max)" },
   { id: 'invitation', label: 'Invitation', category: 'Accès', subject: 'Vous êtes invité à rejoindre {flotte}', trigger: 'Un admin invite un membre' },
   { id: 'password_reset', label: 'Réinitialisation MDP', category: 'Sécurité', subject: 'Réinitialisation de votre mot de passe', trigger: 'Demande « mot de passe oublié »', noOpenTracking: true },
@@ -90,6 +90,11 @@ export class EmailAdminService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
+    // Démonstration : elle PARTAGE la clé Resend de la production (vérifié le 2026-09-08,
+    // même empreinte). Sans cette garde, son centre e-mails afficherait la liste de
+    // suppression réelle — de vraies adresses clientes dans un environnement dont tout le
+    // reste est pseudonymisé. Optionnel pour les specs.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
 
   /**
@@ -106,6 +111,8 @@ export class EmailAdminService {
    * de refuser de s'afficher.
    */
   private async suppressionsFournisseur(): Promise<SuppressionFournisseur[]> {
+    // La démo ne montre pas l'infrastructure de la production, fût-ce à un administrateur.
+    if (this.demoMode?.enabled) return [];
     if (this.memoSuppressions && Date.now() - this.memoSuppressions.a < 60_000) {
       return this.memoSuppressions.valeur;
     }
