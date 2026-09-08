@@ -243,10 +243,12 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
 | `c2afb01f` | R3 : géométrie de la polyligne, recalage par lots de dix, recalage à la demande | 08/09 02:25 | API : route `map-matching`, `OSRM_MAX_COORDONNEES`, `vitessesSurTrace` dans le tracé public ; web : `chunk-Y3POCC2H.js` — puis **contre-vérifié à l'écran** |
 | `cfc91f82` `2c68c65e` `f988c74e` `a9c5a4a9` | F : fonds Esri, tracé et traînée paramétrables, vigie critique, docs | 08/09 02:57 (conteneurs recréés 00:56 UTC, hors de la fenêtre HH:44-HH:56 ; le passage de 00:45 s'était clos à 00:51:21) | web : `chunk-A7MPWIKC.js` (`World_Light_Gray_Base`), `chunk-3BYQORV7.js` (`cl-trainee-curseur`), `chunk-K3MRYL4P.js` (`tr-legende-case`, `pr-legende-case`), **0 fichier `cartocdn`** ; API : `critical_error_alert` dans `email.service.js` et `email-admin.service.js`, `VIGIE_CRITIQUE` dans la vigie — puis **contre-vérifié à l'écran** (§ 9) |
 
+| `dae97b03` `3e46c222` `3d6834b8` | La ligne au départ (automatisation) + retouches de libellé | 08/09 07:42 puis 07:52 (conteneurs recréés 05:42:51 et ~05:56 UTC, hors passage) | migration `20260908053000` appliquée à 05:42:53, `status` défaut `'done'` ; API : `ouvrirLigne`, `marquerPassagesInterrompus` ; web : `chunk-VYFVK5HZ.js` (`ta-run-etat`) — puis **contre-vérifié sur un vrai passage tué** (§ 9.4 bis) |
+
 **Le chantier est terminé, décisions comprises.** Les six tâches (A, B1+B4, B3, B2, C, D1, E),
-les trois défauts de recette (R1, R2, R3) et les cinq décisions (§ 9) sont passés par les cinq
-niveaux, jusqu'à la mesure en production. Reste au propriétaire : la proposition de § 9.4
-(ligne d'automatisation écrite au départ), hors périmètre cartes.
+les trois défauts de recette (R1, R2, R3), les cinq décisions (§ 9) et la ligne au départ de
+l'automatisation (§ 9.4 bis, demandée le 08/09 au matin) sont passés par les cinq niveaux,
+jusqu'à la mesure en production.
 
 ⚠️ Un `docker compose up -d --build` a rendu la main avec exit 0 SANS recréer les conteneurs
 (20:25) : les images n'avaient pas été reconstruites. Toujours lire l'artefact ; relancer si
@@ -284,6 +286,14 @@ niveaux, jusqu'à la mesure en production. Reste au propriétaire : la propositi
 - 2026-09-08 03:00 — Recette en production sur la session du propriétaire (§ 9) ; réglages
   remis tels qu'ils étaient (fond « Plan », traînée 4 points, couleur active, filtre
   véhicules « Tous »).
+- 2026-09-08 07:20 — Le propriétaire demande la ligne au départ de l'automatisation (§ 9.4
+  bis). Schéma + migration (SQL généré par `prisma migrate diff`, appliqué en local), service,
+  DTO partagé, écran d'historique ; rouge d'abord prouvé ; typecheck, jest API (3838 verts, le
+  seul échec est le `catalogue-exhaustif` d'une autre session), shared 416, garde-fous, `ng
+  build`, Karma 717.
+- 2026-09-08 07:36 — Déploiement placé AVANT le passage de 05:45 UTC (fini 05:43:17), puis test
+  grandeur nature : passage tué à 05:45:06, marqué interrompu à 05:45:22, e-mail critique
+  livré à 05:50:00, écran vérifié à 05:52. Deux libellés retouchés et redéployés (05:51 →).
 
 ## 7. Défauts trouvés en recette (à corriger, puis cocher)
 
@@ -514,6 +524,27 @@ place de « 0 analysés ».
 **Rouge d'abord** : `ligne-au-depart.spec.ts` (10 tests) contre l'ancien service → suite en
 échec de compilation (`onApplicationBootstrap` inexistant, DTO sans `status`) ;
 `trip-automation-etat.spec.ts` contre l'ancien composant → `etatPassage` inexistant.
+L'ancien `trip-automation.service.spec.ts` attendait « un seul `create` avec les chiffres » :
+aligné sur le nouveau contrat (un `create` au départ, la même ligne complétée par `update`).
+
+✅ **Contre-vérifié en production, sur un VRAI passage tué** (08/09, heures UTC) :
+
+| Heure | Fait |
+|---|---|
+| 05:42:51 | Conteneurs recréés (`dae97b03` + docs `3e46c222`), migration appliquée à 05:42:53, colonne `status` défaut `'done'`, artefacts lus (`ouvrirLigne`, `marquerPassagesInterrompus`, `ta-run-etat`). Le déploiement a été placé AVANT le passage de 05:45, exprès. |
+| 05:45:00 | Le passage planifié écrit sa ligne `160aee4d…` : `running`, `scheduled` — lue en base à 05:45:06, **pendant** le passage. Avant ce lot, rien n'existait à cet instant. |
+| 05:45:06 | `docker restart tracky-api` : exactement ce qu'un déploiement fait au passage en cours. |
+| 05:45:22 | L'API redémarre et marque la ligne `interrupted` (fin nulle) ; centre d'alerte : **CRITICAL** `TRIP_AUTOMATION` « Passage d'automatisation interrompu : commencé le 08/09/2026 07:45 (planifié), jamais terminé… » ; journal d'activité `trip_automation_passage_interrompu` ; journal API « 1 passage(s) … marqué(s) au démarrage ». |
+| 05:50:00 | La vigie des critiques (§ 9.1) envoie l'e-mail : `email_logs` → `critical_error_alert`, `contact@vizyoagency.com`, sujet « 1 erreur critique — TRIP_AUTOMATION », **DELIVERED**. |
+| 05:52 | Écran `/admin/trip-automation` (session du propriétaire, service worker purgé) : « 08/09 07:45 · Auto · **INTERROMPU** · commencé, jamais terminé — l'API a redémarré pendant le passage ; la suite au passage suivant », détail « durée inconnue ». |
+| 06:45 | Le passage suivant doit partir normalement : 60 min depuis le départ interrompu, la garde laisse passer. |
+
+Deux retouches vues à l'écran, faites dans la foulée : « redémarré 0 min plus tard » devient
+« moins d'une minute » (`3d6834b8`), et le détail d'un passage interrompu ne dit plus « Rien
+de nouveau à traiter » mais « Le passage n'est pas allé jusqu'au bout ».
+
+Coût de ce test : le passage de 05:45 n'a pas fait son travail, repris à 06:45 — le même
+retard qu'un déploiement mal placé, mais cette fois signalé partout où il doit l'être.
 
 ### 9.5 Le rouge du tracé : une case, pas une teinte
 
