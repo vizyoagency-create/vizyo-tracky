@@ -28,9 +28,15 @@ export interface ResultatRecalage {
  * pendant des mois pour tout trajet de plus de dix points (cf. `map-matching.service.ts`) :
  * 89 % des trajets en base n'ont pas de tracé recalé, et le rejeu y coupe les virages.
  *
- * Plutôt qu'un rattrapage de masse contre un service public gratuit, on recale QUAND ON
- * REGARDE : le rejeu d'un trajet sans tracé recalé le demande, une fois, et le résultat est
- * rangé pour tous les rejeux suivants. Un trajet jamais rejoué ne coûte rien à personne.
+ * Deux appelants, un seul endroit où l'on range un tracé :
+ *   · le REJEU d'un trajet sans tracé recalé le demande, une fois, et le résultat sert à
+ *     tous les rejeux suivants ;
+ *   · le RATTRAPAGE de l'automatisation (2026-09-08) en reprend quinze par passage, en fin
+ *     de course, pour résorber l'historique sans bousculer le service public d'OSRM.
+ *
+ * ⚠️ D'où des messages de journal qui ne disent PAS « à la demande » : ils mentiraient une
+ * fois sur deux. Le verrou `enCours` sert justement à ce que les deux ne se marchent pas
+ * dessus sur le même trajet.
  *
  * ⚠️ Le périmètre est celui de `findOne` — un trajet qu'on n'a pas le droit de voir répond
  * 404, jamais 403, et n'est jamais recalé.
@@ -59,12 +65,12 @@ export class TripMapMatchingService {
     try {
       const recale = await this.mapMatching.match(brut);
       if (!recale || recale.length < 2) {
-        this.logger.warn(`Recalage à la demande refusé pour le trajet ${tripId} (${brut.length} points) : tracé brut conservé.`);
+        this.logger.warn(`Recalage refusé pour le trajet ${tripId} (${brut.length} points) : tracé brut conservé.`);
         return { polylineMatched: null, enCours: false };
       }
       const json = JSON.stringify(recale);
       await this.prisma.trip.update({ where: { id: tripId }, data: { polylineMatched: json } });
-      this.logger.log(`Recalage à la demande : trajet ${tripId}, ${brut.length} -> ${recale.length} points.`);
+      this.logger.log(`Recalage : trajet ${tripId}, ${brut.length} -> ${recale.length} points.`);
       return { polylineMatched: json, enCours: false };
     } finally {
       this.enCours.delete(tripId);
