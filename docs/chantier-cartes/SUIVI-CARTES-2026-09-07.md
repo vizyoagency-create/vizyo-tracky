@@ -239,6 +239,7 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
 | `0ce1e70c` `ad5b12bc` `11c44103` | B2a, B2b, B2c (+ `3fb96da9` d'une autre session) | 20:40 (second lancement, le premier n'avait pas recréé les conteneurs) | `speedsKmh` ×4 dans l'API, `pj-legende`, `tr-legende-v`, `pr-legende-v` |
 | `df9905cf` `7f184173` | C, D1, E1, E2 | 21:05 | `mp-legende-b`, `pm-boite` |
 | `1e3841c0` | R1+R2 : infobulle, légende hors des commandes | 08/09 01:22 (conteneurs recréés 23:22:46Z) | `chunk-XOA6VNXP.js` : `"right","56px"` présent, `glissez` absent (0) — puis **contre-vérifié à l'écran** |
+| `c2afb01f` | R3 : géométrie de la polyligne, recalage par lots de dix, recalage à la demande | 08/09 02:25 | API : route `map-matching`, `OSRM_MAX_COORDONNEES`, `vitessesSurTrace` dans le tracé public ; web : `chunk-Y3POCC2H.js` — puis **contre-vérifié à l'écran** |
 
 **Le chantier est terminé.** Les six tâches (A, B1+B4, B3, B2, C, D1, E) et les deux défauts de
 recette (R1, R2) sont passés par les cinq niveaux, jusqu'à la mesure en production. Restent
@@ -292,7 +293,7 @@ Recette de production du 08/09 (00:30-01:20), session du propriétaire, deux son
 aurait jugé le paquet d'avant le correctif. Toujours le retirer avant de juger une correction
 d'interface (piège 0.6 du dossier de reprise).
 
-- [ ] **R3 — « Les courbes sont mauvaises » (propriétaire, 08/09 01:55, capture du rejeu
+- [x] **R3 — « Les courbes sont mauvaises » (propriétaire, 08/09 01:55, capture du rejeu
       GA-490-SJ 21:23 UTC, 9,1 km, pointe 106)** : le tracé coloré est fait de droites entre
       quelques points, une diagonale orange traverse Les Izards.
       **Cause 1, ma régression (B2a/B2b/B2c)** : le tracé coloré prenait sa géométrie dans les
@@ -315,7 +316,17 @@ d'interface (piège 0.6 du dossier de reprise).
       recalé, résultat rangé pour les rejeux suivants ; le tracé brut s'affiche sans attendre,
       la route vient le remplacer sous le véhicule sans toucher au curseur.
       Tests : 5 (partagé), 6 (lots, 2 rouges avant), 6 (à la demande), 24 (public, 2 rouges
-      avant), +1 web. **Recette production à faire sur ce trajet précis.**
+      avant), +1 web. Commit `c2afb01f`, déployé 08/09 02:25.
+      **Vérifié en production (02:30, session du propriétaire)** : rejeu du trajet même de la
+      capture → `POST /api/trips/d281a6cd…/map-matching` répond 201 en 1,06 s, journal API
+      « 23 -> 344 points », tracé rouge sur l'A620, orange dans l'échangeur, vert vers
+      Croix-Daurade, **plus aucune diagonale**, rangé en base (344 points). Rejeu du trajet du
+      lien public FV-941-LZ (84 km) → recalé de même ; la page publique sert désormais
+      **1 463 points** qui suivent l'A68, colorés par bande.
+      ⚠️ Reste vrai : un trajet jamais rejoué garde sa polyligne brute (le recalage se fait au
+      premier rejeu) ; le rejeu de période ne déclenche pas de recalage (trop de requêtes pour
+      le service public) et colore ce qui existe. Un OSRM auto-hébergé (`OSRM_BASE_URL`)
+      lèverait ces limites.
 
 Écartés, préexistants et hors chantier :
 - « Toutes les sociétés » élidé dans la puce du sélecteur à 375 et 768 px (`w 96 / sw 101`) :
