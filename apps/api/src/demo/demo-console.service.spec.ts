@@ -121,6 +121,16 @@ describe('DemoConsoleService', () => {
       expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'u-pro' }, data: { isActive: true } });
     });
 
+    it("refuse d'inviter un SUPER_ADMIN — un compte de démo verrait l'onglet Administration", async () => {
+      // Le formulaire ne propose que trois rôles, mais l'API accepte un corps quelconque : c'est
+      // le service qui doit refuser, sinon la garde ne tient qu'à un <select>.
+      const { service, invitations } = bati({ demo: true });
+      await expect(service.inviter('x@y.fr', UserRole.SUPER_ADMIN, 'moi')).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(invitations.create).not.toHaveBeenCalled();
+    });
+
     it("n'occulte pas l'owner dans la présence — sur la démo il n'y a pas d'owner à protéger", async () => {
       const { service, flux } = bati({ demo: true });
       await service.enLigne();

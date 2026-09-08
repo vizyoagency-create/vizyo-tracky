@@ -137,6 +137,16 @@ export class DemoConsoleService {
    */
   async inviter(email: string, role: UserRole, demandeurEmail: string) {
     this.exigerDemo();
+    // ⚠️ AUCUN COMPTE DE DÉMONSTRATION N'EST SUPER-ADMINISTRATEUR. C'est une règle
+    // d'exploitation, pas une préférence : un super-admin voit l'onglet Administration, donc
+    // l'audit VPS, le centre d'alerte et les journaux — sur un environnement dont les
+    // identifiants sont remis à des prospects. Le formulaire ne propose que trois rôles, mais
+    // l'API accepte un corps quelconque : la garde doit être ICI, où personne ne la contourne.
+    if (role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        "Un compte de démonstration ne peut pas être super-administrateur : il verrait l'onglet Administration de la démo.",
+      );
+    }
     const auteur = await this.prisma.user.findFirst({
       where: { role: UserRole.SUPER_ADMIN },
       orderBy: { createdAt: 'asc' },
