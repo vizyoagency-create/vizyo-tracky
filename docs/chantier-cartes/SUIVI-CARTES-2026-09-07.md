@@ -50,6 +50,7 @@ Déploiement et preuve d'artefact : dossier de reprise §1.3 et §0.8.
 | D | Légende repliable et mémorisée | fait (D3 laissé au propriétaire) | 1-5 |
 | E | Repères de lieux NON déplaçables depuis les cartes (demande du 07/09 soir) | fait | 1-5 |
 | R | Recette finale : captures 4 largeurs, sondes, correction des défauts | fait | 1-5 |
+| F | Décisions tranchées selon les choix clients (§ 9) : vigie critique, fonds Esri, Calques, contrôle de l'automatisation, tracé paramétrable | fait | 1-5 |
 
 ---
 
@@ -240,10 +241,12 @@ carte et tombe sur un repère de 44 px le déplace, et la position est enregistr
 | `df9905cf` `7f184173` | C, D1, E1, E2 | 21:05 | `mp-legende-b`, `pm-boite` |
 | `1e3841c0` | R1+R2 : infobulle, légende hors des commandes | 08/09 01:22 (conteneurs recréés 23:22:46Z) | `chunk-XOA6VNXP.js` : `"right","56px"` présent, `glissez` absent (0) — puis **contre-vérifié à l'écran** |
 | `c2afb01f` | R3 : géométrie de la polyligne, recalage par lots de dix, recalage à la demande | 08/09 02:25 | API : route `map-matching`, `OSRM_MAX_COORDONNEES`, `vitessesSurTrace` dans le tracé public ; web : `chunk-Y3POCC2H.js` — puis **contre-vérifié à l'écran** |
+| `cfc91f82` `2c68c65e` `f988c74e` `a9c5a4a9` | F : fonds Esri, tracé et traînée paramétrables, vigie critique, docs | 08/09 02:57 (conteneurs recréés 00:56 UTC, hors de la fenêtre HH:44-HH:56 ; le passage de 00:45 s'était clos à 00:51:21) | web : `chunk-A7MPWIKC.js` (`World_Light_Gray_Base`), `chunk-3BYQORV7.js` (`cl-trainee-curseur`), `chunk-K3MRYL4P.js` (`tr-legende-case`, `pr-legende-case`), **0 fichier `cartocdn`** ; API : `critical_error_alert` dans `email.service.js` et `email-admin.service.js`, `VIGIE_CRITIQUE` dans la vigie — puis **contre-vérifié à l'écran** (§ 9) |
 
-**Le chantier est terminé.** Les six tâches (A, B1+B4, B3, B2, C, D1, E) et les deux défauts de
-recette (R1, R2) sont passés par les cinq niveaux, jusqu'à la mesure en production. Restent
-seulement les points de la section 8, qui appartiennent au propriétaire.
+**Le chantier est terminé, décisions comprises.** Les six tâches (A, B1+B4, B3, B2, C, D1, E),
+les trois défauts de recette (R1, R2, R3) et les cinq décisions (§ 9) sont passés par les cinq
+niveaux, jusqu'à la mesure en production. Reste au propriétaire : la proposition de § 9.4
+(ligne d'automatisation écrite au départ), hors périmètre cartes.
 
 ⚠️ Un `docker compose up -d --build` a rendu la main avec exit 0 SANS recréer les conteneurs
 (20:25) : les images n'avaient pas été reconstruites. Toujours lire l'artefact ; relancer si
@@ -264,6 +267,23 @@ seulement les points de la section 8, qui appartiennent au propriétaire.
   Défaut mesuré 2 : perte pendant un style non chargé (`map.setStyle(json)` puis perte) →
   au retour `style=null`, bandeau retiré, 0 `styledata` même après 10 rAF. Carte noire,
   marqueurs orphelins, aucun message, définitif.
+- 2026-09-08 02:35 — Le propriétaire demande de trancher les décisions restantes selon les
+  choix clients (détail maximal, lisible, paramétrable dans les filtres). Lecture des données
+  de production (vigie, tuiles, passages d'automatisation, planche Calques).
+- 2026-09-08 02:40 — Tuiles Esri Gray Canvas téléchargées et LUES (Toulouse z12 et z16) :
+  propres, libellés dans le calque de référence et dans la base dès z16.
+- 2026-09-08 02:45 — Code des quatre lots écrit. Rouge d'abord prouvé par `git stash` du seul
+  fichier de code : vigie 4 échecs / 7, catalogue des fonds 3 / 6, préférence = erreur de
+  compilation. Sept garde-fous verts, `ng build` 70 s, Karma **714** (705 avant), typecheck
+  API vert, jest API 3815 verts + 1 échec pré-existant (`catalogue-exhaustif` : le cron
+  `email-health` d'une autre session n'est pas catalogué — pas à moi), jest shared 416.
+- 2026-09-08 02:51 — Quatre commits par chemin explicite (dont une ligne du catalogue e-mails
+  posée dans l'index par `git apply --cached`, le fichier étant en cours d'édition par une
+  autre session), push. Attente de la fin du passage d'automatisation de 00:45 UTC (clos
+  00:51:21), déploiement 00:53 → 00:57 UTC, artefacts lus dans les conteneurs.
+- 2026-09-08 03:00 — Recette en production sur la session du propriétaire (§ 9) ; réglages
+  remis tels qu'ils étaient (fond « Plan », traînée 4 points, couleur active, filtre
+  véhicules « Tous »).
 
 ## 7. Défauts trouvés en recette (à corriger, puis cocher)
 
@@ -392,6 +412,12 @@ niveaux (rouge d'abord — prouvé par un `git stash` du seul fichier de code, s
 - **Non fait, exprès** : aucune erreur CRITICAL synthétique injectée en production pour « voir
   l'e-mail partir » — ce serait polluer le centre d'alerte et la boîte d'exploitation. La
   mécanique est prouvée par les tests ; le premier vrai CRITICAL l'exercera.
+- ✅ **Contre-vérifié en production** (03:00) : `GET /api/admin/emails/templates/critical_error_alert/preview`
+  → 200, sujet « 1 erreur critique — trip-automation », HTML avec le titre, le détail des sources
+  et le bouton « Ouvrir le centre d'alerte » (fichier remis au propriétaire) ; le gabarit figure
+  dans `GET /api/admin/emails/templates` ; l'écran des tâches de fond nomme désormais la tâche
+  « Vigie du centre d'alerte » avec sa nouvelle raison d'être. Aucune ligne de vigie au journal
+  API depuis le redémarrage : aucune erreur critique dans l'heure, c'est le comportement attendu.
 
 ### 9.2 Fonds « Plan clair / sombre » : Esri à la place de CARTO
 
@@ -405,6 +431,10 @@ niveaux (rouge d'abord — prouvé par un `git stash` du seul fichier de code, s
   Les identifiants `dark` / `light` / `hybrid` ne changent pas : la préférence persistée de
   chaque utilisateur reste valide.
 - **Rouge d'abord** : `map-style.service.spec.ts` contre l'ancien catalogue → 3 échecs sur 6.
+- ✅ **Contre-vérifié en production** (03:00, 1440×900) : « Plan clair » puis « Plan sombre »
+  choisis dans le sélecteur de la carte — fond gris propre, noms de communes lisibles
+  (Aucamville, Launaguet, L'Union, Saint-Jean, Blagnac), **aucun filigrane** ; le paquet web ne
+  contient plus une seule URL `cartocdn`. Fond remis sur « Plan » (préférence relue : `osm`).
 
 ### 9.3 Panneau Calques : la traînée se règle dans les filtres
 
@@ -414,6 +444,12 @@ niveaux (rouge d'abord — prouvé par un `git stash` du seul fichier de code, s
   SUITE (les points en trop sont coupés, puis les dernières trames sont rejouées), sans
   attendre la trame suivante — un véhicule à l'arrêt n'en envoie qu'une toutes les 2 à 6 min.
 - « Étiquettes plaques » reste (point 3 de la section 8).
+- ✅ **Contre-vérifié en production** (03:00) : la planche montre « Traînée derrière les
+  véhicules », « Colorée par la vitesse » et « Longueur : 4 points » avec son curseur. Case
+  décochée → préférence `traceParVitesse: false` relue en localStorage, recochée → `true` ;
+  curseur cliqué à gauche → « Longueur : 2 points » et `trailLength: 2` retenu, remis à 4.
+  (Les flèches du clavier n'ont pas bougé le curseur dans le volet : le focus n'y était pas ;
+  le clic sur la piste, lui, fait le réglage.)
 
 ### 9.4 Contrôle de l'automatisation des trajets (fait à 02:30 au lieu de 07:15)
 
@@ -452,3 +488,14 @@ Règle d'exploitation retenue en attendant : **ne pas déployer entre HH:44 et H
   détail que le destinataire du lien vient chercher.
 - **Rouge d'abord** : `trace-par-vitesse-defaut.spec.ts` contre l'ancien service de
   préférences → erreur de compilation (`traceParVitesse` inconnu).
+- ✅ **Contre-vérifié en production** (03:05) : rejeu de trajet (0,6 km, mh cars) — la légende
+  porte la case « Tracé coloré par la vitesse » et le titre « Pastilles » devant « Arrêt » ;
+  décochée → préférence `false`, légende de vitesse repliée, trait vert ; recochée → tout
+  revient. Rejeu de période (FM-772-JH, 65 trajets, 1 643 km) — case « Tracés colorés par la
+  vitesse » : décochée, les 65 tracés repassent au vert d'un coup (relevés gardés en mémoire,
+  aucune requête) ; recochée, les tronçons orange et rouges reviennent. Préférence remise à
+  `true`, filtre véhicules remis sur « Tous ».
+- ⚠️ Vu pendant cette recette, PAS un défaut du produit : le rejeu de période affiche « Carte
+  indisponible (délai 3 s dépassé) » dans le volet navigateur masqué, alors que la carte est
+  rendue derrière. C'est le banc (aucun rAF tant que le volet ne capture pas, cf. mémoire
+  « volet masqué = page gelée »), le même faux positif que pour la carte blanche.
