@@ -77,7 +77,11 @@ export class EmailHealthService {
     });
 
     if (bloques.length === 0) {
-      this.logger.debug('Aucun courriel bloqué.');
+      // ⚠️ `log` et non `debug` : en production le niveau `debug` n'est pas émis, si bien qu'un
+      // passage PROPRE ne laissait aucune trace. Le silence de cette sentinelle devenait alors
+      // indistinguable de sa mort — exactement la panne qu'elle existe pour empêcher, d'un cran
+      // plus haut. Une ligne par jour, c'est le prix de savoir qu'elle a tourné.
+      this.logger.log('Passage effectué : aucun courriel accepté puis jamais confirmé.');
       return;
     }
 

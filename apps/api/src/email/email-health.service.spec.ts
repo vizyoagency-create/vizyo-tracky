@@ -110,10 +110,17 @@ describe('EmailHealthService — la panne silencieuse du 2026-09-08', () => {
     expect(niveau).toBe('ERROR');
   });
 
-  it('rien de bloqué : aucune alerte', async () => {
+  it('rien de bloqué : aucune alerte, mais le passage laisse une trace', async () => {
+    // La trace compte autant que l'alerte. Sans elle, un passage propre est indistinguable d'une
+    // sentinelle morte — et c'est précisément la panne qu'elle existe pour empêcher.
     const { service, errorLogger } = bati([]);
+    const journal = jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
+
     await service.verifierCourrielsBloques(MAINTENANT);
+
     expect(errorLogger.record).not.toHaveBeenCalled();
+    expect(journal).toHaveBeenCalledTimes(1);
+    journal.mockRestore();
   });
 
   it('en démonstration : ne regarde même pas la base', async () => {
