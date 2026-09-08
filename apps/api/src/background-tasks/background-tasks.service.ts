@@ -365,6 +365,15 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 30 },
   },
   {
+    id: 'email-health',
+    source: 'email/email-health.service.ts', label: 'Sentinelle des courriels bloqués', category: 'Système & observabilité',
+    kind: 'cron', scheduleHuman: 'chaque jour à 07:00', criticality: 'haute', antiOverlap: false,
+    settingsRoute: '/admin/emails',
+    note: "Née du constat du 2026-09-08 : `admin@cdef31.org`, société cliente active, n'a pas reçu SEPT rapports hebdomadaires consécutifs (27/07 → 07/09). Resend accepte un envoi vers une adresse de sa liste de suppression, rend un identifiant, n'envoie rien et n'émet AUCUN webhook — la ligne reste `QUEUED` pour toujours. L'adresse d'alerte interne était dans le même état, ce qui explique les sept semaines : le canal censé prévenir était lui-même muet. D'où une sentinelle qui N'ENVOIE PAS DE COURRIEL et écrit au centre d'alerte.",
+    purpose: "Relève les messages acceptés depuis plus de 24 h et jamais confirmés (fenêtre de 30 jours, 200 lignes au plus), interroge le statut réel chez le fournisseur, et écrit une ligne par adresse fautive au centre d'alerte. C'est le seul instrument qui distingue « personne n'a écrit » de « le fournisseur n'a rien envoyé ».",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 7 && w.getMinutes() === 0 },
+  },
+  {
     id: 'dependency-heartbeat',
     source: 'observability/dependency-heartbeat.service.ts', label: 'Sonde active des dépendances externes', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'toutes les 5 min (à :30 s)', criticality: 'haute', antiOverlap: true,
