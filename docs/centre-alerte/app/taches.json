@@ -501,11 +501,10 @@
       "detail": "vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.",
       "classe": "AUTO",
       "gravite": 1,
-      "etat": "DEPLOYE",
+      "etat": "FAIT",
       "depuis": "2026-08-05",
       "phare": true,
-      "preuve": "Trois unites systemd derivees du gabarit vizyo-auth-backup, exercees une fois chacune le 06/09 a 06:35:47-48 : 3 succes. CONFRONTEES A LA BASE VIVANTE — vizyo_manager 8 tables en base = 8 CREATE TABLE dans le dump ; vizyo_texto 47 lignes allowlist_entries = 47 ; sms 9 CREATE TABLE. Archives en 600, dossiers en 700, retention 30 j EXERCEE. Minuteries ACTIVES, Persistent=yes, ExecStart=/bin/bash (constat VPS-015). ⚠️ MAIS CE N EST PAS LA PREUVE ATTENDUE — voir ci-dessous.",
-      "preuveAttendue": "🔴 REQUALIFIE DE FAIT A DEPLOYE LE 07/09, sur mesure. LastTriggerUSec est VIDE sur les trois minuteries, et ExecMainStartTimestamp/ExecMainExitTimestamp le sont aussi sur les trois services : AUCUNE N A JAMAIS DECLENCHE SEULE. L unique execution est un `systemctl start` du 06/09 a 06:35 — les trois a la meme seconde, donc un GESTE, pas un mecanisme (VPS-M81). Premiere echeance autonome : 07/09 a 04:34:22, 04:40:53 et 04:50:18 UTC, soit 2 h APRES la collecte du 07/09. VPS-013 ne dit pas « ces bases n ont pas de copie », il dit qu elles n ont AUCUNE SAUVEGARDE REPRODUCTIBLE : une copie posee a la main ne le devient qu au moment ou quelque chose la refait sans personne. C est la barre appliquee a vizyo-auth le 06/09 ; l appliquer a lui seul reviendrait a la retirer. ➜ PREUVE ATTENDUE AU PASSAGE DU 08/09 : LastTriggerUSec = 07/09 04:34 / 04:40 / 04:50, ExecMainExitTimestamp NON VIDE, et DEUX copies dans /var/backups/{vizyo_manager,vizyo_texto,sms}. ⚠️ NE PAS relancer les unites a la main d ici la : cela rendrait le test INDECIDABLE."
+      "preuve": "✅ PROUVE LE 08/09, ET LES TROIS PREUVES ECRITES D AVANCE SONT TOMBEES. (1) LastTriggerUSec RENSEIGNE : 07/09 04:30:56 (vizyo-manager-backup), 04:40:56 (vizyo-texto-backup), 04:50:30 (capcom6-backup). (2) ExecMainExitTimestamp NON VIDE : 04:30:57, 04:40:57, 04:50:30 — donc le Result=success est adosse a une fin REELLE et non a la valeur par defaut de systemd (VPS-M87). (3) DEUX copies dans chacun des trois dossiers /var/backups/{vizyo_manager,vizyo_texto,sms}, datees 06/09 puis 07/09. 🔑 LE DISCRIMINANT DE VPS-M81, RETOURNE : le 06/09 les trois demarrages tombaient dans la MEME seconde (06:35:47-48) — signature d un systemctl start en rafale, donc un GESTE ; le 07/09 ils tombent a 10 min d intervalle, chacun a la seconde pres sur son propre OnCalendar (04:30 / 04:40 / 04:50). Trois horloges distinctes qui sonnent chacune a son heure ne sont pas une main qui appuie trois fois. 🔑 QUATRIEME PREUVE, NON DEMANDEE : le journal des unites imprime sa retention et elle COMPTE — « 0 supprimee(s), 1 conservee(s) » le 06/09, « 0 supprimee(s), 2 conservee(s) » le 07/09. Le second passage a donc RELU un dossier qu un passage precedent avait peuple : c est un cycle, pas une execution. ⚠️ Aucune unite n a ete relancee a la main entre les deux passages — le test est reste decidable. 🔑 CE QUE CE CONSTAT AURA COUTE A APPRENDRE : le 06/09, trois sources concordaient pour dire « c est fait » et AUCUNE n etait fausse — les trois portaient sur le mauvais objet. Un artefact prouve un PASSE, jamais un futur ; pour un MECANISME, la seule preuve est une execution qu aucune main n a declenchee. Elle aura demande 26 heures d attente, ce qui est son prix normal, pas un retard."
     },
     {
       "id": "V12",
@@ -673,11 +672,22 @@
       "partie": "vps",
       "fiche": "VPS-013 · VPS-M88",
       "titre": "Ranger les deux dossiers de sauvegarde abandonnes",
-      "detail": "Les trois unites posees le 06/09 ecrivent dans /var/backups/{vizyo_manager,vizyo_texto,sms}, nommes d'apres la BASE. Les dossiers historiques /var/backups/vizyo-manager (26 copies), /var/backups/vizyo-texto et /var/backups/capcom6 ne sont donc plus alimentes par rien : ils afficheront « PERIMEE » tous les matins, pour toujours — et un faux orange quotidien finit par faire ignorer le vrai. Deux options : faire pointer les unites vers les dossiers historiques (BACKUP_DIR=), ce qui reunit l'historique et la serie neuve ; ou archiver les anciens sous un nom DATE, forme que le collecteur reconnait deja comme un instantane ponctuel et cesse d'alerter dessus. ⚠️ NE PAS supprimer /var/backups/vizyo-manager : ses 26 copies sont le seul historique de cette base. ⚠️ NE PAS renommer pendant que le test de V11 court (08/09).",
+      "detail": "🔓 DEBLOQUEE LE 08/09 : le test de V11 est CLOS (les trois minuteries ont declenche seules), donc le renommage ne rend plus rien indecidable. 🔴 ET LE FAUX ORANGE EST DESORMAIS MESURE, PAS PREDIT : la collecte du 08/09 rend « capcom6 93 h ⚠️ PERIMEE », « vizyo-manager 93 h ⚠️ PERIMEE » et « vizyo-texto 93 h ⚠️ PERIMEE », pendant que les dossiers vivants (sms, vizyo_manager, vizyo_texto) portent chacun 2 copies de 21 h. Pire, la table de COUVERTURE dit l inverse sur les memes applications — « capcom6-mysql 🟠 en retard (3 j) » et « vizyo-manager-postgres 🟠 en retard (3 j) » — alors que texto-postgres, lui, ressort ✅ a jour parce que le rapprochement attrape vizyo_texto. Deux des trois sont donc faux cote couverture, et les trois le sont cote age. ➜ GESTE : renommer, JAMAIS supprimer — mkdir -p /var/backups/_ancien puis mv des dossiers capcom6 et vizyo-texto. ⚠️ L ORDRE COMPTE : verifier d abord que les copies fraiches sont bien en place (2 chacune au 08/09) ; deplacer avant, c est se retrouver sans aucune sauvegarde de capcom6 si le nouveau mecanisme tombe la meme nuit. ⚠️ /var/backups/vizyo-manager porte 26 copies contre 2 dans vizyo_manager : c est l historique long de cette base, et le deplacer est un geste DISTINCT, a prendre apres avoir decide si cet historique compte.",
       "classe": "PREPARE",
       "gravite": 3,
       "etat": "OUVERT",
       "depuis": "2026-09-07"
+    },
+    {
+      "id": "V27",
+      "partie": "vps",
+      "fiche": "VPS-040 · VPS-M91",
+      "titre": "Trancher si la base de DEMONSTRATION doit etre sauvegardee",
+      "detail": "Le parc tracky-demo a ete deploye le 07/09 a 14 h 08 (4 conteneurs, VPS-040), et la collecte du 08/09 ecrit « tracky-demo-postgres 🔴 AUCUNE SAUVEGARDE → la sauvegarder couterait 433MB par jour ». LE SUIVRE COUTERAIT ~13 Go (433 Mo/j x 30 j de retention) SUR UN DISQUE A 55 %, et ce serait probablement inutile : demo-refresh.sh RECONSTRUIT cette base depuis la production chaque dimanche a 04 h 00, et la source (tracky-postgres) est, elle, sauvegardee — ✅ a jour, 42 copies. ➜ LA QUESTION RESTANTE EST PRODUIT, PAS MACHINE : la base de demo porte demo_replay_frames (28 Mo, 115 265 lignes) qui n existe PAS en production. L import les regenere-t-il, ou ont-elles ete construites une fois ? Verification a un grep : grep -n replay_frames /opt/vizyo-tracky/deploy/vps/demo-refresh.sh. ⚠️ NE PAS ajouter de sauvegarde sur la foi du 🔴. ⚠️ NE PAS eteindre le 🔴 en ajoutant tracky-demo a une liste blanche de noms : c est reproduire la cause de VPS-M88. Le verdict doit rester ORANGE avec la mention du mecanisme qui reconstruit — un faux VERT sur une sauvegarde est la plus chere des erreurs de ce dispositif.",
+      "classe": "PRODUIT",
+      "gravite": 3,
+      "etat": "OUVERT",
+      "depuis": "2026-09-08"
     },
     {
       "id": "T26",

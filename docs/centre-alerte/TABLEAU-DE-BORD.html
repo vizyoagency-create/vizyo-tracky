@@ -88,17 +88,17 @@
 </header>
 
 <div class="kpis">
-  <div class="k ok"><div class="n">4</div><div class="l">faites et verifiees</div></div>
-  <div class="k warn"><div class="n">4</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">46</div><div class="l">ouvertes sur 54</div></div>
+  <div class="k ok"><div class="n">5</div><div class="l">faites et verifiees</div></div>
+  <div class="k warn"><div class="n">3</div><div class="l">deployees, preuve attendue</div></div>
+  <div class="k"><div class="n">47</div><div class="l">ouvertes sur 55</div></div>
   <div class="k dgr"><div class="n">11</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">2</div><div class="l">au-dela de 7 jours</div></div>
-  <div class="k info"><div class="n">17</div><div class="l">attendent un humain</div></div>
+  <div class="k info"><div class="n">18</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 4 faites, 4 deployees, 46 ouvertes sur 54">
-  <span class="s-FAIT" style="width:7%"></span>
-  <span class="s-DEPLOYE" style="width:7%"></span>
+<div class="barre" role="img" aria-label="Avancement : 5 faites, 3 deployees, 47 ouvertes sur 55">
+  <span class="s-FAIT" style="width:9%"></span>
+  <span class="s-DEPLOYE" style="width:5%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
   <span class="s-OUVERT" style="width:85%"></span>
 </div>
@@ -111,17 +111,17 @@
 </p>
 
 <div class="filtres" id="f">
-  <button data-f="tout" aria-pressed="true">Tout (54)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (46)</button>
+  <button data-f="tout" aria-pressed="true">Tout (55)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (47)</button>
   <button data-f="g1" aria-pressed="false">Gravite 1 (11)</button>
-  <button data-f="humain" aria-pressed="false">Attendent un humain (17)</button>
+  <button data-f="humain" aria-pressed="false">Attendent un humain (18)</button>
   <button data-f="code" aria-pressed="false">A faire soi-meme (15)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
   <button data-f="fait" aria-pressed="false">Closes (8)</button>
 </div>
 
-<h2 class="sec">Les 54 taches — ouvertes et graves d'abord</h2>
+<h2 class="sec">Les 55 taches — ouvertes et graves d'abord</h2>
 <div id="liste">
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
   <div class="t-h">
@@ -749,7 +749,22 @@
     
   </div>
   <h3>Ranger les deux dossiers de sauvegarde abandonnes</h3>
-  <p class="detail">Les trois unites posees le 06/09 ecrivent dans /var/backups/{vizyo_manager,vizyo_texto,sms}, nommes d'apres la BASE. Les dossiers historiques /var/backups/vizyo-manager (26 copies), /var/backups/vizyo-texto et /var/backups/capcom6 ne sont donc plus alimentes par rien : ils afficheront « PERIMEE » tous les matins, pour toujours — et un faux orange quotidien finit par faire ignorer le vrai. Deux options : faire pointer les unites vers les dossiers historiques (BACKUP_DIR=), ce qui reunit l'historique et la serie neuve ; ou archiver les anciens sous un nom DATE, forme que le collecteur reconnait deja comme un instantane ponctuel et cesse d'alerter dessus. ⚠️ NE PAS supprimer /var/backups/vizyo-manager : ses 26 copies sont le seul historique de cette base. ⚠️ NE PAS renommer pendant que le test de V11 court (08/09).</p>
+  <p class="detail">🔓 DEBLOQUEE LE 08/09 : le test de V11 est CLOS (les trois minuteries ont declenche seules), donc le renommage ne rend plus rien indecidable. 🔴 ET LE FAUX ORANGE EST DESORMAIS MESURE, PAS PREDIT : la collecte du 08/09 rend « capcom6 93 h ⚠️ PERIMEE », « vizyo-manager 93 h ⚠️ PERIMEE » et « vizyo-texto 93 h ⚠️ PERIMEE », pendant que les dossiers vivants (sms, vizyo_manager, vizyo_texto) portent chacun 2 copies de 21 h. Pire, la table de COUVERTURE dit l inverse sur les memes applications — « capcom6-mysql 🟠 en retard (3 j) » et « vizyo-manager-postgres 🟠 en retard (3 j) » — alors que texto-postgres, lui, ressort ✅ a jour parce que le rapprochement attrape vizyo_texto. Deux des trois sont donc faux cote couverture, et les trois le sont cote age. ➜ GESTE : renommer, JAMAIS supprimer — mkdir -p /var/backups/_ancien puis mv des dossiers capcom6 et vizyo-texto. ⚠️ L ORDRE COMPTE : verifier d abord que les copies fraiches sont bien en place (2 chacune au 08/09) ; deplacer avant, c est se retrouver sans aucune sauvegarde de capcom6 si le nouveau mecanisme tombe la meme nuit. ⚠️ /var/backups/vizyo-manager porte 26 copies contre 2 dans vizyo_manager : c est l historique long de cette base, et le deplacer est un geste DISTINCT, a prendre apres avoir decide si cet historique compte.</p>
+  
+  <div class="badges"></div>
+</article>
+<article class="t etat-OUVERT g3" data-etat="OUVERT" data-partie="vps" data-classe="PRODUIT" data-g="3">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">V27</span>
+    <span class="fiche">VPS-040 · VPS-M91</span>
+    <span class="classe">🔵 Exploitant / equipe produit</span>
+    <span class="grav" title="gravite 3">G3</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">0 j</span>
+    
+  </div>
+  <h3>Trancher si la base de DEMONSTRATION doit etre sauvegardee</h3>
+  <p class="detail">Le parc tracky-demo a ete deploye le 07/09 a 14 h 08 (4 conteneurs, VPS-040), et la collecte du 08/09 ecrit « tracky-demo-postgres 🔴 AUCUNE SAUVEGARDE → la sauvegarder couterait 433MB par jour ». LE SUIVRE COUTERAIT ~13 Go (433 Mo/j x 30 j de retention) SUR UN DISQUE A 55 %, et ce serait probablement inutile : demo-refresh.sh RECONSTRUIT cette base depuis la production chaque dimanche a 04 h 00, et la source (tracky-postgres) est, elle, sauvegardee — ✅ a jour, 42 copies. ➜ LA QUESTION RESTANTE EST PRODUIT, PAS MACHINE : la base de demo porte demo_replay_frames (28 Mo, 115 265 lignes) qui n existe PAS en production. L import les regenere-t-il, ou ont-elles ete construites une fois ? Verification a un grep : grep -n replay_frames /opt/vizyo-tracky/deploy/vps/demo-refresh.sh. ⚠️ NE PAS ajouter de sauvegarde sur la foi du 🔴. ⚠️ NE PAS eteindre le 🔴 en ajoutant tracky-demo a une liste blanche de noms : c est reproduire la cause de VPS-M88. Le verdict doit rester ORANGE avec la mention du mecanisme qui reconstruit — un faux VERT sur une sauvegarde est la plus chere des erreurs de ce dispositif.</p>
   
   <div class="badges"></div>
 </article>
@@ -813,21 +828,6 @@
   
   <div class="badges"></div>
 </article>
-<article class="t etat-DEPLOYE g1" data-etat="DEPLOYE" data-partie="vps" data-classe="AUTO" data-g="1">
-  <div class="t-h">
-    <span class="marque" title="Deploye, preuve attendue">»</span>
-    <span class="id">V11</span>
-    <span class="fiche">VPS-013</span>
-    <span class="classe">🟢 Agent, seul, avec preuve</span>
-    <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">34 j</span>
-    
-  </div>
-  <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
-  <p class="detail">vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.</p>
-  <p class="preuve"><b>Preuve</b> — Trois unites systemd derivees du gabarit vizyo-auth-backup, exercees une fois chacune le 06/09 a 06:35:47-48 : 3 succes. CONFRONTEES A LA BASE VIVANTE — vizyo_manager 8 tables en base = 8 CREATE TABLE dans le dump ; vizyo_texto 47 lignes allowlist_entries = 47 ; sms 9 CREATE TABLE. Archives en 600, dossiers en 700, retention 30 j EXERCEE. Minuteries ACTIVES, Persistent=yes, ExecStart=/bin/bash (constat VPS-015). ⚠️ MAIS CE N EST PAS LA PREUVE ATTENDUE — voir ci-dessous.</p><p class="attendue"><b>Preuve attendue</b> — 🔴 REQUALIFIE DE FAIT A DEPLOYE LE 07/09, sur mesure. LastTriggerUSec est VIDE sur les trois minuteries, et ExecMainStartTimestamp/ExecMainExitTimestamp le sont aussi sur les trois services : AUCUNE N A JAMAIS DECLENCHE SEULE. L unique execution est un `systemctl start` du 06/09 a 06:35 — les trois a la meme seconde, donc un GESTE, pas un mecanisme (VPS-M81). Premiere echeance autonome : 07/09 a 04:34:22, 04:40:53 et 04:50:18 UTC, soit 2 h APRES la collecte du 07/09. VPS-013 ne dit pas « ces bases n ont pas de copie », il dit qu elles n ont AUCUNE SAUVEGARDE REPRODUCTIBLE : une copie posee a la main ne le devient qu au moment ou quelque chose la refait sans personne. C est la barre appliquee a vizyo-auth le 06/09 ; l appliquer a lui seul reviendrait a la retirer. ➜ PREUVE ATTENDUE AU PASSAGE DU 08/09 : LastTriggerUSec = 07/09 04:34 / 04:40 / 04:50, ExecMainExitTimestamp NON VIDE, et DEUX copies dans /var/backups/{vizyo_manager,vizyo_texto,sms}. ⚠️ NE PAS relancer les unites a la main d ici la : cela rendrait le test INDECIDABLE.</p>
-  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
-</article>
 <article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
   <div class="t-h">
     <span class="marque" title="Deploye, preuve attendue">»</span>
@@ -872,6 +872,21 @@
   <p class="detail">Corrige hors session, par une session parallele, entre les audits du 7 et du 8 septembre. La bibliotheque de cartographie detruit son style et le met a nul en gardant l objet carte vivant : les dix-neuf gardes qui verifient l existence de la carte passaient donc toutes, et chaque lecture de source levait. Le correctif ecoute la perte de contexte, garde chaque lecture de source, affiche un bandeau explicite et reprend quand le navigateur rend le contexte.</p>
   <p class="attendue"><b>Preuve attendue</b> — Marqueurs deja VERIFIES SUR L ARTEFACT SERVI le 08/09 (ecoute de la perte de contexte et nouvelle garde presentes dans le paquet livre par le serveur web, image de 00h56m15). Ce qui manque est la preuve de PRODUCTION : aucune nouvelle erreur de cette famille sur sept jours, ET l apparition du bandeau de reprise plutot qu un message generique si le cas se reproduit. A la collecte, l artefact n avait que vingt-six minutes de vie.</p>
   <div class="badges"></div>
+</article>
+<article class="t etat-FAIT g1" data-etat="FAIT" data-partie="vps" data-classe="AUTO" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Fait et verifie">✓</span>
+    <span class="id">V11</span>
+    <span class="fiche">VPS-013</span>
+    <span class="classe">🟢 Agent, seul, avec preuve</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">34 j</span>
+    
+  </div>
+  <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
+  <p class="detail">vizyo-manager (Stripe, factures), texto-postgres (passerelle SMS), capcom6-mysql. Le dump du 04/09 etait ponctuel : aucun timer ne le rejouera. Gabarit vizyo-auth-backup.timer deja prouve, creneau 04 h 30 libre, ~17,8 Mo/jour.</p>
+  <p class="preuve"><b>Preuve</b> — ✅ PROUVE LE 08/09, ET LES TROIS PREUVES ECRITES D AVANCE SONT TOMBEES. (1) LastTriggerUSec RENSEIGNE : 07/09 04:30:56 (vizyo-manager-backup), 04:40:56 (vizyo-texto-backup), 04:50:30 (capcom6-backup). (2) ExecMainExitTimestamp NON VIDE : 04:30:57, 04:40:57, 04:50:30 — donc le Result=success est adosse a une fin REELLE et non a la valeur par defaut de systemd (VPS-M87). (3) DEUX copies dans chacun des trois dossiers /var/backups/{vizyo_manager,vizyo_texto,sms}, datees 06/09 puis 07/09. 🔑 LE DISCRIMINANT DE VPS-M81, RETOURNE : le 06/09 les trois demarrages tombaient dans la MEME seconde (06:35:47-48) — signature d un systemctl start en rafale, donc un GESTE ; le 07/09 ils tombent a 10 min d intervalle, chacun a la seconde pres sur son propre OnCalendar (04:30 / 04:40 / 04:50). Trois horloges distinctes qui sonnent chacune a son heure ne sont pas une main qui appuie trois fois. 🔑 QUATRIEME PREUVE, NON DEMANDEE : le journal des unites imprime sa retention et elle COMPTE — « 0 supprimee(s), 1 conservee(s) » le 06/09, « 0 supprimee(s), 2 conservee(s) » le 07/09. Le second passage a donc RELU un dossier qu un passage precedent avait peuple : c est un cycle, pas une execution. ⚠️ Aucune unite n a ete relancee a la main entre les deux passages — le test est reste decidable. 🔑 CE QUE CE CONSTAT AURA COUTE A APPRENDRE : le 06/09, trois sources concordaient pour dire « c est fait » et AUCUNE n etait fausse — les trois portaient sur le mauvais objet. Un artefact prouve un PASSE, jamais un futur ; pour un MECANISME, la seule preuve est une execution qu aucune main n a declenchee. Elle aura demande 26 heures d attente, ce qui est son prix normal, pas un retard.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-FAIT g1" data-etat="FAIT" data-partie="vps" data-classe="AUTO" data-g="1">
   <div class="t-h">

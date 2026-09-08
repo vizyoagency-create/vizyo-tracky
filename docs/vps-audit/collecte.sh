@@ -1513,6 +1513,18 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
     echo "     (fenetre de retention non mesuree : base de ${TAILLE_MO:-?} Mo, sous le seuil de 100 Mo)"
   else
     echo "     ── fenetre de retention des 3 plus grosses tables (accumulation ou regime permanent ?) ──"
+    # ── AJOUTE LE 2026-09-08 (VPS-M89, angle mort n° 1 du rapport du 09-07) ──
+    # Chaque table compare son compte d emetteurs a SA PROPRE valeur de la veille, et a rien
+    # d autre. Le 2026-09-07, les trois tables de `tracky_prod` — alimentees par la MEME flotte,
+    # au MEME instant — rendaient 31, 30 et 30, et LES TROIS etaient vertes ; celle qui divergeait
+    # affichait meme « ✅ flotte STABLE ». Or ces trois comptes mesurent le meme objet a trois
+    # etages de la chaine (trame recue → decision d echantillonnage → position ecrite) : un ecart
+    # entre eux ne peut pas venir de la flotte, il vient d un etage qui perd des emetteurs.
+    # Le fichier est remis a zero POUR CHAQUE BASE : comparer des emetteurs de bases differentes
+    # n aurait aucun sens, et un fichier qui survit d une base a l autre fabriquerait cet ecart.
+    # ⚠️ COUT : ZERO requete de plus — les trois valeurs sont deja calculees juste au-dessus.
+    EMCMP="/tmp/audit-vps-emetteurs.$$"
+    : > "$EMCMP"
     for t in $(docker exec "$pg" psql -U "$U" -d "$D" -t -A -c \
         "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
          WHERE n.nspname='public' AND c.relkind='r'
@@ -1746,7 +1758,7 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
                                      AND \"$COL\" <= now() - interval '7 days')
            FROM \"$t\";" 2>/dev/null |
         awk -F'|' -v t="$t" -v c="$COL" -v em="${EMCOL:-}" -v regsil="${REGSIL:-}" \
-                  -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" 'NF>=12 {
+                  -v jour0="$JOUR_J0" -v jour1="$JOUR_J1" -v emcmp="$EMCMP" 'NF>=12 {
             deb=$1; fin=$2; jours=$3; n=$4+0; wj=$5+0; j0=$6+0; j1=$7+0; mo=$8+0;
             e0=$9+0; e1=$10+0; muets=$11; j7=$12+0;
             printf "       %-30s%s -> %s  = %s jours, %.1f Mo  (colonne %s)\n", t, deb, fin, jours, mo, c;
@@ -1789,6 +1801,10 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
               printf "          table — ce nest PAS « un seul emetteur », cest une mesure NON FAITE.)\n";
             } else if (e0 > 0 && e1 > 0) {
               pb0 = j0 / e0 / 24.0; pb1 = j1 / e1 / 24.0; re = e0 / e1;
+              # VPS-M89 : on RETIENT la valeur pour la confronter aux autres tables de la MEME
+              # base, apres la boucle. Append (>>) et non troncature (>) : chaque table est un
+              # processus awk distinct, un « > » n en garderait qu une seule — la derniere.
+              if (emcmp != "") printf "%s|%d|%d|%s\n", t, e0, e1, em >> emcmp;
               printf "         emetteurs DISTINCTS : %d sur 24 h  contre  %d les 24 h precedentes  (colonne %s)\n", e0, e1, em;
               printf "         par emetteur : %.1f trames/h  contre  %.1f  = x%.2f\n", pb0, pb1, (pb1>0 ? pb0/pb1 : 0);
               if (re < 0.90)
@@ -1820,9 +1836,40 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
                   printf "              3-7 j  : %-3d  ← au-dela de 3 j, un arret nest plus un usage normal.\n", rr[6]+0;
                   printf "              > 7 j  : %-3d  ← materiel probablement DEPOSE : a sortir du parc, sinon\n", rr[7]+0;
                   printf "                             il gonfle le total a chaque passage, pour toujours.\n";
+                  # ── AJOUTE LE 2026-09-08 (VPS-M90) : UNE BANDE SE VIDE TOUTE SEULE ──
+                  # VPS-M78 avait remplace « comparer les totaux » par « comparer les BANDES ».
+                  # Ce remede porte son propre defaut, et il est SYMETRIQUE du precedent : une
+                  # bande est bornee par un AGE, donc un boitier en sort par le seul ecoulement
+                  # du temps, sans que rien ne change dans la flotte.
+                  # Mesure du 2026-09-08, et elle est nette : le vecteur passe de 1/0/7/6 a
+                  # 0/1/1/12 en une nuit. Lu bande a bande, cela annonce « SIX boitiers deposes
+                  # de plus » — un constat de gravite 1, entierement FABRIQUE. La verite est que
+                  # les six boitiers muets depuis le 08-31 ont franchi leur 7e jour : 7-6=1 et
+                  # 6+6=12, et RIEN d autre n a bouge.
+                  # Le CUMUL au-dela d un seuil est la bonne grandeur, mais il faut dire pourquoi
+                  # SANS le sur-vendre — verifie au banc du 2026-09-08, qui a corrige la premiere
+                  # redaction de ce bloc : un cumul n est PAS insensible au vieillissement, il ne
+                  # l est que dans UN SENS. Un boitier qui vieillit ne peut que le faire MONTER
+                  # (ici > 7 j : 6 → 12, et > 1 j : 13 → 14). Il ne peut jamais le faire baisser.
+                  # Donc : une BAISSE de cumul est toujours une nouvelle REELLE (un boitier a
+                  # re-emis) ; une baisse de BANDE peut n etre que du temps qui passe.
+                  # ⚠️ COUT : ZERO requete, ZERO champ de plus — trois additions sur des valeurs
+                  #    deja collectees. Aucune apostrophe : programme awk en quotes simples.
+                  printf "            ── CUMULS (VPS-M90) : c est CECI qui se compare, pas les bandes ──\n";
+                  printf "              > 1 j : %-3d    > 3 j : %-3d    > 7 j : %-3d\n",
+                         (rr[5]+0)+(rr[6]+0)+(rr[7]+0), (rr[6]+0)+(rr[7]+0), rr[7]+0;
+                  printf "            🔑 UNE BANDE SE VIDE TOUTE SEULE — elle est bornee par un AGE. Le 2026-09-08\n";
+                  printf "               le vecteur est passe de 1/0/7/6 a 0/1/1/12 : lu bande a bande, « six\n";
+                  printf "               boitiers deposes de plus » ; lu en cumul > 3 j, 13 contre 13, donc RIEN\n";
+                  printf "               n avait bouge — les six avaient juste franchi leur 7e jour.\n";
+                  printf "            ⚠️ ET LE CUMUL NON PLUS N EST PAS NEUTRE — il ne l est que dans UN SENS :\n";
+                  printf "               le vieillissement ne peut que le faire MONTER (ce jour-la, > 7 j 6 → 12\n";
+                  printf "               et > 1 j 13 → 14). Il ne peut JAMAIS le faire baisser. Donc une BAISSE\n";
+                  printf "               de cumul est toujours reelle (un boitier a re-emis) ; une hausse peut\n";
+                  printf "               n etre que du temps qui passe, et se lit en regardant le seuil franchi.\n";
                   printf "            ⚠️ NE PAS comparer les TOTAUX de deux passages (VPS-M78) : ce total monte\n";
                   printf "               quand un vehicule se gare et quand un boitier est depose, pas seulement\n";
-                  printf "               quand une panne setend. Comparer les BANDES, et de preference celles > 3 j.\n";
+                  printf "               quand une panne setend. Comparer les CUMULS ci-dessus, pas les bandes.\n";
                   if (rr[2]+0 > nm)
                     printf "            🔴 LE REGISTRE EN COMPTE %d DE PLUS que la ligne ci-dessus. Lecart nest PAS\n               une contradiction : cest exactement le nombre de boitiers muets depuis si\n               longtemps quils ont quitte la fenetre de retention. ⚠️ CONSEQUENCE A LIRE\n               AVANT DE COMPARER DEUX PASSAGES : le compteur du journal DECROIT a mesure que\n               la panne DURE — sa serie se lit comme un retablissement pendant que la flotte\n               steint. Cest CE chiffre-ci, et lui seul, qui se compare dun jour a lautre\n               (VPS-M76, mesure du 2026-09-03 : 7 → 6 cote journal, 12 → 12 cote registre).\n", (rr[2]+0) - nm;
                   else if (rr[2]+0 == nm)
@@ -1882,6 +1929,42 @@ for pg in $(db_conteneurs "$MOTEURS_PG"); do
     echo "          Elle ne dit RIEN du volume : a duree constante, le volume suit le DEBIT."
     echo "          C'est la ligne « debit » ci-dessus qui tranche, pas les bornes (VPS-M64)."
     echo "          Une date de debut qui NE BOUGE PAS pendant que la fin avance = accumulation sans borne."
+    # ── VPS-M89 : LES COMPTES D EMETTEURS, CONFRONTES ENTRE EUX ET AU MEME INSTANT ──
+    # Toujours affiche des qu il y a au moins DEUX tables mesurees, y compris quand tout
+    # concorde : sans la ligne verte, on ne peut pas voir qu une concordance a CESSE
+    # (meme discipline que les leviers de la section 12, cf. §6bis de la procedure).
+    if [ -s "$EMCMP" ]; then
+      awk -F'|' '
+        { n++; tab[n]=$1; v[n]=$2+0; col[n]=$4; if (n==1 || v[n]<mn) mn=v[n]; if (n==1 || v[n]>mx) mx=v[n] }
+        END {
+          if (n < 2) {
+            printf "     ── EMETTEURS, TABLE PAR TABLE (VPS-M89) : une seule table mesuree — rien a confronter.\n";
+            printf "        Ce nest PAS « les compteurs saccordent », cest une comparaison NON FAITE (VPS-M02).\n";
+            exit
+          }
+          printf "     ── LES %d COMPTES D EMETTEURS, CONFRONTES ENTRE EUX (VPS-M89) ──\n", n;
+          for (i=1; i<=n; i++) printf "        %-30s %3d emetteurs sur 24 h  (colonne %s)\n", tab[i], v[i], col[i];
+          if (mx == mn) {
+            printf "        ✅ LES %d COMPTES SACCORDENT (%d partout). Cest un controle CROISE : ces tables\n", n, mn;
+            printf "           sont alimentees par la MEME flotte au MEME instant, a des etages differents\n";
+            printf "           de la chaine. Leur egalite ne prouve pas que la flotte va bien — elle prouve\n";
+            printf "           quaucun ETAGE ne perd demetteurs, ce quaucune serie table-par-table ne dit.\n";
+          } else {
+            printf "        🔴 LES COMPTES DIVERGENT : %d au minimum, %d au maximum, soit %d emetteur(s) decart.\n", mn, mx, mx-mn;
+            printf "           Ces tables voient la MEME flotte au MEME instant : lecart ne peut PAS venir\n";
+            printf "           de la flotte, il vient dun ETAGE de la chaine qui perd des emetteurs.\n";
+            printf "           ⚠️ Chacune de ces lignes peut etre verte dans son propre bloc ci-dessus, et\n";
+            printf "              celle qui diverge peut meme y afficher « ✅ flotte STABLE » : une serie\n";
+            printf "              comparee a elle-meme ne voit jamais un desaccord entre pairs (mesure du\n";
+            printf "              2026-09-07 : 31 / 30 / 30 sur tracky_prod, TROIS blocs verts).\n";
+            printf "           ⚠️ AVANT douvrir un constat : verifier que les fenetres de RETENTION de ces\n";
+            printf "              tables sont comparables. Une table qui ne garde que 4 j et une qui en\n";
+            printf "              garde 60 ne voient pas le meme ensemble demetteurs sur 24 h — mais elles\n";
+            printf "              DOIVENT saccorder sur une fenetre de 24 h, qui tient dans les deux.\n";
+          }
+        }' "$EMCMP"
+    fi
+    rm -f "$EMCMP"
   fi
   # ⚠️ AJOUTE LE 2026-08-17 — angle mort n° 3 des rapports du 08-13 au 08-16, REPORTE CINQ FOIS.
   # `random_page_cost` est lu ICI pour les six bases, et le levier 4 le RELISAIT avec un

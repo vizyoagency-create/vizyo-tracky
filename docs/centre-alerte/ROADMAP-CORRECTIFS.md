@@ -63,31 +63,36 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 
 ---
 
-## 🗂️ Tableau de bord — 52 tâches, l'avancement d'un coup d'œil
+## 🗂️ Tableau de bord — 55 tâches, l'avancement d'un coup d'œil
 
-**Au 2026-09-07 (après la routine VPS) : 4 faites · 3 déployées, preuve attendue · 0 commitée ·
-45 ouvertes.**
+**Au 2026-09-08 (après la routine VPS) : 5 faites · 3 déployées, preuve attendue · 0 commitée ·
+47 ouvertes.**
 
-> 🆕 **Trois tâches neuves ce jour** — **T24** *(TRK-073)* et **T25** *(TRK-074)*, nées du même
-> constat : l'automatisation des trajets a tourné huit fois sans laisser de trace, et le témoin qui
-> l'a déclarée « à l'arrêt » ne sait pas se refermer quand elle revient. Puis **V26**, née de
-> l'audit VPS : les trois sauvegardes réparées écrivent dans des dossiers **neufs**, et les anciens
-> crieront « PÉRIMÉE » tous les matins, pour toujours.
+> ✅ **LE FAIT DU JOUR, 08/09 : V11 REMONTE DE `»` À ✅ FAIT, ET LA PREUVE EST VENUE EN QUATRE
+> EXEMPLAIRES.** Requalifiée **vers le bas** la veille — *« la règle n° 2 vaut aussi quand elle
+> dérange »* —, elle remonte aujourd'hui **sur mesure, pas sur promesse** : `LastTriggerUSec` porte
+> **07/09 04 h 30 min 56 / 04 h 40 min 56 / 04 h 50 min 30 UTC**, `ExecMainExitTimestamp` est **non
+> vide** sur les trois, et chacun des trois dossiers porte **deux** copies. 🔑 *Le discriminant de
+> VPS-M81 s'est retourné : le 06/09 les trois démarrages tombaient à la **même seconde** — un geste ;
+> le 07/09 ils tombent à **dix minutes d'intervalle**, chacun à la seconde près sur son propre
+> `OnCalendar` — un mécanisme.* Et une quatrième preuve, non demandée : le journal des unités compte
+> sa propre rétention, **« 1 conservée » puis « 2 conservées »**. **Le seul constat de gravité 1 du
+> VPS est clos**, 46 jours après son ouverture.
 >
-> 🔴 **ET UNE TÂCHE A ÉTÉ REQUALIFIÉE VERS LE BAS — c'est le fait du jour.** **V11** *(VPS-013,
-> gravité 1)* passe de **✅ FAIT** à **`»` DÉPLOYÉ** : les trois minuteries de sauvegarde **n'ont
-> jamais déclenché seules** (`LastTriggerUSec` **vide** au 07/09 à 02 h 21), leur unique exécution
-> étant un `systemctl start` du 06/09 à 06 h 35 — *les trois à la même seconde, donc un geste, pas
-> un mécanisme*. La première échéance autonome tombe **deux heures après la collecte**. *Le travail
-> est bon et le mécanisme est posé ; c'est la **preuve** qui n'est pas encore née.* **La règle n° 2
-> de ce fichier vaut aussi quand elle dérange.**
+> 🔑 **Ce que le couple 07/09 → 08/09 démontre, et qui vaut mieux que la tâche elle-même :** la
+> requalification de la veille n'a pas retardé le correctif d'une heure — **le mécanisme était déjà
+> bon**. Elle a seulement refusé d'appeler « prouvé » ce qui ne l'était pas encore. *Attendre
+> 26 heures était le prix de cette preuve, pas un retard.*
 >
-> ⚖️ **En compensation exacte, et le même jour : V25 passe `»` → ✅ FAIT.** Sa preuve est venue, et
-> **plus forte que demandée** — le correctif a survécu au rebuild de 01 h 22, dans un chunk **neuf**.
+> 🆕 **Deux tâches neuves ce jour** — **V27** *(VPS-040 · VPS-M91)* : le collecteur réclame une
+> sauvegarde de la base de **démonstration**, ce qui coûterait **~13 Go** pour copier une base que
+> le serveur **reconstruit lui-même** chaque dimanche. Et **V26 est débloquée** : le test de V11
+> étant clos, plus rien n'empêche de ranger les dossiers — dont le **faux orange quotidien est
+> désormais mesuré** (trois « PÉRIMÉE » à 93 h pendant que les dossiers vivants portent 21 h).
 
 > 🖥️ **Le même état, en visuel : [`TABLEAU-DE-BORD.html`](./TABLEAU-DE-BORD.html)** — un fichier autonome, regénéré à chaque passage des deux routines quotidiennes, qui se filtre par gravité, par partie et par état. *Il ne remplace pas ce fichier-ci : il en donne l'état, jamais le pourquoi.*
 
-### Partie I — centre d'alerte *(23 tâches)*
+### Partie I — centre d'alerte *(27 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -116,8 +121,10 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **T23** | — | Créer ou déréférencer `TACHES-AMELIORATION.md` | 🧹 dette doc |
 | ☐ | **T24** | TRK-073 | 🔴 **Marquer le passage au DÉPART, pas à l'arrivée** *(8 passages perdus)* | 🔧 À CODER |
 | ☐ | **T25** | TRK-074 | Donner une **résolution automatique** au témoin des tâches | 🔧 À CODER |
+| ☐ | **T26** | TRK-075 | 🔴 Remonter la décision d'alerter au bon étage, et **borner le rejeu par la rétention** | 🔧 À CODER |
+| `»` | **T27** | TRK-076 | La carte **survit à une perte de contexte WebGL** *(corrigé hors session)* | 🗓️ **DÉPLOYÉ** `09d04e2b` |
 
-### Partie II — VPS *(27 tâches)*
+### Partie II — VPS *(28 tâches)*
 
 | | ID | Fiche | La tâche | État |
 |:--:|:--:|---|---|---|
@@ -132,7 +139,7 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V8** | VPS-020 | Séparer les projets compose `deploy` | 🔴 HUMAIN |
 | ☐ | **V9** | VPS-017 | 4,5 Go d'outillage dans `/root` | 🔴 HUMAIN |
 | ☐ | **V10** | VPS-018 | Retirer `/opt/vizyo-leads` | 🔴 HUMAIN |
-| `»` | **V11** | VPS-013 | 🔴 **3 bases de prod sans sauvegarde reproductible** — *les 3 minuteries n'ont **jamais** déclenché seules* | 🗓️ **DÉPLOYÉ** *(requalifié le 07/09)* |
+| ☑ | **V11** | VPS-013 | ✅ **3 bases de prod sauvegardées de façon reproductible** — *les 3 minuteries ont déclenché **seules**, aux 3 horaires attendus* | ✅ **FAIT ET PROUVÉ** *(08/09)* |
 | ☐ | **V12** | VPS-012 | Restreindre la clé CI `vizyo-auth` *(10 s)* | 🟡 PRÉPARÉ |
 | ☐ | **V13** | VPS-015 | `ExecStart` par `bash` **+ `OnFailure=` sur `tracky-backup`** | 🟢 AUTO |
 | ☐ | **V14** | VPS-033 | **Fixer l'heure** du rafraîchissement `apt` *(et non réduire son aléa)* | 🟡 PRÉPARÉ |
@@ -147,7 +154,8 @@ d'une section à l'autre sans le dire, ou cocher `[x]` sur la foi d'une fiche pl
 | ☐ | **V23** | VPS-M73 | Afficher l'écart en jours sur `/admin → Audit VPS` | ⛔ BLOQUÉ |
 | ☑ | **V24** | VPS-038 | **Sentinelle « boîtiers muets »** — *2 lignes à 06:30, pas 10 : **exact*** | ✅ **FAIT ET PROUVÉ** |
 | ☑ | **V25** | VPS-M59 | **`chargeDeFond.note` s'affiche** + repli explicite — *a survécu au rebuild du 07/09* | ✅ **FAIT ET PROUVÉ** |
-| ☐ | **V26** | VPS-013 · M88 | 🆕 Ranger les **2 dossiers de sauvegarde abandonnés** *(faux orange quotidien)* | 🟡 PRÉPARÉ |
+| ☐ | **V26** | VPS-013 · M88 | 🔓 **DÉBLOQUÉE** — ranger les **3 dossiers abandonnés** ; le faux orange est désormais **mesuré**, pas prédit | 🟡 PRÉPARÉ |
+| ☐ | **V27** | VPS-040 · M91 | 🆕 Trancher si la base de **démo** doit être sauvegardée *(le 🔴 vaut **13 Go**)* | 🔵 PRODUIT |
 
 
 
@@ -840,6 +848,10 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 | Date | ID | Tâche | État | Commit | La preuve |
 |---|:--:|---|:--:|---|---|
+| **08/09** *(VPS)* | **V11** | VPS-013 — trois bases de production sans sauvegarde reproductible | ✅ **FAIT ET PROUVÉ** *(remonté de `[»]`)* | *(unités systemd)* | ✅ **Les trois preuves écrites d'avance le 07/09 sont tombées, toutes les trois.** **(1)** `LastTriggerUSec` **renseigné** : `vizyo-manager-backup` **07/09 04:30:56**, `vizyo-texto-backup` **04:40:56**, `capcom6-backup` **04:50:30** — chacun **à la seconde près sur son propre `OnCalendar`**. **(2)** `ExecMainExitTimestamp` **non vide** (04:30:57 · 04:40:57 · 04:50:30), donc le `Result=success` est **adossé à une fin réelle** et non à la valeur par défaut de systemd *(VPS-M87)*. **(3)** **DEUX** copies dans chacun de `/var/backups/{vizyo_manager,vizyo_texto,sms}`, datées 06/09 puis 07/09. 🔑 **LE DISCRIMINANT DE VPS-M81, RETOURNÉ** : le 06/09 les trois démarrages tombaient dans la **même seconde** (06:35:47-48) — un `systemctl start` en rafale, donc un **geste** ; le 07/09 ils tombent à **10 min d'intervalle**. *Trois horloges distinctes qui sonnent chacune à son heure ne sont pas une main qui appuie trois fois.* 🔑 **Et une quatrième preuve, non demandée** : le journal imprime sa rétention et elle **compte** — « 0 supprimée(s), **1** conservée(s) » le 06/09, « **2** conservée(s) » le 07/09. Le second passage a **relu un dossier qu'un passage précédent avait peuplé** : un cycle, pas une exécution. ⚠️ **Aucune unité n'a été relancée à la main** entre les deux passages — le test est resté décidable |
+| **08/09** *(VPS)* | **V27** | 🆕 [VPS-040](../vps-audit/REFERENCE-CONSTATS.md) · VPS-M91 — trancher si la base de **démonstration** doit être sauvegardée | ☐ **OUVERT** | — | *(tâche neuve)* Le parc `tracky-demo` a été déployé le **07/09 à 14 h 08** (4 conteneurs) et le collecteur écrit `🔴 AUCUNE SAUVEGARDE → la sauvegarder couterait 433MB par jour`. **Le suivre coûterait ~13 Go** (433 Mo/j × 30 j) **sur un disque à 55 %**, pour copier une base que `demo-refresh.sh` **reconstruit depuis la production** chaque dimanche — source qui est, elle, sauvegardée (✅ à jour, 42 copies). ⏳ **Question restante, produit et non machine** : `demo_replay_frames` (28 Mo, 115 265 lignes) n'existe **pas** en production — l'import les regénère-t-il ? ⚠️ **Ne pas éteindre le 🔴 en allongeant une liste blanche de noms** : ce serait reproduire la cause de VPS-M88. Le verdict doit rester **ORANGE** — *un faux vert sur une sauvegarde est la plus chère des erreurs de ce dispositif* |
+| **08/09** *(VPS)* | **V26** | VPS-013 · VPS-M88 — ranger les dossiers de sauvegarde abandonnés | 🔓 **DÉBLOQUÉE** *(reste ouverte)* | — | **Le test de V11 est clos, donc le renommage ne rend plus rien indécidable.** 🔴 **Et le faux orange est désormais MESURÉ, pas prédit** : `capcom6`, `vizyo-manager` et `vizyo-texto` affichent **93 h ⚠️ PÉRIMÉE** pendant que `sms`, `vizyo_manager` et `vizyo_texto` portent chacun **2 copies de 21 h**. Pire, la table de **couverture** dit l'inverse sur les mêmes applications (« en retard (3 j) »), sauf `texto-postgres` que le rapprochement attrape. *Deux des trois sont faux côté couverture ; les trois le sont côté âge.* ⚠️ **Renommer, jamais supprimer**, et **seulement après** avoir constaté les copies fraîches — l'ordre inverse laisse `capcom6` sans aucune sauvegarde si le nouveau mécanisme tombe la même nuit |
+| **08/09** *(VPS)* | *(VPS-M90)* | 🆕 Une bande de silence se vide toute seule, et VPS-M78 **recommandait** de la comparer | ✅ **CORRIGÉ** *(collecteur)* | *(voir commit du jour)* | Le vecteur des bandes passe de **`1/0/7/6` à `0/1/1/12`** en une nuit : lu bande à bande, *« six boîtiers déposés de plus »* — **un constat de gravité 1 entièrement fabriqué**. Les six muets depuis le 08-31 avaient simplement franchi leur **7ᵉ jour**. **Le cumul `> 3 j` vaut 13 hier et 13 aujourd'hui.** Correctif : publication des **cumuls**, **zéro requête**. ⚠️ **Le banc a réfuté ma première rédaction avant publication** — j'y écrivais qu'un cumul est insensible au vieillissement ; il ne l'est **que dans un sens** (`> 1 j` 13→14, `> 7 j` 6→12). *Une baisse de cumul est toujours réelle ; une hausse peut n'être que du temps qui passe* |
 | **08/09** | **T27** | 🆕 [TRK-076](./REFERENCE-ERREURS.md#trk-076) — la carte survit à une perte de contexte WebGL | `»` **DÉPLOYÉ** | `09d04e2b` | **Corrigé hors session**, par une session parallèle, entre les audits du 07 et du 08. Déploiement **08/09 00:56:59** (`tracky-web`, image de 00:56:15). Vérifié sur l'**artefact servi** : `webglcontextlost` **et** `carteUtilisable` présents dans `/usr/share/nginx/html/chunk-3BYQORV7.js`. 🔑 *MapLibre 5.24 met `this.style` à `null` en gardant l'objet `Map` vivant : **les 19 gardes `if (!this.map) return` passaient toutes** — la garde demandait « la carte existe-t-elle ? » quand la question était « son style existe-t-il encore ? ».* ⏳ **Preuve de production non venue** — 26 min de recul à la collecte ; attendue : 0 ligne `getSource` sur 7 j **et** le bandeau de reprise au prochain cas |
 | **08/09** | **T26** | 🆕 [TRK-075](./REFERENCE-ERREURS.md#trk-075) — remonter la décision d'alerter au bon étage, et borner le rejeu par la rétention | ☐ **OUVERT** | — | *(tâche neuve, aucune preuve à ce stade)* 15 lignes en 21 h, **toutes le même trajet** `b644fe50` (61,4 j, 0 position, front de purge à 60,9 j, `POSITIONS_RETENTION_DAYS=60` lu sur le conteneur **servi**). ⏳ **Preuve attendue, en double condition** : plus **aucune** ligne `stage: 'compute'` pour un trajet sous l'horizon, **ET** les candidats au rejeu de **17 → 14**, **sans** que `stats.rejouees` tombe à zéro |
 | **08/09** | **T24** | [TRK-073](./REFERENCE-ERREURS.md#trk-073) — marquer le passage au DÉPART | ☐ **OUVERT, et sa preuve s'efface** | — | ⚠️ **Découverte d'outillage à porter à la tâche** : `trip_automation_runs` ne garde que **100 lignes** (`KEEP_RUNS`). Le 03/09 rend **21** passages aujourd'hui contre **23** mesurés le 06/09, et le total de la fenêtre vaut **exactement 100**. 🔑 *Le « 16 sur 24 » du 06/09 sera illisible dans quelques jours — une preuve qui doit être relue plus tard doit être **recopiée** hors d'une table qui s'élague.* Vérifié absent de l'artefact servi (`EN_COURS` : 0) ; 07/09 rend **17 sur 24** |
@@ -859,17 +871,14 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 
 ### Ce que le prochain passage doit faire de ce journal
 
-1. **Relire le [tableau de bord](#-tableau-de-bord--46-tâches-lavancement-dun-coup-dœil) AVANT la
+1. **Relire le [tableau de bord](#-tableau-de-bord--55-tâches-lavancement-dun-coup-dœil) AVANT la
    collecte** — c'est là que vit la passation, et c'est précisément ce que les passages des 05 et
    06/09 n'ont pas fait, au prix d'un chapitre entier réécrit pour rien *(VPS-M81)*.
 2. **Vérifier les `[»]` ci-dessus.** Ils passent `[x]` **le jour où la mesure tombe**, pas avant —
    et si elle ne tombe pas, le dire.
-   🔴 **Au 07/09 après la routine VPS, le plus urgent est V11** *(VPS-013, gravité 1)* : au passage
-   du **08/09**, les trois minuteries doivent porter un `LastTriggerUSec` du **07/09 04 h 34 /
-   04 h 40 / 04 h 50 UTC**, un `ExecMainExitTimestamp` **non vide**, et
-   `/var/backups/{vizyo_manager,vizyo_texto,sms}` **deux** copies chacun. *Si `LastTriggerUSec` est
-   encore vide, c'est VPS-015 à l'identique — un script posé, une unité déclarée, et rien qui se
-   déclenche.* ⚠️ **Ne pas relancer les unités à la main d'ici là.**
+   ~~🔴 **Au 07/09, le plus urgent est V11** — `LastTriggerUSec`, `ExecMainExitTimestamp`, deux
+   copies~~ → ✅ **LES TROIS SONT TOMBÉES LE 08/09.** V11 est **FAIT ET PROUVÉ**, et les unités
+   n'ont **pas** été relancées à la main : le test est resté décidable.
    ~~**V25**, dont la preuve relève de la routine VPS~~ → **prouvé le 07/09**. Restent les deux
    déployés le matin du 07/09 :
    **T10** *(UNE seule ligne `ASSISTANCE`, en `DEGRADATION`, et le journal système garde son
@@ -881,5 +890,20 @@ feront perdre une heure le jour où quelqu'un les suivra.*
 4. 🆕 **Relever la série de `trip_automation_runs`** — 02/09 **15** · 03/09 **23** · 04/09 **22** ·
    05/09 **23** · 06/09 **16** passages sur 24. C'est la mesure de **T24**, et elle ne devient
    dicible qu'à force de points.
+5. 🆕 **Au 08/09 après la routine VPS, deux tests sont écrits d'avance pour le 09/09 :**
+   - 🔬 **Le taux `MOVING` du mardi 09-08** doit rendre **≥ 25 %** si la reprise d'activité est en
+     cours. La série des journées **complètes** fait ven 09-04 *(tronquée)* · sam **18,6 %** · dim
+     **13,9 %** · lun **18,8 %**. *Le test du 07/09 prévoyait deux issues — « remonte vers 28 % » ou
+     « reste sous 15 % » — et **la mesure est tombée entre les deux**. Ne pas choisir la branche qui
+     arrange : un **lundi ouvré qui roule au niveau d'un samedi** reste à expliquer.* **Si le mardi
+     rend encore ~18 %, deux jours ouvrés consécutifs sous le niveau du jeudi ne sont plus un effet
+     de calendrier**, et la question passe côté produit.
+     ⚠️ **Et lire la série avec VPS-M93** : son jour le plus ancien est **érodé par la rétention de
+     3,95 j** et dérive de plusieurs points d'un passage à l'autre — le 09-04 est passé de 25,3 % à
+     29,5 % **sans que rien n'arrive**, parce que ses 3 h 30 de nuit ont été purgées.
+   - 🔬 **`tracky-demo-refresh.timer` n'a jamais tourné** (première échéance **dimanche 09-13**), et
+     elle affiche pourtant `Result=success` — **VPS-M91**. *Ce n'est pas un défaut aujourd'hui ;
+     c'est le rappel que le même affichage rendra la même chose le jour où une unité qui **devait**
+     tourner ne tournera pas.*
 3. **Cocher ce qui a été fait entre-temps**, même par un humain hors session : une tâche close qui
    reste `☐` fait rouvrir un chantier déjà terminé.

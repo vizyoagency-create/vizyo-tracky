@@ -1155,9 +1155,37 @@ découvre au pire moment.
 
 ## VPS-013 — Trois bases de production n'ont aucune sauvegarde exploitable
 
-- **Domaine** : sauvegardes · **Gravité** : 1 · **Statut** : `A_TRAITER`
-- 🔴 **Vu : 2026-09-07 — 30ᵉ PASSAGE. LES TROIS UNITÉS EXISTENT, ELLES ONT TOURNÉ UNE FOIS À LA
-  MAIN, ET AUCUNE MINUTERIE N'A JAMAIS DÉCLENCHÉ.**
+- **Domaine** : sauvegardes · **Gravité** : 1 · **Statut** : `APPLIQUE` (2026-09-08, preuve mesurée)
+- ✅ **Vu : 2026-09-08 — 31ᵉ PASSAGE, ET LE CONSTAT EST CLOS. LES TROIS MINUTERIES ONT DÉCLENCHÉ
+  SEULES, AUX TROIS HORAIRES ATTENDUS.**
+  `LastTriggerUSec` = **09-07 04 h 30 min 56** (`vizyo-manager-backup`), **04 h 40 min 56**
+  (`vizyo-texto-backup`), **04 h 50 min 30** (`capcom6-backup`) ; `ExecMainExitTimestamp` = 04:30:57,
+  04:40:57, 04:50:30 — **non vides**, donc le `Result=success` est adossé à une fin réelle et non à
+  la valeur par défaut de VPS-M87. **Deux copies dans chacun des trois dossiers** (`vizyo_manager`,
+  `vizyo_texto`, `sms`), datées 09-06 puis 09-07. **Les trois preuves écrites d'avance le 09-07 sont
+  tombées, toutes les trois.**
+  🔑 **LE DISCRIMINANT DE VPS-M81, RETOURNÉ.** Le 09-06, les trois démarrages tombaient dans la
+  **même seconde** (06:35:47-48) : signature d'un `systemctl start` en rafale, donc un **geste**. Le
+  09-07, ils tombent à **10 minutes d'intervalle**, chacun **à la seconde près sur son propre
+  `OnCalendar`** (04:30 · 04:40 · 04:50). *Trois horloges distinctes qui sonnent chacune à son heure
+  ne sont pas une main qui appuie trois fois.*
+  🔑 **ET UNE QUATRIÈME PREUVE, QUI N'ÉTAIT PAS DEMANDÉE : le script s'est vu grandir.** Le journal
+  imprime sa propre rétention, et elle **compte** — « 0 supprimée(s), **1** conservée(s) » le 09-06,
+  « 0 supprimée(s), **2** conservée(s) » le 09-07. Le second passage a donc **relu un dossier qu'un
+  passage précédent avait peuplé** : c'est un cycle, pas une exécution.
+  🔑 **Ce que ce constat aura coûté à apprendre.** Le 09-06, **trois sources concordaient** pour dire
+  « c'est fait » : trois ✅ du collecteur, un « FAIT ET PROUVÉ » de la roadmap, et trois archives
+  bien réelles. **Aucune n'était fausse ; les trois portaient sur le mauvais objet.** Elles
+  prouvaient qu'une sauvegarde avait été *produite*, jamais qu'un *mécanisme* la reproduirait.
+  *Un artefact prouve un passé, jamais un futur. Pour un mécanisme, la seule preuve est une
+  exécution qu'aucune main n'a déclenchée* — et elle aura demandé **26 heures d'attente**, ce qui
+  est son prix normal, pas un retard.
+- **`aNePasFaire`** : ❌ ne pas clore **VPS-015** (`vizyo-verify`) par ressemblance — c'est une
+  *autre* unité, et son geste (`ExecStart` par `bash`, `OnFailure=`) reste ouvert en **V13**.
+  ❌ ne pas retirer la salve du 09-06 des trois dossiers : c'est elle qui, **par contraste**, prouve
+  que celle du 09-07 n'est pas la première.
+- **Mesure du 2026-09-07, conservée** — 🔴 **30ᵉ PASSAGE. LES TROIS UNITÉS EXISTENT, ELLES ONT TOURNÉ
+  UNE FOIS À LA MAIN, ET AUCUNE MINUTERIE N'A JAMAIS DÉCLENCHÉ.**
   `LastTriggerUSec=` est **vide** sur `vizyo-manager-backup.timer`, `vizyo-texto-backup.timer` et
   `capcom6-backup.timer` ; `ExecMainStartTimestamp` et `ExecMainExitTimestamp` le sont aussi sur les
   trois services. Le journal date l'unique exécution : **09-06 à 06 h 35 min 47-48, les trois à la
@@ -5060,6 +5088,58 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ---
 
+## VPS-040 — Un parc de production de quatre conteneurs est apparu sans annonce, et il est le premier poste de croissance du disque
+
+- **Domaine** : docker / planification · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-09-08 (1ᵉʳ passage) · **Mesure** : le projet compose **`tracky-demo`** — `api`, `web`,
+  `redis`, `postgres` — a été déployé le **09-07 à 14 h 08** et n'existait pas au passage précédent.
+  Les quatre conteneurs sont `running`, trois sur quatre `healthy`.
+
+  | Poste | 09-07 | 09-08 | Écart |
+  |---|---:|---:|---:|
+  | Conteneurs | 33 | **37** | **+4** |
+  | `/var/lib/docker/volumes` | 2,3 Go | **3,5 Go** | **+1,2 Go** |
+  | Volumes Docker | 29 | **31** | +2 |
+  | Healthchecks | 65/min | **71/min** | **+6/min ≈ +8 640/j** |
+  | Minuteries systemd | 20 | **22** | **+2** |
+  | Domaines routés | 26 | **27** | +1 |
+  | Durée de la collecte | 94 s | **124 s** | **+30 s**, dont **15 s** imputables à ce parc |
+
+  **Le disque passe de 53 % à 55 %** (51 → 52 Go), et **les volumes de ce parc en portent +1,2 Go** :
+  c'est le poste isolé le plus lourd de la nuit, devant les 2 images de repli et devant la copie
+  manuelle de 11 h 32.
+- **QUOI — la cause** : ce n'est **pas** un défaut de déploiement — c'est un défaut de **catalogue**.
+  Les deux minuteries neuves (`tracky-demo-refresh.timer`, dimanche 04:00 UTC ;
+  `tracky-demo-refresh-demande.timer`, **toutes les 15 minutes**) ne figuraient dans aucun
+  `ordonnancement`, seul endroit où les collisions d'horaires se voient.
+  **Coût chiffré de la minuterie des 15 min, honnêtement** : **49 exécutions** mesurées depuis sa
+  pose (cadence exacte), **moins d'une seconde** chacune, soit ~96/jour × 2 processus. **À comparer
+  aux ~102 240 invocations/jour de healthchecks : c'est sous 0,5 %.** *Ce n'est pas un problème de
+  charge, et c'est pourquoi la gravité est 3 et non 2.*
+- ✅ **Et il faut dire l'autre moitié** : **les 4 conteneurs sur 4 portent une limite mémoire** (512,
+  512, 128 et 64 Mo) — **les seuls 4 sur 37** de toute la machine. Le ratio de **VPS-005** s'améliore
+  de 91 % à 81 % de conteneurs non bornés. *Un rapport qui ne compte que ce qui empire ne peut pas
+  voir qu'une pratique s'est améliorée.*
+- **`pourquoiInvisible`** : voir **VPS-M92** — tous les dénominateurs du collecteur sont
+  auto-référents (`✅ 37 / 37 conteneurs décrits`), donc aucun ne peut signaler un changement de
+  périmètre. La découverte s'est faite **à la main**, en comparant 33 et 37 entre deux fichiers.
+- **QUOI FAIRE** :
+  1. **Déclarer les deux minuteries dans `ordonnancement`** — *fait au passage du 09-08.*
+  2. **Trancher si `tracky-demo-postgres` doit être sauvegardée** — voir **VPS-M91 (b)** : le
+     collecteur écrit 🔴 et propose 433 Mo/jour, alors que la base est **reconstruite depuis la
+     production** chaque dimanche. La question restante est produit, pas machine :
+     `demo_replay_frames` (28 Mo, 115 265 lignes) n'existe **pas** en production — l'import les
+     regénère-t-il ?
+  3. **Décider si `tracky-demo-web` doit avoir une sonde de santé** : il n'en a aucune, comme
+     `tracky-web` en production.
+- **`aNePasFaire`** : ❌ ne pas traiter ce parc comme « 4 problèmes de plus » : c'est le mieux réglé
+  de la machine. ❌ ne pas ajouter de sauvegarde sur la foi du 🔴 de la section 11 (13 Go inutiles).
+  ⚠️ **La dépendance d'horaires est écrite dans le seul commentaire de l'unité systemd** — le
+  rafraîchissement du dimanche 04 h 00 suit la sauvegarde de 03 h 00 dont il dépend. *Si quelqu'un
+  déplace `tracky-backup`, rien ne le préviendra.*
+
+---
+
 ## VPS-039 — ~~Le taux de rétention de l'échantillonnage perd 11 points en trois jours~~ → **RÉFUTÉ : la flotte roulait de moins en moins**
 
 - **Domaine** : données · **Gravité** : 4 · **Statut** : `ACCEPTE` — **réfuté le 2026-09-06, le jour
@@ -5150,10 +5230,169 @@ confondre les deux ferait accuser le mauvais coupable.
 
 ## Constats de méthode (sur l'audit lui-même)
 
+### VPS-M93 — Le jour le plus ancien d'une série est érodé par la rétention, et son point dérive sans que rien n'arrive
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (piste écrite, coût nul)
+- **Vu** : 2026-09-08 · **Mesure** : le rapport du 09-07 inscrivait **`ven 09-04 : MOVING 25,3 %`**.
+  **La même requête, le lendemain, rend `29,5 %` pour le même jour** — un écart de **4,2 points**.
+  Aucune ligne n'a été ajoutée à un jour passé : **des lignes en ont été retirées.**
+
+  ```
+  min(receivedAt) = 2026-09-04 03:30:00     ← les 3 h 30 du matin ont été purgées
+  ```
+
+- **QUOI — la cause** : la rétention de `position_sampling_decisions` vaut **3,95 jours** et ronge le
+  jour le plus ancien **par le début**, donc **par la nuit**. Or la nuit est précisément l'heure où
+  les véhicules sont à l'arrêt — mesuré sur le 09-07 :
+
+  | heure | 00 | 01 | 02 | 03 | 04 | 05 |
+  |---|---:|---:|---:|---:|---:|---:|
+  | `MOVING` | 0,6 % | 4,0 % | 0,1 % | 4,8 % | 4,2 % | **24,9 %** |
+
+  **Retirer les heures de nuit d'une journée fait mécaniquement MONTER son taux de mouvement.** Le
+  point du 09-04 ne s'est pas amélioré : il a **maigri par le bas**, et il continuera de monter
+  chaque heure jusqu'à disparaître.
+- **`pourquoiInvisible`** : le collecteur pose **déjà la bonne garde sur l'autre bord de la
+  fenêtre** — **VPS-M61** marque le jour **EN COURS** comme partiel. Personne n'a posé la garde
+  symétrique sur le jour **le plus ancien**, alors que la cause est la même (une journée incomplète)
+  et que la fenêtre de rétention est **déjà mesurée** par la section 5. ⚠️ **Et la dérive va dans le
+  sens rassurant** : un taux de mouvement qui monte se lit comme une reprise d'activité.
+- **QUOI FAIRE** : marquer « tronqué » tout jour d'une série dont le début est postérieur à 00 h 00,
+  en le dérivant de `min(colonne)` — **la même garde que VPS-M61, sur l'autre bord**. **Coût : zéro
+  requête**, la fenêtre est déjà calculée par la section 5 (3,95 j ce passage).
+- **`aNePasFaire`** : ⚠️ ne pas se contenter d'**écarter** le jour le plus ancien : c'est la
+  **fenêtre** qui doit être dite, pas seulement le jour jeté. Un lecteur qui ignore que la série ne
+  porte que 4 jours conclura d'une absence de tendance qu'il n'y en a pas.
+  🔑 **C'est le deuxième défaut de cette famille dans le même passage**, avec **VPS-M90** : *une
+  grandeur bouge parce que le temps passe, et le lecteur y voit un événement.* **Règle qui les
+  couvre tous les deux : avant de lire une variation, demander si la FENÊTRE de la mesure a bougé
+  autant que la mesure.**
+
+### VPS-M92 — Rien ne compare le PÉRIMÈTRE d'un passage à l'autre : quatre conteneurs sont apparus, et aucune ligne ne l'a dit
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (piste écrite, coût nul)
+- **Vu** : 2026-09-08 · **Mesure** : entre le passage du 09-07 et celui du 09-08, la machine a gagné
+  **4 conteneurs** (33 → 37), **2 minuteries** (20 → 22), **1 base PostgreSQL** de 433 Mo, **2
+  volumes** (29 → 31) et **1 domaine routé** (26 → 27). **Aucune ligne de la collecte ne dit qu'un
+  seul de ces objets est neuf.**
+- **QUOI — la cause** : tous les dénominateurs du collecteur sont **auto-référents**. Il imprime
+  `✅ 37 / 37 conteneurs décrits`, `✅ 8 / 8 bases PostgreSQL examinées`, `✅ 27 domaines routés` — des
+  compteurs qui se mettent à jour tout seuls, et qui **ne peuvent donc jamais signaler que le
+  périmètre a changé**. La découverte, ce passage, s'est faite **à la main**, en comparant 33 et 37
+  entre deux fichiers.
+- **`pourquoiInvisible`** : *chaque chiffre était juste.* Le collecteur a même imprimé
+  *« 🟠 10 fichier(s) de planification modifié(s) dans les 2 derniers jours »* — il **voit** les
+  fichiers changer, mais il ne rapproche ni les conteneurs, ni les projets compose, ni les
+  minuteries de leur état de la veille. **Un fait de premier ordre — « une application de plus tourne
+  en production » — n'était écrit nulle part**, alors que ses cinq symptômes l'étaient tous.
+- **QUOI FAIRE** : porter au manifeste, à côté de `conteneursActifs`, la **liste** des projets
+  compose et des minuteries, puis imprimer la **différence d'ensembles** avec le passage précédent.
+  *C'est exactement ce que le bloc « fraîcheur du catalogue » fait déjà pour les **fichiers** de
+  `/etc/systemd/system` — appliqué aux **objets vivants**.* **Coût : zéro commande de plus**, les
+  deux listes sont déjà collectées.
+- **`aNePasFaire`** : ❌ ne pas se contenter d'alerter sur le **nombre**. Un conteneur retiré et un
+  autre ajouté laissent 37 = 37 : c'est la **liste** qui doit être comparée, pas son cardinal.
+
+### VPS-M91 — La couverture des sauvegardes ne connaît pas « reconstructible », et le verdict « jamais exécutée » ne couvre que les unités `*-backup`
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (pistes écrites, coût nul)
+- **Vu** : 2026-09-08 · **Deux mesures, un même angle mort — la portée d'un bloc qui a raison** :
+  - **(a) `Result=success` sur une unité née la veille et jamais exécutée.**
+    `tracky-demo-refresh.service` (créée le 09-07 à 14 h 08) porte `Result=success` avec
+    `ExecMainExitTimestamp=` **vide** et `LastTriggerUSec=` **vide** ; sa première échéance est le
+    **dimanche 09-13**. C'est **VPS-M87 mot pour mot**, sur une unité créée *le jour même* de son
+    correctif. 🔑 **Le correctif d'hier n'est pas en régression : il ne regarde pas là.** Son bloc
+    (section 11) n'énumère que les unités `*-backup.service`, donc cette unité n'apparaît nulle part
+    avec un verdict. ⚠️ **Et ici « jamais exécutée » n'est PAS un défaut** — l'unité est
+    hebdomadaire et posée un lundi. *Le danger n'est pas cette unité-ci, c'est que le même affichage
+    rendra la même chose le jour où une unité qui **devait** tourner ne tournera pas : VPS-015 dans
+    sa forme pure.*
+  - **(b) un 🔴 « AUCUNE SAUVEGARDE » qui coûterait 13 Go si on le suivait.** La section 11 écrit
+    `tracky-demo-postgres 🔴 AUCUNE SAUVEGARDE → la sauvegarder couterait 433MB par jour`. **La
+    réfutation est deux blocs plus haut dans la même collecte** : `demo-refresh.sh` **reconstruit
+    cette base depuis la production** chaque dimanche à 04 h 00, et la source (`tracky-postgres`) est
+    **elle** sauvegardée, ✅ à jour, 42 copies. Suivre ce 🔴 reviendrait à **copier une copie**, pour
+    433 Mo/j × 30 j de rétention ≈ **13 Go** sur un disque à 55 %.
+- **QUOI — la cause commune** : les deux blocs restreignent leur champ par une **liste de noms
+  écrite à la main** — `*-backup` pour l'un, `maalem-dev` / `maestroo-dev` (*« développement — sans
+  enjeu »*) pour l'autre. *C'est la liste blanche de **VPS-M88**, dans deux autres blocs, un jour
+  plus tard.*
+- **`pourquoiInvisible`** : le 🔴 de (b) est **plausible** — une base sans sauvegarde, c'est
+  exactement ce que ce dispositif existe pour trouver. Et le ✅ de (a) est **plausible** — une unité
+  neuve qui va bien. **Aucun des deux ne dénote.**
+- **QUOI FAIRE**, et les deux pistes coûtent **zéro commande** :
+  - **(a)** étendre le verdict de VPS-M87 aux **22 unités de `systemctl list-timers`**, pas aux
+    seules `*-backup` : la section 7 fait **déjà** un `systemctl show` par unité pour vérifier son
+    `ExecStart` — y ajouter `ExecMainExitTimestamp`, `LastTriggerUSec` et `NextElapse` ;
+  - **(b)** ne **pas** allonger la liste blanche. Une base est reconstructible **si une unité systemd
+    active la reconstruit** : la section 7 énumère déjà les unités et leur `ExecStart`, le
+    rapprochement se fait sur des données déjà collectées.
+- **`aNePasFaire`** : ❌ **ne jamais rendre le verdict de (b) VERT.** Une base reconstructible reste
+  ORANGE, avec la mention du mécanisme qui la reconstruit. *Un faux vert sur une sauvegarde est la
+  plus chère des erreurs de ce dispositif — c'est le piège du `break` du 08-05, et la raison pour
+  laquelle VPS-M88 a refusé d'élargir son rapprochement.*
+  ❌ ne pas écrire un 🔴 « jamais exécutée » **sans imprimer son échéance à côté** : c'est la garde
+  posée par VPS-M87, et elle doit voyager avec le verdict.
+
+### VPS-M90 — Une bande de silence se vide toute seule, et VPS-M78 demandait explicitement de la comparer
+
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-09-08, banc à l'appui)
+- **Vu** : 2026-09-08 · **Mesure à la découverte** : le vecteur des bandes du registre `trackers`
+  passe de **`1/0/7/6`** (09-07) à **`0/1/1/12`** (09-08). Le **total reste 14**, donc VPS-M76 se
+  tait. Les **bandes**, elles, annoncent **−6 en « 3-7 j » et +6 en « > 7 j »**, c'est-à-dire
+  *« six boîtiers déposés de plus »* sur une flotte de 44 — **un constat de gravité 1 entièrement
+  fabriqué**.
+- **QUOI — la cause** : une bande est bornée par un **ÂGE**, donc un boîtier en sort **par le seul
+  écoulement du temps**. Les six boîtiers muets depuis le **08-31** ont franchi leur **7ᵉ jour** dans
+  la nuit : `7 − 6 = 1` et `6 + 6 = 12`. **Aucun boîtier n'est entré, aucun n'est sorti, aucun n'a
+  changé d'état.**
+- **`pourquoiInvisible` — le remède portait le défaut symétrique de la maladie**, et cela fait
+  désormais une série de trois :
+
+  | Correctif | Ce qu'il a réparé | Le défaut symétrique qu'il a introduit |
+  |---|---|---|
+  | **VPS-M76** | un compteur qui **décroissait** quand la panne durait | une source sans fenêtre dont le **total monte** pour des raisons qui ne sont pas la panne |
+  | **VPS-M78** | ce total, en le ventilant **par bandes** | une bande **bouge dans les deux sens** par simple vieillissement |
+  | **VPS-M90** | la bande, par le **cumul** | *(voir l'aveu ci-dessous — il a été attrapé au banc)* |
+
+  Et VPS-M78 ne se contentait pas de laisser passer l'erreur : il **la recommandait**, en toutes
+  lettres — *« Comparer les BANDES, et de préférence celles > 3 j »*. **La seule bande qu'il
+  désignait est celle qui a perdu 6 unités sans que rien n'arrive.**
+- ⚠️ **L'aveu que le banc a arraché avant publication.** La première rédaction du correctif écrivait
+  *« un cumul ne change que si un boîtier entre ou sort »*. **C'est faux** : sur les deux vecteurs
+  réels, `> 1 j` fait **13 → 14** et `> 7 j` **6 → 12**. L'énoncé publié est le vrai — **un cumul
+  bouge aussi par vieillissement, mais seulement vers le HAUT** : *une **baisse** de cumul est
+  toujours une nouvelle réelle (un boîtier a ré-émis) ; une **hausse** peut n'être que du temps qui
+  passe, et le seuil franchi dit lequel.* Une bande, elle, bouge **dans les deux sens** sans qu'il ne
+  se passe rien. *J'ai failli remplacer un énoncé faux par un énoncé faux plus flatteur, dans le
+  paragraphe même qui dénonce cette faute chez VPS-M76 et VPS-M78.*
+- **Le correctif** : publication des **CUMULS** (`> 1 j`, `> 3 j`, `> 7 j`) sous la ventilation, et
+  la consigne de VPS-M78 est réécrite pour désigner les cumuls et non les bandes. **Trois additions
+  sur des valeurs déjà collectées : ZÉRO requête, ZÉRO champ de plus.**
+- **Contre-épreuve** : rejouée sur les **deux vecteurs réels** — 09-07 rend `13 / 13 / 6`, 09-08 rend
+  `14 / 13 / 12`. **Le `> 3 j` vaut 13 contre 13 : la mesure que le rapport aurait dû lire.**
+  `bash -n` passe.
+- **`aNePasFaire`** : ❌ ne pas retirer la ventilation par bandes : elle **discrimine** (un véhicule
+  garé de 6-24 h n'est pas du matériel déposé), et c'est toujours vrai. Le cumul ne la remplace pas,
+  il dit **ce qui se compare** d'un passage à l'autre.
+
 ### VPS-M89 — Les trois compteurs d'émetteurs sont comparés chacun à lui-même de la veille, jamais entre eux au même instant
 
-- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `A_TRAITER` (correctif conçu, non posé —
-  il touche une boucle de la section 5, et le budget est déjà à 94 s pour 90)
+- **Domaine** : méthode · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-09-08, banc à l'appui —
+  4 cas, dont le rejeu de la divergence réelle du 09-07)
+- **Le correctif, posé le 2026-09-08** : un bloc de confrontation après la boucle des tables,
+  alimenté par les valeurs **déjà calculées** (append `>>` vers un fichier remis à zéro **pour chaque
+  base** — comparer des émetteurs de bases différentes n'aurait aucun sens). **Toujours affiché dès
+  qu'il y a deux tables, y compris quand tout concorde** : sans la ligne verte, on ne peut pas voir
+  qu'une concordance a **cessé**.
+  **Contre-épreuve sur 4 cas** : **(A)** les 30/30/30 du 09-08 → ✅ avec la mention que c'est un
+  contrôle **croisé**, pas un satisfecit sur la flotte ; **(B)** les **31/30/30 du 09-07 rejoués** →
+  🔴 avec l'écart nommé — *le défaut d'hier est désormais attrapé* ; **(C)** une seule table →
+  « comparaison **NON FAITE** », jamais « les compteurs s'accordent » (VPS-M02) ; **(D)** fichier
+  vide → silence. Plus un **banc dédié** prouvant que l'`append` survit aux **trois processus awk
+  distincts** — un `>` n'en aurait gardé qu'un seul, le dernier. **COÛT : ZÉRO requête.**
+  ⚠️ Le bloc imprime aussi la garde qui manquait : **vérifier que les fenêtres de rétention sont
+  comparables** avant d'ouvrir un constat sur un écart (4 j pour `wire_logs`, 61 j pour `positions`).
 - **Vu** : 2026-09-07 · **Mesure à la découverte** : sur la fenêtre de 24 h, `wire_logs` compte
   **31** émetteurs distincts, `positions` **30** et `position_sampling_decisions` **30**. Le
   collecteur imprime, sous `wire_logs` : **`✅ flotte STABLE (31 contre 30)`** — parce qu'il compare
