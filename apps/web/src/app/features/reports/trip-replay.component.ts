@@ -293,6 +293,9 @@ interface RecitTrajet {
               @if (analysis(); as a) {
                 @if (a.stopCount > 0 || nbExces() > 0 || nbPointes() > 0) {
                   <div class="tr-legend">
+                    <!-- Deux légendes se côtoient : les PASTILLES d'analyse ici, la couleur du
+                         TRACÉ à droite. Sans titre, un rouge de tracé se lisait comme un excès. -->
+                    <span class="tr-legend-titre">Pastilles</span>
                     @if (a.stopCount > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.arret"></i> Arrêt</span> }
                     @if (nbExces() > 0) { <span><i class="tr-dot" [style.background]="couleursCarte.exces"></i> Excès confirmé</span> }
                     <!-- ⚠️ La légende doit nommer TOUT ce que la carte et la frise montrent.
@@ -304,9 +307,16 @@ interface RecitTrajet {
               }
               <!-- La couleur du tracé est une VITESSE, générée depuis la même table que les
                    marqueurs. Sans cette légende, un tronçon rouge d'autoroute se lirait comme
-                   une faute — les excès, eux, restent des pastilles cerclées de blanc. -->
+                   une faute — les excès, eux, restent des pastilles cerclées de blanc. Qui
+                   préfère le trait vert uni le dit ici, une fois pour toutes. -->
               <div class="tr-legende-v">
-                <app-legende-vitesse></app-legende-vitesse>
+                <label class="tr-legende-case">
+                  <input type="checkbox" [checked]="traceParVitesse()" (change)="basculerTraceParVitesse()" />
+                  <span>Tracé coloré par la vitesse</span>
+                </label>
+                @if (traceParVitesse()) {
+                  <app-legende-vitesse></app-legende-vitesse>
+                }
               </div>
             </div>
 
@@ -602,6 +612,13 @@ interface RecitTrajet {
       backdrop-filter: blur(6px);
       border: 1px solid var(--border-subtle);
     }
+    .tr-legende-case {
+      display: flex; align-items: center; gap: 6px; white-space: nowrap;
+      font-size: 10px; color: var(--fg-secondary); cursor: pointer;
+    }
+    .tr-legende-case input { width: 12px; height: 12px; margin: 0; accent-color: var(--tracky-light); }
+    .tr-legende-case + app-legende-vitesse { margin-top: 4px; }
+    .tr-legend-titre { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-tertiary); }
 
     /* ─── Corps : la carte, le récit, et le journal des événements ───
        Au-dela de 1024 px le panneau tient a cote de la carte ; en dessous il
@@ -856,6 +873,8 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private readonly preferences = inject(PreferencesService);
   private readonly positionsApi = inject(PositionsApiService);
   private readonly tripsApi = inject(TripsApiService);
+  /** Case « Tracé coloré par la vitesse » — la même préférence que la traînée de la carte. */
+  protected readonly traceParVitesse = computed(() => this.preferences.prefs().map.traceParVitesse);
   /** La demande d'historique en cours pour colorer le tracé — annulée avec le trajet. */
   private traceSub: Subscription | null = null;
   /** Le recalage à la demande en cours — annulé avec le trajet. */
@@ -1579,15 +1598,22 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       });
   }
 
-  /** Redessine le tracé : coloré par la vitesse si des relevés sont là, vert uni sinon. */
+  /** Redessine le tracé : coloré par la vitesse si des relevés sont là et qu'on le veut, vert uni sinon. */
   private redessinerTrace(): void {
     const src = this.map?.getSource('replay-line') as GeoJSONSource | undefined;
     if (!src || this.points.length < 2) return;
-    if (this.releves.length === 0) {
+    if (this.releves.length === 0 || !this.traceParVitesse()) {
       src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: this.points }, properties: {} });
       return;
     }
     src.setData(segmentsColores(pointsColores(this.points, this.releves)));
+  }
+
+  /** La case de la légende : le choix est retenu, pour ce rejeu, le suivant et la carte. */
+  protected basculerTraceParVitesse(): void {
+    const v = !this.traceParVitesse();
+    this.preferences.update({ map: { ...this.preferences.prefs().map, traceParVitesse: v } });
+    this.redessinerTrace();
   }
 
   /**

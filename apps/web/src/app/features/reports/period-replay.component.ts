@@ -58,7 +58,7 @@ import {
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
-import { pointsColores, pointsDepuisHistorique, segmentsColores } from '../../shared/utils/segments-vitesse';
+import { pointsColores, pointsDepuisHistorique, segmentsColores, type PointVitesse } from '../../shared/utils/segments-vitesse';
 import { LegendeVitesseComponent } from '../../shared/ui/legende-vitesse/legende-vitesse.component';
 import { PositionsApiService } from '../../core/services/positions.service';
 import { clampSpeed, formatDuration, max0 } from './reports.utils';
@@ -204,9 +204,16 @@ interface TimelineState {
                  id="period-replay-map-container"
                  class="flex-1"></div>
 
-            <!-- La couleur des tracés est une VITESSE, la même table que les marqueurs. -->
+            <!-- La couleur des tracés est une VITESSE, la même table que les marqueurs. Qui
+                 préfère le trait vert uni le dit ici, une fois pour toutes. -->
             <div class="pr-legende-v">
-              <app-legende-vitesse></app-legende-vitesse>
+              <label class="pr-legende-case">
+                <input type="checkbox" [checked]="traceParVitesse()" (change)="basculerTraceParVitesse()" />
+                <span>Tracés colorés par la vitesse</span>
+              </label>
+              @if (traceParVitesse()) {
+                <app-legende-vitesse></app-legende-vitesse>
+              }
             </div>
 
             <!-- Overlays positionnes par-dessus le map container -->
@@ -522,6 +529,12 @@ interface TimelineState {
       backdrop-filter: blur(6px);
       border: 1px solid var(--border-subtle);
     }
+    .pr-legende-case {
+      display: flex; align-items: center; gap: 6px; white-space: nowrap;
+      font-size: 10px; color: var(--fg-secondary); cursor: pointer;
+    }
+    .pr-legende-case input { width: 12px; height: 12px; margin: 0; accent-color: var(--tracky-light); }
+    .pr-legende-case + app-legende-vitesse { margin-top: 4px; }
   `],
 })
 export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
@@ -537,6 +550,10 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private readonly positionsApi = inject(PositionsApiService);
   /** Les demandes d'historique qui colorent les tracés — annulées avec la carte. */
   private tracesSub: Subscription | null = null;
+  /** Les relevés reçus par trajet : la case de la légende recolore sans redemander. */
+  private readonly relevesParTrajet = new Map<string, PointVitesse[]>();
+  /** Case « Tracé coloré par la vitesse » — la même préférence que la traînée de la carte. */
+  protected readonly traceParVitesse = computed(() => this.preferences.prefs().map.traceParVitesse);
 
   protected readonly PlayIcon = Play;
   protected readonly PauseIcon = Pause;
@@ -1126,6 +1143,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private chargerTracesColorees(trips: TripDto[]): void {
     this.tracesSub?.unsubscribe();
     this.tracesSub = null;
+    this.relevesParTrajet.clear();
     const candidats = trips.filter((t) => !!t.trackerId && !!t.endedAt);
     if (candidats.length === 0) return;
     this.tracesSub = from(candidats)
@@ -1141,19 +1159,41 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
         ),
       )
       .subscribe(({ tripId, points }) => {
-        const src = this.map?.getSource(`pr-line-${tripId}`) as GeoJSONSource | undefined;
-        // On colore la POLYLIGNE du trajet (recalée quand elle existe), jamais les relevés
-        // eux-mêmes : creux, ils couperaient les virages (cf. rejeu de trajet, 2026-09-08).
-        const ligne = this.timeline()?.tripLines.find((l) => l.tripId === tripId);
-        if (!src || !ligne || ligne.points.length < 2 || points.length === 0) return;
-        src.setData(segmentsColores(pointsColores(ligne.points, points)));
+        if (points.length === 0) return;
+        this.relevesParTrajet.set(tripId, points);
+        this.redessinerTrace(tripId);
       });
+  }
+
+  /**
+   * Redessine UN tracé : coloré par la vitesse si ses relevés sont là et qu'on le veut, vert
+   * uni sinon. On colore la POLYLIGNE du trajet (recalée quand elle existe), jamais les
+   * relevés eux-mêmes : creux, ils couperaient les virages (cf. rejeu de trajet, 2026-09-08).
+   */
+  private redessinerTrace(tripId: string): void {
+    const src = this.map?.getSource(`pr-line-${tripId}`) as GeoJSONSource | undefined;
+    const ligne = this.timeline()?.tripLines.find((l) => l.tripId === tripId);
+    if (!src || !ligne || ligne.points.length < 2) return;
+    const releves = this.relevesParTrajet.get(tripId);
+    if (!releves || !this.traceParVitesse()) {
+      src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: ligne.points }, properties: {} });
+      return;
+    }
+    src.setData(segmentsColores(pointsColores(ligne.points, releves)));
+  }
+
+  /** La case de la légende : le choix est retenu, pour ce rejeu, le suivant et la carte. */
+  protected basculerTraceParVitesse(): void {
+    const v = !this.traceParVitesse();
+    this.preferences.update({ map: { ...this.preferences.prefs().map, traceParVitesse: v } });
+    for (const ligne of this.timeline()?.tripLines ?? []) this.redessinerTrace(ligne.tripId);
   }
 
   private disposeMap(): void {
     // La carte s'en va : plus rien a surveiller ni a redimensionner.
     this.tracesSub?.unsubscribe();
     this.tracesSub = null;
+    this.relevesParTrajet.clear();
     this.annulerMinuteries();
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     if (this.resizeObserver) {

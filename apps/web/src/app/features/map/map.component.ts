@@ -61,7 +61,13 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
 import { RealtimeService } from '../../core/services/realtime.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
-import { PreferencesService, type AffichageLieux, type CameraMode } from '../../core/services/preferences.service';
+import {
+  PreferencesService,
+  TRAINEE_POINTS_DEFAUT,
+  TRAINEE_POINTS_MAX,
+  type AffichageLieux,
+  type CameraMode,
+} from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService } from '../../core/services/engine-control.service';
@@ -79,6 +85,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
+import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import {
   compteursFlotte,
@@ -349,11 +356,27 @@ const RESYNC_RADIUS_M = 150;
           <span>Géofences</span>
         </label>
         <!-- Noms de la planche : « Traces » et « Plaques » ne disaient ni de quoi
-             ni de quand. -->
+             ni de quand. « Trajets du jour » mentait aussi : la traînée fait quelques
+             points derrière ceux qui roulent, pas la journée. Ses deux réglages sont
+             ici, sous sa case : la couleur et la longueur. -->
         <label class="tracky-sheet-checkbox">
           <input type="checkbox" [checked]="showTrails()" (change)="toggleTrails()" />
-          <span>Trajets du jour</span>
+          <span>Traînée derrière les véhicules</span>
         </label>
+        @if (showTrails()) {
+          <div class="cl-trainee">
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="traceParVitesse()" (change)="basculerTraceParVitesse()" />
+              <span>Colorée par la vitesse</span>
+            </label>
+            <label class="cl-trainee-curseur">
+              <span>Longueur : {{ trailLength() }} points</span>
+              <input type="range" [min]="TRAINEE_MIN" [max]="TRAINEE_MAX" step="1"
+                     [value]="trailLength()" (input)="reglerLongueurTrainee($event)"
+                     aria-label="Longueur de la traînée" />
+            </label>
+          </div>
+        }
         <label class="tracky-sheet-checkbox">
           <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
           <span>Étiquettes plaques</span>
@@ -2105,6 +2128,13 @@ const RESYNC_RADIUS_M = 150;
     @media (max-width: 768px) {
       .tracky-sheet-checkbox { min-height: 44px }
     }
+    /* Les réglages de la traînée, en retrait sous sa case : la couleur et la longueur. */
+    .cl-trainee { margin-left: 26px; display: flex; flex-direction: column; gap: 2px; }
+    .cl-trainee-curseur {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 4px 4px 8px; font-size: 12px; color: var(--fg-secondary);
+    }
+    .cl-trainee-curseur input { width: 100%; margin: 0; accent-color: var(--tracky-light); }
 
     .tracky-sheet-actions-grid {
       display: grid;
@@ -2989,6 +3019,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected readonly showGeofences = signal(true);
   protected readonly showTrails = signal(true);
+  /**
+   * Les réglages de la traînée, dans la planche Calques (demande du client, 2026-09-08 : un
+   * maximum de détail, lisible, et paramétrable dans les filtres). Retenus par utilisateur.
+   */
+  protected readonly traceParVitesse = signal(true);
+  protected readonly trailLength = signal(TRAINEE_POINTS_DEFAUT);
+  protected readonly TRAINEE_MIN = 2;
+  protected readonly TRAINEE_MAX = TRAINEE_POINTS_MAX;
   protected readonly showPlates = signal(true);
   /** Sprint F.1 — affichage des arrets > 5min calcules sur les 24 dernieres heures. */
   protected readonly showStops = signal(false);
@@ -3624,6 +3662,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.currentStyle.set(prefs.style);
     this.cameraMode.set(prefs.cameraMode);
     this.showTrails.set(prefs.showTrails);
+    this.traceParVitesse.set(prefs.traceParVitesse);
+    this.trailLength.set(prefs.trailLength);
     this.showPlates.set(prefs.showPlates);
     this.compactMarkers.set(prefs.compactMarkers);
 
@@ -4683,6 +4723,38 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.showTrails.set(v);
     this.preferences.update({ map: { ...this.preferences.prefs().map, showTrails: v } });
     this.setLayerVisibility('trails-line', v);
+  }
+
+  /** Case « Colorée par la vitesse » : sans elle, la traînée reprend le vert du tracé. */
+  protected basculerTraceParVitesse(): void {
+    const v = !this.traceParVitesse();
+    this.traceParVitesse.set(v);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, traceParVitesse: v } });
+    this.redessinerTrainees();
+  }
+
+  /**
+   * Curseur de longueur (2 à 8 points). La traînée se raccourcit TOUT DE SUITE : la règle
+   * `mettreAJourTrainee` ne tronque qu'à la trame suivante, et un véhicule à l'arrêt n'en
+   * envoie qu'une toutes les deux à six minutes.
+   */
+  protected reglerLongueurTrainee(event: Event): void {
+    const brut = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(brut)) return;
+    const n = Math.min(this.TRAINEE_MAX, Math.max(this.TRAINEE_MIN, Math.round(brut)));
+    if (n === this.trailLength()) return;
+    this.trailLength.set(n);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, trailLength: n } });
+    for (const [id, etat] of this.trainees) {
+      if (etat.points.length > n) this.trainees.set(id, { ...etat, points: etat.points.slice(-n) });
+    }
+    this.redessinerTrainees();
+  }
+
+  /** Rejoue les dernières trames : la traînée est reconstruite avec les réglages du moment. */
+  private redessinerTrainees(): void {
+    if (!this.map || !this.carteUtilisable()) return;
+    this.applyPositions(this.applyFilters(this.realtime.positionsList()));
   }
 
   /** Sprint G.4 — toggle de la heatmap. */
@@ -5810,6 +5882,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const followedId = this.followedVehicleId();
     const trailLength = this.preferences.prefs().map.trailLength;
     const showTrails = this.showTrails();
+    // La traînée porte la couleur de vitesse, ou le vert du tracé si l'utilisateur l'a coupée.
+    const couleurTrainee = (kmh: number): string => (this.traceParVitesse() ? speedColor(kmh) : COULEURS_CARTE.trace);
     const hydratedSet = this.realtime.hydratedTrackerIds();
     const showPlatesNow = this.showPlates();
 
@@ -5940,7 +6014,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
               trailFeatures.push({
                 type: 'Feature',
                 geometry: { type: 'LineString', coordinates: smoothPts },
-                properties: { color: speedColor(lastData?.colorSpeedKmh ?? lastData?.speedKmh ?? 0), trackerId: pos.trackerId },
+                properties: { color: couleurTrainee(lastData?.colorSpeedKmh ?? lastData?.speedKmh ?? 0), trackerId: pos.trackerId },
               });
             }
           }
@@ -6117,7 +6191,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           trailFeatures.push({
             type: 'Feature',
             geometry: { type: 'LineString', coordinates: smoothPts },
-            properties: { color: speedColor(trailColorKmh), trackerId: pos.trackerId },
+            properties: { color: couleurTrainee(trailColorKmh), trackerId: pos.trackerId },
           });
         }
       }

@@ -72,6 +72,13 @@ export interface UserPreferences {
      * fois, pas un tableau de bord. Le choix est retenu, comme `lieuxAffichage`.
      */
     legendeRepliee: boolean;
+    /**
+     * Le tracé d'un rejeu et la traînée de la carte sont colorés par la vitesse (l'échelle des
+     * marqueurs). Décision du 2026-09-08 : le rouge des 101-140 km/h ressemble au rouge des
+     * excès ; qui préfère un trait vert uni l'obtient d'une case — dans les calques de la
+     * carte et dans les rejeux — et son choix est retenu, comme les autres.
+     */
+    traceParVitesse: boolean;
   };
   /** Widgets activés et ordre d'affichage sur le tableau de bord. */
   dashboardWidgets: DashboardWidgetConfig[];
@@ -155,6 +162,7 @@ const DEFAULTS: UserPreferences = {
      */
     lieuxAffichage: 'discrets',
     legendeRepliee: true,
+    traceParVitesse: true,
   },
   dashboardWidgets: [
     { key: 'kpis', enabled: true },
