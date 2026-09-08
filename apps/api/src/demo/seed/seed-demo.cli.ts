@@ -88,7 +88,13 @@ async function main(): Promise<void> {
         email: 'system@tracky.local',
         firstName: 'System',
         lastName: '',
-        role: UserRole.SUPER_ADMIN,
+        // ⚠️ PAS super-administrateur, à la différence de la production. Sur la démonstration il
+        // ne doit exister QU'UN SEUL super-admin, celui de l'exploitant : c'est le rôle qui ouvre
+        // l'onglet Administration — audit VPS, centre d'alerte, journaux — sur un environnement
+        // dont les identifiants sont remis à des prospects. Ce compte n'est qu'un acteur
+        // technique pour les écritures automatiques ; inactif, il ne se connecte jamais, et son
+        // rôle ne lui sert à rien. Les recherches qui le concernaient filtrent sur `isActive`.
+        role: UserRole.VIEWER,
         fleetId: null,
         isActive: false,
       },
