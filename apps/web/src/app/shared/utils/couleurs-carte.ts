@@ -43,6 +43,27 @@ export const COULEURS_CARTE = {
   contour: '#FFFFFF',
 } as const;
 
+/**
+ * ── ÉPAISSEUR DU CERCLAGE BLANC DES PASTILLES (tranché à l'œil le 2026-09-08) ───────────
+ *
+ * Question du propriétaire : le rouge de la bande 101-140 est aussi le rouge des excès
+ * confirmés, et l'ambre 66-100 celui des pointes à vérifier — faut-il changer une teinte ?
+ *
+ * Regardé sur banc, aux valeurs réelles, sur fond clair et sur fond sombre. **La rampe ne
+ * bouge pas** : vert → ambre → rouge → rouge foncé est la convention de lecture d'une vitesse,
+ * la casser coûterait plus de lisibilité qu'elle n'en gagnerait ; les DEUX bandes du milieu
+ * collisionnent, donc en repeindre une déplacerait le problème ; et toute autre teinte devrait
+ * repasser le seuil de contraste de `markerInk` (4,5:1, mesuré par `maplibre-markers.spec.ts`).
+ *
+ * Ce que le banc a montré, en revanche : posée SUR un tronçon de sa propre couleur, une
+ * pastille cerclée de 2 px se lit comme une bosse du trait, pas comme un repère. À 3 px elle
+ * se détache nettement, sur les deux fonds. La distinction passe donc par la FORME, et cette
+ * forme est maintenant assez franche pour tenir toute seule.
+ *
+ * ⚠️ Le trait du rejeu fait 4 px : en dessous de 3, l'anneau ne gagne pas contre lui.
+ */
+export const CERCLAGE_PASTILLE_PX = 3;
+
 /* ═══ L'ÉCHELLE DE VITESSE — UNE SEULE, POUR TOUTES LES CARTES ═══════════════════════════
    Demande du propriétaire, 2026-09-07 : 1–65 vert, 66–100 orange, 101–140 rouge, au-delà
    rouge foncé. Avant, chaque surface avait la sienne : les marqueurs à 50/90, le rejeu en

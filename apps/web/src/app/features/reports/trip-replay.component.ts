@@ -32,7 +32,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
-import { COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
+import { CERCLAGE_PASTILLE_PX, COULEURS_CARTE } from '../../shared/utils/couleurs-carte';
 // Les chiffres de l'en-tête viennent des MÊMES fonctions que la ligne du tableau :
 // même plafond de vitesse (250), même arrondi de durée, même clamp de distance.
 // Deux copies locales existaient ici — c'est ainsi que deux écrans finissent par
@@ -1665,7 +1665,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       });
       map.addLayer({
         id: 'replay-stops', type: 'circle', source: 'replay-stops',
-        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.arret, 'circle-opacity': 0.8, 'circle-stroke-width': 2, 'circle-stroke-color': COULEURS_CARTE.contour },
+        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.arret, 'circle-opacity': 0.8, 'circle-stroke-width': CERCLAGE_PASTILLE_PX, 'circle-stroke-color': COULEURS_CARTE.contour },
       });
     }
 
@@ -1702,7 +1702,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
           'circle-radius': 5,
           'circle-color': COULEURS_CARTE.pointe,
           'circle-opacity': 0.75,
-          'circle-stroke-width': 2,
+          'circle-stroke-width': CERCLAGE_PASTILLE_PX,
           'circle-stroke-color': COULEURS_CARTE.contour,
         },
       });
@@ -1723,7 +1723,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       });
       map.addLayer({
         id: 'replay-speeding', type: 'circle', source: 'replay-speeding',
-        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.exces, 'circle-opacity': 0.9, 'circle-stroke-width': 2, 'circle-stroke-color': COULEURS_CARTE.contour },
+        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': COULEURS_CARTE.exces, 'circle-opacity': 0.9, 'circle-stroke-width': CERCLAGE_PASTILLE_PX, 'circle-stroke-color': COULEURS_CARTE.contour },
       });
     }
   }
