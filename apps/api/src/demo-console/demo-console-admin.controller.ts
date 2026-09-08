@@ -64,6 +64,12 @@ export class DemoConsoleAdminController {
    * Le flux d'activité de la démo, dans la MÊME forme que celui de la production : c'est ce qui
    * permet à l'écran « Activité utilisateurs » de basculer de source sans changer d'affichage.
    */
+  /** La présence suit la source : sinon « en ligne » resterait celle des clients de production. */
+  @Get('en-ligne')
+  enLigne() {
+    return this.pont.lire('/en-ligne');
+  }
+
   @Get('activite')
   activite(
     @Query('limit') limit?: string,

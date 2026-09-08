@@ -42,7 +42,7 @@ describe('DemoConsoleService', () => {
       fleet: { findFirst: jest.fn(async () => ({ id: 'flotte-demo' })) },
     };
     const invitations = { create: jest.fn(async () => ({ id: 'inv-1' })), revoke: jest.fn(async () => ({ ok: true })) };
-    const flux = { getFeed: jest.fn(async () => []) };
+    const flux = { getFeed: jest.fn(async () => []), getOnline: jest.fn(async () => []) };
     const demoMode = options.demo === undefined ? undefined : { enabled: options.demo };
     const service = new DemoConsoleService(
       prisma as never,
@@ -63,6 +63,7 @@ describe('DemoConsoleService', () => {
       ['révoquer', (s) => s.revoquerInvitation('inv-1')],
       ['bloquer', (s) => s.definirBlocage('u-pro', true)],
       ['activité', (s) => s.activite({})],
+      ['en ligne', (s) => s.enLigne()],
     ];
 
     for (const [nom, appel] of cas) {
@@ -118,6 +119,12 @@ describe('DemoConsoleService', () => {
       const { service, prisma } = bati({ demo: true });
       await service.definirBlocage('u-pro', false);
       expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'u-pro' }, data: { isActive: true } });
+    });
+
+    it("n'occulte pas l'owner dans la présence — sur la démo il n'y a pas d'owner à protéger", async () => {
+      const { service, flux } = bati({ demo: true });
+      await service.enLigne();
+      expect(flux.getOnline).toHaveBeenCalledWith({ isOwner: true });
     });
 
     it("invite en passant par le service d'invitations, pas en écrivant une ligne à la main", async () => {

@@ -129,9 +129,42 @@ type Period = '24h' | '7d' | '30d';
         </details>
       </ng-template>
 
+      <!--
+        Bandeau de source. Il n'est pas décoratif : ces lignes viennent d'une AUTRE base, avec
+        d'autres comptes, et rien dans une ligne d'activité ne le dit. Sans ce bandeau, on lit
+        « CLICK /vehicles » et on croit qu'un client l'a fait.
+      -->
+      <ng-template #bandeauSource>
+        @if (sourceActivite() === 'demo') {
+          <div class="flex items-center gap-2 rounded-[--radius-card] border px-3 py-2 text-sm"
+               style="color: var(--texte-attente);
+                      background: color-mix(in srgb, var(--warning) 12%, transparent);
+                      border-color: color-mix(in srgb, var(--warning) 26%, transparent);">
+            <span class="font-semibold">Environnement de démonstration</span>
+            <span class="text-fg-secondary">
+              demo-tracky.vizyoagency.com — ces événements sont ceux des prospects, pas de vos clients.
+            </span>
+          </div>
+        }
+      </ng-template>
+
+      <!-- Sélecteur de source, partagé Live + Historique : la source gouverne les DEUX. -->
+      <ng-template #choixSource>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-fg-tertiary">Source</label>
+          <select [ngModel]="sourceActivite()" (ngModelChange)="setSourceActivite($event)"
+                  class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+            <option value="production">Production</option>
+            <option value="demo">Compte DEMO</option>
+          </select>
+        </div>
+      </ng-template>
+
       <!-- ─────────── LIVE ─────────── -->
       @if (tab() === 'live') {
-        <div class="flex items-center justify-end mb-3">
+        <ng-container [ngTemplateOutlet]="bandeauSource"></ng-container>
+        <div class="flex flex-wrap items-end justify-between gap-3 mb-3 mt-3">
+          <ng-container [ngTemplateOutlet]="choixSource"></ng-container>
           <ng-container [ngTemplateOutlet]="userFilter" [ngTemplateOutletContext]="{ aligne: 'droite' }"></ng-container>
         </div>
         <div class="grid lg:grid-cols-2 gap-4">
@@ -190,33 +223,11 @@ type Period = '24h' | '7d' | '30d';
 
       <!-- ─────────── HISTORIQUE ─────────── -->
       @if (tab() === 'history') {
-        <!--
-          Bandeau de source. Il n'est pas décoratif : ces lignes viennent d'une AUTRE base, avec
-          d'autres comptes, et rien dans une ligne d'activité ne le dit. Sans ce bandeau, on lit
-          « CLICK /vehicles » et on croit qu'un client l'a fait.
-        -->
-        @if (sourceActivite() === 'demo') {
-          <div class="flex items-center gap-2 rounded-[--radius-card] border px-3 py-2 text-sm"
-               style="color: var(--texte-attente);
-                      background: color-mix(in srgb, var(--warning) 12%, transparent);
-                      border-color: color-mix(in srgb, var(--warning) 26%, transparent);">
-            <span class="font-semibold">Environnement de démonstration</span>
-            <span class="text-fg-secondary">
-              demo-tracky.vizyoagency.com — ces événements sont ceux des prospects, pas de vos clients.
-            </span>
-          </div>
-        }
+        <ng-container [ngTemplateOutlet]="bandeauSource"></ng-container>
 
         <!-- Filtres : « qu'a fait l'utilisateur X ? » / « tous les exports » … -->
         <div class="flex flex-wrap items-end gap-3">
-          <div class="flex flex-col gap-1">
-            <label class="text-xs text-fg-tertiary">Source</label>
-            <select [ngModel]="sourceActivite()" (ngModelChange)="setSourceActivite($event)"
-                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
-              <option value="production">Production</option>
-              <option value="demo">Compte DEMO</option>
-            </select>
-          </div>
+          <ng-container [ngTemplateOutlet]="choixSource"></ng-container>
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Utilisateurs</label>
             <ng-container [ngTemplateOutlet]="userFilter" [ngTemplateOutletContext]="{ aligne: 'gauche' }"></ng-container>
@@ -245,7 +256,13 @@ type Period = '24h' | '7d' | '30d';
                 <span class="text-fg-tertiary truncate">{{ describe(a) }}</span>
               </div>
             } @empty {
-              <p class="text-sm text-fg-tertiary text-center py-6">Aucun historique.</p>
+              @if (erreurSource(); as msg) {
+                <!-- La démo peut être arrêtée, ou la console non configurée. Un écran vide
+                     laisserait croire « personne n'est venu » : on dit POURQUOI. -->
+                <p class="text-sm text-center py-6" style="color: var(--texte-attente);">{{ msg }}</p>
+              } @else {
+                <p class="text-sm text-fg-tertiary text-center py-6">Aucun historique.</p>
+              }
             }
           </div>
           @if (visibleHistory().length > 0) {
@@ -789,6 +806,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
    * flux mêlant les deux se paginerait de travers, chaque source ayant ses propres curseurs.
    */
   readonly sourceActivite = signal<SourceActivite>('production');
+  /** Pourquoi la source ne répond pas — affiché à la place d'un « Aucun historique » trompeur. */
+  readonly erreurSource = signal<string | null>(null);
   readonly consoleDemoConfiguree = signal<boolean | null>(null);
 
   // Filtres historique (« qu'a fait X hier ? »).
@@ -802,9 +821,16 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   /** Utilisateurs à AFFICHER (multi-sélection). null = pas encore initialisé → tout afficher. */
   readonly shownUserIds = signal<Set<string> | null>(null);
 
+  /** Identifiants pour lesquels le filtre PROPOSE une case à cocher. */
+  private readonly idsProposes = computed(() => new Set(this.filterUsers().map((u) => u.id)));
+
   protected isUserShown(userId: string): boolean {
     const s = this.shownUserIds();
-    return s === null ? true : s.has(userId);
+    if (s === null || s.has(userId)) return true;
+    // Un identifiant que le filtre n'offre PAS ne peut pas avoir été décoché : le masquer ferait
+    // disparaître des lignes sans aucune case pour les faire revenir — compte supprimé depuis, ou
+    // liste venue d'une autre base que le flux. On n'exclut que ce qu'on propose.
+    return !this.idsProposes().has(userId);
   }
   protected shownUserCount(): number {
     const s = this.shownUserIds();
@@ -915,6 +941,13 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     this.sourceActivite.set(v);
     this.history.set([]);
     this.feed.set([]);
+    this.online.set([]);
+    this.erreurSource.set(null);
+    // Le filtre « Utilisateurs » aussi change de base : les comptes de production n'ont aucun
+    // identifiant en commun avec ceux de la démo. Le garder tel quel masquerait TOUT le flux.
+    this.filterUsers.set([]);
+    this.shownUserIds.set(null);
+    this.filterUsersLoaded = false;
     this.loadHistory();
     if (this.tab() === 'live') this.loadLive();
   }
@@ -1016,7 +1049,9 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   }
 
   private loadLive(): void {
-    this.api.online().subscribe({ next: (u) => this.online.set(u), error: () => undefined });
+    this.api
+      .online(this.sourceActivite())
+      .subscribe({ next: (u) => this.online.set(u), error: () => undefined });
     this.api
       .feed({ limit: 50, source: this.sourceActivite() })
       .subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
@@ -1030,14 +1065,48 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
         type: this.historyType() || undefined,
         source: this.sourceActivite(),
       })
-      .subscribe({ next: (f) => this.history.set(f), error: () => undefined });
+      .subscribe({
+        next: (f) => {
+          this.history.set(f);
+          this.erreurSource.set(null);
+        },
+        error: (e: { error?: { message?: string }; message?: string }) =>
+          this.erreurSource.set(
+            e?.error?.message ?? e?.message ?? "Cette source n'a pas répondu.",
+          ),
+      });
     this.loadFilterUsers();
   }
 
-  /** Charge la liste d'utilisateurs (filtre) + initialise la sélection par défaut : tout coché SAUF l'owner. */
+  /**
+   * Charge la liste d'utilisateurs du filtre, DANS LA SOURCE COURANTE.
+   *
+   * Production : tout coché sauf l'owner (l'admin ne veut pas voir ses propres actions polluer le
+   * flux de ses clients). Démonstration : tout coché, owner compris — sur la démo, les visites de
+   * l'exploitant font partie de « qui est venu voir la démo », et les décocher rendrait l'écran
+   * vide alors que l'API a répondu.
+   */
   private loadFilterUsers(): void {
     if (this.filterUsersLoaded) return;
     this.filterUsersLoaded = true;
+    if (this.sourceActivite() === 'demo') {
+      this.api.comptesDemo().subscribe({
+        next: (comptes) => {
+          this.filterUsers.set(
+            comptes.map((c) => ({ id: c.id, name: c.nom || c.email, email: c.email })),
+          );
+          if (this.shownUserIds() === null) {
+            this.shownUserIds.set(new Set(comptes.map((c) => c.id)));
+          }
+        },
+        // Console non configurée ou démo injoignable : on laisse le filtre vide plutôt que de
+        // masquer le flux. `isUserShown` ne cache que ce que le filtre propose.
+        error: () => {
+          this.filterUsersLoaded = false;
+        },
+      });
+      return;
+    }
     this.usersApi
       .findAll()
       .then(({ users }) => {

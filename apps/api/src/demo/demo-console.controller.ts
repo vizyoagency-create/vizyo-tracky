@@ -53,6 +53,11 @@ export class DemoConsoleController {
     return this.service.definirBlocage(id, body?.bloque !== false);
   }
 
+  @Get('en-ligne')
+  enLigne() {
+    return this.service.enLigne();
+  }
+
   @Get('activite')
   activite(
     @Query('limit') limit?: string,

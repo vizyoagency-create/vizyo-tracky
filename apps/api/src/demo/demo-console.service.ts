@@ -203,4 +203,16 @@ export class DemoConsoleService {
     // l'activité de l'owner DANS la démo n'aurait aucun sens — il n'y a pas d'owner à protéger.
     return this.fluxActivite.getFeed(filtres, { isOwner: true });
   }
+
+  /**
+   * Qui regarde la démonstration EN CE MOMENT.
+   *
+   * Sans cette route, l'écran de production afficherait la présence de ses PROPRES clients à côté
+   * d'un flux d'événements venus de la démo : deux bases mêlées dans un même panneau, sans que
+   * rien ne le dise. La présence doit suivre la source, comme le flux.
+   */
+  async enLigne() {
+    this.exigerDemo();
+    return this.fluxActivite.getOnline({ isOwner: true });
+  }
 }

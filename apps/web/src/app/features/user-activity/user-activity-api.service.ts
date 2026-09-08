@@ -23,8 +23,22 @@ export type SourceActivite = 'production' | 'demo';
 export class UserActivityApiService {
   private readonly http = inject(HttpClient);
 
-  online(): Observable<OnlineUserDto[]> {
-    return this.http.get<OnlineUserDto[]>('/api/admin/activity/online');
+  /** La présence suit la source, comme le flux : mêler les deux afficherait la présence des
+   *  clients de production sous un bandeau « démonstration ». */
+  online(source: SourceActivite = 'production'): Observable<OnlineUserDto[]> {
+    const url = source === 'demo' ? '/api/admin/demo-console/en-ligne' : '/api/admin/activity/online';
+    return this.http.get<OnlineUserDto[]>(url);
+  }
+
+  /**
+   * Les comptes de la démonstration — ici, uniquement pour alimenter le filtre « Utilisateurs ».
+   *
+   * Sans eux, ce filtre resterait peuplé des comptes de PRODUCTION : aucun identifiant ne
+   * correspondrait, et l'écran afficherait « Aucun historique » alors que l'API vient de
+   * répondre. C'est le défaut corrigé le 2026-09-08.
+   */
+  comptesDemo(): Observable<{ id: string; email: string; nom: string }[]> {
+    return this.http.get<{ id: string; email: string; nom: string }[]>('/api/admin/demo-console/comptes');
   }
 
   /**
