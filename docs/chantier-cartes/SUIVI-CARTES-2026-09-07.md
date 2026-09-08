@@ -469,10 +469,51 @@ Le passage de 23:45 n'a laissé aucune trace : ce n'est pas la garde anti double
 avec lui. Conclusion : le trou du 07/09 n'est pas revenu « tout seul », il revient à chaque
 redéploiement qui tombe entre HH:45 et HH:55 — et **rien ne le signale**.
 
-Proposition (non faite, hors périmètre cartes, à décider) : écrire la ligne de
-`trip_automation_runs` AU DÉPART (`finishedAt` nul) et la compléter à la fin ; un passage tué
-devient visible (« commencé, jamais fini ») et la vigie 9.1 peut le remonter en CRITICAL.
-Règle d'exploitation retenue en attendant : **ne pas déployer entre HH:44 et HH:56 UTC**.
+~~Proposition (non faite, hors périmètre cartes, à décider) : écrire la ligne de
+`trip_automation_runs` AU DÉPART (`finishedAt` nul) et la compléter à la fin.~~ → **DEMANDÉE
+par le propriétaire le 08/09 à 07:20, FAITE (§ 9.4 bis)**. Mesure complémentaire (autre
+session, même nuit) : un passage dure de 2 à 54 min selon la charge, quatre passages tués le
+07/09 (14:45, 15:45, 17:45, 23:45 UTC) — la fenêtre à risque va donc de HH:45 à HH+1:09, pas
+HH:44-HH:56. Règle d'exploitation : **lire `trip_automation_runs` avant de déployer** (avec la
+ligne au départ, un passage en cours s'y voit désormais).
+
+### 9.4 bis La ligne au départ — un passage tué ne disparaît plus sans trace
+
+**Ce que ça fait, en clair.** Avant, l'automatisation n'écrivait sa ligne d'historique qu'à la
+FIN du passage. Un passage tué en plein vol (conteneur recréé par un déploiement, crash, OOM)
+ne laissait donc rien : ni ligne, ni « tick annulé », ni erreur — comme si l'heure avait été
+sautée en silence. Désormais :
+
+1. **Au premier instant du passage**, une ligne est écrite dans `trip_automation_runs` avec
+   l'heure de départ, l'origine (planifié / manuel) et l'état `running` — avant de toucher à
+   la moindre flotte.
+2. **À la clôture**, c'est cette MÊME ligne qui est complétée : fin, durée, compteurs, trajets
+   traités, état `done` (ou `failed` si le passage s'est arrêté sur une exception).
+3. **Au redémarrage de l'API**, toute ligne encore `running` est forcément un passage mort (ce
+   processus est le seul à en lancer, et il vient de naître) : elle passe à `interrupted`, sa
+   fin reste vide, une ligne va au journal d'activité (`trip_automation_passage_interrompu`) et
+   une erreur **CRITICAL** au centre d'alerte — la vigie des critiques (§ 9.1) l'envoie par
+   e-mail dans les dix minutes.
+4. **Ce qui n'est pas fait, exprès** : relancer le travail. Le passage suivant (HH:45) reprend
+   les trajets non traités, le pipeline partant toujours du reste à faire. Et si la ligne de
+   départ ne peut pas s'écrire (base injoignable à cet instant), le passage tourne quand même
+   et la clôture la crée comme avant : rien de l'ancien comportement n'est perdu.
+
+**Garde anti double-run** : inchangée dans son effet. Elle mesure depuis le dernier DÉPART
+persisté ; un passage interrompu y laisse maintenant son départ, comme un passage clos.
+
+**Implémentation** : colonne `status` (`running | done | failed | interrupted`, défaut `done`
+pour les lignes existantes, toutes closes) — migration
+`20260908053000_passage_automatisation_ligne_au_depart`, SQL généré par `prisma migrate
+diff`, appliquée sur la base locale avant tout. `ouvrirLigne()`, `recordRun()` complète par
+identifiant (recrée si la ligne a disparu), `marquerPassagesInterrompus()` au
+`onApplicationBootstrap`. DTO partagé : `TripAutomationRunDto.status`. Écran
+`/admin/trip-automation` : pastille « En cours / Interrompu / Échec » et résumé en mots à la
+place de « 0 analysés ».
+
+**Rouge d'abord** : `ligne-au-depart.spec.ts` (10 tests) contre l'ancien service → suite en
+échec de compilation (`onApplicationBootstrap` inexistant, DTO sans `status`) ;
+`trip-automation-etat.spec.ts` contre l'ancien composant → `etatPassage` inexistant.
 
 ### 9.5 Le rouge du tracé : une case, pas une teinte
 
