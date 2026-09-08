@@ -222,6 +222,33 @@ export class EmailService {
     return this.enabled;
   }
 
+  /**
+   * Ce que le FOURNISSEUR dit d'un message : `delivered`, `bounced`, `suppressed`,
+   * `delivery_delayed`…
+   *
+   * ⚠️ Notre colonne `status` ne bouge QUE si le webhook arrive. Quand Resend a supprimé une
+   * adresse, il accepte l'envoi, rend un identifiant, et n'émet plus JAMAIS d'événement : la
+   * ligne reste `QUEUED` indéfiniment, sans erreur ni rebond. Constaté le 2026-09-08 —
+   * `admin@cdef31.org` n'avait pas reçu son rapport hebdomadaire depuis sept semaines, et
+   * `admin@vizyoagency.com`, l'adresse d'alerte, était dans le même état, donc personne ne
+   * pouvait l'apprendre. Seul le fournisseur connaît la vérité ; il faut aller la lui demander.
+   *
+   * Best-effort : rend `null` à la moindre difficulté. La sentinelle sait s'en passer, et une
+   * panne de l'API Resend ne doit pas faire échouer une surveillance.
+   */
+  async statutFournisseur(providerId: string): Promise<string | null> {
+    if (!this.client) return null;
+    try {
+      const reponse = await this.client.emails.get(providerId);
+      return (reponse.data as { last_event?: string } | null)?.last_event ?? null;
+    } catch (err) {
+      this.logger.debug(
+        `Statut Resend indisponible pour ${providerId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
   async send(params: SendEmailParams): Promise<{ ok: boolean; id?: string; error?: string }> {
     if (!this.enabled || !this.client) {
       this.logger.debug(
