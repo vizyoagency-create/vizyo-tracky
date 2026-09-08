@@ -9,6 +9,15 @@ import type {
   SystemActivityDto,
 } from '@vizyo/tracky-shared';
 
+/**
+ * Les deux environnements que cet écran sait lire.
+ *
+ * `demo` désigne demo-tracky.vizyoagency.com, une pile SÉPARÉE avec sa propre base : ses
+ * utilisateurs, ses sessions et ses événements n'existent pas en production. D'où l'aiguillage
+ * plutôt que la fusion.
+ */
+export type SourceActivite = 'production' | 'demo';
+
 /** Client REST du tracking d'activité (lecture admin, SUPER_ADMIN). */
 @Injectable({ providedIn: 'root' })
 export class UserActivityApiService {
@@ -18,19 +27,32 @@ export class UserActivityApiService {
     return this.http.get<OnlineUserDto[]>('/api/admin/activity/online');
   }
 
+  /**
+   * D'où vient le flux. `demo` interroge l'environnement de démonstration à travers la console,
+   * et non la base de production : les deux ne partagent aucune donnée. C'est un AIGUILLAGE, pas
+   * une fusion — mêler les deux dans une seule pagination donnerait un défilement incohérent,
+   * chaque source ayant ses propres curseurs.
+   */
   feed(opts: {
     limit?: number;
     before?: string;
     beforeId?: string;
     userId?: string;
     type?: string;
+    source?: SourceActivite;
   } = {}): Observable<ActivityFeedItemDto[]> {
     let params = new HttpParams().set('limit', String(opts.limit ?? 50));
     if (opts.before) params = params.set('before', opts.before);
     if (opts.beforeId) params = params.set('beforeId', opts.beforeId);
     if (opts.userId) params = params.set('userId', opts.userId);
     if (opts.type) params = params.set('type', opts.type);
-    return this.http.get<ActivityFeedItemDto[]>('/api/admin/activity/feed', { params });
+    const url = opts.source === 'demo' ? '/api/admin/demo-console/activite' : '/api/admin/activity/feed';
+    return this.http.get<ActivityFeedItemDto[]>(url, { params });
+  }
+
+  /** L'état du pont vers la démonstration : configuré ou non, et pourquoi le cas échéant. */
+  etatConsoleDemo(): Observable<{ configure: boolean; url: string | null }> {
+    return this.http.get<{ configure: boolean; url: string | null }>('/api/admin/demo-console/etat');
   }
 
   stats(from?: string, to?: string): Observable<ActivityStatsDto> {

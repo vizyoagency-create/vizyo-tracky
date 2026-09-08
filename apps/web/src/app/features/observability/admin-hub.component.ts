@@ -456,6 +456,19 @@ import type { AlertesAvecAgentsDuPoste } from './admin-alerts.component';
           </div>
         </a>
 
+        <!-- ── COMPTES DE DÉMONSTRATION (wide) — 2026-09-08 ── -->
+        <a routerLink="/admin/demo-comptes" class="card card-wide" style="--i:12">
+          <span class="accent accent-teal"></span>
+          <div class="body body-row">
+            <div class="ico ico-teal"><lucide-icon [img]="Users" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Comptes de démonstration</h3>
+              <p class="desc">Inviter un prospect, révoquer une invitation, bloquer un accès, et voir qui s'est connecté à la démo et quand. Relayé vers demo-tracky : aucun de ces comptes n'existe en production.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
         </div>
       </section>
 

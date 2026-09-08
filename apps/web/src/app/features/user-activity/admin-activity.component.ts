@@ -49,7 +49,7 @@ import {
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { UsersApiService } from '../../core/services/users.service';
 import { relativeTime } from '../../shared/utils/relative-time';
-import { UserActivityApiService } from './user-activity-api.service';
+import { UserActivityApiService, type SourceActivite } from './user-activity-api.service';
 import { ActivityReportsComponent } from './activity-reports.component';
 
 type Tab = 'live' | 'history' | 'reports' | 'analytics' | 'engine-commands' | 'audio-listens' | 'system';
@@ -190,8 +190,33 @@ type Period = '24h' | '7d' | '30d';
 
       <!-- ─────────── HISTORIQUE ─────────── -->
       @if (tab() === 'history') {
+        <!--
+          Bandeau de source. Il n'est pas décoratif : ces lignes viennent d'une AUTRE base, avec
+          d'autres comptes, et rien dans une ligne d'activité ne le dit. Sans ce bandeau, on lit
+          « CLICK /vehicles » et on croit qu'un client l'a fait.
+        -->
+        @if (sourceActivite() === 'demo') {
+          <div class="flex items-center gap-2 rounded-[--radius-card] border px-3 py-2 text-sm"
+               style="color: var(--texte-attente);
+                      background: color-mix(in srgb, var(--warning) 12%, transparent);
+                      border-color: color-mix(in srgb, var(--warning) 26%, transparent);">
+            <span class="font-semibold">Environnement de démonstration</span>
+            <span class="text-fg-secondary">
+              demo-tracky.vizyoagency.com — ces événements sont ceux des prospects, pas de vos clients.
+            </span>
+          </div>
+        }
+
         <!-- Filtres : « qu'a fait l'utilisateur X ? » / « tous les exports » … -->
         <div class="flex flex-wrap items-end gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Source</label>
+            <select [ngModel]="sourceActivite()" (ngModelChange)="setSourceActivite($event)"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="production">Production</option>
+              <option value="demo">Compte DEMO</option>
+            </select>
+          </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Utilisateurs</label>
             <ng-container [ngTemplateOutlet]="userFilter" [ngTemplateOutletContext]="{ aligne: 'gauche' }"></ng-container>
@@ -757,6 +782,15 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   readonly systemCategory = signal('');
   readonly systemStatus = signal('');
 
+  /**
+   * Source du flux : la production, ou l'environnement de DÉMONSTRATION.
+   *
+   * Les deux piles ont des bases distinctes ; ce sélecteur AIGUILLE, il ne fusionne pas. Un
+   * flux mêlant les deux se paginerait de travers, chaque source ayant ses propres curseurs.
+   */
+  readonly sourceActivite = signal<SourceActivite>('production');
+  readonly consoleDemoConfiguree = signal<boolean | null>(null);
+
   // Filtres historique (« qu'a fait X hier ? »).
   readonly historyUser = signal('');
   readonly historyType = signal('');
@@ -857,6 +891,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
         beforeId: last.id,
         userId: this.historyUser() || undefined,
         type: this.historyType() || undefined,
+        source: this.sourceActivite(),
       })
       .subscribe({
         next: (items) => {
@@ -870,6 +905,18 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   setHistoryType(v: string): void {
     this.historyType.set(v);
     this.loadHistory();
+  }
+
+  /** Bascule production ↔ démonstration. On vide AVANT de recharger : laisser les lignes de
+   *  l'ancienne source à l'écran pendant l'appel ferait lire des données de production sous un
+   *  bandeau « démonstration », soit exactement le contresens que ce bandeau doit empêcher. */
+  setSourceActivite(v: SourceActivite): void {
+    if (v === this.sourceActivite()) return;
+    this.sourceActivite.set(v);
+    this.history.set([]);
+    this.feed.set([]);
+    this.loadHistory();
+    if (this.tab() === 'live') this.loadLive();
   }
 
   setActionFilter(v: string): void {
@@ -970,12 +1017,19 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
 
   private loadLive(): void {
     this.api.online().subscribe({ next: (u) => this.online.set(u), error: () => undefined });
-    this.api.feed({ limit: 50 }).subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
+    this.api
+      .feed({ limit: 50, source: this.sourceActivite() })
+      .subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
     this.loadFilterUsers();
   }
   private loadHistory(): void {
     this.api
-      .feed({ limit: 80, userId: this.historyUser() || undefined, type: this.historyType() || undefined })
+      .feed({
+        limit: 80,
+        userId: this.historyUser() || undefined,
+        type: this.historyType() || undefined,
+        source: this.sourceActivite(),
+      })
       .subscribe({ next: (f) => this.history.set(f), error: () => undefined });
     this.loadFilterUsers();
   }

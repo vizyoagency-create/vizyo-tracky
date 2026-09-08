@@ -16,5 +16,8 @@ import { TravauxIaModule } from '../travaux-ia/travaux-ia.module';
   imports: [AuthModule, TravauxIaModule],
   controllers: [UserActivityController, ActivityReportController, PublicClientErrorController],
   providers: [UserActivityService, ActivityReportService],
+  // `DemoConsoleService` relit le MÊME flux pour l'exposer à la console de production : deux
+  // sources lues par le même code, donc deux affichages qui ne peuvent pas diverger.
+  exports: [UserActivityService],
 })
 export class UserActivityModule {}

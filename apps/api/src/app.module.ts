@@ -80,6 +80,7 @@ import { AuditAlertesModule } from './audit-alertes/audit-alertes.module';
 import { TrackerOnboardingModule } from './tracker-onboarding/tracker-onboarding.module';
 import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
 import { DemoModeModule } from './demo/demo-mode.module';
+import { DemoConsoleModule } from './demo-console/demo-console.module';
 import { DemoModule } from './demo/demo.module';
 
 @Module({
@@ -226,6 +227,7 @@ import { DemoModule } from './demo/demo.module';
     // Environnement de démonstration (2026-09) — rejeu de trames sur de faux boîtiers + écran
     // d'administration. Ne fait rien sans DEMO_MODE=true. Cf. docs/environnement-demo/.
     DemoModule,
+    DemoConsoleModule,
   ],
   controllers: [HealthController],
   providers: [

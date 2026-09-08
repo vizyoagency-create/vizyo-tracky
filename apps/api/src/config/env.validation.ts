@@ -305,6 +305,19 @@ const envSchema = z.object({
     (v) => (v === '' || v === undefined || v === null ? undefined : v),
     z.coerce.number().int().positive().default(12),
   ),
+
+  // ─── Console de démonstration — le sens INVERSE, production → démo (2026-09-08) ──────────
+  //
+  // Ces deux variables se posent dans `.env.PROD`, pas dans `.env.demo` : c'est la PRODUCTION
+  // qui appelle la démo, pour que l'exploitant administre les comptes de démonstration et lise
+  // leur activité sans avoir à s'y connecter.
+  //
+  // ⚠️ `DEMO_INTERNAL_SECRET` est le `INTERNAL_API_SECRET` DE LA DÉMO, pas celui de la
+  // production — les deux diffèrent (vérifié le 2026-09-08), et c'est voulu : un secret de
+  // production compromis n'ouvre pas la démo. Les deux absentes → la console répond
+  // « non configurée » et n'appelle personne, ce qui est l'état normal en développement.
+  DEMO_API_URL: z.string().default(''),
+  DEMO_INTERNAL_SECRET: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -651,6 +651,18 @@ export const routes: Routes = [
         data: { title: 'Environnement de démonstration' },
       },
       {
+        // Gestion des ACCÈS à la démonstration : inviter, révoquer, bloquer, et voir qui s'y est
+        // connecté. Tout est relayé vers l'API de la démo — aucun compte de démo n'existe ici.
+        path: 'admin/demo-comptes',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-demo-comptes.component').then(
+            (m) => m.AdminDemoComptesComponent,
+          ),
+        data: { title: 'Comptes de démonstration' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>

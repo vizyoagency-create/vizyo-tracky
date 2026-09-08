@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { InvitationsModule } from '../invitations/invitations.module';
 import { PositionsModule } from '../positions/positions.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { UserActivityModule } from '../user-activity/user-activity.module';
 import { DemoAdminService } from './demo-admin.service';
+import { DemoConsoleController } from './demo-console.controller';
+import { DemoConsoleService } from './demo-console.service';
 import { DemoController } from './demo.controller';
 import { DemoReplayService } from './demo-replay.service';
 
@@ -17,9 +21,9 @@ import { DemoReplayService } from './demo-replay.service';
  * le seul à voir la production.
  */
 @Module({
-  imports: [AuthModule, PositionsModule, RealtimeModule],
-  controllers: [DemoController],
-  providers: [DemoReplayService, DemoAdminService],
+  imports: [AuthModule, PositionsModule, RealtimeModule, InvitationsModule, UserActivityModule],
+  controllers: [DemoController, DemoConsoleController],
+  providers: [DemoReplayService, DemoAdminService, DemoConsoleService],
   exports: [DemoReplayService],
 })
 export class DemoModule {}
