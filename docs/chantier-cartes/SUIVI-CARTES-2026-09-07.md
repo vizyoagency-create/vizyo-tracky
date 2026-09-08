@@ -481,6 +481,28 @@ sort du lot, silence.
 
 **Rouge d'abord** : `sentinelles-coherence.spec.ts`, 3 échecs contre l'ancienne règle.
 
+### 10.x Contre-vérifié en production (08/09, heures UTC)
+
+Déployé à 16:28 avec `deploy.sh` lui-même — le script a lu `trip_automation_runs`, n'a trouvé
+aucun passage en cours et a laissé partir. Artefacts lus dans les conteneurs (exception,
+`figerSiPositionsIntrouvables`, `recalerAnciensTraces`, `certainementMort`, la nouvelle
+sentinelle, `CERCLAGE_PASTILLE_PX`).
+
+| Point | Ce qui a été observé |
+|---|---|
+| 10.3 garde | À 16:49, passage de 16:45 en cours : `deploy.sh` **refuse**, exit 1, en nommant le départ, l'origine et les 4 min écoulées. |
+| 10.1 gel | Passage de 16:45 : « trajet b644fe50 figé : positions purgées, analyse impossible à jamais », plus un second (0d326651). `segmentationSource` passe à `fige-retention` (1092 → 1094). |
+| 10.1 silence | **Zéro ligne « Analyse impossible » depuis le déploiement** (27 au total, 0 sur les 20 dernières minutes), alors que le trajet en écrivait une par passage depuis 27 heures. Et zéro erreur, toutes sources confondues, sur 45 min. |
+| 10.2 rattrapage | « 15 tracé(s) recalé(s) sur les routes » dans le détail du passage ; traces sans recalage 4 576 → 4 560. Journal : « 51 → 764 points », « 43 → 361 », « 19 → 169 ». |
+
+Un défaut vu en lisant ce journal, corrigé dans la foulée : le rattrapage s'annonçait « Recalage
+à la demande » puisqu'il réutilise ce service. Le message ne dit plus d'où vient l'appel, et
+l'en-tête du service nomme désormais ses deux appelants.
+
+Reste à observer dans le temps, sans action : la sentinelle 10.6 (cadence quotidienne — elle doit
+maintenant se taire tant qu'aucun véhicule ne sort du lot) et l'extinction du rattrapage 10.2
+(4 560 tracés, quinze par heure).
+
 ### 10.7 Le rouge 101-140 face au rouge des excès — REGARDÉ, puis tranché
 
 Banc monté aux valeurs réelles (tracé 4 px vert → ambre → rouge → rouge foncé, pastilles cerclées
