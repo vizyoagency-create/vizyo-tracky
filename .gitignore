@@ -12,12 +12,17 @@ dist
 .angular
 coverage
 
-# env
+# env — MOTIF, jamais une liste de noms exacts.
+#
+# `.env.local`, `.env.production`… n'attrapent QUE ces noms-là. Une sauvegarde s'appelle
+# `.env.prod.bak-20260907-060023` : elle passait au travers et restait visible de git, secrets
+# en clair compris. Tout suffixe est donc couvert, et seuls les gabarits sont réintégrés.
 .env
-.env.local
-.env.*.local
-.env.production
-.env.development
+.env.*
+!.env*.example
+
+# Sauvegardes prises à la main (exports CSV, dumps) : jamais dans le dépôt.
+backups/
 
 # logs
 *.log

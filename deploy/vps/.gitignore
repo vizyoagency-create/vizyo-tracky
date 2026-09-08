@@ -1,3 +1,12 @@
-.env.prod
-.env.staging
-.env.demo
+# Fichiers d'environnement du VPS — MOTIF, jamais une liste de noms.
+#
+# La version précédente listait `.env.prod`, `.env.staging`, `.env.demo` au nom exact. Une
+# sauvegarde s'appelle `.env.prod.bak-20260907-060023` ou `.env.demo.avant-essai-pont-054706` :
+# aucun de ces noms ne correspondait, et quatre copies portant jusqu'à 18 secrets EN CLAIR sont
+# restées visibles de git pendant des semaines — à un `git add -A` de partir dans un commit.
+# (Constaté le 2026-09-08 ; les copies ont été effacées du VPS.)
+.env
+.env.*
+
+# … sauf les gabarits, qui ne contiennent aucune valeur et DOIVENT rester suivis.
+!.env*.example
