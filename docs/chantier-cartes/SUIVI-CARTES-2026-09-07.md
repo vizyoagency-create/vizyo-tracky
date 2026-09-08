@@ -339,11 +339,17 @@ d'interface (piège 0.6 du dossier de reprise).
 
 ## 8. Décisions laissées au propriétaire
 
-1. Alerte par gravité dans le watchdog (une tâche à l'arrêt n'envoie aucun e-mail).
-2. Fonds CARTO « Plan clair / sombre » : tuiles « API KEY REQUIRED » en HTTP 200.
-3. `showPlates: true` par défaut.
-4. Contrôle du 08/09 07:15 : le trou d'automatisation est-il revenu ? ⚠️ Le conteneur API a
-   été recréé le 07/09 (déploiements de ce chantier) : ses journaux d'avant sont dans
+Le 08/09 (02:35), le propriétaire m'a demandé de **trancher moi-même, selon les choix
+clients** : « un max de détail facile à comprendre, et paramétrable dans les filtres ». Ce qui
+a été décidé et fait est en section 9 ; cette liste garde l'état de chaque point.
+
+1. ~~Alerte par gravité dans le watchdog~~ — **TRANCHÉ (§ 9.1)** : une erreur CRITICAL suffit.
+2. ~~Fonds CARTO « Plan clair / sombre »~~ — **TRANCHÉ (§ 9.2)** : fonds gris Esri, sans clé.
+3. ~~`showPlates: true` par défaut~~ — **GARDÉ tel quel** : le client veut le détail d'emblée,
+   et la case « Étiquettes plaques » de la planche Calques permet déjà de le couper.
+4. Contrôle du 08/09 07:15 — **FAIT à 02:30 (§ 9.4)** : le trou n'est pas revenu de lui-même,
+   mais un passage a de nouveau disparu SANS TRACE, tué par un redéploiement. ⚠️ Le conteneur
+   API a été recréé le 07/09 (déploiements de ce chantier) : ses journaux d'avant sont dans
    `/root/journaux-tracky/` sur le VPS, `docker inspect` ne dira plus rien d'avant 17:38Z.
 6. ~~**Chaque redéploiement déconnecte la session du propriétaire**~~ — **RÉSOLU par une autre
    session** (`9a6531a8`, déployé). Le symptôme que j'avais relevé deux fois (07/09 21:05,
@@ -355,6 +361,94 @@ d'interface (piège 0.6 du dossier de reprise).
 5. **Le rouge de la bande 101-140 (`#EF4444`) est aussi le rouge des excès confirmés**, et
    l'orange 66-100 (`#F59E0B`) celui des pointes. Sur le rejeu, excès et pointes restent des
    PASTILLES cerclées de blanc (pas des tronçons), et la légende de vitesse nomme les bandes ;
-   la distinction tient par la forme. À valider à l'œil par le propriétaire ; si elle ne
-   suffit pas, c'est la teinte des bandes qu'il faut changer, jamais `COULEURS_CARTE.exces`
-   ni `.pointe`.
+   la distinction tient par la forme. — **TRANCHÉ (§ 9.5)** : la couleur reste (le détail
+   d'emblée), et devient une CASE retenue par utilisateur, dans les rejeux et dans Calques ;
+   les teintes des bandes, `COULEURS_CARTE.exces` et `.pointe` n'ont pas bougé.
+
+## 9. Décisions tranchées selon les choix clients (08/09, 02:35 → )
+
+Règle de décision, donnée par le propriétaire : le client veut **un maximum de détail, facile
+à comprendre, et paramétrable dans les filtres**. Chaque point ci-dessous a suivi les cinq
+niveaux (rouge d'abord — prouvé par un `git stash` du seul fichier de code, spec lancée,
+`stash pop` —, garde-fous, `ng build`, suites complètes, production).
+
+### 9.1 Vigie : une erreur critique suffit
+
+- **Constat** : `ErrorRateWatchdogService` ne regardait que le DÉBIT (5 erreurs/heure). Le
+  07/09 à 18:50 (UTC), `agents-locaux` a écrit « Passage manqué : agent-limites-vitesse » en
+  CRITICAL ; aucun e-mail, la ligne était seule dans l'heure.
+- **Décision** : toute erreur CRITICAL de l'heure glissante prévient, même seule, sous le seuil.
+  Refroidissement PROPRE d'une heure (`CLES_REFROIDISSEMENT.VIGIE_CRITIQUE`, en base comme
+  l'autre). Au-dessus du seuil, l'e-mail de saturation cite déjà les critiques et pose les
+  DEUX refroidissements : un seul e-mail par heure, quelle que soit la vigie qui parle. Même
+  destinataire (`ERROR_RATE_ALERT_TO`, défaut `contact@vizyoagency.com`). Interrupteur
+  `ERROR_CRITICAL_ALERT=off` pour couper cette vigie seule.
+- **E-mail** : nouveau gabarit `critical_error_alert` (`buildCriticalErrorAlertEmail`), même
+  coque que la saturation, filet rouge, détail limité aux sources CRITIQUES, bouton « Ouvrir le
+  centre d'alerte ». Catalogué (`email-admin.service.ts`) et couvert par les deux specs
+  exhaustives des gabarits.
+- **Rouge d'abord** : `vigie-erreurs-critiques.spec.ts` contre l'ancien service → 4 échecs sur
+  7 (les trois verts sont les cas de silence).
+- **Non fait, exprès** : aucune erreur CRITICAL synthétique injectée en production pour « voir
+  l'e-mail partir » — ce serait polluer le centre d'alerte et la boîte d'exploitation. La
+  mécanique est prouvée par les tests ; le premier vrai CRITICAL l'exercera.
+
+### 9.2 Fonds « Plan clair / sombre » : Esri à la place de CARTO
+
+- **Constat** : les tuiles `basemaps.cartocdn.com` répondent 200 avec « API KEY REQUIRED » en
+  travers ; l'hybride prenait aussi ses libellés chez CARTO.
+- **Décision** : `Canvas/World_Light_Gray_Base` + `World_Light_Gray_Reference` (clair),
+  `Canvas/World_Dark_Gray_Base` + `World_Dark_Gray_Reference` (sombre), libellés de l'hybride
+  par `Reference/World_Boundaries_and_Places` — tous chez `server.arcgisonline.com`, sans
+  clé, `maxZoom` 16 (mesuré : la base gris clair porte les noms de rues dès z16). Tuiles
+  vérifiées une à une avant le remplacement (Toulouse, z12 et z16 : propres, sans filigrane).
+  Les identifiants `dark` / `light` / `hybrid` ne changent pas : la préférence persistée de
+  chaque utilisateur reste valide.
+- **Rouge d'abord** : `map-style.service.spec.ts` contre l'ancien catalogue → 3 échecs sur 6.
+
+### 9.3 Panneau Calques : la traînée se règle dans les filtres
+
+- « Trajets du jour » mentait (la traînée fait quelques points, pas la journée) → **« Traînée
+  derrière les véhicules »**, et sous sa case, en retrait : **« Colorée par la vitesse »** et
+  un **curseur « Longueur : N points » (2 à 8)**. Le curseur raccourcit la traînée TOUT DE
+  SUITE (les points en trop sont coupés, puis les dernières trames sont rejouées), sans
+  attendre la trame suivante — un véhicule à l'arrêt n'en envoie qu'une toutes les 2 à 6 min.
+- « Étiquettes plaques » reste (point 3 de la section 8).
+
+### 9.4 Contrôle de l'automatisation des trajets (fait à 02:30 au lieu de 07:15)
+
+Lu en base (`trip_automation_runs`, `system_activity_logs`) :
+
+| Passage (UTC) | État |
+|---|---|
+| 21:45 → 21:54 | OK, 4 analysés |
+| 22:45 → 22:53 | OK, 4 analysés |
+| **23:45** | **AUCUNE ligne**, ni run, ni « tick annulé par la garde » |
+| 00:45 | à venir (le conteneur a été recréé à 00:20 par ce chantier) |
+
+Le conteneur API a été recréé à **23:29 UTC** par une autre session, puis par moi à 00:20 UTC.
+Le passage de 23:45 n'a laissé aucune trace : ce n'est pas la garde anti double-run (elle écrit
+`trip_automation_tick_annule`), c'est un passage **jamais démarré ou tué en vol**, et
+`recordRun` n'écrit la ligne qu'à la FIN. Les journaux du conteneur d'avant 00:20 ont disparu
+avec lui. Conclusion : le trou du 07/09 n'est pas revenu « tout seul », il revient à chaque
+redéploiement qui tombe entre HH:45 et HH:55 — et **rien ne le signale**.
+
+Proposition (non faite, hors périmètre cartes, à décider) : écrire la ligne de
+`trip_automation_runs` AU DÉPART (`finishedAt` nul) et la compléter à la fin ; un passage tué
+devient visible (« commencé, jamais fini ») et la vigie 9.1 peut le remonter en CRITICAL.
+Règle d'exploitation retenue en attendant : **ne pas déployer entre HH:44 et HH:56 UTC**.
+
+### 9.5 Le rouge du tracé : une case, pas une teinte
+
+- Préférence `map.traceParVitesse` (défaut `true`, retenue par utilisateur, normalisée comme
+  les autres). Case **« Tracé coloré par la vitesse »** dans la légende du rejeu de trajet,
+  **« Tracés colorés par la vitesse »** dans le rejeu de période, **« Colorée par la
+  vitesse »** dans Calques ; décochée, le trait reprend le vert du tracé et la légende de
+  vitesse se replie. Le rejeu de période garde les relevés reçus par trajet : recolorer ne
+  redemande rien à l'API.
+- Titre **« Pastilles »** devant la légende d'analyse du rejeu (arrêt / excès / pointe), pour
+  que les deux légendes ne se lisent plus l'une pour l'autre.
+- La page publique de trajet (sans compte, donc sans préférence) reste colorée : c'est le
+  détail que le destinataire du lien vient chercher.
+- **Rouge d'abord** : `trace-par-vitesse-defaut.spec.ts` contre l'ancien service de
+  préférences → erreur de compilation (`traceParVitesse` inconnu).
