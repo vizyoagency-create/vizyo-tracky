@@ -1258,6 +1258,8 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
+| [TRK-076](#trk-076) | `frontend` | **La carte ne survivait pas a une perte de contexte WebGL** — `[uncaught] TypeError: Cannot read properties of null (reading 'getSource')` | 🟢 **CORRIGÉ ET DÉPLOYÉ le 2026-09-08 à 01:01:57** (`09d04e2b`) · **gravité 2** · famille **brut** *(2 occurrences, 07/09 13:01 et 13:04, `standard@cdef31.org`, page `/map`. Le navigateur peut retirer le contexte WebGL à tout moment ; MapLibre 5.24 fait alors `this.style.destroy(); this.style = null` — **l'objet `Map` reste vivant, donc les DIX-NEUF gardes `if (!this.map) return` passent toutes**, mais `map.getSource(...)` lit `this.style.getSource(...)` et lève. 🔑 **La garde testait la mauvaise chose** : elle demandait « la carte existe-t-elle ? » quand la question était « son style existe-t-il encore ? » — *une garde qui passe toujours ne garde rien*. Correctif écrit par une session parallèle : écoute de `webglcontextlost` + `preventDefault()` **obligatoire** (sans lui le navigateur ne tente JAMAIS la restauration), garde `carteUtilisable()` sur chaque `getSource`, bandeau explicite, reprise sur `webglcontextrestored`. **Vérifié sur l'ARTEFACT SERVI** : `webglcontextlost` et `carteUtilisable` présents dans `chunk-3BYQORV7.js`. ⚠️ **Déployé n'est pas prouvé** — 26 min de recul à la collecte)* | 2026-09-07 | 2026-09-07 |
+| [TRK-075](#trk-075) | `trip-analysis` | **Le rejeu d'analyse n'a pas d'etat terminal, et il crie depuis l'etage qui ne decide rien** — `Analyse impossible : les positions de ce trajet ne sont plus disponibles…` | 🔴 **NON CORRIGÉ** · **gravité 1** · famille **circulaire** *(15 occurrences en 21 h, du 07/09 03:45 au 08/09 00:50, **toutes le MÊME trajet** `b644fe50` — 08/07, 3 186 m, **61,4 j**, positions **0**, la plus ancienne position de toute la base à **60,9 j**, `POSITIONS_RETENTION_DAYS=60` lu sur le conteneur servi. **DEUX défauts qui se composent.** (a) `TripAnalysisService.analyze()` enregistre au centre d'alerte dans son PROPRE `catch` (`trip-analysis.service.ts:92-101`, marqueur `stage: 'compute'`) **puis re-lève** — or les TROIS appelants décident ensuite, et **deux d'entre eux portent un commentaire promettant explicitement de se taire** (`:1370` « on n'alerte pas », `:1413` « un échec ne remonte PAS au centre d'alerte ») ; le troisième fige et annonce « le figeage EST la trace » (`:939`). 🔑 **Trois commentaires promettent un silence que leur couche n'a pas le pouvoir d'accorder** — la preuve tient dans le contexte, qui porte `stage: 'compute'` et non `phase: 'analyze'`. (b) `rejouerAnalysesIncompletes` (`:1347-1355`) **n'a pas le plancher `horizonRetention()` que sa jumelle `reprendreAnalysesAnciennes` possède** (`:1441`) : un candidat dont les positions sont purgées ne peut plus jamais améliorer sa couverture, donc il reste candidat **pour toujours** — 17 candidats dont **3 sous l'horizon**, plafond 25, donc tous tentés à chaque passage. 🔑 **C'est [TRK-062](#trk-062) — une commande sans état terminal — transposé à une file de calcul.** ⚠️ Le refus d'écrire une analyse vide est JUSTE (garde du 21/08) : le défaut n'est pas de refuser, c'est de refuser 15 fois par jour depuis une couche qui n'a pas le droit d'en juger. ⚠️ **Fuite LENTE** : le front de purge avance d'un jour par jour, de nouveaux candidats immortels naissent chaque jour)* | 2026-09-07 | 2026-09-08 |
 | [TRK-074](#trk-074) | `scheduled-task-heartbeat` | **Le temoin des taches planifiees ne se referme jamais** — 4 `CRITICAL` restent ouvertes apres le retour de la tache, alors que la sentinelle voisine archive les siennes toute seule | 🔴 **NON CORRIGÉ** · **gravité 2** · famille **à lire, pas à notifier** *(mesuré le 07/09 : les 4 lignes du 06/09 (17:35 → 20:35) sont toujours `ACTIVE` alors que la condition est close depuis **20:45**. **Le bon comportement existe dans le même dépôt** : `background-tasks/agents-locaux-sentinelle.service.ts:266-272` pose `resolvedAt` + « Agent repassé le … (résolution automatique) » — exercé **4 fois sur 4** le 06/09, zéro geste humain. `observability/scheduled-task-heartbeat.service.ts` n'a **aucune** notion de résolution. 🔑 **L'instrument le plus récent a le bon comportement, le plus ancien ne l'a jamais eu** — un témoin qui ne se referme pas transforme chaque incident transitoire en dette permanente, et c'est ce qui pousse à vouloir « vider l'écran ». ⚠️ **double condition** : après correctif les lignes doivent s'archiver au retour de la tâche ET une tâche réellement arrêtée doit continuer d'en produire ; ⚠️ **filtrer sur le NOM DE TÂCHE structuré, jamais sur le texte du message** — piège documenté par la sentinelle voisine (`:254`))* | 2026-09-06 | 2026-09-06 |
 | [TRK-073](#trk-073) | `trip-automation` | **L'historique de l'automatisation ne peut consigner que les passages qui vont au bout** — 8 passages sur 24 perdus le 06/09 **alors qu'ils ont tourné**, et le témoin de vie en conclut « à l'arrêt » | 🔴 **NON CORRIGÉ** · **gravité 1** · famille **mensonger** *(mesuré le 07/09. `trip_automation_runs` : **16 lignes sur 24** le 06/09, trou de 12:45 à 20:45 + 10:45. **Mais 7 des 8 créneaux portent un `trips_recompute` à `:45:00` d'acteur `system-trip-automation`** — le passage a démarré et fait du travail réel (13:45 : *9 trajets supprimés, 3 recréés*). Deux hypothèses ÉCARTÉES PAR LA MESURE : la garde anti double-run de [TRK-043](#trk-043) laisse une trace et n'en a produit **qu'une en 7 jours** (04/09) ; un échec écrirait un `CRITICAL` (`trip-automation.service.ts:496-498`) et **aucune ligne `TRIP_AUTOMATION` n'existe le 06/09**. Reste : **interrompus**. Cause racine : `persistRun()` et `recordRun()` sont appelés **ligne 470-471, sur le seul chemin heureux** ; le `catch` n'écrit qu'au centre d'alerte. 🔑 **La table ne peut donc contenir que des succès : un passage interrompu y est indiscernable d'un passage qui n'a jamais eu lieu.** Le témoin `scheduled-task-heartbeat` juge le silence depuis `lastRunAt`, écrit à la CLÔTURE — **il ne ment pas, il lit fidèlement une jauge qui ment**. ⚠️ **ne pas corriger le témoin** : le défaut est en amont, dans le point de mesure — même leçon que TRK-043)* | 2026-09-06 | 2026-09-06 |
 | [TRK-072](#trk-072) | `sentinelles` | **La chaîne de vitesse fraîchement armée sature ses destinataires** — `<EMAIL> a reçu <N> notifications en 24 h, dont <N> de type <TYPE>…` | 🔵 **TERRAIN** *(décision produit)* · **gravité 2** · famille **à lire, pas à notifier** *(2 occurrences, 05/09 06:30. Le seuil « destinataire saturé » des sentinelles V6 parle pour la 1ʳᵉ fois : **15 notifications en 24 h dont 14 `OVERSPEED`** sur deux SUPER_ADMIN, pour un produit calibré sur 2 à 3 par jour. **Ce n'est pas un défaut** : c'est l'effet mesuré de l'armement des alertes de vitesse sur 2 sociétés le 04/09. Le risque annoncé est réel — qui coupe ses notifications ne reçoit plus rien, **pas même un SOS**. Deux leviers, à trancher par un humain : relever le seuil `OVERSPEED`, ou restreindre ses destinataires. ⚠️ Vérification en DOUBLE CONDITION : la sentinelle doit se taire **et** le compte d'`OVERSPEED` rester non nul)* | 2026-09-06 | 2026-09-06 |
@@ -11208,6 +11210,180 @@ définition inchangée. Premier relevé de cette série ; les suivants la rendro
 
 ---
 
+## TRK-076
+
+**Signature** — `frontend | ERROR | [uncaught] TypeError: Cannot read properties of null (reading 'getSource')`
+Contexte : `page: /map`, `route`, `userId`, `fleetId`, `sessionId`, `userAgent`, `userEmail`.
+**Statut : 🟢 CORRIGÉ ET DÉPLOYÉ le 2026-09-08 à 01:01:57** · gravité **2** · famille **brut** · 2 occurrences · 2026-09-07
+
+*(Fiche créée CLOSE, et c'est délibéré : le défaut a été instruit et corrigé par une session
+parallèle **entre les deux audits**. L'audit n'a rien à y ajouter — il enregistre la signature pour
+que la prochaine occurrence soit reconnue, et il vérifie la mise en ligne.)*
+
+### Ce que ça veut dire
+
+Deux `[uncaught] TypeError` remontées au centre d'alerte le 07/09 à **13:01:04** et **13:04:24**,
+même utilisateur (`standard@cdef31.org`, société cdef31), même page (`/map`), trois minutes d'écart.
+
+Le navigateur peut retirer le contexte WebGL d'un onglet **à tout moment** : pilote graphique qui
+redémarre, machine sous pression mémoire, portable qui bascule entre GPU intégré et dédié, onglet
+longtemps en arrière-plan. **Ce n'est ni une erreur de l'application ni une action de
+l'utilisateur — c'est une décision du système.**
+
+MapLibre 5.24 réagit ainsi :
+
+```
+this.style.destroy(); this.style = null; this.fire(new Event('webglcontextlost'))
+```
+
+> 🔑 **L'objet `Map` reste vivant.** Toutes les gardes `if (!this.map) return` du fichier — il y a
+> **dix-neuf** appels `getSource` dans `map.component.ts` — passent donc sans rien voir. Mais
+> `map.getSource(...)` lit `this.style.getSource(...)`, et `this.style` vaut désormais `null`.
+>
+> **La garde testait la mauvaise chose** : elle demandait « la carte existe-t-elle ? » quand la
+> question était « son style existe-t-il encore ? ». *Une garde qui passe toujours ne garde rien* —
+> c'est le motif de [TRK-026](#trk-026) transposé à une garde de front.
+
+**Ce que ça donnait** *(mesure de la session qui a corrigé, reproduite au navigateur en forçant
+`WEBGL_lose_context.loseContext()`)* : **quatre-vingt-dix erreurs identiques, une par cycle de
+rendu, chacune postée au serveur** — et une carte noire, sans tuiles, avec ses marqueurs DOM
+orphelins flottant sur le vide. Le seul message affiché était « Une erreur est survenue », qui ne dit
+ni que la carte est morte, ni qu'il faut la relancer.
+
+*Les 2 lignes remontées en production sont donc la partie émergée : le regroupement du centre
+d'alerte a replié le reste.*
+
+### Le correctif — commit `09d04e2b` (07/09 19:33 Paris)
+
+1. **Écouter la perte** et cesser de toucher aux sources (`carteUtilisable()` sur chaque `getSource`)
+   → plus une seule exception.
+2. **Le dire, et dire quoi faire** — un bandeau explicite, pas un toast générique.
+3. **Récupérer** : le navigateur rend souvent le contexte quelques secondes plus tard
+   (`webglcontextrestored`) ; MapLibre rejoue alors le style sauvegardé à la perte, et l'application
+   repeuple ensuite, ou repose le fond elle-même si la sauvegarde était vide.
+
+⚠️ **`preventDefault()` sur l'événement de perte est OBLIGATOIRE** : sans lui, le navigateur ne tente
+**jamais** la restauration, et le point 3 ne se produirait pas. *Un correctif qui se contenterait de
+taire l'exception laisserait l'utilisateur devant une carte noire définitive.*
+
+### Vérification — faite sur l'ARTEFACT SERVI, pas sur la fiche
+
+`webglcontextlost` **et** `carteUtilisable` sont présents dans
+`/usr/share/nginx/html/chunk-3BYQORV7.js` du conteneur `tracky-web` (image du 08/09 00:56:15,
+redémarré à 00:56:59). ✅
+
+⚠️ **Déployé n'est pas prouvé.** À la collecte, l'artefact corrigé était en ligne depuis **26
+minutes**. La preuve attendue : **aucune** nouvelle ligne `getSource` sur sept jours, **et**
+l'apparition du bandeau de reprise — pas d'un « Une erreur est survenue » — si le cas se reproduit.
+
+---
+
+## TRK-075
+
+**Signature** — `trip-analysis | ERROR | Analyse impossible : les positions de ce trajet ne sont plus disponibles (purge de retention probable). Produire une analyse vide reviendrait a inventer un trajet immobile.`
+Contexte : `stage: 'compute'`, `tripId`, `vehicleId`, `fleetId`, parfois `repeatedSuppressed`.
+**Statut : 🔴 NON CORRIGÉ** · gravité **1** · famille **circulaire** · 15 occurrences · 2026-09-08
+
+### Ce que la mesure établit
+
+**15 occurrences actives**, du 07/09 03:45 au 08/09 00:50 — **toutes le même trajet**,
+`b644fe50-dca8-4999-b332-5b652e391e8f`.
+
+| Fait | Mesure |
+|---|---|
+| Le trajet | 08/07 15:10 → 15:30, **3 186 m**, `HD-597-XY` (cdef31) — **61,4 jours** |
+| Ses positions | **0** dans sa fenêtre |
+| La position la plus ancienne de **toute** la base | 09/07 03:30 — **60,9 jours** |
+| Le réglage **servi** (`docker inspect tracky-api`) | `POSITIONS_RETENTION_DAYS=60` → horizon = J−59 |
+| Son analyse | **elle existe** — `limitsCoverage = 0,714`, calculée le **20/08 11:28** |
+| Passages de l'automatisation le 07/09 | **17**, pour **15** lignes d'erreur |
+
+> Le trajet a franchi le front de purge il y a environ vingt-quatre heures : **ses positions étaient
+> là le 20/08 quand son analyse a été écrite, elles n'y sont plus.** Ce n'est pas une panne, c'est
+> une échéance — et rien dans le code ne la traite comme telle.
+
+### Cause racine — deux défauts qui se composent
+
+#### (a) La décision d'alerter appartient à l'appelant ; l'écriture est faite par l'appelé
+
+`TripAnalysisService.analyze()` (`trip-analysis.service.ts:92-101`) enregistre au centre d'alerte
+dans son **propre** `catch`, avec `stage: 'compute'`, **puis re-lève**. Les trois appelants décident
+ensuite — et **deux d'entre eux ont explicitement décidé de se taire** :
+
+| Appelant | Ce que son commentaire promet | Ce qui arrive |
+|---|---|---|
+| `analyserEtNarrer` (`trip-automation.service.ts:922`) | fige sous l'horizon — **« Aucune alerte — le figeage EST la trace »** (`:939`) | la ligne est **déjà** écrite |
+| `rejouerAnalysesIncompletes` (`:1365`) | **« On n'alerte pas, sinon le centre d'alerte se remplirait d'un fait sans remède »** (`:1370`) | la ligne est **déjà** écrite |
+| `reprendreAnalysesAnciennes` (`:1470`) | **« Un échec ne remonte PAS au centre d'alerte »** (`:1413`) | la ligne est **déjà** écrite |
+
+**La preuve tient dans le contexte de la ligne.** Il porte `stage: 'compute'` — écrit **uniquement**
+à `trip-analysis.service.ts:98` — et **non** `phase: 'analyze'`, marqueur de
+`trip-automation.service.ts:956`. La ligne ne vient donc pas de la branche qui a le droit d'alerter.
+
+> 🔑 **Trois commentaires promettent un silence que leur couche n'a pas le pouvoir d'accorder.**
+> Variante inédite du motif de [TRK-026](#trk-026) : là, un instrument était incapable de crier ;
+> ici, trois appelants sont incapables de se taire.
+
+#### (b) `rejouerAnalysesIncompletes` n'a pas le plancher de rétention que sa jumelle possède
+
+`reprendreAnalysesAnciennes` borne ses candidats par `t."startedAt" > horizonRetention()` (`:1441`),
+avec un commentaire qui explique pourquoi (« *le rattrapage COURT CONTRE LA PURGE* »).
+`rejouerAnalysesIncompletes` (`:1347-1355`) ne filtre que sur `limitsCoverage < 0.8` et
+`computedAt < now − 12 h` : **aucune borne sur l'âge du trajet.**
+
+Un candidat dont les positions sont purgées **ne peut plus jamais améliorer sa couverture** — il
+reste donc candidat pour toujours. Et le tri `limitsCoverage ASC, computedAt ASC` le fait remonter.
+Mesuré le 08/09 : **17 candidats, dont 3 sous l'horizon**, pour un plafond de 25 — **tous sont donc
+tentés à chaque passage.**
+
+> 🔑 **Le rejeu est le seul travail de cette automatisation qui ne converge pas.** Les autres files se
+> vident : un trajet analysé sort de `sansAnalyse`, un trajet figé sort du front de recalcul. Un
+> candidat au rejeu dont la matière première a disparu n'a **aucune sortie** — ni succès, ni figeage,
+> ni abandon. *C'est la forme exacte de [TRK-062](#trk-062) — une commande sans état terminal —
+> transposée à une file de calcul.*
+
+### Ce qui n'est PAS le défaut
+
+Le refus d'écrire une analyse vide est **juste** : c'est la garde du 21/08, posée après avoir
+retrouvé **60 analyses fausses** en base, toutes à la frontière de purge du 18-19/06. **L'erreur
+n'est pas de refuser** — c'est de refuser quinze fois par jour, indéfiniment, en criant depuis une
+couche qui n'a pas le droit de juger si le cri est justifié.
+
+### Correctif proposé — deux gestes, et le second ne remplace pas le premier
+
+1. **Remonter la décision au bon étage.** Donner à `TripAnalysisService.analyze()` un drapeau
+   explicite (`{ signalerAuCentre?: boolean }`, **vrai par défaut**) plutôt qu'un enregistrement
+   inconditionnel. Les trois appelants deviennent alors capables de tenir la promesse écrite dans
+   leurs propres commentaires.
+   ⚠️ **Ne PAS supprimer purement et simplement le `record` de `:95`.** La route
+   `POST /trips/:id/analysis` est un vrai chemin utilisateur : un calcul demandé par un humain et qui
+   échoue doit rester visible. *Un correctif qui vide l'écran en retirant le journal n'est pas un
+   correctif.*
+
+2. **Poser à `rejouerAnalysesIncompletes` le plancher que sa jumelle a déjà** —
+   `t."startedAt" > horizonRetention()`, avec la même justification écrite. Une analyse dont le
+   trajet est sous l'horizon ne gagnera jamais de couverture ; la rejouer est du budget dépensé pour
+   un résultat impossible, **pris sur les trajets récents que le rejeu existe pour sauver**.
+
+### Vérification — double condition, et elle porte sur la CAUSE
+
+- `error_logs` ne doit plus porter **aucune** ligne `stage: 'compute'` pour un trajet **sous**
+  l'horizon ; **ET**
+- le compte de candidats au rejeu doit tomber de **17 à 14**, **sans** que `stats.rejouees` tombe
+  à zéro.
+
+⚠️ *Si les deux tombent, on a éteint le rejeu au lieu de le borner.*
+⚠️ Et un refus **au-dessus** de l'horizon doit **continuer** de crier : c'est le seul cas où
+l'absence de positions est une vraie anomalie, et le code le dit déjà lui-même (`:942-945`).
+
+### Pourquoi ça reviendra tout seul
+
+**Le front de purge avance d'un jour par jour.** Chaque jour, de nouvelles analyses mal couvertes
+passent sous l'horizon et deviennent des candidats immortels. Ce défaut n'est pas un accident isolé :
+c'est une **fuite lente**, dont le 07/09 est simplement le premier jour visible.
+
+---
+
 ## TRK-074
 
 **Signature** — `scheduled-task-heartbeat | CRITICAL | Tâche planifiée à l'arrêt : « <TÂCHE> » est ACTIVÉE mais ne tourne plus — dernier passage il y a <DURÉE> (cadence configurée : <CADENCE>, seuil d'alerte <DURÉE>).`
@@ -11325,6 +11501,7 @@ lieu de la calibrer.
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-09-08 | **118 actives** — 56 défauts + 62 `DEGRADATION` (24 sur 24 h dont **17 défauts**, **6 `CRITICAL`**), 37 archivées | 23 revues ; 🎯 **UN SEUL TRAJET DU 8 JUILLET PRODUIT 15 DES 17 DÉFAUTS NEUFS DE LA JOURNÉE.** `b644fe50` (`HD-597-XY`, cdef31, 3 186 m, **61,4 j**) a franchi le front de purge il y a ~24 h : **0 position**, la plus ancienne de toute la base à **60,9 j**, `POSITIONS_RETENTION_DAYS=60` lu sur le conteneur SERVI. Il est rejoué à **chaque** passage horaire et échoue à chaque fois. 🆕 **[TRK-075](#trk-075) — DEUX défauts qui se composent.** (a) `TripAnalysisService.analyze()` enregistre au centre d'alerte dans son **PROPRE** `catch` (`:92-101`) puis re-lève — or les TROIS appelants décident ensuite, et **deux portent un commentaire promettant explicitement de se taire** (« on n'alerte pas, sinon le centre d'alerte se remplirait d'un fait sans remède » `:1370` ; « un échec ne remonte PAS au centre d'alerte » `:1413`), le troisième annonçant « le figeage EST la trace » (`:939`). 🔑 **Trois commentaires promettent un silence que leur couche n'a pas le pouvoir d'accorder** — et *la preuve tient dans le contexte de la ligne* : elle porte `stage: 'compute'`, écrit uniquement à `trip-analysis.service.ts:98`, et **non** `phase: 'analyze'` (`:956`). (b) `rejouerAnalysesIncompletes` **n'a pas le plancher `horizonRetention()` que sa jumelle `reprendreAnalysesAnciennes` possède** (`:1441`) : un candidat dont les positions sont purgées ne peut plus **jamais** améliorer sa couverture, donc reste candidat pour toujours — **17 candidats dont 3 sous l'horizon**, plafond 25, donc tous tentés à chaque passage, et le tri `limitsCoverage ASC` les fait remonter. 🔑 **Le rejeu est le seul travail de cette automatisation qui ne converge pas : ni succès, ni figeage, ni abandon — c'est [TRK-062](#trk-062) transposé à une file de calcul.** ⚠️ **Le refus d'écrire une analyse vide est JUSTE** (garde du 21/08, 60 analyses fausses retrouvées) : le défaut n'est pas de refuser, c'est de refuser 15 fois par jour depuis l'étage qui n'en juge pas. ⚠️ **FUITE LENTE** — le front de purge avance d'un jour par jour, de nouveaux candidats immortels naîtront chaque jour ; 🆕 **[TRK-076](#trk-076), CRÉÉE CLOSE** — 2 `[uncaught] TypeError … reading 'getSource'` sur `/map` le 07/09, diagnostiquées et corrigées **par une session parallèle entre les deux audits** (`09d04e2b`), **déployées à 01:01:57 et vérifiées sur l'ARTEFACT SERVI** (`webglcontextlost` + `carteUtilisable` dans `chunk-3BYQORV7.js`). MapLibre 5.24 fait `this.style = null` en gardant l'objet `Map` vivant : **les DIX-NEUF gardes `if (!this.map) return` passent toutes** — *la garde demandait « la carte existe-t-elle ? » quand la question était « son style existe-t-il encore ? »* ; ✅ **V24 CONFORTÉE, ET SON SILENCE EXPLIQUÉ PAR LE CODE PLUTÔT QUE SUPPOSÉ** — zéro ligne « boîtiers muets » le 07/09 alors que les 10 boîtiers sont toujours muets, parce que cette sentinelle porte `REFROIDISSEMENT_HEBDOMADAIRE_MS` = **6,5 j** (`sentinelles-coherence.service.ts:435`) : prochaine ligne possible le **13/09**. *Ne pas lire un zéro sans vérifier que l'instrument pouvait rendre autre chose* ; 🔎 **`trip_automation_runs` ne garde que 100 lignes** (`KEEP_RUNS`) — le 03/09 rend **21** passages aujourd'hui contre **23** mesurés le 06/09, et le total de la fenêtre vaut **exactement 100** : *la preuve du « 16 sur 24 » de TRK-073 s'effacera par le bas, ce qui est précisément la raison d'être de ce journal* ; 🚀 **3ᵉ déploiement non annoncé en 3 jours** (01:01:57, `restarts=0`, `healthy`), **le 3ᵉ à tomber dans le quart d'heure précédant l'audit** ; **T24 et T25 vérifiés ABSENTS** de l'artefact (`EN_COURS` 0, « résolution automatique » absente) — TRK-073 et TRK-074 restent entiers, et les 4 `CRITICAL` du 06/09 sont **toujours actives 29 h après la fin de leur condition** ; TRK-062 **5ᵉ vérification d'absence** (155,6 h / 159,0 h) ; TRK-016 **85,5 %** (136/159, 6ᵉ point, stable ~87 % — mesuré sur `polylineMatched IS NULL`, colonne **TEXTE** et non booléenne) ; `OVERSPEED` 4ᵉ point : 12 · 6 · 0 · **1**, notifications retombées à **9** ; couverture des limites **0,949** sur 135 analyses de 160 ; TRK-053 `alertes_depuis_declaration` = **7**, **5ᵉ point identique, échéance DÉPASSÉE (8 j)** ; TRK-014 **0 acquittement sur 409**, 11ᵉ point ; écart `ins−del−live` **13 250**, 12ᵉ point ; `temoin_arme` **4/4**, **0** nouveau constat, `errorDeleted = 0` sur 5 nuits ; `cadence_resume` **0** sous 20 s, 8ᵉ point ; ⚠️ `cadence_reelle` **retombe de 1 à 0** — la réserve écrite hier (« 1ᵉʳ point, pas une tendance ») vient de s'auto-vérifier ; ⚠️ `gps_sans_fix` à **0** pour le **4ᵉ jour**, toujours trompeur ; 🔴 TRK-032 **18 j**, TRK-051 **14 j** ; 🤝 **À FAIRE EN PREMIER : recharger un compte IA — les DEUX sont à sec, 121 h, 6ᵉ jour** | **2** ([TRK-075](#trk-075), [TRK-076](#trk-076)) | agent d'audit |
 | 2026-09-07 | **94 actives** — 39 défauts + 55 `DEGRADATION` (17 sur 24 h dont **8 défauts**, **6 `CRITICAL`**), 36 archivées | 22 revues ; 🎯 **LA TÂCHE TOURNAIT, SON CARNET DE BORD ÉTAIT VIDE, ET LE TÉMOIN A CRIÉ « À L'ARRÊT ».** `trip_automation_runs` rend **16 passages sur 24** le 06/09 (trou 12:45→20:45, plus 10:45), et `scheduled-task-heartbeat` en a tiré **4 `CRITICAL`** « est ACTIVÉE mais ne tourne plus ». **Le message est faux** : 7 des 8 créneaux portent un `trips_recompute` à `:45:00` d'acteur `system-trip-automation`, dont celui de 13:45 qui a supprimé 9 trajets et en a recréé 3. Les deux explications commodes tombent à la mesure : la garde anti double-run de TRK-043 **laisse désormais une trace** et n'en a produit qu'**une en 7 jours** (04/09), et un échec aurait écrit un `CRITICAL` que personne ne trouve. Reste : **interrompus**. 🔑 **Cause racine — `persistRun()` et `recordRun()` ne sont appelés que sur le chemin heureux (`:470-471`) : la table ne peut contenir que des succès, donc un passage interrompu y est indiscernable d'un passage qui n'a jamais eu lieu.** Le témoin ne ment pas — *il lit fidèlement une jauge qui ment* ; ⚠️ **ne pas corriger le témoin**, le défaut est dans le point de mesure (même leçon que TRK-043, dont le critère d'acceptation « 24 moins un par redéploiement » **absolvait la perte et empêchait de la voir**) ; 🆕 **TRK-074 — le témoin ne se referme jamais** : les 4 `CRITICAL` restent actives alors que la condition est close depuis 20:45, quand la sentinelle `agents-locaux`, **née le 05/09**, archive les siennes toute seule (4 sur 4, « Agent repassé le 06/09 à 06:08 ») — *l'instrument le plus récent a le bon comportement* ; ✅ **T10/TRK-070 et T11/TRK-068 DÉPLOYÉS** — vérifiés sur l'artefact servi après le déploiement de **00:58:58** : `causeTechnique` ×5 et l'ancienne règle `urgent || gravite === 'CRITICAL'` **disparue**, `AbortSignal` + `ServiceUnavailableException` présents. Preuves de production **non venues** ; ✅ **V24 PROUVÉE AU MOT PRÈS** — la sentinelle « boîtiers muets » a écrit **exactement 2 lignes** à 06:30 (cdef31 8 boîtiers, A2R 2), **pas 10** ; ✅ **TRK-069 prouvée** — l'auto-archivage annoncé s'est exercé **4 fois sur 4**, le poste a repris seul : la tâche T2 est close **par le fait** ; 🔍 **le zéro `OVERSPEED` du 06/09 examiné, et il ne cache rien** — les 20 trajets ≥ 90 km/h (**pointe 137,31**) sont sur **A2R, dont `speedAlertEnabled = f`**, et les 2 flottes armées ont culminé à 96,84 sous leur seuil ; les 25 trajets rapides ont **tous** été analysés. 🔑 *La flotte qui roule le plus vite est exactement celle où l'alerte est éteinte* — à porter à T4/TRK-072 ; ⚪ **7 exports en échec sur 46 le 06/09, tous des refus voulus** aux messages exemplaires (« Aucune société sélectionnée… ») — rien au centre d'alerte, **et c'est correct** ; TRK-062 **4ᵉ vérification d'absence** (131,5 h / 135,0 h) ; TRK-016 **87,2 %** (5ᵉ point, stable ~88 %) ; TRK-053 `alertes_depuis_declaration` = **7**, 4ᵉ point, **échéance atteinte demain** ; TRK-014 **0 acquittement sur 419**, 10ᵉ point ; écart `ins−del−live` **13 250**, 11ᵉ point ; `temoin_arme` **4/4**, **0** nouveau constat ; `cadence_resume` **0** sous 20 s, 7ᵉ point ; ⚠️ `cadence_reelle` passe de **0 à 1** émetteur rapide réel — **1ᵉʳ point, pas une tendance** ; ⚠️ `gps_sans_fix` à **0** pour le **3ᵉ jour**, et toujours trompeur : les deux boîtiers muets sortent du filtre **par le bas** | **2** (TRK-073, TRK-074) | agent d'audit |
 | 2026-09-06 | **82 actives** — 34 défauts + 48 `DEGRADATION` (17 sur 24 h dont **8 défauts**, **5 `CRITICAL`**), 32 archivées | 17 revues ; 🎯 **LE FAIT DU JOUR : LES DEUX FOURNISSEURS IA SONT À SEC EN MÊME TEMPS** — le repli `claude → gpt` livré la veille (chantier C3 point 1) a été exercé **six minutes après sa mise en ligne** et n'avait nulle part où aller (🆕 [TRK-071](#trk-071)). *Un mécanisme de secours ne vaut que par la ressource qu'il vise.* Anthropic à sec depuis **76 h**. 🆕 **[TRK-070](#trk-070) — le correctif de [TRK-061](#trk-061) est contourné par la porte voisine** : l'escalade d'assistance ré-écrit en `ERROR`, **14 ms plus tard**, l'incident que la couche IA venait de classer `DEGRADATION`. La règle de niveau est écrite sur la GRAVITÉ de la conversation et jamais sur la CAUSE de l'escalade — elle ne peut donc pas distinguer « un utilisateur a besoin d'un humain » de « l'IA était en panne ». Mesuré des deux côtés du déploiement : `ERROR`+`ERROR` à 12:23, `DEGRADATION`+`ERROR` à 17:00 — **le correctif a supprimé la moitié du bruit, pas la totalité**. 🆕 **[TRK-072](#trk-072)** — la sentinelle « destinataire saturé » parle pour la première fois : **15 notifications en 24 h dont 14 `OVERSPEED`** sur 2 super-admins, pour un produit calibré sur 2 à 3. *Elle a crié AVANT que le destinataire ne coupe ses notifications — et couper ses notifications lui ferait perdre jusqu'au SOS.* `OVERSPEED` : 12 le 04/09, **6** le 05/09, 6 sur 6 nées d'un trajet — **deux points, pas une tendance**. 📈 **[TRK-069](#trk-069) A PARLÉ AU PREMIER MATIN SANS POSTE : 0 → 3 occurrences**, trois motifs distincts et aucune redondance (`agent-recit-trajet` en échec le 05/09 03:15 puis manqué le 06/09, `rattrapage-recits` manqué à 22:00) — là où un raisonnement en « 2 × cadence » n'aurait rien dit avant le 07/09 : **48 h gagnées sur l'écran qu'elle complète**. ⚠️ **Les `CRITICAL` passent de 2 à 5 par l'ARRIVÉE D'UN CAPTEUR, pas par dégradation de la plateforme.** 🚀 **2ᵉ déploiement non annoncé en deux jours** (05/09 18:13:08, `restarts=0`) : 4 marqueurs C3 vérifiés présents sur l'**ARTEFACT SERVI** (`agents-locaux-sentinelle.service.js`, `classerEchecIa`, `Repli IA en`, `Assistance à reprendre`) et **`SENT_UNCONFIRMED` confirmé ABSENT** (3ᵉ fois — TRK-062 attend toujours sa migration). ⚠️ **PIÈGE DE FUSEAU RELEVÉ** : `git log` est en heure de **Paris** et la base en **UTC** — la ligne `AI_ROUTER` de 12:23 UTC suit de 6 min un commit daté 14:17 Paris (= 12:17 UTC), il y a donc eu **au moins un déploiement intermédiaire** que `StartedAt` seul ne montre pas. *Comparer un journal git à une table sans convertir les fuseaux fabrique de fausses impossibilités.* 📏 **[TRK-016](#trk-016) 4ᵉ point : 87,9 %** (131/149) — la baisse d'hier à 83,3 % était bien une **fluctuation**, et la réserve écrite hier (« 33 trajets est un petit échantillon ») **vient de s'auto-vérifier**. ⚠️ **Les 7 commandes en attente ne se comparent pas aux 2 d'hier** : collecte à **06:05 Paris** (parc au réveil, motifs `STOPPED_TO_MOVING` / `STOPPED_INTERVAL_ADJUSTED`) contre 03:11 hier — *une grandeur mesurée à une autre heure n'est pas la même grandeur*. ✅ **[TRK-059](#trk-059) tient à J+1** : les 15 motifs de clôture citent tous la cible **demandée**. ✅ **[TRK-067](#trk-067) tient** : 0 ligne `system-activity` depuis le 04/09 16:55. ✅ **[TRK-053](#trk-053) sans régression**, `alertes_depuis_declaration` = **7** (3ᵉ point). ⚠️ **[TRK-062](#trk-062)** vieillit exactement : 83,6/87,0 h → **110,5/113,9 h**. ANGLES MORTS : témoin armé **4/4**, écart **13 250** inchangé (**10ᵉ point**), `errorDeleted = 0` sur 5 nuits, `trackers_failing` **0**, **0 acquittement matériel sur 437** (**9ᵉ point**, total famille 514 · 505 · 491 · 475 · 455 · **437**), cadence sous minimum **0** (**6ᵉ point**), `cadence_derive` **0 ligne**, TRK-037 **48 `DEGRADATION` / 0 `ERROR`** (5ᵉ point). ⚠️ **`gps_sans_fix` rend 0 pour la 2ᵉ journée consécutive et ce n'est toujours pas une bonne nouvelle** : `GLA•KC•31` (**74 h**) et `FG-669-DQ` (**57 h**) sont sortis du filtre **par le bas**, `OFFLINE` et **non déclarés**. 🔴 **TRK-032 à 16 j et TRK-051 à 12 j** : à PROVOQUER ou REQUALIFIER. 🤝 **À FAIRE EN PREMIER : recharger UN des deux comptes IA — les DEUX sont vides, et aucun correctif ne le fera** | **3** ([TRK-070](#trk-070), [TRK-071](#trk-071), [TRK-072](#trk-072)) | agent d'audit |
 | 2026-09-05 | **65 actives** — 26 défauts + 39 `DEGRADATION` (21 sur 24 h, **2 `CRITICAL`**), 32 archivées | 14 revues ; 🎯 **LE FAIT DU JOUR EST UN DÉPLOIEMENT NON ANNONCÉ** — `tracky-api` et `tracky-web` ont redémarré le **04/09 à 17:01:33** (`restarts=0`), mettant en ligne **six correctifs d'un coup** que la roadmap de la veille décrivait comme « commités et NON déployés ». **Les six marqueurs vérifiés un par un sur l'ARTEFACT SERVI**, jamais sur la fiche : `provider_unfunded` (TRK-061), `sentinelle-chaine-vitesse-jamais-armee` (TRK-064), « purge des mesures » (TRK-060), `comptesTechniquesEcartes` (TRK-065), `decrireEchecRelaisSms` (TRK-066), `acteurHumain` ×3 (TRK-067) — et **`SENT_UNCONFIRMED` ABSENT des 21 fichiers de `tracker-commands/`**, ce qui confirme que TRK-062 attend bien sa migration. ✅ **[TRK-061](#trk-061) PROUVÉ PAR LA DOUBLE CONDITION à 00:00:35** : la ligne porte `DEGRADATION`, **nomme l'action** (« recharger le compte »), dit ce qui n'est PAS affecté, garde `motifFournisseur` au contexte au lieu de servir le texte de facturation à l'utilisateur, et elle est **SEULE** là où le 03/09 en produisait deux — *le compteur `ERROR` est tombé sans que le total de la famille bouge*. ✅ **[TRK-059](#trk-059) PROUVÉ** : les commandes du 04/09 citent la cible **DEMANDÉE** (« 20 s pour 20 s demandés »), et celles qui suivent un échec **NOMMENT le défaut au lieu de le masquer** — « *la cible demandée a CHANGÉ entre les deux commandes, cette concordance ne prouve pas que le boîtier a suivi une consigne* ». 🆕 **[TRK-067](#trk-067), née et close le même jour** : 10 lignes `system-activity` entre 14:45 et 16:55, **la source la plus bruyante des 24 h**, corrigée par `19d7d76c` à 15:51 et déployée à 17:01. 🔴 **Le coût n'était PAS le bruit** — le journal est fire-and-forget, donc le recalcul réussissait, mais **aucun recalcul automatique ne laissait de trace** ; vérifié par la double condition : **0** ligne depuis 17:01:33 **ET** **30** lignes `actor = system-trip-automation` entre 17:45 et 23:48. *Un correctif qui n'aurait fait que taire l'erreur aurait rendu le même zéro à gauche et un zéro à droite.* 🆕 **[TRK-068](#trk-068)** : `fetch failed` sur `POST /api/auth/refresh`, `CRITICAL`, 1 occurrence — l'appel à Vizyo Auth n'a **ni `try/catch` ni délai d'expiration**, le rejet de transport remonte nu et NestJS en fait un **500** là où une dépendance injoignable est un **503**. 🔑 **TROISIÈME récidive du motif de TRK-060 et TRK-066, sur une troisième chaîne : aucun appel sortant de ce dépôt n'a de gabarit de message d'échec.** 🎯 **[TRK-064](#trk-064) : LE SUJET A CHANGÉ** — `speedAlertEnabled` vaut désormais `true` sur **2 sociétés sur 5** (0 sur 5 la veille), et **12 `OVERSPEED` le 04/09, 12 sur 12 nées d'un TRAJET** là où les 8 de la semaine précédente venaient toutes du boîtier : **la chaîne V5 écrit pour la première fois**, et le silence de la sentinelle nº 1 est désormais LÉGITIME. 🧹 **[TRK-052](#trk-052) : LE CRITÈRE DE VÉRIFICATION ÉTAIT TROP LARGE ET ACCUSAIT LA MAUVAISE CHAÎNE** — il désignait 3 paires du 04/09, aucune n'est une régression : `alerts.service.ts:332` porte `tripId: null`, et les 12 `OVERSPEED` nées d'un trajet ne passent JAMAIS par la fenêtre de 6 h corrigée. *Ce rapport allait annoncer une régression inexistante ; c'est la lecture du code, et elle seule, qui l'en a empêché.* Critère rectifié : restreindre à `tripId IS NULL`. 🔎 **PREMIER CONSTAT DE DISPARITION JAMAIS RENDU** — 04/09 08:25:21, `alerts`, `DELETE` de **4** lignes, **socket locale**, `psql`, rôle `tracky`, pid 1183643, requête lisible `delete from alerts where "tripId" is not null` : un **humain** supprimant des alertes de trajet créées 3 min plus tôt, pendant la mise au point de la chaîne de vitesse. **Ce n'est PAS l'effaceur de [TRK-035](#trk-035)** (qui frappait `error_logs`, en masse, sans trace). *Posé le 21/08, muet quinze jours, le témoin a rendu au premier effacement réel l'heure, le rôle, l'origine, le PID, la requête et les bornes — un instrument qui n'a jamais rien vu n'est pas encore un instrument qui marche ; celui-ci l'est maintenant.* 📏 **[TRK-016](#trk-016) mesuré sous le nouveau code**, comme la roadmap l'exigeait : **83,3 %** d'échec sur 24 h (169/203) et 78,8 % (26/33) depuis le déploiement — *fait mesuré, pas tendance ; ce qui est acquis, c'est que le chantier peut s'ouvrir sur un chiffre frais*. Les lots V1→V3 écrivent bien : sur 37 analyses depuis 17:01, `detail.vitesse` **37/37**, `aVerifier` **37/37**, `limitsCoverage` **33/37** à **0,959** de moyenne. ✅ **[TRK-053](#trk-053) sans régression** : `alertes_depuis_declaration` totalise **7**, identique à la veille. ⚠️ **[TRK-062](#trk-062) vieillit de 24 h par jour, exactement** : 59,6/63,0 h → **83,6/87,0 h**. Angles morts : témoin armé **4/4**, écart **13 250** inchangé (**9ᵉ point**), `errorDeleted = 0` 5 nuits, `trackers_failing` **0**, **0 acquittement matériel sur 456** (**8ᵉ point**), cadence sous minimum **0** (**5ᵉ point**), `cadence_derive` **0 ligne**, TRK-037 **39 `DEGRADATION` / 0 `ERROR`** (4ᵉ point), total famille `fix_continuous` 514 · 505 · 491 · 475 · **455**. ⚠️ **`gps_sans_fix` rend 0 et ce n'est pas une bonne nouvelle** : les 2 boîtiers muets NON déclarés — `GLA•KC•31` (**47 h**) et `FG-669-DQ` (**30 h**, le véhicule que le coupe-circuit n'a pas pu immobiliser) — sont sortis du filtre **par le bas**. 🔴 **TRK-032 à 15 j et TRK-051 à 11 j** : à PROVOQUER ou REQUALIFIER. 🤝 **Recharger le compte Anthropic — 3ᵉ jour, et aucun correctif ne le fera** | **2** ([TRK-067](#trk-067), [TRK-068](#trk-068)) | agent d'audit |

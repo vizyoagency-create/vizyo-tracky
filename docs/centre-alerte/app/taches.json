@@ -1,7 +1,7 @@
 {
   "_comment": "SOURCE STRUCTUREE DES TACHES — lue par app/generer-tableau-de-bord.mjs pour produire TABLEAU-DE-BORD.html. Le fichier de PROSE reste ROADMAP-CORRECTIFS.md : il dit le detail, le pourquoi et les pieges. Ici, uniquement l'etat. LES DEUX DOIVENT S'ACCORDER — si l'un dit FAIT et l'autre OUVERT, c'est la PREUVE qui tranche, jamais le fichier le plus recent. Un identifiant n'est JAMAIS reutilise, meme quand la tache est close.",
   "version": 1,
-  "misAJourLe": "2026-09-07",
+  "misAJourLe": "2026-09-08",
   "etats": {
     "OUVERT": {
       "libelle": "Ouvert",
@@ -678,6 +678,32 @@
       "gravite": 3,
       "etat": "OUVERT",
       "depuis": "2026-09-07"
+    },
+    {
+      "id": "T26",
+      "partie": "centre-alerte",
+      "fiche": "TRK-075",
+      "titre": "Remonter la decision d alerter au bon etage, et borner le rejeu par la retention",
+      "detail": "Deux defauts qui se composent. UN : la methode d analyse enregistre au centre d alerte dans son PROPRE bloc de rattrapage puis releve, alors que ses trois appelants decident ensuite quoi en faire — et deux d entre eux portent un commentaire promettant explicitement de se taire, le troisieme annoncant que le figeage tient lieu de trace. Trois commentaires promettent un silence que leur couche n a pas le pouvoir d accorder : lui donner un drapeau de signalement explicite, vrai par defaut pour la route utilisateur. DEUX : la methode de rejeu des analyses incompletes n a pas le plancher de retention que sa jumelle possede, si bien qu un candidat dont les positions sont purgees reste candidat pour toujours et remonte en tete de file. Poser ce plancher. Le refus d ecrire une analyse vide, lui, ne doit PAS bouger : il est juste.",
+      "classe": "A_CODER",
+      "gravite": 1,
+      "etat": "OUVERT",
+      "depuis": "2026-09-08",
+      "phare": true,
+      "preuveAttendue": "Double condition. Plus AUCUNE ligne de source trip-analysis portant le marqueur d etape compute pour un trajet sous l horizon de retention ; ET le compte de candidats au rejeu qui tombe de 17 a 14, SANS que le nombre d analyses rejouees par passage tombe a zero. Si les deux tombent, on a eteint le rejeu au lieu de le borner. Et un refus AU-DESSUS de l horizon doit continuer de crier : c est le seul cas ou l absence de positions est une vraie anomalie."
+    },
+    {
+      "id": "T27",
+      "partie": "centre-alerte",
+      "fiche": "TRK-076",
+      "titre": "La carte survit a une perte de contexte WebGL",
+      "detail": "Corrige hors session, par une session parallele, entre les audits du 7 et du 8 septembre. La bibliotheque de cartographie detruit son style et le met a nul en gardant l objet carte vivant : les dix-neuf gardes qui verifient l existence de la carte passaient donc toutes, et chaque lecture de source levait. Le correctif ecoute la perte de contexte, garde chaque lecture de source, affiche un bandeau explicite et reprend quand le navigateur rend le contexte.",
+      "classe": "A_CODER",
+      "gravite": 2,
+      "etat": "DEPLOYE",
+      "depuis": "2026-09-07",
+      "deployeLe": "2026-09-08",
+      "preuveAttendue": "Marqueurs deja VERIFIES SUR L ARTEFACT SERVI le 08/09 (ecoute de la perte de contexte et nouvelle garde presentes dans le paquet livre par le serveur web, image de 00h56m15). Ce qui manque est la preuve de PRODUCTION : aucune nouvelle erreur de cette famille sur sept jours, ET l apparition du bandeau de reprise plutot qu un message generique si le cas se reproduit. A la collecte, l artefact n avait que vingt-six minutes de vie."
     }
   ]
 }

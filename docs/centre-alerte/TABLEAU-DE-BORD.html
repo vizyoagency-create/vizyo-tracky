@@ -82,25 +82,25 @@
 
 <header>
   <h1>Tableau de bord des corrections — Tracky</h1>
-  <p class="sous">Genere le <b>2026-09-07</b> depuis <code>app/taches.json</code>.
+  <p class="sous">Genere le <b>2026-09-08</b> depuis <code>app/taches.json</code>.
   Le detail, le pourquoi et les pieges vivent dans <b>ROADMAP-CORRECTIFS.md</b> —
   ce tableau ne dit que <b>l'etat</b>.</p>
 </header>
 
 <div class="kpis">
   <div class="k ok"><div class="n">4</div><div class="l">faites et verifiees</div></div>
-  <div class="k warn"><div class="n">3</div><div class="l">deployees, preuve attendue</div></div>
-  <div class="k"><div class="n">45</div><div class="l">ouvertes sur 52</div></div>
-  <div class="k dgr"><div class="n">10</div><div class="l">ouvertes en gravite 1</div></div>
+  <div class="k warn"><div class="n">4</div><div class="l">deployees, preuve attendue</div></div>
+  <div class="k"><div class="n">46</div><div class="l">ouvertes sur 54</div></div>
+  <div class="k dgr"><div class="n">11</div><div class="l">ouvertes en gravite 1</div></div>
   <div class="k dgr"><div class="n">2</div><div class="l">au-dela de 7 jours</div></div>
   <div class="k info"><div class="n">17</div><div class="l">attendent un humain</div></div>
 </div>
 
-<div class="barre" role="img" aria-label="Avancement : 4 faites, 3 deployees, 45 ouvertes sur 52">
-  <span class="s-FAIT" style="width:8%"></span>
-  <span class="s-DEPLOYE" style="width:6%"></span>
+<div class="barre" role="img" aria-label="Avancement : 4 faites, 4 deployees, 46 ouvertes sur 54">
+  <span class="s-FAIT" style="width:7%"></span>
+  <span class="s-DEPLOYE" style="width:7%"></span>
   <span class="s-COMMITE" style="width:0%"></span>
-  <span class="s-OUVERT" style="width:87%"></span>
+  <span class="s-OUVERT" style="width:85%"></span>
 </div>
 <p class="leg">
   <i><b>✓</b> faite ET verifiee</i>
@@ -111,17 +111,17 @@
 </p>
 
 <div class="filtres" id="f">
-  <button data-f="tout" aria-pressed="true">Tout (52)</button>
-  <button data-f="ouvert" aria-pressed="false">Ouvertes (45)</button>
-  <button data-f="g1" aria-pressed="false">Gravite 1 (10)</button>
+  <button data-f="tout" aria-pressed="true">Tout (54)</button>
+  <button data-f="ouvert" aria-pressed="false">Ouvertes (46)</button>
+  <button data-f="g1" aria-pressed="false">Gravite 1 (11)</button>
   <button data-f="humain" aria-pressed="false">Attendent un humain (17)</button>
-  <button data-f="code" aria-pressed="false">A faire soi-meme (14)</button>
+  <button data-f="code" aria-pressed="false">A faire soi-meme (15)</button>
   <button data-f="centre-alerte" aria-pressed="false">Centre d'alerte</button>
   <button data-f="vps" aria-pressed="false">VPS</button>
-  <button data-f="fait" aria-pressed="false">Closes (7)</button>
+  <button data-f="fait" aria-pressed="false">Closes (8)</button>
 </div>
 
-<h2 class="sec">Les 52 taches — ouvertes et graves d'abord</h2>
+<h2 class="sec">Les 54 taches — ouvertes et graves d'abord</h2>
 <div id="liste">
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
   <div class="t-h">
@@ -130,7 +130,7 @@
     <span class="fiche">TRK-071</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">4 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">5 j</span>
     
   </div>
   <h3>Recharger au moins UN des deux comptes IA</h3>
@@ -145,12 +145,27 @@
     <span class="fiche">TRK-073</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     
   </div>
   <h3>Marquer le passage au DEPART, pas a l arrivee</h3>
   <p class="detail">L historique de l automatisation ne peut contenir que des succes : persistRun et recordRun ne sont appeles que sur le chemin heureux. Un passage interrompu y est indiscernable d un passage qui n a jamais eu lieu, et le temoin de vie en conclut a tort que la tache est a l arret. Ecrire la ligne au depart en etat EN COURS, la completer a la cloture, et refermer au demarrage du service celles restees ouvertes.</p>
   <p class="attendue"><b>Preuve attendue</b> — Au prochain jour comportant un redeploiement, trip_automation_runs doit porter 24 lignes, dont une ou plusieurs MARQUEES INTERROMPUES — et non 16 lignes toutes en succes. Si le compte monte a 24 sans qu aucune ne soit marquee interrompue, on a maquille le carnet au lieu de le tenir.</p>
+  <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
+</article>
+<article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="A_CODER" data-g="1">
+  <div class="t-h">
+    <span class="marque" title="Ouvert">☐</span>
+    <span class="id">T26</span>
+    <span class="fiche">TRK-075</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 1">G1</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-08">0 j</span>
+    
+  </div>
+  <h3>Remonter la decision d alerter au bon etage, et borner le rejeu par la retention</h3>
+  <p class="detail">Deux defauts qui se composent. UN : la methode d analyse enregistre au centre d alerte dans son PROPRE bloc de rattrapage puis releve, alors que ses trois appelants decident ensuite quoi en faire — et deux d entre eux portent un commentaire promettant explicitement de se taire, le troisieme annoncant que le figeage tient lieu de trace. Trois commentaires promettent un silence que leur couche n a pas le pouvoir d accorder : lui donner un drapeau de signalement explicite, vrai par defaut pour la route utilisateur. DEUX : la methode de rejeu des analyses incompletes n a pas le plancher de retention que sa jumelle possede, si bien qu un candidat dont les positions sont purgees reste candidat pour toujours et remonte en tete de file. Poser ce plancher. Le refus d ecrire une analyse vide, lui, ne doit PAS bouger : il est juste.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Double condition. Plus AUCUNE ligne de source trip-analysis portant le marqueur d etape compute pour un trajet sous l horizon de retention ; ET le compte de candidats au rejeu qui tombe de 17 a 14, SANS que le nombre d analyses rejouees par passage tombe a zero. Si les deux tombent, on a eteint le rejeu au lieu de le borner. Et un refus AU-DESSUS de l horizon doit continuer de crier : c est le seul cas ou l absence de positions est une vraie anomalie.</p>
   <div class="badges"><span class="b b-phare">⭐ le plus rentable</span></div>
 </article>
 <article class="t etat-OUVERT g1" data-etat="OUVERT" data-partie="centre-alerte" data-classe="HUMAIN" data-g="1">
@@ -160,7 +175,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     
   </div>
   <h3>Trancher les trois questions du coupe-circuit</h3>
@@ -175,7 +190,7 @@
     <span class="fiche">TRK-035</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">19 j</span>
     
   </div>
   <h3>Ouvrir la fenetre de maintenance du role non-superutilisateur</h3>
@@ -190,7 +205,7 @@
     <span class="fiche">TRK-053</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">7 j</span>
     
   </div>
   <h3>Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes</h3>
@@ -205,7 +220,7 @@
     <span class="fiche">TRK-064</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     
   </div>
   <h3>A CLORE ? Le sujet a change : la chaine de vitesse est armee</h3>
@@ -220,7 +235,7 @@
     <span class="fiche">TRK-066</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     
   </div>
   <h3>Guetter « SMS non remis au relais » — motif technique CONSERVE</h3>
@@ -235,7 +250,7 @@
     <span class="fiche">TRK-018</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-11">27 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-11">28 j</span>
     
   </div>
   <h3>Accuse de remise de la passerelle SMS</h3>
@@ -250,7 +265,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-31">7 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-31">8 j</span>
     
   </div>
   <h3>Porter les 6 IMEI muets a l'exploitant</h3>
@@ -265,7 +280,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     
   </div>
   <h3>Sortir du parc les 6 boitiers muets depuis plus de 7 jours</h3>
@@ -280,7 +295,7 @@
     <span class="fiche">TRK-072</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     
   </div>
   <h3>Calibrer les notifications d'exces de vitesse</h3>
@@ -295,7 +310,7 @@
     <span class="fiche">TRK-062</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">4 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">5 j</span>
     
   </div>
   <h3>Autoriser la migration SENT_UNCONFIRMED</h3>
@@ -310,7 +325,7 @@
     <span class="fiche">—</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-03">4 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-03">5 j</span>
     
   </div>
   <h3>Declarer ou depanner GLA•KC•31 et FG-669-DQ</h3>
@@ -325,7 +340,7 @@
     <span class="fiche">TRK-022</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-13">25 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-13">26 j</span>
     
   </div>
   <h3>Deduplication GENERIQUE des alarmes du boitier</h3>
@@ -340,7 +355,7 @@
     <span class="fiche">TRK-016</span>
     <span class="classe">🏗️ Chantier, hors passe</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-09">29 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-09">30 j</span>
     
   </div>
   <h3>Recalage cartographique : ~88 % d'echec depuis avril</h3>
@@ -355,7 +370,7 @@
     <span class="fiche">TRK-032</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">18 j</span>
     
   </div>
   <h3>REQUALIFIER — l'occasion ne viendra pas seule</h3>
@@ -370,7 +385,7 @@
     <span class="fiche">TRK-051</span>
     <span class="classe">🗓️ Test date : provoquer ou requalifier</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-25">13 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-25">14 j</span>
     
   </div>
   <h3>Confier a un humain : le badge ambre du mode fix</h3>
@@ -385,7 +400,7 @@
     <span class="fiche">TRK-074</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     
   </div>
   <h3>Donner une resolution automatique au temoin des taches planifiees</h3>
@@ -400,7 +415,7 @@
     <span class="fiche">VPS-036 · VPS-027</span>
     <span class="classe">🔵 Exploitant / equipe produit</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-28">10 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-28">11 j</span>
     
   </div>
   <h3>Un seul ticket hebergeur pour les deux ecritures root</h3>
@@ -415,7 +430,7 @@
     <span class="fiche">VPS-010</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">34 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">35 j</span>
     
   </div>
   <h3>Planifier un redemarrage vers 23 h 30</h3>
@@ -430,7 +445,7 @@
     <span class="fiche">VPS-M56</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">34 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">35 j</span>
     
   </div>
   <h3>Arbitrer le budget de collecte</h3>
@@ -445,7 +460,7 @@
     <span class="fiche">VPS-005</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-04">34 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-04">35 j</span>
     
   </div>
   <h3>Poser les limites memoire sur 30 conteneurs</h3>
@@ -460,7 +475,7 @@
     <span class="fiche">VPS-020</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-08">30 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-08">31 j</span>
     
   </div>
   <h3>Separer les projets compose deploy</h3>
@@ -475,7 +490,7 @@
     <span class="fiche">VPS-012</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">32 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">33 j</span>
     
   </div>
   <h3>Restreindre la cle CI github-actions-vizyo-auth</h3>
@@ -490,7 +505,7 @@
     <span class="fiche">VPS-015</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">33 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">34 j</span>
     
   </div>
   <h3>ExecStart par bash, et OnFailure sur tracky-backup</h3>
@@ -505,7 +520,7 @@
     <span class="fiche">VPS-033</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">19 j</span>
     
   </div>
   <h3>Fixer l'heure du rafraichissement apt (et non reduire son alea)</h3>
@@ -520,7 +535,7 @@
     <span class="fiche">VPS-034</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-21">17 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-21">18 j</span>
     
   </div>
   <h3>Epingler Traefik par digest</h3>
@@ -535,7 +550,7 @@
     <span class="fiche">VPS-M73</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">7 j</span>
     
   </div>
   <h3>Afficher l'ecart en jours sur /admin → Audit VPS</h3>
@@ -550,7 +565,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     
   </div>
   <h3>Prevenir le titulaire de compte sans appareil</h3>
@@ -565,7 +580,7 @@
     <span class="fiche">TRK-060</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">5 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">6 j</span>
     
   </div>
   <h3>Guetter : « Un point de mesure systeme n'a pas pu etre enregistre »</h3>
@@ -580,7 +595,7 @@
     <span class="fiche">TRK-065</span>
     <span class="classe">🗓️ Deploye, a guetter</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     
   </div>
   <h3>Guetter la ligne hebdomadaire : 42 doit tomber a ~21</h3>
@@ -595,7 +610,7 @@
     <span class="fiche">TRK-014</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     
   </div>
   <h3>Rectifier le quoiFaire de TRK-014</h3>
@@ -610,7 +625,7 @@
     <span class="fiche">VPS-037</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-01">6 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-01">7 j</span>
     
   </div>
   <h3>Donner un second depositaire a la copie hors-site</h3>
@@ -625,7 +640,7 @@
     <span class="fiche">VPS-017</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-06">32 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-06">33 j</span>
     
   </div>
   <h3>Trancher les 4,5 Go d'outillage de developpement dans /root</h3>
@@ -640,7 +655,7 @@
     <span class="fiche">VPS-026</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-14">24 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-14">25 j</span>
     
   </div>
   <h3>Epingler alpine par empreinte</h3>
@@ -655,7 +670,7 @@
     <span class="fiche">VPS-030</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">19 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">20 j</span>
     
   </div>
   <h3>Purger 1,4 Go de copies sans retention</h3>
@@ -670,7 +685,7 @@
     <span class="fiche">VPS-032</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-19">19 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-19">20 j</span>
     
   </div>
   <h3>Multiplexage SSH cote POSTE</h3>
@@ -685,7 +700,7 @@
     <span class="fiche">VPS-M79</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-02">5 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-02">6 j</span>
     
   </div>
   <h3>Etiqueter les images de repli au build</h3>
@@ -700,7 +715,7 @@
     <span class="fiche">VPS-029</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-20">18 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-20">19 j</span>
     
   </div>
   <h3>Trancher quel mecanisme gouverne le cache de build</h3>
@@ -715,7 +730,7 @@
     <span class="fiche">VPS-M36</span>
     <span class="classe">⛔ Bloque par un prerequis</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-15">23 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-15">24 j</span>
     
   </div>
   <h3>Echantillonner wchan 3 fois et publier la repartition</h3>
@@ -730,7 +745,7 @@
     <span class="fiche">VPS-013 · VPS-M88</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 3">G3</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-07">0 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">1 j</span>
     
   </div>
   <h3>Ranger les deux dossiers de sauvegarde abandonnes</h3>
@@ -745,7 +760,7 @@
     <span class="fiche">TRK-001 · TRK-027</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-03">35 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-03">36 j</span>
     
   </div>
   <h3>Controler les antennes de trois vehicules</h3>
@@ -760,7 +775,7 @@
     <span class="fiche">—</span>
     <span class="classe">🧹 Dette de documentation</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     
   </div>
   <h3>Creer ou dereferencer TACHES-AMELIORATION.md</h3>
@@ -775,7 +790,7 @@
     <span class="fiche">VPS-018</span>
     <span class="classe">🤝 Decision ou geste humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-12">26 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-12">27 j</span>
     
   </div>
   <h3>Retirer /opt/vizyo-leads</h3>
@@ -790,7 +805,7 @@
     <span class="fiche">VPS-007</span>
     <span class="classe">🟡 Commande ecrite, arbitrage humain</span>
     <span class="grav" title="gravite 4">G4</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">33 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">34 j</span>
     
   </div>
   <h3>random_page_cost sur 6 bases</h3>
@@ -805,7 +820,7 @@
     <span class="fiche">VPS-013</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-08-05">33 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-08-05">34 j</span>
     
   </div>
   <h3>Trois bases de PRODUCTION sans sauvegarde reproductible</h3>
@@ -820,7 +835,7 @@
     <span class="fiche">TRK-070</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     <code class="commit">2112e9ae</code>
   </div>
   <h3>Le niveau de l'escalade doit suivre la CAUSE, pas la gravite</h3>
@@ -835,12 +850,27 @@
     <span class="fiche">TRK-068</span>
     <span class="classe">🔧 A coder</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-04">3 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-04">4 j</span>
     <code class="commit">c80632ba</code>
   </div>
   <h3>Borner le fetch vers Vizyo Auth, et son jumeau</h3>
   <p class="detail">Ni try/catch ni delai d'expiration : le rejet de transport devient un 500 la ou une dependance injoignable est un 503.</p>
   <p class="preuve"><b>Preuve</b> — auth-client 16/16, typecheck 3/3, smoke-boot DI 5/5, deux mutations -&gt; 1 puis 4 echecs. DEPLOYE le 07/09 a 00h58m58 : verifie sur l artefact servi, AbortSignal et ServiceUnavailableException presents dans dist/auth-client/auth-client.service.js, Vizyo Auth nomme 6 fois.</p><p class="attendue"><b>Preuve attendue</b> — Au prochain rejet de transport EN PRODUCTION : la ligne doit porter statusCode 503 (et non 500), sortir en ERROR (et non CRITICAL), nommer Vizyo Auth et la consequence, ET conserver le motif technique en fin de phrase. Si le motif disparait, on a nettoye l ecran.</p>
+  <div class="badges"></div>
+</article>
+<article class="t etat-DEPLOYE g2" data-etat="DEPLOYE" data-partie="centre-alerte" data-classe="A_CODER" data-g="2">
+  <div class="t-h">
+    <span class="marque" title="Deploye, preuve attendue">»</span>
+    <span class="id">T27</span>
+    <span class="fiche">TRK-076</span>
+    <span class="classe">🔧 A coder</span>
+    <span class="grav" title="gravite 2">G2</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-07">1 j</span>
+    
+  </div>
+  <h3>La carte survit a une perte de contexte WebGL</h3>
+  <p class="detail">Corrige hors session, par une session parallele, entre les audits du 7 et du 8 septembre. La bibliotheque de cartographie detruit son style et le met a nul en gardant l objet carte vivant : les dix-neuf gardes qui verifient l existence de la carte passaient donc toutes, et chaque lecture de source levait. Le correctif ecoute la perte de contexte, garde chaque lecture de source, affiche un bandeau explicite et reprend quand le navigateur rend le contexte.</p>
+  <p class="attendue"><b>Preuve attendue</b> — Marqueurs deja VERIFIES SUR L ARTEFACT SERVI le 08/09 (ecoute de la perte de contexte et nouvelle garde presentes dans le paquet livre par le serveur web, image de 00h56m15). Ce qui manque est la preuve de PRODUCTION : aucune nouvelle erreur de cette famille sur sept jours, ET l apparition du bandeau de reprise plutot qu un message generique si le cas se reproduit. A la collecte, l artefact n avait que vingt-six minutes de vie.</p>
   <div class="badges"></div>
 </article>
 <article class="t etat-FAIT g1" data-etat="FAIT" data-partie="vps" data-classe="AUTO" data-g="1">
@@ -850,7 +880,7 @@
     <span class="fiche">—</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     
   </div>
   <h3>Verser docs/vps-audit sur main</h3>
@@ -865,7 +895,7 @@
     <span class="fiche">VPS-038</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 1">G1</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     <code class="commit">fb0642f8</code>
   </div>
   <h3>Sentinelle « boitiers muets »</h3>
@@ -880,7 +910,7 @@
     <span class="fiche">TRK-069</span>
     <span class="classe">🔵 Action materielle</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-05">2 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-05">3 j</span>
     
   </div>
   <h3>Rallumer le poste et lire le motif de agent-recit-trajet</h3>
@@ -895,7 +925,7 @@
     <span class="fiche">VPS-M59</span>
     <span class="classe">🟢 Agent, seul, avec preuve</span>
     <span class="grav" title="gravite 2">G2</span>
-    <span class="depuis" title="ouverte depuis le 2026-09-06">1 j</span>
+    <span class="depuis" title="ouverte depuis le 2026-09-06">2 j</span>
     <code class="commit">9dce59ec</code>
   </div>
   <h3>chargeDeFond.note s'affiche, avec un repli explicite</h3>
