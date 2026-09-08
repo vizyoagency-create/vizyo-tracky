@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException, Optional, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { SpeedAlertService } from '../alerts/speed-alert.service';
 import type { AuthUser } from '../auth/types/auth-user';
+import { PositionsIntrouvablesException } from '../common/positions-introuvables.exception';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -90,13 +91,27 @@ export class TripAnalysisService {
       const row = await this.persist(trip, result);
       return this.toDto(row, this.maskFor(user), await this.narrativeVisible(user, trip.fleetId));
     } catch (e) {
-      // Échec du calcul déterministe (positions / préprocesseur / persistance) → centre d'alerte,
-      // avec le contexte du trajet. On re-lève ensuite (le client reçoit bien l'erreur).
-      void this.errorLogger.record(
-        e instanceof Error ? e : new Error(String(e)),
-        'trip-analysis',
-        { tripId, vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'compute' },
-      );
+      /**
+       * ⚠️ UN REFUS DÉLIBÉRÉ N'EST PAS UNE PANNE — mesuré en production le 2026-09-08.
+       *
+       * Ce bloc archivait TOUT, y compris le refus « positions introuvables » que `compute()`
+       * lève exprès pour ne pas inventer un trajet immobile. Or ce refus n'a aucun remède : ses
+       * trois appelants dans l'automatisation le disent en commentaire et se taisent... pendant
+       * que cette ligne-ci criait à leur place. Un trajet du 08/07 sans positions conservées a
+       * ainsi écrit 20 lignes d'erreur en 27 heures, une par passage horaire.
+       *
+       * Le refus reste un 422 et le client reçoit toujours son message : ce qui disparaît est
+       * l'entrée au centre d'alerte, pas l'information.
+       */
+      if (!(e instanceof PositionsIntrouvablesException)) {
+        // Échec du calcul déterministe (positions / préprocesseur / persistance) → centre d'alerte,
+        // avec le contexte du trajet. On re-lève ensuite (le client reçoit bien l'erreur).
+        void this.errorLogger.record(
+          e instanceof Error ? e : new Error(String(e)),
+          'trip-analysis',
+          { tripId, vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'compute' },
+        );
+      }
       throw e;
     }
   }
@@ -194,7 +209,7 @@ export class TripAnalysisService {
        * un message honnete au lieu d'un zero invente).
        */
       if (positions.length === 0 && (trip.distanceMeters ?? 0) > 500) {
-        throw new UnprocessableEntityException(
+        throw new PositionsIntrouvablesException(
           'Analyse impossible : les positions de ce trajet ne sont plus disponibles (purge de retention probable). ' +
             'Produire une analyse vide reviendrait a inventer un trajet immobile.',
         );

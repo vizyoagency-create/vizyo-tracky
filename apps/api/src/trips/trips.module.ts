@@ -13,6 +13,9 @@ import { TripsService } from './trips.service';
   imports: [forwardRef(() => RealtimeModule), AuthModule, DriversModule],
   controllers: [TripsController],
   providers: [TripsService, TripSegmenterService, MapMatchingService, TripMapMatchingService, TripsRetentionService],
-  exports: [TripsService],
+  // `TripMapMatchingService` est exporté pour le RATTRAPAGE de l'automatisation (2026-09-08) :
+  // il recale par lots bornés les tracés de l'historique, en réutilisant le verrou et le
+  // stockage du recalage à la demande — deux chemins, une seule façon de ranger un tracé.
+  exports: [TripsService, TripMapMatchingService],
 })
 export class TripsModule {}

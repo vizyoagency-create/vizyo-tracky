@@ -604,6 +604,13 @@ export interface TripAutomationRunStats {
    * seulement de l'affichage. Absent des passages antérieurs à cette reprise.
    */
   reprises?: number;
+  /**
+   * Tracés RECALÉS sur les routes pendant ce passage, en rattrapage de l'historique. Le recalage
+   * à la clôture échouait pour tout trajet de plus de dix points jusqu'au 2026-09-08 : 4 641
+   * trajets des trente derniers jours n'avaient pas de tracé recalé, et leur rejeu coupait les
+   * virages. Absent des passages antérieurs à ce rattrapage.
+   */
+  recalesTraces?: number;
   failed: number;
   durationMs: number;
   /** ISO date de fin du run. */

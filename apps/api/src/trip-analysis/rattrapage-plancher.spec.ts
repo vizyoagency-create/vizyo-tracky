@@ -63,6 +63,8 @@ describe('TripAutomationService — plancher du rattrapage', () => {
       { isEnabledForFleet: jest.fn().mockResolvedValue(false) } as never,
       { record: jest.fn().mockResolvedValue('id') } as never,
       { record: jest.fn() } as never,
+      // Rattrapage du recalage (2026-09-08) : jamais atteint ici, les trajets simules n'ont pas de trace stocke.
+      { recaler: jest.fn().mockResolvedValue({ polylineMatched: null, enCours: false }) } as never,
     );
     return { svc, prisma };
   }
@@ -97,8 +99,17 @@ describe('TripAutomationService — plancher du rattrapage', () => {
     const avant = Date.now();
     await svc.runNow();
 
-    // Deux listes de trajets : le courant, puis le complement.
-    expect(prisma.trip.findMany).toHaveBeenCalledTimes(2);
+    /**
+     * Deux listes de trajets : le courant, puis le complement.
+     *
+     * ⚠️ Le rattrapage du recalage (2026-09-08) lit lui aussi des trajets, en fin de passage. Il
+     * ne parle pas de la meme chose — il cherche les traces non recalees, sans borne de temps —
+     * donc on ne compte ici que les selections qui portent une fenetre `startedAt`.
+     */
+    const selectionsDatees = prisma.trip.findMany.mock.calls.filter(
+      (c) => !!(c[0] as { where?: { startedAt?: unknown } })?.where?.startedAt,
+    );
+    expect(selectionsDatees).toHaveLength(2);
     const gte = gteOf(prisma.trip.findMany.mock.calls[1][0]);
     expect(avant - gte.getTime()).toBeGreaterThan(58 * JOUR);
     expect(avant - gte.getTime()).toBeLessThan(60 * JOUR);

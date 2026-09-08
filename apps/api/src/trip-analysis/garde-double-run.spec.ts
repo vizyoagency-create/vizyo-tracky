@@ -66,6 +66,8 @@ describe('TripAutomationService — garde anti double-run depuis le DÉPART (TRK
       { isEnabledForFleet: jest.fn().mockResolvedValue(true) } as never,
       { record: jest.fn().mockResolvedValue('id') } as never,
       systemActivity as never,
+      // Rattrapage du recalage (2026-09-08) : jamais atteint ici, les trajets simules n'ont pas de trace stocke.
+      { recaler: jest.fn().mockResolvedValue({ polylineMatched: null, enCours: false }) } as never,
     );
     return { svc, prisma, systemActivity };
   }

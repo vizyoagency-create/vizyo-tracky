@@ -110,6 +110,8 @@ describe('TripAutomationService', () => {
       aiAvail as never,
       errorLogger as never,
       systemActivity as never,
+      // Rattrapage du recalage (2026-09-08) : jamais atteint ici, les trajets simules n'ont pas de trace stocke.
+      { recaler: jest.fn().mockResolvedValue({ polylineMatched: null, enCours: false }) } as never,
     );
     return { svc, prisma, trips, analysis, llm, aiAvail, errorLogger, systemActivity };
   }
@@ -513,7 +515,12 @@ describe('TripAutomationService', () => {
       });
       const stats = await svc.runNow();
       expect(trips.recompute).not.toHaveBeenCalled();
-      expect(prisma.trip.findMany).not.toHaveBeenCalled(); // le travail pour rien a bien disparu
+      // Le travail pour rien a bien disparu : aucune liste de trajets POUR CE VÉHICULE. (Le
+      // rattrapage du recalage lit des trajets en fin de passage, mais il ignore les véhicules.)
+      const listesDuVehicule = prisma.trip.findMany.mock.calls.filter(
+        (c) => (c[0] as { where?: { vehicleId?: string } })?.where?.vehicleId !== undefined,
+      );
+      expect(listesDuVehicule).toHaveLength(0);
       expect(analysis.analyze).not.toHaveBeenCalled();
       expect(llm.narrate).not.toHaveBeenCalled();
       // L'exclusion est COMPTÉE : `vehicles` baisse, mais jamais en silence.

@@ -1,5 +1,5 @@
 import { formatFleetDateTime, heureParis } from '../common/utils/datetime';
-import { Injectable, Logger, type OnApplicationBootstrap, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole, type TripAutomationRun, type TripAutomationSettings } from '@prisma/client';
 import type {
@@ -16,9 +16,11 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { classerEchecIa } from '../ai/ai-client.types';
 import { AutomationDisabledException } from '../common/automation-disabled.exception';
+import { PositionsIntrouvablesException } from '../common/positions-introuvables.exception';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { TripMapMatchingService } from '../trips/trip-map-matching.service';
 import { TripsService } from '../trips/trips.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
 import { TripAnalysisService } from './trip-analysis.service';
@@ -81,6 +83,23 @@ const RECOMPUTE_SLICE_MS = 48 * 60 * 60 * 1000;
  * sauter un tick des que le passage durait plus de 10 min : 14 passages sur 24 le 2026-08-23.
  */
 const RUN_BUDGET_MS = 50 * 60 * 1000;
+
+/**
+ * Marge au-delà du budget avant de déclarer mort un passage dont on ne possède pas la ligne
+ * (déploiement à plusieurs instances — voir `certainementMort`). Un passage s'arrête sur son
+ * budget ; dix minutes de plus couvrent la clôture, l'élagage et une base lente.
+ */
+const MARGE_PASSAGE_MORT_MS = 10 * 60 * 1000;
+
+/**
+ * Rattrapage du recalage des tracés (voir `recalerAnciensTraces`) : combien par passage, et le
+ * plafond qu'aucun réglage ne franchit. Quinze par heure résorbent l'historique mesuré en une
+ * douzaine de jours, sans jamais bousculer le service public d'OSRM.
+ */
+const RECALAGE_PAR_PASSAGE_DEFAUT = 15;
+const RECALAGE_PAR_PASSAGE_MAX = 50;
+/** Combien de refus d'OSRM on retient, le temps de la vie du processus. */
+const RECALAGE_REFUS_MEMOIRE_MAX = 500;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
 const MAX_TRIPS_PER_VEHICLE = 500;
 /**
@@ -200,6 +219,8 @@ type MutableStats = {
   rejouees: number;
   /** Analyses d'avant le 4 septembre reprises pour gagner les champs nés avec les lots V1/V3/V4. */
   reprises: number;
+  /** Tracés recalés sur les routes en rattrapage de l'historique. */
+  recalesTraces: number;
   /** Le passage s'est-il arrêté sur son budget plutôt qu'au bout de son travail ? */
   budgetAtteint: boolean;
 };
@@ -277,6 +298,8 @@ const LOOKBACK_HEURES_MAX = 2160;
 export class TripAutomationService implements OnApplicationBootstrap {
   private readonly logger = new Logger(TripAutomationService.name);
   private running = false;
+  /** Tracés qu'OSRM a refusés — mémoire du processus, voir `recalerAnciensTraces`. */
+  private readonly recalageRefuse = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -286,6 +309,7 @@ export class TripAutomationService implements OnApplicationBootstrap {
     private readonly aiAvail: AiAvailabilityService,
     private readonly errorLogger: ErrorLogger,
     private readonly systemActivity: SystemActivityService,
+    private readonly mapMatching: TripMapMatchingService,
   ) {}
 
   /** Au démarrage de l'API : ce qui était « en cours » dans l'historique est mort avec le processus d'avant. */
@@ -319,6 +343,7 @@ export class TripAutomationService implements OnApplicationBootstrap {
       this.logger.warn(`Passages interrompus : historique illisible au démarrage (${(e as Error)?.message ?? e}).`);
       return 0;
     }
+    orphelins = orphelins.filter((o) => this.certainementMort(o.startedAt, now));
     if (orphelins.length === 0) return 0;
 
     try {
@@ -351,6 +376,30 @@ export class TripAutomationService implements OnApplicationBootstrap {
     }
     this.logger.warn(`${orphelins.length} passage(s) d'automatisation interrompu(s) marqué(s) au démarrage.`);
     return orphelins.length;
+  }
+
+  /**
+   * ── UNE LIGNE « EN COURS » APPARTIENT-ELLE VRAIMENT À UN PROCESSUS MORT ? ──────────────
+   *
+   * À UNE instance — le déploiement d'aujourd'hui — la réponse est oui, toujours : ce processus
+   * est le seul à lancer des passages et il vient de naître. Le marquage est donc immédiat, et
+   * l'alerte part dans la seconde. C'est ce qui a été mesuré en production le 08/09.
+   *
+   * À PLUSIEURS instances, ce raisonnement tombe : la ligne peut appartenir au passage bien
+   * vivant du voisin, et le déclarer interrompu enverrait une alerte critique pour rien. Seule
+   * l'ANCIENNETÉ tranche alors, et elle tranche sûrement : un passage s'arrête sur son budget
+   * (`RUN_BUDGET_MS`), donc une ligne plus vieille que budget + marge est morte, quel que soit
+   * son propriétaire. La contrepartie est assumée : un passage tué tôt attendra le démarrage
+   * suivant pour être vu.
+   *
+   * `API_INSTANCES` dit la vérité du déploiement. Absente ou absurde, on suppose une instance :
+   * le défaut le plus bavard est le bon défaut pour une vigie.
+   */
+  private certainementMort(startedAt: Date, now: Date): boolean {
+    const brut = Number(process.env.API_INSTANCES ?? 1);
+    const instances = Number.isFinite(brut) && brut >= 1 ? Math.floor(brut) : 1;
+    if (instances <= 1) return true;
+    return now.getTime() - startedAt.getTime() > RUN_BUDGET_MS + MARGE_PASSAGE_MORT_MS;
   }
 
   /** Toutes les heures à HH:45 (décalé des crons agenda :00 / rapports :20 pour lisser le VPS). */
@@ -538,6 +587,8 @@ export class TripAutomationService implements OnApplicationBootstrap {
       // Après les trajets neufs : les analyses dont les limites sont arrivées depuis.
       await this.rejouerAnalysesIncompletes(user, stats, echeance);
       await this.reprendreAnalysesAnciennes(user, stats, echeance);
+      // En DERNIER, et c'est voulu : un tracé plus joli ne vaut jamais une analyse manquante.
+      await this.recalerAnciensTraces(user, stats, echeance);
 
       const runStats = this.finalStats(stats, Date.now() - startMs);
       await this.persistRun(settings.id, runStats);
@@ -559,6 +610,7 @@ export class TripAutomationService implements OnApplicationBootstrap {
           (stats.skippedNoPositions > 0 ? ` · ${stats.skippedNoPositions} recalcul(s) impossibles faute de position` : '') +
           (stats.rejouees > 0 ? ` · ${stats.rejouees} analyse(s) rejouée(s) (limites arrivées après coup)` : '') +
           (stats.reprises > 0 ? ` · ${stats.reprises} analyse(s) d'avant le 4 septembre reprises (faux excès, couverture, réserve de vitesse)` : '') +
+          (stats.recalesTraces > 0 ? ` · ${stats.recalesTraces} tracé(s) recalé(s) sur les routes` : '') +
           // Un passage écourté n'est pas un passage terminé : le dire évite de lire « 12 analysés »
           // comme « il n'y avait que 12 choses à faire ».
           (stats.budgetAtteint ? ' · passage ÉCOURTÉ sur son budget de temps, la suite au prochain' : '') +
@@ -674,6 +726,65 @@ export class TripAutomationService implements OnApplicationBootstrap {
     // Retention desactivee (0 ou absurde) : rien n'est purge, donc toute absence est une anomalie.
     if (!Number.isFinite(jours) || jours <= 0) return 0;
     return now - (jours - 1) * 86_400_000;
+  }
+
+  /**
+   * ══ UN TRAJET SANS POSITIONS SORT DU PÉRIMÈTRE, PAR QUELQUE CHEMIN QU'ON L'AIT RENCONTRÉ ══
+   *
+   * ── Ce que ça corrige (mesuré en production le 2026-09-08) ────────────────────────────
+   *
+   * Le gel n'existait que sur le chemin de la PREMIÈRE analyse. Les deux autres — le rejeu des
+   * limites et la reprise d'historique — se contentaient de se taire. Se taire ne suffit pas :
+   * sans marqueur, le même trajet est resélectionné au passage suivant, et au suivant. Le trajet
+   * du 08/07 de HD-597-XY, 3,2 km, zéro position conservée, a ainsi été réanalysé **20 fois en
+   * 27 heures**, chaque tentative écrivant une ligne au centre d'alerte depuis la couche
+   * d'analyse. Un fait sans remède ne doit coûter qu'une seule fois.
+   *
+   * ── Deux marqueurs, parce que ce ne sont pas deux mêmes faits ─────────────────────────
+   *
+   * · SOUS l'horizon de rétention → `fige-retention`. La purge a fait son travail : fait normal,
+   *   attendu, **muet**. Crier ici remplirait le centre d'alerte de l'inévitable.
+   * · AU-DESSUS → `fige-sans-positions`. Les positions DEVRAIENT être là : purge trop agressive,
+   *   ingestion cassée, boîtier muet. C'est une anomalie, elle est **dite une fois** — et c'est
+   *   le gel qui garantit l'unicité, exactement comme pour une tranche vide (cf. le recalcul).
+   *
+   * Rend `true` si le trajet a été figé, `false` si l'erreur n'était pas ce refus-là : l'appelant
+   * garde alors son traitement d'erreur habituel. Ne lève jamais.
+   */
+  private async figerSiPositionsIntrouvables(
+    tripId: string,
+    e: unknown,
+    phase: string,
+    startedAtConnu?: Date,
+  ): Promise<boolean> {
+    if (!(e instanceof PositionsIntrouvablesException)) return false;
+
+    // Le rejeu et la reprise ne portent que l'identifiant du trajet : une lecture, sur un chemin
+    // d'échec rare, pour savoir de quel côté de l'horizon on se trouve.
+    let startedAt = startedAtConnu ?? null;
+    if (!startedAt) {
+      const trip = await this.prisma.trip
+        .findUnique({ where: { id: tripId }, select: { startedAt: true } })
+        .catch(() => null);
+      startedAt = trip?.startedAt ?? null;
+    }
+    // Sans date, on ne sait pas trancher normal/anomalie : on ne fige pas, et l'appelant reprend
+    // la main. Un gel est définitif — il ne se pose jamais au doute.
+    if (!startedAt) return false;
+
+    const sousHorizon = startedAt.getTime() < this.horizonRetention();
+    const marqueur = sousHorizon ? 'fige-retention' : 'fige-sans-positions';
+    await this.prisma.trip
+      .update({ where: { id: tripId }, data: { segmentationSource: marqueur } })
+      .catch(() => undefined);
+
+    if (sousHorizon) {
+      this.logger.log(`trajet ${tripId} figé : positions purgées, analyse impossible à jamais`);
+    } else {
+      this.logger.warn(`trajet ${tripId} figé en ANOMALIE : positions absentes au-dessus de l'horizon de rétention`);
+      await this.errorLogger.record(e as Error, SOURCE, { tripId, phase, marqueur }, 'ERROR');
+    }
+    return true;
   }
 
   /**
@@ -1048,12 +1159,8 @@ export class TripAutomationService implements OnApplicationBootstrap {
            *    (purge trop agressive, ingestion cassee), et elle doit crier. Figer les deux cas
            *    sans distinction reviendrait a etouffer la panne avec le fait normal.
            */
-          if (e instanceof UnprocessableEntityException && t.startedAt.getTime() < this.horizonRetention()) {
-            await this.prisma.trip
-              .update({ where: { id: t.id }, data: { segmentationSource: 'fige-retention' } })
-              .catch(() => undefined);
+          if (await this.figerSiPositionsIntrouvables(t.id, e, 'analyze', t.startedAt)) {
             stats.skippedNoPositions++;
-            this.logger.log(`trajet ${t.id} fige : positions purgees, analyse impossible a jamais`);
             continue;
           }
           stats.failed++;
@@ -1437,6 +1544,7 @@ export class TripAutomationService implements OnApplicationBootstrap {
       skippedDormant: 0, skippedNoPositions: 0, skippedBudget: 0, budgetAtteint: false,
       rejouees: 0,
       reprises: 0,
+      recalesTraces: 0,
     };
   }
 
@@ -1495,8 +1603,13 @@ export class TripAutomationService implements OnApplicationBootstrap {
          * Un rejeu qui échoue n'est pas un incident : les positions ont pu être purgées depuis
          * (l'analyse refuse alors d'écrire un zéro inventé, et elle a raison). On n'alerte pas,
          * sinon le centre d'alerte se remplirait d'un fait sans remède.
+         *
+         * ⚠️ Et on FIGE (2026-09-08) : se taire ne suffisait pas. Sans marqueur, le même trajet
+         * revenait à chaque passage, et la couche d'analyse, elle, criait pour nous.
          */
-        this.logger.debug(`rejeu impossible pour ${a.tripId} : ${(e as Error)?.message ?? e}`);
+        if (!(await this.figerSiPositionsIntrouvables(a.tripId, e, 'rejeu-limites'))) {
+          this.logger.debug(`rejeu impossible pour ${a.tripId} : ${(e as Error)?.message ?? e}`);
+        }
       }
     }
     if (stats.rejouees > 0) {
@@ -1596,7 +1709,10 @@ export class TripAutomationService implements OnApplicationBootstrap {
         await this.analysis.analyze(user, c.tripId);
         stats.reprises++;
       } catch (e) {
-        this.logger.debug(`reprise impossible pour ${c.tripId} : ${(e as Error)?.message ?? e}`);
+        // Même règle que le rejeu : on se tait, et on fige pour que le silence tienne.
+        if (!(await this.figerSiPositionsIntrouvables(c.tripId, e, 'reprise-historique'))) {
+          this.logger.debug(`reprise impossible pour ${c.tripId} : ${(e as Error)?.message ?? e}`);
+        }
       }
     }
     if (stats.reprises > 0) {
@@ -1604,6 +1720,105 @@ export class TripAutomationService implements OnApplicationBootstrap {
         `${stats.reprises} analyse(s) d'avant le 4 septembre reprises — faux excès écartés, couverture et réserve de vitesse renseignées.`,
       );
     }
+  }
+
+  /**
+   * ══ RATTRAPER LES TRACÉS QUI NE SUIVENT PAS LA ROUTE (2026-09-08) ═════════════════════
+   *
+   * ── Ce qu'il y a à rattraper ────────────────────────────────────────────────────────
+   *
+   * Le recalage sur les routes se fait à la clôture du trajet. Il a échoué pendant des mois
+   * pour tout trajet de plus de dix points, faute de connaître la limite réelle du service
+   * public OSRM. Mesuré en production le 2026-09-08, juste après le correctif : **31 trajets
+   * sur 31** clôturés depuis portent un tracé recalé, contre **156 sur 1 217** avant lui. Le
+   * correctif soigne donc les trajets neufs — et laisse 4 641 trajets d'historique dont le
+   * rejeu continue de couper les virages.
+   *
+   * ── Pourquoi ici, et borné ──────────────────────────────────────────────────────────
+   *
+   * Comme la reprise des analyses : un script lancé à la main s'interrompt et s'oublie. Ce
+   * passage-ci est BORNÉ ({@link RECALAGE_PAR_PASSAGE_DEFAUT} tracés), REPRENABLE, VISIBLE dans
+   * le détail du run, et il s'éteint tout seul quand il ne reste rien. À une quinzaine par
+   * heure, l'historique mesuré se résorbe en une douzaine de jours sans jamais bousculer le
+   * service public d'OSRM.
+   *
+   * ⚠️ EN DERNIER, et borné par la MÊME échéance que le reste : un tracé plus joli ne vaut
+   * jamais une analyse manquante. `RECALAGE_RATTRAPAGE_PAR_PASSAGE=0` le coupe sans déploiement.
+   *
+   * ⚠️ LES REFUS SONT MÉMORISÉS. Certains tracés ne se recalent pas, quel que soit le nombre
+   * d'essais (points trop épars, hors réseau routier). Sans mémoire, les mêmes occuperaient les
+   * quinze places à chaque passage et le rattrapage tournerait en rond pour toujours — le défaut
+   * exact qu'on vient de corriger sur les analyses. La mémoire est celle du PROCESSUS : un
+   * redémarrage rend leur chance à ces trajets, ce qui est la bonne fréquence pour un réessai.
+   */
+  private async recalerAnciensTraces(user: AuthUser, stats: MutableStats, echeance: number): Promise<void> {
+    const parPassage = this.recalagesParPassage();
+    if (parPassage === 0) return;
+
+    let candidats: { id: string; polyline: string | null }[];
+    try {
+      candidats = await this.prisma.trip.findMany({
+        where: {
+          polylineMatched: null,
+          polyline: { not: null },
+          endedAt: { not: null },
+          id: { notIn: [...this.recalageRefuse] },
+        },
+        // Les trajets récents d'abord : ce sont ceux qu'on rejoue.
+        orderBy: { startedAt: 'desc' },
+        take: parPassage,
+        select: { id: true, polyline: true },
+      });
+    } catch (e) {
+      stats.failed++;
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'rattrapage-recalage' });
+      return;
+    }
+
+    for (const c of candidats) {
+      if (Date.now() > echeance) { stats.budgetAtteint = true; break; }
+      // Un trajet sans tracé stocké n'a rien à recaler : la sélection le dit déjà, la garde le
+      // redit pour qui appellerait cette méthode autrement.
+      if (!c.polyline) continue;
+      try {
+        const r = await this.mapMatching.recaler(c.id, {
+          userId: user.id,
+          role: user.role,
+          fleetId: user.fleetId,
+          accessibleVehicleIds: 'ALL',
+        });
+        if (r.polylineMatched) stats.recalesTraces++;
+        else this.memoriserRefusRecalage(c.id);
+      } catch (e) {
+        /**
+         * OSRM est un service public et gratuit : il tombe, il limite, il refuse. Rien de tout
+         * cela n'est une panne de Tracky, et le tracé brut reste affiché. On note le refus pour
+         * ne pas y revenir dans l'heure, et on continue.
+         */
+        this.memoriserRefusRecalage(c.id);
+        this.logger.debug(`recalage impossible pour ${c.id} : ${(e as Error)?.message ?? e}`);
+      }
+    }
+    if (stats.recalesTraces > 0) {
+      this.logger.log(`${stats.recalesTraces} tracé(s) recalé(s) sur les routes — rattrapage de l'historique.`);
+    }
+  }
+
+  /** Enveloppe par passage, réglable sans déploiement (0 = rattrapage coupé). */
+  private recalagesParPassage(): number {
+    const brut = Number(process.env.RECALAGE_RATTRAPAGE_PAR_PASSAGE ?? RECALAGE_PAR_PASSAGE_DEFAUT);
+    if (!Number.isFinite(brut) || brut < 0) return RECALAGE_PAR_PASSAGE_DEFAUT;
+    return Math.min(Math.floor(brut), RECALAGE_PAR_PASSAGE_MAX);
+  }
+
+  /** Mémoire bornée des tracés qu'OSRM a refusés — voir `recalerAnciensTraces`. */
+  private memoriserRefusRecalage(tripId: string): void {
+    if (this.recalageRefuse.size >= RECALAGE_REFUS_MEMOIRE_MAX) {
+      // Un Set garde l'ordre d'insertion : on oublie le plus ancien refus, jamais le plus récent.
+      const premier = this.recalageRefuse.values().next().value;
+      if (premier !== undefined) this.recalageRefuse.delete(premier);
+    }
+    this.recalageRefuse.add(tripId);
   }
 
   private finalStats(s: MutableStats, durationMs: number): TripAutomationRunStatsWithDormancy {

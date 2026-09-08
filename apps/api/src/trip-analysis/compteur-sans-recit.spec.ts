@@ -44,6 +44,8 @@ describe('TripAutomationService — compteur « encore sans récit »', () => {
       { isEnabledForFleet: jest.fn() } as never,
       { record: jest.fn() } as never,
       { record: jest.fn() } as never,
+      // Rattrapage du recalage (2026-09-08) : jamais atteint ici, les trajets simules n'ont pas de trace stocke.
+      { recaler: jest.fn().mockResolvedValue({ polylineMatched: null, enCours: false }) } as never,
     );
     return { svc, prisma };
   }

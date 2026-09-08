@@ -1,4 +1,4 @@
-import { UnprocessableEntityException } from '@nestjs/common';
+import { PositionsIntrouvablesException } from '../common/positions-introuvables.exception';
 import { TripAutomationService } from './trip-automation.service';
 
 /**
@@ -39,7 +39,10 @@ function build(opts: {
   const findMany = jest
     .fn()
     .mockResolvedValueOnce(opts.trips ?? [])
-    .mockResolvedValueOnce(opts.anciens ?? []);
+    .mockResolvedValueOnce(opts.anciens ?? [])
+    // Le rattrapage du recalage (2026-09-08) lit lui aussi des trajets, en fin de passage : sans
+    // ce défaut, il recevait `undefined` et le simulacre fabriquait une panne qui n'existe pas.
+    .mockResolvedValue([]);
   const prisma = {
   /**
    * La reprise de l'historique lit ses candidats en SQL brut (`NOT (detail ? 'vitesse')` n'a pas
@@ -86,12 +89,19 @@ function build(opts: {
     { isEnabledForFleet: jest.fn().mockResolvedValue(true) } as never,
     errorLogger as never,
     { record: jest.fn() } as never,
+    // Rattrapage du recalage (2026-09-08) : jamais atteint ici, les trajets simules n'ont pas de trace stocke.
+    { recaler: jest.fn().mockResolvedValue({ polylineMatched: null, enCours: false }) } as never,
   );
   return { svc, prisma, analysis, errorLogger, findMany };
 }
 
+/**
+ * ⚠️ La classe compte, plus le message (2026-09-08). Le gel ne se déclenche plus sur n'importe
+ * quel 422 mais sur `PositionsIntrouvablesException`, celle que l'analyse lève exprès : un gel
+ * est définitif, il ne doit pas se poser sur un refus qui parlait d'autre chose.
+ */
 const REFUS = () =>
-  new UnprocessableEntityException(
+  new PositionsIntrouvablesException(
     'Analyse impossible : les positions de ce trajet ne sont plus disponibles.',
   );
 
@@ -112,9 +122,21 @@ describe('Refus pour positions purgées — guérir sans crier', () => {
     expect(errorLogger.record).not.toHaveBeenCalled();
   });
 
-  it('⚠️ AU-DESSUS de l’horizon : le même refus ALERTE et ne gèle rien — c’est une panne', async () => {
-    // 10 jours : les positions devraient être là. Geler ici étoufferait une vraie anomalie
-    // (purge trop agressive, ingestion cassée) sous le fait normal.
+  it('⚠️ AU-DESSUS de l’horizon : le même refus ALERTE — une fois — et gèle sous un marqueur distinct', async () => {
+    /**
+     * 10 jours : les positions devraient être là. L'anomalie doit crier, et elle crie.
+     *
+     * ⚠️ CE CONTRAT A CHANGÉ LE 2026-09-08, et le changement est le correctif. Jusque-là, ce cas
+     * n'était PAS gelé : « geler ici étoufferait une vraie anomalie sous le fait normal ».
+     * L'intention était juste, la conséquence ne l'était pas — sans marqueur, le trajet revient
+     * à chaque passage horaire et l'alerte se répète à l'infini. Mesuré en production : 20 fois
+     * en 27 heures pour un seul trajet, sans remède possible.
+     *
+     * Le gel sous un marqueur DISTINCT tient les deux bouts : le signal reste lisible en base
+     * (`fige-sans-positions` ne se confond pas avec `fige-retention`), l'alerte part, et elle
+     * ne part qu'une fois. C'est exactement la règle déjà retenue pour une tranche vide
+     * au-dessus de l'horizon, côté recalcul.
+     */
     const { svc, prisma, errorLogger } = build({
       trips: [{ id: 't-recent', startedAt: new Date(Date.now() - 10 * JOUR) }],
       analyzeRejette: REFUS(),
@@ -122,10 +144,15 @@ describe('Refus pour positions purgées — guérir sans crier', () => {
 
     await svc.runNow();
 
-    expect(prisma.trip.update).not.toHaveBeenCalled();
+    expect(prisma.trip.update).toHaveBeenCalledWith({
+      where: { id: 't-recent' },
+      data: { segmentationSource: 'fige-sans-positions' },
+    });
+    expect(errorLogger.record).toHaveBeenCalledTimes(1);
     expect(errorLogger.record).toHaveBeenCalledWith(
       expect.any(Error), expect.anything(),
-      expect.objectContaining({ tripId: 't-recent', phase: 'analyze' }),
+      expect.objectContaining({ tripId: 't-recent', marqueur: 'fige-sans-positions' }),
+      'ERROR',
     );
   });
 

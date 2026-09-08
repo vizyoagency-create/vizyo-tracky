@@ -83,6 +83,8 @@ describe('TripAutomationService — la ligne au départ', () => {
       { isEnabledForFleet: jest.fn().mockResolvedValue(true) } as never,
       errorLogger as never,
       systemActivity as never,
+      // Rattrapage du recalage (2026-09-08) : jamais atteint ici, les trajets simules n'ont pas de trace stocke.
+      { recaler: jest.fn().mockResolvedValue({ polylineMatched: null, enCours: false }) } as never,
     );
     return { svc, prisma, errorLogger, systemActivity, ordre };
   }
@@ -152,6 +154,62 @@ describe('TripAutomationService — la ligne au départ', () => {
     expect(message).toContain('(manuel)');
     expect(message).toMatch(/redémarré 1[12] min plus tard/);
     expect(message).toContain('prochain passage');
+  });
+
+  describe('plusieurs instances d\'API — ne pas déclarer mort le passage vivant du voisin', () => {
+    /**
+     * Le marquage au démarrage repose sur un raisonnement simple : « ce processus est le seul à
+     * lancer des passages, et il vient de naître, donc une ligne encore en cours est morte ».
+     * Ce raisonnement tombe le jour où deux conteneurs d'API tournent ensemble : celui qui
+     * démarre déclarerait interrompu le passage bien vivant de l'autre, et enverrait une alerte
+     * critique pour rien.
+     *
+     * `API_INSTANCES` dit la vérité du déploiement. Au-delà de un, seule l'ANCIENNETÉ tranche :
+     * un passage ne peut pas durer plus que son budget, donc une ligne plus vieille que
+     * budget + marge est morte quel que soit son propriétaire.
+     */
+    const anciennes = process.env.API_INSTANCES;
+    afterEach(() => {
+      if (anciennes === undefined) delete process.env.API_INSTANCES;
+      else process.env.API_INSTANCES = anciennes;
+    });
+
+    it('🔴 à deux instances, une ligne JEUNE est laissée tranquille', async () => {
+      process.env.API_INSTANCES = '2';
+      const { svc, prisma, errorLogger } = build({
+        orphelins: [{ id: 'vivant', startedAt: ilYA(3), origin: 'scheduled' }],
+      });
+
+      expect(await svc.marquerPassagesInterrompus()).toBe(0);
+      expect(prisma.tripAutomationRun.updateMany).not.toHaveBeenCalled();
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it("🔴 à deux instances, une ligne plus vieille que le budget est morte à coup sûr", async () => {
+      process.env.API_INSTANCES = '2';
+      const { svc, prisma } = build({
+        orphelins: [{ id: 'mort-vieux', startedAt: ilYA(75), origin: 'scheduled' }],
+      });
+
+      expect(await svc.marquerPassagesInterrompus()).toBe(1);
+      expect(prisma.tripAutomationRun.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['mort-vieux'] } } }),
+      );
+    });
+
+    it('à une seule instance — le déploiement d\'aujourd\'hui — le marquage reste immédiat', async () => {
+      process.env.API_INSTANCES = '1';
+      const { svc } = build({ orphelins: [{ id: 'mort', startedAt: ilYA(0), origin: 'scheduled' }] });
+
+      expect(await svc.marquerPassagesInterrompus()).toBe(1);
+    });
+
+    it('une valeur absurde ne fait pas taire la vigie : on retombe sur une instance', async () => {
+      process.env.API_INSTANCES = 'beaucoup';
+      const { svc } = build({ orphelins: [{ id: 'mort', startedAt: ilYA(1), origin: 'scheduled' }] });
+
+      expect(await svc.marquerPassagesInterrompus()).toBe(1);
+    });
   });
 
   it("tué dans la minute, le message dit « moins d'une minute », pas « 0 min » (vu en production le 08/09)", async () => {
