@@ -1,0 +1,489 @@
+<title>Poste de commande Tracky</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  /* ── Charte Tracky, jetons réels de l'application ── */
+  --fond:      #F2F5F3;
+  --surface:   #FFFFFF;
+  --surface-2: #EAEFEB;
+  --trait:     #DDE4E0;
+  --trait-fort:#C3CEC8;
+  --encre:     #0A1311;
+  --encre-2:   #3D4A45;
+  --encre-3:   #6B7873;
+  --accent:      #0A9E6C;   /* accent lisible sur fond clair */
+  --accent-vif:  #10E0A0;   /* le vert de marque */
+  --accent-fond: #E4F6EE;
+  --alerte:      #C0453F;
+  --alerte-fond: #FBEAE9;
+  --attente:     #96690B;
+  --attente-fond:#FBF2DE;
+  --calme:       #46617A;
+  --calme-fond:  #E8EFF5;
+  --ombre:   0 1px 2px rgb(10 19 17 / .05);
+  --ombre-2: 0 1px 2px rgb(10 19 17 / .06), 0 8px 26px rgb(10 19 17 / .07);
+  --titre: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --texte: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:  'IBM Plex Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  --colonne: 1040px;
+}
+/* ⚠️ CETTE PAGE EST EN CLAIR, TOUJOURS — demande du propriétaire (10/09).
+   Elle ne suit donc pas le thème de l'hôte : `color-scheme: light` le déclare, et le fond du
+   corps est peint explicitement, sans quoi la page emprunterait le fond sombre de son hôte. */
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--fond); color: var(--encre-2);
+  font-family: var(--texte); font-size: 15px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { margin: 0; color: var(--encre); font-family: var(--titre); text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent-vif); outline-offset: 2px; border-radius: 5px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+#racine { max-width: var(--colonne); margin: 0 auto; padding: 40px 26px 128px; display: flex; flex-direction: column; gap: 46px; }
+
+/* ── En-tête ── */
+.chapeau { display: flex; flex-direction: column; gap: 20px; }
+.marque { display: flex; align-items: center; gap: 10px; }
+.marque__logo {
+  width: 26px; height: 27px; flex: none; background: var(--accent);
+  -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat;
+}
+.marque__mot { font-family: var(--mono); font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--encre-3); }
+.titre { font-size: 36px; line-height: 1.05; font-weight: 700; letter-spacing: -.022em; }
+.chapo { max-width: 62ch; font-size: 16px; color: var(--encre-2); }
+.sommaire { display: flex; flex-wrap: wrap; gap: 7px; }
+.sommaire a {
+  display: inline-flex; align-items: center; gap: 7px; height: 31px; padding: 0 13px;
+  border-radius: 999px; border: 1px solid var(--trait); background: var(--surface);
+  color: var(--encre-2); font-size: 13px; text-decoration: none;
+}
+.sommaire a:hover { border-color: var(--trait-fort); color: var(--encre); }
+.sommaire b { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--encre-3); }
+.sommaire a.urgent b { color: var(--alerte); }
+
+/* ── Bande de chiffres ──
+   `auto-fit` plutôt qu'un nombre de colonnes fixe : la bande passe de quatre à deux puis à une
+   toute seule, quelle que soit la largeur du volet. Un demi-écran ne coupe donc rien. */
+.chiffres { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 1px; background: var(--trait); border: 1px solid var(--trait); border-radius: 12px; overflow: hidden; }
+.chiffre { background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 1px; }
+.chiffre b { font-family: var(--mono); font-size: 24px; font-weight: 500; color: var(--encre); letter-spacing: -.02em; line-height: 1.3; }
+.chiffre span { font-size: 12.5px; color: var(--encre-3); }
+.chiffre.est-alerte b { color: var(--alerte); }
+
+/* ── Sections ── */
+.section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 18px; }
+.section__tete { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--trait); padding-bottom: 9px; }
+.section__tete h2 { font-size: 21px; font-weight: 600; letter-spacing: -.012em; }
+.compte { font-family: var(--mono); font-size: 11.5px; color: var(--encre-3); margin-left: auto; }
+.intro { color: var(--encre-3); max-width: 74ch; font-size: 14px; }
+.intro code, .ligne__note code, .fait__preuve code { font-family: var(--mono); font-size: .87em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--encre-2); }
+
+/* ── Ce qui tourne tout seul ── */
+.machines { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.machine { background: var(--surface); border: 1px solid var(--trait); border-radius: 12px; padding: 15px 17px; display: flex; flex-direction: column; gap: 9px; }
+.machine__nom { font-size: 14.5px; font-weight: 600; color: var(--encre); }
+.machine__texte { font-size: 13.5px; color: var(--encre-3); }
+.piste { height: 7px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.piste__valeur { height: 100%; background: var(--accent); border-radius: 999px; }
+.machine__pied { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--encre-3); }
+
+.ligne__puce { color: var(--encre-3); font-size: 13px; align-self: start; margin-top: 2px; }
+.ligne.est-lecture .ligne__quoi { font-weight: 400; }
+/* ── Listes de tâches ── */
+.liste { border: 1px solid var(--trait); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.ligne { display: grid; grid-template-columns: 24px 62px minmax(0, 1fr) auto; gap: 5px 14px; align-items: baseline; padding: 13px 17px; border-top: 1px solid var(--trait); }
+.ligne:first-child { border-top: 0; }
+.ligne.est-faite { background: var(--surface-2); }
+.ligne.est-faite .ligne__quoi { text-decoration: line-through; color: var(--encre-3); }
+.ligne.est-faite .ligne__note { display: none; }
+.case {
+  width: 21px; height: 21px; border-radius: 6px; border: 1.5px solid var(--trait-fort);
+  background: var(--surface); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0; color: transparent; align-self: start; margin-top: 1px;
+  transition: background .12s, border-color .12s;
+}
+.case:hover { border-color: var(--encre-3); }
+.case.est-cochee { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+.ligne__ref { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--encre-3); align-self: start; margin-top: 3px; }
+.ligne__quoi { font-size: 14.5px; color: var(--encre); font-weight: 500; }
+.ligne__quoi .feu { color: var(--alerte); font-weight: 700; letter-spacing: -.04em; margin-right: 4px; }
+.ligne__note { grid-column: 3 / -1; font-size: 13px; color: var(--encre-3); }
+.ligne__chip { align-self: start; }
+.chip { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 500; white-space: nowrap; font-family: var(--mono); }
+.chip--alerte { background: var(--alerte-fond); color: var(--alerte); }
+.chip--attente { background: var(--attente-fond); color: var(--attente); }
+.chip--accent { background: var(--accent-fond); color: var(--accent); }
+.chip--calme { background: var(--calme-fond); color: var(--calme); }
+.chip--neutre { background: var(--surface-2); color: var(--encre-3); }
+
+/* ── Décisions ── */
+.decisions { display: flex; flex-direction: column; gap: 11px; }
+.decision { background: var(--surface); border: 1px solid var(--trait); border-left: 3px solid var(--attente); border-radius: 10px; padding: 15px 17px; display: flex; flex-direction: column; gap: 11px; }
+.decision.est-tranchee { border-left-color: var(--accent); }
+.decision__tete { display: flex; gap: 11px; align-items: baseline; flex-wrap: wrap; }
+.decision__ref { font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--attente); }
+.decision.est-tranchee .decision__ref { color: var(--accent); }
+.decision__sujet { font-size: 16px; font-weight: 600; flex: 1; min-width: 220px; }
+.decision__texte { font-size: 13.5px; color: var(--encre-3); max-width: 76ch; }
+.options { display: flex; gap: 7px; flex-wrap: wrap; }
+.opt {
+  display: inline-flex; align-items: center; gap: 8px; height: 33px; padding: 0 13px;
+  border-radius: 999px; border: 1px solid var(--trait); background: var(--surface);
+  color: var(--encre-2); font: inherit; font-size: 13.5px; cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.opt:hover { border-color: var(--trait-fort); background: var(--surface-2); }
+.opt .puce { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--trait-fort); flex: none; }
+.opt.est-choisie { font-weight: 600; background: var(--accent-fond); border-color: var(--accent); color: var(--accent); }
+.opt.est-choisie .puce { background: var(--accent); border-color: var(--accent); }
+textarea {
+  width: 100%; min-height: 52px; resize: vertical; padding: 9px 11px;
+  border: 1px solid var(--trait); border-radius: 8px; background: var(--fond);
+  color: var(--encre); font: inherit; font-size: 13.5px;
+}
+textarea::placeholder { color: var(--encre-3); }
+
+/* ── Fait et prouvé ── */
+.faits { border: 1px solid var(--trait); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.fait { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 4px 14px; padding: 13px 17px; border-top: 1px solid var(--trait); }
+.fait:first-child { border-top: 0; }
+.fait__date { font-family: var(--mono); font-size: 11.5px; color: var(--accent); font-weight: 500; margin-top: 2px; }
+.fait__quoi { font-size: 14.5px; color: var(--encre); font-weight: 500; }
+.fait__preuve { grid-column: 2; font-size: 13px; color: var(--encre-3); }
+
+/* ── Où vit quoi ── */
+.rangement { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+.rangement__item { background: var(--surface); border: 1px solid var(--trait); border-radius: 10px; padding: 13px 15px; display: flex; flex-direction: column; gap: 3px; }
+.rangement__nom { font-family: var(--mono); font-size: 12.5px; color: var(--encre); font-weight: 500; word-break: break-word; }
+.rangement__texte { font-size: 13px; color: var(--encre-3); }
+
+/* ── Barre du bas ── */
+.barre { position: fixed; left: 0; right: 0; bottom: 0; background: var(--surface); border-top: 1px solid var(--trait); box-shadow: var(--ombre-2); z-index: 10; }
+.barre__contenu { max-width: var(--colonne); margin: 0 auto; padding: 10px 26px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.avancee { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
+.avancee__texte { font-size: 12.5px; color: var(--encre-3); display: flex; justify-content: space-between; gap: 10px; }
+.sauvegarde { font-family: var(--mono); font-size: 12px; color: var(--encre-3); white-space: nowrap; }
+.sauvegarde.est-ok { color: var(--accent); }
+.sauvegarde.est-erreur { color: var(--alerte); }
+
+/* ── Largeurs contraintes ──
+   Le volet est souvent à demi-écran : ces paliers valent pour la LARGEUR DE LA PAGE, pas celle
+   de l'appareil, donc ils tombent aussi sur un grand écran dont la fenêtre est réduite. */
+@media (max-width: 900px) {
+  #racine { padding: 32px 20px 132px; gap: 40px; }
+  .titre { font-size: 32px; }
+  /* La pastille de droite passe sous le texte plutôt que de le comprimer. */
+  .ligne { grid-template-columns: 24px 58px minmax(0, 1fr); }
+  .ligne__chip { grid-column: 3; margin-top: 2px; }
+  .ligne__note { grid-column: 3; }
+}
+@media (max-width: 680px) {
+  #racine { padding: 24px 14px 148px; gap: 34px; }
+  .titre { font-size: 27px; }
+  .chapo { font-size: 15px; }
+  /* Deux colonnes : la case, puis tout le reste empilé. La référence et la pastille partagent
+     la première ligne — chacune sur la sienne gaspillait deux hauteurs de texte par tâche. */
+  .ligne { grid-template-columns: 24px minmax(0, 1fr); padding: 12px 14px; gap: 3px 12px; }
+  .case, .ligne__puce { grid-row: 1; }
+  .ligne__ref { grid-column: 2; grid-row: 1; margin-top: 0; }
+  .ligne__chip { grid-column: 2; grid-row: 1; justify-self: end; margin-top: 0; }
+  .ligne__quoi { grid-column: 2; grid-row: 2; }
+  .ligne__note { grid-column: 2; grid-row: 3; }
+  .fait { grid-template-columns: 1fr; padding: 12px 14px; }
+  .fait__preuve { grid-column: 1; }
+  .decision { padding: 14px 15px; }
+  .decision__sujet { min-width: 0; font-size: 15.5px; }
+  .machine, .rangement__item { padding: 13px 14px; }
+  .section__tete h2 { font-size: 19px; }
+  .compte { margin-left: 0; }
+  .barre__contenu { padding: 9px 14px; gap: 10px; }
+}
+@media (max-width: 420px) {
+  .opt { width: 100%; justify-content: center; }
+  .sommaire a { font-size: 12.5px; padding: 0 11px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+</style>
+
+<div id="racine"></div>
+
+<script id="donnees" type="application/json">{"releve":"9 septembre 2026, 22:31 UTC","machines":[{"nom":"Rattrapage du recalage des tracés","texte":"Quinze tracés d’historique remis sur la route à chaque passage horaire, après les analyses. S’arrête tout seul.","fait":3264,"total":17099,"pied":"13 835 restants","pied2":"≈ 38 jours"},{"nom":"Reprise des analyses d’avant le 4 septembre","texte":"Vingt-cinq par passage, les plus anciennes d’abord — elles courent contre la purge des positions.","fait":null,"total":null,"pied":"25 par passage","pied2":"s’éteint seule"}],"chiffres":[{"v":"0","t":"erreur au centre d’alerte depuis le 08/09 16:28"},{"v":"224/224","t":"trajets recalés depuis le correctif"},{"v":"10","t":"gestes qui n’avancent que par toi","alerte":true},{"v":"56","t":"fiches suivies dans la roadmap"}],"toi":[{"id":"T1","ref":"TRK-071","feu":2,"quoi":"Recharger au moins UN des deux comptes IA","note":"Anthropic ET OpenAI sont vides. Le repli claude vers gpt est deploye, correct, et sans effet tant que c'est vrai.","pastille":{"l":"toi","c":"chip--alerte"},"phare":true},{"id":"T3","ref":"TRK-066","feu":2,"quoi":"Trancher les trois questions du coupe-circuit","note":"10 s sur un dernier recours ? Un reessai, et comment le rendre idempotent ? Une immobilisation demandee qui n'a pas eu lieu vaut-elle CRITICAL ?","pastille":{"l":"toi","c":"chip--alerte"},"phare":false},{"id":"T7","ref":"TRK-035","feu":2,"quoi":"Ouvrir la fenetre de maintenance du role non-superutilisateur","note":"Le role applicatif est superutilisateur ET proprietaire : un REVOKE est sans effet. Un droit oublie casse l'ingestion GPS.","pastille":{"l":"toi","c":"chip--alerte"},"phare":false},{"id":"T4","ref":"TRK-072","feu":1,"quoi":"Calibrer les notifications d'exces de vitesse","note":"14 par jour et par super-admin, pour un produit calibre sur 2 a 3. Relever le seuil, ou restreindre les destinataires. NOUVEAU le 07/09 : le sujet a DEUX cotes. Les 20 trajets a plus de 90 km/h du 6 septembre, pointe a 137,31 km/h, sont sur A2R dont speedAlertEnabled vaut faux ; les deux flottes armees ont culmine a 96,84, sous leur seuil. La flotte qui roule le plus vite est exactement celle ou l alerte est eteinte. Regler le seuil sans regarder QUI est arme ne traiterait que la moitie bruyante du sujet.","pastille":{"l":"toi","c":"chip--alerte"},"phare":false},{"id":"T5","ref":"TRK-062","feu":1,"quoi":"Autoriser la migration SENT_UNCONFIRMED","note":"Verifie absent de l'artefact servi 3 fois. Les 2 commandes SMS vieillissent de 24 h par jour et ne se fermeront jamais seules.","pastille":{"l":"toi","c":"chip--alerte"},"phare":false},{"id":"T9","ref":"—","feu":1,"quoi":"Declarer ou depanner GLA•KC•31 et FG-669-DQ","note":"Muets depuis 74 h et 57 h, et NON declares : ils sortent du filtre gps_sans_fix par le bas.","pastille":{"l":"toi","c":"chip--alerte"},"phare":false},{"id":"T6","ref":"TRK-065","feu":0,"quoi":"Prevenir le titulaire de compte sans appareil","note":"21 notifications perdues. Cette personne se croit prevenue et ne l'est pas.","pastille":{"l":"toi","c":"chip--alerte"},"phare":false},{"id":"T8","ref":"TRK-001 · TRK-027","feu":0,"quoi":"Controler les antennes de trois vehicules","note":"FS-253-HR, FZ-862-VY, KSR•370. Antenne intermittente, pas panne resolue : les fix se reperdent apres chaque episode referme.","pastille":{"l":"toi","c":"chip--alerte"},"phare":false}],"moi":[{"id":"T12","ref":"TRK-022","feu":1,"quoi":"Deduplication GENERIQUE des alarmes du boitier","note":"Posee seulement sur le chemin de la survitesse. Le modele existe dix lignes plus loin (perte GPS, 24 h).","pastille":{"l":"à coder","c":"chip--accent"},"phare":false},{"id":"T13","ref":"TRK-016","feu":1,"quoi":"Recalage cartographique : flux neuf repare, mesure a redefinir, historique a rattraper","note":"AU 09/09 LE CHIFFRE BRUT INDUIT EN ERREUR. La fenetre 24 h rend 0,0 pour cent d echec (186 trajets, 0 sans recalage) contre 85,5 pour cent la veille — mais le 07/09 LUI-MEME est passe de 85,5 a 1,2 pour cent POUR LES MEMES TRAJETS : ils ont ete recales APRES leur cloture, par le rattrapage recalerAnciensTraces (15 par passage, deploye a 17:12) ou par le recalage a la demande du rejeu (c2afb01f). Temoin impossible pose avant de conclure : polylineMatched vide = 0, longueur minimale 265 caracteres, moyenne 20 188 — ce sont de vraies geometries. La serie de dix points ne se prolonge donc pas par ce 0,0 : la definition a change sous elle. Et trips porte un createdAt mais PAS d updatedAt, donc le recalage ne peut pas etre date. Ce qui reste mesurable est le stock : 10 032 trajets de 2 a 60 jours, dont 1 150 deja recales.","pastille":{"l":"à coder","c":"chip--accent"},"phare":false},{"id":"T25","ref":"TRK-074","feu":1,"quoi":"Donner une resolution automatique au temoin des taches planifiees","note":"Quatre CRITICAL du 6 septembre restent ouvertes alors que la condition est close depuis 20h45. La sentinelle des agents du poste archive les siennes toute seule — encore une fois le 08/09 a 16:50. Porter ce comportement, en filtrant sur le NOM DE TACHE structure et jamais sur le texte du message. Au 09/09 : 3e verification negative sur l artefact servi, resolution automatique toujours absente de dist/observability/scheduled-task-heartbeat.service.js. Les 4 lignes ont 4 jours. L ecart entre les deux instruments se creuse d un jour par jour, et c est ce qui finit par faire dire videz l ecran.","pastille":{"l":"à coder","c":"chip--accent"},"phare":false},{"id":"T28","ref":"TRK-016","feu":1,"quoi":"Redefinir la mesure du recalage : a la cloture, sur une fenetre fermee","note":"Un taux calcule sur polylineMatched IS NULL dans une fenetre glissante melange desormais DEUX choses : ce que le recalage fait A LA CLOTURE du trajet, et ce que le rattrapage fait RETROACTIVEMENT. Mesure du 09/09 : le 07/09 rendait 85,5 pour cent d echec la veille et rend 1,2 pour cent le lendemain, sans qu aucun trajet nouveau ne soit apparu. La colonne n a pas d horodatage — trips porte un createdAt, pas d updatedAt — donc rien ne distingue bien fait tout de suite de rattrape la nuit suivante. Le geste : mesurer le recalage a la cloture (horodater la pose du trace, ou compter sur une fenetre FERMEE anterieure au rattrapage), et publier les deux grandeurs separement : qualite a la cloture, avancement du rattrapage.","pastille":{"l":"à coder","c":"chip--accent"},"phare":false},{"id":"T22","ref":"TRK-014","feu":0,"quoi":"Rectifier le quoiFaire de TRK-014","note":"Il renvoie vers « le correctif de TRK-012 reste en attente d'accord » — or TRK-012 est CORRIGE depuis le 25/08.","pastille":{"l":"à coder","c":"chip--accent"},"phare":false},{"id":"T23","ref":"—","feu":0,"quoi":"Creer ou dereferencer TACHES-AMELIORATION.md","note":"Reference pour la dette d'architecture (cles AM-nnn), le fichier est absent du depot. Un renvoi vers un fichier fantome est pire que pas de renvoi.","pastille":{"l":"à coder","c":"chip--accent"},"phare":false}],"guette":[{"id":"T14","quoi":"Provoquer ou requalifier : boitier debranche ne fait pas taire les alarmes","quand":"test daté"},{"id":"T16","quoi":"A CLORE ? Le sujet a change : la chaine de vitesse est armee","quand":"occasion"},{"id":"T18","quoi":"Guetter « SMS non remis au relais » — motif technique CONSERVE","quand":"occasion"},{"id":"T21","quoi":"Accuse de remise de la passerelle SMS","quand":"bloqué"},{"id":"T26","quoi":"Remonter la decision d alerter au bon etage, et borner le rejeu par la retention","quand":"occasion"},{"id":"T10","quoi":"Le niveau de l'escalade doit suivre la CAUSE, pas la gravite","quand":"occasion"},{"id":"T11","quoi":"Borner le fetch vers Vizyo Auth, et son jumeau","quand":"occasion"},{"id":"T19","quoi":"REQUALIFIER — l'occasion ne viendra pas seule","quand":"test daté"},{"id":"T20","quoi":"Confier a un humain : le badge ambre du mode fix","quand":"test daté"},{"id":"T27","quoi":"La carte survit a une perte de contexte WebGL","quand":"occasion"},{"id":"T15","quoi":"Guetter : « Un point de mesure systeme n'a pas pu etre enregistre »","quand":"occasion"},{"id":"T17","quoi":"Guetter la ligne hebdomadaire : 42 doit tomber a ~21","quand":"occasion"}],"vps":[{"id":"V1","quoi":"Porter les 6 IMEI muets a l'exploitant"},{"id":"V2","quoi":"Sortir du parc les 6 boitiers muets depuis plus de 7 jours"},{"id":"V3","quoi":"Un seul ticket hebergeur pour les deux ecritures root"},{"id":"V4","quoi":"Planifier un redemarrage vers 23 h 30"},{"id":"V5","quoi":"Arbitrer le budget de collecte"},{"id":"V7","quoi":"Poser les limites memoire sur 30 conteneurs"},{"id":"V8","quoi":"Separer les projets compose deploy"},{"id":"V12","quoi":"Restreindre la cle CI github-actions-vizyo-auth"},{"id":"V13","quoi":"ExecStart par bash, et OnFailure sur tracky-backup"},{"id":"V14","quoi":"Fixer l'heure du rafraichissement apt (et non reduire son alea)"},{"id":"V15","quoi":"Epingler Traefik par digest"},{"id":"V23","quoi":"Afficher l'ecart en jours sur /admin → Audit VPS"},{"id":"V6","quoi":"Donner un second depositaire a la copie hors-site"},{"id":"V9","quoi":"Trancher les 4,5 Go d'outillage de developpement dans /root"},{"id":"V16","quoi":"Epingler alpine par empreinte"},{"id":"V17","quoi":"Purger 1,4 Go de copies sans retention"},{"id":"V18","quoi":"Multiplexage SSH cote POSTE"},{"id":"V20","quoi":"Etiqueter les images de repli au build"},{"id":"V21","quoi":"Trancher quel mecanisme gouverne le cache de build"},{"id":"V22","quoi":"Echantillonner wchan 3 fois et publier la repartition"},{"id":"V26","quoi":"Ranger les deux dossiers de sauvegarde abandonnes"},{"id":"V27","quoi":"Trancher si la base de DEMONSTRATION doit etre sauvegardee"},{"id":"V10","quoi":"Retirer /opt/vizyo-leads"},{"id":"V19","quoi":"random_page_cost sur 6 bases"}],"decisions":[{"id":"D1","sujet":"Le script qui refuse de déployer pendant un passage","texte":"Il lit la base et refuse de partir si l’automatisation tourne. Il marche : testé le 08/09, il a refusé, code de sortie 1. Mais la session qui a déployé le 09/09 à 19:46 ne l’a pas utilisé, et le passage est mort en vol.","options":[{"v":"obligatoire","l":"Le rendre incontournable"},{"v":"aide","l":"Le laisser en simple aide"}]},{"id":"D2","sujet":"Le rythme du rattrapage des tracés","texte":"Quinze par heure aujourd’hui, soit trente-huit jours pour les 13 835 restants. Réglable jusqu’à cinquante sans redéployer, ce qui ramène à onze jours. La seule retenue est la politesse envers OSRM, qui est un service public gratuit.","options":[{"v":"garder","l":"Garder 15 — 38 jours"},{"v":"monter","l":"Monter à 50 — 11 jours"}]}],"faits":[{"d":"09/09","quoi":"La sentinelle nomme des boîtiers, plus des flottes","preuve":"Passage de 06:30 : quatre véhicules nommés avec leur part — FV-941-LZ à 84 %, GA-490-SJ à 64 % — et <b>silence pour cdef31</b>, qui recevait un message la veille. Le rejeu de la règle en SQL donne exactement les mêmes."},{"d":"09/09","quoi":"La ligne au départ attrape un vrai incident","preuve":"Un déploiement pendant le passage de 19:45 l’a tué. Marqué <code>interrupted</code>, e-mail livré à 19:50, travail rattrapé au passage suivant. Avant le 08/09, il aurait disparu sans une ligne."},{"d":"08/09","quoi":"L’alerte qui se répétait toutes les heures est éteinte","preuve":"Un trajet du 8 juillet, sans positions conservées, criait une fois par heure depuis 27 h. <b>Zéro ligne depuis</b>, sur 30 heures."},{"d":"08/09","quoi":"Le recalage des tracés est réparé pour les trajets neufs","preuve":"<b>224 trajets sur 224</b> clôturés depuis le correctif suivent la route. Avant : 156 sur 1 217."},{"d":"08/09","quoi":"Une seule erreur critique suffit à prévenir","preuve":"Cinq e-mails livrés en deux jours, un par erreur, refroidissement respecté. Avant, il en fallait cinq dans l’heure."},{"d":"08/09","quoi":"Les fonds de carte ne dépendent plus de CARTO","preuve":"Plus aucune tuile « API KEY REQUIRED » en travers de la carte : zéro URL <code>cartocdn</code> dans le paquet servi."},{"d":"07-08/09","quoi":"Chantier cartes — échelle de vitesse unique, traînées, légendes, repères fixes","preuve":"Six tâches et trois défauts de recette, passés par les cinq niveaux jusqu’à la mesure en production."}],"faitsClos":6,"rangement":[{"nom":"docs/SUIVI.md","texte":"Le même contenu que cette page, dans le dépôt."},{"nom":"centre-alerte/app/taches.json","texte":"La source des tâches. Cette page en est une vue."},{"nom":"centre-alerte/ROADMAP-CORRECTIFS.md","texte":"Le pourquoi de chaque fiche, tenu chaque nuit."},{"nom":"docs/README.md","texte":"L’index : vivant, servi par l’API, ou archive."}]}</script>
+<script id="etat" type="application/json">{"version":1,"taches":{},"decisions":{},"maj":null}</script>
+
+<script id="code">
+(function () {
+  'use strict';
+
+  /* ═══ CE QUE LA PAGE SAIT — mesuré en production le 09/09/2026 à 22:31 UTC ═══ */
+
+  /* ══ LES DONNÉES NE VIVENT PAS ICI ══════════════════════════════════════════════════════
+     Elles sont injectées dans <script id="donnees"> par docs/poste-de-commande/generer.mjs,
+     qui les dérive de docs/centre-alerte/app/taches.json — la même source que le tableau de
+     bord de l'audit. Cette page en est une SECONDE VUE, pas une seconde liste : c'est ce qui
+     rend un doublon impossible, puisque chaque tâche y porte un identifiant stable et unique.
+     ⚠️ Ne pas remettre de tableau en dur ici : la prochaine génération l'écraserait. */
+  var D = JSON.parse(document.getElementById('donnees').textContent);
+  var RELEVE = D.releve, MACHINES = D.machines, CHIFFRES = D.chiffres, TOI = D.toi,
+      DECISIONS = D.decisions, MOI = D.moi, GUETTE = D.guette, VPS = D.vps,
+      FAITS = D.faits, RANGEMENT = D.rangement, FAITS_CLOS = D.faitsClos || 0;
+var LOGO = 'data:image/png;base64,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';
+
+  /* ═══ ÉTAT ═══ */
+
+  var racine = document.getElementById('racine');
+  var etat = lireEtat();
+  var artefact = null, minuteur = null, enCours = false;
+
+  function lireEtat() {
+    var base = { version: 1, taches: {}, decisions: {}, maj: null };
+    try { base = JSON.parse(document.getElementById('etat').textContent) || base; } catch (e) {}
+    base.taches = base.taches || {}; base.decisions = base.decisions || {};
+    try {
+      var local = JSON.parse(localStorage.getItem('tracky-poste') || 'null');
+      if (local && local.maj && (!base.maj || local.maj > base.maj)) return local;
+    } catch (e) {}
+    return base;
+  }
+  function ech(t) {
+    return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function faite(id) { return !!etat.taches[id]; }
+  function reste(liste) { return liste.filter(function (t) { return !faite(t.id); }).length; }
+  function decision(id) { etat.decisions[id] = etat.decisions[id] || { choix: '', note: '' }; return etat.decisions[id]; }
+  function decisionsRestantes() { return DECISIONS.filter(function (d) { return !(etat.decisions[d.id] || {}).choix; }).length; }
+  function totalToi() { return reste(TOI) + decisionsRestantes(); }
+
+  var COCHE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  function feux(n) { return n > 0 ? '<span class="feu" aria-hidden="true">' + (n > 1 ? '▲▲' : '▲') + '</span>' : ''; }
+
+  function ligne(t, chip) {
+    var f = faite(t.id);
+    var h = '<div class="ligne' + (f ? ' est-faite' : '') + '">';
+    h += '<button class="case' + (f ? ' est-cochee' : '') + '" data-act="tache" data-id="' + t.id + '" aria-pressed="' + f + '" aria-label="' + ech(t.quoi) + '">' + COCHE + '</button>';
+    h += '<span class="ligne__ref">' + ech(t.id) + '</span>';
+    h += '<span class="ligne__quoi">' + feux(t.feu || 0) + ech(t.quoi) + '</span>';
+    h += '<span class="ligne__chip">' + (chip || '') + '</span>';
+    if (t.note) h += '<p class="ligne__note">' + ech(t.note) + (t.ref && t.ref !== '—' ? ' <code>' + ech(t.ref) + '</code>' : '') + '</p>';
+    h += '</div>';
+    return h;
+  }
+
+  function rendre() {
+    var h = '';
+
+    /* ── En-tête ── */
+    h += '<header class="chapeau">';
+    h += '<div class="marque"><span class="marque__logo" style="--logo:url(&quot;' + LOGO + '&quot;)"></span><span class="marque__mot">Vizyo Tracky · supervision de production</span></div>';
+    h += '<h1 class="titre">Poste de commande</h1>';
+    h += '<p class="chapo">Ce qu’il reste à faire, qui peut le faire, et ce qui est déjà prouvé. Coché ici, c’est coché pour de bon : la page garde son état. Relevé du ' + RELEVE + '.</p>';
+    h += '<nav class="sommaire" aria-label="Sections">'
+      + '<a href="#toi" class="urgent">Ce qui t’attend <b id="nav-toi">' + totalToi() + '</b></a>'
+      + '<a href="#moi">Ce que je code <b id="nav-moi">' + reste(MOI) + '</b></a>'
+      + '<a href="#guette">On guette <b>' + GUETTE.length + '</b></a>'
+      + '<a href="#vps">Côté VPS <b>28</b></a>'
+      + '<a href="#faits">Fait et prouvé <b>' + FAITS.length + '</b></a>'
+      + '</nav>';
+    h += '<div class="chiffres">';
+    CHIFFRES.forEach(function (c, i) {
+      var v = i === 2 ? String(totalToi()) : c.v;
+      h += '<div class="chiffre' + (c.alerte ? ' est-alerte' : '') + '"><b>' + ech(v) + '</b><span>' + ech(c.t) + '</span></div>';
+    });
+    h += '</div>';
+    h += '</header>';
+
+    /* ── Ce qui tourne tout seul ── */
+    h += '<section class="section" id="machines"><div class="section__tete"><h2>Ce qui tourne tout seul</h2><span class="compte">aucune action</span></div>';
+    h += '<div class="machines">';
+    MACHINES.forEach(function (m) {
+      h += '<article class="machine"><div class="machine__nom">' + ech(m.nom) + '</div><p class="machine__texte">' + ech(m.texte) + '</p>';
+      if (m.total) {
+        var pct = Math.round(m.fait / m.total * 100);
+        h += '<div class="piste"><div class="piste__valeur" style="width:' + pct + '%"></div></div>';
+        h += '<div class="machine__pied"><span>' + pct + ' % · ' + ech(m.pied) + '</span><span>' + ech(m.pied2) + '</span></div>';
+      } else {
+        h += '<div class="machine__pied"><span>' + ech(m.pied) + '</span><span>' + ech(m.pied2) + '</span></div>';
+      }
+      h += '</article>';
+    });
+    h += '</div></section>';
+
+    /* ── Ce qui t'attend ── */
+    h += '<section class="section" id="toi"><div class="section__tete"><h2>Ce qui t’attend</h2><span class="compte" id="compte-toi">' + reste(TOI) + ' gestes · ' + decisionsRestantes() + ' décisions</span></div>';
+    h += '<p class="intro">Huit gestes que le code ne peut pas faire, dans l’ordre où ils débloquent le reste. Les triangles marquent ce qui bloque en amont.</p>';
+    h += '<div class="liste">';
+    TOI.forEach(function (t) { h += ligne(t, '<span class="chip chip--alerte">toi</span>'); });
+    h += '</div>';
+
+    h += '<p class="intro" style="margin-top:6px">Et deux questions courtes. Réponds ici : je lis la page.</p>';
+    h += '<div class="decisions">';
+    DECISIONS.forEach(function (d) {
+      var r = etat.decisions[d.id] || {};
+      h += '<article class="decision' + (r.choix ? ' est-tranchee' : '') + '">';
+      h += '<div class="decision__tete"><span class="decision__ref">' + d.id + '</span><h3 class="decision__sujet">' + ech(d.sujet) + '</h3></div>';
+      h += '<p class="decision__texte">' + ech(d.texte) + '</p>';
+      h += '<div class="options">';
+      d.options.forEach(function (o) {
+        h += '<button class="opt' + (r.choix === o.v ? ' est-choisie' : '') + '" data-act="decision" data-id="' + d.id + '" data-val="' + o.v + '" aria-pressed="' + (r.choix === o.v) + '"><span class="puce"></span>' + ech(o.l) + '</button>';
+      });
+      h += '</div>';
+      h += '<textarea data-act="note" data-id="' + d.id + '" aria-label="Votre réponse à ' + d.id + '" placeholder="Ou dis-moi autre chose">' + ech(r.note || '') + '</textarea>';
+      h += '</article>';
+    });
+    h += '</div></section>';
+
+    /* ── Ce que je code ── */
+    h += '<section class="section" id="moi"><div class="section__tete"><h2>Ce que je peux coder</h2><span class="compte" id="compte-moi">' + reste(MOI) + ' sur ' + MOI.length + '</span></div>';
+    h += '<p class="intro">Par ordre d’utilité. Dis-m’en un, je le prends.</p>';
+    h += '<div class="liste">';
+    MOI.forEach(function (t) { h += ligne(t, '<span class="chip chip--accent">à coder</span>'); });
+    h += '</div></section>';
+
+    /* ── On guette ── */
+    h += '<section class="section" id="guette"><div class="section__tete"><h2>Ce qu’on guette</h2><span class="compte">rien à faire</span></div>';
+    h += '<p class="intro">Quatre correctifs sont en ligne et attendent leur occasion de se prouver. La mesure tombe toute seule.</p>';
+    h += '<div class="liste">';
+    GUETTE.forEach(function (g) {
+      h += '<div class="ligne est-lecture">';
+      h += '<span class="ligne__puce" aria-hidden="true">◷</span>';
+      h += '<span class="ligne__ref">' + ech(g.id) + '</span>';
+      h += '<span class="ligne__quoi">' + ech(g.quoi) + '</span>';
+      h += '<span class="ligne__chip"><span class="chip chip--calme">' + ech(g.quand) + '</span></span>';
+      h += '</div>';
+    });
+    h += '</div></section>';
+
+    /* ── VPS ── */
+    h += '<section class="section" id="vps"><div class="section__tete"><h2>Côté VPS</h2><span class="compte">28 constats</span></div>';
+    h += '<p class="intro">Presque tous des gestes d’infrastructure. Les quatre plus lourds :</p>';
+    h += '<div class="liste">';
+    VPS.forEach(function (v) {
+      h += '<div class="ligne est-lecture">';
+      h += '<span class="ligne__puce" aria-hidden="true">▪</span>';
+      h += '<span class="ligne__ref">' + ech(v.id) + '</span>';
+      h += '<span class="ligne__quoi">' + ech(v.quoi) + '</span>';
+      h += '<span class="ligne__chip"><span class="chip chip--neutre">infra</span></span>';
+      h += '</div>';
+    });
+    h += '</div></section>';
+
+    /* ── Fait et prouvé ── */
+    h += '<section class="section" id="faits"><div class="section__tete"><h2>Fait et prouvé</h2><span class=\"compte\">' + FAITS.length + ' racontés · ' + FAITS_CLOS + ' tâches closes</span></div>';
+    h += '<p class="intro">« Prouvé » veut dire mesuré sur la production, pas déployé. Un correctif déployé qu’aucun événement n’exerce reste un correctif non prouvé.</p>';
+    h += '<div class="faits">';
+    FAITS.forEach(function (f) {
+      h += '<div class="fait"><span class="fait__date">' + ech(f.d) + '</span><span class="fait__quoi">' + ech(f.quoi) + '</span><p class="fait__preuve">' + f.preuve + '</p></div>';
+    });
+    h += '</div></section>';
+
+    /* ── Où vit quoi ── */
+    h += '<section class="section" id="rangement"><div class="section__tete"><h2>Où vit quoi</h2></div>';
+    h += '<p class="intro">Cette page est le résumé. La trace complète est dans le dépôt.</p>';
+    h += '<div class="rangement">';
+    RANGEMENT.forEach(function (r) {
+      h += '<div class="rangement__item"><span class="rangement__nom">' + ech(r.nom) + '</span><span class="rangement__texte">' + ech(r.texte) + '</span></div>';
+    });
+    h += '</div></section>';
+
+    racine.innerHTML = h;
+    majBarre();
+  }
+
+  /* ── Barre du bas ── */
+  function majBarre() {
+    var total = TOI.length + DECISIONS.length + MOI.length;
+    var fini = TOI.filter(function (t) { return faite(t.id); }).length
+             + MOI.filter(function (t) { return faite(t.id); }).length
+             + (DECISIONS.length - decisionsRestantes());
+    var pct = total ? Math.round(fini / total * 100) : 0;
+    var barre = document.getElementById('barre');
+    if (!barre) {
+      barre = document.createElement('div');
+      barre.className = 'barre'; barre.id = 'barre';
+      document.body.appendChild(barre);
+    }
+    barre.innerHTML = '<div class="barre__contenu">'
+      + '<div class="avancee"><div class="avancee__texte"><span>' + fini + ' sur ' + total + ' traités</span><span class="mono">' + pct + ' %</span></div>'
+      + '<div class="piste"><div class="piste__valeur" style="width:' + pct + '%"></div></div></div>'
+      + '<span class="sauvegarde" id="sauvegarde">état gardé sur cet appareil</span>'
+      + '</div>';
+  }
+
+  function dire(texte, classe) {
+    var el = document.getElementById('sauvegarde');
+    if (!el) return;
+    el.textContent = texte;
+    el.className = 'sauvegarde' + (classe ? ' ' + classe : '');
+  }
+
+  /* ── Enregistrement ── */
+  function enregistrer() {
+    etat.maj = new Date().toISOString();
+    try { localStorage.setItem('tracky-poste', JSON.stringify(etat)); } catch (e) {}
+    if (!artefact) { dire('état gardé sur cet appareil'); return; }
+    dire('enregistrement…');
+    clearTimeout(minuteur);
+    minuteur = setTimeout(publier, 700);
+  }
+
+  function publier() {
+    if (!artefact || enCours) return;
+    enCours = true;
+    var doc = document.documentElement.cloneNode(true);
+    var bloc = doc.querySelector('#etat');
+    if (bloc) bloc.textContent = JSON.stringify(etat);
+    var barre = doc.querySelector('#barre');
+    if (barre) barre.remove();
+    var r = doc.querySelector('#racine');
+    if (r) r.innerHTML = '';
+    artefact.publish('<!doctype html>' + doc.outerHTML).then(function () {
+      enCours = false;
+      dire('enregistré pour tout le monde', 'est-ok');
+    }).catch(function (err) {
+      enCours = false;
+      var code = err && err.code;
+      if (code === 'conflict') { dire('une autre version a gagné', 'est-erreur'); return; }
+      if (code === 'not_granted' || code === 'not_writer') { artefact = null; dire('état gardé sur cet appareil'); return; }
+      dire('gardé ici seulement', 'est-erreur');
+    });
+  }
+
+  /* ── Interactions ── */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b || b.tagName === 'TEXTAREA') return;
+    var act = b.getAttribute('data-act'), id = b.getAttribute('data-id');
+    if (act === 'tache') {
+      etat.taches[id] = !etat.taches[id];
+      rendre(); enregistrer();
+    } else if (act === 'decision') {
+      var d = decision(id), v = b.getAttribute('data-val');
+      d.choix = d.choix === v ? '' : v;
+      rendre(); enregistrer();
+    }
+  });
+
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.tagName !== 'TEXTAREA' || t.getAttribute('data-act') !== 'note') return;
+    decision(t.getAttribute('data-id')).note = t.value;
+    clearTimeout(minuteur);
+    minuteur = setTimeout(function () { enregistrer(); }, 900);
+  });
+
+  rendre();
+
+  if (window.claude && typeof window.claude.use === 'function') {
+    window.claude.use('artifact').then(function (a) {
+      if (a) { artefact = a; dire('prêt — les coches sont partagées'); }
+    }).catch(function () {});
+  }
+})();
+</script>

@@ -1,0 +1,76 @@
+{
+  "_comment": "Ce que le POSTE DE COMMANDE montre en plus des tâches. Les tâches, elles, viennent de docs/centre-alerte/app/taches.json et ne se recopient JAMAIS ici — voir generer.mjs. Ce fichier ne porte que ce qu'aucune tâche ne décrit : les mesures de tête, les mécaniques qui tournent seules, les décisions posées au propriétaire, et ce qui est prouvé.",
+  "version": 1,
+  "releve": "9 septembre 2026, 22:31 UTC",
+
+  "machines": [
+    {
+      "nom": "Rattrapage du recalage des tracés",
+      "texte": "Quinze tracés d’historique remis sur la route à chaque passage horaire, après les analyses. S’arrête tout seul.",
+      "fait": 3264,
+      "total": 17099,
+      "pied": "13 835 restants",
+      "pied2": "≈ 38 jours"
+    },
+    {
+      "nom": "Reprise des analyses d’avant le 4 septembre",
+      "texte": "Vingt-cinq par passage, les plus anciennes d’abord — elles courent contre la purge des positions.",
+      "fait": null,
+      "total": null,
+      "pied": "25 par passage",
+      "pied2": "s’éteint seule"
+    }
+  ],
+
+  "chiffres": [
+    { "v": "0", "t": "erreur au centre d’alerte depuis le 08/09 16:28" },
+    { "v": "224/224", "t": "trajets recalés depuis le correctif" },
+    { "v": "auto", "t": "gestes qui n’avancent que par toi", "alerte": true },
+    { "v": "auto", "t": "fiches suivies dans la roadmap" }
+  ],
+
+  "decisions": [
+    {
+      "id": "D1",
+      "sujet": "Le script qui refuse de déployer pendant un passage",
+      "texte": "Il lit la base et refuse de partir si l’automatisation tourne. Il marche : testé le 08/09, il a refusé, code de sortie 1. Mais la session qui a déployé le 09/09 à 19:46 ne l’a pas utilisé, et le passage est mort en vol.",
+      "options": [
+        { "v": "obligatoire", "l": "Le rendre incontournable" },
+        { "v": "aide", "l": "Le laisser en simple aide" }
+      ]
+    },
+    {
+      "id": "D2",
+      "sujet": "Le rythme du rattrapage des tracés",
+      "texte": "Quinze par heure aujourd’hui, soit trente-huit jours pour les 13 835 restants. Réglable jusqu’à cinquante sans redéployer, ce qui ramène à onze jours. La seule retenue est la politesse envers OSRM, qui est un service public gratuit.",
+      "options": [
+        { "v": "garder", "l": "Garder 15 — 38 jours" },
+        { "v": "monter", "l": "Monter à 50 — 11 jours" }
+      ]
+    }
+  ],
+
+  "faits": [
+    { "d": "09/09", "quoi": "La sentinelle nomme des boîtiers, plus des flottes",
+      "preuve": "Passage de 06:30 : quatre véhicules nommés avec leur part — FV-941-LZ à 84 %, GA-490-SJ à 64 % — et <b>silence pour cdef31</b>, qui recevait un message la veille. Le rejeu de la règle en SQL donne exactement les mêmes." },
+    { "d": "09/09", "quoi": "La ligne au départ attrape un vrai incident",
+      "preuve": "Un déploiement pendant le passage de 19:45 l’a tué. Marqué <code>interrupted</code>, e-mail livré à 19:50, travail rattrapé au passage suivant. Avant le 08/09, il aurait disparu sans une ligne." },
+    { "d": "08/09", "quoi": "L’alerte qui se répétait toutes les heures est éteinte",
+      "preuve": "Un trajet du 8 juillet, sans positions conservées, criait une fois par heure depuis 27 h. <b>Zéro ligne depuis</b>, sur 30 heures." },
+    { "d": "08/09", "quoi": "Le recalage des tracés est réparé pour les trajets neufs",
+      "preuve": "<b>224 trajets sur 224</b> clôturés depuis le correctif suivent la route. Avant : 156 sur 1 217." },
+    { "d": "08/09", "quoi": "Une seule erreur critique suffit à prévenir",
+      "preuve": "Cinq e-mails livrés en deux jours, un par erreur, refroidissement respecté. Avant, il en fallait cinq dans l’heure." },
+    { "d": "08/09", "quoi": "Les fonds de carte ne dépendent plus de CARTO",
+      "preuve": "Plus aucune tuile « API KEY REQUIRED » en travers de la carte : zéro URL <code>cartocdn</code> dans le paquet servi." },
+    { "d": "07-08/09", "quoi": "Chantier cartes — échelle de vitesse unique, traînées, légendes, repères fixes",
+      "preuve": "Six tâches et trois défauts de recette, passés par les cinq niveaux jusqu’à la mesure en production." }
+  ],
+
+  "rangement": [
+    { "nom": "docs/SUIVI.md", "texte": "Le même contenu que cette page, dans le dépôt." },
+    { "nom": "centre-alerte/app/taches.json", "texte": "La source des tâches. Cette page en est une vue." },
+    { "nom": "centre-alerte/ROADMAP-CORRECTIFS.md", "texte": "Le pourquoi de chaque fiche, tenu chaque nuit." },
+    { "nom": "docs/README.md", "texte": "L’index : vivant, servi par l’API, ou archive." }
+  ]
+}
