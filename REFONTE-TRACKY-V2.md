@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+
 # Refonte Tracky v2 — Roadmap d'implémentation
 
 > ⚠️ **Historique — journal arrêté au 2026-08-14** *(bandeau posé le 2026-08-22)*. La

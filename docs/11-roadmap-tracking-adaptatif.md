@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 26/04/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./SUIVI.md). Conservé pour l'histoire.
+
 # 11 — Roadmap tracking adaptatif (energie / cout / scalabilite)
 
 > **Statut :** ✅ Livre — Sprints H1-H4 implementes le 2026-04-26 (branche `worktree-tracking-adaptatif`).

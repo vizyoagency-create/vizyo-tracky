@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 26/04/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./SUIVI.md). Conservé pour l'histoire.
+
 # 15 — Roadmap V1.6 UI compléments + tests
 
 > **Statut :** ✅ Livré — 2026-04-26

@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+
 # Déploiement audit V1.10 — guide pas à pas
 
 > ⚠️ **Historique — déploiement V1.10 réalisé** *(bandeau posé le 2026-08-22)*. La

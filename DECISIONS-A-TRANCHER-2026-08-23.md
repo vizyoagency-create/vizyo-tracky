@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 23/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+
 # Décisions à trancher — tableau de bord
 
 > Créé le 2026-08-23 à partir de `ETAT-RESTE-A-FAIRE-2026-08-22.md` (qui garde le détail et les sources).

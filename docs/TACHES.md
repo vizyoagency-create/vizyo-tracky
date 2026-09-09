@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 21/07/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./SUIVI.md). Conservé pour l'histoire.
+
 # TÂCHES — Chantier commercial + RGPD (2026-07-21)
 
 > Fichier de travail unique. On avance **step by step** dans l'ordre ci-dessous.

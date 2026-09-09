@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./SUIVI.md). Conservé pour l'histoire.
+
 # 17 — Roadmap post-audit mobile (V1.8+)
 
 > ⚠️ **Historique — figé au 2026-05-03** *(bandeau posé le 2026-08-22)*. Le « EN COURS »

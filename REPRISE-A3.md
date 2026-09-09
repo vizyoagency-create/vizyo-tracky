@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+
 # Reprise — Lot A3 : l'espace dépôt
 
 > ⚠️ **Historique — passation consommée** *(bandeau posé le 2026-08-22)*. A3 et A4 ont été

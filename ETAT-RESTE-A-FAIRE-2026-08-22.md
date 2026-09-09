@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./docs/SUIVI.md). Conservé pour l'histoire.
+
 # État du reste-à-faire — 2026-08-22 (au soir)
 
 > Synthèse issue de l'audit « tâches restantes + fraîcheur de la documentation » du

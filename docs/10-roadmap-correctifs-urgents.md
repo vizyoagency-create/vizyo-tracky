@@ -1,3 +1,6 @@
+> ⛔ **ARCHIVE — ne pas suivre.** Ce document décrit un chantier terminé (dernier travail : 22/08/2026).
+> Ce qu'il reste à faire vit dans [`SUIVI.md`](./SUIVI.md). Conservé pour l'histoire.
+
 # 10 — Roadmap correctifs urgents (UX & fiabilite)
 
 > ✅ **Historique — livré** *(bandeau posé le 2026-08-22)*. La fin du fichier consigne la
