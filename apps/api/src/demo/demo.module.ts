@@ -7,6 +7,8 @@ import { UserActivityModule } from '../user-activity/user-activity.module';
 import { DemoAdminService } from './demo-admin.service';
 import { DemoConsoleController } from './demo-console.controller';
 import { DemoConsoleService } from './demo-console.service';
+import { DemoPurgeComptesService } from './demo-purge-comptes.service';
+import { UsersModule } from '../users/users.module';
 import { DemoController } from './demo.controller';
 import { DemoReplayService } from './demo-replay.service';
 
@@ -21,9 +23,9 @@ import { DemoReplayService } from './demo-replay.service';
  * le seul à voir la production.
  */
 @Module({
-  imports: [AuthModule, PositionsModule, RealtimeModule, InvitationsModule, UserActivityModule],
+  imports: [AuthModule, PositionsModule, RealtimeModule, InvitationsModule, UserActivityModule, UsersModule],
   controllers: [DemoController, DemoConsoleController],
-  providers: [DemoReplayService, DemoAdminService, DemoConsoleService],
+  providers: [DemoReplayService, DemoAdminService, DemoConsoleService, DemoPurgeComptesService],
   exports: [DemoReplayService],
 })
 export class DemoModule {}

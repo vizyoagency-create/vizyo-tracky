@@ -284,6 +284,10 @@ const envSchema = z.object({
   // ⚠️ Le drapeau ne protège rien à lui seul : ce qui empêche la démo d'atteindre un véhicule,
   // c'est l'ABSENCE de port TCP publié et de clé SMS dans son environnement (compose + .env.demo).
   DEMO_MODE: z.string().default('false'),
+  /** Purge des comptes de démonstration dormants : délai d'inactivité, en jours (défaut 30). */
+  DEMO_PURGE_JOURS: z.string().default(''),
+  /** Adresses que la purge n'efface JAMAIS (commerciaux), séparées par des virgules. */
+  DEMO_COMPTES_PERMANENTS: z.string().default(''),
   // Les variables suivantes ne servent QU'À L'IMPORTEUR (node dist/demo/import/import.cli.js),
   // un processus à part qui ne démarre pas l'application. Déclarées ici pour être VISIBLES
   // (constat C3 : une variable lue par process.env sans exister nulle part ailleurs est une

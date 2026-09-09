@@ -365,6 +365,15 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 30 },
   },
   {
+    id: 'demo-purge-comptes',
+    source: 'demo/demo-purge-comptes.service.ts', label: 'Purge des comptes de démonstration dormants', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 05:35', criticality: 'basse', antiOverlap: false,
+    settingsRoute: '/admin/demo-comptes',
+    note: "INERTE hors DEMO_MODE, et la garde est la première ligne de la méthode : la même image sert la production, où une purge de comptes serait irréparable. Épargne les comptes de service du seed, les super-administrateurs, le propriétaire, et les adresses de DEMO_COMPTES_PERMANENTS — les commerciaux, que rien ne distingue structurellement d'un prospect.",
+    purpose: "Rend vraie l'annonce faite au prospect que son accès ne dure pas. Un compte sans connexion depuis DEMO_PURGE_JOURS (30 par défaut) est suspendu dans Vizyo Auth — le seul geste qui empêche réellement de se reconnecter — puis ses données personnelles et ses invitations sont effacées. L'activité survit, anonyme : on conserve la mesure, pas la personne.",
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 5 && w.getMinutes() === 35 },
+  },
+  {
     id: 'email-health',
     source: 'email/email-health.service.ts', label: 'Sentinelle des courriels bloqués', category: 'Système & observabilité',
     kind: 'cron', scheduleHuman: 'chaque jour à 07:00', criticality: 'haute', antiOverlap: false,

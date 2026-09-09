@@ -10,5 +10,8 @@ import { UsersController } from './users.controller';
   imports: [AuthModule, AuthClientModule, EmailModule, InvitationsModule],
   controllers: [UsersController],
   providers: [AuthAccountSyncService],
+  // Exporté pour la purge des comptes de démonstration : suspendre dans Vizyo Auth est le
+  // seul geste qui empêche réellement une reconnexion.
+  exports: [AuthAccountSyncService],
 })
 export class UsersModule {}
