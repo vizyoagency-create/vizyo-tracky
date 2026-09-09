@@ -2,7 +2,7 @@ import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
 import { AuthAccountSyncService } from './auth-account-sync.service';
 import {
   BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
-  Logger, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
+  Logger, NotFoundException, Optional, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AccessType, Prisma, UserRole } from '@prisma/client';
@@ -17,6 +17,7 @@ import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
+import { DemoModeService } from '../demo/demo-mode.service';
 import { MissionShareService } from '../depot/mission-share.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from './default-permissions';
@@ -53,7 +54,45 @@ export class UsersController {
     private readonly ownerVis: OwnerVisibilityService,
     // Lot A4 — archiver un compte ferme aussi les liens publics qu'il a distribues.
     private readonly missionShare: MissionShareService,
+    // Démonstration : optionnel, car les specs instancient ce contrôleur à la main.
+    @Optional() private readonly demoMode?: DemoModeService,
   ) {}
+
+  /** Domaine des comptes de rôle posés par le seed de la démonstration. */
+  private static readonly DOMAINE_DEMO = '@demo.vizyoagency.com';
+
+  /**
+   * ── EN DÉMONSTRATION, UN PROSPECT NE VOIT QUE LUI-MÊME ───────────────────────────────
+   *
+   * L'isolation, dans ce produit, se fait par FLOTTE : `GET /users` borne à
+   * `fleetId = celui de l'appelant`. La démonstration n'a qu'une flotte, par choix — c'est
+   * ce qui permet d'inviter sans jamais créer de société. Mais cela met tous les prospects
+   * dans le même locataire, et un prospect est FLEET_ADMIN pour que la démonstration soit
+   * complète : il lisait donc l'adresse de tous les autres.
+   *
+   * Mesuré le 2026-09-09 sur la démonstration en service : le compte remis aux prospects
+   * rendait six adresses, dont celle de l'exploitant et celle d'une invitation en attente.
+   *
+   * ⚠️ La garde ne peut PAS passer par les permissions : `PermissionsGuard` laisse
+   * explicitement passer SUPER_ADMIN et FLEET_ADMIN (« bypass dans tous les cas »), donc
+   * retirer `users_view` à un administrateur de flotte ne change rien. Le rôle est le seul
+   * levier, et on ne peut pas descendre le prospect sous FLEET_ADMIN sans lui retirer la
+   * moitié du produit qu'il vient voir. D'où ce filtre, au ras de la requête.
+   *
+   * Ce qui reste visible : lui-même, et les comptes de rôle du seed — fictifs, et utiles à
+   * la démonstration de la gestion d'équipe. Le super-administrateur n'est pas filtré :
+   * c'est l'exploitant, et c'est lui qui administre la démonstration.
+   */
+  private cloisonDemo(viewer: { id: string; role: UserRole }): Prisma.UserWhereInput | null {
+    if (!this.demoMode?.enabled) return null;
+    if (viewer.role === UserRole.SUPER_ADMIN) return null;
+    return {
+      OR: [
+        { id: viewer.id },
+        { email: { endsWith: UsersController.DOMAINE_DEMO } },
+      ],
+    };
+  }
 
   /**
    * Owner plateforme — un viewer NON-owner ne doit ni voir ni modifier un compte
@@ -201,11 +240,17 @@ export class UsersController {
       const perms = req.user.permissions as Record<string, boolean> | null;
       if (!perms?.users_manage) throw new ForbiddenException('Permission insuffisante');
     }
-    const items = await this.invitations.list({
+    let items = await this.invitations.list({
       id: req.user.id,
       role: req.user.role,
       fleetId: req.user.fleetId,
     });
+    // Démonstration — une invitation en attente EST une adresse en clair. Un non-super-admin
+    // ne voit que les siennes : le commercial gère les prospects qu'il a invités, un prospect
+    // n'en voit aucune.
+    if (this.cloisonDemo(req.user)) {
+      items = items.filter((it) => it.createdById === req.user.id);
+    }
     // Owner plateforme — masque l'owner comme CRÉATEUR d'invitation (→ compte
     // système) pour un viewer non-owner, sans cacher l'invitation elle-même
     // (l'invité reste légitime et visible aux autres admins).
@@ -358,6 +403,10 @@ export class UsersController {
     // Owner plateforme — invisible aux autres super-admins (un owner voit tout).
     if (this.ownerVis.isMasked(req.user)) where.isOwner = false;
 
+    // Démonstration — un prospect ne voit que lui-même et les comptes de rôle.
+    const cloison = this.cloisonDemo(req.user);
+    if (cloison) Object.assign(where, cloison);
+
     const users = await this.prisma.user.findMany({
       where,
       select: {
@@ -381,6 +430,9 @@ export class UsersController {
       if (req.user.role !== UserRole.SUPER_ADMIN) {
         invWhere.fleetId = req.user.fleetId;
       }
+      // Démonstration — une invitation en attente EST une adresse en clair : on ne montre
+      // à un non-super-admin que celles qu'il a émises lui-même.
+      if (this.cloisonDemo(req.user)) invWhere.createdById = req.user.id;
       const invitations = await this.prisma.invitation.findMany({
         where: invWhere,
         orderBy: { createdAt: 'desc' },
@@ -443,6 +495,10 @@ export class UsersController {
     }
     // Owner plateforme — exclu de la vue panorama pour un viewer non-owner.
     if (this.ownerVis.isMasked(req.user)) fleetFilter.isOwner = false;
+
+    // Démonstration — le panorama rend e-mails, rôles ET permissions : même cloison.
+    const cloisonPanorama = this.cloisonDemo(req.user);
+    if (cloisonPanorama) Object.assign(fleetFilter, cloisonPanorama);
 
     const [users, groups] = await Promise.all([
       this.prisma.user.findMany({
