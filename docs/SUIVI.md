@@ -8,10 +8,13 @@
 > **Règle de tenue :** après chaque tâche terminée, on coche ici **et** on met à jour sa ligne
 > `T-nn` / `V-nn` dans la roadmap. Une tâche ne disparaît jamais : elle passe en ✅ avec sa date.
 >
-> 📺 **La même chose en page lisible, à ouvrir depuis n'importe quel appareil :**
+> 📺 **La page que le propriétaire consulte** (coches gardées, lisible sur téléphone) :
 > <https://claude.ai/code/artifact/860096da-d994-4fa5-ab53-6fda6c3fd817>
-> Les coches y sont gardées. Ce fichier reste la source ; la page en est le miroir, et les deux
-> se mettent à jour ensemble.
+>
+> ⚠️ **Depuis le 10/09, elle est GÉNÉRÉE** — `node docs/poste-de-commande/generer.mjs --etat <page>`
+> la dérive de `centre-alerte/app/taches.json`, la même source que le tableau de bord de l'audit.
+> Une tâche neuve y apparaît donc seule, et un doublon est impossible : une source, deux vues.
+> L'audit de nuit la régénère et la republie (étape T bis de sa consigne).
 
 *Dernière mise à jour : 2026-09-10 · dépôt sur `main`*
 

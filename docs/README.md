@@ -16,6 +16,7 @@
 | Fichier | Ce qu'il porte |
 |---|---|
 | **[`SUIVI.md`](./SUIVI.md)** | **Le poste de commande** : ce qu'on fait ensuite, qui agit, où on en est. **Commence ici.** |
+| [`poste-de-commande/`](./poste-de-commande/) | La **page** que le propriétaire consulte, générée depuis `centre-alerte/app/taches.json` par `generer.mjs`. ⚠️ Ne jamais éditer `poste-de-commande.html` à la main : la prochaine génération l'écraserait. |
 | [`centre-alerte/ROADMAP-CORRECTIFS.md`](./centre-alerte/ROADMAP-CORRECTIFS.md) | Les 56 fiches détaillées (28 centre d'alerte + 28 VPS). ⚠️ **Tenue automatiquement** par les audits de nuit. |
 | [`centre-alerte/REFERENCE-ERREURS.md`](./centre-alerte/REFERENCE-ERREURS.md) | Le référentiel `TRK-nnn` : pourquoi chaque erreur existe. |
 | [`vps-audit/REFERENCE-CONSTATS.md`](./vps-audit/REFERENCE-CONSTATS.md) | Le référentiel `VPS-nnn`. |
